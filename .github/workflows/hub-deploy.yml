@@ -381,6 +381,11 @@ jobs:
           # 임베딩 적용 멈춤 스위치. 위와 달리 **매번 싣는다**: 변수를 비우면 off 가
           # 들어가 멈춤이 풀린다(건너뛰면 한 번 켠 on 이 env 에 영영 남는다).
           ENVARGS+=(--set-env-vars "VINC_EMBED_APPLY_PAUSED=${{ vars.VINC_EMBED_APPLY_PAUSED || 'off' }}")
+          # ⚠ 이 update 가 앞 단계에서 내린 구 리비전을 **한 번 더 띄운다.** 단일 리비전
+          # 모드의 롤링 전환은 새 리비전이 준비될 때까지 구 리비전에 트래픽 100% 를
+          # 되돌리고, 그것은 /data 에서 복원해 1분쯤 살다가 두 번째 최종 스냅샷을 쓰려
+          # 한다. 그 쓰기는 스토어의 쓰기 울타리가 막는다(store/persistence.py claim_writer).
+          # 근거: [[record:aca-reboots-the-stopped-hub-revision-during-every-deploy-and-it-writes-a-late-final-snapshot-2026-09-25]]
           if ! az containerapp update $APP --image "$IMAGE" "${ENVARGS[@]}" --output none; then
             echo "::error::이미지 갱신 실패 — **허브는 지금 내려가 있다**(앞 단계가 구 리비전을 내렸다)." >&2
             echo "데이터는 최종 스냅샷까지 안전하다. 서비스만 멈춰 있으므로 마지막 정상 리비전을 되살릴 것:" >&2

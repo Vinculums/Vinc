@@ -124,7 +124,7 @@ from . import textextract
 from .auth import SessionAuth
 from .backup import make_backup
 from .jobs import JobQueue, JobError
-from store.persistence import (SnapshotPolicy, resolve_snapshot_every,
+from store.persistence import (SnapshotPolicy, claim_writer, resolve_snapshot_every,
                                resolve_snapshot_path, save_snapshot)
 
 
@@ -2267,6 +2267,11 @@ def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int |
         threading.Thread(target=_heartbeat, args=(parent_pid, stop), daemon=True).start()
     threading.Thread(target=_gc_tombstones_loop, args=(app, stop), daemon=True).start()
 
+    # 쓰기 자격은 HTTP 를 열기 **직전에** 가져온다. 이보다 늦으면 ACA 가 이 리비전을
+    # 준비됐다고 보고 구 리비전을 내리는 쪽이 먼저 올 수 있다(persistence.claim_writer).
+    writer = claim_writer()
+    if writer != "off":
+        print(f"vinc: store writer — {writer}", file=sys.stderr, flush=True)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
         stop.wait()
