@@ -223,7 +223,10 @@ export async function renderSettings(
     body.innerHTML = `
       <h2>${esc(U.navAbout)}</h2>
       <p class="hint">${esc(U.aboutIntro)}</p>
-      <p class="settings-build">Vinc ${esc(buildId)}</p>
+      <div class="settings-about-id">
+        <span class="brand-logo" aria-hidden="true"></span>
+        <p class="settings-build">Vinc ${esc(buildId)}</p>
+      </div>
       <p class="hint">${esc(remote() ? COPY.sovereigntyWeb : COPY.sovereignty)}</p>`;
   }
 
