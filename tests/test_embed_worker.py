@@ -591,6 +591,59 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
                                    model="BAAI/bge-base-en-v1.5"), 0)
         self.assertEqual([a["doc_id"] for a in sidecar.applied], ["good"])
 
+    def test_연달아_실패하는_문서는_쉬게_하고_나머지는_계속_간다(self):
+        """같은 문서를 매 라운드 다시 인코딩하면 그 문서 하나가 인코더를 붙잡고, 그동안
+        검색의 질의 임베딩이 시간 초과로 떨어진다(2026-09-22 부터 사흘간 76회 실패한 문서).
+        연달아 ``QUARANTINE_AFTER`` 번 실패하면 쉬게 한다: 인코딩을 안 부르고, 지우지도
+        않으며, 쉬는 문서만큼 pending 을 더 받아 나머지가 굶지 않게 한다."""
+        import contextlib
+        import io
+
+        # ⚠ BaseException 이어야 한다. 워커는 pending 조회 실패를 `except Exception` 으로
+        # 삼키고 다시 돌기 때문에, Exception 이면 이 테스트가 끝나지 않는다.
+        class _Stop(BaseException):
+            pass
+
+        boom_calls = {"n": 0}
+
+        def encode(texts):
+            if any(t == "boom" for t in texts):
+                boom_calls["n"] += 1
+                raise RuntimeError("인코딩 실패")
+            return [[1.0] for _ in texts]
+
+        paths: list[str] = []
+        applied: list[str] = []
+
+        def sidecar(path, body=None):
+            if body is None:
+                paths.append(path)
+                if len(paths) > 5:
+                    raise _Stop()
+                return {"kind": "embed.pending", "chunks": [
+                    {"doc_id": "bad", "chunk_id": "b1", "text": "boom"},
+                    {"doc_id": f"good{len(paths)}", "chunk_id": "g1", "text": "ok"}]}
+            applied.append(body["doc_id"])
+            return {"embedded": 1, "cleared": True}
+
+        saved = (self.mod.QUARANTINE_AFTER, self.mod.QUARANTINE_S)
+        self.mod.QUARANTINE_AFTER, self.mod.QUARANTINE_S = 2, 3600.0
+        buf = io.StringIO()
+        try:
+            # 매 라운드 좋은 문서가 진행되므로 워커는 쉬지 않고 돈다 — 대역 사이드카가
+            # 여섯 번째 조회에서 멈춘다.
+            with contextlib.redirect_stderr(buf), self.assertRaises(_Stop):
+                self._run(sidecar, encode=encode, argv=("--interval", "0"),
+                          model="BAAI/bge-base-en-v1.5")
+        finally:
+            self.mod.QUARANTINE_AFTER, self.mod.QUARANTINE_S = saved
+        self.assertEqual(boom_calls["n"], 2, "쉬게 한 뒤에도 같은 문서를 또 인코딩했다")
+        self.assertEqual(applied, [f"good{i}" for i in range(1, 6)], "나머지 문서가 멈췄다")
+        self.assertIn("2회 연속 실패", buf.getvalue())
+        lim = self.mod.DOC_BATCH
+        self.assertIn(f"limit={lim}&", paths[0])
+        self.assertIn(f"limit={lim + 1}&", paths[-1], "쉬는 문서만큼 더 받지 않았다")
+
 
 class SplitEncoderTest(unittest.TestCase):
     """모델을 별도 컨테이너로 분리한 뒤의 계약 (2026-08-07).
@@ -649,6 +702,21 @@ class SplitEncoderTest(unittest.TestCase):
         with urllib.request.urlopen(req, timeout=5):
             pass
         self.assertEqual(seen, ["query: 질문"], f"접두가 안 붙었다: {seen!r}")
+
+    def test_원격_인코딩은_작은_묶음으로_나눠_보낸다(self):
+        """큰 문서를 한 요청에 실으면 1코어 인코더가 `REMOTE_TIMEOUT` 안에 못 끝내 매 라운드
+        같은 자리에서 실패한다. 묶음으로 나눠 보내고, 순서는 입력 그대로 이어 붙인다."""
+        sizes: list[int] = []
+        base = self._serve(lambda texts: (sizes.append(len(texts))
+                                          or [[float(t)] for t in texts]))
+        saved = self.mod.REMOTE_BATCH
+        self.mod.REMOTE_BATCH = 3
+        try:
+            out = self.mod._RemoteEncoder(base).encode([str(i) for i in range(7)])
+        finally:
+            self.mod.REMOTE_BATCH = saved
+        self.assertEqual(sizes, [3, 3, 1])
+        self.assertEqual(out, [[float(i)] for i in range(7)])
 
     def test_벡터_개수가_어긋나면_던진다(self):
         """조각↔벡터 정렬이 이 파이프라인의 유일한 암묵 계약이다. 개수가 모자라면
