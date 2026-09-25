@@ -143,6 +143,14 @@ ENCODE_BIND = os.environ.get("VINC_EMBED_BIND", "127.0.0.1").strip() or "127.0.0
 # 여기 포함된다. 질의 경로의 두 상한(`VINC_EMBED_ENCODE_TIMEOUT` ·
 # `VINC_EMBED_ENCODE_COLD_TIMEOUT`)과는 별개다.
 REMOTE_TIMEOUT = float(os.environ.get("VINC_EMBED_REMOTE_TIMEOUT", "120"))
+# 원격 인코딩 한 요청의 조각 수 상한. 1코어 bge-m3 기준 초당 1개 안팎이라 16 이면
+# 요청 하나가 `REMOTE_TIMEOUT` 에 한참 못 미친다(`_RemoteEncoder.encode`).
+REMOTE_BATCH = max(1, int(os.environ.get("VINC_EMBED_REMOTE_BATCH", "16")))
+# 같은 문서가 이만큼 **연달아** 실패하면 `QUARANTINE_S` 동안 건너뛴다. 매 라운드
+# 다시 시도하면 그 문서 하나가 인코더를 붙잡고, 그동안 검색의 질의 임베딩이 시간
+# 초과로 떨어진다(2026-09-22 부터 사흘간 76회 실패한 문서가 실제로 그랬다).
+QUARANTINE_AFTER = max(1, int(os.environ.get("VINC_EMBED_QUARANTINE_AFTER", "3")))
+QUARANTINE_S = float(os.environ.get("VINC_EMBED_QUARANTINE_S", "21600"))
 
 
 def _apply_paused() -> bool:
@@ -514,6 +522,17 @@ class _RemoteEncoder:
         self._url = url.rstrip("/") + "/encode"
 
     def encode(self, texts: list[str]) -> list[list[float]]:
+        """``REMOTE_BATCH`` 조각씩 나눠 보낸다. 한 요청에 문서 전체를 실으면 큰 문서는
+        인코더(1코어) 계산이 `REMOTE_TIMEOUT` 을 넘겨 **매 라운드 같은 자리에서 실패**하고,
+        클라이언트가 끊은 뒤에도 인코더는 끝까지 계산하느라 그동안 질의 임베딩이 밀린다.
+        나눠 보내면 요청마다 한도 안에 끝나고, 문서는 한 번에 다 적용된다(적용 계약 불변).
+        근거: [[episode:2026-09-24-hub-sidecar-segfault-loop]]"""
+        out: list[list[float]] = []
+        for i in range(0, len(texts), REMOTE_BATCH):
+            out.extend(self._encode_once(texts[i:i + REMOTE_BATCH]))
+        return out
+
+    def _encode_once(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
         body = json.dumps({"texts": texts, "raw": True}).encode("utf-8")
@@ -745,6 +764,10 @@ def main() -> int:
     # ([[record:worker-heartbeat-separates-backlog-from-death]]).
     stall_rounds = 0
     paused_logged_at = None
+    # 문서별 연속 실패 수와, 쉬게 한 문서가 다시 시도될 시각(monotonic). 이 프로세스가
+    # 사는 동안만 유효하다 — 재기동하면 다시 시도하는 것이 맞다(이미지가 바뀌었을 수 있다).
+    failures: dict[str, int] = {}
+    benched: dict[str, float] = {}
     while True:
         # 운영자 스위치(`VINC_EMBED_APPLY_PAUSED`): 인코딩도 적용도 안 하고 백로그를
         # 그대로 둔다. 기동 때 한 번, 그 뒤로는 한 시간에 한 줄만 찍는다.
@@ -763,7 +786,12 @@ def main() -> int:
             # 비교해 다르면 전량 재임베딩을 건다(멱등 — 바뀐 첫 라운드만 일한다).
             # 모델을 바꿔도 needs_embed 가 저절로 켜지지 않아서 필요한 장치다.
             q = urllib.parse.quote(MODEL, safe="")
-            pending = _call(f"/embed/pending?limit={DOC_BATCH}&model={q}").get("chunks", [])
+            now = time.monotonic()
+            for d in [d for d, until in benched.items() if until <= now]:
+                del benched[d]
+            # 쉬는 문서도 pending 에는 그대로 나온다. 그만큼 더 받아야 나머지가 안 굶는다.
+            lim = DOC_BATCH + len(benched)
+            pending = _call(f"/embed/pending?limit={lim}&model={q}").get("chunks", [])
         except Exception as e:
             # 사이드카 기동 전/재시작 중일 수 있다. 워커가 죽으면 컨테이너의
             # 다른 프로세스(MCP)까지 영향받을 이유가 없으므로 물러났다 다시 온다.
@@ -794,6 +822,8 @@ def main() -> int:
 
         progressed = False
         for doc_id, chunks in by_doc.items():
+            if doc_id in benched:
+                continue
             try:
                 # 청크 하나 → 벡터 **여럿**(v8 부모-자식). 저장 청크는 2000자인데 모델
                 # 입력 상한은 512토큰이라 한 벡터로는 앞부분만 담긴다(실측 유실: 한국어
@@ -815,11 +845,22 @@ def main() -> int:
                 res = _call("/embed/apply", {"doc_id": doc_id, "embeddings": out})
                 print(f"[embed] doc={doc_id} chunks={res.get('embedded')} "
                       f"cleared={res.get('cleared')}", flush=True)
+                failures.pop(doc_id, None)
                 progressed = True
             except Exception as e:
                 # 한 문서가 막혀도 나머지는 진행한다. 다음 라운드에 다시 잡힌다
                 # (needs_embed 가 안 지워졌으므로 pending 에 계속 남는다).
                 print(f"[embed] doc={doc_id} 실패: {e}", file=sys.stderr, flush=True)
+                n = failures.get(doc_id, 0) + 1
+                failures[doc_id] = n
+                if n >= QUARANTINE_AFTER:
+                    # 쉬게 한다. 지우지 않는다 — needs_embed 는 남고, 쉬는 시간이 지나면
+                    # 다시 시도한다. 그동안 인코더는 다른 문서와 질의에 쓰인다.
+                    benched[doc_id] = time.monotonic() + QUARANTINE_S
+                    failures.pop(doc_id, None)
+                    print(f"[embed] doc={doc_id} {n}회 연속 실패 — "
+                          f"{QUARANTINE_S / 3600:g}시간 쉬었다가 다시 시도한다",
+                          file=sys.stderr, flush=True)
 
         if progressed:
             stall_rounds = 0

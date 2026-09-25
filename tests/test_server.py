@@ -214,6 +214,35 @@ class HealthContractTests(unittest.TestCase):
             self.assertEqual(code, 200)
             self.assertEqual(obj.get("vector_index"), "remnant")
 
+    def test_live_probe_does_not_read_the_store(self):
+        """`/health?live=1` 은 워치독용 생존 확인이다. 5초마다 불리므로 스토어를 읽으면
+        (리더를 열고 백로그를 세면) 허브가 하루 종일 활성 요금 구간에 머문다. 상태 판정은
+        그대로 싣고, 임베딩 진단만 뺀다. 쿼리 없는 `/health` 는 예전과 같다."""
+        class _FakeStore:
+            driver_name = "fake"
+
+            def close(self):
+                pass
+        app = _app(store=_FakeStore())
+        calls = []
+        app.embed_health = lambda: calls.append(1) or {"pending": 0}
+        with running_server(app) as base:
+            code, obj = _req(base, "/health?live=1", token=None)
+            self.assertEqual(code, 200)
+            self.assertEqual(obj["status"], "ok")
+            self.assertNotIn("embed", obj)
+            self.assertEqual(calls, [], "생존 확인이 스토어를 읽었다")
+            code, obj = _req(base, "/health", token=None)
+            self.assertEqual(obj.get("embed"), {"pending": 0})
+            self.assertEqual(calls, [1])
+
+    def test_live_probe_still_reports_a_degraded_store(self):
+        # 워치독은 이 판정으로 "성치 않은 사이드카"를 본다 — 생존 확인이라고 ok 로 뭉개면 안 된다.
+        with running_server(_app(store=None)) as base:
+            code, obj = _req(base, "/health?live=1", token=None)
+            self.assertEqual(code, 200)
+            self.assertEqual(obj["status"], "degraded")
+
     def test_embed_apply_pause_switch(self):
         """`VINC_EMBED_APPLY_PAUSED` 가 켜지면 `/embed/apply` 는 503 으로 거절하고
         `/health` 에 드러난다. 꺼지면 둘 다 평소대로다."""

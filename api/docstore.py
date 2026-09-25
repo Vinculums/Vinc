@@ -1269,6 +1269,17 @@ def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any]) -> dict:
 
 #: 벡터를 만든 모델의 식별자를 적어 두는 자리(`_SchemaMeta`).
 _EMBED_MODEL_KEY = "embed_model"
+
+
+def stored_embed_model(store) -> str | None:
+    """기록된 임베딩 모델 하나만 읽는다(리더로 부를 수 있다). 못 읽으면 ``None`` —
+    그때 호출부는 모른다고 보고 예전처럼 전환 잡을 돌린다(보수적인 쪽)."""
+    try:
+        rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k RETURN m.value AS v",
+                         {"k": _EMBED_MODEL_KEY}) or []
+    except Exception:
+        return None
+    return (rows[0].get("v") or "") if rows else ""
 #: 워커가 마지막으로 `apply_embeddings` 를 성공시킨 시각(ISO). 백로그가 **줄고 있는지**
 #: 를 밖에서 판정하는 유일한 신호다 — `/health` 가 이 값을 싣는다.
 _EMBED_APPLIED_KEY = "embed_last_applied_at"

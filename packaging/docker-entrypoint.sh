@@ -137,7 +137,11 @@ sidecar_healthy() {
   # 한 줄 안에 갇힌다 — 그러면 아래 SIDECAR_HUNG_S 판정 자체가 못 돈다. 타임박스를
   # 둬야 "느림"과 "멈춤"을 구분할 수 있다.
   # 근거: [[record:editing-the-conventions-document-restarts-the-hub-2026-09-09]]
-  curl -sf --max-time "${VINC_HEALTH_CURL_MAX_S:-10}" http://127.0.0.1:8787/health 2>/dev/null \
+  # `?live=1` 은 스토어를 안 읽는다(상태 판정·스냅샷 상태는 메모리 값). 워치독이 5초마다
+  # 부르므로, 매번 리더를 열어 임베딩 백로그를 세면 허브가 하루 종일 활성 요금 구간에
+  # 머문다. DDL 이 오래 쥐는 동안에도 "느림"이 "멈춤"으로 오인되지 않는다.
+  # 근거: [[vinc.ops.container-apps-cost-rise-2026-09-25]] §4
+  curl -sf --max-time "${VINC_HEALTH_CURL_MAX_S:-10}" "http://127.0.0.1:8787/health?live=1" 2>/dev/null \
     | grep -q '"status":[[:space:]]*"ok"'
 }
 

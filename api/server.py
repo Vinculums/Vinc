@@ -1238,9 +1238,14 @@ class VincApp:
         `needs_embed` 가 안 켜져 **아무 일도 일어나지 않고**, 옛 모델 벡터가 새 쿼리
         벡터와 다른 공간에서 비교된다(에러 없이 검색만 나빠지는 그 실패 양식).
 
-        전환은 쓰기라 잡 큐로 보낸다(R4). 멱등이라 매 라운드 불려도 첫 번째만 일한다."""
+        전환은 쓰기라 잡 큐로 보낸다(R4). 멱등이라 매 라운드 불려도 첫 번째만 일한다.
+
+        ⚠ **모델이 같으면 잡을 걸지 않는다.** 잡 큐는 끝난 잡을 전부 쓰기로 세어 스냅샷을
+        예약하므로, 5분마다 오는 이 호출이 아무것도 안 바꾸고도 DB 전체(수백 MB)를
+        공유 볼륨으로 복사시켰다. 리더로 기록된 모델만 먼저 읽고, 다를 때만 쓰기로 간다.
+        근거: [[record:hub-snapshots-the-whole-database-every-five-minutes-because-a-no-op-job-counts-as-a-write-2026-09-25]]"""
         model = (p.get("model") or "").strip()
-        if model:
+        if model and self._stored_embed_model() != model:
             try:
                 self.jobs.run_sync(
                     "embed.model", lambda: docstore.switch_embed_model(self.store, model),
@@ -1250,6 +1255,16 @@ class VincApp:
         return self._read(lambda r: {
             "kind": "embed.pending",
             "chunks": docstore.pending_embed_chunks(r, limit=_int(p.get("limit"), 256))})
+
+    def _stored_embed_model(self) -> str | None:
+        """리더로 기록된 모델만 읽는다. 스토어가 없거나 못 읽으면 ``None``."""
+        r = self._reader()
+        if r is None:
+            return None
+        try:
+            return docstore.stored_embed_model(r)
+        finally:
+            r.close()
 
     def embed_health(self) -> dict:
         """`/health` 에 실을 임베딩 백로그 진단 — **정체 자체가 알람이 되게** 한다.
@@ -1968,10 +1983,16 @@ class _Handler(BaseHTTPRequestHandler):
                 # 임베딩 백로그 — 정체가 밖에서 보여야 한다(App.embed_health 주석).
                 # 진단이 헬스를 죽이지 않게 통째로 감싼다: 여기서 예외가 나가면
                 # 엔트리포인트의 기동 대기가 실패하고 워치독이 사이드카를 재기동시킨다.
-                try:
-                    body["embed"] = self.app.embed_health()
-                except Exception as exc:   # noqa: BLE001
-                    body["embed"] = {"error": f"{type(exc).__name__}: {exc}"}
+                # `?live=1` 은 **스토어를 안 읽는** 생존 확인이다. 엔트리포인트 워치독이
+                # 5초마다 부르는데, 그때마다 리더를 열고 백로그를 세던 것이 허브를 하루
+                # 종일 활성 요금 구간에 붙잡아 둔 원인 후보였다. 상태 판정(ok·degraded)과
+                # 스냅샷 상태는 메모리 값이라 그대로 싣는다.
+                # 근거: [[vinc.ops.container-apps-cost-rise-2026-09-25]] §4
+                if not _flag(urllib.parse.parse_qs(parsed.query).get("live", [""])[0]):
+                    try:
+                        body["embed"] = self.app.embed_health()
+                    except Exception as exc:   # noqa: BLE001
+                        body["embed"] = {"error": f"{type(exc).__name__}: {exc}"}
                 # 영속 스냅샷 상태 — 꺼져 있으면 'off'. 이게 조용히 실패하면
                 # "돌고 있다고 믿는 백업이 없는" 최악의 형태가 된다(이 리포가
                 # 임베딩 워커에서 38시간 겪은 그 모양).
