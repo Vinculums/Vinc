@@ -10,7 +10,7 @@ import { palette as signal, hexStr, type ThemeMode } from "../theme";
 import { tintMap } from "../view-tint";
 import type { ViewPrefs } from "../view-prefs";
 import { edgeKey, type Spot } from "../spotlight";
-import { markTexture } from "./view-planar";
+import { markTexture, MARK_TEX_PX } from "./view-planar";
 
 /** View 2D 관점 — 독립 렌더러 (DEC D46).
  *
@@ -246,8 +246,10 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
    *
    *  색은 여기서 안 정한다 — 이미지 프로그램이 이 그림을 마스크로 삼아 노드의
    *  `color` 로 칠하므로, 잉크·틴트·초점·물러남은 색 하나만 갈아 끼우면 된다. */
-  const markOf = (n: Node2d): { image: string } => ({
+  //: `ringImage` 는 외곽선을 두른 같은 마크다 — 선택이 떠 있을 때 리듀서가 갈아 끼운다.
+  const markOf = (n: Node2d): { image: string; ringImage: string } => ({
     image: markTexture(n.kind, !!n.gateway),
+    ringImage: markTexture(n.kind, !!n.gateway, true),
   });
 
   /** 노드 잉크. 주제 틴트를 끄면 모노크롬 잉크 그대로다(**기본은 켬** — 2026-08-16
@@ -342,6 +344,9 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
         keepWithinCircle: false,
         correctCentering: true,
         padding: 0,
+        //: 굽는 크기를 **강제**한다. 기본(`max 512`)은 그림의 고유 크기를 넘지 않아서
+        //: 마크가 64px 비트맵으로 구워졌다(view-planar.ts `MARK_TEX_PX` 주석).
+        size: { mode: "force", value: MARK_TEX_PX },
       }),
     },
     renderLabels: prefs.labels !== "none",
@@ -400,8 +405,12 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       // 흐리게 하려던 화면이 글자로 다시 시끄러워진다.
       const lab = bringOn() && gathered && prefs.labels !== "none"
         ? { forceLabel: true } : {};
-      return id === focus ? { ...data, ...lab, color: point(), zIndex: 1 }
-                          : { ...data, ...lab };
+      // 외곽선은 **고른 것**(클릭·점등)에만 두른다. 지나가는 hover 에는 안 두른다 —
+      // 손이 움직일 때마다 링이 깜빡이면 평소의 조용한 평면이 깨진다.
+      // 근거: [[decision:2d-selection-outlines-the-kept-nodes]]
+      const ring = hovered ? {} : { image: (data as { ringImage?: string }).ringImage };
+      return id === focus ? { ...data, ...lab, ...ring, color: point(), zIndex: 1 }
+                          : { ...data, ...lab, ...ring };
     }
     // 물러나는 것은 **이름뿐**이다. 노드는 제 색 그대로 두고, 남은 것은 엣지와
     // 라벨이 말한다 — 몸통을 배경 쪽으로 섞던 동안 같은 노드가 상태에 따라 진한 색과
