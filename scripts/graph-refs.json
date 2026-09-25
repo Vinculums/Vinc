@@ -447,6 +447,7 @@
     "record:health-that-does-not-reach-its-dependency-answers-for-the-wrong-process",
     "record:hook-created-worktrees-are-not-removed-by-the-harness-2026-09-13",
     "record:hub-segfault-loop-index-ddl-races-readers-2026-09-25",
+    "record:hub-segfault-loop-on-embedding-apply-2026-09-24",
     "record:in-a-container-a-swallowed-log-is-no-log",
     "record:inherits-from-is-absent-from-the-reversed-relation-table",
     "record:isolated-seed-read-back-reported-empty-fields",

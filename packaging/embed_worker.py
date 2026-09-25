@@ -145,6 +145,13 @@ ENCODE_BIND = os.environ.get("VINC_EMBED_BIND", "127.0.0.1").strip() or "127.0.0
 REMOTE_TIMEOUT = float(os.environ.get("VINC_EMBED_REMOTE_TIMEOUT", "120"))
 
 
+def _apply_paused() -> bool:
+    """`VINC_EMBED_APPLY_PAUSED` 가 켜졌는가. 사이드카 `api/server.py` 의
+    `embed_apply_paused` 와 같은 판정이다(이 스크립트는 api 를 import 하지 않는다)."""
+    return os.environ.get("VINC_EMBED_APPLY_PAUSED", "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _call(path: str, body: dict | None = None) -> dict:
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(
@@ -737,7 +744,20 @@ def main() -> int:
     # 죽이거나 재기동하지 않는다. 소리만 낸다
     # ([[record:worker-heartbeat-separates-backlog-from-death]]).
     stall_rounds = 0
+    paused_logged_at = None
     while True:
+        # 운영자 스위치(`VINC_EMBED_APPLY_PAUSED`): 인코딩도 적용도 안 하고 백로그를
+        # 그대로 둔다. 기동 때 한 번, 그 뒤로는 한 시간에 한 줄만 찍는다.
+        # 근거: [[record:hub-segfault-loop-on-embedding-apply-2026-09-24]]
+        if _apply_paused():
+            now = time.monotonic()
+            if paused_logged_at is None or now - paused_logged_at >= 3600:
+                print("[embed] paused by VINC_EMBED_APPLY_PAUSED", flush=True)
+                paused_logged_at = now
+            if args.once:
+                return 0
+            time.sleep(args.interval)
+            continue
         try:
             # 어떤 모델을 들었는지 **매 라운드 알려 준다**. 사이드카가 기록된 모델과
             # 비교해 다르면 전량 재임베딩을 건다(멱등 — 바뀐 첫 라운드만 일한다).
