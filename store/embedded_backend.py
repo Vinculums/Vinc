@@ -35,15 +35,35 @@ from .embedded_schema import (DOMAIN_HIERARCHY_VERSION,
                               EPISODE_TIME_BACKFILL_VERSION,
                               NODE_VEC_REKEY_VERSION, SCHEMA_VERSION,
                               migration_statements, node_table_specs,
-                              render_embedded_ddl, render_node_table)
+                              rel_tables_on, render_embedded_ddl,
+                              render_node_table, render_rel_table)
 
 
-class VectorIndexRemnant(RuntimeError):
-    """`ChunkVec` 에 카탈로그 없는 같은 이름 색인이 남아 벡터 색인을 만들 수 없다.
+class IndexRemnant(RuntimeError):
+    """표에 카탈로그 없는 같은 이름 확장 색인(벡터·FTS)이 남아 그 색인을 만들 수 없고,
+    그 표의 행 **쓰기가 전부** 세그폴트다 — 삽입·삭제·아무 열의 SET 까지(실측).
 
-    재시도로 풀리지 않는다. 기동 때 :meth:`EmbeddedBackend.heal_vector_index` 가 표를
-    다시 떠서 고친다. 그 전까지 `ChunkVec` 삽입은 **세그폴트**이므로 쓰기도 멈춘다.
+    재시도로 풀리지 않는다. 기동 수리가 표를 다시 떠서 고치고, 그 전까지는 백엔드가 그
+    표에 쓰는 문장을 엔진에 보내기 전에 거절한다(:meth:`EmbeddedBackend.run`).
+    ``table`` 이 어느 표인지다.
     근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]"""
+
+    def __init__(self, message: str, *, table: str = ""):
+        super().__init__(message)
+        self.table = table
+
+
+class VectorIndexRemnant(IndexRemnant):
+    """`ChunkVec`(또는 노드 미러 `NodeVec`)에 벡터 색인 잔해가 있다.
+
+    기동 때 :meth:`EmbeddedBackend.heal_vector_index` 가 표를 다시 떠서 고친다."""
+
+
+class FtsIndexRemnant(IndexRemnant):
+    """`Chunk` 에 FTS 색인 잔해가 있다 — 문서 저장·삭제가 전부 멈춘다.
+
+    기동 때 :meth:`EmbeddedBackend.heal_fts_index` 가 `Chunk` 와 거기 걸린 관계 표
+    (`MENTIONS`)를 함께 다시 떠서 고친다."""
 
 
 # ── v9 데이터 마이그레이션 — Episode props.date/summary → 열 (F9) ─────────────
@@ -539,10 +559,13 @@ class _Result:
 class _Session:
     """neo4j Session 동형 — `.run(cypher, **kwargs)` → `_Result`."""
 
-    def __init__(self, conn):
+    def __init__(self, conn, guard=None):
         self._conn = conn
+        self._guard = guard      # 잔해 표 쓰기 거절(`EmbeddedBackend._refuse_remnant_write`)
 
     def run(self, cypher: str, **params):
+        if self._guard is not None:
+            self._guard(cypher)
         return _Result(_exec_to_dicts(self._conn, cypher, params or None))
 
     def close(self):
@@ -622,7 +645,12 @@ class _ReaderView:
            DDL-DDL 경합이 아니라 저장·삭제가 통째로 실패할 수 있는 상시 위험이었다.
 
         읽기 경로가 쓰기를 하면 안 된다 — 그게 R4 다. 주입된 통로가 있으면 잡 큐로
-        보내고, 없으면(CLI·테스트) writer 커넥션으로 직접 만든다."""
+        보내고, 없으면(CLI·테스트) writer 커넥션으로 직접 만든다.
+
+        FTS 잔해가 확인된 스토어에서는 잡을 걸지 않고 곧바로 던진다 — 빌드는 FTS 에서
+        먼저 서므로 검색마다 실패할 잡을 거는 셈이다(벡터 잔해 때 허브가 겪은 스냅샷 폭주)."""
+        if getattr(self._b, "fts_index_remnant", False):
+            raise FtsIndexRemnant(EmbeddedBackend._remnant_note("Chunk"), table="Chunk")
         return self._at_write_point(
             "search.index", lambda: self._b.ensure_search_indexes(dim=dim) or {}, 60.0)
 
@@ -641,14 +669,19 @@ class _ReaderView:
         잔해가 확인된 스토어에서는 **예약하지 않는다.** 실패할 빌드를 검색마다 잡으로 걸면
         잡마다 스냅샷이 떠서, 허브는 812MB 복사를 85초마다 되풀이하며 CPU 한도에
         붙었다(2026-09-25). 수리는 기동이 한다(:meth:`EmbeddedBackend.heal_vector_index`)."""
-        if getattr(self._b, "vector_index_remnant", False):
-            return
+        if getattr(self._b, "vector_index_remnant", False) or \
+                getattr(self._b, "fts_index_remnant", False):
+            return          # FTS 잔해도 같다 — 빌드가 FTS 에서 먼저 선다
         self._at_write_point(
             "search.index", lambda: self._b.ensure_search_indexes(dim=dim) or {}, 0.0)
 
     @property
     def vector_index_remnant(self) -> bool:
         return getattr(self._b, "vector_index_remnant", False)
+
+    @property
+    def fts_index_remnant(self) -> bool:
+        return getattr(self._b, "fts_index_remnant", False)
 
     def graph_algo(self, algo: str, **kw) -> list[dict]:
         """그래프 알고리즘(E-G3 WCC·Louvain·PageRank) — **쓰기 지점으로 보낸다**(R4).
@@ -754,10 +787,10 @@ class EmbeddedBackend:
         #: 있다"). 드롭은 멱등이지만 **공짜가 아니다**. 이 플래그로 라운드 첫 번째만
         #: 실제 DDL 을 내보내고 나머지는 접는다. 만든 쪽이 다시 False 로 내린다.
         self._vec_index_dropped = False
-        #: `ChunkVec` 에 잔해 색인이 있어 벡터 색인을 **만들 수 없다고 확인된** 상태.
-        #: 서면 재빌드 예약을 멈추고(실패하는 빌드를 검색마다 다시 돌리지 않게) 벡터
-        #: 삽입을 거절한다(삽입은 세그폴트다). 기동 때 수리가 내린다.
-        self._vec_index_remnant = False
+        #: 잔해 색인이 있어 색인을 **만들 수 없다고 확인된** 표(`_REMNANT_INDEXES` 의 키).
+        #: 들어 있으면 재빌드 예약을 멈추고(실패하는 빌드를 검색마다 다시 돌리지 않게) 그
+        #: 표에 쓰는 문장을 거절한다(쓰기는 세그폴트다 — :meth:`run`). 기동 때 수리가 뺀다.
+        self._remnants: set[str] = set()
 
     @classmethod
     def open(cls, cfg: StoreConfig) -> "EmbeddedBackend | None":
@@ -807,7 +840,7 @@ class EmbeddedBackend:
 
     @contextmanager
     def session(self):
-        session = _Session(self._conn)
+        session = _Session(self._conn, guard=self._refuse_remnant_write)
         try:
             yield session
         finally:
@@ -816,7 +849,31 @@ class EmbeddedBackend:
     def run(self, query: str, params: dict | None = None, *, conn=None,
             raw: bool = False) -> list[dict]:
         # ``raw``: 물리 키 그대로(PK 분해 훅 생략). 재구축 export 전용 — `_exec_to_dicts` 주석.
+        self._refuse_remnant_write(query)
         return _exec_to_dicts(conn or self._conn, query, params or None, raw=raw)
+
+    #: 행을 바꾸는 절. 잔해 표를 이름으로 부르는 문장에 이것이 있으면 거절한다.
+    _WRITE_CLAUSE = re.compile(r"\b(?:CREATE|MERGE|SET|DELETE|REMOVE|COPY)\b", re.IGNORECASE)
+
+    def _refuse_remnant_write(self, query: str) -> None:
+        """잔해가 확인된 표에 쓰는 문장이면 **엔진에 보내기 전에** 던진다.
+
+        그 표의 쓰기는 예외가 아니라 세그폴트라 `except` 로 못 막고, 허브에서는 사이드카
+        사망이 곧 컨테이너 사망이다. 쓰기 경로를 하나하나 막는 것으로는 모자랐다 — #407 은
+        임베딩 적용만 막았는데 문서 저장·삭제도 `ChunkVec` 행을 지운다(실측: 잔해 위 삭제·
+        아무 열의 SET·벡터 없는 삽입 전부 세그폴트). 그래서 모든 문장이 지나는 여기서 본다.
+
+        판정은 넓다: 그 표를 라벨로 부르고(``:Chunk``) 쓰기 절이 하나라도 있으면 거절한다.
+        그 표를 **지나기만** 하는 관계 쓰기(`(c:Chunk)-[:MENTIONS]->…` 의 MERGE·DELETE)도
+        함께 막힌다 — 관계 쓰기는 무사하다는 실측이 있지만 문장을 파싱하지 않고는 가를 수
+        없고, 막혀서 잃는 것은 수리 전까지의 링크 갱신뿐이다. 잔해가 없으면 비용이 없다.
+        근거: [[record:a-remnant-segfaults-every-write-to-its-table-not-only-inserts-2026-09-25]]"""
+        if not self._remnants:
+            return
+        for table in self._remnants:
+            if re.search(rf"(?::\s*|\bCOPY\s+){table}\b", query) \
+                    and self._WRITE_CLAUSE.search(query):
+                raise self._remnant_error(table)
 
     # ── 서버 read 경로 — 별도 Connection(R4) ──────────────────────────────────
     # 사이드카(§11 P2)는 단일 Database 를 프로세스 수명 동안 소유하고, 쓰기는 잡
@@ -1235,66 +1292,111 @@ class EmbeddedBackend:
         않는다 — search 경로가 '인덱스 부재'로 실패했을 때 1회만 부르는 자동 복구용
         (`api.query.search`). FTS(BM25)는 항상, 벡터(HNSW)는 `dim` 이 주어질 때만
         보장한다(쿼리 임베딩 검색이 필요할 때만 벡터 인덱스 생성). 반환 {fts, vector}
-        = 이번 호출에서 실제 생성했는지.
+        = 이번 호출에서 실제 생성했는지. 잔해가 막으면 그 표의 :class:`IndexRemnant` 를
+        던진다(FTS 가 먼저다 — FTS 잔해면 벡터는 시도하지 않는다).
 
         ⚠ 이 메서드는 **쓰기 지점에서만** 불린다 — reader 뷰는 잡 큐로 되돌려 보낸다
         (:meth:`_ReaderView.ensure_search_indexes`). 예전엔 reader 가 자기 커넥션을
         `conn` 으로 넘겨 여기서 DDL 을 돌렸는데, 그게 라이터를 막았다(2026-07-31
         실측). `conn` 은 그 시절 잔재로 지금은 넘기는 호출부가 없다 — 남겨 두되
         (하위호환) 새 호출부가 쓰지 않게 한다."""
-        c = conn or self._conn
-        built = {"fts": False, "vector": False}
-
-        def _create(ext: str, call: str) -> bool:
-            # 인덱스 생성은 쓰기다 — 이 경로는 잡 워커(또는 CLI 단일 스레드)에서만
-            # 돈다(`_ReaderView.ensure_search_indexes` 가 잡 큐로 되돌린다). 따라서
-            # 여기서는 writer 로 로드해도 R4 를 어기지 않는다.
-            self._load_ext(ext)
-            try:
-                c.execute(call)
-                return True
-            except Exception as exc:      # 이미 존재 → 무시(멱등), 그 외는 전파
-                if "already exists" in str(exc).lower():
-                    return False
-                raise
-
-        built["fts"] = _create("fts", f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
+        built = {"fts": self._ensure_index("Chunk", conn=conn), "vector": False}
         if dim is not None:
-            # 잔해가 확인된 뒤로는 빌드를 다시 돌리지 않는다 — 매번 수십 초 돌고 같은 자리에서
-            # 실패한다. 허브에서는 검색마다 그 잡이 걸렸고 잡마다 스냅샷을 불렀다.
-            if self._vec_index_remnant:
-                raise VectorIndexRemnant(self._REMNANT_NOTE)
-            try:
-                built["vector"] = _create(
-                    "vector",
-                    f"CALL CREATE_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}','embedding')")
-            except Exception as exc:
-                if not self.is_index_remnant(exc):
-                    raise
-                self._vec_index_remnant = True
-                print(f"vinc: ⚠ {self._REMNANT_NOTE}", file=sys.stderr, flush=True)
-                raise VectorIndexRemnant(self._REMNANT_NOTE) from exc
+            built["vector"] = self._ensure_index("ChunkVec", conn=conn)
+        return built
+
+    #: 확장 색인이 걸리는 표 → (확장, 색인 이름을 든 속성, 생성 인자, 잔해 예외).
+    #: 잔해 판별·쓰기 거절·기동 수리가 이 하나를 읽는다. 여기 없는 표에 확장 색인을
+    #: 걸면 그 표의 잔해는 아무도 못 본다 — 걸 때 여기에도 적을 것.
+    _REMNANT_INDEXES = {
+        "Chunk": ("fts", "_FTS_INDEX", "['text']", FtsIndexRemnant),
+        "ChunkVec": ("vector", "_VEC_INDEX", "'embedding'", VectorIndexRemnant),
+        "NodeVec": ("vector", "_NODE_VEC_INDEX", "'embedding'", VectorIndexRemnant),
+    }
+    #: 잔해 색인의 판별 표지(ladybug 0.18.0 실측 원문, 2026-09-25). 잔해는 카탈로그에 없어서
+    #: `SHOW_INDEXES` 에 안 나온다 — 생성을 시도해야만 보인다. 문구가 둘이다:
+    #:   "Runtime exception: Index chunk_vec is not loaded yet. Please load the index
+    #:    before accessing it."                              — 첫 시도(벡터·FTS 같다)
+    #:   "Binder exception: Table: 8_chunk_ft_docs already exists. Please drop or rename
+    #:    the table before creating a full text search index." — FTS 의 **두 번째부터**
+    #: 🔴 FTS 생성은 원자적이지 않다: 잔해 앞에서 실패하면서도 내부 표(`<표 id>_chunk_ft_*`)를
+    #: 남기고, 그 뒤의 시도는 둘째 문구를 낸다. 여기 'already exists' 가 들어 있어서 한때
+    #: "이미 있다"로 읽혔고, 기동 수리가 잔해를 두고 `present` 라고 답했다(실측). 그래서
+    #: 정상의 "이미 있다"는 :meth:`_ensure_index` 가 **색인 이름까지** 보고 가른다.
+    #: 벡터 생성은 실패해도 아무것도 안 남긴다(몇 번을 해도 첫째 문구 — 실측).
+    #: 근거: [[record:a-failed-fts-create-on-a-remnant-leaves-undroppable-internal-tables-2026-09-25]]
+    _INDEX_REMNANT_MARKS = ("is not loaded yet", "before creating a full text search index")
+    #: `ChunkVec` 수리가 옮겨 담는 표(= ``_rebuild_name("ChunkVec")``). 테스트가 이 이름을 쓴다.
+    _CHUNK_VEC_REBUILD = "ChunkVecRebuild"
+
+    @classmethod
+    def is_index_remnant(cls, exc: BaseException) -> bool:
+        m = str(exc).lower()
+        return any(mark in m for mark in cls._INDEX_REMNANT_MARKS)
+
+    @classmethod
+    def _remnant_note(cls, table: str) -> str:
+        kind = "full-text" if cls._REMNANT_INDEXES[table][0] == "fts" else "vector"
+        return (f"{kind} index cannot be built: {table} holds a remnant index left by a "
+                f"crash and writes to {table} are refused; restarting the sidecar repairs it")
+
+    def _remnant_error(self, table: str) -> IndexRemnant:
+        return self._REMNANT_INDEXES[table][3](self._remnant_note(table), table=table)
+
+    @staticmethod
+    def _rebuild_name(table: str) -> str:
+        """수리가 옮겨 담는 표의 이름. 이 이름이 남아 있으면 앞선 수리가 커밋 전에 죽은 것이다."""
+        return f"{table}Rebuild"
+
+    def _index_create_stmt(self, table: str) -> str:
+        ext, attr, args, _ = self._REMNANT_INDEXES[table]
+        fn = "CREATE_FTS_INDEX" if ext == "fts" else "CREATE_VECTOR_INDEX"
+        return f"CALL {fn}('{table}','{getattr(self, attr)}',{args})"
+
+    def _ensure_index(self, table: str, *, conn=None) -> bool:
+        """``table`` 의 확장 색인을 부재 시에만 만든다. 만들었으면 True, 이미 있으면 False.
+
+        잔해면 표시하고(`_remnants`) 그 표의 :class:`IndexRemnant` 를 던진다. 확인된 뒤로는
+        빌드를 다시 돌리지 않는다 — 매번 수십 초 돌고 같은 자리에서 실패한다. 허브에서는
+        검색마다 그 잡이 걸렸고 잡마다 스냅샷을 불렀다."""
+        if table in self._remnants:
+            raise self._remnant_error(table)
+        # 인덱스 생성은 쓰기다 — 이 경로는 잡 워커(또는 CLI·기동의 단일 스레드)에서만
+        # 돈다(`_ReaderView.ensure_search_indexes` 가 잡 큐로 되돌린다). 따라서
+        # 여기서는 writer 로 로드해도 R4 를 어기지 않는다.
+        self._load_ext(self._REMNANT_INDEXES[table][0])
+        name = getattr(self, self._REMNANT_INDEXES[table][1])
+        try:
+            (conn or self._conn).execute(self._index_create_stmt(table))
+            built = True
+        except Exception as exc:
+            # 정상의 '이미 있음'은 "Index chunk_ft already exists in table Chunk." 하나다.
+            # 'already exists' 만 보면 FTS 잔해의 둘째 문구까지 먹는다(`_INDEX_REMNANT_MARKS`).
+            if f"index {name} already exists" in str(exc).lower():   # 멱등
+                built = False
+            elif self.is_index_remnant(exc):
+                self._remnants.add(table)
+                print(f"vinc: ⚠ {self._remnant_note(table)}", file=sys.stderr, flush=True)
+                raise self._remnant_error(table) from exc
+            else:
+                raise
+        if table == "ChunkVec":
             # 방금 만들었든 이미 있었든(`already exists` 흡수) 결과는 같다 — 인덱스는
             # 존재한다. 드롭 접기 플래그를 내려 다음 쓰기가 제대로 한 번 드롭하게 한다.
             self._vec_index_dropped = False
         return built
 
-    #: 잔해 색인의 판별 표지(ladybug 0.18.0 실측 원문, 2026-09-25):
-    #:   "Runtime exception: Index chunk_vec is not loaded yet. Please load the index
-    #:    before accessing it."
-    _INDEX_REMNANT_MARK = "is not loaded yet"
-    _REMNANT_NOTE = ("vector index cannot be built: ChunkVec holds a remnant index "
-                     "left by a crash; restarting the sidecar repairs it")
-    #: 수리 중 옮겨 담는 표. 이 이름이 남아 있으면 앞선 수리가 중간에 죽은 것이다.
-    _CHUNK_VEC_REBUILD = "ChunkVecRebuild"
-
-    @classmethod
-    def is_index_remnant(cls, exc: BaseException) -> bool:
-        return cls._INDEX_REMNANT_MARK in str(exc).lower()
-
     @property
     def vector_index_remnant(self) -> bool:
-        return self._vec_index_remnant
+        return "ChunkVec" in self._remnants
+
+    @property
+    def fts_index_remnant(self) -> bool:
+        return "Chunk" in self._remnants
+
+    @property
+    def node_vector_index_remnant(self) -> bool:
+        return "NodeVec" in self._remnants
 
     @_exclusive_ddl
     def heal_vector_index(self, *, dim: int) -> dict:
@@ -1302,32 +1404,81 @@ class EmbeddedBackend:
         잔해 때문에 못 세우면 `ChunkVec` 을 새 표로 떠서 옮긴 뒤 세운다.
 
         표를 버리고 다시 만드는 DDL 이라 다른 커넥션이 읽는 중에 돌리면 안 된다 — 그래서
-        실행 중에는 잔해를 **표시만** 하고(`_vec_index_remnant`) 수리는 다음 기동에 맡긴다.
+        실행 중에는 잔해를 **표시만** 하고(`_remnants`) 수리는 다음 기동에 맡긴다.
         옮기는 동안 행은 하나도 버리지 않는다: 옮긴 수가 다르면 옛 표를 그대로 두고 던진다.
         허브 사본(벡터 11,905개) 1코어 실측: 빌드 시도가 실패하기까지 포함해 64초.
         근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
+
+        FTS 는 여기서 만들지 않는다 — :meth:`heal_fts_index` 몫이다. FTS 잔해가 벡터
+        수리까지 막으면 안 된다.
+
+        **빈 표에서도 세워 본다.** 잔해는 행이 없어도 남고(색인은 빈 표에도 선다), 여기서 못
+        보면 잔해 표시가 안 서서 쓰기 거절도 없다 — 첫 임베딩 적용이 그대로 세그폴트다. 빈
+        표의 생성·이동은 즉시 끝난다. #407 은 빈 표를 건너뛰었다.
 
         반환 ``state``: empty(벡터 없음) · present(이미 있음) · built(세움) ·
         repaired(표를 다시 떠서 세움)."""
         t0 = time.monotonic()
         self._finish_interrupted_rebuild()
         n = self._count("ChunkVec")
-        if not n:
-            return {"state": "empty"}
         if self._has_index("ChunkVec", self._VEC_INDEX):
-            return {"state": "present", "rows": n}
+            return {"state": "present", "rows": n} if n else {"state": "empty"}
         try:
-            self.ensure_search_indexes(dim=dim)
+            self._ensure_index("ChunkVec")
+            if not n:
+                return {"state": "empty"}
             return {"state": "built", "rows": n, "seconds": round(time.monotonic() - t0, 1)}
         except VectorIndexRemnant:
             pass
-        self._rebuild_chunk_vec_table(dim=dim, rows=n)
-        self._vec_index_remnant = False
-        self.ensure_search_indexes(dim=dim)
+        self._rebuild_table("ChunkVec", dim=dim)
+        self._remnants.discard("ChunkVec")
+        self._ensure_index("ChunkVec")
         return {"state": "repaired", "rows": n, "seconds": round(time.monotonic() - t0, 1)}
+
+    @_exclusive_ddl
+    def heal_fts_index(self, *, dim: int) -> dict:
+        """**기동 때 한 번, 요청을 받기 전에** 부른다. `Chunk` 의 FTS 색인이 없으면 세우고,
+        잔해 때문에 못 세우면 `Chunk` 와 거기 걸린 관계 표(`MENTIONS`)를 새 표로 떠서
+        옮긴 뒤 세운다. 청크 행과 엣지는 하나도 버리지 않는다(수가 다르면 옛 표를 두고 던진다).
+
+        잔해가 있는 `Chunk` 에는 문서 저장·삭제가 전부 세그폴트다(아무 열의 SET 까지). 그래서
+        이것이 실패하면 쓰기는 거절된 채로 남는다(:meth:`run`) — 키워드 검색도 선다.
+        ``dim`` 은 `Chunk.embedding` 폭을 못 읽을 때의 대비값이다(수리는 저장된 폭을 쓴다).
+        근거: [[record:an-fts-remnant-on-chunk-stops-every-document-write-and-the-heal-moves-chunk-with-its-edges-2026-09-25]]
+
+        반환 ``state``: present(이미 있음) · built(세움) · repaired(표를 다시 떠서 세움)."""
+        return self._heal_index("Chunk", dim=dim)
+
+    @_exclusive_ddl
+    def heal_node_vector_index(self, *, dim: int) -> dict:
+        """**기동 때 한 번** — 노드 미러(`NodeVec`)의 벡터 색인. :meth:`heal_fts_index` 와 같다.
+
+        미러는 배포마다 통째로 다시 만드는 파생물이지만 그 재구축이 잔해를 **고치지 못한다**:
+        `node_mirror.replace` 는 옛 행을 지우고 새 행을 넣는데, 잔해 위에서는 둘 다
+        세그폴트다(실측). 그래서 기동이 먼저 고친다. 행은 버리지 않고 옮긴다 — 재기동은
+        배포가 아니어서 미러를 다시 채우지 않고, 버리면 다음 배포까지 의미 팔이 빈다."""
+        return self._heal_index("NodeVec", dim=dim)
+
+    def _heal_index(self, table: str, *, dim: int) -> dict:
+        t0 = time.monotonic()
+        self._drop_interrupted_rebuild(table)
+        try:
+            built = self._ensure_index(table)
+            return {"state": "built" if built else "present",
+                    "seconds": round(time.monotonic() - t0, 1)}
+        except IndexRemnant:
+            pass
+        rows = self._rebuild_table(table, dim=dim)
+        self._remnants.discard(table)
+        self._ensure_index(table)
+        return {"state": "repaired", "rows": rows, "seconds": round(time.monotonic() - t0, 1)}
 
     def _count(self, label: str) -> int:
         r = _exec_to_dicts(self._conn, f"MATCH (v:{label}) RETURN count(v) AS n", None)
+        return int(r[0]["n"]) if r else 0
+
+    def _count_rel(self, label: str) -> int:
+        r = _exec_to_dicts(self._conn, f"MATCH ()-[e:{label}]->() RETURN count(e) AS n", None)
         return int(r[0]["n"]) if r else 0
 
     def _has_index(self, table: str, name: str) -> bool:
@@ -1339,37 +1490,87 @@ class EmbeddedBackend:
         rows = _exec_to_dicts(self._conn, "CALL SHOW_TABLES() RETURN name AS n", None)
         return any(r.get("n") == name for r in rows)
 
-    def _rebuild_chunk_vec_table(self, *, dim: int, rows: int) -> None:
-        """`ChunkVec` 을 같은 열의 새 표로 옮기고 옛 표(잔해 포함)를 버린다.
+    def _rebuild_table(self, table: str, *, dim: int) -> int:
+        """``table`` 을 같은 열의 새 표로 옮기고 옛 표(잔해 포함)를 버린다. 반환은 옮긴 행 수.
 
-        순서: 새 표 → COPY → 수 대조 → 옛 표 DROP → RENAME → 체크포인트. DROP 과 RENAME
-        사이에서 죽으면 다음 기동의 :meth:`_finish_interrupted_rebuild` 가 마저 한다."""
-        tmp = self._CHUNK_VEC_REBUILD
-        cols = node_table_specs()["ChunkVec"]["cols"]
-        # 폭은 설정이 아니라 **지금 표의 열**에서 읽는다 — 수리는 옮기는 것이지 바꾸는 것이
-        # 아니다. 설정과 저장이 어긋난 스토어에서 설정 폭으로 만들면 COPY 가 타입 오류로 선다.
-        self._conn.execute(render_node_table("ChunkVec", dim=self._stored_vec_dim(dim),
-                                             as_label=tmp))
+        노드 표는 관계 표가 걸린 채로는 버릴 수 없으므로 거기 걸린 관계 표도 **전부** 같이
+        옮긴다(`Chunk` 면 `MENTIONS` — 새 관계 표는 새 노드 표를 끝점으로 갖는다).
+
+        순서: 새 표들 → COPY(엔진 안에서 — 물리 키 그대로 옮긴다) → 수 대조 → 옛 관계 표·
+        옛 표 DROP 과 RENAME 을 **한 트랜잭션**으로 → 체크포인트. 교체가 한 트랜잭션이라
+        죽어도 반쪽 상태가 없다: 커밋 전이면 옛 표가 온전하고 새 표만 남으며(다음 기동의
+        :meth:`_drop_interrupted_rebuild` 가 버린다), 커밋 뒤면 WAL 재생이 교체를 마저
+        한다(둘 다 실측). 수가 하나라도 다르면 옛 표를 그대로 두고 던진다.
+        근거: [[record:ddl-in-one-manual-transaction-survives-a-crash-whole-or-not-at-all-2026-09-25]]"""
+        tmp = self._rebuild_name(table)
+        rels = rel_tables_on(table)
+        specs = node_table_specs()
+        swap = {table: tmp}
+        rows = self._count(table)
+        edges = {r["label"]: self._count_rel(r["label"]) for r in rels}
+        created: list[str] = []          # 버릴 순서 — 관계 표가 노드 표보다 앞이다
+
+        def _drop_created() -> None:
+            for name in created:
+                try:
+                    self._conn.execute(f"DROP TABLE {name}")
+                except Exception:        # noqa: BLE001 — 되돌리는 중이다. 원래 예외가 중요하다
+                    pass
+
         try:
-            self._conn.execute(f"COPY {tmp} FROM (MATCH (v:ChunkVec) RETURN "
-                               + ", ".join(f"v.{c}" for c in cols) + ")")
+            # 폭은 설정이 아니라 **지금 표의 열**에서 읽는다 — 수리는 옮기는 것이지 바꾸는 것이
+            # 아니다. 설정과 저장이 어긋난 스토어에서 설정 폭으로 만들면 COPY 가 타입 오류로 선다.
+            self._conn.execute(render_node_table(
+                table, dim=self._stored_vec_dim(dim, table), as_label=tmp))
+            created.append(tmp)
+            self._conn.execute(f"COPY {tmp} FROM (MATCH (v:{table}) RETURN "
+                               + ", ".join(f"v.{c}" for c in specs[table]["cols"]) + ")")
+            for rel in rels:
+                rtmp = self._rebuild_name(rel["label"])
+                self._conn.execute(render_rel_table(rel["label"], as_label=rtmp, swap=swap))
+                created.insert(0, rtmp)
+                for src, dst in rel["pairs"]:
+                    proj = ([f"a.{specs[src]['pk']}", f"b.{specs[dst]['pk']}"]
+                            + [f"r.{p}" for p in rel["props"]])
+                    self._conn.execute(
+                        f"COPY {rtmp} FROM (MATCH (a:{src})-[r:{rel['label']}]->(b:{dst}) "
+                        f"RETURN {', '.join(proj)}) "
+                        f"(from='{swap.get(src, src)}', to='{swap.get(dst, dst)}')")
+            short = [f"{table} {self._count(tmp)}≠{rows}"] if self._count(tmp) != rows else []
+            short += [f"{lbl} {self._count_rel(self._rebuild_name(lbl))}≠{n}"
+                      for lbl, n in edges.items()
+                      if self._count_rel(self._rebuild_name(lbl)) != n]
+            if short:
+                raise RuntimeError(f"{table} 수리 중단: 옮긴 수가 다르다 ({', '.join(short)}) "
+                                   "— 옛 표는 그대로다")
         except Exception:
-            self._conn.execute(f"DROP TABLE {tmp}")
+            _drop_created()
             raise
-        copied = self._count(tmp)
-        if copied != rows:
-            self._conn.execute(f"DROP TABLE {tmp}")
-            raise RuntimeError(f"ChunkVec 수리 중단: 옮긴 행 {copied} ≠ 원래 {rows} "
-                               "(옛 표는 그대로다)")
-        self._conn.execute("DROP TABLE ChunkVec")
-        self._conn.execute(f"ALTER TABLE {tmp} RENAME TO ChunkVec")
-        self._conn.execute("CHECKPOINT")
-        self._vec_index_dropped = False
-
-    def _stored_vec_dim(self, fallback: int) -> int:
-        """`ChunkVec.embedding` 의 저장된 폭(`FLOAT[n]`). 못 읽으면 ``fallback``."""
+        swap_stmts = ([f"DROP TABLE {r['label']}" for r in rels]
+                      + [f"DROP TABLE {table}", f"ALTER TABLE {tmp} RENAME TO {table}"]
+                      + [f"ALTER TABLE {self._rebuild_name(r['label'])} RENAME TO {r['label']}"
+                         for r in rels])
+        self._conn.execute("BEGIN TRANSACTION")
         try:
-            for r in _exec_to_dicts(self._conn, "CALL TABLE_INFO('ChunkVec') RETURN *", None):
+            for stmt in swap_stmts:
+                self._conn.execute(stmt)
+            self._conn.execute("COMMIT")
+        except Exception:
+            # 실패한 문장은 트랜잭션을 스스로 되돌린다(실측). 그때 ROLLBACK 은 '활성 트랜잭션
+            # 없음'으로 던지므로 삼킨다 — 어느 쪽이든 옛 표는 온전하다.
+            try:
+                self._conn.execute("ROLLBACK")
+            except Exception:    # noqa: BLE001
+                pass
+            _drop_created()
+            raise
+        self._conn.execute("CHECKPOINT")
+        return rows
+
+    def _stored_vec_dim(self, fallback: int, table: str = "ChunkVec") -> int:
+        """``table.embedding`` 의 저장된 폭(`FLOAT[n]`). 못 읽으면 ``fallback``."""
+        try:
+            for r in _exec_to_dicts(self._conn, f"CALL TABLE_INFO('{table}') RETURN *", None):
                 if r.get("name") == "embedding":
                     m = re.search(r"\[(\d+)\]", str(r.get("type") or ""))
                     if m:
@@ -1378,12 +1579,26 @@ class EmbeddedBackend:
             pass
         return fallback
 
-    def _finish_interrupted_rebuild(self) -> None:
-        """앞선 수리가 중간에 죽었으면 마무리한다. 옮겨 담던 표가 남아 있을 때만 움직인다.
+    def _drop_interrupted_rebuild(self, table: str) -> None:
+        """앞선 수리가 **커밋 전에** 죽었으면 옮기던 표들을 버린다. 옛 표는 온전하다 — 교체가
+        한 트랜잭션이라 커밋 전에는 아무것도 바뀌지 않았다. 관계 표가 새 노드 표를 끝점으로
+        물고 있으므로 관계 표부터 버린다."""
+        names = ([self._rebuild_name(r["label"]) for r in rel_tables_on(table)]
+                 + [self._rebuild_name(table)])
+        left = [name for name in names if self._has_table(name)]
+        for name in left:
+            self._conn.execute(f"DROP TABLE {name}")
+        if left:
+            self._conn.execute("CHECKPOINT")
 
-        옛 표가 비었고(DROP 뒤에 죽었다 — 기동의 프로비저닝이 빈 `ChunkVec` 을 다시
-        만든다) 옮긴 표에 행이 있으면 교체를 마저 한다. 아니면 옛 표가 온전하므로 옮기던
-        표를 버린다."""
+    def _finish_interrupted_rebuild(self) -> None:
+        """앞선 `ChunkVec` 수리가 중간에 죽었으면 마무리한다. 옮겨 담던 표가 남아 있을 때만 움직인다.
+
+        옛 표가 비었고 옮긴 표에 행이 있으면 교체를 마저 한다 — #407 의 수리는 DROP 과
+        RENAME 을 따로 커밋해서 그 사이에서 죽으면 이 상태가 남았다(기동의 프로비저닝이 빈
+        `ChunkVec` 을 다시 만든다). 지금의 수리(:meth:`_rebuild_table`)는 교체가 한
+        트랜잭션이라 이 상태를 만들지 않지만, 그 코드로 죽은 스토어를 위해 남긴다.
+        아니면 옛 표가 온전하므로 옮기던 표를 버린다."""
         tmp = self._CHUNK_VEC_REBUILD
         if not self._has_table(tmp):
             return
@@ -1488,13 +1703,20 @@ class EmbeddedBackend:
         내보내지 않지만, 그냥 삼키면 "이미 있음"과 "쓰기 트랜잭션을 못 잡았음"이 같은
         침묵이 된다 — 뒤엣것은 행만 있고 인덱스가 없는 미러를 남기고, 그 상태의 의미
         팔은 예외가 아니라 빈 목록이라 밖에서 **팔을 안 켠 것과 구분되지 않는다**
-        (2026-09-10 라이브). 부르는 쪽은 무시해도 되고, 값을 보면 이유를 안다."""
+        (2026-09-10 라이브). 부르는 쪽은 무시해도 되고, 값을 보면 이유를 안다.
+
+        잔해면 표시한다(`node_vector_index_remnant`) — 그 뒤로 미러 쓰기는 거절된다."""
+        if "NodeVec" in self._remnants:
+            return f"{VectorIndexRemnant.__name__}: {self._remnant_note('NodeVec')}"
         try:
             self._load_ext("vector")
             self._conn.execute(
                 f"CALL CREATE_VECTOR_INDEX('NodeVec','{self._NODE_VEC_INDEX}','embedding')")
             return ""
         except Exception as exc:
+            if self.is_index_remnant(exc):
+                self._remnants.add("NodeVec")
+                print(f"vinc: ⚠ {self._remnant_note('NodeVec')}", file=sys.stderr, flush=True)
             return f"{type(exc).__name__}: {exc}"
 
     def fulltext_search(self, text, top_k, filters=None, *, conn=None) -> list[dict]:

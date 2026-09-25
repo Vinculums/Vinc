@@ -5693,6 +5693,9 @@ _VECTOR_REBUILDING = ("vector index is being rebuilt after a write: "
 #: 실패다: `vector_rebuilding` 을 달지 않는다.
 _VECTOR_REMNANT = ("vector index unavailable: the store holds a remnant index that blocks "
                    "the rebuild until the sidecar restarts; full-text results only")
+#: 같은 잔해가 FTS 색인(`Chunk`)에 있을 때. 청크 팔이 통째로 선다 — 청크 검색은 FTS 로 시작한다.
+_FTS_REMNANT = ("full-text index unavailable: the store holds a remnant index that blocks "
+                "the rebuild until the sidecar restarts; document search is down")
 
 
 def _chunk_arms(store, query, query_embedding, top_k,
@@ -6341,6 +6344,10 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                     # Chunk 0 — 빌드 시도 없이 조용히 폴백(node_hits 가 답, 무 에러).
                     base["executed"] = True
                     base["note"] = "no chunks indexed — node_hits only"
+                elif getattr(store, "fts_index_remnant", False):
+                    # 다시 서지 않는 색인이다(잔해). 빌드를 걸면 검색마다 실패할 잡이 돈다.
+                    # 근거: [[record:an-fts-remnant-on-chunk-stops-every-document-write-and-the-heal-moves-chunk-with-its-edges-2026-09-25]]
+                    base["error"] = base["note"] = f"fts_index_remnant: {_FTS_REMNANT}"
                 elif builder is None:
                     base["error"] = f"index_missing: {type(exc).__name__}: {exc}"
                     base["note"] = base["error"]

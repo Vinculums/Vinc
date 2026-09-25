@@ -312,7 +312,7 @@ class VincApp:
                 provision_error = f"{type(exc).__name__}: {exc}"
                 print(f"vinc: provision failed — {provision_error}", file=sys.stderr)
         if store is not None and provision_error is None:
-            _heal_vector_index(store, cfg.embedding_dim)
+            _heal_search_indexes(store, cfg.embedding_dim)
         app = cls(cfg, store=store, provision_error=provision_error, **kw)
         if store is not None and provision_error is None:
             app._schedule_mentions_rule()
@@ -1848,25 +1848,37 @@ def embed_apply_paused() -> bool:
     return _flag(os.environ.get("VINC_EMBED_APPLY_PAUSED"))
 
 
-def _heal_vector_index(store, dim: int) -> None:
-    """기동 때 벡터 색인을 세우고, 잔해가 막으면 `ChunkVec` 을 다시 떠서 고친다.
+#: 기동 수리 — (백엔드 메서드, 로그 이름). 셋은 서로 독립이다: 하나가 실패해도 나머지는 돈다.
+_BOOT_HEALS = (("heal_fts_index", "full-text index (Chunk)"),
+               ("heal_vector_index", "vector index (ChunkVec)"),
+               ("heal_node_vector_index", "node mirror index (NodeVec)"))
+
+
+def _heal_search_indexes(store, dim: int) -> None:
+    """기동 때 확장 색인(FTS·청크 벡터·노드 미러 벡터)을 세우고, 잔해가 막으면 그 표를
+    다시 떠서 고친다(`Chunk` 는 거기 걸린 `MENTIONS` 까지 함께).
 
     **HTTP 가 뜨기 전에** 돈다 — 표를 버리고 만드는 DDL 이라 읽기와 겹치면 안 된다.
-    허브 사본(벡터 11,905개) 1코어 실측: 실패하는 빌드 시도를 포함해 64초라 엔트리포인트의
-    기동 대기(300초) 안이다.
-    실패는 기동을 죽이지 않는다: 키워드 검색은 살아 있고, 사유는 로그와 `/health` 에 남는다."""
-    heal = getattr(store, "heal_vector_index", None)
-    if heal is None:
-        return
-    try:
-        res = heal(dim=dim)
-    except Exception as exc:     # noqa: BLE001 — 기동 경로, 죽이지 않는다
-        print(f"vinc: ⚠ vector index heal failed — {type(exc).__name__}: {exc}",
-              file=sys.stderr, flush=True)
-        return
-    if res.get("state") in ("built", "repaired"):
-        print(f"vinc: vector index {res['state']} at boot "
-              f"({res.get('rows')} vectors, {res.get('seconds')}s)", file=sys.stderr, flush=True)
+    ⚠ 엔트리포인트의 기동 대기(300초)에 가깝다: 허브 사본 1코어에서 FTS·벡터 잔해가 함께
+    있으면 합이 약 257초였다. 넘으면 컨테이너가 재시작되는데, 각 수리는 표 교체를 커밋·
+    체크포인트한 뒤에 다음으로 넘어가므로 다음 기동은 남은 것만 한다.
+    근거: [[vinc.ops.index-remnant-heal §4]]
+    실패는 기동을 죽이지 않는다: 그 표의 쓰기가 거절된 채로 뜨고(백엔드가 막는다 —
+    잔해 표 쓰기는 세그폴트다), 사유는 로그와 `/health` 에 남는다."""
+    for name, what in _BOOT_HEALS:
+        heal = getattr(store, name, None)
+        if heal is None:
+            continue
+        try:
+            res = heal(dim=dim)
+        except Exception as exc:     # noqa: BLE001 — 기동 경로, 죽이지 않는다
+            print(f"vinc: ⚠ {what} heal failed — {type(exc).__name__}: {exc}",
+                  file=sys.stderr, flush=True)
+            continue
+        if res.get("state") in ("built", "repaired"):
+            rows = f"{res['rows']} rows, " if res.get("rows") is not None else ""
+            print(f"vinc: {what} {res['state']} at boot ({rows}{res.get('seconds')}s)",
+                  file=sys.stderr, flush=True)
 
 
 def _flag(val) -> bool:
@@ -2012,10 +2024,13 @@ class _Handler(BaseHTTPRequestHandler):
                                         else getattr(snaps, "last_state", "unknown"))
             if embed_apply_paused():
                 body["embed_apply_paused"] = True
-            # 벡터 색인이 잔해로 막혔다 — 의미 팔이 꺼져 있고 임베딩 적용이 거절된다.
-            # 재기동이 고친다(`_heal_vector_index`). 정상이면 키가 없다.
-            if getattr(self.app.store, "vector_index_remnant", False):
-                body["vector_index"] = "remnant"
+            # 색인이 잔해로 막혔다 — 그 팔이 꺼져 있고 그 표의 쓰기가 거절된다(fts_index 면
+            # 문서 저장·삭제가 전부다). 재기동이 고친다(`_heal_search_indexes`). 정상이면 키가 없다.
+            for key, attr in (("vector_index", "vector_index_remnant"),
+                              ("fts_index", "fts_index_remnant"),
+                              ("node_vector_index", "node_vector_index_remnant")):
+                if getattr(self.app.store, attr, False):
+                    body[key] = "remnant"
             return self._send(200, body)
 
         # /connect/callback — 무인증 예외(디바이스 연결: 브라우저의 루프백 전달,
