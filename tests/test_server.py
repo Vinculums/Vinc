@@ -334,7 +334,7 @@ class StoreUnavailableReadTests(unittest.TestCase):
         "/ledger-drilldown?owner=u&domain=d&mark=m",
         "/docs-in-range?owner=u&start=2020-01-01&end=2030-01-01",
         "/sync/domains?owner=u", "/sync/pull-delta?owner=u",
-        "/sync/docs-export?owner=u", "/embed/pending",
+        "/sync/docs-export?owner=u", "/embed/pending", "/owner-stats",
     ]
 
     def test_read_routes_refuse_instead_of_answering_empty(self):
