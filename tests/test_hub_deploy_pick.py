@@ -141,6 +141,12 @@ class Pick(unittest.TestCase):
         plan = h.run(live=1, trigger=3, conclusion="failure")
         self.assertEqual((plan.deploy, plan.sha, plan.withheld), (True, h.c[2], h.c[3]))
 
+    def test_러스트만_빨간_트리거는_보류가_아니고_그대로_내보낸다(self):
+        # 2026-09-25 e9be2fa: 런은 failure 인데 core 잡은 초록(윈도우 cargo test 의 메모리 부족).
+        h = _History(3, {2: [".github/workflows/hub-deploy.yml"]}, {2: "success"})
+        plan = h.run(live=1, trigger=2, conclusion="failure")
+        self.assertEqual((plan.deploy, plan.sha, plan.withheld), (True, h.c[2], ""))
+
     def test_취소된_CI_도_보류로_센다(self):
         h = _History(3, {2: ["api/a.py"]}, {2: "failure"})
         plan = h.run(live=1, trigger=2, conclusion="cancelled")
@@ -194,6 +200,61 @@ class Pick(unittest.TestCase):
             hp.pick(event="push", trigger_sha="", trigger_conclusion="", dispatch_sha=h.c[1],
                     live="", main_commits=[], ci_status=h.ci_status, is_commit=h.is_commit,
                     is_ancestor=h.is_ancestor, changed=h.changed, parent_of=h.parent_of)
+
+
+def _job(name: str, conclusion: str | None = "success", status: str = "completed") -> dict:
+    return {"name": name, "status": status, "conclusion": conclusion}
+
+
+_CORE = "core (498 tests + forbidden-terms gate)"
+_PKNS = "core (VINC_PK_NAMESPACED=on)"
+
+
+class Classify(unittest.TestCase):
+    """한 커밋의 CI 판정은 core 잡 둘만 본다."""
+
+    def run_of(self, *jobs, status="completed", id_=1):
+        return {"id": id_, "status": status, "jobs": list(jobs)}
+
+    def test_core_둘이_초록이면_러스트가_빨개도_초록(self):
+        runs = [self.run_of(_job(_CORE), _job(_PKNS), _job("rust (cargo check) (win)", "failure"),
+                            _job("app (typecheck)", "failure"))]
+        self.assertEqual(hp.classify(runs), "success")
+
+    def test_core_하나라도_빨가면_실패(self):
+        runs = [self.run_of(_job(_CORE), _job(_PKNS, "failure"))]
+        self.assertEqual(hp.classify(runs), "failure")
+
+    def test_core_가_아직_돌면_대기(self):
+        runs = [self.run_of(_job(_CORE), _job(_PKNS, None, "in_progress"), status="in_progress")]
+        self.assertEqual(hp.classify(runs), "pending")
+
+    def test_잡이_아직_안_생긴_런은_대기(self):
+        self.assertEqual(hp.classify([self.run_of(status="queued")]), "pending")
+
+    def test_런이_없으면_none(self):
+        self.assertEqual(hp.classify([]), "none")
+
+    def test_잡_0개로_끝난_런은_실패(self):
+        # 워크플로 검증 실패는 잡을 하나도 안 만들고 끝난다.
+        self.assertEqual(hp.classify([self.run_of()]), "failure")
+
+    def test_core_잡을_못_찾으면_판정하지_않고_죽는다(self):
+        runs = [self.run_of(_job("tests (renamed)"), _job("app (typecheck)"))]
+        with self.assertRaises(hp.Unanswered):
+            hp.classify(runs)
+
+    def test_런_하나라도_core_가_초록이면_초록(self):
+        runs = [self.run_of(_job(_CORE, "failure"), _job(_PKNS), id_=1),
+                self.run_of(_job(_CORE), _job(_PKNS), id_=2)]
+        self.assertEqual(hp.classify(runs), "success")
+
+    def test_ci_yml_의_core_잡_이름이_접두와_맞다(self):
+        ci = yaml.safe_load(_CI.read_text(encoding="utf-8"))
+        names = [j.get("name", k) for k, j in ci["jobs"].items()]
+        gate = [n for n in names if n.startswith(hp.GATE_JOB_PREFIX)]
+        self.assertEqual(sorted(gate), sorted([_CORE, _PKNS]),
+                         "core 잡 이름이 바뀌면 GATE_JOB_PREFIX 와 이 테스트를 같이 고칠 것")
 
 
 class WorkflowShape(unittest.TestCase):

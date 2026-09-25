@@ -20,7 +20,7 @@ name: hub-deploy
 # 노트북의 같은 8코어다.
 #
 # `workflow_run` 이 그 "워크플로 간 needs" 다. 이제 CI 가 유일한 게이트이고, 이
-# 워크플로는 **CI 가 초록인 가장 새 main 커밋**을 내보낸다. 불러낸 커밋이 아니라
+# 워크플로는 **CI 의 core 잡이 초록인 가장 새 main 커밋**을 내보낸다. 불러낸 커밋이 아니라
 # 가장 새 초록을 고르는 이유와 옛 `paths` 필터가 어디로 갔는지는
 # `scripts/hub_deploy_pick.py` 머리말에 있다(판정 전부가 거기 있고 테스트가 붙어 있다).
 #
@@ -136,7 +136,7 @@ jobs:
       # `DISPATCH_SHA` 는 workflow_dispatch 에서만 읽힌다. 이 워크플로에서 `github.sha`
       # 가 허용되는 유일한 자리다(파일 머리말).
       - id: pick
-        name: 무엇을 내보낼지 고른다 (CI 초록인 가장 새 main 커밋)
+        name: 무엇을 내보낼지 고른다 (core 잡이 초록인 가장 새 main 커밋)
         env:
           EVENT: ${{ github.event_name }}
           TRIGGER_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -721,7 +721,7 @@ jobs:
           failed = "failure" in (plan, deploy)
           if held and not failed:
               sha = held
-              body = f"""main 의 CI 가 빨개서 이 커밋의 허브 변경을 **내보내지 않았다**.
+              body = f"""main 의 CI(core 잡)가 빨개서 이 커밋의 허브 변경을 **내보내지 않았다**.
           허브는 그 앞의 이미지로 남아 있다 — 배포가 실패한 것이 아니라 게이트가 막은 것이다.
 
           - 실행: {e['RUN_URL']}
