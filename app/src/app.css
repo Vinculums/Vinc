@@ -2799,15 +2799,17 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .pl-hl .pl-seg { stroke: hsl(var(--focus)); }
 
 /* 물러남(recede) — DEC D32-a 확정값(vinc.d.view-visual-language §1.6 표).
-   노드 .40 / 선 .12 / 텍스트 .35, 전 관점·전 표면 공통. 뷰 코드에 숫자 리터럴을
-   두지 않기 위해 여기 한 곳에서만 정의한다(모션 토큰 계층의 선행 자리).
-   초점 자신과 그 이웃은 감쇠 없음(1.0) — .pl-fade 가 안 붙는다. */
+   선 .12 / 텍스트 .35, 전 관점·전 표면 공통. 뷰 코드에 숫자 리터럴을 두지 않기
+   위해 여기 한 곳에서만 정의한다(모션 토큰 계층의 선행 자리).
+   초점 자신과 그 이웃은 감쇠 없음(1.0) — .pl-fade 가 안 붙는다.
+   노드 마크는 **물러나지 않는다**(노드 .40 을 걷었다). 물러나는 노드는 배경 쪽으로
+   섞여 같은 노드가 상태에 따라 진한 색과 옅은 틴트를 오갔다. 이제 `.pl-fade` 가 붙은
+   노드에서 옅어지는 것은 이름뿐이다.
+   근거: [[decision:a-node-keeps-its-own-colour-in-every-state]] */
 :root {
-  --recede-node: .4;
   --recede-line: .12;
   --recede-text: .35;
 }
-.pl-fade { opacity: var(--recede-node); }
 .pl-link.pl-fade, .pl-ribbon.pl-fade, .pl-lane.pl-fade { opacity: var(--recede-line); }
 .pl-fade .pl-lab, .pl-fade .pl-cap, .pl-fade .pl-sub { opacity: var(--recede-text); }
 .pl-node, .pl-link, .pl-ribbon, .pl-row, .pl-lane { transition: opacity .22s ease; }

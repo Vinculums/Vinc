@@ -148,6 +148,10 @@ const THEME = {
  *  있는가"는 이 카운터로만 판별한다(전역 리스너 누수 방지). */
 let liveGen = 0;
 
+/** 지금 지도가 칠한 주제 색 — 마운트가 짓고 노드 카드가 읽는다. 주제 틴트를 끄면 null
+ *  이라 카드의 표식도 잉크 그대로다(지도와 같다). */
+let shownTints: Map<string, string> | null = null;
+
 export async function renderView(el: HTMLElement) {
   const myGen = ++liveGen;
   el.innerHTML = `
@@ -290,6 +294,11 @@ export async function renderView(el: HTMLElement) {
    *  집합을 들고 남는다(강조가 지도에 없는 id 를 가리켜 아무것도 안 밝는다). */
   function setCurNodes(next: GraphNode[]): void {
     curNodes = next;
+    // 주제 색은 **여기서 한 벌**만 짓는다 — 모든 관점과 노드 카드가 같은 표를 읽는다.
+    // 색은 주제의 순위로 매겨지므로 표를 짓는 목록이 곳마다 다르면(고아 숨김으로 걸러진
+    // 목록, 주제 하나짜리 목록) 같은 주제가 곳마다 다른 색이 된다.
+    // 근거: [[decision:a-node-keeps-its-own-colour-in-every-state]]
+    shownTints = curPrefs().domainTint ? tintMap(next.map((n) => n.domain), curMode()) : null;
     // ⚠ **여기서 종 렌즈를 걸지 않는다.** 이 함수는 데이터가 도착한 시점이고
     // 렌더러는 아직 안 세워졌다(`swapSurface` 가 그 뒤에 돈다). 여기서 걸면 교체
     // 직전의 `spot = null` 이 곧바로 지워 버려 **계산은 맞는데 화면이 그대로**다
@@ -397,10 +406,11 @@ export async function renderView(el: HTMLElement) {
     cross: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width=".8" opacity=".5"/>`,
     bridge: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width=".8" opacity=".35"/>`,
   };
-  /** 물러남 견본(24×24) — 전후를 나란히. 수치 라벨은 recede.ts(토큰)가 채운다. */
+  /** 물러남 견본(24×24) — 전후를 나란히. 수치 라벨은 recede.ts(토큰)가 채운다.
+   *  노드 견본은 없다: 노드는 물러나지 않는다(그리지 않는 것은 가르치지 않는다).
+   *  근거: [[decision:a-node-keeps-its-own-colour-in-every-state]] */
   const RECEDE_ART = [
     `<circle cx="12" cy="12" r="7" fill="hsl(var(--ring))"/>`,
-    `<circle cx="6.6" cy="12" r="4.6" fill="currentColor"/><circle cx="17.4" cy="12" r="4.6" fill="currentColor" opacity=".4"/>`,
     `<path d="M2 8.5h20" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M2 15.5h20" fill="none" stroke="currentColor" stroke-width="1.7" opacity=".12"/>`,
     `<path d="M3 9.5h7.5M3 14h5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M13.5 9.5h7.5M13.5 14h5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".35"/>`,
   ];
@@ -430,13 +440,12 @@ export async function renderView(el: HTMLElement) {
         [shapeRow(is3d ? gateway3dSvg(24, "lg-mark2") : flatMark("concept", true),
                   L.gateway, note.gateway)]),
     ].join("");
-    // 물러남 4단 — 수치는 recede.ts 가 토큰에서 읽는다(범례는 그리는 그대로).
-    const pct = (k: "node" | "line" | "text") => Math.round(recede(k) * 100);
+    // 물러남 3단 — 수치는 recede.ts 가 토큰에서 읽는다(범례는 그리는 그대로).
+    const pct = (k: "line" | "text") => Math.round(recede(k) * 100);
     const tiers = [
       { art: RECEDE_ART[0], label: L.tierFocus },
-      { art: RECEDE_ART[1], label: L.tierNode(pct("node")) },
-      { art: RECEDE_ART[2], label: L.tierLine(pct("line")) },
-      { art: RECEDE_ART[3], label: L.tierText(pct("text")) },
+      { art: RECEDE_ART[1], label: L.tierLine(pct("line")) },
+      { art: RECEDE_ART[2], label: L.tierText(pct("text")) },
     ].map((t) => `<span class="lg-tier"><svg viewBox="0 0 24 24" aria-hidden="true">`
       + `${t.art}</svg><span>${esc(t.label)}</span></span>`).join("");
     return `<div class="lg-body">
@@ -1472,7 +1481,12 @@ export async function renderView(el: HTMLElement) {
     savePrefs({ ...cur, ...mut });
     // 주제 색은 지도와 좌측 트리가 **같은 토글**을 쓴다(표면 둘, 스위치 하나). 아래
     // 분기가 여러 갈래로 일찍 돌아가므로 알리는 자리는 저장 직후 여기 한 곳이다.
-    if ("domainTint" in mut) repaintLnb();
+    if ("domainTint" in mut) {
+      repaintLnb();
+      // 노드 카드가 읽는 표도 같은 스위치를 따른다(3D 는 __update 로 재마운트 없이
+      // 바뀌므로 setCurNodes 를 안 지난다).
+      shownTints = mut.domainTint ? tintMap(curNodes.map((n) => n.domain), curMode()) : null;
+    }
     // 번들의 손잡이는 **이미 실린 데이터의 표현만** 바꾼다(단·관계·라벨). 아래
     // show() 로 내려가면 `/graph` 를 통째로 다시 받는데, 그것이 리서치
     // [[vinc.research.view-interaction-perf]] 가 지목한 낭비다 — 옵션 여덟 개 중 하나만
@@ -1840,7 +1854,7 @@ export async function renderView(el: HTMLElement) {
         else focusOnMap(nd);       // 레일은 카드의 버튼이 연다
       },
       onRightClick: (nd, ev) => nodeMenu(nd, ev),
-    }, p, keepCam);
+    }, p, keepCam, curNodes.map((n) => n.domain));   // 색 순위는 전량으로(setCurNodes 주석)
     keepCam = null;                               // 한 번 실어 보내면 끝 — 다음 마운트는 전체 맞춤
     applyTimeCut();                               // 첫 화면부터 커서를 반영한다
     wireLasso();
@@ -2075,7 +2089,9 @@ export async function renderView(el: HTMLElement) {
       title: nd.label, x: home.x, y: home.y, closeLabel: V.railClose,
     });
     // 머리의 표식 — 지도가 그리는 마크 그대로(채운 원 = 개념), 색은 그 노드의 주제 색.
-    const tint = nd.domain ? tintMap([nd.domain], curMode()).get(nd.domain) : undefined;
+    // 지도와 **같은 표**에서 읽는다. 주제 하나만 넣어 표를 새로 지으면 순위가 늘 0 이라
+    // 모든 카드가 같은 색(색상각 0)이 됐고, 지도의 그 노드와 한 번도 맞지 않았다.
+    const tint = nd.domain ? shownTints?.get(nd.domain.trim()) : undefined;
     card.el.querySelector(".float-title")?.insertAdjacentHTML("beforebegin",
       `<span class="float-mark" aria-hidden="true"${
         tint ? ` style="color:${tint}"` : ""}>${icon("dot", 11)}</span>`);
@@ -3125,7 +3141,7 @@ export async function renderView(el: HTMLElement) {
     // 끼워 주지만, 두 열이 다 실려 오므로 **재조회 없이** 바꿔 끼울 수 있다. 구
     // 사이드카에는 content_ts 자체가 없어 내용 축이 빈 상태로 정직하게 강등된다.
     const onContent = p.timeBasis === "content";
-    const planarTints = p.domainTint ? tintMap(gnodes.map((n) => n.domain), curMode()) : null;
+    const planarTints = shownTints;   // setCurNodes 가 방금 지은 표(gnodes 전량)
     const nodes = gnodes.map((nd) => ({
       id: nd.id,
       label: nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label,

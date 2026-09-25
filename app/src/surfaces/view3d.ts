@@ -94,8 +94,6 @@ export type L3 = { source: string; target: string; type?: string; cross?: boolea
 //   아니라 UI 어포던스이므로 이 기회비용 논리가 적용되지 않는다.
 // Lambert 를 고른 이유(평면 MeshBasic 이 아니라): D33 이 조명으로 만드는 "판재"
 // 명암 그라데이션이 라이트 테마의 깊이 단서다. 유리를 걷어내되 그 단서는 지킨다.
-const NODE_OP = 0.72;   // 일반 노드 프로스트
-const GATE_OP = 0.35;   // 게이트웨이 — 더 투명("여기 소속 아님")
 //: 정사면체의 고정 자세. 앱 노드는 자전하지 않으므로 이 각도가 곧 실루엣이다 —
 //: face·view dot 0.76 / 0.21 로 두 면의 음영이 갈려 입체로 읽힌다(시안 §2).
 const DOC_ROT: [number, number, number] = [-0.5, 0.6, 0.2];
@@ -130,32 +128,17 @@ const INST_ROT: Record<InstKind, THREE.Quaternion> = {
  *  같은 값이다. 단 **불투명**으로 둔다: 투명으로 바꾸면 수백 인스턴스가 투명 패스로 가서
  *  조기 깊이 기각을 잃고, 한 InstancedMesh 안은 깊이 정렬도 안 된다.
  *
- *  hover 페이드(D32-a)는 알파 대신 **최종 색을 배경색으로 섞는다**(`instanceFade`).
- *  fog 가 하는 연산과 같고, 뒤가 배경뿐인 자리에서는 알파 합성과 수학적으로 같다.
- *  인스턴스 색(알베도)만 섞으면 안 된다 — clearcoat·sheen·환경 반사가 그대로 남는다. */
+ *  노드 몸통은 **제 색 그대로다** — hover·점등에 배경색으로 섞이지 않고(`applyFade`
+ *  는 라벨만 물린다) 거리 안개도 안 받는다(`fog: false`). 같은 노드가 어떤 때는 진하고
+ *  어떤 때는 옅은 틴트로 보이던 것을 닫는다. 깊이 단서는 엣지의 안개가 계속 진다.
+ *  근거: [[decision:a-node-keeps-its-own-colour-in-every-state]] */
 function instMaterial(pal: Palette): THREE.MeshPhysicalMaterial {
-  const m = new THREE.MeshPhysicalMaterial({
+  return new THREE.MeshPhysicalMaterial({
     color: WHITE, roughness: .52, metalness: .08,
     clearcoat: .25, clearcoatRoughness: .3,
     sheen: .2, sheenColor: new THREE.Color(pal.point), sheenRoughness: .6,
-    envMapIntensity: .85,
+    envMapIntensity: .85, fog: false,
   });
-  // fog 유니폼과 같은 색공간(renderer.outputColorSpace — 이 앱은 기본 sRGB 그대로)으로
-  // 넣는다. 섞는 자리가 colorspace_fragment 뒤라 선형값을 넣으면 색이 어긋난다.
-  const fadeColor = new THREE.Color(pal.fog);
-  fadeColor.getRGB(fadeColor, THREE.SRGBColorSpace);
-  m.onBeforeCompile = (shader) => {
-    shader.uniforms.uFadeColor = { value: fadeColor };
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nattribute float instanceFade;\nvarying float vInstanceFade;")
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvInstanceFade = instanceFade;");
-    shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform vec3 uFadeColor;\nvarying float vInstanceFade;")
-      .replace("#include <premultiplied_alpha_fragment>",
-        "gl_FragColor.rgb = mix( gl_FragColor.rgb, uFadeColor, vInstanceFade );\n\t#include <premultiplied_alpha_fragment>");
-  };
-  m.customProgramCacheKey = () => "vinc-inst-fade";
-  return m;
 }
 /** 레이캐스트 전용 유령 메시 — 실제로 그리지 않는다(`visible=false`, 렌더러가
  *  순회에서 건너뛴다). three-forcegraph 가 노드마다 요구하는 오브젝트 계약(위치
@@ -166,20 +149,11 @@ function ghostNode(r: number): THREE.Mesh {
   m.visible = false;
   return m;
 }
-/** 인스턴스 하나의 장부 — hover 페이드(아래 applyFade)와 nodeScale 슬라이더
- *  (아래 __update)·Bring&Go 비행이 이 레퍼런스로 인스턴스 행렬·페이드를 다시 쓴다. */
+/** 인스턴스 하나의 장부 — nodeScale 슬라이더(아래 __update)·Bring&Go 비행이 이
+ *  레퍼런스로 인스턴스 행렬을 다시 쓴다. */
 type InstRef = {
   kind: InstKind; idx: number; mesh: THREE.InstancedMesh; baseR: number;
-  /** `applyFade`의 tween 이 그대로 다루는 대상. `.opacity` 자리에 **배경 혼합비**
-   *  (0 = 그대로, 1 = 배경색)를 담는다 — 쓰면 `instanceFade` 속성에 바로 반영된다. */
-  proxy: { opacity: number };
 };
-function fadeProxy(attr: THREE.InstancedBufferAttribute, idx: number): { opacity: number } {
-  return {
-    get opacity() { return attr.getX(idx); },
-    set opacity(v: number) { attr.setX(idx, v); attr.needsUpdate = true; },
-  };
-}
 
 /** 발광 패널 4장 + PMREM — 이미지 없이 굽는 스튜디오 환경(시안 §3, 외부 요청 0).
  *  반무광 재질의 clearcoat·sheen 이 반사할 것이 있어야 조형이 판재로 읽힌다. */
@@ -228,6 +202,7 @@ function skinFor(pal: Palette, kind: "body" | "core" | "shell", focus: boolean,
     clearcoat: .25, clearcoatRoughness: .3,
     sheen: .2, sheenColor: new THREE.Color(pal.point), sheenRoughness: .6,
     envMapIntensity: .85, transparent: true, opacity: 1,
+    fog: false,          // 몸통은 거리로 옅어지지 않는다(instMaterial 주석)
   });
   if (kind === "core") { m.emissive = new THREE.Color(base); m.emissiveIntensity = .3; }
   if (kind === "shell") { m.opacity = .28; m.depthWrite = false; }
@@ -350,7 +325,8 @@ function kindGeometry(kind: string | undefined, r: number): THREE.BufferGeometry
 function gatewayWire(kind: string | undefined, r: number, pal: Palette): THREE.LineSegments {
   const src = (kind === "concept" || kind === "decision" || kind === "domain")
     ? new THREE.IcosahedronGeometry(r, 1) : kindGeometry(kind, r);
-  const mat = new THREE.LineBasicMaterial({ color: pal.inkMute, transparent: true, opacity: 0.5 });
+  const mat = new THREE.LineBasicMaterial({ color: pal.inkMute, transparent: true, opacity: 0.5,
+                                            fog: false });
   mat.userData.base = 0.5;
   const seg = new THREE.LineSegments(new THREE.EdgesGeometry(src), mat);
   if (kind !== "concept" && kind !== "decision" && kind !== "domain" && kind !== "bridge")
@@ -449,7 +425,8 @@ export function camera3d(g: ForceGraph3DInstance): Cam3 | null {
 export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   onClick?: (n: N3) => void; onRightClick?: (n: N3, ev: MouseEvent) => void;
   onLinkClick?: (l: any) => void;
-}, prefs: ViewPrefs = loadPrefs(), keepCam: Cam3 | null = null): ForceGraph3DInstance {
+}, prefs: ViewPrefs = loadPrefs(), keepCam: Cam3 | null = null,
+   tintDomains: (string | undefined)[] | null = null): ForceGraph3DInstance {
   const flat = prefs.view === "2d";        // D31 — 동일 렌더러의 z 평면화
   let S = SCALE * prefs.spread;
   /** 사이드카 원좌표(단위원)를 노드에 남겨 둔다 — 아래 `place` 가 배율만 바꿔 다시
@@ -496,8 +473,12 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // 주제 틴트(열린 층) — 마운트당 한 번 표를 만들어 노드에 실어 둔다. 각도가
   // 화면에 있는 주제들 위에서 배정되므로(view-tint.ts) 노드 하나만 보고는
   // 계산할 수 없다.
+  // 순위를 매길 주제 목록은 호출부가 주면 그것을 쓴다(`tintDomains`). 받은 `nodes` 는
+  // 고아 숨김으로 걸러진 것이라, 거기서 지으면 주제 하나가 빠질 때 나머지의 색이
+  // 밀려 노드 카드·다른 관점과 같은 주제가 다른 색이 된다.
   const applyTints = () => {
-    const tints = prefs.domainTint ? tintMap(nodes.map((n) => n.domain), themeMode()) : null;
+    const tints = prefs.domainTint
+      ? tintMap(tintDomains ?? nodes.map((n) => n.domain), themeMode()) : null;
     for (const n of nodes) (n as { __tint?: string }).__tint = tints?.get((n.domain || "").trim());
   };
   applyTints();
@@ -506,9 +487,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   let scene: THREE.Scene | undefined;
   let instMeshes: THREE.InstancedMesh[] = [];
   const instRefs = new Map<string, InstRef>();
-  // 지오메트리는 인스턴스 수만큼의 `instanceFade` 속성을 지니므로 빌드마다 복제본이고,
-  // 재질도 빌드마다 새로 만든다 — 둘 다 여기서 함께 버린다(InstancedMesh.dispose 는
-  // 인스턴스 버퍼만 놓는다).
+  // 지오메트리는 빌드마다 복제본이고 재질도 빌드마다 새로 만든다 — 둘 다 여기서 함께
+  // 버린다(InstancedMesh.dispose 는 인스턴스 버퍼만 놓는다).
   const disposeInstMeshes = () => {
     for (const im of instMeshes) {
       scene?.remove(im);
@@ -527,8 +507,6 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     (Object.keys(counts) as InstKind[]).forEach((k) => {
       if (!counts[k]) return;
       const geom = UNIT_GEOM[k].clone();
-      geom.setAttribute("instanceFade",
-        new THREE.InstancedBufferAttribute(new Float32Array(counts[k]), 1));
       const mesh = new THREE.InstancedMesh(geom, instMaterial(pal), counts[k]);
       // 인스턴스가 씬 전체에 흩어져 있어 컬링용 바운딩구는 전체를 감싸야 정확한데,
       // Bring&Go 비행·nodeScale 슬라이더로 개별 행렬을 나중에 또 고친 뒤에도 그
@@ -550,8 +528,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       mesh.setMatrixAt(idx, m4);
       const tint = (n as { __tint?: string }).__tint;
       mesh.setColorAt(idx, new THREE.Color(tint ? parseInt(tint.slice(1), 16) : pal.ink));
-      instRefs.set(n.id, { kind, idx, mesh, baseR: r / (prefs.nodeScale ?? 1),
-        proxy: fadeProxy(mesh.geometry.getAttribute("instanceFade") as THREE.InstancedBufferAttribute, idx) });
+      instRefs.set(n.id, { kind, idx, mesh, baseR: r / (prefs.nodeScale ?? 1) });
     }
     scene?.add(...instMeshes);
   };
@@ -896,7 +873,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     return l.cross ? pal.link.cross : pal.link.base;
   };
   g.linkColor(linkColorFn);
-  const fadeTargets = new Map<THREE.Material | { opacity: number }, number>();
+  const fadeTargets = new Map<THREE.Material, number>();
   let raf = 0;
   /** 모션을 줄여 달라는 설정에서는 **이징만** 버리고 효과는 남긴다(카피가 그렇게
    *  약속한다). 여태 이 트윈에는 가드가 없어 그 약속이 3D 에서만 지켜지지 않았다 —
@@ -914,25 +891,25 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     raf = live ? requestAnimationFrame(tween) : 0;
   };
   /** 남길 집합 밖을 물러나게 한다. hover 와 점등이 **같은 함수**를 쓴다 — 두 벌이면
-   *  하나가 다른 하나를 덮어쓴 채 아무도 눈치채지 못한다. `null` 이면 전부 복귀. */
+   *  하나가 다른 하나를 덮어쓴 채 아무도 눈치채지 못한다. `null` 이면 전부 복귀.
+   *
+   *  물러나는 것은 **라벨뿐**이다. 노드 몸통(메시·Domain 껍질·Gateway 윤곽)은 제 색
+   *  그대로 두고, 무엇이 남았는지는 엣지(linkColorFn)와 라벨이 말한다. 몸통을 배경색
+   *  으로 섞던 동안 같은 노드가 상태에 따라 진한 색과 옅은 틴트를 오갔다.
+   *  근거: [[decision:a-node-keeps-its-own-colour-in-every-state]] */
   const applyFade = (keep: Set<string> | null) => {
-    // D32-a 정본값 — 여태 여기가 `× 0.15` 리터럴이라 정본(0.40)의 3.75 배를 물러났고,
-    // 비이웃이 배경 대비 1.15:1 로 **소멸**했다(가시성 연구 C4). 루프 밖에서 한 번 읽는다
-    // (getComputedStyle 은 레이아웃 읽기라 마크마다 부르면 안 된다).
-    const recedeNode = recede("node");
-    const mixTarget = 1 - recedeNode;   // 인스턴스 노드 — 알파 대신 배경색 혼합비
+    // D32-a 정본값. 루프 밖에서 한 번 읽는다(getComputedStyle 은 레이아웃 읽기라
+    // 마크마다 부르면 안 된다).
+    const recedeText = recede("text");   // 물러나는 것이 라벨(글자)뿐이다
     g.graphData().nodes.forEach((m: any) => {
       const fade = keep ? !keep.has(m.id) : false;
-      const ref = instRefs.get(m.id);
-      if (ref) fadeTargets.set(ref.proxy, fade ? mixTarget : 0);
       const obj = m.__threeObj as THREE.Mesh | undefined;
       if (!obj) return;
       obj.traverse((c: THREE.Object3D) => {
-        const mat = (c as any).material as THREE.Material | undefined;
-        if (mat && "opacity" in mat) {   // mesh fill·링·글로우 스프라이트 공통 — 각자 저장한 base 로 복귀
-          const b = (mat.userData?.base as number | undefined) ?? (m.gateway ? GATE_OP : NODE_OP);
-          mat.transparent = true; fadeTargets.set(mat, fade ? b * recedeNode : b);
-        }
+        if (!(c instanceof THREE.Sprite)) return;
+        const mat = c.material;
+        const b = (mat.userData?.base as number | undefined) ?? 1;
+        mat.transparent = true; fadeTargets.set(mat, fade ? b * recedeText : b);
       });
     });
     if (!raf) raf = requestAnimationFrame(tween);
