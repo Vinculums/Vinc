@@ -2448,8 +2448,19 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 영역 안에서는 첫 행의 위 여백을 없앤다(제목이 이미 간격을 만든다). */
 .opt-sec > :nth-child(2) { margin-top: .1rem; }
 .opt-sec .slider-row:last-child { margin-bottom: 0; }
-/* 패널 안의 탭은 설정 모달과 같은 규격을 쓰되, 폭이 좁으므로 좌우 여백만 줄인다. */
-.lg-tabs { margin: 0 0 .2rem; }
+/* 패널의 옵션/범례 탭.
+   ⚠ 설정의 `.settings-tab` 을 빌려 쓰지 말 것 — PR 393 이 그 규칙을 지우자 이 버튼이
+   브라우저 기본 버튼(흰 바탕·검은 글자)으로 떨어졌다. 이 자리의 규칙은 여기 있다.
+   여럿 중 하나 고르기라 그림은 `.seg .chip` · `.lnb-navrow` 와 같다(hover 는
+   muted-foreground 10%, 고른 칸은 ring 14%). `--muted` 로 칠하지 말 것: 다크에서
+   muted(7%)가 패널 유리면(card 10% × .78 ≈ 9%)보다 어두워 고른 칸이 안 보인다. */
+.lg-tabs { display: flex; gap: .15rem; flex-wrap: wrap; margin: 0 0 .2rem; }
+.lg-tab {
+  font: inherit; border: none; background: none; cursor: pointer;
+  padding: .4rem .7rem; border-radius: .5rem; color: hsl(var(--muted-foreground));
+}
+.lg-tab:hover { background: hsl(var(--muted-foreground) / .1); color: hsl(var(--foreground)); }
+.lg-tab.active { background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); font-weight: 600; }
 /* 옵션 밑에 붙는 해설 한 줄(배치가 무슨 순서로 세우는지). 위의 캡션(.hint)과 같은
    무게로 두면 둘 다 라벨처럼 읽히므로 한 단계 더 물러난다. */
 #view-lens-panel .hint.sub {
@@ -2937,8 +2948,10 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   color: hsl(var(--foreground)); font: inherit; font-size: .9375rem; font-weight: 500;
   text-align: left; cursor: pointer;
 }
-.settings-cat:hover { background: hsl(var(--muted) / .55); }
-.settings-cat.on { background: hsl(var(--muted)); font-weight: 600; }
+/* 고른 분류 = LNB 의 고른 행과 같은 알약(ring 14%). `--muted` 는 다크에서 레일 바탕
+   (surface-2 10%)보다 어두운 7% 라 고른 칸이 움푹 꺼져 거의 안 보였다. */
+.settings-cat:hover { background: hsl(var(--muted-foreground) / .1); }
+.settings-cat.on { background: hsl(var(--ring) / .14); font-weight: 600; }
 .settings-cat-space { flex: 1 1 auto; min-height: .5rem; }
 .settings-cat-badge {
   margin-left: auto; min-width: 1rem; height: 1rem; padding: 0 .22rem;
