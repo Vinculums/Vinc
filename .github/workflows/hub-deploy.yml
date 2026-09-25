@@ -12,27 +12,32 @@
 # workflow_dispatch 로만 그런 변경을 내보낼 것을 권장).
 name: hub-deploy
 
+# ── main 의 CI 가 끝나면 돈다 (2026-09-26) ─────────────────────────────────────
+# 전에는 main push 로 곧장 돌면서 `gate` 잡이 테스트 스위트를 **한 번 더** 돌렸다. ci.yml
+# 과 병렬이라 "CI 는 빨간데 배포는 나가는" 창을 막으려면 그것밖에 없었다(워크플로 간
+# needs 는 걸 수 없다). 대가는 허브를 건드린 머지마다 같은 스위트가 셋이 겹쳐 도는
+# 것이었다 — ci 의 core·core-pkns 와 이 게이트가 러너 둘을 두고 다퉜고, 셋 다 같은
+# 노트북의 같은 8코어다.
+#
+# `workflow_run` 이 그 "워크플로 간 needs" 다. 이제 CI 가 유일한 게이트이고, 이
+# 워크플로는 **CI 가 초록인 가장 새 main 커밋**을 내보낸다. 불러낸 커밋이 아니라
+# 가장 새 초록을 고르는 이유와 옛 `paths` 필터가 어디로 갔는지는
+# `scripts/hub_deploy_pick.py` 머리말에 있다(판정 전부가 거기 있고 테스트가 붙어 있다).
+#
+# ⚠ `workflow_run` 런에서 `github.sha` 는 **내보낼 커밋이 아니다** — 런이 시작될 때의
+# main 머리다. 아래 잡들은 `needs.plan.outputs.sha` 만 쓴다. `github.sha` 를 다시 쓰면
+# 검증 안 된 커밋이 나갈 수 있다(tests/test_hub_deploy_pick.py 가 막는다).
 on:
-  push:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
     branches: [main]
-    paths:
-      - "api/**"
-      - "store/**"
-      - "engines/**"
-      - "vinc_mcp/**"
-      - "Dockerfile.hub"
-      - "packaging/docker-entrypoint.sh"
-      - "packaging/embed_worker.py"
-      - "packaging/bake_embed_model.py"
-      - "packaging/lbug_extensions/**"
-      - "pyproject.toml"
-      - "scripts/check_hub_env.py"
-      - ".github/workflows/hub-deploy.yml"
   workflow_dispatch:
 
 # 허브 배포는 **취소하지 않고 직렬화**한다(cancel-in-progress: false). 단일 writer +
-# 포맷 변경 민감성 때문에 배포 도중 취소는 위험하다 — 이 워크플로는 path 필터·main
-# 한정이라 실행이 드물어 취소로 아낄 분도 적다. 앞 배포가 끝난 뒤 다음이 돈다.
+# 포맷 변경 민감성 때문에 배포 도중 취소는 위험하다. 앞 배포가 끝난 뒤 다음이 돈다.
+# 대기 중인 런은 GitHub 이 하나만 남기는데(뒤에 온 것이 앞의 대기 런을 지운다), 어느
+# 런이 남든 `plan` 이 같은 답(가장 새 초록)을 내므로 지워진 런의 커밋도 빠지지 않는다.
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
@@ -42,10 +47,10 @@ permissions:
   contents: read
 
 jobs:
-  # 배포 전 게이트 — ci.yml 과 같은 검증을 여기서 한 번 더 돌린다. ci.yml 은 push 로
-  # 병렬 실행되므로 "ci 가 빨간데 배포는 나가는" 창이 생긴다(워크플로 간 needs 는
-  # 걸 수 없다). 배포를 막는 것이 목적이므로 같은 잡 안에서 선행시킨다.
-  # ⚠ 이전에는 배포 **후** tools/list 를 확인했다 — 이미 나간 뒤라 막지 못했다.
+  # 무엇을 내보낼지 고른다 — 또는 안 내보낸다. 테스트는 여기서 돌지 않는다: 이 런이
+  # 불렸다는 것 자체가 ci.yml 이 끝났다는 뜻이고, 초록인지는 picker 가 커밋마다 묻는다.
+  # (2026-09-26 까지 이 자리는 스위트를 다시 도는 `gate` 잡이었다 — 파일 머리말 참조.)
+  # 아래 러너 문단들은 그때 이 자리에 붙어 있던 것이고 이 워크플로 전체의 러너 판단이다.
   # ── 왜 호스티드인가 (2026-08-30) ────────────────────────────────────────────
   # 이 워크플로는 `vinc-local` 위에 있었고 그 러너는 유지보수자의 노트북이다. 노트북이
   # 꺼지면 **배포가 실패가 아니라 큐에 남는다** — 즉 머지된 커밋이 조용히 안 나간
@@ -101,68 +106,57 @@ jobs:
   #
   # 되돌릴 조건: 분이 다시 넉넉해지거나, 러너가 다시 조용히 사라지거나, Operator 역할이
   # 회수되면. 셋 중 하나라도 참이면 위 문단의 판단이 다시 이긴다.
-  gate:
+  plan:
     runs-on: [self-hosted, linux, vinc-local]
-    # ⚠ 셀프호스티드로 되돌리면서 20분은 **너무 짧아졌다.** 이 잡은 전량 스위트를
-    # 돌리는데, 러너의 기본 임시 디렉터리는 WSL2 VHD 위라 임베디드 스토어의 fsync 가
-    # 통째로 그 위에서 돈다(실측 49분). 아래 TMPDIR 로 6분대가 되지만, 러너 셋이 한
-    # 기계를 나눠 쓰므로 겹치면 더 걸린다. 행을 잡는 장치로서 여유를 둔다.
-    timeout-minutes: 45
-    # ⚠ **이 한 줄이 49분과 6분을 가른다.** ci.yml 의 core 잡과 같은 처방이고 근거도
-    # 같다(그 잡의 주석이 실측을 들고 있다). #230 이 이 잡을 셀프호스티드로 옮기면서
-    # 이것을 함께 옮기지 않아 첫 런이 20분 타임아웃으로 죽었다.
-    env:
-      TMPDIR: /dev/shm/vinc-ci-${{ github.run_id }}-${{ github.job }}
+    # git fetch · az 한 번 · API 몇 번이다. 걸린 호출 하나가 배포 줄을 붙잡지 않게 짧게.
+    timeout-minutes: 10
+    permissions:
+      id-token: write    # azure/login — 허브에 지금 떠 있는 이미지 태그를 읽는다
+      contents: read
+      actions: read      # 커밋마다 ci.yml 런의 결론을 읽는다
+    outputs:
+      deploy: ${{ steps.pick.outputs.deploy }}
+      sha: ${{ steps.pick.outputs.sha }}
+      withheld: ${{ steps.pick.outputs.withheld }}
     steps:
-      # TMPDIR 를 쓰는 첫 프로그램보다 먼저 만든다(러너는 스텝 스크립트를 $RUNNER_TEMP
-      # 에 쓰지 TMPDIR 에 쓰지 않으므로 이 스텝 자신은 안전하다).
-      - name: tmpfs 작업 디렉터리를 만든다
-        run: |
-          mkdir -p "$TMPDIR"
-          df -h /dev/shm
+      # main 머리를 받는다(워크플로 런의 기본 ref). picker 는 first-parent 를 훑고
+      # 떠 있는 커밋과 diff 하므로 이력이 전부 있어야 한다.
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      # pytest 는 tests/ 4개 모듈이 실제로 import 한다(ci.yml 주석 참조).
-      - run: pip install ladybug==0.18.0 argon2-cffi pyyaml pytest
-      # 커밋된 확장을 쓴다(네트워크 불요) — ci.yml 과 같은 이유. INSTALL 은 러너에서
-      # SSL 검증 실패로 죽는다.
-      - name: Point to bundled G0 extensions (no network)
-        run: echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
-      - name: Assert driver is importable (no silent skips)
-        run: |
-          python - <<'PY'
-          import sys
-          from store.embedded_backend import _import_driver
-          drv, _ = _import_driver()
-          sys.exit(0 if drv else 1)
-          PY
-      - name: Run test suite
-        run: |
-          set -o pipefail
-          python verify.py 2>&1 | tee verify.log
-          ran=$(grep -oE '^Ran [0-9]+ tests' verify.log | grep -oE '[0-9]+' || echo 0)
-          [ "$ran" -ge 300 ] || { echo "::error::테스트 ${ran}건만 실행됨(하한 300)" >&2; exit 1; }
-
-
-      # ⚠ tmpfs 는 RAM 이다. 크래시한 런이 남긴 스토어가 다음 런의 자리를 먹는다.
-      # `always()` 인 이유가 그것이다 — 실패한 런이야말로 남긴다. 지우는 것은 이 잡의
-      # 디렉터리뿐이고(옆 잡이 같은 tmpfs 에서 돈다), 옛 잔해는 나이로 거른다.
-      - name: /dev/shm 정리와 잔량 (tmpfs 는 RAM 이다)
-        if: always()
-        run: |
-          df -h /dev/shm || true
-          rm -rf "$TMPDIR" || true
-          find /dev/shm -maxdepth 1 -name 'vinc-ci-*' -mmin +240 -exec rm -rf {} + 2>/dev/null || true
-          df -h /dev/shm || true
+          fetch-depth: 0
+      # build-and-deploy 의 같은 스텝과 같은 이유(그 잡의 주석이 근거다).
+      - name: Azure 프로필을 이 잡 전용으로 (러너가 사람과 공유하는 기계다)
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID-plan" >> "$GITHUB_ENV"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      # 표준 라이브러리만 쓴다 — setup-python 없이 러너의 python3 로 돈다.
+      # `DISPATCH_SHA` 는 workflow_dispatch 에서만 읽힌다. 이 워크플로에서 `github.sha`
+      # 가 허용되는 유일한 자리다(파일 머리말).
+      - id: pick
+        name: 무엇을 내보낼지 고른다 (CI 초록인 가장 새 main 커밋)
+        env:
+          EVENT: ${{ github.event_name }}
+          TRIGGER_SHA: ${{ github.event.workflow_run.head_sha }}
+          TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          DISPATCH_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          API: ${{ github.api_url }}
+          REPO: ${{ github.repository }}
+        run: python3 -X utf8 scripts/hub_deploy_pick.py
 
   build-and-deploy:
-    needs: gate
-    # gate 와 같은 이유(그 잡의 주석이 근거다).
+    needs: plan
+    if: needs.plan.outputs.deploy == 'true'
+    # 러너는 plan 과 같은 이유(그 잡 위의 문단들이 근거다).
     runs-on: [self-hosted, linux, vinc-local]
-    # 실측 3분 52초. 위 gate 의 주석이 값의 근거와 이 설정의 한계를 함께 적는다.
+    # 실측 3분 52초. plan 위의 timeout 문단이 값의 근거와 이 설정의 한계를 함께 적는다.
     timeout-minutes: 30
+    # 이 잡이 내보내는 커밋. `github.sha` 가 아니다(파일 머리말).
+    env:
+      DEPLOY_SHA: ${{ needs.plan.outputs.sha }}
     # ⚠ 아래 `AZURE_CONFIG_DIR` 스텝의 유래. 이 잡이 셀프호스티드였을 때 러너는
     # 유지보수자의 대화형 셸과 **같은 기계**였고, az 는 기본으로 `~/.azure` 를 쓰므로
     # 둘이 한 프로필을 공유했다. 2026-08-28 에 그것으로 배포가 죽었다: 잡이 도는 동안
@@ -176,6 +170,8 @@ jobs:
     # 겪은 사람일 이유가 없다. 호스티드에서는 무해한 한 줄이다.
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       # 모델 굽기 스텝이 쓴다(아래). 이미지와 같은 3.12 로 맞춘다 — 산출물은 ONNX 라
       # 버전에 안 묶이지만, `python` 이라는 이름이 있어야 그 스텝이 돈다.
       - uses: actions/setup-python@v5
@@ -298,7 +294,7 @@ jobs:
         run: |
           az acr build \
             --registry vincacr \
-            --image vinc-hub:${{ github.sha }} \
+            --image "vinc-hub:$DEPLOY_SHA" \
             --image vinc-hub:latest \
             -f Dockerfile.hub .
 
@@ -365,7 +361,7 @@ jobs:
         run: |
           set -euo pipefail
           APP="--name vinc-hub -g vincsRG"
-          IMAGE="vincacr.azurecr.io/vinc-hub:${{ github.sha }}"
+          IMAGE="vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA"
           # ⚠ 여기서 실패하면 **허브가 내려간 채로 남는다** — 앞 단계가 구 리비전을
           # 이미 내렸기 때문이다. `set -e` 로 그냥 죽으면 az 오류만 남고, 지금 서비스가
           # 멈춰 있다는 사실도 되살리는 방법도 아무 데도 안 적힌다. 가장 위험한 창이라
@@ -460,9 +456,9 @@ jobs:
           # 근거: [[decision:vinc-encode-holds-one-replica]]
           az containerapp update \
             --name vinc-encode --resource-group vincsRG \
-            --image vincacr.azurecr.io/vinc-hub:${{ github.sha }} \
+            --image "vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA" \
             --min-replicas 1 --output none
-          echo "vinc-encode 갱신: ${{ github.sha }} (minReplicas 1)"
+          echo "vinc-encode 갱신: $DEPLOY_SHA (minReplicas 1)"
 
       - name: 두 앱이 같은 이미지인가 (인코더 공간 일치)
         # 위 스텝이 성공을 보고해도 갱신이 라이브에 반영됐는지는 별개다. 여기서 다시
@@ -690,9 +686,15 @@ jobs:
   #
   # `gh` 대신 REST 를 쓰는 이유는 셀프호스티드 러너에 gh 가 있다는 보장이 없어서고,
   # 호스티드 러너를 안 쓰는 이유는 청구가 1분부터 시작해서다(이 잡은 실패에만 돈다).
+  #
+  # 2026-09-26 부터 **보류**도 여기로 온다. 테스트 게이트가 CI 로 옮겨 가면서, CI 가
+  # 빨개 허브 변경이 안 나가는 것은 이 워크플로의 실패가 아니라 `plan` 의 판정이 됐다
+  # (런은 초록이다). 그대로 두면 2026-09-18 과 같은 모양으로 조용하다. 그래서
+  # `withheld` 가 차 있으면 초록 런에서도 이슈를 연다. 제목 머리가 같으므로 CI 가 다시
+  # 초록이 되어 그 커밋을 포함한 배포가 나가면 `close-report` 가 닫는다.
   report:
-    needs: [gate, build-and-deploy]
-    if: failure()
+    needs: [plan, build-and-deploy]
+    if: failure() || needs.plan.outputs.withheld != ''
     runs-on: [self-hosted, linux, vinc-local]
     permissions:
       contents: read
@@ -705,27 +707,42 @@ jobs:
           API: ${{ github.api_url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WHY: ${{ github.event_name }}
-          SHA: ${{ github.sha }}
-          GATE: ${{ needs.gate.result }}
+          # plan 이 고르기 전에 죽었으면 불러낸 커밋을 적는다.
+          SHA: ${{ needs.plan.outputs.sha || github.event.workflow_run.head_sha || github.sha }}
+          WITHHELD: ${{ needs.plan.outputs.withheld }}
+          PLAN: ${{ needs.plan.result }}
           DEPLOY: ${{ needs.build-and-deploy.result }}
         run: |
           set -uo pipefail
           python3 - > /tmp/issue.json <<'PYEOF'
           import json, os
           e = os.environ
-          sha, gate, deploy = e["SHA"], e["GATE"], e["DEPLOY"]
-          which = "게이트" if gate == "failure" else "빌드·배포"
-          body = f"""허브 배포가 실패했다. **허브는 이 실패 시점의 이미지로 남아 있다** —
+          sha, plan, deploy, held = e["SHA"], e["PLAN"], e["DEPLOY"], e["WITHHELD"]
+          failed = "failure" in (plan, deploy)
+          if held and not failed:
+              sha = held
+              body = f"""main 의 CI 가 빨개서 이 커밋의 허브 변경을 **내보내지 않았다**.
+          허브는 그 앞의 이미지로 남아 있다 — 배포가 실패한 것이 아니라 게이트가 막은 것이다.
+
+          - 실행: {e['RUN_URL']}
+          - 보류된 커밋: `{sha}`
+
+          CI 가 옳고 코드 쪽을 고쳐야 한다는 뜻이다. 고친 커밋의 CI 가 초록이 되면 그
+          커밋을 내보내는 배포가 저절로 돌고, 이 커밋을 포함하므로 이 이슈도 닫힌다."""
+          else:
+              which = "계획(plan)" if plan == "failure" else "빌드·배포"
+              held_line = f"\n- CI 빨강으로 보류된 커밋도 있다: `{held}`" if held else ""
+              body = f"""허브 배포가 실패했다. **허브는 이 실패 시점의 이미지로 남아 있다** —
           `api/**`·`vinc_mcp/**` 를 고쳐 머지해도 실제로는 안 나간다.
 
           - 실행: {e['RUN_URL']}
-          - 죽은 잡: **{which}** (gate={gate}, build-and-deploy={deploy})
+          - 죽은 잡: **{which}** (plan={plan}, build-and-deploy={deploy})
           - 무엇이 불렀나: `{e['WHY']}`
-          - 커밋: `{sha}`
+          - 커밋: `{sha}`{held_line}
 
           다음에 볼 것: 어느 스텝이 죽었는가. **exit 137 이면 메모리 부족이고**, 그
           자리는 보통 모델 굽기다(2026-09-18 에 그것으로 하루가 갔다 — VIN-73).
-          게이트라면 게이트가 옳고 코드 쪽을 고쳐야 한다는 뜻이다.
+          plan 이라면 CI 상태·az·git 중 하나가 답을 못 한 것이다(로그 첫 `::error::`).
 
           고친 뒤 Actions → hub-deploy → Run workflow 로 다시 돌린다."""
           print(json.dumps({"title": f"hub-deploy failed ({e['WHY']}, {sha[:7]})",
@@ -752,7 +769,10 @@ jobs:
   #
   # 러너·토큰·REST(curl) 는 `report` 와 같고 이유도 같다(그 잡의 주석이 근거다).
   close-report:
-    needs: [gate, build-and-deploy]
+    needs: [plan, build-and-deploy]
+    # plan 이 "내보낼 것 없음"이면 build-and-deploy 가 skip 되고 이 잡도 따라 skip 된다.
+    # 설령 돌더라도 SHA 가 비어 compare 가 실패하므로 아무것도 닫지 않는다 — 닫는 것은
+    # 실제로 나간 배포뿐이다.
     if: success()
     runs-on: [self-hosted, linux, vinc-local]
     # 이 런이 끝나야 다음 허브 배포가 줄에서 풀린다(워크플로 concurrency). 걸린 호출
@@ -773,7 +793,7 @@ jobs:
           API: ${{ github.api_url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WHY: ${{ github.event_name }}
-          SHA: ${{ github.sha }}
+          SHA: ${{ needs.plan.outputs.sha }}
         run: |
           set -uo pipefail
           # HTTP 는 `report` 처럼 curl 로, 판정은 python3 로 한다(러너의 jq 에 기대지 않는다).

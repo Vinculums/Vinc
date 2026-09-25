@@ -870,18 +870,20 @@ body {
 [data-shell] #shell { height: calc(100vh - var(--titlebar-h)); height: calc(100dvh - var(--titlebar-h)); }
 /* 타이틀바 = 로고 + 이름. 창 좌상단에서 제품을 말하는 자리는 여기 하나다. */
 .tb-title { display: flex; align-items: center; gap: .45rem; padding-left: .75rem; font-size: .72rem; font-weight: 600; letter-spacing: .03em; color: hsl(var(--caption-foreground)); }
-.tb-title .brand-logo {
-  width: .95rem; height: .95rem; flex: 0 0 auto;
-  /* 모노 마크를 mask 로 깔고 색은 여기서 준다 — 구 마크가 currentColor 를 상속받던
-     것과 같은 동작이고, 파일은 바깥(public/)에 남는다. `<img>` 로 바꾸지 말 것:
-     currentColor 가 img 경계를 못 넘어 검정이 된다.
-     vite 가 CSS url() 에도 base 를 붙인다(실측: 웹 빌드에서 <base>/vinc-mark-mono.svg
-     로 고쳐 쓴다). 그래서 절대경로 그대로 두면 셸·웹 두 빌드가 각자 맞게 나간다. */
+/* 로고 마크 — 타이틀바·설정 앱 정보가 같이 쓴다. 크기는 쓰는 자리가 준다.
+   모노 마크를 mask 로 깔고 색은 여기서 준다 — 구 마크가 currentColor 를 상속받던
+   것과 같은 동작이고, 파일은 바깥(public/)에 남는다. `<img>` 로 바꾸지 말 것:
+   currentColor 가 img 경계를 못 넘어 검정이 된다.
+   vite 가 CSS url() 에도 base 를 붙인다(실측: 웹 빌드에서 <base>/vinc-mark-mono.svg
+   로 고쳐 쓴다). 그래서 절대경로 그대로 두면 셸·웹 두 빌드가 각자 맞게 나간다. */
+.brand-logo {
+  display: inline-block; flex: 0 0 auto;
   color: hsl(var(--logo));
   background-color: currentColor;
   -webkit-mask: url(/vinc-mark-mono.svg) center / contain no-repeat;
   mask: url(/vinc-mark-mono.svg) center / contain no-repeat;
 }
+.tb-title .brand-logo { width: .95rem; height: .95rem; }
 .tb-controls { display: flex; }
 .tb-btn { width: 2.9rem; display: grid; place-items: center; border: none; background: none; color: hsl(var(--muted-foreground)); cursor: default; }
 .tb-btn svg { width: 11px; height: 11px; }
@@ -2472,8 +2474,19 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 영역 안에서는 첫 행의 위 여백을 없앤다(제목이 이미 간격을 만든다). */
 .opt-sec > :nth-child(2) { margin-top: .1rem; }
 .opt-sec .slider-row:last-child { margin-bottom: 0; }
-/* 패널 안의 탭은 설정 모달과 같은 규격을 쓰되, 폭이 좁으므로 좌우 여백만 줄인다. */
-.lg-tabs { margin: 0 0 .2rem; }
+/* 패널의 옵션/범례 탭.
+   ⚠ 설정의 `.settings-tab` 을 빌려 쓰지 말 것 — PR 393 이 그 규칙을 지우자 이 버튼이
+   브라우저 기본 버튼(흰 바탕·검은 글자)으로 떨어졌다. 이 자리의 규칙은 여기 있다.
+   여럿 중 하나 고르기라 그림은 `.seg .chip` · `.lnb-navrow` 와 같다(hover 는
+   muted-foreground 10%, 고른 칸은 ring 14%). `--muted` 로 칠하지 말 것: 다크에서
+   muted(7%)가 패널 유리면(card 10% × .78 ≈ 9%)보다 어두워 고른 칸이 안 보인다. */
+.lg-tabs { display: flex; gap: .15rem; flex-wrap: wrap; margin: 0 0 .2rem; }
+.lg-tab {
+  font: inherit; border: none; background: none; cursor: pointer;
+  padding: .4rem .7rem; border-radius: .5rem; color: hsl(var(--muted-foreground));
+}
+.lg-tab:hover { background: hsl(var(--muted-foreground) / .1); color: hsl(var(--foreground)); }
+.lg-tab.active { background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); font-weight: 600; }
 /* 옵션 밑에 붙는 해설 한 줄(배치가 무슨 순서로 세우는지). 위의 캡션(.hint)과 같은
    무게로 두면 둘 다 라벨처럼 읽히므로 한 단계 더 물러난다. */
 #view-lens-panel .hint.sub {
@@ -2964,8 +2977,10 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   color: hsl(var(--foreground)); font: inherit; font-size: .9375rem; font-weight: 500;
   text-align: left; cursor: pointer;
 }
-.settings-cat:hover { background: hsl(var(--muted) / .55); }
-.settings-cat.on { background: hsl(var(--muted)); font-weight: 600; }
+/* 고른 분류 = LNB 의 고른 행과 같은 알약(ring 14%). `--muted` 는 다크에서 레일 바탕
+   (surface-2 10%)보다 어두운 7% 라 고른 칸이 움푹 꺼져 거의 안 보였다. */
+.settings-cat:hover { background: hsl(var(--muted-foreground) / .1); }
+.settings-cat.on { background: hsl(var(--ring) / .14); font-weight: 600; }
 .settings-cat-space { flex: 1 1 auto; min-height: .5rem; }
 .settings-cat-badge {
   margin-left: auto; min-width: 1rem; height: 1rem; padding: 0 .22rem;
@@ -3008,6 +3023,14 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 .settings-build {
   font-size: 1.0625rem; font-variant-numeric: tabular-nums; margin: .5rem 0 1rem;
 }
+/* 앱 정보의 첫 줄 = 마크 + 빌드. 마크는 크기 단계(128·96·64·40) 중 64 이고 상자를
+   그림의 비율(viewBox 436×604)에 딱 맞춘다. 사이 여백 1.25rem 은 마크 폭(약 46px)의
+   25% 보다 넓다(design-hub/assets/logo/README.md 의 여백 규칙). */
+.settings-about-id {
+  display: flex; align-items: center; gap: 1.25rem; margin: .5rem 0 1.25rem;
+}
+.settings-about-id .brand-logo { height: 4rem; aspect-ratio: 436 / 604; }
+.settings-about-id .settings-build { margin: 0; }
 .settings-ver {
   flex: 0 0 auto; font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground));

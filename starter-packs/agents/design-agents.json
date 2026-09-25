@@ -12,7 +12,7 @@
       {
         "id": "concept:agent-designer",
         "type": "concept",
-        "title": "Agent role: designer",
+        "title": "Product designer",
         "domain": "vinc/agent",
         "tags": ["agent", "execute", "role"],
         "one_liner": "Token values in the token file, the reasons in the graph, and the consuming copies synced in the same session.",
@@ -40,7 +40,7 @@
       {
         "id": "concept:agent-design-reviewer",
         "type": "concept",
-        "title": "Agent role: design reviewer",
+        "title": "Design reviewer",
         "domain": "vinc/agent",
         "tags": ["agent", "verify", "role"],
         "one_liner": "Check contrast, token drift and untouched generated output. Report, never edit.",
@@ -65,7 +65,7 @@
       {
         "id": "concept:agent-design-researcher",
         "type": "concept",
-        "title": "Agent role: design researcher",
+        "title": "Design researcher",
         "domain": "vinc/agent",
         "tags": ["agent", "knowledge", "role"],
         "one_liner": "Turn interviews and usage findings into records attached to the concepts they are about. Never decide.",

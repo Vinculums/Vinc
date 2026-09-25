@@ -1150,7 +1150,9 @@ export async function renderView(el: HTMLElement) {
       : "legend";                       // 관점에 옵션이 없으면 범례만 남는다
     // 탭 형태는 **설정 모달과 같은 것**을 쓴다(발주자 지시 2026-08-05) — 같은 일
     // (여러 면 중 하나 고르기)을 하는 컨트롤이 화면마다 다른 모습이면 그때마다 다시
-    // 배워야 한다. `.settings-tabs` 가 이미 그 규격이라 클래스를 그대로 가져온다.
+    // 배워야 한다. 다만 클래스는 **자기 것**(`.lg-tab`)이다: 설정 쪽 `.settings-tab`
+    // 을 빌려 쓰다가 설정이 왼쪽 레일로 바뀌며(PR 393) 그 규칙이 지워지자 이 두 버튼이
+    // 브라우저 기본 버튼(흰 바탕)으로 떨어졌다(규칙은 app.css `.lg-tab`).
     // v2 — `?` = 설명 상시/한 줄 전환. 탭줄 오른쪽 끝(옵션 탭에서만 뜻이 있다).
     const qhelp = hasOpts && tab === "opts"
       ? `<button class="lens-qhelp${helpOn ? " active" : ""}" type="button"
@@ -1158,10 +1160,10 @@ export async function renderView(el: HTMLElement) {
            data-tip="${esc(COPY.ui.panel.helpTip)}" data-qhelp>?</button>`
       : "";
     const tabSeg = hasOpts
-      ? `<div class="lg-tabrow"><div class="settings-tabs lg-tabs" role="tablist">
-           <button class="settings-tab${tab === "opts" ? " active" : ""}" role="tab"
+      ? `<div class="lg-tabrow"><div class="lg-tabs" role="tablist">
+           <button class="lg-tab${tab === "opts" ? " active" : ""}" type="button" role="tab"
              data-tab="opts" aria-selected="${tab === "opts"}">${esc(COPY.ui.panel.options)}</button>
-           <button class="settings-tab${tab === "legend" ? " active" : ""}" role="tab"
+           <button class="lg-tab${tab === "legend" ? " active" : ""}" type="button" role="tab"
              data-tab="legend" aria-selected="${tab === "legend"}">${esc(COPY.ui.legend.title)}</button>
          </div>${qhelp}</div>`
       : "";
