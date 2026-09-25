@@ -296,3 +296,101 @@ class IdleTick(_Enabled):
         self.addCleanup(app.jobs.shutdown, drain=False)
         self.assertEqual(app.jobs._tick_s, app._snapshots.every / 10.0)
 
+
+
+class WriterFence(_Enabled):
+    """배포 중 되살아난 구 리비전이 **새 리비전 뒤에** 영속본을 덮지 못하는가.
+
+    ACA 는 단일 리비전 모드의 롤링 전환에서 방금 내린 구 리비전을 다시 띄우고, 그것은
+    1분쯤 뒤 종료 훅에서 최종 스냅샷을 쓴다. 번호가 큰 리비전이 자격을 가져갔으면
+    번호가 작은 쪽의 저장은 영속본을 건드리지 않아야 한다.
+    근거: [[record:aca-reboots-the-stopped-hub-revision-during-every-deploy-and-it-writes-a-late-final-snapshot-2026-09-25]]
+    """
+    OLD, NEW = "vinc-hub--0000230", "vinc-hub--0000231"
+
+    def setUp(self):
+        super().setUp()
+        self._rev = os.environ.get(persistence.REVISION_ENV)
+        self.addCleanup(self._restore_rev)
+
+    def _restore_rev(self):
+        if self._rev is None:
+            os.environ.pop(persistence.REVISION_ENV, None)
+        else:
+            os.environ[persistence.REVISION_ENV] = self._rev
+
+    def _as(self, revision):
+        os.environ[persistence.REVISION_ENV] = revision
+
+    def _save(self, payload: bytes, store=None) -> str:
+        Path(self.live).write_bytes(payload)
+        return persistence.save_snapshot(store or _FakeStore(self.live))
+
+    def _marker(self) -> str:
+        return Path(self.snap + persistence.WRITER_SUFFIX).read_text(encoding="utf-8").strip()
+
+    def test_off_without_a_revision(self):
+        os.environ.pop(persistence.REVISION_ENV, None)
+        self.assertEqual(persistence.claim_writer(), "off")
+        self.assertEqual(self._save(b"DESKTOP"), "ok")
+        self.assertFalse(os.path.exists(self.snap + persistence.WRITER_SUFFIX))
+
+    def test_the_stopped_revision_cannot_overwrite_after_the_new_one_claims(self):
+        self._as(self.OLD)
+        self.assertEqual(persistence.claim_writer(), "claimed")
+        self.assertEqual(self._save(b"FINAL-OF-OLD"), "ok")    # 배포 1단계의 정상 최종 스냅샷
+        self._as(self.NEW)
+        self.assertEqual(persistence.claim_writer(), "claimed")
+        self._as(self.OLD)                                     # 되살아난 구 리비전
+        self.assertEqual(persistence.claim_writer(), f"fenced: {self.NEW}")
+        self.assertEqual(self._save(b"ZOMBIE"), f"fenced: {self.NEW}")
+        self.assertEqual(Path(self.snap).read_bytes(), b"FINAL-OF-OLD")
+        self.assertFalse(os.path.exists(self.snap + persistence.PREV_SUFFIX),
+                         "막힌 쪽이 세대를 물려서도 안 된다")
+        self.assertEqual(self._marker(), self.NEW, "번호가 작은 쪽이 표식을 되돌리면 안 된다")
+
+    def test_the_new_revision_still_writes(self):
+        self._as(self.OLD)
+        persistence.claim_writer()
+        self.assertEqual(self._save(b"GEN1"), "ok")
+        self._as(self.NEW)
+        persistence.claim_writer()
+        self.assertEqual(self._save(b"GEN2"), "ok")
+        self.assertEqual(Path(self.snap).read_bytes(), b"GEN2")
+
+    def test_a_claim_during_the_copy_stops_the_swap(self):
+        """복사는 수십 초 걸린다. 그 사이에 가져간 자격도 막아야 한다."""
+        self._as(self.OLD)
+        persistence.claim_writer()
+        self.assertEqual(self._save(b"GEN1"), "ok")
+        test = self
+
+        class _ClaimMidCopy(_FakeStore):
+            def snapshot(self, dest_dir):
+                out = super().snapshot(dest_dir)
+                test._as(test.NEW)
+                persistence.claim_writer()
+                test._as(test.OLD)
+                return out
+
+        self.assertEqual(self._save(b"ZOMBIE", _ClaimMidCopy(self.live)), f"fenced: {self.NEW}")
+        self.assertEqual(Path(self.snap).read_bytes(), b"GEN1")
+        self.assertFalse(any(n.startswith(persistence.STAGE_PREFIX)
+                             for n in os.listdir(os.path.dirname(self.snap))),
+                         "막혀도 스테이징 찌꺼기는 치운다")
+
+    def test_the_same_revision_does_not_rewrite_the_marker(self):
+        self._as(self.NEW)
+        self.assertEqual(persistence.claim_writer(), "claimed")
+        before = os.stat(self.snap + persistence.WRITER_SUFFIX).st_mtime_ns
+        os.utime(self.snap + persistence.WRITER_SUFFIX, ns=(before - 10**9, before - 10**9))
+        self.assertEqual(persistence.claim_writer(), "claimed")
+        self.assertEqual(os.stat(self.snap + persistence.WRITER_SUFFIX).st_mtime_ns,
+                         before - 10**9)
+
+    def test_an_unreadable_marker_does_not_fence(self):
+        """표식을 못 읽으면 예전처럼 쓴다 — 닫힌 쪽으로 넘어지면 살아 있는 writer 가 멈춘다."""
+        Path(self.snap + persistence.WRITER_SUFFIX).write_text("hand-edited", encoding="utf-8")
+        self._as(self.OLD)
+        self.assertIsNone(persistence.newer_writer())
+        self.assertEqual(self._save(b"GEN1"), "ok")

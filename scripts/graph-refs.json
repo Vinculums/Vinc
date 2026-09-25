@@ -413,6 +413,7 @@
     "record:a-failure-reason-nothing-reads-is-not-an-error-message",
     "record:a-logo-ssot-that-reaches-nobody",
     "record:a-space-transfer-over-4mb-surfaced-as-a-logout-2026-09-18",
+    "record:aca-reboots-the-stopped-hub-revision-during-every-deploy-and-it-writes-a-late-final-snapshot-2026-09-25",
     "record:adding-episode-to-the-title-arm-is-a-pure-gain-2026-09-09",
     "record:agent-files-are-found-by-walking-up-from-cwd",
     "record:agent-steward-leaf-carried-the-column-without-in-domain-edges-2026-09-05",
