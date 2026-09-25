@@ -222,6 +222,72 @@ class DdlRacesReadersE2E(unittest.TestCase):
         self.assertGreater(reads[0], 0, "리더가 한 번도 못 읽었다 — 겹침을 검증하지 못했다")
         self.assertLess(time.monotonic() - t0, 25)
 
+    def test_apply_embeddings_runs_alone(self):
+        """적용 본문(ChunkVec 쓰기·메타 갱신) 전체가 배타다: 적용 중에는 읽기 문장이
+        하나도 돌지 않고, 그 사이에 온 읽기는 적용이 끝난 뒤에야 끝난다."""
+        from unittest import mock
+
+        from api import docstore as ds
+        from store.embedded_backend import DDL_GUARD
+        docs = [ds.put_doc(self.store, owner="user:a", title=f"E{i}",
+                           text=f"적용검색어 doc{i}\n\n" + "본문 둘. " * 60,
+                           max_chars=200)["doc_id"] for i in range(4)]
+        self.store.ensure_search_indexes(dim=4)
+        chunk_ids = {d: [r["id"] for r in self.store.run(
+            "MATCH (c:Chunk) WHERE c.doc_id=$d RETURN c.chunk_id AS id", {"d": d})]
+            for d in docs}
+
+        windows: list[tuple[float, float]] = []
+        inflight: list[int] = []
+        real = ds._apply_embeddings
+
+        def slow_apply(*a, **kw):
+            a0 = time.monotonic()
+            inflight.append(DDL_GUARD._readers)       # 배타 안 — 돌고 있는 읽기 수
+            time.sleep(0.15)                          # 읽기가 이 창에 부딪히게
+            out = real(*a, **kw)
+            inflight.append(DDL_GUARD._readers)
+            windows.append((a0, time.monotonic()))
+            return out
+
+        stop = threading.Event()
+        ops: list[tuple[float, float]] = []
+        errors: list[str] = []
+
+        def reader():
+            rv = self.store.reader_view()
+            try:
+                while not stop.is_set():
+                    t_req = time.monotonic()
+                    rv.fulltext_search("적용검색어", 5)
+                    ops.append((t_req, time.monotonic()))
+            except Exception as exc:
+                errors.append(f"{type(exc).__name__}: {exc}")
+            finally:
+                rv.close()
+
+        threads = [threading.Thread(target=reader) for _ in range(2)]
+        with mock.patch.object(ds, "_apply_embeddings", slow_apply):
+            for t in threads:
+                t.start()
+            time.sleep(0.1)
+            for rnd in range(3):
+                for d in docs:
+                    r = ds.apply_embeddings(self.store, d, {
+                        c: [[1.0, float(rnd), 0, 0]] for c in chunk_ids[d]})
+                    self.assertTrue(r["executed"], r)
+            stop.set()
+            for t in threads:
+                t.join(20)
+        self.assertEqual(errors, [])
+        self.assertEqual(set(inflight), {0}, "적용 중에 읽기 문장이 돌고 있었다")
+        # 적용 창과 시간이 겹친 읽기 = 창이 끝나기 전에 요청해 창이 열린 뒤에 끝난 것.
+        # 배타라면 그런 읽기는 전부 창이 **닫힌 뒤에야** 끝난다(창 안에서 끝난 것이 없다).
+        hits = [(q, e, a1) for q, e in ops for a0, a1 in windows if q < a1 and e > a0]
+        self.assertTrue(hits, "적용 창에 부딪힌 읽기가 없었다 — 막힘을 검증하지 못했다")
+        for q, e, a1 in hits:
+            self.assertGreaterEqual(e, a1, "적용 중에 읽기가 끝났다 — 배타가 아니다")
+
 
 if __name__ == "__main__":
     unittest.main()
