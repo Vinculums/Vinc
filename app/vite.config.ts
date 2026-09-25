@@ -35,6 +35,9 @@ const API_RE = new RegExp("^/(health|view|graph|ledger|recall|search|domains|lea
   // 관례·어휘(GM-8) — `conventions`(관례 읽기/재생성)와 `themes`/`types`(재가 대기
   // 목록·승인·거부·개명). 앱이 여태 어휘 라우트를 부른 적이 없어 빠져 있었다.
   + "|conventions|themes|types"
+  // 변경 표식(VIN-129) — 열린 화면이 12초마다 묻는다(`live.ts`). 빠지면 index.html 을
+  // 받아 JSON 파싱이 조용히 실패하고, 브라우저 dev 에서만 저절로 새로워지지 않는다.
+  + "|changes"
   + "|domain|evidence)(/|$|\\?)");
 
 export default defineConfig({

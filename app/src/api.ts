@@ -485,6 +485,8 @@ async function importPackInChunks(pack: any, owner: string, scope?: Scope,
 
 export const api = {
   health: () => call("/health"),
+  /** 변경 표식(VIN-129). 값은 비교만 한다: 같으면 그대로, 다르면 다시 읽는다(`live.ts`). */
+  changes: (owner: string): Promise<{ marker?: string }> => call("/changes", { owner }),
   viewL0: (owner: string) => call("/view", { owner }),
   //: `domains` 는 **주제 여럿**(쉼표 결합). 스코프는 하위 트리 포함이다 —
   //: `domains=vinc` 하나면 `vinc/design` 까지 함께 온다(api/query.normalize_domains).

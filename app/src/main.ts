@@ -7,6 +7,7 @@ import { openSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL, decideDataMode } from "./api";
 import { checkForUpdate } from "./update";
 import { mountSyncScheduler } from "./sync-scheduler";
+import { mountLiveRefresh, setLiveRefresher } from "./live";
 import { wireFileAssociations } from "./openfiles";
 import { installTooltip } from "./tooltip";
 import { mountTopbar, setViewHooks } from "./topbar";
@@ -123,6 +124,8 @@ async function route() {
   // 다시 등록한다. 표면이 자기 소멸을 감지하게 두는 대신 라우터가 명시적으로 끈다
   // (컨테이너가 남아 있어 표면 스스로는 떠난 줄을 알 수 없다).
   setViewHooks(null);
+  // 저절로 새로워지는 갱신(VIN-129)도 떠나는 표면을 부르지 않게 푼다. 새 표면이 다시 건다.
+  setLiveRefresher(null);
   // 좌측 트리의 착지 훅도 같이 끈다 — View 가 없으면 "그 노드로 날아가기"가
   // 성립하지 않으므로 문서 클릭은 해시 착지로 강등된다(lnb.openDoc).
   setLnbNavigator(null);
@@ -321,6 +324,9 @@ applyTheme();
     // (앱이 잠깐 떴다가 데이터 401 로 뒤늦게 리다이렉트되는 깜빡임 제거).
     if (!(await ensureWebAuth())) return;
   }
+  // 열린 화면이 저절로 새로워진다(VIN-129). 첫 화면보다 **먼저** 건다: 기준 표식을
+  // 데이터보다 먼저 읽어야 그 사이의 쓰기가 이미 본 것으로 묻히지 않는다.
+  mountLiveRefresh();
   route();
   // 자동 동기화(§8) — 화면을 그린 뒤에 건다. 조용히 돌고 실패해도 아무것도 안 알린다
   // (오프라인은 정상이다). 웹 Vinc 는 내부에서 no-op.
