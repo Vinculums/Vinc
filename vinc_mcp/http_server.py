@@ -39,7 +39,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import edverify, entitlement, tools
+from . import edverify, entitlement, tools, viewurl
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
 from .rpc import PROTOCOL_VERSIONS, Dispatcher
@@ -163,6 +163,12 @@ _UUID = (r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
          r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _UUID_RE = re.compile(r"\A" + _UUID + r"\Z")
 _SPACE_PATH_RE = re.compile(r"\A/t/(" + _UUID + r")(/.*)?\Z")
+
+#: `_auth_for` 의 세 번째 답. 붙여넣은 주소가 `?space=local`(데스크탑 로컬 모드의
+#: 그래프)을 가리킨다 — 닿을 수 없는 팀(None)과는 거절 문구가 다르다.
+#: 판정은 **동일성**(`is`)으로 한다. dict 인 것은 뒤의 게이트들이 `a.get(...)` 로
+#: 읽는 자리와 타입을 맞추려는 것뿐이다 — 거기 닿기 전에 돌려보낸다.
+_ON_DEVICE: dict = {"ok": False, "on_device": True}
 
 
 def split_space(path: str) -> tuple[str | None, str]:
@@ -1167,12 +1173,23 @@ class _Handler(BaseHTTPRequestHandler):
             # 키 경로·OAuth 경로·fail-closed 가 전부 그대로다. entitlement 캐시가
             # 왕복을 접으므로 같은 스페이스를 겨눈 배치는 계정을 한 번만 때린다.
             # 근거: [[decision:the-space-is-an-argument-and-the-default-is-personal]]
+            #
+            # `space` 를 안 실었으면 **붙여넣은 주소가 스페이스를 말한다**(`url` 의
+            # `?space=`). 사람이 채팅에 주소 하나 붙이면 어시스턴트가 스페이스를 하나씩
+            # 두드려 볼 필요 없이 한 번에 간다. 판정은 인자와 **같은 줄**을 탄다 —
+            # 주소에서 읽었다고 멤버십을 건너뛰지 않는다. 명시 인자가 있으면 그것이
+            # 이긴다(`seed_id` 가 url 의 시드를 이기는 것과 같은 규칙).
+            # 근거: [[decision:a-node-address-names-its-space]]
             def _auth_for(m):
                 if space or m.get("method") != "tools/call":
                     return auth
-                want = ((m.get("params") or {}).get("arguments") or {}).get("space")
-                want = str(want or "").strip().lower()
-                if not want or want == "personal":
+                args = (m.get("params") or {}).get("arguments") or {}
+                want = str(args.get("space") or "").strip().lower()
+                if not want and isinstance(args, dict) and args.get("url"):
+                    want = viewurl.space_of(str(args["url"]))
+                    if want == viewurl.LOCAL:
+                        return _ON_DEVICE
+                if not want or want == viewurl.PERSONAL:
                     return auth
                 if not _UUID_RE.match(want):
                     return None          # 모양이 틀린 것은 계정에 묻지도 않는다
@@ -1182,6 +1199,18 @@ class _Handler(BaseHTTPRequestHandler):
                 return got if got["ok"] else None
 
             pairs = [(m, _auth_for(m)) for m in msgs]
+            # 한 기기에만 있는 그래프의 주소다(데스크탑 로컬 모드). 이 허브에는 그
+            # 그래프가 없으므로 개인으로 떨어뜨리면 **같은 id 의 다른 노드**를 보여 줄
+            # 수 있다. 팀 id 가 아니라 조직을 훑을 거리도 없으니 이유를 그대로 말한다.
+            on_device = next((m for m, a in pairs if a is _ON_DEVICE), None)
+            if on_device is not None:
+                return self._json(200, {
+                    "jsonrpc": "2.0", "id": on_device.get("id"),
+                    "result": {"isError": True, "content": [{"type": "text",
+                               "text": "that address points at a graph kept on one "
+                                       "device (the desktop app in local mode), which "
+                                       "this hosted connector cannot read. Use the "
+                                       "desktop app's own connector on that device."}]}})
             # 닿을 수 없는 스페이스는 **전부 같은 답**이다 — 모르는 팀·비멤버·제명·
             # 정지·모양 오류가 갈리면 id 를 추측해 조직을 훑을 수 있다(팀 주소가 404
             # 하나로 답하는 것과 같은 이유). 여기서는 도구 결과 봉투라 isError 다.

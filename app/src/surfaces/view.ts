@@ -1,6 +1,6 @@
 import Graph from "graphology";
 import Sigma from "sigma";
-import { api, cfg, docMidWrite, storeDownReason, type GraphEdge, type GraphNode,
+import { api, cfg, docMidWrite, spaceName, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
 import { absoluteViewUrl, formatViewUrl } from "../view-url";
@@ -2128,7 +2128,8 @@ export async function renderView(el: HTMLElement) {
 
     const q = <T extends HTMLElement>(s: string) => card.body.querySelector<T>(s);
     const url = (depth: number) =>
-      absoluteViewUrl({ kind: "node", id: nd.id }, { depth, viewpoint: curPrefs().view });
+      absoluteViewUrl({ kind: "node", id: nd.id }, { depth, viewpoint: curPrefs().view },
+                      spaceName());
 
     // 행동은 응답과 무관하므로 **지금** 묶는다. 늦게 묶으면 응답이 늦거나 카드가
     // 교체될 때 통째로 안 묶인다(실측으로 한 번 물렸다 — 관계가 통째로 비었다).
@@ -2552,7 +2553,8 @@ export async function renderView(el: HTMLElement) {
   function nodeAskItems(nd: N3, deg: number, docs: number): AskItem[] {
     const V = COPY.ui.viewx;
     const at = (depth: number) => absoluteViewUrl({ kind: "node", id: nd.id },
-                                                  { depth, viewpoint: curPrefs().view });
+                                                  { depth, viewpoint: curPrefs().view },
+                                                  spaceName());
     const items: AskItem[] = [
       { name: V.askExplain, sub: V.askExplainSub, body: V.askExplainBody, url: at(1) },
       { name: V.askCompare, sub: V.askCompareSub(deg), body: V.askCompareBody, url: at(SHARE_DEPTH) },
@@ -2566,7 +2568,8 @@ export async function renderView(el: HTMLElement) {
   /** 문서에서 여는 셋(2026-09-10 신설). 주소는 `kind: "doc"` — 이미 있던 갈래다. */
   function docAskItems(docId: string): AskItem[] {
     const V = COPY.ui.viewx;
-    const url = absoluteViewUrl({ kind: "doc", id: docId }, { viewpoint: curPrefs().view });
+    const url = absoluteViewUrl({ kind: "doc", id: docId }, { viewpoint: curPrefs().view },
+                                spaceName());
     return [
       { name: V.askDocSum, sub: V.askDocSumSub, body: V.askDocSumBody, url },
       { name: V.askDocConcepts, sub: V.askDocConceptsSub, body: V.askDocConceptsBody, url },

@@ -368,6 +368,35 @@ export function confirmDestructive(message: string, confirmLabel: string,
   });
 }
 
+/** 알림 한 줄과 확인 버튼 하나. 고를 것이 없는 자리(무엇이 일어났는지만 말한다)라
+ *  `confirmDestructive` 의 두 버튼을 빌리지 않는다. `message` 는 텍스트로 넣는다. */
+export function showNotice(message: string, okLabel: string): Promise<void> {
+  return new Promise((resolve) => {
+    const el = document.createElement("div");
+    el.className = "sheet-scrim sheet-center";
+    el.innerHTML = `
+      <div class="sheet" role="alertdialog" aria-modal="true">
+        <div class="sheet-body" style="padding-top:var(--space-4,1rem)">
+          <p style="margin:0">${esc(message)}</p>
+        </div>
+        <div class="sheet-foot">
+          <span class="sheet-gap"></span>
+          <button class="btn" id="nt-ok">${esc(okLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    const close = wireDialogMotion(el, () => done());
+    const done = () => {
+      document.removeEventListener("keydown", onKey);
+      close(() => resolve());
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") done(); };
+    document.addEventListener("keydown", onKey);
+    el.querySelector("#nt-ok")!.addEventListener("click", () => done());
+    (el.querySelector("#nt-ok") as HTMLButtonElement).focus();
+  });
+}
+
 /** 텍스트 입력 시트(S2 도메인 이름 변경 등). resolve(문자열) = 확인, null = 취소.
  *  세 번째 버튼(extraLabel)을 주면 그 라벨로 **빈 문자열**을 돌려준다 — 도메인
  *  "미분류로 내리기"처럼 값을 비우는 선택지에 쓴다. */

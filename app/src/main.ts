@@ -4,7 +4,8 @@ import { icon } from "./icons";
 import { renderView } from "./surfaces/view";
 import { renderSearch } from "./surfaces/search";
 import { openSettings } from "./surfaces/settings";
-import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL, decideDataMode } from "./api";
+import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL, decideDataMode,
+         adoptSpaceFromAddress } from "./api";
 import { checkForUpdate } from "./update";
 import { mountLiveRefresh, setLiveRefresher } from "./live";
 import { wireFileAssociations } from "./openfiles";
@@ -12,7 +13,7 @@ import { installTooltip } from "./tooltip";
 import { mountTopbar, setViewHooks } from "./topbar";
 import { mountLnb, setLnbNavigator, repaintLnb } from "./lnb";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
-import { wireScrimDismiss } from "./components";
+import { wireScrimDismiss, showNotice } from "./components";
 import { blocksSurfaceShortcuts } from "./keys";
 import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
 
@@ -323,10 +324,19 @@ applyTheme();
     // (앱이 잠깐 떴다가 데이터 401 로 뒤늦게 리다이렉트되는 깜빡임 제거).
     if (!(await ensureWebAuth())) return;
   }
+  // 주소가 스페이스를 들고 왔으면(`?space=`) 그 스페이스로 연다. 데이터를 처음 읽기
+  // **전**이어야 한다 — 뒤에 바꾸면 첫 화면이 옛 스페이스로 그려진 채 남는다.
+  // 근거: [[decision:a-node-address-names-its-space]]
+  const refusedSpace = await adoptSpaceFromAddress();
   // 열린 화면이 저절로 새로워진다(VIN-129). 첫 화면보다 **먼저** 건다: 기준 표식을
   // 데이터보다 먼저 읽어야 그 사이의 쓰기가 이미 본 것으로 묻히지 않는다.
   mountLiveRefresh();
   route();
+  if (refusedSpace) {
+    const U = COPY.ui.settingsUi;
+    void showNotice(refusedSpace === "local" ? U.spaceLinkLocal : U.spaceLinkRefused,
+                    U.spaceLinkOk);
+  }
   // 계속 도는 동기화는 없다(VIN-130). 계정 모드는 계정 그래프를 직접 보고, 로컬 모드의
   // 그래프는 고른 폴더에만 있다. 데이터는 설정에서 모드를 바꿀 때만 옮긴다(storage-mode).
   // 첫 화면을 그린 뒤 조용히 업데이트 확인(비차단; 셸 아니면 no-op).

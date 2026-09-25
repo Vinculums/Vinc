@@ -877,6 +877,11 @@ const EN = {
       spacePersonal: "Personal",
       spaceHint: "Which graph you are working in. Every screen follows this.",
       spaceNone: "You are not in an active team yet.",
+      // 붙여넣은 주소(`?space=`)로 열었는데 그 공간을 못 여는 경우.
+      // 근거: [[decision:a-node-address-names-its-space]]
+      spaceLinkRefused: "This link is from a space you are not a member of, so your current space stays open.",
+      spaceLinkLocal: "This link points to a graph kept on one device (the desktop app in local mode), so it cannot open here.",
+      spaceLinkOk: "OK",
     },
     palette: {
       typeCommand: "Type a command…", noCommands: "No commands.",
@@ -1673,6 +1678,9 @@ const KO: Deck = {
       spacePersonal: "개인",
       spaceHint: "지금 작업 중인 그래프예요. 모든 화면이 여기를 따라요",
       spaceNone: "아직 참여 중인 팀이 없어요",
+      spaceLinkRefused: "참여하지 않은 공간의 링크라서 지금 공간을 그대로 열었어요",
+      spaceLinkLocal: "한 기기에만 저장된 그래프(데스크톱 앱의 로컬 모드)를 가리키는 링크라서 여기서는 열 수 없어요",
+      spaceLinkOk: "확인",
     },
     palette: {
       typeCommand: "명령 입력…", noCommands: "맞는 명령이 없어요",

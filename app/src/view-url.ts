@@ -104,9 +104,24 @@ export function parseViewUrl(
     : { ...none, depth, viewpoint };
 }
 
-/** 복사해서 건넬 절대 주소. 해시만 주면 받는 쪽이 어느 설치인지 모른다. */
-export function absoluteViewUrl(
-  sel: ViewSelection, opts: { depth?: number; viewpoint?: string } = {},
+/** 건넬 주소 한 벌 — 설치 자리(`base`) + 스페이스 + 해시. DOM 을 안 읽는 순수 함수라
+ *  `dev/view-url-check.ts` 가 브라우저 없이 부른다(이 파일이 import 0 인 이유와 같다).
+ *
+ *  스페이스는 해시 **앞** 쿼리로 싣는다(`?space=personal` · 팀 id · `local`). 해시
+ *  안에 두면 위의 급소 둘에 걸려 구버전 파서가 조용히 틀리고, 쿼리는 둘 다 지나친다.
+ *  근거: [[decision:a-node-address-names-its-space]] */
+export function viewAddress(
+  base: string, space: string, sel: ViewSelection,
+  opts: { depth?: number; viewpoint?: string } = {},
 ): string {
-  return location.origin + location.pathname + formatViewUrl(sel, opts);
+  return base + "?space=" + enc(space) + formatViewUrl(sel, opts);
+}
+
+/** 복사해서 건넬 절대 주소. 해시만 주면 받는 쪽이 어느 설치인지 모른다.
+ *  `space` 는 **필수**다 — 빠뜨린 호출이 컴파일되면 스페이스 없는 주소가 다시 나간다.
+ *  호출부는 `api.spaceName()` 을 넘긴다(여기서 import 하지 않는 것은 위 주석대로). */
+export function absoluteViewUrl(
+  sel: ViewSelection, opts: { depth?: number; viewpoint?: string }, space: string,
+): string {
+  return viewAddress(location.origin + location.pathname, space, sel, opts);
 }

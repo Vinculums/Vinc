@@ -77,8 +77,8 @@ def test_search_maps_rows_and_nodes_to_citable_results():
     assert [r["id"] for r in out["results"]] == ["doc:vinc.plan.x", "concept:vinc-mcp"]
     assert out["results"][0]["title"] == "Listing plan"
     assert out["results"][1]["title"] == "Vinc MCP server"
-    assert out["results"][0]["url"] == "https://vincs.io/#view/doc/vinc.plan.x"
-    assert out["results"][1]["url"] == "https://vincs.io/#view/trace/concept:vinc-mcp"
+    assert out["results"][0]["url"] == "https://vincs.io/app/?space=personal#view/doc/vinc.plan.x"
+    assert out["results"][1]["url"] == "https://vincs.io/app/?space=personal#view/trace/concept:vinc-mcp"
 
 
 def test_search_without_a_doc_title_falls_back_to_the_id_not_the_snippet():
@@ -135,11 +135,11 @@ def test_fetch_reads_a_document_and_a_node():
     doc = tools.call("fetch", {"id": "doc:vinc.plan.x"}, b, allow_target=False)
     assert doc["id"] == "doc:vinc.plan.x"
     assert doc["title"] == "Plan" and doc["text"] == "body"
-    assert doc["url"] == "https://vincs.io/#view/doc/vinc.plan.x"
+    assert doc["url"] == "https://vincs.io/app/?space=personal#view/doc/vinc.plan.x"
     node = tools.call("fetch", {"id": "concept:vinc-mcp"}, b, allow_target=False)
     assert node["title"] == "Vinc MCP server"
     assert "A connector." in node["text"] and "quoted" in node["text"]
-    assert node["url"] == "https://vincs.io/#view/trace/concept:vinc-mcp"
+    assert node["url"] == "https://vincs.io/app/?space=personal#view/trace/concept:vinc-mcp"
 
 
 def _fetch_missing(method, path, params, body):

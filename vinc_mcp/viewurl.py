@@ -22,6 +22,13 @@
     #view/doc/<doc-id>              문서
     …/as/<viewpoint>                관점. **도구는 무시한다** — 화면의 것이다
 
+스페이스는 해시가 아니라 **해시 앞의 쿼리**에 탄다: `…/app/?space=<id>#view/…`.
+값은 `personal` · 팀 id(uuid) · `local`(이 기기에만 있는 그래프) 셋 중 하나다.
+해시 안에 두지 않은 이유: 첫 세그먼트는 예약어가 아니면 주제로 읽히고(아래 급소),
+꼬리는 `/d<n>` 판정을 가린다 — 어느 쪽이든 구버전 파서가 조용히 틀린다. 쿼리는
+구버전 앱도 이 파서도 **읽지 않고 지나간다**.
+근거: [[decision:a-node-address-names-its-space]]
+
 급소 둘, 둘 다 실측에서 나왔다:
 
   · `as` 는 **탐색으로** 찾는다(`parts.indexOf`). 그래서 뒤에 세그먼트를 붙여도
@@ -33,7 +40,7 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote
 
 #: 첫 세그먼트가 이것들이면 주제 목록이 아니라 지시어다. **새 형태를 더할 때 여기부터**
 #: — 빠뜨리면 그 키워드가 주제 이름이 되고, 아무 오류 없이 빈 화면이 나온다.
@@ -56,7 +63,30 @@ GRAMMAR: tuple[str, ...] = (
     "#view/doc/vinc.spec.dataplane",
     "#view/as/2d",
     "#view/trace/concept:x/d2/as/timeline",
+    # 스페이스를 실은 전체 주소 — 복사 버튼이 실제로 만드는 모양이다.
+    "https://vincs.io/app/?space=personal#view/trace/concept:x/d1",
+    "https://vincs.io/app/?space=0198c0de-1111-7222-8333-444455556666#view/doc/vinc.spec.dataplane",
+    "http://tauri.localhost/?space=local#view/trace/concept:x/d1/as/2d",
 )
+
+
+#: 주소가 가리킬 수 있는 스페이스 이름. 팀은 id(uuid)로 온다.
+PERSONAL, LOCAL = "personal", "local"
+
+
+def space_of(url) -> str:
+    """주소의 `?space=` 값. 없으면 "". 소문자로 접어 돌려준다.
+
+    판정(팀 id 모양이 맞나·멤버인가)은 여기서 안 한다 — 그건 스페이스 인자와 같은
+    자리(허브의 `_auth_for`)가 한다. 여기서 흉내 내면 판정표가 둘이 된다."""
+    if not isinstance(url, str):
+        return ""
+    head = url.split("#", 1)[0]          # 해시 안의 `?` 는 쿼리가 아니다
+    if "?" not in head:
+        return ""
+    query = head.split("?", 1)[1]
+    got = parse_qs(query).get("space") or [""]
+    return got[0].strip().lower()
 
 
 def parse(url: str) -> dict:
