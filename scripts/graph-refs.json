@@ -369,6 +369,7 @@
     "concept:app-narrow-window-contract",
     "concept:tool-response-disclosure",
     "decision:a-gate-whose-rule-and-exam-share-an-author-ships-off",
+    "decision:a-node-keeps-its-own-colour-in-every-state",
     "decision:a-selection-becomes-an-address-you-paste",
     "decision:account-is-a-path-not-a-wall",
     "decision:agent-deploy-ratified-2026-09-11",

@@ -9,7 +9,6 @@ import { icon } from "../icons";
 import { palette as signal, hexStr, type ThemeMode } from "../theme";
 import { tintMap } from "../view-tint";
 import type { ViewPrefs } from "../view-prefs";
-import { recede } from "../recede";
 import { edgeKey, type Spot } from "../spotlight";
 import { markTexture } from "./view-planar";
 
@@ -249,7 +248,10 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   /** 노드 잉크. 주제 틴트를 끄면 모노크롬 잉크 그대로다(**기본은 켬** — 2026-08-16
    *  발주자 지시로 뒤집혔다). 초점은 틴트를 타지 않는다 — 초점색은 "지금 초점" 하나만
    *  뜻하므로 주제가 덮으면 안 된다. */
-  let tints = prefs.domainTint ? tintMap(shown.map((n) => n.domain), mode()) : null;
+  //: 색상표는 **받은 노드 전부**로 짓는다(`shown` 이 아니다). 색은 주제의 순위로 매겨
+  //: 지므로, 고아 숨김으로 주제 하나가 빠지면 나머지 주제의 색이 한 칸씩 밀려 3D·
+  //: 타임라인·노드 카드와 같은 주제가 다른 색이 된다.
+  let tints = prefs.domainTint ? tintMap(nodes.map((n) => n.domain), mode()) : null;
   const inkOf = (n: GraphNode) => {
     if (n.id === o.markId) return point();
     return tints?.get((n.domain || "").trim()) ?? ink();
@@ -366,9 +368,6 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   let spot: Spot | null = null;
   const focusId = () => hovered ?? gathered ?? landed;
   const keepOf = (id: string) => new Set([id, ...(nbr.get(id) || [])]);
-  //: 물러남 값은 마운트마다 한 번만 읽는다 — `getComputedStyle` 은 레이아웃 읽기라
-  //: 리듀서(노드마다·refresh 마다 불린다) 안에서 부를 것이 아니다(recede.ts 머리말).
-  const recedeNode = recede("node");
   /** 시간 커서. `null` = 전량. 리듀서가 매 프레임 읽으므로 Set 조회 하나로 끝난다. */
   let timeVisible: Set<string> | null = null;
   sigma.setSetting("nodeReducer", (id, data) => {
@@ -388,9 +387,10 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       return id === focus ? { ...data, ...lab, color: point(), zIndex: 1 }
                           : { ...data, ...lab };
     }
-    // 물러남은 **그 노드 자신의 색**을 배경 쪽으로 섞는다. `ink()` 를 박아 두던
-    // 동안에는 초점색이나 주제 틴트를 단 노드가 물러나면서 잉크로 바뀌었다.
-    return { ...data, color: mixFloor(data.color, bg, recedeNode), label: "" };
+    // 물러나는 것은 **이름뿐**이다. 노드는 제 색 그대로 두고, 남은 것은 엣지와
+    // 라벨이 말한다 — 몸통을 배경 쪽으로 섞던 동안 같은 노드가 상태에 따라 진한 색과
+    // 옅은 틴트를 오갔다. 근거: [[decision:a-node-keeps-its-own-colour-in-every-state]]
+    return { ...data, label: "" };
   });
   // ── Bring & Go (`edges: "bring"`) — 선을 안 그리고 이웃을 **데려온다** ──────
   //
@@ -894,7 +894,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
         ["nodeScale", "edgeScale", "arrows", "labels", "domainTint", "size", "spread", "railW"]);
       if (!changed.every((k) => ok.has(k))) return false;
       prefs = np;
-      tints = prefs.domainTint ? tintMap(shown.map((n) => n.domain), mode()) : null;
+      tints = prefs.domainTint ? tintMap(nodes.map((n) => n.domain), mode()) : null;
       for (const n of shown) {
         if (!g.hasNode(n.id)) continue;
         g.setNodeAttribute(n.id, "size", sizeOf(n));
