@@ -13,7 +13,7 @@
  *  아무것도 없었다. 아래 EXPECT 는 파이썬 `GRAMMAR` 와 **같은 형태**를 적은 것이고,
  *  둘이 갈라지면 여기서 먼저 소리가 난다. */
 import assert from "node:assert/strict";
-import { formatViewUrl, parseViewUrl, KEYWORDS } from "../src/view-url.ts";
+import { formatViewUrl, parseViewUrl, viewAddress, KEYWORDS } from "../src/view-url.ts";
 import type { ViewSelection } from "../src/view-url.ts";
 
 let n = 0;
@@ -91,5 +91,26 @@ for (const junk of ["", "https://vincs.io/", "#search/x", "쓰레기"]) {
   assert.equal(parseViewUrl(junk).sel.kind, "all", `junk ${junk}`);
 }
 ok("못 읽는 입력은 조용히 전체 지도다");
+
+// ── 8. 건넬 주소는 스페이스를 해시 **앞** 쿼리로 싣는다 ───────────────────────
+// 해시 안에 두면 첫 조각은 주제로, 꼬리는 깊이 판정을 가리는 것으로 읽힌다(급소 둘).
+// 파서는 `#` 부터 읽으므로 쿼리가 선택을 흔들지 않아야 한다. 파이썬 쪽은
+// `viewurl.space_of` 가 같은 쿼리를 읽는다(tests/test_address_carries_space.py).
+// 근거: [[decision:a-node-address-names-its-space]]
+{
+  const team = "0198c0de-1111-7222-8333-444455556666";
+  for (const [space, want] of [["personal", "?space=personal#"], [team, `?space=${team}#`],
+                               ["local", "?space=local#"]] as const) {
+    const u = viewAddress("https://vincs.io/app/", space,
+                          { kind: "node", id: "concept:x" }, { depth: 1, viewpoint: "2d" });
+    assert.ok(u.startsWith("https://vincs.io/app/" + want), `space ${space}: ${u}`);
+    const back = parseViewUrl(u);
+    assert.equal(back.sel.kind, "node");
+    assert.equal((back.sel as any).id, "concept:x");
+    assert.equal(back.depth, 1);
+    assert.equal(back.viewpoint, "2d");
+  }
+  ok("스페이스 3종이 해시 앞에 실리고 선택은 그대로 읽힌다");
+}
 
 console.log(`\nview-url: ${n}개 검사 통과`);

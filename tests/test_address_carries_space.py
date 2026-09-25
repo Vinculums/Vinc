@@ -226,10 +226,26 @@ class AppSourceTests(unittest.TestCase):
 
     def test_복사하는_주소에_스페이스가_실린다(self):
         src = (APP / "view-url.ts").read_text(encoding="utf-8")
-        body = src[src.index("export function absoluteViewUrl"):]
-        self.assertIn('"?space=" + enc(spaceName())', body)
+        body = src[src.index("export function viewAddress"):]
+        self.assertIn('"?space=" + enc(space)', body)
         # 쿼리는 해시 **앞**이다 — 해시 뒤에 붙이면 파서 둘이 주제로 읽는다.
         self.assertLess(body.index('"?space="'), body.index("formatViewUrl(sel, opts)"))
+        # absoluteViewUrl 은 스페이스를 **필수**로 받는다(빠뜨린 호출이 컴파일되면 안 된다).
+        self.assertRegex(src, r"export function absoluteViewUrl\([^)]*\bspace: string\b")
+
+    def test_view_url_ts_는_import_0_이다(self):
+        """`dev/view-url-check.ts` 가 브라우저 없이 이 파일을 node 로 직접 돌린다.
+        무엇이든 import 하면 CI 의 Dev checks 가 ERR_MODULE_NOT_FOUND 로 죽는다
+        (2026-09-26 PR 425 에서 실제로 죽었다)."""
+        src = (APP / "view-url.ts").read_text(encoding="utf-8")
+        self.assertNotRegex(src, r"(?m)^\s*import\s")
+
+    def test_복사하는_자리가_전부_스페이스를_넘긴다(self):
+        src = (APP / "surfaces" / "view.ts").read_text(encoding="utf-8")
+        calls = src.count("absoluteViewUrl(")
+        self.assertGreater(calls, 0)
+        self.assertEqual(src.count("spaceName())"), calls,
+                         "absoluteViewUrl 호출마다 spaceName() 을 넘겨야 한다")
 
     def test_스페이스_이름은_셋이다(self):
         src = (APP / "api.ts").read_text(encoding="utf-8")
