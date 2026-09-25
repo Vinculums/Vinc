@@ -504,6 +504,11 @@ const EN = {
       edFmLabel: "Properties",
       railTitle: "Node detail",
       railClose: "Close",
+      // 문서 열 크기 전환(글자 단추). 지금 상태가 아니라 **누르면 갈 곳**을 말한다.
+      railFull: "Full width",
+      railSide: "Side panel",
+      // 노드 상세의 속성(props) 절 제목.
+      propsTitle: "Properties",
       // 복사 되먹임 — 실패해도 오류로 키우지 않는다(주소는 어차피 주소창에 있다).
       // settings 의 MCP 주소 복사와 같은 처리다.
       copyLinkDone: "Copied",
@@ -1354,6 +1359,9 @@ const KO: Deck = {
       edFmLabel: "속성",
       railTitle: "노드 상세",
       railClose: "닫기",
+      railFull: "크게 보기",
+      railSide: "작게 보기",
+      propsTitle: "속성",
       copyLinkDone: "복사했습니다",
       copyLinkFail: "복사하지 못했습니다",
       cardZoomIn: "가까이 보기",

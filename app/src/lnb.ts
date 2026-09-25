@@ -268,6 +268,11 @@ const AGENT_ID_PREFIX = "concept:agent-";
 const AGENT_ROSTER_CONCEPT = "concept:agent-orchestration";
 const isRoleId = (id: string): boolean =>
   id.startsWith(AGENT_ID_PREFIX) && id !== AGENT_ROSTER_CONCEPT;
+/** 문서 열(View)도 역할을 알아본다 — 판별을 두 벌 두지 않으려고 내보낸다. */
+export const isAgentRoleId = isRoleId;
+/** 표시용 역할 이름. 옛 제목의 접두("Agent role:")를 뗀다 — 새로 쓰는 역할은 접두가
+ *  없다([[vinc.canon.agent-roles §2]]). */
+export const stripRolePrefix = (s: string): string => s.replace(/^Agent role:\s*/i, "");
 
 /** 여섯 팀의 화면 순서. 이름은 `props.team` 정본이고, 순서는 로스터 v2 가
  *  비준한 그대로다. 여기 일곱 번째 팀을 만들지 않는다.
@@ -304,7 +309,7 @@ function strProp(props: Record<string, unknown> | undefined, key: string): strin
 function roleTitle(n: GraphRoleNode): string {
   const job = strProp(n.props, "job_title");
   if (job) return job;
-  return String(n.label || n.id).replace(/^Agent role:\s*/i, "");
+  return stripRolePrefix(String(n.label || n.id));
 }
 
 /** 역할 사이 엣지 → from / then / beside. 계산은 `vinc_mcp.roles.works_with` 와
@@ -846,7 +851,9 @@ function spinCaret(key: string, open: boolean): void {
 async function openDoc(docId: string, nodeId: string, domain?: string) {
   if (nodeId) {
     if (navigate) navigate(nodeId, domain, docId);
-    else location.hash = `#view/trace/${encodeURIComponent(nodeId)}`;
+    // View 밖에서는 해시로 착지한다. `read` 는 trace 와 같되 넓은 문서 열로 연다
+    // (LNB 에서 고른 것은 그렇게 연다 — view.ts openFromNav).
+    else location.hash = `#view/read/${encodeURIComponent(nodeId)}/${encodeURIComponent(docId)}`;
     return;
   }
   // 개념과 아직 이어지지 않은 문서는 지도에 자리가 없다 — 없는 자리를 지어내는 대신
@@ -934,7 +941,7 @@ export function mountLnb() {
       const id = nd.dataset.nodeid || "";
       if (!id) return;
       if (navigate) navigate(id, nd.dataset.dom || "");
-      else location.hash = `#view/trace/${encodeURIComponent(id)}`;
+      else location.hash = `#view/read/${encodeURIComponent(id)}`;
       active = { domain: nd.dataset.dom || "", nodeId: id };
       paint();
       // 좁은 창에서는 고른 것이 서랍 **뒤**에 열린다 — 닫아서 보여 준다.

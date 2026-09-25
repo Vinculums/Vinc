@@ -606,6 +606,13 @@ body {
   transform: translateX(calc(101% + var(--shell-gap))); opacity: 0; pointer-events: none;
 }
 #docpane[hidden] { display: none; }
+/* 넓게 = 지도 칸 전체(LNB 에서 고른 것). 폭 그립은 뜻이 없어 JS 가 숨기고, 렌즈
+   패널은 이 열을 비켜서지 않고 위에 뜬다(view.ts positionPanel). */
+#shell[data-doc-size="full"] #docpane { width: calc(100% - var(--shell-gap) * 2); }
+/* 넓어져도 글줄은 읽는 폭에 둔다 — 머리만 끝까지 가고 나머지는 가운데 한 단이다. */
+#shell[data-doc-size="full"] #view-detail > :not(.rail-head) {
+  max-width: 52rem; margin-inline: auto;
+}
 @media (prefers-reduced-motion: reduce) { #docpane { transition: opacity var(--dur-out) ease; } }
 .pane-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 /* 접힘 = 폭 0. **내용은 살아 있다**(닫힘과 다른 상태다) — 그래서 테두리만 남지 않게
@@ -1874,6 +1881,34 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   border-radius: var(--radius-sm, .625rem);
 }
 .rail-x:hover { background: hsl(var(--muted-foreground) / .14); color: hsl(var(--foreground)); }
+.rail-head-acts { display: flex; align-items: center; gap: .15rem; }
+/* 크기 전환은 글자 단추라 ✕ 보다 작게 둔다 — 머리의 주인공은 캡션이다. */
+.rail-size { font-size: .72rem; padding: .25rem .5rem; }
+
+/* 속성(props) — 키는 저자가 쓴 이름 그대로(등폭 캡션), 값은 생긴 대로. 옆 칸에서는
+   키가 값 위에 서고, 넓은 열에서는 두 칸으로 선다. */
+.props-dl { margin: 0; }
+.props-row { padding: .45rem 0; border-bottom: 1px solid hsl(var(--border) / .55); }
+.props-row:last-child { border-bottom: 0; }
+.props-row > dt {
+  margin: 0 0 .15rem; font-family: var(--font-mono); font-size: .72rem;
+  color: hsl(var(--caption-foreground));
+}
+.props-row > dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.props-row .props-list { margin: .05rem 0; padding-left: 1.1rem; }
+.props-row .props-list > li + li { margin-top: .15rem; }
+.props-row .props-dl { margin: .15rem 0 0; padding-left: .75rem;
+  border-left: 1px solid hsl(var(--border) / .7); }
+.props-row .props-scalar { font-variant-numeric: tabular-nums; }
+.props-row .props-json { margin: .2rem 0 0; font-size: .75rem; white-space: pre-wrap; }
+.props-row .doc-render > :first-child { margin-top: 0; }
+.props-row .doc-render > :last-child { margin-bottom: 0; }
+#shell[data-doc-size="full"] .node-props > .props-dl > .props-row {
+  display: grid; grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr); gap: 1rem;
+}
+#shell[data-doc-size="full"] .node-props > .props-dl > .props-row > dt { margin: .1rem 0 0; }
+/* 넓은 열의 연결 절 — 카드의 연결 줄과 같은 줄을 쓰되 글자는 본문 크기로. */
+.pane-links .link-title { font-size: inherit; }
 /* 수치 행 — 이름/값 두 칸. 값은 표 숫자(tabular)라 자릿수가 흔들리지 않는다. */
 .stat-row {
   display: flex; align-items: baseline; justify-content: space-between;

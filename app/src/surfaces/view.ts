@@ -30,7 +30,7 @@ import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_S
          type EdgeKind } from "../view-prefs";
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
 import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbKindLens, lnbKind,
-         repaintLnb } from "../lnb";
+         repaintLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen,
          floatCeiling } from "../float-panel";
 import { popIn, popOut } from "../motion";
@@ -601,12 +601,55 @@ export async function renderView(el: HTMLElement) {
     if (!viewPanel.hidden) positionPanel();
     return w;
   }
+  /** 문서 열의 크기 — 옆 칸(false) 이냐, 지도 칸 전체(true) 냐.
+   *
+   *  **어디서 왔는지가 크기를 정한다**(발주자 지시 2026-09-25): 지도에서 노드를
+   *  누르면 떠 있는 카드만 뜨고, LNB 에서 노드·문서·역할을 고르면 카드 없이 이 열이
+   *  지도 칸 전체로 열려 내용 전부를 보여 준다. 열 안에서 옮겨 다니는 것(뒤로·언급
+   *  칩·연결 줄)은 지금 크기를 그대로 둔다. 닫으면 옆 칸으로 돌아간다 — 다음에 카드의
+   *  "Details" 로 열 때 넓게 열리면 지도를 보던 손이 끊긴다.
+   *  근거: [[decision:side-navigation-picks-open-the-document-pane-full-width-2026-09-25]] */
+  let railFull = false;
+  function setRailFull(full: boolean) {
+    railFull = full;
+    if (!detail.hidden) railChrome(true);
+    const b = detail.querySelector<HTMLElement>("#rail-size");
+    if (b) {
+      const label = full ? COPY.ui.viewx.railSide : COPY.ui.viewx.railFull;
+      b.textContent = label;
+      b.setAttribute("aria-pressed", String(full));
+    }
+  }
+  /** 열 머리 — 캡션 · 크기 전환 · 닫기. 머리를 그리는 자리가 셋(상세 · 리더 · 리더
+   *  실패)이라 한 벌로 모았다. 단추는 글자다: 아이콘 세트(Figma 29:56)에 넓히기
+   *  글리프가 없고, 그림 하나를 더하는 것은 세트의 일이다. */
+  function railHeadHTML(caption: string): string {
+    const V = COPY.ui.viewx;
+    return `
+      <div class="rail-head">
+        <span class="hint">${caption}</span>
+        <span class="rail-head-acts">
+          <button class="rail-x rail-size" id="rail-size" type="button"
+                  aria-pressed="${railFull}">${railFull ? V.railSide : V.railFull}</button>
+          <button class="rail-x" id="rail-close" aria-label="${V.railClose}"
+                  data-tip="${V.railClose}">✕</button>
+        </span>
+      </div>`;
+  }
+  function wireRailHead() {
+    detail.querySelector("#rail-close")?.addEventListener("click", closeRail);
+    detail.querySelector("#rail-size")?.addEventListener("click", () => setRailFull(!railFull));
+  }
   function railChrome(open: boolean) {
     // 열의 열림/닫힘은 셸이 안다(그리드 폭을 그 상태가 정한다). 열 자체를 hidden
     // 으로도 접는다 — 폭 0 인 열에 테두리만 남아 실선 하나가 떠 있는 것을 막는다.
-    if (shell) shell.dataset.doc = open ? "open" : "closed";
+    if (shell) {
+      shell.dataset.doc = open ? "open" : "closed";
+      shell.dataset.docSize = open && railFull ? "full" : "side";
+    }
     if (docpane) docpane.hidden = !open;
-    railGrip.hidden = !open;
+    // 넓게 열린 열에는 끌어서 줄일 모서리가 없다(폭이 칸 전체다).
+    railGrip.hidden = !open || railFull;
     // 읽는 면이 열리거나 닫히면 렌즈 패널의 오른쪽 한계가 바뀐다(positionPanel 이
     // 그 왼쪽 끝을 읽는다). 폭 변경(setRailWidth)과 **열림 변경**은 다른 사건이라
     // 둘 다 걸어야 한다 - 안 걸면 "렌즈를 열어 둔 채 문서를 여는" 순서에서만 겹친다.
@@ -622,6 +665,7 @@ export async function renderView(el: HTMLElement) {
     lastNode = null;
     setSpot(null);        // 원뿔은 초점에 딸린 것이라 초점이 끝나면 함께 꺼진다
     if (focusId) { focusId = ""; syncHash(); }   // 주소는 화면이 말하는 것만 말한다
+    railFull = false;     // 다음 열기는 옆 칸이 기본이다(railFull 주석)
     railChrome(false);
     // 카드는 선택에 딸린 물건이라 선택이 끝나면 같이 사라진다(떠 있는 창을 남기지 않는다).
     closeFloatPanel();
@@ -810,7 +854,10 @@ export async function renderView(el: HTMLElement) {
     // 곧 읽는 면 위가 된다 — 지도를 보는 손잡이가 지도가 아닌 것을 덮는다.
     // 패널이 떠 있는 동안 폭이 바뀔 수 있으므로(정지점) 실측으로 읽는다.
     const pane = document.getElementById("docpane");
+    // 넓게 열린 열은 비켜설 대상이 아니다 — 그 왼쪽 끝이 곧 지도 왼쪽 끝이라 패널이
+    // 들어갈 자리가 없어진다. 그때는 패널이 열 위에 뜬다(z-index 가 더 높다).
     const paneLeft = pane && !pane.hidden && shell?.dataset.doc === "open"
+        && shell?.dataset.docSize !== "full"
       ? pane.getBoundingClientRect().left : window.innerWidth;
     const rightEdge = Math.max(paneLeft, w + m * 2);   // 패널이 들어갈 자리는 남긴다
     // 위 한계도 **캔버스 카드**다. 렌즈 버튼 바로 아래(+6px)로 두면 상단 바와 캔버스
@@ -1914,8 +1961,10 @@ export async function renderView(el: HTMLElement) {
    *  주제로 넓힐 때 trail 을 바닥까지 되감는다: 주제 전환은 쌓기가 아니라 **바꾸기**다.
    *  안 그러면 노드를 옮겨 다닐 때마다 Esc 로 되짚을 층이 끝없이 쌓인다.
    *
-   *  끝에는 언제나 같은 둘이 열린다: 옆에 뜨는 관련 문서 카드 + 우측 문서 패널. */
-  async function focusNode(id: string, domain?: string) {
+   *  끝에는 떠 있는 카드가 열린다. `card=false` 는 LNB 가 쓴다 — 거기서 고른 것은
+   *  카드 대신 넓게 열린 문서 열로 보여 준다(`openFromNav`). 착지한 노드를 돌려준다
+   *  (없는 노드면 null). */
+  async function focusNode(id: string, domain?: string, card = true): Promise<N3 | null> {
     // 주제를 밖에서 알려 주면 먼저 기억한다 — 합계 뷰는 개념 마크가 없어 그래프
     // 노드로 되짚을 수 없고(가운데 열이 주제다), 트리는 그 값을 이미 안다.
     // 노드 id 는 주제를 모를 때도 적어 둔다: 다시 그릴 때 그 마크를 초점색으로
@@ -1940,7 +1989,7 @@ export async function renderView(el: HTMLElement) {
     // 전량을 그린 화면에도 없으면 그 노드는 **없는 것**이다(오래된 딥링크가 이 경우다).
     // 빈 상세를 열어 있는 척하지 않는다 — 화면은 전체 지도로 남는다.
     if (!raw && trail[trail.length - 1].kind === "l0") {
-      lnbFocus = {}; setLnbActive({}); return;
+      lnbFocus = {}; setLnbActive({}); return null;
     }
     // 못 찾았지만 스코프가 좁은 경우(평면 캡에 잘렸거나 렌즈 밖)는 최소 정보로 연다 —
     // 제목은 곧 node-context 가 채운다.
@@ -1949,9 +1998,24 @@ export async function renderView(el: HTMLElement) {
     // 레일은 열지 않는다 — 관계 줄·트리·검색이 전부 여기로 오는데, 그때마다 문서
     // 원문까지 딸려 열리면 지도를 보는 일이 계속 끊긴다. 레일을 여는 것은 카드의
     // "Details and source" 와 컨텍스트 메뉴의 "열기" 둘뿐이다(발주자 지시 2026-08-27).
-    focusOnMap(nd);
+    // (LNB 는 예외다 — `openFromNav` 가 이 뒤에 넓은 열을 연다.)
+    focusOnMap(nd, card);
     lnbFocus = { domain: nd.domain, nodeId: id };
     setLnbActive(lnbFocus);
+    return nd;
+  }
+
+  /** LNB 에서 고른 것 — 노드·문서·Agent 역할. **카드 없이** 문서 열을 지도 칸
+   *  전체로 열고 내용 전부를 싣는다(발주자 지시 2026-09-25). 지도 초점(주소·원뿔·
+   *  카메라)은 그대로 옮겨 두므로, 열을 닫으면 그 노드에 초점이 선 지도가 남는다.
+   *  근거: [[decision:side-navigation-picks-open-the-document-pane-full-width-2026-09-25]] */
+  async function openFromNav(id: string, domain?: string, docId?: string) {
+    railFull = true;
+    const nd = id ? await focusNode(id, domain, false) : null;
+    if (myGen !== liveGen) return;
+    if (docId) await openReader(docId, id || undefined);
+    else if (nd) railFor(nd);
+    else if (detail.hidden) railFull = false;   // 연 것이 없으면 크기도 되돌린다
   }
 
   /** 노드 맥락(`/node-context`) 한 번만 — 레일과 카드가 같은 노드에 같은 요청을 각자
@@ -2116,7 +2180,7 @@ export async function renderView(el: HTMLElement) {
    *  누른 노드마다 그것이 열리면 지도를 보는 일이 계속 끊긴다. 이제 클릭은 여기까지고,
    *  레일은 카드의 버튼이 연다. 나머지 진입점(컨텍스트 메뉴 "열기" · 트리 · 검색 ·
    *  드릴다운)은 그대로 `openDetail` 을 부르므로 거기서는 아무것도 안 달라진다. */
-  function focusOnMap(nd: N3) {
+  function focusOnMap(nd: N3, card = true) {
     lastNode = nd;   // Reader 뒤로가기 복귀 지점
     // 주소가 이 노드를 싣는다 — 주소창에서 복사해 건네는 것이 "노드 하나"라는 성질은
     // L2 가 스코프였을 때부터의 것이고, 층이 사라져도 남는다.
@@ -2131,7 +2195,10 @@ export async function renderView(el: HTMLElement) {
       setSpot(spotOf([...causalCone(dir, nd.id, "past"),
                       ...causalCone(dir, nd.id, "future")], nd.id));
     }
-    void openRelsCard(nd);
+    // 카드는 지도에서 고른 것에만 뜬다. LNB 에서 온 것은 넓은 열이 받으므로, 앞서
+    // 떠 있던 카드가 있으면 거둔다(다른 노드의 카드가 열 뒤에 남지 않게).
+    if (card) void openRelsCard(nd);
+    else closeFloatPanel();
   }
 
   /** 지도 밖 진입점이 쓰는 것 — 고르고(카드·원뿔·주소) **레일까지 연다**. */
@@ -2148,22 +2215,23 @@ export async function renderView(el: HTMLElement) {
     // 채운다. 여태 이 자리에서 `curEdges`(마지막으로 그린 그래프의 잔상)를 세고
     // 드릴다운 경로에서는 degree 를 0 으로 박아, 같은 노드가 동선마다 다른 숫자를
     // 말하고 "연결 0개 · → 3 나감" 같은 자기모순까지 냈다.
+    // 속성(props)과 연결은 node-context 가 오면 loadNodeSource 가 채운다. 연결은 넓은
+    // 열에서만 싣는다 — 옆 칸일 때는 지도의 카드가 그 일을 한다(D70). 넓게 열린 것은
+    // LNB 에서 온 것이고 그때는 카드가 없다.
     detail.innerHTML = `
-      <div class="rail-head">
-        <span class="hint">${COPY.ui.viewx.railTitle}</span>
-        <button class="rail-x" id="rail-close" aria-label="${COPY.ui.viewx.railClose}"
-                data-tip="${COPY.ui.viewx.railClose}">✕</button>
-      </div>
+      ${railHeadHTML(COPY.ui.viewx.railTitle)}
       ${askRowHTML()}
-      <h2>${esc(nd.label)}</h2>
+      <h2>${esc(isAgentRoleId(nd.id) ? stripRolePrefix(nd.label) : nd.label)}</h2>
       <div id="node-stats"><p class="hint">${COPY.ui.viewx.sourceLoading}</p></div>
       <p class="rail-acts">
         <button class="btn btn-primary" id="nd-share">${COPY.ui.viewx.shareCta}</button>
         <button class="btn btn-quiet" id="nd-del">${COPY.ui.viewx.del}</button>
       </p>
+      <div id="node-props"></div>
+      <div id="node-links"></div>
       <div id="node-source"></div>
       <div id="ties-suggest"></div>`;
-    detail.querySelector("#rail-close")!.addEventListener("click", closeRail);
+    wireRailHead();
     // 카드와 **같은 줄**이다. 수치는 loadNodeSource 가 node-context 를 받고 채운다.
     railAskCounts = wireAsk(detail, () => !detail.hidden,
       (deg, docs) => nodeAskItems(nd, deg, docs));
@@ -2312,6 +2380,93 @@ export async function renderView(el: HTMLElement) {
   /** 상세 레일의 수치·관계 목록(T3·T4 · D45-V) — node-context 응답 하나가 정본이다.
    *  구 사이드카는 `links` 키 자체가 없다: 그때만 그래프 잔상(curEdges)으로 강등하고
    *  캡션도 정직하게 바꾼다(수치의 출처를 화면이 스스로 밝힌다). */
+  /** Agent 역할 계약을 읽는 순서: 임무 → 직함·팀 → 등급 → 금지·사람 몫 → 읽을 것·관문
+   *  → 나머지. 목록에 없는 키는 저장된 순서대로 뒤에 온다.
+   *  근거: [[vinc.canon.agent-roles §3]] */
+  const ROLE_PROP_ORDER = ["mission", "job_title", "team", "team_role", "tier", "rung",
+    "delegate_rung", "never", "person_only", "reads", "gates", "test_command", "repos",
+    "paths", "tools", "disallowed_tools", "isolation", "writes_graph"];
+
+  /** 속성(props) 절 — 노드가 가진 자유 속성을 **통째로** 보여 준다. 여태 이것을 보는
+   *  화면이 없었다: 서버는 props 를 실어 보냈는데 앱은 Ask 본문 한 줄과 Agent 목록의
+   *  직함·팀만 골라 썼다(발주자 지적 2026-09-25). 값은 생긴 대로 그린다(글·목록·객체).
+   *  비어 있으면 절을 그리지 않는다 — 빈 제목만 남기지 않는다.
+   *  근거: [[decision:side-navigation-picks-open-the-document-pane-full-width-2026-09-25]] */
+  function drawNodeProps(nd: N3, props?: Record<string, unknown>) {
+    const box = detail.querySelector<HTMLElement>("#node-props");
+    if (!box) return;
+    const keys = Object.keys(props || {});
+    if (!props || keys.length === 0) { box.innerHTML = ""; return; }
+    const role = isAgentRoleId(nd.id);
+    const order = role
+      ? [...ROLE_PROP_ORDER.filter((k) => k in props),
+         ...keys.filter((k) => !ROLE_PROP_ORDER.includes(k))]
+      : keys;
+    box.innerHTML = `
+      <section class="node-props">
+        <h3 class="hint rail-sec">${esc(COPY.ui.viewx.propsTitle)}</h3>
+        ${propsDl(props, order, 0)}
+      </section>`;
+    // 역할의 이름은 직함이 있으면 그것이다 — Agent 레일(lnb.ts roleTitle)과 같은 규칙.
+    const job = role && typeof props.job_title === "string" ? props.job_title.trim() : "";
+    const h2 = detail.querySelector("h2");
+    if (job && h2) h2.textContent = job;
+  }
+
+  function propsDl(obj: Record<string, unknown>, keys: string[], depth: number): string {
+    return `<dl class="props-dl">${keys.map((k) => `
+      <div class="props-row"><dt>${esc(k)}</dt><dd>${propValueHTML(k, obj[k], depth)}</dd></div>`)
+      .join("")}</dl>`;
+  }
+
+  function propValueHTML(key: string, v: unknown, depth: number): string {
+    const none = `<span class="hint">${esc(COPY.ui.common.none)}</span>`;
+    if (v === null || v === undefined || v === "") return none;
+    if (typeof v === "string") {
+      // 여러 줄이거나 긴 글은 문서와 같은 렌더러로. 짧은 값은 글자 그대로 둔다.
+      return v.includes("\n") || v.length > 160
+        ? `<div class="doc-render">${renderMarkdown(v)}</div>` : inlineCode(v);
+    }
+    if (typeof v === "number" || typeof v === "boolean")
+      return `<span class="props-scalar">${esc(String(v))}</span>`;
+    if (Array.isArray(v)) {
+      if (v.length === 0) return none;
+      // `reads` 는 "이 순서로 읽어라"라서 번호를 단다. 나머지는 순서가 뜻이 아니다.
+      const tag = key === "reads" ? "ol" : "ul";
+      return `<${tag} class="props-list">${v.map((x) => `<li>${
+        typeof x === "object" && x !== null ? propValueHTML("", x, depth + 1)
+          : inlineCode(String(x))}</li>`).join("")}</${tag}>`;
+    }
+    if (typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      const ks = Object.keys(o);
+      if (ks.length === 0) return none;
+      // 두 단을 넘으면 원문 JSON 으로 — 들여쓰기가 열 폭을 다 먹는다.
+      return depth >= 2
+        ? `<pre class="props-json">${esc(JSON.stringify(o, null, 2))}</pre>`
+        : propsDl(o, ks, depth + 1);
+    }
+    return esc(String(v));
+  }
+
+  /** 짧은 값 — 이스케이프하고 `코드` 표기만 살린다(역할 계약은 도구 이름을 그렇게 적는다). */
+  function inlineCode(s: string): string {
+    return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+  }
+
+  /** 넓은 열의 연결 절 — 카드가 없는 자리라 관계를 여기 싣는다. 모양은 카드와 같다. */
+  function drawPaneLinks(nd: N3, links: NodeLinks) {
+    const box = detail.querySelector<HTMLElement>("#node-links");
+    if (!box) return;
+    box.innerHTML = `
+      <section class="pane-links">
+        <h3 class="hint rail-sec">${esc(COPY.ui.viewx.statLinks)}</h3>
+        ${relsHTML(links)}
+      </section>`;
+    box.querySelector(".link-more")?.remove();   // 이미 넓은 자리라 "더 보기"가 갈 곳이 없다
+    wireRels(box, nd, links);
+  }
+
   function drawNodeStats(nd: N3, links?: NodeLinks) {
     const box = detail.querySelector<HTMLElement>("#node-stats");
     if (!box) return;
@@ -2498,10 +2653,19 @@ export async function renderView(el: HTMLElement) {
             : { source: it.id, target: nd.id, type: it.type });
           return;
         }
-        void focusNode(it.id);
+        // 문서 열 안의 연결 줄이면 **열 안에서** 옮겨 간다(지금 크기 그대로). 카드의
+        // 줄이면 지금처럼 지도에서 그 노드로 간다.
+        if (detail.contains(box)) void openInPane(it.id, it.domain || undefined);
+        else void focusNode(it.id);
       }));
     // `+N more` 는 레일을 연다 — 카드는 좁고, 전부 보려면 넓은 자리가 필요하다.
     box.querySelector(".link-more")?.addEventListener("click", () => railFor(nd));
+  }
+
+  /** 문서 열 안에서 다른 노드로 — 카드는 띄우지 않고 열의 크기는 그대로 둔다. */
+  async function openInPane(id: string, domain?: string) {
+    const nd = await focusNode(id, domain, false);
+    if (nd && myGen === liveGen) railFor(nd);
   }
 
   async function loadNodeSource(nd: N3) {
@@ -2524,6 +2688,8 @@ export async function renderView(el: HTMLElement) {
       if (!res.executed) { box.innerHTML = ""; return; }
       // 패널이 그 사이 다른 노드로 갱신됐으면 버린다(늦은 응답이 남의 상세를 덮지 않게).
       if (!detail.contains(box) || detail.hidden) return;
+      drawNodeProps(nd, res.props);
+      if (railFull && res.links?.executed) drawPaneLinks(nd, res.links);
       const parts: string[] = [];
       if (res.one_liner) parts.push(`<div class="doc-render">${renderMarkdown(res.one_liner)}</div>`);
       const ex = res.excerpts || [];
@@ -2658,14 +2824,10 @@ export async function renderView(el: HTMLElement) {
         // ⚠ 선행 결함이 남아 있다: `readerLoading`·`readerFail`·`drillFail`·`periodFail`
         // 도 같은 모양으로 레일을 비운다(P17b 이전부터). 그 넷은 이 패키지 밖이다.
         detail.innerHTML = `
-          <div class="rail-head">
-            <span class="hint">${COPY.ui.viewx.readerTitle}</span>
-            <button class="rail-x" id="rail-close" aria-label="${COPY.ui.viewx.railClose}"
-                    data-tip="${COPY.ui.viewx.railClose}">✕</button>
-          </div>
+          ${railHeadHTML(COPY.ui.viewx.readerTitle)}
           <p class="hint">${busy ? COPY.ui.viewx.readerMidWrite : COPY.ui.viewx.readerFail}</p>`
           + (busy ? `<button class="btn" id="rdr-retry">${esc(COPY.ui.viewx.readerRetry)}</button>` : "");
-        detail.querySelector("#rail-close")!.addEventListener("click", closeRail);
+        wireRailHead();
         detail.querySelector("#rdr-retry")?.addEventListener("click",
           () => void openReader(docId, conceptId, chunkIndex));
         return;
@@ -2703,11 +2865,7 @@ export async function renderView(el: HTMLElement) {
              >${esc(s.title)}</button>`).join("")}
         </details>`;
       detail.innerHTML = `
-        <div class="rail-head">
-          <span class="hint">${COPY.ui.viewx.readerTitle}</span>
-          <button class="rail-x" id="rail-close" aria-label="${COPY.ui.viewx.railClose}"
-                  data-tip="${COPY.ui.viewx.railClose}">✕</button>
-        </div>
+        ${railHeadHTML(COPY.ui.viewx.readerTitle)}
         <!-- "편집" 토글은 없다(발주자 지시 2026-08-05) — 문서 열은 **상시 편집**이다.
              D45-E 가 "Reader 와 편집기는 한 표면이고 편집은 그 자리에 커서를 켤 뿐"이라
              했는데, 그 커서를 켜는 버튼이 마지막 잔재로 남아 있었다: 고치려면 매번 두
@@ -2732,7 +2890,7 @@ export async function renderView(el: HTMLElement) {
         ${mentionsHTML}
         ${tocHTML}
         <div id="rdr-host"></div>`;
-      detail.querySelector("#rail-close")!.addEventListener("click", closeRail);
+      wireRailHead();
       // 칩을 누르면 그 노드로 간다 — D70 의 약속("문서를 고르면 지도 어디인지 안다")을
       // 문서 쪽에서도 지키는 문이다. 스코프가 바뀌면 레일은 노드 상세로 갈린다.
       detail.querySelectorAll<HTMLElement>(".rdr-chips [data-go]").forEach((b) =>
@@ -3242,11 +3400,15 @@ export async function renderView(el: HTMLElement) {
   // `#view/trace/<id>` 는 **스코프가 아니라 포커스**다(2026-08-17, 씨앗 층 폐지).
   // 층은 전량으로 두고 마운트가 끝난 뒤 그 노드로 간다 — 전량은 반드시 그 노드를
   // 담으므로 딥링크가 빈 화면으로 끝나지 않는다. 철자는 영구 유지한다(별칭 규율).
-  const landOn = deep === "trace" ? (parts[2] || "") : "";
+  const landOn = deep === "trace" || deep === "read" ? (parts[2] || "") : "";
+  // `#view/read/<id>[/<doc>]` 는 LNB 가 View 밖에서 쓰는 착지다 — trace 와 같되 카드
+  // 대신 넓은 문서 열로 연다(openFromNav). 착지한 뒤 주소는 syncHash 가 trace 로 쓴다.
+  const landWide = deep === "read";
+  const landDoc = landWide && parts[3] && parts[3] !== "as" ? parts[3] : "";
   // 주제 여럿은 쉼표로 잇는다(`#view/a,b`) — 주제 이름에 쉼표가 없다는 관례가 전제고,
   // 백엔드의 `domains=a,b` 파라미터와 같은 문법이라 주소와 질의가 한 모양이다.
   // `trace` 를 여기서 빼는 이유: 씨앗 없는 `#view/trace` 가 "trace"라는 주제를 만들었다.
-  if (deep && deep !== "as" && deep !== "trace")
+  if (deep && deep !== "as" && deep !== "trace" && deep !== "read")
     trail.push({ kind: "l1", domains: deep.split(",").map(decodeURIComponent).filter(Boolean) });
   // D56 — 상단 바에 자기 동작을 건다. 공유 범위는 **지금 보고 있는 스코프**가
   // 기본값이다(정본 §5 "공유는 스코프의 출구"). 여태 진입이 올가미 제스처 하나뿐이라
@@ -3264,8 +3426,8 @@ export async function renderView(el: HTMLElement) {
   });
   // 좌측 트리의 문서 클릭이 여기로 온다(D69·D70). 훅이 없으면 트리는 해시 착지로
   // 강등되므로, View 가 살아 있는 동안만 "리마운트 없는 이동"이 성립한다.
-  setLnbNavigator((id, dom, docId) =>
-    void (docId ? openDocAt(docId, id, dom) : focusNode(id, dom)));
+  // LNB 에서 고른 것은 카드 대신 넓은 문서 열로 연다(openFromNav).
+  setLnbNavigator((id, dom, docId) => void openFromNav(id, dom, docId));
   // 주제 고르기 — **즉시 반영**이다(발주자 결정 2026-08-15). 고른 것과 보는 것이
   // 어긋나는 중간 상태를 두지 않는 대신, 고를 때마다 서버를 한 번 왕복한다.
   setLnbTopicPicker((path, add, set) => {
@@ -3301,6 +3463,7 @@ export async function renderView(el: HTMLElement) {
   });
 
   await show(trail[trail.length - 1]);
-  if (landOn) await focusNode(landOn);
+  if (landOn) await (landWide ? openFromNav(landOn, undefined, landDoc || undefined)
+                            : focusNode(landOn));
   maybeCoach();
 }

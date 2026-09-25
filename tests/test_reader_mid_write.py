@@ -154,10 +154,15 @@ class RailHasAWayOutTests(unittest.TestCase):
     고치는 이유는 머무는 시간이다: 크래시 잔해는 다음 re-put 까지 며칠 간다."""
 
     def test_뷰_리더의_쓰기_창에는_닫기가_있다(self):
+        """머리는 공용 함수 한 벌이다(`railHeadHTML` · `wireRailHead`, 2026-09-25) —
+        상세·리더·리더 실패 셋이 같은 머리를 그린다. 그래서 분기에는 그 호출이 있고,
+        닫기 단추와 그 배선은 함수 쪽에 있어야 한다."""
         stmt = render_stmt(VIEW_BRANCH, "detail.innerHTML")
-        self.assertIn('id="rail-close"', stmt, "레일 머리가 없다 — 나가는 길이 Esc 뿐이다")
-        self.assertIn('querySelector("#rail-close")', VIEW_BRANCH)
-        self.assertIn("closeRail", VIEW_BRANCH)
+        self.assertIn("railHeadHTML(", stmt, "레일 머리가 없다 — 나가는 길이 Esc 뿐이다")
+        self.assertIn("wireRailHead()", VIEW_BRANCH)
+        head = VIEW[at(VIEW, "function railHeadHTML("):at(VIEW, "function railChrome(")]
+        self.assertIn('id="rail-close"', head)
+        self.assertRegex(head, r'querySelector\("#rail-close"\)\?\.addEventListener\("click", closeRail\)')
 
 
 class EarlyReturnIsInheritedTests(unittest.TestCase):
