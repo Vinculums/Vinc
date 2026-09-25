@@ -482,6 +482,16 @@ class Store:
             return {"allowed": True, "limit": limit, "count": count,
                     "remaining": max(0, limit - count)}
 
+    def usage_rows(self) -> list[dict]:
+        """usage 표 전량을 **읽기만** 한다 — 운영자 사용량 덤프(`/internal/usage`)의 호출 수.
+
+        창이 지났는지는 여기서 판정하지 않는다(창 길이는 부르는 쪽 설정이다). 쓰기가
+        아니므로 스냅샷도 부르지 않는다 — 이 파일은 쓰기마다 전체를 복사한다."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT owner,count,window_start,locked_until FROM usage").fetchall()
+        return [dict(r) for r in rows]
+
     # ── 유지보수(만료 청소) ────────────────────────────────────────────────────
     def _purge_expired_locked(self, t: float) -> int:
         """만료 행을 지운다 — **락을 이미 쥔 채** 부르고, 커밋·스냅샷은 하지 않는다.

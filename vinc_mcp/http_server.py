@@ -547,6 +547,65 @@ class MCPHTTPApp:
             raise ValueError("team purge request has an invalid graph owner")
         return self.bridge.request("POST", "/sync/purge-owner", body={"owner": graph_owner})
 
+    # ── 운영자 사용량 덤프(W1c) ─────────────────────────────────────────────────
+    def usage_request(self, assertion: str, raw_body: bytes | None = None,
+                      *, now: float | None = None) -> dict:
+        """계정 서명 어서션(typ=usage)을 검증하고 **소유자 전체**의 사용량을 돌려준다.
+
+        `/internal` 경로 중 owner 를 좁히지 않는 것은 이것뿐이다. 그래서 받는 유형도
+        이것 하나로 가른다(purge·proxy 어서션을 여기에 쓸 수 없다). 검증은 나머지와
+        같다: 계정 서명 · 만료 ≤2분 · 본문 지문 · 1회용 jti.
+
+        싣는 것은 owner id 와 숫자뿐이다 — 이메일·제목·질의 원문은 없고, owner 를
+        사람으로 잇는 것은 계정 쪽 일이다. 소유자마다:
+          · `graph`: 사이드카 `/owner-stats` 의 노드·문서 수(없으면 빈 dict)
+          · `calls`: 쿼터 카운터의 **현재 창** 호출 수. 창이 지난 행은 0 으로 읽는다 —
+            카운터는 다음 호출 때에야 리셋되므로 표의 값을 그대로 내면 어제 호출이
+            오늘 것으로 보인다. 잠긴 행은 창과 무관하게 그 값을 낸다.
+        쿼터는 사람(`user:`) 단위로 센다(팀 호출도 멤버로 센다). 면제 owner 는 세지
+        않으므로 `quota.exempt_owners` 로 따로 알린다.
+        근거: [[vinc.plan.backoffice-and-stats-2026-09-12]]"""
+        if not self.account_public:
+            raise PermissionError("usage dump is not configured")
+        payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
+        if not payload or payload.get("typ") != "usage" \
+                or payload.get("iss") != "account" or payload.get("aud") != "mcp":
+            raise PermissionError("invalid or expired usage request")
+        if not self._body_matches(payload, raw_body):
+            raise PermissionError("request body does not match the signed digest")
+        if not self._claim_jti(payload):
+            raise PermissionError("this approval was already used")
+        stats = self.bridge.request("GET", "/owner-stats")
+        if not stats.get("executed"):
+            # 그래프를 못 읽은 것을 "노드 0"으로 내면 운영자는 데이터가 사라진 줄 안다.
+            raise RuntimeError(stats.get("error") or stats.get("note")
+                               or "owner stats unavailable")
+        t = time.time() if now is None else now
+        cfg = self.quota_config or {}
+        window_s = float(cfg.get("window_s") or 0)
+        calls: dict[str, dict] = {}
+        rows = self.store.usage_rows() if self.store is not None else []
+        for row in rows:
+            start, until = float(row["window_start"] or 0), float(row["locked_until"] or 0)
+            active = bool(window_s) and (t - start) < window_s
+            locked = until > t
+            calls[row["owner"]] = {
+                "count": int(row["count"] or 0) if (active or locked) else 0,
+                "window_start": _utc_iso(start) if active else None,
+                "locked_until": _utc_iso(until) if locked else None}
+        graph = stats.get("owners") or {}
+        owners = [{"owner": o, "graph": graph.get(o) or {},
+                   "calls": calls.get(o) or {"count": 0, "window_start": None,
+                                             "locked_until": None}}
+                  for o in sorted(set(graph) | set(calls))]
+        return {"kind": "usage.dump", "executed": True, "generated_at": _utc_iso(t),
+                "quota": {"enabled": bool(self.quota_config),
+                          "window_s": window_s or None,
+                          "free_limit": cfg.get("free_limit"),
+                          "team_limit": cfg.get("team_limit"),
+                          "exempt_owners": sorted(cfg.get("exempt_owners") or ())},
+                "owners": owners}
+
     # ── 웹 Vinc 그래프 프록시(계정 세션 → 서명 어서션 → owner 강제 read/write) ─────
     def graph_enabled(self) -> bool:
         """계정 공개키 핀 시에만 활성 — purge 와 같은 게이트(계정→우리 신뢰 방향)."""
@@ -587,7 +646,7 @@ class MCPHTTPApp:
 
           · 계정이 `bh`·`jti` 를 서명에 실은 것은 `bc22584`(2026-08-20)이고, 그 뒤
             account-deploy 가 여러 번 성공했다(최근 2026-09-02). 2주째 라이브다.
-          · 이 세 경로(`/internal/purge-owner`·`purge-team`·`graph-owner`)를 부르는
+          · 이 경로들(`/internal/purge-owner`·`purge-team`·`graph-owner`·`usage`)을 부르는
             것은 **계정과 테스트뿐**이다(전 리포 grep). 다른 소비자가 없다.
 
         그래서 "구 계정이 아직 안 보낼 수 있다"는 전제가 더는 참이 아니고, 통과시키는
@@ -1226,6 +1285,8 @@ class _Handler(BaseHTTPRequestHandler):
             return self._internal_purge_team()
         if url.path == "/internal/graph-owner":
             return self._internal_graph()
+        if url.path == "/internal/usage":
+            return self._internal_usage()
         return self._json(404, {"error": f"no such route: POST {url.path}"})
 
     def do_DELETE(self):  # noqa: N802
@@ -1330,6 +1391,30 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(502, {"error": f"sidecar unreachable: {type(e).__name__}"})
         return self._json(200, out)
 
+    def _internal_usage(self):
+        """`POST /internal/usage` — 계정 서명 → 소유자 전체의 노드·문서·호출 수(W1c).
+
+        운영자 콘솔의 데이터다. 성공은 owner 표식이 없어 접근 로그가 버리므로 여기서
+        한 줄 남긴다(개수만, owner 없음) — 누가 언제 덤프를 받았는지는 계정 쪽 감사가
+        맡는다."""
+        if not self.app.account_public:
+            return self._json(503, {"error": "usage_disabled"})
+        assertion = self.headers.get("X-Vinc-Assertion") or ""
+        self._body()   # 지문 대조가 받은 바이트를 쓴다 — `_internal_purge` 와 같은 이유
+        try:
+            out = self.app.usage_request(assertion, raw_body=self._raw_body)
+        except PermissionError:
+            return self._json(401, {"error": "unauthorized"})
+        except ValueError as e:
+            return self._json(400, {"error": str(e)})
+        except Exception as e:   # 사이드카 도달 불가·그래프 조회 실패
+            sys.stdout.write(f"[usage] owner stats unavailable: {type(e).__name__}: {e}\n")
+            sys.stdout.flush()
+            return self._json(502, {"error": f"owner stats unavailable: {type(e).__name__}"})
+        sys.stdout.write(f"[usage] dump served: owners={len(out.get('owners') or [])}\n")
+        sys.stdout.flush()
+        return self._json(200, out)
+
     # ── 동기화(S1) — 회원 그래프 push/pull ────────────────────────────────────
     def _sync(self, path: str):
         """`/sync/push|pull` — 사이드카 `/sync/*` 로 프록시.
@@ -1424,6 +1509,11 @@ class _Handler(BaseHTTPRequestHandler):
         line = (self.requestline or "").split("?")[0]
         self.log_message('"%s" %s %s%s', line, code, size,
                          f" owner={tag}" if tag else "")
+
+
+def _utc_iso(ts: float) -> str:
+    """epoch 초 → `2026-09-25T08:24:15Z`. 덤프가 내는 시각은 전부 이 모양이다."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 
 
 def _owner_tag(owner: str | None) -> str | None:
