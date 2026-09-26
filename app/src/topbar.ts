@@ -58,13 +58,11 @@ export function viewHooks(): ViewHooks | null {
 export function refreshTopbar() {
   // 지도 손잡이는 View 소유다 — 훅이 없으면 슬롯을 비운다. 남겨 두면 검색·팩
   // 화면에서 눌리는데 아무 지도도 안 바뀌는 칩이 된다.
-  if (!hooks) { const l = lensSlot(), v = viewpointsSlot(); if (l) l.innerHTML = ""; if (v) v.innerHTML = ""; }
+  // 렌즈 버튼은 바에 없다(지도 위 `#view-tools` 라 표면과 함께 사라진다).
+  if (!hooks) { const v = viewpointsSlot(); if (v) v.innerHTML = ""; }
 }
 
-/** 렌즈 버튼 자리(D71) — 하단 바에서 상단 바 좌측으로 올라왔다. */
-export function lensSlot(): HTMLElement | null { return $("tb-lens"); }
-
-/** 관점 세그 자리(D71). 내용은 View 가 채운다(주인은 표면이다). */
+/** 관점 세그 자리(D71). 검색 바 바로 오른쪽이다. 내용은 View 가 채운다(주인은 표면이다). */
 export function viewpointsSlot(): HTMLElement | null { return $("tb-viewpoints"); }
 
 /** 검색바 모드(D73). 바의 `data-mode` 가 화면·동작의 단일 원천이다.
@@ -83,7 +81,7 @@ function storedMode(): Mode {
 
 /** 바 아래 크롬의 천장(`--chrome-top`)을 **바의 실측 바닥**에서 뗀다.
  *
- *  CSS 기본값은 "바 한 줄 높이 + 여백 두 칸"이다. 폰(≤520)에서는 바가 두 줄이 돼
+ *  CSS 기본값은 "바 한 줄 높이 + 여백 두 칸"이다. 좁은 창(≤720, 예전엔 ≤520)에서는 바가 두 줄이 돼
  *  그 값이 모자라다 — 그 천장을 쓰는 문서 열 머리(크기 전환 · ✕)가 바 둘째 줄 뒤에
  *  가려졌다(실측 2026-09-26, 창 390: 바 16~114, 문서 열 천장 76). 두 줄 높이를 상수로
  *  다시 적으면 바의 구성이 바뀌는 날 조용히 어긋나므로 바의 크기를 지켜보고 잰다.

@@ -959,15 +959,14 @@ body {
      읽는 면을 끝까지 넓히면 바 밑으로 들어간다). */
   position: relative; z-index: 41;
 }
-/* 지도 손잡이(D71) — 렌즈 + 관점 세그. 검색 오른쪽에 선다. 바의 gap 이 0 이므로
-   둘 사이 간격은 렌즈가 자기 여백으로 갖는다. */
-#tb-lens { display: flex; align-items: center; flex: 0 0 auto; }
-/* 세그는 트리 안이므로 가로 정렬만 남는다(자리·폭은 그 층이 준다). */
-#tb-viewpoints { display: flex; align-items: center; }
-
-#tb-viewpoints:empty, #tb-lens:empty { display: none; }
-/* 렌즈는 세로 묶음의 한 칸이라 가로 여백을 갖지 않는다(상단 바에 있던 시절의 것). */
-#tb-right > #tb-lens { margin: 0; }
+/* 관점 세그 — **검색 바로 오른쪽**(2026-09-26). 문서 트리 첫 칸에 있던 동안에는
+   트리를 접으면 관점을 바꿀 손잡이가 함께 사라졌다. 자기 폭(글자 폭)만 갖고 검색이
+   나머지를 다 먹는다: 검색이 줄어든 만큼이 곧 이 칸이다. 바의 gap 이 0 이므로 둘
+   사이 간격은 검색의 오른쪽 여백(`#tb-search` margin)이 갖는다.
+   렌즈(범례·옵션)는 바를 떠나 지도 오른쪽 위에 뜬다(`#view-tools`).
+   근거: [[decision:viewpoints-sit-beside-search-and-the-lens-floats-on-the-view-2026-09-26]] */
+#tb-viewpoints { display: flex; align-items: center; flex: 0 0 auto; }
+#tb-viewpoints:empty { display: none; }
 
 
 /* 상시 검색 — 조회 동선의 제1 진입점(D57). 모드 2종(D73).
@@ -1232,16 +1231,6 @@ body {
      것이라, 붙여 두면 같은 묶음으로 읽힌다. */
   margin-top: var(--pad-card);
 }
-/* 관점 세그 — **층 2(문서 트리)의 첫 칸**이다(발주자 지시 2026-09-09: "3D 부분은
-   2번째 LNB 로 채운다"). 그 층의 폭을 그대로 채우므로 폭을 적을 것이 없다 —
-   여태 `--lnb-w` 를 자기 폭으로 읽고 여백으로 자리를 맞췄는데, 그 계산 사슬 전체가
-   이 한 줄로 사라졌다(같은 상자 안에 들어왔으므로 정렬이 저절로 성립한다).
-   여백은 트리 본문(`.lnb-body`)과 같은 값이라 세그와 첫 문서 줄의 좌우가 맞는다. */
-#tb-viewpoints {
-  flex: 0 0 auto;
-  padding: var(--pad-card) var(--pad-card) 0;
-  overflow: hidden;
-}
 /* **오른쪽 묶음 = 넷이 등간격**(발주자 지시 2026-09-09: "옆으로 옮겨진 버튼들에
    대해 같은 간격으로 범례 포함 4가지"). 여태 렌즈만 왼쪽 끝이고 셋이 오른쪽에 몰려
    있었다 — 남는 자리를 한 군데 모아 두면 그게 곧 쏠림이다.
@@ -1258,8 +1247,6 @@ body {
   display: flex; align-items: center;
   gap: var(--space-2, .5rem);
 }
-/* 렌즈가 빈 표면(지도 없음)에서는 셋이 남는다 — 그때도 등간격이다. */
-#tb-right > #tb-lens { flex: 0 0 auto; margin: 0; }
 /* 넷이 **같은 버튼**이다(발주자 지시 2026-09-09: "범례 버튼처럼 칸을 설정이나
    다른것들도 동일한 버튼으로"). 범례만 테두리 있는 상자였고 셋은 맨몸이라, 같은
    묶음에 선 넷이 두 종류로 읽혔다. 값은 `.lens-btn` 의 것을 그대로 가져온다 —
@@ -1282,27 +1269,23 @@ body {
    만든 바로 그 지시를 반대편에서 다시 깨는 꼴이다(실측 2026-09-09: 쉬는 상태에서
    테두리가 ring 색). 문 모양 아이콘은 방향으로 말하지 않으므로 채움이 그 일을 한다. */
 #tb-shell-toggle.on { color: hsl(var(--foreground)); }
-@media (prefers-reduced-motion: reduce) { #tb-viewpoints { transition: none; } }
-/* 칩 좌우 여백을 줄여 넷이 `--lnb-w` 안에 **한 줄로** 들어간다. 자연 폭은 237px 로
-   232px 보다 5px 넓어서 `Weave` 가 두 줄로 내려갔다(실측 2026-09-09) - 세그의 기본
-   여백(.7rem)은 좁은 슬롯을 전제하지 않은 값이다. 여기서만 좁힌다: 렌즈 패널 안의
-   세그들은 자기 폭이 넉넉하므로 기본값 그대로 둔다. */
-/* 세그가 슬롯을 **꽉 채운다** — `Weave` 의 오른쪽 끝이 LNB 카드의 오른쪽 끝과 같은
-   선에 서야 한다(발주자 지시 2026-09-09). 여태 자연 폭(211px)이라 21px 짧았다.
-   칩이 남는 자리를 나눠 가지므로 넷의 폭은 글자에 비례해 갈리고, 그것이 세그의
-   본래 문법이다(고정 폭 넷으로 만들면 `2D` 와 `타임라인` 이 같은 폭이 된다). */
-/* 관점 세그는 **접히지 않는다.** `.seg` 의 `flex-wrap: wrap` 은 5지선다(Layout)를
-   위해 붙은 것이고 이 4지선다가 그것을 물려받고 있었다 — 232px 에서 여유가 2.9px
-   뿐이라(칩 자연폭 201.1 + gap 6 + padding 4 = 211.1 / 214) 열이 8px 만 좁아져도
-   Weave 가 아랫줄로 내려갔다. 접힘 전이 중에는 열이 0 까지 가므로 매번 그랬다.
-   칩에도 `nowrap` 이 함께 필요하다: 묶음만 막으면 칩이 줄어들면서 **글자가 칩 안에서**
-   접혀 칸 높이가 37 → 107px 로 뛴다(실측 2026-09-09). 둘을 같이 걸면 190px 까지
-   37.3px 로 버틴다. 더 좁아지면 `#tb-viewpoints` 의 `overflow: hidden` 이 잘라 내는데,
-   그 구간은 사이드바가 사라지는 중이라 잘리는 것이 맞다. */
-#tb-viewpoints .seg { width: 100%; flex-wrap: nowrap; }
+/* 세그는 검색 바와 **한 쌍**으로 읽혀야 한다: 같은 높이(`--ctl-h`), 같은 눌린 면
+   (배경 · 테두리 · 안쪽 그림자), 같은 모서리. 칩은 그 홈 안에 선다 — 동심 모서리
+   규칙으로 안쪽 곡률 = 바깥 곡률 − (테두리 + 틈).
+   관점 세그는 **접히지 않는다**(`nowrap` 둘 다). `.seg` 의 `flex-wrap: wrap` 은
+   5지선다(Layout)를 위한 것이고, 칩에도 걸어야 글자가 칩 안에서 접히지 않는다
+   (실측 2026-09-09: 묶음만 막으면 칸 높이가 37 → 107px 로 뛰었다). */
+#tb-viewpoints .seg {
+  flex-wrap: nowrap; align-items: center; gap: 2px;
+  height: var(--ctl-h); padding: 0 3px; box-sizing: border-box;
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--background));
+  box-shadow: inset 0 1px 2px hsl(var(--foreground) / .06);
+}
 #tb-viewpoints .seg .chip {
-  padding: 0 var(--space-2, .5rem); flex: 1 1 auto;
-  white-space: nowrap; min-width: 0;
+  min-height: calc(var(--ctl-h) - 8px); padding: 0 var(--space-3, .75rem);
+  border-radius: calc(var(--radius-sm, .625rem) - 4px);
+  white-space: nowrap;
 }
 /* 앱 손잡이(설정·도구·GRAPH.md)와 **패널 손잡이**(트리·문서 접기)를 가른다.
    같은 묶음에 두는 이유는 둘 다 크롬이기 때문이고, 가르는 이유는 하는 일이
@@ -1883,10 +1866,15 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    두 층이 쓰면 레일의 닫기(✕)가 칩 밑에 깔린다). 예전엔 JS 가 인라인 style 로
    밀었는데, 이제 --rail-w 하나로 CSS 가 스스로 한다. */
 #view-msg { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; }
+/* 렌즈(범례·옵션) 버튼의 자리 — **지도 오른쪽 위**(2026-09-26). 상단 바에서 내려와
+   바에는 관점 세그가 선다. 오른쪽 끝이 바 **안쪽** 끝(= 세그의 오른쪽 끝)과 한 세로선에
+   선다: 표면 경계에서 바의 바깥 여백(`--shell-gap`)과 바의 padding(`--space-3`)을
+   더한 만큼 들어온다(실측 1440 창: 세그 오른쪽 1411 · 버튼 오른쪽 1411).
+   근거: [[decision:viewpoints-sit-beside-search-and-the-lens-floats-on-the-view-2026-09-26]] */
 #view-tools {
   /* 떠 있는 바 아래에서 시작한다 — 여기 `--space-4` 만 두면 바 밑에 깔린다. */
   position: absolute; top: calc(var(--chrome-top) + var(--space-2, .5rem)); z-index: 2;
-  right: calc(var(--rail-w, 0px) + var(--space-6, 1.5rem));
+  right: calc(var(--rail-w, 0px) + var(--shell-gap) + var(--space-3, .75rem));
   display: flex; gap: .5rem;
 }
 #view-float, #view-hint {
@@ -2505,6 +2493,9 @@ textarea.props-val {
      웹은 공홈 GNB(둘 다 상단 바 3.25rem 위에 얹힌다). */
   [data-shell] #view-lens-panel { top: calc(var(--topbar-h) + var(--shell-gap) * 2 + var(--titlebar-h)); }
   [data-skin="web"] #view-lens-panel { top: 6.5rem; }
+  /* 관점 세그의 칩 여백을 한 칸 줄인다(.75 → .5rem, 세그 250 → 218px). 검색과 한 줄을
+     나눠 쓰는 폭이라 그 32px 이 곧 입력의 몫이다(아래 720 에서 줄이 갈린다). */
+  #tb-viewpoints .seg .chip { padding: 0 var(--space-2, .5rem); }
 }
 
 /* ── 좁은 창(≤600) — 검색이 자리를 되찾는다 ────────────────────────────
@@ -2531,25 +2522,28 @@ textarea.props-val {
   #shell[data-lnb="open"] #lnb { justify-self: stretch; width: auto; }
 }
 
-/* ── 폰(≤520) — 손잡이 묶음이 줄을 하나 더 쓴다 ────────────────────────
-   위의 둘을 접고도 입력에 남는 자리는 `창폭 − 348` 이라 520 에서 172px 이고
-   그 아래로는 다시 못 쓰게 된다. 남은 고정비는 오른쪽 묶음 168 하나인데,
-   그것을 넘침 메뉴로 **감추지 않는다**: 감추면 손잡이가 두 번 눌러야 닿고
-   새 메뉴 표면이 하나 더 생긴다. 줄을 하나 더 쓰면 마크업도 스크립트도 안 늘고
-   손잡이가 전부 보이는 채로 남는다("보이는 손잡이는 반드시 무언가를 한다"의
-   반대편 — 있는 손잡이를 숨기지 않는다).
-   바가 높아진 만큼 지도가 낮아지는데, 서랍이 격자 행을 좌표계로 쓰므로
-   그 천장은 따로 적지 않아도 따라 내려온다. */
-@media (max-width: 520px) {
+/* ── 좁은 창(≤720) — 관점 세그가 줄을 하나 더 쓴다 ─────────────────────
+   2026-09-26 에 관점 세그(218px)가 검색 오른쪽으로 오면서 바의 고정비가 커졌다.
+   한 줄로 두면 입력에 남는 자리가 `창폭 − 524`(900 이하) 라 720 에서 196px,
+   600 에서는 모드 라벨을 접고도 146px, 520 에서 66px 로 눌린다(실측 사다리).
+   그래서 여기서 **줄을 가른다**: 검색이 첫 줄, 관점이 둘째 줄을 통째로 쓴다.
+   넘침 메뉴로 감추지 않는 이유는 여태와 같다 — 감추면 두 번 눌러야 닿는다.
+   (이 줄바꿈은 원래 520 에서 오른쪽 손잡이 묶음을 위해 일어났다. 그 묶음은 지금
+   숨긴 버튼뿐이라 폭이 0 이다.)
+   바 아래에 뜨는 것들(렌즈 버튼 `#view-tools` · 문서 열)의 천장은 topbar.ts
+   `trackChromeTop` 이 바의 실측 바닥에서 다시 잰다 — 그래서 높이를 `auto` 로 풀어도
+   그것들이 둘째 줄 밑에 깔리지 않는다. */
+@media (max-width: 720px) {
   #topbar {
     flex-wrap: wrap; height: auto;
     row-gap: var(--space-2, .5rem);
     padding-top: var(--space-2, .5rem); padding-bottom: var(--space-2, .5rem);
   }
-  /* 검색이 첫 줄을 통째로 쓴다. 오른쪽 여백은 줄이 갈렸으니 필요 없다. */
   #tb-search { flex: 1 1 100%; margin-right: 0; }
-  /* 손잡이 묶음은 둘째 줄 오른쪽 끝에 선다. */
-  #tb-right { margin-left: auto; }
+  /* 둘째 줄을 꽉 채우고 넷이 같은 몫을 갖는다 — 손가락으로 누르는 폭이다. */
+  #tb-viewpoints { flex: 1 1 100%; }
+  #tb-viewpoints .seg { width: 100%; }
+  #tb-viewpoints .seg .chip { flex: 1 1 0; min-width: 0; }
 }
 /* ── 낮은 창(높이 ≤560 · 폰 가로, 작은 노트북 창) — 레일이 이름을 접는다 ───────
    레일에는 손잡이 · 홈 · Agent · 종 여섯 · 설정이 세로로 선다. 이름과 개수 두 줄을

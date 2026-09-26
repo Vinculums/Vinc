@@ -53,12 +53,11 @@
       <header id="topbar">
 
 
-        <!-- ⚠ **이 바에는 검색만 있다**(발주자 지시 2026-09-09: "GNB 의 끝을 현
-             검색 바 끝부분 까지만 하고 나머지 손잡이 버튼은 1번째 LNB 로 흡수하고
-             3D 부분은 2번째 LNB 로 채운다"). 그래서 바는 지도 위에만 얹히고
-             (그리드 3열 1행) 사이드바 둘이 천장까지 선다.
-             떠난 것들의 새 자리: 손잡이·앱 버튼 넷 → `#lnb-rail`(층 1) ·
-             관점 세그 → `#lnb`(층 2) 의 첫 칸. 되돌리려면 그 셋을 여기로 다시
+        <!-- ⚠ **이 바에는 검색과 관점 세그만 있다.** 2026-09-09 에 손잡이 버튼은
+             1번째 LNB 로, 관점 세그는 2번째 LNB 첫 칸으로 내려갔고 바는 지도 위에만
+             얹혔다(그리드 3열 1행, 사이드바 둘이 천장까지 선다). 관점 세그는
+             2026-09-26 에 이 바로 돌아왔다(아래 `#tb-viewpoints` 주석).
+             손잡이 자리: 손잡이·앱 버튼 넷 → `#lnb-rail`(층 1). 되돌리려면 여기로 다시
              옮기고 `#topbar` 의 `grid-column` 을 `1 / -1` 로 돌린다.
              ⚠ D56·D57·D71 의 "왼쪽 = 앱, 오른쪽 = 지도"는 이 개편으로 소멸했다 —
              앱과 지도가 좌우가 아니라 **층**으로 갈린다(레일 = 앱, 트리·바 = 지도). -->
@@ -88,11 +87,16 @@
           <div id="tb-chat" hidden></div>
         </div>
 
-        <!-- 오른쪽은 렌즈만 남는다(2026-09-22). 설정·도구·GRAPH.md 는 종 레일
-             하단 설정 버튼이 흡수한다. 숨긴 버튼은 팔레트·딥링크가 아직 id 로
-             찾을 수 있게 남겨 둔다. 렌즈 내용은 View 가 채우고 떠날 때 비운다. -->
+        <!-- 관점 세그(3D·2D·타임라인·Weave)는 **검색 바로 오른쪽**이다(2026-09-26).
+             문서 트리 첫 칸에 있던 동안에는 트리를 접으면 관점을 바꿀 손잡이도 같이
+             사라졌다. 검색이 줄어든 만큼을 이 칸이 갖는다. 렌즈(범례·옵션)는 바를
+             떠나 지도 오른쪽 위에 따로 뜬다(view.ts `#view-tools`).
+             근거: [[decision:viewpoints-sit-beside-search-and-the-lens-floats-on-the-view-2026-09-26]] -->
+        <div id="tb-viewpoints" role="group"></div>
+
+        <!-- 숨긴 버튼만 남는다. 설정·도구·GRAPH.md 는 종 레일 하단 설정 버튼이
+             흡수했고(2026-09-22), 팔레트·딥링크가 아직 id 로 찾을 수 있게 둔다. -->
         <div id="tb-right">
-          <div id="tb-lens"></div>
           <button class="tb-icon" id="settings-btn" data-icon="settings" hidden
                   aria-haspopup="dialog"></button>
           <button class="tb-icon" id="tb-tools" hidden></button>
@@ -122,11 +126,9 @@
           <span id="rail-settings-badge" class="rail-n" hidden></span>
         </button>
       </nav>
-      <!-- 층 2 - 문서 트리. 첫 칸이 **관점 세그**다(3D·2D·타임라인·Weave):
-           상단 바에서 내려왔고, 이 층의 폭을 그대로 채운다(발주자 지시 2026-09-09). -->
-      <aside id="lnb" aria-label="Documents">
-        <div id="tb-viewpoints" role="group"></div>
-      </aside>
+      <!-- 층 2 - 문서 트리. 관점 세그는 여기 첫 칸에 있다가 상단 바로 돌아갔다
+           (2026-09-26, 위 `#tb-viewpoints` 주석). -->
+      <aside id="lnb" aria-label="Documents"></aside>
       <!-- 문서 내용 열 — 예전엔 캔버스 **위에 겹쳐 뜨는** 우측 레일(#view-detail)이었다.
            겹쳐 있던 동안에는 지도를 보려면 상세를 닫아야 했고, 상세를 보려면 지도를
            가려야 했다(둘을 나란히 두는 방법이 없었다). 이제 LNB 와 같은 **그리드 열**
