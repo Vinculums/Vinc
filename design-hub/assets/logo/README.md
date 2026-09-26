@@ -10,6 +10,12 @@ The 2026-09-20 owner ruling retired coloured marks; the 2026-09-24 ruling retire
 The mark never sits on a black circle or a rounded square: it is only the transparent ring,
 black on light and white on dark.
 
+**One exception (2026-09-26): the desktop application icon.** The icon the operating system
+draws for the installed app (taskbar, Start menu, Alt+Tab, Dock, installer) is the white ring
+on a black rounded square, because the transparent black ring disappears on a dark taskbar.
+The favicon, the in-app title bar, emails and the MCP connector icon stay plate-less.
+Decision: `decision:the-desktop-app-icon-keeps-a-black-plate-2026-09-26`.
+
 ## Files
 
 | File | Use |
@@ -20,19 +26,19 @@ black on light and white on dark.
 | `vinc-ring-favicon.svg` | **favicon**, black, switching itself to white under `prefers-color-scheme: dark` |
 
 Every SVG uses `viewBox="42 38 436 604"`, tight to the art. There is no plate file any more
-(`vinc-ring.svg` and `vinc-ring-circle.svg` were deleted on 2026-09-24). Rasters are generated,
+(`vinc-ring.svg` and `vinc-ring-circle.svg` were deleted on 2026-09-24); the plated application
+icon is composed inside `build_logo.mjs` from `vinc-ring-white.svg`. Rasters are generated,
 never drawn: the favicon `.ico` (16, 32, 48), the 48px PNG and the MCP connector PNG are the
-transparent black mark on a square canvas with no margin; the native Tauri icons are the same
-mark with the clear space below on a square canvas. The legacy filename
+transparent black mark on a square canvas with no margin; the native Tauri icons are the white
+mark on a black rounded square (180 units, corner radius 40, the mark at 65% of the height). The legacy filename
 `vinc-ring-indigo.svg` is retained as a black compatibility asset and has no active sync mapping.
 
 ## Specification
 
 - **Size ladder**: 128 · 96 · 64 · 40 · 24 · 18 · 16. The mark holds its shape all the way
   down to 16px, which is what the single ring buys over a stacked figure.
-- **Clear space**: at least 25% of the mark's width on every side (the application icon canvas
-  is exactly that: 822 units square around the 436 by 604 mark). Favicons drop the margin
-  because a 16px tab icon cannot afford it.
+- **Clear space**: at least 25% of the mark's width on every side. Favicons drop the margin
+  because a 16px tab icon cannot afford it; the application icon's plate is its margin.
 - **Colour**: black and white only. Use `--logo` for theme-aware masks; pin white explicitly
   on a permanently dark surface. Functional UI accent tokens must not tint the logo.
 - **Forbidden**: rotation, distorting the aspect ratio, filling the ring's hole, detaching the
