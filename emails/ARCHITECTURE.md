@@ -4,6 +4,12 @@
 **Scope:** the vincs.app website account + newsletter/email subsystem **only**. The desktop Vinc app is out of scope and, by architecture, never participates.
 **Golden rule:** nothing in this document may weaken the offline app's promise — *no account, no login, no telemetry, vault stays local*. Any change that couples the app to this subsystem is a security regression.
 
+> ⚠ **2026-09-26 주석: 이 문서의 앱 경계(Golden rule, B1, B3, 1.2 의 APP 줄, 8.3·8.6 의 "앱은 계정이 필요 없다")는
+> 0.9.4 에서 더 이상 참이 아니다.** 데스크톱은 로그인이 필수이고 기본으로 계정 그래프를 본다
+> (decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting).
+> 사이트 문구의 정본은 이 표가 아니라 vincs.io 의 현재 페이지와 그래프 vinc.research.privacy-compliance-gap-2026-09-26 다.
+> B2(계정 API 는 기기 저장소를 읽지 않는다)·B4·B5·B6 은 그대로다.
+
 ---
 
 ## 1. Overview & Separation Invariant
