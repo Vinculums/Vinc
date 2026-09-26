@@ -17,7 +17,7 @@ dependencies = []
 # 임베디드 그래프 스토어 — P1-0 실측 확인: PyPI `ladybug` = LadybugDB v0.18.0.
 # 빌드 시 정확한 버전 핀(명칭 churn 대비 §2-2). 드라이버 = ladybug 단일(v0.5.3 —
 # kuzu 제거, 테스트 기간·기존 사용자 없음 확인).
-embedded = ["ladybug==0.18.0"]        # LadybugDB (Kùzu 계보)
+embedded = ["ladybug==0.20.4"]        # LadybugDB (Kùzu 계보)
 embed    = ["sentence-transformers"]  # 영어 retrieval bge-base-en 768d (§8)
 # 사이드카(M4·P2) 로컬 로그인 자격 해시 — argon2id(설계 §3-1). HTTP 서버 자체는
 # stdlib(http.server). 이 extra 없이도 코어·조회·서버 기동은 동작하며, 온보딩·
