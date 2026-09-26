@@ -133,6 +133,17 @@ class GateTest(unittest.TestCase):
             for host in ("claude", "chatgpt", "openai", "anthropic", "gemini", "copilot"):
                 self.assertNotIn(host, block.lower())
 
+    def test_가져오기_한도_문구는_데스크탑_계정_모드에서도_참이다(self):
+        """한도는 계정을 지나는 길 전부(웹·데스크탑 계정 모드)에 걸린다. 문구가 "브라우저" 나
+        "데스크탑은 한도가 없다" 를 말하면 데스크탑 사용자에게 거짓이 된다(2026-09-26)."""
+        lines = COPY_TS.splitlines()
+        hits = [i for i, ln in enumerate(lines) if "tooLarge: (" in ln]
+        self.assertEqual(len(hits), 2)  # EN · KO
+        for i in hits:
+            msg = " ".join(lines[i:i + 2]).lower()   # EN 은 다음 줄로 이어진다
+            for bad in ("browser", "has no limit", "브라우저", "제한 없이"):
+                self.assertNotIn(bad, msg, msg)
+
     def test_게이트는_셸에서만_선다(self):
         """웹은 세션 게이트가 따로 있고, 브라우저 dev 는 개발자의 자리다(캡처용 표식만)."""
         body = _fn(FIRSTRUN_TS, "needsSignIn")
