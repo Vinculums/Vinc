@@ -6914,6 +6914,17 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
     return base
 
 
+def _drop_node_shadows(store, node_id: str, owner: str | None, physical_id: str) -> None:
+    """노드 하나를 지울 때 함께 가야 하는 그림자 둘 — 검색 미러(NodeVec) 행과 3-way
+    기준(_SyncBase) 행. 둘 다 노드 표 밖이라 DETACH DELETE 가 못 미치고, 미러 행은
+    다음 기동의 전체 재구축까지 의미 팔에 남아 지운 노드가 검색 후보로 계속 나왔다
+    (2026-09-26 갭 분석 §6, 판정 D11). 실패는 삼키지 않고 호출자의 예외 경로로 올린다."""
+    from . import node_mirror
+    store.run("MATCH (v:NodeVec) WHERE v.vec_id = $vid DELETE v",
+              {"vid": node_mirror.vec_id(owner or "", node_id)})
+    store.run("MATCH (b:_SyncBase) WHERE b.node_id = $id DELETE b", {"id": physical_id})
+
+
 def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None) -> dict:
     """노드 1개를 부착 엣지와 함께 **비가역** 삭제(T3c). id 접두사로 테이블을 판별
     (:data:`_SEED_TABLES` 재사용) — 미지 접두사(Entity 등)는 표를 특정할 수 없어
@@ -6977,6 +6988,7 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None)
         edges = int(deg[0].get("c")) if deg else 0
         _write_tombstone(store, node_id, label, owner)   # 삭제 전파용 표식(S4)
         store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} DETACH DELETE n", params)
+        _drop_node_shadows(store, node_id, owner, params["id"])
         base["deleted"] = {"node": 1, "edges": edges}
     except Exception as exc:
         base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
@@ -7165,6 +7177,7 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
         _write_tombstone(store, drop_id, "Concept", owner)   # drop 도 전파(S4)
         store.run(f"MATCH (c:Concept) WHERE c.concept_id = $id{oscope('c')} DETACH DELETE c",
                   {"id": _k(drop_id), **op})
+        _drop_node_shadows(store, drop_id, owner, _k(drop_id))
         base["repointed"] = repointed
         base["skipped"] = skipped
         base["dropped"] = drop_id
@@ -7190,8 +7203,50 @@ def _purge_labels() -> list[str]:
     지워질 때 문서 정체성 레지스트리도 함께 지운다. `_MergeRejection`(F10-b)도
     회원의 노드 id 쌍을 담으므로 계정 삭제에 함께 지워져야 한다."""
     from store.embedded_schema import owner_scoped_labels
-    return owner_scoped_labels() + ["_Tombstone", "_DocMeta", "_DocTombstone",
-                                    "_MergeRejection"]
+    # `_EdgeTombstone` 도 owner_id 를 가지는데 메타 표라 파생 목록 밖이었고, 그래서 지운
+    # 관계의 양 끝 id 가 계정 삭제 뒤에도 90일 GC 까지 남았다(2026-09-26 갭 분석, 그래프
+    # vinc.research.privacy-compliance-gap-2026-09-26 §6, 판정 D11).
+    return owner_scoped_labels() + ["_Tombstone", "_EdgeTombstone", "_DocMeta",
+                                    "_DocTombstone", "_MergeRejection"]
+
+
+def _purge_sync_base(store, owner: str) -> int:
+    """`_SyncBase` 는 owner 열이 없다. 키가 `pkns.key(owner, node_id)` 라 네임스페이싱이
+    켜진 스토어(허브)에서는 접두로 가를 수 있고, 꺼진 스토어(로컬, 소유자 하나)에서는
+    가를 수 없어 건드리지 않는다 — 거기서는 소유가 하나라 잔여가 남의 것일 수 없다.
+    이 표의 행은 기기가 밀어 올린 노드의 필드 스냅샷이라, 계정 삭제 뒤에 남으면
+    제목·태그·props 가 이름 없는 채로 살아남는다(갭 분석 §6)."""
+    if not pkns.enabled():
+        return 0
+    p = owner + pkns.SEP
+    cnt = store.run(
+        "MATCH (b:_SyncBase) WHERE b.node_id STARTS WITH $p RETURN count(b) AS c", {"p": p})
+    n = int(cnt[0].get("c")) if cnt else 0
+    if n:
+        store.run("MATCH (b:_SyncBase) WHERE b.node_id STARTS WITH $p DELETE b", {"p": p})
+    return n
+
+
+def _purge_sync_meta(store, owner: str) -> int:
+    """`_SyncMeta` 의 소유자별 행(`seq:<owner>` 등)은 키 꼬리가 owner 다."""
+    s = ":" + owner
+    cnt = store.run(
+        "MATCH (m:_SyncMeta) WHERE m.key ENDS WITH $s RETURN count(m) AS c", {"s": s})
+    n = int(cnt[0].get("c")) if cnt else 0
+    if n:
+        store.run("MATCH (m:_SyncMeta) WHERE m.key ENDS WITH $s DELETE m", {"s": s})
+    return n
+
+
+def _purge_owner_theme(cfg, owner: str) -> int:
+    """어휘 파일(`<db>.themes.json`)의 소유자 주제(`owner-<sha256[:12]>`)를 지운다.
+    파일이 없거나 주제가 없으면 0 이고 파일을 건드리지 않는다."""
+    try:
+        from store.theme_store import ThemeStore, owner_theme_id
+        return 1 if ThemeStore(getattr(cfg, "data_dir", None)).delete_theme(
+            owner_theme_id(owner)) else 0
+    except Exception:
+        return 0
 
 
 def purge_owner(owner: str, *, cfg=None, store=None) -> dict:
@@ -7223,6 +7278,11 @@ def purge_owner(owner: str, *, cfg=None, store=None) -> dict:
             if n:
                 store.run(f"MATCH (n:{label}) WHERE n.owner_id = $o DETACH DELETE n", {"o": owner})
             deleted[label] = n
+        # owner 열이 없어 위 루프가 못 미치는 잔여 셋 — 3-way 기준(_SyncBase)·소유자별
+        # 메타(_SyncMeta)·어휘 파일의 소유자 주제. 갭 분석 §6 의 "지웠다 뒤에 남는 것".
+        deleted["_SyncBase"] = _purge_sync_base(store, owner)
+        deleted["_SyncMeta"] = _purge_sync_meta(store, owner)
+        deleted["theme"] = _purge_owner_theme(cfg, owner)
         base["executed"] = True
         base["deleted"] = deleted
         base["total"] = sum(deleted.values())

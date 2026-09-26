@@ -55,6 +55,7 @@ def test_purge_labels_cover_owner_scoped_plus_tombstone():
     targets = q._purge_labels()
     assert set(owner_scoped_labels()).issubset(set(targets))
     assert "_Tombstone" in targets   # 소유 툼스톤도 함께 정리(owner_id 보유)
+    assert "_EdgeTombstone" in targets   # 엣지 툼스톤도(owner_id 보유, 메타 표라 파생 밖)
 
 
 # ── 2) 엔진 층: 술어·거부(순수, 어디서든 실행) ────────────────────────────────
@@ -86,8 +87,10 @@ def test_purge_owner_scopes_owner_and_deletes_only_present():
     deletes = [cy for cy, _ in store.calls if "DETACH DELETE" in cy]
     assert any("(n:Concept)" in cy for cy in deletes)
     assert not any("(n:Episode)" in cy for cy in deletes)   # 0건 → 삭제 질의 없음
-    # owner 는 항상 파라미터로만(문자열 인터폴레이션 금지)
-    assert all(p == {"o": "user:alice"} for _, p in store.calls)
+    # owner 는 항상 파라미터로만(문자열 인터폴레이션 금지) — 라벨 루프는 {"o": owner},
+    # 잔여 정리(_SyncMeta 꼬리·_SyncBase 접두)는 자기 파라미터를 쓴다(test_purge_residue)
+    assert all("user:alice" not in cy for cy, _ in store.calls)
+    assert all(p == {"o": "user:alice"} for cy, p in store.calls if "n.owner_id" in cy)
     assert out["deleted"]["Concept"] == 2 and out["deleted"].get("Episode") == 0
     assert out["total"] == 2
 

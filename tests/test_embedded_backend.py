@@ -999,10 +999,16 @@ class EmbeddedE2E(unittest.TestCase):
                              "nodes": [{"id": "concept:b", "type": "concept", "title": "CB"}]},
                             store=store)
 
+        # 소유자별 sync 메타(`seq:<owner>`)도 잔여다(판정 D11) — 둘 다 심어 두고 한쪽만 가는지 본다.
+        from api import revstamp
+        revstamp.next_seq(store, "user:alice")
+        revstamp.next_seq(store, "user:bob")
+
         out = q.purge_owner("user:alice", store=store)
         self.assertTrue(out["executed"], out)
         self.assertEqual(out["deleted"]["Episode"], 1)
         self.assertEqual(out["deleted"]["Concept"], 1)
+        self.assertGreaterEqual(out["deleted"]["_SyncMeta"], 1)
 
         def _count(label: str, owner: str) -> int:
             r = store.run(f"MATCH (n:{label}) WHERE n.owner_id = $o RETURN count(n) AS c",
@@ -1014,6 +1020,13 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertEqual(_count("Concept", "user:alice"), 0, "alice 개념이 남음")
         self.assertEqual(_count("Episode", "user:bob"), 1, "bob 에피소드가 함께 지워짐 — 격리 위반")
         self.assertEqual(_count("Concept", "user:bob"), 1, "bob 개념이 함께 지워짐 — 격리 위반")
+
+        def _meta(key: str) -> int:
+            r = store.run("MATCH (m:_SyncMeta) WHERE m.key = $k RETURN count(m) AS c", {"k": key})
+            return int(r[0]["c"]) if r else -1
+
+        self.assertEqual(_meta("seq:user:alice"), 0, "alice 의 seq 메타가 남음")
+        self.assertEqual(_meta("seq:user:bob"), 1, "bob 의 seq 메타가 함께 지워짐 — 격리 위반")
 
         # 멱등 — 다시 purge 해도 0건, 에러 없음
         again = q.purge_owner("user:alice", store=store)
