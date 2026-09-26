@@ -30,7 +30,7 @@ import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_S
          type EdgeKind } from "../view-prefs";
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
 import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbKindLens, lnbKind,
-         repaintLnb, refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
+         refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
 import { PROP_KINDS, propsEditable, rowsFrom, propsFrom, convertText, sameProps,
          type PropRow, type PropKind } from "../props-edit";
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen,
@@ -315,7 +315,7 @@ export async function renderView(el: HTMLElement) {
     // 색은 주제의 순위로 매겨지므로 표를 짓는 목록이 곳마다 다르면(고아 숨김으로 걸러진
     // 목록, 주제 하나짜리 목록) 같은 주제가 곳마다 다른 색이 된다.
     // 근거: [[decision:a-node-keeps-its-own-colour-in-every-state]]
-    shownTints = curPrefs().domainTint ? tintMap(next.map((n) => n.domain), curMode()) : null;
+    shownTints = tintMap(next.map((n) => n.domain), curMode());
     // ⚠ **여기서 종 렌즈를 걸지 않는다.** 이 함수는 데이터가 도착한 시점이고
     // 렌더러는 아직 안 세워졌다(`swapSurface` 가 그 뒤에 돈다). 여기서 걸면 교체
     // 직전의 `spot = null` 이 곧바로 지워 버려 **계산은 맞는데 화면이 그대로**다
@@ -334,7 +334,7 @@ export async function renderView(el: HTMLElement) {
     const mode = curMode();
     if (mode === paintedMode) return;
     paintedMode = mode;
-    shownTints = curPrefs().domainTint ? tintMap(curNodes.map((n) => n.domain), mode) : null;
+    shownTints = tintMap(curNodes.map((n) => n.domain), mode);
     (g3 as { __retheme?: () => void } | null)?.__retheme?.();
     g2?.retheme();
     planar?.retint?.(shownTints);
@@ -1052,7 +1052,7 @@ export async function renderView(el: HTMLElement) {
     return [
       { label: COPY.ui.panel.groupNodes, keys: pick("size", "layout", "cone", "nodeScale") },
       { label: COPY.ui.panel.groupLines, keys: pick("edgeShow", "edgeWidth", "spread", "arrows") },
-      { label: COPY.ui.panel.groupOther, keys: pick("labels", "unlinked", "domainTint") },
+      { label: COPY.ui.panel.groupOther, keys: pick("labels", "unlinked") },
       // 시간은 **자기 묶음**을 갖는다 — 투영(3D·2D)과 직교하는 축이라 "그 밖"에
       // 섞어 두면 다른 손잡이들과 같은 급으로 읽힌다. 축(basis)과 커서(when)는
       // 한 쌍이다: 커서는 어느 시계를 자르는지 말하지 않으면 뜻이 없다.
@@ -1075,21 +1075,21 @@ export async function renderView(el: HTMLElement) {
       // 이 순서였다 — 셋을 맞춘다.
       case "3d":
         return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "cone",
-                "spread", "edgeWidth", "edgeShow", "domainTint", "basis", "when", "replay"];
+                "spread", "edgeWidth", "edgeShow", "basis", "when", "replay"];
       case "2d":
         return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "spread",
-                "edgeWidth", "edgeShow", "domainTint", "basis", "when"];
+                "edgeWidth", "edgeShow", "basis", "when"];
       // D49 — `깊이` 는 **씨앗이 있을 때만** 뜻이 있다("씨앗에서 몇 세대"). 씨앗 없는
       // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
       // 안 하는 컨트롤을 내놓지 않는다(보이는 손잡이는 반드시 무언가를 해야 한다).
-      case "timeline": return ["basis", "docs", "lineage", "domainTint"];
+      case "timeline": return ["basis", "docs", "lineage"];
       // 번들 — `단`은 선이 어느 계층에서 묶이는지다(잎은 안 줄어든다. **라벨은**
       // 둘레에 들어갈 만큼만 그린다 — 2026-08-16),
       // `선`은 스키마 타입별 켜고 끄기. 좌표를 안 쓰므로 layout·spread·size 는 무의미하다.
       // Weave 도 시간을 갖는다(발주자 지시 2026-09-10 — 신설). 링 각도가 전량으로
       // 잡혀 있어 커서가 자리를 안 흔든다는 것이 그 전제다.
       case "bundle":
-        return ["bundleDepth", "bundleRels", "labels", "domainTint", "basis", "when", "replay"];
+        return ["bundleDepth", "bundleRels", "labels", "basis", "when", "replay"];
     }
   }
 
@@ -1208,8 +1208,6 @@ export async function renderView(el: HTMLElement) {
         val: v, label: COPY.ui.panel.edgeShowName[v] || v, art: showArt[v],
         help: v === "none" ? "edgesNone" : v, active: shownEdges === v,
       })), "edges"),
-      domainTint: swRow(COPY.ui.panel.domainTint, "domainTint", p.domainTint,
-        COPY.ui.panel.on, COPY.ui.panel.off, "on", "off", "tintOn", "tintOff"),
       unlinked: swRow(COPY.ui.panel.unlinkedNodes, "unlinked", p.unlinked === "show",
         COPY.ui.panel.show, COPY.ui.panel.hide, "show", "hide", "showU", "hideU"),
       layout: tileRow(COPY.ui.panel.layout, LAYOUTS.map((l) => ({
@@ -1346,7 +1344,6 @@ export async function renderView(el: HTMLElement) {
           k === "arrows" ? { arrows: val === "on" }
           : k === "timelineDocs" ? { timelineDocs: val === "on" }
           : k === "timelineLineage" ? { timelineLineage: val === "on" }
-          : k === "domainTint" ? { domainTint: val === "on" }
           : k === "bundleDepth" ? { bundleDepth: Number(val) as BundleDepth }
           : k === "bundleOff" ? { bundleOff: cur.bundleOff.includes(val)
               ? cur.bundleOff.filter((x) => x !== val) : [...cur.bundleOff, val] }
@@ -1549,14 +1546,6 @@ export async function renderView(el: HTMLElement) {
       return;
     }
     savePrefs({ ...cur, ...mut });
-    // 주제 색은 지도와 좌측 트리가 **같은 토글**을 쓴다(표면 둘, 스위치 하나). 아래
-    // 분기가 여러 갈래로 일찍 돌아가므로 알리는 자리는 저장 직후 여기 한 곳이다.
-    if ("domainTint" in mut) {
-      repaintLnb();
-      // 노드 카드가 읽는 표도 같은 스위치를 따른다(3D 는 __update 로 재마운트 없이
-      // 바뀌므로 setCurNodes 를 안 지난다).
-      shownTints = mut.domainTint ? tintMap(curNodes.map((n) => n.domain), curMode()) : null;
-    }
     // 번들의 손잡이는 **이미 실린 데이터의 표현만** 바꾼다(단·관계·라벨). 아래
     // show() 로 내려가면 `/graph` 를 통째로 다시 받는데, 그것이 리서치
     // [[vinc.research.view-interaction-perf]] 가 지목한 낭비다 — 옵션 여덟 개 중 하나만

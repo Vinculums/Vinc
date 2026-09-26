@@ -11,6 +11,10 @@ import { tintMap } from "../view-tint";
 import type { ViewPrefs } from "../view-prefs";
 import { edgeKey, type Spot } from "../spotlight";
 import { markTexture, MARK_TEX_PX } from "./view-planar";
+import { glassShapeOf, glassSprite, type GlassShape } from "../glass-sprite";
+
+/** 유리 마크의 노드 색 — 그림 모드는 그림 밖 칸을 노드 색으로 채우므로 투명이어야 한다. */
+const CLEAR = "rgba(0,0,0,0)";
 
 /** View 2D 관점 — 독립 렌더러 (DEC D46).
  *
@@ -247,10 +251,22 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
    *  색은 여기서 안 정한다 — 이미지 프로그램이 이 그림을 마스크로 삼아 노드의
    *  `color` 로 칠하므로, 잉크·틴트·초점·물러남은 색 하나만 갈아 끼우면 된다. */
   //: `ringImage` 는 외곽선을 두른 같은 마크다 — 선택이 떠 있을 때 리듀서가 갈아 끼운다.
-  const markOf = (n: Node2d): { image: string; ringImage: string } => ({
-    image: markTexture(n.kind, !!n.gateway),
-    ringImage: markTexture(n.kind, !!n.gateway, true),
-  });
+  //: 몸통이 있는 종(개념·결정·다리·문서류)은 **유리 그림**이다(`glass` 프로그램, 그림 모드):
+  //: 3D 의 유리 노드를 평면으로 구운 것이라 색과 음영이 그림 안에 있고, 노드 `color` 는
+  //: 투명으로 둔다(그림 모드는 그림 밖 칸을 노드 색으로 채운다). 주제 겹껍질과 관문은
+  //: 면이 없거나 반투명이라 마스크 마크(`circle`)로 남는다.
+  //: 근거: [[decision:app-nodes-wear-the-hero-glass-2026-09-26]]
+  const markOf = (n: Node2d): Record<string, unknown> => {
+    const shape = glassShapeOf(n.kind, !!n.gateway);
+    if (!shape) return {
+      type: "circle", color: inkOf(n),
+      image: markTexture(n.kind, !!n.gateway),
+      ringImage: markTexture(n.kind, !!n.gateway, true),
+    };
+    const hex = inkOf(n);
+    return { type: "glass", glass: shape, color: CLEAR,
+             image: glassSprite(shape, hex), ringImage: glassSprite(shape, hex, true) };
+  };
 
   /** 노드 잉크. 주제 틴트를 끄면 모노크롬 잉크 그대로다(**기본은 켬** — 2026-08-16
    *  발주자 지시로 뒤집혔다). 초점은 틴트를 타지 않는다 — 초점색은 "지금 초점" 하나만
@@ -260,7 +276,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   //: 타임라인·노드 카드와 같은 주제가 다른 색이 된다.
   //: 명도가 모드별 토큰이라 테마가 뒤집히면 표도 다시 짓는다(`retheme`).
   const tintsNow = () =>
-    prefs.domainTint ? tintMap(nodes.map((n) => n.domain), mode()) : null;
+    tintMap(nodes.map((n) => n.domain), mode());
   let tints = tintsNow();
   const inkOf = (n: GraphNode) => {
     if (n.id === o.markId) return point();
@@ -274,7 +290,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     g.addNode(n.id, {
       label: n.label === n.id ? n.id.replace(/^[a-z]+:/, "") : n.label,
       x: px(n) * prefs.spread, y: py(n) * prefs.spread,
-      size: sizeOf(n), color: inkOf(n),
+      size: sizeOf(n),
       ...markOf(n),
     });
   }
@@ -348,6 +364,15 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
         //: 마크가 64px 비트맵으로 구워졌다(view-planar.ts `MARK_TEX_PX` 주석).
         size: { mode: "force", value: MARK_TEX_PX },
       }),
+      //: 유리 마크 — 그림을 **그대로** 그린다(`"background"`: 그림 색은 두고 바깥 칸만 노드 색,
+      //: 그 노드 색이 투명이다). 색과 음영이 그림 안에 있다. 굽는 크기는 위와 같다.
+      glass: createNodeImageProgram({
+        drawingMode: "background",
+        keepWithinCircle: false,
+        correctCentering: true,
+        padding: 0,
+        size: { mode: "force", value: MARK_TEX_PX },
+      }),
     },
     renderLabels: prefs.labels !== "none",
     // **허브만** 상시 라벨(레퍼런스가 얻던 판독성). 문턱 8px = 연결수 4 이상이라
@@ -399,8 +424,11 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       // 손이 움직일 때마다 링이 깜빡이면 평소의 조용한 평면이 깨진다.
       // 근거: [[decision:2d-selection-outlines-the-kept-nodes]]
       const ring = hovered ? {} : { image: (data as { ringImage?: string }).ringImage };
-      return id === focus ? { ...data, ...ring, color: point(), zIndex: 1 }
-                          : { ...data, ...ring };
+      if (id !== focus) return { ...data, ...ring };
+      // 초점은 포인트색이다. 유리 마크는 색이 그림 안에 있으므로 포인트색으로 구운 그림을 끼운다.
+      const shape = (data as { glass?: GlassShape }).glass;
+      return shape ? { ...data, image: glassSprite(shape, point(), !hovered), zIndex: 1 }
+                   : { ...data, ...ring, color: point(), zIndex: 1 };
     }
     // 물러나는 것은 **이름뿐**이다. 노드는 제 색 그대로 두고, 남은 것은 엣지와
     // 라벨이 말한다 — 몸통을 배경 쪽으로 섞던 동안 같은 노드가 상태에 따라 진한 색과
@@ -701,7 +729,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     // 손으로 옮긴 자리가 그 노드의 새 집이다.
     home.set(dragging, [g.getNodeAttribute(dragging, "x") as number,
                         g.getNodeAttribute(dragging, "y") as number]);
-    g.setNodeAttribute(dragging, "type", "circle");
+    g.setNodeAttribute(dragging, "type", g.getNodeAttribute(dragging, "glass") ? "glass" : "circle");
     dragging = null;
     sigma.getCamera().enable();
     placeBadges(); placeAnchors();
@@ -753,7 +781,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       // 그래프 속성(노드·선 색)과 라벨 설정, 그리고 섞을 때 쓰는 배경이다.
       bg = hexStr(pal().background);
       tints = tintsNow();
-      for (const n of shown) if (g.hasNode(n.id)) g.setNodeAttribute(n.id, "color", inkOf(n));
+      for (const n of shown) if (g.hasNode(n.id)) g.mergeNodeAttributes(n.id, markOf(n));
       edgeOf.forEach((e, key) => { if (g.hasEdge(key)) g.setEdgeAttribute(key, "color", edgeColor(e)); });
       sigma.setSetting("labelColor", { color: ink() });
       sigma.refresh();
@@ -767,14 +795,14 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       const changed = (Object.keys(np) as (keyof ViewPrefs)[])
         .filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(np[k]));
       const ok = new Set<keyof ViewPrefs>(
-        ["nodeScale", "edgeScale", "arrows", "labels", "domainTint", "size", "spread", "railW"]);
+        ["nodeScale", "edgeScale", "arrows", "labels", "size", "spread", "railW"]);
       if (!changed.every((k) => ok.has(k))) return false;
       prefs = np;
       tints = tintsNow();
       for (const n of shown) {
         if (!g.hasNode(n.id)) continue;
         g.setNodeAttribute(n.id, "size", sizeOf(n));
-        g.setNodeAttribute(n.id, "color", inkOf(n));
+        g.mergeNodeAttributes(n.id, markOf(n));
       }
       // 간격은 2D 에서 화면을 안 바꾼다(auto-fit) — 좌표는 손대지 않는다.
       edgeOf.forEach((e, key) => {

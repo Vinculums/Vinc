@@ -425,8 +425,6 @@ const EN = {
         rank: "Left comes first, right comes later. Within a column the best connected sits on top.",
         recorded: "Stood up by when you wrote it, so one import clusters in one place.",
         content: "Stood up by when it happened, regardless of when it was written down.",
-        tintOn: "Each topic gets its own hue. Emphasis only: turn it off and nothing is lost.",
-        tintOff: "One ink. Place already tells you the topic.",
         docsOn: "Documents are drawn as marks, hung off their concepts.",
         docsOff: "Concepts only. A shorter axis and a clearer lineage.",
         lineageOn: "Curves overlay what led to what. A long leap right names a late effect.",
@@ -479,7 +477,6 @@ const EN = {
       lineage: "Cause and effect",
       // 주제 틴트 — 이름에 "색"이 아니라 "주제"가 먼저 오는 이유: 고르는 것은 색이
       // 아니라 "주제를 색으로 볼까"다.
-      domainTint: "Tint by topic",
       timeBasis: "Time",
       replay: "Flow", replayPlay: "Play", replayStop: "Stop",
       basisRecorded: "when recorded", basisContent: "when it happened",
@@ -1346,8 +1343,6 @@ const KO: Deck = {
         rank: "왼쪽이 먼저, 오른쪽이 나중이에요. 같은 줄에서는 연결이 많은 것이 위에 와요",
         recorded: "언제 적었는지로 세워요. 한 번에 적재한 것들이 같은 자리에 몰려요",
         content: "언제 있었던 일인지로 세워요. 적은 날과 무관하게 퍼져요",
-        tintOn: "주제마다 다른 색을 입혀요. 강조일 뿐이라 꺼도 잃는 건 없어요",
-        tintOff: "한 색으로 그려요. 어느 주제인지는 자리가 말해요",
         docsOn: "문서도 마디로 그려 개념에 매달아요",
         docsOff: "개념만 남겨요. 축이 짧아지고 계보가 또렷해져요",
         lineageOn: "무엇이 무엇으로 이어졌는지 곡선으로 겹쳐요. 오른쪽으로 멀리 뻗을수록 한참 뒤의 결과예요",
@@ -1384,7 +1379,6 @@ const KO: Deck = {
       cone: "밀도",
       docLinks: "문서 연결",
       lineage: "원인과 결과",
-      domainTint: "주제별 색조",
       timeBasis: "기준",
       replay: "흐름 보기", replayPlay: "재생", replayStop: "멈춤",
       basisRecorded: "기록한 때", basisContent: "일어난 때",

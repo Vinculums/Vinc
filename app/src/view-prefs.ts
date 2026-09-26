@@ -162,21 +162,6 @@ export type ViewPrefs = {
   /** 번들 — 끈 관계 타입. `edgeOff` 와 같은 이유로 **끈 목록**으로 저장한다:
    *  나중에 타입이 늘어도 저장된 값이 새 타입을 조용히 숨기지 않는다. */
   bundleOff: string[];
-  /** 주제 틴트 — 노드 잉크에 주제별 색조를 얹는다. **기본은 켬**(발주자 지시
-   *  2026-08-16). 원래 끔이었는데, 그 기본이 실제 화면에서 뜻한 것은 "색이 없다"가
-   *  아니라 **"이 기능이 있는 줄 모른다"** 였다. 토글은 옵션 패널 안쪽에 있고,
-   *  Weave 에서 선이 전부 한 색으로 보이는 것을 고장으로 읽는 일이 실제로 있었다.
-   *  꺼도 아무 정보가 사라지지 않는다는 성질은 그대로다 — 끄는 쪽이 언제나 안전하다.
-   *
-   *  이것이 열린 층에 있는 이유: 색은 원래 닫힌 층이고(팩을 받은 쪽이 색을 다시
-   *  매핑하면 보낸 사람과 다른 그래프를 보는데 아무도 오류를 안 낸다), 그래서
-   *  **뜻을 나르지 않는 색만** 사용자에게 준다. 틴트는 강조다: 꺼도 아무 정보가
-   *  사라지지 않아야 한다. 주제는 이미 자리(hub 부챗살)와 lane 이 말하고 있고,
-   *  틴트는 그 위에 얹는 색조일 뿐이다.
-   *
-   *  색상환 각도는 주제 문자열 **해시**라 주제가 자기 색을 계속 갖는다(다른 주제가
-   *  화면에 들고 나도 안 바뀐다). 충돌은 가능하고 허용된다 — 뜻이 아니기 때문이다. */
-  domainTint: boolean;
 };
 export type TimeBasis = "recorded" | "content";
 export const TIME_BASES: TimeBasis[] = ["recorded", "content"];
@@ -210,12 +195,12 @@ const DEFAULTS: ViewPrefs = {
   timelineLineage: false,
   bundleDepth: 3,
   bundleOff: [],
-  domainTint: true,
 };
+// 주제 색 토글(`domainTint`)은 2026-09-26 에 없앴다 — 주제 색은 늘 켜져 있다(view-tint.ts).
+// 저장값에 남은 키는 loadPrefs 가 읽지 않으므로 무해하다(옮겨 읽기 불필요).
 // ⚠ `Number(v) || dflt` 였다(2026-08-17 수정). **0 을 없는 값으로 읽는다** — 시간
 // 커서가 0(가장 이른 시점)일 때 저장값이 기본 1(끔)로 조용히 뒤집혔다. 이 리포가
-// 불리언에서 이미 두 번 물린 것과 같은 뿌리다(`p.domainTint !== false`,
-// `p.edges == null`). 유한한 수면 그 값을 쓰고, 아닐 때만 기본으로 간다.
+// 불리언에서 이미 두 번 물린 것과 같은 뿌리다(`p.edges == null`). 유한한 수면 그 값을 쓰고, 아닐 때만 기본으로 간다.
 const clamp = (v: unknown, lo: number, hi: number, dflt: number) => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
@@ -305,9 +290,6 @@ export function loadPrefs(): ViewPrefs {
       cone: clamp(p.cone, CONE_SCALE.min, CONE_SCALE.max, DEFAULTS.cone),
       bundleOff: Array.isArray(p.bundleOff)
         ? p.bundleOff.filter((k: unknown) => BUNDLE_RELS.includes(String(k))) : [],
-      // `=== true` 는 키가 없는 저장값을 끔으로 읽어 "기본은 켬"을 무효화했다. 다른
-      // 불리언과 같은 관용구로.
-      domainTint: p.domainTint !== false,
     };
   } catch {
     return { ...DEFAULTS };

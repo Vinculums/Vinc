@@ -99,15 +99,13 @@ def emit(tokens: dict, scene: dict) -> str:
     L.append("  },")
     L.append("} as const;")
     L.append("")
-    # domainTint — 열린 층(사용자 토글)이라 뜻을 나르지 않는다. 그래도 s·l 은 토큰에
-    # 둔다: 이 두 값이 틴트의 대비 바닥이라 앱 코드의 리터럴로 두면 게이트 밖으로 샌다.
-    dt = tokens.get("domainTint")
-    if dt:
-        L.append("// 도메인 틴트(열린 층) — 색상환 각도는 주제 문자열 해시, 채도·명도는 여기 고정.")
-        L.append("// 소비처는 app/src/view-tint.ts 하나뿐.")
-        L.append("export const domainTint = {")
+    # topicJewels — 주제 색(공홈 조형의 보석색). 대비 바닥이 곧 이 값이라 앱 리터럴이 아니라 토큰이다.
+    tj = tokens.get("topicJewels")
+    if tj:
+        L.append("// 주제 색 — 공홈 조형의 보석색(루비·사파이어·에메랄드·호박·자수정). 소비처는 app/src/view-tint.ts.")
+        L.append("export const topicJewels = {")
         for mode in ("light", "dark"):
-            L.append(f"  {mode}: {{ s: {dt[mode]['s']}, l: {dt[mode]['l']} }},")
+            L.append(f"  {mode}: [{', '.join('0x' + h.lstrip('#').upper() for h in tj[mode])}],")
         L.append("} as const;")
         L.append("")
     L.append("export function themePalette(mode: ThemeMode) { return palette[mode]; }")
