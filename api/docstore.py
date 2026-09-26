@@ -521,6 +521,13 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         return base
 
     content_hash = _sha(text)
+    # 옛 고정 id(`graph.md`)를 그대로 지목한 쓰기(MCP `vinc_doc_put` · API)가 **남이 점유한**
+    # 그 행을 겨누면 이 owner 의 파생 id 로 돌린다. 안 돌리면 점유자 아닌 전원이
+    # `owner mismatch` 로 거절된다(Vinc #342). 점유자 자신과 빈 자리는 그대로 둔다.
+    if doc_id == graphmd.LEGACY_CONVENTIONS_DOC_ID:
+        seat = _meta(store, doc_id)
+        if seat is not None and seat.get("owner_id") != owner:
+            doc_id = graphmd.conventions_doc_id(owner)
     doc_id = doc_id or make_doc_id(owner, content_hash, title or "", origin)
     base["doc_id"] = doc_id
 
