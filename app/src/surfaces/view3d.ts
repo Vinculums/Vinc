@@ -156,10 +156,19 @@ type InstRef = {
 };
 
 /** 발광 패널 4장 + PMREM — 이미지 없이 굽는 스튜디오 환경(시안 §3, 외부 요청 0).
- *  반무광 재질의 clearcoat·sheen 이 반사할 것이 있어야 조형이 판재로 읽힌다. */
-let _envTex: THREE.Texture | null = null;
-function studioEnv(renderer: THREE.WebGLRenderer, pal: Palette): THREE.Texture {
-  if (_envTex) return _envTex;
+ *  반무광 재질의 clearcoat·sheen 이 반사할 것이 있어야 조형이 판재로 읽힌다.
+ *
+ *  ⚠ 캐시는 **렌더러마다, 모드마다** 따로다. 패널 색이 팔레트(초점·잉크·배경)라 모드가
+ *  바뀌면 다른 그림이고, PMREM 결과는 렌더 타깃 텍스처라 그것을 구운 WebGL 컨텍스트
+ *  안에서만 산다. 모듈 전역 한 장이던 동안 두 번째 마운트부터는 해체 때 잃은 컨텍스트의
+ *  텍스처를 받아 반사가 비어 있었고, 모드도 첫 마운트의 것으로 굳어 있었다.
+ *  근거: [[decision:a-theme-switch-repaints-the-open-view-in-place]] */
+const envCache = new WeakMap<THREE.WebGLRenderer, Map<ThemeMode, THREE.Texture>>();
+function studioEnv(renderer: THREE.WebGLRenderer, pal: Palette, mode: ThemeMode): THREE.Texture {
+  let byMode = envCache.get(renderer);
+  if (!byMode) envCache.set(renderer, byMode = new Map());
+  const hit = byMode.get(mode);
+  if (hit) return hit;
   const sc = new THREE.Scene();
   const panel = (w: number, h: number, d: number, color: number, k: number,
                  pos: [number, number, number], rot?: [number, number, number]) => {
@@ -174,9 +183,10 @@ function studioEnv(renderer: THREE.WebGLRenderer, pal: Palette): THREE.Texture {
   panel(10, 10, .1, WHITE, .55, [0, -1.2, 5], [Math.PI / 2.6, 0, 0]);
   const pm = new THREE.PMREMGenerator(renderer);
   pm.compileEquirectangularShader();
-  _envTex = pm.fromScene(sc, .04).texture;
+  const tex = pm.fromScene(sc, .04).texture;
   pm.dispose();
-  return _envTex;
+  byMode.set(mode, tex);
+  return tex;
 }
 
 /** 앱 재질 = 시안 §3 의 **반무광 한 벌**(유광은 히어로 전용).
@@ -208,6 +218,27 @@ function skinFor(pal: Palette, kind: "body" | "core" | "shell", focus: boolean,
   if (kind === "shell") { m.opacity = .28; m.depthWrite = false; }
   m.userData.base = m.opacity;
   return m;
+}
+
+/** 테마 전환 때 개별 몸통(Gateway·Domain·초점)의 재질을 갈아 끼운다(`__retheme`).
+ *  `fresh` 는 같은 공장(nodeObject)이 같은 노드로 방금 지은 것이라 순회 순서가 `obj` 와
+ *  같다. 색 규칙을 여기서 다시 쓰지 않는 이유가 그것이다: 규칙이 두 벌이면 새로 연
+ *  화면과 전환한 화면이 조용히 갈린다. 라벨 스프라이트는 공장 밖에서 붙으므로 셈에서
+ *  빠진다(그쪽은 repaintLabel). 오브젝트는 그대로라 자리·크기가 안 움직인다. */
+function takeSkins(obj: THREE.Object3D, fresh: THREE.Object3D): void {
+  const skins = (o: THREE.Object3D) => {
+    const out: (THREE.Mesh | THREE.LineSegments)[] = [];
+    o.traverse((c) => { if (c instanceof THREE.Mesh || c instanceof THREE.LineSegments) out.push(c); });
+    return out;
+  };
+  const from = skins(fresh), to = skins(obj);
+  const fits = from.length === to.length;
+  from.forEach((c, i) => {
+    c.geometry.dispose();
+    if (!fits) { (c.material as THREE.Material).dispose(); return; }
+    (to[i].material as THREE.Material).dispose();
+    to[i].material = c.material;
+  });
 }
 
 //: 초점으로부터의 홉 거리 계층. 조형에는 더 이상 안 쓰이지만 계산은 남는다(아래).
@@ -284,7 +315,20 @@ function labelSprite(text: string, pal: Palette): THREE.Sprite {
   const scale = 0.34;
   sp.scale.set(cv.width * scale, cv.height * scale, 1);
   sp.position.set(cv.width * scale * 0.5 + 8, 10, 0);
+  sp.userData.label = text;                       // repaintLabel 이 다시 구울 원문
   return sp;
+}
+
+/** 라벨의 글자를 새 잉크로 다시 굽는다. 스프라이트(자리·크기·물러남 불투명도)는
+ *  그대로 두고 텍스처만 바꾼다 — 글자 폭은 잉크와 무관해 크기가 안 변한다. */
+function repaintLabel(sp: THREE.Sprite, pal: Palette): void {
+  const text = sp.userData.label as string | undefined;
+  if (text === undefined) return;
+  const fresh = labelSprite(text, pal);
+  sp.material.map?.dispose();
+  sp.material.map = fresh.material.map;
+  sp.material.needsUpdate = true;
+  fresh.material.dispose();                       // 텍스처는 옮겼으니 재질만 버린다
 }
 
 /** 노드 렌더 반경 — nodeObject(기하)와 화살촉 오프셋(D33)이 공유하는 단일 정의. */
@@ -458,8 +502,9 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   place();
   // 캔버스 투명(alpha) — 환경 대기(body 그라데이션)가 그래프 뒤로 비친다(D37 보강).
   // 다크는 반전 팔레트(D39): 어두운 배경 + 밝은 잉크 마크 — 양 테마 모두 투명.
-  const darkTheme = document.documentElement.dataset.theme === "dark";
-  const pal = themePalette();
+  // `let` 인 이유: 테마가 뒤집히면 `__retheme` 이 갈아 끼운다. 아래 접근자들(선색·라벨·
+  // 입자)은 이 변수를 **부를 때** 읽으므로 새 팔레트를 저절로 따른다.
+  let pal = themePalette();
   // 입자는 **상시 애니메이션**이다. 모션 감도를 밝힌 사용자에게는 켜지 않고 선으로
   // 되돌린다 — 이 모드의 이득(덜 붐빔)이 그 비용을 정당화하지 못하는 유일한 경우다.
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -483,6 +528,12 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     for (const n of nodes) (n as { __tint?: string }).__tint = tints?.get((n.domain || "").trim());
   };
   applyTints();
+  /** 인스턴스 몸통의 색 — 주제 틴트가 있으면 그것, 없으면 잉크. 빌드와 테마 전환이
+   *  같은 규칙을 읽는다. */
+  const instColor = (n: N3) => {
+    const tint = (n as { __tint?: string }).__tint;
+    return new THREE.Color(tint ? parseInt(tint.slice(1), 16) : pal.ink);
+  };
   // 인스턴싱 상태 — scene 은 ForceGraph3D 생성 뒤에야 얻는다(아래), 그래서 최초
   // 빌드에서는 scene?.add 가 아무 일도 안 하고, 생성 직후 명시적으로 한 번 더 붙인다.
   let scene: THREE.Scene | undefined;
@@ -527,8 +578,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       m4.compose(new THREE.Vector3(n.x || 0, n.y || 0, n.z || 0), INST_ROT[kind],
                  new THREE.Vector3(r, r, r));
       mesh.setMatrixAt(idx, m4);
-      const tint = (n as { __tint?: string }).__tint;
-      mesh.setColorAt(idx, new THREE.Color(tint ? parseInt(tint.slice(1), 16) : pal.ink));
+      mesh.setColorAt(idx, instColor(n));
       instRefs.set(n.id, { kind, idx, mesh, baseR: r / (prefs.nodeScale ?? 1) });
     }
     scene?.add(...instMeshes);
@@ -629,20 +679,22 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   scene.add(...instMeshes);   // buildInstancedNodes() 최초 호출분 — scene 이 이제 있다
   // 환경맵이 돌아왔다(발주자 결정 2026-08-15). D77 이 유리와 함께 은퇴시켰던 것인데,
   // 반무광 재질의 clearcoat·sheen 이 반사할 것이 없으면 조형이 평면으로 죽는다.
-  scene.environment = studioEnv(g.renderer(), pal);
+  scene.environment = studioEnv(g.renderer(), pal, themeMode());
   g.renderer().toneMapping = THREE.ACESFilmicToneMapping;
   g.renderer().toneMappingExposure = 1.06;
   // 원경이 배경으로 "서서히" 잦아듦. near/far 는 아래에서 **카메라 거리에 연동**한다
   // (고정값이면 축소가 곧 소멸이다 — syncCamera 주석 참조).
   const fog = flat ? null : new THREE.Fog(pal.fog, S * 2.6, S * 9);
   scene.fog = fog;
-  g.lights([
-    new THREE.AmbientLight(WHITE, darkTheme ? 0.9 : 1.1),
+  /** 조명 한 벌. 세기만 모드를 따른다(다크는 감광) — 테마 전환이 같은 함수로 다시 건다. */
+  const lightsFor = (dark: boolean) => [
+    new THREE.AmbientLight(WHITE, dark ? 0.9 : 1.1),
     // 반구광(하늘=따뜻한 종이빛 / 지면=중간 잉크) — 플랫 셰이딩 면들에 부드러운
     // 명암 그라데이션을 깔아 "점토" 대신 "판재" 인상을 만든다(D33). 다크는 감광.
-    new THREE.HemisphereLight(SKY, GROUND, darkTheme ? 0.7 : 0.9),
-    (() => { const d = new THREE.DirectionalLight(SKY, darkTheme ? 1.1 : 1.5); d.position.set(60, 120, 80); return d; })(),
-  ]);
+    new THREE.HemisphereLight(SKY, GROUND, dark ? 0.7 : 0.9),
+    (() => { const d = new THREE.DirectionalLight(SKY, dark ? 1.1 : 1.5); d.position.set(60, 120, 80); return d; })(),
+  ];
+  g.lights(lightsFor(themeMode() === "dark"));
   const controls: any = g.controls();
   // 컨트롤은 3d-force-graph 기본 **TrackballControls** 다 — enableDamping·autoRotate·
   // enableRotate 는 OrbitControls 의 이름이라 여기선 아무것도 안 했다(2026-08-17 실측:
@@ -921,6 +973,42 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     el.style.cursor = n ? "pointer" : "";
   });
 
+  /** 테마가 뒤집혔을 때 **제자리에서** 다시 칠한다(`__update` 와 같은 관례).
+   *
+   *  팔레트에서 온 값은 전부 마운트 때 굳는다: 잉크·초점·안개·조명 세기·환경맵, 그리고
+   *  주제 틴트(명도가 모드별 토큰이다). 다시 마운트하면 풀리지만 그 길(`show`)은 읽던
+   *  문서 열과 노드 카드를 닫는다. 그래서 씬·카메라·오브젝트는 그대로 두고 **색만**
+   *  갈아 끼운다. 오브젝트를 다시 짓지 않으므로(`nodeThreeObject` 를 안 부른다) 라벨의
+   *  물러남도 그대로 남는다.
+   *  근거: [[decision:a-theme-switch-repaints-the-open-view-in-place]] */
+  (g as any).__retheme = (): void => {
+    const mode = themeMode();
+    pal = themePalette();
+    applyTints();
+    for (const n of nodes) {
+      const ref = instRefs.get(n.id);
+      if (ref) ref.mesh.setColorAt(ref.idx, instColor(n));
+    }
+    for (const im of instMeshes) {
+      if (im.instanceColor) im.instanceColor.needsUpdate = true;
+      (im.material as THREE.MeshPhysicalMaterial).sheenColor.setHex(pal.point);
+    }
+    // 라벨은 몸통의 자식으로만 달린다.
+    const labels = new Set<THREE.Sprite>();
+    for (const m of g.graphData().nodes as any[]) {
+      const obj = m.__threeObj as THREE.Object3D | undefined;
+      if (!obj) continue;
+      obj.traverse((c) => { if (c instanceof THREE.Sprite) labels.add(c); });
+      if (!canInstance(m)) takeSkins(obj, nodeObject(m, prefs, pal, true));
+    }
+    for (const sp of labels) repaintLabel(sp, pal);
+    fog?.color.setHex(pal.fog);
+    if (scene) scene.environment = studioEnv(g.renderer(), pal, mode);
+    g.lights(lightsFor(mode === "dark"));
+    // 선·화살촉·입자는 링크 digest 가 접근자를 다시 읽을 때 새 팔레트로 칠해진다.
+    g.linkColor(linkColorFn);
+    wake(600);
+  };
   return g;
 }
 

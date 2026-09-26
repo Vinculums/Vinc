@@ -152,6 +152,13 @@ let liveGen = 0;
  *  이라 카드의 표식도 잉크 그대로다(지도와 같다). */
 let shownTints: Map<string, string> | null = null;
 
+/** 살아 있는 마운트의 테마 재칠 — renderView 가 걸고, 표면이 떠나면 스스로 물러난다. */
+let themeRepaint: (() => void) | null = null;
+/** 테마가 뒤집혔다 — 열린 화면을 **다시 칠하기만** 한다. `main.ts applyTheme` 가 좌측
+ *  트리(`repaintLnb`)와 나란히 부른다: 설정 클릭과 OS 추종이 만나는 곳이 거기뿐이다.
+ *  근거: [[decision:a-theme-switch-repaints-the-open-view-in-place]] */
+export function repaintView(): void { themeRepaint?.(); }
+
 export async function renderView(el: HTMLElement) {
   const myGen = ++liveGen;
   el.innerHTML = `
@@ -313,6 +320,31 @@ export async function renderView(el: HTMLElement) {
     // (실측 2026-09-09: 레일을 눌러도 지도가 안 흐려졌다). 거는 자리는 `show` 의
     // `finally` 다 — 마운트가 끝난 뒤이고 모든 관점이 그 길을 지난다.
   }
+  /** 지금 렌더러들이 칠해진 모드. 새 마운트는 언제나 그때의 모드로 칠하므로, 이 값은
+   *  테마가 뒤집힐 때만 바뀐다 — 같은 값을 다시 쓰는 applyTheme(설정에서 같은 칸을 다시
+   *  누름 · "auto" 가 이미 OS 와 같음)에는 아무 일도 안 한다. */
+  let paintedMode = curMode();
+  /** 테마 전환을 **색에만** 반영한다. `show()` 를 부르지 않는 것이 요점이다 — 그 길은
+   *  읽던 문서 열과 노드 카드를 닫고(detail.hidden · closeFloatPanel) 카메라·점등까지
+   *  되감는다. 표는 여기서 한 벌 다시 짓고, 렌더러마다 자기 굳은 값만 갈아 끼운다.
+   *  근거: [[decision:a-theme-switch-repaints-the-open-view-in-place]] */
+  function retheme(): void {
+    const mode = curMode();
+    if (mode === paintedMode) return;
+    paintedMode = mode;
+    shownTints = curPrefs().domainTint ? tintMap(curNodes.map((n) => n.domain), mode) : null;
+    (g3 as { __retheme?: () => void } | null)?.__retheme?.();
+    g2?.retheme();
+    planar?.retint?.(shownTints);
+    // 떠 있는 노드 카드의 주제 표식(openRelsCard) — 지도와 같은 표를 읽는다.
+    document.querySelectorAll<HTMLElement>(".float-mark[data-domain]").forEach((mk) => {
+      const t = shownTints?.get(mk.dataset.domain || "");
+      if (t) mk.style.color = t; else mk.style.removeProperty("color");
+    });
+  }
+  // 라우터는 표면을 떠날 때 컨테이너를 비운다 — 캔버스가 문서에서 떨어졌으면 이 마운트는
+  // 끝난 것이다(새 마운트는 liveGen 을 올리고 자기 것을 건다).
+  themeRepaint = () => { if (myGen === liveGen && canvas.isConnected) retheme(); };
   // 지금 타임라인이 쓰는 버킷 알갱이(D72) — 밴드 클릭이 같은 구간을 만들어야 한다.
   let periodGrain: Grain = "month";
   // 마지막으로 짚은 곳(D70) — 합계의 `기타` 병합 핀에 쓴다. trail 과 별개다:
@@ -2106,9 +2138,11 @@ export async function renderView(el: HTMLElement) {
     // 머리의 표식 — 지도가 그리는 마크 그대로(채운 원 = 개념), 색은 그 노드의 주제 색.
     // 지도와 **같은 표**에서 읽는다. 주제 하나만 넣어 표를 새로 지으면 순위가 늘 0 이라
     // 모든 카드가 같은 색(색상각 0)이 됐고, 지도의 그 노드와 한 번도 맞지 않았다.
+    // `data-domain` 은 테마 전환(retheme)이 이 표식을 다시 칠할 때 읽는다.
     const tint = nd.domain ? shownTints?.get(nd.domain.trim()) : undefined;
     card.el.querySelector(".float-title")?.insertAdjacentHTML("beforebegin",
       `<span class="float-mark" aria-hidden="true"${
+        nd.domain ? ` data-domain="${esc(nd.domain.trim())}"` : ""}${
         tint ? ` style="color:${tint}"` : ""}>${icon("dot", 11)}</span>`);
 
     card.body.innerHTML = `
