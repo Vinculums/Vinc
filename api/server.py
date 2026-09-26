@@ -599,7 +599,9 @@ class VincApp:
         return self._read(lambda r: share.build_share_pack(
             owner=_req(p, "owner"), domain=p.get("domain"), tags=_csv(p.get("tags")),
             seed=p.get("seed"), ids=_csv(p.get("ids")), depth=_int(p.get("depth"), 2),
-            include_records=not p.get("no_records"), store=r))
+            include_records=not p.get("no_records"), store=r,
+            # 시트가 행을 끈 뒤 원문을 같은 기준으로 다시 고른다(저장 전에 뗀다).
+            doc_refs=True))
 
     def read_search(self, p):
         # Phase E3 — pre-filter 푸시다운은 Chunk 실존 열(layer·doc_id)만. domain/tag

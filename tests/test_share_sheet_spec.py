@@ -27,6 +27,10 @@ def _src() -> str:
     return (ROOT / "app" / "src" / "sheets.ts").read_text(encoding="utf-8")
 
 
+def _docs_src() -> str:
+    return (ROOT / "app" / "src" / "share-docs.ts").read_text(encoding="utf-8")
+
+
 def _body(src: str, head: str) -> str:
     """`head` 로 시작하는 최상위 함수의 본문만 잘라 낸다 — 열 0 의 `}` 가 끝이다."""
     body = src[src.index(head):]
@@ -59,8 +63,8 @@ class ShareSheetSpecTests(unittest.TestCase):
         잠그는 것은 **나가는 객체 그 자체**다 — 렌더 간접이 없어 `out` 이 곧 팩이고,
         세 줄 중 어느 하나를 지워도 이 테스트가 빨개진다."""
         share = _body(_src(), "export async function openShareSheet")
-        self.assertIn("const docs = keptDocs(pack.documents, excluded)", share,
-                      "제외 집합을 원문에 적용하지 않는다")
+        self.assertIn("const docs = keptDocs(pack.documents, excluded, pack.doc_refs, keepIds)",
+                      share, "제외 집합과 남은 노드를 원문에 적용하지 않는다")
         self.assertIn("{ documents: docs }", share,
                       "거른 목록이 나가는 팩에 안 실린다 — 끈 원문이 그대로 나간다")
         self.assertIn("recount(keep, edges, docs, c)", share,
@@ -75,16 +79,51 @@ class ShareSheetSpecTests(unittest.TestCase):
         다르다: 그 문서는 본문 MENTIONS 로 실린 것이라 다른 개념도 언급하므로, 개념
         하나를 뺀 것이 "원문을 빼라"는 뜻이 아니다. 그래서 `keptDocs` 는 제외 집합에서
         **미러 id 만** doc_id 로 푼다. 이 분기를 없애고 전부 빼거나 전부 남기면 여기가
-        빨개진다."""
-        helper = _body(_src(), "function keptDocs")
+        빨개진다.
+
+        2026-09-26 정련: 미러가 아닌 개념이 빠진 원문은 **남은 노드가 하나도 그 문서를
+        붙잡지 않을 때** 빠진다(아래 `test_원문은_남은_노드가_붙잡을_때만_나간다`). 개념
+        하나를 끈 것만으로는 여전히 안 빠진다 — 실제 동작은 `app/dev/share-docs-check.ts`
+        가 돌려 본다."""
+        helper = _body(_docs_src(), "export function keptDocs")
         self.assertIn("indexOf(DOC_MIRROR)", helper, "미러인지 아닌지를 안 가린다")
         self.assertIn("at >= 0", helper, "미러가 아닌 id 도 doc_id 로 푼다")
 
     def test_미러_접두가_서버와_같은_값이다(self):
         """접두가 한쪽만 바뀌면 앱은 아무 문서도 못 빼고 조용히 넘긴다 — 두 층 대조."""
-        self.assertIn('const DOC_MIRROR = "concept:doc."', _src())
+        self.assertIn('export const DOC_MIRROR = "concept:doc."', _docs_src())
         self.assertIn('_DOC_MIRROR_PREFIX = "concept:doc."',
                       (ROOT / "api" / "docstore.py").read_text(encoding="utf-8"))
+
+    def test_원문은_남은_노드가_붙잡을_때만_나간다(self):
+        """미러 행이 없는 스토어(원문이 전부 본문 언급으로 실림)에서 행을 전부 끄고
+        저장하면 노드 0 · 원문 123 인 팩이 나갔다(실측 2026-09-26, 개인 dev 스토어).
+        원문을 지목할 행이 없으니 끌 방법도 없었다. 서버가 원문을 고른 기준(`doc_refs`
+        = 그 원문을 끌어온 노드)을 시트가 남은 노드에 다시 적용한다.
+        근거: [[decision:share-documents-follow-the-nodes-that-carry-them]]"""
+        helper = _body(_docs_src(), "export function keptDocs")
+        self.assertIn("refs[d?.doc_id]", helper, "원문을 끌어온 노드를 안 본다")
+        self.assertIn("kept.has(id)", helper, "남은 노드와 대조하지 않는다")
+        share = _body(_src(), "export async function openShareSheet")
+        self.assertIn("pack.doc_refs, keepIds", share)
+        self.assertIn("delete (out as any).doc_refs", share,
+                      "시트용 대응표가 팩 파일·전송에 그대로 실린다")
+
+    def test_원문_규칙_모듈은_import_가_없다(self):
+        """`app/dev/share-docs-check.ts` 가 plain node 로 이 규칙을 돌린다. import 가 하나라도
+        생기면 그 검사는 모듈을 못 찾고 CI 의 Dev checks 가 죽는다."""
+        self.assertNotRegex(_docs_src(), r"(?m)^import ")
+        self.assertTrue((ROOT / "app" / "dev" / "share-docs-check.ts").exists())
+
+    def test_서버가_시트에만_대응표를_싣는다(self):
+        """`/share` 응답에는 싣고(시트가 쓴다), 팩을 그대로 파일로 쓰는 CLI 는 안 켠다."""
+        server = (ROOT / "api" / "server.py").read_text(encoding="utf-8")
+        read_share = server[server.index("def read_share"):server.index("def read_search")]
+        self.assertIn("doc_refs=True", read_share)
+        share_py = (ROOT / "api" / "share.py").read_text(encoding="utf-8")
+        self.assertIn('pack["doc_refs"] = refs', share_py)
+        cli = (ROOT / "api" / "cli.py").read_text(encoding="utf-8")
+        self.assertNotIn("doc_refs", cli, "CLI 가 저장하는 팩 파일에 시트용 대응표가 실린다")
 
     def test_서버가_같은_이름으로_문서를_센다(self):
         """앱이 읽는 키를 빌더가 실제로 넣는가 — 이름이 갈리면 화면은 조용히 0 이다."""

@@ -220,6 +220,18 @@ class PackDocumentsE2E(unittest.TestCase):
         self.assertEqual(docs[0]["text"], self.TEXT)   # 무손실
         self.assertEqual(docs[0]["doc_id"], doc_a)
 
+    def test_doc_refs_name_the_nodes_that_carried_each_document(self):
+        """공유 시트가 행을 끈 뒤 원문을 다시 고르는 대응표. 값은 **팩 fragment 의 id**
+        여야 시트가 남은 노드와 대조할 수 있다(네임스페이싱 on/off 양쪽)."""
+        st = self._store()
+        doc_a = self._seed(st, "user:alice")
+        pack = share.build_share_pack(owner="user:alice", store=st, doc_refs=True)
+        frag_ids = {pkns.strip(n["id"]): n["id"] for n in pack["fragment"]["nodes"]}
+        self.assertEqual(pack["doc_refs"], {doc_a: sorted(
+            frag_ids[c] for c in ("concept:photosynthesis", "concept:cellular-respiration"))})
+        # 끄지 않은 빌더(CLI 가 파일로 쓰는 팩)에는 없다.
+        self.assertNotIn("doc_refs", share.build_share_pack(owner="user:alice", store=st))
+
     def test_import_reconstructs_under_receiver_owner(self):
         from api import docstore as ds
         src = self._store()
@@ -387,6 +399,16 @@ class DocMirrorPullsItsDocumentE2E(unittest.TestCase):
         self.assertIn("concept:doc." + doc, {n["id"] for n in pack["fragment"]["nodes"]})
         self.assertEqual([d["doc_id"] for d in pack.get("documents") or []], [doc])
         self.assertEqual(pack["manifest"]["counts"]["documents"], 1)
+
+    def test_mirror_is_the_node_that_carries_its_document(self):
+        """본문이 어떤 개념도 언급하지 않는 문서는 미러 하나가 붙잡는다."""
+        st = self._store()
+        doc = self._seed(st)
+        pack = share.build_share_pack(owner="user:alice", domain="vinc/design", store=st,
+                                      doc_refs=True)
+        mirror = [n["id"] for n in pack["fragment"]["nodes"]
+                  if pkns.strip(n["id"]) == "concept:doc." + doc]
+        self.assertEqual(pack["doc_refs"], {doc: mirror})
 
     def test_roundtrip_applies_every_document_the_manifest_counted(self):
         st = self._store()
