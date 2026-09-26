@@ -157,6 +157,21 @@ class ThemeStore:
         self._save(state)
         return state["themes"][theme_id]
 
+    def delete_theme(self, theme_id: str) -> bool:
+        """주제 하나를 어휘째 지운다 — 계정 삭제 캐스케이드의 어휘 파일 몫(판정 D11).
+        없으면 False 를 돌려주고 파일을 건드리지 않는다. 활성 주제였다면 남은 것 중
+        하나로(없으면 None) 넘긴다."""
+        if not theme_id or not isinstance(theme_id, str):
+            return False
+        state = self._load()
+        if theme_id not in state["themes"]:
+            return False
+        del state["themes"][theme_id]
+        if state.get("active_theme_id") == theme_id:
+            state["active_theme_id"] = next(iter(state["themes"]), None)
+        self._save(state)
+        return True
+
     def list_themes(self) -> list[dict]:
         return list(self._load()["themes"].values())
 

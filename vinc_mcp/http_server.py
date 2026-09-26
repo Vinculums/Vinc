@@ -499,6 +499,16 @@ class MCPHTTPApp:
         account 공개키만 있으면 성립한다."""
         return bool(self.account_public)
 
+    def _purge_oauth_state(self, out, owner: str):
+        """그래프가 지워졌으면 이 서버의 OAuth 상태(토큰·리프레시·코드·사용량·플랜
+        캐시)도 같이 간다 — 계정 삭제 뒤에도 남던 잔여(2026-09-26 갭 분석 §2.2, 판정
+        D11). 실패는 삼키지 않는다: 계정은 5xx 를 받아 재시도하고, 그래프 purge 는
+        멱등이라 두 번 돌아도 무해하다. `store` 가 없는 구성(정적 토큰만·테스트)은
+        건너뛴다."""
+        if isinstance(out, dict) and out.get("executed") and self.store is not None:
+            out["oauth"] = self.store.purge_owner(owner)
+        return out
+
     def purge_owner_request(self, assertion: str, raw_body: bytes | None = None) -> dict:
         """계정 서명 purge 어서션(typ=purge·iss=account·aud=mcp·≤2분)을 검증해 `sub`
         로 owner 를 유도하고, 사이드카에 owner 전 노드 삭제를 프록시한다.
@@ -526,7 +536,9 @@ class MCPHTTPApp:
         sub = payload.get("sub")
         if not isinstance(sub, str) or not sub:
             raise ValueError("purge request is missing a subject")
-        return self.bridge.request("POST", "/sync/purge-owner", body={"owner": f"user:{sub}"})
+        owner = f"user:{sub}"
+        out = self.bridge.request("POST", "/sync/purge-owner", body={"owner": owner})
+        return self._purge_oauth_state(out, owner)
 
     def purge_team_request(self, assertion: str, raw_body: bytes | None = None) -> dict:
         """팀 그래프 소거(typ=purge-team) — **팀 삭제 절차 전용**이다.
@@ -551,7 +563,8 @@ class MCPHTTPApp:
         graph_owner = payload.get("graph_owner")
         if not isinstance(graph_owner, str) or not _TEAM_OWNER_RE.fullmatch(graph_owner):
             raise ValueError("team purge request has an invalid graph owner")
-        return self.bridge.request("POST", "/sync/purge-owner", body={"owner": graph_owner})
+        out = self.bridge.request("POST", "/sync/purge-owner", body={"owner": graph_owner})
+        return self._purge_oauth_state(out, graph_owner)
 
     # ── 운영자 사용량 덤프(W1c) ─────────────────────────────────────────────────
     def usage_request(self, assertion: str, raw_body: bytes | None = None,

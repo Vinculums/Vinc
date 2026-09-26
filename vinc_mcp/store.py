@@ -493,6 +493,22 @@ class Store:
         return [dict(r) for r in rows]
 
     # ── 유지보수(만료 청소) ────────────────────────────────────────────────────
+    def purge_owner(self, owner: str) -> dict:
+        """한 소유자의 OAuth 상태를 전부 지운다 — 계정 삭제 캐스케이드의 허브 몫(판정
+        D11). 그래프 purge 뒤에도 토큰·리프레시·코드·사용량·플랜 캐시가 그 소유자
+        이름으로 남아 있었다(2026-09-26 갭 분석 §2.2). 영속이 필요한 쓰기라 스냅샷까지
+        한다. 표별 건수를 돌려줘 호출자(계정)가 감사할 수 있게 한다."""
+        if not owner or not isinstance(owner, str):
+            raise ValueError("purge_owner: owner must not be empty")
+        with self._lock:
+            out: dict[str, int] = {}
+            for table in ("tokens", "refresh", "codes", "usage", "owner_plan"):
+                out[table] = self._db.execute(
+                    f"DELETE FROM {table} WHERE owner=?", (owner,)).rowcount
+            self._db.commit()
+            self._save_snapshot()
+        return out
+
     def _purge_expired_locked(self, t: float) -> int:
         """만료 행을 지운다 — **락을 이미 쥔 채** 부르고, 커밋·스냅샷은 하지 않는다.
 
