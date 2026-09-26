@@ -606,6 +606,9 @@ export const api = {
   nodeContext: (owner: string, node: string, limit = 4): Promise<{
     executed: boolean; title?: string; one_liner?: string; arm?: string;
     props?: Record<string, unknown>;
+    // 속성 편집이 읽는다: 무슨 종인가(props 를 싣는가) · 어느 판을 읽었는가(W3).
+    // 구 사이드카엔 키가 없다 — 없으면 편집 단추를 내지 않고, 판은 0 으로 본다.
+    node_kind?: string; rev?: number;
     excerpts?: { doc_id: string; doc_title: string; section: string;
                  excerpt: string; method: string }[];
     links?: NodeLinks;

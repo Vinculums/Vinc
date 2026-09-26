@@ -393,6 +393,7 @@
     "decision:ladybug-extensions-ship-from-a-vinc-release-not-the-repo-2026-09-26",
     "decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24",
     "decision:mention-title-tokens-within-a-window",
+    "decision:node-props-are-edited-in-the-document-pane-as-a-whole-and-checked-against-the-read-revision-2026-09-26",
     "decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13",
     "decision:relax-the-evidence-producer-rule",
     "decision:roster-shells-carry-a-denylist-not-an-allowlist",

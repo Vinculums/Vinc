@@ -1938,6 +1938,52 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   display: grid; grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr); gap: 1rem;
 }
 #shell[data-doc-size="full"] .node-props > .props-dl > .props-row > dt { margin: .1rem 0 0; }
+/* 속성 편집(2026-09-26) — 절 머리에 글자 단추 하나(크기 전환과 같은 결), 누르면 절이
+   제자리에서 편집 줄로 바뀐다. 줄 = 이름 · 형식 · 지우기 한 줄 + 값. 값 칸은 형식이
+   정한다(글·목록·JSON 은 여러 줄, 숫자는 한 줄, 예/아니요는 드롭다운).
+   근거: [[decision:node-props-are-edited-in-the-document-pane-as-a-whole-and-checked-against-the-read-revision-2026-09-26]] */
+.props-head { display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2, .5rem); }
+.props-head .rail-sec { margin-right: auto; }
+.props-edit-btn, .props-add, .props-reload { font-size: .72rem; padding: .25rem .5rem; }
+.props-rows { display: flex; flex-direction: column; }
+.props-erow {
+  display: grid; gap: var(--space-1, .25rem);
+  padding: var(--space-2, .5rem) 0 var(--space-3, .75rem);
+  border-bottom: 1px solid hsl(var(--border) / .55);
+}
+.props-erow-head { display: flex; align-items: center; gap: var(--space-2, .5rem); }
+.props-key, .props-val {
+  padding: .4rem .5rem; border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--card)); color: hsl(var(--foreground)); font: inherit;
+}
+.props-key {
+  flex: 1 1 auto; min-width: 0;
+  font-family: var(--font-mono); font-size: .78rem;
+}
+/* 형식 드롭다운은 공용 select 규칙을 쓰되 이름 칸과 같은 높이로 줄인다. */
+.props-kind { flex: 0 0 auto; padding: .4rem .55rem; font-size: .78rem; }
+.props-val { width: 100%; min-width: 0; }
+textarea.props-val {
+  resize: vertical; line-height: 1.45;
+  /* 내용만큼 자란다(지원하는 엔진에서). 못 하는 엔진은 rows 가 첫 높이를 정한다. */
+  field-sizing: content; min-height: 2.6rem; max-height: 22rem;
+}
+.props-mono { font-family: var(--font-mono); font-size: .78rem; }
+.props-key:focus-visible, .props-val:focus-visible {
+  outline: 2px solid hsl(var(--ring)); outline-offset: 1px;
+}
+.props-erow[aria-invalid="true"] .props-key,
+.props-erow[aria-invalid="true"] .props-val { border-color: hsl(var(--danger)); }
+.props-err { margin: 0; font-size: .75rem; color: hsl(var(--danger)); }
+.props-add { justify-self: start; margin-top: var(--space-2, .5rem); }
+.props-editing { display: grid; }
+.props-status { margin: var(--space-2, .5rem) 0 0; }
+.props-status:empty { display: none; }
+.props-status .error-banner { font-size: .8rem; padding: var(--space-2, .5rem) var(--space-3, .75rem); }
+.props-acts { display: flex; justify-content: flex-end; gap: var(--space-2, .5rem);
+  margin-top: var(--space-3, .75rem); }
 /* 넓은 열의 연결 절 — 카드의 연결 줄과 같은 줄을 쓰되 글자는 본문 크기로. */
 .pane-links .link-title { font-size: inherit; }
 /* 수치 행 — 이름/값 두 칸. 값은 표 숫자(tabular)라 자릿수가 흔들리지 않는다. */
