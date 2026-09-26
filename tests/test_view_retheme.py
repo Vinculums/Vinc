@@ -77,7 +77,7 @@ class ThreeDTests(unittest.TestCase):
         self.assertNotIn("buildInstancedNodes(", self.body)
 
     def test_팔레트에서_온_값을_전부_갈아_끼운다(self):
-        for need in ("pal = themePalette()", "applyTints()", "setColorAt(", "sheenColor",
+        for need in ("pal = themePalette()", "applyTints()", "setColorAt(", "reglaze(", "toneMappingExposure",
                      "takeSkins(", "repaintLabel(", "fog?.color", "studioEnv(", "g.lights(",
                      "g.linkColor(linkColorFn)"):
             self.assertIn(need, self.body, need)
@@ -100,7 +100,7 @@ class TwoDTests(unittest.TestCase):
         body = src[src.index("    retheme() {"):]
         body = body[:body.index("\n    },")]
         for need in ("bg = hexStr(pal().background)", "tints = tintsNow()",
-                     '"color", inkOf(n)', '"color", edgeColor(e)', '"labelColor"', "sigma.refresh()"):
+                     "mergeNodeAttributes(n.id, markOf(n))", '"color", edgeColor(e)', '"labelColor"', "sigma.refresh()"):
             self.assertIn(need, body, need)
         # 선 색 규칙은 마운트와 한 벌이다.
         self.assertIn("color: edgeColor(e),", src)

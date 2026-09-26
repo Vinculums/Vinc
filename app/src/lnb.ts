@@ -5,7 +5,6 @@ import { icon } from "./icons";
 import { applyDefaults, foldsOwnRows, ownKey } from "./lnb-tree";
 import type { ThemeMode } from "./theme";
 import { tintMap } from "./view-tint";
-import { loadPrefs } from "./view-prefs";
 import { mark3dSvg, markSvg } from "./surfaces/view-planar";
 
 /** 좌측 문서 트리 (DEC D69) — 셸의 두 번째 크롬.
@@ -53,8 +52,7 @@ let picked = new Set<string>();
 let expanded = new Set<string>();
 const seenDefault = new Set<string>();
 
-/** 주제 색(열린 층) — 지도와 **같은 토글**(`ViewPrefs.domainTint`)을 읽고 같은
- *  `tintMap` 으로 만든다. paint 마다 한 번 만들어 줄마다 조회한다.
+/** 주제 색(보석색, 늘 켜짐) — 지도와 같은 `tintMap` 으로 만든다. paint 마다 한 번 만들어 줄마다 조회한다.
  *
  *  ⚠ **색을 배정하는 배열은 이 트리의 것이다**(지도의 것을 받아 오지 않는다).
  *  `tintMap` 은 넘긴 주제 집합을 정렬해 순위로 색을 주므로, 지도의 배열을 따라가면
@@ -790,8 +788,7 @@ function paint() {
   const unfiled = tree?.unfiled || [];
   // 색은 paint 마다 한 번 만든다(줄마다 만들면 같은 답을 n 번 낸다). 토글이 꺼져
   // 있으면 null 이고, 그때 줄에는 --tint 가 아예 안 실려 CSS 의 잉크가 그대로 쓰인다.
-  tints = loadPrefs().domainTint
-    ? tintMap(groups.map((g) => g.domain), themeMode()) : null;
+  tints = tintMap(groups.map((g) => g.domain), themeMode());
   paintHead((tree?.domains || []).length);
   let html = "";
   // ③ 고른 것이 있으면 **말한다**. 켜진 배경만으로는 몇 개인지도, 어떻게 푸는지도
@@ -894,8 +891,7 @@ async function openDoc(docId: string, nodeId: string, domain?: string) {
 /** 밖에서 색을 다시 굳히라고 부른다. 값은 안 받는다: 정본은 localStorage
  *  (`vinc.view.prefs`)와 `data-theme` 이고 paint 가 둘 다 다시 읽는다.
  *
- *  부르는 데 둘. ① 주제 색 토글(지도와 **같은 토글**이라 왼쪽 트리도 함께 따라간다)
- *  ② **테마 전환**(`applyTheme`) — `tintStyle` 이 싣는 것은 CSS 변수가 아니라 그때
+ *  부르는 데는 **테마 전환**(`applyTheme`) 하나다 — `tintStyle` 이 싣는 것은 CSS 변수가 아니라 그때
  *  모드로 계산한 HEX 라, 다시 그리지 않으면 뒤집힌 화면에 반대 모드 색이 남는다. */
 export function repaintLnb(): void { paint(); }
 

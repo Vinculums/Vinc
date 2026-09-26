@@ -98,7 +98,7 @@ DEFAULT_SEMANTIC_SCOPES = ["FRAME_FILL", "SHAPE_FILL", "TEXT_FILL"]
 
 
 def _clean(d: dict) -> dict:
-    """토큰만 남긴다. `$`-접두 주석과, `motion`·`viewScene`·`domainTint` 가 쓰는 **접두 없는
+    """토큰만 남긴다. `$`-접두 주석과, `motion`·`viewScene`·`topicJewels` 가 쓰는 **접두 없는
     `note`** 를 뺀다 — 그 셋은 DTCG 관례를 안 따라서 `$note` 가 아니라 `note` 다(빼지 않으면
     산문 한 문단이 토큰으로 둔갑해 Figma 에 변수로 생긴다)."""
     return {k: v for k, v in d.items() if not k.startswith("$") and k != "note"}

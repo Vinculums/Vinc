@@ -37,9 +37,10 @@ class LnbTintTests(unittest.TestCase):
         for tail in rows:
             self.assertEqual(tail, "${tintStyle(domain)}", "잉크 리터럴 뒤에만 붙인다")
 
-    def test_토글이_꺼지면_색을_안_싣는다(self):
-        """지도와 **같은 스위치**다 — 좌측 트리만 무조건 칠하면 토글이 거짓말이 된다."""
-        self.assertIn("loadPrefs().domainTint", LNB)
+    def test_주제_색은_늘_켜져_있다(self):
+        """토글이 없다(2026-09-26) — 기기별 저장값이 같은 그래프를 기기마다 다른 색으로 만들었다."""
+        self.assertIn("tints = tintMap(groups.map((g) => g.domain), themeMode());", LNB)
+        self.assertNotIn("domainTint", LNB)
         self.assertRegex(LNB, r"tints\?\.get\(")      # 없으면 조회가 아니라 강제다
 
     def test_CSS_는_토큰_대체값을_들고_색을_읽는다(self):

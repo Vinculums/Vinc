@@ -32,6 +32,7 @@ const NOSEED = argv.includes("--no-seed");
 const T = new Date().toISOString();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const side = async (p) => { const r = await fetch(SIDE + p, { headers: { Authorization: `Bearer ${TOKEN}` } }); return r.ok ? r.json() : null; };
+const sidePost = async (p, body) => { const r = await fetch(SIDE + p, { method: "POST", headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (!r.ok) throw new Error(`${p} ${r.status}`); return r.json(); };
 
 // ── 공통 ───────────────────────────────────────────────────────────────────
 const VP = { width: 1280, height: 800 };
@@ -42,7 +43,8 @@ const VP = { width: 1280, height: 800 };
 // vinc.mode=local 이면 사이드카 스토어를 본다. 계정 모드로 두면 모든 조회가 키 없이 계정으로 가서 빈 화면이다.
 // ⚠ 모드는 사이드카의 ~/.vinc/config.json 에도 적힌다 — 캡처용 사이드카는 USERPROFILE 을 스크래치로 돌려
 // 띄울 것(이 기기의 실제 데스크톱 설정을 덮지 않게).
-const BASE_LS = { "vinc.sidecar.token": TOKEN, "vinc.sidecar.base": SIDE, "vinc.lang": "en", "vinc.theme": "dark", "vinc.firstrun.seen": "1", "vinc.view.coach.seen": "1", "vinc.owner": "tenant:local",
+const OWNER = "tenant:local";
+const BASE_LS = { "vinc.sidecar.token": TOKEN, "vinc.sidecar.base": SIDE, "vinc.lang": "en", "vinc.theme": "dark", "vinc.firstrun.seen": "1", "vinc.view.coach.seen": "1", "vinc.owner": OWNER,
   "vinc.mode": "local", "vinc.sync.linked": "1", "vinc.sync.username": "demo" };
 const SHELL_INIT = () => {
   // main.ts 는 Tauri 창 핸들을 얻은 뒤에만 dataset.shell 을 켠다. 브라우저에는 창이 없으니 여기서 켠다.
@@ -217,7 +219,10 @@ TB("share-sheet", "Share › Continue: share as a pack, spec grid and node list"
 // 캡처인데 그 보드는 아무 코드도 안 그리고 있었다. 목적지 고르기 화면은 스페이스가 둘 이상일
 // 때만 뜨므로 웹 세션이 필요하고, 그 픽스처는 이 스크립트에 없다.
 TB("import-pack-sheet", "Import › pick a .vincpack: import pack sheet before confirming", async (p) => { await settingsSheet(p, "data", "import"); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(path.join(REPO, "starter-packs", "vinc-pack-math.vincpack")); await sleep(1500); });
-TB("import-doc-sheet", "Import › pick a .md: import document sheet", async (p) => { await settingsSheet(p, "data", "import"); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(path.join(REPO, "starter-packs", "README.md")); await sleep(1500); });
+// 설정 시트는 .md 를 고르는 즉시 가져온다(확인 시트 없음). 찍고 나면 그 문서를 지운다: 남겨 두면 뒤의 상태들
+// LNB 에 "No topic yet" 이 끼고, 다음 실행은 "이미 있음" 화면을 찍는다.
+TB("import-doc-sheet", "Import › pick a .md: the document is added", async (p) => { await settingsSheet(p, "data", "import"); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(path.join(REPO, "starter-packs", "README.md")); await sleep(1500); },
+  { after: async () => { const d = await side(`/docs?owner=${OWNER}&limit=500`); for (const doc of (d?.docs ?? []).filter((x) => x.origin === "README.md")) await sidePost("/doc/delete", { id: doc.doc_id, owner: OWNER }); } });
 TB("graphmd", "Settings › GRAPH.md", async (p) => { await settingsSheet(p, "graphmd"); await sleep(400); });
 // 설정 시트의 분류(surfaces/settings.ts ALL_CATS). 옛 탭 셋은 분류로 옮겨 갔다: Account → account,
 // Connections(외부 어시스턴트 연결) → ai, Advanced → advanced. 라이트는 첫 분류(General)다.
@@ -277,6 +282,7 @@ for (const s of states) {
     await page.goto(`${APP}/${s.url}`, { waitUntil: "load", timeout: 30000 });
     if (s.before) await s.before(page);
     await page.screenshot({ path: path.join(OUT, row.file), fullPage: s.full });
+    if (s.after) await s.after(page);   // 상태가 스토어에 쓴 것을 되돌린다(뒤 상태와 다음 실행이 같은 데이터를 보게)
     row.sha1 = crypto.createHash("sha1").update(fs.readFileSync(path.join(OUT, row.file))).digest("hex");
     console.log("ok  ", s.id);
   } catch (e) { fails++; row.error = String(e.message || e).split("\n")[0].slice(0, 200); console.log("FAIL", s.id, row.error); }

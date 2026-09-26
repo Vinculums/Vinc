@@ -32,16 +32,10 @@
       }
     }
   },
-  "domainTint": {
-    "note": "Open-layer domain tint for the View marks (on by default since 2026-08-16; it shipped off and a hidden default read as a screen with a broken feature, see decision:topic-tint-ships-on). This is emphasis, not encoding: it is a user toggle in ViewPrefs, so it must never be the only way to tell two nodes apart. The hue is assigned by golden angle over the topics present on screen, so a topic does not keep its hue when the scope or the topic set changes; that instability is accepted because two topics landing on the same hue makes the feature do nothing, and a hash gave exactly that (measured: two pairs within 6 to 8 degrees across eight topics). Saturation and lightness are fixed here rather than in app code so the contrast floor is a token, not a literal: the lightness sits near the ink it replaces, which is what keeps the tinted mark readable in each mode. Consumed by app/src/view-tint.ts.",
-    "light": {
-      "s": 0.44,
-      "l": 0.34
-    },
-    "dark": {
-      "s": 0.4,
-      "l": 0.72
-    }
+  "topicJewels": {
+    "note": "Topic colour for the View marks, 3D glass bodies, the left tree dots and the node card mark: the jewel set of the homepage sculpture (ruby, sapphire, emerald, amber, amethyst), replacing the pale golden-angle tint on 2026-09-26 (see decision:topics-wear-the-homepage-jewels-2026-09-26). Always on, no toggle: a per-device toggle made the same graph look coloured on one machine and plain on another. Topics are sorted and take the jewels in order; past five, the set repeats with the hue turned 20 degrees per round, so topics on one screen do not share a colour until eleven. Dark uses a lifted set so a flat mark clears 5.5:1 on the background; light uses the deep set (the sculpture's own dark jewels, amber deepened) so every mark clears 3:1. The colour carries no meaning beyond telling topics apart: place says which topic.",
+    "dark": ["#E5566E", "#6B8CF2", "#2FC08E", "#E6A93E", "#B07AE6"],
+    "light": ["#9B1B30", "#1C3F9E", "#14775A", "#A8741A", "#6A2C99"]
   },
   "primitive": {
     "grain_50": {

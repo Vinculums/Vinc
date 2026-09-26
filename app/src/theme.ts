@@ -1,7 +1,7 @@
 // AUTO-GENERATED — Vinc/design-hub/scripts/gen_theme_ts.py. Do not hand-edit.
 // SSoT: Vinc/design-hub/DESIGN/design-tokens.json + imports viewScene.
 // Palette for WebGL (three.js/Sigma), generated from the same source as the CSS variables.
-// sync-sha256: 2830feeb979ec2cdb0524c0f78855627cd5c4f64431f2872c79b8891a9d2d0ab
+// sync-sha256: 89915e8567b48dca9b61c698b215da634e21046e3681cd4465a7fa653ebedd03
 
 export type ThemeMode = 'light' | 'dark';
 
@@ -57,11 +57,10 @@ export const viewScene = {
   },
 } as const;
 
-// 도메인 틴트(열린 층) — 색상환 각도는 주제 문자열 해시, 채도·명도는 여기 고정.
-// 소비처는 app/src/view-tint.ts 하나뿐.
-export const domainTint = {
-  light: { s: 0.44, l: 0.34 },
-  dark: { s: 0.4, l: 0.72 },
+// 주제 색 — 공홈 조형의 보석색(루비·사파이어·에메랄드·호박·자수정). 소비처는 app/src/view-tint.ts.
+export const topicJewels = {
+  light: [0x9B1B30, 0x1C3F9E, 0x14775A, 0xA8741A, 0x6A2C99],
+  dark: [0xE5566E, 0x6B8CF2, 0x2FC08E, 0xE6A93E, 0xB07AE6],
 } as const;
 
 export function themePalette(mode: ThemeMode) { return palette[mode]; }
