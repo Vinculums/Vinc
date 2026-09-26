@@ -203,11 +203,16 @@ def _read_props(row: dict, warnings: list[str]) -> dict:
 
 
 def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
-                       decision_ids: list[str] | None = None, cfg=None) -> list[dict]:
+                       decision_ids: list[str] | None = None, cfg=None,
+                       refs: dict[str, list[str]] | None = None) -> list[dict]:
     """팩의 개념이 가리키는 원문 문서를 export 형태로 모은다 — 자기완결 공유 팩
     (개념 + 그 소스 원문). 길이 **둘**이다: `(Chunk)-[:MENTIONS]->(Concept)` 역추적과
     문서 미러(`concept:doc.<doc_id>`) id 풀기. Chunk=SSoT(D45) 이후에만 존재;
     어느 길로도 안 걸리면(팩·수기 개념) 빈 목록이다.
+
+    ``refs`` 에 dict 를 넘기면 실린 문서마다 **그 문서를 끌어온 노드 id**(팩 fragment 의
+    id 그대로)를 채운다. 공유 시트가 행을 끈 뒤 원문을 같은 기준으로 다시 고르는 데 쓴다.
+    근거: [[decision:share-documents-follow-the-nodes-that-carry-them]]
 
     payload 형태는 docsync.export_docs 와 동형({doc_id,title,origin,content_hash,
     updated_at,text}) — 수신측이 import_docs 로 재청킹한다(embedding·오프셋 미전송,
@@ -229,19 +234,33 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
         if store is None:
             return []          # 정말로 도달 불가 — 개념 조회도 같은 답을 냈을 자리다
     try:
+        # 끌어온 노드는 **팩 fragment 의 id** 로 적는다 — 스토어가 돌려주는 물리 키를
+        # 넘겨받은 id 로 되돌린다(네임스페이싱이 꺼져 있으면 둘은 같다).
+        as_given = {pkns.key(owner, i): i for i in (*concept_ids, *(decision_ids or []))}
+        by_doc: dict[str, set[str]] = {}
+
+        def _carried(rows_) -> None:
+            for r in rows_ or []:
+                did, node = r.get("doc_id"), r.get("node")
+                if not did:
+                    continue
+                held = by_doc.setdefault(did, set())
+                if node:
+                    held.add(as_given.get(node) or node)
+
         rows = store.run(
             "MATCH (c:Chunk)-[:MENTIONS]->(co:Concept) "
             "WHERE co.concept_id IN $ids AND c.owner_id = $o "
-            "RETURN DISTINCT c.doc_id AS doc_id",
+            "RETURN DISTINCT c.doc_id AS doc_id, co.concept_id AS node",
             {"ids": pkns.keys(owner, list(concept_ids)), "o": owner})
-        dids = {r.get("doc_id") for r in rows or [] if r.get("doc_id")}
+        _carried(rows)
         if decision_ids:
             rows = store.run(
                 "MATCH (c:Chunk)-[:MENTIONS]->(d:Decision) "
                 "WHERE d.decision_id IN $ids AND d.owner_id = $o AND c.owner_id = $o "
-                "RETURN DISTINCT c.doc_id AS doc_id",
+                "RETURN DISTINCT c.doc_id AS doc_id, d.decision_id AS node",
                 {"ids": pkns.keys(owner, decision_ids), "o": owner})
-            dids.update(r["doc_id"] for r in rows or [] if r.get("doc_id"))
+            _carried(rows)
         # MENTIONS 만으로는 부족하다 — 그 엣지는 **본문이 개념 이름을 담을 때** 생기므로,
         # 주제를 손으로 적기만 한 문서는 자기 미러(`concept:doc.<doc_id>`)가 팩에 실려도
         # 따라오지 않는다. 받는 쪽은 가리키는 문서가 없는 개념을 오류 없이 얻는다.
@@ -253,9 +272,9 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
             if logical.startswith(ds._DOC_MIRROR_PREFIX):
                 did = logical[len(ds._DOC_MIRROR_PREFIX):]
                 if did:
-                    dids.add(did)
+                    by_doc.setdefault(did, set()).add(cid)
         docs: list[dict] = []
-        for did in sorted(dids):
+        for did in sorted(by_doc):
             # SEC-1 — 미러에서 푼 doc_id 도 owner 를 건다. `get_doc` 이 owner 불일치와
             # 부재(오타 미러·이미 지운 문서)를 둘 다 executed=False 로 답하므로, 이 한
             # 줄이 "남의 문서 유출"과 "없는 doc_id 를 실어 임포트를 깨는 것"을 함께 막는다.
@@ -271,6 +290,8 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
                 # 때는 정말로 지금이다(노드는 id 를 물려받아 같은 객체라 규칙이 갈린다).
                 "content_time": (ds._meta(store, did) or {}).get("content_time") or "",
             })
+            if refs is not None:
+                refs[did] = sorted(by_doc[did])
         return docs
     finally:
         if owns:
@@ -282,11 +303,15 @@ def build_share_pack(*, owner: str, domain: str | None = None,
                      ids: list[str] | None = None,
                      depth: int = 2, include_records: bool = True,
                      generated_at: str | None = None,
-                     cfg=None, store=None) -> dict:
+                     cfg=None, store=None, doc_refs: bool = False) -> dict:
     """네 종류의 콘텐츠를 선택한다: ids > seed > domain, 이후 태그 교집합.
 
     ego는 구조 노드를 포함해 무방향 1~4홉 순회하며 출력 관계 방향은 보존한다.
     include_records=False는 기존 CLI 계약대로 Concept만 포함한다.
+
+    ``doc_refs=True`` 면 팩에 ``doc_refs``(doc_id → 그 원문을 끌어온 노드 id 목록)를
+    더한다. 팩 파일의 일부가 아니라 **공유 시트만 쓰는 값**이다: 시트가 행을 끈 뒤 원문을 다시
+    고르고 저장·전송 전에 뗀다. 그래서 CLI 처럼 팩을 그대로 파일로 쓰는 호출자는 안 켠다.
     """
     # 1) 스코프 결정 — ids(명시 집합: lasso 영역 선택, Phase B) > seed(ego) > domain.
     if ids is not None:
@@ -405,9 +430,10 @@ def build_share_pack(*, owner: str, domain: str | None = None,
     # 자기완결(D45) — 팩 개념이 참조하는 원문 문서를 함께 싣는다(Chunk=SSoT 이후).
     # vinc_pack 버전은 그대로 두고 **선택 필드**로 더한다 — 구버전 앱은 이 필드를
     # 무시하고 개념만 임포트(하위호환), 신버전은 원문까지 복원한다.
+    refs: dict[str, list[str]] | None = {} if doc_refs else None
     documents = _docs_for_concepts(
         store, owner=owner, concept_ids=sorted(concept_ids),
-        decision_ids=sorted(r["id"] for r in selected["decision"]), cfg=cfg)
+        decision_ids=sorted(r["id"] for r in selected["decision"]), cfg=cfg, refs=refs)
 
     created = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     pack = {
@@ -431,6 +457,8 @@ def build_share_pack(*, owner: str, domain: str | None = None,
         pack["manifest"]["warnings"] = warnings
     if documents:
         pack["documents"] = documents
+        if refs is not None:
+            pack["doc_refs"] = refs
     return pack
 
 
