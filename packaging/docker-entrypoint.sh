@@ -269,7 +269,30 @@ if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
     # ⚠ **한 줄로 눌러 담는다.** 사이드카 응답은 `indent=2` 라 여러 줄이고, 컨테이너
     # 로그는 줄 단위라 `node-mirror:` 표식이 붙은 첫 줄에는 `{` 한 글자만 들어간다.
     # 2026-09-10 에 그것 때문에 두 배포를 원인 없이 흘려보냈다.
-    out=$(tr -s '\r\n\t ' ' ' < "$MIRROR_PIDFILE.out" 2>/dev/null)
+    # ⚠ **소유자 id 는 찍지 않는다.** 응답의 `owners` 는 raw `user:`/`team:` id 목록이고,
+    # `id_collisions` 도 id 를 실어 온다. 이 줄은 컨테이너 stdout 이자 hub-deploy 가 Actions
+    # 로그에 다시 찍는 줄이라, 그대로 두면 회원 식별자가 GitHub 에 90일 남는다(2026-09-26
+    # 갭 분석, 그래프 vinc.research.privacy-compliance-gap-2026-09-26 §2.3, 판정 D12).
+    # 목록은 개수로 접고 나머지 키는 그대로 둔다. JSON 이 아니면(예: 게이트웨이 오류 본문)
+    # 그 본문에는 id 가 없으므로 한 줄로 눌러 그대로 싣는다.
+    out=$(python3 - "$MIRROR_PIDFILE.out" <<'PYEOF' 2>/dev/null || echo "(unreadable response)"
+import json, sys
+path = sys.argv[1]
+try:
+    raw = open(path, encoding="utf-8", errors="replace").read()
+except OSError:
+    print("(no response body)"); sys.exit(0)
+try:
+    d = json.loads(raw)
+except ValueError:
+    print(" ".join(raw.split())); sys.exit(0)
+if isinstance(d, dict):
+    for k in ("owners", "id_collisions"):
+        if isinstance(d.get(k), list):
+            d[k] = len(d[k])
+print(json.dumps(d, ensure_ascii=False, separators=(",", ":")))
+PYEOF
+)
     code=$(tr -dc '0-9' < "$MIRROR_PIDFILE.code" 2>/dev/null)
     if [ "$rc" = "0" ] && [ "$code" = "200" ]; then
       echo "[entrypoint] node-mirror: done in $(( $(date +%s) - t0 ))s — $out"
