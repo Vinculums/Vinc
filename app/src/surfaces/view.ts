@@ -395,6 +395,20 @@ export async function renderView(el: HTMLElement) {
           if (nodeId) void focusNode(nodeId);
         }));
     }
+    // 좁힌 범위가 비었을 때의 출구 — 바닥(l0, 전체 지도)으로 되돌아간다.
+    msg.querySelector("[data-ei-all]")?.addEventListener("click", () => {
+      trail.length = 1;
+      void show(trail[0]);
+    });
+  }
+
+  /** 결과가 0 인 자리의 빈 상태. 범위를 좁혀서 빈 것과 스토어가 빈 것은 다르게 말한다:
+   *  주제 하나가 비었는데 "아직 그래프가 없다"고 하면 개념이 수백 개 있는 사람에게
+   *  거짓말이 된다. 어느 쪽이든 가져오기·노드 만들기는 남긴다(막다른 골목 금지). */
+  function emptyFor(domains: string[]): string {
+    return domains.length
+      ? emptyInviteHtml(COPY.view.scopeEmpty, { scoped: true })
+      : emptyInviteHtml(COPY.view.idle);
   }
 
   /** 범례 — 닫힌 층(형태=타입 · 선=관계 · 초점색 1점)을 화면이 스스로 가르친다(U1).
@@ -1874,7 +1888,7 @@ export async function renderView(el: HTMLElement) {
       // 전체가 비었으면 가져오기까지 붙인다 — 빈 첫 화면이 막다른 골목이면 안 된다.
       // CTA 를 **항상** 붙인다 — Sankey 가 그렇게 한다. 스코프가 좁아 비었을 때
       // "여긴 비었다"만 말하고 나갈 길을 안 주면 그 자리가 막다른 골목이 된다.
-      setMsg(emptyInviteHtml(COPY.view.idle));
+      setMsg(emptyFor(domains));
       return;
     }
     setMsg("");
@@ -3124,7 +3138,7 @@ export async function renderView(el: HTMLElement) {
     if (gnodes.length === 0) {
       // CTA 를 **항상** 붙인다 — Sankey 가 그렇게 한다. 스코프가 좁아 비었을 때
       // "여긴 비었다"만 말하고 나갈 길을 안 주면 그 자리가 막다른 골목이 된다.
-      setMsg(emptyInviteHtml(COPY.view.idle));
+      setMsg(emptyFor(domains));
       return;
     }
     setMsg("");
@@ -3183,9 +3197,7 @@ export async function renderView(el: HTMLElement) {
     setCurNodes(gnodes);
     // 전량이 비었다 = 아직 아무것도 없다. 첫 화면이므로 다음 행동(팩)까지 준다.
     if (gnodes.length === 0) {
-      setMsg(level.kind === "l0"
-        ? emptyInviteHtml(COPY.view.idle)
-        : `<div class="empty"><p>${COPY.view.idle}</p></div>`);
+      setMsg(emptyFor(domains));
       return;
     }
     drawMetrics(gnodes);
