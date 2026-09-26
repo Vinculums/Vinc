@@ -3110,7 +3110,7 @@ export async function renderView(el: HTMLElement) {
       const chips = cons.slice(0, READER_CHIPS);
       const mentionsHTML = cons.length === 0 ? "" : `
         <p class="rdr-chips">
-          <span class="hint">${COPY.ui.viewx.readerMentions}</span>
+          <span class="hint">${COPY.ui.viewx.readerConcepts}</span>
           ${chips.map((c) => `<button class="chip" data-go="${esc(c.id)}"
              data-dom="${esc(c.domain)}">${esc(c.title || c.id)}</button>`).join("")}
           ${cons.length > chips.length

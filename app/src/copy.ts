@@ -610,7 +610,7 @@ const EN = {
       // D45-V — 노드 클릭 상세의 정본 근거(문서 발췌). 발췌는 증강 — 없어도 상세는 뜬다.
       sourceHeader: "From your documents",
       sourceLoading: "Finding source passages…",
-      sourceNone: "No source passages for this yet. Add documents that mention it.",
+      sourceNone: "No source passages for this yet. Add documents about it.",
       sourceRelated: "Related passages (by title match)",
       // D45-V2 2단계 — Reader 서브뷰(발췌→전문 승격, peek-definition 동선).
       readerBack: "Back",
@@ -625,7 +625,8 @@ const EN = {
       readerTitle: "Document",
       readerUnverified: "Reconstructed (not verified)",
       // 문서→노드 · 문서 안의 그래프. 둘 다 본문 앞에 서므로 짧아야 한다.
-      readerMentions: "Mentions",
+      // 옵시디언의 "mentions"(이 노트를 언급한 노트)와 방향이 반대라 그 말을 빌리지 않는다(2026-09-26).
+      readerConcepts: "Concepts in this document",
       readerOutline: (n: number) => `Contents · ${n}`,
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
       edNew: "New document",
@@ -1486,7 +1487,7 @@ const KO: Deck = {
       // D45-V — 노드 클릭 상세의 정본 근거(문서 발췌). 발췌는 증강 — 없어도 상세는 뜬다.
       sourceHeader: "내 문서에서",
       sourceLoading: "근거 발췌를 찾는 중…",
-      sourceNone: "아직 이 항목을 언급한 문서가 없어요. 관련 문서를 추가하면 여기에 나타나요",
+      sourceNone: "아직 이 항목을 다룬 문서가 없어요. 관련 문서를 추가하면 여기에 나타나요",
       sourceRelated: "관련 발췌 (제목 일치)",
       // D45-V2 2단계 — Reader 서브뷰(발췌→전문 승격, peek-definition 동선).
       readerBack: "뒤로",
@@ -1496,7 +1497,7 @@ const KO: Deck = {
       readerRetry: "다시 시도하기",
       readerTitle: "문서",
       readerUnverified: "복원본 (검증 안 됨)",
-      readerMentions: "언급",
+      readerConcepts: "이 문서의 개념",
       readerOutline: (n) => `목차 · ${n}`,
       // D45-E — 앱 내 SSoT 편집(MVP: 소스 + 아래 실시간 미리보기, 무손실 규율).
       edNew: "새 문서",
