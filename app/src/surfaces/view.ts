@@ -30,7 +30,9 @@ import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_S
          type EdgeKind } from "../view-prefs";
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
 import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbKindLens, lnbKind,
-         repaintLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
+         repaintLnb, refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
+import { PROP_KINDS, propsEditable, rowsFrom, propsFrom, convertText, sameProps,
+         type PropRow, type PropKind } from "../props-edit";
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen,
          floatCeiling } from "../float-panel";
 import { popIn, popOut } from "../motion";
@@ -2472,25 +2474,207 @@ export async function renderView(el: HTMLElement) {
    *  직함·팀만 골라 썼다(발주자 지적 2026-09-25). 값은 생긴 대로 그린다(글·목록·객체).
    *  비어 있으면 절을 그리지 않는다 — 빈 제목만 남기지 않는다.
    *  근거: [[decision:side-navigation-picks-open-the-document-pane-full-width-2026-09-25]] */
-  function drawNodeProps(nd: N3, props?: Record<string, unknown>) {
+  /** 속성 절이 읽은 것 — 무슨 종인가(props 를 싣는가), 어느 판(rev)을 읽었는가. */
+  type PropsMeta = { kind?: string; rev?: number };
+
+  function drawNodeProps(nd: N3, props?: Record<string, unknown>, meta: PropsMeta = {}) {
     const box = detail.querySelector<HTMLElement>("#node-props");
     if (!box) return;
-    const keys = Object.keys(props || {});
-    if (!props || keys.length === 0) { box.innerHTML = ""; return; }
+    const P = props || {};
+    const keys = Object.keys(P);
+    // 편집할 수 있는 종이면 비어 있어도 절을 그린다 — 첫 속성을 더할 자리가 있어야 한다.
+    const editable = propsEditable(meta.kind);
+    if (keys.length === 0 && !editable) { box.innerHTML = ""; return; }
     const role = isAgentRoleId(nd.id);
     const order = role
-      ? [...ROLE_PROP_ORDER.filter((k) => k in props),
+      ? [...ROLE_PROP_ORDER.filter((k) => k in P),
          ...keys.filter((k) => !ROLE_PROP_ORDER.includes(k))]
       : keys;
+    const V = COPY.ui.viewx;
     box.innerHTML = `
       <section class="node-props">
-        <h3 class="hint rail-sec">${esc(COPY.ui.viewx.propsTitle)}</h3>
-        ${propsDl(props, order, 0)}
+        <div class="props-head">
+          <h3 class="hint rail-sec">${esc(V.propsTitle)}</h3>
+          ${editable ? `<button class="rail-x props-edit-btn" type="button"
+              aria-label="${esc(V.propsEditTip)}" data-tip="${esc(V.propsEditTip)}">${
+              esc(V.propsEdit)}</button>` : ""}
+        </div>
+        ${keys.length ? propsDl(P, order, 0) : `<p class="hint">${esc(V.propsEmpty)}</p>`}
       </section>`;
     // 역할의 이름은 직함이 있으면 그것이다 — Agent 레일(lnb.ts roleTitle)과 같은 규칙.
-    const job = role && typeof props.job_title === "string" ? props.job_title.trim() : "";
+    const job = role && typeof P.job_title === "string" ? P.job_title.trim() : "";
     const h2 = detail.querySelector("h2");
     if (job && h2) h2.textContent = job;
+    box.querySelector(".props-edit-btn")?.addEventListener("click",
+      () => openPropsEditor(nd, P, order, meta));
+  }
+
+  /** 속성 편집기 — 상세 열의 속성 절을 제자리에서 편집 줄로 바꾼다.
+   *
+   *  줄마다 이름 · 형식 · 값 · 지우기다(형식과 값의 변환은 `props-edit.ts`). 저장은
+   *  **전체 교체**다: 서버는 props 를 통째로 갈아 끼우므로 보내는 것이 늘 편집 결과
+   *  전체이고, 지운 줄이 곧 지운 속성이다.
+   *  저장 직전에 캐시를 거치지 않고 다시 읽어 **판(rev)이 편집을 시작할 때와 같을 때만**
+   *  쓴다. 그 사이 다른 창·에이전트·동기화가 고쳤으면 덮어쓰지 않고 멈춘다 — 필드 이력이
+   *  없어서 덮어쓰면 복구가 없다. owner 는 싣지 않는다(서버가 기존 소유자를 지키고,
+   *  계정 경로는 허브가 세션으로 정한다).
+   *  근거: [[decision:node-props-are-edited-in-the-document-pane-as-a-whole-and-checked-against-the-read-revision-2026-09-26]] */
+  function openPropsEditor(nd: N3, props: Record<string, unknown>, order: string[],
+                           meta: PropsMeta) {
+    const found = detail.querySelector<HTMLElement>("#node-props");
+    if (!found || !meta.kind) return;
+    const box: HTMLElement = found;     // 안쪽 함수들까지 좁힌 타입이 가도록
+    const V = COPY.ui.viewx;
+    let rows: PropRow[] = rowsFrom(props, order);
+    if (rows.length === 0) rows = [{ key: "", kind: "text", text: "" }];
+
+    const lines = (t: string) => Math.min(12, Math.max(2, t.split("\n").length));
+    const valueHTML = (r: PropRow) => {
+      if (r.kind === "bool") {
+        const on = r.text.trim() === "true";
+        return `<select class="props-val" aria-label="${esc(V.propsKinds.bool)}">
+          <option value="true"${on ? " selected" : ""}>${esc(V.propsYes)}</option>
+          <option value="false"${on ? "" : " selected"}>${esc(V.propsNo)}</option></select>`;
+      }
+      if (r.kind === "number")
+        return `<input class="props-val" type="text" inputmode="decimal" spellcheck="false"
+          value="${esc(r.text)}" aria-label="${esc(V.propsKinds.number)}">`;
+      const ph = r.kind === "list" ? ` placeholder="${esc(V.propsListHint)}"` : "";
+      const mono = r.kind === "json" ? " props-mono" : "";
+      return `<textarea class="props-val${mono}" rows="${lines(r.text)}" spellcheck="${
+        r.kind === "text"}"${ph} aria-label="${esc(V.propsKinds[r.kind])}">${esc(r.text)}</textarea>`;
+    };
+    const rowHTML = (r: PropRow, i: number) => `
+      <div class="props-erow" data-i="${i}">
+        <div class="props-erow-head">
+          <input class="props-key" type="text" value="${esc(r.key)}" spellcheck="false"
+                 autocomplete="off" placeholder="${esc(V.propsKeyPh)}" aria-label="${esc(V.propsKeyPh)}">
+          <select class="props-kind" aria-label="${esc(V.propsKindLabel)}">${PROP_KINDS.map((k) =>
+            `<option value="${k}"${k === r.kind ? " selected" : ""}>${esc(V.propsKinds[k])}</option>`)
+            .join("")}</select>
+          <button class="rail-x props-del" type="button" aria-label="${esc(V.propsRemove(r.key))}"
+                  data-tip="${esc(V.propsRemove(r.key))}">✕</button>
+        </div>
+        ${valueHTML(r)}
+        <p class="props-err" role="alert" hidden></p>
+      </div>`;
+
+    /** 화면의 줄을 그대로 읽는다 — 상태의 원천은 DOM 하나다(다시 그릴 때만 배열로 옮긴다). */
+    const collect = (): PropRow[] => [...box.querySelectorAll<HTMLElement>(".props-erow")]
+      .map((row) => ({
+        key: row.querySelector<HTMLInputElement>(".props-key")!.value,
+        kind: row.querySelector<HTMLSelectElement>(".props-kind")!.value as PropKind,
+        text: row.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+          ".props-val")!.value,
+      }));
+    const paint = (focusRow?: number) => {
+      box.innerHTML = `
+        <section class="node-props props-editing">
+          <div class="props-head"><h3 class="hint rail-sec">${esc(V.propsTitle)}</h3></div>
+          <div class="props-rows">${rows.map(rowHTML).join("")}</div>
+          <button class="rail-x props-add" type="button">+ ${esc(V.propsAdd)}</button>
+          <p class="hint props-status" role="status"></p>
+          <div class="props-acts">
+            <button class="btn" type="button" data-props="cancel">${esc(V.propsCancel)}</button>
+            <button class="btn btn-primary" type="button" data-props="save">${esc(V.propsSave)}</button>
+          </div>
+        </section>`;
+      if (focusRow !== undefined)
+        box.querySelector<HTMLElement>(`.props-erow[data-i="${focusRow}"] .props-key`)?.focus();
+    };
+    const status = (html: string) => {
+      const el = box.querySelector<HTMLElement>(".props-status");
+      if (el) el.innerHTML = html;
+    };
+    // 편집기는 절 상자에 리스너를 단다. 접을 때 상자를 새로 갈아 끼워 그 리스너를 떼어
+    // 낸다 — 같은 상자를 다시 쓰면 다음 편집에서 클릭 하나가 두 번 처리된다.
+    const release = () => {
+      const fresh = box.cloneNode(false) as HTMLElement;
+      box.replaceWith(fresh);
+    };
+    const cancel = () => { release(); drawNodeProps(nd, props, meta); };
+    const reload = () => { release(); ctxCache = null; void loadNodeSource(nd); };
+
+    async function save() {
+      rows = collect();
+      const { props: next, errors } = propsFrom(rows);
+      box.querySelectorAll<HTMLElement>(".props-err").forEach((p) => { p.hidden = true; });
+      box.querySelectorAll(".props-erow").forEach((r) => r.removeAttribute("aria-invalid"));
+      if (errors.length) {
+        for (const er of errors) {
+          const row = box.querySelector<HTMLElement>(`.props-erow[data-i="${er.index}"]`);
+          const p = row?.querySelector<HTMLElement>(".props-err");
+          if (p) { p.textContent = V.propsErr[er.code]; p.hidden = false; }
+          row?.setAttribute("aria-invalid", "true");
+        }
+        box.querySelector<HTMLElement>(`.props-erow[data-i="${errors[0].index}"] .props-key`)?.focus();
+        return;
+      }
+      if (sameProps(next, props)) { status(esc(V.propsNoChange)); return; }
+      const acts = [...box.querySelectorAll<HTMLButtonElement>("button")];
+      acts.forEach((b) => { b.disabled = true; });
+      status(esc(V.propsSaving));
+      try {
+        // 판 확인 — 캐시(nodeContextOnce)를 거치지 않고 지금 값을 읽는다.
+        const fresh = await api.nodeContext(cfg.owner, nd.id, 1);
+        if (!fresh.executed || (fresh.rev ?? 0) !== (meta.rev ?? 0)) {
+          status(`${esc(V.propsConflict)} <button class="rail-x props-reload" type="button">${
+            esc(V.propsReload)}</button>`);
+          box.querySelector(".props-reload")?.addEventListener("click", reload);
+          box.querySelector<HTMLButtonElement>('[data-props="cancel"]')!.disabled = false;
+          return;
+        }
+        const res: any = await api.ingestFragment({
+          nodes: [{ id: nd.id, type: meta.kind, props: next }],
+        });
+        if (res?.executed === false) throw new Error(res.error || "");
+        // ⚠ `merged` 는 실제로 들어간 것만 센다 — warnings 를 안 읽으면 건너뛴 쓰기
+        // (남이 소유한 id 등)를 성공으로 읽는다.
+        const merged = (res?.merged?.nodes?.created || 0) + (res?.merged?.nodes?.matched || 0);
+        if (!merged) throw new Error((res?.warnings || []).join(" · "));
+        release();
+        ctxCache = null;
+        await loadNodeSource(nd);       // 새 판으로 다시 그린다(편집 단추가 새 rev 를 든다)
+        // 역할의 직함·팀은 Agent 목록이 props 에서 읽는다 — 목록도 새로 읽는다.
+        if (isAgentRoleId(nd.id)) void refreshLnb({ quiet: true });
+      } catch (err: any) {
+        acts.forEach((b) => { b.disabled = false; });
+        const why = String(err?.message || "").trim();
+        status(`<span class="error-banner">${esc(V.propsFail)}${why ? ` ${esc(why)}` : ""}</span>`);
+      }
+    }
+
+    paint();
+    box.addEventListener("click", (e) => {
+      const t = e.target as HTMLElement;
+      if (t.closest(".props-add")) {
+        rows = [...collect(), { key: "", kind: "text", text: "" }];
+        paint(rows.length - 1);
+      } else if (t.closest(".props-del")) {
+        const i = Number(t.closest<HTMLElement>(".props-erow")!.dataset.i);
+        rows = collect().filter((_, j) => j !== i);
+        paint();
+        box.querySelector<HTMLElement>(".props-add")?.focus();
+      } else if (t.closest('[data-props="cancel"]')) cancel();
+      else if (t.closest('[data-props="save"]')) void save();
+    });
+    box.addEventListener("change", (e) => {
+      const sel = (e.target as HTMLElement).closest<HTMLSelectElement>(".props-kind");
+      if (!sel) return;
+      const cur = collect();
+      const i = Number(sel.closest<HTMLElement>(".props-erow")!.dataset.i);
+      const prev = rows[i]?.kind ?? "text";
+      cur[i] = { ...cur[i], text: convertText(cur[i].text, prev, cur[i].kind) };
+      rows = cur;
+      paint();
+      box.querySelector<HTMLElement>(`.props-erow[data-i="${i}"] .props-val`)?.focus();
+    });
+    // Esc 는 편집만 접는다(열 전체를 닫는 전역 Esc 까지 가지 않게). Ctrl/Cmd+Enter 는 저장.
+    box.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); cancel(); }
+      else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void save(); }
+    });
+    box.querySelector<HTMLElement>(".props-key")?.focus();
   }
 
   function propsDl(obj: Record<string, unknown>, keys: string[], depth: number): string {
@@ -2770,7 +2954,7 @@ export async function renderView(el: HTMLElement) {
       if (!res.executed) { box.innerHTML = ""; return; }
       // 패널이 그 사이 다른 노드로 갱신됐으면 버린다(늦은 응답이 남의 상세를 덮지 않게).
       if (!detail.contains(box) || detail.hidden) return;
-      drawNodeProps(nd, res.props);
+      drawNodeProps(nd, res.props, { kind: res.node_kind, rev: res.rev });
       if (railFull && res.links?.executed) drawPaneLinks(nd, res.links);
       const parts: string[] = [];
       if (res.one_liner) parts.push(`<div class="doc-render">${renderMarkdown(res.one_liner)}</div>`);
