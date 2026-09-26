@@ -1656,6 +1656,43 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    우선순위도 아니어서다(번호를 붙이면 1번이 제일 중요해 보인다). */
 .fr-why { list-style: none; margin: 0 0 var(--space-4, 1rem); padding: 0; display: grid; gap: var(--space-2, .5rem); }
 .fr-why li { color: hsl(var(--foreground)); font-size: .9rem; line-height: 1.5; }
+/* 풀화면 로그인(2026-09-26) — 창 전체가 로그인이다. 웹 로그인 페이지
+   (`Vinc-homepage/site/login`)와 같은 카드 치수를 쓴다: 26rem · 모서리 1.25rem ·
+   카드 70% · elev-2 · 안쪽 2.6/2.2rem · 로고 48px. 두 표면에서 같은 계정에 들어가는
+   문이므로 같은 모양이어야 한다.
+   ⚠ 셸에서는 타이틀바 아래에서 시작한다 — 덮으면 창을 옮기고 닫을 손잡이가 사라진다.
+   근거: [[decision:the-desktop-sign-in-fills-the-window-instead-of-a-modal-2026-09-26]] */
+#signin-screen {
+  position: fixed; inset: 0; z-index: 90;
+  display: grid; place-items: center; overflow-y: auto;
+  padding: var(--space-8, 2rem) var(--space-4, 1rem);
+  background: hsl(var(--background));
+}
+[data-shell] #signin-screen { top: var(--titlebar-h); }
+.si-card {
+  width: min(26rem, 100%); text-align: center;
+  border: 1px solid hsl(var(--border)); border-radius: 1.25rem;
+  background: hsl(var(--card) / .7); box-shadow: var(--shadow-elev-2);
+  padding: 2.6rem 2.2rem;
+}
+.si-mark { display: block; width: 48px; height: 48px; margin: 0 auto 1.2rem; }
+.si-title {
+  margin: 0; font-size: 1.5rem; font-weight: 700; letter-spacing: -.01em;
+  word-break: keep-all;
+}
+.si-lead {
+  margin: .6rem auto 0; max-width: 22rem; font-size: .95rem; line-height: 1.55;
+  color: hsl(var(--muted-foreground)); word-break: keep-all;
+}
+/* 이유 목록은 카드 가운데 정렬 안에서도 왼쪽 정렬이다 — 여러 줄이 가운데로 흔들리면 못 읽는다. */
+.si-card .fr-why { margin: 1.4rem 0; text-align: left; }
+.si-cta { width: 100%; padding: .7rem 1rem; font-weight: 600; }
+.si-state {
+  margin: .7rem 0 0; min-height: 1.35em; font-size: .85rem;
+  color: hsl(var(--caption-foreground));
+}
+.si-state:empty { visibility: hidden; }
+.si-note { margin: .8rem 0 0; font-size: .8rem; }
 .empty-invite { pointer-events: auto; display: grid; gap: var(--space-3, .75rem); justify-items: center; }
 .empty-invite.drag { border-style: solid; border-color: hsl(var(--ring)); }
 .empty-invite .ei-lead { margin: 0; }

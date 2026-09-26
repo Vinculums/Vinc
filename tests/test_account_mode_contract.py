@@ -89,10 +89,26 @@ class GateTest(unittest.TestCase):
         self.assertLess(i_mode, i_route)
 
     def test_오프라인_버튼이_없고_닫히지_않는다(self):
-        self.assertIn("mustChoose: true", FIRSTRUN_TS)
+        # 풀화면이라 닫기 단추도 Esc 도 없다. 닫는 것은 로그인이 끝났을 때의 close() 하나다.
+        screen = _fn(FIRSTRUN_TS, "openSignInScreen")
+        self.assertNotIn("keydown", screen)
+        self.assertNotIn("Escape", screen)
+        self.assertEqual(FIRSTRUN_TS.count("close();"), 1)
         self.assertNotIn("offlineCta", FIRSTRUN_TS)
         self.assertNotIn("offlineCta", COPY_TS)
         self.assertNotIn("offerAccount", MAIN_TS)
+
+    def test_로그인은_모달이_아니라_창_전체다(self):
+        """빈 셸 위에 뜨는 시트가 아니라 창 전체가 로그인이다(2026-09-26). 뒤의 셸은
+        잠그고, 셸에서는 타이틀바(창 손잡이)를 덮지 않는다."""
+        self.assertNotIn("openSheet", FIRSTRUN_TS)
+        screen = _fn(FIRSTRUN_TS, "openSignInScreen")
+        self.assertIn('screen.id = "signin-screen"', screen)
+        self.assertIn('shell?.setAttribute("inert", "")', screen)
+        self.assertIn('shell?.removeAttribute("inert")', screen)
+        css = (ROOT / "app/src/app.css").read_text(encoding="utf-8")
+        self.assertRegex(css, r"#signin-screen \{[^}]*position: fixed; inset: 0;")
+        self.assertIn("[data-shell] #signin-screen { top: var(--titlebar-h); }", css)
 
     def test_게이트는_셸에서만_선다(self):
         """웹은 세션 게이트가 따로 있고, 브라우저 dev 는 개발자의 자리다(캡처용 표식만)."""

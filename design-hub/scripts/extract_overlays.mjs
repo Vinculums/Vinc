@@ -35,7 +35,7 @@ const T = [
   ["topbar__tools-create", "last:.sheet[role=dialog]", EXPAND_SHEET], ["topbar__tools-import", "last:.sheet[role=dialog]", EXPAND_SHEET], ["topbar__tools-share", "last:.sheet[role=dialog]", EXPAND_SHEET],
   ["topbar__share-sheet", "last:.sheet[role=dialog]", EXPAND_SHEET], ["topbar__import-pack-sheet", "last:.sheet[role=dialog]", EXPAND_SHEET], ["topbar__import-doc-sheet", "last:.sheet[role=dialog]", EXPAND_SHEET],
   ["topbar__browse-sheet", "last:.sheet[role=dialog]", EXPAND_SHEET], ["topbar__browse-sheet-docs", "last:.sheet[role=dialog]", EXPAND_SHEET],
-  ["view__new-node-sheet", "last:.sheet[role=dialog]", EXPAND_SHEET], ["view__first-run", "last:.sheet[role=dialog]", EXPAND_SHEET],
+  ["view__new-node-sheet", "last:.sheet[role=dialog]", EXPAND_SHEET], ["view__first-run", "#signin-screen", ""],
   ["view__coachmark", ".coach", ""],
   ["view__topic-context-menu", ".ctx-menu", ""], ["view__node-context-menu", ".ctx-menu", ""],
   ["view__topic-rename-prompt", "last:.sheet[role=dialog]", ""],
