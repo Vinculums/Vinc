@@ -521,6 +521,22 @@ class ConventionsRouteTests(_StoreCase):
         self.assertTrue(res["doc"]["executed"], res["doc"])
         self.assertNotIn("먼저 쓴 사람", app.read_conventions({"owner": "user:b"})[1]["text"])
 
+    def test_a_raw_put_naming_the_legacy_id_lands_on_the_owners_seat(self):
+        """Vinc #342. 점유자가 있을 때 둘째 owner 가 옛 리터럴 `graph.md` 를 **직접** 지목해
+        쓴다(MCP `vinc_doc_put` · API). owner mismatch 가 아니라 자기 파생 id 로 들어가야 하고,
+        점유자의 행은 그대로여야 한다. 점유자 자신의 같은 쓰기는 제자리로 간다."""
+        ds.put_doc(self.A, owner="user:a", text="# GRAPH.md\n점유자\n",
+                   doc_id=graphmd.LEGACY_CONVENTIONS_DOC_ID, title="GRAPH.md")
+        res = ds.put_doc(self.A, owner="user:b", text="# GRAPH.md\n둘째\n",
+                         doc_id=graphmd.LEGACY_CONVENTIONS_DOC_ID, title="GRAPH.md")
+        self.assertTrue(res["executed"], res)
+        self.assertEqual(res["doc_id"], graphmd.conventions_doc_id("user:b"))
+        legacy = ds.get_doc(self.A, graphmd.LEGACY_CONVENTIONS_DOC_ID)
+        self.assertIn("점유자", legacy.get("text", "") or "".join(c.get("text", "") for c in legacy.get("chunks", [])), legacy)
+        again = ds.put_doc(self.A, owner="user:a", text="# GRAPH.md\n점유자 갱신\n",
+                           doc_id=graphmd.LEGACY_CONVENTIONS_DOC_ID, title="GRAPH.md")
+        self.assertEqual(again["doc_id"], graphmd.LEGACY_CONVENTIONS_DOC_ID, again)
+
     def test_language_choice_applies_to_the_default(self):
         code, out = self._app().read_conventions({"owner": "user:a", "lang": "ko"})
         self.assertEqual(code, 200, out)
