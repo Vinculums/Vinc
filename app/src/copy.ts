@@ -9,7 +9,7 @@ import { cfg } from "./api";
 
 const EN = {
   tagline: "Discover the core of your knowledge.",
-  sovereignty: "Vinc runs entirely on your device. Nothing ever leaves.",
+  sovereignty: "In local mode your graph stays on this device. The app goes online only to check for updates, and to reach your account when you sign in.",
   sovereigntyWeb: "This is your account graph. The same knowledge across the desktop app and your devices.",
   intake: {
     idleTitle: "Add knowledge to Vinc.",
@@ -31,6 +31,7 @@ const EN = {
       "Share packs and work in team spaces.",
     ],
     localNote: "Anything already on this device stays on this device.",
+    agreeNote: "By continuing you accept the Terms (vincs.io/terms) and the Privacy Policy (vincs.io/privacy).",
     // 웹 로그인 페이지와 같은 순서 · 같은 말: 이메일이 먼저, "또는", Google.
     signInCta: "Sign in with email",
     or: "or",
@@ -1005,7 +1006,7 @@ type Deck = typeof EN;
 
 const KO: Deck = {
   tagline: "흩어진 지식의 핵심을 찾아보세요",
-  sovereignty: "Vinc는 이 기기 안에서만 동작해요. 아무것도 밖으로 나가지 않아요",
+  sovereignty: "로컬 모드에서는 그래프가 이 기기에 있어요. 앱이 인터넷에 닿는 건 업데이트를 확인할 때와 로그인해서 계정에 연결할 때뿐이에요",
   sovereigntyWeb: "여기는 계정 그래프예요. 데스크탑 앱과 다른 기기에서도 같은 지식을 봐요",
   intake: {
     idleTitle: "Vinc에 지식 추가하기",
@@ -1022,6 +1023,7 @@ const KO: Deck = {
     leadExpired: "이 기기의 로그인이 끝났어요. 계속 쓰려면 다시 로그인하세요",
     reasons: ["웹과 이 데스크톱, 다른 기기에서 같은 그래프를 봐요. 따로 동기화할 것이 없어요", "claude.ai 같은 웹 어시스턴트도 같은 그래프에 닿아요", "팩을 공유하고 팀 스페이스에서 함께 일해요"],
     localNote: "이 기기에 이미 있는 것은 그대로 이 기기에 남아요",
+    agreeNote: "계속하면 이용약관(vincs.io/terms)과 개인정보 처리방침(vincs.io/privacy)에 동의하는 것이에요",
     signInCta: "이메일로 로그인하기",
     or: "또는",
     googleCta: "Google로 계속하기",

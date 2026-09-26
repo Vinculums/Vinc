@@ -71,6 +71,7 @@ function openSignInScreen(reason: "first" | "expired") {
       <button class="btn si-google" id="fr-google" type="button">${GOOGLE_G}<span>${c.googleCta}</span></button>
       <p class="si-state" id="fr-state" role="status" aria-live="polite"></p>
       <p class="hint si-note">${c.localNote}</p>
+      <p class="hint si-note">${c.agreeNote}</p>
     </div>`;
   // 뒤의 셸을 잠근다 — 탭 키가 보이지 않는 앱 손잡이로 새지 않게.
   shell?.setAttribute("inert", "");
