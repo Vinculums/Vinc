@@ -184,7 +184,7 @@ class EmbeddedIconMatchesCanon(unittest.TestCase):
             "커넥터 SVG 가 design-hub 의 파비콘 링과 다르다 — 정본이 바뀌었는데 "
             "_FAVICON_SVG 를 안 고쳤다.")
 
-    # PNG 는 앱 아이콘과 바이트가 같지 않다(2026-09-24): 앱 아이콘은 여백을 둔 캔버스이고
+    # PNG 는 앱 아이콘과 바이트가 같지 않다: 앱 아이콘은 검정 판 위의 흰 링이고(2026-09-26)
     # 커넥터 PNG 는 파비콘과 같은 tight 래스터다. 정본과의 대조는 `npm run logo:check` 가 한다.
 
     def test_임베드된_PNG_가_실제로_PNG_다(self):

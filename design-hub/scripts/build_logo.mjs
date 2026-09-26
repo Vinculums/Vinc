@@ -53,12 +53,18 @@ function orderedIcns(bytes) {
 const favicon = readFileSync(join(assets, 'vinc-ring-favicon.svg'), 'utf8');
 const white = readFileSync(join(assets, 'vinc-ring-white.svg'), 'utf8');
 const black = readFileSync(join(assets, 'vinc-ring-black.svg'), 'utf8');
-// 판(plate)은 없다(2026-09-24): 래스터는 투명 바탕의 검정 링이다. 정사각 캔버스에
-// 가운데 두려고 viewBox 만 바꾼다. tight 는 파비콘용(여백 0), clear 는 앱 아이콘용
-// (README 의 여백 규격: 마크 폭의 25% = 109).
+// 판(plate)은 없다(2026-09-24): 파비콘·메일·MCP 래스터는 투명 바탕의 검정 링이다.
+// 정사각 캔버스에 가운데 두려고 viewBox 만 바꾼다(tight = 여백 0).
 const square = (svg, box) => svg.replace('viewBox="42 38 436 604"', `viewBox="${box}"`);
 const tight = square(black, '-42 38 604 604');
-const clear = square(black, '-151 -71 822 822');
+// 예외는 OS 가 그리는 데스크탑 앱 아이콘 하나다: 검정 둥근 사각 판 + 흰 링.
+// 투명 검정 링은 어두운 작업표시줄·Dock 에서 사라진다. 판 기하(180 정사각, 모서리 40,
+// 마크 높이 65%)는 판을 걷기 전의 것과 같다. 근거:
+// [[decision:the-desktop-app-icon-keeps-a-black-plate-2026-09-26]]
+const ring = white.match(/<svg[^>]*>([\s\S]*)<\/svg>/)[1];
+const plated = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">'
+  + '<rect width="180" height="180" rx="40" fill="#000000"/>'
+  + `<g transform="translate(39.86 24.43) scale(0.19286)">${ring}</g></svg>`;
 emit(join(assets, 'vinc-ring-white-email@2x.png'), png(white, 64, 'height'));
 // 밝은 메일 템플릿의 잉크판. 흰 마크와 같은 46x64 로 뽑는다.
 emit(join(assets, 'vinc-ring-ink-email@2x.png'), png(black, 64, 'height'));
@@ -81,7 +87,7 @@ emit(join(assets, 'vinc-ring-favicon.ico'), Buffer.concat([header, ...images]));
 const temporary = mkdtempSync(join(tmpdir(), 'vinc-logo-'));
 try {
   const source = join(temporary, 'icon-source.svg');
-  writeFileSync(source, clear);
+  writeFileSync(source, plated);
   execFileSync(process.execPath, [join(repo, 'app/node_modules/@tauri-apps/cli/tauri.js'),
     'icon', source, '--output', temporary], { stdio: 'pipe' });
   const native = join(repo, 'app/src-tauri/icons');
