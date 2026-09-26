@@ -46,6 +46,7 @@ const EN = {
     dropHint: "Drag a file here, or <span class=\"pt\">start from a single note</span>.",
     leadDocsNoNodes: "Your documents are in, and no concepts have been drawn from them yet. Open a document to pull concepts out of it, or write one node by hand.",
     seeDocsCta: "See documents",
+    seeAllCta: "Show everything",
     pickCta: "Choose a file",
     newNodeCta: "New node",
     newSheetTitle: "New node",
@@ -78,6 +79,7 @@ const EN = {
   },
   view: {
     idle: "No graph yet. Add files or run a search, and the graph builds itself from your documents.",
+    scopeEmpty: "Nothing in this topic yet. Show everything, or add something here.",
     idleCta: "Import files",
     loading: (d: number) => `Arranging ${d} topics…`,
     error: "View couldn't load. Retry anytime. Your documents are untouched.",
@@ -1001,6 +1003,7 @@ const KO: Deck = {
     dropHint: "파일을 여기에 끌어다 놓거나, <span class=\"pt\">노드 하나로 시작해도 돼요</span>",
     leadDocsNoNodes: "아직 문서에서 뽑아낸 개념이 없어요. 문서를 열어 개념을 뽑거나, 노드 하나를 직접 적어 보세요. 문서는 그대로 들어와 있어요",
     seeDocsCta: "문서 보기",
+    seeAllCta: "전체 보기",
     pickCta: "파일 고르기",
     newNodeCta: "노드 만들기",
     newSheetTitle: "노드 만들기",
@@ -1033,6 +1036,7 @@ const KO: Deck = {
   },
   view: {
     idle: "아직 그래프가 없어요. 파일을 추가하면 문서에서 그래프를 만들어요",
+    scopeEmpty: "이 주제에는 아직 아무것도 없어요. 전체를 보거나 여기에 새로 추가해 보세요",
     idleCta: "파일 추가하기",
     loading: (d) => `주제 ${d}개를 배치하는 중…`,
     error: "View를 불러오지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",

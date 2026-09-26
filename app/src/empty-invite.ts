@@ -30,15 +30,20 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
   c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 /** 빈 상태 블록의 HTML. 문구는 호출부가 정한다 — 지도가 비었을 때와 문서 목록이
- *  비었을 때는 같은 초대를 하지만 첫 줄이 다르다. */
-export function emptyInviteHtml(lead: string): string {
+ *  비었을 때는 같은 초대를 하지만 첫 줄이 다르다.
+ *
+ *  `scoped` 는 **좁힌 범위**(주제 하나)가 빈 경우다. 스토어 전체가 빈 것과 다르므로
+ *  첫 줄을 호출부가 준 그대로 두고(아래 `wireEmptyInvite` 가 바꾸지 않는다), 전체로
+ *  나가는 버튼(`data-ei-all`)을 앞에 붙인다. 그 버튼의 동작은 층을 아는 호출부가 건다. */
+export function emptyInviteHtml(lead: string, opts: { scoped?: boolean } = {}): string {
   const c = COPY.emptyInvite;
   return `
-    <div class="empty empty-invite" data-invite>
+    <div class="empty empty-invite" data-invite${opts.scoped ? " data-scoped" : ""}>
       <p class="ei-lead">${lead}</p>
       <p class="hint ei-drop">${c.dropHint}</p>
       <div class="ei-actions">
-        <button class="btn btn-primary" data-ei-pick>${c.pickCta}</button>
+        ${opts.scoped ? `<button class="btn btn-primary" data-ei-all>${c.seeAllCta}</button>` : ""}
+        <button class="btn${opts.scoped ? "" : " btn-primary"}" data-ei-pick>${c.pickCta}</button>
         <button class="btn" data-ei-new>${c.newNodeCta}</button>
       </div>
     </div>`;
@@ -53,14 +58,21 @@ export function wireEmptyInvite(root: ParentNode, onDone?: (nodeId?: string) => 
   // 문서는 있는데 그래프가 비었으면 **다른 말을 해야 한다.** 방금 파일을 넣은 사람에게
   // "파일을 추가하세요"라고 답하는 화면은 자기가 무슨 일이 있었는지 모르는 화면이다.
   // (문서 적재와 개념 파생은 갈라져 있다 — 개념은 추출을 반영해야 생긴다.)
-  void api.docList(cfg.owner).then((r) => {
-    const n = r.count ?? (r.docs || []).length;
-    if (!n) return;
-    const lead = box.querySelector(".ei-lead");
-    if (lead) lead.textContent = COPY.emptyInvite.leadDocsNoNodes;
-    box.querySelector(".ei-actions")?.insertAdjacentHTML("beforeend",
-      `<a class="btn" href="#records">${COPY.emptyInvite.seeDocsCta}</a>`);
-  }).catch(() => {});
+  //
+  // 그 말은 **스토어 전체**에 노드가 0 일 때만 참이다. 좁힌 범위가 빈 것(`data-scoped`)
+  // 은 건드리지 않고, 범위를 안 좁혔어도 노드가 있으면(렌즈·시간 커서에 가려진 경우)
+  // "개념이 없다"고 말하지 않는다. 노드 수는 nav-tree 의 종별 집계가 센다.
+  if (!box.hasAttribute("data-scoped")) {
+    void Promise.all([api.docList(cfg.owner), api.navTree(cfg.owner)]).then(([r, t]) => {
+      const docs = r.count ?? (r.docs || []).length;
+      const nodes = Object.values(t.counts?.kinds || {}).reduce((a, b) => a + b, 0);
+      if (!docs || nodes) return;
+      const lead = box.querySelector(".ei-lead");
+      if (lead) lead.textContent = COPY.emptyInvite.leadDocsNoNodes;
+      box.querySelector(".ei-actions")?.insertAdjacentHTML("beforeend",
+        `<a class="btn" href="#records">${COPY.emptyInvite.seeDocsCta}</a>`);
+    }).catch(() => {});
+  }
 
   box.querySelector("[data-ei-pick]")?.addEventListener("click", async () => {
     const { pickAndImport } = await import("./sheets");
