@@ -28,7 +28,7 @@ import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_S
          loadPrefs, savePrefs,
          type ViewPrefs, type Viewpoint, type BundleDepth,
          type EdgeKind } from "../view-prefs";
-import { viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
+import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
 import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbKindLens, lnbKind,
          repaintLnb, refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
 import { PROP_KINDS, propsEditable, rowsFrom, propsFrom, convertText, sameProps,
@@ -202,7 +202,7 @@ export async function renderView(el: HTMLElement) {
   if (docpane) docpane.append(railGrip);
   const msg = el.querySelector<HTMLElement>("#view-msg")!;
   const tools = el.querySelector<HTMLElement>("#view-tools")!;
-  // D71 — 관점은 상단 바 슬롯에 그린다(내용의 주인은 여전히 이 표면이다).
+  // D71 — 렌즈·관점은 상단 바 슬롯에 그린다(내용의 주인은 여전히 이 표면이다).
   // 바가 없는 환경(임베드)에서는 표면 안에 자기 자리를 만들어 같은 코드로 그린다:
   // 그리는 함수는 한 벌이고 자리만 다르다.
   const chromeBar = el.querySelector<HTMLElement>("#view-chrome")!;
@@ -212,17 +212,14 @@ export async function renderView(el: HTMLElement) {
     chromeBar.prepend(d);
     return d;
   };
-  // 렌즈(범례·옵션) 버튼은 상단 바가 아니라 **지도 오른쪽 위**에 뜬다(2026-09-26).
-  // 바에서 비운 자리는 관점 세그가 갖는다. 표면 안이므로 바가 없는 배치도 같은 자리다.
-  // 근거: [[decision:viewpoints-sit-beside-search-and-the-lens-floats-on-the-view-2026-09-26]]
-  const legend = tools;
-  // ⚠ 아래 폴백은 **상단 바가 없는 배치(임베드)** 를 위한 것이다. 상단 바는 있는데
+  const legend = lensSlot() ?? fallbackSlot("view-legend");
+  // ⚠ 이 폴백은 **상단 바가 없는 배치(임베드)** 를 위한 것이다. 상단 바는 있는데
   // 슬롯만 못 찾으면 그건 임베드가 아니라 **이름이 어긋난 것**이고, 폴백이 그것을
   // 조용히 삼켜 손잡이가 다른 자리로 옮겨 간다. 실제로 그렇게 됐다: F8 리네임이
   // topbar.ts 와 app.css 는 `tb-viewpoints` 로 고쳤는데 index.html 만 `tb-views` 로
   // 남아, 관점 세그가 상단 바에서 하단 크롬으로 내려앉았다(2026-08-16 규명).
   // 아무것도 오류를 내지 않아 화면만 보고는 결정으로 읽힌다 — 그래서 말하게 한다.
-  if (document.getElementById("topbar") && !viewpointsSlot()) {
+  if (lensSlot() && !viewpointsSlot()) {
     console.warn("[view] 상단 바는 있는데 #tb-viewpoints 슬롯이 없다 — "
       + "마크업과 조회 이름이 어긋났다. 관점 세그가 하단으로 떨어진다.");
   }
@@ -957,7 +954,7 @@ export async function renderView(el: HTMLElement) {
          : Math.max(cardTop + m, window.innerHeight - h - m));
     viewPanel.style.top = `${Math.round(Math.max(cardTop + m, top))}px`;
     // 자리는 렌즈 버튼에 왼쪽을 맞추고, 오른쪽에 자리가 없으면 **버튼의 오른쪽 끝**에
-    // 맞춰 왼쪽으로 연다(팝오버 뒤집기). 버튼이 지도 오른쪽 위로 온 뒤(2026-09-26)로는
+    // 맞춰 왼쪽으로 연다(팝오버 뒤집기). 버튼은 보기 카드의 오른쪽 끝이라 넓은 창에서는
     // 늘 뒤집힌다 — 뷰포트 끝에 맞춰 접어 넣던 동안 패널이 버튼보다 18px 더 나갔다.
     const left = r.left + w + m <= rightEdge ? r.left : Math.min(r.right - w, rightEdge - w - m);
     viewPanel.style.left = `${Math.round(Math.max(m, left))}px`;

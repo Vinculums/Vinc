@@ -1,13 +1,14 @@
-"""관점 세그는 검색 바로 오른쪽, 렌즈 버튼은 지도 오른쪽 위(2026-09-26).
+"""상단 바는 카드 두 장: 검색 카드 + 보기 카드(관점 세그 + 렌즈)(2026-09-26).
 
-소스 잠금이다. 배치 자체는 브라우저 실측으로 확인했고(1440 · 720 · 390), 여기서는
-그 배치가 조용히 옛 자리로 돌아가지 않게 구조만 붙잡는다:
+소스 잠금이다. 배치 자체는 헤드리스 브라우저 실측으로 확인했고(창 1440 · 1100 · 1044 ·
+1000 · 900 · 812 · 700 · 390), 여기서는 그 배치가 조용히 옛 자리로 돌아가지 않게 구조만
+붙잡는다:
 
 - 세그가 문서 트리 안에 있으면 트리를 접을 때 관점 손잡이도 사라진다.
-- 렌즈가 상단 바에 남으면 세그와 자리를 다투어 검색이 두 번 줄어든다.
-- 좁은 창에서 줄이 갈리지 않으면 입력이 66px 까지 눌린다(창 520 실측).
+- 검색과 보기 손잡이는 하는 일이 다른 컴포넌트다. 한 면에 섞으면 다시 한 덩어리로 읽힌다.
+- 줄바꿈 기준이 창 폭이면 트리가 열린 창(1000)에서 입력이 147px 까지 눌린다.
 
-근거: [[decision:viewpoints-sit-beside-search-and-the-lens-floats-on-the-view-2026-09-26]]
+근거: [[decision:the-top-bar-is-a-search-card-and-a-view-card-2026-09-26]]
 """
 from __future__ import annotations
 
@@ -28,14 +29,14 @@ def _block(src: str, start: str, end: str) -> str:
 
 
 def _rule(selector: str) -> str:
-    m = re.search(re.escape(selector) + r" \{[^}]*\}", CSS)
+    m = re.search(r"(?m)^" + re.escape(selector) + r" \{[^}]*\}", CSS)
     assert m, f"{selector} 규칙이 없다"
     return m.group(0)
 
 
-def _media(query: str) -> str:
-    """`@media (query) { ... }` 의 본문(중괄호 짝을 센다)."""
-    a = CSS.index(f"@media ({query})")
+def _at(prelude: str) -> str:
+    """`@media …` / `@container …` 블록의 본문(중괄호 짝을 센다)."""
+    a = CSS.index(prelude)
     i = CSS.index("{", a)
     depth = 0
     for j in range(i, len(CSS)):
@@ -45,57 +46,71 @@ def _media(query: str) -> str:
             depth -= 1
             if depth == 0:
                 return CSS[i + 1:j]
-    raise AssertionError(f"@media ({query}) 가 닫히지 않는다")
+    raise AssertionError(f"{prelude} 가 닫히지 않는다")
 
 
-class ViewpointsInTheBar(unittest.TestCase):
-    def test_segment_sits_in_the_top_bar_after_search(self):
-        header = _block(HTML, '<header id="topbar">', "</header>")
-        self.assertIn('id="tb-viewpoints"', header)
-        self.assertLess(header.index('id="tb-search"'), header.index('id="tb-viewpoints"'))
+HEADER = _block(HTML, '<header id="topbar">', "</header>")
+
+
+class TwoCards(unittest.TestCase):
+    def test_search_card_then_view_card(self):
+        find = HEADER.index('class="tb-card" id="tb-find"')
+        view = HEADER.index('class="tb-card" id="tb-viewctl"')
+        self.assertLess(find, HEADER.index('id="tb-search"'))
+        self.assertLess(HEADER.index('id="tb-search"'), view)
+
+    def test_view_card_holds_viewpoints_then_lens(self):
+        card = HEADER[HEADER.index('id="tb-viewctl"'):]
+        self.assertLess(card.index('id="tb-viewpoints"'), card.index('id="tb-lens"'))
 
     def test_document_tree_no_longer_holds_the_segment(self):
         lnb = _block(HTML, '<aside id="lnb"', "</aside>")
         self.assertNotIn("tb-viewpoints", lnb)
 
-    def test_segment_keeps_its_own_width_and_search_takes_the_rest(self):
-        rule = _rule("#tb-viewpoints")
-        self.assertIn("flex: 0 0 auto", rule)
+    def test_the_bar_is_a_row_and_the_cards_carry_the_surface(self):
+        bars = re.findall(r"(?m)^#topbar \{[^}]*\}", CSS)
+        self.assertGreaterEqual(len(bars), 2)
+        for bar in bars:
+            self.assertNotIn("background", bar)
+            self.assertNotIn("box-shadow", bar)
+        card = _rule(".tb-card")
+        self.assertIn("background: hsl(var(--card))", card)
+        self.assertIn("box-shadow: var(--shadow-elev-3)", card)
+        # 부유 크롬의 유리도 카드가 받는다.
+        self.assertRegex(CSS, r"\.tb-card, \.palette-card, #view-detail")
+
+    def test_empty_view_card_hides(self):
+        self.assertIn("#tb-viewctl:has(> #tb-viewpoints:empty):has(> #tb-lens:empty)", CSS)
 
 
-class LensFloatsOnTheView(unittest.TestCase):
-    def test_top_bar_has_no_lens_slot(self):
-        self.assertNotIn('id="tb-lens"', HTML)
-        self.assertNotIn("lensSlot", TOPBAR)
-        self.assertNotIn("lensSlot", VIEW)
+class Lens(unittest.TestCase):
+    def test_lens_renders_into_the_top_bar_slot(self):
+        self.assertIn('lensSlot() ?? fallbackSlot("view-legend")', VIEW)
+        self.assertIn('return $("tb-lens")', TOPBAR)
 
-    def test_lens_button_renders_into_the_view_tools_corner(self):
-        self.assertIn("const legend = tools;", VIEW)
-        self.assertIn('<div id="view-tools"></div>', VIEW)
-
-    def test_lens_corner_lines_up_with_the_bar_inner_edge(self):
-        rule = _rule("#view-tools")
-        self.assertIn("var(--shell-gap)", rule)
-        self.assertIn("var(--space-3", rule)
+    def test_view_tools_corner_is_untouched(self):
+        self.assertIn("right: calc(var(--rail-w, 0px) + var(--space-6, 1.5rem));", _rule("#view-tools"))
 
     def test_panel_flips_to_the_button_right_edge(self):
         body = _block(VIEW, "function positionPanel()", "function openPanel()")
         self.assertIn("r.right - w", body)
 
 
-class NarrowWindowWraps(unittest.TestCase):
-    def test_bar_wraps_at_720_and_segment_takes_the_second_row(self):
-        m = _media("max-width: 720px")
-        self.assertIn("flex-wrap: wrap", m)
-        self.assertIn("height: auto", m)
-        self.assertRegex(m, r"#tb-search \{[^}]*flex: 1 1 100%")
-        self.assertRegex(m, r"#tb-viewpoints \{[^}]*flex: 1 1 100%")
+class NarrowBarWraps(unittest.TestCase):
+    def test_the_bar_is_its_own_query_container(self):
+        self.assertIn("container: topbar / inline-size", CSS)
 
-    def test_old_520_wrap_is_gone(self):
+    def test_wraps_by_bar_width_and_view_card_takes_the_second_row(self):
+        m = _at("@container topbar (max-width: 700px)")
+        self.assertRegex(m, r"#tb-find, #tb-viewctl \{[^}]*flex: 1 1 100%")
+        self.assertIn("#tb-viewpoints .seg .chip { flex: 1 1 0", m)
+
+    def test_no_viewport_wrap_left_behind(self):
         self.assertNotIn("@media (max-width: 520px)", CSS)
+        self.assertNotIn("@media (max-width: 720px)", CSS)
 
     def test_ceiling_tracker_still_follows_the_measured_bar(self):
-        # 두 줄이 된 바 아래로 렌즈 버튼·문서 열이 비켜서는 것은 이 측정기 몫이다.
+        # 두 줄이 된 바 아래로 문서 열·인캔버스 크롬이 비켜서는 것은 이 측정기 몫이다.
         self.assertIn("function trackChromeTop()", TOPBAR)
         self.assertIn("new ResizeObserver(apply).observe(bar)", TOPBAR)
 
