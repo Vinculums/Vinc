@@ -27,7 +27,7 @@ const EN = {
     leadExpired: "Your sign-in on this device has ended. Sign in again to keep working.",
     reasons: [
       "The same graph on the web, on this desktop and on your other devices, with nothing to sync.",
-      "Web assistants such as claude.ai reach the same graph.",
+      "AI assistants you use on the web connect to the same graph.",
       "Share packs and work in team spaces.",
     ],
     localNote: "Anything already on this device stays on this device.",
@@ -1020,7 +1020,7 @@ const KO: Deck = {
     title: "Vinc에 로그인하세요",
     lead: "그래프는 계정에 있어요. 그래서 이 앱은 웹 앱과 똑같은 내용을 보여 줘요",
     leadExpired: "이 기기의 로그인이 끝났어요. 계속 쓰려면 다시 로그인하세요",
-    reasons: ["웹과 이 데스크톱, 다른 기기에서 같은 그래프를 봐요. 따로 동기화할 것이 없어요", "claude.ai 같은 웹 어시스턴트도 같은 그래프에 닿아요", "팩을 공유하고 팀 스페이스에서 함께 일해요"],
+    reasons: ["웹과 이 데스크톱, 다른 기기에서 같은 그래프를 봐요. 따로 동기화할 것이 없어요", "웹에서 쓰는 AI 어시스턴트도 같은 그래프에 연결돼요", "팩을 공유하고 팀 스페이스에서 함께 일해요"],
     localNote: "이 기기에 이미 있는 것은 그대로 이 기기에 남아요",
     signInCta: "이메일로 로그인하기",
     or: "또는",

@@ -72,17 +72,16 @@ jobs:
             python scripts/version_sync.py --check
           fi
 
-      # 앱 보드가 이 태그의 코드를 그리고 있는가. **막는 자리는 여기다**(2026-09-19,
-      # VIN-74). PR 에서는 같은 검사가 경고로만 돈다 — 처방인 재캡처가 실행 중인
-      # 사이드카와 실제 데이터를 요구하는 사람 작업이라, 머지마다 세우면 지켜지지
-      # 않는 규칙이 되고 실제로 그렇게 됐다(#358 이 캡처 없이 들어가 main 이 빨갰다).
-      # 릴리스는 사람이 서는 자리이고 드무니, 7분은 여기서 낼 값이다.
-      #
-      # 빨갛다면 처방은 하나: 브랜치에서 다시 캡처하고 매니페스트를 커밋한 뒤 태그를
-      # 다시 찍는다. 스쿼시 머지는 트리를 그대로 옮기므로 브랜치 캡처가 태그에서도 선다.
+      # 앱 보드가 이 태그의 코드를 그리고 있는가 — **말만 하고 막지 않는다**(2026-09-26
+      # 발주자 지시: 릴리스마다 하는 Figma 재캡처는 쓸모없는 일이다). 2026-09-19(VIN-74)
+      # 부터 여기서 태그를 막았지만, 막는 값은 디자이너가 옛 화면을 보는 것뿐이었고 치르는
+      # 값은 릴리스마다 사이드카·실데이터로 60장을 다시 찍는 일이었다. PR 과 같은 경고다.
+      # 보드를 새로 하고 싶을 때의 길은 그대로 있다:
       #   cd design-hub && npm install
       #   node scripts/capture_app.mjs --app <vite> --sidecar <sidecar> --token <token>
-      - name: Assert the app board draws this code
+      # 근거: [[decision:figma-app-boards-no-longer-gate-a-release-2026-09-26]]
+      - name: Figma app board copy gate (advisory)
+        continue-on-error: true
         run: python -X utf8 design-hub/scripts/figma_app_copy.py
 
   # ── 리눅스 다리의 빌드 환경을 굽는다 ────────────────────────────────────────
