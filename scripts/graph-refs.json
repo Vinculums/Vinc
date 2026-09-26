@@ -517,6 +517,7 @@
     "record:storage-transactions-are-the-snapshot-loop-and-they-tripled-in-three-weeks",
     "record:subject-path-carries-no-repository-so-two-repos-can-collide",
     "record:sync-drops-node-created-pack-keeps-it",
+    "record:sync-out-in-a-worktree-wrote-the-homepage-copies-into-a-stray-directory-2026-09-26",
     "record:the-candidate-union-not-the-ranking-is-what-caps-node-resolution-2026-09-09",
     "record:the-change-marker-is-counted-at-the-sidecar-write-gate-2026-09-24",
     "record:the-document-stage-of-a-space-transfer-is-bounded-by-time-not-by-body-size-2026-09-20",
