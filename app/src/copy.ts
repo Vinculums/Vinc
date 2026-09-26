@@ -283,7 +283,9 @@ const EN = {
       // 누르면 View 가 그 주제로 좁혀지는데도. 문서 총계는 View 아래 지표바가 이미
       // 말하므로 여기서 두 번 세지 않는다.
       documents: "Topics",
-      topicTip: "Show only this topic. Ctrl or Cmd click to add another.",
+      topicTip: "Show only this topic in View. Ctrl or Cmd click to add another.",
+      scopeBtn: (name: string) => `Show only ${name} in View`,
+      ownItems: (n: number) => `${n} item${n === 1 ? "" : "s"} in this topic`,
       scoped: (n: number) => n === 1 ? "Showing 1 topic" : `Showing ${n} topics`,
       scopedClear: "Show all",
       open: "Open the sidebar", close: "Close the sidebar",
@@ -1199,7 +1201,9 @@ const KO: Deck = {
     },
     lnb: {
       documents: "주제",
-      topicTip: "누르면 이 주제만 보여요. Ctrl · Cmd 클릭으로 다른 주제를 더할 수 있어요",
+      topicTip: "View에서 이 주제만 보여요. Ctrl · Cmd 클릭으로 다른 주제를 더할 수 있어요",
+      scopeBtn: (name: string) => `View에서 ${name}만 보기`,
+      ownItems: (n: number) => `이 주제의 항목 ${n}개`,
       scoped: (n: number) => `주제 ${n}개만 보는 중`,
       scopedClear: "전체 보기",
       open: "사이드바 열기", close: "사이드바 닫기",

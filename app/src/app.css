@@ -790,8 +790,39 @@ body {
 }
 /* 근접 = 담김. 중첩 주제 머리 위에만 한 칸 벌려 그 아래가 자기 묶음으로 읽히게 한다
    (맨 앞은 부모 바로 밑이라 벌리지 않는다 — 벌리면 부모와 끊긴다). */
-.lnb-docs > .lnb-group { margin-top: var(--space-1, .25rem); }
-.lnb-docs > .lnb-group:first-child { margin-top: 0; }
+.lnb-docs > .lnb-group, .lnb-docs > .lnb-grow { margin-top: var(--space-1, .25rem); }
+.lnb-docs > .lnb-group:first-child, .lnb-docs > .lnb-grow:first-child { margin-top: 0; }
+
+/* 주제 줄 + 지도 좁히기 버튼(줄의 형제). 줄은 접고 펴기만 하고, 지도를 좁히는 것은 이
+   버튼이다. 버튼은 개수 자리에 겹쳐 서고 마우스를 올리거나 초점이 들어오거나 그 주제가
+   골라져 있을 때만 보인다 — 늘 보이면 232px 폭의 줄마다 아이콘이 하나씩 늘어난다. */
+.lnb-grow { position: relative; }
+.lnb-gscope {
+  position: absolute; right: var(--space-1, .25rem); top: 50%; transform: translateY(-50%);
+  display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; padding: 0;
+  border: none; border-radius: var(--radius-sm, .625rem); background: none;
+  color: hsl(var(--muted-foreground)); cursor: pointer; opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.lnb-grow:hover .lnb-gscope, .lnb-grow:focus-within .lnb-gscope, .lnb-grow.on .lnb-gscope { opacity: 1; }
+.lnb-gscope:hover { color: hsl(var(--foreground)); background: hsl(var(--muted-foreground) / .16); }
+.lnb-gscope[aria-pressed="true"] { color: hsl(var(--point)); }
+.lnb-gscope:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; opacity: 1; }
+.lnb-grow:hover .lnb-gcount, .lnb-grow:focus-within .lnb-gcount, .lnb-grow.on .lnb-gcount { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { .lnb-gscope { transition: none; } }
+
+/* 접어 둔 자기 항목 한 줄("이 주제의 항목 N개"). 하위 주제가 있는 줄만 이 줄을 갖는다.
+   주제 줄보다 한 단 가볍게: 글자 크기와 잉크를 문서 줄에 맞춘다. */
+.lnb-fold {
+  display: flex; align-items: center; gap: var(--space-1, .25rem);
+  width: 100%; min-height: var(--row-h); margin-top: var(--space-1, .25rem);
+  border: none; background: none; font: inherit; font-size: var(--fs-sm);
+  color: hsl(var(--muted-foreground)); cursor: pointer; text-align: left;
+  padding: 0 var(--pad-row); border-radius: var(--radius-sm, .625rem);
+}
+.lnb-fold:hover { background: hsl(var(--muted-foreground) / .1); }
+.lnb-fold:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.lnb-fname { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 깊이는 세 갈래로 말한다: 들여쓰기(--lvl) · 잉크 3단(--ink) · 도트 차등.
    색을 계속 흐리면 AA 하한에 닿으므로 잉크는 2단까지만 쓰고, 그 아래 깊이는
    들여쓰기와 도트가 받는다. 폭이 232px 라 단차를 무한정 키울 수 없다. */
