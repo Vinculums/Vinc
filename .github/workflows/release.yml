@@ -320,7 +320,9 @@ jobs:
           gh release download "ladybug-ext-$LBUG_VER" --repo "${{ github.repository }}"             --pattern "$PLAT-*.lbug_extension" --dir "$dl"
           # 맥 러너에는 sha256sum 이 없다. 둘 다 `<해시>  <파일>` 형식의 -c 를 읽는다.
           if command -v sha256sum >/dev/null; then sum="sha256sum"; else sum="shasum -a 256"; fi
-          (cd "$dl" && grep "  $PLAT-" "$sums" | $sum -c -)
+          # CR 을 벗긴다: perl `shasum` 은 CRLF 목록에서 파일을 못 읽는다(실측, GNU
+          # sha256sum 은 넘긴다). .gitattributes 가 LF 로 받게 하지만 여기서 한 번 더 막는다.
+          (cd "$dl" && tr -d '\r' < "$sums" | grep "  $PLAT-" | $sum -c -)
           root="$HOME/.lbdb/extension/$LBUG_VER/$PLAT"
           for e in vector fts algo; do
             mkdir -p "$root/$e"

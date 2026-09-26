@@ -46,6 +46,7 @@ class LadybugVendorTests(unittest.TestCase):
         self.assertIn('gh release download "ladybug-ext-$LBUG_VER"', step)
         self.assertIn("packaging/lbug-ext-$LBUG_VER.sha256", step)
         self.assertIn("-c -", step, "받은 파일을 해시 목록과 대조하지 않는다")
+        self.assertIn(r"tr -d '\r'", step, "CRLF 목록은 perl shasum 의 해시 대조를 깬다")
         self.assertNotIn("extension.ladybugdb.com", step, "상류 서버에서 다시 받는다")
         self.assertIn("shasum -a 256", step, "맥 러너에는 sha256sum 이 없다")
 
