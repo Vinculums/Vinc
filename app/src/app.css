@@ -242,12 +242,14 @@ body {
   --pad-card: var(--space-2, .5rem);   /* 8px — 카드 안쪽 여백 */
   --pad-row: var(--space-2, .5rem);    /* 8px — 줄의 좌우 여백 */
   --indent: var(--space-3, .75rem);    /* 12px — 계층 한 단 */
-  /* 보기·범례 패널의 폭. **상단 바의 그 손잡이 묶음도 이 값을 읽는다** — 패널이
-     묶음 아래에서 열리므로 둘의 오른쪽 끝이 같아야 한다(발주자 지시 2026-09-09).
+  /* 렌즈 패널의 폭이자 **상단 바 보기 카드(`#tb-viewctl`)의 폭**이다(발주자 지시
+     2026-09-26). 패널이 그 카드 바로 아래에서 열리므로 둘의 양 끝이 같은 세로선에
+     서야 한다 — 카드가 이 값을 읽고, 패널은 카드 왼쪽 끝에 붙는다(view.ts
+     positionPanel). 방향은 **패널 → 카드**다: 카드 내용에 따라 패널 폭이 흔들리지
+     않게 한다(2026-09-09 에 철회된 것은 묶음 실측 폭을 패널이 따라가던 반대 방향이다).
      20.5rem 은 두 번 의도적으로 넓힌 값이다(세그가 두 줄로 접혔고, v2 에서 타일
-     넷 + 활성값 이름이 한 줄에 서야 했다). */
-  /* 렌즈 패널 자기 폭. 세그가 두 줄로 접히지 않는 하한이 이 값의 이유다
-     (상단 바 손잡이 묶음과는 무관하다 — 그 연결은 2026-09-09 에 철회됐다). */
+     넷 + 활성값 이름이 한 줄에 서야 했다). 보기 카드 안의 관점 세그 + 렌즈 버튼
+     (250 + 8 + 36) 도 이 폭 안에 한 줄로 선다. */
   --lens-panel-w: 20.5rem;
   /* 앱을 다루는 창(설정). 분류 레일(256px) + 본문이 Figma 1168×792 에 맞는다.
      도구·GRAPH.md 는 이제 이 상자 안의 분류라 상자가 하나다(2026-09-22). */
@@ -977,9 +979,13 @@ body {
    접으면 관점 손잡이가 함께 사라졌다. 둘 다 View 가 채우고 떠날 때 비우므로(topbar.ts
    `refreshTopbar`), 둘 다 비면 카드째 숨는다 — 빈 카드가 검색 옆에 남으면 누를 것이
    없는 면이 된다. */
-#tb-viewctl { flex: 0 0 auto; }
+/* 폭은 **렌즈 패널과 같다**(`--lens-panel-w`) — 패널이 이 카드 바로 아래에서 열리고
+   양 끝이 같은 세로선에 서야 한다(발주자 지시 2026-09-26). 세그가 남는 폭을 먹는다. */
+#tb-viewctl { flex: 0 0 var(--lens-panel-w); width: var(--lens-panel-w); }
 #tb-viewctl:has(> #tb-viewpoints:empty):has(> #tb-lens:empty) { display: none; }
-#tb-viewpoints { display: flex; align-items: center; flex: 0 0 auto; }
+#tb-viewpoints { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; }
+#tb-viewpoints .seg { width: 100%; }
+#tb-viewpoints .seg .chip { flex: 1 1 auto; }
 #tb-lens { display: flex; align-items: center; flex: 0 0 auto; }
 #tb-viewpoints:empty, #tb-lens:empty { display: none; }
 /* 숨긴 버튼만 담은 묶음은 자리를 먹지 않는다 — 폭 0 이어도 바의 gap 이 한 칸 붙는다. */
@@ -2546,11 +2552,16 @@ textarea.props-val {
    (문서 열 · 인캔버스 크롬)의 천장은 topbar.ts `trackChromeTop` 이 바의 실측 바닥에서
    다시 잰다 — 그래서 둘째 줄이 생겨도 그것들이 그 밑에 깔리지 않는다. */
 @container topbar (max-width: 700px) {
-  #tb-find, #tb-viewctl { flex: 1 1 100%; }
-  /* 둘째 줄: 세그가 렌즈 버튼 앞까지 차고 넷이 같은 몫을 갖는다 — 손가락으로 누르는 폭이다. */
-  #tb-viewpoints { flex: 1 1 auto; min-width: 0; }
-  #tb-viewpoints .seg { width: 100%; }
-  #tb-viewpoints .seg .chip { flex: 1 1 0; min-width: 0; }
+  #tb-find { flex: 1 1 100%; }
+  /* 보기 카드는 둘째 줄 오른쪽 끝에 **패널 폭 그대로** 선다 — 렌즈 패널이 그 아래에서
+     같은 폭으로 열린다(`--lens-panel-w` 주석). */
+  #tb-viewctl { margin-left: auto; }
+  /* 좁은 창(≤900)에서는 렌즈 패널이 창 전폭 판으로 바뀐다(아래 900 블록) — 맞출 폭이
+     없으므로 카드가 둘째 줄을 통째로 쓰고 네 칩이 같은 몫을 갖는다(손가락으로 누르는 폭). */
+  @media (max-width: 900px) {
+    #tb-viewctl { flex: 1 1 100%; width: auto; margin-left: 0; }
+    #tb-viewpoints .seg .chip { flex: 1 1 0; min-width: 0; }
+  }
 }
 /* ── 낮은 창(높이 ≤560 · 폰 가로, 작은 노트북 창) — 레일이 이름을 접는다 ───────
    레일에는 손잡이 · 홈 · Agent · 종 여섯 · 설정이 세로로 선다. 이름과 개수 두 줄을

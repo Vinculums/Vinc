@@ -901,8 +901,12 @@ export async function renderView(el: HTMLElement) {
     }
     // 렌즈 버튼이 상단 바로 올라가면서(D71) 패널은 표면 밖의 버튼에 붙어야 한다 —
     // 표면 기준 absolute 로는 사이드바 폭·타이틀바·웹 GNB 만큼 어긋난다. 좌표를
-    // 버튼 실측 rect 에서 뽑아 fixed 로 놓으면 세 스킨이 전부 자동으로 맞는다.
-    const r = lensBtn?.getBoundingClientRect();
+    // 실측 rect 에서 뽑아 fixed 로 놓으면 세 스킨이 전부 자동으로 맞는다.
+    // 기준은 버튼이 아니라 **버튼이 든 보기 카드**다(발주자 지시 2026-09-26): 카드 폭이
+    // 패널 폭(`--lens-panel-w`)과 같아서, 카드 왼쪽 끝에 붙이면 양 끝이 같은 세로선에
+    // 선다. 카드가 없는 배치(임베드)는 버튼 자신이 기준이다.
+    // 근거: [[decision:the-top-bar-is-a-search-card-and-a-view-card-2026-09-26]]
+    const r = (lensBtn?.closest<HTMLElement>(".tb-card") ?? lensBtn)?.getBoundingClientRect();
     if (!r) return;
     // 오른쪽 끝은 **패널 실측 폭**으로 잡는다 — 상수를 박으면 폭을 넓힐 때마다 다시
     // 잘린다. 상수가 300 이던 동안 20.5rem(328px) 짜리 패널이 뷰포트 밖으로 28px
@@ -953,9 +957,9 @@ export async function renderView(el: HTMLElement) {
       : (above >= cardTop + m ? above
          : Math.max(cardTop + m, window.innerHeight - h - m));
     viewPanel.style.top = `${Math.round(Math.max(cardTop + m, top))}px`;
-    // 자리는 렌즈 버튼에 왼쪽을 맞추고, 오른쪽에 자리가 없으면 **버튼의 오른쪽 끝**에
-    // 맞춰 왼쪽으로 연다(팝오버 뒤집기). 버튼은 보기 카드의 오른쪽 끝이라 넓은 창에서는
-    // 늘 뒤집힌다 — 뷰포트 끝에 맞춰 접어 넣던 동안 패널이 버튼보다 18px 더 나갔다.
+    // 자리는 기준(보기 카드)에 왼쪽을 맞추고, 오른쪽에 자리가 없으면 **기준의 오른쪽
+    // 끝**에 맞춰 왼쪽으로 연다(팝오버 뒤집기). 카드와 패널 폭이 같으므로 보통은 첫
+    // 갈래에서 양 끝이 다 맞는다.
     const left = r.left + w + m <= rightEdge ? r.left : Math.min(r.right - w, rightEdge - w - m);
     viewPanel.style.left = `${Math.round(Math.max(m, left))}px`;
   }

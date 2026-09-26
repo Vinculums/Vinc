@@ -91,8 +91,16 @@ class Lens(unittest.TestCase):
     def test_view_tools_corner_is_untouched(self):
         self.assertIn("right: calc(var(--rail-w, 0px) + var(--space-6, 1.5rem));", _rule("#view-tools"))
 
-    def test_panel_flips_to_the_button_right_edge(self):
+    def test_view_card_is_exactly_as_wide_as_the_lens_panel(self):
+        # 패널이 카드 바로 아래에서 열린다 — 양 끝이 같은 세로선이어야 한다(발주자 지시).
+        card = _rule("#tb-viewctl")
+        self.assertIn("flex: 0 0 var(--lens-panel-w)", card)
+        self.assertIn("width: var(--lens-panel-w)", card)
+        self.assertIn("width: var(--lens-panel-w)", CSS[CSS.index("#view-lens-panel {"):])
+
+    def test_panel_anchors_to_the_view_card(self):
         body = _block(VIEW, "function positionPanel()", "function openPanel()")
+        self.assertIn('lensBtn?.closest<HTMLElement>(".tb-card")', body)
         self.assertIn("r.right - w", body)
 
 
@@ -102,8 +110,12 @@ class NarrowBarWraps(unittest.TestCase):
 
     def test_wraps_by_bar_width_and_view_card_takes_the_second_row(self):
         m = _at("@container topbar (max-width: 700px)")
-        self.assertRegex(m, r"#tb-find, #tb-viewctl \{[^}]*flex: 1 1 100%")
-        self.assertIn("#tb-viewpoints .seg .chip { flex: 1 1 0", m)
+        self.assertRegex(m, r"#tb-find \{[^}]*flex: 1 1 100%")
+        # 넓은 창: 둘째 줄에서도 패널 폭 그대로(오른쪽 끝). 좁은 창(패널이 전폭 판): 줄 전폭.
+        self.assertIn("#tb-viewctl { margin-left: auto; }", m)
+        narrow = m[m.index("@media (max-width: 900px)"):]
+        self.assertIn("#tb-viewctl { flex: 1 1 100%; width: auto; margin-left: 0; }", narrow)
+        self.assertIn("#tb-viewpoints .seg .chip { flex: 1 1 0", narrow)
 
     def test_no_viewport_wrap_left_behind(self):
         self.assertNotIn("@media (max-width: 520px)", CSS)
