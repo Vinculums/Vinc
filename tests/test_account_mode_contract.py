@@ -110,6 +110,20 @@ class GateTest(unittest.TestCase):
         self.assertRegex(css, r"#signin-screen \{[^}]*position: fixed; inset: 0;")
         self.assertIn("[data-shell] #signin-screen { top: var(--titlebar-h); }", css)
 
+    def test_이메일이_먼저_Google_은_그다음이다(self):
+        """웹 로그인과 같은 순서 · 같은 말. Google 단추는 연결 페이지에 via=google 을 실어
+        로그인 안내를 건너뛴다(켜짐 여부는 그 페이지가 판단한다)."""
+        screen = _fn(FIRSTRUN_TS, "openSignInScreen")
+        self.assertLess(screen.index('id="fr-signin"'), screen.index('class="si-or"'))
+        self.assertLess(screen.index('class="si-or"'), screen.index('id="fr-google"'))
+        self.assertIn('google.addEventListener("click", () => void start("google"))', FIRSTRUN_TS)
+        self.assertIn("connectAccount(undefined, { via })", FIRSTRUN_TS)
+        body = _fn(CONNECT_TS, "connectAccount")
+        self.assertIn('const via = opts.via ? `&via=${opts.via}` : "";', body)
+        self.assertIn("${encodeURIComponent(state)}${via}", body)
+        # 브랜드 네 색은 면제로 드러나 있어야 한다(gate_surface 가 이유를 보고한다).
+        self.assertIn("// ds-allow: Google 로고", FIRSTRUN_TS)
+
     def test_게이트는_셸에서만_선다(self):
         """웹은 세션 게이트가 따로 있고, 브라우저 dev 는 개발자의 자리다(캡처용 표식만)."""
         body = _fn(FIRSTRUN_TS, "needsSignIn")

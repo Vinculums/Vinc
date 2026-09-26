@@ -42,6 +42,16 @@ let pending: Promise<void> | null = null;
 
 /** 풀화면 로그인을 그린다. 닫을 문이 없다 — 로그인해야 쓰는 앱에서 닫히는 로그인은
  *  빈 화면으로 가는 문이다. 돌려주는 `close` 는 로그인이 끝났을 때만 부른다. */
+// ds-allow: Google 로고는 Google 브랜드 지침이 정한 네 색 그대로여야 한다(앱 팔레트가 아니다). 웹 로그인과 같은 도형이다.
+const GOOGLE_G = `<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>`;
+
+/** 풀화면 로그인을 그린다. 닫을 문이 없다 — 로그인해야 쓰는 앱에서 닫히는 로그인은
+ *  빈 화면으로 가는 문이다. 돌려주는 `close` 는 로그인이 끝났을 때만 부른다.
+ *
+ *  단추는 웹 로그인 페이지와 같은 순서다: 이메일이 먼저, "또는", Google. 둘 다 브라우저를
+ *  연다 — 이메일은 연결 페이지의 로그인 안내로, Google 은 그 안내를 건너뛰고 Google 로
+ *  (`connectAccount` 의 `via`). 앱은 Google 이 켜져 있는지 모르므로 단추를 늘 보이고,
+ *  꺼져 있으면 연결 페이지가 이메일 안내로 돌린다. */
 function openSignInScreen(reason: "first" | "expired") {
   const c = COPY.firstRun;
   const shell = document.getElementById("shell");
@@ -57,6 +67,8 @@ function openSignInScreen(reason: "first" | "expired") {
       <p class="si-lead">${reason === "expired" ? c.leadExpired : c.lead}</p>
       <ul class="fr-why">${c.reasons.map((r) => `<li>${r}</li>`).join("")}</ul>
       <button class="btn btn-primary si-cta" id="fr-signin" type="button">${c.signInCta}</button>
+      <div class="si-or" aria-hidden="true"><span>${c.or}</span></div>
+      <button class="btn si-google" id="fr-google" type="button">${GOOGLE_G}<span>${c.googleCta}</span></button>
       <p class="si-state" id="fr-state" role="status" aria-live="polite"></p>
       <p class="hint si-note">${c.localNote}</p>
     </div>`;
@@ -66,7 +78,7 @@ function openSignInScreen(reason: "first" | "expired") {
   const btn = screen.querySelector<HTMLButtonElement>("#fr-signin")!;
   btn.focus();
   return {
-    btn,
+    buttons: [btn, screen.querySelector<HTMLButtonElement>("#fr-google")!] as const,
     state: screen.querySelector<HTMLElement>("#fr-state")!,
     close() { screen.remove(); shell?.removeAttribute("inert"); },
   };
@@ -78,12 +90,14 @@ export function requireSignIn(reason: "first" | "expired" = "first"): Promise<vo
   if (pending) return pending;
   pending = new Promise<void>((resolve) => {
     const c = COPY.firstRun;
-    const { btn, state, close } = openSignInScreen(reason);
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
+    const { buttons, state, close } = openSignInScreen(reason);
+    const [email, google] = buttons;
+    const start = async (via?: "google") => {
+      // 기다리는 동안은 둘 다 잠근다 — 흐름 두 개가 같은 사이드카 상태를 두고 겹치지 않게.
+      buttons.forEach((b) => { b.disabled = true; });
       state.textContent = c.opening;
-      const r = await connectAccount();
-      btn.disabled = false;
+      const r = await connectAccount(undefined, { via });
+      buttons.forEach((b) => { b.disabled = false; });
       if (r === "connected") {
         pending = null;
         close();
@@ -93,7 +107,9 @@ export function requireSignIn(reason: "first" | "expired" = "first"): Promise<vo
       if (r === "aborted") { state.textContent = ""; return; }
       // 실패해도 화면은 남는다. 같은 단추가 다시 시도다.
       state.textContent = r === "expired" ? c.expired : c.failed;
-    });
+    };
+    email.addEventListener("click", () => void start());
+    google.addEventListener("click", () => void start("google"));
   });
   return pending;
 }

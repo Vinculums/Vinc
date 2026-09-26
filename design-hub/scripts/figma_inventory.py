@@ -182,7 +182,9 @@ DIALOGS = {
     "surfaces/view.ts:openContextMenu": None,
     "surfaces/view.ts:confirmDestructive": "App · View · node-delete-confirm / dark",
     "empty-invite.ts:c.newSheetTitle": "App · View · new-node-sheet / dark",
-    "firstrun.ts:c.title": "App · View · first-run / dark",
+    # 첫 실행 로그인은 2026-09-26 부터 시트가 아니라 창 전체 화면이다(firstrun.ts
+    # openSignInScreen) — 모달 대응에서 빠지고, 보드 `App · View · first-run / dark` 는
+    # 표면×상태 축(캡처 매니페스트의 view__first-run)이 계속 대조한다.
     "sheets.ts:S.docTitle": "App · Topbar · import-doc-sheet / dark",
     "topbar.ts:COPY.ui.topbar.browseAll": "App · Topbar · browse-sheet / dark",
 }

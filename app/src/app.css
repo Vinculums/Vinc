@@ -1687,6 +1687,21 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 이유 목록은 카드 가운데 정렬 안에서도 왼쪽 정렬이다 — 여러 줄이 가운데로 흔들리면 못 읽는다. */
 .si-card .fr-why { margin: 1.4rem 0; text-align: left; }
 .si-cta { width: 100%; padding: .7rem 1rem; font-weight: 600; }
+/* "또는" 구분선 + Google 단추 — 웹 로그인의 것과 같은 치수(선 1px · 글자 .8rem · 단추
+   외곽선에 배경 60%). Google 로고 네 색은 firstrun.ts 에서 면제로 적어 둔다. */
+.si-or {
+  display: flex; align-items: center; gap: .7rem; margin: 1.1rem 0 0;
+  font-size: .8rem; color: hsl(var(--muted-foreground));
+}
+.si-or::before, .si-or::after { content: ""; flex: 1; height: 1px; background: hsl(var(--border)); }
+.si-card .si-google {
+  display: flex; align-items: center; justify-content: center; gap: .6rem;
+  width: 100%; margin-top: .9rem; padding: .7rem 1rem; font-weight: 600;
+  border: 1px solid hsl(var(--border)); background: hsl(var(--background) / .6);
+  color: hsl(var(--foreground));
+}
+.si-card .si-google:hover { background: hsl(var(--background)); }
+.si-google svg { flex: 0 0 auto; }
 .si-state {
   margin: .7rem 0 0; min-height: 1.35em; font-size: .85rem;
   color: hsl(var(--caption-foreground));
