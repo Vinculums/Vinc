@@ -2,6 +2,7 @@ import { api, cfg } from "./api";
 import type { GraphEdge, NavGroup, NavNode, NavTreeRes } from "./api";
 import { COPY } from "./copy";
 import { icon } from "./icons";
+import { applyDefaults, foldsOwnRows, ownKey } from "./lnb-tree";
 import type { ThemeMode } from "./theme";
 import { tintMap } from "./view-tint";
 import { loadPrefs } from "./view-prefs";
@@ -34,7 +35,8 @@ type TopicPicker = (path: string, add: boolean, set?: boolean) => void;
  *  Agent 레일이 쓴다 — 토글이면 이미 걸린 스코프를 Agent 를 고르는 손이 벗긴다. */
 
 const KEY_OPEN = "vinc.shell.lnb";        // 열림 상태(접기는 사용자 소유)
-const KEY_EXPANDED = "vinc.shell.lnb.groups";   // 펼친 주제 목록
+// 펼친 주제 목록을 담던 옛 키. 이제 저장하지 않으므로 켤 때 한 번 지우기만 한다.
+const KEY_EXPANDED = "vinc.shell.lnb.groups";
 const KEY_KIND = "vinc.shell.lnb.kind";   // 종 레일이 고른 것
 
 let navigate: Navigator | null = null;
@@ -45,7 +47,11 @@ let failed = false;
 let active: { domain?: string; nodeId?: string } = {};
 /** 지금 스코프가 걸고 있는 주제들 — 트리 줄의 선택 표시가 이걸 읽는다. */
 let picked = new Set<string>();
+/** 펼친 주제(와 `own:` 접두의 항목 묶음). **저장하지 않는다**: 앱을 켤 때마다 기본
+ *  펼침(`lnb-tree.ts`)에서 시작한다. `seenDefault` 는 기본을 이미 한 번 받은 경로다 —
+ *  세션 안에서 사용자가 접은 주제를 다시 그릴 때마다 되살리지 않으려는 것이다. */
 let expanded = new Set<string>();
+const seenDefault = new Set<string>();
 
 /** 주제 색(열린 층) — 지도와 **같은 토글**(`ViewPrefs.domainTint`)을 읽고 같은
  *  `tintMap` 으로 만든다. paint 마다 한 번 만들어 줄마다 조회한다.
@@ -167,16 +173,6 @@ function setOpen(open: boolean, persist = true) {
   }
 }
 
-function loadExpanded(): Set<string> {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY_EXPANDED) || "[]");
-    return new Set(Array.isArray(raw) ? raw.filter((x) => typeof x === "string") : []);
-  } catch { return new Set(); }
-}
-
-function saveExpanded() {
-  try { localStorage.setItem(KEY_EXPANDED, JSON.stringify([...expanded])); } catch { /* 용량 초과 무시 */ }
-}
 
 /** View 가 마운트/언마운트하며 착지 동작을 넘긴다. null 이면 해시 착지로 강등. */
 export function setLnbTopicPicker(fn: TopicPicker | null) {
@@ -219,8 +215,6 @@ export function setLnbNavigator(fn: Navigator | null) {
 }
 
 /** 지금 어디를 보고 있는지 트리에 표시한다(크럼이 하던 일 — D71 로 여기 왔다). */
-/** 뿌리 자동 펼침을 한 번만 하기 위한 표시(paint 안 주석 참조). */
-let autoExpanded = false;
 
 export function setLnbActive(sel: { domain?: string; domains?: string[]; nodeId?: string }) {
   // 주제는 이제 **여럿**일 수 있다(스코프가 목록이 됐다). 첫 번째를 대표로 두고
@@ -232,12 +226,7 @@ export function setLnbActive(sel: { domain?: string; domains?: string[]; nodeId?
     // 지금 있는 주제는 접혀 있으면 안 된다 — 그리고 중첩이 생겼으므로 **조상까지**
     // 함께 편다. 자기만 펴면 부모가 닫힌 채라 화면에 나타나지 않는다.
     const segs = doms[0].split("/").filter(Boolean);
-    let grew = false;
-    segs.forEach((_s, i) => {
-      const path = segs.slice(0, i + 1).join("/");
-      if (!expanded.has(path)) { expanded.add(path); grew = true; }
-    });
-    if (grew) saveExpanded();
+    segs.forEach((_s, i) => expanded.add(segs.slice(0, i + 1).join("/")));
   }
   paint();
 }
@@ -681,14 +670,21 @@ function groupRows(n: DomNode, level = 1): string {
   // 주제 행도 treeitem 이다(여태 role 이 없어 트리에서 빠져 있었다). 그리고 자식
   // group 은 **항목의 형제가 아니라 안쪽**에 와야 한다 — 형제로 두면 보조기술이
   // 계층으로 읽지 않는다.
-  const head = `<button class="lnb-group${on ? " on" : ""}" role="treeitem" aria-level="${level}"
+  // 줄은 **접고 펴기만** 한다. 지도를 이 주제로 좁히는 것은 줄 끝의 버튼이다 — 줄
+  // 클릭이 지도까지 바꾸면 "안을 보려고" 누른 사람의 지도가 통째로 재배치된다.
+  // 버튼은 줄의 형제다(버튼 안에 버튼을 둘 수 없다). 골라져 있음(aria-pressed)도 버튼이 든다.
+  const head = `<div class="lnb-grow${on ? " on" : ""}">
+    <button class="lnb-group${on ? " on" : ""}" role="treeitem" aria-level="${level}"
       ${on ? 'aria-selected="true" ' : ""}data-group="${esc(n.path)}"
-      aria-expanded="${open}" aria-pressed="${on}"
-      data-tip="${esc(COPY.ui.lnb.conceptCount(subConcepts(n)))} · ${esc(COPY.ui.lnb.topicTip)}">
+      aria-expanded="${open}" data-tip="${esc(COPY.ui.lnb.conceptCount(subConcepts(n)))}">
       <span class="lnb-caret${open ? " open" : ""}" aria-hidden="true">›</span>
       <span class="lnb-gname">${esc(n.seg)}</span>
       <span class="lnb-gcount">${subCount(n) || "·"}</span>
-    </button>`;
+    </button>
+    <button class="lnb-gscope" type="button" data-scope="${esc(n.path)}" aria-pressed="${on}"
+      aria-label="${esc(COPY.ui.lnb.scopeBtn(n.seg))}"
+      data-tip="${esc(COPY.ui.lnb.topicTip)}">${icon("graph", 13)}</button>
+  </div>`;
   if (!open) return head;
   // 자식 가지가 먼저, 그다음 이 주제 자신의 문서. 순서를 뒤집으면 문서 목록 끝에
   // 가지가 붙어 "문서인 줄 알았던 것"이 사실 폴더인 상황이 된다.
@@ -725,7 +721,20 @@ function groupRows(n: DomNode, level = 1): string {
     // 진입점이 사라진다. 빈 채로 두되 빈 이유를 말한다.
     // (자식 가지가 있으면 비어 보이지 않으므로 그 문구를 내지 않는다.)
     || (n.kids.length ? "" : `<p class="lnb-none hint">${esc(COPY.ui.lnb.noNodes)}</p>`);
-  return head + `<div class="lnb-docs" role="group">${kids}${own}</div>`;
+  // 하위 주제가 있는 줄은 자기 항목을 **한 줄로 접어 둔다**: 기본 펼침이 3단계까지
+  // 여는데, 그 줄들의 항목까지 쏟으면 구조가 항목 더미에 묻힌다. 하위 주제가 없는 줄은
+  // 펴면 곧장 항목이다.
+  let ownHtml = own;
+  if (foldsOwnRows(n) && (rows || rest)) {
+    const ownOpen = expanded.has(ownKey(n.path));
+    const count = nodes.length + orphans.length;
+    ownHtml = `<button class="lnb-fold" type="button" role="treeitem" aria-level="${level + 1}"
+        data-fold="${esc(n.path)}" aria-expanded="${ownOpen}">
+        <span class="lnb-caret${ownOpen ? " open" : ""}" aria-hidden="true">›</span>
+        <span class="lnb-fname">${esc(COPY.ui.lnb.ownItems(count))}</span></button>`
+      + (ownOpen ? `<div class="lnb-docs" role="group">${own}</div>` : "");
+  }
+  return head + `<div class="lnb-docs" role="group">${kids}${ownHtml}</div>`;
 }
 
 /** 스크롤 밖의 머리 — 지금 몇 주제를 보고 있는지. 인자가 없으면 비운다(아직
@@ -808,10 +817,9 @@ function paint() {
     }
   } else {
     const tops = nestGroups(groups);
-    // 뿌리가 하나뿐이면(지금은 전부 `vinc/*` 다) 한 번은 펼쳐 둔다 — 안 그러면
-    // 중첩이 정보를 더하는 대신 모든 것을 클릭 한 번 뒤로 밀기만 한다. 최초 1회만
-    // 이라 접어 둔 사용자의 선택과 싸우지 않는다.
-    if (!autoExpanded && tops.length === 1) { autoExpanded = true; expanded.add(tops[0].path); }
+    // 기본 펼침(3단계까지 보이게). 처음 보는 경로에만 걸어서, 세션 안에서 접은 주제를
+    // 다시 그릴 때마다 되살리지 않는다.
+    applyDefaults(tops, expanded, seenDefault);
     html += `<div class="lnb-tree" role="tree">${tops.map((n) => groupRows(n)).join("")}`;
     if (unfiled.length) {
       const open = expanded.has("");
@@ -833,15 +841,36 @@ function paint() {
 /** 캐럿을 **실제로 돌린다.** paint() 가 트리를 통째로 다시 그리므로 새 캐럿은 최종 각도로
  *  태어나고 전이는 시작점이 없다 — `.lnb-caret` 의 transition 이 여태 한 번도 돌지 않은
  *  이유. 방금 그린 캐럿을 이전 각도에 세워 한 프레임 확정한 뒤 놓아 준다(FLIP). */
-function spinCaret(key: string, open: boolean): void {
+function spinCaret(row: HTMLElement, open: boolean): void {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const caret = $("lnb-body")?.querySelector<HTMLElement>(`.lnb-group[data-group="${CSS.escape(key)}"] > .lnb-caret`);
+  const caret = row.querySelector<HTMLElement>(":scope > .lnb-caret");
   if (!caret) return;
   caret.style.transition = "none";
   caret.style.transform = open ? "rotate(0deg)" : "rotate(90deg)";
   void caret.offsetWidth;                  // 시작 상태 확정 — 없으면 한 프레임에 건너뛴다
   caret.style.transition = "";
   caret.style.transform = "";
+}
+
+/** 펼침 키에 해당하는 줄(주제 줄 또는 접은 항목 줄). */
+function rowFor(key: string): HTMLElement | null {
+  const body = $("lnb-body");
+  if (!body) return null;
+  return key.startsWith("own:")
+    ? body.querySelector<HTMLElement>(`.lnb-fold[data-fold="${CSS.escape(key.slice(4))}"]`)
+    : body.querySelector<HTMLElement>(`.lnb-group[data-group="${CSS.escape(key)}"]`);
+}
+
+/** 접고 펴기 한 번. 트리를 통째로 다시 그리므로, 초점이 트리 안에 있었으면 새로 그린
+ *  같은 줄로 옮긴다(키보드로 펼친 뒤 초점이 사라지면 다음 화살표가 갈 곳이 없다). */
+function toggleRow(key: string): void {
+  const hadFocus = !!document.activeElement?.closest("#lnb-body");
+  if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
+  paint();
+  const row = rowFor(key);
+  if (!row) return;
+  spinCaret(row, expanded.has(key));
+  if (hadFocus) row.focus();
 }
 
 /** 문서 클릭 — **지도로 가고 문서를 연다**(둘 다, 한 클릭에). 여태 노드로만
@@ -875,7 +904,8 @@ export function mountLnb() {
   wired = true;
   const root = $("lnb");
   if (!root) return;
-  expanded = loadExpanded();
+  expanded = new Set();
+  try { localStorage.removeItem(KEY_EXPANDED); } catch { /* 저장소가 없으면 지울 것도 없다 */ }
 
   // **머리가 없다.** 여태 이 카드의 첫 52px 는 셰브론 하나를 담은 머리였고, 그만큼
   // 첫 줄(홈)을 아래로 밀었다(발주자 지적 2026-09-09, `수정항목/lnb.JPG`).
@@ -954,23 +984,18 @@ export function mountLnb() {
       if (compact()) setOpen(false, false);
       return;
     }
-    const group = t.closest<HTMLElement>(".lnb-group");
-    if (group) {
-      const key = group.dataset.group ?? "";
-      // 캐럿은 **접고 펴기**, 이름은 **주제 고르기**다. 여태 어디를 눌러도 접고
-      // 펴기뿐이라, 주제 트리가 지도를 좁힐 것처럼 생겨서는 아무것도 안 했다.
-      // 미분류 묶음(빈 key)은 실재하는 주제가 아니라 고를 수 없다 — 접고 펴기만.
-      const onCaret = !!t.closest(".lnb-caret");
-      if (!onCaret && key && pickTopic) {
-        pickTopic(key, e.ctrlKey || e.metaKey);
-        return;
-      }
-      if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
-      saveExpanded();
-      paint();
-      spinCaret(key, expanded.has(key));
+    // 줄 끝 버튼 = 지도를 이 주제로 좁히기(Ctrl·Cmd 는 더하기). 줄 자체는 접고 펴기만.
+    // 미분류 묶음은 실재하는 주제가 아니라 버튼이 없다.
+    const scope = t.closest<HTMLElement>(".lnb-gscope");
+    if (scope) {
+      const key = scope.dataset.scope ?? "";
+      if (key && pickTopic) pickTopic(key, e.ctrlKey || e.metaKey);
       return;
     }
+    const fold = t.closest<HTMLElement>(".lnb-fold");
+    if (fold) { toggleRow(ownKey(fold.dataset.fold ?? "")); return; }
+    const group = t.closest<HTMLElement>(".lnb-group");
+    if (group) { toggleRow(group.dataset.group ?? ""); return; }
     if (t.closest(".lnb-scope-clear")) {
       // 고른 것을 전부 뺀다 = 전체(L0). `pickTopic` 에 같은 경로를 다시 넘기면
       // 토글이라 하나씩 꺼야 하므로, 첫 번째를 비-add 로 두 번 눌러 비우는 대신
@@ -985,6 +1010,39 @@ export function mountLnb() {
       return;
     }
   });
+  // 트리 키보드(treeitem 에 맞춘 최소한): ↑↓ 이동 · Home/End · → 펼치기(펴져 있으면 첫
+  // 자식으로) · ← 접기(접혀 있거나 항목 줄이면 부모로). Enter·Space 는 버튼 기본 동작이
+  // 곧 클릭이라 따로 잡지 않는다.
+  body.addEventListener("keydown", (e) => {
+    const cur = (e.target as HTMLElement).closest<HTMLElement>(".lnb-group, .lnb-fold, .lnb-doc");
+    if (!cur) return;
+    const rows = [...body.querySelectorAll<HTMLElement>(".lnb-group, .lnb-fold, .lnb-doc")];
+    const i = rows.indexOf(cur);
+    const key = cur.classList.contains("lnb-fold") ? ownKey(cur.dataset.fold ?? "")
+      : cur.classList.contains("lnb-group") ? (cur.dataset.group ?? "") : null;
+    const open = key !== null && expanded.has(key);
+    const go = (el: HTMLElement | null | undefined) => { e.preventDefault(); el?.focus(); };
+    switch (e.key) {
+      case "ArrowDown": go(rows[i + 1]); break;
+      case "ArrowUp": go(rows[i - 1]); break;
+      case "Home": go(rows[0]); break;
+      case "End": go(rows[rows.length - 1]); break;
+      case "ArrowRight":
+        if (key === null) break;
+        e.preventDefault();
+        if (open) rows[i + 1]?.focus(); else toggleRow(key);
+        break;
+      case "ArrowLeft": {
+        e.preventDefault();
+        if (key !== null && open) { toggleRow(key); break; }
+        // 부모 = 이 줄을 담은 묶음(.lnb-docs) 바로 앞의 줄. 주제 줄은 .lnb-grow 로 싸여 있다.
+        const prev = cur.closest(".lnb-docs")?.previousElementSibling as HTMLElement | null;
+        (prev?.classList.contains("lnb-grow") ? prev.querySelector<HTMLElement>(".lnb-group") : prev)?.focus();
+        break;
+      }
+    }
+  });
+
   // 주제 우클릭 = 이름 변경(S2). L0 주제 표의 `⋯` 가 하던 일이 여기로 왔다 —
   // 표가 사라졌으므로 이 경로가 없으면 이름을 바꿀 길이 없어진다.
   body.addEventListener("contextmenu", (e) => {
