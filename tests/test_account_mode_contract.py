@@ -124,6 +124,15 @@ class GateTest(unittest.TestCase):
         # 브랜드 네 색은 면제로 드러나 있어야 한다(gate_surface 가 이유를 보고한다).
         self.assertIn("// ds-allow: Google 로고", FIRSTRUN_TS)
 
+    def test_로그인_화면은_특정_AI_호스트를_내세우지_않는다(self):
+        """첫 화면의 이유 목록은 제품 소개다. 특정 호스트 이름(claude.ai 등)을 앞세우면
+        그 호스트 홍보가 된다(2026-09-26 반려). 호스트 이름은 연결 설정의 사용법에만 쓴다."""
+        blocks = re.findall(r"\n  firstRun: \{.*?\n  \},", COPY_TS, re.S)
+        self.assertEqual(len(blocks), 2)  # EN · KO
+        for block in blocks:
+            for host in ("claude", "chatgpt", "openai", "anthropic", "gemini", "copilot"):
+                self.assertNotIn(host, block.lower())
+
     def test_게이트는_셸에서만_선다(self):
         """웹은 세션 게이트가 따로 있고, 브라우저 dev 는 개발자의 자리다(캡처용 표식만)."""
         body = _fn(FIRSTRUN_TS, "needsSignIn")

@@ -37,7 +37,13 @@ const side = async (p) => { const r = await fetch(SIDE + p, { headers: { Authori
 const VP = { width: 1280, height: 800 };
 // vinc.sidecar.base: 셸 분기(tauri.localhost)는 api.ts 가 8787 을 기본으로 박으므로, --sidecar 로 다른 포트를 주면
 // 여기서 앱에도 알려야 한다. 없으면 스크립트는 8788 을 보고 앱은 8787 을 봐서 다른 스토어를 찍는다(2026-09-07 실측).
-const BASE_LS = { "vinc.sidecar.token": TOKEN, "vinc.sidecar.base": SIDE, "vinc.lang": "en", "vinc.theme": "dark", "vinc.firstrun.seen": "1", "vinc.view.coach.seen": "1", "vinc.owner": "tenant:local" };
+// 0.9.4 부터 셸은 로그인이 먼저고(firstrun.ts) 볼 그래프를 모드로 정한다(api.ts decideDataMode). 캡처는
+// **로그인한 로컬 모드**로 찍는다: 계정 표식(vinc.sync.linked · username)이 있으면 로그인 화면을 건너뛰고,
+// vinc.mode=local 이면 사이드카 스토어를 본다. 계정 모드로 두면 모든 조회가 키 없이 계정으로 가서 빈 화면이다.
+// ⚠ 모드는 사이드카의 ~/.vinc/config.json 에도 적힌다 — 캡처용 사이드카는 USERPROFILE 을 스크래치로 돌려
+// 띄울 것(이 기기의 실제 데스크톱 설정을 덮지 않게).
+const BASE_LS = { "vinc.sidecar.token": TOKEN, "vinc.sidecar.base": SIDE, "vinc.lang": "en", "vinc.theme": "dark", "vinc.firstrun.seen": "1", "vinc.view.coach.seen": "1", "vinc.owner": "tenant:local",
+  "vinc.mode": "local", "vinc.sync.linked": "1", "vinc.sync.username": "demo" };
 const SHELL_INIT = () => {
   // main.ts 는 Tauri 창 핸들을 얻은 뒤에만 dataset.shell 을 켠다. 브라우저에는 창이 없으니 여기서 켠다.
   document.addEventListener("DOMContentLoaded", () => { document.documentElement.dataset.shell = ""; });
@@ -46,9 +52,22 @@ const sheet = (p) => p.locator(".sheet[role=dialog]").last();
 const foot = (p, re) => sheet(p).locator(".sheet-foot button").filter({ hasText: re });
 const viewpoint = async (p, name) => { await p.locator("#tb-viewpoints button", { hasText: new RegExp(`^${name}$`) }).click(); await sleep(1800); };
 const settled = async (p) => { await p.waitForSelector("#view-metrics", { state: "attached" }).catch(() => {}); await sleep(2200); };
-const openLens = async (p) => { await p.locator("#tb-lens").click(); await p.waitForSelector("#view-lens-panel", { state: "visible" }); await sleep(400); };
+// 설정 · 쓰기/가져오기/공유 · GRAPH.md 는 2026-09-22 부터 레일 바닥 설정 단추가 여는 **시트 하나**다
+// (surfaces/settings.ts). 옛 상단 바 단추(#tb-tools · #settings-btn · #tb-conv)는 숨어서 눌리지 않는다.
+const settingsSheet = async (p, cat, tab) => {
+  await p.locator("#rail-settings").click(); await sheet(p).waitFor({ state: "visible" }); await sleep(300);
+  if (cat) { await sheet(p).locator(`.settings-cat[data-cat="${cat}"]`).click(); await sleep(400); }
+  if (tab) { await sheet(p).locator(`[data-tab="${tab}"]`).click(); await sleep(400); }
+};
+// 누른 뒤 커서를 타이틀바 빈 곳으로 옮긴다: 단추 위에 남으면 "View and legend" 툴팁이 창 제어 단추를 덮은 채 찍힌다.
+const openLens = async (p) => { await p.locator("#tb-lens").click(); await p.waitForSelector("#view-lens-panel", { state: "visible" }); await p.mouse.move(640, 14); await sleep(400); };
 const firstTopic = (p) => p.locator(".lnb-group .lnb-gname").first();
-const firstDoc = async (p) => { const g = p.locator(".lnb-group").first(); const caret = g.locator(".lnb-caret"); if (await caret.count()) await caret.first().click(); await sleep(400); return p.locator(".lnb-doc:not(.lnb-node)").first(); };   // 개념 줄(.lnb-node) 아래 문서가 온다(lnb.ts groupRows) — 문서 줄만 고른다
+// 주제 줄을 펼친다 — 닫혀 있을 때만 누른다(줄 클릭은 여닫기라 열린 줄을 누르면 닫힌다, #436).
+const openGroup = async (p, name) => {
+  const g = name ? p.locator(".lnb-group").filter({ has: p.locator(".lnb-gname", { hasText: new RegExp(`^${name}$`) }) }).first() : p.locator(".lnb-group").first();
+  if ((await g.getAttribute("aria-expanded")) !== "true") { await g.click(); await sleep(400); }
+};
+const firstDoc = async (p) => { await openGroup(p); return p.locator(".lnb-doc:not(.lnb-node)").first(); };   // 개념 줄(.lnb-node) 아래 문서가 온다(lnb.ts groupRows) — 문서 줄만 고른다
 const openFloat = async (p) => {
   // 노드 하나를 주소로 지목한다(#view/trace/<id>): 캔버스 좌표 없이도 float card 가 뜬다.
   const id = await pickNodeId(); if (!id) throw new Error("no node id from the sidecar search");
@@ -90,15 +109,14 @@ async function seed(browser) {
   const d = await side("/domains");
   const have = (d?.rows || []).some((r) => /physics|math|economics|art/.test(r.domain));
   if (have) { console.log("seed: starter packs already present"); await seedEvidenceEdge(); return; }
-  console.log("seed: importing the four starter packs through Tools › Import");
+  console.log("seed: importing the four starter packs through Settings › Data › Import");
   const ctx = await browser.newContext({ viewport: VP, colorScheme: "dark" });
   await ctx.addInitScript((kv) => { for (const [k, v] of Object.entries(kv)) localStorage.setItem(k, v); }, BASE_LS);
   await ctx.addInitScript(SHELL_INIT);
   const p = await ctx.newPage();
   await p.goto(`${APP}/#view`, { waitUntil: "load" }); await settled(p);
   for (const f of ["physics", "math", "economics", "art"]) {
-    await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" });
-    await sheet(p).locator("button", { hasText: /^Import$/ }).first().click(); await sleep(300);
+    await settingsSheet(p, "data", "import");
     const [chooser] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]);
     await chooser.setFiles(path.join(REPO, "starter-packs", `vinc-pack-${f}.vincpack`));
     await sleep(1200);
@@ -121,12 +139,14 @@ V("3d", "load: 3D viewpoint, all topics");
 V("2d", "viewpoint 2D", (p) => viewpoint(p, "2D"));
 V("timeline", "viewpoint Timeline", (p) => viewpoint(p, "Timeline"));
 V("weave", "viewpoint Weave", (p) => viewpoint(p, "Weave"));
-V("topic-scope", "LNB: click a topic name, scope banner appears", async (p) => { await firstTopic(p).click(); await sleep(1800); });
+// 2026-09-26(#436): 주제 줄 클릭은 접기만 한다. View 를 그 주제로 좁히는 것은 줄 끝의 범위 단추다.
+V("topic-scope", "LNB: the topic's scope button narrows View, scope chip appears", async (p) => { const g = p.locator(".lnb-grow").first(); await g.hover(); await g.locator(".lnb-gscope").click(); await sleep(1800); });
 V("lnb-collapsed", "LNB: collapse", async (p) => { await p.locator("#tb-shell-toggle").click(); await sleep(600); });
 // #232: 주제 줄 아래 갈래가 문서 | 노드 둘이다. 노드 갈래는 localStorage 가 정하고(vinc.shell.lnb.mode) 첫 주제를
 // 펼쳐 둔 채 열면 개념 줄이 문서 줄 자리에 선다. 이 상태가 없으면 Figma 는 칩만 있고 칩이 여는 것은 없다.
-V("lnb-nodes", "LNB: Nodes chip, first topic expanded: concept rows in place of document rows", async (p) => { await p.waitForSelector(".lnb-node", { timeout: 15000 }); await sleep(600); },
-  { ls: { "vinc.shell.lnb.mode": "nodes", "vinc.shell.lnb.groups": JSON.stringify(["physics"]) } });
+// 펼침은 2026-09-26(#436)부터 저장하지 않는다 — 기본 세 단에서 시작하므로 physics 를 눌러 편다.
+V("lnb-nodes", "LNB: Nodes chip, physics expanded: concept rows in place of document rows", async (p) => { await openGroup(p, "physics"); await p.waitForSelector(".lnb-node", { timeout: 15000 }); await sleep(600); },
+  { ls: { "vinc.shell.lnb.mode": "nodes" } });
 V("lens-options-3d", "lens button: Options tab (3D rows)", openLens);
 V("lens-options-2d", "lens: Options for 2D", async (p) => { await viewpoint(p, "2D"); await openLens(p); });
 V("lens-options-timeline", "lens: Options for Timeline", async (p) => { await viewpoint(p, "Timeline"); await openLens(p); });
@@ -153,7 +173,8 @@ V("reader", "LNB: click a document: reader in the docpane", async (p) => { const
 V("topic-context-menu", "LNB: right-click a topic", async (p) => { await firstTopic(p).click({ button: "right" }); await sleep(300); });
 V("topic-rename-prompt", "LNB: right-click a topic, Rename: text prompt", async (p) => { await firstTopic(p).click({ button: "right" }); await sleep(300); await p.locator("[role=menu] button, .ctx button, .menu button").filter({ hasText: /rename/i }).first().click(); await sleep(300); });
 V("coachmark", "first visit: coachmark", undefined, { ls: { "vinc.view.coach.seen": "" } });
-V("first-run", "first launch in the shell: sign in first (VIN-128)", undefined, { ls: { "vinc.dev.signin": "1" } });
+// 계정 표식을 지우면 셸이 로그인부터 한다 — 2026-09-26 부터 창 전체 화면(이메일 · 또는 · Google).
+V("first-run", "first launch in the shell: the full-window sign-in (VIN-128)", undefined, { ls: { "vinc.sync.linked": "", "vinc.sync.username": "" } });
 V("light", "theme light", undefined, { ls: { "vinc.theme": "light" }, scheme: "light" });
 V("light-lens", "theme light, lens Options", openLens, { ls: { "vinc.theme": "light" }, scheme: "light" });
 V("empty-invite", "empty store: empty invite on the canvas, LNB empty", undefined, { ls: { "vinc.owner": "tenant:capture-empty" } });
@@ -179,14 +200,15 @@ TB("ask-history", "chat head: History sheet", async (p) => { await askMode(p); a
 TB("palette", "Ctrl+Shift+K: command palette", async (p) => { await p.keyboard.press("Control+Shift+K"); await sleep(400); });
 TB("palette-filtered", "palette with a filter typed", async (p) => { await p.keyboard.press("Control+Shift+K"); await sleep(300); await p.keyboard.type("sh"); await sleep(300); });
 TB("cheatsheet", "?: shortcuts sheet", async (p) => { await p.keyboard.press("Shift+Slash"); await sleep(500); });
-TB("tools-create", "Tools sheet: Create tab", async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sleep(600); });
-TB("tools-import", "Tools sheet: Import tab", async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Import$/ }).first().click(); await sleep(400); });
-TB("tools-share", "Tools sheet: Share tab", async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Share$/ }).first().click(); await sleep(400); });
+// 상태 id(= 보드 이름)는 그대로 두고 여는 길만 바꿨다 — 쓰기 · 가져오기 · 공유는 설정 시트의 Data 분류 탭이다.
+TB("tools-create", "Settings › Data: Create tab", async (p) => { await settingsSheet(p, "data", "create"); await sleep(300); });
+TB("tools-import", "Settings › Data: Import tab", (p) => settingsSheet(p, "data", "import"));
+TB("tools-share", "Settings › Data: Share tab", (p) => settingsSheet(p, "data", "share"));
 // ⚠ 300ms 고정 대기로는 못 잡는다. Tools 의 draw() 가 foot 을 비우고 renderShare 가
 // teamsApi.list() 와 api.domains() 를 **기다린 뒤에야** 버튼을 다시 단다(app/src/tools.ts:72,180).
 // 그래서 Continue 가 나타날 때까지 기다린다. 그 빈 창 자체는 별건이다 —
 // [[record:the-tools-share-pane-has-no-action-buttons-until-two-network-calls-return-2026-09-07]].
-const shareSheet = async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Share$/ }).first().click(); const go = foot(p, /continue/i).first(); await go.waitFor({ state: "visible", timeout: 30000 }); await go.click(); await sleep(2500); };
+const shareSheet = async (p) => { await settingsSheet(p, "data", "share"); const go = foot(p, /continue/i).first(); await go.waitFor({ state: "visible", timeout: 30000 }); await go.click(); await sleep(2500); };
 TB("share-sheet", "Share › Continue: share as a pack, spec grid and node list", shareSheet);
 // ⚠ `share-result` 를 걷었다(2026-09-07). 데스크탑 셸에는 목적지가 `file` 하나뿐이라
 // `chooseDestination` 의 `dests.length === 1` 분기가 **저장하고 시트를 닫는다** — 결과
@@ -194,15 +216,15 @@ TB("share-sheet", "Share › Continue: share as a pack, spec grid and node list"
 // 그래서 이 상태는 여태 시트가 닫힌 **뒤의 지도**를 찍고 "ok" 를 답했다. 보드는 도는 코드의
 // 캡처인데 그 보드는 아무 코드도 안 그리고 있었다. 목적지 고르기 화면은 스페이스가 둘 이상일
 // 때만 뜨므로 웹 세션이 필요하고, 그 픽스처는 이 스크립트에 없다.
-TB("import-pack-sheet", "Import › pick a .vincpack: import pack sheet before confirming", async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Import$/ }).first().click(); await sleep(300); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(path.join(REPO, "starter-packs", "vinc-pack-math.vincpack")); await sleep(1500); });
-TB("import-doc-sheet", "Import › pick a .md: import document sheet", async (p) => { await p.locator("#tb-tools").click(); await sheet(p).waitFor({ state: "visible" }); await sheet(p).locator("button", { hasText: /^Import$/ }).first().click(); await sleep(300); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(path.join(REPO, "starter-packs", "README.md")); await sleep(1500); });
-TB("graphmd", "GRAPH.md sheet", async (p) => { await p.locator("#tb-conv").click(); await sheet(p).waitFor({ state: "visible" }); await sleep(800); });
-// 설정은 시트다(main.ts 2026-09-09): 팝오버·스크림이 사라지고 openSheet 로 열린다. 탭은 시트 본문의 [role=tab].
-const settings = async (p, tab) => { await p.locator("#settings-btn").click(); await sheet(p).waitFor({ state: "visible" }); await sleep(300); if (tab) { await sheet(p).locator("[role=tab]").filter({ hasText: new RegExp(`^${tab}$`, "i") }).first().click(); await sleep(500); } };
-TB("settings-account", "Settings: Account tab (offline on this device)", (p) => settings(p));
-TB("settings-connections", "Settings: Connections tab", (p) => settings(p, "Connections"));
-TB("settings-advanced", "Settings: Advanced tab", (p) => settings(p, "Advanced"));
-TB("settings-light", "Settings, light theme", (p) => settings(p), { ls: { "vinc.theme": "light" }, scheme: "light" });
+TB("import-pack-sheet", "Import › pick a .vincpack: import pack sheet before confirming", async (p) => { await settingsSheet(p, "data", "import"); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(path.join(REPO, "starter-packs", "vinc-pack-math.vincpack")); await sleep(1500); });
+TB("import-doc-sheet", "Import › pick a .md: import document sheet", async (p) => { await settingsSheet(p, "data", "import"); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(path.join(REPO, "starter-packs", "README.md")); await sleep(1500); });
+TB("graphmd", "Settings › GRAPH.md", async (p) => { await settingsSheet(p, "graphmd"); await sleep(400); });
+// 설정 시트의 분류(surfaces/settings.ts ALL_CATS). 옛 탭 셋은 분류로 옮겨 갔다: Account → account,
+// Connections(외부 어시스턴트 연결) → ai, Advanced → advanced. 라이트는 첫 분류(General)다.
+TB("settings-account", "Settings › Account (signed in, local mode)", (p) => settingsSheet(p, "account"));
+TB("settings-connections", "Settings › AI assistants", (p) => settingsSheet(p, "ai"));
+TB("settings-advanced", "Settings › Advanced", (p) => settingsSheet(p, "advanced"));
+TB("settings-light", "Settings › General, light theme", (p) => settingsSheet(p), { ls: { "vinc.theme": "light" }, scheme: "light" });
 
 // search surface
 const SS = (id, trigger, before, extra = {}) => add({ id: `search__${id}`, url: "#search", trigger, before: async (p) => { await sleep(1500); if (before) await before(p); }, ...extra });
