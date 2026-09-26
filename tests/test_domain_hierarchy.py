@@ -460,7 +460,15 @@ class BackfillTests(unittest.TestCase):
                "(b:Concept {concept_id:'c-target'}) MERGE (a)-[:ABOUT]->(b)")
         # graph_algo 는 {id, value} 로 돌려준다(value = 성분 번호).
         groups: dict = {}
-        for r in st.graph_algo("weakly_connected_components") or []:
+        try:
+            rows = st.graph_algo("weakly_connected_components")
+        except RuntimeError as exc:
+            # 확장이 **안 올라온 것**만 건너뛴다(ladybug 0.20.x 의 algo 는 의존 라이브러리를
+            # 싣지 않는다 — store.embedded_backend._ALGO_UNAVAILABLE_NOTE). 그 밖의 실패는 올린다.
+            if "algo 확장 미가용" not in str(exc):
+                raise
+            self.skipTest(f"algo 확장 미가용: {str(exc)[:200]}")
+        for r in rows or []:
             if r.get("id"):
                 groups.setdefault(r.get("value"), []).append(r["id"])
         # ⚠ 먼저 **분석이 실제로 돌았는지** 확인한다. 이 두 줄이 없으면 알고리즘이

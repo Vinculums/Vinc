@@ -99,7 +99,7 @@ jobs:
       - name: 열어서 센다 (판정)
         run: |
           set -euo pipefail
-          pip install --quiet --disable-pip-version-check ladybug==0.18.0 argon2-cffi pyyaml
+          pip install --quiet --disable-pip-version-check ladybug==0.20.4 argon2-cffi pyyaml
           export VINC_LBUG_EXT_DIR="$GITHUB_WORKSPACE/packaging/lbug_extensions"
           # 이전 런과의 대조는 사람이 한다 — 직전 런 로그의 카운트 표와 눈으로 비교.
           python -X utf8 scripts/restore_rehearsal_check.py restored/db

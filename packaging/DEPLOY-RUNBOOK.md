@@ -90,7 +90,7 @@ docker 에서 연다(Windows 휠에는 FTS 확장이 없어 로컬에서 못 연
 ```bash
 docker run --rm -v "$PWD:/w" -w /w python:3.12-slim sh -c '
   mkdir -p /root/.lbdb && cp -r /w/ext/extension /root/.lbdb/
-  pip install -q ladybug==0.18.0
+  pip install -q ladybug==0.20.4
   python - <<PY
 import ladybug
 c = ladybug.Connection(ladybug.Database("/w/bak/db"))
@@ -100,6 +100,48 @@ PY'
 ```
 
 0단계 숫자와 맞지 않으면 **배포하지 않는다.**
+
+### 2-1. 엔진 판을 올리는 배포라면 — 공유 스냅샷을 뜬다(ladybug 0.18.0 → 0.20.4)
+
+⚠ **저장 형식은 한 방향이다.** 0.20.4 는 저장 형식 47 을 쓰고 40~47 을 읽는다. 0.18.0
+(형식 42)이 쓴 파일은 0.20.4 가 열지만, **0.20.4 가 한 번이라도 쓴 파일은 0.18.0 이 못
+연다**(열기에서 `store open failed` → `/health` 의 `open_error`). 즉 이 배포의 롤백은 이미지를
+되돌리는 것이 아니라 **배포 직전 사본으로 되돌아가는 것**이다. 근거:
+그래프 `vinc.ops.ladybug-upgrade-review-2026-09-24` §2.6.
+
+1단계(리비전 내리기)와 2단계(백업) 뒤, 3단계 전에 **Azure Files 공유 스냅샷**을 뜬다.
+공유 스냅샷은 파일 락과 무관하고 공유 전체를 한 시점으로 고정한다:
+
+```bash
+az storage share snapshot --name hub-data --account-name vincstorage01 --account-key "$K"
+```
+
+출력의 `snapshot` 타임스탬프를 적어 둔다. 스냅샷이 떠진 것을 확인하기 전에는 push 하지 않는다:
+
+```bash
+az storage share list --account-name vincstorage01 --account-key "$K" \
+  --include-snapshots --query "[?name=='hub-data'].snapshot" -o tsv
+```
+
+⚠ 이 한 번은 2단계의 "열어 본다"를 **0.18.0 으로** 한다(`pip install ladybug==0.18.0`) —
+되돌아갈 곳이 0.18.0 이 여는 사본이어야 하기 때문이다. 0.20.4 로 열면 받은 로컬 사본이
+형식 47 로 올라가 그 검증이 무의미해진다(공유의 원본은 무사하다).
+
+**롤백** — 이미지만 되돌리면 0.18.0 이 새 파일을 못 열어 빈 그래프로 뜬다. 순서:
+
+1. 리비전을 내린다(1단계와 같다).
+2. 스냅샷에서 배포 직전 파일을 새 이름으로 꺼낸다:
+   ```bash
+   az storage file download --share-name hub-data --path <현재 db> --snapshot <ts> \
+     --dest ./pre-0204/db --account-name vincstorage01 --account-key "$K" --no-progress
+   az storage file upload --share-name hub-data --source ./pre-0204/db \
+     --path db.pre-0204 --account-name vincstorage01 --account-key "$K"
+   ```
+   (받은 크기가 0이면 다시 받는다 — 2단계의 경합과 같다.)
+3. 0.18.0 을 핀한 이전 이미지로 되돌리고 5단계의 한 줄로 `VINC_DATA_DIR=/data/db.pre-0204`
+   를 넣는다(**PowerShell** 로).
+
+배포 후 쓰인 것은 이 롤백으로 사라진다 — 그래서 4단계 검증을 배포 직후에 끝낸다.
 
 ### 3. 배포
 

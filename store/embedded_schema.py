@@ -498,7 +498,7 @@ def render_rel_tables() -> list[str]:
     """관계 테이블 DDL. ``src``·``dst`` 는 문자열 하나 또는 **여러 라벨의 튜플**이다.
 
     여러 라벨을 주면 한 테이블이 그 조합 전부를 받는다
-    (``FROM A TO D, FROM B TO D``). ladybug 0.18.0 이 다중 쌍을 지원한다 —
+    (``FROM A TO D, FROM B TO D``). ladybug 0.18.0 이후(지금 핀 0.20.4 포함) 다중 쌍을 지원한다 —
     구 주석이 말하는 "FROM/TO 고정"은 kuzu 0.11.3 시절이다(2026-08-09 실엔진 확인).
     덕분에 `IN_DOMAIN` 을 라벨 셋으로 쪼개지 않는다."""
     return [_render_rel_table(*entry) for entry in _REL_TABLES]

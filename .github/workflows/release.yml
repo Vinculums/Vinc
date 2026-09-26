@@ -281,8 +281,14 @@ jobs:
         #
         # 부수 효과로 **테스트한 것과 배포한 것이 달랐던 것도 함께 고쳐진다**:
         # 이 자리가 핀이 없어 v0.6.7 은 그날의 최신(0.18.3)으로 빌드돼 나갔는데,
-        # ci.yml 은 0.18.0 으로 테스트하고 있었다. 이제 넷 다 0.18.0 이다.
-        run: pip install ladybug==0.18.0 pyyaml pyinstaller pypdf
+        # ci.yml 은 0.18.0 으로 테스트하고 있었다. 이제 핀은 모두 같은 판이다(지금 0.20.4).
+        #
+        # ⚠ 위 "0.19.0 이 C API 공유 라이브러리를 분리했다"는 추정은 틀렸다(2026-09-24
+        # 재조사). 0.19.0 부터 휠이 OpenSSL 3 을 싣지 않아 Windows 에서 네이티브 모듈이
+        # `libssl-3-x64.dll` 을 못 찾고 C API 폴백으로 떨어진 것이다. 그래서 0.20.4 로
+        # 올리면서 sidecar.spec 이 OpenSSL 3 을 비변형 이름으로 함께 싣는다.
+        # 근거: [[vinc.ops.ladybug-upgrade-review-2026-09-24]] §2.4
+        run: pip install ladybug==0.20.4 pyyaml pyinstaller pypdf
       # ⚠ ladybug 의 `INSTALL` 을 쓰지 않는다. 0.18.0 의 내장 다운로더가 확장 서버
       # 인증서를 검증하지 못해 **CI 에서만** 죽는다(2026-08-01 실측):
       #   RuntimeException: Failed to download extension: vector
@@ -297,13 +303,13 @@ jobs:
       # 필요 없다(G0).
       #
       # 출처는 상류 확장 서버가 아니라 **이 리포의 릴리스 `ladybug-ext-<ver>`** 다. 상류는
-      # 최근 다섯 판만 내려 주므로 0.18.0 이 빠지는 날 이 단계가 깨진다. 받은 파일은 리포의
+      # 최근 다섯 판만 내려 주므로 핀한 판이 빠지는 날 이 단계가 깨진다. 받은 파일은 리포의
       # `packaging/lbug-ext-<ver>.sha256` 과 대조한다(해시가 다르면 빌드를 세운다).
       # 근거: [[decision:ladybug-extensions-ship-from-a-vinc-release-not-the-repo-2026-09-26]]
       - name: Seed LadybugDB extensions (G0 오프라인 번들 — spec 이 datas 로 동봉)
         shell: bash
         env:
-          LBUG_VER: "0.18.0"
+          LBUG_VER: "0.20.4"
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail

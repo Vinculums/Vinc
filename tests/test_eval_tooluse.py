@@ -16,16 +16,27 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.eval_tooluse import EVALSET, verify, via_mcp   # noqa: E402
+import pytest   # noqa: E402
+
+from scripts.eval_tooluse import ALGO_UNAVAILABLE, EVALSET, verify, via_mcp   # noqa: E402
 
 
 def _load() -> dict:
     return json.loads(EVALSET.read_text(encoding="utf-8"))
 
 
+def _split(problems: list[str]) -> tuple[list[str], list[str]]:
+    """기능 부재(algo 확장 미가용)와 진짜 어긋남을 가른다. 부재만 남으면 건너뛴다 —
+    나머지 문항은 이미 대조를 통과한 뒤다."""
+    gone = [p for p in problems if ALGO_UNAVAILABLE in p]
+    return [p for p in problems if p not in gone], gone
+
+
 def test_every_expected_answer_still_holds_on_the_fixture():
-    problems = verify(_load())
+    problems, gone = _split(verify(_load()))
     assert not problems, "평가셋이 픽스처와 어긋났다:\n  " + "\n  ".join(problems)
+    if gone:
+        pytest.skip("나머지 문항은 통과, 구조 진단 문항만 기능 부재: " + "; ".join(gone))
 
 
 def test_the_mcp_tools_actually_deliver_those_answers():
@@ -35,8 +46,10 @@ def test_the_mcp_tools_actually_deliver_those_answers():
     데이터는 멀쩡한데 도구가 답을 못 준다. 그건 사용자에게는 같은 고장이라 따로 잰다.
     (F14 가 정확히 이 형태였다: 데이터에는 Record 가 붙어 있는데 도구가 안 보여 줬다.)
     """
-    problems = via_mcp(_load())
+    problems, gone = _split(via_mcp(_load()))
     assert not problems, "MCP 도구 층이 정답을 못 낸다:\n  " + "\n  ".join(problems)
+    if gone:
+        pytest.skip("나머지 문항은 통과, 구조 진단 문항만 기능 부재: " + "; ".join(gone))
 
 
 def test_evalset_shape_is_complete():

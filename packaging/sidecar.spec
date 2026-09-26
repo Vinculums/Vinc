@@ -57,6 +57,43 @@ if sum(1 for d in DATAS if d[1] == "lbug_extensions") < 3:
         "[c.execute(f'INSTALL {e}') for e in ('vector','fts','algo')]` 실행해 "
         "~/.lbdb/extension 를 채우세요.")
 
+# ── OpenSSL 3 을 사이드카와 함께 싣는다(ladybug 0.19.0 부터 휠이 안 싣는다) ─────────
+# 상류 `19c62d1` 이후 휠은 OpenSSL 3 을 빼고 "사용자가 런타임을 제공하라"고 한다. 그래서
+# - Windows: `_lbug.pyd` 와 확장 셋(algo·fts·vector)이 `libssl-3-x64.dll`·
+#   `libcrypto-3-x64.dll` 을 **그 이름 그대로** 요구한다. 못 찾으면 네이티브 모듈 import 가
+#   실패해 C API 폴백의 "Could not find lbug C API shared library" 로 떨어진다(v0.7.0 의
+#   Windows 릴리스 고장이 이것이었다).
+# - macOS: `_lbug` 가 `/opt/homebrew/opt/openssl@3/lib/libssl.3.dylib` 를 절대 경로로 링크한다.
+#   PyInstaller 가 의존성으로 따라 싣지만, 빌드 머신에 없으면 조용히 빠지므로 여기서 확인한다.
+# - Linux: 시스템 `libssl.so.3` 를 PyInstaller 가 의존성 분석으로 싣는다(여기서 할 일 없음).
+# 못 찾으면 빌드를 세운다 — 빠진 채 나가면 사용자 기기에서만 스토어가 안 열린다.
+# 경로는 `VINC_OPENSSL_DIR` 로 덮을 수 있다.
+# 근거: [[vinc.ops.ladybug-upgrade-review-2026-09-24]] §2.4
+def _openssl3_binaries():
+    import os
+    if sys.platform == "win32":
+        names = ("libssl-3-x64.dll", "libcrypto-3-x64.dll")
+        dirs = [os.environ.get("VINC_OPENSSL_DIR", ""),
+                r"C:\Program Files\OpenSSL\bin",        # 러너 이미지의 OpenSSL(ShiningLight)
+                r"C:\Program Files\OpenSSL-Win64\bin",
+                r"C:\Program Files\Git\mingw64\bin"]    # Git for Windows 도 같은 이름으로 싣는다
+    elif sys.platform == "darwin":
+        names = ("libssl.3.dylib", "libcrypto.3.dylib")
+        dirs = [os.environ.get("VINC_OPENSSL_DIR", ""),
+                "/opt/homebrew/opt/openssl@3/lib", "/usr/local/opt/openssl@3/lib"]
+    else:
+        return []
+    for d in dirs:
+        if d and all((pathlib.Path(d) / n).is_file() for n in names):
+            return [(str(pathlib.Path(d) / n), ".") for n in names]
+    raise SystemExit(
+        f"OpenSSL 3 을 찾지 못했다({', '.join(names)}). ladybug 0.19.0 부터 휠이 싣지 않으므로 "
+        f"사이드카가 함께 실어야 한다 — 설치하거나 VINC_OPENSSL_DIR 로 위치를 알려 주세요. "
+        f"찾아본 곳: {[d for d in dirs if d]}")
+
+
+BINARIES += _openssl3_binaries()
+
 a = Analysis(
     [str(ROOT / "packaging" / "run_sidecar.py")],
     pathex=[str(ROOT)],
@@ -83,7 +120,9 @@ a = Analysis(
         "vinc_mcp.roles",
     ],
     # cryptography/OpenSSL 은 우리 의존이 아님(argon2 도 옵션 lazy) — 시스템
-    # dist-packages 의 pyo3 훅 충돌을 피하려고 명시 제외한다.
+    # dist-packages 의 pyo3 훅 충돌을 피하려고 명시 제외한다. ⚠ 여기 "OpenSSL" 은
+    # pyOpenSSL **파이썬 패키지**다. 엔진이 링크하는 OpenSSL 3 네이티브 라이브러리는
+    # 위 `_openssl3_binaries()` 가 binaries 로 싣는다 — 둘을 헷갈려 빼지 말 것.
     # torch 이하 블록: Kùzu 계보의 선택 통합(torch_geometric·pandas·polars·pyarrow·
     # networkx)이 지연 임포트로만 참조하는 스택 — 사이드카는 해당 API 를 쓰지
     # 않으므로 제외(미제외 시 CUDA 동봉으로 바이너리 2.7GB). numpy 는 안전 유지.

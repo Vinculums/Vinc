@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from store.embedded_backend import FtsIndexRemnant, _import_driver  # noqa: E402
+import _remnant_probe  # noqa: E402  (tests/ 가 sys.path 에 있다 — conftest 의 _tmpjail 과 같다)
 
 _DRIVER, _NAME = _import_driver()
 DIM = 4
@@ -148,6 +149,7 @@ class FtsIndexRemnantTests(unittest.TestCase):
     def _fts_hits(self, s, term: str = "number") -> int:
         return len(s.fulltext_search(term, 50))
 
+    @_remnant_probe.needs("fts", _CHILD, "raw")
     def test_crash_after_drop_leaves_a_remnant_that_blocks_the_index(self):
         """이 수정 전의 드롭(체크포인트 없음)으로 죽으면 잔해가 남는다. 확인되면 플래그가
         서고, 두 번째 시도는 빌드를 다시 돌리지 않고 곧바로 거절한다."""
@@ -160,6 +162,7 @@ class FtsIndexRemnantTests(unittest.TestCase):
             s.ensure_search_indexes()
         self.assertLess(time.monotonic() - t, 1.0, "확인된 잔해 앞에서 빌드를 또 돌렸다")
 
+    @_remnant_probe.needs("fts", _CHILD, "raw")
     def test_a_failed_create_does_not_make_the_next_attempt_look_present(self):
         """FTS 생성은 잔해 앞에서 실패하면서도 내부 표를 남기고, 그 뒤의 시도는 문구가
         바뀐다("Table: 8_chunk_ft_docs already exists ..."). 'already exists' 로만 가르면
@@ -173,6 +176,7 @@ class FtsIndexRemnantTests(unittest.TestCase):
         self.assertEqual(s.heal_fts_index(dim=DIM)["state"], "repaired")
         self.assertGreater(self._fts_hits(s), 0)
 
+    @_remnant_probe.needs("fts", _CHILD, "raw")
     def test_writes_to_chunk_are_refused_before_they_reach_the_engine(self):
         """잔해 앞에서 `Chunk` 쓰기는 세그폴트다 — 백엔드가 문장을 보내기 전에 던진다.
         읽기와 다른 표의 쓰기는 그대로 된다. 문서 경로는 쓰기 **전에** 구조화된 사유로 선다."""
@@ -201,6 +205,7 @@ class FtsIndexRemnantTests(unittest.TestCase):
         # 거절된 문서는 그대로 읽힌다
         self.assertIn("number 1", docstore.get_doc(s, "d01", owner="o").get("text") or "")
 
+    @_remnant_probe.needs("fts", _CHILD, "raw")
     def test_reader_view_neither_builds_nor_schedules_on_a_remnant(self):
         submitted = []
         self._crash_after_drop()
@@ -215,6 +220,7 @@ class FtsIndexRemnantTests(unittest.TestCase):
             rv.close()
         self.assertEqual(submitted, [], "실패할 빌드를 잡으로 걸었다")
 
+    @_remnant_probe.needs("fts", _CHILD, "raw")
     def test_heal_moves_chunk_and_its_edges_keeping_every_row(self):
         """기동 수리: `Chunk` 와 `MENTIONS` 를 새 표로 옮기면 잔해가 사라지고 FTS 가 선다.
         청크·엣지(개념·결정 두 쌍 모두)·열 값이 그대로이고, 그 뒤 문서 저장·삭제가 정상이다."""
@@ -248,6 +254,24 @@ class FtsIndexRemnantTests(unittest.TestCase):
         self.assertEqual(self._shape(s), before)
         self.assertGreater(self._fts_hits(s), 0)
 
+    @_remnant_probe.without("fts", _CHILD, "raw")
+    def test_this_engine_replays_a_raw_drop_without_a_remnant(self):
+        """잔해가 안 생기는 엔진(0.20.4): 체크포인트 없는 드롭으로 죽어도 다음 기동이 색인을
+        세우고 행·엣지가 그대로이며 `Chunk` 쓰기가 된다. 이 사실이 깨지면(잔해가 다시 생기면)
+        이 테스트는 건너뛰고 위의 잔해 테스트들이 돈다."""
+        from api import docstore
+        self._crash_after_drop()
+        s = self._open()
+        before = self._shape(s)
+        self.assertEqual(s.heal_fts_index(dim=DIM)["state"], "built")
+        self.assertFalse(s.fts_index_remnant)
+        self.assertEqual(self._shape(s), before)
+        self.assertGreater(self._fts_hits(s), 0)
+        put = docstore.put_doc(s, owner="o", doc_id="d00", text="rewritten zeta body")
+        self.assertTrue(put.get("executed"), put)
+        self.assertTrue(docstore.delete_doc(s, "d01", owner="o").get("executed"))
+        self.assertEqual(self._fts_hits(s, "zeta"), 1)
+
     def test_the_drop_checkpoints_so_a_crash_leaves_no_remnant(self):
         """예방: 백엔드의 드롭은 곧바로 체크포인트하므로 같은 자리에서 죽어도 잔해가 없다.
         색인만 없으므로 기동이 세운다."""
@@ -257,6 +281,7 @@ class FtsIndexRemnantTests(unittest.TestCase):
         self.assertFalse(s.fts_index_remnant)
         self.assertGreater(self._fts_hits(s), 0)
 
+    @_remnant_probe.needs("fts", _CHILD, "raw")
     def test_heal_drops_a_swap_that_died_before_commit(self):
         """수리가 교체 트랜잭션 안에서 죽었다: 커밋 전이라 옛 표가 온전하고 옮기던 표만
         남는다. 다음 기동의 수리가 그걸 버리고 처음부터 다시 한다."""
@@ -275,6 +300,7 @@ class FtsIndexRemnantTests(unittest.TestCase):
         self.assertFalse(s._has_table("ChunkRebuild"))
         self.assertFalse(s._has_table("MENTIONSRebuild"))
 
+    @_remnant_probe.needs("fts", _CHILD, "raw")
     def test_a_swap_that_died_after_commit_is_replayed_whole(self):
         """커밋 뒤·체크포인트 전에 죽었다: WAL 재생이 교체를 통째로 마친다 — 반쪽이 없다."""
         self._crash_after_drop()
@@ -290,6 +316,7 @@ class FtsIndexRemnantTests(unittest.TestCase):
         self.assertEqual(s.heal_fts_index(dim=DIM)["state"], "built")
         self.assertGreater(self._fts_hits(s), 0)
 
+    @_remnant_probe.needs("fts", _CHILD, "raw")
     def test_heal_keeps_the_old_tables_when_a_count_differs(self):
         """옮긴 엣지 수가 다르면 교체하지 않는다 — 옛 표를 그대로 두고, 옮기던 표를 버리고,
         잔해 표시와 쓰기 거절이 그대로 남는다."""
