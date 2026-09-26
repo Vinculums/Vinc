@@ -139,13 +139,19 @@ export type ConnectResult = "connected" | "expired" | "aborted" | "failed";
 /** 디바이스 플로우를 끝까지 돈다. `onState` 로 진행을 알린다(문구는 호출부가 정한다).
  *
  *  ⚠ 폴링 창은 상태 TTL(10분)과 같아야 한다. 짧으면 승인해도 못 받고, 길면 만료된
- *  상태를 계속 두드린다. */
-export async function connectAccount(onState?: (s: "opening" | "waiting") => void): Promise<ConnectResult> {
+ *  상태를 계속 두드린다.
+ *
+ *  `via: "google"` 이면 연결 페이지가 로그인 안내를 건너뛰고 바로 Google 로 보낸다
+ *  (웹에 이미 로그인돼 있으면 곧장 승인이다). Google 이 꺼져 있으면 그 페이지가 평소
+ *  로그인 안내로 돌아가므로, 앱은 켜짐 여부를 몰라도 된다(Vinc-homepage connect-app). */
+export async function connectAccount(onState?: (s: "opening" | "waiting") => void,
+                                     opts: { via?: "google" } = {}): Promise<ConnectResult> {
   const { api } = await import("./api");
   try {
     const { state } = await api.connectStart();
     const port = new URL(cfg.base).port || "8787";
-    const url = `https://vincs.io/connect-app/#port=${port}&state=${encodeURIComponent(state)}`;
+    const via = opts.via ? `&via=${opts.via}` : "";
+    const url = `https://vincs.io/connect-app/#port=${port}&state=${encodeURIComponent(state)}${via}`;
     onState?.("opening");
     // 셸이면 시스템 브라우저로, 아니면 새 탭(웹 dev).
     const invoke = await shellInvoke();
