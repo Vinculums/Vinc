@@ -317,7 +317,7 @@ def _main(argv: list[str] | None = None) -> int:
         if getattr(args, name, None):
             command += " " + getattr(args, name)
     cli_output.configure(args.console_format, command)
-    cli_output.chosen_format()  # validate the environment before executing a verb
+    cli_output.chosen_format()  # 동사를 실행하기 전에 환경값을 검증한다.
 
     if args.cmd == "recall":
         return _emit(q.recall(args.query, owner=args.owner, domain=args.domain, tenant=args.tenant,
@@ -739,9 +739,9 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         return cli_output.internal_error(exc, debug="--debug" in (argv or sys.argv[1:]))
     except SystemExit as exc:
-        # argparse's --help is a successful early exit; other parser exits keep their code.
+        # argparse 의 --help 는 성공 종료이고, 나머지 종료 코드는 보존한다.
         return int(exc.code or 0)
-    except Exception as exc:  # noqa: BLE001 - the CLI has one structured error boundary
+    except Exception as exc:  # noqa: BLE001 — CLI 오류 경계를 한 곳에 둔다.
         return cli_output.internal_error(exc, debug="--debug" in (argv or sys.argv[1:]))
 
 
