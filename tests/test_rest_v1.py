@@ -106,6 +106,9 @@ def test_rest_rejects_non_key_auth_and_coercion_before_quota():
             assert headers["WWW-Authenticate"] == "Bearer"
         status, _headers, body = srv.request("GET", "/v1/episodes?limit=abc")
         assert status == 400 and body["error"]["code"] == "invalid_argument"
+        status, _headers, body = srv.request(
+            "POST", "/v1/search", body={"query": "x", "historical": "false"})
+        assert status == 400 and body["error"]["code"] == "invalid_argument"
         status, _headers, body = srv.request("POST", "/v1/search", body={"query": "x"})
         assert status == 200
         status, headers, body = srv.request("POST", "/v1/search", body={"query": "x"})

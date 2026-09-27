@@ -59,7 +59,26 @@ READ_ROUTES = (
 
 # A2 adds editor/admin routes here. Search/fetch belong to a host directory,
 # while every other public MCP tool must have a route.
-WRITE_ROUTES: tuple[Route, ...] = ()
+WRITE_ROUTES = (
+    Route("POST", "/v1/merge-rejections", "vinc_merge_reject",
+          body=("a", "b", "note", "undo")),
+    Route("POST", "/v1/fragments", "vinc_ingest", body=("nodes", "edges")),
+    Route("POST", "/v1/nodes/merge", "vinc_merge_nodes",
+          body=("keep_id", "drop_id")),
+    Route("DELETE", "/v1/nodes/{id}", "vinc_delete",
+          path_args=(("id", "node_id"),)),
+    Route("DELETE", "/v1/edges", "vinc_delete_edge",
+          query=("from_id", "to_id", "type")),
+    Route("PUT", "/v1/documents/{doc_id}", "vinc_doc_put",
+          body=("text", "title", "origin", "topic"),
+          path_args=(("doc_id", "doc_id"),)),
+    Route("POST", "/v1/documents", "vinc_doc_put",
+          body=("text", "title", "origin", "topic"), success=201),
+    Route("DELETE", "/v1/documents/{doc_id}", "vinc_doc_delete",
+          path_args=(("doc_id", "doc_id"),)),
+    Route("POST", "/v1/documents/{doc_id}/extract", "vinc_doc_extract",
+          body=("apply", "candidates"), path_args=(("doc_id", "doc_id"),)),
+)
 ROUTES = READ_ROUTES + WRITE_ROUTES
 HOST_EXCLUSIONS = frozenset({"search", "fetch"})
 

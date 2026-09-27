@@ -354,6 +354,51 @@
             "$ref": "#/components/responses/Error"
           }
         }
+      },
+      "delete": {
+        "operationId": "vinc_delete_delete__v1_nodes_id",
+        "summary": "Irreversibly delete ONE node and all its attached edges by exact id (DETACH DELETE). node_id must be an exact, type-prefixed id (e.g. concept:ipaas, decision:d45, record:memo, episode:s1, bridge:b1); the prefix selects the table. Unknown prefixes return found:false (no-op). Use to remove polluted or duplicate shell nodes. This is irreversible — confirm the exact id via vinc_search/vinc_graph first, and call vinc_neighbors on it to SEE WHAT GOES WITH IT: every attached edge is destroyed too, and the `deleted.edges` count in this response arrives after the fact, too late to inform the decision. Returns {executed, found, deleted:{node, edges}}; found:false if the id is absent.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact type-prefixed node id to delete (e.g. concept:ipaas)."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/v1/nodes/{id}/neighbors": {
@@ -989,6 +1034,76 @@
             "$ref": "#/components/responses/Error"
           }
         }
+      },
+      "post": {
+        "operationId": "vinc_merge_reject_post__v1_merge-rejections",
+        "summary": "Record that two concepts are NOT duplicates, so vinc_merge_candidates stops proposing the pair. This is the safe half of the merge workflow: vinc_merge_nodes is irreversible, this is not — pass undo:true to forget the rejection. Use it when you review candidates and decide a pair is a genuine distinction; without it the same pair returns every time and the list never converges. Order of a/b does not matter (the pair is stored sorted). Returns {kind, executed, a_id, b_id, undo, pair_key, count} where `count` is how many rejections this owner now has. Writes.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string",
+                    "description": "Exact id of one concept."
+                  },
+                  "b": {
+                    "type": "string",
+                    "description": "Exact id of the other concept."
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "Why they are distinct — kept for the next reviewer."
+                  },
+                  "undo": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Forget a previous rejection instead of recording one."
+                  }
+                },
+                "required": [
+                  "a",
+                  "b"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/v1/documents": {
@@ -1060,6 +1175,74 @@
             "$ref": "#/components/responses/Error"
           }
         }
+      },
+      "post": {
+        "operationId": "vinc_doc_put_post__v1_documents",
+        "summary": "Store or edit a document's canonical text (Chunk=SSoT). Omit doc_id to create (the returned doc_id identifies it); pass doc_id to edit in place (re-chunked losslessly, stale chunks removed). The store IS the source of truth — no external file is needed. Returns {doc_id, created, chunks, replaced, content_hash, skipped, title, warnings}. `title` is the title AS STORED after this call, so one call confirms what the document is now named — do not follow a write with vinc_doc_list to check. Unchanged text is a no-op (skipped=true). READ `created`: it is the only field that separates editing a document from making a second one, because a fresh write and an unchanged re-write both report replaced 0. A document's own front matter often carries a doc_id: line and THAT IS NOT ITS STORE ID; passing the declared value here does not edit that document, it creates another one with the same title. When the body declares an id different from the one being written to, `warnings` says so. `topic` STATES what the document is about instead of leaving it to be inferred: without it the topic is derived by scanning the body for concept titles, which is why a document that cites other documents rather than naming concepts can end up with no topic at all or a misleading one. Passing it files the document under that topic and the answer survives re-writes; the response echoes it back as `topic`.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "Full document text (the canonical content)."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Document title. OMIT IT TO KEEP THE TITLE THE DOCUMENT ALREADY HAS — it is not defaulted to empty. Pass \"\" only to actually clear the title. This matters on an edit: the title is separate from any title: line in the body, which this tool never reads."
+                  },
+                  "origin": {
+                    "type": "string",
+                    "description": "Provenance label only (not a join key)."
+                  },
+                  "topic": {
+                    "type": "string",
+                    "description": "The topic this document is about, as a domain path (e.g. vinc/infra/deploy). Authored, not inferred: it is recorded on the document's own concept:doc.<id> node and takes precedence over the topic derived from body matching. Omit to leave the existing answer alone — passing \"\" does NOT clear it."
+                  }
+                },
+                "required": [
+                  "text"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/v1/documents/{doc_id}": {
@@ -1104,6 +1287,502 @@
           },
           "default": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "vinc_doc_put_put__v1_documents_doc_id",
+        "summary": "Store or edit a document's canonical text (Chunk=SSoT). Omit doc_id to create (the returned doc_id identifies it); pass doc_id to edit in place (re-chunked losslessly, stale chunks removed). The store IS the source of truth — no external file is needed. Returns {doc_id, created, chunks, replaced, content_hash, skipped, title, warnings}. `title` is the title AS STORED after this call, so one call confirms what the document is now named — do not follow a write with vinc_doc_list to check. Unchanged text is a no-op (skipped=true). READ `created`: it is the only field that separates editing a document from making a second one, because a fresh write and an unchanged re-write both report replaced 0. A document's own front matter often carries a doc_id: line and THAT IS NOT ITS STORE ID; passing the declared value here does not edit that document, it creates another one with the same title. When the body declares an id different from the one being written to, `warnings` says so. `topic` STATES what the document is about instead of leaving it to be inferred: without it the topic is derived by scanning the body for concept titles, which is why a document that cites other documents rather than naming concepts can end up with no topic at all or a misleading one. Passing it files the document under that topic and the answer survives re-writes; the response echoes it back as `topic`.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Existing doc to edit; omit to create."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "201": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "Full document text (the canonical content)."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Document title. OMIT IT TO KEEP THE TITLE THE DOCUMENT ALREADY HAS — it is not defaulted to empty. Pass \"\" only to actually clear the title. This matters on an edit: the title is separate from any title: line in the body, which this tool never reads."
+                  },
+                  "origin": {
+                    "type": "string",
+                    "description": "Provenance label only (not a join key)."
+                  },
+                  "topic": {
+                    "type": "string",
+                    "description": "The topic this document is about, as a domain path (e.g. vinc/infra/deploy). Authored, not inferred: it is recorded on the document's own concept:doc.<id> node and takes precedence over the topic derived from body matching. Omit to leave the existing answer alone — passing \"\" does NOT clear it."
+                  }
+                },
+                "required": [
+                  "text"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "vinc_doc_delete_delete__v1_documents_doc_id",
+        "summary": "Delete a document — its chunks and identity — with deletion propagated to other devices on sync. The chunks ARE the canonical text (Chunk=SSoT), so this destroys the document itself and not a copy of it. Irreversible; confirm the exact doc_id with vinc_doc_list and read the document with vinc_doc_get before you call, so you know what is being destroyed. ⚠ A `doc_id:` line in the document body is NOT its store id — deleting by the declared value removes a different document or nothing at all. Returns {executed, deleted_chunks, deleted_meta}.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/fragments": {
+      "post": {
+        "operationId": "vinc_ingest_post__v1_fragments",
+        "summary": "MERGE an authored graph fragment (nodes + edges) into the store by exact id. The primary write surface (see vinc_delete / vinc_merge_nodes for cleanup). Reuse existing ids (read-before-write). Node types record|concept|domain|bridge|episode|decision route to dedicated tables; ANY other node type persists to the open Entity carrier and is folded into the theme vocabulary as proposed (returned in proposed_types for ratification). Edges — allowed pairs (concept and decision are interchangeable endpoints, except relates_to which stays concept→concept): relates_to = concept→concept; prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; record → concept|decision for any of those four; connects_via = bridge → concept|decision; about = episode|decision → concept|decision; any-type = open-entity→open-entity (TYPED carrier). relates_to dedupes the reverse direction; connects_via takes an optional role; a record edge preserves its type on ATTACHES_TO. Nodes are skipped when malformed (no id, no type, an Entity with no title) or when the id is ALREADY OWNED BY SOMEONE ELSE on the hosted graph; edges are skipped on an unsupported (from,to) pair AND when an endpoint node was itself skipped, since an edge cannot outlive its endpoint. Everything skipped is reported in warnings with partial:true, so read them — `merged` counts only what actually landed. An id owned by someone else is reported separately in `id_conflicts`, because it is the one skip a retry cannot fix: node ids are a single global namespace, so that slug is not available to you at all. Pick a different id rather than retrying. The result also carries `stored` — each node READ BACK as it now sits in the graph (id, kind, and the fields that kind actually keeps). Diff it against what you sent instead of trusting the counts: a field a kind has no column for is absent from `stored`, and a domain you sent appears there in its normalized form. `stored_truncated` means the read-back hit its size budget and that many nodes were left out (they were still written). Call vinc_conventions once before your first write in a session: it carries this owner's node/relation conventions and their existing domains, so your writes match what is already there.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nodes": {
+                    "type": "array",
+                    "description": "Nodes to MERGE by exact id (reuse ids found via vinc_search/vinc_recall first — read-before-write).",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "Canonical MERGE key, type-prefixed (e.g. concept:margiela)."
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "record|concept|domain|bridge|episode|decision route to dedicated tables; ANY other type persists to the open Entity carrier and is folded into the theme vocabulary as proposed."
+                        },
+                        "title": {
+                          "type": "string",
+                          "description": "Required for open (non-legacy) types."
+                        },
+                        "domain": {
+                          "type": "string",
+                          "description": "Free-form domain string (no fixed list). Not persisted on open-type nodes. SLASHES BUILD THE TOPIC HIERARCHY: 'vinc/design' files this node under 'vinc' and creates the chain automatically (max depth 8) — no edges to author. CASE IS NOT FOLDED, so 'Design/Tokens' and 'design/tokens' become two separate topic trees; reuse an existing string from vinc_domains verbatim."
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "date": {
+                          "type": "string",
+                          "description": "Episode only — when it happened (YYYY-MM-DD). This is the column vinc_recall sorts by; putting it in props instead still works but relies on server-side promotion."
+                        },
+                        "summary": {
+                          "type": "string",
+                          "description": "Episode only — one-paragraph summary returned by vinc_recall."
+                        },
+                        "one_liner": {
+                          "type": "string",
+                          "description": "Concept only — the one or two sentences node_context and Ask quote as the concept's description. Putting it in props.one_liner or props.note instead still works (server-side promotion) but only when this field and props.one_liner are both absent. It reads back: vinc_neighbors and vinc_graph return it, so you can check what you wrote. Only Concept has the column, so it comes back empty on every other kind."
+                        },
+                        "content_time": {
+                          "type": "string",
+                          "description": "Concept and record only — when the thing this node describes happened (the 1905 of a note about relativity), as opposed to when you wrote it down. Free text but only a YYYY[-MM[-DD]] prefix is stored, because comparison and bucketing are lexicographic; anything else is refused with a warning and the stored value is kept. Empty string clears it."
+                        },
+                        "valid_from": {
+                          "type": "string",
+                          "description": "Record only — when the claim this record makes became true. Same YYYY[-MM[-DD]] contract as content_time; empty string clears it. Omitting the field on a resend preserves the stored value. SET IT when this record asserts a present state of the product, infra or process, because the default read path now returns current claims only. Leaving it empty is not an error and does not hide the record — unstated reads as current — but a record that will one day be replaced cannot be retired without a start."
+                        },
+                        "valid_until": {
+                          "type": "string",
+                          "description": "Record only — when the claim stopped being true (half-open: the claim does not hold at this instant). Setting it is how a record is invalidated without deleting it — resend just {id, type, valid_until}. Same format contract as valid_from; empty string clears it (the claim holds again). This is the ONLY field that removes a node from the default read: an unstated valid_from does not. When you supersede a claim, set this on the old one to the date the new one starts, and do not delete it — a retired claim is still a true description of what held then."
+                        },
+                        "props": {
+                          "type": "object",
+                          "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes). Three keys are reserved on a **record** that states something about code, and only there: `subject_path` (WHICH repo and WHICH file, as repo:path, for example vinc:api/sync.py; the bare path alone cannot be compared because this graph holds records about three repositories), `measured_at` (YYYY[-MM[-DD]], when you looked) and `measured_ref` (branch or commit you looked at). They are what lets two claims about the same file be compared instead of both standing as assertions; `subject_path` is normalized on write so different spellings of one path land on one key."
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "type"
+                      ]
+                    }
+                  },
+                  "edges": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "allowed pairs (concept and decision are interchangeable endpoints, except relates_to which stays concept→concept): relates_to = concept→concept; prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; record → concept|decision for any of those four; connects_via = bridge → concept|decision; about = episode|decision → concept|decision; any-type = open-entity→open-entity (TYPED carrier). A record edge preserves its type on ATTACHES_TO. An unsupported (from,to) pair is skipped with a warning and partial:true, not an error."
+                        },
+                        "role": {
+                          "type": "string",
+                          "description": "Optional CONNECTS role (connects_via only) — participates in the merge key; different roles create parallel edges."
+                        },
+                        "evidence": {
+                          "type": "string",
+                          "description": "Optional source sentence backing this relation (E-G6) — kept on concept↔concept edges, about, and record edges (stored on ATTACHES_TO)."
+                        },
+                        "confidence": {
+                          "type": "number",
+                          "description": "Optional relation confidence 0.0–1.0 (E-G6)."
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "to",
+                        "type"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "nodes"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/nodes/merge": {
+      "post": {
+        "operationId": "vinc_merge_nodes_post__v1_nodes_merge",
+        "summary": "Irreversibly merge two concepts: repoint every edge of drop_id onto keep_id, then delete drop_id (its title/props are discarded — keep wins). CONCEPT-ONLY in this version: both ids must be concept:* (other type pairs are rejected with an error). Self-loop and already-present edges are skipped (RELATED_TO is treated as undirected). Use to fold a duplicate concept shell into the canonical one. This is irreversible — confirm both exact ids first, and quote the title of drop_id back to the person before you call, because that title is what disappears. IF THE PAIR IS NOT A DUPLICATE, the move you want is vinc_merge_reject: it records the distinction, stops the pair being proposed again, and is reversible (undo:true). Reach for that first — this tool is the half of the workflow that cannot be taken back. Returns {executed, found, repointed, skipped, dropped}.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "keep_id": {
+                    "type": "string",
+                    "description": "Concept id to keep (survivor)."
+                  },
+                  "drop_id": {
+                    "type": "string",
+                    "description": "Concept id to merge in and delete."
+                  }
+                },
+                "required": [
+                  "keep_id",
+                  "drop_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/edges": {
+      "delete": {
+        "operationId": "vinc_delete_edge_delete__v1_edges",
+        "summary": "Delete ONE relationship between two nodes (the nodes stay). Covers the SYNCED relation types only: relates_to | prerequisite_of | derives_from | inherits_from | about. CONNECTS (connects_via), ATTACHES_TO (record edges) and TYPED (open-entity edges) are NOT deletable here — they are outside the sync set. Endpoints follow the same rule as vinc_ingest: concept and decision are interchangeable (so derives_from covers all four concept/decision combinations, and about is episode|decision → concept|decision), except relates_to which stays concept→concept. relates_to is undirected — both physical directions are removed. The deletion is recorded with an edge tombstone so it propagates to synced devices instead of resurrecting. Irreversible (re-create via vinc_ingest if needed). Returns {executed, found, deleted:{edges}}; found:false if no such edge.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact source node id (e.g. concept:a, episode:s1)."
+            }
+          },
+          {
+            "name": "to_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact target node id (e.g. concept:b)."
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "relates_to | prerequisite_of | derives_from | inherits_from | about"
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/documents/{doc_id}/extract": {
+      "post": {
+        "operationId": "vinc_doc_extract_post__v1_documents_doc_id_extract",
+        "summary": "Derive concept nodes FROM a stored document's canonical text (D45-V). This is the second half of the document workflow: vinc_doc_put stores the text, this turns it into concepts bound to it by MENTIONS, so the document joins the search and view graph instead of sitting as inert text. apply:false (the DEFAULT) only proposes: it returns the candidates and writes NOTHING, which is the call to make first. apply:true writes them: each candidate is MERGEd as concept:{slug} with status='proposed' and the DOCUMENT'S OWN TOPIC as its domain (the front-matter `domain:` line if present, else the document's derived topic). A document with neither refuses apply with an error saying to give it a topic first — applying topic-less concepts only multiplies what has no topic. This document's MENTIONS are then relinked. Existing concepts are matched, never overwritten — a title or one_liner you already refined is safe, and an empty content_time or domain on a matched concept is filled in. Headings that are document structure words (method, provenance, verdict ...), clause-shaped sentences, or longer than six words yield no candidates in the deterministic mode. The deterministic extraction cleans what it reads: a heading loses its section number or letter prefix (\"3.1 Identity\" becomes \"Identity\", which is also what the slug is derived from) and its inline markdown marks, and the one_liner runs on to the end of the first sentence instead of stopping at the line break. A heading with nothing readable under it yields no candidate at all, so every candidate you get back carries a one_liner. Pass `candidates` to apply a list you curated instead of the deterministic heading-based extraction; only title and one_liner are trusted and the id is always re-derived server-side. Returns {executed, doc_id, candidates, applied:{created, matched}, mentions}. Writes only when apply:true.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact id of a document you own."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "apply": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "false (default) proposes and writes nothing; true writes the concepts and relinks MENTIONS."
+                  },
+                  "candidates": {
+                    "type": "array",
+                    "description": "Optional curated candidates to apply instead of the deterministic extraction. Only title and one_liner are read; ids are re-derived.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "one_liner": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title"
+                      ]
+                    }
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            }
           }
         }
       }
