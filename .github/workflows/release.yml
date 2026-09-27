@@ -288,7 +288,18 @@ jobs:
         # `libssl-3-x64.dll` 을 못 찾고 C API 폴백으로 떨어진 것이다. 그래서 0.20.4 로
         # 올리면서 sidecar.spec 이 OpenSSL 3 을 비변형 이름으로 함께 싣는다.
         # 근거: [[vinc.ops.ladybug-upgrade-review-2026-09-24]] §2.4
-        run: pip install ladybug==0.20.4 pyyaml pyinstaller pypdf
+        #
+        # ⚠ **Windows 만 0.20.3 이다.** 0.20.4 의 win_amd64 엔진은 FTS 확장(v0.20.0)으로
+        # `CREATE_FTS_INDEX` 를 부르면 빈 표에서도 접근 위반으로 죽는다(0xC0000409, 로컬
+        # 4/4 재현 · 상류가 INSTALL 로 준 확장도 같다). 같은 확장 파일로 0.20.3 은 4/4
+        # 정상이고, 벡터 색인은 두 판 모두 정상이다. 저장 파일은 0.20.3 ↔ 0.20.4 양방향으로
+        # 열린다(실측). 그래서 v0.9.4 첫 태그 빌드의 Windows 스모크가 /health 를 못 받았다.
+        # 상류가 고치면 이 분기를 지운다.
+        shell: bash
+        run: |
+          v=0.20.4
+          if [ "$RUNNER_OS" = "Windows" ]; then v=0.20.3; fi
+          pip install "ladybug==$v" pyyaml pyinstaller pypdf
       # ⚠ ladybug 의 `INSTALL` 을 쓰지 않는다. 0.18.0 의 내장 다운로더가 확장 서버
       # 인증서를 검증하지 못해 **CI 에서만** 죽는다(2026-08-01 실측):
       #   RuntimeException: Failed to download extension: vector
