@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import secrets
 from urllib.parse import parse_qs, urlparse
@@ -53,6 +54,22 @@ def _coerce(value: str, spec: dict):
     return value
 
 
+def _check_json_type(name: str, value, spec: dict) -> None:
+    kind = spec.get("type")
+    valid = {
+        "string": lambda v: isinstance(v, str),
+        "boolean": lambda v: isinstance(v, bool),
+        "integer": lambda v: type(v) is int,
+        "number": lambda v: type(v) in (int, float),
+        "array": lambda v: isinstance(v, list),
+        "object": lambda v: isinstance(v, dict),
+    }.get(kind)
+    if valid and not valid(value):
+        raise ValueError(f"{name} must be {kind}")
+    if kind == "number" and not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite number")
+
+
 def _arguments(route: rest_routes.Route, path_fields: dict[str, str],
                query: dict[str, str], body: dict) -> dict:
     schema = _SCHEMAS[route.tool].get("properties") or {}
@@ -68,6 +85,7 @@ def _arguments(route: rest_routes.Route, path_fields: dict[str, str],
                 raise ValueError(f"{key} {exc}") from exc
     for key in route.body:
         if key in body:
+            _check_json_type(key, body[key], schema.get(key) or {})
             args[key] = body[key]
     if query.get("space"):
         args["space"] = query["space"]
@@ -77,19 +95,28 @@ def _arguments(route: rest_routes.Route, path_fields: dict[str, str],
 def _failure(name: str, result: dict) -> tuple[int, str, str] | None:
     """Classify known tool result shapes, retaining successful empty/partial results."""
     error = str(result.get("error") or "")
+    note = str(result.get("note") or "")
+    reason = (error + " " + note).lower()
     if error.startswith(("invalid_cursor", "stale_cursor")):
         return 400, "invalid_argument", error
+    if name == "vinc_delete_edge" and "unsupported edge type" in reason:
+        return 400, "invalid_argument", note or error
+    if name == "vinc_merge_nodes" and any(
+            term in reason for term in ("supports concept", "same node")):
+        return 400, "invalid_argument", error or note
     if name == "vinc_doc_get" and result.get("verified") is False:
         return 503, "upstream_unavailable", "document chunks could not be verified"
     if result.get("found") is False or (name == "vinc_brief" and result.get("status") == "none"):
         return 404, "not_found", error or "The requested graph item was not found."
     if result.get("executed") is False:
-        if any(term in error.lower() for term in ("unknown", "not found", "no such", "missing doc")):
-            return 404, "not_found", error
-        if any(term in error.lower() for term in ("invalid", "required", "malformed", "stale")):
-            return 400, "invalid_argument", error
-        if any(term in error.lower() for term in ("unavailable", "unreachable", "no store")):
-            return 503, "upstream_unavailable", error
+        if any(term in reason for term in ("unknown", "not found", "no such", "missing doc")):
+            return 404, "not_found", error or note
+        if any(term in reason for term in ("invalid", "required", "malformed", "stale")):
+            return 400, "invalid_argument", error or note
+        if any(term in reason for term in (
+                "unavailable", "unreachable", "no store", "no reachable store",
+                "sidecar write unconfirmed")):
+            return 503, "upstream_unavailable", error or note
         return 500, "internal", error or "The tool did not execute."
     if result.get("isError") or error:
         return 500, "internal", _message(result)
@@ -217,6 +244,9 @@ def handle(handler, method: str) -> bool:
     if outcome.kind != "ok":
         error = outcome.error
         message = _message(outcome.result) if outcome.result else str(error)
+        if outcome.kind == "protocol_error" and isinstance(error, (KeyError, ValueError)):
+            fail(400, "invalid_argument", message)
+            return True
         if isinstance(error, (ConnectionError, TimeoutError, OSError)) or "sidecar unreachable" in message:
             fail(503, "upstream_unavailable", message)
         else:
@@ -232,5 +262,7 @@ def handle(handler, method: str) -> bool:
     if wrapped.get("isError"):
         fail(500, "internal", _message(wrapped))
         return True
-    send(route.success, json.loads(wrapped["content"][0]["text"]))
+    status = (201 if route.tool == "vinc_doc_put" and result.get("created")
+              else route.success)
+    send(status, json.loads(wrapped["content"][0]["text"]))
     return True

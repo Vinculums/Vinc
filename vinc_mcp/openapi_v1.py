@@ -37,6 +37,8 @@ def generate() -> dict:
                                                                    "additionalProperties": True}}}},
                          "default": {"$ref": "#/components/responses/Error"},
                      }}
+        if route.tool == "vinc_doc_put" and route.method == "PUT":
+            operation["responses"]["201"] = operation["responses"]["200"]
         if route.body:
             operation["requestBody"] = {"required": True, "content": {
                 "application/json": {"schema": {
