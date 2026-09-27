@@ -64,9 +64,10 @@ class _Parser(argparse.ArgumentParser):
 
 def _add_output_options(parser: argparse.ArgumentParser, *, root: bool = False) -> None:
     default = None if root else argparse.SUPPRESS
-    parser.add_argument("--format", choices=("human", "json", "ndjson"),
-                        dest="console_format", default=default,
-                        help="console result format")
+    if not parser.prog.endswith(" export"):
+        parser.add_argument("--format", choices=("human", "json", "ndjson"),
+                            dest="console_format", default=default,
+                            help="console result format")
     parser.add_argument("--json", action="store_const", const="json",
                         dest="console_format", default=default,
                         help="alias for --format json")
@@ -255,6 +256,14 @@ def _main(argv: list[str] | None = None) -> int:
     dl.add_argument("--owner", default=None)
     dl.add_argument("--data", default=None)
 
+    ex = sub.add_parser("export", help="export a local graph as Markdown or CSV")
+    ex.add_argument("--format", dest="file_format", choices=("md", "csv"), required=True,
+                    help="file format; the root --format controls console output")
+    ex.add_argument("--out", required=True, help="output directory")
+    ex.add_argument("--owner", required=True, help="owner scope")
+    ex.add_argument("--domain", default=None, help="topic and its descendants")
+    ex.add_argument("--excel", action="store_true", help="write a UTF-8 BOM to CSV files")
+
     # ── GRAPH.md — 어시스턴트 쓰기 관례 ([[vinc.canon.graph-conventions]]) ──────────────────────
     gm = sub.add_parser("graph-md", help="assistant writing conventions — build/check GRAPH.md")
     gmsub = gm.add_subparsers(dest="gmcmd", required=True)
@@ -400,6 +409,9 @@ def _main(argv: list[str] | None = None) -> int:
                              max_excerpts=args.max_excerpts))
     if args.cmd == "decide":
         return _emit(q.decide(args.topic, depth=args.depth))
+    if args.cmd == "export":
+        from . import export as export_module
+        return _emit(export_module.export_store(args))
     if args.cmd == "plan":
         if args.plankind == "recall":
             plan = q.recall_plan(args.query)

@@ -20,7 +20,7 @@ def _data_file(args) -> str:
     explicit = getattr(args, "data", None) or os.environ.get("MEMORY_DATA_DIR")
     if explicit:
         return resolve_data_dir(explicit, create=False)
-    if args.cmd in {"doc", "backup", "graph-md"}:
+    if args.cmd in {"doc", "backup", "graph-md", "export"}:
         return resolve_data_dir(create=False)
     return os.path.join(os.getcwd(), "vinc_store")
 
