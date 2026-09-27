@@ -194,7 +194,11 @@ class ThisRepo(unittest.TestCase):
         여섯이 된 경위: `hub-store-recover.yml`(2026-09-11)은 pk-migrate 와 같은 모양으로
         `hub-deploy` 의 그룹 키를 빌려 쓴다 — 허브를 다른 스토어 파일로 갈아타는 도중에
         배포가 끼어들면 두 리비전이 겹치기 때문이다. 컨테이너 exec·볼륨 복사·env 교체를
-        배포 신원으로 돌리는 복구 도구이고, dispatch 로만 돈다."""
+        배포 신원으로 돌리는 복구 도구이고, dispatch 로만 돈다.
+
+        일곱이 된 경위: `hub-store-rebuild.yml`(2026-09-27)도 같은 이유로 `hub-deploy` 의
+        그룹 키를 빌려 쓴다 — 허브를 내리고 재구축본으로 갈아타는 도중에 배포가 끼어들면
+        내려 둔 허브가 다시 뜨고 두 리비전이 겹친다. dispatch 로만 돈다."""
         import yaml
         serial = []
         for p in sorted((_ROOT / ".github" / "workflows").glob("*.yml")):
@@ -202,8 +206,9 @@ class ThisRepo(unittest.TestCase):
             c = (doc or {}).get("concurrency")
             if isinstance(c, dict) and c.get("cancel-in-progress") is False:
                 serial.append(p.name)
-        self.assertEqual(serial, ["encode-m3-probe.yml", "hub-deploy.yml", "hub-store-recover.yml",
-                                  "infra.yml", "pk-migrate.yml", "release.yml"], serial)
+        self.assertEqual(serial, ["encode-m3-probe.yml", "hub-deploy.yml", "hub-store-rebuild.yml",
+                                  "hub-store-recover.yml", "infra.yml", "pk-migrate.yml",
+                                  "release.yml"], serial)
 
 
 if __name__ == "__main__":
