@@ -8,10 +8,16 @@ import json
 import re
 from pathlib import Path
 
-from .cli_transport import attached_bridge
+from .cli_transport import attached_bridge, data_file
+
+_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
+             *(f"LPT{i}" for i in range(1, 10))}
+#: 파일 이름 조각의 상한. 경로 전체가 Windows 의 260자 벽에 닿지 않게 둔다.
+_STEM_MAX = 96
 
 
 def _scoped(domain: str, selected: str | None) -> bool:
+    selected = (selected or "").rstrip("/")
     return not selected or domain == selected or domain.startswith(selected + "/")
 
 
@@ -30,9 +36,9 @@ def _payload(args) -> tuple[dict, dict, dict]:
 
     from . import docstore, docsync, query, sync
     from .server import VincApp
-    from store.config import load_config, resolve_data_dir
+    from store.config import load_config
 
-    cfg = load_config({"data_dir": resolve_data_dir()})
+    cfg = load_config({"data_dir": data_file(args)})
     app = VincApp.open(cfg)
     try:
         if app.store is None:
@@ -66,16 +72,24 @@ def _enrich(bundle: dict, graph: dict) -> None:
         edge["evidence"] = evidence.get((edge.get("from"), edge.get("to"), edge.get("type"))) or ""
 
 
+def _safe_name(raw: str) -> str:
+    """경로 조각 하나. 구분자·`..`·예약 장치 이름(`nul.txt` 처럼 점 앞 부분 포함)을 막는다."""
+    name = re.sub(r"[^A-Za-z0-9._-]+", "-", raw).strip(". -") or "item"
+    if name.split(".", 1)[0].upper() in _RESERVED:
+        name = "_" + name
+    if len(name) > _STEM_MAX:
+        name = name[:_STEM_MAX - 9].rstrip(". -") + "-" + hashlib.sha256(
+            raw.encode("utf-8")).hexdigest()[:8]
+    return name
+
+
 def _safe_stem(raw: str, used: set[str]) -> str:
-    stem = re.sub(r"[^A-Za-z0-9._-]+", "-", raw.split(":", 1)[-1]).strip(". -") or "item"
-    if stem.upper() in {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
-                        *(f"LPT{i}" for i in range(1, 10))}:
-        stem += "-item"
-    key = stem.casefold()
-    if key in used:
-        stem += "-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
-        key = stem.casefold()
-    used.add(key)
+    """id 의 접두 뒤 부분으로 파일 이름을 짓는다. 대소문자만 다른 이름은 대소문자를 가리지
+    않는 파일 시스템(Windows·macOS)에서 한 파일이 되므로, 뒤에 오는 쪽에 해시를 붙인다."""
+    stem = _safe_name(raw.split(":", 1)[-1])
+    if stem.casefold() in used:
+        stem = _safe_name(stem + "-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8])
+    used.add(stem.casefold())
     return stem
 
 
@@ -87,13 +101,22 @@ def _front(keys: list[str], obj: dict) -> str:
     return "---\n" + "".join(f"{key}: {_yaml(obj.get(key))}\n" for key in keys) + "---\n"
 
 
+def _cell(value, *, excel: bool):
+    if isinstance(value, (dict, list)):
+        value = _yaml(value)
+    # Excel 은 =·+·-·@ 로 시작하는 칸을 수식으로 실행한다. --excel 일 때만 막는다 —
+    # 기본 CSV 는 바이트 그대로가 계약이다.
+    if excel and isinstance(value, str) and value[:1] in ("=", "+", "-", "@"):
+        return "'" + value
+    return value
+
+
 def _csv_bytes(header: list[str], rows: list[dict], *, excel: bool) -> bytes:
     stream = io.StringIO(newline="")
     writer = csv.writer(stream, lineterminator="\n")
     writer.writerow(header)
     for row in rows:
-        writer.writerow([_yaml(row.get(key)) if isinstance(row.get(key), (dict, list))
-                         else row.get(key, "") for key in header])
+        writer.writerow([_cell(row.get(key, ""), excel=excel) for key in header])
     return ("\ufeff" if excel else "").encode("utf-8") + stream.getvalue().encode("utf-8")
 
 
@@ -123,9 +146,13 @@ def build_files(owner: str, fmt: str, node_bundle: dict, doc_bundle: dict,
             docs, excel=excel)
     else:
         used_nodes: dict[str, set[str]] = {}
+        kind_dirs: dict[str, str] = {}
         for node in nodes:
             kind = node.get("type") or "node"
-            stem = _safe_stem(node["id"], used_nodes.setdefault(kind, set()))
+            # 개방 타입은 사용자가 짓는 문자열이다 — 디렉터리 이름으로 쓰기 전에 거른다.
+            # 대소문자만 다른 타입은 먼저 나온 이름의 한 폴더를 같이 쓴다.
+            folder = kind_dirs.setdefault(_safe_name(kind).casefold(), _safe_name(kind))
+            stem = _safe_stem(node["id"], used_nodes.setdefault(folder.casefold(), set()))
             front = _front(["id", "kind", "title", "domain", "tags", "valid_from",
                             "valid_until", "one_liner"],
                            {**node, "kind": kind})
@@ -135,7 +162,7 @@ def build_files(owner: str, fmt: str, node_bundle: dict, doc_bundle: dict,
                 f"- {e['type']} -> [[{e['to']}]]" +
                 (f" — {e['evidence']}" if e.get("evidence") else "") + "\n"
                 for e in edges if e["from"] == node["id"])
-            files[f"nodes/{kind}/{stem}.md"] = (
+            files[f"nodes/{folder}/{stem}.md"] = (
                 front + "\n```json\n" + props + "\n```\n\n" + relations).encode("utf-8")
         used_docs: set[str] = set()
         for doc in docs:
@@ -169,10 +196,20 @@ def export_store(args) -> dict:
         if existing - set(files):
             return {"kind": "export", "executed": False,
                     "error": "output contains files outside this export; choose a fresh directory"}
+    base = root.resolve()
     for name, content in files.items():
-        path = root / name
+        path = (root / name).resolve()
+        if base not in path.parents:
+            return {"kind": "export", "executed": False,
+                    "error": f"refusing to write outside the output directory: {name}"}
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content)
+    # 쓴 파일을 되세어 본다. 파일 시스템이 두 이름을 하나로 합쳤으면 여기서 드러난다.
+    written = {p.relative_to(root).as_posix().casefold() for p in root.rglob("*") if p.is_file()}
+    missing = sorted(n for n in files if n.casefold() not in written)
+    if missing or len(written) < len(files):
+        return {"kind": "export", "executed": False,
+                "error": "some files were not written as named", "missing": missing[:20]}
     return {"kind": "export", "executed": True, "out": str(root),
             "format": args.file_format, "files": len(files),
             "sha256": hashlib.sha256(b"".join(

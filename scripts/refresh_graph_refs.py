@@ -15,9 +15,6 @@ remote = refs.remote
 scan_repo = refs.scan_repo
 fetch_docs = refs.fetch_docs
 verify_nodes = refs.verify_nodes
-_citable = refs._citable
-_TRIES = refs.TRIES
-_MISS_CEILING = refs.MISS_CEILING
 
 
 def check() -> int:

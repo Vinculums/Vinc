@@ -7,9 +7,11 @@ import os
 import re
 import sys
 
-from scripts.gate_forbidden import ALL_RULES
 from vinc_mcp import remote
 
+#: 이 리포지토리의 기본값 — 두 스크립트(scripts/*_graph_refs.py)가 쓴다. `vinc refs` 는
+#: 현재 디렉터리를 기본으로 삼는다(api/cli.py). 다른 프로젝트에서 부른 refresh 가 이
+#: 리포의 매니페스트를 덮어쓰면 안 된다.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, "scripts", "graph-refs.json")
 SCAN_EXT = (".py", ".ts", ".tsx", ".rs", ".md", ".yml", ".yaml", ".tf")
@@ -21,7 +23,11 @@ DOC_ID = re.compile(r"^vinc\.[a-z0-9]+\.[a-z0-9.-]+$")
 NODE_ID = re.compile(r"^(record|concept|decision|episode|bridge|domain):[a-z0-9._-]+$")
 GEN_DOC_ID = re.compile(r"^[0-9a-f]{17}$")
 NODE_KINDS = ("record:", "concept:", "decision:", "episode:", "bridge:", "domain:")
+#: 전송 오류 재시도 횟수. 타임아웃은 일시적이고, 이 판정은 배포를 막는다.
 TRIES = 3
+#: 쓰기 모드가 받아 주는 '없다' 의 상한(건). 인용된 노드의 10% 와 이 값 중 큰 쪽.
+#: 수십 건이 한 번에 '없다' 로 오는 것은 허브의 정확 id 조회가 깨진 것이다 — 그때 refresh
+#: 를 돌리면 살아 있는 노드를 매니페스트에서 지운 채 커밋한다(2026-09-11, 126건).
 MISS_CEILING = 20
 
 
@@ -96,6 +102,13 @@ def offline_check(*, manifest: str = MANIFEST, roots: list[str] | None = None,
 
 
 def _citable(ident: str) -> bool:
+    """이 리포의 금지 어휘를 담은 id 는 인용할 수 없다(gate_forbidden 이 소스를 읽는다).
+    그 규칙은 `scripts/` 에 있고 동결 바이너리는 `scripts/` 를 싣지 않으므로, 없으면
+    이 리포 밖의 사용으로 보고 거르지 않는다."""
+    try:
+        from scripts.gate_forbidden import ALL_RULES
+    except ImportError:
+        return True
     return not any(rule.pattern.search(ident) for rule in ALL_RULES)
 
 
@@ -119,6 +132,13 @@ def fetch_docs(*, call=None) -> list[str]:
 
 
 def verify_nodes(ids: list[str], *, call=None) -> tuple[list[str], list[str]]:
+    """인용된 노드가 실재하는지 한 건씩 본다. `(있다, 못 물어봤다)` 를 돌려준다.
+
+    🔴 **"없다"와 "못 물어봤다"를 가른다.** 전송 실패는 `isError`, 진짜 부재는 `found:false`
+    다. 둘을 같이 처리하면 타임아웃 한 번이 죽은 인용으로 찍혀 배포를 죽인다(2026-09-09).
+    ⚠ **`vinc_graph` 로 물으면 안 된다** — 허브 노드에서 응답 상한을 넘어 `isError` 로 오고,
+    그것을 부재로 읽으면 중심 개념일수록 인용이 막힌다. `vinc_neighbors` 는 같은 `found` 를
+    주면서 `limit=1` 로 잘려 크기에 안 걸린다."""
     call = call or remote.call
     alive, unreachable = [], []
     for node_id in sorted(set(ids)):
