@@ -20,11 +20,11 @@ VSVersionInfo(
           '040904B0',
           [
             StringStruct('CompanyName', 'Vinculums'),
-            StringStruct('FileDescription', 'Vinc local knowledge engine (sidecar)'),
+            StringStruct('FileDescription', 'Vinc local knowledge engine'),
             StringStruct('FileVersion', '0.9.5.0'),
-            StringStruct('InternalName', 'vinc-sidecar'),
+            StringStruct('InternalName', 'vinc'),
             StringStruct('LegalCopyright', '© Vinculums. All rights reserved.'),
-            StringStruct('OriginalFilename', 'vinc-sidecar.exe'),
+            StringStruct('OriginalFilename', 'vinc.exe'),
             StringStruct('ProductName', 'Vinc'),
             StringStruct('ProductVersion', '0.9.5.0')
           ]
