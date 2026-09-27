@@ -233,15 +233,24 @@ const CLI_VERBS: [&str; 24] = [
 /// argv[0] 은 실행 파일이라 건너뛴다. macOS 가 GUI 실행에 붙이는 `-psn_…` 이나
 /// `.vincpack` 경로는 동사 목록에 없으므로 자연히 창으로 간다.
 fn cli_forward<I: IntoIterator<Item = String>>(args: I) -> Option<Vec<String>> {
-    let mut it = args.into_iter();
-    it.next()?;
-    let first = it.next()?;
-    if !CLI_VERBS.contains(&first.as_str()) {
+    let all: Vec<String> = args.into_iter().collect();
+    let mut index = 1;
+    let mut global_option = false;
+    // 전역 출력 옵션 다음의 동사가 CLI 이면 원래 argv 순서 그대로 엔진에 보낸다.
+    while index < all.len() {
+        match all[index].as_str() {
+            "--format" => { index += 2; global_option = true; },
+            "--json" | "--debug" => { index += 1; global_option = true; },
+            _ => break,
+        }
+    }
+    if index >= all.len() {
+        return global_option.then(|| all[1..].to_vec());
+    }
+    if !CLI_VERBS.contains(&all[index].as_str()) {
         return None;
     }
-    let mut fwd = vec![first];
-    fwd.extend(it);
-    Some(fwd)
+    Some(all[1..].to_vec())
 }
 
 /// 번들 엔진의 경로 — Tauri externalBin 은 **이 바이너리 옆**에 놓인다.
@@ -824,6 +833,18 @@ mod tests {
     fn help_는_cli_로_간다() {
         assert!(cli_forward(vec!["vinc".to_string(), "--help".to_string()]).is_some());
         assert!(cli_forward(vec!["vinc".to_string(), "-h".to_string()]).is_some());
+    }
+
+    #[test]
+    fn 전역_출력_옵션_뒤_동사도_cli_로_간다() {
+        let args = vec!["vinc", "--format", "json", "doc", "ls"]
+            .into_iter().map(str::to_string).collect::<Vec<_>>();
+        assert_eq!(cli_forward(args), Some(vec!["--format", "json", "doc", "ls"]
+            .into_iter().map(str::to_string).collect()));
+        let missing = vec!["vinc", "--format", "json"]
+            .into_iter().map(str::to_string).collect::<Vec<_>>();
+        assert_eq!(cli_forward(missing), Some(vec!["--format", "json"]
+            .into_iter().map(str::to_string).collect()));
     }
 
     /// 동사 목록이 사이드카 CLI 와 어긋나면 그 명령만 조용히 창을 연다.
