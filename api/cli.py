@@ -64,6 +64,10 @@ class _Parser(argparse.ArgumentParser):
 
 def _add_output_options(parser: argparse.ArgumentParser, *, root: bool = False) -> None:
     default = None if root else argparse.SUPPRESS
+    parser.add_argument("--target", choices=("local", "account"), default=default,
+                        help="graph target (local or account)")
+    parser.add_argument("--space", default=default,
+                        help="account graph space (personal or team id)")
     if not parser.prog.endswith(" export"):
         parser.add_argument("--format", choices=("human", "json", "ndjson"),
                             dest="console_format", default=default,
@@ -184,7 +188,7 @@ def _main(argv: list[str] | None = None) -> int:
 
     b = sub.add_parser("brief", help="one question in, joined answer material out")
     b.add_argument("--query", required=True)
-    b.add_argument("--owner", required=True)
+    b.add_argument("--owner", default=None)
     b.add_argument("--max-excerpts", type=int, default=3)
 
     d = sub.add_parser("decide", help="decision-support graph traversal")
@@ -241,7 +245,8 @@ def _main(argv: list[str] | None = None) -> int:
     dc = sub.add_parser("doc", help="document SSoT — put/get/rm/ls raw text as chunks (D45)")
     dsub = dc.add_subparsers(dest="doccmd", required=True)
     dp = dsub.add_parser("put", help="ingest/update a document from raw text (stdin or --file)")
-    dp.add_argument("--owner", required=True, help="owner_id — 정본은 무소유 불가(SEC-1)")
+    dp.add_argument("--owner", default=None,
+                    help="local owner_id (account target uses the API key)")
     dp.add_argument("--id", default=None, help="doc_id (omit on create — returned; pass to edit)")
     dp.add_argument("--title", default=None,
                     help="문서 제목. **생략하면 기존 제목을 보존한다**(빈 값으로 덮지 않는다). "
@@ -424,24 +429,13 @@ def _main(argv: list[str] | None = None) -> int:
             command += " " + getattr(args, name)
     cli_output.configure(args.console_format, command)
     cli_output.chosen_format()  # 동사를 실행하기 전에 환경값을 검증한다.
-    if args.cmd in {"whoami", "conventions", "node", "path", "ties", "diagnose",
-                    "ingest", "delete", "edge", "merge", "call"} or \
-            (args.cmd == "doc" and args.doccmd == "extract"):
-        from .cli_tools import run as run_tool
-        result, exit_code = run_tool(args)
-        return exit_code if exit_code is not None else _emit(result)
-
-    if args.cmd == "doc" and args.doccmd == "rm":
-        from .cli_tools import _confirm
-        if not _confirm(args, args.id):
-            print("vinc: confirmation required; pass --yes", file=sys.stderr)
-            return 2
-
-    # 열린 앱이 정확히 이 파일을 제공하면 그 단일 writer 에 요청한다.
-    from .cli_transport import request_if_attached
-    attached = request_if_attached(args, stdin=sys.stdin)
-    if attached is not None:
-        return _emit(attached)
+    from . import cli_target
+    try:
+        target = cli_target.resolve_target(args.target)
+    except ValueError as exc:
+        print(f"vinc: {exc}", file=sys.stderr)
+        return 2
+    space = cli_target.resolve_space(args.space)
 
     if args.cmd == "refs":
         from . import refs
@@ -452,12 +446,67 @@ def _main(argv: list[str] | None = None) -> int:
             return 2
         if args.refscmd == "check":
             return refs.offline_check(manifest=manifest, roots=roots)
+        from . import remote_client
+        from contextlib import redirect_stdout
+        if not os.environ.get("VINC_API_KEY"):
+            result = {"error": {"code": "not_authenticated", "message":
+                      "Set VINC_API_KEY to refresh graph citations.",
+                      "request_id": "", "details": {}}}
+            _emit(result)
+            return 4
+        def account_call(name, data):
+            try:
+                return remote_client.call(name, data, space=space)
+            except remote_client.RemoteFailure as exc:
+                if exc.result.get("error", {}).get("code") == "not_found":
+                    return {"found": False}
+                raise
         try:
-            return refs.refresh(manifest=manifest, root=roots[0],
-                                scan=lambda: refs.scan_roots(roots))
+            with redirect_stdout(sys.stderr):
+                status = refs.refresh(
+                    manifest=manifest, root=roots[0],
+                    scan=lambda: refs.scan_roots(roots),
+                    fetch=lambda: refs.fetch_docs(call=account_call),
+                    verify=lambda ids: refs.verify_nodes(ids, call=account_call))
+            return _emit({"kind": "refs.refresh", "executed": status == 0,
+                          "manifest": manifest, "status": status})
+        except remote_client.RemoteFailure as exc:
+            _emit(exc.result)
+            return exc.exit_code
         except SystemExit as exc:
             print(f"vinc: {exc}", file=sys.stderr)
             return 1
+
+    tool_cmds = {"whoami", "conventions", "node", "path", "ties", "diagnose",
+                 "ingest", "delete", "edge", "merge", "call", "search", "recall",
+                 "brief", "decide", "domains", "doc"}
+    if target == "account" and args.cmd not in tool_cmds:
+        print(f"vinc: {args.cmd} is local only; pass --target local", file=sys.stderr)
+        return 2
+    if target == "local" and space != "personal":
+        print("vinc: --space requires --target account", file=sys.stderr)
+        return 2
+    if args.cmd in tool_cmds:
+        if target == "account":
+            from .cli_account import run as run_tool
+            result, exit_code = run_tool(args, space=space)
+        else:
+            from .cli_tools import run as run_tool
+            result, exit_code = run_tool(args)
+        if result is None:
+            return exit_code or 2
+        if args.cmd == "whoami" and isinstance(result, dict) and not result.get("error"):
+            result = {**result, "target": target,
+                      "key_scope": ("read" if os.environ.get("VINC_API_KEY", "").startswith("vinc_ro_")
+                                    else "full" if target == "account" else "local")}
+        rendered = _emit(result)
+        return exit_code if exit_code is not None else rendered
+
+    # 열린 앱이 정확히 이 파일을 제공하면 그 단일 writer 에 요청한다.
+    from .cli_transport import request_if_attached
+    attached = request_if_attached(args, stdin=sys.stdin)
+    if attached is not None:
+        return _emit(attached)
 
     if args.cmd == "recall":
         return _emit(q.recall(args.query, owner=args.owner, domain=args.domain, tenant=args.tenant,

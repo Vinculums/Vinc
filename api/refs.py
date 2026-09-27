@@ -99,14 +99,15 @@ def _citable(ident: str) -> bool:
     return not any(rule.pattern.search(ident) for rule in ALL_RULES)
 
 
-def fetch_docs() -> list[str]:
+def fetch_docs(*, call=None) -> list[str]:
+    call = call or remote.call
     docs = []
     cursor = None
     while True:
         args = {"limit": 200}
         if cursor:
             args["cursor"] = cursor
-        res = remote.call("vinc_doc_list", args)
+        res = call("vinc_doc_list", args)
         if res.get("isError") or res.get("error"):
             raise SystemExit(f"[refresh] 원격 조회 실패: {res.get('error')}")
         docs.extend(d["doc_id"] for d in res.get("docs", []) if _citable(d["doc_id"]))
@@ -117,11 +118,12 @@ def fetch_docs() -> list[str]:
             return docs
 
 
-def verify_nodes(ids: list[str]) -> tuple[list[str], list[str]]:
+def verify_nodes(ids: list[str], *, call=None) -> tuple[list[str], list[str]]:
+    call = call or remote.call
     alive, unreachable = [], []
     for node_id in sorted(set(ids)):
         for _ in range(TRIES):
-            res = remote.call("vinc_neighbors", {"node": node_id, "limit": 1})
+            res = call("vinc_neighbors", {"node": node_id, "limit": 1})
             if not res.get("isError"):
                 break
         if res.get("isError"):

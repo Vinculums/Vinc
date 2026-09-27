@@ -86,6 +86,49 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
         destructive = name if name in {"vinc_delete", "vinc_delete_edge",
                                        "vinc_merge_nodes", "vinc_doc_delete"} else None
         return name, data, destructive
+    # 구 동사 9개의 출력도 도구 결과 모양으로 통일한다(C6, D7).
+    if cmd == "search":
+        return "vinc_search", {**common, "query": args.query,
+                               "limit": args.top_k, "cursor": args.cursor,
+                               "detail": args.detail}, None
+    if cmd == "recall":
+        if args.query or args.tenant or args.workspace or args.rank != "recency":
+            raise ValueError("recall now reads the episode timeline; --query, --tenant, "
+                             "--workspace and --rank preference are unavailable. "
+                             "Use search for relevance queries")
+        tags = [part.strip() for part in (args.tags or "").split(",") if part.strip()]
+        return "vinc_recall", {**common, "domain": args.domain,
+                               "tags": tags or None, "limit": args.limit}, None
+    if cmd == "brief":
+        return "vinc_brief", {**common, "query": args.query,
+                              "max_excerpts": args.max_excerpts}, None
+    if cmd == "decide":
+        return "vinc_decide", {**common, "topic": args.topic,
+                               "depth": args.depth}, None
+    if cmd == "domains":
+        return "vinc_domains", common, None
+    if cmd == "doc":
+        if args.doccmd == "get":
+            return "vinc_doc_get", {"doc_id": args.id, **common}, None
+        if args.doccmd == "ls":
+            return "vinc_doc_list", common, None
+        if args.doccmd == "rm":
+            return "vinc_doc_delete", {"doc_id": args.id, **common}, args.id
+        if args.doccmd == "put":
+            if args.file:
+                from . import textextract
+                import os
+                got = textextract.read_file(args.file)
+                if not got.get("executed"):
+                    raise ValueError(str(got.get("error") or "cannot read document file"))
+                text = got["text"]
+                origin = args.origin or os.path.basename(args.file)
+                title = args.title or os.path.splitext(os.path.basename(args.file))[0]
+            else:
+                text = sys.stdin.read()
+                origin, title = args.origin, args.title
+            return "vinc_doc_put", {"text": text, "doc_id": args.id,
+                                    "title": title, "origin": origin, **common}, None
     if cmd == "whoami":
         return "vinc_whoami", common, None
     if cmd == "conventions":

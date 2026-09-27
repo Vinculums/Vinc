@@ -32,7 +32,8 @@ def test_refs_check_exit_matrix(tmp_path):
     assert "unrecognized" in err.getvalue()
 
 
-def test_refs_refresh_uses_the_shared_engine(tmp_path):
+def test_refs_refresh_uses_the_shared_engine(tmp_path, monkeypatch):
+    monkeypatch.setenv("VINC_API_KEY", "vinc_sk_test")
     with patch("api.refs.refresh", return_value=0) as refresh:
         assert cli.main(["refs", "refresh", "--manifest", str(tmp_path / "m.json"),
                          "--root", str(tmp_path)]) == 0

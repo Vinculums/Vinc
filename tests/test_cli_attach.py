@@ -73,7 +73,7 @@ def test_matching_live_sidecar_answers_a_locked_store(tmp_path, monkeypatch):
                                                     "--format", "json"])
         assert locked_code == 1
         assert json.loads(locked_bytes)["error"]["code"] == "store_in_use"
-        recall_code, recall_bytes = _run_cli_child(["recall", "--query", "nothing",
+        recall_code, recall_bytes = _run_cli_child(["recall",
                                                     "--owner", "user:local", "--format", "json"])
         assert recall_code == 1
         assert json.loads(recall_bytes)["error"]["code"] == "store_in_use"
