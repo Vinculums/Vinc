@@ -95,19 +95,28 @@ def _arguments(route: rest_routes.Route, path_fields: dict[str, str],
 def _failure(name: str, result: dict) -> tuple[int, str, str] | None:
     """Classify known tool result shapes, retaining successful empty/partial results."""
     error = str(result.get("error") or "")
+    note = str(result.get("note") or "")
+    reason = (error + " " + note).lower()
     if error.startswith(("invalid_cursor", "stale_cursor")):
         return 400, "invalid_argument", error
+    if name == "vinc_delete_edge" and "unsupported edge type" in reason:
+        return 400, "invalid_argument", note or error
+    if name == "vinc_merge_nodes" and any(
+            term in reason for term in ("supports concept", "same node")):
+        return 400, "invalid_argument", error or note
     if name == "vinc_doc_get" and result.get("verified") is False:
         return 503, "upstream_unavailable", "document chunks could not be verified"
     if result.get("found") is False or (name == "vinc_brief" and result.get("status") == "none"):
         return 404, "not_found", error or "The requested graph item was not found."
     if result.get("executed") is False:
-        if any(term in error.lower() for term in ("unknown", "not found", "no such", "missing doc")):
-            return 404, "not_found", error
-        if any(term in error.lower() for term in ("invalid", "required", "malformed", "stale")):
-            return 400, "invalid_argument", error
-        if any(term in error.lower() for term in ("unavailable", "unreachable", "no store")):
-            return 503, "upstream_unavailable", error
+        if any(term in reason for term in ("unknown", "not found", "no such", "missing doc")):
+            return 404, "not_found", error or note
+        if any(term in reason for term in ("invalid", "required", "malformed", "stale")):
+            return 400, "invalid_argument", error or note
+        if any(term in reason for term in (
+                "unavailable", "unreachable", "no store", "no reachable store",
+                "sidecar write unconfirmed")):
+            return 503, "upstream_unavailable", error or note
         return 500, "internal", error or "The tool did not execute."
     if result.get("isError") or error:
         return 500, "internal", _message(result)
@@ -235,6 +244,9 @@ def handle(handler, method: str) -> bool:
     if outcome.kind != "ok":
         error = outcome.error
         message = _message(outcome.result) if outcome.result else str(error)
+        if outcome.kind == "protocol_error" and isinstance(error, (KeyError, ValueError)):
+            fail(400, "invalid_argument", message)
+            return True
         if isinstance(error, (ConnectionError, TimeoutError, OSError)) or "sidecar unreachable" in message:
             fail(503, "upstream_unavailable", message)
         else:
