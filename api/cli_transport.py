@@ -4,25 +4,26 @@ from __future__ import annotations
 import os
 import sys
 import time
-from pathlib import Path
 
 from store.config import resolve_data_dir
 from vinc_mcp.bridge import Bridge
+
+from .cli_target import TOOL_CMDS
 
 
 def _same_file(a: str, b: str) -> bool:
     return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
 
 
-def _data_file(args) -> str:
-    # 기존 조회 동사는 cwd/vinc_store 를 기본으로 연다. 정확히 그 파일과 대조해야
-    # 다른 그래프의 사이드카가 조용히 답하지 않는다.
+def data_file(args) -> str:
+    """이 명령이 프로세스 안에서 열 스토어 파일. 붙기 판정과 인프로세스 경로가 **같은 값**을
+    써야 한다 — 둘이 어긋나면 앱이 떠 있어도 붙지 못하고 잠긴 스토어를 열다 실패한다.
+    도구 동사·백업·graph-md·export 는 앱 기본 홈(`resolve_data_dir`)을, 나머지 옛 조회
+    동사는 라이브러리 기본값(cwd/vinc_store)을 연다."""
     explicit = getattr(args, "data", None) or os.environ.get("MEMORY_DATA_DIR")
     if explicit:
         return resolve_data_dir(explicit, create=False)
-    if args.cmd in {"doc", "backup", "graph-md", "whoami", "conventions", "node",
-                    "path", "ties", "diagnose", "ingest", "delete", "edge", "merge",
-                    "call", "export"}:
+    if args.cmd in TOOL_CMDS or args.cmd in {"backup", "graph-md", "export"}:
         return resolve_data_dir(create=False)
     return os.path.join(os.getcwd(), "vinc_store")
 
@@ -35,34 +36,24 @@ def attached_bridge(args) -> Bridge | None:
     bridge = Bridge(base=f"http://127.0.0.1:{session['port']}", token=session["token"])
     if not bridge.health():
         return None
-    config = bridge.request("GET", "/config", timeout=3, retries=0)
+    try:
+        config = bridge.request("GET", "/config", timeout=3, retries=0)
+    except Exception:  # noqa: BLE001 — 설정을 못 읽는 사이드카에는 붙지 않는다
+        return None
     if not config.get("executed") or not config.get("store_open"):
         return None
     served = config.get("data_file")
-    if not served or not _same_file(str(served), _data_file(args)):
+    if not served or not _same_file(str(served), data_file(args)):
         return None
     return bridge
 
 
 def _route(args, stdin) -> tuple[str, str, dict | None, dict | None] | None:
     cmd = args.cmd
-    if cmd == "recall":
-        return "GET", "/recall", {k: getattr(args, k) for k in
-                                  ("query", "owner", "domain", "tenant", "workspace", "rank", "tags", "limit")}, None
-    if cmd == "domains":
-        return "GET", "/domains", {"owner": args.owner}, None
     if cmd == "learner":
         return "GET", "/learner", {"owner": args.owner}, None
     if cmd == "graph":
         return "GET", "/graph", {"owner": args.owner, "domain": args.domain}, None
-    if cmd == "search":
-        return "GET", "/search", {"query": args.query, "top_k": args.top_k,
-                                    "cursor": args.cursor, "detail": args.detail}, None
-    if cmd == "brief":
-        return "GET", "/brief", {"query": args.query, "owner": args.owner,
-                                   "max_excerpts": args.max_excerpts}, None
-    if cmd == "decide":
-        return "GET", "/decide", {"topic": args.topic, "depth": args.depth}, None
     if cmd in ("pin", "tag", "touch"):
         body = {"episode": args.episode, "owner": args.owner}
         if cmd == "pin":
@@ -72,27 +63,6 @@ def _route(args, stdin) -> tuple[str, str, dict | None, dict | None] | None:
         else:
             body["now"] = args.now
         return "POST", f"/{cmd}", None, body
-    if cmd == "doc":
-        common = {"id": getattr(args, "id", None), "owner": args.owner}
-        if args.doccmd == "get":
-            return "GET", "/doc", common, None
-        if args.doccmd == "ls":
-            return "GET", "/docs", {"owner": args.owner}, None
-        if args.doccmd == "rm":
-            return "POST", "/doc/delete", None, common
-        if args.doccmd == "put":
-            if args.file:
-                from . import textextract
-                got = textextract.read_file(args.file)
-                if not got.get("executed"):
-                    return "LOCAL", "", None, got
-                content = got["text"]
-                origin = args.origin or os.path.basename(args.file)
-                title = args.title or Path(args.file).stem
-            else:
-                content, origin, title = stdin.read(), args.origin, args.title
-            return "POST", "/doc/put", None, {**common, "text": content,
-                                                  "origin": origin, "title": title}
     if cmd == "activate":
         return "POST", "/activate", None, {
             "query": args.query, "owner": args.owner, "domain": args.domain,
@@ -129,8 +99,9 @@ def _finish_job(bridge: Bridge, result: dict) -> dict:
 
 def request_if_attached(args, *, stdin=None) -> dict | None:
     # 세션보다 라우트를 먼저 본다. 이 표 밖의 동사는 기존처럼 프로세스 안에서 실행한다.
-    if args.cmd not in {"recall", "domains", "learner", "graph", "search", "brief", "decide",
-                        "pin", "tag", "touch", "doc", "activate", "share", "import", "backup"}:
+    # 도구 동사(TOOL_CMDS)는 여기 오지 않는다 — 그쪽은 cli_tools 가 같은 판정으로 붙는다.
+    if args.cmd not in {"learner", "graph", "pin", "tag", "touch", "activate", "share",
+                        "import", "backup"}:
         return None
     if args.cmd == "backup" and (args.packs or args.profile):
         # /backup 은 사이드카에 설정된 첨부 파일을 쓴다. 명시한 덮어쓰기 인자를
@@ -143,8 +114,6 @@ def request_if_attached(args, *, stdin=None) -> dict | None:
     if route is None:
         return None
     method, path, params, body = route
-    if method == "LOCAL":
-        return body
     result = _finish_job(bridge, bridge.request(method, path, params=params, body=body))
     if args.cmd == "share" and result.get("executed"):
         from . import packfile

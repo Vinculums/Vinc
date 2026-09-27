@@ -13,7 +13,7 @@ _command: contextvars.ContextVar[str] = contextvars.ContextVar("vinc_cli_command
 
 # 목록 필드는 도구별 공개 응답 계약이다. 첫 행을 보고 추측하지 않는다.
 LIST_FIELDS = {
-    "recall": "rows", "domains": "domains", "search": "rows",
+    "recall": "rows", "domains": "rows", "search": "rows",
     "doc ls": "docs", "graph": "nodes", "decide": "nodes",
     "node neighbors": "neighbors", "merge candidates": "candidates",
     "merge rejections": "rejections", "diagnose": "components",
@@ -84,6 +84,9 @@ def emit(result: Any) -> int:
                 sys.stdout.write(json.dumps(row, ensure_ascii=False) + "\n")
         else:
             sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
+    elif fmt == "ndjson":
+        # 실패도 한 줄이다 — ndjson 소비자는 줄 단위로만 읽는다.
+        sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
     else:
         # 0.9.6 이전 JSON 바이트 형식을 그대로 둔다.
         sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")

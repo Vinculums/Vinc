@@ -2,19 +2,22 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from contextlib import contextmanager
 
-from store.config import load_config, resolve_data_dir
+from store.config import load_config
 from vinc_mcp import tools
+from vinc_mcp.bridge import DEFAULT_OWNER
 
-from .cli_transport import attached_bridge
+from .cli_transport import attached_bridge, data_file
 
 
 class _InProcessBridge:
     def __init__(self, app):
         self.app = app
-        self.owner = "user:local"
+        # 붙은 사이드카의 Bridge 와 같은 규칙 — 앱이 떠 있든 아니든 같은 owner 로 쓴다.
+        self.owner = os.environ.get("VINC_OWNER") or DEFAULT_OWNER
 
     def request(self, method, path, params=None, body=None, **_kw):
         from .server import _Handler
@@ -38,7 +41,8 @@ def _bridge(args):
         return
     from .server import VincApp
 
-    cfg = load_config({"data_dir": resolve_data_dir(getattr(args, "data", None))})
+    # 붙기 판정과 같은 파일을 연다(cli_transport.data_file).
+    cfg = load_config({"data_dir": data_file(args)})
     app = VincApp.open(cfg)
     try:
         yield _InProcessBridge(app)
@@ -47,14 +51,24 @@ def _bridge(args):
 
 
 def _confirm(args, subject: str) -> bool:
+    """사람이 터미널 앞에 있을 때만 묻는다. 묻는 말은 stderr 로 — stdout 은 결과 자리다.
+    Windows 의 NUL 은 isatty() 가 참이라 stdin 만으로는 판정하지 않는다."""
     if getattr(args, "yes", False):
         return True
-    if not sys.stdin.isatty():
+    if not (sys.stdin.isatty() and sys.stdout.isatty() and sys.stderr.isatty()):
         return False
     try:
-        return input(f"{subject}? Type yes to continue: ").strip() == "yes"
-    except EOFError:
+        sys.stderr.write(f"{subject}? Type yes to continue: ")
+        sys.stderr.flush()
+        return sys.stdin.readline().strip() == "yes"
+    except (EOFError, OSError):
         return False
+
+
+def legacy_recall(args) -> bool:
+    """`recall` 의 옛 관련도 인자. 도구(vinc_recall)에는 없어서 사이드카 `/recall` 이 답한다."""
+    return args.cmd == "recall" and bool(
+        args.query or args.tenant or args.workspace or args.rank != "recency")
 
 
 def _json_file(path: str) -> dict:
@@ -81,6 +95,9 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
             data = json.loads(args.args)
             if not isinstance(data, dict):
                 raise ValueError("tool arguments must be a JSON object")
+        elif args.args_file is None and sys.stdin.isatty():
+            # 터미널에서 인자 없이 부르면 stdin 을 기다리며 멈춘 것처럼 보인다.
+            raise ValueError("pass --args JSON, --args-file PATH, or pipe JSON on stdin")
         else:
             data = _json_file(args.args_file or "-")
         destructive = name if name in {"vinc_delete", "vinc_delete_edge",
@@ -92,10 +109,9 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
                                "limit": args.top_k, "cursor": args.cursor,
                                "detail": args.detail}, None
     if cmd == "recall":
-        if args.query or args.tenant or args.workspace or args.rank != "recency":
-            raise ValueError("recall now reads the episode timeline; --query, --tenant, "
-                             "--workspace and --rank preference are unavailable. "
-                             "Use search for relevance queries")
+        if legacy_recall(args):
+            raise ValueError("--query, --tenant, --workspace and --rank preference work on "
+                             "the local target only; use search for relevance queries")
         tags = [part.strip() for part in (args.tags or "").split(",") if part.strip()]
         return "vinc_recall", {**common, "domain": args.domain,
                                "tags": tags or None, "limit": args.limit}, None
@@ -174,6 +190,13 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
 
 
 def run(args) -> tuple[dict | None, int | None]:
+    if legacy_recall(args):
+        # 옛 인자를 쓰는 스크립트는 옛 모양(사이드카 `/recall`)을 그대로 받는다.
+        params = {k: getattr(args, k) for k in
+                  ("query", "owner", "domain", "tenant", "workspace", "rank", "tags", "limit")}
+        with _bridge(args) as bridge:
+            return bridge.request("GET", "/recall", params={k: v for k, v in params.items()
+                                                            if v not in (None, "")}), None
     try:
         name, data, destructive = _tool_request(args)
     except (ValueError, json.JSONDecodeError) as exc:

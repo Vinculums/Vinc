@@ -239,9 +239,13 @@ fn cli_forward<I: IntoIterator<Item = String>>(args: I) -> Option<Vec<String>> {
     let mut global_option = false;
     // 전역 출력 옵션 다음의 동사가 CLI 이면 원래 argv 순서 그대로 엔진에 보낸다.
     while index < all.len() {
-        match all[index].as_str() {
-            "--format" => { index += 2; global_option = true; },
+        let token = all[index].as_str();
+        match token {
+            // 값을 받는 전역 옵션: `--target account search …` 도 CLI 로 보낸다.
+            "--format" | "--target" | "--space" => { index += 2; global_option = true; },
             "--json" | "--debug" => { index += 1; global_option = true; },
+            _ if token.starts_with("--format=") || token.starts_with("--target=")
+                || token.starts_with("--space=") => { index += 1; global_option = true; },
             _ => break,
         }
     }
@@ -846,6 +850,18 @@ mod tests {
             .into_iter().map(str::to_string).collect::<Vec<_>>();
         assert_eq!(cli_forward(missing), Some(vec!["--format", "json"]
             .into_iter().map(str::to_string).collect()));
+    }
+
+    #[test]
+    fn 대상_스페이스_옵션_뒤_동사도_cli_로_간다() {
+        for argv in [
+            vec!["vinc", "--target", "account", "search", "--query", "x"],
+            vec!["vinc", "--space", "personal", "domains"],
+            vec!["vinc", "--target=local", "--format=json", "doc", "ls"],
+        ] {
+            let args = argv.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            assert_eq!(cli_forward(args.clone()), Some(args[1..].to_vec()), "{argv:?}");
+        }
     }
 
     /// 동사 목록이 사이드카 CLI 와 어긋나면 그 명령만 조용히 창을 연다.
