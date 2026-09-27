@@ -21,6 +21,7 @@ import json
 from . import __version__
 from . import roles
 from . import tools
+from . import toolcall
 from .bridge import Bridge
 
 # 최신이 앞. 클라이언트가 목록 밖 버전을 요청하면 **최신**으로 응답한다(스펙:
@@ -166,33 +167,17 @@ class Dispatcher:
         if method == "tools/call":
             name = params.get("name") or ""
             args = params.get("arguments") or {}
-            # 인자 검증은 **쿼터보다 먼저** 한다 — 거절된 호출이 한도를 갉아먹으면
-            # 모델이 인자를 고쳐 다시 부를 여력을 잃는다. 모르는 도구는 KeyError 로
-            # 여전히 -32602 다(그건 인자가 아니라 호출 자체의 오류).
+            # REST도 같은 검증→한도→도구 호출을 탄다. MCP 봉투만 여기서 만든다.
             # 근거: [[decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24]]
-            try:
-                tools.validate_args(name, args)
-            except tools.InvalidArgument as e:
-                return e.result()
-            # 쿼터는 여기서만 소비(B-D2) — initialize/tools_list/ping 은 무료라
-            # 커넥터 등록·핸드셰이크가 한도를 갉아먹지 않는다. 로컬 stdio 는
-            # forced_owner 가 없어 quota 가 호출되지 않는다(무제한).
-            if quota is not None and forced_owner:
-                denial = quota(forced_owner, plan)
-                if denial is not None:
-                    return denial
-            try:
-                out = tools.call(name, args, self.bridge, forced_owner=forced_owner,
-                                 entitlements=entitlements,
-                                 allow_target=self.allow_target)
-            except tools.InvalidArgument as e:
-                return e.result()           # 인자 거절 = 도구 결과(isError), -32602 아님
-            except (KeyError, ValueError):
-                raise                       # 모르는 도구·target/space 조합 = 프로토콜 오류(-32602)
-            except Exception as e:          # 실행 오류 = 도구 결과로 강등(스펙)
-                return {"content": [{"type": "text", "text": f"{type(e).__name__}: {e}"}],
-                        "isError": True}
-            return _result_text(json.dumps(out, ensure_ascii=False), name, args)
+            outcome = toolcall.execute(name, args, self.bridge,
+                                       forced_owner=forced_owner, plan=plan, quota=quota,
+                                       entitlements=entitlements,
+                                       allow_target=self.allow_target)
+            if outcome.kind == "protocol_error":
+                raise outcome.error
+            if outcome.kind != "ok":
+                return outcome.result
+            return _result_text(json.dumps(outcome.result, ensure_ascii=False), name, args)
         if method in ("prompts/list", "prompts/get"):
             # 쿼터를 tools/call 과 **같이** 센다. 이 둘은 initialize·ping 과 달리
             # 스토어를 실제로 조회하므로, 무료로 두면 인증된 호출자에게 계량되지 않는
