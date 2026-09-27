@@ -440,6 +440,9 @@ def _with_fts_repair(store, fn: Callable[[], Any]) -> Any:
 
     왜 필요한가(2026-08-09 실측). ladybug 0.18.0 의 FTS 증분 유지가 시간이 지나며
     존재하는 행의 문서를 잃는다. 그 행을 지우려는 순간 엔진이 이렇게 던진다:
+    (0.20.4 의 FTS 확장도 같은 문구를 그대로 싣고, 같은 계열의 `term '...' is missing
+    during delete` 문구가 하나 더 있다 — 둘 다 판별 표지에 걸린다. 0.20.0 이 FTS 질의와
+    커밋 경합의 힙 손상을 고쳤지만 이 표류의 원인인지는 입증되지 않아 수리는 그대로 둔다.)
 
         FTS index 'chunk_ft' is inconsistent: document for node offset 992 is
         missing during delete. Drop and recreate the FTS index.
@@ -606,8 +609,8 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             "MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": doc_id}))
 
     for i, c in enumerate(chunks):
-        # ⚠ 파라미터명 주의: start/end 는 Cypher 예약어 — $start/$end 는 파서가
-        # 거부한다(실측, ladybug 0.18). $cs/$ce 로 우회.
+        # ⚠ 파라미터명 주의: end 는 Cypher 예약어라 $end 를 파서가 거부한다(실측,
+        # ladybug 0.18 · 0.20.4 — 0.20.4 는 $start 는 받는다). $cs/$ce 로 우회.
         params = {
             "id": chunk_id_of(doc_id, c["index"]), "doc": doc_id, "owner": owner,
             "origin": origin, "sec": c["section_title"], "idx": c["index"],

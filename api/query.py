@@ -69,7 +69,7 @@ def score_preference(rows: list[dict], *, weights: dict | None = None,
 #: recall 의 정렬 키. **날짜가 있는 행이 먼저, 없는 행은 끝**이고 같은 날짜 안에서는
 #: id 오름차순이다. 임베디드 엔진은 `ORDER BY e.date DESC` 에서 NULL 을 가장 큰 값으로
 #: 두어서, 날짜 없는 에피소드가 "가장 최근"으로 맨 위에 섰다. 엔진이 `NULLS LAST` 를
-#: 파싱하지 못해(실측, ladybug 0.18.0) 표현식 키로 뒤로 민다. 빈 문자열도 날짜가 아니다.
+#: 파싱하지 못해(실측, ladybug 0.18.0 · 0.20.4) 표현식 키로 뒤로 민다. 빈 문자열도 날짜가 아니다.
 #: id 키는 커서 페이징이 오프셋을 쓸 수 있게 순서를 **완전히** 고정한다.
 #: `score_preference` 는 이 순서를 동점 처리(recency tie-break)로 그대로 물려받는다.
 #: 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S2.
@@ -1046,6 +1046,7 @@ def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None,
     MCP-SKELETON §10 공백 해소). seed 에서 depth 이내에 닿는 Concept id 를 수집한다.
 
     **G1(2026-08-03, ladybug 0.18.0 실측): 순회 의미론 `TRAIL` → `SHORTEST`.**
+    (아래 지연 수치는 0.18.0 의 것이다. 0.20.4 에서는 다시 재지 않았다.)
     이 플랜이 원하는 것은 *도달 집합*(DISTINCT id)이지 경로 열거가 아니다. TRAIL 은
     엣지 무재사용 경로를 **전부 펼친 뒤** DISTINCT 로 접으므로 조밀 ego 에서 그 일을
     두 번 한다. SHORTEST 는 (시작,끝) 쌍당 한 경로만 확장해 같은 집합을 더 싸게 낸다.

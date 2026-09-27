@@ -66,7 +66,7 @@ Vinc 데스크톱 앱 (Tauri v2 셸, 제어 = IPC)
 
 - 데이터 홈: `~/.vinc/{db, packs/, inbox/, backups/}`(D43) — 백업 = 폴더 하나 복사.
 - 스토어 백엔드 교체 가능(`store/backend.py` 의 `GraphStore` 추상화 뒤). 임베디드
-  드라이버 = ladybug(LadybugDB, Kùzu 계보, v0.18.x) 단일(v0.5.3 — kuzu 제거).
+  드라이버 = ladybug(LadybugDB, Kùzu 계보, v0.20.4) 단일(v0.5.3 — kuzu 제거).
   확장(벡터/FTS/algo)은 런타임 다운로드형이라 오프라인 배포 시 명시 경로로 번들
   (G0, §9 — `store/embedded_backend.py::_bundled_ext_path`).
 - 임베딩: 기본 local-en(영어, 오프라인). 다국어 mpnet(`"local"`, 768d)은 legacy

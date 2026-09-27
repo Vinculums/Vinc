@@ -27,6 +27,7 @@ import re
 import sys
 import threading
 import time
+import weakref
 from contextlib import contextmanager
 
 from . import pkns
@@ -149,6 +150,119 @@ def _import_driver():
         return __import__("ladybug"), "ladybug"
     except ImportError:
         return None, None
+
+
+#: 엔진의 계획 캐시 범위(`enable_cached_prepared_statement`, 0.20.2 부터 있다). 값은
+#: `NONE|WRITES|READS|BOTH` 이고 엔진 기본은 `BOTH` 다. **기본을 `NONE` 으로 내린다.**
+#: 같은 매개변수 FTS 질의(`QUERY_FTS_INDEX ... $q`)를 한 커넥션에서 두 번 돌리면 두 번째가
+#: 세그폴트한다(0.20.0~0.20.4 · 결과가 한 행이라도 있을 때 · `READS`·`BOTH` 에서만). 모든
+#: 검색이 그 문장을 지나고, 세그폴트는 `except` 로 못 막는다. `WRITES` 도 살아남지만 아직
+#: 전수 측정 전이라 `NONE` 으로 둔다 — 바꿔 재 볼 때만 이 env 를 쓴다.
+#: 근거: [[vinc.ops.ladybug-upgrade-review-2026-09-24]] §2.1
+_PLAN_CACHE_SCOPE = os.environ.get("VINC_LBUG_PLAN_CACHE", "NONE").strip().upper() or "NONE"
+
+#: algo 확장이 라이브러리 로드에서 실패할 때 붙이는 사유. 0.20.x 의 algo 확장(v0.20.0)은
+#: NetworKit·Arrow 공유 라이브러리를 링크하면서 싣지 않는다 — 리눅스 `libnetworkit.so`·
+#: `libarrow.so.2500`, 맥 `libnetworkit.dylib`·`libarrow.2500.dylib`, 윈도우
+#: `networkit_state.dll`·`arrow.dll`. 상류 서버·릴리스 어디에도 없고, 짝이 맞는 icebug 13.1 은
+#: PyPI 에 없다(13.0 은 로드 중 세그폴트, 13.2 는 심볼 누락 — 2026-09-27 실측). 그래서 싣지
+#: 않고 **분명히 강등한다**: 구조 진단만 멈추고 나머지는 그대로 돈다.
+#: 근거: [[vinc.ops.ladybug-upgrade-review-2026-09-24]] §2.3
+_ALGO_UNAVAILABLE_NOTE = (
+    "ladybug 0.20.x 의 algo 확장은 NetworKit·Arrow 공유 라이브러리를 링크하지만 싣지 않는다"
+    "(상류 LadybugDB/ladybug#857). 구조 진단(vinc_diagnose 의 components·communities·orphans 와"
+    " 그 위의 기능)은 이 빌드에서 쓸 수 없다 — 번들을 더 넣어도 풀리지 않는다.")
+
+#: 스키마를 바꾸는 문장(인덱스·표·열·투영 그래프·확장 로드). 이것이 지나가면 같은
+#: 스토어의 모든 커넥션의 파이썬 문장 캐시를 비운다(:class:`_Conn`).
+_DDL_STMT = re.compile(
+    r"^\s*(?:(?:CREATE|DROP|ALTER)\s+(?:NODE\s+|REL\s+)?TABLE\b"
+    r"|CALL\s+(?:CREATE|DROP)_\w+|CALL\s+(?:PROJECT_GRAPH|DROP_PROJECTED_GRAPH)\b"
+    r"|LOAD\s+EXTENSION\b|INSTALL\b)", re.IGNORECASE)
+
+
+def _forget_prepared(raw) -> None:
+    """드라이버 커넥션의 **파이썬 쪽** 암묵 문장 캐시를 비운다(0.18.1 부터 있다, 0.18.0 은 무동작).
+
+    ladybug 의 `Connection.execute` 는 매개변수가 있는 문장을 `(질의, 매개변수 모양)` 키로
+    커넥션마다 캐시하는데, **바인드에 실패한 문장도 캐시하고 DDL 로 무효화하지 않는다.**
+    그래서 한 커넥션에서 "색인 없음 → 색인 생성 → 같은 질의 재시도"를 밟으면 재시도가
+    옛 바인더 오류를 그대로 돌려준다 — 지연 FTS 빌드가 정확히 그 순서다. 공개 API 가 없어
+    사적 속성을 만진다: 잠금은 드라이버의 것을 그대로 쥐고(실행 중인 문장과 겹치지 않게)
+    참조만 놓는다. 항목은 자기 소멸자로 정리된다(pybind 는 shared_ptr, C API 는 `__del__`).
+    근거: [[vinc.ops.ladybug-upgrade-review-2026-09-24]] §2.2"""
+    cache = getattr(raw, "_pybind_implicit_prepared_cache", None)
+    if not cache:
+        return
+    lock = getattr(raw, "_prepared_cache_lock", None)
+    if lock is None:
+        cache.clear()
+        return
+    with lock:
+        cache.clear()
+
+
+class _Conn:
+    """드라이버 커넥션의 얇은 겉감 — 문장 캐시 가드(B)의 **유일한** 자리.
+
+    백엔드가 여는 커넥션은 전부 이것을 거친다(:func:`_open_connection`). 호출부 27곳이
+    `self._conn.execute(...)` 를 직접 부르므로 거기마다 캐시를 비우는 대신 여기서 한 번 본다:
+
+    - 매개변수 문장이 **실패하면** 그 커넥션의 캐시를 비운다(실패한 바인드를 들고 있지 않게).
+    - **DDL 이 지나가면**(성공이든 실패든) 같은 스토어의 **모든** 커넥션 캐시를 비운다 —
+      리더 커넥션은 라이터가 만든 색인을 자기 캐시 너머로 봐야 한다.
+
+    그 밖의 속성(`close` 등)은 드라이버 커넥션으로 그대로 넘긴다."""
+
+    def __init__(self, raw, family: "weakref.WeakSet | None" = None):
+        self._raw = raw
+        self._family = family
+        if family is not None:
+            family.add(self)
+
+    def execute(self, query, parameters=None):
+        try:
+            if parameters:
+                return self._raw.execute(query, parameters)
+            return self._raw.execute(query)
+        except Exception:
+            if parameters:
+                _forget_prepared(self._raw)
+            raise
+        finally:
+            if isinstance(query, str) and _DDL_STMT.match(query):
+                for c in list(self._family or (self,)):
+                    _forget_prepared(c._raw)
+
+    def __getattr__(self, name):
+        return getattr(self._raw, name)
+
+
+def _open_connection(drv, db, family=None) -> _Conn:
+    """백엔드의 커넥션을 여는 **유일한** 길 — 라이터·리더·스냅샷 재오픈이 모두 이것을 쓴다.
+
+    계획 캐시(A)는 커넥션 단위 설정이라 여기서 매번 끈다. 켜지 못하면 던진다: 조용히
+    지나가면 첫 두 번째 검색이 프로세스를 죽인다. 단 스위치가 아예 없는 엔진(0.20.2 이전
+    — 0.18.0 등)은 그 결함도 없으므로 그대로 둔다."""
+    raw = drv.Connection(db)
+    try:
+        raw.execute(f"CALL enable_cached_prepared_statement='{_PLAN_CACHE_SCOPE}'")
+    except Exception as exc:
+        if _PLAN_CACHE_SCOPE != "BOTH" and _plan_cache_switch_exists(drv):
+            raise RuntimeError(
+                f"계획 캐시를 {_PLAN_CACHE_SCOPE} 로 내리지 못했다(검색이 세그폴트한다): "
+                f"{_driver_error_text(exc)}") from exc
+    return _Conn(raw, family)
+
+
+def _plan_cache_switch_exists(drv) -> bool:
+    """`enable_cached_prepared_statement` 가 있는 엔진인가(0.20.2 이상)."""
+    ver = str(getattr(drv, "__version__", "") or "")
+    try:
+        parts = tuple(int(p) for p in ver.split(".")[:3])
+    except ValueError:
+        return True          # 모르는 판 — 있다고 보고 실패를 올린다(삼키지 않는다)
+    return parts >= (0, 20, 2)
 
 
 def _driver_kwargs(cfg) -> dict:
@@ -780,6 +894,10 @@ class EmbeddedBackend:
         #: 1회면 충분하다. 이 집합이 없으면 매 검색이 LOAD 를 재발행하고, LOAD 는
         #: 쓰기 트랜잭션을 요구하므로 라이터와 정면 충돌한다 — :meth:`_load_ext` 참조.
         self._exts: set[str] = set()
+        #: 이 프로세스에서 **다시 시도해도 안 풀리는** 로드 실패(확장 → 사유). 지금은 algo 의
+        #: 상류 의존 누락 하나뿐이다(`_ALGO_UNAVAILABLE_NOTE`). 일시적 실패(쓰기 트랜잭션 충돌
+        #: 등)는 여기 넣지 않는다 — 넣으면 다음 시도가 성공할 수 있는 것을 막는다.
+        self._ext_failed: dict[str, str] = {}
         #: 벡터 인덱스가 **지금 드롭된 상태인가**(이 프로세스가 아는 한).
         #: 임베딩 워커는 한 라운드에 문서 16개를 각각 `apply_embeddings` 로 넣고, 그
         #: 하나하나가 드롭을 부른다. DDL 이 라운드당 16번 나가고 그 사이 검색이 오면
@@ -791,6 +909,9 @@ class EmbeddedBackend:
         #: 들어 있으면 재빌드 예약을 멈추고(실패하는 빌드를 검색마다 다시 돌리지 않게) 그
         #: 표에 쓰는 문장을 거절한다(쓰기는 세그폴트다 — :meth:`run`). 기동 때 수리가 뺀다.
         self._remnants: set[str] = set()
+        #: 이 Database 에서 연 커넥션들(:class:`_Conn`) — DDL 이 지나가면 전부의 문장 캐시를
+        #: 비운다. `open` 이 채운다(직접 생성한 테스트 더블은 빈 집합).
+        self._conns: "weakref.WeakSet" = weakref.WeakSet()
 
     @classmethod
     def open(cls, cfg: StoreConfig) -> "EmbeddedBackend | None":
@@ -809,7 +930,8 @@ class EmbeddedBackend:
         kwargs = _driver_kwargs(cfg)
         try:
             db = drv.Database(data_dir, **kwargs)
-            conn = drv.Connection(db)
+            family = weakref.WeakSet()
+            conn = _open_connection(drv, db, family)
         except Exception as exc:
             # 스토어 열기 실패(락·손상·자원 고갈) → None 강등(§3-4). 호출부는
             # executed=False 로 처리한다. ⚠ 이유를 **삼키지 않는다**: 여태 None 만
@@ -836,7 +958,9 @@ class EmbeddedBackend:
         # 이다(정상 종료 한 번이면 체크포인트가 지운다). 깨진 뒤에 말하면 이미 늦다.
         if wal_note:
             print(f"[embedded_backend] ⚠ {wal_note}", flush=True)
-        return cls(db, conn, name, cfg)
+        backend = cls(db, conn, name, cfg)
+        backend._conns = family
+        return backend
 
     @contextmanager
     def session(self):
@@ -900,7 +1024,7 @@ class EmbeddedBackend:
         project_graph)를 **쓰기 지점으로 되돌려 보내는** 콜러블
         ``(label, fn, timeout) -> result``. 서버가 잡 큐 진입점을 주입한다."""
         drv, _ = _import_driver()
-        return _ReaderView(self, drv.Connection(self._db), writer=writer)
+        return _ReaderView(self, _open_connection(drv, self._db, self._conns), writer=writer)
 
     def _exec_idem(self, stmt: str) -> None:
         """DDL 멱등 실행 — 'already' 계열(테이블/속성 이미 존재)만 흡수, 그 외 전파.
@@ -1055,6 +1179,8 @@ class EmbeddedBackend:
         맞바꾸지 않는다."""
         if ext in self._exts:
             return
+        if ext in self._ext_failed:
+            raise RuntimeError(self._ext_failed[ext])
         if reader:
             # 읽기 경로 — 여기서 LOAD 하면 쓰기 트랜잭션이 잡 큐를 우회한다(R4 위반).
             raise RuntimeError(
@@ -1118,6 +1244,17 @@ class EmbeddedBackend:
             # 조합이 실재하는데(G0 테스트: 캐시를 치워 두고 번들만 준다), 이름 기반만
             # 보면 "번들 필요" 라고 답하게 된다 — 번들은 있었고 본문에 그 실패가
             # 그대로 찍혀 있는데도. 스스로 모순된 진단이다.
+            if ext == "algo" and "failed to load library" in detail.lower():
+                # 상류 결함이라 이 프로세스 안에서는 풀리지 않는다 — 실패를 기억해 두고
+                # 호출마다 LOAD(쓰기 트랜잭션)를 다시 내지 않는다(:meth:`_load_ext`).
+                # 원인은 라이브러리 로드 쪽 문구만 싣는다. 이름 기반 폴백의 "Binder
+                # exception: ... has not been installed" 는 번들이 있는 한 헛갈림이고,
+                # 호출부는 "Binder" 를 투영 결함의 표지로 읽는다(test_decision_type).
+                cause = bundled_err if "failed to load library" in bundled_err.lower() else text
+                msg = (f"임베디드 algo 확장 미가용({self.driver_name}) — {_ALGO_UNAVAILABLE_NOTE}"
+                       f" 원인: {cause}")
+                self._ext_failed[ext] = msg
+                raise RuntimeError(msg) from exc
             if "failed to load library" in detail.lower():
                 # Windows 에서 이 갈래에 떨어지는 사유는 **하나로 수렴한다**(2026-08-07
                 # 실측, ladybug 0.18.0 · win_amd64). 확장 3종(algo·fts·vector)의 PE
@@ -1222,6 +1359,9 @@ class EmbeddedBackend:
     #: 실측 원문(ladybug 0.18.0, 2026-08-09 라이브·사본 양쪽):
     #:   "FTS index 'chunk_ft' is inconsistent: document for node offset 992 is
     #:    missing during delete. Drop and recreate the FTS index."
+    #: 0.20.4(확장 v0.20.0)도 바이너리 안의 문구가 글자 그대로 같다(2026-09-27 대조). 같은
+    #: 계열로 "FTS index '…' is inconsistent: term '…' is missing during delete." 도 있고
+    #: 두 표지에 똑같이 걸린다 — 처방(드롭 후 재생성)도 같다.
     #: 문구 전체가 아니라 두 표지의 **동시 등장**으로 본다 — 오프셋·색인명은 매번 다르고,
     #: 한쪽만 보면 무관한 오류를 물어 엉뚱하게 재빌드한다.
     _FTS_INCONSISTENT_MARKS = ("fts index", "inconsistent")
@@ -1313,7 +1453,8 @@ class EmbeddedBackend:
         "ChunkVec": ("vector", "_VEC_INDEX", "'embedding'", VectorIndexRemnant),
         "NodeVec": ("vector", "_NODE_VEC_INDEX", "'embedding'", VectorIndexRemnant),
     }
-    #: 잔해 색인의 판별 표지(ladybug 0.18.0 실측 원문, 2026-09-25). 잔해는 카탈로그에 없어서
+    #: 잔해 색인의 판별 표지(ladybug 0.18.0 실측 원문, 2026-09-25 · 0.20.4 의 엔진·FTS 확장
+    #: 바이너리에 두 문구가 글자 그대로 있다, 2026-09-27 대조). 잔해는 카탈로그에 없어서
     #: `SHOW_INDEXES` 에 안 나온다 — 생성을 시도해야만 보인다. 문구가 둘이다:
     #:   "Runtime exception: Index chunk_vec is not loaded yet. Please load the index
     #:    before accessing it."                              — 첫 시도(벡터·FTS 같다)
@@ -1856,8 +1997,9 @@ class EmbeddedBackend:
         시점에 체크포인트한다"고 적혀 있었는데 **사실이 아니다**. ladybug 0.18.0 의
         `SystemConfig` 는 `autoCheckpoint=true, checkpointThreshold=16MB` 가 기본이라
         close 없이도 임계값에서 스스로 체크포인트한다(v0.18.0 소스·공식 문서 확인,
-        로컬 실엔진 재현). 그 틀린 주석을 근본원인으로 채택해 사고 보고서까지 갔다 —
-        주석 하나가 오진의 발원지가 된 사례다.
+        로컬 실엔진 재현. 0.20.4 도 `Database(auto_checkpoint=True)` 가 기본이다).
+        그 틀린 주석을 근본원인으로 채택해 사고 보고서까지 갔다 — 주석 하나가 오진의
+        발원지가 된 사례다.
 
         ⚠ Windows: 열려 있는 DB 파일에는 **바이트 범위 락**이 걸려 있어 복사가
         `WinError 33` 으로 실패한다(읽기조차 막힌다 — 실측). 리눅스는 같은 코드가
@@ -1913,7 +2055,8 @@ class EmbeddedBackend:
             # 무슨 일이 있어도 스토어를 다시 연다 — 스냅샷 실패가 서비스를 죽이지 않게.
             if drv is not None:
                 self._db = drv.Database(src, **_driver_kwargs(self._cfg))
-                self._conn = drv.Connection(self._db)
+                self._conns = weakref.WeakSet()
+                self._conn = _open_connection(drv, self._db, self._conns)
                 # 새 Database 인스턴스는 확장 카탈로그가 비어 있다 — 캐시가 남아
                 # 있으면 리더가 "로드됨"으로 믿고 QUERY_FTS_INDEX 를 불러 정체
                 # 불명의 'function not defined' 를 맞는다. 무효화 후 재로드한다.

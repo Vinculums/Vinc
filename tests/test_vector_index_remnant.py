@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from store.embedded_backend import VectorIndexRemnant, _import_driver  # noqa: E402
+import _remnant_probe  # noqa: E402  (tests/ 가 sys.path 에 있다 — conftest 의 _tmpjail 과 같다)
 
 _DRIVER, _NAME = _import_driver()
 DIM = 4
@@ -93,6 +94,7 @@ class VectorIndexRemnantTests(unittest.TestCase):
             n += 1
         return n
 
+    @_remnant_probe.needs("vector", _CHILD, "1")
     def test_crash_after_drop_leaves_a_remnant_that_blocks_the_index(self):
         """이 수정 전의 드롭(체크포인트 없음)으로 죽으면 잔해가 남는다. 확인되면 플래그가
         서고, 두 번째 시도는 빌드를 다시 돌리지 않고 곧바로 거절한다."""
@@ -106,6 +108,7 @@ class VectorIndexRemnantTests(unittest.TestCase):
             s.ensure_search_indexes(dim=DIM)
         self.assertLess(time.monotonic() - t, 1.0, "확인된 잔해 앞에서 빌드를 또 돌렸다")
 
+    @_remnant_probe.needs("vector", _CHILD, "1")
     def test_apply_refuses_while_the_remnant_is_known(self):
         """잔해 앞에서 삽입은 세그폴트다 — 적용은 표를 건드리기 전에 거절한다."""
         from api import docstore
@@ -118,6 +121,7 @@ class VectorIndexRemnantTests(unittest.TestCase):
         self.assertFalse(res.get("executed"))
         self.assertEqual(s.run("MATCH (v:ChunkVec) RETURN count(v) AS n")[0]["n"], ROWS)
 
+    @_remnant_probe.needs("vector", _CHILD, "1")
     def test_every_write_to_the_table_is_refused_not_just_apply(self):
         """잔해 위에서는 삽입만이 아니라 삭제·아무 열의 SET 도 세그폴트다(실측). #407 은 적용만
         막았는데 문서 저장·삭제와 모델 전환도 `ChunkVec` 행을 지운다 — 백엔드가 문장을
@@ -136,6 +140,7 @@ class VectorIndexRemnantTests(unittest.TestCase):
         self.assertEqual(res.get("error"), "vector_index_remnant", res)
         self.assertEqual(s.run("MATCH (v:ChunkVec) RETURN count(v) AS n")[0]["n"], ROWS)
 
+    @_remnant_probe.needs("vector", _CHILD, "1")
     def test_reader_view_does_not_schedule_a_build_on_a_remnant(self):
         submitted = []
         self._crash_after_drop(raw=True)
@@ -150,6 +155,7 @@ class VectorIndexRemnantTests(unittest.TestCase):
             rv.close()
         self.assertEqual(submitted, [], "실패할 빌드를 잡으로 걸었다")
 
+    @_remnant_probe.needs("vector", _CHILD, "1")
     def test_heal_rebuilds_the_table_keeping_every_vector(self):
         """기동 수리: 표를 새로 떠서 옮기면 잔해가 사라지고 색인이 선다. 행은 그대로이고,
         그 뒤 쓰기 경로(드롭 → 삽입 → 재생성)가 정상이다."""
@@ -175,6 +181,22 @@ class VectorIndexRemnantTests(unittest.TestCase):
         self.assertEqual(s.heal_vector_index(dim=DIM)["state"], "present")
         self.assertGreater(self._vector_hits(), 0)
 
+    @_remnant_probe.without("vector", _CHILD, "1")
+    def test_this_engine_replays_a_raw_drop_without_a_remnant(self):
+        """잔해가 안 생기는 엔진(0.20.4): 체크포인트 없는 드롭으로 죽어도 다음 기동이 색인을
+        세우고 벡터가 그대로이며 `ChunkVec` 삽입이 된다."""
+        self._crash_after_drop(raw=True)
+        s = self._open()
+        self.assertEqual(s.heal_vector_index(dim=DIM)["state"], "built")
+        self.assertFalse(s.vector_index_remnant)
+        self.assertEqual(s.run("MATCH (v:ChunkVec) RETURN count(v) AS n")[0]["n"], ROWS)
+        self.assertGreater(self._vector_hits(), 0)
+        s.drop_vector_index()
+        s.run("CREATE (:ChunkVec {vec_id: 'n#000', chunk_id: 'n', doc_id: 'd', owner_id: 'o', "
+              "seq: 0, embedding: $e})", {"e": [1.0, 1.0, 1.0, 1.0]})
+        s.ensure_search_indexes(dim=DIM)
+        self.assertGreater(self._vector_hits(), 0)
+
     def test_the_drop_checkpoints_so_a_crash_leaves_no_remnant(self):
         """예방: 백엔드의 드롭은 곧바로 체크포인트하므로 같은 자리에서 죽어도 잔해가 없다."""
         self._crash_after_drop(raw=False)
@@ -194,6 +216,7 @@ class VectorIndexRemnantTests(unittest.TestCase):
         self.assertEqual(s.heal_vector_index(dim=DIM)["state"], "empty")
         self.assertEqual(s.heal_vector_index(dim=DIM)["state"], "empty")
 
+    @_remnant_probe.needs("vector", _CHILD, "1")
     def test_heal_finds_a_remnant_on_an_empty_table(self):
         """행이 없어도 잔해는 남는다. #407 은 빈 표를 건너뛰어서 표시가 안 섰고, 그러면
         거절도 없이 첫 임베딩 적용이 세그폴트였다. 빈 표도 세워 보고, 잔해면 옮긴다."""
@@ -319,6 +342,7 @@ class NodeMirrorRemnantTests(unittest.TestCase):
     def _rows(self, s) -> int:
         return s.run("MATCH (n:NodeVec) RETURN count(n) AS n")[0]["n"]
 
+    @_remnant_probe.needs("node", _NODE_CHILD)
     def test_the_mirror_rebuild_refuses_instead_of_crashing(self):
         from api import node_mirror
         s = self._open()
@@ -334,6 +358,7 @@ class NodeMirrorRemnantTests(unittest.TestCase):
         self.assertEqual(res.get("error"), "node_vector_index_remnant", res)
         self.assertEqual(self._rows(s), ROWS)
 
+    @_remnant_probe.needs("node", _NODE_CHILD)
     def test_heal_moves_the_mirror_keeping_every_row(self):
         from api import node_mirror
         s = self._open()
@@ -348,6 +373,19 @@ class NodeMirrorRemnantTests(unittest.TestCase):
         self.assertTrue(node_mirror.replace(s, rows, "m").get("index_ok"))
         self.assertEqual(self._rows(s), 1)
         self.assertEqual(s.heal_node_vector_index(dim=DIM)["state"], "present")
+
+    @_remnant_probe.without("node", _NODE_CHILD)
+    def test_this_engine_replays_the_mirror_drop_without_a_remnant(self):
+        """잔해가 안 생기는 엔진(0.20.4): 미러 색인이 다시 서고 재구축이 된다."""
+        from api import node_mirror
+        s = self._open()
+        self.assertEqual(s.create_node_vector_index(), "")
+        self.assertFalse(s.node_vector_index_remnant)
+        self.assertEqual(self._rows(s), ROWS)
+        rows = [{"id": "x", "kind": "concept", "owner": "o", "title": "t", "text": "t",
+                 "emb": [1.0, 2.0, 3.0, 4.0]}]
+        self.assertTrue(node_mirror.replace(s, rows, "m").get("index_ok"))
+        self.assertEqual(self._rows(s), 1)
 
     def test_server_boot_heals_the_mirror(self):
         from api.server import VincApp

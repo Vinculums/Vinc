@@ -110,6 +110,20 @@ def _fixture_env():
                 os.environ[k] = v
 
 
+#: 이 표지를 담은 문제는 **데이터나 도구의 어긋남이 아니라 기능 부재**다. ladybug
+#: 0.20.x 의 algo 확장이 의존 라이브러리를 싣지 않아 구조 진단(vinc_diagnose)이 강등된다
+#: (store.embedded_backend._ALGO_UNAVAILABLE_NOTE). 채점에서는 그 문항이 답할 수 없는
+#: 문항이라는 뜻이고, 테스트는 이것만 남았을 때 실패 대신 건너뛴다.
+ALGO_UNAVAILABLE = "algo_unavailable"
+
+
+def _algo_unavailable(item_id: str, out) -> str | None:
+    if (isinstance(out, dict) and out.get("executed") is False
+            and "algo 확장 미가용" in str(out.get("note") or "")):
+        return f"{item_id}: {ALGO_UNAVAILABLE} — {str(out.get('note'))[:160]}"
+    return None
+
+
 def verify(evalset: dict) -> list[str]:
     """정답을 픽스처에서 재도출해 대조한다. 어긋난 문항의 설명을 돌려준다."""
     with _fixture_env():
@@ -136,7 +150,12 @@ def _verify_inner(evalset: dict) -> list[str]:
             if not v:
                 problems.append(f"{item['id']}: verify 절이 없다 — 정답이 검증 불가")
                 continue
-            got = _dig(_call(q, store, S.OWNER, v["tool"], v.get("args") or {}), v["path"])
+            res = _call(q, store, S.OWNER, v["tool"], v.get("args") or {})
+            gone = _algo_unavailable(item["id"], res)
+            if gone:
+                problems.append(gone)
+                continue
+            got = _dig(res, v["path"])
             exp = item["expect"]
             kind, want = exp["kind"], exp["value"]
             if kind == "set":
@@ -219,6 +238,10 @@ def via_mcp(evalset: dict) -> list[str]:
                     out = tools.call(name, {**args, "owner": S.OWNER}, bridge)
                 except Exception as e:                      # noqa: BLE001
                     problems.append(f"{item['id']}: {name} 호출 실패 — {type(e).__name__}: {e}")
+                    continue
+                gone = _algo_unavailable(item["id"], out)
+                if gone:
+                    problems.append(gone)
                     continue
                 got = _dig(out, path)
                 exp, kind, want = item["expect"], item["expect"]["kind"], item["expect"]["value"]
