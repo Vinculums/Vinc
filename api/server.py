@@ -239,6 +239,9 @@ class VincApp:
         # 기동 시 스키마 생성이 실패했다면 그 사유(없으면 None) — /health 로 노출해
         # "왜 조회가 다 깨지나"를 앱이 바로 알 수 있게 한다(open() 주석 참조).
         self.provision_error = provision_error
+        # 기동 점검이 WAL 을 옆으로 옮겼으면 그 한 줄(없으면 ""). 스토어가 열렸어도
+        # 마지막 체크포인트 뒤의 쓰기가 빠졌다는 뜻이라 /health 가 함께 싣는다.
+        self.store_note = ""
         self.auth = auth or SessionAuth()
         # 영속 스냅샷 정책(§ store/persistence.py). `VINC_STORE_SNAPSHOT` 미설정이면
         # 전부 no-op 이다 — 데스크탑·로컬 개발은 영향 없다.
@@ -291,9 +294,24 @@ class VincApp:
         self._connect_lock = threading.Lock()
 
     @classmethod
-    def open(cls, cfg=None, **kw) -> "VincApp":
+    def open(cls, cfg=None, *, guard_wal: bool = False, **kw) -> "VincApp":
         cfg = cfg or load_config()
-        store = open_store(cfg)                        # 드라이버 미설치 시 store=None
+        # 이 기기의 사이드카면 남은 WAL 을 자식에게 먼저 재생시킨다(store/wal_guard.py).
+        # 재생이 엔진을 네이티브로 죽이면 여기서 잡을 길이 없고, 사이드카가 사라지면
+        # 데스크톱은 로그인도 못 한다.
+        guarded = None
+        if guard_wal and cfg.data_dir:
+            from store import wal_guard
+            guarded = wal_guard.guard(cfg.data_dir)
+            if guarded.note:
+                print(f"vinc: {guarded.note}", file=sys.stderr, flush=True)
+        if guarded is not None and not guarded.open:
+            store = None
+            # 사유는 한 자리에서 말한다(`store_unavailable`). /health 와 조회 503 이 같은 문장을 낸다.
+            from store.embedded_backend import EmbeddedBackend
+            EmbeddedBackend.last_open_error = guarded.note
+        else:
+            store = open_store(cfg)                    # 드라이버 미설치 시 store=None
         provision_error = None
         if store is not None:
             # 첫 실행 스키마 멱등 생성. serve 경로엔 별도 provision 단계가 없어(데스크톱
@@ -314,6 +332,8 @@ class VincApp:
         if store is not None and provision_error is None:
             _heal_search_indexes(store, cfg.embedding_dim)
         app = cls(cfg, store=store, provision_error=provision_error, **kw)
+        if guarded is not None:
+            app.store_note = guarded.note
         if store is not None and provision_error is None:
             app._schedule_mentions_rule()
         return app
@@ -2004,6 +2024,9 @@ class _Handler(BaseHTTPRequestHandler):
                 body = {"status": "degraded", **store_unavailable()}
                 body.pop("note", None)   # note 는 조회 봉투 전용 — 헬스 계약 불변
             else:
+                # 열리긴 했지만 기동 점검이 WAL 을 옆으로 옮겼다(store/wal_guard.py).
+                if getattr(self.app, "store_note", ""):
+                    body["store_note"] = self.app.store_note
                 # 임베딩 백로그 — 정체가 밖에서 보여야 한다(App.embed_health 주석).
                 # 진단이 헬스를 죽이지 않게 통째로 감싼다: 여기서 예외가 나가면
                 # 엔트리포인트의 기동 대기가 실패하고 워치독이 사이드카를 재기동시킨다.
@@ -2271,8 +2294,10 @@ def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int |
     (현행 소비자 확인: Tauri 셸은 토큰을 자기가 만들어 `--token` 으로 넘기고
     `sidecar_conn` 으로 반환하므로 배너를 파싱하지 않고, `vinc_mcp/bridge.py` 는
     `stdout=DEVNULL` 로 아예 버린다.)"""
+    # WAL 점검은 이 기기의 사이드카만 한다: 셸과 MCP 브리지는 `--parent-pid` 로 띄우고
+    # 허브(docker-entrypoint.sh)는 안 넘긴다. 허브의 WAL 을 치울지는 사람이 판정한다.
     app = VincApp.open(cfg, auth=SessionAuth(token), packs_dir=packs_dir,
-                       profile_path=profile_path)
+                       profile_path=profile_path, guard_wal=parent_pid is not None)
     app.data_pinned = data_pinned
     httpd = make_server(app, host, port)
     bound_host, bound_port = httpd.server_address[:2]

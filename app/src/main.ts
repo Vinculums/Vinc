@@ -311,11 +311,14 @@ applyTheme();
   // 스킵 — 데이터는 계정 프록시(/api/graph)로 간다. 브라우저 dev 는 connectSidecar 가
   // __TAURI__ 없음으로 즉시 반환(same-origin vite 프록시 유지).
   if (!WEB) {
-    await connectSidecar();
-    // 데스크톱은 로그인이 먼저다(VIN-128). 로그인은 사이드카 루프백으로 키를 받으므로
-    // `connectSidecar` 뒤여야 한다. 브라우저 dev(셸 아님)는 종전대로 로컬 사이드카를 본다.
+    const sidecar = connectSidecar();
+    // 데스크톱은 로그인이 먼저다(VIN-128). 로그인 **화면**은 사이드카를 기다리지 않는다:
+    // 기다리면 사이드카가 뜨는 동안(죽었으면 12초 내내) 창이 비어 있다. 루프백으로 키를
+    // 받는 것은 단추를 누른 뒤라 거기서 `sidecar` 를 기다린다(`firstrun` start).
+    // 브라우저 dev(셸 아님)는 종전대로 로컬 사이드카를 본다.
     const { needsSignIn, requireSignIn } = await import("./firstrun");
-    if (needsSignIn()) await requireSignIn("first");
+    if (needsSignIn()) await requireSignIn("first", sidecar);
+    await sidecar;
     if (IN_SHELL) {
       // 어느 그래프를 볼지 정한다. 정본은 사이드카의 저장 설정이다(VIN-130). 처음이면
       // 로컬 스토어에 데이터가 있는 기존 설치는 로컬로 남고, 없으면 계정이다.

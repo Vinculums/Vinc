@@ -67,6 +67,17 @@ fn sidecar_status(log: tauri::State<'_, SidecarLog>) -> String {
     }
 }
 
+/// 셸이 띄운 사이드카가 아직 살아 있는가. 로그인 화면이 "끝났으니 다시 띄운다"와 "아직
+/// 뜨는 중이니 기다린다"를 이것으로 가른다. `sidecar_status` 의 `terminated:` 줄로는 못
+/// 가른다: 그 버퍼는 24줄에서 끊겨 종료 줄이 빠질 수 있다.
+#[tauri::command]
+fn sidecar_alive(app: tauri::AppHandle) -> bool {
+    let Some(pid) = app.state::<Sidecar>().0.lock().unwrap().as_ref().map(|c| c.pid()) else {
+        return false;
+    };
+    !app.state::<SidecarExited>().0.lock().unwrap().contains(&pid)
+}
+
 /// 등록 가능한 로컬 MCP 호스트 — 사이드카 `vinc_mcp.install.CLIENTS` 와 짝.
 /// 여기서 먼저 막는 이유는 임의 문자열이 CLI 인자로 흘러가지 않게 하기 위해서다.
 const MCP_CLIENTS: [&str; 4] = ["code", "desktop", "cursor", "codex"];
@@ -673,7 +684,7 @@ fn main() {
             std::env::args().collect::<Vec<_>>(),
         ))))
         .invoke_handler(tauri::generate_handler![
-            sidecar_conn, sidecar_status, sidecar_restart, mcp_install, mcp_uninstall,
+            sidecar_conn, sidecar_status, sidecar_alive, sidecar_restart, mcp_install, mcp_uninstall,
             take_pending_files,
             cli_link_status, cli_link_install, cli_link_remove,
             secret_get, secret_set, secret_delete, secret_available])
@@ -700,11 +711,23 @@ fn main() {
                 let _ = std::fs::remove_file(path);
             }
             if let Some(child) = app.state::<Sidecar>().0.lock().unwrap().take() {
-                // Windows: 부트로더만 죽으면 파이썬 자식이 고아로 .exe 락을 유지 →
-                // 트리째 강제 종료(child.kill 은 폴백).
-                #[cfg(windows)]
-                kill_sidecar_tree(child.pid());
-                let _ = child.kill();
+                // 먼저 닫아 달라고 부탁한다. 그 길이 스토어를 닫고(체크포인트) 나가서 다음
+                // 기동이 WAL 을 재생하지 않는다. 여태 여기서 곧장 죽여서 종료할 때마다 WAL 이
+                // 남았고, 그 재생이 엔진을 죽이면 다음 기동에서 로그인까지 막혔다.
+                // 근거: [[record:a-wal-that-crashes-the-engine-takes-the-desktop-sign-in-down-2026-09-27]]
+                let pid = child.pid();
+                let (port, token) = {
+                    let c = app.state::<Conn>();
+                    (c.port, c.token.clone())
+                };
+                // 창은 이미 닫혔다. 5초 안에 안 끝나면 그때 죽인다(재기동의 20초보다 짧게).
+                if !(request_shutdown(port, &token) && wait_exit(app, pid, 5_000)) {
+                    // Windows: 부트로더만 죽으면 파이썬 자식이 고아로 .exe 락을 유지 →
+                    // 트리째 강제 종료(child.kill 은 폴백).
+                    #[cfg(windows)]
+                    kill_sidecar_tree(pid);
+                    let _ = child.kill();
+                }
             }
         }
     });

@@ -180,6 +180,10 @@ def main(argv: list[str] | None = None) -> int:
                          "디렉터리를 주면 열리지 않는다")
     sv.add_argument("--packs", default=None, help="exported packs dir (backup 동봉)")
 
+    sp = sub.add_parser("store-probe",
+                        help="(내부) 스토어를 한 번 열고 닫는다: 사이드카 기동 점검(store/wal_guard.py)")
+    sp.add_argument("--data", required=True, help="db 파일 경로")
+
     md = sub.add_parser("migrate-dim",
                         help="기동 전: 벡터 열의 차원이 이 배포의 모델과 다르면 재구축해 갈아 끼운다")
     md.add_argument("--data", default=None, help="db 파일 경로 (serve 와 같은 규칙)")
@@ -401,6 +405,18 @@ def main(argv: list[str] | None = None) -> int:
                   file=sys.stderr, flush=True)
             return 3
         print(json.dumps(out, ensure_ascii=False), flush=True)
+        return 0
+    if args.cmd == "store-probe":
+        # 사이드카가 WAL 을 재생하기 전에 이 자식에게 먼저 시킨다(store/wal_guard.py).
+        # 종료 코드가 곧 판정이다: 0 = 열고 닫았다 · PROBE_RAISED = 예외 · 그 밖 = 죽었다.
+        # 닫기가 체크포인트라 0 이면 부모는 WAL 없이 연다.
+        from store.backend import open_store
+        from store.config import load_config
+        from store.wal_guard import PROBE_RAISED
+        store = open_store(load_config({"data_dir": args.data}))
+        if store is None:
+            return PROBE_RAISED
+        store.close()
         return 0
     if args.cmd == "serve":
         from . import server
