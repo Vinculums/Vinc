@@ -177,15 +177,15 @@ jobs:
           # 되돌릴 조건: 이 기계의 페이지 파일이 커지거나(커밋 한도 상향) 상시 사용량이
           # 내려가서, `tauri build` 가 여기서 초록인 것을 **실제로 본 뒤**.
           #
-          # ⚠ **다시 집으로 들였다(2026-09-27).** 조직의 Actions 예산이 바닥나 호스티드
-          # 잡이 아예 시작하지 않았다("an Actions budget is preventing further use").
-          # 위 되돌릴 조건은 그날 실측으로 섰다: 커밋 한도 47.4GB · 여유 26.7GB
-          # (D 에 페이지 파일이 더해졌다). OpenSSL 3 은 이 기계의 Git 이 D:\git 에 있어
-          # sidecar.spec 의 기본 후보에 없으므로 `openssl_dir` 로 알려 준다(mingw 빌드이지만
-          # 임포트가 시스템 DLL 뿐이라 따로 실어도 된다 · 실측).
-          - os: [self-hosted, windows, vinc-local]
+          # ⚠ 2026-09-27 에 한 번 집으로 들였다가(v0.9.4) 같은 날 **다시 호스티드로
+          # 돌렸다.** 들인 이유는 조직의 Actions 예산이 바닥나 호스티드 잡이 아예 시작하지
+          # 않은 것 하나였고("an Actions budget is preventing further use"), 예산이 풀려
+          # 그 이유가 없어졌다. 그 사이 로컬 다리는 사람이 쓰는 기계에서 릴리스 프로파일
+          # 빌드를 돌렸고, OpenSSL 도 그 기계의 Git 위치(`VINC_OPENSSL_DIR`)에 기대야 했다.
+          # 호스티드 이미지는 spec 의 기본 후보(`C:\Program Files\OpenSSL\bin`)를 갖고 있다.
+          # 근거: [[decision:the-windows-release-leg-goes-back-to-hosted-2026-09-07]]
+          - os: windows-latest
             triple: x86_64-pc-windows-msvc
-            openssl_dir: D:/git/mingw64/bin
           # ⚠ macOS 는 로컬 러너가 아예 없다. 같은 런에서 이 다리는 3분 12초였다.
           # 여기 적혀 있던 $0.93 과 합계 $1.40 도 위와 같은 요금표에서 나온 값이라
           # 지금은 안 맞는다. 정확한 수치가 필요하면 청구서를 볼 것 — 포함 분에서
@@ -384,6 +384,23 @@ jobs:
           ext=""
           if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
           BIN="app/src-tauri/binaries/vinc-${{ matrix.triple }}${ext}"
+          # ⚠ **맥 러너에는 Homebrew OpenSSL 3 이 있고 사용자 맥에는 없을 수 있다.**
+          # 엔진과 확장이 그것을 절대 경로(/opt/homebrew/opt/openssl@3)로 물면, 동봉본이
+          # 빠지거나 안 쓰여도 여기서는 초록이고 사용자 기기에서만 검색이 죽는다. 그래서
+          # 스모크 동안 그 경로를 가린다. 무엇을 무는지는 로그에 남긴다(otool).
+          # 근거: [[vinc.ops.ladybug-upgrade-review-2026-09-24]] §2.4
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            for f in $(python -c "import ladybug,os,glob; print(' '.join(glob.glob(os.path.join(os.path.dirname(ladybug.__file__),'_lbug*.so'))))") \
+                     "$HOME"/.lbdb/extension/*/osx_arm64/*/*.lbug_extension; do
+              echo "── otool -L $(basename "$f")"; otool -L "$f" | grep -i -E "ssl|crypto" || echo "   (no OpenSSL link)"
+            done
+            OSSL=$(brew --prefix)/opt/openssl@3
+            if [ -e "$OSSL" ]; then
+              sudo mv "$OSSL" "$OSSL.hidden-for-smoke"
+              trap 'sudo mv "$OSSL.hidden-for-smoke" "$OSSL"' EXIT
+              echo "hid $OSSL for the smoke (restored on exit)"
+            fi
+          fi
           "$BIN" --help
           DATA="$(mktemp -d)/db"
           SLOG="$(dirname "$DATA")/sidecar.log"
@@ -414,12 +431,27 @@ jobs:
           H='Authorization: Bearer smoketest'
           C='Content-Type: application/json'
           U=http://127.0.0.1:18787/doc/put-file
-          md_b64=$(printf '# smoke\n\nbody line.\n' | base64 | tr -d '\n')
+          # 아래 검색이 찾을 단어(quartz)는 **줄 가운데**에 둔다. 엔진의 FTS 토크나이저는
+          # 줄바꿈에서 끊지 않아 줄 끝·줄 머리의 단어는 옆 줄 단어와 한 토큰이 된다(실측).
+          md_b64=$(printf '# smoke\n\nThe quartz body line.\n' | base64 | tr -d '\n')
           pdf_b64=$(printf '%%PDF-1.4\nnope' | base64 | tr -d '\n')
           txt=$(curl -sf -H "$H" -H "$C" -X POST "$U" \
                  -d "{\"owner\":\"user:smoke\",\"filename\":\"s.md\",\"data_b64\":\"$md_b64\"}") || true
           pdf=$(curl -sf -H "$H" -H "$C" -X POST "$U" \
                  -d "{\"owner\":\"user:smoke\",\"filename\":\"s.pdf\",\"data_b64\":\"$pdf_b64\"}") || true
+          # 검색이 전문 색인을 실제로 탄다 — FTS 확장이 이 기기에서 올라왔다는 증거다.
+          # /health 는 확장 없이도 ok 다. 확장이 못 올라오면 검색만 extension_unavailable 로
+          # 강등되고 나머지는 초록이라, 여기서 안 보면 아무도 못 본다. 같은 질의를 세 번
+          # 부르는 것은 0.20.x 의 "두 번째 파라미터 FTS 질의가 프로세스를 죽인다" 가드를
+          # 동결본 안에서 확인하는 것이다.
+          for n in 1 2 3; do
+            srch=$(curl -sf -H "$H" "http://127.0.0.1:18787/search?query=quartz&owner=user:smoke") || true
+            echo "$srch" | python -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if not d.get('error') and d.get('rows') else 1)" || {
+              kill "$SIDECAR_PID" 2>/dev/null || true
+              echo "── sidecar log ──"; cat "$SLOG" || true
+              echo "::error::full-text search failed in the frozen binary (try $n): $srch" >&2; exit 1; }
+          done
+          echo "sidecar /search OK — FTS extension loaded, repeated query survived"
           kill "$SIDECAR_PID" 2>/dev/null || true
           echo "$txt" | python -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('executed') and d.get('source_format')=='text' else 1)" || {
             echo "::error::/doc/put-file text path failed in the frozen binary: $txt" >&2; exit 1; }
@@ -441,14 +473,10 @@ jobs:
       # 640초**였다 — 저장이 컴파일의 8할을 도로 먹는다. ci.yml 이 같은 이유로 같은
       # 액션을 뺐다([[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]]).
       #
-      # ⚠ 조건이 `container == ''` 라 윈도우 다리는 셀프호스티드가 된 뒤에도 이 액션을
-      # 계속 쓴다. 오타가 아니다 — ci.yml 과 조건이 다르기 때문이다. ci.yml 은
-      # `CARGO_TARGET_DIR` 를 체크아웃 **밖**에 두어 디스크가 산출물을 들고 있지만,
-      # 여기는 그러지 않는다(업로드 스텝이 `app/src-tauri/target/release/bundle` 를
-      # 글자 그대로 찾는다). 그래서 `actions/checkout` 의 기본 `clean: true` 가
-      # `git clean -ffdx` 로 매번 `target/` 을 지우고, 그 조건에서는 캐시가 할 일이
-      # 남는다. ⚠ 아직 이 다리에서 재 본 적은 없다 — 저장이 컴파일보다 비싸면
-      # 처방은 이 줄이 아니라 `CARGO_TARGET_DIR` 와 업로드 경로를 같이 옮기는 것이다.
+      # 조건이 `container == ''` 라 호스티드인 윈도우·맥 다리가 이 액션을 쓴다. 윈도우를
+      # 잠시 셀프호스티드로 들였을 때(2026-09-27)도 그대로 썼다. 그 경우라면 ci.yml 처럼
+      # `CARGO_TARGET_DIR` 를 체크아웃 밖에 두는 편이 낫지만, 여기서는 업로드 스텝이
+      # `app/src-tauri/target/release/bundle` 를 글자 그대로 찾으므로 둘을 같이 옮겨야 한다.
       - uses: swatinem/rust-cache@v2
         if: matrix.container == ''
         with:
