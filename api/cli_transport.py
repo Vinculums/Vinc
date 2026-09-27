@@ -22,7 +22,7 @@ def _data_file(args) -> str:
         return resolve_data_dir(explicit, create=False)
     if args.cmd in {"doc", "backup", "graph-md", "whoami", "conventions", "node",
                     "path", "ties", "diagnose", "ingest", "delete", "edge", "merge",
-                    "call"}:
+                    "call", "export"}:
         return resolve_data_dir(create=False)
     return os.path.join(os.getcwd(), "vinc_store")
 

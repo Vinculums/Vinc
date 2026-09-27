@@ -223,9 +223,9 @@ fn b64(bytes: &[u8]) -> String {
 /// ⚠ 여기에 없는 첫 인자는 **전부 창을 여는 쪽**으로 간다. 새 하위 명령을 CLI 에
 /// 추가하면 이 배열도 같이 늘려야 한다(안 늘리면 그 명령만 창이 뜬다).
 /// `--help`·`-h` 를 포함하는 이유는 argparse 가 그 자리에서 사용법을 찍어 주기 때문이다.
-const CLI_VERBS: [&str; 35] = [
+const CLI_VERBS: [&str; 36] = [
     "activate", "backup", "brief", "call", "conventions", "decide", "delete", "diagnose",
-    "doc", "domain-backfill", "domains", "edge", "graph", "graph-md", "import", "ingest",
+    "doc", "domain-backfill", "domains", "edge", "export", "graph", "graph-md", "import", "ingest",
     "learner", "mcp", "merge", "migrate-dim", "node", "onboard", "path", "pin", "plan",
     "recall", "search", "serve", "share", "tag", "ties", "touch", "whoami", "--help", "-h",
 ];
@@ -854,7 +854,7 @@ mod tests {
     fn 동사_목록은_사이드카_cli_와_짝이다() {
         for v in ["mcp", "serve", "search", "doc", "import", "share", "graph-md", "onboard",
                   "brief", "migrate-dim", "whoami", "conventions", "node", "path", "ties",
-                  "diagnose", "ingest", "delete", "edge", "merge", "call"] {
+                  "diagnose", "ingest", "delete", "edge", "merge", "call", "export"] {
             assert!(CLI_VERBS.contains(&v), "{v} 가 목록에 없다");
         }
         assert!(!CLI_VERBS.contains(&"install"), "install 은 mcp 의 하위라 최상위가 아니다");
