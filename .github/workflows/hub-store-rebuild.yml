@@ -157,6 +157,9 @@ jobs:
       - name: Rebuild and check
         run: |
           set -euo pipefail
+          # 확장(FTS·벡터)은 리포에 번들된 것을 명시 경로로 싣는다 — 러너에는 설치본이 없어
+          # 이름으로는 못 싣는다(restore-rehearsal.yml 과 같은 설정).
+          export VINC_LBUG_EXT_DIR="$GITHUB_WORKSPACE/packaging/lbug_extensions"
           python scripts/rebuild_store_native.py --data "work/$SRC" --out "work/$DST" --json \
             | tee work/rebuild.json
 
