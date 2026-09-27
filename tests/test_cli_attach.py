@@ -5,6 +5,8 @@ import contextlib
 import io
 import json
 import os
+import subprocess
+import sys
 import threading
 from argparse import Namespace
 
@@ -21,6 +23,16 @@ def _run_cli(argv):
     with contextlib.redirect_stdout(out):
         code = cli.main(argv)
     return code, out.getvalue()
+
+
+def _run_cli_child(argv):
+    env = dict(os.environ)
+    env.pop("PYTHONHOME", None)
+    env.pop("PYTHONPATH", None)
+    child = subprocess.run([sys.executable, "-m", "api.cli", *argv],
+                           capture_output=True, text=True, encoding="utf-8",
+                           env=env, timeout=30, check=False)
+    return child.returncode, child.stdout
 
 
 def test_matching_live_sidecar_answers_a_locked_store(tmp_path, monkeypatch):
@@ -55,12 +67,14 @@ def test_matching_live_sidecar_answers_a_locked_store(tmp_path, monkeypatch):
         assert attached_bridge(Namespace(cmd="doc", data=str(tmp_path / "other"))) is None
         session_path.write_text(json.dumps({"port": httpd.server_address[1],
                                             "token": "wrong", "pid": os.getpid()}), encoding="utf-8")
-        locked_code, locked_bytes = _run_cli(["doc", "ls", "--data", data_file,
-                                              "--format", "json"])
+        # 스토어 락은 프로세스 경계에 걸린다. 같은 테스트 프로세스에서 다시 여는
+        # 방식은 플랫폼에 따라 성공하므로 별도 CLI 프로세스로 확인한다.
+        locked_code, locked_bytes = _run_cli_child(["doc", "ls", "--data", data_file,
+                                                    "--format", "json"])
         assert locked_code == 1
         assert json.loads(locked_bytes)["error"]["code"] == "store_in_use"
-        recall_code, recall_bytes = _run_cli(["recall", "--query", "nothing",
-                                              "--owner", "user:local", "--format", "json"])
+        recall_code, recall_bytes = _run_cli_child(["recall", "--query", "nothing",
+                                                    "--owner", "user:local", "--format", "json"])
         assert recall_code == 1
         assert json.loads(recall_bytes)["error"]["code"] == "store_in_use"
     finally:
