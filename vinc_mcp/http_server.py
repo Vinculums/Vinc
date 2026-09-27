@@ -1286,13 +1286,14 @@ class _Handler(BaseHTTPRequestHandler):
         from . import rest_api
         if rest_api.handle(self, "PUT"):
             return
-        return self._json(404, {"error": f"no such route: PUT {self.path}"})
+        # /v1 밖의 PUT 은 전과 같이 표준 라이브러리의 501 이다(CORS 헤더 없음).
+        self.send_error(501, "Unsupported method ('PUT')")
 
     def do_PATCH(self):  # noqa: N802
         from . import rest_api
         if rest_api.handle(self, "PATCH"):
             return
-        return self._json(404, {"error": f"no such route: PATCH {self.path}"})
+        self.send_error(501, "Unsupported method ('PATCH')")
 
     def do_DELETE(self):  # noqa: N802
         """`DELETE /mcp` — 클라이언트 세션 종료. 스펙상 선택이지만 종료를 보내는

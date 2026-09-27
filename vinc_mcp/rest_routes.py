@@ -2,8 +2,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import re
 from urllib.parse import unquote
+
+
+@lru_cache(maxsize=None)
+def _pattern(path: str) -> re.Pattern:
+    return re.compile(re.sub(r"\{([a-z_]+)\}", lambda m: f"(?P<{m.group(1)}>[^/]+)", path))
 
 
 @dataclass(frozen=True)
@@ -19,8 +25,7 @@ class Route:
     def match(self, method: str, path: str) -> dict[str, str] | None:
         if method != self.method:
             return None
-        pattern = re.sub(r"\{([a-z_]+)\}", r"(?P<\1>[^/]+)", self.path)
-        found = re.fullmatch(pattern, path)
+        found = _pattern(self.path).fullmatch(path)
         return {key: unquote(value) for key, value in found.groupdict().items()} if found else None
 
 

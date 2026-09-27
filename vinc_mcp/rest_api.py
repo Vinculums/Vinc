@@ -9,7 +9,11 @@ from urllib.parse import parse_qs, urlparse
 
 from . import entitlement, rest_routes, toolcall, tools
 from .http_server import MAX_BODY, _UUID_RE
-from .rpc import _result_text
+
+#: v1 결과 상한. MCP 의 72,000자(rpc.MAX_RESULT_CHARS)는 모델 컨텍스트용 상한이라 스크립트가
+#: 받는 v1 에는 쓰지 않는다 — 쓰면 4 MB 로 넣은 문서를 되읽지 못하고, 이미 적용된 쓰기가
+#: "Nothing was changed" 로 보고된다. 이것은 응답 한 건의 메모리 상한일 뿐이다.
+MAX_RESULT_BYTES = 16 * 1024 * 1024
 
 
 _SCHEMAS = {item["name"]: item["inputSchema"] for item in tools.specs(allow_target=False)}
@@ -92,11 +96,21 @@ def _arguments(route: rest_routes.Route, path_fields: dict[str, str],
     return args
 
 
-def _failure(name: str, result: dict) -> tuple[int, str, str] | None:
-    """Classify known tool result shapes, retaining successful empty/partial results."""
+def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
+    """도구 결과 모양을 v1 상태로 옮긴다. 표는 tests/test_rest_v1.py 의 FAILURE_CASES 가 고정한다.
+    반환은 (status, code, message) 또는 (status, code, message, details)."""
     error = str(result.get("error") or "")
     note = str(result.get("note") or "")
     reason = (error + " " + note).lower()
+    # 브리지가 사이드카와 못 이야기했다. 쓰기라면 **이미 적용됐을 수 있다** — 재시도 금지를 싣는다.
+    if error.startswith("sidecar write unconfirmed"):
+        return (503, "upstream_unavailable", error,
+                {"retryable": False, "write_may_have_applied": True})
+    if error.startswith("sidecar HTTP 5") or error.startswith("sidecar unreachable"):
+        return 503, "upstream_unavailable", error
+    if error == "domain_limit_reached":
+        return (409, "domain_limit_reached", "The space has reached its topic limit.",
+                {k: result[k] for k in ("limit", "current", "attempted") if k in result})
     if error.startswith(("invalid_cursor", "stale_cursor")):
         return 400, "invalid_argument", error
     if name == "vinc_delete_edge" and "unsupported edge type" in reason:
@@ -106,7 +120,13 @@ def _failure(name: str, result: dict) -> tuple[int, str, str] | None:
         return 400, "invalid_argument", error or note
     if name == "vinc_doc_get" and result.get("verified") is False:
         return 503, "upstream_unavailable", "document chunks could not be verified"
-    if result.get("found") is False or (name == "vinc_brief" and result.get("status") == "none"):
+    if name == "vinc_brief" and result.get("status") == "none":
+        # 주소로 물은 노드(`/v1/nodes/{id}`)나 못 읽은 노드는 없는 것이다. 자유 질의가
+        # 아무것도 못 찾은 것은 오류가 아니라 빈 답이다.
+        if by_id or result.get("unreadable"):
+            return 404, "not_found", error or "The requested graph item was not found."
+        return None
+    if result.get("found") is False:
         return 404, "not_found", error or "The requested graph item was not found."
     if result.get("executed") is False:
         if any(term in reason for term in ("unknown", "not found", "no such", "missing doc")):
@@ -114,8 +134,7 @@ def _failure(name: str, result: dict) -> tuple[int, str, str] | None:
         if any(term in reason for term in ("invalid", "required", "malformed", "stale")):
             return 400, "invalid_argument", error or note
         if any(term in reason for term in (
-                "unavailable", "unreachable", "no store", "no reachable store",
-                "sidecar write unconfirmed")):
+                "unavailable", "unreachable", "no store", "no reachable store")):
             return 503, "upstream_unavailable", error or note
         return 500, "internal", error or "The tool did not execute."
     if result.get("isError") or error:
@@ -163,7 +182,15 @@ def handle(handler, method: str) -> bool:
             fail(404, "route_not_found", "No such v1 route.")
         return True
     route, fields = selected
-    query = {key: values[0] for key, values in parse_qs(url.query, keep_blank_values=True).items()}
+    parsed_query = parse_qs(url.query, keep_blank_values=True)
+    repeated = sorted(key for key, values in parsed_query.items() if len(values) > 1)
+    if repeated:
+        # 첫 값만 쓰면 뒤에 붙인 `space=<team>` 이 조용히 개인 그래프에 작용한다.
+        fail(400, "invalid_argument", "repeated parameter: " + ", ".join(repeated))
+        return True
+    query = {key: values[0] for key, values in parsed_query.items()}
+    if "space" in query:
+        query["space"] = query["space"].strip().lower()   # /mcp 와 같은 정규화
     space = query.get("space") or "personal"
     if space != "personal" and not _UUID_RE.fullmatch(space):
         fail(404, "space_not_found", "No such space.")
@@ -239,11 +266,16 @@ def handle(handler, method: str) -> bool:
         wait = int(quota.get("retry_after_s") or 0)
         fail(429, "quota_exceeded", _message(outcome.result),
              details={"limit": quota.get("limit"), "retry_after_s": wait},
-             extra={"Retry-After": wait})
+             extra={"Retry-After": wait, "Vinc-Quota-Limit": quota.get("limit") or "",
+                    "Vinc-Quota-Remaining": 0})
         return True
     if outcome.kind != "ok":
         error = outcome.error
         message = _message(outcome.result) if outcome.result else str(error)
+        if isinstance(error, json.JSONDecodeError):
+            # 사이드카가 JSON 이 아닌 200 을 줬다. 요청이 아니라 뒤쪽 문제다.
+            fail(503, "upstream_unavailable", "The graph service returned an unreadable answer.")
+            return True
         if outcome.kind == "protocol_error" and isinstance(error, (KeyError, ValueError)):
             fail(400, "invalid_argument", message)
             return True
@@ -253,16 +285,20 @@ def handle(handler, method: str) -> bool:
             fail(500, "internal", message)
         return True
     result = outcome.result or {}
-    failure = _failure(route.tool, result)
+    failure = _failure(route.tool, result, by_id=bool(route.path_args))
     if failure:
-        fail(*failure)
+        status, code, message, *rest = failure
+        fail(status, code, message, details=rest[0] if rest else None)
         return True
-    # MCP may shrink a large tool result. Return the identical object its text contains.
-    wrapped = _result_text(json.dumps(result, ensure_ascii=False), route.tool, args)
-    if wrapped.get("isError"):
-        fail(500, "internal", _message(wrapped))
+    size = len(json.dumps(result, ensure_ascii=False).encode("utf-8"))
+    if size > MAX_RESULT_BYTES:
+        # 도구는 이미 실행됐다. 쓰기라면 적용됐으므로 "바뀐 것 없음" 이라고 말하지 않는다.
+        fail(500, "internal", f"The result is too large to return ({size:,} bytes). "
+             "The tool ran; narrow the request to read its result.",
+             details={"bytes": size, "limit": MAX_RESULT_BYTES,
+                      "tool_ran": True, "writes": tools.tool_tier(route.tool) != "viewer"})
         return True
     status = (201 if route.tool == "vinc_doc_put" and result.get("created")
               else route.success)
-    send(status, json.loads(wrapped["content"][0]["text"]))
+    send(status, result)
     return True
