@@ -19,4 +19,4 @@
 #: 릴리스 게이트가 못 잡은 이유는 `scripts/version_sync.py` 의 자리 목록에 이 파일이
 #: 없었던 것이고, 그 목록에 더했으니 이제 여기만 뒤처지면 태그 런이 멈춘다.
 #: 손으로 고치지 말고 `python scripts/version_sync.py --set X.Y.Z` 로 함께 올릴 것.
-__version__ = "0.9.3"
+__version__ = "0.9.4"
