@@ -5,6 +5,7 @@ import io
 import json
 from contextlib import redirect_stdout
 from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, urlsplit
 from unittest.mock import patch
 
 import pytest
@@ -54,17 +55,36 @@ def test_every_public_tool_uses_a_v1_route(monkeypatch):
         return _Response({"kind": "tool", "ok": True})
 
     monkeypatch.setattr(remote_client, "urlopen", receive)
+    schema = {item["name"]: item["inputSchema"].get("properties", {})
+              for item in tools.TOOLS}
+    def sample(name, field):
+        kind = schema[name].get(field, {}).get("type")
+        return (["x", "y"] if kind == "array" else True if kind == "boolean"
+                else 2 if kind == "integer" else 0.5 if kind == "number"
+                else "sample")
     for name in names:
         route = remote_client._route(name, {})
         args = {arg: "concept:test" for _, arg in route.path_args}
-        if name == "vinc_graph":
-            args["url"] = "https://example.test/view"
+        args.update({field: sample(name, field)
+                     for field in (*route.query, *route.body)})
         assert remote_client.call(name, args, key="vinc_sk_test",
                                   base_url="https://api.test", space="personal")["ok"]
         request = observed[-1]
-        assert request.full_url.startswith("https://api.test/v1/")
+        url = urlsplit(request.full_url)
+        assert url.scheme == "https" and url.netloc == "api.test"
+        assert url.path.startswith("/v1/") and "{" not in url.path
         assert request.get_method() == route.method
         assert request.get_header("Authorization") == "Bearer vinc_sk_test"
+        want_query = {field: ([",".join(args[field])]
+                               if isinstance(args[field], list) else
+                               ["true" if args[field] is True else
+                                "false" if args[field] is False else str(args[field])])
+                      for field in route.query}
+        assert parse_qs(url.query) == want_query
+        if route.method in ("POST", "PUT"):
+            assert json.loads(request.data) == {field: args[field] for field in route.body}
+        else:
+            assert request.data is None
     assert {route.tool for route in rest_routes.ROUTES} == names
     assert len(observed) == 24
 
@@ -87,6 +107,22 @@ def test_account_key_only_and_space_on_route(monkeypatch):
     assert "/v1/nodes/concept%3Aa%2Fb/neighbors?" in seen[0].full_url
     assert "space=11111111-1111-1111-1111-111111111111" in seen[0].full_url
     assert "owner" not in seen[0].full_url
+
+
+def test_graph_seed_and_document_edit_take_path_routes(monkeypatch):
+    seen = []
+    monkeypatch.setattr(remote_client, "urlopen",
+                        lambda request, **_: (seen.append(request), _Response({"ok": True}))[1])
+    remote_client.call("vinc_graph", {"seed_id": "concept:a/b", "depth": 2},
+                       key="vinc_sk_test", base_url="https://api.test")
+    remote_client.call("vinc_doc_put", {"doc_id": "doc:a/b", "text": "body"},
+                       key="vinc_sk_test", base_url="https://api.test")
+    assert seen[0].get_method() == "GET"
+    assert urlsplit(seen[0].full_url).path == "/v1/nodes/concept%3Aa%2Fb/graph"
+    assert parse_qs(urlsplit(seen[0].full_url).query) == {"depth": ["2"]}
+    assert seen[1].get_method() == "PUT"
+    assert urlsplit(seen[1].full_url).path == "/v1/documents/doc%3Aa%2Fb"
+    assert json.loads(seen[1].data) == {"text": "body"}
 
 
 @pytest.mark.parametrize(("status", "expected"),
