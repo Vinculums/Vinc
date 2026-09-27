@@ -195,14 +195,19 @@ def _seed_bundle(ladybug, cache: Path, bundle: Path) -> None:
     """확장 3개를 bundle 로 확보 — 캐시에 있으면 복사, 없으면 INSTALL(네트워크) 후 복사."""
     import shutil
     need = ("vector", "fts", "algo")
-    found = {e: sorted(cache.glob(f"extension/*/*/{e}/lib{e}.lbug_extension")) for e in need}
+    # 캐시는 **지금 엔진 판의 것만** 집는다. 셀프호스티드 러너의 캐시에는 옛 판(0.18.0) 확장이
+    # 남아 있어서, 판을 안 가리면 0.20.x 엔진에 0.18 확장을 로드해 함수가 없다고 떨어졌다
+    # (2026-09-27 PR 456 CI). 확장 판은 엔진의 major.minor 를 따른다(0.20.4 → 0.20.0).
+    mm = ".".join(str(getattr(ladybug, "__version__", "")).split(".")[:2]) or "*"
+    pat = f"extension/{mm}.*/*/{{e}}/lib{{e}}.lbug_extension"
+    found = {e: sorted(cache.glob(pat.format(e=e))) for e in need}
     if not all(found[e] for e in need):
         import tempfile
         db = ladybug.Database(os.path.join(tempfile.mkdtemp(), "seed"))
         conn = ladybug.Connection(db)
         for e in need:
             conn.execute(f"INSTALL {e}")
-        found = {e: sorted(cache.glob(f"extension/*/*/{e}/lib{e}.lbug_extension")) for e in need}
+        found = {e: sorted(cache.glob(pat.format(e=e))) for e in need}
     for e in need:
         if not found[e]:
             raise RuntimeError(f"{e} 확장 확보 실패")
