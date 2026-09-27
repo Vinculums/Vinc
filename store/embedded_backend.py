@@ -2005,14 +2005,31 @@ class EmbeddedBackend:
         `WinError 33` 으로 실패한다(읽기조차 막힌다 — 실측). 리눅스는 같은 코드가
         그냥 되므로 여태 드러나지 않았다. 그래서 복사 직전에 드라이버 핸들을 닫고,
         복사 후 **같은 경로로 다시 연다** — 온디스크 형식이 그대로라 복원 경로
-        (`IMPORT` 아님, 폴더 교체)도 그대로다. 재오픈까지가 이 메서드의 계약이다."""
+        (`IMPORT` 아님, 폴더 교체)도 그대로다. 재오픈까지가 이 메서드의 계약이다.
+
+        🔴 CHECKPOINT 는 **배타 가드 안에서 혼자** 돈다. 다른 커넥션의 읽기와 겹치면
+        엔진이 네이티브로 죽는다(segfault·double free — 0.18.0·0.20.4 둘 다). 이 백엔드의
+        다른 체크포인트(드롭 뒤·재구축)는 전부 배타 가드 안인데 여기만 공유 가드였다.
+        그리고 끝나지 않은 체크포인트의 짝 파일(`.wal.checkpoint`·`.shadow`)이 남아
+        있으면 **복사하지 않는다** — 본 파일과 `.wal` 만 옮긴 세대는 온전하지 않고,
+        복원하면 커밋된 쓰기를 잃을 수 있다(상류 ladybug 0063666, 0.20.4 미포함).
+        던지면 `save_snapshot` 이 영속본을 건드리지 않고 `error:` 를 돌려준다 — 그
+        상태가 이어지면 스냅샷이 멈추므로 `/health` 의 스냅샷 상태를 볼 것."""
         import os
         import shutil
         try:
-            self.run("CHECKPOINT")
-        except Exception:
-            pass   # 방언 미지원 시 — close 경로 스냅샷(단발 CLI)은 이미 일관
+            self._checkpoint_alone()
+        except Exception as exc:     # noqa: BLE001 — 방언 미지원·가드 시간 초과
+            # 체크포인트 없이 복사해도 본 파일 + `.wal` 짝은 일관이다(쓰기는 이 스레드뿐).
+            # 다만 조용히 삼키면 실패가 몇 번 났는지 셀 수 없다 — 찍는다.
+            print(f"vinc: snapshot CHECKPOINT skipped: {type(exc).__name__}: {exc}",
+                  file=sys.stderr, flush=True)
         src = self._cfg.data_dir or os.path.join(os.getcwd(), "vinc_store")
+        if not os.path.isdir(src):
+            left = [src + s for s in (".wal.checkpoint", ".shadow") if os.path.exists(src + s)]
+            if left:
+                raise RuntimeError("store has an unfinished checkpoint; not copying "
+                                   f"a partial generation ({', '.join(left)})")
         os.makedirs(dest_dir, exist_ok=True)
         base = os.path.basename(src.rstrip("/")) or "store"
         dest = os.path.join(dest_dir, base)
@@ -2037,6 +2054,12 @@ class EmbeddedBackend:
         # 밟는다 — DDL 과 같이 혼자 돈다.
         with DDL_GUARD.exclusive():
             return self._snapshot_reopen(src, _copy, dest)
+
+    def _checkpoint_alone(self) -> None:
+        """수동 CHECKPOINT 를 다른 문장 없이 돌린다 — 모든 읽기가 끝나길 기다렸다가,
+        도는 동안 새 읽기를 세운다. 읽기와 겹친 체크포인트는 엔진을 죽인다(`snapshot`)."""
+        with DDL_GUARD.exclusive():
+            self.run("CHECKPOINT")
 
     def _snapshot_reopen(self, src: str, _copy, dest: str) -> str:
         drv, _name = _import_driver()
