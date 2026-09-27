@@ -6,7 +6,7 @@
  *
  *  규칙은 하나다: **조용히 짐작하지 않는다.** 쓰기는 무엇을 만들었고 무엇을 맞췄고 무엇을
  *  거절당했는지를 말하고, 이미 있는 id 에 조용히 합치지 않는다.
- *  근거: 그래프 문서 vinc.plan.view-card-timeline-period-authoring-2026-09-27 Part 3
+ *  근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] Part 3
  *  (인용 대조표 `scripts/graph-refs.json` 이 이 문서를 아직 싣지 않아 이중대괄호를 뺐다). */
 import { api, cfg, docMidWrite } from "./api";
 import { COPY } from "./copy";
