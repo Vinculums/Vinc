@@ -1,0 +1,33 @@
+{
+  "common": [
+    {"shape": "tools.InvalidArgument before quota", "code": "invalid_argument"},
+    {"shape": "sidecar transport failed before a result", "code": "upstream_unavailable"},
+    {"shape": "unexpected tool exception or unclassified executed:false", "code": "internal"}
+  ],
+  "tools": {
+    "vinc_search": [{"shape": "executed:false error invalid_cursor or stale_cursor", "code": "invalid_argument"}, {"shape": "executed:true rows:[]", "code": "success"}],
+    "vinc_brief": [{"shape": "status:none with unreadable/unknown node", "code": "not_found"}, {"shape": "executed:false for missing source", "code": "not_found"}],
+    "vinc_recall": [{"shape": "executed:false error invalid_cursor or stale_cursor", "code": "invalid_argument"}, {"shape": "executed:true rows:[]", "code": "success"}],
+    "vinc_graph": [{"shape": "found:false or unknown seed", "code": "not_found"}, {"shape": "valid URL selects a document, domain, or whole view", "code": "invalid_argument"}],
+    "vinc_decide": [{"shape": "found:false topic has no exact match", "code": "not_found"}],
+    "vinc_domains": [{"shape": "executed:true rows:[]", "code": "success"}],
+    "vinc_suggest_ties": [{"shape": "unknown node/found:false", "code": "not_found"}, {"shape": "suggestions:[] for an existing node", "code": "success"}],
+    "vinc_neighbors": [{"shape": "found:false unknown node", "code": "not_found"}, {"shape": "found:true neighbors:[]", "code": "success"}],
+    "vinc_path": [{"shape": "found:false unknown endpoint or no path", "code": "not_found"}],
+    "vinc_merge_candidates": [{"shape": "candidates:[]", "code": "success"}],
+    "vinc_merge_reject": [{"shape": "executed:false invalid pair", "code": "invalid_argument"}],
+    "vinc_merge_rejections": [{"shape": "rejections:[]", "code": "success"}],
+    "vinc_diagnose": [{"shape": "executed:false algorithm unavailable", "code": "upstream_unavailable"}, {"shape": "executed:true components:[]", "code": "success"}],
+    "vinc_conventions": [{"shape": "fallback default conventions", "code": "success"}],
+    "vinc_whoami": [{"shape": "spaces_source:unavailable", "code": "success"}],
+    "vinc_ingest": [{"shape": "partial:true with warnings and id_conflicts", "code": "success"}, {"shape": "executed:false no store", "code": "upstream_unavailable"}],
+    "vinc_delete": [{"shape": "executed:false unknown node", "code": "not_found"}],
+    "vinc_delete_edge": [{"shape": "executed:false unknown edge", "code": "not_found"}],
+    "vinc_merge_nodes": [{"shape": "executed:false unknown keep/drop node", "code": "not_found"}, {"shape": "executed:false invalid merge pair", "code": "invalid_argument"}],
+    "vinc_doc_put": [{"shape": "executed:false invalid text or id", "code": "invalid_argument"}, {"shape": "executed:false no store", "code": "upstream_unavailable"}],
+    "vinc_doc_extract": [{"shape": "executed:false unknown doc_id", "code": "not_found"}, {"shape": "apply:false with candidates:[]", "code": "success"}],
+    "vinc_doc_get": [{"shape": "executed:false unknown doc_id", "code": "not_found"}, {"shape": "verified:false or chunk_count mismatch", "code": "upstream_unavailable"}],
+    "vinc_doc_list": [{"shape": "executed:false error invalid_cursor", "code": "invalid_argument"}, {"shape": "executed:true docs:[]", "code": "success"}],
+    "vinc_doc_delete": [{"shape": "executed:false unknown doc_id", "code": "not_found"}]
+  }
+}

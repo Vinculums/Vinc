@@ -39,7 +39,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import edverify, entitlement, tools, viewurl
+from . import edverify, entitlement, toolcall, tools, viewurl
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
 from .rpc import PROTOCOL_VERSIONS, Dispatcher
@@ -1193,105 +1193,47 @@ class _Handler(BaseHTTPRequestHandler):
             # 주소에서 읽었다고 멤버십을 건너뛰지 않는다. 명시 인자가 있으면 그것이
             # 이긴다(`seed_id` 가 url 의 시드를 이기는 것과 같은 규칙).
             # 근거: [[decision:a-node-address-names-its-space]]
-            def _auth_for(m):
-                if space or m.get("method") != "tools/call":
-                    return auth
-                args = (m.get("params") or {}).get("arguments") or {}
-                want = str(args.get("space") or "").strip().lower()
-                if not want and isinstance(args, dict) and args.get("url"):
-                    want = viewurl.space_of(str(args["url"]))
-                    if want == viewurl.LOCAL:
-                        return _ON_DEVICE
-                if not want or want == viewurl.PERSONAL:
-                    return auth
-                if not _UUID_RE.match(want):
-                    return None          # 모양이 틀린 것은 계정에 묻지도 않는다
-                # 인자로 고른 팀: 요청은 **개인 끝점**에 도착했다. 주소가 아니라
-                # 인자이므로 토큰의 audience 는 `/mcp` 여야 맞다.
-                got = self._auth(want, presented_at="/mcp")
-                return got if got["ok"] else None
+            def _gate_for(m):
+                if m.get("method") != "tools/call":
+                    return toolcall.Outcome("ok", auth=auth)
+                params = m.get("params") or {}
+                args = params.get("arguments") or {}
+                return toolcall.preflight(
+                    params.get("name") or "", args, base_auth=auth,
+                    address_space=space,
+                    authenticate=lambda want: self._auth(want, presented_at="/mcp"),
+                    valid_space=lambda want: bool(_UUID_RE.match(want)))
 
-            pairs = [(m, _auth_for(m)) for m in msgs]
-            # 한 기기에만 있는 그래프의 주소다(데스크탑 로컬 모드). 이 허브에는 그
-            # 그래프가 없으므로 개인으로 떨어뜨리면 **같은 id 의 다른 노드**를 보여 줄
-            # 수 있다. 팀 id 가 아니라 조직을 훑을 거리도 없으니 이유를 그대로 말한다.
-            on_device = next((m for m, a in pairs if a is _ON_DEVICE), None)
-            if on_device is not None:
+            # 배치는 기존 게이트 우선순위를 유지한다: 모든 메시지의 스페이스를
+            # 먼저 보고, 그 다음 역할, 읽기 전용 키 순서로 첫 거절을 고른다.
+            # 근거: [[decision:the-space-is-an-argument-and-the-default-is-personal]]
+            gated = [(m, _gate_for(m)) for m in msgs]
+
+            def _tool_error(m, message):
                 return self._json(200, {
-                    "jsonrpc": "2.0", "id": on_device.get("id"),
-                    "result": {"isError": True, "content": [{"type": "text",
-                               "text": "that address points at a graph kept on one "
-                                       "device (the desktop app in local mode), which "
-                                       "this hosted connector cannot read. Use the "
-                                       "desktop app's own connector on that device."}]}})
-            # 닿을 수 없는 스페이스는 **전부 같은 답**이다 — 모르는 팀·비멤버·제명·
-            # 정지·모양 오류가 갈리면 id 를 추측해 조직을 훑을 수 있다(팀 주소가 404
-            # 하나로 답하는 것과 같은 이유). 여기서는 도구 결과 봉투라 isError 다.
-            unreachable = next((m for m, a in pairs if a is None), None)
-            if unreachable is not None:
-                return self._json(200, {
-                    "jsonrpc": "2.0", "id": unreachable.get("id"),
-                    "result": {"isError": True, "content": [{"type": "text",
-                               "text": "no such space. Call vinc_whoami to see the "
-                                       "spaces you can reach."}]}})
-            # 역할 게이트 — 팀 스페이스에서만. 등급은 주석표에서 유도한다(op 표는
-            # 프록시 op 로 키가 잡혀 있어 도구 6개를 못 덮는다). 거절은 브리지를
-            # **부르지 않는다** — 그게 이 게이트의 성질이지 상태코드가 아니다.
-            # 조건이 `space`(주소)에서 **해석된 owner**로 바뀌었다: 인자로 고른 팀도
-            # 같은 게이트를 지나야 하고, 주소로 온 것만 검사하면 그게 우회로가 된다.
-            blocked = [(m, a) for m, a in pairs
-                       if m.get("method") == "tools/call"
-                       and str(a.get("owner") or "").startswith("team:")
-                       and not tools.role_allows(
-                           a.get("role") or "",
-                           ((m.get("params") or {}).get("name") or ""))]
-            if blocked:
-                bm, ba = blocked[0]
-                brole = ba.get("role") or ""
-                name = ((bm.get("params") or {}).get("name") or "")
-                return self._json(200, {
-                    "jsonrpc": "2.0", "id": bm.get("id"),
-                    "result": {"isError": True, "content": [{"type": "text",
-                               "text": f"role {brole!r} may not call {name}"}]}})
+                    "jsonrpc": "2.0", "id": m.get("id"),
+                    "result": {"isError": True,
+                               "content": [{"type": "text", "text": message}]}})
+
+            for kind in ("on_device", "space_not_found", "role_denied"):
+                denied = next(((m, g) for m, g in gated if g.kind == kind), None)
+                if denied is not None:
+                    return _tool_error(denied[0], denied[1].message)
             if space:
-                # W2 — `prompts/*` 도 같은 게이트를 지난다. 이 메서드들은 스토어를
-                # 조회하므로, "모르는 역할은 거부"라는 규칙을 메서드 하나가 비켜 가면
-                # 그 메서드가 팀 스페이스의 우회로가 된다. 등급은 세 번째 표를 만들지
-                # 않고 주석표에서 유도한다 — prompts 가 읽는 것은 vinc_neighbors 와
-                # vinc_graph 가 읽는 것이라 등급도 그것(viewer)이다.
-                # 거절 모양이 위와 다른 이유: prompts 에는 tools/call 의 결과 봉투가
-                # 없다. 그 봉투로 답하면 호스트가 프롬프트 대신 도구 결과를 읽는다.
-                # ⚠ 여기는 **주소 기준 그대로**다 — prompts 에는 인자가 없어서 스페이스를
-                # 고를 수단이 애초에 없고, 그래서 고를 수 있는 척하면 안 된다.
+                # prompts 는 도구 봉투가 아니라 프로토콜 오류로 거절한다.
                 role = auth.get("role") or ""
-                if any(str(m.get("method") or "").startswith("prompts/") for m in msgs)                         and not tools.role_allows(role, "vinc_neighbors"):
+                if any(str(m.get("method") or "").startswith("prompts/") for m in msgs) \
+                        and not tools.role_allows(role, "vinc_neighbors"):
                     first = next(m for m in msgs
                                  if str(m.get("method") or "").startswith("prompts/"))
                     return self._json(200, {
                         "jsonrpc": "2.0", "id": first.get("id"),
                         "error": {"code": -32603,
                                   "message": f"role {role!r} may not read prompts"}})
-            # W18 — 읽기 전용 키 게이트([[decision:scoped-key-tier]]). 등급은 팀 역할
-            # 게이트와 같은 주석표 유도(tool_tier)를 쓴다 — viewer 등급만 읽기다.
-            # 'full' 정확일치만 쓰기를 연다: scope 부재·미지 값은 전부 거부다
-            # (fail-closed — 집행되지 않는 스코프는 무음 전권이다). 미지 도구명도
-            # 여기서 막힌다(tool_tier 가 admin 을 주므로) — 뒤의 -32602 보다 먼저
-            # 닫히는 것이 안전측이다. 거절은 브리지를 부르지 않는다. prompts/* 는
-            # 조회라 통과한다(스토어 읽기 = viewer 와 같은 등급).
-            # 스코프도 메시지별이다 — 스페이스마다 다른 답이 올 수 있다.
-            ro_blocked = [m for m, a in pairs
-                          if m.get("method") == "tools/call"
-                          and a.get("scope") != "full"
-                          and tools.tool_tier(
-                              ((m.get("params") or {}).get("name") or "")) != "viewer"]
-            if ro_blocked:
-                name = ((ro_blocked[0].get("params") or {}).get("name") or "")
-                return self._json(200, {
-                    "jsonrpc": "2.0", "id": ro_blocked[0].get("id"),
-                    "result": {"isError": True, "content": [{"type": "text",
-                               "text": f"this key is read-only: {name} writes "
-                                       "to the graph. Mint a full-access key "
-                                       "at https://vincs.io/account"}]}})
+            denied = next(((m, g) for m, g in gated if g.kind == "read_only"), None)
+            if denied is not None:
+                return _tool_error(denied[0], denied[1].message)
+            pairs = [(m, g.auth) for m, g in gated]
             d = self.app.dispatcher()
 
             def _run(m, a):
