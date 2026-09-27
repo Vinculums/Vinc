@@ -41,6 +41,15 @@ _OWNER_HELP = ("owner_id — 데스크탑 앱이 쓰는 값은 `user:local` 이�
 
 
 def _emit(obj: dict) -> int:
+    unavailable = (isinstance(obj, dict) and
+                   ("reachable store" in str(obj.get("error") or "") or
+                    "reachable store" in str(obj.get("note") or "")))
+    if unavailable:
+        from store.embedded_backend import EmbeddedBackend
+        reason = str(EmbeddedBackend.last_open_error or "")
+        if "lock" in reason.lower() or "another process" in reason.lower():
+            obj = {"kind": "error", "executed": False,
+                   "error": {"code": "store_in_use", "message": "store is in use"}}
     return cli_output.emit(obj)
 
 
@@ -317,7 +326,13 @@ def _main(argv: list[str] | None = None) -> int:
         if getattr(args, name, None):
             command += " " + getattr(args, name)
     cli_output.configure(args.console_format, command)
-    cli_output.chosen_format()  # validate the environment before executing a verb
+    cli_output.chosen_format()  # 동사를 실행하기 전에 환경값을 검증한다.
+
+    # 열린 앱이 정확히 이 파일을 제공하면 그 단일 writer 에 요청한다.
+    from .cli_transport import request_if_attached
+    attached = request_if_attached(args, stdin=sys.stdin)
+    if attached is not None:
+        return _emit(attached)
 
     if args.cmd == "recall":
         return _emit(q.recall(args.query, owner=args.owner, domain=args.domain, tenant=args.tenant,
@@ -728,6 +743,9 @@ def _main(argv: list[str] | None = None) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     cli_output.configure(None, "")
+    backend_module = sys.modules.get("store.embedded_backend")
+    if backend_module is not None:
+        backend_module.EmbeddedBackend.last_open_error = ""
     try:
         return _main(argv)
     except _UsageError as exc:
@@ -739,9 +757,9 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         return cli_output.internal_error(exc, debug="--debug" in (argv or sys.argv[1:]))
     except SystemExit as exc:
-        # argparse's --help is a successful early exit; other parser exits keep their code.
+        # argparse 의 --help 는 성공 종료이고, 나머지 종료 코드는 보존한다.
         return int(exc.code or 0)
-    except Exception as exc:  # noqa: BLE001 - the CLI has one structured error boundary
+    except Exception as exc:  # noqa: BLE001 — CLI 오류 경계를 한 곳에 둔다.
         return cli_output.internal_error(exc, debug="--debug" in (argv or sys.argv[1:]))
 
 
