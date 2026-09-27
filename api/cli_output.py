@@ -11,7 +11,7 @@ from typing import Any
 _format: contextvars.ContextVar[str | None] = contextvars.ContextVar("vinc_cli_format", default=None)
 _command: contextvars.ContextVar[str] = contextvars.ContextVar("vinc_cli_command", default="")
 
-# The list member is part of each tool's public result, not inferred from the first row.
+# 목록 필드는 도구별 공개 응답 계약이다. 첫 행을 보고 추측하지 않는다.
 LIST_FIELDS = {
     "recall": "rows", "domains": "domains", "search": "rows",
     "doc ls": "docs", "graph": "nodes", "decide": "nodes",
@@ -85,7 +85,7 @@ def emit(result: Any) -> int:
         else:
             sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
     else:
-        # This is deliberately the pre-0.9.6 byte representation.
+        # 0.9.6 이전 JSON 바이트 형식을 그대로 둔다.
         sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
     return code
 
