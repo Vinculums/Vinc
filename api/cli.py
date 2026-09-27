@@ -18,6 +18,7 @@ import sys
 from . import query as q
 from . import preference as pref
 from . import activate as act
+from . import cli_output
 
 
 def _csv(val: str | None) -> list[str] | None:
@@ -40,11 +41,35 @@ _OWNER_HELP = ("owner_id — 데스크탑 앱이 쓰는 값은 `user:local` 이�
 
 
 def _emit(obj: dict) -> int:
-    sys.stdout.write(json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
-    return 0
+    return cli_output.emit(obj)
 
 
-def main(argv: list[str] | None = None) -> int:
+class _UsageError(Exception):
+    pass
+
+
+class _Parser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise _UsageError(message)
+
+
+def _add_output_options(parser: argparse.ArgumentParser, *, root: bool = False) -> None:
+    default = None if root else argparse.SUPPRESS
+    parser.add_argument("--format", choices=("human", "json", "ndjson"),
+                        dest="console_format", default=default,
+                        help="console result format")
+    parser.add_argument("--json", action="store_const", const="json",
+                        dest="console_format", default=default,
+                        help="alias for --format json")
+    parser.add_argument("--debug", action="store_true", default=False if root else argparse.SUPPRESS,
+                        help="show a traceback for unexpected errors")
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for child in action.choices.values():
+                _add_output_options(child)
+
+
+def _main(argv: list[str] | None = None) -> int:
     # Windows 콘솔/파이프 기본 인코딩(cp949)에서 비ASCII 직렬화(ensure_ascii=False,
     # MCP stdio 포함)가 UnicodeEncodeError 로 죽는 문제 — MCP 규약(UTF-8)에 맞춰
     # 표준 스트림을 UTF-8 로 재구성한다(재구성 불가 스트림은 그대로 둠).
@@ -60,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
         except Exception:
             pass
 
-    ap = argparse.ArgumentParser(description="Vinc query API")
+    ap = _Parser(description="Vinc query API")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     r = sub.add_parser("recall", help="recall a learner's episodes (owner + open domain scope)")
@@ -285,7 +310,14 @@ def main(argv: list[str] | None = None) -> int:
     msub.add_parser("manual",
                     help="print a paste-ready stdio entry for hosts without an installer")
 
+    _add_output_options(ap, root=True)
     args = ap.parse_args(argv)
+    command = args.cmd
+    for name in ("doccmd", "gmcmd", "mcpcmd"):
+        if getattr(args, name, None):
+            command += " " + getattr(args, name)
+    cli_output.configure(args.console_format, command)
+    cli_output.chosen_format()  # validate the environment before executing a verb
 
     if args.cmd == "recall":
         return _emit(q.recall(args.query, owner=args.owner, domain=args.domain, tenant=args.tenant,
@@ -692,6 +724,25 @@ def main(argv: list[str] | None = None) -> int:
             passphrase = getpass.getpass("passphrase: ")
         return _emit(auth.create_profile(passphrase, path=args.profile, force=args.force))
     return 2
+
+
+def main(argv: list[str] | None = None) -> int:
+    cli_output.configure(None, "")
+    try:
+        return _main(argv)
+    except _UsageError as exc:
+        print(f"vinc: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        if str(exc).startswith("VINC_FORMAT must"):
+            print(f"vinc: {exc}", file=sys.stderr)
+            return 2
+        return cli_output.internal_error(exc, debug="--debug" in (argv or sys.argv[1:]))
+    except SystemExit as exc:
+        # argparse's --help is a successful early exit; other parser exits keep their code.
+        return int(exc.code or 0)
+    except Exception as exc:  # noqa: BLE001 - the CLI has one structured error boundary
+        return cli_output.internal_error(exc, debug="--debug" in (argv or sys.argv[1:]))
 
 
 if __name__ == "__main__":
