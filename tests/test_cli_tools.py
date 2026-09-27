@@ -12,11 +12,15 @@ from unittest.mock import patch
 
 from api import cli
 from api.cli_tools import _tool_request
+from vinc_mcp import tools
 
 
 class ToolVerbTests(unittest.TestCase):
     def test_flag_mapping(self):
         cases = [
+            ("whoami", None, {}, "vinc_whoami", {}),
+            ("conventions", None, {"lang": "ko"}, "vinc_conventions", {"lang": "ko"}),
+            ("node", "get", {"id": "concept:x"}, "vinc_brief", {"query": "concept:x"}),
             ("node", "neighbors", {"id": "concept:x", "limit": 7},
              "vinc_neighbors", {"node": "concept:x", "limit": 7}),
             ("node", "graph", {"id": "concept:x", "depth": 3},
@@ -25,6 +29,19 @@ class ToolVerbTests(unittest.TestCase):
              "vinc_path", {"a": "concept:a", "b": "concept:b", "max_depth": 4}),
             ("ties", None, {"id": "concept:x", "limit": 2},
              "vinc_suggest_ties", {"node": "concept:x", "limit": 2}),
+            ("diagnose", None, {"kind": "components", "node": None},
+             "vinc_diagnose", {"kind": "components", "node": None}),
+            ("delete", None, {"id": "concept:x"},
+             "vinc_delete", {"node_id": "concept:x"}),
+            ("edge", "delete", {"from_id": "concept:a", "to_id": "concept:b",
+                                 "type": "relates_to"},
+             "vinc_delete_edge", {"from_id": "concept:a", "to_id": "concept:b",
+                                  "type": "relates_to"}),
+            ("merge", "nodes", {"keep": "concept:a", "drop": "concept:b"},
+             "vinc_merge_nodes", {"keep_id": "concept:a", "drop_id": "concept:b"}),
+            ("merge", "candidates", {"limit": 5},
+             "vinc_merge_candidates", {"limit": 5}),
+            ("merge", "rejections", {}, "vinc_merge_rejections", {}),
             ("merge", "reject", {"a": "a", "b": "b", "undo": True, "note": "distinct"},
              "vinc_merge_reject", {"a": "a", "b": "b", "undo": True, "note": "distinct"}),
             ("doc", "extract", {"id": "d", "apply": False},
@@ -35,9 +52,28 @@ class ToolVerbTests(unittest.TestCase):
                 args = {"cmd": cmd, "owner": None, **flags}
                 if subcmd:
                     args["nodecmd" if cmd == "node" else
-                         "mergecmd" if cmd == "merge" else "doccmd"] = subcmd
+                         "mergecmd" if cmd == "merge" else
+                         "edgecmd" if cmd == "edge" else "doccmd"] = subcmd
                 got_name, got_args, destructive = _tool_request(SimpleNamespace(**args))
-                self.assertEqual((got_name, got_args, destructive), (name, expected, None))
+                want_guard = (flags.get("id") if cmd == "delete" else
+                              "edge" if cmd == "edge" else
+                              flags.get("drop") if cmd == "merge" and subcmd == "nodes"
+                              else None)
+                self.assertEqual((got_name, got_args, destructive),
+                                 (name, expected, want_guard))
+
+    def test_call_registry_covers_all_24_tools(self):
+        names = {item["name"] for item in tools.TOOLS}
+        self.assertEqual(len(names), 24)
+        guarded = {"vinc_delete", "vinc_delete_edge", "vinc_merge_nodes",
+                   "vinc_doc_delete"}
+        for name in sorted(names):
+            with self.subTest(name=name):
+                got_name, data, destructive = _tool_request(SimpleNamespace(
+                    cmd="call", tool=name, args="{}", args_file=None))
+                self.assertEqual(got_name, name)
+                self.assertEqual(data, {})
+                self.assertEqual(bool(destructive), name in guarded)
 
     def test_confirmation_required_in_pipe(self):
         out, err = io.StringIO(), io.StringIO()
