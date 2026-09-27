@@ -297,9 +297,11 @@ jobs:
         # 상류가 고치면 이 분기를 지운다.
         shell: bash
         run: |
-          v=0.20.4
-          if [ "$RUNNER_OS" = "Windows" ]; then v=0.20.3; fi
-          pip install "ladybug==$v" pyyaml pyinstaller pypdf
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pip install ladybug==0.20.3 pyyaml pyinstaller pypdf
+          else
+            pip install ladybug==0.20.4 pyyaml pyinstaller pypdf
+          fi
       # ⚠ ladybug 의 `INSTALL` 을 쓰지 않는다. 0.18.0 의 내장 다운로더가 확장 서버
       # 인증서를 검증하지 못해 **CI 에서만** 죽는다(2026-08-01 실측):
       #   RuntimeException: Failed to download extension: vector
