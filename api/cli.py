@@ -345,6 +345,13 @@ def _main(argv: list[str] | None = None) -> int:
     ex.add_argument("--domain", default=None, help="topic and its descendants")
     ex.add_argument("--excel", action="store_true", help="write a UTF-8 BOM to CSV files")
 
+    rf = sub.add_parser("refs", help="check or refresh graph citations")
+    rfsub = rf.add_subparsers(dest="refscmd", required=True)
+    for verb in ("check", "refresh"):
+        child = rfsub.add_parser(verb)
+        child.add_argument("--manifest", default=None)
+        child.add_argument("--root", dest="roots", action="append", default=None)
+
     # ── GRAPH.md — 어시스턴트 쓰기 관례 ([[vinc.canon.graph-conventions]]) ──────────────────────
     gm = sub.add_parser("graph-md", help="assistant writing conventions — build/check GRAPH.md")
     gmsub = gm.add_subparsers(dest="gmcmd", required=True)
@@ -412,7 +419,7 @@ def _main(argv: list[str] | None = None) -> int:
     _add_output_options(ap, root=True)
     args = ap.parse_args(argv)
     command = args.cmd
-    for name in ("doccmd", "gmcmd", "mcpcmd", "nodecmd", "edgecmd", "mergecmd"):
+    for name in ("doccmd", "gmcmd", "mcpcmd", "nodecmd", "edgecmd", "mergecmd", "refscmd"):
         if getattr(args, name, None):
             command += " " + getattr(args, name)
     cli_output.configure(args.console_format, command)
@@ -435,6 +442,22 @@ def _main(argv: list[str] | None = None) -> int:
     attached = request_if_attached(args, stdin=sys.stdin)
     if attached is not None:
         return _emit(attached)
+
+    if args.cmd == "refs":
+        from . import refs
+        roots = args.roots or [refs.ROOT]
+        manifest = args.manifest or refs.MANIFEST
+        if any(not os.path.isdir(root) for root in roots):
+            print("vinc: --root must name an existing directory", file=sys.stderr)
+            return 2
+        if args.refscmd == "check":
+            return refs.offline_check(manifest=manifest, roots=roots)
+        try:
+            return refs.refresh(manifest=manifest, root=roots[0],
+                                scan=lambda: refs.scan_roots(roots))
+        except SystemExit as exc:
+            print(f"vinc: {exc}", file=sys.stderr)
+            return 1
 
     if args.cmd == "recall":
         return _emit(q.recall(args.query, owner=args.owner, domain=args.domain, tenant=args.tenant,
