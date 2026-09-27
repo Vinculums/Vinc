@@ -79,6 +79,13 @@ def _add_output_options(parser: argparse.ArgumentParser, *, root: bool = False) 
 
 
 def _main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # `merge <keep> <drop>`는 도구 병합의 짧은 표기다.
+    if "merge" in argv:
+        at = argv.index("merge")
+        if at + 1 < len(argv) and argv[at + 1] not in {
+                "nodes", "candidates", "reject", "rejections", "--help", "-h"}:
+            argv.insert(at + 1, "nodes")
     # Windows 콘솔/파이프 기본 인코딩(cp949)에서 비ASCII 직렬화(ensure_ascii=False,
     # MCP stdio 포함)가 UnicodeEncodeError 로 죽는 문제 — MCP 규약(UTF-8)에 맞춰
     # 표준 스트림을 UTF-8 로 재구성한다(재구성 불가 스트림은 그대로 둠).
@@ -251,9 +258,83 @@ def _main(argv: list[str] | None = None) -> int:
     dr.add_argument("--id", required=True)
     dr.add_argument("--owner", default=None, help="owner guard (SEC-1)")
     dr.add_argument("--data", default=None)
+    dr.add_argument("--yes", action="store_true", help="confirm deletion")
     dl = dsub.add_parser("ls", help="list documents")
     dl.add_argument("--owner", default=None)
     dl.add_argument("--data", default=None)
+
+    # MCP 도구와 같은 결과 봉투를 쓰는 로컬 동사. 오래된 동사는 C6에서 옮긴다.
+    wi = sub.add_parser("whoami", help="show the local graph identity")
+    wi.add_argument("--owner", default=None)
+    cv = sub.add_parser("conventions", help="read graph conventions")
+    cv.add_argument("--lang", default=None)
+    cv.add_argument("--owner", default=None)
+    nd = sub.add_parser("node", help="read a graph node")
+    nds = nd.add_subparsers(dest="nodecmd", required=True)
+    for verb in ("get", "neighbors", "graph"):
+        child = nds.add_parser(verb)
+        child.add_argument("id")
+        child.add_argument("--owner", default=None)
+        if verb == "neighbors":
+            child.add_argument("--limit", type=int, default=50)
+        if verb == "graph":
+            child.add_argument("--depth", type=int, default=2)
+    pa = sub.add_parser("path", help="find a graph path")
+    pa.add_argument("a")
+    pa.add_argument("b")
+    pa.add_argument("--max-depth", type=int, default=6)
+    pa.add_argument("--owner", default=None)
+    ti = sub.add_parser("ties", help="suggest graph ties")
+    ti.add_argument("id")
+    ti.add_argument("--limit", type=int, default=5)
+    ti.add_argument("--owner", default=None)
+    di = sub.add_parser("diagnose", help="diagnose graph structure")
+    di.add_argument("--kind", default="components")
+    di.add_argument("--node", default=None)
+    di.add_argument("--owner", default=None)
+    ig = sub.add_parser("ingest", help="ingest a graph fragment")
+    ig.add_argument("--file", required=True)
+    ig.add_argument("--owner", default=None)
+    de = sub.add_parser("delete", help="delete one node")
+    de.add_argument("id")
+    de.add_argument("--owner", default=None)
+    de.add_argument("--yes", action="store_true")
+    ed = sub.add_parser("edge", help="graph edge operations")
+    eds = ed.add_subparsers(dest="edgecmd", required=True)
+    edel = eds.add_parser("delete")
+    edel.add_argument("--from", dest="from_id", required=True)
+    edel.add_argument("--to", dest="to_id", required=True)
+    edel.add_argument("--type", required=True)
+    edel.add_argument("--owner", default=None)
+    edel.add_argument("--yes", action="store_true")
+    mg = sub.add_parser("merge", help="merge and review graph nodes")
+    mgs = mg.add_subparsers(dest="mergecmd", required=True)
+    mgo = mgs.add_parser("nodes")
+    mgo.add_argument("keep")
+    mgo.add_argument("drop")
+    mgo.add_argument("--owner", default=None)
+    mgo.add_argument("--yes", action="store_true")
+    mgc = mgs.add_parser("candidates")
+    mgc.add_argument("--limit", type=int, default=20)
+    mgc.add_argument("--owner", default=None)
+    mgr = mgs.add_parser("reject")
+    mgr.add_argument("a")
+    mgr.add_argument("b")
+    mgr.add_argument("--note", default="")
+    mgr.add_argument("--undo", action="store_true")
+    mgr.add_argument("--owner", default=None)
+    mgx = mgs.add_parser("rejections")
+    mgx.add_argument("--owner", default=None)
+    dx = dsub.add_parser("extract", help="extract nodes from a canonical document")
+    dx.add_argument("id")
+    dx.add_argument("--apply", action="store_true")
+    dx.add_argument("--owner", default=None)
+    ca = sub.add_parser("call", help="call any of the 24 MCP tools")
+    ca.add_argument("tool")
+    source = ca.add_mutually_exclusive_group()
+    source.add_argument("--args", default=None, help="JSON object")
+    source.add_argument("--args-file", default=None, help="JSON file or - for stdin")
+    ca.add_argument("--yes", action="store_true")
 
     # ── GRAPH.md — 어시스턴트 쓰기 관례 ([[vinc.canon.graph-conventions]]) ──────────────────────
     gm = sub.add_parser("graph-md", help="assistant writing conventions — build/check GRAPH.md")
@@ -322,11 +403,24 @@ def _main(argv: list[str] | None = None) -> int:
     _add_output_options(ap, root=True)
     args = ap.parse_args(argv)
     command = args.cmd
-    for name in ("doccmd", "gmcmd", "mcpcmd"):
+    for name in ("doccmd", "gmcmd", "mcpcmd", "nodecmd", "edgecmd", "mergecmd"):
         if getattr(args, name, None):
             command += " " + getattr(args, name)
     cli_output.configure(args.console_format, command)
     cli_output.chosen_format()  # 동사를 실행하기 전에 환경값을 검증한다.
+    if args.cmd in {"whoami", "conventions", "node", "path", "ties", "diagnose",
+                    "ingest", "delete", "edge", "merge", "call"} or \
+            (args.cmd == "doc" and args.doccmd == "extract"):
+        from .cli_tools import run as run_tool
+        result, exit_code = run_tool(args)
+        return exit_code if exit_code is not None else _emit(result)
+
+    if args.cmd == "doc" and args.doccmd == "rm":
+        from .cli_tools import _confirm
+        if not _confirm(args, args.id):
+            print("vinc: confirmation required; pass --yes", file=sys.stderr)
+            return 2
+
     # 열린 앱이 정확히 이 파일을 제공하면 그 단일 writer 에 요청한다.
     from .cli_transport import request_if_attached
     attached = request_if_attached(args, stdin=sys.stdin)
