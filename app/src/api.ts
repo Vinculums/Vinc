@@ -151,6 +151,24 @@ export async function connectSidecar(): Promise<void> {
   sidecarDiag += ` · health TIMEOUT · sidecar[${why}]`;
 }
 
+/** 로그인 직전에 사이드카가 답하는지 본다. 셸이 "끝났다"고 알면 다시 띄운다.
+ *
+ *  로그인은 사이드카 루프백으로 키를 받는다. 기동 중에 죽은 사이드카(스토어 열기가 엔진을
+ *  죽인 경우)를 두고는 단추를 몇 번 눌러도 같은 실패만 반복됐다. 아직 뜨는 중이면 죽이지
+ *  않고 기다린다: 로그인 화면은 사이드카를 기다리지 않고 먼저 뜨므로 바로 누를 수 있다.
+ *  근거: [[record:a-wal-that-crashes-the-engine-takes-the-desktop-sign-in-down-2026-09-27]] */
+export async function ensureSidecar(): Promise<boolean> {
+  const invoke = await shellInvoke();
+  if (!invoke) return true;                       // 웹·브라우저 dev: 셸 사이드카가 없다
+  if (await waitForSidecar(4)) return true;
+  const alive = await invoke("sidecar_alive").then(Boolean).catch(() => true);
+  if (!alive) {
+    try { await invoke("sidecar_restart"); } catch { return false; }
+  }
+  // 남은 WAL 을 점검하면 자식 프로세스가 두 번 뜰 수 있다(store/wal_guard.py). 1분까지 본다.
+  return waitForSidecar(240);
+}
+
 /** `/health` 가 답할 때까지 250ms 간격으로 `tries` 번 묻는다. 답하면 true. */
 async function waitForSidecar(tries: number): Promise<boolean> {
   for (let i = 0; i < tries; i++) {

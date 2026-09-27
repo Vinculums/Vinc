@@ -17,13 +17,14 @@
  *  §3.3 의 기준 그대로). 그래서 여기서 막는 것은 제품의 모양이지 권한이 아니고, 권한은
  *  여전히 계정과 허브가 판정한다.
  *
- *  ⚠ 로그인은 사이드카 루프백으로 키를 받는다(`account-connect`). 그러니 이 화면은
- *  `connectSidecar` 뒤에 떠야 한다. 오프라인이면 브라우저 승인까지 갈 수 없고, 화면은
- *  실패를 말한 채 다시 시도를 기다린다. 첫 실행이 오프라인이면 못 쓰는 것은 결정의 비용이다.
+ *  ⚠ 로그인은 사이드카 루프백으로 키를 받는다(`account-connect`). 화면은 사이드카를 안
+ *  기다리고 먼저 뜨고, **단추가** 사이드카를 기다린다(죽었으면 다시 띄운다, `ensureSidecar`).
+ *  오프라인이면 브라우저 승인까지 갈 수 없고, 화면은 실패를 말한 채 다시 시도를 기다린다.
+ *  첫 실행이 오프라인이면 못 쓰는 것은 결정의 비용이다.
  */
 import { COPY } from "./copy";
 import { hasAccount, connectAccount } from "./account-connect";
-import { IN_SHELL, WEB } from "./api";
+import { IN_SHELL, WEB, ensureSidecar } from "./api";
 
 /** 이 기기에서 로그인이 필요한가. 셸만 해당한다(웹은 세션 게이트가 따로 있다).
  *
@@ -87,7 +88,8 @@ function openSignInScreen(reason: "first" | "expired") {
 
 /** 로그인이 끝날 때까지 기다린다. 이미 화면이 떠 있으면 그 약속을 같이 기다린다
  *  (부팅과 만료 신호가 겹쳐도 화면은 하나다). */
-export function requireSignIn(reason: "first" | "expired" = "first"): Promise<void> {
+export function requireSignIn(reason: "first" | "expired" = "first",
+                              sidecar: Promise<unknown> = Promise.resolve()): Promise<void> {
   if (pending) return pending;
   pending = new Promise<void>((resolve) => {
     const c = COPY.firstRun;
@@ -97,6 +99,14 @@ export function requireSignIn(reason: "first" | "expired" = "first"): Promise<vo
       // 기다리는 동안은 둘 다 잠근다 — 흐름 두 개가 같은 사이드카 상태를 두고 겹치지 않게.
       buttons.forEach((b) => { b.disabled = true; });
       state.textContent = c.opening;
+      // 키는 사이드카 루프백으로 온다. 화면은 사이드카보다 먼저 떴으므로 여기서 기다리고,
+      // 사이드카가 끝났으면 다시 띄운다. 못 띄우면 인터넷 탓이 아니라고 말한다.
+      await sidecar;
+      if (!(await ensureSidecar())) {
+        buttons.forEach((b) => { b.disabled = false; });
+        state.textContent = c.localDown;
+        return;
+      }
       const r = await connectAccount(undefined, { via });
       buttons.forEach((b) => { b.disabled = false; });
       if (r === "connected") {

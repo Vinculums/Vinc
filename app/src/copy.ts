@@ -39,6 +39,8 @@ const EN = {
     opening: "Opening your browser to sign in and approve.",
     expired: "The request expired. Try again.",
     failed: "That did not complete. Check your connection and try again.",
+    // 사이드카가 안 떴을 때. 인터넷 탓으로 돌리지 않는다(연결은 멀쩡했다, 2026-09-27).
+    localDown: "Vinc could not start on this device. Try again, and if it keeps happening, restart Vinc.",
   },
   // 계정 모드에서 계정에 못 닿을 때 화면 위에 거는 한 줄(VIN-128). 빈 화면을 "데이터가
   // 없다"로 읽히게 두지 않는다.
@@ -1028,6 +1030,7 @@ const KO: Deck = {
     opening: "로그인하고 승인할 수 있게 브라우저를 여는 중이에요",
     expired: "요청이 만료됐어요. 다시 시도해 주세요",
     failed: "연결을 마치지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요",
+    localDown: "이 기기에서 Vinc를 시작하지 못했어요. 다시 시도해 보고, 계속 안 되면 Vinc를 다시 실행해 주세요",
   },
   accountMode: {
     unreachable: "지금 계정에 연결할 수 없어요. 그래프가 계정에 있어서 연결이 돌아올 때까지 화면이 비어 있어요",

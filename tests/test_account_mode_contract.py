@@ -78,15 +78,37 @@ class CredentialTest(unittest.TestCase):
 class GateTest(unittest.TestCase):
 
     def test_로그인이_첫_화면보다_먼저다(self):
-        """사이드카 연결 → 로그인 → 모드 결정 → 첫 화면. 순서가 바뀌면 계정 모드의 첫
-        조회가 키 없이 나가거나, 로그인이 사이드카 없이 루프백을 기다린다."""
-        i_conn = MAIN_TS.index("await connectSidecar();")
-        i_sign = MAIN_TS.index('requireSignIn("first")')
+        """사이드카 연결 시작 → 로그인 → 사이드카 대기 → 모드 결정 → 첫 화면. 순서가 바뀌면
+        계정 모드의 첫 조회가 키 없이 나가거나 모드 결정이 사이드카 없이 나간다."""
+        i_conn = MAIN_TS.index("const sidecar = connectSidecar();")
+        i_sign = MAIN_TS.index('requireSignIn("first", sidecar)')
+        i_wait = MAIN_TS.index("await sidecar;", i_sign)
         i_mode = MAIN_TS.index("await decideDataMode()")
         i_route = MAIN_TS.index("route();", i_mode)
         self.assertLess(i_conn, i_sign)
-        self.assertLess(i_sign, i_mode)
+        self.assertLess(i_sign, i_wait)
+        self.assertLess(i_wait, i_mode)
         self.assertLess(i_mode, i_route)
+
+    def test_로그인_화면은_사이드카를_기다리지_않고_단추가_기다린다(self):
+        """사이드카가 기동 중에 죽으면 화면이 12초 비어 있다가 뜨고, 단추는 인터넷 탓만
+        했다(2026-09-27, WAL 재생이 엔진을 죽인 설치). 화면은 먼저 뜨고, 단추가 사이드카를
+        기다리며, 못 띄우면 인터넷이 아니라 이 기기라고 말한다."""
+        self.assertNotIn("await connectSidecar();", MAIN_TS)
+        start = FIRSTRUN_TS[FIRSTRUN_TS.index("const start = async"):]
+        i_wait = start.index("await sidecar;")
+        i_ensure = start.index("await ensureSidecar()")
+        i_connect = start.index("connectAccount(")
+        self.assertLess(i_wait, i_ensure)
+        self.assertLess(i_ensure, i_connect)
+        self.assertIn("state.textContent = c.localDown;", start[:i_connect])
+        # 아직 뜨는 중인 사이드카는 죽이지 않는다. 끝났다고 셸이 알 때만 다시 띄운다.
+        ensure = _fn(API_TS, "ensureSidecar")
+        self.assertLess(ensure.index('invoke("sidecar_alive")'), ensure.index('invoke("sidecar_restart")'))
+        self.assertIn("if (!alive)", ensure)
+        blocks = re.findall(r"\n  firstRun: \{.*?\n  \},", COPY_TS, re.S)
+        for block in blocks:
+            self.assertIn("localDown:", block)
 
     def test_오프라인_버튼이_없고_닫히지_않는다(self):
         # 풀화면이라 닫기 단추도 Esc 도 없다. 닫는 것은 로그인이 끝났을 때의 close() 하나다.
