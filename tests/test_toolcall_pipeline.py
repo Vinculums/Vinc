@@ -94,4 +94,7 @@ def test_mcp_gate_replies_keep_origin_main_bytes(tmp_path):
         cwd=Path(__file__).resolve().parents[1], env=env,
         capture_output=True, timeout=20, check=False)
     assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
-    assert output.read_bytes() == (fixtures / "mcp_gate_replies.txt").read_bytes()
+    # The fixture file's line separators may be checked out as CRLF on Windows;
+    # each tab-separated JSON payload is still compared byte for byte.
+    assert output.read_bytes().splitlines() == \
+        (fixtures / "mcp_gate_replies.txt").read_bytes().splitlines()
