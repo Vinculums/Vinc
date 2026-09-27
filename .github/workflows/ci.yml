@@ -382,6 +382,8 @@ jobs:
       # 이 게이트가 없던 동안 인용 24건 중 19건이 조용히 끊어져 있었다(2026-08-18).
       - name: Graph citation gate
         run: python -X utf8 scripts/gate_graph_refs.py
+      - name: OpenAPI v1 drift gate
+        run: python -X utf8 scripts/gen_openapi.py --check
 
       # 그래프 유래 문자열이 esc() 없이 innerHTML 로 가는가(감사 2026-08-18 M9). 팩으로
       # 들어온 노드 제목·태그가 공격자 통제 입력이라 이것이 HTML 주입이 된다. 오늘 코드

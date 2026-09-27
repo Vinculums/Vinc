@@ -1,0 +1,1857 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Vinc API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://mcp.vincs.io"
+    }
+  ],
+  "paths": {
+    "/v1/me": {
+      "get": {
+        "operationId": "vinc_whoami_get__v1_me",
+        "summary": "Which graph am I connected to, and which others can I reach? Returns {owner, scope, spaces, spaces_source}. `scope` is 'personal' or 'team' ('unscoped' for a local single-user store). `spaces` lists every space this credential can act in — 'personal' plus each team you are an active member of, each with the `id` you pass as `space` and your `role` there (viewer reads, editor writes, admin also deletes and merges). Omitting `space` acts on your personal graph, so a write with no space lands there even when you meant a team; this is how you get the id to say otherwise. `spaces_source` says where the list came from: 'account' means it is complete, 'unavailable' means the team list could not be fetched and only personal is shown (an empty team list and a failed lookup are NOT the same answer), and 'not_applicable' means you connected at a team address, which pins this session to that team and ignores the `space` argument entirely. Read-only, and free of the graph — it asks the account, not your store.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/conventions": {
+      "get": {
+        "operationId": "vinc_conventions_get__v1_conventions",
+        "summary": "Read this graph's house style BEFORE your first write in a session. Returns the owner's GRAPH.md: node kinds, relation vocabulary and direction, how big one concept should be, the domains that already exist, the ratified type vocabulary, and what not to do. If the owner has not written one, a default is returned with the domain list and ratified vocabulary filled in from their store (source:\"default\", missing:true) — those two are worth following even then. The domain list and the ratified vocabulary are recomputed from the store on every call, so they are current even when the file itself was written months ago; the built date in the header is a label saying when the prose was last generated, not when these numbers were taken. This is the only way to see the ratified vocabulary: proposing an unlisted type is allowed, but it lands as proposed and waits for a human. Writing an Agent role (concept:agent-<name>)? Its contract is the Roles section, which is always in the answer: when the owner's file has none, the default section is inserted and `roles_section` reads 'default' (the stored file is unchanged). A role write that breaks the contract is still stored, and vinc_ingest says what is wrong in `warnings`. THE RESPONSE ALSO TELLS YOU WHERE YOU ARE: `owner` is the graph you are connected as, `scope` is 'personal' or 'team' (or 'unscoped' for a local single-user store), and `target` echoes local versus remote. Read them before your first write. Use vinc_whoami when you want that answer on its own, or the list of spaces you can reach; this tool carries it too so the first door already tells you. On a hosted connector the space is your personal graph unless you say otherwise: pass `space` to any tool to act in a team instead (vinc_whoami lists the ids and your role in each). Connecting at a team address `/t/<team-uuid>/mcp` still works and pins every call in this session to that team, ignoring the argument; both API keys and OAuth are accepted there.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lang",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "en",
+                "ko"
+              ],
+              "description": "Language of the default template (ignored when the owner has written their own)."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/domains": {
+      "get": {
+        "operationId": "vinc_domains_get__v1_domains",
+        "summary": "List the domains actually present in this owner's graph, with per-kind node counts. Returns {kind, executed, rows:[{domain, episodes, concepts, records, decisions, total}]}, largest total first. Nodes with NO domain are counted too, as the single row '(none)' — an untopiced node is a count here, not an absence, so this is also how you find what still needs a topic. The free-tier topic cap does not count that row. This list is FLAT: it aggregates the `domain` string column, so 'vinc' and 'vinc/design' appear as two separate rows even though they are parent and child in the topic hierarchy — walk the hierarchy itself with vinc_neighbors('domain:<name>'). The domain set is OPEN and inferred from stored data, not a fixed vocabulary — so call this before writing to reuse an existing domain string instead of coining a near-duplicate ('vinc/design' vs 'vinc/Design', which case sensitivity makes two different topics). It is also the cheapest way to see the coarse shape of a graph you have not read before. For naming and relation conventions as well, vinc_conventions returns this plus more in one call. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/search": {
+      "post": {
+        "operationId": "vinc_search_post__v1_search",
+        "summary": "Hybrid full-text + vector search over the local Vinc store. Returns two result sets: `rows` = text-chunk matches (BM25/vector) carrying an excerpt (`snippet`, `truncated`, `doc_id`) rather than the full chunk text — fetch the whole document with vinc_doc_get(doc_id); pass detail:'full' only when you truly need raw chunk text. `node_hits` = Concept/Record matches on their title/one_liner/props (each with id, title, kind, domain, matched_in), ALWAYS populated by a title-substring scan, so concepts and records are findable even in a store with zero indexed text chunks. Responses are paginated: `total_count`, `has_more` and `next_cursor` describe the result window; pass `cursor` to continue where the last page ended (an invalid or expired cursor errors explicitly instead of restarting from page one). The cursor pages `rows` only: `node_hits` come on the first page, and a continuation page carries an empty list with `node_hits_omitted`. `total_count_capped:true` means the candidate pool hit its ceiling, so `total_count` is a lower bound, not the whole match count. Call this before vinc_ingest to find existing node ids to reuse. If the backend search fails, a top-level `error` string says why (e.g. index_missing vs extension_unavailable) instead of silently returning empty. `vector_note` appears ONLY when the semantic arm did not run, and its two causes must be told apart. Right after a document write the index is rebuilding: benign, `arms` reads \"fts\", the rebuild runs in the background and the call never waits for it, so semantic matches return on a later search and there is nothing to report. ANY OTHER VALUE IS A FAILURE of the semantic arm (a timeout, a missing index, an unavailable extension) and the rows you are holding were found by text matching alone. Say so when you answer: a degraded search and a complete one look identical from the results, so silence here reads as \"nothing else exists\".",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "default": 20,
+                    "minimum": 1,
+                    "maximum": 100
+                  },
+                  "cursor": {
+                    "type": "string",
+                    "description": "Opaque next_cursor from a previous page."
+                  },
+                  "detail": {
+                    "type": "string",
+                    "enum": [
+                      "summary",
+                      "full"
+                    ],
+                    "default": "summary"
+                  },
+                  "historical": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Include nodes whose claim is no longer current (valid_until in the past, or a Decision whose props.valid_until has passed). The default hides them and reports how many in `validity_filtered`; pass true when the question is about what USED to hold."
+                  }
+                },
+                "required": [
+                  "query"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/brief": {
+      "post": {
+        "operationId": "vinc_brief_post__v1_brief",
+        "summary": "One question in, joined answer material out — the deterministic read that replaces a vinc_search + vinc_graph + vinc_doc_get chain. A question that CONTAINS A NODE ID (concept:x, record:x, decision:x, episode:x) resolves to that node directly, skipping search and ranking (resolved_via:'id'); an id that fails to load answers status:'none' with that id in `unreadable`, and no other node is ranked in its place. Otherwise it resolves the question to ONE node by strict ranking, then returns that node's description, its canonical document excerpts and its typed relations in a single call. Returns {kind, executed, query, status, node:{id,title,domain,kind,valid_from,valid_until,validity,superseded_by}, one_liner, body_src, body_cite, excerpts:[{doc_id,doc_title,section,excerpt,method}], links:{degree,out,in,attached,total,items:[{id,title,domain,type,dir,evidence,confidence,note}],truncated}, candidates:[...], grounds:[id...]}. READ `status` FIRST: 'resolved' means one node won strictly, so node/excerpts/links are filled; 'choose' means the leading candidates TIED and nothing was guessed — pick one from `candidates` (each carries hit_tokens/title_tokens, the numbers that tied) and ask again by its exact title; 'none' means the question matched nothing — unless `unreadable` is present, which means the named nodes could not be loaded (an id in the question that does not exist, or a match deleted or re-owned between search and read): a different next move, so branch on that field, not the note. NOTHING IS GENERATED: `one_liner` is quoted, never written — `body_src` says whether it came from the one_liner column, a props key, or a document excerpt, and `body_cite` names the document when it is an excerpt. `grounds` lists every id the material rests on, so an answer built from this call can cite its sources; it stays complete even when the result was shrunk to fit the size limit. `links.degree` IS NOT THE NODE'S DEGREE: it counts the concept-and-decision relation layer only (out + in), and `attached` is the REMAINDER it leaves out (the records, episodes and bridges returned in the same list). `total` is the node's connectivity, the same number vinc_neighbors reports as `count`; read that one when you want how connected a node is, and never sum degree across nodes as if it were. `links.items[].evidence` is a BOOLEAN (does this relation carry a source sentence) and `evidence_text` is that sentence when one exists, so a relation can be QUOTED rather than merely counted. `node.validity` is 'current', 'historical' or 'future', derived from the node's OWN interval (a Record's columns, a Decision's props); when it is not current a `validity_note` says so and names `superseded_by` if the graph holds a successor. A node reached by id skips the default filter, so this is the one place a retired claim announces itself: do not quote a historical node as the present state. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "The question, in natural language."
+                  },
+                  "max_excerpts": {
+                    "type": "integer",
+                    "default": 3,
+                    "minimum": 1,
+                    "maximum": 12,
+                    "description": "How many canonical document excerpts to attach to a resolved node."
+                  },
+                  "historical": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Include nodes whose claim is no longer current (valid_until in the past, or a Decision whose props.valid_until has passed). The default hides them and reports how many in `validity_filtered`; pass true when the question is about what USED to hold."
+                  }
+                },
+                "required": [
+                  "query"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/nodes/{id}": {
+      "get": {
+        "operationId": "vinc_brief_get__v1_nodes_id",
+        "summary": "One question in, joined answer material out — the deterministic read that replaces a vinc_search + vinc_graph + vinc_doc_get chain. A question that CONTAINS A NODE ID (concept:x, record:x, decision:x, episode:x) resolves to that node directly, skipping search and ranking (resolved_via:'id'); an id that fails to load answers status:'none' with that id in `unreadable`, and no other node is ranked in its place. Otherwise it resolves the question to ONE node by strict ranking, then returns that node's description, its canonical document excerpts and its typed relations in a single call. Returns {kind, executed, query, status, node:{id,title,domain,kind,valid_from,valid_until,validity,superseded_by}, one_liner, body_src, body_cite, excerpts:[{doc_id,doc_title,section,excerpt,method}], links:{degree,out,in,attached,total,items:[{id,title,domain,type,dir,evidence,confidence,note}],truncated}, candidates:[...], grounds:[id...]}. READ `status` FIRST: 'resolved' means one node won strictly, so node/excerpts/links are filled; 'choose' means the leading candidates TIED and nothing was guessed — pick one from `candidates` (each carries hit_tokens/title_tokens, the numbers that tied) and ask again by its exact title; 'none' means the question matched nothing — unless `unreadable` is present, which means the named nodes could not be loaded (an id in the question that does not exist, or a match deleted or re-owned between search and read): a different next move, so branch on that field, not the note. NOTHING IS GENERATED: `one_liner` is quoted, never written — `body_src` says whether it came from the one_liner column, a props key, or a document excerpt, and `body_cite` names the document when it is an excerpt. `grounds` lists every id the material rests on, so an answer built from this call can cite its sources; it stays complete even when the result was shrunk to fit the size limit. `links.degree` IS NOT THE NODE'S DEGREE: it counts the concept-and-decision relation layer only (out + in), and `attached` is the REMAINDER it leaves out (the records, episodes and bridges returned in the same list). `total` is the node's connectivity, the same number vinc_neighbors reports as `count`; read that one when you want how connected a node is, and never sum degree across nodes as if it were. `links.items[].evidence` is a BOOLEAN (does this relation carry a source sentence) and `evidence_text` is that sentence when one exists, so a relation can be QUOTED rather than merely counted. `node.validity` is 'current', 'historical' or 'future', derived from the node's OWN interval (a Record's columns, a Decision's props); when it is not current a `validity_note` says so and names `superseded_by` if the graph holds a successor. A node reached by id skips the default filter, so this is the one place a retired claim announces itself: do not quote a historical node as the present state. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The question, in natural language."
+            }
+          },
+          {
+            "name": "max_excerpts",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 3,
+              "minimum": 1,
+              "maximum": 12,
+              "description": "How many canonical document excerpts to attach to a resolved node."
+            }
+          },
+          {
+            "name": "historical",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "description": "Include nodes whose claim is no longer current (valid_until in the past, or a Decision whose props.valid_until has passed). The default hides them and reports how many in `validity_filtered`; pass true when the question is about what USED to hold."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "vinc_delete_delete__v1_nodes_id",
+        "summary": "Irreversibly delete ONE node and all its attached edges by exact id (DETACH DELETE). node_id must be an exact, type-prefixed id (e.g. concept:ipaas, decision:d45, record:memo, episode:s1, bridge:b1); the prefix selects the table. Unknown prefixes return found:false (no-op). Use to remove polluted or duplicate shell nodes. This is irreversible — confirm the exact id via vinc_search/vinc_graph first, and call vinc_neighbors on it to SEE WHAT GOES WITH IT: every attached edge is destroyed too, and the `deleted.edges` count in this response arrives after the fact, too late to inform the decision. Returns {executed, found, deleted:{node, edges}}; found:false if the id is absent.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact type-prefixed node id to delete (e.g. concept:ipaas)."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/nodes/{id}/neighbors": {
+      "get": {
+        "operationId": "vinc_neighbors_get__v1_nodes_id_neighbors",
+        "summary": "Observe ONE node's immediate (1-hop) relation network — a lightweight navigation primitive (E-G5, Search-on-Graph style). Returns {neighbors:[{rel,id,title,domain,one_liner,rev,updated_at}], by_rel:{type:count}, count}. `rev` and `updated_at` are that neighbour's current version, carried so a walk can note what it read; a `domain:` coordinate answers with child domains and members instead, and those rows have no version because a domain is not a stored node. `one_liner` is the concept's own description; only Concept carries that column, so it is an empty string on records, episodes, bridges and decisions, and that emptiness is a fact rather than a gap. Use this to walk the graph one hop at a time (observe → pick next node) instead of pulling a whole depth-2 subgraph via vinc_graph — far fewer tokens per step. Every relation is visible from BOTH ends: seeding on a concept or decision returns the records (ATTACHES_TO), episodes (ABOUT) and bridges (CONNECTS) hanging off it, and seeding on a record, episode or bridge returns the concepts and decisions it hangs off. count:0 therefore means the node really has no relations yet, not that you started from the wrong end. Also accepts a TOPIC address `domain:<name>` (e.g. domain:vinc), which returns that topic's child topics (rel PARENT_OF, ids `domain:…`) and the nodes filed directly under it (rel IN_DOMAIN) — same shape, so you can walk down a topic tree the same way. Topics come from the `domain` field on nodes: writing 'vinc/design' files that node under 'vinc' automatically, no edges to author. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact node id to observe (e.g. concept:duality, record:pricing-note), or a topic address (e.g. domain:vinc)."
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 500,
+              "description": "Max neighbors returned. If cut, `neighbors_truncated` is true."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/nodes/{id}/graph": {
+      "get": {
+        "operationId": "vinc_graph_get__v1_nodes_id_graph",
+        "summary": "Pull the neighborhood around ONE known node as a whole subgraph: every node within `depth` hops of the seed, plus the edges among them. Returns {kind, executed, seed, depth, found, basis, nodes:[{id,label,kind,domain,degree,props,tags,rev,updated_at,ppr,…layout}], edges:[{source,target,type,cross_domain}]}. Nodes carry View ranking and layout fields (ppr, x/y/z), so a depth-2 pull is heavy. If you only need the immediate ring, vinc_neighbors returns the same relations without them and is far cheaper; to walk step by step, prefer neighbors and choose the next node yourself. Requires an EXACT node id — if you only have a phrase, run vinc_search first. Concept and decision seeds both expand. depth 2 is the working default, 4 the ceiling, and depth 2 and beyond carry a node budget: when the seed reaches more concepts than the budget allows, the depth is lowered a whole layer at a time (never below 1) and the result says so in `depth_budget` and `depth_note`. That is how a hub seed with no `depth` given comes back at depth 1. A result that is still too large is shrunk rather than refused: the seed stays whole, the ring may come back as id, label and kind only, and if even that does not fit the least connected neighbours are left out and counted in `ring_truncated`; read the full ring with vinc_neighbors. `shrunk` and `note` count what was kept. `rev` and `updated_at` are the node's current version, so you can hold what you read before you overwrite it; nothing on the write path demands them yet. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact node id. Give this OR `url`, not neither."
+            }
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 2,
+              "minimum": 1,
+              "maximum": 4
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/graph": {
+      "post": {
+        "operationId": "vinc_graph_post__v1_graph",
+        "summary": "Pull the neighborhood around ONE known node as a whole subgraph: every node within `depth` hops of the seed, plus the edges among them. Returns {kind, executed, seed, depth, found, basis, nodes:[{id,label,kind,domain,degree,props,tags,rev,updated_at,ppr,…layout}], edges:[{source,target,type,cross_domain}]}. Nodes carry View ranking and layout fields (ppr, x/y/z), so a depth-2 pull is heavy. If you only need the immediate ring, vinc_neighbors returns the same relations without them and is far cheaper; to walk step by step, prefer neighbors and choose the next node yourself. Requires an EXACT node id — if you only have a phrase, run vinc_search first. Concept and decision seeds both expand. depth 2 is the working default, 4 the ceiling, and depth 2 and beyond carry a node budget: when the seed reaches more concepts than the budget allows, the depth is lowered a whole layer at a time (never below 1) and the result says so in `depth_budget` and `depth_note`. That is how a hub seed with no `depth` given comes back at depth 1. A result that is still too large is shrunk rather than refused: the seed stays whole, the ring may come back as id, label and kind only, and if even that does not fit the least connected neighbours are left out and counted in `ring_truncated`; read the full ring with vinc_neighbors. `shrunk` and `note` count what was kept. `rev` and `updated_at` are the node's current version, so you can hold what you read before you overwrite it; nothing on the write path demands them yet. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "description": "A View address copied from the app, whole URL or just the #view/... fragment. It carries what the person had selected: a node (#view/trace/<id>), a topic lens (#view/<a,b>), an explicit set (#view/ids/<a,b,c>) or a document (#view/doc/<id>), with an optional /d<n> depth and a trailing /as/<viewpoint> this tool ignores. When both are given, seed_id wins and the url's seed is ignored; `depth` given explicitly beats the url's. The address also names the space it was copied in (?space=personal or a team id, before the #): the call goes to that space, so pass the url as is and leave `space` out. An explicit `space` beats the url's."
+                  },
+                  "depth": {
+                    "type": "integer",
+                    "default": 2,
+                    "minimum": 1,
+                    "maximum": 4
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/nodes/{id}/tie-suggestions": {
+      "get": {
+        "operationId": "vinc_suggest_ties_get__v1_nodes_id_tie-suggestions",
+        "summary": "Propose which OTHER concepts this node probably should be linked to but is not yet — computed from shared tags and domain proximity, never from a language model. Returns {kind, executed, node, suggestions:[{id,title,domain,shared_tags,score,reason,signals,shared_neighbors}], total, truncated, formula}, best score first, with already-linked nodes excluded. The score is three measured signals added up, and `formula` states the exact expression the server used: rare shared tags count for more than common ones (IDF-weighted, so a tag every node carries adds nothing), same domain adds a flat amount, and shared neighbours add the most. `signals` breaks the score into those parts and `shared_neighbors` names the concepts both already link to — quote those when proposing the tie instead of asserting a bare number. Use it to close the gaps vinc_diagnose finds (orphans and small islands), or right after writing a new concept. This tool never writes: the suggestions are for the user to ratify, and the edge itself is created with vinc_ingest. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 5,
+              "minimum": 1,
+              "maximum": 50
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/path": {
+      "get": {
+        "operationId": "vinc_path_get__v1_path",
+        "summary": "Find the shortest relation path(s) between two concepts. **Concept ids only**: this walks the concept layer, so a record, decision or episode id can never be an endpoint even when it exists and is well connected (it attaches to concepts rather than sitting on the path graph) — you get an explicit error saying so, not a bare not-found. Returns the physically connected edge chain, returned as an ordered id/title sequence. Use this to give a model concrete evidence of HOW two concepts connect instead of guessing. Two distance measures, chosen with `weight`: 'hops' (default, E-G7) counts edges and returns ALL shortest paths (ties included); 'confidence' (E-G8) treats each edge's recorded confidence as closeness (cost = 1 - confidence) and returns the best-evidenced chain, which may be LONGER in hops but better supported — each path then also carries `cost` (lower is stronger). With no confidence recorded anywhere, 'confidence' degenerates exactly to 'hops'. Returns {found, length, weight, paths:[{ids,titles,length,[cost]}], count}. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact source concept id (must start with `concept:`)."
+            }
+          },
+          {
+            "name": "b",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact target concept id (must start with `concept:`)."
+            }
+          },
+          {
+            "name": "max_depth",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 6,
+              "minimum": 1,
+              "maximum": 8,
+              "description": "Max path length in hops."
+            }
+          },
+          {
+            "name": "weight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "hops",
+                "confidence"
+              ],
+              "default": "hops",
+              "description": "Distance measure: edge count, or evidence strength."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/episodes": {
+      "get": {
+        "operationId": "vinc_recall_get__v1_episodes",
+        "summary": "Read back the episode timeline — what was recorded as having HAPPENED, newest first; episodes with no date come last. Returns {kind, executed, rows:[{id,title,date,owner,domain,tenant,workspace,summary,pinned,tags,access_count,last_access}], has_more, next_cursor}. When `has_more` is true, pass `next_cursor` back as `cursor` with the same other arguments to read the next page; a cursor from a different query is refused with `error` (invalid_cursor), and one whose timeline changed meanwhile with stale_cursor, never a silent restart. `domain` covers the whole subtree ('vinc/agent' includes 'vinc/agent/roles'); `tags` keeps episodes carrying at least one of the given tags. `tenant`/`workspace` and `access_count`/`last_access` are reserved columns, not settable through vinc_ingest: the first pair comes only from the learn-log batch import, the second only from the preference-touch signal (neither is an MCP tool). An episode written through vinc_ingest alone reads these four back empty — that is expected, not a bug. Episodes ONLY: Concept and Record nodes never appear here — use vinc_search or vinc_graph for those. Use it to resume context ('what was I doing here'), to check whether an event is already recorded before writing a duplicate, or to ground a decision in prior work. Narrow with `domain` or `tags`. This is time-ordered recall, NOT relevance search — for 'find anything about X' use vinc_search, which also covers concepts and document text. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Opaque next_cursor from a previous page of the same query."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/decide": {
+      "get": {
+        "operationId": "vinc_decide_get__v1_decide",
+        "summary": "Assemble the evidence around a topic for a decision: the relevant nodes, the edges among them, and — the point of the tool — the CONFLICTS a decision has to resolve. Returns {kind, executed, topic, depth, found, nodes, edges, conflicts:[{source,target,type,reason}], cross_domain:[{source,target,type}]}. A conflict is one of three things the graph states about itself: `decisions_on_same_subject` (two decisions ABOUT the same concept, with `subject`), `opposite_direction` (a directed relation runs both ways on one pair, with `reverse_type`), `duplicate_decision_title` (two decisions carrying the same title). Edges that merely cross a domain boundary are NOT conflicts and are listed separately in `cross_domain`. Traversal is deterministic (graph structure only, no model judgement); it surfaces the material and never picks a side. `topic` must match a node id or a full title EXACTLY — on a miss you get found:false with `candidates` and a `hint`, so run vinc_search first if you only have a phrase. Use before recording a DEC, or to check whether a proposed decision collides with one already made. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 2,
+              "minimum": 1,
+              "maximum": 4
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/diagnose": {
+      "get": {
+        "operationId": "vinc_diagnose_get__v1_diagnose",
+        "summary": "Structural diagnosis of the owner's concept graph (read-only, E-G3). kind='components' (default) runs weakly-connected-components: returns {components:[{group,size,members}], orphans:[id…], component_count, orphan_count} — the disconnected 'islands' and singleton concepts that want linking (feeds vinc_suggest_ties). kind='communities' runs Louvain: returns {communities:[{community,size,dominant_domain,members}]} — the measured clusters (distinct from the domain axis), a basis for proposing themes (ratified by the user, never auto-written). kind='community_context' (requires `node`) answers a broad 'what is over in this area' question with no generation: takes ONE seed concept id, finds the Louvain community it belongs to, and returns {community, size, dominant_domain, representatives:[{id,title,one_liner,excerpt}], members:[{id,title}], members_truncated} — up to 5 representatives (ranked by how many chunks mention them) carry a quoted source excerpt, the rest are id/title only. executed:false with a note if the seed is unknown or isolated (Louvain -1). Member id lists are capped by `member_limit` (default 50): `size` always reports the TRUE total, and a group whose list was cut carries members_truncated:true — raise member_limit to see the rest. Delegates to the native algo extension; executed:false with a note if the extension is unavailable (offline unbundled). kind='claims' is the exception: it uses no algo extension and always answers. It returns {conflicts:[{subject_path,newer,older}], conflict_count, unanchored:[{id,title,path_hint}], unanchored_count, anchored_count, scanned}. `conflicts` pairs the most recent measurement of a file with every earlier one that carries a different measured_at, so the question it poses is 'does this older claim still stand'. It does NOT decide which side is right; open the path and look. `unanchored` lists records that name a file in their text but carry no props.subject_path, so they cannot be compared with anything: that count is meant to be driven down by adding the field. Both lists are capped by member_limit.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "components",
+                "communities",
+                "community_context",
+                "claims"
+              ],
+              "description": "components (WCC orphans/islands) | communities (Louvain clusters) | community_context (one seed's cluster + representative excerpts, requires `node`) | claims (records that disagree about one file, and records about code with no file named)."
+            }
+          },
+          {
+            "name": "node",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Seed concept id — required, and only used, when kind='community_context'."
+            }
+          },
+          {
+            "name": "member_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 1000,
+              "description": "Max member ids listed per component/community. `size` is always the true total; when the list is cut, that group carries members_truncated:true."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/merge-candidates": {
+      "get": {
+        "operationId": "vinc_merge_candidates_get__v1_merge-candidates",
+        "summary": "Suggest duplicate-concept merge candidates for the owner (read-only, E-G4). Deterministic title similarity (exact normalized title, token Jaccard, or subset) — NO automatic merge, NO LLM judgement (similarity merge is permanently forbidden; the system only proposes). Returns {candidates:[{a_id,a_title,b_id,b_title,score,reason,same_domain}], count, total, suppressed:{structural,rejected}}, same-domain pairs first. Pairs where EITHER side is a document mirror concept (concept:doc.*) are excluded BY DEFAULT, because they are duplicates in name only: a document concept and the topical concept it mirrors are two layers, not two copies (the topical one carries ABOUT/ATTACHES_TO/RELATED_TO, the document one carries INHERITS_FROM to other documents), and two documents are two concepts even when their titles nest. `suppressed` reports how many were held back so the exclusion is never silent; set include_structural to see them. Pairs the user has already rejected (vinc_merge_reject) are also excluded and counted there. Confirm a real duplicate by calling vinc_merge_nodes with the chosen keep/drop ids (irreversible).",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "include_structural",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "description": "Also return the structurally-excluded pairs (any pair touching a concept:doc.* mirror)."
+            }
+          },
+          {
+            "name": "min_score",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "default": 0.6,
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "description": "Token-Jaccard threshold (0-1) for token_overlap pairs."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/merge-rejections": {
+      "get": {
+        "operationId": "vinc_merge_rejections_get__v1_merge-rejections",
+        "summary": "List the concept pairs this owner has already rejected as non-duplicates (read-only, the read half of vinc_merge_reject). Returns {kind, executed, rejections:[{a_id, b_id, note, rejected_at}], count}. Call it before reviewing vinc_merge_candidates to see what was already decided and why — vinc_merge_candidates suppresses these pairs silently and only reports how MANY it held back, so this is the only way to see WHICH pairs and read the reasoning left for the next reviewer. Also the way to find a pair to undo: call vinc_merge_reject with undo:true and the ids from here. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "vinc_merge_reject_post__v1_merge-rejections",
+        "summary": "Record that two concepts are NOT duplicates, so vinc_merge_candidates stops proposing the pair. This is the safe half of the merge workflow: vinc_merge_nodes is irreversible, this is not — pass undo:true to forget the rejection. Use it when you review candidates and decide a pair is a genuine distinction; without it the same pair returns every time and the list never converges. Order of a/b does not matter (the pair is stored sorted). Returns {kind, executed, a_id, b_id, undo, pair_key, count} where `count` is how many rejections this owner now has. Writes.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string",
+                    "description": "Exact id of one concept."
+                  },
+                  "b": {
+                    "type": "string",
+                    "description": "Exact id of the other concept."
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "Why they are distinct — kept for the next reviewer."
+                  },
+                  "undo": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Forget a previous rejection instead of recording one."
+                  }
+                },
+                "required": [
+                  "a",
+                  "b"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/documents": {
+      "get": {
+        "operationId": "vinc_doc_list_get__v1_documents",
+        "summary": "List the owner's documents, newest first. Paginated: `limit` (default 30) with `cursor`/`has_more`/`next_cursor` to continue. `detail` defaults to 'summary' (doc_id, title, updated_at, chunks) — pass 'full' only when you need the derived topics and primary concept, which cost a scan of every document's MENTIONS. Fetch a document's text with vinc_doc_get(doc_id).",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 30,
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Opaque next_cursor from a previous page."
+            }
+          },
+          {
+            "name": "detail",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "summary",
+                "full"
+              ],
+              "default": "summary"
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "vinc_doc_put_post__v1_documents",
+        "summary": "Store or edit a document's canonical text (Chunk=SSoT). Omit doc_id to create (the returned doc_id identifies it); pass doc_id to edit in place (re-chunked losslessly, stale chunks removed). The store IS the source of truth — no external file is needed. Returns {doc_id, created, chunks, replaced, content_hash, skipped, title, warnings}. `title` is the title AS STORED after this call, so one call confirms what the document is now named — do not follow a write with vinc_doc_list to check. Unchanged text is a no-op (skipped=true). READ `created`: it is the only field that separates editing a document from making a second one, because a fresh write and an unchanged re-write both report replaced 0. A document's own front matter often carries a doc_id: line and THAT IS NOT ITS STORE ID; passing the declared value here does not edit that document, it creates another one with the same title. When the body declares an id different from the one being written to, `warnings` says so. `topic` STATES what the document is about instead of leaving it to be inferred: without it the topic is derived by scanning the body for concept titles, which is why a document that cites other documents rather than naming concepts can end up with no topic at all or a misleading one. Passing it files the document under that topic and the answer survives re-writes; the response echoes it back as `topic`.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "Full document text (the canonical content)."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Document title. OMIT IT TO KEEP THE TITLE THE DOCUMENT ALREADY HAS — it is not defaulted to empty. Pass \"\" only to actually clear the title. This matters on an edit: the title is separate from any title: line in the body, which this tool never reads."
+                  },
+                  "origin": {
+                    "type": "string",
+                    "description": "Provenance label only (not a join key)."
+                  },
+                  "topic": {
+                    "type": "string",
+                    "description": "The topic this document is about, as a domain path (e.g. vinc/infra/deploy). Authored, not inferred: it is recorded on the document's own concept:doc.<id> node and takes precedence over the topic derived from body matching. Omit to leave the existing answer alone — passing \"\" does NOT clear it."
+                  }
+                },
+                "required": [
+                  "text"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/documents/{doc_id}": {
+      "get": {
+        "operationId": "vinc_doc_get_get__v1_documents_doc_id",
+        "summary": "Reconstruct a document's canonical text from its chunks. Returns {text, title, verified, chunks, updated_at}. `verified` is an INTEGRITY flag: true means the chunks were offset-contiguous and their content hash matched, so what you got back is the document that was stored. WHEN IT IS FALSE the text may be incomplete or reordered and it still reads as prose — nothing about the output looks wrong. Say so rather than answering from it silently: a quietly truncated document is indistinguishable from a short one. A document caught mid-write is refused instead of answered: `executed:false` with `chunks` disagreeing with `chunk_count` means a write or a delete was replacing its chunks when you read (a `chunk_count` of -1 marks the write itself). That is not an empty document. Read it again in a moment; if it stays that way the last write was interrupted and re-putting the full text heals it.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "vinc_doc_put_put__v1_documents_doc_id",
+        "summary": "Store or edit a document's canonical text (Chunk=SSoT). Omit doc_id to create (the returned doc_id identifies it); pass doc_id to edit in place (re-chunked losslessly, stale chunks removed). The store IS the source of truth — no external file is needed. Returns {doc_id, created, chunks, replaced, content_hash, skipped, title, warnings}. `title` is the title AS STORED after this call, so one call confirms what the document is now named — do not follow a write with vinc_doc_list to check. Unchanged text is a no-op (skipped=true). READ `created`: it is the only field that separates editing a document from making a second one, because a fresh write and an unchanged re-write both report replaced 0. A document's own front matter often carries a doc_id: line and THAT IS NOT ITS STORE ID; passing the declared value here does not edit that document, it creates another one with the same title. When the body declares an id different from the one being written to, `warnings` says so. `topic` STATES what the document is about instead of leaving it to be inferred: without it the topic is derived by scanning the body for concept titles, which is why a document that cites other documents rather than naming concepts can end up with no topic at all or a misleading one. Passing it files the document under that topic and the answer survives re-writes; the response echoes it back as `topic`.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Existing doc to edit; omit to create."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          },
+          "201": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "Full document text (the canonical content)."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Document title. OMIT IT TO KEEP THE TITLE THE DOCUMENT ALREADY HAS — it is not defaulted to empty. Pass \"\" only to actually clear the title. This matters on an edit: the title is separate from any title: line in the body, which this tool never reads."
+                  },
+                  "origin": {
+                    "type": "string",
+                    "description": "Provenance label only (not a join key)."
+                  },
+                  "topic": {
+                    "type": "string",
+                    "description": "The topic this document is about, as a domain path (e.g. vinc/infra/deploy). Authored, not inferred: it is recorded on the document's own concept:doc.<id> node and takes precedence over the topic derived from body matching. Omit to leave the existing answer alone — passing \"\" does NOT clear it."
+                  }
+                },
+                "required": [
+                  "text"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "vinc_doc_delete_delete__v1_documents_doc_id",
+        "summary": "Delete a document — its chunks and identity — with deletion propagated to other devices on sync. The chunks ARE the canonical text (Chunk=SSoT), so this destroys the document itself and not a copy of it. Irreversible; confirm the exact doc_id with vinc_doc_list and read the document with vinc_doc_get before you call, so you know what is being destroyed. ⚠ A `doc_id:` line in the document body is NOT its store id — deleting by the declared value removes a different document or nothing at all. Returns {executed, deleted_chunks, deleted_meta}.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/fragments": {
+      "post": {
+        "operationId": "vinc_ingest_post__v1_fragments",
+        "summary": "MERGE an authored graph fragment (nodes + edges) into the store by exact id. The primary write surface (see vinc_delete / vinc_merge_nodes for cleanup). Reuse existing ids (read-before-write). Node types record|concept|domain|bridge|episode|decision route to dedicated tables; ANY other node type persists to the open Entity carrier and is folded into the theme vocabulary as proposed (returned in proposed_types for ratification). Edges — allowed pairs (concept and decision are interchangeable endpoints, except relates_to which stays concept→concept): relates_to = concept→concept; prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; record → concept|decision for any of those four; connects_via = bridge → concept|decision; about = episode|decision → concept|decision; any-type = open-entity→open-entity (TYPED carrier). relates_to dedupes the reverse direction; connects_via takes an optional role; a record edge preserves its type on ATTACHES_TO. Nodes are skipped when malformed (no id, no type, an Entity with no title) or when the id is ALREADY OWNED BY SOMEONE ELSE on the hosted graph; edges are skipped on an unsupported (from,to) pair AND when an endpoint node was itself skipped, since an edge cannot outlive its endpoint. Everything skipped is reported in warnings with partial:true, so read them — `merged` counts only what actually landed. An id owned by someone else is reported separately in `id_conflicts`, because it is the one skip a retry cannot fix: node ids are a single global namespace, so that slug is not available to you at all. Pick a different id rather than retrying. The result also carries `stored` — each node READ BACK as it now sits in the graph (id, kind, and the fields that kind actually keeps). Diff it against what you sent instead of trusting the counts: a field a kind has no column for is absent from `stored`, and a domain you sent appears there in its normalized form. `stored_truncated` means the read-back hit its size budget and that many nodes were left out (they were still written). Call vinc_conventions once before your first write in a session: it carries this owner's node/relation conventions and their existing domains, so your writes match what is already there.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nodes": {
+                    "type": "array",
+                    "description": "Nodes to MERGE by exact id (reuse ids found via vinc_search/vinc_recall first — read-before-write).",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "Canonical MERGE key, type-prefixed (e.g. concept:margiela)."
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "record|concept|domain|bridge|episode|decision route to dedicated tables; ANY other type persists to the open Entity carrier and is folded into the theme vocabulary as proposed."
+                        },
+                        "title": {
+                          "type": "string",
+                          "description": "Required for open (non-legacy) types."
+                        },
+                        "domain": {
+                          "type": "string",
+                          "description": "Free-form domain string (no fixed list). Not persisted on open-type nodes. SLASHES BUILD THE TOPIC HIERARCHY: 'vinc/design' files this node under 'vinc' and creates the chain automatically (max depth 8) — no edges to author. CASE IS NOT FOLDED, so 'Design/Tokens' and 'design/tokens' become two separate topic trees; reuse an existing string from vinc_domains verbatim."
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "date": {
+                          "type": "string",
+                          "description": "Episode only — when it happened (YYYY-MM-DD). This is the column vinc_recall sorts by; putting it in props instead still works but relies on server-side promotion."
+                        },
+                        "summary": {
+                          "type": "string",
+                          "description": "Episode only — one-paragraph summary returned by vinc_recall."
+                        },
+                        "one_liner": {
+                          "type": "string",
+                          "description": "Concept only — the one or two sentences node_context and Ask quote as the concept's description. Putting it in props.one_liner or props.note instead still works (server-side promotion) but only when this field and props.one_liner are both absent. It reads back: vinc_neighbors and vinc_graph return it, so you can check what you wrote. Only Concept has the column, so it comes back empty on every other kind."
+                        },
+                        "content_time": {
+                          "type": "string",
+                          "description": "Concept and record only — when the thing this node describes happened (the 1905 of a note about relativity), as opposed to when you wrote it down. Free text but only a YYYY[-MM[-DD]] prefix is stored, because comparison and bucketing are lexicographic; anything else is refused with a warning and the stored value is kept. Empty string clears it."
+                        },
+                        "valid_from": {
+                          "type": "string",
+                          "description": "Record only — when the claim this record makes became true. Same YYYY[-MM[-DD]] contract as content_time; empty string clears it. Omitting the field on a resend preserves the stored value. SET IT when this record asserts a present state of the product, infra or process, because the default read path now returns current claims only. Leaving it empty is not an error and does not hide the record — unstated reads as current — but a record that will one day be replaced cannot be retired without a start."
+                        },
+                        "valid_until": {
+                          "type": "string",
+                          "description": "Record only — when the claim stopped being true (half-open: the claim does not hold at this instant). Setting it is how a record is invalidated without deleting it — resend just {id, type, valid_until}. Same format contract as valid_from; empty string clears it (the claim holds again). This is the ONLY field that removes a node from the default read: an unstated valid_from does not. When you supersede a claim, set this on the old one to the date the new one starts, and do not delete it — a retired claim is still a true description of what held then."
+                        },
+                        "props": {
+                          "type": "object",
+                          "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes). Three keys are reserved on a **record** that states something about code, and only there: `subject_path` (WHICH repo and WHICH file, as repo:path, for example vinc:api/sync.py; the bare path alone cannot be compared because this graph holds records about three repositories), `measured_at` (YYYY[-MM[-DD]], when you looked) and `measured_ref` (branch or commit you looked at). They are what lets two claims about the same file be compared instead of both standing as assertions; `subject_path` is normalized on write so different spellings of one path land on one key."
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "type"
+                      ]
+                    }
+                  },
+                  "edges": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string",
+                          "description": "allowed pairs (concept and decision are interchangeable endpoints, except relates_to which stays concept→concept): relates_to = concept→concept; prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; record → concept|decision for any of those four; connects_via = bridge → concept|decision; about = episode|decision → concept|decision; any-type = open-entity→open-entity (TYPED carrier). A record edge preserves its type on ATTACHES_TO. An unsupported (from,to) pair is skipped with a warning and partial:true, not an error."
+                        },
+                        "role": {
+                          "type": "string",
+                          "description": "Optional CONNECTS role (connects_via only) — participates in the merge key; different roles create parallel edges."
+                        },
+                        "evidence": {
+                          "type": "string",
+                          "description": "Optional source sentence backing this relation (E-G6) — kept on concept↔concept edges, about, and record edges (stored on ATTACHES_TO)."
+                        },
+                        "confidence": {
+                          "type": "number",
+                          "description": "Optional relation confidence 0.0–1.0 (E-G6)."
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "to",
+                        "type"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "nodes"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/nodes/merge": {
+      "post": {
+        "operationId": "vinc_merge_nodes_post__v1_nodes_merge",
+        "summary": "Irreversibly merge two concepts: repoint every edge of drop_id onto keep_id, then delete drop_id (its title/props are discarded — keep wins). CONCEPT-ONLY in this version: both ids must be concept:* (other type pairs are rejected with an error). Self-loop and already-present edges are skipped (RELATED_TO is treated as undirected). Use to fold a duplicate concept shell into the canonical one. This is irreversible — confirm both exact ids first, and quote the title of drop_id back to the person before you call, because that title is what disappears. IF THE PAIR IS NOT A DUPLICATE, the move you want is vinc_merge_reject: it records the distinction, stops the pair being proposed again, and is reversible (undo:true). Reach for that first — this tool is the half of the workflow that cannot be taken back. Returns {executed, found, repointed, skipped, dropped}.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "keep_id": {
+                    "type": "string",
+                    "description": "Concept id to keep (survivor)."
+                  },
+                  "drop_id": {
+                    "type": "string",
+                    "description": "Concept id to merge in and delete."
+                  }
+                },
+                "required": [
+                  "keep_id",
+                  "drop_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/edges": {
+      "delete": {
+        "operationId": "vinc_delete_edge_delete__v1_edges",
+        "summary": "Delete ONE relationship between two nodes (the nodes stay). Covers the SYNCED relation types only: relates_to | prerequisite_of | derives_from | inherits_from | about. CONNECTS (connects_via), ATTACHES_TO (record edges) and TYPED (open-entity edges) are NOT deletable here — they are outside the sync set. Endpoints follow the same rule as vinc_ingest: concept and decision are interchangeable (so derives_from covers all four concept/decision combinations, and about is episode|decision → concept|decision), except relates_to which stays concept→concept. relates_to is undirected — both physical directions are removed. The deletion is recorded with an edge tombstone so it propagates to synced devices instead of resurrecting. Irreversible (re-create via vinc_ingest if needed). Returns {executed, found, deleted:{edges}}; found:false if no such edge.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact source node id (e.g. concept:a, episode:s1)."
+            }
+          },
+          {
+            "name": "to_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact target node id (e.g. concept:b)."
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "relates_to | prerequisite_of | derives_from | inherits_from | about"
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/documents/{doc_id}/extract": {
+      "post": {
+        "operationId": "vinc_doc_extract_post__v1_documents_doc_id_extract",
+        "summary": "Derive concept nodes FROM a stored document's canonical text (D45-V). This is the second half of the document workflow: vinc_doc_put stores the text, this turns it into concepts bound to it by MENTIONS, so the document joins the search and view graph instead of sitting as inert text. apply:false (the DEFAULT) only proposes: it returns the candidates and writes NOTHING, which is the call to make first. apply:true writes them: each candidate is MERGEd as concept:{slug} with status='proposed' and the DOCUMENT'S OWN TOPIC as its domain (the front-matter `domain:` line if present, else the document's derived topic). A document with neither refuses apply with an error saying to give it a topic first — applying topic-less concepts only multiplies what has no topic. This document's MENTIONS are then relinked. Existing concepts are matched, never overwritten — a title or one_liner you already refined is safe, and an empty content_time or domain on a matched concept is filled in. Headings that are document structure words (method, provenance, verdict ...), clause-shaped sentences, or longer than six words yield no candidates in the deterministic mode. The deterministic extraction cleans what it reads: a heading loses its section number or letter prefix (\"3.1 Identity\" becomes \"Identity\", which is also what the slug is derived from) and its inline markdown marks, and the one_liner runs on to the end of the first sentence instead of stopping at the line break. A heading with nothing readable under it yields no candidate at all, so every candidate you get back carries a one_liner. Pass `candidates` to apply a list you curated instead of the deterministic heading-based extraction; only title and one_liner are trusted and the id is always re-derived server-side. Returns {executed, doc_id, candidates, applied:{created, matched}, mentions}. Writes only when apply:true.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact id of a document you own."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "apply": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "false (default) proposes and writes nothing; true writes the concepts and relinks MENTIONS."
+                  },
+                  "candidates": {
+                    "type": "array",
+                    "description": "Optional curated candidates to apply instead of the deterministic extraction. Only title and one_liner are read; ids are re-derived.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "one_liner": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title"
+                      ]
+                    }
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/openapi.json": {
+      "get": {
+        "operationId": "openapi_v1",
+        "summary": "OpenAPI 3.1 document",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OpenAPI document"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "MemberKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Vinc API key"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "request_id",
+              "details"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Vinc API error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}

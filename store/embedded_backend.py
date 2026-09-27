@@ -948,16 +948,16 @@ class EmbeddedBackend:
             # 것이다. `last_open_error` 에 넣으므로 `/health` 의 open_error 로도 나간다.
             if wal_note:
                 cls.last_open_error += f" | {wal_note}"
-            # stdout 에도 남긴다 — 이전엔 이 자리에 없어서 2026-08-03 장애 때 실제
+            # stderr 에 남긴다 — 이전엔 이 자리에 없어서 2026-08-03 장애 때 실제
             # 예외 문구를 어디서도 못 봤다(배너의 "driver": null 한 줄뿐).
             print(f"[embedded_backend] store open failed: {cls.last_open_error}",
-                  flush=True)
+                  file=sys.stderr, flush=True)
             return None
         cls.last_open_error = ""
         # 열리긴 했다 — 그래도 무장돼 있으면 지금 말한다. **지금이 유일하게 값싼 시점**
         # 이다(정상 종료 한 번이면 체크포인트가 지운다). 깨진 뒤에 말하면 이미 늦다.
         if wal_note:
-            print(f"[embedded_backend] ⚠ {wal_note}", flush=True)
+            print(f"[embedded_backend] ⚠ {wal_note}", file=sys.stderr, flush=True)
         backend = cls(db, conn, name, cfg)
         backend._conns = family
         return backend
