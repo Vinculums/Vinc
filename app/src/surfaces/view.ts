@@ -299,6 +299,8 @@ export async function renderView(el: HTMLElement) {
     if (!lastNode || detail.hidden) setSpot(null);
   }
   let lastNode: N3 | null = null;                   // Reader 뒤로가기용 마지막 상세 노드(D45-V2)
+  /** 잇기(흐름 F)가 기다리는 대상 — 있으면 다음 초점이 카드 대신 여기로 간다(`focusOnMap`). */
+  let pickTarget: ((id: string, title: string) => void) | null = null;
   let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
   let curEdges: GraphEdge[] = [];     // 현재 레벨 엣지 — 상세 레일 in/out 표기용
   // 지금 그린 노드들 — focusNode 가 id 만 받고도 라벨·주제를 알아야 한다(D70).
@@ -2091,6 +2093,72 @@ export async function renderView(el: HTMLElement) {
     else if (detail.hidden) railFull = false;   // 연 것이 없으면 크기도 되돌린다
   }
 
+  /** 방금 만든(또는 고친) 노드를 지도에 세우고 그 자리로 간다(authoring 의 `reveal`).
+   *
+   *  `focusNode` 로는 안 된다: 그 노드가 지금 스코프에 속하면 다시 그리지 않으므로 방금
+   *  만든 노드는 끝내 지도에 없다. 그래서 **늘 다시 받는다** — 스코프 안이면 카메라를 잇고,
+   *  밖이면 그 주제로 넓힌다. 문서 열이 열려 있으면 닫지 않는다(거기서 쓰던 중이다). */
+  async function revealNode(id: string, domain?: string, card = true, label?: string) {
+    const lv = trail[trail.length - 1];
+    const inScope = lv.kind === "l0"
+      || (!!domain && lv.domains.some((d) => domain === d || domain.startsWith(d + "/")));
+    if (!inScope) {
+      trail.length = 1;
+      if (domain) trail.push({ kind: "l1", domains: [domain] });
+    }
+    const paneOpen = !detail.hidden;
+    // 열이 바로 이 노드의 상세를 보이고 있으면(잇기·기본 정보 저장 뒤) 새 값으로 다시 그린다.
+    const paneShowsIt = paneOpen && !!detail.querySelector("#node-stats") && lastNode?.id === id
+      ? lastNode : null;
+    await show(trail[trail.length - 1], { keepPanel: true, keepCamera: inScope, keepDetail: paneOpen });
+    if (myGen !== liveGen) return;
+    const raw = curNodes.find((n) => n.id === id);
+    if (paneShowsIt) railFor(raw ? toN3([raw])[0] : paneShowsIt);
+    if (!raw) {
+      // 지도에 자리가 없다(연결 없는 기록·결정은 전체 지도가 그리지 않는다). 이름을 알면
+      // 노드 상세로 대신 연다 — 만든 것이 어디에도 안 보이면 만든 것 같지 않다.
+      if (label && card && !paneOpen) railFor({ id, label, domain: domain || "", degree: 0 } as N3);
+      return;
+    }
+    if (!centerMounted(id, raw.domain))
+      setTimeout(() => { if (myGen === liveGen) centerMounted(id, raw.domain); }, 420);
+    focusOnMap(toN3([raw])[0], card && !paneOpen);
+    lnbFocus = { domain: raw.domain, nodeId: id };
+    setLnbActive(lnbFocus);
+  }
+
+  /** 만든 노드를 문서 열의 노드 상세로 연다(컴포저의 Ctrl/Cmd+Enter · 기본 정보 저장 뒤). */
+  async function openNodePane(id: string, domain?: string, label?: string) {
+    await revealNode(id, domain, false);
+    if (myGen !== liveGen) return;
+    const raw = curNodes.find((n) => n.id === id);
+    railFor(raw ? toN3([raw])[0] : ({ id, label: label || id.replace(/^[a-z]+:/, ""),
+                                      domain: domain || "", degree: 0 } as N3));
+  }
+
+  /** 흐름 B — 오른쪽 문서 열에 새 문서. 첫 저장이 미러 노드를 만들면 그 노드를 지도에 세운다
+   *  (열은 그대로 두고). 트리는 여기서 **명시적으로** 새로 읽는다 — 저절로 새로워지는 갱신은
+   *  문서 열이 열린 동안 쉬므로(`live.ts` busy) 기다리면 방금 만든 것이 안 보인다. */
+  async function openWriter(topic?: string) {
+    openRail();
+    detail.innerHTML = `${railHeadHTML(COPY.ui.viewx.edNew)}<div id="wr-host"></div>`;
+    wireRailHead();
+    const { mountDocWriter } = await import("../authoring");
+    const host = detail.querySelector<HTMLElement>("#wr-host");
+    if (!host) return;
+    await mountDocWriter(host, {
+      topic,
+      onCreated: (docId, tp) => {
+        void refreshLnb();
+        void revealNode(`concept:doc.${docId}`, tp || undefined);
+      },
+      onTopicChanged: (tp, docId) => {
+        void refreshLnb();
+        void revealNode(`concept:doc.${docId}`, tp);
+      },
+    });
+  }
+
   /** 노드 맥락(`/node-context`) 한 번만 — 레일과 카드가 같은 노드에 같은 요청을 각자
    *  보내고 있었다(실측 2026-08-17: 클릭 한 번에 두 번, 63ms·100ms). 마지막 노드의
    *  약속을 기억해 둘이 나눠 쓴다. 층이 바뀌거나(show) 그래프를 고치면(삭제·연결)
@@ -2183,6 +2251,8 @@ export async function renderView(el: HTMLElement) {
         <div class="card-util">
           <button type="button" id="c-copylink">${V.cardCopyLink}</button>
           <button type="button" id="c-share">${V.cardShare}</button>
+          <button type="button" id="c-connect" data-tip="${esc(COPY.author.connectTip)}">${
+            esc(COPY.author.connect)}</button>
           <button type="button" id="c-del" class="card-util-del">${V.cardDelete}</button>
         </div>
       </div>`;
@@ -2205,6 +2275,8 @@ export async function renderView(el: HTMLElement) {
     bindCopyLink(q("#c-copylink"), () => promptFor(url(1)));
     q("#c-share")!.addEventListener("click", () =>
       openShareSheet({ seed: nd.id, depth: SHARE_DEPTH }));
+    q("#c-connect")!.addEventListener("click", () => void import("../connect")
+      .then((m) => m.startConnect({ id: nd.id, title: nd.label })));
     q("#c-del")!.addEventListener("click", async () => {
       if (!await confirmDestructive(V.delNodeAsk(nd.label), V.delConfirm, V.delCancel)) return;
       try {
@@ -2259,6 +2331,9 @@ export async function renderView(el: HTMLElement) {
    *  레일은 카드의 버튼이 연다. 나머지 진입점(컨텍스트 메뉴 "열기" · 트리 · 검색 ·
    *  드릴다운)은 그대로 `openDetail` 을 부르므로 거기서는 아무것도 안 달라진다. */
   function focusOnMap(nd: N3, card = true) {
+    // 잇기(흐름 F)가 대상을 고르는 중이면 이 초점은 그 대상이다 — 지도 클릭·검색 착지가
+    // 전부 이 깔때기로 오므로 여기 한 곳에서 가로챈다.
+    if (pickTarget) { const f = pickTarget; pickTarget = null; f(nd.id, nd.label); return; }
     lastNode = nd;   // Reader 뒤로가기 복귀 지점
     // 주소가 이 노드를 싣는다 — 주소창에서 복사해 건네는 것이 "노드 하나"라는 성질은
     // L2 가 스코프였을 때부터의 것이고, 층이 사라져도 남는다.
@@ -2303,8 +2378,11 @@ export async function renderView(el: HTMLElement) {
       <div id="node-stats"><p class="hint">${COPY.ui.viewx.sourceLoading}</p></div>
       <p class="rail-acts">
         <button class="btn btn-primary" id="nd-share">${COPY.ui.viewx.shareCta}</button>
+        <button class="btn" id="nd-connect" data-tip="${esc(COPY.author.connectTip)}">${
+          esc(COPY.author.connect)}</button>
         <button class="btn btn-quiet" id="nd-del">${COPY.ui.viewx.del}</button>
       </p>
+      <div id="node-basics"></div>
       <div id="node-props"></div>
       <div id="node-links"></div>
       <div id="node-source"></div>
@@ -2317,6 +2395,10 @@ export async function renderView(el: HTMLElement) {
     // 버튼과 같은 표면). 레일에서도 나갈 수 있어야 진입이 제스처 하나에 갇히지 않는다.
     detail.querySelector("#nd-share")!.addEventListener("click", () =>
       openShareSheet({ seed: nd.id, depth: SHARE_DEPTH }));
+    // 이름은 열 제목에서 읽는다 — 지도에 자리가 없는 노드는 제목이 늦게 온다(loadNodeSource).
+    detail.querySelector("#nd-connect")!.addEventListener("click", () => void import("../connect")
+      .then((m) => m.startConnect({ id: nd.id,
+                                    title: detail.querySelector("h2")?.textContent || nd.label })));
     // S1 — 노드 삭제(되돌릴 수 없음). 성공하면 상세를 닫고 현재 층을 다시 그려
     // 지도에서도 사라지게 한다(응답 후 재조회 — 엣지까지 지워지므로 부분 갱신 불가).
     detail.querySelector("#nd-del")!.addEventListener("click", async () => {
@@ -2335,19 +2417,27 @@ export async function renderView(el: HTMLElement) {
     void loadNodeSource(nd);
   }
 
-  async function openEdgeDetail(e: { source: string; target: string; type: string }) {
+  async function openEdgeDetail(e: { source: string; target: string; type: string;
+                                     srcTitle?: string; dstTitle?: string }) {
     // D45-V 1단계 — 흐름 선 클릭: "왜 A 가 B 로 이어지는가". 클릭=고정(pin) —
     // 상세 패널 자리를 그대로 쓴다(노드 상세와 같은 표면, ESC/다른 클릭으로 이동).
     openRail();
     detail.innerHTML = `<p class="hint">${COPY.ui.viewx.relLoading}</p>`;
     try {
-      const res = await api.edgeContext(cfg.owner, e.source, e.target, e.type);
+      let res = await api.edgeContext(cfg.owner, e.source, e.target, e.type);
+      let guessed = false;   // 서버가 이 관계를 못 읽었다 — 근거가 있는지도 모른다
       if (detail.hidden) return;   // 그 사이 다른 층으로 이동 — 늦은 응답 폐기
+      // 관계 상세 조회는 개념끼리만 안다(결정·기록이 낀 관계는 거절한다). 이름을 들고 왔으면
+      // 근거 없이 그 관계를 그대로 보이고 지우는 문은 남긴다 — 이은 것을 못 지우면 안 된다.
       if (!res.executed) {
-        detail.innerHTML = `<p class="hint">${COPY.ui.viewx.relFail}</p>`;
-        return;
+        if (!e.srcTitle || !e.dstTitle) {
+          detail.innerHTML = `<p class="hint">${COPY.ui.viewx.relFail}</p>`;
+          return;
+        }
+        res = { executed: true };
+        guessed = true;
       }
-      const a = res.src?.title || e.source, b = res.dst?.title || e.target;
+      const a = res.src?.title || e.srcTitle || e.source, b = res.dst?.title || e.dstTitle || e.target;
       const sentence = (COPY.ui.viewx.relSentence[e.type]
         || COPY.ui.viewx.relSentence.RELATED_TO)(a, b);
       const conf = res.confidence && res.confidence > 0
@@ -2361,14 +2451,35 @@ export async function renderView(el: HTMLElement) {
             <p class="hint" style="margin:.15rem 0 0">${esc(body)}</p>
           </div>` : "";
       };
+      // 열 머리(크기 · 닫기)를 함께 싣는다 — 여태 이 화면만 머리가 없어 Esc 말고는 나갈 문이 없었다.
       detail.innerHTML = `
+        ${railHeadHTML(esc(COPY.author.linkDetailTip))}
         <h2>${esc(a)} → ${esc(b)}</h2>
         <p>${esc(sentence)}${conf}</p>
-        <p class="hint" style="margin-bottom:.3rem">${COPY.ui.viewx.relEvidence}</p>
+        ${guessed ? "" : `<p class="hint" style="margin-bottom:.3rem">${COPY.ui.viewx.relEvidence}</p>
         ${res.evidence
           ? `<p>${esc(res.evidence)}</p>`
-          : `<p class="hint">${COPY.ui.viewx.relEvidenceNone}</p>`}
-        ${side(a, res.src)}${side(b, res.dst)}`;
+          : `<p class="hint">${COPY.ui.viewx.relEvidenceNone}</p>`}`}
+        ${side(a, res.src)}${side(b, res.dst)}
+        <p class="rail-acts"><button class="btn btn-quiet" id="edge-del">${
+          esc(COPY.author.edgeDel)}</button></p>
+        <p class="hint" id="edge-del-msg" role="status"></p>`;
+      wireRailHead();
+      // 연결 지우기(흐름 F 의 짝). 여태 API 는 있는데 부르는 곳이 없었다. 되돌릴 수 없으므로
+      // 확인을 받고, 지운 것이 0 이면(지울 수 없는 종류·이미 없음) 그렇게 말한다.
+      detail.querySelector("#edge-del")!.addEventListener("click", async () => {
+        const A = COPY.author;
+        const say = (t: string) => { const m = detail.querySelector("#edge-del-msg"); if (m) m.textContent = t; };
+        if (!await confirmDestructive(esc(A.edgeDelAsk(a, b)), COPY.ui.viewx.delConfirm,
+                                      COPY.ui.viewx.delCancel)) return;
+        try {
+          const r = await api.deleteEdge(cfg.owner, e.source, e.target, e.type);
+          if (!r.executed) { say(A.edgeDelFail); return; }
+          if (!r.deleted?.edges) { say(r.note ? A.edgeDelUnsupported : A.edgeDelFail); return; }
+          closeRail();
+          void show(trail[trail.length - 1], { keepPanel: true, keepCamera: true });
+        } catch { say(A.edgeDelFail); }
+      });
     } catch {
       if (!detail.hidden) detail.innerHTML = `<p class="hint">${COPY.ui.viewx.relFail}</p>`;
     }
@@ -2891,12 +3002,15 @@ export async function renderView(el: HTMLElement) {
     const rest = links.degree + links.attached - links.items.length;
     return links.items.map((it, i) => {
       const ev = it.evidence && it.dir !== "att";
+      // 관계 이름은 **관계 상세로 가는 문**이다 — 근거가 없어도 연다(거기서 지운다).
+      // 부착(att)은 지우는 길이 없는 관계라 문을 내지 않는다.
+      const open = it.dir !== "att";
       return `
         <button type="button" class="link-row" data-i="${i}">
           <span class="link-dir" aria-hidden="true">${arrow(it.dir)}</span>
           <span class="link-title">${esc(it.title)}</span>
-          <span class="link-tag${ev ? " link-tag--ev" : ""}"${
-            ev ? ` data-ev="${i}" data-tip="${V.relEvidence}"` : ""}>${
+          <span class="link-tag${ev ? " link-tag--ev" : ""}${open ? " link-tag--open" : ""}"${
+            open ? ` data-ev="${i}" data-tip="${ev ? V.relEvidence : esc(COPY.author.linkDetailTip)}"` : ""}>${
             esc(TAG[`${it.type}:${it.dir}`] || it.type.toLowerCase())}</span>
         </button>`;
     }).join("")
@@ -2908,11 +3022,12 @@ export async function renderView(el: HTMLElement) {
     box.querySelectorAll<HTMLElement>(".link-row").forEach((r) =>
       r.addEventListener("click", (e) => {
         const it = links.items[Number(r.dataset.i)];
-        if ((e.target as HTMLElement).closest<HTMLElement>(".link-tag--ev")) {
+        if ((e.target as HTMLElement).closest<HTMLElement>(".link-tag--open")) {
           e.stopPropagation();
+          const here = (detail.contains(box) && detail.querySelector("h2")?.textContent) || nd.label;
           void openEdgeDetail(it.dir === "out"
-            ? { source: nd.id, target: it.id, type: it.type }
-            : { source: it.id, target: nd.id, type: it.type });
+            ? { source: nd.id, target: it.id, type: it.type, srcTitle: here, dstTitle: it.title }
+            : { source: it.id, target: nd.id, type: it.type, srcTitle: it.title, dstTitle: here });
           return;
         }
         // 문서 열 안의 연결 줄이면 **열 안에서** 옮겨 간다(지금 크기 그대로). 카드의
@@ -2951,6 +3066,14 @@ export async function renderView(el: HTMLElement) {
       // 패널이 그 사이 다른 노드로 갱신됐으면 버린다(늦은 응답이 남의 상세를 덮지 않게).
       if (!detail.contains(box) || detail.hidden) return;
       drawNodeProps(nd, res.props, { kind: res.node_kind, rev: res.rev });
+      // 지도에 자리가 없는 노드(연결 없는 기록·결정)는 id 조각을 이름으로 달고 열린다 —
+      // 노드가 답한 제목이 오면 그것으로 바꾼다(역할의 직함은 위에서 이미 골랐다).
+      const h2 = detail.querySelector("h2");
+      if (h2 && res.title && h2.textContent === nd.id.replace(/^[a-z]+:/, "")) h2.textContent = res.title;
+      // 기본 정보(흐름 H) — 저장되면 지도와 이 열을 새 값으로 다시 그린다.
+      const basics = detail.querySelector<HTMLElement>("#node-basics");
+      if (basics) void import("../node-basics").then((m) => m.drawBasics(basics, nd.id, res,
+        (domain) => void openNodePane(nd.id, domain || undefined)));
       if (railFull && res.links?.executed) drawPaneLinks(nd, res.links);
       const parts: string[] = [];
       if (res.one_liner) parts.push(`<div class="doc-render">${renderMarkdown(res.one_liner)}</div>`);
@@ -3561,7 +3684,7 @@ export async function renderView(el: HTMLElement) {
   }
   let showSeq = 0;
   async function show(level: Level,
-                      opts?: { keepPanel?: boolean; keepCamera?: boolean }) {
+                      opts?: { keepPanel?: boolean; keepCamera?: boolean; keepDetail?: boolean }) {
     const seq = ++showSeq;
     setBusy(true, opts?.keepPanel ? 120 : 400);
     // 옵션만 바뀐 재마운트는 카메라를 잇는다 — 전체 맞춤으로 되감기는 것이 "옵션을
@@ -3570,7 +3693,9 @@ export async function renderView(el: HTMLElement) {
     ctxCache = null;                           // 층이 바뀌면 노드 맥락 메모도 버린다
     spot = null;   // 렌더러가 통째로 갈리므로 점등도 함께 버린다(핸들이 사라진다)
     kindSpot = null;   // 〃 — 서 있는 것도 함께. 새 렌더러에 다시 걸리는 것은 아래 훅이다.
-    detail.hidden = true;
+    // `keepDetail` — 방금 만든 것을 지도에 세우는 재그리기(revealNode)는 문서 열을 닫지
+    // 않는다. 거기서 쓰고 있던 글이 첫 저장과 함께 사라지면 안 된다.
+    if (!opts?.keepDetail) detail.hidden = true;
     closeFloatPanel();   // 층이 바뀌면 카드가 가리키던 노드도 화면에서 사라진다
     float.hidden = true;
     lassoHint.hidden = true;   // 기본 숨김 — wireLasso 가 다시 켠다
@@ -3688,7 +3813,33 @@ export async function renderView(el: HTMLElement) {
     },
     openNode: (id, dom) => void focusNode(id, dom),
     openDoc: (docId, nodeId, dom, chunkIndex) => void openDocAt(docId, nodeId, dom, chunkIndex),
+    // 작업하는 자리에서 만들기(authoring.ts) — 만드는 흐름이 지도와 문서 열에 닿는 문.
+    newDoc: (topic) => void openWriter(topic),
+    reveal: (id, dom, label) => revealNode(id, dom, true, label),
+    openNodePane: (id, dom, label) => openNodePane(id, dom, label),
+    // 지금 보고 있는 자리의 주제: 짚은 노드의 주제 → 좁힌 주제 하나 → 없음.
+    context: () => {
+      const lv = trail[trail.length - 1];
+      const scoped = lv.kind === "l1" && lv.domains.length === 1 ? lv.domains[0] : "";
+      return { topic: lastNode?.domain || lnbFocus.domain || scoped, nodeId: lastNode?.id || "" };
+    },
+    pickNode: (cb) => { pickTarget = cb; },
   });
+  // 지도 빈 곳 우클릭 = 여기에 새로 만들기(흐름 A). 노드 우클릭은 렌더러가 자기 메뉴를
+  // 먼저 연다 — 캡처로 받고 한 틱 뒤에 메뉴가 이미 떠 있으면 비켜선다(렌더러 둘에 빈 곳
+  // 훅을 따로 뚫지 않는 방법이다).
+  canvas.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    window.setTimeout(() => {
+      if (myGen !== liveGen || document.querySelector(".ctx-menu")) return;
+      const lv = trail[trail.length - 1];
+      const topic = lv.kind === "l1" && lv.domains.length === 1 ? lv.domains[0] : "";
+      void import("../authoring").then((m) => openContextMenu(ev.clientX, ev.clientY, [
+        { label: COPY.author.hereNode, run: () => void m.startNewNode({ topic }) },
+        { label: COPY.author.hereDoc, run: () => m.startNewDoc(topic) },
+      ]));
+    }, 0);
+  }, true);
   // 좌측 트리의 문서 클릭이 여기로 온다(D69·D70). 훅이 없으면 트리는 해시 착지로
   // 강등되므로, View 가 살아 있는 동안만 "리마운트 없는 이동"이 성립한다.
   // LNB 에서 고른 것은 카드 대신 넓은 문서 열로 연다(openFromNav).

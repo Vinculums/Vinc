@@ -36,11 +36,15 @@ SURFACES = {
     "surfaces/search.ts": ("armsNoticeBadge", "armsNoticeBadge(res) + html"),
     "ask.ts": ("armsNotice", "${esc(t.note)}"),
     "topbar.ts": ("armsNotice", "${notice.text}"),
+    # 만들기 흐름의 노드 찾기(`[[` 목록 · 컴포저 연결 대상 · 잇기 띠)가 한 자리에서 부른다.
+    "authoring.ts": ("armsNotice", '<p class="cm-assist-note">${esc(note)}</p>'),
 }
 #: 판정이 호출부에서 그리는 자리까지 건너는 다리. 끊어져도 화면은 똑같이 침묵한다.
 #: (ask 는 답을 턴 로그에 실어 두었다가 그 턴을 다시 그린다 — 한 홉이 더 있다.)
 BRIDGES = {
     "ask.ts": ("lastNote = armsNotice(res)?.text", "note: lastNote"),
+    # `[[` 목록은 편집기 쪽 부품이 그린다 — 판정이 거기까지 건너가야 한다.
+    "cm-assist.ts": ("this.note = got.note", "escHtml(this.note)"),
 }
 
 

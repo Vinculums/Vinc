@@ -658,14 +658,19 @@ export const api = {
   // contentTime(D72): **키가 없을 때와 빈 값일 때가 다르다.** undefined 면 보내지
   // 않아 서버가 기존 값을 보존하고, "" 는 사용자가 지운 것이다(그래서 falsy 를
   // 통째로 걸러내는 spread 관용구를 쓰지 않는다).
+  // topic: 문서의 주제를 **적는다**(미러 노드 `concept:doc.<id>` 의 domain). 주면 첫 저장에
+  // 미러가 생겨 트리와 지도에 곧바로 선다(`docstore.put_doc`). 빈 값은 싣지 않는다 —
+  // 서버는 빈 주제를 "지운다"가 아니라 "안 건드린다"로 읽는다.
   docPut: (owner: string, text: string, id?: string, title?: string,
-           contentTime?: string, origin?: string): Promise<{
+           contentTime?: string, origin?: string, topic?: string): Promise<{
     executed: boolean; skipped?: boolean; doc_id?: string; content_hash?: string;
     chunks?: number; needs_embed?: boolean; content_time?: string; error?: string;
+    created?: boolean; topic?: string;
   }> => call("/doc/put", undefined, { owner, text, ...(id ? { id } : {}),
                                       ...(title ? { title } : {}),
                                       ...(contentTime === undefined ? {} : { content_time: contentTime }),
-                                      ...(origin ? { origin } : {}) }),
+                                      ...(origin ? { origin } : {}),
+                                      ...(topic ? { topic } : {}) }),
   // 파일 바이트 입구(D45) — 텍스트로 못 읽는 것(PDF)과 브라우저 UTF-8 디코드가
   // 망친 것(cp949 등)을 원본 바이트로 넘겨 서버 추출기에 맡긴다. multipart 가
   // 아니라 base64-in-JSON 인 이유는 계정 프록시가 JSON 만 통과시키기 때문.
@@ -682,10 +687,15 @@ export const api = {
   evidenceBackfill: (owner: string, docId?: string): Promise<{
     executed: boolean; filled?: number; scanned?: number;
   }> => call("/evidence/backfill", undefined, { owner, ...(docId ? { doc_id: docId } : {}) }),
-  docExtract: (owner: string, id: string, apply = false): Promise<{
-    executed: boolean; candidates?: { title: string }[];
+  // candidates: 반영할 목록을 고른다(사람이 체크한 것만). 없으면 서버가 결정론 추출 전량.
+  // id 는 서버가 제목 slug 로 다시 짓는다 — 여기서 id 를 실어 보내지 않는다.
+  docExtract: (owner: string, id: string, apply = false,
+               candidates?: { title: string; one_liner?: string }[]): Promise<{
+    executed: boolean; candidates?: { title: string; one_liner?: string; slug?: string }[];
     applied?: { created: number; matched: number }; mentions?: number;
-  }> => call("/doc/extract", undefined, { owner, id, apply }),
+    domain?: string; error?: string;
+  }> => call("/doc/extract", undefined, { owner, id, apply,
+                                          ...(candidates ? { candidates } : {}) }),
   // 문서 목록. `topic`/`topics` 는 언급 개념에서 유도된 주제(문서에 주제 열은 없다),
   // `primary_concept_id` 는 **그 문서를 눌렀을 때 착지할 노드**(D69) — 대표 주제 안의
   // 최다 언급 개념이다. 언급이 없으면 빈 문자열이고 착지 대상이 없다(편집기로만 열린다).
@@ -745,8 +755,10 @@ export const api = {
     executed: boolean; found?: boolean;
     deleted?: { node: number; edges: number }; note?: string; error?: string;
   }> => call("/delete", undefined, { owner, node }),
+  // `deleted` 는 수가 아니라 `{edges: n}` 이다(`query.delete_edge`). 지울 수 없는 관계
+  // 종류(부착 등)는 executed:true 에 `note` 만 싣고 `deleted` 가 없다.
   deleteEdge: (owner: string, from: string, to: string, type: string): Promise<{
-    executed: boolean; deleted?: number; error?: string;
+    executed: boolean; found?: boolean; deleted?: { edges: number }; note?: string; error?: string;
   }> => call("/delete-edge", undefined, { owner, from, to, type }),
   docDelete: (owner: string, id: string): Promise<{
     executed: boolean; deleted_meta?: number; deleted_chunks?: number; error?: string;

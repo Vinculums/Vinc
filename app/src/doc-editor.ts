@@ -123,6 +123,10 @@ export type DocEditorHandle = {
    *  모습이 딸려 오지만 문서의 정본은 마크다운이므로, 한 번 눌러 얻는 것은
    *  **소스 그대로**여야 붙여넣은 곳에서 같은 문서가 된다. */
   getText: () => string;
+  /** 이 문서의 주제만 적는다(본문은 마지막 저장본 그대로). 아직 안 만든 문서면 false. */
+  saveTopic?: (topic: string) => Promise<boolean>;
+  /** 사람이 저장을 뜻한 것과 같다(Ctrl/Cmd+S). 새 문서의 주제를 고른 직후에 쓴다. */
+  saveNow?: () => Promise<void>;
 };
 
 /** 살아 있는 편집기 — **teardown 이 핸들에 닿는 유일한 통로.**
@@ -179,6 +183,13 @@ export type DocEditorOpts = {
   /** 본문의 `[[doc_id]]` 를 눌렀다. 주면 그 링크가 살아나고, 안 주면 종전대로
    *  밑줄만 그어진 글자로 남는다(시트·Tools 처럼 갈 곳이 없는 자리). */
   onDocLink?: (docId: string) => void;
+  /** 새 문서(흐름 B) — 주제. 주면 **첫 저장**이 제목과 함께 보내 미러 노드가 생긴다.
+   *  비어 있으면 첫 저장을 미루고 이유를 말한다(주제 없는 문서는 트리에 자리가 없다). */
+  topic?: () => string;
+  /** 새 문서 — 첫 저장 직전에 제목으로 id 를 선언한다. `skip` 은 쓰기에서 거절된 후보. */
+  declareId?: (title: string, skip: string[]) => Promise<string>;
+  /** 첫 저장으로 문서가 생겼다(선언한 id · 보낸 주제). */
+  onCreated?: (docId: string, topic: string) => void;
 };
 
 /** 편집기를 host 에 마운트. host 내부를 편집 UI 로 채운다(호출부가 컨테이너·닫기
@@ -331,9 +342,23 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
         + "padding:.25rem;margin-top:.4rem";
     src.replaceWith(cmHost);
     prev.remove();
-    cm = mod.mountEditor(cmHost, { initial, onChange: onEdited, onSave: () => void save(),
+    const A = COPY.author;
+    cm = mod.mountEditor(cmHost, { initial, onChange: onEdited, onSave: () => void save(false, true),
       slash: slashItems, readOnly: opts.readOnly, fmLabel: COPY.ui.viewx.edFmLabel,
       onDocLink: opts.onDocLink,
+      // 흐름 C — `[[` 로 기존 노드를 찾아 제목을 넣는다(멘션은 저장 때 링커가 잇는다).
+      mention: {
+        search: async (q) => (await import("./authoring")).findNodes(q),
+        create: (q) => createMentionConcept(q),
+        createLabel: A.mentionCreate, noneLabel: A.mentionNone,
+      },
+      // 흐름 D — 고른 글로 노드를 만든다(컴포저가 그 글을 들고 열린다).
+      selection: {
+        label: A.selLabel,
+        actions: (["concept", "record", "decision"] as const)
+          .map((k) => ({ key: k, label: A.kinds[k] })),
+        run: (kind, text) => void composeFromText(kind, text),
+      },
       // 바깥 링크는 셸이면 OS 브라우저로, 웹이면 새 탭으로 — 계정 연결이 이미
       // 쓰는 길과 같다(shell:allow-open 은 그 자리에서 이미 열려 있다).
       onUrl: (url) => void (async () => {
@@ -353,7 +378,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     src.addEventListener("input", onEdited);
     src.addEventListener("keydown", (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
-        e.preventDefault(); if (timer) window.clearTimeout(timer); void save();
+        e.preventDefault(); if (timer) window.clearTimeout(timer); void save(false, true);
       }
     });
   }
@@ -365,12 +390,35 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       timer = window.setTimeout(() => void save(), 2000);
     });
   }
+  // 새 문서(흐름 B): 제목에서 Enter = 본문으로 내려가며 만든다. 제목을 떠나는 것도 같다 —
+  // 제목을 치는 **중**에는 만들지 않으므로(아래 save), 다 쳤다는 신호가 이 둘이다.
+  if (opts.declareId) {
+    titleInput.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.isComposing) return;
+      e.preventDefault();
+      (cm ? cm : src).focus();
+    });
+    titleInput.addEventListener("blur", () => {
+      if (!docId && titleInput.value.trim()) void save(false, true);
+    });
+  }
 
-  async function save(force = false): Promise<void> {
+  /** `explicit` = 사람이 저장을 뜻했다(Ctrl/Cmd+S · 제목에서 Enter · 제목을 떠남).
+   *  새 문서의 첫 저장은 이것만 만든다 — 디바운스는 제목을 치는 중에 터질 수 있고, 그러면
+   *  반쯤 친 제목이 문서 id 로 굳는다. */
+  async function save(force = false, explicit = false): Promise<void> {
     const text = getText();
     const t = titleInput.value;
     const ct = ctimeInput.value.trim();
     if (saving || (!force && text === lastSaved && t === lastTitle && ct === lastCtime)) return;
+    // 새 문서 — 제목과 주제가 있어야 만든다. 없으면 **왜 안 저장됐는지** 말한다.
+    const creating = !docId && !!opts.declareId;
+    const topic = opts.topic?.() || "";
+    if (creating) {
+      if (!t.trim()) { setStatus(COPY.author.docNeedTitle); return; }
+      if (opts.topic && !topic) { setStatus(COPY.author.docNeedTopic); return; }
+      if (!explicit && document.activeElement === titleInput) return;
+    }
     saving = true;
     setStatus(COPY.ui.viewx.edSaving);
     try {
@@ -414,8 +462,26 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
           return;
         }
       }
-      const res = await api.docPut(opts.owner, text, docId, t, ct);
-      if (!res.executed) throw new Error(res.error || "put failed");
+      let res: Awaited<ReturnType<typeof api.docPut>>;
+      if (creating) {
+        // 선언한 id 로 만든다. 남의 스페이스가 쥔 id 는 읽기로는 안 보여서 쓰기가 거절한다 —
+        // 그때 다음 후보로 한 번 더(세 번까지). 거절된 id 에 조용히 합치는 길은 없다.
+        const skip: string[] = [];
+        let id = "";
+        do {
+          id = await opts.declareId!(t, skip);
+          res = await api.docPut(opts.owner, text, id, t, ct, undefined, topic || undefined);
+          // 다음 후보로 가는 것은 **그 id 를 못 쓴다**는 거절일 때뿐이다. 다른 실패에서 id 를
+          // 바꾸면 멀쩡한 id 를 버리고 `-2` 를 지어낸다.
+          if (res.executed || !/unavailable/i.test(String(res.error || ""))) break;
+          skip.push(id);
+        } while (skip.length < 3);
+        if (!res.executed) throw new Error(res.error || "put failed");
+        docId = res.doc_id || id;
+      } else {
+        res = await api.docPut(opts.owner, text, docId, t, ct);
+        if (!res.executed) throw new Error(res.error || "put failed");
+      }
       if (res.doc_id) docId = res.doc_id;              // 신규 → 생성된 id 확보
       lastSaved = text; lastTitle = t; lastCtime = ct; hash = res.content_hash || hash;
       // 서버가 형식 미달을 비웠으면 입력칸도 그 사실을 반영한다 — 화면에는 남아
@@ -426,6 +492,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       }
       setStatus(COPY.ui.viewx.edSaved);
       opts.onSaved?.(docId || "", t);
+      if (creating && docId) opts.onCreated?.(docId, res.topic || topic);
       if (!res.skipped && docId) { void offerExtract(); void reindex(res.needs_embed); }
     } catch {
       setStatus(COPY.ui.viewx.edSaveFail);
@@ -452,23 +519,80 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     } catch { setStatus(COPY.ui.viewx.edSaved); }
   }
 
+  /** 흐름 G — 저장 뒤 "이 문서에서 찾은 개념" 목록. 반영·건너뛴 것은 다시 권하지 않고,
+   *  반영이 거절되면(주제 없음 등) 그 이유를 말한다. 목록은 `extract-list.ts` 가 그린다. */
   async function offerExtract(): Promise<void> {
     if (!docId) return;
+    const { offerExtraction } = await import("./extract-list");
+    await offerExtraction(extractBox, {
+      owner: opts.owner, docId,
+      setTopic: saveTopic,
+    });
+  }
+
+  /** 주제만 적는다. **마지막으로 저장한 본문**을 보낸다 — 서버는 해시가 같아 청크를
+   *  건드리지 않고(skipped) 주제만 적는다. 화면의 본문을 보내면 저장 안 된 편집이 이
+   *  길로 새어 나가고, 편집기가 들고 있는 해시가 낡아 다음 저장이 충돌로 튄다. */
+  async function saveTopic(tp: string): Promise<boolean> {
+    if (!docId || !tp) return false;
+    const r = await api.docPut(opts.owner, lastSaved, docId, undefined, undefined, undefined, tp);
+    if (r.executed) knownTopic = tp;
+    return r.executed;
+  }
+
+  /** 이 문서의 주제 — 새 문서면 주제 칩, 아니면 미러 노드(`concept:doc.<id>`)의 주제. */
+  let knownTopic = "";
+  async function docTopic(): Promise<string> {
+    const t = opts.topic?.() || knownTopic;
+    if (t || !docId) return t;
     try {
-      const res = await api.docExtract(opts.owner, docId, false);
-      const n = (res.candidates || []).length;
-      if (!res.executed || n === 0) { extractBox.innerHTML = ""; return; }
-      extractBox.innerHTML =
-        `<button class="btn" style="margin-top:.3rem" id="ed-ap">${COPY.ui.viewx.edExtractOffer(n)}</button>`;
-      extractBox.querySelector("#ed-ap")!.addEventListener("click", async () => {
-        extractBox.innerHTML = `<p class="hint">${COPY.ui.viewx.edSaving}</p>`;
-        try {
-          const ap = await api.docExtract(opts.owner, docId!, true);
-          extractBox.innerHTML = `<p class="hint">${COPY.ui.viewx.edExtractDone(
-            ap.applied?.created || 0, ap.mentions || 0)}</p>`;
-        } catch { extractBox.innerHTML = ""; }
-      });
-    } catch { extractBox.innerHTML = ""; }
+      const r = await api.nodeContext(opts.owner, `concept:doc.${docId}`, 1) as { domain?: string };
+      knownTopic = r?.domain || "";
+      // 적힌 주제가 없으면 본문이 가장 많이 언급한 개념의 주제(트리가 이 문서를 거는 자리와 같은 규칙).
+      if (!knownTopic) {
+        const c = await api.docContext(opts.owner, docId);
+        knownTopic = (c.concepts || []).find((x) => x.domain)?.domain || "";
+      }
+    } catch { /* 모르면 빈 값 — 부르는 쪽이 주제를 묻는다 */ }
+    return knownTopic;
+  }
+
+  /** `[[` 목록의 마지막 줄 — 문서의 주제에 개념을 만들고 그 제목을 돌려준다(본문에 들어간다).
+   *  주제를 모르거나 쓰기가 막히면 컴포저를 연다: 거기서 주제를 고르고 이유를 읽는다. */
+  async function createMentionConcept(q: string): Promise<string | null> {
+    const title = q.trim();
+    if (!title) return null;
+    const { slugOf } = await import("./authoring");
+    const topic = await docTopic();
+    const slug = slugOf(title);
+    if (topic && slug) {
+      const id = `concept:${slug}`;
+      try {
+        const have = await api.nodeContext(opts.owner, id, 1);
+        if (have.executed) return have.title || title;          // 이미 있다 — 그 이름을 넣는다
+        const res: any = await api.ingestFragment({
+          nodes: [{ id, type: "concept", title, domain: topic }] });
+        const made = (res?.merged?.nodes?.created || 0) + (res?.merged?.nodes?.matched || 0);
+        if (res?.executed !== false && made && !(res?.id_conflicts || []).length) {
+          void import("./lnb").then((m) => m.refreshLnb({ quiet: true }));
+          return title;
+        }
+      } catch { /* 아래 컴포저가 이유를 말한다 */ }
+    }
+    const { openComposer } = await import("./node-composer");
+    const made = await openComposer({ kind: "concept", title, topic, sourceDoc: docId });
+    return made ? made.title : null;
+  }
+
+  /** 흐름 D — 고른 글이 짧으면 제목, 길면 한 줄 설명으로 컴포저를 연다. */
+  async function composeFromText(kind: string, text: string) {
+    const t = text.trim();
+    if (!t) return;
+    const short = t.length <= 80 && !t.includes("\n");
+    const { openComposer } = await import("./node-composer");
+    const k = kind === "record" || kind === "decision" ? kind : "concept";
+    await openComposer({ kind: k, title: short ? t : "", oneLiner: short ? "" : t.slice(0, 400),
+                         topic: await docTopic(), sourceDoc: docId });
   }
 
   // 포커스를 뺏지 않는 두 경우: 읽기로 시작할 때, 그리고 편집 가능하지만 자리가
@@ -488,13 +612,16 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     },
     scrollToOffset: (pos: number) => cm?.scrollToOffset(pos),
     getText,
+    saveTopic,
+    saveNow: () => save(false, true),
   };
   LIVE.set(host, handle);
   // **처음부터 상태를 말한다.** 여태 `setStatus` 는 고치거나 저장할 때만 불려서,
   // 문서를 연 직후에는 상태 줄이 비어 있었다 — 상시 편집인 면이 저장 여부를 한 번도
   // 말하지 않은 셈이고, 그래서 "클릭해도 되나"가 남았다(발주자 지적 2026-09-10).
-  // 방금 읽어 온 그대로이므로 지금은 저장된 상태다.
-  setStatus(COPY.ui.viewx.edSaved);
+  // 방금 읽어 온 그대로이므로 지금은 저장된 상태다. 새 문서(흐름 B)는 아직 아무것도
+  // 저장된 적이 없으므로 "저장됨"이라고 말하지 않는다.
+  setStatus(opts.declareId && !docId ? "" : COPY.ui.viewx.edSaved);
   return handle;
 }
 

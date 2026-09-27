@@ -17,6 +17,8 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { fillMath, fillMermaid } from "./rich-blocks";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
+import { MentionMenu, SelectionBar, MENTION_RE,
+         type MentionOpts, type SelectionOpts } from "./cm-assist";
 
 /** 슬래시 커맨드 항목 — 결정론 블록 삽입(오프라인·무LLM). insert = 삽입할 마크다운
  *  템플릿, cursorBack = 삽입 후 커서를 끝에서 몇 칸 되돌릴지(코드펜스 안쪽 등). */
@@ -555,8 +557,14 @@ export function mountEditor(el: HTMLElement, opts: {
   /** `[text](url)` 를 Ctrl/Cmd+클릭했다. 여는 방법은 셸이냐 웹이냐로 갈리므로
    *  역시 호출부가 안다. */
   onUrl?: (url: string) => void;
+  /** `[[` 노드 찾기(흐름 C). 편집 가능할 때만 뜬다. */
+  mention?: MentionOpts;
+  /** 고른 글 위의 작은 줄(흐름 D). 읽기 모드에서도 뜬다 — 읽다가 만드는 손도 있다. */
+  selection?: SelectionOpts;
 }): CmHandle {
   let slash: SlashMenu | null = null;
+  let mention: MentionMenu | null = null;
+  let selbar: SelectionBar | null = null;
   const view = new EditorView({
     parent: el,
     state: EditorState.create({
@@ -564,6 +572,15 @@ export function mountEditor(el: HTMLElement, opts: {
       extensions: [
         history(),
         // 슬래시 메뉴가 열려 있으면 방향키·Enter·Esc 를 메뉴가 가로챈다(높은 우선순위).
+        // `[[` 목록도 같은 방식으로 키를 가로챈다. 둘이 동시에 뜨는 일은 없다(슬래시는
+        // "/" 한 글자 줄에서만, `[[` 는 그 뒤에 글자가 있을 때만).
+        keymap.of([
+          { key: "ArrowDown", run: () => { if (mention?.open) { mention.move(1); return true; } return false; } },
+          { key: "ArrowUp", run: () => { if (mention?.open) { mention.move(-1); return true; } return false; } },
+          { key: "Enter", run: () => { if (mention?.open) { void mention.choose(); return true; } return false; } },
+          { key: "Tab", run: () => { if (mention?.open) { void mention.choose(); return true; } return false; } },
+          { key: "Escape", run: () => { if (mention?.open) { mention.hide(); return true; } return false; } },
+        ]),
         keymap.of([
           { key: "ArrowDown", run: () => { if (slash?.open) { slash.move(1); return true; } return false; } },
           { key: "ArrowUp", run: () => { if (slash?.open) { slash.move(-1); return true; } return false; } },
@@ -637,6 +654,25 @@ export function mountEditor(el: HTMLElement, opts: {
             if (sel.empty && line.text === "/" && sel.head === line.to) slash.show(line.from);
             else slash.hide();
           }
+          // `[[질의` — 커서 바로 앞에 있을 때만. 선택 영역이 있거나 커서가 떠나면 닫는다.
+          if (mention && (u.docChanged || u.selectionSet)) {
+            const sel = u.state.selection.main;
+            const line = u.state.doc.lineAt(sel.head);
+            const m = sel.empty ? MENTION_RE.exec(line.text.slice(0, sel.head - line.from)) : null;
+            if (m && (u.docChanged || mention.open)) mention.update(line.from + m.index, m[1]);
+            else mention.hide();
+          }
+          // 키보드로 고른 글(Shift+화살표)도 작은 줄을 부른다. 마우스는 아래 mouseup 이 맡는다.
+          if (selbar && u.selectionSet && !u.docChanged) {
+            const sel = u.state.selection.main;
+            if (sel.empty) selbar.hide();
+            else if (u.view.hasFocus) {
+              const a = u.view.coordsAtPos(sel.from), b = u.view.coordsAtPos(sel.to);
+              if (a && b) selbar.showAt(u.state.sliceDoc(sel.from, sel.to),
+                { left: Math.min(a.left, b.left), right: Math.max(a.right, b.right),
+                  top: Math.min(a.top, b.top), bottom: Math.max(a.bottom, b.bottom) });
+            }
+          } else if (selbar && u.docChanged) selbar.hide();
         }),
         EditorView.theme({
           "&": { backgroundColor: "transparent", fontSize: "0.92em" },
@@ -664,6 +700,22 @@ export function mountEditor(el: HTMLElement, opts: {
     }),
   });
   if (opts.slash && opts.slash.length) slash = new SlashMenu(view, opts.slash);
+  if (opts.mention && !opts.readOnly) mention = new MentionMenu(view, opts.mention);
+  if (opts.selection) {
+    const bar = selbar = new SelectionBar(opts.selection);
+    // 마우스로 고른 글 — 읽기 모드에서는 편집기가 선택을 상태로 옮기지 않으므로 창의
+    // 선택에서 읽는다. 편집기 밖으로 끌고 나간 선택은 받지 않는다.
+    view.dom.addEventListener("mouseup", () => window.setTimeout(() => {
+      const s = window.getSelection();
+      if (!s || s.isCollapsed || !s.rangeCount || !view.dom.contains(s.anchorNode)) { bar.hide(); return; }
+      const r = s.getRangeAt(0).getBoundingClientRect();
+      bar.showAt(s.toString(), r);
+    }, 0));
+    view.dom.addEventListener("focusout", () => window.setTimeout(() => {
+      if (!view.dom.contains(document.activeElement)) bar.hide();
+    }, 150));
+    view.scrollDOM.addEventListener("scroll", () => bar.hide(), { passive: true });
+  }
   let hl: { char_start: number; char_end: number }[] = [];
   /** 오프셋 하나로 스크롤. 문서 길이로 자르는 이유: 청크 오프셋은 저장 시점의
    *  것이라 그 뒤 편집으로 짧아졌을 수 있다 — 넘는 값을 그대로 넣으면 던진다. */
@@ -675,7 +727,7 @@ export function mountEditor(el: HTMLElement, opts: {
     getValue: () => view.state.doc.toString(),
     setValue: (text) => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }),
     focus: () => view.focus(),
-    destroy: () => { slash?.destroy(); view.destroy(); },
+    destroy: () => { slash?.destroy(); mention?.destroy(); selbar?.destroy(); view.destroy(); },
     setHighlights: (ranges) => {
       hl = ranges;
       view.dispatch({ effects: setHl.of(ranges.map((r) => ({ from: r.char_start, to: r.char_end }))) });
