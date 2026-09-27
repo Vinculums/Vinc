@@ -44,6 +44,19 @@ def test_target_precedence(monkeypatch):
         cli_target.resolve_target(None)
 
 
+def test_account_environment_url_and_space(monkeypatch):
+    monkeypatch.setenv("VINC_API_KEY", "vinc_sk_test")
+    monkeypatch.setenv("VINC_API_URL", "https://custom.test/")
+    monkeypatch.setenv("VINC_SPACE", "11111111-1111-1111-1111-111111111111")
+    seen = []
+    monkeypatch.setattr(remote_client, "urlopen",
+                        lambda request, **_: (seen.append(request), _Response({"ok": True}))[1])
+    assert cli_target.resolve_space(None) == "11111111-1111-1111-1111-111111111111"
+    remote_client.call("vinc_whoami", {}, space=cli_target.resolve_space(None))
+    assert seen[0].full_url == ("https://custom.test/v1/me?"
+                                "space=11111111-1111-1111-1111-111111111111")
+
+
 def test_every_public_tool_uses_a_v1_route(monkeypatch):
     names = {item["name"] for item in tools.TOOLS}
     assert len(names) == 24
