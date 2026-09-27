@@ -176,8 +176,16 @@ jobs:
           # 릴리스가 남으므로, 이 지출은 요금이 아니라 보험료로 읽는다.
           # 되돌릴 조건: 이 기계의 페이지 파일이 커지거나(커밋 한도 상향) 상시 사용량이
           # 내려가서, `tauri build` 가 여기서 초록인 것을 **실제로 본 뒤**.
-          - os: windows-latest
+          #
+          # ⚠ **다시 집으로 들였다(2026-09-27).** 조직의 Actions 예산이 바닥나 호스티드
+          # 잡이 아예 시작하지 않았다("an Actions budget is preventing further use").
+          # 위 되돌릴 조건은 그날 실측으로 섰다: 커밋 한도 47.4GB · 여유 26.7GB
+          # (D 에 페이지 파일이 더해졌다). OpenSSL 3 은 이 기계의 Git 이 D:\git 에 있어
+          # sidecar.spec 의 기본 후보에 없으므로 `openssl_dir` 로 알려 준다(mingw 빌드이지만
+          # 임포트가 시스템 DLL 뿐이라 따로 실어도 된다 · 실측).
+          - os: [self-hosted, windows, vinc-local]
             triple: x86_64-pc-windows-msvc
+            openssl_dir: D:/git/mingw64/bin
           # ⚠ macOS 는 로컬 러너가 아예 없다. 같은 런에서 이 다리는 3분 12초였다.
           # 여기 적혀 있던 $0.93 과 합계 $1.40 도 위와 같은 요금표에서 나온 값이라
           # 지금은 안 맞는다. 정확한 수치가 필요하면 청구서를 볼 것 — 포함 분에서
@@ -208,6 +216,8 @@ jobs:
       # 다리를 다시 집으로 들일 때 같은 사고를 두 번 겪지 않는다.
       PYTHONHOME: ""
       PYTHONPATH: ""
+      # sidecar.spec 이 OpenSSL 3 을 찾을 자리. 빈 값이면 spec 의 기본 후보만 본다.
+      VINC_OPENSSL_DIR: ${{ matrix.openssl_dir }}
     steps:
       # 노트북 러너는 System32 가 PATH 에서 Git 보다 앞이라 `shell: bash` 가 WSL 의
       # bash 로 잡힌다. Git Bash 를 앞에 세운다(ci.yml 동형).
@@ -539,7 +549,13 @@ jobs:
   assemble:
     needs: build
     # 태그 푸시(refs/tags/v*)에서만. 수동 workflow_dispatch 는 빌드 검증만.
-    if: startsWith(github.ref, 'refs/tags/')
+    #
+    # 다리 하나가 실패해도 돈다 — 대신 아래에서 **세 플랫폼 조각이 전부 초안에 있는지**
+    # 확인하고 하나라도 없으면 선다. 그래서 같은 태그의 이전 시도에서 이미 올라간 다리
+    # (예: 예산으로 시작 못 한 macOS 가 그 전 시도에서 올린 조각)로 조립할 수 있고,
+    # 조각이 빠진 latest.json 은 여전히 못 나간다. 이전의 `needs` 성공 조건은 그 둘을
+    # 구분하지 못했다.
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/') }}
     # 셀프호스티드(2026-09-06). `gh`·`jq`·`curl` 만 부르고 산출물을 짓지 않는다 —
     # 아래 preflight 가 그 셋의 존재를 먼저 확인하므로 없으면 2초에 선다.
     runs-on: [self-hosted, linux, vinc-local]
@@ -561,9 +577,11 @@ jobs:
           ver="${TAG#v}"                                   # v0.6.5 → 0.6.5
           mkdir -p dl
           gh release download "$TAG" --repo "$REPO" --pattern 'latest-*.json' --dir dl
-          if ! ls dl/latest-*.json >/dev/null 2>&1; then
-            echo "❌ latest 조각이 릴리스에 없다 — build 업로드 확인."; exit 1
-          fi
+          for k in darwin-aarch64 linux-x86_64 windows-x86_64; do
+            if [ ! -f "dl/latest-$k.json" ]; then
+              echo "❌ latest 조각 누락: $k — 그 다리의 build 업로드 확인."; exit 1
+            fi
+          done
           platforms=$(jq -s 'add' dl/latest-*.json)
           jq -n --arg v "$ver" \
                 --arg d "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
