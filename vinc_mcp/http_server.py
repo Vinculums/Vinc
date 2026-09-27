@@ -851,6 +851,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):  # noqa: N802
         """프리플라이트 — 허용 오리진에만 CORS 를 붙여 204."""
+        from . import rest_api
+        if rest_api.handle(self, "OPTIONS"):
+            return
         self.send_response(204)
         for k, v in self._cors_headers().items():
             self.send_header(k, v)
@@ -968,6 +971,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     # ── 라우팅 ──────────────────────────────────────────────────────────────
     def do_GET(self):  # noqa: N802
+        from . import rest_api
+        if rest_api.handle(self, "GET"):
+            return
         url = urllib.parse.urlparse(self.path)
         params = {k: v[0] for k, v in urllib.parse.parse_qs(url.query).items()}
         gate = self.app.oauth
@@ -1111,6 +1117,9 @@ class _Handler(BaseHTTPRequestHandler):
         return self._json(404, {"error": f"no such route: GET {url.path}"})
 
     def do_POST(self):  # noqa: N802
+        from . import rest_api
+        if rest_api.handle(self, "POST"):
+            return
         url = urllib.parse.urlparse(self.path)
         gate = self.app.oauth
         if url.path == "/register":
@@ -1273,6 +1282,18 @@ class _Handler(BaseHTTPRequestHandler):
             return self._internal_usage()
         return self._json(404, {"error": f"no such route: POST {url.path}"})
 
+    def do_PUT(self):  # noqa: N802
+        from . import rest_api
+        if rest_api.handle(self, "PUT"):
+            return
+        return self._json(404, {"error": f"no such route: PUT {self.path}"})
+
+    def do_PATCH(self):  # noqa: N802
+        from . import rest_api
+        if rest_api.handle(self, "PATCH"):
+            return
+        return self._json(404, {"error": f"no such route: PATCH {self.path}"})
+
     def do_DELETE(self):  # noqa: N802
         """`DELETE /mcp` — 클라이언트 세션 종료. 스펙상 선택이지만 종료를 보내는
         호스트(Codex·Cursor 등)가 501 을 오류로 취급하지 않도록 명시 처리한다.
@@ -1282,6 +1303,9 @@ class _Handler(BaseHTTPRequestHandler):
         **성공을 뜻하는 204 를 돌려주는 것 말고 하는 일이 없다.** 스펙상 정당하다:
         세션을 쓰지 않는 서버에게 종료는 no-op 이다. 라우트를 지우지 않는 이유는
         그대로다 — 종료를 보내는 호스트가 405/501 을 오류로 취급하지 않게."""
+        from . import rest_api
+        if rest_api.handle(self, "DELETE"):
+            return
         url = urllib.parse.urlparse(self.path)
         if url.path != "/mcp":
             return self._json(404, {"error": f"no such route: DELETE {url.path}"})

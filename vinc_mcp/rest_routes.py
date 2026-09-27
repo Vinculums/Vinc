@@ -1,0 +1,76 @@
+"""Public v1 route registry. The MCP tool schemas remain the argument canon."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+import re
+from urllib.parse import unquote
+
+
+@dataclass(frozen=True)
+class Route:
+    method: str
+    path: str
+    tool: str
+    query: tuple[str, ...] = ()
+    body: tuple[str, ...] = ()
+    path_args: tuple[tuple[str, str], ...] = ()
+    success: int = 200
+
+    def match(self, method: str, path: str) -> dict[str, str] | None:
+        if method != self.method:
+            return None
+        pattern = re.sub(r"\{([a-z_]+)\}", r"(?P<\1>[^/]+)", self.path)
+        found = re.fullmatch(pattern, path)
+        return {key: unquote(value) for key, value in found.groupdict().items()} if found else None
+
+
+READ_ROUTES = (
+    Route("GET", "/v1/me", "vinc_whoami"),
+    Route("GET", "/v1/conventions", "vinc_conventions", query=("lang",)),
+    Route("GET", "/v1/domains", "vinc_domains"),
+    Route("POST", "/v1/search", "vinc_search",
+          body=("query", "limit", "cursor", "detail", "historical")),
+    Route("POST", "/v1/brief", "vinc_brief",
+          body=("query", "max_excerpts", "historical")),
+    Route("GET", "/v1/nodes/{id}", "vinc_brief",
+          query=("max_excerpts", "historical"), path_args=(("id", "query"),)),
+    Route("GET", "/v1/nodes/{id}/neighbors", "vinc_neighbors",
+          query=("limit",), path_args=(("id", "node"),)),
+    Route("GET", "/v1/nodes/{id}/graph", "vinc_graph",
+          query=("depth",), path_args=(("id", "seed_id"),)),
+    Route("POST", "/v1/graph", "vinc_graph", body=("url", "depth")),
+    Route("GET", "/v1/nodes/{id}/tie-suggestions", "vinc_suggest_ties",
+          query=("limit",), path_args=(("id", "node"),)),
+    Route("GET", "/v1/path", "vinc_path",
+          query=("a", "b", "max_depth", "weight")),
+    Route("GET", "/v1/episodes", "vinc_recall",
+          query=("domain", "tags", "limit", "cursor")),
+    Route("GET", "/v1/decide", "vinc_decide", query=("topic", "depth")),
+    Route("GET", "/v1/diagnose", "vinc_diagnose",
+          query=("kind", "node", "member_limit")),
+    Route("GET", "/v1/merge-candidates", "vinc_merge_candidates",
+          query=("limit", "include_structural", "min_score")),
+    Route("GET", "/v1/merge-rejections", "vinc_merge_rejections"),
+    Route("GET", "/v1/documents", "vinc_doc_list",
+          query=("limit", "cursor", "detail")),
+    Route("GET", "/v1/documents/{doc_id}", "vinc_doc_get",
+          path_args=(("doc_id", "doc_id"),)),
+)
+
+# A2 adds editor/admin routes here. Search/fetch belong to a host directory,
+# while every other public MCP tool must have a route.
+WRITE_ROUTES: tuple[Route, ...] = ()
+ROUTES = READ_ROUTES + WRITE_ROUTES
+HOST_EXCLUSIONS = frozenset({"search", "fetch"})
+
+
+def find_route(method: str, path: str) -> tuple[Route, dict[str, str]] | None:
+    for route in ROUTES:
+        fields = route.match(method, path)
+        if fields is not None:
+            return route, fields
+    return None
+
+
+def allowed_methods(path: str) -> set[str]:
+    return {route.method for route in ROUTES if route.match(route.method, path) is not None}
