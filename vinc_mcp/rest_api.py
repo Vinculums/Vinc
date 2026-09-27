@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import secrets
 from urllib.parse import parse_qs, urlparse
@@ -53,6 +54,22 @@ def _coerce(value: str, spec: dict):
     return value
 
 
+def _check_json_type(name: str, value, spec: dict) -> None:
+    kind = spec.get("type")
+    valid = {
+        "string": lambda v: isinstance(v, str),
+        "boolean": lambda v: isinstance(v, bool),
+        "integer": lambda v: type(v) is int,
+        "number": lambda v: type(v) in (int, float),
+        "array": lambda v: isinstance(v, list),
+        "object": lambda v: isinstance(v, dict),
+    }.get(kind)
+    if valid and not valid(value):
+        raise ValueError(f"{name} must be {kind}")
+    if kind == "number" and not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite number")
+
+
 def _arguments(route: rest_routes.Route, path_fields: dict[str, str],
                query: dict[str, str], body: dict) -> dict:
     schema = _SCHEMAS[route.tool].get("properties") or {}
@@ -68,6 +85,7 @@ def _arguments(route: rest_routes.Route, path_fields: dict[str, str],
                 raise ValueError(f"{key} {exc}") from exc
     for key in route.body:
         if key in body:
+            _check_json_type(key, body[key], schema.get(key) or {})
             args[key] = body[key]
     if query.get("space"):
         args["space"] = query["space"]
