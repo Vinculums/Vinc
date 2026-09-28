@@ -182,10 +182,8 @@ export async function renderView(el: HTMLElement) {
     <!-- 폭 조절 그립은 패널의 **형제**다: 패널 내용은 화면마다 innerHTML 로 갈리는데
          (상세·관계·드릴다운·기간·리더) 그 안에 두면 매번 다시 붙이고 다시 배선해야 한다. -->
     <div id="rail-grip" role="separator" aria-orientation="vertical" hidden></div>
-    <!-- D70 — 인캔버스 크롬의 위치를 인라인 style 에서 **CSS 로 되돌린다.** 여태
-         인라인이었던 이유는 레일이 열릴 때 JS 가 같은 속성을 덮어써야 했기 때문인데
-         (클래스 규칙은 인라인을 못 이긴다), 이제 레일 폭이 CSS 변수 하나(--rail-w)라
-         비켜서는 일을 CSS 가 스스로 한다. 폭의 정의가 한 군데로 모인다. -->
+    <!-- 인캔버스 크롬의 위치는 CSS 가 정한다. 문서 패널이 캔버스 위에 떠 있으므로
+         패널 폭만큼 크롬을 밀지 않는다. 임베드 배치의 오프셋은 CSS 변수가 맡는다. -->
     <div id="view-msg"></div>
     <div id="view-tools"></div>
     <div id="view-float" hidden></div>
@@ -195,14 +193,12 @@ export async function renderView(el: HTMLElement) {
   const canvas = el.querySelector<HTMLElement>("#view-canvas")!;
   const detail = el.querySelector<HTMLElement>("#view-detail")!;
   const railGrip = el.querySelector<HTMLElement>("#rail-grip")!;
-  // 상세와 폭 그립은 셸의 **가운데 열**로 옮겨 심는다. 만드는 곳은 여기다(내용의
-  // 주인은 표면이므로 마크업도 표면이 갖는다) — 그러나 자리는 셸이 준다. 열은
-  // 라우터가 표면을 갈아끼울 때 비운다(main.ts route). 열이 없는 배치(임베드)에서는
-  // 옮기지 않고 표면 안에 그대로 남아 예전처럼 겹쳐 뜬다.
+  // 상세는 셸의 문서 패널에, 그립은 그 패널의 직속 자식에 옮긴다. 둘 다
+  // 캔버스와 같은 그리드 칸에 뜬다. 패널이 없는 임베드에서는 표면 안에 남는다.
   const shell = document.getElementById("shell");
   const docpane = document.getElementById("docpane");
-  // 머리는 셸 것이므로 본문에만 심는다. 그립은 열 전체 높이에 걸쳐야 하니(머리
-  // 옆까지) 열 직속이다 — 둘의 소속이 다른 이유가 그것뿐이다.
+  // 머리는 셸 것이므로 상세는 본문에만 심는다. 그립은 머리 옆까지 패널 전체
+  // 높이에 걸쳐야 하니 패널 직속이다.
   document.getElementById("docpane-body")?.append(detail);
   if (docpane) docpane.append(railGrip);
   const msg = el.querySelector<HTMLElement>("#view-msg")!;
@@ -240,7 +236,7 @@ export async function renderView(el: HTMLElement) {
   railChrome(false);
   wireRailGrip(railGrip);
 
-  // lasso(영역 선택→공유) 배선 + 발견성 힌트. 주제(L1) 그래프에서만 활성.
+  // lasso(영역 선택→공유) 배선 + 발견성 힌트. 3D 관점이면 L0/L1 모두 활성.
   function wireLasso() {
     lassoHint.textContent = COPY.ui.viewx.lassoHint;   // 다른 용도로 쓰였을 수 있다
     lassoHint.hidden = false;   // "Shift+드래그로 영역 선택" 안내(발견성)
@@ -735,12 +731,12 @@ export async function renderView(el: HTMLElement) {
     if (!viewPanel.hidden) positionPanel();
     return w;
   }
-  /** 문서 열의 크기 — 옆 칸(false) 이냐, 지도 칸 전체(true) 냐.
+  /** 문서 패널의 크기 — 옆 카드(false)냐, 지도 칸 전체(true)냐.
    *
    *  **어디서 왔는지가 크기를 정한다**(발주자 지시 2026-09-25): 지도에서 노드를
-   *  누르면 떠 있는 카드만 뜨고, LNB 에서 노드·문서·역할을 고르면 카드 없이 이 열이
-   *  지도 칸 전체로 열려 내용 전부를 보여 준다. 열 안에서 옮겨 다니는 것(뒤로·언급
-   *  칩·연결 줄)은 지금 크기를 그대로 둔다. 닫으면 옆 칸으로 돌아간다 — 다음에 카드의
+   *  누르면 떠 있는 카드만 뜨고, LNB 에서 노드·문서·역할을 고르면 이 패널이
+   *  지도 칸 전체로 열려 내용 전부를 보여 준다. 패널 안에서 옮겨 다니는 것(뒤로·언급
+   *  칩·연결 줄)은 지금 크기를 그대로 둔다. 닫으면 옆 카드로 돌아간다 — 다음에 카드의
    *  "Details" 로 열 때 넓게 열리면 지도를 보던 손이 끊긴다.
    *  근거: [[decision:side-navigation-picks-open-the-document-pane-full-width-2026-09-25]] */
   let railFull = false;
@@ -775,14 +771,14 @@ export async function renderView(el: HTMLElement) {
     detail.querySelector("#rail-size")?.addEventListener("click", () => setRailFull(!railFull));
   }
   function railChrome(open: boolean) {
-    // 열의 열림/닫힘은 셸이 안다(그리드 폭을 그 상태가 정한다). 열 자체를 hidden
-    // 으로도 접는다 — 폭 0 인 열에 테두리만 남아 실선 하나가 떠 있는 것을 막는다.
+    // 패널의 열림과 전체 폭 여부는 셸 상태로 표현한다. 닫을 때 hidden 도 걸어
+    // 접힌 패널의 테두리나 그림자가 지도 위에 남지 않게 한다.
     if (shell) {
       shell.dataset.doc = open ? "open" : "closed";
       shell.dataset.docSize = open && railFull ? "full" : "side";
     }
     if (docpane) docpane.hidden = !open;
-    // 넓게 열린 열에는 끌어서 줄일 모서리가 없다(폭이 칸 전체다).
+    // 지도 칸 전체로 연 패널에는 끌어서 줄일 모서리가 없다.
     railGrip.hidden = !open || railFull;
     // 읽는 면이 열리거나 닫히면 렌즈 패널의 오른쪽 한계가 바뀐다(positionPanel 이
     // 그 왼쪽 끝을 읽는다). 폭 변경(setRailWidth)과 **열림 변경**은 다른 사건이라
@@ -806,7 +802,7 @@ export async function renderView(el: HTMLElement) {
     lastNode = null;
     setSpot(null);        // 원뿔은 초점에 딸린 것이라 초점이 끝나면 함께 꺼진다
     if (focusId) { focusId = ""; syncHash(); }   // 주소는 화면이 말하는 것만 말한다
-    railFull = false;     // 다음 열기는 옆 칸이 기본이다(railFull 주석)
+    railFull = false;     // 다음 열기는 옆 카드가 기본이다(railFull 주석)
     railChrome(false);
     // 카드는 선택에 딸린 물건이라 선택이 끝나면 같이 사라진다(떠 있는 창을 남기지 않는다).
     closeFloatPanel();
@@ -820,12 +816,9 @@ export async function renderView(el: HTMLElement) {
     detail.hidden = false;
     railChrome(true);
   }
-  /** 열의 **오른쪽** 모서리 그립 — 끌어서 폭 조절. 포인터 캡처라 커서가 캔버스
-   *  (WebGL) 위로 넘어가도 드래그가 끊기지 않는다. 확정 값만 프리퍼런스에 적는다
-   *  (끄는 동안 매 프레임 localStorage 를 두드리지 않게).
-   *  방향이 뒤집혔다: 겹쳐 뜨던 시절 그립은 패널 왼쪽에 있어 **왼쪽으로** 끌면
-   *  넓어졌다. 지금은 오른쪽 모서리라 오른쪽으로 끌면 문서가 넓어진다(손이 미는
-   *  방향과 자라는 방향이 같다). */
+  /** 패널 **왼쪽** 모서리 그립 — 왼쪽으로 끌면 문서가 넓어진다. 포인터 캡처라
+   *  커서가 WebGL 캔버스로 넘어가도 드래그가 끊기지 않는다. 확정 값만
+   *  프리퍼런스에 적는다(끄는 동안 매 프레임 저장하지 않는다). */
   function wireRailGrip(grip: HTMLElement) {
     grip.addEventListener("pointerdown", (e) => {
       e.preventDefault();
@@ -3442,11 +3435,9 @@ export async function renderView(el: HTMLElement) {
         </details>`;
       detail.innerHTML = `
         ${railHeadHTML(COPY.ui.viewx.readerTitle)}
-        <!-- "편집" 토글은 없다(발주자 지시 2026-08-05) — 문서 열은 **상시 편집**이다.
-             D45-E 가 "Reader 와 편집기는 한 표면이고 편집은 그 자리에 커서를 켤 뿐"이라
-             했는데, 그 커서를 켜는 버튼이 마지막 잔재로 남아 있었다: 고치려면 매번 두
-             번 눌러야 했다(문서 열기 → 편집). 저장은 여전히 자동(디바운스 2s)+Ctrl/Cmd+S
-             이고, 그 상태는 아래 rdr-state 가 편집기에서 받아 말한다. -->
+        <!-- 문서는 읽기 모드로 열린다. "상시 편집"은 2026-09-10 에 되돌렸다:
+             읽으며 선택하거나 복사하는 클릭이 곧 편집 커서가 되었기 때문이다.
+             아래 rdr-mode 버튼으로 편집을 켜며, 저장 상태는 rdr-state 가 말한다. -->
         <p class="rail-acts">
           <button class="btn" id="rdr-back">${COPY.ui.viewx.readerBack}</button>
           <button class="btn" id="rdr-expand">${COPY.ui.viewx.edExpand}</button>
