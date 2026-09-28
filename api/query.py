@@ -3603,10 +3603,11 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
         r = rows[0]
         def _mention_excerpt(cid: str) -> dict | None:
             m = store.run(
-                "MATCH (ch:Chunk)-[:MENTIONS]->(c:Concept) WHERE c.concept_id = $id "
+                "MATCH (ch:Chunk)-[m:MENTIONS]->(c:Concept) WHERE c.concept_id = $id "
                 "AND (ch.owner_id = $owner OR ch.owner_id = '') "
                 "RETURN ch.doc_id AS doc_id, ch.text AS text "
-                "ORDER BY ch.doc_id, ch.chunk_index LIMIT 1",
+                "ORDER BY CASE m.method WHEN 'title' THEN 0 WHEN 'stem' THEN 1 ELSE 2 END, "
+                "ch.doc_id, ch.chunk_index LIMIT 1",
                 {"id": pkns.key(owner, cid), "owner": owner}) or []
             if not m:
                 return None

@@ -1269,6 +1269,32 @@ class DocstoreE2E(unittest.TestCase):
                                etype="PREREQUISITE_OF", store=self.store)
         self.assertFalse(other["executed"])
 
+    def test_edge_context_excerpt_ranks_link_method_before_doc_id(self):
+        from api import query as q
+        for cid, name in (("concept:foo", "Foo"), ("concept:bar", "Bar")):
+            self.store.run(
+                "MERGE (c:Concept {concept_id:$id}) "
+                "SET c.owner_id='user:a', c.title=$name",
+                {"id": _pk(cid), "name": name})
+        self.store.run(
+            "MATCH (a:Concept {concept_id:$a}), (b:Concept {concept_id:$b}) "
+            "MERGE (a)-[:PREREQUISITE_OF]->(b)",
+            {"a": _pk("concept:foo"), "b": _pk("concept:bar")})
+        for doc_id, method in (("a-source", "source"), ("m-stem", "stem"),
+                               ("z-title", "title")):
+            ds.put_doc(self.store, owner="user:a", doc_id=doc_id,
+                       text=f"Evidence from {method}.", title=doc_id, link=False)
+            self.store.run(
+                "MATCH (ch:Chunk {doc_id:$doc}), (c:Concept {concept_id:$concept}) "
+                "MERGE (ch)-[m:MENTIONS]->(c) SET m.method=$method",
+                {"doc": doc_id, "concept": _pk("concept:foo"), "method": method})
+        result = q.edge_context(owner="user:a", src="concept:foo", dst="concept:bar",
+                                etype="PREREQUISITE_OF", store=self.store)
+        self.assertTrue(result["executed"])
+        self.assertEqual(result["src"]["excerpt"]["doc_id"], "z-title")
+        self.assertIn("title", result["src"]["excerpt"]["excerpt"])
+        self.assertIsNone(result["dst"]["excerpt"])
+
     def test_mentions_relink_per_doc(self):
         # 개념을 심고 그 제목 토큰을 담은 문서를 put → MENTIONS 생성;
         # 토큰을 뺀 편집 → 링크 소멸(DETACH + doc 단위 재계산).
