@@ -20,6 +20,49 @@
         "Chunk": 1157,
         "ChunkVec": 1624,
         "NodeVec": 1365
+      },
+      "encoder_runtime": {
+        "onnxruntime": "1.29.0",
+        "tokenizers": "0.23.1",
+        "numpy": "2.5.2",
+        "note": "the local venv at reindex time; queries must use the same runtime"
+      },
+      "settled": {
+        "mentions_rule": "2:title-window-12",
+        "note": "not settled for code at or after d178630 (#336); a sidecar relinks it at boot, the in-process harness does not"
+      }
+    },
+    "m3-ort130-2026-09-28": {
+      "path": "_eval-stores/m3-ort130-2026-09-28/hub.db",
+      "sha256": "2679bd53e8688393aaabd9d3f7d1ae38fa9ef0208984cc3edf809cc1697f6234",
+      "owner": "tenant:local",
+      "gold": "scripts/fixtures/brief_gold.jsonl",
+      "derived_from": "m3-2026-09-13 (same rows; ChunkVec and NodeVec re-encoded)",
+      "built_at_tree": "0233fdf",
+      "engine": "ladybug 0.20.3",
+      "encoder": "BAAI/bge-m3",
+      "encoder_sha256": "e05d27e444606cd8b04e81c89afb911af54ea3cca0813dd0530422a396a09611",
+      "encoder_runtime": {
+        "onnxruntime": "1.30.0",
+        "tokenizers": "0.23.2",
+        "numpy": "2.5.3",
+        "note": "the hub's runtime since 2026-09-10 23:47Z; this store is the production-equivalent pin"
+      },
+      "rows": {
+        "Concept": 442,
+        "Record": 610,
+        "Decision": 153,
+        "Episode": 160,
+        "Bridge": 0,
+        "Entity": 0,
+        "Domain": 65,
+        "Chunk": 1157,
+        "ChunkVec": 1624,
+        "NodeVec": 1365
+      },
+      "settled": {
+        "mentions_rule": "3:title-before-source",
+        "note": "engines.mentions_link.ensure_rule applied once, as a sidecar or the hub does at boot; the unsettled bytes (sha 71ce5eaa..., rule 2:title-window-12) sit beside it as hub.unsettled.db"
       }
     }
   }
