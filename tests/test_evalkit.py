@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -116,6 +117,44 @@ class ParityTests(unittest.TestCase):
         self.assertTrue(run_nodes._degraded({"arms": "fts"}))
         self.assertTrue(run_nodes._degraded({"arms": "fts+vector", "vector_note": "x"}))
         self.assertEqual(run_nodes._degraded({"arms": "fts+vector"}), "")
+
+
+class LiveFingerprintTests(unittest.TestCase):
+    def test_fingerprint_uses_verified_content_and_all_domain_counts(self):
+        class _V1:
+            def _call(self, tool, args):
+                if tool == "vinc_doc_list":
+                    return {"executed": True, "docs": [{"doc_id": "d1", "title": "A",
+                                      "updated_at": "same", "chunks": 2}], "has_more": False}
+                if tool == "vinc_doc_get":
+                    return {"executed": True, "verified": True, "content_hash": "content-v2"}
+                if tool == "vinc_domains":
+                    return {"executed": True, "rows": [{"domain": "x", "episodes": 1, "concepts": 2,
+                                      "records": 3, "decisions": 4, "total": 10}]}
+                raise AssertionError(tool)
+
+        got = run_nodes._live_snapshot(_V1())
+        self.assertEqual(got["docs"], [("d1", "A", "same", "content-v2")])
+        self.assertEqual(got["domains"], [("x", 1, 2, 3, 4, 10)])
+
+    def test_changed_live_fingerprint_invalidates_the_run(self):
+        with tempfile.TemporaryDirectory() as out, \
+             mock.patch.dict("os.environ", {"VINC_API_KEY": "test-key"}), \
+             mock.patch.object(run_nodes.runtime, "fingerprint", return_value={}), \
+             mock.patch.object(run_nodes.grading, "load_gold", return_value=[]), \
+             mock.patch.object(run_nodes, "V1"), \
+             mock.patch.object(run_nodes, "_live_openapi_hash", return_value="schema-sha"), \
+             mock.patch.object(run_nodes, "_live_snapshot",
+                               side_effect=[{"docs": [("d1", "old")]},
+                                            {"docs": [("d1", "new")]}]), \
+             mock.patch.object(run_nodes, "gold_titles", return_value=({}, [])), \
+             mock.patch.object(run_nodes, "run_one", return_value={}) as run, \
+             mock.patch.object(run_nodes, "_finish", return_value=0) as finish:
+            self.assertEqual(run_nodes.main(["--live", "https://example.test", "--out", out]), 1)
+        run.assert_called_once()
+        header = finish.call_args.args[1]
+        self.assertFalse(header["live_stable"])
+        self.assertNotEqual(header["live_fingerprint_before"], header["live_fingerprint_after"])
 
 
 if __name__ == "__main__":

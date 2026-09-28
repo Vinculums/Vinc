@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 import pathlib
@@ -28,6 +29,7 @@ import stat
 import subprocess
 import sys
 import time
+import urllib.request
 
 from evalkit import grading, runtime
 from evalkit.transports import V1, Cli, InProcess, TransportError
@@ -144,14 +146,37 @@ def _live_snapshot(v1: V1) -> dict:
     docs, cursor = [], None
     while True:
         page = v1._call("vinc_doc_list", {"limit": 200, **({"cursor": cursor} if cursor else {})})
-        docs += [(d["doc_id"], d.get("updated_at"), d.get("chunks")) for d in page.get("docs") or []]
+        if not page.get("executed"):
+            raise TransportError("live fingerprint: document listing failed")
+        for d in page.get("docs") or []:
+            # doc_list intentionally omits content_hash. Fetch it through the public read
+            # tool instead of treating a timestamp/chunk count as a content fingerprint.
+            got = v1._call("vinc_doc_get", {"doc_id": d["doc_id"]})
+            if not got.get("executed") or not got.get("verified") or not got.get("content_hash"):
+                raise TransportError(f"live fingerprint cannot verify {d['doc_id']}")
+            docs.append((d["doc_id"], d.get("title"), d.get("updated_at"),
+                         got["content_hash"]))
         cursor = page.get("next_cursor")
-        if not page.get("has_more") or not cursor:
+        if page.get("has_more") and not cursor:
+            raise TransportError("live fingerprint: document page has no continuation cursor")
+        if not page.get("has_more"):
             break
     dom = v1._call("vinc_domains", {})
+    if not dom.get("executed"):
+        raise TransportError("live fingerprint: domain counts failed")
     return {"docs": sorted(docs), "domains": sorted(
-        (r.get("domain") or r.get("name"), r.get("count") or r.get("n"))
+        (r.get("domain"), *(int(r.get(k) or 0) for k in
+                            ("episodes", "concepts", "records", "decisions", "total")))
         for r in dom.get("rows") or [])}
+
+
+def _snapshot_hash(snapshot: dict) -> str:
+    return hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def _live_openapi_hash(base: str) -> str:
+    with urllib.request.urlopen(base.rstrip("/") + "/v1/openapi.json", timeout=15) as response:
+        return hashlib.sha256(response.read()).hexdigest()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -172,7 +197,8 @@ def main(argv: list[str] | None = None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     fp = runtime.fingerprint()
     header: dict = {"kind": "eval.nodes.v2", "at": dt.datetime.now(dt.timezone.utc).isoformat(),
-                    "commit": _commit(), "flags": _flags(), "runtime": fp}
+                    "commit": _commit(), "flags": _flags(), "runtime": fp,
+                    "openapi_sha256": runtime.file_sha256(ROOT / "vinc_mcp/openapi_v1.json")}
 
     if a.live:
         key = os.environ.get("VINC_API_KEY")
@@ -182,14 +208,18 @@ def main(argv: list[str] | None = None) -> int:
         gold_files = a.gold or [str(ROOT / "scripts/fixtures/brief_gold.jsonl")]
         rows = grading.load_gold(gold_files)[: a.limit or None]
         v1 = V1(a.live, key, a.space)
+        header["openapi_sha256"] = _live_openapi_hash(a.live)
         before = _live_snapshot(v1)
         titles, missing = gold_titles(v1, rows)
         runs = {"v1-live": run_one(v1, rows, titles)}
         after = _live_snapshot(v1)
         header.update(target={"live": a.live, "space": a.space}, missing_gold=missing,
                       live_stable=before == after,
+                      live_fingerprint_before=_snapshot_hash(before),
+                      live_fingerprint_after=_snapshot_hash(after),
                       note="호스티드는 핀이 아니다 — 판정에 쓰지 않는다; 런타임 판은 허브 빌드 로그로 본다")
-        return _finish(out, header, gold_files, runs, compare=False)
+        result = _finish(out, header, gold_files, runs, compare=False)
+        return result if before == after else 1
 
     if not (a.store and a.onnx):
         print("--store 와 --onnx 가 필요하다(또는 --live)", file=sys.stderr)
