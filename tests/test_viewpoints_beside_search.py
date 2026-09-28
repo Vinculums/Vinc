@@ -8,6 +8,10 @@
 - 검색과 보기 손잡이는 하는 일이 다른 컴포넌트다. 한 면에 섞으면 다시 한 덩어리로 읽힌다.
 - 줄바꿈 기준이 창 폭이면 트리가 열린 창(1000)에서 입력이 147px 까지 눌린다.
 
+2026-09-28 에 보기 카드가 두 상태가 됐다(닫힘 = 렌즈 버튼 하나, 열림 = 세그가 나와 패널
+폭). 열린 카드가 패널과 양 끝을 나누는 계약은 그대로이고, 닫힌 카드는 내용 폭이다.
+그 동작의 잠금은 `test_view_card_opens_and_stays.py`.
+
 근거: [[decision:the-top-bar-is-a-search-card-and-a-view-card-2026-09-26]]
 """
 from __future__ import annotations
@@ -91,31 +95,31 @@ class Lens(unittest.TestCase):
     def test_view_tools_corner_is_untouched(self):
         self.assertIn("right: calc(var(--rail-w, 0px) + var(--space-6, 1.5rem));", _rule("#view-tools"))
 
-    def test_view_card_is_exactly_as_wide_as_the_lens_panel(self):
+    def test_open_view_card_is_exactly_as_wide_as_the_lens_panel(self):
         # 패널이 카드 바로 아래에서 열린다 — 양 끝이 같은 세로선이어야 한다(발주자 지시).
-        card = _rule("#tb-viewctl")
-        self.assertIn("flex: 0 0 var(--lens-panel-w)", card)
-        self.assertIn("width: var(--lens-panel-w)", card)
+        # 닫힌 카드(버튼 하나)는 아래에 패널이 없으므로 이 규칙이 없다.
+        m = re.search(r"(?m)^#tb-viewctl\[data-open\] \{[^}]*\}", CSS)
+        self.assertTrue(m, "열린 보기 카드 규칙이 없다")
+        self.assertIn("width: var(--lens-panel-w)", m.group(0))
         self.assertIn("width: var(--lens-panel-w)", CSS[CSS.index("#view-lens-panel {"):])
 
     def test_panel_anchors_to_the_view_card(self):
-        body = _block(VIEW, "function positionPanel()", "function openPanel()")
+        body = _block(VIEW, "function positionPanel()", "function openPanel(")
         self.assertIn('lensBtn?.closest<HTMLElement>(".tb-card")', body)
-        self.assertIn("r.right - w", body)
+        # 카드는 오른쪽 끝을 축으로 자라므로 그 끝에서 잰다(자라는 도중에도 움직이지 않는 선).
+        self.assertIn("const left = Math.min(r.right - w, rightEdge - w - m);", body)
 
 
 class NarrowBarWraps(unittest.TestCase):
     def test_the_bar_is_its_own_query_container(self):
         self.assertIn("container: topbar / inline-size", CSS)
 
-    def test_wraps_by_bar_width_and_view_card_takes_the_second_row(self):
-        m = _at("@container topbar (max-width: 700px)")
+    def test_wraps_by_bar_width_and_view_card_goes_to_the_second_row(self):
+        # 카드가 버튼 폭이 된 뒤로(2026-09-28) 줄은 훨씬 좁은 바에서야 갈린다.
+        self.assertNotIn("@container topbar (max-width: 700px)", CSS)
+        m = _at("@container topbar (max-width: 420px)")
         self.assertRegex(m, r"#tb-find \{[^}]*flex: 1 1 100%")
-        # 넓은 창: 둘째 줄에서도 패널 폭 그대로(오른쪽 끝). 좁은 창(패널이 전폭 판): 줄 전폭.
         self.assertIn("#tb-viewctl { margin-left: auto; }", m)
-        narrow = m[m.index("@media (max-width: 900px)"):]
-        self.assertIn("#tb-viewctl { flex: 1 1 100%; width: auto; margin-left: 0; }", narrow)
-        self.assertIn("#tb-viewpoints .seg .chip { flex: 1 1 0", narrow)
 
     def test_no_viewport_wrap_left_behind(self):
         self.assertNotIn("@media (max-width: 520px)", CSS)

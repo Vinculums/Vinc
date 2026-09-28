@@ -7,6 +7,10 @@
  *  표면 고유명사(Intake·Records·View·Search·Packs)는 미번역 유지. */
 import { cfg } from "./api";
 
+// 달 이름 — 날짜 선택의 머리(`monthTitle`)가 쓴다.
+const MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July",
+  "August", "September", "October", "November", "December"];
+
 const EN = {
   tagline: "Discover the core of your knowledge.",
   sovereignty: "In local mode your graph stays on this device. The app goes online only to check for updates, and to reach your account when you sign in.",
@@ -409,6 +413,7 @@ const EN = {
       // 가리키거나 포커스가 닿은 값의 줄로 바뀐다(뜨는 툴팁 아님 — WCAG 1.4.13 을
       // 구조로 만족). `?` 를 켜면 행마다 상시로 펼쳐진다.
       helpTip: "Show explanations",
+      close: "Close",
       helpHint: "Point at a value and its explanation lands here.",
       help: {
         links: "The better connected a mark, the bigger it is. Size is centrality.",
@@ -485,6 +490,37 @@ const EN = {
       basisRecorded: "when recorded", basisContent: "when it happened",
       noContentTime: "Nothing has a content date yet. Add one while writing a document.",
       fixedNote: "Shapes and the point color stay fixed. They carry meaning, so a shared pack reads the same everywhere.",
+      // 타임라인 기간(2026-09-28). 프리셋 이름은 옵션 탭 · 차트 위 칩 · 날짜 선택이 함께 쓴다.
+      period: "Period",
+      periodAll: "All",
+      period7d: "Last 7 days",
+      period30d: "Last 30 days",
+      period90d: "Last 90 days",
+      periodYear: "This year",
+      periodCustom: "Custom",
+      periodCustomTip: "Choose any range of days, months or years",
+    },
+    // 기간 선택(날짜 범위) — app/src/date-range.ts. 주는 일요일에 시작한다(두 언어 같음).
+    dateRange: {
+      title: "Choose a period",
+      start: "Start",
+      end: "End",
+      format: "YYYY, YYYY-MM or YYYY-MM-DD",
+      invalid: "Use YYYY, YYYY-MM or YYYY-MM-DD.",
+      reset: "Show all",
+      prevMonth: "Previous month",
+      nextMonth: "Next month",
+      prevYears: "Earlier years",
+      nextYears: "Later years",
+      pickMonth: "Choose a month",
+      pickYear: "Choose a year",
+      today: "Today",
+      pickEnd: "Now choose the end.",
+      monthsShort: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+      weekdays: ["S", "M", "T", "W", "T", "F", "S"],
+      weekdaysLong: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+      monthTitle: (y: number, m: number) => `${MONTHS_EN[m]} ${y}`,
+      dayCount: (n: number) => n === 0 ? "" : `${n} record${n === 1 ? "" : "s"}`,
     },
     viewx: {
       shareCta: "Share",
@@ -692,6 +728,10 @@ const EN = {
       noLineage: "Nothing here says what led to what yet.",
       // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
       capped: (n: number) => `${n} older document${n === 1 ? "" : "s"} not drawn.`,
+      // 기간(2026-09-28). 상한이 여전히 자르면 캡션이 기간을 좁히라고 권한다.
+      narrowPeriod: "Narrow the period",
+      periodNone: "No records in this period.",
+      periodChipTip: "Change the period",
       // Totals 스코프 캡션(l2) — 신 사이드카는 씨앗 주변(ego) 집계, 구버전은 seed 를
       // 무시하고 주제 집계로 온다(scope 에코 부재). 차트가 무엇을 세는지 알약이 밝힌다.
       // D43 평면 뷰가 그리는 문구 — 차트 이름(스크린리더가 읽는 것)과 Totals 구간 이름.
@@ -1335,6 +1375,7 @@ const KO: Deck = {
       layoutName: { hub: "중심에서", rank: "순서대로" } as Record<string, string>,
       // v2 — 값마다 한 줄 설명 한 벌(EN 쪽 주석 참조). 바닥 고정 줄이 받는다.
       helpTip: "설명 펼치기",
+      close: "닫기",
       helpHint: "값을 가리키면 여기에 설명이 나와요",
       help: {
         links: "연결이 많은 마디가 큽니다. 크기가 곧 중심성이에요",
@@ -1395,6 +1436,35 @@ const KO: Deck = {
       basisRecorded: "기록한 때", basisContent: "일어난 때",
       noContentTime: "아직 '일어난 때'가 적힌 문서가 없어요. 문서를 쓸 때 함께 적어 보세요",
       fixedNote: "모양과 초점색은 바꿀 수 없어요. 뜻을 담고 있어서, 공유한 팩이 어디서 열어도 같게 보여요",
+      period: "기간",
+      periodAll: "전체",
+      period7d: "최근 7일",
+      period30d: "최근 30일",
+      period90d: "최근 90일",
+      periodYear: "올해",
+      periodCustom: "직접 설정",
+      periodCustomTip: "날짜, 달, 해 단위로 범위를 골라요",
+    },
+    dateRange: {
+      title: "기간 고르기",
+      start: "시작",
+      end: "끝",
+      format: "YYYY, YYYY-MM, YYYY-MM-DD",
+      invalid: "YYYY, YYYY-MM, YYYY-MM-DD 중 하나로 적어 주세요",
+      reset: "전체 보기",
+      prevMonth: "이전 달",
+      nextMonth: "다음 달",
+      prevYears: "이전 해들",
+      nextYears: "다음 해들",
+      pickMonth: "달 고르기",
+      pickYear: "해 고르기",
+      today: "오늘",
+      pickEnd: "이제 끝나는 날을 골라요",
+      monthsShort: ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"],
+      weekdays: ["일", "월", "화", "수", "목", "금", "토"],
+      weekdaysLong: ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"],
+      monthTitle: (y, m) => `${y}년 ${m + 1}월`,
+      dayCount: (n) => n === 0 ? "" : `기록 ${n}개`,
     },
     viewx: {
       shareCta: "공유하기",
@@ -1567,6 +1637,9 @@ const KO: Deck = {
       noLineage: "아직 무엇이 무엇으로 이어졌는지 적힌 것이 없어요",
       // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
       capped: (n) => `오래된 문서 ${n}개는 그리지 않았어요`,
+      narrowPeriod: "기간 좁히기",
+      periodNone: "이 기간에는 기록이 없어요",
+      periodChipTip: "기간 바꾸기",
       // Totals 스코프 캡션(l2) — 신 사이드카는 씨앗 주변(ego) 집계, 구버전은 seed 를
       // 무시하고 주제 집계로 온다(scope 에코 부재). 차트가 무엇을 세는지 알약이 밝힌다.
       // D43 평면 뷰가 그리는 문구 — 차트 이름(스크린리더가 읽는 것)과 Totals 구간 이름.

@@ -25,8 +25,8 @@ import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_S
          WHEN_SCALE, timeCutoff, nodeTimeOn, visibleAt,
          EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, DIRECTED_RELS,
          edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
-         loadPrefs, savePrefs,
-         type ViewPrefs, type Viewpoint, type BundleDepth,
+         loadPrefs, savePrefs, periodRange, inPeriod, PERIODS,
+         type ViewPrefs, type PeriodKey, type Viewpoint, type BundleDepth,
          type EdgeKind } from "../view-prefs";
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
 import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbKindLens, lnbKind,
@@ -36,6 +36,7 @@ import { PROP_KINDS, propsEditable, rowsFrom, propsFrom, convertText, sameProps,
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen,
          floatCeiling } from "../float-panel";
 import { popIn, popOut } from "../motion";
+import { openDateRange, closeDateRange, periodLabel, rangeText } from "../date-range";
 import { wireOutsideDismiss } from "../components";
 import { icon } from "../icons";
 import { setLiveRefresher } from "../live";
@@ -171,6 +172,9 @@ export async function renderView(el: HTMLElement) {
          떠 있는 알약이 아니라 상태 표시줄이다(떠 있는 알약은 배너로 읽혀 무시된다
          — D65). -->
     <div id="view-chrome">
+      <!-- 타임라인 기간 칩(2026-09-28) — 상태 표시줄 왼쪽. 이 줄의 일이 "지금 화면이 무엇을
+           세고 있는가"이고, 기간이 곧 그 답의 일부다. 패널을 닫아도 거른 기간이 보인다. -->
+      <div id="view-period" hidden></div>
       <div id="view-metrics"></div>
     </div>
     <div id="view-detail" hidden></div>
@@ -202,6 +206,7 @@ export async function renderView(el: HTMLElement) {
   if (docpane) docpane.append(railGrip);
   const msg = el.querySelector<HTMLElement>("#view-msg")!;
   const tools = el.querySelector<HTMLElement>("#view-tools")!;
+  const periodBox = el.querySelector<HTMLElement>("#view-period")!;
   // D71 — 렌즈·관점은 상단 바 슬롯에 그린다(내용의 주인은 여전히 이 표면이다).
   // 바가 없는 환경(임베드)에서는 표면 안에 자기 자리를 만들어 같은 코드로 그린다:
   // 그리는 함수는 한 벌이고 자리만 다르다.
@@ -642,13 +647,67 @@ export async function renderView(el: HTMLElement) {
    *  옵션)와 `범례`가 함께 있다. 상단 바에 있던 `보기` 버튼이 여기로 합쳐졌다:
    *  지도에 관한 손잡이는 지도 위에 두고, 바는 검색·공유에 자리를 내준다. */
   let lensBtn: HTMLElement | null = null;
+  /** 닫힌 버튼은 지금 관점의 짧은 이름을 함께 싣는다 — 세그가 숨어도 지금 무엇으로
+   *  보고 있는지는 보여야 한다(Q1.3). 열리면 세그가 그 일을 하므로 이름은 CSS 가 감춘다.
+   *  ⚠ 이 버튼은 show() 마다 다시 그려진다. 열린 채로 다시 그려질 수 있으므로
+   *  `aria-expanded` 는 패널의 실제 상태에서 읽는다. */
   function drawLegend() {
+    const open = !viewPanel.hidden;
+    const vp = viewpointLabel();
     legend.innerHTML =
-      `<button class="lens-btn" id="view-lens" aria-haspopup="dialog" aria-expanded="false"
+      `<button class="lens-btn" id="view-lens" aria-haspopup="dialog" aria-expanded="${open}"
                aria-controls="view-lens-panel" data-tip="${esc(COPY.ui.legend.lensTip)}"
-               aria-label="${esc(COPY.ui.legend.lensTip)}">${icon("dot-grid", 17)}</button>`;
+               aria-label="${esc(`${COPY.ui.legend.lensTip}, ${vp}`)}">${icon("dot-grid", 17)}<span
+               class="lens-vp">${esc(vp)}</span></button>`;
     lensBtn = legend.querySelector<HTMLElement>("#view-lens");
-    lensBtn?.addEventListener("click", () => { if (viewPanel.hidden) openPanel(); else void closePanel(); });
+    // 닫히는 도중(퇴장 모션)에 다시 누르면 **다시 연다** — 그 동안 패널은 아직 hidden 이 아니라서
+    // 여태는 닫기를 한 번 더 걸었다.
+    lensBtn?.addEventListener("click", () => {
+      if (viewPanel.hidden || panelClosing) openPanel(); else void closePanel();
+    });
+    // 표면을 떠났다 돌아오면 카드가 펼친 채로 남아 있을 수 있다(패널은 닫혀 있다).
+    if (!open && !cardAnim) viewCard()?.removeAttribute("data-open");
+  }
+
+  /** 보기 카드(상단 바) — 닫히면 렌즈 버튼 하나, 열리면 관점 세그가 왼쪽으로 미끄러져
+   *  나와 렌즈 패널과 같은 폭(`--lens-panel-w`)이 된다. 열린 동안 카드는 검색 카드의
+   *  오른쪽 끝 **위로 겹쳐** 자란다: 바깥 폭(음수 왼쪽 여백 + 폭)은 닫힌 폭 그대로라
+   *  검색 입력이 한 픽셀도 밀리지 않는다(Q1.1). 좁은 창(≤900)은 패널이 전폭 판이라
+   *  카드가 자라지 않고 세그가 판 머리로 간다(CSS).
+   *  근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] §1 */
+  const viewCard = () => {
+    const c = legend.closest<HTMLElement>(".tb-card");
+    return c && c.id === "tb-viewctl" ? c : null;
+  };
+  let cardAnim: Animation | null = null;
+  async function setCardOpen(open: boolean): Promise<void> {
+    const c = viewCard();
+    if (!c || (c.dataset.open === "true") === open) return;
+    cardAnim?.cancel();
+    cardAnim = null;
+    // 닫힌 폭은 그때그때 잰다 — 버튼에 실린 관점 이름에 따라 폭이 다르다.
+    c.removeAttribute("data-open");
+    const closedW = c.getBoundingClientRect().width;
+    c.style.setProperty("--vc-closed-w", `${closedW}px`);
+    c.dataset.open = "true";
+    const openW = c.getBoundingClientRect().width;
+    // 움직임 줄이기 · 좁은 창(카드가 자라지 않는다)은 상태만 바꾼다.
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || openW === closedW) {
+      if (!open) c.removeAttribute("data-open");
+      return;
+    }
+    // 여는 데 200ms, 닫는 데 160ms — 하루에도 여러 번 쓰는 손잡이라 `--dur-in`(400)보다
+    // 짧게 간다(관점 페이드가 160 인 것과 같은 이유). 오른쪽 끝을 축으로 폭만 바꾼다.
+    const frame = (w: number) => ({ width: `${w}px`, marginLeft: `${closedW - w}px` });
+    if (open) c.classList.add("vc-enter");
+    const anim = c.animate(open ? [frame(closedW), frame(openW)] : [frame(openW), frame(closedW)],
+      { duration: open ? 200 : 160, easing: "cubic-bezier(.22, 1, .36, 1)" });
+    cardAnim = anim;
+    try { await anim.finished; } catch { /* 반대로 뒤집혔다 — 새 호출이 상태를 쥔다 */ return; }
+    if (cardAnim !== anim) return;
+    cardAnim = null;
+    c.classList.remove("vc-enter");
+    if (!open) c.removeAttribute("data-open");
   }
 
   /** 표면 공용 이스케이프 — 여태 함수마다 같은 것을 다시 선언하고 있었다(esc·esc2). */
@@ -831,17 +890,22 @@ export async function renderView(el: HTMLElement) {
    *  존재·라벨은 바가 관리한다(View 를 떠나면 자동으로 사라진다). */
   function viewpointControl() { refreshTopbar(); drawViewpoints(); }
 
-  /** 관점 세그먼트 — **상시 노출**(D65). 여태 렌즈 패널 안에 있어, 가장 자주 쓰는
-   *  전환을 하려면 매번 패널을 열어야 했다(칩 20개짜리 1102px 패널 안에서 4개를
-   *  찾는 일). 관점은 4지선다라 바에 그대로 눕히는 것이 맞다 — 선택지가 보이면
-   *  결정 시간이 짧아진다(Hick). 프레임·옵션·범례는 렌즈 패널에 남는다. */
+  /** 관점 세그먼트 — 보기 카드 안에 살고, **카드가 열렸을 때만 보인다**(2026-09-28).
+   *  여태는 상시 노출이었다(D65: 가장 자주 쓰는 전환을 패널 안에 숨기지 않는다). 발주자
+   *  지시로 렌즈 버튼을 누르면 미끄러져 나오는 모양이 됐고, 닫힌 버튼이 지금 관점의
+   *  이름을 싣는 것으로 D65 가 지키던 "지금 무엇으로 보는가"는 남는다(drawLegend).
+   *  세그는 늘 그려 두고 보이기만 CSS 가 정한다(`#tb-viewctl[data-open]`).
+   *  근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] §1.5 */
+  const segHTML = (shown: Viewpoint | null) => `<span class="seg">${VIEWPOINTS.map((v, i) =>
+    `<button class="chip${v === shown ? " active" : ""}" data-view="${v}" style="--i:${i}"`
+    + ` aria-pressed="${v === shown}">${viewpointName(v)}</button>`).join("")}</span>`;
   function drawViewpoints() {
     const shown = shownViewpoint(trail[trail.length - 1]);
-    viewpointsBar.innerHTML = `<span class="seg">${VIEWPOINTS.map((v) =>
-      `<button class="chip${v === shown ? " active" : ""}" data-view="${v}">${viewpointName(v)}</button>`)
-      .join("")}</span>`;
+    viewpointsBar.innerHTML = segHTML(shown);
     viewpointsBar.querySelectorAll<HTMLElement>("[data-view]").forEach((b) =>
       b.addEventListener("click", () => void applyViewpoint(b.dataset.view as Viewpoint)));
+    const vp = legend.querySelector<HTMLElement>(".lens-vp");
+    if (vp) vp.textContent = viewpointLabel();
   }
 
   /** 지표바 — 전 관점 공통(구 2D 전용). 떠 있는 알약이 아니라 하단 상태 표시줄이라
@@ -957,10 +1021,10 @@ export async function renderView(el: HTMLElement) {
       : (above >= cardTop + m ? above
          : Math.max(cardTop + m, window.innerHeight - h - m));
     viewPanel.style.top = `${Math.round(Math.max(cardTop + m, top))}px`;
-    // 자리는 기준(보기 카드)에 왼쪽을 맞추고, 오른쪽에 자리가 없으면 **기준의 오른쪽
-    // 끝**에 맞춰 왼쪽으로 연다(팝오버 뒤집기). 카드와 패널 폭이 같으므로 보통은 첫
-    // 갈래에서 양 끝이 다 맞는다.
-    const left = r.left + w + m <= rightEdge ? r.left : Math.min(r.right - w, rightEdge - w - m);
+    // 자리는 기준(보기 카드)의 **오른쪽 끝**에 맞춘다. 카드는 열릴 때 오른쪽 끝을 축으로
+    // 패널 폭까지 자라므로(setCardOpen) 그 끝만이 모션 중에도 움직이지 않는 선이다 —
+    // 왼쪽 끝으로 재면 자라는 도중의 폭을 읽는다. 다 자라면 양 끝이 같은 세로선에 선다.
+    const left = Math.min(r.right - w, rightEdge - w - m);
     viewPanel.style.left = `${Math.round(Math.max(m, left))}px`;
   }
   // 창 크기가 바뀌면 승격/복귀가 즉시 따라야 한다 — 열어 둔 채 창을 줄였을 때 인라인
@@ -974,10 +1038,18 @@ export async function renderView(el: HTMLElement) {
   }
 
   // 열려 있는 동안 이 함수가 하는 일은 **내용 갱신과 자리 재확정**뿐이다.
-  function openPanel() {
-    const wasOpen = !viewPanel.hidden;
+  // `focus: false` — 내용만 새로 그린다(관점 칩을 누른 뒤처럼 포커스가 이미 제자리에
+  // 있을 때). 기본은 여태처럼 패널 안으로 포커스를 넣는다.
+  function openPanel(opts?: { focus?: boolean }) {
+    // 닫히는 도중이면 열려 있던 것이 아니다 — 등장 모션과 바깥 누르기 배선을 다시 건다.
+    // (안 그러면 퇴장이 남긴 불투명도 0 이 그대로 남아 보이지 않는 패널이 된다.)
+    const wasOpen = !viewPanel.hidden && !panelClosing;
+    panelClosing = false;
     panelSeq += 1;                         // 진행 중인 닫힘을 무효화(위 세대 주석)
     viewPanel.hidden = false;
+    // 카드가 먼저 자라기 시작해야 패널이 그 아래에서 같은 폭으로 붙는다(자리는 카드의
+    // 오른쪽 끝에서 재므로 자라는 도중이어도 맞다).
+    if (!wasOpen) void setCardOpen(true);
     positionPanel();
     lensBtn?.setAttribute("aria-expanded", "true");
     // (관점 발견 힌트와 그 seen 플래그는 2026-08-17 에 걷어냈다 — 세그먼트가 상단 바로
@@ -991,34 +1063,54 @@ export async function renderView(el: HTMLElement) {
     // 활성 칩이 없는 프레임(Compare — 관점도 프레임도 활성이 아니다)에서도 포커스는
     // 반드시 패널 안으로 들어와야 한다: Escape 핸들러가 패널에 걸려 있어, 포커스가
     // 밖(상단 바 `보기` 버튼)에 남으면 열어 놓고 키보드로 닫을 길이 사라진다.
-    (viewPanel.querySelector<HTMLElement>(".seg .chip.active")
-      ?? viewPanel.querySelector<HTMLElement>(".seg .chip"))?.focus({ preventScroll: wasOpen });
+    // (판 머리 세그 `.lens-vprow` 는 좁은 창에서만 보인다 — 보이는 칩만 고른다.)
+    if (opts?.focus !== false) {
+      const shownIn = (sel: string) => [...viewPanel.querySelectorAll<HTMLElement>(sel)]
+        .filter((b) => b.offsetParent !== null);
+      const chips = shownIn(".seg .chip");
+      (chips.find((b) => b.classList.contains("active")) ?? chips[0]
+        ?? shownIn("button")[0])?.focus({ preventScroll: wasOpen });
+    }
     // 렌즈 버튼에서 자라난다 — 좌표를 얹고 내용을 그린 **뒤**에 불러야 기준점이
     // 실제 패널 상자를 기준으로 계산된다(먼저 부르면 빈 상자 기준이 된다).
     if (wasOpen) return;                   // 갱신만 — 아래 등장 배선은 첫 열기 전용
     popIn(viewPanel);
     // 바깥을 누르면 닫힌다(발주자 지시 2026-08-05). 딤이 없는 패널이라 스크림 대신
-    // 문서 전체를 듣는다 — 렌즈 버튼은 스스로 토글하므로 예외로 둔다(안 그러면 닫고
-    // 다시 여는 두 처리가 겹친다). 배선은 닫을 때 반드시 해제한다.
+    // 문서 전체를 듣는다. 예외는 **보기 카드 전체**다 — 렌즈 버튼은 스스로 토글하고,
+    // 관점 칩은 패널을 연 채로 관점만 바꾼다(2026-09-28: 여태 예외가 버튼 하나뿐이라
+    // 칩을 누르는 것도 "바깥"으로 잡혀 패널이 닫혔다). 패널이 여는 팝오버(날짜 선택)도
+    // 패널의 일부다. 버튼은 show() 마다 다시 그려지므로 노드가 아니라 카드를 쥔다.
     unwirePanelDismiss?.();
-    unwirePanelDismiss = wireOutsideDismiss(viewPanel, () => void closePanel(), lensBtn);
+    unwirePanelDismiss = wireOutsideDismiss(viewPanel, () => void closePanel({ outside: true }),
+      () => viewCard() ?? lensBtn, viewpointsBar, () => document.getElementById("date-range-pop"));
   }
   let unwirePanelDismiss: (() => void) | null = null;
   /** 열기/닫기 세대. 닫힘은 퇴장 모션(240ms)을 기다린 뒤에 `hidden` 을 거는데, 그
    *  사이에 다시 열리면 **늦게 도착한 닫힘이 열린 패널을 덮는다**(실측 버그: 옵션을
    *  고르면 패널이 사라졌다). 세대가 바뀌었으면 숨기지 않는다. */
   let panelSeq = 0;
-  async function closePanel() {
-    if (viewPanel.hidden) return;
+  let panelClosing = false;
+  async function closePanel(opts?: { outside?: boolean }) {
+    if (viewPanel.hidden || panelClosing) return;
     const seq = ++panelSeq;
     unwirePanelDismiss?.();
     unwirePanelDismiss = null;
+    closeDateRange();             // 패널이 연 날짜 선택도 함께 접는다
+    panelClosing = true;
     await popOut(viewPanel);      // 퇴장을 기다린 뒤 숨긴다
     if (seq !== panelSeq) return;          // 그 사이 다시 열렸다 — 이 닫힘은 무효다
+    panelClosing = false;
     viewPanel.hidden = true;
     const b = lensBtn;
     b?.setAttribute("aria-expanded", "false");
-    b?.focus();
+    // 포커스는 **패널 안에서 닫았을 때만** 렌즈 버튼으로 돌려준다(닫기 버튼 · Esc · 렌즈 버튼).
+    // 바깥을 눌러 닫았으면 사람이 이미 다른 곳(검색 입력 등)으로 옮겨 간 것이다 — 퇴장
+    // 모션 뒤에 돌려주면 방금 누른 입력에서 포커스를 빼앗는다(실측 2026-09-28).
+    const a = document.activeElement;
+    if (!opts?.outside && (!a || a === document.body || viewPanel.contains(a)
+        || !!viewCard()?.contains(a))) b?.focus();
+    // 패널이 먼저 떠나고, 그다음 세그가 버튼 속으로 들어간다.
+    await setCardOpen(false);
   }
 
   /** 옵션 행 — 키는 "관점"이 아니라 **그 층의 렌더러가 실제로 읽는 것**이다.
@@ -1036,6 +1128,54 @@ export async function renderView(el: HTMLElement) {
   /** 평면(SVG DOM) 상한 — 노드마다 <g> 를 만드는 렌더라 전량 스코프(L0)에서
    *  무한정 그릴 수 없다. 넘치면 최근 것부터 남기고 캡션이 잘린 수를 밝힌다. */
   const PLANAR_CAP = 1200;
+
+  /** 지금 걸린 기간을 한 줄로 — "최근 30일 · 08-29 ~ 09-27". 전체면 이름만. */
+  const periodCaption = (p: ViewPrefs) => {
+    const txt = rangeText({ preset: p.period, from: p.periodFrom, to: p.periodTo });
+    return txt ? `${periodLabel(p.period)} · ${txt}` : periodLabel(p.period);
+  };
+  /** 상태 표시줄의 기간 칩 — 패널을 닫아도 무엇으로 걸렀는지 보인다(숨은 필터는 데이터가
+   *  없는 것으로 읽힌다). 누르면 패널 안과 같은 날짜 선택을 연다. 한 상태, 두 입구다. */
+  function drawPeriodChip(p: ViewPrefs, has: boolean) {
+    if (!has) { periodBox.hidden = true; periodBox.innerHTML = ""; return; }
+    periodBox.innerHTML = `<button class="period-chip${p.period !== "all" ? " on" : ""}" type="button"`
+      + ` aria-haspopup="dialog" data-tip="${esc(COPY.ui.viewx.periodChipTip)}"`
+      + ` aria-label="${esc(`${COPY.ui.panel.period}: ${periodCaption(p)}`)}">`
+      + `<span class="period-chip-k">${esc(COPY.ui.panel.period)}</span>`
+      + `<span>${esc(periodCaption(p))}</span></button>`;
+    periodBox.hidden = false;
+    const b = periodBox.querySelector<HTMLElement>("button")!;
+    b.addEventListener("click", () => openPeriodPicker(b));
+  }
+  /** 타임라인이 가진 날 → 기록 수(**기간을 걸기 전**). 날짜 선택이 기록 있는 날에 점을
+   *  찍는 데 쓴다 — 거른 뒤의 수를 주면 기간 밖의 역사가 선택기에서도 사라진다. */
+  let timelineDays = new Map<string, number>();
+  /** 기간을 바꾼다. 패널이 열려 있으면 여느 옵션과 같은 길(패널을 새로 그린다), 닫혀
+   *  있으면(차트 위 칩에서 바꾼 경우) 패널을 열지 않고 그림만 다시 그린다 — applyPrefs 는
+   *  끝에 패널을 여는데, 칩을 눌렀다고 패널이 튀어나오면 안 된다. */
+  async function applyPeriod(mut: Partial<ViewPrefs>, refocus?: string) {
+    if (!viewPanel.hidden) { await applyPrefs(mut, refocus); return; }
+    const cur = loadPrefs();
+    if ((Object.keys(mut) as (keyof ViewPrefs)[]).every((k) => cur[k] === mut[k])) return;
+    savePrefs({ ...cur, ...mut });
+    reuseGraph = true;                    // 좌표·데이터는 그대로다 — 거르는 것만 바뀐다
+    await show(trail[trail.length - 1], { keepPanel: true, keepCamera: true });
+  }
+  /** 날짜 선택을 연다. 프리셋을 고르면 직접 설정한 범위(from·to)는 남겨 둔다 — 다음에
+   *  "직접 설정"을 열면 그 범위에서 다시 시작한다. */
+  function openPeriodPicker(anchor: HTMLElement, refocus?: string) {
+    const p = curPrefs();
+    openDateRange({
+      anchor,
+      reanchor: () => (refocus ? viewPanel.querySelector<HTMLElement>(refocus) : null)
+        ?? periodBox.querySelector<HTMLElement>("button"),
+      value: { preset: p.period, from: p.periodFrom, to: p.periodTo },
+      marks: timelineDays,
+      onChange: (v) => void applyPeriod(v.preset === "custom"
+        ? { period: "custom", periodFrom: v.from, periodTo: v.to }
+        : { period: v.preset }, refocus),
+    });
+  }
   /** 옵션 묶음(2026-08-05 재구조화). 여덟 개가 한 줄로 늘어서 있어 무엇에 대한
    *  손잡이인지 알 수 없었다 — 발주자 지시대로 셋으로 나눈다:
    *    노드(무엇이 크게 · 배치 · 크기 배율) · 선(굵기 · 간격 · 방향) · 기타(라벨 · 연결 없음)
@@ -1082,7 +1222,8 @@ export async function renderView(el: HTMLElement) {
       // D49 — `깊이` 는 **씨앗이 있을 때만** 뜻이 있다("씨앗에서 몇 세대"). 씨앗 없는
       // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
       // 안 하는 컨트롤을 내놓지 않는다(보이는 손잡이는 반드시 무언가를 해야 한다).
-      case "timeline": return ["basis", "docs", "lineage"];
+      // 기간(period)이 맨 위다 — 무엇을 그릴지부터 정하고, 그다음 어느 시계로 볼지다.
+      case "timeline": return ["period", "basis", "docs", "lineage"];
       // 번들 — `단`은 선이 어느 계층에서 묶이는지다(잎은 안 줄어든다. **라벨은**
       // 둘레에 들어갈 만큼만 그린다 — 2026-08-16),
       // `선`은 스키마 타입별 켜고 끄기. 좌표를 안 쓰므로 layout·spread·size 는 무의미하다.
@@ -1177,9 +1318,10 @@ export async function renderView(el: HTMLElement) {
       + (helpOn ? `<p class="hint sub">${esc(H[isOn ? onHelp : offHelp] || "")}</p>` : "");
     // 활성 표시는 "지금 그려지는 것"만 따른다(shownViewpoint).
     const shown = shownViewpoint(lv);
-    // 프레임 칩(Grid·Matrix)이 있던 자리. 프레임 폐기(2026-08-02)로 비운다 —
-    // 관점은 하단 바 세그먼트가 상시로 맡는다(D65).
-    const head = "";
+    // 판 머리의 관점 세그 — **좁은 창(≤900)에서만** 보인다(CSS `.lens-vprow`). 그 폭에서
+    // 패널은 전폭 판이라 카드가 자랄 자리가 없으므로 세그가 판 머리로 온다. 넓은 창에서는
+    // 상단 바 카드의 세그가 같은 일을 한다.
+    const head = `<div class="lens-vprow">${segHTML(shown)}</div>`;
     // 저장값이 이 관점이 실제로 그리는 값과 다를 수 있다(edgeShowFor) — 활성 타일은
     // 그리는 것을 따른다. 저장값 기준이면 활성이 없는 행이 생긴다.
     const shownEdges = edgeShowFor(p.view, p.edges);
@@ -1237,6 +1379,17 @@ export async function renderView(el: HTMLElement) {
       // D74 — 원인·결과 겹치기. 기본은 꺼짐: 촘촘한 그래프에서는 선이 마디를 덮는다.
       lineage: swRow(COPY.ui.panel.lineage, "timelineLineage", p.timelineLineage,
         COPY.ui.panel.on, COPY.ui.panel.off, "on", "off", "lineageOn", "lineageOff"),
+      // 기간 — 프리셋 다섯 + 직접 설정(날짜 선택을 연다). 활성 이름 옆에 풀린 범위를
+      // 적는다: "최근 30일"만으로는 오늘이 언제인지에 따라 무엇이 걸렸는지 모른다.
+      period: `<div class="opt-caprow"><span class="hint">${esc(COPY.ui.panel.period)}</span>`
+        + `<span class="tile-active">${esc(periodCaption(p))}</span></div>`
+        + `<div class="period-chips" role="group" aria-label="${esc(COPY.ui.panel.period)}">`
+        + PERIODS.map((k) => k === "custom"
+          ? `<button class="chip${p.period === k ? " active" : ""}" type="button" data-period-custom`
+            + ` aria-haspopup="dialog" data-tip="${esc(COPY.ui.panel.periodCustomTip)}">${
+              esc(periodLabel(k))}</button>`
+          : chip("period", k, esc(periodLabel(k)), p.period === k)).join("")
+        + `</div>`,
       // 흐름 재생. `data-pref` 를 **안 쓴다** — 이것은 저장되는 값이 아니라 동작이라
       // 공용 배선(값 설정)에 걸리면 안 된다.
       replay: `<div class="opt-swrow"><span class="hint">${esc(COPY.ui.panel.replay)}</span>`
@@ -1283,14 +1436,20 @@ export async function renderView(el: HTMLElement) {
            aria-pressed="${helpOn}" aria-label="${esc(COPY.ui.panel.helpTip)}"
            data-tip="${esc(COPY.ui.panel.helpTip)}" data-qhelp>?</button>`
       : "";
+    // 닫기 버튼 — 여태 패널에는 닫는 손잡이가 없었다(렌즈 버튼 다시 누르기 · 바깥 · Esc
+    // 뿐). 관점·옵션을 바꿔도 이제 패널이 안 닫히므로 **보이는 닫기**가 있어야 한다.
+    const closeBtn = `<button class="lens-close" type="button" data-lensclose
+        aria-label="${esc(COPY.ui.panel.close)}" data-tip="${esc(COPY.ui.panel.close)}">${
+        icon("x", 14)}</button>`;
     const tabSeg = hasOpts
       ? `<div class="lg-tabrow"><div class="lg-tabs" role="tablist">
            <button class="lg-tab${tab === "opts" ? " active" : ""}" type="button" role="tab"
              data-tab="opts" aria-selected="${tab === "opts"}">${esc(COPY.ui.panel.options)}</button>
            <button class="lg-tab${tab === "legend" ? " active" : ""}" type="button" role="tab"
              data-tab="legend" aria-selected="${tab === "legend"}">${esc(COPY.ui.legend.title)}</button>
-         </div>${qhelp}</div>`
-      : "";
+         </div>${qhelp}${closeBtn}</div>`
+      : `<div class="lg-tabrow"><span class="lg-tabrow-title">${
+          esc(COPY.ui.legend.title)}</span>${closeBtn}</div>`;
     // 묶음을 **영역**으로 낸다(발주자 지시 2026-08-05) — 제목 한 줄만으로는 어디까지가
     // 그 묶음인지 경계가 없어, 아래 컨트롤이 다음 제목에 붙어 읽혔다. 상자가 그 경계다.
     const groupsHTML = groupsFor(p).map((g) => g.label
@@ -1326,10 +1485,13 @@ export async function renderView(el: HTMLElement) {
       + `<div class="lens-foot">` + helpLine
       + `<p class="hint hint-sm">${COPY.ui.panel.fixedNote}</p></div>`;
     if (keepScroll) viewPanel.querySelector<HTMLElement>(".lens-scroll")!.scrollTop = keepScroll;
+    viewPanel.querySelector<HTMLElement>("[data-lensclose]")?.addEventListener("click",
+      () => void closePanel());
     viewPanel.querySelectorAll<HTMLElement>("[data-tab]").forEach((b) =>
       b.addEventListener("click", () => {
         localStorage.setItem(PANEL_TAB_KEY, b.dataset.tab!);
         drawViewPanel();
+        viewPanel.querySelector<HTMLElement>(`[data-tab="${b.dataset.tab}"]`)?.focus();
       }));
     viewPanel.querySelector<HTMLElement>("#pref-replay")?.addEventListener("click", () => {
       if (replayTimer) stopReplay(); else startReplay();
@@ -1350,6 +1512,10 @@ export async function renderView(el: HTMLElement) {
           : ({ [k]: val } as Partial<ViewPrefs>);
         applyPrefs(mut, `[data-pref="${k}"][data-val="${val}"]`);
       }));
+    // 기간 "직접 설정" — 값이 아니라 날짜 선택을 연다. 선택기는 body 에 붙지만 패널의
+    // 일부로 친다(바깥 누르기 예외 · openPanel).
+    viewPanel.querySelector<HTMLElement>("[data-period-custom]")?.addEventListener("click",
+      (e) => openPeriodPicker(e.currentTarget as HTMLElement, "[data-period-custom]"));
     // 값 표시는 **끄는 동안**(input) 따라 움직인다 — 셋 다. 무엇이 적용되는 시점과는
     // 별개다: 아래 spread 는 놓을 때(change) 적용되지만, 숫자는 손끝을 따라야
     // "이 손잡이가 살아 있다"가 읽힌다(그 피드백이 없던 것이 "클릭만 먹는다"의 정체).
@@ -1531,10 +1697,15 @@ export async function renderView(el: HTMLElement) {
     // 와 같은 계약 — 3D 카메라 프레이밍과 평면 뷰 스크롤이 살아남는다). Grid 는
     // 저장값이 평면이어도 미니가 3D 컷을 그리므로 "3D"가 이미 활성이다: 저장값만
     // 화면에 맞춰 두고(프레임을 벗어나면 그 값이 그대로 걸린다) 다시 그리지 않는다.
-    if (shown === v) { syncHash(v); closePanel(); return; }
+    // 패널은 **닫지 않는다**(2026-09-28 발주자 지시: 관점을 바꿔도 카드는 열린 채로).
+    // 여태는 여기서 두 번 닫았다(이미 그 관점일 때 · 바꾼 뒤). 관점마다 옵션 묶음이
+    // 다르므로 열려 있으면 show() 가 새 관점으로 다시 그린다. 포커스는 방금 누른 칩에.
+    if (shown === v) { syncHash(v); return; }
     syncHash(v);
+    const fromPanel = viewPanel.contains(document.activeElement);
     await show(trail[trail.length - 1]);
-    closePanel();                                 // 목적지 커밋 — 새 칩으로 포커스 복귀
+    (fromPanel ? viewPanel : viewpointsBar)
+      .querySelector<HTMLElement>(`[data-view="${v}"]`)?.focus({ preventScroll: true });
   }
 
   async function applyPrefs(mut: Partial<ViewPrefs>, refocus?: string) {
@@ -3402,7 +3573,29 @@ export async function renderView(el: HTMLElement) {
       // 판정도 차트가 실제로 그리는 집합(문서 연결 토글 적용본) 위에서 한다 —
       // 걸러진 노드를 세면 "빈 캔버스에 문구 없음"이거나 undated 가 부풀어 오른다.
       const shown = timelinePool(nodes, p.timelineDocs);
-      const dated = shown.filter((n) => !!(n.ts && n.ts.trim()));
+      const allDated = shown.filter((n) => !!(n.ts && n.ts.trim()));
+      // 날짜 선택의 점 — 기간을 걸기 **전**의 날별 수(기간 밖의 역사도 보여야 고른다).
+      timelineDays = new Map();
+      for (const n of allDated) {
+        const d = n.ts!.slice(0, 10);
+        if (d.length === 10) timelineDays.set(d, (timelineDays.get(d) || 0) + 1);
+      }
+      // 기간은 **상한보다 먼저** 거른다(2026-09-28). 여태 이 관점은 최근 1,200개만 남겨서
+      // 기록이 한 달에 몰린 그래프에서는 그 달만 보였다(실측: 날짜 2,479개 중 남는 것이
+      // 전부 09-06 이후). 옛 기간을 고르면 옛 기록이 보여야 한다. 알갱이(일·월·년)는 걸러진
+      // 집합에서 고르므로 30일을 고르면 날로 펴진다 — 알갱이가 손잡이가 아니라는 스펙은
+      // 그대로다. 비교는 열과 같은 문자열 키 공간이다(`inPeriod`).
+      const range = periodRange(p);
+      const dated = range ? allDated.filter((n) => inPeriod(n.ts!, range)) : allDated;
+      drawPeriodChip(p, allDated.length > 0);
+      if (allDated.length > 0 && dated.length === 0) {
+        setMsg(`<div class="empty"><p>${esc(COPY.ui.viewx.periodNone)}</p>`
+          + `<button class="btn" type="button" data-period-reset>${
+            esc(COPY.ui.dateRange.reset)}</button></div>`);
+        msg.querySelector("[data-period-reset]")?.addEventListener("click",
+          () => void applyPeriod({ period: "all" }));
+        return;
+      }
       if (dated.length === 0) {
         // 내용 축이 비어 있는 것과 아예 날짜가 없는 것은 다른 사정이다 — 내용 시점은
         // 사람이 적어야 생기므로, 그 축에서는 무엇을 하면 채워지는지까지 말한다(D72).
@@ -3420,6 +3613,9 @@ export async function renderView(el: HTMLElement) {
         const keep = new Set(dated.slice()
           .sort((a, b) => (a.ts! < b.ts! ? 1 : a.ts! > b.ts! ? -1 : a.id < b.id ? 1 : -1))
           .slice(0, PLANAR_CAP).map((n) => n.id));
+        feed = nodes.filter((n) => keep.has(n.id));
+      } else if (range) {
+        const keep = new Set(dated.map((n) => n.id));
         feed = nodes.filter((n) => keep.has(n.id));
       }
       // D45-V2 4단계 — 월-밴드 클릭 → 그 달 기간 항목. L1 은 도메인 렌즈를 걸고,
@@ -3459,7 +3655,8 @@ export async function renderView(el: HTMLElement) {
       // 차트가 못 올린 것들을 한 줄로 밝힌다: 날짜 없는 문서 + 상한에 잘린 문서.
       // 계보를 켰는데 그릴 것이 없는 경우도 여기서 말한다 — 켠 손잡이가 아무 일도
       // 안 한 채 조용한 것이 이 코드베이스가 되풀이해 온 실패다.
-      const undated = shown.length - dated.length;
+      // 날짜 없는 수는 기간과 무관하게 센다(어느 기간에도 들어가지 않는 것들이다).
+      const undated = shown.length - allDated.length;
       const notes = [
         undated > 0 ? COPY.ui.viewx.undated(undated) : "",
         over > 0 ? COPY.ui.viewx.capped(over) : "",
@@ -3467,6 +3664,16 @@ export async function renderView(el: HTMLElement) {
       ].filter(Boolean);
       if (notes.length) {
         lassoHint.textContent = notes.join(" · ");
+        // 상한이 여전히 자르면 **고칠 길을 함께** 준다 — 기간을 좁히면 잘린 것이 돌아온다.
+        if (over > 0) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "hint-act";
+          b.textContent = COPY.ui.viewx.narrowPeriod;
+          b.addEventListener("click", () => openPeriodPicker(
+            periodBox.querySelector<HTMLElement>("button") ?? b));
+          lassoHint.append(" · ", b);
+        }
         lassoHint.hidden = false;
       }
       return;
@@ -3574,7 +3781,14 @@ export async function renderView(el: HTMLElement) {
     closeFloatPanel();   // 층이 바뀌면 카드가 가리키던 노드도 화면에서 사라진다
     float.hidden = true;
     lassoHint.hidden = true;   // 기본 숨김 — wireLasso 가 다시 켠다
-    if (!opts?.keepPanel) void closePanel();
+    // 렌즈 패널은 여기서 **닫지 않는다**(2026-09-28). 여태 `keepPanel` 이 아니면 닫았는데,
+    // 그 길로 관점 전환이 패널을 닫았다. 닫는 길은 이제 넷뿐이다: 닫기 버튼 · 렌즈 버튼 ·
+    // 바깥 누르기 · Esc. 층을 바꾸는 손짓은 대개 지도·트리를 누르는 것이라 바깥 누르기가
+    // 이미 닫는다. 열린 채로 여기 오면 새 층·관점의 옵션으로 다시 그린다(아래 finally).
+    const redrawPanel = !opts?.keepPanel && !viewPanel.hidden;
+    if (redrawPanel) openPanel({ focus: false });
+    // 기간 칩은 타임라인의 것이다 — 다른 관점으로 가면 거둔다(날짜 선택도 함께).
+    if (curPrefs().view !== "timeline") { periodBox.hidden = true; closeDateRange(); }
     // 옛 표면은 **여기서 부수지 않는다.** 새 데이터가 도착해 그릴 준비가 됐을 때
     // swapSurface() 가 부수고 곧바로 새 표면을 세운다 — 그래야 fetch 동안 빈 상자가
     // 아니라 보던 지도가 남고, 새 지도가 그 위로 짧게 페이드인한다(2026-09-05 감사).
@@ -3625,6 +3839,8 @@ export async function renderView(el: HTMLElement) {
     } finally {
       if (seq === showSeq) {
         setBusy(false); revealSurface();   // 새 세대가 돌고 있으면 그쪽이 끈다
+        // 범례의 개수·갈래는 새로 실린 그래프에서 나온다 — 그린 뒤에 한 번 더.
+        if (redrawPanel && !viewPanel.hidden) openPanel({ focus: false });
         // 서 있는 종 렌즈를 **새 렌더러에** 다시 건다. 관점 넷이 전부 이 길을
         // 지나므로 걸어 주는 자리도 하나다(2D·3D 는 점등을 받고 평면 둘은 조용히
         // 무시한다 — 기존 계약).
