@@ -358,8 +358,8 @@ def _t_doc_extract(args, bridge):
 
 def _t_diagnose(args, bridge):
     # E-G3 구조 진단(조회 전용) — kind=components(WCC 고아·컴포넌트) | communities
-    # (Louvain 군집) | community_context(시드 하나의 군집 + 대표 발췌). algo 확장
-    # 부재 시 사이드카가 executed=False 로 강등.
+    # (Leiden 군집) | community_context(시드 하나의 군집 + 대표 발췌). 계산은 사이드카의
+    # `api/graph_algo.py` 가 한다. 스토어를 못 읽으면 사이드카가 executed=False 로 강등.
     params = {"owner": _owner(args, bridge), "kind": args.get("kind", "components")}
     if args.get("member_limit") is not None:   # F6 — 미지정이면 서버 기본(50)
         params["member_limit"] = args["member_limit"]
@@ -977,23 +977,24 @@ TOOLS: list[dict] = [
                        "kind='components' (default) runs weakly-connected-components: returns "
                        "{components:[{group,size,members}], orphans:[id…], component_count, "
                        "orphan_count} — the disconnected 'islands' and singleton concepts that "
-                       "want linking (feeds vinc_suggest_ties). kind='communities' runs Louvain: "
+                       "want linking (feeds vinc_suggest_ties). kind='communities' runs Leiden: "
                        "returns {communities:[{community,size,dominant_domain,members}]} — the "
                        "measured clusters (distinct from the domain axis), a basis for proposing "
                        "themes (ratified by the user, never auto-written). kind='community_context' "
                        "(requires `node`) answers a broad 'what is over in this area' question with "
-                       "no generation: takes ONE seed concept id, finds the Louvain community it "
+                       "no generation: takes ONE seed concept id, finds the Leiden community it "
                        "belongs to, and returns {community, size, dominant_domain, "
                        "representatives:[{id,title,one_liner,excerpt}], members:[{id,title}], "
                        "members_truncated} — up to 5 representatives (ranked by how many chunks "
                        "mention them) carry a quoted source excerpt, the rest are id/title only. "
-                       "executed:false with a note if the seed is unknown or isolated (Louvain -1). "
+                       "executed:false with a note if the seed is unknown or isolated (community -1). "
                        "Member id lists are capped by `member_limit` (default 50): `size` always "
                        "reports the TRUE total, and a group whose list was cut carries "
-                       "members_truncated:true — raise member_limit to see the rest. Delegates to "
-                       "the native algo extension; executed:false with a note if the extension is "
-                       "unavailable (offline unbundled). kind='claims' is the exception: it uses "
-                       "no algo extension and always answers. It returns "
+                       "members_truncated:true — raise member_limit to see the rest. Computed in "
+                       "Vinc over your own nodes only (no engine extension), and deterministic: "
+                       "the same graph always yields the same groups. Leiden never returns a "
+                       "disconnected community. kind='claims' reads record props instead of "
+                       "graph structure. It returns "
                        "{conflicts:[{subject_path,newer,older}], conflict_count, "
                        "unanchored:[{id,title,path_hint}], unanchored_count, anchored_count, "
                        "scanned}. `conflicts` pairs the most recent measurement of a file with "
@@ -1005,7 +1006,7 @@ TOOLS: list[dict] = [
                        "by adding the field. Both lists are capped by member_limit.",
         "inputSchema": {"type": "object", "properties": {
             "kind": {"type": "string", "enum": ["components", "communities", "community_context", "claims"],
-                     "description": "components (WCC orphans/islands) | communities (Louvain "
+                     "description": "components (WCC orphans/islands) | communities (Leiden "
                                     "clusters) | community_context (one seed's cluster + "
                                     "representative excerpts, requires `node`) | claims "
                                     "(records that disagree about one file, and records about "

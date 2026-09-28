@@ -2546,9 +2546,8 @@ def view_l0(*, owner: str, cfg=None, store=None) -> dict:
 # View Totals 관점의 데이터 원천. 두 플랜(출처 축·연결 축)을 각각 UNION ALL 로
 # 가져와 **순수 파이썬에서 접는다**(`domain_counts_plan` → `domains` 와 동형) —
 # Cypher 안에서 EXISTS{}·서브쿼리로 영리하게 굴지 않는다(임베디드 방언 이식성).
-# 고아 판정을 `component_diagnosis`(native algo 확장 위임)에 맡기지 않는 것도
-# 의도다 — algo 는 오프라인 번들에서 executed=False 로 강등되는데, 원장은 항상
-# 그려져야 한다.
+# 고아 판정을 `component_diagnosis` 에 맡기지 않는 것도 의도다 — 진단은 스토어를
+# 두 번 더 읽고 강등 계약을 갖는데, 원장은 항상 그려져야 한다.
 
 def ledger_origin_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
                        ids: list[str] | None = None) -> QueryPlan:
@@ -5218,12 +5217,13 @@ def suggest_merge_candidates(*, owner: str | None = None, min_score: float = 0.6
             "total": det["total"], "suppressed": det["suppressed"]}
 
 
-# ── 구조 진단 (E-G3) — algo 확장 위임(WCC·Louvain) · 조회 전용 ─────────────────
-# 구조 연산을 네이티브 알고리즘에 위임(리서치 ④). 전부 조회 전용·강등 계약:
-# store 가 graph_algo 를 미지원하거나(추상화 폴백) algo 확장이 부재하면(오프라인
-# 미번들 §9) executed=False + note 로 강등한다(무크래시). owner 스코프는 결과를
-# owner 개념 집합과 교차해 적용(project_graph 는 전체 투영 — 교차소유자 엣지 부재라
-# 컴포넌트/커뮤니티는 owner-clean).
+# ── 구조 진단 (E-G3) — 약연결 성분 · Leiden 커뮤니티 · 조회 전용 ─────────────────
+# 계산은 `api/graph_algo.py`(순수 파이썬)가 한다. 2026-09-28 까지는 엔진 algo 확장에
+# 맡겼는데, ladybug 0.20 확장이 번들되지 않은 공유 라이브러리(networkit·arrow)를 물어
+# 허브에서 세 진단이 전부 꺼졌다. 옮기면서 Louvain 을 Leiden 으로 바꿨다.
+# 근거: [[vinc.ops.ladybug-upgrade-review-2026-09-24 §2.3]] (원인), 문헌 조사 §10 레버 1·2
+# 투영은 여기서 소유자로 거른다(엔진 투영은 전체 표만 됐다). 강등 계약은 그대로다:
+# 스토어를 못 읽으면 executed=False + note 이고 크래시하지 않는다.
 
 def _owner_concept_ids(store, owner: str | None) -> set[str] | None:
     """owner 의 **의미층** 노드 id 집합(스코프 교차용). owner=None(로컬)이면 None(전체).
@@ -5264,17 +5264,67 @@ def _ambiguous_algo_ids(rows, scope: set[str] | None) -> list[str]:
     return sorted(cid for cid, vals in seen.items() if len(vals) > 1)
 
 
-def _run_algo(store, algo: str, *, rel_tables: tuple | None = None):
-    """store.graph_algo 안전 호출 — (rows, None) 또는 (None, note). ``rel_tables``
-    미지정 시 어댑터 기본(개념 관계 4종). Louvain 은 단일 엣지 테이블만 지원하므로
-    (kuzu 0.11.3 실측) 호출부가 RELATED_TO 단일 투영을 넘긴다."""
-    fn = getattr(store, "graph_algo", None)
+#: 성분 진단이 걷는 관계 — 의미층을 **실제로 잇는** 관계 전부. 엔진 시절의
+#: `EmbeddedBackend._ALGO_REL_TABLES` 와 같은 목록이고 같은 이유다: ABOUT·ATTACHES_TO 를
+#: 빼면 결정·사건·기록이 거짓 고아로 나온다(2026-08-09, 결정 67건 중 43건).
+ALGO_REL_TABLES = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM",
+                   "INHERITS_FROM", "ABOUT", "ATTACHES_TO")
+
+
+def _algo_graph(store, owner: str | None, rel_tables: tuple) -> tuple[list[str], list[tuple]]:
+    """진단용 투영 — 관계 표의 끝점 라벨에 속한 노드 전부와 그 관계들. 소유자가 있으면
+    **양 끝이 모두 그 소유자**인 것만 담는다. 라벨·PK·끝점 쌍은 스키마에서 파생한다
+    (손으로 적은 목록이 낡아 진단을 통째로 죽인 일이 있다 — `_algo_projection` 주석).
+
+    id 는 논리 id 로 돌아온다(네임스페이싱 스토어의 물리 키는 조회 계층이 벗긴다)."""
+    from store import embedded_schema as _es
+    pks = {lbl: spec["pk"] for lbl, spec in _es.node_table_specs().items()}
+    want = set(rel_tables)
+    pairs = [(sp["label"], sp["from"], sp["to"]) for sp in _es.rel_table_specs()
+             if sp["label"] in want and sp["from"] in pks and sp["to"] in pks]
+    labels: list[str] = []
+    for _rel, a, b in pairs:
+        for lbl in (a, b):
+            if lbl not in labels:
+                labels.append(lbl)
+    params = {"o": owner} if owner else None
+    nodes: list[str] = []
+    for lbl in labels:
+        where = "WHERE n.owner_id = $o " if owner else ""
+        for r in store.run(f"MATCH (n:{lbl}) {where}RETURN n.{pks[lbl]} AS id", params) or []:
+            if r.get("id"):
+                nodes.append(pkns.strip(r["id"]))
+    edges: list[tuple] = []
+    for rel, a, b in pairs:
+        where = "WHERE x.owner_id = $o AND y.owner_id = $o " if owner else ""
+        for r in store.run(f"MATCH (x:{a})-[:{rel}]->(y:{b}) {where}"
+                           f"RETURN x.{pks[a]} AS a, y.{pks[b]} AS b", params) or []:
+            if r.get("a") and r.get("b"):
+                edges.append((pkns.strip(r["a"]), pkns.strip(r["b"])))
+    return nodes, edges
+
+
+def _run_algo(store, algo: str, *, rel_tables: tuple | None = None,
+              owner: str | None = None):
+    """진단 알고리즘을 돌린다 — (rows, None) 또는 (None, note). rows 는 엔진 시절과 같은
+    `[{id, value}]` 모양이라 소비자 셋이 그대로 읽는다.
+
+    ``algo``: ``weakly_connected_components`` 또는 ``leiden``. ``rel_tables`` 미지정이면
+    :data:`ALGO_REL_TABLES`. 커뮤니티는 호출부가 RELATED_TO 만 넘긴다 — 개념 사이의
+    느슨한 연관이 군집의 뼈대이고, 방향 관계는 도메인 축과 따로 가는 '실측 군집'에
+    섞이지 않게 둔다(엔진 시절의 선택을 그대로 잇는다)."""
+    from . import graph_algo as ga
+    fns = {"weakly_connected_components": ga.weakly_connected_components,
+           "leiden": ga.leiden}
+    fn = fns.get(algo)
     if fn is None:
-        return None, "algo_unsupported: store has no graph_algo (backend fallback)"
+        return None, f"algo_unsupported: {algo!r} (지원: {sorted(fns)})"
     try:
-        return (fn(algo, rel_tables=rel_tables) if rel_tables else fn(algo)), None
+        nodes, edges = _algo_graph(store, owner, tuple(rel_tables or ALGO_REL_TABLES))
+        assign = fn(nodes, edges)
     except Exception as exc:
         return None, f"{_classify_chunk_error(exc)}: {type(exc).__name__}: {exc}"
+    return [{"id": n, "value": v} for n, v in assign.items()], None
 
 
 # ── 자르면 잘렸다고 말한다 (F6) ──────────────────────────────────────────────
@@ -5304,7 +5354,7 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
 
     반환 {executed, components:[{group, size, members, members_truncated}],
     orphans:[id…], component_count, orphan_count, ambiguous, ambiguous_count}.
-    algo 부재 시 executed=False + note.
+    스토어를 못 읽으면 executed=False + note.
 
     ``ambiguous`` — **두 스페이스에 같은 슬러그로 존재해 어느 쪽이 내 것인지 못 가리는
     id**. 컴포넌트에도 고아에도 안 넣는다. 왜 생기는지는 아래 계산 자리의 주석에 있다.
@@ -5323,7 +5373,7 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
         base["note"] = "no reachable store"
         return base
     try:
-        rows, note = _run_algo(store, "weakly_connected_components")
+        rows, note = _run_algo(store, "weakly_connected_components", owner=owner)
         if rows is None:
             base["note"] = note
             return base
@@ -5468,13 +5518,13 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
 
 def communities(*, owner: str | None = None, cfg=None, store=None,
                 member_limit: int | None = None) -> dict:
-    """E-G3 Louvain 커뮤니티 검출 — 개념 군집(도메인 축과 별개의 '실측 군집' 렌즈).
+    """E-G3 Leiden 커뮤니티 검출 — 개념 군집(도메인 축과 별개의 '실측 군집' 렌즈).
     각 커뮤니티에 지배 도메인·크기·대표(사전순 첫 id)를 붙여 **테마 proposed 제안**의
     근거로 쓴다(재가는 사용자 — T1/T3, 여기서는 쓰기 없음). 조회 전용.
 
     반환 {executed, communities:[{community, size, dominant_domain, members,
     members_truncated}], community_count}. ``member_limit`` 은 component_diagnosis
-    와 같다(기본 50 · 상한 1000 · 자르면 말한다 — F6). Louvain 미배정(-1, 고립)은 별도 집계에서 제외. algo 부재 시
+    와 같다(기본 50 · 상한 1000 · 자르면 말한다 — F6). 미배정(-1, 고립)은 별도 집계에서 제외. 스토어를 못 읽으면
     executed=False + note."""
     cfg = cfg or load_config()
     owns = store is None
@@ -5486,10 +5536,10 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
         base["note"] = "no reachable store"
         return base
     try:
-        # Louvain 은 단일 엣지 테이블만(kuzu 0.11.3) — RELATED_TO 단일 투영(개념
-        # 관계의 주축: wikilink 추론이 전부 RELATED_TO 로 강등돼 밀도 최고). 방향
-        # 관계는 커뮤니티 검출에서 제외되나 근사로 충분(도메인 축 별개의 '실측 군집').
-        rows, note = _run_algo(store, "louvain", rel_tables=("RELATED_TO",))
+        # RELATED_TO 단일 투영(개념 관계의 주축: wikilink 추론이 전부 RELATED_TO 로
+        # 강등돼 밀도 최고). 엔진 Louvain 이 단일 엣지 표만 받던 시절의 선택인데, 방향
+        # 관계를 섞지 않는 '실측 군집'이라는 뜻이 있어 계산을 옮긴 뒤에도 잇는다.
+        rows, note = _run_algo(store, "leiden", rel_tables=("RELATED_TO",), owner=owner)
         if rows is None:
             base["note"] = note
             return base
@@ -5509,7 +5559,7 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
             cid, com = r.get("id"), r.get("value")
             if not cid or com == -1 or cid in drop \
                     or (scope is not None and cid not in scope):
-                continue   # -1 = Louvain 미배정(고립) — 커뮤니티 아님
+                continue   # -1 = 미배정(고립) — 커뮤니티 아님
             groups.setdefault(com, []).append(cid)
         out = []
         for com, members in groups.items():
@@ -5527,7 +5577,7 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
                         "members_truncated": len(members) > _ml})
         out.sort(key=lambda c: (-c["size"], str(c["community"])))
         base.update(executed=True, communities=out, community_count=len(out),
-                    ambiguous=ambiguous, ambiguous_count=len(ambiguous))
+                    algorithm="leiden", ambiguous=ambiguous, ambiguous_count=len(ambiguous))
         if ambiguous:
             base["ambiguous_note"] = (
                 "these ids exist in more than one space, so this diagnosis cannot tell "
@@ -5547,8 +5597,9 @@ COMMUNITY_REPRESENTATIVE_CAP = 5
 
 def community_context(*, owner: str | None = None, node: str, cfg=None, store=None,
                       member_limit: int | None = None) -> dict:
-    """E-G3 Louvain 커뮤니티 → **하나의 시드가 속한 군집**의 답변 재료(unified-kg-rag
-    비교 §4 — "wire Louvain into retrieval", 모델 없는 `global` 전략의 절반). 조회
+    """E-G3 Leiden 커뮤니티 → **하나의 시드가 속한 군집**의 답변 재료(unified-kg-rag
+    비교 §4 — "wire Louvain into retrieval", 모델 없는 `global` 전략의 절반. 2026-09-28
+    부터 Leiden 이다 — 끊긴 군집이 답변 재료로 나가지 않는다). 조회
     전용, 문장을 생성하지 않는다.
 
     `communities()`(전체 커뮤니티 목록, id만)와 달리 **시드 하나가 속한 커뮤니티 하나**
@@ -5562,7 +5613,7 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
     반환 {executed, node, community, size, dominant_domain,
     representatives:[{id, title, one_liner, excerpt}],
     members:[{id, title}], members_truncated}. 시드가 없거나 고립(-1)이면
-    executed=False + note. algo 부재 시도 마찬가지."""
+    executed=False + note. 스토어를 못 읽을 때도 마찬가지."""
     cfg = cfg or load_config()
     owns = store is None
     if owns:
@@ -5574,7 +5625,7 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
         base["note"] = "no reachable store"
         return base
     try:
-        rows, note = _run_algo(store, "louvain", rel_tables=("RELATED_TO",))
+        rows, note = _run_algo(store, "leiden", rel_tables=("RELATED_TO",), owner=owner)
         if rows is None:
             base["note"] = note
             return base
@@ -5640,7 +5691,7 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
         rest = ranked[COMMUNITY_REPRESENTATIVE_CAP:]
         member_list = [{"id": cid, "title": title_of.get(cid, cid)}
                        for cid in sorted(rest)[:max(0, mlim - len(reps))]]
-        base.update(executed=True, community=com, size=len(members),
+        base.update(executed=True, community=com, size=len(members), algorithm="leiden",
                     dominant_domain=dominant, representatives=reps,
                     members=member_list,
                     members_truncated=len(members) > len(reps) + len(member_list))

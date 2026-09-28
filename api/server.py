@@ -584,10 +584,10 @@ class VincApp:
         return self._read(lambda r: q.list_merge_rejections(owner=_req(p, "owner"), store=r))
 
     def read_diagnose(self, p):
-        # E-G3 구조 진단(조회 전용) — WCC 컴포넌트/고아 + Louvain 커뮤니티. kind=
+        # E-G3 구조 진단(조회 전용) — WCC 컴포넌트/고아 + Leiden 커뮤니티. kind=
         # components(기본) | communities | community_context(단일 시드의 군집 +
-        # 대표 발췌 — unified-kg-rag-comparison §4). algo 확장 부재 시 executed=False 강등.
-        # claims(R5)는 algo 를 안 쓴다 — 확장이 없어도 답한다.
+        # 대표 발췌 — unified-kg-rag-comparison §4). 계산은 `api/graph_algo.py` 이고
+        # 엔진 확장을 쓰지 않는다. claims(R5)는 구조가 아니라 기록의 props 를 읽는다.
         kind = (p.get("kind") or "components").lower()
         owner = _req(p, "owner")
         if kind == "community_context":
