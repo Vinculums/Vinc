@@ -16,7 +16,7 @@ tests/test_tool_contract.py 가 이 독스트링의 수와 len(TOOLS) 를 대조
 읽기 쪽은 `vinc_conventions` 가 관례 문서와 함께 재가된 어휘를 실어 나른다(GM-1):
 그 전까지 어시스턴트는 어휘를 **쓰고 나서** `proposed_types` 로만 알 수 있었다.
 핸들러는 계약 검증 후 브리지 호출뿐(스켈레톤 §4). owner 미지정 시 브리지
-기본 owner(user:local)를 주입한다 — MCP 호스트는 로컬 소유자 개념을 모른다.
+기본 owner(tenant:local)를 주입한다 — MCP 호스트는 로컬 소유자 개념을 모른다.
 """
 from __future__ import annotations
 

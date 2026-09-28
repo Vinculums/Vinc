@@ -35,7 +35,7 @@ def _csv(val: str | None) -> list[str] | None:
 #: 응답에 실재 owner 목록을 붙이는 쪽을 먼저 해 봤는데, 그러면 **CLI 응답만** 달라져
 #: HTTP==CLI 등가(`tests/test_server.py` EquivalenceTests)가 깨진다. 테스트된 불변식을
 #: 편의 메시지와 맞바꾸지 않는다.
-_OWNER_HELP = ("owner_id — 데스크탑 앱이 쓰는 값은 `user:local` 이고, 계정을 연결하면 "
+_OWNER_HELP = ("owner_id — 이 기기 스토어의 값은 `tenant:local` 이고(앱·로컬 MCP 공통), 계정을 연결하면 "
                "`user:<uuid>` 가 섞인다. 사람 이름·계정 이름이 아니다(넣으면 조용히 "
                "0건). 이 스토어에 무엇이 있는지는 `domains`(--owner 생략 가능)로 본다")
 
@@ -418,7 +418,7 @@ def _main(argv: list[str] | None = None) -> int:
         mp = msub.add_parser(name, help=hint)
         mp.add_argument("--base", default=None, help="sidecar base URL (default 127.0.0.1:8787)")
         mp.add_argument("--token", default=None, help="sidecar session token")
-        mp.add_argument("--owner", default=None, help="default owner scope (default user:local)")
+        mp.add_argument("--owner", default=None, help="default owner scope (default tenant:local)")
         mp.add_argument("--no-spawn", action="store_true",
                         help="fail instead of starting a sidecar when none is running")
         if name == "serve-http":

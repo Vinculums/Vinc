@@ -335,8 +335,42 @@ class VincApp:
         if guarded is not None:
             app.store_note = guarded.note
         if store is not None and provision_error is None:
+            # 이 기기의 사이드카만 접는다(`guard_wal` 은 `--parent-pid` 로 뜬 셸·MCP 브리지의
+            # 표식이다). 허브는 이 인자를 안 넘기고, 접기 자신도 네임스페이싱 스토어를 거절한다.
+            # 재링크보다 **먼저**다: 잡 큐는 한 줄이라 규칙이 바뀐 릴리스의 전량 재링크 뒤에
+            # 서면 접기가 제한 시간을 넘기고, 재링크도 접힌 소유자를 기준으로 도는 편이 맞다.
+            if guard_wal:
+                app._fold_owner()
             app._schedule_mentions_rule()
         return app
+
+    def _fold_owner(self) -> None:
+        """옛 로컬 소유자(`user:local`)를 `tenant:local` 로 접는 일을 잡 큐에 건다(VIN-131).
+
+        멱등이라 기동마다 건다: 옮길 행이 없으면 개수만 센다. 실패는 기동을 죽이지 않는다 —
+        MCP 로 쓴 것이 한 번 더 화면에 안 보일 뿐이고 다음 기동이 다시 한다.
+
+        **끝날 때까지 기다린다.** 앱은 기동 직후 "이 기기에 데이터가 있나"를 `tenant:local`
+        로 묻고(`app/src/api.ts` localStoreHasData) 그 답으로 모드를 정해 설정에 적는다.
+        접기가 그 질문보다 늦으면 MCP 로만 쓴 사람의 기기가 "비었다"로 읽혀, 한 번뿐인 이행
+        질문 없이 계정 모드로 넘어간다. 개수 세기와 값 바꾸기뿐이라 오래 걸리지 않는다."""
+        store = self.store
+
+        def _run() -> dict:
+            from api.owner_fold import fold_legacy_owner
+            res = fold_legacy_owner(store)
+            if res.get("moved"):
+                print(f"vinc: 로컬 소유자 접기 {res['from']} → {res['to']} · {res['moved']}",
+                      file=sys.stderr)
+            if res.get("deferred"):
+                print(f"vinc: 로컬 소유자 접기 일부 보류(벡터 색인 잔해) · {res['deferred']}",
+                      file=sys.stderr)
+            return res
+
+        try:
+            self.jobs.run_sync("owner.fold", _run, timeout=120.0)
+        except Exception as exc:      # noqa: BLE001 — 기동 경로, 죽이지 않는다
+            print(f"vinc: owner fold skipped — {exc}", file=sys.stderr)
 
     def _schedule_mentions_rule(self) -> None:
         """MENTIONS 링크 규칙 표식 대조(`engines.mentions_link.ensure_rule`)를 잡 큐에 건다.
@@ -1670,6 +1704,9 @@ class VincApp:
             # 아직 안 정했으면 None 이다. 앱이 첫 기동에 정해 적는다(기존 설치의 데이터를
             # 보고). 여기서 "account" 로 채우면 앱은 "이미 정했다"로 읽고 그 판단을 건너뛴다.
             "mode": mode if mode in ("account", "local") else None,
+            # 사람이 고른 모드인가(VIN-131). 앱이 자동으로 정한 값과 가른다: 0.9.4·0.9.5 는
+            # 이 기기에 데이터가 있으면 말없이 로컬로 정했고, 그 설치는 한 번 물어야 한다.
+            "mode_chosen": conf.get("mode_chosen") is True,
             "data_path": conf.get("data_path") or None,
             "data_file": cur,
             "default_folder": str(home),
@@ -1690,7 +1727,8 @@ class VincApp:
         return 200, {"executed": True, **localmode.inspect_folder(str(p.get("path") or ""))}
 
     def write_config(self, body):
-        """저장 설정을 바꾼다: `mode`(account|local) · `data_path`(폴더, 빈 값 = 기본).
+        """저장 설정을 바꾼다: `mode`(account|local) · `mode_chosen`(사람이 골랐다) ·
+        `data_path`(폴더, 빈 값 = 기본).
 
         폴더는 받기 전에 살핀다. 쓸 수 없으면 400, 동기화 폴더·네트워크 드라이브면
         `accept_risk` 없이 409 다(사람이 경고를 보고 한 번 더 골라야 받는다). 폴더는
@@ -1706,6 +1744,10 @@ class VincApp:
             if mode not in ("account", "local"):
                 return 400, {"error": "mode must be 'account' or 'local'"}
             updates["mode"] = mode
+        if "mode_chosen" in body:
+            if not isinstance(body.get("mode_chosen"), bool):
+                return 400, {"error": "mode_chosen must be true or false"}
+            updates["mode_chosen"] = body["mode_chosen"]
         if "data_path" in body:
             if self._data_pinned():
                 return 409, {"error": "pinned",
@@ -1732,7 +1774,7 @@ class VincApp:
                 # 옛 경로를 가리키는 설정만 남는다.
                 updates["data_path"] = None if same else info["path"]
         if not updates:
-            return 400, {"error": "nothing to change (mode, data_path)"}
+            return 400, {"error": "nothing to change (mode, mode_chosen, data_path)"}
         store_config.write_local_config(updates)
         view = self._config_view()
         if info is not None:
