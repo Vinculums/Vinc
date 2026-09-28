@@ -943,7 +943,8 @@ class VincApp:
             owner=_req(p, "owner"), node=_req(p, "node"),
             limit=_int(p.get("limit"), 4),
             with_evidence=_flag(p.get("evidence")),
-            links_offset=_int(p.get("links_offset"), 0), store=r))
+            links_offset=_int(p.get("links_offset"), 0),
+            sources_offset=_int(p.get("sources_offset"), 0), store=r))
 
     def read_brief(self, p):
         # W1 — 질문 하나로 답변 재료(본문·발췌·관계·근거 id)를 한 번에 낸다.

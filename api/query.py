@@ -2676,14 +2676,13 @@ def _ledger_ego_ids(seed: str, *, owner: str, depth: int = 2,
     return {"executed": True, "ids": sorted(members)}
 
 
-#: 한 노드에 딸린 문서(소스) 목록 상한. 관계(`_NODE_LINKS_CAP`)보다 훨씬 후하게 잡는다
-#: — 이것은 잘라 보는 목록이 아니라 소스 선택기가 **다 보여야 하는** 목록이라서다.
+#: 문서 목록의 응답별 상한. sources_offset 으로 다음 창을 읽는다.
 _NODE_SOURCES_CAP = 50
 
 
 def node_context(*, owner: str, node: str, limit: int = 4,
                  with_evidence: bool = False, links_offset: int = 0,
-                 cfg=None, store=None) -> dict:
+                 sources_offset: int = 0, cfg=None, store=None) -> dict:
     """노드→정본 컨텍스트(D45-V) — 뷰에서 노드를 눌렀을 때 보여줄 "이건 무엇이고,
     어느 정본이 근거인가". 조회 전용.
 
@@ -2710,14 +2709,17 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                             valid_from, valid_until}]}}
            ``items`` 는 `links_offset` 부터 최대 `_NODE_LINKS_CAP` 줄이다. `truncated`
            가 참이면 `next_offset` 이 **이어 읽을 자리**를 준다 — 그것을 따라가면
-           이웃 전체에 닿는다(`_links_window`). `total` 은 창과 무관하게 언제나
+           이웃 전체에 닿는다(`_window`). `total` 은 창과 무관하게 언제나
            이웃 전체 수다.
 
-           sources: {total, truncated, items: [{doc_id, title, mentions}]}
+           sources: {total, offset, truncated, next_offset(더 있을 때만),
+                     items: [{doc_id, title, mentions}]}
+           sources_offset 부터 최대 50개씩 읽으며 next_offset 으로 이어 간다.
            이 노드에 딸린 **문서 전부**. ``excerpts`` 와 다른 계약이다 — 저쪽은 청크를
            `limit` 개로 자르므로 거기 보이는 문서는 "이 노드의 문서"가 아니라 "상위 몇
            청크가 우연히 속한 문서"다(실측: 문서 여섯 중 발췌에 뜬 것은 넷). 소스
-           선택기는 이 목록을 써야 한다.
+           선택기는 이 목록을 써야 한다. MENTIONS 대상은 Concept/Decision 이며
+           그 밖의 캐리어는 현재 스키마상 소스 목록이 비어 있다.
            ``note`` 는 부착(Record ATTACHES_TO)에서만 채워진다(카드 본문). 개념
            관계(out/in)와 Bridge/Episode 부착은 항상 빈 문자열.
            ``valid_from``/``valid_until`` 도 같은 신분(W13) — Record 부착만 값을
@@ -2734,7 +2736,7 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                   "arm": "none",
                   # 이 노드에 딸린 문서 전부(발췌 캡과 다른 계약). 못 읽었을 때도
                   # 키는 있다 — 없는 키와 0 은 다른 말이다.
-                  "sources": {"total": 0, "items": [], "truncated": False},
+                  "sources": {"total": 0, **_window([], sources_offset, _NODE_SOURCES_CAP)},
                   # W3 — 못 읽었을 때도 키는 있다. 없는 키와 0 은 다른 말이다.
                   "rev": 0, "updated_at": "",
                   # 노드 자신의 유효구간(부착 목록의 것과 다르다). 못 읽었으면 빈 값.
@@ -2899,17 +2901,15 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                     "MATCH (d:_DocMeta) WHERE d.doc_id IN $ids "
                     "RETURN d.doc_id AS id, d.title AS t", {"ids": all_ids}) or []:
                 titles[r["id"]] = r.get("t") or ""
-        # 정렬은 제목 → id(결정론). 상한을 넘으면 `truncated` 가 말한다 — 한 노드가
-        # 문서 쉰 개에 언급되는 일은 이 그래프에 없고, 선택기는 자를 목록이 아니라
-        # **다 보여야 하는** 목록이라 창(offset)을 달지 않았다. 실제로 넘치면 그때 단다.
+        # 제목 → id 순서로 창을 자른다. 발췌 상한과 독립적으로 끝까지 읽을 수 있다.
         _src = sorted(({"doc_id": str(r.get("doc_id") or ""),
                         "title": titles.get(str(r.get("doc_id") or ""), "")
                         or str(r.get("doc_id") or ""),
                         "mentions": int(r.get("n") or 0)} for r in srows
                        if r.get("doc_id")),
                       key=lambda s: (s["title"], s["doc_id"]))
-        base["sources"] = {"total": len(_src), "items": _src[:_NODE_SOURCES_CAP],
-                           "truncated": len(_src) > _NODE_SOURCES_CAP}
+        base["sources"] = {"total": len(_src),
+                           **_window(_src, sources_offset, _NODE_SOURCES_CAP)}
         base["excerpts"] = [{
             "doc_id": r.get("doc_id") or "",
             "doc_title": titles.get(r.get("doc_id") or "", "") or (r.get("doc_id") or ""),
@@ -2935,8 +2935,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
 _NODE_LINKS_CAP = 24
 
 
-def _links_window(items: list[dict], offset: int) -> dict:
-    """관계 목록의 **한 창**과 이어 읽을 자리. 세 링크 팔이 같은 말을 하게 묶는다.
+def _window(items: list[dict], offset: int, cap: int = _NODE_LINKS_CAP) -> dict:
+    """목록의 **한 창**과 이어 읽을 자리. 관계와 소스가 같은 말을 하게 묶는다.
 
     `truncated` 는 "이 창 뒤에 더 있나"다. `offset` 이 0 이면 종전 뜻(전체가 상한보다
     큼)과 값이 같으므로 이미 이 응답을 읽던 화면은 바뀌지 않는다.
@@ -2949,7 +2949,7 @@ def _links_window(items: list[dict], offset: int) -> dict:
     25개 중 24개를 내면서 `total:25` 만 말하던 자리가 그랬다(실측 2026-09-20).
     근거: [[vinc.spec.desktop-content-first-ia-0-9-4 §6]]."""
     off = max(0, int(offset or 0))
-    page = items[off:off + _NODE_LINKS_CAP]
+    page = items[off:off + cap]
     more = len(items) > off + len(page)
     out: dict = {"items": page, "truncated": more, "offset": off}
     if more:
@@ -2993,7 +2993,7 @@ def _record_links(store, node: str, *, owner: str,
     } for r in sorted(rows, key=lambda r: (str(r.get("title") or ""),
                                            str(r.get("id") or "")))]
     return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
-            "total": len(items), "executed": True, **_links_window(items, offset)}
+            "total": len(items), "executed": True, **_window(items, offset)}
 
 
 def _episode_links(store, node: str, *, owner: str,
@@ -3033,7 +3033,7 @@ def _episode_links(store, node: str, *, owner: str,
     } for r in sorted(rows, key=lambda r: (str(r.get("title") or ""),
                                            str(r.get("id") or "")))]
     return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
-            "total": len(items), "executed": True, **_links_window(items, offset)}
+            "total": len(items), "executed": True, **_window(items, offset)}
 
 
 def _node_links(store, node: str, *, owner: str,
@@ -3154,7 +3154,7 @@ def _node_links(store, node: str, *, owner: str,
     # 근거: [[record:brief-links-degree-counts-only-the-core-layer-and-understates-a-59-relation-node-as-9-2026-09-14]]
     return {"degree": len(rows), "out": out_n, "in": in_n, "attached": len(attached),
             "total": len(rows) + len(attached), "executed": True,
-            **_links_window(items, offset)}
+            **_window(items, offset)}
 
 
 # ── vinc_brief — 질문 하나로 답변 재료를 모으는 결정론 조인 읽기 ──────────────
