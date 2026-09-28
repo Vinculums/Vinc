@@ -149,6 +149,15 @@ settingsBtn.addEventListener("click", () => openSettings("general", undefined, t
 
 // ── Command palette (Cmd/Ctrl+K — navigation aid, not a replacement; D26) ──
 const palette = document.getElementById("palette")!;
+let paletteReturnFocus: HTMLElement | null = null;
+function closePalette() {
+  if (palette.hidden) return;
+  palette.hidden = true;
+  if (paletteReturnFocus?.isConnected) paletteReturnFocus.focus();
+  paletteReturnFocus = null;
+}
+// 카드 안의 클릭은 무시하고 배경 클릭만 닫는다. 한 번 연 뒤에도 계속 유효해야 한다.
+palette.addEventListener("click", (e) => { if (e.target === palette) closePalette(); });
 type Cmd = { label: string; hint: string; run: () => void };
 const COMMANDS: Cmd[] = [
   ...ORDER.map((s, i) => ({
@@ -170,6 +179,7 @@ const COMMANDS: Cmd[] = [
 ];
 
 function openPalette() {
+  if (palette.hidden) paletteReturnFocus = document.activeElement as HTMLElement | null;
   palette.hidden = false;
   palette.innerHTML = `
     <div class="palette-card" role="dialog" aria-label="Command palette">
@@ -195,7 +205,7 @@ function openPalette() {
   // 팔레트에는 등장·퇴장 애니메이션이 **없다**. 단축키로 하루 수십 번 여는 것이라 모션은
   // 매번 기다리는 시간이 되고(Raycast 가 같은 판단이다), 나온 곳도 없어 설명할 공간 단서도
   // 없다. 시트·모달의 popIn/popOut 은 클릭으로 여는 것들의 문법이다.
-  const close = () => { palette.hidden = true; };
+  const close = closePalette;
   q.addEventListener("input", () => { sel = 0; hits = draw(); });
   q.addEventListener("keydown", (e) => {
     if (e.key === "Escape") close();
@@ -203,7 +213,6 @@ function openPalette() {
     if (e.key === "ArrowUp") { sel = Math.max(sel - 1, 0); hits = draw(); }
     if (e.key === "Enter" && hits[sel]) { hits[sel].run(); close(); }
   });
-  palette.addEventListener("click", (e) => { if (e.target === palette) close(); }, { once: true });
   q.focus();
 }
 
@@ -240,7 +249,7 @@ document.addEventListener("keydown", (e) => {
   if (n >= 1 && n <= ORDER.length) location.hash = `#${ORDER[n - 1]}`;
   // `[`(레일 접기)는 레일과 함께 사라졌다(D56) — 상단 바는 접을 것이 없다.
   if (e.key === "?") void openCheatsheet();
-  if (e.key === "Escape") palette.hidden = true;
+  if (e.key === "Escape") closePalette();
 });
 
 // ── Skin (Signal) — 웹 Vinc=web(Home·Signal), 데스크탑=desktop(Deep Signal) ──
