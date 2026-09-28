@@ -582,14 +582,37 @@ jobs:
       - name: Run the whole suite with the flag on
         run: python -m pytest -q tests
 
-      # 프레임워크 연동 패키지 vinc-client. **설치한 다음** 테스트한다 — 소스 경로로 돌리면
-      # 패키징(빠진 파일·의존성)이 깨져도 초록이다. 계약 테스트가 v1 OpenAPI 와 대조하므로
-      # v1 을 바꾼 PR 도 여기서 걸린다. 이 잡에 붙인 이유는 PR 마다 조건 없이 도는 파이썬
-      # 잡이 여기 하나라서다. 근거: [[vinc.plan.framework-integration-packages-2026-09-28 §3]]
-      - name: Integration package vinc-client (installed, then tested)
+      # 프레임워크 연동 패키지(integrations/*/python). **설치한 다음** 테스트한다 — 소스
+      # 경로로 돌리면 패키징(빠진 파일·의존성)이 깨져도 초록이다. vinc-client 의 계약
+      # 테스트가 v1 OpenAPI 와 대조하므로 v1 을 바꾼 PR 도 여기서 걸린다.
+      # - 패키지마다 **자기 venv** 다. 러너의 공용 인터프리터에 agent-framework·langchain 을
+      #   깔면 위 코어 스위트와 의존성이 섞이고, 셀프호스티드라 다음 런까지 남는다.
+      # - venv 는 RUNNER_TEMP(디스크)에 둔다. 이 잡의 TMPDIR 은 /dev/shm(RAM)이다.
+      # - 패키지에 constraints-min.txt 가 있으면 선언한 최소 버전으로도 한 번 더 돈다.
+      # 이 잡에 붙인 이유는 PR 마다 조건 없이 도는 파이썬 잡이 여기 하나라서다.
+      # 근거: [[vinc.plan.framework-integration-packages-2026-09-28 §3]]
+      - name: Integration packages (own venv each, installed then tested, latest and minimum)
         run: |
-          pip install ./integrations/client/python
-          python -m pytest -q integrations/client/python/tests
+          set -euo pipefail
+          for pkg in integrations/*/python; do
+            name=$(basename "$(dirname "$pkg")")
+            for pin in latest min; do
+              extra=()
+              if [ "$pin" = min ]; then
+                [ -f "$pkg/constraints-min.txt" ] || continue
+                extra=(-c "$pkg/constraints-min.txt")
+              fi
+              venv="$RUNNER_TEMP/vinc-int-$name-$pin"
+              rm -rf "$venv"
+              python -m venv "$venv"
+              echo "::group::$name ($pin)"
+              "$venv/bin/pip" install -q "${extra[@]}" ./integrations/client/python "./$pkg[test]"
+              "$venv/bin/pip" list 2>/dev/null | grep -i -E "^(vinc|agent-framework|langgraph|langchain)" || true
+              "$venv/bin/python" -m pytest -q "$pkg/tests"
+              echo "::endgroup::"
+              rm -rf "$venv"
+            done
+          done
 
       # ⚠ tmpfs 는 RAM 이다. 크래시한 런이 남긴 스토어가 그대로 남아 다음 런의 자리를
       # 먹는다(105MB 실측). `always()` 인 이유가 그것이다 — 실패한 런이야말로 남긴다.
