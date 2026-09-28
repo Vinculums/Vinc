@@ -454,6 +454,7 @@ export function headerCta(id: string, iconName: string, label: string): string {
  *  파싱 금지). 세 갈래:
  *    `embed_migration.pending`  모델 이행 중 — 양성. 남은 문서 수까지 말한다
  *    `vector_rebuilding`        쓰기 뒤 재빌드 — 양성. 잠시 뒤 저절로 돌아온다
+ *    `encoder_runtime_warning`  질의·저장 벡터의 인코더 판 불일치 또는 미확인
  *    `vector_note` 만 있음      진짜 실패 — 창구가 답을 못 줬다(인코더 콜드스타트 등)
  *
  *  ⚠ `arms === "fts"` 만으로 판단하지 않는다. 임베딩 창구가 없는 데스크탑에서는
@@ -467,6 +468,8 @@ export function armsNotice(res: any): ArmsNotice | null {
   if (typeof pending === "number" && pending > 0)
     return { text: COPY.search.migrating(pending), benign: true };
   if (res?.vector_rebuilding) return { text: COPY.search.rebuilding, benign: true };
+  if (res?.encoder_runtime_warning)
+    return { text: COPY.search.runtimeMismatch, benign: false };
   if (res?.vector_note) return { text: COPY.search.degraded, benign: false };
   return null;
 }

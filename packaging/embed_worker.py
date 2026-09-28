@@ -842,7 +842,9 @@ def main() -> int:
                 for c, parts in zip(chunks, per_chunk):
                     out[c["chunk_id"]] = vecs[at:at + len(parts)]
                     at += len(parts)
-                res = _call("/embed/apply", {"doc_id": doc_id, "embeddings": out})
+                from api.encoder_runtime import fingerprint
+                res = _call("/embed/apply", {"doc_id": doc_id, "embeddings": out,
+                                             "encoder_runtime": fingerprint()})
                 print(f"[embed] doc={doc_id} chunks={res.get('embedded')} "
                       f"cleared={res.get('cleared')}", flush=True)
                 failures.pop(doc_id, None)

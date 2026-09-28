@@ -99,7 +99,8 @@ _NODE_TABLES: dict[str, dict] = {
     "ChunkVec": {"pk": "vec_id", "cols": [
         ("vec_id", "STRING"),            # f"{chunk_id}#{seq:03d}" — 위치 안정
         ("chunk_id", "STRING"), ("doc_id", "STRING"), ("owner_id", "STRING"),
-        ("seq", "INT64"), ("embedding", "FLOAT[{dim}]")]},
+        ("seq", "INT64"), ("embedding", "FLOAT[{dim}]"),
+        ("encoder_runtime", "STRING")]},
     # 범용 캐리어 — **사용자 저작 타입**의 노드 인스턴스 집(D11-R2). 어휘 밖 타입은
     # 여기로 exact-id MERGE 된다. `type` 은 값일 뿐이고 어휘의 정본은 theme 파일이다
     # ([[vinc.canon.vocabulary-model]] · [[vinc.spec.dataplane §2.3]]).
@@ -141,7 +142,7 @@ _NODE_TABLES: dict[str, dict] = {
                                          # 이 그대로 사용자에게 나간다(1365 중 225 행).
         ("text", "STRING"),              # 임베딩한 그 문자열 — 재현과 FTS 용
         ("model", "STRING"),             # 어느 모델로 만든 벡터인가(혼재 방지)
-        ("embedding", "FLOAT[{dim}]")]},
+        ("embedding", "FLOAT[{dim}]"), ("encoder_runtime", "STRING")]},
 }
 
 # ── vinc_sync 추적열 (S0) ─────────────────────────────────────────────────────
@@ -249,7 +250,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
 # 그것이 v13 이 존재하는 이유와 같다(아래 `DOMAIN_HIERARCHY_VERSION` 주석). 백필은
 # 스토어가 **뒤처져 있을 때만** 도는데, 라이브가 이미 최신을 기록하고 있으면 상수만
 # 올려서는 안 돈다 — 목표 버전이 함께 움직여야 한다.
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 
 #: v18 — **테이블을 버리는 마이그레이션**(ALTER 아님). NodeVec 의 기본키가 `node_id`
 #: 에서 `vec_id`(소유자+id)로 바뀐다. 기본키는 ALTER 로 못 고치고, 미러는 배포마다
@@ -379,6 +380,9 @@ def migration_statements(from_version: int) -> list[str]:
     # 테이블을 버렸다 다시 만든다. 그 스텝은 `embedded_backend.migrate` 안에서 base DDL
     # **앞**에 선다(`NODE_VEC_REKEY_VERSION`) — 여기 두면 순서가 뒤집혀 방금 만들어진
     # 테이블을 도로 지운다. 이 목록을 유일한 이행 경로로 읽지 말 것.
+    if from_version < 20:  # v20 — 벡터별 인코더 지문. '' 는 구 행이라 판을 모른다.
+        stmts.append("ALTER TABLE ChunkVec ADD encoder_runtime STRING DEFAULT ''")
+        stmts.append("ALTER TABLE NodeVec ADD encoder_runtime STRING DEFAULT ''")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:

@@ -241,6 +241,7 @@ const EN = {
     // 이고 실패는 아니다 — 톤이 갈려야 거짓 경보가 안 난다.
     rebuilding: "Rebuilding the meaning index after a change: keyword results only for a moment.",
     degraded: "Meaning search did not answer, so these are keyword results only. Nothing is lost.",
+    runtimeMismatch: "Search vectors may use different encoder versions. Results may be less accurate.",
     actions: { view: "Show in View", open: "Open" },
   },
   packs: {
@@ -1383,6 +1384,7 @@ const KO: Deck = {
     migrating: (n) => `의미 색인을 새로 만드는 중이에요. 지금은 키워드 결과만 나와요 (남은 문서 ${n}개)`,
     rebuilding: "바뀐 내용을 의미 색인에 반영하는 중이에요. 잠깐은 키워드 결과만 나와요",
     degraded: "의미 검색이 응답하지 않아서 키워드 결과만 나왔어요. 저장된 내용은 그대로예요",
+    runtimeMismatch: "검색 벡터의 인코더 버전이 다르거나 확인되지 않았어요. 결과가 부정확할 수 있어요",
     actions: { view: "View에서 보기", open: "열기" },
   },
   packs: {

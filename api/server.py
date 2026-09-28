@@ -58,7 +58,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 #:
 #: ⚠ 기다림을 늘리는 값이므로 그 기다림이 보여야 한다 — 안 보이면 "가끔 느린 검색"이
 #: 새 무음 결함이 된다. 지금 남는 곳은 **사이드카 stderr 한 줄뿐**이다(`_query_embedding`).
-#: `vector_note` 로는 못 낸다 — 그 필드의 계약이 "의미 팔이 안 돌았을 때만 나타난다"라서
+#: `vector_note` 로는 못 낸다 — 그 필드는 실패/런타임 불일치 경고이지 성공 지연 로그가 아니라서
 #: (`vinc_mcp/tools.py`) 성공한 콜드 재시도에 붙이면 계약이 깨진다. 화면에 내려면 계약을
 #: 먼저 고칠 것.
 _QVEC_TIMEOUT = float(os.environ.get("VINC_EMBED_ENCODE_TIMEOUT", "1.5"))
@@ -118,6 +118,7 @@ from . import localmode
 from . import sync
 from . import docstore
 from . import node_mirror
+from .encoder_runtime import fingerprint as encoder_fingerprint
 from . import docsync
 from . import graphmd
 from . import textextract
@@ -634,6 +635,8 @@ class VincApp:
         # MCP 가 토큰에서 해석한 owner 를 항상 실어 보내 스코프를 강제한다.
         code, res = self._read(lambda r: q.search(query,
                                                   query_embedding=qvec,
+                                                  query_runtime=(encoder_fingerprint()
+                                                                 if qvec is not None else None),
                                                   top_k=_int(p.get("top_k"), 5),
                                                   filters=filters or None,
                                                   cursor=p.get("cursor") or None,
@@ -720,8 +723,8 @@ class VincApp:
         try:
             out = self._encode_query(url, text, _QVEC_COLD_TIMEOUT)
             # 성공한 콜드 재시도는 어디에도 안 남으면 "가끔 30초 걸리는 검색"이 된다.
-            # `vector_note` 는 못 쓴다 — 그 필드의 계약이 "의미 팔이 **안** 돌았을 때만
-            # 나타난다"이고(`vinc_mcp/tools.py`) 여기서는 돌았다. 화면에 보이게 하는 것은
+            # `vector_note` 는 못 쓴다 — 그 필드는 실패/런타임 불일치 경고이고
+            # 여기서는 성공했다(`vinc_mcp/tools.py`). 화면에 보이게 하는 것은
             # 별건이고, 그때까지 최소한 로그에는 남는다.
             print(f"vinc: 질의 임베딩 콜드 재시도 성공 — "
                   f"{time.monotonic() - t0:.1f}s 기다렸다", file=sys.stderr, flush=True)
@@ -957,6 +960,7 @@ class VincApp:
         # 명시적 요청 경로이고, 기본으로 켜 두면 정책이 막으려는 것을 그대로 낸다.
         code, res = self._read(lambda r: q.brief(
             query, owner=_req(p, "owner"), query_embedding=qvec,
+            query_runtime=(encoder_fingerprint() if qvec is not None else None),
             max_excerpts=_int(p.get("max_excerpts"), 3),
             historical=_flag(p.get("historical")), as_of=p.get("as_of") or None, store=r))
         if isinstance(res, dict) and str(res.get("error") or "").startswith("invalid_as_of"):
@@ -1392,7 +1396,8 @@ class VincApp:
             encode_s = time.monotonic() - t0
             res = self.jobs.run_sync(
                 "node-mirror.replace",
-                lambda: node_mirror.replace(self.store, rows, model),
+                lambda: node_mirror.replace(self.store, rows, model,
+                                            encoder_fingerprint()),
                 timeout=_MIRROR_REPLACE_TIMEOUT)
         finally:
             self._mirror_lock.release()
@@ -1419,7 +1424,8 @@ class VincApp:
         doc_id = _req(body, "doc_id")
         embeddings = body.get("embeddings") or {}
         res = self.jobs.run_sync("embed.apply", lambda: docstore.apply_embeddings(
-            self.store, doc_id, embeddings))
+            self.store, doc_id, embeddings,
+            str(body.get("encoder_runtime") or "")))
         return 200, res
 
     # ── 주제·타입 어휘 라우트 (어휘 write 표면 — 그래프와 분리, R4 직렬화) ────────

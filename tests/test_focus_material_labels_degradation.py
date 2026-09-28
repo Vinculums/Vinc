@@ -46,6 +46,12 @@ class FocusMaterialLabels(unittest.TestCase):
         self.assertIn("rebuilding after a write", out)
         self.assertNotIn("did not run", out, "양성 재빌드를 실패로 말했다")
 
+    def test_a_runtime_warning_does_not_claim_the_semantic_arm_was_absent(self):
+        out = _block({"arms": "fts+vector", "vector_note": "runtime mismatch",
+                      "encoder_runtime_warning": True})
+        self.assertIn("ranking can be inaccurate", out)
+        self.assertNotIn("semantic arm did not run", out)
+
     def test_a_model_migration_says_how_much_is_left(self):
         out = _block({"arms": "fts", "vector_note": "migrating",
                       "embed_migration": {"pending": 42}})

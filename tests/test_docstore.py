@@ -1194,6 +1194,19 @@ class DocstoreE2E(unittest.TestCase):
         # SEC-1: 타인 재임베딩 거부
         self.assertIn("error", ds.reembed_doc(self.store, did, owner="user:b", embed=emb))
 
+    def test_worker_apply_stamps_each_chunk_vector_runtime(self):
+        out = ds.put_doc(self.store, owner="user:a", text="runtime provenance " * 30,
+                         title="Encoder runtime")
+        did = out["doc_id"]
+        chunks = self.store.run(
+            "MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.chunk_id AS id", {"d": did})
+        embeddings = {row["id"]: [[1.0, 0.0, 0.0, 0.0]] for row in chunks}
+        ds.apply_embeddings(self.store, did, embeddings, "ort=1.30.0;tok=0.23.2;np=2.5.3")
+        stamped = self.store.run(
+            "MATCH (v:ChunkVec) WHERE v.doc_id = $d "
+            "RETURN DISTINCT v.encoder_runtime AS runtime", {"d": did})
+        self.assertEqual(stamped, [{"runtime": "ort=1.30.0;tok=0.23.2;np=2.5.3"}])
+
     def test_doc_highlights_e2e(self):
         # D45-V2 2단계 — 전문 내 개념 언급 char 범위(밑줄용). 범위는 토큰 매칭 계산.
         text = "# 노트\n\n양자 얽힘을 정리한다. 양자 상태는 공유된다.\n"

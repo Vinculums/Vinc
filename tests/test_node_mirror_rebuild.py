@@ -409,6 +409,25 @@ class RealStore(unittest.TestCase):
         self.assertEqual(hits[0]["id"], "concept:alpha")
         self.assertEqual(hits[0]["title"], "Alpha")
 
+    def test_runtime_stamp_detects_legacy_and_mixed_vectors(self):
+        from api import query as q
+        rows, _ = node_mirror.collect(self.store, self.OWNER)
+        for row in rows:
+            row["emb"] = _vec(1, 0)
+        node_mirror.replace(self.store, rows, "test", "ort=1.30.0;tok=0.23.2;np=2.5.3")
+        self.assertEqual(q._encoder_runtime_warning(
+            self.store, self.OWNER, "ort=1.30.0;tok=0.23.2;np=2.5.3"), "")
+        other = {**rows[0], "id": "concept:other", "owner": "user:other"}
+        node_mirror.replace(self.store, [other], "test", "ort=1.29.0;tok=0.23.2;np=2.5.3")
+        self.assertEqual(q._encoder_runtime_warning(
+            self.store, self.OWNER, "ort=1.30.0;tok=0.23.2;np=2.5.3"), "")
+        self.assertIn("mismatch", q._encoder_runtime_warning(
+            self.store, self.OWNER, "ort=1.29.0;tok=0.23.2;np=2.5.3"))
+        self.store.run("MATCH (n:NodeVec) WHERE n.node_id = 'record:bravo' "
+                       "SET n.encoder_runtime = ''")
+        self.assertIn("unknown encoder runtime", q._encoder_runtime_warning(
+            self.store, self.OWNER, "ort=1.30.0;tok=0.23.2;np=2.5.3"))
+
     def test_two_spaces_can_hold_the_same_node_id(self):
         """🔴 v18 이 사는 자리. 진짜 엔진 위에서 같은 논리 id 를 두 소유자로 넣는다 —
         v17 의 키(`node_id`)에서는 여기서 `Found duplicated primary key value` 로
@@ -435,7 +454,7 @@ class RealStore(unittest.TestCase):
         node_mirror.replace(self.store, rows, "test")   # 옛 키였다면 여기서 죽는다
         v = (self.store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
                             "RETURN m.value AS v") or [{}])[0]["v"]
-        self.assertEqual(v, "19")
+        self.assertEqual(v, "20")
 
     def test_a_failed_rekey_does_not_record_the_new_version(self):
         """🔴 드롭이 실패하면 그 예외는 삼켜지고 base DDL 의 "이미 있다"도 삼켜진다.
@@ -455,7 +474,7 @@ class RealStore(unittest.TestCase):
         self.store.migrate(dim=DIM)              # 다음 기동
         v = (self.store.run("MATCH (m:_SchemaMeta) WHERE m.key = 'schema_version' "
                             "RETURN m.value AS v") or [{}])[0]["v"]
-        self.assertEqual(v, "19", "다음 기동이 다시 시도해서 끝내야 한다")
+        self.assertEqual(v, "20", "다음 기동이 다시 시도해서 끝내야 한다")
 
     def test_running_it_twice_does_not_double_the_rows(self):
         """전량 재구축은 배포마다 돈다 — 멱등이 아니면 미러가 배포 수만큼 부푼다."""

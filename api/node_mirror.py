@@ -101,7 +101,7 @@ def collect(store, owner: str | None = None) -> tuple[list[dict], list[dict]]:
     return out, collisions
 
 
-def replace(store, rows: list[dict], model: str) -> dict:
+def replace(store, rows: list[dict], model: str, encoder_runtime: str = "") -> dict:
     """미러를 통째로 갈아 끼운다. 각 행에 `emb`(벡터)가 이미 있어야 한다.
 
     지우는 범위는 **실린 행들의 소유자**다. 전량 재구축을 한 소유자에게 돌려도 다른
@@ -120,12 +120,12 @@ def replace(store, rows: list[dict], model: str) -> dict:
         store.run(
             "UNWIND $rows AS r CREATE (:NodeVec {vec_id: r.vid, node_id: r.id, "
             "kind: r.kind, owner_id: r.owner, title: r.title, text: r.text, "
-            "model: $m, embedding: r.emb})",
+            "model: $m, embedding: r.emb, encoder_runtime: $runtime})",
             {"rows": [{"vid": vec_id(r.get("owner") or "", r["id"]), "id": r["id"],
                        "kind": r["kind"], "owner": r.get("owner") or "",
                        "title": r["title"], "text": r["text"], "emb": list(r["emb"])}
                       for r in rows[i:i + INSERT_BATCH]],
-             "m": model})
+             "m": model, "runtime": encoder_runtime})
     # ⚠ 인덱스 생성은 예외를 삼킨다(멱등이라 그래야 한다). 그래서 **삼킨 사유를 받아
     # 두고 결과도 확인한다** — 행은 들어갔는데 인덱스가 없으면 의미 팔은 예외 없이 빈
     # 목록만 내고, 밖에서는 "안 켠 것"과 구분되지 않는다. 2026-09-10 라이브에서 정확히

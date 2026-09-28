@@ -77,7 +77,8 @@ class ArmsNoticeReachesEverySurfaceTests(unittest.TestCase):
         src = _read("components.ts")
         body = src[src.index("export function armsNotice("):]
         body = body[:body.index("\n}")]
-        for field in ("embed_migration", "vector_rebuilding", "vector_note"):
+        for field in ("embed_migration", "vector_rebuilding", "vector_note",
+                      "encoder_runtime_warning"):
             self.assertIn(field, body, f"{field} 을 안 본다")
         self.assertNotRegex(body, r"\.\s*arms",
                             "arms 문자열로 판단하면 데스크탑에서 상시 경보가 된다")
@@ -85,9 +86,9 @@ class ArmsNoticeReachesEverySurfaceTests(unittest.TestCase):
 
     def test_두_덱에_문구가_다_있다(self):
         src = _read("copy.ts")
-        for key in ("rebuilding", "degraded"):
+        for key in ("rebuilding", "degraded", "runtimeMismatch"):
             self.assertEqual(len(re.findall(rf"^\s*{key}:", src, re.M)), 2,
                              f"{key} 가 EN·KO 두 덱에 다 있지 않다")
         # 화면 텍스트에 em 대시 금지(D38) — 새로 더한 두 줄만 본다.
-        for m in re.finditer(r"^\s*(?:rebuilding|degraded): (.+)$", src, re.M):
+        for m in re.finditer(r"^\s*(?:rebuilding|degraded|runtimeMismatch): (.+)$", src, re.M):
             self.assertNotIn("\u2014", m.group(1), m.group(1))
