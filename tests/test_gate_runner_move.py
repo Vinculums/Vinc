@@ -165,7 +165,7 @@ class DoesNotCatch(unittest.TestCase):
 
 
 class ThisRepo(unittest.TestCase):
-    def test_직렬화하는_워크플로가_실제로_다섯이다(self):
+    def test_직렬화하는_워크플로가_실제로_여덟이다(self):
         """게이트가 겨누는 대상이 이 리포에 실재하는지 고정한다. 늘거나 줄면
         이 테스트가 먼저 말한다 — 게이트가 조용히 아무것도 안 겨누게 두지 않는다.
 
@@ -198,7 +198,11 @@ class ThisRepo(unittest.TestCase):
 
         일곱이 된 경위: `hub-store-rebuild.yml`(2026-09-27)도 같은 이유로 `hub-deploy` 의
         그룹 키를 빌려 쓴다 — 허브를 내리고 재구축본으로 갈아타는 도중에 배포가 끼어들면
-        내려 둔 허브가 다시 뜨고 두 리비전이 겹친다. dispatch 로만 돈다."""
+        내려 둔 허브가 다시 뜨고 두 리비전이 겹친다. dispatch 로만 돈다.
+
+        여덟이 된 경위: `integrations-publish.yml` 은 같은 ref 의 패키지 게시를
+        직렬화한다. 업로드 중인 런을 취소하면 wheel 과 sdist 중 한쪽만 남을 수 있어
+        `cancel-in-progress: false` 로 뒤의 런을 대기시킨다."""
         import yaml
         serial = []
         for p in sorted((_ROOT / ".github" / "workflows").glob("*.yml")):
@@ -207,7 +211,7 @@ class ThisRepo(unittest.TestCase):
             if isinstance(c, dict) and c.get("cancel-in-progress") is False:
                 serial.append(p.name)
         self.assertEqual(serial, ["encode-m3-probe.yml", "hub-deploy.yml", "hub-store-rebuild.yml",
-                                  "hub-store-recover.yml", "infra.yml", "pk-migrate.yml",
+                                  "hub-store-recover.yml", "infra.yml", "integrations-publish.yml", "pk-migrate.yml",
                                   "release.yml"], serial)
 
 
