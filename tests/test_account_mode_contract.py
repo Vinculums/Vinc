@@ -186,12 +186,20 @@ class ExistingDataTest(unittest.TestCase):
         self.assertLess(decide.index("storage.config()"), decide.index("dataMode.get()"))
         self.assertIn("storage.setConfig({ mode: next })", decide)
 
-    def test_모르면_있다고_답하고_두_소유자를_본다(self):
-        """모를 때 계정으로 넘기면 있던 작업이 가려진다. 로컬 MCP 는 `user:local` 로
-        쓰므로(VIN-131) 그쪽도 세야 MCP 로만 쓴 사람의 작업이 안 가려진다."""
+    def test_로컬_모드가_보여_줄_것만_센다(self):
+        """로컬에 남기는 이유는 "로컬로 두면 그 작업이 보인다" 하나다. 로컬 모드 화면은
+        `tenant:local` 만 읽으므로 로컬 MCP 의 `user:local` 만 있는 설치를 로컬로 두면 빈
+        지도에 스페이스 선택도 없는 화면이 된다(2026-09-28 보고, VIN-179). 소유자 통일은
+        VIN-131 이다. 그때까지 `user:local` 을 세면 이 화면이 다시 생긴다."""
         has = _fn(API_TS, "localStoreHasData")
-        self.assertIn('"tenant:local", "user:local"', has)
-        self.assertRegex(has, r"catch \{\s*return true;")
+        self.assertIn('const owner = "tenant:local";', has)
+        self.assertNotIn('"user:local"', has)
+
+    def test_스토어를_못_열면_없고_그_밖에_모르면_있다(self):
+        """못 여는 스토어(503 · storeDown)는 로컬 모드가 보여 줄 것이 없다. 그 밖의 실패는
+        종전대로 있다고 답한다: 모를 때 계정으로 넘기면 보이던 작업이 가려진다."""
+        has = _fn(API_TS, "localStoreHasData")
+        self.assertRegex(has, r"catch \(e: any\) \{\s*return !e\?\.storeDown;")
 
 
 class SyncTest(unittest.TestCase):

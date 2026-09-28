@@ -18,6 +18,7 @@ import sys
 from . import query as q
 from . import preference as pref
 from . import activate as act
+from . import cli_output
 
 
 def _csv(val: str | None) -> list[str] | None:
@@ -40,11 +41,79 @@ _OWNER_HELP = ("owner_id — 데스크탑 앱이 쓰는 값은 `user:local` 이�
 
 
 def _emit(obj: dict) -> int:
-    sys.stdout.write(json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
-    return 0
+    unavailable = (isinstance(obj, dict) and
+                   ("reachable store" in str(obj.get("error") or "") or
+                    "reachable store" in str(obj.get("note") or "")))
+    if unavailable:
+        from store.embedded_backend import EmbeddedBackend
+        reason = str(EmbeddedBackend.last_open_error or "")
+        if "lock" in reason.lower() or "another process" in reason.lower():
+            obj = {"kind": "error", "executed": False,
+                   "error": {"code": "store_in_use", "message": "store is in use"}}
+    return cli_output.emit(obj)
 
 
-def main(argv: list[str] | None = None) -> int:
+class _UsageError(Exception):
+    pass
+
+
+class _Parser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise _UsageError(message)
+
+
+def _add_output_options(parser: argparse.ArgumentParser, *, root: bool = False) -> None:
+    default = None if root else argparse.SUPPRESS
+    parser.add_argument("--target", choices=("local", "account"), default=default,
+                        help="graph target (local or account)")
+    parser.add_argument("--space", default=default,
+                        help="account graph space (personal or team id)")
+    if not parser.prog.endswith(" export"):
+        parser.add_argument("--format", choices=("human", "json", "ndjson"),
+                            dest="console_format", default=default,
+                            help="console result format")
+    parser.add_argument("--json", action="store_const", const="json",
+                        dest="console_format", default=default,
+                        help="alias for --format json")
+    parser.add_argument("--debug", action="store_true", default=False if root else argparse.SUPPRESS,
+                        help="show a traceback for unexpected errors")
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for child in action.choices.values():
+                _add_output_options(child)
+
+
+#: 동사 앞에 올 수 있는 루트 옵션 중 값을 받는 것.
+_ROOT_VALUE_OPTIONS = frozenset({"--target", "--space", "--format"})
+
+
+def _verb_index(argv: list[str]) -> int | None:
+    """루트 옵션을 건너뛴 첫 위치 인자(동사)의 자리. 없으면 None."""
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token in _ROOT_VALUE_OPTIONS:
+            i += 2
+            continue
+        if token.startswith("-"):
+            i += 1
+            continue
+        return i
+    return None
+
+
+def _expand_merge(argv: list[str]) -> list[str]:
+    """`merge <keep> <drop>` 는 `merge nodes <keep> <drop>` 의 짧은 표기다. **동사 자리**에
+    올 때만 바꾼다 — 인자 값의 `merge`(`search --query merge`)까지 바꾸면 그 명령이 깨진다."""
+    at = _verb_index(argv)
+    if at is not None and argv[at] == "merge" and at + 1 < len(argv) and argv[at + 1] not in {
+            "nodes", "candidates", "reject", "rejections", "--help", "-h"}:
+        return argv[:at + 1] + ["nodes"] + argv[at + 1:]
+    return argv
+
+
+def _main(argv: list[str] | None = None) -> int:
+    argv = _expand_merge(list(sys.argv[1:] if argv is None else argv))
     # Windows 콘솔/파이프 기본 인코딩(cp949)에서 비ASCII 직렬화(ensure_ascii=False,
     # MCP stdio 포함)가 UnicodeEncodeError 로 죽는 문제 — MCP 규약(UTF-8)에 맞춰
     # 표준 스트림을 UTF-8 로 재구성한다(재구성 불가 스트림은 그대로 둠).
@@ -60,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         except Exception:
             pass
 
-    ap = argparse.ArgumentParser(description="Vinc query API")
+    ap = _Parser(description="Vinc query API")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     r = sub.add_parser("recall", help="recall a learner's episodes (owner + open domain scope)")
@@ -142,7 +211,7 @@ def main(argv: list[str] | None = None) -> int:
 
     b = sub.add_parser("brief", help="one question in, joined answer material out")
     b.add_argument("--query", required=True)
-    b.add_argument("--owner", required=True)
+    b.add_argument("--owner", default=None)
     b.add_argument("--max-excerpts", type=int, default=3)
 
     d = sub.add_parser("decide", help="decision-support graph traversal")
@@ -199,7 +268,8 @@ def main(argv: list[str] | None = None) -> int:
     dc = sub.add_parser("doc", help="document SSoT — put/get/rm/ls raw text as chunks (D45)")
     dsub = dc.add_subparsers(dest="doccmd", required=True)
     dp = dsub.add_parser("put", help="ingest/update a document from raw text (stdin or --file)")
-    dp.add_argument("--owner", required=True, help="owner_id — 정본은 무소유 불가(SEC-1)")
+    dp.add_argument("--owner", default=None,
+                    help="local owner_id (account target uses the API key)")
     dp.add_argument("--id", default=None, help="doc_id (omit on create — returned; pass to edit)")
     dp.add_argument("--title", default=None,
                     help="문서 제목. **생략하면 기존 제목을 보존한다**(빈 값으로 덮지 않는다). "
@@ -217,9 +287,98 @@ def main(argv: list[str] | None = None) -> int:
     dr.add_argument("--id", required=True)
     dr.add_argument("--owner", default=None, help="owner guard (SEC-1)")
     dr.add_argument("--data", default=None)
+    dr.add_argument("--yes", action="store_true", help="confirm deletion")
     dl = dsub.add_parser("ls", help="list documents")
     dl.add_argument("--owner", default=None)
     dl.add_argument("--data", default=None)
+
+    # MCP 도구와 같은 결과 봉투를 쓰는 로컬 동사. 오래된 동사는 C6에서 옮긴다.
+    wi = sub.add_parser("whoami", help="show the local graph identity")
+    wi.add_argument("--owner", default=None)
+    cv = sub.add_parser("conventions", help="read graph conventions")
+    cv.add_argument("--lang", default=None)
+    cv.add_argument("--owner", default=None)
+    nd = sub.add_parser("node", help="read a graph node")
+    nds = nd.add_subparsers(dest="nodecmd", required=True)
+    for verb in ("get", "neighbors", "graph"):
+        child = nds.add_parser(verb)
+        child.add_argument("id")
+        child.add_argument("--owner", default=None)
+        if verb == "neighbors":
+            child.add_argument("--limit", type=int, default=50)
+        if verb == "graph":
+            child.add_argument("--depth", type=int, default=2)
+    pa = sub.add_parser("path", help="find a graph path")
+    pa.add_argument("a")
+    pa.add_argument("b")
+    pa.add_argument("--max-depth", type=int, default=6)
+    pa.add_argument("--owner", default=None)
+    ti = sub.add_parser("ties", help="suggest graph ties")
+    ti.add_argument("id")
+    ti.add_argument("--limit", type=int, default=5)
+    ti.add_argument("--owner", default=None)
+    di = sub.add_parser("diagnose", help="diagnose graph structure")
+    di.add_argument("--kind", default="components")
+    di.add_argument("--node", default=None)
+    di.add_argument("--owner", default=None)
+    ig = sub.add_parser("ingest", help="ingest a graph fragment")
+    ig.add_argument("--file", required=True)
+    ig.add_argument("--owner", default=None)
+    de = sub.add_parser("delete", help="delete one node")
+    de.add_argument("id")
+    de.add_argument("--owner", default=None)
+    de.add_argument("--yes", action="store_true")
+    ed = sub.add_parser("edge", help="graph edge operations")
+    eds = ed.add_subparsers(dest="edgecmd", required=True)
+    edel = eds.add_parser("delete")
+    edel.add_argument("--from", dest="from_id", required=True)
+    edel.add_argument("--to", dest="to_id", required=True)
+    edel.add_argument("--type", required=True)
+    edel.add_argument("--owner", default=None)
+    edel.add_argument("--yes", action="store_true")
+    mg = sub.add_parser("merge", help="merge and review graph nodes")
+    mgs = mg.add_subparsers(dest="mergecmd", required=True)
+    mgo = mgs.add_parser("nodes")
+    mgo.add_argument("keep")
+    mgo.add_argument("drop")
+    mgo.add_argument("--owner", default=None)
+    mgo.add_argument("--yes", action="store_true")
+    mgc = mgs.add_parser("candidates")
+    mgc.add_argument("--limit", type=int, default=20)
+    mgc.add_argument("--owner", default=None)
+    mgr = mgs.add_parser("reject")
+    mgr.add_argument("a")
+    mgr.add_argument("b")
+    mgr.add_argument("--note", default="")
+    mgr.add_argument("--undo", action="store_true")
+    mgr.add_argument("--owner", default=None)
+    mgx = mgs.add_parser("rejections")
+    mgx.add_argument("--owner", default=None)
+    dx = dsub.add_parser("extract", help="extract nodes from a canonical document")
+    dx.add_argument("id")
+    dx.add_argument("--apply", action="store_true")
+    dx.add_argument("--owner", default=None)
+    ca = sub.add_parser("call", help="call any of the 24 MCP tools")
+    ca.add_argument("tool")
+    source = ca.add_mutually_exclusive_group()
+    source.add_argument("--args", default=None, help="JSON object")
+    source.add_argument("--args-file", default=None, help="JSON file or - for stdin")
+    ca.add_argument("--yes", action="store_true")
+
+    ex = sub.add_parser("export", help="export a local graph as Markdown or CSV")
+    ex.add_argument("--format", dest="file_format", choices=("md", "csv"), required=True,
+                    help="file format; the root --format controls console output")
+    ex.add_argument("--out", required=True, help="output directory")
+    ex.add_argument("--owner", required=True, help="owner scope")
+    ex.add_argument("--domain", default=None, help="topic and its descendants")
+    ex.add_argument("--excel", action="store_true", help="write a UTF-8 BOM to CSV files")
+
+    rf = sub.add_parser("refs", help="check or refresh graph citations")
+    rfsub = rf.add_subparsers(dest="refscmd", required=True)
+    for verb in ("check", "refresh"):
+        child = rfsub.add_parser(verb)
+        child.add_argument("--manifest", default=None)
+        child.add_argument("--root", dest="roots", action="append", default=None)
 
     # ── GRAPH.md — 어시스턴트 쓰기 관례 ([[vinc.canon.graph-conventions]]) ──────────────────────
     gm = sub.add_parser("graph-md", help="assistant writing conventions — build/check GRAPH.md")
@@ -285,14 +444,106 @@ def main(argv: list[str] | None = None) -> int:
     msub.add_parser("manual",
                     help="print a paste-ready stdio entry for hosts without an installer")
 
+    _add_output_options(ap, root=True)
     args = ap.parse_args(argv)
+    command = args.cmd
+    for name in ("doccmd", "gmcmd", "mcpcmd", "nodecmd", "edgecmd", "mergecmd", "refscmd"):
+        if getattr(args, name, None):
+            command += " " + getattr(args, name)
+    cli_output.configure(args.console_format, command)
+    cli_output.chosen_format()  # 동사를 실행하기 전에 환경값을 검증한다.
+    from . import cli_target
 
-    if args.cmd == "recall":
-        return _emit(q.recall(args.query, owner=args.owner, domain=args.domain, tenant=args.tenant,
-                              workspace=args.workspace, tags=_csv(args.tags),
-                              rank=args.rank, limit=args.limit))
-    if args.cmd == "domains":
-        return _emit(q.domains(owner=args.owner))
+    if args.cmd == "refs":
+        space = cli_target.resolve_space(args.space)
+        from . import refs
+        # 제품 동사의 기본은 **지금 디렉터리**다. 패키지 폴더를 기본으로 두면 다른 프로젝트에서
+        # 부른 refresh 가 Vinc 리포의 매니페스트를 덮어쓴다.
+        roots = args.roots or [os.getcwd()]
+        manifest = args.manifest or os.path.join(roots[0], "scripts", "graph-refs.json")
+        if any(not os.path.isdir(root) for root in roots):
+            print("vinc: --root must name an existing directory", file=sys.stderr)
+            return 2
+        if args.refscmd == "check":
+            return refs.offline_check(manifest=manifest, roots=roots)
+        from . import remote_client
+        from contextlib import redirect_stdout
+        if not remote_client.api_key():
+            result = {"error": {"code": "not_authenticated", "message":
+                      "Set VINC_API_KEY to refresh graph citations.",
+                      "request_id": "", "details": {}}}
+            _emit(result)
+            return 4
+        def account_call(name, data):
+            try:
+                return remote_client.call(name, data, space=space)
+            except remote_client.RemoteFailure as exc:
+                if exc.result.get("error", {}).get("code") == "not_found":
+                    return {"found": False}
+                if exc.exit_code == 5:
+                    # 일시 장애는 도구 오류 봉투로 돌려준다 — refs 의 재시도(TRIES)가 받는다.
+                    return {"isError": True, "content": [{"type": "text", "text":
+                            exc.result.get("error", {}).get("message", "unavailable")}]}
+                raise
+        try:
+            with redirect_stdout(sys.stderr):
+                status = refs.refresh(
+                    manifest=manifest, root=roots[0],
+                    scan=lambda: refs.scan_roots(roots),
+                    fetch=lambda: refs.fetch_docs(call=account_call),
+                    verify=lambda ids: refs.verify_nodes(ids, call=account_call))
+            return _emit({"kind": "refs.refresh", "executed": status == 0,
+                          "manifest": manifest, "status": status})
+        except remote_client.RemoteFailure as exc:
+            _emit(exc.result)
+            return exc.exit_code
+        except SystemExit as exc:
+            print(f"vinc: {exc}", file=sys.stderr)
+            return 1
+
+    if args.cmd not in cli_target.TOOL_CMDS:
+        # 이 기기 전용 동사. 명시한 플래그만 거절하고 설정·환경의 기본값은 보지 않는다 —
+        # 계정 모드 앱이 띄우는 `serve`·`store-probe`·`mcp serve` 가 여기로 온다.
+        if args.target == "account":
+            print(f"vinc: {args.cmd} is local only; pass --target local", file=sys.stderr)
+            return 2
+        if args.space and args.space.strip().lower() != "personal":
+            print("vinc: --space requires --target account", file=sys.stderr)
+            return 2
+    else:
+        try:
+            target = cli_target.resolve_target(args.target)
+        except ValueError as exc:
+            print(f"vinc: {exc}", file=sys.stderr)
+            return 2
+        if target == "local" and args.space and args.space.strip().lower() != "personal":
+            print("vinc: --space requires --target account", file=sys.stderr)
+            return 2
+        space = cli_target.resolve_space(args.space) if target == "account" else "personal"
+        if target == "account":
+            from .cli_account import run as run_tool
+            result, exit_code = run_tool(args, space=space)
+        else:
+            from .cli_tools import run as run_tool
+            result, exit_code = run_tool(args)
+        if result is None:
+            return exit_code or 2
+        if args.cmd == "whoami" and isinstance(result, dict) and not result.get("error"):
+            from .remote_client import api_key
+            key = api_key() or ""
+            result = {**result, "target": target,
+                      "key_scope": ("local" if target == "local" else
+                                    "read" if key.startswith("vinc_ro_") else "full")}
+        rendered = _emit(result)
+        return exit_code if exit_code is not None else rendered
+
+    # 여기부터는 이 기기 전용 동사다. 도구 동사(recall·search·doc …)는 위에서 끝났다.
+    # 열린 앱이 정확히 이 파일을 제공하면 그 단일 writer 에 요청한다.
+    from .cli_transport import request_if_attached
+    attached = request_if_attached(args, stdin=sys.stdin)
+    if attached is not None:
+        return _emit(attached)
+
     if args.cmd == "domain-backfill":
         from engines import domain_hierarchy as _dh
         from store.backend import open_store as _open
@@ -345,14 +596,9 @@ def main(argv: list[str] | None = None) -> int:
                                   workspace=args.workspace, tags=_csv(args.tags),
                                   rank=args.rank, limit=args.limit, include_model=not args.no_model,
                                   generated_at=args.now, out_dir=args.out))
-    if args.cmd == "search":
-        return _emit(q.search(args.query, top_k=args.top_k,
-                              cursor=args.cursor, detail=args.detail))
-    if args.cmd == "brief":
-        return _emit(q.brief(args.query, owner=args.owner,
-                             max_excerpts=args.max_excerpts))
-    if args.cmd == "decide":
-        return _emit(q.decide(args.topic, depth=args.depth))
+    if args.cmd == "export":
+        from . import export as export_module
+        return _emit(export_module.export_store(args))
     if args.cmd == "plan":
         if args.plankind == "recall":
             plan = q.recall_plan(args.query)
@@ -466,45 +712,6 @@ def main(argv: list[str] | None = None) -> int:
                                      profile_path=args.profile))
         finally:
             store.close()
-    if args.cmd == "doc":
-        # Chunk=SSoT(D45) doc CRUD — 파일 I/O 는 --file 편의 입력뿐, 정본은 스토어.
-        from . import docstore
-        from . import textextract
-        from store.config import load_config, resolve_data_dir
-        from store.backend import open_store
-        cfg = load_config({"data_dir": resolve_data_dir(args.data)})
-        store = open_store(cfg)
-        if store is None:
-            return _emit({"error": "no reachable store (드라이버 미설치/락)"})
-        try:
-            store.provision(dim=cfg.embedding_dim)   # 멱등 — v4 마이그레이션 포함
-            if args.doccmd == "put":
-                if args.file:
-                    # 파일 읽기·디코드·형식 추출은 textextract 가 전담한다(put_doc 은
-                    # 파일 I/O 없음이 계약). utf-8 하드코딩이던 시절엔 cp949 메모 하나가
-                    # UnicodeDecodeError 로 적재를 죽였고 PDF 는 아예 길이 없었다.
-                    got = textextract.read_file(args.file)
-                    if not got.get("executed"):
-                        return _emit(got)
-                    text = got["text"]
-                    if not args.origin:
-                        args.origin = os.path.basename(args.file)
-                    if not args.title:
-                        args.title = os.path.splitext(os.path.basename(args.file))[0]
-                else:
-                    text = sys.stdin.read()
-                return _emit(docstore.put_doc(store, owner=args.owner, text=text,
-                                              doc_id=args.id, title=args.title,
-                                              origin=args.origin))
-            if args.doccmd == "get":
-                return _emit(docstore.get_doc(store, args.id, owner=args.owner))
-            if args.doccmd == "rm":
-                return _emit(docstore.delete_doc(store, args.id, owner=args.owner))
-            if args.doccmd == "ls":
-                return _emit(docstore.list_docs(store, owner=args.owner))
-        finally:
-            store.close()
-        return 2
     if args.cmd == "graph-md":
         # 관례 문서(GRAPH.md)의 생성·검증. 생성 구역만 스토어에서 오고, 산문은
         # 사람의 것이라 build 가 건드리지 않는다(graphmd.build 독스트링).
@@ -692,6 +899,32 @@ def main(argv: list[str] | None = None) -> int:
             passphrase = getpass.getpass("passphrase: ")
         return _emit(auth.create_profile(passphrase, path=args.profile, force=args.force))
     return 2
+
+
+def main(argv: list[str] | None = None) -> int:
+    cli_output.configure(None, "")
+    backend_module = sys.modules.get("store.embedded_backend")
+    if backend_module is not None:
+        backend_module.EmbeddedBackend.last_open_error = ""
+    try:
+        return _main(argv)
+    except _UsageError as exc:
+        print(f"vinc: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        if str(exc).startswith("VINC_FORMAT must"):
+            print(f"vinc: {exc}", file=sys.stderr)
+            return 2
+        return cli_output.internal_error(exc, debug="--debug" in (argv or sys.argv[1:]))
+    except SystemExit as exc:
+        # argparse 의 --help 는 성공 종료이고, 나머지 종료 코드는 보존한다.
+        # `sys.exit("메시지")` 는 코드가 문자열이다 — 메시지를 stderr 로 내고 1 로 끝낸다.
+        if exc.code is None or isinstance(exc.code, int):
+            return int(exc.code or 0)
+        print(f"vinc: {exc.code}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # noqa: BLE001 — CLI 오류 경계를 한 곳에 둔다.
+        return cli_output.internal_error(exc, debug="--debug" in (argv or sys.argv[1:]))
 
 
 if __name__ == "__main__":

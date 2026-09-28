@@ -223,25 +223,39 @@ fn b64(bytes: &[u8]) -> String {
 /// ⚠ 여기에 없는 첫 인자는 **전부 창을 여는 쪽**으로 간다. 새 하위 명령을 CLI 에
 /// 추가하면 이 배열도 같이 늘려야 한다(안 늘리면 그 명령만 창이 뜬다).
 /// `--help`·`-h` 를 포함하는 이유는 argparse 가 그 자리에서 사용법을 찍어 주기 때문이다.
-const CLI_VERBS: [&str; 24] = [
-    "activate", "backup", "brief", "decide", "doc", "domain-backfill", "domains", "graph",
-    "graph-md", "import", "learner", "mcp", "migrate-dim", "onboard", "pin", "plan", "recall",
-    "search", "serve", "share", "tag", "touch", "--help", "-h",
+const CLI_VERBS: [&str; 37] = [
+    "activate", "backup", "brief", "call", "conventions", "decide", "delete", "diagnose",
+    "doc", "domain-backfill", "domains", "edge", "export", "graph", "graph-md", "import", "ingest",
+    "learner", "mcp", "merge", "migrate-dim", "node", "onboard", "path", "pin", "plan",
+    "recall", "refs", "search", "serve", "share", "tag", "ties", "touch", "whoami", "--help", "-h",
 ];
 
 /// argv 가 CLI 호출이면 사이드카에 넘길 인자를, 아니면 `None`(= 창을 연다).
 /// argv[0] 은 실행 파일이라 건너뛴다. macOS 가 GUI 실행에 붙이는 `-psn_…` 이나
 /// `.vincpack` 경로는 동사 목록에 없으므로 자연히 창으로 간다.
 fn cli_forward<I: IntoIterator<Item = String>>(args: I) -> Option<Vec<String>> {
-    let mut it = args.into_iter();
-    it.next()?;
-    let first = it.next()?;
-    if !CLI_VERBS.contains(&first.as_str()) {
+    let all: Vec<String> = args.into_iter().collect();
+    let mut index = 1;
+    let mut global_option = false;
+    // 전역 출력 옵션 다음의 동사가 CLI 이면 원래 argv 순서 그대로 엔진에 보낸다.
+    while index < all.len() {
+        let token = all[index].as_str();
+        match token {
+            // 값을 받는 전역 옵션: `--target account search …` 도 CLI 로 보낸다.
+            "--format" | "--target" | "--space" => { index += 2; global_option = true; },
+            "--json" | "--debug" => { index += 1; global_option = true; },
+            _ if token.starts_with("--format=") || token.starts_with("--target=")
+                || token.starts_with("--space=") => { index += 1; global_option = true; },
+            _ => break,
+        }
+    }
+    if index >= all.len() {
+        return global_option.then(|| all[1..].to_vec());
+    }
+    if !CLI_VERBS.contains(&all[index].as_str()) {
         return None;
     }
-    let mut fwd = vec![first];
-    fwd.extend(it);
-    Some(fwd)
+    Some(all[1..].to_vec())
 }
 
 /// 번들 엔진의 경로 — Tauri externalBin 은 **이 바이너리 옆**에 놓인다.
@@ -826,11 +840,37 @@ mod tests {
         assert!(cli_forward(vec!["vinc".to_string(), "-h".to_string()]).is_some());
     }
 
+    #[test]
+    fn 전역_출력_옵션_뒤_동사도_cli_로_간다() {
+        let args = vec!["vinc", "--format", "json", "doc", "ls"]
+            .into_iter().map(str::to_string).collect::<Vec<_>>();
+        assert_eq!(cli_forward(args), Some(vec!["--format", "json", "doc", "ls"]
+            .into_iter().map(str::to_string).collect()));
+        let missing = vec!["vinc", "--format", "json"]
+            .into_iter().map(str::to_string).collect::<Vec<_>>();
+        assert_eq!(cli_forward(missing), Some(vec!["--format", "json"]
+            .into_iter().map(str::to_string).collect()));
+    }
+
+    #[test]
+    fn 대상_스페이스_옵션_뒤_동사도_cli_로_간다() {
+        for argv in [
+            vec!["vinc", "--target", "account", "search", "--query", "x"],
+            vec!["vinc", "--space", "personal", "domains"],
+            vec!["vinc", "--target=local", "--format=json", "doc", "ls"],
+        ] {
+            let args = argv.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            assert_eq!(cli_forward(args.clone()), Some(args[1..].to_vec()), "{argv:?}");
+        }
+    }
+
     /// 동사 목록이 사이드카 CLI 와 어긋나면 그 명령만 조용히 창을 연다.
     /// 목록 자체를 고정해 두어, `api/cli.py` 를 고칠 때 이 테스트가 같이 깨지게 한다.
     #[test]
     fn 동사_목록은_사이드카_cli_와_짝이다() {
-        for v in ["mcp", "serve", "search", "doc", "import", "share", "graph-md", "onboard", "brief", "migrate-dim"] {
+        for v in ["mcp", "serve", "search", "doc", "import", "share", "graph-md", "onboard",
+                  "brief", "migrate-dim", "whoami", "conventions", "node", "path", "ties",
+                  "diagnose", "ingest", "delete", "edge", "merge", "call", "export", "refs"] {
             assert!(CLI_VERBS.contains(&v), "{v} 가 목록에 없다");
         }
         assert!(!CLI_VERBS.contains(&"install"), "install 은 mcp 의 하위라 최상위가 아니다");

@@ -488,22 +488,11 @@ class StoreUnavailableReadTests(unittest.TestCase):
 
 
 class EquivalenceTests(unittest.TestCase):
-    """게이트 ① — HTTP 응답 dict == CLI 산출 dict."""
+    """레거시 HTTP 계약과 도구 쌍이 없는 CLI 동사의 응답을 대조한다."""
 
     GET_CASES = [
-        ("/recall?query=x&owner=u&limit=3", ["recall", "--query", "x", "--owner", "u", "--limit", "3"]),
-        ("/domains?owner=u", ["domains", "--owner", "u"]),
         ("/learner?owner=u", ["learner", "--owner", "u"]),
         ("/graph?owner=u", ["graph", "--owner", "u"]),
-        ("/decide?topic=t&depth=2", ["decide", "--topic", "t", "--depth", "2"]),
-        ("/search?query=x&top_k=4", ["search", "--query", "x", "--top-k", "4"]),
-        # GM-14 — detail 은 정적 등가 케이스로. cursor 는 값이 불투명(코덱 내부)이라
-        # 정적 케이스가 불가능 — 아래 CursorRouteTests 가 동적 등가로 커버한다.
-        ("/search?query=x&top_k=4&detail=full",
-         ["search", "--query", "x", "--top-k", "4", "--detail", "full"]),
-        # W1 — 질문 하나로 답변 재료를 모으는 조인 읽기(HTTP == CLI).
-        ("/brief?owner=u&query=x&max_excerpts=2",
-         ["brief", "--query", "x", "--owner", "u", "--max-excerpts", "2"]),
         ("/plan/recall?query=x", ["plan", "recall", "--query", "x"]),
         ("/plan/decide?topic=t", ["plan", "decide", "--topic", "t"]),
     ]
@@ -554,18 +543,6 @@ class CursorRouteTests(unittest.TestCase):
             self.assertEqual(code, 400, "무효 커서가 200 으로 조용히 폴백했다")
             self.assertTrue(str(obj.get("error", "")).startswith("invalid_cursor"))
             self.assertEqual(obj.get("rows"), [])
-
-    def test_무효_커서_오류_바디는_CLI_와_같다(self):
-        """게이트① 동등성의 동적 케이스 — 커서 값이 불투명해 GET_CASES 에 못 놓는다.
-        HTTP 는 상태만 400 으로 다르고 **바디는 CLI stdout 과 동일**해야 한다
-        (오류 판정이 q.search 한 곳에서만 이뤄진다는 증거)."""
-        # 스토어는 열려 있어야 한다 — 안 열렸으면 커서를 보기도 전에 503 이다
-        # (그게 옳다: 읽을 수 없는 스토어에 커서 유효성은 물을 것이 못 된다).
-        with running_server(_app(store=self._Store())) as base, cli_store(self._Store()):
-            code, obj = _req(base, "/search?query=x&cursor=junk")
-            self.assertEqual(code, 400)
-            self.assertEqual(obj, _cli_json(
-                ["search", "--query", "x", "--cursor", "junk"]))
 
     def test_next_cursor_로_이어_읽으면_누락_중복이_없다(self):
         import urllib.parse
