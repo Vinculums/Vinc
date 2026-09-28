@@ -442,6 +442,9 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     if (creating) {
       if (!t.trim()) { setStatus(COPY.author.docNeedTitle); return false; }
       if (opts.topic && !topic) { setStatus(COPY.author.docNeedTopic); return false; }
+      // 본문이 비면 서버가 받지 않는다(`/doc/put` 의 text 는 필수다). 제목에서 Enter 로 본문에
+      // 내려온 직후가 이 상태다 — 실패라고 말하지 않고 첫 줄을 쓰라고 말한다. 초안은 닫혀도 남는다.
+      if (!text.trim()) { setStatus(COPY.author.docNeedBody); return false; }
       if (!explicit && !leaving && document.activeElement === titleInput) return false;
     }
     setStatus(COPY.ui.viewx.edSaving);
