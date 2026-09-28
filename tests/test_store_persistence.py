@@ -51,6 +51,18 @@ class _BoomStore:
     def snapshot(self, dest_dir): raise OSError("SMB 가 또 성을 냈다")
 
 
+class _FlakyStore(_FakeStore):
+    def __init__(self, src):
+        super().__init__(src)
+        self.attempts = 0
+
+    def snapshot(self, dest_dir):
+        self.attempts += 1
+        if self.attempts == 1:
+            raise OSError("share unavailable")
+        return super().snapshot(dest_dir)
+
+
 class Disabled(unittest.TestCase):
     """VINC_STORE_SNAPSHOT 미설정 = 완전 no-op."""
 
@@ -155,6 +167,21 @@ class Policy(_Enabled):
     def test_zero_disables(self):
         p = persistence.SnapshotPolicy(every=0)
         p.mark_dirty()
+        self.assertFalse(p.due())
+
+    def test_failed_snapshot_retries_without_another_write(self):
+        clock = _Clock()
+        p = persistence.SnapshotPolicy(every=300, clock=clock)
+        p.mark_dirty()
+        clock.advance(300)
+        self.assertTrue(p.due())
+        p.done("error: OSError: share unavailable")
+        self.assertTrue(p.detail()["pending_write"])
+        self.assertFalse(p.due(), "a failed copy must not retry in a tight loop")
+        clock.advance(300)
+        self.assertTrue(p.due(), "an idle tick must retry the unpersisted write")
+        p.done("ok")
+        self.assertFalse(p.detail()["pending_write"])
         self.assertFalse(p.due())
 
     def test_interval_comes_from_env_and_bad_values_fall_back(self):
@@ -289,6 +316,20 @@ class IdleTick(_Enabled):
         self.assertIsNone(app._maybe_snapshot(wrote=False))
         self.assertFalse(app._snapshots.detail()["pending_write"],
                          "읽기만 오간 구간이 쓰기 표시를 세웠다")
+
+    def test_failed_copy_retries_on_idle_without_new_jobs(self):
+        clock = _Clock()
+        app = self._app(clock)
+        app.store = _FlakyStore(self.live)
+        app._snapshots.mark_dirty()
+        clock.advance(300)
+        self.assertTrue(app._maybe_snapshot(wrote=False).startswith("error"))
+        self.assertTrue(app._snapshots.detail()["pending_write"])
+        self.assertFalse(os.path.exists(self.snap))
+        clock.advance(300)
+        self.assertEqual(app._maybe_snapshot(wrote=False), "ok")
+        self.assertEqual(Path(self.snap).read_bytes(), b"BURST")
+        self.assertEqual(app.store.attempts, 2)
 
     def test_the_app_wires_a_tick_into_its_queue(self):
         """배선 — 실물 사이드카의 큐에 틱이 실제로 걸려 있는가."""

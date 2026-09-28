@@ -383,7 +383,10 @@ class SnapshotPolicy:
 
     def done(self, state: str) -> None:
         self._last = self._clock()
-        self._dirty = False
+        # A failed copy did not persist the write. Keep it pending so an idle
+        # tick retries after one interval, even if no further job arrives.
+        # "off" is the normal no-snapshot configuration and has no retry target.
+        self._dirty = state not in ("ok", "off")
         self.last_state = state
         if state == "ok":
             self._last_ok = self._last
