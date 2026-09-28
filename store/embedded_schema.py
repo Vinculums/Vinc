@@ -279,7 +279,7 @@ EPISODE_TIME_BACKFILL_VERSION = 9
 #: ([[record:agent-steward-leaf-carried-the-column-without-in-domain-edges-2026-09-05]]).
 #: 그때는 노드를 손으로 재전송해 고쳤는데, **도메인으로 노드를 열거하는 표면이 없어서**
 #: 이번에는 어느 노드인지 특정할 수가 없었다. 백필은 집합 연산이라 특정할 필요가 없다.
-DOMAIN_HIERARCHY_VERSION = 19
+DOMAIN_HIERARCHY_VERSION = 20  # v20 기동에서도 멱등 백필을 다시 확인한다.
 
 
 def migration_statements(from_version: int) -> list[str]:
