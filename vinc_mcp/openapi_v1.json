@@ -205,6 +205,10 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Include nodes whose claim is no longer current (valid_until in the past, or a Decision whose props.valid_until has passed). The default hides them and reports how many in `validity_filtered`; pass true when the question is about what USED to hold."
+                  },
+                  "as_of": {
+                    "type": "string",
+                    "description": "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD, or 'query' to take the one absolute date written in the question (e.g. '2026-08', 'August 2026', '2026년 8월', 'in 2025'). Hides claims that did not hold at any time in that period, counted in `validity_filtered`, and echoes what it used in `time_scope`. With 'query', a question with no date or with two different dates is read with today's view and `time_scope.applied` is false. Omit for today's view (the default, unchanged)."
                   }
                 },
                 "required": [
@@ -275,6 +279,10 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Include nodes whose claim is no longer current (valid_until in the past, or a Decision whose props.valid_until has passed). The default hides them and reports how many in `validity_filtered`; pass true when the question is about what USED to hold."
+                  },
+                  "as_of": {
+                    "type": "string",
+                    "description": "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD, or 'query' to take the one absolute date written in the question (e.g. '2026-08', 'August 2026', '2026년 8월', 'in 2025'). Hides claims that did not hold at any time in that period, counted in `validity_filtered`, and echoes what it used in `time_scope`. With 'query', a question with no date or with two different dates is read with today's view and `time_scope.applied` is false. Omit for today's view (the default, unchanged)."
                   }
                 },
                 "required": [
