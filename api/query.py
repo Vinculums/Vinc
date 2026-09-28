@@ -6530,11 +6530,13 @@ def _encoder_runtime_warning(store, owner: str | None, runtime: str) -> str:
         stored.update(str(row.get("runtime") or "") for row in rows)
     if not stored:
         return ""
+    known = stored - {""}
+    if known - {runtime}:
+        return ("query/stored encoder runtime mismatch: "
+                f"query={runtime}; stored={','.join(sorted(known))}"
+                + ("; some stored vectors are unknown" if "" in stored else ""))
     if "" in stored:
         return "stored vectors have unknown encoder runtime; re-embed to verify compatibility"
-    if stored != {runtime}:
-        return ("query/stored encoder runtime mismatch: "
-                f"query={runtime}; stored={','.join(sorted(stored))}")
     return ""
 
 

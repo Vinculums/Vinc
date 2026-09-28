@@ -128,6 +128,8 @@ from .jobs import JobQueue, JobError
 from store.persistence import (SnapshotPolicy, claim_writer, resolve_snapshot_every,
                                resolve_snapshot_path, save_snapshot)
 
+_ENCODER_RUNTIME = encoder_fingerprint()  # 이미지 안에서는 프로세스 동안 판이 바뀌지 않는다.
+
 
 # ── ingest 디스패치(비동기 잡) ───────────────────────────────────────────────
 # ingest 는 데이터 플레인 엔진(engines/*)을 워커 스레드에서 돌린다 — 유일 writer 로
@@ -635,7 +637,7 @@ class VincApp:
         # MCP 가 토큰에서 해석한 owner 를 항상 실어 보내 스코프를 강제한다.
         code, res = self._read(lambda r: q.search(query,
                                                   query_embedding=qvec,
-                                                  query_runtime=(encoder_fingerprint()
+                                                  query_runtime=(_ENCODER_RUNTIME
                                                                  if qvec is not None else None),
                                                   top_k=_int(p.get("top_k"), 5),
                                                   filters=filters or None,
@@ -960,7 +962,7 @@ class VincApp:
         # 명시적 요청 경로이고, 기본으로 켜 두면 정책이 막으려는 것을 그대로 낸다.
         code, res = self._read(lambda r: q.brief(
             query, owner=_req(p, "owner"), query_embedding=qvec,
-            query_runtime=(encoder_fingerprint() if qvec is not None else None),
+            query_runtime=(_ENCODER_RUNTIME if qvec is not None else None),
             max_excerpts=_int(p.get("max_excerpts"), 3),
             historical=_flag(p.get("historical")), as_of=p.get("as_of") or None, store=r))
         if isinstance(res, dict) and str(res.get("error") or "").startswith("invalid_as_of"):
@@ -1397,7 +1399,7 @@ class VincApp:
             res = self.jobs.run_sync(
                 "node-mirror.replace",
                 lambda: node_mirror.replace(self.store, rows, model,
-                                            encoder_fingerprint()),
+                                            _ENCODER_RUNTIME),
                 timeout=_MIRROR_REPLACE_TIMEOUT)
         finally:
             self._mirror_lock.release()

@@ -424,6 +424,10 @@ class RealStore(unittest.TestCase):
         self.assertIn("mismatch", q._encoder_runtime_warning(
             self.store, self.OWNER, "ort=1.29.0;tok=0.23.2;np=2.5.3"))
         self.store.run("MATCH (n:NodeVec) WHERE n.node_id = 'record:bravo' "
+                       "SET n.encoder_runtime = 'ort=1.29.0;tok=0.23.2;np=2.5.3'")
+        self.assertIn("mismatch", q._encoder_runtime_warning(
+            self.store, self.OWNER, "ort=1.30.0;tok=0.23.2;np=2.5.3"))
+        self.store.run("MATCH (n:NodeVec) WHERE n.node_id = 'record:bravo' "
                        "SET n.encoder_runtime = ''")
         self.assertIn("unknown encoder runtime", q._encoder_runtime_warning(
             self.store, self.OWNER, "ort=1.30.0;tok=0.23.2;np=2.5.3"))

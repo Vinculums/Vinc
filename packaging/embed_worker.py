@@ -96,6 +96,9 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+from api.encoder_runtime import fingerprint as _encoder_fingerprint  # noqa: E402
+ENCODER_RUNTIME = _encoder_fingerprint()
+
 SIDECAR = os.environ.get("VINC_SIDECAR", "http://127.0.0.1:8787").rstrip("/")
 TOKEN = (os.environ.get("VINC_SIDECAR_TOKEN")
          or os.environ.get("VINC_TOKEN") or os.environ.get("TOKEN") or "")
@@ -842,9 +845,8 @@ def main() -> int:
                 for c, parts in zip(chunks, per_chunk):
                     out[c["chunk_id"]] = vecs[at:at + len(parts)]
                     at += len(parts)
-                from api.encoder_runtime import fingerprint
                 res = _call("/embed/apply", {"doc_id": doc_id, "embeddings": out,
-                                             "encoder_runtime": fingerprint()})
+                                             "encoder_runtime": ENCODER_RUNTIME})
                 print(f"[embed] doc={doc_id} chunks={res.get('embedded')} "
                       f"cleared={res.get('cleared')}", flush=True)
                 failures.pop(doc_id, None)
