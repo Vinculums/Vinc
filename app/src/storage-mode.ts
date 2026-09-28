@@ -247,20 +247,44 @@ async function turnOn(path: string, acceptRisk: boolean, copy: boolean, result: 
   }
 }
 
-/** 로컬 → 계정. 이 기기의 전부를 올리고, 수가 맞을 때만 모드를 바꾼다. 폴더는 그대로다. */
+/** 로컬 → 계정. 이 기기의 전부를 올리고, 수가 맞을 때만 모드를 바꾼다. 폴더는 그대로다.
+ *
+ *  옮기지 않고 바꾸는 길도 둔다. 계정에 이미 그래프가 있는 사람(원격 MCP 로 써 온 사람)
+ *  에게 전부 올리기는 필요 없는 일이고, 올리기가 실패하면(스토어를 못 읽는 기기 등) 모드를
+ *  바꿀 다른 길이 없어 로컬 모드에 갇혔다. 폴더는 어느 길로도 건드리지 않는다. */
 function askTurnOff(panel: HTMLElement, result: HTMLElement): void {
   const U = COPY.ui.settingsUi;
   panel.hidden = false;
   panel.innerHTML = `
     <p class="hint">${esc(U.localOffIntro)}</p>
+    <p class="hint">${esc(U.localOffKeepHint)}</p>
     <div class="st-acts">
       <button class="btn" type="button" id="st-go">${esc(U.localOffGo)}</button>
+      <button class="btn" type="button" id="st-keep">${esc(U.localOffKeep)}</button>
       <button class="btn quiet" type="button" id="st-cancel">${esc(COPY.ui.common.cancel)}</button>
     </div>`;
   const go = panel.querySelector<HTMLButtonElement>("#st-go")!;
+  const keep = panel.querySelector<HTMLButtonElement>("#st-keep")!;
   panel.querySelector("#st-cancel")!.addEventListener("click", () => {
     panel.hidden = true;
     panel.innerHTML = "";
+  });
+  keep.addEventListener("click", async () => {
+    keep.disabled = go.disabled = true;
+    try {
+      // 정본(사이드카 설정)이 먼저다. 창의 사본만 바꾸면 다음 기동의 `decideDataMode` 가
+      // 설정 파일의 "local" 을 도로 읽어 온다.
+      const r = await storage.setConfig({ mode: "account" });
+      if (r?.status) { result.textContent = U.moveFail; return; }
+      dataMode.set("account");
+      panel.hidden = true;
+      result.textContent = U.localOffKept;
+      finish(result);
+    } catch (e: any) {
+      result.textContent = `${U.moveFail}: ${(e && e.message) || e}`;
+    } finally {
+      keep.disabled = go.disabled = false;
+    }
   });
   go.addEventListener("click", async () => {
     const key = await accountKey().catch(() => "");
