@@ -488,7 +488,7 @@ def _with_fts_repair(store, fn: Callable[[], Any]) -> Any:
 
 
 def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
-            title: str | None = None, origin: str = "", layer: str = "ssot",
+            title: str | None = None, origin: str | None = None, layer: str = "ssot",
             max_chars: int = DEFAULT_MAX_CHARS,
             boundaries: list[int] | None = None,
             embed: Callable[[list[str]], list[list[float]]] | None = None,
@@ -519,7 +519,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     # (strip 이 이 바이트로 owner 를 잘라내므로 물리 키로 오인된다). text 는 원문
     # 정본(D45)이라 제외 — 검열이 아니라 키 재료가 되는 필드만 본다.
     # 근거: [[vinc.plan.node-pk-namespacing]] §7
-    if pkns.has_sep((owner, doc_id, title or "", origin)):
+    if pkns.has_sep((owner, doc_id, title or "", origin or "")):
         base["error"] = "owner/doc_id/title/origin must not contain U+001F (reserved for PK namespacing)"
         return base
 
@@ -531,7 +531,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         seat = _meta(store, doc_id)
         if seat is not None and seat.get("owner_id") != owner:
             doc_id = graphmd.conventions_doc_id(owner)
-    doc_id = doc_id or make_doc_id(owner, content_hash, title or "", origin)
+    doc_id = doc_id or make_doc_id(owner, content_hash, title or "", origin or "")
     base["doc_id"] = doc_id
 
     prev = _meta(store, doc_id)
@@ -541,6 +541,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     # **청크 전량 삭제·재작성**까지 끌고 갔다 — 무해해야 할 재전송이 파괴적 쓰기가 된다.
     # 노드 쪽은 `fragment._KEPT_FIELDS` 로 같은 수술이 끝나 있었고 문서 쪽만 남아 있었다.
     kept_title = title if title is not None else str((prev or {}).get("title") or "")
+    kept_origin = origin if origin is not None else str((prev or {}).get("origin") or "")
     if prev is not None:
         if prev.get("owner_id") and prev["owner_id"] != owner:
             # 거절은 그대로다(덮어쓰지도 만들지도 않는다). 문구만 소유자를 밝히지
@@ -554,6 +555,38 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         # 남은 채 `executed:true`(chunks:-1)가 나가고 그 문서는 영영 안 읽힌다.
         if prev.get("content_hash") == content_hash and prev.get("title") == kept_title \
                 and int(prev.get("chunk_count") or 0) >= 0:
+            if origin is not None and origin != str(prev.get("origin") or ""):
+                # 출처만 바뀌면 원문 청크와 임베딩을 다시 만들 필요가 없다. 쓰기 창
+                # 표식은 청크·메타 사이에서 끊겨도 다음 re-put 이 복구하게 한다.
+                stamp = updated_at or _stamp_updated_at(store)
+                seq = _next_doc_seq(store, owner)
+                count = int(prev.get("chunk_count") or 0)
+                store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id "
+                          "SET d.chunk_count = -1", {"id": doc_id})
+                store.run("MATCH (c:Chunk) WHERE c.doc_id = $id "
+                          "SET c.source_file = $origin",
+                          {"id": doc_id, "origin": kept_origin})
+                # source_file 은 MENTIONS 의 source 매칭에도 쓰인다. 옛 링크를
+                # 지우고 같은 링커로 다시 만들되 청크 원문은 보존한다.
+                store.run("MATCH (c:Chunk)-[m:MENTIONS]->() WHERE c.doc_id = $id "
+                          "DELETE m", {"id": doc_id})
+                linked = _relink_mentions(store, doc_id, owner=owner,
+                                          origin=kept_origin) if link else 0
+                store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id "
+                          "SET d.origin = $origin, d.updated_at = $ts, "
+                          "d.sync_seq = $seq, d.chunk_count = $count",
+                          {"id": doc_id, "origin": kept_origin, "ts": stamp,
+                           "seq": seq, "count": count})
+                _clear_doc_tombstone(store, doc_id)
+                base.update(executed=True, skipped=False, created=False,
+                            chunks=count, replaced=0, title=kept_title,
+                            content_hash=content_hash, mentions=linked,
+                            updated_at=stamp, sync_seq=seq,
+                            warnings=_doc_id_warnings(text, doc_id))
+                if topic:
+                    base["topic"] = _set_authored_topic(
+                        store, doc_id, topic, owner=owner, title=kept_title)
+                return base
             base.update(executed=True, skipped=True, created=False,
                         chunks=int(prev.get("chunk_count") or 0), title=kept_title,
                         content_hash=content_hash, warnings=_doc_id_warnings(text, doc_id))
@@ -613,7 +646,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         # ladybug 0.18 · 0.20.4 — 0.20.4 는 $start 는 받는다). $cs/$ce 로 우회.
         params = {
             "id": chunk_id_of(doc_id, c["index"]), "doc": doc_id, "owner": owner,
-            "origin": origin, "sec": c["section_title"], "idx": c["index"],
+            "origin": kept_origin, "sec": c["section_title"], "idx": c["index"],
             "cs": c["start"], "ce": c["end"], "cc": len(c["text"]), "text": c["text"],
         }
         params["lyr"] = layer
@@ -643,7 +676,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         "d.origin = $origin, d.content_hash = $hash, d.chunk_count = $n, "
         "d.updated_at = $ts, d.sync_seq = $seq, d.needs_embed = $ne, "
         "d.created_at = $born, d.content_time = $ctime",
-        {"id": doc_id, "owner": owner, "title": kept_title, "origin": origin,
+        {"id": doc_id, "owner": owner, "title": kept_title, "origin": kept_origin,
          "hash": content_hash, "n": len(chunks), "ts": stamp, "seq": seq,
          "ne": needs_embed, "born": born, "ctime": ctime})
     # 재생성 = 로컬 doc 툼스톤 상쇄(낡은 삭제가 동기화에서 재전파되지 않게, P3).
@@ -661,7 +694,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
 
     linked = 0
     if link:
-        linked = _relink_mentions(store, doc_id, owner=owner, origin=origin)
+        linked = _relink_mentions(store, doc_id, owner=owner, origin=kept_origin)
 
     base.update(executed=True, skipped=False, created=prev is None,
                 chunks=len(chunks), replaced=removed, title=kept_title,

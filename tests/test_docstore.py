@@ -654,6 +654,47 @@ class DocstoreE2E(unittest.TestCase):
         self.assertTrue(got["verified"])
         self.assertEqual(got["text"], short_text)
 
+    def test_origin_is_kept_when_a_body_edit_omits_it(self):
+        first = ds.put_doc(self.store, owner="user:a", text="첫 본문",
+                           title="출처 문서", origin="source/first.md")
+        did = first["doc_id"]
+        edited = ds.put_doc(self.store, owner="user:a", text="바뀐 본문",
+                            doc_id=did)
+        self.assertTrue(edited["executed"])
+        self.assertEqual(ds.get_doc(self.store, did, owner="user:a")["origin"],
+                         "source/first.md")
+        rows = self.store.run(
+            "MATCH (c:Chunk) WHERE c.doc_id = $id RETURN c.source_file AS origin",
+            {"id": did})
+        self.assertTrue(rows)
+        self.assertTrue(all(r["origin"] == "source/first.md" for r in rows))
+
+    def test_origin_only_edit_repairs_metadata_without_rechunking(self):
+        first = ds.put_doc(self.store, owner="user:a", text="고정 본문",
+                           title="출처 문서", origin="source/old.md")
+        did = first["doc_id"]
+        before_ids = self._chunk_ids(did)
+        repaired = ds.put_doc(self.store, owner="user:a", text="고정 본문",
+                              doc_id=did, origin="source/new.md")
+        self.assertTrue(repaired["executed"])
+        self.assertFalse(repaired["skipped"])
+        self.assertEqual(repaired["replaced"], 0)
+        self.assertEqual(self._chunk_ids(did), before_ids)
+        got = ds.get_doc(self.store, did, owner="user:a")
+        self.assertTrue(got["verified"])
+        self.assertEqual(got["origin"], "source/new.md")
+        rows = self.store.run(
+            "MATCH (c:Chunk) WHERE c.doc_id = $id RETURN c.source_file AS origin",
+            {"id": did})
+        self.assertTrue(all(r["origin"] == "source/new.md" for r in rows))
+        cleared = ds.put_doc(self.store, owner="user:a", text="고정 본문",
+                             doc_id=did, origin="")
+        self.assertFalse(cleared["skipped"])
+        self.assertEqual(ds.get_doc(self.store, did, owner="user:a")["origin"], "")
+        again = ds.put_doc(self.store, owner="user:a", text="고정 본문",
+                           doc_id=did)
+        self.assertTrue(again["skipped"])
+
     def test_owner_isolation_sec1(self):
         out = ds.put_doc(self.store, owner="user:a", text="alice 의 정본", title="t")
         did = out["doc_id"]
