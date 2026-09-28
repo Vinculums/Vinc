@@ -1228,7 +1228,7 @@
                   },
                   "origin": {
                     "type": "string",
-                    "description": "Provenance label only (not a join key)."
+                    "description": "Provenance label only (not a join key). Omit to preserve the existing origin; pass an empty string to clear it. A metadata-only change does not rewrite document text."
                   },
                   "topic": {
                     "type": "string",
@@ -1362,7 +1362,7 @@
                   },
                   "origin": {
                     "type": "string",
-                    "description": "Provenance label only (not a join key)."
+                    "description": "Provenance label only (not a join key). Omit to preserve the existing origin; pass an empty string to clear it. A metadata-only change does not rewrite document text."
                   },
                   "topic": {
                     "type": "string",
