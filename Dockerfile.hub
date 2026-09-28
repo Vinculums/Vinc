@@ -20,7 +20,17 @@ RUN pip install --no-cache-dir ladybug==0.20.4 argon2-cffi pypdf==6.14.2
 # 과금이 배증한다(허브는 min=max=1 이라 idle 도 24시간 청구).
 # 모델 가중치(440MB)는 이미지에 굽지 않고 런타임에 영속 볼륨으로 받는다 — 허브는
 # api/ 변경마다 배포되고 단일 writer 라 **배포 시간이 곧 다운타임**이다.
-RUN pip install --no-cache-dir onnxruntime tokenizers numpy huggingface_hub
+#
+# 🔴 **판을 고정한다.** 질의 벡터와 저장된 벡터가 같은 런타임에서 나와야 한다. 같은 int8
+# 모델이라도 onnxruntime 1.29 → 1.30 이면 질의 벡터가 전부 코사인 0.009~0.022 움직이고
+# (의미 팔의 판정 격차 `_SEM_GAP` 0.010 보다 크다) 확신 오답이 늘어난다. 판을 풀어 두면
+# 새 판이 나온 뒤의 첫 이미지 빌드가 질의 쪽만 조용히 바꾼다. onnxruntime·tokenizers·
+# numpy 판은 2026-09-11 전량 재인코딩 때부터 허브가 쓴 판 그대로다(huggingface_hub 는
+# 모델을 받기만 해서 벡터에 닿지 않지만 재현성을 위해 함께 고정한다). 앞의 셋을 올릴
+# 때는 저장 벡터 전량 재인코딩과 한 배포로 묶는다.
+# tests/test_encoder_runtime_pin.py 가 이 줄과 bake-probe 가 같은 판인지 잠근다.
+# 근거: [[record:the-eval-drift-to-41-14-4-follows-the-query-encoder-runtime-not-the-engine-2026-09-28]]
+RUN pip install --no-cache-dir onnxruntime==1.30.0 tokenizers==0.23.2 numpy==2.5.3 huggingface_hub==1.33.0
 
 # ── 임베딩 모델을 **빌드 타임에** 양자화해 굽는다 ────────────────────────────────
 # 모델 가중치를 이미지에 굽지 않는다는 기존 방침을 여기서 뒤집는다. 근거는 실측이다:
