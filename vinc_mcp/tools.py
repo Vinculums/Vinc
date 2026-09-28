@@ -268,6 +268,8 @@ def _t_graph(args, bridge):
     explicit = depth is not None
     want = depth if explicit else 2
     params = {"owner": _owner(args, bridge), "seed": seed, "depth": want}
+    if args.get("select") in ("layers", "prize"):
+        params["select"] = args["select"]
     # depth 2 이상에는 노드 예산을 붙인다. 사이드카는 도달 집합이 예산을 넘으면 깊이를
     # 층 단위로 줄이고(최소 1) `depth_budget` 으로 알린다 — 허브의 depth 2+ 가 Bridge
     # 60초에 걸려 죽던 것을 무거운 단계(행 조회·축 합류·배치) **전에** 끊는다.
@@ -803,6 +805,18 @@ TOOLS: list[dict] = [
                                    "goes to that space, so pass the url as is and leave "
                                    "`space` out. An explicit `space` beats the url's."},
             "depth": {"type": "integer", "default": 2, "minimum": 1, "maximum": 4},
+            "select": {"type": "string", "enum": ["layers", "prize"], "default": "layers",
+                       "description": "How to fill the node budget when depth reaches more "
+                                      "nodes than it allows. 'layers' (default) lowers the "
+                                      "depth until everything within it fits, so 'every node "
+                                      "within N hops' stays true. 'prize' keeps the requested "
+                                      "depth and picks the connected set around the seed with "
+                                      "the most ppr, so a far but central node can beat a near "
+                                      "but peripheral one; `selection` says what was kept. "
+                                      "'prize' falls back to 'layers' when depth reaches more "
+                                      "than 600 nodes. Every node carries `ppr` and "
+                                      "`ppr_recent` (ppr with a 90-day recency half-life "
+                                      "mixed in)."},
             "owner": {"type": "string"},
         }}, "run": _t_graph,
     },

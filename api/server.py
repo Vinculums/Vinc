@@ -526,6 +526,8 @@ class VincApp:
                                             # 보내면 None 이고 결과는 종전과 같다.
                                             # 근거: [[decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24]]
                                             max_nodes=_int(p.get("max_nodes"), 0) or None,
+                                            # 예산을 층으로 채울지(기본) 상금(ppr)으로 채울지.
+                                            select=p.get("select") or "layers",
                                             store=r))
 
     def read_view(self, p):
