@@ -170,17 +170,20 @@ export async function previewExtract(owner: string, docIds: string[]): Promise<n
   return n;
 }
 
+/** `refused` = 서버가 반영을 거절한 문서 수(대개 주제가 없어서). 여태 `executed` 를 안 봐서
+ *  거절이 "개념 +0" 으로만 보였다 — 부르는 쪽이 그 수로 이유를 말한다. */
 export async function applyExtract(
   owner: string, docIds: string[],
-): Promise<{ created: number; mentions: number }> {
-  let created = 0, mentions = 0;
+): Promise<{ created: number; mentions: number; refused: number }> {
+  let created = 0, mentions = 0, refused = 0;
   for (const id of docIds) {
     if (!id) continue;
     try {
       const res = await api.docExtract(owner, id, true);
+      if (!res.executed) { refused++; continue; }
       created += res.applied?.created || 0;
       mentions += res.mentions || 0;
-    } catch { /* 부분 실패 허용 */ }
+    } catch { refused++; }
   }
-  return { created, mentions };
+  return { created, mentions, refused };
 }

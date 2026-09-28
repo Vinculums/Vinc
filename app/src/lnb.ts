@@ -740,9 +740,13 @@ function groupRows(n: DomNode, level = 1): string {
 function paintHead(n?: number, label?: string): void {
   const h = $("lnb-head");
   if (!h) return;
+  // `+` — 트리 머리의 만들기(문서 쓰기 · 노드 만들기 · 파일 가져오기). 지금 고른 주제가
+  // 있으면 그 주제로 채운다(authoring.openCreateMenu).
   h.innerHTML = n === undefined ? ""
     : `<div class="lnb-sec"><span class="lnb-sec-label">${esc(label || COPY.ui.lnb.documents)}</span>`
-      + `<span class="hint">${n || "·"}</span></div>`;
+      + `<span class="lnb-sec-end"><span class="hint">${n || "·"}</span>`
+      + `<button class="rail-x lnb-add" type="button" aria-haspopup="menu"
+           aria-label="${esc(COPY.author.addTip)}" data-tip="${esc(COPY.author.addTip)}">+</button></span></div>`;
 }
 
 /** 주제 스코프 칩 — 고른 주제가 없으면 빈 문자열. */
@@ -914,6 +918,14 @@ export function mountLnb() {
   // 렌즈 패널·시트와 같은 배치다(머리 고정 · 몸만 스크롤).
   root.insertAdjacentHTML("beforeend",
     `<div class="lnb-head" id="lnb-head"></div><div class="lnb-body" id="lnb-body"></div>`);
+  $("lnb-head")?.addEventListener("click", (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>(".lnb-add");
+    if (!b) return;
+    const r = b.getBoundingClientRect();
+    // 고른 주제가 하나면 그 주제로, 아니면 지금 보고 있는 자리(View 의 맥락)로 채운다.
+    const topic = picked.size === 1 ? [...picked][0] : undefined;
+    void import("./authoring").then((m) => m.openCreateMenu(r.left, r.bottom + 4, topic));
+  });
   const shellToggle = $("tb-shell-toggle");
   if (shellToggle) {
     shellToggle.innerHTML = icon("sidebar", 18);
@@ -1058,7 +1070,12 @@ export function mountLnb() {
  *  전역 Domain 노드는 건드리지 않고 내 노드의 domain 문자열만 바뀐다. */
 async function domainMenu(domain: string, ev: MouseEvent) {
   const { openContextMenu, promptText } = await import("./components");
-  openContextMenu(ev.clientX, ev.clientY, [{
+  const authoring = await import("./authoring");
+  openContextMenu(ev.clientX, ev.clientY, [
+    // 여기에 새로 만들기(흐름 A) — 주제는 누른 주제다.
+    { label: COPY.author.hereDoc, run: () => authoring.startNewDoc(domain) },
+    { label: COPY.author.hereNode, run: () => void authoring.startNewNode({ topic: domain }) },
+    {
     label: COPY.ui.domains.rename,
     run: () => void (async () => {
       const next = await promptText(COPY.ui.domains.renameAsk(domain), domain,

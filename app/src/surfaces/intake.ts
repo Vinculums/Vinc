@@ -18,7 +18,9 @@ import samplePack from "../sample-pack.json";
 const USER_OWNER = "tenant:local";   // 본인 데이터 공간(샘플 sample:demo 와 분리)
 
 export function renderIntake(el: HTMLElement,
-                             opts?: { withHeader?: boolean; withNewDoc?: boolean }) {
+                             opts?: { withHeader?: boolean; withNewDoc?: boolean;
+                                      /** 이미 받은 파일(빈 화면에 여럿을 끌어다 놓았다) — 곧바로 적재한다. */
+                                      files?: File[] }) {
   const ui = COPY.ui.intakeUi;
   // Tools 의 '가져오기' 탭이 헤더리스로 재사용(시트의 머리·탭줄이 크롬을 이미 준다).
   const chrome = opts?.withHeader === false ? "" : header("ingest", "Intake", COPY.ui.meta.intake);
@@ -244,7 +246,8 @@ export function renderIntake(el: HTMLElement,
       box.innerHTML = `<span class="hint">${ui.importing}</span>`;
       const ap = await applyExtract(USER_OWNER, docIds);
       if (!el.contains(box)) return;
-      box.innerHTML = `<span class="hint">${COPY.ui.viewx.edExtractDone(ap.created, ap.mentions)}</span>`;
+      box.innerHTML = `<span class="hint">${COPY.ui.viewx.edExtractDone(ap.created, ap.mentions)}${
+        ap.refused ? ` ${esc(COPY.author.exRefusedDocs(ap.refused))}` : ""}</span>`;
       void loadConceptChips();   // 새 개념이 칩에 반영되도록 다시 읽는다
     });
   }
@@ -316,7 +319,8 @@ export function renderIntake(el: HTMLElement,
     }
   }
 
-  showIdle();
+  if (opts?.files?.length) void importFiles(opts.files);
+  else showIdle();
 }
 
 function esc(s: string): string {
