@@ -129,8 +129,10 @@ class GateTest(unittest.TestCase):
         self.assertIn('shell?.setAttribute("inert", "")', screen)
         self.assertIn('shell?.removeAttribute("inert")', screen)
         css = (ROOT / "app/src/app.css").read_text(encoding="utf-8")
-        self.assertRegex(css, r"#signin-screen \{[^}]*position: fixed; inset: 0;")
-        self.assertIn("[data-shell] #signin-screen { top: var(--titlebar-h); }", css)
+        # 로그인 뒤 한 번 묻는 화면(VIN-131)도 같은 규칙을 쓴다 — 한 선택자로 묶여 있다.
+        self.assertRegex(css, r"#signin-screen, #device-graph-screen \{[^}]*position: fixed; inset: 0;")
+        self.assertIn("[data-shell] #signin-screen, [data-shell] #device-graph-screen "
+                      "{ top: var(--titlebar-h); }", css)
 
     def test_이메일이_먼저_Google_은_그다음이다(self):
         """웹 로그인과 같은 순서 · 같은 말. Google 단추는 연결 페이지에 via=google 을 실어
@@ -175,22 +177,43 @@ class GateTest(unittest.TestCase):
 
 class ExistingDataTest(unittest.TestCase):
 
-    def test_로컬_데이터가_있으면_로컬로_남는다(self):
+    def test_고른_적이_없고_이_기기에_작업이_있으면_묻는다(self):
+        """VIN-131: 말없이 로컬로 정하던 것(0.9.4·0.9.5)을 한 번 묻기로 바꿨다. 사람이 고른
+        모드(`mode_chosen`)만 그대로 따르고, 그 밖에는 이 기기에 작업이 있으면 "ask" 다."""
         decide = _fn(API_TS, "decideDataMode")
-        self.assertIn('(await localStoreHasData()) ? "local" : "account"', decide)
+        self.assertIn('Promise<DataMode | "ask">', decide)
+        chosen = decide.index("conf?.mode_chosen")
+        ask = decide.index('if (await localStoreHasData()) return "ask";')
+        self.assertLess(chosen, ask)
+        # 묻지 않을 때는 계정이다. 적되 고른 것으로는 적지 않는다(나중에 작업이 생기면 묻는다).
+        tail = decide[ask:]
+        self.assertIn('storage.setConfig({ mode: "account" })', tail)
+        self.assertNotIn("mode_chosen: true", decide)
+
+    def test_부팅이_물음에_답을_받고서야_그린다(self):
+        self.assertRegex(MAIN_TS, r'\(await decideDataMode\(\)\) === "ask"\)\s*\{\s*\n'
+                                  r'\s*const \{ askAboutDeviceGraph \} = await import\("\./device-graph"\);'
+                                  r'\s*\n\s*await askAboutDeviceGraph\(\);')
 
     def test_모드의_정본은_사이드카_설정이다(self):
         """VIN-130: 설정 화면·사이드카·로컬 MCP 가 같은 파일을 본다. 창 저장소는 사본이다.
-        설정이 먼저이고, 정한 값은 설정에 적는다(다음 기동이 창과 무관하게 같은 답을 낸다)."""
+        설정이 먼저다(다음 기동이 창과 무관하게 같은 답을 낸다). 창의 값은 설정을 못 읽는
+        옛 엔진일 때만 본다."""
         decide = _fn(API_TS, "decideDataMode")
         self.assertLess(decide.index("storage.config()"), decide.index("dataMode.get()"))
-        self.assertIn("storage.setConfig({ mode: next })", decide)
+        self.assertLess(decide.index("if (!conf)"), decide.index("dataMode.get()"))
+
+    def test_이_기기를_묻는_질문은_이_기기로_간다(self):
+        """창에 "account" 가 남아 있으면 `call` 은 계정으로 가서 계정의 그래프를 센다."""
+        has = _fn(API_TS, "localStoreHasData")
+        self.assertIn('localCall("/domains"', has)
+        self.assertIn('localCall("/docs"', has)
+        self.assertNotRegex(has, r"[^l]call\(")
 
     def test_로컬_모드가_보여_줄_것만_센다(self):
         """로컬에 남기는 이유는 "로컬로 두면 그 작업이 보인다" 하나다. 로컬 모드 화면은
-        `tenant:local` 만 읽으므로 로컬 MCP 의 `user:local` 만 있는 설치를 로컬로 두면 빈
-        지도에 스페이스 선택도 없는 화면이 된다(2026-09-28 보고, VIN-179). 소유자 통일은
-        VIN-131 이다. 그때까지 `user:local` 을 세면 이 화면이 다시 생긴다."""
+        `tenant:local` 만 읽는다(VIN-179). 옛 `user:local` 행은 사이드카가 기동하며 접으므로
+        (VIN-131, `api/owner_fold.py`) 여기서 따로 세지 않는다."""
         has = _fn(API_TS, "localStoreHasData")
         self.assertIn('const owner = "tenant:local";', has)
         self.assertNotIn('"user:local"', has)

@@ -53,15 +53,35 @@ class RoutingTest(unittest.TestCase):
 class NoLossTest(unittest.TestCase):
 
     def test_수가_안_맞으면_모드를_안_바꾼다(self):
-        for name, mode in (("turnOn", '"local"'), ("askTurnOff", '"account"')):
-            body = _fn(STORE, name)
-            # 끄기 판에는 옮기지 않고 바꾸는 길이 따로 있다(아래 테스트). 옮기는 길만 본다.
-            if name == "askTurnOff":
-                body = body[body.index('go.addEventListener("click"'):]
-            gate = body.index("Number(r.missing) > 0")
-            switch = body.index(f"storage.setConfig({{ mode: {mode} }})")
-            self.assertLess(gate, switch, name)
-            self.assertLess(switch, body.index(f"dataMode.set({mode})"), name)
+        # 받기(켜기)는 자기 안에서 가른다.
+        body = _fn(STORE, "turnOn")
+        switch = body.index('storage.setConfig({ mode: "local", mode_chosen: true })')
+        self.assertLess(body.index("Number(r.missing) > 0"), switch)
+        self.assertLess(switch, body.index('dataMode.set("local")'))
+        # 올리기는 한 벌(`moveDeviceIntoAccount`)이고, 빠진 것이 있으면 ok 가 거짓이다.
+        move = _fn(STORE, "moveDeviceIntoAccount")
+        self.assertRegex(move, r"if \(Number\(r\.missing\) > 0\) return \{ ok: false")
+        self.assertNotIn("setConfig", move)    # 모드는 부르는 쪽이 바꾼다
+        # 끄기 판의 옮기는 길은 ok 를 본 뒤에만 모드를 바꾼다.
+        off = _fn(STORE, "askTurnOff")
+        go = off[off.index('go.addEventListener("click"'):]
+        gate = go.index("if (!moved.ok)")
+        switch = go.index('storage.setConfig({ mode: "account", mode_chosen: true })')
+        self.assertLess(gate, switch)
+        self.assertLess(switch, go.index('dataMode.set("account")'))
+
+    def test_로그인_뒤_물음도_같은_올리기를_쓴다(self):
+        """VIN-131: 올리기가 두 벌이면 한쪽만 "빠진 것이 있으면 안 바꾼다"를 잃는다."""
+        dg = (SRC / "device-graph.ts").read_text(encoding="utf-8")
+        self.assertIn("moveDeviceIntoAccount(key)", dg)
+        self.assertNotIn("pushAll", dg)
+        gate = dg.index("if (!moved.ok)")
+        self.assertLess(gate, dg.index('await settle("account")'))
+        # 고른 답은 설정(정본)에 먼저 적고, 못 적으면 닫지 않는다.
+        settle = dg[dg.index("const settle"):]
+        self.assertLess(settle.index("storage.setConfig({ mode, mode_chosen: true })"),
+                        settle.index("dataMode.set(mode)"))
+        self.assertLess(settle.index("return false"), settle.index("screen.remove()"))
 
     def test_옮기지_않고_끄기는_설정을_먼저_쓰고_아무것도_옮기지_않는다(self):
         """VIN-179: 올리기가 실패하면 로컬 모드에서 나갈 길이 없었다. 이 길은 폴더를
@@ -70,7 +90,7 @@ class NoLossTest(unittest.TestCase):
         body = _fn(STORE, "askTurnOff")
         keep = body[body.index('keep.addEventListener("click"'):]
         keep = keep[: keep.index('go.addEventListener("click"')]
-        self.assertLess(keep.index('storage.setConfig({ mode: "account" })'),
+        self.assertLess(keep.index('storage.setConfig({ mode: "account", mode_chosen: true })'),
                         keep.index('dataMode.set("account")'))
         self.assertNotIn("pushAll", keep)
         self.assertNotIn("data_path", keep)
@@ -78,7 +98,7 @@ class NoLossTest(unittest.TestCase):
     def test_전량이_아닌_받기는_모드를_안_바꾼다(self):
         body = _fn(STORE, "turnOn")
         self.assertLess(body.index('r.docs_mode !== "everything"'),
-                        body.index('storage.setConfig({ mode: "local" })'))
+                        body.index('storage.setConfig({ mode: "local", mode_chosen: true })'))
 
     def test_폴더를_먼저_열고_그다음에_받는다(self):
         """받기는 새 폴더의 스토어에 써야 한다. 재기동 전에 받으면 옛 스토어에 들어간다."""

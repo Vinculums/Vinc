@@ -1662,13 +1662,15 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    문이므로 같은 모양이어야 한다.
    ⚠ 셸에서는 타이틀바 아래에서 시작한다 — 덮으면 창을 옮기고 닫을 손잡이가 사라진다.
    근거: [[decision:the-desktop-sign-in-fills-the-window-instead-of-a-modal-2026-09-26]] */
-#signin-screen {
+/* 로그인 뒤 한 번 묻는 "이 기기의 그래프" 화면(VIN-131)도 같은 모양이다 — 로그인의
+   다음 문이고, 둘 다 답하기 전에는 앱을 쓸 수 없다. */
+#signin-screen, #device-graph-screen {
   position: fixed; inset: 0; z-index: 90;
   display: grid; place-items: center; overflow-y: auto;
   padding: var(--space-8, 2rem) var(--space-4, 1rem);
   background: hsl(var(--background));
 }
-[data-shell] #signin-screen { top: var(--titlebar-h); }
+[data-shell] #signin-screen, [data-shell] #device-graph-screen { top: var(--titlebar-h); }
 .si-card {
   width: min(26rem, 100%); text-align: center;
   border: 1px solid hsl(var(--border)); border-radius: 1.25rem;
@@ -1694,13 +1696,13 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   font-size: .8rem; color: hsl(var(--muted-foreground));
 }
 .si-or::before, .si-or::after { content: ""; flex: 1; height: 1px; background: hsl(var(--border)); }
-.si-card .si-google {
+.si-card .si-google, .si-card .si-alt {
   display: flex; align-items: center; justify-content: center; gap: .6rem;
   width: 100%; margin-top: .9rem; padding: .7rem 1rem; font-weight: 600;
   border: 1px solid hsl(var(--border)); background: hsl(var(--background) / .6);
   color: hsl(var(--foreground));
 }
-.si-card .si-google:hover { background: hsl(var(--background)); }
+.si-card .si-google:hover, .si-card .si-alt:hover { background: hsl(var(--background)); }
 .si-google svg { flex: 0 0 auto; }
 .si-state {
   margin: .7rem 0 0; min-height: 1.35em; font-size: .85rem;

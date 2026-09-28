@@ -42,6 +42,20 @@ const EN = {
     // 사이드카가 안 떴을 때. 인터넷 탓으로 돌리지 않는다(연결은 멀쩡했다, 2026-09-27).
     localDown: "Vinc could not start on this device. Try again, and if it keeps happening, restart Vinc.",
   },
+  // 로그인 뒤 한 번 묻는 화면(VIN-131). 이 기기에 로그인 전부터 쌓인 그래프가 있을 때만
+  // 뜬다. 기본은 계정으로 옮기기다(발주자 결정 2026-09-24). 어느 쪽도 지우지 않는다.
+  deviceGraph: {
+    title: "This computer already has a graph",
+    lead: "Vinc found work saved on this computer from before you signed in. Your account graph is separate from it, so choose where you want to work.",
+    moveCta: "Move it into my account",
+    moveHint: "Recommended. Your graph then looks the same on the web, on this computer and on your other devices.",
+    keepCta: "Keep using it on this computer",
+    keepHint: "Your graph stays in this computer's folder and your account holds no copy of it.",
+    note: "Nothing is deleted either way. You can change this later in Settings, under Account.",
+    moving: "Moving this computer's graph to your account…",
+    retryOrKeep: "Nothing was changed. You can try again, or keep using it on this computer.",
+    saveFailed: "Vinc could not save your choice on this computer. Try again.",
+  },
   // 계정 모드에서 계정에 못 닿을 때 화면 위에 거는 한 줄(VIN-128). 빈 화면을 "데이터가
   // 없다"로 읽히게 두지 않는다.
   accountMode: {
@@ -1036,6 +1050,18 @@ const KO: Deck = {
     expired: "요청이 만료됐어요. 다시 시도해 주세요",
     failed: "연결을 마치지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요",
     localDown: "이 기기에서 Vinc를 시작하지 못했어요. 다시 시도해 보고, 계속 안 되면 Vinc를 다시 실행해 주세요",
+  },
+  deviceGraph: {
+    title: "이 컴퓨터에 이미 그래프가 있어요",
+    lead: "로그인하기 전부터 이 컴퓨터에 저장해 둔 작업이 있어요. 계정 그래프와는 따로 있으니 어디서 작업할지 골라 주세요",
+    moveCta: "계정으로 옮기기",
+    moveHint: "추천해요. 웹과 이 컴퓨터, 다른 기기에서 같은 그래프를 보게 돼요",
+    keepCta: "이 컴퓨터에서 계속 쓰기",
+    keepHint: "그래프는 이 컴퓨터의 폴더에 있고 계정에는 사본이 없어요",
+    note: "어느 쪽을 골라도 지워지는 것은 없어요. 나중에 설정의 계정에서 바꿀 수 있어요",
+    moving: "이 컴퓨터의 그래프를 계정으로 옮기는 중…",
+    retryOrKeep: "바뀐 것은 없어요. 다시 시도하거나 이 컴퓨터에서 계속 쓸 수 있어요",
+    saveFailed: "이 컴퓨터에 선택을 저장하지 못했어요. 다시 시도해 주세요",
   },
   accountMode: {
     unreachable: "지금 계정에 연결할 수 없어요. 그래프가 계정에 있어서 연결이 돌아올 때까지 화면이 비어 있어요",

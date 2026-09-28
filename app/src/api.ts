@@ -353,14 +353,16 @@ async function localCall(path: string, params?: Record<string, string | number |
   return res.json();
 }
 
-/** 로컬 모드가 **화면에 보여 줄** 데이터가 이 기기 스토어에 있는가. 모드를 처음 정할 때만
- *  묻는다. 모드가 아직 없으니 `call` 은 로컬 사이드카로 간다.
+/** 로컬 모드가 **화면에 보여 줄** 데이터가 이 기기 스토어에 있는가. 모드를 정할 때 묻는다.
+ *
+ *  🔴 `call` 이 아니라 `localCall` 이다. 창에 "account" 가 남아 있으면 `call` 은 계정으로
+ *  가서 **계정의** 그래프를 센다. 여기서 묻는 것은 이 기기다.
  *
  *  묻는 것은 "디스크에 뭔가 있나"가 아니라 "로컬로 두면 그 작업이 보이나"다. 로컬에 남기는
  *  이유가 그것뿐이기 때문이다. 그래서 둘을 세지 않는다:
- *  - `user:local` — 로컬 stdio MCP 가 쓰는 소유자인데 앱은 `tenant:local` 만 읽는다
- *    (VIN-131 이 통일한다). 그것만 있는 설치를 로컬로 두면 빈 지도에 스페이스 선택도
- *    없는 화면이 된다(2026-09-28 보고).
+ *  - `user:local` — 옛 로컬 MCP 의 소유자다. 사이드카가 기동하며 `tenant:local` 로 접으므로
+ *    (`api/owner_fold.py`, VIN-131) 여기 올 때쯤에는 남아 있지 않다. 남아 있다면 접기가
+ *    실패한 것이고, 그 행은 로컬 모드 화면에도 안 보인다.
  *  - 스토어를 못 여는 기기(503, WAL 격리 뒤 스토어 없이 뜬 사이드카) — 로컬 모드가 보여
  *    줄 것이 없다.
  *  어느 쪽도 지우지 않는다: 폴더는 그대로이고, 같은 폴더로 로컬 모드를 켜면 다시 열린다.
@@ -369,9 +371,9 @@ async function localCall(path: string, params?: Record<string, string | number |
 export async function localStoreHasData(): Promise<boolean> {
   const owner = "tenant:local";
   try {
-    const d = await call("/domains", { owner });
+    const d = await localCall("/domains", { owner });
     if ((d?.rows || []).length) return true;
-    const docs = await call("/docs", { owner, limit: 1, detail: "summary" });
+    const docs = await localCall("/docs", { owner, limit: 1, detail: "summary" });
     return Number(docs?.total_count ?? (docs?.docs || []).length) > 0;
   } catch (e: any) {
     return !e?.storeDown;
@@ -383,28 +385,39 @@ export async function localStoreHasData(): Promise<boolean> {
  *  정본을 파일에 두는 이유: 설정 화면이 모드와 폴더를 한 번에 바꾸고, 사이드카와 로컬
  *  MCP 가 같은 파일을 읽는다. 창 저장소는 그 둘이 못 본다.
  *
- *  설정에 모드가 없으면 한 번 정해 적는다. 창에 이미 정한 값이 있으면(0.9.4 첫 판의
- *  설치) 그것을 옮기고, 없으면 새 설치는 계정, 데이터가 있는 기존 설치는 로컬이다. */
-export async function decideDataMode(): Promise<DataMode> {
+ *  **사람이 고른 모드(`mode_chosen`)만 그대로 따른다.** 고른 적이 없으면(새 설치, 그리고
+ *  0.9.4·0.9.5 가 이 기기에 데이터가 있다고 말없이 로컬로 정한 설치) 이 기기에 보여 줄
+ *  작업이 있는지 본다. 있으면 `"ask"` 를 돌려주고 부르는 쪽이 한 번 묻는다
+ *  (`device-graph.ts`). 계정의 빈 화면이 디스크의 작업을 묻지도 않고 가리면 그게 곧
+ *  유실로 읽힌다. 없으면 계정이다: 적되 고른 것으로는 적지 않는다(나중에 이 기기에 작업이
+ *  생기면 그때 묻는다).
+ *  근거: [[vinc.plan.desktop-account-mode §8]] */
+export async function decideDataMode(): Promise<DataMode | "ask"> {
   const conf = await storage.config().catch(() => null);
   const saved = conf?.mode;
-  if (saved === "account" || saved === "local") {
+  if (conf?.mode_chosen && (saved === "account" || saved === "local")) {
     dataMode.set(saved);
     return saved;
   }
-  const held = dataMode.get();
-  const next: DataMode = held ?? ((await localStoreHasData()) ? "local" : "account");
-  dataMode.set(next);
-  // 사이드카가 설정을 못 받아도(옛 엔진) 창의 값으로 계속 간다. 다음 기동이 다시 적는다.
-  if (conf) await storage.setConfig({ mode: next }).catch(() => {});
-  return next;
+  if (!conf) {
+    // 설정을 못 읽는다(옛 엔진). 물어도 답을 적을 곳이 없으니 종전 규칙대로 간다.
+    const held = dataMode.get();
+    const next: DataMode = held ?? ((await localStoreHasData()) ? "local" : "account");
+    dataMode.set(next);
+    return next;
+  }
+  if (await localStoreHasData()) return "ask";
+  dataMode.set("account");
+  if (saved !== "account") await storage.setConfig({ mode: "account" }).catch(() => {});
+  return "account";
 }
 
 // ── 저장 위치와 모드 전환(VIN-130) ──────────────────────────────────────────
 // 전부 **이 기기의 사이드카**로 간다(`localCall`). 계정 모드에서 부르는 것들이라 `call` 로
 // 보내면 계정으로 간다.
 export type StorageConfig = {
-  executed: boolean; mode: DataMode | null; data_path: string | null; data_file: string | null;
+  executed: boolean; mode: DataMode | null; mode_chosen: boolean;
+  data_path: string | null; data_file: string | null;
   default_folder: string; suggested_folder: string; pinned: boolean;
   restart_needed: boolean; store_open: boolean;
 };
@@ -417,8 +430,8 @@ export const storage = {
   config: (): Promise<StorageConfig> => localCall("/config"),
   inspect: (path: string): Promise<FolderCheck> => localCall("/config/inspect", { path }),
   /** 400·409 는 던지지 않고 그대로 준다: 화면이 사유(`error`·`inspect`)를 그려야 한다. */
-  setConfig: async (body: { mode?: DataMode; data_path?: string | null;
-                            accept_risk?: boolean }): Promise<any> => {
+  setConfig: async (body: { mode?: DataMode; mode_chosen?: boolean;
+                            data_path?: string | null; accept_risk?: boolean }): Promise<any> => {
     try { return await localCall("/config", undefined, body); }
     catch (e: any) {
       const m = /^(400|409) (.*)$/s.exec(String(e?.message || ""));

@@ -238,7 +238,7 @@ async function turnOn(path: string, acceptRisk: boolean, copy: boolean, result: 
       copied = U.moveCounts(Number(r.after?.nodes ?? 0), Number(r.after?.docs ?? 0));
       if (Number(r.kept_deleted) > 0) copied += " " + U.moveKeptDeleted(Number(r.kept_deleted));
     }
-    await storage.setConfig({ mode: "local" });
+    await storage.setConfig({ mode: "local", mode_chosen: true });
     dataMode.set("local");
     result.textContent = copied ?? U.localReady;
     finish(result);
@@ -274,7 +274,7 @@ function askTurnOff(panel: HTMLElement, result: HTMLElement): void {
     try {
       // 정본(사이드카 설정)이 먼저다. 창의 사본만 바꾸면 다음 기동의 `decideDataMode` 가
       // 설정 파일의 "local" 을 도로 읽어 온다.
-      const r = await storage.setConfig({ mode: "account" });
+      const r = await storage.setConfig({ mode: "account", mode_chosen: true });
       if (r?.status) { result.textContent = U.moveFail; return; }
       dataMode.set("account");
       panel.hidden = true;
@@ -292,15 +292,10 @@ function askTurnOff(panel: HTMLElement, result: HTMLElement): void {
     go.disabled = true;
     result.textContent = U.movingUp;
     try {
-      const job = await storage.pushAll(key);
-      const done = await pollJob(job.job_id, undefined,
-                                 { timeoutMs: MOVE_TIMEOUT_MS, status: storage.job });
-      const r = done.result || {};
-      if (Number(r.missing) > 0) { result.textContent = U.moveMissing(Number(r.missing)); return; }
-      const notes = [U.moveCounts(Number(r.nodes ?? 0), Number(r.docs ?? 0))];
-      if (Number(r.kept_deleted) > 0) notes.push(U.moveKeptDeleted(Number(r.kept_deleted)));
-      if (Number(r.left_behind) > 0) notes.push(U.moveLeftBehind(Number(r.left_behind)));
-      await storage.setConfig({ mode: "account" });
+      const moved = await moveDeviceIntoAccount(key);
+      if (!moved.ok) { result.textContent = moved.notes.join(" "); return; }
+      const notes = moved.notes;
+      await storage.setConfig({ mode: "account", mode_chosen: true });
       dataMode.set("account");
       // 다시 누를 자리를 치운다. 옮기기는 멱등이지만 두 번 올릴 까닭이 없다.
       panel.hidden = true;
@@ -312,6 +307,24 @@ function askTurnOff(panel: HTMLElement, result: HTMLElement): void {
       go.disabled = false;
     }
   });
+}
+
+/** 이 기기의 전부를 계정으로 올린다. **빠진 것이 없을 때만** `ok` 다. 모드는 안 바꾼다:
+ *  부르는 쪽(설정의 끄기 · 로그인 뒤 한 번 묻는 화면)이 `ok` 를 보고 바꾼다.
+ *
+ *  올리기는 이 기기에 아무것도 안 쓴다(`/sync/push-all`). 멈춰도 잃는 것이 없고, 다시
+ *  누르면 멱등이다. `notes` 는 사람에게 그대로 보여 줄 문장들이다. */
+export async function moveDeviceIntoAccount(key: string): Promise<{ ok: boolean; notes: string[] }> {
+  const U = COPY.ui.settingsUi;
+  const job = await storage.pushAll(key);
+  const done = await pollJob(job.job_id, undefined,
+                             { timeoutMs: MOVE_TIMEOUT_MS, status: storage.job });
+  const r = done.result || {};
+  if (Number(r.missing) > 0) return { ok: false, notes: [U.moveMissing(Number(r.missing))] };
+  const notes = [U.moveCounts(Number(r.nodes ?? 0), Number(r.docs ?? 0))];
+  if (Number(r.kept_deleted) > 0) notes.push(U.moveKeptDeleted(Number(r.kept_deleted)));
+  if (Number(r.left_behind) > 0) notes.push(U.moveLeftBehind(Number(r.left_behind)));
+  return { ok: true, notes };
 }
 
 /** 모드가 바뀌었다. 옮긴 수를 읽을 수 있게 두고, 누르면 새 모드로 다시 연다. */
