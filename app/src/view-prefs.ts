@@ -151,6 +151,15 @@ export type ViewPrefs = {
   edgeOff: EdgeKind[];
   /** D74 — 타임라인 원인·결과 겹치기. 방향 관계를 마디 사이 곡선으로 잇는다. */
   timelineLineage: boolean;
+  /** 타임라인 기간(2026-09-28). 프리셋 키 하나이고, `custom` 일 때만 `periodFrom`·
+   *  `periodTo` 를 읽는다(둘 다 `YYYY[-MM[-DD]]`, 양 끝 포함). 상대 프리셋(최근 N일·
+   *  올해)은 **그릴 때** 오늘에서 푼다 — 저장한 날짜로 굳히면 다음 날 열었을 때 이미
+   *  "최근 7일"이 아니다. 주소(view URL)에는 싣지 않는다: 그 문법은 MCP 서버의 파서와
+   *  나눠 쓰는 계약이다(`vinc_mcp/viewurl.py`).
+   *  근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] §2 */
+  period: PeriodKey;
+  periodFrom: string;
+  periodTo: string;
   /** 짜임 — 선이 묶이는 단.
    *
    *  기본이 1(주제끼리)이었는데 **실제 데이터에서 거의 항상 빈 화면이 됐다**. 주제
@@ -165,6 +174,52 @@ export type ViewPrefs = {
 };
 export type TimeBasis = "recorded" | "content";
 export const TIME_BASES: TimeBasis[] = ["recorded", "content"];
+
+export type PeriodKey = "all" | "7d" | "30d" | "90d" | "year" | "custom";
+export const PERIODS: PeriodKey[] = ["all", "7d", "30d", "90d", "year", "custom"];
+/** 사람이 적는 시점 한 칸 — 연 · 월 · 일. 내용 시점(content_time)의 저장 형식과 같다. */
+export const TIME_KEY = /^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$/;
+
+/** 시점 한 칸의 **다음 칸**(같은 알갱이). `2026` → `2027`, `2026-12` → `2027-01`,
+ *  `2026-02-28` → `2026-03-01`. 기간의 끝을 반열린 구간으로 바꾸는 데 쓴다.
+ *  날짜 계산은 UTC 달력으로만 한다(저장된 시각을 파싱하지 않는다 — 비교는 늘 문자열). */
+export function nextTimeKey(k: string): string {
+  const [y, m, d] = k.split("-").map(Number);
+  if (m === undefined) return String(y + 1).padStart(4, "0");
+  if (d === undefined) {
+    return m === 12 ? `${String(y + 1).padStart(4, "0")}-01`
+      : `${String(y).padStart(4, "0")}-${String(m + 1).padStart(2, "0")}`;
+  }
+  return utcDay(new Date(Date.UTC(y, m - 1, d + 1)));
+}
+/** UTC 달력의 `YYYY-MM-DD`. 기록 시각(ts)이 UTC ISO 라 열과 같은 날 경계를 쓴다(Q2.3). */
+export const utcDay = (t: Date): string => t.toISOString().slice(0, 10);
+
+/** 프리셋을 오늘 기준의 **반열린 구간** `[start, end)` 로 푼다. `all` 은 null(거르지 않음).
+ *  경계도 노드 시각과 같은 **문자열 키 공간**이다: `start <= ts < end` 가 사전식 비교로
+ *  성립한다(ISO 는 고정폭이라 사전순 = 시간순). `custom` 인데 값이 비었거나 형식이
+ *  틀리면 거르지 않는다 — 망가진 저장값이 화면을 조용히 비우지 않게. */
+export function periodRange(p: Pick<ViewPrefs, "period" | "periodFrom" | "periodTo">,
+                            now = new Date()): { start: string; end: string } | null {
+  const today = utcDay(now);
+  const back = (days: number) =>
+    utcDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days)));
+  switch (p.period) {
+    case "7d": return { start: back(6), end: nextTimeKey(today) };
+    case "30d": return { start: back(29), end: nextTimeKey(today) };
+    case "90d": return { start: back(89), end: nextTimeKey(today) };
+    case "year": return { start: today.slice(0, 4), end: nextTimeKey(today.slice(0, 4)) };
+    case "custom": {
+      const a = p.periodFrom, b = p.periodTo;
+      if (!TIME_KEY.test(a) || !TIME_KEY.test(b)) return null;
+      const [lo, hi] = a <= b ? [a, b] : [b, a];
+      return { start: lo, end: nextTimeKey(hi) };
+    }
+    default: return null;
+  }
+}
+export const inPeriod = (t: string, r: { start: string; end: string } | null): boolean =>
+  !r || (!!t && t >= r.start && t < r.end);
 export const RAIL_MIN = 16;    // rem — 원문 한 줄이 읽히는 하한
 // 상한을 크게 둔다(발주자 지시 2026-08-05) — 문서 패널은 지도 **위에 겹치는** 글라스
 // 이므로, 끝까지 끌어 화면을 다 덮는 것이 정당한 상태다(읽는 동안 지도를 잠시 덮는
@@ -193,6 +248,8 @@ const DEFAULTS: ViewPrefs = {
   when: 1,
   edgeOff: [],
   timelineLineage: false,
+  // 기본은 전체다(Q2.2) — 여태와 같은 그림. 넘치면 캡션이 "기간 좁히기"를 권한다.
+  period: "all", periodFrom: "", periodTo: "",
   bundleDepth: 3,
   bundleOff: [],
 };
@@ -284,6 +341,9 @@ export function loadPrefs(): ViewPrefs {
       edgeOff: Array.isArray(p.edgeOff)
         ? p.edgeOff.filter((k: unknown) => EDGE_KINDS.includes(k as EdgeKind)) : [],
       timelineLineage: p.timelineLineage === true,
+      period: PERIODS.includes(p.period) ? p.period : "all",
+      periodFrom: typeof p.periodFrom === "string" && TIME_KEY.test(p.periodFrom) ? p.periodFrom : "",
+      periodTo: typeof p.periodTo === "string" && TIME_KEY.test(p.periodTo) ? p.periodTo : "",
       // 저장값이 문자열로 돌아올 수 있어(구 버전·수기 편집) Number 로 접어 받는다.
       bundleDepth: BUNDLE_DEPTHS.includes(Number(p.bundleDepth) as BundleDepth)
         ? (Number(p.bundleDepth) as BundleDepth) : DEFAULTS.bundleDepth,

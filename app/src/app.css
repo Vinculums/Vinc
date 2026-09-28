@@ -979,15 +979,37 @@ body {
    접으면 관점 손잡이가 함께 사라졌다. 둘 다 View 가 채우고 떠날 때 비우므로(topbar.ts
    `refreshTopbar`), 둘 다 비면 카드째 숨는다 — 빈 카드가 검색 옆에 남으면 누를 것이
    없는 면이 된다. */
-/* 폭은 **렌즈 패널과 같다**(`--lens-panel-w`) — 패널이 이 카드 바로 아래에서 열리고
-   양 끝이 같은 세로선에 서야 한다(발주자 지시 2026-09-26). 세그가 남는 폭을 먹는다. */
-#tb-viewctl { flex: 0 0 var(--lens-panel-w); width: var(--lens-panel-w); }
+/* 두 상태(2026-09-28 발주자 지시). **닫힘**(기본): 렌즈 버튼 하나(+ 지금 관점 이름)만
+   보이고 폭은 그 내용 폭이다. **열림**(`data-open`, 렌즈 패널이 열린 동안): 관점 세그가
+   왼쪽으로 미끄러져 나오고 폭이 **렌즈 패널과 같아진다**(`--lens-panel-w`) — 패널이 이
+   카드 바로 아래에서 열리고 양 끝이 같은 세로선에 서야 한다(2026-09-26 지시, 그대로).
+   열린 카드는 검색 카드를 **밀지 않고 그 위로 겹친다**(Q1.1): 음수 왼쪽 여백이 자란
+   폭만큼을 되돌려 바깥 폭이 닫힌 폭(`--vc-closed-w`, JS 가 잰다) 그대로다 — 그래서 검색
+   입력이 흔들리지 않는다. 모션은 view.ts `setCardOpen` 이 폭과 여백을 함께 움직인다.
+   근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] §1 */
+#tb-viewctl { flex: 0 0 auto; position: relative; z-index: 1; }
+#tb-viewctl[data-open] {
+  width: var(--lens-panel-w);
+  margin-left: calc(var(--vc-closed-w, var(--lens-panel-w)) - var(--lens-panel-w));
+}
 #tb-viewctl:has(> #tb-viewpoints:empty):has(> #tb-lens:empty) { display: none; }
-#tb-viewpoints { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; }
+/* 세그는 자라는 카드 안에서 잘리며 드러난다 — 넘침을 자기 상자가 받는다. */
+#tb-viewpoints { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+#tb-viewctl:not([data-open]) > #tb-viewpoints { display: none; }
 #tb-viewpoints .seg { width: 100%; }
 #tb-viewpoints .seg .chip { flex: 1 1 auto; }
 #tb-lens { display: flex; align-items: center; flex: 0 0 auto; }
 #tb-viewpoints:empty, #tb-lens:empty { display: none; }
+/* 여는 순간에만 칩이 12px 왼쪽으로 미끄러지며 20ms 씩 차례로 들어온다. 관점을 바꿀 때
+   세그가 다시 그려져도 되풀이되지 않게 여는 동안만 붙는 클래스(`vc-enter`)에 건다. */
+#tb-viewctl.vc-enter #tb-viewpoints .chip {
+  animation: vcChipIn .2s var(--ease-out, ease-out) both;
+  animation-delay: calc(var(--i, 0) * 20ms);
+}
+@keyframes vcChipIn { from { opacity: 0; transform: translateX(12px); } }
+@media (prefers-reduced-motion: reduce) {
+  #tb-viewctl.vc-enter #tb-viewpoints .chip { animation: none; }
+}
 /* 숨긴 버튼만 담은 묶음은 자리를 먹지 않는다 — 폭 0 이어도 바의 gap 이 한 칸 붙는다. */
 #tb-right:not(:has(> :not([hidden]))) { display: none; }
 
@@ -1299,14 +1321,14 @@ body {
    관점 세그는 **접히지 않는다**(`nowrap` 둘 다). `.seg` 의 `flex-wrap: wrap` 은
    5지선다(Layout)를 위한 것이고, 칩에도 걸어야 글자가 칩 안에서 접히지 않는다
    (실측 2026-09-09: 묶음만 막으면 칸 높이가 37 → 107px 로 뛰었다). */
-#tb-viewpoints .seg {
+#tb-viewpoints .seg, .lens-vprow .seg {
   flex-wrap: nowrap; align-items: center; gap: 2px;
   height: var(--ctl-h); padding: 0 3px; box-sizing: border-box;
   border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm, .625rem);
   background: hsl(var(--background));
   box-shadow: inset 0 1px 2px hsl(var(--foreground) / .06);
 }
-#tb-viewpoints .seg .chip {
+#tb-viewpoints .seg .chip, .lens-vprow .seg .chip {
   min-height: calc(var(--ctl-h) - 8px); padding: 0 var(--space-3, .75rem);
   border-radius: calc(var(--radius-sm, .625rem) - 4px);
   white-space: nowrap;
@@ -2379,7 +2401,7 @@ textarea.props-val {
   margin-left: auto; display: flex; gap: 1.1rem; white-space: nowrap;
   font-size: .7rem; color: hsl(var(--caption-foreground));
 }
-#view-viewpoints .seg, #tb-viewpoints .seg { display: inline-flex; }
+#view-viewpoints .seg, #tb-viewpoints .seg, .lens-vprow .seg { display: inline-flex; }
 /* 연결 없음 = 누를 수 있는 수치(세어만 놓고 해소할 길을 안 주지 않는다). */
 .metric-act { cursor: pointer; border-bottom: 1px dashed hsl(var(--border)); }
 .metric-act:hover { color: hsl(var(--foreground)); }
@@ -2398,6 +2420,31 @@ textarea.props-val {
   background: hsl(var(--card)); color: hsl(var(--foreground)); border-color: hsl(var(--muted-foreground));
 }
 .lens-btn svg { width: 17px; height: 17px; }
+/* 닫힌 보기 카드의 버튼은 지금 관점의 이름을 함께 싣는다(Q1.3) — 세그가 숨어도 무엇으로
+   보고 있는지는 보여야 한다. 열리면 세그가 그 일을 하므로 이름을 거둬 정사각 버튼으로
+   돌아간다. 카드 밖(임베드의 지도 모서리)에서는 이름을 싣지 않는다. */
+.lens-vp { display: none; }
+#tb-viewctl:not([data-open]) .lens-btn {
+  width: auto; grid-auto-flow: column; gap: .4rem;
+  padding: 0 var(--space-3, .75rem) 0 var(--space-2, .5rem);
+}
+#tb-viewctl:not([data-open]) .lens-vp {
+  display: inline; font-size: .8125rem; font-weight: 500; white-space: nowrap;
+  color: hsl(var(--foreground));
+}
+/* 패널 머리의 닫기 — 탭줄 오른쪽 끝. 모양은 `?` 토글과 같은 급(작은 아이콘 버튼)이다. */
+.lens-close {
+  display: grid; place-items: center; flex: 0 0 auto;
+  width: 1.75rem; height: 1.75rem; padding: 0; margin-left: .15rem;
+  border: 1px solid transparent; border-radius: var(--radius-sm, .625rem);
+  background: none; color: hsl(var(--muted-foreground)); cursor: pointer;
+}
+.lens-close:hover { color: hsl(var(--foreground)); background: hsl(var(--muted-foreground) / .1); }
+.lens-close:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.lg-tabrow-title { flex: 1 1 auto; font-size: .8125rem; font-weight: 600; }
+/* 판 머리의 관점 세그 — 좁은 창(≤900, 패널이 전폭 판)에서만 보인다. 넓은 창에서는
+   상단 바 카드의 세그가 같은 일을 한다(`#tb-viewctl[data-open]`). */
+.lens-vprow { display: none; }
 .lg-body { display: flex; flex-direction: column; gap: .18rem; }
 .lg-cap {
   margin: .45rem 0 .15rem; font-size: .62rem; letter-spacing: .075em;
@@ -2564,9 +2611,22 @@ textarea.props-val {
      웹은 공홈 GNB(둘 다 상단 바 3.25rem 위에 얹힌다). */
   [data-shell] #view-lens-panel { top: calc(var(--topbar-h) + var(--shell-gap) * 2 + var(--titlebar-h)); }
   [data-skin="web"] #view-lens-panel { top: 6.5rem; }
-  /* 관점 세그의 칩 여백을 한 칸 줄인다(.75 → .5rem, 세그 250 → 218px). 검색과 한 줄을
-     나눠 쓰는 폭이라 그 32px 이 곧 입력의 몫이다(아래 720 에서 줄이 갈린다). */
-  #tb-viewpoints .seg .chip { padding: 0 var(--space-2, .5rem); }
+  /* 보기 카드는 이 폭에서 **자라지 않는다** — 패널이 전폭 판이라 맞출 폭이 없다. 카드는
+     열려도 닫힌 모양(버튼 + 관점 이름) 그대로이고, 관점 세그는 판 머리(`.lens-vprow`)로
+     간다. 판 머리 세그는 네 칩이 같은 몫을 갖는다(손가락으로 누르는 폭). */
+  #tb-viewctl[data-open] { width: auto; margin-left: 0; }
+  #tb-viewctl > #tb-viewpoints { display: none; }
+  #tb-viewctl .lens-btn {
+    width: auto; grid-auto-flow: column; gap: .4rem;
+    padding: 0 var(--space-3, .75rem) 0 var(--space-2, .5rem);
+  }
+  #tb-viewctl .lens-vp {
+    display: inline; font-size: .8125rem; font-weight: 500; white-space: nowrap;
+    color: hsl(var(--foreground));
+  }
+  .lens-vprow { display: block; position: relative; z-index: 1; padding: var(--space-3, .75rem) var(--space-4, 1rem) 0; }
+  .lens-vprow .seg { display: flex; width: 100%; }
+  .lens-vprow .seg .chip { flex: 1 1 0; min-width: 0; padding: 0 var(--space-2, .5rem); }
 }
 
 /* ── 좁은 창(≤600) — 검색이 자리를 되찾는다 ────────────────────────────
@@ -2593,27 +2653,18 @@ textarea.props-val {
   #shell[data-lnb="open"] #lnb { justify-self: stretch; width: auto; }
 }
 
-/* ── 좁은 바(≤700) — 보기 카드가 줄을 하나 더 쓴다 ─────────────────────
-   2026-09-26 에 보기 카드(관점 세그 + 렌즈)가 검색 카드 옆에 서면서 바의 고정비가
-   커졌다: 입력 폭 ≈ 바 폭 − 509(넓은 칩) · − 477(좁은 칩, 창 ≤900). 바가 700 아래로
-   가면 입력이 200px 아래로 눌리므로 여기서 **줄을 가른다**: 검색 카드가 첫 줄, 보기
-   카드가 둘째 줄을 통째로 쓴다. 넘침 메뉴로 감추지 않는 이유는 여태와 같다 — 감추면
-   두 번 눌러야 닿는다. (이 줄바꿈은 원래 창 520 에서 오른쪽 손잡이 묶음을 위해
-   일어났다. 그 묶음은 지금 숨긴 버튼뿐이다.)
+/* ── 좁은 바(≤420) — 보기 카드가 줄을 하나 더 쓴다 ─────────────────────
+   2026-09-26 에 보기 카드가 세그를 상시로 싣던 동안에는 바 700 에서 줄을 갈랐다(입력 폭
+   ≈ 바 폭 − 509). 2026-09-28 에 세그가 렌즈 버튼 뒤로 들어가 카드가 버튼 폭(≈ 90px)이
+   되면서 고정비가 그만큼 줄었고, 줄을 가르는 자리도 따라 내려왔다: 입력이 200px 아래로
+   눌리는 바 폭까지는 한 줄에 선다. 가른 뒤에는 검색 카드가 첫 줄, 보기 카드가 둘째 줄
+   오른쪽 끝이다. 넘침 메뉴로 감추지 않는 이유는 여태와 같다 — 감추면 두 번 눌러야 닿는다.
    기준이 창이 아니라 **바 자신의 폭**인 이유는 `#topbar` 주석. 바 아래에 뜨는 것들
    (문서 열 · 인캔버스 크롬)의 천장은 topbar.ts `trackChromeTop` 이 바의 실측 바닥에서
    다시 잰다 — 그래서 둘째 줄이 생겨도 그것들이 그 밑에 깔리지 않는다. */
-@container topbar (max-width: 700px) {
+@container topbar (max-width: 420px) {
   #tb-find { flex: 1 1 100%; }
-  /* 보기 카드는 둘째 줄 오른쪽 끝에 **패널 폭 그대로** 선다 — 렌즈 패널이 그 아래에서
-     같은 폭으로 열린다(`--lens-panel-w` 주석). */
   #tb-viewctl { margin-left: auto; }
-  /* 좁은 창(≤900)에서는 렌즈 패널이 창 전폭 판으로 바뀐다(아래 900 블록) — 맞출 폭이
-     없으므로 카드가 둘째 줄을 통째로 쓰고 네 칩이 같은 몫을 갖는다(손가락으로 누르는 폭). */
-  @media (max-width: 900px) {
-    #tb-viewctl { flex: 1 1 100%; width: auto; margin-left: 0; }
-    #tb-viewpoints .seg .chip { flex: 1 1 0; min-width: 0; }
-  }
 }
 /* ── 낮은 창(높이 ≤560 · 폰 가로, 작은 노트북 창) — 레일이 이름을 접는다 ───────
    레일에는 손잡이 · 홈 · Agent · 종 여섯 · 설정이 세로로 선다. 이름과 개수 두 줄을
@@ -3629,3 +3680,123 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 /* 흐름 H — 기본 정보. 읽기 모습은 속성 절(`.props-dl`)과 같고, 편집은 초대 폼의 필드다. */
 .node-basics { margin-top: var(--space-3, .75rem); }
 .node-basics .ei-field small { font-size: .72rem; }
+/* ── 타임라인 기간(2026-09-28) ─────────────────────────────────────────────
+   한 상태, 두 입구: 옵션 탭의 "기간" 묶음과 하단 상태 표시줄 왼쪽의 칩. 칩은 패널이
+   닫혀도 걸린 기간을 보여 준다 — 숨은 필터는 데이터가 없는 것으로 읽힌다. 차트 위
+   왼쪽에 두었더니 축의 해·달 이름을 덮었다(실측 2026-09-28) — 그 자리는 차트 것이다.
+   근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] §2.3 */
+.period-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin: .4rem 0 .15rem; }
+.period-chips .chip { min-height: 1.75rem; font-size: .75rem; }
+#view-period { flex: 0 0 auto; }
+.period-chip {
+  display: inline-flex; align-items: center; gap: .45rem;
+  height: 1.6rem; padding: 0 .65rem;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-pill, 999px);
+  background: hsl(var(--card) / .86); color: hsl(var(--foreground));
+  font: inherit; font-size: .72rem; cursor: pointer; white-space: nowrap;
+}
+.period-chip:hover { background: hsl(var(--card)); border-color: hsl(var(--muted-foreground)); }
+.period-chip-k { color: hsl(var(--caption-foreground)); }
+/* 기간이 걸려 있으면 칩이 **잉크로** 말한다(테두리가 전경색). 포인트 색은 면에 쓰지 않는다. */
+.period-chip.on { border-color: hsl(var(--foreground) / .7); font-weight: 600; }
+.period-chip:focus-visible, .hint-act:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+/* 캡션 안의 동작("기간 좁히기"). 캡션 줄은 지도를 가리지 않게 포인터를 흘리므로 이것만 받는다. */
+.hint-act {
+  pointer-events: auto; background: none; border: none; padding: 0; cursor: pointer;
+  font: inherit; color: hsl(var(--foreground)); text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── 날짜 범위 선택(date-range.ts) ─────────────────────────────────────────
+   면은 다른 오버레이 카드와 같다. 시작·끝 = 전경색으로 채운 원(글자는 배경색), 사이 =
+   옅은 띠, 오늘 = 테두리 고리, 키보드 초점 = 포인트 색 고리. 포인트 색은 **초점 고리에만**
+   쓴다(팔레트 규칙: 포인트는 점이지 면이 아니다). 기록 있는 날 = 날짜 아래 작은 점. */
+.drp {
+  position: fixed; z-index: 65; display: flex; gap: var(--space-3, .75rem);
+  padding: var(--space-3, .75rem); max-width: calc(100vw - 16px);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  box-shadow: var(--shadow-elev-3); font-size: .8125rem;
+}
+.drp-presets {
+  display: flex; flex-direction: column; gap: .15rem; min-width: 7.5rem;
+  padding-right: var(--space-3, .75rem); border-right: 1px solid hsl(var(--border));
+}
+.drp-preset {
+  text-align: left; padding: .35rem .55rem; border: none; border-radius: var(--radius-sm, .625rem);
+  background: none; color: hsl(var(--muted-foreground)); font: inherit; cursor: pointer;
+}
+.drp-preset:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.drp-preset.active { color: hsl(var(--foreground)); font-weight: 600; background: hsl(var(--muted)); }
+.drp-main { display: flex; flex-direction: column; gap: var(--space-2, .5rem); min-width: 0; }
+.drp-head { display: flex; align-items: center; gap: .25rem; }
+.drp-title {
+  flex: 1 1 auto; padding: .3rem .5rem; border: none; border-radius: var(--radius-sm, .625rem);
+  background: none; color: hsl(var(--foreground)); font: inherit; font-weight: 600; cursor: pointer;
+}
+.drp-title:hover, .drp-nav:hover { background: hsl(var(--muted)); }
+.drp-nav {
+  display: grid; place-items: center; width: 1.9rem; height: 1.9rem; padding: 0;
+  border: none; border-radius: var(--radius-sm, .625rem); background: none;
+  color: hsl(var(--muted-foreground)); cursor: pointer;
+}
+.drp-next .icon { transform: scaleX(-1); }
+.drp-months { display: flex; gap: var(--space-4, 1rem); }
+.drp-mtitle { display: none; }
+.drp-grid { display: grid; gap: 2px; }
+.drp-row { display: grid; grid-template-columns: repeat(7, 2.1rem); }
+.drp-wd { text-align: center; font-size: .68rem; color: hsl(var(--muted-foreground)); padding: .15rem 0; }
+.drp-cell { display: grid; place-items: center; height: 2.1rem; }
+.drp-day, .drp-tile {
+  position: relative; display: grid; place-items: center;
+  border: none; background: none; color: hsl(var(--foreground)); font: inherit; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.drp-day { width: 2.1rem; height: 2.1rem; border-radius: 50%; }
+.drp-day.in, .drp-tile.in { background: hsl(var(--muted)); border-radius: 0; }
+.drp-day.lo, .drp-day.hi, .drp-tile.lo, .drp-tile.hi {
+  background: hsl(var(--foreground)); color: hsl(var(--background)); border-radius: 50%;
+}
+.drp-tile.lo, .drp-tile.hi { border-radius: var(--radius-sm, .625rem); }
+.drp-day.today:not(.lo):not(.hi) { box-shadow: inset 0 0 0 1px hsl(var(--foreground) / .55); }
+.drp-tile.today:not(.lo):not(.hi) { box-shadow: inset 0 0 0 1px hsl(var(--foreground) / .55); }
+.drp-day:hover:not(.lo):not(.hi), .drp-tile:hover:not(.lo):not(.hi) { background: hsl(var(--muted-foreground) / .16); }
+.drp-day:focus-visible, .drp-tile:focus-visible, .drp-preset:focus-visible, .drp-title:focus-visible,
+.drp-nav:focus-visible, .drp-reset:focus-visible {
+  outline: 2px solid hsl(var(--ring)); outline-offset: 1px; position: relative; z-index: 1;
+}
+.drp-dot {
+  position: absolute; left: 50%; bottom: 3px; width: 4px; height: 4px; margin-left: -2px;
+  border-radius: 50%; background: currentColor;
+}
+.drp-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; min-width: 15rem; }
+.drp-tile { height: 2.6rem; border-radius: var(--radius-sm, .625rem); }
+.drp-inputs { display: flex; gap: var(--space-2, .5rem); }
+.drp-field { display: flex; flex-direction: column; gap: .2rem; flex: 1 1 0; min-width: 0; }
+.drp-field span { font-size: .7rem; color: hsl(var(--muted-foreground)); }
+.drp-field input {
+  height: 2rem; padding: 0 .55rem; min-width: 0; font: inherit; font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground)); background: hsl(var(--background));
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm, .625rem);
+}
+.drp-field input:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 0; }
+.drp-field input[aria-invalid="true"] { border-color: hsl(var(--danger)); }
+.drp-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2, .5rem); }
+.drp-msg { margin: 0; min-height: 1.1em; font-size: .72rem; color: hsl(var(--muted-foreground)); }
+.drp-reset {
+  flex: 0 0 auto; padding: .3rem .6rem; border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm, .625rem); background: none; color: hsl(var(--foreground));
+  font: inherit; cursor: pointer;
+}
+.drp-reset:hover { background: hsl(var(--muted)); }
+/* 좁은 창: 한 달만 보이고(JS), 프리셋은 위의 가로줄로 올라간다. */
+@media (max-width: 600px) {
+  .drp { flex-direction: column; left: 8px !important; right: 8px; }
+  .drp-presets {
+    flex-direction: row; flex-wrap: wrap; min-width: 0; padding: 0 0 var(--space-2, .5rem);
+    border-right: none; border-bottom: 1px solid hsl(var(--border));
+  }
+  .drp-row { grid-template-columns: repeat(7, minmax(2rem, 1fr)); }
+}
+/* 폰 폭: 칩은 "기간" 머리말을 떼고 값만 싣는다 — 상태 줄의 지표와 한 줄을 나눠 쓴다. */
+@media (max-width: 600px) { .period-chip-k { display: none; } }

@@ -71,7 +71,14 @@ export function viewHooks(): ViewHooks | null {
 export function refreshTopbar() {
   // 지도 손잡이는 View 소유다 — 훅이 없으면 슬롯을 비운다. 남겨 두면 검색·팩
   // 화면에서 눌리는데 아무 지도도 안 바뀌는 칩이 된다.
-  if (!hooks) { const l = lensSlot(), v = viewpointsSlot(); if (l) l.innerHTML = ""; if (v) v.innerHTML = ""; }
+  // 열린 보기 카드도 함께 접는다 — 패널은 표면과 함께 사라졌는데 카드만 펼친 폭으로
+  // 남으면, 돌아왔을 때 닫힌 패널 위에 관점 세그가 떠 있다.
+  if (!hooks) {
+    const l = lensSlot(), v = viewpointsSlot();
+    if (l) l.innerHTML = "";
+    if (v) v.innerHTML = "";
+    $("tb-viewctl")?.removeAttribute("data-open");
+  }
 }
 
 /** 렌즈 버튼 자리(D71) — 하단 바에서 상단 바 좌측으로 올라왔다. */

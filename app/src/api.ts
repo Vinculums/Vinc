@@ -353,23 +353,28 @@ async function localCall(path: string, params?: Record<string, string | number |
   return res.json();
 }
 
-/** 이 기기 스토어에 사용자 데이터가 있는가. 모드를 처음 정할 때만 묻는다.
+/** 로컬 모드가 **화면에 보여 줄** 데이터가 이 기기 스토어에 있는가. 모드를 처음 정할 때만
+ *  묻는다. 모드가 아직 없으니 `call` 은 로컬 사이드카로 간다.
  *
- *  모드가 아직 없으니 `call` 은 로컬 사이드카로 간다. 소유자는 둘 다 본다: 앱은
- *  `tenant:local` 로, 로컬 stdio MCP 는 `user:local` 로 쓴다(VIN-131 이 통일한다).
- *  샘플 스페이스(`sample:demo`)는 세지 않는다. **모르면 있다고 답한다** — 모를 때 계정으로
- *  넘기면 있던 작업이 빈 계정 화면 뒤로 가려진다. */
+ *  묻는 것은 "디스크에 뭔가 있나"가 아니라 "로컬로 두면 그 작업이 보이나"다. 로컬에 남기는
+ *  이유가 그것뿐이기 때문이다. 그래서 둘을 세지 않는다:
+ *  - `user:local` — 로컬 stdio MCP 가 쓰는 소유자인데 앱은 `tenant:local` 만 읽는다
+ *    (VIN-131 이 통일한다). 그것만 있는 설치를 로컬로 두면 빈 지도에 스페이스 선택도
+ *    없는 화면이 된다(2026-09-28 보고).
+ *  - 스토어를 못 여는 기기(503, WAL 격리 뒤 스토어 없이 뜬 사이드카) — 로컬 모드가 보여
+ *    줄 것이 없다.
+ *  어느 쪽도 지우지 않는다: 폴더는 그대로이고, 같은 폴더로 로컬 모드를 켜면 다시 열린다.
+ *  샘플 스페이스(`sample:demo`)는 세지 않는다. 그 밖의 실패는 **있다고 답한다** — 모를 때
+ *  계정으로 넘기면 보이던 작업이 빈 계정 화면 뒤로 가려진다. */
 export async function localStoreHasData(): Promise<boolean> {
+  const owner = "tenant:local";
   try {
-    for (const owner of ["tenant:local", "user:local"]) {
-      const d = await call("/domains", { owner });
-      if ((d?.rows || []).length) return true;
-      const docs = await call("/docs", { owner, limit: 1, detail: "summary" });
-      if (Number(docs?.total_count ?? (docs?.docs || []).length) > 0) return true;
-    }
-    return false;
-  } catch {
-    return true;
+    const d = await call("/domains", { owner });
+    if ((d?.rows || []).length) return true;
+    const docs = await call("/docs", { owner, limit: 1, detail: "summary" });
+    return Number(docs?.total_count ?? (docs?.docs || []).length) > 0;
+  } catch (e: any) {
+    return !e?.storeDown;
   }
 }
 

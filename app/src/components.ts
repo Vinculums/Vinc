@@ -32,13 +32,17 @@ export function wireScrimDismiss(scrim: HTMLElement, close: () => void): void {
 /** 딤이 없는 패널(렌즈·범례처럼 지도를 계속 만질 수 있어야 하는 것)을 바깥 클릭으로
  *  닫는다. `keep` 은 눌려도 닫지 않을 요소들(자기를 연 버튼 — 그 버튼은 스스로
  *  토글하므로 여기서 닫으면 두 번 처리돼 다시 열린다).
+ *  `keep` 에 함수를 주면 **누를 때마다** 다시 찾는다 — 패널이 연 뒤에야 생기는 것
+ *  (날짜 선택처럼 body 에 붙는 팝오버)이나 다시 그려져 노드가 바뀌는 것을 위해서다.
  *  반환 = 배선 해제(패널이 사라질 때 호출). */
+type Keep = Element | null | undefined | (() => Element | null | undefined);
 export function wireOutsideDismiss(panel: HTMLElement, close: () => void,
-                                   ...keep: (Element | null | undefined)[]): () => void {
+                                   ...keep: Keep[]): () => void {
   const onDown = (e: PointerEvent) => {
     const t = e.target as Node | null;
     if (!t || panel.hidden) return;
-    if (panel.contains(t) || keep.some((k) => k?.contains(t))) return;
+    if (panel.contains(t)
+        || keep.some((k) => (typeof k === "function" ? k() : k)?.contains(t))) return;
     close();
   };
   // capture 로 받는다 — 캔버스(WebGL)가 자기 포인터 이벤트를 먼저 삼켜도 여기까지 온다.

@@ -55,10 +55,25 @@ class NoLossTest(unittest.TestCase):
     def test_수가_안_맞으면_모드를_안_바꾼다(self):
         for name, mode in (("turnOn", '"local"'), ("askTurnOff", '"account"')):
             body = _fn(STORE, name)
+            # 끄기 판에는 옮기지 않고 바꾸는 길이 따로 있다(아래 테스트). 옮기는 길만 본다.
+            if name == "askTurnOff":
+                body = body[body.index('go.addEventListener("click"'):]
             gate = body.index("Number(r.missing) > 0")
             switch = body.index(f"storage.setConfig({{ mode: {mode} }})")
             self.assertLess(gate, switch, name)
             self.assertLess(switch, body.index(f"dataMode.set({mode})"), name)
+
+    def test_옮기지_않고_끄기는_설정을_먼저_쓰고_아무것도_옮기지_않는다(self):
+        """VIN-179: 올리기가 실패하면 로컬 모드에서 나갈 길이 없었다. 이 길은 폴더를
+        건드리지 않고 모드만 바꾼다. 정본(사이드카 설정)이 먼저다: 창의 사본만 바꾸면 다음
+        기동의 `decideDataMode` 가 설정 파일의 "local" 을 도로 읽어 온다."""
+        body = _fn(STORE, "askTurnOff")
+        keep = body[body.index('keep.addEventListener("click"'):]
+        keep = keep[: keep.index('go.addEventListener("click"')]
+        self.assertLess(keep.index('storage.setConfig({ mode: "account" })'),
+                        keep.index('dataMode.set("account")'))
+        self.assertNotIn("pushAll", keep)
+        self.assertNotIn("data_path", keep)
 
     def test_전량이_아닌_받기는_모드를_안_바꾼다(self):
         body = _fn(STORE, "turnOn")
