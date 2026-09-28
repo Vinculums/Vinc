@@ -574,12 +574,15 @@ export function mountEditor(el: HTMLElement, opts: {
         // 슬래시 메뉴가 열려 있으면 방향키·Enter·Esc 를 메뉴가 가로챈다(높은 우선순위).
         // `[[` 목록도 같은 방식으로 키를 가로챈다. 둘이 동시에 뜨는 일은 없다(슬래시는
         // "/" 한 글자 줄에서만, `[[` 는 그 뒤에 글자가 있을 때만).
+        // `stopPropagation` — 목록이 받은 키는 문서 밖으로 새지 않는다. 안 막으면 목록을 닫는
+        // Esc 가 View 까지 올라가 문서 열을 통째로 닫는다(목록이 떠 있을 때만 막힌다: run 이
+        // false 면 CM 은 이 바인딩을 처리하지 않은 것으로 본다).
         keymap.of([
-          { key: "ArrowDown", run: () => { if (mention?.open) { mention.move(1); return true; } return false; } },
-          { key: "ArrowUp", run: () => { if (mention?.open) { mention.move(-1); return true; } return false; } },
-          { key: "Enter", run: () => { if (mention?.open) { void mention.choose(); return true; } return false; } },
-          { key: "Tab", run: () => { if (mention?.open) { void mention.choose(); return true; } return false; } },
-          { key: "Escape", run: () => { if (mention?.open) { mention.hide(); return true; } return false; } },
+          { key: "ArrowDown", stopPropagation: true, run: () => { if (mention?.open) { mention.move(1); return true; } return false; } },
+          { key: "ArrowUp", stopPropagation: true, run: () => { if (mention?.open) { mention.move(-1); return true; } return false; } },
+          { key: "Enter", stopPropagation: true, run: () => { if (mention?.open) { void mention.choose(); return true; } return false; } },
+          { key: "Tab", stopPropagation: true, run: () => { if (mention?.open) { void mention.choose(); return true; } return false; } },
+          { key: "Escape", stopPropagation: true, run: () => { if (mention?.open) { mention.hide(); return true; } return false; } },
         ]),
         keymap.of([
           { key: "ArrowDown", run: () => { if (slash?.open) { slash.move(1); return true; } return false; } },

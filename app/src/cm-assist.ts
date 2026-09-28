@@ -111,6 +111,8 @@ export class MentionMenu {
     const from = this.from;
     this.hide();
     const title = row.hit ? row.hit.title : await this.o.create(typed.slice(2).trim());
+    // 만드는 사이 편집기가 닫혔을 수 있다(컴포저의 "만들고 열기"가 문서 열을 갈아 끼운다).
+    if (!this.view.dom.isConnected) return;
     if (!title) { this.view.focus(); return; }
     const doc = this.view.state.doc;
     if (doc.sliceString(from, from + typed.length) !== typed) return;

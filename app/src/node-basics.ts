@@ -27,17 +27,20 @@ const lineField = (k: Kind): "one_liner" | "summary" | "note" =>
 const whenField = (k: Kind): "content_time" | "date" | null =>
   k === "episode" ? "date" : k === "decision" ? null : "content_time";
 
-/** 태그와 시점은 node-context 가 싣지 않는다 — 그래프의 씨앗 조회(깊이 1)로 읽는다. */
-async function readExtras(id: string, k: Kind): Promise<{ tags: string[]; when: string }> {
+/** 태그와 시점은 node-context 가 싣지 않는다 — 그래프의 씨앗 조회(깊이 1)로 읽는다.
+ *  `ok:false` = 못 읽었다. 그때 두 칸은 **고칠 수 없게** 둔다: 빈 태그 칸에 하나를 더해
+ *  저장하면 태그 목록이 통째로 그 하나로 바뀐다(있던 태그가 사라진다). */
+async function readExtras(id: string, k: Kind): Promise<{ ok: boolean; tags: string[]; when: string }> {
   try {
     const g: any = await api.graph(cfg.owner, { seed: id, depth: 1 });
-    const n = (g?.nodes || []).find((x: any) => x.id === id) || {};
+    const n = (g?.nodes || []).find((x: any) => x.id === id);
+    if (!n) return { ok: false, tags: [], when: "" };
     const tags = Array.isArray(n.tags) ? n.tags.map(String) : [];
     // 사건의 날짜는 `ts` 로 온다(없으면 수정 시각으로 채워지므로 날짜 꼴일 때만 받는다).
     const when = k === "episode" ? (isWhen(String(n.ts || "")) ? String(n.ts) : "")
       : String(n.content_ts || "");
-    return { tags, when };
-  } catch { return { tags: [], when: "" }; }
+    return { ok: true, tags, when };
+  } catch { return { ok: false, tags: [], when: "" }; }
 }
 
 /** 기본 정보 절을 그린다(읽기 모습 + 편집 단추). `onSaved` 는 View 가 지도와 열을 새로 그린다. */
@@ -57,6 +60,7 @@ export async function drawBasics(box: HTMLElement, id: string, src: BasicsSource
     when: extras.when,
   };
   const none = `<span class="hint">${esc(COPY.ui.common.none)}</span>`;
+  const unknown = `<span class="hint">${esc(A.extrasFail)}</span>`;
   const wf = whenField(k);
   const view = () => {
     box.innerHTML = `
@@ -69,19 +73,21 @@ export async function drawBasics(box: HTMLElement, id: string, src: BasicsSource
         <dl class="props-dl">
           <div class="props-row"><dt>${esc(A.fOneLiner)}</dt><dd>${cur.oneLiner ? esc(cur.oneLiner) : none}</dd></div>
           <div class="props-row"><dt>${esc(A.fTopic)}</dt><dd>${cur.topic ? esc(cur.topic) : none}</dd></div>
-          <div class="props-row"><dt>${esc(A.fTags)}</dt><dd>${cur.tags.length ? esc(cur.tags.join(", ")) : none}</dd></div>
-          ${wf ? `<div class="props-row"><dt>${esc(A.fWhen)}</dt><dd>${cur.when ? esc(cur.when) : none}</dd></div>` : ""}
+          <div class="props-row"><dt>${esc(A.fTags)}</dt><dd>${!extras.ok ? unknown
+            : cur.tags.length ? esc(cur.tags.join(", ")) : none}</dd></div>
+          ${wf ? `<div class="props-row"><dt>${esc(A.fWhen)}</dt><dd>${!extras.ok ? unknown
+            : cur.when ? esc(cur.when) : none}</dd></div>` : ""}
         </dl>
       </section>`;
     box.querySelector(".basics-edit-btn")!.addEventListener("click", edit);
   };
 
   function edit() {
-    const f = (idn: string, label: string, val: string, ph = "", hint = "") =>
+    const f = (idn: string, label: string, val: string, ph = "", hint = "", off = false) =>
       `<label class="ei-field"><span>${esc(label)}</span>
          <input id="${idn}" type="text" autocomplete="off" value="${esc(val)}" placeholder="${esc(ph)}"
-                ${idn === "nb-topic" ? 'list="nb-topics" spellcheck="false"' : ""}/>
-         ${hint ? `<small class="hint">${esc(hint)}</small>` : ""}</label>`;
+                ${idn === "nb-topic" ? 'list="nb-topics" spellcheck="false"' : ""}${off ? " disabled" : ""}/>
+         ${hint ? `<small class="hint">${esc(off ? A.extrasFail : hint)}</small>` : ""}</label>`;
     box.innerHTML = `
       <section class="node-basics props-editing">
         <div class="props-head"><h3 class="hint rail-sec">${esc(A.basicsTitle)}</h3></div>
@@ -90,8 +96,8 @@ export async function drawBasics(box: HTMLElement, id: string, src: BasicsSource
           <textarea id="nb-ol" rows="2">${esc(cur.oneLiner)}</textarea></label>
         ${f("nb-topic", A.fTopic, cur.topic, A.topicHint)}
         <datalist id="nb-topics"></datalist>
-        ${f("nb-tags", A.fTags, cur.tags.join(", "), "", A.tagsHint)}
-        ${wf ? f("nb-when", A.fWhen, cur.when, A.datePh, A.whenHint) : ""}
+        ${f("nb-tags", A.fTags, cur.tags.join(", "), "", A.tagsHint, !extras.ok)}
+        ${wf ? f("nb-when", A.fWhen, cur.when, A.datePh, A.whenHint, !extras.ok) : ""}
         <p class="hint props-status" role="status"></p>
         <div class="props-acts">
           <button class="btn" type="button" data-nb="cancel">${esc(COPY.ui.viewx.propsCancel)}</button>
@@ -116,8 +122,9 @@ export async function drawBasics(box: HTMLElement, id: string, src: BasicsSource
       const node: Record<string, unknown> = { id, type: k };
       if (next.title !== cur.title) node.title = next.title;
       if (next.topic !== cur.topic) node.domain = next.topic;
-      if (next.tags.join("\u0000") !== cur.tags.join("\u0000")) node.tags = next.tags;
-      if (wf && next.when !== cur.when) node[wf] = next.when;
+      // 못 읽은 두 칸은 싣지 않는다(서버가 보존한다).
+      if (extras.ok && next.tags.join("\u0000") !== cur.tags.join("\u0000")) node.tags = next.tags;
+      if (extras.ok && wf && next.when !== cur.when) node[wf] = next.when;
       const lf = lineField(k);
       const lineChanged = next.oneLiner !== cur.oneLiner;
       if (lineChanged && lf !== "note") node[lf] = next.oneLiner;

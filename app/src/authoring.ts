@@ -40,11 +40,12 @@ export const isWhen = (s: string): boolean => /^\d{4}(-\d{2}(-\d{2})?)?$/.test(s
 // ── 관계 — 사람에게 보이는 넷(Q3.5) ────────────────────────────────────────────
 export const RELS = ["relates_to", "prerequisite_of", "derives_from", "inherits_from"] as const;
 export type Rel = typeof RELS[number];
-/** 관계 문장(`relSentence`)은 저장 이름으로 찾는다. */
+/** 관계 문장(`relSentence`)과 관계 목록(node-context)은 저장 이름으로 찾는다. */
 const REL_STORED: Record<Rel, string> = {
   relates_to: "RELATED_TO", prerequisite_of: "PREREQUISITE_OF",
   derives_from: "DERIVES_FROM", inherits_from: "INHERITS_FROM",
 };
+export const relStored = (rel: Rel): string => REL_STORED[rel];
 
 /** 이 쌍을 이을 수 있는가. 되면 null, 안 되면 **사람이 읽을 이유**.
  *  규칙은 쓰기 계약 그대로다(`api/fragment.py` `_ALLOWED_PAIRS_HINT`): relates_to 는
@@ -124,18 +125,18 @@ export function contextTopic(): string {
 }
 
 // ── 흐름 A — 만들기 진입점 ─────────────────────────────────────────────────────
+/** View 밖에서 "새 문서"를 눌렀다 — View 가 마운트되면서 한 번 꺼내 연다. */
+let pendingNewDoc: { topic: string } | null = null;
+export function takePendingNewDoc(): { topic: string } | null {
+  const p = pendingNewDoc; pendingNewDoc = null; return p;
+}
+
 /** 문서 열에 새 문서를 연다. View 밖(검색 표면)이면 View 로 가서 연다. */
 export function startNewDoc(topic = contextTopic()): void {
   const h = viewHooks();
   if (h?.newDoc) { h.newDoc(topic); return; }
+  pendingNewDoc = { topic };
   location.hash = "#view";
-  // 라우터가 View 를 세우고 훅을 걸 때까지 기다린다(길어야 몇 백 ms). 못 걸리면 그만둔다.
-  let tries = 0;
-  const wait = window.setInterval(() => {
-    const hk = viewHooks();
-    if (hk?.newDoc) { window.clearInterval(wait); hk.newDoc(topic); }
-    else if (++tries > 40) window.clearInterval(wait);
-  }, 100);
 }
 
 export async function startNewNode(opts: { topic?: string; kind?: NodeKind; title?: string } = {}) {
@@ -180,11 +181,18 @@ async function freeDocId(title: string, stamp: string, skip: string[]): Promise<
     try {
       const d = await api.docGet(cfg.owner, cand);
       if (d.executed || docMidWrite(d)) continue;        // 내 문서가 이미 이 id 를 쓴다
-    } catch { /* 읽기가 안 되면 쓰기가 판정한다 */ }
+    } catch {
+      continue;              // 비어 있는지 확인 못 한 id 는 쓰지 않는다 — 있는 문서를 덮을 수 있다
+    }
     return cand;
   }
-  return `${base}-${Date.now().toString(36)}`;
+  // 확인된 빈 id 가 없다 — 짐작한 id 로 쓰지 않고 저장을 실패시킨다(상태 줄이 말한다).
+  throw new Error("no free document id");
 }
+
+/** 만들어지기 전에 닫힌 새 문서. 다음 "새 문서"가 이것을 되살린다(메모리만 — 앱을 다시 열면
+ *  없다). 닫는 문(✕ · Esc · Ctrl/Cmd+N · 다른 노드 열기)이 여럿이라 확인창 대신 초안으로 둔다. */
+let draft: { title: string; text: string; contentTime: string; topic: string } | null = null;
 
 /** 문서 열 안에 새 문서를 쓰는 자리를 세운다(View 가 열 머리를 그린 뒤 부른다).
  *
@@ -198,11 +206,17 @@ export async function mountDocWriter(host: HTMLElement, opts: {
   onTopicChanged?: (topic: string, docId: string) => void;
 }): Promise<DocEditorHandle> {
   const A = COPY.author;
+  // 만들어지기 전에 닫힌 초안이 있으면 그것으로 연다(주제도 그때 것).
+  const restored = draft;
+  draft = null;
+  /** "초안 버리기"를 눌렀다 — 이 편집기가 닫힐 때 내용을 다시 초안으로 넘기지 않는다. */
+  let dropped = false;
+  const startTopic = restored?.topic || opts.topic || "";
   host.innerHTML = `
     <div class="writer-meta">
       <label class="writer-topic"><span>${esc(A.topic)}</span>
         <input id="wr-topic" type="text" list="wr-topics" autocomplete="off" spellcheck="false"
-               placeholder="${esc(A.topicHint)}" value="${esc(opts.topic || "")}"/>
+               placeholder="${esc(A.topicHint)}" value="${esc(startTopic)}"/>
       </label>
       <datalist id="wr-topics"></datalist>
       <span class="hint writer-id" id="wr-id"></span>
@@ -220,13 +234,15 @@ export async function mountDocWriter(host: HTMLElement, opts: {
   const preview = (title: string) => {
     if (!created) idEl.textContent = title.trim() ? A.idPreview(slugOf(title) || stamp) : "";
   };
-  preview("");
+  preview(restored?.title || "");
 
   const { mountDocEditor } = await import("./doc-editor");
   const handle = await mountDocEditor(host.querySelector<HTMLElement>("#wr-ed")!, {
-    owner: cfg.owner, initial: "", title: "", autoFocus: false,
+    owner: cfg.owner, initial: restored?.text || "", title: restored?.title || "",
+    contentTime: restored?.contentTime || "", autoFocus: false,
     topic: () => topicEl.value.trim(),
     declareId: (title, skip) => freeDocId(title, stamp, skip),
+    onUnsaved: (d) => { if (!dropped) draft = { ...d, topic: topicEl.value.trim() }; },
     onCreated: (docId, topic) => {
       created = docId; sentTopic = topic;
       idEl.textContent = A.idFixed(docId);
@@ -252,6 +268,15 @@ export async function mountDocWriter(host: HTMLElement, opts: {
       opts.onTopicChanged?.(t, created);
     } catch { /* 저장 상태 줄이 이미 실패를 말한다 */ }
   })());
+  // 되살린 초안이면 그렇다고 말하고, 버리고 빈 문서로 시작할 문을 준다.
+  if (restored) {
+    noteEl.innerHTML = `${esc(A.draftRestored)} <button class="rail-x" type="button" id="wr-discard">${
+      esc(A.draftDiscard)}</button>`;
+    noteEl.querySelector("#wr-discard")?.addEventListener("click", () => {
+      dropped = true;
+      startNewDoc(startTopic);
+    });
+  }
   titleEl?.focus();
   return handle;
 }

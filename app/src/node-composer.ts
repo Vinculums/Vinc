@@ -48,7 +48,8 @@ function mount(sheet: ReturnType<typeof openSheet>, o: ComposerOpts, done: (m: M
   let kind: NodeKind = o.kind || "concept";
   const stamp = stampSlug();
   const rels: RelRow[] = [];
-  let idState: "" | "checking" | "new" | "exists" = "";
+  /** 미리보기용 확인 결과(화면 표시만). 만들기는 이 값을 믿지 않고 그 자리에서 다시 묻는다. */
+  let idState: "" | "checking" | "new" | "exists" | "error" = "";
   let checkSeq = 0;
   let busy = false;
 
@@ -107,14 +108,12 @@ function mount(sheet: ReturnType<typeof openSheet>, o: ComposerOpts, done: (m: M
       ? `<label class="ei-field"><span>${esc(label)}</span><textarea id="${id}" rows="2">${esc(val)}</textarea></label>`
       : `<label class="ei-field"><span>${esc(label)}</span><input id="${id}" type="text"
            autocomplete="off" placeholder="${esc(ph)}" value="${esc(val)}"/></label>`;
-    // 종류마다 따로 적는 자리. 개념은 없다(한 줄 설명이 그 자리다).
-    more.hidden = kind === "concept";
+    // 종류마다 따로 적는 자리 — 결정(고른 것 · 이유)과 사건(날짜)만. 개념·기록은 한 줄 설명이
+    // 그 자리다(기록의 시점은 만든 뒤 기본 정보에서 적는다 — 한 필드를 두 곳에서 따로 쓰지 않는다).
+    more.hidden = kind === "concept" || kind === "record";
     if (kind === "decision") {
       $("#nc-more-sum").textContent = A.moreDecision;
       body.innerHTML = field("nc-chosen", A.fChosen) + field("nc-why", A.fWhy, "", true);
-    } else if (kind === "record") {
-      $("#nc-more-sum").textContent = A.moreRecord;
-      body.innerHTML = field("nc-valid", A.fValidFrom, A.datePh);
     } else if (kind === "episode") {
       // 사건은 날짜가 뜻의 절반이라 펼쳐 두고 오늘로 채운다.
       $("#nc-more-sum").textContent = A.moreEpisode;
@@ -143,23 +142,38 @@ function mount(sheet: ReturnType<typeof openSheet>, o: ComposerOpts, done: (m: M
 
   // ── id 미리보기와 사전 확인 ──────────────────────────────────────────────────
   let checkTimer = 0;
+  /** 그 id 가 이 스페이스에 있는가. **확실히 없을 때만** "new" 다 — 읽기가 실패하면(사이드카·
+   *  계정에 못 닿음) "error" 이고, 그때 만들기는 멈춘다(모르는 채 쓰면 있는 노드에 합쳐진다). */
+  async function probe(id: string): Promise<"new" | "exists" | "error"> {
+    try {
+      const r = await api.nodeContext(cfg.owner, id, 1) as { executed: boolean; note?: string };
+      if (r.executed) return "exists";
+      return /^unknown node/.test(String(r.note || "")) ? "new" : "error";
+    } catch { return "error"; }
+  }
+  function showState() {
+    const label = idState === "checking" ? A.idChecking : idState === "exists" ? A.idExists
+      : idState === "new" ? A.idNew : idState === "error" ? A.idCheckFail : "";
+    $("#nc-id-state").textContent = label ? `· ${label}` : "";
+    $("#nc-open-existing").hidden = idState !== "exists";
+  }
   async function checkId() {
     const id = idOf();
     // 제목이 비었으면 id 도 말하지 않는다 — 시각 조각을 먼저 보이면 그것이 id 인 줄 안다.
     $("#nc-id").textContent = titleEl.value.trim() ? A.idPreview(id) : "";
-    $("#nc-open-existing").hidden = true;
-    if (!titleEl.value.trim()) { idState = ""; $("#nc-id-state").textContent = ""; return; }
-    idState = "checking";
-    $("#nc-id-state").textContent = `· ${A.idChecking}`;
+    if (!titleEl.value.trim()) { idState = ""; showState(); return; }
+    idState = "checking"; showState();
     const mine = ++checkSeq;
-    const r = await api.nodeContext(cfg.owner, id, 1).catch(() => null);
+    const st = await probe(id);
     if (mine !== checkSeq) return;
-    idState = r?.executed ? "exists" : "new";
-    $("#nc-id-state").textContent = `· ${idState === "exists" ? A.idExists : A.idNew}`;
-    $("#nc-open-existing").hidden = idState !== "exists";
+    idState = st; showState();
   }
   titleEl.addEventListener("input", () => {
+    // 제목이 바뀌면 앞의 확인은 다른 id 의 것이다 — 바로 무효로 돌린다.
+    ++checkSeq;
+    idState = titleEl.value.trim() ? "checking" : "";
     $("#nc-id").textContent = titleEl.value.trim() ? A.idPreview(idOf()) : "";
+    showState();
     window.clearTimeout(checkTimer);
     checkTimer = window.setTimeout(() => void checkId(), 250);
   });
@@ -242,12 +256,19 @@ function mount(sheet: ReturnType<typeof openSheet>, o: ComposerOpts, done: (m: M
     if (!title) { msg(esc(A.needTitle)); titleEl.focus(); return; }
     if (!topic) { msg(esc(A.needTopic)); topicEl.focus(); return; }
     const val = (s: string) => sheet.el.querySelector<HTMLInputElement | HTMLTextAreaElement>(s)?.value.trim() || "";
-    const when = kind === "record" ? val("#nc-valid") : kind === "episode" ? val("#nc-date") : "";
+    const when = kind === "episode" ? val("#nc-date") : "";
     if (when && !isWhen(when)) { msg(esc(A.dateBad)); return; }
     const id = idOf();
-    // 확인이 아직 안 끝났으면 기다린다 — 있는 id 에 조용히 합치는 길을 열어 두지 않는다.
-    if (idState !== "new" && idState !== "exists") await checkId();
+    // 쓰기 직전에 **그 id 를 그 자리에서** 다시 묻는다(미리보기 상태를 믿지 않는다). 확실히
+    // 없을 때만 쓴다 — 있으면 "있는 노드 열기", 확인이 안 되면 멈추고 그 이유를 말한다.
+    busy = true;
+    ++checkSeq;
+    idState = await probe(id);
+    busy = false;
+    showState();
+    if (idOf() !== id) return;                    // 확인하는 사이 제목이 바뀌었다 — 다시 누르게 둔다
     if (idState === "exists") { msg(esc(A.idTaken(id))); $("#nc-open-existing").focus(); return; }
+    if (idState !== "new") { msg(`<span class="error-banner">${esc(A.idCheckFail)}</span>`); return; }
     // 대상 칸에 글자만 치고 목록에서 고르지 않은 연결 — 조용히 버리지 않고 묻는다.
     const typedNoPick = [...sheet.el.querySelectorAll<HTMLElement>(".nc-rel")].some((row) =>
       !rels[Number(row.dataset.i)]?.target && !!row.querySelector("input")?.value.trim());
@@ -266,7 +287,6 @@ function mount(sheet: ReturnType<typeof openSheet>, o: ComposerOpts, done: (m: M
       if (val("#nc-chosen")) props.chosen = val("#nc-chosen");
       if (val("#nc-why")) props.why = val("#nc-why");
     }
-    if (kind === "record" && when) node.valid_from = when;
     if (kind === "episode" && when) node.date = when;
     if (o.sourceDoc) props.source_doc = o.sourceDoc;
     if (Object.keys(props).length) node.props = props;
@@ -293,11 +313,18 @@ function mount(sheet: ReturnType<typeof openSheet>, o: ComposerOpts, done: (m: M
     }
     if ((res?.id_conflicts || []).includes(id)) { msg(esc(A.conflict(id))); return; }
     const nodes = res?.merged?.nodes || {};
-    if (!(nodes.created || nodes.matched)) {
+    // 맞춰졌다(matched) = 확인과 쓰기 사이에 같은 id 가 생겨 **그 노드에 썼다.** 성공이 아니다 —
+    // 그렇다고 말하고, 확인하도록 그 노드를 여는 문을 준다.
+    if (nodes.matched) {
+      idState = "exists"; showState();
+      msg(`<span class="error-banner">${esc(A.matched(title))}</span>`);
+      return;
+    }
+    if (!nodes.created) {
       msg(`<span class="error-banner">${esc(A.createFail)}</span>`); return;
     }
-    // 무엇을 했는지 한 줄씩: 만들었다(또는 맞췄다) · 연결 몇 개 · 안 된 연결과 이유.
-    const lines = [nodes.created ? A.created(A.kinds[kind], title) : A.matched(title)];
+    // 무엇을 했는지 한 줄씩: 만들었다 · 연결 몇 개 · 안 된 연결과 이유.
+    const lines = [A.created(A.kinds[kind], title)];
     const madeEdges = Number(res?.merged?.edges?.created || 0);
     if (madeEdges) lines.push(A.linksMade(madeEdges));
     for (const r of refused) lines.push(A.linkRefused(r.target!.title, relRefusal(r.rel, id, r.target!.id)!));

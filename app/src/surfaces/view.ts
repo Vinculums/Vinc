@@ -40,6 +40,7 @@ import { wireOutsideDismiss } from "../components";
 import { icon } from "../icons";
 import { setLiveRefresher } from "../live";
 import { emptyInviteHtml } from "../empty-invite";
+import { takePendingNewDoc } from "../authoring";
 
 /** Surface 3 — View (spec: [[vinc.spec.viewpoints]] · as-built [[vinc.reference.view-controls]]).
  *
@@ -729,7 +730,14 @@ export async function renderView(el: HTMLElement) {
     // 둘 다 걸어야 한다 - 안 걸면 "렌즈를 열어 둔 채 문서를 여는" 순서에서만 겹친다.
     if (!viewPanel.hidden) positionPanel();
   }
+  /** 잇기 대상 고르기를 푼다(열·층이 바뀌면 고르던 자리가 사라진다). 잇기 띠가 듣고 닫힌다. */
+  function dropPick() {
+    if (!pickTarget) return;
+    pickTarget = null;
+    dispatchEvent(new CustomEvent("vinc:pick-cancel"));
+  }
   function closeRail() {
+    dropPick();
     detail.hidden = true;
     // 열의 내용을 지우기 **전에** 그 안의 편집기를 확정·해제한다. 아래 innerHTML 은
     // 마운트 지점을 걷어 갈 뿐 디바운스를 건드리지 못한다(저장이 화면 없는 곳에서
@@ -745,6 +753,7 @@ export async function renderView(el: HTMLElement) {
     closeFloatPanel();
   }
   function openRail() {
+    dropPick();
     // 여는 것도 **덮어쓰는** 것이다: 이 뒤에 오는 것은 예외 없이 `detail.innerHTML`
     // 대입이다(상세 · 관계 · 드릴다운 · 기간 · 리더 재진입). 그 자리가 스무 곳이
     // 넘으므로 문 앞에서 한 번 걷는다 — 호출부마다 적으면 다음에 느는 하나가 샌다.
@@ -2140,6 +2149,10 @@ export async function renderView(el: HTMLElement) {
    *  (열은 그대로 두고). 트리는 여기서 **명시적으로** 새로 읽는다 — 저절로 새로워지는 갱신은
    *  문서 열이 열린 동안 쉬므로(`live.ts` busy) 기다리면 방금 만든 것이 안 보인다. */
   async function openWriter(topic?: string) {
+    // 열려 있던 편집기가 **다 닫힌 뒤에** 연다 — 만들어지기 전에 닫히는 새 문서는 그때 초안을
+    // 넘기고, 새 문서는 그 초안을 읽는다(authoring.mountDocWriter). 순서가 뒤집히면 초안이 엇갈린다.
+    await disposeEditorsIn(detail);
+    if (myGen !== liveGen) return;
     openRail();
     detail.innerHTML = `${railHeadHTML(COPY.ui.viewx.edNew)}<div id="wr-host"></div>`;
     wireRailHead();
@@ -3693,6 +3706,7 @@ export async function renderView(el: HTMLElement) {
     ctxCache = null;                           // 층이 바뀌면 노드 맥락 메모도 버린다
     spot = null;   // 렌더러가 통째로 갈리므로 점등도 함께 버린다(핸들이 사라진다)
     kindSpot = null;   // 〃 — 서 있는 것도 함께. 새 렌더러에 다시 걸리는 것은 아래 훅이다.
+    dropPick();
     // `keepDetail` — 방금 만든 것을 지도에 세우는 재그리기(revealNode)는 문서 열을 닫지
     // 않는다. 거기서 쓰고 있던 글이 첫 저장과 함께 사라지면 안 된다.
     if (!opts?.keepDetail) detail.hidden = true;
@@ -3874,13 +3888,17 @@ export async function renderView(el: HTMLElement) {
   // 닫는다. 바뀐 것은 `live.ts` 가 기억했다가 손을 뗀 뒤 적용한다.
   setLiveRefresher(async () => {
     if (myGen !== liveGen) return;
-    if (replayTimer || isFloatPanelOpen() || !detail.hidden) return false;
+    // 잇기 대상을 고르는 중에도 기다린다 — 다시 그리기가 그 고르기를 푼다.
+    if (replayTimer || isFloatPanelOpen() || !detail.hidden || pickTarget) return false;
     await show(trail[trail.length - 1], { keepPanel: true, keepCamera: true });
   });
 
   await show(trail[trail.length - 1]);
-  if (landOn) await (landWide ? openFromNav(landOn, undefined, landDoc || undefined)
-                            : focusNode(landOn));
+  // View 밖에서 "새 문서"를 눌러 여기로 왔다(authoring.startNewDoc) — 첫 화면 뒤에 연다.
+  const pendingDoc = takePendingNewDoc();
+  if (pendingDoc) void openWriter(pendingDoc.topic);
+  else if (landOn) await (landWide ? openFromNav(landOn, undefined, landDoc || undefined)
+                                 : focusNode(landOn));
   else if (landReader) await openDocAt(landReader);
   else if (landIds.length) spotIds(landIds);
   maybeCoach();

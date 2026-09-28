@@ -8,11 +8,11 @@
  *
  *  여태 관계를 만드는 길은 둘뿐이었고 둘 다 `relates_to` 로 박혀 있었다(연결이 없을
  *  때만 뜨는 제안 · Tools 의 문서 잇기). 종류를 고를 길도, 지울 길도 없었다. */
-import { api } from "./api";
+import { api, cfg } from "./api";
 import { COPY } from "./copy";
 import { esc, openSheet, sheetActions } from "./components";
 import { viewHooks } from "./topbar";
-import { RELS, edgeRefusal, findNodes, nodeHitsHtml, relRefusal, relSentence,
+import { RELS, edgeRefusal, findNodes, nodeHitsHtml, relRefusal, relSentence, relStored,
          type Rel } from "./authoring";
 
 type End = { id: string; title: string };
@@ -50,12 +50,14 @@ export function startConnect(a: End): void {
   const list = bar.querySelector<HTMLElement>(".pick-hits")!;
   const note = bar.querySelector<HTMLElement>(".pick-msg")!;
 
+  // 지도에서 고른 것은 View 가 한 번 넘기고 고르기를 푼다 — 시작한 노드를 눌렀으면 다시 건다.
+  const arm = () => viewHooks()?.pickNode?.((id, title) => pick({ id, title }));
   const pick = (b: End) => {
-    if (b.id === a.id) { note.textContent = A.relWhy.same; return; }
+    if (b.id === a.id) { note.textContent = A.relWhy.same; arm(); return; }
     stopPicking();
     openRelationPicker(a, b);
   };
-  viewHooks()?.pickNode?.((id, title) => pick({ id, title }));
+  arm();
 
   let timer = 0, seq = 0;
   input.addEventListener("input", () => {
@@ -84,21 +86,39 @@ export function startConnect(a: End): void {
     }
   });
   bar.querySelector('[data-pick="cancel"]')!.addEventListener("click", stopPicking);
-  // Esc 는 띠만 닫는다(지도의 단계 후퇴까지 가지 않게 캡처에서 먼저 받는다).
+  // Esc 는 띠 **안에** 초점이 있을 때(또는 더 가까이 떠 있는 것이 없을 때)만 띠를 닫는다.
+  // 그 밖의 Esc 는 건드리지 않는다 — 시트·메뉴·편집기가 자기 Esc 를 받아야 한다.
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape" || !bar) return;
+    const act = document.activeElement;
+    const inBar = !!act && bar.contains(act);
+    const idle = (!act || act === document.body)
+      && !document.querySelector(".sheet-scrim, .ctx-menu");
+    if (!inBar && !idle) return;
     e.stopPropagation();
     stopPicking();
   };
   document.addEventListener("keydown", onKey, true);
-  // 표면을 떠나면 띠도 함께 간다(View 가 사라지면 고를 지도가 없다).
-  const onHash = () => stopPicking();
-  window.addEventListener("hashchange", onHash);
+  // 표면을 떠나거나(View 가 사라지면 고를 지도가 없다) View 가 고르기를 풀면(열·층이 바뀜) 닫는다.
+  const onGone = () => stopPicking();
+  window.addEventListener("hashchange", onGone);
+  window.addEventListener("vinc:pick-cancel", onGone);
   unbind = () => {
     document.removeEventListener("keydown", onKey, true);
-    window.removeEventListener("hashchange", onHash);
+    window.removeEventListener("hashchange", onGone);
+    window.removeEventListener("vinc:pick-cancel", onGone);
   };
   input.focus();
+}
+
+/** `from` 에서 `to` 로 이 관계가 이미 있는가(관련은 방향 없이). 못 읽으면 false — 쓰기가 판정한다. */
+async function alreadyLinked(from: string, to: string, rel: Rel): Promise<boolean> {
+  try {
+    const r = await api.nodeContext(cfg.owner, from, 1);
+    const want = relStored(rel);
+    return (r.links?.items || []).some((it) => it.id === to && it.type === want
+      && (rel === "relates_to" || it.dir === "out"));
+  } catch { return false; }
 }
 
 /** 관계 고르기 — A → B 화살표 · 관계 넷 · 방향 바꾸기 · 근거(선택). */
@@ -177,11 +197,13 @@ export function openRelationPicker(a: End, b: End): void {
   sheet.el.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || e.isComposing) return;
     const t = e.target as HTMLElement;
-    if (t.closest("#cx-swap")) return;                 // 방향 바꾸기 단추 자신의 Enter
+    // 단추 자신의 Enter(방향 바꾸기 · 닫기 ✕)와 막힌 관계 줄의 Enter 는 잇기가 아니다.
+    if (t.closest("#cx-swap, .sheet-x")) return;
+    const r = t.closest<HTMLElement>(".cx-rel");
+    if (r && r.getAttribute("aria-disabled") === "true") { e.preventDefault(); return; }
     e.preventDefault();
     // 관계 줄에서 Enter = 그 관계로 곧바로 잇는다(고르고 한 번 더 누를 일을 만들지 않는다).
-    const r = t.closest<HTMLElement>(".cx-rel");
-    if (r && !connected && r.getAttribute("aria-disabled") !== "true") rel = r.dataset.rel as Rel;
+    if (r && !connected) rel = r.dataset.rel as Rel;
     go.click();
   });
 
@@ -193,6 +215,13 @@ export function openRelationPicker(a: End, b: End): void {
     const evidence = sheet.body.querySelector<HTMLInputElement>("#cx-ev")?.value.trim() || "";
     go.disabled = true;
     msg.innerHTML = `<p class="hint">${esc(A.connecting)}</p>`;
+    // 이미 이어져 있으면 쓰지 않고 그렇다고 말한다. 같은 방향의 같은 관계는 서버가 "새로
+    // 만들었다"로 세므로 응답만으로는 못 가른다 — 먼저 A 의 관계 목록을 본다.
+    if (await alreadyLinked(from.id, to.id, rel)) {
+      go.disabled = false;
+      msg.innerHTML = `<p class="hint">${esc(A.alreadyConnected(relSentence(rel, from.title, to.title)))}</p>`;
+      return;
+    }
     let res: any;
     try {
       res = await api.ingestFragment({ edges: [{ type: rel, from: from.id, to: to.id,
@@ -205,7 +234,10 @@ export function openRelationPicker(a: End, b: End): void {
       return;
     }
     if (!Number(res?.merged?.edges?.created || 0)) {
-      msg.innerHTML = `<p class="hint">${esc(A.connectRefused(edgeRefusal(res?.warnings)))}</p>`;
+      // 반대 방향의 "관련"이 이미 있으면 서버는 중복으로 건너뛴다 — 거절이 아니다.
+      msg.innerHTML = Number(res?.merged?.edges?.skipped_duplicate || 0)
+        ? `<p class="hint">${esc(A.alreadyConnected(relSentence(rel, from.title, to.title)))}</p>`
+        : `<p class="hint">${esc(A.connectRefused(edgeRefusal(res?.warnings)))}</p>`;
       return;
     }
     connected = true;

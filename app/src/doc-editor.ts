@@ -123,7 +123,7 @@ export type DocEditorHandle = {
    *  모습이 딸려 오지만 문서의 정본은 마크다운이므로, 한 번 눌러 얻는 것은
    *  **소스 그대로**여야 붙여넣은 곳에서 같은 문서가 된다. */
   getText: () => string;
-  /** 이 문서의 주제만 적는다(본문은 마지막 저장본 그대로). 아직 안 만든 문서면 false. */
+  /** 이 문서의 주제를 적는다(보통 저장과 같은 길 · 같은 충돌 확인). 아직 안 만든 문서면 false. */
   saveTopic?: (topic: string) => Promise<boolean>;
   /** 사람이 저장을 뜻한 것과 같다(Ctrl/Cmd+S). 새 문서의 주제를 고른 직후에 쓴다. */
   saveNow?: () => Promise<void>;
@@ -138,10 +138,14 @@ const LIVE = new Map<HTMLElement, DocEditorHandle>();
 /** `root`(자신 포함) 안에 마운트된 편집기를 전부 확정·해제한다.
  *  **마운트 지점을 비우기 전에** 부를 것 — dispose 가 대기 중 편집을 먼저 저장한다.
  *  기다리지 않는다: 저장할 글자는 dispose 가 동기적으로 이미 집어 갔다. */
-export function disposeEditorsIn(root: HTMLElement): void {
+export function disposeEditorsIn(root: HTMLElement): Promise<void> {
+  const done: Promise<void>[] = [];
   for (const [host, h] of [...LIVE]) {
-    if (root === host || root.contains(host)) void h.dispose();
+    if (root === host || root.contains(host)) done.push(h.dispose());
   }
+  // 대부분의 호출부는 기다리지 않는다(위 주석). 새 문서 열기만 기다린다 — 닫히는 새 문서가
+  // 초안을 넘긴 **뒤에** 다음 새 문서가 그 초안을 읽어야 한다(authoring.mountDocWriter).
+  return Promise.all(done).then(() => undefined);
 }
 
 /** 문서 열이 떠 있고 그 안에 편집기가 있는가 — 표면 단축키가 쉬어야 하는 조건.
@@ -190,6 +194,8 @@ export type DocEditorOpts = {
   declareId?: (title: string, skip: string[]) => Promise<string>;
   /** 첫 저장으로 문서가 생겼다(선언한 id · 보낸 주제). */
   onCreated?: (docId: string, topic: string) => void;
+  /** 새 문서가 **만들어지기 전에** 닫혔다(제목·주제가 없어 저장이 미뤄진 채). 쓴 것을 넘긴다. */
+  onUnsaved?: (draft: { title: string; text: string; contentTime: string }) => void;
 };
 
 /** 편집기를 host 에 마운트. host 내부를 편집 UI 로 채운다(호출부가 컨테이너·닫기
@@ -305,17 +311,28 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   let lastTitle = title;
   let lastCtime = contentTime;
   let timer: number | undefined;
-  let saving = false;
+  /** 돌고 있는 저장. 저장은 **한 번에 하나**이고, 도는 중에 온 저장은 그 뒤에 줄을 선다 —
+   *  여태 `saving` 이면 그냥 돌아가서, 첫 저장 중에 친 글자·주제 적기가 조용히 빠졌다. */
+  let inflight: Promise<boolean> | null = null;
+  /** 닫히는 중이다 — 새 문서의 "제목을 치는 중에는 안 만든다" 가드를 풀고 확정한다. */
+  let leaving = false;
   let cm: import("./codemirror-editor").CmHandle | null = null;
 
   const setStatus = (t: string) => { status.textContent = t; opts.onStatus?.(t); };
   const getText = () => (cm ? cm.getValue() : src.value);
   const setText = (t: string) => { if (cm) cm.setValue(t); else { src.value = t; prev.innerHTML = renderMarkdown(t); } };
+  /** 화면이 마지막 저장본과 다른가(본문 · 제목 · 시점). */
+  const dirty = () => getText() !== lastSaved || titleInput.value !== lastTitle
+    || ctimeInput.value.trim() !== lastCtime;
+  /** 2초 뒤 저장(디바운스). 터지면 타이머를 비운다 — dispose 가 "대기 중인가"를 이것으로 본다. */
+  const schedule = () => {
+    if (timer) window.clearTimeout(timer);
+    timer = window.setTimeout(() => { timer = undefined; void save(); }, 2000);
+  };
   const onEdited = () => {
     setStatus(COPY.ui.viewx.edDirty);
     if (!cm) { prev.innerHTML = renderMarkdown(src.value); hydrateRich(prev); }
-    if (timer) window.clearTimeout(timer);
-    timer = window.setTimeout(() => void save(), 2000);
+    schedule();
   };
 
   // 슬래시 커맨드 항목 — 결정론 블록(오프라인·무LLM). cursorBack 은 코드펜스처럼
@@ -386,8 +403,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   for (const el of [titleInput, ctimeInput]) {
     el.addEventListener("input", () => {
       setStatus(COPY.ui.viewx.edDirty);
-      if (timer) window.clearTimeout(timer);
-      timer = window.setTimeout(() => void save(), 2000);
+      schedule();
     });
   }
   // 새 문서(흐름 B): 제목에서 Enter = 본문으로 내려가며 만든다. 제목을 떠나는 것도 같다 —
@@ -404,22 +420,30 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   }
 
   /** `explicit` = 사람이 저장을 뜻했다(Ctrl/Cmd+S · 제목에서 Enter · 제목을 떠남).
-   *  새 문서의 첫 저장은 이것만 만든다 — 디바운스는 제목을 치는 중에 터질 수 있고, 그러면
-   *  반쯤 친 제목이 문서 id 로 굳는다. */
-  async function save(force = false, explicit = false): Promise<void> {
+   *  새 문서의 첫 저장은 이것(또는 닫힘)만 만든다 — 디바운스는 제목을 치는 중에 터질 수
+   *  있고, 그러면 반쯤 친 제목이 문서 id 로 굳는다.
+   *  `topicOnce` = 이번 저장에 주제도 적는다(본문 · 제목과 **같은 길**로, 같은 충돌 확인을 거쳐).
+   *  돌려주는 값 = 이번 쓰기가 들어갔는가. */
+  function save(force = false, explicit = false, topicOnce = ""): Promise<boolean> {
+    if (inflight) return inflight.then(() => save(force, explicit, topicOnce));
+    const run = doSave(force, explicit, topicOnce).finally(() => { inflight = null; });
+    inflight = run;
+    return run;
+  }
+
+  async function doSave(force: boolean, explicit: boolean, topicOnce: string): Promise<boolean> {
     const text = getText();
     const t = titleInput.value;
     const ct = ctimeInput.value.trim();
-    if (saving || (!force && text === lastSaved && t === lastTitle && ct === lastCtime)) return;
     // 새 문서 — 제목과 주제가 있어야 만든다. 없으면 **왜 안 저장됐는지** 말한다.
     const creating = !docId && !!opts.declareId;
-    const topic = opts.topic?.() || "";
+    if (!creating && !force && !topicOnce && !dirty()) return false;
+    const topic = topicOnce || opts.topic?.() || "";
     if (creating) {
-      if (!t.trim()) { setStatus(COPY.author.docNeedTitle); return; }
-      if (opts.topic && !topic) { setStatus(COPY.author.docNeedTopic); return; }
-      if (!explicit && document.activeElement === titleInput) return;
+      if (!t.trim()) { setStatus(COPY.author.docNeedTitle); return false; }
+      if (opts.topic && !topic) { setStatus(COPY.author.docNeedTopic); return false; }
+      if (!explicit && !leaving && document.activeElement === titleInput) return false;
     }
-    saving = true;
     setStatus(COPY.ui.viewx.edSaving);
     try {
       // 무음 LWW 금지 — 기존 문서면 저장 직전 원격 해시 비교.
@@ -432,7 +456,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
         // 풀린다. 마운트는 이 상태를 막지만(위 stub), 이 경로는 **마운트 뒤에 원격이
         // 그 상태가 된 경우**라 stub 이 못 막는다.
         if (cur.executed && cur.content_hash && cur.content_hash !== hash) {
-          saving = false; setStatus(COPY.ui.viewx.edDirty);
+          setStatus(COPY.ui.viewx.edDirty);
           conflictBox.innerHTML = `
             <div class="error-banner" style="margin:.4rem 0">${COPY.ui.viewx.edConflict}
               <div style="margin-top:.3rem">
@@ -449,7 +473,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
                                  COPY.ui.viewx.edConflictCopy(cur.title || t));
               } catch { /* 스냅샷 실패해도 덮어쓰기는 진행 — 최선 노력 보존 */ }
             }
-            void save(true);
+            void save(true, false, topicOnce);
           });
           conflictBox.querySelector("#ed-rl")!.addEventListener("click", () => {
             conflictBox.innerHTML = "";
@@ -459,7 +483,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
               setStatus(COPY.ui.viewx.edSaved);
             }
           });
-          return;
+          return false;
         }
       }
       let res: Awaited<ReturnType<typeof api.docPut>>;
@@ -477,27 +501,33 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
           skip.push(id);
         } while (skip.length < 3);
         if (!res.executed) throw new Error(res.error || "put failed");
+        // 새로 만들었어야 한다. `created:false` 는 그 id 에 이미 내 문서가 있었다는 뜻이고
+        // (읽기 확인과 쓰기 사이에 생겼다) — 성공이라고 말하지 않는다.
+        if (res.created === false) throw new Error("doc id already in use");
         docId = res.doc_id || id;
       } else {
-        res = await api.docPut(opts.owner, text, docId, t, ct);
+        res = await api.docPut(opts.owner, text, docId, t, ct, undefined, topicOnce || undefined);
         if (!res.executed) throw new Error(res.error || "put failed");
       }
       if (res.doc_id) docId = res.doc_id;              // 신규 → 생성된 id 확보
       lastSaved = text; lastTitle = t; lastCtime = ct; hash = res.content_hash || hash;
+      if (topicOnce) knownTopic = topicOnce;
       // 서버가 형식 미달을 비웠으면 입력칸도 그 사실을 반영한다 — 화면에는 남아
       // 있는데 저장은 안 된 값이 보이면, 다음에 열었을 때 사라져 있어 놀란다.
       if (ct && res.content_time !== undefined && res.content_time !== ct) {
         ctimeInput.value = res.content_time || "";
         lastCtime = ctimeInput.value;
       }
-      setStatus(COPY.ui.viewx.edSaved);
+      // 저장하는 동안 더 친 것이 있으면 "저장됨"이라고 말하지 않고 한 번 더 저장한다.
+      if (dirty()) { setStatus(COPY.ui.viewx.edDirty); if (!timer) schedule(); }
+      else setStatus(COPY.ui.viewx.edSaved);
       opts.onSaved?.(docId || "", t);
       if (creating && docId) opts.onCreated?.(docId, res.topic || topic);
       if (!res.skipped && docId) { void offerExtract(); void reindex(res.needs_embed); }
+      return true;
     } catch {
       setStatus(COPY.ui.viewx.edSaveFail);
-    } finally {
-      saving = false;
+      return false;
     }
   }
 
@@ -530,14 +560,11 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     });
   }
 
-  /** 주제만 적는다. **마지막으로 저장한 본문**을 보낸다 — 서버는 해시가 같아 청크를
-   *  건드리지 않고(skipped) 주제만 적는다. 화면의 본문을 보내면 저장 안 된 편집이 이
-   *  길로 새어 나가고, 편집기가 들고 있는 해시가 낡아 다음 저장이 충돌로 튄다. */
+  /** 주제를 적는다 — 보통 저장과 **같은 길**이다(도는 저장을 기다리고, 원격 해시를 확인하고,
+   *  지금 화면의 본문·제목과 함께 보낸다). 본문이 그대로면 서버는 청크를 안 건드리고 주제만 적는다. */
   async function saveTopic(tp: string): Promise<boolean> {
     if (!docId || !tp) return false;
-    const r = await api.docPut(opts.owner, lastSaved, docId, undefined, undefined, undefined, tp);
-    if (r.executed) knownTopic = tp;
-    return r.executed;
+    return save(false, true, tp);
   }
 
   /** 이 문서의 주제 — 새 문서면 주제 칩, 아니면 미러 노드(`concept:doc.<id>`)의 주제. */
@@ -557,30 +584,14 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     return knownTopic;
   }
 
-  /** `[[` 목록의 마지막 줄 — 문서의 주제에 개념을 만들고 그 제목을 돌려준다(본문에 들어간다).
-   *  주제를 모르거나 쓰기가 막히면 컴포저를 연다: 거기서 주제를 고르고 이유를 읽는다. */
+  /** `[[` 목록의 마지막 줄 — 컴포저를 채워서 연다(종류 개념 · 주제 = 이 문서의 주제).
+   *  만들어지면 그 제목이 본문에 들어간다. 닫으면 아무것도 안 넣는다. */
   async function createMentionConcept(q: string): Promise<string | null> {
     const title = q.trim();
     if (!title) return null;
-    const { slugOf } = await import("./authoring");
-    const topic = await docTopic();
-    const slug = slugOf(title);
-    if (topic && slug) {
-      const id = `concept:${slug}`;
-      try {
-        const have = await api.nodeContext(opts.owner, id, 1);
-        if (have.executed) return have.title || title;          // 이미 있다 — 그 이름을 넣는다
-        const res: any = await api.ingestFragment({
-          nodes: [{ id, type: "concept", title, domain: topic }] });
-        const made = (res?.merged?.nodes?.created || 0) + (res?.merged?.nodes?.matched || 0);
-        if (res?.executed !== false && made && !(res?.id_conflicts || []).length) {
-          void import("./lnb").then((m) => m.refreshLnb({ quiet: true }));
-          return title;
-        }
-      } catch { /* 아래 컴포저가 이유를 말한다 */ }
-    }
     const { openComposer } = await import("./node-composer");
-    const made = await openComposer({ kind: "concept", title, topic, sourceDoc: docId });
+    const made = await openComposer({ kind: "concept", title, topic: await docTopic(),
+                                      sourceDoc: docId });
     return made ? made.title : null;
   }
 
@@ -606,14 +617,20 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       // 몰래 저장했고, 어느 쪽인지는 누른 버튼이 정했다.
       // ⚠ `save()` 는 첫 줄에서 글자를 동기적으로 집는다. 그래서 아래 destroy 가
       //    뒤에 와야 한다 — 순서를 뒤집으면 확정할 본문이 이미 없다.
+      leaving = true;
       if (timer) { window.clearTimeout(timer); timer = undefined; await save(); }
+      else if (inflight) await inflight;
+      // 아직 만들어지지 않은 새 문서(제목·주제가 없어 저장이 미뤄졌다) — 닫는다고 버리지
+      // 않는다. 부르는 쪽이 초안으로 들고 있다가 다음 새 문서에서 되살린다.
+      if (!docId && opts.declareId && (getText().trim() || titleInput.value.trim()))
+        opts.onUnsaved?.({ title: titleInput.value, text: getText(), contentTime: ctimeInput.value });
       cm?.destroy();
       cm = null;
     },
     scrollToOffset: (pos: number) => cm?.scrollToOffset(pos),
     getText,
     saveTopic,
-    saveNow: () => save(false, true),
+    saveNow: async () => { await save(false, true); },
   };
   LIVE.set(host, handle);
   // **처음부터 상태를 말한다.** 여태 `setStatus` 는 고치거나 저장할 때만 불려서,
