@@ -582,6 +582,15 @@ jobs:
       - name: Run the whole suite with the flag on
         run: python -m pytest -q tests
 
+      # 프레임워크 연동 패키지 vinc-client. **설치한 다음** 테스트한다 — 소스 경로로 돌리면
+      # 패키징(빠진 파일·의존성)이 깨져도 초록이다. 계약 테스트가 v1 OpenAPI 와 대조하므로
+      # v1 을 바꾼 PR 도 여기서 걸린다. 이 잡에 붙인 이유는 PR 마다 조건 없이 도는 파이썬
+      # 잡이 여기 하나라서다. 근거: [[vinc.plan.framework-integration-packages-2026-09-28 §3]]
+      - name: Integration package vinc-client (installed, then tested)
+        run: |
+          pip install ./integrations/client/python
+          python -m pytest -q integrations/client/python/tests
+
       # ⚠ tmpfs 는 RAM 이다. 크래시한 런이 남긴 스토어가 그대로 남아 다음 런의 자리를
       # 먹는다(105MB 실측). `always()` 인 이유가 그것이다 — 실패한 런이야말로 남긴다.
       # 지우는 것은 **이 잡의 디렉터리뿐**이다. 옆 잡이 같은 tmpfs 에서 돌고 있다.
