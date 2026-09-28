@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vinc-langgraph"
+version = "0.1.0"
+description = "Vinc for LangGraph and LangChain agents: bring decisions and records from your knowledge graph into graph nodes and model calls, and record an episode only when you choose to."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Vinculums" }]
+keywords = ["vinc", "langgraph", "langchain", "middleware", "knowledge-graph", "memory"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Typing :: Typed",
+]
+dependencies = ["vinc-client>=0.1,<0.2", "langgraph>=1.0", "langchain-core>=1.0"]
+
+[project.optional-dependencies]
+agents = ["langchain>=1.0"]
+test = ["pytest>=8", "langchain>=1.0"]
+
+[project.urls]
+Homepage = "https://vincs.io"
+Documentation = "https://vincs.io/docs/"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vinc_langgraph"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
