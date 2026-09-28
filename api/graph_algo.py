@@ -351,3 +351,67 @@ def _modularity_adj(order: list, adj: dict, deg: dict, two_m: float,
             continue
         q += inside[c] / two_m - resolution * (tot[c] / two_m) ** 2
     return q
+
+
+def community_quality(nodes, edges, assign: dict[str, int], *,
+                      resolution: float = DEFAULT_RESOLUTION) -> dict[int, dict]:
+    """커뮤니티마다 품질 지표. 반환 `{번호: {...}}`, 고립(-1)은 빠진다.
+
+    - `connected`: 커뮤니티 안의 엣지만으로 이어져 있나. Leiden 은 늘 참이어야 한다 —
+      거짓이면 계산이 틀린 것이고, 답변 재료로 나가면 읽는 사람이 그 결함을 본다
+    - `internal_edges` · `boundary_edges`: 안쪽 엣지 수와 밖으로 나가는 엣지 수(가중치 합)
+    - `density`: 안쪽 엣지 / 가능한 쌍 수. 크기 1 은 0
+    - `conductance`: 밖으로 나가는 가중치 / min(안쪽 차수 합, 바깥 차수 합). 낮을수록
+      뚜렷이 갈라진 커뮤니티다
+    - `modularity_share`: 전체 모듈러리티에서 이 커뮤니티가 차지하는 몫(음수면 이 묶음이
+      우연보다 못하다)
+
+    판정은 하지 않는다. 숫자를 싣고, 어떤 커뮤니티를 믿을지는 읽는 쪽이 정한다."""
+    order, adj = _undirected(nodes, edges)
+    deg = {n: sum(adj[n].values()) for n in order}
+    two_m = sum(deg.values())
+    members: dict = defaultdict(list)
+    for n in order:
+        c = assign.get(n, ISOLATED)
+        if c != ISOLATED:
+            members[c].append(n)
+    out: dict[int, dict] = {}
+    for c, ms in members.items():
+        inside = set(ms)
+        w_in = 0.0
+        w_out = 0.0
+        for n in ms:
+            for u, w in adj[n].items():
+                if u in inside:
+                    w_in += w
+                else:
+                    w_out += w
+        w_in /= 2.0                                  # 안쪽 엣지는 양 끝에서 두 번 셌다
+        vol = sum(deg[n] for n in ms)
+        pairs = len(ms) * (len(ms) - 1) / 2.0
+        denom = min(vol, two_m - vol)
+        out[c] = {
+            "size": len(ms),
+            "connected": _is_connected(ms, adj),
+            "internal_edges": round(w_in, 4),
+            "boundary_edges": round(w_out, 4),
+            "density": round(w_in / pairs, 4) if pairs else 0.0,
+            "conductance": round(w_out / denom, 4) if denom > 0 else 0.0,
+            "modularity_share": round((w_in * 2 / two_m - resolution * (vol / two_m) ** 2)
+                                      if two_m else 0.0, 4),
+        }
+    return out
+
+
+def _is_connected(members: list[str], adj: dict) -> bool:
+    if len(members) <= 1:
+        return True
+    inside = set(members)
+    start = min(members)
+    seen, stack = {start}, [start]
+    while stack:
+        for u in adj.get(stack.pop(), {}):
+            if u in inside and u not in seen:
+                seen.add(u)
+                stack.append(u)
+    return seen == inside
