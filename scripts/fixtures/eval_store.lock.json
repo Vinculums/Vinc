@@ -20,6 +20,41 @@
         "Chunk": 1157,
         "ChunkVec": 1624,
         "NodeVec": 1365
+      },
+      "encoder_runtime": {
+        "onnxruntime": "1.29.0",
+        "tokenizers": "0.23.1",
+        "numpy": "2.5.2",
+        "note": "the local venv at reindex time; queries must use the same runtime"
+      }
+    },
+    "m3-ort130-2026-09-28": {
+      "path": "_eval-stores/m3-ort130-2026-09-28/hub.db",
+      "sha256": "71ce5eaa56edc84cfd8737c50f018bd9409d4541ec46a695f8c8ea97e45bc62f",
+      "owner": "tenant:local",
+      "gold": "scripts/fixtures/brief_gold.jsonl",
+      "derived_from": "m3-2026-09-13 (same rows; ChunkVec and NodeVec re-encoded)",
+      "built_at_tree": "0233fdf",
+      "engine": "ladybug 0.20.3",
+      "encoder": "BAAI/bge-m3",
+      "encoder_sha256": "e05d27e444606cd8b04e81c89afb911af54ea3cca0813dd0530422a396a09611",
+      "encoder_runtime": {
+        "onnxruntime": "1.30.0",
+        "tokenizers": "0.23.2",
+        "numpy": "2.5.3",
+        "note": "the hub's runtime since 2026-09-10 23:47Z; this store is the production-equivalent pin"
+      },
+      "rows": {
+        "Concept": 442,
+        "Record": 610,
+        "Decision": 153,
+        "Episode": 160,
+        "Bridge": 0,
+        "Entity": 0,
+        "Domain": 65,
+        "Chunk": 1157,
+        "ChunkVec": 1624,
+        "NodeVec": 1365
       }
     }
   }
