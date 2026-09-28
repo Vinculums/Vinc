@@ -942,7 +942,14 @@ export async function renderView(el: HTMLElement) {
       + (latest ? cell(COPY.ui.viewx.mLatest, latest.slice(0, 10)) : "");
     const openOrphans = () =>
       void openDrilldown(lvDomain(trail[trail.length - 1]), "orphan");
-    metricsBar.querySelector<HTMLElement>("[data-orphans]")?.addEventListener("click", openOrphans);
+    const orphansCell = metricsBar.querySelector<HTMLElement>("[data-orphans]");
+    orphansCell?.addEventListener("click", openOrphans);
+    orphansCell?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openOrphans();
+      }
+    });
   }
 
   // 패널 열림/닫힘·aria·포커스를 한 곳에서만 만진다(드리프트 방지).
