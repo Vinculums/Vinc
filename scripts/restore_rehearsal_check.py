@@ -40,6 +40,50 @@ def _node_labels(store) -> list[str]:
     return list(_FALLBACK_LABELS)
 
 
+def rag_census(store) -> dict[str, int]:
+    """문서·청크·벡터가 서로 맞는지 센다(판정이 아니라 기록 — 실패로 치지 않는다).
+
+    RAG 코드 리뷰의 결함(RV-02·12·13·30·36)이 이미 데이터를 망가뜨렸는지 보는 수다.
+    ⚠ **수만 낸다.** 이 로그는 CI 에 남으므로 문서 id·소유자를 찍지 않는다.
+    엔진 판에 따라 `EXISTS {}` 가 안 될 수 있어 평범한 읽기 셋을 파이썬에서 맞춘다.
+    근거: [[vinc.plan.rag-code-review-fixes-2026-09-29]]"""
+    docs = store.run("MATCH (d:_DocMeta) RETURN d.doc_id AS id, d.owner_id AS owner, "
+                     "d.needs_embed AS ne, d.chunk_count AS cc") or []
+    chunks = store.run("MATCH (c:Chunk) RETURN c.chunk_id AS id, c.doc_id AS doc, "
+                       "c.owner_id AS owner, c.chunk_index AS ix") or []
+    vec = {r["id"] for r in store.run(
+        "MATCH (v:ChunkVec) RETURN DISTINCT v.chunk_id AS id") or []}
+    meta = {d["id"]: d for d in docs}
+    by_doc: dict[str, list[dict]] = {}
+    for c in chunks:
+        by_doc.setdefault(c["doc"], []).append(c)
+    owners_of_doc: dict[str, set] = {}
+    for d in docs:
+        owners_of_doc.setdefault(d["id"], set()).add(d.get("owner") or "")
+    for c in chunks:
+        owners_of_doc.setdefault(c["doc"], set()).add(c.get("owner") or "")
+    holes = sum(1 for d in docs if int(d.get("ne") or 0) == 0
+                and any(c["id"] not in vec for c in by_doc.get(d["id"], [])))
+    mismatch = sum(1 for d in docs if int(d.get("cc") or 0) >= 0 and (
+        len(by_doc.get(d["id"], [])) != int(d.get("cc") or 0)
+        or any(int(c.get("ix") or 0) >= int(d.get("cc") or 0) for c in by_doc.get(d["id"], []))))
+    return {
+        "docs": len(docs), "chunks": len(chunks), "chunk_vectors": len(vec),
+        "docs_embedded_with_vector_holes": holes,
+        "docs_chunk_count_mismatch_or_tail": mismatch,
+        "docs_stuck_in_write_window": sum(1 for d in docs if int(d.get("cc") or 0) < 0),
+        "chunks_without_docmeta": sum(1 for c in chunks if c["doc"] not in meta),
+        "chunks_owner_differs_from_doc": sum(
+            1 for c in chunks if c["doc"] in meta
+            and (c.get("owner") or "") != (meta[c["doc"]].get("owner") or "")),
+        "chunk_vectors_without_chunk": len(vec - {c["id"] for c in chunks}),
+        "docs_with_empty_owner": sum(1 for d in docs if not d.get("owner")),
+        "doc_ids_shared_by_two_owners": sum(1 for s in owners_of_doc.values()
+                                            if len(s - {""}) > 1),
+        "docs_pending_embed": sum(1 for d in docs if int(d.get("ne") or 0) == 1),
+    }
+
+
 def main() -> int:
     if len(sys.argv) != 2 or not Path(sys.argv[1]).is_file():
         print(f"usage: {sys.argv[0]} <db 파일>  (존재하는 파일이어야 한다 — "
@@ -62,6 +106,11 @@ def main() -> int:
         if total == 0:
             print("FAIL: opened but holds zero rows — 경로가 틀렸거나 속 빈 사본이다")
             return 1
+        try:
+            for key, value in rag_census(store).items():
+                print(f"census.{key}\t{value}")
+        except Exception as exc:               # 센서스는 기록일 뿐 — 판정을 막지 않는다
+            print(f"census unavailable: {type(exc).__name__}: {exc}")
     finally:
         store.close()
     print("OK: the copy opens and holds data")
