@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from unittest.mock import patch
 
 from api import query as q
 from vinc_mcp import tools as mcp_tools
@@ -54,6 +55,16 @@ def _search(store, **kw):
 
 
 class PaginationWalkTests(unittest.TestCase):
+    def test_runtime_warning_is_carried_to_cursor_pages(self):
+        store = _Store(_mk_rows(50))
+        with patch.object(q, "_encoder_runtime_warning", return_value="runtime mismatch"):
+            first = _search(store, query_embedding=[1.0], query_runtime="test")
+            second = _search(store, cursor=first["next_cursor"],
+                             query_embedding=[1.0], query_runtime="test")
+        self.assertTrue(first["encoder_runtime_warning"])
+        self.assertTrue(second["encoder_runtime_warning"])
+        self.assertIn("runtime mismatch", second["vector_note"])
+
     def test_페이지_순회에_누락과_중복이_없다(self):
         store = _Store(_mk_rows(50))
         seen: list[str] = []

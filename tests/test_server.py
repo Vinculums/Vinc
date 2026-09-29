@@ -663,12 +663,22 @@ class FakeStoreDataTests(unittest.TestCase):
 
 
 @contextlib.contextmanager
-def _encode_stub(vector, *, seen: dict | None = None, delay: float = 0.0):
+def _encode_stub(vector, *, seen: dict | None = None, delay: float = 0.0,
+                 runtime: str | None = None, build: str | None = None):
     """워커 인코딩 창구(`packaging/embed_worker.py` `serve_encode`)와 **같은 계약**을
     말하는 최소 대역. 모델 없이 배선만 검증하려고 둔다(실모델은 440MB 다운로드가 필요)."""
     import json as _json
     import threading as _th
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from api import server as _srv
+    saved_runtime = _srv._ENCODER_RUNTIME
+    saved_build = _srv._ENCODER_BUILD
+    if not saved_runtime:
+        _srv._ENCODER_RUNTIME = "test-runtime"
+    if not saved_build:
+        _srv._ENCODER_BUILD = "test-build"
+    runtime = _srv._ENCODER_RUNTIME if runtime is None else runtime
+    build = _srv._ENCODER_BUILD if build is None else build
 
     class _H(BaseHTTPRequestHandler):
         def log_message(self, *_a):
@@ -684,7 +694,9 @@ def _encode_stub(vector, *, seen: dict | None = None, delay: float = 0.0):
                 # 헤더도 남긴다 — 창구가 루프백을 벗어나면서 인증이 붙었고, 그걸
                 # 안 싣는 회귀가 실제로 났다(2026-08-07: 질의 임베딩 전부 401).
                 seen["_authorization"] = self.headers.get("Authorization")
-            out = _json.dumps({"vectors": [list(vector)]}).encode()
+            out = _json.dumps({"vectors": [list(vector)],
+                               "encoder_runtime": runtime,
+                               "encoder_build": build}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(out)))
@@ -698,6 +710,8 @@ def _encode_stub(vector, *, seen: dict | None = None, delay: float = 0.0):
     finally:
         srv.shutdown()
         srv.server_close()
+        _srv._ENCODER_RUNTIME = saved_runtime
+        _srv._ENCODER_BUILD = saved_build
 
 
 class QueryEmbeddingWiringTests(unittest.TestCase):
@@ -777,6 +791,42 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
                          "쿼리 임베딩이 흐르지 않는다 — write-only 회귀")
         self.assertEqual(self.seen_vec, [[0.5, 0.5, 0.0, 0.0]],
                          "vector_search 가 받은 벡터가 창구 응답과 다르다")
+
+    def test_remote_runtime_mismatch_does_not_label_an_old_vector_as_new(self):
+        with _encode_stub([0.5, 0.5, 0.0, 0.0], runtime="old-encoder") as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            res = self._search()
+        self.assertEqual(res.get("arms"), "fts")
+        self.assertIn("remote encoder runtime differs", res.get("vector_note") or "")
+        self.assertEqual(self.seen_vec, [])
+
+    def test_remote_build_mismatch_with_same_runtime_refuses_old_model(self):
+        with _encode_stub([0.5, 0.5, 0.0, 0.0], build="old-build") as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            res = self._search()
+        self.assertEqual(res.get("arms"), "fts")
+        self.assertIn("remote encoder build differs", res.get("vector_note") or "")
+        self.assertEqual(self.seen_vec, [])
+
+    def test_local_encoder_without_deployment_build_still_serves_vectors(self):
+        from api import server as srv
+        saved_build = srv._ENCODER_BUILD
+        saved_required = srv._ENCODER_BUILD_REQUIRED
+        saved_runtime = srv._ENCODER_RUNTIME
+        remote_runtime = saved_runtime or "test-runtime"
+        try:
+            with _encode_stub([0.5, 0.5, 0.0, 0.0], build="") as url:
+                srv._ENCODER_BUILD = ""
+                srv._ENCODER_BUILD_REQUIRED = False
+                srv._ENCODER_RUNTIME = ""
+                os.environ["VINC_EMBED_ENCODE"] = url
+                res = self._search()
+            self.assertEqual(res.get("arms"), "fts+vector")
+            self.assertEqual(srv._ENCODER_RESPONSE_RUNTIME.get(), remote_runtime)
+        finally:
+            srv._ENCODER_BUILD = saved_build
+            srv._ENCODER_BUILD_REQUIRED = saved_required
+            srv._ENCODER_RUNTIME = saved_runtime
 
     def test_창구가_죽어도_검색은_답하고_사유를_남긴다(self):
         os.environ["VINC_EMBED_ENCODE"] = "http://127.0.0.1:9"   # discard 포트

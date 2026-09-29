@@ -657,7 +657,14 @@ class SplitEncoderTest(unittest.TestCase):
     def setUp(self):
         self.mod = _load_module()
         self._saved = {k: getattr(self.mod, k) for k in
-                       ("MODEL", "REMOTE_ENCODE", "ENCODE_TOKEN", "ENCODE_BIND")}
+                       ("MODEL", "REMOTE_ENCODE", "ENCODE_TOKEN", "ENCODE_BIND",
+                        "ENCODER_RUNTIME", "ENCODER_BUILD",
+                        "ENCODER_BUILD_REQUIRED")}
+        # The orchestration suite deliberately runs without ONNX packages in CI.
+        # Give both ends a test provenance; production rejects an empty one.
+        self.mod.ENCODER_RUNTIME = "test-runtime"
+        self.mod.ENCODER_BUILD = "test-build"
+        self.mod.ENCODER_BUILD_REQUIRED = True
 
     def tearDown(self):
         for k, v in self._saved.items():
@@ -717,6 +724,74 @@ class SplitEncoderTest(unittest.TestCase):
             self.mod.REMOTE_BATCH = saved
         self.assertEqual(sizes, [3, 3, 1])
         self.assertEqual(out, [[float(i)] for i in range(7)])
+
+    def test_remote_runtime_mismatch_refuses_to_store_mislabelled_vectors(self):
+        import io
+        import urllib.request
+        from unittest.mock import patch
+        fake = io.BytesIO(b'{"vectors":[[1.0]],"encoder_runtime":"old-encoder"}')
+        with patch.object(urllib.request, "urlopen", return_value=fake):
+            with self.assertRaisesRegex(RuntimeError, "remote encoder runtime differs"):
+                self.mod._RemoteEncoder("http://encoder.invalid").encode(["passage"])
+
+    def test_remote_build_mismatch_with_same_runtime_refuses_old_model(self):
+        import io
+        import urllib.request
+        from unittest.mock import patch
+        fake = io.BytesIO(
+            b'{"vectors":[[1.0]],"encoder_runtime":"test-runtime",'
+            b'"encoder_build":"old-build"}')
+        with patch.object(urllib.request, "urlopen", return_value=fake):
+            with self.assertRaisesRegex(RuntimeError, "remote encoder build differs"):
+                self.mod._RemoteEncoder("http://encoder.invalid").encode(["passage"])
+
+    def test_local_remote_encoder_without_deployment_build_still_works(self):
+        self.mod.ENCODER_BUILD = ""
+        self.mod.ENCODER_BUILD_REQUIRED = False
+        base = self._serve(lambda texts: [[1.0] for _ in texts])
+        self.assertEqual(self.mod._RemoteEncoder(base).encode(["passage"]), [[1.0]])
+
+    def test_local_writer_stamps_remote_encoder_runtime(self):
+        import io
+        import urllib.request
+        from unittest.mock import patch
+        self.mod.ENCODER_RUNTIME = ""
+        self.mod.ENCODER_BUILD = ""
+        self.mod.ENCODER_BUILD_REQUIRED = False
+        fake = io.BytesIO(
+            b'{"vectors":[[1.0]],"encoder_runtime":"remote-runtime",'
+            b'"encoder_build":"","encoder_instance":"local-instance"}')
+        enc = self.mod._RemoteEncoder("http://encoder.invalid")
+        with patch.object(urllib.request, "urlopen", return_value=fake):
+            self.assertEqual(enc.encode(["passage"]), [[1.0]])
+        self.assertEqual(enc.runtime, "remote-runtime")
+
+    def test_local_encoder_restart_during_document_rejects_mixed_vectors(self):
+        import io
+        import urllib.request
+        from unittest.mock import patch
+        self.mod.ENCODER_RUNTIME = ""
+        self.mod.ENCODER_BUILD = ""
+        self.mod.ENCODER_BUILD_REQUIRED = False
+        saved_batch = self.mod.REMOTE_BATCH
+        self.mod.REMOTE_BATCH = 1
+        replies = [io.BytesIO(
+            ('{"vectors":[[1.0]],"encoder_runtime":"same-runtime",'
+             '"encoder_build":"","encoder_instance":"%s"}' % instance).encode())
+            for instance in ("before", "after")]
+        try:
+            with patch.object(urllib.request, "urlopen", side_effect=replies):
+                with self.assertRaisesRegex(RuntimeError, "encoder instance changed"):
+                    self.mod._RemoteEncoder("http://encoder.invalid").encode(["a", "b"])
+        finally:
+            self.mod.REMOTE_BATCH = saved_batch
+
+    def test_hosted_encoder_with_missing_build_fails_closed(self):
+        self.mod.ENCODER_BUILD = ""
+        self.mod.ENCODER_BUILD_REQUIRED = True
+        base = self._serve(lambda texts: [[1.0] for _ in texts])
+        with self.assertRaisesRegex(RuntimeError, "remote encoder build differs"):
+            self.mod._RemoteEncoder(base).encode(["passage"])
 
     def test_벡터_개수가_어긋나면_던진다(self):
         """조각↔벡터 정렬이 이 파이프라인의 유일한 암묵 계약이다. 개수가 모자라면
@@ -794,6 +869,8 @@ class SplitEncoderTest(unittest.TestCase):
             out = json.load(r)
         self.assertEqual(out["status"], "ok")
         self.assertFalse(out["loaded"])
+        self.assertEqual(out["encoder_runtime"], "test-runtime")
+        self.assertEqual(out["encoder_build"], "test-build")
         self.assertEqual(loaded, [], "/health 가 모델을 적재했다")
 
 

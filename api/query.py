@@ -3664,7 +3664,8 @@ def _brief_orphan_residual(query: str, picked_title, res: dict) -> float:
 
 def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
           max_excerpts: int = 3, historical: bool = False, as_of: str | None = None,
-          cfg=None, store=None, _reask: bool = False) -> dict:
+          cfg=None, store=None, _reask: bool = False,
+          query_runtime: str | None = None) -> dict:
     """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
 
     질문에 노드 id 가 그대로 들어 있으면 그 노드를 **직참조**한다(검색·랭킹 생략,
@@ -3744,7 +3745,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                 f"the referenced node did not hold during {direct_scope_info['as_of']}")
             return base
         res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
-                     owner=owner, store=store, historical=historical, as_of=as_of)
+                     owner=owner, store=store, historical=historical,
+                     as_of=as_of, query_runtime=query_runtime)
         base["executed"] = bool(res.get("executed"))
         # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`
         # 만 강등을 말하면 같은 고장이 도구에 따라 보이거나 안 보인다. 규칙은 `/search`
@@ -3753,6 +3755,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # 세우는 것으로 지킨다 — HTTP 계층에서 붙이면 CLI 와 갈린다).
         for k in ("error", "note", "node_error",
                   "arms", "vector_note", "vector_rebuilding", "time_scope",
+                  "encoder_runtime_warning",
                   "validity_filtered", "validity_note", "validity_best_dropped"):
             if res.get(k):
                 base[k] = res[k]
@@ -6628,10 +6631,38 @@ def _fuse_node_hits(title_hits: list[dict], graph_hits: list[dict], *,
     return fused
 
 
+def _encoder_runtime_warning(store, owner: str | None, runtime: str) -> str:
+    """구 벡터·혼재·불일치를 경고한다. 부분 재임베딩은 한 스토어에 두 판을 남길 수 있다.
+
+    벡터마다 찍힌 지문을 요청 소유자 안에서만 대조한다.
+    """
+    stored: set[str] = set()
+    for table in ("ChunkVec", "NodeVec"):
+        where = " WHERE v.owner_id = $owner" if owner else ""
+        try:
+            rows = store.run(
+                f"MATCH (v:{table}){where} RETURN DISTINCT v.encoder_runtime AS runtime",
+                {"owner": owner} if owner else {}) or []
+        except Exception as exc:
+            return f"encoder runtime check failed: {type(exc).__name__}"
+        stored.update(str(row.get("runtime") or "") for row in rows)
+    if not stored:
+        return ""
+    known = stored - {""}
+    if known - {runtime}:
+        return ("query/stored encoder runtime mismatch: "
+                f"query={runtime}; stored={','.join(sorted(known))}"
+                + ("; some stored vectors are unknown" if "" in stored else ""))
+    if "" in stored:
+        return "stored vectors have unknown encoder runtime; re-embed to verify compatibility"
+    return ""
+
+
 def search(query: str, *, query_embedding: list[float] | None = None,
            top_k: int = 5, filters: dict | None = None, owner: str | None = None,
            cursor: str | None = None, detail: str = "summary",
            historical: bool = False, as_of: str | None = None,
+           query_runtime: str | None = None,
            cfg=None, store=None) -> dict:
     """하이브리드 검색 **재설계**(T3b) — BM25(FTS)+(선택)벡터 RRF(§4-2) 위에 3개
     실사용 사고 대응을 얹는다:
@@ -6918,6 +6949,16 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             base.setdefault("validity_best_dropped",
                             list(_vstats.get("best_dropped_score") or (0, 0)))
             base.setdefault("validity_note", _vnote)
+
+        # 이어 읽기에서도 벡터 팔은 다시 돈다. 첫 페이지와 같은 런타임 경고를
+        # 반환하기 전에 계산해 두어야 한다.
+        if query_embedding is not None and query_runtime is not None:
+            runtime_note = _encoder_runtime_warning(store, owner, query_runtime)
+            if runtime_note:
+                old_note = base.get("vector_note")
+                base["vector_note"] = (f"{old_note}; {runtime_note}" if old_note
+                                       else runtime_note)
+                base["encoder_runtime_warning"] = True
 
         # (4-b) E-G1 그래프 암 — 상위 Chunk 의 :MENTIONS 이웃 개념을 title 폴백과 융합.
         # 실패는 검색을 막지 않는다(그래프 암은 증강 — 부재 시 title 만, 하위호환).

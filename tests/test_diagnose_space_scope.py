@@ -149,14 +149,15 @@ class Communities(unittest.TestCase):
 
 class VersionsMoveTogether(unittest.TestCase):
     def test_the_backfill_version_reaches_the_target(self):
-        """🔴 도메인 계층 백필은 스토어가 **뒤처져 있을 때만** 돈다
-        (`cur < DOMAIN_HIERARCHY_VERSION`). 라이브가 이미 목표 버전을 기록하고 있으면
-        이 상수만 올려서는 아무 일도 안 일어난다 — 목표가 함께 움직여야 한다.
-        2026-09-10 에 그 자리에서 걸렸다: 열은 있고 IN_DOMAIN 이 없는 노드가 남아
-        있는데 백필이 도는 조건이 아니었다."""
+        """계층 규칙을 고친 버전(v19)은 목표 스키마에 포함돼야 한다.
+
+        스키마만 바뀌는 뒤 버전에서는 계층 백필을 다시 돌리지 않는다. 계층
+        규칙이 바뀌는 날에는 두 버전을 함께 올려 이 기준값을 갱신한다.
+        """
         from store import embedded_schema as es
-        self.assertGreaterEqual(es.DOMAIN_HIERARCHY_VERSION, es.SCHEMA_VERSION,
-                                "백필이 도는 조건이 아니면 이 상수를 올린 의미가 없다")
+        self.assertEqual(es.DOMAIN_HIERARCHY_VERSION, 19)
+        self.assertLessEqual(es.DOMAIN_HIERARCHY_VERSION, es.SCHEMA_VERSION,
+                             "계층 백필 버전이 목표 스키마보다 앞설 수 없다")
 
 
 if __name__ == "__main__":

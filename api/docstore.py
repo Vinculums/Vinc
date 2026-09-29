@@ -1293,7 +1293,8 @@ def pending_embed_chunks(store, *, limit: int = 16) -> list[dict]:
     return out
 
 
-def apply_embeddings(store, doc_id: str, embeddings: dict[str, Any]) -> dict:
+def apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
+                     encoder_runtime: str = "") -> dict:
     """임베딩 적용 전체를 **배타로** 돈다(허브·CLI 공통 단일 지점).
 
     지금까지의 허브 크래시는 전부 이 적용 도중에 났다. 인덱스 드롭만이 아니라 ChunkVec
@@ -1301,10 +1302,11 @@ def apply_embeddings(store, doc_id: str, embeddings: dict[str, Any]) -> dict:
     같은 스레드 재진입이라 교착하지 않는다. 대가: 적용하는 동안 읽기가 기다린다.
     근거: [[record:hub-segfault-loop-index-ddl-races-readers-2026-09-25]]"""
     with DDL_GUARD.exclusive():
-        return _apply_embeddings(store, doc_id, embeddings)
+        return _apply_embeddings(store, doc_id, embeddings, encoder_runtime)
 
 
-def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any]) -> dict:
+def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
+                      encoder_runtime: str = "") -> dict:
     """워커가 계산한 청크 임베딩을 저장한다(chunk_id 키 — 순서 무관, 편집 재정렬에 강건).
 
     **값은 벡터 하나 또는 벡터 목록**이다(v8 — 부모-자식). 청크는 2000자 단위인데 모델
@@ -1347,9 +1349,11 @@ def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any]) -> dict:
         for seq, vec in enumerate(many):
             store.run(
                 "MERGE (v:ChunkVec {vec_id: $vid}) SET v.chunk_id = $cid, v.doc_id = $doc, "
-                "v.owner_id = $own, v.seq = $seq, v.embedding = $emb",
+                "v.owner_id = $own, v.seq = $seq, v.embedding = $emb, "
+                "v.encoder_runtime = $runtime",
                 {"vid": f"{cid}#{seq:03d}", "cid": cid, "doc": doc_id,
-                 "own": owner_of.get(cid, ""), "seq": seq, "emb": list(vec)})
+                 "own": owner_of.get(cid, ""), "seq": seq, "emb": list(vec),
+                 "runtime": encoder_runtime})
             vecs += 1
         applied += 1
     base["vectors"] = vecs

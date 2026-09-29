@@ -289,11 +289,16 @@ jobs:
             echo "캐시에 넣었다: $cache"
           fi
           ls -la models
+          # The same commit can be rebuilt with different cached model bytes.
+          # Bind both deployed roles to the actual ONNX and tokenizer artifact.
+          artifact_hash=$(sha256sum "models/$name" models/tokenizer.json | sha256sum | cut -d' ' -f1)
+          echo "VINC_ENCODER_BUILD=$DEPLOY_SHA-$artifact_hash" >> "$GITHUB_ENV"
 
       - name: Build & push image (ACR Tasks)
         run: |
           az acr build \
             --registry vincacr \
+            --build-arg "VINC_ENCODER_BUILD=$VINC_ENCODER_BUILD" \
             --image "vinc-hub:$DEPLOY_SHA" \
             --image vinc-hub:latest \
             -f Dockerfile.hub .

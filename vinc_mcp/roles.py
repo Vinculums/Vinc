@@ -443,8 +443,13 @@ def _degraded_note(res: dict) -> str:
     if res.get("vector_rebuilding"):
         return ("(note: the semantic index is rebuilding after a write. This material is "
                 "keyword matches only and the semantic arm returns on a later call.)")
+    if res.get("vector_note") and res.get("arms") == "fts":
+        return ("(note: the semantic arm did not run, so this material is keyword matches "
+                "only. Treat absence here as unknown, not as nothing existing.)")
+    if res.get("encoder_runtime_warning"):
+        return ("(note: stored and query vectors have different or unknown encoder "
+                "versions. The semantic arm may have run, but its ranking can be inaccurate.)")
     if res.get("vector_note"):
         return ("(note: the semantic arm did not run, so this material is keyword matches "
                 "only. Treat absence here as unknown, not as nothing existing.)")
     return ""
-

@@ -80,7 +80,8 @@ def main(argv: list[str] | None = None) -> int:
         for r, v in zip(batch, enc.encode([b["text"] for b in batch], kind="passage")):
             r["emb"] = list(v)
     # 드롭 → 벡터와 함께 삽입 → 생성. 그 순서의 이유는 `api/node_mirror.py` 에 있다.
-    node_mirror.replace(store, rows, name)
+    from api.encoder_runtime import fingerprint                 # noqa: PLC0415
+    node_mirror.replace(store, rows, name, fingerprint())
     wall = time.perf_counter() - t0
     done = len(rows)
 

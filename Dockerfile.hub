@@ -4,6 +4,12 @@
 # 실행한다 — PyInstaller 프리징 자체가 불필요.
 FROM python:3.12-slim-bookworm
 
+# Hub and encoder are deployed from one image. Bind both to its source revision
+# and baked model/tokenizer hash so a rolling deploy cannot accept old vectors.
+ARG VINC_ENCODER_BUILD
+ENV VINC_ENCODER_BUILD=${VINC_ENCODER_BUILD}
+ENV VINC_ENCODER_BUILD_REQUIRED=on
+
 WORKDIR /srv/vinc
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \

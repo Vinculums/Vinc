@@ -15,7 +15,11 @@ from __future__ import annotations
 
 import re
 import unittest
+from unittest.mock import patch
 from pathlib import Path
+
+from api import encoder_runtime
+from store import embedded_schema
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCKERFILE = (ROOT / "Dockerfile.hub").read_text(encoding="utf-8")
@@ -34,6 +38,21 @@ def _encoder_line() -> str:
 
 
 class EncoderRuntimePinTests(unittest.TestCase):
+    def test_fingerprint_requires_all_three_runtime_packages(self):
+        versions = {"onnxruntime": "1.30.0", "tokenizers": "0.23.2", "numpy": "2.5.3"}
+        with patch.object(encoder_runtime, "version", side_effect=versions.__getitem__):
+            self.assertEqual(encoder_runtime.fingerprint(),
+                             "ort=1.30.0;tok=0.23.2;np=2.5.3")
+        with patch.object(encoder_runtime, "version",
+                          side_effect=encoder_runtime.PackageNotFoundError):
+            self.assertEqual(encoder_runtime.fingerprint(), "")
+
+    def test_v20_migrates_both_vector_tables_without_inventing_history(self):
+        self.assertEqual(embedded_schema.migration_statements(19), [
+            "ALTER TABLE ChunkVec ADD encoder_runtime STRING DEFAULT ''",
+            "ALTER TABLE NodeVec ADD encoder_runtime STRING DEFAULT ''",
+        ])
+
     def test_허브_이미지가_인코더_런타임_판을_고정한다(self):
         line = _encoder_line()
         for pkg in RUNTIME:

@@ -257,7 +257,7 @@ os._exit(0)
         tmp = s._CHUNK_VEC_REBUILD
         s._conn.execute(render_node_table("ChunkVec", dim=DIM, as_label=tmp))
         s._conn.execute(f"COPY {tmp} FROM (MATCH (v:ChunkVec) RETURN v.vec_id, v.chunk_id, "
-                        "v.doc_id, v.owner_id, v.seq, v.embedding)")
+                        "v.doc_id, v.owner_id, v.seq, v.embedding, v.encoder_runtime)")
         s._conn.execute("DROP TABLE ChunkVec")
         s.close()
         s = self._open()

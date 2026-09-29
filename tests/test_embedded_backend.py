@@ -1211,7 +1211,7 @@ class EmbeddedE2E(unittest.TestCase):
                          "RETURN m.value AS v")
         # 리터럴로 못박는다(파생 금지) — 버전을 올릴 때 이 줄이 실패해야 "그 버전이
         # 요구하는 데이터/DDL 스텝을 실제로 넣었나"를 한 번 보게 된다.
-        self.assertEqual(rows[0]["v"], "19")   # v19 — 도메인 계층 백필 재실행
+        self.assertEqual(rows[0]["v"], "20")   # v20 — 인코더 런타임 지문
         # v17 — 미러는 **부팅 DDL 이 만든다**(ALTER 도 백필도 없다). 실제로 서는지
         # 여기서 확인한다: 이 가정이 틀리면 채우기가 'Table NodeVec does not exist' 로
         # 죽는다(2026-09-09 에 실제로 물렸다).
