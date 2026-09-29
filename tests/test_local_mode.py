@@ -226,6 +226,26 @@ class ConfigRouteTests(unittest.TestCase):
         self.assertIsNone(obj["data_path"])
         self.assertFalse(obj["restart_needed"])
 
+    def test_사람이_고른_모드는_따로_적힌다(self):
+        """VIN-131: 0.9.4·0.9.5 가 말없이 정한 모드와 사람이 고른 모드를 가른다. 앱이 자동으로
+        적는 모드는 `mode_chosen` 을 안 건드려야 다음 기동이 한 번 물을 수 있다."""
+        with _server(self._app()) as base:
+            code, obj = _req(base, "/config")
+            self.assertFalse(obj["mode_chosen"])
+            code, obj = _req(base, "/config", method="POST", body={"mode": "account"})
+            self.assertEqual(code, 200, obj)
+            self.assertFalse(obj["mode_chosen"])
+            code, obj = _req(base, "/config", method="POST",
+                             body={"mode": "local", "mode_chosen": True})
+            self.assertEqual(code, 200, obj)
+            self.assertEqual((obj["mode"], obj["mode_chosen"]), ("local", True))
+            # 모드만 다시 적어도 고른 표식은 남는다(설정은 합쳐 쓴다).
+            code, obj = _req(base, "/config", method="POST", body={"mode": "account"})
+            self.assertTrue(obj["mode_chosen"])
+            self.assertEqual(_req(base, "/config", method="POST",
+                                  body={"mode_chosen": "yes"})[0], 400)
+        self.assertIs(sc.read_local_config()["mode_chosen"], True)
+
     def test_틀린_값(self):
         with _server(self._app()) as base:
             self.assertEqual(_req(base, "/config", method="POST", body={"mode": "cloud"})[0], 400)

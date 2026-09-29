@@ -1681,13 +1681,15 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    문이므로 같은 모양이어야 한다.
    ⚠ 셸에서는 타이틀바 아래에서 시작한다 — 덮으면 창을 옮기고 닫을 손잡이가 사라진다.
    근거: [[decision:the-desktop-sign-in-fills-the-window-instead-of-a-modal-2026-09-26]] */
-#signin-screen {
+/* 로그인 뒤 한 번 묻는 "이 기기의 그래프" 화면(VIN-131)도 같은 모양이다 — 로그인의
+   다음 문이고, 둘 다 답하기 전에는 앱을 쓸 수 없다. */
+#signin-screen, #device-graph-screen {
   position: fixed; inset: 0; z-index: 90;
   display: grid; place-items: center; overflow-y: auto;
   padding: var(--space-8, 2rem) var(--space-4, 1rem);
   background: hsl(var(--background));
 }
-[data-shell] #signin-screen { top: var(--titlebar-h); }
+[data-shell] #signin-screen, [data-shell] #device-graph-screen { top: var(--titlebar-h); }
 .si-card {
   width: min(26rem, 100%); text-align: center;
   border: 1px solid hsl(var(--border)); border-radius: 1.25rem;
@@ -1706,6 +1708,9 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 이유 목록은 카드 가운데 정렬 안에서도 왼쪽 정렬이다 — 여러 줄이 가운데로 흔들리면 못 읽는다. */
 .si-card .fr-why { margin: 1.4rem 0; text-align: left; }
 .si-cta { width: 100%; padding: .7rem 1rem; font-weight: 600; }
+/* 이 기기의 그래프 화면은 안내문 바로 아래에 단추가 온다. 로그인 카드는 사이에 `.fr-why`(위아래 1.4rem)가
+   끼어 있어 간격이 생기지만, 여기엔 그 블록이 없어 0px 로 붙었다. 같은 간격을 준다. */
+#device-graph-screen .si-cta { margin-top: 1.4rem; }
 /* "또는" 구분선 + Google 단추 — 웹 로그인의 것과 같은 치수(선 1px · 글자 .8rem · 단추
    외곽선에 배경 60%). Google 로고 네 색은 firstrun.ts 에서 면제로 적어 둔다. */
 .si-or {
@@ -1713,20 +1718,20 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   font-size: .8rem; color: hsl(var(--muted-foreground));
 }
 .si-or::before, .si-or::after { content: ""; flex: 1; height: 1px; background: hsl(var(--border)); }
-.si-card .si-google {
+.si-card .si-google, .si-card .si-alt {
   display: flex; align-items: center; justify-content: center; gap: .6rem;
   width: 100%; margin-top: .9rem; padding: .7rem 1rem; font-weight: 600;
   border: 1px solid hsl(var(--border)); background: hsl(var(--background) / .6);
   color: hsl(var(--foreground));
 }
-.si-card .si-google:hover { background: hsl(var(--background)); }
+.si-card .si-google:hover, .si-card .si-alt:hover { background: hsl(var(--background)); }
 .si-google svg { flex: 0 0 auto; }
 .si-state {
   margin: .7rem 0 0; min-height: 1.35em; font-size: .85rem;
   color: hsl(var(--caption-foreground));
 }
 .si-state:empty { visibility: hidden; }
-.si-note { margin: .8rem 0 0; font-size: .8rem; }
+.si-note { margin: .8rem 0 0; font-size: .8rem; word-break: keep-all; }
 .empty-invite { pointer-events: auto; display: grid; gap: var(--space-3, .75rem); justify-items: center; }
 .empty-invite.drag { border-style: solid; border-color: hsl(var(--ring)); }
 .empty-invite .ei-lead { margin: 0; }

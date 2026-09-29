@@ -336,9 +336,12 @@ applyTheme();
     if (needsSignIn()) await requireSignIn("first", sidecar);
     await sidecar;
     if (IN_SHELL) {
-      // 어느 그래프를 볼지 정한다. 정본은 사이드카의 저장 설정이다(VIN-130). 처음이면
-      // 로컬 스토어에 데이터가 있는 기존 설치는 로컬로 남고, 없으면 계정이다.
-      await decideDataMode();
+      // 어느 그래프를 볼지 정한다. 정본은 사이드카의 저장 설정이다(VIN-130). 사람이 고른
+      // 적이 없는데 이 기기에 작업이 있으면 로컬로 계속 가고 한 번 알린다(VIN-131). 없으면 계정이다.
+      if ((await decideDataMode()) === "ask") {
+        const { tellAboutDeviceGraph } = await import("./device-graph");
+        await tellAboutDeviceGraph();
+      }
       const { mountAccountSignals } = await import("./account-signals");
       mountAccountSignals();
     }
