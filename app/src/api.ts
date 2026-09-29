@@ -714,9 +714,13 @@ export const api = {
   //: `kind` 는 모집단을 그 종 **하나**로 좁힌다(종 레일). 목록을 종별로 가져가는
   //: 것이 계약이다 - 전부를 한 번에 싣는 값은 없고, 레일의 개수는 응답의
   //: `counts.kinds` 가 따로 준다(제목을 싣지 않는 집계).
-  navTree: (owner: string, opts?: { nodes?: boolean; kind?: string }): Promise<NavTreeRes> =>
+  //: `domain` 은 그 주제의 **하위 트리**로 좁힌다. 이 값이 없던 동안 레일의 Agent
+  //: 갈래는 주제를 선언만 하고 실어 보낼 자리가 없어 **모든 개념**을 세웠다.
+  navTree: (owner: string, opts?: { nodes?: boolean; kind?: string; domain?: string },
+           ): Promise<NavTreeRes> =>
     call("/nav-tree", { owner, ...(opts?.nodes ? { nodes: 1 } : {}),
-                        ...(opts?.kind ? { kind: opts.kind } : {}) }),
+                        ...(opts?.kind ? { kind: opts.kind } : {}),
+                        ...(opts?.domain ? { domain: opts.domain } : {}) }),
   // D45-V2 4단계 — 타임라인 기간(월-밴드) 클릭: [start, end) 의 날짜 있는 항목.
   // ⚠ basis 는 차트가 그리는 축과 **글자 그대로 같아야** 한다(D72) — 밴드를 눌러
   // 여는 목록이 다른 시간 열로 세면 화면이 스스로를 반박한다.

@@ -2676,8 +2676,13 @@ def _ledger_ego_ids(seed: str, *, owner: str, depth: int = 2,
     return {"executed": True, "ids": sorted(members)}
 
 
+#: 문서 목록의 응답별 상한. sources_offset 으로 다음 창을 읽는다.
+_NODE_SOURCES_CAP = 50
+
+
 def node_context(*, owner: str, node: str, limit: int = 4,
-                 with_evidence: bool = False, cfg=None, store=None) -> dict:
+                 with_evidence: bool = False, links_offset: int = 0,
+                 sources_offset: int = 0, cfg=None, store=None) -> dict:
     """노드→정본 컨텍스트(D45-V) — 뷰에서 노드를 눌렀을 때 보여줄 "이건 무엇이고,
     어느 정본이 근거인가". 조회 전용.
 
@@ -2699,8 +2704,22 @@ def node_context(*, owner: str, node: str, limit: int = 4,
            excerpts: [{doc_id, doc_title, section, excerpt, method}], arm,
            links: {degree(=out+in), out, in, attached(=degree 에 안 든 나머지),
                    total(=degree+attached · vinc_neighbors 의 count 와 같은 연결수),
+                   offset, truncated, next_offset(더 있을 때만),
                    items: [{id, title, domain, type, dir, evidence, confidence, note,
                             valid_from, valid_until}]}}
+           ``items`` 는 `links_offset` 부터 최대 `_NODE_LINKS_CAP` 줄이다. `truncated`
+           가 참이면 `next_offset` 이 **이어 읽을 자리**를 준다 — 그것을 따라가면
+           이웃 전체에 닿는다(`_window`). `total` 은 창과 무관하게 언제나
+           이웃 전체 수다.
+
+           sources: {total, offset, truncated, next_offset(더 있을 때만),
+                     items: [{doc_id, title, mentions}]}
+           sources_offset 부터 최대 50개씩 읽으며 next_offset 으로 이어 간다.
+           이 노드에 딸린 **문서 전부**. ``excerpts`` 와 다른 계약이다 — 저쪽은 청크를
+           `limit` 개로 자르므로 거기 보이는 문서는 "이 노드의 문서"가 아니라 "상위 몇
+           청크가 우연히 속한 문서"다(실측: 문서 여섯 중 발췌에 뜬 것은 넷). 소스
+           선택기는 이 목록을 써야 한다. MENTIONS 대상은 Concept/Decision 이며
+           그 밖의 캐리어는 현재 스키마상 소스 목록이 비어 있다.
            ``note`` 는 부착(Record ATTACHES_TO)에서만 채워진다(카드 본문). 개념
            관계(out/in)와 Bridge/Episode 부착은 항상 빈 문자열.
            ``valid_from``/``valid_until`` 도 같은 신분(W13) — Record 부착만 값을
@@ -2715,6 +2734,9 @@ def node_context(*, owner: str, node: str, limit: int = 4,
     base: dict = {"kind": "node-context", "executed": False, "node": node,
                   "one_liner": "", "domain": "", "props": {}, "excerpts": [],
                   "arm": "none",
+                  # 이 노드에 딸린 문서 전부(발췌 캡과 다른 계약). 못 읽었을 때도
+                  # 키는 있다 — 없는 키와 0 은 다른 말이다.
+                  "sources": {"total": 0, **_window([], sources_offset, _NODE_SOURCES_CAP)},
                   # W3 — 못 읽었을 때도 키는 있다. 없는 키와 0 은 다른 말이다.
                   "rev": 0, "updated_at": "",
                   # 노드 자신의 유효구간(부착 목록의 것과 다르다). 못 읽었으면 빈 값.
@@ -2803,7 +2825,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                         # vinc_neighbors 가 양쪽 끝에서 보여 주는 부착을 이 표면만
                         # "연결 0"이라 답해, 두 도구가 같은 그래프를 두고 어긋난다.
                         base["links"] = _node_links(store, node, owner=owner,
-                                                    with_evidence=with_evidence)
+                                                    with_evidence=with_evidence,
+                                                    offset=links_offset)
                         return base
                 base["note"] = f"unknown node: {node}"
                 return base
@@ -2822,7 +2845,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
             base["arm"] = "none"
             base["excerpts"] = []
             base["links"] = _episode_links(store, node, owner=owner,
-                                           with_evidence=with_evidence)
+                                           with_evidence=with_evidence,
+                                           offset=links_offset)
             return base
         # ② MENTIONS 역참조 — 정본 발췌.
         ment = store.run(
@@ -2855,14 +2879,37 @@ def node_context(*, owner: str, node: str, limit: int = 4,
                     arm = "fts" if ment else "none"
             except Exception:
                 pass   # 인덱스/확장 부재 — 발췌 없이 반환(arm='none')
+        # ④-0 이 노드에 딸린 **문서 전부**. 발췌와 다른 계약이다: 발췌는 청크를
+        # `lim` 개로 자르므로 그 넷이 한 문서에서 나오면 **문서도 하나로 보인다** —
+        # 노드가 열 개 문서에 언급돼 있어도 그렇다. 소스 선택기가 그것을 전체 목록으로
+        # 읽으면 사용자는 있는 줄도 모르는 문서를 고를 수 없다.
+        # 근거: [[vinc.spec.desktop-content-first-ia-0-9-4 §4]].
+        srows = store.run(
+            f"MATCH (ch:Chunk)-[:MENTIONS]->(c:{meta_label}) "
+            f"WHERE c.{meta_pk} = $id AND c.owner_id = $owner "
+            "AND (ch.owner_id = $owner OR ch.owner_id = '') "
+            "RETURN ch.doc_id AS doc_id, count(ch.chunk_id) AS n",
+            {"id": pkns.key(owner, node), "owner": owner}) or []
         # ④ 문서 제목 조인(_DocMeta) + 발췌 정리(공백 접기, 240자).
+        # 제목은 발췌에 뜬 문서와 소스 목록 **양쪽**에 필요하므로 한 번에 받는다.
         doc_ids = sorted({r["doc_id"] for r in ment if r.get("doc_id")})
+        all_ids = sorted({str(r.get("doc_id") or "") for r in srows
+                          if r.get("doc_id")} | set(doc_ids))
         titles: dict[str, str] = {}
-        if doc_ids:
+        if all_ids:
             for r in store.run(
                     "MATCH (d:_DocMeta) WHERE d.doc_id IN $ids "
-                    "RETURN d.doc_id AS id, d.title AS t", {"ids": doc_ids}) or []:
+                    "RETURN d.doc_id AS id, d.title AS t", {"ids": all_ids}) or []:
                 titles[r["id"]] = r.get("t") or ""
+        # 제목 → id 순서로 창을 자른다. 발췌 상한과 독립적으로 끝까지 읽을 수 있다.
+        _src = sorted(({"doc_id": str(r.get("doc_id") or ""),
+                        "title": titles.get(str(r.get("doc_id") or ""), "")
+                        or str(r.get("doc_id") or ""),
+                        "mentions": int(r.get("n") or 0)} for r in srows
+                       if r.get("doc_id")),
+                      key=lambda s: (s["title"], s["doc_id"]))
+        base["sources"] = {"total": len(_src),
+                           **_window(_src, sources_offset, _NODE_SOURCES_CAP)}
         base["excerpts"] = [{
             "doc_id": r.get("doc_id") or "",
             "doc_title": titles.get(r.get("doc_id") or "", "") or (r.get("doc_id") or ""),
@@ -2872,7 +2919,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
         } for r in ment]
         base["arm"] = arm
         base["links"] = _node_links(store, node, owner=owner,
-                                    with_evidence=with_evidence)
+                                    with_evidence=with_evidence,
+                                    offset=links_offset)
         return base
     except Exception as exc:
         base["note"] = base["error"] = f"{type(exc).__name__}: {exc}"
@@ -2887,8 +2935,30 @@ def node_context(*, owner: str, node: str, limit: int = 4,
 _NODE_LINKS_CAP = 24
 
 
+def _window(items: list[dict], offset: int, cap: int = _NODE_LINKS_CAP) -> dict:
+    """목록의 **한 창**과 이어 읽을 자리. 관계와 소스가 같은 말을 하게 묶는다.
+
+    `truncated` 는 "이 창 뒤에 더 있나"다. `offset` 이 0 이면 종전 뜻(전체가 상한보다
+    큼)과 값이 같으므로 이미 이 응답을 읽던 화면은 바뀌지 않는다.
+
+    왜 커서가 아니라 오프셋인가: 이 목록의 정렬은 결정론이고(제목·id) 규모가 수백이다.
+    커서는 인코딩·만료·무효화를 다 지어야 하는데 여기서는 그 대가로 얻는 것이 없다.
+    (점수로 줄 세우고 페이지가 많은 `vinc_search` 는 사정이 달라서 커서를 쓴다.)
+
+    ⚠ 상한만 있고 이어 읽을 자리가 없으면 **보이는 것이 전부인지 알 길이 없다** —
+    25개 중 24개를 내면서 `total:25` 만 말하던 자리가 그랬다(실측 2026-09-20).
+    근거: [[vinc.spec.desktop-content-first-ia-0-9-4 §6]]."""
+    off = max(0, int(offset or 0))
+    page = items[off:off + cap]
+    more = len(items) > off + len(page)
+    out: dict = {"items": page, "truncated": more, "offset": off}
+    if more:
+        out["next_offset"] = off + len(page)
+    return out
+
+
 def _record_links(store, node: str, *, owner: str,
-                  with_evidence: bool = False) -> dict:
+                  with_evidence: bool = False, offset: int = 0) -> dict:
     """Record 시드의 관계 목록 — 그 기록이 **붙어 있는** 개념·결정(ATTACHES_TO).
 
     :func:`_node_links` 의 거울상이다. 저쪽은 "무엇이 이 노드에 붙어 있나"를 묻고
@@ -2923,12 +2993,11 @@ def _record_links(store, node: str, *, owner: str,
     } for r in sorted(rows, key=lambda r: (str(r.get("title") or ""),
                                            str(r.get("id") or "")))]
     return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
-            "total": len(items), "items": items[:_NODE_LINKS_CAP],
-            "truncated": len(items) > _NODE_LINKS_CAP, "executed": True}
+            "total": len(items), "executed": True, **_window(items, offset)}
 
 
 def _episode_links(store, node: str, *, owner: str,
-                   with_evidence: bool = False) -> dict:
+                   with_evidence: bool = False, offset: int = 0) -> dict:
     """Episode 시드의 관계 목록 — 그 사건이 **무엇에 대한 것인가**(ABOUT).
 
     :func:`_record_links` 와 같은 모양이다. 부착 엣지가 시드에서 **나가므로**
@@ -2964,12 +3033,11 @@ def _episode_links(store, node: str, *, owner: str,
     } for r in sorted(rows, key=lambda r: (str(r.get("title") or ""),
                                            str(r.get("id") or "")))]
     return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
-            "total": len(items), "items": items[:_NODE_LINKS_CAP],
-            "truncated": len(items) > _NODE_LINKS_CAP, "executed": True}
+            "total": len(items), "executed": True, **_window(items, offset)}
 
 
 def _node_links(store, node: str, *, owner: str,
-                with_evidence: bool = False) -> dict:
+                with_evidence: bool = False, offset: int = 0) -> dict:
     """개념의 연결 요약 + 관계 목록(:func:`node_context` ④). 조회 전용.
 
     개념↔개념(방향 3종 + RELATED_TO)은 양방향으로 세고, 부착(Bridge 매개·Episode
@@ -2994,7 +3062,8 @@ def _node_links(store, node: str, *, owner: str,
         # 아래 팔들(무엇이 이 노드에 붙어 있나)이 구조적으로 0행을 낸다. 그대로
         # 두면 부착이 있는 기록이 "연결 0"으로 답해 vinc_neighbors 와 어긋난다
         # (그쪽은 "모든 관계는 양쪽 끝에서 보인다"를 계약으로 말한다).
-        return _record_links(store, node, owner=owner, with_evidence=with_evidence)
+        return _record_links(store, node, owner=owner, with_evidence=with_evidence,
+                             offset=offset)
     if _sl not in _SEMANTIC_LABELS:
         _sl, _spk = "Concept", "concept_id"
     rows: list[dict] = []
@@ -3084,8 +3153,8 @@ def _node_links(store, node: str, *, owner: str,
     # 싣는다** — 받는 쪽이 더해서 복원할 것을 남겨 두지 않는다.
     # 근거: [[record:brief-links-degree-counts-only-the-core-layer-and-understates-a-59-relation-node-as-9-2026-09-14]]
     return {"degree": len(rows), "out": out_n, "in": in_n, "attached": len(attached),
-            "total": len(rows) + len(attached), "items": items[:_NODE_LINKS_CAP],
-            "truncated": len(items) > _NODE_LINKS_CAP, "executed": True}
+            "total": len(rows) + len(attached), "executed": True,
+            **_window(items, offset)}
 
 
 # ── vinc_brief — 질문 하나로 답변 재료를 모으는 결정론 조인 읽기 ──────────────
@@ -3679,6 +3748,7 @@ def _domain_depths(concepts: dict[str, str],
 
 
 def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
+             domain: str | None = None, domains: list[str] | None = None,
              cfg=None, store=None) -> dict:
     """좌측 문서 트리(D69) — 주제 → 그 주제의 문서, **개념 계층 깊이순**.
 
@@ -3718,6 +3788,17 @@ def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
 
     ⚠ 주제 아래 설 수 있는 종은 **넷뿐이다**(`_TREE_PK`). Bridge 와 개방 타입은
     스키마가 `IN_DOMAIN` 을 주지 않는다 — 레일에 그 줄을 세우면 영원히 빈 갈래가 된다.
+
+    ``domain``/``domains`` 는 모집단을 그 **하위 트리**로 좁힌다(정확일치 OR `d + "/"`
+    접두 — 판정은 `domain_subtree_where` 한 벌이다). 목록·개수·문서·미분류가 **같은
+    술어**를 지난다: 세는 집합과 그리는 집합이 어긋나면 화면이 스스로를 반박한다.
+    스코프가 걸리면 `unfiled`(주제 없는 문서)는 비는 것이 정답이다 — 주제 스코프에
+    주제 없는 문서는 들지 않는다. 응답은 `counts.scope` 로 무엇으로 좁혔는지 에코한다.
+
+    ⚠ 이 인자가 없던 동안 좌측 레일의 Agent 갈래는 **아무것도 거르지 못했다**:
+    `lnb.ts` 가 `domain: "vinc/agent/roles"` 를 선언해도 실어 보낼 자리가 없어
+    모든 Concept 이 그 갈래에 섰다(실측 2026-09-20, 예약 주제 밖 `vinc/agentic` 과
+    무관한 `work` 까지 6/6 이 나왔다). 근거: [[vinc.spec.desktop-content-first-ia-0-9-4 §3]].
     """
     from api import docstore as _ds
 
@@ -3733,6 +3814,17 @@ def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
     if kind and not want:
         base["note"] = f"unknown kind: {kind}"
         return base
+    # 주제 스코프 — 목록·개수·문서가 모두 이 한 벌을 지난다.
+    scope = normalize_domains(domain, domains)
+    dom_params: dict = {"owner": owner}
+    dom_where = ""
+    if scope:
+        dom_where = " AND " + domain_subtree_where(["c.domain"], scope, dom_params)
+
+    def _in_scope(dom: str) -> bool:
+        """문서 주제가 스코프 안인가. Cypher 쪽 `domain_subtree_where` 와 같은 판정."""
+        return not scope or any(dom == d or dom.startswith(d.rstrip("/") + "/")
+                                for d in scope)
     try:
         # v12 — 결정도 주제 아래 선다. 빼면 좌측 트리에서 결정이 통째로 안 보이고,
         # 그 주제의 개수도 실제보다 작게 나온다(빠진 것이 있다는 표시조차 없다).
@@ -3745,17 +3837,19 @@ def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
         crows = store.run(
             " UNION ALL ".join(
                 f"MATCH (c:{lbl}) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
-                f"AND c.domain <> '' RETURN c.{pk} AS id, c.domain AS domain{title_col}, "
+                f"AND c.domain <> ''{dom_where} "
+                f"RETURN c.{pk} AS id, c.domain AS domain{title_col}, "
                 f"'{lbl.lower()}' AS kind"
                 for lbl, pk in pop.items()),
-            {"owner": owner}) or []
+            dom_params) or []
         # 레일의 개수 — 제목을 싣지 않는 집계 하나. 종을 고르는 손잡이가 "없는 것"과
         # "아직 안 가져온 것"을 구별할 수 있어야 하므로 0 도 키로 남긴다.
         kind_counts: dict[str, int] = {}
         for lbl, pk in _TREE_PK.items():
             rows = store.run(
                 f"MATCH (c:{lbl}) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
-                f"AND c.domain <> '' RETURN count(c.{pk}) AS n", {"owner": owner}) or []
+                f"AND c.domain <> ''{dom_where} RETURN count(c.{pk}) AS n",
+                dom_params) or []
             kind_counts[lbl.lower()] = int((rows[0] or {}).get("n") or 0) if rows else 0
         by_domain: dict[str, dict[str, str]] = {}
         cdom: dict[str, str] = {}
@@ -3800,7 +3894,11 @@ def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
             row = {"doc_id": d.get("doc_id") or "", "title": d.get("title") or "",
                    "updated_at": d.get("updated_at") or ""}
             if not topic or not node:
-                unfiled.append(row)
+                # 스코프가 걸렸으면 주제 없는 문서는 그 스코프에 들지 않는다.
+                if not scope:
+                    unfiled.append(row)
+                continue
+            if not _in_scope(topic):
                 continue
             groups.setdefault(topic, []).append(
                 {**row, "node_id": node, "node_title": d.get("primary_concept_title") or "",
@@ -3827,10 +3925,15 @@ def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
                     key=lambda r: (r["depth"], r["title"], r["id"]))
             out.append(g)
         out.sort(key=lambda g: (-len(g["docs"]), -g["concepts"], g["domain"]))
-        counts = {"domains": len(out), "docs": len(docs), "unfiled": len(unfiled),
-                  "kinds": kind_counts}
+        # 스코프가 걸리면 문서 수도 **실은 줄**만 센다 — 머리의 숫자와 갈래의 줄
+        # 수가 어긋나면 화면이 스스로를 반박한다.
+        counts = {"domains": len(out),
+                  "docs": sum(len(g["docs"]) for g in out) if scope else len(docs),
+                  "unfiled": len(unfiled), "kinds": kind_counts}
         if want:
             counts["kind"] = want.lower()
+        if scope:
+            counts["scope"] = list(scope)
         base.update(executed=True, domains=out, unfiled=unfiled, counts=counts)
         return base
     except Exception as exc:
