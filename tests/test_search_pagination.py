@@ -186,6 +186,7 @@ class ShrinkerTests(unittest.TestCase):
         self.assertEqual(cur["off"], kept)
         self.assertEqual(cur["eid"], f"d#{kept:05d}", "다음 페이지 기대 id 가 어긋난다")
         self.assertEqual(cur["qh"], "f" * 12)
+        self.assertEqual(cur["arms"], "fts", "다시 쓴 커서가 1페이지를 낸 팔을 잃었다(RV-21)")
 
     def test_page_좌표가_없으면_축소를_포기한다(self):
         out = self._big_result()

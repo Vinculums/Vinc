@@ -6290,6 +6290,10 @@ _ARM_LABEL = {"keyword": "fts", "semantic": "vector"}
 #: 신호다(서버가 `vector_note` 를 붙이는 자리와 같다 — 화면은 파싱하지 않는다).
 _VECTOR_REBUILDING = ("vector index is being rebuilt after a write: "
                       "full-text results only for now")
+#: 질의 벡터의 폭이 저장 벡터와 다를 때(임베딩 모델 전환). 엔진은 캐스팅 오류로만 알린다
+#: (`... incorrect list entry to ARRAY. Expected: 4, Actual: 2.`). 재빌드 창이 아니라 실패다.
+_VECTOR_WIDTH_MISMATCH = ("query vector width does not match the stored vectors, so the "
+                          "semantic arm was skipped: full-text results only")
 #: 벡터 색인이 **다시 서지 못하는** 스토어의 사유(잔해 — `VectorIndexRemnant`). 위와 달리
 #: 실패다: `vector_rebuilding` 을 달지 않는다.
 _VECTOR_REMNANT = ("vector index unavailable: the store holds a remnant index that blocks "
@@ -6300,16 +6304,20 @@ _FTS_REMNANT = ("full-text index unavailable: the store holds a remnant index th
 
 
 def _chunk_arms(store, query, query_embedding, top_k,
-                filters) -> tuple[list[dict], str, list[str]]:
+                filters) -> tuple[list[dict], str, list[str], bool]:
     """Chunk FTS(+선택 벡터) 하이브리드 검색 코어 — 기존 §4-2 RRF 로직 그대로.
-    반환 ``(rows, vector_note, arm_names)``. FTS·확장 부재는 예외로 전파(호출부가
+    반환 ``(rows, vector_note, arm_names, capped)``. FTS·확장 부재는 예외로 전파(호출부가
     지연 빌드·error 표면화를 담당).
+
+    ``capped`` 는 어느 팔이든 **거르기 전에** ``top_k`` 에 닿았는가다. 관례 청크를 빼면
+    풀이 상한 아래로 줄어 호출부가 그 사실을 더는 못 본다.
 
     ``arm_names`` 는 **실제로 결과를 낸 팔**이다(``keyword`` · ``semantic``). 호출부의
     ``arms`` 는 이것에서만 나온다 — 검색 전에 세우면 이 함수가 던졌을 때 아무 팔도
     안 돌았는데 응답이 두 팔을 말한다.
 
-    ⚠ **벡터 팔의 인덱스 부재는 예외로 올리지 않는다.** 문서를 쓰면 쓰기 경로가
+    ⚠ **벡터 팔의 실패는 예외로 올리지 않는다**(사유는 ``vector_note``). 가장 흔한 것이
+    인덱스 부재다. 문서를 쓰면 쓰기 경로가
     벡터 인덱스를 드롭하므로(HNSW 삽입 세그폴트 방어 — `drop_vector_index`), 쓰기
     직후의 검색은 이 자리를 반드시 밟는다. 여기서 통째로 던지면 **멀쩡한 키워드
     결과까지 버리고** 호출부가 HNSW 재빌드를 요청 스레드에서 기다렸다(실측: 문서
@@ -6323,9 +6331,15 @@ def _chunk_arms(store, query, query_embedding, top_k,
             arms.append(store.vector_search(query_embedding, top_k, filters))
             arm_names.append("semantic")
         except Exception as exc:
-            if _classify_chunk_error(exc) != "index_missing":
-                raise
-            vnote = _VECTOR_REBUILDING
+            # 벡터 팔이 **어떻게** 실패하든 이미 구한 키워드 결과는 지킨다(팔 하나의 고장이
+            # 검색 전체의 고장이 되면 안 된다). 사유는 `vector_note` 로 가른다: 색인 재빌드
+            # 창만 양성이고, 폭 불일치(모델 전환)와 나머지는 실패다.
+            if _classify_chunk_error(exc) == "index_missing":
+                vnote = _VECTOR_REBUILDING
+            elif "incorrect list entry to array" in str(exc).lower():
+                vnote = f"{_VECTOR_WIDTH_MISMATCH} ({exc})"
+            else:
+                vnote = f"vector arm failed: {type(exc).__name__}: {exc}"
     # 매치 표기(D24): 융합 전 각 arm 멤버십을 행에 주석 — UI 의 ≡/≈ 표기 데이터.
     membership: dict = {}
     for name, rows_ in zip(arm_names, arms):
@@ -6334,12 +6348,13 @@ def _chunk_arms(store, query, query_embedding, top_k,
     # 관례(GRAPH.md) 청크는 검색 결과에서 뺀다 — 사용자가 찾는 것은 자기 자료지
     # 그 자료를 어떻게 넣기로 했는지의 규약이 아니다. chunk_id 가 `{doc_id}#{n}` 이라
     # 추가 질의 없이 가르고, **융합 전에** 걸러야 상위 k 를 관례가 잠식하지 않는다.
+    capped = any(len(a) >= top_k for a in arms)
     for a in arms:
         a[:] = [r for r in a if not graphmd.is_conventions_chunk_id(r.get("id"))]
     rows = (rrf_fuse(arms, k=CHUNK_RRF_K, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
     for r in rows:
         r["arms"] = membership.get(r.get("id"), [])
-    return rows, vnote, arm_names
+    return rows, vnote, arm_names, capped
 
 
 def _schedule_vector_index(store, dim: int | None) -> None:
@@ -6565,7 +6580,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     )
     rows = store.run(cypher, params)[:NODE_SCAN_CAP]
     scored: list[dict] = []
-    dropped = 0
+    dropped: set = set()       # 지운 id — 의미 팔이 같은 노드를 지워도 한 번만 센다
     best_dropped = (0, 0)      # 지운 행 중 가장 센 (hit_tokens, title_tokens)
     for r in rows:
         # 유효구간 기본 필터(채택된 시간 정책 §4.2). **미기재는 current 라서 안 걸린다** —
@@ -6581,7 +6596,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
         # `scope`(as_of 기간)가 있으면 그 기간에 성립했는지로 가른다(`_visible`).
         if scope is not None or not historical:
             if not _visible(*_row_validity(r), historical=historical, scope=scope):
-                dropped += 1
+                dropped.add(r.get("id"))
                 # 지운 행의 점수도 기억한다. 지우기가 **동점을 깨면** 남은 하나가
                 # 단독 승자가 되어, 원래 "모르겠다"였을 질문이 확신 있는 답이 된다.
                 # 부르는 쪽이 그것을 알아야 판단할 수 있다.
@@ -6616,7 +6631,8 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     scored.sort(key=lambda r: (-r["hit_tokens"], -r["title_tokens"],
                                _FIELD_RANK.get(r["matched_in"], 9), str(r["id"])))
     if stats is not None:
-        stats["dropped_not_current"] = dropped
+        stats["dropped_ids"] = dropped
+        stats["dropped_not_current"] = len(dropped)
         stats["best_dropped_score"] = best_dropped
     return scored[:max(1, int(limit))]
 
@@ -6918,7 +6934,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     except ValueError as exc:
         base["note"] = base["error"] = f"invalid_as_of: {exc}"
         return base
-    off, want_eid = 0, None
+    off, want_eid, want_arms = 0, None, None
     if cursor:
         try:
             c = cursor_decode(cursor)
@@ -6927,6 +6943,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                     "invalid_cursor: cursor was issued for a different query/scope")
             off = max(0, int(c.get("off") or 0))
             want_eid = c.get("eid")
+            want_arms = c.get("arms")    # 1페이지를 낸 팔. 이 키가 없던 커서는 대조하지 않는다
         except (TypeError, ValueError) as exc:
             base["note"] = base["error"] = str(exc)
             return base
@@ -6995,13 +7012,14 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         pool: list[dict] = []
         vnote = ""
         ran: list[str] = []          # 실제로 돈 팔 — 예외로 새면 빈 채로 남는다
+        arm_capped = False           # 거르기 전의 팔이 상한에 닿았나(_chunk_arms)
         try:
             if not scoped_ok:
                 raise _UnscopedChunkSearch(
                     "owner scope requested but this store does not support "
                     "owner-filtered chunk search")
-            pool, vnote, ran = _chunk_arms(store, query, query_embedding,
-                                           SEARCH_POOL_CAP, chunk_filters or None)
+            pool, vnote, ran, arm_capped = _chunk_arms(
+                store, query, query_embedding, SEARCH_POOL_CAP, chunk_filters or None)
             base["executed"] = True
         except _UnscopedChunkSearch as exc:
             # 폴백하지 않는다 — node_hits 는 이미 owner 로 걸러져 있으므로 그것만 답한다.
@@ -7031,7 +7049,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                         # (`dim=None`), HNSW 는 아래에서 예약한다 — 요청 스레드가
                         # 기다릴 일이 아니다(:func:`_schedule_vector_index`).
                         builder(dim=None)
-                        pool, vnote, ran = _chunk_arms(
+                        pool, vnote, ran, arm_capped = _chunk_arms(
                             store, query, query_embedding, SEARCH_POOL_CAP,
                             chunk_filters or None)
                         base["executed"] = True
@@ -7054,6 +7072,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             # 달면 "곧 돌아온다"는 거짓이 되므로 실패로 싣고, 빌드도 걸지 않는다.
             # 근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
             base["vector_note"] = _VECTOR_REMNANT
+        elif vnote and vnote != _VECTOR_REBUILDING:
+            base["vector_note"] = vnote      # 벡터 팔 실패(폭 불일치 등) — 재빌드 창이 아니다
         elif vnote:
             # 조용한 강등 금지 — 어느 팔이 돌았는지(`arms`)와 왜 강등됐는지
             # (`vector_note`)를 둘 다 남긴다.
@@ -7073,11 +7093,16 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # 아니라 "적어도"다. 여태 거의 모든 질의가 200·199 를 읽혀 전체 수처럼 보였다
         # (감사 §5 #18). 필드 이름은 안 바꾸고, 닿았을 때만 표식을 단다.
         # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S11
-        if len(pool) >= SEARCH_POOL_CAP:
+        if arm_capped or len(pool) >= SEARCH_POOL_CAP:
             base["total_count_capped"] = True
-        if cursor and (off >= len(pool)
-                       or (want_eid is not None
-                           and str(pool[off].get("id") or "") != str(want_eid))):
+        # 청크 팔이 실패했으면 풀이 비어 모든 커서가 낡아 보인다 — 원래 오류를 그대로 둔다.
+        # 1페이지와 다른 팔이 돌았으면(벡터 색인이 사이에 드롭) 순서가 다른 풀이다 — eid 가
+        # 우연히 맞아도 중복·누락이 난다.
+        if cursor and not base.get("error") and (
+                off >= len(pool)
+                or (want_arms is not None and want_arms != base["arms"])
+                or (want_eid is not None
+                    and str(pool[off].get("id") or "") != str(want_eid))):
             # 결과가 커서 발급 시점과 달라졌다 — 조용히 어긋난 페이지를 주지 않는다.
             base["note"] = base["error"] = (
                 "stale_cursor: results changed since this cursor was issued; "
@@ -7090,7 +7115,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         if base["has_more"]:
             base["next_cursor"] = cursor_encode(
                 {"v": 1, "off": next_off, "qh": qh,
-                 "eid": str(pool[next_off].get("id") or ""), "tc": len(pool)})
+                 "eid": str(pool[next_off].get("id") or ""), "tc": len(pool),
+                 "arms": base["arms"]})
         base["rows"] = page if detail == "full" else [_summary_row(r) for r in page]
         if detail != "full":
             _attach_doc_titles(store, base["rows"], owner=owner)
@@ -7128,8 +7154,9 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                                     historical=historical, scope=_scope):
                             _keep.append(h)
                         else:
-                            _vstats["dropped_not_current"] = (
-                                _vstats.get("dropped_not_current", 0) + 1)
+                            _gone = _vstats.setdefault("dropped_ids", set())
+                            _gone.add(h.get("id"))
+                            _vstats["dropped_not_current"] = len(_gone)
                     _raw = _keep
                 vec_hits = [{"id": h.get("id"),
                              "title": h.get("title") or h.get("text") or "",
@@ -7155,7 +7182,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                         pass
             except Exception as exc:
                 base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
-        # 의미 팔이 더 걸러 냈으면 (3) 에서 적은 공개를 갱신한다 — 셈은 두 팔의 합.
+        # 의미 팔이 더 걸러 냈으면 (3) 에서 적은 공개를 갱신한다 — 셈은 두 팔이 지운 id 의
+        # 합집합이다(두 팔이 같은 노드를 지우면 한 번).
         if _vstats.get("dropped_not_current"):
             base["validity_filtered"] = _vstats["dropped_not_current"]
             base.setdefault("validity_best_dropped",

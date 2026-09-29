@@ -540,6 +540,10 @@ def _driver_error_text(exc: BaseException) -> str:
     return str(exc)
 
 
+#: 청크 검색 필터가 받는 키 — Chunk 표에 실제로 있는 열이다.
+_CHUNK_FILTER_KEYS = ("owner_id", "layer", "doc_id")
+
+
 def _filter_clause(var: str, filters: dict | None, params: dict, *,
                    keyword: str = "WHERE") -> str:
     """스코프 필터를 술어로 렌더(pre-filter, §4-2 — 스코프 1차 §1). params 를
@@ -551,11 +555,19 @@ def _filter_clause(var: str, filters: dict | None, params: dict, *,
     **파서가 통째로 거부한다**. 실제로 그렇게 났다(2026-08-07): F2 가 청크 팔에
     owner 를 넘기기 시작하자 벡터 팔이 `Parser exception` 으로 죽었다. 그전에는
     filters 가 None 이라 이 함수가 빈 문자열을 돌려줘 결함이 가려져 있었고, 질의
-    임베딩 자체가 없어 벡터 팔이 아예 안 돌던 것도 겹쳤다."""
+    임베딩 자체가 없어 벡터 팔이 아예 안 돌던 것도 겹쳤다.
+
+    받는 키는 Chunk 의 실제 열(:data:`_CHUNK_FILTER_KEYS`)뿐이고, 모르는 키는 던진다.
+    조용히 버리면 `/search?doc=X` 가 같은 소유자의 다른 문서를 섞어 내고(`doc_id` 가
+    그렇게 버려졌다), Chunk 에 없는 열을 받으면 엔진이 Binder 오류로 쿼리를 죽인다."""
     if not filters:
         return ""
+    unknown = sorted(set(filters) - set(_CHUNK_FILTER_KEYS))
+    if unknown:
+        raise ValueError(f"unsupported chunk search filter: {', '.join(unknown)} "
+                         f"(Chunk columns: {', '.join(_CHUNK_FILTER_KEYS)})")
     preds = []
-    for key in ("owner_id", "domain", "tenant_id"):
+    for key in _CHUNK_FILTER_KEYS:
         val = filters.get(key)
         if val is not None:
             preds.append(f"{var}.{key} = ${key}")
@@ -1821,7 +1833,19 @@ class EmbeddedBackend:
         best: dict[str, dict] = {}
         for r in rows:                       # 이미 distance 오름차순 — 첫 등장이 최소
             best.setdefault(r.get("id"), r)
-        return list(best.values())[:int(top_k)]
+        out = list(best.values())[:int(top_k)]
+        if filters and len(out) < int(top_k):
+            # 필터는 **전역** HNSW 상위 k 뒤에 걸린다. 그 안에 이 필터의 행이 모자라면(작은
+            # 스페이스·문서 하나) 필터 안을 정확히 훑는다. 거리는 색인의 기본(코사인)과 같은
+            # 값이고(실측), 매개변수를 묶는 평범한 조회라 읽기 커넥션에서 돈다(DDL 없음).
+            scope = _filter_clause("p", filters, params)       # 여기선 첫 WHERE 다
+            out = _exec_to_dicts(
+                c, f"MATCH (p:Chunk) {scope}"
+                   "MATCH (v:ChunkVec) WHERE v.chunk_id = p.chunk_id "
+                   "RETURN p.chunk_id AS id, p.text AS text, "
+                   "min(1 - array_cosine_similarity(v.embedding, $emb)) AS distance "
+                   "ORDER BY distance LIMIT $k", {**params, "k": int(top_k)})
+        return out
 
     def node_vector_search(self, embedding, top_k, *, owner=None, conn=None) -> list[dict]:
         """노드 미러(NodeVec)에서 의미로 찾는다 — 어휘가 하나도 안 겹쳐도 닿는 유일한 팔.
@@ -1855,6 +1879,15 @@ class EmbeddedBackend:
         )
         try:
             rows = _exec_to_dicts(c, cypher, params)
+            if owner and len(rows) < int(top_k):
+                # 전역 상위 k 에 이 소유자의 행이 모자랐다 — 그 소유자 안을 정확히 훑는다
+                # (:meth:`vector_search` 와 같은 이유·같은 거리).
+                rows = _exec_to_dicts(
+                    c, "MATCH (node:NodeVec) WHERE node.owner_id = $owner "
+                       "RETURN node.node_id AS id, node.kind AS kind, node.title AS title, "
+                       "node.text AS text, "
+                       "1 - array_cosine_similarity(node.embedding, $emb) AS distance "
+                       "ORDER BY distance LIMIT $k", {**params, "k": int(top_k)})
         except Exception:
             return []           # 인덱스 부재·미러 비어 있음 — 증강이므로 조용히 없음
         return rows[:int(top_k)]

@@ -533,13 +533,19 @@ class SearchFallsBackWithoutWaiting(unittest.TestCase):
         VincApp._at_write_point(app, "graph.algo", lambda: {}, 60.0)
         self.assertEqual(app.jobs.waited, [("graph.algo", 60.0)])
 
-    def test_벡터_아닌_실패는_그대로_올린다(self):
-        """인덱스 부재만 강등이다 — 그 밖의 실패를 삼키면 침묵이 돌아온다."""
+    def test_벡터_아닌_실패는_사유로_말하고_키워드_결과는_지킨다(self):
+        """인덱스 부재만 **양성** 강등이다. 그 밖의 실패도 삼키지 않고 `vector_note` 로
+        말하되, 이미 구한 키워드 결과는 버리지 않는다(RV-06: 벡터 팔 하나의 고장이 검색
+        전체의 `error` 가 되면 REST 는 500 을 낸다)."""
         def other(*_a, **_k):
             raise RuntimeError("connection reset")
         self.store.vector_search = other
         got = self._search()
-        self.assertIn("connection reset", str(got.get("error") or ""), got)
+        self.assertFalse(got.get("error"), got)
+        self.assertEqual([r["id"] for r in got["rows"]], ["doc-1#00000"], got)
+        self.assertIn("connection reset", str(got.get("vector_note") or ""), got)
+        self.assertNotIn("vector_rebuilding", got, "진짜 실패를 재빌드 창으로 그렸다")
+        self.assertFalse(self.store.scheduled, "실패를 재빌드로 착각해 예약했다")
 
     def test_설명이_그_계약을_말한다(self):
         desc = SERVED["vinc_search"]["description"]

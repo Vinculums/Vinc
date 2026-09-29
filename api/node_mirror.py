@@ -130,9 +130,10 @@ def replace(store, rows: list[dict], model: str, encoder_runtime: str = "") -> d
     # 두고 결과도 확인한다** — 행은 들어갔는데 인덱스가 없으면 의미 팔은 예외 없이 빈
     # 목록만 내고, 밖에서는 "안 켠 것"과 구분되지 않는다. 2026-09-10 라이브에서 정확히
     # 그랬고, 사유가 없어서 원인을 두 배포에 걸쳐 못 짚었다.
-    # 확인은 방금 넣은 벡터로 되묻는 것이다: 그 행이 자기 자신을 못 찾으면 인덱스가 없다.
+    # 확인은 방금 넣은 벡터로 되묻는 것이다: 무엇이든 돌아오면 인덱스가 있다. 소유자는
+    # 걸지 않는다 — 재는 것은 색인이지 소유자 필터가 아니다(전역 상위 k 에 그 소유자가
+    # 없어 거짓 음성이 났다).
     index_error = store.create_node_vector_index() or ""
-    index_ok = bool(store.node_vector_search(rows[0]["emb"], 1, owner=rows[0]["owner"])
-                    ) if rows else True
+    index_ok = bool(store.node_vector_search(rows[0]["emb"], 1)) if rows else True
     return {"kind": "node-mirror.replace", "rows": len(rows), "owners": owners,
             "model": model, "index_ok": index_ok, "index_error": index_error}

@@ -322,7 +322,9 @@ class DecisionsAndDirectReadsCarryValidity(ReadPathDefault):
         self.assertNotIn("record:quorum-note-retired", ids, "의미 팔이 폐기 기록을 되살렸다")
         self.assertNotIn("decision:cache-policy-old", ids, "의미 팔이 폐기 결정을 되살렸다")
         self.assertIn("decision:cache-policy-new", ids)
-        self.assertEqual(res.get("validity_filtered"), 3, "제목 팔 1 + 의미 팔 2")
+        # 숨긴 노드 수다: 두 팔이 함께 지운 cache-policy-old 는 한 번 센다(RV-17).
+        self.assertEqual(res.get("validity_filtered"), 2,
+                         "cache-policy-old(제목·의미 팔) + quorum-note-retired(의미 팔)")
         both = q.search("cache policy", owner=self.OWNER, top_k=10, store=self.store,
                         query_embedding=emb, historical=True)
         self.assertIn("decision:cache-policy-old", [h["id"] for h in both["node_hits"]])

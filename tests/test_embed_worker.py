@@ -347,6 +347,7 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
 
         out = call("query")
         self.assertEqual(out["vectors"], [[0.0, 1.0]], "벡터 형태가 계약과 다르다")
+        self.assertEqual(out["model"], self.mod.MODEL, "창구가 든 모델을 말하지 않는다(RV-06)")
         self.assertTrue(got and got[0].startswith(self.mod.QUERY_PREFIX),
                         f"쿼리에 접두가 안 붙었다: {got!r}")
 
