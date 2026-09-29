@@ -88,8 +88,10 @@ class Cli:
                  python: str | None = None):
         self.data, self.owner = data, owner
         self.python = python or sys.executable
-        self.env = {**os.environ, **(env or {}), "MEMORY_DATA_DIR": data,
-                    "PYTHONIOENCODING": "utf-8"}
+        # 대상은 로컬로 못 박는다 — 이 기기의 config.json 이 계정 모드면 `vinc call` 이 계정
+        # 그래프로 가서 exit 4 로 죽는다(2026-09-30, 앱에 로그인한 뒤 실측).
+        self.env = {**os.environ, "VINC_TARGET": "local", **(env or {}),
+                    "MEMORY_DATA_DIR": data, "PYTHONIOENCODING": "utf-8"}
         for k in ("PYTHONHOME", "PYTHONPATH"):
             self.env.pop(k, None)
 

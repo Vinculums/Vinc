@@ -6291,6 +6291,9 @@ _VECTOR_REBUILDING = ("vector index is being rebuilt after a write: "
                       "full-text results only for now")
 #: 벡터 색인이 **다시 서지 못하는** 스토어의 사유(잔해 — `VectorIndexRemnant`). 위와 달리
 #: 실패다: `vector_rebuilding` 을 달지 않는다.
+#: 스탬프 없는 옛 벡터가 있을 때의 경고. 의미 팔은 **돌았다** — 호환을 확인할 수 없을 뿐이다.
+#: 평가 하네스(`scripts/evalkit/run_nodes._degraded`)가 이 문구를 강등에서 빼므로 상수로 둔다.
+UNSTAMPED_RUNTIME_NOTE = "stored vectors have unknown encoder runtime; re-embed to verify compatibility"
 _VECTOR_REMNANT = ("vector index unavailable: the store holds a remnant index that blocks "
                    "the rebuild until the sidecar restarts; full-text results only")
 #: 같은 잔해가 FTS 색인(`Chunk`)에 있을 때. 청크 팔이 통째로 선다 — 청크 검색은 FTS 로 시작한다.
@@ -6839,7 +6842,7 @@ def _encoder_runtime_warning(store, owner: str | None, runtime: str) -> str:
                 f"query={runtime}; stored={','.join(sorted(known))}"
                 + ("; some stored vectors are unknown" if "" in stored else ""))
     if "" in stored:
-        return "stored vectors have unknown encoder runtime; re-embed to verify compatibility"
+        return UNSTAMPED_RUNTIME_NOTE
     return ""
 
 
