@@ -1597,7 +1597,7 @@ def _shrink_search_result(out: dict, budget: int) -> dict | None:
             {"v": 1, "off": int(page.get("offset") or 0) + len(rows),
              "qh": page.get("fingerprint"),
              "eid": str(dropped[0].get("id") or ""),
-             "tc": out.get("total_count")})
+             "tc": out.get("total_count"), "arms": out.get("arms")})
         out["note"] = ((str(out.get("note")) + "; ") if out.get("note") else "") + \
             "page shrunk to fit the result size limit; continue with next_cursor"
     return out

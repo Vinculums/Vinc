@@ -205,5 +205,27 @@ class CappedPoolRV20(unittest.TestCase):
         self.assertIs(res.get("total_count_capped"), True)
 
 
+class CursorBoundToArmsRV21(unittest.TestCase):
+    """1페이지는 두 팔 융합, 2페이지는 키워드 단독이어도 eid 하나가 맞으면 커서가 통과했다."""
+
+    def test_a_page_served_by_other_arms_is_stale(self):
+        from api import query as q
+
+        class _S(_PagedStub):
+            vec_ok = True
+
+            def vector_search(self, e, k, filters=None):
+                if not self.vec_ok:
+                    raise RuntimeError("Table ChunkVec doesn't have an index with name chunk_vec")
+                return [{"id": f"d#{i:05d}", "text": "t", "distance": 0.1 * i} for i in range(3)]
+        s = _S()
+        first = q.search("t", top_k=1, store=s, query_embedding=[1.0])
+        self.assertEqual(first["arms"], "fts+vector")
+        s.vec_ok = False
+        second = q.search("t", top_k=1, store=s, query_embedding=[1.0],
+                          cursor=first["next_cursor"])
+        self.assertTrue(str(second.get("error")).startswith("stale_cursor"), second)
+
+
 if __name__ == "__main__":
     unittest.main()

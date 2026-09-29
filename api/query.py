@@ -6907,7 +6907,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     except ValueError as exc:
         base["note"] = base["error"] = f"invalid_as_of: {exc}"
         return base
-    off, want_eid = 0, None
+    off, want_eid, want_arms = 0, None, None
     if cursor:
         try:
             c = cursor_decode(cursor)
@@ -6916,6 +6916,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                     "invalid_cursor: cursor was issued for a different query/scope")
             off = max(0, int(c.get("off") or 0))
             want_eid = c.get("eid")
+            want_arms = c.get("arms")    # 1페이지를 낸 팔. 이 키가 없던 커서는 대조하지 않는다
         except (TypeError, ValueError) as exc:
             base["note"] = base["error"] = str(exc)
             return base
@@ -7068,8 +7069,11 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         if arm_capped or len(pool) >= SEARCH_POOL_CAP:
             base["total_count_capped"] = True
         # 청크 팔이 실패했으면 풀이 비어 모든 커서가 낡아 보인다 — 원래 오류를 그대로 둔다.
+        # 1페이지와 다른 팔이 돌았으면(벡터 색인이 사이에 드롭) 순서가 다른 풀이다 — eid 가
+        # 우연히 맞아도 중복·누락이 난다.
         if cursor and not base.get("error") and (
                 off >= len(pool)
+                or (want_arms is not None and want_arms != base["arms"])
                 or (want_eid is not None
                     and str(pool[off].get("id") or "") != str(want_eid))):
             # 결과가 커서 발급 시점과 달라졌다 — 조용히 어긋난 페이지를 주지 않는다.
@@ -7084,7 +7088,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         if base["has_more"]:
             base["next_cursor"] = cursor_encode(
                 {"v": 1, "off": next_off, "qh": qh,
-                 "eid": str(pool[next_off].get("id") or ""), "tc": len(pool)})
+                 "eid": str(pool[next_off].get("id") or ""), "tc": len(pool),
+                 "arms": base["arms"]})
         base["rows"] = page if detail == "full" else [_summary_row(r) for r in page]
         if detail != "full":
             _attach_doc_titles(store, base["rows"], owner=owner)
