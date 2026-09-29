@@ -7061,9 +7061,11 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S11
         if len(pool) >= SEARCH_POOL_CAP:
             base["total_count_capped"] = True
-        if cursor and (off >= len(pool)
-                       or (want_eid is not None
-                           and str(pool[off].get("id") or "") != str(want_eid))):
+        # 청크 팔이 실패했으면 풀이 비어 모든 커서가 낡아 보인다 — 원래 오류를 그대로 둔다.
+        if cursor and not base.get("error") and (
+                off >= len(pool)
+                or (want_eid is not None
+                    and str(pool[off].get("id") or "") != str(want_eid))):
             # 결과가 커서 발급 시점과 달라졌다 — 조용히 어긋난 페이지를 주지 않는다.
             base["note"] = base["error"] = (
                 "stale_cursor: results changed since this cursor was issued; "

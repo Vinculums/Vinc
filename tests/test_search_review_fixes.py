@@ -156,5 +156,36 @@ class DimensionMismatchRV06(_EngineCase):
         self.assertNotIn("vector_rebuilding", res)
 
 
+class _PagedStub:
+    """청크 팔만 있는 스토어 더블. ``fail`` 이면 FTS 가 IO 오류를 낸다."""
+
+    scoped_chunk_search = True
+
+    def __init__(self):
+        self.fail = False
+
+    def run(self, cypher, params=None):
+        return []
+
+    def fulltext_search(self, text, k, filters=None):
+        if self.fail:
+            raise OSError("IO exception: could not read the index file")
+        return [{"id": f"d#{i:05d}", "text": "t", "score": 3.0 - i} for i in range(3)][:k]
+
+
+class ContinuationKeepsTheRealErrorRV16(unittest.TestCase):
+    """이어 읽기 페이지에서 청크 팔이 실패하면 빈 풀 때문에 `stale_cursor` 로 덮였다."""
+
+    def test_a_failing_second_page_reports_the_failure_not_a_stale_cursor(self):
+        from api import query as q
+        s = _PagedStub()
+        first = q.search("t", top_k=1, store=s)
+        self.assertTrue(first["next_cursor"])
+        s.fail = True
+        second = q.search("t", top_k=1, store=s, cursor=first["next_cursor"])
+        self.assertIn("could not read the index file", str(second.get("error")), second)
+        self.assertFalse(str(second.get("error")).startswith("stale_cursor"), second)
+
+
 if __name__ == "__main__":
     unittest.main()
