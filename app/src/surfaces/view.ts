@@ -7,6 +7,7 @@ import { absoluteViewUrl, formatViewUrl, parseViewUrl } from "../view-url";
 import { camera3d, centerOn3d, enableLasso, findNode3d, mount3d, zoomBy3d,
          type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
+import type { DragEnd } from "./drag-connect";
 import { bucketRange, gateway3dSvg, mark3dSvg, markSvg, mountColumns, pickGrain,
          timelinePool, type Grain,
          type PlanarHandle } from "./view-planar";
@@ -41,7 +42,7 @@ import { wireOutsideDismiss } from "../components";
 import { icon } from "../icons";
 import { setLiveRefresher } from "../live";
 import { emptyInviteHtml } from "../empty-invite";
-import { takePendingNewDoc } from "../authoring";
+import { RELS, relRefusal, takePendingNewDoc } from "../authoring";
 
 /** Surface 3 — View (spec: [[vinc.spec.viewpoints]] · as-built [[vinc.reference.view-controls]]).
  *
@@ -791,6 +792,14 @@ export async function renderView(el: HTMLElement) {
     pickTarget = null;
     dispatchEvent(new CustomEvent("vinc:pick-cancel"));
   }
+  /** 끌어서 잇기(3D·2D 의 Alt 끌기)가 두 노드를 골랐다 — 잇기 버튼과 **같은** 관계 고르기를
+   *  연다. 쓰는 길은 거기 하나뿐이다. 떠 있던 잇기 띠는 닫는다(두 고르기가 겹치지 않게). */
+  function connectByDrag(a: DragEnd, b: DragEnd) {
+    dropPick();
+    void import("../connect").then((m) => m.openRelationPicker(a, b));
+  }
+  /** 끄는 동안 고리 모양만 가른다 — 관계 넷 중 하나라도 규칙에 맞으면 이을 수 있는 쌍이다. */
+  const canLinkPair = (a: string, b: string) => RELS.some((r) => !relRefusal(r, a, b));
   function closeRail() {
     dropPick();
     detail.hidden = true;
@@ -2095,6 +2104,7 @@ export async function renderView(el: HTMLElement) {
         else focusOnMap(nd);       // 레일은 카드의 버튼이 연다
       },
       onRightClick: (nd, ev) => nodeMenu(nd, ev),
+      onConnect: connectByDrag, canConnect: canLinkPair,
     }, p, keepCam, curNodes.map((n) => n.domain));   // 색 순위는 전량으로(setCurNodes 주석)
     keepCam = null;                               // 한 번 실어 보내면 끝 — 다음 마운트는 전체 맞춤
     applyTimeCut();                               // 첫 화면부터 커서를 반영한다
@@ -3636,6 +3646,7 @@ export async function renderView(el: HTMLElement) {
       onRightClick: (nd, ev) => nodeMenu(toN3([nd])[0], ev),
       // D53 — 흐름 폐기로 갈 곳을 잃은 관계 근거 패널(D45-V)의 새 진입점.
       onEdge: (e) => void openEdgeDetail(e),
+      onConnect: connectByDrag, canConnect: canLinkPair,
     }, p);
     applyTimeCut();
   }

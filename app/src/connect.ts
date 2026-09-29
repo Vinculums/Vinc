@@ -5,6 +5,8 @@
  *  ② 관계: A → B 화살표를 보며 넷 중 하나를 고른다(관련 · 선행 · 파생 · 상속). 방향은
  *     바꿀 수 있고, 규칙상 안 되는 관계는 미리 막고 이유를 붙인다(`relRefusal`).
  *     근거 문장은 선택이다. Enter 로 잇고, 이은 선은 곧바로 지도에 그려진다.
+ *  지름길: 3D·2D 에서 Alt 끌기로 두 노드를 고르면 ①을 건너뛰고 ②(`openRelationPicker`)로
+ *  곧장 온다(`surfaces/drag-connect.ts`). 쓰는 길은 여기 하나다.
  *
  *  여태 관계를 만드는 길은 둘뿐이었고 둘 다 `relates_to` 로 박혀 있었다(연결이 없을
  *  때만 뜨는 제안 · Tools 의 문서 잇기). 종류를 고를 길도, 지울 길도 없었다. */
@@ -41,6 +43,7 @@ export function startConnect(a: End): void {
       <button class="rail-x" type="button" data-pick="cancel">${esc(A.cancel)}</button>
     </div>
     <p class="hint pick-hint">${esc(A.pickHint)}</p>
+    <p class="hint pick-drag">${esc(A.dragHint(/mac/i.test(navigator.platform) ? "Option" : "Alt"))}</p>
     <input type="text" autocomplete="off" spellcheck="false" placeholder="${esc(A.pickSearchPh)}"
            aria-label="${esc(A.pickSearchPh)}"/>
     <div class="cm-assist-menu pick-hits" role="listbox" hidden></div>

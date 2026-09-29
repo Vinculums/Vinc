@@ -17,7 +17,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from evalkit import run_nodes, runtime, transports  # noqa: E402
+from evalkit import funnel, grading, run_nodes, runtime, transports  # noqa: E402
 
 RT = {"onnxruntime": "1.30.0", "tokenizers": "0.23.2", "numpy": "2.5.3"}
 
@@ -117,6 +117,67 @@ class ParityTests(unittest.TestCase):
         self.assertTrue(run_nodes._degraded({"arms": "fts"}))
         self.assertTrue(run_nodes._degraded({"arms": "fts+vector", "vector_note": "x"}))
         self.assertEqual(run_nodes._degraded({"arms": "fts+vector"}), "")
+
+
+def _row(status="choose", rank=0, union_rank=0, answerable=True, wrong=0.0, query="q"):
+    return {"query": query, "answerable": answerable, "status": status, "rank": rank,
+            "union_rank": union_rank, "wrong_node": wrong, "gold_kind": "concept", "axis": "en",
+            "unanswerable_kind": "" if answerable else "no-topic",
+            "false_resolved": 1.0 if (not answerable and status == "resolved") else 0.0,
+            "hit": {k: 1.0 if 0 < rank <= k else 0.0 for k in (1, 3, 10)}}
+
+
+class FunnelTests(unittest.TestCase):
+    def test_처음_떨어진_게이트_하나를_적는다(self):
+        self.assertEqual(funnel.first_fail(_row(rank=0, union_rank=0)), "union")
+        self.assertEqual(funnel.first_fail(_row(rank=4, union_rank=4)), "exposed")
+        self.assertEqual(funnel.first_fail(_row(rank=2, union_rank=1)), "first")
+        self.assertEqual(funnel.first_fail(_row(rank=1, union_rank=1)), "committed")
+        self.assertEqual(funnel.first_fail(_row("resolved", rank=1, union_rank=1)), "pass")
+        # 틀린 노드로 확정하면 정답이 가려진다 — 노출에서 떨어진다.
+        self.assertEqual(funnel.first_fail(_row("resolved", rank=0, union_rank=2, wrong=1.0)),
+                         "exposed")
+
+    def test_JSON_에서_읽은_문자열_키도_같게_읽는다(self):
+        r = _row(rank=1, union_rank=1)
+        r["hit"] = {str(k): v for k, v in r["hit"].items()}
+        self.assertEqual(funnel.first_fail(r), "committed")
+
+    def test_nDCG_의_IDCG_는_정답_목록에서_구한다(self):
+        self.assertAlmostEqual(funnel.ndcg_at(2), 1 / __import__("math").log2(3))
+        self.assertEqual(funnel.ndcg_at(11), 0.0)
+        # 정답이 둘인데 하나만 1위로 받았으면 1 이 아니다.
+        self.assertLess(funnel.ndcg_at(1, n_relevant=2), 1.0)
+
+    def test_McNemar_는_뒤집힘만_센다(self):
+        self.assertEqual(funnel.mcnemar_p(0, 0), 1.0)
+        self.assertEqual(funnel.mcnemar_p(0, 6), 0.0312)
+
+    def test_같은_실행끼리는_차이가_0_이다(self):
+        rows = [_row("resolved", 1, 1, query="a"), _row(rank=2, union_rank=2, query="b"),
+                _row("resolved", answerable=False, query="c")]
+        got = funnel.paired(rows, rows)
+        self.assertEqual((got["exposed_r1"]["delta"], got["exposed_r1"]["mcnemar_p"]), (0.0, 1.0))
+        self.assertEqual(got["false_resolved"]["n"], 1)
+
+    def test_문항_목록이_다르면_짝짓지_않는다(self):
+        with self.assertRaises(ValueError):
+            funnel.paired([_row(query="a")], [_row(query="b")])
+
+    def test_확정_점은_곡선_위에_있다(self):
+        rows = [_row("resolved", 1, 1), _row("resolved", 0, 1, wrong=1.0),
+                _row(rank=1, union_rank=1), _row("none")]
+        rc = funnel.risk_coverage(rows)
+        self.assertEqual(rc["operating_point"], {"coverage": 0.5, "risk": 0.5})
+        self.assertEqual(rc["max_coverage"], 0.75)      # none 은 기권이라 덮지 않는다
+
+    def test_채점이_합집합의_팔과_첫_노드를_싣는다(self):
+        hits = [{"id": "concept:b", "arms": ["title"], "rrf_score": 0.03},
+                {"id": "concept:a", "arms": ["title", "semantic"], "rrf_score": 0.02}]
+        res = {"status": "choose", "candidates": [{"id": "concept:b"}, {"id": "concept:a"}]}
+        got = grading.grade_one(res, {"query": "q", "gold_node_id": "concept:a"}, hits)
+        self.assertEqual((got["union_arms"], got["pred"], got["pred_rrf"]),
+                         (["semantic", "title"], "concept:b", 0.03))
 
 
 class LiveFingerprintTests(unittest.TestCase):

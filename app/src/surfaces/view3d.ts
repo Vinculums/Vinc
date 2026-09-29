@@ -17,6 +17,7 @@ import { tintMap } from "../view-tint";
 import { recede } from "../recede";
 import { edgeKey, type Spot } from "../spotlight";
 import { aimAt, restRadius, zoomStep } from "../camera-aim";
+import { HIT_MIN_PX, wireDragConnect, type DragEnd, type DragHit } from "./drag-connect";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -481,6 +482,9 @@ export function camera3d(g: ForceGraph3DInstance): Cam3 | null {
 export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   onClick?: (n: N3) => void; onRightClick?: (n: N3, ev: MouseEvent) => void;
   onLinkClick?: (l: any) => void;
+  /** Alt 끌기로 두 노드를 골랐다(끌어서 잇기). 쓰기는 호출측의 관계 고르기가 한다. */
+  onConnect?: (a: DragEnd, b: DragEnd) => void;
+  canConnect?: (a: string, b: string) => boolean;
 }, prefs: ViewPrefs = loadPrefs(), keepCam: Cam3 | null = null,
    tintDomains: (string | undefined)[] | null = null): ForceGraph3DInstance {
   const flat = prefs.view === "2d";        // D31 — 동일 렌더러의 z 평면화
@@ -793,9 +797,41 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     el.addEventListener(ev, onWakeEvent, { passive: true });
   controls?.addEventListener?.("change", onWakeEvent);
   (g as any).__wake = wake;                       // 바깥(f 키·flyToMounted)에서도 깨운다
+  // ── 끌어서 잇기(Alt 끌기) ─────────────────────────────────────────────────
+  // 찾기는 영역 선택과 같은 화면 투영이다 — 노드가 인스턴스 메시라 레이캐스트로는 못 잡는다.
+  // 반지름은 노드 반경을 화면 오른쪽 방향으로 한 번 더 투영해 잰다(멀면 작게 잡힌다).
+  // 카메라 뒤의 노드와 시간 커서가 숨긴 노드는 잡지 않는다.
+  const unwireConnect = handlers.onConnect ? wireDragConnect(el, {
+    hitAt: (x, y) => {
+      const cam: THREE.Camera = g.camera();
+      const right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0);
+      const fwd = cam.getWorldDirection(new THREE.Vector3());
+      const at = new THREE.Vector3(), rel = new THREE.Vector3();
+      const vis: any = g.nodeVisibility();
+      let best: DragHit | null = null, bestD = Infinity;
+      for (const n of nodes) {
+        if (typeof vis === "function" ? !vis(n) : vis === false) continue;
+        at.set(n.x || 0, n.y || 0, n.z || 0);
+        if (rel.copy(at).sub(cam.position).dot(fwd) <= 0) continue;
+        const s = g.graph2ScreenCoords(at.x, at.y, at.z);
+        const d = Math.hypot(s.x - x, s.y - y);
+        if (d >= bestD) continue;
+        const r = nodeRadius(n, prefs);
+        const e = g.graph2ScreenCoords(at.x + right.x * r, at.y + right.y * r, at.z + right.z * r);
+        const rp = Math.max(HIT_MIN_PX, Math.hypot(e.x - s.x, e.y - s.y));
+        if (d <= rp) { best = { id: n.id, title: n.label, x: s.x, y: s.y, r: rp }; bestD = d; }
+      }
+      return best;
+    },
+    // 끄는 동안 회전·이동·줌이 멎는다. 노드 끌기는 pointerdown 이 닿지 않아 애초에 안 선다.
+    lock: (on) => { if (controls) controls.enabled = !on; wake(300); },
+    onConnect: handlers.onConnect,
+    allowed: handlers.canConnect,
+  }) : null;
   const baseDestructor = (g as any)._destructor?.bind(g);
   (g as any)._destructor = () => {
     dead = true; ro.disconnect();
+    unwireConnect?.();
     controls?.removeEventListener?.("change", syncCamera);
     window.clearInterval(napTimer);
     controls?.removeEventListener?.("change", onWakeEvent);

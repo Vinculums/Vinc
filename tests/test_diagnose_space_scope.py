@@ -1,140 +1,150 @@
 # -*- coding: utf-8 -*-
-"""구조 진단의 스페이스 경계 — 같은 슬러그가 두 스페이스에 살면 고아가 아니다.
+"""구조 진단의 스페이스 경계 — 같은 슬러그가 두 스페이스에 살아도 남의 것은 안 섞인다.
 
-`component_diagnosis` 는 owner 스코프를 **논리 id 문자열 집합과의 교차**로 건다.
-알고리즘 투영은 전체를 훑고(`project_graph` 는 owner 를 모른다), 그 결과에서 내 id
-집합에 든 것만 남기는 방식이다. 한 소유자 안에서 id 는 기본키라 유일하니 그 교차는
-안전해 보이는데, **같은 슬러그를 가진 남의 노드가 문자열이 같다는 이유로 통과한다.**
-
-새 스페이스는 전부 같은 기본 역할 넷으로 시작하므로 이것은 드문 일이 아니다.
-2026-09-10 실측: `concept:agent-steward` 가 크기 1 컴포넌트로 **네 번** 나왔고 그 수가
-소유자 수와 맞았다. 2026-09-06 에 "진단이 같은 노드를 두 번 센다"로 기록된 유령이
-버그가 아니라 그것이었다 — 스페이스가 늘어난 만큼 늘어난 것이다.
-
-어느 쪽이 내 것인지는 **알 방법이 없다**(알고리즘 행에 소유자가 없다). 그래서 고르지
-않고 갈라서 말한다. 고아로 세면 남의 그래프를 내 정리 대상으로 내밀게 된다.
+엔진 algo 확장 시절에는 투영이 소유자를 몰랐다(`project_graph` 는 전체 표만 됐다). 그래서
+결과에서 내 논리 id 집합과 교차해 스코프를 걸었고, **같은 슬러그를 가진 남의 노드가 문자열이
+같다는 이유로 통과했다.** 새 스페이스는 전부 같은 기본 역할 넷으로 시작하므로 드문 일이
+아니다(2026-09-10 실측: `concept:agent-steward` 가 크기 1 컴포넌트로 네 번). 그때는 어느
+쪽이 내 것인지 알 길이 없어 고르지 않고 갈라서 말했다.
 근거: [[record:one-logical-id-in-two-spaces-reads-as-two-orphans-2026-09-10]]
+
+2026-09-28 부터 계산은 `api/graph_algo.py` 이고 투영이 **소유자로 거른다**(양 끝이 모두
+그 소유자인 엣지만). 이제는 어느 쪽이 내 것인지 안다: 내 스페이스의 그 슬러그만 들어온다.
+이 파일은 그 불변식을 고정한다 — 남의 노드는 고아도, 커뮤니티 구성원도 되지 않고, 스페이스를
+건너는 엣지는 투영에 없다.
 """
 from __future__ import annotations
 
+import re
 import unittest
 
 from api import query as q
 
+MINE, THEIRS = "user:mine", "user:theirs"
 
-class _AlgoStore:
-    """`graph_algo` 와 owner 조회만 하는 대역. 드라이버를 안 쓴다."""
+_NODE = re.compile(r"MATCH \((\w):(\w+)\)")
+_EDGE = re.compile(r"MATCH \(x:(\w+)\)-\[:(\w+)\]->\(y:(\w+)\)")
 
-    def __init__(self, rows, mine):
-        self._rows = rows          # [{id, value}] — value 가 컴포넌트 번호
-        self._mine = mine          # 내 소유자의 논리 id 집합
 
-    def graph_algo(self, algo, **kw):
-        return list(self._rows)
+class _SpacesStore:
+    """두 스페이스를 가진 대역. 진단이 내는 조회(투영의 노드·엣지, 소유 개념, 도메인)만
+    흉내 낸다. 소유자 필터를 **걸었을 때만** 거른다 — 투영이 필터를 빼먹으면 남의 것이
+    그대로 섞여 들어와 아래 테스트가 잡는다."""
+
+    def __init__(self, nodes, edges):
+        self.nodes = nodes      # {(owner, id): label}
+        self.edges = edges      # [(owner_a, a, rel, owner_b, b)]
 
     def run(self, query, params=None):
-        # `_owner_concept_ids` 가 Concept 과 Decision 을 따로 묻는다.
-        if "(c:Concept)" in query:
-            return [{"id": i} for i in self._mine if i.startswith("concept:")]
-        if "(d:Decision)" in query:
-            return [{"id": i} for i in self._mine if i.startswith("decision:")]
+        owner = (params or {}).get("o") or (params or {}).get("owner")
+        m = _EDGE.search(query)
+        if m:
+            la, rel, lb = m.groups()
+            return [{"a": a, "b": b} for oa, a, r, ob, b in self.edges
+                    if r == rel and self.nodes.get((oa, a)) == la
+                    and self.nodes.get((ob, b)) == lb
+                    and (owner is None or (oa == owner and ob == owner))]
+        m = _NODE.search(query)
+        if m:
+            label = m.group(2)
+            rows = [{"id": i, "domain": ""} for (o, i), lbl in self.nodes.items()
+                    if lbl == label and (owner is None or o == owner)]
+            return rows
         return []
 
     def close(self):
         pass
 
 
-def _diag(rows, mine, **kw):
-    return q.component_diagnosis(owner="user:mine", store=_AlgoStore(rows, mine), **kw)
+def _store(mine_nodes, theirs_nodes, edges=()):
+    nodes = {(MINE, i): "Concept" for i in mine_nodes}
+    nodes.update({(THEIRS, i): "Concept" for i in theirs_nodes})
+    return _SpacesStore(nodes, [(oa, a, "RELATED_TO", ob, b) for oa, a, ob, b in edges])
 
 
 class SharedSlug(unittest.TestCase):
-    def test_one_id_in_two_components_is_not_two_orphans(self):
-        """🔴 이 파일의 요지. 같은 id 가 두 컴포넌트에 있으면 두 스페이스의 노드다 —
-        한 소유자 안에서는 기본키라 불가능하다."""
-        res = _diag([{"id": "concept:agent-steward", "value": 1},
-                     {"id": "concept:agent-steward", "value": 2}],
-                    {"concept:agent-steward"})
-        self.assertEqual(res["orphans"], [])
-        self.assertEqual(res["orphan_count"], 0)
-        self.assertEqual(res["ambiguous"], ["concept:agent-steward"])
-        self.assertEqual(res["ambiguous_count"], 1)
-
-    def test_it_says_why_rather_than_dropping_silently(self):
-        """조용히 빼면 "고아가 줄었다" 로 읽힌다. 이 리포가 반복해 물린 무음 절단이다."""
-        res = _diag([{"id": "concept:x", "value": 1}, {"id": "concept:x", "value": 2}],
-                    {"concept:x"})
-        self.assertIn("more than one space", res["ambiguous_note"])
-
-    def test_a_component_left_empty_by_the_split_disappears(self):
-        """구성원이 모호한 것뿐이던 컴포넌트는 남기지 않는다 — 크기 0 은 컴포넌트가
-        아니고, 그것을 실으면 `component_count` 가 거짓이 된다."""
-        res = _diag([{"id": "concept:x", "value": 1}, {"id": "concept:x", "value": 2},
-                     {"id": "concept:a", "value": 3}, {"id": "concept:b", "value": 3}],
-                    {"concept:x", "concept:a", "concept:b"})
-        self.assertEqual(res["component_count"], 1)
-        self.assertEqual(res["components"][0]["size"], 2)
-
-    def test_a_real_orphan_still_reads_as_one(self):
-        """모호한 것을 가르느라 진짜 고아를 잃으면 진단이 쓸모를 잃는다."""
-        res = _diag([{"id": "concept:lonely", "value": 7}], {"concept:lonely"})
-        self.assertEqual(res["orphans"], ["concept:lonely"])
+    def test_a_slug_in_two_spaces_is_my_orphan_once(self):
+        """🔴 이 파일의 요지. 예전에는 네 번 나오거나(교차 전) 아예 빠졌다(교차 후,
+        모호함으로). 이제 내 스페이스의 그 노드 하나만 보고, 그것이 정말 고아면 고아다."""
+        st = _store({"concept:agent-steward"}, {"concept:agent-steward"})
+        res = q.component_diagnosis(owner=MINE, store=st)
+        self.assertEqual(res["orphans"], ["concept:agent-steward"])
+        self.assertEqual(res["orphan_count"], 1)
         self.assertEqual(res["ambiguous"], [])
 
     def test_another_space_only_slug_never_enters(self):
-        """내 id 집합에 없는 슬러그는 애초에 교차에서 떨어진다 — 그 경로는 이미 옳다."""
-        res = _diag([{"id": "concept:theirs", "value": 1},
-                     {"id": "concept:mine", "value": 2}],
-                    {"concept:mine"})
+        st = _store({"concept:mine"}, {"concept:theirs"})
+        res = q.component_diagnosis(owner=MINE, store=st)
         self.assertEqual(res["orphans"], ["concept:mine"])
-        self.assertEqual(res["ambiguous"], [])
+
+    def test_an_edge_across_spaces_is_not_projected(self):
+        """양 끝이 모두 내 것인 엣지만 투영한다. 한쪽이 남의 것이면 그 엣지로 내 노드가
+        고아를 면하면 안 된다."""
+        st = _store({"concept:a"}, {"concept:b"}, [(MINE, "concept:a", THEIRS, "concept:b")])
+        res = q.component_diagnosis(owner=MINE, store=st)
+        self.assertEqual(res["orphans"], ["concept:a"])
+
+    def test_the_same_edge_in_both_spaces_counts_once(self):
+        st = _store({"concept:a", "concept:b"}, {"concept:a", "concept:b"},
+                    [(MINE, "concept:a", MINE, "concept:b"),
+                     (THEIRS, "concept:a", THEIRS, "concept:b")])
+        res = q.component_diagnosis(owner=MINE, store=st)
+        self.assertEqual(res["component_count"], 1)
+        self.assertEqual(res["components"][0]["size"], 2)
+        self.assertEqual(res["orphans"], [])
 
     def test_a_clean_graph_carries_the_fields_anyway(self):
         """부르는 쪽이 키 유무로 분기하지 않게 한다 — 없으면 있는 것과 다른 코드가 된다."""
-        res = _diag([{"id": "concept:a", "value": 1}, {"id": "concept:b", "value": 1}],
-                    {"concept:a", "concept:b"})
+        st = _store({"concept:a", "concept:b"}, set(), [(MINE, "concept:a", MINE, "concept:b")])
+        res = q.component_diagnosis(owner=MINE, store=st)
         self.assertEqual(res["ambiguous"], [])
         self.assertEqual(res["ambiguous_count"], 0)
         self.assertNotIn("ambiguous_note", res)
 
 
 class Communities(unittest.TestCase):
-    """같은 교차를 쓰는 나머지 둘. 컴포넌트만 고치면 두 진단이 계속 틀린다."""
+    """같은 투영을 쓰는 나머지 둘. 컴포넌트만 맞으면 두 진단이 계속 틀린다."""
 
-    def _com(self, rows, mine, **kw):
-        return q.communities(owner="user:mine",
-                             store=_AlgoStore(rows, mine), **kw)
-
-    def test_a_shared_slug_does_not_inflate_two_communities(self):
-        res = self._com([{"id": "concept:x", "value": 1}, {"id": "concept:x", "value": 2},
-                         {"id": "concept:a", "value": 1}, {"id": "concept:b", "value": 1}],
-                        {"concept:x", "concept:a", "concept:b"})
+    def test_a_shared_slug_does_not_inflate_a_community(self):
+        st = _store({"concept:x", "concept:a", "concept:b"}, {"concept:x", "concept:y"},
+                    [(MINE, "concept:a", MINE, "concept:b"),
+                     (MINE, "concept:b", MINE, "concept:x"),
+                     (THEIRS, "concept:x", THEIRS, "concept:y")])
+        res = q.communities(owner=MINE, store=st)
         self.assertEqual(res["community_count"], 1)
-        self.assertEqual(res["communities"][0]["size"], 2)
-        self.assertEqual(res["ambiguous"], ["concept:x"])
+        self.assertEqual(res["communities"][0]["members"],
+                         ["concept:a", "concept:b", "concept:x"])
+        self.assertEqual(res["ambiguous"], [])
 
-    def test_context_refuses_an_ambiguous_seed_instead_of_guessing(self):
-        """🔴 셋 중 가장 조용했던 자리. `assign` 이 논리 id 로 키를 잡는 dict 라 같은
-        슬러그가 둘이면 **마지막 행이 이긴다** — 남의 스페이스 커뮤니티를 씨앗의
-        커뮤니티로 집고 그 위에서 대표와 발췌를 만들며 아무 표시도 없다."""
-        res = q.community_context(
-            node="concept:x", owner="user:mine",
-            store=_AlgoStore([{"id": "concept:x", "value": 1},
-                              {"id": "concept:x", "value": 2},
-                              {"id": "concept:a", "value": 2}],
-                             {"concept:x", "concept:a"}))
-        self.assertFalse(res["executed"])
-        self.assertTrue(res.get("ambiguous"))
-        self.assertIn("more than one space", res["note"])
-
-    def test_context_still_answers_for_a_clean_seed(self):
-        res = q.community_context(
-            node="concept:a", owner="user:mine",
-            store=_AlgoStore([{"id": "concept:a", "value": 5},
-                              {"id": "concept:b", "value": 5}],
-                             {"concept:a", "concept:b"}))
-        self.assertTrue(res["executed"])
+    def test_context_answers_for_a_shared_slug_from_my_space(self):
+        """예전에는 모호해서 답하지 않았다(남의 커뮤니티를 집을 수 있었다). 이제 내
+        스페이스의 커뮤니티로 답한다 — 남의 구성원(`concept:y`)은 섞이지 않는다."""
+        st = _store({"concept:x", "concept:a"}, {"concept:x", "concept:y"},
+                    [(MINE, "concept:x", MINE, "concept:a"),
+                     (THEIRS, "concept:x", THEIRS, "concept:y")])
+        res = q.community_context(node="concept:x", owner=MINE, store=st)
+        self.assertTrue(res["executed"], res)
         self.assertEqual(res["size"], 2)
+        ids = {m["id"] for m in res["members"]} | {r["id"] for r in res["representatives"]}
+        self.assertNotIn("concept:y", ids)
+
+    def test_both_answers_carry_the_same_quality(self):
+        """목록과 시드 답이 같은 커뮤니티에 같은 숫자를 싣는다. 크기는 바깥의 `size` 한 곳뿐이다."""
+        st = _store({"concept:a", "concept:b", "concept:c"}, set(),
+                    [(MINE, "concept:a", MINE, "concept:b"),
+                     (MINE, "concept:b", MINE, "concept:c")])
+        listed = q.communities(owner=MINE, store=st)["communities"][0]["quality"]
+        ctx = q.community_context(node="concept:a", owner=MINE, store=st)
+        self.assertEqual(ctx["quality"], listed)
+        self.assertTrue(listed["connected"])
+        self.assertEqual(listed["internal_edges"], 2)
+        self.assertNotIn("size", listed)
+
+    def test_context_says_so_for_an_isolated_seed(self):
+        st = _store({"concept:alone"}, set())
+        res = q.community_context(node="concept:alone", owner=MINE, store=st)
+        self.assertFalse(res["executed"])
+        self.assertIn("isolated", res["note"])
 
 
 class VersionsMoveTogether(unittest.TestCase):

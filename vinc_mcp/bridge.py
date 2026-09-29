@@ -19,7 +19,12 @@ import urllib.parse
 import urllib.request
 
 DEFAULT_BASE = "http://127.0.0.1:8787"
-DEFAULT_OWNER = "user:local"
+# 로컬 스토어의 소유자는 하나다: 앱·fragment 기본값·profile.yml·PK 정규화 표가 모두
+# `tenant:local` 이다. 여기만 `user:local` 이라 MCP 로 쓴 것이 앱 화면에 영영 안 보였다
+# (2026-09-28 재현: 같은 스토어에서 MCP 쓰기는 user:local 에만, 앱 읽기는 0건).
+# 이미 user:local 로 쓰인 행은 사이드카가 기동할 때 접는다(`api/owner_fold.py`).
+# 근거: [[vinc.plan.desktop-account-mode §6.3]]
+DEFAULT_OWNER = "tenant:local"
 
 
 def _pick_free_port() -> int:

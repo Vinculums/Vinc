@@ -67,14 +67,24 @@ class JobQueue:
     **드라이버를 닫았다 여는** 작업은 여기서만 안전하다 — 다른 스레드에서 하면
     재오픈 중인 커넥션을 누군가 쓴다. 예외는 삼키되 조용히 넘기지는 않는다.
 
+    ``on_before_done(job, result)`` 은 성공 응답 전에 반드시 끝나야 하는 작업의
+    자리다. 예외가 나면 이 잡은 ERROR 이며 결과를 공개하지 않는다. 이미 실행된
+    ``fn`` 의 로컬 뮤테이션이 되돌아갔다는 뜻은 아니므로 재시도 정책은 호출자가
+    별도로 정해야 한다.
+
     ``tick_s`` 가 없으면(기본) 워커는 잡이 올 때까지만 깬다. 그러면 잡 완료가 유일한
     틱이라 **버스트의 마지막 쓰기는 다음 쓰기가 올 때까지** 아무 후처리도 못 밟는다 —
     허브의 영속 스냅샷이 거기서 잤고 ack 를 준 문서를 잃었다(2026-09-06). 그래서
     사이드카는 이 값을 준다. 틱은 잡의 순서도 지연도 바꾸지 않는다: 대기에 상한만
     둘 뿐이고 ``Queue.get`` 은 항목이 들어오면 즉시 깬다."""
 
-    def __init__(self, *, on_idle=None, tick_s: float | None = None) -> None:
+    def __init__(self, *, on_idle=None, on_before_done=None,
+                 tick_s: float | None = None) -> None:
         self._on_idle = on_idle
+        # A required durability hook runs on the sole writer before a successful
+        # response or DONE can be observed. Unlike on_idle, its error is fatal to
+        # this job; the caller must treat a post-mutation failure as indeterminate.
+        self._on_before_done = on_before_done
         self._tick_s = tick_s
         self._q: "queue.Queue" = queue.Queue()
         self._jobs: dict[str, Job] = {}
@@ -176,7 +186,10 @@ class JobQueue:
             job.status = RUNNING
             try:
                 result = fn()
-                job.result = result if isinstance(result, dict) else {"result": result}
+                normalized = result if isinstance(result, dict) else {"result": result}
+                if self._on_before_done is not None:
+                    self._on_before_done(job, normalized)
+                job.result = normalized
                 job.status = DONE
             # ⚠ **BaseException 이다** — `Exception` 으로 좁히지 말 것. `SystemExit`·
             # `KeyboardInterrupt` 가 빠져나가면 **워커 스레드가 죽고** 그 뒤 모든 쓰기가

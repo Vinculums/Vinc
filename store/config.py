@@ -150,7 +150,7 @@ def vinc_home() -> pathlib.Path:
 
 
 #: 데스크톱 저장 설정(VIN-130). 앱이 쓰고, 사이드카와 로컬 MCP 가 읽는다.
-#: `{"mode": "account"|"local", "data_path": "<폴더>"}`. 폴더를 고르면 **DB 만** 그리로
+#: `{"mode": "account"|"local", "mode_chosen": bool, "data_path": "<폴더>"}`. 폴더를 고르면 **DB 만** 그리로
 #: 간다(`<폴더>/db`). 세션 파일·확장·MCP 상태·packs 는 `~/.vinc` 에 남는다.
 LOCAL_CONFIG = "config.json"
 

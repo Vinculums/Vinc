@@ -12,6 +12,7 @@ import type { ViewPrefs } from "../view-prefs";
 import { edgeKey, type Spot } from "../spotlight";
 import { markTexture, MARK_TEX_PX } from "./view-planar";
 import { glassShapeOf, glassSprite, type GlassShape } from "../glass-sprite";
+import { HIT_MIN_PX, wireDragConnect, type DragEnd, type DragHit } from "./drag-connect";
 
 /** 유리 마크의 노드 색 — 그림 모드는 그림 밖 칸을 노드 색으로 채우므로 투명이어야 한다. */
 const CLEAR = "rgba(0,0,0,0)";
@@ -169,7 +170,10 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   o: { onClick: (n: GraphNode) => void; onRightClick?: (n: GraphNode, ev: MouseEvent) => void;
        /** 선 클릭 → 관계 근거 패널(D45-V). 흐름 관점이 폐기되면서(D53) 이 진입점이
         *  여기로 옮겨 왔다 — 방향 엣지가 화살촉을 달고 그려지는 유일한 자리다. */
-       onEdge?: (e: GraphEdge) => void; markId?: string },
+       onEdge?: (e: GraphEdge) => void; markId?: string;
+       /** Alt 끌기로 두 노드를 골랐다(끌어서 잇기). 쓰기는 호출측의 관계 고르기가 한다. */
+       onConnect?: (a: DragEnd, b: DragEnd) => void;
+       canConnect?: (a: string, b: string) => boolean },
   prefs: ViewPrefs): Handle2d {
   // 물러난 선과 미니맵이 섞어 드는 배경. 테마 전환이 다시 읽는다(`retheme`).
   let bg = hexStr(pal().background);
@@ -737,6 +741,31 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   stage.addEventListener("mouseup", endDrag);
   stage.addEventListener("mouseleave", endDrag);
 
+  // ── 끌어서 잇기(Alt 끌기) ─────────────────────────────────────────────────
+  // 맨 끌기(위의 자리 옮기기)와 손이 겹치지 않게 Alt 로 가른다. 찾기는 리듀서를 거친
+  // 표시 데이터로 한다 — 시간 커서가 숨긴 노드는 잡히지 않고, 반지름은 화면에 그려진 크기다.
+  const unwireConnect = o.onConnect ? wireDragConnect(el, {
+    hitAt: (x, y) => {
+      let best: DragHit | null = null, bestD = Infinity;
+      g.forEachNode((id) => {
+        const dd = sigma.getNodeDisplayData(id);
+        if (!dd || dd.hidden) return;
+        const v = sigma.framedGraphToViewport(dd);
+        const d = Math.hypot(v.x - x, v.y - y);
+        const r = Math.max(HIT_MIN_PX, sigma.scaleSize(dd.size));
+        if (d <= r && d < bestD) {
+          best = { id, title: byId.get(id)?.label ?? String(g.getNodeAttribute(id, "label") ?? id),
+                   x: v.x, y: v.y, r };
+          bestD = d;
+        }
+      });
+      return best;
+    },
+    lock: (on) => { if (on) sigma.getCamera().disable(); else sigma.getCamera().enable(); },
+    onConnect: o.onConnect,
+    allowed: o.canConnect,
+  }) : null;
+
   // ── 입력 ────────────────────────────────────────────────────────────────
   // hover 는 **어둡게만** 한다 — 배치는 건드리지 않는다.
   sigma.on("enterNode", ({ node }) => { hovered = node; sigma.refresh(); });
@@ -763,6 +792,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       sigma.refresh();          // 좌표는 그대로 — 리듀서만 다시 돈다
     },
     dispose() {
+      unwireConnect?.();
       sigma.removeAllListeners();
       sigma.kill();
       el.innerHTML = "";

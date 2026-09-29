@@ -46,6 +46,15 @@ const EN = {
     // 사이드카가 안 떴을 때. 인터넷 탓으로 돌리지 않는다(연결은 멀쩡했다, 2026-09-27).
     localDown: "Vinc could not start on this device. Try again, and if it keeps happening, restart Vinc.",
   },
+  // 로그인 뒤 한 번 묻는 화면(VIN-131). 이 기기에 로그인 전부터 쌓인 그래프가 있을 때만
+  // 뜬다. 기본은 계정으로 옮기기다(발주자 결정 2026-09-24). 어느 쪽도 지우지 않는다.
+  deviceGraph: {
+    title: "This computer already has a graph",
+    lead: "Vinc found work saved on this computer from before you signed in, so you keep using this computer's graph for now.",
+    switchHint: "To use your account graph instead, go to Settings\u00a0›\u00a0Account\u00a0·\u00a0storage and turn off “Keep the graph on this device.” You can move this computer's graph into your account when you turn it off.",
+    okCta: "OK",
+    saveFailed: "Vinc could not save this on this computer. Try again.",
+  },
   // 계정 모드에서 계정에 못 닿을 때 화면 위에 거는 한 줄(VIN-128). 빈 화면을 "데이터가
   // 없다"로 읽히게 두지 않는다.
   accountMode: {
@@ -148,6 +157,8 @@ const EN = {
     connectTip: "Link this node to another",
     pickLead: (a: string) => `Connect ${a} to…`,
     pickHint: "Click a node in View, or search.",
+    // 끌어서 잇기의 발견성 한 줄. key 는 "Alt" 또는 맥의 "Option".
+    dragHint: (key: string) => `Or hold ${key} and drag from one node to another.`,
     pickSearchPh: "Search a node",
     pickNone: "No node with that name.",
     cancel: "Cancel",
@@ -1210,6 +1221,13 @@ const KO: Deck = {
     failed: "연결을 마치지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요",
     localDown: "이 기기에서 Vinc를 시작하지 못했어요. 다시 시도해 보고, 계속 안 되면 Vinc를 다시 실행해 주세요",
   },
+  deviceGraph: {
+    title: "이 컴퓨터에 이미 그래프가 있어요",
+    lead: "로그인하기 전부터 이 컴퓨터에 저장해 둔 작업이 있어서, 지금은 이 컴퓨터의 그래프를 그대로 써요",
+    switchHint: "계정 그래프로 바꾸려면 설정\u00a0›\u00a0계정·저장에서 '그래프를 이 기기에 두기'를 끄세요. 끌 때 이 컴퓨터의 그래프를 계정으로 옮길 수 있어요",
+    okCta: "확인",
+    saveFailed: "이 컴퓨터에 저장하지 못했어요. 다시 시도해 주세요",
+  },
   accountMode: {
     unreachable: "지금 계정에 연결할 수 없어요. 그래프가 계정에 있어서 연결이 돌아올 때까지 화면이 비어 있어요",
     retry: "다시 시도하기",
@@ -1303,6 +1321,7 @@ const KO: Deck = {
     connectTip: "이 노드를 다른 노드와 이어요",
     pickLead: (a) => `${a}와(과) 이을 노드를 골라 주세요`,
     pickHint: "View에서 노드를 누르거나 검색하세요",
+    dragHint: (key) => `${key} 키를 누른 채 노드에서 다른 노드로 끌어도 이을 수 있어요`,
     pickSearchPh: "노드 검색",
     pickNone: "그런 이름의 노드가 없어요",
     cancel: "취소",
