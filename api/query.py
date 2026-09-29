@@ -228,9 +228,13 @@ CHUNK_RRF_K = 20
 
 
 def _query_fingerprint(query: str, owner: str | None, filters: dict | None,
-                       detail: str) -> str:
-    basis = json.dumps([query, owner or "", sorted((filters or {}).items()),
-                        detail], ensure_ascii=False)
+                       detail: str, as_of: str | None = None) -> str:
+    basis = [query, owner or "", sorted((filters or {}).items()), detail]
+    # 시점이 다른 요청의 커서로 이어 읽으면 두 시점의 결과가 한 목록에 섞인다. 기본값
+    # (as_of 없음)에서는 지문이 예전과 같게 둔다 — 이미 나간 커서가 무효가 되지 않게.
+    if as_of:
+        basis.append("as_of:" + as_of.strip())
+    basis = json.dumps(basis, ensure_ascii=False)
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:12]
 
 
@@ -730,6 +734,165 @@ def _stamp_validity(base: dict, valid_from, valid_until) -> None:
     base["validity"] = validity_state(base["valid_from"], base["valid_until"])
     props = base.get("props") if isinstance(base.get("props"), dict) else {}
     base["superseded_by"] = str(props.get("superseded_by") or "")
+
+
+# ── 시점 읽기(as_of) — "그때 성립하던 것" ──────────────────────────────────────
+# 기본 읽기는 **오늘** 성립하는 것을 보여 준다(`validity_state`, historical 만 감춘다).
+# `as_of` 는 그 "오늘"을 사람이 고른 기간으로 바꾼다. 기간인 이유: `2026-08` 이라고 물으면
+# 한 순간이 아니라 그 달이고, 그 달 동안 한 번이라도 성립한 주장이 답이다. 날짜 하나를
+# 주면 그 하루다. 계획의 `holds_at(T)` 를 기간으로 넓힌 것이다.
+# ⚠ 기본값에서는 아무것도 안 바뀐다. `as_of` 가 **주어졌을 때만** 시작 전(future)도 감춘다
+# — 오늘 읽기에서 future 를 안 감추는 이유(UTC 시계와 KST 저작)는 날짜를 사람이 고른 시점
+# 읽기에는 해당하지 않는다.
+# 근거: [[decision:temporal-model-operational-policy-2026-09-09]]
+_SCOPE_VALUE = re.compile(r"^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$")
+
+
+def time_scope(value: str | None) -> tuple[str, str] | None:
+    """`YYYY[-MM[-DD]]` → 그 기간의 `[시작, 끝)` (둘 다 `YYYY-MM-DD`). 틀린 값은 None."""
+    m = _SCOPE_VALUE.match((value or "").strip())
+    if not m:
+        return None
+    y, mo, d = m.groups()
+    try:
+        if d:
+            start = _dt.date(int(y), int(mo), int(d))
+            end = start + _dt.timedelta(days=1)
+        elif mo:
+            start = _dt.date(int(y), int(mo), 1)
+            end = _dt.date(int(y) + (int(mo) == 12), int(mo) % 12 + 1, 1)
+        else:
+            start = _dt.date(int(y), 1, 1)
+            end = _dt.date(int(y) + 1, 1, 1)
+    except ValueError:
+        return None
+    return start.isoformat(), end.isoformat()
+
+
+def _pad_date(v: str) -> str:
+    """구간 끝점을 날짜로 편다: `2026` → `2026-01-01`, `2026-08` → `2026-08-01`.
+    사전식 비교에서 짧은 값이 그 기간의 **첫날**로 읽히는 `validity_state` 의 규칙과 같다."""
+    v = (v or "").strip()
+    if len(v) == 4:
+        return v + "-01-01"
+    if len(v) == 7:
+        return v + "-01"
+    return v
+
+
+def holds_during(valid_from: str | None, valid_until: str | None,
+                 scope: tuple[str, str]) -> bool:
+    """반개구간 `[valid_from, valid_until)` 이 기간 `[start, end)` 와 겹치는가.
+    미기재 시작·끝은 열린 끝이다(미기재는 current 라는 정책 그대로)."""
+    start, end = scope
+    vf, vu = _pad_date(valid_from or ""), _pad_date(valid_until or "")
+    if vf and vf >= end:
+        return False            # 기간이 끝난 뒤에 시작했다
+    if vu and vu <= start:
+        return False            # 기간이 시작되기 전에 끝났다
+    return True
+
+
+def _visible(valid_from, valid_until, *, historical: bool,
+             scope: tuple[str, str] | None) -> bool:
+    """검색 두 팔(제목·의미)이 함께 쓰는 판정. 기간이 있으면 그 기간, 없으면 오늘 규칙."""
+    if scope is not None:
+        return holds_during(valid_from, valid_until, scope)
+    if historical:
+        return True
+    return validity_state(valid_from, valid_until) != "historical"
+
+
+# ── 질문 속 시점(EXAQT 방식, 규칙만) ─────────────────────────────────────────
+# 질문에 적힌 **절대** 시점을 규칙으로 읽는다(Jia et al. 2021 의 시점 필터를 모델 없이).
+# 모호하면 읽지 않는다: 상대 시점("지난주")·전치사 없는 맨 연도(버전·id 와 헷갈린다)는
+# 받지 않고, 서로 다른 시점이 둘 이상이면 고르지 않는다 — 고르는 것은 추측이다.
+_MONTHS = {m: i for i, names in enumerate((
+    ("january", "jan"), ("february", "feb"), ("march", "mar"), ("april", "apr"),
+    ("may",), ("june", "jun"), ("july", "jul"), ("august", "aug"),
+    ("september", "sep", "sept"), ("october", "oct"), ("november", "nov"),
+    ("december", "dec")), start=1) for m in names}
+_MON = r"(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec)\.?"
+_Q_TIME = [
+    # 2026-08-15 · 2026.08.15 · 2026/08 — 앞뒤에 ASCII 슬러그 문자가 붙으면 id·버전·경로의
+    # 일부다(`record:fact-2026-09-28-x9`). `\w` 로 막지 않는 이유: 한국어 조사("2026-08-15에")
+    # 도 `\w` 라서 함께 막힌다.
+    ("ymd", re.compile(r"(?<![A-Za-z0-9_.:/-])((?:19|20)\d{2})[-./](\d{1,2})"
+                       r"(?:[-./](\d{1,2}))?(?![A-Za-z0-9_-])")),
+    # 2026년 8월 15일 · 2026년 8월 · 2025년
+    ("ko", re.compile(r"(?<![A-Za-z0-9_.:/-])((?:19|20)\d{2})\s*년"
+                      r"(?:\s*(\d{1,2})\s*월(?:\s*(\d{1,2})\s*일)?)?"
+                      r"(?![A-Za-z0-9_/-])")),
+    # 15 August 2026 — 월-연보다 먼저다. 뒤에 두면 "August 2026" 이 자리를 가져가 일이 빠진다
+    ("dmy", re.compile(r"(?<![A-Za-z0-9_.:/-])(\d{1,2})\s+" + _MON
+                       + r"\s+((?:19|20)\d{2})\b(?![A-Za-z0-9_/-])", re.I)),
+    # August 15, 2026 · August 2026
+    ("mdy", re.compile(r"(?<![A-Za-z0-9_.:/-])" + _MON
+                       + r"\s+(?:(\d{1,2})(?:st|nd|rd|th)?,?\s+)?"
+                       + r"((?:19|20)\d{2})\b(?![A-Za-z0-9_/-])", re.I)),
+    # in 2025 · during 2025 · as of 2025
+    ("prep", re.compile(r"\b(?:in|during|as of)\s+((?:19|20)\d{2})\b(?![-./]\d)", re.I)),
+]
+
+
+def query_time(query: str) -> list[dict]:
+    """질문에서 읽은 절대 시점들. 각 항목은 `{as_of, from, until, text}` 이고 같은 기간은
+    한 번만 나온다. 겹치는 자리는 먼저 맞은 규칙이 가진다(`2026-08` 안의 `2026` 을 두 번
+    세지 않게)."""
+    found: list[dict] = []
+    taken: list[tuple[int, int]] = []
+
+    def free(a: int, b: int) -> bool:
+        return all(b <= s or a >= e for s, e in taken)
+
+    for kind, rx in _Q_TIME:
+        for m in rx.finditer(query or ""):
+            if not free(m.start(), m.end()):
+                continue
+            g = m.groups()
+            if kind in ("ymd", "ko"):
+                y, mo, d = g[0], g[1], g[2]
+            elif kind == "mdy":
+                mo, d, y = str(_MONTHS[g[0].lower()]), g[1], g[2]
+            elif kind == "dmy":
+                d, mo, y = g[0], str(_MONTHS[g[1].lower()]), g[2]
+            else:
+                y, mo, d = g[0], None, None
+            label = y + (f"-{int(mo):02d}" if mo else "") + (f"-{int(d):02d}" if mo and d else "")
+            scope = time_scope(label)
+            if scope is None:
+                continue
+            taken.append((m.start(), m.end()))
+            if all(f["as_of"] != label for f in found):
+                found.append({"as_of": label, "from": scope[0], "until": scope[1],
+                              "text": m.group(0)})
+    return found
+
+
+def resolve_as_of(as_of: str | None, query: str) -> tuple[tuple[str, str] | None, dict | None]:
+    """`as_of` 인자 → (기간 또는 None, 응답에 실을 설명). 설명이 None 이면 기간이 없다는
+    뜻이고 읽기는 오늘 규칙이다. 틀린 값은 ValueError 로 올린다(조용히 오늘로 떨어지면
+    호출부는 과거를 읽은 줄 안다)."""
+    v = (as_of or "").strip()
+    if not v:
+        return None, None
+    if v.lower() == "query":
+        hits = query_time(query)
+        if len(hits) == 1:
+            h = hits[0]
+            return (h["from"], h["until"]), {"as_of": h["as_of"], "from": h["from"],
+                                             "until": h["until"], "source": "query",
+                                             "text": h["text"]}
+        note = ("no absolute date was found in the query, so today's view was used"
+                if not hits else
+                "the query names more than one date ({}), so none was picked and "
+                "today's view was used".format(", ".join(h["as_of"] for h in hits)))
+        return None, {"source": "query", "applied": False, "note": note,
+                      "found": [h["as_of"] for h in hits]}
+    scope = time_scope(v)
+    if scope is None:
+        raise ValueError(f"invalid as_of {as_of!r}: use YYYY, YYYY-MM, YYYY-MM-DD or 'query'")
+    return scope, {"as_of": v, "from": scope[0], "until": scope[1], "source": "argument"}
 
 
 def graph_plan(*, owner: str, domain: str | None = None,
@@ -3450,8 +3613,8 @@ def _brief_orphan_residual(query: str, picked_title, res: dict) -> float:
 
 
 def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
-          max_excerpts: int = 3, historical: bool = False, cfg=None, store=None,
-          _reask: bool = False) -> dict:
+          max_excerpts: int = 3, historical: bool = False, as_of: str | None = None,
+          cfg=None, store=None, _reask: bool = False) -> dict:
     """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
 
     질문에 노드 id 가 그대로 들어 있으면 그 노드를 **직참조**한다(검색·랭킹 생략,
@@ -3471,6 +3634,15 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
     cfg = cfg or load_config()
     base: dict = {"kind": "brief", "executed": False, "query": query,
                   "status": "none", "candidates": [], "grounds": []}
+    # Direct-ID reads bypass search by design, but an explicit time request must
+    # still be validated and applied before the early return.
+    try:
+        direct_scope, direct_scope_info = resolve_as_of(as_of, query)
+    except ValueError as exc:
+        base["note"] = base["error"] = f"invalid_as_of: {exc}"
+        return base
+    if direct_scope_info is not None:
+        base["time_scope"] = direct_scope_info
     owns = store is None
     if owns:
         store = open_store(cfg)
@@ -3486,10 +3658,15 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # 동점 처리(제목 언어 갭)는 열린 결정으로 남는다:
         # [[record:title-language-gap-survives-the-vector-arm-2026-08-30]]
         unread_ids: list[dict] = []
+        out_of_scope_ids: list[str] = []
         for qid in _brief_query_ids(query)[:_BRIEF_FALLTHROUGH]:
             got = node_context(owner=owner, node=qid, limit=max_excerpts,
                                with_evidence=True, store=store)
             if got.get("executed"):
+                if direct_scope is not None and not holds_during(
+                        got.get("valid_from"), got.get("valid_until"), direct_scope):
+                    out_of_scope_ids.append(qid)
+                    continue
                 base["executed"] = True
                 base["status"] = "resolved"
                 base["resolved_via"] = "id"
@@ -3510,8 +3687,14 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             base["unreadable"] = list(unread_ids)
             base["note"] = unread_ids[0]["note"]
             return base
+        if out_of_scope_ids:
+            base["executed"] = True
+            base["validity_filtered"] = len(out_of_scope_ids)
+            base["validity_note"] = (
+                f"the referenced node did not hold during {direct_scope_info['as_of']}")
+            return base
         res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
-                     owner=owner, store=store, historical=historical)
+                     owner=owner, store=store, historical=historical, as_of=as_of)
         base["executed"] = bool(res.get("executed"))
         # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`
         # 만 강등을 말하면 같은 고장이 도구에 따라 보이거나 안 보인다. 규칙은 `/search`
@@ -3519,7 +3702,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # 반환하므로 안 돈 팔에 이름이 붙지 않는다. 게이트① 동등성은 q.brief 한 곳에서
         # 세우는 것으로 지킨다 — HTTP 계층에서 붙이면 CLI 와 갈린다).
         for k in ("error", "note", "node_error",
-                  "arms", "vector_note", "vector_rebuilding",
+                  "arms", "vector_note", "vector_rebuilding", "time_scope",
                   "validity_filtered", "validity_note", "validity_best_dropped"):
             if res.get(k):
                 base[k] = res[k]
@@ -3539,7 +3722,13 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                   _brief_int(picked[0].get("title_tokens")))
             if _bd >= _w:
                 status = "choose"
+                # 시점 읽기(as_of)에서도 같은 가드다 — 그 기간 밖이라 감춘 것이 동점이었으면
+                # 확정하지 않는다(계획의 "tie guard applies unchanged").
                 base["validity_note"] = (
+                    "a claim that did not hold during {} tied with the leading candidate, "
+                    "so this was not resolved; drop as_of to see it".format(
+                        base["time_scope"]["as_of"])
+                    if (base.get("time_scope") or {}).get("from") else
                     "a claim that is no longer current tied with the leading candidate, "
                     "so this was not resolved; pass historical=true to see it")
         # 🔴 **주제를 찾은 것과 질문에 답하는 것은 다르다.** 질문이 노드 제목을 그대로
@@ -5964,7 +6153,8 @@ def miss(kind: str, *, error: str, hint: str, **extra) -> dict:
 
 def _node_fallback_search(store, query: str, *, limit: int = 20,
                           owner: str | None = None, historical: bool = False,
-                          stats: dict | None = None) -> list[dict]:
+                          stats: dict | None = None,
+                          scope: tuple[str, str] | None = None) -> list[dict]:
     """Concept·Record 타이틀/요약/props 폴백 검색(T3b C1 **핵심**) — FTS·벡터 결과와
     **무관하게 항상** 수행한다. Concept/Record 는 Chunk 인덱스에 안 들어가(제목·요약을
     가진 노드가 여태 검색 자체가 불가) Chunk 0개 스토어에선 검색이 통째로 비었다 —
@@ -6081,9 +6271,9 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
         # [[record:validity-state-compares-a-local-dated-claim-against-a-utc-clock-2026-09-14]].
         # 지운 수는 세어서 호출부에 돌려준다: 조용히 줄어든 결과는 "그래프에 이것뿐"으로
         # 읽히고, 그건 이 정책이 막으려는 고장과 같은 종이다.
-        if not historical:
-            st = validity_state(*_row_validity(r))
-            if st == "historical":
+        # `scope`(as_of 기간)가 있으면 그 기간에 성립했는지로 가른다(`_visible`).
+        if scope is not None or not historical:
+            if not _visible(*_row_validity(r), historical=historical, scope=scope):
                 dropped += 1
                 # 지운 행의 점수도 기억한다. 지우기가 **동점을 깨면** 남은 하나가
                 # 단독 승자가 되어, 원래 "모르겠다"였을 질문이 확신 있는 답이 된다.
@@ -6323,7 +6513,8 @@ def _fuse_node_hits(title_hits: list[dict], graph_hits: list[dict], *,
 def search(query: str, *, query_embedding: list[float] | None = None,
            top_k: int = 5, filters: dict | None = None, owner: str | None = None,
            cursor: str | None = None, detail: str = "summary",
-           historical: bool = False, cfg=None, store=None) -> dict:
+           historical: bool = False, as_of: str | None = None,
+           cfg=None, store=None) -> dict:
     """하이브리드 검색 **재설계**(T3b) — BM25(FTS)+(선택)벡터 RRF(§4-2) 위에 3개
     실사용 사고 대응을 얹는다:
 
@@ -6358,7 +6549,14 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             "arms": "none",
             "total_count": 0, "has_more": False, "next_cursor": None}
     # 커서 검증은 스토어를 열기 전에 — 무효 커서에 조회 비용을 쓰지 않는다.
-    qh = _query_fingerprint(query, owner, filters, detail)
+    qh = _query_fingerprint(query, owner, filters, detail, as_of)
+    # 시점 인자도 스토어를 열기 전에 검사한다. 틀린 값이 조용히 오늘로 떨어지면 부르는
+    # 쪽은 과거를 읽은 줄 안다.
+    try:
+        _scope, _scope_info = resolve_as_of(as_of, query)
+    except ValueError as exc:
+        base["note"] = base["error"] = f"invalid_as_of: {exc}"
+        return base
     off, want_eid = 0, None
     if cursor:
         try:
@@ -6392,10 +6590,21 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # E-G1: 여기서는 title 폴백만 담고, Chunk 하이브리드 뒤 그래프 암과 융합한다.
         title_hits: list[dict] = []
         _vstats: dict = {}
+        # 시점 읽기(as_of). 기간이 없으면 오늘 규칙 그대로다 — 기본값에서는 한 바이트도
+        # 안 바뀐다. 무엇으로 읽었는지는 응답에 싣는다(`time_scope`): 과거를 읽은 답이
+        # 오늘의 답처럼 읽히면 이 기능이 막으려는 고장과 같은 종이다.
+        if _scope_info:
+            base["time_scope"] = _scope_info
+        _vnote = (f"hid nodes whose claim did not hold during {_scope_info['as_of']}; "
+                  "drop as_of for today's view"
+                  if _scope is not None else
+                  "hid nodes whose claim is no longer current; "
+                  "pass historical=true to include them")
         try:
             if not continuation:
                 title_hits = _node_fallback_search(store, query, limit=top_k, owner=owner,
-                                                   historical=historical, stats=_vstats)
+                                                   historical=historical, stats=_vstats,
+                                                   scope=_scope)
         except Exception as exc:
             base["node_error"] = f"{type(exc).__name__}: {exc}"
         # 걸러 냈으면 **말한다**. 조용히 줄어든 결과는 "그래프에 이것뿐"으로 읽히고,
@@ -6403,8 +6612,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         if _vstats.get("dropped_not_current"):
             base["validity_filtered"] = _vstats["dropped_not_current"]
             base["validity_best_dropped"] = list(_vstats.get("best_dropped_score") or (0, 0))
-            base["validity_note"] = ("hid nodes whose claim is no longer current; "
-                                     "pass historical=true to include them")
+            base["validity_note"] = _vnote
         base["node_hits"] = title_hits   # 그래프 암 실패해도 최소 title 폴백은 보장
 
         # (1)(2) Chunk 하이브리드 — 실패는 error 로 표면화, 인덱스 부재는 지연 빌드 후 재시도.
@@ -6550,12 +6758,13 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                 # 올라왔다). 단호함 판정(_SEM_GAP)보다 앞에 두어 폐기된 1위가 팔을
                 # 단호하게 만들지 못하게 한다. 지운 수는 제목 팔과 같은 자리에 더하고,
                 # **판정도 제목 팔과 같다** — `historical` 만 거른다(사유는 그쪽 주석).
-                if not historical and _raw:
+                if (_scope is not None or not historical) and _raw:
                     _vf = _validity_for_ids(
                         store, [h.get("id") for h in _raw if h.get("id")], owner=owner)
                     _keep = []
                     for h in _raw:
-                        if validity_state(*_vf.get(h.get("id"), ("", ""))) != "historical":
+                        if _visible(*_vf.get(h.get("id"), ("", "")),
+                                    historical=historical, scope=_scope):
                             _keep.append(h)
                         else:
                             _vstats["dropped_not_current"] = (
@@ -6590,8 +6799,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             base["validity_filtered"] = _vstats["dropped_not_current"]
             base.setdefault("validity_best_dropped",
                             list(_vstats.get("best_dropped_score") or (0, 0)))
-            base.setdefault("validity_note", ("hid nodes whose claim is no longer current; "
-                                              "pass historical=true to include them"))
+            base.setdefault("validity_note", _vnote)
 
         # (4-b) E-G1 그래프 암 — 상위 Chunk 의 :MENTIONS 이웃 개념을 title 폴백과 융합.
         # 실패는 검색을 막지 않는다(그래프 암은 증강 — 부재 시 title 만, 하위호환).
