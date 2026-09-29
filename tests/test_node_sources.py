@@ -110,7 +110,7 @@ class NodeSourcesE2E(unittest.TestCase):
         self.assertEqual(self._ctx(limit=1)["sources"]["total"],
                          self._ctx(limit=12)["sources"]["total"])
 
-    def _source(self, index, owner=None):
+    def _source(self, index, owner=None, meta_owner=None):
         own = owner or self.OWNER
         did = f"{own}:source:{index:03}"
         cid = did + "#00000"
@@ -120,7 +120,8 @@ class NodeSourcesE2E(unittest.TestCase):
             {"cid": cid, "did": did, "text": self.TITLE, "own": own})
         self.store.run(
             "CREATE (d:_DocMeta {doc_id:$did, title:$title, owner_id:$own})",
-            {"did": did, "title": f"Source {index // 2:03}", "own": own})
+            {"did": did, "title": f"Source {index // 2:03}",
+             "own": own if meta_owner is None else meta_owner})
         self.store.run(
             "MATCH (c:Chunk {chunk_id:$cid}), (n:Concept {concept_id:$nid}) "
             "CREATE (c)-[:MENTIONS {method:'title'}]->(n)",
@@ -179,6 +180,19 @@ class NodeSourcesE2E(unittest.TestCase):
         denied = q.node_context(owner="user:b", node="concept:lock", store=self.store)
         self.assertEqual(denied["sources"]["items"], [])
         self.assertNotIn("Foreign secret", str(self._ctx()))
+
+    def test_a_source_title_comes_only_from_my_own_or_ownerless_metadata(self):
+        # VIN-233 — 청크는 내 것인데 같은 doc_id 의 `_DocMeta` 는 남의 것인 상태(메타 없이
+        # 남은 꼬리 청크 위에 남이 같은 id 로 쓴 경우, RV-12). `_DocMeta.doc_id` 는 소유자로
+        # 네임스페이싱되지 않으므로 제목 조인에 owner 가 없으면 남의 제목이 내 목록에 뜬다.
+        foreign = self._source(0, meta_owner="user:b")    # 제목 "Source 000"
+        legacy = self._source(2, meta_owner="")           # 제목 "Source 001"
+        res = self._ctx()
+        self.assertNotIn("Source 000", str(res))
+        self.assertEqual({s["doc_id"]: s["title"] for s in res["sources"]["items"]},
+                         {foreign: foreign, legacy: "Source 001"})
+        self.assertEqual({e["doc_id"]: e["doc_title"] for e in res["excerpts"]},
+                         {foreign: foreign, legacy: "Source 001"})
 
     def test_decision_sources_use_the_same_continuation_contract(self):
         self.store.run(

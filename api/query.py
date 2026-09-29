@@ -3054,6 +3054,8 @@ def node_context(*, owner: str, node: str, limit: int = 4,
             {"id": pkns.key(owner, node), "owner": owner}) or []
         # ④ 문서 제목 조인(_DocMeta) + 발췌 정리(공백 접기, 240자).
         # 제목은 발췌에 뜬 문서와 소스 목록 **양쪽**에 필요하므로 한 번에 받는다.
+        # `_DocMeta.doc_id` 는 소유자로 네임스페이싱되지 않으므로 청크와 같은 과도기 술어
+        # (owner OR '')를 건다 — 빠지면 같은 doc_id 를 가진 남의 문서 제목이 샌다(VIN-233).
         doc_ids = sorted({r["doc_id"] for r in ment if r.get("doc_id")})
         all_ids = sorted({str(r.get("doc_id") or "") for r in srows
                           if r.get("doc_id")} | set(doc_ids))
@@ -3061,7 +3063,9 @@ def node_context(*, owner: str, node: str, limit: int = 4,
         if all_ids:
             for r in store.run(
                     "MATCH (d:_DocMeta) WHERE d.doc_id IN $ids "
-                    "RETURN d.doc_id AS id, d.title AS t", {"ids": all_ids}) or []:
+                    "AND (d.owner_id = $owner OR d.owner_id = '') "
+                    "RETURN d.doc_id AS id, d.title AS t",
+                    {"ids": all_ids, "owner": owner}) or []:
                 titles[r["id"]] = r.get("t") or ""
         # 제목 → id 순서로 창을 자른다. 발췌 상한과 독립적으로 끝까지 읽을 수 있다.
         _src = sorted(({"doc_id": str(r.get("doc_id") or ""),
