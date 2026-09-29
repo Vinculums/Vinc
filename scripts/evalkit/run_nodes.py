@@ -62,7 +62,9 @@ def _constants() -> dict:
     from api import query as q   # noqa: PLC0415
     return {"chunk_rrf_k": q.CHUNK_RRF_K, "brief_top_k": q._BRIEF_TOP_K,
             "brief_candidates": q._BRIEF_CANDIDATES, "strict_margin": q._STRICT_MARGIN,
-            "sem_gap": q._SEM_GAP, "union_pool": UNION_POOL}
+            "sem_gap": q._SEM_GAP, "union_pool": UNION_POOL,
+            # 플래그로 바뀌는 값은 이 실행에서 실제로 쓰인 값을 싣는다(X1).
+            "brief_expose": q._brief_expose_n(), "brief_list_resolved": q._brief_list_resolved_on()}
 
 
 def _degraded(res: dict) -> str:

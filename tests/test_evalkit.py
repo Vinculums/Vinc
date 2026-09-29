@@ -130,7 +130,9 @@ def _row(status="choose", rank=0, union_rank=0, answerable=True, wrong=0.0, quer
 class FunnelTests(unittest.TestCase):
     def test_처음_떨어진_게이트_하나를_적는다(self):
         self.assertEqual(funnel.first_fail(_row(rank=0, union_rank=0)), "union")
-        self.assertEqual(funnel.first_fail(_row(rank=4, union_rank=4)), "exposed")
+        # 노출은 brief 가 보여 준 목록에 있느냐다(순위 > 0). 합집합에만 있으면 노출에서 떨어진다.
+        self.assertEqual(funnel.first_fail(_row(rank=0, union_rank=4)), "exposed")
+        self.assertEqual(funnel.first_fail(_row(rank=4, union_rank=4)), "first")
         self.assertEqual(funnel.first_fail(_row(rank=2, union_rank=1)), "first")
         self.assertEqual(funnel.first_fail(_row(rank=1, union_rank=1)), "committed")
         self.assertEqual(funnel.first_fail(_row("resolved", rank=1, union_rank=1)), "pass")

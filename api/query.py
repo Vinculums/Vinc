@@ -3331,7 +3331,11 @@ def _node_links(store, node: str, *, owner: str,
 # 비기면 후보를 돌려주며 되묻는다. 근거: [[vinc.plan.mcp-agent-surface §4]]
 
 _BRIEF_TOP_K = 5              # search 에 요구할 청크 수(node_hits 는 별도 팔이다)
-_BRIEF_CANDIDATES = 3         # 되묻을 때 실을 후보 수 — ask.ts 와 같다
+#: 되묻을 때 실을 후보 수. 3 에서 5 로 늘렸다 — 같은 풀의 앞자리를 더 보여 줄 뿐이라
+#: 보이던 정답이 가려지지 않고, 풀 안의 정답이 전부 보인다(G0 43 → 47/60). 앱의 ask.ts 는
+#: brief 를 부르지 않고 따로 3 개를 보여 준다. `VINC_BRIEF_EXPOSE` 로 프로세스마다 바꾼다.
+#: 근거: [[decision:brief-shows-five-candidates-when-it-asks-back-and-keeps-the-list-beside-resolved-off-2026-09-29]]
+_BRIEF_CANDIDATES = 5
 _BRIEF_BODY_KEYS = ("note", "summary", "one_liner", "description", "desc")
 _BRIEF_MIN_PROP_BODY = 12     # props 값을 문장으로 볼 최소 길이 — ask.ts 와 같다
 _BRIEF_FALLTHROUGH = 3        # 1위가 안 열릴 때 시도할 후보 수 상한(왕복 비용 유계)
@@ -3477,7 +3481,7 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
         - _brief_int(second.get("title_tokens")) >= margin)
     # 확정이어도 **순위 전체**를 돌려준다. 1위가 상세에서 안 열릴 때 호출부가 다음
     # 후보로 넘어갈 수 있어야 하기 때문이고, 그 폴스루는 밝혀서 한다(brief 참조).
-    return ("resolved", ranked) if decisive else ("choose", ranked[:_BRIEF_CANDIDATES])
+    return ("resolved", ranked) if decisive else ("choose", ranked[:_brief_expose_n()])
 
 
 def _brief_body(ctx: dict) -> dict:
@@ -3538,6 +3542,40 @@ def _brief_choose_material_on() -> bool:
     근거: [[decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13]]"""
     return str(os.environ.get("VINC_BRIEF_CHOOSE_MATERIAL", "")).strip().lower() in (
         "1", "on", "true", "yes")
+
+
+def _brief_expose_n() -> int:
+    """되묻기(choose)에 싣는 후보 수. 기본은 `_BRIEF_CANDIDATES`.
+
+    `VINC_BRIEF_EXPOSE` 는 노출을 바꿔 재기 위한 손잡이다(X1). 기본값을 바꾸는 것은
+    결정 노드로만 한다. 잘못된 값은 기본으로 읽는다.
+    근거: [[vinc.plan.rag-eval-v2-0-9-6]]"""
+    raw = str(os.environ.get("VINC_BRIEF_EXPOSE", "")).strip()
+    try:
+        return max(1, int(raw)) if raw else _BRIEF_CANDIDATES
+    except ValueError:
+        return _BRIEF_CANDIDATES
+
+
+def _brief_list_resolved_on() -> bool:
+    """확정(resolved)에도 순위 목록을 `candidates` 로 곁에 실을 것인가. **기본은 꺼짐**
+    (`VINC_BRIEF_LIST_RESOLVED`). 확정이 틀렸을 때 그 뒤에 가려진 정답을 부르는 쪽이
+    볼 수 있게 한다(X1). status 와 node 는 그대로다 — 목록이 답을 바꾸지 않는다.
+    근거: [[vinc.plan.rag-eval-v2-0-9-6]]"""
+    return str(os.environ.get("VINC_BRIEF_LIST_RESOLVED", "")).strip().lower() in (
+        "1", "on", "true", "yes")
+
+
+def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
+    """노드 후보를 brief 가 내보내는 후보 꼴로 줄인다."""
+    return [{
+        "id": h.get("id") or "",
+        "title": h.get("title") or (h.get("id") or ""),
+        "domain": h.get("domain") or "", "kind": h.get("kind") or "",
+        "matched_in": h.get("matched_in") or "",
+        "hit_tokens": _brief_int(h.get("hit_tokens")),
+        "title_tokens": _brief_int(h.get("title_tokens")),
+    } for h in picked]
 
 
 #: 후보 재료로 옮겨 싣는 키 — 확정 답의 재료 꼴(:func:`_brief_material`)과 같다.
@@ -3751,14 +3789,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                     "does not hold, so this was not resolved")
         base["status"] = status
         if status == "choose":
-            base["candidates"] = [{
-                "id": h.get("id") or "",
-                "title": h.get("title") or (h.get("id") or ""),
-                "domain": h.get("domain") or "", "kind": h.get("kind") or "",
-                "matched_in": h.get("matched_in") or "",
-                "hit_tokens": _brief_int(h.get("hit_tokens")),
-                "title_tokens": _brief_int(h.get("title_tokens")),
-            } for h in picked]
+            base["candidates"] = _brief_candidate_rows(picked)
             # 플래그가 켜져 있으면 첫 후보의 재료를 **따로 한 키에** 싣는다. status 는
             # choose, candidates 는 그대로다 — 후보의 재료가 확정 답으로 읽히면 안 된다.
             # `_reask` 는 되묻기 자신이 다시 되묻지 않게 막는다(같은 제목이 또 choose 면
@@ -3801,7 +3832,11 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             return base
         if unread:
             base["fell_through"] = unread
-        return _brief_material(base, hit, ctx)
+        out = _brief_material(base, hit, ctx)
+        if _brief_list_resolved_on():
+            # 확정은 그대로 두고 순위 목록을 곁에 싣는다. 첫 자리는 순위 1위다.
+            out["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
+        return out
     finally:
         if owns:
             store.close()
