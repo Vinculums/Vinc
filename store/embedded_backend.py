@@ -995,7 +995,8 @@ class EmbeddedBackend:
         if not self._remnants:
             return
         for table in self._remnants:
-            if re.search(rf"(?::\s*|\bCOPY\s+){table}\b", query) \
+            # 엔진 라벨은 대소문자를 가리지 않는다(`MATCH (x:chunk)` 도 Chunk 를 센다, 실측).
+            if re.search(rf"(?::\s*|\bCOPY\s+){table}\b", query, re.IGNORECASE) \
                     and self._WRITE_CLAUSE.search(query):
                 raise self._remnant_error(table)
 
@@ -1065,7 +1066,10 @@ class EmbeddedBackend:
         #    근거: [[record:the-node-mirror-key-must-hold-one-id-per-space-2026-09-10]]
         rekeying = 0 < self._schema_version() < NODE_VEC_REKEY_VERSION
         if rekeying:
-            self.drop_node_vector_index()
+            try:
+                self.drop_node_vector_index()
+            except Exception:
+                pass        # 여기선 행을 넣지 않는다. 드롭 실패는 아래 재키잉 확인이 잡는다
             try:
                 self._conn.execute("DROP TABLE NodeVec")
             except Exception:
@@ -1284,6 +1288,24 @@ class EmbeddedBackend:
                 f"임베디드 {ext} 확장 미가용({self.driver_name}) — 오프라인 배포 시 "
                 f"번들 필요(§9·G0). 원인: {detail}") from exc
 
+    #: 드롭할 색인이 **없을 때** 엔진이 내는 문구(벡터·FTS 공통, 0.18.0 실행·0.20.4 확장 바이너리):
+    #:   "Binder exception: Table ChunkVec doesn't have an index with name chunk_vec."
+    _INDEX_ABSENT_MARK = "doesn't have an index with name"
+
+    def _drop_index(self, stmt: str, what: str) -> None:
+        """색인 드롭 DDL 하나(멱등). 흡수하는 것은 '색인 없음' **하나뿐**이다.
+
+        그 밖의 실패(다른 커넥션이 쓰기 트랜잭션을 쥔 경우 등)는 색인이 **아직 걸려 있다**는
+        뜻이라 던진다. 삼키면 부르는 쪽이 드롭된 줄 알고 벡터를 넣고, 그게 세그폴트 자리다.
+        근거: [[vinc.audit.rag-code-review-2026-09-29]] (RV-34)"""
+        try:
+            self._conn.execute(stmt)
+        except Exception as exc:
+            if self._INDEX_ABSENT_MARK not in _driver_error_text(exc):
+                raise
+        else:
+            self._checkpoint_after_drop(what)
+
     def drop_vector_index(self) -> None:
         """**벡터(HNSW) 인덱스만** 제거(멱등). 쓰기 경로가 불러야 하는 건 이쪽이다.
 
@@ -1316,13 +1338,9 @@ class EmbeddedBackend:
             return
         with DDL_GUARD.exclusive():     # 시간 초과는 삼키지 않는다(`DdlGuardTimeout`)
             self._load_ext("vector")
-            try:
-                self._conn.execute(f"CALL DROP_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}')")
-            except Exception:
-                pass  # 미존재 — 무시(멱등)
-            else:
-                self._checkpoint_after_drop("ChunkVec 벡터 색인")
-            self._vec_index_dropped = True
+            self._drop_index(f"CALL DROP_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}')",
+                             "ChunkVec 벡터 색인")
+            self._vec_index_dropped = True      # 드롭이 던지면 접지 않는다 — 다음 쓰기가 다시 드롭
 
     def _checkpoint_after_drop(self, what: str) -> None:
         """확장 색인(벡터·FTS)을 드롭한 **바로 뒤에** 체크포인트한다.
@@ -1348,12 +1366,7 @@ class EmbeddedBackend:
         그동안 키워드 검색이 죽는다. 그쪽은 :meth:`drop_vector_index` 를 쓴다."""
         self.drop_vector_index()
         self._load_ext("fts")
-        try:
-            self._conn.execute(f"CALL DROP_FTS_INDEX('Chunk','{self._FTS_INDEX}')")
-        except Exception:
-            pass  # 미존재 — 무시(멱등)
-        else:
-            self._checkpoint_after_drop("Chunk FTS 색인")
+        self._drop_index(f"CALL DROP_FTS_INDEX('Chunk','{self._FTS_INDEX}')", "Chunk FTS 색인")
 
     #: 엔진이 FTS 색인 불일치를 **스스로 식별해** 던지는 문구의 판별 표지.
     #: 실측 원문(ladybug 0.18.0, 2026-08-09 라이브·사본 양쪽):
@@ -1391,12 +1404,8 @@ class EmbeddedBackend:
         전후로 같은 데이터에서 히트가 늘었다(graph 224→225 · vinc 305→307) — 색인이
         존재하는 행의 문서를 갖고 있지 않았다는 뜻이고, 그 행의 삭제가 터진다."""
         self._load_ext("fts")
-        try:
-            self._conn.execute(f"CALL DROP_FTS_INDEX('Chunk','{self._FTS_INDEX}')")
-        except Exception:
-            pass  # 미존재 — 그냥 만든다(멱등)
-        else:
-            self._checkpoint_after_drop("Chunk FTS 색인")
+        self._drop_index(f"CALL DROP_FTS_INDEX('Chunk','{self._FTS_INDEX}')",
+                         "Chunk FTS 색인")          # 없으면 그냥 만든다(멱등)
         self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
 
     @_exclusive_ddl
@@ -1826,15 +1835,11 @@ class EmbeddedBackend:
 
         🔴 **미러를 채우기 전에 반드시 부른다.** "없던 벡터가 생기는" 것이 HNSW 삽입이고
         그것만 세그폴트를 낸다(:meth:`drop_vector_index` 주석의 실측 — exit 139). 미러
-        채우기는 정확히 그 모양이라 드롭이 방어 장치다."""
-        try:
-            self._load_ext("vector")
-            self._conn.execute(
-                f"CALL DROP_VECTOR_INDEX('NodeVec','{self._NODE_VEC_INDEX}')")
-        except Exception:
-            pass
-        else:
-            self._checkpoint_after_drop("NodeVec 벡터 색인")
+        채우기는 정확히 그 모양이라 드롭이 방어 장치다. 그래서 확장 로드 실패도 삼키지
+        않는다: 드롭을 못 했으면 채우기가 멈춰야 한다."""
+        self._load_ext("vector")
+        self._drop_index(f"CALL DROP_VECTOR_INDEX('NodeVec','{self._NODE_VEC_INDEX}')",
+                         "NodeVec 벡터 색인")
 
     @_exclusive_ddl
     def create_node_vector_index(self) -> str:

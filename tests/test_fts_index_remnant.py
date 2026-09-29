@@ -380,6 +380,23 @@ class RemnantWriteGuardTests(unittest.TestCase):
                   "MATCH (c:Chunk) WITH count(c) AS n RETURN n AS offset"):
             s._refuse_remnant_write(q)       # 던지지 않는다
 
+    def test_a_lowercase_label_names_the_same_table_and_is_refused(self):
+        """엔진은 라벨의 대소문자를 가리지 않는다. 소문자로 부른 쓰기도 잔해 표를 친다(RV-35)."""
+        s = self.store
+        s.run("CREATE (:Chunk {chunk_id: 'a', text: 'x'})")
+        self.assertEqual(s.run("MATCH (c:chunk) RETURN count(c) AS n")[0]["n"], 1)
+        s._remnants.add("Chunk")
+        with self.assertRaises(FtsIndexRemnant):
+            s.run("match (c:chunk) detach delete c")
+        s._remnants.discard("Chunk")
+        self.assertEqual(s.run("MATCH (c:Chunk) RETURN count(c) AS n")[0]["n"], 1,
+                         "거절이 엔진에 닿기 전에 나지 않았다")
+        s._remnants.add("Chunk")
+        for q in ("MERGE (c:CHUNK {chunk_id: $id})", "copy chunk from 'x.csv'"):
+            with self.assertRaises(FtsIndexRemnant, msg=q):
+                s._refuse_remnant_write(q)
+        s._refuse_remnant_write("match (v:chunkvec) where v.doc_id = $d detach delete v")
+
 
 if __name__ == "__main__":
     unittest.main()

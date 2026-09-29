@@ -411,13 +411,14 @@ def _drop_vector_index_if_any(store) -> None:
         return
     try:
         fn()
-    except TimeoutError:
-        # DDL 가드를 못 잡았다 = 인덱스가 **아직 걸려 있다.** 여기서 삼키고 벡터를 넣으면
-        # 그게 세그폴트 경로다. 쓰기를 실패시킨다(잡이 재시도한다).
+    except Exception as exc:
+        if "확장 미가용" in str(exc):   # `_load_ext` 의 강등 문구: 위 단락의 경우만 삼킨다
+            return
+        # 그 밖의 실패(DDL 가드 시간 초과·다른 커넥션의 쓰기 트랜잭션 등) = 인덱스가 **아직
+        # 걸려 있다.** 삼키고 벡터를 넣으면 그게 세그폴트 경로다. 쓰기를 실패시킨다(잡이
+        # 재시도한다). '색인 없음'은 백엔드 드롭(`_drop_index`)이 이미 흡수했다.
         # 근거: [[record:hub-segfault-loop-index-ddl-races-readers-2026-09-25]]
         raise
-    except Exception:
-        pass
 
 
 def _remnant_refusal(store, *, chunks: bool = True, vectors: bool = True) -> str | None:
