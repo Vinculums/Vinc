@@ -128,6 +128,18 @@ class Communities(unittest.TestCase):
         ids = {m["id"] for m in res["members"]} | {r["id"] for r in res["representatives"]}
         self.assertNotIn("concept:y", ids)
 
+    def test_both_answers_carry_the_same_quality(self):
+        """목록과 시드 답이 같은 커뮤니티에 같은 숫자를 싣는다. 크기는 바깥의 `size` 한 곳뿐이다."""
+        st = _store({"concept:a", "concept:b", "concept:c"}, set(),
+                    [(MINE, "concept:a", MINE, "concept:b"),
+                     (MINE, "concept:b", MINE, "concept:c")])
+        listed = q.communities(owner=MINE, store=st)["communities"][0]["quality"]
+        ctx = q.community_context(node="concept:a", owner=MINE, store=st)
+        self.assertEqual(ctx["quality"], listed)
+        self.assertTrue(listed["connected"])
+        self.assertEqual(listed["internal_edges"], 2)
+        self.assertNotIn("size", listed)
+
     def test_context_says_so_for_an_isolated_seed(self):
         st = _store({"concept:alone"}, set())
         res = q.community_context(node="concept:alone", owner=MINE, store=st)

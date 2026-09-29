@@ -5598,7 +5598,7 @@ def _algo_graph(store, owner: str | None, rel_tables: tuple) -> tuple[list[str],
 
 
 def _run_algo(store, algo: str, *, rel_tables: tuple | None = None,
-              owner: str | None = None):
+              owner: str | None = None, graph_out: dict | None = None):
     """진단 알고리즘을 돌린다 — (rows, None) 또는 (None, note). rows 는 엔진 시절과 같은
     `[{id, value}]` 모양이라 소비자 셋이 그대로 읽는다.
 
@@ -5615,6 +5615,9 @@ def _run_algo(store, algo: str, *, rel_tables: tuple | None = None,
     try:
         nodes, edges = _algo_graph(store, owner, tuple(rel_tables or ALGO_REL_TABLES))
         assign = fn(nodes, edges)
+        if graph_out is not None:
+            # 품질 지표가 같은 투영을 다시 읽지 않게 넘겨준다.
+            graph_out.update(nodes=nodes, edges=edges, assign=assign)
     except Exception as exc:
         return None, f"{_classify_chunk_error(exc)}: {type(exc).__name__}: {exc}"
     return [{"id": n, "value": v} for n, v in assign.items()], None
@@ -5832,10 +5835,17 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
         # RELATED_TO 단일 투영(개념 관계의 주축: wikilink 추론이 전부 RELATED_TO 로
         # 강등돼 밀도 최고). 엔진 Louvain 이 단일 엣지 표만 받던 시절의 선택인데, 방향
         # 관계를 섞지 않는 '실측 군집'이라는 뜻이 있어 계산을 옮긴 뒤에도 잇는다.
-        rows, note = _run_algo(store, "leiden", rel_tables=("RELATED_TO",), owner=owner)
+        _g: dict = {}
+        rows, note = _run_algo(store, "leiden", rel_tables=("RELATED_TO",), owner=owner,
+                               graph_out=_g)
         if rows is None:
             base["note"] = note
             return base
+        # 커뮤니티마다 품질(연결·밀도·전도율·모듈러리티 몫). 판정은 안 한다 — 숫자만 싣고
+        # 어떤 군집을 믿을지는 읽는 쪽이 정한다. 문헌 조사 §9 "Community quality" 경고의 답.
+        from . import graph_algo as _ga
+        _quality = _ga.community_quality(_g.get("nodes") or [], _g.get("edges") or [],
+                                         _g.get("assign") or {})
         scope = _owner_concept_ids(store, owner)
         # 컴포넌트 쪽과 같은 자리다 — 두 스페이스에 사는 슬러그는 커뮤니티 둘에 들어가
         # `size` 를 부풀린다. 고르지 않고 갈라 낸다(`_ambiguous_algo_ids`).
@@ -5866,6 +5876,8 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
             _ml = _clamp_limit(member_limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
             out.append({"community": com, "size": len(members),
                         "dominant_domain": dominant,
+                        "quality": {k: v for k, v in (_quality.get(com) or {}).items()
+                                    if k != "size"},
                         "members": sorted(members)[:_ml],
                         "members_truncated": len(members) > _ml})
         out.sort(key=lambda c: (-c["size"], str(c["community"])))
@@ -5903,7 +5915,7 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
     나머지 구성원은 id·title만 ``members``에 실린다(``member_limit`` — component_
     diagnosis/communities 와 같은 규약, 잘리면 ``members_truncated``).
 
-    반환 {executed, node, community, size, dominant_domain,
+    반환 {executed, node, community, size, quality, dominant_domain,
     representatives:[{id, title, one_liner, excerpt}],
     members:[{id, title}], members_truncated}. 시드가 없거나 고립(-1)이면
     executed=False + note. 스토어를 못 읽을 때도 마찬가지."""
@@ -5918,7 +5930,9 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
         base["note"] = "no reachable store"
         return base
     try:
-        rows, note = _run_algo(store, "leiden", rel_tables=("RELATED_TO",), owner=owner)
+        _g: dict = {}
+        rows, note = _run_algo(store, "leiden", rel_tables=("RELATED_TO",), owner=owner,
+                               graph_out=_g)
         if rows is None:
             base["note"] = note
             return base
@@ -5984,7 +5998,12 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
         rest = ranked[COMMUNITY_REPRESENTATIVE_CAP:]
         member_list = [{"id": cid, "title": title_of.get(cid, cid)}
                        for cid in sorted(rest)[:max(0, mlim - len(reps))]]
+        # 답변 재료로 나가는 군집이라 품질을 함께 싣는다 — `communities()` 와 같은 숫자
+        from . import graph_algo as _ga
+        _quality = _ga.community_quality(_g.get("nodes") or [], _g.get("edges") or [],
+                                         _g.get("assign") or {}).get(com) or {}
         base.update(executed=True, community=com, size=len(members), algorithm="leiden",
+                    quality={k: v for k, v in _quality.items() if k != "size"},
                     dominant_domain=dominant, representatives=reps,
                     members=member_list,
                     members_truncated=len(members) > len(reps) + len(member_list))

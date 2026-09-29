@@ -171,5 +171,51 @@ class Components(unittest.TestCase):
         self.assertEqual(len(set(res.values())), 1)
 
 
+class Quality(unittest.TestCase):
+    """`community_quality` — 숫자만 싣고 판정은 안 한다. 읽는 쪽이 믿을 수 있는 숫자인지를 잰다."""
+
+    def test_the_shares_add_up_to_the_modularity(self):
+        """몫의 합이 전체 모듈러리티와 같아야 몫이라 부를 수 있다."""
+        nodes, edges = _karate()
+        assign = ga.leiden(nodes, edges)
+        qual = ga.community_quality(nodes, edges, assign)
+        self.assertAlmostEqual(sum(v["modularity_share"] for v in qual.values()),
+                               ga.modularity(nodes, edges, assign), places=3)
+
+    def test_leiden_communities_always_read_connected(self):
+        nodes, edges = _random_graph(400, 900, seed=7)
+        qual = ga.community_quality(nodes, edges, ga.leiden(nodes, edges))
+        self.assertTrue(qual)
+        self.assertTrue(all(v["connected"] for v in qual.values()))
+
+    def test_a_split_community_reads_disconnected(self):
+        """Leiden 이 아닌 배정을 넣으면 끊긴 것을 끊겼다고 말한다 — 지표가 늘 참을 돌려주는
+        장식이 아니라는 확인."""
+        nodes = ["a", "b", "c", "d"]
+        edges = [("a", "b"), ("c", "d")]
+        qual = ga.community_quality(nodes, edges, {"a": 0, "b": 0, "c": 0, "d": 0})
+        self.assertFalse(qual[0]["connected"])
+
+    def test_two_cliques_joined_by_one_edge(self):
+        left = [f"l{i}" for i in range(4)]
+        right = [f"r{i}" for i in range(4)]
+        edges = [(a, b) for g in (left, right) for i, a in enumerate(g) for b in g[i + 1:]]
+        edges.append(("l0", "r0"))
+        assign = {n: 0 for n in left} | {n: 1 for n in right}
+        qual = ga.community_quality(left + right, edges, assign)
+        for c in (0, 1):
+            self.assertEqual(qual[c]["size"], 4)
+            self.assertEqual(qual[c]["internal_edges"], 6)
+            self.assertEqual(qual[c]["boundary_edges"], 1)
+            self.assertEqual(qual[c]["density"], 1.0)
+            self.assertAlmostEqual(qual[c]["conductance"], 1 / 13, places=4)
+            self.assertGreater(qual[c]["modularity_share"], 0)
+
+    def test_isolated_nodes_are_left_out(self):
+        qual = ga.community_quality(["a", "b", "z"], [("a", "b")],
+                                    {"a": 0, "b": 0, "z": ga.ISOLATED})
+        self.assertEqual(set(qual), {0})
+
+
 if __name__ == "__main__":
     unittest.main()
