@@ -1112,8 +1112,8 @@ def _warn_orphan_decisions(store, types: dict[str, str], warnings: list[str],
         if r and r[0].get("c"):
             continue
         warnings.append(
-            f"{nid} has no 'about' edge — it will never surface from vinc_decide, "
-            f"which starts from a concept and walks out. Add "
+            f"{nid} has no 'about' edge — vinc_decide on a concept will never reach "
+            f"it (only naming the decision itself does). Add "
             f'{{"from": "{nid}", "to": "concept:...", "type": "about"}}.')
 
 
