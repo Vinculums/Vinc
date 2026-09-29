@@ -187,5 +187,23 @@ class ContinuationKeepsTheRealErrorRV16(unittest.TestCase):
         self.assertFalse(str(second.get("error")).startswith("stale_cursor"), second)
 
 
+class CappedPoolRV20(unittest.TestCase):
+    """관례 청크를 걸러 풀이 상한 아래로 줄면 `total_count` 가 전부처럼 읽혔다."""
+
+    def test_the_cap_is_marked_when_the_raw_arm_reached_it(self):
+        from api import graphmd
+        from api import query as q
+
+        class _S(_PagedStub):
+            def fulltext_search(self, text, k, filters=None):
+                conv = graphmd.conventions_doc_id(None)
+                rows = [{"id": f"{conv}#{i:05d}", "text": "c", "score": 9.0} for i in range(3)]
+                rows += [{"id": f"d{i}#00000", "text": "t", "score": 1.0} for i in range(k)]
+                return rows[:k]
+        res = q.search("t", top_k=5, store=_S())
+        self.assertEqual(res["total_count"], q.SEARCH_POOL_CAP - 3)
+        self.assertIs(res.get("total_count_capped"), True)
+
+
 if __name__ == "__main__":
     unittest.main()

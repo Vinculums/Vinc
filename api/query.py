@@ -6303,10 +6303,13 @@ _FTS_REMNANT = ("full-text index unavailable: the store holds a remnant index th
 
 
 def _chunk_arms(store, query, query_embedding, top_k,
-                filters) -> tuple[list[dict], str, list[str]]:
+                filters) -> tuple[list[dict], str, list[str], bool]:
     """Chunk FTS(+선택 벡터) 하이브리드 검색 코어 — 기존 §4-2 RRF 로직 그대로.
-    반환 ``(rows, vector_note, arm_names)``. FTS·확장 부재는 예외로 전파(호출부가
+    반환 ``(rows, vector_note, arm_names, capped)``. FTS·확장 부재는 예외로 전파(호출부가
     지연 빌드·error 표면화를 담당).
+
+    ``capped`` 는 어느 팔이든 **거르기 전에** ``top_k`` 에 닿았는가다. 관례 청크를 빼면
+    풀이 상한 아래로 줄어 호출부가 그 사실을 더는 못 본다.
 
     ``arm_names`` 는 **실제로 결과를 낸 팔**이다(``keyword`` · ``semantic``). 호출부의
     ``arms`` 는 이것에서만 나온다 — 검색 전에 세우면 이 함수가 던졌을 때 아무 팔도
@@ -6344,12 +6347,13 @@ def _chunk_arms(store, query, query_embedding, top_k,
     # 관례(GRAPH.md) 청크는 검색 결과에서 뺀다 — 사용자가 찾는 것은 자기 자료지
     # 그 자료를 어떻게 넣기로 했는지의 규약이 아니다. chunk_id 가 `{doc_id}#{n}` 이라
     # 추가 질의 없이 가르고, **융합 전에** 걸러야 상위 k 를 관례가 잠식하지 않는다.
+    capped = any(len(a) >= top_k for a in arms)
     for a in arms:
         a[:] = [r for r in a if not graphmd.is_conventions_chunk_id(r.get("id"))]
     rows = (rrf_fuse(arms, k=CHUNK_RRF_K, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
     for r in rows:
         r["arms"] = membership.get(r.get("id"), [])
-    return rows, vnote, arm_names
+    return rows, vnote, arm_names, capped
 
 
 def _schedule_vector_index(store, dim: int | None) -> None:
@@ -6980,13 +6984,14 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         pool: list[dict] = []
         vnote = ""
         ran: list[str] = []          # 실제로 돈 팔 — 예외로 새면 빈 채로 남는다
+        arm_capped = False           # 거르기 전의 팔이 상한에 닿았나(_chunk_arms)
         try:
             if not scoped_ok:
                 raise _UnscopedChunkSearch(
                     "owner scope requested but this store does not support "
                     "owner-filtered chunk search")
-            pool, vnote, ran = _chunk_arms(store, query, query_embedding,
-                                           SEARCH_POOL_CAP, chunk_filters or None)
+            pool, vnote, ran, arm_capped = _chunk_arms(
+                store, query, query_embedding, SEARCH_POOL_CAP, chunk_filters or None)
             base["executed"] = True
         except _UnscopedChunkSearch as exc:
             # 폴백하지 않는다 — node_hits 는 이미 owner 로 걸러져 있으므로 그것만 답한다.
@@ -7016,7 +7021,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                         # (`dim=None`), HNSW 는 아래에서 예약한다 — 요청 스레드가
                         # 기다릴 일이 아니다(:func:`_schedule_vector_index`).
                         builder(dim=None)
-                        pool, vnote, ran = _chunk_arms(
+                        pool, vnote, ran, arm_capped = _chunk_arms(
                             store, query, query_embedding, SEARCH_POOL_CAP,
                             chunk_filters or None)
                         base["executed"] = True
@@ -7060,7 +7065,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # 아니라 "적어도"다. 여태 거의 모든 질의가 200·199 를 읽혀 전체 수처럼 보였다
         # (감사 §5 #18). 필드 이름은 안 바꾸고, 닿았을 때만 표식을 단다.
         # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S11
-        if len(pool) >= SEARCH_POOL_CAP:
+        if arm_capped or len(pool) >= SEARCH_POOL_CAP:
             base["total_count_capped"] = True
         # 청크 팔이 실패했으면 풀이 비어 모든 커서가 낡아 보인다 — 원래 오류를 그대로 둔다.
         if cursor and not base.get("error") and (
