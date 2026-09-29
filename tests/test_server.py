@@ -1868,7 +1868,7 @@ class FailureEnvelopeTests(unittest.TestCase):
                           f"{path} 의 hint 가 다음 수를 안 준다: {hint!r}")
 
     def test_decide_는_정확_일치라는_것을_말한다(self):
-        """`topic` 은 concept_id·bridge_id·title 정확 일치다. 부분 일치가 아니라서
+        """`topic` 은 concept_id·decision_id·title 정확 일치다. 부분 일치가 아니라서
         `view` 는 안 맞고 `concept:view` 라야 맞는데, 그 계약이 어디에도 없었다."""
         res = self._get("/decide?topic=view&owner=u")
         self.assertIn("exactly", res["hint"])

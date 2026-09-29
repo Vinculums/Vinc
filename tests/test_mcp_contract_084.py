@@ -362,6 +362,73 @@ class DecideConflicts(unittest.TestCase):
             self.assertIn(token, desc)
 
 
+# ── 결정도 토픽이다 — 해석이 Concept 만 물어 결정 id 가 제 자신을 후보로 냈다 ────────
+class DecideOnDecision(unittest.TestCase):
+    """2026-09-29 실측: `decision:...` 을 주면 found:false 에 candidates 첫 줄이 **그 id**
+    였고, 전체 제목도 못 찾았다. 해석 플랜이 `(c:Concept)` 만 물었기 때문이다."""
+
+    def setUp(self):
+        self.store, self.cfg, self._keep = _fresh_store()
+        res = frag.merge_fragment({
+            "owner": OWNER,
+            "nodes": [
+                {"id": "concept:cache", "type": "concept", "title": "Cache",
+                 "domain": "vinc/engineering"},
+                {"id": "concept:billing", "type": "concept", "title": "Billing",
+                 "domain": "vinc/product"},
+                {"id": "decision:keep", "type": "decision", "title": "Keep the cache",
+                 "domain": "vinc/engineering"},
+                {"id": "decision:drop", "type": "decision", "title": "Drop the cache",
+                 "domain": "vinc/engineering"},
+                {"id": "decision:lone", "type": "decision", "title": "A lone call",
+                 "domain": "vinc/engineering"},
+            ],
+            "edges": [
+                {"from": "decision:keep", "to": "concept:cache", "type": "about"},
+                {"from": "decision:drop", "to": "concept:cache", "type": "about"},
+                {"from": "decision:keep", "to": "concept:billing",
+                 "type": "prerequisite_of"},
+            ],
+        }, store=self.store)
+        # 경고는 하나뿐이어야 한다 — 일부러 ABOUT 없이 둔 decision:lone.
+        warns = res.get("warnings") or []
+        self.assertEqual(len(warns), 1, warns)
+        self.assertIn("decision:lone", warns[0])
+
+    def tearDown(self):
+        self.store.close()
+        _restore(self._keep)
+
+    def _decide(self, topic, depth=2):
+        return q.decide(topic, depth=depth, owner=OWNER, cfg=self.cfg, store=self.store)
+
+    def test_결정_id_로_찾고_제_엣지를_싣는다(self):
+        got = self._decide("decision:keep")
+        self.assertTrue(got["found"], got)
+        kinds = {n["id"]: n["kind"] for n in got["nodes"]}
+        self.assertEqual(kinds.get("decision:keep"), "decision", got["nodes"])
+        self.assertIn("concept:cache", kinds)
+        edges = {(e["source"], e["type"], e["target"]) for e in got["edges"]}
+        self.assertIn(("decision:keep", "ABOUT", "concept:cache"), edges)
+        self.assertIn(("decision:keep", "PREREQUISITE_OF", "concept:billing"), edges)
+        # 같은 주제를 두고 내려진 다른 결정이 상충으로 올라온다 — 이 도구의 요점.
+        same = [c for c in got["conflicts"] if c["reason"] == "decisions_on_same_subject"]
+        self.assertEqual(len(same), 1, got["conflicts"])
+
+    def test_결정_제목으로도_찾는다(self):
+        got = self._decide("keep the CACHE")
+        self.assertTrue(got["found"], got)
+        self.assertIn("decision:keep", {n["id"] for n in got["nodes"]})
+
+    def test_엣지_없는_결정도_노드로_선다(self):
+        # depth 1 — 2 부터는 무라벨 순회가 Domain 노드를 지나 같은 주제의 개념에 닿는다
+        # (개념 시드와 같은 공유 의미론, `subgraph_hops_plan` 주석).
+        got = self._decide("decision:lone", depth=1)
+        self.assertTrue(got["found"], got)
+        self.assertEqual([(n["id"], n["label"]) for n in got["nodes"]],
+                         [("decision:lone", "A lone call")])
+
+
 # ── 항목 8 — 쓰기 직후 검색은 FTS 로 답하고 재빌드를 기다리지 않는다 ──────────
 class _IndexMissing(RuntimeError):
     """실측 문구 그대로 — `_classify_chunk_error` 가 이 모양으로 분류한다."""

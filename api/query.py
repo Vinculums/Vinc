@@ -1295,11 +1295,16 @@ def subgraph_hops_plan(seed: str, *, depth: int = 2, owner: str | None = None,
 
 
 def decision_seed_rows_plan(seed: str, *, owner: str | None = None,
-                            other: str = "Concept", outgoing: bool = True) -> QueryPlan:
+                            other: str = "Concept", outgoing: bool = True,
+                            rels: str = "PREREQUISITE_OF|DERIVES_FROM|INHERITS_FROM"
+                            ) -> QueryPlan:
     """결정 시드 자신의 의미층 엣지(PREREQUISITE_OF·DERIVES_FROM·INHERITS_FROM) 한 방향·
     한 상대 라벨. :func:`graph_rows_for_ids_plan` 은 `(c:Concept)-[r]->(d:Concept)` 만
     보고 결정 축(:func:`decision_rows_plan`)은 ABOUT 만 보므로, 이 셋이 결정 시드에서
     **어느 플랜에도** 안 잡혔다. 시드 단계에서만 쓴다(공유 플랜은 그대로).
+
+    ``rels`` 는 :func:`decide` 만 바꾼다 — 거기엔 결정 축 플랜이 안 돌아서 ABOUT 도
+    이 플랜으로 싣는다(결정 축 플랜은 owner 필수라 로컬 무소유 호출에서 못 쓴다).
 
     행 모양은 graph_rows 와 같다(id=출발, target=도착). Decision 에는 one_liner·
     content_time 열이 없어 그 자리는 리터럴이다 — 열 없는 라벨에 옮겨 붙이면 Binder
@@ -1315,7 +1320,6 @@ def decision_seed_rows_plan(seed: str, *, owner: str | None = None,
     o_kind = other.lower()
     o_ol = "coalesce(o.one_liner, '')" if other == "Concept" else "''"
     o_ct = "coalesce(o.content_time, '')" if other == "Concept" else "''"
-    rels = "PREREQUISITE_OF|DERIVES_FROM|INHERITS_FROM"
     s_cols = ("s.decision_id AS {i}, s.title AS {p}label, s.domain AS {p}domain, "
               "s.props AS {p}props, coalesce(s.tags, []) AS {p}tags, "
               "'decision' AS {p}kind, coalesce(s.created, s.updated_at, '') AS {p}ts, "
@@ -6942,9 +6946,13 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     return base
 
 
-def decide_topic_resolve_plan(topic: str, *, owner: str | None = None) -> QueryPlan:
-    """decide 토픽 → seed concept_id 해석(A1.9 A5). concept_id 정확일치 또는 title
-    대소문자 무시 일치. decide_plan 의 `title=$topic`(완전일치) 대비 title 은 관대.
+def decide_topic_resolve_plan(topic: str, *, owner: str | None = None,
+                              label: str = "Concept") -> QueryPlan:
+    """decide 토픽 → seed id 해석(A1.9 A5). id 정확일치 또는 title 대소문자 무시
+    일치. decide_plan 의 `title=$topic`(완전일치) 대비 title 은 관대.
+
+    ``label`` 은 의미층 라벨(:data:`_SEMANTIC_PK`)이다. 기본 Concept 일 때 플랜
+    문자열은 종전과 같다. :func:`decide` 가 Concept 다음에 Decision 으로 다시 묻는다.
 
     ⚠ owner(SEC-1): 소유자를 주면 그 스코프 안에서만 해석한다. 없으면 남의 개념을
     시드로 잡아 서브그래프 전체를 되돌려줬다. OR 조건은 반드시 괄호로 묶는다 —
@@ -6952,13 +6960,15 @@ def decide_topic_resolve_plan(topic: str, *, owner: str | None = None) -> QueryP
     # `$topic` 은 title 비교에 그대로 쓰이므로 논리로 남기고, id 열에는 물리 키를
     # 따로 바인딩한다(decide_plan 과 같은 이유).
     params: dict = {"topic": topic, "tkey": pkns.key(owner, topic)}
-    where = ("(c.concept_id = $tkey "
+    pk = _SEMANTIC_PK[label]
+    where = (f"(c.{pk} = $tkey "
              "OR lower(coalesce(c.title,'')) = lower($topic))")
     if owner:
         where += " AND c.owner_id = $owner"
         params["owner"] = owner
-    cypher = f"MATCH (c:Concept) WHERE {where} RETURN c.concept_id AS id LIMIT 1"
-    return QueryPlan("decide_resolve", cypher, params, note="resolve topic → concept seed")
+    cypher = f"MATCH (c:{label}) WHERE {where} RETURN c.{pk} AS id LIMIT 1"
+    return QueryPlan("decide_resolve", cypher, params,
+                     note=f"resolve topic → {label.lower()} seed")
 
 
 def decide(topic: str, *, depth: int = 2, owner: str | None = None,
@@ -6986,16 +6996,26 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
         base["note"] = res.get("note", "")
         return base
     base["executed"] = True
+    seed_label = "Concept"
     seed = next((r["id"] for r in res.get("rows", []) if r.get("id")), None)
     if not seed:
-        # F7 — `topic` 은 **정확 일치**다(concept_id · bridge_id · title). 부분 일치가
+        # 결정도 토픽이다(v12 부터 제 테이블). Concept 만 물어서 결정 id 가 자기 자신을
+        # 첫 후보로 내밀며 "없다"고 답했다(2026-09-29 실측). 개념이 먼저다 — 제목이
+        # 겹치면 종전대로 개념이 시드다.
+        dres = execute(decide_topic_resolve_plan(topic, owner=owner, label="Decision"),
+                       cfg, store=store)
+        seed = next((r["id"] for r in dres.get("rows", []) if r.get("id")), None)
+        seed_label = "Decision"
+    if not seed:
+        # F7 — `topic` 은 **정확 일치**다(concept_id · decision_id · title). 부분 일치가
         # 아니라서 `view` 는 안 맞고 `concept:view` 나 정확한 제목이라야 맞는다.
         # 그 계약이 어디에도 안 적혀 있었고, 실패 응답도 그것을 말하지 않았다.
         cands = near_nodes(store, topic, owner=owner)
         base["note"] = f"topic not found: {topic}"
         base["error"] = f"topic not found: {topic}"
-        base["hint"] = ("`topic` matches exactly on a node id (e.g. `concept:view`), "
-                        "a bridge id, or a full node title — not a substring. "
+        base["hint"] = ("`topic` matches exactly on a concept or decision id "
+                        "(e.g. `concept:view`), or a full concept or decision title "
+                        "— not a substring. "
                         + ("Did you mean: " + ", ".join(c["id"] for c in cands) + "? "
                            if cands else "")
                         + "Use vinc_search to find the id first.")
@@ -7003,10 +7023,24 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
             base["candidates"] = cands
         return base
     base["found"] = True
-    ids_res = execute(subgraph_ids_plan(seed, depth=depth, owner=owner), cfg, store=store)
+    ids_res = execute(subgraph_ids_plan(seed, depth=depth, owner=owner,
+                                        seed_label=seed_label), cfg, store=store)
     ids = sorted({seed, *(r["id"] for r in ids_res.get("rows", []) if r.get("id"))})
     rows_res = execute(graph_rows_for_ids_plan(ids, owner=owner), cfg, store=store)
-    shaped = shape_graph(rows_res.get("rows", []))
+    rows = list(rows_res.get("rows", []))
+    if seed_label == "Decision":
+        # graph_rows 는 Concept 전용이라 결정 시드는 제 행이 없다. 존재 조회로 노드를
+        # 먼저 세우고(엣지 없는 결정도 nodes 에 선다) 시드의 ABOUT·의미층 엣지를 싣는다.
+        # 다른 결정은 keep 밖이라 아래 ego 경계에서 걸러진다(nodes 는 개념 + 토픽).
+        sr = execute(seed_lookup_plan(seed, owner=owner), cfg, store=store)
+        rows += [{**r, "label": r.get("title"), "kind": "decision"}
+                 for r in sr.get("rows", [])]
+        for plan in (decision_seed_rows_plan(
+                         seed, owner=owner,
+                         rels="ABOUT|PREREQUISITE_OF|DERIVES_FROM|INHERITS_FROM"),
+                     decision_seed_rows_plan(seed, owner=owner, outgoing=False)):
+            rows += execute(plan, cfg, store=store).get("rows", [])
+    shaped = shape_graph(rows)
     keep = set(ids)   # ego 경계(depth+1 유출 제거) — graph() 와 동일 정책
     shaped["edges"] = [e for e in shaped["edges"] if e["source"] in keep and e["target"] in keep]
     shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in keep]
