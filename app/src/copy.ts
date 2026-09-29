@@ -644,6 +644,7 @@ const EN = {
     // 기간 선택(날짜 범위) — app/src/date-range.ts. 주는 일요일에 시작한다(두 언어 같음).
     dateRange: {
       title: "Choose a period",
+      close: "Close",
       start: "Start",
       end: "End",
       format: "YYYY, YYYY-MM or YYYY-MM-DD",
@@ -1718,6 +1719,7 @@ const KO: Deck = {
     },
     dateRange: {
       title: "기간 고르기",
+      close: "닫기",
       start: "시작",
       end: "끝",
       format: "YYYY, YYYY-MM, YYYY-MM-DD",

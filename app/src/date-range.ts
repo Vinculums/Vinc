@@ -219,6 +219,8 @@ export function openDateRange(o: DateRangeOpts): void {
       + `<button type="button" class="drp-nav" data-nav="-1" aria-label="${prevLabel}">${icon("chevron-left", 14)}</button>`
       + `<button type="button" class="drp-title" data-mode aria-label="${mode === "days" ? D.pickMonth : mode === "months" ? D.pickYear : D.title}">${title}</button>`
       + `<button type="button" class="drp-nav drp-next" data-nav="1" aria-label="${nextLabel}">${icon("chevron-left", 14)}</button>`
+      // 눈에 보이는 문 — Esc·바깥 클릭만으로는 닫는 법이 안 보인다(2026-09-30 지적).
+      + `<button type="button" class="rail-x drp-x" data-close aria-label="${D.close}" data-tip="${D.close}">✕</button>`
       + `</div>${body}`
       + `<div class="drp-inputs">`
       + `<label class="drp-field"><span>${D.start}</span><input type="text" inputmode="numeric" data-in="from"`
@@ -363,6 +365,7 @@ export function openDateRange(o: DateRangeOpts): void {
       b.addEventListener("click", () => commit({ preset: b.dataset.preset as PeriodKey, from: "", to: "" })));
     pop.querySelector("[data-reset]")?.addEventListener("click",
       () => commit({ preset: "all", from: "", to: "" }));
+    pop.querySelector("[data-close]")?.addEventListener("click", () => close());
     pop.querySelectorAll<HTMLElement>("[data-nav]").forEach((b) =>
       b.addEventListener("click", () => {
         const by = Number(b.dataset.nav);
