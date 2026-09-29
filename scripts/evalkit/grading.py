@@ -102,6 +102,11 @@ def grade_one(res: dict, row: dict, hits: list | None = None) -> dict:
     node = (res.get("node") or {}).get("id") or ""
     rank = rank_of(gold, res) if gold else 0
     urank = union_rank_of(gold, hits) if gold else 0
+    by_id = {h.get("id"): h for h in hits or [] if isinstance(h, dict)}
+    cands = res.get("candidates") or []
+    first = cands[0] if cands else {}
+    # 보여 준 첫 노드 — 확정이면 그 노드, 고르기면 첫 후보. 깔때기의 확신 점수가 쓴다.
+    pred = node or (first.get("id") if isinstance(first, dict) else first) or ""
     out = {
         "query": row.get("query"), "axis": row.get("language_axis") or "?",
         "gold_kind": row.get("gold_kind") or "?", "answerable": answerable,
@@ -112,6 +117,9 @@ def grade_one(res: dict, row: dict, hits: list | None = None) -> dict:
         "grounds": len(res.get("grounds") or []),
         "unreadable": bool(res.get("unreadable")),
         "fell_through": bool(res.get("fell_through")),
+        "union_arms": sorted((by_id.get(gold) or {}).get("arms") or []) if urank else [],
+        "pred": pred,
+        "pred_rrf": float((by_id.get(pred) or {}).get("rrf_score") or 0.0),
     }
     if answerable:
         out["hit"] = {k: 1.0 if 0 < rank <= k else 0.0 for k in RANKS}

@@ -31,7 +31,7 @@ import sys
 import time
 import urllib.request
 
-from evalkit import grading, runtime
+from evalkit import funnel, grading, runtime
 from evalkit.transports import V1, Cli, InProcess, TransportError
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -54,6 +54,15 @@ def _commit() -> str:
 def _flags() -> dict:
     return {k: v for k, v in sorted(os.environ.items()) if k.startswith("VINC_BRIEF_")
             or k in ("VINC_NODE_SEMANTIC_ARM", "VINC_NODE_SEM_RANK")}
+
+
+def _constants() -> dict:
+    """판정에 들어가는 코드 상수를 **코드에서** 읽는다. 문서나 기억의 값(RRF k=60 같은)을
+    싣지 않기 위해서다. `union_pool` 은 `brief_top_k` 와 같아야 합집합이 brief 의 풀이다."""
+    from api import query as q   # noqa: PLC0415
+    return {"chunk_rrf_k": q.CHUNK_RRF_K, "brief_top_k": q._BRIEF_TOP_K,
+            "brief_candidates": q._BRIEF_CANDIDATES, "strict_margin": q._STRICT_MARGIN,
+            "sem_gap": q._SEM_GAP, "union_pool": UNION_POOL}
 
 
 def _degraded(res: dict) -> str:
@@ -191,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--space", default="personal")
     ap.add_argument("--allow-runtime-mismatch", action="store_true",
                     help="질의 런타임이 락과 달라도 잰다(결과에 불일치를 적는다)")
+    ap.add_argument("--baseline", help="같은 문항으로 짝지어 비교할 이전 result.json")
     a = ap.parse_args(argv)
 
     out = pathlib.Path(a.out)
@@ -198,7 +208,12 @@ def main(argv: list[str] | None = None) -> int:
     fp = runtime.fingerprint()
     header: dict = {"kind": "eval.nodes.v2", "at": dt.datetime.now(dt.timezone.utc).isoformat(),
                     "commit": _commit(), "flags": _flags(), "runtime": fp,
+                    "constants": _constants(),
                     "openapi_sha256": runtime.file_sha256(ROOT / "vinc_mcp/openapi_v1.json")}
+    base = None
+    if a.baseline:
+        base = {"path": a.baseline, "sha256": runtime.file_sha256(pathlib.Path(a.baseline)),
+                "rows": funnel._rows(a.baseline)}
 
     if a.live:
         key = os.environ.get("VINC_API_KEY")
@@ -207,6 +222,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         gold_files = a.gold or [str(ROOT / "scripts/fixtures/brief_gold.jsonl")]
         rows = grading.load_gold(gold_files)[: a.limit or None]
+        if _base_mismatch(base, rows):
+            return 1
         v1 = V1(a.live, key, a.space)
         header["openapi_sha256"] = _live_openapi_hash(a.live)
         before = _live_snapshot(v1)
@@ -218,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
                       live_fingerprint_before=_snapshot_hash(before),
                       live_fingerprint_after=_snapshot_hash(after),
                       note="호스티드는 핀이 아니다 — 판정에 쓰지 않는다; 런타임 판은 허브 빌드 로그로 본다")
-        result = _finish(out, header, gold_files, runs, compare=False)
+        result = _finish(out, header, gold_files, runs, compare=False, base=base)
         return result if before == after else 1
 
     if not (a.store and a.onnx):
@@ -248,6 +265,8 @@ def main(argv: list[str] | None = None) -> int:
         print("정답셋 오류:\n  " + "\n  ".join(bad), file=sys.stderr)
         return 1
     rows = rows[: a.limit or None]
+    if _base_mismatch(base, rows):
+        return 1
     header.update(target={"store": a.store, "sha256": sha, "encoder_sha256": onnx_sha,
                           "store_runtime": entry.get("encoder_runtime")},
                   runtime_mismatch=mism)
@@ -298,16 +317,37 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         for f in out.glob("*.db*"):
             f.unlink(missing_ok=True)
-    return _finish(out, header, gold_files, runs, compare=len(runs) > 1)
+    return _finish(out, header, gold_files, runs, compare=len(runs) > 1, base=base)
+
+
+def _base_mismatch(base: dict | None, rows: list[dict]) -> bool:
+    """기준선이 이 실행과 같은 문항을 같은 순서로 가졌는가. 다르면 짝지을 수 없다 —
+    측정을 다 돌린 뒤에 알면 늦으므로 먼저 거부한다."""
+    if base is None:
+        return False
+    base["rows"] = base["rows"][: len(rows)]
+    if [r["query"] for r in base["rows"]] == [r["query"] for r in rows]:
+        return False
+    print(f"기준선의 문항 목록이 정답셋과 다르다 — 짝지을 수 없다: {base['path']}", file=sys.stderr)
+    return True
 
 
 def _finish(out: pathlib.Path, header: dict, gold_files: list[str], runs: dict, *,
-            compare: bool) -> int:
+            compare: bool, base: dict | None = None) -> int:
     header["gold"] = {p: runtime.file_sha256(pathlib.Path(p)) for p in gold_files}
     diffs = parity(runs) if compare else []
     degraded = {k: v["degraded"] for k, v in runs.items() if v["degraded"]}
+    for r in runs.values():
+        r["funnel"] = funnel.report(r["per_query"])
     result = {"header": header, "parity": {"transports": list(runs), "diffs": diffs},
               "degraded": degraded, "runs": runs}
+    if base is not None:
+        # 재현 대조(채점 필드가 문항별로 같은가)와 짝지은 차이를 경로마다 싣는다.
+        # 레버를 켠 실행에서는 재현 차이가 곧 그 레버가 바꾼 문항이다.
+        header["baseline"] = {"path": base["path"], "sha256": base["sha256"]}
+        result["paired"] = {name: {
+            "reproduction_diffs": parity({"baseline": {"per_query": base["rows"]}, name: r}),
+            "metrics": funnel.paired(base["rows"], r["per_query"])} for name, r in runs.items()}
     (out / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
     for name, r in runs.items():
         s = r["summary"]
@@ -319,6 +359,11 @@ def _finish(out: pathlib.Path, header: dict, gold_files: list[str], runs: dict, 
                           "gold_in_union": s["gold_in_union_rate"],
                           "status": s["status_census"], "wall_s": s["wall_s"],
                           "degraded": len(r["degraded"])}, ensure_ascii=False))
+        f = r["funnel"]
+        print(json.dumps({"transport": name, "gates": {g: v["n"] for g, v in f["gates"].items()},
+                          "first_fail": f["first_fail"], "aurc": f["risk_coverage"]["aurc"],
+                          **({"reproduction_diffs": len(result["paired"][name]["reproduction_diffs"])}
+                             if base is not None else {})}, ensure_ascii=False))
     print(json.dumps({"parity_diffs": len(diffs), "degraded_runs": sorted(degraded)}, ensure_ascii=False))
     if degraded:
         return 1
