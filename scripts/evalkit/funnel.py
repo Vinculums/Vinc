@@ -8,7 +8,8 @@
 
 **게이트는 brief 가 실제로 지나는 순서다**: union(검색 node_hits 풀에 정답이 있나) →
 exposed(brief 가 보여 주는 셋 안에 있나, `_BRIEF_CANDIDATES`) → first(1위인가) →
-committed(확정했나). 문항마다 **처음 떨어진 게이트** 하나를 적는다. 층을 따로 재서
+committed(확정했나). exposed 는 개수가 아니라 **brief 가 실제로 보여 준 목록**에
+정답이 있는가다(순위 > 0) — 노출 수를 바꾸는 실험(X1)에서도 같은 자로 잰다. 문항마다 **처음 떨어진 게이트** 하나를 적는다. 층을 따로 재서
 상관을 구하는 대신 이것으로 "어디서 잃었나"에 바로 답한다.
 합집합은 brief 가 안에서 부르는 search 와 같은 깊이의 node_hits 다. node_hits 는 커서로
 이어지지 않고 첫 페이지에 전부 온다(`vinc_search` 계약).
@@ -27,7 +28,6 @@ import sys
 from collections import Counter
 
 GATES = ("union", "exposed", "first", "committed")
-EXPOSED = 3          # `api.query._BRIEF_CANDIDATES` — 결과 헤더의 constants 가 코드 값을 싣는다
 BOOT_B, BOOT_SEED = 2000, 0
 
 
@@ -43,7 +43,7 @@ def first_fail(r: dict) -> str:
     그것을 따로 보려면 :func:`outcome` 을 본다."""
     if not (r["union_rank"] or r["rank"]):
         return "union"
-    if not _h(r["hit"], EXPOSED):
+    if not r["rank"]:
         return "exposed"
     if not _h(r["hit"], 1):
         return "first"
@@ -241,7 +241,7 @@ def report(rows: list[dict]) -> dict:
     una = [r for r in rows if not r["answerable"]]
     n = len(ans)
     reach = {"union": [r for r in ans if r["union_rank"] or r["rank"]]}
-    reach["exposed"] = [r for r in ans if _h(r["hit"], EXPOSED)]
+    reach["exposed"] = [r for r in ans if r["rank"]]
     reach["first"] = [r for r in ans if _h(r["hit"], 1)]
     reach["committed"] = [r for r in reach["first"] if r["status"] == "resolved"]
     fails = [first_fail(r) for r in ans]
@@ -278,16 +278,24 @@ def report(rows: list[dict]) -> dict:
                     "exposed": round(sum(ndcg_at(r["rank"]) for r in ans) / n, 4) if n else None,
                     "idcg": "qrels (one gold per question)"},
         "risk_coverage": risk_coverage(rows),
+        "response_bytes": _bytes_summary(rows),
         # 여백이 실린 실행에서만(기준 경로). X3 가 읽는 자리다.
         "promotion": {k: promotion(rows, k, marks) for k, marks in PROMOTE_KEYS.items()
                       if any((r.get("margin") or {}).get(k) is not None for r in rows)},
     }
 
 
+def _bytes_summary(rows: list[dict]) -> dict | None:
+    b = sorted(r["resp_bytes"] for r in rows if r.get("resp_bytes") is not None)
+    if not b:
+        return None
+    return {"mean": round(sum(b) / len(b), 1), "median": b[len(b) // 2], "max": b[-1]}
+
+
 #: 짝지어 비교하는 문항별 0/1 값 — (모집단, 값).
 METRICS = {
     "in_union": ("answerable", lambda r: 1.0 if (r["union_rank"] or r["rank"]) else 0.0),
-    "exposed_r3": ("answerable", lambda r: _h(r["hit"], EXPOSED)),
+    "exposed": ("answerable", lambda r: 1.0 if r["rank"] else 0.0),
     "exposed_r1": ("answerable", lambda r: _h(r["hit"], 1)),
     "resolved_correct": ("answerable",
                          lambda r: 1.0 if r["status"] == "resolved" and not r["wrong_node"] else 0.0),
@@ -326,6 +334,14 @@ def paired(base: list[dict], run: list[dict]) -> dict:
                      "ci95": [round(boots[int(0.025 * BOOT_B)], 4),
                               round(boots[int(0.975 * BOOT_B) - 1], 4)] if boots else None,
                      "lost": lost, "gained": gained, "mcnemar_p": mcnemar_p(lost, gained)}
+    if all(r.get("resp_bytes") is not None for r in base + run):
+        # 응답 크기는 0/1 이 아니라 연속값이라 뒤집힘 대신 문항별 차의 평균을 짝지어 잰다.
+        d = [b["resp_bytes"] - a["resp_bytes"] for a, b in zip(base, run)]
+        boots = sorted(sum(d[rng.randrange(len(d))] for _ in d) / len(d) for _ in range(BOOT_B))
+        out["response_bytes"] = {"n": len(d), "delta_mean": round(sum(d) / len(d), 1),
+                                 "ci95": [round(boots[int(0.025 * BOOT_B)], 1),
+                                          round(boots[int(0.975 * BOOT_B) - 1], 1)],
+                                 "max_increase": max(d)}
     return out
 
 

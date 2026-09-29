@@ -114,6 +114,28 @@ class ResolveTests(unittest.TestCase):
         self.assertEqual(len(q._brief_resolve("q", hits)[1]), 3)
 
 
+class ExposeFlagTests(unittest.TestCase):
+    """X1 의 노출 손잡이. 기본은 셋이고, 잘못된 값은 기본으로 읽는다."""
+
+    HITS = [{"id": f"concept:{i}", "title": "t", "hit_tokens": 0, "title_tokens": 0}
+            for i in range(9)]
+
+    def _n(self, value):
+        with mock.patch.dict(os.environ):
+            os.environ.pop("VINC_BRIEF_EXPOSE", None)
+            if value is not None:
+                os.environ["VINC_BRIEF_EXPOSE"] = value
+            return len(q._brief_resolve("q", self.HITS)[1])
+
+    def test_기본은_셋이고_늘리면_그만큼_싣는다(self):
+        self.assertEqual(self._n(None), 3)
+        self.assertEqual(self._n("5"), 5)
+
+    def test_잘못된_값은_기본으로_읽는다(self):
+        for bad in ("", "abc", "0", "-2"):
+            self.assertEqual(self._n(bad), 3 if bad in ("", "abc") else 1, bad)
+
+
 class BodyTests(unittest.TestCase):
     """본문은 **인용**이지 생성이 아니다 — 어디서 왔는지를 늘 함께 낸다."""
 
@@ -688,6 +710,40 @@ _NS_DOC = """같은 검사 전부를 **PK 네임스페이싱을 켠 채** 다시
 논리 id 를 헷갈리면 상세가 통째로 빈 채 status 만 resolved 로 남는다 — 기본 스위트는
 플래그가 꺼져 있어 초록으로 통과한다. 그래서 검사를 새로 쓰지 않고 있는 검사를 두
 모드로 돌린다."""
+
+
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class BriefListResolvedE2E(unittest.TestCase):
+    """꺼져 있으면 응답이 바이트까지 그대로이고, 켜면 확정에 순위 목록만 더한다.
+    status 와 node 는 그대로다 — 목록이 답을 바꾸지 않는다(X1)."""
+
+    OWNER = BriefE2E.OWNER
+    setUp, tearDown = BriefE2E.setUp, BriefE2E.tearDown
+    FLAG = "VINC_BRIEF_LIST_RESOLVED"
+
+    def _brief(self, query, flag=None):
+        with mock.patch.dict(os.environ):
+            os.environ.pop(self.FLAG, None)
+            if flag is not None:
+                os.environ[self.FLAG] = flag
+            return q.brief(query, owner=self.OWNER, store=self.store)
+
+    def test_꺼져_있으면_응답이_그대로다(self):
+        for query in ("alpha core", "alpha", "concept:alpha-core"):
+            self._brief(query)                       # 지연 색인 빌드를 먼저 치른다
+            base = json.dumps(self._brief(query), ensure_ascii=False)
+            for off in ("", "off", "0"):
+                self.assertEqual(json.dumps(self._brief(query, off), ensure_ascii=False),
+                                 base, (query, off))
+
+    def test_켜면_확정은_그대로이고_목록이_곁에_실린다(self):
+        self._brief("alpha core")
+        off = self._brief("alpha core")
+        on = self._brief("alpha core", "on")
+        self.assertEqual((off["status"], on["status"]), ("resolved", "resolved"))
+        self.assertEqual(on["node"], off["node"])
+        self.assertEqual(off["candidates"], [])
+        self.assertEqual(on["candidates"][0]["id"], on["node"]["id"])
 
 
 def _namespaced(base):

@@ -150,6 +150,8 @@ def grade_one(res: dict, row: dict, hits: list | None = None, sem: list | None =
         "pred": pred,
         "pred_rrf": float((by_id.get(pred) or {}).get("rrf_score") or 0.0),
         "margin": margins(res, pred, hits or [], sem),
+        # 이 경로가 받은 brief 응답의 크기. 노출을 넓히는 비용이 여기서 보인다(X1).
+        "resp_bytes": len(json.dumps(res, ensure_ascii=False).encode("utf-8")),
     }
     if answerable:
         out["hit"] = {k: 1.0 if 0 < rank <= k else 0.0 for k in RANKS}
