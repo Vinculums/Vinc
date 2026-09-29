@@ -6671,12 +6671,15 @@ def _graph_arm_search(store, chunk_ids: list[str], *, owner: str | None = None,
                            "domain": r.get("domain"), "_r": cr}
         nb = r.get("nb_id")
         if nb and nb != cid:
-            neigh.setdefault(nb, {"id": nb, "title": r.get("nb_title"),
-                                  "domain": r.get("nb_domain")})
+            # 이웃도 자기를 불러온 최상위 청크의 랭크로 줄 선다(직접 언급과 같은 규칙).
+            cur = neigh.get(nb)
+            if cur is None or cr < cur["_r"]:
+                neigh[nb] = {"id": nb, "title": r.get("nb_title"),
+                             "domain": r.get("nb_domain"), "_r": cr}
     for cid in direct:            # 직접 언급이면 이웃 목록에서 제외(중복 방지)
         neigh.pop(cid, None)
     ordered = (sorted(direct.values(), key=lambda x: (x["_r"], x["id"]))
-               + sorted(neigh.values(), key=lambda x: x["id"]))
+               + sorted(neigh.values(), key=lambda x: (x["_r"], x["id"])))
     # `hit_tokens`/`title_tokens` 를 0 으로 명시한다(A1.10): 그래프 암은 **질문 토큰이
     # 아니라 청크 인접으로** 올라온 후보다. 소비처가 두 암을 한 줄로 정렬할 때 키가
     # 없어 `undefined` 로 비교되면 조용히 뒤섞인다 — 0 은 "토큰으로는 안 맞았다"는

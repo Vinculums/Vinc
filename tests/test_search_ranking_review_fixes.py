@@ -59,5 +59,21 @@ class KindPrefixOutOfIdScanRV11(unittest.TestCase):
         self.assertIn("record:drift", [h["id"] for h in hits])
 
 
+class GraphArmNeighbourOrderRV18(unittest.TestCase):
+    """1-hop 이웃이 id 알파벳순으로 잘려 1위 청크의 이웃이 밀려났다."""
+
+    def test_the_neighbour_of_the_top_chunk_comes_first(self):
+        from api import query as q
+
+        class _S:
+            def run(self, cypher, params=None):
+                return [{"chunk_id": "c1", "id": "concept:a", "title": "a", "domain": "",
+                         "nb_id": "concept:zeta", "nb_title": "zeta", "nb_domain": ""},
+                        {"chunk_id": "c2", "id": "concept:b", "title": "b", "domain": "",
+                         "nb_id": "concept:alpha", "nb_title": "alpha", "nb_domain": ""}]
+        out = q._graph_arm_search(_S(), ["c1", "c2"], limit=3)
+        self.assertEqual([r["id"] for r in out], ["concept:a", "concept:b", "concept:zeta"])
+
+
 if __name__ == "__main__":
     unittest.main()
