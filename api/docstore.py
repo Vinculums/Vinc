@@ -2218,7 +2218,11 @@ def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
                 raise ValueError("invalid_cursor: cursor has no edge position")
             scope += (" AND (a.concept_id > $a0 OR (a.concept_id = $a0 AND (b.concept_id > $b0 "
                       "OR (b.concept_id = $b0 AND label(r) > $r0)))) ")
-            params.update(a0=after[0], b0=after[1], r0=after[2])
+            # 커서는 읽은 행의 **논리** id 를 담는다(백엔드가 반환값의 물리 키를 벗긴다).
+            # 비교 상대 a.concept_id 는 물리 키이므로 바인딩할 때 합성한다. 양 끝이 같은
+            # owner 라 물리 순서와 논리 순서가 같다. 근거: [[vinc.plan.node-pk-namespacing]] §7
+            params.update(a0=pkns.key(owner, after[0]), b0=pkns.key(owner, after[1]),
+                          r0=after[2])
         rows = store.run(
             "MATCH (a:Concept)-[r]->(b:Concept) "
             "WHERE a.owner_id = $owner AND b.owner_id = $owner "
@@ -2239,13 +2243,16 @@ def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
         at, bt = (row.get("at") or "").strip(), (row.get("bt") or "").strip()
         if len(at) < 2 or len(bt) < 2 or at.lower() == bt.lower():
             continue
+        # 행의 aid·bid 는 논리 id 다. 아래 두 쿼리의 PK 바인딩은 물리 키여야 맞는다 —
+        # 논리 id 그대로면 네임스페이싱 스토어(허브)에서 아무 엣지도 채우지 못한다.
+        ends = {"aid": pkns.key(owner, row["aid"]), "bid": pkns.key(owner, row["bid"])}
         try:
             chunks = store.run(
                 "MATCH (ch:Chunk)-[:MENTIONS]->(a:Concept), (ch)-[:MENTIONS]->(b:Concept) "
                 "WHERE a.concept_id = $aid AND b.concept_id = $bid "
                 "AND (ch.owner_id = $owner OR ch.owner_id = '') "
                 "RETURN ch.text AS text ORDER BY ch.chunk_id LIMIT 6",
-                {"aid": row["aid"], "bid": row["bid"], "owner": owner}) or []
+                {**ends, "owner": owner}) or []
         except Exception:
             continue
         # ② 완화 판정용 제목 토큰 — mentions_link 의 어휘·상한을 그대로 재사용한다
@@ -2283,8 +2290,7 @@ def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
                 "WHERE a.concept_id = $aid AND b.concept_id = $bid "
                 "AND a.owner_id = $owner AND b.owner_id = $owner "
                 "SET r.evidence = $ev, r.confidence = $cf",
-                {"aid": row["aid"], "bid": row["bid"], "owner": owner,
-                 "ev": found[0], "cf": found[1]})
+                {**ends, "owner": owner, "ev": found[0], "cf": found[1]})
             out["filled"] += 1
         except Exception:
             continue
