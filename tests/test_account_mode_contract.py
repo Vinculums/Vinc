@@ -142,7 +142,8 @@ class GateTest(unittest.TestCase):
         self.assertIn("connectAccount(undefined, { via })", FIRSTRUN_TS)
         body = _fn(CONNECT_TS, "connectAccount")
         self.assertIn('const via = opts.via ? `&via=${opts.via}` : "";', body)
-        self.assertIn("${encodeURIComponent(state)}${via}", body)
+        # `mcp=1`(VIN-132): 이 앱은 기기별 MCP 키를 받는다. 연결 페이지가 이 표시를 보고 만든다.
+        self.assertIn("${encodeURIComponent(state)}&mcp=1${via}", body)
         # 브랜드 네 색은 면제로 드러나 있어야 한다(gate_surface 가 이유를 보고한다).
         self.assertIn("// ds-allow: Google 로고", FIRSTRUN_TS)
 

@@ -135,6 +135,14 @@ export function forgetAccount(): void {
   void secretStore().then((s) => s && s("secret_delete", { name: K_MCP })).catch(() => {});
 }
 
+/** 이 기기에 기기별 MCP 키가 있는가(설정의 연결 화면이 적는다). 저장소가 없으면 거짓. */
+export async function mcpKeyPresent(): Promise<boolean> {
+  const store = await secretStore();
+  if (!store) return false;
+  const held = await store("secret_get", { name: K_MCP }).catch(() => null);
+  return typeof held === "string" && !!held.trim();
+}
+
 /** 로그인 때 받은 기기별 MCP 키를 OS 저장소에 둔다. 새 로그인이 키 없이 오면(키 한도)
  *  옛 MCP 키를 지운다: 앱은 새 계정인데 MCP 는 옛 키로 남는 일이 없게. */
 async function storeMcpKey(value: string): Promise<void> {
@@ -164,7 +172,9 @@ export async function connectAccount(onState?: (s: "opening" | "waiting") => voi
     const { state } = await api.connectStart();
     const port = new URL(cfg.base).port || "8787";
     const via = opts.via ? `&via=${opts.via}` : "";
-    const url = `https://vincs.io/connect-app/#port=${port}&state=${encodeURIComponent(state)}${via}`;
+    // `mcp=1`: 이 앱은 기기별 MCP 키를 받아 OS 저장소에 둔다(VIN-132). 연결 페이지는 이
+    // 표시가 있을 때만 그 키를 만든다: 옛 앱은 키를 버려 한도만 먹기 때문이다.
+    const url = `https://vincs.io/connect-app/#port=${port}&state=${encodeURIComponent(state)}&mcp=1${via}`;
     onState?.("opening");
     // 셸이면 시스템 브라우저로, 아니면 새 탭(웹 dev).
     const invoke = await shellInvoke();
