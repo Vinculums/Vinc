@@ -89,7 +89,7 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "merge-nodes": ("POST", "/merge-nodes"),
     # 문서 정본 쓰기(D45 — 앱 내 편집). owner 필수(put/extract 는 미전송 시 400).
     # put=적재/편집(단일 writer 직렬화), extract=정본→개념 파생(남의 개념 불가침),
-    # reembed=편집 후 벡터 재생성(허브는 자체호스팅 임베딩 워커가 채운다).
+    # reembed=편집 후 재임베딩 큐에 되돌림(벡터는 허브의 자체호스팅 임베딩 워커가 채운다).
     "doc-put": ("POST", "/doc/put"),
     "conventions-build": ("POST", "/conventions/build"),   # 관례 재생성(GM-8)
     # 파일 바이트 입구(텍스트·PDF) — 본문은 base64 라 4/3 로 부푼다. 아래 MAX_BODY

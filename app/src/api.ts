@@ -700,7 +700,8 @@ export const api = {
   }> => call("/doc/put-file", undefined, { owner, filename, data_b64,
                                            ...(id ? { id } : {}),
                                            ...(title ? { title } : {}) }),
-  docReembed: (owner: string, id: string): Promise<{ executed: boolean; docs?: number }> =>
+  // 재임베딩 큐에 되돌릴 뿐이다(벡터는 워커가 채운다). queued = 되돌린 문서 수.
+  docReembed: (owner: string, id: string): Promise<{ executed: boolean; queued?: number }> =>
     call("/doc/reembed", undefined, { owner, id }),
   // U2 — 관계 근거 저작(정본 청크에서 결정론 추출). 반복 실행 안전(있는 근거는 보존).
   evidenceBackfill: (owner: string, docId?: string): Promise<{

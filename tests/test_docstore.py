@@ -449,15 +449,24 @@ class DocstoreE2E(unittest.TestCase):
         self.assertNotIn("note", ds.embed_model_state(self.store),
                          "한 번이라도 적용된 뒤에는 이 문장이 소음이다")
 
+    def _fill(self, did):
+        ds.apply_embeddings(self.store, did,
+                            {c: [[1.0, 0, 0, 0]] for c in self._chunk_ids(did)})
+
     def test_이행_상태가_정직하게_보고된다(self):
-        """`migrating` 은 '기록이 있고 + 재임베딩 대기가 남았다' 일 때만 참이다.
-        서버가 이 값으로 이행 중 벡터 검색을 끈다(발주자 결정: 안전한 방향)."""
-        d = ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")
-        cid = self._chunk_ids(d["doc_id"])[0]
+        """`migrating` 은 '이행 표식이 있고 + 남은 문서가 문턱(max(5, 2%))을 넘는다' 일 때만
+        참이다. 서버가 이 값으로 이행 중 벡터 검색을 끈다(발주자 결정: 안전한 방향)."""
+        dids = [ds.put_doc(self.store, owner="user:a", text=f"본문 {i}. " * 40,
+                           title=f"T{i}")["doc_id"] for i in range(6)]
         ds.switch_embed_model(self.store, "model-A")
         st = ds.embed_model_state(self.store)
-        self.assertTrue(st["migrating"] and st["pending"] == 1)
-        ds.apply_embeddings(self.store, d["doc_id"], {cid: [[1.0, 0, 0, 0]]})
+        self.assertTrue(st["migrating"] and st["pending"] == 6, st)
+        self._fill(dids[0])                               # 5건 남음 — 문턱 이하
+        st = ds.embed_model_state(self.store)
+        self.assertFalse(st["migrating"], f"문턱 아래인데 벡터 팔을 끈다: {st}")
+        self.assertEqual(st["migration_model"], "model-A", "드레인 전에 표식을 내렸다")
+        for did in dids[1:]:
+            self._fill(did)
         st = ds.embed_model_state(self.store)
         self.assertFalse(st["migrating"], "재임베딩이 끝났는데 이행 중이라고 한다")
         self.assertEqual(st["pending"], 0)
@@ -465,6 +474,19 @@ class DocstoreE2E(unittest.TestCase):
         # 일상 편집이 이행으로 오판된다(아래 테스트가 그 오판을 핀으로 박는다).
         self.assertEqual(st["migration_model"], "",
                          "드레인이 끝났는데 이행 표식이 남았다")
+
+    def test_안_풀리는_문서_하나가_의미_검색을_붙잡지_못한다(self):
+        """RV-14 — 게이트가 `표식 and pending>0` 이라, 계속 실패하는 문서 하나(2026-09-22
+        부터 76회 실패한 사례)가 6시간 격리를 되풀이하는 동안 모든 검색이 FTS 로만 답했다.
+        문턱은 max(5, 전체의 2%) — 60건이면 5건까지는 벡터 팔이 산다."""
+        dids = [ds.put_doc(self.store, owner="user:a", text=f"문서 {i} 본문",
+                           title=f"T{i}")["doc_id"] for i in range(60)]
+        ds.switch_embed_model(self.store, "model-A")
+        for did in dids[1:]:                               # 하나만 영영 안 풀린다
+            self._fill(did)
+        st = ds.embed_model_state(self.store)
+        self.assertEqual((st["pending"], st["migration_model"]), (1, "model-A"))
+        self.assertFalse(st["migrating"], "문서 하나가 전체 의미 검색을 끄고 있다")
 
     def test_일상_편집의_pending_은_이행이_아니다(self):
         """편집 1건의 needs_embed 는 `migrating` 을 켜지 않는다.
@@ -720,9 +742,8 @@ class DocstoreE2E(unittest.TestCase):
         dele = ds.delete_doc(self.store, did, owner="user:b")
         self.assertFalse(dele["found"])
         same_as_missing(dele, ds.delete_doc(self.store, ghost, owner="user:b"))
-        emb = lambda texts: [[0.0] * 4 for _ in texts]
-        same_as_missing(ds.reembed_doc(self.store, did, owner="user:b", embed=emb),
-                        ds.reembed_doc(self.store, ghost, owner="user:b", embed=emb))
+        same_as_missing(ds.reembed_doc(self.store, did, owner="user:b"),
+                        ds.reembed_doc(self.store, ghost, owner="user:b"))
         same_as_missing(ds.extract_doc(self.store, did, owner="user:b"),
                         ds.extract_doc(self.store, ghost, owner="user:b"))
         self.assertEqual(self._count_chunks(did), out["chunks"])   # 무손상
@@ -766,23 +787,22 @@ class DocstoreE2E(unittest.TestCase):
         self.assertGreater(int(rows[0]["c"]), 0)                   # 남은 소유자 무손상
 
     def test_p2_file_ingest_via_docstore(self):
-        # P2 — 파일 이관 시뮬레이션: 외부 경계 + fake 임베딩으로 put_doc 왕복 + 증분.
+        # P2 — 파일 이관 시뮬레이션: 외부 경계로 put_doc 왕복 + 증분.
         text = "# 문서\n\n" + "본문. " * 300
         origin = "CONTEXT/reference-docs/A/001-doc.md"
         did = ds.doc_id_for_origin("user:a", origin)
-        # fake chonkie 경계(≈120자마다) + fake 4d 임베딩
+        # fake chonkie 경계(≈120자마다)
         starts = list(range(0, len(text), 120))
-        emb = lambda texts: [[float(len(t) % 7), 0.0, 0.0, 1.0] for t in texts]
         res = ds.put_doc(self.store, owner="user:a", text=text, doc_id=did,
                          title="문서", origin=origin, layer="G-A",
-                         boundaries=starts, embed=emb, link=False)
+                         boundaries=starts, link=False)
         self.assertTrue(res["executed"] and not res["skipped"])
         self.assertGreater(res["chunks"], 1)
         # doc_hash 로 무변경 증분 판정 → 재적재 스킵
         self.assertEqual(ds.doc_hash(self.store, did), res["content_hash"])
         again = ds.put_doc(self.store, owner="user:a", text=text, doc_id=did,
                            title="문서", origin=origin, layer="G-A",
-                           boundaries=starts, embed=emb, link=False)
+                           boundaries=starts, link=False)
         self.assertTrue(again["skipped"])
         # 무손실 복원 + layer 보존(검색 pre-filter)
         got = ds.get_doc(self.store, did, owner="user:a")
@@ -1189,22 +1209,35 @@ class DocstoreE2E(unittest.TestCase):
         self.assertFalse(ds.doc_context(self.store, "d-nope", owner="user:a")["executed"])
 
     def test_needs_embed_and_reembed(self):
-        # D45-E 후속3 — 임베딩 없이 저장하면 needs_embed=1, reembed 가 채우고 0 으로.
-        out = ds.put_doc(self.store, owner="user:a", text="벡터 없는 편집 저장. " * 40,
-                         title="편집")   # embed 미지정 → 벡터 없음
+        """RV-02 — reembed 는 벡터를 쓰지 않고 문서를 워커 큐에 되돌린다.
+
+        예전엔 reembed·put_doc(embed=) 가 검색이 안 읽는 `Chunk.embedding` 에 쓰고
+        needs_embed 를 0 으로 내려, 그 문서가 의미 검색에서 영구히 빠졌다(ChunkVec 0 ·
+        needs_embed 0 · 워커도 다시 안 잡음). 불변식: 어느 순간에도 **ChunkVec 이 있거나
+        needs_embed 가 1** 이다."""
+        out = ds.put_doc(self.store, owner="user:a", text="편집 저장. " * 40, title="편집")
         did = out["doc_id"]
         self.assertTrue(out["needs_embed"])
-        self.assertEqual(ds.get_doc(self.store, did)["needs_embed"], True)
         self.assertIn(did, ds.stale_docs(self.store, owner="user:a"))
-        # embed 를 주면 needs_embed=0(배치 경로 동형)
-        emb = lambda ts: [[1.0, 0.0, 0.0, 0.0] for _ in ts]
-        r = ds.reembed_doc(self.store, did, owner="user:a", embed=emb)
-        self.assertTrue(r["executed"])
-        self.assertGreater(r["embedded"], 0)
+
+        def vecs():
+            return self._count("MATCH (v:ChunkVec) WHERE v.doc_id=$d RETURN count(v) AS c",
+                               {"d": did})
+
+        # 워커 경로가 벡터를 채운다 — 그때만 needs_embed 가 내려간다.
+        ds.apply_embeddings(self.store, did, {c: [[1.0, 0.0, 0.0, 0.0]]
+                                              for c in self._chunk_ids(did)})
         self.assertFalse(ds.get_doc(self.store, did)["needs_embed"])
-        self.assertNotIn(did, ds.stale_docs(self.store, owner="user:a"))
+        self.assertGreater(vecs(), 0)
+
+        r = ds.reembed_doc(self.store, did, owner="user:a")
+        self.assertTrue(r["executed"] and r["queued"], r)
+        self.assertTrue(ds.get_doc(self.store, did)["needs_embed"],
+                        "reembed 가 큐에 안 되돌렸다 — 워커가 다시 안 잡는다")
+        self.assertIn(did, {c["doc_id"] for c in ds.pending_embed_chunks(self.store)})
+        self.assertGreater(vecs(), 0, "옛 벡터는 워커가 새로 넣을 때까지 검색에 답해야 한다")
         # SEC-1: 타인 재임베딩 거부
-        self.assertIn("error", ds.reembed_doc(self.store, did, owner="user:b", embed=emb))
+        self.assertIn("error", ds.reembed_doc(self.store, did, owner="user:b"))
 
     def test_worker_apply_stamps_each_chunk_vector_runtime(self):
         out = ds.put_doc(self.store, owner="user:a", text="runtime provenance " * 30,

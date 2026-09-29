@@ -31,9 +31,9 @@ chunk_id 는 ``{doc_id}#{index:05d}`` — 편집·재청킹에도 위치 안정(
 (``ensure_search_indexes``, T3b 자기복구)에 맡긴다 — 문서 1건 편집마다
 전체 HNSW 재빌드로 수 초를 태우지 않기 위함.
 
-임베딩은 선택(``embed`` 콜러블): 없으면 텍스트만 정본으로 적재되고 FTS 가
-검색을 담당한다(벡터 인덱스는 embedding 있는 행 기준 — P2 에서 재청킹 시
-증분 임베딩과 함께 확장).
+벡터는 이 모듈의 쓰기가 만들지 않는다: put_doc 은 텍스트만 적재하고 needs_embed=1 을
+세운다(FTS 는 즉시 답한다). 검색이 읽는 `ChunkVec` 을 채우는 길은 워커의
+``pending_embed_chunks`` → ``apply_embeddings`` 하나뿐이다.
 """
 from __future__ import annotations
 
@@ -494,7 +494,6 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             title: str | None = None, origin: str | None = None, layer: str = "ssot",
             max_chars: int = DEFAULT_MAX_CHARS,
             boundaries: list[int] | None = None,
-            embed: Callable[[list[str]], list[list[float]]] | None = None,
             link: bool = True, updated_at: str | None = None,
             created_at: str | None = None, content_time: str | None = None,
             topic: str | None = None) -> dict:
@@ -611,14 +610,12 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         return base
 
     chunks = chunk_doc(text, max_chars=max_chars, boundaries=boundaries)
-    vectors = embed([c["text"] for c in chunks]) if embed and chunks else None
     stamp = updated_at or _stamp_updated_at(store)
     seq = _next_doc_seq(store, owner)
 
-    # 벡터를 **함께 싣는 경로일 때만** 드롭한다 — 벡터 없는 삽입은 HNSW 를 안 건드리고,
-    # 인덱스를 살려 두면 저장 중에도 검색이 답한다([[vinc.ops.fts-index-drift]] §3).
-    if vectors is not None:
-        _drop_vector_index_if_any(store)
+    # 여기는 벡터를 쓰지 않는다 — 검색이 읽는 벡터(`ChunkVec`)는 워커의 apply_embeddings
+    # 만 쓴다. 벡터 없는 삽입은 HNSW 를 안 건드리므로 인덱스도 안 드롭한다
+    # ([[vinc.ops.fts-index-drift]] §3).
     # ① 구 청크 삭제(재청킹으로 개수가 줄어도 고아가 남지 않게 — 부착 MENTIONS 도
     #    DETACH 로 함께 소멸). ② 신 청크 기록. ③ 메타(해시) 기록 — 이 순서가
     # 중간 크래시 자기치유의 근거다(모듈 독스트링).
@@ -659,14 +656,12 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                 "c.section_title = $sec, c.chunk_index = $idx, c.layer = $lyr, "
                 "c.char_start = $cs, c.char_end = $ce, c.char_count = $cc, "
                 "c.token_count = 0, c.text = $text")
-        if vectors is not None:
-            sets += ", c.embedding = $emb"
-            params["emb"] = list(vectors[i])
         store.run(f"MERGE (c:Chunk {{chunk_id: $id}}) SET {sets}", params)
 
-    # needs_embed: 임베딩 없이 적재됐으면 1(앱 편집·동기화 수신 경로) — 벡터 검색이
-    # 낡음을 표식하고 백그라운드 재임베딩 잡의 대상이 된다. embed 를 받은 경로(배치)는 0.
-    needs_embed = 0 if vectors is not None else 1
+    # needs_embed: 새로 쓴 문서는 언제나 1 — 워커가 `ChunkVec` 을 채우고 내린다.
+    # ⚠ 여기서 벡터를 만들어 `Chunk.embedding` 에 넣던 길(embed=)은 지웠다. v8 이후 검색은
+    # 그 열을 안 읽는데 needs_embed 만 0 으로 내려, 그 문서가 의미 검색에서 영구히 빠졌다.
+    needs_embed = 1
     # v7(D72) — created_at 은 **최초 1회**만 찍고 편집이 보존한다. 여태 문서에 남는
     # 시각이 updated_at 하나뿐이라, 고칠 때마다 "언제 만든 글인가"가 지워졌다.
     # 레거시 행은 원천이 없으므로 '' 로 남긴다(오늘로 채우면 그게 곧 거짓 시각이다).
@@ -1230,44 +1225,20 @@ def list_docs(store, *, owner: str | None = None, limit: int | None = None,
     return out
 
 
-def reembed_doc(store, doc_id: str, *, owner: str | None,
-                embed: Callable[[list[str]], list[list[float]]]) -> dict:
-    """문서의 기존 청크에 임베딩을 채운다(D45-E 후속3 — 재청킹 없이 벡터만 갱신).
+def reembed_doc(store, doc_id: str, *, owner: str | None) -> dict:
+    """문서를 재임베딩 큐에 되돌린다(`needs_embed = 1`) — 벡터는 **여기서 만들지 않는다.**
 
-    앱 편집/동기화 수신 경로는 임베딩 없이 청크를 적재해 needs_embed=1 이다. 이
-    잡이 그 청크의 text 를 임베딩해 embedding 열을 SET 하고 needs_embed=0 으로
-    내린다. 인덱스가 걸린 열 변이라 drop→SET→(검색 경로 지연 재빌드). SEC-1 가드."""
+    검색이 읽는 벡터(`ChunkVec`)는 워커의 apply_embeddings 만 쓴다. 그 스토어의 모델을
+    아는 것도 워커뿐이다. 옛 벡터는 워커가 새로 넣을 때까지 그대로 검색에 답한다. SEC-1 가드."""
     base: dict[str, Any] = {"kind": "doc.reembed", "executed": False, "doc_id": doc_id}
     meta = _meta(store, doc_id)
     # 남의 문서는 없는 문서와 같게 답한다(SEC-1).
     if meta is None or (owner is not None and meta.get("owner_id") != owner):
         base["error"] = "unknown doc_id"
         return base
-    rows = store.run(
-        "MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.chunk_id AS id, c.text AS text "
-        "ORDER BY c.chunk_index", {"d": doc_id}) or []
-    if not rows:
-        store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.needs_embed = 0",
-                  {"id": doc_id})
-        base.update(executed=True, embedded=0)
-        return base
-    refusal = _remnant_refusal(store, vectors=False)     # 아래 SET 이 `Chunk` 를 친다
-    if refusal:
-        base["error"] = refusal
-        return base
-    vectors = embed([r.get("text") or "" for r in rows])
-    # 여기는 드롭이 **필수**다 — 벡터가 없던(또는 낡은) 청크에 벡터를 채우는 경로라
-    # HNSW 삽입이 발생하고, 그게 수백 건에서 세그폴트를 낸다(실측). FTS 는 살려 둔다.
-    _drop_vector_index_if_any(store)
-    for r, v in zip(rows, vectors):
-        store.run("MATCH (c:Chunk) WHERE c.chunk_id = $id SET c.embedding = $emb",
-                  {"id": r["id"], "emb": list(v)})
-    store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.needs_embed = 0",
+    store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.needs_embed = 1",
               {"id": doc_id})
-    # 드롭되는 건 **벡터뿐**이라고 정확히 적는다 — "search indexes dropped" 라고 적혀
-    # 있던 동안 호출부가 FTS 까지 다시 만들려다 터졌다([[vinc.ops.fts-index-drift]] §3).
-    base.update(executed=True, embedded=len(rows),
-                note="vector index dropped — 검색 경로가 지연 재빌드 (FTS 는 유지)")
+    base.update(executed=True, queued=True)
     return base
 
 
@@ -1408,6 +1379,12 @@ _EMBED_APPLIED_KEY = "embed_last_applied_at"
 #: 표식 없이는 편집 1건이 의미 검색 전체를 끈다(실측 2026-09-02: "1 docs pending"
 #: 창마다 전역 FTS-only 강등).
 _EMBED_MIGRATING_KEY = "embed_migration_model"
+#: 이행 중에도 벡터 팔은 **남은 문서가 max(이 수, 전체의 이 비율)을 넘을 때만** 끈다.
+#: `pending > 0` 이던 게이트는 계속 실패하는 문서 하나가 격리를 되풀이하는 동안 모든
+#: 검색을 키워드로만 답하게 했다. 그 정도 섞임은 감수한다는 것이 결정이다.
+#: 근거: [[decision:rag-code-review-fixes-run-in-full-in-the-local-rag-session-2026-09-29]]
+_MIGRATION_GATE_MIN = 5
+_MIGRATION_GATE_RATIO = 0.02
 
 
 #: pending 이 있는데 이보다 오래 진행(=성공한 apply)이 없으면 정체(stall)로 본다.
@@ -1426,9 +1403,10 @@ def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -
     "last_applied_at", "age_s", "stalled"}`. `stored` 가 빈 문자열이면 아직
     아무것도 기록되지 않은 상태다(구 설치·신규 설치).
 
-    `migrating` 은 **모델 이행 중**(전량 재큐, `_EMBED_MIGRATING_KEY` 표식 보유)
-    에만 True 다 — 일상 문서 편집의 needs_embed 는 표식을 안 세우므로 여기 안
-    걸린다. 검색의 벡터 팔 게이트가 이 값을 본다: 편집 1건이 의미 검색 전체를
+    `migrating` 은 **모델 이행 중**(전량 재큐, `_EMBED_MIGRATING_KEY` 표식 보유)이고
+    남은 문서가 `_MIGRATION_GATE_MIN`·`_MIGRATION_GATE_RATIO` 문턱을 넘을 때만 True 다
+    — 일상 문서 편집의 needs_embed 는 표식을 안 세우므로 여기 안 걸리고, 이행 끝의
+    안 풀리는 문서 몇 건도 게이트를 붙잡지 못한다. 검색의 벡터 팔 게이트가 이 값을 본다: 편집 1건이 의미 검색 전체를
     끄던 과잉을 이 구분이 걷어낸다(pending 자체는 그대로 보고되고, `stalled` 도
     표식과 무관하게 pending 기준이라 워커 정체 알람은 안 무뎌진다).
     ⚠ 이 배포 전에 시작된 이행은 표식이 없어 `migrating=False` 로 읽힌다 —
@@ -1478,7 +1456,8 @@ def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -
     except Exception as exc:      # noqa: BLE001 — 진단이 호출부를 죽이지 않게
         out["error"] = f"{type(exc).__name__}: {exc}"
         return out
-    out["migrating"] = bool(out["migration_model"]) and out["pending"] > 0
+    out["migrating"] = bool(out["migration_model"]) and out["pending"] > max(
+        _MIGRATION_GATE_MIN, out["docs"] * _MIGRATION_GATE_RATIO)
     age = _age_s(out["last_applied_at"])
     out["age_s"] = None if age is None else round(age)
     out["stalled"] = bool(age is not None and out["pending"] > 0 and age >= stall_after_s)
