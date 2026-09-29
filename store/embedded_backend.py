@@ -180,6 +180,28 @@ _DDL_STMT = re.compile(
     r"|CALL\s+(?:CREATE|DROP)_\w+|CALL\s+(?:PROJECT_GRAPH|DROP_PROJECTED_GRAPH)\b"
     r"|LOAD\s+EXTENSION\b|INSTALL\b)", re.IGNORECASE)
 
+#: 벡터 표(`ChunkVec`·`NodeVec`)를 바꿀 수 있는 문장 = 표 이름 + 쓰기·DDL 절. 일부러 넓다:
+#: 더 잡으면 도장 캐시가 한 번 더 훑을 뿐이고, 덜 잡으면 캐시가 옛 답을 준다.
+_VEC_TABLE = re.compile(r"\b(?:ChunkVec|NodeVec)\b", re.IGNORECASE)
+_VEC_WRITE = re.compile(r"\b(?:CREATE|MERGE|SET|DELETE|REMOVE|COPY|DROP|ALTER)\b", re.IGNORECASE)
+_vector_generation = 0
+_vector_generation_lock = threading.Lock()
+
+
+def vector_generation() -> int:
+    """벡터 표 쓰기 세대(프로세스 전역). 벡터를 바꾼 문장이 **돌고 난 뒤** 오른다(:class:`_Conn`).
+
+    캐시하는 쪽은 훑기 **전에** 이 값을 읽어 답에 붙인다. 그러면 붙인 세대가 지금과 같은
+    답은 그 뒤에 끝난 벡터 쓰기를 놓친 적이 없다(쓰기는 커밋 뒤에 올리고 읽기는 그 뒤에
+    시작했으므로). 다른 프로세스의 쓰기는 모른다: 스토어를 쓰는 프로세스는 하나다(I4)."""
+    return _vector_generation
+
+
+def _bump_vector_generation() -> None:
+    global _vector_generation
+    with _vector_generation_lock:
+        _vector_generation += 1
+
 
 def _forget_prepared(raw) -> None:
     """드라이버 커넥션의 **파이썬 쪽** 암묵 문장 캐시를 비운다(0.18.1 부터 있다, 0.18.0 은 무동작).
@@ -211,6 +233,9 @@ class _Conn:
     - 매개변수 문장이 **실패하면** 그 커넥션의 캐시를 비운다(실패한 바인드를 들고 있지 않게).
     - **DDL 이 지나가면**(성공이든 실패든) 같은 스토어의 **모든** 커넥션 캐시를 비운다 —
       리더 커넥션은 라이터가 만든 색인을 자기 캐시 너머로 봐야 한다.
+    - **벡터 표를 바꾼 문장이 지나가면** 벡터 쓰기 세대를 올린다(:func:`vector_generation`).
+      문장마다 자동 커밋이라 돌고 난 뒤가 곧 커밋 뒤다. 쓰기 경로(적용·미러·삭제·purge·
+      소유자 접기·마이그레이션)를 하나하나 고치지 않고 여기 하나로 받는다.
 
     그 밖의 속성(`close` 등)은 드라이버 커넥션으로 그대로 넘긴다."""
 
@@ -233,6 +258,8 @@ class _Conn:
             if isinstance(query, str) and _DDL_STMT.match(query):
                 for c in list(self._family or (self,)):
                     _forget_prepared(c._raw)
+            if isinstance(query, str) and _VEC_TABLE.search(query) and _VEC_WRITE.search(query):
+                _bump_vector_generation()
 
     def __getattr__(self, name):
         return getattr(self._raw, name)
@@ -912,6 +939,9 @@ class EmbeddedBackend:
         #: 이 Database 에서 연 커넥션들(:class:`_Conn`) — DDL 이 지나가면 전부의 문장 캐시를
         #: 비운다. `open` 이 채운다(직접 생성한 테스트 더블은 빈 집합).
         self._conns: "weakref.WeakSet" = weakref.WeakSet()
+        #: 소유자별 저장 벡터 도장 `{owner: (벡터 쓰기 세대, frozenset)}`. 채우고 읽는 것은
+        #: `api.query._stored_runtimes` 이고, 요청마다 새로 뜨는 리더 뷰도 이 백엔드의 것을 쓴다.
+        self.runtime_stamps: dict = {}
 
     @classmethod
     def open(cls, cfg: StoreConfig) -> "EmbeddedBackend | None":

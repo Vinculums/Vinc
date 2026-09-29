@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from store.config import StoreConfig, load_config
 from store.backend import open_store
 from store import pkns
+from store.embedded_backend import vector_generation
 from engines import domain_hierarchy
 
 from . import graphmd
@@ -6631,21 +6632,47 @@ def _fuse_node_hits(title_hits: list[dict], graph_hits: list[dict], *,
     return fused
 
 
+#: 스토어 하나가 기억하는 소유자 수의 상한. 넘치면 통째로 비운다(다음 검색이 다시 훑는다).
+_RUNTIME_STAMP_OWNERS = 256
+
+
+def _stored_runtimes(store, owner: str | None) -> frozenset[str]:
+    """요청 소유자의 저장 벡터 도장 집합. 벡터 쓰기 세대가 그대로면 두 표를 다시 훑지 않는다.
+
+    캐시는 백엔드에 달려 있다(`EmbeddedBackend.runtime_stamps` — 리더 뷰는 `_b` 로 닿는다).
+    없는 스토어(테스트 더블)는 매번 훑는다. 세대는 훑기 **전에** 읽는다: 그래야 훑는 도중
+    끝난 쓰기가 옛 세대로 적혀 다음 검색이 다시 훑는다(:func:`store.embedded_backend.vector_generation`).
+    잠금은 없다. 스레드가 겹쳐도 dict 연산 하나하나는 원자적이고, 잃는 것은 캐시 적중뿐이다."""
+    gen = vector_generation()
+    cache = getattr(getattr(store, "_b", store), "runtime_stamps", None)
+    key = owner or ""
+    hit = cache.get(key) if isinstance(cache, dict) else None
+    if hit is not None and hit[0] == gen:
+        return hit[1]
+    stored: set[str] = set()
+    for table in ("ChunkVec", "NodeVec"):
+        where = " WHERE v.owner_id = $owner" if owner else ""
+        rows = store.run(
+            f"MATCH (v:{table}){where} RETURN DISTINCT v.encoder_runtime AS runtime",
+            {"owner": owner} if owner else {}) or []
+        stored.update(str(row.get("runtime") or "") for row in rows)
+    stamps = frozenset(stored)
+    if isinstance(cache, dict):
+        if len(cache) >= _RUNTIME_STAMP_OWNERS:
+            cache.clear()
+        cache[key] = (gen, stamps)
+    return stamps
+
+
 def _encoder_runtime_warning(store, owner: str | None, runtime: str) -> str:
     """구 벡터·혼재·불일치를 경고한다. 부분 재임베딩은 한 스토어에 두 판을 남길 수 있다.
 
     벡터마다 찍힌 지문을 요청 소유자 안에서만 대조한다.
     """
-    stored: set[str] = set()
-    for table in ("ChunkVec", "NodeVec"):
-        where = " WHERE v.owner_id = $owner" if owner else ""
-        try:
-            rows = store.run(
-                f"MATCH (v:{table}){where} RETURN DISTINCT v.encoder_runtime AS runtime",
-                {"owner": owner} if owner else {}) or []
-        except Exception as exc:
-            return f"encoder runtime check failed: {type(exc).__name__}"
-        stored.update(str(row.get("runtime") or "") for row in rows)
+    try:
+        stored = _stored_runtimes(store, owner)
+    except Exception as exc:
+        return f"encoder runtime check failed: {type(exc).__name__}"
     if not stored:
         return ""
     known = stored - {""}
