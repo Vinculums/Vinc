@@ -729,14 +729,17 @@ class VincApp:
         """이행 중이면 사유 문구, 아니면 빈 문자열. **30초 캐시**한다.
 
         검색마다 스토어를 한 번 더 두드리면 그 자체가 조회 비용이다. 이행은 시간
-        단위로 도는 일이라 30초 낡은 답이어도 판단이 바뀌지 않는다."""
+        단위로 도는 일이라 30초 낡은 답이어도 판단이 바뀌지 않는다.
+
+        ⚠ 지역 변수로 다 계산한 뒤 게시하고 `_mig_at` 을 **맨 끝에** 쓴다. 시각을 먼저
+        쓰면 계산하는 사이 들어온 검색이 빈 사유(이행 아님)와 빈 저장 모델을 읽어, 이행
+        중에도 벡터 팔을 쓰고 모델 대조도 건너뛴다. 그 창 안의 동시 호출은 대신 각자
+        스토어를 읽는다(틀린 답보다 중복 읽기가 싸다).
+        근거: [[vinc.audit.rag-code-review-2026-09-29]] 33번"""
         now = time.time()
         if now - self._mig_at < 30.0:
             return self._mig_note
-        self._mig_at = now
-        self._mig_note = ""
-        self._mig_pending = 0
-        self._mig_stored = ""
+        note, pending, stored = "", 0, ""
         try:
             r = self._reader()
             try:
@@ -744,16 +747,18 @@ class VincApp:
             finally:
                 if r is not None:
                     r.close()
-            self._mig_stored = str(st.get("stored") or "")
+            stored = str(st.get("stored") or "")
             if st.get("migrating"):
                 # 화면(GM-13 배지)은 이 영문 문장을 그대로 쓰지 않는다(em 대시 포함,
                 # D38) — 구조화 진행도는 _mig_pending 이 따로 나른다.
-                self._mig_note = (f"embedding migration in progress "
-                                  f"({st['pending']} docs pending) — FTS only")
-                self._mig_pending = int(st.get("pending") or 0)
+                note = (f"embedding migration in progress "
+                        f"({st['pending']} docs pending) — FTS only")
+                pending = int(st.get("pending") or 0)
         except Exception:
             pass                      # 판단이 안 서면 막지 않는다(기본은 통과)
-        return self._mig_note
+        self._mig_note, self._mig_pending, self._mig_stored = note, pending, stored
+        self._mig_at = now            # 이 줄이 캐시를 연다. 위 줄보다 앞으로 옮기지 말 것
+        return note
 
     def _query_embedding(self, text: str):
         """쿼리 임베딩을 얻는다 — 없으면 `(None, 사유)` 로 **정직하게** 강등한다.

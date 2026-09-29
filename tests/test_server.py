@@ -911,6 +911,48 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
                          "이행 진행도(embed_migration.pending)가 구조화되지 않았다")
         self.assertEqual(self.seen_vec, [])
 
+    def _probe_while_computing(self, state, probe):
+        """이행 판정 캐시를 **계산하는 도중**(저장 상태를 읽는 순간)에 다른 스레드가
+        ``probe(app)`` 를 부르고 그 결과를 돌려준다. 끼어드는 자리를 훅으로 고정해
+        경합을 결정론으로 만든다. 근거: [[vinc.audit.rag-code-review-2026-09-29]] 33번"""
+        from unittest import mock
+        app = _app(store=self._Store(self))
+        out = []
+
+        def hook(_reader, **_kw):
+            if not out:                      # 첫 계산에서만 끼어든다
+                out.append(None)
+                t = threading.Thread(target=lambda: out.append(probe(app)))
+                t.start()
+                t.join(5)
+            return state
+
+        try:
+            with mock.patch.object(self.srv.docstore, "embed_model_state", side_effect=hook):
+                app._embed_migrating()
+        finally:
+            app.jobs.shutdown(drain=True)
+        self.assertEqual(len(out), 2, "끼어든 스레드가 끝나지 않았다")
+        return out[1]
+
+    def test_계산_중에_들어온_검색도_이행_중임을_본다(self):
+        """RV-33. 시각을 먼저 게시하면 계산 창 안의 검색이 빈 사유(이행 아님)를 읽는다."""
+        note = self._probe_while_computing(
+            {"stored": "model-A", "migrating": True, "pending": 7},
+            lambda app: app._embed_migrating())
+        self.assertIn("migration", note, "계산이 끝나기 전에 '이행 아님'이 게시됐다")
+
+    def test_계산_중에_들어온_검색도_저장_모델과_대조한다(self):
+        """RV-33 이 RV-06 모델 절반을 끄던 길. 저장 모델이 빈 값으로 먼저 게시되면
+        그 창 안의 질의는 다른 모델의 벡터로 벡터 팔을 돌린다."""
+        with _encode_stub([0.5, 0.5, 0.0, 0.0], model="intfloat/multilingual-e5-base") as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            vec, note = self._probe_while_computing(
+                {"stored": "BAAI/bge-m3", "migrating": False, "pending": 0},
+                lambda app: app._query_embedding("양자역학"))
+        self.assertIsNone(vec, "계산 창 안에서 모델 대조가 건너뛰어졌다")
+        self.assertIn("differs from the stored vectors' model", note)
+
     def test_일상_편집의_pending_은_벡터_팔을_내리지_않는다(self):
         """편집 1건의 needs_embed 는 이행이 아니다. 이행 표식(_EMBED_MIGRATING_KEY)
         없는 pending 에서 팔을 내리면 문서 하나 고칠 때마다 그래프 전체의 의미
