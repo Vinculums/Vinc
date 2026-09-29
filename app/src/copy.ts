@@ -827,7 +827,7 @@ const EN = {
       edExtractOffer: (n: number) => `${n} concept candidate${n === 1 ? "" : "s"} found · Apply`,
       edExtractDone: (c: number, m: number) => `Concepts +${c} · ${m} link${m === 1 ? "" : "s"} refreshed`,
       edReindexing: "Updating search index…",
-      edReindexed: "Search index up to date",
+      edQueued: "Saved · queued for indexing",
       // S1 — 삭제(되돌릴 수 없음). 확인을 받고 나서만 실행한다.
       del: "Delete",
       delNodeAsk: (t: string) => `Delete "${t}"? Its connections go too. This can't be undone.`,
@@ -1867,7 +1867,7 @@ const KO: Deck = {
       edExtractOffer: (n) => `개념 후보 ${n}개 · 반영하기`,
       edExtractDone: (c, m) => `개념 +${c} · 연결 ${m}개 갱신`,
       edReindexing: "검색 색인을 갱신하는 중…",
-      edReindexed: "검색 색인 갱신됨",
+      edQueued: "저장됨 · 색인 대기 중",
       // S1 — 삭제(되돌릴 수 없음). 확인을 받고 나서만 실행한다.
       del: "지우기",
       delNodeAsk: (t) => `'${t}'을(를) 지울까요? 연결도 함께 지워지고 되돌릴 수 없어요`,

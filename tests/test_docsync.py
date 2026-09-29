@@ -72,8 +72,7 @@ class DocSyncE2E(unittest.TestCase):
 
     def test_roundtrip_text_only_reembed(self):
         text = "# 정본\n\n" + "동기화 본문입니다. " * 300   # >2000자 → 재청킹 다분할
-        emb = lambda ts: [[1.0, 0.0, 0.0, 0.0] for _ in ts]
-        out = ds.put_doc(self.A, owner="user:a", text=text, title="정본", embed=emb)
+        out = ds.put_doc(self.A, owner="user:a", text=text, title="정본")
         did = out["doc_id"]
 
         delta = docsync.export_docs(self.A, owner="user:a", since=0)

@@ -27,7 +27,7 @@ LLM 단계를 "구현했지만 안 돌렸다"가 아니라 **미배선**이라�
 프롬프트 3종은 지금도 모든 리포트에 해시로 박히므로 배선하는 사람이 이어받을 자리는 남아 있다.
 
 §3.3 이 요구하는 기준선이 바로 2 다: "지금의 정직한 검색은 FTS 단독"이다. 임베더를
-붙이지 않았으므로 `put_doc(embed=None)` 이고, 이 수치는 P1 이후 같은 명령으로 다시 재서
+붙이지 않았으므로 `put_doc` 이 벡터 없이 적재하고, 이 수치는 P1 이후 같은 명령으로 다시 재서
 델타를 만드는 **before** 쪽이다.
 
 **적재는 왜 문서 경로인가.** §3.2 는 "에피소드·기록은 vinc_ingest, 긴 재료는
@@ -272,8 +272,7 @@ def ingest(store, rows: list[dict], *, tok: Tokens, verbose: bool) -> dict:
                 doc_id=doc_id_for(qid, sids[j] if j < len(sids) else j),
                 title=f"session {sids[j] if j < len(sids) else j}",
                 origin=dates[j] if j < len(dates) else "",
-                embed=None,          # 벡터 없음 = FTS 단독(§3.3 의 P1 이전 기준선)
-            )
+            )                        # 벡터 없음 = FTS 단독(§3.3 의 P1 이전 기준선)
             docs += 1
             q_chars += len(text)
         chars += q_chars

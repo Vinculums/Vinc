@@ -19,7 +19,7 @@ seq 는 노드와 **같은** owner 카운터에서 나온다(revstamp — ‘doc
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 
 from . import docstore as ds
 from . import graphmd
@@ -90,8 +90,7 @@ def _local(store, doc_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def import_docs(store, *, owner: str, payload: dict,
-                embed: Callable[[list[str]], list[list[float]]] | None = None) -> dict:
+def import_docs(store, *, owner: str, payload: dict) -> dict:
     """원격 델타를 로컬에 적용(doc 단위 LWW). 각 인바운드 문서를 로컬과 비교:
 
     - 로컬 없음 → put_doc(로컬 재청킹·재임베딩, 원격 updated_at 보존).
@@ -127,7 +126,7 @@ def import_docs(store, *, owner: str, payload: dict,
         # None 이 되므로 로컬 규칙이 그대로 적용된다(하위호환).
         res = ds.put_doc(store, owner=owner, text=d.get("text") or "", doc_id=doc_id,
                          title=d.get("title"), origin=d.get("origin") or "",
-                         embed=embed, link=True, updated_at=remote_ua or None,
+                         link=True, updated_at=remote_ua or None,
                          created_at=d.get("created_at") or None,
                          content_time=d.get("content_time"))
         if res.get("executed") and not res.get("skipped"):

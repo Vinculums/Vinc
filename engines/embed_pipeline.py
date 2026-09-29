@@ -365,29 +365,18 @@ def main() -> None:
         store.close()
         return
 
-    # 3. 임베딩 모델 1회 구성 → put_doc 이 청크별로 호출할 콜러블로 감싼다.
-    #    (모델은 한 번만 로드, 임베딩은 doc 최종 청크 기준으로 계산 = 무손실 정본과 정합.)
-    model_name = VOYAGE_MODEL if args.model == "anthropic" else ST_MODEL_BY_KEY.get(
-        args.model, LOCAL_EN_MODEL)
-    embed_fn = None
+    # 3. 청커만 구성한다(경계 후보). 벡터는 여기서 만들지 않는다 — put_doc 이 needs_embed=1
+    #    을 세우고, 임베딩 워커가 그 스토어의 모델로 `ChunkVec` 을 채운다.
     if plan:
         # CLI 만 종료를 결정한다 — 라이브러리는 예외를 올릴 뿐이다(EmbeddingStackMissing
         # 독스트링 참조). 여기서 종료 코드로 환원해 종전 CLI 동작을 그대로 유지한다.
         try:
             _load_chonkie()
-            embeddings_model = build_embeddings_model(args.model)
         except EmbeddingStackMissing as exc:
             print(f"[ERROR] {exc}", file=sys.stderr)
             sys.exit(1)
         chunker = RecursiveChunker.from_recipe(
             "markdown", lang="en", tokenizer="cl100k_base", chunk_size=CHUNK_SIZE)
-        refinery = EmbeddingsRefinery(embedding_model=embeddings_model)
-        model_name = getattr(embeddings_model, "model", model_name)
-
-        def embed_fn(texts: list[str]) -> list[list[float]]:   # noqa: F811
-            from chonkie.types import Chunk as _CK
-            cks = [_CK(text=t, start_index=0, end_index=len(t), token_count=0) for t in texts]
-            return [_to_list(e.embedding) for e in refinery(cks)]
 
     # 4. doc 단위 적재 — 정본 쓰기는 api/docstore.put_doc 단일 지점.
     stored_docs = 0
@@ -399,16 +388,14 @@ def main() -> None:
             boundaries = _chonkie_boundaries(chunker(text))   # chunker: if plan 블록에서 정의
             res = ds.put_doc(store, owner=owner, text=text, doc_id=did, title=title,
                              origin=origin, layer=layer, boundaries=boundaries,
-                             embed=embed_fn, link=False)
+                             link=False)
             if res.get("executed") and not res.get("skipped"):
                 stored_docs += 1
                 stored_chunks += int(res.get("chunks") or 0)
             print(f"       {f.name}: {res.get('chunks')}청크 (doc {did[:8]})")
         # 검색 인덱스 보장(적재 후 1회) + E-G1 :MENTIONS 결정론 링크.
-        # ⚠ `build_search_indexes` 가 아니라 `ensure_` 다. `put_doc(embed=...)` 은
-        # **벡터만** 드롭하므로 FTS 색인은 살아 있고, build 는 'already exists' 를
-        # 흡수하지 않아 **두 번째 실행부터 터진다**(빈 스토어 첫 적재에서만 통했다).
-        # 같은 함정이 `/doc/reembed` 에도 있었다 — 2026-08-09 에 둘 다 고쳤다.
+        # ⚠ `build_search_indexes` 가 아니라 `ensure_` 다. FTS 색인은 이미 살아 있을 수
+        # 있고, build 는 'already exists' 를 흡수하지 않아 **두 번째 실행부터 터진다**.
         print(f"[INFO] 검색 인덱스 ensure (벡터 dim={model_dim(args.model)} + FTS)...")
         store.ensure_search_indexes(dim=model_dim(args.model))
         try:
@@ -424,7 +411,7 @@ def main() -> None:
     print(f"\n[완료] 소요 시간: {elapsed:.1f}초")
     print(f"[완료] 적재 문서: {stored_docs}개 (스킵: {skip_count}개)")
     print(f"[완료] 적재 청크: {stored_chunks}개")
-    print(f"[완료] 임베딩 모델: {model_name}")
+    print("[완료] 벡터: 임베딩 워커가 채운다(needs_embed=1)")
     print(f"[완료] 청킹 라이브러리: chonkie {CHONKIE_VERSION}")
 
 

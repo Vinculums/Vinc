@@ -356,10 +356,8 @@ class MoveRoundTripE2E(unittest.TestCase):
             {"from": "concept:loose", "to": "concept:core", "type": "relates_to"},
             {"from": "record:note", "to": "concept:core", "type": "relates_to"},
         ]}, store=self.device)
-        emb = lambda ts: [[1.0, 0.0, 0.0, 0.0] for _ in ts]   # noqa: E731
-        ds.put_doc(self.device, owner=self.LOCAL, text="# new\n\nbody", title="new", embed=emb)
-        old = ds.put_doc(self.device, owner=self.LOCAL, text="# old\n\nbody", title="old",
-                         embed=emb)
+        ds.put_doc(self.device, owner=self.LOCAL, text="# new\n\nbody", title="new")
+        old = ds.put_doc(self.device, owner=self.LOCAL, text="# old\n\nbody", title="old")
         # 순번 열이 붙기 전부터 있던 문서(ALTER DEFAULT 0). 델타는 이것을 못 날랐다.
         self.device.run("MATCH (d:_DocMeta) WHERE d.doc_id = $d SET d.sync_seq = 0",
                         {"d": old["doc_id"]})

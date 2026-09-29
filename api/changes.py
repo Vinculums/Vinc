@@ -94,7 +94,7 @@ class ChangeMarker:
 #:
 #:   /touch            조회 빈도 신호. 노드를 열 때마다 앱이 부른다. 세면 노드를 누를
 #:                     때마다 지도가 다시 그려진다
-#:   /doc/reembed      벡터만 바꾼다
+#:   /doc/reembed      재임베딩 대기 표식만 세운다
 #:   /embed/apply      임베딩 워커의 결과. 허브에서 쉬지 않고 돈다
 #:   /node-mirror/rebuild  배포 경계의 색인 재구축(그때는 세대가 이미 바뀌었다)
 #:   /backup           파일을 만들 뿐이다

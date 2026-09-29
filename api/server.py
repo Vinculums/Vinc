@@ -1264,43 +1264,19 @@ class VincApp:
         return 200, res
 
     def write_doc_reembed(self, body):
-        # D45-E 후속3 — 앱 편집으로 벡터가 빠진 문서(needs_embed)의 임베딩을 채운다.
-        # 임베딩 스택(chonkie/sentence-transformers)이 없으면 조용히 note 강등(FTS 는
-        # 즉시 서빙되므로 무해). id 지정 = 그 문서, 미지정 = owner 의 stale 전부.
+        # 문서를 재임베딩 큐에 되돌린다(needs_embed=1). 벡터는 임베딩 워커가 `ChunkVec` 에
+        # 쓴다 — 여기서 만들던 길은 검색이 안 읽는 열에 고정 모델(local-en 768)로 썼다.
+        # id 지정 = 그 문서, 미지정 = owner 의 stale 전부. 인덱스는 건드리지 않는다.
         owner = body.get("owner") or None
         did = body.get("id") or None
 
         def _run():
-            try:
-                from engines.embed_pipeline import build_embeddings_model, _to_list, model_dim
-            except Exception as exc:
-                return {"kind": "doc.reembed", "executed": False,
-                        "note": f"embedding stack unavailable: {type(exc).__name__}"}
-            try:
-                model = build_embeddings_model("local-en")
-                from chonkie import EmbeddingsRefinery
-                from chonkie.types import Chunk as _CK
-                refinery = EmbeddingsRefinery(embedding_model=model)
-                def embed(texts):
-                    cks = [_CK(text=t, start_index=0, end_index=len(t), token_count=0) for t in texts]
-                    return [_to_list(e.embedding) for e in refinery(cks)]
-            except Exception as exc:
-                return {"kind": "doc.reembed", "executed": False,
-                        "note": f"embedding model load failed: {type(exc).__name__}"}
             targets = [did] if did else docstore.stale_docs(self.store, owner=owner)
-            done = 0
-            for t in targets:
-                r = docstore.reembed_doc(self.store, t, owner=owner, embed=embed)
-                if r.get("executed"):
-                    done += 1
-            if targets:
-                # ⚠ `build_search_indexes` 로 되돌리지 말 것 — 이 경로는 벡터만
-                # 드롭하는데 그 함수는 'already exists' 를 흡수하지 않아 살아 있는 FTS
-                # 위에서 던진다. 게다가 벡터 색인이 **성공한 뒤** 던져서, 다 만들어
-                # 놓고 결과만 오류가 됐다([[vinc.ops.fts-index-drift]] §3).
-                self.store.ensure_search_indexes(dim=model_dim("local-en"))
-            return {"kind": "doc.reembed", "executed": True, "docs": done,
-                    "total": len(targets)}
+            queued = sum(1 for t in targets
+                         if docstore.reembed_doc(self.store, t, owner=owner).get("executed"))
+            return {"kind": "doc.reembed", "executed": True, "queued": queued,
+                    "total": len(targets),
+                    "note": "queued for the embedding worker; vectors are not written here"}
 
         return 200, self.jobs.run_sync("doc.reembed", _run)
 
