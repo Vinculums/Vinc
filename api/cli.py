@@ -805,6 +805,13 @@ def _main(argv: list[str] | None = None) -> int:
         if args.mcpcmd == "manual":
             from vinc_mcp.install import manual_entry
             return _emit(manual_entry())
+        # 앱이 계정 모드면 stdio 세션을 호스티드로 넘긴다. 사이드카는 띄우지 않는다:
+        # 앱 화면이 보는 계정 그래프를 MCP 도 본다(VIN-132 K4). 키는 런처가 넣는다.
+        # 근거: [[vinc.plan.mcp-follows-the-app-mode-vin-132-2026-09-29]]
+        if args.mcpcmd == "serve":
+            from vinc_mcp.proxy import serve_remote, wants_account_mode
+            if wants_account_mode(base=args.base, token=args.token, owner=args.owner):
+                return serve_remote(os.environ.get("VINC_REMOTE_MCP_TOKEN") or "")
         from vinc_mcp.bridge import Bridge
         bridge = Bridge(base=args.base, token=args.token, owner=args.owner)
         bridge.ensure(spawn=not args.no_spawn)
