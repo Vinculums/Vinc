@@ -62,7 +62,8 @@ DEFAULT_MAX_CHARS = 2000
 #: (`_ALLOWED_PAIRS_HINT` 와 같은 처방).
 _DOC_MIRROR_PREFIX = "concept:doc."
 
-_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
+#: `#` 뒤 공백은 줄 안에서만 센다. `\s+` 였을 때 빈 제목(`#` 한 줄)이 다음 줄을 제목으로 삼았다.
+_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(\S.*)$", re.MULTILINE)
 
 
 def _sha(text: str) -> str:
@@ -169,6 +170,7 @@ def plan_boundaries(text: str, *, max_chars: int = DEFAULT_MAX_CHARS,
     n = len(text)
     if n == 0:
         return [0]
+    max_chars = max(1, int(max_chars))     # 0 이하면 아래 루프가 끝나지 않는다
     # 후보 경계: 문단(빈 줄 런 끝) 우선, 그다음 개행 직후.
     para = {m.end() for m in re.finditer(r"\n\s*\n", text)}
     lines = {m.end() for m in re.finditer(r"\n", text)}
@@ -1598,11 +1600,36 @@ def highlight_ranges(text: str, terms: set[str], *, max_ranges: int = 60) -> lis
     return out
 
 
+def _editor_offsets(text: str, offsets) -> dict[int, int]:
+    """코드포인트 오프셋 → 편집기(CodeMirror) 오프셋 표. 편집기는 UTF-16 단위로 세고
+    CRLF 를 한 칸으로 줄인다. 그래서 이모지 뒤나 CRLF 문서의 둘째 줄부터 밑줄·목차가
+    밀렸다. 저장 오프셋(`char_start`)과 연속성 검사는 코드포인트 그대로다. 응답에서만 바꾼다.
+
+    글자마다 도는 파이썬 루프를 두지 않는다: 요청한 오프셋 사이 구간을 C 단의 encode·count
+    로 잰다(CRLF 문서는 Windows 가져오기에서 수 MB 로 온다). 범위 밖 오프셋은 끝으로 자른다."""
+    n = len(text)
+    want = sorted({int(i) for i in offsets})
+    if "\r\n" not in text and len(text.encode("utf-16-le", "surrogatepass")) == 2 * n:
+        return {i: max(0, min(i, n)) for i in want}         # 한국어·영어 문서 대부분
+    out: dict[int, int] = {}
+    prev = acc = 0
+    for i in want:
+        j = max(0, min(i, n))
+        # [prev, j) 의 UTF-16 길이에서, CR 이 이 구간에 있는 CRLF 수만큼 뺀다(LF 가 j 에 있어도).
+        acc += (len(text[prev:j].encode("utf-16-le", "surrogatepass")) // 2
+                - text.count("\r\n", prev, j + 1))
+        out[i], prev = acc, j
+    return out
+
+
 def _concept_terms(title: str, stem: str) -> set[str]:
-    """개념의 하이라이트 대상 토큰 — 제목 유의 토큰(≤6) + stem(mentions_link 규칙과
-    같은 어휘). 너무 짧은 토큰(<2)은 소음이라 제외."""
-    toks = {t for t in _HL_TOKEN_RE.findall((title or "").lower()) if len(t) >= 2}
-    terms = set(list(toks)[:6])
+    """개념의 하이라이트 대상 토큰 — 제목 유의 토큰(앞에서부터 ≤6) + stem.
+
+    제목 토큰은 링커(`engines.mentions_link`)의 것을 그대로 쓴다. 여기서 사본을 두고
+    집합의 해시 순서로 여섯을 골랐을 때, 밑줄 낱말이 실행마다 바뀌고 링커가 언급으로
+    치는 낱말과도 어긋났다."""
+    from engines.mentions_link import _MAX_TITLE_TOKENS, _tokens
+    terms = set(_tokens(title)[:_MAX_TITLE_TOKENS])
     s = (stem or "").lower().strip()
     if len(s) >= 2:
         terms.add(s)
@@ -1615,7 +1642,8 @@ def doc_highlights(store, doc_id: str, concept_id: str, *,
 
     범위는 저장값이 아니라 토큰 매칭 계산(보고서 정정 1). SEC-1: doc·concept 소유
     가드. 반환 {executed, doc_id, concept_id, ranges:[{char_start,char_end}],
-    method:'tokens', terms}."""
+    method:'tokens', terms}. ranges 는 **편집기 단위**(UTF-16, CRLF 한 칸)다 —
+    파이썬 문자열 슬라이스로 쓰면 이모지·CRLF 뒤에서 어긋난다(`_editor_offsets`)."""
     base: dict[str, Any] = {"kind": "doc.highlights", "executed": False,
                             "doc_id": doc_id, "concept_id": concept_id, "ranges": []}
     got = get_doc(store, doc_id, owner=owner)
@@ -1633,8 +1661,11 @@ def doc_highlights(store, doc_id: str, concept_id: str, *,
         base["error"] = f"unknown concept: {concept_id}"
         return base
     terms = _concept_terms(rows[0].get("title") or "", rows[0].get("stem") or "")
-    base.update(executed=True, ranges=highlight_ranges(got.get("text") or "", terms),
-                method="tokens", terms=sorted(terms))
+    text = got.get("text") or ""
+    hl = highlight_ranges(text, terms)
+    at = _editor_offsets(text, [v for r in hl for v in r.values()])
+    base.update(executed=True, method="tokens", terms=sorted(terms),
+                ranges=[{k: at[v] for k, v in r.items()} for r in hl])
     return base
 
 
@@ -1686,6 +1717,9 @@ def doc_context(store, doc_id: str, *, owner: str | None = None) -> dict:
       ``sections``  헤딩 목차(위 `doc_sections`).
       ``chunks``    청크 시작 오프셋. 검색의 청크 히트가 **그 대목으로** 착지하는 근거.
 
+    ``sections``·``chunks`` 의 오프셋은 편집기 단위(UTF-16, CRLF 한 칸)로 나간다. 저장된
+    ``Chunk.char_start`` 는 코드포인트 그대로다(`_editor_offsets`).
+
     `mention_tally` 를 쓰지 않는 이유: 그것은 **전 코퍼스** 집계라, 문서 하나를
     보려고 owner 의 MENTIONS 를 전부 훑는다. 여기서는 doc 스코프로 좁힌다.
 
@@ -1698,7 +1732,10 @@ def doc_context(store, doc_id: str, *, owner: str | None = None) -> dict:
     if not got.get("executed"):
         base["error"] = got.get("error", "unreadable doc")
         return base
-    base["sections"] = doc_sections(got.get("text") or "")
+    text = got.get("text") or ""
+    secs = doc_sections(text)                   # 목차·청크 착지도 편집기 단위로 낸다
+    at = _editor_offsets(text, [s["char_start"] for s in secs])
+    base["sections"] = [{**s, "char_start": at[s["char_start"]]} for s in secs]
     # 청크 오프셋. char_start 가 음수인 행은 오프셋을 잃은 레거시라 착지 대상이
     # 아니다(거기로 보내면 문서 맨 위가 아니라 엉뚱한 곳이 열린다) — 빼고 준다.
     try:
@@ -1706,8 +1743,10 @@ def doc_context(store, doc_id: str, *, owner: str | None = None) -> dict:
             "MATCH (c:Chunk) WHERE c.doc_id = $d "
             "RETURN c.chunk_index AS i, c.char_start AS s ORDER BY c.chunk_index",
             {"d": doc_id}) or []
-        base["chunks"] = [{"index": int(r.get("i") or 0), "char_start": int(r.get("s") or 0)}
-                          for r in rows if int(r.get("s") or 0) >= 0]
+        live = [(int(r.get("i") or 0), int(r.get("s") or 0)) for r in rows
+                if int(r.get("s") or 0) >= 0]
+        at = _editor_offsets(text, [s for _, s in live])
+        base["chunks"] = [{"index": i, "char_start": at[s]} for i, s in live]
     except Exception:
         pass          # 구스토어 — 목차와 개념은 그대로 유효하다(강등, 실패 아님)
     tally: dict[str, dict] = {}
@@ -2120,14 +2159,15 @@ _EVIDENCE_MAX = 300
 
 
 def _sentences(text: str) -> list[str]:
-    """문장 분해 — 마침표·물음표·느낌표·줄바꿈 기준의 결정론 분해. NLP 없음."""
+    """문장 분해 — 마침표·물음표·느낌표·줄바꿈 기준의 결정론 분해. NLP 없음.
+    CJK 종결부호(。！？)는 뒤에 공백이 없어도 끊는다(그 언어는 띄어 쓰지 않는다)."""
     import re as _re
-    parts = _re.split(r"(?<=[.!?])\s+|\n+", text or "")
+    parts = _re.split(r"(?<=[.!?])\s+|(?<=[。！？])\s*|\n+", text or "")
     return [p.strip() for p in parts if p.strip()]
 
 
 def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
-                      limit: int = 400) -> dict:
+                      limit: int = 400, cursor: str | None = None) -> dict:
     """관계의 **근거 문장**을 정본에서 결정론으로 채운다(E-G6 생산자, U2).
 
     여태 스키마에는 `evidence`/`confidence` 열이 있는데 **채우는 곳이 하나도
@@ -2152,9 +2192,19 @@ def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
     저작 보호).
 
     ``doc_id`` 를 주면 그 문서가 언급하는 개념들 사이 엣지만 훑는다(편집 직후
-    증분). 없으면 owner 전체. 반환 {executed, filled, scanned}."""
+    증분). 없으면 owner 전체. 반환 {executed, filled, scanned, has_more, next_cursor}.
+
+    후보는 (a, b, 관계) 순으로 훑는다. 채우지 못한 엣지는 근거가 빈 채 남으므로, 순서
+    없이 LIMIT 만 두면 그것들이 매번 같은 창을 차지해 뒤의 엣지가 영영 안 보였다.
+    뒤가 남았으면 ``next_cursor`` 를 돌려주고, 그 값을 ``cursor`` 로 다시 주면 마지막으로
+    본 엣지 다음부터 훑는다(키셋 — 그사이 채워진 엣지가 빠져도 건너뛰지 않는다). 다른
+    owner·문서의 커서나 깨진 커서는 ``invalid_cursor`` 로 거절한다(검색 커서와 같은 규약)."""
     out: dict[str, Any] = {"kind": "evidence.backfill", "executed": False,
-                           "filled": 0, "scanned": 0}
+                           "filled": 0, "scanned": 0, "has_more": False, "next_cursor": None}
+    # 순환 임포트 회피 — query 가 이 모듈을 쓴다. 커서 코덱은 검색과 한 벌이다.
+    from .query import _query_fingerprint, cursor_decode, cursor_encode
+    qh = _query_fingerprint("evidence.backfill", owner, {"doc": doc_id or ""}, "")
+    lim = max(1, int(limit))
     try:
         # ① 후보 엣지 — 근거가 비어 있는 개념 간 관계(양 끝 owner 스코프, SEC-1).
         scope = ""
@@ -2163,29 +2213,51 @@ def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
             scope = (" AND EXISTS { MATCH (ch:Chunk)-[:MENTIONS]->(a) "
                      "WHERE ch.doc_id = $doc } ")
             params["doc"] = doc_id
+        if cursor:
+            data = cursor_decode(cursor)            # 무효면 ValueError("invalid_cursor: …")
+            after = data.get("after")
+            if data.get("qh") != qh:
+                raise ValueError("invalid_cursor: cursor was issued for a different owner or document")
+            if not (isinstance(after, list) and len(after) == 3
+                    and all(isinstance(x, str) for x in after)):
+                raise ValueError("invalid_cursor: cursor has no edge position")
+            scope += (" AND (a.concept_id > $a0 OR (a.concept_id = $a0 AND (b.concept_id > $b0 "
+                      "OR (b.concept_id = $b0 AND label(r) > $r0)))) ")
+            # 커서는 읽은 행의 **논리** id 를 담는다(백엔드가 반환값의 물리 키를 벗긴다).
+            # 비교 상대 a.concept_id 는 물리 키이므로 바인딩할 때 합성한다. 양 끝이 같은
+            # owner 라 물리 순서와 논리 순서가 같다. 근거: [[vinc.plan.node-pk-namespacing]] §7
+            params.update(a0=pkns.key(owner, after[0]), b0=pkns.key(owner, after[1]),
+                          r0=after[2])
         rows = store.run(
             "MATCH (a:Concept)-[r]->(b:Concept) "
             "WHERE a.owner_id = $owner AND b.owner_id = $owner "
             f"AND (r.evidence IS NULL OR r.evidence = ''){scope}"
             "RETURN a.concept_id AS aid, a.title AS at, "
             "b.concept_id AS bid, b.title AS bt, label(r) AS rel "
-            f"LIMIT {int(limit)}", params) or []
+            f"ORDER BY aid, bid, rel LIMIT {lim + 1}", params) or []
     except Exception as exc:
-        out["error"] = out["note"] = f"{type(exc).__name__}: {exc}"
+        msg = str(exc) if str(exc).startswith("invalid_cursor") else f"{type(exc).__name__}: {exc}"
+        out["error"] = out["note"] = msg
         return out
-    out["executed"] = True
-    out["scanned"] = len(rows)
+    rows, more = rows[:lim], len(rows) > lim      # 한 행 더 읽어 뒤가 남았는지 정확히 안다
+    out.update(executed=True, scanned=len(rows), has_more=more)
+    if more:
+        out["next_cursor"] = cursor_encode(
+            {"v": 1, "qh": qh, "after": [rows[-1]["aid"], rows[-1]["bid"], rows[-1]["rel"]]})
     for row in rows:
         at, bt = (row.get("at") or "").strip(), (row.get("bt") or "").strip()
         if len(at) < 2 or len(bt) < 2 or at.lower() == bt.lower():
             continue
+        # 행의 aid·bid 는 논리 id 다. 아래 두 쿼리의 PK 바인딩은 물리 키여야 맞는다 —
+        # 논리 id 그대로면 네임스페이싱 스토어(허브)에서 아무 엣지도 채우지 못한다.
+        ends = {"aid": pkns.key(owner, row["aid"]), "bid": pkns.key(owner, row["bid"])}
         try:
             chunks = store.run(
                 "MATCH (ch:Chunk)-[:MENTIONS]->(a:Concept), (ch)-[:MENTIONS]->(b:Concept) "
                 "WHERE a.concept_id = $aid AND b.concept_id = $bid "
                 "AND (ch.owner_id = $owner OR ch.owner_id = '') "
                 "RETURN ch.text AS text ORDER BY ch.chunk_id LIMIT 6",
-                {"aid": row["aid"], "bid": row["bid"], "owner": owner}) or []
+                {**ends, "owner": owner}) or []
         except Exception:
             continue
         # ② 완화 판정용 제목 토큰 — mentions_link 의 어휘·상한을 그대로 재사용한다
@@ -2223,8 +2295,7 @@ def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
                 "WHERE a.concept_id = $aid AND b.concept_id = $bid "
                 "AND a.owner_id = $owner AND b.owner_id = $owner "
                 "SET r.evidence = $ev, r.confidence = $cf",
-                {"aid": row["aid"], "bid": row["bid"], "owner": owner,
-                 "ev": found[0], "cf": found[1]})
+                {**ends, "owner": owner, "ev": found[0], "cf": found[1]})
             out["filled"] += 1
         except Exception:
             continue
