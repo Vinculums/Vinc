@@ -820,11 +820,16 @@ _Q_TIME = [
     ("ymd", re.compile(r"(?<![A-Za-z0-9_.:/-])((?:19|20)\d{2})[-./](\d{1,2})"
                        r"(?:[-./](\d{1,2}))?(?![A-Za-z0-9_-])")),
     # 2026년 8월 15일 · 2026년 8월 · 2025년
-    ("ko", re.compile(r"((?:19|20)\d{2})\s*년(?:\s*(\d{1,2})\s*월(?:\s*(\d{1,2})\s*일)?)?")),
+    ("ko", re.compile(r"(?<![A-Za-z0-9_.:/-])((?:19|20)\d{2})\s*년"
+                      r"(?:\s*(\d{1,2})\s*월(?:\s*(\d{1,2})\s*일)?)?"
+                      r"(?![A-Za-z0-9_/-])")),
     # 15 August 2026 — 월-연보다 먼저다. 뒤에 두면 "August 2026" 이 자리를 가져가 일이 빠진다
-    ("dmy", re.compile(r"\b(\d{1,2})\s+" + _MON + r"\s+((?:19|20)\d{2})\b", re.I)),
+    ("dmy", re.compile(r"(?<![A-Za-z0-9_.:/-])(\d{1,2})\s+" + _MON
+                       + r"\s+((?:19|20)\d{2})\b(?![A-Za-z0-9_/-])", re.I)),
     # August 15, 2026 · August 2026
-    ("mdy", re.compile(r"\b" + _MON + r"\s+(?:(\d{1,2})(?:st|nd|rd|th)?,?\s+)?((?:19|20)\d{2})\b", re.I)),
+    ("mdy", re.compile(r"(?<![A-Za-z0-9_.:/-])" + _MON
+                       + r"\s+(?:(\d{1,2})(?:st|nd|rd|th)?,?\s+)?"
+                       + r"((?:19|20)\d{2})\b(?![A-Za-z0-9_/-])", re.I)),
     # in 2025 · during 2025 · as of 2025
     ("prep", re.compile(r"\b(?:in|during|as of)\s+((?:19|20)\d{2})\b(?![-./]\d)", re.I)),
 ]
@@ -3629,6 +3634,15 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
     cfg = cfg or load_config()
     base: dict = {"kind": "brief", "executed": False, "query": query,
                   "status": "none", "candidates": [], "grounds": []}
+    # Direct-ID reads bypass search by design, but an explicit time request must
+    # still be validated and applied before the early return.
+    try:
+        direct_scope, direct_scope_info = resolve_as_of(as_of, query)
+    except ValueError as exc:
+        base["note"] = base["error"] = f"invalid_as_of: {exc}"
+        return base
+    if direct_scope_info is not None:
+        base["time_scope"] = direct_scope_info
     owns = store is None
     if owns:
         store = open_store(cfg)
@@ -3644,10 +3658,15 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # 동점 처리(제목 언어 갭)는 열린 결정으로 남는다:
         # [[record:title-language-gap-survives-the-vector-arm-2026-08-30]]
         unread_ids: list[dict] = []
+        out_of_scope_ids: list[str] = []
         for qid in _brief_query_ids(query)[:_BRIEF_FALLTHROUGH]:
             got = node_context(owner=owner, node=qid, limit=max_excerpts,
                                with_evidence=True, store=store)
             if got.get("executed"):
+                if direct_scope is not None and not holds_during(
+                        got.get("valid_from"), got.get("valid_until"), direct_scope):
+                    out_of_scope_ids.append(qid)
+                    continue
                 base["executed"] = True
                 base["status"] = "resolved"
                 base["resolved_via"] = "id"
@@ -3667,6 +3686,12 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             base["executed"] = True
             base["unreadable"] = list(unread_ids)
             base["note"] = unread_ids[0]["note"]
+            return base
+        if out_of_scope_ids:
+            base["executed"] = True
+            base["validity_filtered"] = len(out_of_scope_ids)
+            base["validity_note"] = (
+                f"the referenced node did not hold during {direct_scope_info['as_of']}")
             return base
         res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
                      owner=owner, store=store, historical=historical, as_of=as_of)

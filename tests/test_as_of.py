@@ -80,6 +80,8 @@ class QueryTime(unittest.TestCase):
                      "ladybug 0.20.4 and v0.9.6",   # 버전
                      "last week's decision",         # 상대 시점
                      "record:fact-2026-09-28-x9",    # id 의 일부
+                     "record:계획-2026년 8월",         # 한국어 날짜도 id 의 일부
+                     "docs/August 2026/plan.md",     # 문서 경로 안의 영어 월
                      "port 2026"):
             self.assertEqual(self._labels(text), [], text)
 
@@ -197,6 +199,39 @@ class OnEngine(unittest.TestCase):
                       as_of="2026-08-19")
         self.assertEqual(res.get("time_scope", {}).get("as_of"), "2026-08-19")
         self.assertIn(res["status"], ("resolved", "choose"))
+
+    def test_direct_id_applies_an_explicit_period_but_keeps_default_bypass(self):
+        old = "record:pricing-old"
+        default = q.brief(f"what does {old} say", owner=self.OWNER, store=self.store)
+        self.assertEqual(default["status"], "resolved")
+        held = q.brief(f"what does {old} say", owner=self.OWNER, store=self.store,
+                       as_of="2026-08-19")
+        self.assertEqual(held["status"], "resolved")
+        self.assertEqual(held["time_scope"]["as_of"], "2026-08-19")
+        expired = q.brief(f"what does {old} say", owner=self.OWNER, store=self.store,
+                          as_of="2026-08-20")
+        self.assertEqual(expired["status"], "none")
+        self.assertEqual(expired["validity_filtered"], 1)
+        self.assertEqual(expired["time_scope"]["as_of"], "2026-08-20")
+
+    def test_direct_id_rejects_an_invalid_period(self):
+        out = q.brief("record:pricing-old", owner=self.OWNER, store=self.store,
+                      as_of="last week")
+        self.assertFalse(out["executed"])
+        self.assertTrue(out["error"].startswith("invalid_as_of"))
+
+    def test_period_filter_cannot_turn_a_tie_into_a_resolved_answer(self):
+        from api import fragment as frag
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "record:period-tie-live", "type": "record",
+             "title": "edge cache policy", "valid_from": "2026-01-01"},
+            {"id": "record:period-tie-later", "type": "record",
+             "title": "edge cache policy", "valid_from": "2026-09-01"},
+        ]}, store=self.store)
+        out = q.brief("edge cache policy", owner=self.OWNER, store=self.store,
+                      as_of="2026-08")
+        self.assertEqual(out["status"], "choose")
+        self.assertIn("did not hold", out.get("validity_note") or "")
 
 
 class Surfaces(unittest.TestCase):
