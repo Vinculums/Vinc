@@ -268,6 +268,8 @@ def _t_graph(args, bridge):
     explicit = depth is not None
     want = depth if explicit else 2
     params = {"owner": _owner(args, bridge), "seed": seed, "depth": want}
+    if args.get("select") in ("layers", "prize"):
+        params["select"] = args["select"]
     # depth 2 이상에는 노드 예산을 붙인다. 사이드카는 도달 집합이 예산을 넘으면 깊이를
     # 층 단위로 줄이고(최소 1) `depth_budget` 으로 알린다 — 허브의 depth 2+ 가 Bridge
     # 60초에 걸려 죽던 것을 무거운 단계(행 조회·축 합류·배치) **전에** 끊는다.
@@ -807,6 +809,26 @@ TOOLS: list[dict] = [
                                    "goes to that space, so pass the url as is and leave "
                                    "`space` out. An explicit `space` beats the url's."},
             "depth": {"type": "integer", "default": 2, "minimum": 1, "maximum": 4},
+            "select": {"type": "string", "enum": ["layers", "prize"], "default": "layers",
+                       "description": "How to fill the node budget when depth reaches more "
+                                      "concepts than it allows. Both count the same thing: the "
+                                      "seed plus that many concepts, with what is attached to "
+                                      "them on top. 'layers' (default) lowers the depth until "
+                                      "every concept within it fits, so 'every node within N "
+                                      "hops' stays true. 'prize' keeps the requested depth but "
+                                      "ranks only the concepts linked to the seed through other "
+                                      "concepts, and keeps the connected set of them with the "
+                                      "most ppr, so a far but central concept can beat a near "
+                                      "but peripheral one. Concepts reached only through "
+                                      "records, episodes, bridges, decisions or topics are not "
+                                      "candidates and are left out; `selection` says how many "
+                                      "were ranked and kept. 'prize' falls back to 'layers', and "
+                                      "says so in `selection`, for a decision seed, when depth "
+                                      "reaches more than 600 concepts, or when the ranked "
+                                      "concepts already fit the budget. With 'prize' every node "
+                                      "also carries `ppr_recent` (ppr with a 90-day recency "
+                                      "half-life mixed in, counted from the newest node in "
+                                      "the result)."},
             "owner": {"type": "string"},
         }}, "run": _t_graph,
     },

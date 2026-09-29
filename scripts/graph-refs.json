@@ -490,6 +490,7 @@
     "record:an-fts-remnant-on-chunk-stops-every-document-write-and-the-heal-moves-chunk-with-its-edges-2026-09-25",
     "record:an-unlabelled-hop-binds-only-tables-that-share-the-projected-columns",
     "record:answerability-is-a-residual-coverage-question-2026-09-10",
+    "record:bridge-created-is-read-but-never-written",
     "record:bridge-layout-clump-2026-08-22",
     "record:brief-direct-id-pattern-was-ascii-only-2026-09-12",
     "record:brief-links-degree-counts-only-the-core-layer-and-understates-a-59-relation-node-as-9-2026-09-14",
