@@ -1330,6 +1330,22 @@ class ConnectFlowTests(unittest.TestCase):
             code, obj = _req(base, f"/connect/status?state={state}")
             self.assertEqual(obj["username"], "")
 
+    def test_callback_carries_an_optional_mcp_key(self):
+        """VIN-132: 기기별 MCP 키는 선택이다. 모양이 틀리면 그 키만 버리고 앱 연결은 산다."""
+        with running_server(_app()) as base:
+            for sent, want in (("vinc_sk_mcp123", "vinc_sk_mcp123"),
+                               ("vinc_ro_mcp456", "vinc_ro_mcp456"),
+                               ("not-a-key", ""), (None, "")):
+                _, st = _req(base, "/connect/start", method="POST", body={})
+                body = {"state": st["state"], "key": "vinc_sk_app", "email": "u@example.com"}
+                if sent is not None:
+                    body["mcp_key"] = sent
+                code, obj = _req(base, "/connect/callback", method="POST", token=None, body=body)
+                self.assertEqual((code, obj["status"]), (200, "ok"), sent)
+                code, obj = _req(base, f"/connect/status?state={st['state']}")
+                self.assertEqual((obj["status"], obj["key"], obj["mcp_key"]),
+                                 ("delivered", "vinc_sk_app", want), sent)
+
     def test_callback_rejects_bad_state_key_and_reuse(self):
         with running_server(_app()) as base:
             _, st = _req(base, "/connect/start", method="POST", body={})
