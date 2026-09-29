@@ -185,25 +185,20 @@ class StoreConcurrencyTests(unittest.TestCase):
         self.assertEqual(rows, [{"id": "concept:x", "value": 0}],
                          "잡 결과 포장을 풀지 않아 행 대신 다른 게 나왔다")
 
-    def test_graph_algo_failure_still_names_the_real_reason(self):
-        """확장이 없으면 그렇게 말해야 한다 — 잡 큐를 거치면서 사유가 뭉개지면
-        운영자가 "backend fallback" 같은 엉뚱한 곳을 보게 된다."""
+    def test_algo_failure_still_names_the_real_reason(self):
+        """스토어가 투영을 못 읽으면 그렇게 말해야 한다 — 사유가 뭉개지면 운영자가
+        엉뚱한 곳을 본다. 계산이 `api/graph_algo.py` 로 옮겨 온 뒤로 실패가 생기는
+        자리는 엔진 확장이 아니라 투영 조회다."""
         import api.query as q
-        rv = self.app._reader()
-        orig = self.store.graph_algo
 
-        def boom(*a, **kw):
-            raise RuntimeError(f"임베디드 algo 확장 미가용({self.store.driver_name})")
+        class _Down:
+            def run(self, *a, **kw):
+                raise RuntimeError("no reachable store")
 
-        self.store.graph_algo = boom
-        try:
-            rows, note = q._run_algo(rv, "weakly_connected_components")
-        finally:
-            self.store.graph_algo = orig
-            rv.close()
+        rows, note = q._run_algo(_Down(), "weakly_connected_components")
         self.assertIsNone(rows)
-        self.assertIn("extension_unavailable", note or "",
-                      f"확장 부재가 그대로 전달되지 않았다: {note!r}")
+        self.assertIn("no reachable store", note or "",
+                      f"실패 사유가 그대로 전달되지 않았다: {note!r}")
 
     # ── §11 P2 게이트: 잡 실행 중 조회 응답성 ──────────────────────────────
     def test_reads_stay_responsive_while_writes_run(self):

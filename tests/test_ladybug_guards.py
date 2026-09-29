@@ -272,13 +272,25 @@ class AlgoDegradeTests(unittest.TestCase):
         self.assertFalse([q for q in seen if "LOAD EXTENSION" in q],
                          "실패가 확정된 확장을 호출마다 다시 LOAD 했다")
 
-    def test_diagnose_degrades_with_the_reason(self):
+    def test_diagnose_answers_without_the_extension(self):
+        """🔴 이것이 허브의 상황이었다(2026-09-28): 확장이 안 올라와 세 진단이 전부
+        꺼졌다. 계산을 `api/graph_algo.py` 로 옮긴 뒤로는 확장 없이 답해야 한다."""
+        from api import fragment as frag
         from api import query as q
-        for fn in (q.component_diagnosis, q.communities):
-            res = fn(owner="user:a", store=self.store)
-            self.assertFalse(res["executed"], res)
-            self.assertIn("extension_unavailable", res.get("note", ""))
-            self.assertIn("#857", res.get("note", ""))
+        frag.merge_fragment({"owner": "user:a", "nodes": [
+            {"id": "concept:a", "type": "concept", "title": "A"},
+            {"id": "concept:b", "type": "concept", "title": "B"},
+            {"id": "concept:lonely", "type": "concept", "title": "Lonely"}],
+            "edges": [{"from": "concept:a", "to": "concept:b", "type": "relates_to"}]},
+            store=self.store)
+        comp = q.component_diagnosis(owner="user:a", store=self.store)
+        self.assertTrue(comp["executed"], comp)
+        self.assertEqual(comp["orphans"], ["concept:lonely"])
+        com = q.communities(owner="user:a", store=self.store)
+        self.assertTrue(com["executed"], com)
+        self.assertEqual(com["algorithm"], "leiden")
+        self.assertEqual([c["members"] for c in com["communities"]],
+                         [["concept:a", "concept:b"]])
 
 
 if __name__ == "__main__":
