@@ -311,6 +311,13 @@ def main() -> None:
     global EMBEDDING_DIM
     _load_dotenv()
     args = build_parser().parse_args()
+    # 모델 별칭은 여기서 **한 번** 푼다. provision·색인 차원·인코더가 모두 args.model 을
+    # 읽으므로, 키 없는 anthropic 을 인코더만 local-en 으로 바꾸면 1024 폭 스토어에 768
+    # 벡터가 들어간다. 근거: [[vinc.audit.rag-code-review-2026-09-29]] 31번
+    if args.model == "anthropic" and not (os.environ.get("VOYAGE_API_KEY")
+                                          or os.environ.get("ANTHROPIC_API_KEY")):
+        print(f"[임베딩 API 키 없음 — 오프라인 기본 모델(--model {DEFAULT_EMBEDDING_MODEL})로 전환합니다]")
+        args.model = DEFAULT_EMBEDDING_MODEL
 
     # 임베딩 차원을 선택한 모델에 맞게 설정 (벡터 인덱스 차원 정합)
     EMBEDDING_DIM = EMBEDDING_DIM_BY_MODEL.get(args.model, EMBEDDING_DIM)

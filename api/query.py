@@ -361,10 +361,15 @@ def execute(plan: QueryPlan, cfg: StoreConfig | None = None, *, store=None,
         base["executed"] = True
         base["rows"] = rows
     except Exception as exc:
-        # 강등(graceful degradation, §3-4): 미프로비저닝·미구현 방언(search 는
-        # M5 store.fulltext_search 로 승격 예정 — §4-2·§6-2) 등 스토어가 플랜을
-        # 실행하지 못하면 순수 플랜을 executed=False 로 반환한다(무 크래시 계약).
-        base["note"] = f"store 실행 실패 — dry plan 반환: {type(exc).__name__}: {exc}"
+        # 강등(graceful degradation, §3-4): 스토어가 플랜을 실행하지 못해도 던지지
+        # 않는다(무 크래시 계약). 대신 실패를 **최상위 `error`** 로 말한다 — 빈 rows 만
+        # 돌려주면 "결과가 없다"와 구별되지 않는다(recall 은 has_more:false 까지 붙어
+        # 끝 페이지로 읽혔다). `note` 는 여러 호출부가 자기 응답으로 옮겨 싣는 자리라
+        # 사유를 계속 담는다. plan 은 debug 일 때만 실린다(위 F3).
+        # 근거: [[vinc.audit.rag-code-review-2026-09-29]] 22번
+        reason = f"{type(exc).__name__}: {exc}"
+        base["error"] = f"store query failed: {reason}"
+        base["note"] = f"store 실행 실패: {reason}" + (" (dry plan returned)" if debug else "")
     finally:
         if owns:
             store.close()   # 주입 스토어는 호출부가 소유 — 여기서 닫지 않는다.
