@@ -28,6 +28,19 @@ def _digest(path: Path) -> dict[str, int | str]:
     return {"size": size, "sha256": h.hexdigest()}
 
 
+def _live_digest(path: Path) -> dict[str, int | str]:
+    """열린 스토어의 본 파일을 잰다. 못 읽으면 WAL 승격을 거절한다.
+
+    Windows 에서는 엔진이 본 파일을 배타 잠금해서 열 수 없다. 그 경우도 다른 거절과
+    같이 GenerationError 로 올려, 호출자가 전체 snapshot 으로 돌아가게 한다.
+    """
+    try:
+        return _digest(path)
+    except OSError as exc:
+        raise GenerationError(
+            f"live base unreadable ({exc.__class__.__name__}); full snapshot required") from exc
+
+
 def _copy_synced(src: Path, dst: Path) -> dict[str, int | str]:
     h = hashlib.sha256()
     size = 0
@@ -113,13 +126,90 @@ def publish(root: str | os.PathLike[str], base: str | os.PathLike[str],
     return record
 
 
+def publish_wal(root: str | os.PathLike[str], live_base: str | os.PathLike[str],
+                *, sequence: int) -> dict:
+    """같은 본 파일에서 난 WAL만 새 세대로 게시한다.
+
+    전체 본 파일은 영속 공유에 다시 복사하지 않는다. 대신 로컬 본 파일의 SHA256을
+    복사 전후에 검사한다. 자동/수동 체크포인트가 본 파일을 바꾸거나 잔여 짝 파일이
+    있으면 게시를 거절한다. 호출자는 그때 일관된 전체 snapshot을 새 세대로 올려야
+    한다. 이 검사는 큰 DB의 로컬 읽기 비용을 치른다.
+    """
+    if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence <= 0:
+        raise ValueError("sequence must be a positive integer")
+    root = Path(root)
+    live_base = Path(live_base)
+    wal = Path(f"{live_base}.wal")
+    if not wal.is_file():
+        raise GenerationError("live WAL is missing; publish a new full base")
+    if any(Path(f"{live_base}{suffix}").exists()
+           for suffix in (".wal.checkpoint", ".shadow")):
+        raise GenerationError("unfinished checkpoint companion; WAL promotion refused")
+    commits = _commit_paths(root)
+    if not commits:
+        raise GenerationError("no committed base generation")
+    newest, marker = commits[0]
+    if sequence <= newest:
+        raise GenerationError(f"sequence {sequence} is not newer than {newest}")
+    # 최신 커밋도 반드시 검증한다. 깨진 최신 세대를 건너뛰고 옛 본 파일에 WAL을
+    # 붙이면 이전에 ACK된 쓰기를 잃을 수 있다.
+    _validated(root, newest, marker)
+    record = json.loads(marker.read_text(encoding="utf-8"))
+    base_sequence = (record["sequence"] if record["format"] == 1
+                     else record["base_sequence"])
+    base_record = json.loads((root / f"commit-{base_sequence}.json").read_text(
+        encoding="utf-8"))
+    base_meta = base_record["base"]
+    if _live_digest(live_base) != base_meta:
+        raise GenerationError("local base changed since committed base; full snapshot required")
+    stage = root / f"stage-{sequence}"
+    generation = root / f"generation-{sequence}"
+    next_marker = root / f"commit-{sequence}.json"
+    marker_tmp = root / f"stage-commit-{sequence}.json"
+    if any(path.exists() for path in (stage, generation, next_marker, marker_tmp)):
+        raise GenerationError("generation or stage already exists")
+    stage.mkdir()
+    wal_meta = _copy_synced(wal, stage / "db.wal")
+    if _live_digest(live_base) != base_meta or _digest(wal) != wal_meta:
+        raise GenerationError("local base or WAL changed during copy")
+    if any(Path(f"{live_base}{suffix}").exists()
+           for suffix in (".wal.checkpoint", ".shadow")):
+        raise GenerationError("checkpoint began during WAL copy")
+    _sync_dir(stage)
+    os.replace(stage, generation)
+    _sync_dir(root)
+    committed = {"format": 2, "sequence": sequence,
+                 "base_sequence": base_sequence, "base": base_meta,
+                 "wal": wal_meta}
+    with marker_tmp.open("x", encoding="utf-8", newline="\n") as out:
+        json.dump(committed, out, sort_keys=True, separators=(",", ":"))
+        out.write("\n")
+        out.flush()
+        os.fsync(out.fileno())
+    os.replace(marker_tmp, next_marker)
+    _sync_dir(root)
+    return committed
+
+
 def _validated(root: Path, sequence: int, marker: Path) -> tuple[Path, Path | None]:
     try:
         record = json.loads(marker.read_text(encoding="utf-8"))
-        if record["format"] != 1 or record["sequence"] != sequence:
+        if record["format"] not in (1, 2) or record["sequence"] != sequence:
             raise ValueError("wrong format or sequence")
         generation = root / f"generation-{sequence}"
-        base = generation / "db"
+        if record["format"] == 2:
+            base_sequence = record["base_sequence"]
+            if (not isinstance(base_sequence, int) or base_sequence <= 0 or
+                    base_sequence >= sequence):
+                raise ValueError("invalid base sequence")
+            base_record = json.loads((root / f"commit-{base_sequence}.json").read_text(
+                encoding="utf-8"))
+            if (base_record["format"] != 1 or base_record["sequence"] != base_sequence
+                    or base_record["base"] != record["base"]):
+                raise ValueError("base generation manifest mismatch")
+            base = root / f"generation-{base_sequence}" / "db"
+        else:
+            base = generation / "db"
         if _digest(base) != record["base"]:
             raise ValueError("base digest mismatch")
         wal = generation / "db.wal"

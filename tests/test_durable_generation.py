@@ -2,6 +2,7 @@
 """VIN-82 불변 세대 게시/복구의 중단 지점. 실제 엔진 재생은 별도 통합 게이트다."""
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -93,6 +94,36 @@ class DurableGenerationTests(unittest.TestCase):
         with self.assertRaisesRegex(dg.GenerationError, "orphan live WAL"):
             dg.restore(self.persistent, self.live)
 
+    def test_wal_only_promotion_reuses_verified_base(self):
+        dg.publish(self.persistent, self.source, sequence=1, wal=self.wal)
+        self.wal.write_bytes(b"WAL-1-AND-2")
+        record = dg.publish_wal(self.persistent, self.source, sequence=2)
+        self.assertEqual(record["base_sequence"], 1)
+        self.assertFalse((self.persistent / "generation-2" / "db").exists())
+        self.assertEqual(dg.restore(self.persistent, self.live), "restored:2")
+        self.assertEqual(self.live.read_bytes(), b"BASE-1")
+        self.assertEqual(Path(f"{self.live}.wal").read_bytes(), b"WAL-1-AND-2")
+
+    def test_checkpoint_changed_base_requires_full_snapshot(self):
+        dg.publish(self.persistent, self.source, sequence=1, wal=self.wal)
+        self.source.write_bytes(b"CHECKPOINTED-BASE")
+        self.wal.write_bytes(b"WAL-FROM-NEW-BASE")
+        with self.assertRaisesRegex(dg.GenerationError, "local base changed"):
+            dg.publish_wal(self.persistent, self.source, sequence=2)
+        self.assertEqual(dg.latest_sequence(self.persistent), 1)
+
+    def test_unfinished_checkpoint_refuses_wal_promotion(self):
+        dg.publish(self.persistent, self.source, sequence=1, wal=self.wal)
+        Path(f"{self.source}.shadow").write_bytes(b"in-flight")
+        with self.assertRaisesRegex(dg.GenerationError, "unfinished checkpoint"):
+            dg.publish_wal(self.persistent, self.source, sequence=2)
+
+    def test_wal_promotion_refuses_corrupted_base_generation(self):
+        dg.publish(self.persistent, self.source, sequence=1, wal=self.wal)
+        (self.persistent / "generation-1" / "db").write_bytes(b"CORRUPT")
+        with self.assertRaisesRegex(dg.GenerationError, "base digest mismatch"):
+            dg.publish_wal(self.persistent, self.source, sequence=2)
+
 
 @unittest.skipIf(eb._import_driver()[0] is None, "Ladybug driver unavailable")
 class RealReplayTests(unittest.TestCase):
@@ -125,6 +156,40 @@ class RealReplayTests(unittest.TestCase):
                     "MATCH (c:Concept {concept_id: 'durable-row'}) RETURN c.title AS title")
                 self.assertEqual(len(rows), 1)
                 self.assertEqual(rows[0]["title"], "acknowledged")
+            finally:
+                replacement.close()
+
+    def test_wal_only_promotion_replays_real_ladybug_commit(self):
+        from store.backend import open_store
+        from store.config import load_config
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "local" / "db"
+            target = root / "replacement" / "db"
+            store = open_store(load_config({"data_dir": str(source)}))
+            self.assertIsNotNone(store)
+            try:
+                store.provision(dim=4)
+                baseline = Path(store.snapshot(str(root / "baseline")))
+                dg.publish(root / "share", baseline, sequence=1)
+                store.run("MERGE (c:Concept {concept_id: 'wal-only-row'}) "
+                          "SET c.title = 'durable', c.owner_id = 'user:a'")
+                if os.name == "nt":
+                    # 엔진이 본 파일을 배타 잠금한다. 크래시 대신 거절이어야 한다.
+                    with self.assertRaisesRegex(dg.GenerationError, "live base unreadable"):
+                        dg.publish_wal(root / "share", source, sequence=2)
+                    return
+                dg.publish_wal(root / "share", source, sequence=2)
+            finally:
+                store.close()
+            self.assertEqual(dg.restore(root / "share", target), "restored:2")
+            replacement = open_store(load_config({"data_dir": str(target)}))
+            self.assertIsNotNone(replacement)
+            try:
+                rows = replacement.run(
+                    "MATCH (c:Concept {concept_id: 'wal-only-row'}) RETURN c.title AS title")
+                self.assertEqual([row["title"] for row in rows], ["durable"])
             finally:
                 replacement.close()
 
