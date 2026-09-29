@@ -113,7 +113,7 @@ def import_docs(store, *, owner: str, payload: dict,
         remote_ua = d.get("updated_at") or ""
         cur = _local(store, doc_id)
         if cur is not None:
-            if cur.get("owner_id") and cur["owner_id"] != owner:
+            if (cur.get("owner_id") or "") != owner:   # 무소유도 남의 것(VIN-226)
                 skipped += 1
                 continue
             if cur.get("content_hash") == d.get("content_hash"):

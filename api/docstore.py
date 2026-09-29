@@ -543,10 +543,12 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     kept_title = title if title is not None else str((prev or {}).get("title") or "")
     kept_origin = origin if origin is not None else str((prev or {}).get("origin") or "")
     if prev is not None:
-        if prev.get("owner_id") and prev["owner_id"] != owner:
+        if (prev.get("owner_id") or "") != owner:
             # 거절은 그대로다(덮어쓰지도 만들지도 않는다). 문구만 소유자를 밝히지
             # 않는다 — doc_id 는 허브 전체가 한 이름공간이라 이 id 는 쓸 수 없다는
             # 것까지만 말한다(vinc_ingest 의 id_conflicts 와 같은 대접)(SEC-1).
+            # 빈 owner(레거시 무소유)도 남의 것으로 본다 — 열어 두면 재-put 한 번으로
+            # 본문 교체와 소유 획득이 된다(VIN-226). 근거: [[vinc.canon.chunk-ssot §4.2]]
             base["error"] = ("doc_id unavailable: this id cannot be written from this "
                              "account; choose a different doc_id")
             return base

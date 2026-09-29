@@ -228,6 +228,19 @@ class DocSyncE2E(unittest.TestCase):
         row = self.B.run("MATCH (d:_DocMeta) WHERE d.doc_id='dX' RETURN d.owner_id AS o")
         self.assertEqual(row[0]["o"], "user:legit")
 
+    def test_an_ownerless_local_document_is_skipped_not_claimed(self):
+        # VIN-226 — 더 새 원격본이라도 무소유 로컬 문서를 가져가지 않는다. 건너뜀으로 센다.
+        ds.put_doc(self.B, owner="user:x", text="레거시", doc_id="dL", title="t")
+        self.B.run("MATCH (d:_DocMeta) WHERE d.doc_id='dL' SET d.owner_id = ''")
+        payload = {"docs": [{"doc_id": "dL", "title": "t", "origin": "",
+                             "content_hash": ds._sha("가져가기"),
+                             "updated_at": "2999-01-01T00:00:00Z", "text": "가져가기"}],
+                   "tombstones": []}
+        res = docsync.import_docs(self.B, owner="user:legit", payload=payload)
+        self.assertEqual((res["updated"], res["skipped"]), (0, 1), res)
+        row = self.B.run("MATCH (d:_DocMeta) WHERE d.doc_id='dL' RETURN d.owner_id AS o")
+        self.assertEqual(row[0]["o"], "")
+
 
 if __name__ == "__main__":
     unittest.main()
