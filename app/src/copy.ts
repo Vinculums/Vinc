@@ -148,6 +148,8 @@ const EN = {
     connectTip: "Link this node to another",
     pickLead: (a: string) => `Connect ${a} to…`,
     pickHint: "Click a node in View, or search.",
+    // 끌어서 잇기의 발견성 한 줄. key 는 "Alt" 또는 맥의 "Option".
+    dragHint: (key: string) => `Or hold ${key} and drag from one node to another.`,
     pickSearchPh: "Search a node",
     pickNone: "No node with that name.",
     cancel: "Cancel",
@@ -1302,6 +1304,7 @@ const KO: Deck = {
     connectTip: "이 노드를 다른 노드와 이어요",
     pickLead: (a) => `${a}와(과) 이을 노드를 골라 주세요`,
     pickHint: "View에서 노드를 누르거나 검색하세요",
+    dragHint: (key) => `${key} 키를 누른 채 노드에서 다른 노드로 끌어도 이을 수 있어요`,
     pickSearchPh: "노드 검색",
     pickNone: "그런 이름의 노드가 없어요",
     cancel: "취소",
