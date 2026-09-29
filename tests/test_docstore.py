@@ -729,6 +729,18 @@ class DocstoreE2E(unittest.TestCase):
         mine = ds.get_doc(self.store, did, owner="user:a")
         self.assertEqual(mine["text"], "alice 의 정본")
 
+    def test_an_ownerless_document_cannot_be_claimed_by_a_re_put(self):
+        # VIN-226 — 무소유(owner_id '') 문서는 "열려 있음"이 아니다. 가드가 빈 owner 를
+        # 통과시키면 누구든 재-put 으로 본문을 바꾸고 소유를 가져간다.
+        did = ds.put_doc(self.store, owner="user:a", text="레거시 정본", title="t")["doc_id"]
+        self.store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $d SET d.owner_id = ''",
+                       {"d": did})
+        put = ds.put_doc(self.store, owner="user:b", text="탈취 시도", doc_id=did)
+        self.assertFalse(put["executed"], put)
+        self.assertIn("doc_id unavailable", put["error"])
+        self.assertEqual(ds._meta(self.store, did)["owner_id"], "")
+        self.assertEqual(ds.get_doc(self.store, did)["text"], "레거시 정본")
+
     def test_delete_removes_chunks_and_meta(self):
         out = ds.put_doc(self.store, owner="user:a", text="지울 문서", title="d")
         did = out["doc_id"]
