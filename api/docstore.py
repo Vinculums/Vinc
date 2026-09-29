@@ -1273,6 +1273,18 @@ def pending_embed_chunks(store, *, limit: int = 16) -> list[dict]:
     return out
 
 
+def _vec_width(store) -> int | None:
+    """`ChunkVec.embedding` 의 선언 폭(`FLOAT[n]`의 n). 못 읽으면 None."""
+    try:
+        for r in store.run("CALL TABLE_INFO('ChunkVec') RETURN *") or []:
+            if r.get("name") == "embedding":
+                m = re.search(r"\[(\d+)\]", str(r.get("type") or ""))
+                return int(m.group(1)) if m else None
+    except Exception:          # noqa: BLE001 — 폭을 모르면 호출부가 약한 대조로 물러난다
+        return None
+    return None
+
+
 def apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
                      encoder_runtime: str = "", *, content_hash: str | None = None,
                      model: str | None = None) -> dict:
@@ -1332,15 +1344,23 @@ def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
     if model is not None and stored_embed_model(store) != model:
         base["error"] = "model_changed"
         return base
+    # 하나든 여럿이든 목록으로 정규화(첫 원소가 스칼라면 단일 벡터).
+    norm = {cid: (val if (val and isinstance(val[0], (list, tuple))) else [val])
+            for cid, val in embeddings.items() if cid in all_ids}
+    # 폭은 **지우기 전에** 전부 대조한다. 엔진은 틀린 폭을 삽입하는 순간에야 던지므로,
+    # 그 뒤라면 옛 자식은 이미 지워졌고 여러 청크 문서는 반쪽만 들어간다.
+    # 선언 폭을 못 읽으면(대역 스토어) 적어도 한 폭으로 고르고 비지 않았는지만 본다.
+    width = _vec_width(store)
+    widths = {len(vec) for many in norm.values() for vec in many}
+    ok = widths == {width} if width else (len(widths) == 1 and 0 not in widths)
+    if norm and not ok:
+        base.update(error="vector_width_mismatch", expected=width, got=sorted(widths))
+        return base
     # 워커가 채운 벡터를 박는 자리 — 없던 벡터가 생기므로 드롭이 **필수**다(위와 동종).
     # FTS 는 안 건드리므로 임베딩이 도는 동안에도 키워드 검색이 계속 답한다.
     _drop_vector_index_if_any(store)
     applied = vecs = 0
-    for cid, val in embeddings.items():
-        if cid not in all_ids:
-            continue
-        # 하나든 여럿이든 목록으로 정규화(첫 원소가 스칼라면 단일 벡터).
-        many = val if (val and isinstance(val[0], (list, tuple))) else [val]
+    for cid, many in norm.items():
         # ⚠ 먼저 **기존 자식을 지운다**. 안 그러면 재임베딩 때 옛 조각이 남아
         # 구·신 벡터가 한 색인에 섞인다 — 에러 없이 검색만 나빠지는 그 사고다.
         store.run("MATCH (v:ChunkVec) WHERE v.chunk_id = $id DETACH DELETE v", {"id": cid})
