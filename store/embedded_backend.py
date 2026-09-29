@@ -513,6 +513,10 @@ def _driver_error_text(exc: BaseException) -> str:
     return str(exc)
 
 
+#: 청크 검색 필터가 받는 키 — Chunk 표에 실제로 있는 열이다.
+_CHUNK_FILTER_KEYS = ("owner_id", "layer", "doc_id")
+
+
 def _filter_clause(var: str, filters: dict | None, params: dict, *,
                    keyword: str = "WHERE") -> str:
     """스코프 필터를 술어로 렌더(pre-filter, §4-2 — 스코프 1차 §1). params 를
@@ -524,11 +528,19 @@ def _filter_clause(var: str, filters: dict | None, params: dict, *,
     **파서가 통째로 거부한다**. 실제로 그렇게 났다(2026-08-07): F2 가 청크 팔에
     owner 를 넘기기 시작하자 벡터 팔이 `Parser exception` 으로 죽었다. 그전에는
     filters 가 None 이라 이 함수가 빈 문자열을 돌려줘 결함이 가려져 있었고, 질의
-    임베딩 자체가 없어 벡터 팔이 아예 안 돌던 것도 겹쳤다."""
+    임베딩 자체가 없어 벡터 팔이 아예 안 돌던 것도 겹쳤다.
+
+    받는 키는 Chunk 의 실제 열(:data:`_CHUNK_FILTER_KEYS`)뿐이고, 모르는 키는 던진다.
+    조용히 버리면 `/search?doc=X` 가 같은 소유자의 다른 문서를 섞어 내고(`doc_id` 가
+    그렇게 버려졌다), Chunk 에 없는 열을 받으면 엔진이 Binder 오류로 쿼리를 죽인다."""
     if not filters:
         return ""
+    unknown = sorted(set(filters) - set(_CHUNK_FILTER_KEYS))
+    if unknown:
+        raise ValueError(f"unsupported chunk search filter: {', '.join(unknown)} "
+                         f"(Chunk columns: {', '.join(_CHUNK_FILTER_KEYS)})")
     preds = []
-    for key in ("owner_id", "domain", "tenant_id"):
+    for key in _CHUNK_FILTER_KEYS:
         val = filters.get(key)
         if val is not None:
             preds.append(f"{var}.{key} = ${key}")
