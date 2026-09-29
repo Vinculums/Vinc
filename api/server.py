@@ -1289,8 +1289,11 @@ class VincApp:
         if not owner:
             return 400, {"error": "owner required — 근거 저작은 소유 스코프(SEC-1)"}
         res = self.jobs.run_sync("evidence.backfill", lambda: docstore.backfill_evidence(
-            self.store, owner=owner, doc_id=body.get("doc_id") or None))
-        return 200, res
+            self.store, owner=owner, doc_id=body.get("doc_id") or None,
+            cursor=body.get("cursor") or None))
+        # 무효 커서는 검색과 같이 400 이다(GM-14) — 200 이면 호출자가 첫 쪽부터 다시 돈다.
+        bad = str(res.get("error") or "").startswith("invalid_cursor")
+        return (400 if bad else 200), res
 
     def write_domain_rename(self, body):
         # S2 — 도메인 일괄 변경/재배치. new='' 는 미분류로 내림(체감상 "도메인 삭제").
