@@ -108,14 +108,17 @@ class ResolveTests(unittest.TestCase):
                 {"id": "concept:b", "title": "나", "hit_tokens": 0, "title_tokens": 0}]
         self.assertEqual(q._brief_resolve("아무 질문", hits)[0], "choose")
 
-    def test_되묻는_후보는_셋까지다(self):
+    def test_되묻는_후보는_다섯까지다(self):
         hits = [{"id": f"concept:{i}", "title": "t", "hit_tokens": 0, "title_tokens": 0}
                 for i in range(9)]
-        self.assertEqual(len(q._brief_resolve("q", hits)[1]), 3)
+        with mock.patch.dict(os.environ):
+            os.environ.pop("VINC_BRIEF_EXPOSE", None)
+            self.assertEqual(len(q._brief_resolve("q", hits)[1]), q._BRIEF_CANDIDATES)
+        self.assertEqual(q._BRIEF_CANDIDATES, 5)
 
 
 class ExposeFlagTests(unittest.TestCase):
-    """X1 의 노출 손잡이. 기본은 셋이고, 잘못된 값은 기본으로 읽는다."""
+    """X1 의 노출 손잡이. 기본은 다섯이고, 잘못된 값은 기본으로 읽는다."""
 
     HITS = [{"id": f"concept:{i}", "title": "t", "hit_tokens": 0, "title_tokens": 0}
             for i in range(9)]
@@ -127,13 +130,13 @@ class ExposeFlagTests(unittest.TestCase):
                 os.environ["VINC_BRIEF_EXPOSE"] = value
             return len(q._brief_resolve("q", self.HITS)[1])
 
-    def test_기본은_셋이고_늘리면_그만큼_싣는다(self):
-        self.assertEqual(self._n(None), 3)
-        self.assertEqual(self._n("5"), 5)
+    def test_기본은_다섯이고_바꾸면_그만큼_싣는다(self):
+        self.assertEqual(self._n(None), 5)
+        self.assertEqual(self._n("3"), 3)          # 예전 기본으로 되돌리는 손잡이
 
     def test_잘못된_값은_기본으로_읽는다(self):
         for bad in ("", "abc", "0", "-2"):
-            self.assertEqual(self._n(bad), 3 if bad in ("", "abc") else 1, bad)
+            self.assertEqual(self._n(bad), 5 if bad in ("", "abc") else 1, bad)
 
 
 class BodyTests(unittest.TestCase):

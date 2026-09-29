@@ -3331,7 +3331,11 @@ def _node_links(store, node: str, *, owner: str,
 # 비기면 후보를 돌려주며 되묻는다. 근거: [[vinc.plan.mcp-agent-surface §4]]
 
 _BRIEF_TOP_K = 5              # search 에 요구할 청크 수(node_hits 는 별도 팔이다)
-_BRIEF_CANDIDATES = 3         # 되묻을 때 실을 후보 수 — ask.ts 와 같다
+#: 되묻을 때 실을 후보 수. 3 에서 5 로 늘렸다 — 같은 풀의 앞자리를 더 보여 줄 뿐이라
+#: 보이던 정답이 가려지지 않고, 풀 안의 정답이 전부 보인다(G0 43 → 47/60). 앱의 ask.ts 는
+#: brief 를 부르지 않고 따로 3 개를 보여 준다. `VINC_BRIEF_EXPOSE` 로 프로세스마다 바꾼다.
+#: 근거: [[decision:brief-shows-five-candidates-when-it-asks-back-and-keeps-the-list-beside-resolved-off-2026-09-29]]
+_BRIEF_CANDIDATES = 5
 _BRIEF_BODY_KEYS = ("note", "summary", "one_liner", "description", "desc")
 _BRIEF_MIN_PROP_BODY = 12     # props 값을 문장으로 볼 최소 길이 — ask.ts 와 같다
 _BRIEF_FALLTHROUGH = 3        # 1위가 안 열릴 때 시도할 후보 수 상한(왕복 비용 유계)
@@ -3541,9 +3545,9 @@ def _brief_choose_material_on() -> bool:
 
 
 def _brief_expose_n() -> int:
-    """되묻기(choose)에 싣는 후보 수. 기본은 `_BRIEF_CANDIDATES`(ask.ts 와 같은 3).
+    """되묻기(choose)에 싣는 후보 수. 기본은 `_BRIEF_CANDIDATES`.
 
-    `VINC_BRIEF_EXPOSE` 는 노출을 넓혀 재기 위한 손잡이다(X1). 기본값을 바꾸는 것은
+    `VINC_BRIEF_EXPOSE` 는 노출을 바꿔 재기 위한 손잡이다(X1). 기본값을 바꾸는 것은
     결정 노드로만 한다. 잘못된 값은 기본으로 읽는다.
     근거: [[vinc.plan.rag-eval-v2-0-9-6]]"""
     raw = str(os.environ.get("VINC_BRIEF_EXPOSE", "")).strip()

@@ -7,7 +7,7 @@
 다시 읽는 용도다(스토어를 다시 열지 않는다).
 
 **게이트는 brief 가 실제로 지나는 순서다**: union(검색 node_hits 풀에 정답이 있나) →
-exposed(brief 가 보여 주는 셋 안에 있나, `_BRIEF_CANDIDATES`) → first(1위인가) →
+exposed(brief 가 보여 주는 목록 안에 있나, `_BRIEF_CANDIDATES`) → first(1위인가) →
 committed(확정했나). exposed 는 개수가 아니라 **brief 가 실제로 보여 준 목록**에
 정답이 있는가다(순위 > 0) — 노출 수를 바꾸는 실험(X1)에서도 같은 자로 잰다. 문항마다 **처음 떨어진 게이트** 하나를 적는다. 층을 따로 재서
 상관을 구하는 대신 이것으로 "어디서 잃었나"에 바로 답한다.
