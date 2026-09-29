@@ -6,6 +6,7 @@
   2. 다른 런타임의 벡터가 들어오면 바로 다음 검색이 불일치를 말하고, 그 벡터를 지우면 경고가 걷힌다.
   3. 세대를 올리는 것은 벡터 표를 바꾼 문장뿐이다(읽기는 안 올린다 — 올리면 캐시가 매번 빗나간다).
   4. 스토어 하나가 기억하는 소유자 수에는 상한이 있다.
+  5. 캐시는 소유자별이다: 한 소유자의 답이 다른 소유자(또는 무스코프)에게 나가지 않는다.
 """
 from __future__ import annotations
 
@@ -128,6 +129,18 @@ class StampCacheBound(unittest.TestCase):
         for i in range(q._RUNTIME_STAMP_OWNERS + 10):
             self.assertEqual(q._stored_runtimes(store, f"user:{i}"), {"rt-a"})
         self.assertLessEqual(len(store.runtime_stamps), q._RUNTIME_STAMP_OWNERS)
+
+    def test_one_owner_never_gets_another_owners_cached_stamps(self):
+        class _Store:
+            runtime_stamps: dict = {}
+
+            def run(self, _query, params=None):
+                return [{"runtime": f"rt-{(params or {}).get('owner', 'all')}"}]
+        store = _Store()
+        self.assertEqual(q._stored_runtimes(store, "user:a"), {"rt-user:a"})
+        self.assertEqual(q._stored_runtimes(store, "user:b"), {"rt-user:b"})
+        self.assertEqual(q._stored_runtimes(store, None), {"rt-all"})
+        self.assertEqual(q._stored_runtimes(store, "user:a"), {"rt-user:a"})   # 캐시 적중
 
 
 if __name__ == "__main__":
