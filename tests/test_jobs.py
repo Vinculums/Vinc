@@ -154,6 +154,51 @@ class JobQueueTests(unittest.TestCase):
         self.assertEqual(sorted(seen), [0, 1, 2])
 
 
+class BeforeDoneTests(unittest.TestCase):
+    def test_completion_waits_for_required_hook(self):
+        entered = threading.Event()
+        release = threading.Event()
+        self.addCleanup(release.set)
+
+        def before_done(job, result):
+            self.assertEqual(job.status, RUNNING)
+            self.assertEqual(result, {"written": True})
+            entered.set()
+            if not release.wait(2.0):
+                raise TimeoutError("test hook was not released")
+
+        jq = JobQueue(on_before_done=before_done)
+        self.addCleanup(jq.shutdown, drain=False)
+        job = jq.submit("write", lambda: {"written": True})
+        self.assertTrue(entered.wait(2.0))
+        self.assertEqual(job.status, RUNNING)
+        self.assertIsNone(job.result)
+        self.assertFalse(job._done.is_set())
+        release.set()
+        self.assertTrue(job._done.wait(2.0))
+        self.assertEqual(job.status, DONE)
+        self.assertEqual(job.result, {"written": True})
+
+    def test_hook_failure_cannot_be_observed_as_success(self):
+        mutations = []
+
+        def before_done(_job, _result):
+            if len(mutations) == 1:
+                raise RuntimeError("persistent promotion failed; commit uncertain")
+
+        jq = JobQueue(on_before_done=before_done)
+        self.addCleanup(jq.shutdown, drain=False)
+        with self.assertRaisesRegex(JobError, "commit uncertain"):
+            jq.run_sync("write", lambda: mutations.append("local") or {"written": True})
+        failed = jq.get("job-1")
+        self.assertEqual(mutations, ["local"], "failure does not roll back the live store")
+        self.assertEqual(failed.status, ERROR)
+        self.assertIsNone(failed.result)
+        self.assertIn("commit uncertain", failed.error)
+        self.assertEqual(jq.run_sync("write", lambda: mutations.append("next") or
+                                     {"written": True}), {"written": True})
+
+
 class _Idle:
     """`on_idle` 기록기 — 호출마다 `wrote` 를 담고 첫 호출에 이벤트를 푼다."""
 
