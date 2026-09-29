@@ -17,7 +17,8 @@ communities·community_context 가 전부 extension_unavailable 로 꺼졌다. �
   - 투영을 소유자로 거를 수 있다(엔진 투영은 전체 표만 됐다). 두 스페이스의 같은 슬러그가
     한 결과에 섞이던 일이 투영 단계에서 사라진다
 
-규모: 개인 그래프가 노드 수천이다. 파이썬 딕셔너리로 1초 안쪽이다. 수십만이 되면 다시 잰다.
+규모: 개인 그래프가 노드 수천이다. 원본 그래프 재시작은 3회로 제한한다.
+수십만이 되면 다시 잰다.
 
 **결정론이다.** Leiden 의 순서는 시드를 고정한 난수로 섞고, 동률은 id 순으로 가른다. 같은
 그래프는 언제나 같은 커뮤니티를 낸다 — 답변 재료가 호출마다 바뀌면 안 된다.
@@ -37,6 +38,9 @@ DEFAULT_RESOLUTION = 1.0
 DEFAULT_SEED = 20260928
 #: 집약 단계 상한. 보통 몇 단계에서 멈춘다. 무한 루프 방어일 뿐이다.
 MAX_LEVELS = 64
+#: 원본 그래프에서 분할을 다시 다듬는 횟수의 상한. 집약 단계의 종료만으로는
+#: 원본 노드의 지역 이동이 수렴했다고 볼 수 없다.
+MAX_RESTARTS = 3
 
 
 def _undirected(nodes, edges) -> tuple[list[str], dict[str, dict[str, float]]]:
@@ -243,29 +247,41 @@ def leiden(nodes, edges, *, resolution: float = DEFAULT_RESOLUTION,
     if two_m <= 0:
         return {n: ISOLATED for n in order}
     rng = random.Random(seed)
-    g = _Level(list(order), adj, deg)
-    # 원래 노드 → 현재 단계 노드. 처음엔 자기 자신.
-    where = {n: n for n in order}
-    comm = {n: i for i, n in enumerate(order)}
-    for _ in range(MAX_LEVELS):
-        comm = _dense(comm)
-        _move_nodes(g, comm, two_m, resolution, rng)
-        if len(set(comm.values())) == len(g.nodes):
-            break                            # 모든 공동체가 단일 노드다 — 더 합칠 것이 없다
-        ref = _refine(g, comm, two_m, resolution, rng)
-        agg = _aggregate(g, ref)
-        # 집약 그래프의 첫 분할은 정제 전 분할(comm)을 따른다 — 논문의 핵심 절차.
-        comm = {ref_v: comm[v] for v, ref_v in ref.items()}
-        where = {n: ref[w] for n, w in where.items()}
-        if len(agg.nodes) == len(g.nodes):
+    best: dict[str, int] | None = None
+    best_q = float("-inf")
+    for _ in range(MAX_RESTARTS):
+        g = _Level(list(order), adj, deg)
+        # 원래 노드 → 현재 단계 노드. 재시작마다 원본 그래프로 돌아간다.
+        where = {n: n for n in order}
+        if best is None:
+            comm = {n: i for i, n in enumerate(order)}
+        else:
+            # 고립 노드의 -1 은 하나의 공동체가 아니므로 각각 단일 노드로 둔다.
+            comm = {n: (best[n] if best[n] != ISOLATED else len(order) + i)
+                    for i, n in enumerate(order)}
+        for _ in range(MAX_LEVELS):
+            comm = _dense(comm)
+            _move_nodes(g, comm, two_m, resolution, rng)
+            if len(set(comm.values())) == len(g.nodes):
+                break                        # 모든 공동체가 단일 노드다
+            ref = _refine(g, comm, two_m, resolution, rng)
+            agg = _aggregate(g, ref)
+            # 집약 그래프의 첫 분할은 정제 전 분할(comm)을 따른다.
+            comm = {ref_v: comm[v] for v, ref_v in ref.items()}
+            where = {n: ref[w] for n, w in where.items()}
+            if len(agg.nodes) == len(g.nodes):
+                break                        # 이 단계에서 더 집약할 것이 없다
             g = agg
-            break                            # 정제가 아무것도 합치지 않았다
-        g = agg
-    final = {n: comm[where[n]] for n in order}
-    for n in order:
-        if deg[n] == 0:
-            final[n] = ISOLATED
-    return _relabel(_split_disconnected(final, adj))
+        final = {n: comm[where[n]] for n in order}
+        for n in order:
+            if deg[n] == 0:
+                final[n] = ISOLATED
+        final = _relabel(_split_disconnected(final, adj))
+        q = _modularity_adj(order, adj, deg, two_m, final, resolution)
+        if q <= best_q + 1e-12:
+            break                            # 원본 분할의 모듈러리티가 수렴했다
+        best, best_q = final, q
+    return best if best is not None else final
 
 
 def _dense(comm: dict) -> dict:
@@ -315,6 +331,12 @@ def modularity(nodes, edges, assign: dict[str, int], *,
     two_m = sum(deg.values())
     if two_m <= 0:
         return 0.0
+    return _modularity_adj(order, adj, deg, two_m, assign, resolution)
+
+
+def _modularity_adj(order: list, adj: dict, deg: dict, two_m: float,
+                    assign: dict, resolution: float) -> float:
+    """이미 만든 투영에서 품질을 잰다. 반복 입력의 엣지를 재소비하지 않는다."""
     inside: dict = defaultdict(float)
     tot: dict = defaultdict(float)
     for n in order:

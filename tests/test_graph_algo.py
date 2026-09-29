@@ -19,6 +19,7 @@ import random
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -98,6 +99,28 @@ class LeidenGuarantee(unittest.TestCase):
         assign = ga.leiden(nodes, edges)
         self.assertAlmostEqual(ga.modularity(nodes, edges, assign), 0.4198, places=3)
 
+    def test_original_graph_restarts_improve_and_preserve_modularity(self):
+        nodes, edges = _random_graph(60, 120, 1)
+        qualities = []
+        for cap in (1, 2, 3):
+            with patch.object(ga, "MAX_RESTARTS", cap):
+                assign = ga.leiden(nodes, edges)
+            qualities.append(ga.modularity(nodes, edges, assign))
+            self.assertTrue(all(_connected(g, edges) for g in _groups(assign).values()))
+        self.assertAlmostEqual(qualities[0], 0.4374652777777778)
+        self.assertGreater(qualities[1], qualities[0] + 0.02)
+        self.assertGreaterEqual(qualities[2], qualities[1])
+
+    def test_large_sparse_graph_reaches_reference_quality(self):
+        nodes, edges = _random_graph(2500, 5000, 20260928)
+        assign = ga.leiden(nodes, edges)
+        self.assertGreater(ga.modularity(nodes, edges, assign), 0.542)
+        self.assertTrue(all(_connected(g, edges) for g in _groups(assign).values()))
+
+    def test_edges_can_be_consumed_once(self):
+        nodes, edges = _random_graph(60, 120, 1)
+        self.assertEqual(ga.leiden(nodes, edges), ga.leiden(nodes, iter(edges)))
+
     def test_two_cliques_joined_by_one_edge_split_in_two(self):
         a = [f"a{i}" for i in range(5)]
         b = [f"b{i}" for i in range(5)]
@@ -123,11 +146,13 @@ class Shape(unittest.TestCase):
         self.assertEqual({res["a"], res["b"], res["c"]}, {0})
         self.assertEqual({res["x"], res["y"]}, {1})
 
-    def test_self_loops_and_duplicate_edges_do_not_move_the_answer(self):
+    def test_self_loops_are_ignored_and_duplicate_edges_add_weight(self):
         nodes, edges = _karate()
-        noisy = edges + edges[:10] + [(n, n) for n in nodes[:5]]
-        self.assertEqual(_groups(ga.leiden(nodes, edges)).values().__len__(),
-                         _groups(ga.leiden(nodes, noisy)).values().__len__())
+        loops = [(n, n) for n in nodes[:5]]
+        self.assertEqual(ga.leiden(nodes, edges), ga.leiden(nodes, edges + loops))
+        doubled = edges + edges[:10]
+        weighted = [(a, b, 2.0 if (a, b) in edges[:10] else 1.0) for a, b in edges]
+        self.assertEqual(ga.leiden(nodes, doubled), ga.leiden(nodes, weighted))
 
     def test_an_edge_endpoint_missing_from_nodes_is_added(self):
         res = ga.leiden(["a"], [("a", "b")])
