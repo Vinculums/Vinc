@@ -6289,6 +6289,10 @@ _ARM_LABEL = {"keyword": "fts", "semantic": "vector"}
 #: 신호다(서버가 `vector_note` 를 붙이는 자리와 같다 — 화면은 파싱하지 않는다).
 _VECTOR_REBUILDING = ("vector index is being rebuilt after a write: "
                       "full-text results only for now")
+#: 질의 벡터의 폭이 저장 벡터와 다를 때(임베딩 모델 전환). 엔진은 캐스팅 오류로만 알린다
+#: (`... incorrect list entry to ARRAY. Expected: 4, Actual: 2.`). 재빌드 창이 아니라 실패다.
+_VECTOR_WIDTH_MISMATCH = ("query vector width does not match the stored vectors, so the "
+                          "semantic arm was skipped: full-text results only")
 #: 벡터 색인이 **다시 서지 못하는** 스토어의 사유(잔해 — `VectorIndexRemnant`). 위와 달리
 #: 실패다: `vector_rebuilding` 을 달지 않는다.
 _VECTOR_REMNANT = ("vector index unavailable: the store holds a remnant index that blocks "
@@ -6308,7 +6312,8 @@ def _chunk_arms(store, query, query_embedding, top_k,
     ``arms`` 는 이것에서만 나온다 — 검색 전에 세우면 이 함수가 던졌을 때 아무 팔도
     안 돌았는데 응답이 두 팔을 말한다.
 
-    ⚠ **벡터 팔의 인덱스 부재는 예외로 올리지 않는다.** 문서를 쓰면 쓰기 경로가
+    ⚠ **벡터 팔의 실패는 예외로 올리지 않는다**(사유는 ``vector_note``). 가장 흔한 것이
+    인덱스 부재다. 문서를 쓰면 쓰기 경로가
     벡터 인덱스를 드롭하므로(HNSW 삽입 세그폴트 방어 — `drop_vector_index`), 쓰기
     직후의 검색은 이 자리를 반드시 밟는다. 여기서 통째로 던지면 **멀쩡한 키워드
     결과까지 버리고** 호출부가 HNSW 재빌드를 요청 스레드에서 기다렸다(실측: 문서
@@ -6322,9 +6327,15 @@ def _chunk_arms(store, query, query_embedding, top_k,
             arms.append(store.vector_search(query_embedding, top_k, filters))
             arm_names.append("semantic")
         except Exception as exc:
-            if _classify_chunk_error(exc) != "index_missing":
-                raise
-            vnote = _VECTOR_REBUILDING
+            # 벡터 팔이 **어떻게** 실패하든 이미 구한 키워드 결과는 지킨다(팔 하나의 고장이
+            # 검색 전체의 고장이 되면 안 된다). 사유는 `vector_note` 로 가른다: 색인 재빌드
+            # 창만 양성이고, 폭 불일치(모델 전환)와 나머지는 실패다.
+            if _classify_chunk_error(exc) == "index_missing":
+                vnote = _VECTOR_REBUILDING
+            elif "incorrect list entry to array" in str(exc).lower():
+                vnote = f"{_VECTOR_WIDTH_MISMATCH} ({exc})"
+            else:
+                vnote = f"vector arm failed: {type(exc).__name__}: {exc}"
     # 매치 표기(D24): 융합 전 각 arm 멤버십을 행에 주석 — UI 의 ≡/≈ 표기 데이터.
     membership: dict = {}
     for name, rows_ in zip(arm_names, arms):
@@ -7027,6 +7038,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             # 달면 "곧 돌아온다"는 거짓이 되므로 실패로 싣고, 빌드도 걸지 않는다.
             # 근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
             base["vector_note"] = _VECTOR_REMNANT
+        elif vnote and vnote != _VECTOR_REBUILDING:
+            base["vector_note"] = vnote      # 벡터 팔 실패(폭 불일치 등) — 재빌드 창이 아니다
         elif vnote:
             # 조용한 강등 금지 — 어느 팔이 돌았는지(`arms`)와 왜 강등됐는지
             # (`vector_note`)를 둘 다 남긴다.

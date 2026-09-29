@@ -120,5 +120,41 @@ class OwnerBeforeKnnRV05(_EngineCase):
         self.assertEqual(empty, [], "자기 행을 거리 0 에서 못 찾은 소유자가 있다")
 
 
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class DimensionMismatchRV06(_EngineCase):
+    """질의 벡터 폭이 저장 열과 다르면 벡터 팔이 던지고, 이미 구한 키워드 결과까지 버려졌다."""
+
+    def test_a_query_vector_of_another_width_still_returns_the_keyword_rows(self):
+        from api import query as q
+        self.chunks([("a#00000", "a", "u", "refund policy", [1.0, 0.0, 0.0, 0.0])])
+        self.build()
+        res = q.search("refund", query_embedding=[1.0, 0.0], owner="u", store=self.store)
+        self.assertFalse(res.get("error"), res)
+        self.assertEqual([r["id"] for r in res["rows"]], ["a#00000"])
+        self.assertEqual(res["arms"], "fts")
+        self.assertTrue(str(res.get("vector_note")).startswith(q._VECTOR_WIDTH_MISMATCH), res)
+        self.assertNotIn("vector_rebuilding", res, "폭 불일치는 재빌드 창이 아니다")
+
+    def test_any_other_vector_failure_also_keeps_the_keyword_rows(self):
+        from api import query as q
+
+        class _Broken:
+            scoped_chunk_search = True
+
+            def run(self, cypher, params=None):
+                return []
+
+            def fulltext_search(self, text, k, filters=None):
+                return [{"id": "a#00000", "text": "refund policy", "score": 1.0}]
+
+            def vector_search(self, e, k, filters=None):
+                raise RuntimeError("IO exception: could not read the vector index")
+        res = q.search("refund", query_embedding=[1.0], owner="u", store=_Broken())
+        self.assertFalse(res.get("error"), res)
+        self.assertEqual([r["id"] for r in res["rows"]], ["a#00000"])
+        self.assertIn("could not read the vector index", str(res.get("vector_note")))
+        self.assertNotIn("vector_rebuilding", res)
+
+
 if __name__ == "__main__":
     unittest.main()
