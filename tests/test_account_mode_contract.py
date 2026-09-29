@@ -178,22 +178,23 @@ class GateTest(unittest.TestCase):
 class ExistingDataTest(unittest.TestCase):
 
     def test_고른_적이_없고_이_기기에_작업이_있으면_묻는다(self):
-        """VIN-131: 말없이 로컬로 정하던 것(0.9.4·0.9.5)을 한 번 묻기로 바꿨다. 사람이 고른
-        모드(`mode_chosen`)만 그대로 따르고, 그 밖에는 이 기기에 작업이 있으면 "ask" 다."""
+        """VIN-131: 말없이 로컬로 정하던 것(0.9.4·0.9.5)을 한 번 알리기로 바꿨다. 사람이 고른
+        모드(`mode_chosen`)만 그대로 따르고, 그 밖에는 이 기기에 작업이 있으면 "ask" 다
+        (부르는 쪽이 로컬로 계속 가며 알린다. 옮기기는 설정에만 있다)."""
         decide = _fn(API_TS, "decideDataMode")
         self.assertIn('Promise<DataMode | "ask">', decide)
         chosen = decide.index("conf?.mode_chosen")
         ask = decide.index('if (await localStoreHasData()) return "ask";')
         self.assertLess(chosen, ask)
-        # 묻지 않을 때는 계정이다. 적되 고른 것으로는 적지 않는다(나중에 작업이 생기면 묻는다).
+        # 알리지 않을 때는 계정이다. 적되 고른 것으로는 적지 않는다(나중에 작업이 생기면 알린다).
         tail = decide[ask:]
         self.assertIn('storage.setConfig({ mode: "account" })', tail)
         self.assertNotIn("mode_chosen: true", decide)
 
     def test_부팅이_물음에_답을_받고서야_그린다(self):
         self.assertRegex(MAIN_TS, r'\(await decideDataMode\(\)\) === "ask"\)\s*\{\s*\n'
-                                  r'\s*const \{ askAboutDeviceGraph \} = await import\("\./device-graph"\);'
-                                  r'\s*\n\s*await askAboutDeviceGraph\(\);')
+                                  r'\s*const \{ tellAboutDeviceGraph \} = await import\("\./device-graph"\);'
+                                  r'\s*\n\s*await tellAboutDeviceGraph\(\);')
 
     def test_모드의_정본은_사이드카_설정이다(self):
         """VIN-130: 설정 화면·사이드카·로컬 MCP 가 같은 파일을 본다. 창 저장소는 사본이다.

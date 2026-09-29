@@ -70,18 +70,18 @@ class NoLossTest(unittest.TestCase):
         self.assertLess(gate, switch)
         self.assertLess(switch, go.index('dataMode.set("account")'))
 
-    def test_로그인_뒤_물음도_같은_올리기를_쓴다(self):
-        """VIN-131: 올리기가 두 벌이면 한쪽만 "빠진 것이 있으면 안 바꾼다"를 잃는다."""
+    def test_로그인_뒤_알림은_옮기지_않고_로컬로_적는다(self):
+        """VIN-131 (2026-09-29 결정): 옮기기는 설정의 끄기 판에만 있다. 로그인 뒤 화면이
+        올리기를 다시 품으면 두 벌이 되고, 한쪽만 "빠진 것이 있으면 안 바꾼다"를 잃는다."""
         dg = (SRC / "device-graph.ts").read_text(encoding="utf-8")
-        self.assertIn("moveDeviceIntoAccount(key)", dg)
+        self.assertNotIn("moveDeviceIntoAccount", dg)
         self.assertNotIn("pushAll", dg)
-        gate = dg.index("if (!moved.ok)")
-        self.assertLess(gate, dg.index('await settle("account")'))
-        # 고른 답은 설정(정본)에 먼저 적고, 못 적으면 닫지 않는다.
-        settle = dg[dg.index("const settle"):]
-        self.assertLess(settle.index("storage.setConfig({ mode, mode_chosen: true })"),
-                        settle.index("dataMode.set(mode)"))
-        self.assertLess(settle.index("return false"), settle.index("screen.remove()"))
+        self.assertNotIn('mode: "account"', dg)
+        # 알린 것은 설정(정본)에 먼저 적고, 못 적으면 닫지 않는다.
+        click = dg[dg.index('ok.addEventListener("click"'):]
+        self.assertLess(click.index('storage.setConfig({ mode: "local", mode_chosen: true })'),
+                        click.index('dataMode.set("local")'))
+        self.assertLess(click.index("return;"), click.index("screen.remove()"))
 
     def test_옮기지_않고_끄기는_설정을_먼저_쓰고_아무것도_옮기지_않는다(self):
         """VIN-179: 올리기가 실패하면 로컬 모드에서 나갈 길이 없었다. 이 길은 폴더를

@@ -387,11 +387,12 @@ export async function localStoreHasData(): Promise<boolean> {
  *
  *  **사람이 고른 모드(`mode_chosen`)만 그대로 따른다.** 고른 적이 없으면(새 설치, 그리고
  *  0.9.4·0.9.5 가 이 기기에 데이터가 있다고 말없이 로컬로 정한 설치) 이 기기에 보여 줄
- *  작업이 있는지 본다. 있으면 `"ask"` 를 돌려주고 부르는 쪽이 한 번 묻는다
- *  (`device-graph.ts`). 계정의 빈 화면이 디스크의 작업을 묻지도 않고 가리면 그게 곧
- *  유실로 읽힌다. 없으면 계정이다: 적되 고른 것으로는 적지 않는다(나중에 이 기기에 작업이
- *  생기면 그때 묻는다).
- *  근거: [[vinc.plan.desktop-account-mode §8]] */
+ *  작업이 있는지 본다. 있으면 `"ask"` 를 돌려주고, 부르는 쪽이 로컬 모드로 계속 가며 그렇다고
+ *  한 번 알린다(`device-graph.ts`, 옮기기는 설정에만 있다). 계정의 빈 화면이 디스크의 작업을
+ *  말없이 가리면 그게 곧 유실로 읽힌다. 없으면 계정이다: 적되 고른 것으로는 적지 않는다
+ *  (나중에 이 기기에 작업이 생기면 그때 알린다).
+ *  근거: [[vinc.plan.desktop-account-mode §8]] ·
+ *  [[decision:after-sign-in-a-device-with-a-graph-stays-local-and-moving-is-only-in-settings-2026-09-29]] */
 export async function decideDataMode(): Promise<DataMode | "ask"> {
   const conf = await storage.config().catch(() => null);
   const saved = conf?.mode;
