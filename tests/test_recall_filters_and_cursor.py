@@ -207,5 +207,84 @@ class RecallE2E(unittest.TestCase):
         self.assertTrue(nxt["error"].startswith("stale_cursor"))
 
 
+# ── 실패한 recall 은 빈 타임라인이 아니다(RV-22) ─────────────────────────────
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class FailedRecallSaysSo(unittest.TestCase):
+    """스토어가 질의를 못 돌리면 최상위 `error` 가 선다. 없던 동안에는
+    `executed:false, rows:[]` 에 페이지 모드의 `has_more:false` 까지 붙어 **끝까지 읽은
+    빈 타임라인**과 똑같이 보였다. 실패는 진짜 엔진에서 낸다: 프로비저닝 전 스토어라
+    Episode 테이블이 없어 Binder 오류가 난다.
+    근거: [[vinc.audit.rag-code-review-2026-09-29]] 22번"""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._env = {}
+        for k, v in {"MEMORY_STORE_BACKEND": "embedded",
+                     "MEMORY_DATA_DIR": os.path.join(self._tmp, "store")}.items():
+            self._env[k] = os.environ.get(k)
+            os.environ[k] = v
+        from store.backend import open_store
+        from store.config import load_config
+        self.store = open_store(load_config())   # provision 안 함 — 질의가 실패한다
+
+    def tearDown(self):
+        self.store.close()
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_both_shapes_carry_the_error(self):
+        for kw in ({}, {"page": True}):
+            res = q.recall(owner="user:a", store=self.store, **kw)
+            self.assertFalse(res["executed"], kw)
+            self.assertEqual(res["rows"], [], kw)
+            self.assertTrue(res.get("error", "").startswith("store query failed"), res)
+            # debug 가 꺼져 있으면 plan 은 안 실린다. note 가 있다고 말하면 안 된다.
+            self.assertNotIn("plan", res)
+            self.assertNotIn("dry plan", res.get("note", ""))
+
+    def test_every_transport_reports_a_failure(self):
+        """사이드카 라우트 → MCP 도구 → rpc 봉투, 그리고 REST v1 매핑."""
+        import json
+
+        from api import server as sv
+        from vinc_mcp import rest_api, rpc
+
+        store = self.store
+
+        class _View:   # _read 가 닫는 뷰. 스토어는 tearDown 이 닫는다.
+            def __getattr__(self, name):
+                return getattr(store, name)
+
+            def close(self):
+                pass
+
+        app = sv.VincApp.__new__(sv.VincApp)
+        app._reader = lambda: _View()
+        status, body = app.read_recall({"owner": "user:a", "page": "true"})
+        self.assertEqual(status, 200)
+        self.assertTrue(body.get("error"), body)
+        self.assertFalse(body["has_more"])
+
+        class _Sidecar(Bridge):
+            def __init__(self):
+                super().__init__(base="http://127.0.0.1:1", token="t", owner="user:a")
+
+            def request(self, method, path, params=None, body=None, timeout=60, **_kw):
+                return app.read_recall({k: v for k, v in (params or {}).items()
+                                        if v is not None})[1]
+
+        result = tools.call("vinc_recall", {}, _Sidecar())
+        self.assertEqual(result["error"], body["error"])
+        env = rpc._result_text(json.dumps(result, ensure_ascii=False), "vinc_recall", {})
+        self.assertIn("store query failed", env["content"][0]["text"])
+
+        # REST v1 은 main 에서도 executed:false 라 이미 500 이었다. 달라진 것은 사유다.
+        self.assertEqual(rest_api._failure("vinc_recall", body),
+                         (500, "internal", body["error"]))
+
+
 if __name__ == "__main__":
     unittest.main()

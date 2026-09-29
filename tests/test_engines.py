@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 import tempfile
 import unittest
@@ -119,6 +120,53 @@ class EmbedModelVocabTests(unittest.TestCase):
         # §8 영어 1차: local-en=bge-base-en(768), local-en-large=bge-large-en(1024).
         self.assertEqual(self.e.ST_MODEL_BY_KEY["local-en"], "BAAI/bge-base-en-v1.5")
         self.assertEqual(self.e.ST_MODEL_BY_KEY["local-en-large"], "BAAI/bge-large-en-v1.5")
+
+
+class PipelineModelResolvedOnceTests(unittest.TestCase):
+    """키 없는 `--model anthropic` 은 local-en 으로 인코딩된다. 그러면 스토어도 local-en
+    폭으로 만들어야 한다 — 전에는 인코더만 바뀌고 provision 은 anthropic 폭(1024)으로
+    해서 768 벡터가 1024 열에 들어갈 자리를 만들었다. 실엔진으로 저장된 열 폭을 본다.
+    근거: [[vinc.audit.rag-code-review-2026-09-29]] 31번"""
+
+    def setUp(self):
+        from store.embedded_backend import _import_driver
+        if _import_driver()[0] is None:
+            self.skipTest("임베디드 드라이버(ladybug) 미설치")
+        self.e = importlib.import_module("engines.embed_pipeline")
+        self.tmp = tempfile.mkdtemp()
+        drafts = Path(self.tmp, "WORKSPACES", "planning", "p", "drafts")
+        drafts.mkdir(parents=True)
+        (drafts / "a.md").write_text("# a\n\nbody\n", encoding="utf-8")
+        self._saved = {k: os.environ.get(k) for k in (
+            "MEMORY_STORE_BACKEND", "MEMORY_DATA_DIR", "VOYAGE_API_KEY", "ANTHROPIC_API_KEY")}
+        os.environ.pop("VOYAGE_API_KEY", None)
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+        os.environ["MEMORY_STORE_BACKEND"] = "embedded"
+        os.environ["MEMORY_DATA_DIR"] = str(Path(self.tmp, "store"))
+        self._cwd, self._argv = os.getcwd(), sys.argv
+        os.chdir(self.tmp)   # collect_files·_load_dotenv 는 CWD 기준이다
+
+    def tearDown(self):
+        os.chdir(self._cwd)
+        sys.argv = self._argv
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_keyless_anthropic_provisions_the_width_it_encodes_with(self):
+        sys.argv = ["embed_pipeline", "--product", "p", "--model", "anthropic", "--dry-run"]
+        self.e.main()
+        from store.backend import open_store
+        from store.config import load_config
+        store = open_store(load_config())
+        try:
+            width = store._stored_vec_dim(0)
+        finally:
+            store.close()
+        self.assertEqual(width, self.e.model_dim("local-en"))
+        self.assertNotEqual(width, self.e.model_dim("anthropic"))
 
 
 class RecallParseTests(unittest.TestCase):
