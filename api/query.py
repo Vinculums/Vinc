@@ -6392,9 +6392,11 @@ what what's whats which who whom whose when where why how is are was were do doe
 the a an of about on in to for me tell explain show give please summarize
 """.split())
 #: 한국어 조사·접미 — 명사 뒤에 붙어 토큰을 다르게 만든다(긴 것부터 벗긴다).
-_KO_SUFFIXES = ("이라는", "라는", "에서는", "에게서", "으로는", "에서", "에게", "한테", "부터",
-                "까지", "보다", "처럼", "으로", "이란", "라면", "이는", "과는", "와는", "은",
-                "는", "이", "가", "을", "를", "의", "에", "도", "만", "로", "와", "과", "란", "야")
+#: 복합 조사(`에서의`·`에는`·`와의` …)는 그 끝 글자보다 **앞에** 둬야 통째로 벗겨진다.
+_KO_SUFFIXES = ("이라는", "라는", "에서는", "에게서", "으로는", "에서의", "으로의", "에서", "에게",
+                "한테", "부터", "까지", "보다", "처럼", "으로", "이란", "라면", "이는", "과는",
+                "와는", "에는", "와의", "과의", "은", "는", "이", "가", "을", "를", "의", "에",
+                "도", "만", "로", "와", "과", "란", "야")
 
 
 def _strip_ko_suffix(tok: str) -> str:
@@ -6421,7 +6423,10 @@ def normalize_query_tokens(query: str, *, cap: int = 8) -> list[str]:
     중복 토큰은 매치 수 집계를 왜곡한다."""
     raw = [t for t in re.split(r"[\s,./?!;:()\[\]{}\"'`~]+", (query or "").lower()) if t]
     stemmed = [_strip_ko_suffix(t) for t in raw]
-    kept = [t for t in stemmed if t and t not in _STOP_TOKENS]
+    # 불용어는 원형과 절단형 **둘 다** 본다 — 절단이 먼저면 '무엇인가'가 '무엇인'이 되어
+    # 목록을 빠져나간다.
+    kept = [s for t, s in zip(raw, stemmed)
+            if s and t not in _STOP_TOKENS and s not in _STOP_TOKENS]
     if not kept:                      # 전부 불용어였다 — 원형으로 되돌린다
         kept = [t for t in stemmed if t]
     out: list[str] = []
@@ -6439,6 +6444,11 @@ _ID_PREFIX_TOKENS = frozenset(("concept", "episode", "record", "bridge", "entity
                                "decision"))   # v12
 #: 부분 매치 스캔이 처리할 최대 행. 넘으면 잘린 사실을 호출부가 로그로 남긴다.
 NODE_SCAN_CAP = 2000
+
+
+def _id_token(t: str) -> bool:
+    """id 매치에 쓰는 토큰인가 — 종류 접두와 한 글자는 거의 모든 id 에 들어 있다."""
+    return len(t) > 1 and t not in _ID_PREFIX_TOKENS
 
 
 # ── 실패 응답의 다음 행동 (F7) ───────────────────────────────────────────────
@@ -6519,7 +6529,10 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     # 매치가 잘린다. 그래서 **id 열에서만** 그런 토큰을 뺀다.
     # 근거: [[vinc.plan.node-pk-namespacing]] §7
     own_low = (owner or "").lower() if pkns.enabled() else ""
-    id_idx = [i for i in idx if not (own_low and toks[i] in own_low)]
+    # 종류 접두(`concept` 등)와 한 글자 토큰도 id 열에서 뺀다 — 모든 id 에 들어 있어서
+    # 스캔 상한을 쓰레기로 채운다(점수 단계도 같은 규칙, :func:`_id_token`).
+    id_idx = [i for i in idx
+              if _id_token(toks[i]) and not (own_low and toks[i] in own_low)]
 
     def _any(fields: tuple[str, ...]) -> str:   # 토큰 하나라도, 필드 하나라도
         parts = [f"lower(coalesce({f},'')) CONTAINS $q{i}"
@@ -6615,10 +6628,10 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
         n_title = sum(1 for t in toks if t in title)
         n_one = sum(1 for t in toks if t in one)
         n_props = sum(1 for t in toks if t in props)
-        n_id = sum(1 for t in toks if t not in _ID_PREFIX_TOKENS and t in nid)
+        n_id = sum(1 for t in toks if _id_token(t) and t in nid)
         hit = sum(1 for t in toks
                   if t in title or t in one or t in props
-                  or (t not in _ID_PREFIX_TOKENS and t in nid))
+                  or (_id_token(t) and t in nid))
         if not hit:
             continue
         where = ("title" if n_title else "one_liner" if n_one
@@ -6680,12 +6693,15 @@ def _graph_arm_search(store, chunk_ids: list[str], *, owner: str | None = None,
                            "domain": r.get("domain"), "_r": cr}
         nb = r.get("nb_id")
         if nb and nb != cid:
-            neigh.setdefault(nb, {"id": nb, "title": r.get("nb_title"),
-                                  "domain": r.get("nb_domain")})
+            # 이웃도 자기를 불러온 최상위 청크의 랭크로 줄 선다(직접 언급과 같은 규칙).
+            cur = neigh.get(nb)
+            if cur is None or cr < cur["_r"]:
+                neigh[nb] = {"id": nb, "title": r.get("nb_title"),
+                             "domain": r.get("nb_domain"), "_r": cr}
     for cid in direct:            # 직접 언급이면 이웃 목록에서 제외(중복 방지)
         neigh.pop(cid, None)
     ordered = (sorted(direct.values(), key=lambda x: (x["_r"], x["id"]))
-               + sorted(neigh.values(), key=lambda x: x["id"]))
+               + sorted(neigh.values(), key=lambda x: (x["_r"], x["id"])))
     # `hit_tokens`/`title_tokens` 를 0 으로 명시한다(A1.10): 그래프 암은 **질문 토큰이
     # 아니라 청크 인접으로** 올라온 후보다. 소비처가 두 암을 한 줄로 정렬할 때 키가
     # 없어 `undefined` 로 비교되면 조용히 뒤섞인다 — 0 은 "토큰으로는 안 맞았다"는
