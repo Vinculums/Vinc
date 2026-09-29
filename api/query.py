@@ -6376,9 +6376,11 @@ what what's whats which who whom whose when where why how is are was were do doe
 the a an of about on in to for me tell explain show give please summarize
 """.split())
 #: 한국어 조사·접미 — 명사 뒤에 붙어 토큰을 다르게 만든다(긴 것부터 벗긴다).
-_KO_SUFFIXES = ("이라는", "라는", "에서는", "에게서", "으로는", "에서", "에게", "한테", "부터",
-                "까지", "보다", "처럼", "으로", "이란", "라면", "이는", "과는", "와는", "은",
-                "는", "이", "가", "을", "를", "의", "에", "도", "만", "로", "와", "과", "란", "야")
+#: 복합 조사(`에서의`·`에는`·`와의` …)는 그 끝 글자보다 **앞에** 둬야 통째로 벗겨진다.
+_KO_SUFFIXES = ("이라는", "라는", "에서는", "에게서", "으로는", "에서의", "으로의", "에서", "에게",
+                "한테", "부터", "까지", "보다", "처럼", "으로", "이란", "라면", "이는", "과는",
+                "와는", "에는", "와의", "과의", "은", "는", "이", "가", "을", "를", "의", "에",
+                "도", "만", "로", "와", "과", "란", "야")
 
 
 def _strip_ko_suffix(tok: str) -> str:
@@ -6405,7 +6407,10 @@ def normalize_query_tokens(query: str, *, cap: int = 8) -> list[str]:
     중복 토큰은 매치 수 집계를 왜곡한다."""
     raw = [t for t in re.split(r"[\s,./?!;:()\[\]{}\"'`~]+", (query or "").lower()) if t]
     stemmed = [_strip_ko_suffix(t) for t in raw]
-    kept = [t for t in stemmed if t and t not in _STOP_TOKENS]
+    # 불용어는 원형과 절단형 **둘 다** 본다 — 절단이 먼저면 '무엇인가'가 '무엇인'이 되어
+    # 목록을 빠져나간다.
+    kept = [s for t, s in zip(raw, stemmed)
+            if s and t not in _STOP_TOKENS and s not in _STOP_TOKENS]
     if not kept:                      # 전부 불용어였다 — 원형으로 되돌린다
         kept = [t for t in stemmed if t]
     out: list[str] = []

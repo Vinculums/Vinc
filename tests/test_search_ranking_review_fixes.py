@@ -75,5 +75,20 @@ class GraphArmNeighbourOrderRV18(unittest.TestCase):
         self.assertEqual([r["id"] for r in out], ["concept:a", "concept:b", "concept:zeta"])
 
 
+class KoreanStopwordsRV19(unittest.TestCase):
+    """불용어 판정이 조사 절단 뒤라 `무엇인가` 가 `무엇인` 으로 빠져나갔고, 복합 조사는
+    끝 글자만 벗겨졌다(`시스템에는` → `시스템에`)."""
+
+    def test_a_stopword_is_dropped_before_its_particle_is_stripped(self):
+        from api import query as q
+        self.assertEqual(q.normalize_query_tokens("낙관적 동시성 제어는 무엇인가"),
+                         ["낙관적", "동시성", "제어"])
+
+    def test_compound_particles_are_stripped_whole(self):
+        from api import query as q
+        self.assertEqual(q.normalize_query_tokens("시스템에는 api와의 서버에서의 정책과의"),
+                         ["시스템", "api", "서버", "정책"])
+
+
 if __name__ == "__main__":
     unittest.main()
