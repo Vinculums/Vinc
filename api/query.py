@@ -6575,7 +6575,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     )
     rows = store.run(cypher, params)[:NODE_SCAN_CAP]
     scored: list[dict] = []
-    dropped = 0
+    dropped: set = set()       # 지운 id — 의미 팔이 같은 노드를 지워도 한 번만 센다
     best_dropped = (0, 0)      # 지운 행 중 가장 센 (hit_tokens, title_tokens)
     for r in rows:
         # 유효구간 기본 필터(채택된 시간 정책 §4.2). **미기재는 current 라서 안 걸린다** —
@@ -6591,7 +6591,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
         # `scope`(as_of 기간)가 있으면 그 기간에 성립했는지로 가른다(`_visible`).
         if scope is not None or not historical:
             if not _visible(*_row_validity(r), historical=historical, scope=scope):
-                dropped += 1
+                dropped.add(r.get("id"))
                 # 지운 행의 점수도 기억한다. 지우기가 **동점을 깨면** 남은 하나가
                 # 단독 승자가 되어, 원래 "모르겠다"였을 질문이 확신 있는 답이 된다.
                 # 부르는 쪽이 그것을 알아야 판단할 수 있다.
@@ -6626,7 +6626,8 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     scored.sort(key=lambda r: (-r["hit_tokens"], -r["title_tokens"],
                                _FIELD_RANK.get(r["matched_in"], 9), str(r["id"])))
     if stats is not None:
-        stats["dropped_not_current"] = dropped
+        stats["dropped_ids"] = dropped
+        stats["dropped_not_current"] = len(dropped)
         stats["best_dropped_score"] = best_dropped
     return scored[:max(1, int(limit))]
 
@@ -7116,8 +7117,9 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                                     historical=historical, scope=_scope):
                             _keep.append(h)
                         else:
-                            _vstats["dropped_not_current"] = (
-                                _vstats.get("dropped_not_current", 0) + 1)
+                            _gone = _vstats.setdefault("dropped_ids", set())
+                            _gone.add(h.get("id"))
+                            _vstats["dropped_not_current"] = len(_gone)
                     _raw = _keep
                 vec_hits = [{"id": h.get("id"),
                              "title": h.get("title") or h.get("text") or "",
@@ -7143,7 +7145,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                         pass
             except Exception as exc:
                 base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
-        # 의미 팔이 더 걸러 냈으면 (3) 에서 적은 공개를 갱신한다 — 셈은 두 팔의 합.
+        # 의미 팔이 더 걸러 냈으면 (3) 에서 적은 공개를 갱신한다 — 셈은 두 팔이 지운 id 의
+        # 합집합이다(두 팔이 같은 노드를 지우면 한 번).
         if _vstats.get("dropped_not_current"):
             base["validity_filtered"] = _vstats["dropped_not_current"]
             base.setdefault("validity_best_dropped",
