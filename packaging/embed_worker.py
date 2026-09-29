@@ -118,8 +118,8 @@ MAX_TOKENS = int(os.environ.get("VINC_EMBED_MAX_TOKENS", "512"))
 # 조각 하나에 담을 **콘텐츠** 토큰 수(v8 부모-자식 — `_split_for_embed`).
 # 상한 512 에서 빼야 할 것: 특수토큰 2개(`<s>`/`</s>`) + 접두("passage: " 2토큰 ·
 # "query: " 3토큰, 실측). 발주자 결정 500 은 그 뒤 여유가 12 라 빠듯하지만, 진짜
-# 토크나이저로 자를 때는 `chunk_doc` 의 수리 루프가 상한을 보장하고(실측 512 초과 0),
-# 토크나이저 없는 경로는 추정기의 1.3배 여유가 흡수한다.
+# 토크나이저로 자를 때는 `chunk_doc` 의 수리 루프가 상한을 보장한다(실측 512 초과 0).
+# 추정기의 1.3배 여유는 산문만 흡수하고 코드·해시에서는 넘긴다(`_split_for_embed`).
 MAX_CONTENT = int(os.environ.get("VINC_EMBED_CONTENT_TOKENS", "500"))
 # 한 번의 세션 실행에 넣을 청크 수 상한. **없으면 안 된다** — 자세한 근거는
 # `_Embedder.encode` 주석. 8 인 이유: 실측상 청크는 대부분 512 토큰에 붙어 있어
@@ -219,22 +219,42 @@ def _split_for_embed(text: str) -> list[str]:
     vs 0.601). 2000자 안의 서로 다른 내용이 평균에서 뭉개진다 — 조각별로 따로 둬야 한다.
 
     자르는 일은 `api.docstore.chunk_doc` 이 이미 한다(무손실 경계 + 토큰 수리 루프).
-    사이드카가 없는 환경을 위해 임포트 실패는 통째 반환으로 강등한다."""
+    사이드카가 없는 환경을 위해 임포트 실패는 통째 반환으로 강등한다.
+
+    세는 토크나이저는 `VINC_EMBED_MODEL_PATH` 옆에 구운 tokenizer.json 을 **모델 없이**
+    처음 한 번 올린다. 원격 모드(허브)는 모델을 영영 안 올리고, 로컬 모드도 첫 문서는
+    적재 전에 조각나기 때문이다. 추정기로 자르면 코드·해시 조각이 512 를 넘겨 인코더가
+    꼬리를 버린다. 근거: [[record:embed-worker-split-and-lock-fixed-2026-09-30]]"""
     if not text:
         return [text]
     try:
         from api.docstore import chunk_doc
     except Exception:
         return [text]
-    tok = getattr(_SPLIT, "tok", None)
-    parts = chunk_doc(text, max_tokens=MAX_CONTENT, count=tok)
+    if _SPLIT.tok is None and not _SPLIT.tried:
+        _SPLIT.tried = True                   # 실패해도 조각마다 다시 시도하지 않는다
+        baked = os.environ.get("VINC_EMBED_MODEL_PATH", "").strip()
+        if baked:
+            path = os.path.join(os.path.dirname(baked), "tokenizer.json")
+            try:
+                from tokenizers import Tokenizer
+                counter = Tokenizer.from_file(path)   # 자르지 않는 인스턴스(`_load` 주석)
+                _SPLIT.tok = lambda s: len(counter.encode(s).ids)
+                print(f"[embed] split tokenizer {path} rss={_rss_mb()}MB", flush=True)
+            except Exception as exc:
+                print(f"[embed] 조각내기 토크나이저를 못 올렸다({type(exc).__name__}: "
+                      f"{exc}). 추정기로 자르므로 코드·해시 조각은 512 를 넘길 수 있다",
+                      file=sys.stderr, flush=True)
+    parts = chunk_doc(text, max_tokens=MAX_CONTENT, count=_SPLIT.tok)
     return [p["text"] for p in parts] or [text]
 
 
 class _SplitState:
-    """조각내기용 토크나이저 핸들. 모델을 올릴 때 채워진다 — 없으면 `chunk_doc` 의
-    문자 계열 추정기로 강등한다(데스크탑 경로와 같은 폴백)."""
+    """조각내기용 토크나이저 핸들. 구운 tokenizer.json 이 있으면 첫 조각내기에서,
+    없으면 모델을 올릴 때 채워진다. 둘 다 없으면 `chunk_doc` 의 문자 계열 추정기로
+    강등한다(데스크탑 경로와 같은 폴백)."""
     tok = None
+    tried = False
 
 
 _SPLIT = _SplitState()
@@ -381,6 +401,11 @@ class _Embedder:
         self._sess = None
         self._tok = None
         self._names: list[str] = []
+        # 적재와 세션 실행을 한 줄로 세운다. 로컬 모드는 배치 루프와 `serve_encode` 의
+        # 질의가 이 인스턴스 하나를 쓰므로, 잠금이 없으면 첫 적재 중에 온 질의가 세션을
+        # 한 벌 더 올린다(OOM). 잡는 단위는 **배치**다(`_encode_batch`): 문서 전체를 잡으면
+        # 큰 문서가 끝날 때까지 질의가 기다리다 질의 상한에 걸려 FTS 로 떨어진다.
+        self._lock = threading.Lock()
 
     def _load(self) -> None:
         if self._sess is not None:
@@ -422,8 +447,10 @@ class _Embedder:
         # 추정기로 강등되는데, 추정기는 여유를 크게 잡아 조각이 불필요하게 짧아진다.
         # ⚠ truncation·padding 이 켜진 이 인스턴스를 그대로 쓰면 길이가 512 에서 잘려
         # "항상 ≤512" 로 보인다 — 세는 용도로는 **자르지 않는 별도 인스턴스**가 필요하다.
-        counter = Tokenizer.from_file(tok_path)
-        _SPLIT.tok = lambda s: len(counter.encode(s).ids)
+        # 조각내기가 구운 파일로 이미 올렸으면 메모리 고점인 여기서 또 올리지 않는다.
+        if _SPLIT.tok is None:
+            counter = Tokenizer.from_file(tok_path)
+            _SPLIT.tok = lambda s: len(counter.encode(s).ids)
         # 스레드 1개 — 허브는 0.5 vCPU 를 사이드카·MCP 와 나눠 쓴다. 배경 작업이
         # 전경 응답을 굶기지 않게 명시적으로 묶는다.
         opts = ort.SessionOptions()
@@ -490,20 +517,21 @@ class _Embedder:
         return out
 
     def _encode_batch(self, texts: list[str]) -> list[list[float]]:
-        self._load()
-        import numpy as np
+        with self._lock:                                       # 배치 하나만 잡는다(__init__)
+            self._load()
+            import numpy as np
 
-        enc = self._tok.encode_batch(texts)
-        mask = np.array([e.attention_mask for e in enc], dtype=np.int64)
-        feed = {
-            "input_ids": np.array([e.ids for e in enc], dtype=np.int64),
-            "attention_mask": mask,
-            "token_type_ids": np.array([e.type_ids for e in enc], dtype=np.int64),
-        }
-        # e5(XLM-R)는 token_type_ids 를 받지 않는다(그래프 입력이 둘뿐 — 실측).
-        # 세션이 받는 것만 남긴다.
-        feed = {k: v for k, v in feed.items() if k in self._names}
-        hidden = self._sess.run(None, feed)[0]
+            enc = self._tok.encode_batch(texts)
+            mask = np.array([e.attention_mask for e in enc], dtype=np.int64)
+            feed = {
+                "input_ids": np.array([e.ids for e in enc], dtype=np.int64),
+                "attention_mask": mask,
+                "token_type_ids": np.array([e.type_ids for e in enc], dtype=np.int64),
+            }
+            # e5(XLM-R)는 token_type_ids 를 받지 않는다(그래프 입력이 둘뿐 — 실측).
+            # 세션이 받는 것만 남긴다.
+            feed = {k: v for k, v in feed.items() if k in self._names}
+            hidden = self._sess.run(None, feed)[0]
         pooled = _pool(hidden, mask, np)
         norm = np.linalg.norm(pooled, axis=1, keepdims=True)
         norm[norm == 0] = 1.0                                  # 빈 입력 방어
