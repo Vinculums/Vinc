@@ -88,5 +88,37 @@ class DocAndLayerFiltersRV01(_EngineCase):
             self.store.vector_search([1.0, 0.0, 0.0, 0.0], 5, {"tenant_id": "t"})
 
 
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class OwnerBeforeKnnRV05(_EngineCase):
+    """HNSW 전역 상위 k 를 먼저 뽑고 owner 를 뒤에 걸어서, 작은 스페이스가 0건이 됐다."""
+
+    def test_a_small_owner_still_fills_top_k_behind_a_closer_large_owner(self):
+        rows = [(f"a{i}#00000", "da", "A", "alpha", [1.0, 0.01 * (i % 7), 0.0, 0.0])
+                for i in range(500)]
+        rows += [(f"b{i}#00000", "db", "B", "beta", [0.2, 1.0, 0.1 * (i % 3), 0.0])
+                 for i in range(20)]
+        self.chunks(rows)
+        self.build()
+        got = self.store.vector_search([1.0, 0.0, 0.0, 0.0], 5, {"owner_id": "B"})
+        self.assertEqual(len(got), 5, got)
+        self.assertTrue(all(r["id"].startswith("b") for r in got), got)
+        d = [r["distance"] for r in got]
+        self.assertEqual(d, sorted(d), "가까운 것부터가 아니다")
+
+    def test_every_owner_finds_its_own_mirror_row_at_distance_zero(self):
+        owners = [f"user:o{i}" for i in range(8)]
+        self.store.drop_node_vector_index()
+        self.store.run(
+            "UNWIND $rows AS r CREATE (:NodeVec {vec_id: r.o + '#concept:x', "
+            "node_id: 'concept:x', kind: 'concept', owner_id: r.o, title: 'x', "
+            "text: 'x', model: 'test', embedding: [1.0, 0.0, 0.0, 0.0]})",
+            {"rows": [{"o": o} for o in owners]})
+        if self.store.create_node_vector_index():
+            self.skipTest("벡터 확장 미가용")
+        empty = [o for o in owners
+                 if not self.store.node_vector_search([1.0, 0.0, 0.0, 0.0], 1, owner=o)]
+        self.assertEqual(empty, [], "자기 행을 거리 0 에서 못 찾은 소유자가 있다")
+
+
 if __name__ == "__main__":
     unittest.main()

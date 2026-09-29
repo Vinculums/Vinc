@@ -1794,7 +1794,19 @@ class EmbeddedBackend:
         best: dict[str, dict] = {}
         for r in rows:                       # 이미 distance 오름차순 — 첫 등장이 최소
             best.setdefault(r.get("id"), r)
-        return list(best.values())[:int(top_k)]
+        out = list(best.values())[:int(top_k)]
+        if filters and len(out) < int(top_k):
+            # 필터는 **전역** HNSW 상위 k 뒤에 걸린다. 그 안에 이 필터의 행이 모자라면(작은
+            # 스페이스·문서 하나) 필터 안을 정확히 훑는다. 거리는 색인의 기본(코사인)과 같은
+            # 값이고(실측), 매개변수를 묶는 평범한 조회라 읽기 커넥션에서 돈다(DDL 없음).
+            scope = _filter_clause("p", filters, params)       # 여기선 첫 WHERE 다
+            out = _exec_to_dicts(
+                c, f"MATCH (p:Chunk) {scope}"
+                   "MATCH (v:ChunkVec) WHERE v.chunk_id = p.chunk_id "
+                   "RETURN p.chunk_id AS id, p.text AS text, "
+                   "min(1 - array_cosine_similarity(v.embedding, $emb)) AS distance "
+                   "ORDER BY distance LIMIT $k", {**params, "k": int(top_k)})
+        return out
 
     def node_vector_search(self, embedding, top_k, *, owner=None, conn=None) -> list[dict]:
         """노드 미러(NodeVec)에서 의미로 찾는다 — 어휘가 하나도 안 겹쳐도 닿는 유일한 팔.
@@ -1828,6 +1840,15 @@ class EmbeddedBackend:
         )
         try:
             rows = _exec_to_dicts(c, cypher, params)
+            if owner and len(rows) < int(top_k):
+                # 전역 상위 k 에 이 소유자의 행이 모자랐다 — 그 소유자 안을 정확히 훑는다
+                # (:meth:`vector_search` 와 같은 이유·같은 거리).
+                rows = _exec_to_dicts(
+                    c, "MATCH (node:NodeVec) WHERE node.owner_id = $owner "
+                       "RETURN node.node_id AS id, node.kind AS kind, node.title AS title, "
+                       "node.text AS text, "
+                       "1 - array_cosine_similarity(node.embedding, $emb) AS distance "
+                       "ORDER BY distance LIMIT $k", {**params, "k": int(top_k)})
         except Exception:
             return []           # 인덱스 부재·미러 비어 있음 — 증강이므로 조용히 없음
         return rows[:int(top_k)]
