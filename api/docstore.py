@@ -649,6 +649,11 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     # 재생성 = 로컬 doc 툼스톤 상쇄(낡은 삭제가 동기화에서 재전파되지 않게, P3).
     _clear_doc_tombstone(store, doc_id)
 
+    # 제목이 바뀌었으면 미러가 **물려받은 제목 그대로일 때만** 따라간다(아래 함수).
+    # 주제 적기와 같은 이유로 링커보다 먼저다.
+    if prev is not None and title is not None:
+        _follow_title(store, doc_id, owner=owner,
+                      old=str(prev.get("title") or ""), new=kept_title)
     # 주제를 **적는다**(선택). 링커보다 **먼저** 해야 미러 제목이 이번 본문 스캔의
     # 대상이 된다.
     authored = _set_authored_topic(store, doc_id, topic, owner=owner,
@@ -711,6 +716,37 @@ def _set_authored_topic(store, doc_id: str, topic: str, *, owner: str,
              "seq": st["sync_seq"]})
     _link_domain(store, mid, dom)
     return dom
+
+
+def _follow_title(store, doc_id: str, *, owner: str, old: str, new: str) -> bool:
+    """문서 제목이 바뀌면 미러(`concept:doc.<doc_id>`)의 제목을 따라 바꾼다 — **미러가 아직
+    물려받은 제목(옛 문서 제목, 제목이 없었으면 doc_id)을 들고 있을 때만.**
+
+    미러는 만들어질 때 문서 제목을 물려받고 그 뒤로는 제목을 덮지 않는다(`_set_authored_topic`
+    주석: 다듬어 둔 값을 쓰기가 지우면 안 된다). 그래서 앱에서 새 문서를 만든 뒤 제목을 고치면
+    트리와 View 에 옛 제목이 남았다. 사람이 미러 제목을 따로 고쳤다면 그 값은 옛 문서 제목과
+    다르므로 여기서 건드리지 않는다 — 두 규칙이 한 조건으로 함께 선다.
+    반환 = 바꿨는가. 실패는 삼킨다(제목 따라가기는 문서 쓰기를 실패시킬 이유가 아니다)."""
+    new = (new or "").strip()
+    if not new or new == old:
+        return False
+    inherited = [t for t in {old, doc_id} if t]
+    mid = pkns.key(owner, _DOC_MIRROR_PREFIX + doc_id)
+    try:
+        rows = store.run(
+            "MATCH (n:Concept) WHERE n.concept_id = $id RETURN n.title AS title",
+            {"id": mid}) or []
+        if not rows or str(rows[0].get("title") or "") not in inherited:
+            return False
+        st = _node_stamp(store, owner)
+        store.run("MATCH (n:Concept) WHERE n.concept_id = $id SET n.title = $t, "
+                  "n.updated_at = $ua, n.rev = $rev, n.sync_seq = $seq",
+                  {"id": mid, "t": new, "ua": st["updated_at"], "rev": st["rev"],
+                   "seq": st["sync_seq"]})
+        return True
+    except Exception as exc:
+        print(f"[docstore] mirror title not updated ({doc_id}): {exc}", file=sys.stderr)
+        return False
 
 
 def _link_domain(store, key: str, dom: str) -> None:
