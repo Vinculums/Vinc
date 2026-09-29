@@ -3550,18 +3550,35 @@ _BRIEF_ID_ASCII_RE = re.compile(
     r"(?:concept|record|decision|episode):[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?")
 
 
-def _brief_query_ids(query: str) -> list[str]:
+def _brief_query_ids(query: str, cap: int = _BRIEF_FALLTHROUGH) -> list[str]:
     """질문에 그대로 들어 있는 노드 id — 등장 순서, 중복 제거. 매치마다 바로 뒤에
-    그 ASCII 접두를 되물림 후보로 둔다(매치와 다를 때만)."""
+    그 ASCII 접두를 되물림 후보로 둔다(매치와 다를 때만).
+
+    `cap` 은 **언급** 수 상한이다(변형 수가 아니다). 변형으로 자르면 `A는 … B는` 이
+    `[A는, A, B는]` 에서 잘려 실재하는 B 가 시도조차 안 된다. 새 후보를 하나도 못 보태는
+    언급(앞 언급의 접두와 같은 id)은 상한을 쓰지 않는다. 왕복은 언급당 둘까지다."""
     seen: set[str] = set()
     out: list[str] = []
+    mentions = 0
     for m in _BRIEF_ID_RE.findall(query or ""):
         a = _BRIEF_ID_ASCII_RE.match(m)
-        for cand in (m, a.group(0) if a else ""):
-            if cand and cand not in seen:
-                seen.add(cand)
-                out.append(cand)
+        new = [c for c in dict.fromkeys((m, a.group(0) if a else ""))
+               if c and c not in seen]
+        if not new:
+            continue
+        if mentions >= cap:
+            break
+        mentions += 1
+        seen.update(new)
+        out.extend(new)
     return out
+
+
+def brief_reads_by_id(query: str) -> bool:
+    """brief 가 이 질문을 id 직참조로만 답하는가 — 그렇다면 검색을 돌지 않는다.
+    `/brief` 는 이것을 보고 질의 임베딩을 건너뛴다. 직참조 갈래가 검색으로 넘어가게
+    바뀌면 여기도 함께 바꿀 것 — 안 그러면 그 검색이 의미 팔 없이 돈다."""
+    return bool(_brief_query_ids(query))
 
 
 def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
@@ -3597,6 +3614,19 @@ def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
                                0 if it.get("evidence") else 1))
     base["links"] = {**links, "items": items}
     base["grounds"] = _brief_grounds(nid, base["excerpts"], items)
+    # 노드는 읽었는데 그 뒤(발췌·문서 제목·관계)가 실패했으면 **반쪽**이라고 말한다.
+    # node_context 는 그때도 executed 를 세우므로, 표식이 없으면 빈 관계·빈 발췌가 "연결
+    # 없는 노드"로 읽힌다. 최상위 `error` 는 쓰지 않는다 — REST v1 이 해소된 답을 500 으로 바꾼다.
+    why = []
+    if ctx.get("error"):
+        why.append(f"reading around the node failed: {ctx['error']}; "
+                   "excerpts and links may be missing")
+    if links.get("executed") is False:
+        why.append("links could not be read, so an empty list does not mean "
+                   "the node has no relations")
+    if why:
+        base["partial"] = True
+        base["partial_note"] = "; ".join(why)
     return base
 
 
@@ -3774,7 +3804,7 @@ def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
 
 #: 후보 재료로 옮겨 싣는 키 — 확정 답의 재료 꼴(:func:`_brief_material`)과 같다.
 _BRIEF_MATERIAL_KEYS = ("node", "one_liner", "body_src", "body_cite", "excerpts",
-                        "links", "grounds", "validity_note")
+                        "links", "grounds", "validity_note", "partial", "partial_note")
 
 
 def _brief_candidate_material(cand: dict, **kw) -> dict:
@@ -3865,6 +3895,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
            evidence_text 문장을 함께 싣는다), candidates:[...], grounds:[id...],
            resolved_via("id" — 직참조로 확정된 경우에만),
            fell_through/unreadable(안 열린 후보·질문 속 id 의 공개),
+           search_error(청크 팔이 실패한 사유 — 해소는 노드 팔로 계속한다),
+           partial/partial_note(노드는 읽었는데 발췌·관계를 못 읽었을 때),
            candidate_material(`VINC_BRIEF_CHOOSE_MATERIAL` 을 켠 choose 에서만)}.
     근거: [[vinc.plan.mcp-agent-surface §4]]"""
     cfg = cfg or load_config()
@@ -3895,7 +3927,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # [[record:title-language-gap-survives-the-vector-arm-2026-08-30]]
         unread_ids: list[dict] = []
         out_of_scope_ids: list[str] = []
-        for qid in _brief_query_ids(query)[:_BRIEF_FALLTHROUGH]:
+        for qid in _brief_query_ids(query):
             got = node_context(owner=owner, node=qid, limit=max_excerpts,
                                with_evidence=True, store=store)
             if got.get("executed"):
@@ -3932,20 +3964,27 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
                      owner=owner, store=store, historical=historical,
                      as_of=as_of, query_runtime=query_runtime)
-        base["executed"] = bool(res.get("executed"))
+        # executed 는 노드 팔 기준이다 — 청크 팔만 죽어도 노드 팔은 owner 스코프 결과를 낸다.
+        base["executed"] = bool(res.get("executed") or res.get("node_hits"))
         # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`
         # 만 강등을 말하면 같은 고장이 도구에 따라 보이거나 안 보인다. 규칙은 `/search`
         # 와 같다 — **검색이 실제로 돈 경우에만** 싣는다(id 직참조는 이 줄에 오기 전에
         # 반환하므로 안 돈 팔에 이름이 붙지 않는다. 게이트① 동등성은 q.brief 한 곳에서
         # 세우는 것으로 지킨다 — HTTP 계층에서 붙이면 CLI 와 갈린다).
-        for k in ("error", "note", "node_error",
+        for k in ("note", "node_error",
                   "arms", "vector_note", "vector_rebuilding", "time_scope",
                   "encoder_runtime_warning",
                   "validity_filtered", "validity_note", "validity_best_dropped"):
             if res.get(k):
                 base[k] = res[k]
-        if base.get("error"):
-            return base
+        # 검색의 `error` 는 청크 팔 실패다(FTS 잔해·확장 미가용·색인 부재 …). 같은 검색의
+        # 노드 팔 결과로 해소를 계속하고 사유는 `search_error` 로 싣는다 — 최상위 `error` 는
+        # REST v1 이 HTTP 500 으로 바꾸므로 해소된 답에 쓸 수 없다. 노드 팔도 빈손일 때만
+        # 여기서 돌아온다. 근거: [[vinc.plan.rag-code-review-fixes-2026-09-29]]
+        if res.get("error"):
+            base["search_error"] = res["error"]
+            if not res.get("node_hits"):
+                return base
         status, picked = _brief_resolve(query, res.get("node_hits") or [])
         # 🔴 **유효구간 필터가 동점을 깨서 확신을 만들면 안 된다.** 지운 행이 남은 1위와
         # 같은 점수였다면, 원래 이 질문은 "모르겠다"(choose)였다. 그 자리에서 확정을

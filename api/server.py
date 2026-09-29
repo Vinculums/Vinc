@@ -1022,7 +1022,10 @@ class VincApp:
         # 임베딩 창구는 `/search` 와 같은 것을 쓴다: 해소가 같은 후보 위에서 돌아야
         # 데스크탑 Ask 와 답이 갈리지 않는다. 근거: [[vinc.plan.mcp-agent-surface §4]]
         query = _req(p, "query")
-        qvec, vnote = self._query_embedding(query)
+        # id 를 담은 질문은 brief 가 검색 없이 답한다 — 쓰지도 않을 벡터를 인코더에서
+        # 기다리지 않고(콜드면 수십 초), 안 돈 팔에 vector_note 를 붙이지도 않는다.
+        qvec, vnote = ((None, "") if q.brief_reads_by_id(query)
+                       else self._query_embedding(query))
         # 유효구간 기본은 current 만이다(채택된 시간 정책 §4.2). `historical=true` 가
         # 명시적 요청 경로이고, 기본으로 켜 두면 정책이 막으려는 것을 그대로 낸다.
         code, res = self._read(lambda r: q.brief(
