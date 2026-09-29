@@ -1112,7 +1112,7 @@ class VincApp:
             self.store, owner=owner, text=_req(body, "text"),
             doc_id=body.get("id") or None,
             title=None if btitle is None else str(btitle),
-            origin=body.get("origin") or "",
+            origin=body.get("origin"),
             content_time=None if ctime is None else str(ctime),
             # 주제는 **적는 값**이다. `or None` 으로 뭉개도 안전하다 — 빈 문자열은
             # "지운다"가 아니라 "안 건드린다"이고, 그 판단은 _set_authored_topic 에 있다.

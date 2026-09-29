@@ -1206,7 +1206,7 @@ TOOLS: list[dict] = [
             "text": {"type": "string", "description": "Full document text (the canonical content)."},
             "doc_id": {"type": "string", "description": "Existing doc to edit; omit to create."},
             "title": {"type": "string", "description": "Document title. OMIT IT TO KEEP THE TITLE THE DOCUMENT ALREADY HAS — it is not defaulted to empty. Pass \"\" only to actually clear the title. This matters on an edit: the title is separate from any title: line in the body, which this tool never reads."},
-            "origin": {"type": "string", "description": "Provenance label only (not a join key)."},
+            "origin": {"type": "string", "description": "Provenance label only (not a join key). Omit to preserve the existing origin; pass an empty string to clear it. A metadata-only change does not rewrite document text."},
             "topic": {"type": "string", "description": "The topic this document is about, as a domain path (e.g. vinc/infra/deploy). Authored, not inferred: it is recorded on the document's own concept:doc.<id> node and takes precedence over the topic derived from body matching. Omit to leave the existing answer alone — passing \"\" does NOT clear it."},
         }, "required": ["text"]},
         "run": _t_doc_put,
