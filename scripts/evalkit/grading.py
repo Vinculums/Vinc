@@ -95,7 +95,36 @@ def union_rank_of(gold: str, hits: list) -> int:
     return 0
 
 
-def grade_one(res: dict, row: dict, hits: list | None = None) -> dict:
+def margins(res: dict, pred: str, hits: list, sem: list | None) -> dict:
+    """고르기 1위를 확정으로 올릴지 가를 여백들(X3, VIN-170). 판정에 쓰지 않고 잰다.
+
+    - ``tok_gap``·``title_gap``: brief 가 보여 준 1·2위 후보의 토큰 차(엄격 판정이 보는 값)
+    - ``sem_gap``: 의미 팔 원시 목록의 1-2위 거리 차(`_SEM_GAP` 이 보는 값)
+    - ``sem_lead``: 보여 준 첫 노드가 의미 팔에서 나머지보다 얼마나 가까운가. 그 노드가
+      의미 1위면 ``sem_gap`` 과 같고, 아니면 음수, 의미 팔에 없으면 None
+    - ``sem_dist_missing``: node_hits 에서 의미 팔에 들었는데 `distance` 가 빠진 행 수
+      (바깥에서 이 격차를 못 읽는 정도)
+    근거: [[vinc.plan.rag-eval-v2-0-9-6]]"""
+    c = [x for x in res.get("candidates") or [] if isinstance(x, dict)]
+    out: dict = {"tok_gap": None, "title_gap": None, "sem_gap": None, "sem_lead": None,
+                 "sem_dist_missing": sum(1 for h in hits or [] if isinstance(h, dict)
+                                         and "semantic" in (h.get("arms") or [])
+                                         and h.get("distance") is None)}
+    if len(c) > 1:
+        out["tok_gap"] = int(c[0].get("hit_tokens") or 0) - int(c[1].get("hit_tokens") or 0)
+        out["title_gap"] = int(c[0].get("title_tokens") or 0) - int(c[1].get("title_tokens") or 0)
+    if sem is not None:
+        d = [(h.get("id"), float(h["distance"])) for h in sem if h.get("distance") is not None]
+        if len(d) > 1:
+            out["sem_gap"] = round(d[1][1] - d[0][1], 6)
+        mine = [x for i, x in d if i == pred]
+        rest = [x for i, x in d if i != pred]
+        if mine and rest:
+            out["sem_lead"] = round(min(rest) - mine[0], 6)
+    return out
+
+
+def grade_one(res: dict, row: dict, hits: list | None = None, sem: list | None = None) -> dict:
     status = res.get("status")
     gold = row.get("gold_node_id") or ""
     answerable = bool(row.get("answerable", True))
@@ -120,6 +149,7 @@ def grade_one(res: dict, row: dict, hits: list | None = None) -> dict:
         "union_arms": sorted((by_id.get(gold) or {}).get("arms") or []) if urank else [],
         "pred": pred,
         "pred_rrf": float((by_id.get(pred) or {}).get("rrf_score") or 0.0),
+        "margin": margins(res, pred, hits or [], sem),
     }
     if answerable:
         out["hit"] = {k: 1.0 if 0 < rank <= k else 0.0 for k in RANKS}

@@ -60,6 +60,20 @@ class InProcess:
         return self.q.search(query, top_k=limit, owner=self.owner, store=self.store,
                              query_embedding=self._vec(query))
 
+    def sem_raw(self, query: str, limit: int) -> list[dict]:
+        """의미 팔이 융합 **전에** 본 목록(거리 오름차순). search 가 `_SEM_GAP` 을 재는
+        바로 그 목록이다: 같은 호출에 같은 유효구간 필터(오늘 보기)를 건다.
+
+        ⚠ 이것은 기준 경로에만 있다. node_hits 는 융합에서 id 당 첫 팔의 행을 남기므로
+        제목 팔도 찾은 노드는 `distance` 를 잃는다 — 바깥(CLI·v1)에서는 이 격차를 온전히
+        못 읽는다."""
+        q = self.q
+        raw = self.store.node_vector_search(self._vec(query), limit, owner=self.owner) or []
+        vf = q._validity_for_ids(self.store, [h.get("id") for h in raw if h.get("id")],
+                                 owner=self.owner)
+        return [h for h in raw
+                if q._visible(*vf.get(h.get("id"), ("", "")), historical=False, scope=None)]
+
     def close(self) -> None:
         self.store.close()
 
