@@ -180,6 +180,40 @@ class FunnelTests(unittest.TestCase):
                          (["semantic", "title"], "concept:b", 0.03))
 
 
+class PromotionTests(unittest.TestCase):
+    def _choose(self, lead, right):
+        r = _row(rank=1 if right else 2, union_rank=1)
+        r["margin"] = {"sem_lead": lead}
+        return r
+
+    def test_여백_순서대로_올리고_선을_넘지_않는_가장_큰_자름을_고른다(self):
+        rows = [_row("resolved", 1, 1), _row("resolved", 0, 1, wrong=1.0),   # 오늘 위험 1/2
+                self._choose(0.05, True), self._choose(0.03, True),
+                self._choose(0.02, False), self._choose(None, True)]
+        got = funnel.promotion(rows, "sem_lead", (0.025,))
+        self.assertEqual(got["with_value"], 3)          # None 은 올리지 않는다
+        # 셋째(오답)를 올려도 맞는 확정은 안 는다 — 같은 정답 수면 덜 올리는 쪽이다.
+        self.assertEqual(got["operating_points"]["today"]["point"]["promoted"], 2)
+        self.assertEqual(got["at_marks"]["0.025"]["promoted"], 2)
+        self.assertEqual(got["auroc"], 1.0)
+
+    def test_가르지_못하면_작동점이_없다(self):
+        rows = [_row("resolved", 1, 1), _row("resolved", 0, 1, wrong=1.0),
+                self._choose(0.01, False), self._choose(0.01, True)]
+        got = funnel.promotion(rows, "sem_lead")
+        self.assertIsNone(got["operating_points"]["lead_report_4_of_18"]["point"])
+        self.assertEqual(got["auroc"], 0.5)             # 같은 값이면 반
+
+    def test_여백은_보여_준_첫_노드의_의미_우위다(self):
+        res = {"status": "choose", "candidates": [{"id": "a", "hit_tokens": 3, "title_tokens": 1},
+                                                  {"id": "b", "hit_tokens": 1, "title_tokens": 1}]}
+        sem = [{"id": "b", "distance": 0.10}, {"id": "a", "distance": 0.12}]
+        got = grading.margins(res, "a", [{"id": "a", "arms": ["semantic", "title"]}], sem)
+        self.assertEqual((got["tok_gap"], got["title_gap"]), (2, 0))
+        self.assertEqual((got["sem_gap"], got["sem_lead"]), (0.02, -0.02))
+        self.assertEqual(got["sem_dist_missing"], 1)
+
+
 class LiveFingerprintTests(unittest.TestCase):
     def test_fingerprint_uses_verified_content_and_all_domain_counts(self):
         class _V1:

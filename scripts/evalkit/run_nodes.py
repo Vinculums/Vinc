@@ -89,7 +89,9 @@ def run_one(t, rows: list[dict], titles: dict) -> dict:
         if why:
             degraded.append({"row": i, "why": why})
         row = {**r, "_title_reuse": _title_reuse(r["query"], titles.get(r.get("gold_node_id") or "", ""))}
-        graded.append(grading.grade_one(res, row, srch.get("node_hits") or []))
+        # 의미 팔의 원시 거리는 기준 경로만 읽는다(`InProcess.sem_raw` 주석).
+        sem = t.sem_raw(r["query"], UNION_POOL) if hasattr(t, "sem_raw") else None
+        graded.append(grading.grade_one(res, row, srch.get("node_hits") or [], sem))
     s = grading.summarize(graded)
     s["wall_s"] = round(time.perf_counter() - t0, 2)
     return {"summary": s, "per_query": graded, "degraded": degraded}
