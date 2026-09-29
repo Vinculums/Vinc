@@ -545,6 +545,11 @@ class _RemoteEncoder:
         req = urllib.request.Request(self._url, data=body, headers=headers)
         with urllib.request.urlopen(req, timeout=REMOTE_TIMEOUT) as resp:
             out = json.load(resp) or {}
+        actual_runtime = out.get("encoder_runtime")
+        if not actual_runtime or actual_runtime != ENCODER_RUNTIME:
+            raise RuntimeError(
+                f"remote encoder runtime differs from this writer: "
+                f"remote={actual_runtime or 'unknown'}; local={ENCODER_RUNTIME}")
         vecs = out.get("vectors")
         if not isinstance(vecs, list) or len(vecs) != len(texts):
             # 개수가 어긋나면 아래 zip 이 **조용히 잘라** 일부 청크가 벡터 없이
@@ -633,7 +638,8 @@ def serve_encode(emb: "_Embedder", port: int) -> int:
                 with lock:
                     vecs = emb.encode(texts if raw
                                       else [_prefix(t, kind) for t in texts])
-                out = _json.dumps({"vectors": vecs}).encode("utf-8")
+                out = _json.dumps({"vectors": vecs,
+                                   "encoder_runtime": ENCODER_RUNTIME}).encode("utf-8")
             except Exception as exc:
                 # 사유를 삼키지 않는다 — 호출부가 로그에 남길 수 있게 본문으로 준다.
                 out = _json.dumps({"error": f"{type(exc).__name__}: {exc}"}).encode("utf-8")

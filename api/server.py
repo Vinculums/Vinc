@@ -101,7 +101,13 @@ def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
     req = urllib.request.Request(url.rstrip("/") + "/encode", data=body,
                                  headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return (json.load(resp) or {}).get("vectors") or []
+        out = json.load(resp) or {}
+    actual_runtime = out.get("encoder_runtime")
+    if not actual_runtime or actual_runtime != _ENCODER_RUNTIME:
+        raise RuntimeError(
+            f"remote encoder runtime differs from hub: "
+            f"remote={actual_runtime or 'unknown'}; hub={_ENCODER_RUNTIME}")
+    return out.get("vectors") or []
 
 from store.config import load_config
 from store import config as store_config

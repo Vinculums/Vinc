@@ -718,6 +718,15 @@ class SplitEncoderTest(unittest.TestCase):
         self.assertEqual(sizes, [3, 3, 1])
         self.assertEqual(out, [[float(i)] for i in range(7)])
 
+    def test_remote_runtime_mismatch_refuses_to_store_mislabelled_vectors(self):
+        import io
+        import urllib.request
+        from unittest.mock import patch
+        fake = io.BytesIO(b'{"vectors":[[1.0]],"encoder_runtime":"old-encoder"}')
+        with patch.object(urllib.request, "urlopen", return_value=fake):
+            with self.assertRaisesRegex(RuntimeError, "remote encoder runtime differs"):
+                self.mod._RemoteEncoder("http://encoder.invalid").encode(["passage"])
+
     def test_벡터_개수가_어긋나면_던진다(self):
         """조각↔벡터 정렬이 이 파이프라인의 유일한 암묵 계약이다. 개수가 모자라면
         `zip` 이 **조용히 잘라** 일부 청크가 벡터 없이 성공 처리된다(needs_embed 가

@@ -6832,6 +6832,16 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                             list(_vstats.get("best_dropped_score") or (0, 0)))
             base.setdefault("validity_note", _vnote)
 
+        # 이어 읽기에서도 벡터 팔은 다시 돈다. 첫 페이지와 같은 런타임 경고를
+        # 반환하기 전에 계산해 두어야 한다.
+        if query_embedding is not None and query_runtime is not None:
+            runtime_note = _encoder_runtime_warning(store, owner, query_runtime)
+            if runtime_note:
+                old_note = base.get("vector_note")
+                base["vector_note"] = (f"{old_note}; {runtime_note}" if old_note
+                                       else runtime_note)
+                base["encoder_runtime_warning"] = True
+
         # (4-b) E-G1 그래프 암 — 상위 Chunk 의 :MENTIONS 이웃 개념을 title 폴백과 융합.
         # 실패는 검색을 막지 않는다(그래프 암은 증강 — 부재 시 title 만, 하위호환).
         if continuation:
@@ -6853,13 +6863,6 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
             base["node_hits"] = _fuse_node_hits(title_hits, [], top_k=top_k,
                                                 vec_hits=vec_hits)
-        if query_embedding is not None and query_runtime is not None:
-            runtime_note = _encoder_runtime_warning(store, owner, query_runtime)
-            if runtime_note:
-                old_note = base.get("vector_note")
-                base["vector_note"] = (f"{old_note}; {runtime_note}" if old_note
-                                       else runtime_note)
-                base["encoder_runtime_warning"] = True
     finally:
         if owns:
             store.close()

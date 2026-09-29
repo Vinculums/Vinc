@@ -459,6 +459,7 @@ export function headerCta(id: string, iconName: string, label: string): string {
  *
  *  ⚠ `arms === "fts"` 만으로 판단하지 않는다. 임베딩 창구가 없는 데스크탑에서는
  *  그것이 **영구 정상 상태**라, 그것만 보면 상시 경보가 되고 상시 경보는 안 읽힌다.
+ *  실패 사유(`vector_note`)도 있을 때만 `arms` 로 실제 실행 여부를 확인한다.
  *  ⚠ 양성 둘과 실패를 가르는 것은 사이드카가 보낸 표식뿐이다. 표식이 없는 응답
  *  (구 사이드카)에서는 재빌드 창이 실패로 보인다 — 사이드카를 올리면 갈린다. */
 export type ArmsNotice = { text: string; benign: boolean };
@@ -468,6 +469,8 @@ export function armsNotice(res: any): ArmsNotice | null {
   if (typeof pending === "number" && pending > 0)
     return { text: COPY.search.migrating(pending), benign: true };
   if (res?.vector_rebuilding) return { text: COPY.search.rebuilding, benign: true };
+  if (res?.vector_note && res?.arms === "fts")
+    return { text: COPY.search.degraded, benign: false };
   if (res?.encoder_runtime_warning)
     return { text: COPY.search.runtimeMismatch, benign: false };
   if (res?.vector_note) return { text: COPY.search.degraded, benign: false };

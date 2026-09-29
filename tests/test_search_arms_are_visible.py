@@ -84,6 +84,13 @@ class ArmsNoticeReachesEverySurfaceTests(unittest.TestCase):
                             "arms 문자열로 판단하면 데스크탑에서 상시 경보가 된다")
         self.assertNotIn("rebuilt", body, "영문 사유 문장을 파싱하고 있다")
 
+    def test_failed_arm_is_reported_before_runtime_mismatch(self):
+        body = _read("components.ts")
+        body = body[body.index("export function armsNotice("):]
+        self.assertLess(body.index('res?.vector_note && res?.arms === "fts"'),
+                        body.index("if (res?.encoder_runtime_warning)"),
+                        "검색이 실패했는데 의미 팔이 실행됐을 수도 있다고 안내한다")
+
     def test_두_덱에_문구가_다_있다(self):
         src = _read("copy.ts")
         for key in ("rebuilding", "degraded", "runtimeMismatch"):
