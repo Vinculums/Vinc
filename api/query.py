@@ -1241,19 +1241,22 @@ def ppr_recent(nodes: list[dict], scores: dict[str, float], *,
 
 
 def attach_ppr(shaped: dict, seeds: list[str], *, alpha: float = 0.15,
-               iters: int = 30) -> dict:
+               iters: int = 30, recent: bool = False) -> dict:
     """shaped 그래프의 각 노드에 ``ppr`` 필드(6자리 반올림)를 부여한다(E-G2, 가산
     메타 — 기존 소비처 무영향). seed ego 뷰·decide 에서 호출. 시드 없거나 노드 0이면
-    무동작(빈 그래프 안전). 최근성을 섞은 ``ppr_recent`` 도 함께 싣는다(:func:`ppr_recent`)."""
+    무동작(빈 그래프 안전). ``recent`` 면 최근성을 섞은 ``ppr_recent`` 도 싣는다
+    (:func:`ppr_recent`). 기본은 끈다: 기본 출력(`vinc_graph` layers·decide)은 바이트
+    단위로 그대로여야 한다(VIN-195 수락 기준)."""
     nodes = shaped.get("nodes") or []
     if not nodes:
         return shaped
     scores = ppr_scores(nodes, shaped.get("edges") or [], seeds,
                         alpha=alpha, iters=iters)
-    recent = ppr_recent(nodes, scores)
+    mixed = ppr_recent(nodes, scores) if recent else {}
     for nd in nodes:
         nd["ppr"] = round(scores.get(nd.get("id"), 0.0), 6)
-        nd["ppr_recent"] = round(recent.get(nd.get("id"), 0.0), 6)
+        if recent:
+            nd["ppr_recent"] = round(mixed.get(nd.get("id"), 0.0), 6)
     return shaped
 
 
@@ -1315,21 +1318,38 @@ def concept_edge_ids_plan(ids: list[str], *, owner: str | None = None) -> QueryP
 
 
 def _prize_pick(seed: str, reach_rows: list[dict], max_nodes: int, *, owner: str,
-                cfg, store) -> tuple[list[str], float] | None:
+                cfg, store) -> tuple[list[str] | None, str]:
     """도달 집합(개념)에서 시드 + 개념 `max_nodes` 개를 상금(`ppr`)으로 고른다. 예산 단위는 층
-    자르기와 같다(시드 빼고 개념만 센다). 엣지 조회가 안 돌면 None.
+    자르기와 같다(시드 빼고 개념만 센다). 돌려주는 것은 (고른 id, `selection.note`) 이고, 고르지
+    않으면 id 자리가 None 이며 문장이 그 까닭이다(부르는 쪽이 층 자르기로 돌아간다).
 
-    ponytail: 순위 그래프는 개념↔개념 엣지뿐이라 매개자(브릿지·레코드·에피소드·결정)나 주제
-    노드로만 이어진 개념은 후보가 못 된다. 필요해지면 매개자 팔을 id 만으로 더 읽어 쌍으로 접을 것."""
+    순위 그래프는 개념↔개념 엣지뿐이다. 시드에서 재시작하는 PPR 은 거기서 시드와 이어지지 않은
+    개념(매개자·주제 노드로만 이어진 것)에 정확히 0 을 주므로, 후보는 ppr > 0 인 개념이다. 후보가
+    예산 안이면 상금은 자를 것이 없다. 그대로 고르면 "깊이 N 을 다 봤다"는 거짓이 되고 층 자르기가
+    내는 깊이 안내도 사라지므로 층 자르기로 돌린다.
+    ponytail: 매개자로만 이어진 개념은 후보가 못 된다. 필요해지면 매개자 팔을 id 만으로 더 읽어
+    쌍으로 접을 것."""
     ids = sorted({seed, *(r["id"] for r in reach_rows)})
     res = execute(concept_edge_ids_plan(ids, owner=owner), cfg, store=store)
     if not res.get("executed"):
-        return None
+        return None, "the edge lookup for prize selection did not run"
     edges = [e for e in res.get("rows", []) if e.get("source") and e.get("target")]
     nodes = [{"id": i} for i in ids]
     prizes = ppr_scores(nodes, edges, [seed])
-    picked = prize_subgraph(nodes, edges, prizes, seed, int(max_nodes) + 1)
-    return picked, sum(prizes.get(i, 0.0) for i in picked)
+    ranked = sum(v > 0 for v in prizes.values()) - 1      # 시드 빼고
+    reach = len(ids) - 1
+    if ranked <= int(max_nodes):
+        return None, (f"only {ranked} of the {reach} concepts in reach link to the seed "
+                      f"through concepts, and the budget of {max_nodes} holds them all, "
+                      "leaving prize nothing to rank")
+    left = reach - ranked
+    note = (f"the {ranked} concepts in reach that link to the seed through concepts were "
+            "ranked by ppr and the connected set with the most was kept, with what is "
+            "attached to it")
+    if left:
+        note += (f"; {left} concepts reached only through records, episodes, bridges, "
+                 "decisions or topics were not candidates and were left out")
+    return prize_subgraph(nodes, edges, prizes, seed, int(max_nodes) + 1), note
 
 
 def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None,
@@ -2548,7 +2568,8 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
     홉까지 다 봤다"는 말이 참으로 남아야 해서다. 주지 않으면(View L2·공유 팩·동기화)
     플랜도 결과도 종전과 같다. 예산 값은 MCP 핸들러가 정한다.
     ``select="prize"`` 면 같은 경우에 깊이를 두고 개념을 ppr 로 고른다(:func:`_prize_pick`,
-    단위는 같다 — 시드 + 개념 ``max_nodes``). 무엇을 했는지는 ``selection`` 이 말한다.
+    단위는 같다 — 시드 + 개념 ``max_nodes``). 무엇을 했는지는 ``selection`` 이 말하고,
+    노드의 ``ppr_recent`` 도 이때만 붙는다.
     근거: [[decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24]]"""
     if seed:
         # SEC-1: seed 갈래도 owner 스코프를 지킨다. 여태 owner 를 받고도 쓰지 않아
@@ -2581,28 +2602,25 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         # 고른 개념에만 돈다 — 부착(레코드·에피소드·브릿지·결정)은 예산 밖이다.
         # 결정 시드는 층 자르기로 간다: 결정↔개념 엣지는 순위 그래프(개념↔개념)에 없고, 시드
         # 자신의 엣지가 고리 전체를 예산 밖에서 다시 싣는다(아래 decision_seed 합류).
+        # 개념으로 이어진 후보가 예산 안일 때도 층 자르기로 간다(:func:`_prize_pick`).
         selection: dict | None = None
         prized = False
         if (select == "prize" and max_nodes and int(depth) > 1 and not entity_seed
                 and len(reach_rows) > int(max_nodes)):
-            why, picked = "", None
+            picked: list[str] | None = None
             if decision_seed:
                 why = "prize selection ranks from concept seeds only"
             elif len(reach_rows) > PRIZE_REACH_CAP:
                 why = (f"reach {len(reach_rows)} is over the prize-selection cap of "
                        f"{PRIZE_REACH_CAP}")
             else:
-                picked = _prize_pick(seed, reach_rows, int(max_nodes), owner=owner,
-                                     cfg=cfg, store=store)
-                why = "" if picked else "the edge lookup for prize selection did not run"
+                picked, why = _prize_pick(seed, reach_rows, int(max_nodes), owner=owner,
+                                          cfg=cfg, store=store)
             if picked:
-                keep_ids = set(picked[0])
+                keep_ids = set(picked)
                 selection = {"method": "prize", "max_nodes": int(max_nodes),
                              "reach": len(reach_rows), "kept": len(keep_ids - {seed}),
-                             "prize_kept": round(picked[1], 4),
-                             "note": "every concept within the requested depth was ranked "
-                                     "and the connected set with the most ppr was kept, "
-                                     "with what is attached to it"}
+                             "note": why}
                 reach_rows = [r for r in reach_rows if r["id"] in keep_ids]
                 prized = True
             else:
@@ -2691,7 +2709,8 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
                                     "ts": seed_row.get("ts") or "",
                                     "content_ts": seed_row.get("content_ts") or ""}]
         # E-G2 — 시드 관점 개인화 랭킹(ppr). layout 전에 부여(순수 메타, 좌표 무관).
-        attach_ppr(shaped, [seed])
+        # `ppr_recent` 는 `prize` 를 요청했을 때만 싣는다(기본 출력은 그대로).
+        attach_ppr(shaped, [seed], recent=select == "prize")
         # 브릿지 소속은 파생값이다 — 배치보다 **먼저** 확정해야 hub·rank 가 같은
         # 도메인을 읽는다(_derive_bridge_domains 주석).
         _derive_bridge_domains(shaped)

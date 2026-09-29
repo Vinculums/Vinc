@@ -7,13 +7,15 @@
      나이는 집합에서 가장 새 노드부터 재므로 그래프가 그대로면 값도 그대로다
   2. `prize_subgraph`: 시드를 포함하고 연결돼 있으며 예산을 지킨다. 가깝지만 상금이 작은
      노드보다 한 홉 먼 상금 큰 노드를 고를 수 있다. 결정론이다
-  3. `vinc_graph` 경로: `select` 를 안 주면 결과가 예전과 같다(숫자로 못 박는다). `prize` 면
-     요청한 깊이를 두고 층 자르기와 같은 단위(시드 + 개념 `max_nodes`)로 고른 뒤, 부착은 층
-     자르기처럼 합류시키고 `selection` 으로 말한다. 행·축 조회는 고른 개념에만 돈다
+  3. `vinc_graph` 경로: `select` 를 안 주면 결과가 예전과 같다(숫자로 못 박고, `ppr_recent` 도
+     안 붙는다). `prize` 면 요청한 깊이를 두고 층 자르기와 같은 단위(시드 + 개념 `max_nodes`)로
+     고른 뒤, 부착은 층 자르기처럼 합류시키고 `selection` 으로 말한다. 행·축 조회는 고른 개념에만
+     돈다. 개념으로 이어진 후보가 예산 안이면 자를 것이 없으므로 층 자르기로 돌아간다
 """
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
 import sys
 import tempfile
@@ -72,18 +74,21 @@ class Recency(unittest.TestCase):
                                  if t else ""} for i, t in base],
                       "edges": [{"source": "s", "target": "x", "type": "RELATED_TO"},
                                 {"source": "s", "target": "y", "type": "RELATED_TO"}]}
-            q.attach_ppr(shaped, ["s"])
+            q.attach_ppr(shaped, ["s"], recent=True)
             return {n["id"]: (n["ppr"], n["ppr_recent"]) for n in shaped["nodes"]}
 
         self.assertEqual(run(0), run(-400))
 
-    def test_attach_ppr_keeps_ppr_and_adds_the_mix(self):
-        shaped = {"nodes": [{"id": "s", "ts": "2026-09-01"}, {"id": "x", "ts": "2024-01-01"}],
-                  "edges": [{"source": "s", "target": "x", "type": "RELATED_TO"}]}
-        q.attach_ppr(shaped, ["s"])
-        for n in shaped["nodes"]:
-            self.assertIn("ppr", n)
-            self.assertIn("ppr_recent", n)
+    def test_attach_ppr_adds_the_mix_only_when_asked(self):
+        def shaped():
+            return {"nodes": [{"id": "s", "ts": "2026-09-01"}, {"id": "x", "ts": "2024-01-01"}],
+                    "edges": [{"source": "s", "target": "x", "type": "RELATED_TO"}]}
+        plain = q.attach_ppr(shaped(), ["s"])
+        mixed = q.attach_ppr(shaped(), ["s"], recent=True)
+        for a, b in zip(plain["nodes"], mixed["nodes"]):
+            self.assertNotIn("ppr_recent", a)     # 기본(vinc_graph layers·decide)은 그대로다
+            self.assertEqual(a["ppr"], b["ppr"])
+            self.assertIn("ppr_recent", b)
 
 
 class PrizeSubgraph(unittest.TestCase):
@@ -122,6 +127,22 @@ def _kinds(res: dict) -> dict:
     for n in res["nodes"]:
         out[n["kind"]] = out.get(n["kind"], 0) + 1
     return out
+
+
+def _canon(res: dict) -> dict:
+    """결과 전체를 비교할 수 있게 노드·엣지 순서를 고정한다. 같은 호출을 거듭해도 엔진의 행
+    순서가 바뀌어 노드 순서가 달라진다(실측: 층 자르기 40회에 순서 11가지). 배치는 안에서
+    정렬하므로 좌표는 순서와 무관하다."""
+    return {**res, "nodes": sorted(res["nodes"], key=lambda n: n["id"]),
+            "edges": sorted(res["edges"], key=lambda e: json.dumps(e, sort_keys=True))}
+
+
+def _without_recent(res: dict) -> dict:
+    """`prize` 를 요청한 결과에서 `ppr_recent` 를 걷어 낸다(모든 노드에 있어야 한다)."""
+    for n in res["nodes"]:
+        assert "ppr_recent" in n, n["id"]
+        n.pop("ppr_recent")
+    return _canon(res)
 
 
 def _connected_from(res: dict, seed: str) -> set:
@@ -199,8 +220,8 @@ class GraphSelect(_Store):
 
     def test_default_is_unchanged(self):
         a = self.g(depth=2, max_nodes=10)
-        self.assertEqual(a, self.g(depth=2, max_nodes=10, select="layers"))
         self.assertNotIn("selection", a)
+        self.assertFalse([n["id"] for n in a["nodes"] if "ppr_recent" in n])
         # 예산 없는 쪽과 층 자르기의 숫자를 못 박는다 — 이 숫자가 곧 "기본은 그대로"의 뜻이다.
         self.assertEqual(a["depth_budget"], {"requested_depth": 2, "served_depth": 1,
                                              "reach_at_requested": 14, "reach_served": 8,
@@ -214,7 +235,8 @@ class GraphSelect(_Store):
         sel = res.pop("selection")
         self.assertEqual((sel["method"], sel["requested"]), ("layers", "prize"))
         self.assertIn("concept seeds only", sel["note"])
-        self.assertEqual(res, q.graph(owner=self.OWNER, store=self.store, **kw))
+        self.assertEqual(_without_recent(res),
+                         _canon(q.graph(owner=self.OWNER, store=self.store, **kw)))
 
     def test_prize_keeps_the_depth_and_fills_the_budget(self):
         res = self.g(depth=2, max_nodes=10, select="prize")
@@ -227,6 +249,9 @@ class GraphSelect(_Store):
         self.assertIn("concept:leaf0", ids)        # 허브 잎은 상금이 커서 남는다
         self.assertTrue({"record:s0", "record:s1"} <= ids)   # 시드의 부착은 예산 밖이다
         self.assertEqual(_connected_from(res, self.SEED), ids)
+        self.assertIn("the 14 concepts", sel["note"])   # 전부 개념으로 이어져 전부 후보다
+        self.assertNotIn("not candidates", sel["note"])
+        self.assertNotIn("prize_kept", sel)
 
     def test_rows_and_axes_are_read_for_the_kept_concepts_only(self):
         from unittest import mock
@@ -274,13 +299,51 @@ class PrizeUnit(_Store):
         layers = self.g(depth=2, max_nodes=10)
         self.assertEqual(_kinds(layers), {"concept": 11, "record": 6})
         self.assertNotIn("depth_budget", layers)
-        self.assertEqual(self.g(depth=2, max_nodes=10, select="prize"), layers)
+        self.assertEqual(_without_recent(self.g(depth=2, max_nodes=10, select="prize")),
+                         _canon(layers))
 
     def test_a_cut_keeps_the_seeds_own_records(self):
         res = self.g(depth=2, max_nodes=5, select="prize")
         self.assertEqual(res["depth"], 2)
         self.assertEqual((res["selection"]["reach"], res["selection"]["kept"]), (10, 5))
         self.assertEqual(_kinds(res), {"concept": 6, "record": 6})
+
+
+class RecordOnlyReach(_Store):
+    """재검토 탐침: 시드 + 개념 이웃 둘 + 레코드로만 시드에 이어진 개념 열둘. 깊이 2 의 개념
+    도달 집합은 14 지만 순위 그래프(개념↔개념)에서 시드와 이어진 후보는 둘뿐이다."""
+
+    def nodes_and_edges(self):
+        nodes = [{"id": self.SEED, "type": "concept", "title": "Seed"}]
+        edges = []
+        for i in range(2):
+            nodes.append({"id": f"concept:n{i}", "type": "concept", "title": f"N {i}"})
+            edges.append({"from": self.SEED, "to": f"concept:n{i}", "type": "relates_to"})
+        for j in range(12):
+            nodes.append({"id": f"concept:x{j}", "type": "concept", "title": f"X {j}"})
+            nodes.append({"id": f"record:r{j}", "type": "record", "title": f"R {j}"})
+            edges.append({"from": f"record:r{j}", "to": self.SEED, "type": "relates_to"})
+            edges.append({"from": f"record:r{j}", "to": f"concept:x{j}", "type": "relates_to"})
+        return nodes, edges
+
+    def test_nothing_to_cut_falls_back_to_layers(self):
+        # 고치기 전: prize 가 깊이 2 · 개념 2 · "every concept ... ranked" 를 말했다. 같은 노드를
+        # 층 자르기는 깊이 1 과 `depth_budget` 으로 말한다(MCP 핸들러가 그걸 보고 깊이 안내를 단다).
+        layers = self.g(depth=2, max_nodes=5)
+        self.assertEqual(layers["depth_budget"]["served_depth"], 1)
+        res = self.g(depth=2, max_nodes=5, select="prize")
+        sel = res.pop("selection")
+        self.assertEqual((sel["method"], sel["requested"]), ("layers", "prize"))
+        self.assertIn("only 2 of the 14 concepts", sel["note"])
+        self.assertEqual(_without_recent(res), _canon(layers))
+
+    def test_a_real_cut_names_what_it_could_not_rank(self):
+        res = self.g(depth=2, max_nodes=1, select="prize")
+        sel = res["selection"]
+        self.assertEqual((sel["method"], sel["reach"], sel["kept"]), ("prize", 14, 1))
+        self.assertIn("the 2 concepts", sel["note"])
+        self.assertIn("12 concepts reached only through", sel["note"])
+        self.assertNotIn("every concept", sel["note"])
 
 
 class Surfaces(unittest.TestCase):
