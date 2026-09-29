@@ -1497,9 +1497,12 @@ class VincApp:
             return 503, {"executed": False, "error": "embedding_apply_paused"}
         doc_id = _req(body, "doc_id")
         embeddings = body.get("embeddings") or {}
+        # 벡터를 만든 바탕(본문 해시·모델). 옛 워커는 안 실으므로 None = 대조 생략.
+        content_hash = body.get("content_hash")
+        model = (body.get("model") or "").strip() or None
         res = self.jobs.run_sync("embed.apply", lambda: docstore.apply_embeddings(
-            self.store, doc_id, embeddings,
-            str(body.get("encoder_runtime") or "")))
+            self.store, doc_id, embeddings, str(body.get("encoder_runtime") or ""),
+            content_hash=content_hash, model=model))
         return 200, res
 
     # ── 주제·타입 어휘 라우트 (어휘 write 표면 — 그래프와 분리, R4 직렬화) ────────

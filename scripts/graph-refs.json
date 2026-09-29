@@ -511,6 +511,7 @@
     "record:embed-dim-namespace-split-2026-08-30",
     "record:embed-prefix-missing-m3-branch-2026-08-30",
     "record:embed-vector-dim-fixed-at-768-2026-08-30",
+    "record:embedding-apply-accepted-vectors-it-never-checked-2026-09-29",
     "record:encoder-resident-set-leaves-1-1-gib-for-a-reranker-2026-09-08",
     "record:endpoint-table-must-be-built-from-merged-nodes",
     "record:endpoint-types-resolve-only-within-one-payload",

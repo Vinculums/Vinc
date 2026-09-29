@@ -160,6 +160,15 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         self.assertEqual(by_doc["d1"]["c2"], [[3.0, 0.0]])   # "bbb"
         self.assertEqual(by_doc["d2"]["c3"], [[1.0, 0.0]])   # "c"
 
+    def test_apply_는_벡터를_만든_바탕을_싣는다(self):
+        """RV-03 — pending 의 본문 해시는 **그대로**, 모델은 이 워커의 것. 사이드카는 이
+        둘로 인코딩하는 사이 바뀐 본문·모델의 벡터를 거절한다."""
+        sidecar = _FakeSidecar([[
+            {"doc_id": "d1", "chunk_id": "c1", "text": "aa", "content_hash": "h1"}]])
+        self.assertEqual(self._run(sidecar, model="BAAI/bge-base-en-v1.5"), 0)
+        self.assertEqual(sidecar.applied[0]["content_hash"], "h1")
+        self.assertEqual(sidecar.applied[0]["model"], "BAAI/bge-base-en-v1.5")
+
     def test_긴_청크는_조각_여럿으로_임베딩된다(self):
         """v8 부모-자식 — 청크는 정본이라 안 자르고, **벡터만** 쪼갠다.
 
