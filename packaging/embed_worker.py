@@ -892,6 +892,17 @@ def main() -> int:
                                                                  or ENCODER_RUNTIME),
                                              "content_hash": chunks[0].get("content_hash"),
                                              "model": MODEL})
+                err = res.get("error")
+                if err == "content_changed":
+                    # 인코딩하는 사이 본문이 바뀌었다. 실패로 세지 않는다 — 새 본문은 다음
+                    # 라운드가 가져간다(세면 편집 중인 문서가 격리돼 몇 시간 빠진다).
+                    print(f"[embed] doc={doc_id} 본문이 바뀌어 다음 라운드로 미룬다", flush=True)
+                    continue
+                if err or not res.get("executed"):
+                    # 200 본문의 거절(잔해 색인·폭 불일치·모델 불일치)도 실패다. 진행으로
+                    # 읽으면 격리·백오프·stall 경고가 다 비껴가고, 같은 문서를 곧바로 다시
+                    # 인코딩하며 인코더를 붙잡아 질의 임베딩이 시간 초과로 떨어진다.
+                    raise RuntimeError(f"apply refused: {err or 'executed=false'}")
                 print(f"[embed] doc={doc_id} chunks={res.get('embedded')} "
                       f"cleared={res.get('cleared')}", flush=True)
                 failures.pop(doc_id, None)
