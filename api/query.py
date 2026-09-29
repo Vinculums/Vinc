@@ -6425,6 +6425,11 @@ _ID_PREFIX_TOKENS = frozenset(("concept", "episode", "record", "bridge", "entity
 NODE_SCAN_CAP = 2000
 
 
+def _id_token(t: str) -> bool:
+    """id 매치에 쓰는 토큰인가 — 종류 접두와 한 글자는 거의 모든 id 에 들어 있다."""
+    return len(t) > 1 and t not in _ID_PREFIX_TOKENS
+
+
 # ── 실패 응답의 다음 행동 (F7) ───────────────────────────────────────────────
 # 실패는 **무엇**만이 아니라 **다음**을 말해야 한다: `error`(무엇) + `hint`(다음) +
 # `candidates`(어디로). 그 전에는 없는 노드 조회가 `{"executed": true}` 만 답해
@@ -6503,7 +6508,10 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     # 매치가 잘린다. 그래서 **id 열에서만** 그런 토큰을 뺀다.
     # 근거: [[vinc.plan.node-pk-namespacing]] §7
     own_low = (owner or "").lower() if pkns.enabled() else ""
-    id_idx = [i for i in idx if not (own_low and toks[i] in own_low)]
+    # 종류 접두(`concept` 등)와 한 글자 토큰도 id 열에서 뺀다 — 모든 id 에 들어 있어서
+    # 스캔 상한을 쓰레기로 채운다(점수 단계도 같은 규칙, :func:`_id_token`).
+    id_idx = [i for i in idx
+              if _id_token(toks[i]) and not (own_low and toks[i] in own_low)]
 
     def _any(fields: tuple[str, ...]) -> str:   # 토큰 하나라도, 필드 하나라도
         parts = [f"lower(coalesce({f},'')) CONTAINS $q{i}"
@@ -6599,10 +6607,10 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
         n_title = sum(1 for t in toks if t in title)
         n_one = sum(1 for t in toks if t in one)
         n_props = sum(1 for t in toks if t in props)
-        n_id = sum(1 for t in toks if t not in _ID_PREFIX_TOKENS and t in nid)
+        n_id = sum(1 for t in toks if _id_token(t) and t in nid)
         hit = sum(1 for t in toks
                   if t in title or t in one or t in props
-                  or (t not in _ID_PREFIX_TOKENS and t in nid))
+                  or (_id_token(t) and t in nid))
         if not hit:
             continue
         where = ("title" if n_title else "one_liner" if n_one

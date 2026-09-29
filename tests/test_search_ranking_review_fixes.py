@@ -1,0 +1,63 @@
+# -*- coding: utf-8 -*-
+"""RAG 코드 리뷰(2026-09-29) 중 **랭킹을 바꾸는** 검색 결함의 회귀 테스트.
+
+항목마다 클래스 하나이고, 클래스 이름에 리뷰 번호(RV-nn)를 단다. 이 셋은 G0 평가를
+움직일 수 있어서 랭킹을 안 바꾸는 항목(tests/test_search_review_fixes.py)과 PR 을
+따로 둔다.
+근거: [[vinc.audit.rag-code-review-2026-09-29]]
+"""
+from __future__ import annotations
+
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from store.embedded_backend import _import_driver  # noqa: E402
+
+_DRIVER, _NAME = _import_driver()
+
+
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
+class KindPrefixOutOfIdScanRV11(unittest.TestCase):
+    """`concept` 토큰이 모든 Concept id 에 걸려 스캔 상한을 채우고 진짜 매치를 잘랐다."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._env = {}
+        for k, v in {"MEMORY_STORE_BACKEND": "embedded",
+                     "MEMORY_DATA_DIR": os.path.join(self._tmp, "store")}.items():
+            self._env[k] = os.environ.get(k)
+            os.environ[k] = v
+        from store.backend import open_store
+        from store.config import load_config
+        self.store = open_store(load_config())
+        self.store.provision(dim=4)
+
+    def tearDown(self):
+        self.store.close()
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_concept_drift_still_finds_the_drift_record(self):
+        from api import query as q
+        from store import pkns
+        n = q.NODE_SCAN_CAP + 100
+        self.store.run("UNWIND $r AS r CREATE (:Concept {concept_id: r.id, title: r.t, "
+                       "owner_id: 'u', domain: ''})",
+                       {"r": [{"id": pkns.key("u", f"concept:c{i:05d}"), "t": f"thing {i}"}
+                              for i in range(n)]})
+        self.store.run("CREATE (:Record {record_id: $id, title: 'Drift', owner_id: 'u', "
+                       "domain: ''})", {"id": pkns.key("u", "record:drift")})
+        hits = q._node_fallback_search(self.store, "concept drift", owner="u")
+        self.assertIn("record:drift", [h["id"] for h in hits])
+
+
+if __name__ == "__main__":
+    unittest.main()
