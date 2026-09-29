@@ -34,6 +34,19 @@ export type ViewHooks = {
    *  가져갔다). `nodeId` 가 없는 문서(개념 언급 0)는 지도에 자리가 없으므로 본문만
    *  연다. `chunkIndex` 는 검색의 청크 히트가 그 대목에 앉는 자리다. */
   openDoc: (docId: string, nodeId?: string, domain?: string, chunkIndex?: number) => void;
+  // ── 작업하는 자리에서 만들기(authoring.ts). View 만 뜻이 있어서 여기 싣는다. ──
+  /** 오른쪽 문서 열에 새 문서를 연다. 주제 칩은 `topic` 으로 채운다. */
+  newDoc?: (topic?: string) => void;
+  /** 방금 만든(또는 고친) 노드를 지도에 세우고 그 자리로 간다. 열려 있는 문서 열은 닫지 않는다.
+   *  `label` 을 주면, 지도에 자리가 없는 노드(연결 없는 기록·결정은 전체 지도에 안 그려진다)를
+   *  노드 상세로 대신 연다 — 만들었는데 아무 데도 안 보이는 일을 만들지 않는다. */
+  reveal?: (id: string, domain?: string, label?: string) => Promise<void>;
+  /** 만든 노드를 문서 열의 노드 상세로 연다(컴포저의 Ctrl/Cmd+Enter). */
+  openNodePane?: (id: string, domain?: string, label?: string) => Promise<void>;
+  /** 지금 보고 있는 자리 — 새로 만드는 것의 주제를 채우는 데 쓴다. */
+  context?: () => { topic: string; nodeId: string };
+  /** 잇기(흐름 F): 지도에서 다음에 고른 노드를 `cb` 로 넘긴다. null 이면 푼다. */
+  pickNode?: (cb: ((id: string, title: string) => void) | null) => void;
 };
 
 let hooks: ViewHooks | null = null;
@@ -58,7 +71,14 @@ export function viewHooks(): ViewHooks | null {
 export function refreshTopbar() {
   // 지도 손잡이는 View 소유다 — 훅이 없으면 슬롯을 비운다. 남겨 두면 검색·팩
   // 화면에서 눌리는데 아무 지도도 안 바뀌는 칩이 된다.
-  if (!hooks) { const l = lensSlot(), v = viewpointsSlot(); if (l) l.innerHTML = ""; if (v) v.innerHTML = ""; }
+  // 열린 보기 카드도 함께 접는다 — 패널은 표면과 함께 사라졌는데 카드만 펼친 폭으로
+  // 남으면, 돌아왔을 때 닫힌 패널 위에 관점 세그가 떠 있다.
+  if (!hooks) {
+    const l = lensSlot(), v = viewpointsSlot();
+    if (l) l.innerHTML = "";
+    if (v) v.innerHTML = "";
+    $("tb-viewctl")?.removeAttribute("data-open");
+  }
 }
 
 /** 렌즈 버튼 자리(D71) — 하단 바에서 상단 바 좌측으로 올라왔다. */

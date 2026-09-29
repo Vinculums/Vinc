@@ -18,17 +18,6 @@ import { api, cfg } from "./api";
 import { COPY } from "./copy";
 import { openSheet } from "./components";
 
-const OWNER = "tenant:local";   // 본인 데이터 공간(intake 와 같은 값 — 샘플과 분리)
-
-/** 여러 개를 놓았을 때 가져오기 표면으로 넘길 파일. 한 번만 꺼내진다. */
-let handoff: File[] | null = null;
-export function takeDroppedFiles(): File[] | null {
-  const f = handoff; handoff = null; return f;
-}
-
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
-
 /** 빈 상태 블록의 HTML. 문구는 호출부가 정한다 — 지도가 비었을 때와 문서 목록이
  *  비었을 때는 같은 초대를 하지만 첫 줄이 다르다.
  *
@@ -106,82 +95,20 @@ export function wireEmptyInvite(root: ParentNode, onDone?: (nodeId?: string) => 
       }
       return;
     }
-    handoff = files;
-    location.hash = "#ingest";
+    // 여럿이면 배치 진행률과 부분 실패 보고가 있는 가져오기 화면으로 **이 자리에서** 넘긴다.
+    // 여태 없는 라우트(`#ingest`)로 보내 파일이 조용히 사라졌다.
+    const { renderIntake } = await import("./surfaces/intake");
+    const sheet = openSheet({ title: COPY.author.menuImport, size: "panel",
+                              onClose: () => onDone?.() });
+    renderIntake(sheet.body, { withHeader: false, withNewDoc: false, files });
   });
 }
 
-/** 제목 → id 조각. 그래프 id 는 소문자 슬러그라 한글은 그대로 두고 공백·기호만 접는다
- *  (`docstore._SLUG_RE` 와 같은 문자 계열). 빈 결과는 호출부가 막는다. */
-function slug(title: string): string {
-  return title.toLowerCase().replace(/[^a-z0-9가-힣]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
-}
-
-/** 노드 하나를 손으로 만든다 — 파일이 없어도 시작할 수 있게.
- *
- *  타입은 셋만 낸다(개념·기록·결정). 스키마는 여섯을 알지만 나머지 셋(주제·다리·사건)은
- *  손으로 지을 것이 아니다: 주제는 `domain` 문자열에서 파생되고, 다리와 사건은 각각
- *  구조와 시간이 붙어야 뜻이 선다.
- *
- *  ⚠ 한 줄 설명은 `one_liner` 로 보낸다(개념일 때). 그 자리가 답변 재료로 쓰이는 열이라
- *  props 에 넣으면 화면에는 남지만 답변에는 안 실린다. */
+/** 노드 하나를 손으로 만든다 — 이제 컴포저(흐름 E)가 그 일을 한다. 여태 이 폼은 이미
+ *  있는 id 에 조용히 합쳤고, 한글·영문 밖의 제목을 빈 id 로 만들었고, 소유자를 박아
+ *  두었다(`node-composer.ts` 머리말). 만든 노드를 지도에 세우는 것도 컴포저가 한다. */
 export async function openNewNodeSheet(onCreated?: (id: string) => void) {
-  const c = COPY.emptyInvite;
-  const sheet = openSheet({ title: c.newSheetTitle, subtitle: c.newSheetSub });
-  const domains: string[] = await api.domains(cfg.owner)
-    .then((r: any) => (r?.rows || r?.domains || []).map((d: any) => d.domain || d.name || d)
-      .filter((s: any) => typeof s === "string"))
-    .catch(() => []);
-
-  sheet.body.innerHTML = `
-    <label class="ei-field"><span>${c.fTitle}</span>
-      <input id="ei-title" type="text" autocomplete="off" /></label>
-    <label class="ei-field"><span>${c.fKind}</span>
-      <select id="ei-kind">
-        <option value="concept">${c.kConcept}</option>
-        <option value="record">${c.kRecord}</option>
-        <option value="decision">${c.kDecision}</option>
-      </select></label>
-    <label class="ei-field"><span>${c.fTopic}</span>
-      <input id="ei-topic" type="text" list="ei-domains" autocomplete="off"
-             placeholder="${esc(c.fTopicHint)}" />
-      <datalist id="ei-domains">${domains.map((d) => `<option value="${esc(d)}"></option>`).join("")}</datalist>
-    </label>
-    <label class="ei-field"><span>${c.fOneLiner}</span>
-      <textarea id="ei-note" rows="3"></textarea></label>
-    <p class="hint" id="ei-msg"></p>`;
-  sheet.foot.innerHTML = `<button class="btn btn-primary" id="ei-save">${c.newSaveCta}</button>`;
-
-  const $ = <T extends HTMLElement>(s: string) => sheet.body.querySelector<T>(s)!;
-  const titleEl = $<HTMLInputElement>("#ei-title");
-  const msgEl = $<HTMLElement>("#ei-msg");
-  titleEl.focus();
-
-  sheet.foot.querySelector("#ei-save")!.addEventListener("click", async () => {
-    const title = titleEl.value.trim();
-    const kind = $<HTMLSelectElement>("#ei-kind").value;
-    const topic = $<HTMLInputElement>("#ei-topic").value.trim();
-    const note = $<HTMLTextAreaElement>("#ei-note").value.trim();
-    const s = slug(title);
-    if (!title || !s) { msgEl.textContent = c.needTitle; titleEl.focus(); return; }
-
-    const id = `${kind}:${s}`;
-    const node: Record<string, unknown> = { id, type: kind, title };
-    if (topic) node.domain = topic;
-    if (note) { node.one_liner = note; node.props = { note }; }
-
-    msgEl.textContent = c.saving;
-    try {
-      const res: any = await api.ingestFragment({ nodes: [node], owner: OWNER });
-      if (res?.executed === false) throw new Error(res.error || "ingest failed");
-      // ⚠ `merged` 는 **실제로 들어간 것만** 센다. warnings 를 안 읽으면 반쯤 들어간
-      // 쓰기를 성공으로 읽는다(partial 계약).
-      const merged = (res?.merged?.nodes?.created || 0) + (res?.merged?.nodes?.matched || 0);
-      if (!merged) throw new Error((res?.warnings || []).join(" · ") || "nothing merged");
-      sheet.close();
-      onCreated?.(id);
-    } catch (err: any) {
-      msgEl.innerHTML = `<span class="error-banner">${esc(c.saveFail)} ${esc(String(err?.message || ""))}</span>`;
-    }
-  });
+  const { startNewNode } = await import("./authoring");
+  const made = await startNewNode();
+  if (made) onCreated?.(made.id);
 }

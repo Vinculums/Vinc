@@ -16,6 +16,7 @@ import { popIn, popOut, fadeIn, fadeOut } from "./motion";
 import { wireScrimDismiss, showNotice } from "./components";
 import { blocksSurfaceShortcuts } from "./keys";
 import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
+import { mountAuthoringKeys, startNewDoc, startNewNode } from "./authoring";
 
 // 표면 2종: View / Search(+Records). Packs(+Intake)는 표면이 아니라 Tools 모달로
 // 갔다(P15) — 다섯 기능이 전부 거기 산다.
@@ -84,6 +85,8 @@ document.getElementById("settings-btn")!.setAttribute("data-tip", COPY.ui.topbar
 mountTopbar();
 // 좌측 문서 트리(D69). 표면과 무관하게 한 번만 마운트하고, 내용은 스스로 갱신한다.
 mountLnb();
+// 새 문서 · 새 노드 단축키(Ctrl/Cmd+N · +Shift). 표면과 무관하게 한 번.
+mountAuthoringKeys();
 
 function current(): Surface {
   const h = location.hash.replace(/^#/, "").split("/")[0];
@@ -146,6 +149,15 @@ settingsBtn.addEventListener("click", () => openSettings("general", undefined, t
 
 // ── Command palette (Cmd/Ctrl+K — navigation aid, not a replacement; D26) ──
 const palette = document.getElementById("palette")!;
+let paletteReturnFocus: HTMLElement | null = null;
+function closePalette() {
+  if (palette.hidden) return;
+  palette.hidden = true;
+  if (paletteReturnFocus?.isConnected) paletteReturnFocus.focus();
+  paletteReturnFocus = null;
+}
+// 카드 안의 클릭은 무시하고 배경 클릭만 닫는다. 한 번 연 뒤에도 계속 유효해야 한다.
+palette.addEventListener("click", (e) => { if (e.target === palette) closePalette(); });
 type Cmd = { label: string; hint: string; run: () => void };
 const COMMANDS: Cmd[] = [
   ...ORDER.map((s, i) => ({
@@ -156,6 +168,9 @@ const COMMANDS: Cmd[] = [
   // 별칭을 한 번 거치게 두면 팔레트가 주소창을 흔들고 화면이 한 번 갈아엎힌다.
   // 힌트는 명령이 닿는 자리다: Tools 가 설정의 정보 분류로 들어갔으므로 설정.
   // 팔레트의 설정 명령은 **연다**(토글 아님) — 이미 열려 있으면 일반으로 옮길 뿐이다.
+  // 만들기(흐름 A) — 단축키가 브라우저에 먹히는 자리(웹)에서도 닿는 길.
+  { label: COPY.author.paletteDoc, hint: "⌘/Ctrl N", run: () => startNewDoc() },
+  { label: COPY.author.paletteNode, hint: "⌘/Ctrl ⇧ N", run: () => void startNewNode() },
   { label: COPY.ui.palette.ingest, hint: COPY.ui.topbar.settings,
     run: () => openSettings("data", "import") },
   { label: COPY.ui.palette.share, hint: COPY.ui.topbar.settings,
@@ -164,6 +179,7 @@ const COMMANDS: Cmd[] = [
 ];
 
 function openPalette() {
+  if (palette.hidden) paletteReturnFocus = document.activeElement as HTMLElement | null;
   palette.hidden = false;
   palette.innerHTML = `
     <div class="palette-card" role="dialog" aria-label="Command palette">
@@ -189,7 +205,7 @@ function openPalette() {
   // 팔레트에는 등장·퇴장 애니메이션이 **없다**. 단축키로 하루 수십 번 여는 것이라 모션은
   // 매번 기다리는 시간이 되고(Raycast 가 같은 판단이다), 나온 곳도 없어 설명할 공간 단서도
   // 없다. 시트·모달의 popIn/popOut 은 클릭으로 여는 것들의 문법이다.
-  const close = () => { palette.hidden = true; };
+  const close = closePalette;
   q.addEventListener("input", () => { sel = 0; hits = draw(); });
   q.addEventListener("keydown", (e) => {
     if (e.key === "Escape") close();
@@ -197,7 +213,6 @@ function openPalette() {
     if (e.key === "ArrowUp") { sel = Math.max(sel - 1, 0); hits = draw(); }
     if (e.key === "Enter" && hits[sel]) { hits[sel].run(); close(); }
   });
-  palette.addEventListener("click", (e) => { if (e.target === palette) close(); }, { once: true });
   q.focus();
 }
 
@@ -211,6 +226,7 @@ async function openCheatsheet() {
     // 표 안의 범위도 표면 수에서 나온다 — 손으로 적으면 위 단축키와 갈라진다.
     [[`1–${ORDER.length}`, COPY.ui.palette.goSurface], ["⌘/Ctrl K", COPY.ui.topbar.searchPh],
      ["⌘/Ctrl ⇧ K", COPY.ui.palette.cmdPalette],
+     ["⌘/Ctrl N", COPY.author.paletteDoc], ["⌘/Ctrl ⇧ N", COPY.author.paletteNode],
      ["f", COPY.ui.palette.fit], ["Esc", COPY.ui.palette.back], ["?", COPY.ui.palette.thisSheet]]
       .map(([k, v]) => `<div class="palette-row"><span>${v}</span><span class="hint">${k}</span></div>`)
       .join("");
@@ -233,7 +249,7 @@ document.addEventListener("keydown", (e) => {
   if (n >= 1 && n <= ORDER.length) location.hash = `#${ORDER[n - 1]}`;
   // `[`(레일 접기)는 레일과 함께 사라졌다(D56) — 상단 바는 접을 것이 없다.
   if (e.key === "?") void openCheatsheet();
-  if (e.key === "Escape") palette.hidden = true;
+  if (e.key === "Escape") closePalette();
 });
 
 // ── Skin (Signal) — 웹 Vinc=web(Home·Signal), 데스크탑=desktop(Deep Signal) ──

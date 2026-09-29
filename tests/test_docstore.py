@@ -654,6 +654,47 @@ class DocstoreE2E(unittest.TestCase):
         self.assertTrue(got["verified"])
         self.assertEqual(got["text"], short_text)
 
+    def test_origin_is_kept_when_a_body_edit_omits_it(self):
+        first = ds.put_doc(self.store, owner="user:a", text="첫 본문",
+                           title="출처 문서", origin="source/first.md")
+        did = first["doc_id"]
+        edited = ds.put_doc(self.store, owner="user:a", text="바뀐 본문",
+                            doc_id=did)
+        self.assertTrue(edited["executed"])
+        self.assertEqual(ds.get_doc(self.store, did, owner="user:a")["origin"],
+                         "source/first.md")
+        rows = self.store.run(
+            "MATCH (c:Chunk) WHERE c.doc_id = $id RETURN c.source_file AS origin",
+            {"id": did})
+        self.assertTrue(rows)
+        self.assertTrue(all(r["origin"] == "source/first.md" for r in rows))
+
+    def test_origin_only_edit_repairs_metadata_without_rechunking(self):
+        first = ds.put_doc(self.store, owner="user:a", text="고정 본문",
+                           title="출처 문서", origin="source/old.md")
+        did = first["doc_id"]
+        before_ids = self._chunk_ids(did)
+        repaired = ds.put_doc(self.store, owner="user:a", text="고정 본문",
+                              doc_id=did, origin="source/new.md")
+        self.assertTrue(repaired["executed"])
+        self.assertFalse(repaired["skipped"])
+        self.assertEqual(repaired["replaced"], 0)
+        self.assertEqual(self._chunk_ids(did), before_ids)
+        got = ds.get_doc(self.store, did, owner="user:a")
+        self.assertTrue(got["verified"])
+        self.assertEqual(got["origin"], "source/new.md")
+        rows = self.store.run(
+            "MATCH (c:Chunk) WHERE c.doc_id = $id RETURN c.source_file AS origin",
+            {"id": did})
+        self.assertTrue(all(r["origin"] == "source/new.md" for r in rows))
+        cleared = ds.put_doc(self.store, owner="user:a", text="고정 본문",
+                             doc_id=did, origin="")
+        self.assertFalse(cleared["skipped"])
+        self.assertEqual(ds.get_doc(self.store, did, owner="user:a")["origin"], "")
+        again = ds.put_doc(self.store, owner="user:a", text="고정 본문",
+                           doc_id=did)
+        self.assertTrue(again["skipped"])
+
     def test_owner_isolation_sec1(self):
         out = ds.put_doc(self.store, owner="user:a", text="alice 의 정본", title="t")
         did = out["doc_id"]
@@ -1227,6 +1268,32 @@ class DocstoreE2E(unittest.TestCase):
         other = q.edge_context(owner="user:b", src="concept:foo", dst="concept:bar",
                                etype="PREREQUISITE_OF", store=self.store)
         self.assertFalse(other["executed"])
+
+    def test_edge_context_excerpt_ranks_link_method_before_doc_id(self):
+        from api import query as q
+        for cid, name in (("concept:foo", "Foo"), ("concept:bar", "Bar")):
+            self.store.run(
+                "MERGE (c:Concept {concept_id:$id}) "
+                "SET c.owner_id='user:a', c.title=$name",
+                {"id": _pk(cid), "name": name})
+        self.store.run(
+            "MATCH (a:Concept {concept_id:$a}), (b:Concept {concept_id:$b}) "
+            "MERGE (a)-[:PREREQUISITE_OF]->(b)",
+            {"a": _pk("concept:foo"), "b": _pk("concept:bar")})
+        for doc_id, method in (("a-source", "source"), ("m-stem", "stem"),
+                               ("z-title", "title")):
+            ds.put_doc(self.store, owner="user:a", doc_id=doc_id,
+                       text=f"Evidence from {method}.", title=doc_id, link=False)
+            self.store.run(
+                "MATCH (ch:Chunk {doc_id:$doc}), (c:Concept {concept_id:$concept}) "
+                "MERGE (ch)-[m:MENTIONS]->(c) SET m.method=$method",
+                {"doc": doc_id, "concept": _pk("concept:foo"), "method": method})
+        result = q.edge_context(owner="user:a", src="concept:foo", dst="concept:bar",
+                                etype="PREREQUISITE_OF", store=self.store)
+        self.assertTrue(result["executed"])
+        self.assertEqual(result["src"]["excerpt"]["doc_id"], "z-title")
+        self.assertIn("title", result["src"]["excerpt"]["excerpt"])
+        self.assertIsNone(result["dst"]["excerpt"])
 
     def test_mentions_relink_per_doc(self):
         # 개념을 심고 그 제목 토큰을 담은 문서를 put → MENTIONS 생성;

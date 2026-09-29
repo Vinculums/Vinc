@@ -1,0 +1,2 @@
+# 선언한 최소 버전. CI 가 이 제약으로 한 번 더 돈다(.github/workflows/ci.yml core-pkns).
+agent-framework-core==1.8.1

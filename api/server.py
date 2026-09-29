@@ -673,12 +673,13 @@ class VincApp:
                                                   cursor=p.get("cursor") or None,
                                                   detail=p.get("detail") or "summary",
                                                   historical=_flag(p.get("historical")),
+                                                  as_of=p.get("as_of") or None,
                                                   owner=p.get("owner") or None, store=r))
         # GM-14: 무효/실효 커서는 **명시적 클라이언트 오류**다 — 조용히 첫 페이지로
         # 폴백하면 호출자가 같은 페이지를 무한히 읽는다. 본문은 그대로 돌려준다
         # (Bridge 가 HTTPError 본문을 verbatim 통과시켜 MCP 도 같은 사유를 본다).
         if isinstance(res, dict) and str(res.get("error") or "").startswith(
-                ("invalid_cursor", "stale_cursor")):
+                ("invalid_cursor", "stale_cursor", "invalid_as_of")):
             code = 400
         # **조용한 강등 금지.** 어느 팔이 돌았는지는 `q.search` 가 `arms` 로 남긴다
         # (CLI 와 같은 값이어야 §11 게이트① 동등성이 성립한다). 여기서는 **시도했는데
@@ -969,9 +970,16 @@ class VincApp:
 
     def read_node_context(self, p):
         # D45-V — 뷰 노드 클릭 상세: 노드 설명(one_liner/summary) + 정본 근거 발췌.
+        # `links_offset` 은 관계 목록의 **이어 읽을 자리**다. 상한만 있고 이것이
+        # 없으면 보이는 것이 전부인지 알 길이 없다(`_links_window`).
+        # `evidence=1` 은 관계에 저장된 **문장 자체**를 싣는다 - 기본 응답은 종전대로
+        # 불리언만이라 한 바이트도 안 변한다.
         return self._read(lambda r: q.node_context(
             owner=_req(p, "owner"), node=_req(p, "node"),
-            limit=_int(p.get("limit"), 4), store=r))
+            limit=_int(p.get("limit"), 4),
+            with_evidence=_flag(p.get("evidence")),
+            links_offset=_int(p.get("links_offset"), 0),
+            sources_offset=_int(p.get("sources_offset"), 0), store=r))
 
     def read_brief(self, p):
         # W1 — 질문 하나로 답변 재료(본문·발췌·관계·근거 id)를 한 번에 낸다.
@@ -984,7 +992,9 @@ class VincApp:
         code, res = self._read(lambda r: q.brief(
             query, owner=_req(p, "owner"), query_embedding=qvec,
             max_excerpts=_int(p.get("max_excerpts"), 3),
-            historical=_flag(p.get("historical")), store=r))
+            historical=_flag(p.get("historical")), as_of=p.get("as_of") or None, store=r))
+        if isinstance(res, dict) and str(res.get("error") or "").startswith("invalid_as_of"):
+            code = 400
         # **시도했는데 실패한 경우에만** 사유를 덧붙인다(`/search` 와 같은 규칙 —
         # 시도조차 안 한 경우에 빈 필드를 붙이면 게이트① 동등성이 깨진다).
         # `arms` 는 여기서 붙이지 않는다 — `q.brief` 가 내부 search 에서 그대로 나른다
@@ -1127,9 +1137,10 @@ class VincApp:
         # 꺼짐이라 이 경로를 이미 쓰는 곳의 응답은 바뀌지 않는다.
         # `kind=` 는 그 종 **하나**로 모집단을 좁힌다(종 레일). 목록을 종별로 가져가는
         # 것이 계약이라 여기에 "전부" 값은 없다 - 개수는 counts.kinds 가 따로 준다.
+        # `domain=` 은 그 주제의 **하위 트리**로 좁힌다(목록·개수·문서가 같은 술어).
         return self._read(lambda r: q.nav_tree(
             owner=_req(p, "owner"), nodes=_flag(p.get("nodes")),
-            kind=p.get("kind"), store=r))
+            kind=p.get("kind"), domain=p.get("domain"), store=r))
 
     def write_doc_put(self, body):
         owner = body.get("owner") or None
@@ -1146,7 +1157,7 @@ class VincApp:
             self.store, owner=owner, text=_req(body, "text"),
             doc_id=body.get("id") or None,
             title=None if btitle is None else str(btitle),
-            origin=body.get("origin") or "",
+            origin=body.get("origin"),
             content_time=None if ctime is None else str(ctime),
             # 주제는 **적는 값**이다. `or None` 으로 뭉개도 안전하다 — 빈 문자열은
             # "지운다"가 아니라 "안 건드린다"이고, 그 판단은 _set_authored_topic 에 있다.

@@ -139,8 +139,13 @@ jobs:
         run: |
           set -euo pipefail
           export $(grep -E '^ENV VINC_EMBED_(MODEL|MODEL_PATH|DIM)=' Dockerfile.hub | sed 's/^ENV //')
-          python -m pip install --quiet --disable-pip-version-check \
-            onnx onnxruntime tokenizers numpy huggingface_hub
+          # 런타임 판은 허브와 같아야 한다 — 다른 ORT 로 구운 아티팩트는 다른 벡터를 낸다.
+          # Dockerfile.hub 의 고정 판을 뽑아 쓰고, 못 찾으면 죽는다(rerank-probe 와 같은 이유).
+          pins=$(grep -m1 -E '^RUN pip install .*onnxruntime==' Dockerfile.hub \
+            | grep -oE '(onnxruntime|tokenizers|numpy|huggingface_hub)==[0-9][0-9.]*' | tr '\n' ' ')
+          [ "$(wc -w <<<"$pins")" -eq 4 ] || {
+            echo "::error::Dockerfile.hub 에서 인코더 런타임 판 넷을 못 찾았다: '$pins'"; exit 1; }
+          python -m pip install --quiet --disable-pip-version-check onnx $pins
           mkdir -p models
           VINC_EMBED_MODEL_PATH="models/$(basename "$VINC_EMBED_MODEL_PATH")" \
             python packaging/bake_embed_model.py 2>&1 | tee bake.log

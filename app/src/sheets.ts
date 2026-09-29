@@ -555,7 +555,8 @@ export async function openDocImportSheet(f: File, onDone?: (res: any) => void) {
         const ap = await dm.applyExtract(cfg.owner, [r.docId]);
         if (!offer.isConnected) return;
         offer.innerHTML = `<span class="hint">${
-          COPY.ui.viewx.edExtractDone(ap.created, ap.mentions)}</span>`;
+          ap.refused ? esc(COPY.author.exRefusedDocs(ap.refused))
+            : COPY.ui.viewx.edExtractDone(ap.created, ap.mentions)}</span>`;
       });
     } catch (e) {
       out.innerHTML = `<div class="error-banner">${

@@ -1,0 +1,4 @@
+# Lowest supported framework versions; CI installs and tests this set separately.
+langgraph==1.0.0
+langchain==1.0.0
+langchain-core==1.0.0

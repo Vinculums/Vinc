@@ -202,6 +202,7 @@ def _t_search(args, bridge):
         "query": args["query"], "top_k": args.get("limit", 20),
         "cursor": args.get("cursor"), "detail": args.get("detail"),
         "historical": "true" if args.get("historical") else None,
+        "as_of": args.get("as_of"),
         "owner": _owner(args, bridge)})
 
 
@@ -472,7 +473,8 @@ def _t_brief(args, bridge):
     return bridge.request("GET", "/brief", params={
         "owner": _owner(args, bridge), "query": args["query"],
         "max_excerpts": args.get("max_excerpts", 3),
-        "historical": "true" if args.get("historical") else None})
+        "historical": "true" if args.get("historical") else None,
+        "as_of": args.get("as_of")})
 
 
 #: ChatGPT deep research / company knowledge 는 이름이 정확히 `search`·`fetch` 인
@@ -642,6 +644,16 @@ TOOLS: list[dict] = [
                                           "them and reports how many in `validity_filtered`; "
                                           "pass true when the question is about what USED to "
                                           "hold."},
+            "as_of": {"type": "string",
+                      "description": "Read the graph as it held during a period: YYYY, YYYY-MM or "
+                                     "YYYY-MM-DD, or 'query' to take the one absolute date written "
+                                     "in the question (e.g. '2026-08', 'August 2026', "
+                                     "'2026년 8월', 'in 2025'). Hides claims that did not hold at "
+                                     "any time in that period, counted in `validity_filtered`, and "
+                                     "echoes what it used in `time_scope`. With 'query', a question "
+                                     "with no date or with two different dates is read with "
+                                     "today's view and `time_scope.applied` is false. Omit for "
+                                     "today's view (the default, unchanged)."},
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_search,
@@ -703,6 +715,16 @@ TOOLS: list[dict] = [
                                           "them and reports how many in `validity_filtered`; "
                                           "pass true when the question is about what USED to "
                                           "hold."},
+            "as_of": {"type": "string",
+                      "description": "Read the graph as it held during a period: YYYY, YYYY-MM or "
+                                     "YYYY-MM-DD, or 'query' to take the one absolute date written "
+                                     "in the question (e.g. '2026-08', 'August 2026', "
+                                     "'2026년 8월', 'in 2025'). Hides claims that did not hold at "
+                                     "any time in that period, counted in `validity_filtered`, and "
+                                     "echoes what it used in `time_scope`. With 'query', a question "
+                                     "with no date or with two different dates is read with "
+                                     "today's view and `time_scope.applied` is false. Omit for "
+                                     "today's view (the default, unchanged)."},
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_brief,
@@ -1206,7 +1228,7 @@ TOOLS: list[dict] = [
             "text": {"type": "string", "description": "Full document text (the canonical content)."},
             "doc_id": {"type": "string", "description": "Existing doc to edit; omit to create."},
             "title": {"type": "string", "description": "Document title. OMIT IT TO KEEP THE TITLE THE DOCUMENT ALREADY HAS — it is not defaulted to empty. Pass \"\" only to actually clear the title. This matters on an edit: the title is separate from any title: line in the body, which this tool never reads."},
-            "origin": {"type": "string", "description": "Provenance label only (not a join key)."},
+            "origin": {"type": "string", "description": "Provenance label only (not a join key). Omit to preserve the existing origin; pass an empty string to clear it. A metadata-only change does not rewrite document text."},
             "topic": {"type": "string", "description": "The topic this document is about, as a domain path (e.g. vinc/infra/deploy). Authored, not inferred: it is recorded on the document's own concept:doc.<id> node and takes precedence over the topic derived from body matching. Omit to leave the existing answer alone — passing \"\" does NOT clear it."},
         }, "required": ["text"]},
         "run": _t_doc_put,

@@ -183,10 +183,9 @@ body {
    D56 이 지운 좌측 열을 되살리되 싣는 것이 다르다: 표면 목록이 아니라 문서 트리다.
    구 레일이 장식이었던 이유가 그거였다(행을 눌러도 갈 곳이 없었다).
 
-   LNB 는 **그리드 열**이다(오버레이 아님). 그래서 표면이 줄어들 뿐이고,
-   `#view-canvas`(inset:0)·`#view-chrome`(left:0;right:0) 같은 캔버스 안 절대배치
-   크롬은 요소별 오프셋 코드 없이 자동으로 따라 좁아진다 — 구 railChrome 이 인라인
-   스타일로 세 요소를 손으로 밀던 방식의 재발 방지. 접힘은 열 폭 0. */
+   LNB 는 **그리드 열**이다(오버레이 아님). LNB 가 열리면 표면이 좁아지고,
+   캔버스 안 크롬도 함께 따라간다. 문서 패널은 이와 달리 표면 위에 뜬다.
+   LNB 접힘은 열 폭 0 으로 처리한다. */
 /* 트랙을 minmax(0,·) 로 못 박는다 — 그리드 아이템의 기본 min-width/min-height 는
    auto 라, 상단 바처럼 줄바꿈 없는 flex 행이 들어오면 좁은 창에서 열을 min-content
    까지 늘려 캔버스를 화면 밖으로 민다. 예방 규칙(현재 폭에서는 발현되지 않는다). */
@@ -281,17 +280,16 @@ body {
   --surface-0: var(--background);
   --surface-1: var(--muted);
 }
-/* 셸은 두 열이다: 문서 목록 | 표면(지도).
-   문서 패널은 **열이 아니라 표면 위에 겹치는 글라스**다(발주자 지시 2026-08-05) —
+/* 셸은 종 레일 | 문서 트리 | 표면(지도)의 세 열이다.
+   문서 패널은 **열이 아니라 표면 위에 겹치는 글라스**다(2026-08-05 복귀) —
    열이었을 때는 패널을 넓히면 지도가 그만큼 줄어 "읽으려면 지도를 잃는" 거래가 됐다.
    겹치면 그 거래가 사라지고, 끝까지 끌어 화면을 다 덮는 것도 정당한 상태가 된다. */
 /* 크롬은 **떠 있는 카드**다(발주자 지시 2026-09-08 — 평면이라 미완으로 읽힌다).
    여백·모서리·그림자를 셸과 카드가 나눠 갖는다: 여백은 셸의 padding·gap 이 한 벌로
    갖고(카드마다 margin 을 주면 인접한 두 카드 사이에서 값이 두 배가 된다), 모서리와
    그림자는 각 카드가 갖는다.
-   ⚠ **격자 구조는 그대로다.** LNB 가 열이라는 성질(D69)이 캔버스 안 절대배치 크롬을
-   요소별 오프셋 없이 따라 좁게 만드는데, 카드처럼 보이려고 오버레이로 바꾸면 그 성질을
-   잃는다. 바꾼 것은 칠과 모서리뿐이고 배치는 안 건드렸다. */
+   LNB 는 그리드 열을 유지한다. 문서 패널만 지도와 같은 칸 위에 뜨므로
+   문서를 열어도 캔버스 폭과 인캔버스 크롬의 위치는 바뀌지 않는다. */
 #shell {
   display: grid;
   /* 좁은 창에서 트리가 **서랍으로 뜨는** 좌표계(아래 미디어쿼리). 넓은 창에서는
@@ -315,10 +313,9 @@ body {
               column-gap var(--dur-panel) var(--ease-drawer);
 }
 #shell > * { min-width: 0; min-height: 0; }
-/* 상단 바는 **지도 위에만** 얹힌다(3열 1행, 발주자 지시 2026-09-09). 여태 전폭
-   (`1 / -1`)이라 사이드바가 그 아래에서 시작했다. 이제 사이드바 둘이 천장까지 서고
-   바는 지도 카드의 위층이다 — 그래서 바에는 검색만 남았다(손잡이는 레일로, 세그는
-   트리로 갔다. `index.html` 참조).
+/* 상단 바는 **지도 위에만** 얹힌다(3열 1행, 2026-09-09). 예전에는 전폭
+   (`1 / -1`)이었다. 사이드바 둘은 천장까지 서고, 바에는 검색 카드와 보기 카드가
+   선다. 관점 세그는 트리에 갔다가 2026-09-26 보기 카드로 돌아왔다(index.html).
    오른쪽 끝은 **지도 카드의 오른쪽 끝**이다(발주자 지시 2026-09-09: "gnb 길이
    오른쪽 끝까지 해야지 검색바 길이를 늘려서"). 위아래 두 카드의 세로선이 맞는 것이
    이 배치의 규율이고, 바를 일찍 끊으면 그 선이 깨진 채 오른쪽 위가 빈 판으로 남는다.
@@ -979,15 +976,37 @@ body {
    접으면 관점 손잡이가 함께 사라졌다. 둘 다 View 가 채우고 떠날 때 비우므로(topbar.ts
    `refreshTopbar`), 둘 다 비면 카드째 숨는다 — 빈 카드가 검색 옆에 남으면 누를 것이
    없는 면이 된다. */
-/* 폭은 **렌즈 패널과 같다**(`--lens-panel-w`) — 패널이 이 카드 바로 아래에서 열리고
-   양 끝이 같은 세로선에 서야 한다(발주자 지시 2026-09-26). 세그가 남는 폭을 먹는다. */
-#tb-viewctl { flex: 0 0 var(--lens-panel-w); width: var(--lens-panel-w); }
+/* 두 상태(2026-09-28 발주자 지시). **닫힘**(기본): 렌즈 버튼 하나(+ 지금 관점 이름)만
+   보이고 폭은 그 내용 폭이다. **열림**(`data-open`, 렌즈 패널이 열린 동안): 관점 세그가
+   왼쪽으로 미끄러져 나오고 폭이 **렌즈 패널과 같아진다**(`--lens-panel-w`) — 패널이 이
+   카드 바로 아래에서 열리고 양 끝이 같은 세로선에 서야 한다(2026-09-26 지시, 그대로).
+   열린 카드는 검색 카드를 **밀지 않고 그 위로 겹친다**(Q1.1): 음수 왼쪽 여백이 자란
+   폭만큼을 되돌려 바깥 폭이 닫힌 폭(`--vc-closed-w`, JS 가 잰다) 그대로다 — 그래서 검색
+   입력이 흔들리지 않는다. 모션은 view.ts `setCardOpen` 이 폭과 여백을 함께 움직인다.
+   근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] §1 */
+#tb-viewctl { flex: 0 0 auto; position: relative; z-index: 1; }
+#tb-viewctl[data-open] {
+  width: var(--lens-panel-w);
+  margin-left: calc(var(--vc-closed-w, var(--lens-panel-w)) - var(--lens-panel-w));
+}
 #tb-viewctl:has(> #tb-viewpoints:empty):has(> #tb-lens:empty) { display: none; }
-#tb-viewpoints { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; }
+/* 세그는 자라는 카드 안에서 잘리며 드러난다 — 넘침을 자기 상자가 받는다. */
+#tb-viewpoints { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+#tb-viewctl:not([data-open]) > #tb-viewpoints { display: none; }
 #tb-viewpoints .seg { width: 100%; }
 #tb-viewpoints .seg .chip { flex: 1 1 auto; }
 #tb-lens { display: flex; align-items: center; flex: 0 0 auto; }
 #tb-viewpoints:empty, #tb-lens:empty { display: none; }
+/* 여는 순간에만 칩이 12px 왼쪽으로 미끄러지며 20ms 씩 차례로 들어온다. 관점을 바꿀 때
+   세그가 다시 그려져도 되풀이되지 않게 여는 동안만 붙는 클래스(`vc-enter`)에 건다. */
+#tb-viewctl.vc-enter #tb-viewpoints .chip {
+  animation: vcChipIn .2s var(--ease-out, ease-out) both;
+  animation-delay: calc(var(--i, 0) * 20ms);
+}
+@keyframes vcChipIn { from { opacity: 0; transform: translateX(12px); } }
+@media (prefers-reduced-motion: reduce) {
+  #tb-viewctl.vc-enter #tb-viewpoints .chip { animation: none; }
+}
 /* 숨긴 버튼만 담은 묶음은 자리를 먹지 않는다 — 폭 0 이어도 바의 gap 이 한 칸 붙는다. */
 #tb-right:not(:has(> :not([hidden]))) { display: none; }
 
@@ -1299,14 +1318,14 @@ body {
    관점 세그는 **접히지 않는다**(`nowrap` 둘 다). `.seg` 의 `flex-wrap: wrap` 은
    5지선다(Layout)를 위한 것이고, 칩에도 걸어야 글자가 칩 안에서 접히지 않는다
    (실측 2026-09-09: 묶음만 막으면 칸 높이가 37 → 107px 로 뛰었다). */
-#tb-viewpoints .seg {
+#tb-viewpoints .seg, .lens-vprow .seg {
   flex-wrap: nowrap; align-items: center; gap: 2px;
   height: var(--ctl-h); padding: 0 3px; box-sizing: border-box;
   border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm, .625rem);
   background: hsl(var(--background));
   box-shadow: inset 0 1px 2px hsl(var(--foreground) / .06);
 }
-#tb-viewpoints .seg .chip {
+#tb-viewpoints .seg .chip, .lens-vprow .seg .chip {
   min-height: calc(var(--ctl-h) - 8px); padding: 0 var(--space-3, .75rem);
   border-radius: calc(var(--radius-sm, .625rem) - 4px);
   white-space: nowrap;
@@ -1927,19 +1946,15 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   background: hsl(var(--card));
   border-bottom: 1px solid hsl(var(--border) / .6);
 }
-/* 잡는 면은 6px 이되 보이는 선은 1px — 손이 닿는 넓이와 눈에 보이는 두께는 다르다.
-   열의 **오른쪽** 모서리에 선다: 끌면 지도가 넓어지고 문서가 좁아진다(겹쳐 있던
-   시절에는 왼쪽 모서리였다 — 그때는 패널이 오른쪽 벽에 붙어 있었다). */
-/* 패널의 **왼쪽** 모서리다(R1 로 패널이 오른쪽에 붙었다). 오른쪽에 두면 창 끝에
-   붙어 잡을 수 없다. */
+/* 잡는 면은 6px 이되 보이는 선은 1px. 패널의 **왼쪽** 모서리에 선다.
+   왼쪽으로 끌면 문서가 넓어지고, 지도는 같은 폭으로 뒤에 남는다. */
 #rail-grip {
   position: absolute; top: 0; bottom: 0; z-index: 3;
   left: -3px; width: 6px;
   cursor: col-resize; touch-action: none;
 }
-/* 캔버스 안 크롬은 이제 비켜설 이유가 없다 — 패널이 겹치지 않고 표면 자체가 줄어든다.
-   변수를 0 으로 눌러 두면 아래 오프셋 규칙들(view-tools·float·hint)을 손대지 않고도
-   효력이 사라진다: 규칙은 남아 있으므로 임베드처럼 열이 없는 배치에서 그대로 쓰인다. */
+/* 문서 패널은 캔버스 위에 뜬다. 인캔버스 크롬의 예전 레일 오프셋은 0 으로
+   눌러 두고, 아래 규칙은 패널이 표면 안에 남는 임베드 배치를 위해 유지한다. */
 #surface { --rail-w: 0px; }
 #rail-grip:hover, #rail-grip:active { background: hsl(var(--muted-foreground) / .35); }
 
@@ -2384,7 +2399,7 @@ textarea.props-val {
   margin-left: auto; display: flex; gap: 1.1rem; white-space: nowrap;
   font-size: .7rem; color: hsl(var(--caption-foreground));
 }
-#view-viewpoints .seg, #tb-viewpoints .seg { display: inline-flex; }
+#view-viewpoints .seg, #tb-viewpoints .seg, .lens-vprow .seg { display: inline-flex; }
 /* 연결 없음 = 누를 수 있는 수치(세어만 놓고 해소할 길을 안 주지 않는다). */
 .metric-act { cursor: pointer; border-bottom: 1px dashed hsl(var(--border)); }
 .metric-act:hover { color: hsl(var(--foreground)); }
@@ -2403,6 +2418,31 @@ textarea.props-val {
   background: hsl(var(--card)); color: hsl(var(--foreground)); border-color: hsl(var(--muted-foreground));
 }
 .lens-btn svg { width: 17px; height: 17px; }
+/* 닫힌 보기 카드의 버튼은 지금 관점의 이름을 함께 싣는다(Q1.3) — 세그가 숨어도 무엇으로
+   보고 있는지는 보여야 한다. 열리면 세그가 그 일을 하므로 이름을 거둬 정사각 버튼으로
+   돌아간다. 카드 밖(임베드의 지도 모서리)에서는 이름을 싣지 않는다. */
+.lens-vp { display: none; }
+#tb-viewctl:not([data-open]) .lens-btn {
+  width: auto; grid-auto-flow: column; gap: .4rem;
+  padding: 0 var(--space-3, .75rem) 0 var(--space-2, .5rem);
+}
+#tb-viewctl:not([data-open]) .lens-vp {
+  display: inline; font-size: .8125rem; font-weight: 500; white-space: nowrap;
+  color: hsl(var(--foreground));
+}
+/* 패널 머리의 닫기 — 탭줄 오른쪽 끝. 모양은 `?` 토글과 같은 급(작은 아이콘 버튼)이다. */
+.lens-close {
+  display: grid; place-items: center; flex: 0 0 auto;
+  width: 1.75rem; height: 1.75rem; padding: 0; margin-left: .15rem;
+  border: 1px solid transparent; border-radius: var(--radius-sm, .625rem);
+  background: none; color: hsl(var(--muted-foreground)); cursor: pointer;
+}
+.lens-close:hover { color: hsl(var(--foreground)); background: hsl(var(--muted-foreground) / .1); }
+.lens-close:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.lg-tabrow-title { flex: 1 1 auto; font-size: .8125rem; font-weight: 600; }
+/* 판 머리의 관점 세그 — 좁은 창(≤900, 패널이 전폭 판)에서만 보인다. 넓은 창에서는
+   상단 바 카드의 세그가 같은 일을 한다(`#tb-viewctl[data-open]`). */
+.lens-vprow { display: none; }
 .lg-body { display: flex; flex-direction: column; gap: .18rem; }
 .lg-cap {
   margin: .45rem 0 .15rem; font-size: .62rem; letter-spacing: .075em;
@@ -2569,9 +2609,22 @@ textarea.props-val {
      웹은 공홈 GNB(둘 다 상단 바 3.25rem 위에 얹힌다). */
   [data-shell] #view-lens-panel { top: calc(var(--topbar-h) + var(--shell-gap) * 2 + var(--titlebar-h)); }
   [data-skin="web"] #view-lens-panel { top: 6.5rem; }
-  /* 관점 세그의 칩 여백을 한 칸 줄인다(.75 → .5rem, 세그 250 → 218px). 검색과 한 줄을
-     나눠 쓰는 폭이라 그 32px 이 곧 입력의 몫이다(아래 720 에서 줄이 갈린다). */
-  #tb-viewpoints .seg .chip { padding: 0 var(--space-2, .5rem); }
+  /* 보기 카드는 이 폭에서 **자라지 않는다** — 패널이 전폭 판이라 맞출 폭이 없다. 카드는
+     열려도 닫힌 모양(버튼 + 관점 이름) 그대로이고, 관점 세그는 판 머리(`.lens-vprow`)로
+     간다. 판 머리 세그는 네 칩이 같은 몫을 갖는다(손가락으로 누르는 폭). */
+  #tb-viewctl[data-open] { width: auto; margin-left: 0; }
+  #tb-viewctl > #tb-viewpoints { display: none; }
+  #tb-viewctl .lens-btn {
+    width: auto; grid-auto-flow: column; gap: .4rem;
+    padding: 0 var(--space-3, .75rem) 0 var(--space-2, .5rem);
+  }
+  #tb-viewctl .lens-vp {
+    display: inline; font-size: .8125rem; font-weight: 500; white-space: nowrap;
+    color: hsl(var(--foreground));
+  }
+  .lens-vprow { display: block; position: relative; z-index: 1; padding: var(--space-3, .75rem) var(--space-4, 1rem) 0; }
+  .lens-vprow .seg { display: flex; width: 100%; }
+  .lens-vprow .seg .chip { flex: 1 1 0; min-width: 0; padding: 0 var(--space-2, .5rem); }
 }
 
 /* ── 좁은 창(≤600) — 검색이 자리를 되찾는다 ────────────────────────────
@@ -2598,27 +2651,18 @@ textarea.props-val {
   #shell[data-lnb="open"] #lnb { justify-self: stretch; width: auto; }
 }
 
-/* ── 좁은 바(≤700) — 보기 카드가 줄을 하나 더 쓴다 ─────────────────────
-   2026-09-26 에 보기 카드(관점 세그 + 렌즈)가 검색 카드 옆에 서면서 바의 고정비가
-   커졌다: 입력 폭 ≈ 바 폭 − 509(넓은 칩) · − 477(좁은 칩, 창 ≤900). 바가 700 아래로
-   가면 입력이 200px 아래로 눌리므로 여기서 **줄을 가른다**: 검색 카드가 첫 줄, 보기
-   카드가 둘째 줄을 통째로 쓴다. 넘침 메뉴로 감추지 않는 이유는 여태와 같다 — 감추면
-   두 번 눌러야 닿는다. (이 줄바꿈은 원래 창 520 에서 오른쪽 손잡이 묶음을 위해
-   일어났다. 그 묶음은 지금 숨긴 버튼뿐이다.)
+/* ── 좁은 바(≤420) — 보기 카드가 줄을 하나 더 쓴다 ─────────────────────
+   2026-09-26 에 보기 카드가 세그를 상시로 싣던 동안에는 바 700 에서 줄을 갈랐다(입력 폭
+   ≈ 바 폭 − 509). 2026-09-28 에 세그가 렌즈 버튼 뒤로 들어가 카드가 버튼 폭(≈ 90px)이
+   되면서 고정비가 그만큼 줄었고, 줄을 가르는 자리도 따라 내려왔다: 입력이 200px 아래로
+   눌리는 바 폭까지는 한 줄에 선다. 가른 뒤에는 검색 카드가 첫 줄, 보기 카드가 둘째 줄
+   오른쪽 끝이다. 넘침 메뉴로 감추지 않는 이유는 여태와 같다 — 감추면 두 번 눌러야 닿는다.
    기준이 창이 아니라 **바 자신의 폭**인 이유는 `#topbar` 주석. 바 아래에 뜨는 것들
    (문서 열 · 인캔버스 크롬)의 천장은 topbar.ts `trackChromeTop` 이 바의 실측 바닥에서
    다시 잰다 — 그래서 둘째 줄이 생겨도 그것들이 그 밑에 깔리지 않는다. */
-@container topbar (max-width: 700px) {
+@container topbar (max-width: 420px) {
   #tb-find { flex: 1 1 100%; }
-  /* 보기 카드는 둘째 줄 오른쪽 끝에 **패널 폭 그대로** 선다 — 렌즈 패널이 그 아래에서
-     같은 폭으로 열린다(`--lens-panel-w` 주석). */
   #tb-viewctl { margin-left: auto; }
-  /* 좁은 창(≤900)에서는 렌즈 패널이 창 전폭 판으로 바뀐다(아래 900 블록) — 맞출 폭이
-     없으므로 카드가 둘째 줄을 통째로 쓰고 네 칩이 같은 몫을 갖는다(손가락으로 누르는 폭). */
-  @media (max-width: 900px) {
-    #tb-viewctl { flex: 1 1 100%; width: auto; margin-left: 0; }
-    #tb-viewpoints .seg .chip { flex: 1 1 0; min-width: 0; }
-  }
 }
 /* ── 낮은 창(높이 ≤560 · 폰 가로, 작은 노트북 창) — 레일이 이름을 접는다 ───────
    레일에는 손잡이 · 홈 · Agent · 종 여섯 · 설정이 세로로 선다. 이름과 개수 두 줄을
@@ -3465,3 +3509,292 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   display: flex; align-items: center; gap: var(--space-3, .75rem);
   background: hsl(var(--card)); color: hsl(var(--foreground));
 }
+
+/* ── 작업하는 자리에서 만들기(authoring · node-composer · connect · extract-list ·
+      node-basics · cm-assist). 새 부품은 없다: 시트 · 카드면 · 세그 · 칩 · rail-x 를
+      그대로 쓰고, 자리와 간격만 여기서 준다. 포인트색은 초점 링에만 쓴다(면에 안 쓴다). ── */
+
+/* 트리 머리의 `+` — 절 제목 줄 끝, 개수 옆. */
+.lnb-sec-end { display: inline-flex; align-items: center; gap: var(--space-1, .25rem); }
+.lnb-add { font-size: 1rem; line-height: 1; padding: .1rem .4rem; }
+
+/* 흐름 B — 문서 열의 새 문서: 주제 칩 + id 미리보기가 편집기 위에 한 줄로 선다. */
+.writer-meta {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2, .5rem);
+  margin: 0 0 var(--space-2, .5rem);
+}
+.writer-topic {
+  display: inline-flex; align-items: center; gap: .35rem;
+  border: 1px solid hsl(var(--border)); border-radius: 999px; padding: 0 .2rem 0 .6rem;
+  font-size: var(--fs-sm);
+}
+.writer-topic > span { color: hsl(var(--caption-foreground)); }
+.writer-topic input {
+  border: 0; background: none; color: hsl(var(--foreground)); font: inherit;
+  padding: .2rem .3rem; min-width: 9rem; outline: none;
+}
+.writer-topic:focus-within { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.writer-id { font-family: var(--font-mono); font-size: .75rem; }
+/* 옆 칸은 좁다 — 제목 줄(제목 · 시점 · 저장 상태)이 넘치지 않고 접힌다. */
+#wr-host .doc-ed-bar { flex-wrap: wrap; }
+#wr-host #ed-title { min-width: 10rem; }
+.writer-note { margin: var(--space-2, .5rem) 0 0; }
+.writer-note:empty { display: none; }
+
+/* 흐름 E — 컴포저. 필드는 초대 폼과 같은 `.ei-field` 한 벌이다. */
+.nc-kinds { margin: 0; }
+.nc-kind-hint { margin: 0; font-size: .8rem; }
+.nc-id {
+  margin: calc(var(--space-2, .5rem) * -1) 0 var(--space-3, .75rem);
+  font-family: var(--font-mono); font-size: .75rem;
+  display: flex; align-items: center; flex-wrap: wrap; gap: .35rem;
+}
+.nc-more, .nc-links { margin: 0 0 var(--space-3, .75rem); }
+.nc-more > summary, .nc-links > summary {
+  cursor: pointer; font-size: .85em; color: hsl(var(--caption-foreground));
+  margin-bottom: var(--space-2, .5rem);
+}
+.nc-more[hidden] { display: none; }
+.nc-rel {
+  display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-2, .5rem);
+  align-items: center; margin-bottom: var(--space-2, .5rem);
+}
+.nc-rel-target { position: relative; min-width: 0; }
+.nc-rel-target input, .pick-bar input, .ex-topic-row input {
+  width: 100%; padding: var(--space-2, .5rem); border-radius: var(--radius-sm, .625rem);
+  border: 1px solid hsl(var(--border)); background: hsl(var(--card)); color: hsl(var(--foreground));
+  font: inherit;
+}
+.nc-rel-why { grid-column: 1 / -1; margin: 0; }
+.nc-keep { display: inline-flex; align-items: center; gap: .4rem; font-size: .85em; }
+.nc-keys { margin: var(--space-2, .5rem) 0 0; font-size: .75rem; }
+.nc-msg { flex: 1 1 auto; min-width: 0; font-size: .8rem; line-height: 1.4; }
+.nc-msg .error-banner { font-size: .8rem; padding: var(--space-2, .5rem) var(--space-3, .75rem); }
+
+/* 흐름 C — `[[` 목록 · 연결 대상 검색 목록(같은 모양). 카드면이지 유리가 아니다. */
+.cm-assist-menu {
+  position: fixed; z-index: 70; min-width: 14rem; max-width: 22rem;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card));
+  box-shadow: var(--shadow-elev-2, none); font-size: .85rem;
+}
+.cm-assist-menu[hidden] { display: none; }
+/* 폼 안의 목록은 칸 아래 **흐름 안에** 선다 — 시트 몸이 스크롤 상자라 떠 있게 두면 잘린다. */
+.nc-rel-hits.cm-assist-menu { position: static; margin-top: 4px; max-width: none; box-shadow: none; }
+.pick-hits.cm-assist-menu { position: absolute; left: var(--space-3, .75rem); right: var(--space-3, .75rem);
+  top: calc(100% - var(--space-2, .5rem)); max-width: none; }
+.cm-assist-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: .6rem;
+  padding: .35rem .5rem; border-radius: .45rem; cursor: pointer;
+}
+.cm-assist-row.sel, .cm-assist-row:hover { background: hsl(var(--muted-foreground) / .12); }
+.cm-assist-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-assist-sub { flex: none; font-size: .72rem; color: hsl(var(--caption-foreground)); }
+.cm-assist-create { border-top: 1px solid hsl(var(--border) / .6); margin-top: 2px; }
+.cm-assist-note { margin: .2rem .5rem; font-size: .75rem; color: hsl(var(--caption-foreground)); }
+
+/* 흐름 D — 고른 글 위의 작은 줄. */
+.cm-selbar {
+  position: fixed; z-index: 70; display: inline-flex; gap: 2px; padding: 3px;
+  border: 1px solid hsl(var(--border)); border-radius: 10px; background: hsl(var(--card));
+  box-shadow: var(--shadow-elev-2, none);
+}
+.cm-selbar[hidden] { display: none; }
+.cm-selbar > button {
+  border: 0; background: none; font: inherit; font-size: .8rem; cursor: pointer;
+  padding: .25rem .55rem; border-radius: .45rem; color: hsl(var(--foreground));
+}
+.cm-selbar > button:hover { background: hsl(var(--muted-foreground) / .12); }
+.cm-selbar > button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+
+/* 흐름 F — 대상 고르기 띠(지도 위 가운데) · 관계 고르기. */
+.pick-bar {
+  position: absolute; z-index: 30; top: calc(var(--chrome-top) + var(--space-2, .5rem)); left: 50%;
+  transform: translateX(-50%); width: min(26rem, calc(100% - 2rem));
+  padding: var(--space-3, .75rem); border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); background: hsl(var(--card)); box-shadow: var(--shadow-elev-3, none);
+}
+.pick-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.pick-lead { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-hint { margin: .2rem 0 .5rem; }
+.pick-msg { margin: .35rem 0 0; }
+.pick-msg:empty { display: none; }
+.cx-arrow {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .5rem;
+  margin: 0 0 var(--space-3, .75rem); font-weight: 600;
+}
+.cx-end { min-width: 0; overflow-wrap: anywhere; }
+.cx-dir { color: hsl(var(--caption-foreground)); }
+.cx-swap { margin-left: auto; font-weight: 400; }
+.cx-rels { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--space-3, .75rem); }
+.cx-rel {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  padding: .45rem .65rem; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: none; color: hsl(var(--foreground)); font: inherit; cursor: pointer;
+}
+.cx-rel:hover { background: hsl(var(--muted-foreground) / .08); }
+.cx-rel.on { border-color: hsl(var(--foreground)); box-shadow: inset 0 0 0 1px hsl(var(--foreground)); }
+.cx-rel[aria-disabled="true"] { cursor: default; color: hsl(var(--caption-foreground)); }
+.cx-rel[aria-disabled="true"]:hover { background: none; }
+.cx-rel:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.cx-rel-name { font-weight: 600; }
+.cx-rel-sub { font-size: .78rem; }
+/* 관계 이름 = 관계 상세로 가는 문(근거가 없어도). */
+.link-tag--open { cursor: pointer; }
+.link-tag--open:hover { color: hsl(var(--foreground)); text-decoration: underline; }
+
+/* 흐름 G — 이 문서에서 찾은 개념. */
+.ex-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  margin-top: var(--space-2, .5rem);
+}
+.ex-list { border-top: 1px solid hsl(var(--border)); margin-top: var(--space-2, .5rem); }
+.ex-row {
+  display: flex; align-items: flex-start; gap: .5rem; padding: .4rem 0;
+  border-bottom: 1px solid hsl(var(--border) / .55);
+}
+.ex-check { margin-top: .45rem; flex: none; }
+.ex-main { flex: 1 1 auto; min-width: 0; }
+.ex-title {
+  width: 100%; border: 1px solid transparent; border-radius: .4rem; background: none;
+  color: hsl(var(--foreground)); font: inherit; padding: .2rem .3rem;
+}
+.ex-title:hover, .ex-title:focus { border-color: hsl(var(--border)); }
+.ex-title:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 0; }
+.ex-ol { margin: .1rem .3rem 0; font-size: .78rem; }
+.ex-badge {
+  flex: none; margin-top: .3rem; font-size: .72rem; color: hsl(var(--caption-foreground));
+  border: 1px solid hsl(var(--border)); border-radius: 999px; padding: 0 .45rem;
+}
+.ex-rest { margin: .4rem 0; font-size: .75rem; }
+.ex-acts { display: flex; justify-content: flex-end; gap: var(--space-2, .5rem); }
+.ex-msg:not(:empty) { margin-top: var(--space-2, .5rem); }
+.ex-msg .error-banner { font-size: .8rem; padding: var(--space-2, .5rem) var(--space-3, .75rem); }
+.ex-topic { margin: .4rem 0; }
+.ex-topic-row { display: flex; gap: var(--space-2, .5rem); }
+.ex-topic-row input { flex: 1 1 auto; min-width: 0; }
+.ex-done { margin: var(--space-2, .5rem) 0 0; }
+
+/* 흐름 H — 기본 정보. 읽기 모습은 속성 절(`.props-dl`)과 같고, 편집은 초대 폼의 필드다. */
+.node-basics { margin-top: var(--space-3, .75rem); }
+.node-basics .ei-field small { font-size: .72rem; }
+/* ── 타임라인 기간(2026-09-28) ─────────────────────────────────────────────
+   한 상태, 두 입구: 옵션 탭의 "기간" 묶음과 하단 상태 표시줄 왼쪽의 칩. 칩은 패널이
+   닫혀도 걸린 기간을 보여 준다 — 숨은 필터는 데이터가 없는 것으로 읽힌다. 차트 위
+   왼쪽에 두었더니 축의 해·달 이름을 덮었다(실측 2026-09-28) — 그 자리는 차트 것이다.
+   근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] §2.3 */
+.period-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin: .4rem 0 .15rem; }
+.period-chips .chip { min-height: 1.75rem; font-size: .75rem; }
+#view-period { flex: 0 0 auto; }
+.period-chip {
+  display: inline-flex; align-items: center; gap: .45rem;
+  height: 1.6rem; padding: 0 .65rem;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-pill, 999px);
+  background: hsl(var(--card) / .86); color: hsl(var(--foreground));
+  font: inherit; font-size: .72rem; cursor: pointer; white-space: nowrap;
+}
+.period-chip:hover { background: hsl(var(--card)); border-color: hsl(var(--muted-foreground)); }
+.period-chip-k { color: hsl(var(--caption-foreground)); }
+/* 기간이 걸려 있으면 칩이 **잉크로** 말한다(테두리가 전경색). 포인트 색은 면에 쓰지 않는다. */
+.period-chip.on { border-color: hsl(var(--foreground) / .7); font-weight: 600; }
+.period-chip:focus-visible, .hint-act:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+/* 캡션 안의 동작("기간 좁히기"). 캡션 줄은 지도를 가리지 않게 포인터를 흘리므로 이것만 받는다. */
+.hint-act {
+  pointer-events: auto; background: none; border: none; padding: 0; cursor: pointer;
+  font: inherit; color: hsl(var(--foreground)); text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── 날짜 범위 선택(date-range.ts) ─────────────────────────────────────────
+   면은 다른 오버레이 카드와 같다. 시작·끝 = 전경색으로 채운 원(글자는 배경색), 사이 =
+   옅은 띠, 오늘 = 테두리 고리, 키보드 초점 = 포인트 색 고리. 포인트 색은 **초점 고리에만**
+   쓴다(팔레트 규칙: 포인트는 점이지 면이 아니다). 기록 있는 날 = 날짜 아래 작은 점. */
+.drp {
+  position: fixed; z-index: 65; display: flex; gap: var(--space-3, .75rem);
+  padding: var(--space-3, .75rem); max-width: calc(100vw - 16px);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  box-shadow: var(--shadow-elev-3); font-size: .8125rem;
+}
+.drp-presets {
+  display: flex; flex-direction: column; gap: .15rem; min-width: 7.5rem;
+  padding-right: var(--space-3, .75rem); border-right: 1px solid hsl(var(--border));
+}
+.drp-preset {
+  text-align: left; padding: .35rem .55rem; border: none; border-radius: var(--radius-sm, .625rem);
+  background: none; color: hsl(var(--muted-foreground)); font: inherit; cursor: pointer;
+}
+.drp-preset:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.drp-preset.active { color: hsl(var(--foreground)); font-weight: 600; background: hsl(var(--muted)); }
+.drp-main { display: flex; flex-direction: column; gap: var(--space-2, .5rem); min-width: 0; }
+.drp-head { display: flex; align-items: center; gap: .25rem; }
+.drp-title {
+  flex: 1 1 auto; padding: .3rem .5rem; border: none; border-radius: var(--radius-sm, .625rem);
+  background: none; color: hsl(var(--foreground)); font: inherit; font-weight: 600; cursor: pointer;
+}
+.drp-title:hover, .drp-nav:hover { background: hsl(var(--muted)); }
+.drp-nav {
+  display: grid; place-items: center; width: 1.9rem; height: 1.9rem; padding: 0;
+  border: none; border-radius: var(--radius-sm, .625rem); background: none;
+  color: hsl(var(--muted-foreground)); cursor: pointer;
+}
+.drp-next .icon { transform: scaleX(-1); }
+.drp-months { display: flex; gap: var(--space-4, 1rem); }
+.drp-mtitle { display: none; }
+.drp-grid { display: grid; gap: 2px; }
+.drp-row { display: grid; grid-template-columns: repeat(7, 2.1rem); }
+.drp-wd { text-align: center; font-size: .68rem; color: hsl(var(--muted-foreground)); padding: .15rem 0; }
+.drp-cell { display: grid; place-items: center; height: 2.1rem; }
+.drp-day, .drp-tile {
+  position: relative; display: grid; place-items: center;
+  border: none; background: none; color: hsl(var(--foreground)); font: inherit; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.drp-day { width: 2.1rem; height: 2.1rem; border-radius: 50%; }
+.drp-day.in, .drp-tile.in { background: hsl(var(--muted)); border-radius: 0; }
+.drp-day.lo, .drp-day.hi, .drp-tile.lo, .drp-tile.hi {
+  background: hsl(var(--foreground)); color: hsl(var(--background)); border-radius: 50%;
+}
+.drp-tile.lo, .drp-tile.hi { border-radius: var(--radius-sm, .625rem); }
+.drp-day.today:not(.lo):not(.hi) { box-shadow: inset 0 0 0 1px hsl(var(--foreground) / .55); }
+.drp-tile.today:not(.lo):not(.hi) { box-shadow: inset 0 0 0 1px hsl(var(--foreground) / .55); }
+.drp-day:hover:not(.lo):not(.hi), .drp-tile:hover:not(.lo):not(.hi) { background: hsl(var(--muted-foreground) / .16); }
+.drp-day:focus-visible, .drp-tile:focus-visible, .drp-preset:focus-visible, .drp-title:focus-visible,
+.drp-nav:focus-visible, .drp-reset:focus-visible {
+  outline: 2px solid hsl(var(--ring)); outline-offset: 1px; position: relative; z-index: 1;
+}
+.drp-dot {
+  position: absolute; left: 50%; bottom: 3px; width: 4px; height: 4px; margin-left: -2px;
+  border-radius: 50%; background: currentColor;
+}
+.drp-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; min-width: 15rem; }
+.drp-tile { height: 2.6rem; border-radius: var(--radius-sm, .625rem); }
+.drp-inputs { display: flex; gap: var(--space-2, .5rem); }
+.drp-field { display: flex; flex-direction: column; gap: .2rem; flex: 1 1 0; min-width: 0; }
+.drp-field span { font-size: .7rem; color: hsl(var(--muted-foreground)); }
+.drp-field input {
+  height: 2rem; padding: 0 .55rem; min-width: 0; font: inherit; font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground)); background: hsl(var(--background));
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm, .625rem);
+}
+.drp-field input:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 0; }
+.drp-field input[aria-invalid="true"] { border-color: hsl(var(--danger)); }
+.drp-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2, .5rem); }
+.drp-msg { margin: 0; min-height: 1.1em; font-size: .72rem; color: hsl(var(--muted-foreground)); }
+.drp-reset {
+  flex: 0 0 auto; padding: .3rem .6rem; border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm, .625rem); background: none; color: hsl(var(--foreground));
+  font: inherit; cursor: pointer;
+}
+.drp-reset:hover { background: hsl(var(--muted)); }
+/* 좁은 창: 한 달만 보이고(JS), 프리셋은 위의 가로줄로 올라간다. */
+@media (max-width: 600px) {
+  .drp { flex-direction: column; left: 8px !important; right: 8px; }
+  .drp-presets {
+    flex-direction: row; flex-wrap: wrap; min-width: 0; padding: 0 0 var(--space-2, .5rem);
+    border-right: none; border-bottom: 1px solid hsl(var(--border));
+  }
+  .drp-row { grid-template-columns: repeat(7, minmax(2rem, 1fr)); }
+}
+/* 폰 폭: 칩은 "기간" 머리말을 떼고 값만 싣는다 — 상태 줄의 지표와 한 줄을 나눠 쓴다. */
+@media (max-width: 600px) { .period-chip-k { display: none; } }

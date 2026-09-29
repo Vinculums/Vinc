@@ -181,7 +181,14 @@ DIALOGS = {
     # 캔버스 위 노드 우클릭 메뉴는 캔버스 좌표가 필요해 아직 캡처하지 않았다(매트릭스의 갭).
     "surfaces/view.ts:openContextMenu": None,
     "surfaces/view.ts:confirmDestructive": "App · View · node-delete-confirm / dark",
-    "empty-invite.ts:c.newSheetTitle": "App · View · new-node-sheet / dark",
+    # 작업하는 자리에서 만들기(Part 3). 옛 `new-node-sheet` 폼은 컴포저로 바뀌었다 — 옛 보드는
+    # 폼 하나를 찍은 것이라 컴포저(종류 넷 · id 확인 · 연결)를 대표하지 못한다. 디자인 라운드
+    # (A1)를 건너뛰고 구현했으므로 셋 다 **선언된 결손**이다.
+    "node-composer.ts:COPY.author.composerTitle": None,
+    "connect.ts:A.connectTitle": None,
+    "authoring.ts:openContextMenu": None,
+    # 빈 화면에 파일 여럿을 끌어다 놓으면 뜨는 일괄 가져오기(여태 없는 라우트로 가 사라졌다).
+    "empty-invite.ts:COPY.author.menuImport": None,
     # 첫 실행 로그인은 2026-09-26 부터 시트가 아니라 창 전체 화면이다(firstrun.ts
     # openSignInScreen) — 모달 대응에서 빠지고, 보드 `App · View · first-run / dark` 는
     # 표면×상태 축(캡처 매니페스트의 view__first-run)이 계속 대조한다.

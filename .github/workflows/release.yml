@@ -31,7 +31,7 @@ concurrency:
 permissions:
   contents: read
 
-# ── GitHub 아티팩트 미사용(저장 할당량 의존 제거) ─────────────────────────────
+# ── 태그 릴리스는 GitHub 아티팩트 미사용(저장 할당량 의존 제거) ───────────────
 # 예전엔 build 가 설치본을 `bundles-*` **Actions 아티팩트**로 올리고 publish 가
 # 내려받아 발행했다. Actions/Packages 저장은 계정 전체 공유 + Free 한도 0.5GB 라,
 # 아티팩트가 그 한도를 채우면 "Artifact storage quota has been hit"로 릴리스가
@@ -511,6 +511,20 @@ jobs:
           #   tauri.conf 에 배선. (EV/OV 코드사인 인증서 또는 Trusted Signing 필요.)
         with:
           projectPath: app
+
+      # 수동 빌드에서는 공개 릴리스를 만들지 않으므로 Windows 설치 시험용 후보만
+      # 하루 보관한다. 태그 릴리스는 아래 Vincs-app 직접 업로드 경로를 그대로 쓴다.
+      - name: Retain Windows installer for manual upgrade smoke
+        if: github.event_name == 'workflow_dispatch' && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-smoke-${{ github.sha }}
+          path: |
+            app/src-tauri/target/release/bundle/nsis/*-setup.exe
+            app/src-tauri/target/release/bundle/nsis/*-setup.exe.sig
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
 
       # ── 설치본 + 업데이터 번들 + 고정 별칭 + latest 조각을 Vincs-app draft 릴리스에
       #    **직접 업로드**한다(GitHub 아티팩트 미사용 → 저장 할당량 무관). 태그일 때만. ──

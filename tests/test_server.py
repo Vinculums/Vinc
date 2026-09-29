@@ -1585,6 +1585,21 @@ class DocRouteE2E(unittest.TestCase):
             code, again = _req(base, "/doc/put", method="POST",
                                body={**body, "origin": "notes.md", "id": a["doc_id"]})
             self.assertTrue(again["executed"] and again["skipped"])
+            # 본문만 다시 보내도 출처가 남고, 빈 문자열을 명시하면 본문을
+            # 재청킹하지 않고 출처만 지울 수 있다.
+            code, kept = _req(base, "/doc/put", method="POST",
+                              body={**body, "id": a["doc_id"]})
+            self.assertEqual(code, 200)
+            self.assertTrue(kept["skipped"])
+            code, got = _req(base, f"/doc?id={a['doc_id']}&owner=user:a")
+            self.assertEqual(got["origin"], "notes.md")
+            code, cleared = _req(base, "/doc/put", method="POST",
+                                 body={**body, "id": a["doc_id"], "origin": ""})
+            self.assertEqual(code, 200)
+            self.assertFalse(cleared["skipped"])
+            self.assertEqual(cleared["replaced"], 0)
+            code, got = _req(base, f"/doc?id={a['doc_id']}&owner=user:a")
+            self.assertEqual(got["origin"], "")
 
     def test_doc_put_file_route(self):
         """`POST /doc/put-file` — 파일 바이트 입구(base64-in-JSON).
