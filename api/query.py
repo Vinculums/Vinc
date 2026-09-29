@@ -1190,45 +1190,48 @@ def ppr_scores(nodes: list[dict], edges: list[dict], seeds: list[str], *,
 
 # ── 최근성(Generative Agents 의 recency × relevance, 모델 없이) ─────────────────
 # `ppr` 은 "시드에서 얼마나 가까운가"만 본다. 같은 거리라면 최근에 생긴 것이 지금 일에 더
-# 닿아 있을 가능성이 크다(Park et al. 2023 의 기억 점수는 최근성·중요도·관련도의 합이고,
-# 중요도는 모델이 매기므로 뺀다). 반감기로 줄어드는 최근성을 `ppr` 에 곱해 섞은 값을
-# `ppr_recent` 로 **따로** 싣는다 — `ppr` 을 바꾸면 그것을 읽는 쪽의 순위가 말없이 바뀐다.
-# ⚠ 오늘 날짜에 기대므로 같은 그래프라도 날이 바뀌면 값이 바뀐다. 결정론은 "같은 날·같은
-# 그래프"까지다(`now` 를 넘기면 테스트가 고정한다).
-# 근거: 문헌 조사 §4 Generative Agents 행, [[vinc.research.unified-kg-rag-comparison]]
+# 닿아 있을 가능성이 크다. Park et al. 2023 의 기억 점수는 최근성·중요도·관련도를 **더하지만**
+# 여기서는 반감기로 줄어드는 최근성을 `ppr` 에 **곱한다**(중요도는 모델이 매기므로 뺀다).
+# 곱이라서 시드가 닿지 않는 노드(ppr 0)는 새것이어도 0 에 머문다. 그 값을 `ppr_recent` 로
+# **따로** 싣는다 — `ppr` 을 바꾸면 그것을 읽는 쪽의 순위가 말없이 바뀐다.
+# 나이는 오늘이 아니라 **이 노드 집합에서 가장 새 `ts`** 부터 잰다. 그래서 값은 그래프만의
+# 순수 함수다(그래프가 그대로면 날이 바뀌어도 그대로다).
+# ⚠ "최근"의 뜻이 종류마다 다르다(`ts` 투영이 다르다): Concept·Record·Decision 은 생성
+# 시각(없으면 갱신), Episode 는 사건 날짜, Entity 는 갱신 시각, Bridge 는 생성 시각을 읽지만
+# 그 열은 쓰이지 않아 사실상 갱신 시각이다([[record:bridge-created-is-read-but-never-written]]).
+# 근거: [[vinc.research.graphrag-agent-memory-literature-2026-09-28]] §4 Generative Agents 행
 PPR_RECENCY_HALF_LIFE_DAYS = 90.0
 #: 최근성이 섞이는 몫. 0 이면 `ppr_recent == ppr`, 1 이면 최근성만큼 줄어든다.
 PPR_RECENCY_WEIGHT = 0.5
 
 
-def _node_age_days(ts: str | None, today: _dt.date) -> float | None:
-    """노드 시각(`ts` — 생성, 없으면 갱신. 사건은 날짜)의 나이(일). 못 읽으면 None."""
+def _node_date(ts: str | None) -> _dt.date | None:
+    """노드 시각(`ts`)의 날짜 부분. 못 읽으면 None."""
     v = (ts or "").strip()
     if len(v) < 10:
         return None
     try:
-        d = _dt.date.fromisoformat(v[:10])
+        return _dt.date.fromisoformat(v[:10])
     except ValueError:
         return None
-    return max(0.0, float((today - d).days))
 
 
 def ppr_recent(nodes: list[dict], scores: dict[str, float], *,
-               today: _dt.date | None = None,
                half_life_days: float = PPR_RECENCY_HALF_LIFE_DAYS,
                weight: float = PPR_RECENCY_WEIGHT) -> dict[str, float]:
     """`ppr` 에 최근성을 섞는다: `ppr × ((1-w) + w × 0.5^(나이/반감기))`, 합=1 로 정규화.
+    나이는 집합에서 가장 새 노드부터 잰 일 수다(가장 새 노드의 최근성이 1).
 
     시각을 모르는 노드는 **아는 노드들의 평균 최근성**을 받는다. 모른다고 오래된 것으로
     치면 시각 없는 레거시 행이 전부 밀려나고, 새것으로 치면 거꾸로 올라온다 — 둘 다
     데이터가 말하지 않은 것을 만든다."""
-    today = today or _dt.datetime.now(_dt.timezone.utc).date()
     hl = max(1e-6, float(half_life_days))
     w = min(1.0, max(0.0, float(weight)))
-    rec: dict[str, float | None] = {}
-    for nd in nodes:
-        age = _node_age_days(nd.get("ts"), today)
-        rec[nd.get("id")] = None if age is None else 0.5 ** (age / hl)
+    dates = {nd.get("id"): _node_date(nd.get("ts")) for nd in nodes}
+    newest = max((d for d in dates.values() if d), default=None)
+    rec: dict[str, float | None] = {
+        nid: None if d is None else 0.5 ** ((newest - d).days / hl)
+        for nid, d in dates.items()}
     known = [v for v in rec.values() if v is not None]
     neutral = sum(known) / len(known) if known else 1.0
     raw = {nid: scores.get(nid, 0.0) * ((1.0 - w) + w * (neutral if r is None else r))
@@ -1238,7 +1241,7 @@ def ppr_recent(nodes: list[dict], scores: dict[str, float], *,
 
 
 def attach_ppr(shaped: dict, seeds: list[str], *, alpha: float = 0.15,
-               iters: int = 30, today: _dt.date | None = None) -> dict:
+               iters: int = 30) -> dict:
     """shaped 그래프의 각 노드에 ``ppr`` 필드(6자리 반올림)를 부여한다(E-G2, 가산
     메타 — 기존 소비처 무영향). seed ego 뷰·decide 에서 호출. 시드 없거나 노드 0이면
     무동작(빈 그래프 안전). 최근성을 섞은 ``ppr_recent`` 도 함께 싣는다(:func:`ppr_recent`)."""
@@ -1247,7 +1250,7 @@ def attach_ppr(shaped: dict, seeds: list[str], *, alpha: float = 0.15,
         return shaped
     scores = ppr_scores(nodes, shaped.get("edges") or [], seeds,
                         alpha=alpha, iters=iters)
-    recent = ppr_recent(nodes, scores, today=today)
+    recent = ppr_recent(nodes, scores)
     for nd in nodes:
         nd["ppr"] = round(scores.get(nd.get("id"), 0.0), 6)
         nd["ppr_recent"] = round(recent.get(nd.get("id"), 0.0), 6)
@@ -1288,10 +1291,45 @@ def prize_subgraph(nodes: list[dict], edges: list[dict], prizes: dict[str, float
     return chosen
 
 
-#: 상금 기반 선택을 하는 도달 집합의 상한. 예산이 생긴 이유가 허브의 depth 2+ 가 행 조회에서
-#: 60초를 넘긴 것이라, 이 선택은 도달 집합 **전부**의 행을 읽어야 해서 여기서 막는다. 넘으면
-#: 층 단위 자르기로 돌아가고 그렇다고 말한다.
+#: 상금 기반 선택을 하는 도달 집합(시드를 뺀 개념 수)의 상한. 선택은 도달 집합 **전부**의
+#: 개념↔개념 엣지를 id 만으로 읽는다(행·축은 고른 개념에만). 그 조회도 도달 집합에 비례하므로
+#: 여기서 막고, 넘으면 층 단위 자르기로 돌아가 그렇다고 말한다.
+#: 근거: [[decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24]]
 PRIZE_REACH_CAP = 600
+
+
+def concept_edge_ids_plan(ids: list[str], *, owner: str | None = None) -> QueryPlan:
+    """id 집합 **안의** 개념↔개념 엣지를 id·타입·신뢰도만으로. 상금 선택이 순위를 매기는
+    그래프다. props·tags·추적 열을 싣는 :func:`graph_rows_for_ids_plan` 과 축 합류는 고른
+    개념에만 돈다. owner 는 양 끝 모두에 건다(SEC-1, graph_rows 와 같은 이유)."""
+    params: dict = {"ids": pkns.keys(owner, ids)}
+    where = "c.concept_id IN $ids AND d.concept_id IN $ids"
+    if owner:
+        where += " AND c.owner_id = $owner AND d.owner_id = $owner"
+        params["owner"] = owner
+    cypher = (f"MATCH (c:Concept)-[r]->(d:Concept) WHERE {where} "
+              "RETURN c.concept_id AS source, d.concept_id AS target, "
+              "label(r) AS type, r.confidence AS confidence")
+    return QueryPlan("concept_edge_ids", cypher, params,
+                     note="concept to concept edges inside the id set (ids only)")
+
+
+def _prize_pick(seed: str, reach_rows: list[dict], max_nodes: int, *, owner: str,
+                cfg, store) -> tuple[list[str], float] | None:
+    """도달 집합(개념)에서 시드 + 개념 `max_nodes` 개를 상금(`ppr`)으로 고른다. 예산 단위는 층
+    자르기와 같다(시드 빼고 개념만 센다). 엣지 조회가 안 돌면 None.
+
+    ponytail: 순위 그래프는 개념↔개념 엣지뿐이라 매개자(브릿지·레코드·에피소드·결정)나 주제
+    노드로만 이어진 개념은 후보가 못 된다. 필요해지면 매개자 팔을 id 만으로 더 읽어 쌍으로 접을 것."""
+    ids = sorted({seed, *(r["id"] for r in reach_rows)})
+    res = execute(concept_edge_ids_plan(ids, owner=owner), cfg, store=store)
+    if not res.get("executed"):
+        return None
+    edges = [e for e in res.get("rows", []) if e.get("source") and e.get("target")]
+    nodes = [{"id": i} for i in ids]
+    prizes = ppr_scores(nodes, edges, [seed])
+    picked = prize_subgraph(nodes, edges, prizes, seed, int(max_nodes) + 1)
+    return picked, sum(prizes.get(i, 0.0) for i in picked)
 
 
 def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None,
@@ -2509,6 +2547,8 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
     ``depth_budget`` 으로 무엇을 줄였는지 말한다. 층 중간을 자르지 않는 이유는 "몇
     홉까지 다 봤다"는 말이 참으로 남아야 해서다. 주지 않으면(View L2·공유 팩·동기화)
     플랜도 결과도 종전과 같다. 예산 값은 MCP 핸들러가 정한다.
+    ``select="prize"`` 면 같은 경우에 깊이를 두고 개념을 ppr 로 고른다(:func:`_prize_pick`,
+    단위는 같다 — 시드 + 개념 ``max_nodes``). 무엇을 했는지는 ``selection`` 이 말한다.
     근거: [[decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24]]"""
     if seed:
         # SEC-1: seed 갈래도 owner 스코프를 지킨다. 여태 owner 를 받고도 쓰지 않아
@@ -2535,19 +2575,40 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             return {"kind": "graph", "executed": False, "seed": seed, "depth": depth,
                     "nodes": [], "edges": [], "note": ids_res.get("note", "")}
         reach_rows = [r for r in ids_res.get("rows", []) if r.get("id")]
-        # `select="prize"`: 예산을 층이 아니라 상금(ppr)으로 채운다. 도달 집합 전부의 행을
-        # 읽어야 하므로 상한(:data:`PRIZE_REACH_CAP`) 안에서만 하고, 넘으면 층 자르기로 간다.
-        prize_mode = False
+        # `select="prize"`: 층 자르기가 깊이를 줄일 바로 그 경우(시드 뺀 개념 도달 집합이
+        # 예산을 넘을 때)에, 깊이는 두고 개념을 상금(ppr)으로 고른다. 단위는 층 자르기와 같다
+        # (시드 + 개념 `max_nodes`). 고른 뒤에는 아래 행 조회·축 합류가 층 자르기와 똑같이
+        # 고른 개념에만 돈다 — 부착(레코드·에피소드·브릿지·결정)은 예산 밖이다.
+        # 결정 시드는 층 자르기로 간다: 결정↔개념 엣지는 순위 그래프(개념↔개념)에 없고, 시드
+        # 자신의 엣지가 고리 전체를 예산 밖에서 다시 싣는다(아래 decision_seed 합류).
         selection: dict | None = None
+        prized = False
         if (select == "prize" and max_nodes and int(depth) > 1 and not entity_seed
-                and len(reach_rows) + 1 > int(max_nodes)):
-            if len(reach_rows) <= PRIZE_REACH_CAP:
-                prize_mode = True
+                and len(reach_rows) > int(max_nodes)):
+            why, picked = "", None
+            if decision_seed:
+                why = "prize selection ranks from concept seeds only"
+            elif len(reach_rows) > PRIZE_REACH_CAP:
+                why = (f"reach {len(reach_rows)} is over the prize-selection cap of "
+                       f"{PRIZE_REACH_CAP}")
+            else:
+                picked = _prize_pick(seed, reach_rows, int(max_nodes), owner=owner,
+                                     cfg=cfg, store=store)
+                why = "" if picked else "the edge lookup for prize selection did not run"
+            if picked:
+                keep_ids = set(picked[0])
+                selection = {"method": "prize", "max_nodes": int(max_nodes),
+                             "reach": len(reach_rows), "kept": len(keep_ids - {seed}),
+                             "prize_kept": round(picked[1], 4),
+                             "note": "every concept within the requested depth was ranked "
+                                     "and the connected set with the most ppr was kept, "
+                                     "with what is attached to it"}
+                reach_rows = [r for r in reach_rows if r["id"] in keep_ids]
+                prized = True
             else:
                 selection = {"method": "layers", "requested": "prize",
-                             "note": f"reach {len(reach_rows)} is over the prize-selection "
-                                     f"cap of {PRIZE_REACH_CAP}, so depth was cut by layer"}
-        if max_nodes and int(depth) > 1 and not entity_seed and not prize_mode:
+                             "note": f"{why}, so depth was cut by layer"}
+        if max_nodes and int(depth) > 1 and not entity_seed and not prized:
             want = max(1, min(int(depth), 4))
             hops = {r["id"]: int(r.get("hops") or 1) for r in reach_rows}
             served = 1
@@ -2631,22 +2692,6 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
                                     "content_ts": seed_row.get("content_ts") or ""}]
         # E-G2 — 시드 관점 개인화 랭킹(ppr). layout 전에 부여(순수 메타, 좌표 무관).
         attach_ppr(shaped, [seed])
-        if prize_mode:
-            # 예산만큼 시드와 이어진 부분 그래프를 상금으로 고른다. 깊이는 요청대로 다 걸었고,
-            # 그 안의 모든 노드를 싣는 것이 아니라는 사실을 `selection` 이 말한다.
-            prizes = {n["id"]: n.get("ppr", 0.0) for n in shaped["nodes"]}
-            picked = set(prize_subgraph(shaped["nodes"], shaped["edges"], prizes,
-                                        seed, int(max_nodes)))
-            reach_n = len(shaped["nodes"])
-            if picked:
-                shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in picked]
-                shaped["edges"] = [e for e in shaped["edges"]
-                                   if e["source"] in picked and e["target"] in picked]
-            selection = {"method": "prize", "max_nodes": int(max_nodes),
-                         "reach": reach_n, "kept": len(shaped["nodes"]),
-                         "prize_kept": round(sum(prizes.get(i, 0.0) for i in picked), 4),
-                         "note": "every node within the requested depth was considered and "
-                                 "the connected set with the most ppr was kept"}
         # 브릿지 소속은 파생값이다 — 배치보다 **먼저** 확정해야 hub·rank 가 같은
         # 도메인을 읽는다(_derive_bridge_domains 주석).
         _derive_bridge_domains(shaped)

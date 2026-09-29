@@ -807,16 +807,20 @@ TOOLS: list[dict] = [
             "depth": {"type": "integer", "default": 2, "minimum": 1, "maximum": 4},
             "select": {"type": "string", "enum": ["layers", "prize"], "default": "layers",
                        "description": "How to fill the node budget when depth reaches more "
-                                      "nodes than it allows. 'layers' (default) lowers the "
-                                      "depth until everything within it fits, so 'every node "
-                                      "within N hops' stays true. 'prize' keeps the requested "
-                                      "depth and picks the connected set around the seed with "
-                                      "the most ppr, so a far but central node can beat a near "
-                                      "but peripheral one; `selection` says what was kept. "
-                                      "'prize' falls back to 'layers' when depth reaches more "
-                                      "than 600 nodes. Every node carries `ppr` and "
-                                      "`ppr_recent` (ppr with a 90-day recency half-life "
-                                      "mixed in)."},
+                                      "concepts than it allows. Both count the same thing: the "
+                                      "seed plus that many concepts, with what is attached to "
+                                      "them on top. 'layers' (default) lowers the depth until "
+                                      "every concept within it fits, so 'every node within N "
+                                      "hops' stays true. 'prize' keeps the requested depth and "
+                                      "keeps the connected set of concepts around the seed "
+                                      "with the most ppr, so a far but central concept can "
+                                      "beat a near but peripheral one; `selection` says what "
+                                      "was kept. 'prize' falls back to 'layers', and says so "
+                                      "in `selection`, for a decision seed or when depth "
+                                      "reaches more than 600 concepts. Every node carries "
+                                      "`ppr` and `ppr_recent` (ppr with a 90-day recency "
+                                      "half-life mixed in, counted from the newest node in "
+                                      "the result)."},
             "owner": {"type": "string"},
         }}, "run": _t_graph,
     },
