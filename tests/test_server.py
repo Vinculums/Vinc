@@ -664,7 +664,8 @@ class FakeStoreDataTests(unittest.TestCase):
 
 @contextlib.contextmanager
 def _encode_stub(vector, *, seen: dict | None = None, delay: float = 0.0,
-                 runtime: str | None = None, build: str | None = None):
+                 runtime: str | None = None, build: str | None = None,
+                 model: str | None = None):
     """워커 인코딩 창구(`packaging/embed_worker.py` `serve_encode`)와 **같은 계약**을
     말하는 최소 대역. 모델 없이 배선만 검증하려고 둔다(실모델은 440MB 다운로드가 필요)."""
     import json as _json
@@ -694,9 +695,11 @@ def _encode_stub(vector, *, seen: dict | None = None, delay: float = 0.0,
                 # 헤더도 남긴다 — 창구가 루프백을 벗어나면서 인증이 붙었고, 그걸
                 # 안 싣는 회귀가 실제로 났다(2026-08-07: 질의 임베딩 전부 401).
                 seen["_authorization"] = self.headers.get("Authorization")
-            out = _json.dumps({"vectors": [list(vector)],
-                               "encoder_runtime": runtime,
-                               "encoder_build": build}).encode()
+            reply = {"vectors": [list(vector)], "encoder_runtime": runtime,
+                     "encoder_build": build}
+            if model is not None:
+                reply["model"] = model
+            out = _json.dumps(reply).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(out)))
@@ -799,6 +802,31 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
         self.assertEqual(res.get("arms"), "fts")
         self.assertIn("remote encoder runtime differs", res.get("vector_note") or "")
         self.assertEqual(self.seen_vec, [])
+
+    def _search_with_stored_model(self, stored, **stub):
+        """저장 모델을 ``stored`` 로 두고 창구 대역에 대고 검색한다."""
+        from unittest import mock
+        state = {"stored": stored, "migrating": False, "pending": 0}
+        with mock.patch.object(self.srv.docstore, "embed_model_state",
+                               return_value=state), \
+                _encode_stub([0.5, 0.5, 0.0, 0.0], **stub) as url:
+            os.environ["VINC_EMBED_ENCODE"] = url
+            return self._search()
+
+    def test_창구의_모델이_저장_모델과_다르면_벡터_팔을_뺀다(self):
+        """RV-06 모델 절반. 폭이 같은 다른 모델은 캐스팅 오류 없이 엉뚱한 이웃을 낸다."""
+        res = self._search_with_stored_model("BAAI/bge-m3", model="intfloat/multilingual-e5-base")
+        self.assertEqual(res.get("arms"), "fts")
+        self.assertIn("differs from the stored vectors' model", res.get("vector_note") or "")
+        self.assertEqual(self.seen_vec, [], "다른 모델의 질의 벡터로 벡터 팔이 돌았다")
+
+    def test_모델이_같거나_한쪽을_모르면_막지_않는다(self):
+        for stored, model in (("BAAI/bge-m3", "BAAI/bge-m3"),   # 같다
+                              ("BAAI/bge-m3", None),            # 옛 창구는 모델을 안 싣는다
+                              ("", "BAAI/bge-m3")):             # 저장 모델 기록이 없다
+            self.seen_vec.clear()
+            res = self._search_with_stored_model(stored, model=model)
+            self.assertEqual(res.get("arms"), "fts+vector", (stored, model, res))
 
     def test_remote_build_mismatch_with_same_runtime_refuses_old_model(self):
         with _encode_stub([0.5, 0.5, 0.0, 0.0], build="old-build") as url:

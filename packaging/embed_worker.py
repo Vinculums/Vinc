@@ -666,7 +666,9 @@ def serve_encode(emb: "_Embedder", port: int) -> int:
                 with lock:
                     vecs = emb.encode(texts if raw
                                       else [_prefix(t, kind) for t in texts])
-                out = _json.dumps({"vectors": vecs,
+                # `model` 은 질의 경로가 저장 벡터의 모델과 대조한다 — 폭이 같은 다른
+                # 모델은 캐스팅 오류 없이 엉뚱한 이웃만 낸다(RV-06).
+                out = _json.dumps({"vectors": vecs, "model": MODEL,
                                    "encoder_runtime": ENCODER_RUNTIME,
                                    "encoder_build": ENCODER_BUILD,
                                    "encoder_instance": instance_id}).encode("utf-8")

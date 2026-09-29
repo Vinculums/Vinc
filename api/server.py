@@ -85,6 +85,8 @@ _MIRROR_ENCODE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_ENCODE_TIMEOUT",
 _MIRROR_REPLACE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_REPLACE_TIMEOUT", "600"))
 _ENCODER_RESPONSE_RUNTIME = contextvars.ContextVar("encoder_response_runtime", default="")
 _ENCODER_RESPONSE_INSTANCE = contextvars.ContextVar("encoder_response_instance", default="")
+#: 창구가 답한 모델(`/encode` 의 `model`). 옛 창구는 안 실으므로 빈 값이 온다.
+_ENCODER_RESPONSE_MODEL = contextvars.ContextVar("encoder_response_model", default="")
 
 
 def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
@@ -120,6 +122,7 @@ def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
             f"remote={actual_build or 'unknown'}; hub={_ENCODER_BUILD or 'unknown'}")
     _ENCODER_RESPONSE_RUNTIME.set(actual_runtime)
     _ENCODER_RESPONSE_INSTANCE.set(str(out.get("encoder_instance") or ""))
+    _ENCODER_RESPONSE_MODEL.set(str(out.get("model") or ""))
     return out.get("vectors") or []
 
 from store.config import load_config
@@ -304,6 +307,7 @@ class VincApp:
         self._mig_note = ""      # 임베딩 모델 이행 중 사유(빈 문자열 = 정상)
         self._mig_at = 0.0       # 그 판정 시각 — 30초 캐시(`_embed_migrating`)
         self._mig_pending = 0    # 이행 중 남은 문서 수(GM-13 배지 진행도, note 와 동시 갱신)
+        self._mig_stored = ""    # 저장 벡터의 모델(같은 캐시로 읽는다, 빈 값 = 모른다)
         # 쿼리 임베딩 창구 상태 — 콜드스타트와 '바쁨'을 가르는 재료(`_claim_cold_retry`).
         # ⚠ 아래 셋은 전부 `time.monotonic()` 눈금이다(벽시계 아님). NTP 역방향 스텝이나
         # VM 재개가 시계를 밀면 '웜'·쿨다운 판정이 오류도 로그도 없이 뒤집힌다.
@@ -732,6 +736,7 @@ class VincApp:
         self._mig_at = now
         self._mig_note = ""
         self._mig_pending = 0
+        self._mig_stored = ""
         try:
             r = self._reader()
             try:
@@ -739,6 +744,7 @@ class VincApp:
             finally:
                 if r is not None:
                     r.close()
+            self._mig_stored = str(st.get("stored") or "")
             if st.get("migrating"):
                 # 화면(GM-13 배지)은 이 영문 문장을 그대로 쓰지 않는다(em 대시 포함,
                 # D38) — 구조화 진행도는 _mig_pending 이 따로 나른다.
@@ -763,6 +769,7 @@ class VincApp:
         어느 쪽인지는 `_claim_cold_retry` 가 최근 성공 시각으로 가른다. 강등은 응답
         메타(`vector_note`)에 남으므로 조용하지 않다."""
         _ENCODER_RESPONSE_RUNTIME.set("")
+        _ENCODER_RESPONSE_MODEL.set("")
         url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
         if not url or not text:
             return None, ""
@@ -807,6 +814,13 @@ class VincApp:
         되는 것처럼 보였다. `vector_note` 에 사유가 남아 그나마 드러났다."""
         vecs = _encode_post(url, [text], "query", timeout)
         self._qvec_ok = time.monotonic()  # 살아 있다 — 다음 초과는 '바쁨'으로 읽는다
+        # 창구의 모델이 저장 벡터의 모델과 다르면 벡터 팔을 뺀다. 폭이 같으면 엔진은
+        # 아무 오류 없이 다른 공간의 이웃을 낸다. 한쪽이라도 모르면(옛 창구·기록 없음)
+        # 막지 않는다. 저장 모델은 `_embed_migrating` 의 30초 캐시가 읽어 둔 값이다.
+        got, stored = _ENCODER_RESPONSE_MODEL.get(), self._mig_stored
+        if got and stored and got != stored:
+            return None, (f"query encoder model {got} differs from the stored vectors' "
+                          f"model {stored}: full-text results only")
         return (list(vecs[0]), "") if vecs else (None, "encode returned no vector")
 
     def _claim_cold_retry(self) -> bool:
