@@ -762,6 +762,140 @@ class DocstoreE2E(unittest.TestCase):
         self.assertEqual(ds._meta(self.store, did)["owner_id"], "")
         self.assertEqual(ds.get_doc(self.store, did)["text"], "레거시 정본")
 
+    # ── RV-12(VIN-208): 첫 쓰기가 메타 전에 끊긴 잔해 · 꼬리 청크 · 쓰기 창 표식 ──
+    _PARAS = ("첫 문단입니다.\n\n", "둘째 문단입니다.\n\n", "셋째 문단입니다.\n\n")
+
+    def _put_three(self, owner, doc_id):
+        text = "".join(self._PARAS)
+        starts = [0, len(self._PARAS[0]), len(self._PARAS[0]) + len(self._PARAS[1])]
+        out = ds.put_doc(self.store, owner=owner, text=text, doc_id=doc_id, title="t",
+                         boundaries=starts, max_chars=64)
+        self.assertEqual(out["chunks"], 3)
+        return text
+
+    def _drop_meta(self, doc_id):
+        """첫 쓰기가 ②(청크) 뒤 ③(메타) 전에 끊긴 모양 — 청크만 남는다."""
+        self.store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $d DELETE d", {"d": doc_id})
+
+    def _chunk_owners(self, doc_id):
+        return {r["o"] for r in self.store.run(
+            "MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.owner_id AS o", {"d": doc_id})}
+
+    def test_메타_없는_3청크를_1청크_re_put_이_치유한다(self):
+        """VIN-208 완료 조건. 옛 코드는 메타가 없으면 옛 청크를 안 지워서 꼬리 둘이 남았고
+        get_doc 이 "incomplete: 3 of 1" 로 거절했다. 같은 본문 re-put 은 무변경 스킵이라
+        영영 안 나았다. 자식 벡터(ChunkVec)도 함께 지워져야 한다."""
+        did = "d-rv12-metaless"
+        self._put_three("user:a", did)
+        ids = self._chunk_ids(did)
+        ds.apply_embeddings(self.store, did, {i: [[1.0, 0, 0, 0]] for i in ids})
+        self._drop_meta(did)
+
+        out = ds.put_doc(self.store, owner="user:a", text="한 청크 본문.", doc_id=did,
+                         title="t")
+        self.assertTrue(out["executed"], out)
+        got = ds.get_doc(self.store, did, owner="user:a")
+        self.assertTrue(got.get("executed"), got)
+        self.assertTrue(got["verified"])
+        self.assertEqual((out["chunks"], out["replaced"]), (1, 3))
+        self.assertEqual(got["text"], "한 청크 본문.")
+        self.assertEqual(self._count_chunks(did), 1)
+        self.assertEqual(self._count(
+            "MATCH (v:ChunkVec) WHERE v.doc_id = $d RETURN count(v) AS c", {"d": did}), 0)
+        self.assertTrue(ds.put_doc(self.store, owner="user:a", text="한 청크 본문.",
+                                   doc_id=did, title="t")["skipped"])
+
+    def test_꼬리_청크가_남은_문서는_같은_본문_re_put_이_스킵하지_않는다(self):
+        """메타 chunk_count 는 1 인데 행이 3 인 문서(허브 센서스의 tail 모양). 스킵 조건이
+        해시·제목만 봤으므로 같은 본문 re-put 이 성공을 답하고 문서는 계속 안 읽혔다."""
+        did = ds.put_doc(self.store, owner="user:a", text="짧은 본문.", title="t")["doc_id"]
+        for i in (1, 2):
+            self.store.run(
+                "CREATE (c:Chunk {chunk_id:$id, doc_id:$d, owner_id:'user:a', text:'꼬리', "
+                "source_file:'', chunk_index:$i, char_start:100, char_end:102})",
+                {"id": ds.chunk_id_of(did, i), "d": did, "i": i})
+        self.assertIn("3 of 1", ds.get_doc(self.store, did, owner="user:a")["error"])
+
+        healed = ds.put_doc(self.store, owner="user:a", text="짧은 본문.", doc_id=did,
+                            title="t")
+        self.assertFalse(healed.get("skipped"), "꼬리가 남은 문서를 무변경 스킵했다")
+        got = ds.get_doc(self.store, did, owner="user:a")
+        self.assertTrue(got["verified"], got)
+        self.assertEqual(self._count_chunks(did), 1)
+        self.assertTrue(ds.chunks_intact(self.store, did))
+
+    def test_쓰기_창_표식이_남은_문서를_re_put_이_치유한다(self):
+        """허브 센서스(2026-09-29)의 chunk_count -1 문서 셋의 모양: 더 긴 본문으로 가던
+        re-put 이 ⓪ 표식을 찍고 새 청크 일부만 쓴 채 끊겼다. 메타는 옛 해시를 들고 있다.
+        옛 본문(메타 해시와 같다)이든 끊긴 새 본문이든 re-put 하나로 나아야 한다."""
+        old = "짧은 옛 본문."
+        did = ds.put_doc(self.store, owner="user:a", text=old, title="t")["doc_id"]
+        new = self._put_three("user:a", "d-rv12-scratch")    # 끊긴 쓰기의 새 청크 재료
+        self.store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $d SET d.chunk_count = -1",
+                       {"d": did})
+        self.store.run("MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": did})
+        for i, piece in enumerate(self._PARAS[:2]):          # 셋 중 둘만 들어갔다
+            self.store.run(
+                "CREATE (c:Chunk {chunk_id:$id, doc_id:$d, owner_id:'user:a', text:$t, "
+                "source_file:'', chunk_index:$i, char_start:0, char_end:1})",
+                {"id": ds.chunk_id_of(did, i), "d": did, "t": piece, "i": i})
+        self.assertIn("rewritten", ds.get_doc(self.store, did, owner="user:a")["error"])
+
+        same = ds.put_doc(self.store, owner="user:a", text=old, doc_id=did, title="t")
+        self.assertFalse(same.get("skipped"))
+        got = ds.get_doc(self.store, did, owner="user:a")
+        self.assertTrue(got["verified"], got)
+        self.assertEqual((got["text"], self._count_chunks(did)), (old, 1))
+
+        self.store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $d SET d.chunk_count = -1",
+                       {"d": did})
+        ds.put_doc(self.store, owner="user:a", text=new, doc_id=did, title="t")
+        got = ds.get_doc(self.store, did, owner="user:a")
+        self.assertTrue(got["verified"], got)
+        self.assertEqual(got["text"], new)
+
+    def test_메타_없는_남의_청크는_덮지도_지우지도_않는다(self):
+        """남(user:b)의 첫 쓰기가 끊긴 잔해. 옛 put_doc 은 MERGE 로 그 청크의 owner_id 를
+        덮어 가져갔고, 옛 delete_doc 은 owner 확인 없이 지웠다."""
+        did = "d-rv12-foreign"
+        self._put_three("user:b", did)
+        self._drop_meta(did)
+
+        put = ds.put_doc(self.store, owner="user:a", text="가져가기", doc_id=did, title="t")
+        self.assertFalse(put["executed"], put)
+        self.assertIn("doc_id unavailable", put["error"])
+        self.assertEqual(self._chunk_owners(did), {"user:b"})
+        self.assertIsNone(ds._meta(self.store, did))
+
+        dele = ds.delete_doc(self.store, did, owner="user:a")
+        self.assertFalse(dele["found"], dele)
+        self.assertEqual(self._count_chunks(did), 3)
+
+        mine = ds.delete_doc(self.store, did, owner="user:b")
+        self.assertTrue(mine["found"], mine)
+        self.assertEqual((mine["deleted_chunks"], self._count_chunks(did)), (3, 0))
+
+    def test_메타_없는_무소유_청크는_누구도_가져가지_못한다(self):
+        # 빈 owner 는 열려 있음이 아니다(VIN-226 과 같은 규칙을 메타 없는 청크에도).
+        did = "d-rv12-ownerless"
+        self._put_three("user:a", did)
+        self._drop_meta(did)
+        self.store.run("MATCH (c:Chunk) WHERE c.doc_id = $d SET c.owner_id = ''", {"d": did})
+        put = ds.put_doc(self.store, owner="user:a", text="가져가기", doc_id=did, title="t")
+        self.assertFalse(put["executed"], put)
+        self.assertEqual(self._chunk_owners(did), {""})
+        self.assertEqual(self._count_chunks(did), 3)
+
+    def test_메타가_내_것이면_무소유_레거시_청크도_내_문서로_다시_쓴다(self):
+        """소유의 정본은 메타다. 청크 owner_id 가 빈 레거시 문서(v4 이전 코퍼스)를 청크
+        owner 로 거절하면 주인이 자기 문서를 못 고친다."""
+        did = ds.put_doc(self.store, owner="user:a", text="레거시 본문", title="t")["doc_id"]
+        self.store.run("MATCH (c:Chunk) WHERE c.doc_id = $d SET c.owner_id = ''", {"d": did})
+        out = ds.put_doc(self.store, owner="user:a", text="고친 본문", doc_id=did, title="t")
+        self.assertTrue(out["executed"], out)
+        self.assertEqual(ds.get_doc(self.store, did, owner="user:a")["text"], "고친 본문")
+        self.assertEqual(self._chunk_owners(did), {"user:a"})
+
     def test_delete_removes_chunks_and_meta(self):
         out = ds.put_doc(self.store, owner="user:a", text="지울 문서", title="d")
         did = out["doc_id"]

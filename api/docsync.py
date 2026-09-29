@@ -111,24 +111,29 @@ def import_docs(store, *, owner: str, payload: dict) -> dict:
             continue
         remote_ua = d.get("updated_at") or ""
         cur = _local(store, doc_id)
+        # v7(D72) — 원격의 시간 두 열을 그대로 박는다. created_at 은 로컬에 없을
+        # 때만 의미가 있고(put_doc 이 기존 값을 보존한다), 구 송신자는 키가 없어
+        # None 이 되므로 로컬 규칙이 그대로 적용된다(하위호환).
+        fields = {"title": d.get("title"), "origin": d.get("origin") or "",
+                  "updated_at": remote_ua or None,
+                  "created_at": d.get("created_at") or None,
+                  "content_time": d.get("content_time")}
         if cur is not None:
             if (cur.get("owner_id") or "") != owner:   # 무소유도 남의 것(VIN-226)
                 skipped += 1
                 continue
             if cur.get("content_hash") == d.get("content_hash"):
-                skipped += 1
-                continue
-            if not _newer(remote_ua, cur.get("updated_at") or ""):
+                if ds.chunks_intact(store, doc_id):
+                    skipped += 1
+                    continue
+                # 본문이 같은데 로컬 청크가 깨졌다(쓰기 창 표식·꼬리 청크) — LWW 와 무관하게
+                # 같은 본문으로 다시 쓴다. 제목·출처·시각은 로컬 것을 그대로 둔다(RV-12).
+                fields = {"updated_at": cur.get("updated_at") or None}
+            elif not _newer(remote_ua, cur.get("updated_at") or ""):
                 skipped += 1          # 로컬이 같거나 더 새다 → LWW 로 로컬 유지
                 continue
-        # v7(D72) — 원격의 시간 두 열을 그대로 박는다. created_at 은 로컬에 없을
-        # 때만 의미가 있고(put_doc 이 기존 값을 보존한다), 구 송신자는 키가 없어
-        # None 이 되므로 로컬 규칙이 그대로 적용된다(하위호환).
         res = ds.put_doc(store, owner=owner, text=d.get("text") or "", doc_id=doc_id,
-                         title=d.get("title"), origin=d.get("origin") or "",
-                         link=True, updated_at=remote_ua or None,
-                         created_at=d.get("created_at") or None,
-                         content_time=d.get("content_time"))
+                         link=True, **fields)
         if res.get("executed") and not res.get("skipped"):
             if cur is None:
                 applied += 1
