@@ -23,6 +23,7 @@ from __future__ import annotations
 from api.procutil import pid_alive
 
 import base64
+import contextvars
 import datetime as _dt
 import json
 import os
@@ -82,6 +83,8 @@ _MIRROR_BATCH = int(os.environ.get("VINC_NODE_MIRROR_BATCH", "32"))
 _MIRROR_ENCODE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_ENCODE_TIMEOUT", "120"))
 #: 교체(드롭·삭제·삽입·인덱스 빌드)의 상한. 인코딩이 빠져 있어 짧다.
 _MIRROR_REPLACE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_REPLACE_TIMEOUT", "600"))
+_ENCODER_RESPONSE_RUNTIME = contextvars.ContextVar("encoder_response_runtime", default="")
+_ENCODER_RESPONSE_INSTANCE = contextvars.ContextVar("encoder_response_instance", default="")
 
 
 def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
@@ -103,10 +106,20 @@ def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         out = json.load(resp) or {}
     actual_runtime = out.get("encoder_runtime")
-    if not actual_runtime or actual_runtime != _ENCODER_RUNTIME:
+    if (not actual_runtime or
+            (_ENCODER_RUNTIME and actual_runtime != _ENCODER_RUNTIME) or
+            (_ENCODER_BUILD_REQUIRED and not _ENCODER_RUNTIME)):
         raise RuntimeError(
             f"remote encoder runtime differs from hub: "
             f"remote={actual_runtime or 'unknown'}; hub={_ENCODER_RUNTIME}")
+    actual_build = out.get("encoder_build")
+    if (_ENCODER_BUILD_REQUIRED or _ENCODER_BUILD or actual_build) and (
+            not _ENCODER_BUILD or actual_build != _ENCODER_BUILD):
+        raise RuntimeError(
+            f"remote encoder build differs from hub: "
+            f"remote={actual_build or 'unknown'}; hub={_ENCODER_BUILD or 'unknown'}")
+    _ENCODER_RESPONSE_RUNTIME.set(actual_runtime)
+    _ENCODER_RESPONSE_INSTANCE.set(str(out.get("encoder_instance") or ""))
     return out.get("vectors") or []
 
 from store.config import load_config
@@ -135,6 +148,8 @@ from store.persistence import (SnapshotPolicy, claim_writer, resolve_snapshot_ev
                                resolve_snapshot_path, save_snapshot)
 
 _ENCODER_RUNTIME = encoder_fingerprint()  # 이미지 안에서는 프로세스 동안 판이 바뀌지 않는다.
+_ENCODER_BUILD = os.environ.get("VINC_ENCODER_BUILD", "").strip()
+_ENCODER_BUILD_REQUIRED = os.environ.get("VINC_ENCODER_BUILD_REQUIRED") == "on"
 
 
 # ── ingest 디스패치(비동기 잡) ───────────────────────────────────────────────
@@ -643,7 +658,7 @@ class VincApp:
         # MCP 가 토큰에서 해석한 owner 를 항상 실어 보내 스코프를 강제한다.
         code, res = self._read(lambda r: q.search(query,
                                                   query_embedding=qvec,
-                                                  query_runtime=(_ENCODER_RUNTIME
+                                                  query_runtime=(_ENCODER_RESPONSE_RUNTIME.get()
                                                                  if qvec is not None else None),
                                                   top_k=_int(p.get("top_k"), 5),
                                                   filters=filters or None,
@@ -711,6 +726,7 @@ class VincApp:
         기다려 깨우는 게 맞다(`_QVEC_COLD_TIMEOUT`) — 깨고 나면 그 뒤가 전부 싸다.
         어느 쪽인지는 `_claim_cold_retry` 가 최근 성공 시각으로 가른다. 강등은 응답
         메타(`vector_note`)에 남으므로 조용하지 않다."""
+        _ENCODER_RESPONSE_RUNTIME.set("")
         url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
         if not url or not text:
             return None, ""
@@ -968,7 +984,7 @@ class VincApp:
         # 명시적 요청 경로이고, 기본으로 켜 두면 정책이 막으려는 것을 그대로 낸다.
         code, res = self._read(lambda r: q.brief(
             query, owner=_req(p, "owner"), query_embedding=qvec,
-            query_runtime=(_ENCODER_RUNTIME if qvec is not None else None),
+            query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
             max_excerpts=_int(p.get("max_excerpts"), 3),
             historical=_flag(p.get("historical")), as_of=p.get("as_of") or None, store=r))
         if isinstance(res, dict) and str(res.get("error") or "").startswith("invalid_as_of"):
@@ -1390,10 +1406,24 @@ class VincApp:
                 return 200, {"kind": "node-mirror.rebuild", "executed": False, "rows": 0,
                              "note": "미러에 담을 노드가 0건이다"}
             t0 = time.monotonic()
+            mirror_runtime = ""
+            mirror_instance = ""
             for i in range(0, len(rows), _MIRROR_BATCH):
                 batch = rows[i:i + _MIRROR_BATCH]
                 vecs = _encode_post(url, [b["text"] for b in batch], "passage",
                                     _MIRROR_ENCODE_TIMEOUT)
+                actual_runtime = _ENCODER_RESPONSE_RUNTIME.get()
+                if mirror_runtime and actual_runtime != mirror_runtime:
+                    return 502, {"executed": False,
+                                 "error": "encoder runtime changed during mirror rebuild"}
+                actual_instance = _ENCODER_RESPONSE_INSTANCE.get()
+                if not _ENCODER_BUILD and (
+                        not actual_instance or
+                        (mirror_instance and actual_instance != mirror_instance)):
+                    return 502, {"executed": False,
+                                 "error": "encoder instance changed or unknown during mirror rebuild"}
+                mirror_runtime = actual_runtime
+                mirror_instance = actual_instance
                 if len(vecs) != len(batch):
                     # 반만 받은 벡터로 미러를 갈아 끼우면 나머지 노드가 조용히 사라진다.
                     return 502, {"executed": False, "error": (
@@ -1405,7 +1435,7 @@ class VincApp:
             res = self.jobs.run_sync(
                 "node-mirror.replace",
                 lambda: node_mirror.replace(self.store, rows, model,
-                                            _ENCODER_RUNTIME),
+                                            mirror_runtime),
                 timeout=_MIRROR_REPLACE_TIMEOUT)
         finally:
             self._mirror_lock.release()

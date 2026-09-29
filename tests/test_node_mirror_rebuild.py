@@ -255,6 +255,8 @@ class RebuildRoute(unittest.TestCase):
         def fake_post(url, texts, kind, timeout):
             # 인코딩이 도는 동안 리더가 열려 있으면 안 된다 — 아래 시험이 이 값을 본다.
             self.calls.append((url, tuple(texts), kind, self.store.reader_open))
+            sv._ENCODER_RESPONSE_RUNTIME.set("test-runtime")
+            sv._ENCODER_RESPONSE_INSTANCE.set("test-instance")
             return [_vec(1, 0)] * len(texts)
         sv._encode_post = fake_post
 
@@ -270,6 +272,27 @@ class RebuildRoute(unittest.TestCase):
         self.assertEqual(res["rows"], 3)
         self.assertEqual(sorted(res["owners"]), ["user:mine", "user:theirs"])
         self.assertEqual((self.store.dropped, self.store.created), (1, 1))
+
+    def test_local_encoder_restart_aborts_before_mirror_swap(self):
+        saved_batch = sv._MIRROR_BATCH
+        sv._MIRROR_BATCH = 1
+        calls = 0
+
+        def restarting_post(url, texts, kind, timeout):
+            nonlocal calls
+            calls += 1
+            sv._ENCODER_RESPONSE_RUNTIME.set("same-runtime")
+            sv._ENCODER_RESPONSE_INSTANCE.set("before" if calls == 1 else "after")
+            return [_vec(1, 0)] * len(texts)
+
+        sv._encode_post = restarting_post
+        try:
+            code, res = self.app.write_node_mirror_rebuild({})
+        finally:
+            sv._MIRROR_BATCH = saved_batch
+        self.assertEqual(code, 502)
+        self.assertIn("instance changed", res["error"])
+        self.assertEqual(self.store.mirror, [])
 
     def test_an_owner_can_be_named(self):
         code, res = self.app.write_node_mirror_rebuild({"owner": "user:mine"})

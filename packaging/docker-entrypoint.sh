@@ -256,12 +256,13 @@ if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
     # 한 번만 시작한다. /health 는 모델을 적재하지 않는다.
     if [ -n "${VINC_EMBED_REMOTE:-}" ]; then
       mine=$(python3 -c 'from api.encoder_runtime import fingerprint; print(fingerprint())')
+      build=${VINC_ENCODER_BUILD:-}
       ready=0
       for i in $(seq 1 60); do
         remote=$(curl -fsS --max-time 5 "${VINC_EMBED_REMOTE%/}/health" 2>/dev/null \
-          | python3 -c 'import json,sys; print((json.load(sys.stdin) or {}).get("encoder_runtime") or "")' \
+          | python3 -c 'import json,sys; d=json.load(sys.stdin) or {}; print((d.get("encoder_runtime") or "") + " " + (d.get("encoder_build") or ""))' \
             2>/dev/null || true)
-        if [ -n "$mine" ] && [ "$remote" = "$mine" ]; then
+        if [ -n "$mine" ] && [ -n "$build" ] && [ "$remote" = "$mine $build" ]; then
           ready=1
           break
         fi
@@ -269,7 +270,7 @@ if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
       done
       if [ "$ready" != 1 ]; then
         echo "[entrypoint] node-mirror: FAILED after $(( $(date +%s) - t0 ))s" \
-             "— encoder runtime did not match this hub" >&2
+             "— encoder runtime/build did not match this hub" >&2
         exit 0
       fi
     fi

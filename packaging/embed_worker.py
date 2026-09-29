@@ -67,6 +67,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import sys
 import threading
 import time
@@ -98,6 +99,8 @@ if _ROOT not in sys.path:
 
 from api.encoder_runtime import fingerprint as _encoder_fingerprint  # noqa: E402
 ENCODER_RUNTIME = _encoder_fingerprint()
+ENCODER_BUILD = os.environ.get("VINC_ENCODER_BUILD", "").strip()
+ENCODER_BUILD_REQUIRED = os.environ.get("VINC_ENCODER_BUILD_REQUIRED") == "on"
 
 SIDECAR = os.environ.get("VINC_SIDECAR", "http://127.0.0.1:8787").rstrip("/")
 TOKEN = (os.environ.get("VINC_SIDECAR_TOKEN")
@@ -523,6 +526,8 @@ class _RemoteEncoder:
 
     def __init__(self, url: str) -> None:
         self._url = url.rstrip("/") + "/encode"
+        self.runtime = ""
+        self.instance = ""
 
     def encode(self, texts: list[str]) -> list[list[float]]:
         """``REMOTE_BATCH`` 조각씩 나눠 보낸다. 한 요청에 문서 전체를 실으면 큰 문서는
@@ -530,6 +535,8 @@ class _RemoteEncoder:
         클라이언트가 끊은 뒤에도 인코더는 끝까지 계산하느라 그동안 질의 임베딩이 밀린다.
         나눠 보내면 요청마다 한도 안에 끝나고, 문서는 한 번에 다 적용된다(적용 계약 불변).
         근거: [[episode:2026-09-24-hub-sidecar-segfault-loop]]"""
+        self.runtime = ""
+        self.instance = ""
         out: list[list[float]] = []
         for i in range(0, len(texts), REMOTE_BATCH):
             out.extend(self._encode_once(texts[i:i + REMOTE_BATCH]))
@@ -546,10 +553,26 @@ class _RemoteEncoder:
         with urllib.request.urlopen(req, timeout=REMOTE_TIMEOUT) as resp:
             out = json.load(resp) or {}
         actual_runtime = out.get("encoder_runtime")
-        if not actual_runtime or actual_runtime != ENCODER_RUNTIME:
+        if (not actual_runtime or
+                (ENCODER_RUNTIME and actual_runtime != ENCODER_RUNTIME) or
+                (ENCODER_BUILD_REQUIRED and not ENCODER_RUNTIME) or
+                (self.runtime and actual_runtime != self.runtime)):
             raise RuntimeError(
                 f"remote encoder runtime differs from this writer: "
                 f"remote={actual_runtime or 'unknown'}; local={ENCODER_RUNTIME}")
+        actual_build = out.get("encoder_build")
+        if (ENCODER_BUILD_REQUIRED or ENCODER_BUILD or actual_build) and (
+                not ENCODER_BUILD or actual_build != ENCODER_BUILD):
+            raise RuntimeError(
+                f"remote encoder build differs from this writer: "
+                f"remote={actual_build or 'unknown'}; local={ENCODER_BUILD or 'unknown'}")
+        self.runtime = actual_runtime
+        actual_instance = str(out.get("encoder_instance") or "")
+        if not ENCODER_BUILD and (
+                not actual_instance or
+                (self.instance and actual_instance != self.instance)):
+            raise RuntimeError("remote encoder instance changed or unknown")
+        self.instance = actual_instance
         vecs = out.get("vectors")
         if not isinstance(vecs, list) or len(vecs) != len(texts):
             # 개수가 어긋나면 아래 zip 이 **조용히 잘라** 일부 청크가 벡터 없이
@@ -585,6 +608,8 @@ def serve_encode(emb: "_Embedder", port: int) -> int:
 
     lock = threading.Lock()
 
+    instance_id = secrets.token_hex(16)
+
     class _H(BaseHTTPRequestHandler):
         def log_message(self, *_a):
             pass                      # 요청당 한 줄은 5분 루프 로그를 덮는다
@@ -614,7 +639,9 @@ def serve_encode(emb: "_Embedder", port: int) -> int:
             if self.path.rstrip("/") in ("/health", ""):
                 self._reply(200, {"status": "ok", "model": MODEL,
                                   "loaded": getattr(emb, "_sess", None) is not None,
-                                  "encoder_runtime": ENCODER_RUNTIME})
+                                  "encoder_runtime": ENCODER_RUNTIME,
+                                  "encoder_build": ENCODER_BUILD,
+                                  "encoder_instance": instance_id})
                 return
             self.send_error(404, "no such route")
 
@@ -640,7 +667,9 @@ def serve_encode(emb: "_Embedder", port: int) -> int:
                     vecs = emb.encode(texts if raw
                                       else [_prefix(t, kind) for t in texts])
                 out = _json.dumps({"vectors": vecs,
-                                   "encoder_runtime": ENCODER_RUNTIME}).encode("utf-8")
+                                   "encoder_runtime": ENCODER_RUNTIME,
+                                   "encoder_build": ENCODER_BUILD,
+                                   "encoder_instance": instance_id}).encode("utf-8")
             except Exception as exc:
                 # 사유를 삼키지 않는다 — 호출부가 로그에 남길 수 있게 본문으로 준다.
                 out = _json.dumps({"error": f"{type(exc).__name__}: {exc}"}).encode("utf-8")
@@ -853,7 +882,8 @@ def main() -> int:
                     out[c["chunk_id"]] = vecs[at:at + len(parts)]
                     at += len(parts)
                 res = _call("/embed/apply", {"doc_id": doc_id, "embeddings": out,
-                                             "encoder_runtime": ENCODER_RUNTIME})
+                                             "encoder_runtime": (getattr(emb, "runtime", "")
+                                                                 or ENCODER_RUNTIME)})
                 print(f"[embed] doc={doc_id} chunks={res.get('embedded')} "
                       f"cleared={res.get('cleared')}", flush=True)
                 failures.pop(doc_id, None)
