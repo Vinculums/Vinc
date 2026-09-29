@@ -657,7 +657,11 @@ class SplitEncoderTest(unittest.TestCase):
     def setUp(self):
         self.mod = _load_module()
         self._saved = {k: getattr(self.mod, k) for k in
-                       ("MODEL", "REMOTE_ENCODE", "ENCODE_TOKEN", "ENCODE_BIND")}
+                       ("MODEL", "REMOTE_ENCODE", "ENCODE_TOKEN", "ENCODE_BIND",
+                        "ENCODER_RUNTIME")}
+        # The orchestration suite deliberately runs without ONNX packages in CI.
+        # Give both ends a test provenance; production rejects an empty one.
+        self.mod.ENCODER_RUNTIME = "test-runtime"
 
     def tearDown(self):
         for k, v in self._saved.items():

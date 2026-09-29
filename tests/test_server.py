@@ -671,6 +671,9 @@ def _encode_stub(vector, *, seen: dict | None = None, delay: float = 0.0,
     import threading as _th
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from api import server as _srv
+    saved_runtime = _srv._ENCODER_RUNTIME
+    if not saved_runtime:
+        _srv._ENCODER_RUNTIME = "test-runtime"
     runtime = _srv._ENCODER_RUNTIME if runtime is None else runtime
 
     class _H(BaseHTTPRequestHandler):
@@ -702,6 +705,7 @@ def _encode_stub(vector, *, seen: dict | None = None, delay: float = 0.0,
     finally:
         srv.shutdown()
         srv.server_close()
+        _srv._ENCODER_RUNTIME = saved_runtime
 
 
 class QueryEmbeddingWiringTests(unittest.TestCase):
