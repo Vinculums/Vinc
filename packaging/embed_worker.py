@@ -38,10 +38,12 @@ FTS 만 되고 벡터가 빈다. 이 워커가 허브에서만 그 벡터를 채
     → 계열별 풀링 → L2 정규화
 
 경로(전부 사이드카 루프백):
-  GET  /embed/pending?limit=N&model=<id> → {chunks:[{doc_id, chunk_id, text}]}
+  GET  /embed/pending?limit=N&model=<id> → {chunks:[{doc_id, chunk_id, text, content_hash}]}
        (model 을 실어 보내면 사이드카가 전환을 감지해 전량 재임베딩을 건다)
-  POST /embed/apply {doc_id, embeddings:{chunk_id:[[...],[...]]}} → 저장
-       (v8 — 청크당 **벡터 목록**. 전 청크 완료 시 needs_embed=0)
+  POST /embed/apply {doc_id, embeddings:{chunk_id:[[...],[...]]}, encoder_runtime,
+                     content_hash, model} → 저장
+       (v8 — 청크당 **벡터 목록**. 전 청크 완료 시 needs_embed=0. 해시·모델이 지금 값과
+       다르면 아무것도 안 쓰고 거절한다)
 
   VINC_SIDECAR=http://127.0.0.1:8787 VINC_SIDECAR_TOKEN=<토큰> \
     python embed_worker.py [--once] [--interval 300]
@@ -883,9 +885,24 @@ def main() -> int:
                 for c, parts in zip(chunks, per_chunk):
                     out[c["chunk_id"]] = vecs[at:at + len(parts)]
                     at += len(parts)
+                # 벡터를 만든 바탕을 함께 보낸다: pending 이 준 본문 해시는 **그대로**,
+                # 모델은 이 워커의 것. 사이드카가 지금 값과 대조해 어긋나면 거절한다.
                 res = _call("/embed/apply", {"doc_id": doc_id, "embeddings": out,
                                              "encoder_runtime": (getattr(emb, "runtime", "")
-                                                                 or ENCODER_RUNTIME)})
+                                                                 or ENCODER_RUNTIME),
+                                             "content_hash": chunks[0].get("content_hash"),
+                                             "model": MODEL})
+                err = res.get("error")
+                if err == "content_changed":
+                    # 인코딩하는 사이 본문이 바뀌었다. 실패로 세지 않는다 — 새 본문은 다음
+                    # 라운드가 가져간다(세면 편집 중인 문서가 격리돼 몇 시간 빠진다).
+                    print(f"[embed] doc={doc_id} 본문이 바뀌어 다음 라운드로 미룬다", flush=True)
+                    continue
+                if err or not res.get("executed"):
+                    # 200 본문의 거절(잔해 색인·폭 불일치·모델 불일치)도 실패다. 진행으로
+                    # 읽으면 격리·백오프·stall 경고가 다 비껴가고, 같은 문서를 곧바로 다시
+                    # 인코딩하며 인코더를 붙잡아 질의 임베딩이 시간 초과로 떨어진다.
+                    raise RuntimeError(f"apply refused: {err or 'executed=false'}")
                 print(f"[embed] doc={doc_id} chunks={res.get('embedded')} "
                       f"cleared={res.get('cleared')}", flush=True)
                 failures.pop(doc_id, None)

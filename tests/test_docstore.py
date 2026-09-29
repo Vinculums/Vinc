@@ -361,6 +361,29 @@ class DocstoreE2E(unittest.TestCase):
             self._count("MATCH (v:ChunkVec) WHERE v.chunk_id=$i RETURN count(v) AS c",
                         {"i": cid}), 1, "옛 자식이 남았다 — 구·신 벡터 혼재")
 
+    def test_폭이_틀린_벡터는_옛_벡터를_지우기_전에_거절한다(self):
+        """RV-13 — 옛 자식을 DETACH DELETE 한 **뒤에** 새 벡터를 넣다가 차원 오류가 났다.
+        좋은 기존 벡터만 지워지고 예외로 끝났고, 여러 청크 문서는 반쪽만 들어갔다."""
+        text = "첫 문단. alpha\n\n둘째 문단. beta\n\n셋째. gamma\n\n넷째. delta"
+        d = ds.put_doc(self.store, owner="user:a", text=text, title="T", max_chars=25)
+        cids = self._chunk_ids(d["doc_id"])
+        ds.apply_embeddings(self.store, d["doc_id"], {c: [[1.0, 0, 0, 0]] for c in cids})
+
+        def kept():
+            return self._count("MATCH (v:ChunkVec) WHERE v.doc_id=$d RETURN count(v) AS c",
+                               {"d": d["doc_id"]})
+        self.assertEqual(kept(), len(cids))
+        for bad in ([[0.0, 1.0]], [[]], []):              # 좁은 폭 · 빈 벡터 · 빈 목록
+            payload = {cids[0]: [[0, 1.0, 0, 0]], cids[1]: bad}   # 하나는 멀쩡하다
+            r = ds.apply_embeddings(self.store, d["doc_id"], payload)
+            self.assertEqual((r["executed"], r.get("error")),
+                             (False, "vector_width_mismatch"), r)
+            self.assertEqual(r.get("expected"), 4)
+            self.assertEqual(kept(), len(cids), f"{bad!r}: 거절했는데 옛 벡터가 지워졌다")
+        emb = self.store.run("MATCH (v:ChunkVec) WHERE v.chunk_id=$c RETURN v.embedding AS e",
+                             {"c": cids[0]})[0]["e"]
+        self.assertEqual(list(emb), [1.0, 0, 0, 0], "멀쩡한 쪽도 반쪽만 들어갔다")
+
     def test_문서_삭제가_자식_벡터까지_지운다(self):
         """고아 자식은 조용히 사라지지 않는다 — 인덱스에 남아 상위 k 자리를 잡아먹고
         부모 조인에서 빈 결과가 된다."""
@@ -1251,6 +1274,46 @@ class DocstoreE2E(unittest.TestCase):
             "MATCH (v:ChunkVec) WHERE v.doc_id = $d "
             "RETURN DISTINCT v.encoder_runtime AS runtime", {"d": did})
         self.assertEqual(stamped, [{"runtime": "ort=1.30.0;tok=0.23.2;np=2.5.3"}])
+
+    def test_인코딩_중_바뀐_본문의_벡터는_거절한다(self):
+        """RV-03 — chunk_id 는 위치 기반이라 apply 만으로는 벡터가 어느 본문에서 왔는지 모른다.
+        워커가 인코딩하는 사이 re-put 되면 옛 본문 벡터가 새 청크에 박히고, 청크 수가 같거나
+        줄면 needs_embed 가 0 으로 내려가 영구히 남았다. pending 의 해시를 돌려받아 대조한다."""
+        d = ds.put_doc(self.store, owner="user:a", text="옛 본문 alpha", title="T")
+        did = d["doc_id"]
+        pend = [c for c in ds.pending_embed_chunks(self.store) if c["doc_id"] == did]
+        h = pend[0]["content_hash"]
+        self.assertEqual(h, d["content_hash"])
+        vecs = {c["chunk_id"]: [[1.0, 0.0, 0.0, 0.0]] for c in pend}
+
+        ds.put_doc(self.store, owner="user:a", text="새 본문 beta", title="T", doc_id=did)
+        r = ds.apply_embeddings(self.store, did, vecs, content_hash=h)
+        self.assertEqual((r["executed"], r.get("error")), (False, "content_changed"), r)
+        self.assertTrue(ds.get_doc(self.store, did)["needs_embed"], "옛 본문 벡터로 큐가 비었다")
+        self.assertEqual(self._count("MATCH (v:ChunkVec) WHERE v.doc_id=$d RETURN count(v) AS c",
+                                     {"d": did}), 0, "거절했는데 뭔가 썼다")
+
+        # 새 본문의 해시로 오면 들어간다.
+        h2 = [c for c in ds.pending_embed_chunks(self.store) if c["doc_id"] == did][0]["content_hash"]
+        r = ds.apply_embeddings(self.store, did, vecs, content_hash=h2)
+        self.assertTrue(r["executed"], r)
+        self.assertFalse(ds.get_doc(self.store, did)["needs_embed"])
+
+    def test_모델이_바뀐_뒤_도착한_벡터는_거절한다(self):
+        """RV-03 둘째 절 — 전환 직전에 꺼낸 배치가 옛 모델 벡터를 새 스토어에 넣으면 안 된다."""
+        d = ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")
+        did = d["doc_id"]
+        ds.switch_embed_model(self.store, "model-A")
+        vecs = {c: [[1.0, 0.0, 0.0, 0.0]] for c in self._chunk_ids(did)}
+        ds.switch_embed_model(self.store, "model-B")
+        r = ds.apply_embeddings(self.store, did, vecs, content_hash=d["content_hash"],
+                                model="model-A")
+        self.assertEqual(r.get("error"), "model_changed", r)
+        self.assertTrue(ds.get_doc(self.store, did)["needs_embed"])
+        self.assertEqual(self._count("MATCH (v:ChunkVec) RETURN count(v) AS c"), 0)
+        r = ds.apply_embeddings(self.store, did, vecs, content_hash=d["content_hash"],
+                                model="model-B")
+        self.assertTrue(r["executed"], r)
 
     def test_doc_highlights_e2e(self):
         # D45-V2 2단계 — 전문 내 개념 언급 char 범위(밑줄용). 범위는 토큰 매칭 계산.

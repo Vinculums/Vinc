@@ -67,6 +67,21 @@ class EmbedPendingModelCheckTests(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(self.jobs, [])
 
+    def test_apply_route_passes_the_basis_through(self):
+        """RV-03 — 워커가 실은 본문 해시·모델이 `/embed/apply` 에서 **버려지지 않는다.**
+        라우트가 키를 흘리면 대조가 조용히 꺼진다(값이 None 이면 대조를 생략하므로)."""
+        d = docstore.put_doc(self.store, owner="u", text="옛 본문", title="T")
+        cid = self.store.run("MATCH (c:Chunk) WHERE c.doc_id=$d RETURN c.chunk_id AS id",
+                             {"d": d["doc_id"]})[0]["id"]
+        body = {"doc_id": d["doc_id"], "embeddings": {cid: [[1.0, 0.0, 0.0, 0.0]]}}
+        code, res = self.app.write_embed_apply({**body, "content_hash": "stale"})
+        self.assertEqual((code, res.get("error")), (200, "content_changed"), res)
+        code, res = self.app.write_embed_apply({**body, "content_hash": d["content_hash"],
+                                                "model": "model-X"})
+        self.assertEqual(res.get("error"), "model_changed", res)
+        code, res = self.app.write_embed_apply({**body, "content_hash": d["content_hash"]})
+        self.assertTrue(res.get("executed"), res)
+
 
 if __name__ == "__main__":
     unittest.main()

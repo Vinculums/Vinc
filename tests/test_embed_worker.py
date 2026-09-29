@@ -96,7 +96,8 @@ class _FakeSidecar:
             chunks = self.rounds.pop(0) if self.rounds else []
             return {"kind": "embed.pending", "chunks": chunks}
         self.applied.append(body)                         # POST /embed/apply
-        return {"embedded": len(body.get("embeddings") or {}), "cleared": True}
+        return {"executed": True, "embedded": len(body.get("embeddings") or {}),
+                "cleared": True}
 
 
 class EmbedWorkerOrchestrationTest(unittest.TestCase):
@@ -159,6 +160,15 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         self.assertEqual(by_doc["d1"]["c1"], [[2.0, 0.0]])   # "aa"
         self.assertEqual(by_doc["d1"]["c2"], [[3.0, 0.0]])   # "bbb"
         self.assertEqual(by_doc["d2"]["c3"], [[1.0, 0.0]])   # "c"
+
+    def test_apply_는_벡터를_만든_바탕을_싣는다(self):
+        """RV-03 — pending 의 본문 해시는 **그대로**, 모델은 이 워커의 것. 사이드카는 이
+        둘로 인코딩하는 사이 바뀐 본문·모델의 벡터를 거절한다."""
+        sidecar = _FakeSidecar([[
+            {"doc_id": "d1", "chunk_id": "c1", "text": "aa", "content_hash": "h1"}]])
+        self.assertEqual(self._run(sidecar, model="BAAI/bge-base-en-v1.5"), 0)
+        self.assertEqual(sidecar.applied[0]["content_hash"], "h1")
+        self.assertEqual(sidecar.applied[0]["model"], "BAAI/bge-base-en-v1.5")
 
     def test_긴_청크는_조각_여럿으로_임베딩된다(self):
         """v8 부모-자식 — 청크는 정본이라 안 자르고, **벡터만** 쪼갠다.
@@ -625,7 +635,7 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
                     {"doc_id": "bad", "chunk_id": "b1", "text": "boom"},
                     {"doc_id": f"good{len(paths)}", "chunk_id": "g1", "text": "ok"}]}
             applied.append(body["doc_id"])
-            return {"embedded": 1, "cleared": True}
+            return {"executed": True, "embedded": 1, "cleared": True}
 
         saved = (self.mod.QUARANTINE_AFTER, self.mod.QUARANTINE_S)
         self.mod.QUARANTINE_AFTER, self.mod.QUARANTINE_S = 2, 3600.0
@@ -644,6 +654,57 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         lim = self.mod.DOC_BATCH
         self.assertIn(f"limit={lim}&", paths[0])
         self.assertIn(f"limit={lim + 1}&", paths[-1], "쉬는 문서만큼 더 받지 않았다")
+
+    def _refusing(self, error: str, rounds: int = 5):
+        """apply 가 매번 200 본문으로 ``error`` 를 돌려줄 때 인코딩 횟수와 stderr."""
+        import contextlib
+        import io
+
+        class _Stop(BaseException):
+            pass
+
+        seen = {"pending": 0, "encode": 0}
+
+        def sidecar(path, body=None):
+            if body is None:
+                seen["pending"] += 1
+                if seen["pending"] > rounds:
+                    raise _Stop()
+                return {"chunks": [{"doc_id": "d1", "chunk_id": "c1", "text": "x",
+                                    "content_hash": "h"}]}
+            return {"kind": "doc.embed.apply", "executed": False, "doc_id": "d1",
+                    "error": error}
+
+        def encode(texts):
+            seen["encode"] += 1
+            return [[1.0] for _ in texts]
+
+        saved = (self.mod.QUARANTINE_AFTER, self.mod.QUARANTINE_S)
+        self.mod.QUARANTINE_AFTER, self.mod.QUARANTINE_S = 2, 3600.0
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(buf), self.assertRaises(_Stop):
+                self._run(sidecar, encode=encode, argv=("--interval", "0"),
+                          model="BAAI/bge-base-en-v1.5")
+        finally:
+            self.mod.QUARANTINE_AFTER, self.mod.QUARANTINE_S = saved
+        return seen["encode"], buf.getvalue()
+
+    def test_200_본문의_거절은_실패로_센다(self):
+        """RV-04 — `/embed/apply` 는 `vector_index_remnant` 같은 거절을 HTTP 200 본문에 싣는다.
+        그걸 진행으로 읽으면 격리·백오프·stall 경고가 다 비껴가고, 같은 문서를 곧바로 다시
+        인코딩하며 인코더를 붙잡는다(질의 임베딩이 시간 초과로 FTS 강등)."""
+        encodes, err = self._refusing("vector_index_remnant")
+        self.assertEqual(encodes, 2, "거절을 진행으로 읽었다 — 격리가 안 걸렸다")
+        self.assertIn("apply refused: vector_index_remnant", err)
+        self.assertIn("2회 연속 실패", err)
+
+    def test_인코딩_중_바뀐_본문은_실패로_세지_않는다(self):
+        """content_changed 는 문서의 고장이 아니라 편집이다. 세면 자동 저장이 도는 문서가
+        격리돼 몇 시간 의미 검색에서 빠진다 — 다음 라운드가 새 본문으로 다시 한다."""
+        encodes, err = self._refusing("content_changed")
+        self.assertEqual(encodes, 5, "편집 중인 문서를 격리했다")
+        self.assertNotIn("연속 실패", err)
 
 
 class SplitEncoderTest(unittest.TestCase):

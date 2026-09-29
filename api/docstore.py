@@ -1251,10 +1251,15 @@ def pending_embed_chunks(store, *, limit: int = 16) -> list[dict]:
     doc 단위로 내는 이유: 문서의 전 청크가 한 배치에 함께 가야 apply 가 needs_embed
     를 깔끔히 내린다(청크 캡으로 쪼개면 큰 문서가 영영 안 끝난다). owner 스코프
     아님 — 허브 서버사이드 유지보수 잡이라 전 소유자 대상. **루프백 내부 표면**
-    (공개·프록시 미노출)에서만 호출."""
+    (공개·프록시 미노출)에서만 호출.
+
+    행마다 그 문서의 ``content_hash`` 를 싣는다. 워커는 이 값을 apply 에 **그대로**
+    돌려보내야 한다 — chunk_id 는 위치 기반이라, 인코딩하는 사이 re-put 된 문서에 옛 본문
+    벡터가 박히는 것을 apply 가 이 값으로만 가려낸다."""
     docs = store.run(
         "MATCH (d:_DocMeta) WHERE d.needs_embed = 1 "
-        "RETURN d.doc_id AS doc_id ORDER BY d.doc_id LIMIT $lim", {"lim": int(limit)}) or []
+        "RETURN d.doc_id AS doc_id, d.content_hash AS content_hash "
+        "ORDER BY d.doc_id LIMIT $lim", {"lim": int(limit)}) or []
     out: list[dict] = []
     for d in docs:
         rows = store.run(
@@ -1263,12 +1268,26 @@ def pending_embed_chunks(store, *, limit: int = 16) -> list[dict]:
             {"d": d["doc_id"]}) or []
         for r in rows:
             out.append({"doc_id": d["doc_id"], "chunk_id": r["chunk_id"],
-                        "text": r.get("text") or ""})
+                        "text": r.get("text") or "",
+                        "content_hash": d.get("content_hash") or ""})
     return out
 
 
+def _vec_width(store) -> int | None:
+    """`ChunkVec.embedding` 의 선언 폭(`FLOAT[n]`의 n). 못 읽으면 None."""
+    try:
+        for r in store.run("CALL TABLE_INFO('ChunkVec') RETURN *") or []:
+            if r.get("name") == "embedding":
+                m = re.search(r"\[(\d+)\]", str(r.get("type") or ""))
+                return int(m.group(1)) if m else None
+    except Exception:          # noqa: BLE001 — 폭을 모르면 호출부가 약한 대조로 물러난다
+        return None
+    return None
+
+
 def apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
-                     encoder_runtime: str = "") -> dict:
+                     encoder_runtime: str = "", *, content_hash: str | None = None,
+                     model: str | None = None) -> dict:
     """임베딩 적용 전체를 **배타로** 돈다(허브·CLI 공통 단일 지점).
 
     지금까지의 허브 크래시는 전부 이 적용 도중에 났다. 인덱스 드롭만이 아니라 ChunkVec
@@ -1276,11 +1295,13 @@ def apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
     같은 스레드 재진입이라 교착하지 않는다. 대가: 적용하는 동안 읽기가 기다린다.
     근거: [[record:hub-segfault-loop-index-ddl-races-readers-2026-09-25]]"""
     with DDL_GUARD.exclusive():
-        return _apply_embeddings(store, doc_id, embeddings, encoder_runtime)
+        return _apply_embeddings(store, doc_id, embeddings, encoder_runtime,
+                                 content_hash=content_hash, model=model)
 
 
 def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
-                      encoder_runtime: str = "") -> dict:
+                      encoder_runtime: str = "", *, content_hash: str | None = None,
+                      model: str | None = None) -> dict:
     """워커가 계산한 청크 임베딩을 저장한다(chunk_id 키 — 순서 무관, 편집 재정렬에 강건).
 
     **값은 벡터 하나 또는 벡터 목록**이다(v8 — 부모-자식). 청크는 2000자 단위인데 모델
@@ -1290,7 +1311,13 @@ def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
     MENTIONS·발췌·주제 유도가 전부 기준선 그대로다.
 
     구 형식(벡터 하나)도 받는다 — 자식 1개짜리로 정규화한다(하위호환).
-    문서의 모든 청크가 채워지면 needs_embed=0. 벡터가 새로 생기므로 인덱스 드롭 필수."""
+    문서의 모든 청크가 채워지면 needs_embed=0. 벡터가 새로 생기므로 인덱스 드롭 필수.
+
+    ``content_hash``·``model`` 은 그 벡터를 **만든 바탕**이다(워커가 pending 의 해시를
+    그대로 돌려주고, 자기 모델을 싣는다). 지금 문서·스토어와 다르면 아무것도 안 쓰고
+    거절한다(`content_changed` · `model_changed`) — needs_embed 는 1 로 남아 다음 라운드가
+    새 본문으로 다시 한다. None 이면 대조하지 않는다(직접 부르는 CLI·스크립트).
+    근거: [[record:embedding-apply-accepted-vectors-it-never-checked-2026-09-29]]"""
     base: dict[str, Any] = {"kind": "doc.embed.apply", "executed": False, "doc_id": doc_id}
     if not embeddings:
         base["error"] = "no embeddings"
@@ -1308,15 +1335,32 @@ def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
     if not all_ids:
         base["error"] = "unknown doc_id"
         return base
+    # 이 대조가 경합 없이 성립하는 것은 apply 와 put_doc · switch_embed_model 이 같은
+    # 단일 쓰기 큐에서 돌기 때문이다 — 대조와 쓰기 사이에 본문이 바뀔 틈이 없다.
+    current = str((_meta(store, doc_id) or {}).get("content_hash") or "")
+    if content_hash is not None and current != content_hash:
+        base["error"] = "content_changed"
+        return base
+    if model is not None and stored_embed_model(store) != model:
+        base["error"] = "model_changed"
+        return base
+    # 하나든 여럿이든 목록으로 정규화(첫 원소가 스칼라면 단일 벡터).
+    norm = {cid: (val if (val and isinstance(val[0], (list, tuple))) else [val])
+            for cid, val in embeddings.items() if cid in all_ids}
+    # 폭은 **지우기 전에** 전부 대조한다. 엔진은 틀린 폭을 삽입하는 순간에야 던지므로,
+    # 그 뒤라면 옛 자식은 이미 지워졌고 여러 청크 문서는 반쪽만 들어간다.
+    # 선언 폭을 못 읽으면(대역 스토어) 적어도 한 폭으로 고르고 비지 않았는지만 본다.
+    width = _vec_width(store)
+    widths = {len(vec) for many in norm.values() for vec in many}
+    ok = widths == {width} if width else (len(widths) == 1 and 0 not in widths)
+    if norm and not ok:
+        base.update(error="vector_width_mismatch", expected=width, got=sorted(widths))
+        return base
     # 워커가 채운 벡터를 박는 자리 — 없던 벡터가 생기므로 드롭이 **필수**다(위와 동종).
     # FTS 는 안 건드리므로 임베딩이 도는 동안에도 키워드 검색이 계속 답한다.
     _drop_vector_index_if_any(store)
     applied = vecs = 0
-    for cid, val in embeddings.items():
-        if cid not in all_ids:
-            continue
-        # 하나든 여럿이든 목록으로 정규화(첫 원소가 스칼라면 단일 벡터).
-        many = val if (val and isinstance(val[0], (list, tuple))) else [val]
+    for cid, many in norm.items():
         # ⚠ 먼저 **기존 자식을 지운다**. 안 그러면 재임베딩 때 옛 조각이 남아
         # 구·신 벡터가 한 색인에 섞인다 — 에러 없이 검색만 나빠지는 그 사고다.
         store.run("MATCH (v:ChunkVec) WHERE v.chunk_id = $id DETACH DELETE v", {"id": cid})

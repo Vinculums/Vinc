@@ -275,7 +275,7 @@ class HealthContractTests(unittest.TestCase):
         from api import docstore
         calls = []
         real = docstore.apply_embeddings
-        docstore.apply_embeddings = lambda *a: calls.append(a) or {"embedded": 0}
+        docstore.apply_embeddings = lambda *a, **k: calls.append(a) or {"embedded": 0}
         old = os.environ.get("VINC_EMBED_APPLY_PAUSED")
         try:
             with running_server(_app(store=_FakeStore())) as base:
