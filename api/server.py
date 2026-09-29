@@ -858,6 +858,11 @@ class VincApp:
         # username(핸들)은 표시 전용(009) — 없으면 빈 문자열. 길이만 방어적으로 클램프,
         # 형식 검증은 계정 백엔드가 이미 함(여긴 그대로 실어 나르기만).
         username = (body.get("username") or "").strip()
+        # 기기별 MCP 키(VIN-132). 선택이다: 연결 페이지가 키 한도에 걸려 못 만들었으면
+        # 없이 온다. 모양이 틀리면 앱 연결은 살리고 그 키만 버린다.
+        mcp_key = (body.get("mcp_key") or "").strip()
+        if not (mcp_key.startswith(("vinc_sk_", "vinc_ro_")) and len(mcp_key) <= 200):
+            mcp_key = ""
         if not state or not key.startswith("vinc_sk_") or len(key) > 200:
             return 400, {"error": "invalid payload"}
         now = time.monotonic()
@@ -868,6 +873,7 @@ class VincApp:
             ent["key"] = key
             ent["email"] = email[:200]
             ent["username"] = username[:20]
+            ent["mcp_key"] = mcp_key
         return 200, {"status": "ok"}
 
     def read_connect_status(self, p):
@@ -882,7 +888,8 @@ class VincApp:
                 return 200, {"status": "pending"}
             self._connect.pop(state, None)   # 1회 전달 후 즉시 소거(메일박스)
             return 200, {"status": "delivered", "key": ent["key"],
-                         "email": ent.get("email", ""), "username": ent.get("username", "")}
+                         "email": ent.get("email", ""), "username": ent.get("username", ""),
+                         "mcp_key": ent.get("mcp_key", "")}
 
     # ── 삭제 / 병합 라우트 (T3c — 오염 정리 쓰기 표면, R4 직렬화) ────────────────
     # 뮤테이션이므로 잡 큐(run_sync)로 단일 writer 에 직렬화한다(pin/tag/ingest 동형).

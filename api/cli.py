@@ -811,7 +811,10 @@ def _main(argv: list[str] | None = None) -> int:
         if args.mcpcmd == "serve":
             from vinc_mcp.proxy import serve_remote, wants_account_mode
             if wants_account_mode(base=args.base, token=args.token, owner=args.owner):
-                return serve_remote(os.environ.get("VINC_REMOTE_MCP_TOKEN") or "")
+                # 키: 환경이 먼저(시험·수동), 없으면 앱이 키체인에 둔 기기별 MCP 키.
+                from vinc_mcp import keychain
+                return serve_remote(os.environ.get("VINC_REMOTE_MCP_TOKEN")
+                                    or keychain.read(keychain.MCP_KEY) or "")
         from vinc_mcp.bridge import Bridge
         bridge = Bridge(base=args.base, token=args.token, owner=args.owner)
         bridge.ensure(spawn=not args.no_spawn)

@@ -1483,8 +1483,13 @@ _SPACE_LOCAL_NOTE = (" On this desktop connector a space exists only on your acc
                      "target:'local' is an error rather than a silent local write.")
 
 
-def specs(*, allow_target: bool = True) -> list[dict]:
+def specs(*, allow_target: bool = True, local_only: bool = False) -> list[dict]:
     """도구 목록. ``allow_target=False`` 면 `target` 프로퍼티를 주입하지 않는다.
+
+    ``local_only=True`` 는 **로컬 모드의 stdio**다(VIN-132): 앱 모드가 그래프를 정하므로
+    호출마다 고르는 `target` 도, 계정 그래프에만 있는 `space` 도 싣지 않는다. 호스트
+    전용 도구(search·fetch)도 없다. 근거:
+    [[vinc.plan.mcp-follows-the-app-mode-vin-132-2026-09-29]]
 
     **왜 프로파일로 가르나**(위험 감사 5.5). `target` 은 데스크탑 커넥터 하나로
     로컬·원격을 고르라고 만든 것이다(A1.9 A2). 그런데 주입이 무조건이라 **허브가
@@ -1492,14 +1497,16 @@ def specs(*, allow_target: bool = True) -> list[dict]:
     자신 밖으로 아웃바운드를 시도한다 — 서버가 스스로에게 클라이언트가 되는,
     의도한 적 없는 경로다. 허브(`vinc_mcp.http_server`)는 False 로 부른다."""
     out = []
-    for t in (TOOLS if allow_target else TOOLS + HOST_TOOLS):
+    for t in (TOOLS if (allow_target or local_only) else TOOLS + HOST_TOOLS):
         sch = t["inputSchema"]
         props = {**sch.get("properties", {})}
         # `space` 는 **양쪽 프로파일에** 싣는다. 허브에서는 주소 대신 스페이스를 고르는
         # 인자고, 데스크탑에서는 `target:"remote"` 로 간 호출이 허브에서 같은 판정을
         # 받게 하는 통로다. 데스크탑에만 문장 하나가 붙는다 — 거기에는 `target` 이
         # 있어서 뜻 없는 조합(local + space)이 생기기 때문이다.
-        if allow_target:
+        if local_only:
+            pass                                # 원본 스키마 그대로: target·space 없음
+        elif allow_target:
             props.update(_TARGET_PROP)
             sp = dict(_SPACE_PROP["space"])
             sp["description"] += _SPACE_LOCAL_NOTE
@@ -1915,7 +1922,8 @@ def validate_args(name: str, args: dict | None) -> None:
 def call(name: str, args: dict | None, bridge: Bridge,
          forced_owner: str | None = None,
          entitlements: dict | None = None,
-         allow_target: bool = True) -> dict:
+         allow_target: bool = True,
+         local_only: bool = False) -> dict:
     tool = _BY_NAME.get(name)
     if tool is None:
         raise KeyError(f"unknown tool: {name}")
@@ -1932,6 +1940,17 @@ def call(name: str, args: dict | None, bridge: Bridge,
     # 허브 자신(`allow_target=False`)은 이 분기에 안 들어온다: 거기서 `space` 는 HTTP
     # 층이 이미 읽어 스페이스를 정한 뒤라, 남은 값은 벗기는 것이 맞다.
     space = args.pop("space", None)
+    # 로컬 모드의 stdio(VIN-132): 앱 모드가 그래프를 정한다. 스키마에서 뺀 `target`·`space`
+    # 가 와도 조용히 무시하지 않는다 — 무시하면 계정에 쓰려던 것이 로컬에 쌓인다.
+    if local_only and target != "local":
+        raise ValueError(
+            "this computer is in local mode, so this connector reads only the local store. "
+            "To reach your account graph, switch the Vinc app to account mode and restart "
+            "this AI host.")
+    if local_only and space:
+        raise ValueError(
+            "local mode has no spaces: spaces live on your account graph. Switch the Vinc "
+            "app to account mode and restart this AI host to use them.")
     if allow_target and space:
         if target != "remote":
             # 로컬 스토어에는 고를 스페이스가 없다. 조용히 무시하면 팀에 쓰려던 것이
@@ -1945,14 +1964,16 @@ def call(name: str, args: dict | None, bridge: Bridge,
     # "없음"을 답한다. 위의 space + local 조합과 같은 이유로 거절하고 길을 말한다.
     # `target:"remote"` 면 url 을 그대로 실어 보내고 허브가 주소에서 스페이스를 읽는다.
     # 근거: [[decision:a-node-address-names-its-space]]
-    if allow_target and not space and target != "remote" and args.get("url"):
+    if (allow_target or local_only) and not space and target != "remote" and args.get("url"):
         from . import viewurl
         at = viewurl.space_of(str(args["url"]))
         if at and at != viewurl.LOCAL:
             raise ValueError(
                 f"that address was copied from your account graph (space {at}), and "
-                "this desktop connector reads the local store unless told otherwise: "
-                "pass target:'remote' to read it where it lives.")
+                + ("this computer is in local mode: switch the Vinc app to account mode "
+                   "and restart this AI host to read it where it lives." if local_only else
+                   "this desktop connector reads the local store unless told otherwise: "
+                   "pass target:'remote' to read it where it lives."))
     # 스키마에서 뺀 것만으로는 부족하다 — 클라이언트는 선언되지 않은 필드도 보낼 수
     # 있다. 허브 프로파일에서는 실행 경로에서도 막는다(위험 감사 5.5).
     if not allow_target and target != "local":

@@ -181,3 +181,61 @@ class CliTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LocalProfileTest(unittest.TestCase):
+    """로컬 모드의 stdio 는 `target`·`space` 없이 로컬 스토어만 본다(VIN-132)."""
+
+    def test_the_local_profile_carries_neither_target_nor_space(self):
+        from vinc_mcp import tools
+        local = tools.specs(local_only=True)
+        desktop = tools.specs()
+        self.assertEqual({s["name"] for s in local}, {s["name"] for s in desktop})
+        for s in local:
+            props = s["inputSchema"].get("properties") or {}
+            self.assertNotIn("target", props, s["name"])
+            self.assertNotIn("space", props, s["name"])
+
+    def test_a_remote_target_or_a_space_is_refused_not_ignored(self):
+        from vinc_mcp import tools
+        for extra, word in (({"target": "remote"}, "local mode"), ({"space": "personal"}, "no spaces")):
+            with self.assertRaises(ValueError) as cm:
+                tools.call("vinc_domains", dict(extra), bridge=None, local_only=True)
+            self.assertIn(word, str(cm.exception))
+
+    def test_stdio_serves_the_local_profile(self):
+        import inspect
+        from vinc_mcp import stdio
+        self.assertIn("Dispatcher(bridge, local_only=True)", inspect.getsource(stdio.serve))
+
+
+class KeychainTest(unittest.TestCase):
+    """엔진이 앱의 OS 키체인 항목을 읽는다. 어떤 실패도 None 이다(VIN-132 K3)."""
+
+    def test_windows_blobs_decode_as_utf16_and_utf8(self):
+        from vinc_mcp import keychain
+        self.assertEqual(keychain._decode_blob("vinc_sk_abc".encode("utf-16-le")), "vinc_sk_abc")
+        self.assertEqual(keychain._decode_blob(b"vinc_sk_abcd"), "vinc_sk_abcd")
+
+    def test_a_failing_backend_reads_as_absent(self):
+        from unittest import mock
+        from vinc_mcp import keychain
+        with mock.patch.object(keychain, "_read_windows", side_effect=OSError("no store")), \
+             mock.patch.object(keychain, "_run", side_effect=OSError("no tool")):
+            self.assertIsNone(keychain.read(keychain.MCP_KEY))
+
+    def test_the_entry_name_matches_the_app(self):
+        from vinc_mcp import keychain
+        src = (Path(__file__).resolve().parents[1] / "app/src/account-connect.ts").read_text(encoding="utf-8")
+        self.assertIn(f'const K_MCP = "{keychain.MCP_KEY}";', src)
+        secret_rs = (Path(__file__).resolve().parents[1] / "app/src-tauri/src/secret.rs").read_text(encoding="utf-8")
+        self.assertIn(f'const SERVICE: &str = "{keychain.SERVICE}";', secret_rs)
+
+    def test_the_app_stores_the_mcp_key_on_sign_in_and_deletes_it_on_sign_out(self):
+        src = (Path(__file__).resolve().parents[1] / "app/src/account-connect.ts").read_text(encoding="utf-8")
+        delivered = src[src.index('if (st.status === "delivered")'):]
+        self.assertLess(delivered.index("await storeKey(st.key);"),
+                        delivered.index('await storeMcpKey(st.mcp_key || "");'))
+        forget = src[src.index("export function forgetAccount"):]
+        forget = forget[: forget.index("\n}\n")]
+        self.assertIn('s("secret_delete", { name: K_MCP })', forget)

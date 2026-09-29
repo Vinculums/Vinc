@@ -14,7 +14,9 @@ from .rpc import Dispatcher
 
 
 def serve(bridge: Bridge) -> int:
-    dispatcher = Dispatcher(bridge)
+    # 로컬 모드(또는 앱 없이 CLI 로)만 여기 온다. 계정 모드는 `proxy.serve_remote` 다.
+    # 그래프는 앱 모드가 정하므로 호출마다 고르는 `target`·`space` 는 없다(VIN-132).
+    dispatcher = Dispatcher(bridge, local_only=True)
     try:
         for line in sys.stdin:
             line = line.strip()

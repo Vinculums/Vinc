@@ -14,6 +14,9 @@
 import { cfg, forgetMemberKey, shellInvoke } from "./api";
 
 const K_KEY = "vinc.sync.key";
+/** 기기별 MCP 키(VIN-132). OS 저장소에만 둔다: 엔진의 `vinc mcp serve` 가 거기서 직접
+ *  읽는다(`vinc_mcp/keychain.py`). 저장소가 없는 기기에서는 두지 않는다. */
+const K_MCP = "vinc.mcp.key";
 const K_MAIL = "vinc.sync.email";
 const K_USER = "vinc.sync.username";
 /** "이 기기에 키가 있다" 표식(비밀 아님). OS 저장소로 옮긴 뒤에는 `K_KEY` 가
@@ -129,6 +132,16 @@ export function forgetAccount(): void {
   // 하기 때문이고, 실패해도 표시상 로그아웃은 이미 참이다(키만 남는다 — 그 경우
   // 다음 로그인이 덮는다).
   void secretStore().then((s) => s && s("secret_delete", { name: K_KEY })).catch(() => {});
+  void secretStore().then((s) => s && s("secret_delete", { name: K_MCP })).catch(() => {});
+}
+
+/** 로그인 때 받은 기기별 MCP 키를 OS 저장소에 둔다. 새 로그인이 키 없이 오면(키 한도)
+ *  옛 MCP 키를 지운다: 앱은 새 계정인데 MCP 는 옛 키로 남는 일이 없게. */
+async function storeMcpKey(value: string): Promise<void> {
+  const store = await secretStore();
+  if (!store) return;
+  if (value) await store("secret_set", { name: K_MCP, value }).catch(() => null);
+  else await store("secret_delete", { name: K_MCP }).catch(() => null);
 }
 
 /** 진행 중인 폴링을 멈춘다(시트를 닫거나 화면을 다시 그릴 때). */
@@ -165,6 +178,7 @@ export async function connectAccount(onState?: (s: "opening" | "waiting") => voi
       if (!st) continue;
       if (st.status === "delivered") {
         await storeKey(st.key);
+        await storeMcpKey(st.mcp_key || "");
         if (st.email) localStorage.setItem(K_MAIL, st.email);
         if (st.username) localStorage.setItem(K_USER, st.username);
         else localStorage.removeItem(K_USER);   // 핸들 미설정 계정 → 이전 값 잔존 방지
