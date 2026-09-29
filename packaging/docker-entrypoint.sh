@@ -251,6 +251,28 @@ if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
     # 있다). 표식을 바꾸려면 `.github/workflows/hub-deploy.yml` 의 grep 도 같이 고칠 것.
     echo "[entrypoint] node-mirror: start — 배포마다 한 번, 배경으로 돈다"
     t0=$(date +%s)
+    # 허브가 먼저 올라오고 인코더는 뒤에서 같은 SHA 로 갱신된다. 구 인코더로
+    # 미러를 만들면 벡터의 판을 잘못 기록하므로 새 인코더의 실제 지문을 확인한 뒤
+    # 한 번만 시작한다. /health 는 모델을 적재하지 않는다.
+    if [ -n "${VINC_EMBED_REMOTE:-}" ]; then
+      mine=$(python3 -c 'from api.encoder_runtime import fingerprint; print(fingerprint())')
+      ready=0
+      for i in $(seq 1 60); do
+        remote=$(curl -fsS --max-time 5 "${VINC_EMBED_REMOTE%/}/health" 2>/dev/null \
+          | python3 -c 'import json,sys; print((json.load(sys.stdin) or {}).get("encoder_runtime") or "")' \
+            2>/dev/null || true)
+        if [ -n "$mine" ] && [ "$remote" = "$mine" ]; then
+          ready=1
+          break
+        fi
+        sleep 10
+      done
+      if [ "$ready" != 1 ]; then
+        echo "[entrypoint] node-mirror: FAILED after $(( $(date +%s) - t0 ))s" \
+             "— encoder runtime did not match this hub" >&2
+        exit 0
+      fi
+    fi
     # ⚠ **HTTP 상태를 따로 받는다.** `curl -sS` 는 `-f` 가 없으면 500 에도 종료코드
     # 0 이다. 그래서 2026-09-10 에 네 번 연속 실패한 재구축이 전부 `done` 으로 찍혔고,
     # 사유가 본문에 실려 있었는데도 성공으로 읽혔다. `-f` 는 못 쓴다 — 그러면 본문을

@@ -807,6 +807,7 @@ class SplitEncoderTest(unittest.TestCase):
             out = json.load(r)
         self.assertEqual(out["status"], "ok")
         self.assertFalse(out["loaded"])
+        self.assertEqual(out["encoder_runtime"], "test-runtime")
         self.assertEqual(loaded, [], "/health 가 모델을 적재했다")
 
 

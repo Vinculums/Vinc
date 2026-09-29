@@ -613,7 +613,8 @@ def serve_encode(emb: "_Embedder", port: int) -> int:
             # 프로브 타임아웃에도 걸린다. "프로세스가 살아 있다"만 답한다.
             if self.path.rstrip("/") in ("/health", ""):
                 self._reply(200, {"status": "ok", "model": MODEL,
-                                  "loaded": getattr(emb, "_sess", None) is not None})
+                                  "loaded": getattr(emb, "_sess", None) is not None,
+                                  "encoder_runtime": ENCODER_RUNTIME})
                 return
             self.send_error(404, "no such route")
 
