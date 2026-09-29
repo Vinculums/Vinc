@@ -449,15 +449,24 @@ class DocstoreE2E(unittest.TestCase):
         self.assertNotIn("note", ds.embed_model_state(self.store),
                          "한 번이라도 적용된 뒤에는 이 문장이 소음이다")
 
+    def _fill(self, did):
+        ds.apply_embeddings(self.store, did,
+                            {c: [[1.0, 0, 0, 0]] for c in self._chunk_ids(did)})
+
     def test_이행_상태가_정직하게_보고된다(self):
-        """`migrating` 은 '기록이 있고 + 재임베딩 대기가 남았다' 일 때만 참이다.
-        서버가 이 값으로 이행 중 벡터 검색을 끈다(발주자 결정: 안전한 방향)."""
-        d = ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")
-        cid = self._chunk_ids(d["doc_id"])[0]
+        """`migrating` 은 '이행 표식이 있고 + 남은 문서가 문턱(max(5, 2%))을 넘는다' 일 때만
+        참이다. 서버가 이 값으로 이행 중 벡터 검색을 끈다(발주자 결정: 안전한 방향)."""
+        dids = [ds.put_doc(self.store, owner="user:a", text=f"본문 {i}. " * 40,
+                           title=f"T{i}")["doc_id"] for i in range(6)]
         ds.switch_embed_model(self.store, "model-A")
         st = ds.embed_model_state(self.store)
-        self.assertTrue(st["migrating"] and st["pending"] == 1)
-        ds.apply_embeddings(self.store, d["doc_id"], {cid: [[1.0, 0, 0, 0]]})
+        self.assertTrue(st["migrating"] and st["pending"] == 6, st)
+        self._fill(dids[0])                               # 5건 남음 — 문턱 이하
+        st = ds.embed_model_state(self.store)
+        self.assertFalse(st["migrating"], f"문턱 아래인데 벡터 팔을 끈다: {st}")
+        self.assertEqual(st["migration_model"], "model-A", "드레인 전에 표식을 내렸다")
+        for did in dids[1:]:
+            self._fill(did)
         st = ds.embed_model_state(self.store)
         self.assertFalse(st["migrating"], "재임베딩이 끝났는데 이행 중이라고 한다")
         self.assertEqual(st["pending"], 0)
@@ -465,6 +474,19 @@ class DocstoreE2E(unittest.TestCase):
         # 일상 편집이 이행으로 오판된다(아래 테스트가 그 오판을 핀으로 박는다).
         self.assertEqual(st["migration_model"], "",
                          "드레인이 끝났는데 이행 표식이 남았다")
+
+    def test_안_풀리는_문서_하나가_의미_검색을_붙잡지_못한다(self):
+        """RV-14 — 게이트가 `표식 and pending>0` 이라, 계속 실패하는 문서 하나(2026-09-22
+        부터 76회 실패한 사례)가 6시간 격리를 되풀이하는 동안 모든 검색이 FTS 로만 답했다.
+        문턱은 max(5, 전체의 2%) — 60건이면 5건까지는 벡터 팔이 산다."""
+        dids = [ds.put_doc(self.store, owner="user:a", text=f"문서 {i} 본문",
+                           title=f"T{i}")["doc_id"] for i in range(60)]
+        ds.switch_embed_model(self.store, "model-A")
+        for did in dids[1:]:                               # 하나만 영영 안 풀린다
+            self._fill(did)
+        st = ds.embed_model_state(self.store)
+        self.assertEqual((st["pending"], st["migration_model"]), (1, "model-A"))
+        self.assertFalse(st["migrating"], "문서 하나가 전체 의미 검색을 끄고 있다")
 
     def test_일상_편집의_pending_은_이행이_아니다(self):
         """편집 1건의 needs_embed 는 `migrating` 을 켜지 않는다.

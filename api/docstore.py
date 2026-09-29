@@ -1376,6 +1376,12 @@ _EMBED_APPLIED_KEY = "embed_last_applied_at"
 #: 표식 없이는 편집 1건이 의미 검색 전체를 끈다(실측 2026-09-02: "1 docs pending"
 #: 창마다 전역 FTS-only 강등).
 _EMBED_MIGRATING_KEY = "embed_migration_model"
+#: 이행 중에도 벡터 팔은 **남은 문서가 max(이 수, 전체의 이 비율)을 넘을 때만** 끈다.
+#: `pending > 0` 이던 게이트는 계속 실패하는 문서 하나가 격리를 되풀이하는 동안 모든
+#: 검색을 키워드로만 답하게 했다. 그 정도 섞임은 감수한다는 것이 결정이다.
+#: 근거: [[decision:rag-code-review-fixes-run-in-full-in-the-local-rag-session-2026-09-29]]
+_MIGRATION_GATE_MIN = 5
+_MIGRATION_GATE_RATIO = 0.02
 
 
 #: pending 이 있는데 이보다 오래 진행(=성공한 apply)이 없으면 정체(stall)로 본다.
@@ -1394,9 +1400,10 @@ def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -
     "last_applied_at", "age_s", "stalled"}`. `stored` 가 빈 문자열이면 아직
     아무것도 기록되지 않은 상태다(구 설치·신규 설치).
 
-    `migrating` 은 **모델 이행 중**(전량 재큐, `_EMBED_MIGRATING_KEY` 표식 보유)
-    에만 True 다 — 일상 문서 편집의 needs_embed 는 표식을 안 세우므로 여기 안
-    걸린다. 검색의 벡터 팔 게이트가 이 값을 본다: 편집 1건이 의미 검색 전체를
+    `migrating` 은 **모델 이행 중**(전량 재큐, `_EMBED_MIGRATING_KEY` 표식 보유)이고
+    남은 문서가 `_MIGRATION_GATE_MIN`·`_MIGRATION_GATE_RATIO` 문턱을 넘을 때만 True 다
+    — 일상 문서 편집의 needs_embed 는 표식을 안 세우므로 여기 안 걸리고, 이행 끝의
+    안 풀리는 문서 몇 건도 게이트를 붙잡지 못한다. 검색의 벡터 팔 게이트가 이 값을 본다: 편집 1건이 의미 검색 전체를
     끄던 과잉을 이 구분이 걷어낸다(pending 자체는 그대로 보고되고, `stalled` 도
     표식과 무관하게 pending 기준이라 워커 정체 알람은 안 무뎌진다).
     ⚠ 이 배포 전에 시작된 이행은 표식이 없어 `migrating=False` 로 읽힌다 —
@@ -1446,7 +1453,8 @@ def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -
     except Exception as exc:      # noqa: BLE001 — 진단이 호출부를 죽이지 않게
         out["error"] = f"{type(exc).__name__}: {exc}"
         return out
-    out["migrating"] = bool(out["migration_model"]) and out["pending"] > 0
+    out["migrating"] = bool(out["migration_model"]) and out["pending"] > max(
+        _MIGRATION_GATE_MIN, out["docs"] * _MIGRATION_GATE_RATIO)
     age = _age_s(out["last_applied_at"])
     out["age_s"] = None if age is None else round(age)
     out["stalled"] = bool(age is not None and out["pending"] > 0 and age >= stall_after_s)
