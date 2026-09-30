@@ -23,6 +23,13 @@ RAG 코드 리뷰 센서스(restore-rehearsal, `restore_rehearsal_check.rag_cens
 벗겨 내서 지울 `vec_id` 가 저장값과 달라지고, 센서스도 리허설(플래그 없이 돈다)과 다른 수를
 낸다. 청크·벡터 대조는 (소유자, 논리 chunk_id) 로 해서 두 키 모양을 같이 받는다.
 
+⚠ 그래서 **고아 수가 센서스와 다를 수 있다.** 센서스(`chunk_vectors_without_chunk`·벡터 구멍)는
+검색 조인(`p.chunk_id = node.chunk_id`)처럼 저장값 문자열로 대조한다. 청크는 물리 키, 벡터는
+논리 키로 남은 쌍은 센서스에는 고아+구멍이고 이 수리에는 고아가 아니다 — 같은 소유자의 청크가
+있으므로 지우지 않는다. 그 차이는 `key_forms_*` 가 원인별로 센다. 그 청크는 검색의 의미 팔이
+못 닿고, 재큐로도 안 붙는다(워커가 벗긴 논리 id 로 다시 쓴다).
+근거: [[record:the-hub-census-orphan-vectors-are-chunks-left-on-physical-keys-not-orphans-2026-09-30]]
+
 원본은 읽기만 한다: --data(+ .wal)를 --out 으로 복사하고 --out 을 고친다. 판정이 하나라도
 어긋나면 --out 을 지우고 1로 끝난다(반쯤 고친 파일은 올라가지 않는다).
 
@@ -74,7 +81,44 @@ def _chunks(s) -> list[dict]:
 
 def _vectors(s) -> list[dict]:
     return s.run("MATCH (v:ChunkVec) RETURN v.vec_id AS vid, v.chunk_id AS cid, "
-                 "v.owner_id AS o", raw=True) or []
+                 "v.owner_id AS o, v.doc_id AS doc", raw=True) or []
+
+
+def _phys(k) -> bool:
+    return bool(k) and pkns.SEP in k
+
+
+def key_forms(s) -> dict:
+    """센서스의 `chunk_vectors_without_chunk`(저장값 비교, 소유자 무시)를 원인별로 가른다.
+
+    `census_vectors_without_chunk` 는 센서스와 같은 수여야 하고(repair 가 대조한다), 그 수 =
+    `of_which_key_form_only`(같은 소유자의 청크가 다른 키 모양으로 있다: 고아 아님, 조인만
+    못 닿는다) + `of_which_no_chunk_under_owner`(진짜 고아). 거꾸로 센서스가 못 보는 고아
+    (저장값이 남의 소유자 청크와 같은 벡터)는 `orphans_the_census_does_not_count` 다."""
+    chunks, vecs = _chunks(s), _vectors(s)
+    raw_of = {_key(c["o"], c["cid"]): c["cid"] for c in chunks}
+    raw_chunk = {c["cid"] for c in chunks}
+    miss = [v for v in vecs if v["cid"] not in raw_chunk]
+    form = [v for v in miss if _key(v["o"], v["cid"]) in raw_of]
+    shapes: dict[str, set] = {}
+    for v in form:
+        c_raw = raw_of[_key(v["o"], v["cid"])]
+        shape = (f"chunk_{'physical' if _phys(c_raw) else 'logical'}_"
+                 f"vector_{'physical' if _phys(v['cid']) else 'logical'}")
+        shapes.setdefault(shape, set()).add(v["cid"])
+    missing_ids, form_ids = {v["cid"] for v in miss}, {v["cid"] for v in form}
+    return {
+        "chunks_with_physical_key": sum(1 for c in chunks if _phys(c["cid"])),
+        "vectors_with_physical_chunk_id": sum(1 for v in vecs if _phys(v["cid"])),
+        "census_vectors_without_chunk": len(missing_ids),
+        "of_which_key_form_only": len(form_ids),
+        "of_which_no_chunk_under_owner": len(missing_ids - form_ids),
+        "key_form_vectors": len(form),
+        "key_form_docs": len({v["doc"] for v in form}),
+        "key_form_chunk_ids_by_shape": {k: len(v) for k, v in sorted(shapes.items())},
+        "orphans_the_census_does_not_count": sum(
+            1 for v in vecs if v["cid"] in raw_chunk and _key(v["o"], v["cid"]) not in raw_of),
+    }
 
 
 def measure(s) -> dict:
@@ -83,7 +127,6 @@ def measure(s) -> dict:
     chunks, vecs = _chunks(s), _vectors(s)
     has_chunk = {_key(c["o"], c["cid"]) for c in chunks}
     has_vec = {_key(v["o"], v["cid"]) for v in vecs}
-    raw_chunk = {c["cid"] for c in chunks}
     docs = s.run("MATCH (d:_DocMeta) RETURN d.needs_embed AS ne, d.chunk_count AS cc",
                  raw=True) or []
     return {
@@ -93,11 +136,8 @@ def measure(s) -> dict:
         "docs_stuck_in_write_window": sum(1 for d in docs if int(d.get("cc") or 0) < 0),
         "chunks": len(chunks),
         "vectors": len(vecs),
+        # 수리의 대상: 같은 소유자 밑에 (키 모양과 무관하게) 청크가 없는 벡터 행.
         "orphan_vectors": sum(1 for v in vecs if _key(v["o"], v["cid"]) not in has_chunk),
-        # 청크는 있는데 키 모양(물리·논리)이 달라 검색의 조인(`p.chunk_id = node.chunk_id`,
-        # 저장값 비교)이 못 닿는 벡터. 고아가 아니라서 안 지운다 — 수만 보인다.
-        "vectors_unreachable_by_key_form": sum(
-            1 for v in vecs if _key(v["o"], v["cid"]) in has_chunk and v["cid"] not in raw_chunk),
         "docs_with_a_chunk_lacking_a_vector": len(
             {c["doc"] for c in chunks if _key(c["o"], c["cid"]) not in has_vec}),
     }
@@ -230,6 +270,7 @@ def repair(src: str, dst: str, repairs: list[str]) -> dict:
     s = _open(dst)
     try:
         report["census_before"] = rag_census(_Raw(s))
+        report["key_forms_before"] = key_forms(s)
         for name in repairs:
             t = time.monotonic()
             try:
@@ -241,6 +282,14 @@ def repair(src: str, dst: str, repairs: list[str]) -> dict:
             report[name] = out
             problems += probs
         report["census_after"] = rag_census(_Raw(s))
+        report["key_forms_after"] = key_forms(s)
+        # 원인별 가름이 센서스와 같은 수를 가르고 있는지 — 다르면 위 설명이 틀린 것이다.
+        for when in ("before", "after"):
+            census = report[f"census_{when}"]["chunk_vectors_without_chunk"]
+            mine = report[f"key_forms_{when}"]["census_vectors_without_chunk"]
+            if census != mine:
+                problems.append(f"key_forms_{when} splits {mine} vectors without a chunk, "
+                                f"the census counts {census}")
         s.run("CHECKPOINT")
     finally:
         s.close()

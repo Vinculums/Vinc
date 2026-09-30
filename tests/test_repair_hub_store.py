@@ -44,25 +44,33 @@ def _cids(s, doc):
                                    "ORDER BY c.chunk_index", {"d": doc}, raw=True)]
 
 
-def _physical(s, doc, owner):
-    """문서의 청크·벡터를 물리 키(owner U+001F id)로 다시 쓴다 — PK 네임스페이싱 이관본의 모양."""
-    rows = s.run("MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.chunk_id AS id, "
-                 "c.chunk_index AS ix, c.char_start AS cs, c.char_end AS ce, c.text AS t",
-                 {"d": doc}, raw=True)
-    s.run("MATCH (v:ChunkVec) WHERE v.doc_id = $d DETACH DELETE v", {"d": doc})
-    s.run("MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": doc})
-    for r in rows:
-        cid = f"{owner}{_SEP}{r['id']}"
-        s.run("CREATE (c:Chunk {chunk_id: $id, doc_id: $d, owner_id: $o, chunk_index: $ix, "
-              "char_start: $cs, char_end: $ce, text: $t})",
-              {"id": cid, "d": doc, "o": owner, "ix": r["ix"], "cs": r["cs"], "ce": r["ce"],
-               "t": r["t"]})
-        s.run("CREATE (v:ChunkVec {vec_id: $vid, chunk_id: $cid, doc_id: $d, owner_id: $o, "
-              "seq: 0, embedding: [1.0, 0.0, 0.0, 0.0]})",
-              {"vid": cid + "#000", "cid": cid, "d": doc, "o": owner})
+def _physical(s, doc, owner, *, chunks=True, vectors=True):
+    """문서의 청크·벡터 키를 물리 키(owner U+001F id)로 다시 쓴다 — PK 네임스페이싱 이관본의 모양.
+
+    한쪽만 옮기면 키 모양이 어긋난 쌍이 된다. 청크만 옮긴 것이 허브의 모양이다: 이관이 합성한
+    청크 PK 는 재구축을 거쳐 그대로 남고, 워커는 벗긴 논리 id 로 벡터를 쓴다."""
+    phys = lambda k: f"{owner}{_SEP}{pkns.strip(k)}"                       # noqa: E731
+    if chunks:
+        rows = s.run("MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.chunk_id AS id, "
+                     "c.chunk_index AS ix, c.char_start AS cs, c.char_end AS ce, c.text AS t",
+                     {"d": doc}, raw=True)
+        s.run("MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": doc})
+        for r in rows:
+            s.run("CREATE (c:Chunk {chunk_id: $id, doc_id: $d, owner_id: $o, chunk_index: $ix, "
+                  "char_start: $cs, char_end: $ce, text: $t})",
+                  {"id": phys(r["id"]), "d": doc, "o": owner, "ix": r["ix"], "cs": r["cs"],
+                   "ce": r["ce"], "t": r["t"]})
+    if vectors:
+        rows = s.run("MATCH (v:ChunkVec) WHERE v.doc_id = $d RETURN v.vec_id AS vid, "
+                     "v.chunk_id AS cid", {"d": doc}, raw=True)
+        s.run("MATCH (v:ChunkVec) WHERE v.doc_id = $d DETACH DELETE v", {"d": doc})
+        for r in rows:
+            s.run("CREATE (v:ChunkVec {vec_id: $vid, chunk_id: $cid, doc_id: $d, owner_id: $o, "
+                  "seq: 0, embedding: [1.0, 0.0, 0.0, 0.0]})",
+                  {"vid": phys(r["vid"]), "cid": phys(r["cid"]), "d": doc, "o": owner})
 
 
-def _seed(path, *, physical=False):
+def _seed(path, *, physical=False, mixed=False):
     """문서 여섯(소유자 둘)을 임베딩까지 끝낸 뒤 망가뜨린다. 망가뜨린 것:
 
     - gone : 청크만 지워 벡터가 고아로 남는다(청크 _N 개 → 고아 _N)
@@ -70,14 +78,21 @@ def _seed(path, *, physical=False):
     - hole : 벡터 하나를 지운다(needs_embed=0 인데 구멍)
     - ok   : 쓰기 창 표식만 남았다(①에서 끊김) — 청크가 메타의 본문 그대로
     - tail : 표식 + 꼬리 청크가 없다(② 도중 끊김) — 이어지지만 본문이 메타와 다르다
-    - gap  : 표식 + 0번 청크가 없다"""
+    - gap  : 표식 + 0번 청크가 없다
+
+    ``mixed`` 면 키 모양이 어긋난 두 문서를 더한다(고아가 아니다 — 청크가 같은 소유자 밑에 있다):
+    - fwd  : 청크만 물리 키(허브의 모양)
+    - rev  : 벡터만 물리 키"""
     s = _open(path)
     try:
         s.provision(dim=4)
         ds.switch_embed_model(s, "model-a")
         docs = {}
-        for name, owner in (("gone", "user:a"), ("cross", "user:a"), ("hole", "user:a"),
-                            ("ok", "user:a"), ("tail", "user:b"), ("gap", "user:b")):
+        names = [("gone", "user:a"), ("cross", "user:a"), ("hole", "user:a"),
+                 ("ok", "user:a"), ("tail", "user:b"), ("gap", "user:b")]
+        if mixed:
+            names += [("fwd", "user:a"), ("rev", "user:b")]
+        for name, owner in names:
             d = ds.put_doc(s, owner=owner, doc_id=f"doc.{name}", title=name, text=_TEXT)
             assert d.get("executed"), d
             docs[name] = (d["doc_id"], owner)
@@ -87,6 +102,8 @@ def _seed(path, *, physical=False):
             assert r.get("cleared"), r
             if physical:
                 _physical(s, d["doc_id"], owner)
+            elif name in ("fwd", "rev"):
+                _physical(s, d["doc_id"], owner, chunks=name == "fwd", vectors=name == "rev")
         cid = lambda n, i: _cids(s, docs[n][0])[i]                         # noqa: E731
         s.run("MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": docs["gone"][0]})
         s.run("MATCH (v:ChunkVec) WHERE v.chunk_id = $c SET v.owner_id = 'user:b'",
@@ -143,6 +160,11 @@ class RepairHubStoreTests(unittest.TestCase):
         self.assertEqual(st["after"]["docs_stuck_in_write_window"], st["needs_owner_reput"])
         self.assertEqual(rep["census_after"]["docs_stuck_in_write_window"], 2)
         self.assertEqual(rep["census_after"]["chunk_vectors_without_chunk"], 0)
+        # 키 모양이 한결같으면 센서스의 '청크 없는 벡터'는 전부 진짜 고아다.
+        kb = rep["key_forms_before"]
+        self.assertEqual((kb["of_which_key_form_only"], kb["of_which_no_chunk_under_owner"]),
+                         (0, _N))
+        self.assertEqual(kb["orphans_the_census_does_not_count"], 1)
         self.assertIn("repair_seconds", rep)
         # 수만 낸다 — 문서 id·소유자·제목이 로그에 새면 안 된다.
         for doc, owner in docs.values():
@@ -187,6 +209,37 @@ class RepairHubStoreTests(unittest.TestCase):
             self.assertTrue(left and all(_SEP in r["v"] for r in left), "물리 키 벡터가 사라졌다")
         finally:
             s.close()
+
+    def test_mixed_key_forms_are_not_orphans_and_the_census_gap_is_split_by_shape(self):
+        """허브 measure(36672062376)의 모양을 재현한다: 센서스는 청크 없는 벡터 91 · 벡터 구멍 23,
+        수리는 고아 0 · 지움 0. 차이는 전부 키 모양이다 — 같은 소유자의 청크가 다른 모양으로
+        있어서 고아가 아니고, 저장값 조인만 못 닿는다. 그 벡터는 지우지 않고 원인별로 센다."""
+        _seed(self.src, mixed=True)
+        rc, rep, out = _run_cli(self.src, self.dst, "--repairs", "orphans")
+        self.assertEqual(rc, 0, rep.get("problems"))
+        orph = rep["orphans"]
+        # 지우는 것은 같은 소유자 밑에 청크가 없는 벡터뿐이다(gone 의 _N + 남의 소유자 1).
+        self.assertEqual((orph["before"]["orphan_vectors"], orph["deleted"],
+                          orph["after"]["orphan_vectors"]), (_N + 1, _N + 1, 0))
+        # 키 모양 쌍은 소유자별 구멍도 아니다(cross·hole·ok·tail·gap 다섯만 구멍).
+        self.assertEqual(orph["before"]["docs_with_a_chunk_lacking_a_vector"], 5)
+        kb, ka = rep["key_forms_before"], rep["key_forms_after"]
+        self.assertEqual(rep["census_before"]["chunk_vectors_without_chunk"], 3 * _N)
+        self.assertEqual((kb["census_vectors_without_chunk"], kb["of_which_key_form_only"],
+                          kb["of_which_no_chunk_under_owner"]), (3 * _N, 2 * _N, _N))
+        self.assertEqual(kb["key_form_chunk_ids_by_shape"],
+                         {"chunk_logical_vector_physical": _N,
+                          "chunk_physical_vector_logical": _N})
+        self.assertEqual((kb["key_form_vectors"], kb["key_form_docs"]), (2 * _N, 2))
+        self.assertEqual((kb["chunks_with_physical_key"], kb["vectors_with_physical_chunk_id"]),
+                         (_N, _N))
+        self.assertEqual(kb["orphans_the_census_does_not_count"], 1)
+        # 수리 뒤 센서스에 남는 것은 전부 키 모양으로 설명된다.
+        self.assertEqual(rep["census_after"]["chunk_vectors_without_chunk"], 2 * _N)
+        self.assertEqual((ka["of_which_key_form_only"], ka["of_which_no_chunk_under_owner"]),
+                         (2 * _N, 0))
+        self.assertNotIn("doc.fwd", out)
+        self.assertNotIn("user:", out)
 
     def test_the_semantic_arm_stays_on_after_the_requeue(self):
         """재큐는 모델을 안 바꾸므로 이행이 아니다 — 전 문서가 pending 이어도 게이트가 안 걸리고
