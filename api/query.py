@@ -3665,6 +3665,20 @@ def _brief_strict_on() -> bool:
 _STRICT_MARGIN = 2
 
 
+def _brief_sem_promote_on() -> bool:
+    """되묻기 1위를 의미 우위로 확정할 것인가. **기본은 꺼짐**(`VINC_BRIEF_SEM_PROMOTE`).
+    켜는 것은 규칙과 시험지의 저자가 다른 골드(VIN-57)가 같은 이득을 낼 때 결정으로 한다."""
+    return str(os.environ.get("VINC_BRIEF_SEM_PROMOTE", "")).strip().lower() in (
+        "1", "on", "true", "yes")
+
+
+#: 승격에 필요한 의미 우위: 의미 팔 원시 목록에서 1위가 나머지보다 가까운 거리(`sem_lead`,
+#: search 가 단다). `_SEM_GAP`(0.010, 순서만 바꾼다)과 다른 값이다. 그 값을 확신 문턱으로
+#: 쓰면 답 불가를 대부분 확정한다. 옮기려면 다시 잴 것.
+#: 근거: [[decision:gate-d-reopens-on-the-semantic-arms-own-lead-behind-a-flag-left-off-2026-09-29]]
+_SEM_PROMOTE = 0.049
+
+
 def _brief_rank(rows: list[dict]) -> list[dict]:
     """해소 순위. 확정 판정과 되묻기 목록이 같은 순서를 쓰도록 한 자리에 둔다.
 
@@ -3691,6 +3705,12 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     제목이 질문과 글자 그대로 같으면(이름을 댄 경우) 랭킹 앞에서 그 노드로 확정한다.
     같은 제목이 둘 이상이면 어느 쪽을 물었는지 모르므로 되묻는다(doc 미러 제목 충돌).
     근거: [[vinc.plan.rag-code-review-fixes-2026-09-29 §7]]
+
+    **의미 우위 승격**(`VINC_BRIEF_SEM_PROMOTE`, 기본 꺼짐)은 위 ⚠ 의 유일한 예외다.
+    랭킹 갈래에서 choose 가 될 1위가 의미 팔 원시 목록의 나머지보다 `_SEM_PROMOTE` 이상
+    가까우면 토큰이 0 이어도 확정한다. 이름 댄 갈래(같은 제목 둘 포함)와 단독 후보 갈래는
+    그 앞에서 돌아오므로 승격되지 않는다. 단독 후보에는 앞설 나머지가 없어 `sem_lead` 도
+    안 붙는다. 유효구간 동점 가드와 답변 가능성 게이트는 brief 에서 이 뒤에 그대로 돈다.
 
     **엄격 판정**(`VINC_BRIEF_STRICT`, 기본 켜짐)은 순서에 `arms` 를 먼저 넣고 문턱을
     `_STRICT_MARGIN` 으로 올린다. 여러 팔이 같은 노드를 올렸다는 것은 어휘와 의미가
@@ -3719,9 +3739,15 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
         _brief_int(top.get("hit_tokens")) - _brief_int(second.get("hit_tokens")) >= margin
         or _brief_int(top.get("title_tokens"))
         - _brief_int(second.get("title_tokens")) >= margin)
+    # 의미 우위 승격(플래그 뒤): 되묻기가 될 자리에서만 돈다. 1위가 의미 팔의 1위가
+    # 아니면 `sem_lead` 가 없다(그 노드보다 가까운 것이 있으니 우위가 음수다).
+    lead = top.get("sem_lead")
+    promoted = (not decisive and _brief_sem_promote_on()
+                and isinstance(lead, (int, float)) and lead >= _SEM_PROMOTE)
     # 확정이어도 **순위 전체**를 돌려준다. 1위가 상세에서 안 열릴 때 호출부가 다음
     # 후보로 넘어갈 수 있어야 하기 때문이고, 그 폴스루는 밝혀서 한다(brief 참조).
-    return ("resolved", ranked) if decisive else ("choose", ranked[:_brief_expose_n()])
+    return (("resolved", ranked) if decisive or promoted
+            else ("choose", ranked[:_brief_expose_n()]))
 
 
 def _brief_body(ctx: dict) -> dict:
@@ -7213,6 +7239,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # 뒤집힌 경위와 수치는 `_node_semantic_arm_on` 에 있다.
         vec_hits: list[dict] = []
         _sem_decisive: str | None = None
+        _sem_lead: tuple | None = None       # (의미 1위 id, 2위와의 거리 차)
         if query_embedding is not None and not continuation and _node_semantic_arm_on():
             try:
                 # 라벨은 **제목**이다. 미러의 `text` 는 찾는 표면이라 한줄설명이 붙어
@@ -7253,10 +7280,15 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                     _h["domain"] = _doms.get(_h.get("id"), "")
                 # 1위가 2위보다 `_SEM_GAP` 이상 가까우면 **이 팔이 자기 기준으로
                 # 단호하다**. 절대 거리가 아니라 격차인 이유는 그 상수 주석에 있다.
-                if len(_raw) > 1 and _node_sem_rank_on():
+                # 목록이 거리 오름차순이라 이 격차가 곧 1위가 **나머지 전체**보다 앞선
+                # 정도(의미 우위)이고, brief 의 승격(`_SEM_PROMOTE`)이 같은 값을 읽는다.
+                # 융합이 top_k 로 잘라 2위 행을 떨굴 수 있으므로 node_hits 가 아니라
+                # 여기(원시 목록)서 잰다. 반올림은 X3 모의와 같은 자리수다.
+                if len(_raw) > 1:
                     try:
-                        if (float(_raw[1]["distance"])
-                                - float(_raw[0]["distance"])) >= _SEM_GAP:
+                        _gap = float(_raw[1]["distance"]) - float(_raw[0]["distance"])
+                        _sem_lead = (_raw[0].get("id"), round(_gap, 6))
+                        if _node_sem_rank_on() and _gap >= _SEM_GAP:
                             _sem_decisive = _raw[0].get("id")
                     except (TypeError, ValueError, KeyError):
                         pass
@@ -7293,9 +7325,17 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             base["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=top_k,
                                                 vec_hits=vec_hits)
             # 융합은 id 당 행 하나만 남기므로(제목 행이 이기면 의미 행의 표가 사라진다)
-            # 융합 **뒤에** id 로 찾아 단다.
+            # 융합 **뒤에** id 로 찾아 단다. 거리도 같다 — 안 달면 제목 팔도 찾은 노드는
+            # 의미 거리를 잃는다. 다는 값은 순위에 쓰이지 않는다.
+            # 근거: [[record:node-hits-lose-the-semantic-distance-when-the-title-arm-also-found-the-node-2026-09-29]]
+            _dist = {h["id"]: h.get("distance") for h in vec_hits if h.get("id")}
             for _r in base["node_hits"]:
-                if _sem_decisive and _r.get("id") == _sem_decisive:
+                _rid = _r.get("id")
+                if _rid in _dist:
+                    _r["distance"] = _dist[_rid]
+                if _sem_lead and _rid == _sem_lead[0]:
+                    _r["sem_lead"] = _sem_lead[1]
+                if _sem_decisive and _rid == _sem_decisive:
                     _r["sem_decisive"] = True
         except Exception as exc:
             base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
