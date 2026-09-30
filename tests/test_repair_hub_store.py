@@ -168,6 +168,65 @@ def _seed(path, *, physical=False, mixed=False, keyform=False):
     return docs
 
 
+_OLD_RUNTIME = "ort=1.29.0;tok=0.23.2;np=2.5.3"
+
+
+def _seed_requeued(path, *, physical=False):
+    """2026-09-30 재큐 뒤의 허브 모양을 짓는다: 전 문서 needs_embed=1, 옛 벡터는 도장 없음.
+
+    - done1·done2(user:a)·done3(user:b): 전 청크에 벡터가 있다(도장 없음) → 되돌려야 한다
+    - other(user:c): 벡터에 다른 도장이 찍혀 있다 → 도장을 안 덮고 pending 으로 남긴다
+    - partial(user:a): 청크 하나에 벡터가 없다 → pending
+    - split(user:a): 청크는 물리 키, 벡터는 논리 키 — 벡터는 있지만 검색의 저장값 조인이 못
+      닿는다 → pending(플래그를 켜고 벗긴 id 로 대조하면 되돌려 버린다)
+    - fresh(user:a): 재큐 **뒤에** 새로 쓴 문서, 벡터 0 → pending
+    노드 미러: user:a 의 도장 없는 행 둘과 이미 도장 찍힌 행 하나."""
+    s = _open(path)
+    try:
+        s.provision(dim=4)
+        ds.switch_embed_model(s, "model-a")
+        docs = {}
+        for name, owner in (("done1", "user:a"), ("done2", "user:a"), ("done3", "user:b"),
+                            ("other", "user:c"), ("partial", "user:a"), ("split", "user:a")):
+            d = ds.put_doc(s, owner=owner, doc_id=f"doc.{name}", title=name, text=_TEXT)
+            docs[name] = (d["doc_id"], owner)
+            cids = _cids(s, d["doc_id"])
+            if name == "partial":
+                cids = cids[1:]
+            ds.apply_embeddings(s, d["doc_id"], {c: [1.0, 0.0, 0.0, 0.0] for c in cids},
+                                _OLD_RUNTIME if name == "other" else "")
+            if name == "split":
+                _physical(s, d["doc_id"], owner, vectors=False)
+            elif physical:
+                _physical(s, d["doc_id"], owner)
+                if name == "other":
+                    s.run("MATCH (v:ChunkVec) WHERE v.doc_id = $d SET v.encoder_runtime = $r",
+                          {"d": d["doc_id"], "r": _OLD_RUNTIME})
+        s.run("MATCH (d:_DocMeta) SET d.needs_embed = 1")          # 재큐(09-30 apply)
+        d = ds.put_doc(s, owner="user:a", doc_id="doc.fresh", title="fresh", text=_TEXT)
+        docs["fresh"] = (d["doc_id"], "user:a")
+        s.run("UNWIND $rows AS r CREATE (:NodeVec {vec_id: r.vid, node_id: r.id, kind: 'concept', "
+              "owner_id: 'user:a', title: r.id, text: r.id, model: 'model-a', "
+              "embedding: [0.0, 1.0, 0.0, 0.0], encoder_runtime: r.rt})",
+              {"rows": [{"vid": f"user:a#concept:n{i}", "id": f"concept:n{i}", "rt": rt}
+                        for i, rt in enumerate(("", "", rh_hub_runtime()))]})
+        s.ensure_search_indexes(dim=4)
+        s.create_node_vector_index()
+        s.run("CHECKPOINT")
+    finally:
+        s.close()
+    return docs
+
+
+def rh_hub_runtime() -> str:
+    import repair_hub_store as rh
+    return rh.hub_runtime()
+
+
+#: 도장·재큐 되돌리기 전의 실행 모양(기본값이 stamp,unrequeue 로 바뀌었다).
+_OLD_FOUR = ("--repairs", "keyform,requeue,orphans,stuck")
+
+
 def _run_cli(src, dst, *args, env=None):
     r = subprocess.run([sys.executable, "-X", "utf8", str(ROOT / "scripts" / "repair_hub_store.py"),
                         "--data", src, "--out", dst, *args],
@@ -235,7 +294,7 @@ class RepairHubStoreTests(unittest.TestCase):
 
     def test_three_repairs_on_logical_keys_leave_the_source_alone(self):
         docs = _seed(self.src)
-        rc, rep, out = _run_cli(self.src, self.dst)
+        rc, rep, out = _run_cli(self.src, self.dst, *_OLD_FOUR)
         self._check_all_three(rc, rep, out, docs)
         self._check_copy(docs)
         s = _open(self.src)
@@ -249,7 +308,7 @@ class RepairHubStoreTests(unittest.TestCase):
         """물리 키 스토어를 플래그 켠 채 고친다(워크플로가 허브 값을 넘긴다). 기본 읽기는 키를
         벗겨서, 그 값으로 지우면 아무것도 안 지워진다 — 저장값 그대로 지워야 한다."""
         docs = _seed(self.src, physical=True)
-        rc, rep, out = _run_cli(self.src, self.dst, env={"VINC_PK_NAMESPACED": "on"})
+        rc, rep, out = _run_cli(self.src, self.dst, *_OLD_FOUR, env={"VINC_PK_NAMESPACED": "on"})
         self._check_all_three(rc, rep, out, docs)
         self._check_copy(docs)
         s = _open(self.dst)
@@ -292,7 +351,7 @@ class RepairHubStoreTests(unittest.TestCase):
 
     def _keyform_run(self, env):
         docs = _seed(self.src, keyform=True)
-        rc, rep, out = _run_cli(self.src, self.dst, env=env)
+        rc, rep, out = _run_cli(self.src, self.dst, *_OLD_FOUR, env=env)
         self.assertEqual(rc, 0, rep.get("problems"))
         self.assertEqual(rep["repairs"], ["keyform", "requeue", "orphans", "stuck"])
         kf = rep["keyform"]
@@ -365,6 +424,87 @@ class RepairHubStoreTests(unittest.TestCase):
 
     def test_keyform_rewrites_only_the_hub_shape_with_namespacing_on(self):
         self._check_keyform_copy(self._keyform_run({"VINC_PK_NAMESPACED": "on"}))
+
+    def _stamp_unrequeue(self, *, physical, env):
+        """기본 실행(stamp,unrequeue)을 재큐 뒤 모양의 스토어에 돌리고 판정한다."""
+        from api import query as q
+        docs = _seed_requeued(self.src, physical=physical)
+        value = rh_hub_runtime()
+        rc, rep, out = _run_cli(self.src, self.dst, env=env)
+        self.assertEqual(rc, 0, rep.get("problems"))
+        self.assertEqual(rep["repairs"], ["stamp", "unrequeue"])
+        st = rep["stamp"]
+        self.assertEqual((st["value"], st["source"]), (value, "Dockerfile.hub"))
+        # 도장 없는 것만 찍는다: 청크 벡터(done 셋의 3N + partial 의 N-1 + split 의 N)와 노드
+        # 미러 둘. other 의 N 개는 이미 다른 도장이라 그대로다.
+        self.assertEqual(st["stamped"], {"ChunkVec": 5 * _N - 1, "NodeVec": 2})
+        self.assertEqual(st["runtimes_after"],
+                         {"ChunkVec": {value: 5 * _N - 1, _OLD_RUNTIME: _N},
+                          "NodeVec": {value: 3}})
+        for table in ("ChunkVec", "NodeVec"):
+            probe = st["vector_probe"]
+            self.assertGreater(probe["before"][table]["probed"], 0)
+            self.assertEqual(probe["after"][table]["found"], probe["after"][table]["probed"],
+                             f"{table} 색인이 도장 뒤에 제 행을 못 찾는다")
+        self.assertEqual(st["fts_probe"]["before"], st["fts_probe"]["after"])
+        self.assertGreater(st["fts_probe"]["after"][1], 0)
+        un = rep["unrequeue"]
+        self.assertEqual((un["pending_before"], un["reset"], un["still_pending"]), (7, 3, 4))
+        # partial·fresh·split 은 저장값 조인으로 벡터가 없는 청크가 있다.
+        self.assertEqual(un["still_pending_by_reason"],
+                         {"missing_vector": 3, "vector_not_stamped_with_hub_runtime": 1,
+                          "no_chunks": 0, "chunks_do_not_match_meta": 0})
+        self.assertEqual(un["after"]["vectors"], un["before"]["vectors"])
+        # 남는 '청크 없는 벡터'는 split 의 키 모양뿐이다(도장·되돌리기는 키를 안 건드린다).
+        self.assertEqual(rep["census_after"]["chunk_vectors_without_chunk"], _N)
+        for doc, owner in docs.values():
+            self.assertNotIn(doc, out)
+            self.assertNotIn(owner, out)
+        src, dst = _open(self.src), _open(self.dst)
+        try:
+            # 원본은 그대로 · 사본에서는 벡터를 다 가진 문서만 되돌렸다.
+            ne = lambda s: {r["d"]: r["n"] for r in s.run(          # noqa: E731
+                "MATCH (d:_DocMeta) RETURN d.doc_id AS d, d.needs_embed AS n")}
+            self.assertEqual(set(ne(src).values()), {1})
+            self.assertEqual(ne(dst), {"doc.done1": 0, "doc.done2": 0, "doc.done3": 0,
+                                       "doc.other": 1, "doc.partial": 1, "doc.split": 1,
+                                       "doc.fresh": 1})
+            # 검색이 읽는 경고 그대로: 질의 판이 도장과 같으면 경고가 사라진다.
+            self.assertEqual(q._encoder_runtime_warning(src, "user:a", value),
+                             q.UNSTAMPED_RUNTIME_NOTE, "전제: 고치기 전에는 도장 없음 경고")
+            self.assertEqual(q._encoder_runtime_warning(dst, "user:a", value), "")
+            self.assertIn("mismatch", q._encoder_runtime_warning(dst, "user:c", value),
+                          "다른 도장은 덮지 않는다 — 그 경고는 남아야 한다")
+            self.assertTrue(dst.vector_search([1.0, 0.0, 0.0, 0.0], 50), "벡터 검색이 죽었다")
+        finally:
+            src.close()
+            dst.close()
+
+    def test_stamp_and_unrequeue_with_namespacing_off(self):
+        self._stamp_unrequeue(physical=False, env={"VINC_PK_NAMESPACED": "off"})
+
+    def test_stamp_and_unrequeue_on_physical_keys_with_namespacing_on(self):
+        self._stamp_unrequeue(physical=True, env={"VINC_PK_NAMESPACED": "on"})
+
+    def test_the_stamp_is_what_the_hub_encoder_reports(self):
+        """허브는 설치된 판으로 `fingerprint()` 를 짓는다. 이미지의 고정 판을 그 함수에 그대로
+        넣으면 스크립트가 짓는 도장과 한 글자도 다르지 않아야 한다."""
+        import re
+        from unittest import mock
+        from api import encoder_runtime
+        import repair_hub_store as rh
+        line = next(ln for ln in (ROOT / "Dockerfile.hub").read_text(encoding="utf-8").splitlines()
+                    if ln.startswith("RUN pip install") and "onnxruntime" in ln)
+        pins = dict(re.findall(r"([A-Za-z][\w.-]*)==(\d[\w.]*)", line))
+        with mock.patch.object(encoder_runtime, "version", side_effect=pins.__getitem__):
+            self.assertEqual(encoder_runtime.fingerprint(), rh.hub_runtime())
+        self.assertEqual(rh.hub_runtime(), "ort=1.30.0;tok=0.23.2;np=2.5.3")
+
+    def test_requeue_and_unrequeue_are_refused_together(self):
+        import repair_hub_store as rh
+        with self.assertRaises(SystemExit):
+            rh._parse("requeue,unrequeue")
+        self.assertEqual(rh._parse("unrequeue,stamp,keyform"), ["keyform", "stamp", "unrequeue"])
 
     def test_the_semantic_arm_stays_on_after_the_requeue(self):
         """재큐는 모델을 안 바꾸므로 이행이 아니다 — 전 문서가 pending 이어도 게이트가 안 걸리고
