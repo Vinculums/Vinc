@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import re
+from typing import Any, Callable
 
 from . import embedded_schema as _schema
 
@@ -225,7 +226,8 @@ def import_store(store, dump: dict, *, dim: int) -> dict:
             "meta": _import_meta(store, dump.get("meta") or {})}
 
 
-def rebuild_store(src, dst, *, model: str, dim: int) -> dict:
+def rebuild_store(src, dst, *, model: str, dim: int,
+                  requeue: Callable[[Any, str], dict]) -> dict:
     """**차원이 바뀌는 임베딩 모델 교체**의 재구축 경로 — 이 리포의 정본이다.
 
     `switch_embed_model` 만으로는 안 된다. 그 함수는 옛 벡터를 지우고 전 문서를 큐에
@@ -259,10 +261,12 @@ def rebuild_store(src, dst, *, model: str, dim: int) -> dict:
     반환에 `requeued` 와 `docs` 를 함께 싣는다 — 둘이 어긋나면 그것이 곧 2번 실패의
     신호다(호출부가 볼 수 있어야 한다).
     """
-    # api 를 함수 안에서 import 한다. `store/` 는 `api/` 를 모르는 층인데(모듈 최상단에
-    # 두면 그 방향이 뒤집힌다), 재큐를 호출부에 미루면 "재구축했는데 재큐를 안 한"
-    # 스토어를 만들 수 있다 — 그것이 정확히 이 함수가 막으려는 무음 실패다.
-    from api.docstore import switch_embed_model
+    # 재큐는 `requeue` 로 **주입받는다**(`api.docstore.switch_embed_model`). `store/` 는
+    # `api/` 를 모르는 층이라 여기서 import 하면 방향이 뒤집힌다 — 2026-09-30 까지는
+    # 함수 안 지연 import 로 그 방향을 숨기고 있었다(VIN-242 에서 걷었다). 그렇다고
+    # 재큐를 호출부의 **선택**에 맡기지는 않는다: 인자가 키워드 필수라 빠뜨리면 여기서
+    # TypeError 로 죽는다. "재구축했는데 재큐를 안 한" 스토어를 만들 수 있는 길이
+    # 바로 이 함수가 막으려는 무음 실패이고, 필수 인자는 그 길을 컴파일 시점에 닫는다.
     from . import pkns
 
     # 🔴 물리 키로 읽는다. 플래그가 켜진 런타임에서 기본 읽기는 owner U+001F id 를 논리 id 로
@@ -299,7 +303,7 @@ def rebuild_store(src, dst, *, model: str, dim: int) -> dict:
     dropped, node_dropped = (_count_rows(src, label) for label in discard)
     stats = import_store(dst, dump, dim=dim)
     dst.ensure_search_indexes(dim=dim)
-    sw = switch_embed_model(dst, model)
+    sw = requeue(dst, model)
     docs = dst.run("MATCH (d:_DocMeta) RETURN count(d) AS c") or []
     return {"model": model, "dim": dim, "vectors_dropped": dropped,
             "node_vectors_dropped": node_dropped,
@@ -333,7 +337,8 @@ def vector_dim(store, table: str = "ChunkVec") -> int | None:
     return None
 
 
-def migrate_dim_if_needed(data_dir: str, *, model: str, target_dim: int) -> dict:
+def migrate_dim_if_needed(data_dir: str, *, model: str, target_dim: int,
+                          requeue: Callable[[Any, str], dict]) -> dict:
     """기동 시 벡터 열의 차원이 이 배포의 모델과 다르면 **재구축해서 갈아 끼운다.**
 
     허브 컨테이너의 엔트리포인트가 사이드카를 띄우기 **전에** 부른다(`api/cli.py
@@ -386,7 +391,7 @@ def migrate_dim_if_needed(data_dir: str, *, model: str, target_dim: int) -> dict
             raise RuntimeError("rebuild target open failed (driver)")
         try:
             dst.provision(dim=target_dim)
-            res = rebuild_store(src, dst, model=model, dim=target_dim)
+            res = rebuild_store(src, dst, model=model, dim=target_dim, requeue=requeue)
         finally:
             dst.close()
     finally:
@@ -429,7 +434,7 @@ def migrate_dim_if_needed(data_dir: str, *, model: str, target_dim: int) -> dict
     return out
 
 
-def _main_rebuild(args, open_store, load_config) -> int:
+def _main_rebuild(args, open_store, load_config, requeue) -> int:
     """`rebuild` 서브커맨드 — 원본은 **읽기만** 하고 결과는 새 디렉터리에 만든다.
 
     ⚠ 원본을 지우지 않는다. 새 스토어가 멀쩡한지 확인한 뒤 사람이 바꿔 끼우는 것이
@@ -450,7 +455,8 @@ def _main_rebuild(args, open_store, load_config) -> int:
         print("[ERROR] 스토어 연결 실패 (드라이버/자격 확인).", file=sys.stderr)
         return 1
     try:
-        out = rebuild_store(src, dst, model=args.model, dim=dst_cfg.embedding_dim)
+        out = rebuild_store(src, dst, model=args.model, dim=dst_cfg.embedding_dim,
+                            requeue=requeue)
     finally:
         src.close()
         dst.close()
@@ -480,7 +486,12 @@ def main() -> None:
     args = ap.parse_args()
 
     if args.mode == "rebuild":
-        sys.exit(_main_rebuild(args, open_store, load_config))
+        # 재구축은 재큐 정책(`api.docstore.switch_embed_model`)이 있어야 완결되고, 그
+        # 정책은 위 층의 것이라 여기서 import 하지 않는다(VIN-242). 같은 일을 하는
+        # 진입점은 `python -m api.cli store-rebuild --out … --model …` 다.
+        print("[ERROR] rebuild 는 `python -m api.cli store-rebuild --out … --model …` 로 "
+              "옮겨졌다 — store 층은 재큐 정책을 모른다", file=sys.stderr)
+        sys.exit(2)
     if not args.file:
         ap.error("--file 이 필요하다")
 

@@ -18,6 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from store.backend import open_store        # noqa: E402
 from store.config import load_config         # noqa: E402
 from store import migrate                     # noqa: E402
+# 재큐 정책은 api 층의 것이라 store 가 import 하지 않는다 — 호출부가 넘긴다(VIN-242).
+from api import docstore as ds                # noqa: E402
 
 
 class MigrationRoundTripTests(unittest.TestCase):
@@ -194,7 +196,7 @@ class RebuildPathTests(unittest.TestCase):
         self._seed_docs(src, n)
         dst, cfg2 = self._mkstore(dim=1024)
         self.assertEqual(cfg2.embedding_dim, 1024, "차원이 안 바뀌면 재구축 시험이 아니다")
-        out = migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+        out = migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024, requeue=ds.switch_embed_model)
         src.close()
 
         self.assertEqual(out["docs"], n)
@@ -216,7 +218,7 @@ class RebuildPathTests(unittest.TestCase):
         self._seed_docs(src, 3)
         dst, _ = self._mkstore(dim=1024)
         try:
-            migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+            migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024, requeue=ds.switch_embed_model)
         except RuntimeError as exc:            # FTS 확장 미가용 환경(번들 없음)
             if "확장" in str(exc) or "extension" in str(exc).lower():
                 self.skipTest(f"FTS 확장 미가용 — {exc}")
@@ -237,7 +239,7 @@ class RebuildPathTests(unittest.TestCase):
         self._seed_docs(src, 4)
         dst, _ = self._mkstore(dim=1024)
         try:
-            migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+            migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024, requeue=ds.switch_embed_model)
         except RuntimeError as exc:
             if "확장" in str(exc) or "extension" in str(exc).lower():
                 self.skipTest(f"FTS 확장 미가용 — {exc}")
@@ -266,7 +268,7 @@ class RebuildPathTests(unittest.TestCase):
                 {"e": [0.0] * 768})
         dst, _ = self._mkstore(dim=1024)
         try:
-            out = migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+            out = migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024, requeue=ds.switch_embed_model)
         except RuntimeError as exc:
             if "확장" in str(exc) or "extension" in str(exc).lower():
                 self.skipTest(f"FTS 확장 미가용 — {exc}")
@@ -291,7 +293,7 @@ class RebuildPathTests(unittest.TestCase):
         snap = tempfile.mkdtemp() + "/snap"           # 영속 볼륨 자리(다른 디렉터리)
         try:
             with mock.patch.dict(os.environ, {"VINC_STORE_SNAPSHOT": snap}):
-                out = migrate.migrate_dim_if_needed(path, model="BAAI/bge-m3", target_dim=1024)
+                out = migrate.migrate_dim_if_needed(path, model="BAAI/bge-m3", target_dim=1024, requeue=ds.switch_embed_model)
         except RuntimeError as exc:
             if "확장" in str(exc) or "extension" in str(exc).lower():
                 self.skipTest(f"FTS 확장 미가용 — {exc}")
@@ -314,7 +316,7 @@ class RebuildPathTests(unittest.TestCase):
                              "워커가 같은 이름을 들고 와야 재큐를 두 번 하지 않는다")
         finally:
             st.close()
-        again = migrate.migrate_dim_if_needed(path, model="BAAI/bge-m3", target_dim=1024)
+        again = migrate.migrate_dim_if_needed(path, model="BAAI/bge-m3", target_dim=1024, requeue=ds.switch_embed_model)
         self.assertFalse(again["changed"], "차원이 같으면 아무것도 안 해야 한다(멱등)")
 
     def _seed_v17_source(self, store):
@@ -357,7 +359,7 @@ class RebuildPathTests(unittest.TestCase):
         a, b = self._seed_v17_source(src)
         dst, _ = self._mkstore(dim=1024)
         try:
-            out = migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+            out = migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024, requeue=ds.switch_embed_model)
         except RuntimeError as exc:
             if "확장" in str(exc) or "extension" in str(exc).lower():
                 self.skipTest(f"FTS 확장 미가용 — {exc}")
@@ -383,7 +385,7 @@ class RebuildPathTests(unittest.TestCase):
         src.close()
         try:
             with mock.patch.dict(os.environ, {"VINC_STORE_SNAPSHOT": tempfile.mkdtemp() + "/s"}):
-                out = migrate.migrate_dim_if_needed(path, model="BAAI/bge-m3", target_dim=1024)
+                out = migrate.migrate_dim_if_needed(path, model="BAAI/bge-m3", target_dim=1024, requeue=ds.switch_embed_model)
         except RuntimeError as exc:
             if "확장" in str(exc) or "extension" in str(exc).lower():
                 self.skipTest(f"FTS 확장 미가용 — {exc}")
@@ -418,7 +420,7 @@ class RebuildPathTests(unittest.TestCase):
                         {"k": pkns.key(o, "concept:x"), "o": o})
             dst, _ = self._mkstore(dim=1024)
             try:
-                migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+                migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024, requeue=ds.switch_embed_model)
             except RuntimeError as exc:
                 if "확장" in str(exc) or "extension" in str(exc).lower():
                     self.skipTest(f"FTS 확장 미가용 — {exc}")
@@ -448,7 +450,7 @@ class RebuildPathTests(unittest.TestCase):
                 dst, _ = self._mkstore(dim=1024)
                 with mock.patch.dict(os.environ, {"VINC_PK_NAMESPACED": "on"}):
                     with self.assertRaises(RuntimeError) as ctx:
-                        migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024)
+                        migrate.rebuild_store(src, dst, model="BAAI/bge-m3", dim=1024, requeue=ds.switch_embed_model)
                 self.assertIn("migrate_pk_namespacing", str(ctx.exception))
                 self.assertIn(label, str(ctx.exception))
                 src.close()

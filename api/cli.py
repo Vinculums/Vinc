@@ -257,6 +257,13 @@ def _main(argv: list[str] | None = None) -> int:
                         help="기동 전: 벡터 열의 차원이 이 배포의 모델과 다르면 재구축해 갈아 끼운다")
     md.add_argument("--data", default=None, help="db 파일 경로 (serve 와 같은 규칙)")
 
+    # `python -m store.migrate rebuild` 가 여기로 옮겨졌다(VIN-242): 재구축의 재큐 정책은
+    # api 층(`docstore.switch_embed_model`)의 것이라 store 가 그것을 import 할 수 없다.
+    sr = sub.add_parser("store-rebuild",
+                        help="원본은 읽기만 하고 새 디렉터리에 재구축한다(차원 변경·재큐 포함)")
+    sr.add_argument("--out", required=True, help="대상 데이터 디렉터리(비어 있어야 한다)")
+    sr.add_argument("--model", required=True, help="재구축 후 임베딩 모델(HF id)")
+
     bk = sub.add_parser("backup", help="consistent snapshot + packs/profile archive (R9)")
     bk.add_argument("--out", required=True, help="archive output dir")
     bk.add_argument("--data", default=None,
@@ -643,15 +650,24 @@ def _main(argv: list[str] | None = None) -> int:
             return 1
         cfg = load_config({"data_dir": data_dir})
         model = (os.environ.get("VINC_EMBED_MODEL") or "").strip() or cfg.embedding_model
+        from . import docstore
         try:
             out = migrate.migrate_dim_if_needed(data_dir, model=model,
-                                                target_dim=cfg.embedding_dim)
+                                                target_dim=cfg.embedding_dim,
+                                                requeue=docstore.switch_embed_model)
         except Exception as exc:                     # noqa: BLE001 — 사유를 전부 내보낸다
             print(f"vinc-migrate-dim: ⚠ 재구축 실패 — {type(exc).__name__}: {exc}",
                   file=sys.stderr, flush=True)
             return 3
         print(json.dumps(out, ensure_ascii=False), flush=True)
         return 0
+    if args.cmd == "store-rebuild":
+        from store import migrate
+        from store.backend import open_store
+        from store.config import load_config
+        from . import docstore
+        return migrate._main_rebuild(args, open_store, load_config,
+                                     requeue=docstore.switch_embed_model)
     if args.cmd == "store-probe":
         # 사이드카가 WAL 을 재생하기 전에 이 자식에게 먼저 시킨다(store/wal_guard.py).
         # 종료 코드가 곧 판정이다: 0 = 열고 닫았다 · PROBE_RAISED = 예외 · 그 밖 = 죽었다.

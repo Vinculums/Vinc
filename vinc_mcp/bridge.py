@@ -46,10 +46,11 @@ def _pid_alive(pid: int) -> bool:
     **Windows 의 `os.kill` 은 TerminateProcess** 라, 이 함수가 조회하는 pid
     (= session.json 에 적힌 **앱 자신**)를 조회하는 순간 죽였다. `mcp serve` 기동이
     곧 앱 사살이었고, 2026-08-18 실기에서 앱 기동 18회 중 17회가 그렇게 사라졌다.
-    구현은 `api/procutil.py` 한 벌만 남긴다.
+    구현은 `store/procutil.py` 한 벌만 남긴다(`vinc_mcp` 는 `api` 를 모르는 층이라
+    거기서 가져온다 — VIN-242).
     """
     try:
-        from api.procutil import pid_alive
+        from store.procutil import pid_alive
         return pid_alive(pid)
     except Exception:
         # 조회 자체가 불가능하면 살아 있다고 본다 — 뒤의 /health 가 최종 판정한다.

@@ -127,8 +127,26 @@ class Roster(unittest.TestCase):
                          ["core", "platform"])
 
 
+class Layers(unittest.TestCase):
+    def test_a_lazy_import_inside_a_function_is_still_a_violation(self):
+        src = {"store/x.py": "def f():\n    from api.docstore import g\n",
+               "vinc_mcp/y.py": "import api.server\n",
+               "api/z.py": "from store import migrate\n",
+               "store/ok.py": "from . import pkns\nimport os\n"}
+        got = G.layer_violations(list(src), src.__getitem__)
+        self.assertEqual(sorted(got), [("store/x.py", "api"), ("vinc_mcp/y.py", "api")])
+
+    def test_a_name_that_merely_starts_with_api_is_not_a_hit(self):
+        src = {"store/x.py": "import apixyz\nfrom apiary import bee\n"}
+        self.assertEqual(G.layer_violations(list(src), src.__getitem__), [])
+
+
 class RepoIsClean(unittest.TestCase):
     """커밋된 리포에 대한 실측. 여기서 떨어지면 게이트도 CI 에서 떨어진다."""
+
+    def test_lower_layers_do_not_import_upper_layers(self):
+        read = lambda f: open(os.path.join(ROOT, f), encoding="utf-8", errors="replace").read()  # noqa: E731
+        self.assertEqual(G.layer_violations(G.tracked_files(), read), [])
 
     def test_committed_codeowners_matches_teams_json(self):
         self.assertTrue(CODEOWNERS.exists(), "scripts/agents_sync.py --gen")

@@ -229,7 +229,8 @@ def rebuild_store(src_dir: str, dst_dir: str, *, model: str) -> dict:
         raise SystemExit("스토어를 열 수 없다")
     out["before"] = _stats(src)
     try:
-        res = migrate_rebuild(src, dst, model=_hf(model), dim=dst_cfg.embedding_dim)
+        res = migrate_rebuild(src, dst, model=_hf(model), dim=dst_cfg.embedding_dim,
+                              requeue=ds.switch_embed_model)
         out["after"] = _stats(dst)
     finally:
         src.close()

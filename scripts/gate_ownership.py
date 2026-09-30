@@ -190,6 +190,40 @@ def roster_drift(teams: dict, roles: dict, rules, exists) -> list[str]:
     return out
 
 
+# ── 층 방향 ──────────────────────────────────────────────────────────────────
+
+#: 아래 층은 위 층을 import 하지 않는다. `store`·`vinc_mcp` 가 `api` 를 부르던 두 곳을
+#: 2026-09-30 에 걷었고(VIN-242: `procutil` 은 store 로 내리고, 재구축의 재큐는 인자로
+#: 주입), 그 뒤로 다시 생기지 않게 여기서 잠근다. 함수 안 지연 import 도 잡는다 —
+#: 순환을 피하려고 지연시킨 import 가 정확히 그 방향을 숨기던 것이었다.
+#: `engines` 는 아직 어느 쪽에도 없다: `embed_pipeline`·`recall_ingest` 가 `api` 를 쓰고
+#: (2단계 PR 3 에서 `vinc_rag` 로 옮겨진다, VIN-244), 반대로 `store/embedded_backend.py`
+#: 가 `engines` 를 쓴다. 그 둘을 정리한 뒤 `store/` 의 금지에 `engines` 를 더한다.
+LAYER_BANS: dict[str, tuple[str, ...]] = {
+    "store/": ("api", "vinc_mcp"),
+    "vinc_mcp/": ("api",),
+}
+
+_IMPORT_RE = re.compile(r"^\s*(?:from\s+(\w+)(?:\.\w+)*\s+import\b|import\s+(\w+)(?:\.\w+)*)",
+                        re.M)
+
+
+def layer_violations(files: list[str], read) -> list[tuple[str, str]]:
+    """(파일, 금지된 최상위 모듈). 문자열 검사라 정확하지는 않지만 그래서 오프라인이다."""
+    bad = []
+    for f in files:
+        if not f.endswith(".py"):
+            continue
+        for prefix, banned in LAYER_BANS.items():
+            if not f.startswith(prefix):
+                continue
+            for m in _IMPORT_RE.finditer(read(f)):
+                top = m.group(1) or m.group(2)
+                if top in banned:
+                    bad.append((f, top))
+    return bad
+
+
 # ── 닿은 팀 (지표 원천) ──────────────────────────────────────────────────────
 
 def teams_touched(changed: list[str], rules, teams: dict) -> list[str]:
@@ -241,6 +275,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[FAIL] 주인 없는 파일 {len(orphans)}건 — agents/teams.json 에 경로를 "
               f"더하고 agents_sync.py --gen")
         bad += len(orphans)
+
+    read = lambda f: (ROOT / f).read_text(encoding="utf-8", errors="replace")  # noqa: E731
+    for f, top in layer_violations(files, read):
+        print(f"[LAYER] {f} 가 위 층 `{top}` 를 import 한다 — 아래 층이 위 층을 모르게 "
+              f"인자로 주입하거나 그 코드를 아래로 내릴 것 (VIN-242)")
+        bad += 1
 
     for msg in roster_drift(teams, roles, rules, exists):
         print(f"[DRIFT] {msg} — 그래프의 역할 노드를 고치고 --pull (VIN-241)")
