@@ -85,8 +85,8 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
   이지 `engineering` 이 아니다. 고치는 법은 도메인만 실은 부분 재전송이다(제목·
   태그·props·유효구간은 키가 없으면 보존된다).
   정본: [[record:three-nodes-without-the-vinc-prefix-collapsed-the-whole-map-into-one-cone-2026-09-19]]
-- 화면에 노출되는 텍스트에 **em-dash(`—`) 금지**. 대체는 `·`·괄호·콜론.
-  (이 규칙은 UI 텍스트에만 해당한다. 커밋 메시지·이 문서는 무관하다.)
+- 화면 텍스트 규칙(em-dash 금지 등)은 [[vinc.manual.app]] §3 에 있다. 앱·사이트 문구를
+  만지기 전에 읽는다(§3).
 - **"atlas" 절대 금지어 — 후속 명칭은 "view"다(F8, 2026-08-15 발주자 지시).** 그래프 맵
   서피스의 구명(Atlas)을 코드·식별자·라우트·UI 카피·홈페이지 문구 전체에서 걷어냈다
   (`Vinc/app`·`Vinc-homepage` 전체 리네임 완료). `scripts/gate_forbidden.py` 가 F8 로
@@ -103,65 +103,34 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
 |---|---|---|
 | `Vinc` | 제품 코드 (앱·허브·MCP·사이드카) | 코드는 여기. 설계 산문은 그래프 |
 | `Vinc-homepage` | 사이트 + 계정 백엔드 | 코드는 여기 |
-| ~~`Vinc-design`~~ | **폐기(2026-08-08)** — `Vinc/design-hub/` 로 이전 | §3 참조 |
+| ~~`Vinc-design`~~ | **폐기(2026-08-08)** — `Vinc/design-hub/` 로 이전 | [[vinc.manual.design]] 참조 |
 | ~~`Vinc-docs`~~ | **폐기(2026-08-11)** — 아카이브. 지식은 그래프, 이력은 `Vinc/_migration/` | §4 참조 |
 
 ⚠ GitHub 상태와 이 표가 한 곳에서 어긋난다: `Vinc-design` 은 여기 폐기로 적혀 있지만
 리포는 아직 **아카이브되지 않았다**(2026-08-11 확인). 내용은 `design-hub/` 로 옮겨졌으니
 읽을 이유는 없다. 조직에 `Vincs-app` 이라는 리포도 있는데 이 표에 없다 — 둘 다 미판정.
 
-## 3. design-hub — 파일은 빌드 입력, 정본은 그래프
+## 3. 팀별 매뉴얼 — 그 경로를 만지기 전에 읽는다
 
-`Vinc/design-hub/` 는 `lime-design` 플러그인이 규정한 Design Hub 구조다
-(2026-08-08 에 별도 리포 `Vinc-design` 에서 이 리포로 옮겼다 — 실질 내용이 50KB·커밋
-21개뿐이라 리포 하나를 유지할 무게가 아니었고, 산문은 이미 전부 그래프에 있다)
-(`design.profile.yml` · `DESIGN/design-tokens.json` · `tokens.css` · `imports/` ·
-`tenants/` · `dist/` · `reports/`).
+**지시다.** 아래 경로를 고치기 전에 그 팀의 매뉴얼을 `vinc_doc_get` 으로 읽는다. 팀별 함정
+(엔진·배포·평가·디자인 허브·화면 문구)은 이 파일이 아니라 거기 있다. 이 파일에는 모든 세션에
+공통인 규율만 남긴다. 경로의 정본은 `agents/teams.json` 이고(`scripts/gate_ownership.py` 가
+강제한다), 아래 열은 요약이다. 근거: [[vinc.plan.team-split]]
 
-lime-design 엔진은 **네트워크 I/O 를 하지 않는 파일 기반**이고 허브 디렉터리 기준
-상대경로로 푼다. 그러니 파일이 사라지면 `/ds-gen`·`/ds-gate` 가 못 돈다.
-
-### 값의 정본과 이유의 정본은 다르다
-
-> ⚠ 이 절은 2026-08-08 에 고쳐 썼다. 전에는 "정본 = 그래프, `DESIGN/*` 는 그래프에서
-> **재생성**하는 산출물"이라고 적혀 있었다. 그런 재생성 경로는 **없다** — 그래프를
-> 읽어 파일을 쓰는 스크립트가 허브에도 플러그인에도 0건이고, 엔진은 네트워크를 아예
-> 안 쓴다. 즉 규율이 물리적으로 불가능한 것을 요구하고 있었고, 실제 관행은 파일을
-> 고치고 그래프에 복사하는 **반대 방향**이었다. 안 지켜지는 규칙은 규칙이 아니다.
-
-| 층 | 무엇의 정본인가 | 방향 |
+| 팀 | 주로 만지는 곳 | 먼저 읽을 것 |
 |---|---|---|
-| Figma | **시각적 저작** — 사람이 그리는 곳 | 상류 |
-| `DESIGN/design-tokens.json` | **값** — 빌드가 읽는 유일한 것 | 중심 |
-| `tokens.css` · `dist/` · 소비 리포 사본 | 파생물, 수기 편집 금지 | 하류 |
-| Vinc 그래프 | **이유** — 결정·근거·이력 | 옆 |
-| Claude Design | 배포본 | 하류 |
+| core | `store/` · `api/` · `vinc_mcp/` · `engines/` · 허브 스토어 | [[vinc.manual.core]] |
+| rag | 검색·순위·리랭커·임베딩 워커·`scripts/eval_*`·`scripts/evalkit/`·`scripts/fixtures/` (2단계에서 `vinc_rag/`) | [[vinc.manual.rag]] |
+| app | `app/` (데스크톱·웹 프론트엔드), 사이드카 라우트 | [[vinc.manual.app]] |
+| design-content | `design-hub/` · `starter-packs/` · `emails/` · `Vinc-homepage/site/` · `app/src/copy.ts`(app 과 공동) | [[vinc.manual.design]] |
+| platform | `infra/` · `packaging/` · `.github/` · `scripts/gate_*` · `agents/` · 허브 운영(배포·`az`·파일 공유) | [[vinc.manual.platform]] |
 
-- 토큰 **값**을 바꾸려면 `DESIGN/design-tokens.json` 을 고친다. 그리고 `/ds-gate` →
-  `scripts/sync_out.py --apply` 까지 한 세션 안에 끝낸다
-- 그래프에 두는 토큰 사본(`vinc.design.tokens`)은 **검색용 스냅샷**이지 정본이 아니다.
-  배포 런북과 같은 예외이며 본문 첫 줄에 배너를 단다(GRAPH.md 관례)
-- 그래프가 정본인 것은 **왜**다: 시안 결정, 게이트 판정, 그 값을 고른 이유.
-  `concepts/*.md` 는 `vinc_doc_put` + `episode`, `reports/eval.design.*` 는
-  `record` 노드로("그때는 참이었다")
-
-이 형태의 이점은 디자인 결정과 제품 결정이 **한 그래프에서 이어진다**는 것이다 —
-"이 토큰이 왜 이 값인가" 에서 시안 문서 · DEC · 화면설계까지 `vinc_path` 로 따라간다.
-파일은 그 일을 못 하고, 그래프는 빌드에 값을 못 준다. 둘 다 필요한 이유다.
-
-### 디자인 게이트 (실행체)
-
-```bash
-cd design-hub
-python -X utf8 scripts/gate_surface.py ../app/src              # 하드코딩 색 (생성물 제외)
-python -X utf8 scripts/gate_surface.py ../../Vinc-homepage/site
-python -X utf8 scripts/sync_out.py --check                     # 소비 사본이 허브와 같은가
-python -X utf8 scripts/push_ssot.py                            # Claude Design 으로 내보낼 것 빌드
-```
-
-소비 리포 CI 에는 `scripts/gate_design_sync.py` 가 있다 — 허브를 체크아웃하지 않고
-각인 해시로 **사본이 손으로 고쳐졌는지**만 본다. 허브가 앞서간 경우(동기화 누락)는
-거기서 안 보이고 위의 `--check` 가 잡는다. 둘은 다른 고장을 잡는다.
+- 두 팀에 걸친 변경이면 둘 다 읽는다(예: 새 사이드카 라우트는 core 와 app, 토큰 값은
+  design 과 소비 리포).
+- 매뉴얼에 없는 함정을 새로 물렸으면 **그 매뉴얼에 쓴다**(읽기 → 합쳐서 `vinc_doc_put` →
+  읽어서 확인). 이 파일로 되돌려 쓰지 않는다. 모든 세션에 해당하는 것만 여기로 온다.
+- design-hub 절(값의 정본과 이유의 정본, 디자인 게이트)은 2026-10-01 에 여기서
+  [[vinc.manual.design]] §1 로 옮겼다.
 
 ## 4. Vinc-docs — 폐기 완료 (2026-08-11)
 
@@ -231,46 +200,20 @@ skip 이 135 면 인터프리터를 잘못 잡은 것이고, 그
 상태에서 "main 과 똑같이 실패한다"는 대조는 **무효다**(실제로 그걸 믿고 머지했다가
 CI 에서 걸렸다).
 
-배포 정책 정본은 그래프의 `vinc.ops.deployment`(30청크) — `vinc_doc_get` 으로 읽는다.
-짚어 둘 것:
+**확장 경로는 기계마다 다르다.** 리눅스(CI·클라우드 세션)에서 스토어 테스트를 돌릴 때는
+`VINC_LBUG_EXT_DIR=packaging/lbug_extensions` 를 같이 준다(`ci.yml` 과 같다). 없으면 재구축
+테스트가 "fts 확장 미설치"로 떨어지는데, 그 실패가 진짜 고장을 가린다. 윈도우 로컬에서는
+**주지 않는다**: 번들은 리눅스 ELF 이고, 로컬 venv 는 CI·허브(0.20.4)와 다른 엔진 판이다.
+자세한 것은 [[vinc.manual.core]] §1.
 
-- `main` push 가 곧 배포다(`hub-deploy`·`site-deploy`·`release`). 브랜치에서 검증하고 머지
-- **허브 env 를 `az` 로 바꿀 때는 PowerShell 을 쓴다.** Git Bash 는 MSYS 경로 변환이
-  값을 바꿔치기한다(`/data/db` → `D:\git\data\db`, 실제 사고 이력)
-- **`for x in $(jq -r '.[]' ...)` 는 이 기계에서 마지막 원소만 빼고 다 깨진다.** 윈도우
-  jq 가 stdout 을 **텍스트 모드**로 써서 출력 줄끝이 CRLF 다(원본 파일이 LF 여도 그렇다
-  — 실측). `$( )` 는 끝의 개행만 걷어내므로 **마지막 값만 멀쩡하고** 앞의 값들에는
-  캐리지리턴(CR) 이 하나씩 남는다. 그 값을 URL 이나 경로에 이으면 `curl` 이 URL 형식
-  오류(rc=3)나 `000` 을 내는데, **같은 값을 단독으로 쓰면 통한다** — 그래서 일시적
-  오류처럼 보인다. 2026-09-01 에 이것으로 "넷 중 셋이 막혔다"는 **거짓 측정**을 두 번
-  보고했다. 처방은 `| tr -d` 로 그 문자를 지우거나, 애초에 셸에서 안 도는 것이다
-  (`Vinc-homepage/scripts/probe_front_door.mjs` 가 같은 판정을 Node 로 옮긴 이유가
-  이것이다 — 거기서는 `JSON.parse` 라 이 문제가 없다).
-  ⚠ 리눅스 CI 에서는 안 난다. **로컬에서만 거짓말하는 종류**라 더 위험하다
-- 허브 DB 는 Azure Files 위 단일 writer 다. 파일이 SMB 로 잠겨 있어 **서버측 복사가
-  거절된다**(`FileLockConflict`). 사본이 필요하면 공유 스냅샷을 뜨고 거기서 받는다:
-  `az storage share snapshot` → `az storage file download --snapshot <ts>`
-- ⚠ **FTS 색인은 시간이 지나며 존재하는 행의 문서를 잃는다**(ladybug 0.18.0). 그 행을
-  지우면 `FTS index ... is inconsistent: document for node offset N is missing during
-  delete` 가 난다. 2026-08-09 에 세 번째로 났고, 그날 쓰기 경로에 자기복구를 달았다
-  (`api.docstore._with_fts_repair` → `rebuild_fts_index`, 5.8초). **그러니 이 오류를
-  보면 이제 저절로 낫는다** — 파일 수술이 아니라 로그를 확인할 것.
-  기각된 가설들(전부 재현으로): "색인이 정적 스냅샷이라 새 행이 안 들어간다"(들어간다)
-  · "재빌드를 안 해서 썩는다"(단순 사이클은 정상) · "WAL 을 버리는 복구가 원인"(무죄).
-  재현 절차는 그래프의 `vinc.ops.fts-index-drift` 에 있다
-- FTS 손상이 **기동을 막는** 경우의 복구(08-04·08-07 에 쓴 길): `db` 를 다른 이름으로
-  복사(그 이름엔 `.wal` 이 없어 재생을 건너뛴다) 후 `VINC_DATA_DIR` 전환
-- ⚠ **하드다운 3회의 공통 원인은 SMB 위에서 임베디드 DB 를 직접 read-write 하는 것**
-  이다(FTS 손상 2 + 재생 불가 WAL 1). 이 리포는 같은 교훈을 OAuth SQLite 에서 이미
-  배워 "읽고 쓰는 곳과 남기는 곳을 가른다"를 `vinc_mcp/store.py` 에 적어 놓고, 정작
-  그래프 DB 에는 안 썼다. 2026-08-09 에 `store/persistence.py` 로 같은 처방을 붙였다
-  (`VINC_STORE_LOCAL=on` 으로 켠다 — 데이터 이관 선행 필요)
-- ⚠ **"엔진은 close 때만 체크포인트한다"는 틀린 말이다.** ladybug 0.18.0 은
-  `autoCheckpoint=true, checkpointThreshold=16MB` 가 기본이라 close 없이도 스스로
-  한다. 2026-08-08 에 코드 주석 한 줄을 믿고 이걸 근본원인으로 오진했다. 임계값은
-  `VINC_CHECKPOINT_THRESHOLD_MB`(기본 4MB)로 조절하며 **그 값이 곧 최대 손실 창**이다
-- SMB 고아 핸들이 파일을 물고 있으면 **레플리카를 0으로 내려도 안 풀리고 만료 시간도
-  없다.** `az storage share close-handle --handle-id "*" [--recursive]` 로 강제 종료할 것
+배포 정책 정본은 그래프의 `vinc.ops.deployment` — `vinc_doc_get` 으로 읽는다. 모든 세션이
+알아야 하는 것은 하나다: **`main` push 가 곧 배포다**(`hub-deploy`·`site-deploy`·`release`).
+브랜치에서 검증하고, 한 번에 하나씩 머지하고, 배포가 끝나는 것을 보고 다음을 넣는다.
+
+허브 운영의 함정(`az` 는 PowerShell 로, 윈도우 jq 의 CRLF, SMB 파일 잠금과 공유 스냅샷,
+고아 핸들 강제 종료)은 [[vinc.manual.platform]] 에, 스토어 엔진의 함정(SMB 위 임베디드 DB,
+FTS 색인 표류와 자기복구, 기동을 막는 FTS 손상의 복구, 체크포인트 임계값, 벡터 인덱스
+드롭이 남는 이유)은 [[vinc.manual.core]] §3 에 있다. 2026-10-01 에 이 절에서 옮겼다.
 
 ## 6. 세션 시작 — 로스터가 보이는지 먼저 답할 것
 
@@ -309,7 +252,7 @@ ci(release): pin the interpreter the container can run
   없어서다(실측 2026-09-11, 최근 200 커밋 중 접두 없는 것이 38건이었다).
 - **제목은 영어(ASCII)**. 한국어와 영어가 섞여 `--oneline` 이 한 화면에서 두 언어로
   읽히던 것을 닫는다. 본문·코드 주석·이 문서는 **그대로 한국어다** — 제목 한 줄만이다.
-- **em-dash(`—`)·en-dash(`–`) 금지.** 화면 텍스트 규칙(§1)을 제목까지 넓힌 것이다.
+- **em-dash(`—`)·en-dash(`–`) 금지.** 화면 텍스트 규칙([[vinc.manual.app]] §3)을 제목까지 넓힌 것이다.
   좁은 목록에서 폭이 넓어 줄을 밀어낸다. 대체는 콜론·괄호·새 문장.
 - subject 는 소문자로 시작하고 마침표로 끝내지 않는다(약어는 예외 — `MCP`·`CI`).
   제목은 100자 안. 자세한 것은 본문에 쓴다.
