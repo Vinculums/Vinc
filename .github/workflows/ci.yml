@@ -145,6 +145,20 @@ jobs:
           PY=$(command -v python3 || command -v python)
           "$PY" -X utf8 scripts/gate_pr_title.py
 
+      # 추적되는 모든 파일에 주인 팀이 있는가(.github/CODEOWNERS ← agents/teams.json).
+      # 여기 두는 이유는 PR 제목 게이트와 같다 — 잡을 새로 세우면 청구가 1분부터
+      # 시작한다. PR 에서는 BASE..HEAD 가 닿은 팀 목록도 남긴다(지표 원천이지 스위치가
+      # 아니다: 이 출력으로 테스트를 끄지 않는다. 그 스위치의 이력은 `core-pkns` 주석).
+      # 근거: Linear VIN-239, 계획서 vinc.plan.team-split.
+      - name: Ownership gate (every tracked file has an owning team)
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          PY=$(command -v python3 || command -v python)
+          "$PY" -X utf8 scripts/gate_ownership.py
+
       - id: f
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
