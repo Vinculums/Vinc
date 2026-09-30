@@ -46,6 +46,8 @@ PERSIST_ROOT="${DATA_DIR%/*}"
 # 켜는 의도적 행위다(배포 시 데이터 이관이 선행되어야 하므로 자동으로 켜지 않는다).
 #
 #   VINC_STORE_LOCAL=on  →  작업본 /var/lib/vinc/db · 영속 스냅샷 = 원래 DATA_DIR
+#   VINC_DURABLE_ACK=on  →  (위와 함께일 때만) 쓰기마다 `<스냅샷>.generations` 에 세대를
+#                           게시한 뒤 ACK 한다. 기본 꺼짐(store/persistence.py DurableAck)
 if [ "${VINC_STORE_LOCAL:-}" = "on" ]; then
   : "${VINC_STORE_SNAPSHOT:=$DATA_DIR}"
   : "${VINC_STORE_WORK_DIR:=/var/lib/vinc}"

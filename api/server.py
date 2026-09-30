@@ -147,8 +147,8 @@ from . import textextract
 from .auth import SessionAuth
 from .backup import make_backup
 from .jobs import JobQueue, JobError
-from store.persistence import (SnapshotPolicy, claim_writer, resolve_snapshot_every,
-                               resolve_snapshot_path, save_snapshot)
+from store.persistence import (DurableAck, SnapshotPolicy, claim_writer, durable_ack_enabled,
+                               resolve_snapshot_every, resolve_snapshot_path, save_snapshot)
 
 _ENCODER_RUNTIME = encoder_fingerprint()  # 이미지 안에서는 프로세스 동안 판이 바뀌지 않는다.
 _ENCODER_BUILD = os.environ.get("VINC_ENCODER_BUILD", "").strip()
@@ -287,7 +287,12 @@ class VincApp:
         self._snapshots = SnapshotPolicy()
         tick_s = (self._snapshots.every / 10.0
                   if self._snapshots.last_state != "off" else 0.0)
+        # ACK 경계(VIN-82): `VINC_DURABLE_ACK` 이고 스냅샷 경로가 있을 때만 건다. 꺼져 있으면
+        # 훅이 없어 잡 큐는 예전과 같다. 근거: [[vinc.plan.vin82-durable-ack-2026-09-29]]
+        self._durable = (DurableAck(lambda: self.store, self.cfg.data_dir)
+                         if durable_ack_enabled() and self.cfg.data_dir else None)
         self.jobs = jobs or JobQueue(on_idle=self._maybe_snapshot,
+                                     on_before_done=self._durable,
                                      tick_s=tick_s or None)
         self.packs_dir = packs_dir
         self.profile_path = profile_path
@@ -2168,6 +2173,10 @@ class _Handler(BaseHTTPRequestHandler):
                     det = getattr(snaps, "detail", None)
                     body["snapshot"] = (det() if callable(det)
                                         else getattr(snaps, "last_state", "unknown"))
+                # ACK 전 세대 게시(VINC_DURABLE_ACK). 꺼져 있으면 키가 없다.
+                durable = getattr(self.app, "_durable", None)
+                if durable is not None:
+                    body["durable_ack"] = durable.detail()
             if embed_apply_paused():
                 body["embed_apply_paused"] = True
             # 색인이 잔해로 막혔다 — 그 팔이 꺼져 있고 그 표의 쓰기가 거절된다(fts_index 면
@@ -2423,7 +2432,8 @@ def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int |
     # [[vinc.ops.deployment]]). 경로와 주기를 기동 배너에 싣는다 — 값은 비밀이 아니다.
     info = {"host": bound_host, "port": bound_port, "token": shown,
             "driver": getattr(app.store, "driver_name", None),
-            "snapshot": resolve_snapshot_path(), "snapshot_every": resolve_snapshot_every()}
+            "snapshot": resolve_snapshot_path(), "snapshot_every": resolve_snapshot_every(),
+            "durable_ack": app._durable is not None}
     if print_info:
         sys.stdout.write(json.dumps(info, ensure_ascii=False) + "\n")
         sys.stdout.flush()

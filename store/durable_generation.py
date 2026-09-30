@@ -1,17 +1,21 @@
 # -*- coding: utf-8 -*-
 """불변 DB/WAL 세대와 검증 가능한 커밋 표식.
 
-이 모듈은 아직 ACK 경로에 연결되지 않은 VIN-82 원시기능이다. 열려 있는 DB를 직접
-복사하지 말고, 단일 writer가 만든 일관된 snapshot의 본 파일과 WAL만 입력한다.
-근거: [[vinc.plan.vin82-durable-ack-2026-09-29]]
+VIN-82 원시기능이다. ACK 경로 배선은 ``store/persistence.py`` 의 ``DurableAck`` 가
+한다. 열려 있는 DB를 직접 복사하지 말고, 단일 writer가 만든 일관된 snapshot의 본
+파일과 WAL만 입력한다. 근거: [[vinc.plan.vin82-durable-ack-2026-09-29]]
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import re
 import shutil
 from pathlib import Path
+
+# 세대 루트 안의 번호 붙은 항목 전부(표식·임시 표식·세대·stage).
+_ENTRY = re.compile(r"(?:commit|stage-commit|generation|stage)-(\d+)(?:\.json)?")
 
 
 class GenerationError(RuntimeError):
@@ -78,6 +82,52 @@ def latest_sequence(root: str | os.PathLike[str]) -> int:
     """가장 큰 커밋 표식 번호. 표식의 유효성은 :func:`restore`가 검사한다."""
     paths = _commit_paths(Path(root))
     return paths[0][0] if paths else 0
+
+
+def next_sequence(root: str | os.PathLike[str]) -> int:
+    """다음 게시 번호. 커밋 표식만이 아니라 남은 stage·generation 번호도 넘는다.
+
+    실패한 시도의 stage 는 조사용으로 남는데, 그 번호를 다시 쓰려 하면 게시가 거절되고
+    그 뒤의 모든 쓰기가 같은 이유로 막힌다."""
+    root = Path(root)
+    if not root.is_dir():
+        return 1
+    numbers = [int(m.group(1)) for path in root.iterdir()
+               if (m := _ENTRY.fullmatch(path.name))]
+    return max(numbers, default=0) + 1
+
+
+def prune(root: str | os.PathLike[str], *, keep: int = 2) -> int:
+    """최근 커밋 ``keep`` 개와 그것들이 기대는 본 세대만 남기고 더 오래된 항목을 지운다.
+
+    쓰기마다 세대가 하나씩 쌓이므로 상한이 없으면 공유가 찬다. 최신 커밋보다 번호가 큰
+    항목(최신 ACK 뒤에 실패한 시도)은 조사용으로 남긴다. 남길 표식을 못 읽으면 아무것도
+    지우지 않는다. 표식(파일)을 먼저 지우고 디렉터리를 나중에 지운다: 도중에 죽어도 표식
+    없는 디렉터리는 복구 대상이 아니다. 지운 항목 수를 돌려준다."""
+    root = Path(root)
+    commits = _commit_paths(root)[:keep]
+    if not commits:
+        return 0
+    needed: set[int] = set()
+    try:
+        for seq, marker in commits:
+            needed.add(seq)
+            record = json.loads(marker.read_text(encoding="utf-8"))
+            if record["format"] == 2:
+                needed.add(int(record["base_sequence"]))
+    except (OSError, KeyError, TypeError, ValueError):
+        return 0
+    newest = commits[0][0]
+    doomed = [path for path in root.iterdir()
+              if (m := _ENTRY.fullmatch(path.name))
+              and int(m.group(1)) < newest and int(m.group(1)) not in needed]
+    doomed.sort(key=lambda path: path.is_dir())      # 파일(표식) 먼저
+    for path in doomed:
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
+    return len(doomed)
 
 
 def publish(root: str | os.PathLike[str], base: str | os.PathLike[str],
@@ -224,11 +274,17 @@ def _validated(root: Path, sequence: int, marker: Path) -> tuple[Path, Path | No
         raise GenerationError(f"committed generation {sequence} is invalid: {exc}") from exc
 
 
-def restore(root: str | os.PathLike[str], live_path: str | os.PathLike[str]) -> str:
-    """최신 커밋 세대만 복원한다. 최신 표식이 깨졌으면 이전 세대로 후퇴하지 않는다.
+def restore(root: str | os.PathLike[str], live_path: str | os.PathLike[str], *,
+            newer_than: int = 0, skip_invalid: bool = False) -> str:
+    """최신 커밋 세대를 복원한다. 기본은 최신 표식이 깨졌으면 이전 세대로 후퇴하지 않는다.
 
     최신 세대가 이미 ACK됐을 수 있어 묵시적 후퇴는 데이터 손실이다. 표식 없는
     generation/stage는 아직 ACK되지 않았으므로 무시한다.
+
+    ``newer_than`` 이하 번호는 보지 않는다(다른 사본이 이미 그만큼 담았다).
+    ``skip_invalid`` 면 깨진 세대를 건너뛰고 다음 번호를 본다. 건너뛴 것은 반환값
+    뒤에 ``; skipped ...`` 로 붙으므로 부르는 쪽이 드러내야 한다.
+    반환: ``present`` · ``empty`` · ``restored:N`` (건너뜀이 있으면 그 뒤에 덧붙음)
     """
     root = Path(root)
     live = Path(live_path)
@@ -236,16 +292,22 @@ def restore(root: str | os.PathLike[str], live_path: str | os.PathLike[str]) -> 
         return "present"
     if Path(f"{live}.wal").exists():
         raise GenerationError("orphan live WAL after interrupted restore")
-    commits = _commit_paths(root)
-    if not commits:
-        return "empty"
-    seq, marker = commits[0]
-    base, wal = _validated(root, seq, marker)
-    live.parent.mkdir(parents=True, exist_ok=True)
-    stage = live.with_name(live.name + ".restore-stage")
-    if stage.exists() or Path(f"{stage}.wal").exists():
-        raise GenerationError("stale restore stage requires inspection")
-    try:
+    skipped: list[str] = []
+    for seq, marker in _commit_paths(root):
+        if seq <= newer_than:
+            break
+        try:
+            base, wal = _validated(root, seq, marker)
+        except GenerationError as exc:
+            if not skip_invalid:
+                raise
+            skipped.append(str(exc))
+            continue
+        live.parent.mkdir(parents=True, exist_ok=True)
+        stage = live.with_name(live.name + ".restore-stage")
+        if stage.exists() or Path(f"{stage}.wal").exists():
+            raise GenerationError("stale restore stage requires inspection")
+        # 실패한 복구의 스테이징은 다음 기동이 무심히 덮지 않도록 지우지 않는다.
         shutil.copy2(base, stage)
         if wal is not None:
             shutil.copy2(wal, Path(f"{stage}.wal"))
@@ -256,7 +318,9 @@ def restore(root: str | os.PathLike[str], live_path: str | os.PathLike[str]) -> 
         if wal is not None:
             os.replace(Path(f"{stage}.wal"), Path(f"{live}.wal"))
         os.replace(stage, live)
-        return f"restored:{seq}"
-    except Exception:
-        # 복구 실패의 스테이징은 다음 기동이 무심히 덮지 않도록 보존한다.
-        raise
+        return f"restored:{seq}" + _skipped_note(skipped)
+    return "empty" + _skipped_note(skipped)
+
+
+def _skipped_note(skipped: list[str]) -> str:
+    return f"; skipped {len(skipped)} invalid: {' | '.join(skipped)}" if skipped else ""
