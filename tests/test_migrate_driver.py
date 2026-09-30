@@ -138,7 +138,6 @@ class RebuildPathTests(unittest.TestCase):
     def _seed_docs(self, store, n: int):
         """문서 n건을 **프로덕션 경로로** 넣는다 — 손으로 MERGE 하면 `_DocMeta` 가
         어떻게 채워지는지를 테스트가 스스로 정해 버려 회귀 가치가 없다."""
-        from api import docstore as ds
         for i in range(n):
             ds.put_doc(store, owner="u", doc_id=f"doc:{i}", title=f"T{i}",
                        text=f"재구축 리허설 문서 {i}\n\nrebuild rehearsal body {i}",
@@ -234,7 +233,6 @@ class RebuildPathTests(unittest.TestCase):
     def test_재임베딩이_중간에_끊겨도_검색이_산다(self):
         """워커가 죽는 것은 정상 시나리오다(허브는 재기동이 잦다). 절반만 채운
         상태에서도 텍스트 팔은 답해야 한다 — 그것이 강등의 전부다."""
-        from api import docstore as ds
         src, _ = self._mkstore()
         self._seed_docs(src, 4)
         dst, _ = self._mkstore(dim=1024)
@@ -311,7 +309,6 @@ class RebuildPathTests(unittest.TestCase):
             self.assertEqual(migrate.vector_dim(st, "ChunkVec"), 1024)
             n = st.run("MATCH (d:_DocMeta) RETURN count(d) AS c")[0]["c"]
             self.assertEqual(int(n), 3, "문서가 재구축에서 사라졌다")
-            from api import docstore as ds
             self.assertEqual(ds.embed_model_state(st)["stored"], "BAAI/bge-m3",
                              "워커가 같은 이름을 들고 와야 재큐를 두 번 하지 않는다")
         finally:
