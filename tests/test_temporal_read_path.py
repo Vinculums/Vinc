@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 from api import fragment as frag
 from api import query as q
@@ -218,6 +219,32 @@ class TheFilterMustNotManufactureConfidence(ReadPathDefault):
                          "필터가 동점을 깨서 확신을 만들었다")
         self.assertIn("no longer current", out.get("validity_note") or "")
 
+    def test_a_demoted_named_title_asks_back_with_the_rest_of_the_pool(self):
+        """RV-23. 제목 완전일치는 한 행만 돌려주므로(폴스루 보호), 동점 가드가 그것을
+        강등하면 되묻기 목록이 한 줄이었다. 되묻는데 고를 것이 하나뿐이면 되묻기가 아니다."""
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "record:cache-policy-notes", "type": "record",
+             "title": "cache policy notes", "domain": "eng"},
+        ]}, store=self.store)
+        out = q.brief("cache policy for the edge", owner=self.OWNER, store=self.store)
+        self.assertEqual(out["status"], "choose")
+        ids = [c["id"] for c in out["candidates"]]
+        self.assertEqual(ids[0], "record:cache-policy-live")
+        self.assertIn("record:cache-policy-notes", ids)
+
+    def test_a_demoted_list_is_cut_to_the_exposure(self):
+        """확정은 순위 전체를 넘긴다(폴스루용). 동점 가드가 그것을 강등하면 노출 수를
+        넘는 목록이 그대로 나갔다. 풀이 노출보다 작으면 안 보이므로 노출을 1로 줄여 잰다."""
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "record:edge-notes", "type": "record", "title": "edge notes",
+             "domain": "eng"},
+        ]}, store=self.store)
+        with mock.patch.dict(os.environ, {"VINC_BRIEF_EXPOSE": "1"}):
+            out = q.brief("cache policy edge", owner=self.OWNER, store=self.store)
+        self.assertEqual(out["status"], "choose")
+        self.assertIn("no longer current", out.get("validity_note") or "")
+        self.assertEqual([c["id"] for c in out["candidates"]], ["record:cache-policy-live"])
+
     def test_it_still_resolves_when_the_winner_is_clear_on_its_own(self):
         """지운 것이 있다고 무조건 못 정하게 하면, 필터가 다른 방향으로 답을 바꾼다."""
         frag.merge_fragment({"owner": self.OWNER, "nodes": [
@@ -233,9 +260,8 @@ class TheFilterMustNotManufactureConfidence(ReadPathDefault):
         """스위치는 가려진 쪽을 보여 준다.
 
         ⚠ 여기서 `brief` 의 상태를 보지 않는다. 두 제목이 질의와 **글자 그대로 같아**
-        `_brief_resolve` 의 "이름을 댄 경우" 갈래가 랭킹 앞에서 먼저 확정하기 때문이다
-        (기존 계약). 그 갈래가 같은 제목 둘 중 하나를 고르는 것은 이 변경과 무관한
-        별개의 문제이고, 이 테스트가 볼 것은 필터가 무엇을 감췄나뿐이다."""
+        `_brief_resolve` 의 "이름을 댄 경우" 갈래가 판정한다(같은 제목이 둘이면 되묻는다,
+        RV-10). 이 테스트가 볼 것은 필터가 무엇을 감췄나뿐이다."""
         base = q.search("cache policy for the edge", owner=self.OWNER,
                         top_k=10, store=self.store)
         self.assertNotIn("record:cache-policy-retired",

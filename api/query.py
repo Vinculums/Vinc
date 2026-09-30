@@ -3665,12 +3665,32 @@ def _brief_strict_on() -> bool:
 _STRICT_MARGIN = 2
 
 
+def _brief_rank(rows: list[dict]) -> list[dict]:
+    """해소 순위. 확정 판정과 되묻기 목록이 같은 순서를 쓰도록 한 자리에 둔다.
+
+    안정 정렬이라 동점이면 사이드카가 준 순서(RRF)를 그대로 존중한다.
+    `arms` 가 없는 호출부(직접 만든 행·구 테스트)는 전부 0 이라 순서가 안 바뀐다."""
+    strict = _brief_strict_on()
+    return sorted(rows, key=lambda h: (
+        # 의미 팔이 자기 기준으로 단호했던 노드를 먼저 놓는다(`_SEM_GAP` 주석).
+        # **순서만** 바꾼다 — `_brief_resolve` 의 `decisive` 는 여전히 어휘 여유를 요구한다.
+        -1 if (strict and h.get("sem_decisive")) else 0,
+        -len(h.get("arms") or []) if strict else 0,
+        -_brief_int(h.get("hit_tokens")),
+        -_brief_int(h.get("title_tokens"))))
+
+
 def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     """node_hits → (상태, 고른 것). resolved 면 1건, choose 면 후보 여럿.
 
-    ⚠ 그래프 팔만 올라온 경우(hit_tokens 가 전부 0)는 확정하지 않는다 — 청크 인접은
-    "관련 있다"는 뜻이지 "이것을 물었다"는 뜻이 아니다. 이 갈래가 없던 시절 이 표면은
-    후보를 id 알파벳순으로 집어 질문과 무관한 답을 냈다(ask.ts 2026-08-03 재설계).
+    ⚠ 그래프·의미 팔만 올라온 경우(hit_tokens 가 전부 0)는 확정하지 않는다 — 후보가
+    **하나뿐이어도** 그렇다. 청크 인접이나 벡터 거리는 "관련 있다"는 뜻이지 "이것을
+    물었다"는 뜻이 아니다. 이 갈래가 없던 시절 이 표면은 후보를 id 알파벳순으로 집어
+    질문과 무관한 답을 냈다(ask.ts 2026-08-03 재설계).
+
+    제목이 질문과 글자 그대로 같으면(이름을 댄 경우) 랭킹 앞에서 그 노드로 확정한다.
+    같은 제목이 둘 이상이면 어느 쪽을 물었는지 모르므로 되묻는다(doc 미러 제목 충돌).
+    근거: [[vinc.plan.rag-code-review-fixes-2026-09-29 §7]]
 
     **엄격 판정**(`VINC_BRIEF_STRICT`, 기본 켜짐)은 순서에 `arms` 를 먼저 넣고 문턱을
     `_STRICT_MARGIN` 으로 올린다. 여러 팔이 같은 노드를 올렸다는 것은 어휘와 의미가
@@ -3683,23 +3703,18 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     if not rows:
         return "none", []
     q = _brief_norm(query)
-    for h in rows:                  # 제목이 질문과 같으면 그것 — 이름을 댄 경우다
-        if _brief_norm(h.get("title")) == q:
-            return "resolved", [h]
+    # 이름을 댄 경우는 한 행만 돌려준다 — 폴스루가 다른 이름의 노드로 넘어가면 안 된다.
+    named = [h for h in rows if _brief_norm(h.get("title")) == q]
+    if len(named) == 1:
+        return "resolved", named
+    if named:
+        return "choose", _brief_rank(named)[:_brief_expose_n()]
     if len(rows) == 1:
-        return "resolved", [rows[0]]
-    strict = _brief_strict_on()
-    # 안정 정렬 — 동점이면 사이드카가 준 순서(RRF)를 그대로 존중한다.
-    # `arms` 가 없는 호출부(직접 만든 행·구 테스트)는 전부 0 이라 순서가 안 바뀐다.
-    ranked = sorted(rows, key=lambda h: (
-        # 의미 팔이 자기 기준으로 단호했던 노드를 먼저 놓는다(`_SEM_GAP` 주석).
-        # **순서만** 바꾼다 — 아래 `decisive` 는 여전히 어휘 여유를 요구한다.
-        -1 if (strict and h.get("sem_decisive")) else 0,
-        -len(h.get("arms") or []) if strict else 0,
-        -_brief_int(h.get("hit_tokens")),
-        -_brief_int(h.get("title_tokens"))))
+        return ("resolved" if _brief_int(rows[0].get("hit_tokens")) > 0
+                else "choose"), rows
+    ranked = _brief_rank(rows)
     top, second = ranked[0], ranked[1]
-    margin = _STRICT_MARGIN if strict else 1     # 1 이면 현행과 글자 그대로 같다
+    margin = _STRICT_MARGIN if _brief_strict_on() else 1   # 1 이면 현행과 글자 그대로 같다
     decisive = _brief_int(top.get("hit_tokens")) > 0 and (
         _brief_int(top.get("hit_tokens")) - _brief_int(second.get("hit_tokens")) >= margin
         or _brief_int(top.get("title_tokens"))
@@ -4026,7 +4041,14 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                     "does not hold, so this was not resolved")
         base["status"] = status
         if status == "choose":
-            base["candidates"] = _brief_candidate_rows(picked)
+            # 되묻기 목록은 고른 것을 앞에 두고 나머지 풀을 순위대로 채워 노출 수에서
+            # **한 번** 자른다. 강등(유효구간 동점·답변 가능성)은 확정용 목록을 그대로
+            # 넘기므로 여기서 안 자르면 노출보다 길고, 제목 완전일치가 강등되면 한 줄뿐이다.
+            _seen = {h.get("id") for h in picked}
+            picked = picked + [h for h in _brief_rank(
+                [h for h in res.get("node_hits") or [] if isinstance(h, dict) and h.get("id")])
+                if h.get("id") not in _seen]
+            base["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
             # 플래그가 켜져 있으면 첫 후보의 재료를 **따로 한 키에** 싣는다. status 는
             # choose, candidates 는 그대로다 — 후보의 재료가 확정 답으로 읽히면 안 된다.
             # `_reask` 는 되묻기 자신이 다시 되묻지 않게 막는다(같은 제목이 또 choose 면
