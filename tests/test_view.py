@@ -594,8 +594,10 @@ class DeleteEdgeTests(unittest.TestCase):
         merge_params = [p for c, p in fake.calls
                         if c.startswith("MERGE") and "_SyncMeta" not in c]
         self.assertTrue(all("owner_id" not in p for p in merge_params))
-        # 명시 owner 는 기존 노드여도 스탬핑
-        fake2 = _FakeStore(dict(self._EXISTING))
+        # 명시 owner 는 기존 노드여도 스탬핑. 그 노드가 자기 것일 때만이다: 빈 owner 노드는
+        # SEC-3 가드가 건너뛴다(VIN-234, tests/test_write_tenancy.py 가 본다).
+        fake2 = _FakeStore({"n.rev AS rev": [{"rev": 0, "title": "concept:a",
+                                              "owner_id": "user:t"}]})
         frag.merge_fragment({"nodes": [{"id": "concept:a", "type": "concept"}],
                              "owner": "user:t"}, store=fake2)
         merge_params2 = [p for c, p in fake2.calls
