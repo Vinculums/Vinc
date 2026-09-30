@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""허브 스토어 **사본**의 데이터 수리 셋 — 소프트 재큐 · 고아 벡터 · 멈춘 쓰기 창.
+"""허브 스토어 **사본**의 데이터 수리 넷 — 키 모양 · 소프트 재큐 · 고아 벡터 · 멈춘 쓰기 창.
 
 RAG 코드 리뷰 센서스(restore-rehearsal, `restore_rehearsal_check.rag_census`)가 허브에서
 센 것을 고친다. 그것을 만든 코드 결함은 이미 고쳐 배포됐고 이것은 **남은 데이터**만 만진다.
 근거: [[vinc.plan.rag-code-review-fixes-2026-09-29]]
 
+순서는 keyform → requeue → orphans → stuck 이다(키를 먼저 고쳐야 재큐가 붙은 청크를 덮는다).
+
+  keyform  청크는 물리 키(owner U+001F id)·그 벡터는 논리 키인 쌍의 청크를 논리 키로 다시
+           세운다. 벡터는 이미 논리 id 라 재임베딩 없이 저장값 조인에 붙는다. 대상은 그
+           모양 **하나뿐**이다: 같은 소유자의 벡터가 있고 전부 논리 키 · 키 앞머리가 소유자 ·
+           논리 키가 Chunk 에 아직 없음(있으면 건너뛰고 센다). 나머지 모양은 세기만 한다.
+           PK 는 SET 이 안 되므로 옛 행의 모든 열을 엔진 안에서 복사해 새 행을 만들고, 관계
+           (MENTIONS)를 옮기고, 옛 행을 `_with_fts_repair` 로 지운다. `_DocMeta` 는 안 건드린다.
   requeue  needs_embed=0 인 문서 전부를 1로. 저장 모델 기록·이행 표식·벡터는 안 건드린다
            — 옛 벡터가 새 벡터로 바뀔 때까지 계속 답하고, 벡터 팔 게이트
            (`docstore.embed_model_state` 의 migrating: 이행 표식이 있고 pending 이 문턱을
@@ -27,7 +35,7 @@ RAG 코드 리뷰 센서스(restore-rehearsal, `restore_rehearsal_check.rag_cens
 검색 조인(`p.chunk_id = node.chunk_id`)처럼 저장값 문자열로 대조한다. 청크는 물리 키, 벡터는
 논리 키로 남은 쌍은 센서스에는 고아+구멍이고 이 수리에는 고아가 아니다 — 같은 소유자의 청크가
 있으므로 지우지 않는다. 그 차이는 `key_forms_*` 가 원인별로 센다. 그 청크는 검색의 의미 팔이
-못 닿고, 재큐로도 안 붙는다(워커가 벗긴 논리 id 로 다시 쓴다).
+못 닿고, 재큐로도 안 붙는다(워커가 벗긴 논리 id 로 다시 쓴다) — 붙이는 것은 keyform 이다.
 근거: [[record:the-hub-census-orphan-vectors-are-chunks-left-on-physical-keys-not-orphans-2026-09-30]]
 
 원본은 읽기만 한다: --data(+ .wal)를 --out 으로 복사하고 --out 을 고친다. 판정이 하나라도
@@ -42,6 +50,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -52,11 +61,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from api import docstore                                  # noqa: E402
 from store import pkns                                    # noqa: E402
+from store.embedded_schema import node_table_specs, rel_tables_on  # noqa: E402
 
 from rebuild_store_native import _files, _open            # noqa: E402
 from restore_rehearsal_check import rag_census            # noqa: E402
 
-REPAIRS = ("requeue", "orphans", "stuck")
+REPAIRS = ("keyform", "requeue", "orphans", "stuck")
 _BATCH = 500
 
 
@@ -253,7 +263,161 @@ def stuck(s) -> tuple[dict, list[str]]:
     return out, problems
 
 
-_RUN = {"requeue": requeue, "orphans": orphans, "stuck": stuck}
+def _keyform_plan(s) -> dict:
+    """keyform 의 대상과, 대상이 아닌 물리 키 청크의 모양별 수. 대상은 모양 하나뿐이다:
+    같은 소유자·논리 id 의 벡터가 있고 **전부** 논리 키 · 키 앞머리가 그 청크의 owner_id ·
+    논리 키가 어느 Chunk 의 PK 로도 없고 다른 대상과도 안 겹친다."""
+    chunks, vecs = _chunks(s), _vectors(s)
+    raw_chunk = {c["cid"] for c in chunks}
+    vec_forms: dict[tuple[str, str], set[bool]] = {}
+    for v in vecs:
+        vec_forms.setdefault(_key(v["o"], v["cid"]), set()).add(_phys(v["cid"]))
+    plan: dict = {"physical_chunks": 0, "skipped_collision": 0,
+                  "skipped_mixed_vector_forms": 0, "skipped_prefix_not_owner": 0,
+                  "physical_without_vectors": 0, "physical_with_physical_vectors": 0}
+    cands: list[tuple[str, str, str]] = []
+    for c in chunks:
+        if not _phys(c["cid"]):
+            continue
+        plan["physical_chunks"] += 1
+        k = _key(c["o"], c["cid"])
+        forms = vec_forms.get(k)
+        if not forms:
+            plan["physical_without_vectors"] += 1      # 재큐 뒤 워커가 논리 키로 채운다 — 역시 못 붙는다
+        elif forms == {True}:
+            plan["physical_with_physical_vectors"] += 1
+        elif True in forms:
+            plan["skipped_mixed_vector_forms"] += 1    # 바꾸면 지금 붙은 물리 키 벡터가 떨어진다
+        elif c["cid"].split(pkns.SEP, 1)[0] != (c["o"] or ""):
+            plan["skipped_prefix_not_owner"] += 1
+        elif k[1] in raw_chunk:
+            plan["skipped_collision"] += 1
+        else:
+            cands.append((c["cid"], k[1], c["doc"]))
+    seen: dict[str, int] = {}
+    for _, new, _ in cands:
+        seen[new] = seen.get(new, 0) + 1
+    plan["rewrite"] = [t for t in cands if seen[t[1]] == 1]
+    plan["skipped_collision"] += len(cands) - len(plan["rewrite"])
+    return plan
+
+
+def _edges(s, cid: str) -> int:
+    rows = s.run("MATCH (c:Chunk)-[r]-() WHERE c.chunk_id = $id RETURN count(r) AS n",
+                 {"id": cid}, raw=True) or []
+    return int(rows[0]["n"]) if rows else 0
+
+
+def _rekey_chunk(s, old: str, new: str, cols: list[str]) -> str | None:
+    """청크 하나의 PK 를 바꾼다. 옛 행은 새 행의 열·관계가 옛 것과 같을 때만 지운다.
+    어긋나면 그 사유(수만)를 돌려주고 옛 행을 남긴다."""
+    proj = ", ".join(f"c.{c} AS {c}" for c in cols)
+    read = lambda cid: (s.run(f"MATCH (c:Chunk) WHERE c.chunk_id = $id RETURN {proj}",  # noqa: E731
+                              {"id": cid}, raw=True) or [None])[0]
+    before, edges = read(old), _edges(s, old)
+    # PK 는 SET 이 안 된다 — 옛 행의 열을 엔진 안에서 그대로 옮겨 새 행을 만든다(파이썬 왕복이
+    # 없어 값·타입·NULL 이 그대로다). FTS 는 새 행을 삽입으로 받는다.
+    s.run(f"MATCH (o:Chunk) WHERE o.chunk_id = $old CREATE (n:Chunk {{chunk_id: $new, "
+          + ", ".join(f"{c}: o.{c}" for c in cols) + "})", {"old": old, "new": new})
+    for rel in rel_tables_on("Chunk"):
+        body = ", ".join(f"{p}: r.{p}" for p in rel["props"])
+        body = f" {{{body}}}" if body else ""
+        for src, dst in rel["pairs"]:
+            if src == "Chunk":
+                pat, make = f"(o:Chunk)-[r:{rel['label']}]->(t:{dst})", f"(n)-[:{rel['label']}{body}]->(t)"
+            elif dst == "Chunk":
+                pat, make = f"(t:{src})-[r:{rel['label']}]->(o:Chunk)", f"(t)-[:{rel['label']}{body}]->(n)"
+            else:
+                continue
+            s.run(f"MATCH {pat}, (n:Chunk) WHERE o.chunk_id = $old AND n.chunk_id = $new "
+                  f"CREATE {make}", {"old": old, "new": new})
+    if read(new) != before:
+        return "columns_differ"
+    if _edges(s, new) != edges:
+        return "edges_differ"
+    # 옛 행 삭제는 스토어의 청크 삭제와 같은 길이다 — 오래 증분 유지된 FTS 는 삭제 때 불일치로
+    # 던질 수 있고, 그때만 색인을 다시 세우고 한 번 재시도한다.
+    docstore._with_fts_repair(s, lambda: s.run(
+        "MATCH (c:Chunk) WHERE c.chunk_id = $old DETACH DELETE c", {"old": old}))
+    return None
+
+
+def keyform(s) -> tuple[dict, list[str]]:
+    before, plan = measure(s), _keyform_plan(s)
+    todo = plan.pop("rewrite")
+    out: dict = {"before": before, "plan": {**plan, "to_rewrite": len(todo)}}
+    if not todo:
+        out.update(after=before, rewritten=0)
+        return out, []
+    try:
+        out["fts_index"] = s.heal_fts_index(dim=s._stored_vec_dim(1024)).get("state")
+    except Exception as exc:                      # noqa: BLE001 — 판정으로 보고한다
+        return out, [f"keyform: FTS index heal failed ({type(exc).__name__})"]
+    refusal = docstore._remnant_refusal(s, chunks=True, vectors=False)
+    if refusal:
+        return out, [f"keyform refused: {refusal}"]
+    # 열은 스키마 명세가 아니라 **표 자신**에서 읽는다 — 명세에 없는 열이 표에 있으면 그 값이
+    # 새 행에서 사라진다. 명세에만 있고 표에 없는 열이면 복사가 엔진 오류로 멈춘다.
+    cols = [str(r.get("name")) for r in s.run("CALL TABLE_INFO('Chunk') RETURN *") or []
+            if r.get("name") and r.get("name") != "chunk_id"]
+    if set(node_table_specs()["Chunk"]["cols"]) - {"chunk_id"} - set(cols):
+        return out, ["keyform refused: the Chunk table lacks a column the schema declares"]
+    done, problems = [], []
+    for old, new, doc in todo:
+        why = _rekey_chunk(s, old, new, cols)
+        if why:
+            problems.append(f"keyform stopped: a rewritten chunk's {why.replace('_', ' ')}")
+            break
+        done.append((new, doc))
+    after, left = measure(s), _keyform_plan(s)
+    # 검색 조인(`p.chunk_id = node.chunk_id`)과 같은 저장값 비교를 파이썬에서 한다 — 두 표를
+    # 엔진에서 곱하면 허브 사본에서 1억 쌍이 넘는다.
+    joined = {v["cid"] for v in _vectors(s)}
+    docs = {d for _, d in done}
+    per_doc: dict[str, list[str]] = {}
+    for c in _chunks(s):
+        if c["doc"] in docs:
+            per_doc.setdefault(c["doc"], []).append(c["cid"])
+    # FTS 가 새 키로 바뀐 청크를 찾는가 — 그 청크 본문의 낱말로 그 문서 안에서 찾아 본다.
+    probed = found = 0
+    for new, doc in done:
+        text = (s.run("MATCH (c:Chunk) WHERE c.chunk_id = $id RETURN c.text AS t",
+                      {"id": new}, raw=True) or [{}])[0].get("t") or ""
+        words = re.findall(r"\w{3,}", text)[:8]
+        if not words:
+            continue
+        probed += 1
+        hits = s.fulltext_search(" ".join(words), 200, {"doc_id": doc})
+        found += any(pkns.strip(h.get("id") or "") == new for h in hits)
+    out.update(after=after, rewritten=len(done), docs_rewritten=len(docs),
+               docs_fully_joined=sum(1 for ids in per_doc.values()
+                                     if all(i in joined for i in ids)),
+               rewritten_chunks_joined=sum(1 for new, _ in done if new in joined),
+               fts_probe={"probed": probed, "found": found},
+               left={k: v for k, v in left.items() if k != "rewrite"})
+    for k in ("chunks", "vectors", "orphan_vectors", "docs_with_a_chunk_lacking_a_vector"):
+        if after[k] != before[k]:
+            problems.append(f"keyform changed {k}: {before[k]} -> {after[k]}")
+    if out["rewritten_chunks_joined"] != len(done):
+        problems.append(f"keyform: {len(done) - out['rewritten_chunks_joined']} rewritten "
+                        "chunks do not join a vector")
+    if not problems and left["rewrite"]:
+        problems.append(f"keyform: {len(left['rewrite'])} chunks still to rewrite")
+    if done and (not probed or found != probed):
+        problems.append(f"keyform: full-text search found {found} of {probed} rewritten chunks")
+    # 센서스의 '청크 없는 벡터' 가운데 이 모양으로 남는 것은 건너뛴 청크(섞인 벡터·앞머리)뿐이어야
+    # 한다. 충돌로 건너뛴 청크의 벡터는 같은 저장값의 다른 청크에 붙어 있어 센서스에 안 잡힌다.
+    left_shape = key_forms(s)["key_form_chunk_ids_by_shape"].get(
+        "chunk_physical_vector_logical", 0)
+    expected = plan["skipped_mixed_vector_forms"] + plan["skipped_prefix_not_owner"]
+    out["census_key_form_left"] = left_shape
+    if left_shape != expected:
+        problems.append(f"keyform: {left_shape} chunk ids still split physical/logical, "
+                        f"expected {expected} (the skipped ones)")
+    return out, problems
+
+
+_RUN = {"keyform": keyform, "requeue": requeue, "orphans": orphans, "stuck": stuck}
 
 
 def repair(src: str, dst: str, repairs: list[str]) -> dict:

@@ -44,6 +44,18 @@ def _cids(s, doc):
                                    "ORDER BY c.chunk_index", {"d": doc}, raw=True)]
 
 
+def _chunk_cols(s):
+    return [r["name"] for r in s.run("CALL TABLE_INFO('Chunk') RETURN *")]
+
+
+def _chunk_rows(s, doc):
+    """문서의 청크 행 전부를 chunk_index 순으로, PK 를 뺀 모든 열과 함께."""
+    cols = [c for c in _chunk_cols(s) if c != "chunk_id"]
+    return s.run("MATCH (c:Chunk) WHERE c.doc_id = $d RETURN "
+                 + ", ".join(f"c.{c} AS {c}" for c in cols) + " ORDER BY c.chunk_index",
+                 {"d": doc}, raw=True)
+
+
 def _physical(s, doc, owner, *, chunks=True, vectors=True):
     """문서의 청크·벡터 키를 물리 키(owner U+001F id)로 다시 쓴다 — PK 네임스페이싱 이관본의 모양.
 
@@ -51,15 +63,16 @@ def _physical(s, doc, owner, *, chunks=True, vectors=True):
     청크 PK 는 재구축을 거쳐 그대로 남고, 워커는 벗긴 논리 id 로 벡터를 쓴다."""
     phys = lambda k: f"{owner}{_SEP}{pkns.strip(k)}"                       # noqa: E731
     if chunks:
-        rows = s.run("MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.chunk_id AS id, "
-                     "c.chunk_index AS ix, c.char_start AS cs, c.char_end AS ce, c.text AS t",
-                     {"d": doc}, raw=True)
+        # 벡터 열(legacy embedding, NULL)만 빼고 put_doc 이 쓴 열을 전부 옮긴다 — keyform 이
+        # 열을 하나라도 흘리면 _chunk_rows 대조가 잡도록.
+        cols = [c for c in _chunk_cols(s) if c not in ("chunk_id", "embedding")]
+        rows = s.run("MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.chunk_id AS chunk_id, "
+                     + ", ".join(f"c.{c} AS {c}" for c in cols), {"d": doc}, raw=True)
         s.run("MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": doc})
         for r in rows:
-            s.run("CREATE (c:Chunk {chunk_id: $id, doc_id: $d, owner_id: $o, chunk_index: $ix, "
-                  "char_start: $cs, char_end: $ce, text: $t})",
-                  {"id": phys(r["id"]), "d": doc, "o": owner, "ix": r["ix"], "cs": r["cs"],
-                   "ce": r["ce"], "t": r["t"]})
+            s.run("CREATE (c:Chunk {chunk_id: $chunk_id, "
+                  + ", ".join(f"{c}: ${c}" for c in cols) + "})",
+                  {**r, "chunk_id": phys(r["chunk_id"])})
     if vectors:
         rows = s.run("MATCH (v:ChunkVec) WHERE v.doc_id = $d RETURN v.vec_id AS vid, "
                      "v.chunk_id AS cid", {"d": doc}, raw=True)
@@ -70,7 +83,17 @@ def _physical(s, doc, owner, *, chunks=True, vectors=True):
                   {"vid": phys(r["vid"]), "cid": phys(r["cid"]), "d": doc, "o": owner})
 
 
-def _seed(path, *, physical=False, mixed=False):
+def _rekey_one(s, old, new):
+    """청크 한 행의 PK 만 바꾼다(시험용 — 열은 그대로, 벡터는 안 건드린다)."""
+    r = s.run("MATCH (c:Chunk) WHERE c.chunk_id = $id RETURN c.doc_id AS d, c.owner_id AS o, "
+              "c.chunk_index AS ix, c.char_start AS cs, c.char_end AS ce, c.text AS t",
+              {"id": old}, raw=True)[0]
+    s.run("MATCH (c:Chunk) WHERE c.chunk_id = $id DETACH DELETE c", {"id": old})
+    s.run("CREATE (c:Chunk {chunk_id: $id, doc_id: $d, owner_id: $o, chunk_index: $ix, "
+          "char_start: $cs, char_end: $ce, text: $t})", {"id": new, **r})
+
+
+def _seed(path, *, physical=False, mixed=False, keyform=False):
     """문서 여섯(소유자 둘)을 임베딩까지 끝낸 뒤 망가뜨린다. 망가뜨린 것:
 
     - gone : 청크만 지워 벡터가 고아로 남는다(청크 _N 개 → 고아 _N)
@@ -81,8 +104,15 @@ def _seed(path, *, physical=False, mixed=False):
     - gap  : 표식 + 0번 청크가 없다
 
     ``mixed`` 면 키 모양이 어긋난 두 문서를 더한다(고아가 아니다 — 청크가 같은 소유자 밑에 있다):
-    - fwd  : 청크만 물리 키(허브의 모양)
-    - rev  : 벡터만 물리 키"""
+    - fwd  : 청크만 물리 키(허브의 모양). 0번 청크가 개념 하나를 MENTIONS 한다
+    - rev  : 벡터만 물리 키
+
+    ``keyform`` 이면 ``mixed`` 에 더해 keyform 이 **건너뛰어야** 하는 청크를 하나씩 심는다
+    (셋 다 fwd 모양이고 0번 청크만 다르다):
+    - coll : 0번 청크의 논리 키가 이미 다른 소유자의 Chunk PK 다(충돌)
+    - both : 0번 청크에 물리 키 벡터가 하나 더 있다(섞인 모양 — 지금 붙어 있다)
+    - pfx  : 0번 청크 키의 앞머리가 owner_id 와 다르다"""
+    mixed = mixed or keyform
     s = _open(path)
     try:
         s.provision(dim=4)
@@ -92,6 +122,8 @@ def _seed(path, *, physical=False, mixed=False):
                  ("ok", "user:a"), ("tail", "user:b"), ("gap", "user:b")]
         if mixed:
             names += [("fwd", "user:a"), ("rev", "user:b")]
+        if keyform:
+            names += [("coll", "user:a"), ("both", "user:a"), ("pfx", "user:a")]
         for name, owner in names:
             d = ds.put_doc(s, owner=owner, doc_id=f"doc.{name}", title=name, text=_TEXT)
             assert d.get("executed"), d
@@ -102,8 +134,8 @@ def _seed(path, *, physical=False, mixed=False):
             assert r.get("cleared"), r
             if physical:
                 _physical(s, d["doc_id"], owner)
-            elif name in ("fwd", "rev"):
-                _physical(s, d["doc_id"], owner, chunks=name == "fwd", vectors=name == "rev")
+            elif name in ("fwd", "rev", "coll", "both", "pfx"):
+                _physical(s, d["doc_id"], owner, chunks=name != "rev", vectors=name == "rev")
         cid = lambda n, i: _cids(s, docs[n][0])[i]                         # noqa: E731
         s.run("MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": docs["gone"][0]})
         s.run("MATCH (v:ChunkVec) WHERE v.chunk_id = $c SET v.owner_id = 'user:b'",
@@ -115,6 +147,20 @@ def _seed(path, *, physical=False, mixed=False):
             s.run("MATCH (v:ChunkVec) WHERE v.doc_id = $d DETACH DELETE v", {"d": doc})
         s.run("MATCH (c:Chunk) WHERE c.chunk_id = $c DETACH DELETE c", {"c": cid("tail", -1)})
         s.run("MATCH (c:Chunk) WHERE c.chunk_id = $c DETACH DELETE c", {"c": cid("gap", 0)})
+        if mixed:
+            s.run("CREATE (k:Concept {concept_id: 'concept:hub-store', owner_id: 'user:a', "
+                  "title: 'hub store'})")
+            s.run("MATCH (c:Chunk), (k:Concept) WHERE c.chunk_id = $c "
+                  "AND k.concept_id = 'concept:hub-store' "
+                  "CREATE (c)-[:MENTIONS {method: 'title'}]->(k)", {"c": cid("fwd", 0)})
+        if keyform:
+            s.run("CREATE (c:Chunk {chunk_id: $id, doc_id: 'doc.stray', owner_id: 'user:b', "
+                  "chunk_index: 0, char_start: 0, char_end: 5, text: 'stray'})",
+                  {"id": pkns.strip(cid("coll", 0))})
+            s.run("CREATE (v:ChunkVec {vec_id: $vid, chunk_id: $cid, doc_id: 'doc.both', "
+                  "owner_id: 'user:a', seq: 9, embedding: [1.0, 0.0, 0.0, 0.0]})",
+                  {"vid": cid("both", 0) + "#009", "cid": cid("both", 0)})
+            _rekey_one(s, cid("pfx", 0), "user:z" + _SEP + pkns.strip(cid("pfx", 0)))
         s.ensure_search_indexes(dim=4)
         s.run("CHECKPOINT")
     finally:
@@ -140,6 +186,9 @@ class RepairHubStoreTests(unittest.TestCase):
 
     def _check_all_three(self, rc, rep, out, docs):
         self.assertEqual(rc, 0, rep.get("problems"))
+        # 키 모양이 한결같은 스토어에서 keyform 은 아무것도 안 한다.
+        self.assertEqual((rep["keyform"]["plan"]["to_rewrite"], rep["keyform"]["rewritten"]),
+                         (0, 0))
         # 소프트 재큐: needs_embed=0 이던 여섯 전부(청크를 잃은 gone 도 메타는 있다).
         rq = rep["requeue"]
         self.assertEqual(rq["requeued"], 6)
@@ -240,6 +289,82 @@ class RepairHubStoreTests(unittest.TestCase):
                          (2 * _N, 0))
         self.assertNotIn("doc.fwd", out)
         self.assertNotIn("user:", out)
+
+    def _keyform_run(self, env):
+        docs = _seed(self.src, keyform=True)
+        rc, rep, out = _run_cli(self.src, self.dst, env=env)
+        self.assertEqual(rc, 0, rep.get("problems"))
+        self.assertEqual(rep["repairs"], ["keyform", "requeue", "orphans", "stuck"])
+        kf = rep["keyform"]
+        # 대상: fwd 전부 + coll·both·pfx 의 0번을 뺀 나머지. 셋은 건너뛰고 센다.
+        self.assertEqual(kf["plan"]["physical_chunks"], 4 * _N)
+        self.assertEqual(kf["plan"]["to_rewrite"], 4 * _N - 3)
+        self.assertEqual((kf["plan"]["skipped_collision"], kf["plan"]["skipped_mixed_vector_forms"],
+                          kf["plan"]["skipped_prefix_not_owner"]), (1, 1, 1))
+        self.assertEqual((kf["rewritten"], kf["rewritten_chunks_joined"]), (4 * _N - 3, 4 * _N - 3))
+        self.assertEqual(kf["fts_probe"], {"probed": 4 * _N - 3, "found": 4 * _N - 3})
+        # 끝까지 붙은 문서: fwd 와 both(0번은 원래 물리 키 벡터로 붙어 있다). coll·pfx 는 0번이 남는다.
+        self.assertEqual((kf["docs_rewritten"], kf["docs_fully_joined"]), (4, 2))
+        self.assertEqual(kf["after"]["chunks"], kf["before"]["chunks"], "청크를 잃었다")
+        self.assertEqual(kf["census_key_form_left"], 2)
+        # 다른 모양(벡터만 물리 키)은 손대지 않고 센다.
+        self.assertEqual(rep["key_forms_after"]["key_form_chunk_ids_by_shape"],
+                         {"chunk_logical_vector_physical": _N,
+                          "chunk_physical_vector_logical": 2})
+        # 재큐는 keyform 뒤에 돈다 — 고친 청크의 문서까지 전부 덮는다.
+        self.assertEqual(rep["requeue"]["after"]["docs_needs_embed_0"], 0)
+        for doc, owner in docs.values():
+            self.assertNotIn(doc, out)
+        self.assertNotIn("user:", out)
+        return docs
+
+    def _check_keyform_copy(self, docs):
+        fwd = docs["fwd"][0]
+        logical = [f"{fwd}#{i:05d}" for i in range(_N)]
+        src, dst = _open(self.src), None
+        try:
+            ids = {r["id"] for r in src.vector_search([1.0, 0.0, 0.0, 0.0], 200)}
+            self.assertFalse(ids & set(logical), "전제: 고치기 전에는 조인이 fwd 에 못 닿는다")
+            meta_src = src.run("MATCH (d:_DocMeta) WHERE d.doc_id = $d RETURN d.content_hash AS h, "
+                               "d.chunk_count AS n", {"d": fwd})[0]
+            touched = ("doc.fwd", "doc.coll", "doc.both", "doc.pfx")
+            rows_src = {d: _chunk_rows(src, d) for d in touched}
+        finally:
+            src.close()
+        dst = _open(self.dst)
+        try:
+            # 키 말고는 한 열도 안 바뀐다 — 스크립트의 자기 대조와 따로, 표의 모든 열로 본다.
+            for d in touched:
+                self.assertEqual(_chunk_rows(dst, d), rows_src[d], f"{d}: 청크 열이 바뀌었다")
+            ids = {pkns.strip(r["id"]) for r in dst.vector_search([1.0, 0.0, 0.0, 0.0], 200)}
+            self.assertTrue(set(logical) <= ids, "벡터 조인이 고친 청크에 다시 닿지 않는다")
+            hits = {pkns.strip(r["id"]) for r in dst.fulltext_search("Paragraph hub store", 50,
+                                                                     {"doc_id": fwd})}
+            self.assertTrue(set(logical) <= hits, "FTS 가 새 키의 청크를 못 찾는다")
+            got = ds.get_doc(dst, fwd)
+            self.assertTrue(got.get("verified"), got)
+            self.assertEqual(got["text"], _TEXT)
+            meta = dst.run("MATCH (d:_DocMeta) WHERE d.doc_id = $d RETURN d.content_hash AS h, "
+                           "d.chunk_count AS n", {"d": fwd})[0]
+            self.assertEqual(meta, meta_src, "keyform 이 문서 메타를 바꿨다")
+            edge = dst.run("MATCH (c:Chunk)-[m:MENTIONS]->(k:Concept) WHERE c.doc_id = $d "
+                           "RETURN c.chunk_id AS c, m.method AS m", {"d": fwd}, raw=True)
+            self.assertEqual(edge, [{"c": logical[0], "m": "title"}], "관계가 새 청크로 안 옮겨졌다")
+            left = {r["c"] for r in dst.run("MATCH (c:Chunk) WHERE c.doc_id IN $d "
+                                            "RETURN c.chunk_id AS c", {"d": ["doc.coll", "doc.both",
+                                                                            "doc.pfx"]}, raw=True)}
+            self.assertEqual(sum(1 for c in left if _SEP in c), 3, "건너뛸 청크 셋을 건드렸다")
+        finally:
+            dst.close()
+
+    def test_keyform_rewrites_only_the_hub_shape_with_namespacing_off(self):
+        """청크 물리 키 · 벡터 논리 키인 쌍만 논리 키로 다시 세운다. 벡터 조인과 FTS 가 새 키에
+        닿고, 열·관계·문서 메타는 그대로다. 충돌·섞인 벡터·앞머리 불일치·반대 모양은 건드리지
+        않고 센다."""
+        self._check_keyform_copy(self._keyform_run({"VINC_PK_NAMESPACED": "off"}))
+
+    def test_keyform_rewrites_only_the_hub_shape_with_namespacing_on(self):
+        self._check_keyform_copy(self._keyform_run({"VINC_PK_NAMESPACED": "on"}))
 
     def test_the_semantic_arm_stays_on_after_the_requeue(self):
         """재큐는 모델을 안 바꾸므로 이행이 아니다 — 전 문서가 pending 이어도 게이트가 안 걸리고
