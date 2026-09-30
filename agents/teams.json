@@ -159,6 +159,8 @@
     }
   },
   "read_only_roles": [
+    "agent-metrics-analyst",
+    "agent-metrics-reviewer",
     "agent-orchestrator",
     "agent-product-owner",
     "agent-reviewer-judgement"

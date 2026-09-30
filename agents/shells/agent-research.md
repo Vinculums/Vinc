@@ -50,7 +50,7 @@ Repositories: Vinc, Vinc-homepage
 ## Works with
 
 - Hands off to: agent-product-owner (Product Owner)
-- Works beside: agent-design (Design Systems Engineer), agent-security (Security Engineer)
+- Works beside: agent-design (Design Systems Engineer), agent-metrics-analyst (Metrics analyst), agent-security (Security Engineer)
 
 ## Tools and MCP servers
 

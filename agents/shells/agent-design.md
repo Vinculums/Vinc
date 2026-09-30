@@ -34,18 +34,18 @@ Changes token values in the hub and finishes the gate and the sync in the same s
 Repositories: Vinc, Vinc-homepage
 
 - design-hub/
-- app/src (consuming copy)
 - site/assets (consuming copy)
 
 ## Read before the first edit, in this order
 
-1. vinc.design.tokens
-2. vinc.design.system
-3. vinc.design.hub-notes
-4. vinc.design.figma-rebuild-2026-08
-5. vinc.design.logo
-6. vinc.spec.glass-language
-7. vinc.ops.ssot-discipline
+1. vinc.manual.design
+2. vinc.design.tokens
+3. vinc.design.system
+4. vinc.design.hub-notes
+5. vinc.design.figma-rebuild-2026-08
+6. vinc.design.logo
+7. vinc.spec.glass-language
+8. vinc.ops.ssot-discipline
 
 ## Gates that must pass before the pull request
 

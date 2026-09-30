@@ -53,7 +53,7 @@ Repositories: Vinc, Vinc-homepage
 
 ## Works with
 
-- Works beside: agent-deploy (Deployment Engineer), agent-infra (Infrastructure Engineer), agent-security (Security Engineer)
+- Works beside: agent-deploy (Deployment Engineer), agent-infra (Infrastructure Engineer), agent-metrics-analyst (Metrics analyst), agent-security (Security Engineer)
 
 ## Tools and MCP servers
 
