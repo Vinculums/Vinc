@@ -634,7 +634,7 @@ def _main(argv: list[str] | None = None) -> int:
         from store import migrate, persistence
         from store.config import load_config, resolve_data_dir
         data_dir = resolve_data_dir(args.data)
-        _restore = persistence.restore_if_missing(data_dir)
+        _restore = persistence.restore_newest(data_dir)
         if _restore not in ("off", "present"):
             print(f"vinc-migrate-dim: store restore — {_restore}", file=sys.stderr, flush=True)
         _fatal = persistence.restore_state_is_fatal(_restore)
@@ -672,8 +672,9 @@ def _main(argv: list[str] | None = None) -> int:
         data_dir = resolve_data_dir(args.data)
         # 영속 스냅샷에서 복원(VINC_STORE_SNAPSHOT 설정 시에만). 스토어를 열기
         # **전에** 해야 한다 — 연 뒤에 파일을 갈아치우면 드라이버가 자기 밑의
-        # 파일이 바뀐 것을 모른다. 미설정이면 'off' 로 즉시 빠진다.
-        _restore = persistence.restore_if_missing(data_dir)
+        # 파일이 바뀐 것을 모른다. 미설정이면 'off' 로 즉시 빠진다. VINC_DURABLE_ACK 면
+        # 스냅샷과 커밋 세대 중 새것을 고른다(persistence.restore_newest).
+        _restore = persistence.restore_newest(data_dir)
         if _restore not in ("off", "present"):
             print(f"vinc: store restore — {_restore}", file=sys.stderr, flush=True)
         # ⚠ **복원 실패는 fail-closed 다.** 여기서 멈추면 사람이 보고 고치지만, 진행하면

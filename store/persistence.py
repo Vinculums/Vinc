@@ -21,15 +21,22 @@
 잃을 수 있는 것
 --------------
 마지막 스냅샷 이후의 쓰기다. 주기가 곧 **손실 창**이고 기본 300초 — OAuth 쪽은 DB 가
-수 KB 라 쓰기마다 스냅샷하지만 그래프는 수십 MB 라 그럴 수 없다. 이 창을 0 으로
-만들려면 연속 복제가 필요하고 그건 별도 과제다.
+수 KB 라 쓰기마다 스냅샷하지만 그래프는 수십 MB 라 그럴 수 없다.
+
+``VINC_DURABLE_ACK`` 를 켜면 이 창이 ACK 된 쓰기에 대해서는 0 이 된다(:class:`DurableAck`):
+쓰기 잡은 영속 세대(``<스냅샷>.generations``)를 게시한 뒤에야 DONE·200 을 보인다.
+기본은 꺼짐이고, 꺼져 있으면 이 모듈의 동작은 예전과 같다.
+근거: [[vinc.plan.vin82-durable-ack-2026-09-29]]
 """
 from __future__ import annotations
 
 import os
 import re
 import shutil
+import sys
 import time
+
+from . import durable_generation as dg
 
 #: 스냅샷 주기 기본값(초) = 최대 손실 창. env `VINC_STORE_SNAPSHOT_EVERY`.
 DEFAULT_SNAPSHOT_EVERY = 300.0
@@ -65,6 +72,52 @@ WRITER_SUFFIX = ".writer"
 REVISION_ENV = "CONTAINER_APP_REVISION"
 
 _REVISION_NO = re.compile(r"--(\d+)$")
+
+#: ACK 전에 영속 세대를 게시하는 모드의 스위치(VIN-82). **기본 꺼짐.** 스냅샷 경로가
+#: 없으면 켜도 꺼진 것이다(복사해 둘 두 번째 자리가 없다).
+DURABLE_ENV = "VINC_DURABLE_ACK"
+
+#: 세대 루트 = 스냅샷 경로 + 이 접미. 스냅샷과 같은 영속 볼륨이다.
+GENERATIONS_SUFFIX = ".generations"
+
+#: 이 스냅샷이 뜰 때 이미 커밋돼 있던 최신 세대 번호 한 줄. 기동 복원은 이 번호보다 큰
+#: 세대만 스냅샷보다 새것으로 본다. 세대 루트가 있을 때만 쓴다(플래그와 무관) — 꺼 둔
+#: 동안의 쓰기가 스냅샷에만 있는데 다시 켜고 기동하면 낡은 세대를 고르게 되기 때문이다.
+SEEN_SUFFIX = ".generation-seen"
+
+#: 남기는 커밋 세대 수: 최신 + 직전 하나(`.prev` 가 한 세대만 드는 것과 같은 관례).
+DURABLE_KEEP = 2
+
+
+def durable_ack_enabled(snapshot_path: str | None = None) -> bool:
+    snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
+    flag = (os.environ.get(DURABLE_ENV) or "").strip().lower()
+    return bool(snapshot_path) and flag in ("1", "true", "on")
+
+
+def generations_root(snapshot_path: str) -> str:
+    return snapshot_path + GENERATIONS_SUFFIX
+
+
+def _snapshot_seen(snapshot_path: str) -> int:
+    """스냅샷이 담은 세대 번호. 표식이 없으면 0(세대보다 먼저 뜬 스냅샷), 있는데 못
+    읽으면 예외다 — 여기서 0 으로 넘어지면 낡은 세대가 새 스냅샷을 이긴다."""
+    try:
+        with open(snapshot_path + SEEN_SUFFIX, encoding="utf-8") as f:
+            return int(f.read().strip())
+    except FileNotFoundError:
+        return 0
+
+
+def _mark_seen(snapshot_path: str) -> None:
+    root = generations_root(snapshot_path)
+    if not os.path.isdir(root):
+        return                       # 세대 모드를 켠 적이 없다 — 예전과 똑같이 아무것도 안 쓴다
+    marker = snapshot_path + SEEN_SUFFIX
+    tmp = marker + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(f"{dg.latest_sequence(root)}\n")
+    os.replace(tmp, marker)
 
 
 def resolve_snapshot_path() -> str | None:
@@ -131,6 +184,35 @@ def restore_if_missing(live_path: str, snapshot_path: str | None = None) -> str:
         return f"error: {type(exc).__name__}: {exc}"
 
 
+def restore_newest(live_path: str, snapshot_path: str | None = None) -> str:
+    """기동 복원의 입구. 세대 모드가 꺼져 있으면 :func:`restore_if_missing` 그대로다.
+
+    켜져 있으면 스냅샷과 커밋 세대 중 **더 새롭고 검증되는 쪽**으로 복원한다: 스냅샷이
+    담은 번호(:data:`SEEN_SUFFIX`)보다 큰 세대가 검증되면 세대, 아니면 스냅샷이다. 깨진
+    세대는 건너뛰고 그 사실을 상태 뒤에 ``; skipped …`` 로 싣는다. 세대가 깨져 있는데
+    스냅샷도 없으면 ``error`` 다(데이터가 있었다는 증거가 있으므로 빈 기동은 안 된다).
+    작업본이 있으면 아무것도 안 한다(``present``) — 이 계약은 두 경로가 같다."""
+    snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
+    if not durable_ack_enabled(snapshot_path):
+        return restore_if_missing(live_path, snapshot_path)
+    if os.path.exists(live_path):
+        return "present"
+    try:
+        state = dg.restore(generations_root(snapshot_path), live_path,
+                           newer_than=_snapshot_seen(snapshot_path), skip_invalid=True)
+    except Exception as exc:                                   # noqa: BLE001
+        return f"error: {type(exc).__name__}: {exc}"
+    head, _, skipped = state.partition("; ")
+    if head.startswith("restored:"):
+        return "restored-generation:" + state[len("restored:"):]
+    fallback = restore_if_missing(live_path, snapshot_path)
+    if not skipped:
+        return fallback
+    if fallback == "empty" or fallback.startswith("error"):
+        return f"error: no verified generation and no snapshot ({fallback}); {skipped}"
+    return f"{fallback}; {skipped}"
+
+
 #: 스냅샷이 아직 없는 상태(첫 기동)를 **명시적으로 허용**하는 env. 켜지 않으면
 #: `empty` 는 치명으로 본다.
 #:
@@ -154,11 +236,14 @@ def restore_state_is_fatal(state: str) -> str | None:
                              뒤처져 있으므로 로그에서 눈에 띄어야 한다
 
     ``empty`` 는 :data:`BOOTSTRAP_ENV` 가 켜져 있을 때만 통과한다(위 주석 참조).
-    ``error: …`` 는 언제나 막는다.
+    ``error: …`` 는 언제나 막는다. ``restored-generation:N`` 은 세대에서 복원했다는 뜻이고
+    통과한다. ``; skipped …`` 꼬리(깨진 세대를 건너뜀)는 판정에 쓰지 않는다.
     """
-    if state in ("off", "present", "restored", "restored-previous"):
+    head = state.split("; ", 1)[0]
+    if (head in ("off", "present", "restored", "restored-previous")
+            or head.startswith("restored-generation:")):
         return None
-    if state == "empty":
+    if head == "empty":
         if (os.environ.get(BOOTSTRAP_ENV) or "").strip().lower() in ("1", "true", "on"):
             return None
         return (f"영속 스냅샷이 보이지 않는다({resolve_snapshot_path()}). 진짜 첫 기동이면 "
@@ -344,6 +429,9 @@ def save_snapshot(store, snapshot_path: str | None = None) -> str:
                 # `_parts` 가 .wal 을 선택으로 두는 것은 "없을 수 있다"는 뜻이지
                 # "있으면 그대로 둔다"가 아니다. 예전 코드는 그걸 그대로 뒀다.
                 os.remove(dst)
+        # 세대 루트가 있으면 이 스냅샷이 어느 세대까지 담았는지 적는다(:data:`SEEN_SUFFIX`).
+        # 못 적으면 `ok` 가 아니다 — 다음 주기가 다시 시도하게 둔다.
+        _mark_seen(snapshot_path)
         return "ok"
     except Exception as exc:                                   # noqa: BLE001
         return f"error: {type(exc).__name__}: {exc}"
@@ -419,3 +507,137 @@ class SnapshotPolicy:
                            "두 번째 자리가 없는 설치에서는 꺼진 것이 정상이고, every_s 는 "
                            "그 경우 아무 일정도 뜻하지 않는다. 내구성은 POST /backup 이 맡는다.")
         return out
+
+
+class DurableAckError(RuntimeError):
+    """영속 세대 게시 실패. 로컬 커밋은 되돌아가지 않았으므로 **불확정 커밋**이다."""
+
+
+def _fence_strict(snapshot_path: str) -> None:
+    """ACK 경로의 울타리. :func:`newer_writer` 와 달리 표식을 못 읽으면 **닫힌 쪽**이다.
+
+    표식이 아예 없으면 막지 않는다: 아직 아무도 자격을 가져가지 않았고, 기동 잡은
+    ``claim_writer`` 보다 먼저 돈다. 리비전 이름이 없는 곳(데스크탑·테스트)은 울타리가 없다."""
+    mine = (os.environ.get(REVISION_ENV) or "").strip()
+    if not mine:
+        return
+    try:
+        with open(snapshot_path + WRITER_SUFFIX, encoding="utf-8") as f:
+            holder = f.read().strip()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise DurableAckError(f"writer marker unreadable: {exc}") from exc
+    held, own = _revision_no(holder), _revision_no(mine)
+    if held is None or own is None:
+        raise DurableAckError(f"writer marker unparsable: {holder!r} (mine {mine!r})")
+    if held > own:
+        raise DurableAckError(f"fenced: {holder}")
+
+
+def _fingerprint(live_path: str) -> tuple:
+    """본 파일과 WAL 의 (크기, mtime_ns). 게시 직후 값과 같으면 그 뒤로 쓰기가 없었다.
+
+    WAL 은 체크포인트 사이에 덧붙기만 해서 커밋마다 크기가 는다. 체크포인트는 WAL 을
+    비우고 본 파일을 다시 써 mtime 이 바뀐다.
+    ponytail: stat 비교다. 체크포인트 뒤 WAL 이 같은 크기로 다시 차고 본 파일 mtime 이
+    같은 시계 틱에 머무는 경우는 못 가른다. 그게 보이면 WAL 해시로 올린다."""
+    out = []
+    for path in (live_path, live_path + ".wal"):
+        try:
+            st = os.stat(path)
+            out.append((st.st_size, st.st_mtime_ns))
+        except FileNotFoundError:
+            out.append(None)
+    return tuple(out)
+
+
+class DurableAck:
+    """쓰기 잡의 ACK 경계(VIN-82). 잡 큐의 ``on_before_done`` 이며 **쓰기 스레드에서** 돈다.
+
+    이 호출이 돌아와야 그 잡의 DONE·200 이 보이고, 예외면 그 잡은 ERROR 다. 순서:
+    마지막 게시 뒤로 파일이 그대로면 건너뜀(쓰기가 없던 잡은 게시 비용을 물지 않는다) →
+    울타리(못 읽으면 닫힌 쪽) → WAL 만 게시(``dg.publish_wal``) → 거절되면 일관된 전체
+    snapshot 을 새 세대로(``dg.publish``) → 오래된 세대 정리.
+
+    게시 실패는 로컬 커밋을 되돌리지 않는다. 응답은 "불확정 커밋"이고 재시도가 안전한지는
+    호출자 몫이다. 근거: [[vinc.plan.vin82-durable-ack-2026-09-29]]"""
+
+    def __init__(self, store, live_path: str, snapshot_path: str | None = None, *,
+                 clock=time.monotonic):
+        self._store = store               # () -> 스토어. 앱은 close 에서 store 를 None 으로 둔다
+        self.live_path = live_path
+        self.snapshot_path = snapshot_path or resolve_snapshot_path()
+        self.root = generations_root(self.snapshot_path)
+        self._clock = clock
+        self._published: tuple | None = None
+        self.sequence = 0
+        self.last = "pending"
+        self.last_ms: int | None = None
+        self.max_ms = 0
+        self.publishes = 0
+        self.failures = 0
+
+    def __call__(self, job, result) -> None:
+        t0 = self._clock()
+        try:
+            kind = self._publish()
+        except Exception as exc:                               # noqa: BLE001
+            self.failures += 1
+            self.last = f"error: {type(exc).__name__}: {exc}"
+            print(f"vinc: durable ack — {job.kind}: {self.last}", file=sys.stderr, flush=True)
+            raise DurableAckError(
+                "commit uncertain: the write may be applied locally, but its durable "
+                f"generation was not published ({type(exc).__name__}: {exc})") from exc
+        self.last_ms = round((self._clock() - t0) * 1000)
+        self.last = kind
+        if kind != "unchanged":
+            self.publishes += 1
+            self.max_ms = max(self.max_ms, self.last_ms)
+        if kind == "full":
+            # 드물고 비싸다(DB 전체 복사). 지연을 잴 때 이 줄로 센다.
+            print(f"vinc: durable ack — full generation {self.sequence} ({self.last_ms} ms)",
+                  file=sys.stderr, flush=True)
+
+    def _publish(self) -> str:
+        # 쓰기가 없던 잡은 공유를 한 번도 건드리지 않는다(울타리 읽기도 게시 쪽에만 있다).
+        if _fingerprint(self.live_path) == self._published:
+            return "unchanged"
+        _fence_strict(self.snapshot_path)
+        try:
+            record = dg.publish_wal(self.root, self.live_path,
+                                    sequence=dg.next_sequence(self.root))
+            kind = "wal"
+        except dg.GenerationError:
+            # 첫 세대 · 체크포인트로 본 파일이 바뀜 · Windows 의 본 파일 배타 잠금.
+            record = self._publish_full()
+            kind = "full"
+        self._published = _fingerprint(self.live_path)
+        self.sequence = record["sequence"]
+        try:
+            dg.prune(self.root, keep=DURABLE_KEEP)
+        except OSError as exc:            # 게시는 끝났다 — 정리 실패로 ACK 를 거두지 않는다
+            print(f"vinc: durable ack — prune failed: {exc}", file=sys.stderr, flush=True)
+        return kind
+
+    def _publish_full(self) -> dict:
+        store = self._store()
+        if store is None or not callable(getattr(store, "snapshot", None)):
+            raise DurableAckError("no store to snapshot")
+        # 스테이징은 작업본 옆(로컬 디스크)이다. `store.snapshot` 이 CHECKPOINT 뒤 일관된
+        # 본 파일(+WAL)을 여기 떨구고, `dg.publish` 가 그것을 영속 볼륨으로 올린다.
+        stage = self.live_path + ".durable-stage"
+        shutil.rmtree(stage, ignore_errors=True)
+        os.makedirs(stage)
+        try:
+            produced = store.snapshot(stage)
+            wal = produced + ".wal"
+            return dg.publish(self.root, produced, sequence=dg.next_sequence(self.root),
+                              wal=wal if os.path.exists(wal) else None)
+        finally:
+            shutil.rmtree(stage, ignore_errors=True)
+
+    def detail(self) -> dict:
+        """`/health` 에 싣는 값. 켜기 전에 지연을 재는 재료다."""
+        return {"sequence": self.sequence, "last": self.last, "last_ms": self.last_ms,
+                "max_ms": self.max_ms, "publishes": self.publishes, "failures": self.failures}
