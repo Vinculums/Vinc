@@ -42,7 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from store.backend import open_store              # noqa: E402
 from store.config import load_config              # noqa: E402
-from store.migrate import export_store, import_store   # noqa: E402
+from store.migrate import export_store, import_store, vector_dim   # noqa: E402
 
 
 def _bytes(db_path: str) -> int:
@@ -101,6 +101,9 @@ def main() -> int:
         if sum(src_counts.values()) == 0:
             print("FAIL: 원본이 열렸는데 행이 0이다 — 경로가 틀렸거나 속 빈 사본이다")
             return 1
+        # 벡터 폭은 원본 열에서 읽는다. 설정 기본값(768)을 쓰면 1024 인 허브 스냅샷에서
+        # 형 변환 예외로 죽는다(2026-09-30 복원 리허설 run 36628686796).
+        src_dim = vector_dim(src)
         t0 = time.time()
         dump = export_store(src)
     finally:
@@ -118,10 +121,11 @@ def main() -> int:
             print("FAIL: 대상 스토어를 열 수 없다", file=sys.stderr)
             return 1
         try:
-            stats = import_store(dst, dump, dim=dst_cfg.embedding_dim)
+            dim = src_dim or dst_cfg.embedding_dim
+            stats = import_store(dst, dump, dim=dim)
             # 색인까지 세워야 공정한 비교다 — 원본에는 색인이 있고, 색인은 파일의
             # 일부다. 안 세우면 줄어든 몫에 "색인이 없어서"가 섞인다.
-            dst.ensure_search_indexes(dim=dst_cfg.embedding_dim)
+            dst.ensure_search_indexes(dim=dim)
             dst_counts = _counts(dst)
         finally:
             dst.close()
