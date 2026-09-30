@@ -268,7 +268,7 @@ const EN = {
     error: "The pack didn't finish. Try again. Your documents are untouched.",
   },
   settings: {
-    lock: "Lock Vinc with a passphrase. Optional. Your data stays on this device either way.",
+    lock: "Lock Vinc with a passphrase. Optional.",
     mcp: "Tool calls from connected clients appear here, as they happen.",
   },
   ui: {
@@ -1422,7 +1422,7 @@ const KO: Deck = {
     error: "팩을 만들지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
   },
   settings: {
-    lock: "암호로 Vinc를 잠글 수 있어요. 선택 사항이에요. 어느 쪽이든 정보는 이 기기에 남아요.",
+    lock: "암호로 Vinc를 잠글 수 있어요. 선택 사항이에요.",
     mcp: "연결된 클라이언트의 도구 호출이 일어나는 대로 여기에 보여요",
   },
   ui: {
