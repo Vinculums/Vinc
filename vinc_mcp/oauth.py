@@ -75,6 +75,25 @@ def fetch_cimd(url: str) -> dict:
     return doc
 
 
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def _redirect_registered(redirect: str, registered: list[str]) -> bool:
+    """정확히 같거나, 루프백(http)이면 **포트만** 다른 것까지 받는다(RFC 8252 §7.3).
+
+    네이티브 클라이언트는 요청 때 임의 포트를 연다. Claude Code 의 CIMD 는
+    `http://localhost/callback` 을 적고 `http://localhost:<포트>/callback` 으로 온다.
+    호스트·경로·쿼리·조각은 그대로 같아야 한다 — 루프백이 아닌 주소는 정확 일치만."""
+    if redirect in registered:
+        return True
+    r = urllib.parse.urlsplit(redirect)
+    if r.scheme != "http" or r.hostname not in _LOOPBACK_HOSTS:
+        return False
+    key = (r.scheme, r.hostname, r.path, r.query, r.fragment)
+    return any((g.scheme, g.hostname, g.path, g.query, g.fragment) == key
+               for g in map(urllib.parse.urlsplit, registered))
+
+
 def _s256(verifier: str) -> str:
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
@@ -171,7 +190,7 @@ class OAuthGate:
         if client is None:
             raise ValueError("unknown client_id")
         redirect = params.get("redirect_uri") or ""
-        if redirect not in client["redirect_uris"]:
+        if not _redirect_registered(redirect, client["redirect_uris"]):
             raise ValueError("redirect_uri not registered")
         if params.get("response_type") != "code":
             raise ValueError("response_type must be 'code'")

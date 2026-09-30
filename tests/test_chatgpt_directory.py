@@ -237,6 +237,31 @@ def test_cimd_rejects_a_redirect_that_is_not_in_the_document():
         })
 
 
+def test_a_loopback_redirect_may_use_any_port_but_nothing_else_moves():
+    """Claude Code 의 CIMD 는 `http://localhost/callback` 을 적고 임의 포트로 온다
+    (RFC 8252 §7.3). 포트만 풀고 호스트·스킴·경로는 그대로 묶는다."""
+    doc = {"client_id": "https://claude.ai/oauth/claude-code-client-metadata",
+           "client_name": "Claude Code",
+           "redirect_uris": ["http://localhost/callback", "http://127.0.0.1/callback"]}
+    gate = OAuthGate("https://mcp.example", "adminkey", store=Store(":memory:"),
+                     cimd_fetch=lambda url: doc)
+
+    def ask(redirect):
+        return gate.authorize({
+            "client_id": doc["client_id"], "redirect_uri": redirect,
+            "response_type": "code", "code_challenge": _s256("v" * 48),
+            "code_challenge_method": "S256", "key": "adminkey",
+        })
+
+    assert ask("http://localhost:33418/callback").startswith("http://localhost:33418/callback?")
+    assert ask("http://127.0.0.1:5173/callback").startswith("http://127.0.0.1:5173/callback?")
+    for bad in ("http://localhost:33418/other", "https://localhost:33418/callback",
+                "http://localhost.evil.example:33418/callback", "http://[::1]:1/callback",
+                "http://evil.example/callback"):
+        with pytest.raises(ValueError, match="redirect_uri"):
+            ask(bad)
+
+
 def test_cimd_rejects_http_client_ids():
     with pytest.raises(ValueError, match="https"):
         from vinc_mcp.oauth import fetch_cimd
