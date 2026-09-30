@@ -202,7 +202,11 @@ class ThisRepo(unittest.TestCase):
 
         여덟이 된 경위: `integrations-publish.yml` 은 같은 ref 의 패키지 게시를
         직렬화한다. 업로드 중인 런을 취소하면 wheel 과 sdist 중 한쪽만 남을 수 있어
-        `cancel-in-progress: false` 로 뒤의 런을 대기시킨다."""
+        `cancel-in-progress: false` 로 뒤의 런을 대기시킨다.
+
+        아홉이 된 경위: `hub-data-repair.yml`(2026-09-30)은 `hub-store-rebuild.yml` 과 같은
+        모양이고 같은 이유로 `hub-deploy` 의 그룹 키를 빌려 쓴다 — 허브를 내리고 수리본으로
+        갈아타는 도중에 배포가 끼어들면 내려 둔 허브가 다시 뜬다. dispatch 로만 돈다."""
         import yaml
         serial = []
         for p in sorted((_ROOT / ".github" / "workflows").glob("*.yml")):
@@ -210,7 +214,8 @@ class ThisRepo(unittest.TestCase):
             c = (doc or {}).get("concurrency")
             if isinstance(c, dict) and c.get("cancel-in-progress") is False:
                 serial.append(p.name)
-        self.assertEqual(serial, ["encode-m3-probe.yml", "hub-deploy.yml", "hub-store-rebuild.yml",
+        self.assertEqual(serial, ["encode-m3-probe.yml", "hub-data-repair.yml", "hub-deploy.yml",
+                                  "hub-store-rebuild.yml",
                                   "hub-store-recover.yml", "infra.yml", "integrations-publish.yml", "pk-migrate.yml",
                                   "release.yml"], serial)
 
