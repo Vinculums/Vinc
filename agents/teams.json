@@ -1,0 +1,166 @@
+{
+  "note": "사람 팀 → GitHub 핸들 → 소유 경로. scripts/agents_sync.py --gen 이 여기서 .github/CODEOWNERS 를 만들고 --check 가 대조한다. CODEOWNERS 는 생성물이라 손으로 고치지 않는다. 역할(roles.json)은 그래프에서 --pull 로 내려오는 스냅샷이라 사람 팀을 거기 실을 수 없어 이 파일이 따로 있다. 근거: Linear VIN-238, 계획서 vinc.plan.team-split.",
+  "org": "Vinculums",
+  "teams": {
+    "core": {
+      "github": "@Vinculums/core",
+      "label": "Core (store, api, mcp, hub)",
+      "roles": ["agent-dev-core", "agent-dev-account", "agent-security"],
+      "paths": [
+        "store/",
+        "engines/",
+        "api/",
+        "vinc_mcp/",
+        "tests/",
+        "e2e_live.py",
+        "verify.py",
+        "profile.yml",
+        "pyproject.toml",
+        "scripts/",
+        "integrations/",
+        "_migration/"
+      ]
+    },
+    "rag": {
+      "github": "@Vinculums/rag",
+      "label": "RAG (retrieval, rerank, embed, eval)",
+      "roles": ["agent-research"],
+      "paths": [
+        "scripts/reranker.py",
+        "scripts/eval_answer_material.py",
+        "scripts/eval_brief_resolution.py",
+        "scripts/eval_choose_material.py",
+        "scripts/eval_coverage_recall.py",
+        "scripts/eval_excerpt_gain.py",
+        "scripts/eval_rerank.py",
+        "scripts/eval_search.py",
+        "scripts/eval_tooluse.py",
+        "scripts/evalkit/",
+        "scripts/fixtures/",
+        "scripts/benchmark/",
+        "scripts/encoder.py",
+        "scripts/bench_models.py",
+        "scripts/quantize_e5.py",
+        "scripts/assert_m3_dim.py",
+        "scripts/make_queries.py",
+        "scripts/make_queries_from_store.py",
+        "scripts/seed_bilingual.py",
+        "scripts/seed_tooluse.py",
+        "scripts/tooluse_shell.py",
+        "scripts/summarize_encode_probe.py",
+        "engines/embed_pipeline.py",
+        "engines/recall_ingest.py",
+        "packaging/embed_worker.py",
+        "packaging/bake_embed_model.py",
+        ".github/workflows/rerank-probe.yml",
+        ".github/workflows/encode-m3-probe.yml",
+        ".github/workflows/bake-probe.yml"
+      ],
+      "planned": [
+        "vinc_rag/",
+        "tests/rag/"
+      ]
+    },
+    "app": {
+      "github": "@Vinculums/app",
+      "label": "Desktop app (Vite + Tauri)",
+      "roles": ["agent-dev-app"],
+      "paths": [
+        "app/",
+        ".github/workflows/web-app-deploy-trigger.yml"
+      ],
+      "planned": [
+        "tests/app/"
+      ]
+    },
+    "design-content": {
+      "github": "@Vinculums/design-content",
+      "label": "Design and content (design hub, packs, copy, emails)",
+      "roles": [
+        "agent-design",
+        "agent-product-designer",
+        "agent-copy-owner",
+        "agent-copy-writer",
+        "agent-marketing",
+        "agent-tech-writer"
+      ],
+      "paths": [
+        "design-hub/",
+        "starter-packs/",
+        "emails/",
+        "README.md",
+        "LICENSE"
+      ]
+    },
+    "platform": {
+      "github": "@Vinculums/platform",
+      "label": "Platform (infra, packaging, CI, gates, release, roster)",
+      "roles": [
+        "agent-deploy",
+        "agent-infra",
+        "agent-ops",
+        "agent-release",
+        "agent-gate-runner",
+        "agent-qa",
+        "agent-steward"
+      ],
+      "paths": [
+        "infra/",
+        "packaging/",
+        ".github/",
+        ".dockerignore",
+        ".gitattributes",
+        ".gitignore",
+        "Dockerfile.hub",
+        "Dockerfile.m3probe",
+        "CHANGELOG.md",
+        "CLAUDE.md",
+        "agents/",
+        "scripts/agents_sync.py",
+        "scripts/roster_probe.py",
+        "scripts/worktree_hook.py",
+        "scripts/gate_forbidden.py",
+        "scripts/gate_graph_refs.py",
+        "scripts/gate_pr_title.py",
+        "scripts/gate_ownership.py",
+        "scripts/gate_runner_move.py",
+        "scripts/gate_app_config.py",
+        "scripts/gate_escape.py",
+        "scripts/gate_design_sync.py",
+        "scripts/gate_contrast.py",
+        "scripts/app-config-baseline.json",
+        "scripts/setup_runner.sh",
+        "scripts/hub_deploy_pick.py",
+        "scripts/integrations_publish_select.py",
+        "scripts/repair_hub_store.py",
+        "scripts/rebuild_store_native.py",
+        "scripts/rehearse_rebuild.py",
+        "scripts/restore_rehearsal_check.py",
+        "scripts/refresh_graph_refs.py",
+        "scripts/graph-refs.json",
+        "scripts/check_hub_env.py",
+        "scripts/version_sync.py",
+        "scripts/age_status_lines.py",
+        "scripts/qa/",
+        "scripts/runner-tools.txt"
+      ]
+    }
+  },
+  "shared": {
+    "note": "더 구체적인 줄이 이긴다(CODEOWNERS 규칙). 여기 적힌 경로는 두 팀이 같이 리뷰한다.",
+    "paths": {
+      "api/auth.py": ["core", "platform"],
+      "api/fragment.py": ["core", "platform"],
+      "api/sync.py": ["core", "platform"],
+      "api/packfile.py": ["core", "platform"],
+      "vinc_mcp/oauth.py": ["core", "platform"],
+      "app/src/copy.ts": ["app", "design-content"],
+      "agents/roles.json": ["platform", "core"]
+    }
+  },
+  "read_only_roles": [
+    "agent-orchestrator",
+    "agent-product-owner",
+    "agent-reviewer-judgement"
+  ]
+}

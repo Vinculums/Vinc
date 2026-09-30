@@ -20,7 +20,7 @@ stdlib 전용(`http.server`·`threading`·`signal`) — DEC D5(threaded stdlib +
 """
 from __future__ import annotations
 
-from api.procutil import pid_alive
+from store.procutil import pid_alive
 
 import base64
 import contextvars
@@ -2373,7 +2373,7 @@ def make_server(app: VincApp, host: str = "127.0.0.1", port: int = 0) -> Threadi
 def _pid_alive(pid: int) -> bool:
     """부모 PID 생존 확인 — **조회 전용, 대상을 죽이지 않는다.**
 
-    구현은 `api/procutil.py` 한 벌뿐이다. 여기 사본을 두지 않는 이유는 그 파일에
+    구현은 `store/procutil.py` 한 벌뿐이다. 여기 사본을 두지 않는 이유는 그 파일에
     적어 뒀다 — 사본이 둘이던 시절 브리지 쪽만 `os.kill` 을 쓰다가 Windows 에서
     앱을 죽였다(2026-08-18).
     """
