@@ -322,6 +322,52 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
                              f"배치 상한을 넘겨 세션에 넣었다: {max(seen)} > {self.mod.EMBED_BATCH}")
         self.assertEqual(sum(seen), n_chunks, "일부 청크가 누락되거나 중복 처리됐다")
 
+    def test_첫_적재_중에_온_질의가_모델을_한_벌_더_올리지_않는다(self):
+        """RV-32 (VIN-228). 로컬 모드는 배치 루프와 `serve_encode` 의 질의가 **같은
+        `_Embedder`** 를 쓴다. 적재가 잠금 밖이면 첫 문서를 적재하는 동안 들어온 질의가
+        세션을 한 벌 더 올린다(허브 형상에서는 OOM). 적재 구간이 겹친 최대 수로 본다."""
+        import threading
+        import time
+        import urllib.error
+        import urllib.request
+
+        entered = threading.Event()
+        guard = threading.Lock()
+        state = {"now": 0, "max": 0}
+
+        def slow_load(_self):
+            with guard:
+                state["now"] += 1
+                state["max"] = max(state["max"], state["now"])
+            entered.set()
+            time.sleep(0.3)                   # 적재가 오래 걸리는 창을 벌린다
+            with guard:
+                state["now"] -= 1
+            raise RuntimeError("적재 대역: 여기서 멈춘다(numpy 없이 돌기 위해)")
+
+        self.mod._Embedder._load = slow_load
+        emb = self.mod._Embedder()
+        port = self.mod.serve_encode(emb, 0)
+
+        def batch_loop():                     # main() 의 배치 루프 자리
+            try:
+                emb.encode(["문서 조각"])
+            except RuntimeError:
+                pass
+
+        t = threading.Thread(target=batch_loop)
+        t.start()
+        self.assertTrue(entered.wait(5), "배치 루프가 적재에 들어가지 않았다")
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/encode",
+            data='{"texts": ["질의"], "kind": "query"}'.encode(),
+            headers={"Content-Type": "application/json"})
+        with self.assertRaises(urllib.error.HTTPError):   # 대역 적재가 실패하므로 500
+            urllib.request.urlopen(req, timeout=10)
+        t.join(10)
+        self.assertEqual(state["max"], 1,
+                         "배치 루프와 질의가 동시에 모델을 적재했다(세션 두 벌)")
+
     def test_인코딩_창구가_쿼리에만_접두를_붙인다(self):
         """`serve_encode` 계약 — 사이드카가 이 창구로 쿼리 임베딩을 얻어 간다.
 
@@ -881,6 +927,61 @@ class SplitEncoderTest(unittest.TestCase):
             sys.argv = old
         self.assertEqual([a["doc_id"] for a in sidecar.applied], ["d1"])
         self.assertEqual(loaded, [], "원격 모드인데 로컬 모델을 적재했다")
+
+    def test_원격_모드도_구운_토크나이저로_조각을_센다(self):
+        """RV-07 (VIN-203). 원격 모드(허브)는 모델을 안 올리므로 예전에는 조각내기가
+        문자 추정기로 잘랐다. 추정기는 코드·해시에서 토큰을 적게 세어 조각이 512 를 넘기고
+        인코더가 꼬리를 버린다. 이제 `VINC_EMBED_MODEL_PATH` 옆의 tokenizer.json 만
+        올려(ONNX 없이) 진짜 토큰으로 센다. 토크나이저 대역은 글자 하나를 토큰 하나로
+        센다: hex 해시에서 추정기(글자당 0.4)와 크게 갈리는 비율이다."""
+        import tempfile
+        import types
+
+        class _Tok:
+            opened: list[str] = []
+
+            @classmethod
+            def from_file(cls, path):
+                cls.opened.append(path)
+                return cls()
+
+            def encode(self, s):
+                return types.SimpleNamespace(ids=list(s))
+
+        stub = types.ModuleType("tokenizers")
+        stub.Tokenizer = _Tok
+        seen: list[str] = []
+        base = self._serve(lambda texts: (seen.extend(texts) or [[1.0] for _ in texts]))
+        self.mod.REMOTE_ENCODE = base
+        self.mod.MODEL = "BAAI/bge-m3"            # 무접두: 조각이 그대로 인코더에 닿는다
+        loaded = []
+        self.mod._Embedder._load = lambda _self: loaded.append(1)
+        text = "".join(f"{i:08x}" for i in range(250))          # 2000자 hex, 개행 없음
+        self.mod._call = sidecar = _FakeSidecar(
+            [[{"doc_id": "d1", "chunk_id": "c1", "text": text}]])
+        old_tok = sys.modules.get("tokenizers")
+        sys.modules["tokenizers"] = stub
+        old_argv = sys.argv
+        sys.argv = ["embed_worker.py", "--once"]
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                model_path = os.path.join(tmp, "bge-m3-int8-rr.onnx")
+                pathlib.Path(tmp, "tokenizer.json").write_text("{}", encoding="utf-8")
+                with _env(VINC_EMBED_MODEL_PATH=model_path):
+                    self.assertEqual(self.mod.main(), 0)
+        finally:
+            sys.argv = old_argv
+            if old_tok is None:
+                sys.modules.pop("tokenizers", None)
+            else:
+                sys.modules["tokenizers"] = old_tok
+        self.assertEqual([a["doc_id"] for a in sidecar.applied], ["d1"])
+        self.assertEqual("".join(seen), text, "조각이 원문을 무손실로 덮지 않는다")
+        over = [len(p) for p in seen if len(p) > self.mod.MAX_CONTENT]
+        self.assertEqual(over, [], f"상한 {self.mod.MAX_CONTENT} 토큰을 넘긴 조각: {over}")
+        self.assertEqual(_Tok.opened, [os.path.join(tmp, "tokenizer.json")],
+                         "구운 tokenizer.json 을 한 번만 올리지 않았다")
+        self.assertEqual(loaded, [], "토크나이저를 얻으려고 모델을 적재했다")
 
     def test_루프백_밖인데_토큰이_없으면_기동을_거부한다(self):
         """인증 없는 인코더를 **기동 시점에** 막는다. 요청이 올 때 막으면 그 사이에
