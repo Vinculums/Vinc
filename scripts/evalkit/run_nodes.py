@@ -68,9 +68,15 @@ def _constants() -> dict:
 
 
 def _degraded(res: dict) -> str:
-    """의미 팔이 안 돌았으면 그 사유. 돌았으면 빈 문자열."""
-    if res.get("vector_note"):
-        return str(res["vector_note"])
+    """의미 팔이 안 돌았으면 그 사유. 돌았으면 빈 문자열.
+
+    스탬프 없는 옛 벡터 경고는 빼고 본다. 고정 스토어는 런타임 스탬프가 생기기 전에 만들어져
+    그 경고가 모든 행에 붙지만 의미 팔은 돌았고, 질의 런타임은 하네스가 시작할 때 잠금과 대조한다.
+    다른 사유가 같이 붙어 있으면 그대로 강등이다."""
+    from api.query import UNSTAMPED_RUNTIME_NOTE   # noqa: PLC0415
+    note = str(res.get("vector_note") or "").replace(UNSTAMPED_RUNTIME_NOTE, "").strip("; ")
+    if note:
+        return note
     arms = str(res.get("arms") or "")
     return f"arms={arms}" if arms and "vector" not in arms else ""
 

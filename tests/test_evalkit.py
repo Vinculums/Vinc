@@ -118,6 +118,18 @@ class ParityTests(unittest.TestCase):
         self.assertTrue(run_nodes._degraded({"arms": "fts+vector", "vector_note": "x"}))
         self.assertEqual(run_nodes._degraded({"arms": "fts+vector"}), "")
 
+    def test_스탬프_없는_벡터_경고만으로는_강등이_아니다(self):
+        from api.query import UNSTAMPED_RUNTIME_NOTE as u
+        self.assertEqual(run_nodes._degraded({"arms": "fts+vector", "vector_note": u}), "")
+        # 다른 사유가 같이 붙으면(검색이 이어 붙이는 모양 그대로) 그 사유로 강등이다.
+        self.assertEqual(run_nodes._degraded({"arms": "fts+vector", "vector_note": f"x; {u}"}), "x")
+        self.assertTrue(run_nodes._degraded({"arms": "fts", "vector_note": u}))
+
+    def test_CLI_경로는_로컬_대상으로_못_박는다(self):
+        from evalkit.transports import Cli
+        self.assertEqual(Cli("d", "o").env["VINC_TARGET"], "local")
+        self.assertEqual(Cli("d", "o", env={"VINC_TARGET": "remote"}).env["VINC_TARGET"], "remote")
+
 
 def _row(status="choose", rank=0, union_rank=0, answerable=True, wrong=0.0, query="q"):
     return {"query": query, "answerable": answerable, "status": status, "rank": rank,
