@@ -54,7 +54,7 @@ class Matching(unittest.TestCase):
 
     def test_unmatched_is_empty_and_reported(self):
         self.assertEqual(G.owners_for("app/src/main.ts", RULES), ())
-        self.assertEqual(G.unowned(["app/src/main.ts", "scripts/x.py"], RULES),
+        self.assertEqual(G.unowned(["app/src/main.ts", "scripts/x.sh"], RULES),
                          ["app/src/main.ts"])
 
 
@@ -83,12 +83,12 @@ class Roster(unittest.TestCase):
 
     def test_deeper_paths_sort_after_their_prefix_regardless_of_team_order(self):
         teams = {"teams": {
-            "platform": {"github": "@o/platform", "paths": ["scripts/gate_x.py"]},
-            "core": {"github": "@o/core", "paths": ["scripts/"]},
+            "platform": {"github": "@o/platform", "paths": ["tools/gate_x.sh"]},
+            "core": {"github": "@o/core", "paths": ["tools/"]},
         }}
         body = [ln.split()[0] for ln in render_codeowners(teams).splitlines()
                 if ln and not ln.startswith("#")]
-        self.assertEqual(body, ["/scripts/", "/scripts/gate_x.py"])
+        self.assertEqual(body, ["/tools/", "/tools/gate_x.sh"])
 
     def test_planned_paths_are_not_ghosts_but_missing_paths_are(self):
         exists = lambda p: p in {"api/", "api/auth.py"}  # noqa: E731
