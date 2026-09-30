@@ -243,6 +243,32 @@ def test_cimd_rejects_http_client_ids():
         fetch_cimd("http://chatgpt.com/oauth/client.json")
 
 
+def test_cimd_fetch_names_itself_instead_of_python_urllib(monkeypatch):
+    """claude.ai 앞단은 `Python-urllib/*` 를 403(Cloudflare 1010)으로 막는다 — Claude Code 의
+    CIMD 등록이 그 때문에 `CIMD fetch failed: HTTP Error 403` 으로 죽었다(2026-09-30)."""
+    from vinc_mcp import oauth
+    seen = {}
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self, n):
+            return json.dumps({"redirect_uris": ["http://localhost/callback"]}).encode()
+
+    def _urlopen(req, timeout):
+        seen["ua"] = req.get_header("User-agent")
+        return _Resp()
+
+    monkeypatch.setattr(oauth.urllib.request, "urlopen", _urlopen)
+    oauth.fetch_cimd("https://claude.ai/oauth/claude-code-client-metadata")
+    assert seen["ua"] and not seen["ua"].startswith("Python-urllib")
+    assert seen["ua"].startswith("Vinc-MCP/")
+
+
 def test_resource_mismatch_is_rejected_at_token_exchange():
     gate = OAuthGate("https://mcp.example", "adminkey", store=Store(":memory:"))
     reg = gate.register({"redirect_uris": ["https://claude.ai/cb"]})
