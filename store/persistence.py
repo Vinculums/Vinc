@@ -556,8 +556,8 @@ class DurableAck:
     """쓰기 잡의 ACK 경계(VIN-82). 잡 큐의 ``on_before_done`` 이며 **쓰기 스레드에서** 돈다.
 
     이 호출이 돌아와야 그 잡의 DONE·200 이 보이고, 예외면 그 잡은 ERROR 다. 순서:
-    울타리(못 읽으면 닫힌 쪽) → 마지막 게시 뒤로 파일이 그대로면 건너뜀(쓰기가 없던 잡은
-    게시 비용을 물지 않는다) → WAL 만 게시(``dg.publish_wal``) → 거절되면 일관된 전체
+    마지막 게시 뒤로 파일이 그대로면 건너뜀(쓰기가 없던 잡은 게시 비용을 물지 않는다) →
+    울타리(못 읽으면 닫힌 쪽) → WAL 만 게시(``dg.publish_wal``) → 거절되면 일관된 전체
     snapshot 을 새 세대로(``dg.publish``) → 오래된 세대 정리.
 
     게시 실패는 로컬 커밋을 되돌리지 않는다. 응답은 "불확정 커밋"이고 재시도가 안전한지는
@@ -600,9 +600,10 @@ class DurableAck:
                   file=sys.stderr, flush=True)
 
     def _publish(self) -> str:
-        _fence_strict(self.snapshot_path)
+        # 쓰기가 없던 잡은 공유를 한 번도 건드리지 않는다(울타리 읽기도 게시 쪽에만 있다).
         if _fingerprint(self.live_path) == self._published:
             return "unchanged"
+        _fence_strict(self.snapshot_path)
         try:
             record = dg.publish_wal(self.root, self.live_path,
                                     sequence=dg.next_sequence(self.root))
