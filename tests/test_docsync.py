@@ -240,6 +240,43 @@ class DocSyncE2E(unittest.TestCase):
         row = self.B.run("MATCH (d:_DocMeta) WHERE d.doc_id='dL' RETURN d.owner_id AS o")
         self.assertEqual(row[0]["o"], "")
 
+    def test_same_hash_heals_a_broken_local_copy(self):
+        """RV-12 — 해시가 같다고 건너뛰면 로컬의 깨진 사본(꼬리 청크·쓰기 창 표식)이
+        동기화로는 영영 안 낫는다. 같은 본문이면 LWW 와 무관하게 다시 쓰고, 로컬의 제목과
+        시각은 그대로 둔다."""
+        did = ds.put_doc(self.A, owner="user:a", text="원본", title="A 제목",
+                         updated_at="2026-07-24T00:00:00Z")["doc_id"]
+        delta = docsync.export_docs(self.A, owner="user:a")
+        docsync.import_docs(self.B, owner="user:a", payload=delta)
+        self.B.run("MATCH (d:_DocMeta) WHERE d.doc_id = $d SET d.title = 'B 제목', "
+                   "d.updated_at = '2026-07-24T05:00:00Z'", {"d": did})
+        self.B.run("CREATE (c:Chunk {chunk_id:$id, doc_id:$d, owner_id:'user:a', "
+                   "text:'꼬리', source_file:'', chunk_index:1, char_start:9, char_end:11})",
+                   {"id": ds.chunk_id_of(did, 1), "d": did})
+        self.assertFalse(ds.get_doc(self.B, did, owner="user:a")["executed"])
+
+        res = docsync.import_docs(self.B, owner="user:a", payload=delta)
+        self.assertEqual((res["updated"], res["skipped"]), (1, 0), res)
+        got = ds.get_doc(self.B, did, owner="user:a")
+        self.assertTrue(got["verified"], got)
+        self.assertEqual((got["text"], got["title"], got["updated_at"]),
+                         ("원본", "B 제목", "2026-07-24T05:00:00Z"))
+        again = docsync.import_docs(self.B, owner="user:a", payload=delta)
+        self.assertEqual((again["updated"], again["skipped"]), (0, 1))
+
+    def test_metaless_chunks_of_another_owner_are_not_claimed(self):
+        # 로컬에 메타 없이 남은 남의 청크(첫 쓰기가 끊긴 잔해)를 인바운드가 가져가지 않는다.
+        ds.put_doc(self.B, owner="user:x", text="남의 잔해", doc_id="dM", title="t")
+        self.B.run("MATCH (d:_DocMeta) WHERE d.doc_id = 'dM' DELETE d")
+        payload = {"docs": [{"doc_id": "dM", "title": "t", "origin": "",
+                             "content_hash": ds._sha("가져가기"),
+                             "updated_at": "2999-01-01T00:00:00Z", "text": "가져가기"}],
+                   "tombstones": []}
+        res = docsync.import_docs(self.B, owner="user:legit", payload=payload)
+        self.assertEqual(res["applied"], 0, res)
+        rows = self.B.run("MATCH (c:Chunk) WHERE c.doc_id = 'dM' RETURN c.owner_id AS o")
+        self.assertEqual({r["o"] for r in rows}, {"user:x"})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -276,6 +276,23 @@ def _meta(store, doc_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def _live_chunks(store, doc_id: str) -> dict[str, int]:
+    """doc_id 로 살아 있는 Chunk 행 수를 청크의 owner_id 별로 센다('' = 무소유)."""
+    rows = store.run("MATCH (c:Chunk) WHERE c.doc_id = $d "
+                     "RETURN c.owner_id AS o, count(c) AS n", {"d": doc_id}) or []
+    return {str(r.get("o") or ""): int(r.get("n") or 0) for r in rows}
+
+
+def chunks_intact(store, doc_id: str) -> bool:
+    """메타가 있고 살아 있는 청크 행 수가 메타의 `chunk_count` 와 같은가.
+
+    무변경 스킵은 이 조건 위에서만 안전하다. 안 맞는 문서(쓰기 창 표식 -1, 꼬리 청크,
+    빠진 청크)는 get_doc 이 거절하므로 같은 본문 re-put 이 곧 치유다."""
+    meta = _meta(store, doc_id)
+    return meta is not None and \
+        sum(_live_chunks(store, doc_id).values()) == int(meta.get("chunk_count") or 0)
+
+
 # ── 내용 시점(D72) ───────────────────────────────────────────────────────────
 _CONTENT_TIME_RE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
 
@@ -537,6 +554,8 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     base["doc_id"] = doc_id
 
     prev = _meta(store, doc_id)
+    live = _live_chunks(store, doc_id)
+    n_live = sum(live.values())
     # title 은 `content_time` 과 같은 3값이다: **키 부재(None)=기존 보존 · ""=비움 ·
     # 값=설정.** 여태 무조건 SET 이라 본문만 재전송한 호출이 제목을 빈 문자열로 덮었고,
     # 그 덮임이 아래 skip 비교("해시와 제목이 둘 다 같을 때만 skip")를 어긋내
@@ -544,21 +563,26 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     # 노드 쪽은 `fragment._KEPT_FIELDS` 로 같은 수술이 끝나 있었고 문서 쪽만 남아 있었다.
     kept_title = title if title is not None else str((prev or {}).get("title") or "")
     kept_origin = origin if origin is not None else str((prev or {}).get("origin") or "")
+    # 소유의 정본은 메타다. 메타 없이 남은 청크(첫 쓰기가 ③ 전에 끊긴 잔해)는 청크의
+    # owner_id 가 유일한 근거라, 하나라도 남의 것(무소유 포함)이면 지우지도 덮지도
+    # 않는다 — 아래 MERGE 가 남의 청크 owner_id 를 덮어쓰던 길이다(RV-12).
+    seat_owner = (prev.get("owner_id") or "") if prev is not None else None
+    if (seat_owner is not None and seat_owner != owner) or \
+            (seat_owner is None and any(o != owner for o in live)):
+        # 거절은 그대로다(덮어쓰지도 만들지도 않는다). 문구만 소유자를 밝히지
+        # 않는다 — doc_id 는 허브 전체가 한 이름공간이라 이 id 는 쓸 수 없다는
+        # 것까지만 말한다(vinc_ingest 의 id_conflicts 와 같은 대접)(SEC-1).
+        # 빈 owner(레거시 무소유)도 남의 것으로 본다 — 열어 두면 재-put 한 번으로
+        # 본문 교체와 소유 획득이 된다(VIN-226). 근거: [[vinc.canon.chunk-ssot §4.2]]
+        base["error"] = ("doc_id unavailable: this id cannot be written from this "
+                         "account; choose a different doc_id")
+        return base
     if prev is not None:
-        if (prev.get("owner_id") or "") != owner:
-            # 거절은 그대로다(덮어쓰지도 만들지도 않는다). 문구만 소유자를 밝히지
-            # 않는다 — doc_id 는 허브 전체가 한 이름공간이라 이 id 는 쓸 수 없다는
-            # 것까지만 말한다(vinc_ingest 의 id_conflicts 와 같은 대접)(SEC-1).
-            # 빈 owner(레거시 무소유)도 남의 것으로 본다 — 열어 두면 재-put 한 번으로
-            # 본문 교체와 소유 획득이 된다(VIN-226). 근거: [[vinc.canon.chunk-ssot §4.2]]
-            base["error"] = ("doc_id unavailable: this id cannot be written from this "
-                             "account; choose a different doc_id")
-            return base
-        # `chunk_count < 0` 은 아래 ⓪ 이 찍고 크래시가 남긴 **쓰기 창 표식**이다. 그
-        # 문서는 지금 읽히지 않으므로 무변경이라도 스킵하면 안 된다 — 스킵하면 표식이
-        # 남은 채 `executed:true`(chunks:-1)가 나가고 그 문서는 영영 안 읽힌다.
+        # 무변경 스킵은 살아 있는 행 수가 `chunk_count` 와 같을 때만이다. 쓰기 창 표식
+        # (-1, 아래 ⓪)·꼬리 청크·빠진 청크가 남은 문서는 get_doc 이 거절하는데, 스킵하면
+        # 같은 본문 re-put 이 성공을 답한 채 그 문서가 영영 안 읽힌다(RV-12).
         if prev.get("content_hash") == content_hash and prev.get("title") == kept_title \
-                and int(prev.get("chunk_count") or 0) >= 0:
+                and n_live == int(prev.get("chunk_count") or 0):
             if origin is not None and origin != str(prev.get("origin") or ""):
                 # 출처만 바뀌면 원문 청크와 임베딩을 다시 만들 필요가 없다. 쓰기 창
                 # 표식은 청크·메타 사이에서 끊겨도 다음 re-put 이 복구하게 한다.
@@ -603,8 +627,9 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                                                     title=kept_title)
             return base
 
-    # 청크는 언제나 쓰고, 옛 문서면 자식 벡터도 지운다 — 그 표에 잔해가 있으면 멈춘다.
-    refusal = _remnant_refusal(store, vectors=prev is not None)
+    # 청크는 언제나 쓰고, 지울 옛 행이 있으면 자식 벡터도 지운다 — 그 표에 잔해가 있으면 멈춘다.
+    wipe = prev is not None or n_live > 0
+    refusal = _remnant_refusal(store, vectors=wipe)
     if refusal:
         base["error"] = refusal
         return base
@@ -619,7 +644,9 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     # ① 구 청크 삭제(재청킹으로 개수가 줄어도 고아가 남지 않게 — 부착 MENTIONS 도
     #    DETACH 로 함께 소멸). ② 신 청크 기록. ③ 메타(해시) 기록 — 이 순서가
     # 중간 크래시 자기치유의 근거다(모듈 독스트링).
-    removed = 0
+    # ① 은 메타 유무와 무관하다: 메타 없이 남은 청크(첫 쓰기가 ③ 전에 끊긴 잔해)를
+    # 안 지우면 더 짧은 re-put 이 꼬리 청크를 남긴다(RV-12). 남의 행은 위에서 거절됐다.
+    removed = n_live
     if prev is not None:
         # ⓪ 창 표식. ①②를 도는 동안 메타는 아직 **옛** chunk_count 를 들고 있어서,
         #    청크가 **늘어나는** re-put 은 살아 있는 행 수가 0→새 수 를 훑으며 옛 수와
@@ -634,9 +661,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         #    re-put 이 표식을 남긴 채 성공을 답해 그 문서가 영영 안 읽힌다.
         store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id SET d.chunk_count = -1",
                   {"id": doc_id})
-        cnt = store.run("MATCH (c:Chunk) WHERE c.doc_id = $d RETURN count(c) AS c",
-                        {"d": doc_id})
-        removed = int(cnt[0].get("c")) if cnt else 0
+    if wipe:
         # 자식 벡터(v8)도 함께 — 재청킹으로 청크가 줄면 옛 자식이 없는 부모를 가리켜
         # 고아가 된다. 새 벡터는 워커가 apply_embeddings 로 다시 만든다.
         store.run("MATCH (v:ChunkVec) WHERE v.doc_id = $d DETACH DELETE v", {"d": doc_id})
@@ -974,8 +999,13 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
     if meta is not None and owner is not None and meta.get("owner_id") != owner:
         # 거절은 그대로, 답은 없는 문서와 같게(SEC-1) — 아무것도 지우지 않는다.
         return _nothing_deleted(base, store, doc_id, owner)
-    cnt = store.run("MATCH (c:Chunk) WHERE c.doc_id = $d RETURN count(c) AS c",
-                    {"d": doc_id})
+    # 메타가 없으면 소유의 근거는 청크의 owner_id 뿐이다 — owner 를 준 삭제는 자기 청크만
+    # 지운다. 안 그러면 남이 첫 쓰기에서 끊긴 잔해를 id 하나로 지울 수 있다(RV-12).
+    scoped = meta is None and owner is not None
+    params = {"d": doc_id, "o": owner} if scoped else {"d": doc_id}
+    cwhere = "c.doc_id = $d" + (" AND c.owner_id = $o" if scoped else "")
+    vwhere = "v.doc_id = $d" + (" AND v.owner_id = $o" if scoped else "")
+    cnt = store.run(f"MATCH (c:Chunk) WHERE {cwhere} RETURN count(c) AS c", params)
     n = int(cnt[0].get("c")) if cnt else 0
     if n:
         refusal = _remnant_refusal(store)       # 아래 두 삭제가 잔해 표를 친다
@@ -991,9 +1021,9 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
         # n→0 으로 한 번에 떨어지고, 중간 값이 없으니 메타의 n 과 항상 어긋난다
         # (get_doc 이 그 어긋남으로 거절한다). 이 줄을 청크별 루프로 바꾸면 그 보장이
         # 깨지므로, 그때는 put_doc 처럼 표식을 찍어야 한다.
-        store.run("MATCH (v:ChunkVec) WHERE v.doc_id = $d DETACH DELETE v", {"d": doc_id})
+        store.run(f"MATCH (v:ChunkVec) WHERE {vwhere} DETACH DELETE v", params)
         _with_fts_repair(store, lambda: store.run(
-            "MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": doc_id}))
+            f"MATCH (c:Chunk) WHERE {cwhere} DETACH DELETE c", params))
     owner_id = (meta or {}).get("owner_id") or owner or ""
     if meta is not None:
         store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id DELETE d", {"id": doc_id})
