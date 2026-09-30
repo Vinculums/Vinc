@@ -278,6 +278,17 @@ class MirrorStore(unittest.TestCase):
         finally:
             view.close()
 
+    def test_a_lone_semantic_hit_is_asked_back_not_resolved(self):
+        """RV-10 판정: 풀에 의미 팔이 올린 노드 하나만 남아도 확정하지 않는다. 어휘가
+        하나도 안 겹쳤다는 것은 "관련 있다"일 뿐이다. 그 한 후보를 싣고 되묻는다.
+        근거: [[vinc.plan.rag-code-review-fixes-2026-09-29 §7]]"""
+        out = q.brief("nothing shares a word with this", owner=self.OWNER,
+                      query_embedding=_vec(1, 0), store=self.store)
+        self.assertEqual(out["status"], "choose", out.get("node"))
+        self.assertNotIn("node", out)
+        self.assertEqual([(c["id"], c["hit_tokens"]) for c in out["candidates"]],
+                         [("concept:mine", 0)])
+
     def test_search_uses_it_when_the_flag_is_on(self):
         os.environ["VINC_NODE_SEMANTIC_ARM"] = "on"
         try:

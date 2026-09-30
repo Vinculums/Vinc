@@ -46,10 +46,32 @@ class ResolveTests(unittest.TestCase):
         # 이름을 댄 경우다 — 점수가 낮아도 제목 완전일치가 이긴다.
         self.assertEqual((status, picked[0]["id"]), ("resolved", "concept:a"))
 
-    def test_후보가_하나면_확정이다(self):
-        hits = [{"id": "concept:a", "title": "alpha", "hit_tokens": 0, "title_tokens": 0}]
+    def test_토큰이_맞은_단독_후보는_확정이다(self):
+        hits = [{"id": "concept:a", "title": "alpha", "hit_tokens": 1, "title_tokens": 1}]
         status, picked = q._brief_resolve("무엇이든", hits)
         self.assertEqual((status, picked[0]["id"]), ("resolved", "concept:a"))
+
+    def test_토큰이_하나도_안_맞은_단독_후보는_되묻는다(self):
+        """⚠ 뒤집힌 검사다. 전에는 후보가 하나면 hit_tokens 0 이어도 확정이었다 — 의미·
+        그래프 팔만 올린 노드가 풀에 혼자 남으면 "이것을 물었다"로 답했다. 판정(RV-10):
+        그 한 후보를 싣고 되묻는다. 근거: [[vinc.plan.rag-code-review-fixes-2026-09-29 §7]]"""
+        hits = [{"id": "concept:a", "title": "alpha", "hit_tokens": 0, "title_tokens": 0,
+                 "arms": ["semantic"]}]
+        status, picked = q._brief_resolve("무엇이든", hits)
+        self.assertEqual((status, [h["id"] for h in picked]), ("choose", ["concept:a"]))
+
+    def test_같은_제목이_둘이면_되묻는다(self):
+        """이름을 댔는데 그 이름이 둘이다(doc 미러 제목 충돌). 앞의 것으로 확정하면
+        어느 쪽이 앞에 왔느냐가 답을 정한다."""
+        hits = [{"id": "concept:doc.alpha", "title": "Alpha", "hit_tokens": 1,
+                 "title_tokens": 1},
+                {"id": "concept:alpha", "title": "alpha", "hit_tokens": 1,
+                 "title_tokens": 1},
+                {"id": "concept:beta", "title": "alpha beta", "hit_tokens": 1,
+                 "title_tokens": 1}]
+        status, picked = q._brief_resolve("alpha", hits)
+        self.assertEqual(status, "choose")
+        self.assertEqual([h["id"] for h in picked], ["concept:doc.alpha", "concept:alpha"])
 
     def test_동점이면_추측하지_않고_되묻는다(self):
         """이 갈래가 없던 시절 이 표면은 후보를 id 알파벳순으로 집어 질문과 무관한
@@ -353,6 +375,20 @@ class BriefE2E(unittest.TestCase):
         self.assertEqual({c["id"] for c in out["candidates"]},
                          {"concept:alpha-core", "concept:alpha-edge"})
         self.assertNotIn("node", out)
+
+    def test_같은_제목이_둘이면_이름을_대도_되묻는다(self):
+        """RV-10. doc 미러가 주제 개념의 제목을 글자 그대로 물려받으면 같은 제목이 둘이
+        된다. 전에는 id 순서로 앞선 쪽을 확정했다. 둘 다 후보 맨 앞에 서야 한다."""
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:doc.alpha-core", "type": "concept", "title": "alpha core",
+             "domain": "eng"}]}, store=self.store)
+        out = self._brief("alpha core")
+        self.assertEqual(out["status"], "choose", out.get("node"))
+        self.assertNotIn("node", out)
+        self.assertEqual({c["id"] for c in out["candidates"][:2]},
+                         {"concept:alpha-core", "concept:doc.alpha-core"})
+        # 나머지 풀도 뒤에 실린다 — 이름이 둘이라고 목록이 둘로 줄지 않는다.
+        self.assertIn("concept:alpha-edge", [c["id"] for c in out["candidates"]])
 
     def test_맞는_것이_없으면_없다고_말한다(self):
         out = self._brief("존재하지않는질문어휘")
