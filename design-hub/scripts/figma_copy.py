@@ -338,7 +338,7 @@ def main(argv: list[str] | None = None) -> int:
         ap.print_help()
         return 2
     # ⚠ Git Bash 의 MSYS 경로 변환이 `/download/` 를 `D:/git/download/` 로 바꿔치기한다
-    # (CLAUDE.md §5 의 그 함정). 그래서 슬래시 없는 이름도 받고, 받은 값의 마지막
+    # ([[vinc.manual.platform]] §2 의 그 함정). 그래서 슬래시 없는 이름도 받고, 받은 값의 마지막
     # 두 조각만 보고 라우트를 되찾는다.
     want = a.emit.strip().rstrip("/").split("/")
     route = None
