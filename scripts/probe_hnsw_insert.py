@@ -175,7 +175,8 @@ class Probe:
     def finish(self) -> dict:
         """증분으로 유지된 색인과 새로 세운 색인의 recall 을 같은 질의로 견준다."""
         out = dict(self.st, vectors=len(self.truth))
-        out["recall_incremental"] = round(self.recall(self.queries), 4)
+        if not self.s._vec_index_dropped:      # 드롭 모드(대조군)에는 증분 색인이 없다
+            out["recall_incremental"] = round(self.recall(self.queries), 4)
         t0 = time.monotonic()
         self.s.drop_vector_index()
         self.s.ensure_search_indexes(dim=self.dim)

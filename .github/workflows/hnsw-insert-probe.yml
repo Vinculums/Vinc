@@ -2,6 +2,7 @@
 # 스크립트 정본은 scripts/probe_hnsw_insert.py. 허브와 같은 조합(linux x86_64 · ladybug
 # 0.20.4 · 확장 v0.20.0 · 1024차원)과 옛 판(0.18.0)을 같은 스크립트로 잰다.
 #
+# 3회차: 2회차(런 36717704826)의 crashctl 검사가 프로브 버그(드롭된 색인을 질의)로 끝나 그것만 다시 돈다.
 # 2회차: 1회차(런 36715816627)에서 0.20.4 의 interleave 만 10 중 6 이 죽었다. 그 짝을
 # 가르는 대조(체크포인트 끔 · 리더 직렬화 · 삽입 없는 새 색인)와, 허브처럼 WAL 관용 재생을
 # 켠 kill -9, 그리고 1코어 재빌드 시간을 잰다.
@@ -17,11 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {name: overlap, scenarios: "interleave,interleave_nockpt", trials: "10", tolerant: "", cpus: ""}
-          - {name: controls, scenarios: "serial,ckptread", trials: "10", tolerant: "", cpus: ""}
-          - {name: crash, scenarios: "crash,crashctl", trials: "10", tolerant: "on", cpus: ""}
-          - {name: rebuild-1cpu, scenarios: "rebuild", trials: "2", tolerant: "", cpus: "0"}
-          - {name: rebuild-2cpu, scenarios: "rebuild", trials: "2", tolerant: "", cpus: "0,1"}
+          - {name: crashctl, scenarios: "crashctl", trials: "10", tolerant: "on", cpus: ""}
     runs-on: ubuntu-latest
     timeout-minutes: 100
     env:
