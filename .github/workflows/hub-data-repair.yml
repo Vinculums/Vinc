@@ -1,0 +1,229 @@
+# 허브 데이터 수리 — RAG 코드 리뷰 센서스가 허브에서 센 것 셋(소프트 재큐 · 고아 벡터 ·
+# 멈춘 쓰기 창)을 스냅샷 사본에서 고치고(measure), 허브를 그 사본으로 갈아탄다(apply).
+# 수리 판정과 불변식은 `scripts/repair_hub_store.py` 머리주석이 정본이다(여기 옮겨 적지 않는다).
+# 근거: [[vinc.plan.rag-code-review-fixes-2026-09-29]]
+#
+# 모양은 hub-store-rebuild.yml 그대로다. measure 는 무중단이다: 공유 스냅샷 사본을 받아
+# 러너에서 고치고 전후 수를 artifact 로 남긴다. 허브도 볼륨도 건드리지 않는다.
+# apply 는 허브를 내리고(쓰기가 사본 뒤로 새지 않게) → 스냅샷 → 수리 → 새 파일 업로드 →
+# VINC_DATA_DIR 교체 → 탐침 순서다. **원본 파일은 그대로 둔다** — 롤백은 VINC_DATA_DIR 을
+# 되돌리는 것이다. 중단 시간을 가늠하려면 measure 의 `repair_seconds` 와 이 잡의 다운로드·
+# 업로드 스텝 시간을 더할 것.
+#
+# ⚠ 로그는 공유된다. 스크립트는 수만 찍는다(문서 id·제목·소유자 없음).
+# ⚠ 자동으로 돌지 않는다. apply 는 확인 문자열을 요구하고 허브를 몇 분 내린다.
+name: hub-data-repair
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "measure = 사본에서 수리·검사만(무중단) · apply = 허브를 내리고 수리본으로 갈아탄다(중단)"
+        type: choice
+        options: [measure, apply]
+        default: measure
+      repairs:
+        description: "쉼표로 고른다: requeue,orphans,stuck (기본 셋 다)"
+        type: string
+        default: "requeue,orphans,stuck"
+      confirm:
+        description: "apply 일 때만: 정확히 REPAIR 라고 적을 것"
+        type: string
+        default: ""
+# hub-deploy 와 같은 줄에 선다 — 수리 도중 배포가 끼어들면 내려 둔 허브가 다시 뜨고
+# 두 리비전이 겹친다.
+concurrency:
+  group: hub-deploy
+  cancel-in-progress: false
+permissions:
+  id-token: write
+  contents: read
+env:
+  APP: "--name vinc-hub -g vincsRG"
+  ACCOUNT: vincstorage01
+  SHARE: hub-data
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      # 입력은 env 로 넘긴다 — 문자열 입력을 셸 본문에 바로 끼우면 그 값이 명령이 된다.
+      - name: Guard
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "apply" ] && [ "$CONFIRM" != "REPAIR" ]; then
+            echo "::error::apply 하려면 confirm 에 REPAIR 를 적을 것" >&2
+            exit 1
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # ci.yml 과 같은 목록. 여기서 빠지면 스토어를 못 연다.
+      - run: pip install ladybug==0.20.4 argon2-cffi pyyaml pypdf
+      - name: Azure 프로필을 이 잡 전용으로
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Azure Files 데이터 평면은 계정 키나 SAS 만 받는다(pk-migrate.yml 과 같은 이유).
+      - name: Storage key
+        run: |
+          set -euo pipefail
+          if ! key=$(az storage account keys list -n "$ACCOUNT" -g vincsRG \
+                     --query "[0].value" -o tsv 2>/dev/null) || [ -z "$key" ]; then
+            echo "::error::스토리지 계정 키를 못 읽는다 — 배포 주체에 listKeys 권한이 없다." >&2
+            exit 1
+          fi
+          echo "::add-mask::$key"
+          echo "AZ_KEY=$key" >> "$GITHUB_ENV"
+
+      # 원본 이름을 적어 두지 않고 **지금 허브가 쓰는 것**을 읽는다. 하드코딩한 이름이
+      # 라이브와 어긋나면 엉뚱한 파일을 고치고 그것으로 갈아탄다.
+      - name: Resolve the live store
+        run: |
+          set -euo pipefail
+          env_of() {
+            az containerapp show $APP \
+              --query "properties.template.containers[0].env[?name=='$1'].value | [0]" -o tsv
+          }
+          dir=$(env_of VINC_DATA_DIR)
+          case "$dir" in
+            /data/*) ;;
+            *) echo "::error::VINC_DATA_DIR 이 /data 아래가 아니다: '$dir'" >&2; exit 1 ;;
+          esac
+          src=${dir#/data/}
+          case "$src" in ""|*/*|*..*) echo "::error::원본 파일명이 이상하다: '$src'" >&2; exit 1 ;; esac
+          dst="db.repaired-$(date -u +%Y%m%d%H%M)"
+          pkns=$(env_of VINC_PK_NAMESPACED)
+          echo "SRC=$src" >> "$GITHUB_ENV"
+          echo "DST=$dst" >> "$GITHUB_ENV"
+          # 허브와 같은 키 규약으로 연다(스크립트는 키를 저장값 그대로 읽어 어느 쪽이든 같다).
+          echo "VINC_PK_NAMESPACED=${pkns:-off}" >> "$GITHUB_ENV"
+          echo "원본 /data/$src → 수리본 /data/$dst (VINC_PK_NAMESPACED=${pkns:-off})"
+
+      # ── apply 전용: 허브를 먼저 내린다 ──────────────────────────────────────
+      # 수리본은 스냅샷 시점의 사본이다. 허브가 떠 있으면 그 뒤의 쓰기가 갈아타는
+      # 순간 사라진다. 내리면 사이드카가 마지막 스냅샷을 볼륨에 남긴다.
+      - name: Stop the hub
+        if: inputs.mode == 'apply'
+        run: |
+          set -euo pipefail
+          actives=$(az containerapp revision list $APP --query "[?properties.active].name" -o tsv)
+          for rev in $actives; do
+            echo "deactivating: $rev"
+            az containerapp revision deactivate $APP --revision "$rev" --output none
+          done
+          echo "STOPPED_REVS=$(echo $actives)" >> "$GITHUB_ENV"
+          # 활성 플래그가 아니라 **살아 있는 레플리카**를 기다린다(hub-deploy 와 같은 이유).
+          gone=0
+          for i in $(seq 1 20); do
+            act=$(az containerapp revision list $APP --query "[?properties.active] | length(@)" -o tsv)
+            reps=$(az containerapp revision list $APP --query "[].properties.replicas" -o tsv 2>/dev/null \
+                   | awk 'BEGIN{s=0} /^[0-9]+$/{s+=$1} END{print s}')
+            echo "  active=$act replicas=$reps"
+            if [ "$act" = "0" ] && [ "$reps" = "0" ]; then gone=1; break; fi
+            sleep 10
+          done
+          [ "$gone" = "1" ] || { echo "::error::레플리카가 사라지지 않았다 — 수리를 시작하지 않는다." >&2; exit 1; }
+          sleep 10
+          echo "레플리카 0 확인"
+
+      # 스냅샷을 뜨고 거기서 받는다 — 라이브 파일은 SMB 잠금으로 복사가 거절되고,
+      # SMB 위에서 임베디드 DB 를 직접 여는 것이 하드다운 4회의 공통 원인이었다.
+      - name: Snapshot and download
+        run: |
+          set -euo pipefail
+          snap=$(az storage share snapshot --name "$SHARE" \
+                 --account-name "$ACCOUNT" --account-key "$AZ_KEY" \
+                 --query snapshot -o tsv)
+          echo "snapshot: $snap"
+          mkdir -p work
+          az storage file download --share-name "$SHARE" --path "$SRC" --dest "work/$SRC" \
+            --snapshot "$snap" --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none
+          if az storage file download --share-name "$SHARE" --path "$SRC.wal" --dest "work/$SRC.wal" \
+             --snapshot "$snap" --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none 2>/dev/null; then
+            echo "WAL 동봉"
+          else
+            echo "WAL 없음"
+          fi
+          # 0 바이트를 올린 적이 있다 — 받은 크기를 본다.
+          ls -la work
+          [ -s "work/$SRC" ] || { echo "::error::받은 원본이 비었다" >&2; exit 1; }
+
+      # measure 와 apply 가 같은 수리를 돈다. 불변식이 하나라도 어긋나면 스크립트가 대상을
+      # 지우고 1로 끝나므로 반쯤 고친 파일은 올라가지 않는다.
+      - name: Repair and check
+        env:
+          REPAIRS: ${{ inputs.repairs }}
+        run: |
+          set -euo pipefail
+          # 확장(FTS·벡터)은 리포에 번들된 것을 명시 경로로 싣는다 — 러너에는 설치본이 없어
+          # 이름으로는 못 싣는다(restore-rehearsal.yml 과 같은 설정).
+          export VINC_LBUG_EXT_DIR="$GITHUB_WORKSPACE/packaging/lbug_extensions"
+          python -X utf8 scripts/repair_hub_store.py --data "work/$SRC" --out "work/$DST" \
+            --repairs "$REPAIRS" | tee work/repair.json
+
+      - name: Upload the repaired store
+        if: inputs.mode == 'apply'
+        run: |
+          set -euo pipefail
+          az storage file upload --share-name "$SHARE" --source "work/$DST" --path "$DST" \
+            --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none
+          remote=$(az storage file show --share-name "$SHARE" --path "$DST" \
+                   --account-name "$ACCOUNT" --account-key "$AZ_KEY" \
+                   --query properties.contentLength -o tsv)
+          local=$(stat -c %s "work/$DST")
+          echo "올린 크기 $remote / 로컬 $local"
+          [ "$remote" = "$local" ] || { echo "::error::올린 크기가 다르다 — 갈아타지 않는다(허브는 내려가 있다. 되살리려면 이전 리비전을 다시 활성화할 것)" >&2; exit 1; }
+
+      - name: Switch the hub over
+        if: inputs.mode == 'apply'
+        run: |
+          set -euo pipefail
+          if ! az containerapp update $APP --set-env-vars "VINC_DATA_DIR=/data/$DST" --output none; then
+            echo "::error::env 교체 실패 — **허브는 지금 내려가 있다.** 원본 /data/$SRC 는 그대로다." >&2
+            prev=$(echo "${STOPPED_REVS:-}" | awk '{print $NF}')
+            echo "되살리려면: az containerapp revision activate -n vinc-hub -g vincsRG --revision $prev" >&2
+            exit 1
+          fi
+          latest=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
+          echo "latest revision: $latest"
+          for i in $(seq 1 30); do
+            st=$(az containerapp revision show $APP --revision "$latest" \
+                 --query "properties.runningState" -o tsv 2>/dev/null || echo "?")
+            echo "  state: $st"
+            case "$st" in Running|RunningAtMaxScale) exit 0 ;; esac
+            sleep 15
+          done
+          echo "::error::새 리비전이 기동하지 못했다 — 허브는 내려가 있다. 되돌리려면 VINC_DATA_DIR 을 /data/$SRC 로 되돌릴 것." >&2
+          exit 1
+
+      # 살아 있음이 아니라 기능을 본다 — /health 200 은 빈 스토어도 준다.
+      - name: Probe
+        if: inputs.mode == 'apply'
+        run: |
+          set -euo pipefail
+          out=$(curl -sf https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
+            -X POST -H "Authorization: Bearer ${{ secrets.VINC_MCP_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+          echo "${out:0:400}"
+          echo
+          case "$out" in
+            *'"tools"'*) echo "tools/list 응답에 도구 목록이 있다" ;;
+            *) echo "::error::허브가 응답했으나 tools/list 에 도구 목록이 없다" >&2; exit 1 ;;
+          esac
+          echo "⚠ 완료 판정은 이것이 아니다 — 의미 검색이 두 팔로 답하는지(arms fts+vector) 한 번 보고,"
+          echo "  재큐했다면 워커가 pending 을 줄여 가는지(/health 의 embed) 볼 것."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hub-data-repair-${{ inputs.mode }}
+          path: work/*.json
