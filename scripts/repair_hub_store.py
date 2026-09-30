@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""허브 스토어 **사본**의 데이터 수리 넷 — 키 모양 · 소프트 재큐 · 고아 벡터 · 멈춘 쓰기 창.
+"""허브 스토어 **사본**의 데이터 수리 — 키 모양 · 도장 · 재큐 되돌리기 · 소프트 재큐 · 고아 벡터 ·
+멈춘 쓰기 창.
 
 RAG 코드 리뷰 센서스(restore-rehearsal, `restore_rehearsal_check.rag_census`)가 허브에서
 센 것을 고친다. 그것을 만든 코드 결함은 이미 고쳐 배포됐고 이것은 **남은 데이터**만 만진다.
 근거: [[vinc.plan.rag-code-review-fixes-2026-09-29]]
 
-순서는 keyform → requeue → orphans → stuck 이다(키를 먼저 고쳐야 재큐가 붙은 청크를 덮는다).
+도는 순서는 keyform → stamp → unrequeue → requeue → orphans → stuck 으로 고정이다(고른 것만
+돈다. 키를 먼저 고쳐야 뒤 단계가 붙은 청크를 본다). 기본은 stamp,unrequeue 이고, requeue 와
+unrequeue 는 서로를 되돌리므로 함께 고르면 거절한다.
+
+  stamp     도장(encoder_runtime) 없는 ChunkVec·NodeVec 에 허브 인코더의 지금 지문을 찍는다.
+            값은 `Dockerfile.hub` 의 고정 판으로 짓는다(`hub_runtime`). 벡터는 그대로다.
+  unrequeue 전 청크가 같은 소유자·저장값 조인으로 벡터를 가졌고 그 벡터가 전부 지금 도장인
+            문서만 needs_embed=0. 벡터가 하나라도 빠진 문서는 pending 으로 남긴다.
 
   keyform  청크는 물리 키(owner U+001F id)·그 벡터는 논리 키인 쌍의 청크를 논리 키로 다시
            세운다. 벡터는 이미 논리 id 라 재임베딩 없이 저장값 조인에 붙는다. 대상은 그
@@ -59,14 +67,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from api import docstore                                  # noqa: E402
+from api import docstore, encoder_runtime                 # noqa: E402
 from store import pkns                                    # noqa: E402
 from store.embedded_schema import node_table_specs, rel_tables_on  # noqa: E402
 
 from rebuild_store_native import _files, _open            # noqa: E402
 from restore_rehearsal_check import rag_census            # noqa: E402
 
-REPAIRS = ("keyform", "requeue", "orphans", "stuck")
+REPAIRS = ("keyform", "stamp", "unrequeue", "requeue", "orphans", "stuck")
+#: 워크플로 입력의 기본값과 같다(2026-09-30 재큐를 되돌리는 실행 모양).
+DEFAULT_REPAIRS = ("stamp", "unrequeue")
 _BATCH = 500
 
 
@@ -302,6 +312,21 @@ def _keyform_plan(s) -> dict:
     return plan
 
 
+def _fts_probe(s, pairs) -> tuple[int, int]:
+    """FTS 가 청크를 찾는가 — 청크 본문의 낱말로 그 문서 안에서 찾아 본다. (물어본 수, 찾은 수)."""
+    probed = found = 0
+    for cid, doc in pairs:
+        text = (s.run("MATCH (c:Chunk) WHERE c.chunk_id = $id RETURN c.text AS t",
+                      {"id": cid}, raw=True) or [{}])[0].get("t") or ""
+        words = re.findall(r"\w{3,}", text)[:8]
+        if not words:
+            continue
+        probed += 1
+        hits = s.fulltext_search(" ".join(words), 200, {"doc_id": doc})
+        found += any(pkns.strip(h.get("id") or "") == pkns.strip(cid) for h in hits)
+    return probed, found
+
+
 def _edges(s, cid: str) -> int:
     rows = s.run("MATCH (c:Chunk)-[r]-() WHERE c.chunk_id = $id RETURN count(r) AS n",
                  {"id": cid}, raw=True) or []
@@ -378,17 +403,7 @@ def keyform(s) -> tuple[dict, list[str]]:
     for c in _chunks(s):
         if c["doc"] in docs:
             per_doc.setdefault(c["doc"], []).append(c["cid"])
-    # FTS 가 새 키로 바뀐 청크를 찾는가 — 그 청크 본문의 낱말로 그 문서 안에서 찾아 본다.
-    probed = found = 0
-    for new, doc in done:
-        text = (s.run("MATCH (c:Chunk) WHERE c.chunk_id = $id RETURN c.text AS t",
-                      {"id": new}, raw=True) or [{}])[0].get("t") or ""
-        words = re.findall(r"\w{3,}", text)[:8]
-        if not words:
-            continue
-        probed += 1
-        hits = s.fulltext_search(" ".join(words), 200, {"doc_id": doc})
-        found += any(pkns.strip(h.get("id") or "") == new for h in hits)
+    probed, found = _fts_probe(s, done)
     out.update(after=after, rewritten=len(done), docs_rewritten=len(docs),
                docs_fully_joined=sum(1 for ids in per_doc.values()
                                      if all(i in joined for i in ids)),
@@ -417,7 +432,175 @@ def keyform(s) -> tuple[dict, list[str]]:
     return out, problems
 
 
-_RUN = {"keyform": keyform, "requeue": requeue, "orphans": orphans, "stuck": stuck}
+#: 허브 이미지(사이드카·vinc-encode 가 같은 이미지로 뜬다)의 설치 줄 — 인코더 판의 정본.
+_DOCKERFILE = Path(__file__).resolve().parents[1] / "Dockerfile.hub"
+_VEC_TABLES = ("ChunkVec", "NodeVec")
+
+
+def hub_runtime() -> str:
+    """허브 인코더가 보고하는 지문을 이미지의 고정 판으로 짓는다.
+
+    허브에서는 `api.encoder_runtime.fingerprint()` 가 설치된 판을 읽는다. 여기(러너)에는 그
+    판이 없으므로 같은 모양(`ort=…;tok=…;np=…`, 같은 라벨·순서)을 `Dockerfile.hub` 의 고정
+    판에서 짓는다. 하나라도 고정이 없으면 던진다 — 추측한 도장은 도장이 아니다."""
+    lines = [ln for ln in _DOCKERFILE.read_text(encoding="utf-8").splitlines()
+             if ln.startswith("RUN pip install") and "onnxruntime" in ln]
+    if len(lines) != 1:
+        raise ValueError(f"Dockerfile.hub 에 onnxruntime 설치 줄이 {len(lines)}개다")
+    pins = dict(re.findall(r"(?<![\w-])([A-Za-z][\w.-]*)==(\d[\w.]*)", lines[0]))
+    parts = []
+    for package, label in encoder_runtime._PACKAGES:
+        if package not in pins:
+            raise ValueError(f"Dockerfile.hub 가 {package} 의 판을 고정하지 않는다")
+        parts.append(f"{label}={pins[package]}")
+    return ";".join(parts)
+
+
+def _runtimes(s) -> dict[str, dict[str, int]]:
+    """벡터 표별 도장 분포(도장 → 행 수). 도장은 판 문자열이라 싣는다('' = 도장 없음)."""
+    out = {}
+    for table in _VEC_TABLES:
+        rows = s.run(f"MATCH (v:{table}) RETURN coalesce(v.encoder_runtime, '') AS r, "
+                     "count(v) AS n", raw=True) or []
+        out[table] = {str(r["r"]): int(r["n"]) for r in rows}
+    return out
+
+
+def _vector_probe(s, per_table: int = 20) -> dict[str, dict[str, int]]:
+    """HNSW 가 제 행을 찾는가 — 표마다 고르게 뽑은 행의 벡터로 그 표의 색인을 되묻는다."""
+    out = {}
+    for table, index in (("ChunkVec", s._VEC_INDEX), ("NodeVec", s._NODE_VEC_INDEX)):
+        ids = [r["id"] for r in s.run(f"MATCH (v:{table}) RETURN v.vec_id AS id "
+                                      "ORDER BY v.vec_id", raw=True) or []]
+        step = max(1, len(ids) // per_table)
+        probed = found = 0
+        for vid in ids[::step][:per_table]:
+            emb = s.run(f"MATCH (v:{table}) WHERE v.vec_id = $id RETURN v.embedding AS e",
+                        {"id": vid}, raw=True)[0]["e"]
+            probed += 1
+            try:
+                hits = s.run(f"CALL QUERY_VECTOR_INDEX('{table}', '{index}', $emb, 50) "
+                             "RETURN node.vec_id AS id", {"emb": list(emb)}, raw=True) or []
+            except Exception:                     # noqa: BLE001 — 색인 없음도 '못 찾음'이다
+                hits = []
+            found += any(h.get("id") == vid for h in hits)
+        out[table] = {"probed": probed, "found": found}
+    return out
+
+
+def stamp(s) -> tuple[dict, list[str]]:
+    """도장 없는 벡터(ChunkVec·NodeVec)에 허브 인코더의 지금 지문을 찍는다. 벡터 값은 그대로다.
+
+    ⚠ 이 도장은 **추정**이다: 도장이 없는 벡터가 어느 판에서 나왔는지는 벡터에 안 남는다.
+    허브 이미지는 2026-09-10 부터 onnxruntime 1.30.0 이고 09-11 전량 재인코딩이 그 이미지에서
+    돌았으며 판은 그 뒤로 고정이다 — 그래서 없는 도장 = 지금 판으로 본다. 다른 도장이 이미
+    찍힌 벡터는 건드리지 않는다.
+    근거: [[record:the-hub-encodes-queries-and-vectors-with-onnxruntime-1-30-since-2026-09-10]]
+
+    SET 은 색인이 걸린 열(embedding)이 아니라 문자열 열 하나라 HNSW 삽입이 아니다 — 색인을
+    내리지 않는다. 잔해 위에서는 어떤 SET 도 세그폴트이므로 기동 수리를 먼저 돌리고, 대신
+    SET 앞뒤로 색인이 제 행을 찾는지 되묻는다(`_vector_probe`). 줄면 1."""
+    value = hub_runtime()
+    before, rt_before = measure(s), _runtimes(s)
+    out: dict = {"value": value, "source": "Dockerfile.hub", "runtimes_before": rt_before}
+    dim = s._stored_vec_dim(1024)
+    try:
+        out["vector_index"] = s.heal_vector_index(dim=dim).get("state")
+        out["node_vector_index"] = s.heal_node_vector_index(
+            dim=s._stored_vec_dim(dim, "NodeVec")).get("state")
+    except Exception as exc:                      # noqa: BLE001
+        return out, [f"stamp: vector index heal failed ({type(exc).__name__})"]
+    if s.vector_index_remnant or s.node_vector_index_remnant:
+        return out, ["stamp refused: a vector index remnant is left after the heal"]
+    sample = [(c["cid"], c["doc"]) for c in _chunks(s)][::max(1, before["chunks"] // 20)][:20]
+    probe_v, probe_f = _vector_probe(s), _fts_probe(s, sample)
+    for table in _VEC_TABLES:
+        s.run(f"MATCH (v:{table}) WHERE coalesce(v.encoder_runtime, '') = '' "
+              "SET v.encoder_runtime = $r", {"r": value})
+    after, rt_after = measure(s), _runtimes(s)
+    probe_v2, probe_f2 = _vector_probe(s), _fts_probe(s, sample)
+    out.update(after=after, runtimes_after=rt_after,
+               stamped={t: rt_before[t].get("", 0) for t in _VEC_TABLES},
+               vector_probe={"before": probe_v, "after": probe_v2},
+               fts_probe={"before": list(probe_f), "after": list(probe_f2)})
+    problems = []
+    unstamped = sum(rt_after[t].get("", 0) for t in _VEC_TABLES)
+    if unstamped:
+        problems.append(f"stamp: {unstamped} vectors are still unstamped")
+    for t in _VEC_TABLES:
+        if sum(rt_after[t].values()) != sum(rt_before[t].values()):
+            problems.append(f"stamp changed the {t} row count")
+        if probe_v2[t]["found"] < probe_v[t]["found"]:
+            problems.append(f"stamp: the {t} index found {probe_v2[t]['found']} of its own "
+                            f"rows after, {probe_v[t]['found']} before")
+    for k in ("chunks", "vectors", "orphan_vectors", "docs_with_a_chunk_lacking_a_vector"):
+        if after[k] != before[k]:
+            problems.append(f"stamp changed {k}: {before[k]} -> {after[k]}")
+    if probe_f2 != probe_f:
+        problems.append(f"stamp: full-text search found {probe_f2[1]} of {probe_f2[0]} sampled "
+                        f"chunks after, {probe_f[1]} of {probe_f[0]} before")
+    return out, problems
+
+
+def _pending_reasons(s, value: str) -> tuple[list[str], dict[str, int]]:
+    """needs_embed=1 문서를 가른다: 되돌려도 되는 것(전 청크가 같은 소유자·저장값 조인으로
+    벡터를 가졌고 그 벡터가 전부 지금 도장) · 남길 것(사유별 수)."""
+    chunks_of: dict[str, list[tuple[str, str]]] = {}
+    for c in _chunks(s):
+        chunks_of.setdefault(c["doc"], []).append((c["o"] or "", c["cid"]))
+    stamps: dict[tuple[str, str], set[str]] = {}
+    for v in s.run("MATCH (v:ChunkVec) RETURN v.chunk_id AS cid, v.owner_id AS o, "
+                   "coalesce(v.encoder_runtime, '') AS r", raw=True) or []:
+        stamps.setdefault((v["o"] or "", v["cid"]), set()).add(str(v["r"]))
+    reasons = {"missing_vector": 0, "vector_not_stamped_with_hub_runtime": 0, "no_chunks": 0,
+               "chunks_do_not_match_meta": 0}
+    ok: list[str] = []
+    for d in s.run("MATCH (d:_DocMeta) WHERE d.needs_embed = 1 RETURN d.doc_id AS id, "
+                   "d.chunk_count AS cc", raw=True) or []:
+        keys = chunks_of.get(d["id"], [])
+        if not keys:
+            reasons["no_chunks"] += 1
+        elif len(keys) != int(d.get("cc") or 0):      # 쓰기 창 표식(-1)·꼬리·빠진 청크
+            reasons["chunks_do_not_match_meta"] += 1
+        elif any(k not in stamps for k in keys):
+            reasons["missing_vector"] += 1
+        elif any(stamps[k] != {value} for k in keys):
+            reasons["vector_not_stamped_with_hub_runtime"] += 1
+        else:
+            ok.append(d["id"])
+    return ok, reasons
+
+
+def unrequeue(s) -> tuple[dict, list[str]]:
+    """재큐를 되돌린다: 벡터를 이미 다 가진 문서만 needs_embed=0. 벡터가 하나라도 빠진 문서
+    (재큐 뒤 새로 쓴 문서가 여기 든다)는 pending 으로 남긴다. `_DocMeta.needs_embed` 만 쓴다.
+    근거: [[record:a-soft-requeue-keeps-semantic-search-off-because-every-apply-rebuilds-the-vector-index-2026-09-30]]"""
+    value = hub_runtime()
+    before = measure(s)
+    ok, reasons = _pending_reasons(s, value)
+    for i in range(0, len(ok), _BATCH):
+        s.run("MATCH (d:_DocMeta) WHERE d.doc_id IN $ids SET d.needs_embed = 0",
+              {"ids": ok[i:i + _BATCH]})
+    after = measure(s)
+    left, reasons_after = _pending_reasons(s, value)
+    out = {"before": before, "after": after, "pending_before": before["docs_pending_embed"],
+           "reset": len(ok), "still_pending": after["docs_pending_embed"],
+           "still_pending_by_reason": reasons_after}
+    problems = []
+    if left:
+        problems.append(f"unrequeue: {len(left)} pending documents still qualify for reset")
+    if after["docs_pending_embed"] != sum(reasons_after.values()):
+        problems.append("unrequeue: pending documents do not add up to the reasons")
+    if reasons_after != reasons:
+        problems.append("unrequeue: the reasons changed for documents it did not touch")
+    for k in ("docs", "chunks", "vectors", "orphan_vectors", "docs_with_a_chunk_lacking_a_vector"):
+        if after[k] != before[k]:
+            problems.append(f"unrequeue changed {k}: {before[k]} -> {after[k]}")
+    return out, problems
+
+
+_RUN = {"keyform": keyform, "stamp": stamp, "unrequeue": unrequeue, "requeue": requeue,
+        "orphans": orphans, "stuck": stuck}
 
 
 def repair(src: str, dst: str, repairs: list[str]) -> dict:
@@ -472,6 +655,8 @@ def _parse(arg: str) -> list[str]:
     unknown = asked - set(REPAIRS)
     if unknown or not asked:
         raise SystemExit(f"--repairs 는 {','.join(REPAIRS)} 중에서 고른다: {sorted(unknown)}")
+    if {"requeue", "unrequeue"} <= asked:
+        raise SystemExit("--repairs: requeue 와 unrequeue 는 서로를 되돌린다 — 하나만 고를 것")
     return [r for r in REPAIRS if r in asked]
 
 
@@ -479,7 +664,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--data", required=True, help="원본 DB 파일(.wal 은 옆에서 찾는다)")
     ap.add_argument("--out", required=True, help="고친 사본을 쓸 경로(없어야 한다)")
-    ap.add_argument("--repairs", default=",".join(REPAIRS), help="쉼표로: " + ",".join(REPAIRS))
+    ap.add_argument("--repairs", default=",".join(DEFAULT_REPAIRS),
+                    help="쉼표로(도는 순서는 이 목록 순서로 고정): " + ",".join(REPAIRS))
     a = ap.parse_args()
     repairs = _parse(a.repairs)
     existed = bool(_files(a.out))                 # 이미 있던 파일은 이 스크립트의 것이 아니다
