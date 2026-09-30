@@ -1,5 +1,11 @@
 # Vinc — Web account & email (separated from the offline app)
 
+> ⚠ **2026-09-30 주석: 이 폴더는 vincs.app 시절(2026-07)의 설계와 템플릿이고, 지금 보내는 메일이 아니다.**
+> 발송 템플릿은 `Vinc-homepage/account/emails/` 에 있다. 아래의 앱 경계("The app never logs in", 표 A 줄의
+> 계정 없음, "the app is still no account, no login")는 0.9.4 부터 참이 아니다. 데스크톱은 처음 열 때
+> 로그인하고 기본으로 계정 그래프를 본다(decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting).
+> 무엇을 말해도 되는지의 정본은 그래프 vinc.spec.email-subsystem §1 의 주장 표다.
+
 > **Design rule:** the desktop app's promise ("offline-first, no account, no telemetry,
 > your data never leaves your machine") is **inviolable**. Everything here lives on the
 > **website side only** and is strictly separated from the app. The app never logs in,
