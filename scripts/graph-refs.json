@@ -491,6 +491,7 @@
     "record:agent-files-are-found-by-walking-up-from-cwd",
     "record:agent-steward-leaf-carried-the-column-without-in-domain-edges-2026-09-05",
     "record:an-agent-tool-allowlist-cannot-hold-mcp-here-so-the-denylist-does",
+    "record:an-explicit-owner-write-claimed-ownerless-nodes-2026-09-30",
     "record:an-fts-remnant-on-chunk-stops-every-document-write-and-the-heal-moves-chunk-with-its-edges-2026-09-25",
     "record:an-unlabelled-hop-binds-only-tables-that-share-the-projected-columns",
     "record:answerability-is-a-residual-coverage-question-2026-09-10",

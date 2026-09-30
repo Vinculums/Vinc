@@ -373,10 +373,13 @@ class VincApp:
         return app
 
     def _fold_owner(self) -> None:
-        """옛 로컬 소유자(`user:local`)를 `tenant:local` 로 접는 일을 잡 큐에 건다(VIN-131).
+        """옛 로컬 소유자(`user:local`)와 빈 owner 노드 행을 `tenant:local` 로 접는 일을 잡
+        큐에 건다(VIN-131·VIN-234).
 
         멱등이라 기동마다 건다: 옮길 행이 없으면 개수만 센다. 실패는 기동을 죽이지 않는다 —
-        MCP 로 쓴 것이 한 번 더 화면에 안 보일 뿐이고 다음 기동이 다시 한다.
+        MCP 로 쓴 것이 한 번 더 화면에 안 보이고, 빈 owner 레거시 행의 명시 owner 편집이
+        경고와 함께 건너뛰어질 뿐이며 다음 기동이 다시 한다. HTTP 를 열기 전이고 잡 큐는
+        한 줄이라 이 접기가 기기의 첫 쓰기보다 늘 먼저다.
 
         **끝날 때까지 기다린다.** 앱은 기동 직후 "이 기기에 데이터가 있나"를 `tenant:local`
         로 묻고(`app/src/api.ts` localStoreHasData) 그 답으로 모드를 정해 설정에 적는다.
@@ -389,6 +392,9 @@ class VincApp:
             res = fold_legacy_owner(store)
             if res.get("moved"):
                 print(f"vinc: 로컬 소유자 접기 {res['from']} → {res['to']} · {res['moved']}",
+                      file=sys.stderr)
+            if res.get("ownerless"):
+                print(f"vinc: 소유자 없는 노드 접기 → {res['to']} · {res['ownerless']}",
                       file=sys.stderr)
             if res.get("deferred"):
                 print(f"vinc: 로컬 소유자 접기 일부 보류(벡터 색인 잔해) · {res['deferred']}",

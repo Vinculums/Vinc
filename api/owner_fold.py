@@ -13,6 +13,10 @@
   - `_MergeRejection`: 키(`pair_key`)에 소유자가 들어 있어 새 키로 옮겨 적고 옛 행을 지운다
   - `seq:<owner>` 카운터: 둘 중 큰 값을 `tenant:local` 에 남긴다. 옮겨 온 행의 sync_seq
     보다 새 쓰기가 늘 위에 오게 하려는 것이다
+  - **빈 owner(''·NULL) 노드 행**(VIN-234): SEC-3 가드(`api.fragment._merge_node`)가 보는
+    라벨 여섯에서만. 가드는 빈 owner 행을 남의 것으로 보고 명시 owner 쓰기를 건너뛰므로,
+    이 기기 사용자의 레거시 행(v2 이전 Bridge 등, 백필 안 됨)은 여기서 접지 않으면 영영
+    못 고친다. 값만 바꾼다(스탬프는 그대로 — 위의 옮기기와 같다)
 
 무엇을 안 옮기나:
   - `NodeVec`(노드 미러): 키(`vec_id`)에 소유자가 들어 있고, 지우고 다시 넣는 것은 HNSW
@@ -47,6 +51,21 @@ def _labels() -> list[str]:
 def _count(store, label: str) -> int:
     rows = store.run(f"MATCH (n:{label}) WHERE n.owner_id = $o RETURN count(n) AS c",
                      {"o": LEGACY})
+    return int(rows[0].get("c") or 0) if rows else 0
+
+
+#: 빈 owner 술어. 스키마 v2 가 ALTER 로 연 열은 '' 이고, 열을 안 쓰고 만든 행은 NULL 이다.
+_OWNERLESS = "(n.owner_id IS NULL OR n.owner_id = '')"
+
+
+def _ownerless_labels() -> tuple[str, ...]:
+    """빈 owner 행을 접는 라벨 — SEC-3 가드가 보는 목록 그대로(한 벌)."""
+    from api.fragment import _OWNER_SCOPED_LABELS
+    return _OWNER_SCOPED_LABELS
+
+
+def _count_ownerless(store, label: str) -> int:
+    rows = store.run(f"MATCH (n:{label}) WHERE {_OWNERLESS} RETURN count(n) AS c")
     return int(rows[0].get("c") or 0) if rows else 0
 
 
@@ -92,15 +111,22 @@ def _fold_merge_rejections(store) -> int:
 
 
 def fold_legacy_owner(store) -> dict:
-    """`user:local` 행을 `tenant:local` 로 옮긴다. 결과는 표별로 옮긴 수다.
+    """`user:local` 행과 빈 owner 노드 행을 `tenant:local` 로 옮긴다. 결과는 표별로 옮긴
+    수다(`moved` 는 `user:local` 에서, `ownerless` 는 빈 owner 에서).
 
     잡 워커(단일 writer)에서 불러야 한다. 스토어를 못 읽으면 예외를 그대로 올린다:
     부르는 쪽이 로그에 남기고 기동은 계속한다(다음 기동이 다시 한다)."""
     out: dict = {"kind": "owner.fold", "executed": False, "from": LEGACY, "to": CANON,
-                 "moved": {}}
+                 "moved": {}, "ownerless": {}}
     if pkns.enabled():
         out["skipped"] = "namespaced store"
         return out
+    # 빈 owner 노드 행은 벡터 색인이 없는 표뿐이라 아래 색인 순서와 무관하다. 먼저 접는다.
+    for lbl in _ownerless_labels():
+        n = _count_ownerless(store, lbl)
+        if n:
+            store.run(f"MATCH (n:{lbl}) WHERE {_OWNERLESS} SET n.owner_id = $to", {"to": CANON})
+            out["ownerless"][lbl] = n
     counts = {lbl: _count(store, lbl) for lbl in _labels()}
     rejections = _count(store, "_MergeRejection")
     has_seq = _meta_int(store, f"seq:{LEGACY}") is not None
