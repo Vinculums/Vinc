@@ -1,0 +1,59 @@
+# HNSW 삽입 프로브 — 이 브랜치(probe/hnsw-insert)에만 있다. main 에 올리지 않는다.
+# 스크립트 정본은 scripts/probe_hnsw_insert.py. 허브와 같은 조합(linux x86_64 · ladybug
+# 0.20.4 · 확장 v0.20.0 · 1024차원)과 옛 판(0.18.0)을 같은 스크립트로 잰다.
+name: hnsw-insert-probe
+on:
+  push:
+    branches: [probe/hnsw-insert]
+permissions:
+  contents: read
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        lbug: ["0.20.4", "0.18.0"]
+        group:
+          - {name: fill, scenarios: "fill,setnull,interleave", trials: "10"}
+          - {name: big, scenarios: "big,churn", trials: "4"}
+          - {name: crash, scenarios: "crash,crashctl", trials: "12"}
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      LBUG: ${{ matrix.lbug }}
+      SCEN: ${{ matrix.group.scenarios }}
+      TRIALS: ${{ matrix.group.trials }}
+      GROUP: ${{ matrix.group.name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: engine and extensions
+        run: |
+          set -euo pipefail
+          pip install "ladybug==${LBUG}" numpy
+          mkdir -p "$RUNNER_TEMP/ext"
+          if [ "$LBUG" = "0.20.4" ]; then
+            cp packaging/lbug_extensions/*.lbug_extension "$RUNNER_TEMP/ext/"
+          else
+            # 0.20.4 로 올리기 직전(#456 의 부모)의 linux_amd64 확장 — 0.18.0 판
+            for e in vector fts algo; do
+              git show "581ca95^:packaging/lbug_extensions/lib$e.lbug_extension" > "$RUNNER_TEMP/ext/lib$e.lbug_extension"
+            done
+          fi
+          sha256sum "$RUNNER_TEMP/ext/"*
+          echo "VINC_LBUG_EXT_DIR=$RUNNER_TEMP/ext" >> "$GITHUB_ENV"
+          lscpu | head -20
+      - name: probe
+        run: |
+          python -X utf8 scripts/probe_hnsw_insert.py run --work "$RUNNER_TEMP/work" \
+            --scenarios "$SCEN" --trials "$TRIALS" --timeout 2400 \
+            --out "$RUNNER_TEMP/probe-${LBUG}-${GROUP}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe-${{ matrix.lbug }}-${{ matrix.group.name }}
+          path: ${{ runner.temp }}/probe-*.json
