@@ -20,6 +20,10 @@
   churn       베이스 사본에서 삭제 후 재삽입과 같은 문서 재적용(소프트 재큐)을 번갈아
   crash       베이스 사본에 쓰다가 kill -9 → 재오픈(WAL 재생) → 기동 수리 → 검사 → 더 쓰기
   crashctl    crash 의 대조군 — 드롭을 켠 제품 기본 그대로 같은 kill 을 한다
+  (대조) serial      interleave 와 같되 리더 질의를 DDL 가드 배타로 감싼다(겹침 0)
+  (대조) ckptread    새로 세운 색인 + 벡터 없는 쓰기만 + 리더(HNSW 삽입 0)
+  (대조) <이름>_nockpt  자동 체크포인트를 사실상 끄고(임계 4GB) 같은 시나리오
+  (비용) rebuild     베이스 사본에서 색인 드롭·재생성 시간 3회
 
 정확성: 새 벡터로 자기를 질의해 top-1 이 자기인지(self@1), 무작위 질의의 recall@10 을 numpy
 전수 계산과 대조하고, 끝에 색인을 새로 세워 같은 질의의 recall 과 견준다. 지운·바뀐 벡터가
@@ -48,7 +52,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 OWNER = "user:probe"
-BASED = ("big", "churn", "crash", "crashctl")   # 베이스 사본에서 시작하는 시나리오
+BASED = ("big", "churn", "crash", "crashctl", "rebuild")   # 베이스 사본에서 시작하는 시나리오
 ALL = ("fill", "setnull", "big", "interleave", "churn", "crash", "crashctl")
 
 
@@ -184,10 +188,49 @@ def _progress(p: Probe) -> None:
     print(f"P {p.st['docs']} {len(p.truth)}", flush=True)
 
 
-def child_fill(a, p: Probe, *, setnull: bool = False, reader: bool = False) -> dict:
+def child_ckptread(a, p: Probe) -> dict:
+    """대조군: 색인은 **새로 세운 것**이고 라이터는 벡터 없는 put_doc 만 한다(HNSW 삽입 0).
+
+    그래도 리더의 벡터 질의가 죽으면, 드롭을 켠 지금의 제품 흐름도(재빌드 뒤 다음 드롭 전
+    창에서) 같은 자리에 서 있다는 뜻이다."""
+    from api import docstore as ds
     per = a.per_doc
+    for i in range(a.chunks // per // 2):
+        p.put(f"seed.{i:05d}", per)
+    p.s.drop_vector_index()
+    p.s.ensure_search_indexes(dim=p.dim)          # 삽입 이력이 없는 새 색인
     stop, rst = threading.Event(), {"q": 0, "self1": 0, "err": 0, "err_last": ""}
     th = threading.Thread(target=_reader_loop, args=(p, stop, rst), daemon=True)
+    th.start()
+    for i in range(a.chunks // per):
+        doc = f"probe.{i:05d}"
+        r = ds.put_doc(p.s, owner=OWNER, text=p.text(per), doc_id=doc, title=doc, link=False)
+        if not r.get("executed"):
+            raise RuntimeError(f"put_doc: {r}")
+        p.st["docs"] += 1
+        _progress(p)
+    stop.set()
+    th.join(30)
+    return dict(p.finish(), reader=rst)
+
+
+def child_rebuild(a, p: Probe) -> dict:
+    """대안의 비용: 벡터 16k 색인을 드롭하고 다시 세우는 데 걸리는 시간(3회)."""
+    secs = []
+    for _ in range(3):
+        t0 = time.monotonic()
+        p.s.drop_vector_index()
+        p.s.ensure_search_indexes(dim=p.dim)
+        secs.append(round(time.monotonic() - t0, 2))
+    n = p.s.run("MATCH (v:ChunkVec) RETURN count(v) AS c")[0]["c"]
+    return {"vectors": n, "rebuild_s": secs}
+
+
+def child_fill(a, p: Probe, *, setnull: bool = False, reader: bool = False,
+               serial: bool = False) -> dict:
+    per = a.per_doc
+    stop, rst = threading.Event(), {"q": 0, "self1": 0, "err": 0, "err_last": ""}
+    th = threading.Thread(target=_reader_loop, args=(p, stop, rst, serial), daemon=True)
     for i in range(a.chunks // per):
         doc = f"probe.{i:05d}"
         if setnull:
@@ -226,20 +269,39 @@ def _setnull(p: Probe, doc: str, n: int) -> list[str]:
     return vids
 
 
-def _reader_loop(p: Probe, stop, st: dict) -> None:
-    """허브의 읽기 경로처럼 **별도 커넥션**에서 쉬지 않고 질의한다."""
+def _reader_loop(p: Probe, stop, st: dict, serial: bool = False) -> None:
+    """허브의 읽기 경로처럼 **별도 커넥션**에서 쉬지 않고 질의한다.
+
+    ``serial``: 질의를 DDL 가드 **배타**로 감싼다 — 라이터의 어느 문장(과 그 커밋이 부르는
+    자동 체크포인트)과도 겹치지 않는다. 겹침이 원인인지 가르는 대조이자, 대안의 비용(질의
+    대기)을 재는 자리다."""
+    from contextlib import nullcontext
+    from store.embedded_backend import DDL_GUARD
     rv = p.s.reader_view()
     rng = p.np.random.default_rng(99)
+    lat: list[float] = []
     while not stop.is_set():
         vid = p.order[int(rng.integers(len(p.order)))]
+        t0 = time.perf_counter()
         try:
-            rows = p.knn(p.truth[vid], 10, conn=rv)
+            with DDL_GUARD.exclusive() if serial else nullcontext():
+                rows = p.knn(p.truth[vid], 10, conn=rv)
+            lat.append(time.perf_counter() - t0)
             st["q"] += 1
             st["self1"] += bool(rows and rows[0]["id"] == vid)
         except Exception as exc:        # noqa: BLE001 — 세는 것이 목적이다
             st["err"] += 1
             st["err_last"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+        if serial:
+            # 가드는 라이터 우선이라 배타 대기가 새 공유를 막는다. 쉬지 않고 다시 잡으면 라이터가
+            # 굶어 60초 초과로 죽는다(실측) — 한 틈을 준다.
+            time.sleep(0.002)
     rv.close()
+    if lat:
+        lat.sort()
+        st["p50_ms"] = round(1000 * lat[len(lat) // 2], 2)
+        st["p95_ms"] = round(1000 * lat[int(len(lat) * 0.95)], 2)
+        st["max_ms"] = round(1000 * lat[-1], 2)
 
 
 def child_big(a, p: Probe, *, forever: bool = False) -> dict:
@@ -326,11 +388,18 @@ def cmd_child(a) -> int:
         return 0
     if not a.drop:
         _no_drop()
+    if a.scenario.endswith("_nockpt"):
+        # 자동 체크포인트를 사실상 끈다(임계 4GB) — 겹침의 짝이 체크포인트인지 가르는 대조.
+        os.environ["VINC_CHECKPOINT_THRESHOLD_MB"] = "4096"
+        a.scenario = a.scenario[:-len("_nockpt")]
     s, heals = _open(a.data, a.dim)
     p = Probe(s, a.dim, a.seed)
     fn = {"fill": lambda: child_fill(a, p),
           "setnull": lambda: child_fill(a, p, setnull=True),
           "interleave": lambda: child_fill(a, p, reader=True),
+          "serial": lambda: child_fill(a, p, reader=True, serial=True),
+          "ckptread": lambda: child_ckptread(a, p),
+          "rebuild": lambda: child_rebuild(a, p),
           "big": lambda: child_big(a, p),
           "writer": lambda: child_big(a, p, forever=True),
           "churn": lambda: child_churn(a, p),
@@ -394,7 +463,9 @@ def _spawn(args: list[str], timeout: float) -> dict:
     rec = {"rc": rc, "kind": "timeout" if rc == "timeout" else _kind(rc),
            "secs": round(time.monotonic() - t0, 1), **_parse(out)}
     if rec["kind"] != "ok":
-        rec["stderr_tail"] = err[-1500:]
+        # faulthandler 는 **죽은 스레드를 먼저** 찍는다 — 꼬리가 아니라 그 머리를 남긴다.
+        i = err.find("Fatal Python error")
+        rec["stderr_tail"] = err[i:i + 3000] if i >= 0 else err[-3000:]
     return rec
 
 
@@ -462,7 +533,8 @@ def _summary(env: dict, a, base: dict | None, rows: list[dict]) -> str:
         st = sum(r.get("stale", 0) for r in rs), sum(r.get("stale_n", 0) for r in rs)
         inc = [r["recall_incremental"] for r in rs if "recall_incremental" in r]
         reb = [r["recall_rebuilt"] for r in rs if "recall_rebuilt" in r]
-        rb = [r["rebuild_s"] for r in rs if "rebuild_s" in r]
+        rb = [x for r in rs if "rebuild_s" in r
+              for x in (r["rebuild_s"] if isinstance(r["rebuild_s"], list) else [r["rebuild_s"]])]
         mean = (lambda xs: f"{sum(xs) / len(xs):.3f}" if xs else "-")
         out.append(f"| {sc} | {len(rs)} | {ok} | {segv} | {len(rs) - ok - segv} | "
                    f"{s1[0]}/{s1[1]} | {st[0]}/{st[1]} | {mean(inc)} / {mean(reb)} | "
