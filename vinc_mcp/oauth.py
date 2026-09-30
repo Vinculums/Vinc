@@ -30,6 +30,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from . import __version__
 from .store import Store
 
 CODE_TTL = 300
@@ -37,6 +38,9 @@ TOKEN_TTL = 3600
 CONNECT_TTL = 600      # 회원 승인 대기(B-B3) — 10분
 _CIMD_TIMEOUT = 5
 _CIMD_MAX_BYTES = 64 * 1024
+#: CIMD 를 가져올 때 쓰는 이름. urllib 기본값(`Python-urllib/3.x`)은 claude.ai 앞단이
+#: Cloudflare 1010 으로 막아 403 이 난다(2026-09-30 실측: 같은 주소가 이 값으로는 200).
+_CIMD_UA = f"Vinc-MCP/{__version__} (+https://vincs.io)"
 
 
 def fetch_cimd(url: str) -> dict:
@@ -50,7 +54,8 @@ def fetch_cimd(url: str) -> dict:
     if not isinstance(url, str) or not url.startswith("https://"):
         raise ValueError("CIMD client_id must be an https URL")
     req = urllib.request.Request(url, method="GET",
-                                 headers={"Accept": "application/json"})
+                                 headers={"Accept": "application/json",
+                                          "User-Agent": _CIMD_UA})
     try:
         with urllib.request.urlopen(req, timeout=_CIMD_TIMEOUT) as resp:
             raw = resp.read(_CIMD_MAX_BYTES + 1)
