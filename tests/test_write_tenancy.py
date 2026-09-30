@@ -158,6 +158,24 @@ def test_ingest_refuses_cross_tenant_node_takeover():
     assert any("another tenant" in w for w in out.get("warnings", []))
 
 
+def test_ingest_refuses_to_claim_an_ownerless_node():
+    """VIN-234 — 빈 owner('' 도 NULL 도) 노드도 남의 것이다. 명시 owner 쓰기가 그 행을
+    호출자로 다시 찍고 덮어쓰면 소유 획득이 조용히 일어난다."""
+    for empty in ("", None):
+        def responder(cypher, params, empty=empty):
+            if "as rev" in cypher.lower() and "bridge" in cypher.lower():
+                return [{"rev": 0, "title": "legacy", "status": "", "source_domain": "",
+                         "target_domain": "", "props": "", "owner_id": empty}]
+            return None
+        s = CapturingStore(responder=responder, owner_id=empty)
+        out = frag.merge_fragment(
+            {"owner": A, "nodes": [{"id": "bridge:legacy", "type": "bridge", "title": "claimed"}],
+             "edges": []}, store=s)
+        assert "MERGE (n:Bridge" not in s.cyphers(), empty
+        assert out["id_conflicts"] == ["bridge:legacy"], empty
+        assert any("has no owner" in w for w in out["warnings"]), out["warnings"]
+
+
 def test_ingest_stamps_own_new_node():
     """자기 소유 신규 노드는 정상 적재(owner_explicit=True, 미존재 → 생성)."""
     def responder(cypher, params):

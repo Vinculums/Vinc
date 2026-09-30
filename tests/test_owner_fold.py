@@ -17,6 +17,7 @@ import re
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -131,6 +132,93 @@ class FoldOnEngine(unittest.TestCase):
         of.fold_legacy_owner(self.store)
         self.assertEqual(self._count("_MergeRejection", T), 1)
         self.assertEqual(self._count("_MergeRejection", L), 0)
+
+
+@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치")
+class OwnerlessNodesOnEngine(unittest.TestCase):
+    """VIN-234 — 빈 owner 노드는 명시 owner 쓰기가 못 가져가고, 기기에서는 접기가 먼저
+    `tenant:local` 로 옮겨 그 사용자의 편집이 계속 된다.
+
+    네임스페이싱을 이 클래스 안에서 끈다: 구멍은 꺼진 스토어에서만 열리고, 플래그를 켠 CI
+    잡에서도 같은 판정을 돌려야 한다. 켜진 스토어의 모양은 따로 한 번 본다."""
+
+    OTHER = "user:b"
+
+    def setUp(self):
+        from api import fragment as frag
+        self.frag = frag
+        self._ns = mock.patch.dict(os.environ, {"VINC_PK_NAMESPACED": "off"})
+        self._ns.start()
+        self.store, self._keep = _fresh_store()
+        s = self.store
+        frag.merge_fragment({"owner": self.OTHER, "nodes": [
+            {"id": "concept:theirs", "type": "concept", "title": "Theirs", "domain": "vinc/x"}],
+            "edges": []}, store=s)
+        # v2 이전 Bridge 는 ALTER 가 '' 로 열었고, 열을 안 쓰고 만든 행은 NULL 이다. 둘 다 본다.
+        s.run("CREATE (b:Bridge {bridge_id: 'bridge:legacy', title: 'Legacy', owner_id: ''})")
+        s.run("CREATE (c:Concept {concept_id: 'concept:legacy', title: 'Legacy'})")
+
+    def tearDown(self):
+        self.store.close()
+        _restore(self._keep)
+        self._ns.stop()
+
+    def _row(self, label, pk, nid):
+        rows = self.store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id "
+                              "RETURN n.owner_id AS o, n.title AS t", {"id": nid})
+        self.assertEqual(len(rows), 1, nid)
+        return rows[0].get("o"), rows[0].get("t")
+
+    def _claim(self, owner):
+        return self.frag.merge_fragment({"owner": owner, "nodes": [
+            {"id": "concept:theirs", "type": "concept", "title": "claimed"},
+            {"id": "bridge:legacy", "type": "bridge", "title": "claimed"},
+            {"id": "concept:legacy", "type": "concept", "title": "claimed"}],
+            "edges": []}, store=self.store)
+
+    def test_명시_owner_쓰기는_남의_것도_빈_owner_도_못_가져간다(self):
+        out = self._claim("user:a")
+        self.assertEqual(out["merged"]["nodes"], {"created": 0, "matched": 0})
+        self.assertEqual(sorted(out["id_conflicts"]),
+                         ["bridge:legacy", "concept:legacy", "concept:theirs"])
+        self.assertEqual(sum("has no owner" in w for w in out["warnings"]), 2)
+        self.assertEqual(self._row("Concept", "concept_id", "concept:theirs"),
+                         (self.OTHER, "Theirs"))
+        self.assertEqual(self._row("Bridge", "bridge_id", "bridge:legacy"), ("", "Legacy"))
+        self.assertEqual(self._row("Concept", "concept_id", "concept:legacy"), (None, "Legacy"))
+
+    def test_켜진_스토어에서는_호출자_키로_새로_만들고_레거시는_그대로다(self):
+        with mock.patch.dict(os.environ, {"VINC_PK_NAMESPACED": "on"}):
+            out = self._claim("user:a")
+        self.assertEqual(out["merged"]["nodes"], {"created": 3, "matched": 0})
+        self.assertNotIn("id_conflicts", out)
+        self.assertEqual(self._row("Bridge", "bridge_id", "bridge:legacy"), ("", "Legacy"))
+        self.assertEqual(self._row("Concept", "concept_id", "concept:legacy"), (None, "Legacy"))
+
+    def test_접기_뒤에는_기기_사용자의_레거시_Bridge_편집이_된다(self):
+        edit = {"owner": T, "nodes": [
+            {"id": "bridge:legacy", "type": "bridge", "title": "Edited"},
+            {"id": "concept:legacy", "type": "concept"}],
+            "edges": [{"from": "bridge:legacy", "to": "concept:legacy", "type": "connects_via"}]}
+        # 접기 전: 엄격 가드가 이 기기 사용자의 행이라도 건너뛴다(접기가 먼저 도는 이유).
+        before = self.frag.merge_fragment(edit, store=self.store)
+        self.assertEqual(sorted(before["id_conflicts"]), ["bridge:legacy", "concept:legacy"])
+
+        res = of.fold_legacy_owner(self.store)
+        self.assertTrue(res["executed"])
+        self.assertEqual(res["ownerless"], {"Bridge": 1, "Concept": 1})
+        self.assertEqual(res["moved"], {})
+
+        after = self.frag.merge_fragment(edit, store=self.store)
+        self.assertNotIn("id_conflicts", after)
+        self.assertEqual(after["merged"]["nodes"], {"created": 0, "matched": 2})
+        self.assertEqual(after["merged"]["edges"]["created"], 1)
+        self.assertEqual(self._row("Bridge", "bridge_id", "bridge:legacy"), (T, "Edited"))
+        # 남의 행은 접기가 건드리지 않는다. 두 번째 접기는 아무것도 안 한다.
+        self.assertEqual(self._row("Concept", "concept_id", "concept:theirs"),
+                         (self.OTHER, "Theirs"))
+        again = of.fold_legacy_owner(self.store)
+        self.assertEqual((again["ownerless"], again["moved"]), ({}, {}))
 
 
 class _NoWriteStore:

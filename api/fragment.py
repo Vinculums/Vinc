@@ -434,9 +434,13 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     # 경로(owner_explicit=호스티드/원격/웹)에서 **남이 이미 소유한** 노드에 MERGE 하면
     # owner_id 재스탬핑(탈취) + 내용 덮어쓰기가 된다. 소유자가 다르면 노드를 건너뛴다
     # (SET/MERGE 전에). 로컬(owner_explicit=False)이나 신규(not matched)는 현행 유지.
+    # 🔴 빈 owner(''·NULL) 행도 남의 것으로 본다 — 통과시키면 그 행을 호출자 owner 로
+    # 다시 찍고 덮어써 조용히 가져간다(VIN-234). 기기의 레거시 빈 owner 행은 기동 때
+    # `api/owner_fold.py` 가 먼저 `tenant:local` 로 접으므로 기기 편집은 막히지 않는다.
+    # 근거: [[record:an-explicit-owner-write-claimed-ownerless-nodes-2026-09-30]]
     if owner_scoped and owner_explicit and matched:
-        existing_owner = current.get("owner_id")
-        if existing_owner and existing_owner != owner:
+        existing_owner = current.get("owner_id") or ""
+        if existing_owner != owner:
             # ⚠ 이 스킵은 **조용한 데이터 손실**이었다(감사 2026-08-18 H1). 저작자는
             # owner 로 걸러진 검색을 먼저 돌려 "없음"을 보고 이 노드를 지었는데, 쓰기가
             # 사라지고 응답은 executed:true 로 온다. 그리고 다시 시도해도 영원히 같다
@@ -446,8 +450,9 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             # 근본 처방(PK 를 owner 로 네임스페이스)은 [[vinc.plan.node-pk-namespacing]].
             if conflicts is not None:
                 conflicts.append(nid)
+            held = "owned by another tenant" if existing_owner else "has no owner (a legacy row)"
             warnings.append(
-                f"id {nid} owned by another tenant — skipped. Nothing was written for "
+                f"id {nid} {held} — skipped. Nothing was written for "
                 f"this node, and every retry will be skipped the same way: node ids are "
                 f"one global namespace, so this slug is not available to you. Author it "
                 f"under a different id.")
