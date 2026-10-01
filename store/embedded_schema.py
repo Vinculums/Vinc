@@ -415,7 +415,7 @@ _SEMANTIC_LABELS: tuple[str, ...] = ("Concept", "Decision")
 #: 가 이 rel 단일 투영으로 Louvain 을 돌리는데, Decision 을 붙이면 투영 노드 테이블이
 #: 둘이 되어 **커뮤니티 기능이 통째로 죽는다**. 우회로는 없다(전부 실측으로 기각).
 #: ⚠ 이 목록을 넓히려면 `communities` 의 투영도 같이 봐야 한다. 불변식은
-#: tests/test_store.py 의 단일 노드테이블 가드가 지킨다.
+#: tests/core/test_store.py 의 단일 노드테이블 가드가 지킨다.
 #: 오류 문면·기각한 우회로·의미상으로도 맞는 이유: [[record:louvain-projects-one-node-table]].
 _LOUVAIN_PROJECTED_REL = "RELATED_TO"
 
@@ -575,7 +575,7 @@ def meta_table_specs() -> dict[str, dict]:
       · `_Tombstone`/`_EdgeTombstone`/`_DocTombstone`  삭제 표식(잃으면 **부활**한다)
       · `_SyncBase`              3-way 병합 기준본(잃으면 2-way 로 강등)
     전부 "없어도 에러가 안 나는" 값들이라 회귀 테스트가 유일한 방어다
-    (`tests/test_migrate_driver.py`).
+    (`tests/core/test_migrate_driver.py`).
     """
     return {lbl: {"pk": spec["pk"], "cols": [c for c, _ in spec["cols"]]}
             for lbl, spec in _META_TABLES.items()}

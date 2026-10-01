@@ -239,7 +239,7 @@ def leiden(nodes, edges, *, resolution: float = DEFAULT_RESOLUTION,
     """Leiden 커뮤니티. 반환 `{id: 커뮤니티 번호}` — 번호는 큰 커뮤니티부터 0, 차수 0 인
     노드는 :data:`ISOLATED`. 엣지는 `(a, b)` 또는 `(a, b, weight)` 이고 방향은 무시한다.
 
-    보증(논문 정리 2): 돌려준 커뮤니티는 전부 연결돼 있다. `tests/test_graph_algo.py` 가
+    보증(논문 정리 2): 돌려준 커뮤니티는 전부 연결돼 있다. `tests/core/test_graph_algo.py` 가
     무작위 그래프 여럿에서 이것을 확인한다."""
     order, adj = _undirected(nodes, edges)
     deg = {n: sum(adj[n].values()) for n in order}

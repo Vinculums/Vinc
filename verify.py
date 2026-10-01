@@ -35,6 +35,23 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 
+def build_suite(loader: unittest.TestLoader) -> unittest.TestSuite:
+    """`tests/` 와 그 아래 팀 폴더(`tests/<패키지>/`)를 **폴더마다 따로** 찾는다.
+
+    팀 폴더에는 `__init__.py` 를 두지 않는다. 두면 폴더 이름이 패키지가 되는데,
+    `tests/` 가 sys.path 에 있으므로 `tests/platform` 이 표준 라이브러리 `platform` 을
+    가린다. 그런데 unittest 는 패키지가 아닌 하위 폴더로 내려가지 않으므로, 한 번의
+    discover 로는 팀 폴더의 테스트를 하나도 못 본다(본 CI 잡의 "Ran N" 하한 300 이 그때
+    잡는다). 그래서 각 폴더를 자기 최상위로 두고 따로 discover 한다. 테스트 파일 이름은
+    리포 전체에서 하나뿐이라 모듈 이름이 겹치지 않는다. 근거: [[vinc.plan.team-split]]"""
+    tests = ROOT / "tests"
+    suite = loader.discover(str(tests), pattern="test_*.py")
+    for sub in sorted(p for p in tests.iterdir()
+                      if p.is_dir() and p.name not in ("fixtures", "__pycache__")):
+        suite.addTests(loader.discover(str(sub), pattern="test_*.py", top_level_dir=str(sub)))
+    return suite
+
+
 def main() -> int:
     # 임시 디렉터리 우리. 이 러너에는 pytest 픽스처가 없으니 여기서 건다
     # (본 CI 잡이 이 경로다). 이유는 tests/_tmpjail.py.
@@ -42,8 +59,7 @@ def main() -> int:
     from _tmpjail import install as install_tmp_jail
     install_tmp_jail()
 
-    loader = unittest.TestLoader()
-    suite = loader.discover(str(ROOT / "tests"), pattern="test_*.py")
+    suite = build_suite(unittest.TestLoader())
     ok = unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful()
     print("\nverify: OK" if ok else "\nverify: FAILED")
     return 0 if ok else 1

@@ -93,7 +93,7 @@ for _s in (sys.stdout, sys.stderr):
 # **부모-자식 조각내기(v8)가 통째로 죽는다**: 청크가 통으로 들어가 앞 512토큰만 담기고
 # 나머지는 버려진다(실측 유실 한국어 42.6% · 영어 12.3%). 에러도 안 난다 — 그 임포트는
 # `except Exception: return [text]` 로 강등되게 설계돼 있기 때문이다(데스크탑 폴백).
-# 테스트(`tests/test_embed_worker.py`)는 리포 루트에서 돌아 `api` 가 잡히므로 이 결함을
+# 테스트(`tests/rag/test_embed_worker.py`)는 리포 루트에서 돌아 `api` 가 잡히므로 이 결함을
 # 재현하지 못한다. 컨테이너에서만 나는 무음 고장이라 여기서 경로를 명시적으로 세운다.
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:

@@ -992,7 +992,7 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
     (사용자가 그 노드에 그린 엣지와 다듬은 제목이 함께 사라지며, `_Tombstone` 으로
     다른 기기에도 전파된다) 그것은 P11c(공유 시트 제외) 범위 밖의 제품 판정이다.
     당장의 피해는 팩 쪽에서 막혀 있다: `share._docs_for_concepts` 가 부재 doc_id 를
-    걸러 빈 문서를 안 싣는다(`tests/test_share.py`
+    걸러 빈 문서를 안 싣는다(`tests/core/test_share.py`
     `test_a_mirror_whose_document_is_gone_ships_no_document` 가 그 상태를 고정한다)."""
     base: dict[str, Any] = {"kind": "doc.delete", "executed": False, "doc_id": doc_id}
     meta = _meta(store, doc_id)

@@ -25,7 +25,7 @@ _FLAG = "VINC_PK_NAMESPACED"
 def _flag_is_not_leaked():
     """테스트가 `VINC_PK_NAMESPACED` 를 원래대로 되돌려 놓았는지 본다.
 
-    실측으로 물린 고장이다(2026-08-23). `tests/test_pk_compose_write.py` 가 플래그를
+    실측으로 물린 고장이다(2026-08-23). `tests/core/test_pk_compose_write.py` 가 플래그를
     켜고 끝에서 **pop** 했는데, 그러면 켠 모드 잡에서 그 파일 뒤에 도는 모든 테스트가
     조용히 꺼진 채 돈다. 그 잡의 초록은 "전량이 켠 모드로 통과했다"가 아니라
     "앞부분만 돌았다"였고, 그 뒤에 숨어 있던 실패가 7건이었다(test_view_viewpoints).

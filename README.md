@@ -127,7 +127,7 @@ Cursor·Codex CLI·Kimi CLI·VS Code 등 stdio 를 말하는 호스트면 무엇
 원격은 claude.ai 커넥터와 ChatGPT 커스텀 커넥터(개발자 모드)가 같은 OAuth 요건을 쓴다.
 
 - 도구 23종(정본 = `vinc_mcp/tools.py` 의 `TOOLS` — 그 독스트링의 수와
-  `len(TOOLS)` 는 `tests/test_tool_contract.py` 가 대조한다). 읽기 15 — 조회
+  `len(TOOLS)` 는 `tests/mcp/test_tool_contract.py` 가 대조한다). 읽기 15 — 조회
   `vinc_search`·`vinc_brief`·`vinc_recall`·`vinc_graph`·`vinc_decide`·`vinc_domains`·
   `vinc_suggest_ties`, 관측·진단 `vinc_neighbors`·`vinc_path`·
   `vinc_merge_candidates`·`vinc_merge_rejections`·`vinc_diagnose`(E-G3~G7),

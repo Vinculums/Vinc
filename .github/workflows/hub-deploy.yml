@@ -26,7 +26,7 @@ name: hub-deploy
 #
 # ⚠ `workflow_run` 런에서 `github.sha` 는 **내보낼 커밋이 아니다** — 런이 시작될 때의
 # main 머리다. 아래 잡들은 `needs.plan.outputs.sha` 만 쓴다. `github.sha` 를 다시 쓰면
-# 검증 안 된 커밋이 나갈 수 있다(tests/test_hub_deploy_pick.py 가 막는다).
+# 검증 안 된 커밋이 나갈 수 있다(tests/platform/test_hub_deploy_pick.py 가 막는다).
 on:
   workflow_run:
     workflows: [ci]
@@ -802,7 +802,7 @@ jobs:
         run: |
           set -uo pipefail
           # HTTP 는 `report` 처럼 curl 로, 판정은 python3 로 한다(러너의 jq 에 기대지 않는다).
-          # 이 스크립트는 tests/test_hub_deploy_close_report.py 가 꺼내 돌린다.
+          # 이 스크립트는 tests/platform/test_hub_deploy_close_report.py 가 꺼내 돌린다.
           python3 - <<'PYEOF'
           import json, os, re, subprocess
           e = os.environ

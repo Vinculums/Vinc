@@ -54,11 +54,11 @@
         "packaging/bake_embed_model.py",
         ".github/workflows/rerank-probe.yml",
         ".github/workflows/encode-m3-probe.yml",
-        ".github/workflows/bake-probe.yml"
+        ".github/workflows/bake-probe.yml",
+        "tests/rag/"
       ],
       "planned": [
-        "vinc_rag/",
-        "tests/rag/"
+        "vinc_rag/"
       ]
     },
     "app": {
@@ -67,9 +67,7 @@
       "roles": ["agent-dev-app"],
       "paths": [
         "app/",
-        ".github/workflows/web-app-deploy-trigger.yml"
-      ],
-      "planned": [
+        ".github/workflows/web-app-deploy-trigger.yml",
         "tests/app/"
       ]
     },
@@ -88,6 +86,7 @@
         "design-hub/",
         "starter-packs/",
         "emails/",
+        "tests/design/",
         "README.md",
         "LICENSE"
       ]
@@ -142,7 +141,8 @@
         "scripts/version_sync.py",
         "scripts/age_status_lines.py",
         "scripts/qa/",
-        "scripts/runner-tools.txt"
+        "scripts/runner-tools.txt",
+        "tests/platform/"
       ]
     }
   },

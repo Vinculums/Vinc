@@ -911,7 +911,7 @@ def _exec_to_dicts(conn, cypher: str, params: dict | None, *, raw: bool = False)
     # ⚠ 이 훅은 **돌려주는 값**만 고쳐 쓴다 — Cypher **술어**는 물리 열을 그대로 본다.
     # 그래서 `WHERE pk CONTAINS $sep` 로 이관 진척을 세는 것은 여기서 안 막힌다(PR-D 는
     # 훅 우회 읽기 경로도 행별 표식도 필요 없다). 실측:
-    # tests/test_pk_compose_write.py::test_a_cypher_predicate_still_sees_the_separator
+    # tests/core/test_pk_compose_write.py::test_a_cypher_predicate_still_sees_the_separator
     if pkns.enabled() and not raw:
         out = [pkns.strip_deep(row) for row in out]
     return out

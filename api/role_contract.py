@@ -11,7 +11,7 @@
 
 상수 넷(DOMAIN · ID_PREFIX · ROSTER_CONCEPT · RUNGS)은 `vinc_mcp/roles.py` 에도 있다.
 `api` 는 `vinc_mcp` 를 import 하지 않으므로(호스티드 MCP 이미지와 허브의 짐이 다르다)
-한 벌로 합치지 않고 테스트가 둘이 같음을 고정한다(tests/test_role_contract.py).
+한 벌로 합치지 않고 테스트가 둘이 같음을 고정한다(tests/core/test_role_contract.py).
 
 근거: [[vinc.canon.agent-roles §6]] · [[decision:agent-role-contract-is-warned-at-write-not-refused-2026-09-25]]
 """

@@ -60,7 +60,7 @@ def _load_production_worker():
     포션)를 가린다. 실측: `ModuleNotFoundError: No module named 'packaging.embed_worker'`.
     **접두 규약이 두 벌로 갈라져 있던 진짜 이유가 이것이다** — 가져다 쓸 수가 없으니
     베껴 적었고, 그 사본이 bge-m3 분기를 놓쳤다.
-    `tests/test_embed_worker.py` 가 이미 같은 방식으로 연다(그 패턴을 재사용한다).
+    `tests/rag/test_embed_worker.py` 가 이미 같은 방식으로 연다(그 패턴을 재사용한다).
     """
     import importlib.util
 

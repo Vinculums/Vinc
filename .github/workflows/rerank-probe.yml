@@ -21,7 +21,7 @@
 #
 # 스토어·리비전·레지스트리 어느 것도 안 건드리므로 직렬화할 이유가 없다. 그리고
 # `cancel-in-progress: false` 를 다는 순간 직렬화 워크플로 명단을 넷으로 고정한
-# `tests/test_gate_runner_move.py` 가 떨어진다 — 그 테스트는 직렬화가 느는 것을 사람이
+# `tests/platform/test_gate_runner_move.py` 가 떨어진다 — 그 테스트는 직렬화가 느는 것을 사람이
 # 한 번 보게 하려고 있는 것이다.
 #
 # ## ⚠ 두 번의 dispatch 는 두 대의 기계다

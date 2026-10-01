@@ -92,7 +92,7 @@ _EXCLUDE_ROOTS = (".cache/", "work/")
 
 _ALLOWLIST_SUFFIXES = (
     "scripts/gate_forbidden.py",
-    "tests/test_gate_forbidden.py",  # 테스트가 금지어를 fixture 로 사용
+    "tests/platform/test_gate_forbidden.py",  # 테스트가 금지어를 fixture 로 사용
     "vinc.a.terms.md",               # 금지 어휘 정본 (구 파일명)
     "vinc.canon.terminology.md",     # 금지 어휘 정본 (재작성본)
     "UI_INVENTORY_AUDIT.md",         # 흡수 매트릭스가 금지 카피를 예시 인용
@@ -158,7 +158,7 @@ _F2 = [
 # 뜬다(실측 2026-09-17, `python scripts/gate_forbidden.py` 로 재현 가능). 대신 이번에
 # 실제로 사용자에게 샜던 자리(`api/cli.py` 의 argparse `description=` — `--help` 가
 # 그대로 화면에 찍는다)만 좁게 고정한다. `api/activate.py` 의 `"kind":
-# "weg-9000-memory/context-pack"` 은 포터블 팩 포맷의 필드값이라 `tests/test_activate.py`
+# "weg-9000-memory/context-pack"` 은 포터블 팩 포맷의 필드값이라 `tests/core/test_activate.py`
 # 가 고정하는 계약이고, 바꾸려면 포맷 하위호환 판단이 먼저 필요해 여기 포함하지 않는다.
 _F7 = [
     Rule("F7", "weg-memory", re.compile(r"weg-memory"),

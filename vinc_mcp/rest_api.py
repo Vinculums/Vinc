@@ -97,7 +97,7 @@ def _arguments(route: rest_routes.Route, path_fields: dict[str, str],
 
 
 def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
-    """도구 결과 모양을 v1 상태로 옮긴다. 표는 tests/test_rest_v1.py 의 FAILURE_CASES 가 고정한다.
+    """도구 결과 모양을 v1 상태로 옮긴다. 표는 tests/mcp/test_rest_v1.py 의 FAILURE_CASES 가 고정한다.
     반환은 (status, code, message) 또는 (status, code, message, details)."""
     error = str(result.get("error") or "")
     note = str(result.get("note") or "")

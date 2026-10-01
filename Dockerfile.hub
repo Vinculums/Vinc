@@ -34,7 +34,7 @@ RUN pip install --no-cache-dir ladybug==0.20.4 argon2-cffi pypdf==6.14.2
 # numpy 판은 2026-09-11 전량 재인코딩 때부터 허브가 쓴 판 그대로다(huggingface_hub 는
 # 모델을 받기만 해서 벡터에 닿지 않지만 재현성을 위해 함께 고정한다). 앞의 셋을 올릴
 # 때는 저장 벡터 전량 재인코딩과 한 배포로 묶는다.
-# tests/test_encoder_runtime_pin.py 가 이 줄과 bake-probe 가 같은 판인지 잠근다.
+# tests/rag/test_encoder_runtime_pin.py 가 이 줄과 bake-probe 가 같은 판인지 잠근다.
 # 근거: [[record:the-eval-drift-to-41-14-4-follows-the-query-encoder-runtime-not-the-engine-2026-09-28]]
 RUN pip install --no-cache-dir onnxruntime==1.30.0 tokenizers==0.23.2 numpy==2.5.3 huggingface_hub==1.33.0
 
@@ -63,8 +63,8 @@ RUN pip install --no-cache-dir onnxruntime==1.30.0 tokenizers==0.23.2 numpy==2.5
 # ⚠ **두 줄은 짝이다.** 파일명은 `packaging/embed_worker.py::artifact_name(모델)` 이
 # 정하고, 런타임이 basename 을 대조해 어긋나면 **기동 시점에 예외로 끊는다**(전에는
 # 모델만 바꾸면 옛 모델의 아티팩트를 그대로 집어 무음으로 딴 벡터를 만들었다).
-# 모델을 바꿀 때는 **세 줄을 함께** 바꿀 것 — 어긋난 조합은 `tests/test_embed_worker.py`
-# 와 `tests/test_bake_declares_the_right_width.py` 가 CI 에서 잡는다.
+# 모델을 바꿀 때는 **세 줄을 함께** 바꿀 것 — 어긋난 조합은 `tests/rag/test_embed_worker.py`
+# 와 `tests/rag/test_bake_declares_the_right_width.py` 가 CI 에서 잡는다.
 # bge-m3 로 가려면: BAAI/bge-m3 + …/bge-m3-int8-rr.onnx + 1024.
 #
 # 세 번째 줄(폭)이 왜 필요한가. 모델 교체는 차원 교체다(e5 768 · bge-m3 1024). 굽기가
