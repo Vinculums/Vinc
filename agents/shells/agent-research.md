@@ -38,10 +38,11 @@ Repositories: Vinc, Vinc-homepage
 
 ## Read before the first edit, in this order
 
-1. vinc.research.methodology
-2. vinc.canon.decisions
-3. vinc.plan.reinforcement-points
-4. vinc.canon.graph-conventions
+1. vinc.manual.rag
+2. vinc.research.methodology
+3. vinc.canon.decisions
+4. vinc.plan.reinforcement-points
+5. vinc.canon.graph-conventions
 
 ## Gates that must pass before the pull request
 

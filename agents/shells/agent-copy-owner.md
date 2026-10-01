@@ -39,11 +39,12 @@ Repositories: Vinc, Vinc-homepage
 
 ## Read before the first edit, in this order
 
-1. vinc.spec.ui-copy-ko
-2. vinc.spec.ui-copy
-3. vinc.canon.terminology
-4. vinc.reference.view-controls
-5. vinc.ops.site-audit-2026-08-22
+1. vinc.manual.design
+2. vinc.spec.ui-copy-ko
+3. vinc.spec.ui-copy
+4. vinc.canon.terminology
+5. vinc.reference.view-controls
+6. vinc.ops.site-audit-2026-08-22
 
 ## Gates that must pass before the pull request
 

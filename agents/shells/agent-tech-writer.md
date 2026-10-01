@@ -39,12 +39,13 @@ Repositories: Vinc, Vinc-homepage
 
 ## Read before the first edit, in this order
 
-1. vinc.book.index
-2. vinc.canon.terminology
-3. vinc.spec.ui-copy-ko
-4. vinc.spec.product-overview
-5. vinc.canon.book-motion-grammar
-6. vinc.plan.book-content-review-2026-09-10
+1. vinc.manual.design
+2. vinc.book.index
+3. vinc.canon.terminology
+4. vinc.spec.ui-copy-ko
+5. vinc.spec.product-overview
+6. vinc.canon.book-motion-grammar
+7. vinc.plan.book-content-review-2026-09-10
 
 ## Gates that must pass before the pull request
 

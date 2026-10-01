@@ -38,11 +38,12 @@ Repositories: Vinc
 
 ## Read before the first edit, in this order
 
-1. d79e32d8ed347c749
-2. d77f47c7465264b6f
-3. vinc.spec.viewpoints
-4. vinc.spec.surface-tree
-5. vinc.reference.view-controls
+1. vinc.manual.platform
+2. d79e32d8ed347c749
+3. d77f47c7465264b6f
+4. vinc.spec.viewpoints
+5. vinc.spec.surface-tree
+6. vinc.reference.view-controls
 
 ## Gates that must pass before the pull request
 

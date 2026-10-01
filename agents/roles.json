@@ -36,6 +36,7 @@
           "switching the language on"
         ],
         "reads": [
+          "vinc.manual.design",
           "vinc.spec.ui-copy-ko",
           "vinc.spec.ui-copy",
           "vinc.canon.terminology",
@@ -114,6 +115,7 @@
           "sign off on screen"
         ],
         "reads": [
+          "vinc.manual.design",
           "vinc.spec.ui-copy-ko",
           "vinc.spec.ui-copy",
           "vinc.canon.terminology",
@@ -175,6 +177,7 @@
           "the PK namespacing migration run"
         ],
         "reads": [
+          "vinc.manual.platform",
           "vinc.plan.agent-lifecycle-and-the-deploy-plane",
           "vinc.canon.repo-workflow",
           "vinc.ops.deployment"
@@ -321,6 +324,7 @@
           "tier and price policy"
         ],
         "reads": [
+          "vinc.manual.core",
           "vinc.spec.web-system",
           "vinc.spec.email-subsystem",
           "vinc.canon.account-policy",
@@ -477,6 +481,7 @@
           "risk acceptance"
         ],
         "reads": [
+          "vinc.manual.core",
           "vinc.spec.dataplane",
           "vinc.canon.principles",
           "vinc.canon.mcp-contract",
@@ -557,6 +562,7 @@
         "paths": [],
         "person_only": [],
         "reads": [
+          "vinc.manual.platform",
           "vinc.canon.repo-workflow"
         ],
         "repos": [
@@ -636,6 +642,7 @@
           "the PK namespacing migration run"
         ],
         "reads": [
+          "vinc.manual.platform",
           "vinc.spec.azure-infrastructure",
           "vinc.ops.azure-identity-split-2026-08-30",
           "vinc.ops.deployment",
@@ -705,6 +712,7 @@
           "public promises"
         ],
         "reads": [
+          "vinc.manual.design",
           "vinc.ops.site-audit-2026-08-22",
           "vinc.spec.email-subsystem",
           "vinc.canon.terminology",
@@ -924,6 +932,7 @@
           "every state changing command"
         ],
         "reads": [
+          "vinc.manual.platform",
           "vinc.ops.deployment",
           "vinc.ops.fts-index-drift",
           "vinc.ops.incident-2026-08-04-easyauth",
@@ -1238,6 +1247,7 @@
         ],
         "person_only": [],
         "reads": [
+          "vinc.manual.platform",
           "d79e32d8ed347c749",
           "d77f47c7465264b6f",
           "vinc.spec.viewpoints",
@@ -1316,6 +1326,7 @@
           "publish"
         ],
         "reads": [
+          "vinc.manual.platform",
           "vinc.release.changelog",
           "vinc.ops.deployment",
           "vinc.plan.code-signing",
@@ -1383,6 +1394,7 @@
           "scope"
         ],
         "reads": [
+          "vinc.manual.rag",
           "vinc.research.methodology",
           "vinc.canon.decisions",
           "vinc.plan.reinforcement-points",
@@ -1525,6 +1537,7 @@
           "signing key custody"
         ],
         "reads": [
+          "vinc.manual.core",
           "vinc.ops.security-audit-2026-08-18",
           "vinc.ops.risk-audit-2026-08-05",
           "vinc.canon.account-policy",
@@ -1596,6 +1609,7 @@
           "ratification"
         ],
         "reads": [
+          "vinc.manual.platform",
           "vinc.canon.graph-conventions",
           "vinc.canon.vocabulary-model",
           "vinc.canon.code-annotation",
@@ -1663,6 +1677,7 @@
           "publishing the book"
         ],
         "reads": [
+          "vinc.manual.design",
           "vinc.book.index",
           "vinc.canon.terminology",
           "vinc.spec.ui-copy-ko",

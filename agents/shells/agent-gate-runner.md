@@ -38,7 +38,8 @@ Repositories: Vinc, Vinc-homepage
 
 ## Read before the first edit, in this order
 
-1. vinc.canon.repo-workflow
+1. vinc.manual.platform
+2. vinc.canon.repo-workflow
 
 ## Gates that must pass before the pull request
 

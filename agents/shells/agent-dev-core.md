@@ -42,13 +42,14 @@ Repositories: Vinc
 
 ## Read before the first edit, in this order
 
-1. vinc.spec.dataplane
-2. vinc.canon.principles
-3. vinc.canon.mcp-contract
-4. vinc.canon.chunk-ssot
-5. vinc.canon.code-annotation
-6. vinc.ops.security-audit-2026-08-18
-7. vinc.canon.repo-workflow
+1. vinc.manual.core
+2. vinc.spec.dataplane
+3. vinc.canon.principles
+4. vinc.canon.mcp-contract
+5. vinc.canon.chunk-ssot
+6. vinc.canon.code-annotation
+7. vinc.ops.security-audit-2026-08-18
+8. vinc.canon.repo-workflow
 
 ## Gates that must pass before the pull request
 

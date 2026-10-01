@@ -40,10 +40,11 @@ Repositories: Vinc, Vinc-homepage
 
 ## Read before the first edit, in this order
 
-1. vinc.release.changelog
-2. vinc.ops.deployment
-3. vinc.plan.code-signing
-4. vinc.canon.repo-workflow
+1. vinc.manual.platform
+2. vinc.release.changelog
+3. vinc.ops.deployment
+4. vinc.plan.code-signing
+5. vinc.canon.repo-workflow
 
 ## Gates that must pass before the pull request
 

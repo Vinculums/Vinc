@@ -38,9 +38,10 @@ Repositories: Vinc, Vinc-homepage, Vincs-app
 
 ## Read before the first edit, in this order
 
-1. vinc.plan.agent-lifecycle-and-the-deploy-plane
-2. vinc.canon.repo-workflow
-3. vinc.ops.deployment
+1. vinc.manual.platform
+2. vinc.plan.agent-lifecycle-and-the-deploy-plane
+3. vinc.canon.repo-workflow
+4. vinc.ops.deployment
 
 ## Gates that must pass before the pull request
 

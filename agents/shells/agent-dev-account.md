@@ -37,12 +37,13 @@ Repositories: Vinc-homepage
 
 ## Read before the first edit, in this order
 
-1. vinc.spec.web-system
-2. vinc.spec.email-subsystem
-3. vinc.canon.account-policy
-4. vinc.spec.remote-profile
-5. vinc.canon.graph-conventions
-6. vinc.canon.repo-workflow
+1. vinc.manual.core
+2. vinc.spec.web-system
+3. vinc.spec.email-subsystem
+4. vinc.canon.account-policy
+5. vinc.spec.remote-profile
+6. vinc.canon.graph-conventions
+7. vinc.canon.repo-workflow
 
 ## Gates that must pass before the pull request
 

@@ -43,11 +43,12 @@ Repositories: Vinc, Vinc-homepage
 
 ## Read before the first edit, in this order
 
-1. vinc.ops.security-audit-2026-08-18
-2. vinc.ops.risk-audit-2026-08-05
-3. vinc.canon.account-policy
-4. vinc.spec.email-subsystem
-5. vinc.spec.dataplane
+1. vinc.manual.core
+2. vinc.ops.security-audit-2026-08-18
+3. vinc.ops.risk-audit-2026-08-05
+4. vinc.canon.account-policy
+5. vinc.spec.email-subsystem
+6. vinc.spec.dataplane
 
 ## Gates that must pass before the pull request
 
