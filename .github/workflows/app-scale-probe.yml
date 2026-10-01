@@ -33,7 +33,7 @@ on:
 
 # concurrency 를 일부러 안 단다: 스토어·리비전·레지스트리 어느 것도 안 건드리고,
 # `cancel-in-progress: false` 를 다는 순간 직렬화 워크플로 명단을 넷으로 고정한
-# `tests/test_gate_runner_move.py` 가 떨어진다(container-latency-probe.yml 과 같은 이유).
+# `tests/platform/test_gate_runner_move.py` 가 떨어진다(container-latency-probe.yml 과 같은 이유).
 
 permissions:
   id-token: write

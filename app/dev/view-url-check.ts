@@ -8,7 +8,7 @@
  *  `absoluteViewUrl`(location 을 읽는다)만 이 파일에서 부르지 않는다.
  *
  *  ⚠ **왜 이게 있어야 하나**: 이 문법에는 거울이 둘이다 — 여기가 만들고
- *  `vinc_mcp/viewurl.py` 가 읽는다. 파이썬 쪽은 `tests/test_view_url.py` 가 지키는데
+ *  `vinc_mcp/viewurl.py` 가 읽는다. 파이썬 쪽은 `tests/mcp/test_view_url.py` 가 지키는데
  *  앱 쪽에는 JS 테스트 러너가 없어서(`app/package.json` 에 `test` 없음) 지키는 것이
  *  아무것도 없었다. 아래 EXPECT 는 파이썬 `GRAMMAR` 와 **같은 형태**를 적은 것이고,
  *  둘이 갈라지면 여기서 먼저 소리가 난다. */
@@ -95,7 +95,7 @@ ok("못 읽는 입력은 조용히 전체 지도다");
 // ── 8. 건넬 주소는 스페이스를 해시 **앞** 쿼리로 싣는다 ───────────────────────
 // 해시 안에 두면 첫 조각은 주제로, 꼬리는 깊이 판정을 가리는 것으로 읽힌다(급소 둘).
 // 파서는 `#` 부터 읽으므로 쿼리가 선택을 흔들지 않아야 한다. 파이썬 쪽은
-// `viewurl.space_of` 가 같은 쿼리를 읽는다(tests/test_address_carries_space.py).
+// `viewurl.space_of` 가 같은 쿼리를 읽는다(tests/mcp/test_address_carries_space.py).
 // 근거: [[decision:a-node-address-names-its-space]]
 {
   const team = "0198c0de-1111-7222-8333-444455556666";

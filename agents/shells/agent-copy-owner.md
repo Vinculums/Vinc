@@ -53,7 +53,7 @@ Repositories: Vinc, Vinc-homepage
 Test command:
 
 ```
-env -u PYTHONHOME -u PYTHONPATH ./.venv/Scripts/python.exe -m pytest tests/test_copy_parity.py
+env -u PYTHONHOME -u PYTHONPATH ./.venv/Scripts/python.exe -m pytest tests/design/test_copy_parity.py
 ```
 
 ## Works with

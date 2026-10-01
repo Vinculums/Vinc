@@ -9,7 +9,7 @@ Linear VIN-242), 이 모듈은 어차피 `api` 의 아무것도 쓰지 않았다
 import pid_alive` 라고 적힌 자리(사이드카·테스트)가 갈아타는 동안에도 **같은 함수**를
 받게 하려는 것이다. 사본이 둘이던 시절 브리지 쪽만 `os.kill` 을 쓰다가 Windows 에서
 앱을 죽인 사고(2026-08-18)가 이 모듈의 존재 이유이고, 재수출은 그 사고를 다시 내지
-않는다 — `tests/test_pid_probe.py` 가 두 진입점이 같은 소스인지 본다.
+않는다 — `tests/core/test_pid_probe.py` 가 두 진입점이 같은 소스인지 본다.
 """
 from __future__ import annotations
 

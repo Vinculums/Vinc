@@ -109,7 +109,7 @@ select, ::picker(select) { appearance: base-select; }
 select::picker-icon {
   content: ""; flex: none; margin-left: auto; width: .42em; height: .42em;
   border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
-  opacity: .7;   /* 색을 다시 적지 않는다(tests/test_select_is_one_rule) — 글자색을 흐려 캡션 톤으로 */
+  opacity: .7;   /* 색을 다시 적지 않는다(tests/app/test_select_is_one_rule) — 글자색을 흐려 캡션 톤으로 */
   transform: translateY(-.12em) rotate(45deg);
   transition: transform var(--dur-fast) var(--ease-out);
 }

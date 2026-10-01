@@ -326,7 +326,7 @@ jobs:
       # 단계에서 죽어 _FailedTest 로 잡힌다(실측: 로컬 venv 엔 깔려 있어 안 드러났고
       # CI 에서 처음 드러났다 — 문서와 실제의 드리프트).
       - name: Install deps (ladybug pinned + argon2 + pytest + pypdf)
-        # pypdf 는 tests/test_textextract 의 PDF 경로를 실제로 돌리기 위한 것이다.
+        # pypdf 는 tests/core/test_textextract 의 PDF 경로를 실제로 돌리기 위한 것이다.
         # 없어도 그 테스트는 skip 으로 통과하지만, 그러면 강등 계약만 검증되고
         # **추출 자체는 CI 에서 한 번도 안 돌게 된다**(조용한 초록).
         run: pip install ladybug==0.20.4 argon2-cffi pyyaml pytest pypdf
@@ -352,7 +352,7 @@ jobs:
       # 8코어다. PR 마다 켠·꺼진 두 벌이 나란히 돌아 그 기계가 100% 에 붙었다.
       # ⚠ 게이트(금지어·인용·이스케이프·대비·디자인·로스터)는 **조건이 없다** — 이 잡을
       # 안전망으로 만드는 것은 그쪽이고, 입력이 리포 거의 전체라 조건을 달면 구멍이 된다.
-      # ⚠ `core-pkns` 에는 이런 `if` 를 달지 말 것 — tests/test_ci_suite_is_unconditional.py 가
+      # ⚠ `core-pkns` 에는 이런 `if` 를 달지 말 것 — tests/platform/test_ci_suite_is_unconditional.py 가
       # 막는다. 그쪽이 PR 에 남은 유일한 전량 스위트다.
       # 드라이버가 실제로 열리는지 확인 — 여기서 막아야 17개 파일의 조용한 skip 을
       # "통과"로 오독하지 않는다.
@@ -535,7 +535,7 @@ jobs:
     # 없고 PR 에서 내려오지 않는다"고 정했고,
     # [[record:core-pkns-if-skips-app-and-agents-changes-2026-09-05]] 이 "처방은 조건을
     # 넓히거나 걷는 것"이라고 적었다. 조건을 되살리려면 그 둘을 먼저 뒤집을 것.
-    # 이 형태를 지키는 것은 tests/test_ci_suite_is_unconditional.py 다.
+    # 이 형태를 지키는 것은 tests/platform/test_ci_suite_is_unconditional.py 다.
     #
     # 대가는 정직하게 적는다: 이 잡이 PR 마다 늘 돈다(호스티드 분이 아니라 아래
     # `runs-on` 의 셀프호스티드 시간이다). 그리고 `needs` 를 걷었으므로 `changes` 와

@@ -109,7 +109,7 @@ def remove(path: str, repo: Path, into: Path) -> str:
 
     `git worktree remove` 를 쓰지 않는다. 윈도에서 그것은 트리 안의 링크(정션)를 따라가
     대상을 비웠다([[record:worktree-removal-follows-links-and-deletes-ignored-files-2026-09-13]]).
-    `shutil.rmtree` 는 중첩 정션의 링크만 지운다 — `tests/test_worktree_hook.py` 가 그
+    `shutil.rmtree` 는 중첩 정션의 링크만 지운다 — `tests/platform/test_worktree_hook.py` 가 그
     성질을 고정한다.
 
     지우기 전에 이름부터 바꾼다. 윈도는 트리 안에 cwd 나 열린 파일을 가진 프로세스가

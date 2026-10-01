@@ -147,7 +147,7 @@ export async function renderSettings(
     const lang = cfg.lang === "en" ? "en" : "ko";
     // 언어 이름은 덱에 넣지 않는다: 각 언어가 자기 이름으로 선다(영어 화면에서 "Korean"
     // 이 되면 영어를 못 읽는 사람이 자기 언어를 못 찾는다). `data-lang-opt` 가 카피
-    // 인벤토리(tests/test_copy_parity.py)의 그 면제 표식이다.
+    // 인벤토리(tests/design/test_copy_parity.py)의 그 면제 표식이다.
     body.innerHTML = `
       <h2>${esc(U.navGeneral)}</h2>
       <p class="hint">${esc(U.generalIntro)}</p>
@@ -265,7 +265,7 @@ export async function renderSettings(
     // 웹 Vinc: 로그인 계정을 @username(없으면 이메일)으로 표시.
     // ⚠ 이 블록의 카피는 예전에 여기 EN/KO 사전으로 인라인돼 있었다. 사유는
     // "셸 편집 충돌 회피"였는데 그 충돌은 이미 없고, 덱 밖 카피는 언어 프록시도
-    // 게이트도 타지 않는다(tests/test_copy_parity.py 가 이제 막는다).
+    // 게이트도 타지 않는다(tests/design/test_copy_parity.py 가 이제 막는다).
     body.innerHTML = `
       <h2>${esc(U.navAccount)}</h2>
       <p class="hint">${esc(U.accountIntro)}</p>

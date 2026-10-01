@@ -50,7 +50,7 @@
         "rung": "strong",
         "team": "Content and Marketing",
         "team_role": "member",
-        "test_command": "env -u PYTHONHOME -u PYTHONPATH ./.venv/Scripts/python.exe -m pytest tests/test_copy_parity.py",
+        "test_command": "env -u PYTHONHOME -u PYTHONPATH ./.venv/Scripts/python.exe -m pytest tests/design/test_copy_parity.py",
         "tier": "execute",
         "tool_note": "extract_copy.py pairs each English key with its Korean value and flags NOWRAP, BR, KEEPALL and MISSING; a nowrap element overflows sideways rather than wrapping when the Korean runs long.",
         "tools": [

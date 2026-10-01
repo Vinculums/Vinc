@@ -52,13 +52,13 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
 # bge-m3 2.27GB)를 내려받다가 OOM 으로 컨테이너(=MCP 포함)를 죽인다. 그래서 둘 다
 # `VINC_EMBED_MODEL_PATH` 하나를 본다 — Dockerfile.hub 의 ENV 가 유일한 정본이고,
 # 그 값이 모델과 맞는지는 `packaging/embed_worker.py::artifact_name` 규약을 대조하는
-# 테스트(tests/test_embed_worker.py)가 CI 에서 지킨다.
+# 테스트(tests/rag/test_embed_worker.py)가 CI 에서 지킨다.
 OUT = os.environ.get("VINC_EMBED_MODEL_PATH", "/srv/vinc/models/e5-int8-rr.onnx")
 TOK = os.path.join(os.path.dirname(OUT), "tokenizer.json")
 MODEL = os.environ.get("VINC_EMBED_MODEL", "intfloat/multilingual-e5-base")
 #: 이 모델이 내야 하는 벡터 폭. `Dockerfile.hub` 의 ENV 가 정본이고, 그 값이
 #: `store/config.py::EMBEDDING_DIM_BY_MODEL` 과 어긋나지 않는지는 CI 테스트가 본다
-#: (tests/test_bake_declares_the_right_width.py). 여기서 표를 복사하지 않는 이유는
+#: (tests/rag/test_bake_declares_the_right_width.py). 여기서 표를 복사하지 않는 이유는
 #: 복사본이 드리프트하기 때문이고, ENV 로 받는 이유는 이 파일 하나만 이미지로
 #: 복사되어 `store.config` 를 import 할 수 없기 때문이다.
 DIM = int(os.environ.get("VINC_EMBED_DIM", "768"))

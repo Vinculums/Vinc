@@ -33,7 +33,7 @@ FIELD = re.compile(r"\.\s*\w*(label|title|domain|tags|one_liner)\b")
 #: 줄의 지역 `esc`), 태그를 만드는 보간이 전부 `esc(...)` 나 `inline(esc(...))` 를 지나며,
 #: 속성 자리 둘(`data-src`)도 `esc()` 다. 즉 이스케이프하는 함수라서 넣는 것이지
 #: 마크다운이라서 넣는 것이 아니다.
-#: ⚠ 그 신뢰는 `tests/test_render_markdown_escapes.py` 가 붙잡는다. 저 함수가 이스케이프를
+#: ⚠ 그 신뢰는 `tests/app/test_render_markdown_escapes.py` 가 붙잡는다. 저 함수가 이스케이프를
 #: 그만두면 이 줄이 구멍이 되므로, 목록에서 빼기 전에 그 시험부터 볼 것.
 SAFE = re.compile(r"\b(esc|escHtml|underlineTerms|textContent|encodeURI|renderMarkdown)\s*\(")
 #: `${ ... }` 한 조각. 중첩 한 겹까지 받아 삼항 안의 템플릿도 통째로 본다.

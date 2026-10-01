@@ -37,7 +37,7 @@ vinc-pack-{도메인}.vincpack            산출물(zip 컨테이너, D55)
 규율: 영어만 · `reads`·`gates`·`paths` 는 비워 둔다(사용자의 것) · 오케스트레이터 역할은
 어디에도 없다(그래프는 스케줄러가 아니다) · 팩 간 엣지는 두지 않는다(같은 페이로드 밖의
 엣지는 조용히 skip 된다) · `vinc/agent` 는 무료 주제 상한에서 빠진다(`engines/domain_hierarchy.
-RESERVED_TOPICS`). `tests/test_agent_packs.py` 가 이 표와 규율을 고정한다.
+RESERVED_TOPICS`). `tests/design/test_agent_packs.py` 가 이 표와 규율을 고정한다.
 
 ⚠ 기본 팩의 자동 적재는 **갤러리 행이 있을 때만** 된다. 시딩이 수동인 것은 여기도 같아서,
 DB 를 새로 만들면 새 스페이스는 빈 로스터로 태어난다(계정 로그에 `default pack not seeded`).

@@ -10,7 +10,7 @@
 다시 센다.
 
 두 소비자가 이 모듈을 읽는다:
-  · `tests/test_copy_parity.py` — 회귀를 잠근다(덱 밖 한글 0 · 죽은 키 0)
+  · `tests/design/test_copy_parity.py` — 회귀를 잠근다(덱 밖 한글 0 · 죽은 키 0)
   · `scripts/gate_forbidden.py` — F9(한국어 금지 어휘)가 주석을 걸러 내는 데
     `strip_comments` 를 그대로 쓴다
 

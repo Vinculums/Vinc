@@ -9,7 +9,7 @@ SEC-3(삭제·병합)과 D45(문서 정본 doc_*)를 거치며 깨진 낡은 서
 아래 TOOLS 리스트가 정본이고 이 독스트링은 그 요약일 뿐이다.
 ⚠ 이 숫자는 F10-b 로 merge_reject 가 늘었을 때 19 인 채로 남아 어느 집계에도 안
 들어갔다("TOOLS 가 정본"이라는 방어 문장을 단 채로 틀렸다). 그래서 이제
-tests/test_tool_contract.py 가 이 독스트링의 수와 len(TOOLS) 를 대조한다.
+tests/mcp/test_tool_contract.py 가 이 독스트링의 수와 len(TOOLS) 를 대조한다.
 
 주제·어휘(themes·types)의 **뮤테이션**(재가·거부·개명)은 HTTP 전용이며 MCP 에 노출하지
 않는다 — 어시스턴트는 제안만 하고 자기 제안을 스스로 재가할 수 없다(의도된 비대칭).
@@ -29,7 +29,7 @@ from .bridge import Bridge
 
 # vinc_mcp 는 api 를 임포트하지 않으므로(독립 브리지 계약) 허용 쌍 문장을 여기
 # 미러한다. 정본은 `api/fragment.py` 의 `_ALLOWED_PAIRS_HINT` 이고, 서버가 거부할 때
-# warnings 에 싣는 것도 그 문장이다. 두 사본의 일치는 tests/test_tool_contract.py 의
+# warnings 에 싣는 것도 그 문장이다. 두 사본의 일치는 tests/mcp/test_tool_contract.py 의
 # 교차 계약 테스트가 고정한다 — 커서 코덱 미러(아래 _cursor_encode)와 같은 방식.
 #
 # ⚠ 손으로 요약하지 말 것. v12 가 Decision 을 끝점으로 늘렸을 때 이 자리들이 전부
@@ -1570,7 +1570,7 @@ CAPPED_TOOLS = ("vinc_ingest",)
 # 봉투(rpc._result_text)가 상한 초과 결과를 **거부하는 대신** 여기 등록된 도구는
 # 꼬리 행을 덜어 페이지로 만든다. vinc_mcp 는 api 패키지를 임포트하지 않으므로
 # (독립 브리지 계약) 커서 코덱을 여기 미러한다 — 두 사본의 왕복 호환은
-# tests/test_search_pagination.py 의 교차 계약 테스트가 고정한다.
+# tests/rag/test_search_pagination.py 의 교차 계약 테스트가 고정한다.
 
 def _cursor_encode(payload: dict) -> str:
     raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
@@ -2070,7 +2070,7 @@ def call(name: str, args: dict | None, bridge: Bridge,
 #: 덮는다.
 #:
 #: 주석이 없으면 **admin** 이다(fail-closed) — 새 도구가 등급 없이 들어와도 조용히
-#: 열리지 않는다. `tests/test_mcp_space_address.py` 가 전 도구의 주석 실재를 못 박는다.
+#: 열리지 않는다. `tests/mcp/test_mcp_space_address.py` 가 전 도구의 주석 실재를 못 박는다.
 def tool_tier(name: str) -> str:
     """`viewer` · `editor` · `admin`. 모르는 도구는 admin(닫힘)."""
     a = _ANNOTATIONS.get(name)
