@@ -196,7 +196,7 @@ class ShapeGraphTests(unittest.TestCase):
         roles = {e["type"]: e.get("role") for e in g["edges"]}
         self.assertEqual(roles, {"CONNECTS": "math_input", "ABOUT": None})
 
-    @mock.patch("api.query.open_store", return_value=None)
+    @mock.patch("store.querybase.open_store", return_value=None)
     def test_graph_entrypoint_without_db(self, _open):
         g = q.graph(owner="user:doheon")
         self.assertFalse(g["executed"])
@@ -494,7 +494,7 @@ class WeightedPathTests(unittest.TestCase):
 
 
 class ExecuteTests(unittest.TestCase):
-    @mock.patch("api.query.open_store", return_value=None)
+    @mock.patch("store.querybase.open_store", return_value=None)
     def test_execute_without_db_degrades_without_leaking_plan(self, _open):
         """F3 — 스토어가 없어도 **plan 은 안 싣는다.**
 
@@ -507,7 +507,7 @@ class ExecuteTests(unittest.TestCase):
         self.assertNotIn("plan", res, f"plan 이 기본 응답에 실렸다: {res.get('plan')}")
         self.assertEqual(res["rows"], [])
 
-    @mock.patch("api.query.open_store", return_value=None)
+    @mock.patch("store.querybase.open_store", return_value=None)
     def test_debug_는_옵트인으로_plan_을_되돌려준다(self, _open):
         """진단 능력을 없앤 게 아니라 옵트인으로 내린 것이다 — 그 증거."""
         res = q.recall("x", debug=True)

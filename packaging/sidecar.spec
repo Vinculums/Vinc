@@ -118,6 +118,9 @@ a = Analysis(
         # 자체가 죽어 MCP 표면이 통째로 사라진다. 렌더러가 `scripts/` 가 아니라 여기
         # 있는 이유이기도 하다 — 동결 바이너리는 `scripts/` 를 싣지 않는다.
         "vinc_mcp.roles",
+        # VIN-243 — 검색 코어를 api/query.py 에서 옮겼다. api.query 가 최상위로 끌어
+        # 정적 분석이 잡지만, 빠지면 검색이 통째로 죽으므로 위와 같은 이유로 못 박는다.
+        "store.querybase", "vinc_rag", "vinc_rag.retrieval",
     ],
     # cryptography/OpenSSL 은 우리 의존이 아님(argon2 도 옵션 lazy) — 시스템
     # dist-packages 의 pyo3 훅 충돌을 피하려고 명시 제외한다. ⚠ 여기 "OpenSSL" 은

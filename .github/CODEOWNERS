@@ -13,6 +13,7 @@
 /tests/                                          @Vinculums/core
 /verify.py                                       @Vinculums/core
 /vinc_mcp/                                       @Vinculums/core
+/vinc_rag/                                       @Vinculums/rag
 /app/                                            @Vinculums/app
 /LICENSE                                         @Vinculums/design-content
 /README.md                                       @Vinculums/design-content

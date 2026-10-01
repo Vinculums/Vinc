@@ -48,7 +48,7 @@ class TouchTests(unittest.TestCase):
 
 
 class ExecuteTests(unittest.TestCase):
-    @mock.patch("api.query.open_store", return_value=None)
+    @mock.patch("store.querybase.open_store", return_value=None)
     def test_pin_without_db_degrades_without_leaking_plan(self, _open):
         """F3 — 쓰기 경로도 같다. 강등이 곧 내부 노출이 되면 안 된다."""
         res = pref.pin("s1")
