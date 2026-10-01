@@ -17,7 +17,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from evalkit import funnel, grading, run_nodes, runtime, transports  # noqa: E402
+from rag_eval.evalkit import funnel, grading, run_nodes, runtime, transports  # noqa: E402
 
 RT = {"onnxruntime": "1.30.0", "tokenizers": "0.23.2", "numpy": "2.5.3"}
 
@@ -126,7 +126,7 @@ class ParityTests(unittest.TestCase):
         self.assertTrue(run_nodes._degraded({"arms": "fts", "vector_note": u}))
 
     def test_CLI_경로는_로컬_대상으로_못_박는다(self):
-        from evalkit.transports import Cli
+        from rag_eval.evalkit.transports import Cli
         self.assertEqual(Cli("d", "o").env["VINC_TARGET"], "local")
         self.assertEqual(Cli("d", "o", env={"VINC_TARGET": "remote"}).env["VINC_TARGET"], "remote")
 

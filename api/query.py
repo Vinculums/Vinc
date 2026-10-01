@@ -6384,7 +6384,7 @@ _VECTOR_WIDTH_MISMATCH = ("query vector width does not match the stored vectors,
 #: 벡터 색인이 **다시 서지 못하는** 스토어의 사유(잔해 — `VectorIndexRemnant`). 위와 달리
 #: 실패다: `vector_rebuilding` 을 달지 않는다.
 #: 스탬프 없는 옛 벡터가 있을 때의 경고. 의미 팔은 **돌았다** — 호환을 확인할 수 없을 뿐이다.
-#: 평가 하네스(`scripts/evalkit/run_nodes._degraded`)가 이 문구를 강등에서 빼므로 상수로 둔다.
+#: 평가 하네스(`rag_eval/evalkit/run_nodes._degraded`)가 이 문구를 강등에서 빼므로 상수로 둔다.
 UNSTAMPED_RUNTIME_NOTE = "stored vectors have unknown encoder runtime; re-embed to verify compatibility"
 _VECTOR_REMNANT = ("vector index unavailable: the store holds a remnant index that blocks "
                    "the rebuild until the sidecar restarts; full-text results only")

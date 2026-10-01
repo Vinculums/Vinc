@@ -116,6 +116,8 @@ COPY packaging/embed_worker.py ./packaging/embed_worker.py
 # DB 는 **읽기 전용으로도 두 번째로 못 연다**(실측 2026-08-08: 허브 안에서도 실패).
 # 그래서 공유의 스냅샷 사본을 `--data` 로 지정해 돌린다. 스크립트는 전부 작은 .py 다.
 COPY scripts ./scripts
+# 검색 품질 게이트(scripts/eval_search.py 래퍼 → rag_eval.search)가 허브 안에서 돈다(VIN-245).
+COPY rag_eval ./rag_eval
 COPY pyproject.toml README.md LICENSE ./
 
 # G0 오프라인 확장 — 빌드 컨테이너 네트워크에서 extension.ladybugdb.com 다운로드가

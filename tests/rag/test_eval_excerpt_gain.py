@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Source excerpt gain 도구의 **지표가 맞는가** — scripts/eval_excerpt_gain.py.
+"""Source excerpt gain 도구의 **지표가 맞는가** — rag_eval/excerpt_gain.py.
 
 test_eval_search.py 와 같은 규율: 이 숫자로 "one_liner 만으로 충분한가, 발췌를
 붙일 가치가 있나"를 결정하므로 손으로 계산한 값과 대조해 못박는다. 스토어 없이
@@ -11,7 +11,7 @@ import pathlib
 import sys
 import unittest
 
-_SRC = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "eval_excerpt_gain.py"
+_SRC = pathlib.Path(__file__).resolve().parents[2] / "rag_eval" / "excerpt_gain.py"
 
 
 def _load():

@@ -12,7 +12,7 @@ import sys
 import unittest
 
 _SRC = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "make_queries.py"
-_FIXTURE = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "fixtures" / "evalset.json"
+_FIXTURE = pathlib.Path(__file__).resolve().parents[2] / "rag_eval" / "fixtures" / "evalset.json"
 
 
 def _load():

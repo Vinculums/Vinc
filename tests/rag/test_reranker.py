@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""리랭커 계기의 **순수 함수**가 맞는가 · scripts/reranker.py · scripts/eval_rerank.py.
+"""리랭커 계기의 **순수 함수**가 맞는가 · scripts/reranker.py · rag_eval/rerank.py.
 
 왜 순수 함수를 테스트하나: 리랭커 채택 판정은 이 도구의 숫자로 내린다. 재정렬이 안정
 정렬이 아니거나 게이트가 반대로 켜지면 "리랭커가 이겼다/졌다"가 통째로 뒤집히는데,
@@ -15,10 +15,12 @@ import sys
 import unittest
 
 _SCRIPTS = pathlib.Path(__file__).resolve().parents[2] / "scripts"
+#: 평가 쪽(eval_rerank)은 rag_eval/ 로 옮겼다(VIN-245). 이름은 테스트 안의 이름 그대로 둔다.
+_MOVED = {"eval_rerank": pathlib.Path(__file__).resolve().parents[2] / "rag_eval" / "rerank.py"}
 
 
 def _load(name: str):
-    spec = importlib.util.spec_from_file_location(name, _SCRIPTS / f"{name}.py")
+    spec = importlib.util.spec_from_file_location(name, _MOVED.get(name, _SCRIPTS / f"{name}.py"))
     mod = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     sys.modules[name] = mod

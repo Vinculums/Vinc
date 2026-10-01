@@ -33,8 +33,8 @@
     answerable=false 행은 `gold_node_id` 를 비운다.
 
 사용:
-    python scripts/eval_brief_resolution.py --data <store> --owner <owner> \\
-        --gold scripts/fixtures/brief_gold.jsonl --out out.json
+    python -m rag_eval.brief_resolution --data <store> --owner <owner> \\
+        --gold rag_eval/fixtures/brief_gold.jsonl --out out.json
 
 종료코드 1: 채점할 것이 없다(정답 0건이거나 전 행이 실패).
 """
@@ -48,14 +48,14 @@ import sys
 import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
 
 from api import query as q            # noqa: E402
 from store.backend import open_store  # noqa: E402
 from store.config import load_config  # noqa: E402
 
 # 채점은 전송과 무관한 순수 함수라 evalkit.grading 에 산다 — CLI·v1 경로와 같은 것을 쓴다.
-from evalkit.grading import (LOW_REUSE, RANKS, UNANSWERABLE_KINDS,  # noqa: E402,F401
+from rag_eval.evalkit.grading import (LOW_REUSE, RANKS, UNANSWERABLE_KINDS,  # noqa: E402,F401
                              check_gold, grade_one, load_gold, rank_of,
                              summarize, union_rank_of)
 
@@ -140,8 +140,8 @@ def main(argv: list[str] | None = None) -> int:
               f"WAL 없는 새 사본으로 돌릴 것", file=sys.stderr)
         return 1
     # 스토어 지문은 **열기 전에** 잰다(여는 것만으로 바이트가 바뀔 수 있다). 기대값은
-    # `scripts/fixtures/eval_store.lock.json` 에 있다.
-    from eval_answer_material import file_sha            # noqa: PLC0415
+    # `rag_eval/fixtures/eval_store.lock.json` 에 있다.
+    from rag_eval.answer_material import file_sha            # noqa: PLC0415
     store_sha = file_sha(pathlib.Path(a.data))
     store = open_store(load_config({"data_dir": a.data}))
     if store is None:

@@ -17,7 +17,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import eval_choose_material as oc  # noqa: E402
+from rag_eval import choose_material as oc  # noqa: E402
 
 
 def _choose(first, second=None):

@@ -4,7 +4,7 @@
 제거, 문서당 상한)을 **파일트리 대신 스토어의 문서**에 적용한다.
 
 **왜 필요한가.** [[vinc.ops.mcp-hardening-eval]]가 2026-08-08에 실제 계정 그래프
-위에서 검색 품질을 측정했을 때, `scripts/fixtures/evalset.json`의 정답 문서가
+위에서 검색 품질을 측정했을 때, `rag_eval/fixtures/evalset.json`의 정답 문서가
 그 스토어에 **하나도 없어서**(합성 코퍼스용이라) 게이트가 거부했고, 결국 문서
 제목을 질의로 쓰는 부트스트랩으로 되돌아갔다 — 어휘 매칭에 유리한 보수적 편향이
 있는 방식이다. "이 코퍼스에 속한 평가셋이 없다"는 것이 남은 과제로 적혔다
@@ -18,7 +18,7 @@
 사용:
     python scripts/make_queries_from_store.py --data ~/.vinc/db --owner u
     python scripts/make_queries_from_store.py --data <snapshot copy> --owner u \\
-        --out scripts/fixtures/evalset_live.json
+        --out rag_eval/fixtures/evalset_live.json
 """
 from __future__ import annotations
 
@@ -62,7 +62,7 @@ def main() -> int:
     ap.add_argument("--owner", required=True)
     ap.add_argument("--per-lang", type=int, default=30)
     ap.add_argument("--out", default=str(
-        Path(__file__).resolve().parent / "fixtures" / "evalset_live.json"))
+        Path(__file__).resolve().parents[1] / "rag_eval" / "fixtures" / "evalset_live.json"))
     ap.add_argument("--stdout", action="store_true", help="파일 대신 표준출력으로")
     args = ap.parse_args()
 

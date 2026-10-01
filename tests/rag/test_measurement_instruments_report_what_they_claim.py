@@ -103,8 +103,8 @@ class _SpyStore:
 
 
 def _run_eval_search(monkey, *, fail_direct_from=None, search_hook=None, argv_extra=()):
-    """`scripts/eval_search.py` 를 실제로 돌리고 JSON 출력을 돌려준다."""
-    import eval_search as es
+    """`rag_eval/search.py` 를 실제로 돌리고 JSON 출력을 돌려준다."""
+    from rag_eval import search as es
 
     st, cfg = _store_with_two_docs()
     spy = _SpyStore(st, fail_from=fail_direct_from)
@@ -138,7 +138,7 @@ def _run_eval_search(monkey, *, fail_direct_from=None, search_hook=None, argv_ex
 
 
 class EvalSearchContract(unittest.TestCase):
-    """`scripts/eval_search.py` — 프로덕션 검색 경로를 도는 유일한 도구."""
+    """`rag_eval/search.py` — 프로덕션 검색 경로를 도는 유일한 도구."""
 
     def setUp(self):
         self._undo: list[tuple] = []

@@ -26,7 +26,7 @@ import json
 import pathlib
 import unittest
 
-_FIX = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "fixtures"
+_FIX = pathlib.Path(__file__).resolve().parents[2] / "rag_eval" / "fixtures"
 
 
 def _hangul_ratio(text: str) -> float:

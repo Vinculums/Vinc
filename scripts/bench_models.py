@@ -59,7 +59,7 @@ from make_queries import (                                  # noqa: E402
     _CORPORA, _DOC_KO_THRESHOLD, _ROOT, _body_without_frontmatter, lang_of,
 )
 
-_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "evalset.json"
+_FIXTURE = Path(__file__).resolve().parents[1] / "rag_eval" / "fixtures" / "evalset.json"
 
 #: 질의 길이 구간(문자수) — 정본+교차언어 평가셋 118건의 실측 분포에서 자른다
 #: (p25=20 · p75=42): 짧은 키워드형 / 보통 소제목형 / 긴 문장형.

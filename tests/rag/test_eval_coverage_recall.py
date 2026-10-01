@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Coverage recall 도구의 **지표가 맞는가** — scripts/eval_coverage_recall.py.
+"""Coverage recall 도구의 **지표가 맞는가** — rag_eval/coverage_recall.py.
 test_eval_search.py 와 같은 규율: 손으로 계산한 값과 대조해 못박는다."""
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import pathlib
 import sys
 import unittest
 
-_SRC = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "eval_coverage_recall.py"
+_SRC = pathlib.Path(__file__).resolve().parents[2] / "rag_eval" / "coverage_recall.py"
 
 
 def _load():

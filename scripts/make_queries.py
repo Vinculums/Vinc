@@ -47,7 +47,7 @@ from pathlib import Path
 #: 리포 밖에만 있다. 그때는 VINC_EVAL_ROOT 로 실제 워크스페이스를 가리킬 것.
 _ROOT = Path(os.environ.get("VINC_EVAL_ROOT")
              or Path(__file__).resolve().parents[2])
-_OUT = Path(__file__).resolve().parent / "fixtures" / "evalset.json"
+_OUT = Path(__file__).resolve().parents[1] / "rag_eval" / "fixtures" / "evalset.json"
 
 #: 코퍼스 둘. 영어는 스타터팩 본문, 한국어는 Vinc-docs 정본이다.
 #: (레이블은 기대 언어일 뿐이고 실제 판정은 본문으로 한다 — 규칙 2.)

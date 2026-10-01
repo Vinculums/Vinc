@@ -14,8 +14,8 @@ choose 로 남는가, 그리고 그 재료가 정답 노드인가. 정답이 1�
 플래그는 이 프로세스가 켠다. 허브 env 는 건드리지 않는다.
 
 사용:
-    python scripts/eval_choose_material.py --data <store> --owner <owner> \\
-        --gold scripts/fixtures/brief_gold.jsonl --out report.json
+    python -m rag_eval.choose_material --data <store> --owner <owner> \\
+        --gold rag_eval/fixtures/brief_gold.jsonl --out report.json
 
 종료코드 1: 채점할 것이 없다.
 """
@@ -29,14 +29,14 @@ import sys
 from collections import Counter
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
 
 from api import query as q                      # noqa: E402
 from store.backend import open_store            # noqa: E402
 from store.config import load_config            # noqa: E402
 
-import eval_answer_material as n2               # noqa: E402
-import eval_brief_resolution as n1              # noqa: E402
+from rag_eval import answer_material as n2               # noqa: E402
+from rag_eval import brief_resolution as n1              # noqa: E402
 
 _FLAG = "VINC_BRIEF_CHOOSE_MATERIAL"
 

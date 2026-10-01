@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from eval_rerank import DEFAULT_RRF_K, cond_name, weighted_rrf  # noqa: E402
+from rag_eval.rerank import DEFAULT_RRF_K, cond_name, weighted_rrf  # noqa: E402
 
 
 def _rows(*ids):
@@ -57,7 +57,7 @@ def test_ko_stripper_is_one_function_and_leaves_english_alone():
 
     영어를 건드리지 않는 것도 계약이다. 원문 열의 영어 어간 처리가 계속 맞아야
     한국어를 살리면서 영어를 잃지 않는다. 근거: [[record:korean-fts-analyser-2026-09-08]]"""
-    from eval_rerank import ko_stripped_text
+    from rag_eval.rerank import ko_stripped_text
     import r1c_ko_column
 
     assert r1c_ko_column.ko_stripped_text is ko_stripped_text
