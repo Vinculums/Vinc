@@ -39,11 +39,12 @@ Repositories: Vinc
 
 ## Read before the first edit, in this order
 
-1. vinc.canon.graph-conventions
-2. vinc.canon.vocabulary-model
-3. vinc.canon.code-annotation
-4. vinc.canon.mcp-contract
-5. vinc.ops.vinc-docs-decommission
+1. vinc.manual.platform
+2. vinc.canon.graph-conventions
+3. vinc.canon.vocabulary-model
+4. vinc.canon.code-annotation
+5. vinc.canon.mcp-contract
+6. vinc.ops.vinc-docs-decommission
 
 ## Gates that must pass before the pull request
 

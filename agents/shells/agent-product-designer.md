@@ -34,17 +34,17 @@ Authors keyframes and screens in Figma and prototypes motion against the running
 
 Repositories: Vinc
 
-- book-scroll/ (boards, scenes, harness)
 - the Figma file WUXLeDDNBqih2KTZOz9wCX
 - mockup pages
 
 ## Read before the first edit, in this order
 
-1. vinc.canon.book-motion-grammar
-2. vinc.spec.glass-language
-3. vinc.design.figma-rebuild-2026-08
-4. vinc.design.system
-5. vinc.canon.terminology
+1. vinc.manual.design
+2. vinc.canon.book-motion-grammar
+3. vinc.spec.glass-language
+4. vinc.design.figma-rebuild-2026-08
+5. vinc.design.system
+6. vinc.canon.terminology
 
 ## Gates that must pass before the pull request
 

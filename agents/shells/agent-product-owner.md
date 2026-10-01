@@ -57,7 +57,7 @@ Repositories: Vinc, Vinc-homepage, Vincs-app
 ## Works with
 
 - Hands off to: agent-orchestrator (Program Manager), agent-qa (QA Engineer)
-- Receives from: agent-research (Research Analyst)
+- Receives from: agent-metrics-reviewer (Metrics reviewer), agent-research (Research Analyst)
 - Works beside: agent-marketing (Product Marketing Manager)
 
 ## Tools and MCP servers

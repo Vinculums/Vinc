@@ -39,13 +39,14 @@ Repositories: Vinc, Vinc-homepage
 
 ## Read before the first edit, in this order
 
-1. vinc.ops.deployment
-2. vinc.ops.fts-index-drift
-3. vinc.ops.incident-2026-08-04-easyauth
-4. vinc.ops.incident-2026-07-16-macos-sidecar
-5. vinc.ops.cost-management
-6. vinc.spec.azure-infrastructure
-7. vinc.ops.azure-identity-split-2026-08-30
+1. vinc.manual.platform
+2. vinc.ops.deployment
+3. vinc.ops.fts-index-drift
+4. vinc.ops.incident-2026-08-04-easyauth
+5. vinc.ops.incident-2026-07-16-macos-sidecar
+6. vinc.ops.cost-management
+7. vinc.spec.azure-infrastructure
+8. vinc.ops.azure-identity-split-2026-08-30
 
 ## Gates that must pass before the pull request
 
@@ -53,7 +54,7 @@ Repositories: Vinc, Vinc-homepage
 
 ## Works with
 
-- Works beside: agent-deploy (Deployment Engineer), agent-infra (Infrastructure Engineer), agent-security (Security Engineer)
+- Works beside: agent-deploy (Deployment Engineer), agent-infra (Infrastructure Engineer), agent-metrics-analyst (Metrics analyst), agent-security (Security Engineer)
 
 ## Tools and MCP servers
 

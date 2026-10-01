@@ -38,13 +38,14 @@ Repositories: Vinc-homepage
 
 ## Read before the first edit, in this order
 
-1. vinc.ops.site-audit-2026-08-22
-2. vinc.spec.email-subsystem
-3. vinc.canon.terminology
-4. vinc.release.changelog
-5. vinc.spec.architecture
-6. vinc.spec.product-overview
-7. vinc.research.external-interop-by-role
+1. vinc.manual.design
+2. vinc.ops.site-audit-2026-08-22
+3. vinc.spec.email-subsystem
+4. vinc.canon.terminology
+5. vinc.release.changelog
+6. vinc.spec.architecture
+7. vinc.spec.product-overview
+8. vinc.research.external-interop-by-role
 
 ## Gates that must pass before the pull request
 

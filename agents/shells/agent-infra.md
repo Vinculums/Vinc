@@ -40,10 +40,11 @@ Repositories: Vinc
 
 ## Read before the first edit, in this order
 
-1. vinc.spec.azure-infrastructure
-2. vinc.ops.azure-identity-split-2026-08-30
-3. vinc.ops.deployment
-4. vinc.ops.cost-management
+1. vinc.manual.platform
+2. vinc.spec.azure-infrastructure
+3. vinc.ops.azure-identity-split-2026-08-30
+4. vinc.ops.deployment
+5. vinc.ops.cost-management
 
 ## Gates that must pass before the pull request
 

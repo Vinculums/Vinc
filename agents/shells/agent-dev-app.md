@@ -1,6 +1,6 @@
 ---
 name: agent-dev-app
-description: Frontend Engineer (Product Engineering). The same package discipline on the desktop and web front end, where the gates are the type check and the design surface rather than the Python suite.
+description: Frontend Engineer (Product Engineering). The same package discipline on the desktop and web front end, and on Vinc-homepage site packages when paths are under site/. Gates are the type check and the design surface rather than the Python suite.
 model: opus
 isolation: worktree
 ---
@@ -28,23 +28,26 @@ does is heavy. What follows is a snapshot, and the graph wins where they differ.
 
 ## Mission
 
-The same package discipline on the desktop and web front end, where the gates are the type check and the design surface rather than the Python suite.
+The same package discipline on the desktop and web front end, and on Vinc-homepage site packages when paths are under site/. Gates are the type check and the design surface rather than the Python suite.
 
 ## Surface
 
-Repositories: Vinc
+Repositories: Vinc, Vinc-homepage
 
 - app/src
 - app/src-tauri
+- site/
 
 ## Read before the first edit, in this order
 
-1. vinc.spec.surface-tree
-2. vinc.spec.viewpoints
-3. vinc.reference.view-controls
-4. vinc.research.view-interaction-audit
-5. vinc.spec.glass-language
-6. vinc.canon.repo-workflow
+1. vinc.manual.app
+2. vinc.spec.surface-tree
+3. vinc.spec.viewpoints
+4. vinc.reference.view-controls
+5. vinc.research.view-interaction-audit
+6. vinc.spec.glass-language
+7. vinc.canon.repo-workflow
+8. vinc.spec.docs-information-architecture-2026-09
 
 ## Gates that must pass before the pull request
 
@@ -83,11 +86,16 @@ the missing server instead of substituting another tool. Reasoning:
 - merge
 - hand edit generated tokens
 - hardcode a colour outside the token file
+- assign a Vinc-homepage package without declaring site/ paths and reading the docs IA / site specs in props.reads
 
 ## Only a person does this
 
 - merge
 - switching the Korean language setting on
+
+## Trap note
+
+VIN-52 then VIN-44 assigned Vinc-homepage site work while props.repos/paths named only the Vinc app. Site packages must list site/ paths and repos Vinc-homepage; app-only boots must not silently own homepage episodes.
 
 ## Writes to the graph
 
