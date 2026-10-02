@@ -751,6 +751,8 @@ function groupRows(n: DomNode, level = 1): string {
 
 /** 스크롤 밖의 머리 — 지금 몇 주제를 보고 있는지. 인자가 없으면 비운다(아직
  *  못 세었거나 셀 것이 없는 상태에서 `0` 을 내면 "주제가 없다"로 읽힌다). */
+/** 머리 + 의 이름. Agent 레일에서는 새 역할 양식을 연다. */
+const addTip = (): string => (railKey === "agent" ? COPY.author.role.newTip : COPY.author.addTip);
 function paintHead(n?: number, label?: string): void {
   const h = $("lnb-head");
   if (!h) return;
@@ -759,8 +761,8 @@ function paintHead(n?: number, label?: string): void {
   h.innerHTML = n === undefined ? ""
     : `<div class="lnb-sec"><span class="lnb-sec-label">${esc(label || COPY.ui.lnb.documents)}</span>`
       + `<span class="lnb-sec-end"><span class="hint">${n || "·"}</span>`
-      + `<button class="rail-x lnb-add" type="button" aria-haspopup="menu"
-           aria-label="${esc(COPY.author.addTip)}" data-tip="${esc(COPY.author.addTip)}">+</button></span></div>`;
+      + `<button class="rail-x lnb-add" type="button" aria-haspopup="${railKey === "agent" ? "dialog" : "menu"}"
+           aria-label="${esc(addTip())}" data-tip="${esc(addTip())}">+</button></span></div>`;
 }
 
 /** 주제 스코프 칩 — 고른 주제가 없으면 빈 문자열. */
@@ -935,6 +937,11 @@ export function mountLnb() {
   $("lnb-head")?.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>(".lnb-add");
     if (!b) return;
+    // Agent 레일의 + 는 역할을 만든다 — 일반 노드로 만들면 id·계약을 사람이 맞춰야 한다.
+    if (railKey === "agent") {
+      void import("./role-composer").then((m) => m.openRoleComposer());
+      return;
+    }
     const r = b.getBoundingClientRect();
     // 고른 주제가 하나면 그 주제로, 아니면 지금 보고 있는 자리(View 의 맥락)로 채운다.
     const topic = picked.size === 1 ? [...picked][0] : undefined;
