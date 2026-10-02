@@ -192,18 +192,36 @@ export function nextTimeKey(k: string): string {
   }
   return utcDay(new Date(Date.UTC(y, m - 1, d + 1)));
 }
-/** UTC 달력의 `YYYY-MM-DD`. 기록 시각(ts)이 UTC ISO 라 열과 같은 날 경계를 쓴다(Q2.3). */
+/** UTC 달력의 `YYYY-MM-DD`. 달력 셈(다음 날·달의 길이)에만 쓴다 — 오늘이 언제인지는 `localDay`. */
 export const utcDay = (t: Date): string => t.toISOString().slice(0, 10);
 
-/** 프리셋을 오늘 기준의 **반열린 구간** `[start, end)` 로 푼다. `all` 은 null(거르지 않음).
+/** 기록 시각(UTC ISO)을 현지 시각 `YYYY-MM-DDTHH:MM:SS` 로 바꾼다. 접두가 곧 현지의 날·달·해라
+ *  타임라인의 열·점·기간이 사람이 보는 달력으로 나뉜다(VIN-262: UTC 로 나누면 한국 00~09시
+ *  기록이 전날 칸에 섰다). 시각이 없는 날짜 키나 못 읽는 값은 그대로 돌려준다. */
+export function localStamp(t: Date | string): string {
+  if (typeof t === "string" && t.length <= 10) return t;
+  const d = typeof t === "string" ? new Date(t) : t;
+  if (Number.isNaN(d.getTime())) return typeof t === "string" ? t : "";
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+}
+/** 현지 달력의 `YYYY-MM-DD`. */
+export const localDay = (t: Date): string => localStamp(t).slice(0, 10);
+/** 현지 시점 키(`YYYY`·`YYYY-MM`·`YYYY-MM-DD`)가 시작하는 순간의 UTC ISO. 서버는 저장된 UTC
+ *  시각과 비교하므로 현지 칸을 물을 때 경계를 이렇게 옮겨 보낸다. */
+export function localKeyToUtc(k: string): string {
+  const [y, m = 1, d = 1] = k.split("-").map(Number);
+  return new Date(y, m - 1, d).toISOString();
+}
+
+/** 프리셋을 오늘(현지) 기준의 **반열린 구간** `[start, end)` 로 푼다. `all` 은 null(거르지 않음).
  *  경계도 노드 시각과 같은 **문자열 키 공간**이다: `start <= ts < end` 가 사전식 비교로
  *  성립한다(ISO 는 고정폭이라 사전순 = 시간순). `custom` 인데 값이 비었거나 형식이
  *  틀리면 거르지 않는다 — 망가진 저장값이 화면을 조용히 비우지 않게. */
 export function periodRange(p: Pick<ViewPrefs, "period" | "periodFrom" | "periodTo">,
                             now = new Date()): { start: string; end: string } | null {
-  const today = utcDay(now);
+  const today = localDay(now);
   const back = (days: number) =>
-    utcDay(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days)));
+    localDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - days));
   switch (p.period) {
     case "7d": return { start: back(6), end: nextTimeKey(today) };
     case "30d": return { start: back(29), end: nextTimeKey(today) };
@@ -218,8 +236,19 @@ export function periodRange(p: Pick<ViewPrefs, "period" | "periodFrom" | "period
     default: return null;
   }
 }
-export const inPeriod = (t: string, r: { start: string; end: string } | null): boolean =>
-  !r || (!!t && t >= r.start && t < r.end);
+/** 칸 키를 그 칸의 첫날로 편다(`2026` → `2026-01-01`, `2026-09` → `2026-09-01`). 해·달
+ *  알갱이 경계를 날 알갱이 시각과 사전식으로 견주려면 자리수가 같아야 한다. */
+const dayStart = (k: string) => (k.length === 4 ? `${k}-01-01` : k.length === 7 ? `${k}-01` : k);
+/** 시각 `t` 가 기간 안인가. 양 끝은 날 첫 칸으로 펴서 견준다. 해·달만 적힌 시점(내용 시점)은
+ *  점이 아니라 구간이라, **그 구간이 통째로** 기간 안에 들 때만 든다: 9월 한 달을 고르면
+ *  `2026-09` 가 들고, 9월 마지막 주만 고르면 안 든다. */
+export function inPeriod(t: string, r: { start: string; end: string } | null): boolean {
+  if (!r) return true;
+  if (!t) return false;
+  const lo = dayStart(r.start), hi = dayStart(r.end);
+  if (t.length === 4 || t.length === 7) return dayStart(t) >= lo && dayStart(nextTimeKey(t)) <= hi;
+  return t >= lo && t < hi;
+}
 export const RAIL_MIN = 16;    // rem — 원문 한 줄이 읽히는 하한
 // 상한을 크게 둔다(발주자 지시 2026-08-05) — 문서 패널은 지도 **위에 겹치는** 글라스
 // 이므로, 끝까지 끌어 화면을 다 덮는 것이 정당한 상태다(읽는 동안 지도를 잠시 덮는

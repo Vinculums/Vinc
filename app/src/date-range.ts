@@ -1,7 +1,7 @@
 import { COPY } from "./copy";
 import { icon } from "./icons";
 import {
-  PERIODS, TIME_KEY, nextTimeKey, periodRange, utcDay, type PeriodKey,
+  PERIODS, TIME_KEY, localDay, nextTimeKey, periodRange, utcDay, type PeriodKey,
 } from "./view-prefs";
 
 /** 기간 선택(날짜 범위) — 앱의 첫 날짜 컴포넌트(2026-09-28).
@@ -16,8 +16,9 @@ import {
  *  두 번 눌러 범위를 정한다: 첫 번째가 시작, 두 번째가 끝이고, 끝을 고르는 순간
  *  적용된다(확인 버튼이 없다 — 렌즈 옵션이 다 그렇다).
  *
- *  날짜는 **UTC 달력**이다(Q2.3). 기록 시각이 UTC ISO 라 타임라인 열도 UTC 날로 나뉜다 —
- *  고르는 칸과 그려지는 칸이 같은 경계를 써야 한다. 현지 날짜로 옮기는 일은 따로다.
+ *  날짜는 **현지 달력**이다(VIN-262). 타임라인이 기록 시각을 현지 시각으로 바꿔 열을
+ *  나누므로(`localStamp`) 고르는 칸·점·그려지는 칸이 같은 경계를 쓴다. 격자의 달력 셈
+ *  (다음 날·달의 길이)만 `Date.UTC` 로 한다 — 시간대가 끼지 않는 순수 달력 셈이다.
  *  주는 두 언어 모두 일요일에 시작한다.
  *  근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] §2.4 */
 
@@ -84,7 +85,7 @@ export function openDateRange(o: DateRangeOpts): void {
   closeDateRange();
   const D = COPY.ui.dateRange;
   const now = new Date();
-  const today = utcDay(now);
+  const today = localDay(now);
   const pop = document.createElement("div");
   pop.id = POP_ID;
   pop.className = "drp";
