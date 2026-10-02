@@ -54,6 +54,19 @@ class TestNoOrphanDeckKeys(unittest.TestCase):
             " (vinc.spec.ui-copy §8).")
 
 
+class TestKoDeckBannedStem(unittest.TestCase):
+    def test_ko_deck_has_no_scattered_stem(self):
+        """`흩어(진·져 있는) 지식` 은 한국어 히어로가 다 같이 쓰는 문장이라 발주자가
+        금지했다. 사이트는 `gate_copy.mjs` 의 `ko-scattered` 가 막는데 앱에는 없어서
+        탭 제목(`Vinc · {tagline}`)으로 새어 나갔다. 주석은 걸지 않는다.
+        근거: [[vinc.spec.ui-copy-ko §9.3]]"""
+        lines = (ROOT / inv._DECK).read_text(encoding="utf-8").splitlines()
+        _, _, ko_s, ko_e = inv._deck_bounds(lines)
+        hits = [f"copy.ts:{i}  {c.strip()}" for i, c in inv.strip_comments("\n".join(lines))
+                if ko_s <= i <= ko_e and "흩어" in c]
+        self.assertEqual([], hits, "KO 덱에 `흩어` 가 있다. 무엇을 담고 나누는지로 다시 쓸 것")
+
+
 class TestScannerItself(unittest.TestCase):
     """스캐너가 no-op 이 아님을 잠근다."""
 
