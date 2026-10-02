@@ -2,7 +2,7 @@
 """E4 — MCP 도구 사용 평가셋의 **정답 검증기**.
 
 이 스크립트는 모델을 채점하지 않는다(그건 호스트가 한다). 하는 일은 하나다:
-`scripts/fixtures/tooluse_evalset.json` 에 적힌 정답이 **지금도 픽스처에서 그대로
+`rag_eval/fixtures/tooluse_evalset.json` 에 적힌 정답이 **지금도 픽스처에서 그대로
 나오는지** 실호출로 확인한다.
 
 왜 이게 필요한가. E1 이 고친 함정이 정확히 이것이다 — 평가셋이 조용히 낡으면
@@ -10,8 +10,8 @@
 되는데, 모델 채점만 돌리면 그때는 **모델이 틀린 것으로 보인다**. 여기서 먼저
 깨져야 한다.
 
-    python -m scripts.eval_tooluse          # 정답 검증
-    python -m scripts.eval_tooluse --print  # 호스트에 줄 문항만 출력
+    python -m rag_eval.tooluse          # 정답 검증
+    python -m rag_eval.tooluse --print  # 호스트에 줄 문항만 출력
 
 정답이 하나라도 어긋나면 종료 코드 1 이다(CI 게이트로 걸 수 있다).
 """
@@ -28,7 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-EVALSET = ROOT / "scripts" / "fixtures" / "tooluse_evalset.json"
+EVALSET = ROOT / "rag_eval" / "fixtures" / "tooluse_evalset.json"
 
 
 def _join(node, keys: list[str]) -> str:

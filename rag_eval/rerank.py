@@ -36,7 +36,7 @@ VINC_EVAL_THREADS=1 로 잰 것만 프로덕션(1 vCPU)과 비교 가능하다. 
 "FTS 후보의 rerank" 이지 이 도구가 재려는 것이 아니다.
 
 사용:
-    python scripts/eval_rerank.py --data work/db.m3 --owner eval \\
+    python -m rag_eval.rerank --data work/db.m3 --owner eval \\
         --encoder BAAI/bge-m3=.cache/embed/bge-m3-int8-rr.onnx \\
         --rerank BAAI/bge-reranker-v2-m3=.cache/rerank/art/bge-reranker-v2-m3/model-int8-rr.onnx \\
         --depth 10,20,50 --window first --gate top-agree --out work/perf/rerank-v2m3.json
@@ -53,13 +53,13 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from api import query as q                                   # noqa: E402
 from store.backend import open_store                         # noqa: E402
 from store.config import load_config                         # noqa: E402
 
-import eval_search as es                                     # noqa: E402
+from rag_eval import search as es                                     # noqa: E402
 from reranker import (Reranker, gate, parse_model_spec, peak_rss_mb,  # noqa: E402
                       pick_piece, rerank_rows)
 

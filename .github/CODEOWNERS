@@ -13,6 +13,7 @@
 /tests/                                          @Vinculums/core
 /verify.py                                       @Vinculums/core
 /vinc_mcp/                                       @Vinculums/core
+/rag_eval/                                       @Vinculums/rag
 /vinc_rag/                                       @Vinculums/rag
 /app/                                            @Vinculums/app
 /LICENSE                                         @Vinculums/design-content
@@ -39,16 +40,7 @@
 /scripts/bench_models.py                         @Vinculums/rag
 /scripts/benchmark/                              @Vinculums/rag
 /scripts/encoder.py                              @Vinculums/rag
-/scripts/eval_answer_material.py                 @Vinculums/rag
-/scripts/eval_brief_resolution.py                @Vinculums/rag
-/scripts/eval_choose_material.py                 @Vinculums/rag
-/scripts/eval_coverage_recall.py                 @Vinculums/rag
-/scripts/eval_excerpt_gain.py                    @Vinculums/rag
-/scripts/eval_rerank.py                          @Vinculums/rag
 /scripts/eval_search.py                          @Vinculums/rag
-/scripts/eval_tooluse.py                         @Vinculums/rag
-/scripts/evalkit/                                @Vinculums/rag
-/scripts/fixtures/                               @Vinculums/rag
 /scripts/make_queries.py                         @Vinculums/rag
 /scripts/make_queries_from_store.py              @Vinculums/rag
 /scripts/quantize_e5.py                          @Vinculums/rag

@@ -25,7 +25,7 @@ token-F1 이 0.11 오른다고 측정했다 — Chunk=SSoT 논지를 남이 실�
 와 같은 규율).
 
 사용:
-    python scripts/eval_excerpt_gain.py --data ~/.vinc/db --owner u
+    python -m rag_eval.excerpt_gain --data ~/.vinc/db --owner u
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from api import docstore as ds        # noqa: E402
 from api import query as q            # noqa: E402

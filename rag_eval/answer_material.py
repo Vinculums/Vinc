@@ -21,7 +21,7 @@ Vinc 는 안에 모델이 없으므로 재는 대상은 **Vinc 와 호스트 모
     judge   채점 모델, 어느 팔인지 모른다                            -> judged.jsonl
     report  층별 표. 층이 BOOT_MIN 이상일 때만 짝지은 부트스트랩      -> report.json
 
-⚠ 프롬프트는 `scripts/fixtures/answer_material/` 에 **고정**돼 있고 해시가 행마다 실린다.
+⚠ 프롬프트는 `rag_eval/fixtures/answer_material/` 에 **고정**돼 있고 해시가 행마다 실린다.
    고치면 해시가 바뀌어 파일럿과 비교할 수 없게 된다 — 새 판은 새 파일로 낼 것.
 ⚠ 정답 질문은 그래프 밖에 산다. 결과를 옮겨 적는 노드도 질문을 인용하지 않는다.
 ⚠ 호스트·채점자·표본이 각각 하나이고 `claude -p` 에는 온도 조절이 없다(파일럿의 한계를
@@ -29,12 +29,12 @@ Vinc 는 안에 모델이 없으므로 재는 대상은 **Vinc 와 호스트 모
 이 스크립트는 그래프에 쓰지 않는다(집 규칙 10).
 
 사용:
-    python scripts/eval_answer_material.py build --data <스토어 사본> --owner tenant:local \\
+    python -m rag_eval.answer_material build --data <스토어 사본> --owner tenant:local \\
         --encoder intfloat/multilingual-e5-base=<onnx> --out materials.jsonl
-    python scripts/eval_answer_material.py answer --materials materials.jsonl --out answers.jsonl
-    python scripts/eval_answer_material.py judge --materials materials.jsonl \\
+    python -m rag_eval.answer_material answer --materials materials.jsonl --out answers.jsonl
+    python -m rag_eval.answer_material judge --materials materials.jsonl \\
         --answers answers.jsonl --out judged.jsonl
-    python scripts/eval_answer_material.py report --materials materials.jsonl \\
+    python -m rag_eval.answer_material report --materials materials.jsonl \\
         --judged judged.jsonl --out report.json
 """
 from __future__ import annotations
@@ -58,8 +58,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-PROMPTS = ROOT / "scripts" / "fixtures" / "answer_material"
-GOLD = ROOT / "scripts" / "fixtures" / "brief_gold.jsonl"
+PROMPTS = ROOT / "rag_eval" / "fixtures" / "answer_material"
+GOLD = ROOT / "rag_eval" / "fixtures" / "brief_gold.jsonl"
 #: 이 크기 아래 층에는 구간을 내지 않는다(파일럿에서 미리 정한 값).
 BOOT_MIN = 15
 ARMS = ("a", "b", "c")
@@ -124,7 +124,7 @@ def cmd_build(a):
     from store.backend import open_store            # noqa: PLC0415
     from store.config import load_config            # noqa: PLC0415
     from encoder import Encoder                     # noqa: PLC0415
-    import eval_brief_resolution as n1              # noqa: PLC0415
+    from rag_eval import brief_resolution as n1              # noqa: PLC0415
 
     # 답가능성 게이트는 꺼진 채 나간다 — 켠 채로 잰 팔은 다른 제품을 잰다.
     gate = os.environ.get("VINC_BRIEF_ANSWERABILITY", "") or "unset (ships off)"

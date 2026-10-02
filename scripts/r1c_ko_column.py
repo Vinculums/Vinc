@@ -17,7 +17,7 @@
 
 사용:
     python scripts/r1c_ko_column.py --src work/db.full --out work/db.full.ko
-    python scripts/eval_rerank.py --data work/db.full.ko --ko-strip ...
+    python -m rag_eval.rerank --data work/db.full.ko --ko-strip ...
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from store.backend import open_store          # noqa: E402
 from store.config import load_config          # noqa: E402
 
-from eval_rerank import ko_stripped_text      # noqa: E402
+from rag_eval.rerank import ko_stripped_text      # noqa: E402
 
 _COL = "stripped"
 _BATCH = 200

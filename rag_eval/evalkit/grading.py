@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """노드 해소 채점 — 전송과 무관한 순수 함수들.
 
-`scripts/eval_brief_resolution.py`(인프로세스 기준 하네스)에서 **그대로 옮겨 왔다**. 같은
+`rag_eval/brief_resolution.py`(인프로세스 기준 하네스)에서 **그대로 옮겨 왔다**. 같은
 채점을 CLI·REST v1 경로(`evalkit.run_nodes`)도 써야 세 경로의 문항별 대조가 채점 차이가
 아니라 전송 차이만 잰다. 옛 하네스는 이 이름들을 다시 내보내므로 부르는 쪽은 그대로다.
 근거: [[vinc.plan.rag-eval-v2-0-9-6]]

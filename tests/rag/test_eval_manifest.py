@@ -23,7 +23,7 @@ _ROOT = pathlib.Path(__file__).resolve().parents[2]
 def _load_eval_search():
     """`scripts/` 는 패키지가 아니다 — 파일 경로로 든다(다른 테스트와 같은 관례)."""
     spec = importlib.util.spec_from_file_location(
-        "eval_search_for_test", _ROOT / "scripts" / "eval_search.py")
+        "eval_search_for_test", _ROOT / "rag_eval" / "search.py")
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)

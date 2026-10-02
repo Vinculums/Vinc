@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from eval_search import _docs_of  # noqa: E402
+from rag_eval.search import _docs_of  # noqa: E402
 
 
 class _Store:

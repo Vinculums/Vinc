@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """노드 해소를 게이트 순서대로 읽는다 — RAG eval v2 의 F3(VIN-167).
 
-    python -X utf8 -m evalkit.funnel <result.json> [--baseline <result.json>]
+    python -X utf8 -m rag_eval.evalkit.funnel <result.json> [--baseline <result.json>]
 
 `run_nodes` 가 실행마다 이 보고를 결과에 싣는다. 여기 `main` 은 이미 있는 결과 파일을
 다시 읽는 용도다(스토어를 다시 열지 않는다).

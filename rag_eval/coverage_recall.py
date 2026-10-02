@@ -25,12 +25,12 @@ raising the cap — actually helps.
 
 No store, no model: this is a pure function of the document text, run over the
 same file-tree corpus `make_queries.py` reads (so numbers here compose with the
-retrieval and label-set work in scripts/eval_search.py and
+retrieval and label-set work in rag_eval/search.py and
 scripts/make_queries_from_store.py).
 
 사용:
-    python scripts/eval_coverage_recall.py
-    python scripts/eval_coverage_recall.py --json
+    python -m rag_eval.coverage_recall
+    python -m rag_eval.coverage_recall --json
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from api.docstore import extract_concepts, _slug  # noqa: E402
 from make_queries import _CORPORA, _ROOT, _body_without_frontmatter  # noqa: E402

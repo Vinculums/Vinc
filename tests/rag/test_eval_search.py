@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""검색 평가 도구의 **지표가 맞는가** — scripts/eval_search.py.
+"""검색 평가 도구의 **지표가 맞는가** — rag_eval/search.py.
 
 왜 지표를 테스트하나: 이 도구의 숫자로 "벡터를 켤 가치가 있나", "모델을 바꿀까" 를
 결정한다. 지표가 틀리면 그 결정이 통째로 틀린다. 그런데 지표 오류는 그럴듯한 숫자를
@@ -16,7 +16,7 @@ import pathlib
 import sys
 import unittest
 
-_SRC = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "eval_search.py"
+_SRC = pathlib.Path(__file__).resolve().parents[2] / "rag_eval" / "search.py"
 
 
 def _load():

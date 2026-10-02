@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import eval_answer_material as n2  # noqa: E402
+from rag_eval import answer_material as n2  # noqa: E402
 
 #: 2026-09-12 파일럿 기록이 인용하는 해시. 이 값이 바뀌면 파일럿과 비교할 수 없다 —
 #: 프롬프트를 고칠 일이 생기면 새 파일(v2)로 내고 이 표는 그대로 둘 것.

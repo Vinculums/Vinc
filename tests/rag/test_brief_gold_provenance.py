@@ -8,7 +8,7 @@ import json
 import re
 from pathlib import Path
 
-GOLD = Path(__file__).resolve().parents[2] / "scripts" / "fixtures" / "brief_gold.jsonl"
+GOLD = Path(__file__).resolve().parents[2] / "rag_eval" / "fixtures" / "brief_gold.jsonl"
 
 
 def test_every_gold_row_names_its_author_and_date():

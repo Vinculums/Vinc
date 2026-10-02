@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pytest   # noqa: E402
 
-from scripts.eval_tooluse import ALGO_UNAVAILABLE, EVALSET, verify, via_mcp   # noqa: E402
+from rag_eval.tooluse import ALGO_UNAVAILABLE, EVALSET, verify, via_mcp   # noqa: E402
 
 
 def _load() -> dict:

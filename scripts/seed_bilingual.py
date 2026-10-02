@@ -16,7 +16,7 @@ MENTIONS·주제 유도가 전부 오염된다. `--data` 에 반드시 **새 경
 
 사용:
     python scripts/seed_bilingual.py --data /tmp/evalstore.db --owner eval
-    python scripts/eval_search.py --data /tmp/evalstore.db --owner eval --evalset
+    python -m rag_eval.search --data /tmp/evalstore.db --owner eval --evalset
 """
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ def main() -> int:
         by_lang[lang] = by_lang.get(lang, 0) + 1
     store.close()
     print(f"심음 {n}문서 {by_lang} (무변경 스킵 {skipped}) → {args.data}")
-    print("다음: python scripts/eval_search.py --data "
+    print("다음: python -m rag_eval.search --data "
           f"{args.data} --owner {args.owner} --evalset")
     return 0
 

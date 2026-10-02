@@ -30,7 +30,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from eval_brief_resolution import (LOW_REUSE, check_gold, grade_one,  # noqa: E402
+from rag_eval.brief_resolution import (LOW_REUSE, check_gold, grade_one,  # noqa: E402
                                    rank_of, summarize, title_reuse, union_rank_of)
 
 
@@ -217,7 +217,7 @@ class SemanticArmIsOptInAndDeclared(unittest.TestCase):
         return gold
 
     def _run(self, argv_extra, spy):
-        import eval_brief_resolution as e
+        from rag_eval import brief_resolution as e
         gold = self._gold()
         out = pathlib.Path(self.tmp) / "o.json"
         with (mock.patch.object(e, "open_store", return_value=_FakeStore()),
@@ -269,7 +269,7 @@ class SemanticArmIsOptInAndDeclared(unittest.TestCase):
 
     def test_a_store_with_a_leftover_wal_is_refused_before_it_opens(self):
         """스토어는 본 파일과 WAL 두 파일이다 — WAL 이 있으면 본 파일 지문은 내용이 아니다."""
-        import eval_brief_resolution as e
+        from rag_eval import brief_resolution as e
         data = pathlib.Path(self.tmp) / "hub.db"
         data.write_bytes(b"store bytes")
         pathlib.Path(str(data) + ".wal").write_bytes(b"pending")

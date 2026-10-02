@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """노드 해소(G0)를 전송 셋으로 재고, 문항별로 대조한다 — RAG eval v2 의 F1(VIN-175).
 
-    python -X utf8 -m evalkit.run_nodes --store m3-ort130-2026-09-28 \\
+    python -X utf8 -m rag_eval.evalkit.run_nodes --store m3-ort130-2026-09-28 \\
         --onnx <bge-m3-int8-rr.onnx> --out <dir>                  # inproc·cli·v1 셋 다
-    python -X utf8 -m evalkit.run_nodes --live https://mcp.vincs.io --space <id>   # 호스티드
+    python -X utf8 -m rag_eval.evalkit.run_nodes --live https://mcp.vincs.io --space <id>   # 호스티드
 
 (`scripts` 를 작업 디렉터리나 PYTHONPATH 로 둔다.)
 
@@ -31,8 +31,8 @@ import sys
 import time
 import urllib.request
 
-from evalkit import funnel, grading, runtime
-from evalkit.transports import V1, Cli, InProcess, TransportError
+from rag_eval.evalkit import funnel, grading, runtime
+from rag_eval.evalkit.transports import V1, Cli, InProcess, TransportError
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKSPACE = ROOT.parent if ROOT.parent.name != "_wt" else ROOT.parent.parent
@@ -230,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
         if not key:
             print("VINC_API_KEY 가 없다(읽기 전용 키면 된다)", file=sys.stderr)
             return 1
-        gold_files = a.gold or [str(ROOT / "scripts/fixtures/brief_gold.jsonl")]
+        gold_files = a.gold or [str(ROOT / "rag_eval/fixtures/brief_gold.jsonl")]
         rows = grading.load_gold(gold_files)[: a.limit or None]
         if _base_mismatch(base, rows):
             return 1
@@ -306,7 +306,7 @@ def main(argv: list[str] | None = None) -> int:
             finally:
                 t.close()
         if {"cli", "v1"} & set(want):
-            from evalkit.stack import LocalStack          # noqa: PLC0415
+            from rag_eval.evalkit.stack import LocalStack          # noqa: PLC0415
             data = _fresh_copy(pinned, out / "stack.db")
             with LocalStack(data, owner, entry["encoder"], a.onnx, out) as st:
                 header["stack"] = {"encode": st.encode_url, "sidecar": st.sidecar_base,
