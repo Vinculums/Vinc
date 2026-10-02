@@ -202,7 +202,7 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 20)   # v20 — 인코더 런타임 지문
+        self.assertEqual(eschema.SCHEMA_VERSION, 21)   # v21 — 한국어 색인 열(Chunk.lex)
         # v17 이 주장한 것을 여기서 증명한다: **신규 노드 테이블이라 ALTER 가 없다.**
         # 미러는 부팅 DDL 이 만들고(ChunkVec 전례), 임베딩은 DDL 이 아니라 모델을 부르는
         # 데이터 스텝이라 여기 못 쓴다.

@@ -375,6 +375,7 @@ class VincApp:
             if guard_wal:
                 app._fold_owner()
             app._schedule_mentions_rule()
+            app._schedule_lex_index()
         return app
 
     def _fold_owner(self) -> None:
@@ -439,6 +440,51 @@ class VincApp:
             self.jobs.submit("mentions.rule", _run)
         except Exception as exc:      # noqa: BLE001 — 기동 경로, 죽이지 않는다
             print(f"vinc: mentions rule check skipped — {exc}", file=sys.stderr)
+
+    #: 이관 중이면 {"step", "started_at"} — `/health` 가 스토어를 읽지 않고 이것을 싣는다.
+    lex_migration: dict | None = None
+    #: 마지막 이관의 결과(또는 실패 사유). 진단용이다.
+    lex_migration_result: dict | None = None
+
+    def _schedule_lex_index(self) -> None:
+        """전문 색인을 `Chunk.lex` 로 옮기는 일을 **기동 뒤에** 잡 큐에 건다(v21).
+
+        `VINC_LEX_BACKFILL=background` 일 때만이다. 기본은 `defer` — 서비스 중인 프로세스에서는
+        돌리지 않고, 표지가 설 때까지 색인과 질의 모두 오늘처럼 `text` 다. 허브 env 는
+        hub-deploy 로만 바뀌므로, 기본이 반대면 변수가 코드보다 늦은 허브가 몇 분씩 멈춘다.
+        데스크톱 셸은 사이드카를 이 값으로 띄운다(청크 1,712개에 80초쯤).
+
+        이관은 DDL 가드를 쥐어 그동안 이 프로세스의 다른 문장을 막는다. 그래서 `/health` 는
+        이 상태를 메모리에서 답하고 스토어를 읽지 않는다 — 읽으면 헬스 자체가 막혀 앱이
+        사이드카가 죽은 줄 안다(앱은 12초쯤 기다린다).
+        근거: [[vinc.plan.korean-retrieval-p1-p2-2026-10-02 §2.2]]"""
+        if (os.environ.get("VINC_LEX_BACKFILL") or "defer").strip().lower() != "background":
+            return
+        store = self.store
+        if not hasattr(store, "migrate_lex_index") or store.lex_ready():
+            return
+
+        def _run() -> dict:
+            try:
+                res = store.migrate_lex_index()
+                print(f"vinc: 검색 색인 이관 — {res}", file=sys.stderr)
+                self.lex_migration_result = res
+                return res
+            except Exception as exc:          # noqa: BLE001 — 다음 기동이 다시 한다
+                self.lex_migration_result = {"error": f"{type(exc).__name__}: {exc}"}
+                print(f"vinc: ⚠ 검색 색인 이관 실패(다음 기동이 다시 한다) — {exc}",
+                      file=sys.stderr)
+                raise
+            finally:
+                self.lex_migration = None
+
+        self.lex_migration = {"step": "search-index",
+                              "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        try:
+            self.jobs.submit("lex.index", _run)
+        except Exception as exc:      # noqa: BLE001 — 기동 경로, 죽이지 않는다
+            self.lex_migration = None
+            print(f"vinc: search index migration skipped — {exc}", file=sys.stderr)
 
     # ── 영속 스냅샷 ──────────────────────────────────────────────────────
     def _maybe_snapshot(self, *, force: bool = False, wrote: bool = True) -> str | None:
@@ -2149,6 +2195,10 @@ class _Handler(BaseHTTPRequestHandler):
                 # 열리긴 했지만 기동 점검이 WAL 을 옆으로 옮겼다(store/wal_guard.py).
                 if getattr(self.app, "store_note", ""):
                     body["store_note"] = self.app.store_note
+                # 검색 색인 이관 중(v21) — 가드가 스토어를 쥐고 있으니 아래 백로그 읽기를 건너뛴다.
+                migrating = getattr(self.app, "lex_migration", None)
+                if migrating:
+                    body["migrating"] = dict(migrating)
                 # 임베딩 백로그 — 정체가 밖에서 보여야 한다(App.embed_health 주석).
                 # 진단이 헬스를 죽이지 않게 통째로 감싼다: 여기서 예외가 나가면
                 # 엔트리포인트의 기동 대기가 실패하고 워치독이 사이드카를 재기동시킨다.
@@ -2157,7 +2207,8 @@ class _Handler(BaseHTTPRequestHandler):
                 # 종일 활성 요금 구간에 붙잡아 둔 원인 후보였다. 상태 판정(ok·degraded)과
                 # 스냅샷 상태는 메모리 값이라 그대로 싣는다.
                 # 근거: [[vinc.ops.container-apps-cost-rise-2026-09-25]] §4
-                if not _flag(urllib.parse.parse_qs(parsed.query).get("live", [""])[0]):
+                if not migrating and not _flag(
+                        urllib.parse.parse_qs(parsed.query).get("live", [""])[0]):
                     try:
                         body["embed"] = self.app.embed_health()
                     except Exception as exc:   # noqa: BLE001

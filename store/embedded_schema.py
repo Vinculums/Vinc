@@ -90,7 +90,9 @@ _NODE_TABLES: dict[str, dict] = {
         ("section_title", "STRING"), ("chunk_index", "INT64"), ("layer", "STRING"),
         ("char_count", "INT64"), ("token_count", "INT64"), ("text", "STRING"),
         ("embedding", "FLOAT[{dim}]"),
-        ("owner_id", "STRING"), ("char_start", "INT64"), ("char_end", "INT64")]},
+        ("owner_id", "STRING"), ("char_start", "INT64"), ("char_end", "INT64"),
+        # v21 — 전문 색인이 담는 말(`store.lexical.lex_text`). 정본은 여전히 `text` 다.
+        ("lex", "STRING")]},
     # v8 — **부모-자식 벡터**: 청크 하나에 벡터 여러 개. 저장 단위(청크)와 모델 입력
     # 상한(512토큰)이 달라서, 청크는 그대로 두고 벡터만 쪼갠다. `Chunk.embedding` 은
     # v8 이후 **읽지 않는다**(열은 남긴다 — 드롭이 위험하다). 벡터 인덱스는 이 테이블,
@@ -250,7 +252,14 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
 # 그것이 v13 이 존재하는 이유와 같다(아래 `DOMAIN_HIERARCHY_VERSION` 주석). 백필은
 # 스토어가 **뒤처져 있을 때만** 도는데, 라이브가 이미 최신을 기록하고 있으면 상수만
 # 올려서는 안 돈다 — 목표 버전이 함께 움직여야 한다.
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
+
+#: v21 — 전문 색인이 `Chunk.lex` 위에 섰다는 표지(`_SchemaMeta` 의 키, 값 `ready`).
+#: **스키마 버전과 분리한다.** 버전은 기동 때 ALTER 와 함께 기록되는데 색인 이관은 기동 뒤에
+#: 돌거나(데스크톱) 사본에서 돈다(허브). 버전을 표지로 쓰면 이관 전 스토어가 없는 색인으로
+#: 질의를 보낸다. 표지가 없으면 색인·질의 모두 오늘처럼 `text` 다.
+#: 근거: [[vinc.plan.korean-retrieval-p1-p2-2026-10-02 §2.2]]
+LEX_INDEX_KEY = "lex_index"
 
 #: v18 — **테이블을 버리는 마이그레이션**(ALTER 아님). NodeVec 의 기본키가 `node_id`
 #: 에서 `vec_id`(소유자+id)로 바뀐다. 기본키는 ALTER 로 못 고치고, 미러는 배포마다
@@ -383,6 +392,10 @@ def migration_statements(from_version: int) -> list[str]:
     if from_version < 20:  # v20 — 벡터별 인코더 지문. '' 는 구 행이라 판을 모른다.
         stmts.append("ALTER TABLE ChunkVec ADD encoder_runtime STRING DEFAULT ''")
         stmts.append("ALTER TABLE NodeVec ADD encoder_runtime STRING DEFAULT ''")
+    if from_version < 21:  # v21 — 한국어 색인 열. 열이 생길 뿐이고 색인은 아직 `text` 다.
+        # 색인을 옮기는 것은 데이터 단계(`EmbeddedBackend.migrate_lex_index`)이고 그 끝에
+        # `LEX_INDEX_KEY` 표지가 선다. 버전은 기동 때 기록되므로 표지가 될 수 없다.
+        stmts.append("ALTER TABLE Chunk ADD lex STRING DEFAULT ''")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:

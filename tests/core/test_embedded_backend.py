@@ -25,6 +25,7 @@ from store.embedded_backend import _import_driver  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _pkseed import _seed  # noqa: E402  (스토어 직접 시드용 — tests/_pkseed.py)
+from store.lexical import lex_text  # noqa: E402  (직접 심는 청크도 put_doc 처럼 lex 를 쓴다)
 
 
 _DRIVER, _NAME = _import_driver()
@@ -303,7 +304,8 @@ class EmbeddedE2E(unittest.TestCase):
                 ("a", "refund policy billing", [1.0, 0.1, 0.0, 0.0]),
                 ("b", "login oauth flow", [0.0, 1.0, 0.1, 0.0]),
                 ("c", "refund dispute", [0.9, 0.2, 0.0, 0.0])]:
-                _seed(s.run, "MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t", id=cid, t=txt)
+                _seed(s.run, "MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t, c.lex=$l", id=cid, t=txt,
+                      l=lex_text(txt))
                 _seed(s.run, "MERGE (v:ChunkVec {vec_id:$vid}) SET v.chunk_id=$id, "
                       "v.doc_id='d', v.owner_id='', v.seq=0, v.embedding=$e",
                       vid=f"{cid}#000", id=cid, e=emb)
@@ -337,8 +339,8 @@ class EmbeddedE2E(unittest.TestCase):
             for cid, txt, emb, own in [
                 ("u1a", "refund policy billing", [1.0, 0.1, 0.0, 0.0], "u1"),
                 ("u2a", "refund policy billing", [1.0, 0.1, 0.0, 0.0], "u2")]:
-                _seed(s.run, "MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t, c.owner_id=$o",
-                      id=cid, t=txt, o=own)
+                _seed(s.run, "MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t, c.lex=$l, c.owner_id=$o",
+                      id=cid, t=txt, l=lex_text(txt), o=own)
                 _seed(s.run, "MERGE (v:ChunkVec {vec_id:$vid}) SET v.chunk_id=$id, "
                       "v.doc_id='d', v.owner_id=$o, v.seq=0, v.embedding=$e",
                       vid=f"{cid}#000", id=cid, o=own, e=emb)
@@ -371,7 +373,8 @@ class EmbeddedE2E(unittest.TestCase):
                 ("b", "login oauth flow", [0.0, 1.0, 0.1, 0.0]),
                 ("c", "refund dispute resolution", [0.9, 0.2, 0.0, 0.0])]:
                 # v8 — 벡터는 자식(ChunkVec), 텍스트는 부모(Chunk).
-                _seed(s.run, "MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t", id=cid, t=txt)
+                _seed(s.run, "MERGE (c:Chunk {chunk_id:$id}) SET c.text=$t, c.lex=$l", id=cid, t=txt,
+                      l=lex_text(txt))
                 _seed(s.run, "MERGE (v:ChunkVec {vec_id:$vid}) SET v.chunk_id=$id, "
                       "v.doc_id='d', v.owner_id='', v.seq=0, v.embedding=$e",
                       vid=f"{cid}#000", id=cid, e=emb)
@@ -409,9 +412,10 @@ class EmbeddedE2E(unittest.TestCase):
             #    F2(SEC-1)가 청크 팔에 owner 필터를 넣은 뒤로는 owner 없는 청크가
             #    스코프 조회에서 빠지므로, 안 찍으면 이 테스트만 현실과 어긋난 상태를
             #    검증하게 된다 — 실패는 회귀가 아니라 픽스처가 낡았다는 신호였다.
-            _seed(s.run, "MERGE (c:Chunk {chunk_id:'ch1'}) SET c.text=$t, c.embedding=$e, "
+            _seed(s.run, "MERGE (c:Chunk {chunk_id:'ch1'}) SET c.text=$t, c.lex=$l, c.embedding=$e, "
                   "c.owner_id='u', c.source_file='/abs/topo.md'",
-                  t="refund policy and dispute resolution", e=[1.0, 0.1, 0.0, 0.0])
+                  t="refund policy and dispute resolution",
+                  l=lex_text("refund policy and dispute resolution"), e=[1.0, 0.1, 0.0, 0.0])
             # 개념 gauge: title 이 'gauge' 라 쿼리 'refund' 와 title 매치 안 됨.
             # 그러나 source_file basename(topo.md) 이 청크와 같아 MENTIONS 로 이어진다.
             # ⚠ 이 청크는 'gauge' 라는 낱말을 담지 않는다 — 그래서 title 이 source 보다
@@ -1211,7 +1215,7 @@ class EmbeddedE2E(unittest.TestCase):
                          "RETURN m.value AS v")
         # 리터럴로 못박는다(파생 금지) — 버전을 올릴 때 이 줄이 실패해야 "그 버전이
         # 요구하는 데이터/DDL 스텝을 실제로 넣었나"를 한 번 보게 된다.
-        self.assertEqual(rows[0]["v"], "20")   # v20 — 인코더 런타임 지문
+        self.assertEqual(rows[0]["v"], "21")   # v21 — 한국어 색인 열(Chunk.lex)
         # v17 — 미러는 **부팅 DDL 이 만든다**(ALTER 도 백필도 없다). 실제로 서는지
         # 여기서 확인한다: 이 가정이 틀리면 채우기가 'Table NodeVec does not exist' 로
         # 죽는다(2026-09-09 에 실제로 물렸다).

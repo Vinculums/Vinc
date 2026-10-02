@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from store.embedded_backend import _import_driver  # noqa: E402
+from store.lexical import lex_text  # noqa: E402
 
 _DRIVER, _NAME = _import_driver()
 
@@ -46,9 +47,10 @@ class _EngineCase(unittest.TestCase):
 
     def chunks(self, rows):
         """rows: (chunk_id, doc_id, owner, text, embedding). 청크와 그 벡터 하나를 심는다."""
-        data = [{"c": c, "d": d, "o": o, "t": t, "e": e} for c, d, o, t, e in rows]
+        # `lex` 는 put_doc 이 같은 MERGE 에서 쓰는 열이다. 새 스토어의 전문 색인은 그 열 위에 선다.
+        data = [{"c": c, "d": d, "o": o, "t": t, "l": lex_text(t), "e": e} for c, d, o, t, e in rows]
         self.store.run("UNWIND $r AS r CREATE (:Chunk {chunk_id: r.c, doc_id: r.d, "
-                       "owner_id: r.o, text: r.t, layer: 'doc'})", {"r": data})
+                       "owner_id: r.o, text: r.t, lex: r.l, layer: 'doc'})", {"r": data})
         self.store.run("UNWIND $r AS r CREATE (:ChunkVec {vec_id: r.c + '#000', "
                        "chunk_id: r.c, doc_id: r.d, owner_id: r.o, seq: 0, "
                        "embedding: r.e})", {"r": data})

@@ -33,7 +33,7 @@ from contextlib import contextmanager
 from . import pkns
 from .config import StoreConfig
 from .embedded_schema import (DOMAIN_HIERARCHY_VERSION,
-                              EPISODE_TIME_BACKFILL_VERSION,
+                              EPISODE_TIME_BACKFILL_VERSION, LEX_INDEX_KEY,
                               NODE_VEC_REKEY_VERSION, SCHEMA_VERSION,
                               migration_statements, node_table_specs,
                               rel_tables_on, render_embedded_ddl,
@@ -954,6 +954,9 @@ class EmbeddedBackend:
         #: 소유자별 저장 벡터 도장 `{owner: (벡터 쓰기 세대, frozenset)}`. 채우고 읽는 것은
         #: `api.query._stored_runtimes` 이고, 요청마다 새로 뜨는 리더 뷰도 이 백엔드의 것을 쓴다.
         self.runtime_stamps: dict = {}
+        #: 전문 색인이 `Chunk.lex` 위에 섰는가(`LEX_INDEX_KEY` 표지). None = 아직 안 읽었다.
+        #: 참이 되면 내려가지 않는다(표지를 지우는 경로가 없다). 리더 뷰도 이 값을 쓴다.
+        self._lex_ready: bool | None = None
 
     @classmethod
     def open(cls, cfg: StoreConfig) -> "EmbeddedBackend | None":
@@ -1151,6 +1154,7 @@ class EmbeddedBackend:
         if cur < target:
             self.run("MERGE (m:_SchemaMeta {key: 'schema_version'}) SET m.value = $v",
                      {"v": str(target)})
+        lex_fresh = False
         # 검색 확장을 **여기서** 로드한다. 프로비저닝은 단일 스레드 기동 시점이라
         # writer 커넥션 사용이 안전하고, 이 한 번으로 이후 모든 리더 커넥션이 자기
         # LOAD 없이 검색한다(Database 스코프 — :meth:`_load_ext`). 실패는 삼킨다:
@@ -1161,9 +1165,84 @@ class EmbeddedBackend:
                 self._load_ext(_e)
             except Exception:
                 pass
+        # v21 — **청크가 하나도 없는 스토어는 처음부터 `lex` 위에 선다.** 옮길 행이 없으니
+        # 데이터 단계가 할 일은 색인을 다시 만드는 것뿐이고, 행이 0 이면 그건 즉시 끝난다.
+        # 새 설치가 첫날부터 이관된 스토어와 같은 검색을 하게 하는 자리다.
+        # 표지는 **여기서 먼저 읽어 둔다**(기동 = 단일 스레드). 비워 두면 리더 스레드의 첫
+        # 검색이 쓰기 커넥션으로 표지를 읽는다.
+        self._lex_ready = None
+        if not self.lex_ready() and "fts" in self._exts:
+            try:
+                empty = int(self.run("MATCH (c:Chunk) RETURN count(c) AS c")[0]["c"]) == 0
+            except Exception:
+                empty = False
+            if empty:
+                self._drop_index(f"CALL DROP_FTS_INDEX('Chunk','{self._FTS_INDEX}')",
+                                 "Chunk FTS 색인")
+                self._set_lex_ready()
+                lex_fresh = True
         return {"migrated_from": cur, "migrated_to": target,
                 "episode_time_backfilled": backfilled,
-                "domain_links_backfilled": domain_links}
+                "domain_links_backfilled": domain_links,
+                "lex_index_fresh": lex_fresh}
+
+    # ── v21 한국어 색인 (Chunk.lex) ──────────────────────────────────────────
+    def lex_ready(self) -> bool:
+        """전문 색인이 `Chunk.lex` 위에 섰는가 — `_SchemaMeta` 표지를 한 번 읽어 둔다."""
+        if self._lex_ready is None:
+            try:
+                rows = self.run("MATCH (m:_SchemaMeta) WHERE m.key = $k RETURN m.value AS v",
+                                {"k": LEX_INDEX_KEY})
+                self._lex_ready = bool(rows) and rows[0].get("v") == "ready"
+            except Exception:
+                return False                  # 읽지 못했으면 오늘처럼 `text` 로 간다
+        return bool(self._lex_ready)
+
+    def _set_lex_ready(self) -> None:
+        self.run("MERGE (m:_SchemaMeta {key: $k}) SET m.value = 'ready'", {"k": LEX_INDEX_KEY})
+        self._lex_ready = True
+
+    def _fts_columns(self) -> list[str]:
+        """FTS 색인이 걸리는 열 — **코드가 아니라 스토어가 정한다**(표지). 색인을 만드는
+        모든 자리(재빌드·빌드·지연 보장·잔해 수리)가 이것 하나를 읽는다."""
+        return ["lex"] if self.lex_ready() else ["text"]
+
+    @_exclusive_ddl
+    def migrate_lex_index(self, *, batch: int = 200) -> dict:
+        """전문 색인을 `Chunk.lex` 로 옮긴다(데이터 단계, 멱등). 표지가 서 있으면 아무것도 안 한다.
+
+        순서: ① FTS 색인**만** 내린다(HNSW 는 `ChunkVec` 위라 그대로 둔다) ② `lex` 가 빈
+        행을 배치로 채운다 ③ `lex` 위에 FTS 를 만든다 ④ 표지. ①과 ② 사이가 중요하다 —
+        FTS 가 걸린 채 기존 Chunk 행에 SET 하면 프로세스가 예외 없이 죽는다(2026-09-08 함정).
+        ④ 전에 죽으면 표지가 없어 질의는 `text` 로 가고(색인이 없으면 지연 보장이 `text` 로
+        다시 만든다) 다음 실행이 처음부터 다시 한다.
+
+        ③ 이 비싸다: 두 글자 묶음 색인은 같은 행에서 `text` 색인의 7배쯤 걸린다(1,712청크
+        81초 · 12초). 그 동안 이 메서드가 가드를 쥐어 **프로세스의 다른 문장이 전부 기다린다**
+        — 그래서 기동 경로에서 부르지 않는다(`VINC_LEX_BACKFILL`).
+        근거: [[vinc.plan.korean-retrieval-p1-p2-2026-10-02 §2.6]]"""
+        if self.lex_ready():
+            return {"migrated": False, "reason": "already ready"}
+        from .lexical import lex_text
+        t0 = time.perf_counter()
+        self._load_ext("fts")
+        self._drop_index(f"CALL DROP_FTS_INDEX('Chunk','{self._FTS_INDEX}')", "Chunk FTS 색인")
+        # raw — 읽은 키를 그대로 MATCH 에 되돌린다. PK 분해 훅을 거치면 읽은 값과 저장된 값이
+        # 갈라질 수 있다(2026-09-11 재구축이 키를 벗긴 자리). 청크 id 는 지금 물리 키가 아니지만
+        # 이 경로가 그 가정에 기대지 않게 한다.
+        rows = self.run("MATCH (c:Chunk) WHERE coalesce(c.lex, '') = '' "
+                        "RETURN c.chunk_id AS id, c.text AS text", raw=True) or []
+        for i in range(0, len(rows), max(1, int(batch))):
+            part = [{"id": r["id"], "lex": lex_text(r.get("text") or "")}
+                    for r in rows[i:i + batch]]
+            self.run("UNWIND $rows AS r MATCH (c:Chunk {chunk_id: r.id}) SET c.lex = r.lex",
+                     {"rows": part})
+        t1 = time.perf_counter()
+        self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['lex'])")
+        t2 = time.perf_counter()
+        self._set_lex_ready()
+        return {"migrated": True, "backfilled": len(rows),
+                "backfill_s": round(t1 - t0, 2), "index_s": round(t2 - t1, 2)}
 
     def _node_vec_rekeyed(self) -> bool:
         """미러가 실제로 새 기본키를 갖는가(v18). 열이 없으면 엔진이 바인딩에서 던진다 —
@@ -1448,7 +1527,10 @@ class EmbeddedBackend:
         self._load_ext("fts")
         self._drop_index(f"CALL DROP_FTS_INDEX('Chunk','{self._FTS_INDEX}')",
                          "Chunk FTS 색인")          # 없으면 그냥 만든다(멱등)
-        self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
+        # 열은 표지가 정한다(v21). `lex` 위의 재빌드는 `text` 의 7배쯤 걸린다 — 그동안 이
+        # 프로세스의 다른 문장이 기다린다. 근거: [[vinc.plan.korean-retrieval-p1-p2-2026-10-02 §2.6]]
+        self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',"
+                           f"{self._fts_columns()!r})")
 
     @_exclusive_ddl
     def build_search_indexes(self, *, dim: int) -> None:
@@ -1473,7 +1555,8 @@ class EmbeddedBackend:
         self._conn.execute(
             f"CALL CREATE_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}','embedding')")
         self._vec_index_dropped = False
-        self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',['text'])")
+        self._conn.execute(f"CALL CREATE_FTS_INDEX('Chunk','{self._FTS_INDEX}',"
+                           f"{self._fts_columns()!r})")
 
     @_exclusive_ddl
     def ensure_search_indexes(self, *, dim: int | None = None, conn=None) -> dict:
@@ -1543,6 +1626,8 @@ class EmbeddedBackend:
     def _index_create_stmt(self, table: str) -> str:
         ext, attr, args, _ = self._REMNANT_INDEXES[table]
         fn = "CREATE_FTS_INDEX" if ext == "fts" else "CREATE_VECTOR_INDEX"
+        if table == "Chunk":
+            args = repr(self._fts_columns())      # 표의 `['text']` 는 표지 전의 기본값이다
         return f"CALL {fn}('{table}','{getattr(self, attr)}',{args})"
 
     def _ensure_index(self, table: str, *, conn=None) -> bool:
@@ -1929,16 +2014,26 @@ class EmbeddedBackend:
             return f"{type(exc).__name__}: {exc}"
 
     def fulltext_search(self, text, top_k, filters=None, *, conn=None) -> list[dict]:
+        """BM25 키워드 팔. 색인이 `lex` 위면(표지) 질의도 같은 함수로 바꾸고, 행마다 `lex` 를
+        함께 돌려준다 — 융합 앞의 관문이 질의를 얼마나 덮는지 그 열로 잰다(재분석 없이).
+        `lex` 는 응답에 나가지 않는다: 소비자(`vinc_rag.retrieval._chunk_arms`)가 뗀다."""
         c = conn or self._conn
         self._load_ext("fts", reader=conn is not None)
         k = int(top_k) * (self._OVERSAMPLE if filters else 1)
+        lex = self.lex_ready()
+        if lex:
+            from .lexical import lex_text
+            text = lex_text(text)
+            if not text.strip():
+                return []                 # 기호만 있는 질의 — 엔진에 빈 질의를 보내지 않는다
         params: dict = {"q": text, "k": k}
         where = _filter_clause("node", filters, params)
         cypher = (
             f"CALL QUERY_FTS_INDEX('Chunk','{self._FTS_INDEX}', $q) "
             f"{where}"
-            "RETURN node.chunk_id AS id, node.text AS text, score "
-            "ORDER BY score DESC LIMIT $k"
+            "RETURN node.chunk_id AS id, node.text AS text, "
+            + ("node.lex AS lex, " if lex else "")
+            + "score ORDER BY score DESC LIMIT $k"
         )
         return _exec_to_dicts(c, cypher, params)[:int(top_k)]
 
