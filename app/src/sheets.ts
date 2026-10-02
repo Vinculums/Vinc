@@ -92,8 +92,12 @@ export async function openShareSheet(
     }, opts.from);
     const nodes: any[] = pack.fragment?.nodes || [];
     const c = pack.manifest?.counts || {};
+    // 씨앗은 문서가 아니라 노드다 — 그 이름을 팩에서 읽어 범위에 적는다(VIN-265).
+    const seedName = scope.seed
+      ? nodes.find((n) => n.id === scope.seed)?.title || scope.seed.replace(/^[a-z]+:/, "")
+      : "";
     const scopeLabel =
-      scope.seed ? COPY.ui.sheet.scopeSeed(scope.depth ?? 2)
+      scope.seed ? COPY.ui.sheet.scopeSeed(seedName, scope.depth ?? 2)
       : scope.domain ? scope.domain
       : scope.ids?.length ? COPY.ui.sheet.scopeSelection(scope.ids.length)
       : COPY.ui.sheet.scopeAll;

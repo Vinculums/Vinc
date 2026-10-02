@@ -1116,7 +1116,7 @@ const EN = {
       goTo: (s: string) => `Go to ${s}`,
       ingest: "Add data", share: "Share a pack", settings: "Open Settings",
       keyboard: "Keyboard", goSurface: "Go to screen", cmdPalette: "Command palette",
-      fit: "Fit selection (View)",
+      fit: "Fit to screen (View)",
       back: "Step back", thisSheet: "This sheet",
     },
     packsUi: {
@@ -1140,7 +1140,7 @@ const EN = {
       specScope: "Scope", specConcepts: "Concepts", specLinks: "Links",
       specRecords: "Records", specDecisions: "Decisions",
       specFormat: "Format", specCreated: "Created", specDocs: "Documents",
-      scopeAll: "Everything", scopeSeed: (d: number) => `This document, ${d} hops out`,
+      scopeAll: "Everything", scopeSeed: (name: string, d: number) => `${name}, ${d} hops out`,
       scopeSelection: (n: number) => `${n} selected`,
       importCta: "Import",
       // 원문 문서 가져오기(D45) — 팩과 달리 합쳐지는 게 아니라 정본으로 보관된다.
@@ -2112,7 +2112,7 @@ const KO: Deck = {
       goTo: (s) => `${s} 열기`,
       ingest: "정보 추가하기", share: "팩 공유하기", settings: "설정 열기",
       keyboard: "단축키", goSurface: "화면 이동", cmdPalette: "명령 팔레트",
-      fit: "선택 맞춤 (View)",
+      fit: "화면에 맞추기 (View)",
       back: "한 단계 뒤로", thisSheet: "이 도움말",
     },
     packsUi: {
@@ -2168,7 +2168,7 @@ const KO: Deck = {
       specScope: "범위", specConcepts: "개념", specLinks: "연결",
       specRecords: "기록", specDecisions: "결정",
       specFormat: "형식", specCreated: "만든 날", specDocs: "문서",
-      scopeAll: "전체", scopeSeed: (d) => `이 문서에서 ${d}단계까지`,
+      scopeAll: "전체", scopeSeed: (name, d) => `${name}에서 ${d}단계까지`,
       scopeSelection: (n) => `선택한 ${n}개`,
       importCta: "가져오기",
       // 원문 문서 가져오기(D45) — 팩과 달리 합쳐지는 게 아니라 정본으로 보관된다.
