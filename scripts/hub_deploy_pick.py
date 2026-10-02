@@ -29,6 +29,10 @@ hub-deploy 는 main 의 CI(ci.yml)가 끝날 때마다 불린다(`workflow_run`)
 
 실패 방향: API·az·git 이 답을 못 하면 **빨갛게 죽는다**(exit 1 → report 잡이 이슈를
 연다). 못 읽은 것을 "바뀐 것 없음"으로 읽으면 배포가 조용히 사라진다.
+같은 이유로 **불러낸 커밋의 CI 는 "없음"일 수 없다**(그 런이 끝나서 이 런이 불렸다).
+런 목록 API 는 끝난 런을 늦게 싣는다 — 2026-10-02 5cb87b3 은 CI 가 끝나고 22초 뒤
+목록이 0건이었고 "CI 없음"으로 건너뛰어져 허브가 조용히 뒤에 남았다. 그래서 불러낸
+런은 id(`TRIGGER_RUN_ID`)로 바로 읽고, 그래도 "없음"이면 답을 못 한 것으로 죽는다.
 
 로컬에서 판정만 보려면(쓰기 없음, `az` 로그인과 `GH_TOKEN` 필요):
     EVENT=workflow_run TRIGGER_SHA=<sha> TRIGGER_CONCLUSION=success \\
@@ -114,10 +118,19 @@ def pick(*, event: str, trigger_sha: str, trigger_conclusion: str, dispatch_sha:
     if event != "workflow_run":
         raise Unanswered(f"모르는 이벤트: {event!r}")
 
+    def gate_of(sha: str) -> str:
+        # 불러낸 커밋의 CI 는 끝났다. "없음"은 API 가 아직 못 실은 것이다(머리말 실패 방향).
+        st = ci_status(sha)
+        if st == "none" and sha == trigger_sha:
+            raise Unanswered(
+                f"불러낸 {sha[:7]} 의 CI 는 {trigger_conclusion or '끝났'}인데 런을 못 찾았다 "
+                "— 건너뛰면 그 커밋이 조용히 안 나간다")
+        return st
+
     # 4. 불러낸 CI 가 빨갛고 그 커밋 자신이 허브를 건드렸으면 알린다(배포 여부와 무관).
     #    런 전체가 빨개도 core 잡이 초록이면(러스트·앱만 빨강) 허브는 막히지 않았다.
     if trigger_conclusion != "success" and trigger_sha:
-        gate = ci_status(trigger_sha)
+        gate = gate_of(trigger_sha)
         parent = parent_of(trigger_sha)
         if gate == "failure" and parent and touches_hub(changed(parent, trigger_sha)):
             plan.withheld = trigger_sha
@@ -142,7 +155,7 @@ def pick(*, event: str, trigger_sha: str, trigger_conclusion: str, dispatch_sha:
 
     target = ""
     for sha in window:
-        st = ci_status(sha)
+        st = gate_of(sha)
         if st == "success":
             target = sha
             break
@@ -226,7 +239,10 @@ def classify(runs: list[dict]) -> str:
     return "pending" if pending else "failure"
 
 
-def _ci_status_via_api(api: str, repo: str, token: str) -> Callable[[str], str]:
+def _ci_status_via_api(api: str, repo: str, token: str,
+                       trigger_sha: str = "", trigger_run: str = "") -> Callable[[str], str]:
+    """`trigger_run` 은 불러낸 ci.yml 런의 id. 목록에 아직 없으면 id 로 읽어 보탠다
+    (목록은 끝난 런을 늦게 싣는다 — 머리말 실패 방향)."""
     memo: dict[str, str] = {}
 
     def get(path: str) -> dict:
@@ -242,6 +258,9 @@ def _ci_status_via_api(api: str, repo: str, token: str) -> Callable[[str], str]:
         try:
             runs = get(f"/actions/workflows/ci.yml/runs?head_sha={sha}&per_page=20"
                        ).get("workflow_runs") or []
+            if (sha == trigger_sha and trigger_run
+                    and all(str(r.get("id")) != trigger_run for r in runs)):
+                runs.append(get(f"/actions/runs/{trigger_run}"))
             for r in runs:
                 r["jobs"] = get(f"/actions/runs/{r['id']}/jobs?per_page=100").get("jobs") or []
         except (urllib.error.URLError, TimeoutError, ValueError, KeyError) as e:
@@ -271,7 +290,8 @@ def main() -> int:
             live=live,
             main_commits=commits,
             ci_status=_ci_status_via_api(e.get("API", "https://api.github.com"),
-                                         e.get("REPO", "Vinculums/Vinc"), e["GH_TOKEN"]),
+                                         e.get("REPO", "Vinculums/Vinc"), e["GH_TOKEN"],
+                                         e.get("TRIGGER_SHA", ""), e.get("TRIGGER_RUN_ID", "")),
             is_commit=lambda s: _git("cat-file", "-e", f"{s}^{{commit}}").returncode == 0,
             is_ancestor=lambda a, b: _git("merge-base", "--is-ancestor", a, b).returncode == 0,
             changed=lambda a, b: _git_out("diff", "--name-only", a, b).splitlines(),
