@@ -439,9 +439,9 @@ _FTS_REMNANT = ("full-text index unavailable: the store holds a remnant index th
 
 
 def _chunk_arms(store, query, query_embedding, top_k,
-                filters) -> tuple[list[dict], str, list[str], bool]:
+                filters) -> tuple[list[dict], str, list[str], bool, bool]:
     """Chunk FTS(+선택 벡터) 하이브리드 검색 코어 — 기존 §4-2 RRF 로직 그대로.
-    반환 ``(rows, vector_note, arm_names, capped)``. FTS·확장 부재는 예외로 전파(호출부가
+    반환 ``(rows, vector_note, arm_names, capped, keyword_gated)``. FTS·확장 부재는 예외로 전파(호출부가
     지연 빌드·error 표면화를 담당).
 
     ``capped`` 는 어느 팔이든 **거르기 전에** ``top_k`` 에 닿았는가다. 관례 청크를 빼면
@@ -486,10 +486,47 @@ def _chunk_arms(store, query, query_embedding, top_k,
     capped = any(len(a) >= top_k for a in arms)
     for a in arms:
         a[:] = [r for r in a if not is_conventions_chunk_id(r.get("id"))]
+    gated = _keyword_gate(query, arms)
+    if gated:
+        arms[0] = []
+        membership = {}
+        for name, rows_ in zip(arm_names, arms):
+            for r in rows_:
+                membership.setdefault(r.get("id"), []).append(name)
     rows = (rrf_fuse(arms, k=CHUNK_RRF_K, top_k=top_k) if len(arms) > 1 else arms[0][:top_k])
     for r in rows:
+        r.pop("lex", None)               # 관문용 열 — 응답에 나가지 않는다
         r["arms"] = membership.get(r.get("id"), [])
-    return rows, vnote, arm_names, capped
+    return rows, vnote, arm_names, capped, gated
+
+
+#: 키워드 팔 관문의 문턱과 보는 행 수. 의미 팔이 행을 냈을 때, 키워드 상위 GATE_TOP 행 가운데
+#: 질의 토큰을 가장 많이 덮는 행조차 KEYWORD_GATE 에 못 미치면 키워드 목록을 융합에서 뺀다.
+#: 한국어 질의로 영어 문서를 찾을 때 두 글자 묶음 팔은 늘 엉뚱한 한국어 행 200개를 내고, RRF 가
+#: 그것으로 의미 팔의 정답을 밀어낸다(한→영 -0.058). 관문을 붙이면 같은 셋이 +0.148,
+#: 사람 한→영 +0.264 이고 다섯 셋 어느 것도 나빠지지 않았다. 0.5 는 176문서 스토어에서 골랐고
+#: 방송 말뭉치에서도 같은 자리에 선다(바꾼 말 65% · 그의 단어 1.7% 에서만 끈다).
+#: 근거: [[vinc.research.korean-retrieval-2026-10-01 §4]]
+KEYWORD_GATE = 0.5
+GATE_TOP = 20
+
+
+def _keyword_gate(query: str, arms: list[list[dict]]) -> bool:
+    """키워드 목록을 융합에서 뺄 것인가. **의미 팔이 행을 냈을 때만** 판단한다 — 인코더가 없는
+    데스크톱 사이드카나 의미 팔이 실패한 검색에서 키워드를 빼면 빈 페이지가 남는다.
+    행에 `lex` 가 없으면(색인이 아직 `text` 위) 판단하지 않는다: 관문은 두 글자 묶음 색인과
+    함께 잰 것이고, 이관 전 스토어는 오늘처럼 답해야 한다."""
+    if len(arms) < 2 or not arms[1] or not arms[0]:
+        return False
+    head = arms[0][:GATE_TOP]
+    if not all("lex" in r for r in head):
+        return False
+    from store.lexical import coverage, lex_tokens
+    qt = lex_tokens(query)
+    if not qt:
+        return False
+    best = max(coverage(qt, r.get("lex") or "") for r in head)
+    return best < KEYWORD_GATE
 
 
 def _schedule_vector_index(store, dim: int | None) -> None:
@@ -1078,12 +1115,13 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         vnote = ""
         ran: list[str] = []          # 실제로 돈 팔 — 예외로 새면 빈 채로 남는다
         arm_capped = False           # 거르기 전의 팔이 상한에 닿았나(_chunk_arms)
+        kw_gated = False             # 키워드 목록이 관문에 걸려 융합에서 빠졌나(_keyword_gate)
         try:
             if not scoped_ok:
                 raise _UnscopedChunkSearch(
                     "owner scope requested but this store does not support "
                     "owner-filtered chunk search")
-            pool, vnote, ran, arm_capped = _chunk_arms(
+            pool, vnote, ran, arm_capped, kw_gated = _chunk_arms(
                 store, query, query_embedding, SEARCH_POOL_CAP, chunk_filters or None)
             base["executed"] = True
         except _UnscopedChunkSearch as exc:
@@ -1114,7 +1152,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                         # (`dim=None`), HNSW 는 아래에서 예약한다 — 요청 스레드가
                         # 기다릴 일이 아니다(:func:`_schedule_vector_index`).
                         builder(dim=None)
-                        pool, vnote, ran, arm_capped = _chunk_arms(
+                        pool, vnote, ran, arm_capped, kw_gated = _chunk_arms(
                             store, query, query_embedding, SEARCH_POOL_CAP,
                             chunk_filters or None)
                         base["executed"] = True
@@ -1125,6 +1163,10 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                         base["note"] = base["error"]
         # 여기서 처음으로 `arms` 를 세운다 — **돈 팔의 이름만** 붙는다.
         base["arms"] = "+".join(_ARM_LABEL[a] for a in ran) or "none"
+        # 키워드 팔은 돌았지만 질의를 못 덮어 융합에서 뺐다 — 걸렸을 때만 싣는다(`vector_note`
+        # 처럼). `arms` 는 그대로 두 팔이다: 평가 하네스의 강등 판정이 바뀌지 않게.
+        if kw_gated:
+            base["keyword_gated"] = True
         # 벡터 팔을 **요청했는데 안 돌았고 그 이유가 실패**면 사유를 구조화 필드로
         # 남긴다. 여태 이 자리는 `error` 만 세웠는데, 화면은 영문 문구를 파싱할 수
         # 없으므로(금지) 반쪽·빈 답을 완전한 답으로 보여 줬다. 청크 팔이 통째로
