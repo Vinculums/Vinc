@@ -161,6 +161,24 @@ def _fresh_copy(src: pathlib.Path, dst: pathlib.Path) -> str:
     return str(dst)
 
 
+def _migrate_lex(path: str, dim_model: str) -> dict:
+    """사본을 열어 v21 색인 이관을 돌리고 닫는다. 이 코드에 이관이 없으면 그렇다고 답한다.
+    근거: [[vinc.plan.korean-retrieval-p1-p2-2026-10-02 §4]]"""
+    from store.backend import open_store             # noqa: PLC0415
+    from store.config import load_config             # noqa: PLC0415
+    cfg = load_config({"data_dir": path, "embedding_model": dim_model})
+    st = open_store(cfg)
+    if st is None:
+        return {"error": "사본을 열 수 없다"}
+    try:
+        st.provision(dim=cfg.embedding_dim)
+        if not hasattr(st, "migrate_lex_index"):
+            return {"error": "이 코드에는 v21 이관이 없다"}
+        return st.migrate_lex_index()
+    finally:
+        st.close()
+
+
 def _live_snapshot(v1: V1) -> dict:
     docs, cursor = [], None
     while True:
@@ -211,6 +229,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--allow-runtime-mismatch", action="store_true",
                     help="질의 런타임이 락과 달라도 잰다(결과에 불일치를 적는다)")
     ap.add_argument("--baseline", help="같은 문항으로 짝지어 비교할 이전 result.json")
+    ap.add_argument("--migrate-lex", action="store_true",
+                    help="사본마다 v21 색인 이관(migrate_lex_index) 뒤 잰다 — 이관 전 스토어는 오늘 색인 그대로다")
     a = ap.parse_args(argv)
 
     out = pathlib.Path(a.out)
@@ -296,7 +316,10 @@ def main(argv: list[str] | None = None) -> int:
     titles: dict = {}
     try:
         if "inproc" in want:
-            t = InProcess(_fresh_copy(pinned, out / "inproc.db"), owner, spec)
+            copy = _fresh_copy(pinned, out / "inproc.db")
+            if a.migrate_lex:
+                header.setdefault("migrate_lex", {})["inproc"] = _migrate_lex(copy, entry["encoder"])
+            t = InProcess(copy, owner, spec)
             try:
                 titles, missing = gold_titles(t, rows)
                 if missing:
@@ -308,6 +331,8 @@ def main(argv: list[str] | None = None) -> int:
         if {"cli", "v1"} & set(want):
             from rag_eval.evalkit.stack import LocalStack          # noqa: PLC0415
             data = _fresh_copy(pinned, out / "stack.db")
+            if a.migrate_lex:
+                header.setdefault("migrate_lex", {})["stack"] = _migrate_lex(data, entry["encoder"])
             with LocalStack(data, owner, entry["encoder"], a.onnx, out) as st:
                 header["stack"] = {"encode": st.encode_url, "sidecar": st.sidecar_base,
                                    "v1": st.v1_base, "v1_auth": "loopback stub verify_key"}
