@@ -125,10 +125,40 @@ fi
 # 남의 살아 있는 프로세스를 보고 "사이드카 정상"이라 판단한다. 실측으로 물렸다.
 SIDECAR_PIDFILE="${VINC_SIDECAR_PIDFILE:-/tmp/vinc-sidecar.pid}"
 
+# 128+N = 신호 N 으로 죽었다는 뜻이다. 사인을 말로 옮겨 둔다 — 다음 사람이 숫자를
+# 찾아보지 않아도 되게. 사이드카와 임베딩 워커가 같이 쓴다.
+exit_reason() {
+  case "$1" in
+    137) echo "OOM(SIGKILL, 137) — 컨테이너 메모리 한도 초과로 커널이 죽였다" ;;
+    139) echo "SIGSEGV(139) — 네이티브 크래시(onnxruntime·확장 의심)" ;;
+    143) echo "SIGTERM(143) — 정상 종료 신호" ;;
+    *)   echo "종료코드 $1" ;;
+  esac
+}
+
+# ⚠ **사이드카의 종료코드를 남긴다**(2026-10-02). 사이드카는 이 셸의 자식이라 워치독
+# (`( ) &` 서브셸)은 `kill -0` 으로 죽음만 알 뿐 사인을 못 읽는다. 그날 사이드카가 미러
+# 재구축 끝에서 일곱 번 죽었는데 남은 것은 "무응답" 한 줄뿐이었고, OOM 은 메모리 지표로
+# 거꾸로 짚어야 했다. 그래서 감시 서브셸이 직접 `wait` 해서 받는다. pidfile 은 그대로
+# **파이썬의** pid 다 — 신호는 여전히 사이드카에 바로 간다.
 start_sidecar() {
-  python -m api.cli serve --host 127.0.0.1 --port 8787 \
-    --token "$VINC_SIDECAR_TOKEN" --data "$DATA_DIR" &
-  echo $! > "$SIDECAR_PIDFILE"
+  rm -f "$SIDECAR_PIDFILE"
+  (
+    python -m api.cli serve --host 127.0.0.1 --port 8787 \
+      --token "$VINC_SIDECAR_TOKEN" --data "$DATA_DIR" &
+    spid=$!
+    echo "$spid" > "$SIDECAR_PIDFILE"
+    src=0
+    wait "$spid" || src=$?
+    echo "[entrypoint] sidecar(pid=$spid) 종료: $(exit_reason "$src")" >&2
+  ) &
+  # 서브셸이 pid 를 적을 때까지 기다린다 — 안 그러면 호출부가 빈 pidfile 을 읽는다.
+  # 상한(5초)을 넘기면 그대로 돌아간다: 빈 pid 는 아래 `kill -0` 이 "사라졌다"로 잡는다.
+  sc_wait=0
+  while [ ! -s "$SIDECAR_PIDFILE" ] && [ "$sc_wait" -lt 100 ]; do
+    sc_wait=$((sc_wait + 1))
+    sleep 0.05
+  done
 }
 
 # 한 번만 묻는다. 워치독이 매 주기 이걸 쓰므로 대기 루프와 갈라 둔다.
@@ -368,14 +398,9 @@ if [ "${VINC_EMBED:-on}" = "on" ]; then
       rc=0
       wait "$cpid" || rc=$?
       attempt=$((attempt + 1))
-      # 128+N = 신호 N 으로 죽었다는 뜻이다. 사인을 말로 옮겨 둔다 — 다음 사람이
-      # 숫자를 찾아보지 않아도 되게.
       case "$rc" in
-        137) why="OOM(SIGKILL, 137) — 컨테이너 메모리 한도 초과로 커널이 죽였다" ;;
-        139) why="SIGSEGV(139) — 네이티브 크래시(onnxruntime·확장 의심)" ;;
-        143) why="SIGTERM(143) — 정상 종료 신호" ;;
-        0)   why="종료코드 0(루프가 스스로 끝났다 — 상주 모드에서는 비정상)" ;;
-        *)   why="종료코드 $rc" ;;
+        0) why="종료코드 0(루프가 스스로 끝났다 — 상주 모드에서는 비정상)" ;;
+        *) why=$(exit_reason "$rc") ;;
       esac
       echo "[entrypoint] ⚠ embed worker 종료: $why" >&2
       # `[ ... ] && exit 0` 로 쓰면 조건이 거짓일 때 목록 전체가 비영이 되어 `set -e`

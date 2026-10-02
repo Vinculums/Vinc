@@ -24,6 +24,7 @@ from store.procutil import pid_alive
 
 import base64
 import contextvars
+from array import array
 import datetime as _dt
 import json
 import os
@@ -1460,7 +1461,8 @@ class VincApp:
         return docstore.embed_model_state(r)
 
     def write_node_mirror_rebuild(self, body):
-        """POST /node-mirror/rebuild — 노드 미러를 통째로 다시 만든다.
+        """POST /node-mirror/rebuild — 노드 미러의 색인을 통째로 다시 만든다(바뀐 행만
+        인코딩하고, 바뀐 것도 색인도 멀쩡하면 아무것도 안 한다).
 
         **배포 경계에서만 부른다**(`packaging/docker-entrypoint.sh`). 증분 삽입은
         기각됐다 — "없던 벡터가 생기는" HNSW 삽입만 세그폴트를 내기 때문이고, 그래서
@@ -1502,16 +1504,35 @@ class VincApp:
                     model = str((docstore.embed_model_state(r) or {}).get("stored") or "")
                 except Exception:
                     model = ""    # 라벨일 뿐이다 — 못 읽었다고 재구축을 접지 않는다
+                # 🔴 **바뀐 노드만 인코딩한다**(2026-10-02). 전량을 매번 인코딩하던 동안
+                # 미러가 5천에서 그 몇 배로 자라자 재구축이 25분을 넘겼고, 그 내내 질의
+                # 임베딩이 같은 인코더 뒤에 줄을 서서 검색 대부분이 의미 팔 없이 나갔으며,
+                # 교체 단계에서 사이드카가 OOM 으로 죽었다. 같은 글자·모델·런타임이면 같은
+                # 벡터이므로 그 행은 제자리에 둔다. 판을 증명할 길(런타임 지문·빌드·모델
+                # 라벨)이 하나라도 없으면 예전처럼 전부 다시 만든다.
+                # 근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]
+                stale = None
+                todo = rows
+                if _ENCODER_RUNTIME and _ENCODER_BUILD and model:
+                    todo, stale = node_mirror.plan(rows, node_mirror.existing(r, owner),
+                                                   model, _ENCODER_RUNTIME)
+                unchanged = stale is not None and not todo and not stale \
+                    and node_mirror.index_answers(r)
             finally:
                 r.close()
             if not rows:
                 return 200, {"kind": "node-mirror.rebuild", "executed": False, "rows": 0,
                              "note": "미러에 담을 노드가 0건이다"}
+            if unchanged:
+                # 교체도 잡도 없다 — 끝난 잡은 쓰기로 세어져 DB 전체 스냅샷을 부른다.
+                return 200, {"kind": "node-mirror.rebuild", "executed": False,
+                             "unchanged": True, "rows": len(rows), "encoded": 0,
+                             "index_ok": True, "model": model}
             t0 = time.monotonic()
             mirror_runtime = ""
             mirror_instance = ""
-            for i in range(0, len(rows), _MIRROR_BATCH):
-                batch = rows[i:i + _MIRROR_BATCH]
+            for i in range(0, len(todo), _MIRROR_BATCH):
+                batch = todo[i:i + _MIRROR_BATCH]
                 vecs = _encode_post(url, [b["text"] for b in batch], "passage",
                                     _MIRROR_ENCODE_TIMEOUT)
                 actual_runtime = _ENCODER_RESPONSE_RUNTIME.get()
@@ -1532,19 +1553,23 @@ class VincApp:
                         f"인코더가 {len(batch)}건 중 {len(vecs)}건만 돌려줬다 "
                         f"(배치 {i // _MIRROR_BATCH + 1})")}
                 for b, v in zip(batch, vecs):
-                    b["emb"] = list(v)
+                    # float32 배열로 든다. 파이썬 float 목록은 행당 약 41KB(1024차원, 허브
+                    # 실측)라 미러 전체를 들면 그것만으로 컨테이너 한도에 닿는다. 4KB 다.
+                    b["emb"] = array("f", v)
             encode_s = time.monotonic() - t0
             res = self.jobs.run_sync(
                 "node-mirror.replace",
-                lambda: node_mirror.replace(self.store, rows, model,
-                                            mirror_runtime),
+                lambda: node_mirror.replace(self.store, todo, model,
+                                            mirror_runtime, stale=stale),
                 timeout=_MIRROR_REPLACE_TIMEOUT)
         finally:
             self._mirror_lock.release()
         # `index_ok` 가 거짓이면 행은 들어갔고 인덱스만 없다 — 의미 팔이 조용히 죽는
         # 상태다. 결과에 실어야 엔트리포인트 로그와 배포 로그에 그대로 나온다.
         return 200, {"kind": "node-mirror.rebuild", "executed": True,
-                     "rows": res.get("rows"), "owners": res.get("owners"),
+                     "rows": len(rows), "encoded": len(todo),
+                     "removed": len(stale) if stale is not None else None,
+                     "owners": sorted({str(b.get("owner") or "") for b in rows}),
                      "index_ok": res.get("index_ok"),
                      "index_error": res.get("index_error"),
                      # id 가 겹친 노드는 그래프의 결함이지 재구축의 결함이 아니다.

@@ -568,6 +568,25 @@ class DocstoreE2E(unittest.TestCase):
         self.assertEqual(st2["pending"], 0)
         self.assertFalse(st2["stalled"], "밀린 일이 없는데 정체로 오판했다")
 
+    def test_쓰기_창에_걸린_문서는_정체로_세지_않고_따로_센다(self):
+        """2026-10-02 허브: `/health` 가 하루 종일 pending=2 · stalled 였는데 워커는
+        pending=0 이라고 했다. 둘 다 맞았다 — 그 둘은 put_doc 가 청크를 지운 뒤 끊긴
+        문서라(`chunk_count < 0`) 워커가 받을 청크가 없고, 소유자의 re-put 만이 고친다."""
+        d = ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")
+        cid = self._chunk_ids(d["doc_id"])[0]
+        ds.apply_embeddings(self.store, d["doc_id"], {cid: [[1.0, 0, 0, 0]]})
+        # ⓪·① 뒤에 프로세스가 죽은 모양: 창 표식과 needs_embed=1, 청크 없음.
+        self.store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $d "
+                       "SET d.chunk_count = -1, d.needs_embed = 1", {"d": d["doc_id"]})
+        self.store.run("MATCH (c:Chunk) WHERE c.doc_id = $d DETACH DELETE c", {"d": d["doc_id"]})
+        old_ts = ds.time.strftime("%Y-%m-%dT%H:%M:%SZ", ds.time.gmtime(ds.time.time() - 7200))
+        self.store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k SET m.value = $v",
+                       {"k": ds._EMBED_APPLIED_KEY, "v": old_ts})
+        self.assertEqual(ds.pending_embed_chunks(self.store), [], "워커는 이 문서를 못 본다")
+        st = ds.embed_model_state(self.store, stall_after_s=1800)
+        self.assertEqual((st["pending"], st["stuck_in_write_window"]), (0, 1))
+        self.assertFalse(st["stalled"], "워커가 할 일이 없는데 정체로 알렸다")
+
     def test_put_get_roundtrip_verified(self):
         text = "# 정본\n\n" + "무손실 복원 검증용 본문입니다. " * 120
         out = ds.put_doc(self.store, owner="user:a", text=text, title="정본")

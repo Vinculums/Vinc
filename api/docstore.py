@@ -1527,8 +1527,17 @@ def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -
         at = store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k RETURN m.value AS v",
                        {"k": _EMBED_APPLIED_KEY}) or []
         out["last_applied_at"] = (at[0].get("v") or "") if at else ""
-        cnt = store.run("MATCH (d:_DocMeta) WHERE d.needs_embed = 1 RETURN count(d) AS c") or []
+        # 쓰기 창에 걸린 문서(`chunk_count < 0`, put_doc 가 ①과 ③ 사이에서 끊긴 것)는 워커의
+        # 일감이 아니다. 청크가 지워졌거나 반쪽이라 워커는 그 문서를 못 보고(청크 단위로
+        # 받는다), 고치는 길은 소유자의 전문 re-put 뿐이다. pending 에 세면 워커가 멀쩡히
+        # 놀고 있어도 `stalled` 가 켜진다 — 2026-10-02 허브가 하루 종일 pending=2 였다.
+        # 따로 센다: 사라지게 두면 깨진 문서가 아무 데도 안 보인다.
+        # 근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]
+        cnt = store.run("MATCH (d:_DocMeta) WHERE d.needs_embed = 1 AND d.chunk_count >= 0 "
+                        "RETURN count(d) AS c") or []
         out["pending"] = int(cnt[0].get("c")) if cnt else 0
+        stuck = store.run("MATCH (d:_DocMeta) WHERE d.chunk_count < 0 RETURN count(d) AS c") or []
+        out["stuck_in_write_window"] = int(stuck[0].get("c")) if stuck else 0
         tot = store.run("MATCH (d:_DocMeta) RETURN count(d) AS c") or []
         out["docs"] = int(tot[0].get("c")) if tot else 0
     except Exception as exc:      # noqa: BLE001 — 진단이 호출부를 죽이지 않게

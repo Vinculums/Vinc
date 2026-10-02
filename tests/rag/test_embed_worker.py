@@ -310,7 +310,7 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         """
         seen: list[int] = []
         emb = self.mod._Embedder()
-        emb._encode_batch = lambda texts: (seen.append(len(texts))
+        emb._encode_batch = lambda texts, **_: (seen.append(len(texts))
                                            or [[0.0, 1.0] for _ in texts])
 
         n_chunks = self.mod.EMBED_BATCH * 3 + 1
@@ -368,6 +368,50 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         self.assertEqual(state["max"], 1,
                          "배치 루프와 질의가 동시에 모델을 적재했다(세션 두 벌)")
 
+    def test_적재가_끝난_뒤의_질의는_도는_배치를_기다리지_않는다(self):
+        """질의 상한은 1.5초다. 배치(8조각 × 512토큰) 하나가 1코어에서 그보다 길 수 있어,
+        질의가 배치 잠금 뒤에 서면 미러 재구축·워커 적재가 도는 내내 의미 팔이 빠진다
+        (2026-10-02 허브: 120회 중 72·78회). numpy 없이 돌도록 `_run` 에서 멈춘다."""
+        import threading
+
+        class Stop(Exception):
+            pass
+
+        hold = threading.Event()
+        entered: list[str] = []
+
+        def fake_run(texts):
+            entered.append(texts[0])
+            if texts[0] == "passage":
+                hold.wait(5)                  # 배치가 잠금을 쥔 채 오래 돈다
+            raise Stop
+
+        emb = self.mod._Embedder()
+        emb._sess = object()                  # 적재는 끝났다
+        emb._run = fake_run
+
+        def batch():
+            try:
+                emb._encode_batch(["passage"])
+            except Stop:
+                pass
+
+        t = threading.Thread(target=batch)
+        t.start()
+        try:
+            for _ in range(100):
+                if entered:
+                    break
+                threading.Event().wait(0.01)
+            with self.assertRaises(Stop):
+                emb._encode_batch(["query"], query=True)
+            self.assertEqual(entered, ["passage", "query"],
+                             "질의가 도는 배치의 잠금 뒤에 섰다")
+            self.assertTrue(emb._lock.locked(), "배치가 벌써 끝났다 — 검사가 아무것도 안 쟀다")
+        finally:
+            hold.set()
+            t.join(5)
+
     def test_인코딩_창구가_쿼리에만_접두를_붙인다(self):
         """`serve_encode` 계약 — 사이드카가 이 창구로 쿼리 임베딩을 얻어 간다.
 
@@ -382,7 +426,7 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         got: list[str] = []
         self.mod.MODEL = "BAAI/bge-base-en-v1.5"   # 이 검사는 bge 규약이다(e5 는 별도)
         emb = self.mod._Embedder()
-        emb.encode = lambda texts: (got.extend(texts) or [[0.0, 1.0] for _ in texts])
+        emb.encode = lambda texts, **_: (got.extend(texts) or [[0.0, 1.0] for _ in texts])
 
         port = 0
         # 실제 서버를 띄운다 — 계약(경로·본문 형태)까지 같이 검사하려면 대역이 아니라
@@ -795,7 +839,7 @@ class SplitEncoderTest(unittest.TestCase):
         코사인이 0.95~0.97 이라 **에러 없이 검색만 나빠진다**. 그래서 클라이언트는
         `raw:true` 로 보내고 서버는 그 경우 손대지 않는다."""
         seen: list[str] = []
-        base = self._serve(lambda texts: (seen.extend(texts)
+        base = self._serve(lambda texts, **_: (seen.extend(texts)
                                           or [[float(len(t))] for t in texts]))
         self.mod.MODEL = "intfloat/multilingual-e5-base"      # 양쪽 접두 규약
         enc = self.mod._RemoteEncoder(base)
@@ -807,7 +851,7 @@ class SplitEncoderTest(unittest.TestCase):
     def test_raw_가_없으면_서버가_접두를_붙인다(self):
         """`raw` 는 옵트인이다 — 사이드카의 질의 경로는 예전 계약 그대로 온다."""
         seen: list[str] = []
-        base = self._serve(lambda texts: (seen.extend(texts) or [[1.0] for _ in texts]))
+        base = self._serve(lambda texts, **_: (seen.extend(texts) or [[1.0] for _ in texts]))
         self.mod.MODEL = "intfloat/multilingual-e5-base"
         import json
         import urllib.request
@@ -822,7 +866,7 @@ class SplitEncoderTest(unittest.TestCase):
         """큰 문서를 한 요청에 실으면 1코어 인코더가 `REMOTE_TIMEOUT` 안에 못 끝내 매 라운드
         같은 자리에서 실패한다. 묶음으로 나눠 보내고, 순서는 입력 그대로 이어 붙인다."""
         sizes: list[int] = []
-        base = self._serve(lambda texts: (sizes.append(len(texts))
+        base = self._serve(lambda texts, **_: (sizes.append(len(texts))
                                           or [[float(t)] for t in texts]))
         saved = self.mod.REMOTE_BATCH
         self.mod.REMOTE_BATCH = 3
@@ -856,7 +900,7 @@ class SplitEncoderTest(unittest.TestCase):
     def test_local_remote_encoder_without_deployment_build_still_works(self):
         self.mod.ENCODER_BUILD = ""
         self.mod.ENCODER_BUILD_REQUIRED = False
-        base = self._serve(lambda texts: [[1.0] for _ in texts])
+        base = self._serve(lambda texts, **_: [[1.0] for _ in texts])
         self.assertEqual(self.mod._RemoteEncoder(base).encode(["passage"]), [[1.0]])
 
     def test_local_writer_stamps_remote_encoder_runtime(self):
@@ -897,7 +941,7 @@ class SplitEncoderTest(unittest.TestCase):
     def test_hosted_encoder_with_missing_build_fails_closed(self):
         self.mod.ENCODER_BUILD = ""
         self.mod.ENCODER_BUILD_REQUIRED = True
-        base = self._serve(lambda texts: [[1.0] for _ in texts])
+        base = self._serve(lambda texts, **_: [[1.0] for _ in texts])
         with self.assertRaisesRegex(RuntimeError, "remote encoder build differs"):
             self.mod._RemoteEncoder(base).encode(["passage"])
 
@@ -905,7 +949,7 @@ class SplitEncoderTest(unittest.TestCase):
         """조각↔벡터 정렬이 이 파이프라인의 유일한 암묵 계약이다. 개수가 모자라면
         `zip` 이 **조용히 잘라** 일부 청크가 벡터 없이 성공 처리된다(needs_embed 가
         지워져 다시 잡히지도 않는다)."""
-        base = self._serve(lambda texts: [[1.0]])            # 둘 받고 하나만 준다
+        base = self._serve(lambda texts, **_: [[1.0]])            # 둘 받고 하나만 준다
         enc = self.mod._RemoteEncoder(base)
         with self.assertRaises(RuntimeError) as ctx:
             enc.encode(["a", "b"])
@@ -915,7 +959,7 @@ class SplitEncoderTest(unittest.TestCase):
         """분리의 목적 자체 — 허브 프로세스가 ONNX 를 만지면 OOM 이 그대로 돌아온다."""
         loaded = []
         self.mod._Embedder._load = lambda _self: loaded.append(1)
-        base = self._serve(lambda texts: [[float(len(t))] for t in texts])
+        base = self._serve(lambda texts, **_: [[float(len(t))] for t in texts])
         self.mod.REMOTE_ENCODE = base
         sidecar = _FakeSidecar([[{"doc_id": "d1", "chunk_id": "c1", "text": "본문"}]])
         self.mod._call = sidecar
@@ -951,7 +995,7 @@ class SplitEncoderTest(unittest.TestCase):
         stub = types.ModuleType("tokenizers")
         stub.Tokenizer = _Tok
         seen: list[str] = []
-        base = self._serve(lambda texts: (seen.extend(texts) or [[1.0] for _ in texts]))
+        base = self._serve(lambda texts, **_: (seen.extend(texts) or [[1.0] for _ in texts]))
         self.mod.REMOTE_ENCODE = base
         self.mod.MODEL = "BAAI/bge-m3"            # 무접두: 조각이 그대로 인코더에 닿는다
         loaded = []
@@ -1010,7 +1054,7 @@ class SplitEncoderTest(unittest.TestCase):
         import urllib.error
         import urllib.request
         self.mod.ENCODE_TOKEN = "s3cret"
-        base = self._serve(lambda texts: [[1.0] for _ in texts])
+        base = self._serve(lambda texts, **_: [[1.0] for _ in texts])
         body = json.dumps({"texts": ["x"]}).encode()
         req = urllib.request.Request(base + "/encode", data=body,
                                      headers={"Content-Type": "application/json"})
@@ -1027,7 +1071,7 @@ class SplitEncoderTest(unittest.TestCase):
         import urllib.request
         loaded = []
         self.mod._Embedder._load = lambda _self: loaded.append(1)
-        base = self._serve(lambda texts: [[1.0] for _ in texts])
+        base = self._serve(lambda texts, **_: [[1.0] for _ in texts])
         with urllib.request.urlopen(base + "/health", timeout=5) as r:
             out = json.load(r)
         self.assertEqual(out["status"], "ok")

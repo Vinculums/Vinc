@@ -474,8 +474,9 @@ class _Embedder:
         print(f"[embed] model ready ({MODEL}, onnx, cache={CACHE}, "
               f"rss={_rss_mb()}MB)", flush=True)
 
-    def encode(self, texts: list[str]) -> list[list[float]]:
-        """청크 목록을 임베딩한다 — **반드시 나눠서** 세션에 넣는다.
+    def encode(self, texts: list[str], *, query: bool = False) -> list[list[float]]:
+        """청크 목록을 임베딩한다 — **반드시 나눠서** 세션에 넣는다. `query` 는 줄을
+        건너뛴다(:meth:`_encode_batch`).
 
         여기가 나뉘어 있지 않으면 큰 문서 하나가 컨테이너를 죽인다. 호출부는 한
         문서의 **전 청크**를 통째로 넘기고(:func:`main`), 공급측 `/embed/pending` 의
@@ -513,29 +514,42 @@ class _Embedder:
         """
         out: list[list[float]] = []
         for i in range(0, len(texts), EMBED_BATCH):
-            out.extend(self._encode_batch(texts[i:i + EMBED_BATCH]))
+            out.extend(self._encode_batch(texts[i:i + EMBED_BATCH], query=query))
         return out
 
-    def _encode_batch(self, texts: list[str]) -> list[list[float]]:
-        with self._lock:                                       # 배치 하나만 잡는다(__init__)
-            self._load()
-            import numpy as np
-
-            enc = self._tok.encode_batch(texts)
-            mask = np.array([e.attention_mask for e in enc], dtype=np.int64)
-            feed = {
-                "input_ids": np.array([e.ids for e in enc], dtype=np.int64),
-                "attention_mask": mask,
-                "token_type_ids": np.array([e.type_ids for e in enc], dtype=np.int64),
-            }
-            # e5(XLM-R)는 token_type_ids 를 받지 않는다(그래프 입력이 둘뿐 — 실측).
-            # 세션이 받는 것만 남긴다.
-            feed = {k: v for k, v in feed.items() if k in self._names}
-            hidden = self._sess.run(None, feed)[0]
+    def _encode_batch(self, texts: list[str], *, query: bool = False) -> list[list[float]]:
+        # 🔴 **질의는 줄을 서지 않는다**(적재가 끝난 뒤에만). 질의 경로의 상한은 1.5초인데
+        # 배치 하나(8조각 × 최대 512토큰)가 1코어에서 그보다 길 수 있다 — 잠금 뒤에 서면
+        # 미러 재구축·워커 적재가 도는 내내 검색이 의미 팔 없이 나간다(2026-10-02 허브:
+        # 120회 중 72·78회). 세션 실행은 스레드 안전하고, 질의 한 줄의 활성값은 배치의
+        # 수십분의 일이라 잠금이 막으려던 고점(세션 두 벌 · 배치 두 개)이 아니다.
+        # 적재 전에는 잠금으로 간다 — 첫 적재 중 질의가 세션을 한 벌 더 올리면 OOM 이다.
+        # 근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]
+        if query and self._sess is not None:
+            hidden, mask = self._run(texts)
+        else:
+            with self._lock:                                   # 배치 하나만 잡는다(__init__)
+                self._load()
+                hidden, mask = self._run(texts)
+        import numpy as np
         pooled = _pool(hidden, mask, np)
         norm = np.linalg.norm(pooled, axis=1, keepdims=True)
         norm[norm == 0] = 1.0                                  # 빈 입력 방어
         return (pooled / norm).astype(float).tolist()
+
+    def _run(self, texts: list[str]):
+        import numpy as np
+        enc = self._tok.encode_batch(texts)
+        mask = np.array([e.attention_mask for e in enc], dtype=np.int64)
+        feed = {
+            "input_ids": np.array([e.ids for e in enc], dtype=np.int64),
+            "attention_mask": mask,
+            "token_type_ids": np.array([e.type_ids for e in enc], dtype=np.int64),
+        }
+        # e5(XLM-R)는 token_type_ids 를 받지 않는다(그래프 입력이 둘뿐 — 실측).
+        # 세션이 받는 것만 남긴다.
+        feed = {k: v for k, v in feed.items() if k in self._names}
+        return self._sess.run(None, feed)[0], mask
 
 
 class _RemoteEncoder:
@@ -629,14 +643,13 @@ def serve_encode(emb: "_Embedder", port: int) -> int:
     계약: `POST /encode {"texts": [...], "kind": "query"|"passage"}` → `{"vectors": [[...]]}`
     - **루프백 전용**(127.0.0.1 바인딩). 프록시·공개 노출 대상이 아니다 — `/embed/pending`
       과 같은 등급의 내부 표면이라 웹 3중 등재도 하지 않는다.
-    - 인코딩은 `_lock` 으로 직렬화한다. 배경 pull 루프와 전경 쿼리가 같은 세션을 쓰는데,
-      동시에 밀어 넣으면 메모리 고점이 두 배가 되고 그건 이 컨테이너에서 OOM 이다.
+    - 인코딩은 `_Embedder._lock` 이 **배치** 단위로 직렬화한다. 배경 pull 루프와 전경
+      쿼리가 같은 세션을 쓰는데, 배치 둘을 동시에 밀어 넣으면 메모리 고점이 두 배가 되고
+      그건 이 컨테이너에서 OOM 이다. 적재가 끝난 뒤의 질의만 그 줄을 건너뛴다.
     - 이 서버가 죽어도 워커 본체는 살아야 한다(부가 기능이 본업을 죽이지 않는다).
     """
     import json as _json
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-    lock = threading.Lock()
 
     instance_id = secrets.token_hex(16)
 
@@ -693,9 +706,11 @@ def serve_encode(emb: "_Embedder", port: int) -> int:
                 # 여기서 또 붙이면 `passage: passage: …` 가 되어 에러 없이 벡터만
                 # 틀린다 — 접두 유무의 코사인이 0.95~0.97 이라 눈에 안 띈다.
                 raw = bool(body.get("raw"))
-                with lock:
-                    vecs = emb.encode(texts if raw
-                                      else [_prefix(t, kind) for t in texts])
+                texts = texts if raw else [_prefix(t, kind) for t in texts]
+                # 요청 전체를 잠그지 않는다 — 직렬화는 `_Embedder` 가 **배치** 단위로 한다.
+                # 여기서 요청째 잠그면 미러 재구축의 32줄 요청(1코어에서 약 4초)이 끝날
+                # 때까지 질의가 서서 1.5초 상한을 넘긴다(2026-10-02 허브 실측).
+                vecs = emb.encode(texts, query=True) if kind == "query" else emb.encode(texts)
                 # `model` 은 질의 경로가 저장 벡터의 모델과 대조한다 — 폭이 같은 다른
                 # 모델은 캐스팅 오류 없이 엉뚱한 이웃만 낸다(RV-06).
                 out = _json.dumps({"vectors": vecs, "model": MODEL,
