@@ -3,7 +3,7 @@
   "kind": "share",
   "manifest": {
     "created": "2026-09-05T00:00:00Z",
-    "scope": { "domain": "vinc/agent", "tags": ["agent", "design"], "seed": null, "depth": 0 },
+    "scope": { "domain": "agent", "tags": ["agent", "design"], "seed": null, "depth": 0 },
     "counts": { "concepts": 3, "records": 0, "edges": 2, "documents": 0 },
     "note": "Design Agents. A designer who keeps values in the token file and reasons in the graph, a reviewer who checks contrast and drift, and a researcher who turns interviews into records. Roles only; add your own reads, gates and paths."
   },
@@ -13,7 +13,7 @@
         "id": "concept:agent-designer",
         "type": "concept",
         "title": "Product designer",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "execute", "role"],
         "one_liner": "Token values in the token file, the reasons in the graph, and the consuming copies synced in the same session.",
         "props": {
@@ -41,7 +41,7 @@
         "id": "concept:agent-design-reviewer",
         "type": "concept",
         "title": "Design reviewer",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "verify", "role"],
         "one_liner": "Check contrast, token drift and untouched generated output. Report, never edit.",
         "props": {
@@ -66,7 +66,7 @@
         "id": "concept:agent-design-researcher",
         "type": "concept",
         "title": "Design researcher",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "knowledge", "role"],
         "one_liner": "Turn interviews and usage findings into records attached to the concepts they are about. Never decide.",
         "props": {

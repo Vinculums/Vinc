@@ -22,7 +22,7 @@ vinc-pack-{도메인}.vincpack            산출물(zip 컨테이너, D55)
 
 ## agents/ — 기본·분야 Agent 팩 (2026-09-05)
 
-`agents/*.json` 은 역할(`concept:agent-*`, 주제 `vinc/agent`)만 담은 팩 다섯이다. 원고 폴더
+`agents/*.json` 은 역할(`concept:agent-*`, 주제 `agent`)만 담은 팩 다섯이다. 원고 폴더
 (`work/`)가 없고 **JSON 이 원천**이다 — 갤러리가 JSON 을 저장하고 팩이 작아서 zip 을 거칠
 이유가 없다. `packfile` 은 첫 바이트로 두 형식을 가르므로 검증·시딩 도구가 그대로 읽는다.
 
@@ -36,7 +36,7 @@ vinc-pack-{도메인}.vincpack            산출물(zip 컨테이너, D55)
 
 규율: 영어만 · `reads`·`gates`·`paths` 는 비워 둔다(사용자의 것) · 오케스트레이터 역할은
 어디에도 없다(그래프는 스케줄러가 아니다) · 팩 간 엣지는 두지 않는다(같은 페이로드 밖의
-엣지는 조용히 skip 된다) · `vinc/agent` 는 무료 주제 상한에서 빠진다(`engines/domain_hierarchy.
+엣지는 조용히 skip 된다) · `agent`·`vinc/agent` 는 무료 주제 상한에서 빠진다(`engines/domain_hierarchy.
 RESERVED_TOPICS`). `tests/design/test_agent_packs.py` 가 이 표와 규율을 고정한다.
 
 ⚠ 기본 팩의 자동 적재는 **갤러리 행이 있을 때만** 된다. 시딩이 수동인 것은 여기도 같아서,

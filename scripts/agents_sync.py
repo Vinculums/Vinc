@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""agents_sync.py — 그래프의 역할 정의(`vinc/agent`)와 역할 껍데기 파일을 잇는다.
+"""agents_sync.py — 그래프의 역할 정의(`agent`·`vinc/agent`)와 역할 껍데기 파일을 잇는다.
 
 역할 정의의 정본은 그래프다([[concept:agent-orchestration]]). 하지만 하네스는 실행
 시점에 `.claude/agents/<name>.md` 를 **파일로** 읽는다. 그래서 파일이 있어야 하고,
@@ -71,7 +71,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from vinc_mcp.roles import (DOMAIN, ID_PREFIX, build_payload,  # noqa: E402
+from vinc_mcp.roles import (TOPICS, ID_PREFIX, build_payload,  # noqa: E402
                             render_shell, roster_rows, works_with)
 
 SNAPSHOT = ROOT / "agents" / "roles.json"
@@ -201,7 +201,7 @@ def cmd_pull() -> int:
     # vinc/agent/roles 로 옮겨지자 직속만 읽던 이 자리가 역할 0건을 쓸 판이었다).
     ids = [str(r["id"]) for r in roster_rows(_neighbors)]
     if not ids:
-        raise SystemExit(f"[agents] {DOMAIN} 에 역할 노드가 없다 — 도메인 이름을 확인하라")
+        raise SystemExit(f"[agents] {', '.join(TOPICS)} 에 역할 노드가 없다 — 도메인 이름을 확인하라")
     print(f"[agents] 역할 {len(ids)}개")
 
     roles = []

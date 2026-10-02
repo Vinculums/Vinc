@@ -177,12 +177,13 @@ class ListPrompts(unittest.TestCase):
         한 번, 직계 자식 도메인이 있으면 자식마다 한 번 — 그 이상은 없다."""
         b = _RosterBridge()
         roles.list_prompts(b)
-        self.assertEqual([(c[0], c[1]) for c in b.calls], [("GET", "/neighbors")])
+        # 역할 주제가 둘(`agent` · 옛 `vinc/agent`)이라 주제마다 한 번이다.
+        self.assertEqual([(c[0], c[1]) for c in b.calls], [("GET", "/neighbors")] * 2)
         b = _RosterBridge(nested=True)
         roles.list_prompts(b)
         self.assertEqual([c[2]["node"] for c in b.calls],
-                         ["domain:vinc/agent", "domain:vinc/agent/openclaw",
-                          "domain:vinc/agent/roles"])
+                         ["domain:agent", "domain:agent/openclaw", "domain:agent/roles",
+                          "domain:vinc/agent"])
 
     def test_roles_filed_one_level_down_are_still_the_roster(self):
         """2026-09-04 에 역할 열일곱이 vinc/agent/roles 로 옮겨지자 직속만 읽던 목록이
@@ -358,7 +359,8 @@ class Tenancy(unittest.TestCase):
     def test_the_list_reads_only_the_agent_domain(self):
         b = _RosterBridge()
         roles.list_prompts(b)
-        self.assertEqual(b.calls[0][2]["node"], "domain:vinc/agent")
+        self.assertEqual([c[2]["node"] for c in b.calls],
+                         ["domain:agent", "domain:vinc/agent"])
 
 
 class TeamRoleGate(unittest.TestCase):

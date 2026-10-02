@@ -9,7 +9,7 @@
 **보낸 것만 본다.** 보내지 않은 필드는 보존되므로, 도메인만 다시 보낸 호출에
 "props 가 없다"고 말하면 거짓 경고다. 신규 생성일 때만 "빠졌다"를 말한다.
 
-상수 넷(DOMAIN · ID_PREFIX · ROSTER_CONCEPT · RUNGS)은 `vinc_mcp/roles.py` 에도 있다.
+상수 다섯(TOPICS · DOMAIN · ID_PREFIX · ROSTER_CONCEPT · RUNGS)은 `vinc_mcp/roles.py` 에도 있다.
 `api` 는 `vinc_mcp` 를 import 하지 않으므로(호스티드 MCP 이미지와 허브의 짐이 다르다)
 한 벌로 합치지 않고 테스트가 둘이 같음을 고정한다(tests/core/test_role_contract.py).
 
@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import re
 
-DOMAIN = "vinc/agent"
+#: 역할 주제. 앞의 것이 새 역할의 자리, 뒤의 것은 계속 읽는 옛 자리. 근거: [[decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02]]
+TOPICS = ("agent", "vinc/agent")
+DOMAIN = TOPICS[0]
 ID_PREFIX = "concept:agent-"
 #: 로스터를 정의하는 개념. 접두가 역할과 같지만 역할이 아니다(roles.ROSTER_CONCEPT).
 ROSTER_CONCEPT = "concept:agent-orchestration"
@@ -62,12 +64,14 @@ def check(node: dict, *, created: bool) -> list[str]:
                        f"prompts/list nor the Agent rail will show this role ({why})")
     else:
         d = str(dom).strip().strip("/")
-        if d != DOMAIN and not d.startswith(DOMAIN + "/"):
-            out.append(f"role {nid} is filed under '{d}'; roles live under {DOMAIN}, "
-                       f"which is where prompts/list and the Agent rail look ({why})")
-        elif d.count("/") > DOMAIN.count("/") + 1:
+        root = next((t for t in TOPICS if d == t or d.startswith(t + "/")), None)
+        if root is None:
+            out.append(f"role {nid} is filed under '{d}'; roles live under {DOMAIN} "
+                       f"(or {TOPICS[1]}), which is where prompts/list and the Agent rail "
+                       f"look ({why})")
+        elif d.count("/") > root.count("/") + 1:
             out.append(f"role {nid} is filed under '{d}', more than one level below "
-                       f"{DOMAIN}; prompts/list reads only one level down, so it will "
+                       f"{root}; prompts/list reads only one level down, so it will "
                        f"not be listed ({why})")
 
     title = node.get("title")

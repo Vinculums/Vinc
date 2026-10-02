@@ -68,6 +68,14 @@ class CheckSaysWhatIsWrong(unittest.TestCase):
     def test_one_level_below_the_topic_is_fine(self):
         self.assertEqual(rc.check(good(domain="vinc/agent/roles"), created=True), [])
 
+    def test_the_top_level_agent_topic_is_the_new_home(self):
+        # 새 역할의 자리는 `agent` 다. 옛 `vinc/agent` 도 그대로 받는다.
+        # 근거: [[decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02]]
+        self.assertEqual(rc.check(good(domain="agent"), created=True), [])
+        self.assertEqual(rc.check(good(domain="agent/release"), created=True), [])
+        self._one(good(domain="agent/release/ops"), needle="more than one level below agent")
+        self._one(good(domain="agents"), needle="roles live under agent")
+
     def test_the_roster_concept_and_other_ids_are_not_roles(self):
         self.assertEqual(rc.check({"id": rc.ROSTER_CONCEPT, "props": {}}, created=True), [])
         self.assertEqual(rc.check({"id": "concept:release", "props": {}}, created=True), [])
@@ -83,7 +91,7 @@ class CheckSaysWhatIsWrong(unittest.TestCase):
         self._one(good(domain="vinc/agent/team/ops"), needle="one level")
 
     def test_outside_the_topic(self):
-        self._one(good(domain="vinc/engineering"), needle="roles live under vinc/agent")
+        self._one(good(domain="vinc/engineering"), needle="roles live under agent (or vinc/agent)")
 
     def test_created_without_a_domain(self):
         node = good()

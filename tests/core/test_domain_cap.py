@@ -150,6 +150,9 @@ def test_reserved_topic_matches_the_roster_domain():
     assert roles.DOMAIN in dh.RESERVED_TOPICS
     assert dh.is_reserved(roles.DOMAIN) and dh.is_reserved(roles.DOMAIN + "/roles")
     assert not dh.is_reserved("vinc/agentic") and not dh.is_reserved("vinc")
+    # 새 자리(`agent`)와 옛 자리(`vinc/agent`) 둘 다 예약이다. `agents` 는 아니다.
+    assert set(roles.TOPICS) == set(dh.RESERVED_TOPICS)
+    assert dh.is_reserved("vinc/agent/roles") and not dh.is_reserved("agents")
     assert not dh.is_reserved("") and not dh.is_reserved(None)
 
 
