@@ -1529,25 +1529,30 @@ def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -
         out["last_applied_at"] = (at[0].get("v") or "") if at else ""
         cnt = store.run("MATCH (d:_DocMeta) WHERE d.needs_embed = 1 RETURN count(d) AS c") or []
         out["pending"] = int(cnt[0].get("c")) if cnt else 0
-        # 그중 **청크가 하나도 없는** 문서. 워커는 청크 단위로 일감을 받으므로(`pending_embed_
-        # chunks`) 이 문서들을 영영 못 보고, needs_embed 도 영영 안 내려간다. 고치는 길은 소유자의
-        # 전문 re-put 이나 삭제뿐이다. 이것까지 `stalled` 에 세면 워커가 멀쩡히 놀고 있어도 정체
-        # 알람이 켜진다 — 2026-10-02 허브가 하루 종일 pending=2 · stalled 였는데, 그 둘은 put_doc
-        # 가 청크를 지운 뒤 끊긴 쓰기 창 문서였다. `pending` 자체는 그대로 둔다(이행 게이트가 본다).
-        # 근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]
-        out["pending_without_chunks"] = 0
-        if out["pending"]:
-            ids = [r["d"] for r in store.run(
-                "MATCH (d:_DocMeta) WHERE d.needs_embed = 1 RETURN d.doc_id AS d") or []]
-            seen = {r["d"] for r in store.run(
-                "MATCH (c:Chunk) WHERE c.doc_id IN $ids RETURN DISTINCT c.doc_id AS d",
-                {"ids": ids}) or []}
-            out["pending_without_chunks"] = len(set(ids) - seen)
         tot = store.run("MATCH (d:_DocMeta) RETURN count(d) AS c") or []
         out["docs"] = int(tot[0].get("c")) if tot else 0
     except Exception as exc:      # noqa: BLE001 — 진단이 호출부를 죽이지 않게
         out["error"] = f"{type(exc).__name__}: {exc}"
         return out
+    # pending 중 **청크가 하나도 없는** 문서. 워커는 청크 단위로 일감을 받으므로(`pending_embed_
+    # chunks`) 이 문서들을 영영 못 보고, needs_embed 도 영영 안 내려간다. 고치는 길은 소유자의
+    # 전문 re-put 이나 삭제뿐이다. 이것까지 `stalled` 에 세면 워커가 멀쩡히 놀고 있어도 정체
+    # 알람이 켜진다 — 2026-10-02 허브가 하루 종일 pending=2 · stalled 였는데, 그 둘은 put_doc
+    # 가 청크를 지운 뒤 끊긴 쓰기 창 문서였다. `pending` 자체는 그대로 둔다(이행 게이트가 본다).
+    # 근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]
+    # 따로 감싼다: 이 부가 수치가 실패해도 위의 pending·이행 판정은 그대로 나가야 한다
+    # (같은 try 에 두면 이행 게이트가 열린다 — test_server 가 잡았다). 실패하면 0 으로,
+    # 즉 예전처럼 pending 전부를 정체 판정에 센다.
+    if out["pending"]:
+        try:
+            ids = [r.get("d") for r in store.run(
+                "MATCH (d:_DocMeta) WHERE d.needs_embed = 1 RETURN d.doc_id AS d") or []]
+            seen = {r.get("d") for r in store.run(
+                "MATCH (c:Chunk) WHERE c.doc_id IN $ids RETURN DISTINCT c.doc_id AS d",
+                {"ids": ids}) or []}
+            out["pending_without_chunks"] = len(set(ids) - seen)
+        except Exception as exc:  # noqa: BLE001
+            out["pending_without_chunks_error"] = f"{type(exc).__name__}: {exc}"
     out["migrating"] = bool(out["migration_model"]) and out["pending"] > max(
         _MIGRATION_GATE_MIN, out["docs"] * _MIGRATION_GATE_RATIO)
     age = _age_s(out["last_applied_at"])
