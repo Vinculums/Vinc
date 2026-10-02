@@ -199,9 +199,12 @@ def roster_drift(teams: dict, roles: dict, rules, exists) -> list[str]:
 #: `engines` 는 아직 어느 쪽에도 없다: `embed_pipeline`·`recall_ingest` 가 `api` 를 쓰고
 #: (2단계 PR 3 에서 `vinc_rag` 로 옮겨진다, VIN-244), 반대로 `store/embedded_backend.py`
 #: 가 `engines` 를 쓴다. 그 둘을 정리한 뒤 `store/` 의 금지에 `engines` 를 더한다.
+#: `vinc_rag` 는 검색 코어(VIN-243)다. `api` 가 그것을 부르고, 그것은 `store`·`engines`
+#: 만 부른다 — 공용 바닥 함수를 `store/querybase.py` 로 내린 이유가 이 한 줄이다.
 LAYER_BANS: dict[str, tuple[str, ...]] = {
-    "store/": ("api", "vinc_mcp"),
+    "store/": ("api", "vinc_mcp", "vinc_rag"),
     "vinc_mcp/": ("api",),
+    "vinc_rag/": ("api", "vinc_mcp"),
 }
 
 _IMPORT_RE = re.compile(r"^\s*(?:from\s+(\w+)(?:\.\w+)*\s+import\b|import\s+(\w+)(?:\.\w+)*)",

@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from api import docstore as ds          # noqa: E402
 from api import query as q              # noqa: E402
+from vinc_rag import retrieval         # noqa: E402  (search 가 부르는 이름은 여기 산다)
 
 _NODE = {"id": "concept:design-hub", "title": "Design hub", "kind": "concept",
          "domain": "vinc/design", "matched_in": "title", "hit_tokens": 1,
@@ -61,16 +62,16 @@ class _Store:
 
 class NodeHitsPagingTests(unittest.TestCase):
     def setUp(self):
-        self._orig = q._node_fallback_search
+        self._orig = retrieval._node_fallback_search
         self.calls = 0
 
         def _fake(store, query, **kw):
             self.calls += 1
             return [dict(_NODE)]
-        q._node_fallback_search = _fake
+        retrieval._node_fallback_search = _fake
 
     def tearDown(self):
-        q._node_fallback_search = self._orig
+        retrieval._node_fallback_search = self._orig
 
     def test_node_hits_는_첫_페이지에만_있다(self):
         store = _Store(_mk_rows(15))
