@@ -1210,7 +1210,8 @@ class VincApp:
         # `domain=` 은 그 주제의 **하위 트리**로 좁힌다(목록·개수·문서가 같은 술어).
         return self._read(lambda r: q.nav_tree(
             owner=_req(p, "owner"), nodes=_flag(p.get("nodes")),
-            kind=p.get("kind"), domain=p.get("domain"), store=r))
+            kind=p.get("kind"), domain=p.get("domain"),
+            domains=_domains(p.get("domains")), store=r))
 
     def write_doc_put(self, body):
         owner = body.get("owner") or None

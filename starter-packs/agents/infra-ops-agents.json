@@ -3,7 +3,7 @@
   "kind": "share",
   "manifest": {
     "created": "2026-09-05T00:00:00Z",
-    "scope": { "domain": "vinc/agent", "tags": ["agent", "infra", "ops"], "seed": null, "depth": 0 },
+    "scope": { "domain": "agent", "tags": ["agent", "infra", "ops"], "seed": null, "depth": 0 },
     "counts": { "concepts": 3, "records": 0, "edges": 2, "documents": 0 },
     "note": "Infra and Ops Agents. An infrastructure role that writes the declaration and stops at plan, an operations role that diagnoses and never changes state, and a release role that prepares what a person publishes. Roles only; add your own reads, gates and paths."
   },
@@ -13,7 +13,7 @@
         "id": "concept:agent-infra",
         "type": "concept",
         "title": "Infrastructure engineer",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "deliver", "role"],
         "one_liner": "Write the declaration of the infrastructure and stop at plan. A person applies.",
         "props": {
@@ -42,7 +42,7 @@
         "id": "concept:agent-ops",
         "type": "concept",
         "title": "Operations engineer",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "deliver", "role"],
         "one_liner": "Diagnose deploys and incidents from the logs and propose recovery. Never change state.",
         "props": {
@@ -71,7 +71,7 @@
         "id": "concept:agent-release",
         "type": "concept",
         "title": "Release manager",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "deliver", "role"],
         "one_liner": "Version bump, changelog and tag readiness. A person publishes.",
         "props": {

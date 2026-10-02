@@ -4088,14 +4088,17 @@ export async function renderView(el: HTMLElement) {
   setLnbTopicPicker((path, add, set) => {
     const lv = trail[trail.length - 1];
     const cur = lv.kind === "l1" ? lv.domains : [];
-    // `set` 은 토글이 아니라 "이 주제 하나로" 다(Agent 레일). 이미 그 주제거나 그 안쪽
-    // (`vinc/agent/roles`)으로 좁혀져 있으면 그대로 둔다. 넓히면 좁힌 것이 풀린다.
-    if (set && cur.length && cur.every((d) => d === path || d.startsWith(path + "/"))) return;
+    // `set` 은 토글이 아니라 "이 주제(들)로" 다(Agent 레일: 역할 주제 둘). 이미 그 주제거나
+    // 그 안쪽(`agent/release`)으로 좁혀져 있으면 그대로 둔다. 넓히면 좁힌 것이 풀린다.
+    const paths = Array.isArray(path) ? path : [path];
+    const one = paths[0];
+    if (set && cur.length
+        && cur.every((d) => paths.some((p) => d === p || d.startsWith(p + "/")))) return;
     // 이미 고른 것을 다시 누르면 **뺀다** — 더하는 길만 있고 빼는 길이 없으면
     // 되돌리려고 홈까지 갔다 와야 한다.
-    const next = set ? [path] : add
-      ? (cur.includes(path) ? cur.filter((d) => d !== path) : [...cur, path])
-      : (cur.length === 1 && cur[0] === path ? [] : [path]);
+    const next = set ? paths : add
+      ? (cur.includes(one) ? cur.filter((d) => d !== one) : [...cur, one])
+      : (cur.length === 1 && cur[0] === one ? [] : [one]);
     // 전부 빼면 그것은 L0(전체)다 — 빈 L1 은 "아무것도 안 보이는 주제 화면"이라
     // 상태로서 뜻이 없다.
     if (lv.kind === "l1") trail.pop();

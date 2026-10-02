@@ -3,7 +3,7 @@
   "kind": "share",
   "manifest": {
     "created": "2026-09-05T00:00:00Z",
-    "scope": { "domain": "vinc/agent", "tags": ["agent", "software"], "seed": null, "depth": 0 },
+    "scope": { "domain": "agent", "tags": ["agent", "software"], "seed": null, "depth": 0 },
     "counts": { "concepts": 5, "records": 0, "edges": 4, "documents": 0 },
     "note": "Software Agents. A developer, a gate runner, two reviewers and a security auditor, with the handoffs between them. Roles only; add your own reads, gates and paths."
   },
@@ -13,7 +13,7 @@
         "id": "concept:agent-developer",
         "type": "concept",
         "title": "Software engineer",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "execute", "role"],
         "one_liner": "One change, one branch, one pull request, one episode. Never widen the scope.",
         "props": {
@@ -42,7 +42,7 @@
         "id": "concept:agent-gate-runner",
         "type": "concept",
         "title": "CI gate runner",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "verify", "role"],
         "one_liner": "Run the gates and report pass or fail with the names of what failed. Never edit.",
         "props": {
@@ -68,7 +68,7 @@
         "id": "concept:agent-reviewer-checklist",
         "type": "concept",
         "title": "Checklist reviewer",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "verify", "role"],
         "one_liner": "Tick every row of the plan against the diff and name the rows with no matching change. Never judge.",
         "props": {
@@ -94,7 +94,7 @@
         "id": "concept:agent-reviewer-judgement",
         "type": "concept",
         "title": "Judgement reviewer",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "verify", "role"],
         "one_liner": "An adversarial read of the diff for correctness and over-engineering. Never edit, never merge.",
         "props": {
@@ -120,7 +120,7 @@
         "id": "concept:agent-security",
         "type": "concept",
         "title": "Security engineer",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "verify", "role"],
         "one_liner": "Re-audit the trust boundaries and hand every fix to the developer as a package. Never fix in place.",
         "props": {

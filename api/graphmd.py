@@ -170,7 +170,7 @@ only, and an unstated valid_from reads as current, so leaving it empty hides not
 Currency is derived from the interval: never store a status of stale, current or new.
 
 ## Roles [schema-fixed]
-An Agent role is a Concept: id concept:agent-<name>, titled with the job name (no "Agent role:" prefix), topic vinc/agent or one level below it.
+An Agent role is a Concept: id concept:agent-<name>, titled with the job name (no "Agent role:" prefix), topic agent or one level below it (vinc/agent is read too).
 Required props: mission, tier (orchestrate|execute|verify|deliver|knowledge), rung (strongest|strong|fast|cheapest), never, person_only. Lists stay lists.
 props replace whole on every write: read them back, then resend. A change ships with a Decision about the role.
 
@@ -238,7 +238,7 @@ valid_until 입니다. 지나간 주장도 그때 무엇이 참이었는지는 �
 숨겨지지 않습니다. 현재성은 구간에서 파생합니다. stale·current·new 를 저장하지 마십시오.
 
 ## 역할 [스키마 고정]
-Agent 역할은 Concept 입니다: id 는 concept:agent-<이름>, 제목은 직무명("Agent role:" 접두 없이), 주제는 vinc/agent 이거나 그 바로 아래입니다.
+Agent 역할은 Concept 입니다: id 는 concept:agent-<이름>, 제목은 직무명("Agent role:" 접두 없이), 주제는 agent 이거나 그 바로 아래입니다(vinc/agent 도 읽습니다).
 필수 props: mission, tier(orchestrate|execute|verify|deliver|knowledge), rung(strongest|strong|fast|cheapest), never, person_only. 목록은 목록으로 둡니다.
 props 는 쓸 때마다 통째로 바뀝니다: 먼저 되읽고 다시 보내십시오. 변경은 그 역할에 대한 Decision 과 함께 갑니다.
 

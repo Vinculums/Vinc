@@ -36,15 +36,17 @@ SEP = "/"
 MAX_DEPTH = 8
 
 #: 제품이 예약한 주제. Agent 역할(`concept:agent-*`)이 여기 살고 프롬프트 표면이 이
-#: 좌표를 읽는다(`vinc_mcp/roles.py` `DOMAIN` 과 같아야 한다 — 테스트가 대조한다).
+#: 좌표를 읽는다(`vinc_mcp/roles.py` `TOPICS` 와 같아야 한다 — 테스트가 대조한다).
+#: `agent` 가 새 역할의 자리이고, `vinc/agent` 는 Vinc 자기 그래프와 그 전에 시드된
+#: 스페이스의 자리라 함께 예약한다. 근거: [[decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02]]
 #: 무료 등급 주제 상한에서 **빠진다**: 기본 Agent 팩이 모든 스페이스에 들어가는데
 #: 그것이 사용자의 주제 다섯 중 하나를 먹으면 제품이 자기 기본값에 세금을 물리는
 #: 셈이다. 근거: [[vinc.canon.topic-tree]] §1·§5.
-RESERVED_TOPICS: tuple[str, ...] = ("vinc/agent",)
+RESERVED_TOPICS: tuple[str, ...] = ("agent", "vinc/agent")
 
 
 def is_reserved(domain: str | None) -> bool:
-    """예약 주제이거나 그 아래인가(`vinc/agent`, `vinc/agent/roles`). `vinc/agentic` 은 아니다."""
+    """예약 주제이거나 그 아래인가(`agent`, `agent/release`, `vinc/agent/roles`). `agents`·`vinc/agentic` 은 아니다."""
     d = normalize(domain)
     return any(d == r or d.startswith(r + SEP) for r in RESERVED_TOPICS)
 

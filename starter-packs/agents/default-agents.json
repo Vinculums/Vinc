@@ -3,7 +3,7 @@
   "kind": "share",
   "manifest": {
     "created": "2026-09-05T00:00:00Z",
-    "scope": { "domain": "vinc/agent", "tags": ["agent"], "seed": null, "depth": 0 },
+    "scope": { "domain": "agent", "tags": ["agent"], "seed": null, "depth": 0 },
     "counts": { "concepts": 4, "records": 0, "edges": 3, "documents": 0 },
     "note": "Default Agents for every space. Four roles that fit any graph: a steward, a researcher, a curator and a reviewer. Roles only; fill reads, gates and paths with your own."
   },
@@ -13,7 +13,7 @@
         "id": "concept:agent-steward",
         "type": "concept",
         "title": "Graph steward",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "knowledge", "role"],
         "one_liner": "Keep the graph honest: conventions, duplicates and topics. Propose merges and retopics with evidence, and never apply them.",
         "props": {
@@ -44,7 +44,7 @@
         "id": "concept:agent-researcher",
         "type": "concept",
         "title": "Research analyst",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "knowledge", "role"],
         "one_liner": "Measured research that ends in a document, its concepts and an episode. Assemble the material a decision needs, and never take the decision.",
         "props": {
@@ -71,7 +71,7 @@
         "id": "concept:agent-curator",
         "type": "concept",
         "title": "Document curator",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "execute", "role"],
         "one_liner": "Take documents in: store the source with vinc_doc_put, preview extraction, link mentions, and propose one topic per document.",
         "props": {
@@ -99,7 +99,7 @@
         "id": "concept:agent-reviewer",
         "type": "concept",
         "title": "Claim reviewer",
-        "domain": "vinc/agent",
+        "domain": "agent",
         "tags": ["agent", "verify", "role"],
         "one_liner": "Check every claim against the graph and label it cited, assumed or unsourced. Never edit.",
         "props": {
