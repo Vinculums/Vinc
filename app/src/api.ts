@@ -182,12 +182,43 @@ async function waitForSidecar(tries: number): Promise<boolean> {
         sidecarDiag += h?.status === "degraded"
           ? ` · health DEGRADED[${h.provision_error || h.error || "?"}]`
           : " · health ok";
+        if (h?.migrating) startIndexWatch();
         return true;
       }
     } catch {}
     await new Promise((r) => setTimeout(r, 250));
   }
   return false;
+}
+
+// 검색 색인 이관(VIN-272). 사이드카는 업데이트 뒤 첫 기동에서 색인을 옮기고, 그동안 `/health`
+// 는 스토어를 안 읽고 `migrating` 을 싣는다. 살아 있는 것이니 기다림을 끝내고, 화면에는 한 줄을
+// 건다(`index-signals.ts`). 끝날 때까지 2초마다 다시 묻는다.
+let migrating = false;
+
+/** 사이드카가 지금 검색 색인을 옮기고 있는가(신호 모듈이 늦게 걸릴 때 읽는다). */
+export function indexMigrating(): boolean {
+  return migrating;
+}
+
+function startIndexWatch(): void {
+  if (migrating) return;
+  migrating = true;
+  dispatchEvent(new CustomEvent("vinc:index-migrating"));
+  const tick = async () => {
+    let still = true;
+    try {
+      const res = await fetch(new URL("/health", cfg.base));
+      if (res.ok) still = Boolean((await res.json().catch(() => ({} as any)))?.migrating);
+    } catch {}
+    if (still) {
+      setTimeout(tick, 2000);
+      return;
+    }
+    migrating = false;
+    dispatchEvent(new CustomEvent("vinc:index-ready"));
+  };
+  setTimeout(tick, 2000);
 }
 
 /** 호출 하나의 스페이스를 명시적으로 못박는다. 생략하면 현재 스페이스(`cfg.team`)를

@@ -62,6 +62,11 @@ const EN = {
     unreachable: "Can't reach your account right now. Your graph is in your account, so screens stay empty until the connection is back.",
     retry: "Try again",
   },
+  // 업데이트 뒤 사이드카가 검색 색인을 새로 만드는 동안 거는 한 줄(VIN-272). 그동안 검색과
+  // 저장이 기다리거나 잠깐 실패할 수 있어서, 말하지 않으면 고장으로 읽힌다.
+  searchIndex: {
+    migrating: "Vinc is rebuilding its search index after the update. This takes a minute or two, and searching or saving may pause until it is done.",
+  },
   emptyInvite: {
     dropHint: "Drag a file here, or <span class=\"pt\">start from a single note</span>.",
     leadDocsNoNodes: "Your documents are in, and no concepts have been drawn from them yet. Open a document to pull concepts out of it, or write one node by hand.",
@@ -1237,6 +1242,9 @@ const KO: Deck = {
   accountMode: {
     unreachable: "지금 계정에 연결할 수 없어요. 그래프가 계정에 있어서 연결이 돌아올 때까지 화면이 비어 있어요",
     retry: "다시 시도하기",
+  },
+  searchIndex: {
+    migrating: "업데이트 뒤라 검색 색인을 새로 만들고 있어요. 1~2분쯤 걸리고, 끝날 때까지 검색이나 저장이 잠시 멈출 수 있어요",
   },
   emptyInvite: {
     dropHint: "파일을 여기에 끌어다 놓거나, <span class=\"pt\">노드 하나로 시작해도 돼요</span>",

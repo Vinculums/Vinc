@@ -344,6 +344,8 @@ applyTheme();
       }
       const { mountAccountSignals } = await import("./account-signals");
       mountAccountSignals();
+      const { mountIndexSignals } = await import("./index-signals");
+      mountIndexSignals();
     }
   } else {
     // 웹모드: 서피스를 그리기 **전에** 세션을 확인한다 — 미인증이면 즉시 /login 으로
