@@ -227,7 +227,7 @@ async function openCheatsheet() {
     [[`1–${ORDER.length}`, COPY.ui.palette.goSurface], ["⌘/Ctrl K", COPY.ui.topbar.searchPh],
      ["⌘/Ctrl ⇧ K", COPY.ui.palette.cmdPalette],
      ["⌘/Ctrl N", COPY.author.paletteDoc], ["⌘/Ctrl ⇧ N", COPY.author.paletteNode],
-     ["f", COPY.ui.palette.fit], ["Esc", COPY.ui.palette.back], ["?", COPY.ui.palette.thisSheet]]
+     ["F", COPY.ui.palette.fit], ["Esc", COPY.ui.palette.back], ["?", COPY.ui.palette.thisSheet]]
       .map(([k, v]) => `<div class="palette-row"><span>${v}</span><span class="hint">${k}</span></div>`)
       .join("");
 }

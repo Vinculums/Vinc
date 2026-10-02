@@ -3282,7 +3282,9 @@ export async function renderView(el: HTMLElement) {
             <div class="list-row rdr-open" data-doc="${esc(e.doc_id)}" data-i="${i}"
                  style="display:block;cursor:pointer">
               <span class="title" style="font-size:.85em">${esc(e.doc_title)}${
-                e.section ? `<span class="hint"> · ${esc(e.section)}</span>` : ""}</span>
+                // 문서 H1 아래 문단은 절 이름이 곧 문서 제목이라 같은 말을 두 번 적게 된다(VIN-258).
+                e.section && e.section.trim() !== (e.doc_title || "").trim()
+                  ? `<span class="hint"> · ${esc(e.section)}</span>` : ""}</span>
               <div class="hint doc-render rdr-excerpt">${renderExcerpt(e.excerpt, nd.label)}</div>
             </div>`).join(""));
       } else if (!res.one_liner) {

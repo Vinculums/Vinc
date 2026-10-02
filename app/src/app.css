@@ -3528,7 +3528,8 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   border: 1px solid hsl(var(--border)); border-radius: 999px; padding: 0 .2rem 0 .6rem;
   font-size: var(--fs-sm);
 }
-.writer-topic > span { color: hsl(var(--caption-foreground)); }
+/* 라벨은 줄지 않는다. 입력칸이 폭을 가져가면 두 글자 라벨이 "주 / 제"로 쌓였다(VIN-255). */
+.writer-topic > span { color: hsl(var(--caption-foreground)); flex: none; white-space: nowrap; }
 .writer-topic input {
   border: 0; background: none; color: hsl(var(--foreground)); font: inherit;
   padding: .2rem .3rem; min-width: 9rem; outline: none;
