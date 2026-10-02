@@ -36,6 +36,10 @@ from .store import Store
 CODE_TTL = 300
 TOKEN_TTL = 3600
 CONNECT_TTL = 600      # 회원 승인 대기(B-B3) — 10분
+#: 메타데이터가 내세우는 스코프. 토큰은 스코프로 갈리지 않고(요청의 `scope` 는 읽지 않는다)
+#: 모든 발급에 갱신 토큰이 붙는다. 그래도 적는 이유: ChatGPT 는 `offline_access` 가
+#: 안 보이면 갱신을 못 하는 서버로 보고 토큰 만료(TOKEN_TTL) 때 연결을 끊는다(VIN-269).
+SCOPES = ["offline_access"]
 _CIMD_TIMEOUT = 5
 _CIMD_MAX_BYTES = 64 * 1024
 #: CIMD 를 가져올 때 쓰는 이름. urllib 기본값(`Python-urllib/3.x`)은 claude.ai 앞단이
@@ -125,7 +129,8 @@ class OAuthGate:
         """
         path = resource_path if resource_path.startswith("/") else "/" + resource_path
         return {"resource": self.issuer + path,
-                "authorization_servers": [self.issuer]}
+                "authorization_servers": [self.issuer],
+                "scopes_supported": SCOPES}
 
     def as_metadata(self) -> dict:
         return {
@@ -135,6 +140,7 @@ class OAuthGate:
             "registration_endpoint": self.issuer + "/register",
             "response_types_supported": ["code"],
             "grant_types_supported": ["authorization_code", "refresh_token"],
+            "scopes_supported": SCOPES,
             "code_challenge_methods_supported": ["S256"],
             "token_endpoint_auth_methods_supported": ["none"],
             # ChatGPT·Claude 디렉터리는 CIMD 를 우선하고 DCR 로 폴백한다.

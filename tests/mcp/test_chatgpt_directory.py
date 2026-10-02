@@ -196,6 +196,28 @@ def test_as_metadata_advertises_cimd():
     assert "none" in meta["token_endpoint_auth_methods_supported"]
 
 
+def test_metadata_advertises_offline_access_and_a_scoped_request_still_refreshes():
+    # VIN-269: ChatGPT 는 scopes_supported 에 offline_access 가 없으면 갱신을 포기한다.
+    gate = OAuthGate("https://mcp.example", "adminkey", store=Store(":memory:"),
+                     cimd_fetch=_cimd)
+    assert "offline_access" in gate.as_metadata()["scopes_supported"]
+    assert "offline_access" in gate.resource_metadata("/t/abc/mcp")["scopes_supported"]
+    loc = gate.authorize({
+        "client_id": "https://chatgpt.com/oauth/client.json",
+        "redirect_uri": "https://chatgpt.com/connector/oauth/callback",
+        "response_type": "code", "scope": "offline_access",
+        "code_challenge": _s256("v" * 48), "code_challenge_method": "S256",
+        "key": "adminkey",
+    })
+    code = urllib.parse.parse_qs(urllib.parse.urlparse(loc).query)["code"][0]
+    tok = gate.token({"grant_type": "authorization_code", "code": code, "scope": "offline_access",
+                      "client_id": "https://chatgpt.com/oauth/client.json",
+                      "redirect_uri": "https://chatgpt.com/connector/oauth/callback",
+                      "code_verifier": "v" * 48})
+    again = gate.token({"grant_type": "refresh_token", "refresh_token": tok["refresh_token"]})
+    assert gate.verify(again["access_token"]) and again["refresh_token"] != tok["refresh_token"]
+
+
 def test_cimd_authorizes_without_registering_a_client():
     gate = OAuthGate("https://mcp.example", "adminkey", store=Store(":memory:"),
                      cimd_fetch=_cimd)
