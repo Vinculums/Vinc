@@ -43,6 +43,15 @@ jobs:
       SHARE: hub-data
       APP: vinc-hub
     steps:
+      # 손으로 돌리는 실행은 운영 담당만(repo 변수 PROD_OPERATORS, 쉼표로 구분한 로그인).
+      # 실수 방지이지 보안 경계가 아니다: 쓰기 권한자는 이 단계를 지운 브랜치 판을 dispatch 할 수 있다.
+      - name: 운영 실행은 운영 담당만
+        if: github.event_name == 'workflow_dispatch' && !contains(format(',{0},', vars.PROD_OPERATORS), format(',{0},', github.triggering_actor))
+        env:
+          ACTOR: ${{ github.triggering_actor }}
+        run: |
+          echo "::error::이 워크플로를 손으로 돌릴 수 있는 계정은 PROD_OPERATORS 에 있는 것뿐이다(지금 $ACTOR). 필요하면 소유자에게 요청할 것."
+          exit 1
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:

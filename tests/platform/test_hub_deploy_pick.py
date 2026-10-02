@@ -292,7 +292,7 @@ class WorkflowShape(unittest.TestCase):
                                          if not line.lstrip().startswith("#"))
                         if "github.sha" in text:
                             hits.append((name, i, key, k))
-        allowed = {("plan", 3, "env", "DISPATCH_SHA")}
+        allowed = {("plan", 4, "env", "DISPATCH_SHA")}   # 0 번은 운영 담당 가드
         # report 의 SHA 는 plan 이 죽었을 때의 마지막 대체값이다(`||` 사슬의 끝).
         allowed.add(("report", 0, "env", "SHA"))
         self.assertEqual(set(hits) - allowed, set())
