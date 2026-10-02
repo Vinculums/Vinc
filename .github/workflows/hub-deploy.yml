@@ -161,6 +161,8 @@ jobs:
           EVENT: ${{ github.event_name }}
           TRIGGER_SHA: ${{ github.event.workflow_run.head_sha }}
           TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          # 불러낸 런은 목록이 아니라 id 로 읽는다 — 목록은 끝난 런을 늦게 싣는다(picker 머리말).
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
           DISPATCH_SHA: ${{ github.sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           API: ${{ github.api_url }}

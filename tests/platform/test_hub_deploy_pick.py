@@ -10,9 +10,12 @@
 """
 from __future__ import annotations
 
+import io
+import json
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import yaml
 
@@ -62,11 +65,12 @@ class _History:
         i = self.c.index(sha)
         return self.c[i - 1] if i else ""
 
-    def run(self, *, live: int | None, trigger: int, conclusion: str = "success") -> hp.Plan:
+    def run(self, *, live: int | None, trigger: int, conclusion: str = "success",
+            ci_status=None) -> hp.Plan:
         return hp.pick(
             event="workflow_run", trigger_sha=self.c[trigger], trigger_conclusion=conclusion,
             dispatch_sha="", live=self.c[live] if live is not None else "",
-            main_commits=self.newest_first(), ci_status=self.ci_status,
+            main_commits=self.newest_first(), ci_status=ci_status or self.ci_status,
             is_commit=self.is_commit, is_ancestor=self.is_ancestor, changed=self.changed,
             parent_of=self.parent_of)
 
@@ -146,6 +150,19 @@ class Pick(unittest.TestCase):
         h = _History(3, {2: [".github/workflows/hub-deploy.yml"]}, {2: "success"})
         plan = h.run(live=1, trigger=2, conclusion="failure")
         self.assertEqual((plan.deploy, plan.sha, plan.withheld), (True, h.c[2], ""))
+
+    def test_불러낸_커밋을_CI_없음으로_건너뛰지_않는다(self):
+        # 2026-10-02 5cb87b3: 끝난 CI 를 목록이 아직 안 줘서 "none" → 조용히 deploy=false 였다.
+        for conclusion in ("success", "failure"):
+            h = _History(3, {2: ["vinc_mcp/oauth.py"]}, {2: "none"})
+            with self.assertRaises(hp.Unanswered, msg=conclusion):
+                h.run(live=1, trigger=2, conclusion=conclusion)
+
+    def test_불러낸_것이_아닌_커밋의_CI_없음은_건너뛴다(self):
+        # 아직 CI 가 안 생긴 새 커밋은 그 커밋의 런이 따로 온다.
+        h = _History(4, {2: ["api/a.py"], 3: ["api/b.py"]}, {3: "none"})
+        plan = h.run(live=1, trigger=2)
+        self.assertEqual((plan.deploy, plan.sha), (True, h.c[2]))
 
     def test_취소된_CI_도_보류로_센다(self):
         h = _History(3, {2: ["api/a.py"]}, {2: "failure"})
@@ -255,6 +272,58 @@ class Classify(unittest.TestCase):
         gate = [n for n in names if n.startswith(hp.GATE_JOB_PREFIX)]
         self.assertEqual(sorted(gate), sorted([_CORE, _PKNS]),
                          "core 잡 이름이 바뀌면 GATE_JOB_PREFIX 와 이 테스트를 같이 고칠 것")
+
+
+class TriggerRunById(unittest.TestCase):
+    """2026-10-02 5cb87b3(run 36986560889): CI 가 09:04:54Z 에 끝났는데 09:05:16Z 의
+    `ci.yml/runs?head_sha=` 목록이 0건이었다. 불러낸 런은 id 로 읽어야 한다."""
+
+    RUN = 36986560889
+
+    def _urlopen(self, listed: list[dict]):
+        run = {"id": self.RUN, "status": "completed", "conclusion": "success"}
+        jobs = [_job(_CORE), _job(_PKNS)]
+
+        def urlopen(req, timeout):
+            path = req.full_url.split("/repos/o/r", 1)[1]
+            if path.startswith("/actions/workflows/ci.yml/runs?"):
+                body = {"workflow_runs": [dict(r) for r in listed]}
+            elif path == f"/actions/runs/{self.RUN}/jobs?per_page=100":
+                body = {"jobs": jobs}
+            elif path == f"/actions/runs/{self.RUN}":
+                body = dict(run)
+            else:
+                raise AssertionError(path)
+            return io.BytesIO(json.dumps(body).encode())
+        return urlopen
+
+    def _plan(self, run_id: str) -> hp.Plan:
+        h = _History(3, {2: ["vinc_mcp/oauth.py"]}, {})
+        status = hp._ci_status_via_api("https://api.test", "o/r", "t", h.c[2], run_id)
+        with mock.patch.object(hp.urllib.request, "urlopen", self._urlopen([])):
+            plan = h.run(live=1, trigger=2, ci_status=status)
+        self.assertEqual(plan.sha, h.c[2])
+        return plan
+
+    def test_목록이_비어도_불러낸_런을_id_로_읽어_내보낸다(self):
+        self.assertTrue(self._plan(str(self.RUN)).deploy)
+
+    def test_id_도_없으면_조용히_넘기지_않고_죽는다(self):
+        with self.assertRaises(hp.Unanswered):
+            self._plan("")
+
+    def test_목록에_있으면_id_로_다시_읽지_않는다(self):
+        listed = [{"id": self.RUN, "status": "completed"}]
+        seen: list[str] = []
+        inner = self._urlopen(listed)
+
+        def urlopen(req, timeout):
+            seen.append(req.full_url)
+            return inner(req, timeout)
+        status = hp._ci_status_via_api("https://api.test", "o/r", "t", "a" * 40, str(self.RUN))
+        with mock.patch.object(hp.urllib.request, "urlopen", urlopen):
+            self.assertEqual(status("a" * 40), "success")
+        self.assertEqual(len(seen), 2)   # 목록 + 잡. 런 단건 조회는 없다
 
 
 class WorkflowShape(unittest.TestCase):
