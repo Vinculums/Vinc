@@ -1,0 +1,25 @@
+# 임시 측정 — 머지 전에 지운다. 허브와 같은 2GiB·1 vCPU 컨테이너에서 버퍼 풀 상한별 메모리 고점.
+name: probe-buffer-pool
+on:
+  push:
+    branches: [fix/hub-buffer-pool-cap]
+    paths: [scripts/probe_buffer_pool.py, .github/workflows/probe-buffer-pool.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        pool: [0, 1024, 768, 512, 256]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe (pool ${{ matrix.pool }} MB, 0 = ladybug default)
+        run: |
+          set +e
+          docker run --rm --memory=2g --memory-swap=2g --cpus=1 -v "$PWD:/w:ro" python:3.12-slim \
+            sh -c "pip install -q ladybug==0.20.4 numpy pyyaml argon2-cffi && python /w/scripts/probe_buffer_pool.py ${{ matrix.pool }}" \
+            2>&1 | grep -E '^\{|Error|Killed|exception' 
+          echo "container_exit=${PIPESTATUS[0]}"

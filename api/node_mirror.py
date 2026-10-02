@@ -1,17 +1,20 @@
 # -*- coding: utf-8 -*-
-"""노드 미러(NodeVec) — 의미 팔이 찾는 표면. **전량 재구축만 있다.**
+"""노드 미러(NodeVec) — 의미 팔이 찾는 표면. **색인은 통째로만 다시 만든다.**
 
 노드 층에는 색인이 하나도 없었다. 제목 검색은 CONTAINS 전수 스캔이고 점수는 맞은
 토큰을 세는 것이라, 질문과 노드가 낱말을 하나도 안 나누면 그 노드는 **어떤 팔로도
 후보가 못 된다**. 미러는 그 구멍을 메우는 사본이다.
 
-🔴 **순서가 안전장치다: 드롭 → 벡터와 함께 전량 삽입 → 생성.**
+🔴 **순서가 안전장치다: 드롭 → 벡터와 함께 삽입 → 생성.**
 "없던 벡터가 생기는" 것이 HNSW 삽입이고 **그것만** 세그폴트를 낸다(exit 139 — 같은
 행의 값 교체와 벡터 없는 행 삽입은 각각 2,000건까지 무사하다는 실측이
-`store/embedded_backend.py::drop_vector_index` 주석에 있다). 그래서 증분 갱신이 없다.
+`store/embedded_backend.py::drop_vector_index` 주석에 있다). 그래서 색인을 살려 둔 채
+넣는 증분은 없다. 바뀐 행만 갈 때도(:func:`plan`) 같은 순서를 밟는다 — 아끼는 것은
+인코딩과 삭제·삽입의 행 수뿐이고, 색인은 언제나 통째로 다시 선다.
 중간에 죽으면 인덱스 없는 미러가 남는데, 그 상태에서 의미 팔은 빈 목록을 낼 뿐이라
 검색은 멀쩡하다 — 다시 돌리면 된다.
-근거: [[decision:the-node-mirror-is-rebuilt-whole-or-not-at-all]]
+근거: [[decision:the-node-mirror-is-rebuilt-whole-or-not-at-all]] ·
+[[decision:the-node-mirror-keeps-unchanged-rows-and-rebuilds-its-index-whole-2026-10-02]]
 
 **찾는 표면은 좁게 담는다.** 제목이 기본이고 Concept 은 one_liner, Episode 는 summary
 앞부분을 붙인다. Record·Decision 은 제목만이다. 넓히는 것은 측정 없이 하지 않는다
