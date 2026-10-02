@@ -106,8 +106,19 @@ jobs:
   #
   # 되돌릴 조건: 분이 다시 넉넉해지거나, 러너가 다시 조용히 사라지거나, Operator 역할이
   # 회수되면. 셋 중 하나라도 참이면 위 문단의 판단이 다시 이긴다.
+  # ── 다시 호스티드로 (2026-10-02) ───────────────────────────────────────────────
+  # 위 조건 ①이 풀렸다: 10월 포함분 2,000분이 새로 찼다. 그리고 분을 태우는 쪽이 배포가
+  # 아니라 CI 라는 것을 9월 청구로 쟀다 — 전부 호스티드였던 9월 1~6일은 하루 약 400분,
+  # 배포만 떼면 이 워크플로 약 5분 · site-deploy 약 8분 · account-deploy 약 6분이라
+  # 매 push 마다 다 돌아도 하루 90분 안쪽이다. 그래서 **배포 셋만** 호스티드로 옮기고
+  # CI(ci.yml)는 셀프호스티드에 둔다.
+  # 옮기는 이유는 08-30 문단 그대로다. 같은 날 사이트 배포가 노트북 러너 셋이 PR CI 로
+  # 바쁜 동안 큐에 서 있었고, 전날에는 노트북이 잠들어 이 워크플로가 통신을 잃었다.
+  # 잡 넷을 **모두** 옮긴다. `close-report` 가 끝나야 다음 배포가 줄에서 풀리므로 그 잡만
+  # 노트북에 남기면 줄이 다시 노트북을 기다린다.
+  # 되돌릴 조건: 월 포함분이 다시 바닥에 가까워지면(정지는 배포까지 멈춘다).
   plan:
-    runs-on: [self-hosted, linux, vinc-local]
+    runs-on: ubuntu-latest
     # git fetch · az 한 번 · API 몇 번이다. 걸린 호출 하나가 배포 줄을 붙잡지 않게 짧게.
     timeout-minutes: 10
     permissions:
@@ -151,7 +162,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.deploy == 'true'
     # 러너는 plan 과 같은 이유(그 잡 위의 문단들이 근거다).
-    runs-on: [self-hosted, linux, vinc-local]
+    runs-on: ubuntu-latest
     # 실측 3분 52초. plan 위의 timeout 문단이 값의 근거와 이 설정의 한계를 함께 적는다.
     timeout-minutes: 30
     # 이 잡이 내보내는 커밋. `github.sha` 가 아니다(파일 머리말).
@@ -689,8 +700,9 @@ jobs:
   # 하나 있다: 러너가 아예 안 뜨면 이 잡도 안 돈다.** 그때는 실행 목록에 아무것도
   # 안 생기는 것으로만 드러나고, 여기서 막을 방법이 없다.
   #
-  # `gh` 대신 REST 를 쓰는 이유는 셀프호스티드 러너에 gh 가 있다는 보장이 없어서고,
-  # 호스티드 러너를 안 쓰는 이유는 청구가 1분부터 시작해서다(이 잡은 실패에만 돈다).
+  # `gh` 대신 REST 를 쓰는 이유는 셀프호스티드 러너에 gh 가 있다는 보장이 없어서였다.
+  # 한때 청구가 1분부터라 이 잡만 노트북에 두었지만, 지금은 나머지 잡과 같이 호스티드다
+  # (위 2026-10-02 문단: 배포 줄이 노트북을 기다리지 않게).
   #
   # 2026-09-26 부터 **보류**도 여기로 온다. 테스트 게이트가 CI 로 옮겨 가면서, CI 가
   # 빨개 허브 변경이 안 나가는 것은 이 워크플로의 실패가 아니라 `plan` 의 판정이 됐다
@@ -700,7 +712,7 @@ jobs:
   report:
     needs: [plan, build-and-deploy]
     if: failure() || needs.plan.outputs.withheld != ''
-    runs-on: [self-hosted, linux, vinc-local]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       issues: write      # 이 잡만 — 워크플로 기본 권한은 그대로 둔다
@@ -779,7 +791,7 @@ jobs:
     # 설령 돌더라도 SHA 가 비어 compare 가 실패하므로 아무것도 닫지 않는다 — 닫는 것은
     # 실제로 나간 배포뿐이다.
     if: success()
-    runs-on: [self-hosted, linux, vinc-local]
+    runs-on: ubuntu-latest
     # 이 런이 끝나야 다음 허브 배포가 줄에서 풀린다(워크플로 concurrency). 걸린 호출
     # 하나가 배포 줄을 붙잡지 않게 짧게 끊는다.
     timeout-minutes: 5
