@@ -674,7 +674,7 @@ jobs:
             echo "Vinc ${TAG#v}."
             echo
             echo "Full release note: https://vincs.io/release/"
-            echo "Installers are in the Assets below, and installed apps update themselves."
+            echo "Installers are in the Assets below. Installed apps ask to update the next time they open."
           } > notes.md
           gh release edit "$TAG" --repo "$REPO" --notes-file notes.md
           echo "::notice::본문을 정본 안내로 채웠다. 발행 전에 사람이 실제 노트로 바꿀 것."
