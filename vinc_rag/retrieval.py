@@ -240,14 +240,60 @@ def cursor_decode(s: str) -> dict:
     return data
 
 
-def _summary_row(r: dict) -> dict:
+#: 발췌 길이(문자). node_context 의 발췌 관례(§excerpts)와 같은 값이다.
+SNIPPET_CHARS = 240
+
+
+def _snippet_start(flat: str, query_tokens: set[str] | None) -> int:
+    """발췌를 어디서 시작할까 — 질의 토큰이 **가장 여러 가지** 든 SNIPPET_CHARS 창의 시작.
+
+    질의 토큰이 나오는 자리를 찾고(`find_tokens`), 그 자리마다 창을 열어 두 포인터로 서로 다른 토큰
+    수를 센다(O(n)). 동률이면 앞의 것이다. 맞는 토큰이 없으면 0 — 오늘 발췌와 바이트까지 같다.
+    시작은 앞 공백으로 물려 낱말을 자르지 않는다.
+
+    왜: 청크 첫 240자는 한국어 방송 말뭉치에서 근거 구간을 18.6% 만 보여 줬다. 질의어 창은
+    95.3%(그의 단어)·87.8%(검색어)·59.3%(바꾼 말). 에이전트는 발췌를 보고 열 문서를 고른다.
+    근거: [[vinc.research.korean-retrieval-2026-10-01 §7]]"""
+    if not query_tokens or len(flat) <= SNIPPET_CHARS:
+        return 0
+    from store.lexical import find_tokens
+    hits = find_tokens(flat, query_tokens)
+    if not hits:
+        return 0
+    best_n, best_start = 0, 0
+    counts: dict[str, int] = {}
+    j = 0
+    for i, (start, _) in enumerate(hits):
+        while j < len(hits) and hits[j][0] + len(hits[j][1]) <= start + SNIPPET_CHARS:
+            counts[hits[j][1]] = counts.get(hits[j][1], 0) + 1
+            j += 1
+        n = sum(1 for c in counts.values() if c)
+        if n > best_n:
+            best_n, best_start = n, start
+        tok = hits[i][1]
+        if counts.get(tok):
+            counts[tok] -= 1
+    # 처음 창이 최고 창만큼 덮으면 처음을 보여 준다 — 오늘 발췌와 같고 `…` 도 안 붙는다.
+    head_n = len({tok for pos, tok in hits if pos + len(tok) <= SNIPPET_CHARS})
+    if best_n == 0 or best_start == 0 or head_n >= best_n:
+        return 0
+    # 시작이 낱말 한가운데면 앞 공백으로 물린다(최대 20자). 너무 멀면 그 자리 그대로.
+    sp = flat.rfind(" ", max(0, best_start - 20), best_start)
+    start = sp + 1 if sp >= 0 else best_start
+    # 창 끝이 원문 끝을 넘지 않게 당긴다 — 마지막 문단에 모였으면 꽉 찬 창을 보여 준다.
+    return max(0, min(start, len(flat) - SNIPPET_CHARS))
+
+
+def _summary_row(r: dict, query_tokens: set[str] | None = None) -> dict:
     """청크 행의 요약형 — 전문(text) 대신 발췌(snippet)를 싣는다(GM-14 요약·상세 분리).
-    발췌 240자·공백 정규화는 node_context 의 기존 관례(§excerpts)와 같다. 전문은
-    doc_id 로 vinc_doc_get 이 돌려준다(chunk id 규약 `{doc_id}#{n:05d}`)."""
+    발췌는 질의어가 가장 많이 든 자리다(:func:`_snippet_start`). 처음이 아니면 `…` 로 시작하고,
+    맞는 게 없으면 처음 240자다. 공백 정규화는 node_context 의 기존 관례(§excerpts)와 같다.
+    전문은 doc_id 로 vinc_doc_get 이 돌려준다(chunk id 규약 `{doc_id}#{n:05d}`)."""
     flat = " ".join(str(r.get("text") or "").split())
     out = {k: v for k, v in r.items() if k != "text"}
-    out["snippet"] = flat[:240]
-    out["truncated"] = len(flat) > 240
+    start = _snippet_start(flat, query_tokens)
+    out["snippet"] = ("…" if start else "") + flat[start:start + SNIPPET_CHARS]
+    out["truncated"] = len(flat) > SNIPPET_CHARS
     rid = str(r.get("id") or "")
     out["doc_id"] = rid.rsplit("#", 1)[0] if "#" in rid else ""
     return out
@@ -1224,7 +1270,12 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                 {"v": 1, "off": next_off, "qh": qh,
                  "eid": str(pool[next_off].get("id") or ""), "tc": len(pool),
                  "arms": base["arms"]})
-        base["rows"] = page if detail == "full" else [_summary_row(r) for r in page]
+        if detail == "full":
+            base["rows"] = page
+        else:
+            from store.lexical import lex_tokens
+            qtok = lex_tokens(query)              # 페이지에 한 번 — 행마다 다시 자르지 않는다
+            base["rows"] = [_summary_row(r, qtok) for r in page]
         if detail != "full":
             _attach_doc_titles(store, base["rows"], owner=owner)
         # MCP 봉투의 크기 안전망(shrinker)이 이어받을 좌표 — 꼬리 행을 덜어낸 뒤
