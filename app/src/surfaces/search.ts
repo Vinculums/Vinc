@@ -24,7 +24,7 @@ const MARK: Record<string, string> = { keyword: "≡", semantic: "≈" };
 
 export function renderSearch(el: HTMLElement) {
   el.innerHTML = `
-    ${header("search", "Search", COPY.ui.meta.search)}
+    ${header("search", COPY.ui.topbar.search, COPY.ui.meta.search)}
     <form id="search-form" role="search">
       <input id="q" type="search" placeholder="${COPY.search.idle}  ·  domain:math tag:core &quot;phrase&quot;"
              style="width:100%;font:inherit;padding:var(--space-3,.75rem);

@@ -49,6 +49,8 @@ _LANG_PICKER = re.compile(r"data-lang-opt")
 _SCAN_GLOBS = ("app/src/**/*.ts", "app/src/**/*.css")
 _SCAN_FILES = ("app/index.html",)
 _DECK = "app/src/copy.ts"
+# 덱이 쓰는 한국어 문법(조사 표). 카피가 아니라 덱의 일부라 덱과 같이 훑지 않는다(VIN-259).
+_GRAMMAR = ("app/src/josa.ts",)
 
 
 @dataclass
@@ -121,7 +123,7 @@ def _scan_targets(root: Path):
     seen: set[Path] = set()
     for pat in _SCAN_GLOBS:
         for p in sorted(root.glob(pat)):
-            if p.as_posix().endswith(_DECK) or p in seen:
+            if p.as_posix().endswith((_DECK, *_GRAMMAR)) or p in seen:
                 continue
             seen.add(p)
             yield p
