@@ -52,6 +52,14 @@ export function renderSearch(el: HTMLElement) {
     void renderBrowse(body.querySelector<HTMLElement>("#search-list")!);
   }
   showEmpty();
+  // `#search/<검색어>` 로 들어오면 그 검색어로 바로 찾는다(상단 검색의 "문서 안에서 찾기").
+  let pre = "";
+  try { pre = decodeURIComponent(location.hash.replace(/^#search\/?/, "")); }
+  catch { /* 손으로 친 잘못된 %-주소는 빈 검색으로 연다(화면을 죽이지 않는다) */ }
+  if (pre.trim()) {
+    (el.querySelector("#q") as HTMLInputElement).value = pre;
+    void run(pre.trim(), true);
+  }
 
   let debounce: number | undefined;
   el.querySelector("#q")!.addEventListener("input", (e) => {

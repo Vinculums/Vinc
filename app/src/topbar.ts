@@ -278,10 +278,9 @@ export function mountTopbar() {
         + `<p class="hint tb-rnote">${COPY.ui.topbar.noResults}</p>`
         // 첫 질의는 색인을 만드느라 몇 초 걸린다 — 침묵 대신 이유를 말한다(V14).
         + `<p class="hint tb-rnote">${COPY.ui.topbar.firstSlow}</p>`
-        + `<button class="tb-all" id="tb-all">${COPY.ui.topbar.browseAll}</button>`;
+        + foot();
       wireAll(); open(); return;
     }
-    const foot = `<button class="tb-all" id="tb-all">${COPY.ui.topbar.browseAll}</button>`;
     box.innerHTML = head + hits.map((h, i) => `
       <button class="tb-row" role="option" data-i="${i}">
         <span class="tb-mark">${h.mark}</span>
@@ -290,7 +289,7 @@ export function mountTopbar() {
           ${h.snippet ? `<span class="hint tb-rsnip">${esc(h.snippet)}</span>` : ""}
         </span>
         <span class="hint tb-rmeta">${esc(h.domain)}</span>
-      </button>`).join("") + foot;
+      </button>`).join("") + foot();
     box.querySelectorAll<HTMLElement>(".tb-row").forEach((r) =>
       r.addEventListener("mousedown", (e) => {   // blur 보다 먼저 잡는다
         e.preventDefault();
@@ -320,10 +319,24 @@ export function mountTopbar() {
     void renderBrowse(sheet.body, { close: sheet.close });
   }
 
+  /** 드롭다운 아래 두 길: 전체 문서 목록(시트)과 Search 화면(문서 본문 검색).
+   *  드롭다운은 노드만 보여 주므로, 마우스만 쓰는 사람에게 본문 검색으로 가는 길은
+   *  여기 하나다(VIN-257). 친 검색어를 주소에 실어 그 화면이 바로 찾게 한다. */
+  function foot(): string {
+    return `<div class="tb-foot"><button class="tb-all" id="tb-all">${COPY.ui.topbar.browseAll}</button>`
+      + `<button class="tb-all" id="tb-inside">${COPY.ui.topbar.searchInside}</button></div>`;
+  }
+
   function wireAll() {
     box.querySelector("#tb-all")?.addEventListener("mousedown", (e) => {
       e.preventDefault();
       void openAllDocs();
+    });
+    box.querySelector("#tb-inside")?.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      const raw = q.value.trim();
+      close(); q.blur();
+      location.hash = raw ? `#search/${encodeURIComponent(raw)}` : "#search";
     });
   }
 
@@ -360,7 +373,7 @@ export function mountTopbar() {
       // 실패해도 막다른 골목을 만들지 않는다 — 목록으로 가는 길은 남긴다
       // (검색이 죽었다고 문서에 닿을 방법까지 사라지면 안 된다).
       box.innerHTML = `<p class="hint tb-rnote">${COPY.search.error}</p>`
-        + `<button class="tb-all" id="tb-all">${COPY.ui.topbar.browseAll}</button>`;
+        + foot();
       wireAll();
       open();
     }

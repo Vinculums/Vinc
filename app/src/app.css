@@ -1150,6 +1150,10 @@ body {
   color: hsl(var(--link)); border-radius: 0 0 .5rem .5rem;
 }
 .tb-all:hover { background: hsl(var(--muted-foreground) / .1); }
+/* 아래 두 길(모든 문서 · 문서 안에서 찾기)은 한 줄에 나란히 선다(VIN-257). 구분선은 줄이 한 번 긋는다. */
+.tb-foot { display: flex; margin-top: .25rem; border-top: 1px solid hsl(var(--border) / .7); }
+.tb-foot .tb-all { flex: 1; margin-top: 0; border-top: none; border-radius: 0 0 0 .5rem; }
+.tb-foot .tb-all + .tb-all { text-align: right; border-radius: 0 0 .5rem 0; }
 
 /* ── 묻기 · 대화 패널 (D73) ───────────────────────────────────────────────
    검색바에 매달린 떠 있는 패널이라 바와 **같은 폭**으로 선다(left:0;right:0).
