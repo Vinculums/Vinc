@@ -102,4 +102,4 @@ python -X utf8 scripts/gate_pr_title.py "fix(scope): subject"
 - `CLAUDE.md`: AI 에이전트가 이 리포에서 일할 때 따르는 규칙입니다. 사람이 읽어도 함정 목록으로 쓸모가 있습니다.
 - `CHANGELOG.md`: 개발자용 릴리스 기록입니다.
 - `agents/teams.json`: 팀과 경로의 정본입니다.
-- Linear: 팀 `Vincs`에서 이슈를 관리합니다.
+- Linear: 팀 `Vincs`에서 이슈를 관리합니다. 등록 규칙(Area 라벨, 프로젝트를 붙이는 기준, 보관)은 그래프 [[vinc.canon.linear-workflow]] 이고, Linear 안에서는 팀 문서 "How Vinc uses Linear" 가 그 요약입니다.

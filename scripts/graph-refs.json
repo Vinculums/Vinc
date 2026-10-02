@@ -139,6 +139,7 @@
     "vinc.canon.code-annotation",
     "vinc.canon.decisions",
     "vinc.canon.graph-conventions",
+    "vinc.canon.linear-workflow",
     "vinc.canon.mcp-contract",
     "vinc.canon.principles",
     "vinc.canon.repo-workflow",

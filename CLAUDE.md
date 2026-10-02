@@ -266,3 +266,17 @@ python -X utf8 scripts/gate_pr_title.py "fix(share): unchecked documents stay be
 
 ⚠ 이 규칙은 **제목만** 본다. 게이트가 본문을 읽지 않으므로 본문의 한국어는 위반이
 아니고, 반대로 게이트가 초록이라고 본문이 검토된 것도 아니다.
+
+## 8. Linear 에 이슈·프로젝트를 등록할 때 (2026-10-03 지시)
+
+**지시다.** Linear 이슈나 프로젝트를 만들거나 옮기거나 닫기 전에 [[vinc.canon.linear-workflow]]
+를 `vinc_doc_get` 으로 읽는다. 그래프에 닿지 않는 도구라면 Linear 팀 문서 "How Vinc uses
+Linear" 가 같은 내용의 요약이다(둘이 다르면 정본을 따른다). 세션마다 물리는 세 가지만 여기 둔다:
+
+- **이슈마다 Area 라벨 하나**: `core` `rag` `app` `design-content` `platform` `qa`.
+  앞의 다섯은 `agents/teams.json` 의 팀이다.
+- **프로젝트는 끝이 있는 결과물에만** 붙인다. 영역 버킷(Site & Docs · Infra & CI ·
+  Research 같은 것)은 2026-10-03 에 닫았고 다시 만들지 않는다. 프로젝트가 없는 이슈는 정상이다.
+- **Linear 화면과 커넥터에는 보관 기능이 없다.** 닫힌 이슈도 무료 한도(250)를 먹는다.
+  보관은 팀 자동 보관이나 사람의 키로 부르는 `issueArchive` 뿐이고, 키는 사람의 환경변수
+  `LINEAR_API_KEY` 에만 있다. 채팅으로 키를 받거나 입력하지 않는다.
