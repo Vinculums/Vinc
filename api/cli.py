@@ -257,6 +257,11 @@ def _main(argv: list[str] | None = None) -> int:
                         help="기동 전: 벡터 열의 차원이 이 배포의 모델과 다르면 재구축해 갈아 끼운다")
     md.add_argument("--data", default=None, help="db 파일 경로 (serve 와 같은 규칙)")
 
+    ml = sub.add_parser("migrate-lex",
+                        help="전문 색인을 Chunk.lex(한글 두 글자 묶음)로 옮긴다 — 서비스 밖의 사본에서")
+    ml.add_argument("--data", required=True, help="db 파일 경로. 서비스 중인 스토어가 아니라 사본")
+    ml.add_argument("--batch", type=int, default=200, help="lex 백필 배치 크기")
+
     # `python -m store.migrate rebuild` 가 여기로 옮겨졌다(VIN-242): 재구축의 재큐 정책은
     # api 층(`docstore.switch_embed_model`)의 것이라 store 가 그것을 import 할 수 없다.
     sr = sub.add_parser("store-rebuild",
@@ -661,6 +666,34 @@ def _main(argv: list[str] | None = None) -> int:
             return 3
         print(json.dumps(out, ensure_ascii=False), flush=True)
         return 0
+    if args.cmd == "migrate-lex":
+        # 허브는 서비스 중에 이관하지 않는다(DDL 가드가 프로세스 전체를 몇 분씩 막는다). 공유
+        # 스냅샷에서 받은 사본에 이 명령을 돌리고 확인한 뒤 `VINC_DATA_DIR` 을 바꾼다.
+        # 근거: [[vinc.plan.korean-retrieval-p1-p2-2026-10-02 §2.7]]
+        from store.backend import open_store
+        from store.config import load_config
+        store = open_store(load_config({"data_dir": args.data}))
+        if store is None:
+            print("vinc-migrate-lex: 스토어를 열 수 없다", file=sys.stderr, flush=True)
+            return 1
+        try:
+            cfg = load_config({"data_dir": args.data})
+            store.provision(dim=cfg.embedding_dim)      # v21 열이 먼저 있어야 한다
+            before = store.run("MATCH (v:ChunkVec) RETURN count(v) AS c")[0]["c"]
+            out = store.migrate_lex_index(batch=args.batch)
+            after = store.run("MATCH (v:ChunkVec) RETURN count(v) AS c")[0]["c"]
+            from store.lexical import lex_text
+            # 빈 lex 가 정상인 행(기호뿐인 청크)은 빼고 센다 — 그 행은 색인할 말이 없다.
+            empty = sum(1 for r in store.run(
+                "MATCH (c:Chunk) WHERE coalesce(c.lex, '') = '' RETURN c.text AS t", raw=True)
+                if lex_text(r.get("t") or ""))
+            out.update(lex_ready=store.lex_ready(), vectors_before=before,
+                       vectors_after=after, chunks_without_lex=empty)
+        finally:
+            store.close()
+        print(json.dumps(out, ensure_ascii=False), flush=True)
+        ok = out["lex_ready"] and out["vectors_before"] == out["vectors_after"]             and out["chunks_without_lex"] == 0
+        return 0 if ok else 3
     if args.cmd == "store-rebuild":
         from store import migrate
         from store.backend import open_store

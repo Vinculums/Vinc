@@ -48,6 +48,7 @@ from typing import Any, Callable
 from engines import domain_hierarchy
 from store import pkns
 from store.embedded_backend import DDL_GUARD
+from store.lexical import lex_text
 
 from . import graphmd
 
@@ -677,10 +678,13 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             "cs": c["start"], "ce": c["end"], "cc": len(c["text"]), "text": c["text"],
         }
         params["lyr"] = layer
+        # v21 — 색인이 담는 말을 **같은 MERGE 에서** 쓴다. 따로 SET 하면 FTS 가 걸린 기존 행
+        # 쓰기라 프로세스가 죽는 자리고, 표지 전이어도 미리 채워 두면 이관이 이 행을 건너뛴다.
+        params["lex"] = lex_text(c["text"])
         sets = ("c.doc_id = $doc, c.owner_id = $owner, c.source_file = $origin, "
                 "c.section_title = $sec, c.chunk_index = $idx, c.layer = $lyr, "
                 "c.char_start = $cs, c.char_end = $ce, c.char_count = $cc, "
-                "c.token_count = 0, c.text = $text")
+                "c.token_count = 0, c.text = $text, c.lex = $lex")
         store.run(f"MERGE (c:Chunk {{chunk_id: $id}}) SET {sets}", params)
 
     # needs_embed: 새로 쓴 문서는 언제나 1 — 워커가 `ChunkVec` 을 채우고 내린다.
