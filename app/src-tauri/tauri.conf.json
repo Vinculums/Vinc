@@ -59,6 +59,9 @@
         "role": "Viewer"
       }
     ],
+    "macOS": {
+      "minimumSystemVersion": "15.0"
+    },
     "windows": {
       "nsis": {
         "installMode": "currentUser",
