@@ -492,7 +492,11 @@ fn spawn_sidecar(app: &tauri::AppHandle, port: u16, token: &str) -> Result<u32, 
             token,
             "--parent-pid",
             &parent_pid,
-        ]);
+        ])
+        // 업데이트 뒤 첫 기동에서 검색 색인을 Chunk.lex 로 옮긴다(VIN-271·VIN-272). 사이드카
+        // 기본은 defer(서비스 중에 안 옮김)이고, 데스크톱만 이 값으로 기동 뒤에 옮긴다. 그동안
+        // /health 가 migrating 을 실어 앱이 안내를 띄운다.
+        .env("VINC_LEX_BACKFILL", "background");
     let (mut events, child) = sidecar.spawn().map_err(|e| {
         // spawn 자체가 실패하면 CommandEvent 조차 안 온다 → 여기서 안 남기면 증거 0.
         log::error!(target: "sidecar", "spawn failed: {e}");

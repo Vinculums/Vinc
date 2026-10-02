@@ -3510,6 +3510,16 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   background: hsl(var(--card)); color: hsl(var(--foreground));
 }
 
+/* 사이드카가 검색 색인을 새로 만드는 동안 거는 한 줄(VIN-272, `index-signals.ts`). 자리는
+   `.acct-notice` 와 같고, 오류가 아니라 상태라서 경고 테두리·굵기(`.error-banner`)를 쓰지 않는다. */
+.index-notice {
+  position: fixed; top: calc(var(--space-6, 1.5rem) + 2.5rem); left: 50%;
+  transform: translateX(-50%); z-index: 60; max-width: min(40rem, 92vw);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  padding: var(--space-3, .75rem) var(--space-4, 1rem);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+}
+
 /* ── 작업하는 자리에서 만들기(authoring · node-composer · connect · extract-list ·
       node-basics · cm-assist). 새 부품은 없다: 시트 · 카드면 · 세그 · 칩 · rail-x 를
       그대로 쓰고, 자리와 간격만 여기서 준다. 포인트색은 초점 링에만 쓴다(면에 안 쓴다). ── */
