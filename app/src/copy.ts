@@ -1198,7 +1198,7 @@ const EN = {
 type Deck = typeof EN;
 
 const KO: Deck = {
-  tagline: "흩어진 지식의 핵심을 찾아보세요",
+  tagline: "내 지식에서 핵심을 찾아보세요",
   sovereignty: "로컬 모드에서는 그래프가 이 기기에 있어요. 앱이 인터넷에 닿는 건 업데이트를 확인할 때와 로그인해서 계정에 연결할 때뿐이에요",
   sovereigntyWeb: "여기는 계정 그래프예요. 데스크탑 앱과 다른 기기에서도 같은 지식을 봐요",
   intake: {
