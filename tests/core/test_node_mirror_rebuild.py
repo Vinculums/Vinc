@@ -85,6 +85,17 @@ class _FakeStore:
                      "extra": n.get("extra") or ""}
                     for n in self._nodes
                     if n["label"] == label and (owner is None or n["owner"] == owner)]
+        if query.startswith("MATCH (n:NodeVec)") and "RETURN n.embedding" in query:
+            return [{"e": m["embedding"]} for m in self.mirror][:1]
+        if query.startswith("MATCH (n:NodeVec)") and "RETURN n.vec_id" in query:
+            o = params.get("o")
+            return [{"v": m["vec_id"], "t": m.get("text", ""), "m": m["model"],
+                     "r": m.get("runtime", "")}
+                    for m in self.mirror if o is None or m["owner_id"] == o]
+        if query.startswith("MATCH (n:NodeVec)") and "n.vec_id IN $v" in query:
+            gone = set(params["v"])
+            self.mirror = [m for m in self.mirror if m["vec_id"] not in gone]
+            return []
         if query.startswith("MATCH (n:NodeVec)"):
             keep = set(params.get("o") or [])
             self.mirror = [m for m in self.mirror if m["owner_id"] not in keep]
@@ -97,6 +108,7 @@ class _FakeStore:
                         f"Found duplicated primary key value {r['vid']}")
                 self.mirror.append({"vec_id": r["vid"], "node_id": r["id"],
                                     "owner_id": r["owner"], "title": r["title"],
+                                    "text": r["text"], "runtime": params["runtime"],
                                     "model": params["m"], "embedding": r["emb"]})
             return []
         return []
@@ -121,6 +133,9 @@ class _FakeReader:
 
     def run(self, query, params=None):
         return self._b.run(query, params)
+
+    def node_vector_search(self, embedding, top_k, *, owner=None):
+        return self._b.node_vector_search(embedding, top_k, owner=owner)
 
     def close(self):
         self.closed = True
@@ -390,6 +405,82 @@ class RebuildRoute(unittest.TestCase):
         self.assertEqual(h._route_post("/node-mirror/nope", {})[0], 404)
 
 
+class RebuildReuse(unittest.TestCase):
+    """바뀐 노드만 인코딩한다 — 판을 증명할 런타임·빌드·모델 라벨이 다 있을 때만.
+
+    2026-10-02 허브: 전량 인코딩이 25분을 넘기는 동안 질의 임베딩이 같은 인코더 뒤에 줄을
+    섰고, 교체 단계에서 사이드카가 OOM 으로 죽었다. 배포마다 바뀌는 노드는 몇십 개다."""
+
+    def setUp(self):
+        self.nodes = _nodes()
+        self.store = _FakeStore(self.nodes)
+        self.app = VincApp(store=self.store)
+        self._saved = (sv._encode_post, sv._ENCODER_RUNTIME, sv._ENCODER_BUILD,
+                       sv.docstore.embed_model_state, os.environ.get("VINC_EMBED_ENCODE"))
+        os.environ["VINC_EMBED_ENCODE"] = "http://encoder.invalid"
+        sv._ENCODER_RUNTIME, sv._ENCODER_BUILD = "rt", "b1"
+        sv.docstore.embed_model_state = lambda _s: {"stored": "bge"}
+        self.encoded: list[str] = []
+
+        def fake_post(url, texts, kind, timeout):
+            self.encoded.extend(texts)
+            sv._ENCODER_RESPONSE_RUNTIME.set(sv._ENCODER_RUNTIME)
+            sv._ENCODER_RESPONSE_INSTANCE.set("i")
+            return [_vec(1, 0)] * len(texts)
+        sv._encode_post = fake_post
+
+    def tearDown(self):
+        (sv._encode_post, sv._ENCODER_RUNTIME, sv._ENCODER_BUILD,
+         sv.docstore.embed_model_state, prev) = self._saved
+        os.environ.pop("VINC_EMBED_ENCODE", None)
+        if prev is not None:
+            os.environ["VINC_EMBED_ENCODE"] = prev
+
+    def rebuild(self):
+        self.encoded.clear()
+        code, res = self.app.write_node_mirror_rebuild({})
+        self.assertEqual(code, 200)
+        return res
+
+    def test_a_second_rebuild_with_nothing_changed_touches_nothing(self):
+        self.assertEqual(self.rebuild()["encoded"], 3)
+        res = self.rebuild()
+        self.assertTrue(res["unchanged"])
+        self.assertEqual(self.encoded, [])
+        self.assertEqual((self.store.dropped, self.store.created), (1, 1),
+                         "아무것도 안 바뀌었는데 색인을 떨궜다")
+
+    def test_a_renamed_node_is_the_only_one_encoded(self):
+        self.rebuild()
+        self.nodes[1]["title"] = "Bravo two"
+        res = self.rebuild()
+        self.assertEqual((res["encoded"], res["removed"]), (1, 1))
+        self.assertEqual(self.encoded, ["Bravo two"])
+        self.assertEqual(sorted(m["text"] for m in self.store.mirror),
+                         ["Alpha. one liner", "Bravo two", "Charlie"])
+        self.assertEqual((self.store.dropped, self.store.created), (2, 2))
+
+    def test_a_deleted_node_leaves_the_mirror(self):
+        self.rebuild()
+        del self.nodes[1]
+        res = self.rebuild()
+        self.assertEqual((res["encoded"], res["removed"]), (0, 1))
+        self.assertEqual(sorted(m["node_id"] for m in self.store.mirror),
+                         ["concept:a", "concept:c"])
+        self.assertTrue(res["index_ok"])
+
+    def test_a_new_runtime_encodes_everything_again(self):
+        self.rebuild()
+        sv._ENCODER_RUNTIME = "rt2"
+        self.assertEqual(self.rebuild()["encoded"], 3)
+        self.assertEqual({m["runtime"] for m in self.store.mirror}, {"rt2"})
+
+    def test_without_a_build_id_it_rebuilds_whole_as_before(self):
+        self.rebuild()
+        sv._ENCODER_BUILD = ""
+        self.assertEqual(self.rebuild()["encoded"], 3)
+
+
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class RealStore(unittest.TestCase):
     """진짜 엔진 위에서: 드롭 → 삽입 → 생성이 실제로 찾을 수 있는 미러를 남기는가."""
@@ -432,6 +523,30 @@ class RealStore(unittest.TestCase):
         hits = self.store.node_vector_search(_vec(1, 0), 5, owner=self.OWNER)
         self.assertEqual(hits[0]["id"], "concept:alpha")
         self.assertEqual(hits[0]["title"], "Alpha")
+
+    def test_an_incremental_swap_keeps_unchanged_rows_and_the_index(self):
+        """`plan` → `replace(stale=…)` 이 진짜 엔진에서 맞게 도는가: 바뀐 행만 갈리고,
+        안 바뀐 행은 벡터째 남고, 색인이 다시 선다. 벡터는 float32 배열로 들고 간다."""
+        from array import array
+        rows, _ = node_mirror.collect(self.store, self.OWNER)
+        for r in rows:
+            r["emb"] = array("f", _vec(1, 0) if r["id"] == "concept:alpha" else _vec(0, 1))
+        node_mirror.replace(self.store, rows, "test", "rt")
+        have = node_mirror.existing(self.store, self.OWNER)
+        self.assertEqual(len(have), 2)
+        self.assertEqual(node_mirror.plan(rows, have, "test", "rt"), ([], []))
+        self.assertTrue(node_mirror.index_answers(self.store))
+
+        bravo = next(r for r in rows if r["id"] == "record:bravo")
+        bravo["text"] = "Bravo renamed"
+        todo, stale = node_mirror.plan(rows, have, "test", "rt")
+        self.assertEqual([r["id"] for r in todo], ["record:bravo"])
+        res = node_mirror.replace(self.store, todo, "test", "rt", stale=stale)
+        self.assertTrue(res["index_ok"])
+        texts = sorted(t for t, _m, _r in node_mirror.existing(self.store, self.OWNER).values())
+        self.assertEqual(texts, ["Alpha. the first letter", "Bravo renamed"])
+        hits = self.store.node_vector_search(_vec(1, 0), 1, owner=self.OWNER)
+        self.assertEqual(hits[0]["id"], "concept:alpha", "안 바뀐 행의 벡터가 사라졌다")
 
     def test_runtime_stamp_detects_legacy_and_mixed_vectors(self):
         from api import query as q

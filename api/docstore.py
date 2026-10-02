@@ -1499,7 +1499,7 @@ def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -
     재는 것도 같은 이유다: 살아 있음과 건강함은 다르다
     ([[record:worker-heartbeat-separates-backlog-from-death]]).
 
-    `stalled` 는 `pending > 0` 이고 `age_s >= stall_after_s` 일 때 True. `age_s`
+    `stalled` 는 청크가 있는 pending 이 남았고 `age_s >= stall_after_s` 일 때 True. `age_s`
     가 None(한 번도 성공한 적 없음)이면 `stalled=False` 로 둔다: 모델 전환 직후
     콜드스타트와 "태어날 때부터 멈춤"을 이 신호 하나로는 구분 못 하기 때문이다
     (ponytail: 필요해지면 `switch_embed_model` 에 requeued_at 도 찍어 그때부터
@@ -1515,7 +1515,7 @@ def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -
     전환이 매 라운드 "바뀌었다"고 판정해 전 문서를 다시 큐에 넣는다. 그래서 실패
     사유를 버리지 않고 `error` 로 싣는다(`/health` 에 그대로 나간다)."""
     out: dict[str, Any] = {"stored": "", "migrating": False, "migration_model": "",
-                           "pending": 0, "docs": 0, "last_applied_at": "",
+                           "pending": 0, "pending_without_chunks": 0, "docs": 0, "last_applied_at": "",
                            "age_s": None, "stalled": False}
     try:
         rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k RETURN m.value AS v",
@@ -1534,11 +1534,31 @@ def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -
     except Exception as exc:      # noqa: BLE001 — 진단이 호출부를 죽이지 않게
         out["error"] = f"{type(exc).__name__}: {exc}"
         return out
+    # pending 중 **청크가 하나도 없는** 문서. 워커는 청크 단위로 일감을 받으므로(`pending_embed_
+    # chunks`) 이 문서들을 영영 못 보고, needs_embed 도 영영 안 내려간다. 고치는 길은 소유자의
+    # 전문 re-put 이나 삭제뿐이다. 이것까지 `stalled` 에 세면 워커가 멀쩡히 놀고 있어도 정체
+    # 알람이 켜진다 — 2026-10-02 허브가 하루 종일 pending=2 · stalled 였는데, 그 둘은 put_doc
+    # 가 청크를 지운 뒤 끊긴 쓰기 창 문서였다. `pending` 자체는 그대로 둔다(이행 게이트가 본다).
+    # 근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]
+    # 따로 감싼다: 이 부가 수치가 실패해도 위의 pending·이행 판정은 그대로 나가야 한다
+    # (같은 try 에 두면 이행 게이트가 열린다 — test_server 가 잡았다). 실패하면 0 으로,
+    # 즉 예전처럼 pending 전부를 정체 판정에 센다.
+    if out["pending"]:
+        try:
+            ids = [r.get("d") for r in store.run(
+                "MATCH (d:_DocMeta) WHERE d.needs_embed = 1 RETURN d.doc_id AS d") or []]
+            seen = {r.get("d") for r in store.run(
+                "MATCH (c:Chunk) WHERE c.doc_id IN $ids RETURN DISTINCT c.doc_id AS d",
+                {"ids": ids}) or []}
+            out["pending_without_chunks"] = len(set(ids) - seen)
+        except Exception as exc:  # noqa: BLE001
+            out["pending_without_chunks_error"] = f"{type(exc).__name__}: {exc}"
     out["migrating"] = bool(out["migration_model"]) and out["pending"] > max(
         _MIGRATION_GATE_MIN, out["docs"] * _MIGRATION_GATE_RATIO)
     age = _age_s(out["last_applied_at"])
     out["age_s"] = None if age is None else round(age)
-    out["stalled"] = bool(age is not None and out["pending"] > 0 and age >= stall_after_s)
+    workable = out["pending"] - out["pending_without_chunks"]
+    out["stalled"] = bool(age is not None and workable > 0 and age >= stall_after_s)
     # `pending` 만 보면 "곧 줄어드는 큐"로 읽힌다. 그런데 이 스토어에 벡터를 만들어
     # 넣는 워커가 **아예 붙지 않은 설치**에서는 그 수가 영원히 안 줄어든다 — 데스크탑
     # 번들은 인코더 스택을 이름으로 제외한다(`packaging/sidecar.spec` 의 excludes).

@@ -101,12 +101,50 @@ def collect(store, owner: str | None = None) -> tuple[list[dict], list[dict]]:
     return out, collisions
 
 
-def replace(store, rows: list[dict], model: str, encoder_runtime: str = "") -> dict:
-    """미러를 통째로 갈아 끼운다. 각 행에 `emb`(벡터)가 이미 있어야 한다.
+def existing(store, owner: str | None = None) -> dict[str, tuple[str, str, str]]:
+    """지금 미러에 있는 행: `vec_id → (text, model, encoder_runtime)`. **벡터는 안 읽는다**
+    — 행당 4KB 를 2만 행 읽으면 그것만으로 재구축이 피하려던 메모리가 된다."""
+    where = "WHERE n.owner_id = $o " if owner else ""
+    got = store.run(f"MATCH (n:NodeVec) {where}RETURN n.vec_id AS v, n.text AS t, "
+                    "n.model AS m, n.encoder_runtime AS r", {"o": owner} if owner else None) or []
+    return {g["v"]: (g.get("t") or "", g.get("m") or "", g.get("r") or "") for g in got}
 
-    지우는 범위는 **실린 행들의 소유자**다. 전량 재구축을 한 소유자에게 돌려도 다른
-    소유자의 미러가 살아남고, 인덱스는 그 남은 벡터들 위에서 다시 만들어진다(빌드는
-    삽입이 아니라 일괄 구축이라 위의 세그폴트 자리가 아니다)."""
+
+def plan(rows: list[dict], have: dict, model: str,
+         encoder_runtime: str) -> tuple[list[dict], list[str]]:
+    """다시 인코딩할 행과 지울 vec_id. 글자·모델·런타임이 셋 다 같은 행은 **제자리에 둔다**
+    — 같은 입력이면 같은 벡터다(`ChunkVec` 이 배포를 넘어 같은 런타임 지문으로 사는 것과
+    같은 근거). 지울 것은 그래프에서 사라진 노드와, 다시 넣을 행의 옛 사본이다.
+
+    인덱스는 여전히 통째다: 넣을 것이 하나라도 있으면 :func:`replace` 가 드롭 → 삽입 →
+    생성을 그대로 밟는다. 아끼는 것은 인코딩과 삭제·삽입의 **행 수**뿐이다.
+    근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]"""
+    want: set[str] = set()
+    todo: list[dict] = []
+    for r in rows:
+        vid = vec_id(r.get("owner") or "", r["id"])
+        want.add(vid)
+        if have.get(vid) != (r["text"], model, encoder_runtime):
+            todo.append(r)
+    redo = {vec_id(r.get("owner") or "", r["id"]) for r in todo}
+    return todo, [v for v in have if v not in want or v in redo]
+
+
+def index_answers(store) -> bool:
+    """미러의 벡터 색인이 답하는가 — 미러의 아무 벡터로 되묻는다. 비었으면 거짓.
+    소유자는 걸지 않는다: 재는 것은 색인이지 소유자 필터가 아니다."""
+    got = store.run("MATCH (n:NodeVec) RETURN n.embedding AS e LIMIT 1") or []
+    return bool(got and got[0].get("e") and store.node_vector_search(got[0]["e"], 1))
+
+
+def replace(store, rows: list[dict], model: str, encoder_runtime: str = "",
+            stale: list[str] | None = None) -> dict:
+    """미러를 갈아 끼운다. 각 행에 `emb`(벡터)가 이미 있어야 한다.
+
+    `stale` 이 없으면 **통째**다: 지우는 범위는 실린 행들의 소유자다. 전량 재구축을 한
+    소유자에게 돌려도 다른 소유자의 미러가 살아남고, 인덱스는 그 남은 벡터들 위에서 다시
+    만들어진다(빌드는 삽입이 아니라 일괄 구축이라 위의 세그폴트 자리가 아니다).
+    `stale` 이 있으면 그 vec_id 만 지우고 `rows` 만 넣는다(:func:`plan`). 순서는 같다."""
     owners = sorted({str(r.get("owner") or "") for r in rows})
     # 🔴 미러에 잔해 색인이 있으면 아래 삭제·삽입이 **세그폴트**다 — 이 재구축은 잔해를
     # 고치지 못한다. 고치는 것은 기동이다(`heal_node_vector_index`). 먼저 말하고 멈춘다.
@@ -115,7 +153,12 @@ def replace(store, rows: list[dict], model: str, encoder_runtime: str = "") -> d
         return {"kind": "node-mirror.replace", "rows": 0, "owners": owners, "model": model,
                 "index_ok": False, "error": "node_vector_index_remnant"}
     store.drop_node_vector_index()
-    store.run("MATCH (n:NodeVec) WHERE n.owner_id IN $o DELETE n", {"o": owners})
+    if stale is None:
+        store.run("MATCH (n:NodeVec) WHERE n.owner_id IN $o DELETE n", {"o": owners})
+    gone = stale or []
+    for i in range(0, len(gone), INSERT_BATCH):
+        store.run("MATCH (n:NodeVec) WHERE n.vec_id IN $v DELETE n",
+                  {"v": gone[i:i + INSERT_BATCH]})
     for i in range(0, len(rows), INSERT_BATCH):
         store.run(
             "UNWIND $rows AS r CREATE (:NodeVec {vec_id: r.vid, node_id: r.id, "
@@ -134,6 +177,6 @@ def replace(store, rows: list[dict], model: str, encoder_runtime: str = "") -> d
     # 걸지 않는다 — 재는 것은 색인이지 소유자 필터가 아니다(전역 상위 k 에 그 소유자가
     # 없어 거짓 음성이 났다).
     index_error = store.create_node_vector_index() or ""
-    index_ok = bool(store.node_vector_search(rows[0]["emb"], 1)) if rows else True
+    index_ok = index_answers(store)
     return {"kind": "node-mirror.replace", "rows": len(rows), "owners": owners,
             "model": model, "index_ok": index_ok, "index_error": index_error}
