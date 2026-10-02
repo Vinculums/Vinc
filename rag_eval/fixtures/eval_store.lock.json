@@ -64,6 +64,37 @@
         "mentions_rule": "3:title-before-source",
         "note": "engines.mentions_link.ensure_rule applied once, as a sidecar or the hub does at boot; the unsettled bytes (sha 71ce5eaa..., rule 2:title-window-12) sit beside it as hub.unsettled.db"
       }
+    },
+    "full176-m3-2026-09-09": {
+      "path": "_eval-stores/full176-m3-2026-09-09/db",
+      "sha256": "4bc5a7381345d30f622e0b19e1ce2b602e33ec45c079b1e130bdf5eaae5ccf7a",
+      "owner": "eval",
+      "evalsets": [
+        "rag_eval/fixtures/evalset.json",
+        "rag_eval/fixtures/evalset_xling.json",
+        "rag_eval/fixtures/evalset_xling_en2ko.json",
+        "rag_eval/fixtures/evalset_human.json",
+        "rag_eval/fixtures/evalset_human_xling.json"
+      ],
+      "derived_from": "Vinc/work/db.full: 176 documents, split pieces, re-embedded 2026-09-04 by rehearse_rebuild reindex (2 h 4 min); the store the 2026-09-08 RRF k and R1c studies and the 2026-10-01 Korean study measured",
+      "engine": "ladybug 0.18.0",
+      "encoder": "BAAI/bge-m3",
+      "encoder_sha256": "e05d27e444606cd8b04e81c89afb911af54ea3cca0813dd0530422a396a09611",
+      "encoder_runtime": {
+        "onnxruntime": "1.29.0",
+        "tokenizers": "0.23.1",
+        "numpy": "2.5.2",
+        "note": "the workstation venv the vectors were encoded with; a 0.18 file, so open it with the 0.18 venv"
+      },
+      "rows": {
+        "Chunk": 1505,
+        "ChunkVec": 2676,
+        "_DocMeta": 176,
+        "Concept": 0,
+        "Record": 0
+      },
+      "schema_version": 16,
+      "note": "chunk-level pin for rag_eval.chunk_search (document folding as rag_eval.search scores it). Opening it migrates the copy to the running code's schema; the runner records that."
     }
   }
 }
