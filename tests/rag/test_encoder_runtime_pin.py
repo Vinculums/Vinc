@@ -48,7 +48,10 @@ class EncoderRuntimePinTests(unittest.TestCase):
             self.assertEqual(encoder_runtime.fingerprint(), "")
 
     def test_v20_migrates_both_vector_tables_without_inventing_history(self):
-        self.assertEqual(embedded_schema.migration_statements(19), [
+        # v20 단계만 본다 — 뒤의 버전(v21 의 Chunk.lex 등)이 늘어도 이 계약은 그대로다.
+        later = embedded_schema.migration_statements(20)
+        v20 = [s for s in embedded_schema.migration_statements(19) if s not in later]
+        self.assertEqual(v20, [
             "ALTER TABLE ChunkVec ADD encoder_runtime STRING DEFAULT ''",
             "ALTER TABLE NodeVec ADD encoder_runtime STRING DEFAULT ''",
         ])
