@@ -287,7 +287,8 @@ class ResourceMetadataTests(unittest.TestCase):
     def test_개인_자원은_종전과_같다(self):
         self.assertEqual(self._gate().resource_metadata(),
                          {"resource": "https://mcp.example/mcp",
-                          "authorization_servers": ["https://mcp.example"]})
+                          "authorization_servers": ["https://mcp.example"],
+                          "scopes_supported": ["offline_access"]})
 
     def test_팀_자원은_자기_주소를_말한다(self):
         got = self._gate().resource_metadata(f"/t/{TEAM}/mcp")
