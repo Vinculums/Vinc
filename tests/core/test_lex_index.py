@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from api import docstore as ds  # noqa: E402
 from store.embedded_backend import _import_driver  # noqa: E402
-from store.embedded_schema import LEX_INDEX_KEY  # noqa: E402
+from store.embedded_schema import LEX_INDEX_KEY, migration_statements  # noqa: E402
 from store.lexical import coverage, lex_text, lex_tokens  # noqa: E402
 
 _DRIVER, _NAME = _import_driver()
@@ -57,6 +57,10 @@ class LexicalTests(unittest.TestCase):
         # 이것이 고치려는 결함이다: 색인이 `승부는` 을 통째로 담으면 `승부` 는 못 맞춘다.
         self.assertIn("승부", lex_tokens("승부는"))
         self.assertIn("승부", lex_tokens("승부를"))
+
+    def test_v20_은_lex_열만_더한다(self):
+        self.assertIn("ALTER TABLE Chunk ADD lex STRING DEFAULT ''", migration_statements(20))
+        self.assertNotIn("ALTER TABLE Chunk ADD lex STRING DEFAULT ''", migration_statements(21))
 
     def test_덮음은_질의_토큰의_비율이다(self):
         q = lex_tokens("승부 하수")
@@ -139,6 +143,20 @@ class LexIndexEngineTests(unittest.TestCase):
         empty = self.store.run("MATCH (c:Chunk) WHERE c.lex = '' RETURN count(c) AS c")[0]["c"]
         self.assertEqual(empty, 0)
         self.assertEqual(self.store.migrate_lex_index(), {"migrated": False, "reason": "already ready"})
+
+    def test_표지_전에_죽은_이관은_다음_실행이_끝낸다(self):
+        d = ds.put_doc(self.store, owner="user:a", text=_DOC, title="A")
+        self._as_pre_v21(d["doc_id"])
+        with mock.patch.object(type(self.store), "_set_lex_ready",
+                               side_effect=RuntimeError("killed before the marker")):
+            with self.assertRaises(RuntimeError):
+                self.store.migrate_lex_index()
+        self.assertFalse(self.store.lex_ready(), "표지 없이 끝났으면 준비된 것이 아니다")
+        self.assertTrue(self._ids("rebalancing"), "죽은 뒤에도 검색은 답해야 한다")
+        out = self.store.migrate_lex_index()
+        self.assertTrue(out["migrated"])
+        self.assertTrue(self.store.lex_ready())
+        self.assertTrue(self._ids("승부"))
 
     def test_표지는_다시_열어도_남는다(self):
         d = ds.put_doc(self.store, owner="user:a", text=_DOC, title="A")
