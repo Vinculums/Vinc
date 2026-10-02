@@ -3095,9 +3095,9 @@ export async function renderView(el: HTMLElement) {
   /** 노드에서 여는 셋. **에이전트 역할이면 한 칸이 더 붙는다**(발주자 지시
    *  2026-09-10: "에이전트 노드 클릭 시 ask assistant 가 에이전트를 쓰게").
    *  그 노드는 개념이 아니라 시킬 일이라, 설명을 청하는 것이 아니라 그 역할을
-   *  맡기는 말이 첫 칸에 온다. 판별은 주제 하나로 한다 — 레일의 Agent 칸이 읽는
-   *  그 주제와 **같은 값**이어야 두 자리가 같은 것을 가리킨다(`lnb.ts` RAIL). */
-  const AGENT_DOMAIN = "vinc/agent/roles";
+   *  맡기는 말이 첫 칸에 온다. 판별은 주제가 아니라 역할 id 로 한다(`isAgentRoleId`,
+   *  레일·상세 패널과 같은 함수). Default Agents 역할은 `vinc/agent` 에 서서 주제
+   *  일치로는 메뉴가 안 붙었다(VIN-263). */
   function nodeAskItems(nd: N3, deg: number, docs: number): AskItem[] {
     const V = COPY.ui.viewx;
     const at = (depth: number) => absoluteViewUrl({ kind: "node", id: nd.id },
@@ -3108,7 +3108,7 @@ export async function renderView(el: HTMLElement) {
       { name: V.askCompare, sub: V.askCompareSub(deg), body: V.askCompareBody, url: at(SHARE_DEPTH) },
       { name: V.askDocs, sub: V.askDocsSub(docs), body: V.askDocsBody, url: at(1) },
     ];
-    if ((nd.domain || "").trim() === AGENT_DOMAIN) {
+    if (isAgentRoleId(nd.id)) {
       items.unshift({ name: V.askRole, sub: V.askRoleSub, body: V.askRoleBody, url: at(1) });
     }
     return items;
