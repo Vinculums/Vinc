@@ -27,6 +27,7 @@ import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_S
          EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, DIRECTED_RELS,
          edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
          loadPrefs, savePrefs, periodRange, inPeriod, PERIODS,
+         localStamp, localKeyToUtc, nextTimeKey,
          type ViewPrefs, type PeriodKey, type Viewpoint, type BundleDepth,
          type EdgeKind } from "../view-prefs";
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
@@ -2732,7 +2733,14 @@ export async function renderView(el: HTMLElement) {
    *  어긋나면 밴드가 보여 준 수와 목록의 수가 달라져 화면이 자기를 반박한다. */
   async function openPeriod(bucket: string, domain?: string) {
     const p = curPrefs();
-    const [start, end] = bucketRange(bucket, periodGrain);
+    const onContent = p.timeBasis === "content";
+    let [start, end] = bucketRange(bucket, periodGrain);
+    // 기록 시점의 칸은 현지 날로 나뉘었다(VIN-262). 서버는 저장된 UTC 시각과 견주므로 칸의
+    // 현지 경계를 UTC 순간으로 옮겨 보낸다. 일 칸의 끝은 접두 상한이라 다음 날로 바꾼다.
+    if (!onContent) {
+      if (periodGrain === "day") end = nextTimeKey(bucket);
+      [start, end] = [localKeyToUtc(start), localKeyToUtc(end)];
+    }
     openRail();
     detail.innerHTML = `<p class="hint">${COPY.ui.viewx.periodLoading}</p>`;
     try {
@@ -2749,7 +2757,7 @@ export async function renderView(el: HTMLElement) {
         <div class="list-row period-i" data-id="${esc(it.id)}" data-lab="${esc(it.title)}"
              data-dom="${esc(it.domain)}" style="display:block;cursor:pointer">
           <span class="title" style="font-size:.9em">${esc(it.title)}
-            <span class="hint">· ${esc(it.ts)}</span></span>
+            <span class="hint">· ${esc(onContent ? it.ts : localStamp(it.ts).replace("T", " "))}</span></span>
         </div>`).join("");
       detail.querySelectorAll<HTMLElement>(".period-i").forEach((row) =>
         row.addEventListener("click", () => openDetail({
@@ -3705,7 +3713,9 @@ export async function renderView(el: HTMLElement) {
     const nodes = gnodes.map((nd) => ({
       id: nd.id,
       label: nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label,
-      domain: nd.domain, ts: onContent ? (nd.content_ts || "") : nd.ts,
+      // 기록 시점은 현지 시각으로 바꿔 둔다 — 열·점·기간이 사람이 보는 달력으로 나뉜다
+      // (VIN-262). 내용 시점은 사람이 적은 달력 키라 시간대가 없다.
+      domain: nd.domain, ts: onContent ? (nd.content_ts || "") : nd.ts && localStamp(nd.ts),
       kind: nd.kind || "concept",
       gateway: isGateway(nd, domains),
       //: 주제 틴트(열린 층). 꺼져 있으면 undefined 라 CSS 의 잉크가 그대로 쓰인다.

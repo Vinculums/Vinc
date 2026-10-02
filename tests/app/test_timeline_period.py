@@ -87,10 +87,17 @@ class ThePicker(unittest.TestCase):
         self.assertNotIn("background: hsl(var(--point)", block)
         self.assertIn("outline: 2px solid hsl(var(--ring))", block)
 
-    def test_utc_days_like_the_columns(self):
-        self.assertIn("utcDay", PICKER)
+    def test_local_days_like_the_columns(self):
+        # VIN-262: 오늘·열·점·기간이 모두 현지 날이다. 격자의 달력 셈만 UTC 로 한다.
+        self.assertIn("const today = localDay(now);", PICKER)
+        self.assertIn("const today = localDay(now);", PREFS)
         self.assertNotIn("getDate()", PICKER)
         self.assertNotIn("getMonth()", PICKER)
+        self.assertIn("nd.ts && localStamp(nd.ts)", VIEW)
+
+    def test_band_drilldown_asks_the_server_in_utc(self):
+        a = VIEW.index("async function openPeriod(")
+        self.assertIn("[localKeyToUtc(start), localKeyToUtc(end)]", VIEW[a:a + 900])
 
 
 if __name__ == "__main__":
