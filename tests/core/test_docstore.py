@@ -568,10 +568,11 @@ class DocstoreE2E(unittest.TestCase):
         self.assertEqual(st2["pending"], 0)
         self.assertFalse(st2["stalled"], "밀린 일이 없는데 정체로 오판했다")
 
-    def test_쓰기_창에_걸린_문서는_정체로_세지_않고_따로_센다(self):
+    def test_청크_없는_문서는_정체로_세지_않고_따로_센다(self):
         """2026-10-02 허브: `/health` 가 하루 종일 pending=2 · stalled 였는데 워커는
         pending=0 이라고 했다. 둘 다 맞았다 — 그 둘은 put_doc 가 청크를 지운 뒤 끊긴
-        문서라(`chunk_count < 0`) 워커가 받을 청크가 없고, 소유자의 re-put 만이 고친다."""
+        문서라 워커가 받을 청크가 없고, 소유자의 re-put 만이 고친다. `pending` 은 이행
+        게이트가 보므로 그대로 두고, 정체 알람만 워커가 볼 수 있는 일감으로 잰다."""
         d = ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")
         cid = self._chunk_ids(d["doc_id"])[0]
         ds.apply_embeddings(self.store, d["doc_id"], {cid: [[1.0, 0, 0, 0]]})
@@ -584,8 +585,13 @@ class DocstoreE2E(unittest.TestCase):
                        {"k": ds._EMBED_APPLIED_KEY, "v": old_ts})
         self.assertEqual(ds.pending_embed_chunks(self.store), [], "워커는 이 문서를 못 본다")
         st = ds.embed_model_state(self.store, stall_after_s=1800)
-        self.assertEqual((st["pending"], st["stuck_in_write_window"]), (0, 1))
+        self.assertEqual((st["pending"], st["pending_without_chunks"]), (1, 1))
         self.assertFalse(st["stalled"], "워커가 할 일이 없는데 정체로 알렸다")
+        # 청크가 있는 일감이 하나라도 남으면 알람은 그대로 켜진다.
+        ds.put_doc(self.store, owner="user:a", text="다른 본문. " * 40, title="U")
+        st = ds.embed_model_state(self.store, stall_after_s=1800)
+        self.assertEqual((st["pending"], st["pending_without_chunks"]), (2, 1))
+        self.assertTrue(st["stalled"], "워커가 볼 수 있는 일감이 멈췄는데 알리지 않았다")
 
     def test_put_get_roundtrip_verified(self):
         text = "# 정본\n\n" + "무손실 복원 검증용 본문입니다. " * 120
