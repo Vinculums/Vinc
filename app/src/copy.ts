@@ -268,7 +268,6 @@ const EN = {
     error: "The pack didn't finish. Try again. Your documents are untouched.",
   },
   settings: {
-    lock: "Lock Vinc with a passphrase. Optional.",
     mcp: "Tool calls from connected clients appear here, as they happen.",
   },
   ui: {
@@ -968,7 +967,7 @@ const EN = {
       advancedIntro: "Change these only if you run your own engine or paste a key by hand.",
       aboutIntro: "The build running on this device.",
       account: "Account",
-      lock: "Lock", mcp: "MCP",
+      mcp: "MCP",
       // 저장 위치 — 상단 바의 `● Local` 칩이 옮겨 온 자리(2026-08-05).
       storage: "Where it's stored",
       // 셸 계정 모드(VIN-128): 그래프가 계정에 있고 이 기기에는 사본이 없다.
@@ -1422,7 +1421,6 @@ const KO: Deck = {
     error: "팩을 만들지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
   },
   settings: {
-    lock: "암호로 Vinc를 잠글 수 있어요. 선택 사항이에요.",
     mcp: "연결된 클라이언트의 도구 호출이 일어나는 대로 여기에 보여요",
   },
   ui: {
@@ -1992,7 +1990,7 @@ const KO: Deck = {
       advancedIntro: "엔진을 직접 돌리거나 키를 손으로 넣을 때만 바꾸세요.",
       aboutIntro: "이 기기에서 돌아가는 빌드예요.",
       account: "계정",
-      lock: "잠금", mcp: "MCP",
+      mcp: "MCP",
       storage: "저장 위치",
       storageAccount: "계정 (웹 앱과 같은 그래프)",
       storageLocal: (folder) => `이 기기에만 · ${folder}`,

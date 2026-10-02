@@ -565,8 +565,6 @@ export async function renderSettings(
     body.innerHTML = `
       <h2>${esc(U.navAdvanced)}</h2>
       <p class="hint">${esc(U.advancedIntro)}</p>
-      <label>${U.lock}</label><p class="hint">${COPY.settings.lock}</p>
-      <hr class="settings-sep" />
       <label for="s-owner">${U.workspace}</label>
       <p class="hint">${U.workspaceHint}</p>
       <input id="s-owner" value="${cfg.owner}" />
