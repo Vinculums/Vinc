@@ -12,6 +12,12 @@
 # "아무것도 안 돌았다"인데 구분이 안 된다. 그래서 verify 앞에 **드라이버 존재를
 # 강제하는 게이트**를 둔다(아래 assert-driver 스텝). 이게 없으면 이 워크플로는
 # 있으나 마나다.
+#
+# 러너 스위치: repo 변수 `CI_HOSTED=on` 이면 changes·core·core-pkns·app 이 GitHub 호스티드
+# (ubuntu-latest)에서 돈다. 비우면 노트북 러너(vinc-local)다. 머지를 몰아서 하는 날처럼
+# 노트북이 밀릴 때 켜고 끝나면 끈다. 분을 쓰므로 상시로 켜 두지 않는다(2026-09-06 에 분이
+# 바닥나 호스티드에서 되돌린 사정은 `changes`·`core` 잡 주석). rust 는 윈도우가 분을 2배로
+# 세고 노트북 캐시가 더워 1~2분이라 스위치 밖에 둔다.
 name: ci
 
 on:
@@ -115,7 +121,7 @@ jobs:
     # 원래 만료를 만들던 기제(도커 데스크탑이 닫히면 WSL 이 내려가 리눅스 라벨이
     # org 에서 사라지는 것)는 러너를 상주작업으로 올려 닫았다.
     # 되돌릴 조건: 분이 다시 넉넉해지거나 러너가 다시 조용히 사라지면.
-    runs-on: [self-hosted, linux, vinc-local]
+    runs-on: ${{ vars.CI_HOSTED == 'on' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","vinc-local"]') }}
     timeout-minutes: 10
     outputs:
       app: ${{ steps.f.outputs.app }}
@@ -284,7 +290,7 @@ jobs:
     #
     # ⚠ **2026-09-06 에 되돌렸다** — 그 "분이 마르면" 이 실제로 왔다. 자세한 사정은
     # `changes` 잡의 같은 표식에 적었다.
-    runs-on: [self-hosted, linux, vinc-local]
+    runs-on: ${{ vars.CI_HOSTED == 'on' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","vinc-local"]') }}
     # 실측 4~5분(4코어 컨테이너 250초). 셀프호스티드는 더 빠르지만 아래 TMPDIR 이
     # 안 걸리면 49분이다. 여유를 크게 뒀다 — 일정을 조이는 장치가 아니라
     # **행(hang)을 잡는 장치**다.
@@ -547,7 +553,7 @@ jobs:
     # (런 33389200262, 12:16:25 → 13:07:20). 하나만 옮기면 남은 쪽이 그대로 큐를
     # 붙잡으므로, 둘을 갈라 두는 것은 이 변경의 목적을 반만 이룬다.
     # (2026-09-06: `core` 와 함께 셀프호스티드로 되돌렸다. 같은 이유, 같은 조건.)
-    runs-on: [self-hosted, linux, vinc-local]
+    runs-on: ${{ vars.CI_HOSTED == 'on' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","vinc-local"]') }}
     timeout-minutes: 45
     env:
       VINC_PK_NAMESPACED: "on"
@@ -650,7 +656,7 @@ jobs:
     # `changes` 와 같은 이유로 옮긴다(그 잡의 주석이 근거다). 이쪽은 `npm ci` 와 `tsc`
     # 와 순수 노드 스크립트뿐이라 기계를 안 가린다 — 실측 1분 14초(런 33412567123).
     # (2026-09-06: `changes` 와 함께 셀프호스티드로 되돌렸다.)
-    runs-on: [self-hosted, linux, vinc-local]
+    runs-on: ${{ vars.CI_HOSTED == 'on' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","vinc-local"]') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
