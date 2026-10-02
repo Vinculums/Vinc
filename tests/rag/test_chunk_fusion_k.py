@@ -16,6 +16,7 @@ import re
 import unittest
 
 from api import query as q
+from vinc_rag import retrieval
 
 
 class ChunkFusionK(unittest.TestCase):
@@ -27,7 +28,7 @@ class ChunkFusionK(unittest.TestCase):
         chunk = inspect.getsource(q._chunk_arms)
         self.assertIn("rrf_fuse(arms, k=CHUNK_RRF_K", chunk)
         # 파일 전체에서 rrf_fuse 호출을 세고, k 를 넘기는 것이 **하나뿐**인지 본다.
-        src = inspect.getsource(q)
+        src = inspect.getsource(retrieval)   # 융합 호출부는 검색 코어(vinc_rag.retrieval)에 산다
         calls = re.findall(r"rrf_fuse\([^)]*\)", src)
         with_k = [c for c in calls if "k=CHUNK_RRF_K" in c]
         self.assertEqual(len(with_k), 1, f"k 를 넘기는 호출이 하나가 아니다: {with_k}")

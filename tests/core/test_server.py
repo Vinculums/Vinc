@@ -112,14 +112,20 @@ def cli_store(store):
     사이드카는 공유 스토어를 들고 있고 CLI 는 매 호출 자기가 연다. 동등성을 보려면
     **양쪽이 같은 내용을 읽어야** 하는데, 임베디드 DB 는 단일 writer 라 실파일로는
     동시에 못 연다. 그래서 CLI 가 여는 지점(`api.query.open_store`)을 서버에 주입한
-    것과 같은 대역으로 바꾼다."""
+    것과 같은 대역으로 바꾼다. 여는 지점은 셋이다 — `execute` 는 `store.querybase` 에서,
+    검색 코어는 `vinc_rag.retrieval` 에서 `open_store` 를 찾는다(VIN-243)."""
     import api.query as _query
-    old = _query.open_store
-    _query.open_store = lambda *a, **k: store
+    import store.querybase as _base
+    import vinc_rag.retrieval as _retrieval
+    mods = (_query, _base, _retrieval)
+    old = [m.open_store for m in mods]
+    for m in mods:
+        m.open_store = lambda *a, **k: store
     try:
         yield
     finally:
-        _query.open_store = old
+        for m, o in zip(mods, old):
+            m.open_store = o
 
 
 class AuthTests(unittest.TestCase):

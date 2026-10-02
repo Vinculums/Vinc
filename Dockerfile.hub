@@ -109,6 +109,7 @@ RUN python /tmp/bake_embed_model.py \
 COPY api ./api
 COPY store ./store
 COPY engines ./engines
+COPY vinc_rag ./vinc_rag
 COPY vinc_mcp ./vinc_mcp
 COPY packaging/embed_worker.py ./packaging/embed_worker.py
 # 검색 품질 게이트(E2)를 **허브 안에서** 돌리기 위해 싣는다. 이 게이트는 3팔(FTS·

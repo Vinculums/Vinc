@@ -14,6 +14,7 @@
 /verify.py                                       @Vinculums/core
 /vinc_mcp/                                       @Vinculums/core
 /rag_eval/                                       @Vinculums/rag
+/vinc_rag/                                       @Vinculums/rag
 /app/                                            @Vinculums/app
 /LICENSE                                         @Vinculums/design-content
 /README.md                                       @Vinculums/design-content

@@ -47,9 +47,7 @@
         ".github/workflows/rerank-probe.yml",
         ".github/workflows/encode-m3-probe.yml",
         ".github/workflows/bake-probe.yml",
-        "tests/rag/"
-      ],
-      "planned": [
+        "tests/rag/",
         "vinc_rag/"
       ]
     },
