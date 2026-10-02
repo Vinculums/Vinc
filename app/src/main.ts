@@ -29,7 +29,7 @@ const ORDER: Surface[] = ["view", "search"];
 // 화면 이름 ↔ 내부 코드명 분리. 첫 화면의 코드명은 계속 `view`(해시·딥링크·모듈)
 // 이고 화면 이름도 View 다(2026-09-22). D61 의 Home 노출은 이 지시가 덮는다.
 const SURFACE_LABEL: Record<Surface, string> = {
-  view: COPY.ui.topbar.home, search: "Search",
+  view: COPY.ui.topbar.home, search: COPY.ui.topbar.search,
 };
 // 구 표면 해시 → 통합 표면(딥링크·구 CTA 하위호환).
 // `atlas` 는 리네임 전 이 표면의 코드명이었다(F8, 2026-08-15) — 무기한 유지.

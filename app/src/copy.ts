@@ -6,6 +6,7 @@
  *    mine/ingest→analyze,add/분석,추가 · source→file/파일 · tie→link/연결.
  *  표면 고유명사(Intake·Records·View·Search·Packs)는 미번역 유지. */
 import { cfg } from "./api";
+import { j } from "./josa";
 
 // 달 이름 — 날짜 선택의 머리(`monthTitle`)가 쓴다.
 const MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July",
@@ -368,6 +369,8 @@ const EN = {
       // 첫 자리는 View 다(2026-09-22). 코드명과 화면 이름을 맞춘다. D61 의
       // "Home 으로 노출"은 이 지시가 덮는다.
       home: "View",
+      // 표면 이름이라 한국어에서도 라틴 문자 그대로다(View 와 같다, D42).
+      search: "Search",
       depthTip: "Show where you are",
       searchPh: "Search your knowledge",
       // 모드 2종(D73) — 왼쪽 끝 드롭다운. 이름이 기대치를 정한다: "Chat" 은 LLM
@@ -920,7 +923,7 @@ const EN = {
           `Vinc can't read ${name} yet. Documents (.md, .txt, .rst) and PDFs work.`,
       },
       mcpTitle: "Go deeper with an assistant",
-      mcpBody: "Vinc reads plain documents on its own and keeps them whole. For richer extraction, from code or a format Vinc doesn't read, connect an AI assistant in Settings → MCP and it writes concepts into Vinc for you.",
+      mcpBody: "Vinc reads plain documents on its own and keeps them whole. For richer extraction, from code or a format Vinc doesn't read, connect an AI assistant in Settings › AI connections and it writes concepts into Vinc for you.",
       trySample: "Try the sample pack",
       importingSample: "Importing the sample…",
       sampleLoaded: "Sample loaded: 6 concepts across 2 topics. You're viewing the sample space now (switch back anytime in Settings).",
@@ -1200,7 +1203,7 @@ type Deck = typeof EN;
 const KO: Deck = {
   tagline: "흩어진 지식의 핵심을 찾아보세요",
   sovereignty: "로컬 모드에서는 그래프가 이 기기에 있어요. 앱이 인터넷에 닿는 건 업데이트를 확인할 때와 로그인해서 계정에 연결할 때뿐이에요",
-  sovereigntyWeb: "여기는 계정 그래프예요. 데스크탑 앱과 다른 기기에서도 같은 지식을 봐요",
+  sovereigntyWeb: "여기는 계정 그래프예요. 데스크톱 앱과 다른 기기에서도 같은 지식을 봐요",
   intake: {
     idleTitle: "Vinc에 지식 추가하기",
     idleBody: "문서 파일(.md·.txt·.rst·.pdf)이나 지식 팩(.vincpack·.json)을 가져올 수 있어요. 여기에 끌어다 놓거나 파일을 고르세요",
@@ -1208,7 +1211,7 @@ const KO: Deck = {
     loading: (n, m, d) => `문서 ${m}개 중 ${n}개 분석 중 · 지금까지 찾은 주제 ${d}개`,
     success: (n, m) => `주제 ${m}개에 걸쳐 문서 ${n}개를 추가했어요`,
     successCta: "View에서 열기",
-    error: (src) => `${src}을(를) 읽지 못했어요. 파일을 확인하고 다시 시도해 보세요. 이미 추가한 정보는 그대로 있어요`,
+    error: (src) => `${src}${j(src, "을")} 읽지 못했어요. 파일을 확인하고 다시 시도해 보세요. 이미 추가한 정보는 그대로 있어요`,
   },
   firstRun: {
     title: "Vinc에 로그인하세요",
@@ -1260,13 +1263,13 @@ const KO: Deck = {
     docNeedTitle: "제목을 적어야 저장돼요. 제목으로 문서 id 가 정해져요",
     docNeedBody: "첫 줄을 쓰면 저장돼요",
     docNeedTopic: "주제를 골라야 저장돼요. 문서는 그 주제 아래에 놓여요",
-    docSavedAs: (id, topic) => `${topic} 아래에 ${id}(으)로 저장했어요`,
-    docIdTaken: (id, next) => `${id}은(는) 이미 있어서 이 문서는 ${next}(으)로 저장했어요`,
+    docSavedAs: (id, topic) => `${topic} 아래에 ${id}${j(id, "으로")} 저장했어요`,
+    docIdTaken: (id, next) => `${id}${j(id, "은")} 이미 있어서 이 문서는 ${next}${j(next, "으로")} 저장했어요`,
     draftRestored: "저장되기 전에 닫았던 초안이에요",
     draftDiscard: "빈 문서로 시작",
     composerTitle: "새 노드",
     composerSub: "만들면 바로 View와 트리에 나타나요",
-    kinds: { concept: "개념", record: "기록", decision: "결정", episode: "에피소드" },
+    kinds: { concept: "개념", record: "기록", decision: "결정", episode: "사건" },
     kindHint: {
       concept: "지금도 참인 것",
       record: "찾아내거나 잰 것을 적어 둔 것",
@@ -1294,7 +1297,7 @@ const KO: Deck = {
     idExists: "이미 있어요",
     idCheckFail: "이 id 가 비어 있는지 확인하지 못해서 만들지 않았어요. 잠시 뒤 다시 해 보세요",
     openExisting: "있는 노드 열기",
-    idTaken: (id) => `${id}은(는) 이미 있어요. 그 노드를 열거나, 제목을 바꿔 새로 만드세요`,
+    idTaken: (id) => `${id}${j(id, "은")} 이미 있어요. 그 노드를 열거나, 제목을 바꿔 새로 만드세요`,
     create: "만들기",
     createOpen: "만들고 열기",
     keepCreating: "계속 만들기",
@@ -1302,11 +1305,11 @@ const KO: Deck = {
     needTitle: "제목을 적어 주세요",
     needTopic: "주제를 골라 주세요. 노드는 트리에서 그 주제 아래에 놓여요",
     creating: "만드는 중…",
-    created: (kind, title) => `${kind} '${title}'을(를) 만들었어요`,
-    matched: (title) => `저장 직전에 같은 id 로 '${title}'이(가) 생겨서, 그 노드에 썼어요. 열어서 무엇이 바뀌었는지 확인해 주세요`,
-    conflict: (id) => `${id}은(는) 다른 스페이스에서 쓰고 있어요. 제목을 바꾸면 id 도 달라져요`,
+    created: (kind, title) => `${kind} '${title}'${j(title, "을")} 만들었어요`,
+    matched: (title) => `저장 직전에 같은 id 로 '${title}'${j(title, "이")} 생겨서, 그 노드에 썼어요. 열어서 무엇이 바뀌었는지 확인해 주세요`,
+    conflict: (id) => `${id}${j(id, "은")} 다른 스페이스에서 쓰고 있어요. 제목을 바꾸면 id 도 달라져요`,
     linksMade: (n) => `연결 ${n}개를 더했어요`,
-    linkRefused: (title, why) => `${title}(으)로 가는 연결은 더하지 않았어요. ${why}`,
+    linkRefused: (title, why) => `${title}${j(title, "으로")} 가는 연결은 더하지 않았어요. ${why}`,
     createFail: "만들지 못했어요. 바뀐 것은 없어요",
     rel: {
       relates_to: "관련", prerequisite_of: "선행",
@@ -1315,7 +1318,7 @@ const KO: Deck = {
     relWhy: {
       relatesConcept: "관련은 개념끼리만 이을 수 있어요",
       recordTarget: "기록은 개념이나 결정을 가리킬 수 있지만, 기록을 가리키는 연결은 없어요",
-      episode: "에피소드는 무엇에 관한 일인지로만 이어져요. 여기서는 그 연결을 만들지 않아요",
+      episode: "사건은 무엇에 관한 일인지로만 이어져요. 여기서는 그 연결을 만들지 않아요",
       semantic: "이 관계는 개념과 결정 사이에만 이어요",
       other: "이 종류의 노드는 여기서 이을 수 없어요",
       same: "노드를 자기 자신과 이을 수는 없어요",
@@ -1323,7 +1326,7 @@ const KO: Deck = {
     serverRefused: "그래프가 이 연결을 받지 않았어요",
     connect: "잇기",
     connectTip: "이 노드를 다른 노드와 이어요",
-    pickLead: (a) => `${a}와(과) 이을 노드를 골라 주세요`,
+    pickLead: (a) => `${a}${j(a, "과")} 이을 노드를 골라 주세요`,
     pickHint: "View에서 노드를 누르거나 검색하세요",
     dragHint: (key) => `${key} 키를 누른 채 노드에서 다른 노드로 끌어도 이을 수 있어요`,
     pickSearchPh: "노드 검색",
@@ -1342,7 +1345,7 @@ const KO: Deck = {
     done: "완료",
     linkDetailTip: "연결 자세히 보기",
     edgeDel: "이 연결 지우기",
-    edgeDelAsk: (a, b) => `${a}에서 ${b}(으)로 가는 연결을 지울까요? 되돌릴 수 없어요`,
+    edgeDelAsk: (a, b) => `${a}에서 ${b}${j(b, "으로")} 가는 연결을 지울까요? 되돌릴 수 없어요`,
     edgeDelFail: "연결을 지우지 못했어요. 바뀐 것은 없어요",
     edgeDelUnsupported: "이 종류의 연결은 여기서 지울 수 없어요",
     mentionCreate: (t) => `개념 만들기: ${t}`,
@@ -1502,6 +1505,7 @@ const KO: Deck = {
     menu: { open: "열기", shareHere: "여기서부터 공유하기" },
     topbar: {
       home: "View",
+      search: "Search",
       depthTip: "지금 있는 곳 보기",
       searchPh: "내 지식에서 찾기",
       modeLabel: "검색 모드",
@@ -1563,7 +1567,7 @@ const KO: Deck = {
       unfiledTip: "아직 어떤 개념과도 이어지지 않아서 View에 자리가 없어요",
       empty: "아직 문서가 없어요",
       emptyCta: "문서 추가하기",
-      agents: "에이전트",
+      agents: "Agent",
       agentLead: "리드",
       agentFrom: "받음",
       agentThen: "넘김",
@@ -1603,7 +1607,7 @@ const KO: Deck = {
       noPending: "기다리는 것이 없어요. 어시스턴트가 어휘 안에서만 쓰고 있어요",
       ratify: "승인하기", reject: "거부하기", rename: "이름 바꾸기",
       kindNode: "노드 타입", kindEdge: "관계 타입",
-      webOnly: "어휘 승인은 데스크탑 앱에서 해요",
+      webOnly: "어휘 승인은 데스크톱 앱에서 해요",
     },
     tools: {
       title: "도구",
@@ -1822,7 +1826,7 @@ const KO: Deck = {
       statDirection: "방향",
       statAttached: "부착",
       statDir: (o, i) => `→ ${o}개 나감 · ← ${i}개 들어옴`,
-      statsFrom: "화면이 아니라 이 문서 기준으로 센 숫자예요",
+      statsFrom: "화면에 그린 것이 아니라 이 노드를 기준으로 센 숫자예요",
       statsFromView: "지금 화면에 보이는 것만 센 숫자예요. Vinc를 업데이트하면 정확한 값이 나와요",
       relsNone: "아직 연결이 없어요",
       relsMore: (n) => `+${n}개 더`,
@@ -1832,7 +1836,7 @@ const KO: Deck = {
       suggestNone: "아직 연결된 곳이 없어요. 지금은 후보도 없어요. 태그를 달면 후보가 생겨요",
       suggestHeader: "연결 안 됨 · 연결 후보",
       bind: "연결하기",
-      bound: (t) => `'<span class="pt">${t}</span>'과(와) 연결했어요`,
+      bound: (t) => `'<span class="pt">${t}</span>'${j(t, "과")} 연결했어요`,
       bindFail: "연결하지 못했어요. 잠시 후 다시 시도해 보세요. 바뀐 것은 없어요",
       unavailable: "지금은 연결 제안을 쓸 수 없어요",
       // D45-V — 노드 클릭 상세의 정본 근거(문서 발췌). 발췌는 증강 — 없어도 상세는 뜬다.
@@ -1872,8 +1876,8 @@ const KO: Deck = {
       edQueued: "저장됨 · 색인 대기 중",
       // S1 — 삭제(되돌릴 수 없음). 확인을 받고 나서만 실행한다.
       del: "지우기",
-      delNodeAsk: (t) => `'${t}'을(를) 지울까요? 연결도 함께 지워지고 되돌릴 수 없어요`,
-      delDocAsk: (t) => `'${t}'을(를) 원문까지 지울까요? 되돌릴 수 없어요`,
+      delNodeAsk: (t) => `'${t}'${j(t, "을")} 지울까요? 연결도 함께 지워지고 되돌릴 수 없어요`,
+      delDocAsk: (t) => `'${t}'${j(t, "을")} 원문까지 지울까요? 되돌릴 수 없어요`,
       delConfirm: "지우기",
       delCancel: "닫기",
       delFail: "지우지 못했어요. 다시 시도해 보세요. 바뀐 것은 없어요",
@@ -1898,11 +1902,11 @@ const KO: Deck = {
       relEvidenceNone: "이 연결에는 아직 기록된 근거가 없어요",
       relConfidence: (p) => `신뢰도 ${Math.round(p * 100)}%`,
       relSentence: {
-        PREREQUISITE_OF: (a, b) => `${a}이(가) ${b}보다 먼저 와요`,
-        DERIVES_FROM: (a, b) => `${a}은(는) ${b}에서 나왔어요`,
-        INHERITS_FROM: (a, b) => `${a}은(는) ${b}을(를) 물려받아요`,
-        RELATED_TO: (a, b) => `${a}과(와) ${b}은(는) 서로 관련이 있어요`,
-        ABOUT: (a, b) => `${a}은(는) ${b}을(를) 다뤄요`,
+        PREREQUISITE_OF: (a, b) => `${a}${j(a, "이")} ${b}보다 먼저 와요`,
+        DERIVES_FROM: (a, b) => `${a}${j(a, "은")} ${b}에서 나왔어요`,
+        INHERITS_FROM: (a, b) => `${a}${j(a, "은")} ${b}${j(b, "을")} 물려받아요`,
+        RELATED_TO: (a, b) => `${a}${j(a, "과")} ${b}${j(b, "은")} 서로 관련이 있어요`,
+        ABOUT: (a, b) => `${a}${j(a, "은")} ${b}${j(b, "을")} 다뤄요`,
       },
       // D43 — 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
       noDates: "이 문서들에는 아직 날짜가 없어요. 주제를 열면 Timeline 이 보여요",
@@ -1938,17 +1942,17 @@ const KO: Deck = {
       someFailed: (names) => `읽지 못한 파일: ${names}. 파일을 확인하고 다시 추가해 보세요. 나머지는 모두 추가됐어요`,
       // 문서 정본 적재(D45) — 팩과 달리 개념·연결이 아직 0 이므로 별도 문장으로 센다.
       importedDocs: (docs) => `문서 ${docs}개를 원문 그대로 보관했어요. 검색으로 언제든 찾을 수 있어요`,
-      tooLarge: (name, mb) => `${name}은(는) 너무 커서 추가하지 못했어요. 계정에 한 번에 올릴 수 있는 크기는 ${mb}MB예요. 파일을 나눠서 추가해 주세요. 이미 추가한 정보는 그대로 있어요`,
+      tooLarge: (name, mb) => `${name}${j(name, "은")} 너무 커서 추가하지 못했어요. 계정에 한 번에 올릴 수 있는 크기는 ${mb}MB예요. 파일을 나눠서 추가해 주세요. 이미 추가한 정보는 그대로 있어요`,
       // 서버가 사유 코드로 강등한 경우(api/textextract) — 코드마다 읽히는 문구.
       docError: {
-        pdf_encrypted: (name) => `${name}은(는) 암호가 걸려 있어 읽지 못했어요. 암호를 해제한 뒤 다시 추가해 주세요. 다른 정보는 그대로 있어요`,
-        pdf_no_text: (name) => `${name}은(는) 읽을 수 있는 텍스트가 없어요. 스캔한 문서라면 OCR을 거친 뒤 다시 추가해 주세요. 다른 정보는 그대로 있어요`,
-        pdf_unreadable: (name) => `${name}을(를) PDF로 열지 못했어요. 파일이 손상됐을 수 있으니 원본을 확인해 주세요. 다른 정보는 그대로 있어요`,
-        pdf_support_missing: (name) => `이 빌드는 아직 PDF를 읽지 못해 ${name}을(를) 건너뛰었어요. 텍스트 파일로 바꿔 추가해 보세요. 다른 정보는 그대로 있어요`,
-        unsupported_format: (name) => `${name}은(는) 아직 읽을 수 없는 형식이에요. 문서(.md·.txt·.rst)나 PDF로 바꿔 다시 추가해 보세요. 다른 정보는 그대로 있어요`,
+        pdf_encrypted: (name) => `${name}${j(name, "은")} 암호가 걸려 있어 읽지 못했어요. 암호를 해제한 뒤 다시 추가해 주세요. 다른 정보는 그대로 있어요`,
+        pdf_no_text: (name) => `${name}${j(name, "은")} 읽을 수 있는 텍스트가 없어요. 스캔한 문서라면 OCR을 거친 뒤 다시 추가해 주세요. 다른 정보는 그대로 있어요`,
+        pdf_unreadable: (name) => `${name}${j(name, "을")} PDF로 열지 못했어요. 파일이 손상됐을 수 있으니 원본을 확인해 주세요. 다른 정보는 그대로 있어요`,
+        pdf_support_missing: (name) => `이 빌드는 아직 PDF를 읽지 못해 ${name}${j(name, "을")} 건너뛰었어요. 텍스트 파일로 바꿔 추가해 보세요. 다른 정보는 그대로 있어요`,
+        unsupported_format: (name) => `${name}${j(name, "은")} 아직 읽을 수 없는 형식이에요. 문서(.md·.txt·.rst)나 PDF로 바꿔 다시 추가해 보세요. 다른 정보는 그대로 있어요`,
       },
       mcpTitle: "어시스턴트로 더 깊이 분석하기",
-      mcpBody: "일반 문서는 Vinc가 직접 읽고 원문 그대로 보관해요. 코드나 읽지 못하는 형식은 Settings → MCP에서 AI 어시스턴트를 연결해 보세요. 연결한 어시스턴트가 내용을 읽고 개념을 Vinc에 대신 써넣어요",
+      mcpBody: "일반 문서는 Vinc가 직접 읽고 원문 그대로 보관해요. 코드나 읽지 못하는 형식은 설정 › AI 연결에서 AI 어시스턴트를 연결해 보세요. 연결한 어시스턴트가 내용을 읽고 개념을 Vinc에 대신 써넣어요",
       trySample: "샘플 팩 열어 보기",
       importingSample: "샘플을 불러오는 중…",
       sampleLoaded: "샘플을 불러왔어요. 주제 2개, 개념 6개가 들어 있어요. 지금은 샘플 공간이에요(Settings에서 언제든 되돌릴 수 있어요)",
@@ -2053,7 +2057,7 @@ const KO: Deck = {
       mcpConnect: (host) => `${host} 연결하기`,
       mcpInstalling: "연결 중…",
       mcpDone: (host) => `${host} 설정에 등록됐어요. 다시 시작하면 Vinc에 연결돼요.`,
-      mcpFail: "연결하지 못했어요", mcpNoShell: "데스크탑 앱에서만 쓸 수 있어요",
+      mcpFail: "연결하지 못했어요", mcpNoShell: "데스크톱 앱에서만 쓸 수 있어요",
       mcpNeedsCli: (host) =>
         `${host}의 명령줄 도구가 이 기기에 없어서 아무것도 등록되지 않았어요. `
         + "그것을 설치하거나, 아래 줄을 한 번 직접 실행하세요:",
@@ -2174,9 +2178,9 @@ const KO: Deck = {
       // 원문 문서 가져오기(D45) — 팩과 달리 합쳐지는 게 아니라 정본으로 보관된다.
       docTitle: "문서 가져오기",
       docSub: "쓰인 그대로, 원문을 통째로 보관해요",
-      docNote: (name) => `${name}을(를) 원문 그대로 보관해요. 여기서 뽑은 개념에는 원문의 어느 자리에서 왔는지가 함께 남아요`,
-      docDone: (title) => `${title}을(를) 그래프에 담았어요`,
-      docSkipped: (title) => `${title}은(는) 이미 그래프에 있어서 그대로 두었어요`,
+      docNote: (name) => `${name}${j(name, "을")} 원문 그대로 보관해요. 여기서 뽑은 개념에는 원문의 어느 자리에서 왔는지가 함께 남아요`,
+      docDone: (title) => `${title}${j(title, "을")} 그래프에 담았어요`,
+      docSkipped: (title) => `${title}${j(title, "은")} 이미 그래프에 있어서 그대로 두었어요`,
     },
   },
 };
