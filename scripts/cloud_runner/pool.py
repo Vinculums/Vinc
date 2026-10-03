@@ -36,11 +36,12 @@ class APIError(RuntimeError):
         super().__init__('GitHub API returned HTTP ' + str(status))
 
 def api(method, path, body=None, read_actions=False, repo=None):
-    key = os.environ.get('VINC_GITHUB_RUNNER_ADMIN_TOKEN')
+    key = (os.environ.get('VINC_GITHUB_RUNNER_PERSONAL_TOKEN')
+           or os.environ.get('VINC_GITHUB_RUNNER_ADMIN_TOKEN'))
     if read_actions:
         key = os.environ.get('GH_TOKEN') or key
     if not key:
-        raise RuntimeError('Add VINC_GITHUB_RUNNER_ADMIN_TOKEN securely in Cloud environment settings')
+        raise RuntimeError('Add VINC_GITHUB_RUNNER_PERSONAL_TOKEN as a network secret in Settings > Codex Cloud > Personal vault')
     headers = {'Authorization': 'Bearer ' + key, 'Accept': 'application/vnd.github+json',
                'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'vinc-cloud-runner-pool/1.0'}
     data = json.dumps(body).encode() if body is not None else None

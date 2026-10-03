@@ -15,7 +15,7 @@ SPEC.loader.exec_module(pool)
 
 def test_container_does_not_receive_admin_or_development_credentials():
     secrets = {key: 'private-test-value' for key in (
-        'VINC_GITHUB_RUNNER_ADMIN_TOKEN', 'GH_TOKEN', 'VINC_MCP_READONLY_KEY',
+        'VINC_GITHUB_RUNNER_PERSONAL_TOKEN', 'VINC_GITHUB_RUNNER_ADMIN_TOKEN', 'GH_TOKEN', 'VINC_MCP_READONLY_KEY',
         'LINEAR_API_KEY', 'VINC_AZURE_CLIENT_SECRET')}
     with mock.patch.dict(pool.os.environ, secrets, clear=True):
         args = pool.container_args('vinc-cloud-test-1', 'test-image')
@@ -23,6 +23,27 @@ def test_container_does_not_receive_admin_or_development_credentials():
     assert '--privileged' not in args
     assert '--volume' not in args and '--mount' not in args
     assert '--pid' not in args
+
+
+def test_runner_administration_uses_personal_vault_instead_of_existing_binding():
+    response = mock.MagicMock()
+    response.status = 204
+    response.__enter__.return_value = response
+    environment = {'VINC_GITHUB_RUNNER_PERSONAL_TOKEN': 'personal-test-value',
+                   'VINC_GITHUB_RUNNER_ADMIN_TOKEN': 'old-test-value',
+                   'GH_TOKEN': 'platform-test-value'}
+    with mock.patch.dict(pool.os.environ, environment, clear=True), \
+         mock.patch.object(pool.urllib.request, 'urlopen', return_value=response) as request:
+        pool.api('GET', '/actions/runners')
+    assert request.call_args.args[0].get_header('Authorization') == 'Bearer personal-test-value'
+
+
+def test_missing_runner_credential_points_to_secure_personal_vault():
+    with mock.patch.dict(pool.os.environ, {}, clear=True), \
+         mock.patch.object(pool.urllib.request, 'urlopen') as request:
+        with pytest.raises(RuntimeError, match='Personal vault'):
+            pool.api('GET', '/actions/runners')
+    request.assert_not_called()
 
 
 def test_credential_bearing_proxy_is_rejected():
