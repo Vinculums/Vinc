@@ -24,6 +24,7 @@ from store.embedded_backend import vector_generation
 from engines import domain_hierarchy
 
 from . import graphmd
+from vinc_rag import retrieval as _retrieval
 
 # 바닥 보조 함수는 store 로, 검색 코어는 vinc_rag 로 옮겼다(VIN-243). 같은 이름을 여기서
 # 다시 내보내므로 호출부와 `q.X` 는 그대로다. 근거: [[vinc.plan.team-split]]
@@ -96,8 +97,61 @@ from vinc_rag.retrieval import (  # noqa: E402,F401  (재수출)
     recall_plan,
     rrf_fuse,
     score_preference,
-    search,
 )
+
+
+def _doc_cite_ids(store, owner: str | None, doc_ids) -> dict[str, str]:
+    """문서 키와 인용할 노드 id는 다르다. 읽을 수 있는 미러만 인용한다."""
+    ids = {f"concept:doc.{doc_id}" for doc_id in doc_ids if doc_id}
+    if not ids or store is None:
+        return {}
+    where = "c.concept_id IN $ids"
+    params = {"ids": pkns.keys(owner, sorted(ids))}
+    if owner:
+        where += " AND c.owner_id = $owner"
+        params["owner"] = owner
+    rows = store.run(f"MATCH (c:Concept) WHERE {where} "
+                     "RETURN c.concept_id AS id", params) or []
+    return {nid[len("concept:doc."):]: nid for row in rows
+            if (nid := pkns.strip(str(row.get("id") or ""))) in ids}
+
+
+def _cite_doc_rows(rows: list[dict], cites: dict[str, str]) -> list[dict]:
+    # 행은 보존한다. 미러가 없을 때 doc 키를 노드 id로 꾸미지 않는다.
+    return [{**row, "cite_id": cites.get(str(row.get("doc_id") or "")),
+             **({"cite_unavailable": "document mirror missing or unreadable"}
+                if str(row.get("doc_id") or "") not in cites else {})}
+            for row in rows]
+
+
+def search(query: str, *, query_embedding: list[float] | None = None,
+           top_k: int = 5, filters: dict | None = None, owner: str | None = None,
+           cursor: str | None = None, detail: str = "summary",
+           historical: bool = False, as_of: str | None = None,
+           query_runtime: str | None = None, cfg=None, store=None) -> dict:
+    """검색 순위와 페이지는 그대로 두고 공개 응답에 정확한 인용 id를 붙인다."""
+    result = _retrieval.search(
+        query, query_embedding=query_embedding, top_k=top_k, filters=filters,
+        owner=owner, cursor=cursor, detail=detail, historical=historical,
+        as_of=as_of, query_runtime=query_runtime, cfg=cfg, store=store)
+    result["node_hits"] = [{**hit, "cite_id": hit.get("id") or None}
+                           for hit in result.get("node_hits") or []]
+    rows = result.get("rows") or []
+    if not rows:
+        return result
+    owns = store is None
+    if owns:
+        store = open_store(cfg or load_config())
+    try:
+        cites = _doc_cite_ids(store, owner, [row.get("doc_id") for row in rows])
+        result["rows"] = _cite_doc_rows(rows, cites)
+    except Exception as exc:
+        result["rows"] = _cite_doc_rows(rows, {})
+        result["citation_error"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if owns and store is not None:
+            store.close()
+    return result
 
 
 # ── Plan builders (pure) ─────────────────────────────────────────────────────
@@ -2633,6 +2687,13 @@ def node_context(*, owner: str, node: str, limit: int = 4,
             "excerpt": " ".join((r.get("text") or "").split())[:240],
             "method": r.get("method") or "",
         } for r in ment]
+        try:
+            cites = _doc_cite_ids(store, owner, all_ids)
+        except Exception as exc:
+            cites = {}
+            base["citation_error"] = f"{type(exc).__name__}: {exc}"
+        base["excerpts"] = _cite_doc_rows(base["excerpts"], cites)
+        base["sources"]["items"] = _cite_doc_rows(base["sources"]["items"], cites)
         base["arm"] = arm
         base["links"] = _node_links(store, node, owner=owner,
                                     with_evidence=with_evidence,
@@ -2942,7 +3003,7 @@ def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
     같은 꼴을 내도록 한 자리로 모은 꼬리. cand 는 검색 후보(랭킹 경로) 또는
     {"id": ...} 하나(직참조 경로)다."""
     nid = str(cand.get("id") or "")
-    base["node"] = {"id": nid,
+    base["node"] = {"id": nid, "cite_id": nid,
                     "title": ctx.get("title") or cand.get("title") or nid,
                     "domain": cand.get("domain") or ctx.get("domain") or "",
                     "kind": ctx.get("node_kind") or cand.get("kind") or "",
@@ -2964,12 +3025,17 @@ def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
     base["excerpts"] = list(ctx.get("excerpts") or [])
     links = ctx.get("links") if isinstance(ctx.get("links"), dict) else {}
     items = list(links.get("items") or [])
+    items = [{**item, "cite_id": item.get("id") or None} for item in items]
     # 근거로서 강한 것부터: 신뢰도 → 근거 문장 보유 → node_context 의 결정론 순서
     # (안정 정렬이라 동점이면 그 순서가 그대로 남는다). ask.ts answerFor 와 같다.
     items.sort(key=lambda it: (-float(it.get("confidence") or 0.0),
                                0 if it.get("evidence") else 1))
     base["links"] = {**links, "items": items}
     base["grounds"] = _brief_grounds(nid, base["excerpts"], items)
+    base["cite_grounds"] = sorted({nid} | {
+        row["cite_id"] for row in base["excerpts"] + items if row.get("cite_id")})
+    if ctx.get("citation_error"):
+        base["citation_error"] = ctx["citation_error"]
     # 노드는 읽었는데 그 뒤(발췌·문서 제목·관계)가 실패했으면 **반쪽**이라고 말한다.
     # node_context 는 그때도 executed 를 세우므로, 표식이 없으면 빈 관계·빈 발췌가 "연결
     # 없는 노드"로 읽힌다. 최상위 `error` 는 쓰지 않는다 — REST v1 이 해소된 답을 500 으로 바꾼다.
@@ -3191,6 +3257,7 @@ def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
     """노드 후보를 brief 가 내보내는 후보 꼴로 줄인다."""
     return [{
         "id": h.get("id") or "",
+        "cite_id": h.get("id") or None,
         "title": h.get("title") or (h.get("id") or ""),
         "domain": h.get("domain") or "", "kind": h.get("kind") or "",
         "matched_in": h.get("matched_in") or "",
@@ -3201,7 +3268,8 @@ def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
 
 #: 후보 재료로 옮겨 싣는 키 — 확정 답의 재료 꼴(:func:`_brief_material`)과 같다.
 _BRIEF_MATERIAL_KEYS = ("node", "one_liner", "body_src", "body_cite", "excerpts",
-                        "links", "grounds", "validity_note", "partial", "partial_note")
+                        "links", "grounds", "cite_grounds", "citation_error",
+                        "validity_note", "partial", "partial_note")
 
 
 def _brief_candidate_material(cand: dict, **kw) -> dict:
