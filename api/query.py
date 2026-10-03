@@ -140,9 +140,9 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     if not rows:
         return result
     owns = store is None
-    if owns:
-        store = open_store(cfg or load_config())
     try:
+        if owns:
+            store = open_store(cfg or load_config())
         cites = _doc_cite_ids(store, owner, [row.get("doc_id") for row in rows])
         result["rows"] = _cite_doc_rows(rows, cites)
     except Exception as exc:
@@ -150,7 +150,10 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         result["citation_error"] = f"{type(exc).__name__}: {exc}"
     finally:
         if owns and store is not None:
-            store.close()
+            try:
+                store.close()
+            except Exception as exc:
+                result.setdefault("citation_error", f"{type(exc).__name__}: {exc}")
     return result
 
 

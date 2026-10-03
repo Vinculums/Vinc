@@ -80,3 +80,36 @@ class CitationIdsTests(unittest.TestCase):
         self.assertTrue(brief["excerpts"])
         self.assertTrue(brief["links"]["items"])
         self.assertIn("lookup failed", brief["citation_error"])
+
+
+class SearchCitationStoreFailureTests(unittest.TestCase):
+    def _result(self):
+        return {"rows": [{"id": "cites.present#00000", "doc_id": "cites.present",
+                          "score": 7.5, "snippet": "Useful material"}],
+                "node_hits": [{"id": "concept:citation", "title": "Citation"}],
+                "next_cursor": "original-cursor", "arms": "fts"}
+
+    def test_citation_only_store_open_failure_preserves_search_results(self):
+        with patch.object(q._retrieval, "search", return_value=self._result()), \
+                patch.object(q, "load_config", return_value=object()), \
+                patch.object(q, "open_store", side_effect=RuntimeError("open failed")):
+            out = q.search("citation", owner="user:cites")
+        self.assertEqual(out["rows"][0]["id"], "cites.present#00000")
+        self.assertEqual(out["rows"][0]["score"], 7.5)
+        self.assertEqual(out["next_cursor"], "original-cursor")
+        self.assertEqual(out["node_hits"][0]["cite_id"], "concept:citation")
+        self.assertIsNone(out["rows"][0]["cite_id"])
+        self.assertIn("open failed", out["citation_error"])
+
+    def test_citation_store_close_failure_keeps_verified_citations(self):
+        from unittest.mock import Mock
+        store = Mock()
+        store.run.return_value = [{"id": "concept:doc.cites.present"}]
+        store.close.side_effect = RuntimeError("close failed")
+        with patch.object(q._retrieval, "search", return_value=self._result()), \
+                patch.object(q, "load_config", return_value=object()), \
+                patch.object(q, "open_store", return_value=store):
+            out = q.search("citation", owner="user:cites")
+        self.assertEqual(out["rows"][0]["cite_id"], "concept:doc.cites.present")
+        self.assertEqual(out["next_cursor"], "original-cursor")
+        self.assertIn("close failed", out["citation_error"])
