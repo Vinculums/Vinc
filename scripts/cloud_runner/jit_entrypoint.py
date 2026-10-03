@@ -18,14 +18,20 @@ def validate(packet):
     if set(files) != {'.runner', '.credentials', '.credentials_rsaparams'}:
         raise ValueError('Unexpected JIT files')
     settings = json.loads(base64.b64decode(files['.runner'], validate=True))
-    if (settings.get('agentName') != packet['name']
-            or settings.get('agentId') != packet['runner_id']
-            or settings.get('poolName') != packet['prefix']
-            or settings.get('gitHubUrl', '').rstrip('/') != 'https://github.com/Vinculums'
-            or settings.get('workFolder') != '_work'
-            or not settings.get('ephemeral')):
+    # 공식 C# 설정은 PascalCase이며 구버전 fixture의 camelCase도 같은 계약이다.
+    if len({key.lower() for key in settings}) != len(settings):
+        raise ValueError('Ambiguous JIT setting names')
+    settings = {key.lower(): value for key, value in settings.items()}
+    # JIT는 ID와 Ephemeral을 문자열로 직렬화하고 PoolName을 생략할 수 있다.
+    # 그룹 소유권은 암호화된 응답을 만들기 전 브로커가 실제 멤버십으로 확인한다.
+    if (settings.get('agentname') != packet['name']
+            or str(settings.get('agentid')) != str(packet['runner_id'])
+            or settings.get('poolname') not in (None, packet['prefix'])
+            or settings.get('githuburl', '').rstrip('/') != 'https://github.com/Vinculums'
+            or settings.get('workfolder') != '_work'
+            or settings.get('ephemeral') not in (True, 'True')):
         raise ValueError('JIT configuration does not belong to this single-job runner')
-    server = urllib.parse.urlsplit(settings.get('serverUrl', ''))
+    server = urllib.parse.urlsplit(settings.get('serverurl', ''))
     if (server.scheme != 'https' or not (server.hostname or '').endswith('.actions.githubusercontent.com')
             or server.username or server.password or server.port not in (None, 443)):
         raise ValueError('Unexpected Actions service destination')

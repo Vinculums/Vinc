@@ -79,8 +79,10 @@ def state():
 
 def same_process(record):
     try:
-        return (pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip() == record['boot']
-            and pathlib.Path(f'/proc/{record["pid"]}/stat').read_text().split(') ', 1)[1].split()[19] == record['ticks'])
+        fields = pathlib.Path(f'/proc/{record["pid"]}/stat').read_text().split(') ', 1)[1].split()
+        return (fields[0] not in ('Z', 'X')
+            and pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip() == record['boot']
+            and fields[19] == record['ticks'])
     except (OSError, KeyError):
         return False
 

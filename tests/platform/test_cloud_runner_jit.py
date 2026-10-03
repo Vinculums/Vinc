@@ -175,3 +175,35 @@ def test_artifact_redirect_rejects_downgrade_and_unexpected_host(url):
     request = urllib.request.Request('https://api.github.com/test')
     with pytest.raises(RuntimeError, match='Unexpected artifact'):
         jit_pool.ArtifactRedirect().redirect_request(request, None, 302, '', {}, url)
+
+
+def test_official_pascal_case_runner_settings_are_accepted():
+    value = packet()
+    files = json.loads(base64.b64decode(value['jitconfig']))
+    settings = json.loads(base64.b64decode(files['.runner']))
+    settings = {key[0].upper() + key[1:]: item for key, item in settings.items()}
+    settings.update({'AgentId': '22', 'PoolId': '500', 'PoolName': None, 'Ephemeral': 'True'})
+    files['.runner'] = base64.b64encode(json.dumps(settings).encode()).decode()
+    value['jitconfig'] = base64.b64encode(json.dumps(files).encode()).decode()
+    assert jit_entrypoint.validate(value) == value['jitconfig']
+
+
+def test_exited_zombie_supervisor_is_not_reported_alive():
+    fields = ['Z'] + ['0'] * 18 + ['123']
+    def read_text(path):
+        if str(path).endswith('/stat'):
+            return '42 (supervisor) ' + ' '.join(fields)
+        return 'boot-fixture'
+    with mock.patch.object(Path, 'read_text', read_text):
+        assert not jit_pool.pool.same_process({'pid': 42, 'ticks': '123', 'boot': 'boot-fixture'})
+
+
+def test_string_false_ephemeral_setting_is_rejected():
+    value = packet()
+    files = json.loads(base64.b64decode(value['jitconfig']))
+    settings = json.loads(base64.b64decode(files['.runner']))
+    settings['ephemeral'] = 'False'
+    files['.runner'] = base64.b64encode(json.dumps(settings).encode()).decode()
+    value['jitconfig'] = base64.b64encode(json.dumps(files).encode()).decode()
+    with pytest.raises(ValueError, match='does not belong'):
+        jit_entrypoint.validate(value)

@@ -165,10 +165,16 @@ def supervise():
     save(record)
     for signum in (signal.SIGTERM, signal.SIGINT):
         signal.signal(signum, lambda *_: stop_signal())
-    response = rpc('init', record, [{'slot': i, 'generation': 1} for i in range(1, 5)])
+    recovering = bool(record.get('group_id'))
+    generations = {str(i): record.get('generation', {}).get(str(i), 1) + 1
+                   if recovering else 1 for i in range(1, 5)}
+    response = rpc('prepare' if recovering else 'init', record,
+                   [{'slot': i, 'generation': generations[str(i)]} for i in range(1, 5)])
     configs = response.pop('configs')
+    for config in configs:
+        jit_entrypoint.validate(config)
     record.update(response)
-    record['generation'] = {str(i): 1 for i in range(1, 5)}
+    record['generation'] = generations
     save(record)
     workers = {int(config['name'].split('-')[-2]): (launch(config, record['image']), config['name'])
                for config in configs}
@@ -220,7 +226,7 @@ def cleanup_idle_containers(record):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=('probe', 'start', 'run', 'status', 'enable', 'disable', 'stop'))
+    parser.add_argument('command', choices=('probe', 'start', 'resume', 'run', 'status', 'enable', 'disable', 'stop'))
     args = parser.parse_args()
     RUNTIME.mkdir(parents=True, exist_ok=True)
     RUNTIME.chmod(0o700)
@@ -245,6 +251,22 @@ def main():
                                        stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                                        start_new_session=True)
         print('Started JIT supervisor PID', process.pid, '; verify actual four-runner online status')
+        return
+    if args.command == 'resume':
+        lock = (RUNTIME / 'start.lock').open('w')
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        record = load()
+        if not record.get('group_id') or pool.same_process(record):
+            raise RuntimeError('Resume requires a stopped supervisor and an existing verified group')
+        containers = pool.docker(['ps', '-a', '--filter', 'name=' + record['prefix'],
+                                  '--format', '{{.Names}}'], check=True, capture_output=True, text=True)
+        if containers.stdout.strip():
+            raise RuntimeError('Existing owned containers must be inspected before supervisor recovery')
+        with (RUNTIME / 'supervisor.log').open('a') as log:
+            process = subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), 'run'],
+                                       stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                       start_new_session=True)
+        print('Resumed owned JIT supervisor PID', process.pid)
         return
     if args.command == 'run':
         supervise()
