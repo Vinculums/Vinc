@@ -411,6 +411,13 @@ jobs:
             fi
           fi
           "$BIN" --help
+          # VIN-325: 동결본이 정본 버전을 읽는지 세 플랫폼에서 검사한다.
+          want=$(python -c 'import vinc_mcp; print("vinc " + vinc_mcp.__version__)')
+          got=$("$BIN" --version)
+          if [ "$got" != "$want" ]; then
+            echo "::error::frozen CLI version mismatch: expected '$want', got '$got'" >&2
+            exit 1
+          fi
           DATA="$(mktemp -d)/db"
           SLOG="$(dirname "$DATA")/sidecar.log"
           "$BIN" serve --host 127.0.0.1 --port 18787 --token smoketest --data "$DATA" >"$SLOG" 2>&1 &
@@ -467,6 +474,28 @@ jobs:
           echo "$pdf" | python -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('error')=='pdf_unreadable' else 1)" || {
             echo "::error::pypdf missing from the frozen binary (expected pdf_unreadable): $pdf" >&2; exit 1; }
           echo "sidecar /doc/put-file OK — textextract + pypdf shipped"
+
+      # CLI는 같은 단일 파일 동결본을 쓴다. 실행 파일과 라이선스는 압축 루트에 둔다.
+      - name: Package Linux CLI and checksum
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p cli-stage cli-assets
+          install -m 0755 dist/vinc cli-stage/vinc
+          install -m 0644 LICENSE cli-stage/LICENSE
+          tar -czf cli-assets/Vinc-cli-linux-x86_64.tar.gz -C cli-stage vinc LICENSE
+          (cd cli-assets && sha256sum Vinc-cli-linux-x86_64.tar.gz > Vinc-cli-linux-x86_64.tar.gz.sha256)
+
+      - name: Retain Linux CLI for manual headless smoke
+        if: github.event_name == 'workflow_dispatch' && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-cli-smoke-${{ github.sha }}
+          path: cli-assets/*
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
 
       # ── 셸(Tauri) ──────────────────────────────────────────────────────
       - uses: actions/setup-node@v4
@@ -548,6 +577,9 @@ jobs:
           REPO="Vinculums/Vincs-app"
           bundle=app/src-tauri/target/release/bundle
           mkdir -p up
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            cp cli-assets/Vinc-cli-linux-x86_64.tar.gz cli-assets/Vinc-cli-linux-x86_64.tar.gz.sha256 up/
+          fi
           # 사람이 받는 표준 설치본
           find "$bundle" -type f \
             \( -name '*.dmg' -o -name '*-setup.exe' -o -name '*.msi' \
@@ -597,8 +629,65 @@ jobs:
           # --clobber: 재실행 멱등(같은 이름 자산 덮어쓰기).
           gh release upload "$TAG" up/* --repo "$REPO" --clobber
 
-  assemble:
+  cli-smoke:
     needs: build
+    # 태그 재실행은 기존 draft 자산도 검사한다. 수동 빌드는 Actions 산출물을 쓴다.
+    if: ${{ !cancelled() && (startsWith(github.ref, 'refs/tags/') || needs.build.result == 'success') }}
+    runs-on: [self-hosted, linux, vinc-local]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/runner-preflight
+        with:
+          tools: docker jq gh
+      - name: Download CLI from the draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          mkdir -p cli-assets
+          gh release download "${{ github.ref_name }}" --repo Vinculums/Vincs-app \
+            --pattern 'Vinc-cli-linux-x86_64.tar.gz*' --dir cli-assets
+      - name: Download CLI from the manual build
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-cli-smoke-${{ github.sha }}
+          path: cli-assets
+      - name: Install and run CLI on headless Ubuntu and Debian
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="vinc $(jq -r .version app/package.json)"
+          (cd cli-assets && sha256sum -c Vinc-cli-linux-x86_64.tar.gz.sha256)
+          for image in ubuntu:22.04 debian:13-slim; do
+            docker pull "$image"
+            # stdin으로 자산만 전달한다. 러너의 GUI 라이브러리·홈·네트워크를 빌리지 않는다.
+            tar -cf - -C cli-assets Vinc-cli-linux-x86_64.tar.gz Vinc-cli-linux-x86_64.tar.gz.sha256 \
+              | docker run --rm -i --network none --platform linux/amd64 \
+                  -e EXPECTED="$expected" "$image" sh -ec '
+                    mkdir /artifact
+                    cd /artifact
+                    tar -xf -
+                    sha256sum -c Vinc-cli-linux-x86_64.tar.gz.sha256
+                    test "$(tar -tzf Vinc-cli-linux-x86_64.tar.gz | sort)" = "$(printf "LICENSE\nvinc\n")"
+                    tar -xzf Vinc-cli-linux-x86_64.tar.gz
+                    test -s LICENSE
+                    install -m 0755 vinc /usr/local/bin/vinc
+                    mkdir /work
+                    cd /work
+                    if dpkg-query -W -f="\${binary:Package}\n" | grep -E "^lib(gtk|webkit)"; then
+                      echo "GUI libraries found in headless image" >&2
+                      exit 1
+                    fi
+                    test "$(vinc --version)" = "$EXPECTED"
+                    vinc --help
+                    echo "headless CLI OK: $EXPECTED"
+                  '
+          done
+
+  assemble:
+    needs: [build, cli-smoke]
     # 태그 푸시(refs/tags/v*)에서만. 수동 workflow_dispatch 는 빌드 검증만.
     #
     # 다리 하나가 실패해도 돈다 — 대신 아래에서 **세 플랫폼 조각이 전부 초안에 있는지**
@@ -606,7 +695,7 @@ jobs:
     # (예: 예산으로 시작 못 한 macOS 가 그 전 시도에서 올린 조각)로 조립할 수 있고,
     # 조각이 빠진 latest.json 은 여전히 못 나간다. 이전의 `needs` 성공 조건은 그 둘을
     # 구분하지 못했다.
-    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/') && needs.cli-smoke.result == 'success' }}
     # 셀프호스티드(2026-09-06). `gh`·`jq`·`curl` 만 부르고 산출물을 짓지 않는다 —
     # 아래 preflight 가 그 셋의 존재를 먼저 확인하므로 없으면 2초에 선다.
     runs-on: [self-hosted, linux, vinc-local]
