@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""허브 임베딩 워커의 **오케스트레이션** 검증 — packaging/embed_worker.py.
+"""허브 임베딩 워커의 **오케스트레이션** 검증 — vinc_rag/embed/worker.py.
 
 왜 여기까지 테스트하나: 이 워커는 Azure 이관 때 **통째로 사라졌는데도 아무도 몰랐다**
 (에러 없이 벡터만 안 채워짐). 되살릴 때 최소한 "돌긴 도는지"가 아니라 "어떻게
@@ -31,7 +31,7 @@ def _np_or_skip(case):
         case.skipTest("numpy 없음 — 풀링 수치 검사만 건너뛴다")
     return np
 
-_SRC = pathlib.Path(__file__).resolve().parents[2] / "packaging" / "embed_worker.py"
+_SRC = pathlib.Path(__file__).resolve().parents[2] / "vinc_rag" / "embed" / "worker.py"
 
 
 @contextlib.contextmanager
@@ -73,7 +73,7 @@ def _env(**kv):
 
 
 def _load_module():
-    """패키지가 아닌 스크립트를 경로로 적재한다(packaging/ 은 import 대상이 아니다)."""
+    """경로로 새로 적재한다. 워커는 import 시점에 환경변수를 읽으므로 테스트마다 새 모듈이 필요하다."""
     spec = importlib.util.spec_from_file_location("_vinc_embed_worker", _SRC)
     mod = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -496,13 +496,13 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
             self.mod.MODEL = real
 
     def test_평가_인코더가_프로덕션_접두를_그대로_쓴다(self):
-        """`scripts/encoder.py` 가 규약을 **베끼지 않고 유도**하는지 본다.
+        """`vinc_rag/embed/encoder.py` 가 규약을 **베끼지 않고 유도**하는지 본다.
 
         전에는 두 곳에 따로 적혀 있었고, 그래서 갈라졌다 — 평가에는 m3 분기가 있고
         프로덕션에는 없었다. 사본이 돌아오면 이 테스트가 깨진다."""
         import importlib.util as _ilu
 
-        src = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "encoder.py"
+        src = pathlib.Path(__file__).resolve().parents[2] / "vinc_rag" / "embed" / "encoder.py"
         spec = _ilu.spec_from_file_location("_vinc_encoder_under_test", src)
         enc = _ilu.module_from_spec(spec)
         assert spec.loader is not None

@@ -60,7 +60,7 @@ HUB_PATHS = (
     "packaging/lbug_extensions/",
     "Dockerfile.hub",
     "packaging/docker-entrypoint.sh",
-    "packaging/embed_worker.py",
+    "vinc_rag/",
     "packaging/bake_embed_model.py",
     "pyproject.toml",
     "scripts/check_hub_env.py",

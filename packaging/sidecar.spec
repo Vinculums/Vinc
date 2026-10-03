@@ -135,6 +135,10 @@ a = Analysis(
         "nvidia", "sympy", "onnx", "transformers", "sentence_transformers",
         "tokenizers", "safetensors", "sklearn", "scipy", "pandas", "polars",
         "pyarrow", "networkx", "matplotlib", "PIL", "IPython",
+        # 임베딩 워커·인코더·리랭커가 `vinc_rag/` 로 들어왔다(VIN-244). 사이드카는 `vinc_rag`
+        # 를 싣지만 임베딩 스택은 싣지 않는다 — 누가 `vinc_rag.embed` 를 import 해도 빌드
+        # 기계에 깔린 onnxruntime 이 따라 들어오지 않게 여기서 막는다.
+        "onnxruntime", "huggingface_hub",
     ],
 )
 pyz = PYZ(a.pure)

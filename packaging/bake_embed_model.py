@@ -51,7 +51,7 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
 # 갈라지고, 갈라진 순간 런타임은 "구운 게 없다"고 판정해 조용히 fp32(e5 1.06GB ·
 # bge-m3 2.27GB)를 내려받다가 OOM 으로 컨테이너(=MCP 포함)를 죽인다. 그래서 둘 다
 # `VINC_EMBED_MODEL_PATH` 하나를 본다 — Dockerfile.hub 의 ENV 가 유일한 정본이고,
-# 그 값이 모델과 맞는지는 `packaging/embed_worker.py::artifact_name` 규약을 대조하는
+# 그 값이 모델과 맞는지는 `vinc_rag/embed/worker.py::artifact_name` 규약을 대조하는
 # 테스트(tests/rag/test_embed_worker.py)가 CI 에서 지킨다.
 OUT = os.environ.get("VINC_EMBED_MODEL_PATH", "/srv/vinc/models/e5-int8-rr.onnx")
 TOK = os.path.join(os.path.dirname(OUT), "tokenizer.json")

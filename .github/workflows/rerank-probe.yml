@@ -6,7 +6,7 @@
 # "컨테이너와 M1 에서는 아무것도 안 쟀다. 절대 지연은 옮겨 쓰지 말 것"이라고 못박았다.
 # 워크스테이션에서 다시 재도 그 말은 그대로다 — 이 리포의 개발 기계는 Kaby Lake 라
 # VNNI 가 아예 없고, 게다가 `resource` 모듈이 없어 `peak_rss_mb()` 가 -1.0 을 낸다
-# (`scripts/reranker.py` 의 peak_rss_mb 는 POSIX 전용이다). 즉 **RSS 는 그 기계에서
+# (`vinc_rag/rerank.py` 의 peak_rss_mb 는 POSIX 전용이다). 즉 **RSS 는 그 기계에서
 # 구조적으로 못 잰다.** 그 두 수치가 나오는 자리가 여기다.
 #
 # ## 왜 Azure 동사가 없는가
@@ -161,9 +161,9 @@ jobs:
           set +e
           docker run --rm --cpus "$LIMIT_CPUS" --memory "$LIMIT_MEM" \
             -e VINC_EVAL_THREADS=1 -e HF_HOME=/tmp/hf \
-            -v "$PWD/art:/art:ro" -v "$PWD/scripts:/probe:ro" \
+            -v "$PWD/art:/art:ro" -v "$PWD/vinc_rag:/probe:ro" \
             vinc-rerank-probe \
-            python /probe/reranker.py --model "$MODEL=/art/model-int8-rr.onnx" \
+            python /probe/rerank.py --model "$MODEL=/art/model-int8-rr.onnx" \
               --rss-probe --max-tokens "$MAX_TOKENS" --batch "$BATCH" \
               > probe.json 2> probe.err
           rc=$?
@@ -189,9 +189,9 @@ jobs:
           set +e
           docker run --rm --cpus "$LIMIT_CPUS" --memory "$LIMIT_MEM" \
             -e VINC_EVAL_THREADS=1 -e HF_HOME=/tmp/hf \
-            -v "$PWD/art:/art:ro" -v "$PWD/scripts:/probe:ro" \
+            -v "$PWD/art:/art:ro" -v "$PWD/vinc_rag:/probe:ro" \
             vinc-rerank-probe \
-            python /probe/reranker.py --model "$MODEL=/art/model-int8-rr.onnx" \
+            python /probe/rerank.py --model "$MODEL=/art/model-int8-rr.onnx" \
               --rss-probe --max-tokens "$MAX_TOKENS" --batch 1 \
               > probe-b1.json 2> probe-b1.err
           rc=$?

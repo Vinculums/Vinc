@@ -24,7 +24,7 @@
     mean_rank             맞힌 질의에서 정답의 평균 순위(작을수록 좋다).
 
 임베더. `VINC_EMBED_ENCODE`(워커 루프백 · 프로덕션 형상)가 있으면 그것을 쓰고, 없으면
-`--encoder 이름=onnx` 로 프로세스 안에서 인코딩한다(`scripts/encoder.py` · 벡터는
+`--encoder 이름=onnx` 로 프로세스 안에서 인코딩한다(`vinc_rag/embed/encoder.py` · 벡터는
 `--selfcheck` 로 프로덕션과 같음이 보장된다). 안에서 인코딩하면 `enc` 시계에 HTTP 왕복이
 빠진다: **enc 는 프로덕션 수치와 비교하지 말 것.** 순위 지표에는 영향이 없다.
 
@@ -60,8 +60,8 @@ from store.backend import open_store                         # noqa: E402
 from store.config import load_config                         # noqa: E402
 
 from rag_eval import search as es                                     # noqa: E402
-from reranker import (Reranker, gate, parse_model_spec, peak_rss_mb,  # noqa: E402
-                      pick_piece, rerank_rows)
+from vinc_rag.rerank import (Reranker, gate, parse_model_spec, peak_rss_mb,  # noqa: E402
+                             pick_piece, rerank_rows)
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
 _DEFAULT_EVALSETS = [str(_FIXTURES / n) for n in
@@ -286,7 +286,7 @@ def main() -> int:
         if not args.encoder:
             print("임베더가 없다: VINC_EMBED_ENCODE 나 --encoder 를 줄 것", file=sys.stderr)
             return 1
-        from encoder import Encoder
+        from vinc_rag.embed.encoder import Encoder
         name, path = parse_model_spec(args.encoder)
         local_enc = Encoder(name, path)
         local_enc.encode(["warmup"], kind="query")

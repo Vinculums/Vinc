@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 """ONNX 크로스인코더 리랭커 · RRF 뒤에 붙는 2단계(정밀도)의 **측정용** 구현.
 
-`scripts/encoder.py` 가 임베딩 모델 비교용이듯 이 파일은 리랭커 비교용이다. 프로덕션
+`vinc_rag/embed/encoder.py` 가 임베딩 모델 비교용이듯 이 파일은 리랭커 비교용이다. 프로덕션
 경로(`api/query.py::search`)에는 리랭커가 **없다**. 이 파일은 그것을 붙일지 정하는
 재료(품질·지연·메모리)를 만드는 계기이지 제품 코드가 아니다. 측정과 근거는 그래프의
 `vinc.research.reranking-after-fusion-2026-09-03` (이중대괄호 인용을 안 쓴 이유는
-`packaging/embed_worker.py::prefix` 주석과 같다: 매니페스트 갱신에 원격 그래프 키가 필요하다).
+`vinc_rag/embed/worker.py::prefix` 주석과 같다: 매니페스트 갱신에 원격 그래프 키가 필요하다).
 
 **규약 표.** 후보 셋은 전부 XLM-R 계열 `XLMRobertaForSequenceClassification`
 (num_labels=1) 이라 같은 코드로 돈다. 임베딩 표(`encoder.py`)와 달리 풀링·접두가 없고
@@ -28,14 +28,14 @@
 **모델 간 점수 비교 금지**: 같은 모델 안의 순서만 뜻이 있다.
 
 ⚠ `max_tokens` 기본 512 는 **측정 조건**이다. 청크 정본이 2000자라 한국어 청크는 512
-토큰을 넘는다(`packaging/embed_worker.py::_split_for_embed` 가 벡터를 조각내는 이유).
+토큰을 넘는다(`vinc_rag/embed/worker.py::_split_for_embed` 가 벡터를 조각내는 이유).
 그래서 창 둘을 잰다. `first` 는 앞 512 토큰만 보고(쌍 1개), `max` 는 워커와 같은
 조각내기로 나눠 조각별 점수의 최대를 쓴다(쌍 약 2개). 창은 품질과 비용을 반대로 움직인다.
 
 사용:
-    python scripts/reranker.py --model BAAI/bge-reranker-v2-m3=.cache/rerank/v2-m3-int8-rr.onnx \\
+    python -m vinc_rag.rerank --model BAAI/bge-reranker-v2-m3=.cache/rerank/v2-m3-int8-rr.onnx \\
         "what is a panda?" "The giant panda is a bear species endemic to China." "Paris is in France."
-    python scripts/reranker.py --model cross-encoder/mmarco-mMiniLMv2-L12-H384-v1 --rss-probe
+    python -m vinc_rag.rerank --model cross-encoder/mmarco-mMiniLMv2-L12-H384-v1 --rss-probe
 """
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-#: 워커가 벡터를 조각내는 상한(`packaging/embed_worker.py::MAX_CONTENT` 기본 500).
+#: 워커가 벡터를 조각내는 상한(`vinc_rag/embed/worker.py::MAX_CONTENT` 기본 500).
 #: `max` 창은 이 값으로 조각내야 "벡터가 본 것과 같은 조각"을 리랭커가 본다.
 PIECE_TOKENS = int(os.environ.get("VINC_EMBED_CONTENT_TOKENS", "500"))
 
@@ -164,7 +164,7 @@ def gate(rows: list[dict], policy: str, *, k: int,
 class Reranker:
     """크로스인코더 하나를 올려 (질의, 본문) 쌍에 점수를 준다. 지연 로드.
 
-    스레드 기본 1 = 프로덕션 조건(`packaging/embed_worker.py` 와 같은 이유: 허브는 vCPU
+    스레드 기본 1 = 프로덕션 조건(`vinc_rag/embed/worker.py` 와 같은 이유: 허브는 vCPU
     하나를 나눠 쓴다). `VINC_EVAL_THREADS` 로 올릴 수 있지만 **지연은 1 로 잰 것만
     프로덕션과 비교 가능**하고 순위 지표는 스레드 수와 무관하다."""
 
@@ -265,8 +265,8 @@ class Reranker:
         return len(self._counter.encode(text).ids)
 
     def split(self, text: str) -> list[str]:
-        """워커와 같은 조각내기(`api.docstore.chunk_doc`, 토큰 기준·무손실 경계)."""
-        from api.docstore import chunk_doc
+        """워커와 같은 조각내기(`store.chunking.chunk_doc`, 토큰 기준·무손실 경계)."""
+        from store.chunking import chunk_doc
         parts = chunk_doc(text, max_tokens=self.piece_tokens, count=self.count_tokens)
         return [p["text"] for p in parts if p["text"].strip()] or [text]
 

@@ -69,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         store.close()
         return 1
 
-    from encoder import Encoder                                    # noqa: PLC0415
+    from vinc_rag.embed.encoder import Encoder                                    # noqa: PLC0415
     name, path = a.encoder.split("=", 1) if "=" in a.encoder else (a.encoder, None)
     enc = Encoder(name, path, batch=max(1, a.batch))
     enc.encode(["warmup"], kind="query")     # 적재 비용을 첫 배치 밖으로
@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         for r, v in zip(batch, enc.encode([b["text"] for b in batch], kind="passage")):
             r["emb"] = list(v)
     # 드롭 → 벡터와 함께 삽입 → 생성. 그 순서의 이유는 `api/node_mirror.py` 에 있다.
-    from api.encoder_runtime import fingerprint                 # noqa: PLC0415
+    from store.encoder_runtime import fingerprint                 # noqa: PLC0415
     node_mirror.replace(store, rows, name, fingerprint())
     wall = time.perf_counter() - t0
     done = len(rows)

@@ -46,17 +46,17 @@ FTS 만 되고 벡터가 빈다. 이 워커가 허브에서만 그 벡터를 채
        다르면 아무것도 안 쓰고 거절한다)
 
   VINC_SIDECAR=http://127.0.0.1:8787 VINC_SIDECAR_TOKEN=<토큰> \
-    python embed_worker.py [--once] [--interval 300]
+    python -m vinc_rag.embed.worker [--once] [--interval 300]
 
 두 역할 (2026-08-07 — 허브 1Gi 에서 ONNX 적재가 OOM/137 로 죽어 모델을 분리했다):
 
   서버 `vinc-encode`  모델을 든다. 2Gi · minReplicas=0(쓸 때만 깨어난다)
       VINC_EMBED_BIND=0.0.0.0 VINC_EMBED_PORT=8791 \
-      VINC_EMBED_ENCODE_TOKEN=<토큰> python embed_worker.py --serve-only
+      VINC_EMBED_ENCODE_TOKEN=<토큰> python -m vinc_rag.embed.worker --serve-only
 
   클라이언트 `vinc-hub`  모델을 **안 든다**. 배치 루프만 돌고 인코딩은 위임한다
       VINC_EMBED_REMOTE=https://vinc-encode…/ VINC_EMBED_ENCODE_TOKEN=<토큰> \
-      python embed_worker.py --interval 300
+      python -m vinc_rag.embed.worker --interval 300
 
 사이드카의 질의 임베딩(`VINC_EMBED_ENCODE`)도 같은 서버를 가리킨다. 그쪽 상한은 **둘**
 이다(`api/server.py` `_QVEC_TIMEOUT`·`_QVEC_COLD_TIMEOUT`, 기본 1.5초·30초). 인코더가 바쁠
@@ -86,20 +86,18 @@ for _s in (sys.stdout, sys.stderr):
         except Exception:
             pass
 
-# 🔴 이 파일은 `python packaging/embed_worker.py` 로 돈다(docker-entrypoint.sh). 그러면
-# `sys.path[0]` 은 **`packaging/`** 이고 리포 루트는 들어가지 않는다 — CWD 가 경로에
-# 붙는 것은 `-m` 과 대화형뿐이다(사이드카는 `python -m api.cli` 라 우연히 성립한다).
-# 그 결과 `_split_for_embed` 의 `from api.docstore import chunk_doc` 가 조용히 실패해
-# **부모-자식 조각내기(v8)가 통째로 죽는다**: 청크가 통으로 들어가 앞 512토큰만 담기고
-# 나머지는 버려진다(실측 유실 한국어 42.6% · 영어 12.3%). 에러도 안 난다 — 그 임포트는
-# `except Exception: return [text]` 로 강등되게 설계돼 있기 때문이다(데스크탑 폴백).
-# 테스트(`tests/rag/test_embed_worker.py`)는 리포 루트에서 돌아 `api` 가 잡히므로 이 결함을
-# 재현하지 못한다. 컨테이너에서만 나는 무음 고장이라 여기서 경로를 명시적으로 세운다.
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 🔴 리포 루트가 `sys.path` 에 있어야 한다. 허브는 `python -m vinc_rag.embed.worker` 로 띄워
+# (docker-entrypoint.sh, `/srv/vinc` 에서) CWD 가 경로에 붙지만, 파일 경로로 실행하거나
+# 경로로 싣는 쪽(테스트·`vinc_rag/embed/encoder.py`)은 그렇지 않다. 그때 `_split_for_embed` 의
+# `store.chunking` import 가 실패하면 **조용히** 조각내기를 건너뛴다(`except Exception:
+# return [text]` — 데스크탑 폴백). 청크가 통으로 들어가 앞 512토큰만 담기고 나머지는 버려진다
+# (실측 유실 한국어 42.6% · 영어 12.3%). 이 파일이 `packaging/` 에서 돌던 때 컨테이너에서만
+# 실제로 그렇게 됐다. 그래서 경로를 여기서 명시적으로 세운다.
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from api.encoder_runtime import fingerprint as _encoder_fingerprint  # noqa: E402
+from store.encoder_runtime import fingerprint as _encoder_fingerprint  # noqa: E402
 ENCODER_RUNTIME = _encoder_fingerprint()
 ENCODER_BUILD = os.environ.get("VINC_ENCODER_BUILD", "").strip()
 ENCODER_BUILD_REQUIRED = os.environ.get("VINC_ENCODER_BUILD_REQUIRED") == "on"
@@ -218,7 +216,7 @@ def _split_for_embed(text: str) -> list[str]:
     ⚠ 조각을 만들어 **평균**하는 더 싼 안은 실측에서 기준선보다 나빴다(전체 nDCG 0.535
     vs 0.601). 2000자 안의 서로 다른 내용이 평균에서 뭉개진다 — 조각별로 따로 둬야 한다.
 
-    자르는 일은 `api.docstore.chunk_doc` 이 이미 한다(무손실 경계 + 토큰 수리 루프).
+    자르는 일은 `store.chunking.chunk_doc` 이 이미 한다(무손실 경계 + 토큰 수리 루프).
     사이드카가 없는 환경을 위해 임포트 실패는 통째 반환으로 강등한다.
 
     세는 토크나이저는 `VINC_EMBED_MODEL_PATH` 옆에 구운 tokenizer.json 을 **모델 없이**
@@ -228,7 +226,7 @@ def _split_for_embed(text: str) -> list[str]:
     if not text:
         return [text]
     try:
-        from api.docstore import chunk_doc
+        from store.chunking import chunk_doc
     except Exception:
         return [text]
     if _SPLIT.tok is None and not _SPLIT.tried:
@@ -756,7 +754,7 @@ def prefix(text: str, kind: str, model: str) -> str:
     그래서 m3 분기가 v1.5 분기보다 **먼저** 선다 — 순서를 바꾸면 m3 질의에 v1.5
     지시문이 붙어 정답 벡터와 코사인 0.79~0.82 로 어긋난다(W16 실측).
 
-    ⚠ `model` 을 인자로 받는 이유: `scripts/encoder.py` 가 이 함수를 그대로 가져다
+    ⚠ `model` 을 인자로 받는 이유: `vinc_rag/embed/encoder.py` 가 이 함수를 그대로 가져다
     쓴다(같은 규약이 두 곳에 적히면 갈라진다 — 실제로 갈라졌다). 그쪽은 모델을
     바꿔 가며 비교해야 해서 모듈 전역 MODEL 로는 안 된다.
     근거: [[record:embed-prefix-missing-m3-branch-2026-08-30]].

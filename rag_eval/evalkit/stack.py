@@ -74,7 +74,7 @@ class LocalStack:
         enc_env = {**self.env, "VINC_EMBED_MODEL": self.model,
                    "VINC_EMBED_MODEL_PATH": self.onnx, "VINC_EMBED_BIND": "127.0.0.1",
                    "VINC_EMBED_ENCODE_TOKEN": self.encode_token}
-        enc = self._spawn(["packaging/embed_worker.py", "--serve-only",
+        enc = self._spawn(["-m", "vinc_rag.embed.worker", "--serve-only",
                            "--encode-port", str(self.encode_port)], enc_env, "encode.log")
         url = f"http://127.0.0.1:{self.encode_port}"
 

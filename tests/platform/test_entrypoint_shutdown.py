@@ -49,7 +49,7 @@ case "$*" in
       echo started > "$OUT/mcp-started"
       trap 'exit 0' TERM
       while true; do sleep 0.2; done ;;
-  *embed_worker*)
+  *vinc_rag.embed.worker*)
       trap 'exit 0' TERM
       while true; do sleep 0.2; done ;;
   *) exit 0 ;;

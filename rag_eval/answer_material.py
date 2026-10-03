@@ -123,7 +123,7 @@ def cmd_build(a):
     from api import query as q                      # noqa: PLC0415
     from store.backend import open_store            # noqa: PLC0415
     from store.config import load_config            # noqa: PLC0415
-    from encoder import Encoder                     # noqa: PLC0415
+    from vinc_rag.embed.encoder import Encoder                     # noqa: PLC0415
     from rag_eval import brief_resolution as n1              # noqa: PLC0415
 
     # 답가능성 게이트는 꺼진 채 나간다 — 켠 채로 잰 팔은 다른 제품을 잰다.

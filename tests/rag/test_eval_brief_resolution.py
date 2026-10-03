@@ -253,7 +253,7 @@ class SemanticArmIsOptInAndDeclared(unittest.TestCase):
             seen["vec"] = kw.get("query_embedding")
             return _res("none")
 
-        with mock.patch.dict("sys.modules", {"encoder": _fake_encoder_module()}):
+        with mock.patch.dict("sys.modules", {"vinc_rag.embed.encoder": _fake_encoder_module()}):
             got = self._run(["--encoder", "some/model=art.onnx"], spy)
         self.assertEqual(seen["vec"], [0.5, 0.5])
         self.assertIn("의미 팔이 돌았다", got["summary"]["arms_note"])
@@ -290,7 +290,7 @@ class _FakeStore:
 
 
 def _fake_encoder_module():
-    mod = types.ModuleType("encoder")
+    mod = types.ModuleType("vinc_rag.embed.encoder")
 
     class Encoder:
         def __init__(self, model, path=None):

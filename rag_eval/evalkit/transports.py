@@ -34,7 +34,7 @@ class InProcess:
         sys.path.insert(0, str(ROOT))
         sys.path.insert(0, str(ROOT / "scripts"))
         from api import query as q                    # noqa: PLC0415
-        from encoder import Encoder                   # noqa: PLC0415
+        from vinc_rag.embed.encoder import Encoder                   # noqa: PLC0415
         from store.backend import open_store          # noqa: PLC0415
         from store.config import load_config          # noqa: PLC0415
         self.q, self.owner = q, owner

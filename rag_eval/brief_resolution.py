@@ -160,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
     # 않는다는 것을 결과에 적는다 — 여기 것은 프로세스 안 인코더다.
     enc = None
     if a.encoder:
-        from encoder import Encoder                      # noqa: PLC0415
+        from vinc_rag.embed.encoder import Encoder                      # noqa: PLC0415
         name, path = a.encoder.split("=", 1) if "=" in a.encoder else (a.encoder, None)
         enc = Encoder(name, path)
         enc.encode(["warmup"], kind="query")   # 적재 비용을 첫 질의 밖으로 뺀다

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """ONNX 문장 임베더 — **모델 계열별 규약**을 한자리에 담는다(모델 비교용).
 
-`packaging/embed_worker.py` 의 임베더는 프로덕션용이라 모델 하나를 상주시키지만,
+`vinc_rag/embed/worker.py` 의 임베더는 프로덕션용이라 모델 하나를 상주시키지만,
 모델 비교(bge vs e5, fp32 vs int8)는 **두 모델을 같은 코드로** 재야 한다. 그래서 계열을
 인자로 받는 판을 따로 둔다.
 
@@ -17,7 +17,7 @@
     | 입력 | input_ids·attention_mask·token_type_ids | input_ids·attention_mask (**둘뿐**) | input_ids·attention_mask |
     | 패딩 id | 0 = `[PAD]` | 0 은 `<s>` 다 — `<pad>` 는 **1** | XLM-R 계열 — `<pad>` 는 **1** |
 
-⚠ **접두 열의 정본은 이 파일이 아니라 `packaging/embed_worker.py::prefix` 다.** 여기 표는
+⚠ **접두 열의 정본은 이 파일이 아니라 `vinc_rag/embed/worker.py::prefix` 다.** 여기 표는
 읽으라고 있는 것이고, `prefix()` 는 그 프로덕션 함수를 그대로 불러 쓴다 — 규약을 두 곳에
 적었다가 갈라진 적이 있어서(이 파일에는 bge-m3 분기가 있었고 프로덕션에는 없었다) 값을
 유도하는 쪽으로 바꿨다. 풀링·패딩은 아직 여기 구현이 따로 있고 `--selfcheck` 가 대조한다.
@@ -29,12 +29,12 @@
 두 풀링의 코사인은 같은 입력에도 0.87~0.91 에 불과하다. ONNX 전환 통과 기준이 ≥0.9999
 였던 것을 생각하면 완전히 다른 벡터다 — 즉 풀링을 틀리면 "조금 나쁜" 게 아니라 딴것이다.
 
-**드리프트 방지**: `--selfcheck` 는 이 구현과 `packaging/embed_worker.py` 의 프로덕션
+**드리프트 방지**: `--selfcheck` 는 이 구현과 `vinc_rag/embed/worker.py` 의 프로덕션
 구현이 같은 벡터를 내는지 대조한다(코사인 ≥0.9999). 둘이 갈라진 채 비교 실험을 돌리면
 "모델 차이"라고 읽은 것이 사실은 "구현 차이"가 된다.
 
 사용:
-    python scripts/encoder.py --model intfloat/multilingual-e5-base --selfcheck
+    python -m vinc_rag.embed.encoder --model intfloat/multilingual-e5-base --selfcheck
 """
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
 def is_e5(model: str) -> bool:
@@ -53,18 +53,15 @@ def is_e5(model: str) -> bool:
 
 @functools.cache
 def _load_production_worker():
-    """`packaging/embed_worker.py` 를 **파일 경로로** 연다(한 번만 — 접두는 청크마다 부른다).
+    """`worker.py` 를 **파일 경로로** 연다(한 번만 — 접두는 청크마다 부른다).
 
-    ⚠ `import packaging.embed_worker` 는 안 된다 — PyPI 배포판 `packaging` 이
-    site-packages 에 정규 패키지로 있어서, `__init__.py` 없는 리포 디렉터리(네임스페이스
-    포션)를 가린다. 실측: `ModuleNotFoundError: No module named 'packaging.embed_worker'`.
-    **접두 규약이 두 벌로 갈라져 있던 진짜 이유가 이것이다** — 가져다 쓸 수가 없으니
-    베껴 적었고, 그 사본이 bge-m3 분기를 놓쳤다.
-    `tests/rag/test_embed_worker.py` 가 이미 같은 방식으로 연다(그 패턴을 재사용한다).
+    패키지로 import 하지 않고 따로 싣는 이유: 워커는 import 시점에 환경변수(모델 등)를
+    읽는다. `--selfcheck` 가 모델을 바꿔 가며 새로 실어야 해서, 이미 올라온 모듈을
+    재사용하면 옛 모델 값을 쓰게 된다. `tests/rag/test_embed_worker.py` 도 같은 방식이다.
     """
     import importlib.util
 
-    src = Path(__file__).resolve().parents[1] / "packaging" / "embed_worker.py"
+    src = Path(__file__).resolve().parent / "worker.py"
     spec = importlib.util.spec_from_file_location("_vinc_embed_worker_contract", src)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -74,7 +71,7 @@ def _load_production_worker():
 def prefix(text: str, kind: str, model: str) -> str:
     """비대칭 검색 접두 — **프로덕션 구현에서 그대로 유도한다.**
 
-    정본은 `packaging/embed_worker.py::prefix` 다. 여기서 규약을 다시 적지 않는 이유는
+    정본은 `vinc_rag/embed/worker.py::prefix` 다. 여기서 규약을 다시 적지 않는 이유는
     전에 그렇게 해서 갈라졌기 때문이다: 이 파일에는 bge-m3 분기가 있었고 프로덕션에는
     없어서, 평가는 맞고 프로덕션만 틀린 상태가 남았다(W16 실측 코사인 0.79~0.82).
     """
@@ -131,7 +128,7 @@ class Encoder:
         self._tok = tok
 
         opts = ort.SessionOptions()
-        # 기본 1 = 프로덕션(`packaging/embed_worker.py`) 동일 조건. 코퍼스 인코딩을
+        # 기본 1 = 프로덕션(`vinc_rag/embed/worker.py`) 동일 조건. 코퍼스 인코딩을
         # 빨리 돌리고 싶을 때만 VINC_EVAL_THREADS 를 올린다 — 순위 지표는 스레드 수와
         # 무관하지만 **지연 측정은 1 로 잰 것만 프로덕션과 비교 가능**하다.
         threads = int(os.environ.get("VINC_EVAL_THREADS", "1") or "1")
@@ -146,13 +143,13 @@ class Encoder:
         return len(self._counter.encode(text).ids)
 
     def split_for_embed(self, text: str, max_tokens: int = 500) -> list[str]:
-        """청크 → 임베딩 조각(워커 `packaging/embed_worker.py::_split_for_embed` 와 같은
-        규칙: `api.docstore.chunk_doc` 토큰 기준·무손실 경계, 저장 청크는 안 건드린다).
+        """청크 → 임베딩 조각(워커 `vinc_rag/embed/worker.py::_split_for_embed` 와 같은
+        규칙: `store.chunking.chunk_doc` 토큰 기준·무손실 경계, 저장 청크는 안 건드린다).
 
         리허설의 `reindex` 는 여태 청크를 통째로 한 벡터로 만들었다. 프로덕션 워커는
         ≤500 토큰 조각마다 벡터를 만들어 `ChunkVec` 자식으로 편다(라이브 허브 실측
         청크당 2.08개). 그 형상으로 스토어를 만들려면 이 함수가 필요하다."""
-        from api.docstore import chunk_doc
+        from store.chunking import chunk_doc
         parts = chunk_doc(text, max_tokens=max_tokens, count=self.count_tokens)
         return [p["text"] for p in parts if p["text"].strip()] or [text]
 
@@ -190,16 +187,13 @@ class Encoder:
 
 
 def selfcheck(model: str) -> int:
-    """이 구현 대 `packaging/embed_worker.py` 프로덕션 구현. 코사인 ≥0.9999 를 요구한다."""
+    """이 구현 대 `vinc_rag/embed/worker.py` 프로덕션 구현. 코사인 ≥0.9999 를 요구한다."""
     import numpy as np
 
     os.environ.setdefault("VINC_EMBED_MODEL", model)
-    # `from packaging import embed_worker` 는 안 된다 — 리포의 packaging/ 은
-    # __init__.py 가 없는 네임스페이스 패키지라, pip 의 `packaging`(정규 패키지)이
-    # 설치된 환경에서는 경로 순서와 무관하게 **그쪽이 이긴다**. 드리프트 가드가
-    # 가드해야 할 환경에서 못 도는 형태라 파일 경로로 직접 싣는다.
+    # 위 `_load_production_worker` 와 같은 이유로 새로 싣는다(이 모델 값으로).
     import importlib.util
-    _p = Path(__file__).resolve().parents[1] / "packaging" / "embed_worker.py"
+    _p = Path(__file__).resolve().parent / "worker.py"
     _spec = importlib.util.spec_from_file_location("_vinc_embed_worker", _p)
     w = importlib.util.module_from_spec(_spec)
     assert _spec.loader is not None
