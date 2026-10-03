@@ -261,8 +261,8 @@ class Bridge:
         port = _pick_free_port()
         self.base = f"http://127.0.0.1:{port}"
         # 동결 바이너리(D43)면 자기 자신이 serve 를 품고 있다 — 재실행이 곧 spawn.
-        cmd = ([sys.executable, "serve"] if getattr(sys, "frozen", False)
-               else [sys.executable, "-m", "api.cli", "serve"])
+        cmd = ([sys.executable, "--target", "local", "serve"] if getattr(sys, "frozen", False)
+               else [sys.executable, "-m", "api.cli", "--target", "local", "serve"])
         # --parent-pid: 어댑터가 죽으면 사이드카도 자동 정리(좀비 근절, cli/serve 지원).
         cmd += ["--port", str(port), "--token", self.token,
                 "--parent-pid", str(os.getpid())]
