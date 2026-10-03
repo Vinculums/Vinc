@@ -25,10 +25,21 @@
 # 이 파일이 main 에 머지되기 전에는 어느 ref 로도 못 띄운다. 머지된 뒤에는 ref 를
 # 지정해 PR 브랜치를 검증할 수 있다.
 name: verify-hosted
+run-name: ${{ inputs.runner_request_id != '' && format('cloud-runner {0}', inputs.runner_request_id) || '' }}
 
 on:
   workflow_dispatch:
     inputs:
+      runner_request:
+        description: Encrypted JIT broker request metadata (no credentials)
+        required: false
+        default: ''
+        type: string
+      runner_request_id:
+        description: Unique JIT broker request ID
+        required: false
+        default: ''
+        type: string
       core:
         description: "core — verify.py + 게이트 8종"
         type: boolean
@@ -58,6 +69,32 @@ permissions:
   contents: read
 
 jobs:
+  runner-broker:
+    name: runner broker (JIT registration)
+    if: inputs.runner_request != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install bootstrap encryption library
+        run: python3 -m pip install cryptography==46.0.3
+      - name: Manage only the shared Cloud pool
+        env:
+          RUNNER_REQUEST: ${{ inputs.runner_request }}
+          RUNNER_REQUEST_ID: ${{ inputs.runner_request_id }}
+          VINC_CLOUD_RUNNER_ADMIN_TOKEN: ${{ secrets.VINC_CLOUD_RUNNER_ADMIN_TOKEN }}
+        run: python3 scripts/cloud_runner/jit_broker.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runner-response-${{ inputs.runner_request_id }}
+          path: runner-broker-response/response.json
+          retention-days: 1
+          if-no-files-found: error
   core:
     name: core (hosted, verify.py + gates)
     if: inputs.core
@@ -70,7 +107,7 @@ jobs:
       # `ci.yml` 의 core 잡과 **같은 목록**이다. 갈리면 이 워크플로가 재는 것이
       # ci 가 재는 것과 달라지고, 그러면 여기 초록이 아무것도 뜻하지 않는다.
       - name: Install deps (ladybug pinned + argon2 + pytest + pypdf)
-        run: pip install ladybug==0.20.4 argon2-cffi pyyaml pytest pypdf
+        run: pip install ladybug==0.20.4 argon2-cffi pyyaml pytest pypdf cryptography==46.0.3
       - name: Point to bundled G0 extensions (no network)
         run: echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
       # ⚠ 이 스텝을 빼면 이 워크플로는 있으나 마나다. 드라이버가 없으면 17개 파일이
@@ -135,7 +172,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install deps (ladybug pinned + argon2 + pytest + pypdf)
-        run: pip install ladybug==0.20.4 argon2-cffi pyyaml pytest pypdf
+        run: pip install ladybug==0.20.4 argon2-cffi pyyaml pytest pypdf cryptography==46.0.3
       - name: Point to bundled G0 extensions (no network)
         run: echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
       - name: Assert driver is importable (no silent skips)
@@ -270,7 +307,7 @@ jobs:
   # 드는 사람이 무엇이 안 재졌는지를 표에서 바로 본다.
   summary:
     name: what ran, and what did not
-    if: always()
+    if: always() && inputs.runner_request == ''
     needs: [core, core-pkns, app, rust-linux, rust-windows]
     runs-on: ubuntu-latest
     steps:
