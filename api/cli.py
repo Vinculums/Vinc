@@ -484,6 +484,8 @@ def _main(argv: list[str] | None = None) -> int:
         if getattr(args, name, None):
             command += " " + getattr(args, name)
     cli_output.configure(args.console_format, command)
+    from store import diagnostics
+    diagnostics.configure(args.debug or os.environ.get("VINC_DEBUG") == "1")
     cli_output.chosen_format()  # 동사를 실행하기 전에 환경값을 검증한다.
     from . import cli_target
 
@@ -984,6 +986,8 @@ def _main(argv: list[str] | None = None) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from store import diagnostics
+    diagnostics.configure(False)
     cli_output.configure(None, "")
     backend_module = sys.modules.get("store.embedded_backend")
     if backend_module is not None:
@@ -1010,6 +1014,8 @@ def main(argv: list[str] | None = None) -> int:
         return cli_output.internal_error(exc)
     except Exception as exc:  # noqa: BLE001 — CLI 오류 경계를 한 곳에 둔다.
         return cli_output.internal_error(exc, debug="--debug" in (argv or sys.argv[1:]))
+    finally:
+        diagnostics.configure(False)
 
 
 if __name__ == "__main__":
