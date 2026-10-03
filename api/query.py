@@ -1203,6 +1203,37 @@ def seed_lookup_plan(seed: str, *, owner: str | None = None) -> QueryPlan:
     return QueryPlan("seed_lookup", cypher, params, note=f"seed existence probe ({label})")
 
 
+def node_plan(node_id: str, *, owner: str) -> QueryPlan:
+    """정확한 id의 저장 필드만 읽는다. 이웃·발췌·배치는 조회하지 않는다."""
+    from store.embedded_schema import node_table_specs
+
+    label, pk = _seed_table(node_id)
+    # 열 목록은 스키마를 따른다. 종류에 없는 props나 유효구간을 만들어 내지 않는다.
+    # 근거: [[vinc.spec.dataplane §2.2]]
+    columns = node_table_specs()[label]["cols"]
+    fields = ", ".join(f"n.{col} AS {'id' if col == pk else col}" for col in columns)
+    return QueryPlan("node", f"MATCH (n:{label}) WHERE n.{pk} = $node "
+                     f"AND n.owner_id = $owner RETURN {fields}",
+                     {"node": pkns.key(owner, node_id), "owner": owner})
+
+
+def node(node_id: str, *, owner: str, cfg=None, store=None) -> dict:
+    """한 노드를 저장된 모양으로 돌려준다. 없는 노드와 다른 소유자의 노드는 같다."""
+    result = execute(node_plan(node_id, owner=owner), cfg, store=store)
+    rows = result.pop("rows", [])
+    if not result.get("executed"):
+        return result
+    result["found"] = bool(rows)
+    result["node"] = None
+    if rows:
+        stored = dict(rows[0])
+        stored["kind"] = stored.get("type") or _seed_table(node_id)[0].lower()
+        if "props" in stored:
+            stored["props"] = _props_to_obj(stored["props"])
+        result["node"] = stored
+    return result
+
+
 # 사용자 선택 프리셋 정본 — **2종**(발주자 지시 2026-08-02, D34 개정).
 #   hub  : 연결이 많을수록 중심, 적을수록 바깥(동심 배치). "무엇이 중심인가".
 #   rank : 전역 위상 순서를 x 에 인코딩. "무엇이 무엇보다 먼저인가".

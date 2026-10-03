@@ -158,9 +158,9 @@ def test_cursor_error_and_unknown_percent_encoded_node():
             "POST", "/v1/search", body={"query": "x", "cursor": "eyJhIjoxfQ"})
         assert status == 400 and body["error"]["code"] == "invalid_argument"
         assert body["error"]["request_id"] == headers["Vinc-Request-Id"]
-        srv.bridge.override = {"kind": "brief", "status": "none", "unreadable": True}
+        srv.bridge.override = {"kind": "node", "executed": True, "found": False, "node": None}
         status, _headers, body = srv.request("GET", "/v1/nodes/concept%3Aunknown")
         assert status == 404 and body["error"]["code"] == "not_found"
-        assert srv.bridge.calls[-1][2]["query"] == "concept:unknown"
+        assert srv.bridge.calls[-1][2]["node_id"] == "concept:unknown"
     finally:
         srv.close()
