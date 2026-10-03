@@ -316,6 +316,9 @@ export function applyTheme() {
 }
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 applyTheme();
+// 화면 언어를 문서에도 적는다. index.html 은 lang="en" 으로 박혀 있어 한국어 화면을 화면
+// 읽기와 번역이 영어로 읽었다(VIN-294). 언어를 바꾸면 페이지를 다시 불러오므로 한 번이면 된다.
+document.documentElement.lang = cfg.lang;
 
 // 셸이면 사이드카 접속정보(포트·토큰)를 먼저 확보한 뒤 첫 화면을 그린다.
 // (브라우저 dev 는 connectSidecar 가 즉시 반환 → 기존과 동일)
