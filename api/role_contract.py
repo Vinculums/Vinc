@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import re
 
+from engines.domain_hierarchy import normalize
+
 #: 역할 주제. 앞의 것이 새 역할의 자리, 뒤의 것은 계속 읽는 옛 자리. 근거: [[decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02]]
 TOPICS = ("agent", "vinc/agent")
 DOMAIN = TOPICS[0]
@@ -43,10 +45,18 @@ def is_role_id(nid: str) -> bool:
     return nid.startswith(ID_PREFIX) and nid != ROSTER_CONCEPT
 
 
-def check(node: dict, *, created: bool) -> list[str]:
-    """역할 노드 한 건 → 경고 문장 목록(없으면 빈 목록). ``created`` = 이번 쓰기가 새로 만든다."""
+def check(node: dict, *, created: bool, stored_domain: str | None = None) -> list[str]:
+    """역할 주제의 노드 → 경고 목록. 미지정 domain은 ``stored_domain``으로 판정한다."""
     nid = str(node.get("id") or "").strip()
     if not is_role_id(nid):
+        return []
+    # domain 미지정(None 포함)은 저장값을 보존한다. 접두만 같은 일반 개념은 역할이 아니다.
+    dom = node.get("domain")
+    if dom is None:
+        dom = stored_domain
+    d = normalize(dom)
+    root = next((t for t in TOPICS if d == t or d.startswith(t + "/")), None)
+    if root is None:
         return []
     out: list[str] = []
     why = "see vinc.canon.agent-roles"
@@ -56,23 +66,10 @@ def check(node: dict, *, created: bool) -> list[str]:
         out.append(f"role id {nid}: use lowercase letters, digits and hyphens after "
                    f"'{ID_PREFIX}'; the slug is the prompt name a host shows ({why})")
 
-    dom = node.get("domain")
-    if dom is None:
-        if created:
-            out.append(f"role {nid} was created with no domain; roles are found under "
-                       f"{DOMAIN} (prompts/list reads it and one level below), so neither "
-                       f"prompts/list nor the Agent rail will show this role ({why})")
-    else:
-        d = str(dom).strip().strip("/")
-        root = next((t for t in TOPICS if d == t or d.startswith(t + "/")), None)
-        if root is None:
-            out.append(f"role {nid} is filed under '{d}'; roles live under {DOMAIN} "
-                       f"(or {TOPICS[1]}), which is where prompts/list and the Agent rail "
-                       f"look ({why})")
-        elif d.count("/") > root.count("/") + 1:
-            out.append(f"role {nid} is filed under '{d}', more than one level below "
-                       f"{root}; prompts/list reads only one level down, so it will "
-                       f"not be listed ({why})")
+    if d.count("/") > root.count("/") + 1:
+        out.append(f"role {nid} is filed under '{d}', more than one level below "
+                   f"{root}; prompts/list reads only one level down, so it will "
+                   f"not be listed ({why})")
 
     title = node.get("title")
     if isinstance(title, str) and title.strip().lower().startswith(TITLE_PREFIX):
