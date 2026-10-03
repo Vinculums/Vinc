@@ -34,7 +34,7 @@ RULES = G.parse_codeowners("""
 
 class Matching(unittest.TestCase):
     def test_last_line_wins(self):
-        self.assertEqual(G.owners_for("scripts/encoder.py", RULES), ("@o/core",))
+        self.assertEqual(G.owners_for("scripts/bench_models.py", RULES), ("@o/core",))
         self.assertEqual(G.owners_for("scripts/gate_pr_title.py", RULES), ("@o/platform",))
 
     def test_a_directory_line_covers_every_depth(self):

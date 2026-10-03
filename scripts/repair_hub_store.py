@@ -67,8 +67,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from api import docstore, encoder_runtime                 # noqa: E402
-from store import pkns                                    # noqa: E402
+from api import docstore                                  # noqa: E402
+from store import encoder_runtime, pkns                   # noqa: E402
 from store.embedded_schema import node_table_specs, rel_tables_on  # noqa: E402
 
 from rebuild_store_native import _files, _open            # noqa: E402

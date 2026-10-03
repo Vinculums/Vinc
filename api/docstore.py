@@ -50,8 +50,9 @@ from store import pkns
 from store.embedded_backend import DDL_GUARD, keep_vector_index
 from store.lexical import lex_text
 # 청킹은 순수 함수라 아래 층에 있다. 임베딩 워커와 리랭커(vinc_rag)도 같은 경계를 쓴다.
-from store.chunking import (DEFAULT_MAX_CHARS, _HEADING_RE, chunk_doc,  # noqa: F401
-                            estimate_tokens, normalize_boundaries, plan_boundaries)
+from store.chunking import (DEFAULT_MAX_CHARS, _HEADING_RE, _section_title,  # noqa: F401
+                            chunk_doc, estimate_tokens, normalize_boundaries,
+                            plan_boundaries)
 
 from . import graphmd
 

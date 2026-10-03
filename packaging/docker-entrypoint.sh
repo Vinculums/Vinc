@@ -287,7 +287,7 @@ if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
     # 미러를 만들면 벡터의 판을 잘못 기록하므로 새 인코더의 실제 지문을 확인한 뒤
     # 한 번만 시작한다. /health 는 모델을 적재하지 않는다.
     if [ -n "${VINC_EMBED_REMOTE:-}" ]; then
-      mine=$(python3 -c 'from api.encoder_runtime import fingerprint; print(fingerprint())')
+      mine=$(python3 -c 'from store.encoder_runtime import fingerprint; print(fingerprint())')
       build=${VINC_ENCODER_BUILD:-}
       ready=0
       for i in $(seq 1 60); do
