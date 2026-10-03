@@ -7,6 +7,7 @@
   "tools": {
     "vinc_search": [{"shape": "executed:false error invalid_cursor or stale_cursor", "code": "invalid_argument"}, {"shape": "executed:true rows:[]", "code": "success"}],
     "vinc_brief": [{"shape": "status:none with unreadable/unknown node", "code": "not_found"}, {"shape": "executed:false for missing source", "code": "not_found"}],
+    "vinc_node": [{"shape": "executed:true found:false node:null", "code": "not_found"}, {"shape": "executed:false no reachable store", "code": "upstream_unavailable"}],
     "vinc_recall": [{"shape": "executed:false error invalid_cursor or stale_cursor", "code": "invalid_argument"}, {"shape": "executed:true rows:[]", "code": "success"}],
     "vinc_graph": [{"shape": "found:false or unknown seed", "code": "not_found"}, {"shape": "valid URL selects a document, domain, or whole view", "code": "invalid_argument"}],
     "vinc_decide": [{"shape": "found:false topic has no exact match", "code": "not_found"}],
