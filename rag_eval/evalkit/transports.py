@@ -101,14 +101,34 @@ class Cli:
                                                   ensure_ascii=False)]
         p = subprocess.run(cmd, cwd=ROOT, env=self.env, capture_output=True,
                            text=True, encoding="utf-8", timeout=180)
-        # 0 = 답, 1 = 도구가 실패나 `status: none` 을 답했다(결과 JSON 이 stdout 에 있다),
+        # 0 = 답, 1 = 도구가 실패나 `status: none` 을 stderr JSON으로 답했다,
         # 그 밖(2 사용법 · 4 인증 · 5 상류)은 전송 실패다.
         if p.returncode not in (0, 1):
             raise TransportError(f"vinc call {tool} exit {p.returncode}: {p.stderr.strip()[:300]}")
+        stream, text = ("stdout", p.stdout) if p.returncode == 0 else ("stderr", p.stderr)
         try:
-            out = json.loads(p.stdout)
+            if p.returncode == 0:
+                out = json.loads(text)
+            else:
+                # 기동 진단 다음의 최종 JSON 봉투만 읽는다. 뒤에 잡음이 있으면 거절한다.
+                decoder = json.JSONDecoder()
+                out = None
+                offset = 0
+                for line in text.splitlines(keepends=True):
+                    if line.lstrip().startswith("{"):
+                        try:
+                            value, end = decoder.raw_decode(text, offset + len(line) - len(line.lstrip()))
+                        except ValueError:
+                            pass
+                        else:
+                            if not text[end:].strip():
+                                out = value
+                                break
+                    offset += len(line)
+                if not isinstance(out, dict):
+                    raise ValueError("missing terminal JSON object")
         except ValueError as exc:
-            raise TransportError(f"vinc call {tool}: stdout 이 JSON 이 아니다: "
+            raise TransportError(f"vinc call {tool}: {stream} 이 JSON 이 아니다: "
                                  f"{p.stdout[:200]!r} / {p.stderr[:200]!r}") from exc
         if p.returncode == 1 and out.get("status") != "none":
             raise TransportError(f"vinc call {tool} 실패: {json.dumps(out, ensure_ascii=False)[:300]}")

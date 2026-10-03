@@ -32,7 +32,14 @@ def _run_cli_child(argv):
     child = subprocess.run([sys.executable, "-m", "api.cli", *argv],
                            capture_output=True, text=True, encoding="utf-8",
                            env=env, timeout=30, check=False)
-    return child.returncode, child.stdout
+    # 실패 봉투는 스토어 열기 진단 뒤에 나온다. stdout은 별도로 검사한다.
+    error = child.stderr
+    if child.returncode:
+        for line in error.splitlines(keepends=True):
+            if line.startswith("{"):
+                error = error[error.index(line):]
+                break
+    return child.returncode, child.stdout, error
 
 
 def test_matching_live_sidecar_answers_a_locked_store(tmp_path, monkeypatch):
@@ -69,13 +76,15 @@ def test_matching_live_sidecar_answers_a_locked_store(tmp_path, monkeypatch):
                                             "token": "wrong", "pid": os.getpid()}), encoding="utf-8")
         # 스토어 락은 프로세스 경계에 걸린다. 같은 테스트 프로세스에서 다시 여는
         # 방식은 플랫폼에 따라 성공하므로 별도 CLI 프로세스로 확인한다.
-        locked_code, locked_bytes = _run_cli_child(["doc", "ls", "--data", data_file,
+        locked_code, locked_out, locked_bytes = _run_cli_child(["doc", "ls", "--data", data_file,
                                                     "--format", "json"])
         assert locked_code == 1
+        assert locked_out == ""
         assert json.loads(locked_bytes)["error"]["code"] == "store_in_use"
-        recall_code, recall_bytes = _run_cli_child(["recall",
+        recall_code, recall_out, recall_bytes = _run_cli_child(["recall",
                                                     "--owner", "user:local", "--format", "json"])
         assert recall_code == 1
+        assert recall_out == ""
         assert json.loads(recall_bytes)["error"]["code"] == "store_in_use"
     finally:
         httpd.shutdown()

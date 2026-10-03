@@ -46,6 +46,8 @@ class RuntimeTests(unittest.TestCase):
 
 def _done(code: int, out: dict | str, err: str = "") -> subprocess.CompletedProcess:
     text = out if isinstance(out, str) else json.dumps(out)
+    if code == 1:
+        return subprocess.CompletedProcess([], code, stdout="", stderr=text)
     return subprocess.CompletedProcess([], code, stdout=text, stderr=err)
 
 
@@ -71,6 +73,36 @@ class CliTransportTests(unittest.TestCase):
     def test_JSON_이_아닌_출력은_던진다(self):
         with mock.patch.object(subprocess, "run", return_value=_done(0, "not json")):
             with self.assertRaises(transports.TransportError):
+                self.cli.brief("q")
+
+    def test_기동_진단_뒤의_none_JSON도_답이다(self):
+        text = 'vinc: boot diagnostics {}\n' + json.dumps({"status": "none"})
+        with mock.patch.object(subprocess, "run", return_value=_done(1, text)):
+            self.assertEqual(self.cli.brief("q")["status"], "none")
+
+    def test_실패_JSON_뒤의_잡음은_거절한다(self):
+        text = json.dumps({"status": "none"}) + '\nnot a JSON result'
+        with mock.patch.object(subprocess, "run", return_value=_done(1, text)):
+            with self.assertRaises(transports.TransportError):
+                self.cli.brief("q")
+
+    def test_성공은_stderr_진단과_무관하게_stdout을_읽는다(self):
+        with mock.patch.object(subprocess, "run", return_value=_done(
+                0, {"status": "resolved"}, json.dumps({"status": "none"}))):
+            self.assertEqual(self.cli.brief("q")["status"], "resolved")
+
+    def test_실패는_stdout의_정상처럼_보이는_답을_무시한다(self):
+        done = subprocess.CompletedProcess([], 1, stdout=json.dumps({"status": "none"}),
+                                           stderr=json.dumps({"executed": False, "error": "x"}))
+        with mock.patch.object(subprocess, "run", return_value=done):
+            with self.assertRaises(transports.TransportError):
+                self.cli.brief("q")
+
+    def test_실패_stderr가_JSON이_아니면_stdout으로_대체하지_않는다(self):
+        done = subprocess.CompletedProcess([], 1, stdout=json.dumps({"status": "none"}),
+                                           stderr="not json")
+        with mock.patch.object(subprocess, "run", return_value=done):
+            with self.assertRaisesRegex(transports.TransportError, "stderr"):
                 self.cli.brief("q")
 
     def test_스토어_파일을_MEMORY_DATA_DIR_로_넘긴다(self):
