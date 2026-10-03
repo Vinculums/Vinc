@@ -59,6 +59,37 @@ class CliTransportTests(unittest.TestCase):
         with mock.patch.object(subprocess, "run", return_value=_done(1, {"status": "none"})):
             self.assertEqual(self.cli.brief("q")["status"], "none")
 
+    def test_none도_실패_표지가_있으면_거절한다(self):
+        markers = [{"error": {"code": code}} for code in
+                   ("usage", "not_authenticated", "upstream_unavailable", "quota_exceeded")]
+        markers += [{"executed": False}, {"isError": True}]
+        for code in (0, 1):
+            for marker in markers:
+                with self.subTest(code=code, marker=marker), mock.patch.object(
+                        subprocess, "run", return_value=_done(code, {"status": "none", **marker})):
+                    with self.assertRaises(transports.TransportError):
+                        self.cli.brief("q")
+
+    def test_none_예외는_brief에만_적용한다(self):
+        with mock.patch.object(subprocess, "run", return_value=_done(1, {"status": "none"})):
+            with self.assertRaises(transports.TransportError):
+                self.cli.search("q", 5)
+
+    def test_실패_stdout은_공백까지_비어야_한다(self):
+        for stdout in ('{"status":"resolved"}', " ", "\n"):
+            done = subprocess.CompletedProcess([], 1, stdout=stdout, stderr='{"status":"none"}')
+            with self.subTest(stdout=stdout), mock.patch.object(subprocess, "run", return_value=done):
+                with self.assertRaises(transports.TransportError):
+                    self.cli.brief("q")
+
+    def test_빈_JSON과_객체가_아닌_JSON은_거절한다(self):
+        for code in (0, 1):
+            for text in ("", "{}", "[]", "null", "{broken"):
+                with self.subTest(code=code, text=text), mock.patch.object(
+                        subprocess, "run", return_value=_done(code, text)):
+                    with self.assertRaises(transports.TransportError):
+                        self.cli.brief("q")
+
     def test_도구_실패는_던진다(self):
         with mock.patch.object(subprocess, "run",
                                return_value=_done(1, {"executed": False, "error": "x"})):
