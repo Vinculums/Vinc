@@ -1393,7 +1393,8 @@ def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
     # 워커가 채운 벡터를 박는 자리 — 없던 벡터가 생기므로 드롭이 **필수**다(위와 동종).
     # FTS 는 안 건드리므로 임베딩이 도는 동안에도 키워드 검색이 계속 답한다.
     # 예외는 `keep_vector_index()` 하나다: 측정한 엔진에서 벡터 질의를 배타로 돌리는 동안은
-    # 색인을 두고 증분으로 넣는다(이 적용 전체가 이미 배타다). 근거: VIN-236
+    # 색인을 두고 증분으로 넣는다(이 적용 전체가 이미 배타다).
+    # 근거: [[decision:keep-the-chunk-vector-index-behind-a-flag-and-run-each-vector-query-alone-2026-10-03]]
     if not keep_vector_index():
         _drop_vector_index_if_any(store)
     applied = vecs = 0

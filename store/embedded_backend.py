@@ -688,7 +688,8 @@ DDL_GUARD = _DdlGuard()
 #: 증분 삽입은 혼자서는 살지만, 삽입이 남긴 색인을 다른 커넥션이 읽는 동안 자동 체크포인트가
 #: 돌면 세그폴트한다. 그래서 드롭을 빼는 대신 벡터 질의를 문장마다 배타로 돌린다.
 #: 측정하지 않은 판에서는 플래그가 켜져 있어도 드롭으로 물러난다.
-#: 근거: [[record:ladybug-0-20-4-hnsw-insert-survives-alone-but-a-reader-during-a-checkpoint-segfaults-2026-09-30]]
+#: 근거: [[record:ladybug-0-20-4-hnsw-insert-survives-alone-but-a-reader-during-a-checkpoint-segfaults-2026-09-30]] ·
+#: [[record:keep-index-mode-survived-104-hub-condition-trials-while-the-unguarded-control-crashed-3-of-20-2026-10-03]]
 _KEEP_VEC_INDEX_ENGINES = ("0.20.4",)
 
 
