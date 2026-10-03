@@ -41,7 +41,8 @@ def test_failures_use_a_nonzero_status_without_traceback(tmp_path, capsys):
     assert cli.main(["import", "--pack", str(tmp_path / "missing"),
                      "--owner", "user:local"]) == 1
     got = capsys.readouterr()
-    assert json.loads(got.out)["error"]["code"] == "internal"
+    assert got.out == ""
+    assert json.loads(got.err)["error"]["code"] == "internal"
     assert "Traceback" not in got.err
 
 
@@ -63,14 +64,15 @@ def test_human_failure_is_on_stderr(capsys):
     assert cli_output.emit({"error": "store_in_use"}) == 1
     got = capsys.readouterr()
     assert got.out == ""
-    assert got.err == "store_in_use\n"
+    assert got.err == "vinc: store_in_use\n"
 
 
 def test_store_open_diagnostic_never_corrupts_json(tmp_path):
     proc = subprocess.run(
-        [sys.executable, "-m", "api.cli", "doc", "ls", "--data", str(tmp_path)],
+        [sys.executable, "-m", "api.cli", "--target", "local", "doc", "ls", "--data", str(tmp_path)],
         text=True, encoding="utf-8", capture_output=True, check=False,
     )
     assert proc.returncode == 1
-    assert json.loads(proc.stdout)["error"]
+    assert proc.stdout == ""
+    assert '"error"' in proc.stderr
     assert "store open failed" in proc.stderr
