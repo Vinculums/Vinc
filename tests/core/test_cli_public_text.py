@@ -85,3 +85,41 @@ def test_first_local_command_boot_logs_require_debug(tmp_path, monkeypatch, caps
         assert "built at boot" in got.err
     else:
         assert got.err == ""
+
+
+@pytest.mark.parametrize("payload", [[], {"docs": "bad"}, {"nodes": [1]}, {"docs": None}])
+def test_manifest_shape_has_product_diagnostic(tmp_path, capsys, payload):
+    manifest = tmp_path / "refs.json"
+    manifest.write_text(json.dumps(payload))
+    assert cli.main(["--format", "json", "refs", "check", "--root", str(tmp_path),
+                     "--manifest", str(manifest)]) == 2
+    got = capsys.readouterr()
+    assert got.out == ""
+    result = json.loads(got.err)
+    assert result["error"]["code"] == "invalid_manifest"
+    assert str(manifest) in result["error"]["message"]
+    assert "vinc refs refresh" in result["error"]["message"]
+
+
+@pytest.mark.parametrize("fmt", ["human", "json", "ndjson"])
+@pytest.mark.parametrize("success", [True, False])
+def test_real_refs_refresh_progress_preserves_machine_stream(tmp_path, monkeypatch, capsys, fmt, success):
+    from api import refs
+    (tmp_path / "source.py").write_text("# [[concept:fixture]]\n")
+    manifest = tmp_path / "refs.json"
+    monkeypatch.setattr("api.remote_client.api_key", lambda: "fixture")
+    monkeypatch.setattr(refs, "fetch_docs", lambda **kwargs: [])
+    monkeypatch.setattr(refs, "verify_nodes", lambda ids, **kwargs:
+                        (["concept:fixture"], []) if success else ([], ["concept:fixture"]))
+    assert cli.main(["--format", fmt, "refs", "refresh", "--root", str(tmp_path),
+                     "--manifest", str(manifest)]) == (0 if success else 1)
+    got = capsys.readouterr()
+    if fmt != "human":
+        assert (got.err if success else got.out) == ""
+        result = json.loads(got.out if success else got.err)
+        assert result["status"] == (0 if success else 1)
+        if fmt == "ndjson":
+            assert len((got.out if success else got.err).splitlines()) == 1
+    else:
+        assert "[refresh]" in got.err
+    assert manifest.exists() == success

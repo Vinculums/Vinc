@@ -497,7 +497,8 @@ def _main(argv: list[str] | None = None) -> int:
             _emit(result)
             return result["status"]
         from . import remote_client
-        from contextlib import redirect_stdout
+        from contextlib import redirect_stdout, redirect_stderr
+        import io
         if not remote_client.api_key():
             result = {"error": {"code": "not_authenticated", "message":
                       "Set VINC_API_KEY to refresh graph citations.",
@@ -516,12 +517,15 @@ def _main(argv: list[str] | None = None) -> int:
                             exc.result.get("error", {}).get("message", "unavailable")}]}
                 raise
         try:
-            with redirect_stdout(sys.stderr):
+            progress = io.StringIO()
+            with redirect_stdout(progress), redirect_stderr(progress):
                 status = refs.refresh(
                     manifest=manifest, root=roots[0],
                     scan=lambda: refs.scan_roots(roots),
                     fetch=lambda: refs.fetch_docs(call=account_call),
                     verify=lambda ids: refs.verify_nodes(ids, call=account_call))
+            if cli_output.chosen_format() == "human":
+                sys.stderr.write(progress.getvalue())
             return _emit({"kind": "refs.refresh", "executed": status == 0,
                           "manifest": manifest, "status": status})
         except remote_client.RemoteFailure as exc:
