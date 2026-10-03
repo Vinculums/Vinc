@@ -44,10 +44,12 @@ def _mode(home, mode):
 
 # ── 대상 판정 ────────────────────────────────────────────────────────────────
 
-def test_account_mode_in_config_does_not_block_machine_verbs(home, tmp_path):
-    """앱이 로그인하면 config.json 에 mode:account 를 쓰고, 사이드카를 플래그 없이 띄운다."""
+def test_account_mode_in_config_requires_explicit_local_machine_target(home, tmp_path):
+    """Managed launchers select local; terminal device verbs respect config mode."""
     _mode(home, "account")
     code, out, err = _run(["store-probe", "--data", str(tmp_path / "db")])
+    assert code == 2 and not out and "local only" in err
+    code, out, err = _run(["--target", "local", "store-probe", "--data", str(tmp_path / "db")])
     assert code == 0, err
     code, out, _ = _run(["mcp", "manual"])
     assert code == 0 and json.loads(out)
