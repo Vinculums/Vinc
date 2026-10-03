@@ -30,6 +30,12 @@ with tarfile.open(homepage_archive) as archive:
     archive.extractall(HOMEPAGE, filter='data')
 IMAGE = json.loads((ROOT / 'image.json').read_text())['image_id']
 print(json.dumps({'capacity': capacity(IMAGE)}), flush=True)
+# Exercise the real image entrypoint as uid 1001 without minting any token.
+bootstrap = container_args('vinc-cloud-bootstrap-' + RUN.name, IMAGE)
+bootstrap.insert(1, '--rm')
+negative = docker(bootstrap, input='{"org":"unexpected"}\n', capture_output=True, text=True)
+if negative.returncode != 1 or 'Unexpected registration request' not in negative.stderr:
+    raise RuntimeError('The runner bootstrap did not reject an unexpected registration scope')
 JOBS = {
     1: 'python -m pytest -q tests/core/test_auth.py tests/core/test_pk_compose_write.py --tb=short',
     2: 'python -m pytest -q tests/mcp/test_mcp_auth.py tests/mcp/test_mcp_scoped_keys.py --tb=short',
