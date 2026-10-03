@@ -1,0 +1,92 @@
+# 색인 유지 모드 프로브(VIN-236) — 이 브랜치(probe/vin-236-keep-index)에만 있다. main 에 올리지 않는다.
+# 스크립트 정본은 scripts/probe_keep_index.py.
+#
+# bank: 허브와 같은 굽기 스크립트로 bge-m3 int8 을 굽고, 이 리포 문서를 워커 경로로 인코딩해
+#       실벡터 뱅크와 16k 베이스 스토어를 만든다.
+# trials: 허브와 같은 이미지 계열(python:3.12-slim-bookworm · ladybug 0.20.4)을 1 vCPU · 2GiB
+#       컨테이너로 띄우고 시행을 돈다. keep 104회가 수용 기준이고, unguarded 20회는 같은 조건에서
+#       질의 가드만 끈 양성 대조다(그쪽이 안 죽으면 keep 의 0 은 아무것도 증명하지 않는다).
+name: keep-index-probe
+on:
+  push:
+    branches: [probe/vin-236-keep-index]
+permissions:
+  contents: read
+jobs:
+  bank:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      VINC_EMBED_MODEL: BAAI/bge-m3
+      VINC_EMBED_DIM: "1024"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: engine, extensions, encoder deps
+        run: |
+          set -euo pipefail
+          pip install "ladybug==0.20.4" numpy onnx onnxruntime tokenizers huggingface_hub
+          echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
+          echo "VINC_EMBED_MODEL_PATH=$RUNNER_TEMP/m/bge-m3-int8-rr.onnx" >> "$GITHUB_ENV"
+          echo "VINC_EMBED_CACHE=$RUNNER_TEMP/cache" >> "$GITHUB_ENV"
+          free -m; nproc
+      - name: bake bge-m3 int8 (the hub's script)
+        run: python packaging/bake_embed_model.py
+      - name: bank (worker split, prefix and encode)
+        run: python -X utf8 scripts/probe_keep_index.py bank --work "$RUNNER_TEMP/bankstore" --out "$RUNNER_TEMP/out/bank.npz"
+      - name: base (16k vectors, index built once)
+        run: python -X utf8 scripts/probe_keep_index.py base --bank "$RUNNER_TEMP/out/bank.npz" --data "$RUNNER_TEMP/out/base/db"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: keep-base
+          path: ${{ runner.temp }}/out
+          retention-days: 3
+
+  trials:
+    needs: bank
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {mode: keep, shard: 0, trials: 13}
+          - {mode: keep, shard: 1, trials: 13}
+          - {mode: keep, shard: 2, trials: 13}
+          - {mode: keep, shard: 3, trials: 13}
+          - {mode: keep, shard: 4, trials: 13}
+          - {mode: keep, shard: 5, trials: 13}
+          - {mode: keep, shard: 6, trials: 13}
+          - {mode: keep, shard: 7, trials: 13}
+          - {mode: unguarded, shard: 8, trials: 10}
+          - {mode: unguarded, shard: 9, trials: 10}
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: keep-base
+          path: ${{ runner.temp }}/out
+      - name: trials in a 1 vCPU / 2 GiB container
+        env:
+          MODE: ${{ matrix.mode }}
+          TRIALS: ${{ matrix.trials }}
+          SEED0: ${{ matrix.shard }}00
+        run: |
+          set -euo pipefail
+          docker run --rm --cpus=1 --memory=2g --memory-swap=2g \
+            -v "$GITHUB_WORKSPACE:/w" -v "$RUNNER_TEMP/out:/out" -w /w \
+            -e MODE -e TRIALS -e SEED0 -e GITHUB_STEP_SUMMARY=/out/summary.md \
+            -e VINC_LBUG_EXT_DIR=/w/packaging/lbug_extensions \
+            python:3.12-slim-bookworm bash -c '
+              pip install -q --root-user-action=ignore "ladybug==0.20.4" numpy &&
+              python -X utf8 scripts/probe_keep_index.py run --mode "$MODE" \
+                --bank /out/bank.npz --base /out/base --work /tmp/w \
+                --out "/out/r-$MODE-$SEED0.json" --trials "$TRIALS" --seed0 "$SEED0" --docs 30'
+          cat "$RUNNER_TEMP/out/summary.md" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: keep-${{ matrix.mode }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/out/r-*.json
