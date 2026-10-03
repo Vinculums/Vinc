@@ -28,7 +28,7 @@ import sys
 import threading
 import time
 import weakref
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 
 from . import pkns
 from .config import StoreConfig
@@ -682,6 +682,45 @@ class _DdlGuard:
 
 #: 프로세스에 하나. 테스트가 직접 쓴다.
 DDL_GUARD = _DdlGuard()
+
+
+#: 임베딩 적용이 청크 벡터 색인을 **드롭하지 않아도 되는** 엔진 판(VIN-236). 이 판의 HNSW
+#: 증분 삽입은 혼자서는 살지만, 삽입이 남긴 색인을 다른 커넥션이 읽는 동안 자동 체크포인트가
+#: 돌면 세그폴트한다. 그래서 드롭을 빼는 대신 벡터 질의를 문장마다 배타로 돌린다.
+#: 측정하지 않은 판에서는 플래그가 켜져 있어도 드롭으로 물러난다.
+#: 근거: [[record:ladybug-0-20-4-hnsw-insert-survives-alone-but-a-reader-during-a-checkpoint-segfaults-2026-09-30]]
+_KEEP_VEC_INDEX_ENGINES = ("0.20.4",)
+
+
+@functools.lru_cache(maxsize=None)
+def _keep_vec_engine_ok(ver: str) -> bool:
+    ok = ver in _KEEP_VEC_INDEX_ENGINES
+    if not ok:
+        print(f"vinc: ⚠ VINC_KEEP_VECTOR_INDEX 가 켜졌지만 엔진 {ver or '?'} 은 측정한 판"
+              f"({', '.join(_KEEP_VEC_INDEX_ENGINES)})이 아니다 — 쓰기마다 벡터 색인을 드롭한다",
+              file=sys.stderr, flush=True)
+    return ok
+
+
+def keep_vector_index() -> bool:
+    """`VINC_KEEP_VECTOR_INDEX=on` 이고 엔진이 측정한 판일 때만 참(기본 거짓).
+
+    참이면 두 자리가 함께 바뀐다: 임베딩 적용이 색인을 드롭하지 않고
+    (`api.docstore._apply_embeddings`), 벡터 질의가 배타 가드 안에서 돈다
+    (:meth:`EmbeddedBackend.vector_search` · :meth:`EmbeddedBackend.node_vector_search`).
+    하나만 바꾸면 세그폴트 자리로 돌아간다."""
+    if os.environ.get("VINC_KEEP_VECTOR_INDEX", "").strip().lower() not in ("1", "true", "on"):
+        return False
+    try:
+        ver = str(getattr(__import__("ladybug"), "__version__", "") or "")
+    except Exception:          # noqa: BLE001 — 드라이버가 없으면 색인도 없다
+        return False
+    return _keep_vec_engine_ok(ver)
+
+
+def _vector_query_guard():
+    """벡터 질의 한 문장을 감싼다 — 색인을 유지하는 동안만 배타다(:func:`keep_vector_index`)."""
+    return DDL_GUARD.exclusive() if keep_vector_index() else nullcontext()
 
 
 def _exclusive_ddl(fn):
@@ -1914,7 +1953,8 @@ class EmbeddedBackend:
             "RETURN p.chunk_id AS id, p.text AS text, distance "
             "ORDER BY distance"
         )
-        rows = _exec_to_dicts(c, cypher, params)
+        with _vector_query_guard():
+            rows = _exec_to_dicts(c, cypher, params)
         best: dict[str, dict] = {}
         for r in rows:                       # 이미 distance 오름차순 — 첫 등장이 최소
             best.setdefault(r.get("id"), r)
@@ -1963,7 +2003,8 @@ class EmbeddedBackend:
             "ORDER BY distance"
         )
         try:
-            rows = _exec_to_dicts(c, cypher, params)
+            with _vector_query_guard():
+                rows = _exec_to_dicts(c, cypher, params)
             if owner and len(rows) < int(top_k):
                 # 전역 상위 k 에 이 소유자의 행이 모자랐다 — 그 소유자 안을 정확히 훑는다
                 # (:meth:`vector_search` 와 같은 이유·같은 거리).
