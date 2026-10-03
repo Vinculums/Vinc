@@ -988,6 +988,9 @@ def main(argv: list[str] | None = None) -> int:
     backend_module = sys.modules.get("store.embedded_backend")
     if backend_module is not None:
         backend_module.EmbeddedBackend.last_open_error = ""
+    from store.open_diagnostics import emit_open_failure
+    diagnostic_token = emit_open_failure.set(
+        "--debug" in (argv if argv is not None else sys.argv[1:]) or os.environ.get("VINC_DEBUG") == "1")
     try:
         return _main(argv)
     except _UsageError as exc:
@@ -1010,6 +1013,8 @@ def main(argv: list[str] | None = None) -> int:
         return cli_output.internal_error(exc)
     except Exception as exc:  # noqa: BLE001 — CLI 오류 경계를 한 곳에 둔다.
         return cli_output.internal_error(exc, debug="--debug" in (argv or sys.argv[1:]))
+    finally:
+        emit_open_failure.reset(diagnostic_token)
 
 
 if __name__ == "__main__":

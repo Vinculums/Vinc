@@ -31,6 +31,7 @@ import weakref
 from contextlib import contextmanager, nullcontext
 
 from . import pkns
+from .open_diagnostics import emit_open_failure
 from .config import StoreConfig
 from .embedded_schema import (DOMAIN_HIERARCHY_VERSION,
                               EPISODE_TIME_BACKFILL_VERSION, LEX_INDEX_KEY,
@@ -1035,8 +1036,9 @@ class EmbeddedBackend:
                 cls.last_open_error += f" | {wal_note}"
             # stderr 에 남긴다 — 이전엔 이 자리에 없어서 2026-08-03 장애 때 실제
             # 예외 문구를 어디서도 못 봤다(배너의 "driver": null 한 줄뿐).
-            print(f"[embedded_backend] store open failed: {cls.last_open_error}",
-                  file=sys.stderr, flush=True)
+            if emit_open_failure.get():
+                print(f"[embedded_backend] store open failed: {cls.last_open_error}",
+                      file=sys.stderr, flush=True)
             return None
         cls.last_open_error = ""
         # 열리긴 했다 — 그래도 무장돼 있으면 지금 말한다. **지금이 유일하게 값싼 시점**
