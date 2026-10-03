@@ -120,8 +120,12 @@ def test_real_refs_refresh_progress_preserves_machine_stream(tmp_path, monkeypat
         assert result["status"] == (0 if success else 1)
         if fmt == "ndjson":
             assert len((got.out if success else got.err).splitlines()) == 1
-    else:
+    elif success:
         assert "[refresh]" in got.err
+    else:
+        assert got.out == ""
+        assert got.err.startswith("vinc: ")
+        assert len(got.err.splitlines()) == 1
     assert manifest.exists() == success
 
 

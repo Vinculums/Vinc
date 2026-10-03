@@ -524,7 +524,7 @@ def _main(argv: list[str] | None = None) -> int:
                     scan=lambda: refs.scan_roots(roots),
                     fetch=lambda: refs.fetch_docs(call=account_call),
                     verify=lambda ids: refs.verify_nodes(ids, call=account_call))
-            if cli_output.chosen_format() == "human":
+            if cli_output.chosen_format() == "human" and status == 0:
                 sys.stderr.write(progress.getvalue())
             elif diagnostics.enabled():
                 for line in progress.getvalue().splitlines():
