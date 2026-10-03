@@ -8,6 +8,7 @@ import sys
 import pytest
 
 from api import cli, cli_target, remote_client
+from scripts import version_sync
 from store import backend
 from vinc_mcp import __version__
 
@@ -52,3 +53,23 @@ def test_root_help_lists_version_flags(capsys):
     got = capsys.readouterr()
     assert "--version, -V" in got.out
     assert got.err == ""
+
+
+@pytest.mark.parametrize("bad_flag", ["--version", "-V"])
+@pytest.mark.parametrize("exit_code,stdout,stderr", [
+    (0, "vinc 99.99.99\n", ""),
+    (0, f"vinc {__version__}\n", "unexpected diagnostic"),
+    (2, f"vinc {__version__}\n", ""),
+])
+def test_release_version_gate_rejects_broken_cli_output(
+        bad_flag, exit_code, stdout, stderr, monkeypatch, capsys):
+    monkeypatch.setattr(version_sync, "collect", lambda: ({"canonical": __version__}, []))
+
+    def run(argv, **kwargs):
+        if argv[-1] == bad_flag:
+            return subprocess.CompletedProcess(argv, exit_code, stdout, stderr)
+        return subprocess.CompletedProcess(argv, 0, f"vinc {__version__}\n", "")
+
+    monkeypatch.setattr(version_sync.subprocess, "run", run)
+    assert version_sync.cmd_check(None) == 1
+    assert f"CLI {bad_flag}" in capsys.readouterr().out
