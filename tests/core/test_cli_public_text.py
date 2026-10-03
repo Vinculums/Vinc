@@ -105,7 +105,7 @@ def test_manifest_shape_has_product_diagnostic(tmp_path, capsys, payload):
 @pytest.mark.parametrize("success", [True, False])
 def test_real_refs_refresh_progress_preserves_machine_stream(tmp_path, monkeypatch, capsys, fmt, success):
     from api import refs
-    (tmp_path / "source.py").write_text("# [[concept:fixture]]\n")
+    (tmp_path / "source.py").write_text("# [[" + "concept:fixture" + "]]\n")
     manifest = tmp_path / "refs.json"
     monkeypatch.setattr("api.remote_client.api_key", lambda: "fixture")
     monkeypatch.setattr(refs, "fetch_docs", lambda **kwargs: [])
