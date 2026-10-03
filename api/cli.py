@@ -15,6 +15,8 @@ import json
 import os
 import sys
 
+from vinc_mcp import __version__
+
 from . import query as q
 from . import preference as pref
 from . import activate as act
@@ -130,6 +132,8 @@ def _main(argv: list[str] | None = None) -> int:
             pass
 
     ap = _Parser(description="Vinc query API")
+    ap.add_argument("--version", "-V", action="version", version=f"vinc {__version__}",
+                    help="show the installed version and exit")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     r = sub.add_parser("recall", help="recall a learner's episodes (owner + open domain scope)")
