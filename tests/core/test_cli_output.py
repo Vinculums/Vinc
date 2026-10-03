@@ -74,5 +74,7 @@ def test_store_open_diagnostic_never_corrupts_json(tmp_path):
     )
     assert proc.returncode == 1
     assert proc.stdout == ""
-    assert '"error"' in proc.stderr
-    assert "store open failed" in proc.stderr
+    result = json.loads(proc.stderr)
+    assert result["error"]
+    assert "Database path cannot be a directory" in result["open_error"]
+    assert "[embedded_backend]" not in proc.stderr
