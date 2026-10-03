@@ -1207,6 +1207,18 @@ def node_plan(node_id: str, *, owner: str) -> QueryPlan:
     """정확한 id의 저장 필드만 읽는다. 이웃·발췌·배치는 조회하지 않는다."""
     from store.embedded_schema import node_table_specs
 
+    if node_id.startswith("domain:"):
+        name = node_id[len("domain:"):]
+        # Domain은 무소유 구조다. 소유자가 쓰는 주제와 그 조상만 정확히 읽는다.
+        # 근거: [[vinc.spec.dataplane §2.1]]
+        branches = [
+            f"MATCH (n:{label}) WHERE n.owner_id = $owner "
+            "AND (n.domain = $name OR starts_with(n.domain, $prefix)) "
+            "RETURN $name AS name"
+            for label in ("Concept", "Record", "Episode", "Decision")
+        ]
+        return QueryPlan("node", " UNION ALL ".join(branches),
+                         {"owner": owner, "name": name, "prefix": name + "/"})
     label, pk = _seed_table(node_id)
     # 열 목록은 스키마를 따른다. 종류에 없는 props나 유효구간을 만들어 내지 않는다.
     # 근거: [[vinc.spec.dataplane §2.2]]
@@ -1227,7 +1239,10 @@ def node(node_id: str, *, owner: str, cfg=None, store=None) -> dict:
     result["node"] = None
     if rows:
         stored = dict(rows[0])
-        stored["kind"] = stored.get("type") or _seed_table(node_id)[0].lower()
+        if node_id.startswith("domain:"):
+            stored = {"id": node_id, "kind": "domain", "name": stored["name"]}
+        else:
+            stored["kind"] = stored.get("type") or _seed_table(node_id)[0].lower()
         if "props" in stored:
             stored["props"] = _props_to_obj(stored["props"])
         result["node"] = stored

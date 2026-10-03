@@ -159,7 +159,7 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
         return "vinc_conventions", {**common, "lang": args.lang}, None
     if cmd == "node":
         if args.nodecmd == "get":
-            name, data = "vinc_brief", {"query": args.id}
+            name, data = "vinc_node", {"node_id": args.id}
         elif args.nodecmd == "neighbors":
             name, data = "vinc_neighbors", {"node": args.id, "limit": args.limit}
         else:
