@@ -15,6 +15,10 @@ def configure(enabled: bool) -> None:
     _enabled.set(enabled)
 
 
+def enabled() -> bool:
+    return _enabled.get()
+
+
 def trace(method: str, route: str, status, started: float, *, request_id="", transport="http") -> None:
     if not _enabled.get():
         return

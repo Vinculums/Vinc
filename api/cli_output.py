@@ -64,6 +64,8 @@ def _human(result: Any, command: str) -> str:
         return str(result)
     if command in ("doc get", "conventions") and result.get("text") is not None:
         return str(result["text"])
+    if command == "refs check":
+        return f"{result.get('cited', 0)} citations checked; {len(result.get('missing') or [])} missing\nmanifest: {result.get('manifest', '')}"
     if command == "whoami":
         lines = [f"{key}: {result[key]}" for key in
                  ("target", "owner", "scope", "key_scope", "spaces_source", "data_file") if key in result]

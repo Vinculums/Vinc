@@ -37,9 +37,8 @@ def _csv(val: str | None) -> list[str] | None:
 #: 응답에 실재 owner 목록을 붙이는 쪽을 먼저 해 봤는데, 그러면 **CLI 응답만** 달라져
 #: HTTP==CLI 등가(`tests/core/test_server.py` EquivalenceTests)가 깨진다. 테스트된 불변식을
 #: 편의 메시지와 맞바꾸지 않는다.
-_OWNER_HELP = ("owner_id — 이 기기 스토어의 값은 `tenant:local` 이고(앱·로컬 MCP 공통), 계정을 연결하면 "
-               "`user:<uuid>` 가 섞인다. 사람 이름·계정 이름이 아니다(넣으면 조용히 "
-               "0건). 이 스토어에 무엇이 있는지는 `domains`(--owner 생략 가능)로 본다")
+_OWNER_HELP = ("local owner_id (default tenant:local; linked accounts use user:<uuid>). "
+               "Use domains to inspect topics in this store")
 
 
 def _emit(obj: dict) -> int:
@@ -95,7 +94,7 @@ def _add_output_options(parser: argparse.ArgumentParser, *, root: bool = False) 
                         dest="console_format", default=default,
                         help="alias for --format json")
     parser.add_argument("--debug", action="store_true", default=False if root else argparse.SUPPRESS,
-                        help="show a traceback for unexpected errors")
+                        help='trace sanitized request routes and unexpected errors on stderr')
     for action in parser._actions:
         if isinstance(action, argparse._SubParsersAction):
             for child in action.choices.values():
@@ -148,15 +147,15 @@ def _main(argv: list[str] | None = None) -> int:
         except Exception:
             pass
 
-    ap = _Parser(description="Vinc query API")
+    ap = _Parser(description='Vinc command line interface')
     ap.add_argument("--version", "-V", action="version", version=f"vinc {__version__}",
                     help="show the installed version and exit")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    r = sub.add_parser("recall", help="recall a learner's episodes (owner + open domain scope)")
+    r = sub.add_parser("recall", help='read recent episodes in the graph')
     r.add_argument("--query", default="")
     r.add_argument("--owner", default=None, help=_OWNER_HELP)
-    r.add_argument("--domain", default=None, help="learning domain (free/user-defined: physics, math, art, …)")
+    r.add_argument("--domain", default=None, help='learning domain (free/user-defined: physics, math, art, ...)')
     r.add_argument("--tenant", default=None, help="tenant_id scope (governance boundary)")
     r.add_argument("--workspace", default=None)
     r.add_argument("--rank", choices=["recency", "preference"], default="recency",
@@ -164,8 +163,8 @@ def _main(argv: list[str] | None = None) -> int:
     r.add_argument("--tags", default=None, help="comma-separated tags to boost (rank=preference)")
     r.add_argument("--limit", type=int, default=10)
 
-    dm = sub.add_parser("domains", help="list a learner's domains (discovered from data, not a fixed list)")
-    dm.add_argument("--owner", default=None, help="owner_id scope (omit for all learners)")
+    dm = sub.add_parser("domains", help='list topics present in the graph')
+    dm.add_argument("--owner", default=None, help='local owner scope (omit for all local owners)')
 
     # ⚠ **평시에는 부를 일이 없다** — 파생은 부팅 데이터 스텝이 하고 이후는 쓰기 경로가
     # 유지한다([[vinc.spec.dataplane §7]]). 이 명령의 존재 이유는 `--rename` 뿐이다:
@@ -183,10 +182,10 @@ def _main(argv: list[str] | None = None) -> int:
     dh_.add_argument("--dry-run", action="store_true",
                      help="report what would change without writing")
 
-    lm = sub.add_parser("learner", help="a learner's method — how they learn (LearnerPattern / U-patterns)")
+    lm = sub.add_parser("learner", help='read local activity patterns')
     lm.add_argument("--owner", required=True, help=_OWNER_HELP)
 
-    gr = sub.add_parser("graph", help="learning knowledge-graph (concepts + relations) for a learner")
+    gr = sub.add_parser("graph", help='read the local graph of concepts and relations')
     gr.add_argument("--owner", required=True, help=_OWNER_HELP)
     gr.add_argument("--domain", default=None, help="narrow to one open/user-defined domain")
 
@@ -196,23 +195,23 @@ def _main(argv: list[str] | None = None) -> int:
     # 맞춘다(오류 없이 아무 일도 안 일어난다). 근거: [[vinc.plan.node-pk-namespacing]] §7
     pn = sub.add_parser("pin", help="pin/unpin an Episode (preference signal)")
     pn.add_argument("--episode", required=True)
-    pn.add_argument("--owner", default=None, help="owner scope (SEC-1) — 네임스페이싱된 스토어에서는 필수")
+    pn.add_argument("--owner", default=None, help='local owner scope (required for namespaced stores)')
     pn.add_argument("--off", action="store_true", help="unpin instead of pin")
 
     tg = sub.add_parser("tag", help="add owner tags to an Episode (preference signal)")
     tg.add_argument("--episode", required=True)
-    tg.add_argument("--owner", default=None, help="owner scope (SEC-1) — 네임스페이싱된 스토어에서는 필수")
+    tg.add_argument("--owner", default=None, help='local owner scope (required for namespaced stores)')
     tg.add_argument("--tags", required=True, help="comma-separated tags")
 
     tc = sub.add_parser("touch", help="record a recall hit (access-frequency signal)")
     tc.add_argument("--episode", required=True)
-    tc.add_argument("--owner", default=None, help="owner scope (SEC-1) — 네임스페이싱된 스토어에서는 필수")
+    tc.add_argument("--owner", default=None, help='local owner scope (required for namespaced stores)')
     tc.add_argument("--now", default=None, help="ISO-8601 timestamp for last_access (optional)")
 
     av = sub.add_parser("activate", help="export owned memory as a portable context pack (+ MCP manifest)")
     av.add_argument("--query", default="")
     av.add_argument("--owner", required=True, help="owner_id to export ('my memory')")
-    av.add_argument("--domain", default=None, help="learning domain (free/user-defined) — omit to export all domains")
+    av.add_argument("--domain", default=None, help='learning domain (free/user-defined): omit to export all domains')
     av.add_argument("--tenant", default=None)
     av.add_argument("--workspace", default=None)
     av.add_argument("--rank", choices=["recency", "preference"], default="preference")
@@ -245,12 +244,12 @@ def _main(argv: list[str] | None = None) -> int:
     p.add_argument("--topic", default="")
 
     # ── 사이드카(M4 · P2) — HTTP 레이어·백업·온보딩 ──────────────────────────
-    sh = sub.add_parser("share", help="build a share pack — hand your data to someone else (D19)")
+    sh = sub.add_parser("share", help='build a share pack: hand your data to someone else')
     sh.add_argument("--owner", required=True, help="origin owner scope (whose data to pack)")
     sh.add_argument("--domain", default=None, help="scope: one dataset partition")
     sh.add_argument("--tags", default=None, help="scope: comma-separated tag filter (any-overlap)")
     sh.add_argument("--seed", default=None, help="scope: pack only the seed's neighborhood (View L2)")
-    sh.add_argument("--depth", type=int, default=2, help="seed neighborhood depth 1–4 (default 2)")
+    sh.add_argument("--depth", type=int, default=2, help='seed neighborhood depth 1-4 (default 2)')
     sh.add_argument("--no-records", action="store_true", help="concepts/edges only (skip Episode records)")
     sh.add_argument("--out", required=True, help="pack file to write (JSON)")
 
@@ -258,39 +257,38 @@ def _main(argv: list[str] | None = None) -> int:
     im.add_argument("--pack", required=True, help="pack file (JSON) to import")
     im.add_argument("--owner", required=True, help="recipient owner scope to stamp")
 
-    sv = sub.add_parser("serve", help="run the loopback sidecar HTTP server (P2)")
-    sv.add_argument("--host", default="127.0.0.1", help="bind host (loopback only, §3-1)")
+    sv = sub.add_parser("serve", help='run the loopback sidecar HTTP server')
+    sv.add_argument("--host", default="127.0.0.1", help='bind host (loopback only)')
     sv.add_argument("--port", type=int, default=0, help="bind port (0 = ephemeral)")
     sv.add_argument("--parent-pid", type=int, default=None,
-                    help="watch this PID; clean-shutdown when it exits (shell heartbeat, E6)")
+                    help='watch this PID; clean-shutdown when it exits')
     sv.add_argument("--token", default=None, help="session token (default: generate)")
-    sv.add_argument("--profile", default=None, help="domain profile.yml path (backup 동봉)")
+    sv.add_argument("--profile", default=None, help='profile.yml path to include in backups')
     sv.add_argument("--data", default=None,
-                    help="db 파일 경로 (default: MEMORY_DATA_DIR, else ~/.vinc/db — D43). "
-                         "디렉터리를 주면 열리지 않는다")
-    sv.add_argument("--packs", default=None, help="exported packs dir (backup 동봉)")
+                    help='database file path (default: MEMORY_DATA_DIR or ~/.vinc/db); not a directory')
+    sv.add_argument("--packs", default=None, help='exported packs directory to include in backups')
 
     sp = sub.add_parser("store-probe",
-                        help="(내부) 스토어를 한 번 열고 닫는다: 사이드카 기동 점검(store/wal_guard.py)")
-    sp.add_argument("--data", required=True, help="db 파일 경로")
+                        help='maintenance: open and close a store to check startup')
+    sp.add_argument("--data", required=True, help='database file path')
 
     md = sub.add_parser("migrate-dim",
-                        help="기동 전: 벡터 열의 차원이 이 배포의 모델과 다르면 재구축해 갈아 끼운다")
-    md.add_argument("--data", default=None, help="db 파일 경로 (serve 와 같은 규칙)")
+                        help='maintenance: rebuild vector columns when model dimensions differ')
+    md.add_argument("--data", default=None, help='database file path (same default as serve)')
 
     ml = sub.add_parser("migrate-lex",
-                        help="전문 색인을 Chunk.lex(한글 두 글자 묶음)로 옮긴다 — 서비스 밖의 사본에서")
-    ml.add_argument("--data", required=True, help="db 파일 경로. 서비스 중인 스토어가 아니라 사본")
-    ml.add_argument("--batch", type=int, default=200, help="lex 백필 배치 크기")
+                        help='maintenance: migrate the text index on an offline store copy')
+    ml.add_argument("--data", required=True, help='database file path of an offline copy')
+    ml.add_argument("--batch", type=int, default=200, help='text index backfill batch size')
 
     # `python -m store.migrate rebuild` 가 여기로 옮겨졌다(VIN-242): 재구축의 재큐 정책은
     # api 층(`docstore.switch_embed_model`)의 것이라 store 가 그것을 import 할 수 없다.
     sr = sub.add_parser("store-rebuild",
-                        help="원본은 읽기만 하고 새 디렉터리에 재구축한다(차원 변경·재큐 포함)")
-    sr.add_argument("--out", required=True, help="대상 데이터 디렉터리(비어 있어야 한다)")
-    sr.add_argument("--model", required=True, help="재구축 후 임베딩 모델(HF id)")
+                        help='maintenance: rebuild a read-only source into an empty destination')
+    sr.add_argument("--out", required=True, help='empty destination data directory')
+    sr.add_argument("--model", required=True, help='embedding model identifier for the rebuilt store')
 
-    bk = sub.add_parser("backup", help="consistent snapshot + packs/profile archive (R9)")
+    bk = sub.add_parser("backup", help='consistent snapshot + packs/profile archive')
     bk.add_argument("--out", required=True, help="archive output dir")
     bk.add_argument("--data", default=None,
                     help="data home to back up (default: MEMORY_DATA_DIR or ~/.vinc/db)")
@@ -298,27 +296,25 @@ def _main(argv: list[str] | None = None) -> int:
     bk.add_argument("--profile", default=None, help="domain profile.yml to include")
 
     # ── 문서 정본(Chunk=SSoT, D45) — 파일 없는 doc 단위 CRUD ────────────────
-    dc = sub.add_parser("doc", help="document SSoT — put/get/rm/ls raw text as chunks (D45)")
+    dc = sub.add_parser("doc", help='document SSoT: put/get/rm/ls raw text as chunks')
     dsub = dc.add_subparsers(dest="doccmd", required=True)
     dp = dsub.add_parser("put", help="ingest/update a document from raw text (stdin or --file)")
     dp.add_argument("--owner", default=None,
                     help="local owner_id (account target uses the API key)")
-    dp.add_argument("--id", default=None, help="doc_id (omit on create — returned; pass to edit)")
+    dp.add_argument("--id", default=None, help='doc_id (omit on create: returned; pass to edit)')
     dp.add_argument("--title", default=None,
-                    help="문서 제목. **생략하면 기존 제목을 보존한다**(빈 값으로 덮지 않는다). "
-                         "지우려면 --title '' 를 명시할 것")
-    dp.add_argument("--origin", default="", help="출처 표시(조인에 쓰지 않음 — display only)")
+                    help="document title (omit to preserve an existing title; pass --title '' to clear)")
+    dp.add_argument("--origin", default="", help='source label for display; not an identity key')
     dp.add_argument("--file", default=None,
-                    help="read from file (.md/.txt/.rst/.pdf — 편의 입력, 정본은 스토어). "
-                         "미지정 시 --title/--origin 은 파일명에서 채운다")
+                    help='read .md/.txt/.rst/.pdf; title and origin default to the filename')
     dp.add_argument("--data", default=None, help="data home (default: MEMORY_DATA_DIR or ~/.vinc/db)")
     dg = dsub.add_parser("get", help="reconstruct a document from its chunks (+hash verify)")
     dg.add_argument("--id", required=True)
-    dg.add_argument("--owner", default=None, help="owner guard (SEC-1)")
+    dg.add_argument("--owner", default=None, help='local owner scope')
     dg.add_argument("--data", default=None)
     dr = dsub.add_parser("rm", help="delete a document (chunks + identity)")
     dr.add_argument("--id", required=True)
-    dr.add_argument("--owner", default=None, help="owner guard (SEC-1)")
+    dr.add_argument("--owner", default=None, help='local owner scope')
     dr.add_argument("--data", default=None)
     dr.add_argument("--yes", action="store_true", help="confirm deletion")
     dl = dsub.add_parser("ls", help="list documents")
@@ -326,7 +322,7 @@ def _main(argv: list[str] | None = None) -> int:
     dl.add_argument("--data", default=None)
 
     # MCP 도구와 같은 결과 봉투를 쓰는 로컬 동사. 오래된 동사는 C6에서 옮긴다.
-    wi = sub.add_parser("whoami", help="show the local graph identity")
+    wi = sub.add_parser("whoami", help='show graph identity, target and accessible spaces')
     wi.add_argument("--owner", default=None)
     cv = sub.add_parser("conventions", help="read graph conventions")
     cv.add_argument("--lang", default=None)
@@ -391,7 +387,7 @@ def _main(argv: list[str] | None = None) -> int:
     dx.add_argument("id")
     dx.add_argument("--apply", action="store_true")
     dx.add_argument("--owner", default=None)
-    ca = sub.add_parser("call", help="call any of the 24 MCP tools")
+    ca = sub.add_parser("call", help='call a registered MCP tool')
     ca.add_argument("tool")
     source = ca.add_mutually_exclusive_group()
     source.add_argument("--args", default=None, help="JSON object")
@@ -410,11 +406,11 @@ def _main(argv: list[str] | None = None) -> int:
     rfsub = rf.add_subparsers(dest="refscmd", required=True)
     for verb in ("check", "refresh"):
         child = rfsub.add_parser(verb)
-        child.add_argument("--manifest", default=None)
+        child.add_argument("--manifest", default=None, help="manifest path (default: <root>/scripts/graph-refs.json)")
         child.add_argument("--root", dest="roots", action="append", default=None)
 
     # ── GRAPH.md — 어시스턴트 쓰기 관례 ([[vinc.canon.graph-conventions]]) ──────────────────────
-    gm = sub.add_parser("graph-md", help="assistant writing conventions — build/check GRAPH.md")
+    gm = sub.add_parser("graph-md", help='assistant writing conventions: build/check GRAPH.md')
     gmsub = gm.add_subparsers(dest="gmcmd", required=True)
     gb = gmsub.add_parser("build", help="write the generated region from the store (prose untouched)")
     gb.add_argument("--owner", default=None, help="owner scope for the domain census")
@@ -422,32 +418,30 @@ def _main(argv: list[str] | None = None) -> int:
                     help="existing GRAPH.md to refresh in place; omit to print a new one")
     gb.add_argument("--out", default=None, help="write to this path instead of stdout")
     gb.add_argument("--doc", action="store_true",
-                    help="read/write the conventions document in the store "
-                         "(its doc_id is derived from the owner) instead of a file "
-                         "— needs --owner")
+                    help='read/write the conventions document in the store (its doc_id is derived from the owner) instead of a file: needs --owner')
     gb.add_argument("--lang", choices=("en", "ko"), default=None,
                     help="template language for a new file (default en; refresh keeps the file's own)")
     gb.add_argument("--data", default=None)
-    gc = gmsub.add_parser("check", help="9 shape rules (0 pass · 1 fix · 2 block)")
+    gc = gmsub.add_parser("check", help='check shape rules (0 pass, 1 fix, 2 blocked)')
     gc.add_argument("--file", default=None)
     gc.add_argument("--doc", action="store_true",
                     help="check the conventions document in the store instead of a file")
     gc.add_argument("--owner", default=None)
     gc.add_argument("--no-store", action="store_true",
-                    help="shape only — skip the rules that compare against the store")
+                    help='shape only: skip the rules that compare against the store')
     gc.add_argument("--data", default=None)
 
-    ob = sub.add_parser("onboard", help="create the local credential (argon2id passphrase, F4)")
+    ob = sub.add_parser("onboard", help="create the local credential (argon2id passphrase)")
     ob.add_argument("--profile", required=True, help="credential file path (auth.json)")
     ob.add_argument("--passphrase", default=None,
-                    help="passphrase (omit to read from stdin/getpass — non-echoing)")
+                    help='passphrase (omit to read from stdin/getpass: non-echoing)')
     ob.add_argument("--force", action="store_true", help="overwrite an existing credential")
 
     # ── MCP 어댑터(D11 · P5 선행) — stdio/HTTP 전송 + 클라이언트 등록 ────────
     mc = sub.add_parser("mcp", help="connect an AI assistant to this store (MCP)")
     msub = mc.add_subparsers(dest="mcpcmd", required=True)
-    for name, hint in (("serve", "stdio transport — for local MCP hosts"),
-                       ("serve-http", "Streamable HTTP transport — remote profile (D36)")):
+    for name, hint in (("serve", "stdio transport for MCP hosts"),
+                       ("serve-http", "Streamable HTTP transport for a hosted profile")):
         mp = msub.add_parser(name, help=hint)
         mp.add_argument("--base", default=None, help="sidecar base URL (default 127.0.0.1:8787)")
         mp.add_argument("--token", default=None, help="sidecar session token")
@@ -455,7 +449,7 @@ def _main(argv: list[str] | None = None) -> int:
         mp.add_argument("--no-spawn", action="store_true",
                         help="fail instead of starting a sidecar when none is running")
         if name == "serve-http":
-            mp.add_argument("--host", default="127.0.0.1", help="bind host (loopback only — F4)")
+            mp.add_argument("--host", default="127.0.0.1", help='bind host (loopback only)')
             mp.add_argument("--port", type=int, default=8790)
             mp.add_argument("--auth-token", default=None,
                             help="static bearer token (default: env VINC_MCP_TOKEN)")
@@ -499,7 +493,9 @@ def _main(argv: list[str] | None = None) -> int:
         if any(not os.path.isdir(root) for root in roots):
             return cli_output.usage_error("--root must name an existing directory")
         if args.refscmd == "check":
-            return refs.offline_check(manifest=manifest, roots=roots)
+            result = refs.offline_result(manifest=manifest, roots=roots)
+            _emit(result)
+            return result["status"]
         from . import remote_client
         from contextlib import redirect_stdout
         if not remote_client.api_key():
