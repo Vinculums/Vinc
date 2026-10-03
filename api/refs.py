@@ -241,6 +241,7 @@ def refresh(*, manifest: str = MANIFEST, root: str = ROOT,
                        "gate_graph_refs.py checks code citations against this. "
                        "Identifiers only: titles would carry forbidden vocabulary into the repo.",
                "docs": sorted(docs), "nodes": sorted(nodes)}
+    os.makedirs(os.path.dirname(os.path.abspath(manifest)), exist_ok=True)
     with io.open(manifest, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2, sort_keys=False)
         fh.write("\n")
