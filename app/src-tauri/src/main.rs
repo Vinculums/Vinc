@@ -222,12 +222,13 @@ fn b64(bytes: &[u8]) -> String {
 /// 사이드카 CLI 의 최상위 하위 명령 — `api/cli.py` 의 `sub.add_parser(...)` 와 1:1.
 /// ⚠ 여기에 없는 첫 인자는 **전부 창을 여는 쪽**으로 간다. 새 하위 명령을 CLI 에
 /// 추가하면 이 배열도 같이 늘려야 한다(안 늘리면 그 명령만 창이 뜬다).
-/// `--help`·`-h` 를 포함하는 이유는 argparse 가 그 자리에서 사용법을 찍어 주기 때문이다.
-const CLI_VERBS: [&str; 37] = [
+/// `--help`·`-h`·`--version`·`-V` 도 창 없이 번들 CLI 가 직접 출력한다.
+const CLI_VERBS: [&str; 39] = [
     "activate", "backup", "brief", "call", "conventions", "decide", "delete", "diagnose",
     "doc", "domain-backfill", "domains", "edge", "export", "graph", "graph-md", "import", "ingest",
     "learner", "mcp", "merge", "migrate-dim", "node", "onboard", "path", "pin", "plan",
     "recall", "refs", "search", "serve", "share", "tag", "ties", "touch", "whoami", "--help", "-h",
+    "--version", "-V",
 ];
 
 /// argv 가 CLI 호출이면 사이드카에 넘길 인자를, 아니면 `None`(= 창을 연다).
@@ -844,6 +845,28 @@ mod tests {
         assert!(cli_forward(vec!["vinc".to_string(), "-h".to_string()]).is_some());
     }
 
+    /// 버전은 대상·키·스토어 설정을 읽기 전에 번들 CLI 에서 끝나야 한다.
+    /// 전역 옵션 앞뒤 모두 원래 순서를 보존해 CLI 의 조기 종료에 맡긴다.
+    #[test]
+    fn version_별칭은_설정과_무관하게_cli_로_간다() {
+        for alias in ["--version", "-V"] {
+            for prefix in [
+                vec![],
+                vec!["--target", "invalid", "--space", "missing"],
+                vec!["--target=account", "--format=json", "--debug"],
+            ] {
+                let mut argv = vec!["vinc-app"];
+                argv.extend(prefix);
+                argv.push(alias);
+                let args = argv.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+                assert_eq!(cli_forward(args.clone()), Some(args[1..].to_vec()), "{argv:?}");
+            }
+            let args = ["vinc-app", alias, "--target", "invalid"]
+                .into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert_eq!(cli_forward(args.clone()), Some(args[1..].to_vec()));
+        }
+    }
+
     #[test]
     fn 전역_출력_옵션_뒤_동사도_cli_로_간다() {
         let args = vec!["vinc", "--format", "json", "doc", "ls"]
@@ -874,7 +897,8 @@ mod tests {
     fn 동사_목록은_사이드카_cli_와_짝이다() {
         for v in ["mcp", "serve", "search", "doc", "import", "share", "graph-md", "onboard",
                   "brief", "migrate-dim", "whoami", "conventions", "node", "path", "ties",
-                  "diagnose", "ingest", "delete", "edge", "merge", "call", "export", "refs"] {
+                  "diagnose", "ingest", "delete", "edge", "merge", "call", "export", "refs",
+                  "--help", "-h", "--version", "-V"] {
             assert!(CLI_VERBS.contains(&v), "{v} 가 목록에 없다");
         }
         assert!(!CLI_VERBS.contains(&"install"), "install 은 mcp 의 하위라 최상위가 아니다");
