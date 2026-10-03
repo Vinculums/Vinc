@@ -99,6 +99,7 @@ def cmd_bank(a) -> int:
     sys.path.insert(0, str(ROOT / "packaging"))
     import embed_worker as ew
     files = sorted(f for g in a.corpus.split(",") for f in glob.glob(str(ROOT / g), recursive=True))
+    files = files[::a.stride]          # 크기 분포는 그대로 두고 인코딩 시간만 줄인다
     s = _open(a.work)
     emb = ew._Embedder()
     docs, vecs, t0 = [], [], time.monotonic()
@@ -117,6 +118,7 @@ def cmd_bank(a) -> int:
         print(f"bank {len(docs)} {sum(len(v) for v in vecs)} {time.monotonic() - t0:.0f}s", flush=True)
     s.close()
     meta = {"docs": docs, "model": ew.MODEL, "secs": round(time.monotonic() - t0, 1)}
+    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     np.savez(a.out, vecs=np.concatenate(vecs), meta=np.array(json.dumps(meta)))
     print(json.dumps({"docs": len(docs), "vectors": int(sum(len(v) for v in vecs)),
                       "chars": sum(len(d["text"]) for d in docs), "secs": meta["secs"]}))
@@ -339,6 +341,7 @@ def main() -> int:
     b.add_argument("--work", required=True)
     b.add_argument("--out", required=True)
     b.add_argument("--corpus", default="_migration/**/*.md")
+    b.add_argument("--stride", type=int, default=1)
     b = sub.add_parser("base")
     b.add_argument("--bank", required=True)
     b.add_argument("--data", required=True)

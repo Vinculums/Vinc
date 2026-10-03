@@ -15,7 +15,7 @@ permissions:
 jobs:
   bank:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 200
     env:
       VINC_EMBED_MODEL: BAAI/bge-m3
       VINC_EMBED_DIM: "1024"
@@ -35,10 +35,11 @@ jobs:
       - name: bake bge-m3 int8 (the hub's script)
         run: python packaging/bake_embed_model.py
       - name: bank (worker split, prefix and encode)
-        run: python -X utf8 scripts/probe_keep_index.py bank --work "$RUNNER_TEMP/bankstore" --out "$RUNNER_TEMP/out/bank.npz"
+        run: python -X utf8 scripts/probe_keep_index.py bank --work "$RUNNER_TEMP/bankstore" --out "$RUNNER_TEMP/out/bank.npz" --stride 2
       - name: base (16k vectors, index built once)
         run: python -X utf8 scripts/probe_keep_index.py base --bank "$RUNNER_TEMP/out/bank.npz" --data "$RUNNER_TEMP/out/base/db"
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: keep-base
           path: ${{ runner.temp }}/out
