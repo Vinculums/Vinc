@@ -74,7 +74,13 @@ def scan_roots(roots: list[str]) -> list[tuple[str, int, str]]:
 def load_manifest(path: str = MANIFEST) -> set[str]:
     with io.open(path, encoding="utf-8") as fh:
         data = json.load(fh)
-    return set(data.get("docs") or []) | set(data.get("nodes") or [])
+    if not isinstance(data, dict):
+        raise ValueError("manifest must be an object")
+    for field in ("docs", "nodes"):
+        values = data.get(field, [])
+        if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
+            raise ValueError(f"manifest {field} must be a list of identifiers")
+    return set(data.get("docs", [])) | set(data.get("nodes", []))
 
 
 def offline_result(*, manifest: str, roots: list[str]) -> dict:
