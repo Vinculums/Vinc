@@ -47,7 +47,7 @@ from typing import Any, Callable
 
 from engines import domain_hierarchy
 from store import pkns
-from store.embedded_backend import DDL_GUARD
+from store.embedded_backend import DDL_GUARD, keep_vector_index
 from store.lexical import lex_text
 
 from . import graphmd
@@ -1392,7 +1392,10 @@ def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
         return base
     # 워커가 채운 벡터를 박는 자리 — 없던 벡터가 생기므로 드롭이 **필수**다(위와 동종).
     # FTS 는 안 건드리므로 임베딩이 도는 동안에도 키워드 검색이 계속 답한다.
-    _drop_vector_index_if_any(store)
+    # 예외는 `keep_vector_index()` 하나다: 측정한 엔진에서 벡터 질의를 배타로 돌리는 동안은
+    # 색인을 두고 증분으로 넣는다(이 적용 전체가 이미 배타다). 근거: VIN-236
+    if not keep_vector_index():
+        _drop_vector_index_if_any(store)
     applied = vecs = 0
     for cid, many in norm.items():
         # ⚠ 먼저 **기존 자식을 지운다**. 안 그러면 재임베딩 때 옛 조각이 남아
