@@ -67,8 +67,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from api import docstore, encoder_runtime                 # noqa: E402
-from store import pkns                                    # noqa: E402
+from api import docstore                                  # noqa: E402
+from store import encoder_runtime, pkns                   # noqa: E402
 from store.embedded_schema import node_table_specs, rel_tables_on  # noqa: E402
 
 from rebuild_store_native import _files, _open            # noqa: E402
@@ -440,7 +440,7 @@ _VEC_TABLES = ("ChunkVec", "NodeVec")
 def hub_runtime() -> str:
     """허브 인코더가 보고하는 지문을 이미지의 고정 판으로 짓는다.
 
-    허브에서는 `api.encoder_runtime.fingerprint()` 가 설치된 판을 읽는다. 여기(러너)에는 그
+    허브에서는 `store.encoder_runtime.fingerprint()` 가 설치된 판을 읽는다. 여기(러너)에는 그
     판이 없으므로 같은 모양(`ort=…;tok=…;np=…`, 같은 라벨·순서)을 `Dockerfile.hub` 의 고정
     판에서 짓는다. 하나라도 고정이 없으면 던진다 — 추측한 도장은 도장이 아니다."""
     lines = [ln for ln in _DOCKERFILE.read_text(encoding="utf-8").splitlines()

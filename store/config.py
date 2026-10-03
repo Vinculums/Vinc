@@ -20,12 +20,12 @@ from dataclasses import dataclass, field
 #
 # ⚠ **이 표의 키는 이름 공간이 둘이다.** 여기 별칭("local-en")은 `MEMORY_EMBEDDING_MODEL`
 # 이 주는 것이고 **스토어 벡터 열의 차원**만 정한다. 실제로 벡터를 만드는 주체는
-# `packaging/embed_worker.py` 이고 그쪽은 `VINC_EMBED_MODEL` 로 **HF id**
+# `vinc_rag/embed/worker.py` 이고 그쪽은 `VINC_EMBED_MODEL` 로 **HF id**
 # ("intfloat/multilingual-e5-base")를 받는다. 두 값을 잇는 코드가 **없다** — 오늘
 # 둘이 맞는 것은 기본값이 우연히 둘 다 768 이기 때문이다.
 # 그래서 **양쪽 철자를 다 싣는다**: 어느 쪽 이름으로 설정해도 차원이 맞는다.
 # 근거는 그래프의 record:embed-dim-namespace-split-2026-08-30
-# (이중대괄호 인용을 안 쓴 이유는 `packaging/embed_worker.py::prefix` 주석과 같다 —
+# (이중대괄호 인용을 안 쓴 이유는 `vinc_rag/embed/worker.py::prefix` 주석과 같다 —
 #  매니페스트 갱신에 원격 그래프 키가 필요하다.)
 EMBEDDING_DIM_BY_MODEL = {
     # ── 별칭(MEMORY_EMBEDDING_MODEL · profile.yml) ──────────────────────────

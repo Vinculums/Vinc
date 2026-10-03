@@ -80,7 +80,8 @@ class HubPaths(unittest.TestCase):
         yes = ["api/server.py", "vinc_mcp/http_server.py", "store/x/y.py", "engines/a.py",
                "packaging/lbug_extensions/fts.so", "Dockerfile.hub", "pyproject.toml",
                "packaging/docker-entrypoint.sh", "scripts/check_hub_env.py",
-               ".github/workflows/hub-deploy.yml"]
+               ".github/workflows/hub-deploy.yml",
+               "vinc_rag/embed/worker.py", "vinc_rag/retrieval.py"]
         no = ["apix/a.py", "docs/pyproject.toml", "packaging/other.py", "app/src/api/x.ts",
               "tests/core/test_api.py", ".github/workflows/ci.yml", "Dockerfile.hub.bak"]
         for p in yes:

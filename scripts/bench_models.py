@@ -54,7 +54,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from api.docstore import chunk_doc                          # noqa: E402
-from encoder import Encoder, _load_production_worker        # noqa: E402
+from vinc_rag.embed.encoder import Encoder, _load_production_worker        # noqa: E402
 from make_queries import (                                  # noqa: E402
     _CORPORA, _DOC_KO_THRESHOLD, _ROOT, _body_without_frontmatter, lang_of,
 )

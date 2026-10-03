@@ -24,7 +24,7 @@ if [ "${VINC_ROLE:-}" = "encode" ]; then
   echo "[entrypoint] role=encode — 인코딩 서비스만 (사이드카·MCP 없음)"
   # 모델은 **첫 요청에서** 올라간다(지연 로드). 프로브만 받고 도로 자는 리비전이
   # 646MB 를 올리지 않도록.
-  exec python packaging/embed_worker.py --serve-only --encode-port "$VINC_EMBED_PORT"
+  exec python -m vinc_rag.embed.worker --serve-only --encode-port "$VINC_EMBED_PORT"
 fi
 
 DATA_DIR="${VINC_DATA_DIR:-/data/db}"
@@ -287,7 +287,7 @@ if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
     # 미러를 만들면 벡터의 판을 잘못 기록하므로 새 인코더의 실제 지문을 확인한 뒤
     # 한 번만 시작한다. /health 는 모델을 적재하지 않는다.
     if [ -n "${VINC_EMBED_REMOTE:-}" ]; then
-      mine=$(python3 -c 'from api.encoder_runtime import fingerprint; print(fingerprint())')
+      mine=$(python3 -c 'from store.encoder_runtime import fingerprint; print(fingerprint())')
       build=${VINC_ENCODER_BUILD:-}
       ready=0
       for i in $(seq 1 60); do
@@ -386,7 +386,7 @@ if [ "${VINC_EMBED:-on}" = "on" ]; then
         w_port="$EMBED_PORT"; w_where="127.0.0.1:$EMBED_PORT"
       fi
       VINC_SIDECAR="http://127.0.0.1:8787" \
-        python packaging/embed_worker.py --interval "${VINC_EMBED_INTERVAL:-300}" \
+        python -m vinc_rag.embed.worker --interval "${VINC_EMBED_INTERVAL:-300}" \
           --encode-port "$w_port" &
       cpid=$!
       echo "$cpid" > "$EMBED_PIDFILE"

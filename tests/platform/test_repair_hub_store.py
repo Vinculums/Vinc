@@ -491,7 +491,7 @@ class RepairHubStoreTests(unittest.TestCase):
         넣으면 스크립트가 짓는 도장과 한 글자도 다르지 않아야 한다."""
         import re
         from unittest import mock
-        from api import encoder_runtime
+        from store import encoder_runtime
         import repair_hub_store as rh
         line = next(ln for ln in (ROOT / "Dockerfile.hub").read_text(encoding="utf-8").splitlines()
                     if ln.startswith("RUN pip install") and "onnxruntime" in ln)

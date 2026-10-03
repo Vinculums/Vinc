@@ -110,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
     shutil.copyfile(pinned, copy)
     copy.chmod(0o644)
 
-    from encoder import Encoder                  # noqa: PLC0415
+    from vinc_rag.embed.encoder import Encoder                  # noqa: PLC0415
     from store.backend import open_store         # noqa: PLC0415
     from store.config import load_config         # noqa: PLC0415
     from api import query as q                   # noqa: PLC0415

@@ -672,7 +672,7 @@ class FakeStoreDataTests(unittest.TestCase):
 def _encode_stub(vector, *, seen: dict | None = None, delay: float = 0.0,
                  runtime: str | None = None, build: str | None = None,
                  model: str | None = None):
-    """워커 인코딩 창구(`packaging/embed_worker.py` `serve_encode`)와 **같은 계약**을
+    """워커 인코딩 창구(`vinc_rag/embed/worker.py` `serve_encode`)와 **같은 계약**을
     말하는 최소 대역. 모델 없이 배선만 검증하려고 둔다(실모델은 440MB 다운로드가 필요)."""
     import json as _json
     import threading as _th

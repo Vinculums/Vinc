@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
 
     emb = None
     if a.encoder:
-        from encoder import Encoder                                    # noqa: PLC0415
+        from vinc_rag.embed.encoder import Encoder                                    # noqa: PLC0415
         name, path = a.encoder.split("=", 1)
         enc = Encoder(name, path)
         enc.encode(["warmup"], kind="query")

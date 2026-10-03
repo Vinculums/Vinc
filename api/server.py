@@ -91,7 +91,7 @@ _ENCODER_RESPONSE_MODEL = contextvars.ContextVar("encoder_response_model", defau
 
 
 def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
-    """인코딩 창구에 한 번 묻는다(`packaging/embed_worker.py` `serve_encode`).
+    """인코딩 창구에 한 번 묻는다(`vinc_rag/embed/worker.py` `serve_encode`).
 
     ⚠ **토큰을 실어야 한다**(2026-08-07). 창구가 루프백일 때는 인증이 없었는데, 모델을
     `vinc-encode` 로 분리하면서 인증이 붙었다. 배치 워커만 고치고 질의 경로를 빠뜨려
@@ -141,7 +141,7 @@ from . import localmode
 from . import sync
 from . import docstore
 from . import node_mirror
-from .encoder_runtime import fingerprint as encoder_fingerprint
+from store.encoder_runtime import fingerprint as encoder_fingerprint
 from . import docsync
 from . import graphmd
 from . import textextract
@@ -822,7 +822,7 @@ class VincApp:
         """쿼리 임베딩을 얻는다 — 없으면 `(None, 사유)` 로 **정직하게** 강등한다.
 
         임베딩 모델을 들고 있는 프로세스는 임베딩 워커뿐이다(사이드카엔 torch 가 없다).
-        그래서 워커가 여는 창구(`packaging/embed_worker.py` `serve_encode`)에 물어본다.
+        그래서 워커가 여는 창구(`vinc_rag/embed/worker.py` `serve_encode`)에 물어본다.
         `VINC_EMBED_ENCODE` 가 없으면 **시도조차 하지 않는다** — 데스크탑에는 워커가
         없고, 매 검색마다 연결 실패를 기다리는 건 그 자체로 성능 사고다.
 

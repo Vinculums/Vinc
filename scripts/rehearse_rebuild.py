@@ -122,7 +122,7 @@ def open_at(data_dir: str, model: str):
 
 
 def encoder_for(model: str, onnx: str | None = None):
-    from encoder import Encoder
+    from vinc_rag.embed.encoder import Encoder
     return Encoder(_hf(model), onnx_path=onnx, batch=8)
 
 
@@ -310,7 +310,7 @@ def cmd_rebuild(a) -> int:
 
 def reindex(data_dir: str, model: str, *, onnx: str | None = None,
             batch_docs: int = 8, kill_after: int = 0, split: bool = False) -> dict:
-    """`needs_embed` 를 비운다 — 허브 워커(`packaging/embed_worker.py`)와 같은 순서:
+    """`needs_embed` 를 비운다 — 허브 워커(`vinc_rag/embed/worker.py`)와 같은 순서:
     pending_embed_chunks → 인코딩 → apply_embeddings. 다른 것은 사이드카 HTTP 를
     거치지 않는 것뿐이라, 여기서 재는 것은 **인코딩 + 스토어 쓰기**의 비용이다."""
     # ⚠ `split=False`(기본) 는 청크를 **통째로 한 벡터**로 만든다. 프로덕션 워커는

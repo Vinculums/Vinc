@@ -35,16 +35,13 @@
 /engines/embed_pipeline.py                       @Vinculums/rag
 /engines/recall_ingest.py                        @Vinculums/rag
 /packaging/bake_embed_model.py                   @Vinculums/rag
-/packaging/embed_worker.py                       @Vinculums/rag
 /scripts/assert_m3_dim.py                        @Vinculums/rag
 /scripts/bench_models.py                         @Vinculums/rag
 /scripts/benchmark/                              @Vinculums/rag
-/scripts/encoder.py                              @Vinculums/rag
 /scripts/eval_search.py                          @Vinculums/rag
 /scripts/make_queries.py                         @Vinculums/rag
 /scripts/make_queries_from_store.py              @Vinculums/rag
 /scripts/quantize_e5.py                          @Vinculums/rag
-/scripts/reranker.py                             @Vinculums/rag
 /scripts/seed_bilingual.py                       @Vinculums/rag
 /scripts/seed_tooluse.py                         @Vinculums/rag
 /scripts/summarize_encode_probe.py               @Vinculums/rag

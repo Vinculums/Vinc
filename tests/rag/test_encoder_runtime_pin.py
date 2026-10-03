@@ -18,7 +18,7 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from api import encoder_runtime
+from store import encoder_runtime
 from store import embedded_schema
 
 ROOT = Path(__file__).resolve().parents[2]
