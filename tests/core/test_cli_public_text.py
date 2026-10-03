@@ -144,3 +144,42 @@ def test_debug_refs_refresh_keeps_sanitized_transport(tmp_path, monkeypatch, cap
     assert "[refresh]" not in got.err
     assert "never-print-secret-key" not in got.err
     assert "documents\": []" not in got.err
+
+
+@pytest.mark.parametrize("fmt", ["human", "json", "ndjson"])
+def test_refs_refresh_bootstraps_fresh_default_manifest(tmp_path, monkeypatch, capsys, fmt):
+    from api import remote_client
+    class Response:
+        status = 200
+        headers = {}
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self): return b'{"documents": []}'
+    monkeypatch.delenv("VINC_DEBUG", raising=False)
+    monkeypatch.setattr(remote_client, "api_key", lambda: "fixture")
+    monkeypatch.setattr(remote_client, "urlopen", lambda *args, **kwargs: Response())
+    manifest = tmp_path / "scripts" / "graph-refs.json"
+    assert not manifest.parent.exists()
+    assert cli.main(["--format", fmt, "refs", "refresh", "--root", str(tmp_path)]) == 0
+    got = capsys.readouterr()
+    assert json.loads(manifest.read_text())["docs"] == []
+    if fmt != "human":
+        assert got.err == ""
+        assert json.loads(got.out)["manifest"] == str(manifest)
+        if fmt == "ndjson":
+            assert len(got.out.splitlines()) == 1
+    else:
+        assert str(manifest) in got.out
+        assert "Traceback" not in got.err
+
+
+def test_fresh_refs_refresh_requires_credentials_before_creating_directory(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("api.remote_client.api_key", lambda: "")
+    def unexpected(*args, **kwargs):
+        raise AssertionError("catalog must not be fetched before credentials")
+    monkeypatch.setattr("api.remote_client.urlopen", unexpected)
+    assert cli.main(["--format", "json", "refs", "refresh", "--root", str(tmp_path)]) == 4
+    got = capsys.readouterr()
+    assert got.out == ""
+    assert json.loads(got.err)["error"]["code"] == "not_authenticated"
+    assert not (tmp_path / "scripts").exists()
