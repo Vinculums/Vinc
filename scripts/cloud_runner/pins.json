@@ -1,0 +1,9 @@
+{
+  "ubuntu": "ubuntu@sha256:a853f94d226358a79c740cfc7bce0c289748f3fe3488d921d038ccd752c61b60",
+  "runner_version": "2.337.0",
+  "runner_sha256": "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613",
+  "node_version": "22.22.0",
+  "rust_version": "1.99.0",
+  "rustup_version": "1.28.2",
+  "azure_cli_version": "2.90.0"
+}
