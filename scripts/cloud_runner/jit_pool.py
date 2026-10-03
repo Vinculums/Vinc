@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 import zipfile
@@ -28,6 +29,26 @@ REF = os.environ.get('VINC_CLOUD_RUNNER_REF', 'ci/cloud-runner-pool')
 LIVE = True
 
 
+class ArtifactRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, newurl):
+        source = urllib.parse.urlsplit(request.full_url)
+        target = urllib.parse.urlsplit(newurl)
+        if (target.scheme != 'https' or target.username or target.password
+                or target.port not in (None, 443)
+                or not (target.hostname == 'api.github.com'
+                        or (target.hostname or '').endswith('.blob.core.windows.net')
+                        or (target.hostname or '').endswith('.actions.githubusercontent.com'))):
+            raise RuntimeError('Unexpected artifact redirect destination')
+        redirected = super().redirect_request(request, response, code, message, headers, newurl)
+        if source.hostname != target.hostname:
+            # Azure SAS 다운로드에 GitHub 인증 헤더를 전달하지 않는다.
+            for collection in (redirected.headers, redirected.unredirected_hdrs):
+                for name in list(collection):
+                    if name.lower() == 'authorization':
+                        del collection[name]
+        return redirected
+
+
 def github(method, path, body=None, binary=False):
     key = os.environ.get('GH_TOKEN')
     if not key:
@@ -40,12 +61,14 @@ def github(method, path, body=None, binary=False):
     request = urllib.request.Request('https://api.github.com/repos/' + REPO + path,
                                      data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.build_opener(ArtifactRedirect()).open(request, timeout=30) as response:
             if response.status == 204:
                 return {}
             return response.read() if binary else json.load(response)
     except urllib.error.HTTPError as error:
-        raise pool.APIError(error.code) from None
+        destination = urllib.parse.urlsplit(error.geturl()).hostname
+        raise RuntimeError('Actions request returned HTTP ' + str(error.code)
+                           + ' at ' + str(destination) + ' for ' + method + ' ' + path) from None
 
 
 def rpc(operation, record=None, slots=None):

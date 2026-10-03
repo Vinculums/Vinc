@@ -2,6 +2,7 @@
 import base64
 import json
 import sys
+import urllib.request
 from pathlib import Path
 from unittest import mock
 
@@ -158,3 +159,19 @@ def test_host_stop_refuses_active_ci_before_registration_delete():
             jit_pool.main()
     assert rpc.call_args_list == [mock.call('disable', {})]
     kill.assert_not_called()
+
+
+def test_artifact_redirect_never_forwards_github_auth_to_azure_sas():
+    request = urllib.request.Request('https://api.github.com/repos/Vinculums/Vinc/actions/artifacts/1/zip',
+                                     headers={'Authorization': 'Bearer private-test-value'})
+    redirected = jit_pool.ArtifactRedirect().redirect_request(
+        request, None, 302, '', {}, 'https://downloads.blob.core.windows.net/file?sig=fixture')
+    assert redirected.get_header('Authorization') is None
+
+
+@pytest.mark.parametrize('url', ['http://downloads.blob.core.windows.net/file',
+                                 'https://unexpected.example/file'])
+def test_artifact_redirect_rejects_downgrade_and_unexpected_host(url):
+    request = urllib.request.Request('https://api.github.com/test')
+    with pytest.raises(RuntimeError, match='Unexpected artifact'):
+        jit_pool.ArtifactRedirect().redirect_request(request, None, 302, '', {}, url)
