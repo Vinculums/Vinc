@@ -123,3 +123,24 @@ def test_real_refs_refresh_progress_preserves_machine_stream(tmp_path, monkeypat
     else:
         assert "[refresh]" in got.err
     assert manifest.exists() == success
+
+
+@pytest.mark.parametrize("fmt", ["json", "ndjson"])
+def test_debug_refs_refresh_keeps_sanitized_transport(tmp_path, monkeypatch, capsys, fmt):
+    from api import remote_client
+    class Response:
+        status = 200
+        headers = {}
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self): return b'{"documents": []}'
+    monkeypatch.setenv("VINC_API_KEY", "never-print-secret-key")
+    monkeypatch.setattr(remote_client, "urlopen", lambda *args, **kwargs: Response())
+    assert cli.main(["--debug", "--format", fmt, "refs", "refresh", "--root", str(tmp_path),
+                     "--manifest", str(tmp_path / "refs.json")]) == 0
+    got = capsys.readouterr()
+    assert json.loads(got.out)["executed"] is True
+    assert "GET /v1/documents" in got.err
+    assert "[refresh]" not in got.err
+    assert "never-print-secret-key" not in got.err
+    assert "documents\": []" not in got.err

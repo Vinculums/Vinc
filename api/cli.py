@@ -526,6 +526,10 @@ def _main(argv: list[str] | None = None) -> int:
                     verify=lambda ids: refs.verify_nodes(ids, call=account_call))
             if cli_output.chosen_format() == "human":
                 sys.stderr.write(progress.getvalue())
+            elif diagnostics.enabled():
+                for line in progress.getvalue().splitlines():
+                    if line.startswith("vinc: debug "):
+                        print(line, file=sys.stderr)
             return _emit({"kind": "refs.refresh", "executed": status == 0,
                           "manifest": manifest, "status": status})
         except remote_client.RemoteFailure as exc:
