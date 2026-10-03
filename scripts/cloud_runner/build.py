@@ -51,7 +51,7 @@ trust = trust_source.read_bytes()
 if b'PRIVATE KEY' in trust or b'BEGIN CERTIFICATE' not in trust:
     raise RuntimeError('Expected a public CA bundle')
 (BUILD / 'trust.pem').write_bytes(trust)
-for name in ['Dockerfile', 'entrypoint.py']:
+for name in ['Dockerfile', 'entrypoint.py', 'ci_tool.sh']:
     shutil.copyfile(SOURCE / name, BUILD / name)
 for name in ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']:
     value = os.environ.get(name)
@@ -61,6 +61,8 @@ command = ['docker', 'build', '--progress=plain', '-t', IMAGE,
            '--build-arg', 'BASE_IMAGE=' + PINS['ubuntu'],
            '--build-arg', 'RUST_VERSION=' + PINS['rust_version'],
            '--build-arg', 'AZURE_CLI_VERSION=' + PINS['azure_cli_version']]
+if shutil.disk_usage('/workspace').free < 4 * 1024 ** 3:
+    raise RuntimeError('The image build requires at least 4 GiB of free working disk')
 for host in sorted({urllib.parse.urlsplit(os.environ[name]).hostname
                     for name in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']
                     if os.environ.get(name)}):

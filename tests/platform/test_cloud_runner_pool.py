@@ -86,6 +86,15 @@ def test_vfs_capacity_refuses_space_for_only_one_image_copy():
             pool.capacity('test-image')
 
 
+def test_vfs_capacity_includes_the_four_init_layer_copies():
+    calls = [subprocess.CompletedProcess([], 0, stdout='vfs\n'),
+             subprocess.CompletedProcess([], 0, stdout=str(3 * 1024 ** 3))]
+    with mock.patch.object(pool, 'docker', side_effect=calls), \
+         mock.patch.object(pool.shutil, 'disk_usage', return_value=mock.Mock(free=20 * 1024 ** 3)):
+        with pytest.raises(RuntimeError, match='Four runners require at least 28 GiB'):
+            pool.capacity('test-image')
+
+
 def test_drain_inspects_ci_in_both_repositories():
     with mock.patch.object(pool, 'api', return_value={'workflow_runs': []}) as api:
         assert pool.active_runs() == []

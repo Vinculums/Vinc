@@ -40,7 +40,7 @@ JOBS = {
     1: 'python -m pytest -q tests/core/test_auth.py tests/core/test_pk_compose_write.py --tb=short',
     2: 'python -m pytest -q tests/mcp/test_mcp_auth.py tests/mcp/test_mcp_scoped_keys.py --tb=short',
     3: 'cd app && npm ci --no-audit --no-fund && npm run typecheck && npm run build',
-    4: 'sudo apt-get update -qq && python -m pytest -q tests/platform/test_ci_suite_is_unconditional.py tests/platform/test_gate_runner_move.py tests/platform/test_runner_tools_manifest.py tests/platform/test_cloud_runner_pool.py --tb=short && cd /home/runner/homepage/account && npm ci --no-audit --no-fund && npm run typecheck && npm test && cd .. && node scripts/gate-graph-refs.mjs',
+    4: 'az version && az version && sudo apt-get update -qq && python -m pytest -q tests/platform/test_ci_suite_is_unconditional.py tests/platform/test_gate_runner_move.py tests/platform/test_runner_tools_manifest.py tests/platform/test_cloud_runner_pool.py --tb=short && cd /home/runner/homepage/account && npm ci --no-audit --no-fund && npm run typecheck && npm test && cd .. && node scripts/gate-graph-refs.mjs',
 }
 started = time.time()
 BARRIER = threading.Barrier(4)
@@ -58,6 +58,9 @@ for tool in curl git jq gh az docker python node npm cargo rustc; do command -v 
 test "$(node --version)" = v22.22.0
 /opt/actions-runner/bin/Runner.Listener --version
 python -c "import ladybug,argon2,yaml,pytest,pypdf"
+rustc --version
+cargo --version
+rustup show active-toolchain
 rustc --version
 curl --fail --silent --show-error https://api.github.com/meta > /tmp/github-meta.json
 jq -e 'has("verifiable_password_authentication")' /tmp/github-meta.json

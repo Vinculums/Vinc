@@ -66,7 +66,8 @@ def capacity(image):
         capture_output=True, text=True).stdout.strip())
     # vfs copies the complete image filesystem for each container. Reserve
     # space for checkouts and builds rather than exhausting this task's VM.
-    required = (4 * size if driver == 'vfs' else 0) + 4 * 1024 ** 3
+    # vfs also makes a full init-layer copy for each container.
+    required = (8 * size if driver == 'vfs' else 0) + 4 * 1024 ** 3
     free = shutil.disk_usage('/workspace').free
     if free < required:
         raise RuntimeError(f'Four runners require at least {required // 1024**3} GiB free with {driver}; only {free // 1024**3} GiB is available')
