@@ -105,6 +105,8 @@ class Cli:
         # 그 밖(2 사용법 · 4 인증 · 5 상류)은 전송 실패다.
         if p.returncode not in (0, 1):
             raise TransportError(f"vinc call {tool} exit {p.returncode}: {p.stderr.strip()[:300]}")
+        if p.returncode == 1 and p.stdout:
+            raise TransportError(f"vinc call {tool}: stderr 실패 응답에 stdout 이 섞였다")
         stream, text = ("stdout", p.stdout) if p.returncode == 0 else ("stderr", p.stderr)
         try:
             if p.returncode == 0:
@@ -130,7 +132,11 @@ class Cli:
         except ValueError as exc:
             raise TransportError(f"vinc call {tool}: {stream} 이 JSON 이 아니다: "
                                  f"{p.stdout[:200]!r} / {p.stderr[:200]!r}") from exc
-        if p.returncode == 1 and out.get("status") != "none":
+        if not isinstance(out, dict) or not out:
+            raise TransportError(f"vinc call {tool}: {stream} 응답이 비어 있거나 객체가 아니다")
+        failed = "error" in out or out.get("executed") is False or out.get("isError") is True
+        if failed or (p.returncode == 1 and
+                      (tool != "vinc_brief" or out.get("status") != "none")):
             raise TransportError(f"vinc call {tool} 실패: {json.dumps(out, ensure_ascii=False)[:300]}")
         return out
 
