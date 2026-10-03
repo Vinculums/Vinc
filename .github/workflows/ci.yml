@@ -766,7 +766,8 @@ jobs:
       matrix:
         os:
           - [self-hosted, linux, vinc-local]
-          - [self-hosted, windows, vinc-local]
+          # Windows만 GitHub 호스티드 러너를 쓰고 Linux 풀 선택은 유지한다.
+          - [windows-latest]
     runs-on: ${{ matrix.os[1] == 'linux' && vars.CI_LINUX_RUNNERS != '' && fromJSON(vars.CI_LINUX_RUNNERS) || matrix.os }}
     # 매달린 잡을 자르는 장치. 셀프호스티드에서는 분이 아니라 **러너 하나를 붙잡는
     # 것**이 대가다 — 이 워크플로는 잡 다섯이 같은 기계를 나눠 쓴다.
