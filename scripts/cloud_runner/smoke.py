@@ -1,5 +1,6 @@
 """Exercise four isolated containers with real repository checks in parallel."""
 import concurrent.futures
+import datetime
 import json
 import pathlib
 import shutil
@@ -84,7 +85,6 @@ export VINC_LBUG_EXT_DIR="$PWD/packaging/lbug_extensions"
             docker(['cp', str(HOMEPAGE), name + ':/home/runner/homepage'], check=True)
         log_path = RUN / f'{number}.log'
         BARRIER.wait(timeout=300)
-        before = time.time()
         with log_path.open('w') as output:
             result = docker(['start', '-a', name], stdout=output, stderr=subprocess.STDOUT)
         # Docker start -a may return zero even if the process failed: inspect it.
@@ -92,8 +92,11 @@ export VINC_LBUG_EXT_DIR="$PWD/packaging/lbug_extensions"
         code = state['ExitCode']
         if result.returncode or code or state.get('OOMKilled'):
             raise RuntimeError(f'Slot {number} failed (Docker={result.returncode}, process={code}); inspect {log_path}')
+        # CLI 요청 시각 대신 Docker가 기록한 실제 프로세스 수명으로 겹침을 판정한다.
+        before = datetime.datetime.fromisoformat(state['StartedAt'].replace('Z', '+00:00')).timestamp()
+        after = datetime.datetime.fromisoformat(state['FinishedAt'].replace('Z', '+00:00')).timestamp()
         return {'slot': number, 'command': command, 'passed': True,
-                'started_at': before, 'finished_at': time.time(), 'log': str(log_path)}
+                'started_at': before, 'finished_at': after, 'log': str(log_path)}
     finally:
         docker(['rm', '-f', name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
