@@ -60,7 +60,7 @@ env:
 
 jobs:
   probe:
-    runs-on: [self-hosted, linux, vinc-local]
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       # 손으로 돌리는 실행은 운영 담당만(repo 변수 PROD_OPERATORS, 쉼표로 구분한 로그인).

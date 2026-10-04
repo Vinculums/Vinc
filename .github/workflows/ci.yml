@@ -13,13 +13,7 @@
 # 강제하는 게이트**를 둔다(아래 assert-driver 스텝). 이게 없으면 이 워크플로는
 # 있으나 마나다.
 #
-# 러너 스위치: repo 변수 `CI_HOSTED=on` 이면 changes·core·core-pkns·app 이 GitHub 호스티드
-# (ubuntu-latest)에서 돈다. 비우면 노트북 러너(vinc-local)다. 머지를 몰아서 하는 날처럼
-# 노트북이 밀릴 때 켜고 끝나면 끈다. 분을 쓰므로 상시로 켜 두지 않는다(2026-09-06 에 분이
-# 바닥나 호스티드에서 되돌린 사정은 `changes`·`core` 잡 주석). rust 는 윈도우가 분을 2배로
-# 세고 노트북 캐시가 더워 1~2분이라 스위치 밖에 둔다.
-# CI_LINUX_RUNNERS 는 온라인 상태를 확인한 Linux 풀의 runs-on JSON 배열이다.
-# 비어 있으면 기존 CI_HOSTED/local 선택을 유지한다.
+# 모든 잡은 GitHub 호스티드 러너에서 돈다. 근거: [[vinc.ops.ci-runner-diagnosis]]
 name: ci
 
 on:
@@ -83,6 +77,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   # ── 무엇이 바뀌었나 ──────────────────────────────────────────────────────────
@@ -123,7 +118,7 @@ jobs:
     # 원래 만료를 만들던 기제(도커 데스크탑이 닫히면 WSL 이 내려가 리눅스 라벨이
     # org 에서 사라지는 것)는 러너를 상주작업으로 올려 닫았다.
     # 되돌릴 조건: 분이 다시 넉넉해지거나 러너가 다시 조용히 사라지면.
-    runs-on: ${{ vars.CI_LINUX_RUNNERS != '' && fromJSON(vars.CI_LINUX_RUNNERS) || (vars.CI_HOSTED == 'on' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","vinc-local"]')) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
       app: ${{ steps.f.outputs.app }}
@@ -263,9 +258,10 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           pip install --quiet --disable-pip-version-check pyyaml
-          python -X utf8 scripts/gate_runner_move.py "$BASE" "$HEAD"
+          python -X utf8 scripts/gate_runner_move.py "$BASE" "$HEAD" --check-queues
           echo "── 판정"; cat "$GITHUB_OUTPUT"
 
   core:
@@ -292,7 +288,7 @@ jobs:
     #
     # ⚠ **2026-09-06 에 되돌렸다** — 그 "분이 마르면" 이 실제로 왔다. 자세한 사정은
     # `changes` 잡의 같은 표식에 적었다.
-    runs-on: ${{ vars.CI_LINUX_RUNNERS != '' && fromJSON(vars.CI_LINUX_RUNNERS) || (vars.CI_HOSTED == 'on' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","vinc-local"]')) }}
+    runs-on: ubuntu-latest
     # 실측 4~5분(4코어 컨테이너 250초). 셀프호스티드는 더 빠르지만 아래 TMPDIR 이
     # 안 걸리면 49분이다. 여유를 크게 뒀다 — 일정을 조이는 장치가 아니라
     # **행(hang)을 잡는 장치**다.
@@ -567,7 +563,7 @@ jobs:
     # (런 33389200262, 12:16:25 → 13:07:20). 하나만 옮기면 남은 쪽이 그대로 큐를
     # 붙잡으므로, 둘을 갈라 두는 것은 이 변경의 목적을 반만 이룬다.
     # (2026-09-06: `core` 와 함께 셀프호스티드로 되돌렸다. 같은 이유, 같은 조건.)
-    runs-on: ${{ vars.CI_LINUX_RUNNERS != '' && fromJSON(vars.CI_LINUX_RUNNERS) || (vars.CI_HOSTED == 'on' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","vinc-local"]')) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       VINC_PK_NAMESPACED: "on"
@@ -682,20 +678,19 @@ jobs:
     # `changes` 와 같은 이유로 옮긴다(그 잡의 주석이 근거다). 이쪽은 `npm ci` 와 `tsc`
     # 와 순수 노드 스크립트뿐이라 기계를 안 가린다 — 실측 1분 14초(런 33412567123).
     # (2026-09-06: `changes` 와 함께 셀프호스티드로 되돌렸다.)
-    runs-on: ${{ vars.CI_LINUX_RUNNERS != '' && fromJSON(vars.CI_LINUX_RUNNERS) || (vars.CI_HOSTED == 'on' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","vinc-local"]')) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       # ⚠ 22 인 이유는 **`--experimental-strip-types` 가 22.6+ 라서**다(아래 dev 검사).
       # `release.yml` 은 20 그대로 둔다 — 실제로 배포되는 것을 짓는 환경이라 바꿀 이유가
       # 없고, 이 잡이 하는 일은 `tsc` 와 순수 스크립트뿐이라 런타임 차이가 걸리지 않는다.
-      # 원격 npm 캐시(`cache: npm`)를 쓰지 않는다(2026-09-25). 셀프호스티드 러너에는
-      # `~/.npm` 이 실행 사이에 그대로 남아 있는데, 이 옵션은 그것을 GitHub 캐시 서버에서
-      # 매번 다시 받았다(107MB, 초당 0.2MB로 시작해 이 스텝만 59초). `npm ci` 는 로컬
-      # 캐시를 그대로 쓴다. 호스티드로 되돌리면 다시 켤 것 — 거기서는 캐시가 이것뿐이다.
+      # 일회용 호스티드 러너에서 npm 다운로드 캐시를 복원한다.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
       - name: Install
         working-directory: app
         run: npm ci --no-audit --no-fund
@@ -765,10 +760,9 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - [self-hosted, linux, vinc-local]
-          # Windows만 GitHub 호스티드 러너를 쓰고 Linux 풀 선택은 유지한다.
-          - [windows-latest]
-    runs-on: ${{ matrix.os[1] == 'linux' && vars.CI_LINUX_RUNNERS != '' && fromJSON(vars.CI_LINUX_RUNNERS) || matrix.os }}
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
     # 매달린 잡을 자르는 장치. 셀프호스티드에서는 분이 아니라 **러너 하나를 붙잡는
     # 것**이 대가다 — 이 워크플로는 잡 다섯이 같은 기계를 나눠 쓴다.
     timeout-minutes: 30
@@ -798,14 +792,10 @@ jobs:
         run: echo "CARGO_TARGET_DIR=$RUNNER_WORKSPACE/cargo-target" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      # ⚠ `swatinem/rust-cache` 를 여기서 **일부러 안 쓴다.** 그 액션은 파일시스템이
-      # 매번 파괴되는 **호스티드** 러너용이다. 이 두 잡은 영속 셀프호스티드라 디스크가
-      # 이미 들고 있고, 위의 `CARGO_TARGET_DIR` 가 `git clean` 사정권 밖에 둔다.
-      # 그 조건에서 캐시 액션은 **복원 10분 · 저장 9분 대 컴파일 4분**이었다
-      # (실측 2026-08-26 run 32910956646,
-      # [[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]]).
-      # release.yml 은 호스티드 macOS 다리가 있어 거기서는 계속 쓴다.
-      # (#151 에서 호스티드로 옮기며 이 액션을 넣었고, 2026-09-06 에 다시 뺐다.)
+      # 일회용 호스티드 러너는 다음 잡에 파일시스템이 남지 않는다.
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
       # 리눅스만 필요한 시스템 헤더(webkit·appindicator). release.yml 과 같은 목록.
       - name: Linux webkit deps
         if: runner.os == 'Linux'
