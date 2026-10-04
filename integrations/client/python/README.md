@@ -72,6 +72,20 @@ Every `about` id is read before the write, so a typo raises `VincNotFound` inste
 
 `AsyncVincClient` has the same methods, awaited.
 
+## Review output validation
+
+`ReviewOutput` validates `verdict` (`ACCEPT` or `RETURN`),
+`findings[{what, cite[]}]` and `person_only_requests[{action, reason}]`.
+Legacy reviews may omit `person_only_requests`; they default to an empty list.
+Optional `quote` and `rule` fields preserve the reviewer's explanation.
+`RETURN` requires findings and `ACCEPT` requires none. `parse_review` rejects
+malformed JSON and extra fields. Shape validation does not establish citation
+existence, completion, or a person's approval.
+
+The framework packages expose review helpers with one parse retry. If both
+outputs fail, they raise `UnparsedReview` with `status="UNPARSED"`, rather than
+returning an empty successful review. Route that exception to a person.
+
 ## License
 
 MIT

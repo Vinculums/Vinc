@@ -55,6 +55,28 @@ await record_episode(
 )
 ```
 
+## Structured review with one parse retry
+
+```python
+from vinc_agent_framework import run_review, UnparsedReview
+
+try:
+    review = await run_review(reviewer_agent, "Review this draft against its cited rules")
+except UnparsedReview:
+    # Stop the revision path and escalate to a person.
+    raise
+```
+
+The helper uses the framework's Pydantic `response_format`. A client without
+structured output support must use `native_structured=False` explicitly.
+It retains findings and citation IDs, rejects contradictory verdicts, retries
+once on a parse failure, and then raises `UNPARSED`. Network, credential and
+unsupported-provider errors propagate without parse retries. Each attempt is
+stateless and disables executable tools. Use a reviewer agent with read-only
+middleware and context providers. No graph write or approval happens here.
+Caller options such as reasoning settings are retained; the helper owns the
+review format and `tool_choice="none"`.
+
 ## License
 
 MIT

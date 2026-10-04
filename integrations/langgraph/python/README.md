@@ -54,6 +54,28 @@ Nothing in this package writes on its own. Put `record_episode` in the node afte
 context -> review -> approve (interrupt) -> record
 ```
 
+## Structured review with one parse retry
+
+```python
+from vinc_langgraph import run_review, arun_review, UnparsedReview
+
+try:
+    review = run_review(model, "Review this draft against its cited rules")
+except UnparsedReview:
+    # Stop the revision path and escalate to a person.
+    raise
+```
+
+Use these helpers inside a review node. They invoke a standalone model with
+`with_structured_output(ReviewOutput, include_raw=True)`; no tool executor or
+graph writer runs. `arun_review` provides the same async behavior. For a provider
+without structured output support, select `native_structured=False` explicitly.
+The helper retries one malformed output with sanitized feedback and then raises
+`UNPARSED`, preserving the difference between an unparsed review and no findings.
+Service and unsupported-schema errors propagate; `config` is passed unchanged.
+Parsed citations still need permission/existence checks, and person-only
+requests still require approval before any action.
+
 ## License
 
 MIT
