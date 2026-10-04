@@ -915,7 +915,7 @@ async function openDoc(docId: string, nodeId: string, domain?: string) {
  *  모드로 계산한 HEX 라, 다시 그리지 않으면 뒤집힌 화면에 반대 모드 색이 남는다. */
 export function repaintLnb(): void { paint(); }
 
-export function mountLnb() {
+export function mountLnb(opts: { deferLoad?: boolean } = {}) {
   if (wired) return;
   wired = true;
   const root = $("lnb");
@@ -1084,7 +1084,13 @@ export function mountLnb() {
 
   // 표면이 바뀌면 내비 활성 줄도 따라간다(트리는 그대로 — 목록은 표면과 무관하다).
   window.addEventListener("hashchange", paint);
-  void refreshLnb();
+  if (opts.deferLoad) {
+    loading = true;
+    failed = false;
+    paint();
+  } else {
+    void refreshLnb();
+  }
 }
 
 /** 주제 이름 변경 / 미분류로 내리기(S2). 폐지된 L0 주제 표의 `⋯` 가 하던 일 그대로 —

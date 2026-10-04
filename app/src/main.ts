@@ -11,7 +11,7 @@ import { mountLiveRefresh, setLiveRefresher } from "./live";
 import { wireFileAssociations } from "./openfiles";
 import { installTooltip } from "./tooltip";
 import { mountTopbar, setViewHooks } from "./topbar";
-import { mountLnb, setLnbNavigator, repaintLnb } from "./lnb";
+import { mountLnb, refreshLnb, setLnbNavigator, repaintLnb } from "./lnb";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
 import { wireScrimDismiss, showNotice } from "./components";
 import { blocksSurfaceShortcuts } from "./keys";
@@ -83,8 +83,8 @@ document.getElementById("settings-btn")!.setAttribute("data-tip", COPY.ui.topbar
   import("./conventions").then((m) => m.refreshBadge());
 }
 mountTopbar();
-// 좌측 문서 트리(D69). 표면과 무관하게 한 번만 마운트하고, 내용은 스스로 갱신한다.
-mountLnb();
+// 좌측 문서 트리(D69). 크롬은 먼저 마운트하고, 첫 조회는 아래 초기화가 끝난 뒤 보낸다.
+mountLnb({ deferLoad: true });
 // 새 문서 · 새 노드 단축키(Ctrl/Cmd+N · +Shift). 표면과 무관하게 한 번.
 mountAuthoringKeys();
 
@@ -359,6 +359,9 @@ document.documentElement.lang = cfg.lang;
   // **전**이어야 한다 — 뒤에 바꾸면 첫 화면이 옛 스페이스로 그려진 채 남는다.
   // 근거: [[decision:a-node-address-names-its-space]]
   const refusedSpace = await adoptSpaceFromAddress();
+  // 사이드바도 사이드카·로그인·모드·스페이스가 정해진 뒤 처음 읽는다(VIN-360).
+  // 그 전에는 로딩으로 기다린다. 실제 요청 실패는 기존 Retry 상태가 맡는다.
+  void refreshLnb();
   // 열린 화면이 저절로 새로워진다(VIN-129). 첫 화면보다 **먼저** 건다: 기준 표식을
   // 데이터보다 먼저 읽어야 그 사이의 쓰기가 이미 본 것으로 묻히지 않는다.
   mountLiveRefresh();
