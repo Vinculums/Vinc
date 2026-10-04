@@ -3382,6 +3382,9 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .rowlist .row:last-child { border-bottom: none; }
 .row-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-acts { flex: 0 0 auto; display: flex; align-items: center; gap: .4rem; }
+.mcp-row { flex-wrap: wrap; }
+.mcp-row .mcp-result { flex-basis: 100%; margin: 0; }
+.mcp-row .mcp-result:empty { display: none; }
 /* 작은 보조 문구·긴 문자열 처리 — 인라인 style 로 매번 적던 것들을 클래스로. */
 .hint-sm { font-size: .78rem; margin-top: .35rem; }
 .break-all { word-break: break-all; }
