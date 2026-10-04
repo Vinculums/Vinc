@@ -116,7 +116,7 @@ def _share_edges_plan(*, owner: str, ids: list[str]) -> q.QueryPlan:
     for source in ("concept", "decision"):
         for target in ("concept", "decision"):
             for relation in frag._CC_EDGES.values():
-                if relation != "RELATED_TO" or source == target == "concept":
+                if relation not in ("RELATED_TO", "RETURNS_TO") or source == target == "concept":
                     pairs.append((source, target, relation))
     pairs += [(s, t, "ABOUT") for s in ("episode", "decision")
               for t in ("concept", "decision")]
@@ -391,7 +391,7 @@ def build_share_pack(*, owner: str, domain: str | None = None,
             # 값이 있을 때만 싣는다. ALTER 로 열을 얻은 스토어는 빈 엣지도 ''·0.0 을
             # 돌려주고, 그것을 실으면 수신측의 실제 근거·신뢰도를 덮어 지운다.
             for field in ("evidence", "confidence"):
-                if r.get(field):
+                if r.get(field) or (relation == "RETURNS_TO" and r.get(field) is not None):
                     e[field] = r[field]
             edges.append(e)
 

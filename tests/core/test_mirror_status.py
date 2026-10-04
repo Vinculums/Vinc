@@ -35,9 +35,19 @@ def test_pending_disabled_and_partial_body_are_distinct(tmp_path):
     assert read_status(base, enabled=True) == {"state": "pending"}
 
 
+def test_verified_unchanged_index_is_current_without_rebuild(tmp_path):
+    base = tmp_path / "result"
+    result_files(base, {"kind": "node-mirror.rebuild", "executed": False,
+                        "unchanged": True, "index_ok": True, "owners": ["user:private"]})
+    assert read_status(base, enabled=True) == {"state": "current", "index_ok": True}
+
+
 @pytest.mark.parametrize("body,code,reason", [
     ({"kind": "other"}, "200", "invalid_result"),
     ({"kind": "node-mirror.rebuild", "executed": False}, "200", "not_executed"),
+    ({"kind": "node-mirror.rebuild", "executed": False, "index_ok": True}, "200", "not_executed"),
+    ({"kind": "node-mirror.rebuild", "executed": False, "unchanged": True, "index_ok": False}, "200", "not_executed"),
+    ({"kind": "node-mirror.rebuild", "executed": False, "unchanged": 1, "index_ok": True}, "200", "not_executed"),
     ({"kind": "node-mirror.rebuild", "executed": True, "index_ok": False}, "200", "index_unavailable"),
     ({"error": "private raw upstream body"}, "503", "request_failed"),
 ])
@@ -58,6 +68,8 @@ def test_invalid_or_oversized_body_is_not_exposed(tmp_path):
 
 @pytest.mark.parametrize("state,expected", [
     ({"state": "complete", "index_ok": True}, 0),
+    ({"state": "current", "index_ok": True}, 0),
+    ({"state": "current", "index_ok": False}, 1),
     ({"state": "disabled"}, 0),
     ({"state": "failed", "reason": "private raw upstream body"}, 1),
     (None, 1),
