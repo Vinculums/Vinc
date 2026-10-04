@@ -55,7 +55,7 @@ def read(role: str | None = None, *, owner: str | None = None, store=None, cfg=N
         if edges.get("edges_truncated"):
             return {**base, "error": "role relation read exceeded the edge limit"}
         relations = [e for e in edges["edges"] if e["from"] in indexed and e["to"] in indexed
-                     and e["type"] in ("PREREQUISITE_OF", "RELATED_TO")]
+                     and e["type"] in ("PREREQUISITE_OF", "RELATED_TO", "RETURNS_TO")]
         peers = sorted({e["from"] for e in relations} | {e["to"] for e in relations})
         return {**base, "executed": True, "found": True, "node": node["node"],
                 "relations": relations, "peers": [indexed[n] for n in peers]}
