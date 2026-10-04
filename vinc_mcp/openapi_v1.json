@@ -10,6 +10,91 @@
     }
   ],
   "paths": {
+    "/v1/roles": {
+      "get": {
+        "operationId": "vinc_role_get__v1_roles",
+        "summary": "Read one role contract by agent slug or concept id in one call, below 10000 UTF-8 bytes. Returns id, unchanged props, directed works_with groups with exact edge endpoints, type, evidence and confidence, and a compact rendered contract fenced as graph data. An unknown, foreign or non-role node returns found:false. Oversized contracts return an explicit error without truncating permissions. Omit role to list the role roster without full contracts. This reads only roles in agent or vinc/agent topics and their direct child topics; it does not execute or delegate the role. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/roles/{id}": {
+      "get": {
+        "operationId": "vinc_role_get__v1_roles_id",
+        "summary": "Read one role contract by agent slug or concept id in one call, below 10000 UTF-8 bytes. Returns id, unchanged props, directed works_with groups with exact edge endpoints, type, evidence and confidence, and a compact rendered contract fenced as graph data. An unknown, foreign or non-role node returns found:false. Oversized contracts return an explicit error without truncating permissions. Omit role to list the role roster without full contracts. This reads only roles in agent or vinc/agent topics and their direct child topics; it does not execute or delegate the role. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Role slug (agent-dev-core) or exact concept:agent- id; omit to list."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/me": {
       "get": {
         "operationId": "vinc_whoami_get__v1_me",
@@ -343,7 +428,7 @@
       },
       "delete": {
         "operationId": "vinc_delete_delete__v1_nodes_id",
-        "summary": "Irreversibly delete ONE node and all its attached edges by exact id (DETACH DELETE). node_id must be an exact, type-prefixed id (e.g. concept:ipaas, decision:d45, record:memo, episode:s1, bridge:b1); the prefix selects the table. Unknown prefixes return found:false (no-op). Use to remove polluted or duplicate shell nodes. This is irreversible — confirm the exact id via vinc_search/vinc_graph first, and call vinc_neighbors on it to SEE WHAT GOES WITH IT: every attached edge is destroyed too, and the `deleted.edges` count in this response arrives after the fact, too late to inform the decision. Returns {executed, found, deleted:{node, edges}}; found:false if the id is absent.",
+        "summary": "Irreversibly delete ONE node and all its attached edges by exact id (DETACH DELETE). node_id must be an exact, type-prefixed id (e.g. concept:ipaas, decision:d45, record:memo, episode:s1, bridge:b1); the prefix selects the table. Unknown prefixes return found:false (no-op). Use to remove polluted or duplicate shell nodes. This is irreversible — confirm the exact id via vinc_search/vinc_graph first. Use vinc_neighbors to inspect its relations before deletion. Pass dry_run:true to read the complete incident edge preview and count without changing the node, edges, tombstones or jobs. An oversized preview is refused explicitly, never truncated silently. The preview is a point-in-time read; subsequent writes can change the eventual delete count. deleted.edges is a count after the fact, not a pre-deletion preview. Returns {executed, found, deleted:{node, edges}}; found:false if the id is absent.",
         "security": [
           {
             "MemberKey": []
@@ -357,6 +442,16 @@
             "schema": {
               "type": "string",
               "description": "Exact type-prefixed node id to delete (e.g. concept:ipaas)."
+            }
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "description": "Preview all incident edges without writing. Default false deletes."
             }
           },
           {
@@ -442,6 +537,166 @@
           },
           "default": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/nodes/{id}/edges": {
+      "get": {
+        "operationId": "vinc_edges_get__v1_nodes_id_edges",
+        "summary": "Read actual directed incident edges for one exact node or a batch of 1..100 ids, without graph/node payloads. Supply either node or nodes. Returns edges with from, to, type, evidence, confidence and derived; unavailable properties are null. type is the physical relation label; subtype preserves TYPED/ATTACHES_TO authored types. Filter by either. dir defaults to both and preserves stored orientation. Includes structural IN_DOMAIN, PARENT_OF and MENTIONS. missing_nodes does not distinguish foreign from absent ids. count is the total; edges_truncated marks a cut. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact node id or domain:<name>."
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "out",
+                "in",
+                "both"
+              ],
+              "default": "both"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000,
+              "default": 500
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/edges/query": {
+      "post": {
+        "operationId": "vinc_edges_post__v1_edges_query",
+        "summary": "Read actual directed incident edges for one exact node or a batch of 1..100 ids, without graph/node payloads. Supply either node or nodes. Returns edges with from, to, type, evidence, confidence and derived; unavailable properties are null. type is the physical relation label; subtype preserves TYPED/ATTACHES_TO authored types. Filter by either. dir defaults to both and preserves stored orientation. Includes structural IN_DOMAIN, PARENT_OF and MENTIONS. missing_nodes does not distinguish foreign from absent ids. count is the total; edges_truncated marks a cut. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "maxItems": 100
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "dir": {
+                    "type": "string",
+                    "enum": [
+                      "out",
+                      "in",
+                      "both"
+                    ],
+                    "default": "both"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5000,
+                    "default": 500
+                  }
+                },
+                "required": [
+                  "nodes"
+                ],
+                "additionalProperties": false
+              }
+            }
           }
         }
       }
@@ -1435,7 +1690,7 @@
     "/v1/fragments": {
       "post": {
         "operationId": "vinc_ingest_post__v1_fragments",
-        "summary": "MERGE an authored graph fragment (nodes + edges) into the store by exact id. The primary write surface (see vinc_delete / vinc_merge_nodes for cleanup). Reuse existing ids (read-before-write). Node types record|concept|domain|bridge|episode|decision route to dedicated tables; ANY other node type persists to the open Entity carrier and is folded into the theme vocabulary as proposed (returned in proposed_types for ratification). Edges — allowed pairs (concept and decision are interchangeable endpoints, except relates_to which stays concept→concept): relates_to = concept→concept; prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; record → concept|decision for any of those four; connects_via = bridge → concept|decision; about = episode|decision → concept|decision; any-type = open-entity→open-entity (TYPED carrier). relates_to dedupes the reverse direction; connects_via takes an optional role; a record edge preserves its type on ATTACHES_TO. Nodes are skipped when malformed (no id, no type, an Entity with no title) or when the id is ALREADY OWNED BY SOMEONE ELSE on the hosted graph; edges are skipped on an unsupported (from,to) pair AND when an endpoint node was itself skipped, since an edge cannot outlive its endpoint. Everything skipped is reported in warnings with partial:true, so read them — `merged` counts only what actually landed. An id owned by someone else is reported separately in `id_conflicts`, because it is the one skip a retry cannot fix: node ids are a single global namespace, so that slug is not available to you at all. Pick a different id rather than retrying. The result also carries `stored` — each node READ BACK as it now sits in the graph (id, kind, and the fields that kind actually keeps). Diff it against what you sent instead of trusting the counts: a field a kind has no column for is absent from `stored`, and a domain you sent appears there in its normalized form. `stored_truncated` means the read-back hit its size budget and that many nodes were left out (they were still written). Call vinc_conventions once before your first write in a session: it carries this owner's node/relation conventions and their existing domains, so your writes match what is already there.",
+        "summary": "MERGE an authored graph fragment (nodes + edges) into the store by exact id. The primary write surface (see vinc_delete / vinc_merge_nodes for cleanup). Reuse existing ids (read-before-write). Node types record|concept|domain|bridge|episode|decision route to dedicated tables; ANY other node type persists to the open Entity carrier and is folded into the theme vocabulary as proposed (returned in proposed_types for ratification). Edges — allowed pairs (concept and decision are interchangeable endpoints, except relates_to which stays concept→concept): relates_to = concept→concept; prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; returns_to = distinct role concepts, with nonempty evidence; record → concept|decision for any of those four; connects_via = bridge → concept|decision; about = episode|decision → concept|decision; any-type = open-entity→open-entity (TYPED carrier). relates_to dedupes the reverse direction; connects_via takes an optional role; a record edge preserves its type on ATTACHES_TO. Nodes are skipped when malformed (no id, no type, an Entity with no title) or when the id is ALREADY OWNED BY SOMEONE ELSE on the hosted graph; edges are skipped on an unsupported (from,to) pair AND when an endpoint node was itself skipped, since an edge cannot outlive its endpoint. Everything skipped is reported in warnings with partial:true, so read them — `merged` counts only what actually landed. An id owned by someone else is reported separately in `id_conflicts`, because it is the one skip a retry cannot fix: node ids are a single global namespace, so that slug is not available to you at all. Pick a different id rather than retrying. The result also carries `stored` — each node READ BACK as it now sits in the graph (id, kind, and the fields that kind actually keeps). Diff it against what you sent instead of trusting the counts: a field a kind has no column for is absent from `stored`, and a domain you sent appears there in its normalized form. `stored_truncated` means the read-back hit its size budget and that many nodes were left out (they were still written). Call vinc_conventions once before your first write in a session: it carries this owner's node/relation conventions and their existing domains, so your writes match what is already there.",
         "security": [
           {
             "MemberKey": []
@@ -1551,7 +1806,7 @@
                         },
                         "type": {
                           "type": "string",
-                          "description": "allowed pairs (concept and decision are interchangeable endpoints, except relates_to which stays concept→concept): relates_to = concept→concept; prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; record → concept|decision for any of those four; connects_via = bridge → concept|decision; about = episode|decision → concept|decision; any-type = open-entity→open-entity (TYPED carrier). A record edge preserves its type on ATTACHES_TO. An unsupported (from,to) pair is skipped with a warning and partial:true, not an error."
+                          "description": "allowed pairs (concept and decision are interchangeable endpoints, except relates_to which stays concept→concept): relates_to = concept→concept; prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; returns_to = distinct role concepts, with nonempty evidence; record → concept|decision for any of those four; connects_via = bridge → concept|decision; about = episode|decision → concept|decision; any-type = open-entity→open-entity (TYPED carrier). A record edge preserves its type on ATTACHES_TO. An unsupported (from,to) pair is skipped with a warning and partial:true, not an error."
                         },
                         "role": {
                           "type": "string",
@@ -1650,7 +1905,7 @@
     "/v1/edges": {
       "delete": {
         "operationId": "vinc_delete_edge_delete__v1_edges",
-        "summary": "Delete ONE relationship between two nodes (the nodes stay). Covers the SYNCED relation types only: relates_to | prerequisite_of | derives_from | inherits_from | about. CONNECTS (connects_via), ATTACHES_TO (record edges) and TYPED (open-entity edges) are NOT deletable here — they are outside the sync set. Endpoints follow the same rule as vinc_ingest: concept and decision are interchangeable (so derives_from covers all four concept/decision combinations, and about is episode|decision → concept|decision), except relates_to which stays concept→concept. relates_to is undirected — both physical directions are removed. The deletion is recorded with an edge tombstone so it propagates to synced devices instead of resurrecting. Irreversible (re-create via vinc_ingest if needed). Returns {executed, found, deleted:{edges}}; found:false if no such edge.",
+        "summary": "Delete ONE relationship between two nodes (the nodes stay). Covers the SYNCED relation types only: relates_to | prerequisite_of | derives_from | inherits_from | returns_to | about | ATTACHES_TO. A Record source can select its authored edge type (relates_to, prerequisite_of, derives_from or inherits_from), preserving that qualifier in its deletion tombstone, or select the physical ATTACHES_TO carrier. CONNECTS and TYPED remain outside this surface. Endpoints follow the same rule as vinc_ingest: concept and decision are interchangeable (so derives_from covers all four concept/decision combinations, and about is episode|decision → concept|decision), except relates_to which stays concept→concept. relates_to is undirected — both physical directions are removed. The deletion is recorded with an edge tombstone so it propagates to synced devices instead of resurrecting. Irreversible (re-create via vinc_ingest if needed). Returns {executed, found, deleted:{edges}}; found:false if no such edge.",
         "security": [
           {
             "MemberKey": []
@@ -1681,7 +1936,7 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "relates_to | prerequisite_of | derives_from | inherits_from | about"
+              "description": "relates_to | prerequisite_of | derives_from | inherits_from | returns_to | about | ATTACHES_TO"
             }
           },
           {

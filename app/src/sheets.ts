@@ -3,7 +3,8 @@
  *  (정본 §5.1): 스코프 요약 · 포함 목록(개별 제외) · 미포함 고지 · 저장. */
 import { AccountError, api, cfg, community, WEB, type PackProgress, type Scope } from "./api";
 import { toBytes } from "./packfile";
-import { keptDocs } from "./share-docs";
+import { keptDocs, standaloneDocs } from "./share-docs";
+import { shareMerges } from "./share-merges";
 import { COPY } from "./copy";
 import { openSheet, sheetActions, sheetProgress } from "./components";
 
@@ -91,6 +92,7 @@ export async function openShareSheet(
       ids: scope.ids?.join(","), seed: scope.seed, domain: scope.domain, depth: scope.depth,
     }, opts.from);
     const nodes: any[] = pack.fragment?.nodes || [];
+    const unlinked = standaloneDocs(pack.documents, pack.doc_refs);
     const c = pack.manifest?.counts || {};
     // 씨앗은 문서가 아니라 노드다 — 그 이름을 팩에서 읽어 범위에 적는다(VIN-265).
     const seedName = scope.seed
@@ -108,7 +110,13 @@ export async function openShareSheet(
           <label class="list-row" style="cursor:pointer">
             <input type="checkbox" checked data-i="${i}" />
             <span class="title">${esc(n.title)}</span><span class="meta">${esc(n.domain || n.type)}</span>
-          </label>`).join("") || `<p class="hint">${COPY.ui.sheet.nothing}</p>`}
+          </label>`).join("")}
+        ${unlinked.map((d, i) => `
+          <label class="list-row" style="cursor:pointer">
+            <input type="checkbox" checked data-doc-i="${i}" />
+            <span class="title">${esc(d.title || d.doc_id)}</span><span class="meta">${esc(COPY.ui.sheet.specDocs)}</span>
+          </label>`).join("")}
+        ${nodes.length || unlinked.length ? "" : `<p class="hint">${COPY.ui.sheet.nothing}</p>`}
       </div>
       <p class="hint">${COPY.ui.sheet.keepNote}</p>`;
     sheet.foot.innerHTML = sheetActions(
@@ -116,20 +124,23 @@ export async function openShareSheet(
       { id: "sheet-cancel", label: COPY.ui.common.cancel });
     sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
     sheet.foot.querySelector("#sheet-save")!.addEventListener("click", () => {
-      const excluded = new Set([...sheet.body.querySelectorAll<HTMLInputElement>("input[type=checkbox]")]
+      const excluded = new Set([...sheet.body.querySelectorAll<HTMLInputElement>("input[data-i]")]
         .filter((cb) => !cb.checked).map((cb) => nodes[Number(cb.dataset.i)].id));
+      const standalone = new Set([...sheet.body.querySelectorAll<HTMLInputElement>("input[data-doc-i]")]
+        .filter((cb) => cb.checked).map((cb) => unlinked[Number(cb.dataset.docI)].doc_id as string));
       const keep = nodes.filter((n) => !excluded.has(n.id));
       const keepIds = new Set(keep.map((n) => n.id));
       const edges = (pack.fragment?.edges || []).filter((e: any) => keepIds.has(e.from) && keepIds.has(e.to));
-      const docs = keptDocs(pack.documents, excluded, pack.doc_refs, keepIds);
+      const docs = keptDocs(pack.documents, excluded, pack.doc_refs, keepIds, standalone);
       const out = { ...pack, fragment: { nodes: keep, edges },
         ...(pack.documents ? { documents: docs } : {}),
         manifest: { ...pack.manifest, counts: recount(keep, edges, docs, c) } };
       // 둘 다 응답에만 붙는 값이라 팩 파일에는 안 싣는다(`doc_refs` 는 위 원문 선택에만 쓴다).
       delete (out as any).executed;
       delete (out as any).doc_refs;
-      // 목적지가 이미 정해진 흐름(개인 → 팀 불러오기)은 묻지 않는다.
+      // 목적지가 이미 정해져도 내 공간에 합치는 내용은 먼저 확인한다.
       if (opts.into) {
+        if (!opts.into.team) { void copyToPersonal(sheet, life, out, keep.length); return; }
         void sendToSpace(sheet, life, out, keep.length, opts.into,
                          opts.intoLabel || COPY.ui.sheet.destTeam);
         return;
@@ -159,7 +170,7 @@ type Dest = { key: string; label: string; note: string; where: string;
               run: () => Promise<void> };
 
 /** 적재 응답에서 **실제로 착지한 것**만 추린다. */
-type Landed = { nodes: number; skipped: number; conflicts: number; docs: number };
+type Landed = { nodes: number; created: number; matched: number; skipped: number; conflicts: number; docs: number };
 
 /**
  * 완료 문구를 응답에서 만든다 — 여기가 이 파일의 급소다.
@@ -178,6 +189,8 @@ function landedOf(res: any, requested: number): Landed {
   const nodes = (n.created || 0) + (n.matched || 0);
   return {
     nodes,
+    created: n.created || 0,
+    matched: n.matched || 0,
     skipped: Math.max(0, requested - nodes),
     conflicts: (res?.id_conflicts || []).length,
     docs: res?.documents?.applied || 0,
@@ -187,14 +200,54 @@ function landedOf(res: any, requested: number): Landed {
 /** 착지 요약 → 사람이 읽는 문장들. 하나도 안 들어갔으면 그렇게 말한다. */
 function landedTexts(l: Landed, where: string, counts?: Record<string, number>): string[] {
   const U = COPY.ui.sheet;
+  const totals = [U.destCreated(l.created, where), U.destMerged(l.matched)];
   if (l.skipped === 0 && counts) {
-    return packDoneTexts({ ...counts, documents: l.docs }, where);
+    return [...totals, ...packDoneTexts({ ...counts, documents: l.docs }, where)];
   }
-  const out = [l.nodes > 0 ? U.destDone(l.nodes, where) : U.destNone(where)];
+  const out = totals;
   if (l.conflicts > 0) out.push(U.destSkippedIds(l.conflicts));
   else if (l.skipped > 0) out.push(U.destSkippedOther(l.skipped));
   if (l.docs > 0) out.push(U.destDoneDocs(l.docs));
   return out;
+}
+
+/** 내 공간에 이미 있는 항목은 복사 전에 사람이 확인한다. 읽기만으로는 보내지 않는다. */
+async function copyToPersonal(sheet: Sheet, life: SheetLife, out: any, requested: number): Promise<void> {
+  const U = COPY.ui.sheet;
+  let closed = false;
+  life.onClose = () => { closed = true; };
+  const retry = () => { void copyToPersonal(sheet, life, out, requested); };
+  sheet.body.innerHTML = sheetProgress(U.destChecking);
+  sheet.foot.innerHTML = sheetActions({ id: "sheet-cancel", label: COPY.ui.common.cancel });
+  sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
+  try {
+    const matches = await shareMerges(out.fragment?.nodes || [],
+      (id) => api.nodeContext(cfg.owner, id, 0, { team: null }));
+    if (closed) return;
+    if (!matches.length) {
+      await sendToSpace(sheet, life, out, requested, { team: null }, U.destPersonal);
+      return;
+    }
+    sheet.body.innerHTML = `<p>${esc(U.destMergeTitle(matches.length))}</p>
+      <p class="hint">${esc(U.destMergeNote)}</p>
+      <div class="sheet-list">${matches.map((m) => `<div class="list-row">
+        <span class="title">${esc(m.title)}</span></div>`).join("")}</div>`;
+    sheet.foot.innerHTML = sheetActions(
+      { id: "sheet-merge", label: U.destMergeConfirm },
+      { id: "sheet-cancel", label: COPY.ui.common.cancel });
+    sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
+    sheet.foot.querySelector("#sheet-merge")!.addEventListener("click", () => {
+      void sendToSpace(sheet, life, out, requested, { team: null }, U.destPersonal);
+    }, { once: true });
+  } catch {
+    if (closed) return;
+    sheet.body.innerHTML = `<div class="error-banner">${esc(U.destCheckFailed)}</div>`;
+    sheet.foot.innerHTML = sheetActions(
+      { id: "sheet-retry", label: COPY.ui.lnb.retry },
+      { id: "sheet-cancel", label: COPY.ui.common.cancel });
+    sheet.foot.querySelector("#sheet-retry")!.addEventListener("click", retry, { once: true });
+    sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
+  }
 }
 
 /** 시트가 닫힐 때 할 일. 보내는 중에만 바뀐다(닫으면 알림으로 넘어간다). */
@@ -323,7 +376,7 @@ async function chooseDestination(
   if (cfg.team) {
     dests.push({
       key: "personal", label: U.destPersonal, note: U.destPersonalNote, where: U.destPersonal,
-      run: () => sendToSpace(sheet, life, out, conceptCount, { team: null }, U.destPersonal),
+      run: () => copyToPersonal(sheet, life, out, conceptCount),
     });
   }
   // 커뮤니티는 계정 세션이 필요하다 — 셸·로컬 dev 에는 세션이 없다.
@@ -375,7 +428,7 @@ async function chooseDestination(
         },
         () => { sheet.body.innerHTML = `<div class="error-banner">${esc(U.destFailed)}</div>`; },
       );
-    });
+    }, { once: true });
   }
 }
 

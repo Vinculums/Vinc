@@ -43,22 +43,27 @@ Repositories: Vinc, Vinc-homepage
 
 ## Gates that must pass before the pull request
 
-- scripts/gate_forbidden.py
-- scripts/gate_graph_refs.py
-- scripts/gate_escape.py
-- scripts/gate_contrast.py
-- scripts/gate_design_sync.py
-- design-hub/scripts/sync_out.py
-- design-hub/scripts/gate_surface.py
-- scripts/version_sync.py
-- scripts/gate_copy.mjs
-- scripts/gate-graph-refs.mjs
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
+- {"check":{"command":"scripts/gate_forbidden.py","repos":["Vinc"],"type":"command_success"},"id":"command_1","on_fail":"block"}
+- {"check":{"command":"scripts/gate_graph_refs.py","repos":["Vinc"],"type":"command_success"},"id":"command_2","on_fail":"block"}
+- {"check":{"command":"scripts/gate_escape.py","repos":["Vinc"],"type":"command_success"},"id":"command_3","on_fail":"block"}
+- {"check":{"command":"scripts/gate_contrast.py","repos":["Vinc"],"type":"command_success"},"id":"command_4","on_fail":"block"}
+- {"check":{"command":"scripts/gate_design_sync.py","repos":["Vinc"],"type":"command_success"},"id":"command_5","on_fail":"block"}
+- {"check":{"command":"design-hub/scripts/sync_out.py","repos":["Vinc"],"type":"command_success"},"id":"command_6","on_fail":"block"}
+- {"check":{"command":"design-hub/scripts/gate_surface.py","repos":["Vinc"],"type":"command_success"},"id":"command_7","on_fail":"block"}
+- {"check":{"command":"scripts/version_sync.py","repos":["Vinc"],"type":"command_success"},"id":"command_8","on_fail":"block"}
+- {"check":{"command":"scripts/gate_copy.mjs","repos":["Vinc-homepage"],"type":"command_success"},"id":"command_9","on_fail":"block"}
+- {"check":{"command":"scripts/gate-graph-refs.mjs","repos":["Vinc-homepage"],"type":"command_success"},"id":"command_10","on_fail":"block"}
 
 ## Works with
 
 - Hands off to: agent-deploy (Deployment Engineer), agent-qa (QA Engineer), agent-reviewer-judgement (Code Reviewer)
 - Receives from: agent-copy-owner (Localization Engineer), agent-design (Design Systems Engineer), agent-dev-account (Backend Engineer, Account), agent-dev-app (Frontend Engineer), agent-dev-core (Backend Engineer, Core), agent-marketing (Product Marketing Manager), agent-product-designer (Product Designer), agent-release (Release Manager), agent-tech-writer (Technical Writer)
 - Works beside: agent-qa (QA Engineer)
+- Returns to: agent-copy-owner (Localization Engineer), agent-design (Design Systems Engineer), agent-dev-account (Backend Engineer, Account), agent-dev-app (Frontend Engineer), agent-dev-core (Backend Engineer, Core), agent-marketing (Product Marketing Manager), agent-product-designer (Product Designer), agent-release (Release Manager), agent-tech-writer (Technical Writer)
+- Receives rejected packages from: agent-qa (QA Engineer), agent-reviewer-judgement (Code Reviewer)
 
 ## Tools and MCP servers
 
@@ -82,6 +87,10 @@ the missing server instead of substituting another tool. Reasoning:
 ## Only a person does this
 
 - (none)
+
+## Machine checks for never
+
+- {"actions":["edit","merge"],"type":"forbidden_actions"}
 
 ## Baseline note
 

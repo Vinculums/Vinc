@@ -5,12 +5,27 @@ import os
 
 from store.config import read_local_config
 
-#: MCP 도구로 답하는 동사. 대상(local·account)을 고르는 것은 이 동사들뿐이다.
-#: 나머지는 이 기기 전용이라 설정의 mode·VINC_TARGET·VINC_SPACE 를 따르지 않는다 —
-#: 앱은 계정 모드에서도 `serve` 를 플래그 없이 띄운다(app/src-tauri/src/main.rs).
+#: MCP 도구로 답하는 그래프 동사. 기기 작업은 DEVICE_CMDS가 별도로 제한한다.
 TOOL_CMDS = frozenset({"whoami", "conventions", "node", "path", "ties", "diagnose",
                        "ingest", "delete", "edge", "merge", "call", "search", "recall",
                        "brief", "decide", "domains", "doc"})
+
+# 기기 스토어·파일을 바꾸거나 로컬 서비스를 시작하는 명령만 제한한다.
+# MCP stdio 프록시와 파일 전용 검사는 각각 자신의 계약을 따른다.
+DEVICE_CMDS = frozenset({"backup", "export", "share", "import", "activate", "pin",
+                         "tag", "touch", "learner", "graph", "plan", "onboard",
+                         "domain-backfill", "serve", "store-probe", "migrate-dim",
+                         "migrate-lex", "store-rebuild"})
+
+
+def local_only(args) -> bool:
+    if args.cmd in DEVICE_CMDS:
+        return True
+    if args.cmd == "graph-md":
+        return not (args.gmcmd == "check" and args.no_store and not args.doc)
+    if args.cmd == "mcp":
+        return args.mcpcmd == "serve-http"
+    return False
 
 
 def resolve_target(explicit: str | None) -> str:

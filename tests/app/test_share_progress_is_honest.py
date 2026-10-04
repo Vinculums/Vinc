@@ -120,17 +120,17 @@ class ShareProgressTests(unittest.TestCase):
                 "— 버튼을 눌러도 아무것도 안 뜬다")
 
     def test_자리가_전부_걸려_있다(self):
-        """불확정: 시트 셋(팩 준비 · 파일로 받기 · 커뮤니티) + Tools 둘.
+        """불확정: 시트 넷(팩 준비 · 목적지 확인 · 파일로 받기 · 커뮤니티) + Tools 둘.
         확정: 스페이스로 보내기 한 자리(목적지 확정 · 내 공간 선택이 함께 쓴다)."""
-        self.assertEqual(self.share.count("sheetProgress("), 3,
-                         "공유 시트의 불확정 세 자리가 아니다")
+        self.assertEqual(self.share.count("sheetProgress("), 4,
+                         "공유 시트의 불확정 네 자리가 아니다")
         self.assertEqual(self.tl_share.count("sheetProgress("), 2,
                          "Tools 공유 탭의 두 자리(탭 진입 · 전체 백업)가 아니다")
         code = _code_only(self.share)
         self.assertEqual(code.count("mountGauges(sheet.body"), 1,
                          "스페이스로 보내기의 확정 막대가 한 자리가 아니다")
-        self.assertEqual(code.count("sendToSpace(sheet,"), 2,
-                         "목적지 확정과 내 공간 선택이 같은 보내기를 쓰지 않는다")
+        self.assertEqual(code.count("sendToSpace(sheet,"), 3,
+                         "목적지 확정과 내 공간 신규/병합 확인이 같은 보내기를 쓰지 않는다")
 
     def test_확정_막대의_수치는_조각_보고에서만_온다(self):
         """확정 막대는 `aria-valuenow` 를 싣는다 — 그 값이 참이려면 **조각을 끝낼 때마다

@@ -6,6 +6,13 @@
 /** 문서 미러 개념의 id 접두 — 서버의 `api/docstore._DOC_MIRROR_PREFIX` 와 같은 값. */
 export const DOC_MIRROR = "concept:doc.";
 
+/** 전체 공유에만 실리는, 노드가 붙잡지 않는 문서는 자기 행으로 고른다.
+ *  대응표가 없거나 누락된 구 응답을 이 경우로 추측하지 않는다. */
+export function standaloneDocs(documents: any[] | undefined,
+                               refs?: Record<string, string[]>): any[] {
+  return (documents || []).filter((d) => refs?.[d?.doc_id]?.length === 0);
+}
+
 /**
  * 제외 제스처를 **원문에도** 적용한다. 원문은 두 규칙을 모두 통과해야 남는다.
  *
@@ -16,6 +23,8 @@ export const DOC_MIRROR = "concept:doc.";
  *    미러 행이 없는 스토어(원문이 전부 본문 언급으로 실린 경우)에서는 ② 가 유일한 길이다.
  *
  * `refs` 가 없는 응답(대응표를 모르는 구 허브)은 ① 만 쓴다.
+ * 전체 공유의 빈 대응표 문서는 독립 체크 행을 쓴다. 그 행을 고른 문서만
+ * `standalone` 으로 전달되며, 미러·언급으로 실린 문서의 두 규칙은 그대로다.
  * 근거: [[decision:share-documents-follow-the-nodes-that-carry-them]]
  *
  * 접두를 `startsWith` 로 보지 않는다: 호스티드는 노드 PK 에 owner 를 합성하므로
@@ -24,13 +33,15 @@ export const DOC_MIRROR = "concept:doc.";
  * 벗겨서 보낸다.
  */
 export function keptDocs(documents: any[] | undefined, excluded: Set<string>,
-                         refs?: Record<string, string[]>, kept?: Set<string>): any[] {
+                         refs?: Record<string, string[]>, kept?: Set<string>,
+                         standalone?: Set<string>): any[] {
   const dropped = new Set<string>();
   for (const id of excluded) {
     const at = String(id).indexOf(DOC_MIRROR);
     if (at >= 0) dropped.add(String(id).slice(at + DOC_MIRROR.length));
   }
   const carried = (d: any) => !refs || !kept
+    || (refs[d?.doc_id]?.length === 0 && standalone?.has(d?.doc_id))
     || (refs[d?.doc_id] || []).some((id) => kept.has(id));
   return (documents || []).filter((d) => !dropped.has(d?.doc_id) && carried(d));
 }

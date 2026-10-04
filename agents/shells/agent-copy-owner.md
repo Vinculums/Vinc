@@ -48,7 +48,10 @@ Repositories: Vinc, Vinc-homepage
 
 ## Gates that must pass before the pull request
 
-- scripts/gate_forbidden.py
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
+- {"check":{"command":"scripts/gate_forbidden.py","repos":["Vinc"],"type":"command_success"},"id":"command_1","on_fail":"block"}
 
 Test command:
 
@@ -61,6 +64,8 @@ env -u PYTHONHOME -u PYTHONPATH ./.venv/Scripts/python.exe -m pytest tests/desig
 - Hands off to: agent-gate-runner (CI Gate Runner)
 - Receives from: agent-copy-writer (UX Writer, Korean), agent-marketing (Product Marketing Manager)
 - Works beside: agent-tech-writer (Technical Writer)
+- Returns to: agent-copy-writer (UX Writer, Korean)
+- Receives rejected packages from: agent-gate-runner (CI Gate Runner)
 
 ## Tools and MCP servers
 
@@ -83,8 +88,13 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- on screen sign off by a Korean speaker
-- switching the language on
+- sign_off: on screen sign off by a Korean speaker
+- enable_korean: switching the language on
+
+## Machine checks for never
+
+- {"actions":["english_value"],"type":"forbidden_actions"}
+- {"rules":["variable_particle","em_dash","second_person","object_honorific","english_value"],"type":"rendered_copy"}
 
 ## Tool note
 
