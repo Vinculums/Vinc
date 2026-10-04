@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import os
+import time
+from store import diagnostics
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -131,10 +133,16 @@ def call(tool: str, arguments: dict, *, space: str = "personal",
                                "Accept": "application/json",
                                "Content-Type": "application/json"},
                       method=route.method)
+    started = time.perf_counter()
+    status, request_id = "network_error", ""
     try:
         with urlopen(request, timeout=30) as response:
+            status = getattr(response, "status", 200)
+            request_id = response.headers.get("X-Request-Id", "") if hasattr(response, "headers") else ""
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
+        status = exc.code
+        request_id = exc.headers.get("X-Request-Id", "") if exc.headers else ""
         if 300 <= exc.code < 400:
             raise RemoteFailure(_error("upstream_unavailable",
                 f"The API answered a redirect (HTTP {exc.code}); it was not followed."), 5) from None
@@ -157,3 +165,5 @@ def call(tool: str, arguments: dict, *, space: str = "personal",
     except (ValueError, UnicodeDecodeError) as exc:
         raise RemoteFailure(_error("upstream_unavailable",
                                   "Account API returned invalid JSON."), 5) from exc
+    finally:
+        diagnostics.trace(route.method, path, status, started, request_id=request_id, transport="account")

@@ -4,6 +4,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
+from urllib.parse import urlencode
+from store import diagnostics
 from contextlib import contextmanager
 
 from store.config import load_config
@@ -24,6 +27,7 @@ class _InProcessBridge:
         from .server import _Handler
 
         # HTTP 셸과 같은 디스패치 표를 쓴다. 소켓과 두 번째 스토어는 만들지 않는다.
+        started = time.perf_counter()
         if method == "GET":
             _status, result = _Handler._route_get(self, path, params or {})
         elif method == "POST":
@@ -31,6 +35,8 @@ class _InProcessBridge:
             _status, result = _Handler._route_post(self, path, body or {})
         else:
             raise ValueError(f"unsupported local method: {method}")
+        route = path + ("?" + urlencode(params) if params else "")
+        diagnostics.trace(method, route, _status, started, transport="local")
         return result
 
 

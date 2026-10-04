@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from store import diagnostics
 
 DEFAULT_BASE = "http://127.0.0.1:8787"
 # 로컬 스토어의 소유자는 하나다: 앱·fragment 기본값·profile.yml·PK 정규화 표가 모두
@@ -140,6 +141,8 @@ class Bridge:
 
         attempt = 0
         while True:
+            started = time.perf_counter()
+            status, request_id = "network_error", ""
             req = urllib.request.Request(url, data=data, method=method)
             if self.token:
                 req.add_header("Authorization", f"Bearer {self.token}")
@@ -147,8 +150,12 @@ class Bridge:
                 req.add_header("Content-Type", "application/json")
             try:
                 with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    status = getattr(resp, "status", 200)
+                    request_id = resp.headers.get("X-Request-Id", "") if hasattr(resp, "headers") else ""
                     return json.loads(resp.read().decode("utf-8"))
             except urllib.error.HTTPError as e:
+                status = e.code
+                request_id = e.headers.get("X-Request-Id", "") if e.headers else ""
                 try:
                     return json.loads(e.read().decode("utf-8"))
                 except Exception:
@@ -169,13 +176,20 @@ class Bridge:
                 if attempt > retries:
                     raise
                 time.sleep(retry_delay * attempt)
+            finally:
+                diagnostics.trace(method, url, status, started, request_id=request_id, transport="attached")
 
     def health(self) -> bool:
+        started = time.perf_counter()
+        status = "network_error"
         try:
             with urllib.request.urlopen(self.base + "/health", timeout=3) as r:
+                status = r.status
                 return r.status == 200
         except Exception:
             return False
+        finally:
+            diagnostics.trace("GET", "/health", status, started, transport="attached")
 
     def health_detail(self) -> dict | None:
         """사이드카 `/health` **본문**(도달 실패면 None).
