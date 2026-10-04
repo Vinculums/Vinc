@@ -2,7 +2,7 @@
 
 Both read a member key (``vinc_sk_`` full, ``vinc_ro_`` read only) and act on
 one space: the personal graph, or a team by its id. Nothing here writes on its
-own; the only write paths are ``ingest`` and ``record_episode``, and both are
+own; ``ingest``, ``record_episode`` and ``write_package`` are
 explicit calls.
 """
 from __future__ import annotations
@@ -20,7 +20,10 @@ from . import __version__
 from .context import DEFAULT_MAX_CHARS, format_answer
 from .episode import build_episode_fragment, check_about
 from .errors import (VincAuthError, VincError, VincInvalidArgument, VincPartialWrite,
-                     VincQuotaExceeded, VincUnavailable, error_class)
+                     VincNotFound, VincQuotaExceeded, VincUnavailable, error_class)
+from .package import (DEFAULT_PACKAGE_MAX_CHARS, build_package_fragment, format_package,
+                      package_space, validate_package)
+from .prefetch import DEFAULT_PREFETCH_MAX_CHARS, reading_list, render_prefetch
 
 log = logging.getLogger("vinc_client")
 
@@ -172,6 +175,10 @@ class _Base:
         return _Call("GET", f"/v1/nodes/{_segment(node_id)}", space=space)
 
     @staticmethod
+    def _role(role_id, space) -> _Call:
+        return _Call("GET", f"/v1/roles/{_segment(role_id)}", space=space)
+
+    @staticmethod
     def _search(query, limit, cursor, detail, historical, space) -> _Call:
         return _Call("POST", "/v1/search", body=_drop_none(
             {"query": query, "limit": limit, "cursor": cursor, "detail": detail,
@@ -230,6 +237,26 @@ class VincClient(_Base):
     def node(self, node_id: str, *, space: str | None = None) -> dict[str, Any]:
         """``GET /v1/nodes/{id}``: read one node by id. Raises ``VincNotFound`` if absent."""
         return self._send(self._node(node_id, space))
+
+    def role(self, role_id: str, *, space: str | None = None) -> dict[str, Any]:
+        """Read a genuine owner-visible role's complete contract and collaboration links."""
+        return self._send(self._role(role_id, space))
+
+    def prefetch(self, role_id: str, task: str, *, space: str | None = None,
+                 max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+        """Before a model call, read the chosen role, every required spec and task evidence.
+
+        No content or permission cache, write, delegation or automatic role adoption.
+        Domain supplies task search context; it is not claimed to be a search filter.
+        A required spec miss or service/authentication error fails explicitly.
+        """
+        contract = self.role(role_id, space=space)
+        specs = [(doc, self.brief(doc, max_excerpts=3, space=space))
+                 for doc in reading_list(contract)]
+        query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
+        brief = self.brief(task, max_excerpts=3, space=space)
+        search = self.search(query, limit=5, space=space)
+        return render_prefetch(contract, task, specs, brief, search, max_chars=max_chars)
 
     def search(self, query: str, *, limit: int | None = None, cursor: str | None = None,
                detail: str | None = None, historical: bool | None = None,
@@ -294,6 +321,40 @@ class VincClient(_Base):
                                           domain=domain, tags=tags, episode_id=episode_id)
         return self.ingest(fragment["nodes"], fragment["edges"], space=space)
 
+    def write_package(self, question: str, conclusion: str, *,
+                      claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
+                      space: str, title: str | None = None,
+                      package_id: str | None = None) -> dict[str, Any]:
+        """Explicitly write one handoff Record into the selected space, requiring a write key."""
+        self._require_write_key()
+        selected = package_space(space)
+        fragment = build_package_fragment(question, conclusion, claims=claims,
+                                          produced_by=produced_by, run_id=run_id,
+                                          title=title, package_id=package_id)
+        result = self.ingest(fragment["nodes"], fragment["edges"], space=selected)
+        return {"package_id": fragment["nodes"][0]["id"], "space": selected, "write": result}
+
+    def get_package_context(self, package_id: str, *, space: str,
+                            max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> str:
+        """Read a package and check each distinct source as this key, every call; never write."""
+        selected = package_space(space)
+        node = self.node(package_id, space=selected).get("node")
+        if not isinstance(node, dict) or node.get("id") != package_id:
+            raise VincInvalidArgument("invalid_package", "The package carrier is unavailable.")
+        readable = []
+        for nid in validate_package(node):
+            try:
+                result = self.node(nid, space=selected)
+            except VincNotFound:
+                continue
+            except VincAuthError as exc:
+                if exc.status != 403:
+                    raise
+                continue
+            if result.get("found") and result.get("node"):
+                readable.append(nid)
+        return format_package(node, space=selected, readable_ids=readable, max_chars=max_chars)
+
 
 class AsyncVincClient(_Base):
     """Async twin of :class:`VincClient`; same methods, awaited."""
@@ -334,6 +395,21 @@ class AsyncVincClient(_Base):
 
     async def node(self, node_id: str, *, space: str | None = None) -> dict[str, Any]:
         return await self._send(self._node(node_id, space))
+
+    async def role(self, role_id: str, *, space: str | None = None) -> dict[str, Any]:
+        """Async complete role contract read."""
+        return await self._send(self._role(role_id, space))
+
+    async def prefetch(self, role_id: str, task: str, *, space: str | None = None,
+                       max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+        """Async fresh role/spec/task evidence retrieval before the model runs."""
+        contract = await self.role(role_id, space=space)
+        specs = [(doc, await self.brief(doc, max_excerpts=3, space=space))
+                 for doc in reading_list(contract)]
+        query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
+        brief = await self.brief(task, max_excerpts=3, space=space)
+        search = await self.search(query, limit=5, space=space)
+        return render_prefetch(contract, task, specs, brief, search, max_chars=max_chars)
 
     async def search(self, query: str, *, limit: int | None = None, cursor: str | None = None,
                      detail: str | None = None, historical: bool | None = None,
@@ -378,6 +454,40 @@ class AsyncVincClient(_Base):
         fragment = build_episode_fragment(title, summary=summary, about=targets, date=date,
                                           domain=domain, tags=tags, episode_id=episode_id)
         return await self.ingest(fragment["nodes"], fragment["edges"], space=space)
+
+    async def write_package(self, question: str, conclusion: str, *,
+                            claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
+                            space: str, title: str | None = None,
+                            package_id: str | None = None) -> dict[str, Any]:
+        """Async explicit package write; no framework callback invokes this automatically."""
+        self._require_write_key()
+        selected = package_space(space)
+        fragment = build_package_fragment(question, conclusion, claims=claims,
+                                          produced_by=produced_by, run_id=run_id,
+                                          title=title, package_id=package_id)
+        result = await self.ingest(fragment["nodes"], fragment["edges"], space=selected)
+        return {"package_id": fragment["nodes"][0]["id"], "space": selected, "write": result}
+
+    async def get_package_context(self, package_id: str, *, space: str,
+                                  max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> str:
+        """Async fresh package and evidence reads under the recipient's current credentials."""
+        selected = package_space(space)
+        node = (await self.node(package_id, space=selected)).get("node")
+        if not isinstance(node, dict) or node.get("id") != package_id:
+            raise VincInvalidArgument("invalid_package", "The package carrier is unavailable.")
+        readable = []
+        for nid in validate_package(node):
+            try:
+                result = await self.node(nid, space=selected)
+            except VincNotFound:
+                continue
+            except VincAuthError as exc:
+                if exc.status != 403:
+                    raise
+                continue
+            if result.get("found") and result.get("node"):
+                readable.append(nid)
+        return format_package(node, space=selected, readable_ids=readable, max_chars=max_chars)
 
 
 __all__ = ["VincClient", "AsyncVincClient", "VincError", "resolve_key", "resolve_base_url",
