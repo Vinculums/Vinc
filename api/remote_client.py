@@ -81,6 +81,9 @@ def _route(tool: str, args: dict) -> rest_routes.Route:
     if tool == "vinc_graph":
         method = "GET" if args.get("seed_id") else "POST"
         return next(r for r in candidates if r.method == method)
+    if tool == "vinc_edges":
+        method = "POST" if args.get("nodes") is not None else "GET"
+        return next(r for r in candidates if r.method == method)
     if tool == "vinc_brief":
         return next(r for r in candidates if r.method == "POST")
     return candidates[0]

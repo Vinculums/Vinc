@@ -18,6 +18,8 @@ from vinc_mcp.rest_api import _failure
 
 # (도구, 결과, by_id, 기대 상태, 기대 코드). 상태가 None 이면 성공으로 통과해야 한다.
 FAILURE_CASES = [
+    ("vinc_edges", {"executed": True, "found": False, "edges": []}, True, 404, "not_found"),
+    ("vinc_edges", {"executed": True, "found": True, "edges": []}, True, None, None),
     ("vinc_search", {"executed": False, "error": "invalid_cursor: x"}, False, 400, "invalid_argument"),
     ("vinc_search", {"executed": True, "rows": []}, False, None, None),
     ("vinc_recall", {"executed": False, "error": "stale_cursor"}, False, 400, "invalid_argument"),
@@ -96,6 +98,8 @@ def test_unconfirmed_write_says_it_may_have_applied():
 # ── 서버 수준 ────────────────────────────────────────────────────────────────
 
 _READ_SAMPLES = {
+    ("GET", "/v1/nodes/{id}/edges"): ("", {"node": "concept:x"}),
+    ("POST", "/v1/edges/query"): ({"nodes": ["concept:x"]}, {"nodes": ["concept:x"]}),
     ("GET", "/v1/me"): (None, {}),
     ("GET", "/v1/conventions"): ("?lang=en", {"lang": "en"}),
     ("GET", "/v1/domains"): (None, {}),

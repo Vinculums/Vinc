@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**25종** — 읽기 17(search·node·brief·recall·graph·decide·domains·suggest_ties·neighbors·
+**26종** — 읽기 18(search·node·edges·brief·recall·graph·decide·domains·suggest_ties·neighbors·
 path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami) + 쓰기 8
 (ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete).
 "단일 write 표면(ingest 하나)"은
