@@ -684,6 +684,7 @@ _ALLOWED_PAIRS_HINT = (
     "except relates_to which stays concept→concept): "
     "relates_to = concept→concept; "
     "prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; "
+    "returns_to = distinct role concepts, with nonempty evidence; "
     "record → concept|decision for any of those four; "
     "connects_via = bridge → concept|decision; "
     "about = episode|decision → concept|decision; "
