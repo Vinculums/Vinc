@@ -2011,6 +2011,15 @@ def _apply_basis(shaped: dict, basis: str) -> str:
     return BASIS_CONTENT
 
 
+def _order_graph_result(shaped: dict) -> None:
+    """계산된 값은 그대로 두고 그래프 응답의 배열 순서만 고정한다."""
+    shaped["nodes"].sort(key=lambda n: n["id"])
+    # 같은 끝점·타입의 관계도 role/evidence/confidence 등 전체 값으로 동률을 푼다.
+    shaped["edges"].sort(key=lambda e: (
+        e["source"], e["target"], e["type"],
+        json.dumps(e, sort_keys=True, ensure_ascii=False, separators=(",", ":"))))
+
+
 def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
           depth: int = 2, layout: str = "radial", basis: str = BASIS_RECORDED,
           domains: list[str] | None = None, cone: float = 1.0,
@@ -2188,6 +2197,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout,
                                            cone=cone)
         used = _apply_basis(shaped, basis)
+        _order_graph_result(shaped)
         if not found:
             cands = near_nodes(store, seed, owner=owner)
             return {"kind": "graph", "executed": executed, "seed": seed, "depth": depth,
@@ -2217,6 +2227,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
     shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout,
                                        topic_marks=True, cone=cone)
     used = _apply_basis(shaped, basis)
+    _order_graph_result(shaped)
     return {"kind": "graph", "executed": res.get("executed", False),
             "basis": used, **shaped}
 
@@ -6062,6 +6073,7 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
     shaped["edges"] = [e for e in shaped["edges"] if e["source"] in keep and e["target"] in keep]
     shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in keep]
     attach_ppr(shaped, [seed])   # E-G2 — 토픽(시드) 관점 개인화 랭킹
+    _order_graph_result(shaped)
     dec_res = execute(decisions_about_plan(ids, owner=owner), cfg, store=store)
     decisions = list(dec_res.get("rows", [])) if dec_res.get("executed") else []
     conflicts, cut = _decide_conflicts(shaped["edges"], decisions)
