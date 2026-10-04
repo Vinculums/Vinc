@@ -22,6 +22,9 @@ def observe(url: str, *, timeout: float = 720, interval: float = 20) -> int:
                 if state == "complete" and status.get("index_ok") is True:
                     print("node-mirror: complete; vector index ready")
                     return 0
+                if state == "current" and status.get("index_ok") is True:
+                    print("node-mirror: unchanged; vector index already ready")
+                    return 0
                 if state == "disabled":
                     print("::notice::node-mirror rebuild is disabled")
                     return 0
