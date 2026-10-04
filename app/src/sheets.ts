@@ -162,7 +162,9 @@ function packFilename(space: string, scope: string): string {
   const clean = (s: string) => s.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
     .replace(/[. ]+$/, "").slice(0, 80) || "share";
   const date = new Date().toISOString().replace(/[:.]/g, "-");
-  return `vinc-${clean(space)}-${clean(scope)}-${date}-${crypto.randomUUID().slice(0, 8)}.vincpack`;
+  const suffix = Array.from(crypto.getRandomValues(new Uint8Array(8)),
+    (n) => n.toString(16).padStart(2, "0")).join("");
+  return `vinc-${clean(space)}-${clean(scope)}-${date}-${suffix}.vincpack`;
 }
 
 async function downloadPack(out: Record<string, unknown>, filename: string): Promise<string | null> {
