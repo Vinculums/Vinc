@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import re
+import json
 
 #: 역할이 사는 주제, 읽는 순서대로. 앞의 것이 새 역할의 자리다(기본 팩 · GRAPH.md 안내).
 #: 뒤의 것은 Vinc 자기 그래프(모든 주제가 `vinc/` 아래)와 그 전에 시드된 스페이스의
@@ -132,6 +133,15 @@ def _bullets(items) -> str:
     return "\n".join(f"- {i}" for i in items) if items else "- (none)"
 
 
+def _gate_bullets(items) -> str:
+    if not items:
+        return "- (none)"
+    # 문자열 목록의 기존 바이트를 보존하고, 구조 조건은 키를 숨기지 않고 싣는다.
+    return "\n".join("- " + (json.dumps(item, ensure_ascii=False, sort_keys=True,
+                        separators=(",", ":")) if isinstance(item, dict) else str(item))
+                     for item in items)
+
+
 def render_shell(role: dict) -> str:
     """스냅샷 항목 → 역할 껍데기(`agents/shells/<name>.md`) 본문. 결정론이다 — 같은 입력이면 같은
     바이트가 나와야 `--check` 가 성립하고, `prompts/get` 이 껍데기와 같은 계약을
@@ -205,7 +215,7 @@ def render_shell(role: dict) -> str:
         "",
         "## Gates that must pass before the pull request",
         "",
-        _bullets(props.get("gates")),
+        _gate_bullets(props.get("gates")),
     ]
     if props.get("test_command"):
         body += ["", "Test command:", "", "```", props["test_command"], "```"]
@@ -235,6 +245,8 @@ def render_shell(role: dict) -> str:
         "",
         _bullets(props.get("person_only")),
     ]
+    if "never_checks" in props:
+        body += ["", "## Machine checks for never", "", _gate_bullets(props["never_checks"])]
     # `pre_merge_check` 가 맨 앞인 이유: 이것만 서술이 아니라 **행위 직전에 돌릴
     # 명령**이다. 적어 두는 것은 함정을 막지 못하고 그 자리의 검사가 막는다
     # ([[record:writing-a-trap-down-does-not-stop-it-a-check-does]]).
