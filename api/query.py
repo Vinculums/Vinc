@@ -5609,6 +5609,50 @@ def _clamp_limit(val, default: int, cap: int) -> int:
     return max(1, min(n, cap)) if n > 0 else default
 
 
+def domain_root_diagnosis(*, owner: str, cfg=None, store=None,
+                          member_limit: int | None = None) -> dict:
+    """Read-only steward census of topic roots; multiple roots are not an error.
+
+    Count the four authored kinds that carry a topic, not derived Domain nodes
+    or Bridges. Run only on request, never on the ingest or layout path.
+    """
+    if not owner:
+        return {"kind": "domain_root_diagnosis", "executed": False,
+                "note": "an owner is required"}
+    census = domains(owner=owner, cfg=cfg, store=store)
+    if not census.get("executed"):
+        return dict(census, kind="domain_root_diagnosis")
+    counts: dict[str, int] = {}
+    assigned, unassigned = [], 0
+    for row in census.get("rows", []):
+        path = _domain_path(row["domain"]) if row["domain"] != "(none)" else ()
+        if not path:
+            unassigned += row["total"]
+            continue
+        root = path[0]
+        counts[root] = counts.get(root, 0) + row["total"]
+        assigned.append(dict(row, root=root))
+    total = sum(counts.values())
+    roots = [{"root": root, "nodes": n, "share": n / total if total else 0}
+             for root, n in sorted(counts.items(), key=lambda x: (-x[1], x[0]))]
+    # A tie is not broken alphabetically into a fabricated dominant root.
+    largest = roots[0]["root"] if roots and (len(roots) == 1 or
+              roots[0]["nodes"] > roots[1]["nodes"]) else None
+    outside = [r for r in assigned if largest and r["root"] != largest]
+    outside.sort(key=lambda r: (-r["total"], r["domain"]))
+    limit = _clamp_limit(member_limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
+    return {"kind": "domain_root_diagnosis", "executed": True,
+            "counted_kinds": ["concept", "decision", "record", "episode"],
+            "roots": roots, "largest_root": largest, "assigned_nodes": total,
+            "unassigned_nodes": unassigned,
+            "outside_largest_root": outside[:limit],
+            "outside_domain_count": len(outside),
+            "outside_node_count": sum(r["total"] for r in outside),
+            "members_truncated": len(outside) > limit,
+            "note": "Review unexpected topic roots; multiple roots can be intentional. "
+                    "This census does not reject writes or change the layout."}
+
+
 def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
                         member_limit: int | None = None) -> dict:
     """E-G3 WCC 구조 진단 — 연결 컴포넌트 수·크기 분포 + 고아(단일 노드) 개념 목록.
