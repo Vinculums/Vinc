@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**24종** — 읽기 16(search·brief·recall·graph·decide·domains·suggest_ties·neighbors·
+**25종** — 읽기 17(search·node·brief·recall·graph·decide·domains·suggest_ties·neighbors·
 path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami) + 쓰기 8
 (ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete).
 "단일 write 표면(ingest 하나)"은
@@ -470,6 +470,11 @@ def _t_doc_delete(args, bridge):
         "id": args["doc_id"], "owner": _owner(args, bridge)})
 
 
+def _t_node(args, bridge):
+    return bridge.request("GET", "/node", params={
+        "owner": _owner(args, bridge), "node_id": args["node_id"]})
+
+
 def _t_brief(args, bridge):
     # W1 — 질문 하나로 답변 재료를 모으는 결정론 조인 읽기(생성 없음).
     return bridge.request("GET", "/brief", params={
@@ -670,6 +675,25 @@ TOOLS: list[dict] = [
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_search,
+    },
+    {
+        "name": "vinc_node",
+        "description": "Read ONE node by exact id without its neighbors, document excerpts or layout. "
+                       "Returns {kind:'node', executed, found, node:{id,kind,...stored fields}}. "
+                       "The node includes every field its stored kind carries, including props as an "
+                       "object, tags, content_time and valid_from/valid_until where those columns exist. "
+                       "Fields absent from that kind's schema are not invented. Exact reads include "
+                       "retired claims; read valid_from/valid_until before treating one as current. "
+                       "found:false and node:null mean the id does not exist in the selected graph, "
+                       "including an id owned by another account or space. executed:false means the "
+                       "store could not be read; say so rather than treating it as a missing node. "
+                       "Use vinc_brief for joined answer material and vinc_neighbors to walk relations. "
+                       "Read-only.",
+        "inputSchema": {"type": "object", "properties": {
+            "node_id": {"type": "string", "description": "Exact stored node id, including its type prefix."},
+            **_OWNER_PROP,
+        }, "required": ["node_id"]},
+        "run": _t_node,
     },
     {
         "name": "vinc_brief",
@@ -1442,6 +1466,7 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_merge_rejections": {"title": "List rejected merge pairs", "readOnlyHint": True},
     # W1 — 질문 하나로 답변 재료를 모으는 조인 읽기. 조회 전용이다.
     "vinc_brief": {"title": "Brief on a question", "readOnlyHint": True},
+    "vinc_node": {"title": "Read one stored node", "readOnlyHint": True},
     "vinc_neighbors": {"title": "Observe a node's neighbors", "readOnlyHint": True},
     "vinc_path": {"title": "Shortest path between concepts", "readOnlyHint": True},
     # 쓰기지만 가산적·멱등(exact-id MERGE) — 기존 데이터를 지우지 않는다.
