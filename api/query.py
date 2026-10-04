@@ -13,6 +13,7 @@ import datetime as _dt
 import hashlib
 import itertools
 import json
+import math
 import os
 import re
 from dataclasses import dataclass, field
@@ -3331,6 +3332,34 @@ def _brief_orphan_residual(query: str, picked_title, res: dict) -> float:
     return sum(1 for t in resid if t not in seen) / len(resid)
 
 
+_BRIEF_SEMANTIC_NONE_DISTANCE = 0.42970955319294174
+
+
+def _brief_semantic_none(res: dict) -> bool:
+    """Reject distant, exclusively zero-token semantic candidates on a healthy arm.
+
+    VIN-327: the owner approved the measured cutoff with zero answerable losses
+    on the pinned evaluation set. Lexical matches and unavailable measurements
+    keep their existing resolution behavior. See [[vinc.manual.rag]].
+    """
+    hits = res.get("node_hits") or []
+    if not hits or any(res.get(k) for k in (
+            "error", "node_error", "vector_note", "vector_rebuilding",
+            "encoder_runtime_warning")):
+        return False
+    if any(type(h.get("hit_tokens")) is not int or h["hit_tokens"] != 0
+           for h in hits):
+        return False
+    semantic = [h for h in hits if "semantic" in (h.get("arms") or [])]
+    if not semantic:
+        return False
+    distances = [h.get("distance") for h in semantic]
+    if any(type(d) not in (int, float) or not math.isfinite(d)
+           for d in distances):
+        return False
+    return min(distances) > _BRIEF_SEMANTIC_NONE_DISTANCE
+
+
 def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
           max_excerpts: int = 3, historical: bool = False, as_of: str | None = None,
           cfg=None, store=None, _reask: bool = False,
@@ -3439,6 +3468,9 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             base["search_error"] = res["error"]
             if not res.get("node_hits"):
                 return base
+        if _brief_semantic_none(res):
+            base["note"] = "no sufficiently close semantic candidate"
+            return base
         status, picked = _brief_resolve(query, res.get("node_hits") or [])
         # 🔴 **유효구간 필터가 동점을 깨서 확신을 만들면 안 된다.** 지운 행이 남은 1위와
         # 같은 점수였다면, 원래 이 질문은 "모르겠다"(choose)였다. 그 자리에서 확정을
