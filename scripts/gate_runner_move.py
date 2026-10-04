@@ -46,6 +46,8 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import os
+import re
 
 try:
     import yaml
@@ -124,11 +126,36 @@ def runners(doc: dict) -> dict[str, object]:
     }
 
 
+def active_runs(repository: str, workflow: str) -> list[int]:
+    """러너를 옮길 워크플로의 큐와 실행을 읽는다. 조회 실패는 통과가 아니다."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise Unreadable("GITHUB_REPOSITORY")
+    found: set[int] = set()
+    for status in ("queued", "in_progress", "waiting", "pending", "requested"):
+        endpoint = (f"repos/{repository}/actions/workflows/{workflow}/runs"
+                    f"?status={status}&per_page=100")
+        try:
+            result = subprocess.run(
+                ["gh", "api", "--paginate", endpoint, "--jq", ".workflow_runs[].id"],
+                capture_output=True, text=True, encoding="utf-8", timeout=60,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise Unreadable(f"Actions queue: {workflow}") from exc
+        if result.returncode:
+            raise Unreadable(f"Actions queue: {workflow} ({status})")
+        try:
+            found.update(int(line) for line in result.stdout.splitlines() if line.strip())
+        except ValueError as exc:
+            raise Unreadable(f"Actions queue response: {workflow}") from exc
+    return sorted(found)
+
+
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        print("usage: gate_runner_move.py <BASE_SHA> <HEAD_SHA>", file=sys.stderr)
+    check_queues = len(argv) == 3 and argv[2] == "--check-queues"
+    if len(argv) != 2 and not check_queues:
+        print("usage: gate_runner_move.py <BASE_SHA> <HEAD_SHA> [--check-queues]", file=sys.stderr)
         return 2
-    base, head = argv
+    base, head = argv[:2]
 
     try:
         require_revisions(base, head)
@@ -150,6 +177,7 @@ def main(argv: list[str]) -> int:
         return 2
 
     findings: list[str] = []
+    moved_workflows: set[str] = set()
     for path in paths:
         after = _load(head, path)
         before = _load(base, path)
@@ -161,12 +189,28 @@ def main(argv: list[str]) -> int:
         a, b = runners(after), runners(before)
         for job in sorted(set(a) & set(b)):
             if a[job] != b[job]:
+                moved_workflows.add(path.removeprefix(WORKFLOW_DIR))
                 findings.append(
                     f"{path} 의 잡 `{job}` 러너가 바뀐다: {b[job]!r} → {a[job]!r}"
                 )
 
     if not findings:
         return 0
+
+    if check_queues:
+        try:
+            queues = {workflow: active_runs(os.environ.get("GITHUB_REPOSITORY", ""), workflow)
+                      for workflow in sorted(moved_workflows)}
+        except Unreadable as exc:
+            print(f"::error::러너 이동 전 Actions 큐를 읽지 못했다: {exc}", file=sys.stderr)
+            return 2
+        if not any(queues.values()):
+            for workflow in queues:
+                print(f"Runner move: {workflow}: no queued or active runs")
+            return 0
+        for workflow, run_ids in queues.items():
+            if run_ids:
+                print(f"::error::{workflow}: queued or active runs {run_ids}", file=sys.stderr)
 
     print("::error::직렬화 워크플로의 러너가 바뀐다 — 머지 전에 그 워크플로의 큐를 비울 것", file=sys.stderr)
     for f in findings:
