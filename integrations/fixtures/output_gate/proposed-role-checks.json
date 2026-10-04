@@ -1,5 +1,6 @@
 {
-  "status": "unratified VIN-311 proposal; not a live roster",
+  "status": "owner ratified VIN-311 configuration; live application pending",
+  "ratification": "decision:machine-role-gates-ratified-2026-10-04",
   "profiles": [
     {
       "id": "concept:agent-copy-owner",
