@@ -133,3 +133,21 @@ or interrupt, with no model output in its exception message.
 
 These checks implement an enumerated subset of `never`; its preserved prose
 continues to bind the operator. There are no model calls or graph writes.
+
+## Structured person requests and approval
+
+`RoleOutput` contains `text` and `person_only_requests: [{action, reason}]`.
+Use it as the model response schema; each action must match the fresh role's
+adopted person-only action ID. `prepare_person_only(output, gate, role_id=...,
+run_id=...)` returns a checked output or a draft-bound `ApprovalRequest`. Blocked
+outputs raise before becoming approvable. The run ID must identify this invocation.
+
+The host authenticates the human and constructs an `ApprovalDecision` with the
+exact request ID and a boolean `approved`. `resolve_person_only` resumes that
+saved request without a model call. A different draft/run, modified request or
+truthy string cannot approve it. Rejection returns no deliverable.
+
+Approval releases this reviewed output only. It does not authorize or execute
+tools, merge, deploy or publish anything. Keep side-effect tools behind a separate
+host authorization step. The request hash binds data; it does not authenticate
+the responding person. Treat drafts and pending requests as private output.

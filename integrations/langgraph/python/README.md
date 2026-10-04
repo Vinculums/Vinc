@@ -102,3 +102,27 @@ node. The helper returns decisions and bounded evidence, not the original answer
 `require_output_pass` is available when the graph should raise instead of routing.
 State-provided proof dictionaries are ignored. Neither path calls another model
 or automatically stores an episode.
+
+## Approval after the model
+
+Have the model node store a `vinc_client.RoleOutput` dictionary in `role_output`.
+Declare `vinc_approval` in your StateGraph state schema and add a separate node:
+
+```python
+from vinc_langgraph import create_person_only_node
+
+approval = create_person_only_node(gate, role_id=fresh_role["id"], run_id=run_id)
+graph.add_node("approval", approval)
+graph.add_edge("model", "approval")
+```
+
+Compile with a checkpointer and use the same thread ID when resuming. The node
+emits a draft-bound native `interrupt` when a structured request or gate identifies
+a person-only action. An authenticated human response resumes with
+`Command(resume={"request_id": pending["request_id"], "approved": True})`.
+The completed model node is not repeated. Deliver only the checked
+`vinc_approval` result; rejected output has no deliverable. Blocking checks cannot
+be overridden by approval. Keep side-effect tools separately authorized.
+
+Use a durable checkpointer in production and never expose unchecked model stream
+events. This follows the framework's [interrupt contract](https://docs.langchain.com/oss/python/langgraph/interrupts).
