@@ -91,6 +91,14 @@ def test_node_edges_stamps_owner_and_preserves_batch(app):
     assert body is None
 
 
+def test_roles_stamps_owner_without_expanding_the_graph(app):
+    app.graph_owner_request(_assertion(op="roles"), {"role":"agent-dev-core", "owner":"evil"})
+    method, path, params, body = app.bridge.calls[0]
+    assert (method, path) == ("GET", "/roles")
+    assert params["owner"] == "user:u-1" and params["role"] == "agent-dev-core"
+    assert body is None
+
+
 def test_debug_is_stripped_on_the_web_plane(app):
     """웹 평면은 쿼리 인자를 그대로 흘린다 — `debug` 는 허브에서 벗긴다(P4 S13)."""
     app.graph_owner_request(_assertion(op="domains"), {"debug": "true"})

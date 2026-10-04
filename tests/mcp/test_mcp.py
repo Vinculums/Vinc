@@ -40,7 +40,7 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              # 한 번 아니라고 판단한 쌍이 매번 다시 올라와 목록이 수렴하지 않는다.
              "vinc_merge_candidates", "vinc_merge_reject",
              # E-G5/G7 — 단일 홉 관측(SoG) · 최단 경로 증거 체인.
-             "vinc_neighbors", "vinc_edges", "vinc_path",
+             "vinc_neighbors", "vinc_edges", "vinc_role", "vinc_path",
              # D45 P4 — 문서 정본(Chunk=SSoT) 직접 CRUD: get/list(조회) · put/delete(쓰기).
              "vinc_doc_get", "vinc_doc_list", "vinc_doc_put", "vinc_doc_delete",
              # D45-V — 정본에서 개념을 파생한다. 이게 없으면 어시스턴트는 문서를

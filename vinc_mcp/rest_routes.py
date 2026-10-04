@@ -9,7 +9,13 @@ from urllib.parse import unquote
 
 @lru_cache(maxsize=None)
 def _pattern(path: str) -> re.Pattern:
-    return re.compile(re.sub(r"\{([a-z_]+)\}", lambda m: f"(?P<{m.group(1)}>[^/]+)", path))
+    # 인그레스가 %2F를 먼저 풀어도 노드 주소의 슬래시는 그대로 노드 id에 속한다.
+    # 도구 접미사는 find_route가 긴 고정 경로부터 골라 주소 조회에 삼키지 않는다.
+    def capture(match):
+        field = match.group(1)
+        value = ".+?" if field == "id" and path.startswith("/v1/nodes/") else "[^/]+"
+        return f"(?P<{field}>{value})"
+    return re.compile(re.sub(r"\{([a-z_]+)\}", capture, path))
 
 
 @dataclass(frozen=True)
@@ -30,6 +36,8 @@ class Route:
 
 
 READ_ROUTES = (
+    Route("GET", "/v1/roles", "vinc_role"),
+    Route("GET", "/v1/roles/{id}", "vinc_role", path_args=(("id", "role"),)),
     Route("GET", "/v1/me", "vinc_whoami"),
     Route("GET", "/v1/conventions", "vinc_conventions", query=("lang",)),
     Route("GET", "/v1/domains", "vinc_domains"),
@@ -91,7 +99,9 @@ HOST_EXCLUSIONS = frozenset({"search", "fetch"})
 
 
 def find_route(method: str, path: str) -> tuple[Route, dict[str, str]] | None:
-    for route in ROUTES:
+    # /nodes/{id}/neighbors 같은 고정 접미사는 /nodes/{id}보다 구체적이다.
+    for route in sorted(ROUTES, key=lambda r: len(re.sub(r"\{[^}]+\}", "", r.path)),
+                        reverse=True):
         fields = route.match(method, path)
         if fields is not None:
             return route, fields
