@@ -146,7 +146,7 @@ def _gate_bullets(items) -> str:
     # 문자열 목록의 기존 바이트를 보존하고, 구조 조건은 키를 숨기지 않고 싣는다.
     return "\n".join("- " + (json.dumps(item, ensure_ascii=False, sort_keys=True,
                         separators=(",", ":")) if isinstance(item, dict) else str(item))
-                     for item in items)
+                       for item in items)
 
 
 def render_shell(role: dict, *, compact: bool = False) -> str:
@@ -376,6 +376,15 @@ def contract(role: str | None, bridge, *, forced_owner: str | None = None) -> di
            "title": node.get("title") or "", "domain": node.get("domain") or "",
            "props": entry["props"], "works_with": groups,
            "rendered": _BOUNDARY + "\n\n" + _fence(render_shell(entry, compact=True))}
+    if len(json.dumps(out, ensure_ascii=False).encode("utf-8")) >= 10000:
+        # 조건과 관계는 정형 필드에 전부 남긴다. 같은 원문을 두 번 싣는 표시 사본만 줄인다.
+        reference = (f"# {entry['label'] or rid}\n{rid}\n\n"
+                     "The complete role contract is in the accompanying structured fields.\n"
+                     "props contains every original property, including never, person_only, "
+                     "gates and never_checks.\n"
+                     "works_with contains every directed relation and its full evidence.\n"
+                     "This rendered view references those fields instead of duplicating them.")
+        out["rendered"] = _BOUNDARY + "\n\n" + _fence(reference)
     if len(json.dumps(out, ensure_ascii=False).encode("utf-8")) >= 10000:
         return {"kind": "role", "executed": False, "error": "role_contract_too_large",
                 "note": "The complete contract exceeds 10000 bytes; no fields were truncated."}
