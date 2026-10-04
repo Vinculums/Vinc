@@ -9,6 +9,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod cli_link;
+mod pack_file;
 mod secret;
 mod session_file;
 
@@ -705,6 +706,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             sidecar_conn, sidecar_status, sidecar_alive, sidecar_restart, mcp_install, mcp_uninstall,
             take_pending_files,
+            pack_file::save_pack_file,
             cli_link_status, cli_link_install, cli_link_remove,
             secret_get, secret_set, secret_delete, secret_available])
         .setup(move |app| {

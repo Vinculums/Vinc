@@ -396,6 +396,11 @@ export async function renderSettings(
   // 원격 MCP 엔드포인트(허브). `vinc_mcp/http_server.py` 의 `/mcp` 와 짝이고, 같은
   // 호스트가 OAuth 디스커버리(`/.well-known/*`)도 낸다 — 커넥터는 이 주소 하나만 받는다.
   const REMOTE_MCP_URL = "https://mcp.vincs.io/mcp";
+  // 여기서 확인한 등록만 기억한다. 파일을 읽지 않고 기존 등록 상태를 짐작하지 않는다.
+  const registeredHosts = new Set<string>();
+  const busyHosts = new Set<string>();
+  const hostResults = new Map<string, string>();
+  let paintConnections = () => {};
 
   function renderConnections(body: HTMLElement) {
     // 호스트 하나 = 행 하나(2026-08-05 재설계). 여태 `.seg` 안에 연결 버튼 4개,
@@ -404,14 +409,17 @@ export async function renderSettings(
     // 보였다), 같은 호스트의 연결과 해제가 화면 위아래로 갈라져 있어 "Claude Desktop
     // 을 어떻게 하지"를 두 곳에서 찾아야 했다. 행이 되면 그 둘이 한 줄에 있다.
     const rows = MCP_HOSTS.map((h) => `
-      <li class="row">
+      <li class="row mcp-row">
         <span class="row-name">${U.mcpHosts[h]}</span>
         <span class="row-acts">
           <button class="btn btn-quiet" id="mcp-rm-${h}"
                   aria-label="${U.mcpRemove(U.mcpHosts[h])}">${U.mcpRemoveAct}</button>
           <button class="btn" id="mcp-add-${h}"
+                  disabled
                   aria-label="${U.mcpConnect(U.mcpHosts[h])}">${U.mcpConnectAct}</button>
         </span>
+        <span id="mcp-result-${h}" class="hint hint-sm break-all mcp-result"
+              role="status" aria-live="polite"></span>
       </li>`).join("");
     body.innerHTML = `
       <h2>${esc(U.navAi)}</h2>
@@ -420,10 +428,8 @@ export async function renderSettings(
       <ul class="rowlist">${rows}</ul>
       <p class="hint hint-sm" id="mcp-mode"></p>
       <p class="hint hint-sm">${U.mcpOtherHint}</p>
-      <div id="mcp-result" class="hint hint-sm break-all"></div>
 
-      <!-- 원격 호스트. 위의 넷과 **다른 물건**이라 섹션을 가른다: 저것들은 이 기기의
-           루프백에 붙고 계정이 필요 없지만, 여기는 계정 그래프에 붙으므로 계정이
+      <!-- 원격 호스트. 위의 넷은 앱 모드를 따르지만 여기는 계정 그래프에 붙으므로 계정이
            있어야 한다(루프백은 구조적으로 원격에 노출할 수 없다). 여태 이 경로는
            화면에 아예 없어서, 계정이 도움이 될 사람조차 존재를 몰랐다.
            근거: [[decision:account-is-a-path-not-a-wall]] -->
@@ -451,16 +457,31 @@ export async function renderSettings(
         </li>
       </ul>
       <div id="cli-note" class="hint hint-sm break-all"></div>`;
-    const mcpResult = body.querySelector<HTMLElement>("#mcp-result")!;
+    let keyReady = !accountMode();
+    function paintHost(client: string) {
+      const add = body.querySelector<HTMLButtonElement>(`#mcp-add-${client}`)!;
+      const remove = body.querySelector<HTMLButtonElement>(`#mcp-rm-${client}`)!;
+      if (!add || !remove) return;
+      add.disabled = busyHosts.has(client) || !keyReady || registeredHosts.has(client);
+      remove.disabled = busyHosts.has(client);
+      const result = rowResult(client);
+      result.textContent = !keyReady ? U.mcpNoKey : hostResults.get(client) || "";
+    }
+    function rowResult(client: string): HTMLElement {
+      return body.querySelector<HTMLElement>(`#mcp-result-${client}`)!;
+    }
+    paintConnections = () => { for (const h of MCP_HOSTS) paintHost(h); };
     // 등록된 항목은 앱 모드를 따른다(VIN-132): 계정 모드면 계정 그래프, 로컬 모드면 이
     // 컴퓨터의 그래프. 모드는 호스트가 서버를 띄울 때 한 번 읽으므로 바꾼 뒤엔 다시 켜야 한다.
     const mcpMode = body.querySelector<HTMLElement>("#mcp-mode")!;
     mcpMode.textContent = accountMode() ? U.mcpModeAccount : U.mcpModeLocal;
     if (accountMode()) {
       void mcpKeyPresent().then((ok) => {
-        if (!ok && mcpMode.isConnected) mcpMode.textContent = `${U.mcpModeAccount} ${U.mcpNoKey}`;
+        if (!mcpMode.isConnected) return;
+        keyReady = !accountMode() || ok;
+        paintConnections();
       });
-    }
+    } else paintConnections();
     /** ⚠ **성공했다고 말하기 전에 결과를 읽는다.**
      *
      *  여태 이 자리는 호출이 던지지만 않으면 "등록됐어요"라고 했다. 그런데 호스트
@@ -470,31 +491,45 @@ export async function renderSettings(
      *  아무것도 등록되지 않은 채 화면만 성공을 말했다. 넷이 똑같이 생긴 행이라
      *  어느 쪽이 그런지 구분할 방법도 없었다.
      *
-     *  JSON 이 아니어도 안 깨진다: 못 읽으면 예전처럼 성공으로 읽되, 없는 말을
-     *  지어내지는 않는다. */
+     *  결과가 JSON 이 아니거나 성공 필드가 없으면 등록됐다고 말하지 않는다. */
     async function mcpAction(action: "install" | "uninstall", client: string) {
-      const invoke = await shellInvoke();
-      if (!invoke) { mcpResult.textContent = U.mcpNoShell; return; }
-      mcpResult.textContent = action === "install" ? U.mcpInstalling : U.mcpRemoving;
+      if (busyHosts.has(client) || (action === "install" && registeredHosts.has(client))) return;
+      busyHosts.add(client); paintHost(client);
+      const mcpResult = rowResult(client);
       const host = U.mcpHosts[client] || client;
+      const say = (text: string) => {
+        hostResults.set(client, text);
+        mcpResult.textContent = text;
+      };
       try {
+        // 화면을 연 뒤 키가 지워졌을 수도 있다. 등록 직전에 다시 확인한다.
+        if (action === "install" && accountMode() && !(await mcpKeyPresent())) {
+          keyReady = false; say(U.mcpNoKey); return;
+        }
+        const invoke = await shellInvoke();
+        if (!invoke) { say(U.mcpNoShell); return; }
+        say(action === "install" ? U.mcpInstalling : U.mcpRemoving);
         const raw = await invoke(
           action === "install" ? "mcp_install" : "mcp_uninstall", { client }) as unknown;
         let res: any = null;
         try { res = typeof raw === "string" ? JSON.parse(raw) : raw; } catch { /* 형식 밖 */ }
-        const ok = action === "install" ? res?.registered !== false : res?.removed !== false;
+        const ok = action === "install" ? res?.registered === true : res?.removed === true;
         if (!ok && res?.command) {
           // 사람이 손으로 이을 수 있게 **실행할 줄을 그대로** 보여 준다.
-          mcpResult.textContent = `${U.mcpNeedsCli(host)} ${res.command}`;
+          say(`${U.mcpNeedsCli(host)} ${res.command}`);
         } else if (!ok) {
-          mcpResult.textContent = action === "install"
-            ? `${U.mcpFail}: ${res?.note || ""}`.trim()
-            : U.mcpNothing(host);
+          say(action === "uninstall" && res?.removed === false
+            ? U.mcpNothing(host) : `${U.mcpFail}: ${res?.note || ""}`.trim());
         } else {
-          mcpResult.textContent = action === "install" ? U.mcpDone(host) : U.mcpRemoved(host);
+          if (action === "install") registeredHosts.add(client);
+          else registeredHosts.delete(client);
+          say(action === "install" ? U.mcpDone(host) : U.mcpRemoved(host));
         }
       } catch (e: any) {
-        mcpResult.textContent = `${U.mcpFail}: ${(e && e.message) || e}`;
+        say(`${U.mcpFail}: ${(e && e.message) || e}`);
+      } finally {
+        busyHosts.delete(client);
+        paintConnections();
       }
     }
     for (const h of MCP_HOSTS) {

@@ -88,6 +88,8 @@ input[type="range"], input[type="checkbox"], input[type="radio"], progress {
    모서리가 갈리는 것이 거슬리면 고칠 곳은 드롭다운이 아니라 그 폼이다 — 여기서
    되돌리지 말 것. */
 select {
+  /* base-select 미지원 WebKit도 앱 테마에 맞는 네이티브 면을 그려야 한다. */
+  color-scheme: light;
   font: inherit;
   padding: .62rem .7rem;
   border: 1px solid hsl(var(--border));
@@ -98,6 +100,7 @@ select {
   display: inline-flex; align-items: center; gap: .55rem;   /* base-select 의 버튼 면: 라벨 · 캐럿 */
 }
 select:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+[data-theme="dark"] select { color-scheme: dark; }
 
 /* 목록(팝업)도 우리 것으로 — appearance:base-select 는 버튼 면과 ::picker 둘 다 CSS 로
    그리게 한다(시맨틱·키보드는 네이티브 그대로). 지시 2026-09-05: 스페이스 선택·주제
@@ -3382,6 +3385,9 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .rowlist .row:last-child { border-bottom: none; }
 .row-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-acts { flex: 0 0 auto; display: flex; align-items: center; gap: .4rem; }
+.mcp-row { flex-wrap: wrap; }
+.mcp-row .mcp-result { flex-basis: 100%; margin: 0; }
+.mcp-row .mcp-result:empty { display: none; }
 /* 작은 보조 문구·긴 문자열 처리 — 인라인 style 로 매번 적던 것들을 클래스로. */
 .hint-sm { font-size: .78rem; margin-top: .35rem; }
 .break-all { word-break: break-all; }

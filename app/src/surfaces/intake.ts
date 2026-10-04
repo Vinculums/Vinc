@@ -4,8 +4,9 @@ import { header } from "../components";
 import { icon, stateDot } from "../icons";
 import { api, cfg, sidecarDiag, remote, teamsApi, WEB } from "../api";
 import {
-  isDocFile, importDocFile, originIndex, previewExtract, applyExtract, docImportError,
+  isDocFile, importDocFile, originIndex, docImportError,
 } from "../doc-import";
+import { offerExtraction } from "../extract-list";
 import samplePack from "../sample-pack.json";
 
 /** Surface 1 — Intake (Signal 재스타일 · Figma 42:3 Empty / 42:5 Ingesting /
@@ -230,9 +231,9 @@ export function renderIntake(el: HTMLElement,
           <div class="concept-chips" id="concept-chips" hidden></div>
           <div class="success-actions">
             <a class="btn btn-primary" href="#view">${COPY.intake.successCta}</a>
-            <span id="extract-offer"></span>
             <button class="btn" id="add-more">${ui.addMore}</button>
           </div>
+          <div id="extract-offer"></div>
         </div>
       </div>
     `;
@@ -247,18 +248,29 @@ export function renderIntake(el: HTMLElement,
   async function offerExtract(docIds: string[]) {
     const box = el.querySelector<HTMLElement>("#extract-offer");
     if (!box) return;
-    const n = await previewExtract(USER_OWNER, docIds);
-    // 미리보기 중에 '계속 추가'로 화면이 갈렸을 수 있다 — 죽은 노드에 쓰지 않는다.
-    if (!n || !el.contains(box)) return;
-    box.innerHTML = `<button class="btn" id="do-extract">${COPY.ui.viewx.edExtractOffer(n)}</button>`;
-    box.querySelector("#do-extract")!.addEventListener("click", async () => {
-      box.innerHTML = `<span class="hint">${ui.importing}</span>`;
-      const ap = await applyExtract(USER_OWNER, docIds);
+    for (const docId of [...new Set(docIds)]) {
+      const doc = await api.docGet(USER_OWNER, docId).catch(() => null);
       if (!el.contains(box)) return;
-      box.innerHTML = `<span class="hint">${COPY.ui.viewx.edExtractDone(ap.created, ap.mentions)}${
-        ap.refused ? ` ${esc(COPY.author.exRefusedDocs(ap.refused))}` : ""}</span>`;
-      void loadConceptChips();   // 새 개념이 칩에 반영되도록 다시 읽는다
-    });
+      if (!doc?.executed) continue;
+      const section = document.createElement("section");
+      const title = document.createElement("h3");
+      title.textContent = doc.title || docId;
+      const review = document.createElement("div");
+      section.append(title, review); box.append(section);
+      await offerExtraction(review, {
+        owner: USER_OWNER, docId, requireTopic: true,
+        setTopic: async (topic) => {
+          // 현재 원문을 읽고 주제만 보탠다. 미검증·중간 쓰기 응답은 다시 저장하지 않는다.
+          const fresh = await api.docGet(USER_OWNER, docId);
+          if (!fresh.executed || !fresh.verified || fresh.text === undefined) return false;
+          const saved = await api.docPut(USER_OWNER, fresh.text, docId, fresh.title,
+            undefined, undefined, topic);
+          return saved.executed;
+        },
+        onApplied: () => { if (el.contains(box)) void loadConceptChips(); },
+      });
+      if (!review.childElementCount) section.remove();
+    }
   }
 
   // 개념 칩 = 본인 공간의 실 도메인(상위 3개). 사이드카 미가동/빈 그래프면 조용히 숨김.
