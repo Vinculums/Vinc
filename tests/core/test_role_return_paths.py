@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 import json
 
-from api import fragment, query, role_contract, share, sync
+from api import fragment, query, role_contract, roles as role_read, share, sync
 from store.backend import open_store
 from store.config import load_config
 from vinc_mcp import roles
@@ -84,6 +84,34 @@ def test_returns_reject_missing_evidence_nonroles_self_and_wrong_carriers(graph)
             "from": src, "to": dst, "type": "returns_to", **extra}]}, store=st)
         assert any("returns_to expects" in warning for warning in out.get("warnings", [])), out
         assert out["merged"]["edges"]["created"] == 0
+
+
+def test_public_contract_preserves_rejection_routes_without_forward_dag_edges(graph):
+    st, _ = graph
+    seed(st)
+
+    class Bridge:
+        owner = OWNER
+
+        def request(self, method, path, params=None, **kwargs):
+            assert (method, path) == ("GET", "/roles")
+            return role_read.read(params["role"], owner=params["owner"], store=st)
+
+    reviewer = roles.contract(SRC, Bridge())
+    author = roles.contract(DST, Bridge())
+    expected = {"from": SRC, "to": DST, "type": "RETURNS_TO",
+                "evidence": "Failed checks return to author", "confidence": 0.0}
+    actual = reviewer["works_with"]["returns_to"]
+    assert len(actual) == 1
+    assert all(actual[0].get(k) == v for k, v in expected.items())
+    assert author["works_with"]["receives_returns_from"][0]["from"] == SRC
+    assert not reviewer["works_with"]["hands_to"]
+    assert not author["works_with"]["receives_from"]
+    assert "returns_to: " in reviewer["rendered"]
+    assert "receives_returns_from: " in author["rendered"]
+    assert "- merge: A person decides" in reviewer["rendered"]
+    assert "{'action'" not in reviewer["rendered"]
+    assert reviewer["props"]["person_only"] == node(SRC)["props"]["person_only"]
 
 
 def test_foreign_endpoint_cannot_receive_a_return_edge(graph):

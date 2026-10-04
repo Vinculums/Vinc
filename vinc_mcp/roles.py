@@ -341,12 +341,19 @@ def contract(role: str | None, bridge, *, forced_owner: str | None = None) -> di
     node = got["node"]
     rid = node["id"]
     relations = got.get("relations") or []
-    groups = {"hands_to": [], "receives_from": [], "works_beside": []}
+    groups = {"hands_to": [], "receives_from": [], "works_beside": [],
+              "returns_to": [], "receives_returns_from": []}
     for edge in relations:
         if edge["from"] == edge["to"]:
             continue
-        key = "works_beside" if edge["type"] == "RELATED_TO" else (
-            "hands_to" if edge["from"] == rid else "receives_from")
+        if edge["type"] == "RELATED_TO":
+            key = "works_beside"
+        elif edge["type"] == "RETURNS_TO":
+            key = "returns_to" if edge["from"] == rid else "receives_returns_from"
+        elif edge["type"] == "PREREQUISITE_OF":
+            key = "hands_to" if edge["from"] == rid else "receives_from"
+        else:
+            continue
         groups[key].append(edge)
     entry = build_payload([{**node, "works_with": works_with(rid, got.get("peers") or [],
         [{**e, "source": e["from"], "target": e["to"]} for e in relations])}])["roles"][0]
