@@ -1538,6 +1538,22 @@ class ConnectFlowTests(unittest.TestCase):
             self.assertIsNone(self._preflight(base, "https://evil.example"))
 
 
+class DocPutValidationTests(unittest.TestCase):
+    def test_bad_create_does_not_reach_document_write(self):
+        from unittest.mock import patch
+        with running_server(_app(_EmptyStore())) as base, patch("api.docstore.put_doc") as put:
+            for fields in ({"title": "A"}, {"text": None, "title": "A"},
+                           {"text": [], "title": "A"}, {"text": "body", "title": ""},
+                           {"text": "body", "title": "   "},
+                           {"text": "body", "title": "", "id": "new-doc"}):
+                with self.subTest(fields=fields):
+                    code, res = _req(base, "/doc/put", method="POST",
+                                     body={"owner": "user:a", **fields})
+                    self.assertEqual(code, 400, res)
+                    self.assertFalse(res["executed"])
+            put.assert_not_called()
+
+
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class DocRouteE2E(unittest.TestCase):
     """D45 P4 — 문서 정본 편집 표면(HTTP) 실엔진 왕복: put→get→list→delete."""
@@ -1597,6 +1613,32 @@ class DocRouteE2E(unittest.TestCase):
             self.assertTrue(ex.get("executed"))
             code, docs = _req(base, "/docs?owner=user:a")
             self.assertEqual(code, 200)
+
+    def test_saved_title_is_findable_without_body_or_node_matches(self):
+        title = "QA-TEST 01 stressed user"
+        with running_server(self.app) as base:
+            code, saved = _req(base, "/doc/put", method="POST", body={
+                "owner": "user:a", "title": title, "text": "An unrelated body."})
+            self.assertEqual(code, 200)
+            # 같은 제목의 남의 문서는 나에게 보이지 않는다.
+            _req(base, "/doc/put", method="POST", body={
+                "owner": "user:b", "title": title, "text": "Other account."})
+            from urllib.parse import urlencode
+            params = urlencode({"owner": "user:a", "title": title.lower(), "detail": "summary"})
+            code, matches = _req(base, "/docs?" + params)
+            self.assertEqual(code, 200)
+            self.assertEqual([d["doc_id"] for d in matches["docs"]], [saved["doc_id"]])
+            self.assertEqual(matches["docs"][0]["title"], title)
+            _, no_match = _req(base, "/docs?" + urlencode({"owner": "user:a", "title": "QA-TEST"}))
+            self.assertEqual(no_match["docs"], [])
+            # 기존 문서의 제목 생략·명시적 비움은 보존한다(3값 계약).
+            _, kept = _req(base, "/doc/put", method="POST", body={
+                "owner": "user:a", "id": saved["doc_id"], "text": "An unrelated body."})
+            self.assertEqual(kept["title"], title)
+            code, cleared = _req(base, "/doc/put", method="POST", body={
+                "owner": "user:a", "id": saved["doc_id"], "title": "", "text": "An unrelated body."})
+            self.assertEqual(code, 200)
+            self.assertEqual(cleared["title"], "")
 
     def test_doc_crud_over_http(self):
         text = "# HTTP 편집\n\n" + "정본 편집 표면 왕복. " * 60

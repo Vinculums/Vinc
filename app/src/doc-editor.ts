@@ -126,7 +126,7 @@ export type DocEditorHandle = {
   /** 이 문서의 주제를 적는다(보통 저장과 같은 길 · 같은 충돌 확인). 아직 안 만든 문서면 false. */
   saveTopic?: (topic: string) => Promise<boolean>;
   /** 사람이 저장을 뜻한 것과 같다(Ctrl/Cmd+S). 새 문서의 주제를 고른 직후에 쓴다. */
-  saveNow?: () => Promise<void>;
+  saveNow?: () => Promise<boolean>;
 };
 
 /** 살아 있는 편집기 — **teardown 이 핸들에 닿는 유일한 통로.**
@@ -196,6 +196,8 @@ export type DocEditorOpts = {
   onCreated?: (docId: string, topic: string) => void;
   /** 새 문서가 **만들어지기 전에** 닫혔다(제목·주제가 없어 저장이 미뤄진 채). 쓴 것을 넘긴다. */
   onUnsaved?: (draft: { title: string; text: string; contentTime: string }) => void;
+  /** 만들기 폼은 완료를 눌렀을 때만 저장한다. 닫기·취소는 제출이 아니다. */
+  manualSave?: boolean;
 };
 
 /** 편집기를 host 에 마운트. host 내부를 편집 UI 로 채운다(호출부가 컨테이너·닫기
@@ -294,6 +296,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     <textarea id="ed-src" spellcheck="false" style="width:100%;min-height:12rem;resize:vertical;
       background:transparent;color:inherit;border:1px solid hsl(var(--border));
       border-radius:6px;padding:.5rem;margin-top:.4rem;font:inherit;line-height:1.5"></textarea>
+    <p id="ed-validation" class="hint" role="alert" hidden></p>
     <div id="ed-conflict"></div>
     <div id="ed-extract"></div>
     <div id="ed-prev" style="border-top:1px solid hsl(var(--border));
@@ -326,6 +329,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     || ctimeInput.value.trim() !== lastCtime;
   /** 2초 뒤 저장(디바운스). 터지면 타이머를 비운다 — dispose 가 "대기 중인가"를 이것으로 본다. */
   const schedule = () => {
+    if (opts.manualSave) return;
     if (timer) window.clearTimeout(timer);
     timer = window.setTimeout(() => { timer = undefined; void save(); }, 2000);
   };
@@ -433,10 +437,21 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
 
   async function doSave(force: boolean, explicit: boolean, topicOnce: string): Promise<boolean> {
     const text = getText();
-    const t = titleInput.value;
+    const t = docId && !opts.manualSave ? titleInput.value : titleInput.value.trim();
     const ct = ctimeInput.value.trim();
     // 새 문서 — 제목과 주제가 있어야 만든다. 없으면 **왜 안 저장됐는지** 말한다.
     const creating = !docId && !!opts.declareId;
+    const validation = host.querySelector<HTMLElement>("#ed-validation")!;
+    const needTitle = (!docId || opts.manualSave) && !t.trim();
+    const needBody = (!docId || opts.manualSave) && !text.trim();
+    titleInput.setAttribute("aria-invalid", String(needTitle));
+    (host.querySelector<HTMLElement>(".cm-content") || src)
+      .setAttribute("aria-invalid", String(needBody));
+    validation.hidden = !needTitle && !needBody;
+    validation.textContent = [needTitle ? COPY.ui.tools.needTitle : "",
+      needBody ? COPY.ui.tools.needBody : ""].filter(Boolean).join(" ");
+    if (needTitle || needBody) return false;
+    if (!docId || opts.manualSave) titleInput.value = t;
     if (!creating && !force && !topicOnce && !dirty()) return false;
     const topic = topicOnce || opts.topic?.() || "";
     if (creating) {
@@ -630,7 +645,13 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     scrollToOffset: (pos: number) => cm?.scrollToOffset(pos),
     getText,
     saveTopic,
-    saveNow: async () => { await save(false, true); },
+    saveNow: async () => {
+      // 완료 클릭의 blur·compositionend 및 CM의 DOM 변경 처리가 끝난 뒤 원문을 읽는다.
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+      if (timer) { window.clearTimeout(timer); timer = undefined; }
+      await save(false, true);
+      return !!docId && !dirty();
+    },
   };
   LIVE.set(host, handle);
   // **처음부터 상태를 말한다.** 여태 `setStatus` 는 고치거나 저장할 때만 불려서,
@@ -638,7 +659,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   // 말하지 않은 셈이고, 그래서 "클릭해도 되나"가 남았다(발주자 지적 2026-09-10).
   // 방금 읽어 온 그대로이므로 지금은 저장된 상태다. 새 문서(흐름 B)는 아직 아무것도
   // 저장된 적이 없으므로 "저장됨"이라고 말하지 않는다.
-  setStatus(opts.declareId && !docId ? "" : COPY.ui.viewx.edSaved);
+  setStatus(!docId ? "" : COPY.ui.viewx.edSaved);
   return handle;
 }
 

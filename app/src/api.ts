@@ -638,6 +638,9 @@ export const api = {
   },
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20) => call("/search", { query, top_k }),
+  // 정확한 제목은 저장된 메타에서 찾는다. 본문 색인·그래프 노드 유무와 무관하다.
+  docTitleMatches: (title: string): Promise<{ docs?: { doc_id: string; title: string }[] }> =>
+    call("/docs", { owner: cfg.owner, title, detail: "summary", limit: 8 }),
   coupling: (owner: string, a: string, b: string) => call("/coupling", { owner, a, b }),
   // scope 를 주면 그 스페이스의 주제를 읽는다 — 개인 → 팀 불러오기 화면이
   // **개인** 주제 목록을 보여야 해서(팀 것을 보여주면 고를 것이 없다).
