@@ -139,7 +139,7 @@ class ExitsTest(unittest.TestCase):
     # doc-editor 에는 dispose 가 둘이다(실패 stub · 진짜 편집기). 확정하는 쪽은
     # 뒤엣것이므로 그 블록만 집는다 — stub 을 보면 전부 통과해 버린다.
     DISPOSE = body_of(EDITOR[EDITOR.index("const handle: DocEditorHandle = {"):],
-                      "dispose: async () =>")
+                      "dispose: async (discard = false) =>")
 
     def test_dispose_가_대기_중_편집을_버리지_않고_저장한다(self):
         """여태 `clearTimeout` 만 했다. 그게 `뒤로`·`전체폭` 이 마지막 2초를
