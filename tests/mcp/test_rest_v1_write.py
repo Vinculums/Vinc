@@ -99,10 +99,10 @@ def _team(path):
     return path + ("&" if "?" in path else "?") + "space=" + TEAM
 
 
-def test_all_25_tools_are_routed_and_host_only_tools_are_excluded():
+def test_all_27_tools_are_routed_and_host_only_tools_are_excluded():
     routed = {route.tool for route in rest_routes.ROUTES}
     public = {item["name"] for item in tools.TOOLS}
-    assert routed == public and len(public) == 25
+    assert routed == public and len(public) == 27
     assert rest_routes.HOST_EXCLUSIONS == {"search", "fetch"}
     assert not routed.intersection(rest_routes.HOST_EXCLUSIONS)
     assert len({(route.method, route.path) for route in rest_routes.ROUTES}) == len(rest_routes.ROUTES)
