@@ -3,6 +3,7 @@ import { COPY } from "../copy";
 import { header, armsNoticeBadge } from "../components";
 import { renderBrowse } from "./records";
 import { viewHooks } from "../topbar";
+import { renderSearchError } from "../search-error";
 
 /** Surface 4 — Search (spec: [[vinc.spec.surface-search]], DEC D24).
  *  Single field + operators (domain:, tag:, "phrase"). Results grouped by
@@ -36,9 +37,11 @@ export function renderSearch(el: HTMLElement) {
 
   const RECENT_KEY = "vinc.search.recent";
   const recent: string[] = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+  let seq = 0;
 
   // 빈 검색어(부팅·필드 비움) = 전체 문서 브라우즈(구 Records 흡수) + 최근검색 칩.
   function showEmpty() {
+    ++seq;
     body.innerHTML = `<div id="search-recent"></div><div id="search-list"></div>`;
     const rec = body.querySelector<HTMLElement>("#search-recent")!;
     if (recent.length) {
@@ -63,6 +66,7 @@ export function renderSearch(el: HTMLElement) {
 
   let debounce: number | undefined;
   el.querySelector("#q")!.addEventListener("input", (e) => {
+    ++seq;
     clearTimeout(debounce);
     const raw = (e.target as HTMLInputElement).value.trim();
     if (raw.length === 0) { showEmpty(); return; }        // 필드 비우면 브라우즈 복귀
@@ -77,6 +81,7 @@ export function renderSearch(el: HTMLElement) {
   });
 
   async function run(raw: string, commit: boolean) {
+    const mine = ++seq;
     if (commit) {
       const next = [raw, ...recent.filter((r) => r !== raw)].slice(0, 6);
       localStorage.setItem(RECENT_KEY, JSON.stringify(next));
@@ -87,6 +92,7 @@ export function renderSearch(el: HTMLElement) {
       const [res, docs] = await Promise.all([
         api.search(text || raw), api.docTitleMatches(text || raw).catch(() => null),
       ]);
+      if (mine !== seq) return;
       // Chunk 결과(rows)와 **개념/레코드 타이틀·그래프 매치(node_hits)를 함께** 보여준다.
       // 백엔드(T3b)는 Chunk 인덱스에 없는 Concept/Record 를 항상 node_hits 로 반환한다
       // ("Chunk 0개 스토어에서도 개념이 검색된다") — 팩만 넣어 문서·청크가 없어도 개념이
@@ -175,8 +181,9 @@ export function renderSearch(el: HTMLElement) {
             void openDocSheet({ owner: cfg.owner, docId: doc });
           }
         }));
-    } catch {
-      body.innerHTML = `<div class="error-banner">${COPY.search.error}</div>`;
+    } catch (failure) {
+      if (mine !== seq) return;
+      renderSearchError(body, failure, () => void run(raw, false));
     }
   }
 }
