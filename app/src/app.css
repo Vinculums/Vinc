@@ -1738,7 +1738,11 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   color: hsl(var(--caption-foreground));
 }
 .si-state:empty { visibility: hidden; }
+.si-progress { margin-top: var(--space-3, .75rem); }
+.si-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2, .5rem); margin-top: var(--space-3, .75rem); }
+.si-actions[hidden] { display: none; }
 .si-note { margin: .8rem 0 0; font-size: .8rem; word-break: keep-all; }
+.si-note a { color: hsl(var(--foreground)); text-underline-offset: .15em; }
 .empty-invite { pointer-events: auto; display: grid; gap: var(--space-3, .75rem); justify-items: center; }
 .empty-invite.drag { border-style: solid; border-color: hsl(var(--ring)); }
 .empty-invite .ei-lead { margin: 0; }
