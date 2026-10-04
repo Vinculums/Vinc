@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 
 from engines.domain_hierarchy import normalize
+from api.role_gate_contract import check as check_gates
 
 #: 역할 주제. 앞의 것이 새 역할의 자리, 뒤의 것은 계속 읽는 옛 자리. 근거: [[decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02]]
 TOPICS = ("agent", "vinc/agent")
@@ -34,7 +35,7 @@ RUNGS = ("strongest", "strong", "fast", "cheapest")
 REQUIRED = ("mission", "tier", "rung", "never", "person_only")
 #: 렌더러(`roles._bullets`)가 항목 단위로 걷는 키. 문자열이 오면 **글자 단위로** 걷어
 #: 한 줄짜리 금지가 글자마다 불릿 하나로 나온다.
-LIST_KEYS = ("never", "person_only", "reads", "gates", "repos", "paths", "tools",
+LIST_KEYS = ("never", "person_only", "never_checks", "reads", "gates", "repos", "paths", "tools",
              "disallowed_tools", "writes_graph")
 TITLE_PREFIX = "agent role:"
 
@@ -102,6 +103,7 @@ def check(node: dict, *, created: bool, stored_domain: str | None = None) -> lis
     if bad:
         out.append(f"role {nid}: {', '.join(bad)} must be a list; a single string is "
                    f"rendered one character per bullet ({why})")
+    out.extend(f"role {nid}: {warning} ({why})" for warning in check_gates(props))
     person = props.get("person_only")
     if isinstance(person, list):
         # 기존 팩의 문자열 목록은 그대로 읽는다. 새 구조는 설명을 파싱하지 않고
