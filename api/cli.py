@@ -533,10 +533,13 @@ def _main(argv: list[str] | None = None) -> int:
             return cli_output.internal_error(exc)
 
     if args.cmd not in cli_target.TOOL_CMDS:
-        # 이 기기 전용 동사. 명시한 플래그만 거절하고 설정·환경의 기본값은 보지 않는다 —
-        # 계정 모드 앱이 띄우는 `serve`·`store-probe`·`mcp serve` 가 여기로 온다.
-        if args.target == "account":
-            return cli_output.usage_error(f"{args.cmd} is local only; pass --target local")
+        if cli_target.local_only(args):
+            try:
+                target = cli_target.resolve_target(args.target)
+            except ValueError as exc:
+                return cli_output.usage_error(str(exc))
+            if target == "account":
+                return cli_output.usage_error(f"{command} is local only; pass --target local")
         if args.space and args.space.strip().lower() != "personal":
             return cli_output.usage_error("--space requires --target account")
     else:
