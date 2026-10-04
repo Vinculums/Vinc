@@ -15,6 +15,8 @@ import json
 import os
 import sys
 
+from vinc_mcp import __version__
+
 from . import query as q
 from . import preference as pref
 from . import activate as act
@@ -60,6 +62,23 @@ class _UsageError(Exception):
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         raise _UsageError(message)
+
+
+def _error_format(argv: list[str]) -> str | None:
+    # 파서가 실패한 경우에도 루트·동사 뒤 출력 옵션을 읽는다.
+    fmt = None
+    for i, token in enumerate(argv):
+        if token == "--":
+            break
+        if token == "--json":
+            fmt = "json"
+        elif token == "--format" and i + 1 < len(argv):
+            if argv[i + 1] in ("human", "json", "ndjson"):
+                fmt = argv[i + 1]
+        elif token.startswith("--format="):
+            if token.partition("=")[2] in ("human", "json", "ndjson"):
+                fmt = token.partition("=")[2]
+    return fmt
 
 
 def _add_output_options(parser: argparse.ArgumentParser, *, root: bool = False) -> None:
@@ -130,6 +149,8 @@ def _main(argv: list[str] | None = None) -> int:
             pass
 
     ap = _Parser(description="Vinc query API")
+    ap.add_argument("--version", "-V", action="version", version=f"vinc {__version__}",
+                    help="show the installed version and exit")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     r = sub.add_parser("recall", help="recall a learner's episodes (owner + open domain scope)")
@@ -474,8 +495,7 @@ def _main(argv: list[str] | None = None) -> int:
         roots = args.roots or [os.getcwd()]
         manifest = args.manifest or os.path.join(roots[0], "scripts", "graph-refs.json")
         if any(not os.path.isdir(root) for root in roots):
-            print("vinc: --root must name an existing directory", file=sys.stderr)
-            return 2
+            return cli_output.usage_error("--root must name an existing directory")
         if args.refscmd == "check":
             return refs.offline_check(manifest=manifest, roots=roots)
         from . import remote_client
@@ -510,27 +530,22 @@ def _main(argv: list[str] | None = None) -> int:
             _emit(exc.result)
             return exc.exit_code
         except SystemExit as exc:
-            print(f"vinc: {exc}", file=sys.stderr)
-            return 1
+            return cli_output.internal_error(exc)
 
     if args.cmd not in cli_target.TOOL_CMDS:
         # 이 기기 전용 동사. 명시한 플래그만 거절하고 설정·환경의 기본값은 보지 않는다 —
         # 계정 모드 앱이 띄우는 `serve`·`store-probe`·`mcp serve` 가 여기로 온다.
         if args.target == "account":
-            print(f"vinc: {args.cmd} is local only; pass --target local", file=sys.stderr)
-            return 2
+            return cli_output.usage_error(f"{args.cmd} is local only; pass --target local")
         if args.space and args.space.strip().lower() != "personal":
-            print("vinc: --space requires --target account", file=sys.stderr)
-            return 2
+            return cli_output.usage_error("--space requires --target account")
     else:
         try:
             target = cli_target.resolve_target(args.target)
         except ValueError as exc:
-            print(f"vinc: {exc}", file=sys.stderr)
-            return 2
+            return cli_output.usage_error(str(exc))
         if target == "local" and args.space and args.space.strip().lower() != "personal":
-            print("vinc: --space requires --target account", file=sys.stderr)
-            return 2
+            return cli_output.usage_error("--space requires --target account")
         space = cli_target.resolve_space(args.space) if target == "account" else "personal"
         if target == "account":
             from .cli_account import run as run_tool
@@ -966,25 +981,33 @@ def main(argv: list[str] | None = None) -> int:
     backend_module = sys.modules.get("store.embedded_backend")
     if backend_module is not None:
         backend_module.EmbeddedBackend.last_open_error = ""
+    from store.open_diagnostics import emit_open_failure
+    diagnostic_token = emit_open_failure.set(
+        "--debug" in (argv if argv is not None else sys.argv[1:]) or os.environ.get("VINC_DEBUG") == "1")
     try:
         return _main(argv)
     except _UsageError as exc:
-        print(f"vinc: {exc}", file=sys.stderr)
-        return 2
+        cli_output.configure(_error_format(argv if argv is not None else sys.argv[1:]), "")
+        try:
+            cli_output.chosen_format()
+        except ValueError:
+            cli_output.configure("human", "")
+        return cli_output.usage_error(str(exc))
     except ValueError as exc:
         if str(exc).startswith("VINC_FORMAT must"):
-            print(f"vinc: {exc}", file=sys.stderr)
-            return 2
+            cli_output.configure("human", "")
+            return cli_output.usage_error(str(exc))
         return cli_output.internal_error(exc, debug="--debug" in (argv or sys.argv[1:]))
     except SystemExit as exc:
         # argparse 의 --help 는 성공 종료이고, 나머지 종료 코드는 보존한다.
         # `sys.exit("메시지")` 는 코드가 문자열이다 — 메시지를 stderr 로 내고 1 로 끝낸다.
         if exc.code is None or isinstance(exc.code, int):
             return int(exc.code or 0)
-        print(f"vinc: {exc.code}", file=sys.stderr)
-        return 1
+        return cli_output.internal_error(exc)
     except Exception as exc:  # noqa: BLE001 — CLI 오류 경계를 한 곳에 둔다.
         return cli_output.internal_error(exc, debug="--debug" in (argv or sys.argv[1:]))
+    finally:
+        emit_open_failure.reset(diagnostic_token)
 
 
 if __name__ == "__main__":

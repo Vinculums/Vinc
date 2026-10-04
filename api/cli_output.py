@@ -71,7 +71,7 @@ def emit(result: Any) -> int:
     if fmt == "human" and code:
         error = result.get("error") if isinstance(result, dict) else None
         message = error.get("message", "") if isinstance(error, dict) else error
-        print(message or "operation failed", file=sys.stderr)
+        print("vinc: " + str(message or "operation failed").removeprefix("vinc: "), file=sys.stderr)
         return code
     if fmt == "human":
         rendered = _human(result, _command.get())
@@ -86,14 +86,21 @@ def emit(result: Any) -> int:
             sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
     elif fmt == "ndjson":
         # 실패도 한 줄이다 — ndjson 소비자는 줄 단위로만 읽는다.
-        sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
+        sys.stderr.write(json.dumps(result, ensure_ascii=False) + "\n")
     else:
         # 0.9.6 이전 JSON 바이트 형식을 그대로 둔다.
-        sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+        stream = sys.stderr if code else sys.stdout
+        stream.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
     return code
 
 
-def internal_error(exc: Exception, *, debug: bool = False) -> int:
+def usage_error(message: str) -> int:
+    emit({"kind": "error", "executed": False,
+          "error": {"code": "invalid_argument", "message": message}})
+    return 2
+
+
+def internal_error(exc: BaseException, *, debug: bool = False) -> int:
     result = {"kind": "error", "executed": False,
               "error": {"code": "internal", "message": f"{type(exc).__name__}: {exc}"}}
     if debug or os.environ.get("VINC_DEBUG") == "1":
