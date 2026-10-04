@@ -25,7 +25,7 @@
 # 이 파일이 main 에 머지되기 전에는 어느 ref 로도 못 띄운다. 머지된 뒤에는 ref 를
 # 지정해 PR 브랜치를 검증할 수 있다.
 name: verify-hosted
-run-name: ${{ inputs.runner_request_id != '' && format('cloud-runner {0}', inputs.runner_request_id) || '' }}
+run-name: ${{ inputs.runner_request_id != '' && (inputs.runner_display_name && format('Runner maintenance / {0}', fromJSON(inputs.runner_request).operation) || format('cloud-runner {0}', inputs.runner_request_id)) || '' }}
 
 on:
   workflow_dispatch:
@@ -40,6 +40,11 @@ on:
         required: false
         default: ''
         type: string
+      runner_display_name:
+        description: Human-readable runner maintenance title (legacy controller compatible)
+        required: false
+        default: false
+        type: boolean
       core:
         description: "core — verify.py + 게이트 8종"
         type: boolean
@@ -70,7 +75,7 @@ permissions:
 
 jobs:
   runner-broker:
-    name: runner broker (JIT registration)
+    name: ${{ format('runner broker (JIT registration) · {0}', inputs.runner_request_id) }}
     if: inputs.runner_request != ''
     runs-on: ubuntu-latest
     timeout-minutes: 7

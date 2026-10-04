@@ -71,6 +71,23 @@ def github(method, path, body=None, binary=False):
                            + ' at ' + str(destination) + ' for ' + method + ' ' + path) from None
 
 
+def matching_broker_runs(runs, request_id, operation, head, ref):
+    """관리 제목은 읽기 쉽게 두고 요청 ID는 잡 메타데이터로 대조한다."""
+    matches = []
+    title = 'Runner maintenance / ' + operation
+    job_name = 'runner broker (JIT registration) · ' + request_id
+    for item in runs:
+        # 구 버전 감독기와 워크플로가 함께 있는 전환 구간을 허용한다.
+        if item['display_title'] == 'cloud-runner ' + request_id:
+            matches.append(item)
+        elif (item['display_title'] == title and item['head_sha'] == head
+              and item['head_branch'] == ref):
+            jobs = github('GET', '/actions/runs/' + str(item['id']) + '/jobs?per_page=100')['jobs']
+            if any(job['name'] == job_name for job in jobs):
+                matches.append(item)
+    return matches
+
+
 def rpc(operation, record=None, slots=None):
     record = record or {'prefix': 'vinc-cloud-' + uuid.uuid4().hex[:8]}
     private, public = jit_crypto.client_key()
@@ -81,14 +98,14 @@ def rpc(operation, record=None, slots=None):
     head = github('GET', '/commits/' + REF)['sha']
     github('POST', '/actions/workflows/' + WORKFLOW + '/dispatches', {
         'ref': REF, 'inputs': {'runner_request': json.dumps(request), 'runner_request_id': request_id,
-                              'core': 'false', 'core_pkns': 'false', 'app': 'false',
+                              'runner_display_name': 'true', 'core': 'false', 'core_pkns': 'false', 'app': 'false',
                               'rust_linux': 'false', 'rust_windows': 'false'}})
     deadline = time.monotonic() + 600
     run = None
     while time.monotonic() < deadline:
         if run is None:
             runs = github('GET', '/actions/workflows/' + WORKFLOW + '/runs?event=workflow_dispatch&per_page=100')['workflow_runs']
-            candidates = [item for item in runs if item['display_title'] == 'cloud-runner ' + request_id]
+            candidates = matching_broker_runs(runs, request_id, operation, head, REF)
             if len(candidates) > 1:
                 raise RuntimeError('More than one workflow matches the unique broker request')
             if candidates:
