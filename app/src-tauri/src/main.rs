@@ -483,6 +483,9 @@ fn spawn_sidecar(app: &tauri::AppHandle, port: u16, token: &str) -> Result<u32, 
         .sidecar("vinc")
         .map_err(|e| e.to_string())?
         .args([
+            // 앱의 관리 사이드카는 계정 모드에서도 이 기기의 저장소를 연다.
+            "--target",
+            "local",
             "serve",
             "--port",
             &port_arg,
