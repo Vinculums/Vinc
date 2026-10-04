@@ -11,6 +11,7 @@ from vinc_mcp import rest_routes
 @pytest.mark.parametrize("suffix,tool,argument", [
     ("", "vinc_node", "node_id"),
     ("/neighbors", "vinc_neighbors", "node"),
+    ("/edges", "vinc_edges", "node"),
     ("/graph", "vinc_graph", "seed"),
     ("/tie-suggestions", "vinc_suggest_ties", "node"),
 ])
