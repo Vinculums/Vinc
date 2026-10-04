@@ -69,6 +69,8 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "doc-highlights": ("GET", "/doc/highlights"),
     "doc-context": ("GET", "/doc/context"),   # 리더 머리(개념 칩·목차·청크 오프셋)
     "node": ("GET", "/node"), "node-context": ("GET", "/node-context"),
+    "node-edges": ("GET", "/node-edges"),
+    "roles": ("GET", "/roles"),
     "edge-context": ("GET", "/edge-context"),
     "ledger-drilldown": ("GET", "/ledger-drilldown"),
     "docs-in-range": ("GET", "/docs-in-range"),
@@ -1113,6 +1115,11 @@ class _Handler(BaseHTTPRequestHandler):
                     # 곧 **데이터가 남는가**의 유일한 외부 신호다.
                     if detail.get("snapshot") is not None:
                         body["graph_snapshot"] = detail["snapshot"]
+                    # 완료 파일을 읽는 쪽이 만든 안전한 상태만 전달한다. 원문은 싣지 않는다.
+                    mirror = detail.get("node_mirror")
+                    if isinstance(mirror, dict):
+                        body["node_mirror"] = {k: mirror[k] for k in
+                                               ("state", "reason", "index_ok") if k in mirror}
             return self._json(200, body)
         return self._json(404, {"error": f"no such route: GET {url.path}"})
 
