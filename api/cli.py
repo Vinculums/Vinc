@@ -729,6 +729,9 @@ def _main(argv: list[str] | None = None) -> int:
         store.close()
         return 0
     if args.cmd == "serve":
+        # 자식 프로세스가 물려받기 전에 비밀값을 환경에서 꺼낸다. 수동 인자가 우선한다.
+        inherited_token = os.environ.pop("VINC_SIDECAR_TOKEN", None)
+        session_token = args.token or inherited_token or None
         from . import server
         from store.config import load_config, resolve_data_dir
         from store import persistence
@@ -759,7 +762,7 @@ def _main(argv: list[str] | None = None) -> int:
                 packs = os.path.join(os.path.dirname(data_dir), "packs")
         server.serve(load_config({"data_dir": data_dir}),
                      host=args.host, port=args.port, parent_pid=args.parent_pid,
-                     token=args.token, packs_dir=packs, profile_path=args.profile,
+                     token=session_token, packs_dir=packs, profile_path=args.profile,
                      data_pinned=pinned)
         return 0
     if args.cmd == "backup":
