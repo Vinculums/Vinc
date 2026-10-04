@@ -508,6 +508,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           TAG="${{ github.ref_name }}"
@@ -540,6 +542,20 @@ jobs:
           # 조각(중간 산출물): { "<key>": { signature, url } }. assemble 이 병합 후 삭제.
           jq -n --arg k "$key" --arg s "$(cat "$sig")" --arg u "$url" \
             '{($k): {signature: $s, url: $u}}' > "up/latest-${key}.json"
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            # 설치 형식별 키가 먼저 선택된다. deb/rpm에 AppImage를 넘기지 않는다.
+            for format in deb rpm; do
+              payload=$(find "$bundle" -type f -name "*.$format" -print -quit)
+              if [ -z "$payload" ]; then
+                echo "::error::Linux updater payload missing: $format" >&2; exit 1
+              fi
+              (cd app && npm run tauri -- signer sign \
+                --password="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$GITHUB_WORKSPACE/$payload" > /dev/null)
+              test -s "${payload}.sig"
+              cp "$payload" "${payload}.sig" up/
+            done
+            python scripts/linux_updater_fragment.py up "$TAG" "$REPO"
+          fi
           # 버전 무관 고정 별칭(공홈 다운로드 링크 안정화).
           # ⚠ 이전엔 실패해도 `|| true` 로 넘어갔다 — Tauri 번들 파일명 규칙이 바뀌면
           # 홈페이지 다운로드 버튼이 404 가 되는데 **CI 는 초록**이었다(업데이터 서명
@@ -668,6 +684,9 @@ jobs:
             fi
           done
           platforms=$(jq -s 'add' dl/latest-*.json)
+          for k in linux-x86_64 linux-x86_64-appimage linux-x86_64-deb linux-x86_64-rpm; do
+            echo "$platforms" | jq -e --arg k "$k" '.[$k] | .url and (.signature | length > 0)' > /dev/null
+          done
           jq -n --arg v "$ver" \
                 --arg d "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                 --arg n "Vinc ${TAG} — see https://github.com/$REPO/releases" \
