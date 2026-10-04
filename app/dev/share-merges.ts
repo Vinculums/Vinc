@@ -23,4 +23,5 @@ api.importPack = async (_pack, _owner, scope) => {
   document.body.dataset.imports = String(Number(document.body.dataset.imports) + 1);
   return { executed: true, merged: { nodes: { created: opts.has("new") ? 4 : 3, matched: opts.has("new") ? 0 : 1 } }, documents: { applied: 0 } };
 };
-await openShareSheet({ domain: "example" });
+await openShareSheet({ domain: "example" }, opts.has("direct")
+  ? { from: { team: "synthetic-team" }, into: { team: "" } } : {});

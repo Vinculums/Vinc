@@ -129,8 +129,9 @@ export async function openShareSheet(
       // 둘 다 응답에만 붙는 값이라 팩 파일에는 안 싣는다(`doc_refs` 는 위 원문 선택에만 쓴다).
       delete (out as any).executed;
       delete (out as any).doc_refs;
-      // 목적지가 이미 정해진 흐름(개인 → 팀 불러오기)은 묻지 않는다.
+      // 목적지가 이미 정해져도 내 공간에 합치는 내용은 먼저 확인한다.
       if (opts.into) {
+        if (!opts.into.team) { void copyToPersonal(sheet, life, out, keep.length); return; }
         void sendToSpace(sheet, life, out, keep.length, opts.into,
                          opts.intoLabel || COPY.ui.sheet.destTeam);
         return;
