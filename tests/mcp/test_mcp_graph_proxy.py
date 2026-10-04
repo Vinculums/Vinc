@@ -72,6 +72,13 @@ def test_read_op_forces_owner_into_params(app):
     assert params["query"] == "x" and body is None
 
 
+def test_node_read_op_forces_owner_into_params(app):
+    app.graph_owner_request(_assertion(op="node"),
+                            {"node_id": "record:claims", "owner": "user:victim"})
+    assert app.bridge.calls == [("GET", "/node", {
+        "node_id": "record:claims", "owner": "user:u-1"}, None)]
+
+
 def test_debug_is_stripped_on_the_web_plane(app):
     """웹 평면은 쿼리 인자를 그대로 흘린다 — `debug` 는 허브에서 벗긴다(P4 S13)."""
     app.graph_owner_request(_assertion(op="domains"), {"debug": "true"})
