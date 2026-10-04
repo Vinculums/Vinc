@@ -261,7 +261,8 @@ class VincApp:
 
     def __init__(self, cfg=None, *, store=None, auth=None, jobs=None,
                  packs_dir=None, profile_path=None, ingest=None, themes=None,
-                 provision_error=None):
+                 provision_error=None, quiet_boot=False):
+        self.quiet_boot = quiet_boot
         self.cfg = cfg or load_config()
         self.store = store                    # 공유 writer 백엔드(단일 Database) 또는 None
         # 기동 시 스키마 생성이 실패했다면 그 사유(없으면 None) — /health 로 노출해
@@ -364,7 +365,7 @@ class VincApp:
                 provision_error = f"{type(exc).__name__}: {exc}"
                 print(f"vinc: provision failed — {provision_error}", file=sys.stderr)
         if store is not None and provision_error is None:
-            _heal_search_indexes(store, cfg.embedding_dim)
+            _heal_search_indexes(store, cfg.embedding_dim, quiet=kw.get("quiet_boot", False))
         app = cls(cfg, store=store, provision_error=provision_error, **kw)
         if guarded is not None:
             app.store_note = guarded.note
@@ -426,7 +427,7 @@ class VincApp:
         def _run() -> dict:
             from engines.mentions_link import ensure_rule
             res = ensure_rule(store)
-            if res.get("changed"):
+            if res.get("changed") and not self.quiet_boot:
                 print(f"vinc: MENTIONS 재링크 — 규칙 {res.get('previous') or '(없음)'}"
                       f" → {res.get('rule')} · {res.get('owners')}", file=sys.stderr)
             # owner 를 귀속 못 한 청크는 전량 재링크가 **건너뛴다.** 조용히 넘어가면
@@ -2114,7 +2115,7 @@ _BOOT_HEALS = (("heal_fts_index", "full-text index (Chunk)"),
                ("heal_node_vector_index", "node mirror index (NodeVec)"))
 
 
-def _heal_search_indexes(store, dim: int) -> None:
+def _heal_search_indexes(store, dim: int, *, quiet=False) -> None:
     """기동 때 확장 색인(FTS·청크 벡터·노드 미러 벡터)을 세우고, 잔해가 막으면 그 표를
     다시 떠서 고친다(`Chunk` 는 거기 걸린 `MENTIONS` 까지 함께).
 
@@ -2135,7 +2136,7 @@ def _heal_search_indexes(store, dim: int) -> None:
             print(f"vinc: ⚠ {what} heal failed — {type(exc).__name__}: {exc}",
                   file=sys.stderr, flush=True)
             continue
-        if res.get("state") in ("built", "repaired"):
+        if res.get("state") in ("built", "repaired") and not quiet:
             rows = f"{res['rows']} rows, " if res.get("rows") is not None else ""
             print(f"vinc: {what} {res['state']} at boot ({rows}{res.get('seconds')}s)",
                   file=sys.stderr, flush=True)

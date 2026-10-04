@@ -50,7 +50,7 @@ def _bridge(args):
 
     # 붙기 판정과 같은 파일을 연다(cli_transport.data_file).
     cfg = load_config({"data_dir": data_file(args)})
-    app = VincApp.open(cfg)
+    app = VincApp.open(cfg, quiet_boot=not diagnostics.enabled())
     try:
         yield _InProcessBridge(app)
     finally:
