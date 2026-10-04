@@ -1,6 +1,4 @@
 """A native workflow approval executor, downstream of the model executor."""
-from __future__ import annotations
-
 from typing import Any, Callable, Mapping
 
 from agent_framework import Executor, WorkflowContext, handler, response_handler
