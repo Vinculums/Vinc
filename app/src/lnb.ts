@@ -1,6 +1,7 @@
-import { api, cfg } from "./api";
+import { api, cfg, WEB } from "./api";
 import type { GraphEdge, NavGroup, NavNode, NavTreeRes } from "./api";
 import { COPY } from "./copy";
+import { docTitle } from "./doc-title";
 import { icon } from "./icons";
 import { applyDefaults, foldsOwnRows, ownKey } from "./lnb-tree";
 import type { ThemeMode } from "./theme";
@@ -376,12 +377,20 @@ function relLine(label: string, names: string[]): string {
   return `<span class="lnb-agent-rel">${esc(label)} · ${esc(names.join(" · "))}</span>`;
 }
 
-function paintAgentList(roles: AgentRole[]): string {
-  if (!roles.length) {
-    return `<p class="lnb-none hint">${esc(COPY.ui.lnb.noNodes)}</p>`;
-  }
+function agentHintHtml(): string {
   const L = COPY.ui.lnb;
-  const parts: string[] = [`<div class="lnb-tree lnb-agent-list" role="tree">`];
+  return `<p class="lnb-none hint">${esc(WEB
+    ? L.agentHintWeb(COPY.ui.viewx.cardAskCopy, COPY.ui.viewx.askRole)
+    : L.agentHint(COPY.ui.viewx.cardAskCopy, COPY.ui.viewx.askRole, COPY.ui.settingsUi.navAi))}</p>`;
+}
+
+function paintAgentList(roles: AgentRole[]): string {
+  const L = COPY.ui.lnb;
+  const hint = agentHintHtml();
+  if (!roles.length) {
+    return hint + `<p class="lnb-none hint">${esc(L.noNodes)}</p>`;
+  }
+  const parts: string[] = [hint, `<div class="lnb-tree lnb-agent-list" role="tree">`];
   let team = "\0";
   for (const r of roles) {
     const t = r.team || L.agentNoTeam;
@@ -618,7 +627,7 @@ function docRow(d: { doc_id: string; title: string; node_id?: string; depth?: nu
     aria-level="${depth + 2}"${on ? ' aria-selected="true"' : ""} data-doc="${esc(d.doc_id)}"
     data-node="${esc(d.node_id || "")}" data-dom="${esc(domain)}"
     style="--lvl:${depth};--ink:${ink}${tintStyle(domain)}" data-tip="${esc(tip)}">
-    <span class="lnb-dot" aria-hidden="true"></span><span class="lnb-dtitle">${esc(d.title || d.doc_id)}</span>
+    <span class="lnb-dot" aria-hidden="true"></span><span class="lnb-dtitle">${esc(docTitle(d.title))}</span>
   </button>`;
 }
 
@@ -793,7 +802,7 @@ function paint() {
     // 트리는 없어도 주제 스코프는 살아 있을 수 있다. 칩을 빼면 걸린 스코프를
     // 볼 길도 풀 길도 없다.
     body.innerHTML = scopeChip()
-      + `<p class="lnb-none hint">${esc(COPY.ui.lnb.offTopicKind)}</p>`;
+      + `<p class="lnb-none hint">${esc(COPY.ui.lnb.offTopicKind[railKey === "bridge" ? "bridge" : "entity"])}</p>`;
     return;
   }
   // Agent 목적지는 주제 트리가 아니라 로스터 목록이다. 팀을 섹션으로 두고
@@ -810,7 +819,7 @@ function paint() {
   // 있으면 null 이고, 그때 줄에는 --tint 가 아예 안 실려 CSS 의 잉크가 그대로 쓰인다.
   tints = tintMap(groups.map((g) => g.domain), themeMode());
   paintHead((tree?.domains || []).length);
-  let html = "";
+  let html = rail()?.dest ? agentHintHtml() : "";
   // ③ 고른 것이 있으면 **말한다**. 켜진 배경만으로는 몇 개인지도, 어떻게 푸는지도
   //    안 보인다 — 홈 행이 전체로 돌아가는 길이지만 그렇게 읽히지 않는다.
   html += scopeChip();

@@ -801,7 +801,7 @@ export const api = {
     chunks?: number; needs_embed?: boolean; content_time?: string; error?: string;
     created?: boolean; topic?: string;
   }> => call("/doc/put", undefined, { owner, text, ...(id ? { id } : {}),
-                                      ...(title ? { title } : {}),
+                                      ...(title === undefined ? {} : { title: title.trim() }),
                                       ...(contentTime === undefined ? {} : { content_time: contentTime }),
                                       ...(origin ? { origin } : {}),
                                       ...(topic ? { topic } : {}) }),

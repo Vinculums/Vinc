@@ -1,5 +1,6 @@
 import { api, cfg } from "./api";
 import { COPY } from "./copy";
+import { docTitle } from "./doc-title";
 import { icon } from "./icons";
 import { armsNotice, type ArmsNotice } from "./components";
 import { renderSearchError } from "./search-error";
@@ -367,7 +368,7 @@ export function mountTopbar() {
       if (mine !== seq) return false;            // 지나간 질의 — 버린다
       notice = armsNotice(res);
       const exact: Hit[] = (docs?.docs || []).map((d) => ({
-        id: d.doc_id, docId: d.doc_id, title: d.title, domain: "", mark: "≡", snippet: "",
+        id: d.doc_id, docId: d.doc_id, title: docTitle(d.title), domain: "", mark: "≡", snippet: "",
       }));
       hits = [...exact, ...(res.node_hits || []).map((n: any) => ({
         id: String(n.id || ""),

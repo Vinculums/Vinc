@@ -25,7 +25,7 @@ const K_USER = "vinc.sync.username";
  *  안 써서 로그인해도 화면이 영영 "미연결"이었다. */
 const K_LINKED = "vinc.sync.linked";
 
-let aborted = false;
+let connectGeneration = 0;
 
 /** OS 비밀 저장소를 쓸 수 있는가. `null` = 아직 안 물어봤다. */
 let secretOk: boolean | null = null;
@@ -122,7 +122,7 @@ export function accountWho(): string | null {
 
 /** 이 기기에서 키를 지운다(폐기는 아니다 — 계정 쪽 키 관리에서 한다). */
 export function forgetAccount(): void {
-  aborted = true;
+  abortConnect();
   forgetMemberKey();
   localStorage.removeItem(K_LINKED);
   localStorage.removeItem(K_KEY);
@@ -153,7 +153,14 @@ async function storeMcpKey(value: string): Promise<void> {
 }
 
 /** 진행 중인 폴링을 멈춘다(시트를 닫거나 화면을 다시 그릴 때). */
-export function abortConnect(): void { aborted = true; }
+export function abortConnect(): void { connectGeneration++; }
+
+/** Open a trusted account or legal URL in the system browser. */
+export async function openBrowser(url: string): Promise<void> {
+  const invoke = await shellInvoke();
+  if (invoke) await invoke("plugin:shell|open", { path: url });
+  else window.open(url, "_blank", "noopener,noreferrer");
+}
 
 export type ConnectResult = "connected" | "expired" | "aborted" | "failed";
 
@@ -166,25 +173,32 @@ export type ConnectResult = "connected" | "expired" | "aborted" | "failed";
  *  (웹에 이미 로그인돼 있으면 곧장 승인이다). Google 이 꺼져 있으면 그 페이지가 평소
  *  로그인 안내로 돌아가므로, 앱은 켜짐 여부를 몰라도 된다(Vinc-homepage connect-app). */
 export async function connectAccount(onState?: (s: "opening" | "waiting") => void,
-                                     opts: { via?: "google" } = {}): Promise<ConnectResult> {
+                                     opts: { via?: "google"; signal?: AbortSignal;
+                                             onLink?: (url: string) => void } = {}): Promise<ConnectResult> {
+  const generation = ++connectGeneration;
+  const canceled = () => generation !== connectGeneration || !!opts.signal?.aborted;
   const { api } = await import("./api");
   try {
+    if (canceled()) return "aborted";
     const { state } = await api.connectStart();
+    if (canceled()) return "aborted";
     const port = new URL(cfg.base).port || "8787";
     const via = opts.via ? `&via=${opts.via}` : "";
     // `mcp=1`: 이 앱은 기기별 MCP 키를 받아 OS 저장소에 둔다(VIN-132). 연결 페이지는 이
     // 표시가 있을 때만 그 키를 만든다: 옛 앱은 키를 버려 한도만 먹기 때문이다.
     const url = `https://vincs.io/connect-app/#port=${port}&state=${encodeURIComponent(state)}&mcp=1${via}`;
+    opts.onLink?.(url);
     onState?.("opening");
     // 셸이면 시스템 브라우저로, 아니면 새 탭(웹 dev).
-    const invoke = await shellInvoke();
-    if (invoke) await invoke("plugin:shell|open", { path: url });
-    else window.open(url, "_blank");
+    // Opening can fail; keep polling so the caller's reopen/copy fallback works.
+    await openBrowser(url).catch(() => {});
+    if (canceled()) return "aborted";
     onState?.("waiting");
-    aborted = false;
-    for (let i = 0; i < 300 && !aborted; i++) {   // 2s × 300 = TTL(10분)
+    for (let i = 0; i < 300 && !canceled(); i++) {   // 2s × 300 = TTL(10분)
       await new Promise((r) => setTimeout(r, 2000));
+      if (canceled()) return "aborted";
       const st = await api.connectStatus(state).catch(() => null);
+      if (canceled()) return "aborted";
       if (!st) continue;
       if (st.status === "delivered") {
         await storeKey(st.key);
@@ -196,8 +210,8 @@ export async function connectAccount(onState?: (s: "opening" | "waiting") => voi
       }
       if (st.status === "expired") return "expired";
     }
-    return aborted ? "aborted" : "failed";
+    return canceled() ? "aborted" : "failed";
   } catch {
-    return "failed";
+    return canceled() ? "aborted" : "failed";
   }
 }

@@ -12,6 +12,7 @@ mod cli_link;
 mod pack_file;
 mod secret;
 mod session_file;
+mod sidecar_log;
 
 use tauri::{Emitter, Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
@@ -31,10 +32,10 @@ struct SidecarExited(std::sync::Mutex<std::collections::HashSet<u32>>);
 struct SidecarLog(std::sync::Mutex<Vec<String>>);
 
 impl SidecarLog {
-    fn push(&self, line: String) {
+    fn push(&self, level: log::Level, line: String) {
         // 파일 로그에는 **상한 없이** 전부 남긴다 — UI 버퍼는 24줄에서 끊기므로
         // 그 이후에 나온 진짜 사인(死因)이 조용히 사라지는 걸 막는다.
-        log::warn!(target: "sidecar", "{line}");
+        log::log!(target: "sidecar", level, "{line}");
         let mut v = self.0.lock().unwrap();
         if v.len() < 24 {   // 상한 — 진단 문자열이 UI 를 삼키지 않게
             v.push(line);
@@ -106,7 +107,7 @@ async fn mcp_action(app: &tauri::AppHandle, action: &str, client: &str) -> Resul
         Ok(stdout)
     } else {
         let err = if stderr.trim().is_empty() { stdout } else { stderr };
-        log::warn!(target: "mcp", "{action} {client} 실패: {}", err.trim());
+        log::warn!(target: "mcp", "{action} {client} failed: {}", err.trim());
         Err(err)
     }
 }
@@ -389,7 +390,7 @@ fn take_pending_files(state: tauri::State<'_, PendingOpen>) -> Vec<OpenedFile> {
             Err(e) => {
                 // 조용히 버리지 않는다 — 더블클릭했는데 아무 일도 안 일어나는 것이
                 // 정확히 이 버그의 증상이었다.
-                log::warn!(target: "open", "file association: {p} 읽기 실패: {e}");
+                log::warn!(target: "open", "file association: {p} read failed: {e}");
                 None
             }
         })
@@ -433,7 +434,7 @@ fn session_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
 /// **MCP 브리지가 attach 못 하는 원인**이 되므로 조용히 넘기지 않고 로그로 남긴다.
 fn write_session(app: &tauri::AppHandle, port: u16, token: &str) {
     let Some(path) = session_path(app) else {
-        log::warn!(target: "session", "home_dir 조회 실패 → session.json 미기록 (MCP 브리지 attach 불가)");
+        log::warn!(target: "session", "home directory unavailable; session.json not written (MCP bridge cannot attach)");
         return;
     };
     let body = serde_json::json!({
@@ -441,10 +442,10 @@ fn write_session(app: &tauri::AppHandle, port: u16, token: &str) {
     });
     let wrote = session_file::write_private(&path, body.to_string().as_bytes());
     match wrote {
-        Ok(()) => log::info!(target: "session", "session.json 기록 {}", path.display()),
+        Ok(()) => log::info!(target: "session", "session.json written {}", path.display()),
         Err(e) => log::warn!(
             target: "session",
-            "session.json 기록 실패: {e} ({}) — MCP 브리지 attach 불가",
+            "session.json write failed: {e} ({}) - MCP bridge cannot attach",
             path.display(),
         ),
     }
@@ -518,11 +519,11 @@ fn spawn_sidecar(app: &tauri::AppHandle, port: u16, token: &str) -> Result<u32, 
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         while let Some(ev) = events.recv().await {
-            let line = match ev {
+            let (level, line) = match ev {
                 CommandEvent::Stderr(b) => {
                     let s = String::from_utf8_lossy(&b).trim().to_string();
                     if s.is_empty() { continue; }
-                    format!("stderr: {}", s.chars().take(200).collect::<String>())
+                    (sidecar_log::output_level(&s), format!("stderr: {}", s.chars().take(200).collect::<String>()))
                 }
                 // stdout 도 남긴다. 여태 `_ => continue` 가 이것을 통째로
                 // 버려서, 사이드카가 stdout 으로 낸 것은 **어디에도** 안
@@ -531,16 +532,16 @@ fn spawn_sidecar(app: &tauri::AppHandle, port: u16, token: &str) -> Result<u32, 
                 CommandEvent::Stdout(b) => {
                     let s = String::from_utf8_lossy(&b).trim().to_string();
                     if s.is_empty() { continue; }
-                    format!("stdout: {}", s.chars().take(200).collect::<String>())
+                    (sidecar_log::output_level(&s), format!("stdout: {}", s.chars().take(200).collect::<String>()))
                 }
-                CommandEvent::Error(e) => format!("spawn error: {e}"),
+                CommandEvent::Error(e) => (log::Level::Error, format!("spawn error: {e}")),
                 CommandEvent::Terminated(p) => {
                     handle.state::<SidecarExited>().0.lock().unwrap().insert(pid);
-                    format!("terminated: code={:?} signal={:?}", p.code, p.signal)
+                    (sidecar_log::exit_level(p.code, p.signal), format!("terminated: code={:?} signal={:?}", p.code, p.signal))
                 }
                 _ => continue,
             };
-            handle.state::<SidecarLog>().push(line);
+            handle.state::<SidecarLog>().push(level, line);
         }
         // 스트림이 닫혔다 = 프로세스가 끝났다(`Terminated` 를 못 받았어도).
         handle.state::<SidecarExited>().0.lock().unwrap().insert(pid);
@@ -682,6 +683,14 @@ fn main() {
                 }),
             ])
             .level(log::LevelFilter::Info)
+            .format(|out, message, record| {
+                let now = tauri_plugin_log::TimezoneStrategy::UseUtc.get_now();
+                out.finish(format_args!(
+                    "[{}T{:02}:{:02}:{:02}Z][{}][{}] {}",
+                    now.date(), now.hour(), now.minute(), now.second(),
+                    record.target(), record.level(), message,
+                ));
+            })
             // 오프라인 데스크탑이라 로그를 수거해 갈 사람이 없다 → 무한 증식 금지.
             .max_file_size(2 * 1024 * 1024)
             .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepOne)
@@ -725,7 +734,7 @@ fn main() {
         if let RunEvent::Exit = event {
             // 정상 종료의 흔적 — 다음 실행의 로그가 이 줄 없이 시작하면 직전 실행은
             // 크래시·강제종료였다는 뜻이다(고아 사이드카 조사 시 첫 단서).
-            log::info!(target: "shell", "exit — 세션 파일 제거 · 사이드카 회수");
+            log::info!(target: "shell", "exit - removing session file and stopping sidecar");
             // 세션 파일 제거(정상 종료) — 브리지가 stale 세션에 붙지 않게. 크래시로
             // 남을 수 있어 브리지는 pid 생존 + /health 로 재검증한다(파일 존재만 신뢰 X).
             if let Some(path) = session_path(app) {

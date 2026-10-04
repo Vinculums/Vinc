@@ -729,6 +729,9 @@ class VincApp:
         # 엔진 확장을 쓰지 않는다. claims(R5)는 구조가 아니라 기록의 props 를 읽는다.
         kind = (p.get("kind") or "components").lower()
         owner = _req(p, "owner")
+        if kind == "domain_roots":
+            return self._read(lambda r: q.domain_root_diagnosis(
+                owner=owner, store=r, member_limit=_int(p.get("member_limit"), 0) or None))
         if kind == "community_context":
             return self._read(lambda r: q.community_context(
                 owner=owner, node=_req(p, "node"), store=r,
@@ -749,7 +752,7 @@ class VincApp:
             return 400, {"executed": False,
                          "note": f"unknown diagnose kind: {kind}",
                          "kinds": ["components", "communities", "community_context",
-                                   "claims"]}
+                                   "claims", "domain_roots"]}
         return self._read(lambda r: q.component_diagnosis(
             owner=owner, store=r, member_limit=_int(p.get("member_limit"), 0) or None))
 

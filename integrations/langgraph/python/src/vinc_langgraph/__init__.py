@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .helpers import (aget_vinc_context, arecord_episode, build_system_message,  # noqa: E402
                       create_vinc_tools, get_vinc_context, last_user_text, record_episode,

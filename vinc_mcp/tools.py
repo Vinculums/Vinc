@@ -1154,14 +1154,21 @@ TOOLS: list[dict] = [
                        "which side is right; open the path and look. `unanchored` lists records "
                        "that name a file in their text but carry no props.subject_path, so they "
                        "cannot be compared with anything: that count is meant to be driven down "
-                       "by adding the field. Both lists are capped by member_limit.",
+                       "by adding the field. Both lists are capped by member_limit. "
+                       "kind='domain_roots' is a steward topic census: root counts/shares, "
+                       "largest_root (null on a tie), unassigned_nodes and domains outside "
+                       "the largest root. Counts cover Concept, Decision, Record and Episode, "
+                       "not derived Domain or Bridge. Multiple roots can be intentional; "
+                       "this report never rejects writes or changes layout. Outside-domain "
+                       "rows are capped by member_limit with members_truncated and full counts.",
         "inputSchema": {"type": "object", "properties": {
-            "kind": {"type": "string", "enum": ["components", "communities", "community_context", "claims"],
+            "kind": {"type": "string", "enum": ["components", "communities", "community_context", "claims", "domain_roots"],
                      "description": "components (WCC orphans/islands) | communities (Leiden "
                                     "clusters) | community_context (one seed's cluster + "
                                     "representative excerpts, requires `node`) | claims "
                                     "(records that disagree about one file, and records about "
-                                    "code with no file named)."},
+                                    "code with no file named) | domain_roots "
+                                    "(read-only steward census of unexpected topic roots)."},
             "node": {"type": "string",
                      "description": "Seed concept id — required, and only used, when "
                                     "kind='community_context'."},

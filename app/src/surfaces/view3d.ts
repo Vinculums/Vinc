@@ -18,6 +18,7 @@ import { recede } from "../recede";
 import { edgeKey, type Spot } from "../spotlight";
 import { aimAt, restRadius, zoomStep } from "../camera-aim";
 import { HIT_MIN_PX, wireDragConnect, type DragEnd, type DragHit } from "./drag-connect";
+import { nonOverlappingLabels, type LabelBox } from "../view-labels";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -532,6 +533,12 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   const hubIds = new Set(nodes.slice()
     .sort((a, b) => (b.degree || 0) - (a.degree || 0) || (a.id < b.id ? -1 : 1))
     .slice(0, 8).filter((n) => (n.degree || 0) > 0).map((n) => n.id));
+  const hubLabels = new Map<string, THREE.Sprite>();
+  const hubLabel = (n: N3) => {
+    const sprite = labelSprite(n.label, pal);
+    hubLabels.set(n.id, sprite);
+    return sprite;
+  };
   // 주제 틴트(열린 층) — 마운트당 한 번 표를 만들어 노드에 실어 둔다. 각도가
   // 화면에 있는 주제들 위에서 배정되므로(view-tint.ts) 노드 하나만 보고는
   // 계산할 수 없다.
@@ -609,25 +616,28 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
    *  물리는 오브젝트가 분리된다). 허브 라벨은 유령의 자식이 아니라 **보이는 빈
    *  그룹의 형제**로 단다(유령이 invisible 이라 자식째 렌더 순회에서 빠지므로) —
    *  위치 추적과 hover 페이드(아래 applyFade 의 traverse)는 그대로 얻는다. */
-  const nodeFactory = () => (n: any) => {
-    if (canInstance(n)) {
-      const ghost = ghostNode(nodeRadius(n, prefs));
-      // 유령은 `visible=false` 라 렌더러가 순회에서 자식째 건너뛴다 — 허브 라벨을
-      // 유령의 자식으로 달면 라벨도 함께 안 그려진다. 라벨이 있는 노드만 보이는
-      // 빈 그룹으로 감싸 유령과 라벨을 형제로 둔다(위치 추적은 그룹이 받는다).
-      if (prefs.labels !== "none" && hubIds.has(n.id)) {
-        const group = new THREE.Group();
-        group.add(ghost, labelSprite(n.label, pal));
-        return group;
+  const nodeFactory = () => {
+    hubLabels.clear();
+    return (n: any) => {
+      if (canInstance(n)) {
+        const ghost = ghostNode(nodeRadius(n, prefs));
+        // 유령은 `visible=false` 라 렌더러가 순회에서 자식째 건너뛴다 — 허브 라벨을
+        // 유령의 자식으로 달면 라벨도 함께 안 그려진다. 라벨이 있는 노드만 보이는
+        // 빈 그룹으로 감싸 유령과 라벨을 형제로 둔다(위치 추적은 그룹이 받는다).
+        if (prefs.labels !== "none" && hubIds.has(n.id)) {
+          const group = new THREE.Group();
+          group.add(ghost, hubLabel(n));
+          return group;
+        }
+        return ghost;
       }
-      return ghost;
-    }
-    const mesh = nodeObject(n, prefs, pal, true);
-    // V7 — 허브(연결수 상위)는 **상시 라벨**을 단다. 2D 가 이미 쓰는 문법인데
-    // 3D 만 hover 를 기다려, 42노드 렌즈가 "이름 없는 별자리"였다(실측: 한 번에
-    // 하나씩 짚어야만 이름을 알 수 있었다). 나머지는 그대로 hover 로 뜬다.
-    if (prefs.labels !== "none" && hubIds.has(n.id)) mesh.add(labelSprite(n.label, pal));
-    return mesh;
+      const mesh = nodeObject(n, prefs, pal, true);
+      // V7 — 허브(연결수 상위)는 **상시 라벨**을 단다. 2D 가 이미 쓰는 문법인데
+      // 3D 만 hover 를 기다려, 42노드 렌즈가 "이름 없는 별자리"였다(실측: 한 번에
+      // 하나씩 짚어야만 이름을 알 수 있었다). 나머지는 그대로 hover 로 뜬다.
+      if (prefs.labels !== "none" && hubIds.has(n.id)) mesh.add(hubLabel(n));
+      return mesh;
+    };
   };
   // D33 — 엣지 = 헤어라인이 **기본**이다: linkWidth 0 = 튜브 메시가 아닌 THREE.Line.
   // 가중치는 여전히 굵기가 아니라 잉크 농도가 말한다(그 구분이 D33 의 요지다).
@@ -691,6 +701,31 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
 
   // 대기(fog = paper) + 무채 조명 보정 — fog 는 3D 깊이 단서라 2D 에선 끈다
   scene = g.scene();
+  // Cull billboards before the renderer builds its visible-object list. This
+  // follows camera movement, resize and dragging without a second animation loop.
+  const labelWorld = new THREE.Vector3(), labelScale = new THREE.Vector3();
+  const labelCamera = new THREE.Vector3(), labelNdc = new THREE.Vector3();
+  scene.onBeforeRender = (_renderer, _scene, camera) => {
+    const width = el.clientWidth, height = el.clientHeight;
+    const boxes: LabelBox[] = [];
+    for (const id of hubIds) {
+      const sprite = hubLabels.get(id);
+      if (!sprite?.parent?.visible) continue;
+      sprite.getWorldPosition(labelWorld);
+      labelCamera.copy(labelWorld).applyMatrix4(camera.matrixWorldInverse);
+      if (labelCamera.z >= 0) continue;
+      labelNdc.copy(labelWorld).project(camera);
+      if (labelNdc.z < -1 || labelNdc.z > 1) continue;
+      sprite.getWorldScale(labelScale);
+      const halfW = Math.abs(labelScale.x * camera.projectionMatrix.elements[0] / labelCamera.z) * width / 4;
+      const halfH = Math.abs(labelScale.y * camera.projectionMatrix.elements[5] / labelCamera.z) * height / 4;
+      const x = (labelNdc.x + 1) * width / 2, y = (1 - labelNdc.y) * height / 2;
+      const box = { id, left: x - halfW, right: x + halfW, top: y - halfH, bottom: y + halfH };
+      if (box.right >= 0 && box.left <= width && box.bottom >= 0 && box.top <= height) boxes.push(box);
+    }
+    const visible = nonOverlappingLabels(boxes);
+    hubLabels.forEach((sprite, id) => { sprite.visible = visible.has(id); });
+  };
   scene.add(...instMeshes);   // buildInstancedNodes() 최초 호출분 — scene 이 이제 있다
   // 환경맵이 돌아왔다(발주자 결정 2026-08-15). D77 이 유리와 함께 은퇴시켰던 것인데,
   // 반무광 재질의 clearcoat·sheen 이 반사할 것이 없으면 조형이 평면으로 죽는다.
