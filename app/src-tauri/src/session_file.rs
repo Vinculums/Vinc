@@ -256,10 +256,33 @@ mod tests {
         use std::ptr::null_mut;
         use windows_sys::Win32::Foundation::LocalFree;
         use windows_sys::Win32::Security::Authorization::{
-            ConvertSecurityDescriptorToStringSecurityDescriptorW, GetNamedSecurityInfoW,
+            ConvertSecurityDescriptorToStringSecurityDescriptorW,
+            ConvertStringSecurityDescriptorToSecurityDescriptorW, GetNamedSecurityInfoW,
             SDDL_REVISION_1, SE_FILE_OBJECT,
         };
         use windows_sys::Win32::Security::DACL_SECURITY_INFORMATION;
+        unsafe fn descriptor_text(
+            descriptor: windows_sys::Win32::Security::PSECURITY_DESCRIPTOR,
+        ) -> String {
+            let mut text = null_mut();
+            assert_ne!(
+                ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                    descriptor,
+                    SDDL_REVISION_1,
+                    DACL_SECURITY_INFORMATION,
+                    &mut text,
+                    null_mut()
+                ),
+                0
+            );
+            let mut len = 0;
+            while *text.add(len) != 0 {
+                len += 1;
+            }
+            let value = String::from_utf16_lossy(std::slice::from_raw_parts(text, len));
+            LocalFree(text.cast());
+            value
+        }
         let temp = Temp::new();
         let path = temp.0.join(".vinc/session.json");
         write_private(&path, b"secret").unwrap();
@@ -281,28 +304,29 @@ mod tests {
                     ),
                     0
                 );
-                let mut text = null_mut();
+                let actual = descriptor_text(descriptor);
+                LocalFree(descriptor);
+                // SID 의 숫자 표기와 계정 약칭을 같은 Windows 직렬화로 비교한다.
+                let wanted: Vec<u16> = format!("D:P(A;{flags};FA;;;SY)(A;{flags};FA;;;{sid})")
+                    .encode_utf16()
+                    .chain(Some(0))
+                    .collect();
+                let mut expected_descriptor = null_mut();
                 assert_ne!(
-                    ConvertSecurityDescriptorToStringSecurityDescriptorW(
-                        descriptor,
+                    ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                        wanted.as_ptr(),
                         SDDL_REVISION_1,
-                        DACL_SECURITY_INFORMATION,
-                        &mut text,
+                        &mut expected_descriptor,
                         null_mut()
                     ),
                     0
                 );
-                let mut len = 0;
-                while *text.add(len) != 0 {
-                    len += 1;
-                }
-                let actual = String::from_utf16_lossy(std::slice::from_raw_parts(text, len));
-                LocalFree(text.cast());
-                LocalFree(descriptor);
+                let expected = descriptor_text(expected_descriptor);
+                LocalFree(expected_descriptor);
                 let (control, aces) = actual.split_once('(').unwrap();
                 // Windows 는 보호된 DACL 에도 자동 상속 처리 완료(AI) 표시를 남길 수 있다.
                 assert!(control == "D:P" || control == "D:PAI", "{control}");
-                assert_eq!(aces, format!("A;{flags};FA;;;SY)(A;{flags};FA;;;{sid})"));
+                assert_eq!(aces, expected.split_once('(').unwrap().1);
             }
         }
     }
