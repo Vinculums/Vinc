@@ -1995,13 +1995,11 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
     if meta is None or meta.get("owner_id") != owner:
         base["error"] = "unknown doc_id"
         return base
-    text = ""
-    if candidates is None or apply:
-        got = get_doc(store, doc_id, owner=owner)
-        if not got.get("executed"):
-            base["error"] = got.get("error", "unreadable doc")
-            return base
-        text = got.get("text") or ""
+    got = get_doc(store, doc_id, owner=owner)
+    if not got.get("executed"):
+        base["error"] = got.get("error", "unreadable doc")
+        return base
+    text = got.get("text") or ""
     if candidates is None:
         cands = extract_concepts(text)
     else:
@@ -2014,12 +2012,13 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
                               "one_liner": str(c.get("one_liner") or "")[:400],
                               "slug": slug})
     base.update(executed=True, candidates=cands)
+    dom = _front_domain(text) or _doc_topic(store, doc_id, owner=owner)
     if not apply:
+        base["domain"] = dom
         return base
     # 추출 개념은 주제를 갖고 태어난다 — 원천: 프론트매터 `domain:` → 파생 주제.
     # 둘 다 없으면 거부: 주제 없는 반영은 문서를 낫게 하지 못하고 무주제 노드만
     # 늘린다. 근거: [[vinc.ops.topic-assignment-eval]] §2
-    dom = _front_domain(text) or _doc_topic(store, doc_id, owner=owner)
     if not dom:
         base["executed"] = False
         base["error"] = (
