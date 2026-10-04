@@ -4,6 +4,8 @@ Python client for the [Vinc](https://vincs.io) REST v1 API. Vinc is a knowledge 
 
 This package reads that graph for an agent and writes to it only when your code asks. It is the base of `vinc-langgraph` and `vinc-agent-framework`.
 
+Looking for the `vinc` command? See [the terminal CLI installation guide](https://vincs.io/docs/cli/#install). `vinc-client` is a Python library and does not install a `vinc` executable.
+
 ## Install
 
 ```bash
