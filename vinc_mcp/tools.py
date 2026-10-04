@@ -398,8 +398,10 @@ def _t_ingest(args, bridge):
 # 읽기 도구가 이미 엄격 술어로 정상 동작한다는 것이다 — 스탬프가 없으면 읽기부터
 # 비어 있었을 테니, 삭제만 넓게 열어 둘 이유가 없다.
 def _t_delete(args, bridge):
-    return bridge.request("POST", "/delete",
-                          body={"node": args["node_id"], "owner": _owner(args, bridge)})
+    body = {"node": args["node_id"], "owner": _owner(args, bridge)}
+    if "dry_run" in args:
+        body["dry_run"] = args["dry_run"]
+    return bridge.request("POST", "/delete", body=body)
 
 
 def _t_merge(args, bridge):
@@ -1247,14 +1249,19 @@ TOOLS: list[dict] = [
                        "the prefix "
                        "selects the table. Unknown prefixes return found:false (no-op). Use to "
                        "remove polluted or duplicate shell nodes. This is irreversible — confirm "
-                       "the exact id via vinc_search/vinc_graph first, and call vinc_neighbors on it "
-                       "to SEE WHAT GOES WITH IT: every attached edge is destroyed too, and the "
-                       "`deleted.edges` count in this response arrives after the fact, too late to "
-                       "inform the decision. Returns "
+                       "the exact id via vinc_search/vinc_graph first. Use vinc_neighbors to "
+                       "inspect its relations before deletion. Pass dry_run:true to read "
+                       "the complete incident edge preview and count without changing the node, "
+                       "edges, tombstones or jobs. An oversized preview is refused explicitly, "
+                       "never truncated silently. The preview is a point-in-time read; subsequent "
+                       "writes can change the eventual delete count. deleted.edges is a count "
+                       "after the fact, not a pre-deletion preview. Returns "
                        "{executed, found, deleted:{node, edges}}; found:false if the id is absent.",
         "inputSchema": {"type": "object", "properties": {
             "node_id": {"type": "string",
                         "description": "Exact type-prefixed node id to delete (e.g. concept:ipaas)."},
+            "dry_run": {"type": "boolean", "default": False,
+                        "description": "Preview all incident edges without writing. Default false deletes."},
             **_OWNER_PROP,
         }, "required": ["node_id"]},
         "run": _t_delete,
@@ -1263,9 +1270,11 @@ TOOLS: list[dict] = [
         "name": "vinc_delete_edge",
         "description": "Delete ONE relationship between two nodes (the nodes stay). "
                        "Covers the SYNCED relation types only: relates_to | prerequisite_of | "
-                       "derives_from | inherits_from | about. CONNECTS (connects_via), "
-                       "ATTACHES_TO (record edges) and TYPED (open-entity edges) are NOT "
-                       "deletable here — they are outside the sync set. Endpoints follow the "
+                       "derives_from | inherits_from | about | ATTACHES_TO. A Record source can "
+                       "select its authored edge type (relates_to, prerequisite_of, derives_from "
+                       "or inherits_from), preserving that qualifier in its deletion tombstone, "
+                       "or select the physical ATTACHES_TO carrier. CONNECTS and TYPED remain "
+                       "outside this surface. Endpoints follow the "
                        "same rule as vinc_ingest: concept and decision are interchangeable "
                        "(so derives_from covers all four concept/decision combinations, and "
                        "about is episode|decision → concept|decision), except relates_to which "
@@ -1279,7 +1288,7 @@ TOOLS: list[dict] = [
             "from_id": {"type": "string", "description": "Exact source node id (e.g. concept:a, episode:s1)."},
             "to_id": {"type": "string", "description": "Exact target node id (e.g. concept:b)."},
             "type": {"type": "string",
-                     "description": "relates_to | prerequisite_of | derives_from | inherits_from | about"},
+                     "description": "relates_to | prerequisite_of | derives_from | inherits_from | about | ATTACHES_TO"},
             **_OWNER_PROP,
         }, "required": ["from_id", "to_id", "type"]},
         "run": _t_delete_edge,

@@ -187,6 +187,27 @@ def test_json_string_false_cannot_apply_document_extraction():
         srv.close()
 
 
+def test_node_delete_preview_query_has_exact_mcp_boolean_parity():
+    srv = Server()
+    try:
+        for value, flag in [('true', True), ('false', False)]:
+            status, _headers, result = srv.request('DELETE', '/v1/nodes/record%3Atest?dry_run=' + value)
+            assert status == 200, result
+            rest_call = srv.bridge.calls[-1]
+            assert rest_call[3]['dry_run'] is flag
+            rpc = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {
+                'name': 'vinc_delete', 'arguments': {'node_id': 'record:test', 'dry_run': flag}}}
+            status, _headers, _result = srv.request('POST', '/mcp', rpc)
+            assert status == 200
+            assert srv.bridge.calls[-1] == rest_call
+        before = len(srv.bridge.calls)
+        status, _headers, result = srv.request('DELETE', '/v1/nodes/record%3Atest?dry_run=maybe')
+        assert status == 400 and result['error']['code'] == 'invalid_argument'
+        assert len(srv.bridge.calls) == before
+    finally:
+        srv.close()
+
+
 def test_known_tool_failure_shapes_map_to_stable_codes():
     assert _failure("vinc_delete", {"executed": True, "found": False})[1] == "not_found"
     assert _failure("vinc_doc_delete", {"executed": True, "found": False,

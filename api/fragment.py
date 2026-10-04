@@ -1085,6 +1085,12 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             f"WHERE a.record_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:ATTACHES_TO]->(b){b_set} SET r.type = $t{ev_set}",
             {"s": ksrc, "d": kdst, "t": etype, **op, **ev_p, **b_p})
+        if stamp_edges:
+            _stamp_edge_endpoints(store, "ATTACHES_TO", (("Record", "record_id"), (dl, dp)),
+                                  ksrc, kdst, eowner, osc=osc, warnings=warnings)
+            store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k"
+                      + (" AND t.owner_id = $owner" if osc else "") + " DELETE t",
+                      {"k": pkns.ekey(eowner, ksrc, "ATTACHES_TO:" + etype, kdst), **op})
         return "created"
     # 여기 도달 = 양 끝 타입이 **선언돼 있고** 쌍이 rel 테이블 밖(진짜 토폴로지 한계).
     warnings.append(

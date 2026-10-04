@@ -1051,6 +1051,11 @@ class VincApp:
         # 봉쇄). 로컬 앱은 owner 미전송 → None → 무스코프(현행). 원격/웹은 강제 owner.
         node = _req(body, "node")
         owner = body.get("owner") or None
+        preview = body.get("dry_run", False)
+        if type(preview) is not bool:
+            raise ValueError("dry_run must be a boolean")
+        if preview:
+            return 200, q.delete_node(node, owner=owner, store=self.store, dry_run=True)
         res = self.jobs.run_sync("delete",
                                  lambda: q.delete_node(node, owner=owner, store=self.store))
         return 200, res

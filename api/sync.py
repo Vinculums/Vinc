@@ -198,7 +198,7 @@ def put_edge_tombstone(store, src: str, rel: str, dst: str, owner: str,
 def _edge_tombstones_delta_plan(*, owner: str, since: int) -> q.QueryPlan:
     """owner 의 엣지 툼스톤 중 sync_seq > since — 동기화 rel(CC 4종+ABOUT)만."""
     rels = sorted(q.SYNC_EDGE_RELS)
-    where = ["t.owner_id = $owner", f"t.rel IN {json.dumps(rels)}"]
+    where = ["t.owner_id = $owner", f"(t.rel IN {json.dumps(rels)} OR starts_with(t.rel, 'ATTACHES_TO:'))"]
     params: dict = {"owner": owner}
     if since > 0:
         where.append("t.sync_seq > $since")
@@ -905,27 +905,30 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
     # 관계를 지울 수 있다. _extra_edges_plan 과 같은 술어 패턴.
     for t in bundle.get("edge_tombstones") or []:
         src, rel, dst = t.get("src"), t.get("rel"), t.get("dst")
-        ep = q.SYNC_EDGE_RELS.get(rel or "")
-        if not ep or not src or not dst:
+        spec = q.sync_edge_spec(rel or "")
+        if not spec or not src or not dst:
             continue
+        carrier, subtype, ep = spec
+        qualifier = " AND r.type = $subtype" if subtype is not None else ""
+        extra = {"subtype": subtype} if subtype is not None else {}
         pairs = [(src, dst)]
         if rel == "RELATED_TO":   # 무방향 의미 — 물리 역방향도 함께(delete_edge 동형)
             pairs.append((dst, src))
         # 끝점 라벨 조합 전수(v12 — rel 하나에 조합이 여럿). delete_edge 와 동형.
         for sl, sp, dl, dp in ep:
             for s_, d_ in pairs:
-                cnt = store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
+                cnt = store.run(f"MATCH (a:{sl})-[r:{carrier}]->(b:{dl}) "
                                 f"WHERE a.{sp} = $s AND b.{dp} = $d "
-                                "AND a.owner_id = $owner AND b.owner_id = $owner "
+                                f"AND a.owner_id = $owner AND b.owner_id = $owner{qualifier} "
                                 "RETURN count(r) AS c",
                                 {"s": pkns.key(owner, s_),
-                                 "d": pkns.key(owner, d_), "owner": owner})
+                                 "d": pkns.key(owner, d_), "owner": owner, **extra})
                 if cnt and int(cnt[0].get("c") or 0):
-                    store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
+                    store.run(f"MATCH (a:{sl})-[r:{carrier}]->(b:{dl}) "
                               f"WHERE a.{sp} = $s AND b.{dp} = $d "
-                              "AND a.owner_id = $owner AND b.owner_id = $owner DELETE r",
+                              f"AND a.owner_id = $owner AND b.owner_id = $owner{qualifier} DELETE r",
                               {"s": pkns.key(owner, s_),
-                               "d": pkns.key(owner, d_), "owner": owner})
+                               "d": pkns.key(owner, d_), "owner": owner, **extra})
                     out["edges_deleted"] = out.get("edges_deleted", 0) + 1
         put_edge_tombstone(store, src, rel, dst, owner, t.get("deleted_at") or "")
         revstamp.observe_hlc(store, t.get("deleted_at") or "")
