@@ -80,3 +80,21 @@ review format and `tool_choice="none"`.
 ## License
 
 MIT
+# Final output gate
+
+```python
+from vinc_client import OutputGate
+from vinc_agent_framework import VincOutputGateMiddleware
+
+gate = OutputGate(fresh_role["props"])
+middleware = VincOutputGateMiddleware(gate, evidence=host_evidence_for_this_run)
+# Pass middleware=[middleware] to Agent and use non-streaming run().
+```
+
+The middleware checks the final response outside the model and raises
+`OutputGateStopped` on block or pending person approval. Configure it outermost
+if other middleware changes responses. Streaming is rejected before the agent
+runs, so unchecked tokens cannot leave through this middleware. A host callback
+supplies actual execution evidence; structured response person-only requests are
+model data and match adopted action IDs. This is an output barrier, not tool
+authorization. It neither calls another model nor writes a graph record.

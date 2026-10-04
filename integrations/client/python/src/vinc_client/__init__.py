@@ -8,6 +8,8 @@ from .client import AsyncVincClient, VincClient  # noqa: E402
 from .context import BOUNDARY, fence, format_answer, format_brief, format_search  # noqa: E402
 from .episode import build_episode_fragment  # noqa: E402
 from .review import Finding, PersonOnlyRequest, ReviewOutput, UnparsedReview, parse_review  # noqa: E402
+from .output_gate import (GateResult, OutputGate, OutputGateStopped, ToolProof,  # noqa: E402
+                          preserve_required_route)
 from .errors import (VincAuthError, VincError, VincInvalidArgument, VincNotFound,  # noqa: E402
                      VincPartialWrite, VincQuotaExceeded, VincUnavailable)
 
@@ -17,4 +19,5 @@ __all__ = [
     "VincError", "VincAuthError", "VincNotFound", "VincInvalidArgument",
     "VincQuotaExceeded", "VincUnavailable", "VincPartialWrite",
     "Finding", "PersonOnlyRequest", "ReviewOutput", "UnparsedReview", "parse_review",
+    "GateResult", "OutputGate", "OutputGateStopped", "ToolProof", "preserve_required_route",
 ]
