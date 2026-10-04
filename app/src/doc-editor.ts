@@ -114,7 +114,9 @@ export type DocEditorHandle = {
    *  (2026-09-07 실측). 반환 Promise 는 **같은 문서를 곧바로 다시 읽는 자리**만
    *  기다리면 된다(전체폭 승격) — 그 밖에는 무시해도 안전하다.
    *  두 번 불러도 안전하다(타이머를 비우고 cm 을 놓는다). */
-  dispose: () => Promise<void>;
+  dispose: (discard?: boolean) => Promise<void>;
+  /** 삭제 전에 늦은 자동저장이 삭제 결과를 뒤집지 않게 막고, 돌던 저장을 기다린다. */
+  pauseSaving: (pause: boolean) => Promise<void>;
   /** 목차 클릭·청크 히트 착지가 쓰는 스크롤. 폴백(textarea)에는 오프셋 개념이
    *  없어 무동작이다 — 그 경로는 렌더 자체가 강등본이라 착지도 함께 강등한다. */
   scrollToOffset: (pos: number) => void;
@@ -126,7 +128,7 @@ export type DocEditorHandle = {
   /** 이 문서의 주제를 적는다(보통 저장과 같은 길 · 같은 충돌 확인). 아직 안 만든 문서면 false. */
   saveTopic?: (topic: string) => Promise<boolean>;
   /** 사람이 저장을 뜻한 것과 같다(Ctrl/Cmd+S). 새 문서의 주제를 고른 직후에 쓴다. */
-  saveNow?: () => Promise<void>;
+  saveNow?: () => Promise<boolean>;
 };
 
 /** 살아 있는 편집기 — **teardown 이 핸들에 닿는 유일한 통로.**
@@ -196,6 +198,8 @@ export type DocEditorOpts = {
   onCreated?: (docId: string, topic: string) => void;
   /** 새 문서가 **만들어지기 전에** 닫혔다(제목·주제가 없어 저장이 미뤄진 채). 쓴 것을 넘긴다. */
   onUnsaved?: (draft: { title: string; text: string; contentTime: string }) => void;
+  /** 만들기 폼은 완료를 눌렀을 때만 저장한다. 닫기·취소는 제출이 아니다. */
+  manualSave?: boolean;
 };
 
 /** 편집기를 host 에 마운트. host 내부를 편집 UI 로 채운다(호출부가 컨테이너·닫기
@@ -257,7 +261,8 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       // `closed` 를 세우는 것이 P17b 의 몫이다 — 왕복 중에 닫히면 도착하는 핸들을
       // 즉시 버려야 이미 떨어져 나간 host 에 편집기가 서지 않는다.
       const stub: DocEditorHandle = {
-        dispose: async () => { closed = true; LIVE.delete(host); await again?.dispose(); },
+        dispose: async (discard) => { closed = true; LIVE.delete(host); await again?.dispose(discard); },
+        pauseSaving: async (pause) => { await again?.pauseSaving(pause); },
         scrollToOffset: (pos) => again?.scrollToOffset(pos),
         // 아직 못 읽은 문서다 — 빈 문자열이 곧 "복사할 것이 없다"이고,
         // 호출부(복사 버튼)는 그 경우 아무 일도 하지 않는다.
@@ -294,6 +299,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     <textarea id="ed-src" spellcheck="false" style="width:100%;min-height:12rem;resize:vertical;
       background:transparent;color:inherit;border:1px solid hsl(var(--border));
       border-radius:6px;padding:.5rem;margin-top:.4rem;font:inherit;line-height:1.5"></textarea>
+    <p id="ed-validation" class="hint" role="alert" hidden></p>
     <div id="ed-conflict"></div>
     <div id="ed-extract"></div>
     <div id="ed-prev" style="border-top:1px solid hsl(var(--border));
@@ -316,6 +322,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   let inflight: Promise<boolean> | null = null;
   /** 닫히는 중이다 — 새 문서의 "제목을 치는 중에는 안 만든다" 가드를 풀고 확정한다. */
   let leaving = false;
+  let savingPaused = false;
   let cm: import("./codemirror-editor").CmHandle | null = null;
 
   const setStatus = (t: string) => { status.textContent = t; opts.onStatus?.(t); };
@@ -326,6 +333,8 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     || ctimeInput.value.trim() !== lastCtime;
   /** 2초 뒤 저장(디바운스). 터지면 타이머를 비운다 — dispose 가 "대기 중인가"를 이것으로 본다. */
   const schedule = () => {
+    if (opts.manualSave) return;
+    if (savingPaused) return;
     if (timer) window.clearTimeout(timer);
     timer = window.setTimeout(() => { timer = undefined; void save(); }, 2000);
   };
@@ -425,6 +434,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
    *  `topicOnce` = 이번 저장에 주제도 적는다(본문 · 제목과 **같은 길**로, 같은 충돌 확인을 거쳐).
    *  돌려주는 값 = 이번 쓰기가 들어갔는가. */
   function save(force = false, explicit = false, topicOnce = ""): Promise<boolean> {
+    if (savingPaused) return Promise.resolve(false);
     if (inflight) return inflight.then(() => save(force, explicit, topicOnce));
     const run = doSave(force, explicit, topicOnce).finally(() => { inflight = null; });
     inflight = run;
@@ -433,10 +443,21 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
 
   async function doSave(force: boolean, explicit: boolean, topicOnce: string): Promise<boolean> {
     const text = getText();
-    const t = titleInput.value;
+    const t = docId && !opts.manualSave ? titleInput.value : titleInput.value.trim();
     const ct = ctimeInput.value.trim();
     // 새 문서 — 제목과 주제가 있어야 만든다. 없으면 **왜 안 저장됐는지** 말한다.
     const creating = !docId && !!opts.declareId;
+    const validation = host.querySelector<HTMLElement>("#ed-validation")!;
+    const needTitle = (!docId || opts.manualSave) && !t.trim();
+    const needBody = (!docId || opts.manualSave) && !text.trim();
+    titleInput.setAttribute("aria-invalid", String(needTitle));
+    (host.querySelector<HTMLElement>(".cm-content") || src)
+      .setAttribute("aria-invalid", String(needBody));
+    validation.hidden = !needTitle && !needBody;
+    validation.textContent = [needTitle ? COPY.ui.tools.needTitle : "",
+      needBody ? COPY.ui.tools.needBody : ""].filter(Boolean).join(" ");
+    if (needTitle || needBody) return false;
+    if (!docId || opts.manualSave) titleInput.value = t;
     if (!creating && !force && !topicOnce && !dirty()) return false;
     const topic = topicOnce || opts.topic?.() || "";
     if (creating) {
@@ -610,7 +631,12 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
    // 지도 옆일 때(autoFocus:false — 열자마자 커서가 깜빡이면 지도 단축키가 죽는다).
   if (!opts.readOnly && opts.autoFocus !== false) (cm ? { focus: () => cm!.focus() } : src).focus();
   const handle: DocEditorHandle = {
-    dispose: async () => {
+    pauseSaving: async (pause) => {
+      savingPaused = pause;
+      if (pause && timer) { window.clearTimeout(timer); timer = undefined; }
+      if (pause && inflight) await inflight;
+    },
+    dispose: async (discard = false) => {
       LIVE.delete(host);
       // 디바운스를 **버리지 않고 확정한다.** 여기가 네 출구(뒤로 · 전체폭 · ✕ ·
       // 표면 이동)의 결과를 하나로 만드는 자리다 — 여태 앞의 둘은 버리고 뒤의 둘은
@@ -618,7 +644,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       // ⚠ `save()` 는 첫 줄에서 글자를 동기적으로 집는다. 그래서 아래 destroy 가
       //    뒤에 와야 한다 — 순서를 뒤집으면 확정할 본문이 이미 없다.
       leaving = true;
-      if (timer) { window.clearTimeout(timer); timer = undefined; await save(); }
+      if (timer) { window.clearTimeout(timer); timer = undefined; if (!discard) await save(); }
       else if (inflight) await inflight;
       // 아직 만들어지지 않은 새 문서(제목·주제가 없어 저장이 미뤄졌다) — 닫는다고 버리지
       // 않는다. 부르는 쪽이 초안으로 들고 있다가 다음 새 문서에서 되살린다.
@@ -630,7 +656,13 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     scrollToOffset: (pos: number) => cm?.scrollToOffset(pos),
     getText,
     saveTopic,
-    saveNow: async () => { await save(false, true); },
+    saveNow: async () => {
+      // 완료 클릭의 blur·compositionend 및 CM의 DOM 변경 처리가 끝난 뒤 원문을 읽는다.
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+      if (timer) { window.clearTimeout(timer); timer = undefined; }
+      await save(false, true);
+      return !!docId && !dirty();
+    },
   };
   LIVE.set(host, handle);
   // **처음부터 상태를 말한다.** 여태 `setStatus` 는 고치거나 저장할 때만 불려서,
@@ -638,7 +670,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   // 말하지 않은 셈이고, 그래서 "클릭해도 되나"가 남았다(발주자 지적 2026-09-10).
   // 방금 읽어 온 그대로이므로 지금은 저장된 상태다. 새 문서(흐름 B)는 아직 아무것도
   // 저장된 적이 없으므로 "저장됨"이라고 말하지 않는다.
-  setStatus(opts.declareId && !docId ? "" : COPY.ui.viewx.edSaved);
+  setStatus(!docId ? "" : COPY.ui.viewx.edSaved);
   return handle;
 }
 
@@ -648,11 +680,17 @@ export async function openDocSheet(opts: {
   owner: string; docId?: string; onSaved?: (docId: string, title: string) => void;
 }): Promise<void> {
   const { openSheet, sheetActions, confirmDestructive: confirmD } = await import("./components");
+  const { deleteDocument, checkDocumentDeletion } = await import("./doc-delete");
   let handle: DocEditorHandle | null = null;
+  let pendingScope: { team: string | null } | null = null;
+  let deleting = false;
   const sheet = openSheet({
     title: opts.docId ? COPY.ui.viewx.readerTitle : COPY.ui.viewx.edNew,
     bare: true, size: "write",
-    onClose: () => handle?.dispose(),
+    onClose: () => {
+      window.removeEventListener("vinc:account-reachable", retryOutcome);
+      return handle?.dispose();
+    },
   });
   sheet.body.innerHTML = `<div id="ed-host"></div>`;
   handle = await mountDocEditor(sheet.body.querySelector<HTMLElement>("#ed-host")!, {
@@ -664,19 +702,48 @@ export async function openDocSheet(opts: {
     undefined,
     opts.docId ? { id: "ed-del", label: COPY.ui.viewx.del } : undefined);
   sheet.foot.querySelector("#ed-close")!.addEventListener("click", sheet.close);
-  sheet.foot.querySelector("#ed-del")?.addEventListener("click", async () => {
-    const title = sheet.body.querySelector<HTMLInputElement>("#ed-title")?.value
-      || COPY.ui.viewx.edTitlePlaceholder;
-    if (!await confirmD(COPY.ui.viewx.delDocAsk(title),
-                        COPY.ui.viewx.delConfirm, COPY.ui.viewx.delCancel)) return;
-    try {
-      const res = await api.docDelete(opts.owner, opts.docId!);
-      if (!res.executed) throw new Error(res.error || "delete failed");
+  const reconcile = async (outcome: "deleted" | "present" | "unknown") => {
+    // 부재가 확인되면 닫기가 대기 중 편집을 저장해 문서를 되살리지 않게 한다.
+    if (outcome === "deleted") {
+      pendingScope = null;
+      await handle?.dispose(true);
+      handle = null;
       sheet.close();
       opts.onSaved?.(opts.docId!, "");
-    } catch {
-      const b = sheet.foot.querySelector<HTMLElement>("#ed-del");
-      if (b) b.textContent = COPY.ui.viewx.delFail;
+    } else {
+      const button = sheet.foot.querySelector<HTMLElement>("#ed-del");
+      if (button) button.textContent = outcome === "present"
+        ? COPY.ui.viewx.delDocPresent : COPY.ui.viewx.delDocUnknown;
+      if (outcome === "present") {
+        pendingScope = null;
+        sheet.body.inert = false;
+        await handle?.pauseSaving(false);
+      }
     }
+    const { refreshLnb } = await import("./lnb");
+    await refreshLnb({ quiet: true });
+  };
+  async function retryOutcome() {
+    if (!pendingScope || deleting) return;
+    deleting = true;
+    try { await reconcile(await checkDocumentDeletion(opts.owner, opts.docId!, pendingScope)); }
+    finally { deleting = false; }
+  }
+  window.addEventListener("vinc:account-reachable", retryOutcome);
+  sheet.foot.querySelector("#ed-del")?.addEventListener("click", async () => {
+    if (deleting) return;
+    deleting = true;
+    const button = sheet.foot.querySelector<HTMLButtonElement>("#ed-del")!;
+    const title = sheet.body.querySelector<HTMLInputElement>("#ed-title")?.value
+      || COPY.ui.viewx.edTitlePlaceholder;
+    try {
+      if (!await confirmD(COPY.ui.viewx.delDocAsk(title),
+                          COPY.ui.viewx.delConfirm, COPY.ui.viewx.delCancel)) return;
+      button.disabled = true;
+      sheet.body.inert = true;
+      await handle?.pauseSaving(true);
+      pendingScope = { team: cfg.team || null };
+      await reconcile(await deleteDocument(opts.owner, opts.docId!, pendingScope));
+    } finally { deleting = false; button.disabled = false; }
   });
 }

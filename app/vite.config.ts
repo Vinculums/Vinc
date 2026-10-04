@@ -30,7 +30,7 @@ const SIDECAR = process.env.VINC_SIDECAR || "http://127.0.0.1:8787";
 // (앱 자산은 /, /src, /@vite, /node_modules 로 오므로 충돌하지 않는다.)
 const API_RE = new RegExp("^/(health|view|graph|ledger|recall|search|domains|learner"
   + "|decide|activate|backup|pin|tag|touch|ingest|jobs|plan|share|coupling"
-  + "|suggest-ties|sync|connect|doc|docs|docs-in-range|node-context|edge-context"
+  + "|suggest-ties|sync|connect|doc|docs|docs-in-range|node|node-context|node-edges|edge-context"
   + "|ledger-drilldown|nav-tree|delete|delete-edge|merge-nodes|promote-candidates"
   // 관례·어휘(GM-8) — `conventions`(관례 읽기/재생성)와 `themes`/`types`(재가 대기
   // 목록·승인·거부·개명). 앱이 여태 어휘 라우트를 부른 적이 없어 빠져 있었다.

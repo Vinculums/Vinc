@@ -44,13 +44,16 @@ Repositories: Vinc, Vinc-homepage
 
 ## Gates that must pass before the pull request
 
-- (none)
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
 
 ## Works with
 
 - Hands off to: agent-deploy (Deployment Engineer)
 - Receives from: agent-gate-runner (CI Gate Runner)
 - Works beside: agent-qa (QA Engineer)
+- Returns to: agent-gate-runner (CI Gate Runner)
 
 ## Tools and MCP servers
 
@@ -73,7 +76,12 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- merge
+- merge: merge
+
+## Machine checks for never
+
+- {"actions":["edit","merge"],"type":"forbidden_actions"}
+- {"type":"korean_comment_allowed"}
 
 ## Writes to the graph
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**24종** — 읽기 16(search·brief·recall·graph·decide·domains·suggest_ties·neighbors·
+**27종** — 읽기 19(search·node·role·edges·brief·recall·graph·decide·domains·suggest_ties·neighbors·
 path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami) + 쓰기 8
 (ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete).
 "단일 write 표면(ingest 하나)"은
@@ -41,6 +41,7 @@ _ALLOWED_PAIRS_HINT = (
     "except relates_to which stays concept→concept): "
     "relates_to = concept→concept; "
     "prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; "
+    "returns_to = distinct role concepts, with nonempty evidence; "
     "record → concept|decision for any of those four; "
     "connects_via = bridge → concept|decision; "
     "about = episode|decision → concept|decision; "
@@ -322,6 +323,14 @@ def _t_neighbors(args, bridge):
         "limit": args.get("limit", 50)})
 
 
+def _t_edges(args, bridge):
+    return bridge.request("GET", "/node-edges", params={
+        "owner": _owner(args, bridge), "node": args.get("node"),
+        "nodes": json.dumps(args["nodes"]) if "nodes" in args else None,
+        "type": args.get("type"), "dir": args.get("dir", "both"),
+        "limit": args.get("limit", 500)})
+
+
 def _t_path(args, bridge):
     # E-G7/E-G8 최단 경로 증거 체인 — 홉 최단(기본) 또는 confidence 가중(조회 전용).
     return bridge.request("GET", "/path", params={
@@ -390,8 +399,10 @@ def _t_ingest(args, bridge):
 # 읽기 도구가 이미 엄격 술어로 정상 동작한다는 것이다 — 스탬프가 없으면 읽기부터
 # 비어 있었을 테니, 삭제만 넓게 열어 둘 이유가 없다.
 def _t_delete(args, bridge):
-    return bridge.request("POST", "/delete",
-                          body={"node": args["node_id"], "owner": _owner(args, bridge)})
+    body = {"node": args["node_id"], "owner": _owner(args, bridge)}
+    if "dry_run" in args:
+        body["dry_run"] = args["dry_run"]
+    return bridge.request("POST", "/delete", body=body)
 
 
 def _t_merge(args, bridge):
@@ -470,13 +481,29 @@ def _t_doc_delete(args, bridge):
         "id": args["doc_id"], "owner": _owner(args, bridge)})
 
 
+def _t_node(args, bridge):
+    return bridge.request("GET", "/node", params={
+        "owner": _owner(args, bridge), "node_id": args["node_id"]})
+
+
+def _t_role(args, bridge):
+    from .roles import contract
+    return contract(args.get("role"), bridge, forced_owner=_owner(args, bridge))
+
+
 def _t_brief(args, bridge):
     # W1 — 질문 하나로 답변 재료를 모으는 결정론 조인 읽기(생성 없음).
-    return bridge.request("GET", "/brief", params={
+    out = bridge.request("GET", "/brief", params={
         "owner": _owner(args, bridge), "query": args["query"],
         "max_excerpts": args.get("max_excerpts", 3),
         "historical": "true" if args.get("historical") else None,
         "as_of": args.get("as_of")})
+    from .roles import is_role_id
+    if is_role_id(args["query"].strip()) and out.get("executed"):
+        role = _t_role({**args, "role": args["query"].strip()}, bridge)
+        if role.get("found") or not role.get("executed"):
+            out = {**out, "role": role}
+    return out
 
 
 #: ChatGPT deep research / company knowledge 는 이름이 정확히 `search`·`fetch` 인
@@ -611,6 +638,10 @@ TOOLS: list[dict] = [
                        "excerpt is the 240-character window of the chunk that holds the most "
                        "query terms; it starts with `…` when that is not the chunk's start, "
                        "and is the first 240 characters when nothing matches. "
+                       "Each row and node hit carries `cite_id`, the existing node to cite; "
+                       "document rows use their readable concept:doc.<doc_id> mirror. "
+                       "A missing or unreadable mirror gives cite_id:null and cite_unavailable; "
+                       "never construct a node citation from the document key yourself. "
                        "`keyword_gated:true` means the keyword list was left out of the "
                        "fusion because none of its top rows covered half of the query's "
                        "terms (typically a Korean question over English text), so the order "
@@ -672,6 +703,39 @@ TOOLS: list[dict] = [
         "run": _t_search,
     },
     {
+        "name": "vinc_role",
+        "description": "Read one role contract by agent slug or concept id in one call, below 10000 UTF-8 bytes. "
+                       "Returns id, unchanged props, directed works_with groups with exact edge endpoints, "
+                       "type, evidence and confidence, and a compact rendered contract fenced as graph data. "
+                       "An unknown, foreign or non-role node returns found:false. Oversized contracts return "
+                       "an explicit error without truncating permissions. Omit role to list the role roster "
+                       "without full contracts. This reads only roles in agent or vinc/agent topics and "
+                       "their direct child topics; it does not execute or delegate the role. Read-only.",
+        "inputSchema": {"type": "object", "properties": {
+            "role": {"type": "string", "description": "Role slug (agent-dev-core) or exact concept:agent- id; omit to list."},
+            "owner": {"type": "string"}}, "required": []},
+        "run": _t_role,
+    },
+    {
+        "name": "vinc_node",
+        "description": "Read ONE node by exact id without its neighbors, document excerpts or layout. "
+                       "Returns {kind:'node', executed, found, node:{id,kind,...stored fields}}. "
+                       "The node includes every field its stored kind carries, including props as an "
+                       "object, tags, content_time and valid_from/valid_until where those columns exist. "
+                       "Fields absent from that kind's schema are not invented. Exact reads include "
+                       "retired claims; read valid_from/valid_until before treating one as current. "
+                       "found:false and node:null mean the id does not exist in the selected graph, "
+                       "including an id owned by another account or space. executed:false means the "
+                       "store could not be read; say so rather than treating it as a missing node. "
+                       "Use vinc_brief for joined answer material and vinc_neighbors to walk relations. "
+                       "Read-only.",
+        "inputSchema": {"type": "object", "properties": {
+            "node_id": {"type": "string", "description": "Exact stored node id, including its type prefix."},
+            **_OWNER_PROP,
+        }, "required": ["node_id"]},
+        "run": _t_node,
+    },
+    {
         "name": "vinc_brief",
         "description": "One question in, joined answer material out — the deterministic read that "
                        "replaces a vinc_search + vinc_graph + vinc_doc_get chain. A question that "
@@ -686,6 +750,10 @@ TOOLS: list[dict] = [
                        "body_src, body_cite, excerpts:[{doc_id,doc_title,section,excerpt,method}], "
                        "links:{degree,out,in,attached,total,items:[{id,title,domain,type,dir,evidence,"
                        "confidence,note}],truncated}, candidates:[...], grounds:[id...]}. "
+                       "Nodes, candidates, links and excerpts carry `cite_id`; "
+                       "`cite_grounds` lists only canonical node citations while `grounds` "
+                       "keeps the original source keys. Excerpt cite_id is null when its "
+                       "document mirror is missing or unreadable. "
                        "READ `status` FIRST: 'resolved' means one node won strictly, so node/excerpts/"
                        "links are filled; 'choose' means the leading candidates TIED and nothing was "
                        "guessed — pick one from `candidates` (each carries hit_tokens/title_tokens, the "
@@ -947,6 +1015,26 @@ TOOLS: list[dict] = [
         }, "required": ["node"]}, "run": _t_neighbors,
     },
     {
+        "name": "vinc_edges",
+        "description": "Read actual directed incident edges for one exact node or a batch of "
+                       "1..100 ids, without graph/node payloads. Supply either node or nodes. "
+                       "Returns edges with from, to, type, evidence, confidence and derived; "
+                       "unavailable properties are null. type is the physical relation label; "
+                       "subtype preserves TYPED/ATTACHES_TO authored types. Filter by either. "
+                       "dir defaults to both and preserves stored orientation. Includes structural "
+                       "IN_DOMAIN, PARENT_OF and MENTIONS. missing_nodes does not distinguish "
+                       "foreign from absent ids. count is the total; edges_truncated marks a cut. Read-only.",
+        "inputSchema": {"type": "object", "properties": {
+            "node": {"type": "string", "description": "Exact node id or domain:<name>."},
+            "nodes": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 100},
+            "type": {"type": "string"},
+            "dir": {"type": "string", "enum": ["out", "in", "both"], "default": "both"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 5000, "default": 500},
+            "owner": {"type": "string"},
+        }, "oneOf": [{"required": ["node"], "not": {"required": ["nodes"]}},
+                     {"required": ["nodes"], "not": {"required": ["node"]}}]}, "run": _t_edges,
+    },
+    {
         "name": "vinc_path",
         "description": "Find the shortest relation path(s) between two concepts. **Concept ids only**: this walks the concept layer, so a record, decision or episode id can never be an endpoint even when it exists and is well connected (it attaches to concepts rather than sitting on the path graph) — you get an explicit error saying so, not a bare not-found. Returns the physically "
                        "connected edge chain, returned as an ordered id/title sequence. Use this to "
@@ -1187,14 +1275,19 @@ TOOLS: list[dict] = [
                        "the prefix "
                        "selects the table. Unknown prefixes return found:false (no-op). Use to "
                        "remove polluted or duplicate shell nodes. This is irreversible — confirm "
-                       "the exact id via vinc_search/vinc_graph first, and call vinc_neighbors on it "
-                       "to SEE WHAT GOES WITH IT: every attached edge is destroyed too, and the "
-                       "`deleted.edges` count in this response arrives after the fact, too late to "
-                       "inform the decision. Returns "
+                       "the exact id via vinc_search/vinc_graph first. Use vinc_neighbors to "
+                       "inspect its relations before deletion. Pass dry_run:true to read "
+                       "the complete incident edge preview and count without changing the node, "
+                       "edges, tombstones or jobs. An oversized preview is refused explicitly, "
+                       "never truncated silently. The preview is a point-in-time read; subsequent "
+                       "writes can change the eventual delete count. deleted.edges is a count "
+                       "after the fact, not a pre-deletion preview. Returns "
                        "{executed, found, deleted:{node, edges}}; found:false if the id is absent.",
         "inputSchema": {"type": "object", "properties": {
             "node_id": {"type": "string",
                         "description": "Exact type-prefixed node id to delete (e.g. concept:ipaas)."},
+            "dry_run": {"type": "boolean", "default": False,
+                        "description": "Preview all incident edges without writing. Default false deletes."},
             **_OWNER_PROP,
         }, "required": ["node_id"]},
         "run": _t_delete,
@@ -1203,9 +1296,11 @@ TOOLS: list[dict] = [
         "name": "vinc_delete_edge",
         "description": "Delete ONE relationship between two nodes (the nodes stay). "
                        "Covers the SYNCED relation types only: relates_to | prerequisite_of | "
-                       "derives_from | inherits_from | about. CONNECTS (connects_via), "
-                       "ATTACHES_TO (record edges) and TYPED (open-entity edges) are NOT "
-                       "deletable here — they are outside the sync set. Endpoints follow the "
+                       "derives_from | inherits_from | returns_to | about | ATTACHES_TO. A Record source can "
+                       "select its authored edge type (relates_to, prerequisite_of, derives_from "
+                       "or inherits_from), preserving that qualifier in its deletion tombstone, "
+                       "or select the physical ATTACHES_TO carrier. CONNECTS and TYPED remain "
+                       "outside this surface. Endpoints follow the "
                        "same rule as vinc_ingest: concept and decision are interchangeable "
                        "(so derives_from covers all four concept/decision combinations, and "
                        "about is episode|decision → concept|decision), except relates_to which "
@@ -1219,7 +1314,7 @@ TOOLS: list[dict] = [
             "from_id": {"type": "string", "description": "Exact source node id (e.g. concept:a, episode:s1)."},
             "to_id": {"type": "string", "description": "Exact target node id (e.g. concept:b)."},
             "type": {"type": "string",
-                     "description": "relates_to | prerequisite_of | derives_from | inherits_from | about"},
+                     "description": "relates_to | prerequisite_of | derives_from | inherits_from | returns_to | about | ATTACHES_TO"},
             **_OWNER_PROP,
         }, "required": ["from_id", "to_id", "type"]},
         "run": _t_delete_edge,
@@ -1442,7 +1537,10 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_merge_rejections": {"title": "List rejected merge pairs", "readOnlyHint": True},
     # W1 — 질문 하나로 답변 재료를 모으는 조인 읽기. 조회 전용이다.
     "vinc_brief": {"title": "Brief on a question", "readOnlyHint": True},
+    "vinc_node": {"title": "Read one stored node", "readOnlyHint": True},
     "vinc_neighbors": {"title": "Observe a node's neighbors", "readOnlyHint": True},
+    "vinc_edges": {"title": "Read directed incident edges", "readOnlyHint": True},
+    "vinc_role": {"title": "Read a role contract or roster", "readOnlyHint": True},
     "vinc_path": {"title": "Shortest path between concepts", "readOnlyHint": True},
     # 쓰기지만 가산적·멱등(exact-id MERGE) — 기존 데이터를 지우지 않는다.
     "vinc_ingest": {"title": "Save to the graph", "readOnlyHint": False,
@@ -1920,6 +2018,14 @@ def validate_args(name: str, args: dict | None) -> None:
     if tool is None:
         raise KeyError(f"unknown tool: {name}")
     args = args if isinstance(args, dict) else {}
+    if name == "vinc_edges":
+        node, nodes = args.get("node"), args.get("nodes")
+        ids = [node] if node is not None else nodes
+        if ((node is not None and nodes is not None) or not isinstance(ids, list)
+                or not 1 <= len(ids) <= 100
+                or any(not isinstance(n, str) or not n.strip() or "\x1f" in n for n in ids)):
+            raise InvalidArgument(name, "node/nodes", reason="provide exactly one node or 1..100 ids",
+                                  text="Invalid argument: provide either node or a nodes array of 1..100 exact ids.")
     sch = tool["inputSchema"]
     props = sch.get("properties") or {}
     for req in sch.get("required", []):

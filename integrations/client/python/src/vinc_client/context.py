@@ -36,6 +36,13 @@ def _one_line(value: Any, limit: int = 400) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def _citation(row: dict[str, Any], legacy_key: str = "id") -> str:
+    # 이전 서버에는 cite_id가 없다. 명시적 null은 없는 미러를 인용하지 말라는 뜻이다.
+    if "cite_id" not in row:
+        return str(row.get(legacy_key) or "")
+    return str(row["cite_id"] or "citation unavailable")
+
+
 _SECTION_HEADS = ("Excerpts:", "Relations:",
                   "Search matches (no single node answered the question):")
 
@@ -72,18 +79,18 @@ def _brief_lines(brief: dict[str, Any]) -> list[str]:
         if not candidates:
             return []
         lines = ["The question matched several nodes equally; none was chosen:"]
-        return lines + [f"- {_one_line(c.get('title'), 200)} ({c.get('id')})" for c in candidates]
+        return lines + [f"- {_one_line(c.get('title'), 200)} ({_citation(c)})" for c in candidates]
     if status != "resolved":
         return []
     node = brief.get("node") or {}
-    lines = [f"Node: {_one_line(node.get('title'), 300)} ({node.get('id')})"]
+    lines = [f"Node: {_one_line(node.get('title'), 300)} ({_citation(node)})"]
     if node.get("domain"):
         lines.append(f"Topic: {node['domain']}")
     if node.get("validity") and node["validity"] != "current":
         lines.append(f"Validity: {node['validity']}")
     if brief.get("one_liner"):
         lines.append(f"Summary: {_one_line(brief['one_liner'], 800)}")
-    grounds = [g for g in brief.get("grounds") or [] if g]
+    grounds = [g for g in brief.get("cite_grounds", brief.get("grounds")) or [] if g]
     if grounds:
         lines.append("Grounds: " + ", ".join(grounds))
     excerpts = brief.get("excerpts") or []
@@ -93,14 +100,14 @@ def _brief_lines(brief: dict[str, Any]) -> list[str]:
             where = _one_line(ex.get("doc_title"), 160)
             if ex.get("section"):
                 where += f" § {_one_line(ex['section'], 120)}"
-            lines.append(f"- {where} ({ex.get('doc_id')}): {_one_line(ex.get('excerpt'), 600)}")
+            lines.append(f"- {where} ({_citation(ex, 'doc_id')}): {_one_line(ex.get('excerpt'), 600)}")
     items = (brief.get("links") or {}).get("items") or []
     if items:
         lines.append("Relations:")
         for item in items:
             why = item.get("evidence_text") or item.get("note") or ""
             line = (f"- {item.get('type')} {item.get('dir')} "
-                    f"{_one_line(item.get('title'), 200)} ({item.get('id')})")
+                    f"{_one_line(item.get('title'), 200)} ({_citation(item)})")
             lines.append(line + (f": {_one_line(why, 300)}" if why else ""))
     return lines
 
@@ -116,9 +123,9 @@ def _search_lines(result: dict[str, Any] | None, limit: int,
     lines = ["Search matches (no single node answered the question):"]
     for hit in hits:
         lines.append(f"- {hit.get('kind') or 'node'}: {_one_line(hit.get('title'), 200)} "
-                     f"({hit.get('id')})")
+                     f"({_citation(hit)})")
     for row in rows:
-        lines.append(f"- {_one_line(row.get('doc_title'), 160)} ({row.get('doc_id')}): "
+        lines.append(f"- {_one_line(row.get('doc_title'), 160)} ({_citation(row, 'doc_id')}): "
                      f"{_one_line(row.get('snippet'), 500)}")
     return lines
 

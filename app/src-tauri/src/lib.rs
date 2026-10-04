@@ -59,6 +59,9 @@ fn start_sidecar(state: State<'_, SidecarState>) -> Result<SidecarInfo, String> 
         .args([
             "-m",
             "api.cli",
+            // 개발 셸도 계정 설정과 무관하게 로컬 사이드카를 관리한다.
+            "--target",
+            "local",
             "serve",
             "--host",
             "127.0.0.1",

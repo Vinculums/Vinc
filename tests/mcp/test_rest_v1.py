@@ -80,6 +80,50 @@ def test_read_routes_cover_every_viewer_tool_and_no_write_tool():
         len(rest_routes.ROUTES)
 
 
+def test_directed_edges_routes_preserve_filters_and_force_space_owner():
+    srv = Server(role="viewer", scope="read")
+    try:
+        status, _, _ = srv.request("GET", "/v1/nodes/concept%3Aa/edges?dir=in&type=PREREQUISITE_OF&limit=40")
+        assert status == 200
+        method, path, args, _ = srv.bridge.calls[-1]
+        assert (method, path, args["owner"], args["node"], args["type"], args["dir"], args["limit"]) == (
+            "GET", "/node-edges", "user:u1", "concept:a", "PREREQUISITE_OF", "in", 40)
+        status, _, _ = srv.request("POST", f"/v1/edges/query?space={TEAM}",
+                                  body={"nodes": ["concept:a", "decision:b"], "owner": "user:victim"})
+        assert status == 200
+        args = srv.bridge.calls[-1][2]
+        assert args["owner"] == "team:" + TEAM
+        assert json.loads(args["nodes"]) == ["concept:a", "decision:b"]
+        assert tools.tool_tier("vinc_edges") == "viewer"
+    finally:
+        srv.close()
+
+
+def test_directed_edges_invalid_batch_does_not_consume_quota_or_reach_sidecar():
+    srv = Server(quota={"free_limit": 1, "team_limit": 1, "window_s": 86400, "lock_s": 3600})
+    try:
+        for body in ({}, {"nodes": []}, {"nodes": ["concept:a"] * 101}, {"nodes": [9]},
+                     {"nodes": ["physical\x1fid"]}, {"nodes": ["concept:a"], "dir": "sideways"}):
+            status, _, result = srv.request("POST", "/v1/edges/query", body=body)
+            assert status == 400 and result["error"]["code"] == "invalid_argument"
+        assert not srv.bridge.calls
+        assert srv.request("POST", "/v1/edges/query", body={"nodes": ["concept:a"]})[0] == 200
+    finally:
+        srv.close()
+
+
+def test_directed_edges_missing_single_node_is_404_but_isolated_node_is_200():
+    srv = Server()
+    try:
+        srv.bridge.override = {"kind": "edges", "executed": True, "found": False, "edges": [], "count": 0}
+        status, _, result = srv.request("GET", "/v1/nodes/concept%3Aabsent/edges")
+        assert status == 404 and result["error"]["code"] == "not_found"
+        srv.bridge.override["found"] = True
+        assert srv.request("GET", "/v1/nodes/concept%3Aisolated/edges")[0] == 200
+    finally:
+        srv.close()
+
+
 def test_rest_result_equals_mcp_text_and_owner_is_forced():
     srv = Server()
     try:
@@ -158,9 +202,9 @@ def test_cursor_error_and_unknown_percent_encoded_node():
             "POST", "/v1/search", body={"query": "x", "cursor": "eyJhIjoxfQ"})
         assert status == 400 and body["error"]["code"] == "invalid_argument"
         assert body["error"]["request_id"] == headers["Vinc-Request-Id"]
-        srv.bridge.override = {"kind": "brief", "status": "none", "unreadable": True}
+        srv.bridge.override = {"kind": "node", "executed": True, "found": False, "node": None}
         status, _headers, body = srv.request("GET", "/v1/nodes/concept%3Aunknown")
         assert status == 404 and body["error"]["code"] == "not_found"
-        assert srv.bridge.calls[-1][2]["query"] == "concept:unknown"
+        assert srv.bridge.calls[-1][2]["node_id"] == "concept:unknown"
     finally:
         srv.close()

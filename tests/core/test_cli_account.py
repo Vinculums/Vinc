@@ -59,7 +59,7 @@ def test_account_environment_url_and_space(monkeypatch):
 
 def test_every_public_tool_uses_a_v1_route(monkeypatch):
     names = {item["name"] for item in tools.TOOLS}
-    assert len(names) == 24
+    assert len(names) == 27
     observed = []
 
     def receive(request, *, timeout):
@@ -99,7 +99,21 @@ def test_every_public_tool_uses_a_v1_route(monkeypatch):
         else:
             assert request.data is None
     assert {route.tool for route in rest_routes.ROUTES} == names
-    assert len(observed) == 24
+    assert len(observed) == 27
+
+
+def test_edge_batch_uses_the_read_post_route(monkeypatch):
+    observed = []
+    def receive(request, **_kw):
+        observed.append(request)
+        return _Response({"executed": True, "edges": []})
+    monkeypatch.setattr(remote_client, "urlopen", receive)
+    remote_client.call("vinc_edges", {"nodes": ["concept:a", "concept:b"], "dir": "out"},
+                       key="vinc_ro_test", base_url="https://api.test")
+    request = observed[0]
+    assert request.full_url == "https://api.test/v1/edges/query"
+    assert request.get_method() == "POST"
+    assert json.loads(request.data) == {"nodes": ["concept:a", "concept:b"], "dir": "out"}
 
 
 def test_account_key_only_and_space_on_route(monkeypatch):

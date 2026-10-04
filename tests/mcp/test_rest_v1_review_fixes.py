@@ -18,6 +18,10 @@ from vinc_mcp.rest_api import _failure
 
 # (도구, 결과, by_id, 기대 상태, 기대 코드). 상태가 None 이면 성공으로 통과해야 한다.
 FAILURE_CASES = [
+    ("vinc_role", {"executed": True, "found": False}, True, 404, "not_found"),
+    ("vinc_role", {"executed": False, "note": "no reachable store"}, True, 503, "upstream_unavailable"),
+    ("vinc_edges", {"executed": True, "found": False, "edges": []}, True, 404, "not_found"),
+    ("vinc_edges", {"executed": True, "found": True, "edges": []}, True, None, None),
     ("vinc_search", {"executed": False, "error": "invalid_cursor: x"}, False, 400, "invalid_argument"),
     ("vinc_search", {"executed": True, "rows": []}, False, None, None),
     ("vinc_recall", {"executed": False, "error": "stale_cursor"}, False, 400, "invalid_argument"),
@@ -25,6 +29,8 @@ FAILURE_CASES = [
     ("vinc_brief", {"status": "none", "unreadable": ["concept:x"]}, False, 404, "not_found"),
     ("vinc_brief", {"status": "none"}, True, 404, "not_found"),
     ("vinc_brief", {"status": "none"}, False, None, None),
+    ("vinc_node", {"executed": True, "found": False, "node": None}, True, 404, "not_found"),
+    ("vinc_node", {"executed": False, "note": "no reachable store"}, True, 503, "upstream_unavailable"),
     ("vinc_graph", {"found": False}, True, 404, "not_found"),
     ("vinc_decide", {"found": False}, False, 404, "not_found"),
     ("vinc_domains", {"executed": True, "rows": []}, False, None, None),
@@ -94,12 +100,16 @@ def test_unconfirmed_write_says_it_may_have_applied():
 # ── 서버 수준 ────────────────────────────────────────────────────────────────
 
 _READ_SAMPLES = {
+    ("GET", "/v1/roles"): ("", {}),
+    ("GET", "/v1/roles/{id}"): ("", {"role": "concept:agent-x"}),
+    ("GET", "/v1/nodes/{id}/edges"): ("", {"node": "concept:x"}),
+    ("POST", "/v1/edges/query"): ({"nodes": ["concept:x"]}, {"nodes": ["concept:x"]}),
     ("GET", "/v1/me"): (None, {}),
     ("GET", "/v1/conventions"): ("?lang=en", {"lang": "en"}),
     ("GET", "/v1/domains"): (None, {}),
     ("POST", "/v1/search"): ({"query": "x"}, {"query": "x"}),
     ("POST", "/v1/brief"): ({"query": "x"}, {"query": "x"}),
-    ("GET", "/v1/nodes/{id}"): ("", {"query": "concept:x"}),
+    ("GET", "/v1/nodes/{id}"): ("", {"node_id": "concept:x"}),
     ("GET", "/v1/nodes/{id}/neighbors"): ("", {"node": "concept:x"}),
     ("GET", "/v1/nodes/{id}/graph"): ("", {"seed_id": "concept:x"}),
     ("POST", "/v1/graph"): ({"url": "https://vincs.io/app/#view/trace/concept:x"},
@@ -117,13 +127,16 @@ _READ_SAMPLES = {
 
 #: 모든 도구가 성공으로 읽을 만한 브리지 답.
 _OK = {"executed": True, "found": True, "status": "ok", "verified": True, "rows": [],
-       "docs": [], "nodes": [], "edges": [], "neighbors": [], "text": "t"}
+       "docs": [], "nodes": [], "edges": [], "neighbors": [], "text": "t",
+       "node": {"id": "concept:agent-x", "props": {}}}
 
 
 @pytest.mark.parametrize("route", rest_routes.READ_ROUTES, ids=lambda r: f"{r.method} {r.path}")
 def test_rest_equals_mcp_for_every_read_route(route):
     sample, arguments = _READ_SAMPLES[(route.method, route.path)]
     path = route.path.replace("{id}", quote("concept:x", safe="")).replace("{doc_id}", "d1")
+    if route.tool == "vinc_role":
+        path = route.path.replace("{id}", quote("concept:agent-x", safe=""))
     body = None
     if isinstance(sample, str):
         path += sample
@@ -153,6 +166,8 @@ def test_read_only_key_can_call_every_read_route():
         for route in rest_routes.READ_ROUTES:
             sample, _args = _READ_SAMPLES[(route.method, route.path)]
             path = route.path.replace("{id}", "concept%3Ax").replace("{doc_id}", "d1")
+            if route.tool == "vinc_role":
+                path = route.path.replace("{id}", "concept%3Aagent-x")
             body = sample if isinstance(sample, dict) else None
             path += sample if isinstance(sample, str) else ""
             status, _h, out = srv.request(route.method, path, body=body)

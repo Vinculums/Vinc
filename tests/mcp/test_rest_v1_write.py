@@ -99,10 +99,10 @@ def _team(path):
     return path + ("&" if "?" in path else "?") + "space=" + TEAM
 
 
-def test_all_24_tools_are_routed_and_host_only_tools_are_excluded():
+def test_all_27_tools_are_routed_and_host_only_tools_are_excluded():
     routed = {route.tool for route in rest_routes.ROUTES}
     public = {item["name"] for item in tools.TOOLS}
-    assert routed == public and len(public) == 24
+    assert routed == public and len(public) == 27
     assert rest_routes.HOST_EXCLUSIONS == {"search", "fetch"}
     assert not routed.intersection(rest_routes.HOST_EXCLUSIONS)
     assert len({(route.method, route.path) for route in rest_routes.ROUTES}) == len(rest_routes.ROUTES)
@@ -183,6 +183,27 @@ def test_json_string_false_cannot_apply_document_extraction():
             "POST", "/v1/documents/doc%3Atest/extract", {"apply": "false"})
         assert status == 400 and result["error"]["code"] == "invalid_argument"
         assert srv.bridge.calls == []
+    finally:
+        srv.close()
+
+
+def test_node_delete_preview_query_has_exact_mcp_boolean_parity():
+    srv = Server()
+    try:
+        for value, flag in [('true', True), ('false', False)]:
+            status, _headers, result = srv.request('DELETE', '/v1/nodes/record%3Atest?dry_run=' + value)
+            assert status == 200, result
+            rest_call = srv.bridge.calls[-1]
+            assert rest_call[3]['dry_run'] is flag
+            rpc = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {
+                'name': 'vinc_delete', 'arguments': {'node_id': 'record:test', 'dry_run': flag}}}
+            status, _headers, _result = srv.request('POST', '/mcp', rpc)
+            assert status == 200
+            assert srv.bridge.calls[-1] == rest_call
+        before = len(srv.bridge.calls)
+        status, _headers, result = srv.request('DELETE', '/v1/nodes/record%3Atest?dry_run=maybe')
+        assert status == 400 and result['error']['code'] == 'invalid_argument'
+        assert len(srv.bridge.calls) == before
     finally:
         srv.close()
 

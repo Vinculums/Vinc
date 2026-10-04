@@ -47,13 +47,16 @@ Repositories: Vinc
 
 ## Gates that must pass before the pull request
 
-- (none)
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
 
 ## Works with
 
 - Hands off to: agent-deploy (Deployment Engineer)
 - Receives from: agent-gate-runner (CI Gate Runner), agent-product-owner (Product Owner)
 - Works beside: agent-dev-app (Frontend Engineer), agent-gate-runner (CI Gate Runner), agent-orchestrator (Program Manager), agent-reviewer-judgement (Code Reviewer)
+- Returns to: agent-gate-runner (CI Gate Runner), agent-product-owner (Product Owner)
 
 ## Tools and MCP servers
 
@@ -81,6 +84,10 @@ the missing server instead of substituting another tool. Reasoning:
 ## Only a person does this
 
 - (none)
+
+## Machine checks for never
+
+- {"actions":["edit","merge","deploy"],"type":"forbidden_actions"}
 
 ## Writes to the graph
 

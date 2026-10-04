@@ -276,9 +276,12 @@ async function renderCreate(pane: HTMLElement, sheet: SheetHandle,
 
   const { mountDocEditor } = await import("./doc-editor");
   let docId = "";
+  let savedTitle = "";
+  let finishing = false;
   const handle = await mountDocEditor(pane.querySelector<HTMLElement>("#tl-ed")!, {
     owner: cfg.owner,
-    onSaved: (id) => { docId = id; },
+    manualSave: true,
+    onSaved: (id, title) => { docId = id; savedTitle = title; },
   });
   // 편집기가 뜨는 사이 다른 탭·분류로 옮겼으면 이 판은 떨어져 나갔고, 그 전환의
   // 정리는 이미 지나갔다(그때는 핸들이 없었다). 여기서 바로 해제하고 발도 쓰지 않는다.
@@ -315,6 +318,7 @@ async function renderCreate(pane: HTMLElement, sheet: SheetHandle,
     sheet.foot.innerHTML = sheetActions(
       { id: "tl-done", label: T.linkCta(picked.size) },
       { id: "tl-cancel", label: COPY.ui.common.cancel });
+    sheet.foot.querySelector<HTMLButtonElement>("#tl-done")!.disabled = finishing;
     sheet.foot.querySelector("#tl-cancel")!.addEventListener("click", sheet.close);
     sheet.foot.querySelector("#tl-done")!.addEventListener("click", () => void finish());
   };
@@ -330,11 +334,26 @@ async function renderCreate(pane: HTMLElement, sheet: SheetHandle,
    *  문서 저장과 링크는 별개 호출이라 링크만 실패할 수 있다. 그 사실을 숨기지
    *  않고 건별로 보고하고, 실패분만 다시 시도할 길을 준다. */
   async function finish() {
+    if (finishing) return;
     const out = pane.querySelector<HTMLElement>("#tl-result")!;
-    if (picked.size === 0) { sheet.close(); return; }
-    if (!docId) { out.innerHTML = `<p class="hint">${esc(T.saveFirst)}</p>`; return; }
-    out.innerHTML = `<p class="hint">${esc(T.linking)}</p>`;
+    finishing = true;
+    out.innerHTML = "";
+    drawFoot();
     try {
+      if (!await handle.saveNow?.()) return;
+      void import("./lnb").then((m) => m.refreshLnb({ quiet: true }));
+      const showSaved = () => {
+        out.innerHTML = `<p>${esc(COPY.ui.viewx.edSaved)}: ${esc(savedTitle)}</p>
+          <button class="btn" id="tl-open">${esc(COPY.search.actions.open)}</button>`;
+        out.querySelector("#tl-open")!.addEventListener("click", () => {
+          sheet.close();
+          const h = viewHooks();
+          if (h) h.openDoc(docId);
+          else void import("./doc-editor").then((m) => m.openDocSheet({ owner: cfg.owner, docId }));
+        });
+      };
+      if (picked.size === 0) { showSaved(); return; }
+      out.innerHTML = `<p class="hint">${esc(T.linking)}</p>`;
       // 내 문서의 대표 개념을 얻으려면 먼저 개념이 있어야 한다 — 추출을 반영한다.
       await withTimeout(api.docExtract(cfg.owner, docId, true));
       const fresh = await withTimeout(api.docList(cfg.owner));
@@ -360,8 +379,8 @@ async function renderCreate(pane: HTMLElement, sheet: SheetHandle,
         } catch { failed.push(t.doc_id); }
       }
       if (failed.length === 0) {
-        out.innerHTML = `<p>${esc(T.linked(ok))}</p>`;
-        window.setTimeout(() => { if (out.isConnected) sheet.close(); }, 900);
+        showSaved();
+        out.insertAdjacentHTML("afterbegin", `<p>${esc(T.linked(ok))}</p>`);
         return;
       }
       out.innerHTML = `<p>${esc(T.linkPartial(ok, failed.length))}</p>
@@ -373,6 +392,9 @@ async function renderCreate(pane: HTMLElement, sheet: SheetHandle,
       });
     } catch {
       out.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`;
+    } finally {
+      finishing = false;
+      if (pane.isConnected) drawFoot();
     }
   }
 }

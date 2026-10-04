@@ -49,14 +49,18 @@ Repositories: Vinc, Vinc-homepage
 
 ## Gates that must pass before the pull request
 
-- scripts/gate_forbidden.py
-- scripts/gate_copy.mjs
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
+- {"check":{"command":"scripts/gate_forbidden.py","repos":["Vinc"],"type":"command_success"},"id":"command_1","on_fail":"block"}
+- {"check":{"command":"scripts/gate_copy.mjs","repos":["Vinc-homepage"],"type":"command_success"},"id":"command_2","on_fail":"block"}
 
 ## Works with
 
 - Hands off to: agent-gate-runner (CI Gate Runner)
 - Receives from: agent-marketing (Product Marketing Manager)
 - Works beside: agent-copy-owner (Localization Engineer)
+- Receives rejected packages from: agent-gate-runner (CI Gate Runner)
 
 ## Tools and MCP servers
 
@@ -82,8 +86,12 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- what the book argues
-- publishing the book
+- book_argument: what the book argues
+- publish_book: publishing the book
+
+## Machine checks for never
+
+- {"rules":["em_dash"],"type":"rendered_copy"}
 
 ## Trap note
 

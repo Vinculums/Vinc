@@ -50,7 +50,9 @@ Repositories: Vinc, Vinc-homepage
 
 ## Gates that must pass before the pull request
 
-- (none)
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
 
 ## Works with
 
@@ -82,7 +84,11 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- every state changing command
+- state_change: every state changing command
+
+## Machine checks for never
+
+- {"actions":["merge"],"type":"forbidden_actions"}
 
 ## Trap note
 
