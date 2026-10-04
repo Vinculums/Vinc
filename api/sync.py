@@ -549,6 +549,12 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
             e = {"from": r["id"], "to": tgt, "type": ftype}
             if r.get("edge_created"):
                 e["created"] = r["edge_created"]
+            if ftype == "returns_to":
+                # 반려 경로는 근거가 필수다. 동기화가 근거를 버리면 수신측이
+                # 동일 엣지를 다시 적재할 수 없으므로 두 필드를 함께 보존한다.
+                for field in ("evidence", "confidence"):
+                    if r.get(field) is not None:
+                        e[field] = r[field]
             edges.append(e)
 
     # 삭제 표식(S4) — 노드와 같은 커서 공간(sync_seq). 도메인 스코프는 없다(삭제된

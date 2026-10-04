@@ -39,6 +39,7 @@ LIST_KEYS = ("never", "person_only", "reads", "gates", "repos", "paths", "tools"
 TITLE_PREFIX = "agent role:"
 
 _SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_ACTION = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
 
 
 def is_role_id(nid: str) -> bool:
@@ -101,6 +102,25 @@ def check(node: dict, *, created: bool, stored_domain: str | None = None) -> lis
     if bad:
         out.append(f"role {nid}: {', '.join(bad)} must be a list; a single string is "
                    f"rendered one character per bullet ({why})")
+    person = props.get("person_only")
+    if isinstance(person, list):
+        # 기존 팩의 문자열 목록은 그대로 읽는다. 새 구조는 설명을 파싱하지 않고
+        # action을 쓰므로 혼합 목록이나 중복 행동은 명확히 경고한다.
+        if any(isinstance(item, dict) for item in person):
+            seen = set()
+            for item in person:
+                if (not isinstance(item, dict) or set(item) != {"action", "reason"}
+                        or not isinstance(item.get("action"), str)
+                        or not _ACTION.fullmatch(item["action"])
+                        or not isinstance(item.get("reason"), str) or not item["reason"].strip()
+                        or item["action"] in seen):
+                    out.append(f"role {nid}: structured person_only requires distinct "
+                               f"action keys and nonempty reasons ({why})")
+                    break
+                seen.add(item["action"])
+        elif any(not isinstance(item, str) or not item.strip() for item in person):
+            out.append(f"role {nid}: person_only entries must be strings or structured "
+                       f"action/reason objects ({why})")
     mission = props.get("mission")
     one = node.get("one_liner")
     if (isinstance(one, str) and isinstance(mission, str)

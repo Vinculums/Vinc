@@ -58,6 +58,7 @@ _CC_EDGES = {   # Concept→Concept fragment 엣지 → rel 테이블
     "prerequisite_of": "PREREQUISITE_OF",
     "derives_from": "DERIVES_FROM",
     "inherits_from": "INHERITS_FROM",
+    "returns_to": "RETURNS_TO",
 }
 # Episode 참여 엣지 — _CC_EDGES 에 넣지 않는다: sync 의 _REL_TO_FRAGMENT 가
 # _CC_EDGES 를 역맵으로 파생하므로(Concept 엣지 export 전용) 섞이면 오염된다.
@@ -683,6 +684,7 @@ _ALLOWED_PAIRS_HINT = (
     "except relates_to which stays concept→concept): "
     "relates_to = concept→concept; "
     "prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; "
+    "returns_to = distinct role concepts, with nonempty evidence; "
     "record → concept|decision for any of those four; "
     "connects_via = bridge → concept|decision; "
     "about = episode|decision → concept|decision; "
@@ -976,6 +978,16 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         _warn_edge(warnings, rollup, "unsupported_type", f"{src}→{dst} ({etype})",
                    f"unsupported edge type '{etype}' — skipped ({src}→{dst}); "
                    f"{_ALLOWED_PAIRS_HINT}")
+        return None
+
+    # 반려 경로는 역할 사이에 저작하며 근거가 있어야 한다. Record/Decision
+    # 경로로 접거나 일반 개념에 붙이면 검토 대상 역할이 바뀐다.
+    if etype == "returns_to" and (
+            st != "concept" or dt != "concept" or src == dst
+            or not role_contract.is_role_id(src) or not role_contract.is_role_id(dst)
+            or not isinstance(edge.get("evidence"), str) or not edge["evidence"].strip()):
+        warnings.append("returns_to expects distinct role concepts and nonempty evidence; "
+                        f"skipped ({src}→{dst})")
         return None
 
     # v12 — 끝점 라벨·PK 를 타입에서 꺼낸다. 아래 분기들이 라벨을 문자열로 박고
