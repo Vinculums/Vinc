@@ -74,6 +74,145 @@ Every `about` id is read before the write, so a typo raises `VincNotFound` inste
 
 `AsyncVincClient` has the same methods, awaited.
 
+
+
+## Review output validation
+
+`ReviewOutput` validates `verdict` (`ACCEPT` or `RETURN`),
+`findings[{what, cite[]}]` and `person_only_requests[{action, reason}]`.
+Legacy reviews may omit `person_only_requests`; they default to an empty list.
+Optional `quote` and `rule` fields preserve the reviewer's explanation.
+`RETURN` requires findings and `ACCEPT` requires none. `parse_review` rejects
+malformed JSON and extra fields. Shape validation does not establish citation
+existence, completion, or a person's approval.
+
+The framework packages expose review helpers with one parse retry. If both
+outputs fail, they raise `UnparsedReview` with `status="UNPARSED"`, rather than
+returning an empty successful review. Route that exception to a person.
+
+## Hand a package to another agent
+
+Write a package explicitly after reviewing the producer's result. Select `space`
+explicitly (`"personal"` or a team UUID); all evidence must already exist there.
+This initial contract supports same-space handoffs only.
+
+```python
+handoff = writer.write_package(
+    "When does the dashboard become stale?", "Keep the 36 hour threshold.",
+    claims=[{"claim": "Stale after 36 hours.", "evidence_ids": ["decision:threshold"]}],
+    produced_by="agent:analyst", run_id="analysis-1", space="personal",
+    package_id="record:dashboard-handoff",
+)
+# The receiving agent uses its own key, which may be read only.
+block = reader.get_package_context(handoff["package_id"], space=handoff["space"])
+```
+
+The Record carries the complete question, conclusion, claims, source ids and
+producer/run provenance. Source contents are never copied. Each read checks
+distinct evidence ids with the receiving key again; deleted or inaccessible
+evidence makes the affected claim explicitly uncitable. Missing carriers and
+service/authentication errors propagate. No permission or content cache is used.
+The complete data block is fenced; exceeding `max_chars` raises
+`package_budget_exceeded` instead of truncating the conclusion. Use a fresh
+package id for each handoff; choosing an existing id deliberately replaces that
+Record's props. The server validates sources when writing, so source Records
+must be persisted before the package rather than created alongside it.
+
+
+## Prefetch role evidence before a model call
+
+```python
+block = reader.prefetch("concept:agent-reviewer", "Review the proposed change.")
+```
+
+This uses the role API from VIN-303, reads each distinct required spec by its
+declared identifier, then briefs the task and searches with the role topic as
+context. Returned node ids remain in the fenced reference blocks. The topic is
+search context, not a hard domain filter. Role contracts remain graph data;
+choosing this API does not delegate work or widen the caller's permissions.
+
+The caller must choose the role explicitly. Its complete contract is retained;
+spec excerpts use the existing brief renderer and task evidence uses brief and
+search. Required-spec misses/ties, invalid role contracts, authentication and
+service failures propagate. There is no prefetch permission/content cache or
+automatic write. The aggregate `max_chars` budget fails explicitly rather than
+dropping a required reading. This provides evidence before the model runs; it
+does not guarantee that the model cites it correctly.
+
+
 ## License
 
 MIT
+# Deterministic role output gate
+
+Fetch fresh structured role props, then freeze them for this invocation:
+
+```python
+from vinc_client import OutputGate, ToolProof
+
+gate = OutputGate(role["props"])
+result = gate.evaluate(final_answer)
+# result.verdict is pass, block or interrupt; this does not approve an action.
+```
+
+The gate reads typed `gates`, `never_checks` and action/reason `person_only`.
+Unknown conditions and legacy prose-only contracts block. Reasons never determine
+authority. Required gates are immutable; `extra_gates` can only add distinct IDs.
+`preserve_required_route(base, override)` rejects removal or shortcut bypass of
+an existing gate-runner path.
+
+Host-observed terminal results can support an exact completion sentence:
+
+```python
+proof = ToolProof("tests", "tests/core", actual_call_id, True,
+                  claim="Focused core tests passed.")
+result = gate.evaluate("Focused core tests passed.", proofs=[proof])
+```
+
+Construct proofs from actual calls in this invocation. Never deserialize model
+proofs or accept a model's completion claim as evidence. A proof cannot support
+a different sentence or a broader all-tests claim. The library cannot authenticate
+fabricated host input. It does not execute, authorize or undo tools.
+
+At `phase="handoff"`, declare the package repositories, its producer/run/claims
+manifest and the source IDs the recipient actually resolved under current
+permissions. Applicable original command gates need terminal `ToolProof` entries
+with `action="command"` and `target` equal to the original command string. Missing
+sources/results block; ordinary text answers do not require a handoff manifest.
+
+Results include check IDs, pending action IDs and bounded matching evidence
+sentences. Treat those excerpts as private model output; do not log or copy them
+across spaces automatically. `require_pass` raises `OutputGateStopped` on block
+or interrupt, with no model output in its exception message.
+
+These checks implement an enumerated subset of `never`; its preserved prose
+continues to bind the operator. There are no model calls or graph writes.
+
+## Structured person requests and approval
+
+`RoleOutput` contains `text` and `person_only_requests: [{action, reason}]`.
+Use it as the model response schema; each action must match the fresh role's
+adopted person-only action ID. `prepare_person_only(output, gate, role_id=...,
+run_id=...)` returns a checked output or a draft-bound `ApprovalRequest`. Blocked
+outputs raise before becoming approvable. The run ID must identify this invocation.
+
+The host authenticates the human and constructs an `ApprovalDecision` with the
+exact request ID and a boolean `approved`. `resolve_person_only` resumes that
+saved request without a model call. A different draft/run, modified request or
+truthy string cannot approve it. Rejection returns no deliverable.
+
+Approval releases this reviewed output only. It does not authorize or execute
+tools, merge, deploy or publish anything. Keep side-effect tools behind a separate
+host authorization step. The request hash binds data; it does not authenticate
+the responding person. Treat drafts and pending requests as private output.
+## Quote a checked chain handoff
+
+Use `check_package_handoff(node, space=..., gate=producer_gate,
+readable_ids=current_reader_ids, proofs=producer_tool_records,
+repositories=package_repositories)` before forwarding an existing package.
+The host resolves those IDs with the current reader in the selected space;
+model-created proof dictionaries and cached permissions are not evidence.
+The helper checks the complete conclusion and claims, preserves their exact
+wording and attribution, and refuses empty or unresolved manifests. It neither
+routes nor executes a task. Orchestrators quote this incoming block and add their
+own selected role, bounded package, acceptance criteria and delivery order.
