@@ -13,6 +13,7 @@ from pydantic import Field
 from vinc_client import (AsyncVincClient, VincQuotaExceeded, VincUnavailable, format_brief,
                          format_search)
 from vinc_client.context import DEFAULT_MAX_CHARS
+from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS, package_space
 
 DEFAULT_SOURCE_ID = "vinc"
 
@@ -123,3 +124,42 @@ async def record_episode(client: AsyncVincClient, title: str, *, summary: str = 
     """
     return await client.record_episode(title, summary=summary, about=about, date=date,
                                        domain=domain, tags=tags, space=space)
+
+
+class PackageProvider(ContextProvider):
+    """Read one explicit same-space handoff before each run, with no permission cache.
+
+    Bind the package when constructing the receiving agent; use another provider
+    for another handoff. Session-specific ids are never stored on a shared provider.
+    Failure propagates so a missing package cannot silently become a successful handoff.
+    Writing is a separate explicit ``client.write_package`` call.
+    """
+
+    def __init__(self, client: AsyncVincClient, package_id: str, *, space: str,
+                 source_id: str = "vinc-package",
+                 max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> None:
+        super().__init__(source_id)
+        self.client = client
+        self.package_id = package_id
+        self.space = package_space(space)
+        self.max_chars = max_chars
+
+    async def before_run(self, *, agent: Any, session: AgentSession, context: SessionContext,
+                         state: dict[str, Any]) -> None:
+        block = await self.client.get_package_context(self.package_id, space=self.space,
+                                                      max_chars=self.max_chars)
+        context.extend_instructions(self.source_id, block)
+
+    async def after_run(self, *, agent: Any, session: AgentSession, context: SessionContext,
+                        state: dict[str, Any]) -> None:
+        # 패키지나 수신자의 대화는 자동 저장하지 않는다.
+        return None
+
+
+async def write_package(client: AsyncVincClient, question: str, conclusion: str, *,
+                        claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
+                        space: str, package_id: str | None = None) -> dict[str, Any]:
+    """Explicit producer write; invoke after reviewing its conclusion and claim evidence."""
+    return await client.write_package(question, conclusion, claims=claims,
+                                      produced_by=produced_by, run_id=run_id,
+                                      space=space, package_id=package_id)

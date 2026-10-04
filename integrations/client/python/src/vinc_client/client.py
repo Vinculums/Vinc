@@ -2,7 +2,7 @@
 
 Both read a member key (``vinc_sk_`` full, ``vinc_ro_`` read only) and act on
 one space: the personal graph, or a team by its id. Nothing here writes on its
-own; the only write paths are ``ingest`` and ``record_episode``, and both are
+own; ``ingest``, ``record_episode`` and ``write_package`` are
 explicit calls.
 """
 from __future__ import annotations
@@ -20,7 +20,9 @@ from . import __version__
 from .context import DEFAULT_MAX_CHARS, format_answer
 from .episode import build_episode_fragment, check_about
 from .errors import (VincAuthError, VincError, VincInvalidArgument, VincPartialWrite,
-                     VincQuotaExceeded, VincUnavailable, error_class)
+                     VincNotFound, VincQuotaExceeded, VincUnavailable, error_class)
+from .package import (DEFAULT_PACKAGE_MAX_CHARS, build_package_fragment, format_package,
+                      package_space, validate_package)
 
 log = logging.getLogger("vinc_client")
 
@@ -294,6 +296,40 @@ class VincClient(_Base):
                                           domain=domain, tags=tags, episode_id=episode_id)
         return self.ingest(fragment["nodes"], fragment["edges"], space=space)
 
+    def write_package(self, question: str, conclusion: str, *,
+                      claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
+                      space: str, title: str | None = None,
+                      package_id: str | None = None) -> dict[str, Any]:
+        """Explicitly write one handoff Record into the selected space, requiring a write key."""
+        self._require_write_key()
+        selected = package_space(space)
+        fragment = build_package_fragment(question, conclusion, claims=claims,
+                                          produced_by=produced_by, run_id=run_id,
+                                          title=title, package_id=package_id)
+        result = self.ingest(fragment["nodes"], fragment["edges"], space=selected)
+        return {"package_id": fragment["nodes"][0]["id"], "space": selected, "write": result}
+
+    def get_package_context(self, package_id: str, *, space: str,
+                            max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> str:
+        """Read a package and check each distinct source as this key, every call; never write."""
+        selected = package_space(space)
+        node = self.node(package_id, space=selected).get("node")
+        if not isinstance(node, dict) or node.get("id") != package_id:
+            raise VincInvalidArgument("invalid_package", "The package carrier is unavailable.")
+        readable = []
+        for nid in validate_package(node):
+            try:
+                result = self.node(nid, space=selected)
+            except VincNotFound:
+                continue
+            except VincAuthError as exc:
+                if exc.status != 403:
+                    raise
+                continue
+            if result.get("found") and result.get("node"):
+                readable.append(nid)
+        return format_package(node, space=selected, readable_ids=readable, max_chars=max_chars)
+
 
 class AsyncVincClient(_Base):
     """Async twin of :class:`VincClient`; same methods, awaited."""
@@ -378,6 +414,40 @@ class AsyncVincClient(_Base):
         fragment = build_episode_fragment(title, summary=summary, about=targets, date=date,
                                           domain=domain, tags=tags, episode_id=episode_id)
         return await self.ingest(fragment["nodes"], fragment["edges"], space=space)
+
+    async def write_package(self, question: str, conclusion: str, *,
+                            claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
+                            space: str, title: str | None = None,
+                            package_id: str | None = None) -> dict[str, Any]:
+        """Async explicit package write; no framework callback invokes this automatically."""
+        self._require_write_key()
+        selected = package_space(space)
+        fragment = build_package_fragment(question, conclusion, claims=claims,
+                                          produced_by=produced_by, run_id=run_id,
+                                          title=title, package_id=package_id)
+        result = await self.ingest(fragment["nodes"], fragment["edges"], space=selected)
+        return {"package_id": fragment["nodes"][0]["id"], "space": selected, "write": result}
+
+    async def get_package_context(self, package_id: str, *, space: str,
+                                  max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> str:
+        """Async fresh package and evidence reads under the recipient's current credentials."""
+        selected = package_space(space)
+        node = (await self.node(package_id, space=selected)).get("node")
+        if not isinstance(node, dict) or node.get("id") != package_id:
+            raise VincInvalidArgument("invalid_package", "The package carrier is unavailable.")
+        readable = []
+        for nid in validate_package(node):
+            try:
+                result = await self.node(nid, space=selected)
+            except VincNotFound:
+                continue
+            except VincAuthError as exc:
+                if exc.status != 403:
+                    raise
+                continue
+            if result.get("found") and result.get("node"):
+                readable.append(nid)
+        return format_package(node, space=selected, readable_ids=readable, max_chars=max_chars)
 
 
 __all__ = ["VincClient", "AsyncVincClient", "VincError", "resolve_key", "resolve_base_url",

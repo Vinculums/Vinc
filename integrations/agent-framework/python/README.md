@@ -55,6 +55,7 @@ await record_episode(
 )
 ```
 
+
 ## Structured review with one parse retry
 
 ```python
@@ -76,6 +77,29 @@ stateless and disables executable tools. Use a reviewer agent with read-only
 middleware and context providers. No graph write or approval happens here.
 Caller options such as reasoning settings are retained; the helper owns the
 review format and `tool_choice="none"`.
+
+## Receive a handoff package
+
+```python
+from vinc_client import AsyncVincClient
+from vinc_agent_framework import PackageProvider
+
+reader = AsyncVincClient(api_key=READ_KEY)
+receiver = Agent(
+    chat_client,
+    instructions="Review the prior conclusion and cite available evidence.",
+    context_providers=[PackageProvider(reader, "record:dashboard-handoff", space="personal")],
+)
+```
+
+`PackageProvider` reads that same-space Record before every run, using the
+recipient's current key to recheck evidence. Bind a different provider for a
+different handoff; shared provider objects do not hold per-session package ids.
+Missing packages fail explicitly. `after_run` writes nothing. The producer uses
+`AsyncVincClient.write_package` explicitly; the recipient calls `record_episode`
+explicitly after review to write back what happened. Neither the provider nor
+the helpers delegate to another agent or grant it permission.
+
 
 ## License
 

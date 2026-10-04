@@ -72,6 +72,7 @@ Every `about` id is read before the write, so a typo raises `VincNotFound` inste
 
 `AsyncVincClient` has the same methods, awaited.
 
+
 ## Review output validation
 
 `ReviewOutput` validates `verdict` (`ACCEPT` or `RETURN`),
@@ -85,6 +86,35 @@ existence, completion, or a person's approval.
 The framework packages expose review helpers with one parse retry. If both
 outputs fail, they raise `UnparsedReview` with `status="UNPARSED"`, rather than
 returning an empty successful review. Route that exception to a person.
+
+## Hand a package to another agent
+
+Write a package explicitly after reviewing the producer's result. Select `space`
+explicitly (`"personal"` or a team UUID); all evidence must already exist there.
+This initial contract supports same-space handoffs only.
+
+```python
+handoff = writer.write_package(
+    "When does the dashboard become stale?", "Keep the 36 hour threshold.",
+    claims=[{"claim": "Stale after 36 hours.", "evidence_ids": ["decision:threshold"]}],
+    produced_by="agent:analyst", run_id="analysis-1", space="personal",
+    package_id="record:dashboard-handoff",
+)
+# The receiving agent uses its own key, which may be read only.
+block = reader.get_package_context(handoff["package_id"], space=handoff["space"])
+```
+
+The Record carries the complete question, conclusion, claims, source ids and
+producer/run provenance. Source contents are never copied. Each read checks
+distinct evidence ids with the receiving key again; deleted or inaccessible
+evidence makes the affected claim explicitly uncitable. Missing carriers and
+service/authentication errors propagate. No permission or content cache is used.
+The complete data block is fenced; exceeding `max_chars` raises
+`package_budget_exceeded` instead of truncating the conclusion. Use a fresh
+package id for each handoff; choosing an existing id deliberately replaces that
+Record's props. The server validates sources when writing, so source Records
+must be persisted before the package rather than created alongside it.
+
 
 ## License
 

@@ -54,6 +54,7 @@ Nothing in this package writes on its own. Put `record_episode` in the node afte
 context -> review -> approve (interrupt) -> record
 ```
 
+
 ## Structured review with one parse retry
 
 ```python
@@ -75,6 +76,40 @@ The helper retries one malformed output with sanitized feedback and then raises
 Service and unsupported-schema errors propagate; `config` is passed unchanged.
 Parsed citations still need permission/existence checks, and person-only
 requests still require approval before any action.
+
+## Receive a handoff package
+
+For an id held in graph state, use a node helper:
+
+```python
+from vinc_langgraph import get_vinc_package_context, build_system_message
+
+def receive(state):
+    block = get_vinc_package_context(reader, state["package_id"], space=state["space"])
+    return {"messages": [llm.invoke([
+        build_system_message(block, "Review the prior conclusion and cite available evidence."),
+        *state["messages"],
+    ])]}
+```
+
+`aget_vinc_package_context` is the async twin. For an agent bound to one handoff,
+the `agents` extra also provides middleware:
+
+```python
+from vinc_langgraph import PackageProvider
+
+receiver = create_agent(model, middleware=[PackageProvider(
+    "record:dashboard-handoff", space="personal", client=reader,
+)])
+```
+
+This is a same-space Record read under the recipient's current key. Unlike the
+question lookup middleware, packages and permission checks are never cached.
+Every model call rereads the package and distinct evidence ids. Missing carriers
+fail explicitly; unavailable evidence is marked uncitable. Nothing writes on
+read or completion. Write the producer's package with `client.write_package`
+explicitly, and put `record_episode` in the approved write-back node as before.
+
 
 ## License
 
