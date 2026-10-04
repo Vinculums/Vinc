@@ -2,6 +2,7 @@
   "vinc-account": {
     "auth": {
       "excludedPaths": [
+        "/internal/bo/stats",
         "/internal/mcp/plan",
         "/internal/mcp/spaces",
         "/internal/mcp/team-membership",
@@ -20,6 +21,7 @@
       "ACCOUNT_ED25519_SEED",
       "ALLOWED_ORIGINS",
       "BO_ADMIN_EMAILS",
+      "BO_STATS_PUBLIC_KEY",
       "CSRF_SECRET",
       "DB_HOST",
       "DB_NAME",
