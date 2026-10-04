@@ -685,6 +685,18 @@ class VincApp:
             _req(p, "node"), owner=_req(p, "owner"),
             limit=_int(p.get("limit"), 50), store=r))
 
+    def read_node_edges(self, p):
+        nodes = p.get("nodes")
+        if isinstance(nodes, str):
+            try:
+                nodes = json.loads(nodes)
+            except ValueError:
+                return {"executed": False, "error": "invalid nodes JSON array"}
+        return self._read(lambda r: q.node_edges(
+            p.get("node"), nodes=nodes, owner=_req(p, "owner"),
+            type=p.get("type"), dir=p.get("dir", "both"),
+            limit=_int(p.get("limit"), 500), store=r))
+
     def read_path(self, p):
         # E-G7/E-G8 최단 경로 증거 체인 — 두 개념 사이 경로(조회 전용).
         # weight=confidence 면 가중 갈래(E-G8 다익스트라), 그 외는 홉 최단(기본).
@@ -2314,6 +2326,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/merge-candidates": app.read_merge_candidates,
             "/merge-rejections": app.read_merge_rejections,   # F10-b 기각 목록
             "/neighbors": app.read_neighbors, "/path": app.read_path,
+            "/node-edges": app.read_node_edges,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
             "/themes": app.read_themes, "/types": app.read_types,

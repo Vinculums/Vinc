@@ -4657,6 +4657,127 @@ def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
             "neighbors_truncated": len(out) > _lim}
 
 
+def node_edges(node: str | None = None, *, nodes: list[str] | None = None,
+               owner: str | None = None, type: str | None = None,
+               dir: str = "both", limit: int = 500, cfg=None, store=None) -> dict:
+    """그래프 배치 없이 저장된 방향·근거·신뢰도를 읽는다.
+
+    끝점 키와 관계 열은 스키마를 따른다. 양쪽 저작 노드의 소유자를 검사하고,
+    전역 Domain은 그 소유자의 노드와 조상에 연결된 범위만 보여준다.
+    조회가 없는 노드나 엣지를 만들어 내지 않는다.
+    근거: [[vinc.spec.dataplane §5]] · [[vinc.canon.mcp-contract]].
+    """
+    from store.embedded_schema import node_table_specs, rel_table_specs
+
+    base = {"kind": "edges", "executed": False, "edges": [], "count": 0}
+    ids = [node] if node is not None else nodes
+    if (not owner or (node is not None and nodes is not None)
+            or not isinstance(ids, list) or not 1 <= len(ids) <= 100
+            or any(not isinstance(n, str) or not n.strip() or "\x1f" in n for n in ids)
+            or dir not in ("out", "in", "both")
+            or isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 5000
+            or (type is not None and (not isinstance(type, str) or not type.strip()))):
+        return {**base, "error": "invalid argument: provide owner, either node or 1..100 nodes, "
+                "dir out/in/both, and limit 1..5000"}
+    ids = list(dict.fromkeys(ids))
+    specs, rels = node_table_specs(), rel_table_specs()
+    grouped: dict[str, list[str]] = {}
+    for nid in ids:
+        domain = domain_hierarchy.parse_id(nid)
+        label, _ = ("Domain", "name") if domain else _seed_table(nid)
+        grouped.setdefault(label, []).append(domain if domain else pkns.key(owner, nid))
+    params = {"owner": owner, **{label: values for label, values in grouped.items()}}
+    cfg = cfg or load_config()
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    if store is None:
+        return {**base, "note": "no reachable store"}
+
+    def read(cypher, args):
+        return execute(QueryPlan("edges", cypher, args), cfg, store=store)
+
+    try:
+        visible: set[str] = set()
+        if "Domain" in grouped:
+            # Domain은 무소유 좌표다. 소유한 노드를 기준으로 범위를 좁혀
+            # 전역 루트 아래 다른 소유자의 하위 주제를 노출하지 않는다.
+            arms = [f"MATCH (n:{r['from']})-[:{r['label']}]->(d:Domain) "
+                    "WHERE n.owner_id = $owner RETURN d.name AS domain"
+                    for r in rels if r["to"] == "Domain"
+                    and "owner_id" in specs[r["from"]]["cols"]]
+            res = read(" UNION ALL ".join(arms), {"owner": owner})
+            if not res["executed"]:
+                return {**base, "error": res.get("error"), "note": res.get("note", "")}
+            for row in res["rows"]:
+                parts = str(row["domain"]).split("/")
+                visible.update("/".join(parts[:i]) for i in range(1, len(parts) + 1))
+        params["visible"] = sorted(visible)
+        probes = []
+        for label in grouped:
+            pk = specs[label]["pk"]
+            scope = "n.name IN $visible" if label == "Domain" else "n.owner_id = $owner"
+            probes.append(f"MATCH (n:{label}) WHERE n.{pk} IN ${label} AND {scope} "
+                          f"RETURN n.{pk} AS id, '{label}' AS label")
+        res = read(" UNION ALL ".join(probes), params)
+        if not res["executed"]:
+            return {**base, "error": res.get("error"), "note": res.get("note", "")}
+        found = {"domain:" + r["id"] if r["label"] == "Domain" else pkns.strip(r["id"])
+                 for r in res["rows"]}
+        missing = [nid for nid in ids if nid not in found]
+        arms = []
+        for rel in rels:
+            src, dst, label = rel["from"], rel["to"], rel["label"]
+            # type은 물리 관계 표, subtype은 TYPED·ATTACHES_TO에 저장된 저작 타입이다.
+            if type and type != label and "type" not in rel["props"]:
+                continue
+            incident = []
+            if dir in ("out", "both") and src in grouped:
+                incident.append(f"a.{specs[src]['pk']} IN ${src}")
+            if dir in ("in", "both") and dst in grouped:
+                incident.append(f"b.{specs[dst]['pk']} IN ${dst}")
+            if not incident:
+                continue
+            guards = ["(" + " OR ".join(incident) + ")"]
+            for alias, endpoint in (("a", src), ("b", dst)):
+                if "owner_id" in specs[endpoint]["cols"]:
+                    guards.append(f"{alias}.owner_id = $owner")
+                elif endpoint == "Domain" and src == dst == "Domain":
+                    guards.append(f"{alias}.name IN $visible")
+            if type and type != label:
+                guards.append("r.type = $type")
+                params["type"] = type
+            evidence = "r.evidence" if "evidence" in rel["props"] else "CAST(NULL AS STRING)"
+            confidence = "r.confidence" if "confidence" in rel["props"] else "CAST(NULL AS DOUBLE)"
+            subtype = "r.type" if "type" in rel["props"] else "CAST(NULL AS STRING)"
+            arms.append(f"MATCH (a:{src})-[r:{label}]->(b:{dst}) WHERE "
+                        + " AND ".join(guards)
+                        + f" RETURN a.{specs[src]['pk']} AS source, b.{specs[dst]['pk']} AS target, "
+                        f"'{src}' AS source_label, '{dst}' AS target_label, '{label}' AS type, "
+                        f"{evidence} AS evidence, {confidence} AS confidence, {subtype} AS subtype")
+        res = read(" UNION ALL ".join(arms), params) if arms else {"executed": True, "rows": []}
+        if not res["executed"]:
+            return {**base, "error": res.get("error"), "note": res.get("note", "")}
+        edges = [{"from": "domain:" + r["source"] if r["source_label"] == "Domain"
+                  else pkns.strip(r["source"]),
+                  "to": "domain:" + r["target"] if r["target_label"] == "Domain"
+                  else pkns.strip(r["target"]), "type": r["type"],
+                  "evidence": r["evidence"], "confidence": r["confidence"],
+                  **({"subtype": r["subtype"]} if r["subtype"] else {}),
+                  "derived": r["type"] in ("IN_DOMAIN", "PARENT_OF", "MENTIONS")}
+                 for r in res["rows"]]
+        edges.sort(key=lambda e: (e["from"], e["to"], e["type"],
+                                  str(e.get("subtype", "")), str(e["evidence"]),
+                                  str(e["confidence"])))
+        return {**base, "executed": True, "nodes": ids, "missing_nodes": missing,
+                **({"node": node, "found": node in found} if node is not None else {}),
+                "edges": edges[:limit], "count": len(edges),
+                "edges_truncated": len(edges) > limit}
+    finally:
+        if owns:
+            store.close()
+
+
 # ── 최단 경로 증거 체인 (E-G7) — 분산 증거 단편화 해소 ─────────────────────────
 # 리서치 최단 경로 — 두 개념 사이 물리적으로 연결된 가장 조밀한 엣지 체인을 인출해
 # 상류 모델에 증거로 준다(추측 없는 인과 증빙). kuzu `* ALL SHORTEST`(실측 확인) —
