@@ -39,3 +39,6 @@ tauri-plugin-single-instance = "2"
 # 재부팅에서 사라져 **보관용으로 못 쓴다**.
 # ⚠ 그 선택 때문에 리눅스 빌드에 libdbus 개발 헤더가 필요하다(워크플로의 시스템 패키지).
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Security_Authorization", "Win32_System_Threading"] }

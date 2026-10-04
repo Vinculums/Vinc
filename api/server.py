@@ -685,6 +685,18 @@ class VincApp:
             _req(p, "node"), owner=_req(p, "owner"),
             limit=_int(p.get("limit"), 50), store=r))
 
+    def read_node_edges(self, p):
+        nodes = p.get("nodes")
+        if isinstance(nodes, str):
+            try:
+                nodes = json.loads(nodes)
+            except ValueError:
+                return {"executed": False, "error": "invalid nodes JSON array"}
+        return self._read(lambda r: q.node_edges(
+            p.get("node"), nodes=nodes, owner=_req(p, "owner"),
+            type=p.get("type"), dir=p.get("dir", "both"),
+            limit=_int(p.get("limit"), 500), store=r))
+
     def read_path(self, p):
         # E-G7/E-G8 최단 경로 증거 체인 — 두 개념 사이 경로(조회 전용).
         # weight=confidence 면 가중 갈래(E-G8 다익스트라), 그 외는 홉 최단(기본).
@@ -2329,6 +2341,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/merge-candidates": app.read_merge_candidates,
             "/merge-rejections": app.read_merge_rejections,   # F10-b 기각 목록
             "/neighbors": app.read_neighbors, "/path": app.read_path,
+            "/node-edges": app.read_node_edges,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
             "/themes": app.read_themes, "/types": app.read_types,
@@ -2508,12 +2521,12 @@ def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int |
     """사이드카를 기동해 종료 신호까지 서비스한다(블로킹). 기동 정보(host/port/token/
     driver)를 stdout 에 1줄 JSON 으로 내보낸다. SIGTERM/SIGINT 또는 부모 사망 시 정리.
 
-    **토큰은 `--token` 으로 받았으면 가린다.** 그 경우 호출자가 이미 값을 알고 있어
+    **토큰은 호출자가 넘겼으면 가린다.** 그 경우 호출자가 이미 값을 알고 있어
     되돌려줄 이유가 없고, 서버 환경에서는 이 stdout 이 로그 수집기(Azure Log
     Analytics)로 그대로 들어가 **시크릿이 조회 가능한 로그에 남는다**(실측). 반대로
     토큰을 사이드카가 **생성**한 경우는 이 줄이 유일한 전달 경로일 수 있으므로 그대로
     싣는다 — 구버전 소비자까지 안전한 규칙이다.
-    (현행 소비자 확인: Tauri 셸은 토큰을 자기가 만들어 `--token` 으로 넘기고
+    (현행 소비자 확인: Tauri 셸은 토큰을 자기가 만들어 환경 변수로 넘기고
     `sidecar_conn` 으로 반환하므로 배너를 파싱하지 않고, `vinc_mcp/bridge.py` 는
     `stdout=DEVNULL` 로 아예 버린다.)"""
     # WAL 점검은 이 기기의 사이드카만 한다: 셸과 MCP 브리지는 `--parent-pid` 로 띄우고
