@@ -7,6 +7,7 @@ __version__ = "0.1.0"
 from .client import AsyncVincClient, VincClient  # noqa: E402
 from .context import BOUNDARY, fence, format_answer, format_brief, format_search  # noqa: E402
 from .episode import build_episode_fragment  # noqa: E402
+from .package import build_package_fragment, format_package  # noqa: E402
 from .errors import (VincAuthError, VincError, VincInvalidArgument, VincNotFound,  # noqa: E402
                      VincPartialWrite, VincQuotaExceeded, VincUnavailable)
 
@@ -15,4 +16,5 @@ __all__ = [
     "BOUNDARY", "fence", "format_answer", "format_brief", "format_search", "build_episode_fragment",
     "VincError", "VincAuthError", "VincNotFound", "VincInvalidArgument",
     "VincQuotaExceeded", "VincUnavailable", "VincPartialWrite",
+    "build_package_fragment", "format_package",
 ]

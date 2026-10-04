@@ -10,6 +10,7 @@ from typing import Any, Awaitable, Callable
 from langchain.agents.middleware import AgentMiddleware, ModelRequest
 from vinc_client import AsyncVincClient, VincClient
 from vinc_client.context import DEFAULT_MAX_CHARS
+from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS, package_space
 
 from .helpers import build_system_message, last_user_text
 
@@ -93,4 +94,31 @@ class VincContextMiddleware(AgentMiddleware):
                 query, search_fallback=self.search_fallback, max_chars=self.max_chars,
                 max_excerpts=self.max_excerpts)
             self._remember(query, block)
+        return await handler(self._with_block(request, block))
+
+
+class PackageProvider(VincContextMiddleware):
+    """LangChain middleware for one explicit handoff; no content or permission caching.
+
+    For per-run ids held in LangGraph state, use ``get_vinc_package_context``
+    in a graph node instead. No write tool or automatic after-run write is installed.
+    """
+
+    def __init__(self, package_id: str, *, space: str, client: VincClient | None = None,
+                 async_client: AsyncVincClient | None = None, api_key: str | None = None,
+                 base_url: str | None = None,
+                 max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> None:
+        super().__init__(client, async_client, api_key=api_key, base_url=base_url,
+                         space=package_space(space), max_chars=max_chars)
+        self.package_id = package_id
+
+    def wrap_model_call(self, request: ModelRequest, handler: Callable[[ModelRequest], Any]) -> Any:
+        block = self.client.get_package_context(self.package_id, space=self._config["space"],
+                                                max_chars=self.max_chars)
+        return handler(self._with_block(request, block))
+
+    async def awrap_model_call(self, request: ModelRequest,
+                               handler: Callable[[ModelRequest], Awaitable[Any]]) -> Any:
+        block = await self.async_client.get_package_context(
+            self.package_id, space=self._config["space"], max_chars=self.max_chars)
         return await handler(self._with_block(request, block))
