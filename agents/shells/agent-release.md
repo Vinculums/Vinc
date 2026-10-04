@@ -48,12 +48,16 @@ Repositories: Vinc, Vinc-homepage
 
 ## Gates that must pass before the pull request
 
-- scripts/version_sync.py
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
+- {"check":{"command":"scripts/version_sync.py","repos":["Vinc"],"type":"command_success"},"id":"command_1","on_fail":"block"}
 
 ## Works with
 
 - Hands off to: agent-gate-runner (CI Gate Runner), agent-marketing (Product Marketing Manager)
 - Works beside: agent-deploy (Deployment Engineer)
+- Receives rejected packages from: agent-gate-runner (CI Gate Runner)
 
 ## Tools and MCP servers
 
@@ -75,8 +79,12 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- tag push
-- publish
+- push_tag: tag push
+- publish: publish
+
+## Machine checks for never
+
+- {"actions":["push"],"type":"forbidden_actions"}
 
 ## Trap note
 

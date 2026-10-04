@@ -4,7 +4,7 @@
  *
  *  `share-docs.ts` 가 import 0 인 것이 성립 조건이다. */
 import assert from "node:assert/strict";
-import { keptDocs } from "../src/share-docs.ts";
+import { keptDocs, standaloneDocs } from "../src/share-docs.ts";
 
 const doc = (id: string) => ({ doc_id: id, title: id, text: "x" });
 const docs = [doc("d1"), doc("d2"), doc("d3")];
@@ -37,5 +37,20 @@ assert.deepEqual(
 assert.deepEqual(pick(ids, null), ["d1", "d2"]);
 // 대응표에 없는 원문은 붙잡는 노드가 없는 것이다.
 assert.deepEqual(keptDocs([doc("d9")], new Set(), refs, new Set(ids)), []);
+
+// 노드와 연결되지 않은 원문은 전체 공유에서 자기 체크 행을 갖는다.
+const allDocs = [...docs, doc("d4")];
+const allRefs = { ...refs, d4: [] };
+assert.deepEqual(standaloneDocs(allDocs, allRefs).map((d) => d.doc_id), ["d4"]);
+assert.deepEqual(standaloneDocs(allDocs, undefined), []);
+assert.deepEqual(standaloneDocs([doc("d9")], allRefs), []);
+assert.deepEqual(keptDocs(allDocs, new Set(), allRefs, new Set(ids), new Set(["d4"]))
+  .map((d) => d.doc_id), ["d1", "d2", "d3", "d4"]);
+// 노드 행만 끄면 선택한 독립 문서만 남는다. 모든 행을 끄면 원문도 0이다.
+assert.deepEqual(keptDocs(allDocs, new Set(ids), allRefs, new Set(), new Set(["d4"]))
+  .map((d) => d.doc_id), ["d4"]);
+assert.deepEqual(keptDocs(allDocs, new Set(ids), allRefs, new Set(), new Set()), []);
+assert.deepEqual(keptDocs(allDocs, new Set(), allRefs, new Set(ids), new Set())
+  .map((d) => d.doc_id), ["d1", "d2", "d3"]);
 
 console.log("share-docs-check: ok");

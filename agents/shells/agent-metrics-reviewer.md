@@ -44,12 +44,15 @@ Repositories: Vinc, Vinc-homepage
 
 ## Gates that must pass before the pull request
 
-- (none)
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
 
 ## Works with
 
 - Hands off to: agent-product-owner (Product Owner)
 - Receives from: agent-metrics-analyst (Metrics analyst)
+- Returns to: agent-metrics-analyst (Metrics analyst)
 
 ## Tools and MCP servers
 
@@ -71,7 +74,11 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- overriding a failed check
+- override_failed_check: overriding a failed check
+
+## Machine checks for never
+
+- (none)
 
 ## Writes to the graph
 

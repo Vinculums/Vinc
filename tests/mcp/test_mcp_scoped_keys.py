@@ -62,6 +62,8 @@ def _min_args(name: str) -> dict:
     """inputSchema 의 required 에서 최소 인자를 유도한다 — 레지스트리가 정본."""
     sch = next(t for t in tools.TOOLS if t["name"] == name)["inputSchema"]
     out: dict = {}
+    if name == "vinc_edges":
+        out["node"] = "concept:x"
     for req in sch.get("required", []):
         p = (sch.get("properties") or {}).get(req) or {}
         typ = p.get("type")
