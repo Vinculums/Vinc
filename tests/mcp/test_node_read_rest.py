@@ -2,9 +2,42 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import quote
+
+import pytest
 
 from test_rest_v1 import Server, TEAM
 from vinc_mcp import tools
+
+
+@pytest.mark.parametrize("kind", ["concept", "record", "decision", "episode", "bridge", "domain"])
+def test_missing_exact_ids_return_404_for_every_kind(kind):
+    srv = Server(scope="read")
+    srv.bridge.override = {"kind": "node", "executed": True, "found": False, "node": None}
+    try:
+        node_id = f"{kind}:missing/nested"
+        status, _headers, body = srv.request("GET", "/v1/nodes/" + quote(node_id, safe=""))
+        assert status == 404 and body["error"]["code"] == "not_found"
+        assert srv.bridge.calls[-1][2]["node_id"] == node_id
+    finally:
+        srv.close()
+
+
+@pytest.mark.parametrize("suffix,argument", [
+    ("/neighbors", "node"), ("/graph", "seed"), ("/tie-suggestions", "node"),
+])
+def test_encoded_nested_domain_routes_preserve_id_and_space_owner(suffix, argument):
+    srv = Server(role="viewer", scope="read")
+    srv.bridge.override = {"executed": True, "found": True, "neighbors": [], "count": 0}
+    try:
+        node_id = "domain:vinc/agent/roles"
+        status, _headers, _body = srv.request(
+            "GET", "/v1/nodes/" + quote(node_id, safe="") + suffix + f"?space={TEAM}")
+        assert status == 200
+        args = srv.bridge.calls[-1][2]
+        assert args[argument] == node_id and args["owner"] == "team:" + TEAM
+    finally:
+        srv.close()
 
 
 def test_node_route_returns_props_in_one_bridge_call_without_brief_material():

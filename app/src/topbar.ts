@@ -242,7 +242,8 @@ export function mountTopbar() {
     });
   }
 
-  type Hit = { id: string; title: string; domain: string; mark: string; snippet: string };
+  type Hit = { id: string; title: string; domain: string; mark: string; snippet: string;
+               docId?: string };
   let hits: Hit[] = [];
   /** 마지막 질의에서 벡터 팔이 빠졌는가. 정상이면 null 이라 드롭다운은 그대로다. */
   let notice: ArmsNotice | null = null;
@@ -346,6 +347,11 @@ export function mountTopbar() {
     if (!h) return;
     close();
     q.blur();
+    if (h.docId) {
+      if (hooks) hooks.openDoc(h.docId);
+      else void import("./doc-editor").then((m) => m.openDocSheet({ owner: cfg.owner, docId: h.docId }));
+      return;
+    }
     if (hooks) hooks.openNode(h.id);
     else location.hash = `#view/trace/${encodeURIComponent(h.id)}`;
   }
@@ -354,17 +360,22 @@ export function mountTopbar() {
     const mine = ++seq;
     draw(true);
     try {
-      const res: any = await api.search(raw);
+      const [res, docs] = await Promise.all([
+        api.search(raw), api.docTitleMatches(raw).catch(() => null),
+      ]);
       if (mine !== seq) return;                  // 지나간 질의 — 버린다
       notice = armsNotice(res);
-      hits = (res.node_hits || []).slice(0, 8).map((n: any) => ({
+      const exact: Hit[] = (docs?.docs || []).map((d) => ({
+        id: d.doc_id, docId: d.doc_id, title: d.title, domain: "", mark: "≡", snippet: "",
+      }));
+      hits = [...exact, ...(res.node_hits || []).map((n: any) => ({
         id: String(n.id || ""),
         title: String(n.title || n.id || ""),
         domain: String(n.domain || ""),
         // 왜 맞았는지(D24) — 그래프 arm 은 ≈, 제목 일치는 ≡.
         mark: n.matched_in === "graph" ? "≈" : "≡",
         snippet: String(n.one_liner || n.snippet || "").slice(0, 90),
-      })).filter((h: Hit) => h.id);
+      })).filter((h: Hit) => h.id)].slice(0, 8);
       draw();
     } catch {
       if (mine !== seq) return;
