@@ -5,6 +5,7 @@
 // LWW 금지(원격 해시 비교 후 덮어쓰기/새 버전 선택), 저장 후 개념 후보 원클릭 반영.
 import { api, cfg, docMidWrite, storeDownReason, shellInvoke } from "./api";
 import { COPY } from "./copy";
+import { docTitle } from "./doc-title";
 import { confirmDestructive } from "./components";
 import { hydrateRich } from "./rich-blocks";
 
@@ -206,7 +207,7 @@ export type DocEditorOpts = {
  *  버튼 제공). 반환 = dispose. */
 export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Promise<DocEditorHandle> {
   let docId = opts.docId;
-  let title = opts.title || "";
+  let title = (opts.title || "").trim();
   let initial = opts.initial ?? "";
   let hash = opts.contentHash || "";
   let contentTime = opts.contentTime || "";   // D72 — 내용 시점(빈 값 = 안 적음)
@@ -271,7 +272,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       LIVE.set(host, stub);
       return stub;
     }
-    initial = doc.text; title = doc.title || title; hash = doc.content_hash || "";
+    initial = doc.text; title = (doc.title ?? title).trim(); hash = doc.content_hash || "";
     contentTime = doc.content_time || "";
   }
 
@@ -443,7 +444,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
 
   async function doSave(force: boolean, explicit: boolean, topicOnce: string): Promise<boolean> {
     const text = getText();
-    const t = docId && !opts.manualSave ? titleInput.value : titleInput.value.trim();
+    const t = titleInput.value.trim();
     const ct = ctimeInput.value.trim();
     // 새 문서 — 제목과 주제가 있어야 만든다. 없으면 **왜 안 저장됐는지** 말한다.
     const creating = !docId && !!opts.declareId;
@@ -457,7 +458,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
     validation.textContent = [needTitle ? COPY.ui.tools.needTitle : "",
       needBody ? COPY.ui.tools.needBody : ""].filter(Boolean).join(" ");
     if (needTitle || needBody) return false;
-    if (!docId || opts.manualSave) titleInput.value = t;
+    titleInput.value = t;
     if (!creating && !force && !topicOnce && !dirty()) return false;
     const topic = topicOnce || opts.topic?.() || "";
     if (creating) {
@@ -503,7 +504,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
             conflictBox.innerHTML = "";
             if (cur.text !== undefined) {
               setText(cur.text); lastSaved = cur.text; hash = cur.content_hash || "";
-              titleInput.value = cur.title || ""; lastTitle = titleInput.value;
+              titleInput.value = (cur.title || "").trim(); lastTitle = titleInput.value;
               setStatus(COPY.ui.viewx.edSaved);
             }
           });
@@ -734,8 +735,7 @@ export async function openDocSheet(opts: {
     if (deleting) return;
     deleting = true;
     const button = sheet.foot.querySelector<HTMLButtonElement>("#ed-del")!;
-    const title = sheet.body.querySelector<HTMLInputElement>("#ed-title")?.value
-      || COPY.ui.viewx.edTitlePlaceholder;
+    const title = docTitle(sheet.body.querySelector<HTMLInputElement>("#ed-title")?.value);
     try {
       if (!await confirmD(COPY.ui.viewx.delDocAsk(title),
                           COPY.ui.viewx.delConfirm, COPY.ui.viewx.delCancel)) return;

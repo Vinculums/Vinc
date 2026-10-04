@@ -1,5 +1,6 @@
 import { api, cfg, teamsApi } from "./api";
 import { COPY } from "./copy";
+import { docTitle } from "./doc-title";
 import { sheetActions, sheetProgress, type SheetHandle } from "./components";
 import { renderIntake } from "./surfaces/intake";
 import { viewHooks } from "./topbar";
@@ -296,7 +297,7 @@ async function renderCreate(pane: HTMLElement, sheet: SheetHandle,
   const drawList = () => {
     const q = (pane.querySelector<HTMLInputElement>("#tl-q")?.value || "").trim().toLowerCase();
     const rows = docs.filter((d) => d.doc_id !== docId
-      && (!q || (d.title || d.doc_id).toLowerCase().includes(q)));
+      && (!q || docTitle(d.title).toLowerCase().includes(q)));
     listEl.innerHTML = rows.length === 0
       ? `<p class="hint">${esc(T.linkNone)}</p>`
       : rows.map((d) => {
@@ -304,7 +305,7 @@ async function renderCreate(pane: HTMLElement, sheet: SheetHandle,
           return `<label class="list-row"${ok ? "" : ' style="opacity:.55"'}>
             <input type="checkbox" data-doc="${esc(d.doc_id)}" ${ok ? "" : "disabled"}
                    ${picked.has(d.doc_id) ? "checked" : ""} />
-            <span class="title">${esc(d.title || d.doc_id)}</span>
+            <span class="title" title="${esc(docTitle(d.title))}">${esc(docTitle(d.title))}</span>
             <span class="meta">${ok ? esc(d.primary_concept_title || "") : esc(T.noConcept)}</span>
           </label>`;
         }).join("");
