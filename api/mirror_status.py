@@ -33,6 +33,10 @@ def read_status(base: Path | None = None, *, enabled: bool | None = None) -> dic
         result = json.loads(raw)
         if not isinstance(result, dict) or result.get("kind") != "node-mirror.rebuild":
             return {"state": "failed", "reason": "invalid_result"}
+        # 서버가 변경 없음과 유효한 색인을 모두 확인한 경우에는 교체 잡이 없다.
+        if result.get("executed") is False and result.get("unchanged") is True \
+                and result.get("index_ok") is True:
+            return {"state": "current", "index_ok": True}
         if result.get("executed") is not True:
             return {"state": "failed", "reason": "not_executed"}
         if result.get("index_ok") is not True:
