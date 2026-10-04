@@ -52,13 +52,16 @@ Repositories: Vinc, Vinc-homepage, Vincs-app
 
 ## Gates that must pass before the pull request
 
-- (none)
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
 
 ## Works with
 
 - Hands off to: agent-orchestrator (Program Manager), agent-qa (QA Engineer)
 - Receives from: agent-metrics-reviewer (Metrics reviewer), agent-research (Research Analyst)
 - Works beside: agent-marketing (Product Marketing Manager)
+- Receives rejected packages from: agent-qa (QA Engineer)
 
 ## Tools and MCP servers
 
@@ -87,11 +90,15 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- scope
-- pricing and tier
-- public promises
-- final acceptance of a design round
-- ratification of a domain, a type or a role
+- scope: scope
+- pricing: pricing and tier
+- public_promise: public promises
+- design_acceptance: final acceptance of a design round
+- ratify_schema: ratification of a domain, a type or a role
+
+## Machine checks for never
+
+- {"actions":["edit","merge"],"type":"forbidden_actions"}
 
 ## Speaks to the person
 

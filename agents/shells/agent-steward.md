@@ -48,8 +48,11 @@ Repositories: Vinc
 
 ## Gates that must pass before the pull request
 
-- scripts/refresh_graph_refs.py
-- scripts/gate_graph_refs.py
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
+- {"check":{"command":"scripts/refresh_graph_refs.py","repos":["Vinc"],"type":"command_success"},"id":"command_1","on_fail":"block"}
+- {"check":{"command":"scripts/gate_graph_refs.py","repos":["Vinc"],"type":"command_success"},"id":"command_2","on_fail":"block"}
 
 ## Works with
 
@@ -77,9 +80,13 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- deletion
-- merge
-- ratification
+- deletion: deletion
+- merge: merge
+- ratification: ratification
+
+## Machine checks for never
+
+- {"actions":["graph_delete","graph_merge"],"type":"forbidden_actions"}
 
 ## Session close
 

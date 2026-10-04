@@ -45,7 +45,9 @@ Repositories: Vinc, Vinc-homepage, Vincs-app
 
 ## Gates that must pass before the pull request
 
-- (none)
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
 
 ## Works with
 
@@ -75,9 +77,13 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- the scope of what may be merged
-- any cloud-plane command
-- the PK namespacing migration run
+- merge_scope: the scope of what may be merged
+- cloud_command: any cloud-plane command
+- pk_namespacing_migration: the PK namespacing migration run
+
+## Machine checks for never
+
+- {"actions":["push"],"type":"forbidden_actions"}
 
 ## Verify
 

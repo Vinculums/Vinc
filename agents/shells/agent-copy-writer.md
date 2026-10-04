@@ -46,11 +46,14 @@ Repositories: Vinc, Vinc-homepage
 
 ## Gates that must pass before the pull request
 
-- (none)
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
 
 ## Works with
 
 - Hands off to: agent-copy-owner (Localization Engineer)
+- Receives rejected packages from: agent-copy-owner (Localization Engineer)
 
 ## Tools and MCP servers
 
@@ -74,7 +77,12 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- sign off on screen
+- sign_off: sign off on screen
+
+## Machine checks for never
+
+- {"actions":["commit","english_value","edit"],"type":"forbidden_actions"}
+- {"rules":["variable_particle","em_dash","second_person","object_honorific","english_value"],"type":"rendered_copy"}
 
 ## Enforcement note
 

@@ -48,8 +48,11 @@ Repositories: Vinc
 
 ## Gates that must pass before the pull request
 
-- cd infra && terraform validate
-- cd infra && terraform plan reaches a terminal plan with no unexpected change
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
+- {"check":{"command":"cd infra && terraform validate","repos":["Vinc"],"type":"command_success"},"id":"command_1","on_fail":"block"}
+- {"check":{"command":"cd infra && terraform plan reaches a terminal plan with no unexpected change","repos":["Vinc"],"type":"command_success"},"id":"command_2","on_fail":"block"}
 
 Test command:
 
@@ -84,9 +87,13 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- every state changing command, terraform apply included
-- creating or rotating any credential
-- the PK namespacing migration run
+- state_change: every state changing command, terraform apply included
+- credential_rotation: creating or rotating any credential
+- pk_namespacing_migration: the PK namespacing migration run
+
+## Machine checks for never
+
+- (none)
 
 ## Trap note
 
