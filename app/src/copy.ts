@@ -955,8 +955,12 @@ const EN = {
         `Imported ${files} file${files === 1 ? "" : "s"}: ${nodes} concept${nodes === 1 ? "" : "s"}, ${edges} link${edges === 1 ? "" : "s"} added.`,
       someFailed: (names: string) => `Couldn't read: ${names}.`,
       // 문서 정본 적재(D45) — 팩과 달리 개념·연결이 아직 0 이므로 별도 문장으로 센다.
-      importedDocs: (docs: number) =>
-        `Added ${docs} document${docs === 1 ? "" : "s"}, kept whole and searchable.`,
+      importedDocs: (added: number, refreshed = 0, unchanged = 0, saved = 0) => [
+        added ? `Added ${added} document${added === 1 ? "" : "s"}.` : "",
+        refreshed ? `Refreshed ${refreshed} document${refreshed === 1 ? "" : "s"}.` : "",
+        unchanged ? `${unchanged} document${unchanged === 1 ? " is" : "s are"} unchanged.` : "",
+        saved ? `Saved ${saved} document${saved === 1 ? "" : "s"}.` : "",
+      ].filter(Boolean).join(" "),
       tooLarge: (name: string, mb: string) =>
         `${name} is too large to add to your account in one go (${mb} MB limit). Split it into smaller files.`,
       // 서버가 사유 코드로 강등한 경우(api/textextract) — 코드마다 읽히는 문구.
@@ -2046,7 +2050,12 @@ const KO: Deck = {
       imported: (files, nodes, edges) => `파일 ${files}개에서 개념 ${nodes}개, 연결 ${edges}개를 추가했어요`,
       someFailed: (names) => `읽지 못한 파일: ${names}. 파일을 확인하고 다시 추가해 보세요. 나머지는 모두 추가됐어요`,
       // 문서 정본 적재(D45) — 팩과 달리 개념·연결이 아직 0 이므로 별도 문장으로 센다.
-      importedDocs: (docs) => `문서 ${docs}개를 원문 그대로 보관했어요. 검색으로 언제든 찾을 수 있어요`,
+      importedDocs: (added, refreshed = 0, unchanged = 0, saved = 0) => [
+        added ? `문서 ${added}개를 추가했어요.` : "",
+        refreshed ? `문서 ${refreshed}개를 갱신했어요.` : "",
+        unchanged ? `문서 ${unchanged}개는 내용이 같아 그대로 두었어요.` : "",
+        saved ? `문서 ${saved}개를 보관했어요.` : "",
+      ].filter(Boolean).join(" "),
       tooLarge: (name, mb) => `${name}${j(name, "은")} 너무 커서 추가하지 못했어요. 계정에 한 번에 올릴 수 있는 크기는 ${mb}MB예요. 파일을 나눠서 추가해 주세요. 이미 추가한 정보는 그대로 있어요`,
       // 서버가 사유 코드로 강등한 경우(api/textextract) — 코드마다 읽히는 문구.
       docError: {

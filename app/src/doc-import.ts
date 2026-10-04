@@ -43,6 +43,8 @@ export type DocImport = {
   title: string;
   /** F5 — 내용이 그대로면 서버가 재청킹을 건너뛴다. 실패가 아니라 성공으로 센다. */
   skipped: boolean;
+  /** VIN-362: 서버의 적재 결과로 신규·갱신·무변경을 구분한다. 구 서버는 보관만 말한다. */
+  outcome: "added" | "refreshed" | "unchanged" | "saved";
 };
 
 type Coded = Error & { code?: string };
@@ -123,7 +125,7 @@ export async function importDocFile(
     throw tooLarge(f.name, binary ? WEB_BINARY_LIMIT : WEB_BODY_LIMIT);
   }
 
-  let res: { executed: boolean; doc_id?: string; skipped?: boolean; error?: string };
+  let res: { executed: boolean; doc_id?: string; skipped?: boolean; created?: boolean; error?: string };
   let text: string | null = null;
   if (!binary) {
     text = await f.text();
@@ -151,7 +153,9 @@ export async function importDocFile(
   if (!res.executed) throw serverFailure(res, f.name);
   const docId = res.doc_id || id || "";
   if (docId) index?.set(origin, docId);
-  return { docId, title, skipped: res.skipped === true };
+  const outcome = res.skipped === true ? "unchanged"
+    : res.created === true ? "added" : res.created === false ? "refreshed" : "saved";
+  return { docId, title, skipped: res.skipped === true, outcome };
 }
 
 /** 적재 후 결정론 추출(마크다운 헤딩 → 개념 후보)을 **미리보기**로만 돌린다.

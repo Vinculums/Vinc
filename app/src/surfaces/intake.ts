@@ -102,12 +102,13 @@ export function renderIntake(el: HTMLElement,
   // ── 파일 1개 적재 — 형식 감지(원문 문서 · share pack 래퍼 · bare fragment). ──
   async function importOne(
     f: File, index?: Map<string, string>,
-  ): Promise<{ nodes: number; edges: number; conflicts: number; docId?: string }> {
+  ): Promise<{ nodes: number; edges: number; conflicts: number; docId?: string;
+    outcome?: "added" | "refreshed" | "unchanged" | "saved" }> {
     // 원문 문서는 팩 파서에 넘기지 않는다 — 넘기면 packfile 의 JSON.parse 가 먼저
     // 죽어서 크기·인코딩 문제까지 전부 "형식 오류"로 둔갑한다(D45 정본 경로로 직행).
     if (isDocFile(f)) {
       const r = await importDocFile(f, USER_OWNER, index);
-      return { nodes: 0, edges: 0, conflicts: 0, docId: r.docId };
+      return { nodes: 0, edges: 0, conflicts: 0, docId: r.docId, outcome: r.outcome };
     }
     // D55 — zip 컨테이너·구 JSON 양쪽을 받는다. `f.text()` 로 읽으면 zip 이
     // 깨지므로 바이트로 연다(판별·해제는 packfile 이 한다).
@@ -155,6 +156,7 @@ export function renderIntake(el: HTMLElement,
 
     let nodes = 0, edges = 0, ok = 0, conflicts = 0;
     const docIds: string[] = [];
+    const docChanges = { added: 0, refreshed: 0, unchanged: 0, saved: 0 };
     const failed: string[] = [];
     let lastErr: any = null;
     let lastMsg: string | null = null;
@@ -168,7 +170,10 @@ export function renderIntake(el: HTMLElement,
       try {
         const r = await importOne(files[i], index);
         nodes += r.nodes; edges += r.edges; conflicts += r.conflicts; ok++;
-        if (r.docId) docIds.push(r.docId);
+        if (r.docId) {
+          docIds.push(r.docId);
+          docChanges[r.outcome || "saved"]++;
+        }
         setRow(i, "done");
       } catch (e) {
         failed.push(files[i].name); lastErr = e;
@@ -181,7 +186,7 @@ export function renderIntake(el: HTMLElement,
     if (ok > 0) {
       cfg.owner = USER_OWNER;   // 본인 공간으로 전환해 방금 넣은 데이터를 본다
       showSuccess({ files: ok, nodes, edges, conflicts,
-                    docs: docIds.length, docIds, failed });
+                    docs: docIds.length, docIds, docChanges, failed });
     } else {
       showError(failed.join(", ") || "the file", lastErr, lastMsg);
     }
@@ -211,13 +216,15 @@ export function renderIntake(el: HTMLElement,
 
   // ── 상태 3 — Success (42:7): check + 요약 + 개념 칩(실 도메인) + 버튼 2종. ──
   function showSuccess(r: { files: number; nodes: number; edges: number; conflicts: number;
-                            docs: number; docIds: string[]; failed: string[] }) {
+                            docs: number; docIds: string[]; failed: string[];
+                            docChanges: { added: number; refreshed: number; unchanged: number; saved: number } }) {
     // 팩과 문서는 산출물이 다르다(팩=개념·연결 / 문서=원문 보관). 한 문장에 섞으면
     // 문서만 넣었을 때 "개념 0개, 연결 0개"로 읽혀 실패처럼 보인다 — 갈라서 센다.
     const packs = r.files - r.docs;
     const summary = [
       packs > 0 ? ui.imported(packs, r.nodes, r.edges) : "",
-      r.docs > 0 ? ui.importedDocs(r.docs) : "",
+      r.docs > 0 ? ui.importedDocs(r.docChanges.added, r.docChanges.refreshed,
+        r.docChanges.unchanged, r.docChanges.saved) : "",
     ].filter(Boolean).join(" ");
     el.innerHTML = `
       ${chrome}
