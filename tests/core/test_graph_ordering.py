@@ -21,7 +21,7 @@ class GraphOrdering(unittest.TestCase):
             "owner": OWNER,
             "nodes": [
                 {"id": f"concept:{name}", "type": "concept", "title": name,
-                 "domain": "vinc/order"}
+                 "domain": "vinc/other" if name == "m" else "vinc/order"}
                 for name in ("z", "a", "m")
             ] + [{"id": "decision:d", "type": "decision", "title": "D",
                   "domain": "vinc/order"}],
@@ -79,7 +79,30 @@ class GraphOrdering(unittest.TestCase):
                 self.assertEqual({k: v for k, v in before.items()
                                   if k not in ("nodes", "edges")},
                                  {k: v for k, v in after.items()
-                                  if k not in ("nodes", "edges")})
+                                 if k not in ("nodes", "edges")})
+
+    def test_decide_and_its_cross_domain_projection_are_byte_stable(self):
+        original = q.execute
+
+        def reverse_rows(*args, **kwargs):
+            result = original(*args, **kwargs)
+            if "rows" in result:
+                result = {**result, "rows": list(reversed(result["rows"]))}
+            return result
+
+        for topic in ("concept:z", "decision:d"):
+            with self.subTest(topic=topic):
+                expected = q.decide(topic, owner=OWNER, depth=2, store=self.store)
+                with patch.object(q, "execute", side_effect=reverse_rows):
+                    actual = q.decide(topic, owner=OWNER, depth=2, store=self.store)
+                self.assertEqual(json.dumps(expected), json.dumps(actual))
+                self.assertTrue(expected["cross_domain"])
+                with patch.object(q, "_order_graph_result"):
+                    before = q.decide(topic, owner=OWNER, depth=2, store=self.store)
+                self.assertEqual({n["id"]: n for n in before["nodes"]},
+                                 {n["id"]: n for n in expected["nodes"]})
+                for field in ("edges", "cross_domain", "conflicts"):
+                    self.assertCountEqual(before[field], expected[field])
 
     def test_parallel_edge_ties_use_all_properties_without_dropping_edges(self):
         common = {"source": "concept:z", "target": "concept:a", "type": "CONNECTS"}

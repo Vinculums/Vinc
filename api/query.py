@@ -5919,6 +5919,7 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
     shaped["edges"] = [e for e in shaped["edges"] if e["source"] in keep and e["target"] in keep]
     shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in keep]
     attach_ppr(shaped, [seed])   # E-G2 — 토픽(시드) 관점 개인화 랭킹
+    _order_graph_result(shaped)
     dec_res = execute(decisions_about_plan(ids, owner=owner), cfg, store=store)
     decisions = list(dec_res.get("rows", [])) if dec_res.get("executed") else []
     conflicts, cut = _decide_conflicts(shaped["edges"], decisions)
