@@ -499,6 +499,10 @@ const EN = {
       agentThen: "then",
       agentBeside: "beside",
       agentNoTeam: "No team",
+      agentHint: (prompt: string, role: string, ai: string) =>
+        `Give a role to your assistant: open it and choose ${prompt} > ${role}. Connect your assistant in Settings > ${ai}.`,
+      agentHintWeb: (prompt: string, role: string) =>
+        `Give a role to your assistant: open it and choose ${prompt} > ${role}. Using AI in the docs explains how to connect an assistant.`,
       loading: "Loading…",
       failed: "The list is unavailable right now.",
       retry: "Try again",
@@ -519,7 +523,10 @@ const EN = {
         `${name} · ${n === 1 ? "1 node" : `${n} nodes`}`,
       nodeTip: "Show this in View",
       noNodes: "Nothing of this kind in this topic yet.",
-      offTopicKind: "This kind is not filed under topics. View still shows it.",
+      offTopicKind: {
+        entity: "Entities name people, places or things and appear in View rather than under topics. Use Find to open one, or ask your assistant to add one.",
+        bridge: "Bridges connect ideas across topics. Use Find to open one in View, or ask your assistant to add a bridge.",
+      },
       docsElsewhere: "Documents that land on another kind",
       depthTip: (n: number) => n === 0 ? "Starting point" : `${n} step${n === 1 ? "" : "s"} in`,
       editOnly: "No place in View yet. Opens in the editor.",
@@ -948,7 +955,8 @@ const EN = {
       mDocs: "nodes",
       mLinked: "linked",
       mOrphan: "not linked",
-      mLatest: "latest",
+      mLatest: "latest node date",
+      mDateTip: "The date recorded on a node, shown in local time when it includes a time.",
     },
     intakeUi: {
       importing: "Importing…",
@@ -1679,6 +1687,10 @@ const KO: Deck = {
       agentThen: "넘김",
       agentBeside: "옆",
       agentNoTeam: "팀 없음",
+      agentHint: (prompt, role, ai) =>
+        `역할을 어시스턴트에 전달하세요. 역할을 열고 ${prompt} > ${role} 항목을 고르세요. 설정 > ${ai}에서 어시스턴트를 연결할 수 있어요.`,
+      agentHintWeb: (prompt, role) =>
+        `역할을 어시스턴트에 전달하세요. 역할을 열고 ${prompt} > ${role} 항목을 고르세요. 문서의 AI 사용하기에서 어시스턴트 연결 방법을 확인할 수 있어요.`,
       loading: "불러오는 중…",
       failed: "목록을 불러오지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
       retry: "다시 시도하기",
@@ -1692,7 +1704,10 @@ const KO: Deck = {
       kindTip: (name: string, n: number) => `${name} · 노드 ${n}개`,
       nodeTip: "View에서 보기",
       noNodes: "이 주제에는 아직 이 종이 없어요",
-      offTopicKind: "이 종은 주제 아래에 서지 않아요. View에서는 그대로 보여요",
+      offTopicKind: {
+        entity: "Entity는 사람, 장소, 사물의 이름을 담고 주제 목록 대신 View에 보여요. 찾기로 열거나 어시스턴트에게 추가해 달라고 하세요.",
+        bridge: "Bridge는 서로 다른 주제의 개념을 이어요. 찾기로 View에서 열거나 어시스턴트에게 Bridge를 추가해 달라고 하세요.",
+      },
       docsElsewhere: "다른 종에 붙은 문서",
       depthTip: (n: number) => n === 0 ? "출발점" : `${n}단계 안쪽`,
       editOnly: "아직 View에 자리가 없어요. 편집기로 열려요",
@@ -2045,7 +2060,8 @@ const KO: Deck = {
       mDocs: "노드",
       mLinked: "연결됨",
       mOrphan: "연결 없음",
-      mLatest: "최근",
+      mLatest: "최근 노드 날짜",
+      mDateTip: "노드에 기록된 날짜예요. 시각이 있으면 현지 시각으로 보여요.",
     },
     intakeUi: {
       importing: "가져오는 중…",
