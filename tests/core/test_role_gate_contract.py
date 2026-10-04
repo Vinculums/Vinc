@@ -123,3 +123,72 @@ def test_ratified_roster_with_return_routes_keeps_every_contract_under_ten_kb():
             [e for e in edges if rid in (e['from'], e['to'])],
             key=lambda e:(e['from'], e['to'], e['type']))
     assert bridge.calls == len(nodes) == 23
+
+
+def test_complete_live_role_evidence_fits_public_rest_and_mcp_without_field_loss(monkeypatch):
+    import sys
+    from vinc_mcp.roles import serialize_result
+
+    root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(root / 'tests/mcp'))
+    from test_rest_v1 import Server
+
+    roster = json.loads((root / 'agents/roles.json').read_text(encoding='utf-8'))['roles']
+    nodes = {r['id']: {'id':r['id'], 'title':r['label'], 'domain':r['domain'],
+                       'props':r['props']} for r in roster}
+    fixture = json.loads((root / 'tests/fixtures/agent_gate_runner_role_edges.json').read_text(
+        encoding='utf-8'))
+    assert len(fixture['edges']) == 24
+    calls = []
+
+    def request(method, path, params=None, **kwargs):
+        calls.append((method, path))
+        assert (method, path) == ('GET', '/roles')
+        return {'executed':True, 'found':True, 'node':nodes[fixture['role']],
+                'relations':fixture['edges'], 'peers':list(nodes.values())}
+
+    srv = Server(scope='read')
+    srv.bridge.request = request
+    try:
+        status, headers, rest = srv.request('GET', '/v1/roles/agent-gate-runner')
+        assert status == 200
+        assert int(headers['Content-Length']) < 10000
+        assert rest['props'] == nodes[fixture['role']]['props']
+        actual = [edge for group in rest['works_with'].values() for edge in group]
+        key = lambda e: (e['from'], e['to'], e['type'])
+        assert sorted(actual, key=key) == sorted(fixture['edges'], key=key)
+        assert 'not instructions' in rest['rendered']
+        assert 'accompanying structured fields' in rest['rendered']
+        assert len(calls) == 1
+
+        rpc = {'jsonrpc':'2.0', 'id':1, 'method':'tools/call',
+               'params':{'name':'vinc_role', 'arguments':{'role':'agent-gate-runner'}}}
+        status, _, result = srv.request('POST', '/mcp', body=rpc)
+        assert status == 200
+        text = result['result']['content'][0]['text']
+        assert len(text.encode('utf-8')) < 10000
+        assert text == serialize_result(rest)
+        assert json.loads(text) == rest
+        assert len(calls) == 2
+
+        from vinc_mcp import rpc as rpc_module, tools
+        brief = {'kind':'brief', 'role':rest}
+        monkeypatch.setattr(rpc_module, 'MAX_RESULT_CHARS', len(serialize_result(brief)) + 1)
+        monkeypatch.setitem(tools.SHRINKERS, 'vinc_brief', lambda out, budget: {
+            'kind':'brief', 'role':out['role']})
+        bounded = rpc_module._result_text(serialize_result({**brief, 'padding':'x' * 1000}),
+                                          'vinc_brief', {})
+        assert not bounded['isError']
+        assert json.loads(bounded['content'][0]['text']) == brief
+    finally:
+        srv.close()
+
+
+def test_non_role_result_serialization_keeps_its_existing_format():
+    from vinc_mcp.roles import serialize_result
+
+    ordinary = {'kind':'brief', 'role':'member', 'value':'한글'}
+    assert serialize_result(ordinary) == json.dumps(ordinary, ensure_ascii=False)
+    with_role = {'kind':'brief', 'role':{'kind':'role', 'props':{'mission':'한글'}}}
+    assert json.loads(serialize_result(with_role)) == with_role
+    assert ': ' not in serialize_result(with_role)

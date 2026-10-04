@@ -150,7 +150,8 @@ def handle(handler, method: str) -> bool:
     request_id = "req_" + secrets.token_hex(12)
 
     def send(status: int, value: dict, extra: dict | None = None):
-        raw = json.dumps(value, ensure_ascii=False).encode("utf-8")
+        from .roles import serialize_result
+        raw = serialize_result(value).encode("utf-8")
         handler.send_response(status)
         handler.send_header("Content-Type", "application/json")
         handler.send_header("Content-Length", str(len(raw)))
@@ -290,7 +291,8 @@ def handle(handler, method: str) -> bool:
         status, code, message, *rest = failure
         fail(status, code, message, details=rest[0] if rest else None)
         return True
-    size = len(json.dumps(result, ensure_ascii=False).encode("utf-8"))
+    from .roles import serialize_result
+    size = len(serialize_result(result).encode("utf-8"))
     if size > MAX_RESULT_BYTES:
         # 도구는 이미 실행됐다. 쓰기라면 적용됐으므로 "바뀐 것 없음" 이라고 말하지 않는다.
         fail(500, "internal", f"The result is too large to return ({size:,} bytes). "
