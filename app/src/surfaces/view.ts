@@ -3,6 +3,7 @@ import Sigma from "sigma";
 import { api, cfg, docMidWrite, spaceName, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
+import { docTitle } from "../doc-title";
 import { absoluteViewUrl, formatViewUrl, parseViewUrl } from "../view-url";
 import { camera3d, centerOn3d, enableLasso, findNode3d, mount3d, zoomBy3d,
          type Cam3, type L3, type N3 } from "./view3d";
@@ -3473,7 +3474,7 @@ export async function renderView(el: HTMLElement) {
              쪽이 맞는지 매번 다시 정해야 한다(askRowHTML 머리말과 같은 이유).
              ⚠ 이 주석은 템플릿 리터럴 **안**이다 — 백틱을 쓰면 문자열이 거기서 끊긴다. -->
         ${askRowHTML()}
-        ${dupTitle ? "" : `<h2 style="margin-top:.4rem">${esc(doc.title || "")}</h2>`}
+        ${dupTitle ? "" : `<h2 style="margin-top:.4rem">${esc(docTitle(doc.title))}</h2>`}
         <p>${badge} <span class="hint" id="rdr-state"></span></p>
         ${mentionsHTML}
         ${tocHTML}

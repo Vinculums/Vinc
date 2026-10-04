@@ -1,6 +1,7 @@
 import { api, cfg, WEB } from "./api";
 import type { GraphEdge, NavGroup, NavNode, NavTreeRes } from "./api";
 import { COPY } from "./copy";
+import { docTitle } from "./doc-title";
 import { icon } from "./icons";
 import { applyDefaults, foldsOwnRows, ownKey } from "./lnb-tree";
 import type { ThemeMode } from "./theme";
@@ -626,7 +627,7 @@ function docRow(d: { doc_id: string; title: string; node_id?: string; depth?: nu
     aria-level="${depth + 2}"${on ? ' aria-selected="true"' : ""} data-doc="${esc(d.doc_id)}"
     data-node="${esc(d.node_id || "")}" data-dom="${esc(domain)}"
     style="--lvl:${depth};--ink:${ink}${tintStyle(domain)}" data-tip="${esc(tip)}">
-    <span class="lnb-dot" aria-hidden="true"></span><span class="lnb-dtitle">${esc(d.title || d.doc_id)}</span>
+    <span class="lnb-dot" aria-hidden="true"></span><span class="lnb-dtitle">${esc(docTitle(d.title))}</span>
   </button>`;
 }
 

@@ -124,5 +124,31 @@ assert.ok(document.querySelector(".tb-row").textContent.includes("QA-TEST first 
 opened = "";
 document.querySelector(".tb-row").dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
 assert.equal(opened, "test-doc");
+// VIN-349: 빈 제목을 명시해서 지우는 것과 제목을 아예 보내지 않는 것은 다르다.
+const { api } = await import(pathToFileURL(join(output, "api.mjs")));
+globalThis.fetch = async (_url, opts = {}) => {
+  puts.push(JSON.parse(opts.body));
+  return Response.json({ executed: true, doc_id: "test-doc" });
+};
+await api.docPut("tenant:local", "body", "test-doc", "  Revised title  ");
+assert.equal(puts.at(-1).title, "Revised title");
+await api.docPut("tenant:local", "body", "test-doc", "   ");
+assert.equal(puts.at(-1).title, "");
+await api.docPut("tenant:local", "body", "test-doc");
+assert.equal(Object.hasOwn(puts.at(-1), "title"), false);
+api.docGet = async () => ({ executed: true, text: "Original body", title: "  Existing title  ", content_hash: "existing-hash" });
+const existing = document.createElement("div"); document.body.append(existing);
+const existingEditor = await editorModule.mountDocEditor(existing, {
+  owner: "tenant:local", docId: "test-doc", initial: "Original body",
+  title: "  Existing title  ", contentHash: "existing-hash", autoFocus: false,
+});
+const existingTitle = existing.querySelector("#ed-title");
+assert.equal(existingTitle.value, "Existing title");
+existingTitle.value = "  Revised existing title  ";
+existingTitle.dispatchEvent(new Event("input", { bubbles: true }));
+assert.equal(await existingEditor.saveNow(), true);
+assert.equal(puts.at(-1).title, "Revised existing title");
+assert.equal(existingTitle.value, "Revised existing title");
+await existingEditor.dispose();
 dom.window.close();
-console.log("create-form-check: blank/whitespace, first body, single-flight, retained failure, success/open, exact-title Find passed");
+console.log("create-form-check: blank/whitespace, first body, single-flight, retained failure, success/open, exact-title Find, trimmed and explicitly empty title serialization passed");

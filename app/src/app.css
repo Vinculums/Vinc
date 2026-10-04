@@ -1895,6 +1895,11 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   border-bottom: 1px solid hsl(var(--border));
 }
 .list-row .title { flex: 1; }
+/* 연결 목록은 제목 한 줄을 자르고, 상태 칸은 남겨 둔다. 전체 제목은 title로 읽는다. */
+#tl-docs .list-row .title {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#tl-docs .list-row .meta { flex-shrink: 0; }
 .list-row .meta { color: hsl(var(--muted-foreground)); font-size: var(--fs-0, .875rem); }
 .list-row .actions { visibility: hidden; display: flex; gap: var(--space-2, .5rem); }
 .list-row:hover .actions { visibility: visible; }
