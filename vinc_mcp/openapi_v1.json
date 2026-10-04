@@ -140,7 +140,7 @@
     "/v1/search": {
       "post": {
         "operationId": "vinc_search_post__v1_search",
-        "summary": "Hybrid full-text + vector search over the local Vinc store. Returns two result sets: `rows` = text-chunk matches (BM25/vector) carrying an excerpt (`snippet`, `truncated`, `doc_id`) rather than the full chunk text — fetch the whole document with vinc_doc_get(doc_id); pass detail:'full' only when you truly need raw chunk text. The excerpt is the 240-character window of the chunk that holds the most query terms; it starts with `…` when that is not the chunk's start, and is the first 240 characters when nothing matches. `keyword_gated:true` means the keyword list was left out of the fusion because none of its top rows covered half of the query's terms (typically a Korean question over English text), so the order is the semantic arm's. `node_hits` = Concept/Record matches on their title/one_liner/props (each with id, title, kind, domain, matched_in), ALWAYS populated by a title-substring scan, so concepts and records are findable even in a store with zero indexed text chunks. Responses are paginated: `total_count`, `has_more` and `next_cursor` describe the result window; pass `cursor` to continue where the last page ended (an invalid or expired cursor errors explicitly instead of restarting from page one). The cursor pages `rows` only: `node_hits` come on the first page, and a continuation page carries an empty list with `node_hits_omitted`. `total_count_capped:true` means the candidate pool hit its ceiling, so `total_count` is a lower bound, not the whole match count. Call this before vinc_ingest to find existing node ids to reuse. If the backend search fails, a top-level `error` string says why (e.g. index_missing vs extension_unavailable) instead of silently returning empty. `vector_note` appears when the semantic arm did not run OR when `encoder_runtime_warning:true` reports unknown/mismatched stored and query encoder versions; in that case the arm may have run and results may be less accurate. Other notes have two causes to distinguish. Right after a document write the index is rebuilding: benign, `arms` reads \"fts\", the rebuild runs in the background and the call never waits for it, so semantic matches return on a later search and there is nothing to report. Apart from the runtime warning, ANY OTHER VALUE IS A FAILURE of the semantic arm (a timeout, a missing index, an unavailable extension) and the rows you are holding were found by text matching alone. Say so when you answer: a degraded search and a complete one look identical from the results, so silence here reads as \"nothing else exists\".",
+        "summary": "Hybrid full-text + vector search over the local Vinc store. Returns two result sets: `rows` = text-chunk matches (BM25/vector) carrying an excerpt (`snippet`, `truncated`, `doc_id`) rather than the full chunk text — fetch the whole document with vinc_doc_get(doc_id); pass detail:'full' only when you truly need raw chunk text. The excerpt is the 240-character window of the chunk that holds the most query terms; it starts with `…` when that is not the chunk's start, and is the first 240 characters when nothing matches. Each row and node hit carries `cite_id`, the existing node to cite; document rows use their readable concept:doc.<doc_id> mirror. A missing or unreadable mirror gives cite_id:null and cite_unavailable; never construct a node citation from the document key yourself. `keyword_gated:true` means the keyword list was left out of the fusion because none of its top rows covered half of the query's terms (typically a Korean question over English text), so the order is the semantic arm's. `node_hits` = Concept/Record matches on their title/one_liner/props (each with id, title, kind, domain, matched_in), ALWAYS populated by a title-substring scan, so concepts and records are findable even in a store with zero indexed text chunks. Responses are paginated: `total_count`, `has_more` and `next_cursor` describe the result window; pass `cursor` to continue where the last page ended (an invalid or expired cursor errors explicitly instead of restarting from page one). The cursor pages `rows` only: `node_hits` come on the first page, and a continuation page carries an empty list with `node_hits_omitted`. `total_count_capped:true` means the candidate pool hit its ceiling, so `total_count` is a lower bound, not the whole match count. Call this before vinc_ingest to find existing node ids to reuse. If the backend search fails, a top-level `error` string says why (e.g. index_missing vs extension_unavailable) instead of silently returning empty. `vector_note` appears when the semantic arm did not run OR when `encoder_runtime_warning:true` reports unknown/mismatched stored and query encoder versions; in that case the arm may have run and results may be less accurate. Other notes have two causes to distinguish. Right after a document write the index is rebuilding: benign, `arms` reads \"fts\", the rebuild runs in the background and the call never waits for it, so semantic matches return on a later search and there is nothing to report. Apart from the runtime warning, ANY OTHER VALUE IS A FAILURE of the semantic arm (a timeout, a missing index, an unavailable extension) and the rows you are holding were found by text matching alone. Say so when you answer: a degraded search and a complete one look identical from the results, so silence here reads as \"nothing else exists\".",
         "security": [
           {
             "MemberKey": []
@@ -224,7 +224,7 @@
     "/v1/brief": {
       "post": {
         "operationId": "vinc_brief_post__v1_brief",
-        "summary": "One question in, joined answer material out — the deterministic read that replaces a vinc_search + vinc_graph + vinc_doc_get chain. A question that CONTAINS A NODE ID (concept:x, record:x, decision:x, episode:x) resolves to that node directly, skipping search and ranking (resolved_via:'id'); an id that fails to load answers status:'none' with that id in `unreadable`, and no other node is ranked in its place. Otherwise it resolves the question to ONE node by strict ranking, then returns that node's description, its canonical document excerpts and its typed relations in a single call. Returns {kind, executed, query, status, node:{id,title,domain,kind,valid_from,valid_until,validity,superseded_by}, one_liner, body_src, body_cite, excerpts:[{doc_id,doc_title,section,excerpt,method}], links:{degree,out,in,attached,total,items:[{id,title,domain,type,dir,evidence,confidence,note}],truncated}, candidates:[...], grounds:[id...]}. READ `status` FIRST: 'resolved' means one node won strictly, so node/excerpts/links are filled; 'choose' means the leading candidates TIED and nothing was guessed — pick one from `candidates` (each carries hit_tokens/title_tokens, the numbers that tied) and ask again with the candidate's id; an exact title works only when no other node shares it; 'none' means the question matched nothing — unless `unreadable` is present, which means the named nodes could not be loaded (an id in the question that does not exist, or a match deleted or re-owned between search and read): a different next move, so branch on that field, not the note. `search_error` means the document-search arm failed: the answer came from the node arms alone, so a 'none' carrying it is not evidence that nothing matches. `partial:true` means the node was read but its excerpts or relations were not (`partial_note` says which), so empty `links` there do not mean an isolated node. NOTHING IS GENERATED: `one_liner` is quoted, never written — `body_src` says whether it came from the one_liner column, a props key, or a document excerpt, and `body_cite` names the document when it is an excerpt. `grounds` lists every id the material rests on, so an answer built from this call can cite its sources; it stays complete even when the result was shrunk to fit the size limit. `links.degree` IS NOT THE NODE'S DEGREE: it counts the concept-and-decision relation layer only (out + in), and `attached` is the REMAINDER it leaves out (the records, episodes and bridges returned in the same list). `total` is the node's connectivity, the same number vinc_neighbors reports as `count`; read that one when you want how connected a node is, and never sum degree across nodes as if it were. `links.items[].evidence` is a BOOLEAN (does this relation carry a source sentence) and `evidence_text` is that sentence when one exists, so a relation can be QUOTED rather than merely counted. `node.validity` is 'current', 'historical' or 'future', derived from the node's OWN interval (a Record's columns, a Decision's props); when it is not current a `validity_note` says so and names `superseded_by` if the graph holds a successor. A node reached by id skips the default filter, so this is the one place a retired claim announces itself: do not quote a historical node as the present state. Read-only.",
+        "summary": "One question in, joined answer material out — the deterministic read that replaces a vinc_search + vinc_graph + vinc_doc_get chain. A question that CONTAINS A NODE ID (concept:x, record:x, decision:x, episode:x) resolves to that node directly, skipping search and ranking (resolved_via:'id'); an id that fails to load answers status:'none' with that id in `unreadable`, and no other node is ranked in its place. Otherwise it resolves the question to ONE node by strict ranking, then returns that node's description, its canonical document excerpts and its typed relations in a single call. Returns {kind, executed, query, status, node:{id,title,domain,kind,valid_from,valid_until,validity,superseded_by}, one_liner, body_src, body_cite, excerpts:[{doc_id,doc_title,section,excerpt,method}], links:{degree,out,in,attached,total,items:[{id,title,domain,type,dir,evidence,confidence,note}],truncated}, candidates:[...], grounds:[id...]}. Nodes, candidates, links and excerpts carry `cite_id`; `cite_grounds` lists only canonical node citations while `grounds` keeps the original source keys. Excerpt cite_id is null when its document mirror is missing or unreadable. READ `status` FIRST: 'resolved' means one node won strictly, so node/excerpts/links are filled; 'choose' means the leading candidates TIED and nothing was guessed — pick one from `candidates` (each carries hit_tokens/title_tokens, the numbers that tied) and ask again with the candidate's id; an exact title works only when no other node shares it; 'none' means the question matched nothing — unless `unreadable` is present, which means the named nodes could not be loaded (an id in the question that does not exist, or a match deleted or re-owned between search and read): a different next move, so branch on that field, not the note. `search_error` means the document-search arm failed: the answer came from the node arms alone, so a 'none' carrying it is not evidence that nothing matches. `partial:true` means the node was read but its excerpts or relations were not (`partial_note` says which), so empty `links` there do not mean an isolated node. NOTHING IS GENERATED: `one_liner` is quoted, never written — `body_src` says whether it came from the one_liner column, a props key, or a document excerpt, and `body_cite` names the document when it is an excerpt. `grounds` lists every id the material rests on, so an answer built from this call can cite its sources; it stays complete even when the result was shrunk to fit the size limit. `links.degree` IS NOT THE NODE'S DEGREE: it counts the concept-and-decision relation layer only (out + in), and `attached` is the REMAINDER it leaves out (the records, episodes and bridges returned in the same list). `total` is the node's connectivity, the same number vinc_neighbors reports as `count`; read that one when you want how connected a node is, and never sum degree across nodes as if it were. `links.items[].evidence` is a BOOLEAN (does this relation carry a source sentence) and `evidence_text` is that sentence when one exists, so a relation can be QUOTED rather than merely counted. `node.validity` is 'current', 'historical' or 'future', derived from the node's OWN interval (a Record's columns, a Decision's props); when it is not current a `validity_note` says so and names `superseded_by` if the graph holds a successor. A node reached by id skips the default filter, so this is the one place a retired claim announces itself: do not quote a historical node as the present state. Read-only.",
         "security": [
           {
             "MemberKey": []
@@ -442,6 +442,166 @@
           },
           "default": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/nodes/{id}/edges": {
+      "get": {
+        "operationId": "vinc_edges_get__v1_nodes_id_edges",
+        "summary": "Read actual directed incident edges for one exact node or a batch of 1..100 ids, without graph/node payloads. Supply either node or nodes. Returns edges with from, to, type, evidence, confidence and derived; unavailable properties are null. type is the physical relation label; subtype preserves TYPED/ATTACHES_TO authored types. Filter by either. dir defaults to both and preserves stored orientation. Includes structural IN_DOMAIN, PARENT_OF and MENTIONS. missing_nodes does not distinguish foreign from absent ids. count is the total; edges_truncated marks a cut. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact node id or domain:<name>."
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "out",
+                "in",
+                "both"
+              ],
+              "default": "both"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000,
+              "default": 500
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/edges/query": {
+      "post": {
+        "operationId": "vinc_edges_post__v1_edges_query",
+        "summary": "Read actual directed incident edges for one exact node or a batch of 1..100 ids, without graph/node payloads. Supply either node or nodes. Returns edges with from, to, type, evidence, confidence and derived; unavailable properties are null. type is the physical relation label; subtype preserves TYPED/ATTACHES_TO authored types. Filter by either. dir defaults to both and preserves stored orientation. Includes structural IN_DOMAIN, PARENT_OF and MENTIONS. missing_nodes does not distinguish foreign from absent ids. count is the total; edges_truncated marks a cut. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "maxItems": 100
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "dir": {
+                    "type": "string",
+                    "enum": [
+                      "out",
+                      "in",
+                      "both"
+                    ],
+                    "default": "both"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5000,
+                    "default": 500
+                  }
+                },
+                "required": [
+                  "nodes"
+                ],
+                "additionalProperties": false
+              }
+            }
           }
         }
       }

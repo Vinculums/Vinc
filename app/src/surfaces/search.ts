@@ -84,7 +84,9 @@ export function renderSearch(el: HTMLElement) {
     const { text, domain, tag } = parseQuery(raw);
     body.innerHTML = `<div class="hint">${COPY.search.searching}</div>`;
     try {
-      const res = await api.search(text || raw);
+      const [res, docs] = await Promise.all([
+        api.search(text || raw), api.docTitleMatches(text || raw).catch(() => null),
+      ]);
       // Chunk 결과(rows)와 **개념/레코드 타이틀·그래프 매치(node_hits)를 함께** 보여준다.
       // 백엔드(T3b)는 Chunk 인덱스에 없는 Concept/Record 를 항상 node_hits 로 반환한다
       // ("Chunk 0개 스토어에서도 개념이 검색된다") — 팩만 넣어 문서·청크가 없어도 개념이
@@ -94,7 +96,10 @@ export function renderSearch(el: HTMLElement) {
         arms: h.matched_in === "graph" ? ["semantic"] : ["keyword"],   // 마크 재사용(≈/≡)
         _node: true,
       }));
-      let rows: any[] = [...(res.rows || []), ...nodeHits];
+      const exact = (docs?.docs || []).map((d) => ({
+        id: d.doc_id, doc_id: d.doc_id, title: d.title, arms: ["keyword"],
+      }));
+      let rows: any[] = [...exact, ...(res.rows || []), ...nodeHits];
       if (domain) rows = rows.filter((r) => (r.domain || r.doc_id || "").includes(domain));
       if (tag) rows = rows.filter((r) => (r.tags || []).includes(tag));
       // 벡터 팔이 빠졌으면 그 사실을 말한다(GM-13 이행 배지도 여기로 합쳐졌다).
