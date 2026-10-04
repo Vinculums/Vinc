@@ -44,7 +44,8 @@ def generate() -> dict:
                 "application/json": {"schema": {
                     "type": "object",
                     "properties": {name: props.get(name, {"type": "string"}) for name in route.body},
-                    "required": [name for name in route.body if name in required],
+                    "required": [name for name in route.body if name in required
+                                 or (route.tool == "vinc_edges" and name == "nodes")],
                     "additionalProperties": False,
                 }}}}
         paths.setdefault(route.path, {})[route.method.lower()] = operation

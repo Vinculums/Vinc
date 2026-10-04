@@ -138,6 +138,17 @@ class HubSurfaceTest(unittest.TestCase):
         self.assertEqual(obj["status"], "ok")
         self.assertNotIn("graph_snapshot", obj)
 
+    def test_mirror_completion_reaches_public_health_without_raw_result_fields(self):
+        obj = self._health({"status": "ok", "node_mirror": {
+            "state": "complete", "index_ok": True,
+            "owners": ["user:private"], "id_collisions": ["concept:private"],
+            "raw": "private upstream body"}})
+        self.assertEqual(obj["node_mirror"], {"state": "complete", "index_ok": True})
+        self.assertNotIn("private", json.dumps(obj))
+
+    def test_old_sidecar_does_not_invent_mirror_completion(self):
+        self.assertNotIn("node_mirror", self._health({"status": "ok"}))
+
 
 if __name__ == "__main__":
     unittest.main()

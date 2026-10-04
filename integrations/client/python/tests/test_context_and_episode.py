@@ -100,3 +100,27 @@ def test_combined_answer_does_not_repeat_tied_candidates():
                             {"id": "concept:b", "title": "B", "kind": "concept"}], "rows": []}
     block = format_answer(tie, search)
     assert block.count("(concept:a)") == 1 and "(concept:b)" in block
+
+
+def test_canonical_document_cite_ids_are_used_by_combined_answer():
+    from vinc_client import format_answer
+    brief = dict(RESOLVED, cite_grounds=["concept:doc.vinc.design.tokens"], excerpts=[{
+        "doc_id": "vinc.design.tokens", "doc_title": "Tokens", "excerpt": "Colour",
+        "cite_id": "concept:doc.vinc.design.tokens"}])
+    search = {"rows": [{"doc_id": "other", "doc_title": "Other", "snippet": "Spacing",
+                        "cite_id": "concept:doc.other"}]}
+    block = format_answer(brief, search)
+    assert "(concept:doc.vinc.design.tokens)" in block
+    assert "(concept:doc.other)" in block
+    assert "Grounds: concept:doc.vinc.design.tokens" in block
+    assert "(vinc.design.tokens)" not in block
+
+
+def test_missing_document_mirror_is_not_synthesized_by_formatter():
+    from vinc_client import format_answer
+    block = format_answer({"status": "none"}, {"rows": [{
+        "doc_id": "missing", "doc_title": "Missing", "snippet": "Still useful text",
+        "cite_id": None, "cite_unavailable": "document mirror missing or unreadable"}]})
+    assert "Still useful text" in block
+    assert "(citation unavailable)" in block
+    assert "concept:doc.missing" not in block
