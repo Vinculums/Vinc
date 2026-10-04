@@ -11,6 +11,8 @@ __version__ = "0.1.0"
 
 from .helpers import (aget_vinc_context, arecord_episode, build_system_message,  # noqa: E402
                       create_vinc_tools, get_vinc_context, last_user_text, record_episode)
+from .review import arun_review, run_review  # noqa: E402
+from vinc_client import ReviewOutput, UnparsedReview  # noqa: E402
 
 
 def __getattr__(name: str) -> Any:
@@ -24,4 +26,4 @@ def __getattr__(name: str) -> Any:
 
 __all__ = ["__version__", "get_vinc_context", "aget_vinc_context", "build_system_message",
            "create_vinc_tools", "record_episode", "arecord_episode", "last_user_text",
-           "VincContextMiddleware"]
+           "VincContextMiddleware", "run_review", "arun_review", "ReviewOutput", "UnparsedReview"]
