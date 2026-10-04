@@ -1,4 +1,5 @@
 import { COPY } from "../copy";
+import { docTitle } from "../doc-title";
 import { readPackFile } from "../packfile";
 import { header } from "../components";
 import { icon, stateDot } from "../icons";
@@ -261,7 +262,7 @@ export function renderIntake(el: HTMLElement,
       if (!doc?.executed) continue;
       const section = document.createElement("section");
       const title = document.createElement("h3");
-      title.textContent = doc.title || docId;
+      title.textContent = docTitle(doc.title);
       const review = document.createElement("div");
       section.append(title, review); box.append(section);
       await offerExtraction(review, {

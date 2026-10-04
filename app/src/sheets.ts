@@ -6,6 +6,7 @@ import { toBytes } from "./packfile";
 import { keptDocs, standaloneDocs } from "./share-docs";
 import { shareMerges } from "./share-merges";
 import { COPY } from "./copy";
+import { docTitle } from "./doc-title";
 import { openSheet, sheetActions, sheetProgress } from "./components";
 
 const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
@@ -117,7 +118,7 @@ export async function openShareSheet(
         ${unlinked.map((d, i) => `
           <label class="list-row" style="cursor:pointer">
             <input type="checkbox" checked data-doc-i="${i}" />
-            <span class="title">${esc(d.title || d.doc_id)}</span><span class="meta">${esc(COPY.ui.sheet.specDocs)}</span>
+            <span class="title">${esc(docTitle(d.title))}</span><span class="meta">${esc(COPY.ui.sheet.specDocs)}</span>
           </label>`).join("")}
         ${nodes.length || unlinked.length ? "" : `<p class="hint">${COPY.ui.sheet.nothing}</p>`}
       </div>
