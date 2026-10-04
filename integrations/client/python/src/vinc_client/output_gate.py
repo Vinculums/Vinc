@@ -48,6 +48,7 @@ _REFUSAL = re.compile(r"\b(?:cannot|can't|can not|won't|will not|not allowed|for
 _SELF = re.compile(r"\b(?:i will|i'll|let me|i am going to|i'm going to|i have|i've)\b|제가 [^.]{0,30}(?:하겠|할게|해 드릴|했)", re.I)
 _CLAIM = re.compile(r"\b(?:i|we)(?:\s+have|'ve)?\s+(?:merged|edited|committed|pushed|applied|signed off|deployed|changed|updated)\b|\b(?:has|have) been (?:merged|committed|pushed|signed off|deployed)\b|(?:수행|완료|커밋|병합|머지|반영|푸시|사인오프|서명|배포|변경|변경 요청)(?:을|를)?\s?(?:했|하였|되었|됐)(?:습니다|어요|다)", re.I)
 _UNWITNESSED = re.compile(r"\b(?:pass(?:es|ed)? (?:all )?(?:the )?gate|gate scripts? pass|ensured gate|wrote [^.]{0,40}(?:into|to) (?:the )?(?:vinc )?graph|documented in the (?:vinc )?graph|covered with (?:unit )?tests|tests? pass(?:es|ed)?)\b", re.I)
+_PAST_EDIT = re.compile(r"^(?:[-*]\s*)?(?:updated|edited|changed|wrote|added|removed|created)\s+(?:the\s+)?(?:sync\s+scripts?|scripts?|files?|code|config(?:uration)?|tests?)\b", re.I)
 _ID = re.compile(r"\b(?:concept|decision|record|episode|domain|project|claim):[A-Za-z0-9._\-/]+")
 _PERSON_FIELD = re.compile(r"^\s*PERSON[- ]ONLY:\s*(.+)$", re.M | re.I)
 _MARKER = re.compile(r"\b(?:approv\w*|sign[- ]?off|needed|required|requires?|request\w*|until|await\w*|pending|decide|decision|recommend\w*|before|once|please|ask)\b|승인|결정|사인오프|서명", re.I)
@@ -257,6 +258,9 @@ class OutputGate:
                 for sentence in sentences:
                     if _REFUSAL.search(sentence):
                         continue
+                    if _PAST_EDIT.search(sentence) and not witnessed("edit", claim=sentence):
+                        evidence.add(sentence[:160])
+                        return True
                     if _CLAIM.search(sentence):
                         hits = [a for a, rx in _ACTIONS.items() if re.search(rx, sentence, re.I)]
                         # 다른 작업의 성공 기록은 이 완료 문장의 증거가 아니다.

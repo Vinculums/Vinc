@@ -13,6 +13,7 @@ from .approval import (ApprovalDecision, ApprovalRequest, ApprovalResult, RoleOu
 from .output_gate import (GateResult, OutputGate, OutputGateStopped, ToolProof,  # noqa: E402
                           preserve_required_route)
 from .package import build_package_fragment, format_package  # noqa: E402
+from .handoff import check_package_handoff  # noqa: E402
 from .errors import (VincAuthError, VincError, VincInvalidArgument, VincNotFound,  # noqa: E402
                      VincPartialWrite, VincQuotaExceeded, VincUnavailable)
 
@@ -25,5 +26,5 @@ __all__ = [
     "RoleOutput", "ApprovalRequest", "ApprovalDecision", "ApprovalResult",
     "prepare_person_only", "resolve_person_only",
     "GateResult", "OutputGate", "OutputGateStopped", "ToolProof", "preserve_required_route",
-    "build_package_fragment", "format_package",
+    "build_package_fragment", "format_package", "check_package_handoff",
 ]

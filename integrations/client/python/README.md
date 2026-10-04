@@ -203,3 +203,14 @@ Approval releases this reviewed output only. It does not authorize or execute
 tools, merge, deploy or publish anything. Keep side-effect tools behind a separate
 host authorization step. The request hash binds data; it does not authenticate
 the responding person. Treat drafts and pending requests as private output.
+## Quote a checked chain handoff
+
+Use `check_package_handoff(node, space=..., gate=producer_gate,
+readable_ids=current_reader_ids, proofs=producer_tool_records,
+repositories=package_repositories)` before forwarding an existing package.
+The host resolves those IDs with the current reader in the selected space;
+model-created proof dictionaries and cached permissions are not evidence.
+The helper checks the complete conclusion and claims, preserves their exact
+wording and attribution, and refuses empty or unresolved manifests. It neither
+routes nor executes a task. Orchestrators quote this incoming block and add their
+own selected role, bounded package, acceptance criteria and delivery order.
