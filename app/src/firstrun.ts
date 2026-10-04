@@ -23,7 +23,7 @@
  *  첫 실행이 오프라인이면 못 쓰는 것은 결정의 비용이다.
  */
 import { COPY } from "./copy";
-import { hasAccount, connectAccount } from "./account-connect";
+import { hasAccount, connectAccount, openBrowser } from "./account-connect";
 import { IN_SHELL, WEB, ensureSidecar } from "./api";
 
 /** 이 기기에서 로그인이 필요한가. 셸만 해당한다(웹은 세션 게이트가 따로 있다).
@@ -71,8 +71,16 @@ function openSignInScreen(reason: "first" | "expired") {
       <div class="si-or" aria-hidden="true"><span>${c.or}</span></div>
       <button class="btn si-google" id="fr-google" type="button">${GOOGLE_G}<span>${c.googleCta}</span></button>
       <p class="si-state" id="fr-state" role="status" aria-live="polite"></p>
+      <div class="si-progress sheet-progress-track" id="fr-progress" hidden aria-hidden="true"><span></span></div>
+      <div class="si-actions" id="fr-actions" hidden>
+        <button class="btn" id="fr-reopen" type="button" disabled>${c.reopen}</button>
+        <button class="btn" id="fr-copy" type="button" disabled>${c.copyLink}</button>
+        <button class="btn" id="fr-cancel" type="button">${c.cancel}</button>
+      </div>
       <p class="hint si-note">${c.localNote}</p>
-      <p class="hint si-note">${c.agreeNote}</p>
+      <p class="hint si-note">${c.agreeNote(
+        `<a href="https://vincs.io/terms/" target="_blank" rel="noopener noreferrer">${c.terms}</a>`,
+        `<a href="https://vincs.io/privacy/" target="_blank" rel="noopener noreferrer">${c.privacy}</a>`)}</p>
     </div>`;
   // 뒤의 셸을 잠근다 — 탭 키가 보이지 않는 앱 손잡이로 새지 않게.
   shell?.setAttribute("inert", "");
@@ -82,6 +90,12 @@ function openSignInScreen(reason: "first" | "expired") {
   return {
     buttons: [btn, screen.querySelector<HTMLButtonElement>("#fr-google")!] as const,
     state: screen.querySelector<HTMLElement>("#fr-state")!,
+    progress: screen.querySelector<HTMLElement>("#fr-progress")!,
+    actions: screen.querySelector<HTMLElement>("#fr-actions")!,
+    cancel: screen.querySelector<HTMLButtonElement>("#fr-cancel")!,
+    reopen: screen.querySelector<HTMLButtonElement>("#fr-reopen")!,
+    copy: screen.querySelector<HTMLButtonElement>("#fr-copy")!,
+    legal: Array.from(screen.querySelectorAll<HTMLAnchorElement>(".si-note a")),
     close() { screen.remove(); shell?.removeAttribute("inert"); },
   };
 }
@@ -93,22 +107,61 @@ export function requireSignIn(reason: "first" | "expired" = "first",
   if (pending) return pending;
   pending = new Promise<void>((resolve) => {
     const c = COPY.firstRun;
-    const { buttons, state, close } = openSignInScreen(reason);
+    const { buttons, state, close, progress, actions, cancel, reopen, copy, legal } = openSignInScreen(reason);
     const [email, google] = buttons;
+    let attempt: AbortController | null = null;
+    let signInLink = "";
+    const busy = (value: boolean) => {
+      buttons.forEach(b => { b.disabled = value; });
+      progress.hidden = actions.hidden = !value;
+    };
+    cancel.addEventListener("click", () => {
+      attempt?.abort(); attempt = null; signInLink = "";
+      busy(false); state.textContent = ""; email.focus();
+    });
+    reopen.addEventListener("click", () => {
+      const current = attempt;
+      if (signInLink) void openBrowser(signInLink).catch(() => {
+        if (attempt === current) state.textContent = c.openFailed;
+      });
+    });
+    copy.addEventListener("click", () => {
+      const current = attempt, link = signInLink;
+      if (link) void Promise.resolve().then(() => navigator.clipboard.writeText(link))
+        .then(() => { if (attempt === current) state.textContent = c.copied; })
+        .catch(() => { if (attempt === current) state.textContent = c.copyFailed; });
+    });
+    legal.forEach(a => a.addEventListener("click", event => {
+      event.preventDefault();
+      void openBrowser(a.href).catch(() => { state.textContent = c.openFailed; });
+    }));
     const start = async (via?: "google") => {
+      if (attempt) return;
+      const current = new AbortController(); attempt = current;
+      const active = () => attempt === current && !current.signal.aborted;
+      signInLink = ""; reopen.disabled = copy.disabled = true;
       // 기다리는 동안은 둘 다 잠근다 — 흐름 두 개가 같은 사이드카 상태를 두고 겹치지 않게.
-      buttons.forEach((b) => { b.disabled = true; });
+      busy(true);
       state.textContent = c.opening;
       // 키는 사이드카 루프백으로 온다. 화면은 사이드카보다 먼저 떴으므로 여기서 기다리고,
       // 사이드카가 끝났으면 다시 띄운다. 못 띄우면 인터넷 탓이 아니라고 말한다.
-      await sidecar;
-      if (!(await ensureSidecar())) {
-        buttons.forEach((b) => { b.disabled = false; });
+      const initialized = await sidecar.then(() => true, () => false);
+      if (!active()) return;
+      const ready = initialized && await ensureSidecar().catch(() => false);
+      if (!active()) return;
+      if (!ready) {
+        attempt = null; busy(false);
         state.textContent = c.localDown;
         return;
       }
-      const r = await connectAccount(undefined, { via });
-      buttons.forEach((b) => { b.disabled = false; });
+      const r = await connectAccount(s => {
+        if (active()) state.textContent = s === "waiting" ? c.waiting : c.opening;
+      }, { via, signal: current.signal, onLink: url => {
+        if (!active()) return;
+        signInLink = url; reopen.disabled = copy.disabled = false;
+      } });
+      if (!active()) return;
+      attempt = null; signInLink = ""; busy(false);
       if (r === "connected") {
         pending = null;
         close();
