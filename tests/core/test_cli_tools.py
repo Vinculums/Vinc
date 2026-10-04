@@ -28,7 +28,7 @@ class ToolVerbTests(unittest.TestCase):
         cases = [
             ("whoami", None, {}, "vinc_whoami", {}),
             ("conventions", None, {"lang": "ko"}, "vinc_conventions", {"lang": "ko"}),
-            ("node", "get", {"id": "concept:x"}, "vinc_brief", {"query": "concept:x"}),
+            ("node", "get", {"id": "concept:x"}, "vinc_node", {"node_id": "concept:x"}),
             ("node", "neighbors", {"id": "concept:x", "limit": 7},
              "vinc_neighbors", {"node": "concept:x", "limit": 7}),
             ("node", "graph", {"id": "concept:x", "depth": 3},

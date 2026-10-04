@@ -555,6 +555,10 @@ def _main(argv: list[str] | None = None) -> int:
             result, exit_code = run_tool(args)
         if result is None:
             return exit_code or 2
+        if (args.cmd == "node" and args.nodecmd == "get"
+                and result.get("executed") is not False and result.get("found") is False):
+            result = {**result, "error": {"code": "not_found",
+                                         "message": f"Node not found: {args.id}"}}
         if args.cmd == "whoami" and isinstance(result, dict) and not result.get("error"):
             from .remote_client import api_key
             key = api_key() or ""
