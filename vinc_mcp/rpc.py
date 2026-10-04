@@ -179,7 +179,7 @@ class Dispatcher:
                 raise outcome.error
             if outcome.kind != "ok":
                 return outcome.result
-            return _result_text(json.dumps(outcome.result, ensure_ascii=False), name, args)
+            return _result_text(roles.serialize_result(outcome.result), name, args)
         if method in ("prompts/list", "prompts/get"):
             # 쿼터를 tools/call 과 **같이** 센다. 이 둘은 initialize·ping 과 달리
             # 스토어를 실제로 조회하므로, 무료로 두면 인증된 호출자에게 계량되지 않는
@@ -257,7 +257,7 @@ def _result_text(text: str, name: str, args: dict) -> dict:
         except Exception:
             slim = None
         if slim is not None:
-            slim_text = json.dumps(slim, ensure_ascii=False)
+            slim_text = roles.serialize_result(slim)
             if len(slim_text) <= MAX_RESULT_CHARS:
                 return _tool_result(slim_text, name, is_error=False)
     hint = _NARROW_HINT.get(name, "request a narrower slice")

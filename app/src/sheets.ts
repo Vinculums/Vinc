@@ -1,9 +1,10 @@
 /** Share / Import 시트 — 공통 규격(D63 `openSheet`)을 쓴다.
  *  공유 시트는 "나가기 전에 무엇이 나가는지 전부 보여준다"는 원칙 그대로
  *  (정본 §5.1): 스코프 요약 · 포함 목록(개별 제외) · 미포함 고지 · 저장. */
-import { AccountError, api, cfg, community, WEB, type PackProgress, type Scope } from "./api";
+import { AccountError, accountMode, api, cfg, community, IN_SHELL, shellInvoke, WEB, type PackProgress, type Scope } from "./api";
 import { toBytes } from "./packfile";
-import { keptDocs } from "./share-docs";
+import { keptDocs, standaloneDocs } from "./share-docs";
+import { shareMerges } from "./share-merges";
 import { COPY } from "./copy";
 import { openSheet, sheetActions, sheetProgress } from "./components";
 
@@ -81,6 +82,9 @@ export async function openShareSheet(
   scope: { ids?: string[]; seed?: string; domain?: string; depth?: number },
   opts: { from?: Scope; into?: Scope; intoLabel?: string } = {},
 ) {
+  // 요청이 뜬 뒤 공간을 바꿔도 파일 이름은 이 팩을 만든 공간을 가리킨다.
+  const source = opts.from?.team === null ? "" : opts.from?.team ?? cfg.team;
+  const spaceName = source || (accountMode() || WEB ? "personal" : "local");
   const life: SheetLife = { onClose: () => {} };
   const sheet = openSheet({ title: COPY.ui.sheet.shareTitle,
                             subtitle: COPY.ui.sheet.shareSub,
@@ -91,6 +95,7 @@ export async function openShareSheet(
       ids: scope.ids?.join(","), seed: scope.seed, domain: scope.domain, depth: scope.depth,
     }, opts.from);
     const nodes: any[] = pack.fragment?.nodes || [];
+    const unlinked = standaloneDocs(pack.documents, pack.doc_refs);
     const c = pack.manifest?.counts || {};
     // 씨앗은 문서가 아니라 노드다 — 그 이름을 팩에서 읽어 범위에 적는다(VIN-265).
     const seedName = scope.seed
@@ -108,7 +113,13 @@ export async function openShareSheet(
           <label class="list-row" style="cursor:pointer">
             <input type="checkbox" checked data-i="${i}" />
             <span class="title">${esc(n.title)}</span><span class="meta">${esc(n.domain || n.type)}</span>
-          </label>`).join("") || `<p class="hint">${COPY.ui.sheet.nothing}</p>`}
+          </label>`).join("")}
+        ${unlinked.map((d, i) => `
+          <label class="list-row" style="cursor:pointer">
+            <input type="checkbox" checked data-doc-i="${i}" />
+            <span class="title">${esc(d.title || d.doc_id)}</span><span class="meta">${esc(COPY.ui.sheet.specDocs)}</span>
+          </label>`).join("")}
+        ${nodes.length || unlinked.length ? "" : `<p class="hint">${COPY.ui.sheet.nothing}</p>`}
       </div>
       <p class="hint">${COPY.ui.sheet.keepNote}</p>`;
     sheet.foot.innerHTML = sheetActions(
@@ -116,26 +127,29 @@ export async function openShareSheet(
       { id: "sheet-cancel", label: COPY.ui.common.cancel });
     sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
     sheet.foot.querySelector("#sheet-save")!.addEventListener("click", () => {
-      const excluded = new Set([...sheet.body.querySelectorAll<HTMLInputElement>("input[type=checkbox]")]
+      const excluded = new Set([...sheet.body.querySelectorAll<HTMLInputElement>("input[data-i]")]
         .filter((cb) => !cb.checked).map((cb) => nodes[Number(cb.dataset.i)].id));
+      const standalone = new Set([...sheet.body.querySelectorAll<HTMLInputElement>("input[data-doc-i]")]
+        .filter((cb) => cb.checked).map((cb) => unlinked[Number(cb.dataset.docI)].doc_id as string));
       const keep = nodes.filter((n) => !excluded.has(n.id));
       const keepIds = new Set(keep.map((n) => n.id));
       const edges = (pack.fragment?.edges || []).filter((e: any) => keepIds.has(e.from) && keepIds.has(e.to));
-      const docs = keptDocs(pack.documents, excluded, pack.doc_refs, keepIds);
+      const docs = keptDocs(pack.documents, excluded, pack.doc_refs, keepIds, standalone);
       const out = { ...pack, fragment: { nodes: keep, edges },
         ...(pack.documents ? { documents: docs } : {}),
         manifest: { ...pack.manifest, counts: recount(keep, edges, docs, c) } };
       // 둘 다 응답에만 붙는 값이라 팩 파일에는 안 싣는다(`doc_refs` 는 위 원문 선택에만 쓴다).
       delete (out as any).executed;
       delete (out as any).doc_refs;
-      // 목적지가 이미 정해진 흐름(개인 → 팀 불러오기)은 묻지 않는다.
+      // 목적지가 이미 정해져도 내 공간에 합치는 내용은 먼저 확인한다.
       if (opts.into) {
+        if (!opts.into.team) { void copyToPersonal(sheet, life, out, keep.length); return; }
         void sendToSpace(sheet, life, out, keep.length, opts.into,
                          opts.intoLabel || COPY.ui.sheet.destTeam);
         return;
       }
       void chooseDestination(sheet, life, out, keep.length,
-        `vinc-share-${scope.domain || scope.seed || "slice"}.vincpack`, scopeLabel);
+        packFilename(spaceName, scope.domain || scope.seed || "share"), scopeLabel);
     });
   } catch {
     sheet.body.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`;
@@ -144,14 +158,31 @@ export async function openShareSheet(
 
 /** D55 — 쓰기는 zip 컨테이너로. 원문(documents)을 실은 팩이 통짜 JSON 이면
  *  수 MB 로 붓고 문서 하나만 꺼낼 수도 없다(실측 1.6MB → 461KB, 28%). */
-async function downloadPack(out: Record<string, unknown>, filename: string): Promise<void> {
+function packFilename(space: string, scope: string): string {
+  const clean = (s: string) => s.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+    .replace(/[. ]+$/, "").slice(0, 80) || "share";
+  const date = new Date().toISOString().replace(/[:.]/g, "-");
+  const suffix = Array.from(crypto.getRandomValues(new Uint8Array(8)),
+    (n) => n.toString(16).padStart(2, "0")).join("");
+  return `vinc-${clean(space)}-${clean(scope)}-${date}-${suffix}.vincpack`;
+}
+
+async function downloadPack(out: Record<string, unknown>, filename: string): Promise<string | null> {
   const bytes = await toBytes(out);
+  if (IN_SHELL) {
+    const invoke = await shellInvoke();
+    if (!invoke) throw new Error("shell unavailable");
+    return invoke<string | null>("save_pack_file", {
+      filename, title: COPY.ui.sheet.destFile, bytes: Array.from(bytes),
+    });
+  }
   const blob = new Blob([bytes as BlobPart], { type: "application/zip" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
+  return filename;                 // 웹에서는 실제 다운로드 폴더 경로를 알 수 없다.
 }
 
 type Sheet = ReturnType<typeof openSheet>;
@@ -159,7 +190,7 @@ type Dest = { key: string; label: string; note: string; where: string;
               run: () => Promise<void> };
 
 /** 적재 응답에서 **실제로 착지한 것**만 추린다. */
-type Landed = { nodes: number; skipped: number; conflicts: number; docs: number };
+type Landed = { nodes: number; created: number; matched: number; skipped: number; conflicts: number; docs: number };
 
 /**
  * 완료 문구를 응답에서 만든다 — 여기가 이 파일의 급소다.
@@ -178,6 +209,8 @@ function landedOf(res: any, requested: number): Landed {
   const nodes = (n.created || 0) + (n.matched || 0);
   return {
     nodes,
+    created: n.created || 0,
+    matched: n.matched || 0,
     skipped: Math.max(0, requested - nodes),
     conflicts: (res?.id_conflicts || []).length,
     docs: res?.documents?.applied || 0,
@@ -187,14 +220,54 @@ function landedOf(res: any, requested: number): Landed {
 /** 착지 요약 → 사람이 읽는 문장들. 하나도 안 들어갔으면 그렇게 말한다. */
 function landedTexts(l: Landed, where: string, counts?: Record<string, number>): string[] {
   const U = COPY.ui.sheet;
+  const totals = [U.destCreated(l.created, where), U.destMerged(l.matched)];
   if (l.skipped === 0 && counts) {
-    return packDoneTexts({ ...counts, documents: l.docs }, where);
+    return [...totals, ...packDoneTexts({ ...counts, documents: l.docs }, where)];
   }
-  const out = [l.nodes > 0 ? U.destDone(l.nodes, where) : U.destNone(where)];
+  const out = totals;
   if (l.conflicts > 0) out.push(U.destSkippedIds(l.conflicts));
   else if (l.skipped > 0) out.push(U.destSkippedOther(l.skipped));
   if (l.docs > 0) out.push(U.destDoneDocs(l.docs));
   return out;
+}
+
+/** 내 공간에 이미 있는 항목은 복사 전에 사람이 확인한다. 읽기만으로는 보내지 않는다. */
+async function copyToPersonal(sheet: Sheet, life: SheetLife, out: any, requested: number): Promise<void> {
+  const U = COPY.ui.sheet;
+  let closed = false;
+  life.onClose = () => { closed = true; };
+  const retry = () => { void copyToPersonal(sheet, life, out, requested); };
+  sheet.body.innerHTML = sheetProgress(U.destChecking);
+  sheet.foot.innerHTML = sheetActions({ id: "sheet-cancel", label: COPY.ui.common.cancel });
+  sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
+  try {
+    const matches = await shareMerges(out.fragment?.nodes || [],
+      (id) => api.nodeContext(cfg.owner, id, 0, { team: null }));
+    if (closed) return;
+    if (!matches.length) {
+      await sendToSpace(sheet, life, out, requested, { team: null }, U.destPersonal);
+      return;
+    }
+    sheet.body.innerHTML = `<p>${esc(U.destMergeTitle(matches.length))}</p>
+      <p class="hint">${esc(U.destMergeNote)}</p>
+      <div class="sheet-list">${matches.map((m) => `<div class="list-row">
+        <span class="title">${esc(m.title)}</span></div>`).join("")}</div>`;
+    sheet.foot.innerHTML = sheetActions(
+      { id: "sheet-merge", label: U.destMergeConfirm },
+      { id: "sheet-cancel", label: COPY.ui.common.cancel });
+    sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
+    sheet.foot.querySelector("#sheet-merge")!.addEventListener("click", () => {
+      void sendToSpace(sheet, life, out, requested, { team: null }, U.destPersonal);
+    }, { once: true });
+  } catch {
+    if (closed) return;
+    sheet.body.innerHTML = `<div class="error-banner">${esc(U.destCheckFailed)}</div>`;
+    sheet.foot.innerHTML = sheetActions(
+      { id: "sheet-retry", label: COPY.ui.lnb.retry },
+      { id: "sheet-cancel", label: COPY.ui.common.cancel });
+    sheet.foot.querySelector("#sheet-retry")!.addEventListener("click", retry, { once: true });
+    sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
+  }
 }
 
 /** 시트가 닫힐 때 할 일. 보내는 중에만 바뀐다(닫으면 알림으로 넘어간다). */
@@ -315,7 +388,7 @@ async function sendToSpace(sheet: Sheet, life: SheetLife, out: any, requested: n
  */
 async function chooseDestination(
   sheet: Sheet, life: SheetLife, out: any, conceptCount: number, filename: string,
-  scopeLabel: string,
+  scopeLabel: string, ask = false,
 ): Promise<void> {
   const U = COPY.ui.sheet;
   const dests: Dest[] = [];
@@ -323,7 +396,7 @@ async function chooseDestination(
   if (cfg.team) {
     dests.push({
       key: "personal", label: U.destPersonal, note: U.destPersonalNote, where: U.destPersonal,
-      run: () => sendToSpace(sheet, life, out, conceptCount, { team: null }, U.destPersonal),
+      run: () => copyToPersonal(sheet, life, out, conceptCount),
     });
   }
   // 커뮤니티는 계정 세션이 필요하다 — 셸·로컬 dev 에는 세션이 없다.
@@ -335,12 +408,34 @@ async function chooseDestination(
   }
   dests.push({
     key: "file", label: U.destFile, note: U.destFileNote, where: U.destFile,
-    run: () => downloadPack(out, filename),
+    run: async () => {
+      let closed = false;
+      life.onClose = () => { closed = true; };
+      sheet.body.innerHTML = sheetProgress(U.destWorking);
+      sheet.foot.innerHTML = "";
+      try {
+        const path = await downloadPack(out, filename);
+        if (closed) return;
+        if (!path) {
+          // 고르기를 취소하면 성공을 말하거나 다시 고르기 창을 자동으로 열지 않는다.
+          await chooseDestination(sheet, life, out, conceptCount, filename, scopeLabel, true);
+          return;
+        }
+        sheet.body.innerHTML = packDoneTexts(out.manifest?.counts || {}, U.destFile)
+          .map((t) => `<p class="hint">${esc(t)}</p>`).join("")
+          + `<p class="hint break-all"><code>${esc(path)}</code></p>`;
+        sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: U.destClose });
+        sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
+      } catch {
+        if (closed) return;
+        await chooseDestination(sheet, life, out, conceptCount, filename, scopeLabel, true);
+        sheet.body.insertAdjacentHTML("afterbegin", `<div class="error-banner">${esc(U.destFailed)}</div>`);
+      }
+    },
   });
 
-  if (dests.length === 1) {
+  if (dests.length === 1 && !ask) {
     await dests[0]!.run();
-    sheet.close();
     return;
   }
 
@@ -361,21 +456,9 @@ async function chooseDestination(
 
   for (const d of dests) {
     sheet.body.querySelector(`[data-dest="${d.key}"]`)!.addEventListener("click", () => {
-      // 커뮤니티는 자체 폼으로, 스페이스는 자체 진행 막대로 이어지므로 여기서 그리지 않는다.
-      if (d.key === "community" || d.key === "personal") { void d.run(); return; }
-      sheet.body.innerHTML = sheetProgress(U.destWorking);
-      sheet.foot.innerHTML = "";
-      void d.run().then(
-        () => {
-          // 여기 오는 것은 파일 저장뿐이다. 적재가 아니라 요약이 없고, 다시 센 수가 곧 참이다.
-          sheet.body.innerHTML = packDoneTexts(out.manifest?.counts || {}, d.where)
-            .map((t) => `<p class="hint">${esc(t)}</p>`).join("");
-          sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: COPY.ui.sheet.destClose });
-          sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
-        },
-        () => { sheet.body.innerHTML = `<div class="error-banner">${esc(U.destFailed)}</div>`; },
-      );
-    });
+      // 목적지마다 자체 폼·진행·완료를 그린다.
+      void d.run();
+    }, { once: true });
   }
 }
 

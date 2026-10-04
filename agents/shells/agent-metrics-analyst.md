@@ -48,12 +48,15 @@ Repositories: Vinc, Vinc-homepage
 
 ## Gates that must pass before the pull request
 
-- (none)
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
 
 ## Works with
 
 - Hands off to: agent-metrics-reviewer (Metrics reviewer)
 - Works beside: agent-ops (Site Reliability Engineer), agent-research (Research Analyst)
+- Receives rejected packages from: agent-metrics-reviewer (Metrics reviewer)
 
 ## Tools and MCP servers
 
@@ -77,9 +80,13 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- ratifying which catalogue entries become the tracked set
-- the assumptions behind an estimate: price per seat, conversion, churn
-- the /bo step-up and any operator-session call to /api/bo
+- metric_ratification: ratifying which catalogue entries become the tracked set
+- estimate_assumptions: the assumptions behind an estimate: price per seat, conversion, churn
+- bo_operator_step_up: the /bo step-up and any operator-session call to /api/bo
+
+## Machine checks for never
+
+- (none)
 
 ## Trap note
 

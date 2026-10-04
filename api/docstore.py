@@ -1025,7 +1025,8 @@ def _load_authored_topics(store, tally: MentionTally, *, owner: str | None) -> N
 
 
 def list_docs(store, *, owner: str | None = None, limit: int | None = None,
-              cursor: str | None = None, detail: str = "full") -> dict:
+              cursor: str | None = None, detail: str = "full",
+              title: str | None = None) -> dict:
     """문서 목록(_DocMeta) + **주제·대표 개념 파생**. owner 지정 시 소유 스코프.
 
     ⚠ **기본값은 종전 그대로다**(`detail="full"` · 전량). `nav_tree` 가 이 함수를
@@ -1048,13 +1049,19 @@ def list_docs(store, *, owner: str | None = None, limit: int | None = None,
     - `primary_concept_id`·`primary_concept_title`(D69) — 그 문서를 눌렀을 때
       **착지할 그래프 노드**. 문서 목록·좌측 트리의 클릭이 여기로 간다. 언급이
       없으면 빈 문자열이고, 그 문서는 착지 대상이 없다(편집기로만 열린다)."""
-    where = "WHERE d.owner_id = $o " if owner else ""
+    clauses = ["d.owner_id = $o"] if owner else []
+    params = {"o": owner} if owner else {}
+    if title is not None:
+        # 제목은 본문 FTS/벡터를 기다리지 않는다. 첫 저장 직후에도 Find에서 열린다.
+        clauses.append("lower(d.title) = lower($title)")
+        params["title"] = title.strip()
+    where = "WHERE " + " AND ".join(clauses) + " " if clauses else ""
     rows = store.run(
         f"MATCH (d:_DocMeta) {where}RETURN d.doc_id AS doc_id, d.title AS title, "
         "d.origin AS origin, d.chunk_count AS chunks, d.updated_at AS updated_at, "
         "d.needs_embed AS needs_embed, "
         "d.created_at AS created_at, d.content_time AS content_time "   # v7(D72)
-        "ORDER BY d.updated_at DESC", {"o": owner} if owner else None)
+        "ORDER BY d.updated_at DESC", params or None)
     # 관례(GRAPH.md)는 자료가 아니라 **자료에 대한 규약**이다. 문서 목록·좌측 트리
     # (nav_tree 가 이 함수를 그대로 쓴다)에서 빼서 사용자의 실제 자료 사이에 끼지 않게
     # 한다. 전용 자리는 앱의 관례 시트이고, 어시스턴트는 vinc_conventions 로 읽는다.
@@ -1071,7 +1078,8 @@ def list_docs(store, *, owner: str | None = None, limit: int | None = None,
     # 하나뿐이라 남의 owner·다른 detail 로 발급된 커서, 음수 오프셋(`off:-5` 를 0 으로
     # 조용히 당겼다)이 전부 통과했다. 이제 셋 다 ValueError("invalid_cursor: …").
     # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] S10.
-    qh = _query_fingerprint("doc.list", owner, None,
+    qh = _query_fingerprint("doc.list", owner,
+                            {"title": title.strip().lower()} if title is not None else None,
                             "summary" if detail == "summary" else "full")
     if cursor:
         data = cursor_decode(cursor)        # 무효면 ValueError — 호출부가 표면화
@@ -1987,13 +1995,11 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
     if meta is None or meta.get("owner_id") != owner:
         base["error"] = "unknown doc_id"
         return base
-    text = ""
-    if candidates is None or apply:
-        got = get_doc(store, doc_id, owner=owner)
-        if not got.get("executed"):
-            base["error"] = got.get("error", "unreadable doc")
-            return base
-        text = got.get("text") or ""
+    got = get_doc(store, doc_id, owner=owner)
+    if not got.get("executed"):
+        base["error"] = got.get("error", "unreadable doc")
+        return base
+    text = got.get("text") or ""
     if candidates is None:
         cands = extract_concepts(text)
     else:
@@ -2006,12 +2012,13 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
                               "one_liner": str(c.get("one_liner") or "")[:400],
                               "slug": slug})
     base.update(executed=True, candidates=cands)
+    dom = _front_domain(text) or _doc_topic(store, doc_id, owner=owner)
     if not apply:
+        base["domain"] = dom
         return base
     # 추출 개념은 주제를 갖고 태어난다 — 원천: 프론트매터 `domain:` → 파생 주제.
     # 둘 다 없으면 거부: 주제 없는 반영은 문서를 낫게 하지 못하고 무주제 노드만
     # 늘린다. 근거: [[vinc.ops.topic-assignment-eval]] §2
-    dom = _front_domain(text) or _doc_topic(store, doc_id, owner=owner)
     if not dom:
         base["executed"] = False
         base["error"] = (

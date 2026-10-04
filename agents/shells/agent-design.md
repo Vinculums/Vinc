@@ -49,16 +49,20 @@ Repositories: Vinc, Vinc-homepage
 
 ## Gates that must pass before the pull request
 
-- design-hub/scripts/sync_out.py
-- design-hub/scripts/gate_surface.py
-- scripts/gate_design_sync.py
-- scripts/gate_contrast.py
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
+- {"check":{"command":"design-hub/scripts/sync_out.py","repos":["Vinc"],"type":"command_success"},"id":"command_1","on_fail":"block"}
+- {"check":{"command":"design-hub/scripts/gate_surface.py","repos":["Vinc"],"type":"command_success"},"id":"command_2","on_fail":"block"}
+- {"check":{"command":"scripts/gate_design_sync.py","repos":["Vinc"],"type":"command_success"},"id":"command_3","on_fail":"block"}
+- {"check":{"command":"scripts/gate_contrast.py","repos":["Vinc"],"type":"command_success"},"id":"command_4","on_fail":"block"}
 
 ## Works with
 
 - Hands off to: agent-dev-app (Frontend Engineer), agent-gate-runner (CI Gate Runner)
 - Receives from: agent-product-designer (Product Designer)
 - Works beside: agent-marketing (Product Marketing Manager), agent-research (Research Analyst)
+- Receives rejected packages from: agent-gate-runner (CI Gate Runner)
 
 ## Tools and MCP servers
 
@@ -80,8 +84,12 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- choosing between two names for one value
-- accepting a concept
+- choose_name: choosing between two names for one value
+- accept_concept: accepting a concept
+
+## Machine checks for never
+
+- (none)
 
 ## Engine note
 

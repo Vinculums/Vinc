@@ -251,32 +251,73 @@ export function forgetMemberKey(): void { memberKeyCache = ""; }
  *  `signIn` = 키가 더는 통하지 않는다(로그인 시트) · `unreachable` = 계정·허브에 못
  *  닿았다(조용히 빈 결과로 떨어지지 않고 그 상태를 말한다). */
 function accountFailure(message: string, kind: "signIn" | "unreachable" | "other",
-                        status = 0): Error {
+                        status = 0, code = "unknown"): Error {
   const err: any = new Error(message);
   err.account = kind;
   err.status = status;
+  err.code = code;
   if (kind === "signIn") dispatchEvent(new CustomEvent("vinc:signin-required"));
-  if (kind === "unreachable") dispatchEvent(new CustomEvent("vinc:account-unreachable"));
   return err;
+}
+
+let accountSuccess = 0;
+let accountProbe: { key: string; team: string; promise: Promise<void> } | null = null;
+
+// 검색 한 번의 실패로 전체 화면을 끊지 않는다. 같은 그래프의 가벼운 읽기로 확인한다.
+async function confirmAccountConnectivity(key: string, team: string): Promise<void> {
+  if (accountProbe?.key === key && accountProbe.team === team) return accountProbe.promise;
+  const before = accountSuccess;
+  const promise = (async () => {
+    const probe = await viaProxy(key, "GET", "/changes", {}, undefined, team).catch(() => null);
+    // 모드·스페이스·키가 바뀌었거나 다른 호출이 성공했다면 늦은 실패로 배너를 띄우지 않는다.
+    if (!accountMode() || cfg.team !== team || memberKeyCache !== key) return;
+    if (probe && probe.status < 500) {
+      dispatchEvent(new CustomEvent("vinc:account-reachable"));
+    } else if (accountSuccess === before) {
+      dispatchEvent(new CustomEvent("vinc:account-unreachable"));
+    }
+  })();
+  accountProbe = { key, team, promise };
+  try { await promise; }
+  finally { if (accountProbe?.promise === promise) accountProbe = null; }
+}
+
+// 검색어·키·응답 본문은 남기지 않는다. 셸의 기존 Warn 로그 경로를 재사용한다.
+async function logSearchFailure(status: number, duration: number): Promise<void> {
+  const message = `GET /api/graph/search failed status=${status} duration_ms=${Math.round(duration)}`;
+  console.warn(`[search] ${message}`);
+  const invoke = await shellInvoke();
+  if (invoke) await invoke("plugin:log|log", { level: 4, message, location: "search" })
+    .catch(() => undefined);
 }
 
 /** 통과로를 한 번 태운다. 계정의 상태코드와 몸통이 그대로 돌아온다(`api/spaceproxy.py`). */
 async function viaProxy(key: string, method: "GET" | "POST", path: string,
                         params: Record<string, string>, body: unknown,
                         team: string): Promise<Response> {
-  return fetch(new URL("/space/proxy", cfg.base), {
-    method: "POST",
-    headers: {
-      ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      method, path, params, token: key,
-      ...(method === "POST" ? { body } : {}),
-      // 개인이면 싣지 않는다. 빈 문자열도 계정 쪽에서는 "팀을 말했다"로 읽힐 수 있다.
-      ...(team ? { team } : {}),
-    }),
-  });
+  const started = performance.now();
+  let response: Response;
+  try {
+    response = await fetch(new URL("/space/proxy", cfg.base), {
+      method: "POST",
+      headers: {
+        ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        method, path, params, token: key,
+        ...(method === "POST" ? { body } : {}),
+        // 개인이면 싣지 않는다. 빈 문자열도 계정 쪽에서는 "팀을 말했다"로 읽힐 수 있다.
+        ...(team ? { team } : {}),
+      }),
+    });
+  } catch (failure) {
+    if (path === "/search") await logSearchFailure(0, performance.now() - started);
+    throw failure;
+  }
+  if (path === "/search" && !response.ok)
+    await logSearchFailure(response.status, performance.now() - started);
+  return response;
 }
 
 /** 셸 계정 모드의 데이터 호출. 경로는 웹과 같은 이름이고(`/view`·`/ingest/fragment`),
@@ -297,17 +338,19 @@ async function accountCall(path: string, params: Record<string, string | number 
     // 사이드카 자체에 못 닿았다. 계정 문제가 아니라 이 기기의 엔진 문제다.
     throw new Error(`engine unreachable: ${e?.message || e}`);
   }
-  if (res.ok) return res.json();
+  if (res.ok) { accountSuccess++; return res.json(); }
   const b: any = await res.json().catch(() => ({}));
   // 계정의 오류 봉투는 `{error:{code,message}}`, 사이드카와 통과로는 `{error:"..."}`.
   const code = typeof b?.error === "object" ? String(b.error?.code || "") : String(b?.error || "");
   const detail = typeof b?.error === "object" ? String(b.error?.message || code) : code;
   if (res.status === 401 && code === "unauthorized") {
     // 사이드카 세션 토큰이 틀렸다(셸이 준 값). 로그인과는 무관하다.
-    throw new Error("engine session rejected");
+    throw accountFailure("engine session rejected", "other", res.status, code);
   }
   if (code === "account_unreachable" || res.status === 502 || res.status === 504) {
-    throw accountFailure(detail || "account unreachable", "unreachable", res.status);
+    // 검색은 자동 재시도까지 끝낸 뒤 확인한다. 다른 읽기·쓰기는 재전송하지 않는다.
+    if (path !== "/search") await confirmAccountConnectivity(key, team);
+    throw accountFailure(detail || "account unreachable", "unreachable", res.status, code);
   }
   if (res.status === 401 && code === "not_authenticated") {
     // 계정은 **키 거절**과 **권한 거절**(팀 역할·읽기 전용 키)을 같은 코드로 준다.
@@ -316,17 +359,46 @@ async function accountCall(path: string, params: Record<string, string | number 
     const probe = await viaProxy(key, "GET", "/spaces", {}, undefined, "").catch(() => null);
     if (probe && probe.status === 401) {
       forgetMemberKey();
-      throw accountFailure(detail, "signIn", 401);
+      throw accountFailure(detail, "signIn", 401, code);
     }
-    throw accountFailure(detail, "other", 401);
+    throw accountFailure(detail, "other", 401, code);
   }
-  throw accountFailure(`${res.status} ${detail || JSON.stringify(b)}`, "other", res.status);
+  throw accountFailure(`${res.status} ${detail || JSON.stringify(b)}`, "other", res.status, code);
 }
 
 async function call(path: string, params?: Record<string, string | number | undefined>,
                     body?: unknown, scope?: Scope): Promise<any> {
   if (accountMode() && !sidecarOnly(path)) return accountCall(path, params, body, scope);
   return localCall(path, params, body, scope);
+}
+
+async function searchCall(query: string, top_k: number): Promise<any> {
+  const scope = { team: cfg.team || null };
+  const mode = dataMode.get();
+  for (let attempt = 0; ; attempt++) {
+    const started = performance.now();
+    try {
+      const result = await call("/search", { query, top_k }, undefined, scope);
+      // 오류 봉투가 HTTP 200 으로 와도 빈 결과로 읽지 않는다.
+      if (result?.error || result?.executed === false) {
+        if (accountMode()) await logSearchFailure(200, performance.now() - started);
+        throw accountFailure("search response rejected", "other", 200, "search_rejected");
+      }
+      return result;
+    }
+    catch (failure: any) {
+      const status = Number(failure?.status) || 0;
+      // 멱등 읽기인 검색만 5xx 에 한 번 더 묻는다. 4xx·네트워크 실패·쓰기는 반복하지 않는다.
+      if (attempt === 0 && status >= 500 && status < 600 && dataMode.get() === mode
+          && cfg.team === (scope.team || "")) continue;
+      if (failure?.account === "unreachable" && accountMode()) {
+        const key = await memberKey();
+        if (key && dataMode.get() === mode && cfg.team === (scope.team || ""))
+          await confirmAccountConnectivity(key, scope.team || "");
+      }
+      throw failure;
+    }
+  }
 }
 
 /** 계정 모드와 무관하게 이 기기의 사이드카(웹이면 계정 프록시)로 간다. 모드 전환이 쓴다:
@@ -373,9 +445,18 @@ async function localCall(path: string, params?: Record<string, string | number |
       const err: any = new Error(b?.open_error || b?.error || "no reachable store");
       err.storeDown = true;
       err.reason = String(b?.open_error || "");
+      err.status = res.status;
+      err.code = typeof b?.error === "object" ? b.error?.code : b?.error;
       throw err;
     }
-    throw new Error(`${res.status} ${await res.text()}`);
+    const text = await res.text();
+    const err: any = new Error(`${res.status} ${text}`);
+    err.status = res.status;
+    try {
+      const b = JSON.parse(text);
+      err.code = typeof b?.error === "object" ? b.error?.code : b?.error;
+    } catch { /* JSON 오류 봉투가 아니면 상태만 남긴다. */ }
+    throw err;
   }
   // 자동 동기화 신호(§8) — 로컬 쓰기가 끝났다. 듣는 쪽이 없으면(웹·스케줄러 미마운트)
   // 비용이 0이다. `/sync*`·`/connect/*` 는 뺀다 — 안 그러면 동기화가 자기를 다시 부른다.
@@ -637,7 +718,10 @@ export const api = {
                             ...(domains?.length ? { domains: domains.join(",") } : {}) });
   },
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
-  search: (query: string, top_k = 20) => call("/search", { query, top_k }),
+  search: (query: string, top_k = 20) => searchCall(query, top_k),
+  // 정확한 제목은 저장된 메타에서 찾는다. 본문 색인·그래프 노드 유무와 무관하다.
+  docTitleMatches: (title: string): Promise<{ docs?: { doc_id: string; title: string }[] }> =>
+    call("/docs", { owner: cfg.owner, title, detail: "summary", limit: 8 }),
   coupling: (owner: string, a: string, b: string) => call("/coupling", { owner, a, b }),
   // scope 를 주면 그 스페이스의 주제를 읽는다 — 개인 → 팀 불러오기 화면이
   // **개인** 주제 목록을 보여야 해서(팀 것을 보여주면 고를 것이 없다).
@@ -671,8 +755,8 @@ export const api = {
   // props(D73): 개념의 자유 속성. `one_liner` 는 쓰기 경로가 없어 MCP 적재분이
   // 전량 빈 값이고 사람이 쓴 요약은 실제로 props 에 들어 있다 — 호출부는
   // one_liner → props 순으로 본문을 고른다. 구 사이드카엔 키가 없다(undefined).
-  nodeContext: (owner: string, node: string, limit = 4): Promise<{
-    executed: boolean; title?: string; one_liner?: string; arm?: string;
+  nodeContext: (owner: string, node: string, limit = 4, scope?: Scope): Promise<{
+    executed: boolean; title?: string; one_liner?: string; arm?: string; note?: string;
     props?: Record<string, unknown>;
     // 속성 편집이 읽는다: 무슨 종인가(props 를 싣는가) · 어느 판을 읽었는가(W3).
     // 구 사이드카엔 키가 없다 — 없으면 편집 단추를 내지 않고, 판은 0 으로 본다.
@@ -680,16 +764,16 @@ export const api = {
     excerpts?: { doc_id: string; doc_title: string; section: string;
                  excerpt: string; method: string }[];
     links?: NodeLinks;
-  }> => call("/node-context", { owner, node, limit }),
+  }> => call("/node-context", { owner, node, limit }, undefined, scope),
   // D45-V2 2단계 — Reader 서브뷰: 정본 전문(무손실 복원 + 해시 검증) + 밑줄 범위.
-  docGet: (owner: string, id: string): Promise<{
+  docGet: (owner: string, id: string, scope?: Scope): Promise<{
     executed: boolean; text?: string; title?: string; verified?: boolean;
     content_hash?: string; error?: string;
     // 쓰기 창·중단된 쓰기의 거절 표식(P17). 이 갈래에만 실린다 — `docMidWrite` 참조.
     chunk_count?: number;
     // D72 — 최초 기록 시각 · 내용 시점. 구 사이드카에는 키 자체가 없다.
     created_at?: string; content_time?: string;
-  }> => call("/doc", { owner, id }),
+  }> => call("/doc", { owner, id }, undefined, scope),
   docHighlights: (owner: string, doc_id: string, concept_id: string): Promise<{
     executed: boolean; ranges?: { char_start: number; char_end: number }[];
   }> => call("/doc/highlights", { owner, doc_id, concept_id }),
@@ -818,9 +902,9 @@ export const api = {
   deleteEdge: (owner: string, from: string, to: string, type: string): Promise<{
     executed: boolean; found?: boolean; deleted?: { edges: number }; note?: string; error?: string;
   }> => call("/delete-edge", undefined, { owner, from, to, type }),
-  docDelete: (owner: string, id: string): Promise<{
+  docDelete: (owner: string, id: string, scope?: Scope): Promise<{
     executed: boolean; deleted_meta?: number; deleted_chunks?: number; error?: string;
-  }> => call("/doc/delete", undefined, { owner, id }),
+  }> => call("/doc/delete", undefined, { owner, id }, scope),
 
   // 계정 연결(디바이스 플로우) — start 로 state 발급, 브라우저 승인 후 status 폴링으로
   // 키를 1회 수령한다(사이드카 메일박스). 셸 전용 UI(settings)에서만 쓴다.

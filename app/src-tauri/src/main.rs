@@ -9,7 +9,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod cli_link;
+mod pack_file;
 mod secret;
+mod session_file;
 
 use tauri::{Emitter, Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
@@ -434,14 +436,10 @@ fn write_session(app: &tauri::AppHandle, port: u16, token: &str) {
         log::warn!(target: "session", "home_dir 조회 실패 → session.json 미기록 (MCP 브리지 attach 불가)");
         return;
     };
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    let body = format!(
-        "{{\"port\":{},\"token\":\"{}\",\"pid\":{},\"v\":\"0.1.9\"}}",
-        port, token, std::process::id());
-    let tmp = path.with_extension("json.tmp");
-    let wrote = std::fs::write(&tmp, body).and_then(|_| std::fs::rename(&tmp, &path));
+    let body = serde_json::json!({
+        "port": port, "token": token, "pid": std::process::id(), "v": "0.1.9"
+    });
+    let wrote = session_file::write_private(&path, body.to_string().as_bytes());
     match wrote {
         Ok(()) => log::info!(target: "session", "session.json 기록 {}", path.display()),
         Err(e) => log::warn!(
@@ -486,14 +484,17 @@ fn spawn_sidecar(app: &tauri::AppHandle, port: u16, token: &str) -> Result<u32, 
         .sidecar("vinc")
         .map_err(|e| e.to_string())?
         .args([
+            // 앱의 관리 사이드카는 계정 모드에서도 이 기기의 저장소를 연다.
+            "--target",
+            "local",
             "serve",
             "--port",
             &port_arg,
-            "--token",
-            token,
             "--parent-pid",
             &parent_pid,
         ])
+        // 세션 비밀값을 프로세스 명령행에 남기지 않는다.
+        .env("VINC_SIDECAR_TOKEN", token)
         // 업데이트 뒤 첫 기동에서 검색 색인을 Chunk.lex 로 옮긴다(VIN-271·VIN-272). 사이드카
         // 기본은 defer(서비스 중에 안 옮김)이고, 데스크톱만 이 값으로 기동 뒤에 옮긴다. 그동안
         // /health 가 migrating 을 실어 앱이 안내를 띄운다.
@@ -705,6 +706,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             sidecar_conn, sidecar_status, sidecar_alive, sidecar_restart, mcp_install, mcp_uninstall,
             take_pending_files,
+            pack_file::save_pack_file,
             cli_link_status, cli_link_install, cli_link_remove,
             secret_get, secret_set, secret_delete, secret_available])
         .setup(move |app| {

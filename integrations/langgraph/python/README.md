@@ -54,6 +54,138 @@ Nothing in this package writes on its own. Put `record_episode` in the node afte
 context -> review -> approve (interrupt) -> record
 ```
 
+
+
+## Structured review with one parse retry
+
+```python
+from vinc_langgraph import run_review, arun_review, UnparsedReview
+
+try:
+    review = run_review(model, "Review this draft against its cited rules")
+except UnparsedReview:
+    # Stop the revision path and escalate to a person.
+    raise
+```
+
+Use these helpers inside a review node. They invoke a standalone model with
+`with_structured_output(ReviewOutput, include_raw=True)`; no tool executor or
+graph writer runs. `arun_review` provides the same async behavior. For a provider
+without structured output support, select `native_structured=False` explicitly.
+The helper retries one malformed output with sanitized feedback and then raises
+`UNPARSED`, preserving the difference between an unparsed review and no findings.
+Service and unsupported-schema errors propagate; `config` is passed unchanged.
+Pass provider generation parameters through `options`, for example
+`options={"max_completion_tokens": 2048, "reasoning_effort": "low"}`. They are
+forwarded unchanged on both attempts, without adding `max_tokens` or
+`temperature`. The helper owns `tools`, `tool_choice` and `response_format`;
+these keys cannot override its structured review schema.
+Parsed citations still need permission/existence checks, and person-only
+requests still require approval before any action.
+
+## Receive a handoff package
+
+For an id held in graph state, use a node helper:
+
+```python
+from vinc_langgraph import get_vinc_package_context, build_system_message
+
+def receive(state):
+    block = get_vinc_package_context(reader, state["package_id"], space=state["space"])
+    return {"messages": [llm.invoke([
+        build_system_message(block, "Review the prior conclusion and cite available evidence."),
+        *state["messages"],
+    ])]}
+```
+
+`aget_vinc_package_context` is the async twin. For an agent bound to one handoff,
+the `agents` extra also provides middleware:
+
+```python
+from vinc_langgraph import PackageProvider
+
+receiver = create_agent(model, middleware=[PackageProvider(
+    "record:dashboard-handoff", space="personal", client=reader,
+)])
+```
+
+This is a same-space Record read under the recipient's current key. Unlike the
+question lookup middleware, packages and permission checks are never cached.
+Every model call rereads the package and distinct evidence ids. Missing carriers
+fail explicitly; unavailable evidence is marked uncitable. Nothing writes on
+read or completion. Write the producer's package with `client.write_package`
+explicitly, and put `record_episode` in the approved write-back node as before.
+
+
+## Prefetch the selected role's evidence
+
+```python
+middleware = VincContextMiddleware(
+    client=reader, prefetch_role="concept:agent-reviewer",
+)
+```
+
+This reads the role contract, required spec briefs and task brief/search before
+each model call, including the returned node ids. Unlike ordinary question
+lookup, the role prefetch mode does not cache content or permission checks.
+Read tools may still be passed to `create_agent` as an additional lookup path.
+Required spec misses/ties and authentication/service failures raise; nothing
+writes or delegates work.
+
+Graph nodes can call `prefetch(reader, role_id, task)` or async `aprefetch` and
+pass its returned block to `build_system_message`. The chosen role comes from
+application/operator configuration. `prefetch_max_chars` controls the combined
+middleware budget; exceeding it raises instead of discarding required readings.
+Model citation quality must be evaluated separately.
+
+
 ## License
 
 MIT
+# Final output gate
+
+```python
+from vinc_client import OutputGate
+from vinc_langgraph import create_output_gate_middleware, evaluate_output_node
+
+gate = OutputGate(fresh_role["props"])
+middleware = create_output_gate_middleware(gate, evidence=host_evidence_for_this_run)
+# Pass middleware=[middleware] to create_agent; use invoke()/ainvoke().
+```
+
+Intermediate AI tool-call messages continue to the tool loop. The final response
+is checked outside the model; block and interrupt raise `OutputGateStopped`.
+This does not authorize or undo tool execution. Do not expose unchecked model
+stream events to an end user.
+
+For an explicit StateGraph, place `evaluate_output_node(state, gate,
+evidence=host_evidence)` after the model node, declare `vinc_output_gate` in the
+state schema and route its verdict to delivery, stopping, or a separate approval
+node. The helper returns decisions and bounded evidence, not the original answer.
+`require_output_pass` is available when the graph should raise instead of routing.
+State-provided proof dictionaries are ignored. Neither path calls another model
+or automatically stores an episode.
+
+## Approval after the model
+
+Have the model node store a `vinc_client.RoleOutput` dictionary in `role_output`.
+Declare `vinc_approval` in your StateGraph state schema and add a separate node:
+
+```python
+from vinc_langgraph import create_person_only_node
+
+approval = create_person_only_node(gate, role_id=fresh_role["id"], run_id=run_id)
+graph.add_node("approval", approval)
+graph.add_edge("model", "approval")
+```
+
+Compile with a checkpointer and use the same thread ID when resuming. The node
+emits a draft-bound native `interrupt` when a structured request or gate identifies
+a person-only action. An authenticated human response resumes with
+`Command(resume={"request_id": pending["request_id"], "approved": True})`.
+The completed model node is not repeated. Deliver only the checked
+`vinc_approval` result; rejected output has no deliverable. Blocking checks cannot
+be overridden by approval. Keep side-effect tools separately authorized.
+
+Use a durable checkpointer in production and never expose unchecked model stream
+events. This follows the framework's [interrupt contract](https://docs.langchain.com/oss/python/langgraph/interrupts).

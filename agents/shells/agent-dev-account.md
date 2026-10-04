@@ -47,7 +47,10 @@ Repositories: Vinc-homepage
 
 ## Gates that must pass before the pull request
 
-- scripts/gate-graph-refs.mjs
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
+- {"check":{"command":"scripts/gate-graph-refs.mjs","repos":["Vinc-homepage"],"type":"command_success"},"id":"command_1","on_fail":"block"}
 
 Test command:
 
@@ -59,6 +62,7 @@ npm run typecheck && npm test
 
 - Hands off to: agent-gate-runner (CI Gate Runner)
 - Receives from: agent-dev-core (Backend Engineer, Core)
+- Receives rejected packages from: agent-gate-runner (CI Gate Runner)
 
 ## Tools and MCP servers
 
@@ -82,8 +86,12 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- merge
-- tier and price policy
+- merge: merge
+- pricing: tier and price policy
+
+## Machine checks for never
+
+- {"actions":["merge"],"type":"forbidden_actions"}
 
 ## Trap note
 

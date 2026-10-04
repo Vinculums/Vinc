@@ -49,14 +49,18 @@ Repositories: Vinc-homepage
 
 ## Gates that must pass before the pull request
 
-- scripts/gate_copy.mjs
-- scripts/gate-graph-refs.mjs
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
+- {"check":{"command":"scripts/gate_copy.mjs","repos":["Vinc-homepage"],"type":"command_success"},"id":"command_1","on_fail":"block"}
+- {"check":{"command":"scripts/gate-graph-refs.mjs","repos":["Vinc-homepage"],"type":"command_success"},"id":"command_2","on_fail":"block"}
 
 ## Works with
 
 - Hands off to: agent-copy-owner (Localization Engineer), agent-gate-runner (CI Gate Runner), agent-tech-writer (Technical Writer)
 - Receives from: agent-release (Release Manager)
 - Works beside: agent-design (Design Systems Engineer), agent-product-owner (Product Owner)
+- Receives rejected packages from: agent-gate-runner (CI Gate Runner)
 
 ## Tools and MCP servers
 
@@ -81,9 +85,13 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- pricing
-- sending
-- public promises
+- pricing: pricing
+- send: sending
+- public_promise: public promises
+
+## Machine checks for never
+
+- {"rules":["em_dash"],"type":"rendered_copy"}
 
 ## Claim note
 

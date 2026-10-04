@@ -41,6 +41,8 @@ op 를 다시 해석하면 **네 번째 목록**이 생긴다. 사이드카 · �
 from __future__ import annotations
 
 import json
+import logging
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -125,10 +127,20 @@ def call(*, token: str, team: str, method: str, path: str,
 
     req = urllib.request.Request(url, data=data, headers=headers,
                                  method=method.upper())
+    started = time.monotonic()
+
+    def log_failure(status: int, failure: str) -> None:
+        # 검색 실패의 경계만 남긴다. 키·쿼리·본문·팀 식별자는 싣지 않는다.
+        if safe == "/search":
+            logging.getLogger(__name__).warning(
+                "account proxy failed status=%d path=%s duration_ms=%.1f failure=%s",
+                status, PREFIX + safe, (time.monotonic() - started) * 1000, failure)
+
     try:
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
             return resp.status, json.loads(resp.read().decode("utf-8") or "{}")
     except urllib.error.HTTPError as e:
+        log_failure(e.code, "upstream")
         raw = e.read().decode("utf-8", "replace")
         # 계정이 아니라 **앞문**이 답한 경우가 여기다(빈 본문 401 + WWW-Authenticate).
         # 그 둘을 뭉개면 "키가 나쁘다"와 "인그레스에 막혔다"가 같은 말이 된다 —
@@ -143,4 +155,5 @@ def call(*, token: str, team: str, method: str, path: str,
         except ValueError:
             return e.code, {"error": "account_unreachable", "detail": raw[:200]}
     except Exception as e:                 # 네트워크·타임아웃·DNS
+        log_failure(502, "response" if isinstance(e, ValueError) else "transport")
         return 502, {"error": "account_unreachable", "detail": f"{type(e).__name__}"}

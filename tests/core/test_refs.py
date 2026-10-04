@@ -19,12 +19,16 @@ def test_refs_check_exit_matrix(tmp_path):
     out = io.StringIO()
     with redirect_stdout(out):
         assert cli.main(args) == 0
-    assert "PASS" in out.getvalue()
+    assert json.loads(out.getvalue())["status"] == 0
     manifest.write_text(json.dumps({"docs": [], "nodes": []}), encoding="utf-8")
-    out = io.StringIO()
-    with redirect_stdout(out):
+    out, err = io.StringIO(), io.StringIO()
+    with redirect_stdout(out), redirect_stderr(err):
         assert cli.main(args) == 1
-    assert "BLOCK" in out.getvalue()
+    assert out.getvalue() == ""
+    result = json.loads(err.getvalue())
+    assert result["status"] == 1
+    assert result["missing"] == [{"file": "source.py", "line": 1, "ref": "vinc.spec.dataplane"}]
+    assert "vinc refs refresh" in result["error"]["message"]
     out, err = io.StringIO(), io.StringIO()
     with redirect_stdout(out), redirect_stderr(err):
         assert cli.main(["refs", "check", "--unknown"]) == 2

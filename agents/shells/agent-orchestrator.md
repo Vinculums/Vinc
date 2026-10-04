@@ -47,7 +47,9 @@ Repositories: Vinc, Vinc-homepage, Vincs-app
 
 ## Gates that must pass before the pull request
 
-- (none)
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
 
 ## Works with
 
@@ -77,9 +79,13 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- merge
-- wave approval
-- operator steps a plan marks as person operated
+- merge: merge
+- wave_approval: wave approval
+- operator_step: operator steps a plan marks as person operated
+
+## Machine checks for never
+
+- {"actions":["edit","merge"],"type":"forbidden_actions"}
 
 ## Pre merge check
 

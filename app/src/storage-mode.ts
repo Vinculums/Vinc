@@ -238,10 +238,11 @@ async function turnOn(path: string, acceptRisk: boolean, copy: boolean, result: 
       copied = U.moveCounts(Number(r.after?.nodes ?? 0), Number(r.after?.docs ?? 0));
       if (Number(r.kept_deleted) > 0) copied += " " + U.moveKeptDeleted(Number(r.kept_deleted));
     }
-    await storage.setConfig({ mode: "local", mode_chosen: true });
+    const r = await storage.setConfig({ mode: "local", mode_chosen: true });
+    if (r?.status) { result.textContent = U.moveFail; return; }
     dataMode.set("local");
     result.textContent = copied ?? U.localReady;
-    finish(result);
+    finish();
   } catch (e: any) {
     result.textContent = `${U.moveFail}: ${(e && e.message) || e}`;
   }
@@ -279,7 +280,7 @@ function askTurnOff(panel: HTMLElement, result: HTMLElement): void {
       dataMode.set("account");
       panel.hidden = true;
       result.textContent = U.localOffKept;
-      finish(result);
+      finish();
     } catch (e: any) {
       result.textContent = `${U.moveFail}: ${(e && e.message) || e}`;
     } finally {
@@ -295,12 +296,13 @@ function askTurnOff(panel: HTMLElement, result: HTMLElement): void {
       const moved = await moveDeviceIntoAccount(key);
       if (!moved.ok) { result.textContent = moved.notes.join(" "); return; }
       const notes = moved.notes;
-      await storage.setConfig({ mode: "account", mode_chosen: true });
+      const r = await storage.setConfig({ mode: "account", mode_chosen: true });
+      if (r?.status) { result.textContent = U.moveFail; return; }
       dataMode.set("account");
       // 다시 누를 자리를 치운다. 옮기기는 멱등이지만 두 번 올릴 까닭이 없다.
       panel.hidden = true;
       result.textContent = notes.join(" ");
-      finish(result);
+      finish();
     } catch (e: any) {
       result.textContent = `${U.moveFail}: ${(e && e.message) || e}`;
     } finally {
@@ -327,15 +329,9 @@ export async function moveDeviceIntoAccount(key: string): Promise<{ ok: boolean;
   return { ok: true, notes };
 }
 
-/** 모드가 바뀌었다. 옮긴 수를 읽을 수 있게 두고, 누르면 새 모드로 다시 연다. */
-function finish(result: HTMLElement): void {
-  const U = COPY.ui.settingsUi;
-  const b = document.createElement("button");
-  b.className = "btn";
-  b.type = "button";
-  b.textContent = U.moveOpenAct;
-  b.addEventListener("click", () => location.reload());
-  const p = document.createElement("p");
-  p.appendChild(b);
-  result.appendChild(p);
+/** 정본과 창의 모드가 함께 바뀐 뒤 화면을 다시 읽는다(VIN-361).
+ *  별도 클릭을 기다리면 설정·공간 선택·지도에 옛 그래프가 남는다.
+ *  창만 새로 읽으므로 앱을 종료하거나 사이드카를 다시 띄우지는 않는다. */
+function finish(): void {
+  location.reload();
 }

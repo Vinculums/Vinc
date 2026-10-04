@@ -42,26 +42,91 @@ def exit_code(result: Any) -> int:
     return 0
 
 
+def _rows(rows, *, limit=None) -> list[str]:
+    values = rows if isinstance(rows, list) else []
+    lines = []
+    for row in values[:limit]:
+        if isinstance(row, dict):
+            fields = ("id", "kind", "title", "label", "domain", "reason", "score")
+            lines.append("\t".join(str(row[k]) for k in fields if row.get(k) not in (None, ""))
+                         or "; ".join(f"{k}: {v}" for k, v in row.items()))
+        else:
+            lines.append(str(row))
+        if limit is not None and len(lines[-1]) > 240:
+            lines[-1] = lines[-1][:237] + "..."
+    if limit is not None and len(values) > limit:
+        lines.append(f"... {len(values) - limit} more")
+    return lines
+
+
 def _human(result: Any, command: str) -> str:
     if not isinstance(result, dict):
         return str(result)
-    if command == "doc get" and result.get("text") is not None:
+    if command in ("doc get", "conventions") and result.get("text") is not None:
         return str(result["text"])
+    if command == "refs check":
+        return f"{result.get('cited', 0)} citations checked; {len(result.get('missing') or [])} missing\nmanifest: {result.get('manifest', '')}"
+    if command == "refs refresh":
+        return f"Graph citations refreshed.\nmanifest: {result.get('manifest', '')}"
+    if command == "whoami":
+        lines = [f"{key}: {result[key]}" for key in
+                 ("target", "owner", "scope", "key_scope", "spaces_source", "data_file") if key in result]
+        for space in result.get("spaces") or []:
+            lines.append(f"space: {space.get('id', '')}\t{space.get('name', '')}\t{space.get('role', '')}")
+        return "\n".join(lines)
+    if command == "node get":
+        node = result.get("node") or {}
+        return "\n".join([*_rows([node]), *[
+            f"{key}: {node[key]}" for key in ("name", "one_liner", "tags", "valid_from", "valid_until")
+            if node.get(key)], *[f"{key}: {value}" for key, value in (node.get("props") or {}).items()]])
+    if command in ("node graph", "graph", "decide"):
+        nodes, edges = result.get("nodes") or [], result.get("edges") or []
+        lines = [f"seed: {result.get('seed', result.get('topic', ''))}; depth: {result.get('depth', '')}; "
+                 f"nodes: {len(nodes)}; edges: {len(edges)}", *_rows(nodes, limit=20)]
+        lines.extend((f"{e.get('source', '')} -> {e.get('target', '')}\t{e.get('type', '')}")[:240]
+                     for e in edges[:20])
+        if len(edges) > 20:
+            lines.append(f"... {len(edges) - 20} more edges")
+        return "\n".join(lines)
+    if command == "path":
+        lines = [f"{result.get('a', '')} -> {result.get('b', '')}; "
+                 f"found: {result.get('found', False)}; length: {result.get('length')}"]
+        for path in (result.get("paths") or [])[:20]:
+            if isinstance(path, dict):
+                nodes = path.get("nodes") or path.get("ids") or []
+            else:
+                nodes = path
+            lines.append(" -> ".join(str(n.get("id", n.get("title", ""))) if isinstance(n, dict) else str(n)
+                                     for n in nodes))
+        return "\n".join(lines)
+    if command == "ties":
+        return "\n".join(_rows(result.get("suggestions")))
+    if command == "diagnose" and not isinstance(result.get("components"), list):
+        lines = []
+        for key, value in result.items():
+            if isinstance(value, list):
+                lines.append(f"{key}: {len(value)}")
+                lines.extend(_rows(value, limit=20))
+            elif key not in ("executed", "kind"):
+                lines.append(f"{key}: {value}")
+        return "\n".join(lines)
     if command == "brief":
-        lines = [str(result.get("one_liner") or result.get("status") or "")]
+        status = result.get("status", "")
+        lines = [str(result.get("one_liner") or status)]
+        if status == "choose":
+            lines.extend(_rows(result.get("candidates")))
         lines.extend(str(row.get("excerpt", "")) for row in result.get("excerpts", []) if isinstance(row, dict))
+        if result.get("query"):
+            lines.append("query: " + str(result["query"]))
+        if result.get("note"):
+            lines.append("note: " + str(result["note"]))
+        if result.get("unreadable"):
+            lines.append("unreadable: " + ", ".join(str(item) for item in result["unreadable"]))
         return "\n".join(line for line in lines if line)
     field = LIST_FIELDS.get(command)
     rows = result.get(field) if field else None
     if isinstance(rows, list):
-        rendered = []
-        for row in rows:
-            if isinstance(row, dict):
-                rendered.append("\t".join(str(row.get(k, "")) for k in ("id", "title", "domain") if k in row)
-                                or json.dumps(row, ensure_ascii=False))
-            else:
-                rendered.append(str(row))
-        return "\n".join(rendered)
+        return "\n".join(_rows(rows))
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
@@ -69,6 +134,9 @@ def emit(result: Any) -> int:
     fmt = chosen_format()
     code = exit_code(result)
     if fmt == "human" and code:
+        if _command.get() == "brief" and result.get("status") == "none" and not result.get("error"):
+            print("vinc: " + _human(result, "brief"), file=sys.stderr)
+            return code
         error = result.get("error") if isinstance(result, dict) else None
         message = error.get("message", "") if isinstance(error, dict) else error
         print("vinc: " + str(message or "operation failed").removeprefix("vinc: "), file=sys.stderr)

@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 from vinc_client import (AsyncVincClient, VincClient, VincQuotaExceeded, VincUnavailable,
                          format_brief, format_search)
 from vinc_client.context import DEFAULT_MAX_CHARS
+from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS
+from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
 
 
 def last_user_text(messages: str | Sequence[Any]) -> str:
@@ -49,6 +51,18 @@ async def aget_vinc_context(client: AsyncVincClient, messages: str | Sequence[An
                                     max_chars=max_chars, max_excerpts=max_excerpts)
 
 
+def get_vinc_package_context(client: VincClient, package_id: str, *, space: str,
+                             max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> str:
+    """Read a handoff by id from graph state, checking current source access on every call."""
+    return client.get_package_context(package_id, space=space, max_chars=max_chars)
+
+
+async def aget_vinc_package_context(client: AsyncVincClient, package_id: str, *, space: str,
+                                   max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> str:
+    """Async :func:`get_vinc_package_context`; missing packages fail explicitly."""
+    return await client.get_package_context(package_id, space=space, max_chars=max_chars)
+
+
 def build_system_message(block: str | None, base: SystemMessage | str | None = None
                          ) -> SystemMessage | None:
     """Append ``block`` to ``base`` (or start one). Returns ``base`` unchanged when there
@@ -60,6 +74,18 @@ def build_system_message(block: str | None, base: SystemMessage | str | None = N
     if base is None:
         return SystemMessage(content=block)
     return SystemMessage(content=[*base.content_blocks, {"type": "text", "text": block}])
+
+
+def prefetch(client: VincClient, role_id: str, task: str, *, space: str | None = None,
+             max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+    """Fetch a chosen role's reading list and task evidence before a graph model node."""
+    return client.prefetch(role_id, task, space=space, max_chars=max_chars)
+
+
+async def aprefetch(client: AsyncVincClient, role_id: str, task: str, *, space: str | None = None,
+                    max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+    """Async :func:`prefetch`."""
+    return await client.prefetch(role_id, task, space=space, max_chars=max_chars)
 
 
 class _BriefArgs(BaseModel):
@@ -149,4 +175,24 @@ async def arecord_episode(client: AsyncVincClient, title: str, *, summary: str =
 
 
 __all__ = ["last_user_text", "get_vinc_context", "aget_vinc_context",
-           "build_system_message", "create_vinc_tools", "record_episode", "arecord_episode"]
+           "build_system_message", "create_vinc_tools", "record_episode", "arecord_episode",
+           "get_vinc_package_context", "aget_vinc_package_context", "write_package", "awrite_package",
+           "prefetch", "aprefetch"]
+
+
+def write_package(client: VincClient, question: str, conclusion: str, *,
+                  claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
+                  space: str, package_id: str | None = None) -> dict[str, Any]:
+    """Explicit producer write; keep it in a graph node reached after review."""
+    return client.write_package(question, conclusion, claims=claims,
+                                produced_by=produced_by, run_id=run_id,
+                                space=space, package_id=package_id)
+
+
+async def awrite_package(client: AsyncVincClient, question: str, conclusion: str, *,
+                         claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
+                         space: str, package_id: str | None = None) -> dict[str, Any]:
+    """Async :func:`write_package`."""
+    return await client.write_package(question, conclusion, claims=claims,
+                                      produced_by=produced_by, run_id=run_id,
+                                      space=space, package_id=package_id)

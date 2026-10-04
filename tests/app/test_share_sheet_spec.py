@@ -63,7 +63,7 @@ class ShareSheetSpecTests(unittest.TestCase):
         잠그는 것은 **나가는 객체 그 자체**다 — 렌더 간접이 없어 `out` 이 곧 팩이고,
         세 줄 중 어느 하나를 지워도 이 테스트가 빨개진다."""
         share = _body(_src(), "export async function openShareSheet")
-        self.assertIn("const docs = keptDocs(pack.documents, excluded, pack.doc_refs, keepIds)",
+        self.assertIn("const docs = keptDocs(pack.documents, excluded, pack.doc_refs, keepIds, standalone)",
                       share, "제외 집합과 남은 노드를 원문에 적용하지 않는다")
         self.assertIn("{ documents: docs }", share,
                       "거른 목록이 나가는 팩에 안 실린다 — 끈 원문이 그대로 나간다")

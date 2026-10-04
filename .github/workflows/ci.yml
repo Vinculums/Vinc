@@ -651,6 +651,14 @@ jobs:
               "$venv/bin/pip" install -q "${extra[@]}" ./integrations/client/python "./$pkg[test]"
               "$venv/bin/pip" list 2>/dev/null | grep -i -E "^(vinc|agent-framework|langgraph|langchain)" || true
               "$venv/bin/python" -m pytest -q "$pkg/tests"
+              if [ "$name" = langgraph ]; then
+                parity_extra=()
+                if [ "$pin" = min ]; then
+                  parity_extra=(-c integrations/agent-framework/python/constraints-min.txt)
+                fi
+                "$venv/bin/pip" install -q "${extra[@]}" "${parity_extra[@]}" './integrations/agent-framework/python[test]'
+                "$venv/bin/python" -m pytest -q integrations/parity
+              fi
               echo "::endgroup::"
               rm -rf "$venv"
             done
