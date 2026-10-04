@@ -6270,7 +6270,7 @@ def _write_tombstone(store, node_id: str, label: str, owner: str | None) -> None
               {"id": pkns.key(own, node_id), "l": label, "o": own,
                "da": revstamp.hlc_now(store), "rev": int(rows[0].get("rev") or 0),
                "seq": revstamp.next_seq(store, own)})
-_CC_RELS = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")  # Concept↔Concept
+_CC_RELS = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM", "RETURNS_TO")
 
 # 동기화 대상 엣지 rel → **끝점 (src 라벨, src PK, dst 라벨, dst PK) 후보들**. 엣지
 # 삭제 표면(delete_edge)과 sync 의 엣지 툼스톤 적용이 공유하는 단일 정의. fragment
@@ -6298,6 +6298,7 @@ _FRAGMENT_EDGE_TO_REL = {   # fragment 엣지 타입명 → rel (api/fragment �
     "relates_to": "RELATED_TO", "prerequisite_of": "PREREQUISITE_OF",
     "derives_from": "DERIVES_FROM", "inherits_from": "INHERITS_FROM",
     "about": "ABOUT",
+    "returns_to": "RETURNS_TO",
 }
 
 
@@ -6542,6 +6543,19 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
         base["found"] = True
 
         repointed = skipped = 0
+
+        # 반려 관계는 역할 권한 계약이다. 일반 중복 정리로 끝점과 근거를
+        # 조용히 바꾸지 않는다. 구체적인 관계 변경을 먼저 검토해야 한다.
+        from .role_contract import is_role_id
+        if is_role_id(keep_id) or is_role_id(drop_id):
+            role_returns = store.run(
+                "MATCH (a:Concept)-[r:RETURNS_TO]->(b:Concept) "
+                "WHERE (a.concept_id IN $ids OR b.concept_id IN $ids)"
+                f"{oscope('a')}{oscope('b')} RETURN count(r) AS c",
+                {"ids": [_k(keep_id), _k(drop_id)], **op})
+            if role_returns and role_returns[0].get("c"):
+                base["error"] = "role return paths require explicit review before merging nodes"
+                return base
 
         def _cc_exists(rel: str, s: str, d: str) -> bool:
             r = store.run(

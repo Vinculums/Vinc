@@ -41,6 +41,7 @@ _ALLOWED_PAIRS_HINT = (
     "except relates_to which stays concept→concept): "
     "relates_to = concept→concept; "
     "prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; "
+    "returns_to = distinct role concepts, with nonempty evidence; "
     "record → concept|decision for any of those four; "
     "connects_via = bridge → concept|decision; "
     "about = episode|decision → concept|decision; "
@@ -1263,7 +1264,7 @@ TOOLS: list[dict] = [
         "name": "vinc_delete_edge",
         "description": "Delete ONE relationship between two nodes (the nodes stay). "
                        "Covers the SYNCED relation types only: relates_to | prerequisite_of | "
-                       "derives_from | inherits_from | about. CONNECTS (connects_via), "
+                       "derives_from | inherits_from | returns_to | about. CONNECTS (connects_via), "
                        "ATTACHES_TO (record edges) and TYPED (open-entity edges) are NOT "
                        "deletable here — they are outside the sync set. Endpoints follow the "
                        "same rule as vinc_ingest: concept and decision are interchangeable "
@@ -1279,7 +1280,7 @@ TOOLS: list[dict] = [
             "from_id": {"type": "string", "description": "Exact source node id (e.g. concept:a, episode:s1)."},
             "to_id": {"type": "string", "description": "Exact target node id (e.g. concept:b)."},
             "type": {"type": "string",
-                     "description": "relates_to | prerequisite_of | derives_from | inherits_from | about"},
+                     "description": "relates_to | prerequisite_of | derives_from | inherits_from | returns_to | about"},
             **_OWNER_PROP,
         }, "required": ["from_id", "to_id", "type"]},
         "run": _t_delete_edge,

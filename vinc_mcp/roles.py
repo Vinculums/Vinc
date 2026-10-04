@@ -87,7 +87,8 @@ def works_with(rid: str, nodes: list[dict], edges: list[dict]) -> dict:
         return f"{slug} ({title})" if title else slug
 
     out: dict[str, set[str]] = {"hands_to": set(), "receives_from": set(),
-                                "works_beside": set()}
+                                "works_beside": set(), "returns_to": set(),
+                                "receives_returns_from": set()}
     for e in edges or []:
         src, dst = str(e.get("source") or ""), str(e.get("target") or "")
         if rid not in (src, dst) or src == dst or not (is_role_id(src) and is_role_id(dst)):
@@ -98,6 +99,8 @@ def works_with(rid: str, nodes: list[dict], edges: list[dict]) -> dict:
             out["hands_to" if src == rid else "receives_from"].add(show(other))
         elif kind == "RELATED_TO":
             out["works_beside"].add(show(other))
+        elif kind == "RETURNS_TO":
+            out["returns_to" if src == rid else "receives_returns_from"].add(show(other))
     return {k: sorted(v) for k, v in out.items() if v}
 
 
@@ -129,7 +132,11 @@ def build_payload(roles: list[dict]) -> dict:
 # ── 껍데기 ────────────────────────────────────────────────────────────────────
 
 def _bullets(items) -> str:
-    return "\n".join(f"- {i}" for i in items) if items else "- (none)"
+    def show(item):
+        if isinstance(item, dict) and set(item) == {"action", "reason"}:
+            return f"{item['action']}: {item['reason']}"
+        return str(item)
+    return "\n".join(f"- {show(i)}" for i in items) if items else "- (none)"
 
 
 def render_shell(role: dict) -> str:
@@ -213,7 +220,8 @@ def render_shell(role: dict) -> str:
     if together:
         body += ["", "## Works with", ""]
         for key, head in (("hands_to", "Hands off to"), ("receives_from", "Receives from"),
-                          ("works_beside", "Works beside")):
+                          ("works_beside", "Works beside"), ("returns_to", "Returns to"),
+                          ("receives_returns_from", "Receives rejected packages from")):
             if together.get(key):
                 body.append(f"- {head}: {', '.join(together[key])}")
     if props.get("tools"):
