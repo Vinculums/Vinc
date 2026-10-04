@@ -884,7 +884,9 @@ const EN = {
       delDocAsk: (t: string) => `Delete "${t}" and its text? This can't be undone.`,
       delConfirm: "Delete",
       delCancel: "Keep",
-      delFail: "Couldn't delete. Nothing was changed. Try again.",
+      delFail: "Couldn't delete. Try again.",
+      delDocPresent: "The document is still here. Try deleting it again.",
+      delDocUnknown: "Couldn't confirm the deletion. We'll check again when the connection returns.",
       // D45-E 마감 — 슬래시 커맨드(결정론 블록 삽입) 라벨.
       slash: { h1: "Heading", h2: "Subheading", bullet: "Bulleted list",
         number: "Numbered list", quote: "Quote", code: "Code block", hr: "Divider" },
@@ -1967,7 +1969,9 @@ const KO: Deck = {
       delDocAsk: (t) => `'${t}'${j(t, "을")} 원문까지 지울까요? 되돌릴 수 없어요`,
       delConfirm: "지우기",
       delCancel: "닫기",
-      delFail: "지우지 못했어요. 다시 시도해 보세요. 바뀐 것은 없어요",
+      delFail: "지우지 못했어요. 다시 시도해 보세요.",
+      delDocPresent: "문서가 아직 있어요. 다시 지워 보세요.",
+      delDocUnknown: "삭제됐는지 확인하지 못했어요. 연결되면 다시 확인할게요.",
       // D45-E 마감 — 슬래시 커맨드(결정론 블록 삽입) 라벨.
       slash: { h1: "제목", h2: "부제목", bullet: "목록",
         number: "번호 목록", quote: "인용", code: "코드 블록", hr: "구분선" },

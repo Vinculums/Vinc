@@ -251,10 +251,11 @@ export function forgetMemberKey(): void { memberKeyCache = ""; }
  *  `signIn` = 키가 더는 통하지 않는다(로그인 시트) · `unreachable` = 계정·허브에 못
  *  닿았다(조용히 빈 결과로 떨어지지 않고 그 상태를 말한다). */
 function accountFailure(message: string, kind: "signIn" | "unreachable" | "other",
-                        status = 0): Error {
+                        status = 0, code = "unknown"): Error {
   const err: any = new Error(message);
   err.account = kind;
   err.status = status;
+  err.code = code;
   if (kind === "signIn") dispatchEvent(new CustomEvent("vinc:signin-required"));
   if (kind === "unreachable") dispatchEvent(new CustomEvent("vinc:account-unreachable"));
   return err;
@@ -307,7 +308,7 @@ async function accountCall(path: string, params: Record<string, string | number 
     throw new Error("engine session rejected");
   }
   if (code === "account_unreachable" || res.status === 502 || res.status === 504) {
-    throw accountFailure(detail || "account unreachable", "unreachable", res.status);
+    throw accountFailure(detail || "account unreachable", "unreachable", res.status, code);
   }
   if (res.status === 401 && code === "not_authenticated") {
     // 계정은 **키 거절**과 **권한 거절**(팀 역할·읽기 전용 키)을 같은 코드로 준다.
@@ -316,11 +317,11 @@ async function accountCall(path: string, params: Record<string, string | number 
     const probe = await viaProxy(key, "GET", "/spaces", {}, undefined, "").catch(() => null);
     if (probe && probe.status === 401) {
       forgetMemberKey();
-      throw accountFailure(detail, "signIn", 401);
+      throw accountFailure(detail, "signIn", 401, code);
     }
-    throw accountFailure(detail, "other", 401);
+    throw accountFailure(detail, "other", 401, code);
   }
-  throw accountFailure(`${res.status} ${detail || JSON.stringify(b)}`, "other", res.status);
+  throw accountFailure(`${res.status} ${detail || JSON.stringify(b)}`, "other", res.status, code);
 }
 
 async function call(path: string, params?: Record<string, string | number | undefined>,
@@ -373,9 +374,18 @@ async function localCall(path: string, params?: Record<string, string | number |
       const err: any = new Error(b?.open_error || b?.error || "no reachable store");
       err.storeDown = true;
       err.reason = String(b?.open_error || "");
+      err.status = res.status;
+      err.code = typeof b?.error === "object" ? b.error?.code : b?.error;
       throw err;
     }
-    throw new Error(`${res.status} ${await res.text()}`);
+    const text = await res.text();
+    const err: any = new Error(`${res.status} ${text}`);
+    err.status = res.status;
+    try {
+      const b = JSON.parse(text);
+      err.code = typeof b?.error === "object" ? b.error?.code : b?.error;
+    } catch { /* JSON 오류 봉투가 아니면 상태만 남긴다. */ }
+    throw err;
   }
   // 자동 동기화 신호(§8) — 로컬 쓰기가 끝났다. 듣는 쪽이 없으면(웹·스케줄러 미마운트)
   // 비용이 0이다. `/sync*`·`/connect/*` 는 뺀다 — 안 그러면 동기화가 자기를 다시 부른다.
@@ -682,14 +692,14 @@ export const api = {
     links?: NodeLinks;
   }> => call("/node-context", { owner, node, limit }),
   // D45-V2 2단계 — Reader 서브뷰: 정본 전문(무손실 복원 + 해시 검증) + 밑줄 범위.
-  docGet: (owner: string, id: string): Promise<{
+  docGet: (owner: string, id: string, scope?: Scope): Promise<{
     executed: boolean; text?: string; title?: string; verified?: boolean;
     content_hash?: string; error?: string;
     // 쓰기 창·중단된 쓰기의 거절 표식(P17). 이 갈래에만 실린다 — `docMidWrite` 참조.
     chunk_count?: number;
     // D72 — 최초 기록 시각 · 내용 시점. 구 사이드카에는 키 자체가 없다.
     created_at?: string; content_time?: string;
-  }> => call("/doc", { owner, id }),
+  }> => call("/doc", { owner, id }, undefined, scope),
   docHighlights: (owner: string, doc_id: string, concept_id: string): Promise<{
     executed: boolean; ranges?: { char_start: number; char_end: number }[];
   }> => call("/doc/highlights", { owner, doc_id, concept_id }),
@@ -818,9 +828,9 @@ export const api = {
   deleteEdge: (owner: string, from: string, to: string, type: string): Promise<{
     executed: boolean; found?: boolean; deleted?: { edges: number }; note?: string; error?: string;
   }> => call("/delete-edge", undefined, { owner, from, to, type }),
-  docDelete: (owner: string, id: string): Promise<{
+  docDelete: (owner: string, id: string, scope?: Scope): Promise<{
     executed: boolean; deleted_meta?: number; deleted_chunks?: number; error?: string;
-  }> => call("/doc/delete", undefined, { owner, id }),
+  }> => call("/doc/delete", undefined, { owner, id }, scope),
 
   // 계정 연결(디바이스 플로우) — start 로 state 발급, 브라우저 승인 후 status 폴링으로
   // 키를 1회 수령한다(사이드카 메일박스). 셸 전용 UI(settings)에서만 쓴다.
