@@ -257,27 +257,67 @@ function accountFailure(message: string, kind: "signIn" | "unreachable" | "other
   err.status = status;
   err.code = code;
   if (kind === "signIn") dispatchEvent(new CustomEvent("vinc:signin-required"));
-  if (kind === "unreachable") dispatchEvent(new CustomEvent("vinc:account-unreachable"));
   return err;
+}
+
+let accountSuccess = 0;
+let accountProbe: { key: string; team: string; promise: Promise<void> } | null = null;
+
+// 검색 한 번의 실패로 전체 화면을 끊지 않는다. 같은 그래프의 가벼운 읽기로 확인한다.
+async function confirmAccountConnectivity(key: string, team: string): Promise<void> {
+  if (accountProbe?.key === key && accountProbe.team === team) return accountProbe.promise;
+  const before = accountSuccess;
+  const promise = (async () => {
+    const probe = await viaProxy(key, "GET", "/changes", {}, undefined, team).catch(() => null);
+    // 모드·스페이스·키가 바뀌었거나 다른 호출이 성공했다면 늦은 실패로 배너를 띄우지 않는다.
+    if (!accountMode() || cfg.team !== team || memberKeyCache !== key) return;
+    if (probe && probe.status < 500) {
+      dispatchEvent(new CustomEvent("vinc:account-reachable"));
+    } else if (accountSuccess === before) {
+      dispatchEvent(new CustomEvent("vinc:account-unreachable"));
+    }
+  })();
+  accountProbe = { key, team, promise };
+  try { await promise; }
+  finally { if (accountProbe?.promise === promise) accountProbe = null; }
+}
+
+// 검색어·키·응답 본문은 남기지 않는다. 셸의 기존 Warn 로그 경로를 재사용한다.
+async function logSearchFailure(status: number, duration: number): Promise<void> {
+  const message = `GET /api/graph/search failed status=${status} duration_ms=${Math.round(duration)}`;
+  console.warn(`[search] ${message}`);
+  const invoke = await shellInvoke();
+  if (invoke) await invoke("plugin:log|log", { level: 4, message, location: "search" })
+    .catch(() => undefined);
 }
 
 /** 통과로를 한 번 태운다. 계정의 상태코드와 몸통이 그대로 돌아온다(`api/spaceproxy.py`). */
 async function viaProxy(key: string, method: "GET" | "POST", path: string,
                         params: Record<string, string>, body: unknown,
                         team: string): Promise<Response> {
-  return fetch(new URL("/space/proxy", cfg.base), {
-    method: "POST",
-    headers: {
-      ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      method, path, params, token: key,
-      ...(method === "POST" ? { body } : {}),
-      // 개인이면 싣지 않는다. 빈 문자열도 계정 쪽에서는 "팀을 말했다"로 읽힐 수 있다.
-      ...(team ? { team } : {}),
-    }),
-  });
+  const started = performance.now();
+  let response: Response;
+  try {
+    response = await fetch(new URL("/space/proxy", cfg.base), {
+      method: "POST",
+      headers: {
+        ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        method, path, params, token: key,
+        ...(method === "POST" ? { body } : {}),
+        // 개인이면 싣지 않는다. 빈 문자열도 계정 쪽에서는 "팀을 말했다"로 읽힐 수 있다.
+        ...(team ? { team } : {}),
+      }),
+    });
+  } catch (failure) {
+    if (path === "/search") await logSearchFailure(0, performance.now() - started);
+    throw failure;
+  }
+  if (path === "/search" && !response.ok)
+    await logSearchFailure(response.status, performance.now() - started);
+  return response;
 }
 
 /** 셸 계정 모드의 데이터 호출. 경로는 웹과 같은 이름이고(`/view`·`/ingest/fragment`),
@@ -298,16 +338,18 @@ async function accountCall(path: string, params: Record<string, string | number 
     // 사이드카 자체에 못 닿았다. 계정 문제가 아니라 이 기기의 엔진 문제다.
     throw new Error(`engine unreachable: ${e?.message || e}`);
   }
-  if (res.ok) return res.json();
+  if (res.ok) { accountSuccess++; return res.json(); }
   const b: any = await res.json().catch(() => ({}));
   // 계정의 오류 봉투는 `{error:{code,message}}`, 사이드카와 통과로는 `{error:"..."}`.
   const code = typeof b?.error === "object" ? String(b.error?.code || "") : String(b?.error || "");
   const detail = typeof b?.error === "object" ? String(b.error?.message || code) : code;
   if (res.status === 401 && code === "unauthorized") {
     // 사이드카 세션 토큰이 틀렸다(셸이 준 값). 로그인과는 무관하다.
-    throw new Error("engine session rejected");
+    throw accountFailure("engine session rejected", "other", res.status, code);
   }
   if (code === "account_unreachable" || res.status === 502 || res.status === 504) {
+    // 검색은 자동 재시도까지 끝낸 뒤 확인한다. 다른 읽기·쓰기는 재전송하지 않는다.
+    if (path !== "/search") await confirmAccountConnectivity(key, team);
     throw accountFailure(detail || "account unreachable", "unreachable", res.status, code);
   }
   if (res.status === 401 && code === "not_authenticated") {
@@ -328,6 +370,35 @@ async function call(path: string, params?: Record<string, string | number | unde
                     body?: unknown, scope?: Scope): Promise<any> {
   if (accountMode() && !sidecarOnly(path)) return accountCall(path, params, body, scope);
   return localCall(path, params, body, scope);
+}
+
+async function searchCall(query: string, top_k: number): Promise<any> {
+  const scope = { team: cfg.team || null };
+  const mode = dataMode.get();
+  for (let attempt = 0; ; attempt++) {
+    const started = performance.now();
+    try {
+      const result = await call("/search", { query, top_k }, undefined, scope);
+      // 오류 봉투가 HTTP 200 으로 와도 빈 결과로 읽지 않는다.
+      if (result?.error || result?.executed === false) {
+        if (accountMode()) await logSearchFailure(200, performance.now() - started);
+        throw accountFailure("search response rejected", "other", 200, "search_rejected");
+      }
+      return result;
+    }
+    catch (failure: any) {
+      const status = Number(failure?.status) || 0;
+      // 멱등 읽기인 검색만 5xx 에 한 번 더 묻는다. 4xx·네트워크 실패·쓰기는 반복하지 않는다.
+      if (attempt === 0 && status >= 500 && status < 600 && dataMode.get() === mode
+          && cfg.team === (scope.team || "")) continue;
+      if (failure?.account === "unreachable" && accountMode()) {
+        const key = await memberKey();
+        if (key && dataMode.get() === mode && cfg.team === (scope.team || ""))
+          await confirmAccountConnectivity(key, scope.team || "");
+      }
+      throw failure;
+    }
+  }
 }
 
 /** 계정 모드와 무관하게 이 기기의 사이드카(웹이면 계정 프록시)로 간다. 모드 전환이 쓴다:
@@ -647,7 +718,7 @@ export const api = {
                             ...(domains?.length ? { domains: domains.join(",") } : {}) });
   },
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
-  search: (query: string, top_k = 20) => call("/search", { query, top_k }),
+  search: (query: string, top_k = 20) => searchCall(query, top_k),
   // 정확한 제목은 저장된 메타에서 찾는다. 본문 색인·그래프 노드 유무와 무관하다.
   docTitleMatches: (title: string): Promise<{ docs?: { doc_id: string; title: string }[] }> =>
     call("/docs", { owner: cfg.owner, title, detail: "summary", limit: 8 }),
