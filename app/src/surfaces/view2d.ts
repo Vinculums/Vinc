@@ -13,6 +13,7 @@ import { edgeKey, type Spot } from "../spotlight";
 import { markTexture, MARK_TEX_PX } from "./view-planar";
 import { glassShapeOf, glassSprite, type GlassShape } from "../glass-sprite";
 import { HIT_MIN_PX, wireDragConnect, type DragEnd, type DragHit } from "./drag-connect";
+import { SMALL_GRAPH_LABEL_LIMIT, nonOverlappingLabels, type LabelBox } from "../view-labels";
 
 /** 유리 마크의 노드 색 — 그림 모드는 그림 밖 칸을 노드 색으로 채우므로 투명이어야 한다. */
 const CLEAR = "rgba(0,0,0,0)";
@@ -342,6 +343,10 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     .slice(0, 8)
     .filter((n) => (n.degree || 0) > 0);
   const hubSet = new Set(hubs.map((n) => n.id));
+  // Small graphs need names even when the default .7 node scale puts every
+  // mark below Sigma's 8px threshold. Larger graphs keep density thinning.
+  const forceHubLabels = shown.length <= SMALL_GRAPH_LABEL_LIMIT;
+  for (const n of shown) g.setNodeAttribute(n.id, "forceLabel", false);
 
   const sigma = new Sigma(g, stage, {
     allowInvalidContainer: true,
@@ -379,10 +384,9 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       }),
     },
     renderLabels: prefs.labels !== "none",
-    // **허브만** 상시 라벨(레퍼런스가 얻던 판독성). 문턱 8px = 연결수 4 이상이라
-    // 위성까지 다 켜지지 않는다 — 나머지는 hover 때 sigma 가 그린다.
-    // (size=uniform 이면 전부 6px 이라 상시 라벨이 없다 — 위계를 끈 선택의 결과.)
-    labelRenderedSizeThreshold: prefs.labels === "none" ? 1e9 : 8,
+    // Small graphs force the top hubs; larger graphs retain the rendered-size
+    // threshold and density grid. Other labels remain available on hover.
+    labelRenderedSizeThreshold: prefs.labels === "none" || forceHubLabels ? 1e9 : 8,
     labelColor: { color: ink() },
     // sigma 기본 hover 판이 `#FFF` 박제라 다크에서 흰 덩어리가 된다(위 drawHover).
     defaultDrawNodeHover: drawHover as never,
@@ -395,6 +399,33 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   // dev 전용 진단 핸들(프로덕션 번들에서는 상수 폴딩으로 제거됨) — 3D 의 `__g3` 와 같은
   // 자리다. 노드·선 색과 설정값을 수치로 대조하는 데 쓴다(테마 전환 검증).
   if (import.meta.env.DEV) (window as any).__s2 = sigma;
+
+  const syncHubLabels = () => {
+    if (!forceHubLabels) return;
+    const boxes: LabelBox[] = [];
+    const settings = sigma.getSettings();
+    const ctx = sigma.getCanvases().labels.getContext("2d")!;
+    ctx.font = `${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`;
+    if (prefs.labels !== "none") for (const n of hubs) {
+      const data = sigma.getNodeDisplayData(n.id);
+      if (!data || data.hidden || !data.label) continue;
+      const p = sigma.framedGraphToViewport(data);
+      const left = p.x + sigma.scaleSize(data.size) + 3;
+      const baseline = p.y + settings.labelSize / 3;
+      const metrics = ctx.measureText(data.label);
+      boxes.push({ id: n.id, left, right: left + metrics.width,
+        top: baseline - (metrics.actualBoundingBoxAscent || settings.labelSize),
+        bottom: baseline + (metrics.actualBoundingBoxDescent || 2) });
+    }
+    const visible = nonOverlappingLabels(boxes);
+    // One follow-up render applies the chosen set; unchanged sets do not queue
+    // another frame. This uses the current camera/resize transform from Sigma.
+    if (shown.some(n => g.getNodeAttribute(n.id, "forceLabel") !== visible.has(n.id))) {
+      g.updateEachNodeAttributes((id, attrs) => ({ ...attrs, forceLabel: visible.has(id) }));
+    }
+  };
+  sigma.on("afterRender", syncHubLabels);
+  sigma.scheduleRender();
 
   // ── 초점 문법(D32-a) — 초점과 이웃만 남고 나머지는 물러난다 ────────────────
   const nbr = new Map<string, Set<string>>();
@@ -510,9 +541,11 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       if (!g.hasNode(id)) { b.style.display = "none"; continue; }
       const p = sigma.graphToViewport({ x: g.getNodeAttribute(id, "x") as number,
                                         y: g.getNodeAttribute(id, "y") as number });
-      const r = sigma.getNodeDisplayData(id)?.size ?? 6;
+      const r = sigma.scaleSize(sigma.getNodeDisplayData(id)?.size ?? 6);
       b.style.display = "";
-      b.style.transform = `translate(${Math.round(p.x + r + 3)}px, ${Math.round(p.y - r - 12)}px)`;
+      // Keep the pill above the name instead of covering its first letters.
+      const above = Math.max(r, sigma.getSetting("labelSize") * 2 / 3);
+      b.style.transform = `translate(${Math.round(p.x + r + 3)}px, ${Math.round(p.y - above - b.offsetHeight - 2)}px)`;
     }
   }
   /** 고정 앵커 — 끌어서 옮긴 노드에 붙는 작은 마크. 정본 §7 이 "앵커 마크 + 더블탭
@@ -832,6 +865,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       for (const n of shown) {
         if (!g.hasNode(n.id)) continue;
         g.setNodeAttribute(n.id, "size", sizeOf(n));
+        if (prefs.labels === "none") g.setNodeAttribute(n.id, "forceLabel", false);
         g.mergeNodeAttributes(n.id, markOf(n));
       }
       // 간격은 2D 에서 화면을 안 바꾼다(auto-fit) — 좌표는 손대지 않는다.
@@ -844,7 +878,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
           (dir ? 1.8 : bridged ? 0.5 : e.cross_domain ? 0.6 : 0.9) * (prefs.edgeScale ?? 1));
       });
       sigma.setSetting("renderLabels", prefs.labels !== "none");
-      sigma.setSetting("labelRenderedSizeThreshold", prefs.labels === "none" ? 1e9 : 8);
+      sigma.setSetting("labelRenderedSizeThreshold", prefs.labels === "none" || forceHubLabels ? 1e9 : 8);
       sigma.refresh();
       return true;
     },
