@@ -69,6 +69,8 @@ export async function mountConventions(host: HTMLElement, sheet: { body: HTMLEle
   // 한 자리가 더 생기고, 그 자리가 서버와 어긋나면 저장은 성공하는데 다음에 읽히는
   // 것은 옛 본문이 된다. **읽기 응답이 준 값만** 쓴다.
   let docId = "";
+  let savedText = "";
+  let busy = false;
 
   async function draw() {
     // 설정의 분류들은 발(`sheet.foot`)을 함께 쓴다. 읽기를 기다리는 사이 다른 분류로
@@ -93,11 +95,29 @@ export async function mountConventions(host: HTMLElement, sheet: { body: HTMLEle
       </div>`;
     sheet.foot.innerHTML = sheetActions(
       { id: "conv-save", label: C.save },
-      { id: "conv-rebuild", label: C.rebuild });
+      { id: "conv-rebuild", label: C.rebuild })
+      + '<span class="hint" id="conv-status" role="status" aria-live="polite"></span>';
+
+    savedText = compose();
+    host.querySelectorAll<HTMLTextAreaElement>(".conv-ta").forEach((input) =>
+      input.addEventListener("input", () => status(compose() === savedText ? "" : C.unsaved)));
 
     sheet.foot.querySelector<HTMLElement>("#conv-save")!.addEventListener("click", save);
     sheet.foot.querySelector<HTMLElement>("#conv-rebuild")!.addEventListener("click", rebuild);
     await drawRatify();
+  }
+
+  function status(message: string) {
+    if (!host.isConnected) return;
+    const line = sheet.foot.querySelector<HTMLElement>("#conv-status");
+    if (line) line.textContent = message;
+  }
+
+  function setBusy(value: boolean) {
+    busy = value;
+    if (!host.isConnected) return;
+    sheet.foot.querySelectorAll<HTMLButtonElement>("#conv-save, #conv-rebuild")
+      .forEach((button) => { button.disabled = value; });
   }
 
   function compose(): string {
@@ -109,33 +129,48 @@ export async function mountConventions(host: HTMLElement, sheet: { body: HTMLEle
 
   /** 편집분을 관례 문서 자리에 쓴다. id 를 모르면 **쓰지 않는다** — 모르는 채로
    *  보내면 새 문서 하나가 생기고 관례는 그대로 남는다. */
-  async function put(): Promise<boolean> {
+  async function put(snapshot = compose()): Promise<boolean> {
     if (!docId) return false;
-    const res = await api.docPut(cfg.owner, compose(), docId, "GRAPH.md",
+    const res = await api.docPut(cfg.owner, snapshot, docId, "GRAPH.md",
                                  undefined, "vinc:conventions");
     return !!res.executed;
   }
 
   async function save() {
-    const btn = sheet.foot.querySelector<HTMLButtonElement>("#conv-save")!;
-    btn.disabled = true;
+    if (busy) return;
+    const snapshot = compose();
+    setBusy(true);
+    status(C.saving);
     try {
-      btn.textContent = (await put()) ? C.saved : C.saveFailed;
-    } catch { btn.textContent = C.saveFailed; }
-    setTimeout(() => { btn.textContent = C.save; btn.disabled = false; }, 1600);
+      if (await put(snapshot)) {
+        savedText = snapshot;
+        status(compose() === savedText ? C.saved : C.unsaved);
+      } else status(C.saveFailed);
+    } catch { status(C.saveFailed); }
+    finally { setBusy(false); }
   }
 
   async function rebuild() {
-    const btn = sheet.foot.querySelector<HTMLButtonElement>("#conv-rebuild")!;
-    btn.disabled = true;
+    if (busy) return;
+    setBusy(true);
+    status(C.saving);
+    // 재생성 중 새 편집이 응답 본문에 덮이지 않도록 잠깐 읽기 전용으로 둔다.
+    host.querySelectorAll<HTMLTextAreaElement>(".conv-ta").forEach((input) => { input.readOnly = true; });
+    let didSave = false;
     try {
       // 먼저 편집분을 저장한다 — 안 그러면 서버가 읽는 것은 옛 산문이고,
       // 방금 쓴 문장이 [다시 생성] 한 번에 사라진 것처럼 보인다.
-      await put();
+      if (!await put()) { status(C.saveFailed); return; }
+      didSave = true;
+      savedText = compose();
       const res = await api.conventionsBuild(cfg.owner);
-      if (res?.executed && res.text) { text = res.text; await draw(); }
-    } catch { /* 실패는 화면을 바꾸지 않는다 — 방금 쓴 것을 지우지 않는다 */ }
-    btn.disabled = false;
+      if (res?.executed && res.text) { text = res.text; await draw(); status(C.saved); }
+      else status(C.rebuildFailed);
+    } catch { status(didSave ? C.rebuildFailed : C.saveFailed); }
+    finally {
+      host.querySelectorAll<HTMLTextAreaElement>(".conv-ta").forEach((input) => { input.readOnly = false; });
+      setBusy(false);
+    }
   }
 
   async function drawRatify() {
