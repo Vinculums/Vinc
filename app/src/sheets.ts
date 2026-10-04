@@ -1,7 +1,7 @@
 /** Share / Import 시트 — 공통 규격(D63 `openSheet`)을 쓴다.
  *  공유 시트는 "나가기 전에 무엇이 나가는지 전부 보여준다"는 원칙 그대로
  *  (정본 §5.1): 스코프 요약 · 포함 목록(개별 제외) · 미포함 고지 · 저장. */
-import { AccountError, api, cfg, community, WEB, type PackProgress, type Scope } from "./api";
+import { AccountError, accountMode, api, cfg, community, IN_SHELL, shellInvoke, WEB, type PackProgress, type Scope } from "./api";
 import { toBytes } from "./packfile";
 import { keptDocs, standaloneDocs } from "./share-docs";
 import { shareMerges } from "./share-merges";
@@ -82,6 +82,9 @@ export async function openShareSheet(
   scope: { ids?: string[]; seed?: string; domain?: string; depth?: number },
   opts: { from?: Scope; into?: Scope; intoLabel?: string } = {},
 ) {
+  // 요청이 뜬 뒤 공간을 바꿔도 파일 이름은 이 팩을 만든 공간을 가리킨다.
+  const source = opts.from?.team === null ? "" : opts.from?.team ?? cfg.team;
+  const spaceName = source || (accountMode() || WEB ? "personal" : "local");
   const life: SheetLife = { onClose: () => {} };
   const sheet = openSheet({ title: COPY.ui.sheet.shareTitle,
                             subtitle: COPY.ui.sheet.shareSub,
@@ -146,7 +149,7 @@ export async function openShareSheet(
         return;
       }
       void chooseDestination(sheet, life, out, keep.length,
-        `vinc-share-${scope.domain || scope.seed || "slice"}.vincpack`, scopeLabel);
+        packFilename(spaceName, scope.domain || scope.seed || "share"), scopeLabel);
     });
   } catch {
     sheet.body.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`;
@@ -155,14 +158,31 @@ export async function openShareSheet(
 
 /** D55 — 쓰기는 zip 컨테이너로. 원문(documents)을 실은 팩이 통짜 JSON 이면
  *  수 MB 로 붓고 문서 하나만 꺼낼 수도 없다(실측 1.6MB → 461KB, 28%). */
-async function downloadPack(out: Record<string, unknown>, filename: string): Promise<void> {
+function packFilename(space: string, scope: string): string {
+  const clean = (s: string) => s.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+    .replace(/[. ]+$/, "").slice(0, 80) || "share";
+  const date = new Date().toISOString().replace(/[:.]/g, "-");
+  const suffix = Array.from(crypto.getRandomValues(new Uint8Array(8)),
+    (n) => n.toString(16).padStart(2, "0")).join("");
+  return `vinc-${clean(space)}-${clean(scope)}-${date}-${suffix}.vincpack`;
+}
+
+async function downloadPack(out: Record<string, unknown>, filename: string): Promise<string | null> {
   const bytes = await toBytes(out);
+  if (IN_SHELL) {
+    const invoke = await shellInvoke();
+    if (!invoke) throw new Error("shell unavailable");
+    return invoke<string | null>("save_pack_file", {
+      filename, title: COPY.ui.sheet.destFile, bytes: Array.from(bytes),
+    });
+  }
   const blob = new Blob([bytes as BlobPart], { type: "application/zip" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
+  return filename;                 // 웹에서는 실제 다운로드 폴더 경로를 알 수 없다.
 }
 
 type Sheet = ReturnType<typeof openSheet>;
@@ -368,7 +388,7 @@ async function sendToSpace(sheet: Sheet, life: SheetLife, out: any, requested: n
  */
 async function chooseDestination(
   sheet: Sheet, life: SheetLife, out: any, conceptCount: number, filename: string,
-  scopeLabel: string,
+  scopeLabel: string, ask = false,
 ): Promise<void> {
   const U = COPY.ui.sheet;
   const dests: Dest[] = [];
@@ -388,12 +408,34 @@ async function chooseDestination(
   }
   dests.push({
     key: "file", label: U.destFile, note: U.destFileNote, where: U.destFile,
-    run: () => downloadPack(out, filename),
+    run: async () => {
+      let closed = false;
+      life.onClose = () => { closed = true; };
+      sheet.body.innerHTML = sheetProgress(U.destWorking);
+      sheet.foot.innerHTML = "";
+      try {
+        const path = await downloadPack(out, filename);
+        if (closed) return;
+        if (!path) {
+          // 고르기를 취소하면 성공을 말하거나 다시 고르기 창을 자동으로 열지 않는다.
+          await chooseDestination(sheet, life, out, conceptCount, filename, scopeLabel, true);
+          return;
+        }
+        sheet.body.innerHTML = packDoneTexts(out.manifest?.counts || {}, U.destFile)
+          .map((t) => `<p class="hint">${esc(t)}</p>`).join("")
+          + `<p class="hint break-all"><code>${esc(path)}</code></p>`;
+        sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: U.destClose });
+        sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
+      } catch {
+        if (closed) return;
+        await chooseDestination(sheet, life, out, conceptCount, filename, scopeLabel, true);
+        sheet.body.insertAdjacentHTML("afterbegin", `<div class="error-banner">${esc(U.destFailed)}</div>`);
+      }
+    },
   });
 
-  if (dests.length === 1) {
+  if (dests.length === 1 && !ask) {
     await dests[0]!.run();
-    sheet.close();
     return;
   }
 
@@ -414,20 +456,8 @@ async function chooseDestination(
 
   for (const d of dests) {
     sheet.body.querySelector(`[data-dest="${d.key}"]`)!.addEventListener("click", () => {
-      // 커뮤니티는 자체 폼으로, 스페이스는 자체 진행 막대로 이어지므로 여기서 그리지 않는다.
-      if (d.key === "community" || d.key === "personal") { void d.run(); return; }
-      sheet.body.innerHTML = sheetProgress(U.destWorking);
-      sheet.foot.innerHTML = "";
-      void d.run().then(
-        () => {
-          // 여기 오는 것은 파일 저장뿐이다. 적재가 아니라 요약이 없고, 다시 센 수가 곧 참이다.
-          sheet.body.innerHTML = packDoneTexts(out.manifest?.counts || {}, d.where)
-            .map((t) => `<p class="hint">${esc(t)}</p>`).join("");
-          sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: COPY.ui.sheet.destClose });
-          sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
-        },
-        () => { sheet.body.innerHTML = `<div class="error-banner">${esc(U.destFailed)}</div>`; },
-      );
+      // 목적지마다 자체 폼·진행·완료를 그린다.
+      void d.run();
     }, { once: true });
   }
 }
