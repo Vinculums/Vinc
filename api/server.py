@@ -2294,6 +2294,8 @@ class _Handler(BaseHTTPRequestHandler):
                               ("node_vector_index", "node_vector_index_remnant")):
                 if getattr(self.app.store, attr, False):
                     body[key] = "remnant"
+            from .mirror_status import read_status
+            body["node_mirror"] = read_status()
             return self._send(200, body)
 
         # /connect/callback — 무인증 예외(디바이스 연결: 브라우저의 루프백 전달,
