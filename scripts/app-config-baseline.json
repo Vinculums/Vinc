@@ -2,6 +2,7 @@
   "vinc-account": {
     "auth": {
       "excludedPaths": [
+        "/internal/bo/stats",
         "/internal/mcp/plan",
         "/internal/mcp/spaces",
         "/internal/mcp/team-membership",
