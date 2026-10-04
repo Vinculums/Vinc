@@ -48,13 +48,17 @@ Repositories: Vinc
 
 ## Gates that must pass before the pull request
 
-- design-hub/scripts/gate_surface.py
-- scripts/gate_forbidden.py
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
+- {"check":{"command":"design-hub/scripts/gate_surface.py","repos":["Vinc"],"type":"command_success"},"id":"command_1","on_fail":"block"}
+- {"check":{"command":"scripts/gate_forbidden.py","repos":["Vinc"],"type":"command_success"},"id":"command_2","on_fail":"block"}
 
 ## Works with
 
 - Hands off to: agent-design (Design Systems Engineer), agent-gate-runner (CI Gate Runner)
 - Works beside: agent-dev-app (Frontend Engineer)
+- Receives rejected packages from: agent-gate-runner (CI Gate Runner)
 
 ## Tools and MCP servers
 
@@ -81,8 +85,12 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- sign-off on every keyframe round
-- the choice between two names for one value
+- keyframe_sign_off: sign-off on every keyframe round
+- choose_name: the choice between two names for one value
+
+## Machine checks for never
+
+- {"rules":["em_dash"],"type":"rendered_copy"}
 
 ## Tool note
 

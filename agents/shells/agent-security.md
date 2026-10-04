@@ -52,7 +52,9 @@ Repositories: Vinc, Vinc-homepage
 
 ## Gates that must pass before the pull request
 
-- (none)
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
 
 ## Works with
 
@@ -79,9 +81,13 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- risk acceptance
-- token rotation
-- signing key custody
+- accept_risk: risk acceptance
+- token_rotation: token rotation
+- signing_key_custody: signing key custody
+
+## Machine checks for never
+
+- (none)
 
 ## Writes to the graph
 

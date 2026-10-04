@@ -65,8 +65,10 @@ def _ring(node: dict, roster: list[dict]) -> dict:
             other = f"concept:{slug}"
             if slug in by_name:
                 nodes.append(_graph_node(by_name[slug]))
-            src, dst = (other, node["id"]) if key == "receives_from" else (node["id"], other)
-            kind = "RELATED_TO" if key == "works_beside" else "PREREQUISITE_OF"
+            reverse = key in {"receives_from", "receives_returns_from"}
+            src, dst = (other, node["id"]) if reverse else (node["id"], other)
+            kind = ({"works_beside":"RELATED_TO", "returns_to":"RETURNS_TO",
+                     "receives_returns_from":"RETURNS_TO"}.get(key, "PREREQUISITE_OF"))
             edges.append({"source": src, "target": dst, "type": kind})
     return {"nodes": nodes, "edges": edges}
 
@@ -237,9 +239,10 @@ class GetPrompt(unittest.TestCase):
     def test_the_body_is_byte_for_byte_the_generated_shell(self):
         """렌더러가 한 벌이라는 주장은 여기서만 검증된다. 두 벌이 되는 순간 이
         비교가 깨진다 — 그것이 이 테스트의 전부다."""
-        role = next(r for r in SNAPSHOT["roles"] if r["name"] == "agent-dev-core")
-        _, text, _ = self._text()
-        self.assertIn(roles.render_shell(role), _fenced(text)[0])
+        for role in SNAPSHOT["roles"]:
+            with self.subTest(role=role["name"]):
+                _, text, _ = self._text(name=role["name"])
+                self.assertIn(roles.render_shell(role), _fenced(text)[0])
 
     def test_description_is_the_mission_on_one_line(self):
         role = next(r for r in SNAPSHOT["roles"] if r["name"] == "agent-dev-core")

@@ -51,9 +51,12 @@ Repositories: Vinc, Vinc-homepage
 
 ## Gates that must pass before the pull request
 
-- scripts/gate_contrast.py
-- design-hub/scripts/gate_surface.py
-- scripts/gate_forbidden.py
+- {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
+- {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
+- {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
+- {"check":{"command":"scripts/gate_contrast.py","repos":["Vinc"],"type":"command_success"},"id":"command_1","on_fail":"block"}
+- {"check":{"command":"design-hub/scripts/gate_surface.py","repos":["Vinc"],"type":"command_success"},"id":"command_2","on_fail":"block"}
+- {"check":{"command":"scripts/gate_forbidden.py","repos":["Vinc"],"type":"command_success"},"id":"command_3","on_fail":"block"}
 
 Test command:
 
@@ -66,6 +69,7 @@ npm run typecheck
 - Hands off to: agent-gate-runner (CI Gate Runner)
 - Receives from: agent-design (Design Systems Engineer)
 - Works beside: agent-product-designer (Product Designer), agent-qa (QA Engineer)
+- Receives rejected packages from: agent-gate-runner (CI Gate Runner)
 
 ## Tools and MCP servers
 
@@ -90,8 +94,12 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Only a person does this
 
-- merge
-- switching the Korean language setting on
+- merge: merge
+- enable_korean: switching the Korean language setting on
+
+## Machine checks for never
+
+- {"actions":["merge"],"type":"forbidden_actions"}
 
 ## Trap note
 

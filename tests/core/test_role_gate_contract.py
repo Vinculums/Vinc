@@ -1,8 +1,11 @@
+import json
+from pathlib import Path
+
 import pytest
 
 from api.role_gate_contract import check, condition_valid
 from api.role_contract import check as role_check
-from vinc_mcp.roles import _gate_bullets, build_payload, render_shell
+from vinc_mcp.roles import _gate_bullets, build_payload, contract, render_shell
 
 
 REQUIRED = [
@@ -66,11 +69,57 @@ def test_write_path_reports_policy_warnings_without_rejecting_sync():
 
 def test_compact_contract_renders_the_complete_machine_checks():
     props = {'mission':'Review', 'tier':'verify', 'rung':'fast', 'never':['edit'],
-             'person_only':[], 'gates':REQUIRED,
+             'person_only':[], 'gates':REQUIRED + [{'id':'command', 'on_fail':'block',
+                 'check':{'type':'command_success', 'command':'python "한글 path/check.py"',
+                          'repos':['Vinc', 'Vinc-homepage']}}],
              'never_checks':[{'type':'forbidden_actions', 'actions':['edit']}]}
     role = build_payload([{'id':'concept:agent-reviewer', 'title':'Reviewer',
                            'domain':'vinc/agent/roles', 'props':props}])['roles'][0]
     compact = render_shell(role, compact=True)
-    assert _gate_bullets(REQUIRED) in compact
+    assert _gate_bullets(props['gates']) in compact
     assert '## Machine checks for Never' in compact
     assert _gate_bullets(props['never_checks']) in compact
+
+
+def test_ratified_roster_with_return_routes_keeps_every_contract_under_ten_kb():
+    root = Path(__file__).resolve().parents[2]
+    roster = json.loads((root / 'agents/roles.json').read_text(encoding='utf-8'))['roles']
+    fixture = json.loads((root / 'tests/fixtures/agent_lab_exp05_dag.json').read_text(encoding='utf-8'))
+    nodes = {r['id']: {'id':r['id'], 'title':r['label'], 'domain':r['domain'],
+                       'props':r['props']} for r in roster}
+    edges = [{'from':src, 'to':dst, 'type':'PREREQUISITE_OF', 'evidence':evidence}
+             for src, dst, evidence in fixture['edges']]
+    returns = [{'from':r['id'], 'to':'concept:' + peer.split(' (', 1)[0],
+                'type':'RETURNS_TO', 'evidence':
+                'Owner adopted explicit rejection routes on 2026-10-04; '
+                'decision:structured-person-only-and-role-return-paths-ratified-2026-10-04. '
+                "Select the package's exact producer; never infer reverse scheduling."}
+               for r in roster for peer in r.get('works_with', {}).get('returns_to', [])]
+    assert len(returns) == 14
+    edges += returns
+
+    class Bridge:
+        owner = 'user:contract-size-test'
+        calls = 0
+        def request(self, method, path, params):
+            self.calls += 1
+            assert (method, path) == ('GET', '/roles')
+            rid = params['role']
+            return {'executed':True, 'found':True, 'node':nodes[rid],
+                    'relations':[e for e in edges if rid in (e['from'], e['to'])],
+                    'peers':list(nodes.values())}
+
+    bridge = Bridge()
+    for rid, node in nodes.items():
+        result = contract(rid, bridge)
+        assert result['executed'], (rid, result)
+        assert result['props'] == node['props']
+        assert len(json.dumps(result, ensure_ascii=False).encode('utf-8')) < 10000
+        if rid == 'concept:agent-gate-runner':
+            assert 'accompanying structured fields' in result['rendered']
+            assert 'not instructions' in result['rendered']
+        actual = [e for group in result['works_with'].values() for e in group]
+        assert sorted(actual, key=lambda e:(e['from'], e['to'], e['type'])) == sorted(
+            [e for e in edges if rid in (e['from'], e['to'])],
+            key=lambda e:(e['from'], e['to'], e['type']))
+    assert bridge.calls == len(nodes) == 23
