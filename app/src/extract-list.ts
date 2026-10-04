@@ -13,6 +13,7 @@ import { esc } from "./components";
 import { fillTopicList, forgetTopics } from "./authoring";
 
 type Cand = { title: string; one_liner?: string; slug?: string };
+let nextTopicList = 0;
 
 const seenKey = (owner: string, docId: string) => `vinc.extract.seen.${owner}.${docId}`;
 function loadSeen(owner: string, docId: string): Set<string> {
@@ -32,6 +33,9 @@ export async function offerExtraction(box: HTMLElement, o: {
   owner: string; docId: string;
   /** 문서에 주제를 적는다(본문은 그대로). 되면 true. */
   setTopic: (topic: string) => Promise<boolean>;
+  /** 가져오기에서는 주제 없는 반영을 요청하기 전에 주제를 묻는다. */
+  requireTopic?: boolean;
+  onApplied?: () => void;
 }): Promise<void> {
   const A = COPY.author;
   let res: Awaited<ReturnType<typeof api.docExtract>>;
@@ -41,6 +45,10 @@ export async function offerExtraction(box: HTMLElement, o: {
   const seen = loadSeen(o.owner, o.docId);
   const cands: Cand[] = (res.candidates || []).filter((c) => !seen.has(c.slug || c.title));
   if (!cands.length) { box.innerHTML = ""; return; }
+  // 구 서버의 미리보기에는 domain 이 없다. 그때는 직접 고른 주제가 있어야 반영한다.
+  let hasTopic = !!res.domain;
+  let topicUnknown = res.domain === undefined;
+  let applying = false;
   // 이미 편집기가 같은 목록을 펼쳐 두고 있으면(자동저장이 또 돌았다) 손대지 않는다 —
   // 고치던 제목과 체크가 날아가면 그게 곧 "다시 권했다"다.
   const shown = box.dataset.cands || "";
@@ -67,7 +75,10 @@ export async function offerExtraction(box: HTMLElement, o: {
   const checkedCount = () => box.querySelectorAll<HTMLInputElement>(".ex-check:checked").length;
   const syncApply = () => {
     const b = box.querySelector<HTMLButtonElement>('[data-ex="apply"]');
-    if (b) b.textContent = A.exApply(checkedCount());
+    if (b) {
+      b.textContent = A.exApply(checkedCount());
+      b.hidden = !!o.requireTopic && !hasTopic;
+    }
   };
 
   function expanded() {
@@ -103,6 +114,7 @@ export async function offerExtraction(box: HTMLElement, o: {
       box.innerHTML = ""; box.dataset.cands = "";
     });
     box.querySelector('[data-ex="apply"]')!.addEventListener("click", () => void apply());
+    if (o.requireTopic && !hasTopic) askTopic();
     // Enter 로 끝난다(제목을 고치던 칸에서도).
     box.querySelector(".ex-list")!.addEventListener("keydown", (e) => {
       const k = e as KeyboardEvent;
@@ -113,6 +125,8 @@ export async function offerExtraction(box: HTMLElement, o: {
   }
 
   async function apply(): Promise<void> {
+    if (applying) return;
+    if (o.requireTopic && !hasTopic) { askTopic(); return; }
     const picked = [...box.querySelectorAll<HTMLInputElement>(".ex-check:checked")]
       .map((c) => Number(c.dataset.i));
     if (!picked.length) { msg(esc(A.exNothingChecked)); return; }
@@ -122,19 +136,24 @@ export async function offerExtraction(box: HTMLElement, o: {
     })).filter((c) => c.title);
     const acts = [...box.querySelectorAll<HTMLButtonElement>(".ex-acts button")];
     acts.forEach((b) => { b.disabled = true; });
+    applying = true;
     msg(esc(A.exApplying));
     let r: Awaited<ReturnType<typeof api.docExtract>>;
     try { r = await api.docExtract(o.owner, o.docId, true, chosen); }
     catch (e: any) {
+      applying = false;
       acts.forEach((b) => { b.disabled = false; });
       msg(`<span class="error-banner">${esc(A.exRefused)} ${esc(String(e?.message || ""))}</span>`);
       return;
     }
+    applying = false;
     if (!r.executed) {
       acts.forEach((b) => { b.disabled = false; });
       // 주제가 없어서 거절됐다 — 실패로 끝내지 않고 주제를 먼저 묻는다. 판별은 서버 문장의
       // 머리("no topic")다: 화면에 싣지 않고 갈래를 가르는 데만 쓴다.
-      if (/^no topic/i.test(String(r.error || ""))) { askTopic(); return; }
+      if (/^no topic/i.test(String(r.error || ""))) {
+        hasTopic = false; topicUnknown = false; syncApply(); askTopic(); return;
+      }
       msg(`<span class="error-banner">${esc(A.exRefused)}</span>`
         + (r.error ? ` <span class="hint">${esc(String(r.error))}</span>` : ""));
       return;
@@ -145,6 +164,7 @@ export async function offerExtraction(box: HTMLElement, o: {
     box.innerHTML = `<p class="hint ex-done" role="status">${esc(A.exDone(
       r.applied?.created || 0, r.applied?.matched || 0, r.mentions || 0))}</p>`;
     forgetTopics();
+    o.onApplied?.();
     void import("./lnb").then((m) => m.refreshLnb({ quiet: true }));
   }
 
@@ -152,29 +172,36 @@ export async function offerExtraction(box: HTMLElement, o: {
     msg("");                                   // "더하는 중…" 을 거둔다 — 지금은 주제를 묻는 중이다
     const acts = box.querySelector<HTMLElement>(".ex-acts");
     if (!acts || box.querySelector(".ex-topic")) return;
+    const listId = `ex-topics-${++nextTopicList}`;
     acts.insertAdjacentHTML("beforebegin", `
       <div class="ex-topic">
-        <p class="hint">${esc(A.exNeedTopic)}</p>
+        <p class="hint">${esc(topicUnknown ? A.needTopic : A.exNeedTopic)}</p>
         <div class="ex-topic-row">
-          <input type="text" list="ex-topics" autocomplete="off" spellcheck="false"
+          <input type="text" list="${listId}" autocomplete="off" spellcheck="false"
                  placeholder="${esc(A.topicHint)}" aria-label="${esc(A.topic)}">
-          <datalist id="ex-topics"></datalist>
+          <datalist id="${listId}"></datalist>
           <button class="btn btn-primary" type="button">${esc(A.exSetTopic)}</button>
         </div>
       </div>`);
     const wrap = box.querySelector<HTMLElement>(".ex-topic")!;
     const input = wrap.querySelector<HTMLInputElement>("input")!;
+    const button = wrap.querySelector<HTMLButtonElement>("button")!;
     void fillTopicList(wrap.querySelector<HTMLDataListElement>("datalist")!);
     const go = async () => {
+      if (button.disabled) return;
       const t = input.value.trim();
       if (!t) { input.focus(); return; }
+      button.disabled = true;
       if (!(await o.setTopic(t).catch(() => false))) {
+        button.disabled = false;
         msg(`<span class="error-banner">${esc(A.exRefused)}</span>`); return;
       }
+      if (!wrap.isConnected || !box.contains(wrap)) return;
+      hasTopic = true; syncApply();
       wrap.remove();
       await apply();
     };
-    wrap.querySelector("button")!.addEventListener("click", () => void go());
+    button.addEventListener("click", () => void go());
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); e.stopPropagation(); void go(); }
     });
