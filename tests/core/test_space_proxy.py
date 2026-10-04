@@ -23,6 +23,9 @@ import sys
 import unittest
 import urllib.error
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -249,6 +252,44 @@ class RefusalPassthroughTests(unittest.TestCase):
             spaceproxy.urllib.request.urlopen = old
         self.assertEqual(st, 502)
         self.assertEqual(out["error"], "account_unreachable")
+
+
+@pytest.mark.parametrize("status", [500, 502, 504])
+def test_search_failure_logs_safe_fields_and_preserves_response(status, caplog):
+    payload = {"error": "synthetic-private-response"}
+    error = urllib.error.HTTPError("https://example.invalid/private", status,
+                                   "private-reason", {}, io.BytesIO(json.dumps(payload).encode()))
+    with patch.object(spaceproxy.urllib.request, "urlopen", side_effect=error) as request, \
+            patch.object(spaceproxy.time, "monotonic", side_effect=[10.0, 10.125]):
+        result = spaceproxy.call(token="synthetic-private-key", team="private-team",
+                                 method="GET", path="/search",
+                                 params={"query": "synthetic-private-query", "top_k": 8})
+    assert result == (status, payload)
+    request.assert_called_once()
+    assert f"status={status} path=/api/graph/search duration_ms=125.0 failure=upstream" in caplog.text
+    for private in ("private-response", "private-reason", "private-key", "private-team", "private-query"):
+        assert private not in caplog.text
+
+
+def test_search_transport_failure_logs_no_exception_details(caplog):
+    with patch.object(spaceproxy.urllib.request, "urlopen",
+                      side_effect=TimeoutError("synthetic-private-key-query-body")) as request:
+        status, payload = spaceproxy.call(token="synthetic-key", team="", method="GET", path="/search")
+    assert (status, payload) == (502, {"error": "account_unreachable", "detail": "TimeoutError"})
+    request.assert_called_once()
+    assert "status=502 path=/api/graph/search" in caplog.text
+    assert "failure=transport" in caplog.text
+    assert "synthetic" not in caplog.text
+
+
+def test_successful_search_and_write_do_not_log_or_retry(caplog):
+    with patch.object(spaceproxy.urllib.request, "urlopen", return_value=_Resp(b'{}')) as request:
+        assert spaceproxy.call(token="k", team="", method="GET", path="/search") == (200, {})
+        request.assert_called_once()
+    with patch.object(spaceproxy.urllib.request, "urlopen", side_effect=OSError("private")) as request:
+        assert spaceproxy.call(token="k", team="", method="POST", path="/doc/put", body={})[0] == 502
+        request.assert_called_once()
+    assert not caplog.records
 
 
 class RouteTests(unittest.TestCase):
