@@ -58,6 +58,17 @@ class SemanticNoneTests(unittest.TestCase):
         self.assertEqual(out["grounds"], [])
         self.assertNotIn("error", out)
 
+    def test_legacy_stamp_notice_does_not_disable_a_working_semantic_arm(self):
+        res = result(0.6)
+        res.update(vector_note=q.UNSTAMPED_RUNTIME_NOTE, encoder_runtime_warning=True)
+        self.assertTrue(q._brief_semantic_none(res))
+        with mock.patch.object(q, "search", return_value=res):
+            out = q.brief("xqzvjk", owner="user:test", store=object())
+        self.assertEqual(out["status"], "none")
+        self.assertEqual(out["vector_note"], q.UNSTAMPED_RUNTIME_NOTE)
+        res["vector_note"] += "; encoder unreachable"
+        self.assertFalse(q._brief_semantic_none(res))
+
     def test_near_zero_token_multilingual_candidate_still_asks_back(self):
         with mock.patch.object(q, "search", return_value=result(0.4)):
             out = q.brief("다국어 질문", owner="user:test", store=object())

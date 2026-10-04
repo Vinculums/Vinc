@@ -3344,8 +3344,14 @@ def _brief_semantic_none(res: dict) -> bool:
     """
     hits = res.get("node_hits") or []
     if not hits or any(res.get(k) for k in (
-            "error", "node_error", "vector_note", "vector_rebuilding",
-            "encoder_runtime_warning")):
+            "error", "node_error", "vector_rebuilding")):
+        return False
+    # Legacy vectors lack runtime stamps but the semantic arm still ran. The
+    # pinned evaluation counts this specific notice separately from failures.
+    note = str(res.get("vector_note") or "")
+    if note.replace(UNSTAMPED_RUNTIME_NOTE, "").strip("; "):
+        return False
+    if res.get("encoder_runtime_warning") and note != UNSTAMPED_RUNTIME_NOTE:
         return False
     if any(type(h.get("hit_tokens")) is not int or h["hit_tokens"] != 0
            for h in hits):
