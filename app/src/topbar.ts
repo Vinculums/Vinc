@@ -2,6 +2,7 @@ import { api, cfg } from "./api";
 import { COPY } from "./copy";
 import { icon } from "./icons";
 import { armsNotice, type ArmsNotice } from "./components";
+import { renderSearchError } from "./search-error";
 
 /** 상단 바 (DEC D56·D57) — 셸의 주된 크롬.
  *
@@ -356,14 +357,14 @@ export function mountTopbar() {
     else location.hash = `#view/trace/${encodeURIComponent(h.id)}`;
   }
 
-  async function run(raw: string) {
+  async function run(raw: string): Promise<boolean> {
     const mine = ++seq;
     draw(true);
     try {
       const [res, docs] = await Promise.all([
         api.search(raw), api.docTitleMatches(raw).catch(() => null),
       ]);
-      if (mine !== seq) return;                  // 지나간 질의 — 버린다
+      if (mine !== seq) return false;            // 지나간 질의 — 버린다
       notice = armsNotice(res);
       const exact: Hit[] = (docs?.docs || []).map((d) => ({
         id: d.doc_id, docId: d.doc_id, title: d.title, domain: "", mark: "≡", snippet: "",
@@ -377,20 +378,23 @@ export function mountTopbar() {
         snippet: String(n.one_liner || n.snippet || "").slice(0, 90),
       })).filter((h: Hit) => h.id)].slice(0, 8);
       draw();
-    } catch {
-      if (mine !== seq) return;
+      return true;
+    } catch (failure) {
+      if (mine !== seq) return false;
       hits = [];
       notice = null;              // 아예 못 물어봤다 — 팔 이야기를 할 자리가 아니다
       // 실패해도 막다른 골목을 만들지 않는다 — 목록으로 가는 길은 남긴다
       // (검색이 죽었다고 문서에 닿을 방법까지 사라지면 안 된다).
-      box.innerHTML = `<p class="hint tb-rnote">${COPY.search.error}</p>`
-        + foot();
+      renderSearchError(box, failure, () => void run(raw), true);
+      box.insertAdjacentHTML("beforeend", foot());
       wireAll();
       open();
+      return false;
     }
   }
 
   q.addEventListener("input", () => {
+    ++seq;                     // debounce 중에도 지난 검색의 성공·오류를 버린다
     window.clearTimeout(timer);
     // 묻기는 **타자마다 묻지 않는다** — 한 턴은 사용자가 Enter 로 끝맺는 단위다
     // (라이브 검색을 그대로 두면 미완성 문장이 대화 로그에 쌓인다).
@@ -425,7 +429,7 @@ export function mountTopbar() {
       window.clearTimeout(timer);
       timer = undefined;
       if (raw.length >= 2) {
-        await run(raw);
+        if (!await run(raw)) return;
         if (hits.length) { go(hits[0]); return; }
       }
       // 두 글자가 안 되면 debounce 가 돈 적이 없어 `hits` 는 **이전 질의의 것**이다.
