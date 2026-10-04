@@ -30,6 +30,8 @@ class Route:
 
 
 READ_ROUTES = (
+    Route("GET", "/v1/roles", "vinc_role"),
+    Route("GET", "/v1/roles/{id}", "vinc_role", path_args=(("id", "role"),)),
     Route("GET", "/v1/me", "vinc_whoami"),
     Route("GET", "/v1/conventions", "vinc_conventions", query=("lang",)),
     Route("GET", "/v1/domains", "vinc_domains"),

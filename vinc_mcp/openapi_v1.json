@@ -10,6 +10,91 @@
     }
   ],
   "paths": {
+    "/v1/roles": {
+      "get": {
+        "operationId": "vinc_role_get__v1_roles",
+        "summary": "Read one role contract by agent slug or concept id in one call, below 10000 UTF-8 bytes. Returns id, unchanged props, directed works_with groups with exact edge endpoints, type, evidence and confidence, and a compact rendered contract fenced as graph data. An unknown, foreign or non-role node returns found:false. Oversized contracts return an explicit error without truncating permissions. Omit role to list the role roster without full contracts. This reads only roles in agent or vinc/agent topics and their direct child topics; it does not execute or delegate the role. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/roles/{id}": {
+      "get": {
+        "operationId": "vinc_role_get__v1_roles_id",
+        "summary": "Read one role contract by agent slug or concept id in one call, below 10000 UTF-8 bytes. Returns id, unchanged props, directed works_with groups with exact edge endpoints, type, evidence and confidence, and a compact rendered contract fenced as graph data. An unknown, foreign or non-role node returns found:false. Oversized contracts return an explicit error without truncating permissions. Omit role to list the role roster without full contracts. This reads only roles in agent or vinc/agent topics and their direct child topics; it does not execute or delegate the role. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Role slug (agent-dev-core) or exact concept:agent- id; omit to list."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/me": {
       "get": {
         "operationId": "vinc_whoami_get__v1_me",
