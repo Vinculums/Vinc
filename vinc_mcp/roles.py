@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import re
+import json
 
 #: 역할이 사는 주제, 읽는 순서대로. 앞의 것이 새 역할의 자리다(기본 팩 · GRAPH.md 안내).
 #: 뒤의 것은 Vinc 자기 그래프(모든 주제가 `vinc/` 아래)와 그 전에 시드된 스페이스의
@@ -87,7 +88,8 @@ def works_with(rid: str, nodes: list[dict], edges: list[dict]) -> dict:
         return f"{slug} ({title})" if title else slug
 
     out: dict[str, set[str]] = {"hands_to": set(), "receives_from": set(),
-                                "works_beside": set()}
+                                "works_beside": set(), "returns_to": set(),
+                                "receives_returns_from": set()}
     for e in edges or []:
         src, dst = str(e.get("source") or ""), str(e.get("target") or "")
         if rid not in (src, dst) or src == dst or not (is_role_id(src) and is_role_id(dst)):
@@ -98,6 +100,8 @@ def works_with(rid: str, nodes: list[dict], edges: list[dict]) -> dict:
             out["hands_to" if src == rid else "receives_from"].add(show(other))
         elif kind == "RELATED_TO":
             out["works_beside"].add(show(other))
+        elif kind == "RETURNS_TO":
+            out["returns_to" if src == rid else "receives_returns_from"].add(show(other))
     return {k: sorted(v) for k, v in out.items() if v}
 
 
@@ -129,7 +133,20 @@ def build_payload(roles: list[dict]) -> dict:
 # ── 껍데기 ────────────────────────────────────────────────────────────────────
 
 def _bullets(items) -> str:
-    return "\n".join(f"- {i}" for i in items) if items else "- (none)"
+    def show(item):
+        if isinstance(item, dict) and set(item) == {"action", "reason"}:
+            return f"{item['action']}: {item['reason']}"
+        return str(item)
+    return "\n".join(f"- {show(i)}" for i in items) if items else "- (none)"
+
+
+def _gate_bullets(items) -> str:
+    if not items:
+        return "- (none)"
+    # 문자열 목록의 기존 바이트를 보존하고, 구조 조건은 키를 숨기지 않고 싣는다.
+    return "\n".join("- " + (json.dumps(item, ensure_ascii=False, sort_keys=True,
+                        separators=(",", ":")) if isinstance(item, dict) else str(item))
+                     for item in items)
 
 
 def render_shell(role: dict, *, compact: bool = False) -> str:
@@ -143,7 +160,10 @@ def render_shell(role: dict, *, compact: bool = False) -> str:
                  f"Tier {props.get('tier', '')}, rung {props.get('rung', '')}",
                  "", "## Mission", str(props.get("mission") or "")]
         for key in ("gates", "never", "person_only"):
-            lines += ["", "## " + key.replace("_", " ").capitalize(), _bullets(props.get(key))]
+            renderer = _gate_bullets if key == "gates" else _bullets
+            lines += ["", "## " + key.replace("_", " ").capitalize(), renderer(props.get(key))]
+        if "never_checks" in props:
+            lines += ["", "## Machine checks for Never", _gate_bullets(props["never_checks"])]
         if role.get("works_with"):
             lines += ["", "## Works with"]
             for direction, peers in role["works_with"].items():
@@ -216,7 +236,7 @@ def render_shell(role: dict, *, compact: bool = False) -> str:
         "",
         "## Gates that must pass before the pull request",
         "",
-        _bullets(props.get("gates")),
+        _gate_bullets(props.get("gates")),
     ]
     if props.get("test_command"):
         body += ["", "Test command:", "", "```", props["test_command"], "```"]
@@ -224,7 +244,8 @@ def render_shell(role: dict, *, compact: bool = False) -> str:
     if together:
         body += ["", "## Works with", ""]
         for key, head in (("hands_to", "Hands off to"), ("receives_from", "Receives from"),
-                          ("works_beside", "Works beside")):
+                          ("works_beside", "Works beside"), ("returns_to", "Returns to"),
+                          ("receives_returns_from", "Receives rejected packages from")):
             if together.get(key):
                 body.append(f"- {head}: {', '.join(together[key])}")
     if props.get("tools"):
@@ -246,6 +267,8 @@ def render_shell(role: dict, *, compact: bool = False) -> str:
         "",
         _bullets(props.get("person_only")),
     ]
+    if "never_checks" in props:
+        body += ["", "## Machine checks for never", "", _gate_bullets(props["never_checks"])]
     # `pre_merge_check` 가 맨 앞인 이유: 이것만 서술이 아니라 **행위 직전에 돌릴
     # 명령**이다. 적어 두는 것은 함정을 막지 못하고 그 자리의 검사가 막는다
     # ([[record:writing-a-trap-down-does-not-stop-it-a-check-does]]).
@@ -333,12 +356,19 @@ def contract(role: str | None, bridge, *, forced_owner: str | None = None) -> di
     node = got["node"]
     rid = node["id"]
     relations = got.get("relations") or []
-    groups = {"hands_to": [], "receives_from": [], "works_beside": []}
+    groups = {"hands_to": [], "receives_from": [], "works_beside": [],
+              "returns_to": [], "receives_returns_from": []}
     for edge in relations:
         if edge["from"] == edge["to"]:
             continue
-        key = "works_beside" if edge["type"] == "RELATED_TO" else (
-            "hands_to" if edge["from"] == rid else "receives_from")
+        if edge["type"] == "RELATED_TO":
+            key = "works_beside"
+        elif edge["type"] == "RETURNS_TO":
+            key = "returns_to" if edge["from"] == rid else "receives_returns_from"
+        elif edge["type"] == "PREREQUISITE_OF":
+            key = "hands_to" if edge["from"] == rid else "receives_from"
+        else:
+            continue
         groups[key].append(edge)
     entry = build_payload([{**node, "works_with": works_with(rid, got.get("peers") or [],
         [{**e, "source": e["from"], "target": e["to"]} for e in relations])}])["roles"][0]
