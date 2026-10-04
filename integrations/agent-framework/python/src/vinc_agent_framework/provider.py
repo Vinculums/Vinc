@@ -13,6 +13,7 @@ from pydantic import Field
 from vinc_client import (AsyncVincClient, VincQuotaExceeded, VincUnavailable, format_brief,
                          format_search)
 from vinc_client.context import DEFAULT_MAX_CHARS
+from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
 
 DEFAULT_SOURCE_ID = "vinc"
 
@@ -79,7 +80,9 @@ class VincContextProvider(ContextProvider):
                  base_url: str | None = None, space: str | None = None,
                  source_id: str = DEFAULT_SOURCE_ID, search_fallback: bool = True,
                  max_chars: int = DEFAULT_MAX_CHARS, max_excerpts: int = 3,
-                 min_query_chars: int = 3, expose_tools: bool = False) -> None:
+                 min_query_chars: int = 3, expose_tools: bool = False,
+                 prefetch_role: str | None = None,
+                 prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> None:
         super().__init__(source_id)
         self.client = client or AsyncVincClient(api_key, base_url=base_url, space=space)
         self._owns_client = client is None
@@ -87,14 +90,21 @@ class VincContextProvider(ContextProvider):
         self.max_chars = max_chars
         self.max_excerpts = max_excerpts
         self.min_query_chars = min_query_chars
+        self.prefetch_role = prefetch_role
+        self.prefetch_max_chars = prefetch_max_chars
         self._tools = create_vinc_tools(self.client, max_chars=max_chars) if expose_tools else []
 
     async def before_run(self, *, agent: Any, session: AgentSession, context: SessionContext,
                          state: dict[str, Any]) -> None:
-        block = await self.client.get_context(
-            _last_user_text(context.input_messages), search_fallback=self.search_fallback,
-            max_chars=self.max_chars, max_excerpts=self.max_excerpts,
-            min_query_chars=self.min_query_chars)
+        task = _last_user_text(context.input_messages)
+        if self.prefetch_role:
+            block = await prefetch(self.client, self.prefetch_role, task,
+                                   max_chars=self.prefetch_max_chars)
+        else:
+            block = await self.client.get_context(
+                task, search_fallback=self.search_fallback,
+                max_chars=self.max_chars, max_excerpts=self.max_excerpts,
+                min_query_chars=self.min_query_chars)
         if block:
             context.extend_instructions(self.source_id, block)
         if self._tools:
@@ -123,3 +133,9 @@ async def record_episode(client: AsyncVincClient, title: str, *, summary: str = 
     """
     return await client.record_episode(title, summary=summary, about=about, date=date,
                                        domain=domain, tags=tags, space=space)
+
+
+async def prefetch(client: AsyncVincClient, role_id: str, task: str, *, space: str | None = None,
+                   max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+    """Read the selected role and its required/task evidence before a model call; never write."""
+    return await client.prefetch(role_id, task, space=space, max_chars=max_chars)

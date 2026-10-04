@@ -21,6 +21,7 @@ from .context import DEFAULT_MAX_CHARS, format_answer
 from .episode import build_episode_fragment, check_about
 from .errors import (VincAuthError, VincError, VincInvalidArgument, VincPartialWrite,
                      VincQuotaExceeded, VincUnavailable, error_class)
+from .prefetch import DEFAULT_PREFETCH_MAX_CHARS, reading_list, render_prefetch
 
 log = logging.getLogger("vinc_client")
 
@@ -172,6 +173,10 @@ class _Base:
         return _Call("GET", f"/v1/nodes/{_segment(node_id)}", space=space)
 
     @staticmethod
+    def _role(role_id, space) -> _Call:
+        return _Call("GET", f"/v1/roles/{_segment(role_id)}", space=space)
+
+    @staticmethod
     def _search(query, limit, cursor, detail, historical, space) -> _Call:
         return _Call("POST", "/v1/search", body=_drop_none(
             {"query": query, "limit": limit, "cursor": cursor, "detail": detail,
@@ -230,6 +235,26 @@ class VincClient(_Base):
     def node(self, node_id: str, *, space: str | None = None) -> dict[str, Any]:
         """``GET /v1/nodes/{id}``: read one node by id. Raises ``VincNotFound`` if absent."""
         return self._send(self._node(node_id, space))
+
+    def role(self, role_id: str, *, space: str | None = None) -> dict[str, Any]:
+        """Read a genuine owner-visible role's complete contract and collaboration links."""
+        return self._send(self._role(role_id, space))
+
+    def prefetch(self, role_id: str, task: str, *, space: str | None = None,
+                 max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+        """Before a model call, read the chosen role, every required spec and task evidence.
+
+        No content or permission cache, write, delegation or automatic role adoption.
+        Domain supplies task search context; it is not claimed to be a search filter.
+        A required spec miss or service/authentication error fails explicitly.
+        """
+        contract = self.role(role_id, space=space)
+        specs = [(doc, self.brief(doc, max_excerpts=3, space=space))
+                 for doc in reading_list(contract)]
+        query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
+        brief = self.brief(task, max_excerpts=3, space=space)
+        search = self.search(query, limit=5, space=space)
+        return render_prefetch(contract, task, specs, brief, search, max_chars=max_chars)
 
     def search(self, query: str, *, limit: int | None = None, cursor: str | None = None,
                detail: str | None = None, historical: bool | None = None,
@@ -334,6 +359,21 @@ class AsyncVincClient(_Base):
 
     async def node(self, node_id: str, *, space: str | None = None) -> dict[str, Any]:
         return await self._send(self._node(node_id, space))
+
+    async def role(self, role_id: str, *, space: str | None = None) -> dict[str, Any]:
+        """Async complete role contract read."""
+        return await self._send(self._role(role_id, space))
+
+    async def prefetch(self, role_id: str, task: str, *, space: str | None = None,
+                       max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+        """Async fresh role/spec/task evidence retrieval before the model runs."""
+        contract = await self.role(role_id, space=space)
+        specs = [(doc, await self.brief(doc, max_excerpts=3, space=space))
+                 for doc in reading_list(contract)]
+        query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
+        brief = await self.brief(task, max_excerpts=3, space=space)
+        search = await self.search(query, limit=5, space=space)
+        return render_prefetch(contract, task, specs, brief, search, max_chars=max_chars)
 
     async def search(self, query: str, *, limit: int | None = None, cursor: str | None = None,
                      detail: str | None = None, historical: bool | None = None,

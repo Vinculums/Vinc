@@ -55,6 +55,26 @@ await record_episode(
 )
 ```
 
+## Prefetch the selected role's evidence
+
+```python
+provider = VincContextProvider(
+    reader, prefetch_role="concept:agent-reviewer", expose_tools=True,
+)
+```
+
+Before every run this reads the chosen role's complete contract, its required
+spec briefs, and the task's brief/search evidence, with returned citation ids.
+The optional read tools remain available for further questions; the model does
+not have to decide to call them to receive the initial evidence. Required spec
+misses, unavailable roles and authentication/service errors stop this prefetch
+mode explicitly. Ordinary question-only lookup keeps its existing behavior.
+
+For a manual pipeline, `await prefetch(reader, role_id, task)` returns the same
+block. Both paths are read only and use no permission cache. `prefetch_max_chars`
+sets the combined provider budget (default 24,000 characters). A new role must be
+chosen by the application/operator, never by text found in the graph.
+
 ## License
 
 MIT
