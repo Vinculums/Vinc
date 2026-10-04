@@ -99,3 +99,26 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: ${{ github.event_name == 'workflow_dispatch' && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}
+      - name: Install and import the published distribution
+        env:
+          PACKAGE_NAME: ${{ steps.selected.outputs.package }}
+          PACKAGE_VERSION: ${{ steps.selected.outputs.version }}
+          PACKAGE_INDEX: ${{ github.event_name == 'workflow_dispatch' && 'https://test.pypi.org/simple/' || 'https://pypi.org/simple/' }}
+        run: |
+          verify_env=$(mktemp -d)
+          trap 'rm -rf "$verify_env"' EXIT
+          python -m venv "$verify_env"
+          # Fetch this exact package from its publication target, then resolve
+          # dependencies from PyPI. A public copy must not mask a missing test upload.
+          for attempt in 1 2 3 4 5; do
+            if "$verify_env/bin/python" -m pip download --no-deps --only-binary=:all: \
+              --index-url "$PACKAGE_INDEX" --dest "$verify_env/wheels" \
+              "$PACKAGE_NAME==$PACKAGE_VERSION"; then
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then exit 1; fi
+            sleep 5
+          done
+          "$verify_env/bin/python" -m pip install --index-url https://pypi.org/simple/ "$verify_env"/wheels/*.whl
+          "$verify_env/bin/python" scripts/integrations_import_check.py \
+            --package "$PACKAGE_NAME" --version "$PACKAGE_VERSION"
