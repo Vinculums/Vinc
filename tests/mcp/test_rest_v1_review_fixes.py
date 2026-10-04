@@ -18,6 +18,8 @@ from vinc_mcp.rest_api import _failure
 
 # (도구, 결과, by_id, 기대 상태, 기대 코드). 상태가 None 이면 성공으로 통과해야 한다.
 FAILURE_CASES = [
+    ("vinc_edges", {"executed": True, "found": False, "edges": []}, True, 404, "not_found"),
+    ("vinc_edges", {"executed": True, "found": True, "edges": []}, True, None, None),
     ("vinc_search", {"executed": False, "error": "invalid_cursor: x"}, False, 400, "invalid_argument"),
     ("vinc_search", {"executed": True, "rows": []}, False, None, None),
     ("vinc_recall", {"executed": False, "error": "stale_cursor"}, False, 400, "invalid_argument"),
@@ -25,6 +27,8 @@ FAILURE_CASES = [
     ("vinc_brief", {"status": "none", "unreadable": ["concept:x"]}, False, 404, "not_found"),
     ("vinc_brief", {"status": "none"}, True, 404, "not_found"),
     ("vinc_brief", {"status": "none"}, False, None, None),
+    ("vinc_node", {"executed": True, "found": False, "node": None}, True, 404, "not_found"),
+    ("vinc_node", {"executed": False, "note": "no reachable store"}, True, 503, "upstream_unavailable"),
     ("vinc_graph", {"found": False}, True, 404, "not_found"),
     ("vinc_decide", {"found": False}, False, 404, "not_found"),
     ("vinc_domains", {"executed": True, "rows": []}, False, None, None),
@@ -94,12 +98,14 @@ def test_unconfirmed_write_says_it_may_have_applied():
 # ── 서버 수준 ────────────────────────────────────────────────────────────────
 
 _READ_SAMPLES = {
+    ("GET", "/v1/nodes/{id}/edges"): ("", {"node": "concept:x"}),
+    ("POST", "/v1/edges/query"): ({"nodes": ["concept:x"]}, {"nodes": ["concept:x"]}),
     ("GET", "/v1/me"): (None, {}),
     ("GET", "/v1/conventions"): ("?lang=en", {"lang": "en"}),
     ("GET", "/v1/domains"): (None, {}),
     ("POST", "/v1/search"): ({"query": "x"}, {"query": "x"}),
     ("POST", "/v1/brief"): ({"query": "x"}, {"query": "x"}),
-    ("GET", "/v1/nodes/{id}"): ("", {"query": "concept:x"}),
+    ("GET", "/v1/nodes/{id}"): ("", {"node_id": "concept:x"}),
     ("GET", "/v1/nodes/{id}/neighbors"): ("", {"node": "concept:x"}),
     ("GET", "/v1/nodes/{id}/graph"): ("", {"seed_id": "concept:x"}),
     ("POST", "/v1/graph"): ({"url": "https://vincs.io/app/#view/trace/concept:x"},

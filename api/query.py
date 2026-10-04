@@ -24,6 +24,7 @@ from store.embedded_backend import vector_generation
 from engines import domain_hierarchy
 
 from . import graphmd
+from vinc_rag import retrieval as _retrieval
 
 # 바닥 보조 함수는 store 로, 검색 코어는 vinc_rag 로 옮겼다(VIN-243). 같은 이름을 여기서
 # 다시 내보내므로 호출부와 `q.X` 는 그대로다. 근거: [[vinc.plan.team-split]]
@@ -96,8 +97,64 @@ from vinc_rag.retrieval import (  # noqa: E402,F401  (재수출)
     recall_plan,
     rrf_fuse,
     score_preference,
-    search,
 )
+
+
+def _doc_cite_ids(store, owner: str | None, doc_ids) -> dict[str, str]:
+    """문서 키와 인용할 노드 id는 다르다. 읽을 수 있는 미러만 인용한다."""
+    ids = {f"concept:doc.{doc_id}" for doc_id in doc_ids if doc_id}
+    if not ids or store is None:
+        return {}
+    where = "c.concept_id IN $ids"
+    params = {"ids": pkns.keys(owner, sorted(ids))}
+    if owner:
+        where += " AND c.owner_id = $owner"
+        params["owner"] = owner
+    rows = store.run(f"MATCH (c:Concept) WHERE {where} "
+                     "RETURN c.concept_id AS id", params) or []
+    return {nid[len("concept:doc."):]: nid for row in rows
+            if (nid := pkns.strip(str(row.get("id") or ""))) in ids}
+
+
+def _cite_doc_rows(rows: list[dict], cites: dict[str, str]) -> list[dict]:
+    # 행은 보존한다. 미러가 없을 때 doc 키를 노드 id로 꾸미지 않는다.
+    return [{**row, "cite_id": cites.get(str(row.get("doc_id") or "")),
+             **({"cite_unavailable": "document mirror missing or unreadable"}
+                if str(row.get("doc_id") or "") not in cites else {})}
+            for row in rows]
+
+
+def search(query: str, *, query_embedding: list[float] | None = None,
+           top_k: int = 5, filters: dict | None = None, owner: str | None = None,
+           cursor: str | None = None, detail: str = "summary",
+           historical: bool = False, as_of: str | None = None,
+           query_runtime: str | None = None, cfg=None, store=None) -> dict:
+    """검색 순위와 페이지는 그대로 두고 공개 응답에 정확한 인용 id를 붙인다."""
+    result = _retrieval.search(
+        query, query_embedding=query_embedding, top_k=top_k, filters=filters,
+        owner=owner, cursor=cursor, detail=detail, historical=historical,
+        as_of=as_of, query_runtime=query_runtime, cfg=cfg, store=store)
+    result["node_hits"] = [{**hit, "cite_id": hit.get("id") or None}
+                           for hit in result.get("node_hits") or []]
+    rows = result.get("rows") or []
+    if not rows:
+        return result
+    owns = store is None
+    try:
+        if owns:
+            store = open_store(cfg or load_config())
+        cites = _doc_cite_ids(store, owner, [row.get("doc_id") for row in rows])
+        result["rows"] = _cite_doc_rows(rows, cites)
+    except Exception as exc:
+        result["rows"] = _cite_doc_rows(rows, {})
+        result["citation_error"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if owns and store is not None:
+            try:
+                store.close()
+            except Exception as exc:
+                result.setdefault("citation_error", f"{type(exc).__name__}: {exc}")
+    return result
 
 
 # ── Plan builders (pure) ─────────────────────────────────────────────────────
@@ -1201,6 +1258,52 @@ def seed_lookup_plan(seed: str, *, owner: str | None = None) -> QueryPlan:
                      + [f"{expr} AS {alias}" for alias, expr in extra.items()])
     cypher = f"MATCH (n:{label}) WHERE {where} RETURN {cols}"
     return QueryPlan("seed_lookup", cypher, params, note=f"seed existence probe ({label})")
+
+
+def node_plan(node_id: str, *, owner: str) -> QueryPlan:
+    """정확한 id의 저장 필드만 읽는다. 이웃·발췌·배치는 조회하지 않는다."""
+    from store.embedded_schema import node_table_specs
+
+    if node_id.startswith("domain:"):
+        name = node_id[len("domain:"):]
+        # Domain은 무소유 구조다. 소유자가 쓰는 주제와 그 조상만 정확히 읽는다.
+        # 근거: [[vinc.spec.dataplane §2.1]]
+        branches = [
+            f"MATCH (n:{label}) WHERE n.owner_id = $owner "
+            "AND (n.domain = $name OR starts_with(n.domain, $prefix)) "
+            "RETURN $name AS name"
+            for label in ("Concept", "Record", "Episode", "Decision")
+        ]
+        return QueryPlan("node", " UNION ALL ".join(branches),
+                         {"owner": owner, "name": name, "prefix": name + "/"})
+    label, pk = _seed_table(node_id)
+    # 열 목록은 스키마를 따른다. 종류에 없는 props나 유효구간을 만들어 내지 않는다.
+    # 근거: [[vinc.spec.dataplane §2.2]]
+    columns = node_table_specs()[label]["cols"]
+    fields = ", ".join(f"n.{col} AS {'id' if col == pk else col}" for col in columns)
+    return QueryPlan("node", f"MATCH (n:{label}) WHERE n.{pk} = $node "
+                     f"AND n.owner_id = $owner RETURN {fields}",
+                     {"node": pkns.key(owner, node_id), "owner": owner})
+
+
+def node(node_id: str, *, owner: str, cfg=None, store=None) -> dict:
+    """한 노드를 저장된 모양으로 돌려준다. 없는 노드와 다른 소유자의 노드는 같다."""
+    result = execute(node_plan(node_id, owner=owner), cfg, store=store)
+    rows = result.pop("rows", [])
+    if not result.get("executed"):
+        return result
+    result["found"] = bool(rows)
+    result["node"] = None
+    if rows:
+        stored = dict(rows[0])
+        if node_id.startswith("domain:"):
+            stored = {"id": node_id, "kind": "domain", "name": stored["name"]}
+        else:
+            stored["kind"] = stored.get("type") or _seed_table(node_id)[0].lower()
+        if "props" in stored:
+            stored["props"] = _props_to_obj(stored["props"])
+        result["node"] = stored
+    return result
 
 
 # 사용자 선택 프리셋 정본 — **2종**(발주자 지시 2026-08-02, D34 개정).
@@ -2633,6 +2736,13 @@ def node_context(*, owner: str, node: str, limit: int = 4,
             "excerpt": " ".join((r.get("text") or "").split())[:240],
             "method": r.get("method") or "",
         } for r in ment]
+        try:
+            cites = _doc_cite_ids(store, owner, all_ids)
+        except Exception as exc:
+            cites = {}
+            base["citation_error"] = f"{type(exc).__name__}: {exc}"
+        base["excerpts"] = _cite_doc_rows(base["excerpts"], cites)
+        base["sources"]["items"] = _cite_doc_rows(base["sources"]["items"], cites)
         base["arm"] = arm
         base["links"] = _node_links(store, node, owner=owner,
                                     with_evidence=with_evidence,
@@ -2942,7 +3052,7 @@ def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
     같은 꼴을 내도록 한 자리로 모은 꼬리. cand 는 검색 후보(랭킹 경로) 또는
     {"id": ...} 하나(직참조 경로)다."""
     nid = str(cand.get("id") or "")
-    base["node"] = {"id": nid,
+    base["node"] = {"id": nid, "cite_id": nid,
                     "title": ctx.get("title") or cand.get("title") or nid,
                     "domain": cand.get("domain") or ctx.get("domain") or "",
                     "kind": ctx.get("node_kind") or cand.get("kind") or "",
@@ -2964,12 +3074,17 @@ def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
     base["excerpts"] = list(ctx.get("excerpts") or [])
     links = ctx.get("links") if isinstance(ctx.get("links"), dict) else {}
     items = list(links.get("items") or [])
+    items = [{**item, "cite_id": item.get("id") or None} for item in items]
     # 근거로서 강한 것부터: 신뢰도 → 근거 문장 보유 → node_context 의 결정론 순서
     # (안정 정렬이라 동점이면 그 순서가 그대로 남는다). ask.ts answerFor 와 같다.
     items.sort(key=lambda it: (-float(it.get("confidence") or 0.0),
                                0 if it.get("evidence") else 1))
     base["links"] = {**links, "items": items}
     base["grounds"] = _brief_grounds(nid, base["excerpts"], items)
+    base["cite_grounds"] = sorted({nid} | {
+        row["cite_id"] for row in base["excerpts"] + items if row.get("cite_id")})
+    if ctx.get("citation_error"):
+        base["citation_error"] = ctx["citation_error"]
     # 노드는 읽었는데 그 뒤(발췌·문서 제목·관계)가 실패했으면 **반쪽**이라고 말한다.
     # node_context 는 그때도 executed 를 세우므로, 표식이 없으면 빈 관계·빈 발췌가 "연결
     # 없는 노드"로 읽힌다. 최상위 `error` 는 쓰지 않는다 — REST v1 이 해소된 답을 500 으로 바꾼다.
@@ -3191,6 +3306,7 @@ def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
     """노드 후보를 brief 가 내보내는 후보 꼴로 줄인다."""
     return [{
         "id": h.get("id") or "",
+        "cite_id": h.get("id") or None,
         "title": h.get("title") or (h.get("id") or ""),
         "domain": h.get("domain") or "", "kind": h.get("kind") or "",
         "matched_in": h.get("matched_in") or "",
@@ -3201,7 +3317,8 @@ def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
 
 #: 후보 재료로 옮겨 싣는 키 — 확정 답의 재료 꼴(:func:`_brief_material`)과 같다.
 _BRIEF_MATERIAL_KEYS = ("node", "one_liner", "body_src", "body_cite", "excerpts",
-                        "links", "grounds", "validity_note", "partial", "partial_note")
+                        "links", "grounds", "cite_grounds", "citation_error",
+                        "validity_note", "partial", "partial_note")
 
 
 def _brief_candidate_material(cand: dict, **kw) -> dict:
@@ -4553,6 +4670,127 @@ def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
     return {"kind": "neighbors", "executed": True, "found": True, "node": node,
             "neighbors": out[:_lim], "by_rel": by_rel, "count": len(out),
             "neighbors_truncated": len(out) > _lim}
+
+
+def node_edges(node: str | None = None, *, nodes: list[str] | None = None,
+               owner: str | None = None, type: str | None = None,
+               dir: str = "both", limit: int = 500, cfg=None, store=None) -> dict:
+    """그래프 배치 없이 저장된 방향·근거·신뢰도를 읽는다.
+
+    끝점 키와 관계 열은 스키마를 따른다. 양쪽 저작 노드의 소유자를 검사하고,
+    전역 Domain은 그 소유자의 노드와 조상에 연결된 범위만 보여준다.
+    조회가 없는 노드나 엣지를 만들어 내지 않는다.
+    근거: [[vinc.spec.dataplane §5]] · [[vinc.canon.mcp-contract]].
+    """
+    from store.embedded_schema import node_table_specs, rel_table_specs
+
+    base = {"kind": "edges", "executed": False, "edges": [], "count": 0}
+    ids = [node] if node is not None else nodes
+    if (not owner or (node is not None and nodes is not None)
+            or not isinstance(ids, list) or not 1 <= len(ids) <= 100
+            or any(not isinstance(n, str) or not n.strip() or "\x1f" in n for n in ids)
+            or dir not in ("out", "in", "both")
+            or isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 5000
+            or (type is not None and (not isinstance(type, str) or not type.strip()))):
+        return {**base, "error": "invalid argument: provide owner, either node or 1..100 nodes, "
+                "dir out/in/both, and limit 1..5000"}
+    ids = list(dict.fromkeys(ids))
+    specs, rels = node_table_specs(), rel_table_specs()
+    grouped: dict[str, list[str]] = {}
+    for nid in ids:
+        domain = domain_hierarchy.parse_id(nid)
+        label, _ = ("Domain", "name") if domain else _seed_table(nid)
+        grouped.setdefault(label, []).append(domain if domain else pkns.key(owner, nid))
+    params = {"owner": owner, **{label: values for label, values in grouped.items()}}
+    cfg = cfg or load_config()
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    if store is None:
+        return {**base, "note": "no reachable store"}
+
+    def read(cypher, args):
+        return execute(QueryPlan("edges", cypher, args), cfg, store=store)
+
+    try:
+        visible: set[str] = set()
+        if "Domain" in grouped:
+            # Domain은 무소유 좌표다. 소유한 노드를 기준으로 범위를 좁혀
+            # 전역 루트 아래 다른 소유자의 하위 주제를 노출하지 않는다.
+            arms = [f"MATCH (n:{r['from']})-[:{r['label']}]->(d:Domain) "
+                    "WHERE n.owner_id = $owner RETURN d.name AS domain"
+                    for r in rels if r["to"] == "Domain"
+                    and "owner_id" in specs[r["from"]]["cols"]]
+            res = read(" UNION ALL ".join(arms), {"owner": owner})
+            if not res["executed"]:
+                return {**base, "error": res.get("error"), "note": res.get("note", "")}
+            for row in res["rows"]:
+                parts = str(row["domain"]).split("/")
+                visible.update("/".join(parts[:i]) for i in range(1, len(parts) + 1))
+        params["visible"] = sorted(visible)
+        probes = []
+        for label in grouped:
+            pk = specs[label]["pk"]
+            scope = "n.name IN $visible" if label == "Domain" else "n.owner_id = $owner"
+            probes.append(f"MATCH (n:{label}) WHERE n.{pk} IN ${label} AND {scope} "
+                          f"RETURN n.{pk} AS id, '{label}' AS label")
+        res = read(" UNION ALL ".join(probes), params)
+        if not res["executed"]:
+            return {**base, "error": res.get("error"), "note": res.get("note", "")}
+        found = {"domain:" + r["id"] if r["label"] == "Domain" else pkns.strip(r["id"])
+                 for r in res["rows"]}
+        missing = [nid for nid in ids if nid not in found]
+        arms = []
+        for rel in rels:
+            src, dst, label = rel["from"], rel["to"], rel["label"]
+            # type은 물리 관계 표, subtype은 TYPED·ATTACHES_TO에 저장된 저작 타입이다.
+            if type and type != label and "type" not in rel["props"]:
+                continue
+            incident = []
+            if dir in ("out", "both") and src in grouped:
+                incident.append(f"a.{specs[src]['pk']} IN ${src}")
+            if dir in ("in", "both") and dst in grouped:
+                incident.append(f"b.{specs[dst]['pk']} IN ${dst}")
+            if not incident:
+                continue
+            guards = ["(" + " OR ".join(incident) + ")"]
+            for alias, endpoint in (("a", src), ("b", dst)):
+                if "owner_id" in specs[endpoint]["cols"]:
+                    guards.append(f"{alias}.owner_id = $owner")
+                elif endpoint == "Domain" and src == dst == "Domain":
+                    guards.append(f"{alias}.name IN $visible")
+            if type and type != label:
+                guards.append("r.type = $type")
+                params["type"] = type
+            evidence = "r.evidence" if "evidence" in rel["props"] else "CAST(NULL AS STRING)"
+            confidence = "r.confidence" if "confidence" in rel["props"] else "CAST(NULL AS DOUBLE)"
+            subtype = "r.type" if "type" in rel["props"] else "CAST(NULL AS STRING)"
+            arms.append(f"MATCH (a:{src})-[r:{label}]->(b:{dst}) WHERE "
+                        + " AND ".join(guards)
+                        + f" RETURN a.{specs[src]['pk']} AS source, b.{specs[dst]['pk']} AS target, "
+                        f"'{src}' AS source_label, '{dst}' AS target_label, '{label}' AS type, "
+                        f"{evidence} AS evidence, {confidence} AS confidence, {subtype} AS subtype")
+        res = read(" UNION ALL ".join(arms), params) if arms else {"executed": True, "rows": []}
+        if not res["executed"]:
+            return {**base, "error": res.get("error"), "note": res.get("note", "")}
+        edges = [{"from": "domain:" + r["source"] if r["source_label"] == "Domain"
+                  else pkns.strip(r["source"]),
+                  "to": "domain:" + r["target"] if r["target_label"] == "Domain"
+                  else pkns.strip(r["target"]), "type": r["type"],
+                  "evidence": r["evidence"], "confidence": r["confidence"],
+                  **({"subtype": r["subtype"]} if r["subtype"] else {}),
+                  "derived": r["type"] in ("IN_DOMAIN", "PARENT_OF", "MENTIONS")}
+                 for r in res["rows"]]
+        edges.sort(key=lambda e: (e["from"], e["to"], e["type"],
+                                  str(e.get("subtype", "")), str(e["evidence"]),
+                                  str(e["confidence"])))
+        return {**base, "executed": True, "nodes": ids, "missing_nodes": missing,
+                **({"node": node, "found": node in found} if node is not None else {}),
+                "edges": edges[:limit], "count": len(edges),
+                "edges_truncated": len(edges) > limit}
+    finally:
+        if owns:
+            store.close()
 
 
 # ── 최단 경로 증거 체인 (E-G7) — 분산 증거 단편화 해소 ─────────────────────────

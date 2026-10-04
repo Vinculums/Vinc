@@ -462,7 +462,8 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     # 여기서야 알므로 이 자리다 — 신규가 아니면 보내지 않은 필드는 보존되니 묻지 않는다.
     # 근거: [[vinc.canon.agent-roles §6]]
     if label == "Concept" and role_contract.is_role_id(nid):
-        warnings.extend(role_contract.check(node, created=not matched))
+        warnings.extend(role_contract.check(node, created=not matched,
+                                            stored_domain=current.get("domain")))
 
     sets, params = [], {"id": key}
     def _set(col, val):

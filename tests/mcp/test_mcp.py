@@ -40,7 +40,7 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              # 한 번 아니라고 판단한 쌍이 매번 다시 올라와 목록이 수렴하지 않는다.
              "vinc_merge_candidates", "vinc_merge_reject",
              # E-G5/G7 — 단일 홉 관측(SoG) · 최단 경로 증거 체인.
-             "vinc_neighbors", "vinc_path",
+             "vinc_neighbors", "vinc_edges", "vinc_path",
              # D45 P4 — 문서 정본(Chunk=SSoT) 직접 CRUD: get/list(조회) · put/delete(쓰기).
              "vinc_doc_get", "vinc_doc_list", "vinc_doc_put", "vinc_doc_delete",
              # D45-V — 정본에서 개념을 파생한다. 이게 없으면 어시스턴트는 문서를
@@ -52,7 +52,7 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              # GM-1 — 쓰기 전에 읽는 관례(GRAPH.md). 재가된 어휘를 보는 유일한 읽기 채널.
              "vinc_conventions",
              # W1 — 질문 하나로 답변 재료를 모으는 조인 읽기(조회 전용).
-             "vinc_brief",
+             "vinc_brief", "vinc_node",
              # 스페이스가 주소에서 **인자**로 내려오면서 생긴 자리(발주자 지시
              # 2026-08-31). `space` 에 실을 id 를 받을 곳이 없으면 그 인자는 못 쓴다.
              "vinc_whoami"}
@@ -90,6 +90,8 @@ class ToolContractTests(unittest.TestCase):
                     "from_id": "concept:x", "to_id": "concept:y", "type": "relates_to",
                     "a": "concept:x", "b": "concept:y",   # E-G7 vinc_path 필수 인자
                     "text": "x", "doc_id": "d0"}          # D45 P4 문서 정본 필수 인자
+            if t["name"] == "vinc_edges":
+                args.pop("nodes")
             tools.call(t["name"], args, b)
         writes = sorted({c[1] for c in b.calls if c[0] == "POST"})
         # `/doc/extract` 는 apply=false 면 아무것도 안 쓰지만 **쓸 수 있는** 표면이라

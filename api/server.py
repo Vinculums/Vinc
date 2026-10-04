@@ -685,6 +685,18 @@ class VincApp:
             _req(p, "node"), owner=_req(p, "owner"),
             limit=_int(p.get("limit"), 50), store=r))
 
+    def read_node_edges(self, p):
+        nodes = p.get("nodes")
+        if isinstance(nodes, str):
+            try:
+                nodes = json.loads(nodes)
+            except ValueError:
+                return {"executed": False, "error": "invalid nodes JSON array"}
+        return self._read(lambda r: q.node_edges(
+            p.get("node"), nodes=nodes, owner=_req(p, "owner"),
+            type=p.get("type"), dir=p.get("dir", "both"),
+            limit=_int(p.get("limit"), 500), store=r))
+
     def read_path(self, p):
         # E-G7/E-G8 최단 경로 증거 체인 — 두 개념 사이 경로(조회 전용).
         # weight=confidence 면 가중 갈래(E-G8 다익스트라), 그 외는 홉 최단(기본).
@@ -1080,6 +1092,10 @@ class VincApp:
     def read_doc(self, p):
         return self._read(lambda r: docstore.get_doc(r, _req(p, "id"),
                                                      owner=p.get("owner") or None))
+
+    def read_node(self, p):
+        return self._read(lambda r: q.node(
+            _req(p, "node_id"), owner=_req(p, "owner"), store=r))
 
     def read_node_context(self, p):
         # D45-V — 뷰 노드 클릭 상세: 노드 설명(one_liner/summary) + 정본 근거 발췌.
@@ -2310,6 +2326,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/merge-candidates": app.read_merge_candidates,
             "/merge-rejections": app.read_merge_rejections,   # F10-b 기각 목록
             "/neighbors": app.read_neighbors, "/path": app.read_path,
+            "/node-edges": app.read_node_edges,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
             "/themes": app.read_themes, "/types": app.read_types,
@@ -2322,6 +2339,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/changes": app.read_changes,
             "/doc/highlights": app.read_doc_highlights,   # Reader 밑줄(D45-V2 2단계)
             "/doc/context": app.read_doc_context,   # 리더 머리(개념 칩·목차·청크 오프셋)
+            "/node": app.read_node,
             "/node-context": app.read_node_context,
             "/brief": app.read_brief,   # W1 — 질문 하나로 답변 재료 조인
             "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)
