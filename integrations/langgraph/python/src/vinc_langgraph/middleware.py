@@ -11,6 +11,7 @@ from langchain.agents.middleware import AgentMiddleware, ModelRequest
 from vinc_client import AsyncVincClient, VincClient
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS, package_space
+from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
 
 from .helpers import build_system_message, last_user_text
 
@@ -27,7 +28,9 @@ class VincContextMiddleware(AgentMiddleware):
                  async_client: AsyncVincClient | None = None, *, api_key: str | None = None,
                  base_url: str | None = None, space: str | None = None,
                  search_fallback: bool = True, max_chars: int = DEFAULT_MAX_CHARS,
-                 max_excerpts: int = 3, cache_seconds: float = 60.0) -> None:
+                 max_excerpts: int = 3, cache_seconds: float = 60.0,
+                 prefetch_role: str | None = None,
+                 prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> None:
         super().__init__()
         self._config = {"api_key": api_key, "base_url": base_url, "space": space}
         self._client = client
@@ -36,6 +39,8 @@ class VincContextMiddleware(AgentMiddleware):
         self.max_chars = max_chars
         self.max_excerpts = max_excerpts
         self.cache_seconds = cache_seconds
+        self.prefetch_role = prefetch_role
+        self.prefetch_max_chars = prefetch_max_chars
         self._cache: dict[str, tuple[float, str | None]] = {}
 
     # 클라이언트는 쓰는 쪽(동기·비동기)만 만든다 — 둘 다 만들면 연결 풀이 두 벌 생긴다.
@@ -77,6 +82,10 @@ class VincContextMiddleware(AgentMiddleware):
 
     def wrap_model_call(self, request: ModelRequest, handler: Callable[[ModelRequest], Any]) -> Any:
         query = last_user_text(request.messages)
+        if self.prefetch_role:
+            block = self.client.prefetch(self.prefetch_role, query,
+                                         max_chars=self.prefetch_max_chars)
+            return handler(self._with_block(request, block))
         found, block = self._cached(query)
         if not found:
             block = self.client.get_context(query, search_fallback=self.search_fallback,
@@ -88,6 +97,10 @@ class VincContextMiddleware(AgentMiddleware):
     async def awrap_model_call(self, request: ModelRequest,
                                handler: Callable[[ModelRequest], Awaitable[Any]]) -> Any:
         query = last_user_text(request.messages)
+        if self.prefetch_role:
+            block = await self.async_client.prefetch(self.prefetch_role, query,
+                                                     max_chars=self.prefetch_max_chars)
+            return await handler(self._with_block(request, block))
         found, block = self._cached(query)
         if not found:
             block = await self.async_client.get_context(

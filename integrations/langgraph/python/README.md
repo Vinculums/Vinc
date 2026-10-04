@@ -55,6 +55,7 @@ context -> review -> approve (interrupt) -> record
 ```
 
 
+
 ## Structured review with one parse retry
 
 ```python
@@ -109,6 +110,28 @@ Every model call rereads the package and distinct evidence ids. Missing carriers
 fail explicitly; unavailable evidence is marked uncitable. Nothing writes on
 read or completion. Write the producer's package with `client.write_package`
 explicitly, and put `record_episode` in the approved write-back node as before.
+
+
+## Prefetch the selected role's evidence
+
+```python
+middleware = VincContextMiddleware(
+    client=reader, prefetch_role="concept:agent-reviewer",
+)
+```
+
+This reads the role contract, required spec briefs and task brief/search before
+each model call, including the returned node ids. Unlike ordinary question
+lookup, the role prefetch mode does not cache content or permission checks.
+Read tools may still be passed to `create_agent` as an additional lookup path.
+Required spec misses/ties and authentication/service failures raise; nothing
+writes or delegates work.
+
+Graph nodes can call `prefetch(reader, role_id, task)` or async `aprefetch` and
+pass its returned block to `build_system_message`. The chosen role comes from
+application/operator configuration. `prefetch_max_chars` controls the combined
+middleware budget; exceeding it raises instead of discarding required readings.
+Model citation quality must be evaluated separately.
 
 
 ## License

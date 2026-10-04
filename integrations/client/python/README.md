@@ -73,6 +73,7 @@ Every `about` id is read before the write, so a typo raises `VincNotFound` inste
 `AsyncVincClient` has the same methods, awaited.
 
 
+
 ## Review output validation
 
 `ReviewOutput` validates `verdict` (`ACCEPT` or `RETURN`),
@@ -114,6 +115,27 @@ The complete data block is fenced; exceeding `max_chars` raises
 package id for each handoff; choosing an existing id deliberately replaces that
 Record's props. The server validates sources when writing, so source Records
 must be persisted before the package rather than created alongside it.
+
+
+## Prefetch role evidence before a model call
+
+```python
+block = reader.prefetch("concept:agent-reviewer", "Review the proposed change.")
+```
+
+This uses the role API from VIN-303, reads each distinct required spec by its
+declared identifier, then briefs the task and searches with the role topic as
+context. Returned node ids remain in the fenced reference blocks. The topic is
+search context, not a hard domain filter. Role contracts remain graph data;
+choosing this API does not delegate work or widen the caller's permissions.
+
+The caller must choose the role explicitly. Its complete contract is retained;
+spec excerpts use the existing brief renderer and task evidence uses brief and
+search. Required-spec misses/ties, invalid role contracts, authentication and
+service failures propagate. There is no prefetch permission/content cache or
+automatic write. The aggregate `max_chars` budget fails explicitly rather than
+dropping a required reading. This provides evidence before the model runs; it
+does not guarantee that the model cites it correctly.
 
 
 ## License

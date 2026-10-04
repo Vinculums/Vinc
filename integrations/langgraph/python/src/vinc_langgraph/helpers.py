@@ -14,6 +14,7 @@ from vinc_client import (AsyncVincClient, VincClient, VincQuotaExceeded, VincUna
                          format_brief, format_search)
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS
+from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
 
 
 def last_user_text(messages: str | Sequence[Any]) -> str:
@@ -73,6 +74,18 @@ def build_system_message(block: str | None, base: SystemMessage | str | None = N
     if base is None:
         return SystemMessage(content=block)
     return SystemMessage(content=[*base.content_blocks, {"type": "text", "text": block}])
+
+
+def prefetch(client: VincClient, role_id: str, task: str, *, space: str | None = None,
+             max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+    """Fetch a chosen role's reading list and task evidence before a graph model node."""
+    return client.prefetch(role_id, task, space=space, max_chars=max_chars)
+
+
+async def aprefetch(client: AsyncVincClient, role_id: str, task: str, *, space: str | None = None,
+                    max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+    """Async :func:`prefetch`."""
+    return await client.prefetch(role_id, task, space=space, max_chars=max_chars)
 
 
 class _BriefArgs(BaseModel):
@@ -163,7 +176,8 @@ async def arecord_episode(client: AsyncVincClient, title: str, *, summary: str =
 
 __all__ = ["last_user_text", "get_vinc_context", "aget_vinc_context",
            "build_system_message", "create_vinc_tools", "record_episode", "arecord_episode",
-           "get_vinc_package_context", "aget_vinc_package_context", "write_package", "awrite_package"]
+           "get_vinc_package_context", "aget_vinc_package_context", "write_package", "awrite_package",
+           "prefetch", "aprefetch"]
 
 
 def write_package(client: VincClient, question: str, conclusion: str, *,
