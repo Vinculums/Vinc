@@ -15,6 +15,14 @@ from api.cli_tools import _tool_request
 from vinc_mcp import tools
 
 
+def _failure_json(text):
+    # 스토어 기동 진단 뒤의 JSON 봉투를 검사한다.
+    for line in text.splitlines(keepends=True):
+        if line.startswith("{"):
+            return json.loads(text[text.index(line):])
+    raise AssertionError("failure JSON is missing")
+
+
 class ToolVerbTests(unittest.TestCase):
     def test_flag_mapping(self):
         cases = [
@@ -62,9 +70,9 @@ class ToolVerbTests(unittest.TestCase):
                 self.assertEqual((got_name, got_args, destructive),
                                  (name, expected, want_guard))
 
-    def test_call_registry_covers_all_24_tools(self):
+    def test_call_registry_covers_all_25_tools(self):
         names = {item["name"] for item in tools.TOOLS}
-        self.assertEqual(len(names), 24)
+        self.assertEqual(len(names), 25)
         guarded = {"vinc_delete", "vinc_delete_edge", "vinc_merge_nodes",
                    "vinc_doc_delete"}
         for name in sorted(names):
@@ -103,12 +111,13 @@ class ToolVerbTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             data = str(Path(home) / "db")
             with patch.dict("os.environ", {"MEMORY_DATA_DIR": data}):
-                out = io.StringIO()
-                with redirect_stdout(out):
+                out, err = io.StringIO(), io.StringIO()
+                with redirect_stdout(out), redirect_stderr(err):
                     code = cli.main(["--format", "json", "call", "vinc_neighbors",
                                      "--args", '{"node":"concept:missing"}'])
                 self.assertEqual(code, 1)
-                self.assertEqual(json.loads(out.getvalue())["kind"], "neighbors")
+                self.assertEqual(out.getvalue(), "")
+                self.assertEqual(_failure_json(err.getvalue())["kind"], "neighbors")
                 out, err = io.StringIO(), io.StringIO()
                 with redirect_stdout(out), redirect_stderr(err):
                     code = cli.main(["call", "vinc_neighbors", "--args", "{}"])
@@ -126,12 +135,13 @@ class ToolVerbTests(unittest.TestCase):
             with patch.dict("os.environ", {"MEMORY_DATA_DIR": data}):
                 with _bridge(args) as bridge:
                     expected = tools.call("vinc_neighbors", {"node": "concept:missing"}, bridge)
-                out = io.StringIO()
-                with redirect_stdout(out):
+                out, err = io.StringIO(), io.StringIO()
+                with redirect_stdout(out), redirect_stderr(err):
                     status = cli.main(["--format", "json", "node", "neighbors",
                                        "concept:missing"])
             self.assertEqual(status, 1)
-            self.assertEqual(json.loads(out.getvalue()), expected)
+            self.assertEqual(out.getvalue(), "")
+            self.assertEqual(_failure_json(err.getvalue()), expected)
 
 
 if __name__ == "__main__":

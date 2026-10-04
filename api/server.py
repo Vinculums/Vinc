@@ -1081,6 +1081,10 @@ class VincApp:
         return self._read(lambda r: docstore.get_doc(r, _req(p, "id"),
                                                      owner=p.get("owner") or None))
 
+    def read_node(self, p):
+        return self._read(lambda r: q.node(
+            _req(p, "node_id"), owner=_req(p, "owner"), store=r))
+
     def read_node_context(self, p):
         # D45-V — 뷰 노드 클릭 상세: 노드 설명(one_liner/summary) + 정본 근거 발췌.
         # `links_offset` 은 관계 목록의 **이어 읽을 자리**다. 상한만 있고 이것이
@@ -2322,6 +2326,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/changes": app.read_changes,
             "/doc/highlights": app.read_doc_highlights,   # Reader 밑줄(D45-V2 2단계)
             "/doc/context": app.read_doc_context,   # 리더 머리(개념 칩·목차·청크 오프셋)
+            "/node": app.read_node,
             "/node-context": app.read_node_context,
             "/brief": app.read_brief,   # W1 — 질문 하나로 답변 재료 조인
             "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)

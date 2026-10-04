@@ -45,6 +45,13 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: [version-update:semver-major]
+      # 엔진 버전은 확장·해시·플랫폼 핀과 함께 변경한다.
+      # 근거: [[vinc.ops.ladybug-upgrade-review-2026-09-24 §5]]
+      - dependency-name: ladybug
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+          - version-update:semver-patch
 
   # 워크플로가 쓰는 액션(actions/checkout 등)도 대상 — 태그 고정 액션은 보안
   # 갱신이 나와도 스스로 안 올라온다.
