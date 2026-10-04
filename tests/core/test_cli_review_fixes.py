@@ -124,12 +124,13 @@ def test_confirmation_is_never_asked_on_stdout_off_a_terminal(monkeypatch):
 
 def test_ndjson_failure_is_one_line(monkeypatch):
     cli_output.configure("ndjson", "doc get")
-    out = io.StringIO()
-    with contextlib.redirect_stdout(out):
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
         code = cli_output.emit({"kind": "doc.get", "executed": False,
                                 "error": {"code": "not_found", "message": "unknown doc_id"}})
-    assert code == 1 and out.getvalue().count("\n") == 1
-    json.loads(out.getvalue())
+    assert code == 1 and out.getvalue() == ""
+    assert err.getvalue().count("\n") == 1
+    json.loads(err.getvalue())
 
 
 def test_ndjson_domains_prints_one_row_per_line():
@@ -314,7 +315,7 @@ def test_old_verbs_print_exactly_the_tool_result(seeded, argv, tool, arguments):
     code_b, call_out, err_b = _run(["--format", "json", "call", tool,
                                     "--args", json.dumps(arguments)])
     assert (code_a, verb_out) == (code_b, call_out), (err_a, err_b)
-    assert json.loads(verb_out)
+    assert json.loads(verb_out if code_a == 0 else err_a)
 
 
 def test_doc_put_and_rm_match_their_tools(seeded, monkeypatch):

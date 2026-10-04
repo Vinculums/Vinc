@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -165,7 +166,21 @@ def cmd_check(expect: str | None) -> int:
         print("  (latest.json 은 git 태그에서, 클라이언트 자기 버전은 tauri.conf.json 에서 온다).")
         return 1
 
-    print(f"[version_sync] PASS — {len(found)}곳 전부 {current}")
+    # CLI는 버전을 따로 저장하지 않는다. 실제 출력이 정본과 같은지 두 별칭을 검사한다.
+    for flag in ("--version", "-V"):
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "api.cli", flag], cwd=ROOT,
+                capture_output=True, text=True, encoding="utf-8", timeout=30)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            print(f"[version_sync] FAIL — CLI {flag}: {type(exc).__name__}: {exc}")
+            return 1
+        if result.returncode != 0 or result.stderr or result.stdout != f"vinc {current}\n":
+            print(f"[version_sync] FAIL — CLI {flag}: exit={result.returncode}, "
+                  f"stdout={result.stdout!r}, stderr={result.stderr!r}")
+            return 1
+
+    print(f"[version_sync] PASS — {len(found)}곳 전부 {current}, CLI --version/-V 일치")
     return 0
 
 

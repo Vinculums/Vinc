@@ -11,6 +11,7 @@ from vinc_mcp import tools
 from vinc_mcp.bridge import DEFAULT_OWNER
 
 from .cli_transport import attached_bridge, data_file
+from .cli_output import usage_error
 
 
 class _InProcessBridge:
@@ -71,15 +72,18 @@ def legacy_recall(args) -> bool:
         args.query or args.tenant or args.workspace or args.rank != "recency")
 
 
-def _json_file(path: str) -> dict:
+def _json_file(path: str, *, source: str = "JSON input") -> dict:
     stream = sys.stdin if path == "-" else open(path, encoding="utf-8")
     try:
-        value = json.load(stream)
+        try:
+            value = json.load(stream)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{source}: {exc}") from None
     finally:
         if stream is not sys.stdin:
             stream.close()
     if not isinstance(value, dict):
-        raise ValueError("tool arguments must be a JSON object")
+        raise ValueError(f"{source}: tool arguments must be a JSON object")
     return value
 
 
@@ -92,14 +96,18 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
         if name not in {t["name"] for t in tools.TOOLS}:
             raise ValueError(f"unknown tool: {args.tool}")
         if args.args is not None:
-            data = json.loads(args.args)
+            try:
+                data = json.loads(args.args)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"--args: {exc}") from None
             if not isinstance(data, dict):
-                raise ValueError("tool arguments must be a JSON object")
+                raise ValueError("--args: tool arguments must be a JSON object")
         elif args.args_file is None and sys.stdin.isatty():
             # 터미널에서 인자 없이 부르면 stdin 을 기다리며 멈춘 것처럼 보인다.
             raise ValueError("pass --args JSON, --args-file PATH, or pipe JSON on stdin")
         else:
-            data = _json_file(args.args_file or "-")
+            data = _json_file(args.args_file or "-",
+                              source="--args-file" if args.args_file else "stdin")
         destructive = name if name in {"vinc_delete", "vinc_delete_edge",
                                        "vinc_merge_nodes", "vinc_doc_delete"} else None
         return name, data, destructive
@@ -200,19 +208,15 @@ def run(args) -> tuple[dict | None, int | None]:
     try:
         name, data, destructive = _tool_request(args)
     except (ValueError, json.JSONDecodeError) as exc:
-        print(f"vinc: {exc}", file=sys.stderr)
-        return None, 2
+        return None, usage_error(str(exc))
     if destructive and not _confirm(args, destructive):
-        print("vinc: confirmation required; pass --yes", file=sys.stderr)
-        return None, 2
+        return None, usage_error("confirmation required; pass --yes")
     try:
         tools.validate_args(name, data)
     except tools.InvalidArgument as exc:
-        print(f"vinc: {exc}", file=sys.stderr)
-        return None, 2
+        return None, usage_error(str(exc))
     with _bridge(args) as bridge:
         try:
             return tools.call(name, data, bridge), None
         except tools.InvalidArgument as exc:
-            print(f"vinc: {exc}", file=sys.stderr)
-            return None, 2
+            return None, usage_error(str(exc))
