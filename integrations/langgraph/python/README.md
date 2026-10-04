@@ -54,6 +54,75 @@ Nothing in this package writes on its own. Put `record_episode` in the node afte
 context -> review -> approve (interrupt) -> record
 ```
 
+## Structured review with one parse retry
+
+```python
+from vinc_langgraph import run_review, arun_review, UnparsedReview
+
+try:
+    review = run_review(model, "Review this draft against its cited rules")
+except UnparsedReview:
+    # Stop the revision path and escalate to a person.
+    raise
+```
+
+Use these helpers inside a review node. They invoke a standalone model with
+`with_structured_output(ReviewOutput, include_raw=True)`; no tool executor or
+graph writer runs. `arun_review` provides the same async behavior. For a provider
+without structured output support, select `native_structured=False` explicitly.
+The helper retries one malformed output with sanitized feedback and then raises
+`UNPARSED`, preserving the difference between an unparsed review and no findings.
+Service and unsupported-schema errors propagate; `config` is passed unchanged.
+Parsed citations still need permission/existence checks, and person-only
+requests still require approval before any action.
+
 ## License
 
 MIT
+# Final output gate
+
+```python
+from vinc_client import OutputGate
+from vinc_langgraph import create_output_gate_middleware, evaluate_output_node
+
+gate = OutputGate(fresh_role["props"])
+middleware = create_output_gate_middleware(gate, evidence=host_evidence_for_this_run)
+# Pass middleware=[middleware] to create_agent; use invoke()/ainvoke().
+```
+
+Intermediate AI tool-call messages continue to the tool loop. The final response
+is checked outside the model; block and interrupt raise `OutputGateStopped`.
+This does not authorize or undo tool execution. Do not expose unchecked model
+stream events to an end user.
+
+For an explicit StateGraph, place `evaluate_output_node(state, gate,
+evidence=host_evidence)` after the model node, declare `vinc_output_gate` in the
+state schema and route its verdict to delivery, stopping, or a separate approval
+node. The helper returns decisions and bounded evidence, not the original answer.
+`require_output_pass` is available when the graph should raise instead of routing.
+State-provided proof dictionaries are ignored. Neither path calls another model
+or automatically stores an episode.
+
+## Approval after the model
+
+Have the model node store a `vinc_client.RoleOutput` dictionary in `role_output`.
+Declare `vinc_approval` in your StateGraph state schema and add a separate node:
+
+```python
+from vinc_langgraph import create_person_only_node
+
+approval = create_person_only_node(gate, role_id=fresh_role["id"], run_id=run_id)
+graph.add_node("approval", approval)
+graph.add_edge("model", "approval")
+```
+
+Compile with a checkpointer and use the same thread ID when resuming. The node
+emits a draft-bound native `interrupt` when a structured request or gate identifies
+a person-only action. An authenticated human response resumes with
+`Command(resume={"request_id": pending["request_id"], "approved": True})`.
+The completed model node is not repeated. Deliver only the checked
+`vinc_approval` result; rejected output has no deliverable. Blocking checks cannot
+be overridden by approval. Keep side-effect tools separately authorized.
+
+Use a durable checkpointer in production and never expose unchecked model stream
+events. This follows the framework's [interrupt contract](https://docs.langchain.com/oss/python/langgraph/interrupts).
