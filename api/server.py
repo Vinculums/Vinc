@@ -697,6 +697,10 @@ class VincApp:
             type=p.get("type"), dir=p.get("dir", "both"),
             limit=_int(p.get("limit"), 500), store=r))
 
+    def read_roles(self, p):
+        from .roles import read
+        return self._read(lambda r: read(p.get("role"), owner=_req(p, "owner"), store=r))
+
     def read_path(self, p):
         # E-G7/E-G8 최단 경로 증거 체인 — 두 개념 사이 경로(조회 전용).
         # weight=confidence 면 가중 갈래(E-G8 다익스트라), 그 외는 홉 최단(기본).
@@ -1180,7 +1184,7 @@ class VincApp:
                 return docstore.list_docs(
                     r, owner=p.get("owner") or None, limit=lim,
                     cursor=p.get("cursor") or None,
-                    detail=(p.get("detail") or "full"))
+                    detail=(p.get("detail") or "full"), title=p.get("title"))
             except ValueError as exc:
                 # 무효 커서는 500 이 아니라 사유 있는 거절이다. 본문 모양은 검색의
                 # 무효 커서와 같다(executed:false + error) — MCP 층이 그 문장으로
@@ -1280,6 +1284,14 @@ class VincApp:
         owner = body.get("owner") or None
         if not owner:
             return 400, {"error": "owner required — 정본은 무소유로 두지 않는다(SEC-1)"}
+        # 필수 본문은 워커에 넣기 전에 검사한다. 잡 안의 _Missing은 4xx가 아니라
+        # JobError가 되어 버리고, 잘못된 제출이 성공처럼 보이게 된다(VIN-346).
+        text = body.get("text")
+        if not isinstance(text, str):
+            return 400, {"executed": False, "error": "text must be a string"}
+        empty_title = body.get("title") is not None and not str(body["title"]).strip()
+        if not body.get("id") and empty_title:
+            return 400, {"executed": False, "error": "title must not be empty"}
         # content_time(D72)은 **키가 없을 때와 빈 값일 때가 다르다**: 키가 없으면
         # 기존 값을 보존하고, 빈 문자열이면 사용자가 지운 것이다. None 으로 뭉개면
         # 제목만 고쳐도 내용 시점이 되살아난다.
@@ -1287,16 +1299,23 @@ class VincApp:
         # title 도 같은 3값이다. 여기서 `or ""` 로 뭉개면 **본문만 재전송한 호출이
         # 제목을 지운다** — 그것이 라이브 문서 여덟 건의 제목을 비운 경로였다.
         btitle = body.get("title")
-        res = self.jobs.run_sync("doc.put", lambda: docstore.put_doc(
-            self.store, owner=owner, text=_req(body, "text"),
-            doc_id=body.get("id") or None,
-            title=None if btitle is None else str(btitle),
-            origin=body.get("origin"),
-            content_time=None if ctime is None else str(ctime),
-            # 주제는 **적는 값**이다. `or None` 으로 뭉개도 안전하다 — 빈 문자열은
-            # "지운다"가 아니라 "안 건드린다"이고, 그 판단은 _set_authored_topic 에 있다.
-            topic=body.get("topic") or None))
-        return 200, res
+
+        def _put():
+            # 기존 문서의 명시적 제목 비움은 3값 계약이다. 새 id의 빈 제목만 거절한다.
+            if empty_title:
+                meta = docstore._meta(self.store, body.get("id"))
+                if not meta or meta.get("owner_id") != owner:
+                    return {"executed": False, "error": "title must not be empty"}
+            return docstore.put_doc(
+                self.store, owner=owner, text=text,
+                doc_id=body.get("id") or None,
+                title=None if btitle is None else str(btitle),
+                origin=body.get("origin"),
+                content_time=None if ctime is None else str(ctime),
+                # 주제는 적는 값이다. 빈 값은 지움이 아니라 안 건드림이다.
+                topic=body.get("topic") or None)
+        res = self.jobs.run_sync("doc.put", _put)
+        return (400 if res.get("error") == "title must not be empty" else 200), res
 
     def write_conventions_build(self, body):
         """관례 재생성 — 앱의 [다시 생성]. **산문은 건드리지 않는다**(graphmd.build).
@@ -2279,6 +2298,8 @@ class _Handler(BaseHTTPRequestHandler):
                               ("node_vector_index", "node_vector_index_remnant")):
                 if getattr(self.app.store, attr, False):
                     body[key] = "remnant"
+            from .mirror_status import read_status
+            body["node_mirror"] = read_status()
             return self._send(200, body)
 
         # /connect/callback — 무인증 예외(디바이스 연결: 브라우저의 루프백 전달,
@@ -2327,6 +2348,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/merge-rejections": app.read_merge_rejections,   # F10-b 기각 목록
             "/neighbors": app.read_neighbors, "/path": app.read_path,
             "/node-edges": app.read_node_edges,
+            "/roles": app.read_roles,
             "/learner": app.read_learner, "/graph": app.read_graph,
             "/search": app.read_search, "/decide": app.read_decide,
             "/themes": app.read_themes, "/types": app.read_types,

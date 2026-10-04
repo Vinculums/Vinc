@@ -189,7 +189,7 @@ class EarlyReturnIsInheritedTests(unittest.TestCase):
         ⚠ 여기는 `setEditable` 로 걸던 자리다. 그 토글은 호출부가 0이라 P18 에서
         걷혔고(레일은 상시 편집이다), 위임 계약은 남은 두 손잡이가 그대로 진다."""
         stub = ED[at(ED, "docMidWrite(doc)"):at(ED, 'host.classList.add("doc-render")')]
-        self.assertIn("await again?.dispose()", stub)
+        self.assertIn("await again?.dispose(discard)", stub)
         self.assertIn("again?.scrollToOffset(pos)", stub)
         self.assertIn("let again: DocEditorHandle | null = null;", stub)
 

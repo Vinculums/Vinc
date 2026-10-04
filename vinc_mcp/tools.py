@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**26종** — 읽기 18(search·node·edges·brief·recall·graph·decide·domains·suggest_ties·neighbors·
+**27종** — 읽기 19(search·node·role·edges·brief·recall·graph·decide·domains·suggest_ties·neighbors·
 path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami) + 쓰기 8
 (ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete).
 "단일 write 표면(ingest 하나)"은
@@ -484,13 +484,24 @@ def _t_node(args, bridge):
         "owner": _owner(args, bridge), "node_id": args["node_id"]})
 
 
+def _t_role(args, bridge):
+    from .roles import contract
+    return contract(args.get("role"), bridge, forced_owner=_owner(args, bridge))
+
+
 def _t_brief(args, bridge):
     # W1 — 질문 하나로 답변 재료를 모으는 결정론 조인 읽기(생성 없음).
-    return bridge.request("GET", "/brief", params={
+    out = bridge.request("GET", "/brief", params={
         "owner": _owner(args, bridge), "query": args["query"],
         "max_excerpts": args.get("max_excerpts", 3),
         "historical": "true" if args.get("historical") else None,
         "as_of": args.get("as_of")})
+    from .roles import is_role_id
+    if is_role_id(args["query"].strip()) and out.get("executed"):
+        role = _t_role({**args, "role": args["query"].strip()}, bridge)
+        if role.get("found") or not role.get("executed"):
+            out = {**out, "role": role}
+    return out
 
 
 #: ChatGPT deep research / company knowledge 는 이름이 정확히 `search`·`fetch` 인
@@ -688,6 +699,20 @@ TOOLS: list[dict] = [
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_search,
+    },
+    {
+        "name": "vinc_role",
+        "description": "Read one role contract by agent slug or concept id in one call, below 10000 UTF-8 bytes. "
+                       "Returns id, unchanged props, directed works_with groups with exact edge endpoints, "
+                       "type, evidence and confidence, and a compact rendered contract fenced as graph data. "
+                       "An unknown, foreign or non-role node returns found:false. Oversized contracts return "
+                       "an explicit error without truncating permissions. Omit role to list the role roster "
+                       "without full contracts. This reads only roles in agent or vinc/agent topics and "
+                       "their direct child topics; it does not execute or delegate the role. Read-only.",
+        "inputSchema": {"type": "object", "properties": {
+            "role": {"type": "string", "description": "Role slug (agent-dev-core) or exact concept:agent- id; omit to list."},
+            "owner": {"type": "string"}}, "required": []},
+        "run": _t_role,
     },
     {
         "name": "vinc_node",
@@ -1506,6 +1531,7 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_node": {"title": "Read one stored node", "readOnlyHint": True},
     "vinc_neighbors": {"title": "Observe a node's neighbors", "readOnlyHint": True},
     "vinc_edges": {"title": "Read directed incident edges", "readOnlyHint": True},
+    "vinc_role": {"title": "Read a role contract or roster", "readOnlyHint": True},
     "vinc_path": {"title": "Shortest path between concepts", "readOnlyHint": True},
     # 쓰기지만 가산적·멱등(exact-id MERGE) — 기존 데이터를 지우지 않는다.
     "vinc_ingest": {"title": "Save to the graph", "readOnlyHint": False,
