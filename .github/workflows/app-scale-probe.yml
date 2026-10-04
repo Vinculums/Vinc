@@ -42,7 +42,7 @@ permissions:
 jobs:
   scale:
     # 셀프호스티드다. 읽기 셋이라 몇 초면 끝나지만 호스티드 분을 쓸 이유가 없다.
-    runs-on: [self-hosted, linux, vinc-local]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       # 손으로 돌리는 실행은 운영 담당만(repo 변수 PROD_OPERATORS, 쉼표로 구분한 로그인).
