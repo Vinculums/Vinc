@@ -204,7 +204,8 @@ def _read_props(row: dict, warnings: list[str]) -> dict:
 
 def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
                        decision_ids: list[str] | None = None, cfg=None,
-                       refs: dict[str, list[str]] | None = None) -> list[dict]:
+                       refs: dict[str, list[str]] | None = None,
+                       include_all: bool = False) -> list[dict]:
     """팩의 개념이 가리키는 원문 문서를 export 형태로 모은다 — 자기완결 공유 팩
     (개념 + 그 소스 원문). 길이 **둘**이다: `(Chunk)-[:MENTIONS]->(Concept)` 역추적과
     문서 미러(`concept:doc.<doc_id>`) id 풀기. Chunk=SSoT(D45) 이후에만 존재;
@@ -213,6 +214,9 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
     ``refs`` 에 dict 를 넘기면 실린 문서마다 **그 문서를 끌어온 노드 id**(팩 fragment 의
     id 그대로)를 채운다. 공유 시트가 행을 끈 뒤 원문을 같은 기준으로 다시 고르는 데 쓴다.
     근거: [[decision:share-documents-follow-the-nodes-that-carry-them]]
+
+    ``include_all`` 은 노드 선택이 없는 전체 공유에만 쓴다. 노드가 가리키지
+    않는 문서도 원문 목록에서 읽고, 그 문서의 빈 refs 는 독립 선택 행을 뜻한다.
 
     payload 형태는 docsync.export_docs 와 동형({doc_id,title,origin,content_hash,
     updated_at,text}) — 수신측이 import_docs 로 재청킹한다(embedding·오프셋 미전송,
@@ -224,7 +228,7 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
     `documents: 0` 인 팩을 **성공으로** 받아 갔다. 같은 스코프를 store 주입으로 부르면
     `documents: 1` 이 나오던 자리다(실측 2026-09-07). 개념은 `query.execute` 가 스스로
     열어 제대로 나왔으므로, 팩은 "개념은 있는데 원문만 없는" 반쪽으로 저장됐다."""
-    if not concept_ids and not decision_ids:
+    if not include_all and not concept_ids and not decision_ids:
         return []
     owns = store is None
     if owns:
@@ -238,6 +242,11 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
         # 넘겨받은 id 로 되돌린다(네임스페이싱이 꺼져 있으면 둘은 같다).
         as_given = {pkns.key(owner, i): i for i in (*concept_ids, *(decision_ids or []))}
         by_doc: dict[str, set[str]] = {}
+        # 전체 공유는 주제·미러가 없는 문서도 읽는다. 목록은 owner 로 좁히며,
+        # GRAPH.md 같은 관례 문서는 기존 문서 목록 규칙대로 자료에서 제외한다.
+        if include_all:
+            for doc in ds.list_docs(store, owner=owner, detail="summary")["docs"]:
+                by_doc[doc["doc_id"]] = set()
 
         def _carried(rows_) -> None:
             for r in rows_ or []:
@@ -280,7 +289,11 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
             # 줄이 "남의 문서 유출"과 "없는 doc_id 를 실어 임포트를 깨는 것"을 함께 막는다.
             got = ds.get_doc(store, did, owner=owner)
             if not got.get("executed"):
+                if include_all:
+                    raise ValueError("Could not read every document. Try sharing again.")
                 continue
+            if include_all and not got.get("verified"):
+                raise ValueError("Could not verify every document. Try sharing again.")
             docs.append({
                 "doc_id": did, "title": got.get("title") or "",
                 "origin": got.get("origin") or "", "content_hash": got.get("content_hash"),
@@ -431,9 +444,15 @@ def build_share_pack(*, owner: str, domain: str | None = None,
     # vinc_pack 버전은 그대로 두고 **선택 필드**로 더한다 — 구버전 앱은 이 필드를
     # 무시하고 개념만 임포트(하위호환), 신버전은 원문까지 복원한다.
     refs: dict[str, list[str]] | None = {} if doc_refs else None
-    documents = _docs_for_concepts(
-        store, owner=owner, concept_ids=sorted(concept_ids),
-        decision_ids=sorted(r["id"] for r in selected["decision"]), cfg=cfg, refs=refs)
+    # 노드 선택·주제·태그 필터가 없는 전체 공유에서만 문서 목록까지 합친다.
+    # 읽기가 불완전하면 성공한 빈/부분 팩 대신 재시도 가능한 실패를 답한다.
+    try:
+        documents = _docs_for_concepts(
+            store, owner=owner, concept_ids=sorted(concept_ids),
+            decision_ids=sorted(r["id"] for r in selected["decision"]), cfg=cfg, refs=refs,
+            include_all=ids is None and not (seed or domain or tags) and include_records)
+    except ValueError as exc:
+        return {"executed": False, "note": str(exc)}
 
     created = generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     pack = {

@@ -3,7 +3,7 @@
  *  (정본 §5.1): 스코프 요약 · 포함 목록(개별 제외) · 미포함 고지 · 저장. */
 import { AccountError, api, cfg, community, WEB, type PackProgress, type Scope } from "./api";
 import { toBytes } from "./packfile";
-import { keptDocs } from "./share-docs";
+import { keptDocs, standaloneDocs } from "./share-docs";
 import { shareMerges } from "./share-merges";
 import { COPY } from "./copy";
 import { openSheet, sheetActions, sheetProgress } from "./components";
@@ -92,6 +92,7 @@ export async function openShareSheet(
       ids: scope.ids?.join(","), seed: scope.seed, domain: scope.domain, depth: scope.depth,
     }, opts.from);
     const nodes: any[] = pack.fragment?.nodes || [];
+    const unlinked = standaloneDocs(pack.documents, pack.doc_refs);
     const c = pack.manifest?.counts || {};
     // 씨앗은 문서가 아니라 노드다 — 그 이름을 팩에서 읽어 범위에 적는다(VIN-265).
     const seedName = scope.seed
@@ -109,7 +110,13 @@ export async function openShareSheet(
           <label class="list-row" style="cursor:pointer">
             <input type="checkbox" checked data-i="${i}" />
             <span class="title">${esc(n.title)}</span><span class="meta">${esc(n.domain || n.type)}</span>
-          </label>`).join("") || `<p class="hint">${COPY.ui.sheet.nothing}</p>`}
+          </label>`).join("")}
+        ${unlinked.map((d, i) => `
+          <label class="list-row" style="cursor:pointer">
+            <input type="checkbox" checked data-doc-i="${i}" />
+            <span class="title">${esc(d.title || d.doc_id)}</span><span class="meta">${esc(COPY.ui.sheet.specDocs)}</span>
+          </label>`).join("")}
+        ${nodes.length || unlinked.length ? "" : `<p class="hint">${COPY.ui.sheet.nothing}</p>`}
       </div>
       <p class="hint">${COPY.ui.sheet.keepNote}</p>`;
     sheet.foot.innerHTML = sheetActions(
@@ -117,12 +124,14 @@ export async function openShareSheet(
       { id: "sheet-cancel", label: COPY.ui.common.cancel });
     sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
     sheet.foot.querySelector("#sheet-save")!.addEventListener("click", () => {
-      const excluded = new Set([...sheet.body.querySelectorAll<HTMLInputElement>("input[type=checkbox]")]
+      const excluded = new Set([...sheet.body.querySelectorAll<HTMLInputElement>("input[data-i]")]
         .filter((cb) => !cb.checked).map((cb) => nodes[Number(cb.dataset.i)].id));
+      const standalone = new Set([...sheet.body.querySelectorAll<HTMLInputElement>("input[data-doc-i]")]
+        .filter((cb) => cb.checked).map((cb) => unlinked[Number(cb.dataset.docI)].doc_id as string));
       const keep = nodes.filter((n) => !excluded.has(n.id));
       const keepIds = new Set(keep.map((n) => n.id));
       const edges = (pack.fragment?.edges || []).filter((e: any) => keepIds.has(e.from) && keepIds.has(e.to));
-      const docs = keptDocs(pack.documents, excluded, pack.doc_refs, keepIds);
+      const docs = keptDocs(pack.documents, excluded, pack.doc_refs, keepIds, standalone);
       const out = { ...pack, fragment: { nodes: keep, edges },
         ...(pack.documents ? { documents: docs } : {}),
         manifest: { ...pack.manifest, counts: recount(keep, edges, docs, c) } };
