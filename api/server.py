@@ -2563,8 +2563,15 @@ def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int |
 
     stop = threading.Event()
     app._request_stop = stop.set
-    signal.signal(signal.SIGTERM, lambda *_: stop.set())
-    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    signal_requested = False
+
+    def request_signal_stop(*_):
+        # 신호 처리기에서는 Event의 잠금을 잡지 않는다.
+        nonlocal signal_requested
+        signal_requested = True
+
+    signal.signal(signal.SIGTERM, request_signal_stop)
+    signal.signal(signal.SIGINT, request_signal_stop)
     if parent_pid:
         threading.Thread(target=_heartbeat, args=(parent_pid, stop), daemon=True).start()
     threading.Thread(target=_gc_tombstones_loop, args=(app, stop), daemon=True).start()
@@ -2576,8 +2583,11 @@ def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int |
         print(f"vinc: store writer — {writer}", file=sys.stderr, flush=True)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
-        stop.wait()
+        # 다른 스레드가 신호를 받아도 메인이 Python 처리기를 실행할 기회를 준다.
+        while not signal_requested and not stop.wait(0.1):
+            pass
     finally:
+        stop.set()
         httpd.shutdown()
         app.close()
     return info
