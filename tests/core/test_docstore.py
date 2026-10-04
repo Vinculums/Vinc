@@ -1005,6 +1005,7 @@ class DocstoreE2E(unittest.TestCase):
         prop = ds.extract_doc(self.store, did, owner="user:a")
         self.assertEqual([c["title"] for c in prop["candidates"]], ["quantum"])
         self.assertNotIn("applied", prop)
+        self.assertEqual(prop["domain"], "")
         # 주제 없는 문서(프론트매터 domain 도, 파생 주제도 없음)는 반영 거부 —
         # 무주제 개념 양산 금지(근거: [[vinc.ops.topic-assignment-eval]] §2).
         deny = ds.extract_doc(self.store, did, owner="user:a", apply=True)
@@ -1039,6 +1040,63 @@ class DocstoreE2E(unittest.TestCase):
         # 미지 노드 — 실패 아님(executed=False + note)
         miss = q.node_context(owner="user:a", node="concept:ghost", store=self.store)
         self.assertFalse(miss["executed"])
+
+    def test_extract_preview_inherits_frontmatter_or_authored_topic_without_writes(self):
+        for index, (front, topic, expected) in enumerate([
+                ("physics", "biology", "physics"), ("", "biology", "biology"), ("", "", "")]):
+            with self.subTest(front=front, topic=topic):
+                text = (f"---\ndomain: {front}\n---\n" if front else "") + f"# Note {index}\n\n## Candidate {index}\n\nBody."
+                did = ds.put_doc(self.store, owner="user:a", doc_id=f"preview-topic-{index}",
+                                 text=text, topic=topic)["doc_id"]
+                before_doc = ds.get_doc(self.store, did, owner="user:a")
+                before_nodes = self.store.run("MATCH (n:Concept) RETURN n.concept_id AS id, "
+                                              "n.domain AS domain ORDER BY id")
+                before_mentions = self.store.run("MATCH ()-[r:MENTIONS]->() RETURN count(r) AS n")
+                # Both automatic and caller-edited candidate previews use the same canonical topic.
+                for candidates in [None, [{"title": f"Caller edited candidate {index}"}]]:
+                    preview = ds.extract_doc(self.store, did, owner="user:a", candidates=candidates)
+                    self.assertTrue(preview["executed"])
+                    self.assertEqual(preview["domain"], expected)
+                    self.assertNotIn("applied", preview)
+                self.assertEqual(ds.get_doc(self.store, did, owner="user:a"), before_doc)
+                self.assertEqual(self.store.run("MATCH (n:Concept) RETURN n.concept_id AS id, "
+                                                "n.domain AS domain ORDER BY id"), before_nodes)
+                self.assertEqual(self.store.run("MATCH ()-[r:MENTIONS]->() RETURN count(r) AS n"),
+                                 before_mentions)
+                applied = ds.extract_doc(self.store, did, owner="user:a", apply=True,
+                                         candidates=[{"title": f"Caller edited candidate {index}"}])
+                if expected:
+                    self.assertEqual(applied["domain"], expected)
+                else:
+                    self.assertFalse(applied["executed"])
+                    self.assertIn("no topic", applied["error"])
+
+    def test_extract_preview_inherits_derived_topic(self):
+        self.store.run("MERGE (n:Concept {concept_id:$id}) SET n.owner_id='user:a', "
+                       "n.title='Astronomy Seed', n.domain='astronomy'", {"id": _pk("concept:seed")})
+        did = ds.put_doc(self.store, owner="user:a", text="# Note\n\n## Candidate\n\nAstronomy Seed.")["doc_id"]
+        # Force the derived path, rather than relying on put_doc's authored mirror.
+        self.store.run("MATCH (n:Concept) WHERE n.concept_id=$id SET n.domain=''",
+                       {"id": _pk(ds._DOC_MIRROR_PREFIX + did)})
+        self.store.run("MATCH (ch:Chunk), (n:Concept) WHERE ch.doc_id=$d AND n.concept_id=$id "
+                       "MERGE (ch)-[:MENTIONS]->(n)", {"d": did, "id": _pk("concept:seed")})
+        preview = ds.extract_doc(self.store, did, owner="user:a")
+        self.assertEqual(preview["domain"], "astronomy")
+        self.assertEqual(ds.extract_doc(self.store, did, owner="user:a", apply=True)["domain"],
+                         preview["domain"])
+
+    def test_extract_preview_denies_foreign_and_unreadable_documents_with_edited_candidates(self):
+        did = ds.put_doc(self.store, owner="user:a", text="# Note\n\n## Candidate\n\nBody.")["doc_id"]
+        edited = [{"title": "Caller edited candidate"}]
+        foreign = ds.extract_doc(self.store, did, owner="user:b", candidates=edited)
+        self.assertFalse(foreign["executed"])
+        self.assertEqual(foreign["error"], "unknown doc_id")
+        self.assertNotIn("domain", foreign)
+        self.store.run("MATCH (d:_DocMeta) WHERE d.doc_id=$id SET d.chunk_count=-1", {"id": did})
+        unreadable = ds.extract_doc(self.store, did, owner="user:a", candidates=edited)
+        self.assertFalse(unreadable["executed"])
+        self.assertIn("rewritten", unreadable["error"])
+        self.assertNotIn("domain", unreadable)
 
     def test_ensure_rule_relinks_stale_links_once_and_stamps(self):
         """규칙 표식이 없거나 다르면 전량 재링크하고, 같으면 아무것도 안 한다.
