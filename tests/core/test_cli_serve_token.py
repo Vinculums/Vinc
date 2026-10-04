@@ -27,7 +27,9 @@ def test_serve_consumes_environment_token_before_store_work(
     received = []
     monkeypatch.setattr("store.persistence.restore_newest", restore)
     monkeypatch.setattr("api.server.serve", lambda cfg, **kw: received.append(kw))
-    argv = ["serve", "--data", str(tmp_path / "db")]
+    # Managed sidecars select local even when the terminal defaults to account.
+    monkeypatch.setenv("VINC_TARGET", "account")
+    argv = ["--target", "local", "serve", "--data", str(tmp_path / "db")]
     if manual is not None:
         argv.extend(["--token", manual])
     assert cli.main(argv) == 0
