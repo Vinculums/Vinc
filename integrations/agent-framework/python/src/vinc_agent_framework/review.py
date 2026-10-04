@@ -21,6 +21,7 @@ async def run_review(
     """
     original = [Message("user", [messages])] if isinstance(messages, str) else list(messages)
     request_options = dict(options or {})
+    request_options.pop("tools", None)
     request_options.pop("response_format", None)
     request_options["tool_choice"] = "none"
     if native_structured:

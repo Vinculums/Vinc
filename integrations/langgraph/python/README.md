@@ -75,6 +75,11 @@ without structured output support, select `native_structured=False` explicitly.
 The helper retries one malformed output with sanitized feedback and then raises
 `UNPARSED`, preserving the difference between an unparsed review and no findings.
 Service and unsupported-schema errors propagate; `config` is passed unchanged.
+Pass provider generation parameters through `options`, for example
+`options={"max_completion_tokens": 2048, "reasoning_effort": "low"}`. They are
+forwarded unchanged on both attempts, without adding `max_tokens` or
+`temperature`. The helper owns `tools`, `tool_choice` and `response_format`;
+these keys cannot override its structured review schema.
 Parsed citations still need permission/existence checks, and person-only
 requests still require approval before any action.
 
