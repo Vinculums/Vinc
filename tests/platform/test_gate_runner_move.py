@@ -15,6 +15,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -253,3 +254,26 @@ class FailsClosed(unittest.TestCase):
             self.assertIn("못 읽었다", proc.stdout + proc.stderr)
             self.assertIn("fetch-depth", proc.stdout + proc.stderr,
                           "가장 흔한 원인과 처방을 함께 말해야 한다")
+
+
+class QueueVerification(unittest.TestCase):
+    def test_queue_read_covers_all_nonterminal_states(self):
+        import gate_runner_move as gate
+        results = [subprocess.CompletedProcess([], 0, output, "")
+                   for output in ("12\n", "13\n", "", "12\n", "")]
+        with patch.object(gate.subprocess, "run", side_effect=results) as run:
+            self.assertEqual(gate.active_runs("Vinculums/Vinc", "release.yml"), [12, 13])
+        self.assertEqual(run.call_count, 5)
+        self.assertTrue(all("--paginate" in call.args[0] for call in run.call_args_list))
+
+    def test_failed_api_read_does_not_mean_empty_queue(self):
+        import gate_runner_move as gate
+        with patch.object(gate.subprocess, "run", return_value=subprocess.CompletedProcess([], 1, "", "")):
+            with self.assertRaises(gate.Unreadable):
+                gate.active_runs("Vinculums/Vinc", "release.yml")
+
+    def test_malformed_api_response_is_not_accepted(self):
+        import gate_runner_move as gate
+        with patch.object(gate.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "bad", "")):
+            with self.assertRaises(gate.Unreadable):
+                gate.active_runs("Vinculums/Vinc", "release.yml")
