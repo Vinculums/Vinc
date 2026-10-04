@@ -974,7 +974,7 @@ class VincApp:
                                  lambda: frag.merge_fragment(body, store=self.store,
                                                              themes=self.themes,
                                                              max_domains=cap,
-                                                             read_back=True))
+                                                             read_back=True, authored=True))
         return 200, res
 
     # ── 계정 연결(디바이스 연결 플로우 — 회원 키 복붙 종식) ─────────────────────
@@ -1701,7 +1701,7 @@ class VincApp:
                                      lambda: frag.merge_fragment(body, store=self.store,
                                                                  themes=self.themes,
                                                                  max_domains=cap,
-                                                                 read_back=True))
+                                                                 read_back=True, authored=True))
             return 200, res
         fn = self.ingest.get(engine)
         if fn is None:
