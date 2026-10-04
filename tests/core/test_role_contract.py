@@ -68,13 +68,19 @@ class CheckSaysWhatIsWrong(unittest.TestCase):
     def test_one_level_below_the_topic_is_fine(self):
         self.assertEqual(rc.check(good(domain="vinc/agent/roles"), created=True), [])
 
+    def test_role_topic_uses_the_write_paths_domain_normalization(self):
+        for topic in (" / agent // release / ", "vinc // agent / roles"):
+            with self.subTest(topic=topic):
+                self.assertEqual(rc.check(good(domain=topic), created=True), [])
+                self.assertTrue(rc.check(good(domain=topic, props={}), created=True))
+
     def test_the_top_level_agent_topic_is_the_new_home(self):
         # 새 역할의 자리는 `agent` 다. 옛 `vinc/agent` 도 그대로 받는다.
         # 근거: [[decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02]]
         self.assertEqual(rc.check(good(domain="agent"), created=True), [])
         self.assertEqual(rc.check(good(domain="agent/release"), created=True), [])
         self._one(good(domain="agent/release/ops"), needle="more than one level below agent")
-        self._one(good(domain="agents"), needle="roles live under agent")
+        self.assertEqual(rc.check(good(domain="agents"), created=True), [])
 
     def test_the_roster_concept_and_other_ids_are_not_roles(self):
         self.assertEqual(rc.check({"id": rc.ROSTER_CONCEPT, "props": {}}, created=True), [])
@@ -91,12 +97,14 @@ class CheckSaysWhatIsWrong(unittest.TestCase):
         self._one(good(domain="vinc/agent/team/ops"), needle="one level")
 
     def test_outside_the_topic(self):
-        self._one(good(domain="vinc/engineering"), needle="roles live under agent (or vinc/agent)")
+        for topic in ("agent-lab", "agents", "vinc/agent-lab", "vinc/engineering"):
+            with self.subTest(topic=topic):
+                self.assertEqual(rc.check(good(domain=topic, props={}), created=True), [])
 
     def test_created_without_a_domain(self):
         node = good()
         del node["domain"]
-        self._one(node, needle="no domain")
+        self.assertEqual(rc.check(node, created=True), [])
 
     def test_the_title_prefix(self):
         self._one(good(title="Agent role: Release manager"), needle="prefix")
@@ -144,10 +152,28 @@ class OnlyWhatWasSentIsChecked(unittest.TestCase):
         self.assertEqual(rc.check(node, created=False), [])
 
     def test_the_same_stub_on_create_is_told(self):
-        node = {"id": "concept:agent-release-manager", "type": "concept"}
+        node = {"id": "concept:agent-release-manager", "type": "concept", "domain": "agent"}
         out = rc.check(node, created=True)
-        self.assertTrue(any("no domain" in w for w in out), out)
         self.assertTrue(any("no props" in w for w in out), out)
+
+    def test_omitted_domain_uses_the_stored_topic_for_props_checks(self):
+        node = {"id": "concept:agent-release-manager", "props": {}}
+        for stored in ("agent", "vinc/agent/release"):
+            with self.subTest(stored=stored):
+                self.assertTrue(any("props is missing" in w for w in
+                                    rc.check(node, created=False, stored_domain=stored)))
+        self.assertEqual(rc.check(node, created=False, stored_domain="agent-lab"), [])
+
+    def test_explicit_domain_takes_precedence_over_the_stored_topic(self):
+        node = {"id": "concept:agent-release-manager", "props": {}, "domain": "agent-lab"}
+        self.assertEqual(rc.check(node, created=False, stored_domain="agent"), [])
+        node["domain"] = "agent"
+        self.assertTrue(rc.check(node, created=False, stored_domain="agent-lab"))
+
+    def test_null_domain_preserves_the_stored_topic_like_the_write_path(self):
+        node = {"id": "concept:agent-release-manager", "props": {}, "domain": None}
+        self.assertTrue(rc.check(node, created=False, stored_domain="agent"))
+        self.assertEqual(rc.check(node, created=False, stored_domain="agent-lab"), [])
 
 
 class OfficialPacksMeetTheContract(unittest.TestCase):
@@ -180,6 +206,10 @@ class ConventionsAlwaysCarryRoles(unittest.TestCase):
         same, added = graphmd.with_roles_section(full)
         self.assertFalse(added)
         self.assertEqual(same, full)
+
+    def test_default_roles_reserve_the_prefix_in_both_languages(self):
+        self.assertIn("agent- prefix is reserved for roles", graphmd._TPL_EN)
+        self.assertIn("agent- 접두사는 역할 전용", graphmd._TPL_KO)
 
     def test_missing_roles_is_added_in_order_and_still_checks(self):
         for lang in ("en", "ko"):
@@ -253,6 +283,37 @@ class ThroughTheRealWritePath(unittest.TestCase):
         res = self._ingest({"id": "concept:agent-release-manager", "type": "concept",
                             "domain": "vinc/agent/roles"})
         self.assertEqual(res.get("warnings") or [], [])
+
+    def test_same_prefix_ordinary_concept_and_partial_updates_stay_clean(self):
+        node = {"id": "concept:agent-lab-research-handoff-package", "type": "concept",
+                "title": "Handoff package", "domain": "agent-lab", "props": {"question": "Q"}}
+        for update in (node, {"id": node["id"], "type": "concept", "props": {"question": "Q2"}},
+                       {"id": node["id"], "type": "concept", "domain": None, "title": "New title"}):
+            with self.subTest(update=update):
+                res = self._ingest(update)
+                self.assertFalse(res.get("partial"), res)
+                self.assertEqual(res.get("warnings") or [], [])
+                self.assertEqual(res["stored"][0]["domain"], "agent-lab")
+
+    def test_existing_role_props_update_without_domain_still_warns(self):
+        self.assertFalse(self._ingest(good()).get("partial"))
+        for domain in ({}, {"domain": None}):
+            res = self._ingest({"id": "concept:agent-release-manager", "type": "concept",
+                                "props": {}, **domain})
+            self.assertTrue(res.get("partial"), res)
+            self.assertTrue(any("props is missing" in w for w in res["warnings"]))
+            self.assertEqual(res["stored"][0]["domain"], "vinc/agent")
+
+    def test_explicit_topic_change_controls_role_validation(self):
+        self._ingest(good())
+        res = self._ingest({"id": "concept:agent-release-manager", "type": "concept",
+                            "domain": "agent-lab", "props": {}})
+        self.assertFalse(res.get("partial"), res)
+        self.assertEqual(res["stored"][0]["domain"], "agent-lab")
+        res = self._ingest({"id": "concept:agent-release-manager", "type": "concept",
+                            "domain": "agent", "props": {}})
+        self.assertTrue(any("props is missing" in w for w in res["warnings"]))
+        self.assertEqual(res["stored"][0]["domain"], "agent")
 
 
 if __name__ == "__main__":
