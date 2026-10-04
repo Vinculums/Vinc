@@ -6304,7 +6304,7 @@ def _derive_sync_edge_rels() -> dict[str, tuple[tuple[str, str, str, str], ...]]
     return {k: tuple(v) for k, v in out.items()}
 
 
-_SYNCED_EDGE_RELS = _CC_RELS + ("ABOUT",)
+_SYNCED_EDGE_RELS = _CC_RELS + ("ABOUT", "ATTACHES_TO")
 SYNC_EDGE_RELS: dict[str, tuple[tuple[str, str, str, str], ...]] = _derive_sync_edge_rels()
 _FRAGMENT_EDGE_TO_REL = {   # fragment 엣지 타입명 → rel (api/fragment 와 동형)
     "relates_to": "RELATED_TO", "prerequisite_of": "PREREQUISITE_OF",
@@ -6312,6 +6312,17 @@ _FRAGMENT_EDGE_TO_REL = {   # fragment 엣지 타입명 → rel (api/fragment �
     "about": "ABOUT",
     "returns_to": "RETURNS_TO",
 }
+
+
+def sync_edge_spec(rel: str):
+    """Record 삭제는 저작 타입도 보존해 다른 타입의 관계를 지우지 않는다."""
+    carrier, subtype = rel, None
+    if rel.startswith("ATTACHES_TO:"):
+        carrier, subtype = rel.split(":", 1)
+        if subtype not in {"relates_to", "prerequisite_of", "derives_from", "inherits_from"}:
+            return None
+    pairs = SYNC_EDGE_RELS.get(carrier)
+    return (carrier, subtype, pairs) if pairs else None
 
 
 def _write_edge_tombstone(store, src: str, rel: str, dst: str, owner: str | None) -> None:
@@ -6324,7 +6335,7 @@ def _write_edge_tombstone(store, src: str, rel: str, dst: str, owner: str | None
         # 끝점 후보를 훑어 **id 가 실제로 있는 라벨**에서 소유를 읽는다. 라벨을 하나로
         # 가정하면 결정 끝점에서 소유가 'user:local' 로 떨어져 남의 그래프에 툼스톤이
         # 앉는다.
-        for sl, sp, _dl, _dp in SYNC_EDGE_RELS[rel]:
+        for sl, sp, _dl, _dp in sync_edge_spec(rel)[2]:
             rows = store.run(f"MATCH (n:{sl}) WHERE n.{sp} = $id RETURN n.owner_id AS o",
                              {"id": pkns.key(owner, src)})
             if rows:
@@ -6344,8 +6355,8 @@ def _write_edge_tombstone(store, src: str, rel: str, dst: str, owner: str | None
 def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
                 cfg=None, store=None) -> dict:
     """엣지 1개를 삭제하고 **엣지 툼스톤**을 남긴다(S4 확장 — 삭제 전파). 대상은
-    동기화 rel 5종(CC 4종 + ABOUT)만 — 그 외(CONNECTS·ATTACHES_TO·TYPED)는 동기화
-    밖이라 툼스톤 의미가 없고 질화자(role/type) 정합이 필요해 후속 과제.
+    Record→Concept|Decision 부착은 원 타입으로 고르거나 ATTACHES_TO로 고른다.
+    원 타입 선택의 툼스톤도 타입을 보존한다. CONNECTS·TYPED는 범위 밖이다.
 
     ``edge_type`` 은 fragment 타입명(relates_to·about…)과 rel 명(RELATED_TO…) 둘 다
     허용. RELATED_TO 는 의미상 무방향 — **양방향 물리 엣지를 모두** 지운다.
@@ -6356,6 +6367,10 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
         store = open_store(cfg)
     rel = _FRAGMENT_EDGE_TO_REL.get((edge_type or "").strip().lower(),
                                     (edge_type or "").strip().upper())
+    subtype = None
+    if src.startswith("record:") and (edge_type or "").strip().lower() in {
+            "relates_to", "prerequisite_of", "derives_from", "inherits_from"}:
+        subtype, rel = edge_type.strip().lower(), "ATTACHES_TO"
     base = {"kind": "delete_edge", "executed": False, "found": False,
             "src": src, "rel": rel, "dst": dst}
     if store is None:
@@ -6368,6 +6383,9 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
         return base
     scope_a = scope_b = ""
     params: dict = {"s": pkns.key(owner, src), "d": pkns.key(owner, dst)}
+    qualifier = " AND r.type = $subtype" if subtype is not None else ""
+    if subtype is not None:
+        params["subtype"] = subtype
     if owner:
         scope_a, scope_b = " AND a.owner_id = $owner", " AND b.owner_id = $owner"
         params["owner"] = owner
@@ -6382,12 +6400,12 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
                 p = {**params, "s": pkns.key(owner, s_), "d": pkns.key(owner, d_)}
                 cnt = store.run(
                     f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
-                    f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b} "
+                    f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b}{qualifier} "
                     "RETURN count(r) AS c", p)
                 if cnt and int(cnt[0].get("c") or 0):
                     store.run(
                         f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
-                        f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b} DELETE r", p)
+                        f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b}{qualifier} DELETE r", p)
                     deleted += int(cnt[0].get("c") or 0)
         base["executed"] = True
         if not deleted:
@@ -6396,7 +6414,8 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
         base["found"] = True
         base["deleted"] = {"edges": deleted}
         # 툼스톤은 정준 방향(요청 방향) 1개 — apply 측이 RELATED_TO 를 양방향 삭제한다.
-        _write_edge_tombstone(store, src, rel, dst, owner)
+        marker = rel + ":" + subtype if subtype is not None else rel
+        _write_edge_tombstone(store, src, marker, dst, owner)
     except Exception as exc:
         base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
     finally:
@@ -6416,7 +6435,48 @@ def _drop_node_shadows(store, node_id: str, owner: str | None, physical_id: str)
     store.run("MATCH (b:_SyncBase) WHERE b.node_id = $id DELETE b", {"id": physical_id})
 
 
-def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None) -> dict:
+def _delete_preview_edges(store, node_id: str, label: str, pk: str,
+                          owner: str | None) -> list[dict]:
+    from store import embedded_schema as es
+    nodes = es.node_table_specs()
+    seen, edges = set(), []
+    for spec in es.rel_table_specs():
+        for direction in ("out", "in"):
+            own_end, other_end = (("from", "to") if direction == "out" else ("to", "from"))
+            if spec[own_end] != label:
+                continue
+            other_label = spec[other_end]
+            other_pk = nodes[other_label]["pk"]
+            pattern = (f"(n:{label})-[r:{spec['label']}]->(o:{other_label})" if direction == "out" else
+                       f"(o:{other_label})-[r:{spec['label']}]->(n:{label})")
+            cols = nodes[other_label]["cols"]
+            has_owner = "owner_id" in cols
+            visible = "o.owner_id = $owner" if owner and has_owner else "true"
+            subtype = "r.type" if spec["label"] in {"ATTACHES_TO", "TYPED"} else "''"
+            params = {"id": pkns.key(owner, node_id), "owner": owner or ""}
+            scope = " AND n.owner_id = $owner" if owner else ""
+            rows = store.run(f"MATCH {pattern} WHERE n.{pk} = $id{scope} "
+                             f"RETURN id(r) AS ek, o.{other_pk} AS other, {visible} AS visible, "
+                             f"{subtype} AS subtype", params)
+            for row in rows:
+                key = json.dumps(row["ek"], sort_keys=True)
+                if key in seen:
+                    continue
+                seen.add(key)
+                other = pkns.strip(str(row["other"])) if row.get("visible") else None
+                edge = {"from": node_id if direction == "out" else other,
+                        "to": other if direction == "out" else node_id,
+                        "type": spec["label"], "dir": direction}
+                if row.get("subtype"):
+                    edge["subtype"] = row["subtype"]
+                if other is None:
+                    edge["endpoint_unavailable"] = True
+                edges.append(edge)
+    return sorted(edges, key=lambda e: json.dumps(e, sort_keys=True))
+
+
+def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None,
+                dry_run: bool = False) -> dict:
     """노드 1개를 부착 엣지와 함께 **비가역** 삭제(T3c). id 접두사로 테이블을 판별
     (:data:`_SEED_TABLES` 재사용) — 미지 접두사(Entity 등)는 표를 특정할 수 없어
     ``found:False`` 로 안전 거부한다. 존재 확인 → 부착 엣지 수(양방향) 카운트 →
@@ -6430,6 +6490,13 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None)
     if owns:
         store = open_store(cfg)
     base = {"kind": "delete", "executed": False, "found": False, "node": node_id}
+    if type(dry_run) is not bool:
+        base["error"] = "dry_run must be a boolean"
+        if owns and store is not None:
+            store.close()
+        return base
+    if dry_run:
+        base["dry_run"] = True
     if store is None:
         base["note"] = base["error"] = "no reachable store"
         return base
@@ -6475,8 +6542,21 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None)
             return base
         base["found"] = True
         deg = store.run(
-            f"MATCH (n:{label})-[r]-() WHERE n.{pk} = $id{scope} RETURN count(r) AS c", params)
+            f"MATCH (n:{label})-[r]-() WHERE n.{pk} = $id{scope} RETURN count(DISTINCT r) AS c", params)
         edges = int(deg[0].get("c")) if deg else 0
+        if dry_run:
+            preview = _delete_preview_edges(store, node_id, label, pk, owner)
+            if len(preview) != edges:
+                base.update(executed=False, error="delete preview changed during read; try again")
+                return base
+            # 봉투 상한을 넘는 목록을 일부만 보여 주지 않는다. 실제 삭제는 하지 않는다.
+            if len(json.dumps(preview, ensure_ascii=False).encode("utf-8")) > 48000:
+                base.update(executed=False, error="delete preview exceeds response budget",
+                            edge_count=edges, preview_complete=False)
+                return base
+            base["preview"] = {"node": 1, "edges": preview, "edge_count": edges,
+                               "complete": True}
+            return base
         _write_tombstone(store, node_id, label, owner)   # 삭제 전파용 표식(S4)
         store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} DETACH DELETE n", params)
         _drop_node_shadows(store, node_id, owner, params["id"])

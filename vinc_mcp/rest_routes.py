@@ -81,7 +81,7 @@ WRITE_ROUTES = (
     Route("POST", "/v1/nodes/merge", "vinc_merge_nodes",
           body=("keep_id", "drop_id")),
     Route("DELETE", "/v1/nodes/{id}", "vinc_delete",
-          path_args=(("id", "node_id"),)),
+          query=("dry_run",), path_args=(("id", "node_id"),)),
     Route("DELETE", "/v1/edges", "vinc_delete_edge",
           query=("from_id", "to_id", "type")),
     Route("PUT", "/v1/documents/{doc_id}", "vinc_doc_put",
