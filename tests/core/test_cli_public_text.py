@@ -173,6 +173,7 @@ def test_refs_refresh_bootstraps_fresh_default_manifest(tmp_path, monkeypatch, c
         if fmt == "ndjson":
             assert len(got.out.splitlines()) == 1
     else:
+        assert got.out.startswith("Graph citations refreshed.\nmanifest: ")
         assert str(manifest) in got.out
         assert "Traceback" not in got.err
 
