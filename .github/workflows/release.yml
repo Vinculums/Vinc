@@ -570,7 +570,7 @@ jobs:
     needs: build
     # 태그 재실행은 기존 draft 자산도 검사한다. 수동 빌드는 Actions 산출물을 쓴다.
     if: ${{ !cancelled() && (startsWith(github.ref, 'refs/tags/') || needs.build.result == 'success') }}
-    runs-on: [self-hosted, linux, vinc-local]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
