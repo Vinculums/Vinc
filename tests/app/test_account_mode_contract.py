@@ -96,7 +96,7 @@ class GateTest(unittest.TestCase):
         기다리며, 못 띄우면 인터넷이 아니라 이 기기라고 말한다."""
         self.assertNotIn("await connectSidecar();", MAIN_TS)
         start = FIRSTRUN_TS[FIRSTRUN_TS.index("const start = async"):]
-        i_wait = start.index("await sidecar;")
+        i_wait = start.index("await sidecar.then(")
         i_ensure = start.index("await ensureSidecar()")
         i_connect = start.index("connectAccount(")
         self.assertLess(i_wait, i_ensure)
@@ -141,7 +141,9 @@ class GateTest(unittest.TestCase):
         self.assertLess(screen.index('id="fr-signin"'), screen.index('class="si-or"'))
         self.assertLess(screen.index('class="si-or"'), screen.index('id="fr-google"'))
         self.assertIn('google.addEventListener("click", () => void start("google"))', FIRSTRUN_TS)
-        self.assertIn("connectAccount(undefined, { via })", FIRSTRUN_TS)
+        # Progress and cancellation now travel beside via; the actual device-flow
+        # fixture in app/dev/signin-pending-check.mjs also checks the Google URL.
+        self.assertRegex(FIRSTRUN_TS, r"connectAccount\([\s\S]*?\},\s*\{\s*via\b")
         body = _fn(CONNECT_TS, "connectAccount")
         self.assertIn('const via = opts.via ? `&via=${opts.via}` : "";', body)
         # `mcp=1`(VIN-132): 이 앱은 기기별 MCP 키를 받는다. 연결 페이지가 이 표시를 보고 만든다.
