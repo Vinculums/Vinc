@@ -57,3 +57,26 @@ context -> review -> approve (interrupt) -> record
 ## License
 
 MIT
+# Final output gate
+
+```python
+from vinc_client import OutputGate
+from vinc_langgraph import create_output_gate_middleware, evaluate_output_node
+
+gate = OutputGate(fresh_role["props"])
+middleware = create_output_gate_middleware(gate, evidence=host_evidence_for_this_run)
+# Pass middleware=[middleware] to create_agent; use invoke()/ainvoke().
+```
+
+Intermediate AI tool-call messages continue to the tool loop. The final response
+is checked outside the model; block and interrupt raise `OutputGateStopped`.
+This does not authorize or undo tool execution. Do not expose unchecked model
+stream events to an end user.
+
+For an explicit StateGraph, place `evaluate_output_node(state, gate,
+evidence=host_evidence)` after the model node, declare `vinc_output_gate` in the
+state schema and route its verdict to delivery, stopping, or a separate approval
+node. The helper returns decisions and bounded evidence, not the original answer.
+`require_output_pass` is available when the graph should raise instead of routing.
+State-provided proof dictionaries are ignored. Neither path calls another model
+or automatically stores an episode.

@@ -1,0 +1,1631 @@
+{
+  "status": "unratified VIN-311 proposal; not a live roster",
+  "profiles": [
+    {
+      "id": "concept:agent-copy-owner",
+      "source_rev": 26,
+      "source_gates": [
+        "scripts/gate_forbidden.py"
+      ],
+      "source_never": [
+        "switch the language setting on",
+        "ship a line it did not read aloud",
+        "change English keys or behaviour",
+        "pass Korean that keeps English sentence shape even when every word is allowed (vinc.spec.ui-copy-ko section 10)"
+      ],
+      "person_only": [
+        {
+          "action": "sign_off",
+          "reason": "on screen sign off by a Korean speaker"
+        },
+        {
+          "action": "enable_korean",
+          "reason": "switching the language on"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_1",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_forbidden.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "forbidden_actions",
+          "actions": [
+            "english_value"
+          ]
+        },
+        {
+          "type": "rendered_copy",
+          "rules": [
+            "variable_particle",
+            "em_dash",
+            "second_person",
+            "object_honorific",
+            "english_value"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-copy-writer",
+      "source_rev": 14,
+      "source_gates": [],
+      "source_never": [
+        "commit",
+        "touch an English key or value",
+        "touch code",
+        "put a particle after a variable",
+        "use the second person or an object honorific",
+        "use an em dash in anything that renders",
+        "compose the line in English first and then translate it (vinc.spec.ui-copy-ko section 10)"
+      ],
+      "person_only": [
+        {
+          "action": "sign_off",
+          "reason": "sign off on screen"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "forbidden_actions",
+          "actions": [
+            "commit",
+            "english_value",
+            "edit"
+          ]
+        },
+        {
+          "type": "rendered_copy",
+          "rules": [
+            "variable_particle",
+            "em_dash",
+            "second_person",
+            "object_honorific",
+            "english_value"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-deploy",
+      "source_rev": 30,
+      "source_gates": [],
+      "source_never": [
+        "merge without a verification result that names where it ran",
+        "merge while a run for an earlier commit is queued in the same deploy concurrency group (Vinc#129: it will block, not supersede)",
+        "touch the cloud plane",
+        "push a tag or publish a release (that is agent-release)",
+        "report a deployment from the merge alone"
+      ],
+      "person_only": [
+        {
+          "action": "merge_scope",
+          "reason": "the scope of what may be merged"
+        },
+        {
+          "action": "cloud_command",
+          "reason": "any cloud-plane command"
+        },
+        {
+          "action": "pk_namespacing_migration",
+          "reason": "the PK namespacing migration run"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "forbidden_actions",
+          "actions": [
+            "push"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-design",
+      "source_rev": 61,
+      "source_gates": [
+        "design-hub/scripts/sync_out.py",
+        "design-hub/scripts/gate_surface.py",
+        "scripts/gate_design_sync.py",
+        "scripts/gate_contrast.py"
+      ],
+      "source_never": [
+        "hand edit generated output",
+        "author in Figma (the Product Designer's surface)",
+        "leave a token change unsynced at the end of a session"
+      ],
+      "person_only": [
+        {
+          "action": "choose_name",
+          "reason": "choosing between two names for one value"
+        },
+        {
+          "action": "accept_concept",
+          "reason": "accepting a concept"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_1",
+          "check": {
+            "type": "command_success",
+            "command": "design-hub/scripts/sync_out.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_2",
+          "check": {
+            "type": "command_success",
+            "command": "design-hub/scripts/gate_surface.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_3",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_design_sync.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_4",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_contrast.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": []
+    },
+    {
+      "id": "concept:agent-dev-account",
+      "source_rev": 17,
+      "source_gates": [
+        "scripts/gate-graph-refs.mjs"
+      ],
+      "source_never": [
+        "widen scope past the package",
+        "merge",
+        "touch site copy",
+        "add a route without registering it in all four places: the sidecar route table, the hub proxy allowlist, the account allowlist, and the dev-server proxy pattern"
+      ],
+      "person_only": [
+        {
+          "action": "merge",
+          "reason": "merge"
+        },
+        {
+          "action": "pricing",
+          "reason": "tier and price policy"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_1",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate-graph-refs.mjs",
+            "repos": [
+              "Vinc-homepage"
+            ]
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "forbidden_actions",
+          "actions": [
+            "merge"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-dev-app",
+      "source_rev": 38,
+      "source_gates": [
+        "scripts/gate_contrast.py",
+        "design-hub/scripts/gate_surface.py",
+        "scripts/gate_forbidden.py"
+      ],
+      "source_never": [
+        "widen scope past the package",
+        "merge",
+        "hand edit generated tokens",
+        "hardcode a colour outside the token file",
+        "assign a Vinc-homepage package without declaring site/ paths and reading the docs IA / site specs in props.reads"
+      ],
+      "person_only": [
+        {
+          "action": "merge",
+          "reason": "merge"
+        },
+        {
+          "action": "enable_korean",
+          "reason": "switching the Korean language setting on"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_1",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_contrast.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_2",
+          "check": {
+            "type": "command_success",
+            "command": "design-hub/scripts/gate_surface.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_3",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_forbidden.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "forbidden_actions",
+          "actions": [
+            "merge"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-dev-core",
+      "source_rev": 79,
+      "source_gates": [
+        "scripts/gate_forbidden.py",
+        "scripts/gate_graph_refs.py",
+        "scripts/gate_escape.py"
+      ],
+      "source_never": [
+        "widen scope past the package",
+        "merge",
+        "run a schema migration against live data",
+        "call vinc_delete or vinc_merge_nodes"
+      ],
+      "person_only": [
+        {
+          "action": "merge",
+          "reason": "merge"
+        },
+        {
+          "action": "migration",
+          "reason": "migration run"
+        },
+        {
+          "action": "accept_risk",
+          "reason": "risk acceptance"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_1",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_forbidden.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_2",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_graph_refs.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_3",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_escape.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "forbidden_actions",
+          "actions": [
+            "merge",
+            "migration",
+            "graph_delete",
+            "graph_merge"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-gate-runner",
+      "source_rev": 30,
+      "source_gates": [
+        "scripts/gate_forbidden.py",
+        "scripts/gate_graph_refs.py",
+        "scripts/gate_escape.py",
+        "scripts/gate_contrast.py",
+        "scripts/gate_design_sync.py",
+        "design-hub/scripts/sync_out.py",
+        "design-hub/scripts/gate_surface.py",
+        "scripts/version_sync.py",
+        "scripts/gate_copy.mjs",
+        "scripts/gate-graph-refs.mjs"
+      ],
+      "source_never": [
+        "edit anything",
+        "judge or interpret (coverage is stated as a fact)",
+        "merge",
+        "escalate (it returns the package to its author instead)",
+        "re-run a failed workflow expecting a different result"
+      ],
+      "person_only": [],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_1",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_forbidden.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_2",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_graph_refs.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_3",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_escape.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_4",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_contrast.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_5",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_design_sync.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_6",
+          "check": {
+            "type": "command_success",
+            "command": "design-hub/scripts/sync_out.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_7",
+          "check": {
+            "type": "command_success",
+            "command": "design-hub/scripts/gate_surface.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_8",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/version_sync.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_9",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_copy.mjs",
+            "repos": [
+              "Vinc-homepage"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_10",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate-graph-refs.mjs",
+            "repos": [
+              "Vinc-homepage"
+            ]
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "forbidden_actions",
+          "actions": [
+            "edit",
+            "merge"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-infra",
+      "source_rev": 11,
+      "source_gates": [
+        "cd infra && terraform validate",
+        "cd infra && terraform plan reaches a terminal plan with no unexpected change"
+      ],
+      "source_never": [
+        "run terraform apply, or any az command that writes",
+        "widen a role assignment, or attach a credential to an identity",
+        "put a secret in a file, including a terraform state file the repository can see",
+        "import the container apps before a remote backend and a secret store exist",
+        "change an environment variable on a running container app"
+      ],
+      "person_only": [
+        {
+          "action": "state_change",
+          "reason": "every state changing command, terraform apply included"
+        },
+        {
+          "action": "credential_rotation",
+          "reason": "creating or rotating any credential"
+        },
+        {
+          "action": "pk_namespacing_migration",
+          "reason": "the PK namespacing migration run"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_1",
+          "check": {
+            "type": "command_success",
+            "command": "cd infra && terraform validate",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_2",
+          "check": {
+            "type": "command_success",
+            "command": "cd infra && terraform plan reaches a terminal plan with no unexpected change",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": []
+    },
+    {
+      "id": "concept:agent-marketing",
+      "source_rev": 19,
+      "source_gates": [
+        "scripts/gate_copy.mjs",
+        "scripts/gate-graph-refs.mjs"
+      ],
+      "source_never": [
+        "write a capability sentence without naming the build it is true on",
+        "send mail",
+        "set price or tier policy",
+        "put a customer name or address in an email body",
+        "use an em dash in copy"
+      ],
+      "person_only": [
+        {
+          "action": "pricing",
+          "reason": "pricing"
+        },
+        {
+          "action": "send",
+          "reason": "sending"
+        },
+        {
+          "action": "public_promise",
+          "reason": "public promises"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_1",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_copy.mjs",
+            "repos": [
+              "Vinc-homepage"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_2",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate-graph-refs.mjs",
+            "repos": [
+              "Vinc-homepage"
+            ]
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "rendered_copy",
+          "rules": [
+            "em_dash"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-metrics-analyst",
+      "source_rev": 19,
+      "source_gates": [],
+      "source_never": [
+        "add a catalogue entry without its definition, source query, window, baseline, confounders and a line on what a movement does not mean",
+        "show a revenue, billing or paid-conversion figure without the ESTIMATE label and its assumption set",
+        "recommend a product direction or rank priorities from a metric",
+        "change state on Azure, a database, the hub, or a Linear issue's status or priority"
+      ],
+      "person_only": [
+        {
+          "action": "metric_ratification",
+          "reason": "ratifying which catalogue entries become the tracked set"
+        },
+        {
+          "action": "estimate_assumptions",
+          "reason": "the assumptions behind an estimate: price per seat, conversion, churn"
+        },
+        {
+          "action": "bo_operator_step_up",
+          "reason": "the /bo step-up and any operator-session call to /api/bo"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": []
+    },
+    {
+      "id": "concept:agent-metrics-reviewer",
+      "source_rev": 9,
+      "source_gates": [],
+      "source_never": [
+        "edit the catalogue or author a metric entry",
+        "pass an entry whose query was not run in this session against the source it names",
+        "judge whether a metric is worth tracking"
+      ],
+      "person_only": [
+        {
+          "action": "override_failed_check",
+          "reason": "overriding a failed check"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": []
+    },
+    {
+      "id": "concept:agent-ops",
+      "source_rev": 22,
+      "source_gates": [],
+      "source_never": [
+        "change environment variables",
+        "scale replicas",
+        "restore a snapshot",
+        "edit DNS",
+        "run az from a POSIX shell (path translation rewrites the value)",
+        "merge a pull request",
+        "treat the GitHub plane as this role's surface"
+      ],
+      "person_only": [
+        {
+          "action": "state_change",
+          "reason": "every state changing command"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "forbidden_actions",
+          "actions": [
+            "merge"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-orchestrator",
+      "source_rev": 78,
+      "source_gates": [],
+      "source_never": [
+        "edit code",
+        "merge a pull request",
+        "move a package down a rung",
+        "start the next wave before a person answers",
+        "advise or operate a merge to main without first reading the run list for a run in flight",
+        "advise or perform anything that STOPS the runner while work is in flight, including restarting Docker Desktop, restarting the runner service, or rebooting the host, without first reading the JOBS of the runs in flight"
+      ],
+      "person_only": [
+        {
+          "action": "merge",
+          "reason": "merge"
+        },
+        {
+          "action": "wave_approval",
+          "reason": "wave approval"
+        },
+        {
+          "action": "operator_step",
+          "reason": "operator steps a plan marks as person operated"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "forbidden_actions",
+          "actions": [
+            "edit",
+            "merge"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-product-designer",
+      "source_rev": 42,
+      "source_gates": [
+        "design-hub/scripts/gate_surface.py",
+        "scripts/gate_forbidden.py"
+      ],
+      "source_never": [
+        "change a token value in design-hub (the Design Systems Engineer)",
+        "touch the prose column of the book",
+        "reuse an asset from a discarded round",
+        "put a decision note inside Figma",
+        "build motion before the keyframe round is signed off",
+        "draw a flat box where the brief asks for volume",
+        "use an em dash in anything that renders"
+      ],
+      "person_only": [
+        {
+          "action": "keyframe_sign_off",
+          "reason": "sign-off on every keyframe round"
+        },
+        {
+          "action": "choose_name",
+          "reason": "the choice between two names for one value"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_1",
+          "check": {
+            "type": "command_success",
+            "command": "design-hub/scripts/gate_surface.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_2",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_forbidden.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "rendered_copy",
+          "rules": [
+            "em_dash"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-product-owner",
+      "source_rev": 43,
+      "source_gates": [],
+      "source_never": [
+        "edit code or any repository file",
+        "dispatch or merge a package (the Program Manager and the Deployment Engineer)",
+        "ratify its own proposal",
+        "state a capability as shipped without a live read",
+        "set price or tier",
+        "make a public promise",
+        "sign off a design round",
+        "hand the person a list of open questions instead of a decision"
+      ],
+      "person_only": [
+        {
+          "action": "scope",
+          "reason": "scope"
+        },
+        {
+          "action": "pricing",
+          "reason": "pricing and tier"
+        },
+        {
+          "action": "public_promise",
+          "reason": "public promises"
+        },
+        {
+          "action": "design_acceptance",
+          "reason": "final acceptance of a design round"
+        },
+        {
+          "action": "ratify_schema",
+          "reason": "ratification of a domain, a type or a role"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "forbidden_actions",
+          "actions": [
+            "edit",
+            "merge"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-qa",
+      "source_rev": 34,
+      "source_gates": [],
+      "source_never": [
+        "edit product or test code",
+        "merge or deploy",
+        "assign a bucket_id without at least one concrete evidence item (console, DOM, HTTP, or toast)",
+        "replace or duplicate the work of agent-gate-runner or agent-reviewer-judgement",
+        "run tests from memory instead of retrieving the authoritative test-case chunks"
+      ],
+      "person_only": [],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "forbidden_actions",
+          "actions": [
+            "edit",
+            "merge",
+            "deploy"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-release",
+      "source_rev": 20,
+      "source_gates": [
+        "scripts/version_sync.py"
+      ],
+      "source_never": [
+        "push a tag",
+        "publish a draft release",
+        "edit the changelog with a script"
+      ],
+      "person_only": [
+        {
+          "action": "push_tag",
+          "reason": "tag push"
+        },
+        {
+          "action": "publish",
+          "reason": "publish"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_1",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/version_sync.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "forbidden_actions",
+          "actions": [
+            "push"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-research",
+      "source_rev": 33,
+      "source_gates": [],
+      "source_never": [
+        "take a decision",
+        "write that something is done without querying live",
+        "cite a vendor capability without rechecking it"
+      ],
+      "person_only": [
+        {
+          "action": "decision",
+          "reason": "the decision itself"
+        },
+        {
+          "action": "scope",
+          "reason": "scope"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": []
+    },
+    {
+      "id": "concept:agent-reviewer-judgement",
+      "source_rev": 12,
+      "source_gates": [],
+      "source_never": [
+        "edit",
+        "merge",
+        "flag a Korean code comment as a defect (the repository rule governs, not the prompt header)"
+      ],
+      "person_only": [
+        {
+          "action": "merge",
+          "reason": "merge"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "forbidden_actions",
+          "actions": [
+            "edit",
+            "merge"
+          ]
+        },
+        {
+          "type": "korean_comment_allowed"
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-security",
+      "source_rev": 15,
+      "source_gates": [],
+      "source_never": [
+        "fix in place",
+        "accept a risk",
+        "verify isolation against a stub instead of a real two owner engine"
+      ],
+      "person_only": [
+        {
+          "action": "accept_risk",
+          "reason": "risk acceptance"
+        },
+        {
+          "action": "token_rotation",
+          "reason": "token rotation"
+        },
+        {
+          "action": "signing_key_custody",
+          "reason": "signing key custody"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": []
+    },
+    {
+      "id": "concept:agent-steward",
+      "source_rev": 28,
+      "source_gates": [
+        "scripts/refresh_graph_refs.py",
+        "scripts/gate_graph_refs.py"
+      ],
+      "source_never": [
+        "call vinc_delete",
+        "call vinc_merge_nodes",
+        "call vinc_doc_delete",
+        "ratify a domain or a type",
+        "trust the migration ledger as a loss check (it only saw what was already loaded)"
+      ],
+      "person_only": [
+        {
+          "action": "deletion",
+          "reason": "deletion"
+        },
+        {
+          "action": "merge",
+          "reason": "merge"
+        },
+        {
+          "action": "ratification",
+          "reason": "ratification"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_1",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/refresh_graph_refs.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_2",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_graph_refs.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "forbidden_actions",
+          "actions": [
+            "graph_delete",
+            "graph_merge"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concept:agent-tech-writer",
+      "source_rev": 33,
+      "source_gates": [
+        "scripts/gate_forbidden.py",
+        "scripts/gate_copy.mjs"
+      ],
+      "source_never": [
+        "state a capability the build does not have (that claim belongs to the Product Marketing Manager)",
+        "use an em dash in anything that renders",
+        "hand edit a book-scroll/src snapshot (re-fetch it)",
+        "rewrite a chapter without re-reading the canon document it inherits from",
+        "touch the app's Korean UI copy (that is the Localization Engineer's); the Korean deck of a docs or book page is this role's own and follows vinc.spec.ui-copy-ko",
+        "write a Korean sentence by composing it in English and swapping in Korean words (vinc.spec.ui-copy-ko section 10 lists the shapes this produces)",
+        "ship a page's Korean deck without reading it aloud, or without the UX Writer reading it when the page is new"
+      ],
+      "person_only": [
+        {
+          "action": "book_argument",
+          "reason": "what the book argues"
+        },
+        {
+          "action": "publish_book",
+          "reason": "publishing the book"
+        }
+      ],
+      "gates": [
+        {
+          "id": "person_only",
+          "check": {
+            "type": "person_only"
+          },
+          "on_fail": "interrupt"
+        },
+        {
+          "id": "side_effect_evidence",
+          "check": {
+            "type": "side_effect_evidence"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "handoff_manifest",
+          "check": {
+            "type": "handoff_manifest"
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_1",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_forbidden.py",
+            "repos": [
+              "Vinc"
+            ]
+          },
+          "on_fail": "block"
+        },
+        {
+          "id": "command_2",
+          "check": {
+            "type": "command_success",
+            "command": "scripts/gate_copy.mjs",
+            "repos": [
+              "Vinc-homepage"
+            ]
+          },
+          "on_fail": "block"
+        }
+      ],
+      "never_checks": [
+        {
+          "type": "rendered_copy",
+          "rules": [
+            "em_dash"
+          ]
+        }
+      ]
+    }
+  ]
+}

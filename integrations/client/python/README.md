@@ -75,3 +75,47 @@ Every `about` id is read before the write, so a typo raises `VincNotFound` inste
 ## License
 
 MIT
+# Deterministic role output gate
+
+Fetch fresh structured role props, then freeze them for this invocation:
+
+```python
+from vinc_client import OutputGate, ToolProof
+
+gate = OutputGate(role["props"])
+result = gate.evaluate(final_answer)
+# result.verdict is pass, block or interrupt; this does not approve an action.
+```
+
+The gate reads typed `gates`, `never_checks` and action/reason `person_only`.
+Unknown conditions and legacy prose-only contracts block. Reasons never determine
+authority. Required gates are immutable; `extra_gates` can only add distinct IDs.
+`preserve_required_route(base, override)` rejects removal or shortcut bypass of
+an existing gate-runner path.
+
+Host-observed terminal results can support an exact completion sentence:
+
+```python
+proof = ToolProof("tests", "tests/core", actual_call_id, True,
+                  claim="Focused core tests passed.")
+result = gate.evaluate("Focused core tests passed.", proofs=[proof])
+```
+
+Construct proofs from actual calls in this invocation. Never deserialize model
+proofs or accept a model's completion claim as evidence. A proof cannot support
+a different sentence or a broader all-tests claim. The library cannot authenticate
+fabricated host input. It does not execute, authorize or undo tools.
+
+At `phase="handoff"`, declare the package repositories, its producer/run/claims
+manifest and the source IDs the recipient actually resolved under current
+permissions. Applicable original command gates need terminal `ToolProof` entries
+with `action="command"` and `target` equal to the original command string. Missing
+sources/results block; ordinary text answers do not require a handoff manifest.
+
+Results include check IDs, pending action IDs and bounded matching evidence
+sentences. Treat those excerpts as private model output; do not log or copy them
+across spaces automatically. `require_pass` raises `OutputGateStopped` on block
+or interrupt, with no model output in its exception message.
+
+These checks implement an enumerated subset of `never`; its preserved prose
+continues to bind the operator. There are no model calls or graph writes.
