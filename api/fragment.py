@@ -1177,7 +1177,8 @@ def _domain_gate(fragment_nodes: list[dict], *, store, owner: str,
 def merge_fragment(fragment: dict, *, store, themes=None,
                    stamp_edges: bool = True,
                    max_domains: int | None = None,
-                   read_back: bool = False) -> dict:
+                   read_back: bool = False,
+                   authored: bool = False) -> dict:
     """fragment 전체 MERGE. 반환 = D11 §4 계약(+ dedupe/partial/개방층 확장):
     ``{merged:{nodes:{created,matched}, edges:{created,[skipped_duplicate]}},
     warnings:[…], executed:…, [partial:True], [proposed_types:[…]],
@@ -1210,6 +1211,15 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     edges = list(fragment.get("edges") or [])
     owner_explicit = bool((fragment.get("owner") or "").strip())
     owner = (fragment.get("owner") or "").strip() or DEFAULT_OWNER
+    if authored:
+        # 저작 시점의 근거를 검사한다. sync/팩 복원은 근거보다 패키지가 먼저 올 수 있다.
+        # 근거: [[vinc.canon.mcp-contract]] Record props와 공개 저작 경로
+        from .package_contract import validate_nodes
+        denial = validate_nodes(nodes, store=store, owner=owner)
+        if denial:
+            return _finalize({"merged": None, "executed": False,
+                              "error": "invalid_package", "note": denial},
+                             ["invalid_package: " + denial])
     if max_domains is not None and owner_explicit:
         denial = _domain_gate(nodes, store=store, owner=owner, max_domains=max_domains)
         if denial:
