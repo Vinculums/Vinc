@@ -1273,7 +1273,7 @@ class VincApp:
         text = body.get("text")
         if not isinstance(text, str):
             return 400, {"executed": False, "error": "text must be a string"}
-        empty_title = "title" in body and not str(body.get("title") or "").strip()
+        empty_title = body.get("title") is not None and not str(body["title"]).strip()
         if not body.get("id") and empty_title:
             return 400, {"executed": False, "error": "title must not be empty"}
         # content_time(D72)은 **키가 없을 때와 빈 값일 때가 다르다**: 키가 없으면

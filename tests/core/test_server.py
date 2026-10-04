@@ -1639,6 +1639,11 @@ class DocRouteE2E(unittest.TestCase):
                 "owner": "user:a", "id": saved["doc_id"], "title": "", "text": "An unrelated body."})
             self.assertEqual(code, 200)
             self.assertEqual(cleared["title"], "")
+            # CLI 도구 브리지는 생략한 제목을 null로 보낸다. 빈 문자열과 다르다.
+            code, untitled = _req(base, "/doc/put", method="POST", body={
+                "owner": "user:a", "id": "cli.beta", "title": None, "text": "Beta body."})
+            self.assertEqual(code, 200)
+            self.assertTrue(untitled["executed"])
 
     def test_doc_crud_over_http(self):
         text = "# HTTP 편집\n\n" + "정본 편집 표면 왕복. " * 60
