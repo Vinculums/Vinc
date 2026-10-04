@@ -415,7 +415,7 @@ _EDGE_BIRTH_COL: tuple[str, str] = ("created", "STRING")
 #: 출생 열을 갖는 관계 — DDL·마이그레이션·쓰기 경로가 **이 하나**를 읽는다.
 EDGE_BIRTH_RELS: tuple[str, ...] = (
     "PREREQUISITE_OF", "DERIVES_FROM", "RELATED_TO", "INHERITS_FROM",
-    "CONNECTS", "ATTACHES_TO", "ABOUT", "TYPED",
+    "RETURNS_TO", "CONNECTS", "ATTACHES_TO", "ABOUT", "TYPED",
 )
 
 # v12 — **결정은 개념과 같은 층이다.** 개념이 끝점일 수 있는 자리마다 결정도 끝점일 수
@@ -434,6 +434,8 @@ _LOUVAIN_PROJECTED_REL = "RELATED_TO"
 
 _REL_TABLES: list[tuple] = [
     ("PREREQUISITE_OF", _SEMANTIC_LABELS, _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
+    # 반려 경로는 역할 Concept 사이에만 선다. 전달 순서 DAG와 별개다.
+    ("RETURNS_TO", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),
     ("DERIVES_FROM", _SEMANTIC_LABELS, _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
     ("RELATED_TO", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),   # ↑ 예외 사유
     ("CROSSES", "Bridge", "Domain", []),

@@ -684,8 +684,8 @@ export const api = {
   // props(D73): 개념의 자유 속성. `one_liner` 는 쓰기 경로가 없어 MCP 적재분이
   // 전량 빈 값이고 사람이 쓴 요약은 실제로 props 에 들어 있다 — 호출부는
   // one_liner → props 순으로 본문을 고른다. 구 사이드카엔 키가 없다(undefined).
-  nodeContext: (owner: string, node: string, limit = 4): Promise<{
-    executed: boolean; title?: string; one_liner?: string; arm?: string;
+  nodeContext: (owner: string, node: string, limit = 4, scope?: Scope): Promise<{
+    executed: boolean; title?: string; one_liner?: string; arm?: string; note?: string;
     props?: Record<string, unknown>;
     // 속성 편집이 읽는다: 무슨 종인가(props 를 싣는가) · 어느 판을 읽었는가(W3).
     // 구 사이드카엔 키가 없다 — 없으면 편집 단추를 내지 않고, 판은 0 으로 본다.
@@ -693,7 +693,7 @@ export const api = {
     excerpts?: { doc_id: string; doc_title: string; section: string;
                  excerpt: string; method: string }[];
     links?: NodeLinks;
-  }> => call("/node-context", { owner, node, limit }),
+  }> => call("/node-context", { owner, node, limit }, undefined, scope),
   // D45-V2 2단계 — Reader 서브뷰: 정본 전문(무손실 복원 + 해시 검증) + 밑줄 범위.
   docGet: (owner: string, id: string, scope?: Scope): Promise<{
     executed: boolean; text?: string; title?: string; verified?: boolean;
