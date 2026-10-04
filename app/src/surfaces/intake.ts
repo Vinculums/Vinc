@@ -2,7 +2,7 @@ import { COPY } from "../copy";
 import { readPackFile } from "../packfile";
 import { header } from "../components";
 import { icon, stateDot } from "../icons";
-import { api, cfg, sidecarDiag, remote, WEB } from "../api";
+import { api, cfg, sidecarDiag, remote, teamsApi, WEB } from "../api";
 import {
   isDocFile, importDocFile, originIndex, previewExtract, applyExtract, docImportError,
 } from "../doc-import";
@@ -22,6 +22,14 @@ export function renderIntake(el: HTMLElement,
                                       /** 이미 받은 파일(빈 화면에 여럿을 끌어다 놓았다) — 곧바로 적재한다. */
                                       files?: File[] }) {
   const ui = COPY.ui.intakeUi;
+  // 실제 목적지는 가져오기 API와 같은 모드·스페이스에서 읽는다(VIN-351).
+  // 팀 이름을 못 읽어도 개인·기기 공간이라고 바꾸어 말하지 않는다.
+  const remoteTarget = remote();
+  const teamTarget = remoteTarget ? cfg.team : "";
+  let destination = !remoteTarget ? ui.destinationLocal
+    : teamTarget ? ui.destinationTeam(ui.selectedTeam) : ui.destinationPersonal;
+  const destinationLine = (kind = "dz-sov") =>
+    `<p class="hint ${kind} import-destination" data-team="${esc(teamTarget)}">${esc(destination)}</p>`;
   // Tools 의 '가져오기' 탭이 헤더리스로 재사용(시트의 머리·탭줄이 크롬을 이미 준다).
   const chrome = opts?.withHeader === false ? "" : header("ingest", "Intake", COPY.ui.meta.intake);
   // `새 문서`는 Tools 안에서는 **옆 탭이 이미 갖고 있다**(만들기). 같은 시트 안에서
@@ -39,7 +47,7 @@ export function renderIntake(el: HTMLElement,
           <span class="dz-mark">${icon("recall", 34)}</span>
           <h2>${COPY.intake.idleTitle}</h2>
           <p class="dz-body">${COPY.intake.idleBody}</p>
-          <p class="hint dz-sov">${remote() ? COPY.sovereigntyWeb : COPY.sovereignty}</p>
+          ${destinationLine()}
           <div class="dz-actions">
             <button class="btn btn-primary" id="pick">${COPY.intake.idleCta}</button>
             ${newDoc}
@@ -134,6 +142,7 @@ export function renderIntake(el: HTMLElement,
           <div class="proc-head">
             <h2>${ui.importing}</h2>
             <p class="hint proc-meta" id="proc-meta">${ui.processing(0, files.length)}</p>
+            ${destinationLine("proc-meta")}
           </div>
           <div class="proc-rows" id="proc-rows">
             ${files.map((f, i) => procRow(f.name, i)).join("")}
@@ -321,6 +330,16 @@ export function renderIntake(el: HTMLElement,
 
   if (opts?.files?.length) void importFiles(opts.files);
   else showIdle();
+  if (teamTarget) {
+    void teamsApi.list().then((teams) => {
+      if (!remote() || cfg.team !== teamTarget) return;
+      const name = teams.find((t) => t.id === teamTarget)?.name;
+      if (!name) return; // 확인하지 못한 이름 대신 선택한 팀 공간이라는 안내를 유지한다.
+      destination = ui.destinationTeam(name);
+      const line = el.querySelector<HTMLElement>(".import-destination");
+      if (line?.dataset.team === teamTarget) line.textContent = destination;
+    }).catch(() => { /* 팀 이름 조회 실패가 파일 가져오기를 막지는 않는다 */ });
+  }
 }
 
 function esc(s: string): string {
