@@ -2,7 +2,7 @@ import pytest
 
 from api.role_gate_contract import check, condition_valid
 from api.role_contract import check as role_check
-from vinc_mcp.roles import _gate_bullets
+from vinc_mcp.roles import _gate_bullets, build_payload, render_shell
 
 
 REQUIRED = [
@@ -62,3 +62,15 @@ def test_write_path_reports_policy_warnings_without_rejecting_sync():
                         created=False)
     assert any('required' in warning for warning in result)
     assert any('never_checks' in warning for warning in result)
+
+
+def test_compact_contract_renders_the_complete_machine_checks():
+    props = {'mission':'Review', 'tier':'verify', 'rung':'fast', 'never':['edit'],
+             'person_only':[], 'gates':REQUIRED,
+             'never_checks':[{'type':'forbidden_actions', 'actions':['edit']}]}
+    role = build_payload([{'id':'concept:agent-reviewer', 'title':'Reviewer',
+                           'domain':'vinc/agent/roles', 'props':props}])['roles'][0]
+    compact = render_shell(role, compact=True)
+    assert _gate_bullets(REQUIRED) in compact
+    assert '## Machine checks for Never' in compact
+    assert _gate_bullets(props['never_checks']) in compact
