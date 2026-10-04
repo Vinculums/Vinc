@@ -681,6 +681,39 @@ jobs:
           done
           echo "발행 준비 완료(draft) — Vincs-app 에서 사람이 Publish."
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install existing release signer and verifier
+        run: |
+          npm ci --prefix app
+          sudo apt-get update
+          sudo apt-get install -y minisign
+
+      # 최종 자산을 다시 받아 별칭·CLI·latest.json까지 같은 바이트를 검증한다.
+      # 체크섬과 그 서명은 자기 자신을 해시할 수 없으므로 목록에서 제외한다.
+      - name: Publish signed checksums for every release payload
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"; REPO="Vinculums/Vincs-app"
+          mkdir -p integrity
+          gh release download "$TAG" --repo "$REPO" --pattern '*' --dir integrity
+          python scripts/release_checksums.py integrity app/src-tauri/tauri.conf.json
+          (cd app && npm run tauri -- signer sign --password="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ../integrity/SHA256SUMS > /dev/null)
+          base64 --decode integrity/SHA256SUMS.sig > integrity/SHA256SUMS.minisig
+          minisign -Vm integrity/SHA256SUMS -p integrity/release-signing.pub -x integrity/SHA256SUMS.minisig
+          (cd integrity && sha256sum -c SHA256SUMS)
+          gh release upload "$TAG" --repo "$REPO" --clobber \
+            integrity/SHA256SUMS integrity/SHA256SUMS.sig \
+            integrity/SHA256SUMS.minisig integrity/release-signing.pub
+
       # 릴리스 본문의 **기본값**을 자리표시자가 아니게 만든다.
       #
       # 배경: build 잡이 draft 를 만들 때 `--notes "Vinc $TAG"` 를 넣는데, 사람이 Publish
