@@ -69,6 +69,7 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "doc-highlights": ("GET", "/doc/highlights"),
     "doc-context": ("GET", "/doc/context"),   # 리더 머리(개념 칩·목차·청크 오프셋)
     "node": ("GET", "/node"), "node-context": ("GET", "/node-context"),
+    "node-edges": ("GET", "/node-edges"),
     "edge-context": ("GET", "/edge-context"),
     "ledger-drilldown": ("GET", "/ledger-drilldown"),
     "docs-in-range": ("GET", "/docs-in-range"),

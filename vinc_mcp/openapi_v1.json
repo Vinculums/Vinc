@@ -446,6 +446,166 @@
         }
       }
     },
+    "/v1/nodes/{id}/edges": {
+      "get": {
+        "operationId": "vinc_edges_get__v1_nodes_id_edges",
+        "summary": "Read actual directed incident edges for one exact node or a batch of 1..100 ids, without graph/node payloads. Supply either node or nodes. Returns edges with from, to, type, evidence, confidence and derived; unavailable properties are null. type is the physical relation label; subtype preserves TYPED/ATTACHES_TO authored types. Filter by either. dir defaults to both and preserves stored orientation. Includes structural IN_DOMAIN, PARENT_OF and MENTIONS. missing_nodes does not distinguish foreign from absent ids. count is the total; edges_truncated marks a cut. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exact node id or domain:<name>."
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "out",
+                "in",
+                "both"
+              ],
+              "default": "both"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000,
+              "default": 500
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/edges/query": {
+      "post": {
+        "operationId": "vinc_edges_post__v1_edges_query",
+        "summary": "Read actual directed incident edges for one exact node or a batch of 1..100 ids, without graph/node payloads. Supply either node or nodes. Returns edges with from, to, type, evidence, confidence and derived; unavailable properties are null. type is the physical relation label; subtype preserves TYPED/ATTACHES_TO authored types. Filter by either. dir defaults to both and preserves stored orientation. Includes structural IN_DOMAIN, PARENT_OF and MENTIONS. missing_nodes does not distinguish foreign from absent ids. count is the total; edges_truncated marks a cut. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "maxItems": 100
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "dir": {
+                    "type": "string",
+                    "enum": [
+                      "out",
+                      "in",
+                      "both"
+                    ],
+                    "default": "both"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5000,
+                    "default": 500
+                  }
+                },
+                "required": [
+                  "nodes"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/nodes/{id}/graph": {
       "get": {
         "operationId": "vinc_graph_get__v1_nodes_id_graph",
