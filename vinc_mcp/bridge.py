@@ -264,7 +264,9 @@ class Bridge:
         cmd = ([sys.executable, "--target", "local", "serve"] if getattr(sys, "frozen", False)
                else [sys.executable, "-m", "api.cli", "--target", "local", "serve"])
         # --parent-pid: 어댑터가 죽으면 사이드카도 자동 정리(좀비 근절, cli/serve 지원).
-        cmd += ["--port", str(port), "--token", self.token,
+        # URL-safe 토큰은 '-'로 시작할 수 있다. 별도 argv 값이면 argparse가
+        # 옵션으로 해석하므로 등호로 묶어 토큰 바이트를 그대로 전달한다.
+        cmd += ["--port", str(port), "--token=" + self.token,
                 "--parent-pid", str(os.getpid())]
         self._child = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
                                        stderr=subprocess.DEVNULL)
