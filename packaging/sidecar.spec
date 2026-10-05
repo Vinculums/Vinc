@@ -101,9 +101,7 @@ a = Analysis(
     binaries=BINARIES,  # collect_all 이 찾은 네이티브 서브모듈(.pyd/.so/.dylib) — 정적분석 사각 보완
     # 서버가 함수 내부에서 지연 임포트하는 엔진들 — 정적 분석이 놓치므로 명시
     hiddenimports=[
-        "engines.recall_ingest", "engines.concepts_ingest",
-        "engines.bridges_ingest", "engines.learner_ingest",
-        "engines.pack_ingest", *DRIVER_HIDDEN,
+        "engines.recall_ingest", *DRIVER_HIDDEN,
         # MCP 어댑터(P5) — cli 가 지연 임포트하므로 명시
         "vinc_mcp.bridge", "vinc_mcp.stdio", "vinc_mcp.http_server",
         "vinc_mcp.oauth", "vinc_mcp.install",
