@@ -12,7 +12,8 @@ import { COPY } from "./copy";
 import { esc } from "./components";
 import { fillTopicList, forgetTopics } from "./authoring";
 
-type Cand = { title: string; one_liner?: string; slug?: string };
+type Cand = NonNullable<Awaited<ReturnType<typeof api.docExtract>>["candidates"]>[number];
+const candidateKey = (c: Cand) => c.candidate_id || c.slug || c.title;
 let nextTopicList = 0;
 
 const seenKey = (owner: string, docId: string) => `vinc.extract.seen.${owner}.${docId}`;
@@ -43,7 +44,7 @@ export async function offerExtraction(box: HTMLElement, o: {
   catch { box.innerHTML = ""; return; }
   if (!res.executed) { box.innerHTML = ""; return; }
   const seen = loadSeen(o.owner, o.docId);
-  const cands: Cand[] = (res.candidates || []).filter((c) => !seen.has(c.slug || c.title));
+  const cands: Cand[] = (res.candidates || []).filter((c) => !seen.has(candidateKey(c)));
   if (!cands.length) { box.innerHTML = ""; return; }
   // 구 서버의 미리보기에는 domain 이 없다. 그때는 직접 고른 주제가 있어야 반영한다.
   let hasTopic = !!res.domain;
@@ -52,7 +53,7 @@ export async function offerExtraction(box: HTMLElement, o: {
   // 이미 편집기가 같은 목록을 펼쳐 두고 있으면(자동저장이 또 돌았다) 손대지 않는다 —
   // 고치던 제목과 체크가 날아가면 그게 곧 "다시 권했다"다.
   const shown = box.dataset.cands || "";
-  const key = cands.map((c) => c.slug || c.title).join("|");
+  const key = cands.map(candidateKey).join("|");
   if (shown === key && box.childElementCount) return;
   box.dataset.cands = key;
 
@@ -90,12 +91,14 @@ export async function offerExtraction(box: HTMLElement, o: {
         </div>
         ${cands.map((c, i) => `
           <div class="ex-row">
-            <input class="ex-check" type="checkbox" data-i="${i}" ${exists[i] ? "" : "checked"}
+            <input class="ex-check" type="checkbox" data-i="${i}" ${exists[i] || c.source === "body" ? "" : "checked"}
                    aria-label="${esc(c.title)}">
             <div class="ex-main">
               <input class="ex-title" type="text" data-i="${i}" value="${esc(c.title)}"
                      spellcheck="false" data-tip="${esc(A.exEditTip)}" aria-label="${esc(A.fTitle)}">
               ${c.one_liner ? `<p class="hint ex-ol">${esc(c.one_liner)}</p>` : ""}
+              ${c.source === "body" && c.spans ? `<blockquote>${c.spans.map((s) =>
+                `${esc(s.text)} (${esc(String(s.char_start))}:${esc(String(s.char_end))})`).join("<br>")}</blockquote>` : ""}
             </div>
             ${exists[i] ? `<span class="ex-badge">${esc(A.exExists)}</span>` : ""}
           </div>`).join("")}
@@ -110,7 +113,7 @@ export async function offerExtraction(box: HTMLElement, o: {
     box.querySelector('[data-ex="close"]')!.addEventListener("click", collapsed);
     box.querySelectorAll(".ex-check").forEach((c) => c.addEventListener("change", syncApply));
     box.querySelector('[data-ex="skip"]')!.addEventListener("click", () => {
-      saveSeen(o.owner, o.docId, cands.map((c) => c.slug || c.title));
+      saveSeen(o.owner, o.docId, cands.map(candidateKey));
       box.innerHTML = ""; box.dataset.cands = "";
     });
     box.querySelector('[data-ex="apply"]')!.addEventListener("click", () => void apply());
@@ -131,6 +134,7 @@ export async function offerExtraction(box: HTMLElement, o: {
       .map((c) => Number(c.dataset.i));
     if (!picked.length) { msg(esc(A.exNothingChecked)); return; }
     const chosen = picked.map((i) => ({
+      ...cands[i],
       title: (box.querySelector<HTMLInputElement>(`.ex-title[data-i="${i}"]`)?.value || cands[i].title).trim(),
       one_liner: cands[i].one_liner || "",
     })).filter((c) => c.title);
@@ -139,7 +143,8 @@ export async function offerExtraction(box: HTMLElement, o: {
     applying = true;
     msg(esc(A.exApplying));
     let r: Awaited<ReturnType<typeof api.docExtract>>;
-    try { r = await api.docExtract(o.owner, o.docId, true, chosen); }
+    try { r = await api.docExtract(o.owner, o.docId, true, chosen,
+      chosen.some((c) => c.source === "body") ? chosen.map((c) => c.candidate_id || "") : undefined); }
     catch (e: any) {
       applying = false;
       acts.forEach((b) => { b.disabled = false; });
@@ -159,7 +164,7 @@ export async function offerExtraction(box: HTMLElement, o: {
       return;
     }
     // 반영한 것도, 체크하지 않고 둔 것도 다시 권하지 않는다(사람이 살펴봤다).
-    saveSeen(o.owner, o.docId, cands.map((c) => c.slug || c.title));
+    saveSeen(o.owner, o.docId, cands.map(candidateKey));
     box.dataset.cands = "";
     box.innerHTML = `<p class="hint ex-done" role="status">${esc(A.exDone(
       r.applied?.created || 0, r.applied?.matched || 0, r.mentions || 0))}</p>`;

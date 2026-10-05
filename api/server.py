@@ -1416,7 +1416,8 @@ class VincApp:
             return 400, {"error": "owner required — 추출·반영은 소유 스코프(SEC-1)"}
         res = self.jobs.run_sync("doc.extract", lambda: docstore.extract_doc(
             self.store, _req(body, "id"), owner=owner,
-            apply=bool(body.get("apply")), candidates=body.get("candidates")))
+            apply=bool(body.get("apply")), candidates=body.get("candidates"),
+            approved_candidate_ids=body.get("approved_candidate_ids")))
         return 200, res
 
     def write_evidence_backfill(self, body):
