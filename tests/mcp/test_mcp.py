@@ -41,6 +41,8 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              "vinc_merge_candidates", "vinc_merge_reject",
              # E-G5/G7 — 단일 홉 관측(SoG) · 최단 경로 증거 체인.
              "vinc_neighbors", "vinc_edges", "vinc_role", "vinc_path",
+             # VIN-386 — 역할의 결정론 출력 게이트를 허브에서 돌린다(조회 전용, 쓰지 않음).
+             "vinc_role_check",
              # D45 P4 — 문서 정본(Chunk=SSoT) 직접 CRUD: get/list(조회) · put/delete(쓰기).
              "vinc_doc_get", "vinc_doc_list", "vinc_doc_put", "vinc_doc_delete",
              # D45-V — 정본에서 개념을 파생한다. 이게 없으면 어시스턴트는 문서를
@@ -89,7 +91,8 @@ class ToolContractTests(unittest.TestCase):
                     "node_id": "concept:x", "keep_id": "concept:x", "drop_id": "concept:y",
                     "from_id": "concept:x", "to_id": "concept:y", "type": "relates_to",
                     "a": "concept:x", "b": "concept:y",   # E-G7 vinc_path 필수 인자
-                    "text": "x", "doc_id": "d0"}          # D45 P4 문서 정본 필수 인자
+                    "text": "x", "doc_id": "d0",          # D45 P4 문서 정본 필수 인자
+                    "role": "concept:agent-x", "output": "x"}   # vinc_role_check 필수 인자
             if t["name"] == "vinc_edges":
                 args.pop("nodes")
             tools.call(t["name"], args, b)

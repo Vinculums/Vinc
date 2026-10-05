@@ -95,6 +95,96 @@
         }
       }
     },
+    "/v1/roles/{id}/check": {
+      "post": {
+        "operationId": "vinc_role_check_post__v1_roles_id_check",
+        "summary": "Check one final output against a role's structured checks, outside the model, before you show it or hand it off. Reads the role contract fresh (same rules as vinc_role) and applies its gates, never_checks and person_only with the same deterministic gate the vinc-client package uses; no model is called. Returns verdict pass, block or interrupt, failed_checks, person_only_actions and up to 20 matching evidence_sentences. block: do not deliver. interrupt: a person must decide before delivery. A prose-only or invalid contract blocks. A claim that something ran (tests passed, merged, deployed, written to the graph) blocks here, because this tool cannot accept host evidence from its caller. pass releases the output only and grants no permission. Read-only; writes nothing.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Role slug (agent-dev-core) or exact concept:agent- id."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "output": {
+                    "type": "string",
+                    "description": "The complete final output to check, at most 131072 characters."
+                  },
+                  "person_only_requests": {
+                    "type": "array",
+                    "description": "Optional structured requests the output makes for a person's decision; each action must be one of the role's person_only action ids.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "action": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "reason"
+                      ]
+                    }
+                  },
+                  "self_authored": {
+                    "type": "boolean",
+                    "description": "True when the output is a diff the role wrote; removed lines are then not read as proposals."
+                  }
+                },
+                "required": [
+                  "output"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/me": {
       "get": {
         "operationId": "vinc_whoami_get__v1_me",
