@@ -99,7 +99,7 @@ export function renderSearch(el: HTMLElement) {
       // 검색되게 하는 핵심 경로. 이전엔 프론트가 rows 만 읽어 개념이 통째로 안 보였다.
       const nodeHits: any[] = (res.node_hits || []).map((h: any) => ({
         ...h,
-        arms: h.matched_in === "graph" ? ["semantic"] : ["keyword"],   // 마크 재사용(≈/≡)
+        arms: ["graph", "semantic"].includes(h.matched_in) ? ["semantic"] : ["keyword"],   // 마크 재사용(≈/≡)
         _node: true,
       }));
       const exact = (docs?.docs || []).map((d) => ({
