@@ -4,6 +4,12 @@ import { header, armsNoticeBadge } from "../components";
 import { renderBrowse } from "./records";
 import { viewHooks } from "../topbar";
 import { renderSearchError } from "../search-error";
+import { partitionSearchResults } from "../search-relevance";
+
+function esc(s: string): string {
+  return String(s ?? "").replace(/[&<>"]/g, (c) =>
+    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+}
 
 /** Surface 4 — Search (spec: [[vinc.spec.surface-search]], DEC D24).
  *  Single field + operators (domain:, tag:, "phrase"). Results grouped by
@@ -45,7 +51,7 @@ export function renderSearch(el: HTMLElement) {
     body.innerHTML = `<div id="search-recent"></div><div id="search-list"></div>`;
     const rec = body.querySelector<HTMLElement>("#search-recent")!;
     if (recent.length) {
-      rec.innerHTML = recent.map((r) => `<button class="chip" data-recent>${r}</button>`).join(" ");
+      rec.innerHTML = recent.map((r) => `<button class="chip" data-recent>${esc(r)}</button>`).join(" ");
       rec.querySelectorAll("[data-recent]").forEach((b) =>
         b.addEventListener("click", () => {
           (el.querySelector("#q") as HTMLInputElement).value = (b as HTMLElement).textContent!;
@@ -108,6 +114,7 @@ export function renderSearch(el: HTMLElement) {
       let rows: any[] = [...exact, ...(res.rows || []), ...nodeHits];
       if (domain) rows = rows.filter((r) => (r.domain || r.doc_id || "").includes(domain));
       if (tag) rows = rows.filter((r) => (r.tags || []).includes(tag));
+      const { primary, weak } = partitionSearchResults(rows);
       // 벡터 팔이 빠졌으면 그 사실을 말한다(GM-13 이행 배지도 여기로 합쳐졌다).
       // 판단·톤 분기는 `armsNoticeBadge` 한 곳에 있다 — 세 표면이 같은 규칙을
       // 써야 같은 고장이 도구에 따라 보이거나 안 보이는 일이 없다. 정상이면 빈
@@ -116,19 +123,17 @@ export function renderSearch(el: HTMLElement) {
       // 쉬운 쪽이 하필 빈 결과이고, 반쪽 검색의 0건이 진짜 0건으로 읽힌다.
       const show = (html: string) => { body.innerHTML = armsNoticeBadge(res) + html; };
       if (rows.length === 0) {
-        show(`<div class="empty"><p>${COPY.search.empty(raw)}</p>
+        show(`<div class="empty"><p>${esc(COPY.search.empty(raw))}</p>
           <a class="btn" href="#view">${COPY.search.emptyCta}</a></div>`);
         return;
       }
       // 도메인별 그루핑(D24) — 단일 도메인 필터 시 플랫
       const groups = new Map<string, any[]>();
-      for (const r of rows) {
+      for (const r of primary) {
         const d = domain ? "" : (r.domain || r.doc_id || "other");
         if (!groups.has(d)) groups.set(d, []);
         groups.get(d)!.push(r);
       }
-      const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-        c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
       const row = (r: any) => {
         const marks = (r.arms || []).map((a: string) => MARK[a] || "").join("");
         const score = r.rrf_score ? ` data-tip="RRF ${r.rrf_score.toFixed(4)}"` : "";
@@ -158,10 +163,16 @@ export function renderSearch(el: HTMLElement) {
             <span class="meta">${esc(r.domain || "")}</span>
           </div>`;
       };
-      show(`<p class="hint">${COPY.search.matches(rows.length)}</p>` +
+      const primaryHtml = primary.length ? `<p class="hint">${COPY.search.matches(primary.length)}</p>` +
         [...groups.entries()].map(([d, rs]) =>
           (d ? `<h3>${esc(d)} <span class="hint">${rs.length}</span></h3>` : "") +
-          rs.map(row).join("")).join(""));
+          rs.map(row).join("")).join("") :
+          `<div class="empty"><p>${esc(COPY.search.empty(raw))}</p>
+            <a class="btn" href="#view">${COPY.search.emptyCta}</a></div>`;
+      const weakHtml = weak.length ? `<details class="search-weak">
+        <summary>${COPY.search.weakMatches(weak.length)}</summary>
+        <p class="hint">${COPY.search.weakHint}</p>${weak.map(row).join("")}</details>` : "";
+      show(primaryHtml + weakHtml);
       // V2 — 여태 이 버튼은 `location.hash='#view'` 였다: 찾은 노드가 아니라 L0
       // 첫 화면으로 보내는 스텁이라, 검색이 조회 동선을 끝맺지 못했다. `trace` 딥링크와
       // 초점색 착지는 이미 구현돼 있었는데 쓰지 않고 있었을 뿐이다.

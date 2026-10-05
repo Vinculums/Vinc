@@ -1039,6 +1039,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
            cursor: str | None = None, detail: str = "summary",
            historical: bool = False, as_of: str | None = None,
            query_runtime: str | None = None,
+           relevance_profile: dict | None = None,
+           relevance_corpus_revision: str | None = None,
            cfg=None, store=None) -> dict:
     """하이브리드 검색 **재설계**(T3b) — BM25(FTS)+(선택)벡터 RRF(§4-2) 위에 3개
     실사용 사고 대응을 얹는다:
@@ -1062,6 +1064,20 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     최상위 ``error``(invalid_cursor/stale_cursor) 로 답한다. 기본 ``detail="summary"``
     는 청크 전문 대신 발췌(snippet)를 싣는다 — 전문은 vinc_doc_get(doc_id)."""
     cfg = cfg or load_config()
+    # 운영 프로필 활성화는 보정·승인 뒤의 별도 설정이다. 기본값에는 수치 문턱이 없다.
+    # VIN-343의 2026-10-05 사용자 결정: 빈 정상 결과와 별도 약한 후보 영역.
+    # 보정 검증 계약: [[vinc.manual.rag]]
+    profile_error = ""
+    from vinc_rag.search_relevance import load_profile, validate_profile, profile_state, classify_rows
+    try:
+        profile_path = os.environ.get("VINC_SEARCH_RELEVANCE_PROFILE", "").strip()
+        if relevance_profile is not None:
+            relevance_profile = validate_profile(relevance_profile)
+        elif profile_path:
+            relevance_profile = load_profile(profile_path)
+    except (ValueError, OSError) as exc:
+        relevance_profile = None
+        profile_error = type(exc).__name__
     detail = "full" if (detail or "").strip().lower() == "full" else "summary"
     # 어느 팔이 돌았는지를 **결과에 남긴다**. 임베딩이 오래 write-only 였는데(호출부가
     # query_embedding 을 안 넘겨 vector_search 가 한 번도 실행되지 않았다) 에러가 없어
@@ -1073,6 +1089,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     base = {"kind": "search", "executed": False, "rows": [], "node_hits": [],
             "arms": "none",
             "total_count": 0, "has_more": False, "next_cursor": None}
+    if profile_error:
+        base["relevance_policy"] = {"state": "invalid_profile", "error": profile_error}
     # 커서 검증은 스토어를 열기 전에 — 무효 커서에 조회 비용을 쓰지 않는다.
     qh = _query_fingerprint(query, owner, filters, detail, as_of)
     # 시점 인자도 스토어를 열기 전에 검사한다. 틀린 값이 조용히 오늘로 떨어지면 부르는
@@ -1364,6 +1382,15 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                                        else runtime_note)
                 base["encoder_runtime_warning"] = True
 
+        if relevance_profile is not None:
+            state = profile_state(relevance_profile, encoder_model=cfg.embedding_model,
+                                  query_runtime=query_runtime,
+                                  corpus_revision=relevance_corpus_revision,
+                                  runtime_warning=bool(base.get("encoder_runtime_warning")))
+            base["relevance_policy"] = state
+            if state["state"] == "active":
+                base["rows"] = classify_rows(base["rows"], relevance_profile, kind="chunk")
+
         # (4-b) E-G1 그래프 암 — 상위 Chunk 의 :MENTIONS 이웃 개념을 title 폴백과 융합.
         # 실패는 검색을 막지 않는다(그래프 암은 증강 — 부재 시 title 만, 하위호환).
         if continuation:
@@ -1372,7 +1399,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             base["node_hits_omitted"] = "first_page_only"
             return base
         try:
-            chunk_ids = [r.get("id") for r in base.get("rows", []) if r.get("id")]
+            chunk_ids = [r.get("id") for r in base.get("rows", []) if r.get("id")
+                         and r.get("relevance", {}).get("level") != "weak"]
             graph_hits = _graph_arm_search(store, chunk_ids, owner=owner, limit=top_k)
             base["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=top_k,
                                                 vec_hits=vec_hits)
@@ -1396,4 +1424,6 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     finally:
         if owns:
             store.close()
+    if relevance_profile is not None and base.get("relevance_policy", {}).get("state") == "active":
+        base["node_hits"] = classify_rows(base["node_hits"], relevance_profile, kind="node")
     return base

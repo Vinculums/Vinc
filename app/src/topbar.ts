@@ -1,5 +1,6 @@
 import { api, cfg } from "./api";
 import { COPY } from "./copy";
+import { partitionSearchResults } from "./search-relevance";
 import { docTitle } from "./doc-title";
 import { icon } from "./icons";
 import { armsNotice, type ArmsNotice } from "./components";
@@ -247,6 +248,7 @@ export function mountTopbar() {
   type Hit = { id: string; title: string; domain: string; mark: string; snippet: string;
                docId?: string };
   let hits: Hit[] = [];
+  let weakHits: Hit[] = [];
   /** 마지막 질의에서 벡터 팔이 빠졌는가. 정상이면 null 이라 드롭다운은 그대로다. */
   let notice: ArmsNotice | null = null;
   let timer: number | undefined;
@@ -276,7 +278,7 @@ export function mountTopbar() {
       box.innerHTML = head + `<p class="hint tb-rnote">${COPY.search.searching}</p>`;
       open(); return;
     }
-    if (hits.length === 0) {
+    if (hits.length === 0 && weakHits.length === 0) {
       box.innerHTML = head
         + `<p class="hint tb-rnote">${COPY.ui.topbar.noResults}</p>`
         // 첫 질의는 색인을 만드느라 몇 초 걸린다 — 침묵 대신 이유를 말한다(V14).
@@ -284,20 +286,24 @@ export function mountTopbar() {
         + foot();
       wireAll(); open(); return;
     }
-    box.innerHTML = head + hits.map((h, i) => `
-      <button class="tb-row" role="option" data-i="${i}">
+    const hitRow = (h: Hit, i: number, weak = false) => `
+      <button class="tb-row" role="option" data-i="${i}"${weak ? ' data-weak="true"' : ""}>
         <span class="tb-mark">${h.mark}</span>
         <span class="tb-rmain">
           <span class="tb-rtitle">${esc(h.title)}</span>
           ${h.snippet ? `<span class="hint tb-rsnip">${esc(h.snippet)}</span>` : ""}
         </span>
         <span class="hint tb-rmeta">${esc(h.domain)}</span>
-      </button>`).join("") + foot();
-    box.querySelectorAll<HTMLElement>(".tb-row").forEach((r) =>
-      r.addEventListener("mousedown", (e) => {   // blur 보다 먼저 잡는다
-        e.preventDefault();
-        go(hits[Number(r.dataset.i)]);
-      }));
+      </button>`;
+    box.innerHTML = head + (hits.length ? hits.map((h, i) => hitRow(h, i)).join("") :
+      `<p class="hint tb-rnote">${COPY.ui.topbar.noResults}</p>`) +
+      (weakHits.length ? `<details class="search-weak"><summary>${COPY.search.weakMatches(weakHits.length)}</summary>
+        <p class="hint tb-rnote">${COPY.search.weakHint}</p>${weakHits.map((h, i) => hitRow(h, i, true)).join("")}</details>` : "") + foot();
+    box.querySelectorAll<HTMLElement>(".tb-row").forEach((r) => {
+      r.addEventListener("mousedown", (e) => e.preventDefault());
+      r.addEventListener("click", () =>
+        go((r.dataset.weak ? weakHits : hits)[Number(r.dataset.i)]));
+    });
     wireAll();
     open();
   }
@@ -331,6 +337,8 @@ export function mountTopbar() {
   }
 
   function wireAll() {
+    box.querySelectorAll(".search-weak summary").forEach((summary) =>
+      summary.addEventListener("mousedown", (e) => e.preventDefault()));
     box.querySelector("#tb-all")?.addEventListener("mousedown", (e) => {
       e.preventDefault();
       void openAllDocs();
@@ -370,19 +378,23 @@ export function mountTopbar() {
       const exact: Hit[] = (docs?.docs || []).map((d) => ({
         id: d.doc_id, docId: d.doc_id, title: docTitle(d.title), domain: "", mark: "≡", snippet: "",
       }));
-      hits = [...exact, ...(res.node_hits || []).map((n: any) => ({
+      const classified = partitionSearchResults<any>(res.node_hits || []);
+      const toHit = (n: any): Hit => ({
         id: String(n.id || ""),
         title: String(n.title || n.id || ""),
         domain: String(n.domain || ""),
         // 의미 일치와 이전 응답의 graph 표시는 ≈, 제목·속성 일치는 ≡.
         mark: ["graph", "semantic"].includes(n.matched_in) ? "≈" : "≡",
         snippet: String(n.one_liner || n.snippet || "").slice(0, 90),
-      })).filter((h: Hit) => h.id)].slice(0, 8);
+      });
+      hits = [...exact, ...classified.primary.map(toHit).filter((h: Hit) => h.id)].slice(0, 8);
+      weakHits = classified.weak.map(toHit).filter((h: Hit) => h.id).slice(0, 8);
       draw();
       return true;
     } catch (failure) {
       if (mine !== seq) return false;
       hits = [];
+      weakHits = [];
       notice = null;              // 아예 못 물어봤다 — 팔 이야기를 할 자리가 아니다
       // 실패해도 막다른 골목을 만들지 않는다 — 목록으로 가는 길은 남긴다
       // (검색이 죽었다고 문서에 닿을 방법까지 사라지면 안 된다).
@@ -401,13 +413,15 @@ export function mountTopbar() {
     // (라이브 검색을 그대로 두면 미완성 문장이 대화 로그에 쌓인다).
     if (mode === "ask") return;
     const raw = q.value.trim();
-    if (raw.length < 2) { hits = []; close(); return; }
+    if (raw.length < 2) { hits = []; weakHits = []; close(); return; }
     timer = window.setTimeout(() => void run(raw), 250);
   });
-  q.addEventListener("focus", () => { if (mode === "find" && hits.length) open(); });
+  q.addEventListener("focus", () => { if (mode === "find" && (hits.length || weakHits.length)) open(); });
   // 묻기 패널은 blur 로 닫지 않는다 — 답을 읽으려면 입력창에서 손을 떼야 하는데,
   // 그때 사라지면 읽을 수가 없다. 닫기는 명시적으로만(패널의 `닫기` · Esc).
-  q.addEventListener("blur", () => window.setTimeout(() => { if (mode === "find") close(); }, 120));
+  q.addEventListener("blur", () => window.setTimeout(() => {
+    if (mode === "find" && !box.contains(document.activeElement)) close();
+  }, 120));
   q.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       close(); closeModeMenu();
@@ -432,6 +446,7 @@ export function mountTopbar() {
       if (raw.length >= 2) {
         if (!await run(raw)) return;
         if (hits.length) { go(hits[0]); return; }
+        if (weakHits.length) return; // 약한 후보는 사용자가 펼쳐서 고른다. Enter로 자동 착지하지 않는다.
       }
       // 두 글자가 안 되면 debounce 가 돈 적이 없어 `hits` 는 **이전 질의의 것**이다.
       // 그것으로 착지하면 친 글자와 다른 곳에 떨어지므로 쓰지 않는다. 그렇다고 아무
