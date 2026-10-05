@@ -630,3 +630,56 @@ def render_embedded_ddl(*, dim: int) -> list[str]:
     노드 테이블 선행 후 관계 테이블(FROM/TO 노드가 먼저 존재해야 함). 동기화 메타
     테이블은 관계 참조가 없어 노드 뒤·관계 앞 어디든 무방(노드 뒤에 붙임)."""
     return render_node_tables(dim=dim) + render_meta_tables() + render_rel_tables()
+
+
+# 본문 스팬은 자동 provision/version migration에 넣지 않는다. 운영 DDL은 별도 승인이다.
+BODY_MENTIONS_COLUMNS = (
+    ("char_start", "INT64"), ("char_end", "INT64"),
+    ("source_hash", "STRING"), ("body_provenance", "STRING"),
+)
+BODY_MENTIONS_SCHEMA_KEY = "body_mentions_schema"
+
+
+def body_mentions_ready(store) -> bool:
+    """명시적 opt-in 완료와 실제 열을 함께 확인한다. 기본 스토어는 false다."""
+    try:
+        rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key=$k RETURN m.value AS v",
+                         {"k": BODY_MENTIONS_SCHEMA_KEY}) or []
+    except Exception:
+        return False
+    if not rows or rows[0].get("v") != "1":
+        return False
+    try:
+        store.run("MATCH ()-[m:MENTIONS]->() RETURN m.char_start, m.char_end, "
+                  "m.source_hash, m.body_provenance LIMIT 1")
+    except Exception:
+        return False
+    return True
+
+
+def migrate_body_mentions(store, *, approved: bool = False) -> dict:
+    """명시적으로 호출하는 opt-in DDL. 기본 부팅·provision·일반 migration은 호출하지 않는다."""
+    if approved is not True:
+        raise ValueError("body mentions schema migration requires explicit approval")
+    from .embedded_backend import DDL_GUARD, EmbeddedBackend
+    if not isinstance(store, EmbeddedBackend):
+        raise ValueError("body mentions schema requires the embedded writer")
+    with DDL_GUARD.exclusive():
+        if body_mentions_ready(store):
+            return {"executed": True, "changed": False}
+        existing = {r.get("name") for r in store.run("CALL table_info('MENTIONS') RETURN *")}
+        store.run("BEGIN TRANSACTION")
+        try:
+            for name, typ in BODY_MENTIONS_COLUMNS:
+                if name not in existing:
+                    store.run(f"ALTER TABLE MENTIONS ADD {name} {typ}")
+            store.run("MERGE (m:_SchemaMeta {key:$k}) SET m.value='1'",
+                      {"k": BODY_MENTIONS_SCHEMA_KEY})
+            store.run("COMMIT")
+        except Exception:
+            try:
+                store.run("ROLLBACK")
+            except Exception:
+                pass  # 엔진이 실패 문장에서 이미 rollback했을 수 있다.
+            raise
+    return {"executed": True, "changed": True}

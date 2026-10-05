@@ -451,8 +451,11 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                           {"id": doc_id, "origin": kept_origin})
                 # source_file 은 MENTIONS 의 source 매칭에도 쓰인다. 옛 링크를
                 # 지우고 같은 링커로 다시 만들되 청크 원문은 보존한다.
+                from store.embedded_schema import body_mentions_ready
+                keep_body = ("AND (m.method IS NULL OR m.method <> 'body') "
+                             if body_mentions_ready(store) else "")
                 store.run("MATCH (c:Chunk)-[m:MENTIONS]->() WHERE c.doc_id = $id "
-                          "DELETE m", {"id": doc_id})
+                          + keep_body + "DELETE m", {"id": doc_id})
                 linked = _relink_mentions(store, doc_id, owner=owner,
                                           origin=kept_origin) if link else 0
                 store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id "
@@ -1973,7 +1976,8 @@ def _doc_topic(store, doc_id: str, *, owner: str) -> str:
 
 
 def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
-                candidates: list[dict] | None = None) -> dict:
+                candidates: list[dict] | None = None,
+                approved_candidate_ids: list[str] | None = None) -> dict:
     """doc 의 개념 후보를 제안하고(apply=False), 승인되면 반영한다(apply=True).
 
     - 후보 미지정 → 결정론 추출(extract_concepts, 옵션1). 지정 → 그 목록을 반영
@@ -2000,6 +2004,14 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
         base["error"] = got.get("error", "unreadable doc")
         return base
     text = got.get("text") or ""
+    # 본문 후보는 일반 제목 추출과 섞어 자동 반영하지 않는다. 선택 ID와 원문 버전을
+    # 명시한 별도 계약이다. 모델 실행·원문 전송은 이 경로에서 하지 않는다.
+    body_mode = approved_candidate_ids is not None or (
+        isinstance(candidates, list) and any(isinstance(c, dict) and c.get("source") == "body"
+                                            for c in candidates))
+    if body_mode:
+        return _extract_body_doc(store, doc_id, owner=owner, apply=apply,
+                                 candidates=candidates, approved_ids=approved_candidate_ids)
     if candidates is None:
         cands = extract_concepts(text)
     else:
@@ -2094,6 +2106,100 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
     base.update(applied={"created": created, "matched": matched}, mentions=linked,
                 evidence=ev)
     return base
+
+
+def _extract_body_doc(store, doc_id: str, *, owner: str, apply: bool,
+                      candidates, approved_ids) -> dict:
+    from engines.body_candidates import prepare_candidates
+    from engines.mentions_link import merge_body_links
+    from store.embedded_backend import DDL_GUARD, EmbeddedBackend
+    from store.embedded_schema import body_mentions_ready
+
+    base = {"kind": "doc.extract", "executed": False, "doc_id": doc_id,
+            "source": "body", "model_quality": "not_run"}
+    if apply and not isinstance(store, EmbeddedBackend):
+        return {**base, "error": "body apply requires the embedded writer"}
+    # 1개 writer connection의 수동 트랜잭션 안에서 원문을 재검증하고 노드·엣지를 함께 쓴다.
+    with DDL_GUARD.exclusive():
+        if apply and not body_mentions_ready(store):
+            return {**base, "error": "body mentions schema is not enabled"}
+        transaction = False
+        try:
+            if apply:
+                store.run("BEGIN TRANSACTION")
+                transaction = True
+            got = get_doc(store, doc_id, owner=owner)
+            if not got.get("executed") or not got.get("verified"):
+                raise ValueError("body candidates require a verified canonical document")
+            prepared = prepare_candidates(got["text"], doc_id, candidates)
+            for c in prepared:
+                c["slug"] = _slug(c["title"])
+                if not c["slug"]:
+                    raise ValueError("body candidate title has no concept slug")
+            dom = _front_domain(got["text"]) or _doc_topic(store, doc_id, owner=owner)
+            base.update(candidates=prepared, domain=dom, source_hash=got["content_hash"])
+            if not apply:
+                base["executed"] = True
+                return base
+            if (not isinstance(approved_ids, list) or not approved_ids
+                    or any(not isinstance(i, str) for i in approved_ids)
+                    or len(set(approved_ids)) != len(approved_ids)):
+                raise ValueError("body apply requires explicit selected candidate ids")
+            known = {c["candidate_id"]: c for c in prepared}
+            if any(i not in known for i in approved_ids):
+                raise ValueError("approved candidate id is not in the source-verified candidates")
+            chosen = [dict(known[i]) for i in approved_ids]
+            if not dom:
+                raise ValueError("no topic to inherit: give the document a topic first")
+            ndom = domain_hierarchy.normalize(dom)
+            created = matched = 0
+            for c in chosen:
+                cid = f"concept:{c['slug']}"
+                key = pkns.key(owner, cid)
+                existing = store.run("MATCH (n:Concept) WHERE n.concept_id=$id "
+                                     "RETURN n.owner_id AS owner", {"id": key}) or []
+                if existing:
+                    if existing[0].get("owner") != owner:
+                        raise ValueError("body candidate concept is unavailable")
+                    matched += 1  # 사람이 고친 기존 노드의 열·속성은 덮지 않는다.
+                else:
+                    stamp = _node_stamp(store, owner)
+                    store.run(
+                        "CREATE (n:Concept {concept_id:$id, title:$title, one_liner:$ol, "
+                        "owner_id:$owner, status:'proposed', domain:$domain, stem:$slug, "
+                        "source_file:$origin, created:$created, updated_at:$updated, "
+                        "rev:$rev, sync_seq:$seq, content_time:$ct})",
+                        {"id": key, "title": c["title"], "ol": c["one_liner"], "owner": owner,
+                         "domain": ndom, "slug": c["slug"], "origin": got["origin"],
+                         "created": stamp["updated_at"], "updated": stamp["updated_at"],
+                         "rev": stamp["rev"], "seq": stamp["sync_seq"],
+                         "ct": _norm_content_time(got.get("content_time"))})
+                    # 이 승인 경로는 주제 엣지 실패도 전체 rollback한다.
+                    domain_hierarchy.link_node(store, "Concept", key, ndom)
+                    created += 1
+                c["concept_id"] = cid
+                c["approved"] = True
+            chunks = store.run("MATCH (ch:Chunk) WHERE ch.doc_id=$doc AND ch.owner_id=$owner "
+                               "RETURN ch.chunk_id AS chunk_id, ch.char_start AS char_start, "
+                               "ch.char_end AS char_end", {"doc": doc_id, "owner": owner}) or []
+            linked = merge_body_links(store, owner=owner, doc_id=doc_id, chunks=chunks,
+                                      candidates=chosen)
+            if not linked:
+                raise ValueError("body candidates have no owner-scoped source chunks")
+            store.run("COMMIT")
+            transaction = False
+            base.update(executed=True, applied={"created": created, "matched": matched},
+                        approved_candidate_ids=approved_ids, mentions=linked)
+            return base
+        except Exception as exc:
+            if transaction:
+                try:
+                    store.run("ROLLBACK")
+                except Exception:
+                    pass
+            # 엔진 메시지에는 원문·운영 경로가 실릴 수 있으므로 계약 오류만 돌려준다.
+            base["error"] = str(exc) if isinstance(exc, ValueError) else "body candidate apply failed"
+            return base
 
 
 # 근거 문장 상한 — 툴팁·패널 한 문단 분량. 더 길면 읽히지 않고 저장만 부푼다.

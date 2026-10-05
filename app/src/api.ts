@@ -825,12 +825,22 @@ export const api = {
   // candidates: 반영할 목록을 고른다(사람이 체크한 것만). 없으면 서버가 결정론 추출 전량.
   // id 는 서버가 제목 slug 로 다시 짓는다 — 여기서 id 를 실어 보내지 않는다.
   docExtract: (owner: string, id: string, apply = false,
-               candidates?: { title: string; one_liner?: string }[]): Promise<{
-    executed: boolean; candidates?: { title: string; one_liner?: string; slug?: string }[];
+               candidates?: { title: string; one_liner?: string; source?: string;
+                 candidate_id?: string; doc_id?: string; source_hash?: string;
+                 spans?: { char_start: number; char_end: number; text: string }[];
+                 extractor?: { name: string; version: string; runtime: string }; label?: string }[],
+               approvedCandidateIds?: string[]): Promise<{
+    executed: boolean; candidates?: { title: string; one_liner?: string; slug?: string;
+      source?: string; candidate_id?: string; doc_id?: string; source_hash?: string;
+      spans?: { char_start: number; char_end: number; text: string }[];
+      extractor?: { name: string; version: string; runtime: string }; label?: string;
+      evidence?: string; offset_unit?: string }[];
     applied?: { created: number; matched: number }; mentions?: number;
     domain?: string; error?: string;
   }> => call("/doc/extract", undefined, { owner, id, apply,
-                                          ...(candidates ? { candidates } : {}) }),
+                                          ...(candidates ? { candidates } : {}),
+                                          ...(approvedCandidateIds === undefined ? {} :
+                                            { approved_candidate_ids: approvedCandidateIds }) }),
   // 문서 목록. `topic`/`topics` 는 언급 개념에서 유도된 주제(문서에 주제 열은 없다),
   // `primary_concept_id` 는 **그 문서를 눌렀을 때 착지할 노드**(D69) — 대표 주제 안의
   // 최다 언급 개념이다. 언급이 없으면 빈 문자열이고 착지 대상이 없다(편집기로만 열린다).

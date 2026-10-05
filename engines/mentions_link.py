@@ -240,10 +240,14 @@ def merge_links(store, links: list[dict], concepts: list[dict],
         lbl = label_of.get(lk["concept_id"], "Concept")
         groups.setdefault((lk["chunk_id"], lbl, lk["method"]), []).append(lk["concept_id"])
     n = 0
+    from store.embedded_schema import body_mentions_ready
+    body_schema = body_mentions_ready(store)
     for (cid, lbl, method), ids in groups.items():
+        method_set = ("CASE WHEN m.method = 'body' THEN m.method ELSE $method END"
+                      if body_schema else "$method")
         store.run(
             f"MATCH (ch:Chunk {{chunk_id: $cid}}), (co:{lbl}) WHERE co.{pk_of[lbl]} IN $ids "
-            "MERGE (ch)-[m:MENTIONS]->(co) SET m.method = $method",
+            f"MERGE (ch)-[m:MENTIONS]->(co) SET m.method = {method_set}",
             # PK 네임스페이싱 — $ids 는 노드 PK 바인딩이라 물리 키다($cid 는 Chunk 로,
             # 마이그레이션 대상 라벨이 아니라 논리 그대로). 근거: [[vinc.plan.node-pk-namespacing]] §7
             {"cid": cid, "ids": [pkns.key(owner, i) for i in ids], "method": method})
@@ -279,6 +283,9 @@ def relink_all(store, owner: str | None = None) -> dict:
     삭제다. owner None 은 무스코프(로컬 단일 사용자). 청크·개념 둘 다 owner 로 좁혀
     남의 청크에 내 개념이 걸리지 않게 한다."""
     where = "WHERE c.owner_id = $o " if owner else ""
+    from store.embedded_schema import body_mentions_ready
+    if body_mentions_ready(store):
+        where = (where + "AND " if where else "WHERE ") + "(m.method IS NULL OR m.method <> 'body') "
     store.run("MATCH (c:Chunk)-[m:MENTIONS]->() " + where + "DELETE m",
               {"o": owner} if owner else None)
     stats = link_mentions(store, owner=owner, scope_chunks=bool(owner))
@@ -347,3 +354,48 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def merge_body_links(store, *, owner: str, doc_id: str, chunks: list[dict],
+                     candidates: list[dict]) -> int:
+    """검증·승인된 스팬을 MENTIONS에 기록한다. 호출자는 원문 검증과 원자성을 보장한다."""
+    import json
+    grouped = {}
+    for candidate in candidates:
+        for chunk in chunks:
+            spans = [s for s in candidate["spans"]
+                     if s["char_start"] < chunk["char_end"] and s["char_end"] > chunk["char_start"]]
+            if not spans:
+                continue
+            key = (chunk["chunk_id"], candidate["concept_id"])
+            grouped.setdefault(key, []).append({
+                "candidate_id": candidate["candidate_id"], "spans": spans,
+                "extractor": candidate["extractor"], "label": candidate["label"],
+                "approved": True, "offset_unit": "unicode_codepoint",
+                "verification": "source-span-only"})
+    for (chunk_id, concept_id), proofs in grouped.items():
+        existing = store.run(
+            "MATCH (ch:Chunk)-[m:MENTIONS]->(co:Concept) WHERE ch.chunk_id=$chunk "
+            "AND ch.doc_id=$doc AND ch.owner_id=$owner AND co.concept_id=$concept "
+            "AND co.owner_id=$owner AND m.method='body' AND m.source_hash=$hash "
+            "RETURN m.body_provenance AS proof",
+            {"chunk": chunk_id, "doc": doc_id, "owner": owner,
+             "concept": pkns.key(owner, concept_id), "hash": candidates[0]["source_hash"]}) or []
+        if existing:
+            prior = json.loads(existing[0]["proof"])
+            combined = {p["candidate_id"]: p for p in prior}
+            combined.update({p["candidate_id"]: p for p in proofs})
+            proofs = [combined[k] for k in sorted(combined)]
+        spans = [s for proof in proofs for s in proof["spans"]]
+        store.run(
+            "MATCH (ch:Chunk), (co:Concept) WHERE ch.chunk_id=$chunk AND ch.doc_id=$doc "
+            "AND ch.owner_id=$owner AND co.concept_id=$concept AND co.owner_id=$owner "
+            "MERGE (ch)-[m:MENTIONS]->(co) SET m.method='body', m.char_start=$cs, "
+            "m.char_end=$ce, m.source_hash=$hash, m.body_provenance=$proof",
+            {"chunk": chunk_id, "doc": doc_id, "owner": owner,
+             "concept": pkns.key(owner, concept_id),
+             "cs": min(s["char_start"] for s in spans),
+             "ce": max(s["char_end"] for s in spans),
+             "hash": candidates[0]["source_hash"],
+             "proof": json.dumps(proofs, ensure_ascii=False, sort_keys=True)})
+    return len(grouped)
