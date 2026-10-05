@@ -170,6 +170,8 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
             name, data = "vinc_neighbors", {"node": args.id, "limit": args.limit}
         else:
             name, data = "vinc_graph", {"seed_id": args.id, "depth": args.depth}
+            if getattr(args, "review_mirror", False):
+                data["review_mirror"] = True
         return name, {**common, **data}, None
     if cmd == "path":
         return "vinc_path", {**common, "a": args.a, "b": args.b,

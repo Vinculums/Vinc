@@ -746,6 +746,16 @@
             }
           },
           {
+            "name": "review_mirror",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "description": "For one exact concept:doc.<doc_id> seed only, include bounded read-only mirror_review provenance. No source text, repair or semantic census inference. Absent/unreadable seeds keep the ordinary not-found response."
+            }
+          },
+          {
             "name": "space",
             "in": "query",
             "required": false,
@@ -834,6 +844,11 @@
                     ],
                     "default": "layers",
                     "description": "How to fill the node budget when depth reaches more concepts than it allows. Both count the same thing: the seed plus that many concepts, with what is attached to them on top. 'layers' (default) lowers the depth until every concept within it fits, so 'every node within N hops' stays true. 'prize' keeps the requested depth but ranks only the concepts linked to the seed through other concepts, and keeps the connected set of them with the most ppr, so a far but central concept can beat a near but peripheral one. Concepts reached only through records, episodes, bridges, decisions or topics are not candidates and are left out; `selection` says how many were ranked and kept. 'prize' falls back to 'layers', and says so in `selection`, for a decision seed, when depth reaches more than 600 concepts, or when the ranked concepts already fit the budget. With 'prize' every node also carries `ppr_recent` (ppr with a 90-day recency half-life mixed in, counted from the newest node in the result)."
+                  },
+                  "review_mirror": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "For one exact concept:doc.<doc_id> seed only, include bounded read-only mirror_review provenance. No source text, repair or semantic census inference. Absent/unreadable seeds keep the ordinary not-found response."
                   }
                 },
                 "required": [],

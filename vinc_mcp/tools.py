@@ -230,6 +230,9 @@ GRAPH_NODE_BUDGET = 120
 
 
 def _t_graph(args, bridge):
+    review = args.get("review_mirror", False)
+    if type(review) is not bool:
+        raise ValueError("review_mirror must be a boolean")
     # `url` — 사람이 화면에서 복사한 주소를 그대로 받는다(D: 선택이 주소가 된다).
     # 인자로 받는 이유: 스페이스와 달리 **빠뜨리면 요청 자체가 성립하지 않아** 조용히
     # 딴 데 가는 일이 없다. 근거: [[decision:a-selection-becomes-an-address-you-paste]]
@@ -241,6 +244,8 @@ def _t_graph(args, bridge):
         if got["kind"] == "node":
             seed = got["seed"]
         elif got["kind"] == "ids" and got["ids"]:
+            if review and len(got["ids"]) != 1:
+                raise ValueError("review_mirror requires one exact document mirror seed")
             # 임의 선택은 시드가 여럿이다. 이 도구는 하나만 받으므로 첫 개를 쓰고
             # **그렇게 했다고 말한다** — 조용히 고르면 나머지를 본 줄 안다.
             seed = got["ids"][0]
@@ -267,8 +272,13 @@ def _t_graph(args, bridge):
         return {"kind": "graph", "executed": False, "seed": "",
                 "note": "seed_id or url is required"}
     explicit = depth is not None
+    if review and (not seed.startswith("concept:doc.")
+                   or not seed[len("concept:doc."):] or "\x1f" in seed):
+        raise ValueError("review_mirror requires one exact logical concept:doc.<doc_id> seed")
     want = depth if explicit else 2
     params = {"owner": _owner(args, bridge), "seed": seed, "depth": want}
+    if review:
+        params["review_mirror"] = True
     if args.get("select") in ("layers", "prize"):
         params["select"] = args["select"]
     # depth 2 이상에는 노드 예산을 붙인다. 사이드카는 도달 집합이 예산을 넘으면 깊이를
@@ -889,6 +899,11 @@ TOOLS: list[dict] = [
                                    "goes to that space, so pass the url as is and leave "
                                    "`space` out. An explicit `space` beats the url's."},
             "depth": {"type": "integer", "default": 2, "minimum": 1, "maximum": 4},
+            "review_mirror": {"type": "boolean", "default": False,
+                              "description": "For one exact concept:doc.<doc_id> seed only, "
+                                             "include bounded read-only mirror_review provenance. "
+                                             "No source text, repair or semantic census inference. "
+                                             "Absent/unreadable seeds keep the ordinary not-found response."},
             "select": {"type": "string", "enum": ["layers", "prize"], "default": "layers",
                        "description": "How to fill the node budget when depth reaches more "
                                       "concepts than it allows. Both count the same thing: the "

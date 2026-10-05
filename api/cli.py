@@ -337,6 +337,8 @@ def _main(argv: list[str] | None = None) -> int:
             child.add_argument("--limit", type=int, default=50)
         if verb == "graph":
             child.add_argument("--depth", type=int, default=2)
+            child.add_argument("--review-mirror", action="store_true",
+                               help="include read-only provenance for one document mirror")
     pa = sub.add_parser("path", help="find a graph path")
     pa.add_argument("a")
     pa.add_argument("b")

@@ -16,6 +16,37 @@ MAX_MIRRORS = 32
 MAX_CHUNKS = 256
 
 
+def graph_with_mirror_review(*, review_mirror=False, **kwargs):
+    """기존 Graph 읽기에 명시적으로 선택한 미러 하나의 출처 검토를 덧붙인다."""
+    from api import query
+    if isinstance(review_mirror, str) and review_mirror.lower() in ("true", "false"):
+        review_mirror = review_mirror.lower() == "true"
+    if type(review_mirror) is not bool:
+        raise ValueError("review_mirror must be a boolean")
+    seed = kwargs.get("seed") or ""
+    if review_mirror and (not isinstance(seed, str) or not seed.startswith("concept:doc.")
+                          or not seed[len("concept:doc."):] or pkns.SEP in seed):
+        raise ValueError("review_mirror requires one exact logical concept:doc.<doc_id> seed")
+    if review_mirror and (kwargs.get("store") is None or not kwargs.get("owner")):
+        raise ValueError("mirror review requires an existing reader and explicit owner")
+    out = query.graph(**kwargs)
+    # 선택한 owner에 시드가 없으면 기존 not-found 응답을 유지한다.
+    # 읽을 수 없는 미러의 원본 문서는 추가 조회하지 않는다.
+    if review_mirror and out.get("executed") and out.get("found"):
+        review = review_mirrors(kwargs["store"], owner=kwargs["owner"],
+                                isolated_mirror_ids=[seed])
+        review["selection"] = "one explicitly selected document mirror"
+        node = next((n for n in out.get("nodes", []) if n.get("id") == seed), {})
+        review["selected_semantic_degree"] = node.get("degree")
+        if node.get("degree") != 0:
+            for finding in review["findings"]:
+                if finding["classification"] == "normal_isolation":
+                    finding["classification"] = "normal_source_provenance"
+                    finding["reason"] = "verified source; no missing current-rule MENTIONS"
+        out["mirror_review"] = review
+    return out
+
+
 def review_mirrors(store, *, owner: str, isolated_mirror_ids: list[str],
                    max_chunks: int = MAX_CHUNKS) -> dict:
     """선택한 고립 미러의 근거를 반환한다. 수리는 수행하지 않는다.
