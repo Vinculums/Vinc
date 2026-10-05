@@ -631,7 +631,8 @@ class VincApp:
         # seed 지정 시 seed+depth ego 서브그래프(View L2 = MCP vinc_graph 동일 경로).
         # layout = 프리셋(radial·circle·tree·organic·rank·dendro — 미지 값 radial 강등).
         # basis(D72) = 시간축. 미지 값은 조용히 recorded 로 강등하고 응답이 에코한다.
-        return self._read(lambda r: q.graph(owner=_req(p, "owner"),
+        from .mirror_provenance import graph_with_mirror_review
+        return self._read(lambda r: graph_with_mirror_review(owner=_req(p, "owner"),
                                             domain=p.get("domain"), seed=p.get("seed"),
                                             # 주제 여럿(쉼표 결합). 스코프는 하위
                                             # 트리 포함이다 — query.normalize_domains.
@@ -649,6 +650,7 @@ class VincApp:
                                             max_nodes=_int(p.get("max_nodes"), 0) or None,
                                             # 예산을 층으로 채울지(기본) 상금(ppr)으로 채울지.
                                             select=p.get("select") or "layers",
+                                            review_mirror=p.get("review_mirror", False),
                                             store=r))
 
     def read_view(self, p):

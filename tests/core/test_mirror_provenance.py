@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from api import docstore
 from api.mirror_provenance import review_mirrors
+from api.mirror_provenance import graph_with_mirror_review
 from store import pkns
 from store.backend import open_store
 from store.config import load_config
@@ -175,6 +176,77 @@ class MirrorProvenance(unittest.TestCase):
             result = self.review(mid)
         self.assertEqual(result["classification"], "incomplete_or_unverified_evidence")
         self.assertIn("changed", result["reason"])
+
+    def test_graph_default_unchanged_and_review_nested_without_source_text(self):
+        from api import query
+        mid = self.put(title="source body")
+        args = {"owner": self.owner, "seed": mid, "depth": 1, "store": self.ro}
+        original = query.graph(**args)
+        self.assertEqual(graph_with_mirror_review(**args), original)
+        selected = graph_with_mirror_review(review_mirror=True, **args)
+        review = selected.pop("mirror_review")
+        self.assertEqual(selected, original)
+        self.assertEqual(len(review["findings"]), 1)
+        self.assertTrue(review["findings"][0]["body_verified"])
+        self.assertNotIn("ordinary source body", str(review))
+        self.assertFalse(review["repair_authorized"])
+
+    def test_graph_foreign_and_absent_mirror_do_not_read_source(self):
+        mid = self.put()
+        for owner, seed in (("user:b", mid), (self.owner, "concept:doc.unknown")):
+            self.ro.queries.clear()
+            result = graph_with_mirror_review(owner=owner, seed=seed, depth=1,
+                                               review_mirror=True, store=self.ro)
+            self.assertFalse(result["found"])
+            self.assertNotIn("mirror_review", result)
+            self.assertFalse(any("_DocMeta" in q for q in self.ro.queries))
+
+    def test_graph_wrong_seed_rejected_before_query(self):
+        for seed in (None, "concept:ordinary", "concept:doc.", "user:a\x1fconcept:doc.sample"):
+            with self.assertRaises(ValueError):
+                graph_with_mirror_review(owner=self.owner, seed=seed,
+                                         review_mirror=True, store=self.ro)
+        self.assertEqual(self.ro.queries, [])
+
+    def test_graph_team_owned_mirror_uses_same_exact_owner_scope(self):
+        self.owner = "team:test-mirror-review"
+        mid = self.put()
+        result = graph_with_mirror_review(owner=self.owner, seed=mid, depth=1,
+                                          review_mirror=True, store=self.ro)
+        self.assertTrue(result["mirror_review"]["findings"][0]["body_verified"])
+        denied = graph_with_mirror_review(owner="user:a", seed=mid, depth=1,
+                                          review_mirror=True, store=self.ro)
+        self.assertFalse(denied["found"])
+        self.assertNotIn("mirror_review", denied)
+
+    def test_connected_mirror_is_not_mislabeled_isolated(self):
+        from api.fragment import merge_fragment
+        mid = self.put()
+        merge_fragment({"owner": self.owner,
+                        "nodes": [{"id": mid, "type": "concept", "title": "Curated unrelated title"},
+                                  {"id": "concept:neighbor", "type": "concept", "title": "Neighbor"}],
+                        "edges": [{"from": mid, "to": "concept:neighbor", "type": "relates_to"}]},
+                       store=self.store)
+        result = graph_with_mirror_review(owner=self.owner, seed=mid, depth=1,
+                                          review_mirror=True, store=self.ro)
+        self.assertGreater(result["mirror_review"]["selected_semantic_degree"], 0)
+        self.assertEqual(result["mirror_review"]["findings"][0]["classification"],
+                         "normal_source_provenance")
+
+    def test_sidecar_parses_boolean_over_existing_read_route(self):
+        from api.server import VincApp
+        from types import SimpleNamespace
+        mid = self.put()
+        fake = SimpleNamespace(_read=lambda fn: (200, fn(self.ro)))
+        status, result = VincApp.read_graph(fake, {"owner": self.owner, "seed": mid,
+                                                  "depth": "1", "review_mirror": "True"})
+        self.assertEqual(status, 200)
+        self.assertIn("mirror_review", result)
+        _, disabled = VincApp.read_graph(fake, {"owner": self.owner, "seed": mid,
+                                               "depth": "1", "review_mirror": "false"})
+        self.assertNotIn("mirror_review", disabled)
+        with self.assertRaises(ValueError):
+            VincApp.read_graph(fake, {"owner": self.owner, "seed": mid, "review_mirror": "yes"})
 
 
 if __name__ == "__main__":
