@@ -374,8 +374,8 @@ export function mountTopbar() {
         id: String(n.id || ""),
         title: String(n.title || n.id || ""),
         domain: String(n.domain || ""),
-        // 왜 맞았는지(D24) — 그래프 arm 은 ≈, 제목 일치는 ≡.
-        mark: n.matched_in === "graph" ? "≈" : "≡",
+        // 의미 일치와 이전 응답의 graph 표시는 ≈, 제목·속성 일치는 ≡.
+        mark: ["graph", "semantic"].includes(n.matched_in) ? "≈" : "≡",
         snippet: String(n.one_liner || n.snippet || "").slice(0, 90),
       })).filter((h: Hit) => h.id)].slice(0, 8);
       draw();
