@@ -21,6 +21,7 @@
       "ACCOUNT_ED25519_SEED",
       "ALLOWED_ORIGINS",
       "BO_ADMIN_EMAILS",
+      "BO_OTP_KEY",
       "BO_STATS_PUBLIC_KEY",
       "CSRF_SECRET",
       "DB_HOST",
@@ -68,6 +69,7 @@
     },
     "secret_names": [
       "account-seed",
+      "bo-otp-key",
       "csrf-secret",
       "db-password",
       "google-client-id",
