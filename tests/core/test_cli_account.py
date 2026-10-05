@@ -59,7 +59,7 @@ def test_account_environment_url_and_space(monkeypatch):
 
 def test_every_public_tool_uses_a_v1_route(monkeypatch):
     names = {item["name"] for item in tools.TOOLS}
-    assert len(names) == 27
+    assert len(names) == 28
     observed = []
 
     def receive(request, *, timeout):

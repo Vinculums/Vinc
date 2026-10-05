@@ -20,6 +20,11 @@ from vinc_mcp.rest_api import _failure
 FAILURE_CASES = [
     ("vinc_role", {"executed": True, "found": False}, True, 404, "not_found"),
     ("vinc_role", {"executed": False, "note": "no reachable store"}, True, 503, "upstream_unavailable"),
+    ("vinc_role_check", {"kind": "role_check", "executed": True, "found": False}, True, 404, "not_found"),
+    ("vinc_role_check", {"kind": "role_check", "executed": False, "error": "output_required"}, True,
+     400, "invalid_argument"),
+    ("vinc_role_check", {"kind": "role_check", "executed": True, "found": True, "verdict": "block"},
+     True, None, None),
     ("vinc_edges", {"executed": True, "found": False, "edges": []}, True, 404, "not_found"),
     ("vinc_edges", {"executed": True, "found": True, "edges": []}, True, None, None),
     ("vinc_search", {"executed": False, "error": "invalid_cursor: x"}, False, 400, "invalid_argument"),
@@ -102,6 +107,7 @@ def test_unconfirmed_write_says_it_may_have_applied():
 _READ_SAMPLES = {
     ("GET", "/v1/roles"): ("", {}),
     ("GET", "/v1/roles/{id}"): ("", {"role": "concept:agent-x"}),
+    ("POST", "/v1/roles/{id}/check"): ({"output": "x"}, {"role": "concept:agent-x", "output": "x"}),
     ("GET", "/v1/nodes/{id}/edges"): ("", {"node": "concept:x"}),
     ("POST", "/v1/edges/query"): ({"nodes": ["concept:x"]}, {"nodes": ["concept:x"]}),
     ("GET", "/v1/me"): (None, {}),
@@ -135,7 +141,7 @@ _OK = {"executed": True, "found": True, "status": "ok", "verified": True, "rows"
 def test_rest_equals_mcp_for_every_read_route(route):
     sample, arguments = _READ_SAMPLES[(route.method, route.path)]
     path = route.path.replace("{id}", quote("concept:x", safe="")).replace("{doc_id}", "d1")
-    if route.tool == "vinc_role":
+    if route.tool in ("vinc_role", "vinc_role_check"):
         path = route.path.replace("{id}", quote("concept:agent-x", safe=""))
     body = None
     if isinstance(sample, str):
@@ -166,7 +172,7 @@ def test_read_only_key_can_call_every_read_route():
         for route in rest_routes.READ_ROUTES:
             sample, _args = _READ_SAMPLES[(route.method, route.path)]
             path = route.path.replace("{id}", "concept%3Ax").replace("{doc_id}", "d1")
-            if route.tool == "vinc_role":
+            if route.tool in ("vinc_role", "vinc_role_check"):
                 path = route.path.replace("{id}", "concept%3Aagent-x")
             body = sample if isinstance(sample, dict) else None
             path += sample if isinstance(sample, str) else ""

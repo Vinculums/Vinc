@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**27종** — 읽기 19(search·node·role·edges·brief·recall·graph·decide·domains·suggest_ties·neighbors·
-path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami) + 쓰기 8
+**28종** — 읽기 20(search·node·role·role_check·edges·brief·recall·graph·decide·domains·suggest_ties·
+neighbors·path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami) + 쓰기 8
 (ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete).
 "단일 write 표면(ingest 하나)"은
 SEC-3(삭제·병합)과 D45(문서 정본 doc_*)를 거치며 깨진 낡은 서술이었다 —
@@ -501,6 +501,34 @@ def _t_role(args, bridge):
     return contract(args.get("role"), bridge, forced_owner=_owner(args, bridge))
 
 
+def _t_role_check(args, bridge):
+    # 패키지(vinc_client.output_gate)와 같은 결정론 게이트를 허브에서 돌린다. MCP 로 붙는
+    # 호스트도 같은 판정을 받게 하려는 것이다. 모델이 보낸 증거는 받지 않는다: 이 도구의
+    # 호출자는 모델이라, 무언가를 실행했다는 주장은 여기서 언제나 block 이다.
+    # 근거: [[vinc.canon.agent-roles]]
+    from .roles import contract
+    from .role_output_gate import OutputGate
+    role, output = args.get("role"), args.get("output")
+    if not isinstance(role, str) or not role.strip():
+        return {"kind": "role_check", "executed": False, "error": "role_required",
+                "note": "Name the role whose contract the output is checked against."}
+    if not isinstance(output, str) or not output.strip() or len(output) > 131072:
+        return {"kind": "role_check", "executed": False, "error": "output_required",
+                "note": "Pass the final output as one non-empty string of at most 131072 characters."}
+    got = contract(role.strip(), bridge, forced_owner=_owner(args, bridge))
+    if not got.get("executed") or not got.get("found"):
+        return {**got, "kind": "role_check"}
+    requests = args.get("person_only_requests") or []
+    result = OutputGate(got["props"], self_authored=bool(args.get("self_authored"))).evaluate(
+        output, person_only_requests=requests if isinstance(requests, list) else [None])
+    return {"kind": "role_check", "executed": True, "found": True, "role": got["id"],
+            **result.as_dict(),
+            "note": ("pass releases this output only; it grants no tool, merge, deploy or publish "
+                     "permission. A claim that something ran blocks here, because evidence must "
+                     "come from the host, not from the caller. The role's never prose still binds "
+                     "the operator beyond these structured checks.")}
+
+
 def _t_brief(args, bridge):
     # W1 — 질문 하나로 답변 재료를 모으는 결정론 조인 읽기(생성 없음).
     out = bridge.request("GET", "/brief", params={
@@ -725,6 +753,29 @@ TOOLS: list[dict] = [
             "role": {"type": "string", "description": "Role slug (agent-dev-core) or exact concept:agent- id; omit to list."},
             "owner": {"type": "string"}}, "required": []},
         "run": _t_role,
+    },
+    {
+        "name": "vinc_role_check",
+        "description": "Check one final output against a role's structured checks, outside the model, "
+                       "before you show it or hand it off. Reads the role contract fresh (same rules as "
+                       "vinc_role) and applies its gates, never_checks and person_only with the same "
+                       "deterministic gate the vinc-client package uses; no model is called. Returns "
+                       "verdict pass, block or interrupt, failed_checks, person_only_actions and up to 20 "
+                       "matching evidence_sentences. block: do not deliver. interrupt: a person must "
+                       "decide before delivery. A prose-only or invalid contract blocks. A claim that "
+                       "something ran (tests passed, merged, deployed, written to the graph) blocks here, "
+                       "because this tool cannot accept host evidence from its caller. pass releases the "
+                       "output only and grants no permission. Read-only; writes nothing.",
+        "inputSchema": {"type": "object", "properties": {
+            "role": {"type": "string", "description": "Role slug (agent-dev-core) or exact concept:agent- id."},
+            "output": {"type": "string", "description": "The complete final output to check, at most 131072 characters."},
+            "person_only_requests": {"type": "array", "description": "Optional structured requests the output makes for a person's decision; each action must be one of the role's person_only action ids.",
+                                     "items": {"type": "object", "properties": {
+                                         "action": {"type": "string"}, "reason": {"type": "string"}},
+                                         "required": ["action", "reason"]}},
+            "self_authored": {"type": "boolean", "description": "True when the output is a diff the role wrote; removed lines are then not read as proposals."},
+            "owner": {"type": "string"}}, "required": ["role", "output"]},
+        "run": _t_role_check,
     },
     {
         "name": "vinc_node",
@@ -1563,6 +1614,8 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_neighbors": {"title": "Observe a node's neighbors", "readOnlyHint": True},
     "vinc_edges": {"title": "Read directed incident edges", "readOnlyHint": True},
     "vinc_role": {"title": "Read a role contract or roster", "readOnlyHint": True},
+    # 판정만 돌려주고 아무것도 쓰지 않는다. 조회 전용이라 열람자도 부를 수 있다.
+    "vinc_role_check": {"title": "Check an output against a role", "readOnlyHint": True},
     "vinc_path": {"title": "Shortest path between concepts", "readOnlyHint": True},
     # 쓰기지만 가산적·멱등(exact-id MERGE) — 기존 데이터를 지우지 않는다.
     "vinc_ingest": {"title": "Save to the graph", "readOnlyHint": False,
