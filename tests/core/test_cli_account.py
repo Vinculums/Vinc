@@ -99,7 +99,7 @@ def test_every_public_tool_uses_a_v1_route(monkeypatch):
         else:
             assert request.data is None
     assert {route.tool for route in rest_routes.ROUTES} == names
-    assert len(observed) == 27
+    assert len(observed) == 28
 
 
 def test_edge_batch_uses_the_read_post_route(monkeypatch):
