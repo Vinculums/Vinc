@@ -253,10 +253,9 @@ def handle(handler, method: str) -> bool:
         fail(status, code, gated.message)
         return True
     resolved = gated.auth or auth
-    counted = resolved.get("member") or resolved.get("owner")
     outcome = toolcall.execute(route.tool, args, handler.app.bridge,
                                forced_owner=resolved.get("owner"), plan=resolved.get("plan"),
-                               quota=lambda _owner, plan: handler.app.quota_check(counted, plan),
+                               quota=handler.app.quota_check,
                                entitlements=handler.app.entitlements_for(resolved.get("plan")),
                                allow_target=False)
     if outcome.kind == "invalid_argument":
