@@ -482,6 +482,28 @@ class Store:
             return {"allowed": True, "limit": limit, "count": count,
                     "remaining": max(0, limit - count)}
 
+    def quota_snapshot(self, owner: str, *, limit: int, window_s: float,
+                       now: float | None = None) -> dict:
+        """소비·리셋·잠금 생성 없이 한 카운터만 읽는다. 신원과 면제는 호출자가 판정한다.
+
+        만료된 창·풀린 잠금은 다음 quota_check의 리셋을 미리 읽되 저장하지 않는다.
+        활성 잠금은 창 만료·상한 변경보다 먼저다. 공개 whoami에는 아직 연결하지 않는다.
+        """
+        t = time.time() if now is None else now
+        with self._lock:
+            row = self._db.execute(
+                "SELECT count,window_start,locked_until FROM usage WHERE owner=?",
+                (owner,)).fetchone()
+            count = int(row["count"]) if row else 0
+            start = float(row["window_start"]) if row else 0.0
+            until = float(row["locked_until"]) if row else 0.0
+        locked = bool(until) and t < until
+        expired = not row or (t - start) >= window_s or (bool(until) and t >= until)
+        if expired and not locked:
+            count, start, until = 0, None, None
+        return {"count": count, "remaining": 0 if locked else max(0, limit - count),
+                "window_start": start, "locked_until": until if locked else None}
+
     def usage_rows(self) -> list[dict]:
         """usage 표 전량을 **읽기만** 한다 — 운영자 사용량 덤프(`/internal/usage`)의 호출 수.
 

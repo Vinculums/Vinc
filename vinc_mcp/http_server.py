@@ -252,6 +252,22 @@ class MCPHTTPApp:
         # 허브는 **이미 원격 그래프 자신**이라 `target` 을 내보내지도 받지도 않는다.
         self._dispatcher = Dispatcher(self.bridge, allow_target=False)
 
+    def quota_snapshot(self, owner: str, plan: str | None) -> dict | None:
+        """내부 사용량 읽기. 공개 whoami 연결·소비·잠금 생성은 하지 않는다.
+
+        계정 정책의 그래프 owner 기준을 사용한다. 미설정·면제는 유한 잔여량으로
+        꾸미지 않는다. 호출자는 인증으로 결정한 owner만 전달해야 한다.
+        """
+        if not self.quota_config or self.store is None or not owner:
+            return None
+        cfg = self.quota_config
+        if owner in cfg.get("exempt_owners", ()):
+            return {"count": 0, "remaining": None, "exempt": True}
+        limit = cfg["team_limit"] if plan in entitlement.PAID_PLANS else cfg["free_limit"]
+        return {**self.store.quota_snapshot(owner, limit=limit,
+                                           window_s=cfg["window_s"]),
+                "limit": limit, "exempt": False}
+
     def quota_check(self, owner: str, plan: str | None) -> dict | None:
         """소비 1회 시도. 허용이면 None, 초과·잠금이면 **tools/call 결과 dict**.
 
@@ -583,7 +599,7 @@ class MCPHTTPApp:
           · `calls`: 쿼터 카운터의 **현재 창** 호출 수. 창이 지난 행은 0 으로 읽는다 —
             카운터는 다음 호출 때에야 리셋되므로 표의 값을 그대로 내면 어제 호출이
             오늘 것으로 보인다. 잠긴 행은 창과 무관하게 그 값을 낸다.
-        쿼터는 사람(`user:`) 단위로 센다(팀 호출도 멤버로 센다). 면제 owner 는 세지
+        쿼터는 그래프 owner 단위로 센다(팀 호출은 `team:`의 공유 예산). 면제 owner 는 세지
         않으므로 `quota.exempt_owners` 로 따로 알린다.
         근거: [[vinc.plan.backoffice-and-stats-2026-09-12]]"""
         if not self.account_public:
@@ -1253,16 +1269,12 @@ class _Handler(BaseHTTPRequestHandler):
             d = self.app.dispatcher()
 
             def _run(m, a):
-                # 자격·쿼터도 **해석된 스페이스**를 따른다. 쿼터는 멤버로 센다: 팀
-                # owner 로 세면 팀 하나가 카운터를 공유하고, `_fresh_plan` 이 `user:`
-                # 로 시작하는 owner 만 갱신하므로 등급이 영구 동결된다(요금제를 올려도
-                # 안 풀린다). `c=` 기본인자로 묶는 이유는 배치 안에서 메시지마다 값이
-                # 달라서다 — 클로저로 두면 마지막 값 하나가 전부에 쓰인다.
+                # 2026-09-19 계정 정책: 개인 Free와 TEAM 공유 예산은 서로 독립이다.
+                # 멤버 신원은 권한 검증에만 쓰고 소비는 해석된 그래프 owner로 센다.
+                # 팀은 매번 계정 멤버십 검증을 거치며 등급도 TEAM으로 해석된다.
                 ents = (self.app.entitlements_for(a["plan"]) if a["owner"] else None)
-                counted = a.get("member") or a["owner"]
                 return d.handle(m, forced_owner=a["owner"], plan=a["plan"],
-                                quota=(lambda o, pl, c=counted:
-                                       self.app.quota_check(c, pl)),
+                                quota=self.app.quota_check,
                                 entitlements=ents)
 
             replies = [r for r in (_run(m, a) for m, a in pairs) if r is not None]
