@@ -300,6 +300,8 @@ const EN = {
     empty: (q: string) => `No results for '${q}'. Try a different term, or open View instead.`,
     emptyCta: "Open View",
     matches: (n: number) => `${n} results`,
+    weakMatches: (n: number) => `Show ${n} weak candidates`,
+    weakHint: "These candidates may be unrelated. Open one to check its source.",
     error: "Search couldn't run. Retry anytime. The index is intact.",
     searching: "Searching…",
     // GM-13 — 의미 색인 재구축 중 배지(Success 하위 상태). em 대시 금지(D38).
@@ -1536,6 +1538,8 @@ const KO: Deck = {
     empty: (q) => `'${q}'에 맞는 결과가 없어요. 다른 검색어를 써 보거나 View를 열어 보세요`,
     emptyCta: "View 열기",
     matches: (n) => `결과 ${n}개`,
+    weakMatches: (n) => `약한 후보 ${n}개 펼쳐보기`,
+    weakHint: "검색어와 관련이 약할 수 있어요. 후보를 열어 원문을 확인해 보세요",
     error: "검색을 실행하지 못했어요. 언제든 다시 시도해 보세요. 색인은 그대로 있어요",
     searching: "검색 중…",
     // GM-13 — 의미 색인 재구축 중 배지(Success 하위 상태). em 대시 금지(D38).
