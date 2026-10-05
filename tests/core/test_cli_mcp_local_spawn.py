@@ -40,9 +40,11 @@ def test_spawn_diagnostics_redacts_token_and_reports_child_state(tmp_path):
         assert str(tmp_path / "home" / ".vinc" / "config.json") in result
 
 
+@pytest.mark.parametrize("token", ["fixture-valid", "-fixture-leading", "--fixture-leading"])
 @pytest.mark.parametrize("frozen", [False, True])
 @pytest.mark.parametrize("source", ["env", "config"])
-def test_local_mcp_spawns_sidecar_with_explicit_local(monkeypatch, tmp_path, frozen, source):
+def test_local_mcp_spawns_sidecar_with_explicit_local(monkeypatch, tmp_path, frozen, source, token):
+    monkeypatch.setattr(bridge_module.secrets, "token_urlsafe", lambda _: token)
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
@@ -84,6 +86,9 @@ def test_local_mcp_spawns_sidecar_with_explicit_local(monkeypatch, tmp_path, fro
         probe.ensure(wait=20)
         child = probe._child
         assert probe.health()
+        # 무인증 health뿐 아니라 토큰을 쓰는 읽기 요청도 원래 값으로 왕복한다.
+        result = probe.request("GET", "/domains", params={"owner": "tenant:local"})
+        assert result.get("executed") is True
         assert os.path.exists(tmp_path / "db")
         assert seen
     except Exception:
