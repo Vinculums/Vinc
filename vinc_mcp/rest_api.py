@@ -220,7 +220,8 @@ def _handle(handler, method: str) -> bool:
         with request_timing.measure("auth"):
             auth = handler._auth(None, presented_at="/mcp")
     except Exception:
-        fail(503, "upstream_unavailable", "API key verification is unavailable.")
+        fail(503, "upstream_unavailable", "API key verification is unavailable.",
+             extra={"Retry-After": "1"})
         return True
     if not auth.get("ok") or auth.get("source") != "apikey":
         fail(401, "not_authenticated", "The API key was not accepted.",
@@ -258,7 +259,8 @@ def _handle(handler, method: str) -> bool:
                 authenticate=lambda want: handler._auth(want, presented_at="/mcp"),
                 valid_space=lambda want: bool(_UUID_RE.fullmatch(want)))
     except Exception:
-        fail(503, "upstream_unavailable", "Space membership verification is unavailable.")
+        fail(503, "upstream_unavailable", "Space membership verification is unavailable.",
+             extra={"Retry-After": "1"})
         return True
     if gated.kind != "ok":
         status, code = {
