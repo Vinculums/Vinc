@@ -104,12 +104,15 @@ def test_node_index_and_owner_fallback_keep_original_scope(monkeypatch, fallback
     backend._load_ext = lambda *a, **kw: None
     calls = []
     def execute(conn, query, params):
+        if "count(v)" in query:
+            return [{"n": 1}]
         calls.append((query, dict(params)))
         if "QUERY_VECTOR_INDEX" in query:
             return [] if fallback else [{"id": "concept:mine", "distance": .1}]
         return [{"id": "concept:mine", "distance": .1}]
     monkeypatch.setattr(eb, "_exec_to_dicts", execute)
     monkeypatch.setattr(eb, "keep_vector_index", lambda: False)
+    monkeypatch.setattr(eb, "_NODE_VEC_EXACT_MAX_ROWS", 0)   # HNSW 경로를 고정한다
     with timing.capture() as collected:
         rows = backend.node_vector_search([1.0], 1, owner="user:mine")
     assert rows == [{"id": "concept:mine", "distance": .1}]
@@ -119,6 +122,7 @@ def test_node_index_and_owner_fallback_keep_original_scope(monkeypatch, fallback
     assert calls[0][1]["k"] == backend._OVERSAMPLE
     assert "node_vector_index" in collected.values
     assert ("node_vector_fallback" in collected.values) == fallback
+    assert "node_vector_exact" not in collected.values
     assert not any(p.endswith("_error") for p in collected.values)
 
 
@@ -142,6 +146,7 @@ def test_real_node_index_fallback_preserves_owner_and_distance(tmp_path, monkeyp
     from store.backend import open_store
     from store.config import load_config
     monkeypatch.setenv("VINC_KEEP_VECTOR_INDEX", "off")
+    monkeypatch.setattr(eb, "_NODE_VEC_EXACT_MAX_ROWS", 0)   # 작은 미러라도 HNSW 경로를 밟는다
     store = open_store(load_config({"data_dir": str(tmp_path / "db"), "buffer_pool_mb": 64}))
     assert store is not None, eb.EmbeddedBackend.last_open_error
     try:

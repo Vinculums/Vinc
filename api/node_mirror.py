@@ -135,9 +135,11 @@ def plan(rows: list[dict], have: dict, model: str,
 
 def index_answers(store) -> bool:
     """미러의 벡터 색인이 답하는가 — 미러의 아무 벡터로 되묻는다. 비었으면 거짓.
-    소유자는 걸지 않는다: 재는 것은 색인이지 소유자 필터가 아니다."""
+    소유자는 걸지 않는다: 재는 것은 색인이지 소유자 필터가 아니다.
+    `use_index=True`: 작은 미러는 검색이 정확 스캔으로 가므로, 색인을 직접 물어야 한다."""
     got = store.run("MATCH (n:NodeVec) RETURN n.embedding AS e LIMIT 1") or []
-    return bool(got and got[0].get("e") and store.node_vector_search(got[0]["e"], 1))
+    return bool(got and got[0].get("e")
+                and store.node_vector_search(got[0]["e"], 1, use_index=True))
 
 
 def replace(store, rows: list[dict], model: str, encoder_runtime: str = "",
