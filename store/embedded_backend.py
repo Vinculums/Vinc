@@ -248,9 +248,12 @@ class _Conn:
 
     def execute(self, query, parameters=None):
         try:
-            if parameters:
-                return self._raw.execute(query, parameters)
-            return self._raw.execute(query)
+            # 드라이버 호출에는 네이티브 실행·내부 대기도 포함된다. 스레드 CPU만으로
+            # 이 둘을 구별하지 않는다. 근거: [[vinc.manual.core §7]]
+            with request_timing.measure("db_execute"):
+                if parameters:
+                    return self._raw.execute(query, parameters)
+                return self._raw.execute(query)
         except Exception:
             if parameters:
                 _forget_prepared(self._raw)
@@ -272,9 +275,11 @@ def _open_connection(drv, db, family=None) -> _Conn:
     계획 캐시(A)는 커넥션 단위 설정이라 여기서 매번 끈다. 켜지 못하면 던진다: 조용히
     지나가면 첫 두 번째 검색이 프로세스를 죽인다. 단 스위치가 아예 없는 엔진(0.20.2 이전
     — 0.18.0 등)은 그 결함도 없으므로 그대로 둔다."""
-    raw = drv.Connection(db)
+    with request_timing.measure("connection_open"):
+        raw = drv.Connection(db)
     try:
-        raw.execute(f"CALL enable_cached_prepared_statement='{_PLAN_CACHE_SCOPE}'")
+        with request_timing.measure("connection_config"):
+            raw.execute(f"CALL enable_cached_prepared_statement='{_PLAN_CACHE_SCOPE}'")
     except Exception as exc:
         if _PLAN_CACHE_SCOPE != "BOTH" and _plan_cache_switch_exists(drv):
             raise RuntimeError(
@@ -722,7 +727,8 @@ def keep_vector_index() -> bool:
 
 def _vector_query_guard():
     """벡터 질의 한 문장을 감싼다 — 색인을 유지하는 동안만 배타다(:func:`keep_vector_index`)."""
-    return DDL_GUARD.exclusive() if keep_vector_index() else nullcontext()
+    return (request_timing.wait("ddl_exclusive_wait", DDL_GUARD.exclusive())
+            if keep_vector_index() else nullcontext())
 
 
 def _exclusive_ddl(fn):
@@ -929,18 +935,19 @@ def _exec_to_dicts(conn, cypher: str, params: dict | None, *, raw: bool = False)
     out: list[dict] = []
     # 모든 문장 실행이 여기를 지난다 — 그래서 DDL 가드의 공유 쪽은 여기 하나다.
     # 결과 소비까지 쥔다(행을 읽는 동안에도 스캔은 살아 있다). 가드 설명은 `_DdlGuard` 위.
-    with DDL_GUARD.shared():
+    with request_timing.wait("ddl_shared_wait", DDL_GUARD.shared()):
         res = conn.execute(cypher, params) if params else conn.execute(cypher)
         # ladybug/kuzu 는 다중 문장 시 결과 리스트를 줄 수 있음 — 마지막 결과만 소비.
         results = res if isinstance(res, list) else [res]
-        for r in results:
-            try:
-                cols = r.get_column_names()
-            except Exception:
-                cols = None
-            while r.has_next():
-                row = r.get_next()
-                out.append(dict(zip(cols, row)) if cols else {"_": row})
+        with request_timing.measure("db_fetch"):
+            for r in results:
+                try:
+                    cols = r.get_column_names()
+                except Exception:
+                    cols = None
+                while r.has_next():
+                    row = r.get_next()
+                    out.append(dict(zip(cols, row)) if cols else {"_": row})
     # PK 네임스페이싱(design A)의 **유일한** 분해 지점. 프로젝션 64개·별칭 10개를
     # 하나하나 고치지 않는 이유가 이것이다 — `run()`·`_Session.run`·reader 커넥션·
     # 전문/벡터 검색이 전부 여기를 지난다. 판별자는 U+001F 존재이고, 좁히기는
@@ -954,7 +961,8 @@ def _exec_to_dicts(conn, cypher: str, params: dict | None, *, raw: bool = False)
     # 훅 우회 읽기 경로도 행별 표식도 필요 없다). 실측:
     # tests/core/test_pk_compose_write.py::test_a_cypher_predicate_still_sees_the_separator
     if pkns.enabled() and not raw:
-        out = [pkns.strip_deep(row) for row in out]
+        with request_timing.measure("db_decode"):
+            out = [pkns.strip_deep(row) for row in out]
     return out
 
 
@@ -1957,8 +1965,9 @@ class EmbeddedBackend:
             "RETURN p.chunk_id AS id, p.text AS text, distance "
             "ORDER BY distance"
         )
-        with _vector_query_guard():
-            rows = _exec_to_dicts(c, cypher, params)
+        with request_timing.measure("vector_index"):
+            with _vector_query_guard():
+                rows = _exec_to_dicts(c, cypher, params)
         best: dict[str, dict] = {}
         for r in rows:                       # 이미 distance 오름차순 — 첫 등장이 최소
             best.setdefault(r.get("id"), r)
@@ -1968,12 +1977,13 @@ class EmbeddedBackend:
             # 스페이스·문서 하나) 필터 안을 정확히 훑는다. 거리는 색인의 기본(코사인)과 같은
             # 값이고(실측), 매개변수를 묶는 평범한 조회라 읽기 커넥션에서 돈다(DDL 없음).
             scope = _filter_clause("p", filters, params)       # 여기선 첫 WHERE 다
-            out = _exec_to_dicts(
-                c, f"MATCH (p:Chunk) {scope}"
-                   "MATCH (v:ChunkVec) WHERE v.chunk_id = p.chunk_id "
-                   "RETURN p.chunk_id AS id, p.text AS text, "
-                   "min(1 - array_cosine_similarity(v.embedding, $emb)) AS distance "
-                   "ORDER BY distance LIMIT $k", {**params, "k": int(top_k)})
+            with request_timing.measure("vector_fallback"):
+                out = _exec_to_dicts(
+                    c, f"MATCH (p:Chunk) {scope}"
+                       "MATCH (v:ChunkVec) WHERE v.chunk_id = p.chunk_id "
+                       "RETURN p.chunk_id AS id, p.text AS text, "
+                       "min(1 - array_cosine_similarity(v.embedding, $emb)) AS distance "
+                       "ORDER BY distance LIMIT $k", {**params, "k": int(top_k)})
         return out
 
     @request_timing.timed("node_vector")
@@ -1991,9 +2001,11 @@ class EmbeddedBackend:
         근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
         c = conn or self._conn
         try:
-            self._load_ext("vector", reader=conn is not None)
+            with request_timing.measure("node_vector_load"):
+                self._load_ext("vector", reader=conn is not None)
         except Exception:
-            return []
+            with request_timing.measure("node_vector_load_error"):
+                return []
         k = int(top_k) * (self._OVERSAMPLE if owner else 1)
         params: dict = {"emb": list(embedding), "k": k}
         where = ""
@@ -2008,19 +2020,22 @@ class EmbeddedBackend:
             "ORDER BY distance"
         )
         try:
-            with _vector_query_guard():
-                rows = _exec_to_dicts(c, cypher, params)
+            with request_timing.measure("node_vector_index"):
+                with _vector_query_guard():
+                    rows = _exec_to_dicts(c, cypher, params)
             if owner and len(rows) < int(top_k):
                 # 전역 상위 k 에 이 소유자의 행이 모자랐다 — 그 소유자 안을 정확히 훑는다
                 # (:meth:`vector_search` 와 같은 이유·같은 거리).
-                rows = _exec_to_dicts(
-                    c, "MATCH (node:NodeVec) WHERE node.owner_id = $owner "
-                       "RETURN node.node_id AS id, node.kind AS kind, node.title AS title, "
-                       "node.text AS text, "
-                       "1 - array_cosine_similarity(node.embedding, $emb) AS distance "
-                       "ORDER BY distance LIMIT $k", {**params, "k": int(top_k)})
+                with request_timing.measure("node_vector_fallback"):
+                    rows = _exec_to_dicts(
+                        c, "MATCH (node:NodeVec) WHERE node.owner_id = $owner "
+                           "RETURN node.node_id AS id, node.kind AS kind, node.title AS title, "
+                           "node.text AS text, "
+                           "1 - array_cosine_similarity(node.embedding, $emb) AS distance "
+                           "ORDER BY distance LIMIT $k", {**params, "k": int(top_k)})
         except Exception:
-            return []           # 인덱스 부재·미러 비어 있음 — 증강이므로 조용히 없음
+            with request_timing.measure("node_vector_query_error"):
+                return []       # 증강 팔의 강등 계약은 유지하고 실패 분기만 숫자로 표시
         return rows[:int(top_k)]
 
     @_exclusive_ddl

@@ -526,7 +526,7 @@ class VincApp:
     def _reader(self):
         if self.store is None:
             return None
-        with self._conn_lock:
+        with request_timing.wait("reader_lock", self._conn_lock):
             # `reader_view` 는 **스토어 인터페이스**다 — 다른 백엔드·테스트 더블도
             # 구현한다. 새 키워드를 강제하면 그것들이 통째로 깨지므로(실측: 더블이
             # TypeError → 500), 지원하는 스토어에만 넘긴다.
