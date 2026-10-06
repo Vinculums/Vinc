@@ -61,7 +61,7 @@ def test_required_spec_miss_or_tie_stops_prefetch(status, async_mode):
 
     with pytest.raises(VincInvalidArgument, match="prefetch_spec_unresolved"):
         client = (AsyncVincClient if async_mode else VincClient)(
-            "vinc_ro_" + "a" * 32, transport=httpx.MockTransport(handler))
+            "vinc_ro_" + "a" * 32, transport=httpx.MockTransport(handler), prefetch_concurrency=1)
         value = client.prefetch("concept:agent-reviewer", "Review.")
         if async_mode:
             asyncio.run(value)
@@ -90,7 +90,7 @@ def test_required_document_integrity_failure_stops_before_later_reads(async_mode
                 "props": {"reads": ["concept:doc.vinc.spec.fixture", "later-spec"]}})
         return httpx.Response(404 if defect == "missing" else 200, json=doc)
     client = (AsyncVincClient if async_mode else VincClient)(
-        "vinc_ro_" + "a" * 32, transport=httpx.MockTransport(handler))
+        "vinc_ro_" + "a" * 32, transport=httpx.MockTransport(handler), prefetch_concurrency=1)
     with pytest.raises(VincInvalidArgument, match="prefetch_spec_unresolved"):
         value = client.prefetch("concept:agent-reviewer", "Review.")
         if async_mode:

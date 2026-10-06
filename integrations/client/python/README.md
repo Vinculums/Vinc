@@ -145,6 +145,23 @@ each required document is retained in full, with its verified content hash.
 Missing, partial or unverified documents raise `prefetch_spec_unresolved` before
 optional task lookup. Invalid role contracts, authentication and service failures
 propagate. There is no prefetch permission/content cache or automatic write.
+Client 0.1.3 reads required documents in concurrent batches of at most eight,
+using a per-call thread pool for `VincClient` and tasks for `AsyncVincClient`.
+Results are validated and rendered in the declared reading order. Only after
+all required reads and the budget pass are task `brief` and `search` sent together.
+A failed batch stops subsequent batches and task lookup; requests already in
+flight may finish. Pending reads are cancelled and all in-flight work is drained
+before return. Synchronous network reads cannot be interrupted once started,
+so failure cleanup can wait for their configured request timeout.
+
+Set `VincClient(..., prefetch_concurrency=1)` or
+`AsyncVincClient(..., prefetch_concurrency=1)` to retain sequential reads.
+The setting accepts integers from 1 to 8. In synchronous mode, 1 also keeps
+custom transport calls on the calling thread; concurrent custom transports must
+be thread safe. Pass that configured reader to either framework adapter to use
+the same policy. Every invocation still makes fresh requests; there is no implicit
+reuse across model calls. Concurrency changes elapsed time, not required input size.
+
 The combined budget defaults to 24,000 characters. Starting with client 0.1.3,
 `prefetch_budget_exceeded` reports the **complete** `required_size` in both its
 message and `error.details`, after reading and verifying every required document.
@@ -174,6 +191,21 @@ roles and one explicit correction before release, without calling a model:
 # Set VINC_API_KEY in the command environment only, using a vinc_ro_ key.
 python integrations/client/python/examples/check_prefetch_budget.py --space personal
 ```
+
+For a paired latency check, with the same read-only key in the command environment:
+
+```bash
+python integrations/client/python/examples/benchmark_prefetch.py --iterations 4
+```
+
+This alternates sequential/concurrent order on the same hub and task, measuring
+fresh calls with a 600,000-character budget in both sync and async modes. The
+sequential setting reproduces the successful 0.1.2 request order; both paths run
+the installed client version. It prints each timing and the two medians, and fails
+if either concurrent median is not below half its sequential median. The measured
+time combines hub work and network time. `--synthetic` instead replays captured
+agent-qa text sizes and scaled 0.28/0.24/0.95-second request delays; those results
+are labelled synthetic and cannot establish a live-hub latency acceptance.
 
 The check prints only role ids and sizes, never keys or retrieved document bodies.
 This provides evidence before the model runs; model citation quality needs a
