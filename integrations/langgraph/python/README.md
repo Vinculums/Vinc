@@ -27,6 +27,11 @@ def review(state):
 
 `get_vinc_context` makes one call, two when nothing matched or several nodes tied (it then widens with a search). It returns `None` when nothing matched, and also when Vinc is unreachable or the daily limit is spent, so the node goes on without it. A wrong key or space raises.
 
+Ordinary `VincContextMiddleware` lookups cache for 60 seconds by default, isolated
+by client, reader, endpoint, space and rendering settings. Call `clear_cache()`
+after a source update, or set `cache_seconds=0` for a fresh read at each model
+call. This does not bypass the server's entitlement caches.
+
 ## In a `create_agent` agent
 
 ```python
@@ -53,6 +58,12 @@ Nothing in this package writes on its own. Put `record_episode` in the node afte
 ```
 context -> review -> approve (interrupt) -> record
 ```
+
+The example accepts a host-provided checkpointer for durable recovery; its
+default `InMemorySaver` lasts only for that process. Persist the episode id and
+date before approval, and pass the same `episode_id` to `record_episode` on a
+retry. This merges the same Episode; it does not make other side effects run
+exactly once.
 
 
 
@@ -121,21 +132,27 @@ explicitly, and put `record_episode` in the approved write-back node as before.
 
 ```python
 middleware = VincContextMiddleware(
-    client=reader, prefetch_role="concept:agent-reviewer",
+    client=reader, prefetch_role="concept:agent-reviewer-judgement",
+    prefetch_max_chars=120000,
 )
 ```
 
-This reads the role contract, required spec briefs and task brief/search before
+This reads the complete role contract, full required documents with verified
+content hashes, and task brief/search before
 each model call, including the returned node ids. Unlike ordinary question
 lookup, the role prefetch mode does not cache content or permission checks.
 Read tools may still be passed to `create_agent` as an additional lookup path.
-Required spec misses/ties and authentication/service failures raise; nothing
+Missing, partial or unverified required documents raise `prefetch_spec_unresolved`
+before optional task lookup. Authentication/service failures raise; nothing
 writes or delegates work.
 
 Graph nodes can call `prefetch(reader, role_id, task)` or async `aprefetch` and
 pass its returned block to `build_system_message`. The chosen role comes from
 application/operator configuration. `prefetch_max_chars` controls the combined
-middleware budget; exceeding it raises instead of discarding required readings.
+middleware budget (default 24,000 characters). Large roles need an explicit
+larger budget, as above. Exceeding it raises `prefetch_budget_exceeded` instead of
+truncating the contract or required documents. The helpers use `max_chars` for
+the same budget.
 Model citation quality must be evaluated separately.
 
 

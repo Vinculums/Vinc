@@ -112,6 +112,11 @@ producer/run provenance. Source contents are never copied. Each read checks
 distinct evidence ids with the receiving key again; deleted or inaccessible
 evidence makes the affected claim explicitly uncitable. Missing carriers and
 service/authentication errors propagate. No permission or content cache is used.
+Returned evidence state includes the current content hash and any validity
+interval or successor the server provides. Readable evidence is not necessarily
+current: historical or superseded evidence has `use_as_current=false`, and
+unknown currentness remains unknown. These are read-time observations, not a
+pinned copy of the producer's source revision.
 The complete data block is fenced; exceeding `max_chars` raises
 `package_budget_exceeded` instead of truncating the conclusion. Use a fresh
 package id for each handoff; choosing an existing id deliberately replaces that
@@ -122,21 +127,28 @@ must be persisted before the package rather than created alongside it.
 ## Prefetch role evidence before a model call
 
 ```python
-block = reader.prefetch("concept:agent-reviewer", "Review the proposed change.")
+block = reader.prefetch(
+    "concept:agent-reviewer-judgement", "Review the proposed change.",
+    max_chars=120000,
+)
 ```
 
 This uses the role API from VIN-303, reads each distinct required spec by its
-declared identifier, then briefs the task and searches with the role topic as
+declared document identifier through `document(doc_id)`, then briefs the task
+and searches with the role topic as
 context. Returned node ids remain in the fenced reference blocks. The topic is
 search context, not a hard domain filter. Role contracts remain graph data;
 choosing this API does not delegate work or widen the caller's permissions.
 
 The caller must choose the role explicitly. Its complete contract is retained;
-spec excerpts use the existing brief renderer and task evidence uses brief and
-search. Required-spec misses/ties, invalid role contracts, authentication and
-service failures propagate. There is no prefetch permission/content cache or
-automatic write. The aggregate `max_chars` budget fails explicitly rather than
-dropping a required reading. This provides evidence before the model runs; it
+each required document is retained in full, with its verified content hash.
+Missing, partial or unverified documents raise `prefetch_spec_unresolved` before
+optional task lookup. Invalid role contracts, authentication and service failures
+propagate. There is no prefetch permission/content cache or automatic write.
+The combined budget defaults to 24,000 characters. Large roles need an explicit
+larger budget, as above; `prefetch_budget_exceeded` stops rather than truncating
+the contract or a required document. This provides evidence before the model
+runs; it
 does not guarantee that the model cites it correctly.
 
 
