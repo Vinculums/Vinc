@@ -50,6 +50,29 @@ def test_merge_uses_only_fixed_names_and_accumulates_retries():
                                     "sidecar": 20.0}
 
 
+def test_every_sidecar_phase_survives_the_expanded_bounded_header():
+    allowed = {"sidecar", *timing.PHASES, *(p + "_cpu" for p in timing.PHASES)}
+    value = ", ".join(f"{name};dur=1.25" for name in sorted(allowed))
+    assert len(value) < 8192 and len(allowed) > 32
+    with timing.capture() as collector:
+        timing.merge_sidecar(value)
+        assert len(collector.values) == len(allowed)
+        assert collector.values["sidecar_node_vector_fallback"] == 1.25
+        assert collector.values["sidecar_vector_index_cpu"] == 1.25
+
+
+def test_engine_observations_are_finite_bounded_ms_and_opt_in():
+    timing.observe("db_compile", 1)
+    assert not timing.active()
+    with timing.capture() as collector:
+        for value in (None, "private", float("nan"), float("inf"), -1, 3600001):
+            timing.observe("db_compile", value)
+        assert not collector.values
+        timing.observe("db_compile", 1.5)
+        timing.observe("db_compile", 2.5)
+        assert collector.values == {"db_compile": 4}
+
+
 def test_concurrent_threads_and_reused_thread_do_not_share_timings():
     def collect(phase):
         assert not timing.active()

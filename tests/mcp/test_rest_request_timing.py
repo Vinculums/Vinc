@@ -78,7 +78,12 @@ def test_timings_cross_real_rest_bridge_and_sidecar_without_changing_search(monk
         @timing.timed("vector")
         def vector_search(self, *_a, **_kw): return []
         @timing.timed("node_vector")
-        def node_vector_search(self, *_a, **_kw): return []
+        def node_vector_search(self, *_a, **_kw):
+            # 전체 allowlist가 브리지를 지나도 뒤쪽 구간이 잘리지 않아야 한다.
+            for phase in timing.PHASES - {"node_vector_load_error", "node_vector_query_error"}:
+                with timing.measure(phase):
+                    pass
+            return []
 
     monkeypatch.setenv("VINC_EMBED_ENCODE", "http://127.0.0.1:1")
     app = VincApp(store=EmptyStore(), auth=SessionAuth("fixture-sidecar"))
@@ -101,7 +106,10 @@ def test_timings_cross_real_rest_bridge_and_sidecar_without_changing_search(monk
         assert "Server-Timing" not in plain[1]
         header = measured[1]["Server-Timing"]
         for phase in ("sidecar_embed", "sidecar_reader", "sidecar_query", "sidecar_keyword",
-                      "sidecar_vector", "sidecar_node_vector", "sidecar", "bridge", "rest"):
+                      "sidecar_vector", "sidecar_node_vector", "sidecar", "bridge", "rest",
+                      "sidecar_reader_lock", "sidecar_ddl_shared_wait", "sidecar_db_execute",
+                      "sidecar_node_vector_index", "sidecar_node_vector_fallback",
+                      "sidecar_vector_fallback_cpu"):
             assert phase + ";dur=" in header
         assert "private" not in header and "fixture" not in header and "user:" not in header
     finally:

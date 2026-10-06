@@ -5,12 +5,18 @@ import contextvars
 import functools
 import math
 import time
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 
 HEADER = "Vinc-Diagnostics"
 VALUE = "timings"
 PHASES = frozenset({"reader", "reader_close", "query", "embed", "keyword",
-                    "vector", "node_vector", "bridge", "auth", "gate"})
+                    "vector", "node_vector", "bridge", "auth", "gate",
+                    "reader_lock", "connection_open", "connection_config",
+                    "ddl_shared_wait", "ddl_exclusive_wait", "db_execute",
+                    "db_compile", "db_native_exec",
+                    "db_fetch", "db_decode", "vector_index", "vector_fallback",
+                    "node_vector_load", "node_vector_index", "node_vector_fallback",
+                    "node_vector_load_error", "node_vector_query_error"})
 _current = contextvars.ContextVar("vinc_request_timing", default=None)
 
 
@@ -29,6 +35,21 @@ class Timings:
 
 def active():
     return _current.get() is not None
+
+
+def observe(phase, milliseconds):
+    """엔진이 보고한 ms를 받는다. 지원하지 않는 통계는 호출부가 생략한다."""
+    if phase not in PHASES:
+        raise ValueError("unknown timing phase")
+    collector = _current.get()
+    if collector is None:
+        return
+    try:
+        value = float(milliseconds)
+    except (TypeError, ValueError):
+        return
+    if math.isfinite(value) and 0 <= value <= 3600000:
+        collector.add(phase, value)
 
 
 @contextmanager
@@ -69,6 +90,19 @@ def timed(phase):
     return decorate
 
 
+@contextmanager
+def wait(phase, manager):
+    """가드 진입만 잰다. 보유·해제·예외 억제는 원래 context manager가 맡는다."""
+    if not active():
+        with manager as value:
+            yield value
+        return
+    with ExitStack() as stack:
+        with measure(phase):
+            value = stack.enter_context(manager)
+        yield value
+
+
 def header(total):
     if total not in {"sidecar", "rest"}:
         raise ValueError("unknown timing boundary")
@@ -82,7 +116,8 @@ def merge_sidecar(value):
     if collector is None:
         return
     allowed = {"sidecar", *PHASES, *(p + "_cpu" for p in PHASES)}
-    for item in str(value or "")[:4096].split(",")[:32]:
+    # 새 구간도 전부 받되 입력 크기와 항목 수의 상한은 유지한다.
+    for item in str(value or "")[:8192].split(",")[:len(allowed)]:
         name, separator, duration = item.strip().partition(";dur=")
         if not separator or name not in allowed:
             continue
