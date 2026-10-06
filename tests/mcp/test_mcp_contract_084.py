@@ -503,14 +503,17 @@ class SearchFallsBackWithoutWaiting(unittest.TestCase):
         self.store.schedule_search_indexes = boom
         self.assertTrue(self._search()["executed"])
 
-    def test_리더_뷰는_타임아웃_0_으로_예약한다(self):
+    def test_리더_뷰는_닫힌_뒤_타임아웃_0_으로_예약한다(self):
         from store.embedded_backend import _ReaderView
         seen: list = []
-        rv = _ReaderView.__new__(_ReaderView)
-        rv._b = types.SimpleNamespace(ensure_search_indexes=lambda **_k: {})
-        rv._conn = None
-        rv._writer = lambda label, fn, timeout: seen.append((label, timeout))
+        backend = types.SimpleNamespace(ensure_search_indexes=lambda **_k: {})
+        rv = _ReaderView(backend, types.SimpleNamespace(close=lambda: None),
+                         writer=lambda label, fn, timeout: seen.append((label, timeout)))
         rv.schedule_search_indexes(dim=4)
+        self.assertEqual(seen, [])
+        rv.close()
+        self.assertEqual(seen, [("search.index", 0.0)])
+        rv.close()
         self.assertEqual(seen, [("search.index", 0.0)])
 
     def test_쓰기_지점은_타임아웃_0_을_예약으로_읽는다(self):
@@ -526,7 +529,8 @@ class SearchFallsBackWithoutWaiting(unittest.TestCase):
                 self.waited.append((label, timeout))
                 return fn()
 
-        app = types.SimpleNamespace(jobs=_Jobs())
+        import threading
+        app = types.SimpleNamespace(jobs=_Jobs(), _index_lock=threading.Lock(), _index_job=None)
         VincApp._at_write_point(app, "search.index", lambda: {}, 0.0)
         self.assertEqual(app.jobs.submitted, ["search.index"])
         self.assertFalse(app.jobs.waited)

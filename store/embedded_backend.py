@@ -801,11 +801,40 @@ class _ReaderView:
         # 해당 연산은 둘뿐이다: 지연 인덱스 빌드(DDL)와 그래프 알고리즘(project_graph
         # DDL). 여기에 새 항목을 더하기 전에 정말 읽기 중에 써야 하는지 먼저 의심할 것.
         self._writer = writer
+        self._request_guard = None
+        self._scheduled_index = None
+
+    def _enter_request_guard(self):
+        guard = request_timing.wait("ddl_shared_wait", DDL_GUARD.shared(timeout=1.0))
+        guard.__enter__()
+        self._request_guard = guard
+
+    def _leave_request_guard(self):
+        guard, self._request_guard = self._request_guard, None
+        if guard is not None:
+            guard.__exit__(None, None, None)
+
+    @contextmanager
+    def request_read_scope(self):
+        """요청의 후속 읽기를 DDL에서 보호한다. 유지보수 대기는 1초 뒤 재시도한다."""
+        self._enter_request_guard()
+        try:
+            yield
+        finally:
+            self._leave_request_guard()
 
     def _at_write_point(self, label: str, fn, timeout: float):
         if self._writer is None:
             return fn()
-        return self._writer(label, fn, timeout)
+        # 동기 DDL은 다른 스레드가 실행한다. 공유를 쥔 채 기다리면 서로 잠긴다.
+        held = self._request_guard is not None
+        if held:
+            self._leave_request_guard()
+        try:
+            return self._writer(label, fn, timeout)
+        finally:
+            if held:
+                self._enter_request_guard()
 
     def run(self, query: str, params: dict | None = None) -> list[dict]:
         return _exec_to_dicts(self._conn, query, params or None)
@@ -872,8 +901,12 @@ class _ReaderView:
         if getattr(self._b, "vector_index_remnant", False) or \
                 getattr(self._b, "fts_index_remnant", False):
             return          # FTS 잔해도 같다 — 빌드가 FTS 에서 먼저 선다
-        self._at_write_point(
-            "search.index", lambda: self._b.ensure_search_indexes(dim=dim) or {}, 0.0)
+        build = lambda: self._b.ensure_search_indexes(dim=dim) or {}
+        if self._writer is None:
+            build()
+        else:
+            # 제출 즉시 시작한 DDL이 같은 검색의 후속 읽기를 막지 않게 요청 종료로 미룬다.
+            self._scheduled_index = build
 
     @property
     def vector_index_remnant(self) -> bool:
@@ -923,6 +956,11 @@ class _ReaderView:
             c.close()
         except Exception:
             pass   # 이미 닫혔거나 구 드라이버 — 참조를 놓은 것으로 충분하다
+        finally:
+            self._leave_request_guard()
+        build, self._scheduled_index = self._scheduled_index, None
+        if build is not None:
+            self._writer("search.index", build, 0.0)
 
 
 def _exec_to_dicts(conn, cypher: str, params: dict | None, *, raw: bool = False) -> list[dict]:

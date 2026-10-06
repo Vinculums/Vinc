@@ -6,6 +6,8 @@ import threading
 import urllib.error
 import urllib.request
 
+import pytest
+
 from vinc_mcp import rest_routes, tools
 from vinc_mcp.http_server import MCPHTTPApp, make_server
 from vinc_mcp.store import Store
@@ -136,6 +138,26 @@ def test_rest_result_equals_mcp_text_and_owner_is_forced():
         assert status == 200
         assert body == json.loads(mcp["result"]["content"][0]["text"])
         assert all(call[2]["owner"] == "user:u1" for call in srv.bridge.calls)
+    finally:
+        srv.close()
+
+
+@pytest.mark.parametrize("method,path,body", [
+    ("POST", "/v1/search", {"query": "hello"}),
+    ("GET", "/v1/documents/required", None),
+    ("GET", "/v1/roles/concept%3Aagent-qa", None),
+])
+def test_maintenance_refusal_is_retryable_through_public_rest(method, path, body):
+    srv = Server()
+    try:
+        srv.bridge.override = {"executed": False, "error": "store_busy",
+                               "note": "Index maintenance is in progress.", "retry_after_s": 1}
+        status, headers, result = srv.request(method, path, body=body)
+        assert status == 503 and headers["Retry-After"] == "1"
+        assert result["error"]["code"] == "upstream_unavailable"
+        assert result["error"]["details"] == {"retryable": True, "retry_after_s": 1}
+        srv.bridge.override = None
+        assert srv.request("POST", "/v1/search", body={"query": "hello"})[0] == 200
     finally:
         srv.close()
 
