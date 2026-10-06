@@ -17,7 +17,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from store import diagnostics
+from store import diagnostics, request_timing
 
 DEFAULT_BASE = "http://127.0.0.1:8787"
 # 로컬 스토어의 소유자는 하나다: 앱·fragment 기본값·profile.yml·PK 정규화 표가 모두
@@ -107,6 +107,7 @@ class Bridge:
         self._child: subprocess.Popen | None = None
 
     # ── HTTP ────────────────────────────────────────────────────────────────
+    @request_timing.timed("bridge")
     def request(self, method: str, path: str, params: dict | None = None,
                 body: dict | None = None, timeout: float = 60,
                 retries: int = 2, retry_delay: float = 0.3) -> dict:
@@ -144,12 +145,17 @@ class Bridge:
             started = time.perf_counter()
             status, request_id = "network_error", ""
             req = urllib.request.Request(url, data=data, method=method)
+            if method == "GET" and request_timing.active():
+                req.add_header(request_timing.HEADER, request_timing.VALUE)
             if self.token:
                 req.add_header("Authorization", f"Bearer {self.token}")
             if data is not None:
                 req.add_header("Content-Type", "application/json")
             try:
                 with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    if request_timing.active():
+                        headers = getattr(resp, "headers", {})
+                        request_timing.merge_sidecar(headers.get("Server-Timing", ""))
                     status = getattr(resp, "status", 200)
                     request_id = resp.headers.get("X-Request-Id", "") if hasattr(resp, "headers") else ""
                     return json.loads(resp.read().decode("utf-8"))

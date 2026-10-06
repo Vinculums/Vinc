@@ -128,6 +128,7 @@ def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
 
 from store.config import load_config
 from store import config as store_config
+from store import request_timing
 from store.backend import open_store
 
 from . import query as q
@@ -578,16 +579,19 @@ class VincApp:
         `/health` 는 이 판정을 쓰지 않는다 — 거긴 200 + `status:degraded` 가 계약이고
         (릴리스 스모크가 그 값을 본다), 프로브가 503 이면 오케스트레이터가 살아 있는
         사이드카를 죽인다. 진단은 답하고 데이터는 거절하는 것이 옳은 조합이다."""
-        r = self._reader()
+        with request_timing.measure("reader"):
+            r = self._reader()
         if r is None:
             # 본문에 executed:false 를 함께 싣는다 — 기존 클라이언트(앱·CLI·MCP)가
             # 이미 그 필드로 강등을 판정하고, 브리지는 HTTPError 본문을 그대로
             # 통과시키므로 MCP 호스트도 같은 사유를 본다.
             return 503, {"executed": False, **store_unavailable()}
         try:
-            return 200, fn(r)
+            with request_timing.measure("query"):
+                return 200, fn(r)
         finally:
-            r.close()
+            with request_timing.measure("reader_close"):
+                r.close()
 
     def close(self):
         """clean shutdown(E6): 워커 드레인 → **마지막 스냅샷** → 공유 스토어 close.
@@ -840,6 +844,7 @@ class VincApp:
         self._mig_at = now            # 이 줄이 캐시를 연다. 위 줄보다 앞으로 옮기지 말 것
         return note
 
+    @request_timing.timed("embed")
     def _query_embedding(self, text: str):
         """쿼리 임베딩을 얻는다 — 없으면 `(None, 사유)` 로 **정직하게** 강등한다.
 
@@ -2198,6 +2203,9 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        timing = request_timing.header("sidecar")
+        if timing and code != 401:
+            self.send_header("Server-Timing", timing)
         # 셸 웹뷰(tauri://localhost · http://tauri.localhost)는 사이드카(127.0.0.1)와
         # 교차출처 → CORS 없으면 fetch 가 브라우저에 차단된다("Failed to fetch"). 루프백
         # 바인딩 + Bearer 토큰 인증이라 origin 은 * 로 허용해도 무단 접근은 토큰에서 막힌다.
@@ -2245,6 +2253,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _dispatch(self, method: str):
+        if method == "GET" and self.headers.get(request_timing.HEADER) == request_timing.VALUE:
+            with request_timing.capture():
+                return self._dispatch_request(method)
+        return self._dispatch_request(method)
+
+    def _dispatch_request(self, method: str):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
 

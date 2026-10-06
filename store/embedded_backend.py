@@ -30,7 +30,7 @@ import time
 import weakref
 from contextlib import contextmanager, nullcontext
 
-from . import pkns
+from . import pkns, request_timing
 from .open_diagnostics import emit_open_failure
 from .config import StoreConfig
 from .embedded_schema import (DOMAIN_HIERARCHY_VERSION,
@@ -1928,6 +1928,7 @@ class EmbeddedBackend:
             self._conn.execute(f"DROP TABLE {tmp}")
         self._conn.execute("CHECKPOINT")
 
+    @request_timing.timed("vector")
     def vector_search(self, embedding, top_k, filters=None, *, conn=None) -> list[dict]:
         """벡터 검색 — **자식(ChunkVec)에서 찾아 부모(Chunk)로 되돌린다**(v8).
 
@@ -1975,6 +1976,7 @@ class EmbeddedBackend:
                    "ORDER BY distance LIMIT $k", {**params, "k": int(top_k)})
         return out
 
+    @request_timing.timed("node_vector")
     def node_vector_search(self, embedding, top_k, *, owner=None, conn=None) -> list[dict]:
         """노드 미러(NodeVec)에서 의미로 찾는다 — 어휘가 하나도 안 겹쳐도 닿는 유일한 팔.
 
@@ -2057,6 +2059,7 @@ class EmbeddedBackend:
                 print(f"vinc: ⚠ {self._remnant_note('NodeVec')}", file=sys.stderr, flush=True)
             return f"{type(exc).__name__}: {exc}"
 
+    @request_timing.timed("keyword")
     def fulltext_search(self, text, top_k, filters=None, *, conn=None) -> list[dict]:
         """BM25 키워드 팔. 색인이 `lex` 위면(표지) 질의도 같은 함수로 바꾸고, 행마다 `lex` 를
         함께 돌려준다 — 융합 앞의 관문이 질의를 얼마나 덮는지 그 열로 잰다(재분석 없이).
