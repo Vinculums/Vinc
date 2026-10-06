@@ -1,0 +1,94 @@
+"""Opt-in request timings: fixed phase names and numbers, never request material."""
+from __future__ import annotations
+
+import contextvars
+import functools
+import math
+import time
+from contextlib import contextmanager
+
+HEADER = "Vinc-Diagnostics"
+VALUE = "timings"
+PHASES = frozenset({"reader", "reader_close", "query", "embed", "keyword",
+                    "vector", "node_vector", "bridge", "auth", "gate"})
+_current = contextvars.ContextVar("vinc_request_timing", default=None)
+
+
+class Timings:
+    def __init__(self):
+        self.started = time.perf_counter()
+        self.values = {}
+
+    def add(self, name, milliseconds):
+        self.values[name] = self.values.get(name, 0.0) + milliseconds
+
+    def header(self, total):
+        values = {**self.values, total: (time.perf_counter() - self.started) * 1000}
+        return ", ".join(f"{name};dur={value:.3f}" for name, value in sorted(values.items()))
+
+
+def active():
+    return _current.get() is not None
+
+
+@contextmanager
+def capture():
+    collector = Timings()
+    token = _current.set(collector)
+    try:
+        yield collector
+    finally:
+        _current.reset(token)
+
+
+@contextmanager
+def measure(phase):
+    if phase not in PHASES:
+        raise ValueError("unknown timing phase")
+    collector = _current.get()
+    if collector is None:
+        yield
+        return
+    started, cpu = time.perf_counter(), time.thread_time()
+    try:
+        yield
+    finally:
+        collector.add(phase, (time.perf_counter() - started) * 1000)
+        collector.add(phase + "_cpu", (time.thread_time() - cpu) * 1000)
+
+
+def timed(phase):
+    def decorate(fn):
+        @functools.wraps(fn)
+        def wrapped(*args, **kwargs):
+            if not active():
+                return fn(*args, **kwargs)
+            with measure(phase):
+                return fn(*args, **kwargs)
+        return wrapped
+    return decorate
+
+
+def header(total):
+    if total not in {"sidecar", "rest"}:
+        raise ValueError("unknown timing boundary")
+    collector = _current.get()
+    return collector.header(total) if collector is not None else ""
+
+
+def merge_sidecar(value):
+    """Only accept bounded finite metrics from the attached sidecar, not arbitrary headers."""
+    collector = _current.get()
+    if collector is None:
+        return
+    allowed = {"sidecar", *PHASES, *(p + "_cpu" for p in PHASES)}
+    for item in str(value or "")[:4096].split(",")[:32]:
+        name, separator, duration = item.strip().partition(";dur=")
+        if not separator or name not in allowed:
+            continue
+        try:
+            milliseconds = float(duration)
+        except ValueError:
+            continue
+        if math.isfinite(milliseconds) and 0 <= milliseconds <= 3600000:
+            collector.add(name if name == "sidecar" else "sidecar_" + name, milliseconds)

@@ -8,6 +8,7 @@ import secrets
 from urllib.parse import parse_qs, urlparse
 
 from . import entitlement, rest_routes, toolcall, tools
+from store import request_timing
 from .http_server import MAX_BODY, _UUID_RE
 
 #: v1 결과 상한. MCP 의 72,000자(rpc.MAX_RESULT_CHARS)는 모델 컨텍스트용 상한이라 스크립트가
@@ -143,11 +144,22 @@ def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
 
 
 def handle(handler, method: str) -> bool:
+    """Collect opt-in timings on viewer routes without changing their account gates."""
+    if handler.headers.get(request_timing.HEADER) == request_timing.VALUE:
+        selected = rest_routes.find_route(method, urlparse(handler.path).path)
+        if selected and tools.tool_tier(selected[0].tool) == "viewer":
+            with request_timing.capture():
+                return _handle(handler, method)
+    return _handle(handler, method)
+
+
+def _handle(handler, method: str) -> bool:
     """Handle every /v1 request, including its 404/405, and leave other paths alone."""
     url = urlparse(handler.path)
     if not (url.path == "/v1" or url.path.startswith("/v1/")):
         return False
     request_id = "req_" + secrets.token_hex(12)
+    authenticated = False
 
     def send(status: int, value: dict, extra: dict | None = None):
         from .roles import serialize_result
@@ -156,6 +168,9 @@ def handle(handler, method: str) -> bool:
         handler.send_header("Content-Type", "application/json")
         handler.send_header("Content-Length", str(len(raw)))
         handler.send_header("Vinc-Request-Id", request_id)
+        timing = request_timing.header("rest") if authenticated else ""
+        if timing:
+            handler.send_header("Server-Timing", timing)
         for key, val in (extra or {}).items():
             handler.send_header(key, str(val))
         handler.end_headers()
@@ -202,7 +217,8 @@ def handle(handler, method: str) -> bool:
              extra={"WWW-Authenticate": "Bearer"})
         return True
     try:
-        auth = handler._auth(None, presented_at="/mcp")
+        with request_timing.measure("auth"):
+            auth = handler._auth(None, presented_at="/mcp")
     except Exception:
         fail(503, "upstream_unavailable", "API key verification is unavailable.")
         return True
@@ -236,10 +252,11 @@ def handle(handler, method: str) -> bool:
         fail(400, "invalid_argument", str(exc))
         return True
     try:
-        gated = toolcall.preflight(
-            route.tool, args, base_auth=auth, address_space=None,
-            authenticate=lambda want: handler._auth(want, presented_at="/mcp"),
-            valid_space=lambda want: bool(_UUID_RE.fullmatch(want)))
+        with request_timing.measure("gate"):
+            gated = toolcall.preflight(
+                route.tool, args, base_auth=auth, address_space=None,
+                authenticate=lambda want: handler._auth(want, presented_at="/mcp"),
+                valid_space=lambda want: bool(_UUID_RE.fullmatch(want)))
     except Exception:
         fail(503, "upstream_unavailable", "Space membership verification is unavailable.")
         return True
@@ -253,6 +270,7 @@ def handle(handler, method: str) -> bool:
         fail(status, code, gated.message)
         return True
     resolved = gated.auth or auth
+    authenticated = True
     outcome = toolcall.execute(route.tool, args, handler.app.bridge,
                                forced_owner=resolved.get("owner"), plan=resolved.get("plan"),
                                quota=handler.app.quota_check,
