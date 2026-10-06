@@ -20,6 +20,7 @@ TESTS = (
     "integrations/client/python/tests/test_output_gate.py::test_original_frozen_hand_labels",
     "integrations/client/python/tests/test_output_gate_original.py",
     "integrations/parity/test_framework_parity.py",
+    "integrations/parity/test_memory_workflow.py",
 )
 
 
@@ -31,6 +32,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifacts", type=Path, required=True)
     parser.add_argument("--kind", choices=("wheel", "sdist"), required=True)
+    parser.add_argument("--version", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
@@ -40,11 +42,12 @@ def main() -> int:
     installed = {}
     for name, module in PACKAGES:
         distribution = importlib.metadata.distribution(name)
-        assert distribution.version == "0.1.1", (name, distribution.version)
+        assert distribution.version == args.version, (name, distribution.version)
         provenance = json.loads(distribution.read_text("direct_url.json") or "null")
         assert provenance and not provenance.get("dir_info"), "Source and editable installs are not artifact evidence"
         extension = ".whl" if args.kind == "wheel" else ".tar.gz"
-        artifact = args.artifacts / (module + "-0.1.1" + ("-py3-none-any" if args.kind == "wheel" else "") + extension)
+        artifact = args.artifacts / (module + "-" + args.version +
+                                    ("-py3-none-any" if args.kind == "wheel" else "") + extension)
         assert provenance["url"] == artifact.resolve().as_uri(), (name, provenance)
         assert provenance["archive_info"]["hashes"]["sha256"] == digest(artifact)
         files = {}

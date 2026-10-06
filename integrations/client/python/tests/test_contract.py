@@ -30,6 +30,7 @@ CALLS = [
     _Base._whoami(None),
     _Base._brief("q", 3, True, None),
     _Base._node("concept:x", None),
+    _Base._document("vinc.spec.fixture", None),
     _Base._search("q", 5, "c", "summary", True, None),
     _Base._recall("vinc/design", ["a"], 5, "c", None),
     _Base._ingest([{}], [{}], None),

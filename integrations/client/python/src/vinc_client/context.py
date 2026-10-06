@@ -6,6 +6,7 @@ prompts it serves.
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -18,6 +19,27 @@ BOUNDARY = (
 
 DEFAULT_MAX_CHARS = 4000
 _TRUNCATED = "(truncated to fit the context budget)"
+STATE_KEYS = ("validity", "validity_note", "valid_from", "valid_until", "superseded_by",
+              "rev", "updated_at", "content_hash")
+
+
+def evidence_metadata(node: dict[str, Any]) -> dict[str, Any]:
+    """Only returned state, never source text or an inferred revision."""
+    props = node.get("props") if isinstance(node.get("props"), dict) else {}
+    return {key: node[key] if key in node else props[key] for key in STATE_KEYS
+            if key in node or key in props}
+
+
+def _state_lines(node: dict[str, Any]) -> list[str]:
+    state = evidence_metadata(node)
+    return [f"Source state: {json.dumps(state, ensure_ascii=False)}"] if state else []
+
+
+def _notice_lines(result: dict[str, Any]) -> list[str]:
+    keys = ("partial", "partial_note", "warnings", "error", "arms", "vector_note",
+            "vector_rebuilding", "time_scope", "validity_note")
+    return [f"Retrieval {key}: {_one_line(json.dumps(result[key], ensure_ascii=False), 800)}"
+            for key in keys if key in result and result[key] not in (None, "", [], {})]
 
 
 def fence(body: str) -> str:
@@ -69,7 +91,12 @@ def _fit(lines: list[str], max_chars: int) -> str:
 
 def _wrap(lines: list[str], max_chars: int) -> str | None:
     body = _fit(lines, max_chars)
-    return f"{BOUNDARY}\n\n{fence(body)}" if body else None
+    if not body:
+        return None
+    block = f"{BOUNDARY}\n\n{fence(body)}"
+    if len(block) > max_chars:
+        return _wrap(lines, max_chars - (len(block) - max_chars))
+    return block
 
 
 def _brief_lines(brief: dict[str, Any]) -> list[str]:
@@ -77,13 +104,14 @@ def _brief_lines(brief: dict[str, Any]) -> list[str]:
     if status == "choose":
         candidates = brief.get("candidates") or []
         if not candidates:
-            return []
-        lines = ["The question matched several nodes equally; none was chosen:"]
+            return _notice_lines(brief)
+        lines = _notice_lines(brief) + ["The question matched several nodes equally; none was chosen:"]
         return lines + [f"- {_one_line(c.get('title'), 200)} ({_citation(c)})" for c in candidates]
     if status != "resolved":
-        return []
+        return _notice_lines(brief)
     node = brief.get("node") or {}
-    lines = [f"Node: {_one_line(node.get('title'), 300)} ({_citation(node)})"]
+    lines = _notice_lines(brief) + _state_lines(node)
+    lines.append(f"Node: {_one_line(node.get('title'), 300)} ({_citation(node)})")
     if node.get("domain"):
         lines.append(f"Topic: {node['domain']}")
     if node.get("validity") and node["validity"] != "current":
@@ -101,6 +129,7 @@ def _brief_lines(brief: dict[str, Any]) -> list[str]:
             if ex.get("section"):
                 where += f" § {_one_line(ex['section'], 120)}"
             lines.append(f"- {where} ({_citation(ex, 'doc_id')}): {_one_line(ex.get('excerpt'), 600)}")
+            lines.extend(_state_lines(ex))
     items = (brief.get("links") or {}).get("items") or []
     if items:
         lines.append("Relations:")
@@ -109,6 +138,7 @@ def _brief_lines(brief: dict[str, Any]) -> list[str]:
             line = (f"- {item.get('type')} {item.get('dir')} "
                     f"{_one_line(item.get('title'), 200)} ({_citation(item)})")
             lines.append(line + (f": {_one_line(why, 300)}" if why else ""))
+            lines.extend(_state_lines(item))
     return lines
 
 
@@ -118,15 +148,18 @@ def _search_lines(result: dict[str, Any] | None, limit: int,
     # 브리프 후보로 이미 실린 노드는 다시 싣지 않는다(예산을 같은 줄에 두 번 쓴다).
     hits = [h for h in result.get("node_hits") or [] if h.get("id") not in seen][:limit]
     rows = (result.get("rows") or [])[:limit]
+    lines = _notice_lines(result)
     if not hits and not rows:
-        return []
-    lines = ["Search matches (no single node answered the question):"]
+        return lines
+    lines.append("Search matches (no single node answered the question):")
     for hit in hits:
         lines.append(f"- {hit.get('kind') or 'node'}: {_one_line(hit.get('title'), 200)} "
                      f"({_citation(hit)})")
+        lines.extend(_state_lines(hit))
     for row in rows:
         lines.append(f"- {_one_line(row.get('doc_title'), 160)} ({_citation(row, 'doc_id')}): "
                      f"{_one_line(row.get('snippet'), 500)}")
+        lines.extend(_state_lines(row))
     return lines
 
 

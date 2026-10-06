@@ -22,6 +22,9 @@ class VincContextMiddleware(AgentMiddleware):
     An agent that calls tools calls the model several times for one question.
     The answer for a question is kept for ``cache_seconds`` so those calls do not
     each spend a Vinc call. Nothing is written: this middleware only reads.
+    Entries belong to one client, effective credential, space and retrieval configuration.
+    Source changes remain cached until TTL expiry or ``clear_cache``. Use cache_seconds=0
+    for fresh reads on every model call; this does not bypass server authorization caches.
     """
 
     def __init__(self, client: VincClient | None = None,
@@ -41,7 +44,7 @@ class VincContextMiddleware(AgentMiddleware):
         self.cache_seconds = cache_seconds
         self.prefetch_role = prefetch_role
         self.prefetch_max_chars = prefetch_max_chars
-        self._cache: dict[str, tuple[float, str | None]] = {}
+        self._cache: dict[tuple, tuple[float, str | None]] = {}
 
     # 클라이언트는 쓰는 쪽(동기·비동기)만 만든다 — 둘 다 만들면 연결 풀이 두 벌 생긴다.
     @property
@@ -59,16 +62,24 @@ class VincContextMiddleware(AgentMiddleware):
                                                  space=self._config["space"])
         return self._async_client
 
-    def _cached(self, query: str) -> tuple[bool, str | None]:
-        hit = self._cache.get(query)
+    def _cache_key(self, client: VincClient | AsyncVincClient, query: str) -> tuple:
+        return (client, client.context_cache_identity, query, self.search_fallback,
+                self.max_chars, self.max_excerpts)
+
+    def _cached(self, key: tuple) -> tuple[bool, str | None]:
+        hit = self._cache.get(key)
         if hit and time.monotonic() - hit[0] < self.cache_seconds:
             return True, hit[1]
         return False, None
 
-    def _remember(self, query: str, block: str | None) -> None:
+    def _remember(self, key: tuple, block: str | None) -> None:
         if len(self._cache) >= 64:
             self._cache.pop(next(iter(self._cache)))
-        self._cache[query] = (time.monotonic(), block)
+        self._cache[key] = (time.monotonic(), block)
+
+    def clear_cache(self) -> None:
+        """Discard retained retrieval after a known source or authorization change."""
+        self._cache.clear()
 
     def _with_block(self, request: ModelRequest, block: str | None) -> ModelRequest:
         if not block:
@@ -86,12 +97,13 @@ class VincContextMiddleware(AgentMiddleware):
             block = self.client.prefetch(self.prefetch_role, query,
                                          max_chars=self.prefetch_max_chars)
             return handler(self._with_block(request, block))
-        found, block = self._cached(query)
+        key = self._cache_key(self.client, query)
+        found, block = self._cached(key)
         if not found:
             block = self.client.get_context(query, search_fallback=self.search_fallback,
                                             max_chars=self.max_chars,
                                             max_excerpts=self.max_excerpts)
-            self._remember(query, block)
+            self._remember(key, block)
         return handler(self._with_block(request, block))
 
     async def awrap_model_call(self, request: ModelRequest,
@@ -101,12 +113,13 @@ class VincContextMiddleware(AgentMiddleware):
             block = await self.async_client.prefetch(self.prefetch_role, query,
                                                      max_chars=self.prefetch_max_chars)
             return await handler(self._with_block(request, block))
-        found, block = self._cached(query)
+        key = self._cache_key(self.async_client, query)
+        found, block = self._cached(key)
         if not found:
             block = await self.async_client.get_context(
                 query, search_fallback=self.search_fallback, max_chars=self.max_chars,
                 max_excerpts=self.max_excerpts)
-            self._remember(query, block)
+            self._remember(key, block)
         return await handler(self._with_block(request, block))
 
 

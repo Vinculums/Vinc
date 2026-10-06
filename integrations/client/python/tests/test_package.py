@@ -136,3 +136,43 @@ def test_missing_carrier_and_bad_credentials_fail_instead_of_empty_handoff():
             status, json={"error": {"code": "not_available"}})))
         with pytest.raises(error):
             client.get_package_context("record:missing", space="personal")
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
+@pytest.mark.parametrize("validity", ["current", "historical", "future", None])
+def test_handoff_retains_source_state_without_turning_readability_into_currentness(async_mode, validity):
+    node = fragment()["nodes"][0]
+    source = {"id": "decision:policy", "rev": 8, "updated_at": "2026-10-05",
+              "valid_until": "2026-10-04", "props": {"content_hash": "source-hash"}}
+    if validity:
+        source["validity"] = validity
+    if validity == "historical":
+        source["superseded_by"] = "decision:successor"
+    def handler(request):
+        return httpx.Response(200, json={"found": True, "node": node if
+            request.url.path.endswith("record:handoff") else source})
+    client = (AsyncVincClient if async_mode else VincClient)(RO, transport=httpx.MockTransport(handler))
+    value = client.get_package_context("record:handoff", space="personal")
+    block = asyncio.run(value) if async_mode else value
+    payload = json.loads(block.split("```\n", 1)[1].rsplit("\n```", 1)[0])
+    evidence = payload["claims"][0]["evidence"][0]
+    assert evidence["rev"] == 8 and evidence["content_hash"] == "source-hash"
+    assert evidence["readable"] is True
+    assert evidence["use_as_current"] is ({"current": True, None: None}.get(validity, False))
+    assert payload["conclusion"] == node["props"]["conclusion"]
+    assert payload["produced_by"] == "agent:writer" and payload["run_id"] == "fixture-1"
+    if validity == "historical":
+        assert evidence["superseded_by"] == "decision:successor"
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
+def test_wrong_source_identity_is_unresolved(async_mode):
+    node = fragment()["nodes"][0]
+    def handler(request):
+        return httpx.Response(200, json={"found": True, "node": node if
+            request.url.path.endswith("record:handoff") else {"id": "decision:other"}})
+    client = (AsyncVincClient if async_mode else VincClient)(RO, transport=httpx.MockTransport(handler))
+    value = client.get_package_context("record:handoff", space="personal")
+    block = asyncio.run(value) if async_mode else value
+    assert "unresolved; do not cite this claim" in block
+    assert "decision:policy" not in block

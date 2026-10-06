@@ -156,22 +156,23 @@ def create_vinc_tools(client: VincClient | None = None,
 def record_episode(client: VincClient, title: str, *, summary: str = "",
                    about: Iterable[str] = (), date: str | None = None,
                    domain: str | None = None, tags: Iterable[str] | None = None,
-                   space: str | None = None) -> dict[str, Any]:
+                   space: str | None = None, episode_id: str | None = None) -> dict[str, Any]:
     """Write one Episode about existing concepts or decisions (needs a ``vinc_sk_`` key).
 
     Put it in the node that runs after a person resumed an ``interrupt()``.
+    Save episode_id in host state before that boundary and reuse it only for this event's retries.
     """
     return client.record_episode(title, summary=summary, about=about, date=date,
-                                 domain=domain, tags=tags, space=space)
+                                 domain=domain, tags=tags, space=space, episode_id=episode_id)
 
 
 async def arecord_episode(client: AsyncVincClient, title: str, *, summary: str = "",
                           about: Iterable[str] = (), date: str | None = None,
                           domain: str | None = None, tags: Iterable[str] | None = None,
-                          space: str | None = None) -> dict[str, Any]:
+                          space: str | None = None, episode_id: str | None = None) -> dict[str, Any]:
     """Async :func:`record_episode`."""
     return await client.record_episode(title, summary=summary, about=about, date=date,
-                                       domain=domain, tags=tags, space=space)
+                                       domain=domain, tags=tags, space=space, episode_id=episode_id)
 
 
 __all__ = ["last_user_text", "get_vinc_context", "aget_vinc_context",

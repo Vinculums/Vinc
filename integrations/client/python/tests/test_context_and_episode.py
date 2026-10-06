@@ -124,3 +124,25 @@ def test_missing_document_mirror_is_not_synthesized_by_formatter():
     assert "Still useful text" in block
     assert "(citation unavailable)" in block
     assert "concept:doc.missing" not in block
+
+
+def test_degraded_retrieval_and_source_revision_survive_formatting():
+    from vinc_client import format_answer
+    node = dict(RESOLVED["node"], validity="historical", rev=7, updated_at="2026-10-05",
+                valid_until="2026-10-01", superseded_by="decision:new", content_hash="hash-one")
+    brief = dict(RESOLVED, node=node, partial=True, partial_note="relations unavailable")
+    search = {"arms": {"semantic": False, "fts": True}, "vector_note": "unavailable",
+              "vector_rebuilding": True, "error": "semantic unavailable", "warnings": ["retry later"]}
+    block = format_answer(brief, search)
+    for text in ("historical", "decision:new", '"rev": 7', "hash-one", "relations unavailable",
+                 "semantic unavailable", "retry later", "vector_rebuilding", '"semantic": false'):
+        assert text in block
+    assert "vector_rebuilding" in format_search(search)
+    assert "relations unavailable" in format_brief({"status": "none", "partial": True,
+                                                     "partial_note": "relations unavailable"})
+
+
+def test_budget_accounts_for_variable_fence_length():
+    result = {"node_hits": [{"id": "concept:x", "title": "`" * 150}]}
+    block = format_search(result, max_chars=600)
+    assert block is None or len(block) <= 600

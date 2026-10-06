@@ -7,6 +7,7 @@ explicit calls.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
@@ -23,7 +24,8 @@ from .errors import (VincAuthError, VincError, VincInvalidArgument, VincPartialW
                      VincNotFound, VincQuotaExceeded, VincUnavailable, error_class)
 from .package import (DEFAULT_PACKAGE_MAX_CHARS, build_package_fragment, format_package,
                       package_space, validate_package)
-from .prefetch import DEFAULT_PREFETCH_MAX_CHARS, reading_list, render_prefetch
+from .prefetch import (DEFAULT_PREFETCH_MAX_CHARS, check_budget, document_key, reading_list,
+                       render_prefetch, required_reading)
 
 log = logging.getLogger("vinc_client")
 
@@ -139,6 +141,13 @@ class _Base:
         """True for a ``vinc_ro_`` key: every write is refused before it is sent."""
         return self._key.startswith("vinc_ro_")
 
+    @property
+    def context_cache_identity(self) -> tuple[str, str, bytes]:
+        """Non-secret fingerprint of the effective transport reader and default space."""
+        auth = self._http.headers.get("Authorization", "")
+        return (str(self._http.base_url), normalize_space(self.space),
+                hashlib.sha256(auth.encode("utf-8")).digest())
+
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._key}", "Accept": "application/json",
                 "User-Agent": f"vinc-client/{__version__}"}
@@ -173,6 +182,10 @@ class _Base:
     @staticmethod
     def _node(node_id, space) -> _Call:
         return _Call("GET", f"/v1/nodes/{_segment(node_id)}", space=space)
+
+    @staticmethod
+    def _document(doc_id, space) -> _Call:
+        return _Call("GET", f"/v1/documents/{_segment(doc_id)}", space=space)
 
     @staticmethod
     def _role(role_id, space) -> _Call:
@@ -242,17 +255,34 @@ class VincClient(_Base):
         """Read a genuine owner-visible role's complete contract and collaboration links."""
         return self._send(self._role(role_id, space))
 
+    def document(self, doc_id: str, *, space: str | None = None) -> dict[str, Any]:
+        """Read exact canonical text and its integrity metadata via GET /v1/documents/{id}."""
+        return self._send(self._document(doc_id, space))
+
     def prefetch(self, role_id: str, task: str, *, space: str | None = None,
                  max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
         """Before a model call, read the chosen role, every required spec and task evidence.
 
         No content or permission cache, write, delegation or automatic role adoption.
         Domain supplies task search context; it is not claimed to be a search filter.
-        A required spec miss or service/authentication error fails explicitly.
+        Reads are exact canonical document keys (or concept:doc.<key>), not queries.
+        Full verified text is mandatory. No excerpt or section selection satisfies reads.
+        A required miss, integrity failure or budget overflow stops before further reads.
+        Large roles require an explicit max_chars above the 24000 character default.
         """
         contract = self.role(role_id, space=space)
-        specs = [(doc, self.brief(doc, max_excerpts=3, space=space))
-                 for doc in reading_list(contract)]
+        specs = []
+        reads = reading_list(contract)
+        required_size = len(render_prefetch(contract, task, specs, {}, {}, max_chars=max_chars))
+        for doc in reads:
+            try:
+                result = self.document(document_key(doc), space=space)
+            except VincNotFound:
+                raise VincInvalidArgument("prefetch_spec_unresolved",
+                                          "A required role reading is unavailable.") from None
+            required_size += 2 + len(required_reading(doc, result))
+            check_budget(required_size, max_chars)
+            specs.append((doc, result))
         query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
         brief = self.brief(task, max_excerpts=3, space=space)
         search = self.search(query, limit=5, space=space)
@@ -341,7 +371,7 @@ class VincClient(_Base):
         node = self.node(package_id, space=selected).get("node")
         if not isinstance(node, dict) or node.get("id") != package_id:
             raise VincInvalidArgument("invalid_package", "The package carrier is unavailable.")
-        readable = []
+        readable = {}
         for nid in validate_package(node):
             try:
                 result = self.node(nid, space=selected)
@@ -351,9 +381,11 @@ class VincClient(_Base):
                 if exc.status != 403:
                     raise
                 continue
-            if result.get("found") and result.get("node"):
-                readable.append(nid)
-        return format_package(node, space=selected, readable_ids=readable, max_chars=max_chars)
+            source = result.get("node")
+            if result.get("found") and isinstance(source, dict) and source.get("id") == nid:
+                readable[nid] = source
+        return format_package(node, space=selected, readable_ids=readable,
+                              evidence_nodes=readable, max_chars=max_chars)
 
 
 class AsyncVincClient(_Base):
@@ -400,12 +432,26 @@ class AsyncVincClient(_Base):
         """Async complete role contract read."""
         return await self._send(self._role(role_id, space))
 
+    async def document(self, doc_id: str, *, space: str | None = None) -> dict[str, Any]:
+        """Async exact canonical document read; does not replace integrity validation."""
+        return await self._send(self._document(doc_id, space))
+
     async def prefetch(self, role_id: str, task: str, *, space: str | None = None,
                        max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
         """Async fresh role/spec/task evidence retrieval before the model runs."""
         contract = await self.role(role_id, space=space)
-        specs = [(doc, await self.brief(doc, max_excerpts=3, space=space))
-                 for doc in reading_list(contract)]
+        specs = []
+        reads = reading_list(contract)
+        required_size = len(render_prefetch(contract, task, specs, {}, {}, max_chars=max_chars))
+        for doc in reads:
+            try:
+                result = await self.document(document_key(doc), space=space)
+            except VincNotFound:
+                raise VincInvalidArgument("prefetch_spec_unresolved",
+                                          "A required role reading is unavailable.") from None
+            required_size += 2 + len(required_reading(doc, result))
+            check_budget(required_size, max_chars)
+            specs.append((doc, result))
         query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
         brief = await self.brief(task, max_excerpts=3, space=space)
         search = await self.search(query, limit=5, space=space)
@@ -475,7 +521,7 @@ class AsyncVincClient(_Base):
         node = (await self.node(package_id, space=selected)).get("node")
         if not isinstance(node, dict) or node.get("id") != package_id:
             raise VincInvalidArgument("invalid_package", "The package carrier is unavailable.")
-        readable = []
+        readable = {}
         for nid in validate_package(node):
             try:
                 result = await self.node(nid, space=selected)
@@ -485,9 +531,11 @@ class AsyncVincClient(_Base):
                 if exc.status != 403:
                     raise
                 continue
-            if result.get("found") and result.get("node"):
-                readable.append(nid)
-        return format_package(node, space=selected, readable_ids=readable, max_chars=max_chars)
+            source = result.get("node")
+            if result.get("found") and isinstance(source, dict) and source.get("id") == nid:
+                readable[nid] = source
+        return format_package(node, space=selected, readable_ids=readable,
+                              evidence_nodes=readable, max_chars=max_chars)
 
 
 __all__ = ["VincClient", "AsyncVincClient", "VincError", "resolve_key", "resolve_base_url",

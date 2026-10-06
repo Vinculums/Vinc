@@ -1,6 +1,7 @@
 """Retrieve a chosen role's reading list and task evidence before the model runs."""
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any
 
@@ -22,6 +23,32 @@ def reading_list(contract: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(reads))
 
 
+def document_key(read: str) -> str:
+    """Required reads are exact document keys, including explicit document mirrors."""
+    return read.removeprefix("concept:doc.")
+
+
+def required_reading(doc_id: str, result: dict[str, Any]) -> str:
+    """Require a complete, verified canonical document; excerpts cannot satisfy a read."""
+    text = result.get("text")
+    if (result.get("doc_id") != document_key(doc_id) or not result.get("executed")
+            or result.get("verified") is not True or result.get("partial")
+            or result.get("error") or not isinstance(text, str) or not text.strip()
+            or hashlib.sha256(text.encode("utf-8")).hexdigest() != result.get("content_hash")):
+        raise VincInvalidArgument("prefetch_spec_unresolved",
+                                  "A required role reading is missing, incomplete or unverified.")
+    data = {k: result[k] for k in ("doc_id", "title", "content_hash", "updated_at",
+                                  "content_time", "verified", "text") if k in result}
+    return f"Required reading (full canonical document): {doc_id}\n{BOUNDARY}\n\n" + fence(
+        json.dumps(data, ensure_ascii=False, indent=2))
+
+
+def check_budget(size: int, max_chars: int) -> None:
+    if size > max_chars:
+        raise VincInvalidArgument("prefetch_budget_exceeded",
+                                  "Required role context exceeds max_chars; raise the budget.")
+
+
 def render_prefetch(contract: dict[str, Any], task: str, specs: list[tuple[str, dict]],
                     brief: dict, search: dict, *, max_chars: int) -> str:
     """Fence the complete role contract and retain returned citation ids in evidence blocks."""
@@ -29,19 +56,10 @@ def render_prefetch(contract: dict[str, Any], task: str, specs: list[tuple[str, 
             if k in contract}
     parts = [f"{BOUNDARY}\n\n{fence(json.dumps(role, ensure_ascii=False, indent=2))}"]
     for doc_id, result in specs:
-        if result.get("status") != "resolved":
-            raise VincInvalidArgument("prefetch_spec_unresolved",
-                                      "A required role reading could not be resolved.")
-        block = format_answer(result, max_chars=4000)
-        if not block:
-            raise VincInvalidArgument("prefetch_spec_unresolved",
-                                      "A required role reading could not be resolved.")
-        parts.append(f"Required reading: {doc_id}\n{block}")
-    block = format_answer(brief, search, max_chars=6000)
-    if block:
-        parts.append(block)
+        parts.append(required_reading(doc_id, result))
     joined = "\n\n".join(parts)
-    if len(joined) > max_chars:
-        raise VincInvalidArgument("prefetch_budget_exceeded",
-                                  "Required role context exceeds max_chars; raise the budget.")
+    check_budget(len(joined), max_chars)
+    block = format_answer(brief, search, max_chars=min(6000, max_chars - len(joined) - 2))
+    if block:
+        joined += "\n\n" + block
     return joined

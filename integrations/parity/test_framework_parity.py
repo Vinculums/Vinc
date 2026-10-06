@@ -1,6 +1,7 @@
 """Offline parity through both installed framework packages; no model service calls."""
 import asyncio
 import json
+import hashlib
 
 import httpx
 import pytest
@@ -25,7 +26,11 @@ VALID = json.dumps({"verdict": "RETURN", "findings": [
 def response(request, seen):
     seen.append((request.method, request.url.path, dict(request.url.params),
                  json.loads(request.content) if request.content else None))
-    if request.method == "GET":
+    if request.url.path.startswith("/v1/documents/"):
+        doc_text = "Preserve this evidence."
+        body = {"executed": True, "verified": True, "doc_id": "vinc.spec.fixture",
+                "text": doc_text, "content_hash": hashlib.sha256(doc_text.encode()).hexdigest()}
+    elif request.method == "GET":
         body = {"found": True, "id": ROLE, "domain": "vinc/engineering",
                 "props": {"reads": ["vinc.spec.fixture"], "mission": "Review evidence."}}
     elif request.url.path.endswith("brief"):
