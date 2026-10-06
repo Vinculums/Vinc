@@ -1,0 +1,326 @@
+{
+  "measured_at": "2026-10-06",
+  "source": "Hosted MCP verified document reads; role read lists from agents/roles.json at 9072057. Size replay only, not an SDK read-only-key or latency measurement.",
+  "documents": [
+    {
+      "doc_id": "d77f47c7465264b6f",
+      "chars": 1115,
+      "content_hash": "a9923d67f1a7e0ffbab303dc8aba42d9aa2fedbabf962957a13d7f17ad4eaeb7"
+    },
+    {
+      "doc_id": "d79e32d8ed347c749",
+      "chars": 3625,
+      "content_hash": "aa0c0b9aafa83f4de190f48bc2b1cf39d263f4ba3f7f44735c119ada94873afa"
+    },
+    {
+      "doc_id": "vinc.book.index",
+      "chars": 15883,
+      "content_hash": "3e68391e75fade71441bd3d3178737d078ff6f233535452ff4307a9d32e103e5"
+    },
+    {
+      "doc_id": "vinc.canon.account-policy",
+      "chars": 21344,
+      "content_hash": "1c287d7d3f0c254e0dc3ec54574690dda0a0de3b80fc862cbd26698c44ee96c1"
+    },
+    {
+      "doc_id": "vinc.canon.book-motion-grammar",
+      "chars": 11273,
+      "content_hash": "6ac2f42dea3e58c2a276c42c5eab77e85ca5a4d4ba9e506bf3a00aa37a30fa6a"
+    },
+    {
+      "doc_id": "vinc.canon.chunk-ssot",
+      "chars": 23773,
+      "content_hash": "bb5b9e9b3ebc64bfaf41d70ceb3e33d2d179b64342b4f5a72f30b715440bcc91"
+    },
+    {
+      "doc_id": "vinc.canon.code-annotation",
+      "chars": 6156,
+      "content_hash": "175fb1c8b52c814fdb7d720d8fb87f08b29bdf645b47565f83c07ac06a2f4e52"
+    },
+    {
+      "doc_id": "vinc.canon.decisions",
+      "chars": 12592,
+      "content_hash": "edb0c8ca37e3fda8de2688e49aa6a8b6284b8c507273499968f83f4ab41d1027"
+    },
+    {
+      "doc_id": "vinc.canon.graph-conventions",
+      "chars": 21519,
+      "content_hash": "bf73849c3ebdbfd0983bf1bb004143393b42b0cb2b629fae0fead8c55d5aa012"
+    },
+    {
+      "doc_id": "vinc.canon.mcp-contract",
+      "chars": 17571,
+      "content_hash": "eb6756546dcbc197d1e9ae59602959438e75d0d442ed801bd78b856338e023da"
+    },
+    {
+      "doc_id": "vinc.canon.principles",
+      "chars": 9916,
+      "content_hash": "1eb5d0439206363302c7af4628e2f3641a1c826a870f7586dac549155f9189a5"
+    },
+    {
+      "doc_id": "vinc.canon.repo-workflow",
+      "chars": 8079,
+      "content_hash": "1ed59ec3067fc5654ec0e75a6b6d2bb94ae33f3c47241790a76899442dfada92"
+    },
+    {
+      "doc_id": "vinc.canon.terminology",
+      "chars": 15418,
+      "content_hash": "076d743e692b48c579b066ce76f11e318ce5566e04b2b1c962f23999c76bee88"
+    },
+    {
+      "doc_id": "vinc.canon.vocabulary-model",
+      "chars": 7751,
+      "content_hash": "9ecd27840a2290367eb9d3426e125bbe5bc7de009b7dd4d203fc0e366cebc238"
+    },
+    {
+      "doc_id": "vinc.design.figma-rebuild-2026-08",
+      "chars": 16675,
+      "content_hash": "1a843cc0ac14ab344783eb04b95629e8d6132d953a6def4396dac63aaaba6829"
+    },
+    {
+      "doc_id": "vinc.design.hub-notes",
+      "chars": 9652,
+      "content_hash": "55405e3395584e90d74b8ea17539e7f33bab469dd7be5586ec98a6a55c930a1b"
+    },
+    {
+      "doc_id": "vinc.design.logo",
+      "chars": 6424,
+      "content_hash": "2c47ba494f23722ec018edcb998aead5c7411ea9e2aae5edda939f6baec2273e"
+    },
+    {
+      "doc_id": "vinc.design.system",
+      "chars": 3833,
+      "content_hash": "e546f2aeab6dbcbe38d4c28f3c3288673deb70aa3ee8a745bbde8ed8419104b5"
+    },
+    {
+      "doc_id": "vinc.design.tokens",
+      "chars": 14104,
+      "content_hash": "f138f9707fa2fbd6fb3e8b8c0f5a5ecb800b0d4fdc0c077710710616a623a5c4"
+    },
+    {
+      "doc_id": "vinc.manual.app",
+      "chars": 4592,
+      "content_hash": "fea67ad88692081e318ba51674a362b1cdedc4a2310ae4e1cbe768dce1b24e8a"
+    },
+    {
+      "doc_id": "vinc.manual.core",
+      "chars": 7878,
+      "content_hash": "9504294a8f33076bb880d907b2a06548b840367b0e9969daf331b2babce3edff"
+    },
+    {
+      "doc_id": "vinc.manual.design",
+      "chars": 6146,
+      "content_hash": "8769694c0d64588582d809829ab516ac491c6be62cb5a8a5996186b768599e8e"
+    },
+    {
+      "doc_id": "vinc.manual.platform",
+      "chars": 11685,
+      "content_hash": "d0a8c78e11b633c07b45a8955a78c09eb8357fc69753b8acda49794fa3bdee9d"
+    },
+    {
+      "doc_id": "vinc.manual.rag",
+      "chars": 17103,
+      "content_hash": "af6c9f03d15ea422a3750e68ca7491cffb10adbbbf8233415435e246cd976c21"
+    },
+    {
+      "doc_id": "vinc.ops.azure-identity-split-2026-08-30",
+      "chars": 8093,
+      "content_hash": "07a59f32ba6ab775c2a5486de92f29e0cce04f9902db8196e9f7385b2cb4b4c4"
+    },
+    {
+      "doc_id": "vinc.ops.cost-management",
+      "chars": 10210,
+      "content_hash": "95f3f971efd9a9926626007fad2ab1709f92063f0c948dbedf2a4e30623e37a2"
+    },
+    {
+      "doc_id": "vinc.ops.deployment",
+      "chars": 50849,
+      "content_hash": "afe41d8f5b4b80041a738e0784f1f7fe19cf870244e72f465f96ca2e90e80b3d"
+    },
+    {
+      "doc_id": "vinc.ops.fts-index-drift",
+      "chars": 4414,
+      "content_hash": "1c2846561b05af9c2e58406848d780f47a3ab6389dd8bc2f8ce3b64a692a3215"
+    },
+    {
+      "doc_id": "vinc.ops.incident-2026-07-16-macos-sidecar",
+      "chars": 9713,
+      "content_hash": "fe8bf1abcb798aaa536050db62f9b87e23d1d0c93bca6e12df4a0486dd0a2015"
+    },
+    {
+      "doc_id": "vinc.ops.incident-2026-08-04-easyauth",
+      "chars": 6955,
+      "content_hash": "2c6f4338261a5fd0b177dfa81f5801954f927c263df406655688823f030f816f"
+    },
+    {
+      "doc_id": "vinc.ops.infrastructure-risk-2026-09-01",
+      "chars": 16540,
+      "content_hash": "79617e814625b1cdb558ec7989def7dfc41674de66385b10c7d3067aa3e91016"
+    },
+    {
+      "doc_id": "vinc.ops.orchestration-session-boot",
+      "chars": 6930,
+      "content_hash": "e015a0c53ceeed8d756aae73c5e255965a0d2972f338ae481b6c34b4062ada1d"
+    },
+    {
+      "doc_id": "vinc.ops.risk-audit-2026-08-05",
+      "chars": 33431,
+      "content_hash": "148d9dce5e1ca4c2f8afc5b8f6ac7019aa3a6528c4834019c49470be5292746e"
+    },
+    {
+      "doc_id": "vinc.ops.security-audit-2026-08-18",
+      "chars": 24867,
+      "content_hash": "41686d8e55b4d8d71ec18905a4a1dac3237a057dccdcaa07c72acfc1073ae258"
+    },
+    {
+      "doc_id": "vinc.ops.site-audit-2026-08-22",
+      "chars": 7123,
+      "content_hash": "b353bf517a82eba769f3bc784ed8fc404a070827768a43fda470c7d45c4d31e1"
+    },
+    {
+      "doc_id": "vinc.ops.ssot-discipline",
+      "chars": 6792,
+      "content_hash": "7dc001cb9797d67f7c3bf36352627b040eccf8196f01e3fd0562645e2c2669e6"
+    },
+    {
+      "doc_id": "vinc.ops.vinc-docs-decommission",
+      "chars": 5871,
+      "content_hash": "58743c4bb148750e592f53c5d0e0178a7d01b776e4e4798b1b1767067fa64fea"
+    },
+    {
+      "doc_id": "vinc.plan.agent-domain",
+      "chars": 29641,
+      "content_hash": "9f77ad487c5e4b58f5014f5c6b594e633fd89c0c7097a6b99fd36dea319af18a"
+    },
+    {
+      "doc_id": "vinc.plan.agent-lifecycle-and-the-deploy-plane",
+      "chars": 16717,
+      "content_hash": "74c6db9052e2212209a8ce40d548ecb90f4e46c8dde9c8543ff9408e614ab718"
+    },
+    {
+      "doc_id": "vinc.plan.backoffice-and-stats-2026-09-12",
+      "chars": 7417,
+      "content_hash": "a1fa38d9a18d9292a72931c6591dfd1f5b20215b30acd774141d5a639ee98f20"
+    },
+    {
+      "doc_id": "vinc.plan.book-content-review-2026-09-10",
+      "chars": 17517,
+      "content_hash": "2991990e5a2d0a2cb49033731e0bd78f7484042bc977e592268f31e17e931113"
+    },
+    {
+      "doc_id": "vinc.plan.code-signing",
+      "chars": 9630,
+      "content_hash": "a5456be688166ccc06b185ce6c367c9ebd9d640cdbf80122074e420878be6b8b"
+    },
+    {
+      "doc_id": "vinc.plan.reinforcement-points",
+      "chars": 9753,
+      "content_hash": "4a4b54f23422625309bb29b4b78023de328ba765b9f982dec620e9ee84d57230"
+    },
+    {
+      "doc_id": "vinc.plan.roster-v2-teams-and-job-titles-2026-09-16",
+      "chars": 28699,
+      "content_hash": "e49a3f0e9aae025244ff5957d7be82ab947c5cd337ea98c81ee22e4db92e9e5e"
+    },
+    {
+      "doc_id": "vinc.reference.view-controls",
+      "chars": 60792,
+      "content_hash": "2718f7887d26b8344b6b9a6a3782d87cd35ca1720530631e22ace5aa238686e3"
+    },
+    {
+      "doc_id": "vinc.release.changelog",
+      "chars": 12018,
+      "content_hash": "0dffc2ca5611385106aee7146afc90592bf02d806e64eb3f3e30ef568aed7365"
+    },
+    {
+      "doc_id": "vinc.research.backoffice-operator-stats-inventory-2026-09-12",
+      "chars": 8703,
+      "content_hash": "7954f99ae700e5623ef20f50e9b60b622d1505f546ea1d1c33df3d8f10f69e48"
+    },
+    {
+      "doc_id": "vinc.research.backoffice-w1-handoff-2026-09-12",
+      "chars": 3479,
+      "content_hash": "3865e1b2decb30529cefe37d5eba0fddc68f52872d0388d9e96ad5cfcf00f242"
+    },
+    {
+      "doc_id": "vinc.research.external-interop-by-role",
+      "chars": 16511,
+      "content_hash": "e4040275ce1bb7ebffb4eb731200776e033ab1ce6abdbcd37a9c840778f5b0e3"
+    },
+    {
+      "doc_id": "vinc.research.methodology",
+      "chars": 19968,
+      "content_hash": "70e3a5a7a905d2e5503ee58e0a2a11488758ea7319c91bdac14bffe182785f04"
+    },
+    {
+      "doc_id": "vinc.research.view-interaction-audit",
+      "chars": 25759,
+      "content_hash": "ebd0c05bd71d986c34985414023a1d40a4a2422b33a9c96d886eaa5821c17402"
+    },
+    {
+      "doc_id": "vinc.spec.architecture",
+      "chars": 13029,
+      "content_hash": "4e8a553af395bb629d756bb0350fcf762d87d4b36b8feee7721f8b8b35fdf95a"
+    },
+    {
+      "doc_id": "vinc.spec.azure-infrastructure",
+      "chars": 15551,
+      "content_hash": "68b903492d0f73880a951471654e5fe40b0455015d7d2eeec0b6aaa0cb160586"
+    },
+    {
+      "doc_id": "vinc.spec.dataplane",
+      "chars": 28072,
+      "content_hash": "f3893278524a13ddd6b4d05ce84a87f8a7a1ec9622b5390a709e79cecb898cb7"
+    },
+    {
+      "doc_id": "vinc.spec.docs-information-architecture-2026-09",
+      "chars": 41574,
+      "content_hash": "73b291bd37666239e0148f74c7cf12dd649f17d9061ef369d0c1f2dc8c77a7a8"
+    },
+    {
+      "doc_id": "vinc.spec.email-subsystem",
+      "chars": 26763,
+      "content_hash": "4ed407ad1eac8549c53fbe14f32bebf2b6e55ae99e0092e24682b17d94144540"
+    },
+    {
+      "doc_id": "vinc.spec.glass-language",
+      "chars": 10783,
+      "content_hash": "5b32e7aae2e6c88ef99ba164a903f9943e4b1e5c256b7a4ed02848d83ce155f0"
+    },
+    {
+      "doc_id": "vinc.spec.product-overview",
+      "chars": 18885,
+      "content_hash": "d1b3adb8dfe609bd58a38aca31f4a5da16339f9f5d7274a42a9eabec4fdde9d5"
+    },
+    {
+      "doc_id": "vinc.spec.remote-profile",
+      "chars": 15492,
+      "content_hash": "4d0311683b1c7b324a8d749e556da3391e713f5d577c6ea4823f7e26b280d119"
+    },
+    {
+      "doc_id": "vinc.spec.surface-tree",
+      "chars": 16936,
+      "content_hash": "19bf5ea3e2be4fd8fa8ef39b3c6365e9b094a9ba9320dabb317b3131e174c00c"
+    },
+    {
+      "doc_id": "vinc.spec.ui-copy",
+      "chars": 10696,
+      "content_hash": "cd781f7946775e47261fdeb906bc61f060420117658746f27b0e130d6fcd32d2"
+    },
+    {
+      "doc_id": "vinc.spec.ui-copy-ko",
+      "chars": 26966,
+      "content_hash": "d4ae3b9060ce6255d404b6a2f34ac996e273c291ba842add3b8e2265ef0ce41d"
+    },
+    {
+      "doc_id": "vinc.spec.viewpoints",
+      "chars": 29965,
+      "content_hash": "8b5471a1e374188564507e9ed5720c0a85d4e33059b5b469881a7e42d8463994"
+    },
+    {
+      "doc_id": "vinc.spec.web-system",
+      "chars": 28524,
+      "content_hash": "b3b09f42e9acb4c385d12cb44cc2518658b982ec158d319129d395d2a11da954"
+    }
+  ]
+}

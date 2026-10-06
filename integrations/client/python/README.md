@@ -145,11 +145,39 @@ each required document is retained in full, with its verified content hash.
 Missing, partial or unverified documents raise `prefetch_spec_unresolved` before
 optional task lookup. Invalid role contracts, authentication and service failures
 propagate. There is no prefetch permission/content cache or automatic write.
-The combined budget defaults to 24,000 characters. Large roles need an explicit
-larger budget, as above; `prefetch_budget_exceeded` stops rather than truncating
-the contract or a required document. This provides evidence before the model
-runs; it
-does not guarantee that the model cites it correctly.
+The combined budget defaults to 24,000 characters. Starting with client 0.1.3,
+`prefetch_budget_exceeded` reports the **complete** `required_size` in both its
+message and `error.details`, after reading and verifying every required document.
+Optional brief/search calls are skipped on that failure. `error.details["max_chars"]`
+is the attempted budget; `error.details["recommended_max_chars"]` adds 6,002
+characters for the separator and up to 6,000 characters of optional task evidence.
+Choose that value once as `max_chars` (or the adapter's `prefetch_max_chars`) after
+accepting the model input cost. `required_size` alone fits the full required context
+exactly but leaves no task evidence space. No automatic retry, budget increase,
+truncation or prefetch cache occurs. If the role or documents change between calls,
+the required size can change too.
+
+On 2026-10-06, all 23 hosted roster roles exceeded the default. Their required
+text was 19,764 to 198,480 characters (median about 112,000); successful prefetch
+blocks at a larger budget were 34,640 to 217,070 characters including the role
+contract, formatting and task evidence. These are characters, not tokens or a
+model price estimate, from one hub and one task. LangGraph injects the block on
+every model call, including later tool-loop calls; the Microsoft Agent Framework
+provider injects it once per run. A smaller budget stops the model instead of
+silently reducing its required reading.
+
+CI replays all 23 role read lists with verified hosted document sizes and synthetic
+bodies in `tests/test_prefetch_budget.py`. A fresh read-only key can also check live
+roles and one explicit correction before release, without calling a model:
+
+```bash
+# Set VINC_API_KEY in the command environment only, using a vinc_ro_ key.
+python integrations/client/python/examples/check_prefetch_budget.py --space personal
+```
+
+The check prints only role ids and sizes, never keys or retrieved document bodies.
+This provides evidence before the model runs; model citation quality needs a
+separate evaluation.
 
 
 ## License

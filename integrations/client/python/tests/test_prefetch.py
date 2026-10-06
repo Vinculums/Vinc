@@ -108,15 +108,18 @@ def test_required_document_overflow_stops_without_optional_task_calls(async_mode
         if request.url.path.startswith("/v1/roles/"):
             return httpx.Response(200, json={"found": True, "id": "concept:agent-reviewer",
                 "props": {"reads": ["vinc.spec.large", "later-spec"]}})
-        return httpx.Response(200, json={"executed": True, "doc_id": "vinc.spec.large",
+        return httpx.Response(200, json={"executed": True, "doc_id": request.url.path.rsplit("/", 1)[-1],
             "verified": True, "text": text, "content_hash": hashlib.sha256(text.encode()).hexdigest()})
     client = (AsyncVincClient if async_mode else VincClient)(
         "vinc_ro_" + "a" * 32, transport=httpx.MockTransport(handler))
-    with pytest.raises(VincInvalidArgument, match="prefetch_budget_exceeded"):
+    with pytest.raises(VincInvalidArgument, match="prefetch_budget_exceeded") as caught:
         value = client.prefetch("concept:agent-reviewer", "Review.")
         if async_mode:
             asyncio.run(value)
-    assert len(seen) == 2
+    assert len(seen) == 3
+    assert all(r.method == "GET" for r in seen)
+    assert caught.value.details["required_size"] > 2 * len(text)
+    assert str(caught.value.details["required_size"]) in caught.value.message
 
 
 def test_missing_role_does_not_invent_a_contract():
