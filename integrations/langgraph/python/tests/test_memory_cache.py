@@ -89,3 +89,30 @@ def test_source_change_requires_ttl_or_explicit_invalidation(monkeypatch):
         clock[0] = 61
         assert "EXPIRED RULE" in invoke()
         assert len(seen) == 3
+
+
+def test_inflight_read_cannot_repopulate_a_cleared_cache():
+    async def go():
+        started, release = asyncio.Event(), asyncio.Event()
+        seen = []
+        async def handler(request):
+            seen.append(request)
+            first = len(seen) == 1
+            if first:
+                started.set()
+                await asyncio.wait_for(release.wait(), timeout=2)
+            return httpx.Response(200, json={"status": "resolved", "node": {
+                "id": "decision:fixture", "title": "OLD RULE" if first else "UPDATED RULE"}})
+        async with AsyncVincClient("vinc_ro_" + "a" * 32, transport=httpx.MockTransport(handler)) as client:
+            middleware = VincContextMiddleware(async_client=client)
+            model = RecordingModel()
+            agent = create_agent(model, middleware=[middleware])
+            first = asyncio.create_task(agent.ainvoke({"messages": [HumanMessage("same question")]}))
+            await asyncio.wait_for(started.wait(), timeout=2)
+            middleware.clear_cache()
+            release.set()
+            await first
+            await agent.ainvoke({"messages": [HumanMessage("same question")]})
+            assert "UPDATED RULE" in model.system_text() and "OLD RULE" not in model.system_text()
+            assert len(seen) == 2
+    asyncio.run(go())

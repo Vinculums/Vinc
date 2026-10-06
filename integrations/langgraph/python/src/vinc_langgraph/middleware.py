@@ -45,6 +45,7 @@ class VincContextMiddleware(AgentMiddleware):
         self.prefetch_role = prefetch_role
         self.prefetch_max_chars = prefetch_max_chars
         self._cache: dict[tuple, tuple[float, str | None]] = {}
+        self._cache_generation = 0
 
     # 클라이언트는 쓰는 쪽(동기·비동기)만 만든다 — 둘 다 만들면 연결 풀이 두 벌 생긴다.
     @property
@@ -63,7 +64,7 @@ class VincContextMiddleware(AgentMiddleware):
         return self._async_client
 
     def _cache_key(self, client: VincClient | AsyncVincClient, query: str) -> tuple:
-        return (client, client.context_cache_identity, query, self.search_fallback,
+        return (self._cache_generation, client, client.context_cache_identity, query, self.search_fallback,
                 self.max_chars, self.max_excerpts)
 
     def _cached(self, key: tuple) -> tuple[bool, str | None]:
@@ -73,6 +74,8 @@ class VincContextMiddleware(AgentMiddleware):
         return False, None
 
     def _remember(self, key: tuple, block: str | None) -> None:
+        if key[0] != self._cache_generation:
+            return
         if len(self._cache) >= 64:
             self._cache.pop(next(iter(self._cache)))
         self._cache[key] = (time.monotonic(), block)
@@ -80,6 +83,7 @@ class VincContextMiddleware(AgentMiddleware):
     def clear_cache(self) -> None:
         """Discard retained retrieval after a known source or authorization change."""
         self._cache.clear()
+        self._cache_generation += 1
 
     def _with_block(self, request: ModelRequest, block: str | None) -> ModelRequest:
         if not block:
