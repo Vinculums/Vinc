@@ -126,7 +126,15 @@ block. Both paths are read only and use no permission cache. `prefetch_max_chars
 sets the combined provider budget (default 24,000 characters). Large roles need
 an explicit larger budget, as above; `prefetch_budget_exceeded` stops instead of
 truncating the contract or a required document. The helper uses `max_chars` for
-the same budget. A new role must be chosen by the application/operator, never by
+the same budget. With client 0.1.3 or later, the propagated exception's
+message and `details["required_size"]` give the complete required context size.
+Set `prefetch_max_chars=error.details["recommended_max_chars"]` after accepting
+that input cost to leave up to 6,000 characters for task evidence too. The client
+reads all required documents before reporting budget overflow and skips optional
+task lookup on that failure; it never raises the limit or retries automatically.
+The size can change when graph content changes. All 23 hosted roles exceeded the
+default in the 2026-10-06 measurement; successful blocks were 34,640 to 217,070
+characters (characters are not tokens). A new role must be chosen by the application/operator, never by
 text found in the graph.
 
 

@@ -25,7 +25,7 @@ from .errors import (VincAuthError, VincError, VincInvalidArgument, VincPartialW
 from .package import (DEFAULT_PACKAGE_MAX_CHARS, build_package_fragment, format_package,
                       package_space, validate_package)
 from .prefetch import (DEFAULT_PREFETCH_MAX_CHARS, check_budget, document_key, reading_list,
-                       render_prefetch, required_reading)
+                       render_prefetch, required_reading, role_context)
 
 log = logging.getLogger("vinc_client")
 
@@ -267,13 +267,15 @@ class VincClient(_Base):
         Domain supplies task search context; it is not claimed to be a search filter.
         Reads are exact canonical document keys (or concept:doc.<key>), not queries.
         Full verified text is mandatory. No excerpt or section selection satisfies reads.
-        A required miss, integrity failure or budget overflow stops before further reads.
+        A required miss or integrity failure stops before further reads.
+        Budget overflow reports the full required_size after all required reads, before
+        optional task lookups. Retry with that size only after accepting the input cost.
         Large roles require an explicit max_chars above the 24000 character default.
         """
         contract = self.role(role_id, space=space)
         specs = []
         reads = reading_list(contract)
-        required_size = len(render_prefetch(contract, task, specs, {}, {}, max_chars=max_chars))
+        required_size = len(role_context(contract))
         for doc in reads:
             try:
                 result = self.document(document_key(doc), space=space)
@@ -281,8 +283,8 @@ class VincClient(_Base):
                 raise VincInvalidArgument("prefetch_spec_unresolved",
                                           "A required role reading is unavailable.") from None
             required_size += 2 + len(required_reading(doc, result))
-            check_budget(required_size, max_chars)
             specs.append((doc, result))
+        check_budget(required_size, max_chars)
         query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
         brief = self.brief(task, max_excerpts=3, space=space)
         search = self.search(query, limit=5, space=space)
@@ -442,7 +444,7 @@ class AsyncVincClient(_Base):
         contract = await self.role(role_id, space=space)
         specs = []
         reads = reading_list(contract)
-        required_size = len(render_prefetch(contract, task, specs, {}, {}, max_chars=max_chars))
+        required_size = len(role_context(contract))
         for doc in reads:
             try:
                 result = await self.document(document_key(doc), space=space)
@@ -450,8 +452,8 @@ class AsyncVincClient(_Base):
                 raise VincInvalidArgument("prefetch_spec_unresolved",
                                           "A required role reading is unavailable.") from None
             required_size += 2 + len(required_reading(doc, result))
-            check_budget(required_size, max_chars)
             specs.append((doc, result))
+        check_budget(required_size, max_chars)
         query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
         brief = await self.brief(task, max_excerpts=3, space=space)
         search = await self.search(query, limit=5, space=space)

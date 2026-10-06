@@ -9,6 +9,7 @@ from .context import BOUNDARY, fence, format_answer
 from .errors import VincInvalidArgument
 
 DEFAULT_PREFETCH_MAX_CHARS = 24000
+TASK_EVIDENCE_MAX_CHARS = 6000
 
 
 def reading_list(contract: dict[str, Any]) -> list[str]:
@@ -45,21 +46,31 @@ def required_reading(doc_id: str, result: dict[str, Any]) -> str:
 
 def check_budget(size: int, max_chars: int) -> None:
     if size > max_chars:
+        recommended = size + 2 + TASK_EVIDENCE_MAX_CHARS
         raise VincInvalidArgument("prefetch_budget_exceeded",
-                                  "Required role context exceeds max_chars; raise the budget.")
+                                  f"Full required role context needs required_size={size} characters; "
+                                  f"max_chars={max_chars}. Set max_chars={size} for required context "
+                                  f"or max_chars={recommended} to also reserve task evidence space.",
+                                  details={"required_size": size, "max_chars": max_chars,
+                                           "recommended_max_chars": recommended})
+
+
+def role_context(contract: dict[str, Any]) -> str:
+    """Fence the complete role contract without budgeting a partial reading list."""
+    role = {k: contract[k] for k in ("id", "title", "domain", "props", "works_with")
+            if k in contract}
+    return f"{BOUNDARY}\n\n{fence(json.dumps(role, ensure_ascii=False, indent=2))}"
 
 
 def render_prefetch(contract: dict[str, Any], task: str, specs: list[tuple[str, dict]],
                     brief: dict, search: dict, *, max_chars: int) -> str:
-    """Fence the complete role contract and retain returned citation ids in evidence blocks."""
-    role = {k: contract[k] for k in ("id", "title", "domain", "props", "works_with")
-            if k in contract}
-    parts = [f"{BOUNDARY}\n\n{fence(json.dumps(role, ensure_ascii=False, indent=2))}"]
+    parts = [role_context(contract)]
     for doc_id, result in specs:
         parts.append(required_reading(doc_id, result))
     joined = "\n\n".join(parts)
     check_budget(len(joined), max_chars)
-    block = format_answer(brief, search, max_chars=min(6000, max_chars - len(joined) - 2))
+    block = format_answer(brief, search,
+                          max_chars=min(TASK_EVIDENCE_MAX_CHARS, max_chars - len(joined) - 2))
     if block:
         joined += "\n\n" + block
     return joined
