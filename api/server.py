@@ -24,6 +24,7 @@ from store.procutil import pid_alive
 
 import base64
 import contextvars
+from contextlib import nullcontext
 from array import array
 import datetime as _dt
 import json
@@ -130,6 +131,7 @@ from store.config import load_config
 from store import config as store_config
 from store import request_timing
 from store.backend import open_store
+from store.embedded_backend import DdlGuardTimeout
 
 from . import query as q
 from . import preference as pref
@@ -308,6 +310,8 @@ class VincApp:
         from store.theme_store import ThemeStore
         self.themes = themes if themes is not None else ThemeStore(self.cfg.data_dir)
         self._conn_lock = threading.Lock()    # reader Connection 파생 가드
+        self._index_lock = threading.Lock()
+        self._index_job = None
         # 미러 재구축은 통째로 갈아 끼우는 일이라 **두 벌이 겹치면 안 된다** —
         # 하나가 인덱스를 드롭한 사이 다른 하나가 만들면 반쪽 미러가 남는다.
         self._mirror_lock = threading.Lock()
@@ -552,6 +556,11 @@ class VincApp:
         인덱스 재빌드를 거는 자리가 쓴다(`_ReaderView.schedule_search_indexes`) —
         그 답은 이번 응답에 필요하지 않고, 검색은 그동안 FTS 로 답한다."""
         if timeout is not None and timeout <= 0:
+            if label == "search.index":
+                with self._index_lock:
+                    if self._index_job is None or self._index_job.status not in ("queued", "running"):
+                        self._index_job = self.jobs.submit(label, fn)
+                    return self._index_job.to_dict()
             return self.jobs.submit(label, fn).to_dict()
         return self.jobs.run_sync(label, fn, timeout=timeout)
 
@@ -587,8 +596,13 @@ class VincApp:
             # 통과시키므로 MCP 호스트도 같은 사유를 본다.
             return 503, {"executed": False, **store_unavailable()}
         try:
-            with request_timing.measure("query"):
+            scope = getattr(r, "request_read_scope", None)
+            with (scope() if callable(scope) else nullcontext()), request_timing.measure("query"):
                 return 200, fn(r)
+        except DdlGuardTimeout:
+            return 503, {"executed": False, "error": "store_busy",
+                         "note": "Index or schema maintenance is in progress. Retry shortly.",
+                         "retry_after_s": 1}
         finally:
             with request_timing.measure("reader_close"):
                 r.close()
