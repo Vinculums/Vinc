@@ -148,9 +148,10 @@ service failures propagate. There is no prefetch permission/content cache or aut
 Client 0.1.3 reads required documents in concurrent batches of at most eight,
 using a per-call thread pool for `VincClient` and tasks for `AsyncVincClient`.
 Results are validated and rendered in the declared reading order. Starting with
-client 0.1.4, optional task lookups may start before validation: `brief` is sent
-first and `search` right after the role read, sharing the same bound of at most
-`prefetch_concurrency` requests in flight (documents queue behind them). If
+client 0.1.4, optional task lookups may start before validation: `brief` is
+submitted first and `search` right after the role read. Task lookups and documents
+share one pool of `prefetch_concurrency` slots (documents queue behind the lookups);
+the role read runs on the calling thread. If
 validation fails they are cancelled and any result that already arrived is
 discarded; the required error is raised unchanged. A failed batch stops
 subsequent batches; requests already in flight may finish. Pending reads are

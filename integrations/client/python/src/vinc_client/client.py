@@ -282,13 +282,13 @@ class VincClient(_Base):
         Reads are exact canonical document keys (or concept:doc.<key>), not queries.
         Full verified text is mandatory. No excerpt or section selection satisfies reads.
         A required miss or integrity failure stops validation and later batches.
-        Optional task lookups may start before validation: brief is sent first and search
-        right after the role read. If validation fails they are cancelled, and any result
-        that already arrived is discarded; the required error is raised unchanged.
+        Optional task lookups may start before validation: brief is submitted first and
+        search right after the role read. If validation fails they are cancelled, and any
+        result that already arrived is discarded; the required error is raised unchanged.
         Concurrency is bounded by the constructor setting (default 8, 1 is sequential):
-        all reads share one pool of that size, the task lookups take slots in submission
-        order and documents queue behind them. With 1 the order stays role, documents,
-        budget, brief, search.
+        task lookups and documents share one pool of that size; the role read runs on the
+        calling thread. Task lookups take slots in submission order and documents queue
+        behind them. With 1 the order stays role, documents, budget, brief, search.
         Budget overflow reports the full required_size after all required reads, before
         any task lookup result is used. Retry with that size only after accepting the input cost.
         Large roles require an explicit max_chars above the 24000 character default.
@@ -498,14 +498,13 @@ class AsyncVincClient(_Base):
             async with gate:
                 return await read(*args, **kwargs)
 
-        # 선택 읽기를 검증 전에 먼저 띄운다. 동시 요청은 gate 하나로 limit 개를 넘지 않는다.
+        # 선택 읽기를 검증 전에 먼저 띄운다. 선택 읽기와 문서는 gate 하나를 나눠 쓰고,
+        # 역할 읽기는 gate 밖에서 이 코루틴이 직접 한다(동기판의 호출 스레드와 같다).
         # 근거: [[vinc.plan.vin397-prefetch-half-latency-2026-10-07]]
         optional = ([asyncio.create_task(bounded(self.brief, task, max_excerpts=3, space=space))]
                     if early else [])
         try:
-            if early:
-                await asyncio.sleep(0)  # brief 요청이 역할 읽기보다 먼저 나간다.
-            contract = await bounded(self.role, role_id, space=space)
+            contract = await self.role(role_id, space=space)
             specs = []
             reads = reading_list(contract)
             required_size = len(role_context(contract))

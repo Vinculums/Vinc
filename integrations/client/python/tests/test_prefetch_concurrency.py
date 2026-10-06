@@ -139,6 +139,7 @@ def test_failed_batch_stops_before_later_batches_and_raises_the_required_error(a
     assert caught.value.code == code
     assert 1 <= sum(p.startswith("/v1/documents/") for p in seen) <= 8
     assert all(p.startswith(("/v1/roles/", "/v1/documents/", "/v1/brief", "/v1/search")) for p in seen)
+    assert sorted(p for p in seen if p in ("/v1/brief", "/v1/search")) in ([], ["/v1/brief", "/v1/search"])
     assert not any(p.endswith(f"d{i:02}") for p in seen for i in range(8, 17))
 
 

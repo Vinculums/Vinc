@@ -78,6 +78,8 @@ def test_budget_error_stops_model_and_corrected_middleware_runs(async_mode):
         # client 0.1.4: brief/search 는 검증 전에 나갈 수 있고 실패 시 버려진다.
         assert [p for p in seen if not p.endswith(("brief", "search"))] == [
             "/v1/roles/concept:agent-test", "/v1/documents/large"]
+        assert sorted(p for p in seen if p.endswith(("brief", "search"))) in (
+            [], ["/v1/brief", "/v1/search"])
         await invoke(VincContextMiddleware(**kwargs,
             prefetch_max_chars=caught.value.details["recommended_max_chars"]))
         assert len(model.calls) == 1

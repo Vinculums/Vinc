@@ -67,17 +67,29 @@ def run(async_mode, transport_handler, **kwargs):
 
 # 1. 순서 ---------------------------------------------------------------------
 
-def test_async_order_brief_first_search_after_role_then_documents():
+def test_async_brief_in_flight_before_role_response_and_search_after_it():
     async def go():
+        brief_seen = asyncio.Event()
+        role_done = False
         order = []
 
         async def handler(request):
-            order.append(label(request))
+            nonlocal role_done
+            name = label(request)
+            order.append(name)
+            if name == "role":
+                # brief 가 역할 응답 전에 이미 나가 있어야 한다.
+                await asyncio.wait_for(brief_seen.wait(), timeout=3)
+                role_done = True
+            elif name == "brief":
+                brief_seen.set()
+            elif name == "search":
+                assert role_done
             return answer(request, count=3)
 
         async with AsyncVincClient(KEY, transport=httpx.MockTransport(handler)) as client:
             await client.prefetch(ROLE_ID, "Review.")
-        assert order == ["brief", "role", "search", "d00", "d01", "d02"]
+        assert sorted(order) == ["brief", "d00", "d01", "d02", "role", "search"]
     asyncio.run(go())
 
 
@@ -158,17 +170,19 @@ def test_in_flight_requests_never_exceed_the_setting(async_mode):
 
 # 3. 필수 실패 시 선택 결과 폐기 ------------------------------------------------
 
-@pytest.mark.parametrize("optional_fails", [False, True])
+@pytest.mark.parametrize("mode", ["answered", "optional_fails", "blocked"])
 @pytest.mark.parametrize("async_mode", [False, True])
-def test_required_failure_discards_optional_results(async_mode, optional_fails, monkeypatch):
+def test_required_failure_discards_optional_results(async_mode, mode, monkeypatch):
+    """answered·optional_fails: 선택 읽기가 끝난 뒤 두 번째 문서 404.
+    blocked: 선택 읽기가 끝내 응답하지 않는 동안 두 번째 문서가 바로 404."""
     rendered = []
     monkeypatch.setattr(client_module, "render_prefetch",
                         lambda *a, **k: rendered.append(a) or "rendered")
-    answered = []
+    started, answered = [], []
 
     def optional_response(request):
         answered.append(label(request))
-        if optional_fails:
+        if mode == "optional_fails":
             return httpx.Response(503, json={"error": {"code": "upstream_unavailable"}})
         return answer(request)
 
@@ -178,24 +192,29 @@ def test_required_failure_discards_optional_results(async_mode, optional_fails, 
     if async_mode:
         async def go():
             both = asyncio.Event()
+            never = asyncio.Event()
             notices = []
             asyncio.get_running_loop().set_exception_handler(lambda loop, ctx: notices.append(ctx))
 
             async def handler(request):
                 name = label(request)
                 if name in ("brief", "search"):
+                    started.append(name)
+                    if mode == "blocked":
+                        await asyncio.wait_for(never.wait(), timeout=3)
                     response = optional_response(request)
                     if len(answered) == 2:
                         both.set()
                     return response
                 if name == "d01":
-                    await asyncio.wait_for(both.wait(), timeout=3)
+                    if mode != "blocked":
+                        await asyncio.wait_for(both.wait(), timeout=3)
                     return missing()
                 return answer(request, count=4)
 
             async with AsyncVincClient(KEY, transport=httpx.MockTransport(handler)) as client:
                 with pytest.raises(VincInvalidArgument) as caught:
-                    await client.prefetch(ROLE_ID, "Review.")
+                    await asyncio.wait_for(client.prefetch(ROLE_ID, "Review."), timeout=2)
             await asyncio.sleep(0)
             assert asyncio.all_tasks() == {asyncio.current_task()}
             assert not notices
@@ -203,18 +222,25 @@ def test_required_failure_discards_optional_results(async_mode, optional_fails, 
         error = asyncio.run(go())
     else:
         both = threading.Event()
+        never = threading.Event()
         lock = threading.Lock()
 
         def handler(request):
             name = label(request)
             if name in ("brief", "search"):
                 with lock:
+                    started.append(name)
+                if mode == "blocked":
+                    # 동기판은 실행 중인 요청을 풀 종료에서 기다린다(D2 가 받아들인 동작).
+                    never.wait(timeout=0.5)
+                with lock:
                     response = optional_response(request)
                     if len(answered) == 2:
                         both.set()
                 return response
             if name == "d01":
-                assert both.wait(timeout=3)
+                if mode != "blocked":
+                    assert both.wait(timeout=3)
                 return missing()
             return answer(request, count=4)
 
@@ -224,8 +250,41 @@ def test_required_failure_discards_optional_results(async_mode, optional_fails, 
         assert not any(t.name.startswith("vinc-prefetch") for t in threading.enumerate())
         error = caught.value
     assert error.code == "prefetch_spec_unresolved"
-    assert sorted(answered) == ["brief", "search"]
+    if mode == "blocked":
+        # 어느 선택 읽기가 실패 전에 시작했는지는 스케줄에 달렸다. 결과는 쓰이지 않는다.
+        assert set(started) <= {"brief", "search"}
+    else:
+        assert sorted(answered) == ["brief", "search"]
     assert rendered == []
+
+
+def test_async_outer_cancel_while_optional_reads_in_flight():
+    async def go():
+        in_flight = asyncio.Event()
+        never = asyncio.Event()
+        notices = []
+        entered = set()
+        asyncio.get_running_loop().set_exception_handler(lambda loop, ctx: notices.append(ctx))
+
+        async def handler(request):
+            name = label(request)
+            if name == "role":
+                return answer(request, count=2)
+            entered.add(name)
+            if {"brief", "search"} <= entered:
+                in_flight.set()
+            await never.wait()
+
+        async with AsyncVincClient(KEY, transport=httpx.MockTransport(handler)) as client:
+            pending = asyncio.create_task(client.prefetch(ROLE_ID, "Review."))
+            await asyncio.wait_for(in_flight.wait(), timeout=2)
+            pending.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await pending
+        await asyncio.sleep(0)
+        assert asyncio.all_tasks() == {asyncio.current_task()}
+        assert not notices
+    asyncio.run(go())
 
 
 # 4. 예산 초과 ----------------------------------------------------------------

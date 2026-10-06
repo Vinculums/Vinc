@@ -118,6 +118,7 @@ def test_required_document_overflow_discards_optional_task_results(async_mode):
             asyncio.run(value)
     assert sum(r.method == "GET" for r in seen) == 3
     assert all(r.method == "GET" or r.url.path.endswith(("brief", "search")) for r in seen)
+    assert sorted(r.url.path for r in seen if r.method != "GET") in ([], ["/v1/brief", "/v1/search"])
     assert caught.value.details["required_size"] > 2 * len(text)
     assert str(caught.value.details["required_size"]) in caught.value.message
 

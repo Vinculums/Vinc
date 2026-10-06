@@ -57,6 +57,7 @@ def test_live_roster_sizes_allow_one_budget_correction(role, async_mode):
     assert f"required_size={size}" in error.message
     assert sum(path.startswith("/v1/documents/") for path in seen) == len(documents)
     assert all(path.startswith(("/v1/roles/", "/v1/documents/", "/v1/brief", "/v1/search")) for path in seen)
+    assert sorted(p for p in seen if p in ("/v1/brief", "/v1/search")) in ([], ["/v1/brief", "/v1/search"])
 
     block = prefetch(max_chars=size)
     assert len(block) == size
