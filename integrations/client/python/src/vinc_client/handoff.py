@@ -9,6 +9,7 @@ from .package import DEFAULT_PACKAGE_MAX_CHARS, format_package, package_space, v
 
 def check_package_handoff(node: dict[str, Any], *, space: str, gate: OutputGate,
                           readable_ids: Iterable[str], repositories: Iterable[str],
+                          evidence_nodes: dict[str, dict[str, Any]] | None = None,
                           proofs: Iterable[ToolProof] = (),
                           max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> str:
     """Return the complete attributed package only after every handoff gate passes.
@@ -29,4 +30,5 @@ def check_package_handoff(node: dict[str, Any], *, space: str, gate: OutputGate,
     answer = "\n".join([props["conclusion"], *[claim["claim"] for claim in props["claims"]]])
     gate.require_pass(answer, phase="handoff", manifest=manifest,
                       resolved_sources=available, proofs=proofs, repositories=repositories)
-    return format_package(node, space=selected, readable_ids=available, max_chars=max_chars)
+    return format_package(node, space=selected, readable_ids=available,
+                          evidence_nodes=evidence_nodes, max_chars=max_chars)

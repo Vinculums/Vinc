@@ -126,14 +126,15 @@ class VincContextProvider(ContextProvider):
 async def record_episode(client: AsyncVincClient, title: str, *, summary: str = "",
                          about: Iterable[str] = (), date: str | None = None,
                          domain: str | None = None, tags: Iterable[str] | None = None,
-                         space: str | None = None) -> dict[str, Any]:
+                         space: str | None = None, episode_id: str | None = None) -> dict[str, Any]:
     """Write one Episode about existing concepts or decisions. Needs a ``vinc_sk_`` key.
 
     Call it after a person approved what the agent did; see
     :meth:`vinc_client.AsyncVincClient.record_episode`.
+    Save episode_id in host state before approval and reuse it only for this event's retries.
     """
     return await client.record_episode(title, summary=summary, about=about, date=date,
-                                       domain=domain, tags=tags, space=space)
+                                       domain=domain, tags=tags, space=space, episode_id=episode_id)
 
 
 class PackageProvider(ContextProvider):

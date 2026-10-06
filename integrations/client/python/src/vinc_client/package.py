@@ -9,7 +9,7 @@ import json
 import secrets
 from typing import Any, Iterable
 
-from .context import BOUNDARY, fence
+from .context import BOUNDARY, evidence_metadata, fence
 from .errors import VincInvalidArgument
 
 PACKAGE_SCHEMA = "vinc.package.v1"
@@ -78,6 +78,7 @@ def build_package_fragment(question: str, conclusion: str, *,
 
 
 def format_package(node: dict[str, Any], *, space: str, readable_ids: Iterable[str],
+                   evidence_nodes: dict[str, dict[str, Any]] | None = None,
                    max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> str:
     """Preserve complete claims and provenance; mark unavailable evidence as uncitable.
 
@@ -87,15 +88,28 @@ def format_package(node: dict[str, Any], *, space: str, readable_ids: Iterable[s
     validate_package(node)
     selected = package_space(space)
     readable = set(readable_ids)
+    sources = evidence_nodes or {}
+
+    def evidence(nid: str) -> dict[str, Any]:
+        state = evidence_metadata(sources.get(nid, {}))
+        current = (False if state.get("superseded_by") or state.get("validity") in
+                   ("historical", "future") else True if state.get("validity") == "current"
+                   else None)
+        return {"space": selected, "node_id": nid, "readable": True,
+                "use_as_current": current, **state}
+
     props = node["props"]
     claims = [{"claim": claim["claim"],
-               "evidence": [{"space": selected, "node_id": nid} for nid in
+               "evidence": [evidence(nid) for nid in
                             dict.fromkeys(claim["evidence_ids"]) if nid in readable],
                "evidence_status": ("resolved" if all(nid in readable for nid in
                                                      claim["evidence_ids"])
                                    else "unresolved; do not cite this claim")}
               for claim in props["claims"]]
     body = json.dumps({"package": {"space": selected, "node_id": node["id"]},
+                       "package_state": evidence_metadata(node),
+                       "evidence_status_meaning": "resolved means readable, not current; "
+                                                  "null use_as_current means unknown",
                        "question": props["question"], "conclusion": props["conclusion"],
                        "produced_by": props["produced_by"], "run_id": props["run_id"],
                        "claims": claims}, ensure_ascii=False, indent=2)

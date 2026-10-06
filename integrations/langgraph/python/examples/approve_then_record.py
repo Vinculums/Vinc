@@ -10,6 +10,8 @@ nodes and a write key for the recording node only.
 from __future__ import annotations
 
 import os
+from datetime import date
+from uuid import uuid4
 from typing import Any, TypedDict
 
 from langgraph.checkpoint.memory import InMemorySaver
@@ -27,14 +29,18 @@ class ReviewState(TypedDict, total=False):
     approved: bool
     about: list[str]
     written: dict[str, Any] | None
+    episode_id: str
+    episode_date: str
 
 
-def build_graph(reader: VincClient, writer: VincClient, review=None):
+def build_graph(reader: VincClient, writer: VincClient, review=None, *, checkpointer=None):
     """``review`` turns (question, context) into a draft; a model call in real use."""
     review = review or (lambda question, context: f"Reviewed: {question}")
 
     def context_node(state: ReviewState) -> ReviewState:
-        return {"context": get_vinc_context(reader, state["question"])}
+        return {"context": get_vinc_context(reader, state["question"]),
+                "episode_id": state.get("episode_id") or f"episode:review-{uuid4().hex}",
+                "episode_date": state.get("episode_date") or date.today().isoformat()}
 
     def review_node(state: ReviewState) -> ReviewState:
         return {"draft": review(state["question"], state.get("context"))}
@@ -46,7 +52,8 @@ def build_graph(reader: VincClient, writer: VincClient, review=None):
     def record_node(state: ReviewState) -> ReviewState:
         if not state.get("approved"):
             return {"written": None}
-        return {"written": record_episode(writer, state["draft"], about=state.get("about") or [])}
+        return {"written": record_episode(writer, state["draft"], about=state.get("about") or [],
+                                           episode_id=state["episode_id"], date=state["episode_date"])}
 
     graph = StateGraph(ReviewState)
     graph.add_node("context", context_node)
@@ -58,7 +65,7 @@ def build_graph(reader: VincClient, writer: VincClient, review=None):
     graph.add_edge("review", "approve")
     graph.add_edge("approve", "record")
     graph.add_edge("record", END)
-    return graph.compile(checkpointer=InMemorySaver())
+    return graph.compile(checkpointer=checkpointer if checkpointer is not None else InMemorySaver())
 
 
 if __name__ == "__main__":

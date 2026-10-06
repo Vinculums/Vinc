@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import hashlib
 
 import httpx
 import pytest
@@ -17,6 +18,11 @@ def test_prefetch_reads_role_specs_and_task_evidence_without_writes_or_cache(asy
     def handler(request):
         seen.append(request)
         assert request.url.params.get("space") == "01a0a0e0-3f91-7128-9876-6b543f28de0a"
+        if request.url.path.startswith("/v1/documents/"):
+            text = "Keep all rules.\n" + "x" * 5000 + "\nMANDATORY TAIL RULE"
+            return httpx.Response(200, json={"executed": True, "doc_id": "vinc.spec.fixture",
+                "verified": True, "text": text,
+                "content_hash": hashlib.sha256(text.encode()).hexdigest()})
         if request.method == "GET":
             return httpx.Response(200, json=role)
         query = json.loads(request.content)["query"]
@@ -35,23 +41,82 @@ def test_prefetch_reads_role_specs_and_task_evidence_without_writes_or_cache(asy
         value = client.prefetch("concept:agent-reviewer", "Review the policy.",
                                 space="01a0a0e0-3f91-7128-9876-6b543f28de0a")
         block = asyncio.run(value) if async_mode else value
-        assert all(n in block for n in ("concept:agent-reviewer", "concept:spec-fixture",
-                                        "decision:fixture", "record:lesson", "DATA"))
+        assert all(n in block for n in ("concept:agent-reviewer", "vinc.spec.fixture",
+                                        "decision:fixture", "record:lesson", "DATA",
+                                        "MANDATORY TAIL RULE"))
     assert len(seen) == 8
     assert all(r.method == "GET" or r.url.path.endswith(("brief", "search")) for r in seen)
 
 
+@pytest.mark.parametrize("async_mode", [False, True])
 @pytest.mark.parametrize("status", ["none", "choose"])
-def test_required_spec_miss_or_tie_stops_prefetch(status):
+def test_required_spec_miss_or_tie_stops_prefetch(status, async_mode):
+    seen = []
     def handler(request):
-        if request.method == "GET":
+        seen.append(request)
+        if request.url.path.startswith("/v1/roles/"):
             return httpx.Response(200, json={"found": True, "id": "concept:agent-reviewer",
-                                            "props": {"reads": ["required-spec"]}})
+                                            "props": {"reads": ["required-spec", "later-spec"]}})
         return httpx.Response(200, json={"status": status})
 
     with pytest.raises(VincInvalidArgument, match="prefetch_spec_unresolved"):
-        VincClient("vinc_ro_" + "a" * 32, transport=httpx.MockTransport(handler)).prefetch(
-            "concept:agent-reviewer", "Review.")
+        client = (AsyncVincClient if async_mode else VincClient)(
+            "vinc_ro_" + "a" * 32, transport=httpx.MockTransport(handler))
+        value = client.prefetch("concept:agent-reviewer", "Review.")
+        if async_mode:
+            asyncio.run(value)
+    assert len(seen) == 2
+    assert seen[-1].url.path == "/v1/documents/required-spec"
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
+@pytest.mark.parametrize("defect", ["unverified", "hash", "wrong_id", "partial", "missing"])
+def test_required_document_integrity_failure_stops_before_later_reads(async_mode, defect):
+    seen = []
+    doc = {"doc_id": "vinc.spec.fixture", "executed": True, "verified": True, "text": "All rules.",
+           "content_hash": hashlib.sha256(b"All rules.").hexdigest()}
+    if defect == "unverified":
+        doc["verified"] = False
+    elif defect == "hash":
+        doc["text"] = "Different rules."
+    elif defect == "wrong_id":
+        doc["doc_id"] = "another"
+    elif defect == "partial":
+        doc["partial"] = True
+    def handler(request):
+        seen.append(request)
+        if request.url.path.startswith("/v1/roles/"):
+            return httpx.Response(200, json={"found": True, "id": "concept:agent-reviewer",
+                "props": {"reads": ["concept:doc.vinc.spec.fixture", "later-spec"]}})
+        return httpx.Response(404 if defect == "missing" else 200, json=doc)
+    client = (AsyncVincClient if async_mode else VincClient)(
+        "vinc_ro_" + "a" * 32, transport=httpx.MockTransport(handler))
+    with pytest.raises(VincInvalidArgument, match="prefetch_spec_unresolved"):
+        value = client.prefetch("concept:agent-reviewer", "Review.")
+        if async_mode:
+            asyncio.run(value)
+    assert len(seen) == 2
+    assert seen[-1].url.path == "/v1/documents/vinc.spec.fixture"
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
+def test_required_document_overflow_stops_without_optional_task_calls(async_mode):
+    seen = []
+    text = "Mandatory rule " * 3000
+    def handler(request):
+        seen.append(request)
+        if request.url.path.startswith("/v1/roles/"):
+            return httpx.Response(200, json={"found": True, "id": "concept:agent-reviewer",
+                "props": {"reads": ["vinc.spec.large", "later-spec"]}})
+        return httpx.Response(200, json={"executed": True, "doc_id": "vinc.spec.large",
+            "verified": True, "text": text, "content_hash": hashlib.sha256(text.encode()).hexdigest()})
+    client = (AsyncVincClient if async_mode else VincClient)(
+        "vinc_ro_" + "a" * 32, transport=httpx.MockTransport(handler))
+    with pytest.raises(VincInvalidArgument, match="prefetch_budget_exceeded"):
+        value = client.prefetch("concept:agent-reviewer", "Review.")
+        if async_mode:
+            asyncio.run(value)
+    assert len(seen) == 2
 
 
 def test_missing_role_does_not_invent_a_contract():
