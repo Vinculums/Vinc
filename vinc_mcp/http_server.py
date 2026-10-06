@@ -1181,7 +1181,10 @@ class _Handler(BaseHTTPRequestHandler):
             if bad:
                 return self._json(400, {"error": bad})
             # 주소로 온 팀이다. 토큰은 **이 주소**에 묶여 있어야 한다.
-            auth = self._auth(space, presented_at=f"/t/{space}/mcp" if space else "/mcp")
+            try:
+                auth = self._auth(space, presented_at=f"/t/{space}/mcp" if space else "/mcp")
+            except entitlement.VerificationUnavailable:
+                return self._verification_unavailable()
             if not auth["ok"]:
                 # 팀 주소의 실패는 **404** 다. 401 이면 "그 팀은 있는데 너는 아니다"가
                 # 되어 팀 id 를 추측해 조직을 훑을 수 있다. 모르는 팀·비멤버·제명·정지·
@@ -1239,7 +1242,10 @@ class _Handler(BaseHTTPRequestHandler):
             # 배치는 기존 게이트 우선순위를 유지한다: 모든 메시지의 스페이스를
             # 먼저 보고, 그 다음 역할, 읽기 전용 키 순서로 첫 거절을 고른다.
             # 근거: [[decision:the-space-is-an-argument-and-the-default-is-personal]]
-            gated = [(m, _gate_for(m)) for m in msgs]
+            try:
+                gated = [(m, _gate_for(m)) for m in msgs]
+            except entitlement.VerificationUnavailable:
+                return self._verification_unavailable()
 
             def _tool_error(m, message):
                 return self._json(200, {
@@ -1454,7 +1460,10 @@ class _Handler(BaseHTTPRequestHandler):
         **쿼터 면제**: Dispatcher(rpc)를 우회하므로 `quota_check` 가 아예 안 불린다.
         의도된 설계 — 무료 15회/일은 도구 호출 한도이지, 동기화가 그걸로 막히면
         기능 자체가 성립하지 않는다(delta 한 번에 수백 노드가 오간다)."""
-        auth = self._auth()
+        try:
+            auth = self._auth()
+        except entitlement.VerificationUnavailable:
+            return self._verification_unavailable()
         if not auth["ok"]:
             return self._unauthorized()
         owner = auth["owner"]
@@ -1492,6 +1501,10 @@ class _Handler(BaseHTTPRequestHandler):
         return self._json(200, out)
 
     # ── 인증 + 로깅 ───────────────────────────────────────────────────────
+    def _verification_unavailable(self):
+        return self._json(503, {"error": "verification_unavailable"},
+                          headers={"Retry-After": "1"})
+
     def _auth(self, space: str | None = None, *, presented_at: str | None = None) -> dict:
         """`resolve_auth` 를 부르고 **누가 불렀는지를 응답 로그에 실을 수 있게** 남긴다.
 

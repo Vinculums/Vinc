@@ -34,6 +34,23 @@ _lock = threading.Lock()
 
 _log = logging.getLogger("vinc.mcp.entitlement")
 
+
+class VerificationUnavailable(RuntimeError):
+    """자격을 확인하지 못했다. 접근은 닫고, 무효 자격으로 캐시하지 않는다."""
+
+    def __init__(self):
+        super().__init__("Account verification is temporarily unavailable.")
+
+
+def _verification_failure(exc: Exception) -> None:
+    # 계정 계약의 명시적 거절은 404뿐이다. 서비스 어서션 401도 키 무효가 아니다.
+    if isinstance(exc, urllib.error.HTTPError) and exc.code == 404:
+        return
+    status = exc.code if isinstance(exc, urllib.error.HTTPError) else None
+    _log.warning("account verification unavailable: kind=%s status=%s",
+                 type(exc).__name__, status)
+    raise VerificationUnavailable() from None
+
 #: 와이어에서 허용되는 등급 값. **Free 와 Team 둘뿐이다**(2026-09-19 지시로 Pro 폐기).
 #: DB 열거형(`users.plan`)은 free 뿐이고 `team` 은 어서션·verify-key 응답에만 실리는
 #: 와이어 전용 값이다([[vinc.canon.account-policy]] §2.1).
@@ -128,7 +145,7 @@ def enabled() -> bool:
 
 def verify_key(raw: str, team: str | None = None) -> dict | None:
     """`vinc_sk_*`/`vinc_ro_*` 원문 키 → {owner, plan, scope[, role]} 또는
-    None(무효·미설정·오류).
+    None(무효·미설정). 확인 장애는 VerificationUnavailable이며 캐시하지 않는다.
 
     `scope`(W18)는 항상 실린다 — 캐시도 이 dict 통째라 스코프를 잃지 않는다
     (잃으면 TTL 동안 무음 승격이 된다). 부재·미지 값의 해석은 normalize_scope.
@@ -182,10 +199,10 @@ def verify_key(raw: str, team: str | None = None) -> dict | None:
                               "role": role, "member": f"user:{sub}"}
             else:
                 result = {"owner": f"user:{sub}", "plan": plan, "scope": scope}
-    except urllib.error.HTTPError:
-        result = None            # 404(invalid_key)·401·503 → 무효 취급
-    except Exception:
-        result = None            # 네트워크·타임아웃 → 무효(닫힘 실패, 안전측)
+        if result is None:
+            raise ValueError("invalid verification response")
+    except Exception as exc:
+        _verification_failure(exc)
 
     with _lock:
         _cache[ckey] = (now + (_POS_TTL if result else _NEG_TTL), result)
@@ -201,8 +218,8 @@ def verify_member(sub: str, team: str) -> dict | None:
     publicId 뿐이다. 그래서 **신원 확인 없이 멤버십만** 묻는다(`lookup_plan` 과 같은
     갈래다 — 어서션 게이트가 호출자를 이미 증명했다).
 
-    ⚠ **fail-closed 다.** 네트워크·타임아웃·형식 불량은 전부 None 이고, 그러면 팀
-    주소는 404 가 된다. `lookup_plan` 이 fail-open 인 것과 반대인데, 그쪽은 자격
+    ⚠ **fail-closed 다.** 네트워크·타임아웃·형식 불량은 VerificationUnavailable로
+    접근을 닫되 재시도를 허용한다. 명시적 비멤버 거절만 None이다. 그쪽은 자격
     조회고 이쪽은 **인가**이기 때문이다. 흔들릴 때 열어 주면 안 되는 쪽이다.
 
     ⚠ 계정이 `graph_owner` 를 안 주거나 `team:` 이 아니면 거절한다. 개인 owner 로
@@ -240,10 +257,10 @@ def verify_member(sub: str, team: str) -> dict | None:
         if (isinstance(go, str) and go.startswith("team:")
                 and isinstance(role, str) and role):
             result = {"owner": go, "role": role, "member": f"user:{sub}"}
-    except urllib.error.HTTPError:
-        result = None            # 404(비멤버·모르는 팀)·401·503 → 거절
-    except Exception:
-        result = None            # 네트워크·타임아웃 → 거절(닫힘 실패)
+        if result is None:
+            raise ValueError("invalid membership response")
+    except Exception as exc:
+        _verification_failure(exc)
 
     with _lock:
         _cache[ckey] = (now + (_POS_TTL if result else _NEG_TTL), result)
