@@ -106,21 +106,28 @@ the helpers delegate to another agent or grant it permission.
 
 ```python
 provider = VincContextProvider(
-    reader, prefetch_role="concept:agent-reviewer", expose_tools=True,
+    reader, prefetch_role="concept:agent-reviewer-judgement", expose_tools=True,
+    prefetch_max_chars=120000,
 )
 ```
 
 Before every run this reads the chosen role's complete contract, its required
-spec briefs, and the task's brief/search evidence, with returned citation ids.
+documents in full with verified content hashes, and the task's brief/search
+evidence, with returned citation ids.
 The optional read tools remain available for further questions; the model does
 not have to decide to call them to receive the initial evidence. Required spec
-misses, unavailable roles and authentication/service errors stop this prefetch
-mode explicitly. Ordinary question-only lookup keeps its existing behavior.
+misses, partial or unverified documents raise `prefetch_spec_unresolved` before
+optional task lookup. Unavailable roles and authentication/service errors stop
+this prefetch mode explicitly. Ordinary question-only lookup keeps its existing
+behavior.
 
 For a manual pipeline, `await prefetch(reader, role_id, task)` returns the same
 block. Both paths are read only and use no permission cache. `prefetch_max_chars`
-sets the combined provider budget (default 24,000 characters). A new role must be
-chosen by the application/operator, never by text found in the graph.
+sets the combined provider budget (default 24,000 characters). Large roles need
+an explicit larger budget, as above; `prefetch_budget_exceeded` stops instead of
+truncating the contract or a required document. The helper uses `max_chars` for
+the same budget. A new role must be chosen by the application/operator, never by
+text found in the graph.
 
 
 ## License
