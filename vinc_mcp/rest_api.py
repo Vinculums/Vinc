@@ -103,6 +103,10 @@ def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
     error = str(result.get("error") or "")
     note = str(result.get("note") or "")
     reason = (error + " " + note).lower()
+    if error == "store_busy":
+        # 유지보수 거절은 서버 내부 오류가 아니다. SDK가 재시도 가능한 503을 받아야 한다.
+        return (503, "upstream_unavailable", note or "Store maintenance is in progress.",
+                {"retryable": True, "retry_after_s": 1})
     # 브리지가 사이드카와 못 이야기했다. 쓰기라면 **이미 적용됐을 수 있다** — 재시도 금지를 싣는다.
     if error.startswith("sidecar write unconfirmed"):
         return (503, "upstream_unavailable", error,
@@ -306,7 +310,8 @@ def _handle(handler, method: str) -> bool:
     failure = _failure(route.tool, result, by_id=bool(route.path_args))
     if failure:
         status, code, message, *rest = failure
-        fail(status, code, message, details=rest[0] if rest else None)
+        fail(status, code, message, details=rest[0] if rest else None,
+             extra={"Retry-After": "1"} if result.get("error") == "store_busy" else None)
         return True
     from .roles import serialize_result
     size = len(serialize_result(result).encode("utf-8"))
