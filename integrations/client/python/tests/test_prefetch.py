@@ -100,7 +100,7 @@ def test_required_document_integrity_failure_stops_before_later_reads(async_mode
 
 
 @pytest.mark.parametrize("async_mode", [False, True])
-def test_required_document_overflow_stops_without_optional_task_calls(async_mode):
+def test_required_document_overflow_discards_optional_task_results(async_mode):
     seen = []
     text = "Mandatory rule " * 3000
     def handler(request):
@@ -116,8 +116,8 @@ def test_required_document_overflow_stops_without_optional_task_calls(async_mode
         value = client.prefetch("concept:agent-reviewer", "Review.")
         if async_mode:
             asyncio.run(value)
-    assert len(seen) == 3
-    assert all(r.method == "GET" for r in seen)
+    assert sum(r.method == "GET" for r in seen) == 3
+    assert all(r.method == "GET" or r.url.path.endswith(("brief", "search")) for r in seen)
     assert caught.value.details["required_size"] > 2 * len(text)
     assert str(caught.value.details["required_size"]) in caught.value.message
 

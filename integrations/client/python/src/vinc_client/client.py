@@ -282,49 +282,59 @@ class VincClient(_Base):
         Reads are exact canonical document keys (or concept:doc.<key>), not queries.
         Full verified text is mandatory. No excerpt or section selection satisfies reads.
         A required miss or integrity failure stops validation and later batches.
-        Reads already in flight may finish; no task lookup starts before full validation.
-        Concurrency is bounded by the constructor setting (default 8, 1 is sequential).
+        Optional task lookups may start before validation: brief is sent first and search
+        right after the role read. If validation fails they are cancelled, and any result
+        that already arrived is discarded; the required error is raised unchanged.
+        Concurrency is bounded by the constructor setting (default 8, 1 is sequential):
+        all reads share one pool of that size, the task lookups take slots in submission
+        order and documents queue behind them. With 1 the order stays role, documents,
+        budget, brief, search.
         Budget overflow reports the full required_size after all required reads, before
-        optional task lookups. Retry with that size only after accepting the input cost.
+        any task lookup result is used. Retry with that size only after accepting the input cost.
         Large roles require an explicit max_chars above the 24000 character default.
         """
-        contract = self.role(role_id, space=space)
-        specs = []
-        reads = reading_list(contract)
-        required_size = len(role_context(contract))
-        query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
         limit = self.prefetch_concurrency
+        early = limit > 1
         with ThreadPoolExecutor(max_workers=limit, thread_name_prefix="vinc-prefetch") as pool:
-            for offset in range(0, len(reads), limit):
-                batch = reads[offset:offset + limit]
-                futures = [pool.submit(self.document, document_key(doc), space=space)
-                           for doc in batch] if limit > 1 else []
-                try:
-                    for index, doc in enumerate(batch):
-                        try:
-                            result = (futures[index].result() if futures
-                                      else self.document(document_key(doc), space=space))
-                        except VincNotFound:
-                            raise VincInvalidArgument("prefetch_spec_unresolved",
-                                                      "A required role reading is unavailable.") from None
-                        required_size += 2 + len(required_reading(doc, result))
-                        specs.append((doc, result))
-                finally:
-                    # 아직 시작하지 않은 요청은 취소한다. 실행 중인 스레드는 풀 종료 때 회수한다.
-                    for future in futures:
-                        future.cancel()
-            check_budget(required_size, max_chars)
-            if limit == 1:
-                brief = self.brief(task, max_excerpts=3, space=space)
-                search = self.search(query, limit=5, space=space)
-            else:
-                futures = [pool.submit(self.brief, task, max_excerpts=3, space=space),
-                           pool.submit(self.search, query, limit=5, space=space)]
-                try:
-                    brief, search = [future.result() for future in futures]
-                finally:
-                    for future in futures:
-                        future.cancel()
+            # 선택 읽기(brief·search)를 검증 전에 먼저 띄운다. 필수 실패 시 취소·폐기.
+            # 근거: [[vinc.plan.vin397-prefetch-half-latency-2026-10-07]]
+            optional = [pool.submit(self.brief, task, max_excerpts=3, space=space)] if early else []
+            try:
+                contract = self.role(role_id, space=space)
+                specs = []
+                reads = reading_list(contract)
+                required_size = len(role_context(contract))
+                query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
+                if early:
+                    optional.append(pool.submit(self.search, query, limit=5, space=space))
+                for offset in range(0, len(reads), limit):
+                    batch = reads[offset:offset + limit]
+                    futures = [pool.submit(self.document, document_key(doc), space=space)
+                               for doc in batch] if early else []
+                    try:
+                        for index, doc in enumerate(batch):
+                            try:
+                                result = (futures[index].result() if futures
+                                          else self.document(document_key(doc), space=space))
+                            except VincNotFound:
+                                raise VincInvalidArgument("prefetch_spec_unresolved",
+                                                          "A required role reading is unavailable.") from None
+                            required_size += 2 + len(required_reading(doc, result))
+                            specs.append((doc, result))
+                    finally:
+                        # 아직 시작하지 않은 요청은 취소한다. 실행 중인 스레드는 풀 종료 때 회수한다.
+                        for future in futures:
+                            future.cancel()
+                check_budget(required_size, max_chars)
+                # 선택 읽기 결과(와 그 예외)는 필수 검증과 예산을 통과한 뒤에만 꺼낸다.
+                if early:
+                    brief, search = [future.result() for future in optional]
+                else:
+                    brief = self.brief(task, max_excerpts=3, space=space)
+                    search = self.search(query, limit=5, space=space)
+            finally:
+                for future in optional:
+                    future.cancel()
         return render_prefetch(contract, task, specs, brief, search, max_chars=max_chars)
 
     def search(self, query: str, *, limit: int | None = None, cursor: str | None = None,
@@ -480,44 +490,59 @@ class AsyncVincClient(_Base):
     async def prefetch(self, role_id: str, task: str, *, space: str | None = None,
                        max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
         """Async fresh role/spec/task evidence retrieval before the model runs."""
-        contract = await self.role(role_id, space=space)
-        specs = []
-        reads = reading_list(contract)
-        required_size = len(role_context(contract))
-        query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
         limit = self.prefetch_concurrency
-        for offset in range(0, len(reads), limit):
-            batch = reads[offset:offset + limit]
-            tasks = [asyncio.create_task(self.document(document_key(doc), space=space))
-                     for doc in batch] if limit > 1 else []
-            try:
-                for index, doc in enumerate(batch):
-                    try:
-                        result = (await tasks[index] if tasks
-                                  else await self.document(document_key(doc), space=space))
-                    except VincNotFound:
-                        raise VincInvalidArgument("prefetch_spec_unresolved",
-                                                  "A required role reading is unavailable.") from None
-                    required_size += 2 + len(required_reading(doc, result))
-                    specs.append((doc, result))
-            finally:
-                # 호출 종료 후 요청이나 관측되지 않은 예외를 남기지 않는다.
-                for pending in tasks:
-                    pending.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
-        check_budget(required_size, max_chars)
-        if limit == 1:
-            brief = await self.brief(task, max_excerpts=3, space=space)
-            search = await self.search(query, limit=5, space=space)
-        else:
-            tasks = [asyncio.create_task(self.brief(task, max_excerpts=3, space=space)),
-                     asyncio.create_task(self.search(query, limit=5, space=space))]
-            try:
-                brief, search = [await pending for pending in tasks]
-            finally:
-                for pending in tasks:
-                    pending.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
+        early = limit > 1
+        gate = asyncio.Semaphore(limit)
+
+        async def bounded(read, *args, **kwargs):
+            async with gate:
+                return await read(*args, **kwargs)
+
+        # 선택 읽기를 검증 전에 먼저 띄운다. 동시 요청은 gate 하나로 limit 개를 넘지 않는다.
+        # 근거: [[vinc.plan.vin397-prefetch-half-latency-2026-10-07]]
+        optional = ([asyncio.create_task(bounded(self.brief, task, max_excerpts=3, space=space))]
+                    if early else [])
+        try:
+            if early:
+                await asyncio.sleep(0)  # brief 요청이 역할 읽기보다 먼저 나간다.
+            contract = await bounded(self.role, role_id, space=space)
+            specs = []
+            reads = reading_list(contract)
+            required_size = len(role_context(contract))
+            query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
+            if early:
+                optional.append(asyncio.create_task(
+                    bounded(self.search, query, limit=5, space=space)))
+            for offset in range(0, len(reads), limit):
+                batch = reads[offset:offset + limit]
+                tasks = [asyncio.create_task(bounded(self.document, document_key(doc), space=space))
+                         for doc in batch] if early else []
+                try:
+                    for index, doc in enumerate(batch):
+                        try:
+                            result = (await tasks[index] if tasks
+                                      else await self.document(document_key(doc), space=space))
+                        except VincNotFound:
+                            raise VincInvalidArgument("prefetch_spec_unresolved",
+                                                      "A required role reading is unavailable.") from None
+                        required_size += 2 + len(required_reading(doc, result))
+                        specs.append((doc, result))
+                finally:
+                    # 호출 종료 후 요청이나 관측되지 않은 예외를 남기지 않는다.
+                    for pending in tasks:
+                        pending.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
+            check_budget(required_size, max_chars)
+            # 선택 읽기 결과(와 그 예외)는 필수 검증과 예산을 통과한 뒤에만 꺼낸다.
+            if early:
+                brief, search = [await pending for pending in optional]
+            else:
+                brief = await self.brief(task, max_excerpts=3, space=space)
+                search = await self.search(query, limit=5, space=space)
+        finally:
+            for pending in optional:
+                pending.cancel()
+            await asyncio.gather(*optional, return_exceptions=True)
         return render_prefetch(contract, task, specs, brief, search, max_chars=max_chars)
 
     async def search(self, query: str, *, limit: int | None = None, cursor: str | None = None,

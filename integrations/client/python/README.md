@@ -142,20 +142,24 @@ choosing this API does not delegate work or widen the caller's permissions.
 
 The caller must choose the role explicitly. Its complete contract is retained;
 each required document is retained in full, with its verified content hash.
-Missing, partial or unverified documents raise `prefetch_spec_unresolved` before
-optional task lookup. Invalid role contracts, authentication and service failures
-propagate. There is no prefetch permission/content cache or automatic write.
+Missing, partial or unverified documents raise `prefetch_spec_unresolved`, and
+no optional task lookup result is used. Invalid role contracts, authentication and
+service failures propagate. There is no prefetch permission/content cache or automatic write.
 Client 0.1.3 reads required documents in concurrent batches of at most eight,
 using a per-call thread pool for `VincClient` and tasks for `AsyncVincClient`.
-Results are validated and rendered in the declared reading order. Only after
-all required reads and the budget pass are task `brief` and `search` sent together.
-A failed batch stops subsequent batches and task lookup; requests already in
-flight may finish. Pending reads are cancelled and all in-flight work is drained
-before return. Synchronous network reads cannot be interrupted once started,
+Results are validated and rendered in the declared reading order. Starting with
+client 0.1.4, optional task lookups may start before validation: `brief` is sent
+first and `search` right after the role read, sharing the same bound of at most
+`prefetch_concurrency` requests in flight (documents queue behind them). If
+validation fails they are cancelled and any result that already arrived is
+discarded; the required error is raised unchanged. A failed batch stops
+subsequent batches; requests already in flight may finish. Pending reads are
+cancelled and all in-flight work is drained before return. Synchronous network reads cannot be interrupted once started,
 so failure cleanup can wait for their configured request timeout.
 
 Set `VincClient(..., prefetch_concurrency=1)` or
-`AsyncVincClient(..., prefetch_concurrency=1)` to retain sequential reads.
+`AsyncVincClient(..., prefetch_concurrency=1)` to retain sequential reads
+(role, documents, budget, brief, search).
 The setting accepts integers from 1 to 8. In synchronous mode, 1 also keeps
 custom transport calls on the calling thread; concurrent custom transports must
 be thread safe. Pass that configured reader to either framework adapter to use
@@ -165,7 +169,8 @@ reuse across model calls. Concurrency changes elapsed time, not required input s
 The combined budget defaults to 24,000 characters. Starting with client 0.1.3,
 `prefetch_budget_exceeded` reports the **complete** `required_size` in both its
 message and `error.details`, after reading and verifying every required document.
-Optional brief/search calls are skipped on that failure. `error.details["max_chars"]`
+Optional brief/search results are discarded on that failure (with concurrency
+above 1 the calls may already have been sent). `error.details["max_chars"]`
 is the attempted budget; `error.details["recommended_max_chars"]` adds 6,002
 characters for the separator and up to 6,000 characters of optional task evidence.
 Choose that value once as `max_chars` (or the adapter's `prefetch_max_chars`) after
