@@ -1,0 +1,54 @@
+# 자원만 일시 변경한다. 외부 측정기의 읽기 키는 입력·로그·artifact 로 받지 않는다.
+# 측정 창이 닫히면 성공·실패 모두 1 CPU·2 GiB 로 돌아간다.
+# 근거: [[vinc.plan.hub-capacity-trial-2026-10-06]]
+name: hub-capacity-trial
+on:
+  workflow_dispatch:
+    inputs:
+      expected_image:
+        description: "현재 허브 이미지 전체 이름 (재빌드하지 않음)"
+        required: true
+        type: string
+      expected_revision:
+        description: "기준 측정 직후 확인한 현재 허브 리비전"
+        required: true
+        type: string
+concurrency:
+  group: hub-deploy
+  cancel-in-progress: false
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  trial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: 운영 실행은 main 의 운영 담당만
+        if: github.ref != 'refs/heads/main' || !contains(format(',{0},', vars.PROD_OPERATORS), format(',{0},', github.triggering_actor))
+        run: exit 1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 격리된 Azure 프로필
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: 같은 이미지로 2 CPU 시험 후 원복
+        env:
+          EXPECTED_IMAGE: ${{ inputs.expected_image }}
+          EXPECTED_REVISION: ${{ inputs.expected_revision }}
+          VINC_MCP_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
+        run: python scripts/hub_capacity_trial.py run --state "$RUNNER_TEMP/capacity-state.json"
+      - name: 중간 실패도 원복 확인
+        if: always()
+        env:
+          VINC_MCP_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
+        run: python scripts/hub_capacity_trial.py restore --state "$RUNNER_TEMP/capacity-state.json"
+      - name: Azure 세션 정리
+        if: always()
+        run: rm -rf "$AZURE_CONFIG_DIR"
