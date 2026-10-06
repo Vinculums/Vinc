@@ -13,6 +13,7 @@ PHASES = frozenset({"reader", "reader_close", "query", "embed", "keyword",
                     "vector", "node_vector", "bridge", "auth", "gate",
                     "reader_lock", "connection_open", "connection_config",
                     "ddl_shared_wait", "ddl_exclusive_wait", "db_execute",
+                    "db_compile", "db_native_exec",
                     "db_fetch", "db_decode", "vector_index", "vector_fallback",
                     "node_vector_load", "node_vector_index", "node_vector_fallback",
                     "node_vector_load_error", "node_vector_query_error"})
@@ -34,6 +35,21 @@ class Timings:
 
 def active():
     return _current.get() is not None
+
+
+def observe(phase, milliseconds):
+    """엔진이 보고한 ms를 받는다. 지원하지 않는 통계는 호출부가 생략한다."""
+    if phase not in PHASES:
+        raise ValueError("unknown timing phase")
+    collector = _current.get()
+    if collector is None:
+        return
+    try:
+        value = float(milliseconds)
+    except (TypeError, ValueError):
+        return
+    if math.isfinite(value) and 0 <= value <= 3600000:
+        collector.add(phase, value)
 
 
 @contextmanager

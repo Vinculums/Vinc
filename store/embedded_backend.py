@@ -939,6 +939,15 @@ def _exec_to_dicts(conn, cypher: str, params: dict | None, *, raw: bool = False)
         res = conn.execute(cypher, params) if params else conn.execute(cypher)
         # ladybug/kuzu 는 다중 문장 시 결과 리스트를 줄 수 있음 — 마지막 결과만 소비.
         results = res if isinstance(res, list) else [res]
+        if request_timing.active():
+            # 엔진 통계도 CPU 시간이 아니다. 드라이버가 통계를 못 주어도 결과는 지킨다.
+            for r in results:
+                for phase, getter in (("db_compile", "get_compiling_time"),
+                                      ("db_native_exec", "get_execution_time")):
+                    try:
+                        request_timing.observe(phase, getattr(r, getter)())
+                    except Exception:
+                        pass
         with request_timing.measure("db_fetch"):
             for r in results:
                 try:

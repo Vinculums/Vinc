@@ -160,7 +160,7 @@ def test_real_node_index_fallback_preserves_owner_and_distance(tmp_path, monkeyp
             assert [h["id"] for h in hits] == ["concept:mine"]
             assert hits[0]["distance"] == pytest.approx(1)
             for phase in ("node_vector_index", "node_vector_fallback", "db_execute",
-                          "db_fetch", "ddl_shared_wait"):
+                          "db_fetch", "ddl_shared_wait", "db_compile", "db_native_exec"):
                 assert phase in collected.values
             assert not any(p.endswith("_error") for p in collected.values)
             assert reader.node_vector_search([1.0, 0, 0, 0], 1, owner="user:absent") == []
