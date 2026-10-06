@@ -90,7 +90,7 @@ def test_overflow_does_not_hide_a_later_missing_required_document(async_mode):
         return httpx.Response(404, json={"error": {"code": "not_found"}})
 
     client = (AsyncVincClient if async_mode else VincClient)(
-        "vinc_ro_" + "a" * 32, transport=httpx.MockTransport(handler))
+        "vinc_ro_" + "a" * 32, transport=httpx.MockTransport(handler), prefetch_concurrency=1)
     with pytest.raises(VincInvalidArgument, match="prefetch_spec_unresolved"):
         value = client.prefetch("concept:agent-test", "Review.")
         if async_mode:

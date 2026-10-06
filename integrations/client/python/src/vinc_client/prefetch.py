@@ -9,6 +9,7 @@ from .context import BOUNDARY, fence, format_answer
 from .errors import VincInvalidArgument
 
 DEFAULT_PREFETCH_MAX_CHARS = 24000
+PREFETCH_READ_CONCURRENCY = 8
 TASK_EVIDENCE_MAX_CHARS = 6000
 
 
