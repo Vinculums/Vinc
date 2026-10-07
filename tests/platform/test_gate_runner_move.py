@@ -207,7 +207,13 @@ class ThisRepo(unittest.TestCase):
 
         아홉이 된 경위: `hub-data-repair.yml`(2026-09-30)은 `hub-store-rebuild.yml` 과 같은
         모양이고 같은 이유로 `hub-deploy` 의 그룹 키를 빌려 쓴다 — 허브를 내리고 수리본으로
-        갈아타는 도중에 배포가 끼어들면 내려 둔 허브가 다시 뜬다. dispatch 로만 돈다."""
+        갈아타는 도중에 배포가 끼어들면 내려 둔 허브가 다시 뜬다. dispatch 로만 돈다.
+
+        열하나가 된 경위: `prefetch-bench.yml`(2026-10-07, #676)은 encode-m3-probe 와 같은
+        성질이다 — 제품 상태를 바꾸지 않고 라이브 허브의 지연을 잰다. 직렬화하는 이유는
+        **측정끼리 겹치면 서로를 오염시키기 때문**이다: 1코어 허브에 벤치 둘이 동시에
+        붙으면 둘 다 느려진다. 큐가 막혀도 밀리는 것은 측정뿐이고, dispatch 로만 돈다.
+        근거: [[vinc.plan.vin397-prefetch-half-latency-2026-10-07]]"""
         import yaml
         serial = []
         for p in sorted((_ROOT / ".github" / "workflows").glob("*.yml")):
@@ -218,7 +224,7 @@ class ThisRepo(unittest.TestCase):
         self.assertEqual(serial, ["encode-m3-probe.yml", "hub-capacity-trial.yml", "hub-data-repair.yml", "hub-deploy.yml",
                                   "hub-store-rebuild.yml",
                                   "hub-store-recover.yml", "infra.yml", "integrations-publish.yml", "pk-migrate.yml",
-                                  "release.yml"], serial)
+                                  "prefetch-bench.yml", "release.yml"], serial)
 
 
 if __name__ == "__main__":
