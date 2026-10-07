@@ -1,0 +1,63 @@
+# VIN-397 prefetch 지연 벤치 — GitHub 호스티드 러너(허브에서 멀다)에서 같은 프로토콜로 잰다.
+# 비율 완료 조건은 측정 클라이언트의 왕복에 따라 뒤집히므로(허브 가까운 PC 1.09, 190 ms 밖 0.39),
+# 멀리 떨어진 러너 한 곳을 고정 측정점으로 쓴다. 손으로만 돈다(dispatch). 배포·게시와 무관.
+# 근거: [[vinc.plan.vin397-prefetch-half-latency-2026-10-07]]
+name: prefetch-bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      pairs:
+        description: Alternating sequential/concurrent pairs per client mode
+        default: "14"
+      client:
+        description: vinc-client to measure (source = this checkout, or a PyPI version like 0.1.4)
+        default: source
+      label:
+        description: Label stored in the result JSON
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prefetch-bench
+  cancel-in-progress: false
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the client
+        run: |
+          python -m venv .bench
+          if [ "${{ inputs.client }}" = "source" ]; then
+            .bench/bin/pip install -q ./integrations/client/python
+          else
+            .bench/bin/pip install -q "vinc-client==${{ inputs.client }}"
+          fi
+      - name: Measure (읽기 전용 키, env 로만)
+        env:
+          VINC_RO: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
+        run: |
+          if [ -z "$VINC_RO" ]; then
+            echo "::notice::VINC_GRAPH_READONLY_KEY 시크릿 미설정 — 벤치를 건너뛴다."
+            exit 0
+          fi
+          .bench/bin/python -X utf8 scripts/bench_prefetch.py \
+            --pairs "${{ inputs.pairs }}" --out prefetch-bench.json \
+            --label "${{ inputs.label }}" | tee summary.txt
+          { echo '## prefetch-bench'; echo; echo '```'; cat summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prefetch-bench
+          path: |
+            prefetch-bench.json
+            summary.txt
+          if-no-files-found: ignore
