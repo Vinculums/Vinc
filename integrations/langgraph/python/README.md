@@ -51,7 +51,7 @@ from vinc_langgraph import create_vinc_tools
 tools = create_vinc_tools(VincClient())   # vinc_brief and vinc_search, read only
 ```
 
-Inside a `create_agent` that has `VincContextMiddleware`, the model may call these two tools at most 4 times per run (`tool_calls_per_run`); the fifth call gets a sentence saying the cap is reached instead of a Vinc call. `vinc-agent-framework` applies the same cap and sentence.
+Inside a `create_agent` that has `VincContextMiddleware`, the model may call these two tools at most 4 times per run (`tool_calls_per_run`; a run is everything after the newest human message). The fifth call gets a sentence saying the cap is reached instead of a Vinc call. The count comes from the graph state, so concurrent runs on one agent do not share it. A graph that uses the tools without the middleware is not capped. `vinc-agent-framework` applies the same cap and sentence.
 
 ## Recording, after a person approved
 

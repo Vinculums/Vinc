@@ -103,15 +103,11 @@ class VincContextProvider(ContextProvider):
         self.min_query_chars = min_query_chars
         self.prefetch_role = prefetch_role
         self.prefetch_max_chars = prefetch_max_chars
-        # 상한은 런 시작(before_run)에 0 으로 돌아간다. LangGraph 쪽은 미들웨어의 도구 훅이 같은
-        # ToolCallCap 으로 센다.
-        self.tool_cap = ToolCallCap(tool_calls_per_run)
-        self._tools = (create_vinc_tools(self.client, max_chars=max_chars, cap=self.tool_cap)
-                       if expose_tools else [])
+        self.expose_tools = expose_tools
+        self.tool_calls_per_run = tool_calls_per_run
 
     async def before_run(self, *, agent: Any, session: AgentSession, context: SessionContext,
                          state: dict[str, Any]) -> None:
-        self.tool_cap.reset()
         task = _last_user_text(context.input_messages)
         if self.prefetch_role:
             block = await prefetch(self.client, self.prefetch_role, task,
@@ -123,8 +119,11 @@ class VincContextProvider(ContextProvider):
                 min_query_chars=self.min_query_chars)
         if block:
             context.extend_instructions(self.source_id, block)
-        if self._tools:
-            context.extend_tools(self.source_id, self._tools)
+        if self.expose_tools:
+            # 도구는 런마다 새로 만든다: 상한(ToolCallCap)이 그 런의 것이라 동시에 도는 런끼리
+            # 나눠 쓰지 않는다. LangGraph 쪽은 그래프 상태에서 같은 수를 센다.
+            context.extend_tools(self.source_id, create_vinc_tools(
+                self.client, max_chars=self.max_chars, cap=ToolCallCap(self.tool_calls_per_run)))
 
     async def after_run(self, *, agent: Any, session: AgentSession, context: SessionContext,
                         state: dict[str, Any]) -> None:

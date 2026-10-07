@@ -5,7 +5,6 @@ the same tool schema whichever framework runs it.
 """
 from __future__ import annotations
 
-import threading
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -42,35 +41,34 @@ class SearchArgs(BaseModel):
 # 한 런에서 두 읽기 도구를 합쳐 부를 수 있는 횟수. 두 패키지가 같은 수와 같은 문장을 쓴다.
 # 근거: [[decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07]]
 TOOL_CALLS_PER_RUN = 4
+VINC_TOOL_NAMES = (BRIEF_NAME, SEARCH_NAME)
 CAP_MESSAGE = "Vinc tool call cap reached ({limit} per run); answer from what you already have."
 
 
+def cap_message(limit: int | None) -> str:
+    return CAP_MESSAGE.format(limit=limit)
+
+
 class ToolCallCap:
-    """Counts ``vinc_brief``/``vinc_search`` calls in one run; past ``limit`` the tool
+    """Counts ``vinc_brief``/``vinc_search`` calls for ONE run; past ``limit`` the tool
     answers with :attr:`message` instead of calling Vinc. ``limit=None`` never caps.
 
-    The adapter that owns a run calls :meth:`reset` when the run starts.
+    Make a new one per run. Agent Framework builds its tools around a fresh cap in
+    ``before_run``; LangGraph does not use this class and counts the run's tool calls
+    from graph state instead, so concurrent runs never share a counter.
     """
-    # ponytail: 카운터는 인스턴스 하나에 하나다. 같은 미들웨어·프로바이더로 런을 동시에 돌리면
-    # 상한을 나눠 쓴다. 런마다 따로 세야 하면 호스트 상태로 옮긴다.
 
     def __init__(self, limit: int | None = TOOL_CALLS_PER_RUN) -> None:
         self.limit = limit
         self.used = 0
-        self._lock = threading.Lock()
-
-    def reset(self) -> None:
-        with self._lock:
-            self.used = 0
 
     def spend(self) -> bool:
         """Count one call. ``False`` means the cap is spent and the call must not run."""
-        with self._lock:
-            if self.limit is not None and self.used >= self.limit:
-                return False
-            self.used += 1
-            return True
+        if self.limit is not None and self.used >= self.limit:
+            return False
+        self.used += 1
+        return True
 
     @property
     def message(self) -> str:
-        return CAP_MESSAGE.format(limit=self.limit)
+        return cap_message(self.limit)

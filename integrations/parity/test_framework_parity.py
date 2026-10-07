@@ -5,7 +5,7 @@ import hashlib
 
 import httpx
 import pytest
-from agent_framework import Agent, BaseChatClient, ChatResponse, Message
+from agent_framework import Agent, BaseChatClient, ChatResponse, FunctionInvocationLayer, Message
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
@@ -252,6 +252,7 @@ def test_native_review_schema_cannot_be_overridden_by_generation_options(async_m
                for call in model.calls)
 
 
+
 class FiveBriefsThenDone(RecordedModel):
     """One turn of five vinc_brief calls, then an answer."""
     turns: int = 0
@@ -265,16 +266,24 @@ class FiveBriefsThenDone(RecordedModel):
         return ChatResult(generations=[ChatGeneration(message=AIMessage("done"))])
 
 
+class FiveBriefsChat(FunctionInvocationLayer, BaseChatClient):
+    async def _inner_get_response(self, *, messages, stream, options, **kwargs):
+        from agent_framework import Content
+        if not any(c.type == "function_result" for m in messages for c in m.contents):
+            return ChatResponse(messages=Message("assistant", [Content.from_function_call(
+                f"c{i}", "vinc_brief", arguments={"query": f"q{i}"}) for i in range(5)]))
+        return ChatResponse(messages=Message("assistant", ["done"]))
+
+
 def test_same_tool_call_cap_and_sentence_in_both_frameworks():
-    # 한 런에 vinc 도구 4회. 다섯째는 두 패키지에서 같은 문장이 도구 결과로 돌아온다.
-    # LangGraph 는 미들웨어의 도구 훅이, Agent Framework 는 프로바이더가 만든 도구가 센다.
+    # 한 런에 vinc 도구 4회. 다섯째는 두 패키지에서 같은 문장이 도구 결과로 돌아온다. LangGraph 는
+    # 미들웨어가 그래프 상태에서, Agent Framework 는 런마다 새로 만든 도구가 센다.
     # 근거: [[decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07]]
     from langchain.agents import create_agent
     from langchain_core.messages import HumanMessage, ToolMessage
-    from agent_framework import SessionContext
     from vinc_agent_framework import VincContextProvider
     from vinc_langgraph import VincContextMiddleware
-    from vinc_client.tools import TOOL_CALLS_PER_RUN
+    from vinc_client.tools import TOOL_CALLS_PER_RUN, cap_message
     assert TOOL_CALLS_PER_RUN == 4
     with VincClient(KEY, transport=httpx.MockTransport(lambda r: response(r, []))) as client:
         middleware = VincContextMiddleware(client=client, cache_seconds=0)
@@ -284,11 +293,11 @@ def test_same_tool_call_cap_and_sentence_in_both_frameworks():
     async def run():
         async with AsyncVincClient(KEY, transport=httpx.MockTransport(lambda r: response(r, []))) as client:
             provider = VincContextProvider(client, expose_tools=True)
-            await provider.before_run(agent=None, session=None,
-                                      context=SessionContext(input_messages=[]), state={})
-            brief = provider._tools[0]
-            return [text(await brief.invoke(query=f"q{i}")) for i in range(5)], provider.tool_cap.limit
+            res = await Agent(FiveBriefsChat(), context_providers=[provider]).run("Review.")
+            return [str(c.result) for m in res.messages for c in m.contents
+                    if c.type == "function_result"], provider.tool_calls_per_run
     ma_results, ma_limit = asyncio.run(run())
-    assert middleware.tool_cap.limit == ma_limit == 4
+    assert middleware.tool_calls_per_run == ma_limit == 4
     assert lg_results[:4] == ma_results[:4] and all("concept:rule" in r for r in lg_results[:4])
-    assert lg_results[4] == ma_results[4] == "Vinc tool call cap reached (4 per run); answer from what you already have."
+    assert lg_results[4] == ma_results[4] == cap_message(4)
+    assert cap_message(4) == "Vinc tool call cap reached (4 per run); answer from what you already have."
