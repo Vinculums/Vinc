@@ -5,21 +5,17 @@ import hashlib
 import json
 from typing import Any
 
-from .context import BOUNDARY, fence, format_answer
+from .context import BOUNDARY, SOURCES_LINE, fence, format_answer
 from .errors import VincInvalidArgument
 
 DEFAULT_PREFETCH_MAX_CHARS = 24000
 PREFETCH_READ_CONCURRENCY = 8
 TASK_EVIDENCE_MAX_CHARS = 6000
 # 블록 머리의 인용 지시. 모델은 문서 키를 인용할 수 없으므로 필수 문서마다 미러 노드 id 를 준다.
-# 거절·고정 형식 답에도 인용 자리가 있도록 모든 답은 마지막 줄 `Sources:` 로 끝낸다
-# (읽는 쪽은 output_gate.sources_line).
-# 근거: [[record:vin314-live-exp01-rerun-prefetch-cites-a-node-in-1-of-6-2026-10-07]],
-# [[decision:vin314-every-agent-answer-ends-with-a-sources-line-2026-10-07]]
+# 뒤 문장(SOURCES_LINE)은 context 모드와 같은 바이트다.
+# 근거: [[record:vin314-live-exp01-rerun-prefetch-cites-a-node-in-1-of-6-2026-10-07]]
 CITE_LINE = ("Each required reading below names its citable id after \"cite as\"; "
-             "cite that id, not the document key. "
-             "End every answer, including refusals and fixed-format outputs, with one final line "
-             "\"Sources: [id] [id]\" naming the node ids you relied on, or \"Sources: none\".")
+             "cite that id, not the document key. " + SOURCES_LINE)
 
 
 def reading_list(contract: dict[str, Any]) -> list[str]:

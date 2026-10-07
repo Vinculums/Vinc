@@ -20,7 +20,7 @@ from urllib.parse import quote, urlparse
 import httpx
 
 from . import __version__
-from .context import DEFAULT_MAX_CHARS, format_answer
+from .context import DEFAULT_MAX_CHARS, format_context
 from .episode import build_episode_fragment, check_about
 from .errors import (VincAuthError, VincError, VincInvalidArgument, VincPartialWrite,
                      VincNotFound, VincQuotaExceeded, VincUnavailable, error_class)
@@ -376,7 +376,7 @@ class VincClient(_Base):
             brief = self.brief(text, max_excerpts=max_excerpts, space=space)
             search = (self.search(text, limit=5, space=space)
                       if search_fallback and brief.get("status") in _WIDEN else None)
-            return format_answer(brief, search, max_chars=max_chars)
+            return format_context(brief, search, max_chars=max_chars)
         except (VincUnavailable, VincQuotaExceeded) as exc:
             log.warning("vinc context skipped for this turn: %s (retry_after=%s)",
                         exc, exc.retry_after)
@@ -570,7 +570,7 @@ class AsyncVincClient(_Base):
             brief = await self.brief(text, max_excerpts=max_excerpts, space=space)
             search = (await self.search(text, limit=5, space=space)
                       if search_fallback and brief.get("status") in _WIDEN else None)
-            return format_answer(brief, search, max_chars=max_chars)
+            return format_context(brief, search, max_chars=max_chars)
         except (VincUnavailable, VincQuotaExceeded) as exc:
             log.warning("vinc context skipped for this turn: %s (retry_after=%s)",
                         exc, exc.retry_after)

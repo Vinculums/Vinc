@@ -2,10 +2,11 @@
 
 Design and scope: [[vinc.plan.framework-integration-packages-2026-09-28]].
 """
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 from .client import AsyncVincClient, VincClient  # noqa: E402
-from .context import BOUNDARY, fence, format_answer, format_brief, format_search  # noqa: E402
+from .context import (BOUNDARY, SOURCES_LINE, fence, format_answer, format_brief,  # noqa: E402
+                      format_context, format_search)
 from .episode import build_episode_fragment  # noqa: E402
 from .review import Finding, PersonOnlyRequest, ReviewOutput, UnparsedReview, parse_review  # noqa: E402
 from .approval import (ApprovalDecision, ApprovalRequest, ApprovalResult, RoleOutput,  # noqa: E402
@@ -19,7 +20,7 @@ from .errors import (VincAuthError, VincError, VincInvalidArgument, VincNotFound
 
 __all__ = [
     "__version__", "VincClient", "AsyncVincClient",
-    "BOUNDARY", "fence", "format_answer", "format_brief", "format_search", "build_episode_fragment",
+    "BOUNDARY", "SOURCES_LINE", "fence", "format_answer", "format_brief", "format_context", "format_search", "build_episode_fragment",
     "VincError", "VincAuthError", "VincNotFound", "VincInvalidArgument",
     "VincQuotaExceeded", "VincUnavailable", "VincPartialWrite",
     "Finding", "PersonOnlyRequest", "ReviewOutput", "UnparsedReview", "parse_review",
