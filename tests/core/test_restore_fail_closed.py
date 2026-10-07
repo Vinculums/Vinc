@@ -76,7 +76,8 @@ def _serve(state: str, *, allow_empty: bool | None = None):
     """`main(["serve", ...])` 를 그 상태로 돌리고 (종료코드, serve 호출수) 를 낸다."""
     with _Patched(state, allow_empty=allow_empty) as rec:
         with tempfile.TemporaryDirectory() as d:
-            code = cli.main(["serve", "--data", os.path.join(d, "db"), "--port", "0"])
+            code = cli.main(["serve", "--target", "local", "--data",
+                             os.path.join(d, "db"), "--port", "0"])
     return code, rec.calls
 
 
