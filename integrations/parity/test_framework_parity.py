@@ -76,6 +76,23 @@ def test_same_read_tools_defaults_caps_context_and_citations():
     asyncio.run(run())
 
 
+def test_missing_id_is_the_same_tool_result_in_both_and_the_run_continues():
+    # 없는 id 는 두 패키지에서 같은 도구 결과가 되고, 다음 호출이 그대로 돈다.
+    # 근거: [[record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07]]
+    def handle(req):
+        if req.url.path.endswith("brief") and json.loads(req.content)["query"] == "decision:missing":
+            return httpx.Response(404, json={"error": {"code": "not_found", "message": "no node"}})
+        return response(req, [])
+    async def run():
+        async with AsyncVincClient(KEY, transport=httpx.MockTransport(handle)) as client:
+            ma, lg = maf_tools(client)[0], lg_tools(async_client=client)[0]
+            left = text(await ma.invoke(query="decision:missing"))
+            right = await lg.ainvoke({"query": "decision:missing"})
+            assert left == right == "Vinc found nothing for that (not_found); try a different query."
+            assert text(await ma.invoke(query="Review")) == await lg.ainvoke({"query": "Review"})
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("limit", [0, 21])
 def test_both_frameworks_reject_out_of_range_search_before_http(limit):
     async def run():
