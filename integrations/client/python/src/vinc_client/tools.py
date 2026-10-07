@@ -17,11 +17,6 @@ SEARCH_DESCRIPTION = ("Search the user's Vinc knowledge graph by text and meanin
                       "matching nodes and document passages with their ids.")
 SEARCH_LIMIT_DEFAULT = 5
 
-# 컨텍스트 블록의 인용 지시. 두 패키지가 같은 형식([id])으로 인용하게 하는 유일한 문장이다.
-# 근거: [[record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07]]
-CITE_INSTRUCTION = ("When you rely on it, cite the node ids it gives in square brackets, "
-                    "for example [decision:some-slug].")
-
 
 def _no_titles(schema: dict[str, Any]) -> None:
     # 모델에 가는 스키마에 title 을 싣지 않는다. LangChain 은 지우고 Agent Framework 는
