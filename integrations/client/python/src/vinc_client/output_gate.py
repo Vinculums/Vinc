@@ -165,12 +165,16 @@ def preserve_required_route(base: Iterable[tuple[str, str]],
     return tuple(sorted(proposed))
 
 
-_SOURCES = re.compile(r"^[*_\s]*Sources[*_]*\s*:[*_]*\s*(.*?)\s*$", re.I)
+_SOURCES = re.compile(r"^[-*_\s]*Sources[*_]*\s*:[*_]*\s*(.*?)\s*$", re.I)
+_SOURCE_ID = re.compile(r"\b[a-z]+:[a-z0-9][a-z0-9._-]*")
 
 
 def sources_line(text: str) -> list[str] | None:
-    """Node ids on the answer's final ``Sources:`` line; [] for ``Sources: none``, None when absent.
+    """Node ids on the answer's final ``Sources:`` line.
 
+    ``None`` when the final non-empty line is not a ``Sources:`` line; ``[]`` when it is
+    but names no id (``Sources: none``, prose, ``N/A``). Only id-shaped tokens count
+    (``kind:slug``), so a markdown link tail or a bare word is never an id.
     Reads only; the gate verdict does not depend on it.
     근거: [[decision:vin314-every-agent-answer-ends-with-a-sources-line-2026-10-07]]
     """
@@ -178,11 +182,10 @@ def sources_line(text: str) -> list[str] | None:
     match = _SOURCES.match(lines[-1]) if lines else None
     if not match:
         return None
-    body = match.group(1).strip().strip(".")
-    if body.lower() == "none":
+    body = match.group(1)
+    if body.strip().lower().startswith("none"):
         return []
-    ids = [token.strip("[]`.") for token in re.split(r"[\s,]+", body)]
-    return [token for token in ids if token] or None
+    return [token.rstrip(".") for token in _SOURCE_ID.findall(body) if token.rstrip(".")]
 
 
 class OutputGate:

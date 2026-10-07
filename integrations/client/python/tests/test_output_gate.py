@@ -103,14 +103,19 @@ def test_empty_output_and_unsupported_machine_action_block():
 
 @pytest.mark.parametrize('text,expected', [
     ('Answer.\nSources: [decision:a] [concept:doc.vinc.spec.x]', ['decision:a', 'concept:doc.vinc.spec.x']),
-    ('ui.save = 저장\nSources: decision:a, record:b\n\n', ['decision:a', 'record:b']),
+    ('ui.save = 저장\nSources: decision:a, record:b.\n\n', ['decision:a', 'record:b']),
     ('**Sources:** [decision:a]', ['decision:a']),
+    ('- Sources: [decision:a](https://x) and `record:b`', ['decision:a', 'record:b']),
     ('I cannot do that.\nSources: none', []),
     ('Sources: None.', []),
+    ('Sources: none (no graph nodes used)', []),
+    ('* Sources: the README and the spec', []),
+    ('Sources: N/A', []),
+    ('Sources:', []),
     ('Answer without a trailer.', None),
     ('Sources: [decision:a]\nThen more text.', None),
-    ('Sources:', None),
     ('', None),
+    (None, None),
 ])
 def test_sources_line_reads_only_the_final_line(text, expected):
     from vinc_client import sources_line

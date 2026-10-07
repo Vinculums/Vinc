@@ -142,8 +142,9 @@ choosing this API does not delegate work or widen the caller's permissions.
 
 The block asks the model to end every answer, refusals and fixed-format outputs
 included, with one final line `Sources: [id] [id]` (or `Sources: none`).
-`sources_line(answer)` returns those ids, `[]` for `none` and `None` when the
-line is absent; it does not change the output gate's verdict.
+`sources_line(answer)` returns the id-shaped tokens on that line, `[]` when it
+names none and `None` when the line is absent; it does not change the output
+gate's verdict.
 
 The caller must choose the role explicitly. Its complete contract is retained;
 each required document is retained in full, with its verified content hash.
