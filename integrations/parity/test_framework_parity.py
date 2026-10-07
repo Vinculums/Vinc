@@ -250,3 +250,45 @@ def test_native_review_schema_cannot_be_overridden_by_generation_options(async_m
                and call["response_format"] is ReviewOutput for call in client.calls)
     assert all("response_format" not in call and call["tools"] == [ReviewOutput]
                for call in model.calls)
+
+
+class FiveBriefsThenDone(RecordedModel):
+    """One turn of five vinc_brief calls, then an answer."""
+    turns: int = 0
+    def bind_tools(self, tools, **kwargs):
+        return self
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        self.turns += 1
+        if self.turns == 1:
+            return ChatResult(generations=[ChatGeneration(message=AIMessage("", tool_calls=[
+                {"name": "vinc_brief", "args": {"query": f"q{i}"}, "id": f"c{i}"} for i in range(5)]))])
+        return ChatResult(generations=[ChatGeneration(message=AIMessage("done"))])
+
+
+def test_same_tool_call_cap_and_sentence_in_both_frameworks():
+    # 한 런에 vinc 도구 4회. 다섯째는 두 패키지에서 같은 문장이 도구 결과로 돌아온다.
+    # LangGraph 는 미들웨어의 도구 훅이, Agent Framework 는 프로바이더가 만든 도구가 센다.
+    # 근거: [[decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07]]
+    from langchain.agents import create_agent
+    from langchain_core.messages import HumanMessage, ToolMessage
+    from agent_framework import SessionContext
+    from vinc_agent_framework import VincContextProvider
+    from vinc_langgraph import VincContextMiddleware
+    from vinc_client.tools import TOOL_CALLS_PER_RUN
+    assert TOOL_CALLS_PER_RUN == 4
+    with VincClient(KEY, transport=httpx.MockTransport(lambda r: response(r, []))) as client:
+        middleware = VincContextMiddleware(client=client, cache_seconds=0)
+        agent = create_agent(FiveBriefsThenDone(), tools=lg_tools(client=client), middleware=[middleware])
+        lg_results = [m.content for m in agent.invoke({"messages": [HumanMessage("Review.")]})["messages"]
+                      if isinstance(m, ToolMessage)]
+    async def run():
+        async with AsyncVincClient(KEY, transport=httpx.MockTransport(lambda r: response(r, []))) as client:
+            provider = VincContextProvider(client, expose_tools=True)
+            await provider.before_run(agent=None, session=None,
+                                      context=SessionContext(input_messages=[]), state={})
+            brief = provider._tools[0]
+            return [text(await brief.invoke(query=f"q{i}")) for i in range(5)], provider.tool_cap.limit
+    ma_results, ma_limit = asyncio.run(run())
+    assert middleware.tool_cap.limit == ma_limit == 4
+    assert lg_results[:4] == ma_results[:4] and all("concept:rule" in r for r in lg_results[:4])
+    assert lg_results[4] == ma_results[4] == "Vinc tool call cap reached (4 per run); answer from what you already have."

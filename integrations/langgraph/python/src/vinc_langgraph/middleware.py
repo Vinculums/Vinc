@@ -8,10 +8,12 @@ import time
 from typing import Any, Awaitable, Callable
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest
+from langchain_core.messages import ToolMessage
 from vinc_client import AsyncVincClient, VincClient
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS, package_space
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
+from vinc_client.tools import BRIEF_NAME, SEARCH_NAME, TOOL_CALLS_PER_RUN, ToolCallCap
 
 from .helpers import build_system_message, last_user_text
 
@@ -25,6 +27,10 @@ class VincContextMiddleware(AgentMiddleware):
     Entries belong to one client, effective credential, space and retrieval configuration.
     Source changes remain cached until TTL expiry or ``clear_cache``. Use cache_seconds=0
     for fresh reads on every model call; this does not bypass server authorization caches.
+
+    Calls to ``vinc_brief`` and ``vinc_search`` from :func:`create_vinc_tools` are
+    capped at ``tool_calls_per_run`` per agent run; past that the tool result is a
+    sentence saying so. ``None`` turns the cap off.
     """
 
     def __init__(self, client: VincClient | None = None,
@@ -33,7 +39,8 @@ class VincContextMiddleware(AgentMiddleware):
                  search_fallback: bool = True, max_chars: int = DEFAULT_MAX_CHARS,
                  max_excerpts: int = 3, cache_seconds: float = 60.0,
                  prefetch_role: str | None = None,
-                 prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> None:
+                 prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
+                 tool_calls_per_run: int | None = TOOL_CALLS_PER_RUN) -> None:
         super().__init__()
         self._config = {"api_key": api_key, "base_url": base_url, "space": space}
         self._client = client
@@ -44,8 +51,32 @@ class VincContextMiddleware(AgentMiddleware):
         self.cache_seconds = cache_seconds
         self.prefetch_role = prefetch_role
         self.prefetch_max_chars = prefetch_max_chars
+        self.tool_cap = ToolCallCap(tool_calls_per_run)
         self._cache: dict[tuple, tuple[float, str | None]] = {}
         self._cache_generation = 0
+
+    # 상한은 런 시작에 0 으로 돌아가고, 도구 노드가 vinc 도구를 부를 때마다 하나씩 쓴다.
+    # Agent Framework 쪽은 프로바이더가 만든 도구 안에서 같은 ToolCallCap 을 쓴다.
+    def before_agent(self, state: Any, runtime: Any) -> None:
+        self.tool_cap.reset()
+        return None
+
+    async def abefore_agent(self, state: Any, runtime: Any) -> None:
+        self.tool_cap.reset()
+        return None
+
+    def _capped(self, request: Any) -> ToolMessage | None:
+        call = request.tool_call
+        if call.get("name") in (BRIEF_NAME, SEARCH_NAME) and not self.tool_cap.spend():
+            return ToolMessage(content=self.tool_cap.message, name=call["name"],
+                               tool_call_id=call["id"])
+        return None
+
+    def wrap_tool_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
+        return self._capped(request) or handler(request)
+
+    async def awrap_tool_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
+        return self._capped(request) or await handler(request)
 
     # 클라이언트는 쓰는 쪽(동기·비동기)만 만든다 — 둘 다 만들면 연결 풀이 두 벌 생긴다.
     @property
