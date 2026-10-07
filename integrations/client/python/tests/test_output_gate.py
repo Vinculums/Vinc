@@ -99,3 +99,25 @@ def test_empty_output_and_unsupported_machine_action_block():
     assert OutputGate(PROFILES['concept:agent-dev-core']).evaluate(' ').verdict == 'block'
     props = dict(PROFILES['concept:agent-dev-core'], never_checks=[{'type':'forbidden_actions', 'actions':['scope']}])
     assert OutputGate(props).evaluate('Okay').verdict == 'block'
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('Answer.\nSources: [decision:a] [concept:doc.vinc.spec.x]', ['decision:a', 'concept:doc.vinc.spec.x']),
+    ('ui.save = 저장\nSources: decision:a, record:b\n\n', ['decision:a', 'record:b']),
+    ('**Sources:** [decision:a]', ['decision:a']),
+    ('I cannot do that.\nSources: none', []),
+    ('Sources: None.', []),
+    ('Answer without a trailer.', None),
+    ('Sources: [decision:a]\nThen more text.', None),
+    ('Sources:', None),
+    ('', None),
+])
+def test_sources_line_reads_only_the_final_line(text, expected):
+    from vinc_client import sources_line
+    assert sources_line(text) == expected
+
+
+def test_sources_line_does_not_change_the_verdict():
+    gate = OutputGate(PROFILES['concept:agent-reviewer-judgement'])
+    for answer in ('Merge this PR.', 'Please approve the price.'):
+        assert gate.evaluate(answer + '\nSources: [decision:a]').verdict == gate.evaluate(answer).verdict

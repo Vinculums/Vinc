@@ -165,6 +165,26 @@ def preserve_required_route(base: Iterable[tuple[str, str]],
     return tuple(sorted(proposed))
 
 
+_SOURCES = re.compile(r"^[*_\s]*Sources[*_]*\s*:[*_]*\s*(.*?)\s*$", re.I)
+
+
+def sources_line(text: str) -> list[str] | None:
+    """Node ids on the answer's final ``Sources:`` line; [] for ``Sources: none``, None when absent.
+
+    Reads only; the gate verdict does not depend on it.
+    근거: [[decision:vin314-every-agent-answer-ends-with-a-sources-line-2026-10-07]]
+    """
+    lines = [line for line in text.splitlines() if line.strip()] if isinstance(text, str) else []
+    match = _SOURCES.match(lines[-1]) if lines else None
+    if not match:
+        return None
+    body = match.group(1).strip().strip(".")
+    if body.lower() == "none":
+        return []
+    ids = [token.strip("[]`.") for token in re.split(r"[\s,]+", body)]
+    return [token for token in ids if token] or None
+
+
 class OutputGate:
     """A frozen copy of a freshly fetched structured role contract.
 
