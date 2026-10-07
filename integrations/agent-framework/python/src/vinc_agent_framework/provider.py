@@ -15,7 +15,8 @@ from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS, package_space
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
 from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, SEARCH_DESCRIPTION,
-                               SEARCH_LIMIT_DEFAULT, SEARCH_NAME, BriefArgs, SearchArgs)
+                               SEARCH_LIMIT_DEFAULT, SEARCH_NAME, TOOL_CALLS_PER_RUN, BriefArgs,
+                               SearchArgs, ToolCallCap)
 
 DEFAULT_SOURCE_ID = "vinc"
 
@@ -28,13 +29,14 @@ def _last_user_text(messages: Sequence[Any]) -> str:
     return ""
 
 
-def create_vinc_tools(client: AsyncVincClient, *,
-                      max_chars: int = DEFAULT_MAX_CHARS) -> list[FunctionTool]:
+def create_vinc_tools(client: AsyncVincClient, *, max_chars: int = DEFAULT_MAX_CHARS,
+                      cap: ToolCallCap | None = None) -> list[FunctionTool]:
     """Two read-only tools the model may call: ``vinc_brief`` and ``vinc_search``.
 
     Nothing here can write. When Vinc is unavailable, the quota is spent or
     the id does not exist, the tool answers with a sentence saying so instead
-    of failing the run.
+    of failing the run. With ``cap`` the two tools share its call budget; the
+    provider passes its own and resets it at every run.
     """
     # 없는 id(코드 not_found)는 프레임워크 기본 오류("Error: Function failed.") 대신 이유를 담은
     # 문장으로 돌린다. space_not_found 같은 설정 오류는 그대로 올린다. LangGraph 쪽과 같은 문장이다.
@@ -43,6 +45,8 @@ def create_vinc_tools(client: AsyncVincClient, *,
     # 이름·설명·인자 스키마는 vinc-client 한 곳에서 온다. LangGraph 쪽과 같은 스키마다.
     @tool(name=BRIEF_NAME, description=BRIEF_DESCRIPTION, schema=BriefArgs)
     async def vinc_brief(query: str) -> str:
+        if cap is not None and not cap.spend():
+            return cap.message
         try:
             return (format_brief(await client.brief(query), max_chars=max_chars)
                     or "Vinc has no single node for that; try vinc_search.")
@@ -55,6 +59,8 @@ def create_vinc_tools(client: AsyncVincClient, *,
 
     @tool(name=SEARCH_NAME, description=SEARCH_DESCRIPTION, schema=SearchArgs)
     async def vinc_search(query: str, limit: int = SEARCH_LIMIT_DEFAULT) -> str:
+        if cap is not None and not cap.spend():
+            return cap.message
         try:
             return (format_search(await client.search(query, limit=limit), max_chars=max_chars,
                                   limit=limit)
@@ -74,6 +80,10 @@ class VincContextProvider(ContextProvider):
     ``after_run`` does nothing: unlike memory providers that store each turn,
     this one never writes. Use :func:`record_episode` after a person approved
     what happened.
+
+    With ``expose_tools`` the model may call ``vinc_brief`` and ``vinc_search``
+    at most ``tool_calls_per_run`` times per run; past that the tool answers with
+    a sentence saying so. ``None`` turns the cap off.
     """
 
     def __init__(self, client: AsyncVincClient | None = None, *, api_key: str | None = None,
@@ -82,7 +92,8 @@ class VincContextProvider(ContextProvider):
                  max_chars: int = DEFAULT_MAX_CHARS, max_excerpts: int = 3,
                  min_query_chars: int = 3, expose_tools: bool = False,
                  prefetch_role: str | None = None,
-                 prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> None:
+                 prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
+                 tool_calls_per_run: int | None = TOOL_CALLS_PER_RUN) -> None:
         super().__init__(source_id)
         self.client = client or AsyncVincClient(api_key, base_url=base_url, space=space)
         self._owns_client = client is None
@@ -92,7 +103,8 @@ class VincContextProvider(ContextProvider):
         self.min_query_chars = min_query_chars
         self.prefetch_role = prefetch_role
         self.prefetch_max_chars = prefetch_max_chars
-        self._tools = create_vinc_tools(self.client, max_chars=max_chars) if expose_tools else []
+        self.expose_tools = expose_tools
+        self.tool_calls_per_run = tool_calls_per_run
 
     async def before_run(self, *, agent: Any, session: AgentSession, context: SessionContext,
                          state: dict[str, Any]) -> None:
@@ -107,8 +119,11 @@ class VincContextProvider(ContextProvider):
                 min_query_chars=self.min_query_chars)
         if block:
             context.extend_instructions(self.source_id, block)
-        if self._tools:
-            context.extend_tools(self.source_id, self._tools)
+        if self.expose_tools:
+            # 도구는 런마다 새로 만든다: 상한(ToolCallCap)이 그 런의 것이라 동시에 도는 런끼리
+            # 나눠 쓰지 않는다. LangGraph 쪽은 그래프 상태에서 같은 수를 센다.
+            context.extend_tools(self.source_id, create_vinc_tools(
+                self.client, max_chars=self.max_chars, cap=ToolCallCap(self.tool_calls_per_run)))
 
     async def after_run(self, *, agent: Any, session: AgentSession, context: SessionContext,
                         state: dict[str, Any]) -> None:

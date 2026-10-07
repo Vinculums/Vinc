@@ -8,12 +8,31 @@ import time
 from typing import Any, Awaitable, Callable
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest
+from langchain_core.messages import ToolMessage
 from vinc_client import AsyncVincClient, VincClient
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS, package_space
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
+from vinc_client.tools import TOOL_CALLS_PER_RUN, VINC_TOOL_NAMES, cap_message
 
 from .helpers import build_system_message, last_user_text
+
+
+def vinc_tool_call_ids(messages: Any) -> list[str]:
+    """Ids of the vinc tool calls the model made in this run, in model order.
+
+    A run is everything after the newest human message, so a resumed interrupt keeps
+    counting and a new question starts at zero.
+    """
+    ids: list[str] = []
+    for message in messages or ():
+        kind = getattr(message, "type", "")
+        if kind == "human":
+            ids = []
+        elif kind == "ai":
+            ids.extend(call["id"] for call in (getattr(message, "tool_calls", None) or [])
+                       if call.get("name") in VINC_TOOL_NAMES and call.get("id"))
+    return ids
 
 
 class VincContextMiddleware(AgentMiddleware):
@@ -25,6 +44,11 @@ class VincContextMiddleware(AgentMiddleware):
     Entries belong to one client, effective credential, space and retrieval configuration.
     Source changes remain cached until TTL expiry or ``clear_cache``. Use cache_seconds=0
     for fresh reads on every model call; this does not bypass server authorization caches.
+
+    Calls to ``vinc_brief`` and ``vinc_search`` from :func:`create_vinc_tools` are
+    capped at ``tool_calls_per_run`` per agent run (the model's calls after the newest
+    human message, in order); past that the tool result is a sentence saying so.
+    ``None`` turns the cap off.
     """
 
     def __init__(self, client: VincClient | None = None,
@@ -33,7 +57,8 @@ class VincContextMiddleware(AgentMiddleware):
                  search_fallback: bool = True, max_chars: int = DEFAULT_MAX_CHARS,
                  max_excerpts: int = 3, cache_seconds: float = 60.0,
                  prefetch_role: str | None = None,
-                 prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> None:
+                 prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
+                 tool_calls_per_run: int | None = TOOL_CALLS_PER_RUN) -> None:
         super().__init__()
         self._config = {"api_key": api_key, "base_url": base_url, "space": space}
         self._client = client
@@ -44,8 +69,30 @@ class VincContextMiddleware(AgentMiddleware):
         self.cache_seconds = cache_seconds
         self.prefetch_role = prefetch_role
         self.prefetch_max_chars = prefetch_max_chars
+        self.tool_calls_per_run = tool_calls_per_run
         self._cache: dict[tuple, tuple[float, str | None]] = {}
         self._cache_generation = 0
+
+    # 상한은 그래프 상태에서 센다(이 호출이 이번 런의 몇 번째 vinc 호출인가). 인스턴스 카운터가
+    # 아니라서 같은 에이전트로 동시에 도는 런끼리 상한을 나눠 쓰지 않고, 병렬 호출에서도 모델이
+    # 적은 순서대로 결정된다. Agent Framework 쪽은 런마다 새 ToolCallCap 을 가진 도구를 만든다.
+    # 인자 검증 전에 세므로 잘못된 인자의 호출도 한 번으로 친다(Agent Framework 는 스키마 검증
+    # 뒤에 세어 그 호출은 세지 않는다).
+    def _capped(self, request: Any) -> ToolMessage | None:
+        limit, call = self.tool_calls_per_run, request.tool_call
+        if limit is None or call.get("name") not in VINC_TOOL_NAMES or not call.get("id"):
+            return None
+        messages = (getattr(request, "state", None) or {}).get("messages")
+        if call["id"] in vinc_tool_call_ids(messages)[limit:]:
+            return ToolMessage(content=cap_message(limit), name=call["name"],
+                               tool_call_id=call["id"])
+        return None
+
+    def wrap_tool_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
+        return self._capped(request) or handler(request)
+
+    async def awrap_tool_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
+        return self._capped(request) or await handler(request)
 
     # 클라이언트는 쓰는 쪽(동기·비동기)만 만든다 — 둘 다 만들면 연결 풀이 두 벌 생긴다.
     @property
@@ -138,8 +185,9 @@ class PackageProvider(VincContextMiddleware):
                  async_client: AsyncVincClient | None = None, api_key: str | None = None,
                  base_url: str | None = None,
                  max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> None:
+        # 패키지 읽기에는 vinc 도구가 없으므로 상한을 끈다.
         super().__init__(client, async_client, api_key=api_key, base_url=base_url,
-                         space=package_space(space), max_chars=max_chars)
+                         space=package_space(space), max_chars=max_chars, tool_calls_per_run=None)
         self.package_id = package_id
 
     def wrap_model_call(self, request: ModelRequest, handler: Callable[[ModelRequest], Any]) -> Any:

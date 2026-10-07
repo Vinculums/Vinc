@@ -36,7 +36,7 @@ Before each run the provider looks up the newest user message in Vinc and, when 
 vinc = VincContextProvider(expose_tools=True)
 ```
 
-adds two read-only tools, `vinc_brief` and `vinc_search`. You can also build them yourself with `create_vinc_tools(client)`.
+adds two read-only tools, `vinc_brief` and `vinc_search`, and lets the model call them at most 4 times per run (`tool_calls_per_run`); the fifth call gets a sentence saying the cap is reached instead of a Vinc call. The tools are built per run, so concurrent runs do not share the count. You can also build them yourself with `create_vinc_tools(client)`; those count only against a `ToolCallCap` you pass, for the life of that cap. `vinc-langgraph` applies the same cap and sentence.
 
 ## Writing, on purpose
 

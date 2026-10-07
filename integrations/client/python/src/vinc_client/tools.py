@@ -36,3 +36,39 @@ class SearchArgs(BaseModel):
     query: str = Field(description="What to look for.")
     limit: int = Field(default=SEARCH_LIMIT_DEFAULT, ge=1, le=20,
                        description="How many matches of each kind.")
+
+
+# 한 런에서 두 읽기 도구를 합쳐 부를 수 있는 횟수. 두 패키지가 같은 수와 같은 문장을 쓴다.
+# 근거: [[decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07]]
+TOOL_CALLS_PER_RUN = 4
+VINC_TOOL_NAMES = (BRIEF_NAME, SEARCH_NAME)
+CAP_MESSAGE = "Vinc tool call cap reached ({limit} per run); answer from what you already have."
+
+
+def cap_message(limit: int | None) -> str:
+    return CAP_MESSAGE.format(limit=limit)
+
+
+class ToolCallCap:
+    """Counts ``vinc_brief``/``vinc_search`` calls for ONE run; past ``limit`` the tool
+    answers with :attr:`message` instead of calling Vinc. ``limit=None`` never caps.
+
+    Make a new one per run. Agent Framework builds its tools around a fresh cap in
+    ``before_run``; LangGraph does not use this class and counts the run's tool calls
+    from graph state instead, so concurrent runs never share a counter.
+    """
+
+    def __init__(self, limit: int | None = TOOL_CALLS_PER_RUN) -> None:
+        self.limit = limit
+        self.used = 0
+
+    def spend(self) -> bool:
+        """Count one call. ``False`` means the cap is spent and the call must not run."""
+        if self.limit is not None and self.used >= self.limit:
+            return False
+        self.used += 1
+        return True
+
+    @property
+    def message(self) -> str:
+        return cap_message(self.limit)
