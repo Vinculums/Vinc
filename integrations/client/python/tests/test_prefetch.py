@@ -145,3 +145,10 @@ def test_oversized_prefetch_fails_without_silent_role_truncation():
     with pytest.raises(VincInvalidArgument, match="prefetch_budget_exceeded"):
         VincClient("vinc_ro_" + "a" * 32, transport=httpx.MockTransport(handler)).prefetch(
             "concept:agent-reviewer", "Review.", max_chars=100)
+
+
+def test_cite_line_asks_every_answer_to_end_with_a_sources_line():
+    # VIN-314: 거절과 고정 형식 답도 마지막 줄 하나에 인용을 싣는다.
+    assert "cite as" in CITE_LINE
+    assert "including refusals and fixed-format outputs" in CITE_LINE
+    assert '"Sources: [id] [id]"' in CITE_LINE and '"Sources: none"' in CITE_LINE
