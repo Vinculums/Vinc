@@ -70,7 +70,7 @@ class _FakeStore:
         self.reader_open += 1
         return _FakeReader(self)
 
-    def node_vector_search(self, embedding, top_k, *, owner=None):
+    def node_vector_search(self, embedding, top_k, *, owner=None, use_index=False):
         if not self._index_works:
             return []            # 인덱스가 없을 때 엔진이 하는 그대로(예외 아님)
         return [{"id": m["node_id"]} for m in self.mirror
@@ -134,8 +134,8 @@ class _FakeReader:
     def run(self, query, params=None):
         return self._b.run(query, params)
 
-    def node_vector_search(self, embedding, top_k, *, owner=None):
-        return self._b.node_vector_search(embedding, top_k, owner=owner)
+    def node_vector_search(self, embedding, top_k, *, owner=None, use_index=False):
+        return self._b.node_vector_search(embedding, top_k, owner=owner, use_index=use_index)
 
     def close(self):
         self.closed = True

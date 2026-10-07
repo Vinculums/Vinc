@@ -200,10 +200,23 @@ class MirrorStore(unittest.TestCase):
         self.assertEqual(hits[0]["kind"], "concept")
 
     def test_a_missing_index_is_an_empty_list_not_a_crash(self):
-        """이 팔은 증강이다. 없다고 검색이 죽으면 안 된다(그래프 팔과 같은 태도)."""
+        """이 팔은 증강이다. 없다고 검색이 죽으면 안 된다(그래프 팔과 같은 태도).
+        색인 경로는 큰 미러에서만 탄다 — 문턱을 0 으로 내려 그 경로를 본다."""
+        from store import embedded_backend as eb
         self.store.drop_node_vector_index()
-        self.assertEqual(self.store.node_vector_search(_vec(1, 0), 5,
-                                                       owner=self.OWNER), [])
+        real = eb._NODE_VEC_EXACT_MAX_ROWS
+        eb._NODE_VEC_EXACT_MAX_ROWS = 0
+        try:
+            self.assertEqual(self.store.node_vector_search(_vec(1, 0), 5,
+                                                           owner=self.OWNER), [])
+        finally:
+            eb._NODE_VEC_EXACT_MAX_ROWS = real
+
+    def test_a_small_mirror_answers_without_its_index(self):
+        """작은 미러는 정확 스캔이라 색인이 없어도 답한다. 소유자 범위는 그대로다."""
+        self.store.drop_node_vector_index()
+        hits = self.store.node_vector_search(_vec(1, 0), 5, owner=self.OWNER)
+        self.assertEqual([h["id"] for h in hits], ["concept:mine"])
 
     def test_the_label_is_the_title_not_the_search_surface(self):
         """미러의 `text` 에는 한줄설명이 붙는다. 그것이 라벨 자리로 새면 후보 목록에

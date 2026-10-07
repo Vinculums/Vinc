@@ -16,6 +16,7 @@ PHASES = frozenset({"reader", "reader_close", "query", "embed", "keyword",
                     "db_compile", "db_native_exec",
                     "db_fetch", "db_decode", "vector_index", "vector_fallback",
                     "node_vector_load", "node_vector_index", "node_vector_fallback",
+                    "node_vector_exact",
                     "node_vector_load_error", "node_vector_query_error"})
 _current = contextvars.ContextVar("vinc_request_timing", default=None)
 

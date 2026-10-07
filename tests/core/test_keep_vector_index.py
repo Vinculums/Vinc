@@ -102,7 +102,9 @@ class KeepIndexTests(unittest.TestCase):
 
         rv = s.reader_view()
         try:
-            with mock.patch.object(eb, "_exec_to_dicts", spy):
+            # 노드 쪽은 작은 미러면 색인을 안 쓴다 — 색인 질의가 혼자 도는지를 보려면 HNSW 로 고정한다.
+            with mock.patch.object(eb, "_exec_to_dicts", spy), \
+                    mock.patch.object(eb, "_NODE_VEC_EXACT_MAX_ROWS", 0):
                 rv.vector_search([1.0, 0.0, 0.0, 0.0], 1)
                 rv.node_vector_search([1.0, 0.0, 0.0, 0.0], 1, owner="o")
         finally:
