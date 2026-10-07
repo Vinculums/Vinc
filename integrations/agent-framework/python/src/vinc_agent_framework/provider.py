@@ -10,8 +10,8 @@ from typing import Annotated, Any, Iterable, Sequence
 
 from agent_framework import AgentSession, ContextProvider, FunctionTool, SessionContext, tool
 from pydantic import Field
-from vinc_client import (AsyncVincClient, VincQuotaExceeded, VincUnavailable, format_brief,
-                         format_search)
+from vinc_client import (AsyncVincClient, VincNotFound, VincQuotaExceeded, VincUnavailable,
+                         format_brief, format_search)
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS, package_space
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
@@ -31,9 +31,13 @@ def create_vinc_tools(client: AsyncVincClient, *,
                       max_chars: int = DEFAULT_MAX_CHARS) -> list[FunctionTool]:
     """Two read-only tools the model may call: ``vinc_brief`` and ``vinc_search``.
 
-    Nothing here can write. When Vinc is unavailable or the quota is spent the
-    tool answers with a sentence saying so instead of failing the run.
+    Nothing here can write. When Vinc is unavailable, the quota is spent or
+    the id does not exist, the tool answers with a sentence saying so instead
+    of failing the run.
     """
+    # 없는 id(코드 not_found)는 프레임워크 기본 오류("Error: Function failed.") 대신 이유를 담은
+    # 문장으로 돌린다. space_not_found 같은 설정 오류는 그대로 올린다. LangGraph 쪽과 같은 문장이다.
+    # 근거: [[record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07]]
 
     @tool(name="vinc_brief",
           description="Look up one node in the user's Vinc knowledge graph: a decision, record "
@@ -47,6 +51,10 @@ def create_vinc_tools(client: AsyncVincClient, *,
                     or "Vinc has no single node for that; try vinc_search.")
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return f"Vinc is not available right now ({exc.code}); answer without it."
+        except VincNotFound as exc:
+            if exc.code != "not_found":
+                raise
+            return f"Vinc found nothing for that ({exc.code}); try a different query."
 
     @tool(name="vinc_search",
           description="Search the user's Vinc knowledge graph by text and meaning; returns "

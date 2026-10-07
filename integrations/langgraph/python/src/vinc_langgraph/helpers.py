@@ -10,8 +10,8 @@ from typing import Any, Iterable, Sequence
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
-from vinc_client import (AsyncVincClient, VincClient, VincQuotaExceeded, VincUnavailable,
-                         format_brief, format_search)
+from vinc_client import (AsyncVincClient, VincClient, VincNotFound, VincQuotaExceeded,
+                         VincUnavailable, format_brief, format_search)
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
@@ -98,6 +98,10 @@ class _SearchArgs(BaseModel):
 
 
 _DOWN = "Vinc is not available right now ({code}); answer without it."
+# 없는 id(코드 not_found)만 도구 결과로 돌려 실행을 끝내지 않는다. space_not_found 같은 설정
+# 오류는 그대로 올린다. Agent Framework 쪽과 같은 문장이다.
+# 근거: [[record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07]]
+_MISSING = "Vinc found nothing for that ({code}); try a different query."
 
 
 def create_vinc_tools(client: VincClient | None = None,
@@ -117,6 +121,10 @@ def create_vinc_tools(client: VincClient | None = None,
                     or "Vinc has no single node for that; try vinc_search.")
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return _DOWN.format(code=exc.code)
+        except VincNotFound as exc:
+            if exc.code != "not_found":
+                raise
+            return _MISSING.format(code=exc.code)
 
     async def abrief(query: str) -> str:
         try:
@@ -124,6 +132,10 @@ def create_vinc_tools(client: VincClient | None = None,
                     or "Vinc has no single node for that; try vinc_search.")
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return _DOWN.format(code=exc.code)
+        except VincNotFound as exc:
+            if exc.code != "not_found":
+                raise
+            return _MISSING.format(code=exc.code)
 
     def search(query: str, limit: int = 5) -> str:
         try:
