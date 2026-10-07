@@ -1060,6 +1060,8 @@ class EmbeddedBackend:
         #: 전문 색인이 `Chunk.lex` 위에 섰는가(`LEX_INDEX_KEY` 표지). None = 아직 안 읽었다.
         #: 참이 되면 내려가지 않는다(표지를 지우는 경로가 없다). 리더 뷰도 이 값을 쓴다.
         self._lex_ready: bool | None = None
+        #: WAL 재생 뒤 FTS 재구축이 끝나기 전에는 낡은 색인을 검색하지 않는다.
+        self._fts_recovery_path: str | None = None
 
     @classmethod
     def open(cls, cfg: StoreConfig) -> "EmbeddedBackend | None":
@@ -1077,6 +1079,23 @@ class EmbeddedBackend:
             wal_note = _volatile_wal_note(data_dir)
         kwargs = _driver_kwargs(cfg)
         try:
+            recovery = data_dir + ".fts-replay-pending"
+            try:
+                replay = os.path.getsize(data_dir + ".wal") > 0
+            except FileNotFoundError:
+                replay = False
+            if replay:
+                # 열기가 WAL을 체크포인트해도 미완료 수리 표식은 다음 기동까지 남는다.
+                # 근거: [[vinc.ops.index-remnant-heal]]
+                with open(recovery, "a", encoding="utf-8") as marker:
+                    marker.flush()
+                    os.fsync(marker.fileno())
+                if os.name != "nt":
+                    fd = os.open(os.path.dirname(os.path.abspath(recovery)), os.O_RDONLY)
+                    try:
+                        os.fsync(fd)
+                    finally:
+                        os.close(fd)
             db = drv.Database(data_dir, **kwargs)
             family = weakref.WeakSet()
             conn = _open_connection(drv, db, family)
@@ -1109,6 +1128,7 @@ class EmbeddedBackend:
             print(f"[embedded_backend] ⚠ {wal_note}", file=sys.stderr, flush=True)
         backend = cls(db, conn, name, cfg)
         backend._conns = family
+        backend._fts_recovery_path = recovery if os.path.exists(recovery) else None
         return backend
 
     @contextmanager
@@ -1765,6 +1785,15 @@ class EmbeddedBackend:
             # 방금 만들었든 이미 있었든(`already exists` 흡수) 결과는 같다 — 인덱스는
             # 존재한다. 드롭 접기 플래그를 내려 다음 쓰기가 제대로 한 번 드롭하게 한다.
             self._vec_index_dropped = False
+        if table == "Chunk" and self._fts_recovery_path:
+            # 카탈로그의 '이미 있음'은 WAL 재생된 행이 FTS에 들어 있다는 보장이 아니다.
+            # 새 색인은 현재 행에서 만들었으므로 기존 색인만 다시 만든다.
+            if not built:
+                self.rebuild_fts_index()
+            self._conn.execute("CHECKPOINT")
+            os.unlink(self._fts_recovery_path)
+            self._fts_recovery_path = None
+            built = True
         return built
 
     @property
@@ -2144,6 +2173,8 @@ class EmbeddedBackend:
         """BM25 키워드 팔. 색인이 `lex` 위면(표지) 질의도 같은 함수로 바꾸고, 행마다 `lex` 를
         함께 돌려준다 — 융합 앞의 관문이 질의를 얼마나 덮는지 그 열로 잰다(재분석 없이).
         `lex` 는 응답에 나가지 않는다: 소비자(`vinc_rag.retrieval._chunk_arms`)가 뗀다."""
+        if self._fts_recovery_path:
+            raise RuntimeError("FTS recovery is incomplete; rebuild the replayed index before searching")
         c = conn or self._conn
         self._load_ext("fts", reader=conn is not None)
         k = int(top_k) * (self._OVERSAMPLE if filters else 1)
@@ -2307,6 +2338,8 @@ class EmbeddedBackend:
         상태가 이어지면 스냅샷이 멈추므로 `/health` 의 스냅샷 상태를 볼 것."""
         import os
         import shutil
+        if self._fts_recovery_path:
+            raise RuntimeError("FTS recovery is incomplete; not copying a snapshot without its repair marker")
         try:
             self._checkpoint_alone()
         except Exception as exc:     # noqa: BLE001 — 방언 미지원·가드 시간 초과
