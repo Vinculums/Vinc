@@ -146,3 +146,18 @@ def test_budget_accounts_for_variable_fence_length():
     result = {"node_hits": [{"id": "concept:x", "title": "`" * 150}]}
     block = format_search(result, max_chars=600)
     assert block is None or len(block) <= 600
+
+
+def test_context_block_and_prefetch_head_share_the_sources_line():
+    # VIN-318: 두 모드가 같은 마지막 줄 문법을 같은 바이트로 지시하고, 예산 안에 든다.
+    # 근거: [[decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07]]
+    from vinc_client import SOURCES_LINE, format_context
+    from vinc_client.prefetch import CITE_LINE
+    block = format_context(RESOLVED, max_chars=1200)
+    assert block.startswith(SOURCES_LINE + "\n" + BOUNDARY) and len(block) <= 1200
+    assert CITE_LINE.endswith(SOURCES_LINE)
+    assert '"Sources: [id] [id]"' in SOURCES_LINE and '"Sources: none"' in SOURCES_LINE
+    assert "role contract" in SOURCES_LINE
+    assert format_context({"status": "none"}) is None
+    # 도구 결과(format_brief)에는 싣지 않는다. 지시는 턴마다 블록 머리 한 번이다.
+    assert SOURCES_LINE not in format_brief(RESOLVED)

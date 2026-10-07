@@ -301,3 +301,20 @@ def test_same_tool_call_cap_and_sentence_in_both_frameworks():
     assert lg_results[:4] == ma_results[:4] and all("concept:rule" in r for r in lg_results[:4])
     assert lg_results[4] == ma_results[4] == cap_message(4)
     assert cap_message(4) == "Vinc tool call cap reached (4 per run); answer from what you already have."
+
+
+def test_same_sources_line_in_context_mode_in_both_frameworks():
+    # context 모드(prefetch 없음)도 두 패키지가 같은 블록을 넣고, 그 머리가 SOURCES_LINE 이다.
+    from agent_framework import SessionContext
+    from vinc_agent_framework import VincContextProvider
+    from vinc_client import SOURCES_LINE
+    from vinc_langgraph import get_vinc_context
+    with VincClient(KEY, transport=httpx.MockTransport(lambda r: response(r, []))) as client:
+        lg_block = get_vinc_context(client, "Review evidence.")
+    async def run():
+        async with AsyncVincClient(KEY, transport=httpx.MockTransport(lambda r: response(r, []))) as client:
+            ctx = SessionContext(input_messages=[Message("user", ["Review evidence."])])
+            await VincContextProvider(client).before_run(agent=None, session=None, context=ctx, state={})
+            return ctx.instructions[0]
+    ma_block = asyncio.run(run())
+    assert lg_block == ma_block and lg_block.startswith(SOURCES_LINE + "\n")

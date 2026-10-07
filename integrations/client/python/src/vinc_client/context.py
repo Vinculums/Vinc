@@ -20,6 +20,17 @@ BOUNDARY = (
     "for example [decision:some-slug]."
 )
 
+# 모든 답의 마지막 줄 문법. prefetch 와 context 두 모드가 같은 바이트를 블록 머리에 싣는다.
+# 읽는 쪽은 output_gate.sources_line.
+# 근거: [[decision:vin314-every-agent-answer-ends-with-a-sources-line-2026-10-07]],
+# [[decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07]]
+SOURCES_LINE = (
+    "End every answer, including refusals and fixed-format outputs, with one final line "
+    "\"Sources: [id] [id]\" that names, in square brackets, the node ids you relied on. "
+    "A refusal that rests on a role contract or a document names that id too; only an answer "
+    "that relied on nothing from the graph ends with \"Sources: none\"."
+)
+
 DEFAULT_MAX_CHARS = 4000
 _TRUNCATED = "(truncated to fit the context budget)"
 STATE_KEYS = ("validity", "validity_note", "valid_from", "valid_until", "superseded_by",
@@ -191,3 +202,10 @@ def format_answer(brief: dict[str, Any], search: dict[str, Any] | None = None, *
     """
     seen = frozenset(str(c.get("id")) for c in brief.get("candidates") or [])
     return _wrap(_brief_lines(brief) + _search_lines(search, limit, seen), max_chars)
+
+
+def format_context(brief: dict[str, Any], search: dict[str, Any] | None = None, *,
+                   max_chars: int = DEFAULT_MAX_CHARS, limit: int = 5) -> str | None:
+    """The context-mode block: :data:`SOURCES_LINE`, then :func:`format_answer`, within ``max_chars``."""
+    block = format_answer(brief, search, max_chars=max_chars - len(SOURCES_LINE) - 1, limit=limit)
+    return f"{SOURCES_LINE}\n{block}" if block else None
