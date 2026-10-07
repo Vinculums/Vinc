@@ -679,6 +679,7 @@
     "record:unguarded-title-overwrote-107-nodes-with-their-ids",
     "record:validity-state-compares-a-local-dated-claim-against-a-utc-clock-2026-09-14",
     "record:view-3d-instancing-frame-cost-measured-2026-09-18",
+    "record:vin314-live-exp01-rerun-prefetch-cites-a-node-in-1-of-6-2026-10-07",
     "record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07",
     "record:vinc-tests-need-a-clean-interpreter-on-windows",
     "record:weighted-path-is-computed-in-python-not-by-the-engine",

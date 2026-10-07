@@ -11,6 +11,10 @@ from .errors import VincInvalidArgument
 DEFAULT_PREFETCH_MAX_CHARS = 24000
 PREFETCH_READ_CONCURRENCY = 8
 TASK_EVIDENCE_MAX_CHARS = 6000
+# 블록 머리의 인용 지시. 모델은 문서 키를 인용할 수 없으므로 필수 문서마다 미러 노드 id 를 준다.
+# 근거: [[record:vin314-live-exp01-rerun-prefetch-cites-a-node-in-1-of-6-2026-10-07]]
+CITE_LINE = ("Each required reading below names its citable id after \"cite as\"; "
+             "when you rely on one, cite that id in square brackets.")
 
 
 def reading_list(contract: dict[str, Any]) -> list[str]:
@@ -30,6 +34,11 @@ def document_key(read: str) -> str:
     return read.removeprefix("concept:doc.")
 
 
+def cite_id(read: str) -> str:
+    """The citable mirror node of a required document (``concept:doc.<key>``)."""
+    return "concept:doc." + document_key(read)
+
+
 def required_reading(doc_id: str, result: dict[str, Any]) -> str:
     """Require a complete, verified canonical document; excerpts cannot satisfy a read."""
     text = result.get("text")
@@ -41,7 +50,8 @@ def required_reading(doc_id: str, result: dict[str, Any]) -> str:
                                   "A required role reading is missing, incomplete or unverified.")
     data = {k: result[k] for k in ("doc_id", "title", "content_hash", "updated_at",
                                   "content_time", "verified", "text") if k in result}
-    return f"Required reading (full canonical document): {doc_id}\n{BOUNDARY}\n\n" + fence(
+    return (f"Required reading (full canonical document): {doc_id} (cite as {cite_id(doc_id)})"
+            f"\n{BOUNDARY}\n\n") + fence(
         json.dumps(data, ensure_ascii=False, indent=2))
 
 
@@ -57,10 +67,11 @@ def check_budget(size: int, max_chars: int) -> None:
 
 
 def role_context(contract: dict[str, Any]) -> str:
-    """Fence the complete role contract without budgeting a partial reading list."""
+    """Head of the prefetch block: the cite line, then the complete fenced role contract."""
     role = {k: contract[k] for k in ("id", "title", "domain", "props", "works_with")
             if k in contract}
-    return f"{BOUNDARY}\n\n{fence(json.dumps(role, ensure_ascii=False, indent=2))}"
+    # 인용 지시는 여기(블록 머리)에 둔다. required_size 가 이 함수 길이로 시작하므로 예산에 함께 잡힌다.
+    return f"{CITE_LINE}\n{BOUNDARY}\n\n{fence(json.dumps(role, ensure_ascii=False, indent=2))}"
 
 
 def render_prefetch(contract: dict[str, Any], task: str, specs: list[tuple[str, dict]],
