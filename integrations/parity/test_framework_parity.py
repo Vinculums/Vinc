@@ -181,6 +181,8 @@ def test_same_selected_role_prefetch_bytes_calls_and_budget(task):
         assert sorted(sync_seen[:4], key=repr) == sorted(ma_seen[:4], key=repr) == sorted(lg_seen, key=repr)
         assert len(lg_seen) == 4 and all(row[2]["space"] == SPACE for row in lg_seen)
         assert all(cite in lg_block for cite in (ROLE, "concept:rule", "chunk:rule", "record:rule"))
+        # 두 어댑터 모두 vinc-client 의 블록을 그대로 쓴다: 필수 문서의 인용 id 가 함께 간다.
+        assert "(cite as concept:doc.vinc.spec.fixture)" in lg_block
         assert len(lg_block) <= 24000
     asyncio.run(run())
 

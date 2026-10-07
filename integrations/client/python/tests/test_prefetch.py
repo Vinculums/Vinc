@@ -7,6 +7,7 @@ import hashlib
 import httpx
 import pytest
 from vinc_client import AsyncVincClient, VincClient, VincInvalidArgument, VincNotFound
+from vinc_client.prefetch import CITE_LINE
 
 
 @pytest.mark.parametrize("async_mode", [False, True])
@@ -44,6 +45,10 @@ def test_prefetch_reads_role_specs_and_task_evidence_without_writes_or_cache(asy
         assert all(n in block for n in ("concept:agent-reviewer", "vinc.spec.fixture",
                                         "decision:fixture", "record:lesson", "DATA",
                                         "MANDATORY TAIL RULE"))
+        # 블록 머리의 인용 지시와, 필수 문서 헤더의 문서 키 + 인용 가능한 미러 id.
+        assert block.startswith(CITE_LINE + "\n")
+        assert ("Required reading (full canonical document): vinc.spec.fixture "
+                "(cite as concept:doc.vinc.spec.fixture)\n") in block
     assert len(seen) == 8
     assert all(r.method == "GET" or r.url.path.endswith(("brief", "search")) for r in seen)
 
