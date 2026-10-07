@@ -9,7 +9,7 @@ from agent_framework import Agent, BaseChatClient, ChatResponse, Message
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
-from vinc_client import AsyncVincClient, VincClient, VincInvalidArgument
+from vinc_client import AsyncVincClient, VincClient, VincInvalidArgument, VincNotFound
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_agent_framework import create_vinc_tools as maf_tools, prefetch as maf_prefetch
 from vinc_agent_framework import run_review as maf_review
@@ -76,20 +76,45 @@ def test_same_read_tools_defaults_caps_context_and_citations():
     asyncio.run(run())
 
 
-def test_missing_id_is_the_same_tool_result_in_both_and_the_run_continues():
-    # 없는 id 는 두 패키지에서 같은 도구 결과가 되고, 다음 호출이 그대로 돈다.
-    # 근거: [[record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07]]
+def _brief_404(code):
     def handle(req):
         if req.url.path.endswith("brief") and json.loads(req.content)["query"] == "decision:missing":
-            return httpx.Response(404, json={"error": {"code": "not_found", "message": "no node"}})
+            return httpx.Response(404, json={"error": {"code": code, "message": "missing"}})
         return response(req, [])
+    return handle
+
+
+def test_missing_id_is_the_same_tool_result_in_both_and_the_run_continues():
+    # 없는 id 는 두 패키지(LangGraph 는 동기·비동기 둘 다)에서 같은 도구 결과가 되고, 다음 호출이 그대로 돈다.
+    # 근거: [[record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07]]
+    expected = "Vinc found nothing for that (not_found); try a different query."
+    handle = _brief_404("not_found")
+    with VincClient(KEY, transport=httpx.MockTransport(handle)) as sync_client:
+        lg_sync = lg_tools(client=sync_client)[0]
+        assert lg_sync.invoke({"query": "decision:missing"}) == expected
+        sync_next = lg_sync.invoke({"query": "Review"})
     async def run():
         async with AsyncVincClient(KEY, transport=httpx.MockTransport(handle)) as client:
             ma, lg = maf_tools(client)[0], lg_tools(async_client=client)[0]
             left = text(await ma.invoke(query="decision:missing"))
             right = await lg.ainvoke({"query": "decision:missing"})
-            assert left == right == "Vinc found nothing for that (not_found); try a different query."
-            assert text(await ma.invoke(query="Review")) == await lg.ainvoke({"query": "Review"})
+            assert left == right == expected
+            assert text(await ma.invoke(query="Review")) == await lg.ainvoke({"query": "Review"}) == sync_next
+    asyncio.run(run())
+
+
+def test_space_not_found_on_brief_raises_in_both():
+    # 404 라도 space_not_found 는 설정 오류다. 도구 결과로 삼키지 않고 두 패키지 모두 올린다.
+    handle = _brief_404("space_not_found")
+    with VincClient(KEY, transport=httpx.MockTransport(handle)) as sync_client:
+        with pytest.raises(VincNotFound, match="space_not_found"):
+            lg_tools(client=sync_client)[0].invoke({"query": "decision:missing"})
+    async def run():
+        async with AsyncVincClient(KEY, transport=httpx.MockTransport(handle)) as client:
+            for call in (lambda: maf_tools(client)[0].invoke(query="decision:missing"),
+                         lambda: lg_tools(async_client=client)[0].ainvoke({"query": "decision:missing"})):
+                with pytest.raises(VincNotFound, match="space_not_found"):
+                    await call()
     asyncio.run(run())
 
 

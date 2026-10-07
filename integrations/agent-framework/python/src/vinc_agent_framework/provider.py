@@ -32,11 +32,11 @@ def create_vinc_tools(client: AsyncVincClient, *,
     """Two read-only tools the model may call: ``vinc_brief`` and ``vinc_search``.
 
     Nothing here can write. When Vinc is unavailable, the quota is spent or
-    nothing matches, the tool answers with a sentence saying so instead of
-    failing the run.
+    the id does not exist, the tool answers with a sentence saying so instead
+    of failing the run.
     """
-    # 없는 id 는 프레임워크 기본 오류("Error: Function failed.") 대신 이유를 담은 문장으로
-    # 돌린다. LangGraph 쪽과 같은 문장이다.
+    # 없는 id(코드 not_found)는 프레임워크 기본 오류("Error: Function failed.") 대신 이유를 담은
+    # 문장으로 돌린다. space_not_found 같은 설정 오류는 그대로 올린다. LangGraph 쪽과 같은 문장이다.
     # 근거: [[record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07]]
 
     @tool(name="vinc_brief",
@@ -52,6 +52,8 @@ def create_vinc_tools(client: AsyncVincClient, *,
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return f"Vinc is not available right now ({exc.code}); answer without it."
         except VincNotFound as exc:
+            if exc.code != "not_found":
+                raise
             return f"Vinc found nothing for that ({exc.code}); try a different query."
 
     @tool(name="vinc_search",
@@ -68,8 +70,6 @@ def create_vinc_tools(client: AsyncVincClient, *,
                     or "No matches in Vinc.")
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return f"Vinc is not available right now ({exc.code}); answer without it."
-        except VincNotFound as exc:
-            return f"Vinc found nothing for that ({exc.code}); try a different query."
 
     return [vinc_brief, vinc_search]
 

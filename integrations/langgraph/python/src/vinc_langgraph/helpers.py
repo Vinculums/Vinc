@@ -98,7 +98,8 @@ class _SearchArgs(BaseModel):
 
 
 _DOWN = "Vinc is not available right now ({code}); answer without it."
-# 없는 id 는 도구 결과로 돌려 실행을 끝내지 않는다. Agent Framework 쪽과 같은 문장이다.
+# 없는 id(코드 not_found)만 도구 결과로 돌려 실행을 끝내지 않는다. space_not_found 같은 설정
+# 오류는 그대로 올린다. Agent Framework 쪽과 같은 문장이다.
 # 근거: [[record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07]]
 _MISSING = "Vinc found nothing for that ({code}); try a different query."
 
@@ -121,6 +122,8 @@ def create_vinc_tools(client: VincClient | None = None,
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return _DOWN.format(code=exc.code)
         except VincNotFound as exc:
+            if exc.code != "not_found":
+                raise
             return _MISSING.format(code=exc.code)
 
     async def abrief(query: str) -> str:
@@ -130,6 +133,8 @@ def create_vinc_tools(client: VincClient | None = None,
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return _DOWN.format(code=exc.code)
         except VincNotFound as exc:
+            if exc.code != "not_found":
+                raise
             return _MISSING.format(code=exc.code)
 
     def search(query: str, limit: int = 5) -> str:
@@ -138,8 +143,6 @@ def create_vinc_tools(client: VincClient | None = None,
                                   max_chars=max_chars, limit=limit) or "No matches in Vinc.")
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return _DOWN.format(code=exc.code)
-        except VincNotFound as exc:
-            return _MISSING.format(code=exc.code)
 
     async def asearch(query: str, limit: int = 5) -> str:
         try:
@@ -147,8 +150,6 @@ def create_vinc_tools(client: VincClient | None = None,
                                   max_chars=max_chars, limit=limit) or "No matches in Vinc.")
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return _DOWN.format(code=exc.code)
-        except VincNotFound as exc:
-            return _MISSING.format(code=exc.code)
 
     return [
         StructuredTool.from_function(
