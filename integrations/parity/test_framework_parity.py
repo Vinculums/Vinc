@@ -9,6 +9,7 @@ from agent_framework import Agent, BaseChatClient, ChatResponse, Message
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.utils.function_calling import convert_to_openai_tool
 from vinc_client import AsyncVincClient, VincClient, VincInvalidArgument, VincNotFound
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_agent_framework import create_vinc_tools as maf_tools, prefetch as maf_prefetch
@@ -59,12 +60,14 @@ def test_same_read_tools_defaults_caps_context_and_citations():
                 ma, lg = maf_tools(ma_client), lg_tools(async_client=lg_client)
                 assert [tool.name for tool in ma] == [tool.name for tool in lg] == [
                     "vinc_brief", "vinc_search"]
-                ma_schema = ma[1].to_json_schema_spec()["function"]["parameters"]["properties"]
-                lg_schema = lg[1].args_schema.model_json_schema()["properties"]
-                for key in ("default", "minimum", "maximum", "type"):
-                    assert ma_schema["limit"][key] == lg_schema["limit"][key]
-                assert ma_schema["limit"]["default"] == 5
-                assert ma_schema["limit"]["maximum"] == 20
+                # 모델이 받는 스키마 전체(이름·설명·인자)가 같아야 한다. title 은 어느 쪽에도 없다.
+                # 근거: [[record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07]]
+                ma_specs = [tool.to_json_schema_spec()["function"] for tool in ma]
+                lg_specs = [convert_to_openai_tool(tool)["function"] for tool in lg]
+                assert ma_specs == lg_specs
+                assert '"title"' not in json.dumps(ma_specs)
+                limit = ma_specs[1]["parameters"]["properties"]["limit"]
+                assert (limit["default"], limit["minimum"], limit["maximum"]) == (5, 1, 20)
                 for index in (0, 1):
                     left = text(await ma[index].invoke(query="Review evidence."))
                     right = await lg[index].ainvoke({"query": "Review evidence."})
