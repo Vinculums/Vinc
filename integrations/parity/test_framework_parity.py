@@ -132,7 +132,8 @@ def test_same_selected_role_prefetch_bytes_calls_and_budget(task):
                 lambda r: response(r, lg_seen))) as client:
             lg_block = await lg_aprefetch(client, ROLE, task, space=SPACE)
         assert sync_block.encode() == ma_block.encode() == lg_block.encode()
-        assert sync_seen[:4] == ma_seen[:4] == lg_seen
+        # client 0.1.4: 선택 읽기가 역할 읽기와 겹치므로 도착 순서는 계약이 아니다. 요청 집합을 대조한다.
+        assert sorted(sync_seen[:4], key=repr) == sorted(ma_seen[:4], key=repr) == sorted(lg_seen, key=repr)
         assert len(lg_seen) == 4 and all(row[2]["space"] == SPACE for row in lg_seen)
         assert all(cite in lg_block for cite in (ROLE, "concept:rule", "chunk:rule", "record:rule"))
         assert len(lg_block) <= 24000
