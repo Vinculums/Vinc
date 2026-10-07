@@ -14,7 +14,7 @@ TASK_EVIDENCE_MAX_CHARS = 6000
 # 블록 머리의 인용 지시. 모델은 문서 키를 인용할 수 없으므로 필수 문서마다 미러 노드 id 를 준다.
 # 근거: [[record:vin314-live-exp01-rerun-prefetch-cites-a-node-in-1-of-6-2026-10-07]]
 CITE_LINE = ("Each required reading below names its citable id after \"cite as\"; "
-             "when you rely on one, cite that id in square brackets.")
+             "cite that id, not the document key.")
 
 
 def reading_list(contract: dict[str, Any]) -> list[str]:
@@ -36,6 +36,8 @@ def document_key(read: str) -> str:
 
 def cite_id(read: str) -> str:
     """The citable mirror node of a required document (``concept:doc.<key>``)."""
+    # ponytail: 미러 존재 확인이 없다(문서 응답에 미러 id 가 없고 확인은 문서마다 요청 하나다).
+    # 실모델 재실행이 없는 미러를 인용하면 GET /v1/nodes/{id} 확인으로 올린다.
     return "concept:doc." + document_key(read)
 
 
