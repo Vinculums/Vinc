@@ -36,6 +36,9 @@ def test_live_roster_sizes_allow_one_budget_correction(role, async_mode):
                 "title": role["label"], "domain": role["domain"], "props": role["props"]})
         if request.url.path.startswith("/v1/documents/"):
             return httpx.Response(200, json=documents[request.url.path.rsplit("/", 1)[-1]])
+        if request.url.path.startswith("/v1/nodes/"):
+            return httpx.Response(200, json={"executed": True, "found": True,
+                "node": {"id": request.url.path.rsplit("/", 1)[-1]}})
         if request.url.path.endswith("brief"):
             return httpx.Response(200, json={"status": "resolved", "node": {
                 "id": "decision:task-evidence", "cite_id": "decision:task-evidence"}})
@@ -56,7 +59,7 @@ def test_live_roster_sizes_allow_one_budget_correction(role, async_mode):
     assert error.details["max_chars"] == 24000
     assert f"required_size={size}" in error.message
     assert sum(path.startswith("/v1/documents/") for path in seen) == len(documents)
-    assert all(path.startswith(("/v1/roles/", "/v1/documents/", "/v1/brief", "/v1/search")) for path in seen)
+    assert all(path.startswith(("/v1/roles/", "/v1/documents/", "/v1/nodes/", "/v1/brief", "/v1/search")) for path in seen)
     assert sorted(p for p in seen if p in ("/v1/brief", "/v1/search")) in ([], ["/v1/brief", "/v1/search"])
 
     block = prefetch(max_chars=size)
@@ -85,6 +88,8 @@ def test_overflow_does_not_hide_a_later_missing_required_document(async_mode):
         if request.url.path.startswith("/v1/roles/"):
             return httpx.Response(200, json={"found": True, "id": "concept:agent-test",
                 "props": {"mission": "x" * 25000, "reads": ["large", "missing", "unread"]}})
+        if request.url.path.startswith("/v1/nodes/"):
+            return httpx.Response(200, json={"executed": True, "found": False, "node": None})
         if request.url.path.endswith("large"):
             return httpx.Response(200, json={"doc_id": "large", "executed": True,
                 "verified": True, "text": text, "content_hash": hashlib.sha256(text.encode()).hexdigest()})
@@ -96,5 +101,5 @@ def test_overflow_does_not_hide_a_later_missing_required_document(async_mode):
         value = client.prefetch("concept:agent-test", "Review.")
         if async_mode:
             asyncio.run(value)
-    assert len(seen) == 3
+    assert len(seen) == 4
     assert seen[-1] == "/v1/documents/missing"

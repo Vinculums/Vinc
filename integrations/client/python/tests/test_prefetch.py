@@ -25,6 +25,9 @@ def test_prefetch_reads_role_specs_and_task_evidence_without_writes_or_cache(asy
                 "verified": True, "text": text,
                 "content_hash": hashlib.sha256(text.encode()).hexdigest()})
         if request.method == "GET":
+            if request.url.path.startswith("/v1/nodes/"):
+                return httpx.Response(200, json={"executed": True, "found": True,
+                    "node": {"id": "concept:doc.vinc.spec.fixture"}})
             return httpx.Response(200, json=role)
         query = json.loads(request.content)["query"]
         if request.url.path.endswith("brief"):
@@ -49,7 +52,7 @@ def test_prefetch_reads_role_specs_and_task_evidence_without_writes_or_cache(asy
         assert block.startswith(CITE_LINE + "\n")
         assert ("Required reading (full canonical document): vinc.spec.fixture "
                 "(cite as concept:doc.vinc.spec.fixture)\n") in block
-    assert len(seen) == 8
+    assert len(seen) == 10
     assert all(r.method == "GET" or r.url.path.endswith(("brief", "search")) for r in seen)
 
 
@@ -113,6 +116,8 @@ def test_required_document_overflow_discards_optional_task_results(async_mode):
         if request.url.path.startswith("/v1/roles/"):
             return httpx.Response(200, json={"found": True, "id": "concept:agent-reviewer",
                 "props": {"reads": ["vinc.spec.large", "later-spec"]}})
+        if request.url.path.startswith("/v1/nodes/"):
+            return httpx.Response(200, json={"executed": True, "found": False, "node": None})
         return httpx.Response(200, json={"executed": True, "doc_id": request.url.path.rsplit("/", 1)[-1],
             "verified": True, "text": text, "content_hash": hashlib.sha256(text.encode()).hexdigest()})
     client = (AsyncVincClient if async_mode else VincClient)(
@@ -121,7 +126,7 @@ def test_required_document_overflow_discards_optional_task_results(async_mode):
         value = client.prefetch("concept:agent-reviewer", "Review.")
         if async_mode:
             asyncio.run(value)
-    assert sum(r.method == "GET" for r in seen) == 3
+    assert sum(r.url.path.startswith("/v1/documents/") for r in seen) == 2
     assert all(r.method == "GET" or r.url.path.endswith(("brief", "search")) for r in seen)
     assert sorted(r.url.path for r in seen if r.method != "GET") in ([], ["/v1/brief", "/v1/search"])
     assert caught.value.details["required_size"] > 2 * len(text)

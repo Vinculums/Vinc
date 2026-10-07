@@ -36,6 +36,8 @@ def test_sync_bounded_document_batches_and_task_pair_overlap():
         if request.url.path.startswith("/v1/roles/"):
             assert threading.get_ident() == owner_thread
             return role(17)
+        if request.url.path.startswith("/v1/nodes/"):
+            return httpx.Response(200, json={"executed": True, "found": False, "node": None})
         is_doc = request.url.path.startswith("/v1/documents/")
         with lock:
             active += 1
@@ -72,6 +74,8 @@ def test_async_bounded_document_batches_and_task_pair_overlap():
             nonlocal active, peak, completed
             if request.url.path.startswith("/v1/roles/"):
                 return role(17)
+            if request.url.path.startswith("/v1/nodes/"):
+                return httpx.Response(200, json={"executed": True, "found": False, "node": None})
             is_doc = request.url.path.startswith("/v1/documents/")
             active += 1
             peak = max(peak, active)
@@ -114,6 +118,8 @@ def test_failed_batch_stops_before_later_batches_and_raises_the_required_error(a
         seen.append(request.url.path)
         if request.url.path.startswith("/v1/roles/"):
             return role(17)
+        if request.url.path.startswith("/v1/nodes/"):
+            return httpx.Response(200, json={"executed": True, "found": False, "node": None})
         doc_id = request.url.path.rsplit("/", 1)[-1]
         if doc_id != "d00":
             return httpx.Response(200, json=document(doc_id))
@@ -138,7 +144,7 @@ def test_failed_batch_stops_before_later_batches_and_raises_the_required_error(a
             asyncio.run(value)
     assert caught.value.code == code
     assert 1 <= sum(p.startswith("/v1/documents/") for p in seen) <= 8
-    assert all(p.startswith(("/v1/roles/", "/v1/documents/", "/v1/brief", "/v1/search")) for p in seen)
+    assert all(p.startswith(("/v1/roles/", "/v1/documents/", "/v1/nodes/", "/v1/brief", "/v1/search")) for p in seen)
     assert sorted(p for p in seen if p in ("/v1/brief", "/v1/search")) in ([], ["/v1/brief", "/v1/search"])
     assert not any(p.endswith(f"d{i:02}") for p in seen for i in range(8, 17))
 
