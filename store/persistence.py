@@ -187,10 +187,10 @@ def restore_if_missing(live_path: str, snapshot_path: str | None = None) -> str:
 def restore_newest(live_path: str, snapshot_path: str | None = None) -> str:
     """기동 복원의 입구. 세대 모드가 꺼져 있으면 :func:`restore_if_missing` 그대로다.
 
-    켜져 있으면 스냅샷과 커밋 세대 중 **더 새롭고 검증되는 쪽**으로 복원한다: 스냅샷이
-    담은 번호(:data:`SEEN_SUFFIX`)보다 큰 세대가 검증되면 세대, 아니면 스냅샷이다. 깨진
-    세대는 건너뛰고 그 사실을 상태 뒤에 ``; skipped …`` 로 싣는다. 세대가 깨져 있는데
-    스냅샷도 없으면 ``error`` 다(데이터가 있었다는 증거가 있으므로 빈 기동은 안 된다).
+    켜져 있으면 스냅샷이 담은 번호(:data:`SEEN_SUFFIX`)보다 최신 커밋 세대를 검증한다.
+    그 세대가 깨졌으면 ``error`` 로 기동을 막는다. 이전 세대나 스냅샷으로 후퇴하면 이미
+    ACK 한 쓰기를 잃는다. 스냅샷이 최신 커밋까지 담았거나 커밋이 없을 때만 스냅샷을 쓴다.
+    근거: [[vinc.plan.vin82-durable-ack-2026-09-29]]
     작업본이 있으면 아무것도 안 한다(``present``) — 이 계약은 두 경로가 같다."""
     snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
     if not durable_ack_enabled(snapshot_path):
@@ -199,18 +199,12 @@ def restore_newest(live_path: str, snapshot_path: str | None = None) -> str:
         return "present"
     try:
         state = dg.restore(generations_root(snapshot_path), live_path,
-                           newer_than=_snapshot_seen(snapshot_path), skip_invalid=True)
+                           newer_than=_snapshot_seen(snapshot_path))
     except Exception as exc:                                   # noqa: BLE001
         return f"error: {type(exc).__name__}: {exc}"
-    head, _, skipped = state.partition("; ")
-    if head.startswith("restored:"):
+    if state.startswith("restored:"):
         return "restored-generation:" + state[len("restored:"):]
-    fallback = restore_if_missing(live_path, snapshot_path)
-    if not skipped:
-        return fallback
-    if fallback == "empty" or fallback.startswith("error"):
-        return f"error: no verified generation and no snapshot ({fallback}); {skipped}"
-    return f"{fallback}; {skipped}"
+    return restore_if_missing(live_path, snapshot_path)
 
 
 #: 스냅샷이 아직 없는 상태(첫 기동)를 **명시적으로 허용**하는 env. 켜지 않으면

@@ -216,14 +216,31 @@ class BootRestore(_Env):
         self.assertEqual(persistence.restore_newest(self.live), "restored")
         self.assertEqual(Path(self.live).read_bytes(), b"SNAPSHOT")
 
-    def test_a_broken_latest_generation_is_skipped_and_said(self):
+    def test_a_broken_latest_generation_cannot_roll_back_an_ack(self):
         self._generation(1, b"GEN-1")
         self._generation(2, b"GEN-2")
         Path(self.root, "generation-2", "db").write_bytes(b"CORRUPT")
         state = persistence.restore_newest(self.live)
-        self.assertTrue(state.startswith("restored-generation:1; skipped 1 invalid"), state)
-        self.assertIsNone(persistence.restore_state_is_fatal(state))
-        self.assertEqual(Path(self.live).read_bytes(), b"GEN-1")
+        self.assertTrue(state.startswith("error: GenerationError:"), state)
+        self.assertIsNotNone(persistence.restore_state_is_fatal(state))
+        self.assertFalse(Path(self.live).exists())
+
+    def test_an_older_snapshot_cannot_hide_a_broken_acknowledged_generation(self):
+        self._generation(1, b"GEN-1")
+        self._snapshot(b"SNAPSHOT")
+        self._generation(2, b"GEN-2")
+        Path(self.root, "generation-2", "db").write_bytes(b"CORRUPT")
+        state = persistence.restore_newest(self.live)
+        self.assertTrue(state.startswith("error: GenerationError:"), state)
+        self.assertIsNotNone(persistence.restore_state_is_fatal(state))
+        self.assertFalse(Path(self.live).exists())
+
+    def test_a_newer_snapshot_can_cover_a_broken_old_generation(self):
+        self._generation(1, b"GEN-1")
+        self._snapshot(b"SNAPSHOT")
+        Path(self.root, "generation-1", "db").write_bytes(b"CORRUPT")
+        self.assertEqual(persistence.restore_newest(self.live), "restored")
+        self.assertEqual(Path(self.live).read_bytes(), b"SNAPSHOT")
 
     def test_broken_generations_with_no_snapshot_stop_the_boot(self):
         self._generation(1, b"GEN-1")
