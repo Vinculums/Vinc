@@ -9,12 +9,13 @@ from typing import Any, Iterable, Sequence
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
-from pydantic import BaseModel, Field
 from vinc_client import (AsyncVincClient, VincClient, VincNotFound, VincQuotaExceeded,
                          VincUnavailable, format_brief, format_search)
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
+from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, SEARCH_DESCRIPTION,
+                               SEARCH_LIMIT_DEFAULT, SEARCH_NAME, BriefArgs, SearchArgs)
 
 
 def last_user_text(messages: str | Sequence[Any]) -> str:
@@ -88,15 +89,6 @@ async def aprefetch(client: AsyncVincClient, role_id: str, task: str, *, space: 
     return await client.prefetch(role_id, task, space=space, max_chars=max_chars)
 
 
-class _BriefArgs(BaseModel):
-    query: str = Field(description="A question, or an exact node id such as decision:some-slug.")
-
-
-class _SearchArgs(BaseModel):
-    query: str = Field(description="What to look for.")
-    limit: int = Field(default=5, ge=1, le=20, description="How many matches of each kind.")
-
-
 _DOWN = "Vinc is not available right now ({code}); answer without it."
 # 없는 id(코드 not_found)만 도구 결과로 돌려 실행을 끝내지 않는다. space_not_found 같은 설정
 # 오류는 그대로 올린다. Agent Framework 쪽과 같은 문장이다.
@@ -137,14 +129,14 @@ def create_vinc_tools(client: VincClient | None = None,
                 raise
             return _MISSING.format(code=exc.code)
 
-    def search(query: str, limit: int = 5) -> str:
+    def search(query: str, limit: int = SEARCH_LIMIT_DEFAULT) -> str:
         try:
             return (format_search(client.search(query, limit=limit),  # type: ignore[union-attr]
                                   max_chars=max_chars, limit=limit) or "No matches in Vinc.")
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return _DOWN.format(code=exc.code)
 
-    async def asearch(query: str, limit: int = 5) -> str:
+    async def asearch(query: str, limit: int = SEARCH_LIMIT_DEFAULT) -> str:
         try:
             return (format_search(await async_client.search(query, limit=limit),  # type: ignore[union-attr]
                                   max_chars=max_chars, limit=limit) or "No matches in Vinc.")
@@ -154,14 +146,10 @@ def create_vinc_tools(client: VincClient | None = None,
     return [
         StructuredTool.from_function(
             func=brief if client else None, coroutine=abrief if async_client else None,
-            name="vinc_brief", args_schema=_BriefArgs,
-            description="Look up one node in the user's Vinc knowledge graph: a decision, "
-                        "record or concept with its summary, document excerpts and relations."),
+            name=BRIEF_NAME, args_schema=BriefArgs, description=BRIEF_DESCRIPTION),
         StructuredTool.from_function(
             func=search if client else None, coroutine=asearch if async_client else None,
-            name="vinc_search", args_schema=_SearchArgs,
-            description="Search the user's Vinc knowledge graph by text and meaning; returns "
-                        "matching nodes and document passages with their ids."),
+            name=SEARCH_NAME, args_schema=SearchArgs, description=SEARCH_DESCRIPTION),
     ]
 
 
