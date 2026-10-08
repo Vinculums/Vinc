@@ -84,7 +84,12 @@ def main(argv=None) -> int:
     header = pin_header()
     header.update(kind="run_gold", gold=str(args.gold), split=args.split, n_pairs=len(pairs),
                   load_s=round(load_s, 1), calib_files=sorted(f"{k[0]}:{k[1]}" for k in calib))
-    latencies: list[float] = []
+    # state 마다 forward 가 둘이다: system_one(usage·절단 정보)과 records_from_labeled(원시 logits).
+    # 그래서 state 당 지연은 둘을 따로 재고, 처리량은 끝에 predict_batch(batch_size=16) 로 따로 잰다(§5).
+    lat_predict: list[float] = []
+    lat_logits: list[float] = []
+    probe_states: list[dict] = []
+    n_truncated = 0
     with args.out.open("w", encoding="utf-8") as fh:
         fh.write("# " + json.dumps(header, ensure_ascii=False) + "\n")
         for pair in pairs:
@@ -93,10 +98,17 @@ def main(argv=None) -> int:
                 qs = {p: QUESTIONS[p] for p in preds}
                 t = time.perf_counter()
                 ans = agent.system_one({"text": state}, qs)
+                t1 = time.perf_counter()
                 dummy = {p: [0.0, 1.0] for p in preds}  # 타깃은 쓰지 않는다. logits 만 받는다
                 recs = records_from_labeled(agent, [({"text": state}, qs, dummy)])
-                latencies.append(time.perf_counter() - t)
+                t2 = time.perf_counter()
+                lat_predict.append(t1 - t)
+                lat_logits.append(t2 - t1)
+                if len(probe_states) < 32:
+                    probe_states.append({"text": state})
                 usage = ans.get("usage", {})
+                if usage.get("truncated"):
+                    n_truncated += 1
                 for (qt, logits, _tgt, k), p in zip(recs, preds):
                     logits = [float(x) for x in _flat(logits)[:k]]
                     p_raw = softmax(logits)[1] if k == 2 else float("nan")
@@ -110,12 +122,31 @@ def main(argv=None) -> int:
                         "p_cal": p_cal, "calibration_id": cal["calibration_id"] if cal else None,
                         "abstain_below": cal.get("min_confidence") if cal else None,
                         "input_tokens": usage.get("input_tokens"), "state_tokens": usage.get("state_tokens"),
+                        "state_tokens_dropped": usage.get("state_tokens_dropped"),
                         "truncated": bool(usage.get("truncated")),
                     }, ensure_ascii=False) + "\n")
-        median = sorted(latencies)[len(latencies) // 2] if latencies else None
-        fh.write("# " + json.dumps({"kind": "timing", "n_calls": len(latencies), "median_s": median}) + "\n")
-    print(f"wrote {args.out} pairs={len(pairs)} calls={len(latencies)} median_s={median} load_s={load_s:.1f}")
+        # 처리량: 같은 state 32개를 predict_batch(batch_size=16) 로 한 번 더 돌려 state 당 초를 잰다.
+        # 위의 per-state 지연은 forward 둘의 합이라 처리량이 아니다(handoff 10-07 지적).
+        batch16 = None
+        if probe_states:
+            t = time.perf_counter()
+            agent.predict_batch(probe_states, dict(QUESTIONS), batch_size=16)
+            batch16 = round((time.perf_counter() - t) / len(probe_states), 3)
+        timing = {"kind": "timing", "n_states": len(lat_predict),
+                  "median_s_predict": _median(lat_predict), "median_s_logits": _median(lat_logits),
+                  "median_s_total": _median([a + b for a, b in zip(lat_predict, lat_logits)]),
+                  "batch16_s_per_state": batch16, "batch16_n_states": len(probe_states),
+                  "truncated_states": n_truncated,
+                  "note": "per-state seconds cover two forwards (system_one + records_from_labeled); "
+                          "batch16_s_per_state is the predict_batch(batch_size=16) throughput on the first states"}
+        fh.write("# " + json.dumps(timing) + "\n")
+    print(f"wrote {args.out} pairs={len(pairs)} states={len(lat_predict)} median_s_total={timing['median_s_total']} "
+          f"batch16_s_per_state={batch16} truncated_states={n_truncated} load_s={load_s:.1f}")
     return 0
+
+
+def _median(xs: list[float]):
+    return round(sorted(xs)[len(xs) // 2], 3) if xs else None
 
 
 if __name__ == "__main__":

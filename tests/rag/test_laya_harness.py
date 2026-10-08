@@ -154,5 +154,73 @@ class ReportRuleTests(unittest.TestCase):
         self.assertEqual(pins.ASYMMETRY_ABSTAIN, 0.2)
 
 
+class FrozenCoverageTests(unittest.TestCase):
+    """커버리지는 동결 문턱으로 세고, 비대칭 기권은 분모에 남는다(handoff 10-07 지적 둘)."""
+
+    @staticmethod
+    def _row(pid, pred, direction, p, label, th: float | None = 0.7, lang="en", truncated=False):
+        return {"pair_id": pid, "direction": direction, "predicate": pred, "lang": lang, "label": label,
+                "p_raw": p, "p_cal": p, "abstain_below": th, "calibration_id": "abc", "truncated": truncated}
+
+    def _rows(self):
+        R = self._row
+        return [
+            R("p1", "same_as", "ab", 0.90, 1), R("p1", "same_as", "ba", 0.85, 1),     # 덮음, 맞음
+            R("p2", "same_as", "ab", 0.90, 0), R("p2", "same_as", "ba", 0.30, 0),     # 비대칭 0.6 → 기권
+            R("p3", "same_as", "ab", 0.60, 1), R("p3", "same_as", "ba", 0.55, 1),     # conf 0.6 < 0.7 → 기권
+            R("p4", "same_as", "ab", 0.20, 0), R("p4", "same_as", "ba", 0.25, 0),     # 덮음, 맞음
+            R("p5", "same_as", "ab", 0.95, 1, truncated=True), R("p5", "same_as", "ba", 0.95, 1, truncated=True),
+            R("p6", "same_as", "ab", 0.95, None), R("p6", "same_as", "ba", 0.95, None),  # 라벨 없음 → 제외
+            R("p1", "supports", "ab", 0.90, 1, th=None), R("p2", "supports", "ab", 0.10, 0, th=None),
+            R("p3", "supports", "ab", 0.80, 1, th=None), R("p4", "supports", "ab", 0.30, 0, th=None),
+        ]
+
+    def test_frozen_coverage_는_기권을_분모에_남긴다(self):
+        items = [{"conf": 0.9, "correct": 1.0, "threshold": 0.7, "asym": 0.05, "has_reverse": True},
+                 {"conf": 0.9, "correct": 0.0, "threshold": 0.7, "asym": 0.6, "has_reverse": True},
+                 {"conf": 0.6, "correct": 1.0, "threshold": 0.7, "asym": 0.05, "has_reverse": True},
+                 {"conf": 0.8, "correct": 1.0, "threshold": 0.7, "asym": None, "has_reverse": False}]
+        got = report.frozen_coverage(items)
+        self.assertEqual((got["n"], got["covered"], got["coverage"]), (4, 1, 0.25))
+        self.assertEqual((got["abstained_asymmetry"], got["abstained_below_threshold"], got["abstained_missing_reverse"]),
+                         (1, 1, 1))
+        self.assertEqual(got["error"], 0.0)
+        self.assertEqual(got["thresholds"], [0.7])
+        none = report.frozen_coverage([{"conf": 0.9, "correct": 1.0, "threshold": None, "asym": None, "has_reverse": True}])
+        self.assertEqual((none["covered"], none["no_threshold"]), (0, 1))
+        self.assertTrue(math.isnan(none["error"]))
+
+    def test_보고서는_동결_문턱으로_세고_절단_행을_뺀다(self):
+        with tempfile.TemporaryDirectory() as d:
+            inp = Path(d) / "eval.jsonl"
+            inp.write_text('# {"revision": "x"}\n' + "\n".join(json.dumps(r) for r in self._rows()) + "\n",
+                           encoding="utf-8")
+            out = Path(d) / "report.md"
+            self.assertEqual(report.main(["--in", str(inp), "--out", str(out)]), 0)
+            res = json.loads(out.with_suffix(".json").read_text(encoding="utf-8"))
+            self.assertEqual(res["rows_truncated_excluded"], 2)
+            self.assertEqual(res["rows_unlabeled_excluded"], 2)
+            rows = {(r["predicate"], r["lang"]): r for r in res["table"]}
+            same = rows[("same_as", "all")]
+            self.assertEqual(same["n"], 4)                                  # 기권한 쌍도 분모에 있다
+            self.assertEqual(same["frozen"]["covered"], 2)
+            self.assertEqual(same["frozen"]["coverage"], 0.5)
+            self.assertEqual(same["frozen"]["abstained_asymmetry"], 1)
+            self.assertEqual(same["frozen"]["abstained_below_threshold"], 1)
+            self.assertEqual(same["frozen"]["error"], 0.0)
+            self.assertTrue(same["gate"]["coverage_ok"])
+            self.assertTrue(same["gate"]["error_within_target"])
+            # 실제 오류율 판정은 보고만 하고 사전 등록 셋(auroc·ece·coverage)의 pass 에 섞지 않는다
+            self.assertEqual(same["gate"]["pass"],
+                             same["gate"]["auroc_ok"] and same["gate"]["ece_ok"] and same["gate"]["coverage_ok"])
+            self.assertEqual(same["calibration_ids"], ["abc"])
+            self.assertIn("posthoc_coverage_at_error", same)                # 사후 곡선은 진단으로만 남는다
+            sup = rows[("supports", "all")]
+            self.assertEqual(sup["frozen"]["no_threshold"], 4)             # --calib 없이 돌린 결과
+            self.assertFalse(sup["gate"]["coverage_ok"])
+            self.assertEqual(sup["auroc"], 1.0)
+            self.assertIn("동결 문턱 없음", out.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     sys.exit(unittest.main())
