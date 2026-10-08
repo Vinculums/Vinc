@@ -1,0 +1,39 @@
+{
+ "rows": 992,
+ "counts": {
+  "calib:shares_node_with_eval": 44,
+  "calib": 150,
+  "calib:items": 300,
+  "book-mirror": 28,
+  "book-mirror:items": 56,
+  "merge-reject": 2,
+  "merge-reject:items": 4,
+  "random": 16,
+  "random:items": 32,
+  "typed-decisions": 600,
+  "typed-decisions:items": 893
+ },
+ "excluded": {
+  "book-mirror:duplicate": 1,
+  "book-mirror:eval_leak": 6,
+  "merge-reject:eval_leak": 24,
+  "random:eval_leak": 33,
+  "random:duplicate": 11
+ },
+ "misses": [
+  "34-cost",
+  "concept:agent-reviewer-checklist|concept:agent-reviewer-judgement",
+  "concept:fail-open-degradation|concept:세-fail-open",
+  "concept:그래프-시간|concept:세계-시간과-그래프-시간",
+  "concept:세계-시간|concept:세계-시간과-그래프-시간"
+ ],
+ "eval_pairs_excluded_by": {
+  "texts": 201,
+  "node_ids": 201
+ },
+ "typed_decisions_rows_sampled": 600,
+ "seed": 20261007,
+ "sha256": "90e18e855a214710125112d9cb64ac77783585b6c2de9d77f336f12c7a144fb6",
+ "out": "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\data\\train-v1.jsonl",
+ "gold_sha256": "49cf4b34be2fd840c56e54bcca152abfaaebd76afa844938c6d7a7eccb29fd0a"
+}
