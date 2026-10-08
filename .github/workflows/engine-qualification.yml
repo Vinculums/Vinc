@@ -5,6 +5,10 @@ on:
   pull_request:
     paths:
       - .github/workflows/engine-qualification.yml
+      - .github/workflows/release.yml
+      - Dockerfile.hub
+      - pyproject.toml
+      - packaging/lbug_extensions/**
       - scripts/qa/prepare_candidate_engine.py
       - packaging/lbug-ext-0.21.2.sha256
       - scripts/qa/candidate_frozen_probe.py
@@ -30,7 +34,7 @@ jobs:
             baseline: "0.20.4"
           - os: windows-latest
             baseline: "0.20.3"
-          # 후보의 공식 macOS wheel은 15 이상용이다. 구판 OS 호환성은 별도 미해결 조건이다.
+          # 후보의 공식 macOS wheel과 현재 앱의 최소 지원 OS는 모두 15 이상이다.
           - os: macos-15
             baseline: "0.20.4"
     runs-on: ${{ matrix.os }}
