@@ -52,6 +52,15 @@ def main() -> None:
         raise RuntimeError("qualification requires the exact requested engine")
     bundle = root / "extensions"
     bundle.mkdir()
+    release_assets = None
+    candidate_checksums = None
+    if args.engine == "0.21.2":
+        # 실제 검증한 바이트를 고정한다. 상류가 같은 URL을 바꾸면 새 검증 없이 넘기지 않는다.
+        checksum_path = Path(__file__).resolve().parents[2] / "packaging/lbug-ext-0.21.2.sha256"
+        candidate_checksums = dict(line.split()[::-1] for line in checksum_path.read_text().splitlines() if line.strip())
+        release_assets = root / "release-assets"
+        release_assets.mkdir()
+        shutil.copy2(checksum_path, release_assets / checksum_path.name)
     manifest = []
     db = connection = None
     try:
@@ -88,11 +97,17 @@ def main() -> None:
                 source = matches[0]
             if source.stat().st_size < 10000:
                 raise RuntimeError(f"invalid {name} extension size")
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            if candidate_checksums is not None:
+                asset = f"{source.parent.parent.name}-{source.name}"
+                if digest != candidate_checksums.get(asset):
+                    raise RuntimeError(f"candidate {asset} checksum changed; requalification required")
+                shutil.copy2(source, release_assets / asset)
             target = bundle / source.name
             shutil.copy2(source, target)
             manifest.append({"extension": name, "abi_path": str(source.relative_to(home)),
                              "bytes": source.stat().st_size,
-                             "sha256": hashlib.sha256(source.read_bytes()).hexdigest()})
+                             "sha256": digest})
     finally:
         if connection is not None:
             connection.close()
