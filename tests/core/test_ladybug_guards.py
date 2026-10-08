@@ -114,12 +114,18 @@ class PlanCacheGuardTests(unittest.TestCase):
 
     @unittest.skipUnless(sys.platform.startswith("linux") and _plan_switch(),
                          "대조 재현은 리눅스·스위치 있는 엔진에서만(세그폴트를 일부러 낸다)")
-    def test_control_the_engine_default_still_crashes(self):
-        """대조: 엔진 기본값(`BOTH`)이면 같은 자식이 죽는다. 이 테스트가 **실패하기 시작하면**
-        상류가 고친 것이다 — 그때는 가드(`_PLAN_CACHE_SCOPE`)를 걷어 내고 이 테스트도 지운다."""
+    def test_control_records_the_engine_default_behavior(self):
+        """리눅스 0.21.2의 개선과 구판 크래시를 나눈다. 다른 플랫폼의 가드는 유지한다."""
         r = self._child({"VINC_LBUG_PLAN_CACHE": "BOTH"})
-        self.assertNotEqual(r.returncode, 0,
-                            "기본 계획 캐시로도 살아남았다 — 상류 수정 여부를 확인하고 가드를 걷을 것")
+        if getattr(_DRIVER, "__version__", "") == "0.21.2":
+            self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+            self.assertIn("survived", r.stdout.splitlines())
+            hits = [line for line in r.stdout.splitlines() if line.startswith(("writer", "reader"))]
+            self.assertEqual(len(hits), 6)
+            self.assertTrue(all(line.endswith(" 1") for line in hits), hits)
+        else:
+            self.assertNotEqual(r.returncode, 0,
+                                "구판의 기본 계획 캐시 대조가 달라졌다 — 상류 수정 여부를 확인할 것")
 
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")

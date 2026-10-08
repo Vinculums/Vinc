@@ -1,0 +1,111 @@
+name: engine-qualification
+
+# 후보 엔진을 측정한다. 출하 핀과 운영 설정은 바꾸지 않는다.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/engine-qualification.yml
+      - scripts/qa/prepare_candidate_engine.py
+      - scripts/qa/candidate_frozen_probe.py
+      - scripts/qa/engine_compatibility_probe.py
+      - tests/core/test_ladybug_guards.py
+      - tests/core/test_fts_wal_recovery.py
+      - tests/core/test_durable_ack.py
+      - tests/core/test_durable_generation.py
+      - tests/core/test_restore_fail_closed.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            baseline: "0.20.4"
+          - os: windows-latest
+            baseline: "0.20.3"
+          - os: macos-14
+            baseline: "0.20.4"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: "1"
+      VINC_PK_NAMESPACED: "on"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install exact candidate and build dependencies
+        run: python -m pip install ladybug==0.21.2 pyyaml pyinstaller pypdf pytest pytest-subtests
+      - name: Prepare previous engine in an isolated environment
+        shell: bash
+        env:
+          BASELINE_ENGINE: ${{ matrix.baseline }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -m venv baseline-venv
+          if [ "$RUNNER_OS" = Windows ]; then oldpython=baseline-venv/Scripts/python.exe; else oldpython=baseline-venv/bin/python; fi
+          "$oldpython" -m pip install "ladybug==$BASELINE_ENGINE"
+          case "$RUNNER_OS" in
+            Windows) platform=win_amd64;;
+            macOS) platform=osx_arm64;;
+            Linux) platform=linux_amd64;;
+          esac
+          gh release download ladybug-ext-0.20.4 --pattern "$platform-*.lbug_extension" --dir baseline-assets
+          "$oldpython" scripts/qa/prepare_candidate_engine.py --root baseline --engine "$BASELINE_ENGINE" --vendor-dir baseline-assets --no-export
+          echo "BASELINE_PYTHON=$oldpython" >> "$GITHUB_ENV"
+      - name: Prepare identified official extensions
+        run: python scripts/qa/prepare_candidate_engine.py --root candidate
+      - name: Guarded product tests
+        run: >-
+          python -m pytest -q tests/core/test_ladybug_guards.py
+          tests/core/test_fts_wal_recovery.py tests/core/test_durable_ack.py
+          tests/core/test_durable_generation.py tests/core/test_restore_fail_closed.py
+          --junitxml=candidate/product-tests.xml
+      - name: Existing store opening and backup rollback rehearsal
+        shell: bash
+        run: python scripts/qa/engine_compatibility_probe.py --baseline-python "$BASELINE_PYTHON" --baseline-root baseline --candidate-root candidate --output candidate/compatibility
+      - name: Build current frozen sidecar
+        run: python -m PyInstaller --noconfirm packaging/sidecar.spec
+      - name: Offline Linux in pristine container
+        if: runner.os == 'Linux'
+        run: |
+          docker pull ubuntu:22.04
+          python scripts/qa/offline_sidecar_probe.py --binary dist/vinc --output candidate/offline
+      - name: Offline macOS sandbox
+        if: runner.os == 'macOS'
+        run: python scripts/qa/candidate_frozen_probe.py --binary dist/vinc --output candidate/offline --network-enforcement macos-sandbox
+      - name: Offline Windows program firewall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $binary = (Resolve-Path -LiteralPath 'dist/vinc.exe').Path
+          $ruleName = "VincCandidateOffline-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          if (Get-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue) { throw 'Probe rule already exists' }
+          if (Get-NetFirewallProfile | Where-Object { $_.Enabled -ne 'True' }) { throw 'Firewall enforcement unavailable' }
+          try {
+            New-NetFirewallRule -Name $ruleName -DisplayName $ruleName -Direction Outbound -Action Block -Program $binary -Profile Any -Enabled True -ErrorAction Stop | Out-Null
+            $rule = Get-NetFirewallRule -Name $ruleName -ErrorAction Stop
+            if ($rule.Action -ne 'Block' -or $rule.Enabled -ne 'True') { throw 'Offline rule not applied' }
+            python scripts/qa/candidate_frozen_probe.py --binary $binary --output candidate/offline --network-enforcement windows-program-firewall
+            if ($LASTEXITCODE -ne 0) { throw "Frozen probe failed: $LASTEXITCODE" }
+          } finally {
+            Get-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: engine-qualification-${{ matrix.os }}
+          path: |
+            baseline/manifest.json
+            candidate/manifest.json
+            candidate/product-tests.xml
+            candidate/offline/
+            candidate/compatibility/
+          if-no-files-found: error

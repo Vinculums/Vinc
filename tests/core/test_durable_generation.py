@@ -175,12 +175,14 @@ class RealReplayTests(unittest.TestCase):
                 dg.publish(root / "share", baseline, sequence=1)
                 store.run("MERGE (c:Concept {concept_id: 'wal-only-row'}) "
                           "SET c.title = 'durable', c.owner_id = 'user:a'")
-                if os.name == "nt":
-                    # 엔진이 본 파일을 배타 잠금한다. 크래시 대신 거절이어야 한다.
-                    with self.assertRaisesRegex(dg.GenerationError, "live base unreadable"):
-                        dg.publish_wal(root / "share", source, sequence=2)
+                try:
+                    dg.publish_wal(root / "share", source, sequence=2)
+                except dg.GenerationError as exc:
+                    # 옛 Windows 엔진의 배타 잠금은 게시를 거절해야 한다. 다른 오류는 실패다.
+                    if os.name != "nt" or "live base unreadable" not in str(exc):
+                        raise
+                    self.assertFalse((root / "share" / "commit-2.json").exists())
                     return
-                dg.publish_wal(root / "share", source, sequence=2)
             finally:
                 store.close()
             self.assertEqual(dg.restore(root / "share", target), "restored:2")
