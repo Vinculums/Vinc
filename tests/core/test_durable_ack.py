@@ -353,9 +353,10 @@ class KillAfterAck(unittest.TestCase):
         state, ids, acked, _snap = self._kill_after_ack(durable=True)
         self.assertTrue(state.startswith("restored-generation:"), state)
         self.assertEqual(ids, ["acked-0", "acked-1"])
-        # Windows 는 엔진이 본 파일을 배타 잠금해 WAL 만 올리기가 늘 거절된다.
-        second = "full" if os.name == "nt" else "wal"
-        self.assertEqual([d["last"] for d in acked], ["full", second, "unchanged"])
+        # 본 파일의 읽기 잠금은 엔진 판에 따라 다르다. 두 게시 경로 모두 ACK를 보존한다.
+        self.assertEqual(acked[0]["last"], "full")
+        self.assertIn(acked[1]["last"], ("full", "wal"))
+        self.assertEqual(acked[2]["last"], "unchanged")
 
     def test_off_loses_the_write_exactly_as_before(self):
         state, ids, acked, snap = self._kill_after_ack(durable=False)

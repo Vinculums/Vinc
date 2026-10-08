@@ -7,7 +7,7 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
-HOSTED = {"ubuntu-latest", "ubuntu-22.04", "windows-latest", "macos-latest"}
+HOSTED = {"ubuntu-latest", "ubuntu-22.04", "windows-latest", "macos-latest", "macos-15"}
 
 
 class HostedRunnerContract(unittest.TestCase):
