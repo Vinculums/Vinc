@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 
 import httpx
 import pytest
@@ -112,6 +113,8 @@ def test_long_reading_ends_with_exact_verified_citations_and_no_silent_budget_gr
     assert f"[{ROLE}]" in footer and wrong_alias not in footer
     assert (f"[{MIRROR}]" in footer) is mirror_exists
     assert "cannot claim Sources: none" in footer
+    assert f"Required document keys with NO citable node in this space: {json.dumps([] if mirror_exists else [DOC])}" in footer
+    assert "must not appear in Sources" in footer
 
 
 @pytest.mark.parametrize("async_mode", [False, True])

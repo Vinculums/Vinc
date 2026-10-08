@@ -98,14 +98,22 @@ def citation_policy(contract: dict[str, Any], specs: list[tuple[str, dict]]) -> 
     ids.extend(result["cite_id"] for read, result in specs
                if result.get("cite_id") == cite_id(read))
     sources = " ".join(f"[{node_id}]" for node_id in dict.fromkeys(ids))
+    uncitable = [document_key(read) for read, result in specs
+                 if result.get("cite_id") != cite_id(read)]
     return ("Citation contract for this run:\n"
             f"Verified role and required-reading source IDs: {sources}\n"
+            f"Required document keys with NO citable node in this space: {json.dumps(uncitable, ensure_ascii=False)}\n"
+            "These uncitable documents are available as reference text, but must not appear "
+            "in Sources. Adding concept:doc. to one of their keys creates an unverified ID. "
+            "For the supplied role/readings, select Sources IDs only from the verified list above. "
             "Copy source IDs exactly; do not add prefixes, derive an ID from a document key, "
             "or use an ID merely mentioned inside a required reading. Live tool results may "
             "provide additional citable IDs. Cite only sources you actually relied on. "
             "An answer that uses the supplied role contract or required readings cannot "
             "claim Sources: none. A reading marked no citable id has no verified mirror; "
-            "do not invent one.\n" + SOURCES_LINE)
+            "do not invent one.\n"
+            f"If you relied only on the role contract, the exact final line is Sources: [{contract['id']}].\n"
+            + SOURCES_LINE)
 
 
 def render_prefetch(contract: dict[str, Any], task: str, specs: list[tuple[str, dict]],
