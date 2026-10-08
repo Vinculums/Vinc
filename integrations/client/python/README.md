@@ -148,6 +148,11 @@ gate's verdict.
 
 The caller must choose the role explicitly. Its complete contract is retained;
 each required document is retained in full, with its verified content hash.
+For each verified document, prefetch also reads its mirror node in the same
+space, within the same bounded worker. Only an existing readable mirror gets a
+`cite as` id. A missing mirror keeps the full document and is labelled
+`no citable id`; the model must not invent a citation from the document key.
+Mirror authentication, quota, service and malformed-response failures propagate.
 Missing, partial or unverified documents raise `prefetch_spec_unresolved`, and
 no optional task lookup result is used. Invalid role contracts, authentication and
 service failures propagate. There is no prefetch permission/content cache or automatic write.

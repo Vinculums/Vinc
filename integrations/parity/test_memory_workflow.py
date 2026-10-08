@@ -19,7 +19,7 @@ KEY = "vinc_ro_" + "a" * 32
 DOC_TEXT = "Every mandatory rule survives.\n" + "x" * 5000 + "\nMANDATORY TAIL"
 
 
-@pytest.mark.parametrize("mode,lg_reads,maf_reads", [("context", 1, 1), ("prefetch", 8, 4), ("package", 4, 2)])
+@pytest.mark.parametrize("mode,lg_reads,maf_reads", [("context", 1, 1), ("prefetch", 10, 5), ("package", 4, 2)])
 def test_repeated_model_tool_loop_has_explicit_retrieval_and_handoff_cost(mode, lg_reads, maf_reads):
     package = build_package_fragment("Which policy?", "Keep the exact recommendation.",
         claims=[{"claim": "Keep the source state.", "evidence_ids": ["decision:rule"]}],
@@ -34,7 +34,9 @@ def test_repeated_model_tool_loop_has_explicit_retrieval_and_handoff_cost(mode, 
             result = {"doc_id": "vinc.spec.loop", "executed": True, "verified": True,
                       "text": DOC_TEXT, "content_hash": hashlib.sha256(DOC_TEXT.encode()).hexdigest()}
         elif request.url.path.startswith("/v1/nodes/"):
-            result = {"found": True, "node": package if request.url.path.endswith("record:package") else source}
+            node = ({"id": "concept:doc.vinc.spec.loop"} if request.url.path.endswith("concept:doc.vinc.spec.loop")
+                    else package if request.url.path.endswith("record:package") else source)
+            result = {"executed": True, "found": True, "node": node}
         elif request.url.path.endswith("brief"):
             result = {"status": "resolved", "node": source, "one_liner": "Keep the rule."}
         else:

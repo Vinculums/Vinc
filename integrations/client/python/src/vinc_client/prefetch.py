@@ -6,16 +6,17 @@ import json
 from typing import Any
 
 from .context import BOUNDARY, SOURCES_LINE, fence, format_answer
-from .errors import VincInvalidArgument
+from .errors import VincInvalidArgument, VincUnavailable
 
 DEFAULT_PREFETCH_MAX_CHARS = 24000
 PREFETCH_READ_CONCURRENCY = 8
 TASK_EVIDENCE_MAX_CHARS = 6000
-# 블록 머리의 인용 지시. 모델은 문서 키를 인용할 수 없으므로 필수 문서마다 미러 노드 id 를 준다.
+# 블록 머리의 인용 지시. 같은 스페이스에서 확인한 미러만 인용 id 로 준다.
 # 뒤 문장(SOURCES_LINE)은 context 모드와 같은 바이트다.
 # 근거: [[record:vin314-live-exp01-rerun-prefetch-cites-a-node-in-1-of-6-2026-10-07]]
-CITE_LINE = ("Each required reading below names its citable id after \"cite as\"; "
-             "cite that id, not the document key. " + SOURCES_LINE)
+CITE_LINE = ("Required readings with a verified mirror name their citable id after \"cite as\"; "
+             "cite that id, not the document key. Readings marked \"no citable id\" "
+             "have no verified node citation; do not invent one. " + SOURCES_LINE)
 
 
 def reading_list(contract: dict[str, Any]) -> list[str]:
@@ -36,10 +37,22 @@ def document_key(read: str) -> str:
 
 
 def cite_id(read: str) -> str:
-    """The citable mirror node of a required document (``concept:doc.<key>``)."""
-    # ponytail: 미러 존재 확인이 없다(문서 응답에 미러 id 가 없고 확인은 문서마다 요청 하나다).
-    # 실모델 재실행이 없는 미러를 인용하면 GET /v1/nodes/{id} 확인으로 올린다.
+    """Candidate mirror id; the same-space node read must verify it before citation."""
     return "concept:doc." + document_key(read)
+
+
+def with_citation(read: str, document: dict[str, Any], node_result: dict[str, Any]) -> dict[str, Any]:
+    """Attach only the id observed by a fresh node read, never the node's private body."""
+    # 문서 접근권과 미러 접근권은 따로 확인한다. 조회 실패를 미러 부재로 취급하지 않는다.
+    if node_result.get("executed") is not True or node_result.get("error"):
+        raise VincUnavailable("prefetch_citation_unresolved", "A required reading's mirror could not be checked.")
+    node = node_result.get("node")
+    if node_result.get("found") is False and node is None:
+        return {**document, "cite_id": None}
+    if (node_result.get("found") is not True or not isinstance(node, dict)
+            or node.get("id") != cite_id(read)):
+        raise VincUnavailable("prefetch_citation_unresolved", "A required reading's mirror response is invalid.")
+    return {**document, "cite_id": node["id"]}
 
 
 def required_reading(doc_id: str, result: dict[str, Any]) -> str:
@@ -53,7 +66,9 @@ def required_reading(doc_id: str, result: dict[str, Any]) -> str:
                                   "A required role reading is missing, incomplete or unverified.")
     data = {k: result[k] for k in ("doc_id", "title", "content_hash", "updated_at",
                                   "content_time", "verified", "text") if k in result}
-    return (f"Required reading (full canonical document): {doc_id} (cite as {cite_id(doc_id)})"
+    citation = (f"cite as {result['cite_id']}" if result.get("cite_id") == cite_id(doc_id)
+                else "no citable id")
+    return (f"Required reading (full canonical document): {doc_id} ({citation})"
             f"\n{BOUNDARY}\n\n") + fence(
         json.dumps(data, ensure_ascii=False, indent=2))
 
