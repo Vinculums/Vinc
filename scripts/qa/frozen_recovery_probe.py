@@ -14,6 +14,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+import urllib.error
 
 
 TOKEN = "synthetic-frozen-recovery-probe"
@@ -37,9 +38,19 @@ def main() -> int:
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--trials", type=int, default=10)
+    parser.add_argument("--durable-ack", action="store_true",
+                        help="새 합성 저장소의 별도 로컬 영속 경로만 활성화")
+    parser.add_argument("--lose-local-disk", action="store_true",
+                        help="급사 뒤 로컬 DB 파일을 보존 경로로 옮겨 영속본만으로 복구")
+    parser.add_argument("--check-retry-fencing", action="store_true",
+                        help="복원 뒤 같은 요청 재시도와 합성 리비전 표식의 ACK 차단 검증")
     args = parser.parse_args()
     if not 1 <= args.trials <= 50:
         parser.error("trials must be between 1 and 50")
+    if args.lose_local_disk and not args.durable_ack:
+        parser.error("--lose-local-disk requires --durable-ack")
+    if args.check_retry_fencing and not args.durable_ack:
+        parser.error("--check-retry-fencing requires --durable-ack")
     binary = args.binary.resolve(strict=True)
     args.output.mkdir(parents=True, exist_ok=False)
     output = args.output.resolve()
@@ -57,15 +68,28 @@ def main() -> int:
                            VINC_TARGET="local", VINC_SIDECAR_TOKEN=TOKEN,
                            VINC_EMBED_APPLY_PAUSED="1", VINC_BUFFER_POOL_MB="128",
                            VINC_MAX_DB_SIZE=str(1024**3))
-        # 운영 스냅샷·durable ACK 설정은 가져오지 않는다. 각 시도는 새 로컬 저장소다.
+        # 운영 설정은 가져오지 않는다. 영속 경로도 이 시도의 합성 로컬 폴더다.
+        if args.durable_ack:
+            share = trial / "persistent"
+            share.mkdir()
+            environment.update(VINC_DURABLE_ACK="on", VINC_STORE_SNAPSHOT=str(share / "db"),
+                               VINC_STORE_SNAPSHOT_EVERY="3600")
+            if args.check_retry_fencing:
+                environment["CONTAINER_APP_REVISION"] = "vinc-probe--0000001"
         servers = []
-        record = {"trial": index + 1, "passed": False, "durable_ack_requested": False}
+        record = {"trial": index + 1, "passed": False,
+                  "durable_ack_requested": args.durable_ack,
+                  "local_disk_loss_requested": args.lose_local_disk}
 
         def start(label):
             outpath, errpath = trial / f"{label}.stdout", trial / f"{label}.stderr"
             out, err = outpath.open("w", encoding="utf-8"), errpath.open("w", encoding="utf-8")
+            boot_environment = dict(environment)
+            if args.durable_ack and label == "before-kill":
+                # 비어 있음을 아는 합성 첫 기동만 허용한다. 복원 기동에는 절대 넘기지 않는다.
+                boot_environment["VINC_STORE_ALLOW_EMPTY"] = "1"
             process = subprocess.Popen([str(binary), "--target", "local", "serve", "--port", "0"],
-                                       env=environment, stdout=out, stderr=err, start_new_session=True)
+                                       env=boot_environment, stdout=out, stderr=err, start_new_session=True)
             servers.append((process, out, err))
             deadline = time.monotonic() + 45
             while process.poll() is None and time.monotonic() < deadline:
@@ -120,7 +144,8 @@ def main() -> int:
                 raise RuntimeError("full graph write/abrupt termination not established")
             record["files_after_kill"] = [{"name": p.name, "bytes": p.stat().st_size}
                                            for p in trial.glob("db*") if p.is_file()]
-            if not (trial / "db.wal").is_file() or (trial / "db.wal").stat().st_size == 0:
+            if not args.durable_ack and (not (trial / "db.wal").is_file()
+                    or (trial / "db.wal").stat().st_size == 0):
                 raise RuntimeError("no nonempty WAL to replay")
             # 재개방은 WAL을 바꾼다. 재생 전 바이트를 별도로 남겨 실패도 다시 조사할 수 있다.
             preserved = trial / "pre-replay"
@@ -132,12 +157,38 @@ def main() -> int:
                     shutil.copy2(source, copied)
                     record["pre_replay_files"].append({"name": copied.name,
                         "bytes": copied.stat().st_size, "sha256": hashlib.sha256(copied.read_bytes()).hexdigest()})
+            if args.durable_ack:
+                generation_root = share / "db.generations"
+                if not generation_root.is_dir():
+                    raise RuntimeError("ACK did not leave persistent generations")
+                record["persistent_files_before_restore"] = [
+                    {"name": str(p.relative_to(share)), "bytes": p.stat().st_size,
+                     "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
+                    for p in sorted(share.rglob("*")) if p.is_file()]
+            if args.lose_local_disk:
+                lost = trial / "lost-local-disk"
+                lost.mkdir()
+                for source in trial.glob("db*"):
+                    if source.is_file():
+                        if source.resolve().parent != trial.resolve():
+                            raise RuntimeError("local disk-loss target escaped the owned trial")
+                        shutil.move(str(source), str(lost / source.name))
+                if (trial / "db").exists() or (trial / "db.wal").exists():
+                    raise RuntimeError("local disk-loss simulation failed")
             started = time.monotonic()
             _, base, info = start("after-kill")
             record["reopen_seconds"] = time.monotonic() - started
             record["reopened_driver"] = info["driver"]
             if info["driver"] != "ladybug":
                 raise RuntimeError("unexpected reopened store driver")
+            if args.lose_local_disk and "restored-generation:" not in (
+                    trial / "after-kill.stderr").read_text(encoding="utf-8"):
+                raise RuntimeError("reopen did not disclose persistent generation restoration")
+            if args.durable_ack:
+                _, health = request(base, "/health", query={"live": "1"})
+                record["reopened_durable_ack"] = health.get("durable_ack")
+                if not isinstance(record["reopened_durable_ack"], dict):
+                    raise RuntimeError("durable ACK was not active in the frozen product")
             _, document = request(base, "/doc", query={"owner": OWNER, "id": "recovery-sentinel"})
             (trial / "document-reopened.json").write_text(json.dumps(document, indent=2) + "\n")
             if document.get("verified") is not True or document.get("text") != text:
@@ -162,6 +213,43 @@ def main() -> int:
             if search.get("error") or not any(row.get("doc_id") == "recovery-sentinel"
                     and "sentinel" in row.get("snippet", "") for row in search.get("rows", [])):
                 raise RuntimeError("acknowledged document not searchable after WAL replay")
+            if args.check_retry_fencing:
+                _, retried_doc = request(base, "/doc/put", {"owner": OWNER, "id": "recovery-sentinel",
+                    "title": "Recovery sentinel", "text": text})
+                _, retried_graph = request(base, "/ingest", {"owner": OWNER, "nodes": [
+                    {"id": "concept:recovery-a", "type": "concept", "title": "Recovery source", "domain": "vinc/probe"},
+                    {"id": "concept:recovery-b", "type": "concept", "title": "Recovery target", "domain": "vinc/probe"}],
+                    "edges": [{"from": "concept:recovery-a", "to": "concept:recovery-b", "type": "relates_to"}]})
+                _, retried_edges = request(base, "/node-edges", query={"owner": OWNER,
+                    "node": "concept:recovery-a", "type": "RELATED_TO", "dir": "out"})
+                record["retry"] = {"document": retried_doc, "graph": retried_graph,
+                                   "edge_count": retried_edges.get("count")}
+                if (retried_doc.get("executed") is not True or retried_graph.get("executed") is not True
+                        or retried_graph.get("warnings") or retried_graph.get("partial")
+                        or retried_graph.get("merged", {}).get("nodes", {}).get("created") != 0
+                        or retried_graph.get("merged", {}).get("nodes", {}).get("matched") != 2
+                        or retried_edges.get("count") != 1):
+                    raise RuntimeError("identical request retry duplicated data or failed")
+                marker = share / "db.writer"
+                if marker.read_text().strip() != "vinc-probe--0000001":
+                    raise RuntimeError("synthetic initial writer did not claim its marker")
+                def generation_hashes():
+                    return {str(p.relative_to(generation_root)): hashlib.sha256(p.read_bytes()).hexdigest()
+                            for p in sorted(generation_root.rglob("*")) if p.is_file()}
+                before_fence = generation_hashes()
+                marker.write_text("vinc-probe--0000002", encoding="utf-8")
+                try:
+                    request(base, "/doc/put", {"owner": OWNER, "id": "fenced-write",
+                        "title": "Synthetic fenced write", "text": "uncertain commit probe"})
+                except urllib.error.HTTPError as exc:
+                    fenced = json.load(exc)
+                    record["fencing"] = {"status": exc.code, "response": fenced,
+                        "persistent_generations_unchanged": generation_hashes() == before_fence}
+                    if (exc.code != 500 or "commit uncertain" not in fenced.get("error", "")
+                            or not record["fencing"]["persistent_generations_unchanged"]):
+                        raise RuntimeError("newer synthetic writer did not fence durable ACK")
+                else:
+                    raise RuntimeError("old writer acknowledged a write after being fenced")
             record["passed"] = True
         except Exception as exc:
             record["error"] = f"{type(exc).__name__}: {exc}"
@@ -194,7 +282,7 @@ def main() -> int:
                "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(), "requested_trials": args.trials,
                "platform": sys.platform, "source_sha": os.environ.get("GITHUB_SHA"),
                "trials": results, "passed": len(results) == args.trials and all(r["passed"] for r in results),
-               "limits": ["Frozen local HTTP ACK and owned process tree termination only", "not SMB or native desktop acceptance",
+               "limits": ["Frozen HTTP ACK and owned process tree termination on local synthetic paths", "not SMB or native desktop acceptance",
                           "does not approve production engine pin or durable ACK", "failed stores/logs retained"]}
     (output / "result.json").write_text(json.dumps(receipt, indent=2) + "\n")
     return 0 if receipt["passed"] else 1
