@@ -1,0 +1,22 @@
+"""Run the existing product CLI without exposing its internal module names."""
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+
+def main(argv: list[str] | None = None) -> int:
+    # CLI 내부의 api/store 이름을 SDK 사용자의 인터프리터에 등록하지 않는다.
+    # 자식은 부모의 stdin/stdout/stderr와 종료 코드를 그대로 사용한다.
+    runtime = Path(__file__).resolve().parent / "_runtime"
+    code = (
+        "import sys; sys.path.insert(0, sys.argv.pop(1)); "
+        "from api.cli import main; raise SystemExit(main())"
+    )
+    command = [sys.executable, "-I", "-c", code, str(runtime),
+               *(sys.argv[1:] if argv is None else argv)]
+    try:
+        return subprocess.call(command)
+    except KeyboardInterrupt:
+        return 130

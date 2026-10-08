@@ -5,6 +5,7 @@ name: integrations-publish
 on:
   push:
     tags:
+      - "integrations-vincs-v*"
       - "integrations-vinc-client-v*"
       - "integrations-vinc-agent-framework-v*"
       - "integrations-vinc-langgraph-v*"
@@ -15,6 +16,7 @@ on:
         required: true
         type: choice
         options:
+          - vincs
           - vinc-client
           - vinc-agent-framework
           - vinc-langgraph

@@ -1,5 +1,23 @@
 # Python integration releases
 
+`vincs` is the unified SDK, optional integrations and account CLI distribution.
+Its source is `integrations/vincs/python`. The same trusted-publisher workflow
+accepts the TestPyPI package choice `vincs` and production tags
+`integrations-vincs-v<version>`. Register the pending publisher for `vincs` on
+each index with GitHub owner `Vinculums`, repository `Vinc`, workflow
+`integrations-publish.yml`, and environment `testpypi` or `pypi` respectively.
+The first upload creates the project; pending registration does not reserve
+its name. Build the wheel from the standalone sdist and verify clean installs
+before publication. Existing package publishers and release tags stay valid.
+
+The unified build takes the SDK, adapters and CLI from their canonical source
+directories. Its SDK lives under `vinc.sdk`; adapters under
+`vinc.integrations.langgraph` and `vinc.integrations.agent_framework`. CLI
+implementation modules are private runtime files, loaded only in the CLI child
+process. No old distribution's files are overwritten or required to be installed.
+The wheel has no native local engine or embedding model; the signed standalone
+CLI remains the local/offline installation path.
+
 Each package has its own version in its `pyproject.toml`. Desktop `v*` tags do not
 publish Python packages. The workflow in `.github/workflows/integrations-publish.yml`
 is the only publish path and uses PyPI Trusted Publishing; it stores no PyPI token.
