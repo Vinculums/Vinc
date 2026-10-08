@@ -92,7 +92,9 @@ def main() -> int:
         records.append(record)
         return record
 
-    run(args.baseline_python.resolve(), "create", original, args.baseline_root.resolve())
+    # venv 인터프리터의 심볼릭 링크를 풀면 시스템의 후보 인터프리터로 바뀐다.
+    baseline_python = args.baseline_python.absolute()
+    run(baseline_python, "create", original, args.baseline_root.resolve())
     if Path(str(original) + ".wal").exists() and Path(str(original) + ".wal").stat().st_size:
         raise RuntimeError("old store is not checkpointed")
     digest = hashlib.sha256(original.read_bytes()).hexdigest()
@@ -100,7 +102,7 @@ def main() -> int:
     run(Path(sys.executable), "mutate", candidate, args.candidate_root.resolve())
     # 후보가 쓴 파일을 구판으로 열지 않는다. 보존한 원본의 별도 사본으로 복귀한다.
     shutil.copy2(original, rollback)
-    run(args.baseline_python.resolve(), "rollback", rollback, args.baseline_root.resolve())
+    run(baseline_python, "rollback", rollback, args.baseline_root.resolve())
     assert hashlib.sha256(original.read_bytes()).hexdigest() == digest
     receipt = {"source_sha": os.environ.get("GITHUB_SHA"), "original_sha256": digest,
                "steps": records, "passed": len(records) == 3 and all(r["passed"] for r in records),

@@ -28,7 +28,8 @@ jobs:
             baseline: "0.20.4"
           - os: windows-latest
             baseline: "0.20.3"
-          - os: macos-14
+          # 후보의 공식 macOS wheel은 15 이상용이다. 구판 OS 호환성은 별도 미해결 조건이다.
+          - os: macos-15
             baseline: "0.20.4"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -41,7 +42,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install exact candidate and build dependencies
-        run: python -m pip install ladybug==0.21.2 pyyaml pyinstaller pypdf pytest pytest-subtests
+        run: python -m pip install --only-binary=ladybug ladybug==0.21.2 pyyaml pyinstaller pypdf pytest pytest-subtests
       - name: Prepare previous engine in an isolated environment
         shell: bash
         env:
