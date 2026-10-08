@@ -8,6 +8,7 @@ on:
       - scripts/qa/prepare_candidate_engine.py
       - scripts/qa/candidate_frozen_probe.py
       - scripts/qa/engine_compatibility_probe.py
+      - scripts/qa/frozen_recovery_probe.py
       - tests/core/test_ladybug_guards.py
       - tests/core/test_fts_wal_recovery.py
       - tests/core/test_durable_ack.py
@@ -74,6 +75,11 @@ jobs:
         run: python scripts/qa/engine_compatibility_probe.py --baseline-python "$BASELINE_PYTHON" --baseline-root baseline --candidate-root candidate --output candidate/compatibility
       - name: Build current frozen sidecar
         run: python -m PyInstaller --noconfirm packaging/sidecar.spec
+      - name: Frozen HTTP ACK and abrupt recovery
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then binary=dist/vinc.exe; else binary=dist/vinc; fi
+          python scripts/qa/frozen_recovery_probe.py --binary "$binary" --output candidate/frozen-recovery --trials 3
       - name: Offline Linux in pristine container
         if: runner.os == 'Linux'
         run: |
@@ -109,4 +115,5 @@ jobs:
             candidate/product-tests.xml
             candidate/offline/
             candidate/compatibility/
+            candidate/frozen-recovery/
           if-no-files-found: error
