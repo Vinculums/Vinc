@@ -80,6 +80,11 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = Windows ]; then binary=dist/vinc.exe; else binary=dist/vinc; fi
           python scripts/qa/frozen_recovery_probe.py --binary "$binary" --output candidate/frozen-recovery --trials 3
+      - name: Frozen durable ACK and local disk loss
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then binary=dist/vinc.exe; else binary=dist/vinc; fi
+          python scripts/qa/frozen_recovery_probe.py --binary "$binary" --output candidate/frozen-durable-recovery --trials 3 --durable-ack --lose-local-disk --check-retry-fencing
       - name: Offline Linux in pristine container
         if: runner.os == 'Linux'
         run: |
@@ -116,4 +121,5 @@ jobs:
             candidate/offline/
             candidate/compatibility/
             candidate/frozen-recovery/
+            candidate/frozen-durable-recovery/
           if-no-files-found: error
