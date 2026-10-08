@@ -92,15 +92,33 @@ def role_context(contract: dict[str, Any]) -> str:
     return f"{CITE_LINE}\n{BOUNDARY}\n\n{fence(json.dumps(role, ensure_ascii=False, indent=2))}"
 
 
+def citation_policy(contract: dict[str, Any], specs: list[tuple[str, dict]]) -> str:
+    """Repeat the citation contract after long readings with exact verified source ids."""
+    ids = [contract["id"]]
+    ids.extend(result["cite_id"] for read, result in specs
+               if result.get("cite_id") == cite_id(read))
+    sources = " ".join(f"[{node_id}]" for node_id in dict.fromkeys(ids))
+    return ("Citation contract for this run:\n"
+            f"Verified role and required-reading source IDs: {sources}\n"
+            "Copy source IDs exactly; do not add prefixes, derive an ID from a document key, "
+            "or use an ID merely mentioned inside a required reading. Live tool results may "
+            "provide additional citable IDs. Cite only sources you actually relied on. "
+            "An answer that uses the supplied role contract or required readings cannot "
+            "claim Sources: none. A reading marked no citable id has no verified mirror; "
+            "do not invent one.\n" + SOURCES_LINE)
+
+
 def render_prefetch(contract: dict[str, Any], task: str, specs: list[tuple[str, dict]],
                     brief: dict, search: dict, *, max_chars: int) -> str:
     parts = [role_context(contract)]
     for doc_id, result in specs:
         parts.append(required_reading(doc_id, result))
     joined = "\n\n".join(parts)
-    check_budget(len(joined), max_chars)
+    footer = citation_policy(contract, specs)
+    required_size = len(joined) + 2 + len(footer)
+    check_budget(required_size, max_chars)
     block = format_answer(brief, search,
-                          max_chars=min(TASK_EVIDENCE_MAX_CHARS, max_chars - len(joined) - 2))
+                          max_chars=min(TASK_EVIDENCE_MAX_CHARS, max_chars - required_size - 2))
     if block:
         joined += "\n\n" + block
-    return joined
+    return joined + "\n\n" + footer

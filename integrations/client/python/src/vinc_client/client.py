@@ -27,7 +27,7 @@ from .errors import (VincAuthError, VincError, VincInvalidArgument, VincPartialW
 from .package import (DEFAULT_PACKAGE_MAX_CHARS, build_package_fragment, format_package,
                       package_space, validate_package)
 from .prefetch import (DEFAULT_PREFETCH_MAX_CHARS, PREFETCH_READ_CONCURRENCY, check_budget,
-                       cite_id, document_key, reading_list, render_prefetch, required_reading,
+                       citation_policy, cite_id, document_key, reading_list, render_prefetch, required_reading,
                        role_context, with_citation)
 
 log = logging.getLogger("vinc_client")
@@ -339,6 +339,7 @@ class VincClient(_Base):
                         # 아직 시작하지 않은 요청은 취소한다. 실행 중인 스레드는 풀 종료 때 회수한다.
                         for future in futures:
                             future.cancel()
+                required_size += 2 + len(citation_policy(contract, specs))
                 check_budget(required_size, max_chars)
                 # 선택 읽기 결과(와 그 예외)는 필수 검증과 예산을 통과한 뒤에만 꺼낸다.
                 if early:
@@ -556,6 +557,7 @@ class AsyncVincClient(_Base):
                     for pending in tasks:
                         pending.cancel()
                     await asyncio.gather(*tasks, return_exceptions=True)
+            required_size += 2 + len(citation_policy(contract, specs))
             check_budget(required_size, max_chars)
             # 선택 읽기 결과(와 그 예외)는 필수 검증과 예산을 통과한 뒤에만 꺼낸다.
             if early:

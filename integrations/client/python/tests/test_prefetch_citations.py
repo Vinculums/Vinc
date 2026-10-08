@@ -79,6 +79,42 @@ def test_verified_exact_mirror_is_citable_and_node_body_is_not_copied(async_mode
 
 
 @pytest.mark.parametrize("async_mode", [False, True])
+@pytest.mark.parametrize("mirror_exists", [False, True])
+def test_long_reading_ends_with_exact_verified_citations_and_no_silent_budget_growth(
+        async_mode, mirror_exists):
+    from vinc_client import VincInvalidArgument
+    from vinc_client.context import SOURCES_LINE
+    wrong_alias = "concept:concept.agent-reviewer"
+    text = "x" * 25000 + "\nExample alias: " + wrong_alias
+    def handler(request):
+        if request.url.path.startswith("/v1/documents/"):
+            return httpx.Response(200, json={"doc_id": DOC, "executed": True,
+                "verified": True, "text": text, "content_hash": hashlib.sha256(text.encode()).hexdigest()})
+        return handler_for(lambda: httpx.Response(200, json={"executed": True,
+            "found": mirror_exists, "node": {"id": MIRROR} if mirror_exists else None}), [])(request)
+    async def run():
+        async with AsyncVincClient(KEY, transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(VincInvalidArgument) as caught:
+                await client.prefetch(ROLE, "Check.")
+            size = caught.value.details["required_size"]
+            return await client.prefetch(ROLE, "Check.", max_chars=size), size
+    if async_mode:
+        block, size = asyncio.run(run())
+    else:
+        with VincClient(KEY, transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(VincInvalidArgument) as caught:
+                client.prefetch(ROLE, "Check.")
+            size = caught.value.details["required_size"]
+            block = client.prefetch(ROLE, "Check.", max_chars=size)
+    footer = block.split("Citation contract for this run:\n")[-1]
+    assert len(block) == size and text.replace("\n", "\\n") in block
+    assert block.endswith(SOURCES_LINE)
+    assert f"[{ROLE}]" in footer and wrong_alias not in footer
+    assert (f"[{MIRROR}]" in footer) is mirror_exists
+    assert "cannot claim Sources: none" in footer
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
 @pytest.mark.parametrize("status,body,code", [
     (401, {"error": {"code": "not_authenticated"}}, "not_authenticated"),
     (403, {"error": {"code": "permission_denied"}}, "permission_denied"),
