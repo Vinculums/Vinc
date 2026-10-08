@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 PACKAGE_DIRS = {
+    "vincs": "integrations/vincs/python",
     "vinc-client": "integrations/client/python",
     "vinc-agent-framework": "integrations/agent-framework/python",
     "vinc-langgraph": "integrations/langgraph/python",
