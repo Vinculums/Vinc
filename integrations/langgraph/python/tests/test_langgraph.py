@@ -104,6 +104,27 @@ def test_build_system_message_appends_and_keeps():
     assert "You review design changes." in joined.text and "BLOCK" in joined.text
 
 
+def test_plain_system_context_preserves_string_and_message_metadata():
+    base = SystemMessage(content="Review.", id="system-id", name="reviewer",
+                         additional_kwargs={"trusted": True})
+    joined = build_system_message("DATA", base)
+    assert joined.content == "Review.\nDATA"
+    assert joined.id == base.id and joined.name == base.name
+    assert joined.additional_kwargs == base.additional_kwargs
+    assert base.content == "Review."
+    assert build_system_message("DATA", "").content == "DATA"
+
+
+def test_structured_system_context_keeps_blocks_and_metadata():
+    blocks = [{"type": "text", "text": "Review.", "cache_control": {"type": "ephemeral"}}]
+    base = SystemMessage(content=blocks, id="structured-id")
+    joined = build_system_message("DATA", base)
+    assert isinstance(joined.content, list)
+    assert joined.content[-1] == {"type": "text", "text": "DATA"}
+    assert joined.content[0]["cache_control"] == {"type": "ephemeral"}
+    assert joined.id == base.id and base.content == blocks
+
+
 # ── 도구 ───────────────────────────────────────────────────────────────────────
 
 def test_tools_are_read_only_and_work_sync_and_async():

@@ -74,7 +74,12 @@ def build_system_message(block: str | None, base: SystemMessage | str | None = N
         return base
     if base is None:
         return SystemMessage(content=block)
-    return SystemMessage(content=[*base.content_blocks, {"type": "text", "text": block}])
+    if isinstance(base.content, str):
+        # 일반 텍스트는 Agent Framework와 같은 문자열·줄바꿈으로 보낸다.
+        content = f"{base.content}\n{block}" if base.content else block
+    else:
+        content = [*base.content_blocks, {"type": "text", "text": block}]
+    return base.model_copy(update={"content": content})
 
 
 def prefetch(client: VincClient, role_id: str, task: str, *, space: str | None = None,
