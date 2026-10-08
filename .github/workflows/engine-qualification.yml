@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/engine-qualification.yml
       - scripts/qa/prepare_candidate_engine.py
+      - packaging/lbug-ext-0.21.2.sha256
       - scripts/qa/candidate_frozen_probe.py
       - scripts/qa/engine_compatibility_probe.py
       - scripts/qa/frozen_recovery_probe.py
@@ -112,6 +113,7 @@ jobs:
           path: |
             baseline/manifest.json
             candidate/manifest.json
+            candidate/release-assets/
             candidate/product-tests.xml
             candidate/offline/
             candidate/compatibility/
