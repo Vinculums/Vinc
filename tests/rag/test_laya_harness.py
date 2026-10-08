@@ -50,6 +50,18 @@ class PinTests(unittest.TestCase):
         h = pins.pin_header()
         self.assertEqual(h["revision"], pins.REVISION)
         self.assertIn("questions_hash", h)
+        self.assertNotIn("model_dir", h)
+
+    def test_로컬_체크포인트는_머리에_경로와_sha256_을_남긴다(self):
+        # 미세조정 체크포인트(§7.1)로 돌린 결과는 핀 revision 과 섞이면 안 된다. 머리가 둘을 함께 적는다.
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "model.safetensors").write_bytes(b"not a real tensor file")
+            h = pins.pin_header(d)
+            self.assertEqual(h["model_dir"], d)
+            self.assertEqual(h["model_dir_sha256"], pins.model_dir_sha256(d))
+            self.assertEqual(len(h["model_dir_sha256"]), 64)
+            self.assertEqual(h["revision"], pins.REVISION)          # 베이스는 그대로 적힌다
+        self.assertIsNone(pins.model_dir_sha256(tempfile.gettempdir()))  # safetensors 가 없으면 None
 
     def test_대칭_술어만_역방향을_묻는다(self):
         pair = {"a": {"text": "a"}, "b": {"text": "b"}, "context": None}

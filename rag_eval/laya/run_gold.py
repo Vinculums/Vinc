@@ -64,6 +64,8 @@ def main(argv=None) -> int:
     ap.add_argument("--calib", type=Path, default=None)
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--model-dir", default=None,
+                    help="핀 체크포인트 대신 올릴 로컬 체크포인트(미세조정, §7.1). 머리에 sha256 을 적는다")
     args = ap.parse_args(argv)
 
     pairs = read_jsonl(args.gold)
@@ -77,11 +79,11 @@ def main(argv=None) -> int:
     from laya.calibrate import records_from_labeled  # 지연 import: 모델 venv 에서만
 
     t0 = time.perf_counter()
-    agent = load_agent()
+    agent = load_agent(args.model_dir)
     load_s = time.perf_counter() - t0
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    header = pin_header()
+    header = pin_header(args.model_dir)
     header.update(kind="run_gold", gold=str(args.gold), split=args.split, n_pairs=len(pairs),
                   load_s=round(load_s, 1), calib_files=sorted(f"{k[0]}:{k[1]}" for k in calib))
     # state 마다 forward 가 둘이다: system_one(usage·절단 정보)과 records_from_labeled(원시 logits).

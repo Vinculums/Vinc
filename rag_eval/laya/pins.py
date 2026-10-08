@@ -66,12 +66,31 @@ def questions_hash() -> str:
     return hashlib.sha256(json.dumps(QUESTIONS, sort_keys=True).encode()).hexdigest()[:12]
 
 
-def pin_header() -> dict:
-    """출력 파일 머리에 싣는 핀. torch/transformers 는 설치된 venv 에서만 읽힌다."""
+def model_dir_sha256(model_dir: str) -> str | None:
+    """로컬 체크포인트의 model.safetensors sha256. 미세조정 체크포인트(§7.1)를 핀 대신 적을 때 쓴다."""
+    import os
+    path = os.path.join(model_dir, "model.safetensors")
+    if not os.path.exists(path):
+        return None
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def pin_header(model_dir: str | None = None) -> dict:
+    """출력 파일 머리에 싣는 핀. torch/transformers 는 설치된 venv 에서만 읽힌다.
+
+    model_dir 이 있으면 핀 체크포인트 대신 그 로컬 체크포인트(미세조정, §7.1)를 돌린 것이고,
+    머리에 model_dir 와 그 safetensors sha256 을 함께 적어 어느 가중치의 수치인지 남긴다."""
     out = {"package": PACKAGE, "repo": REPO, "revision": REVISION, "sha256": SHA256,
            "backend": BACKEND, "max_len": MAX_LEN, "seed": SEED, "questions_hash": questions_hash(),
            "python": platform.python_version(), "machine": platform.platform(),
            "written_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    if model_dir:
+        out.update(model_dir=model_dir, model_dir_sha256=model_dir_sha256(model_dir),
+                   note="model_dir overrides the pinned checkpoint; revision/sha256 above are the base it was tuned from")
     try:
         import laya  # noqa: F401
         import torch  # noqa: F401
@@ -83,10 +102,16 @@ def pin_header() -> dict:
     return out
 
 
-def load_agent():
-    """핀대로 잠근 에이전트. revision 과 sha256 이 다르면 laya 가 거절한다."""
+def load_agent(model_dir: str | None = None):
+    """핀대로 잠근 에이전트. revision 과 sha256 이 다르면 laya 가 거절한다.
+
+    model_dir 을 주면 그 로컬 체크포인트(미세조정 결과)를 대신 올린다. 핀 검증은 없으므로
+    출력 머리의 model_dir_sha256 이 그 자리를 대신한다."""
     import laya
-    agent = laya.load(REPO, revision=REVISION, expected_sha256=SHA256)
+    if model_dir:
+        agent = laya.load(model_dir)
+    else:
+        agent = laya.load(REPO, revision=REVISION, expected_sha256=SHA256)
     try:
         agent.set_backend(BACKEND, strict=True)
     except TypeError:
