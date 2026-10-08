@@ -125,6 +125,18 @@ def test_structured_system_context_keeps_blocks_and_metadata():
     assert joined.id == base.id and base.content == blocks
 
 
+@pytest.mark.parametrize("base", ["Review.", ""])
+def test_legacy_model_request_uses_the_same_plain_context_join(base):
+    from types import SimpleNamespace
+    from vinc_langgraph import VincContextMiddleware
+
+    request = SimpleNamespace(system_prompt=base,
+                              override=lambda **kwargs: SimpleNamespace(**kwargs))
+    with sync_client(Routes({})) as client:
+        result = VincContextMiddleware(client=client)._with_block(request, "DATA")
+    assert result.system_prompt == build_system_message("DATA", base).content
+
+
 # ── 도구 ───────────────────────────────────────────────────────────────────────
 
 def test_tools_are_read_only_and_work_sync_and_async():

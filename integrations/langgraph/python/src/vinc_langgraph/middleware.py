@@ -140,7 +140,7 @@ class VincContextMiddleware(AgentMiddleware):
                 system_message=build_system_message(block, request.system_message))
         # langchain 1.0 초기판의 ModelRequest 는 문자열 system_prompt 만 갖는다.
         base = getattr(request, "system_prompt", None) or ""
-        return request.override(system_prompt=f"{base}\n\n{block}" if base else block)
+        return request.override(system_prompt=build_system_message(block, base).content)
 
     def wrap_model_call(self, request: ModelRequest, handler: Callable[[ModelRequest], Any]) -> Any:
         query = last_user_text(request.messages)
