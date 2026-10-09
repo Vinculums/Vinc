@@ -56,6 +56,8 @@ def test_budget_error_stops_model_and_corrected_middleware_runs(async_mode):
         elif request.url.path.startswith("/v1/documents/"):
             payload = {"doc_id": "large", "executed": True, "verified": True, "text": text,
                        "content_hash": hashlib.sha256(text.encode()).hexdigest()}
+        elif request.url.path.startswith("/v1/nodes/"):
+            payload = {"executed": True, "found": False, "node": None}
         else:
             payload = {"status": "none"}
         return httpx.Response(200, json=payload)
@@ -77,7 +79,7 @@ def test_budget_error_stops_model_and_corrected_middleware_runs(async_mode):
         assert not model.calls
         # client 0.1.4: brief/search 는 검증 전에 나갈 수 있고 실패 시 버려진다.
         assert [p for p in seen if not p.endswith(("brief", "search"))] == [
-            "/v1/roles/concept:agent-test", "/v1/documents/large"]
+            "/v1/roles/concept:agent-test", "/v1/documents/large", "/v1/nodes/concept:doc.large"]
         assert sorted(p for p in seen if p.endswith(("brief", "search"))) in (
             [], ["/v1/brief", "/v1/search"])
         await invoke(VincContextMiddleware(**kwargs,
