@@ -32,8 +32,12 @@ def response(request, seen):
         body = {"executed": True, "verified": True, "doc_id": "vinc.spec.fixture",
                 "text": doc_text, "content_hash": hashlib.sha256(doc_text.encode()).hexdigest()}
     elif request.method == "GET":
-        body = {"found": True, "id": ROLE, "domain": "vinc/engineering",
-                "props": {"reads": ["vinc.spec.fixture"], "mission": "Review evidence."}}
+        if request.url.path.startswith("/v1/nodes/"):
+            body = {"executed": True, "found": True,
+                    "node": {"id": "concept:doc.vinc.spec.fixture"}}
+        else:
+            body = {"found": True, "id": ROLE, "domain": "vinc/engineering",
+                    "props": {"reads": ["vinc.spec.fixture"], "mission": "Review evidence."}}
     elif request.url.path.endswith("brief"):
         query = json.loads(request.content)["query"]
         body = {"status": "resolved", "node": {"id": "concept:rule", "cite_id": "concept:rule",
@@ -178,8 +182,8 @@ def test_same_selected_role_prefetch_bytes_calls_and_budget(task):
             lg_block = await lg_aprefetch(client, ROLE, task, space=SPACE)
         assert sync_block.encode() == ma_block.encode() == lg_block.encode()
         # client 0.1.4: 선택 읽기가 역할 읽기와 겹치므로 도착 순서는 계약이 아니다. 요청 집합을 대조한다.
-        assert sorted(sync_seen[:4], key=repr) == sorted(ma_seen[:4], key=repr) == sorted(lg_seen, key=repr)
-        assert len(lg_seen) == 4 and all(row[2]["space"] == SPACE for row in lg_seen)
+        assert sorted(sync_seen[:5], key=repr) == sorted(ma_seen[:5], key=repr) == sorted(lg_seen, key=repr)
+        assert len(lg_seen) == 5 and all(row[2]["space"] == SPACE for row in lg_seen)
         assert all(cite in lg_block for cite in (ROLE, "concept:rule", "chunk:rule", "record:rule"))
         # 두 어댑터 모두 vinc-client 의 블록을 그대로 쓴다: 필수 문서의 인용 id 가 함께 간다.
         assert "(cite as concept:doc.vinc.spec.fixture)" in lg_block
@@ -187,6 +191,30 @@ def test_same_selected_role_prefetch_bytes_calls_and_budget(task):
         assert '"Sources: [id] [id]"' in lg_block and '"Sources: none"' in lg_block
         assert len(lg_block) <= 24000
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("missing_status", [200, 404])
+def test_missing_required_document_mirror_is_uncitable_in_both_frameworks(missing_status):
+    seen = []
+    def handle(request):
+        if request.url.path.startswith("/v1/nodes/"):
+            seen.append(request)
+            body = ({"executed": True, "found": False, "node": None} if missing_status == 200
+                    else {"error": {"code": "not_found"}})
+            return httpx.Response(missing_status, json=body)
+        return response(request, [])
+    with VincClient(KEY, transport=httpx.MockTransport(handle)) as client:
+        sync_block = lg_prefetch(client, ROLE, "Review.", space=SPACE)
+    async def run():
+        async with AsyncVincClient(KEY, transport=httpx.MockTransport(handle)) as client:
+            return (await maf_prefetch(client, ROLE, "Review.", space=SPACE),
+                    await lg_aprefetch(client, ROLE, "Review.", space=SPACE))
+    ma_block, lg_block = asyncio.run(run())
+    assert sync_block == ma_block == lg_block
+    assert "vinc.spec.fixture (no citable id)" in lg_block
+    assert "concept:doc.vinc.spec.fixture" not in lg_block
+    assert "Preserve this evidence." in lg_block
+    assert len(seen) == 3 and all(req.url.params["space"] == SPACE for req in seen)
 
 
 class RecordedClient(BaseChatClient):
@@ -318,3 +346,38 @@ def test_same_sources_line_in_context_mode_in_both_frameworks():
             return ctx.instructions[0]
     ma_block = asyncio.run(run())
     assert lg_block == ma_block and lg_block.startswith(SOURCES_LINE + "\n")
+
+
+@pytest.mark.parametrize("instructions", ["Review the policy.", "근거에 따라 검토하세요."])
+def test_native_agents_deliver_identical_plain_system_instructions(instructions):
+    from langchain.agents import create_agent
+    from langchain_core.messages import HumanMessage
+    from vinc_agent_framework import VincContextProvider
+    from vinc_langgraph import VincContextMiddleware
+
+    class CaptureSystem(RecordedModel):
+        system_contents: list = []
+        def bind_tools(self, tools, **kwargs):
+            return self
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            self.system_contents.append(messages[0].content)
+            return ChatResult(generations=[ChatGeneration(message=AIMessage("done"))])
+
+    model = CaptureSystem()
+    with VincClient(KEY, transport=httpx.MockTransport(lambda req: response(req, []))) as client:
+        create_agent(model, tools=lg_tools(client), system_prompt=instructions,
+                     middleware=[VincContextMiddleware(client=client)]).invoke(
+                         {"messages": [HumanMessage("Review evidence.")]})
+
+    async def run():
+        async with AsyncVincClient(KEY, transport=httpx.MockTransport(
+                lambda req: response(req, []))) as client:
+            chat = RecordedClient()
+            await Agent(chat, instructions=instructions,
+                        context_providers=[VincContextProvider(client, expose_tools=True)]).run(
+                            "Review evidence.")
+            return chat.calls[0]["instructions"]
+
+    ma_instructions = asyncio.run(run())
+    assert isinstance(model.system_contents[0], str)
+    assert model.system_contents == [ma_instructions]

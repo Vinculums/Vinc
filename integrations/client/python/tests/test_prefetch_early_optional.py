@@ -55,6 +55,8 @@ def answer(request, count=2, mission="Review."):
     if name == "search":
         assert json.loads(request.content)["query"] == "Review.\nRole topic: agent/engineering"
         return httpx.Response(200, json=SEARCH)
+    if request.url.path.startswith("/v1/nodes/"):
+        return httpx.Response(200, json={"executed": True, "found": True, "node": {"id": name}})
     return httpx.Response(200, json=document(name))
 
 
@@ -89,7 +91,8 @@ def test_async_brief_in_flight_before_role_response_and_search_after_it():
 
         async with AsyncVincClient(KEY, transport=httpx.MockTransport(handler)) as client:
             await client.prefetch(ROLE_ID, "Review.")
-        assert sorted(order) == ["brief", "d00", "d01", "d02", "role", "search"]
+        assert sorted(order) == ["brief", "concept:doc.d00", "concept:doc.d01", "concept:doc.d02",
+                                 "d00", "d01", "d02", "role", "search"]
     asyncio.run(go())
 
 
@@ -115,7 +118,8 @@ def test_sync_brief_in_flight_before_role_response_and_search_after_it():
 
     with VincClient(KEY, transport=httpx.MockTransport(handler)) as client:
         client.prefetch(ROLE_ID, "Review.")
-    assert sorted(order) == ["brief", "d00", "d01", "d02", "role", "search"]
+    assert sorted(order) == ["brief", "concept:doc.d00", "concept:doc.d01", "concept:doc.d02",
+                             "d00", "d01", "d02", "role", "search"]
 
 
 @pytest.mark.parametrize("async_mode", [False, True])
@@ -127,7 +131,8 @@ def test_concurrency_one_keeps_the_sequential_order(async_mode):
         return answer(request, count=3)
 
     run(async_mode, handler, prefetch_concurrency=1)
-    assert order == ["role", "d00", "d01", "d02", "brief", "search"]
+    assert order == ["role", "d00", "concept:doc.d00", "d01", "concept:doc.d01",
+                     "d02", "concept:doc.d02", "brief", "search"]
 
 
 # 2. 동시 요청 상한 ------------------------------------------------------------

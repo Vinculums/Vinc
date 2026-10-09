@@ -26,8 +26,9 @@ from .errors import (VincAuthError, VincError, VincInvalidArgument, VincPartialW
                      VincNotFound, VincQuotaExceeded, VincUnavailable, error_class)
 from .package import (DEFAULT_PACKAGE_MAX_CHARS, build_package_fragment, format_package,
                       package_space, validate_package)
-from .prefetch import (DEFAULT_PREFETCH_MAX_CHARS, PREFETCH_READ_CONCURRENCY, check_budget, document_key, reading_list,
-                       render_prefetch, required_reading, role_context)
+from .prefetch import (DEFAULT_PREFETCH_MAX_CHARS, PREFETCH_READ_CONCURRENCY, check_budget,
+                       citation_policy, cite_id, document_key, reading_list, render_prefetch, required_reading,
+                       role_context, with_citation)
 
 log = logging.getLogger("vinc_client")
 
@@ -273,6 +274,21 @@ class VincClient(_Base):
         """Read exact canonical text and its integrity metadata via GET /v1/documents/{id}."""
         return self._send(self._document(doc_id, space))
 
+    def _required_document(self, read: str, *, space: str | None) -> dict[str, Any]:
+        try:
+            document = self.document(document_key(read), space=space)
+        except VincNotFound:
+            raise VincInvalidArgument("prefetch_spec_unresolved",
+                                      "A required role reading is unavailable.") from None
+        required_reading(read, document)
+        try:
+            node = self.node(cite_id(read), space=space)
+        except VincNotFound as exc:
+            if exc.code != "not_found":
+                raise
+            node = {"executed": True, "found": False, "node": None}
+        return with_citation(read, document, node)
+
     def prefetch(self, role_id: str, task: str, *, space: str | None = None,
                  max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
         """Before a model call, read the chosen role, every required spec and task evidence.
@@ -286,12 +302,14 @@ class VincClient(_Base):
         search right after the role read. If validation fails they are cancelled, and any
         result that already arrived is discarded; the required error is raised unchanged.
         Concurrency is bounded by the constructor setting (default 8, 1 is sequential):
-        task lookups and documents share one pool of that size; the role read runs on the
+        task lookups and document/mirror reads share one pool of that size; the role read runs on the
         calling thread. Task lookups take slots in submission order and documents queue
         behind them. With 1 the order stays role, documents, budget, brief, search.
         Budget overflow reports the full required_size after all required reads, before
         any task lookup result is used. Retry with that size only after accepting the input cost.
         Large roles require an explicit max_chars above the 24000 character default.
+        Each verified document gets one same-space mirror lookup in its existing worker.
+        Missing mirrors preserve the full document with no citable id; other errors raise.
         """
         limit = self.prefetch_concurrency
         early = limit > 1
@@ -309,22 +327,19 @@ class VincClient(_Base):
                     optional.append(pool.submit(self.search, query, limit=5, space=space))
                 for offset in range(0, len(reads), limit):
                     batch = reads[offset:offset + limit]
-                    futures = [pool.submit(self.document, document_key(doc), space=space)
+                    futures = [pool.submit(self._required_document, doc, space=space)
                                for doc in batch] if early else []
                     try:
                         for index, doc in enumerate(batch):
-                            try:
-                                result = (futures[index].result() if futures
-                                          else self.document(document_key(doc), space=space))
-                            except VincNotFound:
-                                raise VincInvalidArgument("prefetch_spec_unresolved",
-                                                          "A required role reading is unavailable.") from None
+                            result = (futures[index].result() if futures
+                                      else self._required_document(doc, space=space))
                             required_size += 2 + len(required_reading(doc, result))
                             specs.append((doc, result))
                     finally:
                         # 아직 시작하지 않은 요청은 취소한다. 실행 중인 스레드는 풀 종료 때 회수한다.
                         for future in futures:
                             future.cancel()
+                required_size += 2 + len(citation_policy(contract, specs))
                 check_budget(required_size, max_chars)
                 # 선택 읽기 결과(와 그 예외)는 필수 검증과 예산을 통과한 뒤에만 꺼낸다.
                 if early:
@@ -487,6 +502,21 @@ class AsyncVincClient(_Base):
         """Async exact canonical document read; does not replace integrity validation."""
         return await self._send(self._document(doc_id, space))
 
+    async def _required_document(self, read: str, *, space: str | None) -> dict[str, Any]:
+        try:
+            document = await self.document(document_key(read), space=space)
+        except VincNotFound:
+            raise VincInvalidArgument("prefetch_spec_unresolved",
+                                      "A required role reading is unavailable.") from None
+        required_reading(read, document)
+        try:
+            node = await self.node(cite_id(read), space=space)
+        except VincNotFound as exc:
+            if exc.code != "not_found":
+                raise
+            node = {"executed": True, "found": False, "node": None}
+        return with_citation(read, document, node)
+
     async def prefetch(self, role_id: str, task: str, *, space: str | None = None,
                        max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
         """Async fresh role/spec/task evidence retrieval before the model runs."""
@@ -514,16 +544,12 @@ class AsyncVincClient(_Base):
                     bounded(self.search, query, limit=5, space=space)))
             for offset in range(0, len(reads), limit):
                 batch = reads[offset:offset + limit]
-                tasks = [asyncio.create_task(bounded(self.document, document_key(doc), space=space))
+                tasks = [asyncio.create_task(bounded(self._required_document, doc, space=space))
                          for doc in batch] if early else []
                 try:
                     for index, doc in enumerate(batch):
-                        try:
-                            result = (await tasks[index] if tasks
-                                      else await self.document(document_key(doc), space=space))
-                        except VincNotFound:
-                            raise VincInvalidArgument("prefetch_spec_unresolved",
-                                                      "A required role reading is unavailable.") from None
+                        result = (await tasks[index] if tasks
+                                  else await self._required_document(doc, space=space))
                         required_size += 2 + len(required_reading(doc, result))
                         specs.append((doc, result))
                 finally:
@@ -531,6 +557,7 @@ class AsyncVincClient(_Base):
                     for pending in tasks:
                         pending.cancel()
                     await asyncio.gather(*tasks, return_exceptions=True)
+            required_size += 2 + len(citation_policy(contract, specs))
             check_budget(required_size, max_chars)
             # 선택 읽기 결과(와 그 예외)는 필수 검증과 예산을 통과한 뒤에만 꺼낸다.
             if early:
