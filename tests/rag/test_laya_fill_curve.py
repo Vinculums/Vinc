@@ -141,3 +141,40 @@ def test_census_refuses_an_unexplained_missing_node():
             return [{"id":"concept:a","domain":"vinc/ai","rel":"IN_DOMAIN"}] if nid.startswith("domain:") else []
     with pytest.raises(ValueError,match="census incomplete"):
         census(Hub())
+
+
+def test_offline_verification_recomputes_results_even_when_manifest_is_rehashed(tmp_path):
+    from rag_eval.laya.fill_candidates import write_json
+    from rag_eval.laya.fill_curve import sha
+    from rag_eval.laya.verify_fill import verify
+
+    measurement, calib = tmp_path / "measurement", tmp_path / "calib"
+    measurement.mkdir()
+    calib.mkdir()
+    candidate = tmp_path / "candidates.jsonl"
+    candidate.write_text(json.dumps(pair()) + "\n", encoding="utf-8")
+    for (pred, lang), values in calibration().items():
+        write_json(calib / f"calib-{pred}-{lang}.json", {"predicate": pred, "lang": lang, **values})
+    hashes = {p.name: sha(p) for p in calib.iterdir()}
+    pin = tmp_path / "calibration-frozen.json"
+    write_json(pin, {"model_sha256": "abc", "calibration_sha256": hashes})
+    write_json(measurement / "frozen.json", {"candidates_sha256": sha(candidate),
+        "calibration_pin_sha256": sha(pin), "model_sha256": "abc", "calibrations": hashes,
+        "run_id": "test", "day": "2026-10-09"})
+    rows = list(directions().values())
+    (measurement / "raw.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    summarize([pair()], rows, calibration(), measurement, run_id="test", model_sha="abc", day="2026-10-09")
+
+    def manifest():
+        write_json(tmp_path / "manifest.json", {"files": {
+            p.relative_to(tmp_path).as_posix(): sha(p) for p in tmp_path.rglob("*")
+            if p.is_file() and p.name != "manifest.json"}})
+
+    manifest()
+    assert verify(tmp_path)["inference_directions"] == 2
+    (measurement / "beliefs.jsonl").write_text("", encoding="utf-8")
+    with pytest.raises(ValueError, match="artifact hash mismatch"):
+        verify(tmp_path)
+    manifest()
+    with pytest.raises(ValueError, match="recomputed output differs: beliefs.jsonl"):
+        verify(tmp_path)

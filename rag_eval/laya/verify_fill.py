@@ -20,6 +20,15 @@ def verify(root):
     candidates = root / "candidates.jsonl"
     if sha(candidates) != frozen["candidates_sha256"]:
         raise ValueError("candidate file differs from the inference pin")
+    pin_path = root / "calibration-frozen.json"
+    if sha(pin_path) != frozen["calibration_pin_sha256"]:
+        raise ValueError("pre-evaluation calibration pin differs")
+    pin = json.loads(pin_path.read_text(encoding="utf-8"))
+    if pin["model_sha256"] != frozen["model_sha256"]:
+        raise ValueError("model identity differs from the calibration pin")
+    for name, expected in pin["calibration_sha256"].items():
+        if sha(root / "calib" / name) != expected:
+            raise ValueError("calibration differs from the pre-evaluation pin")
     for name, expected in frozen["calibrations"].items():
         if sha(root / "calib" / name) != expected:
             raise ValueError("calibration differs from the inference pin")
