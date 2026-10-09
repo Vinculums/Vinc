@@ -1,0 +1,744 @@
+{
+  "plan_sha256": "934232e494479e6cb05e3a01875f6d2a5674a49dc8be97be2cda8261c87b136e",
+  "grades_sha256": "d8075b8814913a92c7a41f464edf19b69d55fe010d5a49f351931390f03ef312",
+  "model": "gpt-4.1-mini",
+  "version": "2025-04-14",
+  "summary": {
+    "without": {
+      "responses": 20,
+      "overconfident_sentences": 5,
+      "total_sentences": 61,
+      "group_count": {
+        "correct": 0,
+        "n": 0,
+        "rate": null
+      },
+      "unavailable_group_count_acknowledged": {
+        "correct": 3,
+        "n": 3,
+        "rate": 1.0
+      },
+      "unknown_acknowledgment": {
+        "correct": 18,
+        "n": 19,
+        "rate": 0.9473684210526315
+      },
+      "answerable_controls": {
+        "correct": 0,
+        "n": 0,
+        "rate": null
+      }
+    },
+    "with": {
+      "responses": 20,
+      "overconfident_sentences": 5,
+      "total_sentences": 66,
+      "group_count": {
+        "correct": 3,
+        "n": 3,
+        "rate": 1.0
+      },
+      "unavailable_group_count_acknowledged": {
+        "correct": 0,
+        "n": 0,
+        "rate": null
+      },
+      "unknown_acknowledgment": {
+        "correct": 14,
+        "n": 15,
+        "rate": 0.9333333333333333
+      },
+      "answerable_controls": {
+        "correct": 2,
+        "n": 2,
+        "rate": 1.0
+      }
+    }
+  },
+  "paired": [
+    {
+      "case_id": "U01",
+      "overconfidence_delta_with_minus_without": 0
+    },
+    {
+      "case_id": "U02",
+      "overconfidence_delta_with_minus_without": 3
+    },
+    {
+      "case_id": "U03",
+      "overconfidence_delta_with_minus_without": 0
+    },
+    {
+      "case_id": "U04",
+      "overconfidence_delta_with_minus_without": 1
+    },
+    {
+      "case_id": "U05",
+      "overconfidence_delta_with_minus_without": 1
+    },
+    {
+      "case_id": "U06",
+      "overconfidence_delta_with_minus_without": 0
+    },
+    {
+      "case_id": "U07",
+      "overconfidence_delta_with_minus_without": 0
+    },
+    {
+      "case_id": "U08",
+      "overconfidence_delta_with_minus_without": 0
+    },
+    {
+      "case_id": "U09",
+      "overconfidence_delta_with_minus_without": 0
+    },
+    {
+      "case_id": "U10",
+      "overconfidence_delta_with_minus_without": 0
+    },
+    {
+      "case_id": "U11",
+      "overconfidence_delta_with_minus_without": 0
+    },
+    {
+      "case_id": "U12",
+      "overconfidence_delta_with_minus_without": 0
+    },
+    {
+      "case_id": "U13",
+      "overconfidence_delta_with_minus_without": -1
+    },
+    {
+      "case_id": "U14",
+      "overconfidence_delta_with_minus_without": -1
+    },
+    {
+      "case_id": "U15",
+      "overconfidence_delta_with_minus_without": 0
+    },
+    {
+      "case_id": "U16",
+      "overconfidence_delta_with_minus_without": 0
+    },
+    {
+      "case_id": "U17",
+      "overconfidence_delta_with_minus_without": 0
+    },
+    {
+      "case_id": "U18",
+      "overconfidence_delta_with_minus_without": 0
+    },
+    {
+      "case_id": "U19",
+      "overconfidence_delta_with_minus_without": -3
+    },
+    {
+      "case_id": "U20",
+      "overconfidence_delta_with_minus_without": 0
+    }
+  ],
+  "per_response": [
+    {
+      "case_id": "U06",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 4,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U18",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 3,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U03",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 3,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U09",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 5,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": true,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U08",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 3,
+      "unknown_required": false,
+      "unknown_acknowledged": false,
+      "group_applicable": true,
+      "expected_group_count": 2,
+      "group_correct": true,
+      "group_unavailable_acknowledged": false,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U02",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 3,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U10",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 2,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U20",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 3,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U11",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 2,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U13",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 4,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U14",
+      "arm": "without",
+      "overconfident_sentences": 1,
+      "sentences": 3,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U01",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 3,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U19",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 3,
+      "unknown_required": false,
+      "unknown_acknowledged": false,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": false,
+      "control": true,
+      "control_correct": true,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U09",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 3,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": true,
+      "expected_group_count": 1,
+      "group_correct": true,
+      "group_unavailable_acknowledged": false,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U15",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 1,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U16",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 2,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U17",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 3,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U08",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 3,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": true,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U12",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 3,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U05",
+      "arm": "with",
+      "overconfident_sentences": 1,
+      "sentences": 3,
+      "unknown_required": false,
+      "unknown_acknowledged": false,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": false,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U07",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 2,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": true,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U15",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 1,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U06",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 3,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U14",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 4,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U07",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 4,
+      "unknown_required": false,
+      "unknown_acknowledged": false,
+      "group_applicable": true,
+      "expected_group_count": 1,
+      "group_correct": true,
+      "group_unavailable_acknowledged": false,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U04",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 3,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U13",
+      "arm": "without",
+      "overconfident_sentences": 1,
+      "sentences": 4,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U20",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 4,
+      "unknown_required": false,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": true,
+      "control_correct": true,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U16",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 2,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U17",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 4,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U03",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 2,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U12",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 4,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U02",
+      "arm": "with",
+      "overconfident_sentences": 3,
+      "sentences": 3,
+      "unknown_required": true,
+      "unknown_acknowledged": false,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": false,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U11",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 3,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U10",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 4,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U19",
+      "arm": "without",
+      "overconfident_sentences": 3,
+      "sentences": 4,
+      "unknown_required": true,
+      "unknown_acknowledged": false,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": false,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U04",
+      "arm": "with",
+      "overconfident_sentences": 1,
+      "sentences": 4,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U01",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 4,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U18",
+      "arm": "with",
+      "overconfident_sentences": 0,
+      "sentences": 5,
+      "unknown_required": true,
+      "unknown_acknowledged": true,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": true,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    },
+    {
+      "case_id": "U05",
+      "arm": "without",
+      "overconfident_sentences": 0,
+      "sentences": 4,
+      "unknown_required": false,
+      "unknown_acknowledged": false,
+      "group_applicable": false,
+      "expected_group_count": null,
+      "group_correct": true,
+      "group_unavailable_acknowledged": false,
+      "control": false,
+      "control_correct": false,
+      "reviewer_kind": "ai"
+    }
+  ],
+  "independent_human_gold": false,
+  "statistical_significance_claimed": false
+}
