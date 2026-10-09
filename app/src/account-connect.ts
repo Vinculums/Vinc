@@ -59,7 +59,8 @@ export async function accountKey(): Promise<string> {
     return held.trim();
   }
   if (legacy) {
-    await store("secret_set", { name: K_KEY, value: legacy }).catch(() => null);
+    // 저장 실패는 호출자에게 전달하고, 재시도할 원래 키는 남긴다.
+    await store("secret_set", { name: K_KEY, value: legacy });
     localStorage.removeItem(K_KEY);
     return legacy;
   }
@@ -72,20 +73,17 @@ export async function setAccountKey(value: string): Promise<void> {
 }
 
 async function storeKey(value: string): Promise<void> {
-  // 표식이 먼저다. 아래에서 어느 분기를 타든 "키가 있다"는 사실은 같고, OS 저장소
-  // 쓰기가 실패해도(catch 로 삼킨다) 화면은 연결됨으로 그려져야 한다 — 안 그러면
-  // 사용자는 키를 넣고도 미연결 화면을 보며 같은 일을 반복한다.
-  localStorage.setItem(K_LINKED, "1");
-  // 들고 있던 옛 키를 버린다. 계정 모드는 키를 메모리에 캐시하므로(`api.ts`), 여기서
-  // 안 비우면 키를 바꿔도 이 창이 닫힐 때까지 옛 키로 계정을 부른다.
-  forgetMemberKey();
   const store = await secretStore();
   if (store) {
-    await store("secret_set", { name: K_KEY, value }).catch(() => null);
+    await store("secret_set", { name: K_KEY, value });
     localStorage.removeItem(K_KEY);
   } else {
     localStorage.setItem(K_KEY, value);           // 저장소 없는 기기 — 화면이 이를 알린다
   }
+  // 저장 성공 이후에만 연결 표식·캐시·성공 이벤트를 갱신한다.
+  // 실패하면 이전 키와 연결 상태를 유지하고 호출자가 재시도를 안내한다.
+  localStorage.setItem(K_LINKED, "1");
+  forgetMemberKey();
   // 계정이 방금 붙었다. 디바이스 플로우와 수동 붙여넣기가 **둘 다 여기로** 모이므로
   // 신호는 이 한 곳이면 된다 — 부르는 자리 셋에 각자 걸면 하나를 빠뜨린다. 이벤트인
   // 이유는 스케줄러와의 import 순환을 피하려서다(스케줄러가 이 모듈을 읽는다).

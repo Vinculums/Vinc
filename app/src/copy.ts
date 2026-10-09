@@ -1179,6 +1179,7 @@ const EN = {
       syncKey: "Account key (manual)",
       syncKeyHint: "Fallback: create a key at vincs.io/account and paste it here. It's stored only on this machine.",
       syncKeySave: "Save key", syncKeySaved: "Saved. The field is cleared on purpose - the key is never kept on screen.",
+      syncKeySaveFailed: "The key could not be saved. Try again.",
       // 웹 Vinc 전용 계정·스페이스 줄. 예전엔 settings.ts 안에 EN/KO 사전이
       // 통째로 인라인돼 있었다("셸 편집 충돌 회피"가 사유였는데 그 충돌은 이미
       // 없다). 덱 밖 카피는 언어 전환도 검사도 받지 못하므로 여기로 옮긴다.
@@ -2269,6 +2270,7 @@ const KO: Deck = {
       syncKey: "계정 키 (수동)",
       syncKeyHint: "자동 연결이 안 될 때 쓰는 방법이에요. vincs.io/account에서 키를 만들어 여기에 붙여넣으세요. 키는 이 기기에만 저장돼요.",
       syncKeySave: "키 저장", syncKeySaved: "저장했어요. 입력칸을 비우는 것은 일부러예요 · 키를 화면에 남기지 않아요",
+      syncKeySaveFailed: "키를 저장하지 못했어요. 다시 시도해 주세요.",
       webNotSignedIn: "로그인하지 않았어요",
       webManage: "계정 관리",
       webSignedAs: (w) => `로그인됨 · ${w}`,
