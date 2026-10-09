@@ -5,9 +5,10 @@ made on 2026-10-10 so that a third fine-tuning round has a fresh measurement spl
 large enough for Korean. Method: `vinc.plan.laya-test-method-2026-10-07`. It sits beside `laya-predicates-ai-v1`
 and uses the same row shape, so `rag_eval.laya.run_gold`, `fit_calib` and `report` read it unchanged.
 
-**Status: not accepted.** The labels are written by an AI. The method asks for owner-written gold and v1 was
-accepted as a one-set exception. Using this set for a ruling needs the same owner decision. No model was run
-and no experiment is authorized by this directory.
+**Status: accepted by the owner on 2026-10-10** as the reference set for the third fine-tuning round
+(`decision:laya-predicates-ai-v2-and-community-v1-accepted-as-gold-and-v3-run-ordered-2026-10-10`). Like v1 it is an exception to the rule against machine-written gold: the labels were written by an AI
+and no person read them pair by pair, so a pass here is still not a pass of the original M1 gate. No model was
+run by this directory.
 
 ## What is in it
 
@@ -76,11 +77,15 @@ title-only node on at least one side: the accepted positives are mostly document
 The sample comes from the 243 pairs that touch no node of an earlier set, out of 814. These rows were selected
 with model output, so they are usable as training negatives or as a precision check and never as measurement.
 
-## Suggested use (needs approval before any run)
+## Use
 
-- Measurement: `eval.jsonl`, once. v1's measurement 150 has been read twice and can retire to training.
-- Calibration only: hold out part of `calib.jsonl` (Korean included) before training, as v2 did.
-- Training: the rest of `calib.jsonl`, all of v1, and the 88 audit negatives.
+The third round is registered in `vinc.plan.laya-finetune-v3-2026-10-10` (Linear VIN-421). In short:
+
+- Measurement: `eval.jsonl`, once.
+- Calibration only: 120 pairs of `calib.jsonl`, 40 per language, frozen before training.
+- Training: the other 57 calibration pairs, the calibration half of v1, and registered `same_as` negatives.
+- v1's measurement 150 stays sealed and is read once more for continuity. This replaces the earlier note here
+  that it could retire to training.
 - `disputed.jsonl` stays out of training and measurement.
 
 ## Files

@@ -26,7 +26,7 @@
  },
  "selection_independent_of_model_output": "gold.jsonl and disputed.jsonl were chosen and labelled without reading any Laya output. fill-same-as-audit.jsonl is the opposite by design: a random sample of pairs the v2 checkpoint accepted as same_as positives.",
  "protocol_deviations": [
-  "AI labels instead of owner labels (method section 3). The owner has not yet ruled on accepting this set.",
+  "AI labels instead of owner labels (method section 3). The owner accepted this set on 2026-10-10 as a second one-set exception; the rule against machine-written gold stays as written.",
   "Source quotas of method section 3 (ties, comention, search, merge at 40 each, random 40) are not met; counts are in summary.json.",
   "Most positives pair one real node with an authored or translated statement; fully real pairs are the minority.",
   "Family-blocked split instead of the pair-level splitter of rag_eval/laya/split.py.",
@@ -37,5 +37,11 @@
   "Any go or no-go result",
   "Human or cross-vendor validation",
   "That authored fixture statements are true of the product: they are test statements, not graph claims"
- ]
+ ],
+ "accepted": {
+  "by": "owner",
+  "on": "2026-10-10",
+  "decision": "decision:laya-predicates-ai-v2-and-community-v1-accepted-as-gold-and-v3-run-ordered-2026-10-10",
+  "scope": "reference set for the third fine-tuning round (VIN-421); not a pass of the original M1 gate"
+ }
 }
