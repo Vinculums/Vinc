@@ -279,9 +279,12 @@ jobs:
           printf 'username=%s\npassword=%s\n' "$ACCOUNT" "$AZ_KEY" > "$credentials"
           sudo mount -t cifs "//$ACCOUNT.file.core.windows.net/$SHARE" "$mountpoint" \
             -o "credentials=$credentials,vers=3.1.1,uid=$(id -u),gid=$(id -g),serverino,nosharesock,actimeo=1"
+          root="$mountpoint/qualification-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir "$root"
+          echo "QUALIFICATION_ROOT=$root" >> "$GITHUB_ENV"
           python scripts/qa/frozen_recovery_probe.py --binary dist/vinc \
             --output work/persistent-recovery --trials 3 --durable-ack --lose-local-disk \
-            --check-retry-fencing --persistent-root "$mountpoint/qualification-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            --check-retry-fencing --persistent-root "$root/persistent"
           cp work/persistent-recovery/result.json work/persistent-recovery-result.json
 
       - name: Unmount the qualification share
@@ -292,9 +295,9 @@ jobs:
           if mountpoint -q "$mountpoint"; then
             # 이름을 고정한 이 실행의 합성 폴더만 정리한다. 라이브 DB는 이 폴더 밖이다.
             python - "$mountpoint/qualification-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" <<'PY'
-          import pathlib, shutil, sys
+          import os, pathlib, shutil, sys
           root = pathlib.Path(sys.argv[1])
-          if root.name.startswith('qualification-') and root.is_dir():
+          if os.environ.get('QUALIFICATION_ROOT') == str(root) and root.is_dir():
               shutil.rmtree(root)
           PY
             sudo umount "$mountpoint"
@@ -367,4 +370,7 @@ jobs:
         if: always()
         with:
           name: hub-store-rebuild-${{ inputs.step }}-${{ inputs.mode }}
-          path: work/*.json
+          path: |
+            work/*.json
+            work/frozen-recovery/**/result.json
+            work/persistent-recovery/**/result.json
