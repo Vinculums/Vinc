@@ -1,0 +1,12 @@
+{
+  "schema": "vin409.bundle.v1",
+  "artifacts": {
+    "approval.template.json": "c93b0a916d455e79114006574e29a63ed3be98e76e8a71328718c0f3f44abfce",
+    "azure-rates.json": "6760d499dd46e817edc39e1dd37701d176dc946b011252d67ea31a3cf40ab62d",
+    "cases.json": "53a97eb2990eb96817f8280ffab67ad2432f8ef8198713755238d439044bb7d2",
+    "plan.json": "9cb68196d1d858921b6173cd0e181a0ea35e52750727af36b7f3592a51e0be3f",
+    "settings.json": "cb84540965a74b7e0ee8ca7e6bee977e6f03c68aab75e7f7bc1d3fda96b7c777"
+  },
+  "paid_calls": 0,
+  "measured_model_results": false
+}
