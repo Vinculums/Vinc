@@ -171,7 +171,8 @@ jobs:
             az containerapp show $APP \
               --query "properties.template.containers[0].env[?name=='$1'].value | [0]" -o tsv
           }
-          dir=$(env_of VINC_DATA_DIR)
+          dir=$(env_of VINC_STORE_SNAPSHOT)
+          [ -n "$dir" ] || dir=$(env_of VINC_DATA_DIR)
           case "$dir" in
             /data/*) ;;
             *) echo "::error::VINC_DATA_DIR 이 /data 아래가 아니다: '$dir'" >&2; exit 1 ;;
@@ -184,6 +185,9 @@ jobs:
             dst="db.rebuilt-$(date -u +%Y%m%d%H%M)"
           fi
           pkns=$(env_of VINC_PK_NAMESPACED)
+          durable=$(env_of VINC_DURABLE_ACK)
+          case "${durable,,}" in 1|true|on) durable=on ;; *) durable=off ;; esac
+          echo "DURABLE_ACK=$durable" >> "$GITHUB_ENV"
           echo "SRC=$src" >> "$GITHUB_ENV"
           echo "DST=$dst" >> "$GITHUB_ENV"
           # 쓰기 검사가 허브와 같은 키 규약으로 쓰게 한다.
@@ -231,14 +235,9 @@ jobs:
           test -n "$snap"
           echo "timestamp=$snap" >> "$GITHUB_OUTPUT"
           mkdir -p work
-          az storage file download --share-name "$SHARE" --path "$SRC" --dest "work/$SRC" \
-            --snapshot "$snap" --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none
-          if az storage file download --share-name "$SHARE" --path "$SRC.wal" --dest "work/$SRC.wal" \
-             --snapshot "$snap" --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none 2>/dev/null; then
-            echo "WAL 동봉"
-          else
-            echo "WAL 없음"
-          fi
+          python scripts/restore_hub_snapshot.py --account "$ACCOUNT" --share "$SHARE" \
+            --snapshot "$snap" --source "$SRC" --out "work/$SRC" --durable-ack "$DURABLE_ACK" \
+            | tee work/restore-source.json
           # 0 바이트를 올린 적이 있다 — 받은 크기를 본다.
           ls -la work
           [ -s "work/$SRC" ] || { echo "::error::받은 원본이 비었다" >&2; exit 1; }
