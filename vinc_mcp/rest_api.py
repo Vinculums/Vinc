@@ -108,7 +108,8 @@ def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
         return (503, "upstream_unavailable", note or "Store maintenance is in progress.",
                 {"retryable": True, "retry_after_s": 1})
     # 브리지가 사이드카와 못 이야기했다. 쓰기라면 **이미 적용됐을 수 있다** — 재시도 금지를 싣는다.
-    if error.startswith("sidecar write unconfirmed"):
+    if error.startswith("sidecar write unconfirmed") or (
+            error and result.get("write_may_have_applied") is True):
         return (503, "upstream_unavailable", error,
                 {"retryable": False, "write_may_have_applied": True})
     if error.startswith("sidecar HTTP 5") or error.startswith("sidecar unreachable"):

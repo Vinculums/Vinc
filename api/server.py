@@ -2372,6 +2372,9 @@ class _Handler(BaseHTTPRequestHandler):
             code, obj = 400, {"error": f"invalid JSON body: {exc}"}
         except JobError as exc:
             code, obj = 500, {"error": str(exc)}
+            if exc.write_may_have_applied:
+                obj.update(retryable=False, write_may_have_applied=True,
+                           job_id=exc.job_id)
         except Exception as exc:   # noqa: BLE001 — 요청 격리(한 요청 오류가 서버를 안 죽임)
             code, obj = 500, {"error": f"{type(exc).__name__}: {exc}"}
         self._send(code, obj)
