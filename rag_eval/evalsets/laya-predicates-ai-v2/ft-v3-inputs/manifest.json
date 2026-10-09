@@ -1,0 +1,53 @@
+{
+ "round": "laya-multilingual-vinc-ft-v3",
+ "issue": "VIN-421",
+ "plan": "vinc.plan.laya-finetune-v3-2026-10-10",
+ "inputs_sha256": {
+  "laya-predicates-ai-v2/gold.jsonl": "c2f684259e7d0092e41901f446a61a519c012ed689b2ed368bdf04ad83fcbaea",
+  "laya-predicates-ai-v2/fill-same-as-audit.jsonl": "39e6f35258d96438938414cbdd3b33e93709f9054143ac1860acf2225f94df38",
+  "laya-predicates-ai-v1/gold.jsonl": "49cf4b34be2fd840c56e54bcca152abfaaebd76afa844938c6d7a7eccb29fd0a",
+  "laya-predicates-community-v1/gold.jsonl": "1551ce8b1a6da919e6805ef5ea82eb4862bfa4a6061c6623c00613dbb11f5f69",
+  "laya-predicates-community-v1/train-negatives.jsonl": "3b2d302430fa6a97e43f2d82adbd4e2fa7cdf79ffe976f766f22b8168ad8ba5d",
+  "train-v2.jsonl": "bae28e406ee2b265ba1bce869782f9a451bb6a7170b883a0117f1ecc0591f3e1"
+ },
+ "sha256": {
+  "audit-diagnostic/gold.jsonl": "088d35c00b998094d83a0d018e2dfcca4bf415547442c30a06810a8596c59a29",
+  "audit-diagnostic/gold.split.json": "430b13c075dbea742394187e3aaa6bed4cee6dcc2c50b0230f1fcd4b45a8908d",
+  "holdout-v3.json": "ffd496cc17d1bd84f548f859df4208fda72a202014240e4da682204a51dff6af",
+  "holdout/gold.jsonl": "5082bd413ba73519abb1b03f2030f02d934abe349c609899ef12ac56db72e9e3",
+  "holdout/gold.split.json": "a7c4499b6290e941c62b149ee9758e911fa26455901bc831d8060fddd87f7319",
+  "same-as-negatives-v3.jsonl": "0fc67153d03cd0ad48f0d6f4c734b92cd7ca1607f04a9ff74ee4fbf5d954647f",
+  "train/train-v3.jsonl": "a6f83fbb9056800acc74b0f517faf47cdd1b50e600e5154dcabd7a4c28282466"
+ },
+ "training": {
+  "rows": 1382,
+  "counts": {
+   "calib": 57,
+   "calib:rows": 114,
+   "calib:items": 285,
+   "calib-laya-predicates-ai-v1": 106,
+   "calib-laya-predicates-ai-v1:rows": 212,
+   "calib-laya-predicates-ai-v1:items": 530,
+   "pack-linked-distinct-concepts": 120,
+   "pack-linked-distinct-concepts:rows": 240,
+   "pack-linked-distinct-concepts:items": 240,
+   "fill-audit-negative": 45,
+   "fill-audit-negative:rows": 90,
+   "fill-audit-negative:items": 90,
+   "same-node-title-one-liner:rows": 36,
+   "same-node-title-one-liner:items": 72,
+   "book-mirror:rows": 56,
+   "book-mirror:items": 140,
+   "merge-reject:rows": 4,
+   "merge-reject:items": 8,
+   "random:rows": 30,
+   "random:items": 75,
+   "typed-decisions:rows": 600,
+   "typed-decisions:items": 893
+  },
+  "excluded": {
+   "calib:holdout_leak": 120,
+   "calib-laya-predicates-ai-v1:eval_leak": 44
+  }
+ }
+}

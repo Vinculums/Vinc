@@ -1,0 +1,66 @@
+{
+ "rows": 1382,
+ "counts": {
+  "calib": 57,
+  "calib:rows": 114,
+  "calib:items": 285,
+  "calib-laya-predicates-ai-v1": 106,
+  "calib-laya-predicates-ai-v1:rows": 212,
+  "calib-laya-predicates-ai-v1:items": 530,
+  "pack-linked-distinct-concepts": 120,
+  "pack-linked-distinct-concepts:rows": 240,
+  "pack-linked-distinct-concepts:items": 240,
+  "fill-audit-negative": 45,
+  "fill-audit-negative:rows": 90,
+  "fill-audit-negative:items": 90,
+  "same-node-title-one-liner:rows": 36,
+  "same-node-title-one-liner:items": 72,
+  "book-mirror:rows": 56,
+  "book-mirror:items": 140,
+  "merge-reject:rows": 4,
+  "merge-reject:items": 8,
+  "random:rows": 30,
+  "random:items": 75,
+  "typed-decisions:rows": 600,
+  "typed-decisions:items": 893
+ },
+ "excluded": {
+  "calib:holdout_leak": 120,
+  "calib-laya-predicates-ai-v1:eval_leak": 44
+ },
+ "misses": [],
+ "eval_pairs_excluded_by": {
+  "texts": 798,
+  "node_ids": 800
+ },
+ "typed_decisions_rows_sampled": 600,
+ "seed": 20261007,
+ "sha256": "a6f83fbb9056800acc74b0f517faf47cdd1b50e600e5154dcabd7a4c28282466",
+ "out": "rag_eval/evalsets/laya-predicates-ai-v2/ft-v3-inputs/train/train-v3.jsonl",
+ "base_training_sha256": "bae28e406ee2b265ba1bce869782f9a451bb6a7170b883a0117f1ecc0591f3e1",
+ "holdout_pairs": 120,
+ "holdout_sha256": "ffd496cc17d1bd84f548f859df4208fda72a202014240e4da682204a51dff6af",
+ "same_as_pairs_sha256": null,
+ "same_as_negatives_sha256": {
+  "same-as-negatives-v3.jsonl": "0fc67153d03cd0ad48f0d6f4c734b92cd7ca1607f04a9ff74ee4fbf5d954647f"
+ },
+ "extra_gold_dirs": {
+  "laya-predicates-ai-v1": {
+   "role": "train",
+   "gold_sha256": "49cf4b34be2fd840c56e54bcca152abfaaebd76afa844938c6d7a7eccb29fd0a",
+   "calib": 150,
+   "eval_blocked": 150
+  },
+  "laya-predicates-community-v1": {
+   "role": "block",
+   "gold_sha256": "1551ce8b1a6da919e6805ef5ea82eb4862bfa4a6061c6623c00613dbb11f5f69",
+   "eval_blocked": 140
+  },
+  "audit-diagnostic": {
+   "role": "block",
+   "gold_sha256": "088d35c00b998094d83a0d018e2dfcca4bf415547442c30a06810a8596c59a29",
+   "eval_blocked": 45
+  }
+ },
+ "gold_sha256": "c2f684259e7d0092e41901f446a61a519c012ed689b2ed368bdf04ad83fcbaea"
+}
