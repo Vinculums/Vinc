@@ -101,7 +101,8 @@ def pair_builder(eval_pairs):
         new = rows_for_pair(a_text, b_text, ctx, labels, source, lang)
         rows.extend(new)
         counts[source] += 1
-        counts[f"{source}:items"] += len(new)
+        counts[f"{source}:rows"] += len(new)
+        counts[f"{source}:items"] += sum(len(r["gold"]) for r in new)
 
     return rows, counts, excluded, add_pair
 

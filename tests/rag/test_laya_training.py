@@ -99,3 +99,10 @@ def test_holdout_and_eval_exclusion_in_cached_training(tmp_path, monkeypatch):
     assert summary['excluded']['book-mirror:blocked_text']==2
     assert summary['excluded']['random:blocked_text']==2
     with pytest.raises(FileExistsError): build_train.main(args)
+
+
+def test_pair_summary_counts_question_items_separately_from_rows():
+    rows, counts, excluded, add = pair_builder([])
+    add("a", "b", "one", "two", None, {"supports": 1, "contradicts": 0, "same_as": 1}, "calib", "en")
+    assert counts["calib:rows"] == 2
+    assert counts["calib:items"] == 5
