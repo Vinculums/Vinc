@@ -1,0 +1,24 @@
+{
+  "run_id": "oc-20261009-vin410-1",
+  "files": {
+    "calib/calib-contradicts-en.json": "10ce8afffb3050afbcf49e0179bd9906fe3aa879d9e03ce845a739edd7b44add",
+    "calib/calib-contradicts-ko.json": "efad0ef391a621155b98c2a7c8b58538de2b56e5cea237643e82e5b9fc3c6515",
+    "calib/calib-same_as-en.json": "a279870b9129db40c96d33089ce33327f8aceb33f3a378a8a32e95c55a48f54f",
+    "calib/calib-same_as-ko.json": "b0314f7f02d52b4221d0c665fa19946f4023c35aa77c87b776b35bc44c150ce2",
+    "calib/calib-supports-en.json": "8eff300ccd0c75a4eaef570bc0ddab20ae648d8dad49c37e2444bcab298f18a6",
+    "calib/calib-supports-ko.json": "a4777296f33a141d28a14500ad2eb559c8ae5c31f00d0a23eef34579fcd98073",
+    "calib/summary.json": "99752bacb6ae2a692757750e60b781bf1bd99ed720b7e7eb1c90afb24aff333c",
+    "calibration-frozen.json": "d2f671c32f26ecd2ddb4e0d393169bed196403de6f0d1b45aecfebaa85ee9b71",
+    "candidates.jsonl": "e8052327ec55849da49a21eaaa60f20e249c7eb96453c7d81736799180f9f3ab",
+    "candidates.summary.json": "5ecc936470273ee7a721e64acf99b95be8c478c2b048b977fab07bdaebfadf92",
+    "collection-audit.json": "926d964149d65f06ef5da0fc1928894d98391df1ab00bab84aef3e3a76951d52",
+    "measurement/abstained.jsonl": "2142f88cf8a1a9331645b1ba8cf63192d2afd41279dbd6d82cc50d9c1a415d6c",
+    "measurement/beliefs.jsonl": "fa938ed3a977fbf6dd28e63cfdfcd5418281ea98ffdf5eb6dc5ce92f8cc15f17",
+    "measurement/frozen.json": "6bb33d827f62c9117191891038dca95f0c4b335d9e21cf3998eec5d089586104",
+    "measurement/outcomes.jsonl": "e465f9a3705d617e911ad2d56f071ee5342b4b8312f37f704264127db310b119",
+    "measurement/raw.jsonl": "dc3dfa82ba8c2ae45751e5f950658c14ca916097b7fa2662cdcd537fc424d92e",
+    "measurement/runtime.json": "7f850663e730ce7b6e0194a1e3931093f7b15a08b4a2af1b49decf57c0aeb207",
+    "measurement/summary.json": "54c39a6e9a2bbc9c78ef90f6324173907fa02dc39d2de4d567678a0396d77cef",
+    "search-diagnostics.json": "aba6f7a928745ed657c86d59f29fa40dfecb6312e9ad709bdedad3c0ada69d57"
+  }
+}

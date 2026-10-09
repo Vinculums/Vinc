@@ -1,0 +1,32 @@
+{
+  "candidates_sha256": "e8052327ec55849da49a21eaaa60f20e249c7eb96453c7d81736799180f9f3ab",
+  "model_sha256": "4fcae459d3226e565e05324577250bfc379fc4ebd529ec1ef02d6d442df30931",
+  "checkpoint_json_sha256": {
+    "checkpoint_latest/encoder/config.json": "3ceae14d210557b47abcde2768b27afbb2131974f9c4dd714f2236fd9ee54981",
+    "checkpoint_latest/rl_agent_config.json": "595769e06484c95cf7cf164507a14efafb09da6f38ad6375cda417b3de47d3c7",
+    "checkpoint_latest/tokenizer/tokenizer.json": "dbba919c6e5e492bc22beb80abb64e6fcc7e8744dc696e8388b8c977767afa4b",
+    "checkpoint_latest/tokenizer/tokenizer_config.json": "4ead186c130230934db8ee91144579b7a7236d835386e23f8553fb9a91a02fba",
+    "encoder/config.json": "3ceae14d210557b47abcde2768b27afbb2131974f9c4dd714f2236fd9ee54981",
+    "rl_agent_config.json": "05203fd05c6f64276e7b385f7fc8e789cf331965ae78645627dab01fe3494692",
+    "tokenizer/tokenizer.json": "dbba919c6e5e492bc22beb80abb64e6fcc7e8744dc696e8388b8c977767afa4b",
+    "tokenizer/tokenizer_config.json": "7ae408fbffdbeb418b26ea67609e8f60bd7fac6f782172a945e78c841c10a595"
+  },
+  "calibrations": {
+    "calib-contradicts-en.json": "10ce8afffb3050afbcf49e0179bd9906fe3aa879d9e03ce845a739edd7b44add",
+    "calib-contradicts-ko.json": "efad0ef391a621155b98c2a7c8b58538de2b56e5cea237643e82e5b9fc3c6515",
+    "calib-same_as-en.json": "a279870b9129db40c96d33089ce33327f8aceb33f3a378a8a32e95c55a48f54f",
+    "calib-same_as-ko.json": "b0314f7f02d52b4221d0c665fa19946f4023c35aa77c87b776b35bc44c150ce2",
+    "calib-supports-en.json": "8eff300ccd0c75a4eaef570bc0ddab20ae648d8dad49c37e2444bcab298f18a6",
+    "calib-supports-ko.json": "a4777296f33a141d28a14500ad2eb559c8ae5c31f00d0a23eef34579fcd98073"
+  },
+  "questions_hash": "500e613737d1",
+  "predicates": [
+    "contradicts",
+    "same_as"
+  ],
+  "measurement_code_sha256": "f7b6716996a486ee1f0daaaa087eed00c8b58a5012255f22b8adde0467940097",
+  "calibration_pin_sha256": "d2f671c32f26ecd2ddb4e0d393169bed196403de6f0d1b45aecfebaa85ee9b71",
+  "run_id": "oc-20261009-vin410-1",
+  "day": "2026-10-09",
+  "asymmetry_abstain": 0.2
+}

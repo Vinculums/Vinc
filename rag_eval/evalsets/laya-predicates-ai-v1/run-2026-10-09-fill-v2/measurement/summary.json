@@ -1,0 +1,364 @@
+{
+  "run_id": "oc-20261009-vin410-1",
+  "candidate_pairs": 16394,
+  "supported_pairs": 3703,
+  "inference_directions": 7406,
+  "table": [
+    {
+      "predicate": "contradicts",
+      "dimension": "all",
+      "value": "all",
+      "candidates": 16394,
+      "supported": 3703,
+      "accepted": 3277,
+      "abstained": 13117,
+      "fill_rate": 0.19989020373307306,
+      "abstention_rate": 0.8001097962669269,
+      "supported_fill_rate": 0.884958142046989,
+      "positive": 0,
+      "negative": 3277,
+      "exclusive_generator_accepted": null,
+      "reasons": {
+        "below_threshold": 395,
+        "unsupported_carrier": 12691,
+        "asymmetry": 71
+      }
+    },
+    {
+      "predicate": "contradicts",
+      "dimension": "lang",
+      "value": "ko",
+      "candidates": 49,
+      "supported": 47,
+      "accepted": 47,
+      "abstained": 2,
+      "fill_rate": 0.9591836734693877,
+      "abstention_rate": 0.04081632653061224,
+      "supported_fill_rate": 1.0,
+      "positive": 0,
+      "negative": 47,
+      "exclusive_generator_accepted": null,
+      "reasons": {
+        "unsupported_carrier": 2
+      }
+    },
+    {
+      "predicate": "contradicts",
+      "dimension": "lang",
+      "value": "en",
+      "candidates": 15478,
+      "supported": 3188,
+      "accepted": 2850,
+      "abstained": 12628,
+      "fill_rate": 0.18413231683680062,
+      "abstention_rate": 0.8158676831631994,
+      "supported_fill_rate": 0.8939774153074027,
+      "positive": 0,
+      "negative": 2850,
+      "exclusive_generator_accepted": null,
+      "reasons": {
+        "below_threshold": 312,
+        "unsupported_carrier": 12290,
+        "asymmetry": 61
+      }
+    },
+    {
+      "predicate": "contradicts",
+      "dimension": "lang",
+      "value": "mixed",
+      "candidates": 867,
+      "supported": 468,
+      "accepted": 380,
+      "abstained": 487,
+      "fill_rate": 0.43829296424452135,
+      "abstention_rate": 0.5617070357554786,
+      "supported_fill_rate": 0.811965811965812,
+      "positive": 0,
+      "negative": 380,
+      "exclusive_generator_accepted": null,
+      "reasons": {
+        "below_threshold": 83,
+        "unsupported_carrier": 399,
+        "asymmetry": 10
+      }
+    },
+    {
+      "predicate": "contradicts",
+      "dimension": "generator",
+      "value": "comention",
+      "candidates": 1007,
+      "supported": 113,
+      "accepted": 99,
+      "abstained": 908,
+      "fill_rate": 0.09831181727904667,
+      "abstention_rate": 0.9016881827209533,
+      "supported_fill_rate": 0.8761061946902655,
+      "positive": 0,
+      "negative": 99,
+      "exclusive_generator_accepted": 55,
+      "reasons": {
+        "asymmetry": 2,
+        "below_threshold": 13,
+        "unsupported_carrier": 894
+      }
+    },
+    {
+      "predicate": "contradicts",
+      "dimension": "generator",
+      "value": "merge",
+      "candidates": 50,
+      "supported": 50,
+      "accepted": 42,
+      "abstained": 8,
+      "fill_rate": 0.84,
+      "abstention_rate": 0.16,
+      "supported_fill_rate": 0.84,
+      "positive": 0,
+      "negative": 42,
+      "exclusive_generator_accepted": 10,
+      "reasons": {
+        "below_threshold": 8
+      }
+    },
+    {
+      "predicate": "contradicts",
+      "dimension": "generator",
+      "value": "random",
+      "candidates": 200,
+      "supported": 15,
+      "accepted": 14,
+      "abstained": 186,
+      "fill_rate": 0.07,
+      "abstention_rate": 0.93,
+      "supported_fill_rate": 0.9333333333333333,
+      "positive": 0,
+      "negative": 14,
+      "exclusive_generator_accepted": 14,
+      "reasons": {
+        "unsupported_carrier": 185,
+        "below_threshold": 1
+      }
+    },
+    {
+      "predicate": "contradicts",
+      "dimension": "generator",
+      "value": "search",
+      "candidates": 13399,
+      "supported": 1647,
+      "accepted": 1454,
+      "abstained": 11945,
+      "fill_rate": 0.10851556086275095,
+      "abstention_rate": 0.8914844391372491,
+      "supported_fill_rate": 0.8828172434729812,
+      "positive": 0,
+      "negative": 1454,
+      "exclusive_generator_accepted": 1225,
+      "reasons": {
+        "below_threshold": 179,
+        "unsupported_carrier": 11752,
+        "asymmetry": 38
+      }
+    },
+    {
+      "predicate": "contradicts",
+      "dimension": "generator",
+      "value": "ties",
+      "candidates": 2183,
+      "supported": 2183,
+      "accepted": 1934,
+      "abstained": 249,
+      "fill_rate": 0.885936784241869,
+      "abstention_rate": 0.11406321575813101,
+      "supported_fill_rate": 0.885936784241869,
+      "positive": 0,
+      "negative": 1934,
+      "exclusive_generator_accepted": 1724,
+      "reasons": {
+        "below_threshold": 230,
+        "asymmetry": 39
+      }
+    },
+    {
+      "predicate": "same_as",
+      "dimension": "all",
+      "value": "all",
+      "candidates": 16394,
+      "supported": 3703,
+      "accepted": 1938,
+      "abstained": 14456,
+      "fill_rate": 0.11821398072465536,
+      "abstention_rate": 0.8817860192753446,
+      "supported_fill_rate": 0.5233594382932757,
+      "positive": 814,
+      "negative": 1124,
+      "exclusive_generator_accepted": null,
+      "reasons": {
+        "below_threshold": 1364,
+        "asymmetry": 1084,
+        "unsupported_carrier": 12691
+      }
+    },
+    {
+      "predicate": "same_as",
+      "dimension": "lang",
+      "value": "ko",
+      "candidates": 49,
+      "supported": 47,
+      "accepted": 0,
+      "abstained": 49,
+      "fill_rate": 0.0,
+      "abstention_rate": 1.0,
+      "supported_fill_rate": 0.0,
+      "positive": 0,
+      "negative": 0,
+      "exclusive_generator_accepted": null,
+      "reasons": {
+        "below_threshold": 47,
+        "asymmetry": 14,
+        "unsupported_carrier": 2
+      }
+    },
+    {
+      "predicate": "same_as",
+      "dimension": "lang",
+      "value": "en",
+      "candidates": 15478,
+      "supported": 3188,
+      "accepted": 1713,
+      "abstained": 13765,
+      "fill_rate": 0.11067321359348753,
+      "abstention_rate": 0.8893267864065124,
+      "supported_fill_rate": 0.53732747804266,
+      "positive": 692,
+      "negative": 1021,
+      "exclusive_generator_accepted": null,
+      "reasons": {
+        "below_threshold": 1137,
+        "asymmetry": 907,
+        "unsupported_carrier": 12290
+      }
+    },
+    {
+      "predicate": "same_as",
+      "dimension": "lang",
+      "value": "mixed",
+      "candidates": 867,
+      "supported": 468,
+      "accepted": 225,
+      "abstained": 642,
+      "fill_rate": 0.25951557093425603,
+      "abstention_rate": 0.740484429065744,
+      "supported_fill_rate": 0.4807692307692308,
+      "positive": 122,
+      "negative": 103,
+      "exclusive_generator_accepted": null,
+      "reasons": {
+        "below_threshold": 180,
+        "asymmetry": 163,
+        "unsupported_carrier": 399
+      }
+    },
+    {
+      "predicate": "same_as",
+      "dimension": "generator",
+      "value": "comention",
+      "candidates": 1007,
+      "supported": 113,
+      "accepted": 71,
+      "abstained": 936,
+      "fill_rate": 0.070506454816286,
+      "abstention_rate": 0.929493545183714,
+      "supported_fill_rate": 0.6283185840707964,
+      "positive": 0,
+      "negative": 71,
+      "exclusive_generator_accepted": 37,
+      "reasons": {
+        "below_threshold": 34,
+        "asymmetry": 19,
+        "unsupported_carrier": 894
+      }
+    },
+    {
+      "predicate": "same_as",
+      "dimension": "generator",
+      "value": "merge",
+      "candidates": 50,
+      "supported": 50,
+      "accepted": 45,
+      "abstained": 5,
+      "fill_rate": 0.9,
+      "abstention_rate": 0.1,
+      "supported_fill_rate": 0.9,
+      "positive": 30,
+      "negative": 15,
+      "exclusive_generator_accepted": 10,
+      "reasons": {
+        "below_threshold": 4,
+        "asymmetry": 4
+      }
+    },
+    {
+      "predicate": "same_as",
+      "dimension": "generator",
+      "value": "random",
+      "candidates": 200,
+      "supported": 15,
+      "accepted": 10,
+      "abstained": 190,
+      "fill_rate": 0.05,
+      "abstention_rate": 0.95,
+      "supported_fill_rate": 0.6666666666666666,
+      "positive": 6,
+      "negative": 4,
+      "exclusive_generator_accepted": 10,
+      "reasons": {
+        "unsupported_carrier": 185,
+        "below_threshold": 4,
+        "asymmetry": 1
+      }
+    },
+    {
+      "predicate": "same_as",
+      "dimension": "generator",
+      "value": "search",
+      "candidates": 13399,
+      "supported": 1647,
+      "accepted": 861,
+      "abstained": 12538,
+      "fill_rate": 0.06425852675572805,
+      "abstention_rate": 0.9357414732442719,
+      "supported_fill_rate": 0.5227686703096539,
+      "positive": 426,
+      "negative": 435,
+      "exclusive_generator_accepted": 733,
+      "reasons": {
+        "asymmetry": 484,
+        "unsupported_carrier": 11752,
+        "below_threshold": 604
+      }
+    },
+    {
+      "predicate": "same_as",
+      "dimension": "generator",
+      "value": "ties",
+      "candidates": 2183,
+      "supported": 2183,
+      "accepted": 1113,
+      "abstained": 1070,
+      "fill_rate": 0.5098488318827302,
+      "abstention_rate": 0.49015116811726983,
+      "supported_fill_rate": 0.5098488318827302,
+      "positive": 413,
+      "negative": 700,
+      "exclusive_generator_accepted": 1002,
+      "reasons": {
+        "below_threshold": 835,
+        "asymmetry": 660
+      }
+    }
+  ],
+  "generator_membership_is_overlapping": true,
+  "inference_seconds": 5498.051693499379,
+  "live_belief_writes": 0,
+  "labels_used": false
+}
