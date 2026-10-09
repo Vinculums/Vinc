@@ -1,0 +1,88 @@
+name: hub-durability-latency
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: "Exact deployed source SHA; the run refuses another image"
+        type: string
+        required: true
+permissions:
+  id-token: write
+  contents: read
+concurrency:
+  group: hub-deploy
+  cancel-in-progress: false
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      ACCOUNT: vincstorage01
+      SHARE: hub-data
+    steps:
+      - name: Require an authorized operator
+        if: github.event_name == 'workflow_dispatch' && !contains(format(',{0},', vars.PROD_OPERATORS), format(',{0},', github.triggering_actor))
+        run: exit 1
+      - uses: actions/checkout@v4
+      - name: Isolate Azure profile
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Verify the existing hub and prepare an owned script directory
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          az containerapp show -n vinc-hub -g vincsRG > "$RUNNER_TEMP/hub.json"
+          python - "$RUNNER_TEMP/hub.json" "$EXPECTED_SHA" <<'PY'
+          import json, sys
+          app = json.load(open(sys.argv[1]))
+          containers = app['properties']['template']['containers']
+          hub = next(c for c in containers if c['name'] == 'vinc-hub')
+          assert hub['image'] == 'vincacr.azurecr.io/vinc-hub:' + sys.argv[2], 'deployed image mismatch'
+          assert hub['resources']['cpu'] == 1 and hub['resources']['memory'] == '2Gi', 'owner resource cap mismatch'
+          print(json.dumps({'image': hub['image'], 'revision': app['properties']['latestReadyRevisionName'], 'resources': hub['resources']}))
+          PY
+          key=$(az storage account keys list -n "$ACCOUNT" -g vincsRG --query '[0].value' -o tsv)
+          echo "::add-mask::$key"
+          echo "AZURE_STORAGE_KEY=$key" >> "$GITHUB_ENV"
+          export AZURE_STORAGE_KEY="$key"
+          root="vin82-latency-script-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          az storage directory create --account-name "$ACCOUNT" --share-name "$SHARE" --name "$root" --fail-on-exist --output none
+          echo "SCRIPT_ROOT=$root" >> "$GITHUB_ENV"
+          az storage file upload --account-name "$ACCOUNT" --share-name "$SHARE" --source scripts/qa/durable_share_latency_probe.py --path "$root/probe.py" --output none
+      - name: Measure only synthetic generations inside the capped hub
+        run: |
+          set -euo pipefail
+          command="python /data/$SCRIPT_ROOT/probe.py --persistent-root /data/vin82-latency-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          # az exec splits whitespace; a short base64 shell command avoids its query-length limit.
+          b64=$(printf '%s' "$command" | base64 -w0)
+          [ "${#b64}" -lt 2000 ]
+          timeout 1500 script -qec "az containerapp exec -n vinc-hub -g vincsRG --command 'sh -c echo\${IFS}$b64|base64\${IFS}-d|sh'" /dev/null > "$RUNNER_TEMP/probe.raw" 2>&1
+          python - "$RUNNER_TEMP/probe.raw" <<'PY'
+          import json, re, sys
+          raw = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', open(sys.argv[1]).read())
+          values = [json.loads(line.split('VIN82_RESULT ', 1)[1]) for line in raw.splitlines() if 'VIN82_RESULT ' in line]
+          assert len(values) == 1, 'missing terminal probe receipt'
+          result = values[0]
+          quota, period = result['cpu_max'].split()
+          assert quota != 'max' and int(quota) == int(period) and result['memory_max'] == '2147483648', 'runtime cgroup cap mismatch'
+          open('durability-latency-result.json', 'w').write(json.dumps(result, indent=2)+'\n')
+          assert result['passed'] and not result['cleanup_errors'], 'synthetic probe failed'
+          print(json.dumps(result, sort_keys=True))
+          PY
+      - name: Remove only this run's uploaded script
+        if: always() && env.SCRIPT_ROOT != ''
+        run: |
+          set -euo pipefail
+          [[ "$SCRIPT_ROOT" == "vin82-latency-script-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" ]]
+          az storage file delete --account-name "$ACCOUNT" --share-name "$SHARE" --path "$SCRIPT_ROOT/probe.py" --output none
+          az storage directory delete --account-name "$ACCOUNT" --share-name "$SHARE" --name "$SCRIPT_ROOT" --output none
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hub-durability-latency-${{ github.run_id }}
+          path: durability-latency-result.json
