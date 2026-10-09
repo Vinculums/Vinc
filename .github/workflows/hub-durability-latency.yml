@@ -68,9 +68,11 @@ jobs:
           values = [json.loads(line.split('VIN82_RESULT ', 1)[1]) for line in raw.splitlines() if 'VIN82_RESULT ' in line]
           assert len(values) == 1, 'missing terminal probe receipt'
           result = values[0]
+          # Retain the measurements even when cap verification fails.
+          open('durability-latency-result.json', 'w').write(json.dumps(result, indent=2)+'\n')
+          assert result.get('cpu_max') and result.get('memory_max'), 'runtime cgroup limits unavailable'
           quota, period = result['cpu_max'].split()
           assert quota != 'max' and int(quota) == int(period) and result['memory_max'] == '2147483648', 'runtime cgroup cap mismatch'
-          open('durability-latency-result.json', 'w').write(json.dumps(result, indent=2)+'\n')
           assert result['passed'] and not result['cleanup_errors'], 'synthetic probe failed'
           print(json.dumps(result, sort_keys=True))
           PY
