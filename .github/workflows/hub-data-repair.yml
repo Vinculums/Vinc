@@ -72,7 +72,12 @@ jobs:
         with:
           python-version: "3.12"
       # ci.yml 과 같은 목록. 여기서 빠지면 스토어를 못 연다.
-      - run: pip install ladybug==0.20.4 argon2-cffi pyyaml pypdf
+      - name: Install the source's pinned engine
+        run: |
+          set -euo pipefail
+          engine=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['optional-dependencies']['embedded'][0])")
+          case "$engine" in ladybug==0.20.4|ladybug==0.21.2) ;; *) echo '::error::unqualified engine'; exit 1 ;; esac
+          pip install "$engine" argon2-cffi pyyaml pypdf
       - name: Azure 프로필을 이 잡 전용으로
         run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
       - uses: azure/login@v2
@@ -102,7 +107,8 @@ jobs:
             az containerapp show $APP \
               --query "properties.template.containers[0].env[?name=='$1'].value | [0]" -o tsv
           }
-          dir=$(env_of VINC_DATA_DIR)
+          dir=$(env_of VINC_STORE_SNAPSHOT)
+          [ -n "$dir" ] || dir=$(env_of VINC_DATA_DIR)
           case "$dir" in
             /data/*) ;;
             *) echo "::error::VINC_DATA_DIR 이 /data 아래가 아니다: '$dir'" >&2; exit 1 ;;
@@ -111,6 +117,9 @@ jobs:
           case "$src" in ""|*/*|*..*) echo "::error::원본 파일명이 이상하다: '$src'" >&2; exit 1 ;; esac
           dst="db.repaired-$(date -u +%Y%m%d%H%M)"
           pkns=$(env_of VINC_PK_NAMESPACED)
+          durable=$(env_of VINC_DURABLE_ACK)
+          case "${durable,,}" in 1|true|on) durable=on ;; *) durable=off ;; esac
+          echo "DURABLE_ACK=$durable" >> "$GITHUB_ENV"
           echo "SRC=$src" >> "$GITHUB_ENV"
           echo "DST=$dst" >> "$GITHUB_ENV"
           # 허브와 같은 키 규약으로 연다(스크립트는 키를 저장값 그대로 읽어 어느 쪽이든 같다).
@@ -147,21 +156,19 @@ jobs:
       # 스냅샷을 뜨고 거기서 받는다 — 라이브 파일은 SMB 잠금으로 복사가 거절되고,
       # SMB 위에서 임베디드 DB 를 직접 여는 것이 하드다운 4회의 공통 원인이었다.
       - name: Snapshot and download
+        id: snapshot
         run: |
           set -euo pipefail
           snap=$(az storage share snapshot --name "$SHARE" \
                  --account-name "$ACCOUNT" --account-key "$AZ_KEY" \
                  --query snapshot -o tsv)
           echo "snapshot: $snap"
+          test -n "$snap"
+          echo "timestamp=$snap" >> "$GITHUB_OUTPUT"
           mkdir -p work
-          az storage file download --share-name "$SHARE" --path "$SRC" --dest "work/$SRC" \
-            --snapshot "$snap" --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none
-          if az storage file download --share-name "$SHARE" --path "$SRC.wal" --dest "work/$SRC.wal" \
-             --snapshot "$snap" --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none 2>/dev/null; then
-            echo "WAL 동봉"
-          else
-            echo "WAL 없음"
-          fi
+          python scripts/restore_hub_snapshot.py --account "$ACCOUNT" --share "$SHARE" \
+            --snapshot "$snap" --source "$SRC" --out "work/$SRC" --durable-ack "$DURABLE_ACK" \
+            | tee work/restore-source.json
           # 0 바이트를 올린 적이 있다 — 받은 크기를 본다.
           ls -la work
           [ -s "work/$SRC" ] || { echo "::error::받은 원본이 비었다" >&2; exit 1; }
@@ -231,6 +238,16 @@ jobs:
           esac
           echo "⚠ 완료 판정은 이것이 아니다 — 의미 검색이 두 팔로 답하는지(arms fts+vector) 한 번 보고,"
           echo "  재큐했다면 워커가 pending 을 줄여 가는지(/health 의 embed) 볼 것."
+
+      - name: Remove the rehearsal snapshot
+        if: ${{ always() && steps.snapshot.outputs.timestamp != '' }}
+        env:
+          SNAPSHOT_TIMESTAMP: ${{ steps.snapshot.outputs.timestamp }}
+        run: |
+          set -euo pipefail
+          test -n "$SNAPSHOT_TIMESTAMP"
+          az storage share delete --name "$SHARE" --snapshot "$SNAPSHOT_TIMESTAMP" \
+            --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none
 
       - uses: actions/upload-artifact@v4
         if: always()

@@ -73,9 +73,19 @@ jobs:
         id: live
         run: |
           set -euo pipefail
-          P=$(az containerapp show -n "$APP" -g "$RG" \
-                --query "properties.template.containers[0].env[?name=='VINC_DATA_DIR'].value | [0]" -o tsv)
+          env_of() {
+            az containerapp show -n "$APP" -g "$RG" \
+              --query "properties.template.containers[0].env[?name=='$1'].value | [0]" -o tsv
+          }
+          P=$(env_of VINC_STORE_SNAPSHOT)
+          [ -n "$P" ] || P=$(env_of VINC_DATA_DIR)
           test -n "$P"
+          case "$P" in /data/*) ;; *) echo '::error::snapshot is outside /data'; exit 1 ;; esac
+          rel=${P#/data/}
+          case "$rel" in ""|*/*|*..*) echo '::error::invalid snapshot basename'; exit 1 ;; esac
+          durable=$(env_of VINC_DURABLE_ACK)
+          case "${durable,,}" in 1|true|on) durable=on ;; *) durable=off ;; esac
+          echo "DURABLE_ACK=$durable" >> "$GITHUB_ENV"
           echo "relpath=${P#/data/}" >> "$GITHUB_OUTPUT"
           echo "live DB: $P"
 
@@ -95,12 +105,8 @@ jobs:
           REL="${{ steps.live.outputs.relpath }}"
           TS="${{ steps.snap.outputs.ts }}"
           mkdir -p restored
-          az storage file download --account-name "$STORAGE" --share-name "$SHARE" \
-            --snapshot "$TS" -p "$REL" --dest restored/db --output none
-          # wal 은 체크포인트 직후면 없을 수 있다 — 없으면 없는 대로 연다.
-          az storage file download --account-name "$STORAGE" --share-name "$SHARE" \
-            --snapshot "$TS" -p "$REL.wal" --dest restored/db.wal --output none \
-            || echo "no wal in snapshot (checkpointed) — proceeding without it"
+          python scripts/restore_hub_snapshot.py --account "$STORAGE" --share "$SHARE" \
+            --snapshot "$TS" --source "$REL" --out restored/db --durable-ack "$DURABLE_ACK"
           ls -la restored
           # copyStatus:success 인데 0바이트로 온 경합이 실제로 두 번 있었다 — 크기 검증.
           test -s restored/db
@@ -108,7 +114,9 @@ jobs:
       - name: 열어서 센다 (판정)
         run: |
           set -euo pipefail
-          pip install --quiet --disable-pip-version-check ladybug==0.20.4 argon2-cffi pyyaml
+          engine=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['optional-dependencies']['embedded'][0])")
+          case "$engine" in ladybug==0.20.4|ladybug==0.21.2) ;; *) echo '::error::unqualified engine'; exit 1 ;; esac
+          pip install --quiet --disable-pip-version-check "$engine" argon2-cffi pyyaml
           export VINC_LBUG_EXT_DIR="$GITHUB_WORKSPACE/packaging/lbug_extensions"
           # 이전 런과의 대조는 사람이 한다 — 직전 런 로그의 카운트 표와 눈으로 비교.
           python -X utf8 scripts/restore_rehearsal_check.py restored/db
