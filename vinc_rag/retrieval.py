@@ -1075,6 +1075,13 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             relevance_profile = validate_profile(relevance_profile)
         elif profile_path:
             relevance_profile = load_profile(profile_path)
+            # A calibrated personal corpus must not set floors for every tenant.
+            if not relevance_profile.get('owner_id'):
+                raise ValueError('operating profile requires an owner')
+            # This is the operator-declared, independently approved calibration
+            # revision. Never take it from the profile itself to bypass the gate.
+            if relevance_corpus_revision is None:
+                relevance_corpus_revision = os.environ.get('VINC_SEARCH_CORPUS_REVISION', '').strip() or None
     except (ValueError, OSError) as exc:
         relevance_profile = None
         profile_error = type(exc).__name__
@@ -1386,7 +1393,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             state = profile_state(relevance_profile, encoder_model=cfg.embedding_model,
                                   query_runtime=query_runtime,
                                   corpus_revision=relevance_corpus_revision,
-                                  runtime_warning=bool(base.get("encoder_runtime_warning")))
+                                  runtime_warning=bool(base.get("encoder_runtime_warning")),
+                                  owner=owner)
             base["relevance_policy"] = state
             if state["state"] == "active":
                 base["rows"] = classify_rows(base["rows"], relevance_profile, kind="chunk")

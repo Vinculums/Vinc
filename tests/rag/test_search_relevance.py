@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import math
 import tempfile
 import unittest
@@ -87,18 +88,43 @@ class ScopedStore:
 
 
 class RetrievalContractTests(unittest.TestCase):
-    def run_search(self, **kw):
+    def run_search(self, env=None, **kw):
         rows = [{"id": f"d#{i:05}", "doc_id": "d", "text": "body",
                  "distance": .8, "arms": ["vector"], "score": 1 / (i + 1)}
                 for i in range(4)]
         cfg = load_config({"embedding_model": "local-en"})
-        with patch.dict("os.environ", {"VINC_SEARCH_RELEVANCE_PROFILE": ""}), \
+        with patch.dict("os.environ", {"VINC_SEARCH_RELEVANCE_PROFILE": "",
+                                       "VINC_SEARCH_CORPUS_REVISION": "", **(env or {})}), \
              patch.object(retrieval, "_chunk_arms", return_value=(rows, "", ["semantic"], False, False)), \
              patch.object(retrieval, "_node_fallback_search", return_value=[]), \
              patch.object(retrieval, "_graph_arm_search", return_value=[]) as graph:
             result = retrieval.search("fixture", top_k=2, owner="user:fixture",
                                       cfg=cfg, store=ScopedStore(), **kw)
         return result, graph
+
+    def test_운영_프로필은_명시한_데이터_판과_소유자가_맞아야_한다(self):
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / 'profile.json'
+            file.write_text(json.dumps(profile(owner_id='user:fixture')), encoding='utf-8')
+            env = {'VINC_SEARCH_RELEVANCE_PROFILE': str(file),
+                   'VINC_SEARCH_CORPUS_REVISION': 'fixture-corpus'}
+            active, _ = self.run_search(env=env, query_runtime='fixture-runtime')
+            self.assertEqual(active['relevance_policy']['state'], 'active')
+            self.assertTrue(all(row['relevance']['level'] == 'weak' for row in active['rows']))
+            file.write_text(json.dumps(profile(owner_id='user:other')), encoding='utf-8')
+            other, _ = self.run_search(env=env, query_runtime='fixture-runtime')
+            self.assertEqual(other['relevance_policy']['state'], 'owner_mismatch')
+            self.assertTrue(all('relevance' not in row for row in other['rows']))
+
+    def test_소유자_없는_운영_프로필은_다른_계정으로_퍼지지_않는다(self):
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / 'profile.json'
+            file.write_text(json.dumps(profile()), encoding='utf-8')
+            result, _ = self.run_search(env={'VINC_SEARCH_RELEVANCE_PROFILE': str(file),
+                                             'VINC_SEARCH_CORPUS_REVISION': 'fixture-corpus'},
+                                        query_runtime='fixture-runtime')
+            self.assertEqual(result['relevance_policy']['state'], 'invalid_profile')
+            self.assertTrue(all('relevance' not in row for row in result['rows']))
 
     def test_기본값은_기존_응답과_페이징을_보존한다(self):
         first, _ = self.run_search()
