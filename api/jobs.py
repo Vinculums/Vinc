@@ -38,16 +38,25 @@ class Job:
     status: str = QUEUED
     result: dict | None = None
     error: str | None = None
+    write_may_have_applied: bool = False
     _done: threading.Event = field(default_factory=threading.Event, repr=False)
 
     def to_dict(self) -> dict:
         """직렬화 표면(HTTP 바디) — 내부 Event 는 제외."""
-        return {"job_id": self.id, "kind": self.kind, "status": self.status,
-                "result": self.result, "error": self.error}
+        result = {"job_id": self.id, "kind": self.kind, "status": self.status,
+                  "result": self.result, "error": self.error}
+        if self.status == ERROR and self.write_may_have_applied:
+            result.update(retryable=False, write_may_have_applied=True)
+        return result
 
 
 class JobError(RuntimeError):
     """run_sync 대상 잡이 error 로 끝났을 때(HTTP 500 매핑용)."""
+
+    def __init__(self, message, *, job_id=None, write_may_have_applied=False):
+        super().__init__(message)
+        self.job_id = job_id
+        self.write_may_have_applied = write_may_have_applied
 
 
 # run_sync 기본 대기 상한. **무한 대기 금지**이되 **거짓 실패도 금지**라 값이 크다 —
@@ -150,9 +159,11 @@ class JobQueue:
             # 잡은 여전히 큐/실행 중일 수 있다 — 그 사실을 숨기지 않는다.
             raise JobError(
                 f"job {job.id}({kind}) 가 {timeout}s 안에 끝나지 않았습니다. "
-                f"작업은 계속될 수 있습니다(status={job.status}).")
+                f"작업은 계속될 수 있습니다(status={job.status}).",
+                job_id=job.id, write_may_have_applied=True)
         if job.status == ERROR:
-            raise JobError(job.error or f"job {job.id} failed")
+            raise JobError(job.error or f"job {job.id} failed", job_id=job.id,
+                           write_may_have_applied=job.write_may_have_applied)
         return job.result if job.result is not None else {}
 
     # ── 조회 ──────────────────────────────────────────────────────────────
@@ -188,7 +199,12 @@ class JobQueue:
                 result = fn()
                 normalized = result if isinstance(result, dict) else {"result": result}
                 if self._on_before_done is not None:
-                    self._on_before_done(job, normalized)
+                    try:
+                        self._on_before_done(job, normalized)
+                    except BaseException:
+                        # 뮤테이션 뒤 게시 실패는 롤백이 아니다. 재시도 전에 결과를 확인한다.
+                        job.write_may_have_applied = True
+                        raise
                 job.result = normalized
                 job.status = DONE
             # ⚠ **BaseException 이다** — `Exception` 으로 좁히지 말 것. `SystemExit`·
