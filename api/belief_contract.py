@@ -280,8 +280,7 @@ def annotate(edges, *, store, owner):
         if edge["type"] not in set(RELATIONS.values()):
             continue
         belief = latest.get(edge_key(edge["from"], edge["type"], edge["to"]))
-        edge.update(belief_status="judged" if belief else "unjudged",
-                    belief_id=belief["id"] if belief else None,
-                    p=belief["props"]["p"] if belief else None)
+        edge["belief_status"] = "judged" if belief else "unjudged"
         if belief:
+            edge.update(belief_id=belief["id"], p=belief["props"]["p"])
             edge["predicate"] = belief["props"]["subject"]["predicate"]

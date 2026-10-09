@@ -159,8 +159,8 @@ def test_unjudged_is_not_a_zero_probability(graph):
                            "edges": [{"from": a["id"], "to": b["id"], "type": "relates_to", "confidence": 0.0}]})
     assert result["executed"]
     edge = relation(graph, body)
-    assert edge["confidence"] == 0 and edge["p"] is None
-    assert edge["belief_status"] == "unjudged" and edge["belief_id"] is None
+    assert edge["confidence"] == 0 and "p" not in edge
+    assert edge["belief_status"] == "unjudged" and "belief_id" not in edge
 
 
 def test_reverse_edge_and_two_predicates_share_only_the_mirror(graph):
