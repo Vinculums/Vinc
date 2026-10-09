@@ -119,6 +119,12 @@ jobs:
           PY
           )
           pip install "$engine" argon2-cffi pyyaml pypdf
+          echo "SELECTED_ENGINE=$engine" >> "$GITHUB_ENV"
+      - name: Prepare matching candidate extensions
+        if: env.SELECTED_ENGINE == 'ladybug==0.21.2'
+        run: |
+          python scripts/qa/prepare_candidate_engine.py --root verified-engine --no-export
+          echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/verified-engine/extensions" >> "$GITHUB_ENV"
       - name: Azure 프로필을 이 잡 전용으로
         run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
       - uses: azure/login@v2
@@ -197,12 +203,15 @@ jobs:
       # 스냅샷을 뜨고 거기서 받는다 — 라이브 파일은 SMB 잠금으로 복사가 거절되고,
       # SMB 위에서 임베디드 DB 를 직접 여는 것이 하드다운 4회의 공통 원인이었다.
       - name: Snapshot and download
+        id: snapshot
         run: |
           set -euo pipefail
           snap=$(az storage share snapshot --name "$SHARE" \
                  --account-name "$ACCOUNT" --account-key "$AZ_KEY" \
                  --query snapshot -o tsv)
           echo "snapshot: $snap"
+          test -n "$snap"
+          echo "timestamp=$snap" >> "$GITHUB_OUTPUT"
           mkdir -p work
           az storage file download --share-name "$SHARE" --path "$SRC" --dest "work/$SRC" \
             --snapshot "$snap" --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none
@@ -223,7 +232,7 @@ jobs:
           set -euo pipefail
           # 확장(FTS·벡터)은 리포에 번들된 것을 명시 경로로 싣는다 — 러너에는 설치본이 없어
           # 이름으로는 못 싣는다(restore-rehearsal.yml 과 같은 설정).
-          export VINC_LBUG_EXT_DIR="$GITHUB_WORKSPACE/packaging/lbug_extensions"
+          export VINC_LBUG_EXT_DIR="${VINC_LBUG_EXT_DIR:-$GITHUB_WORKSPACE/packaging/lbug_extensions}"
           if [ "${{ inputs.step }}" = "lex" ]; then
             # 사본에 이관한다. 원본 파일(work/$SRC)은 건드리지 않는다. 같이 받은 WAL 은 사본 쪽
             # 이름으로 옮겨 여는 순간 재생되게 한다. 판정(표지·빈 lex 0·벡터 수 불변)이 어긋나면
@@ -290,6 +299,17 @@ jobs:
             *) echo "::error::허브가 응답했으나 tools/list 에 도구 목록이 없다" >&2; exit 1 ;;
           esac
           echo "⚠ 완료 판정은 이것이 아니다 — 거절되던 쓰기(문서 저장)를 한 번 해 볼 것."
+
+      # 이 실행에서 만든 사본만 지운다. --snapshot 없는 삭제는 라이브 공유를 지운다.
+      - name: Remove the rehearsal snapshot
+        if: ${{ always() && steps.snapshot.outputs.timestamp != '' }}
+        env:
+          SNAPSHOT_TIMESTAMP: ${{ steps.snapshot.outputs.timestamp }}
+        run: |
+          set -euo pipefail
+          test -n "$SNAPSHOT_TIMESTAMP"
+          az storage share delete --name "$SHARE" --snapshot "$SNAPSHOT_TIMESTAMP" \
+            --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none
 
       - uses: actions/upload-artifact@v4
         if: always()
