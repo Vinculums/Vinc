@@ -197,6 +197,8 @@ def main():
     if not args.report_only and (pins.get("laya") != "0.3.28" or pins.get("torch") != "2.14.1+cpu"):
         raise ValueError("measurement requires the pinned CPU environment")
     manifest = {"candidates_sha256": sha(args.candidates), "model_sha256": args.expected_model_sha,
+                "checkpoint_json_sha256": {p.relative_to(args.model_dir).as_posix(): sha(p)
+                                            for p in sorted(Path(args.model_dir).rglob("*.json"))},
                 "calibrations": {p.name: sha(p) for p in sorted(args.calib.glob("calib-*.json"))},
                 "questions_hash": pins["questions_hash"], "predicates": list(PREDICATES),
                 "measurement_code_sha256": sha(Path(__file__)),
@@ -213,7 +215,11 @@ def main():
                 raise ValueError("invalid calibration")
     rows, done = completed(args.out / "raw.jsonl", {p["pair_id"] for p in pairs if eligible(p)})
     if not args.report_only:
+        load_start = time.perf_counter()
         agent = load_agent(args.model_dir)
+        if agent.device.type != "cpu" or agent.cfg.get("max_len") != 1024:
+            raise ValueError("CPU and the registered token budget are required")
+        pins["load_seconds"] = time.perf_counter() - load_start
         write_json(args.out / "runtime.json", pins)
         with (args.out / "raw.jsonl").open("a", encoding="utf-8", newline="\n") as fh:
             for pair in pairs:
