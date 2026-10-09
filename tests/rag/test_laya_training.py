@@ -106,3 +106,84 @@ def test_pair_summary_counts_question_items_separately_from_rows():
     add("a", "b", "one", "two", None, {"supports": 1, "contradicts": 0, "same_as": 1}, "calib", "en")
     assert counts["calib:rows"] == 2
     assert counts["calib:items"] == 5
+
+
+def _gold_dir(root, name, pairs, split):
+    import json
+    d = root / name; d.mkdir()
+    (d / 'gold.jsonl').write_text(''.join(json.dumps(p) + '\n' for p in pairs))
+    (d / 'gold.split.json').write_text(json.dumps({'split': split}))
+    return d
+
+
+def _gold_pair(pid, a_id, a_text, same_as=0):
+    return {'pair_id': pid, 'a': {'id': a_id, 'text': a_text}, 'b': {'id': pid + ':b', 'text': pid + ' B'},
+            'labels': {'supports': 0, 'contradicts': 0, 'same_as': same_as}, 'lang': 'en'}
+
+
+def _build(tmp_path, monkeypatch, extra):
+    import json
+    from rag_eval.laya import build_train
+    main_dir = _gold_dir(tmp_path, 'main', [_gold_pair('c', 'main:c', 'main calib'), _gold_pair('e', 'main:e', 'main eval')],
+                         {'c': 'calib', 'e': 'eval'})
+    base = tmp_path / 'base.jsonl'
+    base.write_text(''.join(json.dumps(r) + '\n' for r in
+                            rows_for_pair('other eval', 'x', None, {'same_as': 1}, 'book-mirror', 'en')
+                            + rows_for_pair('kept', 'y', None, {'same_as': 1}, 'book-mirror', 'en')))
+    out = tmp_path / 'out.jsonl'
+    monkeypatch.delenv('VINC_RO', raising=False)
+    monkeypatch.setattr(build_train, 'hub_node', lambda *a: pytest.fail('Must not call the hub'))
+    code = build_train.main(['--gold-dir', str(main_dir), '--candidates', 'unused', '--typed-decisions', 'unused',
+                             '--out', str(out), '--base-training', str(base)] + extra)
+    return code, [json.loads(l) for l in out.read_text().splitlines()], json.loads(out.with_suffix('.summary.json').read_text())
+
+
+def test_second_gold_dir_trains_on_its_calib_and_blocks_its_eval(tmp_path, monkeypatch):
+    other = _gold_dir(tmp_path, 'other', [_gold_pair('oc', 'other:c', 'other calib'), _gold_pair('oe', 'other:e', 'other eval'),
+                                          _gold_pair('leak', 'other:e', 'shares the eval node')],
+                      {'oc': 'calib', 'oe': 'eval', 'leak': 'calib'})
+    code, rows, summary = _build(tmp_path, monkeypatch, ['--train-gold-dir', str(other)])
+    assert code == 0
+    states = ' '.join(r['state'] for r in rows)
+    assert 'other calib' in states and 'main calib' in states and 'kept' in states
+    # 그 셋의 측정 쌍은 직접도, 노드 id 를 거쳐서도, 재사용한 기반 행으로도 들어오지 않는다
+    assert 'other eval' not in states and 'shares the eval node' not in states
+    assert summary['counts']['calib-other'] == 1
+    assert summary['excluded']['calib-other:eval_leak'] == 1
+    assert summary['excluded']['book-mirror:blocked_text'] == 2
+    assert summary['extra_gold_dirs']['other']['role'] == 'train'
+
+
+def test_block_only_gold_dir_adds_nothing_and_blocks_its_eval(tmp_path, monkeypatch):
+    other = _gold_dir(tmp_path, 'measure', [_gold_pair('oc', 'm:c', 'measure calib'), _gold_pair('oe', 'm:e', 'other eval')],
+                      {'oc': 'calib', 'oe': 'eval'})
+    code, rows, summary = _build(tmp_path, monkeypatch, ['--block-gold-dir', str(other)])
+    states = ' '.join(r['state'] for r in rows)
+    assert 'measure calib' not in states and 'other eval' not in states and 'kept' in states
+    assert summary['extra_gold_dirs']['measure'] == {'role': 'block', 'gold_sha256': summary['extra_gold_dirs']['measure']['gold_sha256'],
+                                                     'eval_blocked': 1}
+
+
+def test_same_as_negatives_carry_only_the_same_as_label(tmp_path, monkeypatch):
+    import json
+    neg = tmp_path / 'neg.jsonl'
+    def row(a_id, a_text, rule='pack-linked-distinct-concepts', labels=None):
+        return {'a': {'id': a_id, 'text': a_text}, 'b': {'id': a_id + ':b', 'text': a_text + ' other'}, 'lang': 'en',
+                'source': rule, 'labels': labels or {'supports': 0, 'contradicts': 0, 'same_as': 0}, 'provenance': {'rule': rule}}
+    neg.write_text(json.dumps(row('n:1', 'linked one')) + '\n\n' + json.dumps(row('main:e', 'touches eval node')) + '\n')
+    code, rows, summary = _build(tmp_path, monkeypatch, ['--same-as-negatives', str(neg)])
+    added = [r for r in rows if r['meta']['source'] == 'pack-linked-distinct-concepts']
+    assert len(added) == 2                                        # 두 방향
+    assert all(set(r['gold']) == {'same_as'} and r['gold']['same_as']['probabilities']['true'] == 0.0 for r in added)
+    assert summary['excluded']['pack-linked-distinct-concepts:eval_leak'] == 1
+    assert list(summary['same_as_negatives_sha256']) == ['neg.jsonl']
+
+
+@pytest.mark.parametrize('rule,labels', [('teacher-llm', {'same_as': 0}), ('pack-linked-distinct-concepts', {'same_as': 1})])
+def test_same_as_negatives_refuse_unregistered_rules_and_positive_labels(tmp_path, monkeypatch, rule, labels):
+    import json
+    neg = tmp_path / 'neg.jsonl'
+    neg.write_text(json.dumps({'a': {'id': 'n:1', 'text': 'one'}, 'b': {'id': 'n:2', 'text': 'two'}, 'lang': 'en',
+                               'source': rule, 'labels': labels, 'provenance': {'rule': rule}}) + '\n')
+    with pytest.raises(ValueError):
+        _build(tmp_path, monkeypatch, ['--same-as-negatives', str(neg)])
