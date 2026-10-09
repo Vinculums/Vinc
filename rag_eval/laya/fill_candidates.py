@@ -42,7 +42,9 @@ class ReadHub:
         key = digest([self.base, path, body])
         file = self.cache / (key + ".json")
         if file.exists():
-            return json.loads(file.read_text(encoding="utf-8"))["response"]
+            cached = json.loads(file.read_text(encoding="utf-8"))["response"]
+            if cached.get("http_status") != 404 or cached.get("confirmed_not_found"):
+                return cached
         for attempt in range(6):
             try:
                 req = urllib.request.Request(self.base + path,
@@ -57,7 +59,10 @@ class ReadHub:
                 return result
             except (urllib.error.URLError, TimeoutError, RuntimeError) as exc:
                 if isinstance(exc, urllib.error.HTTPError) and exc.code == 404 and path.startswith("/v1/nodes/"):
-                    result = {"found": False, "http_status": 404}
+                    if attempt < 2:
+                        time.sleep(1 + attempt)
+                        continue
+                    result = {"found": False, "http_status": 404, "confirmed_not_found": True}
                     write_json(file, {"path": path, "body": body, "read_at": time.time(), "response": result})
                     return result
                 if isinstance(exc, urllib.error.HTTPError) and exc.code in (400, 401, 403):
