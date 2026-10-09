@@ -222,7 +222,7 @@ class ThisRepo(unittest.TestCase):
             if isinstance(c, dict) and c.get("cancel-in-progress") is False:
                 serial.append(p.name)
         self.assertEqual(serial, ["encode-m3-probe.yml", "hub-capacity-trial.yml", "hub-data-repair.yml", "hub-deploy.yml", "hub-durability-latency.yml",
-                                  "hub-store-rebuild.yml",
+                                  "hub-relevance-measure.yml", "hub-store-rebuild.yml",
                                   "hub-store-recover.yml", "infra.yml", "integrations-publish.yml", "pk-migrate.yml",
                                   "prefetch-bench.yml", "release.yml"], serial)
 
