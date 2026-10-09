@@ -1,0 +1,48 @@
+{
+ "dataset_version": "laya-predicates-community-v1",
+ "author": "Anthropic Claude (AI; configured model id claude-opus-5-5; this conversation)",
+ "label_author_is_human": false,
+ "authorized_by": "Owner, 2026-10-10 (this conversation): asked for the assistant's recommendation to be carried out",
+ "method_doc_id": "vinc.plan.laya-test-method-2026-10-07",
+ "source": {
+  "repository": "Vinculums/Vinc",
+  "commit": "0d033773b837bd511b98ce3f496a66ba593a4699",
+  "path": "starter-packs/vinc-pack-{physics,math,economics,art}.vincpack",
+  "pack_sha256": {
+   "physics": "34095628cd515ca496349f68bf58cdab2fe05dd38072f51d8c28c2518c82f425",
+   "math": "b5ecbaeddc4617e4eaf26e06326198d5b7e035e73a07435de6639cdcde3175df",
+   "economics": "0ed105415ff5301fbb6a5bf03ed74d8bcfc34395ea8739234a33a2adb4b5559b",
+   "art": "6ea4560bca460ae10828eff48802c7b4f6f06aff8bcca612b4b3bd5442a493dd"
+  },
+  "text_field": "fragment.json nodes[].props.one_liner, used as shipped (English, translated from Korean notes)"
+ },
+ "pack_split": {
+  "measure": [
+   "art",
+   "economics"
+  ],
+  "train": [
+   "physics",
+   "math"
+  ],
+  "rule": "concepts follow their domain; a bridge follows its endpoints; the two bridges that join both sides are used on neither",
+  "measure_nodes": 57,
+  "train_nodes": 64,
+  "unused_cross_bridges": [
+   "bridge:stat-mech-econophysics",
+   "bridge:symmetry-group-theory-music"
+  ]
+ },
+ "relation_to_vin_57": {
+  "same_corpus_family": "VIN-57 names a community corpus v2 of these four packs (127 nodes, 940 relations, 123 documents)",
+  "not_verified": "The v2 ZIP was not opened. The repository packs give 123 nodes with a one-liner and 886 unique relations, so the two may differ.",
+  "untouched": "No retrieval question or gold node was read, written or published. VIN-57's human-authored pilot is not replaced by this set.",
+  "leak_rule": "A checkpoint trained on train-negatives.jsonl has seen physics and math node text. If Laya is later measured as a resolver on VIN-57 gold, only art and economics questions are clean for that checkpoint, and only while gold.jsonl stays out of training."
+ },
+ "not_claimed": [
+  "Human or cross-vendor validation",
+  "Any go or no-go result",
+  "That authored fixture statements are facts",
+  "Korean-original text: every Korean side is the author's rendering or an authored statement"
+ ]
+}
