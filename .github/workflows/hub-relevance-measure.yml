@@ -1,0 +1,113 @@
+name: hub-relevance-measure
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact deployed image SHA
+        required: true
+        type: string
+permissions:
+  id-token: write
+  contents: read
+concurrency:
+  group: hub-deploy
+  cancel-in-progress: false
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      ACCOUNT: vincstorage01
+      SHARE: hub-data
+      INPUTS_SHA: 4ae9c0381a72053dda9a619184654de0f16a41db16ef416583288721ef1cee42
+    steps:
+      - name: Require an authorized operator
+        if: github.event_name == 'workflow_dispatch' && !contains(format(',{0},', vars.PROD_OPERATORS), format(',{0},', github.triggering_actor))
+        run: exit 1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Isolate Azure profile
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Verify source and preregistered inputs
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          echo "$INPUTS_SHA  rag_eval/fixtures/current_relevance_acceptance.json" | sha256sum --check
+          az containerapp show -n vinc-hub -g vincsRG > "$RUNNER_TEMP/hub.json"
+          python - "$RUNNER_TEMP/hub.json" <<'PY'
+          import json, os, re
+          app = json.load(open(os.sys.argv[1]))
+          hub = next(c for c in app['properties']['template']['containers'] if c['name'] == 'vinc-hub')
+          assert hub['image'] == 'vincacr.azurecr.io/vinc-hub:' + os.environ['EXPECTED_SHA']
+          env = {e['name']: e.get('value', '') for e in hub['env']}
+          source = env['VINC_DATA_DIR'].removeprefix('/data/')
+          assert env['VINC_DATA_DIR'].startswith('/data/') and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', source) and '..' not in source
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              out.write('SOURCE_FILE=' + source + '\n')
+              out.write('DURABLE_ACK=' + ('on' if env.get('VINC_DURABLE_ACK') == 'on' else 'off') + '\n')
+              out.write('VINC_PK_NAMESPACED=' + env.get('VINC_PK_NAMESPACED', 'off') + '\n')
+          print(json.dumps({'image': hub['image'], 'revision': app['properties']['latestReadyRevisionName']}))
+          PY
+          key=$(az storage account keys list -n "$ACCOUNT" -g vincsRG --query '[0].value' -o tsv)
+          echo "::add-mask::$key"
+          echo "AZURE_STORAGE_KEY=$key" >> "$GITHUB_ENV"
+          az acr login --name vincacr
+          docker pull "vincacr.azurecr.io/vinc-hub:$EXPECTED_SHA"
+      - name: Download this run's immutable snapshot through generation recovery
+        id: snapshot
+        run: |
+          set -euo pipefail
+          stamp=$(az storage share snapshot --account-name "$ACCOUNT" --name "$SHARE" --query snapshot -o tsv)
+          [ -n "$stamp" ]
+          echo "timestamp=$stamp" >> "$GITHUB_OUTPUT"
+          mkdir -p work
+          python scripts/restore_hub_snapshot.py --account "$ACCOUNT" --share "$SHARE" --snapshot "$stamp" \
+            --source "$SOURCE_FILE" --out work/db --durable-ack "$DURABLE_ACK" > work/restore-source.json
+      - name: Measure in the deployed image with its baked encoder and tokenizer
+        env:
+          VINC_REMOTE_MCP_TOKEN: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$VINC_REMOTE_MCP_TOKEN" ]
+          # Whoami resolves the personal owner; the key never enters argv or any report.
+          python - <<'PY'
+          import os
+          from vinc_mcp import remote
+          identity = remote.call('vinc_whoami', {})
+          assert identity.get('scope') == 'personal' and identity.get('owner'), 'personal identity unavailable'
+          # A mode-following subprocess is intentionally not used for this fixed-image evaluation.
+          os.umask(0o077)
+          open('work/owner', 'w').write(identity['owner'])
+          PY
+          docker run --rm --network none --entrypoint python \
+            -e VINC_PK_NAMESPACED -e HF_HUB_OFFLINE=1 -e VINC_EVAL_THREADS=1 \
+            -e VINC_MEASURE_IMAGE_SHA="$EXPECTED_SHA" \
+            -v "$PWD/work:/probe-work" \
+            -v "$PWD/scripts/qa/current_relevance_probe.py:/probe.py:ro" \
+            -v "$PWD/rag_eval/fixtures/current_relevance_acceptance.json:/inputs.json:ro" \
+            "vincacr.azurecr.io/vinc-hub:$EXPECTED_SHA" /probe.py \
+            --store /probe-work/db --inputs /inputs.json --inputs-sha "$INPUTS_SHA" \
+            --owner "$(cat work/owner)" --out /probe-work/current-relevance-result.json
+      - name: Remove only this run's share snapshot
+        if: always() && steps.snapshot.outputs.timestamp != ''
+        env:
+          SNAPSHOT_TIMESTAMP: ${{ steps.snapshot.outputs.timestamp }}
+        run: |
+          set -euo pipefail
+          [ -n "$SNAPSHOT_TIMESTAMP" ]
+          az storage share delete --account-name "$ACCOUNT" --name "$SHARE" --snapshot "$SNAPSHOT_TIMESTAMP" --output none
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: current-relevance-${{ github.run_id }}
+          path: |
+            work/current-relevance-result.json
+            work/restore-source.json
