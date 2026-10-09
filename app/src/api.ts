@@ -169,14 +169,14 @@ export async function ensureSidecar(): Promise<boolean> {
   return waitForSidecar(240);
 }
 
-/** `/health` 를 최대 `tries * 250ms` 기다린다. 응답과 본문이 끝나면 true. */
+/** `/health?live=1` 를 최대 `tries * 250ms` 기다린다. 응답과 본문이 끝나면 true. */
 async function waitForSidecar(tries: number): Promise<boolean> {
   // 요청·본문 읽기도 대기 상한 안에 둔다. 응답하지 않는 연결이 폴더 전환을 붙잡지 않는다.
   // 근거: [[record:sidecar-health-wait-deadline-restored-2026-10-09]]
   const deadline = performance.now() + tries * 250;
   while (performance.now() < deadline) {
     try {
-      const res = await fetch(new URL("/health", cfg.base), {
+      const res = await fetch(new URL("/health?live=1", cfg.base), {
         signal: AbortSignal.timeout(Math.max(1, Math.ceil(deadline - performance.now()))),
       });
       if (res.ok) {

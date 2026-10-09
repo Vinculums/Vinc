@@ -16,7 +16,7 @@ async function withServer(handler, verify) {
   const server = createServer(handler);
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const context = { cfg: { base: `http://127.0.0.1:${server.address().port}` },
-    fetch, URL, AbortSignal, performance, setTimeout, sidecarDiag: '', startIndexWatch() {} };
+    fetch, URL, AbortSignal, performance, setTimeout, sidecarDiag: '', migrations: 0, startIndexWatch() { context.migrations++; } };
   try { await verify(runInNewContext(`(${functionSource})`, context), context); }
   finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 }
@@ -44,5 +44,34 @@ test('startup 503 can recover within the deadline and preserve health diagnostic
     assert.equal(await wait(8), true);
     assert.equal(calls, 2);
     assert.match(context.sidecarDiag, /DEGRADED\[fixture provisioning\]/);
+  });
+});
+
+test('readiness does not wait for embedding diagnostics', async () => {
+  const requested = [];
+  await withServer((req, res) => {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    requested.push(req.url);
+    // 전체 헬스의 DB 진단이 멈춘 상황. 기존 live 계약은 메모리 상태만 반환한다.
+    if (url.searchParams.get('live') !== '1') return;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok' }));
+  }, async (wait, context) => {
+    assert.equal(await wait(2), true);
+    assert.deepEqual(requested, ['/health?live=1']);
+    assert.match(context.sidecarDiag, /health ok/);
+  });
+});
+
+test('live readiness preserves the search index migration notice', async () => {
+  const requested = [];
+  await withServer((req, res) => {
+    requested.push(req.url);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', migrating: { step: 'fixture' } }));
+  }, async (wait, context) => {
+    assert.equal(await wait(2), true);
+    assert.deepEqual(requested, ['/health?live=1']);
+    assert.equal(context.migrations, 1);
   });
 });
