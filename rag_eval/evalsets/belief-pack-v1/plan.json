@@ -1,6 +1,6 @@
 {
   "schema": "vin409.plan.v1",
-  "cases_sha256": "53a97eb2990eb96817f8280ffab67ad2432f8ef8198713755238d439044bb7d2",
+  "cases_sha256": "55b26e8aaa86bfec8761fde0d1a5bf42232c14615131f5048d6bb11d2016d30e",
   "settings": {
     "endpoint": "https://vinc-agent-lab-aoai.openai.azure.com/",
     "deployment": "lab-mini",
@@ -948,5 +948,5 @@
   "call_count": 40,
   "reserved_usd": 0.064936,
   "system_sha256": "bc96f218e100e5f52acf075e47cd7430c3ffdb56bb49020bbe8481d4b62602ff",
-  "plan_sha256": "0f1e4f0062471eee71444ab67bad841a89f48935dfd614bed3b3ac4cd533e25f"
+  "plan_sha256": "934232e494479e6cb05e3a01875f6d2a5674a49dc8be97be2cda8261c87b136e"
 }

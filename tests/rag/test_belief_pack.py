@@ -140,7 +140,9 @@ def test_review_requires_complete_evidence_and_preserves_denominators(bundle,tmp
     assert report['summary']['with']['group_count']['n']==3
     assert report['summary']['without']['group_count']['n']==0
     assert report['summary']['with']['answerable_controls']==dict(correct=0,n=2,rate=0)
-    assert report['summary']['without']['unknown_acknowledgment']['n']==20
+    assert report['summary']['without']['unknown_acknowledgment']['n']==19
+    assert report['summary']['with']['unknown_acknowledgment']['n']==15
+    assert all(not row['unknown_required'] for row in report['per_response'] if row['case_id']=='U05')
     assert report['summary']['without']['unavailable_group_count_acknowledged']['correct']==3
     guessing=copy.deepcopy(grades)
     for g in guessing:

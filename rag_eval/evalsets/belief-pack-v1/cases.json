@@ -203,13 +203,13 @@
     "control": false,
     "group_question": false,
     "rubric": {
-      "boundary": "same_as는 범위가 붙은 모델 후보이며 병합 권한이 아니다.",
+      "boundary": "same_as는 범위가 붙은 모델 후보이며 병합 권한이 아니다. 명시적으로 승인이 없으므로 지금 병합할 수 없다. 이 문항은 지식 미상 지표의 분모에서 제외한다.",
       "with": {
-        "unknown_required": true,
+        "unknown_required": false,
         "group_count": null
       },
       "without": {
-        "unknown_required": true,
+        "unknown_required": false,
         "group_count": null
       }
     }
