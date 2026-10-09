@@ -169,16 +169,22 @@ export async function ensureSidecar(): Promise<boolean> {
   return waitForSidecar(240);
 }
 
-/** `/health` 가 답할 때까지 250ms 간격으로 `tries` 번 묻는다. 답하면 true. */
+/** `/health` 를 최대 `tries * 250ms` 기다린다. 응답과 본문이 끝나면 true. */
 async function waitForSidecar(tries: number): Promise<boolean> {
-  for (let i = 0; i < tries; i++) {
+  // 요청·본문 읽기도 대기 상한 안에 둔다. 응답하지 않는 연결이 폴더 전환을 붙잡지 않는다.
+  // 근거: [[record:sidecar-health-wait-deadline-restored-2026-10-09]]
+  const deadline = performance.now() + tries * 250;
+  while (performance.now() < deadline) {
     try {
-      const res = await fetch(new URL("/health", cfg.base));
+      const res = await fetch(new URL("/health", cfg.base), {
+        signal: AbortSignal.timeout(Math.max(1, Math.ceil(deadline - performance.now()))),
+      });
       if (res.ok) {
         // 사이드카가 떴어도 스토어가 성치 않으면(구버전 잔존 스토어의 프로비저닝
         // 실패 등) status=degraded 로 온다 — "ok" 로 뭉개면 뒤따르는 전 조회가
         // 원인 불명으로 깨진다. 사유를 진단에 그대로 싣는다.
         const h = await res.json().catch(() => ({} as any));
+        if (performance.now() >= deadline) return false;
         sidecarDiag += h?.status === "degraded"
           ? ` · health DEGRADED[${h.provision_error || h.error || "?"}]`
           : " · health ok";
@@ -186,7 +192,8 @@ async function waitForSidecar(tries: number): Promise<boolean> {
         return true;
       }
     } catch {}
-    await new Promise((r) => setTimeout(r, 250));
+    const remaining = deadline - performance.now();
+    if (remaining > 0) await new Promise((r) => setTimeout(r, Math.min(250, remaining)));
   }
   return false;
 }
