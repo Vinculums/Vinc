@@ -4833,6 +4833,8 @@ def node_edges(node: str | None = None, *, nodes: list[str] | None = None,
         edges.sort(key=lambda e: (e["from"], e["to"], e["type"],
                                   str(e.get("subtype", "")), str(e["evidence"]),
                                   str(e["confidence"])))
+        from .belief_contract import annotate
+        annotate(edges[:limit], store=store, owner=owner)
         return {**base, "executed": True, "nodes": ids, "missing_nodes": missing,
                 **({"node": node, "found": node in found} if node is not None else {}),
                 "edges": edges[:limit], "count": len(edges),
