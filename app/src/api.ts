@@ -967,16 +967,25 @@ async function communityPost(path: string, body: unknown): Promise<any> {
 /** 팀 목록 — 그래프 프록시가 아니라 계정 라우트(/api/teams). 세션 쿠키만 필요하다.
  *  웹모드가 아니면 팀 자체가 없으므로 빈 배열로 끝낸다(호출부 분기 제거). */
 export const teamsApi = {
-  list: async (): Promise<Array<{ id: string; name: string; role: string; status: string }>> => {
+  list: async (options?: { throwOnError?: boolean }): Promise<Array<{ id: string; name: string; role: string; status: string }>> => {
     // 셸 계정 모드: 쿠키가 없으니 `/api/teams` 는 못 부른다. 같은 목록을 계정의 그래프
     // 평면(`/api/graph/spaces`, 키로 열린다)에서 통과로로 받는다(VIN-127).
-    if (accountMode()) {
-      try { return ((await call("/spaces")) as any).teams || []; } catch { return []; }
+    try {
+      if (accountMode()) {
+        const data = await call("/spaces") as { teams?: unknown };
+        if (!Array.isArray(data.teams)) throw new Error("team_list_unavailable");
+        return data.teams;
+      }
+      if (!WEB) return [];
+      const res = await fetch(new URL("/api/teams", location.origin), { credentials: "include" });
+      if (!res.ok) throw new Error("team_list_unavailable");
+      const data = await res.json() as { teams?: unknown };
+      if (!Array.isArray(data.teams)) throw new Error("team_list_unavailable");
+      return data.teams;
+    } catch (error) {
+      if (options?.throwOnError) throw error;
+      return [];
     }
-    if (!WEB) return [];
-    const res = await fetch(new URL("/api/teams", location.origin), { credentials: "include" });
-    if (!res.ok) return [];
-    return ((await res.json()) as any).teams || [];
   },
 };
 

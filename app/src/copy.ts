@@ -1185,6 +1185,10 @@ const EN = {
       spacePersonal: "Personal",
       spaceHint: "Which graph you are working in. Every screen follows this.",
       spaceNone: "You are not in an active team yet.",
+      spacePending: "Awaiting activation",
+      spaceSuspended: "Access paused",
+      spaceActivationHint: "Activate pending teams or review paused access on your account team page at vincs.io.",
+      spaceListFailed: "Could not load your teams. Reopen Settings to try again.",
       // 붙여넣은 주소(`?space=`)로 열었는데 그 공간을 못 여는 경우.
       // 근거: [[decision:a-node-address-names-its-space]]
       spaceLinkRefused: "This link is from a space you are not a member of, so your current space stays open.",
@@ -2264,6 +2268,10 @@ const KO: Deck = {
       spacePersonal: "개인",
       spaceHint: "지금 작업 중인 그래프예요. 모든 화면이 여기를 따라요",
       spaceNone: "아직 참여 중인 팀이 없어요",
+      spacePending: "활성화 대기 중",
+      spaceSuspended: "이용 중지",
+      spaceActivationHint: "vincs.io의 계정 팀 페이지에서 대기 중인 팀을 활성화하거나 중지된 팀 상태를 확인하세요",
+      spaceListFailed: "팀 목록을 불러오지 못했어요. 설정을 다시 열어 시도하세요",
       spaceLinkRefused: "참여하지 않은 공간의 링크라서 지금 공간을 그대로 열었어요",
       spaceLinkLocal: "한 기기에만 저장된 그래프(데스크톱 앱의 로컬 모드)를 가리키는 링크라서 여기서는 열 수 없어요",
       spaceLinkOk: "확인",
