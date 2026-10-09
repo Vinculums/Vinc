@@ -44,5 +44,11 @@
   "Any go or no-go result",
   "That authored fixture statements are facts",
   "Korean-original text: every Korean side is the author's rendering or an authored statement"
- ]
+ ],
+ "accepted": {
+  "by": "owner",
+  "on": "2026-10-10",
+  "decision": "decision:laya-predicates-ai-v2-and-community-v1-accepted-as-gold-and-v3-run-ordered-2026-10-10",
+  "scope": "out-of-domain measurement and same_as training negatives for the third fine-tuning round (VIN-421); report only, no gate"
+ }
 }

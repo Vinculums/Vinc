@@ -5,7 +5,9 @@ in `starter-packs/`. Every other Laya set so far is Vinc's own engineering text;
 physics and mathematics. Method: `vinc.plan.laya-test-method-2026-10-07`. Reasoning and limits live in the graph
 record named in the pull request; this page only says what the files are.
 
-**Status: not accepted.** AI labels, no model was run, and no experiment is authorized by this directory.
+**Status: accepted by the owner on 2026-10-10** as the out-of-domain measurement of the third fine-tuning round
+(`decision:laya-predicates-ai-v2-and-community-v1-accepted-as-gold-and-v3-run-ordered-2026-10-10`). The labels were written by an AI and no person read them pair by pair. No model was run by this
+directory.
 
 ## The pack split
 
@@ -37,7 +39,8 @@ side is mine.
 Two different concept nodes that the pack links (`relates_to`, `derives_from`, `prerequisite_of`), labelled
 `same_as` 0 and nothing else. The label is a rule, not a reading: a random 36 were read and all 36 held.
 Bridge-to-concept links are left out because a bridge can restate its endpoint.
-`build_train --same-as-pairs` accepts positives only, so the builder needs a small change before it can take this file.
+`build_train --same-as-negatives` reads this file (VIN-421). The third round uses a frozen sample of 120 of them, not all 404,
+so that negatives do not swamp the `same_as` positives; see `vinc.plan.laya-finetune-v3-2026-10-10`.
 
 ## Review
 
