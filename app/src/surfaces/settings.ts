@@ -314,21 +314,25 @@ export async function renderSettings(
       }
       // 스페이스 전환 — 개인 그래프와 팀 그래프는 별개 네임스페이스다. 여기서 고른
       // 것이 View·Search·Records 전부에 걸리므로, 표면 하나가 아니라 계정 설정에 둔다.
-      // 정지·연체 팀은 목록에 넣지 않는다 — 계정이 서명을 멈춰 어차피 거부된다.
+      // 활성화 대기·중지 팀은 상태만 보이고 선택하지 못한다.
       const pick = body.querySelector<HTMLSelectElement>("#space-pick");
       const note = body.querySelector<HTMLElement>("#space-note");
       if (pick) {
-        void teamsApi.list().then((rows) => {
-          const active = rows.filter((t) => t.status === "active");
-          for (const t of active) {
+        void teamsApi.list({ throwOnError: true }).then((rows) => {
+          const visible = rows.filter((t) => ["active", "pending", "suspended"].includes(t.status));
+          for (const t of visible) {
             const o = document.createElement("option");
-            o.value = t.id; o.textContent = t.name;
-            if (t.id === cfg.team) o.selected = true;
+            const active = t.status === "active";
+            o.value = t.id; o.disabled = !active;
+            o.textContent = active ? t.name : `${t.name} (${t.status === "pending" ? U.spacePending : U.spaceSuspended})`;
+            if (active && t.id === cfg.team) o.selected = true;
             pick.appendChild(o);
           }
-          if (note && !active.length) note.textContent = U.spaceNone;
-        });
+          if (note) note.textContent = visible.some(t => t.status !== "active") ? U.spaceActivationHint
+            : visible.length ? "" : U.spaceNone;
+        }).catch(() => { if (note) note.textContent = U.spaceListFailed; });
         pick.addEventListener("change", () => {
+          if (pick.selectedOptions[0]?.disabled) return;
           cfg.team = pick.value;
           // 스페이스는 전역이라 부분 갱신하지 않는다 — 어떤 표면이 옛 스코프의
           // 데이터를 들고 남으면 지금 어느 그래프를 보는지 알 수 없게 된다.
