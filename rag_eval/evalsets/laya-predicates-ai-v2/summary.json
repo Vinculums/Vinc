@@ -1,0 +1,256 @@
+{
+ "n": 350,
+ "labels": {
+  "supports": {
+   "0": 280,
+   "1": 70
+  },
+  "contradicts": {
+   "0": 279,
+   "1": 71
+  },
+  "same_as": {
+   "0": 278,
+   "1": 72
+  }
+ },
+ "languages": {
+  "ko": 119,
+  "mixed": 117,
+  "en": 114
+ },
+ "label_class_by_language": {
+  "en": {
+   "supports": 24,
+   "same_as": 24,
+   "none": 43,
+   "contradicts": 23
+  },
+  "mixed": {
+   "same_as": 24,
+   "none": 47,
+   "supports": 22,
+   "contradicts": 24
+  },
+  "ko": {
+   "contradicts": 24,
+   "none": 47,
+   "supports": 24,
+   "same_as": 24
+  }
+ },
+ "hard_kind": {
+  "negation_cue": 35,
+  "topical_only": 40,
+  "translation": 24,
+  "scope_shift": 15,
+  "anchored_evidence": 51,
+  "semantic_reversal": 36,
+  "paraphrase": 43,
+  "lexical_overlap": 34,
+  "time_shift": 14,
+  "reversed_direction": 16,
+  "real_evidence": 19,
+  "random": 18,
+  "real_restatement": 5
+ },
+ "construction": {
+  "real_anchor_authored": 240,
+  "real_content_both": 50,
+  "real_real": 60
+ },
+ "source": {
+  "authored": 240,
+  "translated": 50,
+  "search": 38,
+  "search|comention": 4,
+  "mined": 11,
+  "comention": 5,
+  "comention|search": 1,
+  "ties|search": 1
+ },
+ "negation_cue_among_contradicts": {
+  "one_side": 20,
+  "none": 48,
+  "both": 3
+ },
+ "positives_with_a_real_node_on_both_sides": {
+  "supports": 19,
+  "contradicts": 8,
+  "same_as": 29
+ },
+ "splits": {
+  "calib": {
+   "n": 177,
+   "labels": {
+    "supports": {
+     "0": 142,
+     "1": 35
+    },
+    "contradicts": {
+     "0": 141,
+     "1": 36
+    },
+    "same_as": {
+     "0": 141,
+     "1": 36
+    }
+   },
+   "languages": {
+    "mixed": 59,
+    "en": 58,
+    "ko": 60
+   },
+   "label_class_by_language": {
+    "en": {
+     "supports": 12,
+     "none": 22,
+     "contradicts": 12,
+     "same_as": 12
+    },
+    "mixed": {
+     "none": 24,
+     "contradicts": 12,
+     "same_as": 12,
+     "supports": 11
+    },
+    "ko": {
+     "none": 24,
+     "supports": 12,
+     "same_as": 12,
+     "contradicts": 12
+    }
+   },
+   "hard_kind": {
+    "scope_shift": 8,
+    "semantic_reversal": 16,
+    "anchored_evidence": 22,
+    "time_shift": 8,
+    "topical_only": 20,
+    "reversed_direction": 8,
+    "negation_cue": 20,
+    "paraphrase": 20,
+    "translation": 12,
+    "real_evidence": 13,
+    "random": 9,
+    "real_restatement": 4,
+    "lexical_overlap": 17
+   },
+   "construction": {
+    "real_anchor_authored": 117,
+    "real_content_both": 27,
+    "real_real": 33
+   },
+   "source": {
+    "authored": 117,
+    "translated": 27,
+    "search": 22,
+    "mined": 6,
+    "search|comention": 1,
+    "comention": 3,
+    "comention|search": 1
+   },
+   "negation_cue_among_contradicts": {
+    "none": 24,
+    "one_side": 11,
+    "both": 1
+   },
+   "positives_with_a_real_node_on_both_sides": {
+    "supports": 13,
+    "contradicts": 4,
+    "same_as": 16
+   }
+  },
+  "eval": {
+   "n": 173,
+   "labels": {
+    "supports": {
+     "0": 138,
+     "1": 35
+    },
+    "contradicts": {
+     "0": 138,
+     "1": 35
+    },
+    "same_as": {
+     "0": 137,
+     "1": 36
+    }
+   },
+   "languages": {
+    "ko": 59,
+    "mixed": 58,
+    "en": 56
+   },
+   "label_class_by_language": {
+    "en": {
+     "supports": 12,
+     "same_as": 12,
+     "none": 21,
+     "contradicts": 11
+    },
+    "mixed": {
+     "same_as": 12,
+     "supports": 11,
+     "none": 23,
+     "contradicts": 12
+    },
+    "ko": {
+     "contradicts": 12,
+     "none": 23,
+     "supports": 12,
+     "same_as": 12
+    }
+   },
+   "hard_kind": {
+    "negation_cue": 15,
+    "topical_only": 20,
+    "translation": 12,
+    "anchored_evidence": 29,
+    "paraphrase": 23,
+    "lexical_overlap": 17,
+    "scope_shift": 7,
+    "semantic_reversal": 20,
+    "reversed_direction": 8,
+    "real_evidence": 6,
+    "time_shift": 6,
+    "random": 9,
+    "real_restatement": 1
+   },
+   "construction": {
+    "real_anchor_authored": 123,
+    "real_content_both": 23,
+    "real_real": 27
+   },
+   "source": {
+    "authored": 123,
+    "translated": 23,
+    "search": 16,
+    "search|comention": 3,
+    "mined": 5,
+    "comention": 2,
+    "ties|search": 1
+   },
+   "negation_cue_among_contradicts": {
+    "one_side": 9,
+    "none": 24,
+    "both": 2
+   },
+   "positives_with_a_real_node_on_both_sides": {
+    "supports": 6,
+    "contradicts": 4,
+    "same_as": 13
+   }
+  }
+ },
+ "calibration_records_per_bucket": {
+  "supports:ko": 60,
+  "supports:en": 117,
+  "contradicts:ko": 120,
+  "contradicts:en": 234,
+  "same_as:ko": 120,
+  "same_as:en": 234
+ },
+ "families": 350,
+ "real_nodes_used": 418
+}

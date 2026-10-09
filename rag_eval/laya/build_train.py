@@ -43,6 +43,20 @@ REJECTIONS = [  # vinc_merge_rejections 2026-10-08, 30 쌍
 ]
 
 
+# same_as 음성으로 받는 출처 규칙. 읽어서 붙인 라벨과 규칙으로 붙인 라벨을 섞지 않으려고 이름을 고정한다.
+# 근거: [[vinc.plan.laya-test-method-2026-10-07]] §7.1 (교사 LLM 라벨을 쓰지 않는다)
+NEGATIVE_RULES = ("pack-linked-distinct-concepts", "audited-model-accepted-pair")
+
+
+def gold_dir_pairs(gold_dir: Path) -> tuple[list[dict], list[dict], str]:
+    """골드 디렉터리 하나를 (보정 쌍, 측정 쌍, gold.jsonl sha256) 으로 읽는다."""
+    raw = (gold_dir / "gold.jsonl").read_bytes()
+    gold = [json.loads(l) for l in raw.decode("utf-8").splitlines() if l.strip()]
+    split = json.loads((gold_dir / "gold.split.json").read_text(encoding="utf-8"))["split"]
+    return ([g for g in gold if split[g["pair_id"]] == "calib"], [g for g in gold if split[g["pair_id"]] == "eval"],
+            hashlib.sha256(raw).hexdigest())
+
+
 def hub_node(token: str, nid: str, base: str) -> dict | None:
     req = urllib.request.Request(f"{base.rstrip(chr(47))}/v1/nodes/{urllib.parse.quote(nid, safe=':')}",
                                  headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
@@ -116,6 +130,12 @@ def parser():
     p.add_argument('--base-training', type=Path)
     p.add_argument('--holdout', type=Path)
     p.add_argument('--same-as-pairs', type=Path)
+    p.add_argument('--same-as-negatives', type=Path, action='append', default=[],
+                   help='same_as 음성 쌍(JSONL). provenance.rule 이 NEGATIVE_RULES 에 있어야 한다. 여러 번 줄 수 있다')
+    p.add_argument('--train-gold-dir', type=Path, action='append', default=[],
+                   help='보정 쌍을 학습에 보태는 또 다른 골드 디렉터리. 그 측정 쌍은 막는다. 여러 번 줄 수 있다')
+    p.add_argument('--block-gold-dir', type=Path, action='append', default=[],
+                   help='측정 쌍의 텍스트와 노드 id 만 막는 골드 디렉터리(측정 전용 셋). 여러 번 줄 수 있다')
     p.add_argument('--hub', default=os.environ.get('VINC_HUB', 'https://mcp.vincs.io'))
     p.add_argument('--seed', type=int, default=20261007)
     p.add_argument('--typed-decisions-rows', type=int, default=600)
@@ -136,6 +156,18 @@ def main(argv=None) -> int:
     split = json.loads((GOLD_DIR / "gold.split.json").read_text(encoding="utf-8"))["split"]
     eval_pairs = [g for g in gold if split[g["pair_id"]] == "eval"]
     calib_pairs = [g for g in gold if split[g["pair_id"]] == "calib"]
+    # 다른 골드 디렉터리의 측정 쌍도 같은 그물로 막는다. 한 체크포인트를 여러 셋에서 재려면 어느 셋의 측정 쌍도
+    # 학습에 들어가면 안 된다.
+    extra_train, gold_dirs = [], {}
+    for d in args.train_gold_dir:
+        c, e, digest = gold_dir_pairs(d)
+        extra_train.append((d.name, c))
+        eval_pairs = eval_pairs + e
+        gold_dirs[d.name] = {"role": "train", "gold_sha256": digest, "calib": len(c), "eval_blocked": len(e)}
+    for d in args.block_gold_dir:
+        _, e, digest = gold_dir_pairs(d)
+        eval_pairs = eval_pairs + e
+        gold_dirs[d.name] = {"role": "block", "gold_sha256": digest, "eval_blocked": len(e)}
     eval_texts = {t for g in eval_pairs for t in (g["a"]["text"], g["b"]["text"])}
     eval_ids = {i for g in eval_pairs for i in (g["a"]["id"], g["b"]["id"])}
     holdout_ids = set(json.loads(args.holdout.read_text(encoding='utf-8'))['holdout']) if args.holdout else set()
@@ -156,6 +188,24 @@ def main(argv=None) -> int:
     for g in calib_pairs:
         add_pair(g["a"]["id"], g["b"]["id"], g["a"]["text"], g["b"]["text"], g.get("context"),
                  {p: g["labels"][p] for p in PREDICATES}, "calib", g["lang"])
+
+    # 1-1. 다른 골드의 보정 쌍. 출처 이름이 "calib" 이 아니라서 측정 쌍과 텍스트나 노드 id 가 겹치면 빠진다
+    # (주 골드의 보정 쌍에만 방식 §7.1 의 공유 허용이 걸린다).
+    for name, pairs in extra_train:
+        for g in pairs:
+            add_pair(g["a"]["id"], g["b"]["id"], g["a"]["text"], g["b"]["text"], g.get("context"),
+                     {p: g["labels"][p] for p in PREDICATES}, f"calib-{name}", g["lang"])
+
+    for path in args.same_as_negatives:
+        for line in path.read_text(encoding='utf-8').splitlines():
+            if not line.strip():
+                continue
+            g = json.loads(line)
+            if g['provenance']['rule'] not in NEGATIVE_RULES or g['labels'].get('same_as') != 0:
+                raise ValueError('Negative pairs need a registered provenance rule and same_as 0')
+            # 이 파일이 말하는 것은 same_as 하나다. 다른 술어 라벨이 실려 있어도 싣지 않는다.
+            add_pair(g['a']['id'], g['b']['id'], g['a']['text'], g['b']['text'], None,
+                     {'supports': None, 'contradicts': None, 'same_as': 0}, g['source'], g['lang'])
 
     if args.same_as_pairs:
         for line in args.same_as_pairs.read_text(encoding='utf-8').splitlines():
@@ -246,6 +296,9 @@ def main(argv=None) -> int:
                "holdout_pairs": len(holdout_ids),
                "holdout_sha256": hashlib.sha256(args.holdout.read_bytes()).hexdigest() if args.holdout else None,
                "same_as_pairs_sha256": hashlib.sha256(args.same_as_pairs.read_bytes()).hexdigest() if args.same_as_pairs else None,
+               "same_as_negatives_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                                            for p in args.same_as_negatives},
+               "extra_gold_dirs": gold_dirs,
                "gold_sha256": hashlib.sha256((GOLD_DIR / "gold.jsonl").read_bytes()).hexdigest()}
     (OUT.with_suffix(".summary.json")).write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=1))

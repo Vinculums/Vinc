@@ -1,0 +1,26 @@
+{
+ "what": "Blind relabel of all 360 authored pairs by a second AI reader in three separate sessions. Each session saw only pair_id and the two texts for 120 pairs plus the frozen question wording and criteria. It saw no ids, no labels, no rationale and none of the author's labelling conventions.",
+ "reviewer": "Anthropic Claude Sonnet (AI; three blind subagent sessions, 2026-10-10)",
+ "author": "Anthropic Claude (AI; configured model id claude-opus-5-5; this conversation)",
+ "pairs_reviewed": 360,
+ "labels_reviewed": 1080,
+ "pairs_with_any_disagreement": 10,
+ "pair_agreement": 0.9722,
+ "label_disagreements_by_predicate": {
+  "supports": 7,
+  "contradicts": 2,
+  "same_as": 2
+ },
+ "resolution": "Every pair with a disagreement was removed from gold.jsonl and kept in disputed.jsonl with both readings. No reference label was changed after the review.",
+ "agreement_on_kept_pairs": {
+  "supports": "350/350",
+  "contradicts": "350/350",
+  "same_as": "350/350"
+ },
+ "reviewer_hard_calls_on_kept_pairs": 33,
+ "limits": [
+  "Author and reviewer are both Anthropic models. Agreement between them is not human validation and not a cross-vendor check. A blind relabel by another vendor's model or by the owner is the recommended first step before this set is used for a ruling.",
+  "A first attempt to use a Claude Fable reviewer, as v1 did, failed for lack of usage credits; Sonnet was used.",
+  "Removing disputed pairs makes the kept set easier than the authored set by construction."
+ ]
+}
