@@ -357,14 +357,35 @@ export async function renderSettings(
           <p>${U.acctConnected(who ? esc(who) : "")}
              <button class="btn" id="acct-disc" style="margin-left:.5rem">${U.acctDisconnect}</button></p>
           <p class="hint">${U.acctDisconnectHint}</p>
-          <p class="hint" id="acct-ondisk" hidden>${U.acctOnDisk}</p>`;
+          <p class="hint" id="acct-ondisk" hidden>${U.acctOnDisk}</p>
+          <p class="hint" id="acct-key-failure" role="status" aria-live="polite" hidden>
+            ${U.acctKeyFailed} <button class="btn" id="acct-key-retry">${U.acctKeyRetry}</button></p>`;
         // OS 저장소 유무는 물어봐야 안다(프로브가 쓰고 지운다). 약한 상태를
         // 기본으로 두지 않고 **화면에 적는다** — 안 적으면 사용자는 자기 키가
         // 어디 있는지 모른다.
-        void accountKey().then(() => {
-          const n = acctBox.querySelector<HTMLElement>("#acct-ondisk");
-          if (n) n.hidden = !keyIsOnDisk();
-        });
+        const onDisk = acctBox.querySelector<HTMLElement>("#acct-ondisk")!;
+        const failure = acctBox.querySelector<HTMLElement>("#acct-key-failure")!;
+        const retry = acctBox.querySelector<HTMLButtonElement>("#acct-key-retry")!;
+        let checkingKey = false;
+        async function checkKey() {
+          if (checkingKey) return;
+          checkingKey = true;
+          retry.disabled = true;
+          failure.hidden = true;
+          try {
+            await accountKey();
+            onDisk.hidden = !keyIsOnDisk();
+          } catch {
+            // 이행 저장 실패도 여기로 온다. 연결이나 기존 키를 지우지 않고 재시도를 열어 둔다.
+            onDisk.hidden = true;
+            failure.hidden = false;
+          } finally {
+            checkingKey = false;
+            retry.disabled = false;
+          }
+        }
+        void checkKey();
+        retry.addEventListener("click", () => void checkKey());
         acctBox.querySelector("#acct-disc")!.addEventListener("click", () => {
           forgetAccount();
           renderAccount(body);

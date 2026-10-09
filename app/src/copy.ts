@@ -1170,6 +1170,8 @@ const EN = {
       acctDisconnect: "Disconnect",
       acctDisconnectHint: "Removes the key from this machine. To revoke it entirely, manage keys at vincs.io/account.",
       acctOnDisk: "This device has no system keychain, so the key is kept in the app's own folder instead. Anything running as your user can read it there.",
+      acctKeyFailed: "The saved key couldn't be checked. Try again.",
+      acctKeyRetry: "Try again",
       acctFail: "Connection didn't complete",
       acctExpired: "The request expired. Try again.",
       // 첫 실행에서 오프라인을 골랐거나 그 화면을 못 본 사람이 여기 온다. 지금
@@ -2264,6 +2266,8 @@ const KO: Deck = {
       acctDisconnect: "연결 해제하기",
       acctDisconnectHint: "이 기기에서 키를 지워요. 완전히 폐기하려면 vincs.io/account에서 키를 관리하세요.",
       acctOnDisk: "이 기기에는 시스템 키체인이 없어서 키를 앱 폴더에 보관해요. 같은 사용자로 실행되는 프로그램은 거기서 키를 읽을 수 있어요.",
+      acctKeyFailed: "저장된 키를 확인하지 못했어요. 다시 시도해 주세요.",
+      acctKeyRetry: "다시 시도하기",
       acctFail: "연결을 마치지 못했어요",
       acctExpired: "요청 시간이 지났어요. 다시 시도해 보세요.",
       acctOffline: "이 기기에는 연결된 계정이 없어요.",

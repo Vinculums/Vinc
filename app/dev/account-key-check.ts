@@ -106,3 +106,49 @@ test("저장을 기다리며 새로 입력한 키는 이전 저장 완료가 지
   const pending = s.handlers.click(); s.input.value = "fixture-next"; done(); await pending;
   assert.equal(s.input.value, "fixture-next");
 });
+
+function connectedFixture(accountKey, keyIsOnDisk = () => false) {
+  const handlers = {}, onDisk = { hidden: true }, failure = { hidden: true };
+  const retry = { disabled: false, addEventListener: (_name, fn) => { handlers.retry = fn; } };
+  const disconnect = { addEventListener: (_name, fn) => { handlers.disconnect = fn; } };
+  const box = { innerHTML: "", querySelector: id => ({
+    "#acct-ondisk": onDisk, "#acct-key-failure": failure,
+    "#acct-key-retry": retry, "#acct-disc": disconnect,
+  })[id] };
+  const state = { body: { querySelector: () => box }, accountKey, keyIsOnDisk,
+    accountWho: () => "fixture", hasAccount: () => true, esc: x => x,
+    U: { acctConnected: () => "connected", acctDisconnect: "disconnect", acctDisconnectHint: "hint",
+      acctOnDisk: "profile storage", acctKeyFailed: "failed", acctKeyRetry: "retry" },
+    forgetAccount: () => { throw new Error("조회 실패는 계정을 지우면 안 된다"); },
+    renderAccount: () => {},
+  };
+  vm.createContext(state);
+  const from = settings.indexOf('const acctBox = body.querySelector<HTMLElement>("#acct-box")');
+  const to = settings.indexOf("\n    async function startConnect", from);
+  assert.ok(from >= 0 && to > from); run(settings.slice(from, to), state); state.drawAcct();
+  return { handlers, onDisk, failure, retry, box };
+}
+const settle = () => new Promise(resolve => setImmediate(resolve));
+test("연결 화면은 레거시 키 이행 실패를 처리하고 키를 보존한 채 다시 조회한다", async () => {
+  const stored = fixture({ fail: true });
+  const s = connectedFixture(stored.api.accountKey); await settle();
+  assert.equal(s.failure.hidden, false); assert.equal(s.retry.disabled, false); assert.equal(s.onDisk.hidden, true);
+  assert.match(s.box.innerHTML, /acct-key-failure/); assert.match(s.box.innerHTML, /acct-key-retry/);
+  assert.equal(stored.values.get("vinc.sync.key"), "fixture-prior");
+  stored.retry(); s.handlers.retry(); await settle();
+  assert.equal(s.failure.hidden, true); assert.equal(s.retry.disabled, false);
+  assert.equal(stored.osKey, "fixture-prior"); assert.equal(stored.values.has("vinc.sync.key"), false);
+});
+test("연결 화면의 반복 조회 실패도 처리하고 다음 재시도를 열어 둔다", async () => {
+  let reads = 0;
+  const s = connectedFixture(async () => { reads++; throw new Error("fixture_read_failure"); });
+  await settle(); s.handlers.retry(); await settle();
+  assert.equal(reads, 2); assert.equal(s.failure.hidden, false); assert.equal(s.retry.disabled, false);
+});
+test("연결 화면은 조회 중 중복 재시도를 막고 성공 후 보관 위치를 표시한다", async () => {
+  let done, reads = 0;
+  const s = connectedFixture(() => { reads++; return new Promise(resolve => { done = resolve; }); }, () => true);
+  assert.equal(s.retry.disabled, true); s.handlers.retry(); assert.equal(reads, 1);
+  done("fixture-key"); await settle();
+  assert.equal(s.failure.hidden, true); assert.equal(s.retry.disabled, false); assert.equal(s.onDisk.hidden, false);
+});
