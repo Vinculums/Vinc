@@ -1,0 +1,41 @@
+{
+ "dataset_version": "laya-predicates-ai-v2",
+ "author": "Anthropic Claude (AI; configured model id claude-opus-5-5; this conversation)",
+ "label_author_is_human": false,
+ "authorized_by": "Owner, 2026-10-10 (this conversation): asked the assistant to make the new dataset itself; the experiments that would use it are run by another executor",
+ "method_doc_id": "vinc.plan.laya-test-method-2026-10-07",
+ "sources": {
+  "real_node_text": {
+   "what": "frozen census copy of the personal graph used by the VIN-410 fill measurement",
+   "repository": "Vinculums/Vinc",
+   "commit": "8b5da2c92dea5653aa2f89d9d23c5c7cb2f09d44",
+   "path": "rag_eval/evalsets/laya-predicates-ai-v1/run-2026-10-09-fill-v2/candidates.jsonl",
+   "sha256": "e8052327ec55849da49a21eaaa60f20e249c7eb96453c7d81736799180f9f3ab"
+  },
+  "repo_excerpts": {
+   "repository": "Vinculums/Vinc",
+   "commit": "0d033773b837bd511b98ce3f496a66ba593a4699",
+   "path": "CLAUDE.md"
+  },
+  "excluded_against": {
+   "what": "v1 gold and the v1 and v2 training sets",
+   "repository": "Vinculums/Vinc",
+   "commit": "3fd151c2ef6c12794498edc6a5353353e49601b7",
+   "v1_gold_sha256": "49cf4b34be2fd840c56e54bcca152abfaaebd76afa844938c6d7a7eccb29fd0a"
+  }
+ },
+ "selection_independent_of_model_output": "gold.jsonl and disputed.jsonl were chosen and labelled without reading any Laya output. fill-same-as-audit.jsonl is the opposite by design: a random sample of pairs the v2 checkpoint accepted as same_as positives.",
+ "protocol_deviations": [
+  "AI labels instead of owner labels (method section 3). The owner has not yet ruled on accepting this set.",
+  "Source quotas of method section 3 (ties, comention, search, merge at 40 each, random 40) are not met; counts are in summary.json.",
+  "Most positives pair one real node with an authored or translated statement; fully real pairs are the minority.",
+  "Family-blocked split instead of the pair-level splitter of rag_eval/laya/split.py.",
+  "350 pairs remain after the blind review instead of 360."
+ ],
+ "not_claimed": [
+  "Original M1 gold compliance",
+  "Any go or no-go result",
+  "Human or cross-vendor validation",
+  "That authored fixture statements are true of the product: they are test statements, not graph claims"
+ ]
+}

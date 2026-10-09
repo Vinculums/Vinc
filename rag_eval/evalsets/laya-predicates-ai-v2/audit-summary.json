@@ -1,0 +1,20 @@
+{
+ "what": "Random sample of the same_as pairs the v2 checkpoint accepted as positive in the VIN-410 fill measurement",
+ "population": 814,
+ "eligible_after_excluding_nodes_in_v1_or_v2_sets": 243,
+ "sampled": 90,
+ "seed": 20261010,
+ "labelled_same_as_true": 2,
+ "precision": 0.0222,
+ "wilson_95": [
+  0.0061,
+  0.0774
+ ],
+ "true_cases_are_identical_text_pairs": true,
+ "pairs_with_a_title_only_side": 83,
+ "limits": [
+  "One AI annotator, no second reader.",
+  "Drawn from the 243 eligible pairs, not from all 814; the other 571 touch nodes used in earlier sets.",
+  "Not an accuracy estimate for the checkpoint in general: it describes this population of Concept pairs."
+ ]
+}
