@@ -45,6 +45,10 @@ on:
         description: "measure 전용: CI가 통과한 후보의 정확한 40자리 SHA. 비우면 현재 main을 검사한다"
         type: string
         default: ""
+      qualify_durability:
+        description: "measure 후보만: 합성 DB의 동결 복구 50회와 실제 공유의 영속 ACK·로컬 디스크 손실을 검증"
+        type: boolean
+        default: false
 # hub-deploy 와 같은 줄에 선다 — 재구축 도중 배포가 끼어들면 두 리비전이 겹친다.
 concurrency:
   group: hub-deploy
@@ -75,9 +79,13 @@ jobs:
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
           MODE: ${{ inputs.mode }}
+          QUALIFY_DURABILITY: ${{ inputs.qualify_durability }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          if [ "$QUALIFY_DURABILITY" = true ]; then
+            [ "$MODE" = measure ] && [ -n "$SOURCE_SHA" ] || { echo '::error::durability qualification requires a verified measure candidate'; exit 1; }
+          fi
           if [ -n "$SOURCE_SHA" ]; then
             [ "$MODE" = measure ] || { echo '::error::candidate source is measure only'; exit 1; }
             [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::exact source SHA required'; exit 1; }
@@ -246,6 +254,50 @@ jobs:
           else
             python scripts/rebuild_store_native.py --data "work/$SRC" --out "work/$DST" --json \
               | tee work/rebuild.json
+          fi
+
+      # 운영 DB는 열지 않는다. 동결 프로세스의 작업 DB는 러너 로컬이고 영속본만
+      # 같은 Azure Files 공유의 새 합성 폴더에 둔다.
+      - name: Frozen recovery qualification
+        if: inputs.qualify_durability
+        run: |
+          set -euo pipefail
+          pip install pyinstaller
+          HOME="$GITHUB_WORKSPACE/verified-engine/build-home" python -m PyInstaller --noconfirm packaging/sidecar.spec
+          python scripts/qa/frozen_recovery_probe.py --binary dist/vinc \
+            --output work/frozen-recovery --trials 50
+          cp work/frozen-recovery/result.json work/frozen-recovery-result.json
+
+      - name: Durable ACK on the actual persistent share
+        if: inputs.qualify_durability
+        run: |
+          set -euo pipefail
+          mountpoint="$RUNNER_TEMP/vinc-share-$GITHUB_RUN_ID"
+          credentials="$RUNNER_TEMP/vinc-share-$GITHUB_RUN_ID.credentials"
+          mkdir "$mountpoint"
+          umask 077
+          printf 'username=%s\npassword=%s\n' "$ACCOUNT" "$AZ_KEY" > "$credentials"
+          sudo mount -t cifs "//$ACCOUNT.file.core.windows.net/$SHARE" "$mountpoint" \
+            -o "credentials=$credentials,vers=3.1.1,uid=$(id -u),gid=$(id -g),serverino,nosharesock,actimeo=1"
+          python scripts/qa/frozen_recovery_probe.py --binary dist/vinc \
+            --output work/persistent-recovery --trials 3 --durable-ack --lose-local-disk \
+            --check-retry-fencing --persistent-root "$mountpoint/qualification-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cp work/persistent-recovery/result.json work/persistent-recovery-result.json
+
+      - name: Unmount the qualification share
+        if: ${{ always() && inputs.qualify_durability }}
+        run: |
+          set -euo pipefail
+          mountpoint="$RUNNER_TEMP/vinc-share-$GITHUB_RUN_ID"
+          if mountpoint -q "$mountpoint"; then
+            # 이름을 고정한 이 실행의 합성 폴더만 정리한다. 라이브 DB는 이 폴더 밖이다.
+            python - "$mountpoint/qualification-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" <<'PY'
+          import pathlib, shutil, sys
+          root = pathlib.Path(sys.argv[1])
+          if root.name.startswith('qualification-') and root.is_dir():
+              shutil.rmtree(root)
+          PY
+            sudo umount "$mountpoint"
           fi
 
       - name: Upload the rebuilt store

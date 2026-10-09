@@ -40,6 +40,8 @@ def main() -> int:
     parser.add_argument("--trials", type=int, default=10)
     parser.add_argument("--durable-ack", action="store_true",
                         help="새 합성 저장소의 별도 로컬 영속 경로만 활성화")
+    parser.add_argument("--persistent-root", type=Path,
+                        help="영속 경로를 별도 파일시스템의 새 합성 폴더에 둔다. 기존 폴더는 거절")
     parser.add_argument("--lose-local-disk", action="store_true",
                         help="급사 뒤 로컬 DB 파일을 보존 경로로 옮겨 영속본만으로 복구")
     parser.add_argument("--check-retry-fencing", action="store_true",
@@ -51,9 +53,15 @@ def main() -> int:
         parser.error("--lose-local-disk requires --durable-ack")
     if args.check_retry_fencing and not args.durable_ack:
         parser.error("--check-retry-fencing requires --durable-ack")
+    if args.persistent_root and not args.durable_ack:
+        parser.error("--persistent-root requires --durable-ack")
     binary = args.binary.resolve(strict=True)
     args.output.mkdir(parents=True, exist_ok=False)
     output = args.output.resolve()
+    persistent_root = None
+    if args.persistent_root:
+        args.persistent_root.mkdir(exist_ok=False)
+        persistent_root = args.persistent_root.resolve(strict=True)
     results = []
 
     for index in range(args.trials):
@@ -67,10 +75,11 @@ def main() -> int:
                            XDG_CONFIG_HOME=str(home / "config"), MEMORY_DATA_DIR=str(trial / "db"),
                            VINC_TARGET="local", VINC_SIDECAR_TOKEN=TOKEN,
                            VINC_EMBED_APPLY_PAUSED="1", VINC_BUFFER_POOL_MB="128",
+                           VINC_CHECKPOINT_THRESHOLD_MB="4",
                            VINC_MAX_DB_SIZE=str(1024**3))
-        # 운영 설정은 가져오지 않는다. 영속 경로도 이 시도의 합성 로컬 폴더다.
+        # 영속 경로도 이 시도만 소유하는 합성 폴더다. 실제 공유에서도 DB는 로컬에 연다.
         if args.durable_ack:
-            share = trial / "persistent"
+            share = persistent_root / trial.name if persistent_root else trial / "persistent"
             share.mkdir()
             environment.update(VINC_DURABLE_ACK="on", VINC_STORE_SNAPSHOT=str(share / "db"),
                                VINC_STORE_SNAPSHOT_EVERY="3600")
@@ -121,8 +130,10 @@ def main() -> int:
             if info["driver"] != "ladybug":
                 raise RuntimeError("unexpected initial store driver")
             text = f"frozen recovery sentinel {index + 1}\n"
+            ack_start = time.monotonic()
             status, written = request(base, "/doc/put", {"owner": OWNER, "id": "recovery-sentinel",
                                                        "title": "Recovery sentinel", "text": text})
+            record["document_ack_seconds"] = time.monotonic() - ack_start
             (trial / "document-ack.json").write_text(json.dumps(written, indent=2) + "\n")
             if status != 200 or written.get("executed") is not True:
                 raise RuntimeError("document was not acknowledged")
@@ -281,8 +292,9 @@ def main() -> int:
     receipt = {"schema": "vinc.frozen-recovery-probe.v1", "observed_at": datetime.now(timezone.utc).isoformat(),
                "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(), "requested_trials": args.trials,
                "platform": sys.platform, "source_sha": os.environ.get("GITHUB_SHA"),
+               "checkpoint_threshold_mb": 4, "external_persistent_root": bool(persistent_root),
                "trials": results, "passed": len(results) == args.trials and all(r["passed"] for r in results),
-               "limits": ["Frozen HTTP ACK and owned process tree termination on local synthetic paths", "not SMB or native desktop acceptance",
+               "limits": ["Frozen HTTP ACK and owned process tree termination on synthetic paths", "no native desktop acceptance; external filesystem type requires workflow mount evidence",
                           "does not approve production engine pin or durable ACK", "failed stores/logs retained"]}
     (output / "result.json").write_text(json.dumps(receipt, indent=2) + "\n")
     return 0 if receipt["passed"] else 1
