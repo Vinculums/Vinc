@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -37,9 +38,43 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from store.backend import open_store          # noqa: E402
 from store.config import load_config          # noqa: E402
+from store.migrate import export_store, import_store  # noqa: E402
+from store import embedded_schema             # noqa: E402
 
 _EXTS = ("fts", "vector")
 _PROBE_DOC = "probe.rebuild-write-check"
+
+
+def _payload_digest(dump: dict) -> str:
+    """물리 키·벡터·관계 속성·메타를 행 순서와 무관하게 대조한다."""
+    payload = {}
+    for section in ("nodes", "meta"):
+        payload[section] = {
+            label: sorted(json.dumps(row, sort_keys=True, ensure_ascii=False)
+                          for row in rows)
+            for label, rows in dump[section].items()
+        }
+    payload["edges"] = sorted(json.dumps(row, sort_keys=True, ensure_ascii=False)
+                              for row in dump["edges"])
+    return hashlib.sha256(json.dumps(payload, sort_keys=True,
+                                    ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def _logical_export(s) -> dict:
+    """정본에 없는 표나 열을 묵시적으로 버리지 않는다."""
+    columns = {name: set(spec["cols"]) for name, spec in
+               {**embedded_schema.node_table_specs(),
+                **embedded_schema.meta_table_specs()}.items()}
+    for spec in embedded_schema.rel_table_specs():
+        columns.setdefault(spec["label"], set()).update(spec["props"])
+    for name in _tables(s):
+        if name not in columns:
+            raise RuntimeError(f"logical rebuild cannot preserve unknown table: {name}")
+        present = {row["name"] for row in s.run(f"CALL table_info('{name}') RETURN *")}
+        extra = present - columns[name]
+        if extra:
+            raise RuntimeError(f"logical rebuild cannot preserve unknown columns: {name}: {sorted(extra)}")
+    return export_store(s, raw=True)
 
 
 def _open(path: str):
@@ -121,14 +156,36 @@ def rebuild(src: str, dst: str) -> dict:
         raise FileExistsError(f"--out 은 없는 경로여야 한다: {dst}")
     report: dict = {"src": src, "dst": dst, "src_bytes": _size(src)}
     dump = tempfile.mkdtemp(prefix="vinc-export-")
+    source_work = tempfile.mkdtemp(prefix="vinc-rebuild-source-")
+    source_copy = os.path.join(source_work, "db")
+    logical = None
     try:
+        # 엔진은 읽기 쿼리만 실행해도 닫을 때 체크포인트를 쓸 수 있다. 원본과 WAL은
+        # 열지 않고 사본에서 내보낸다. 호출자는 닫힌 스토어나 고정된 백업을 넘긴다.
+        for f in _files(src):
+            shutil.copy2(f, source_copy + f[len(src):])
         t = time.monotonic()
-        s = _open(src)
+        s = _open(source_copy)
         try:
             report["src_counts"] = _counts(s)
             report["src_indexes"] = _indexes(s)
             shutil.rmtree(dump)                   # EXPORT 는 없는 디렉터리를 만든다
-            s._conn.execute(f"EXPORT DATABASE '{Path(dump).as_posix()}' (format='parquet')")
+            try:
+                s._conn.execute(f"EXPORT DATABASE '{Path(dump).as_posix()}' (format='parquet')")
+                report["export_method"] = "native"
+            except RuntimeError as exc:
+                # 0.21.2는 다중 끝점 관계의 네이티브 내보내기를 거절한다. 다른 실패를
+                # 삼키지 않고, 이 경우만 기존 이관 경로로 벡터까지 그대로 옮긴다.
+                message = str(exc)
+                if not ("Export database: rel table " in message and
+                        "connects multiple node pairs, which is not supported for "
+                        "icebug-disk CSR export yet." in message):
+                    raise
+                logical = _logical_export(s)
+                report["export_method"] = "logical"
+                report["native_export_error"] = message
+                report["vector_dim"] = s._stored_vec_dim(1024)
+                report["src_payload_sha256"] = _payload_digest(logical)
         finally:
             s.close()
         report["export_s"] = round(time.monotonic() - t, 1)
@@ -136,7 +193,10 @@ def rebuild(src: str, dst: str) -> dict:
         t = time.monotonic()
         d = _open(dst)
         try:
-            d._conn.execute(f"IMPORT DATABASE '{Path(dump).as_posix()}'")
+            if logical is None:
+                d._conn.execute(f"IMPORT DATABASE '{Path(dump).as_posix()}'")
+            else:
+                import_store(d, logical, dim=report["vector_dim"])
             report["import_s"] = round(time.monotonic() - t, 1)
             t = time.monotonic()
             # 원본에 없던 검색 색인(예: 기동 수리 전 사본의 chunk_vec)도 세운다 — 대상은
@@ -146,10 +206,13 @@ def rebuild(src: str, dst: str) -> dict:
             report["index_s"] = round(time.monotonic() - t, 1)
             report["dst_counts"] = _counts(d)
             report["dst_indexes"] = _indexes(d)
+            if logical is not None:
+                report["dst_payload_sha256"] = _payload_digest(export_store(d, raw=True))
         finally:
             d.close()
     finally:
         shutil.rmtree(dump, ignore_errors=True)
+        shutil.rmtree(source_work, ignore_errors=True)
     report["dst_bytes"] = _size(dst)
 
     problems = [f"{name}: {n} -> {report['dst_counts'].get(name)}"
@@ -157,6 +220,8 @@ def rebuild(src: str, dst: str) -> dict:
                 if report["dst_counts"].get(name) != n]
     problems += [f"index missing: {i}" for i in report["src_indexes"]
                  if i not in report["dst_indexes"]]
+    if logical is not None and report["src_payload_sha256"] != report["dst_payload_sha256"]:
+        problems.append("logical rebuild changed node, edge, vector, or metadata values")
     report["probe_before"] = _write_probe(src)
     report["probe_after"] = _write_probe(dst)
     if not report["probe_after"]["ok"]:
