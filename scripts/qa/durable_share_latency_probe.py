@@ -21,6 +21,27 @@ sys.path.insert(0, str(Path.cwd()))
 from store import durable_generation as dg
 
 
+def resource_limits(root: Path = Path('/sys/fs/cgroup')) -> dict:
+    """ACA currently exposes v1; developer and newer hosts may expose v2."""
+    values = {'cpu_max': None, 'memory_max': None}
+    for key, filename in (('cpu_max', 'cpu.max'), ('memory_max', 'memory.max')):
+        path = root / filename
+        if path.is_file():
+            values[key] = path.read_text().strip()
+    if values['cpu_max'] is None:
+        for directory in ('cpu', 'cpu,cpuacct'):
+            quota = root / directory / 'cpu.cfs_quota_us'
+            period = root / directory / 'cpu.cfs_period_us'
+            if quota.is_file() and period.is_file():
+                values['cpu_max'] = quota.read_text().strip() + ' ' + period.read_text().strip()
+                break
+    if values['memory_max'] is None:
+        path = root / 'memory' / 'memory.limit_in_bytes'
+        if path.is_file():
+            values['memory_max'] = path.read_text().strip()
+    return values
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--persistent-root", type=Path, required=True)
@@ -42,10 +63,7 @@ def main() -> int:
               "samples": args.samples, "measurement": "synthetic generation publication",
               "complete_http_write_latency": False, "operating_database_opened": False,
               "cpu_max": None, "memory_max": None, "cleanup_errors": []}
-    for key, filename in (("cpu_max", "cpu.max"), ("memory_max", "memory.max")):
-        path = Path("/sys/fs/cgroup") / filename
-        if path.exists():
-            result[key] = path.read_text().strip()
+    result.update(resource_limits())
     share_created = False
     digest, copy = dg._digest, dg._copy_synced
     counters = {}
