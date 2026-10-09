@@ -26,6 +26,8 @@ def validate_profile(profile: dict) -> dict:
             raise ValueError("profile distance outside cosine range")
     if profile.get("status") not in {"experimental", "approved"}:
         raise ValueError("profile must disclose experimental/approved status")
+    if 'owner_id' in profile and (not isinstance(profile['owner_id'], str) or not profile['owner_id'].strip()):
+        raise ValueError('profile owner must be a nonempty string')
     return profile
 
 
@@ -35,12 +37,14 @@ def load_profile(path: str) -> dict:
 
 def profile_state(profile: dict, *, encoder_model: str,
                   query_runtime: str | None, corpus_revision: str | None = None,
-                  runtime_warning: bool = False) -> dict:
+                  runtime_warning: bool = False, owner: str | None = None) -> dict:
     """런타임이 확인되지 않은 벡터에 보정값을 적용하지 않는다."""
     profile = validate_profile(profile)
     state = "active"
     if profile["status"] != "approved":
         state = "experimental"
+    elif profile.get('owner_id') and owner != profile['owner_id']:
+        state = 'owner_mismatch'
     elif encoder_model != profile["encoder_model"]:
         state = "model_mismatch"
     elif not query_runtime or query_runtime != profile["encoder_runtime"] or runtime_warning:
