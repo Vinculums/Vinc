@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import signal
@@ -38,6 +39,9 @@ def main() -> int:
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--trials", type=int, default=10)
+    parser.add_argument("--source-sha", help="이 바이너리를 빌드한 검증 소스의 정확한 SHA")
+    parser.add_argument("--request-timeout", type=float, default=20,
+                        help="HTTP 관찰 제한(초). 늘린 실행은 지연 진단으로 따로 해석")
     parser.add_argument("--durable-ack", action="store_true",
                         help="새 합성 저장소의 별도 로컬 영속 경로만 활성화")
     parser.add_argument("--persistent-root", type=Path,
@@ -47,6 +51,10 @@ def main() -> int:
     parser.add_argument("--check-retry-fencing", action="store_true",
                         help="복원 뒤 같은 요청 재시도와 합성 리비전 표식의 ACK 차단 검증")
     args = parser.parse_args()
+    if args.source_sha and not re.fullmatch(r"[0-9a-f]{40}", args.source_sha):
+        parser.error("--source-sha requires an exact lowercase 40-character SHA")
+    if not 5 <= args.request_timeout <= 180:
+        parser.error("--request-timeout must be between 5 and 180 seconds")
     if not 1 <= args.trials <= 50:
         parser.error("trials must be between 1 and 50")
     if args.lose_local_disk and not args.durable_ack:
@@ -70,7 +78,8 @@ def main() -> int:
         home = trial / "home"
         home.mkdir()
         environment = {k: v for k, v in os.environ.items()
-                       if not k.startswith(("VINC_", "MEMORY_", "PYTHON"))}
+                       if not k.startswith(("VINC_", "MEMORY_", "PYTHON", "AZURE_", "ACTIONS_ID_TOKEN"))
+                       and k not in {"AZ_KEY", "GH_TOKEN", "GITHUB_TOKEN"}}
         environment.update(HOME=str(home), USERPROFILE=str(home), XDG_DATA_HOME=str(home / "data"),
                            XDG_CONFIG_HOME=str(home / "config"), MEMORY_DATA_DIR=str(trial / "db"),
                            VINC_TARGET="local", VINC_SIDECAR_TOKEN=TOKEN,
@@ -89,6 +98,7 @@ def main() -> int:
         record = {"trial": index + 1, "passed": False,
                   "durable_ack_requested": args.durable_ack,
                   "local_disk_loss_requested": args.lose_local_disk}
+        phase = "initial_boot"
 
         def start(label):
             outpath, errpath = trial / f"{label}.stdout", trial / f"{label}.stderr"
@@ -120,7 +130,7 @@ def main() -> int:
                 headers={"Authorization": "Bearer " + TOKEN, "Content-Type": "application/json"})
             # loopback만 쓴다. 프록시를 통해 외부로 요청을 보내지 않는다.
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            with opener.open(req, timeout=20) as response:
+            with opener.open(req, timeout=args.request_timeout) as response:
                 value = json.load(response)
                 return response.status, value
 
@@ -130,6 +140,7 @@ def main() -> int:
             if info["driver"] != "ladybug":
                 raise RuntimeError("unexpected initial store driver")
             text = f"frozen recovery sentinel {index + 1}\n"
+            phase = "document_ack"
             ack_start = time.monotonic()
             status, written = request(base, "/doc/put", {"owner": OWNER, "id": "recovery-sentinel",
                                                        "title": "Recovery sentinel", "text": text})
@@ -137,6 +148,7 @@ def main() -> int:
             (trial / "document-ack.json").write_text(json.dumps(written, indent=2) + "\n")
             if status != 200 or written.get("executed") is not True:
                 raise RuntimeError("document was not acknowledged")
+            phase = "graph_ack"
             status, merged = request(base, "/ingest", {"owner": OWNER, "nodes": [
                 {"id": "concept:recovery-a", "type": "concept", "title": "Recovery source", "domain": "vinc/probe"},
                 {"id": "concept:recovery-b", "type": "concept", "title": "Recovery target", "domain": "vinc/probe"}],
@@ -187,6 +199,7 @@ def main() -> int:
                 if (trial / "db").exists() or (trial / "db.wal").exists():
                     raise RuntimeError("local disk-loss simulation failed")
             started = time.monotonic()
+            phase = "restore_boot"
             _, base, info = start("after-kill")
             record["reopen_seconds"] = time.monotonic() - started
             record["reopened_driver"] = info["driver"]
@@ -200,6 +213,7 @@ def main() -> int:
                 record["reopened_durable_ack"] = health.get("durable_ack")
                 if not isinstance(record["reopened_durable_ack"], dict):
                     raise RuntimeError("durable ACK was not active in the frozen product")
+            phase = "restored_read_checks"
             _, document = request(base, "/doc", query={"owner": OWNER, "id": "recovery-sentinel"})
             (trial / "document-reopened.json").write_text(json.dumps(document, indent=2) + "\n")
             if document.get("verified") is not True or document.get("text") != text:
@@ -225,6 +239,7 @@ def main() -> int:
                     and "sentinel" in row.get("snippet", "") for row in search.get("rows", [])):
                 raise RuntimeError("acknowledged document not searchable after WAL replay")
             if args.check_retry_fencing:
+                phase = "retry_and_fencing"
                 _, retried_doc = request(base, "/doc/put", {"owner": OWNER, "id": "recovery-sentinel",
                     "title": "Recovery sentinel", "text": text})
                 _, retried_graph = request(base, "/ingest", {"owner": OWNER, "nodes": [
@@ -264,6 +279,9 @@ def main() -> int:
             record["passed"] = True
         except Exception as exc:
             record["error"] = f"{type(exc).__name__}: {exc}"
+            record["failure_phase"] = phase
+            if phase == "document_ack":
+                record["document_ack_wait_seconds"] = time.monotonic() - ack_start
         finally:
             cleanup_errors = []
             for process, out, err in servers:
@@ -281,6 +299,11 @@ def main() -> int:
                     out.close()
                     err.close()
             record["cleanup_errors"] = cleanup_errors
+            if not record["passed"]:
+                # 출력은 이 하네스가 만든 합성 프로세스에 한정한다. 운영 로그는 안 읽는다.
+                record["synthetic_process_logs"] = {
+                    path.name: path.read_text(encoding="utf-8", errors="replace")[-6000:]
+                    for path in trial.glob("*.stderr")}
             if cleanup_errors:
                 record["passed"] = False
             (trial / "result.json").write_text(json.dumps(record, indent=2) + "\n")
@@ -291,7 +314,8 @@ def main() -> int:
 
     receipt = {"schema": "vinc.frozen-recovery-probe.v1", "observed_at": datetime.now(timezone.utc).isoformat(),
                "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(), "requested_trials": args.trials,
-               "platform": sys.platform, "source_sha": os.environ.get("GITHUB_SHA"),
+               "platform": sys.platform, "source_sha": args.source_sha,
+               "request_timeout_seconds": args.request_timeout,
                "checkpoint_threshold_mb": 4, "external_persistent_root": bool(persistent_root),
                "trials": results, "passed": len(results) == args.trials and all(r["passed"] for r in results),
                "limits": ["Frozen HTTP ACK and owned process tree termination on synthetic paths", "no native desktop acceptance; external filesystem type requires workflow mount evidence",
