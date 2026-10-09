@@ -39,7 +39,7 @@ on:
       step:
         description: "rebuild = 엔진 EXPORT/IMPORT 재구축 · lex = v21 검색 색인 이관(vinc migrate-lex)"
         type: choice
-        options: [rebuild, lex]
+        options: [rebuild, lex, durability]
         default: rebuild
       source_sha:
         description: "measure 전용: CI가 통과한 후보의 정확한 40자리 SHA. 비우면 현재 main을 검사한다"
@@ -49,6 +49,11 @@ on:
         description: "measure 후보만: 합성 DB의 동결 복구 50회와 실제 공유의 영속 ACK·로컬 디스크 손실을 검증"
         type: boolean
         default: false
+      diagnostic_timeout:
+        description: "합성 HTTP 관찰 제한(초). 120은 지연 진단이며 기존 20초 실패를 지우지 않는다"
+        type: choice
+        options: ["20", "120"]
+        default: "20"
 # hub-deploy 와 같은 줄에 선다 — 재구축 도중 배포가 끼어들면 두 리비전이 겹친다.
 concurrency:
   group: hub-deploy
@@ -111,6 +116,9 @@ jobs:
             echo "::error::apply 하려면 confirm 에 $want 를 적을 것" >&2
             exit 1
           fi
+          if [ "${{ inputs.step }}" = durability ]; then
+            [ "${{ inputs.mode }}" = measure ] && [ "${{ inputs.qualify_durability }}" = true ] || exit 1
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -156,13 +164,15 @@ jobs:
       # 원본 이름을 적어 두지 않고 **지금 허브가 쓰는 것**을 읽는다. 하드코딩한 이름이
       # 라이브와 어긋나면 엉뚱한 파일을 재구축하고 그것으로 갈아탄다.
       - name: Resolve the live store
+        if: inputs.step != 'durability'
         run: |
           set -euo pipefail
           env_of() {
             az containerapp show $APP \
               --query "properties.template.containers[0].env[?name=='$1'].value | [0]" -o tsv
           }
-          dir=$(env_of VINC_DATA_DIR)
+          dir=$(env_of VINC_STORE_SNAPSHOT)
+          [ -n "$dir" ] || dir=$(env_of VINC_DATA_DIR)
           case "$dir" in
             /data/*) ;;
             *) echo "::error::VINC_DATA_DIR 이 /data 아래가 아니다: '$dir'" >&2; exit 1 ;;
@@ -175,6 +185,9 @@ jobs:
             dst="db.rebuilt-$(date -u +%Y%m%d%H%M)"
           fi
           pkns=$(env_of VINC_PK_NAMESPACED)
+          durable=$(env_of VINC_DURABLE_ACK)
+          case "${durable,,}" in 1|true|on) durable=on ;; *) durable=off ;; esac
+          echo "DURABLE_ACK=$durable" >> "$GITHUB_ENV"
           echo "SRC=$src" >> "$GITHUB_ENV"
           echo "DST=$dst" >> "$GITHUB_ENV"
           # 쓰기 검사가 허브와 같은 키 규약으로 쓰게 한다.
@@ -211,6 +224,7 @@ jobs:
       # 스냅샷을 뜨고 거기서 받는다 — 라이브 파일은 SMB 잠금으로 복사가 거절되고,
       # SMB 위에서 임베디드 DB 를 직접 여는 것이 하드다운 4회의 공통 원인이었다.
       - name: Snapshot and download
+        if: inputs.step != 'durability'
         id: snapshot
         run: |
           set -euo pipefail
@@ -221,14 +235,9 @@ jobs:
           test -n "$snap"
           echo "timestamp=$snap" >> "$GITHUB_OUTPUT"
           mkdir -p work
-          az storage file download --share-name "$SHARE" --path "$SRC" --dest "work/$SRC" \
-            --snapshot "$snap" --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none
-          if az storage file download --share-name "$SHARE" --path "$SRC.wal" --dest "work/$SRC.wal" \
-             --snapshot "$snap" --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none 2>/dev/null; then
-            echo "WAL 동봉"
-          else
-            echo "WAL 없음"
-          fi
+          python scripts/restore_hub_snapshot.py --account "$ACCOUNT" --share "$SHARE" \
+            --snapshot "$snap" --source "$SRC" --out "work/$SRC" --durable-ack "$DURABLE_ACK" \
+            | tee work/restore-source.json
           # 0 바이트를 올린 적이 있다 — 받은 크기를 본다.
           ls -la work
           [ -s "work/$SRC" ] || { echo "::error::받은 원본이 비었다" >&2; exit 1; }
@@ -236,6 +245,7 @@ jobs:
       # measure 와 apply 가 같은 재구축을 돈다. 판정이 어긋나면 스크립트가 대상을 지우고
       # 1로 끝나므로 반쯤 지은 파일은 올라가지 않는다.
       - name: Rebuild and check
+        if: inputs.step != 'durability'
         run: |
           set -euo pipefail
           # 확장(FTS·벡터)은 리포에 번들된 것을 명시 경로로 싣는다 — 러너에는 설치본이 없어
@@ -258,14 +268,20 @@ jobs:
 
       # 운영 DB는 열지 않는다. 동결 프로세스의 작업 DB는 러너 로컬이고 영속본만
       # 같은 Azure Files 공유의 새 합성 폴더에 둔다.
-      - name: Frozen recovery qualification
+      - name: Build frozen qualification binary
         if: inputs.qualify_durability
         run: |
           set -euo pipefail
           pip install pyinstaller
           HOME="$GITHUB_WORKSPACE/verified-engine/build-home" python -m PyInstaller --noconfirm packaging/sidecar.spec
+          echo "PROBE_SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Frozen recovery qualification
+        if: inputs.qualify_durability && inputs.step != 'durability'
+        run: |
+          set -euo pipefail
           python scripts/qa/frozen_recovery_probe.py --binary dist/vinc \
-            --output work/frozen-recovery --trials 50
+            --output work/frozen-recovery --trials 50 --source-sha "$PROBE_SOURCE_SHA"
           cp work/frozen-recovery/result.json work/frozen-recovery-result.json
 
       - name: Durable ACK on the actual persistent share
@@ -282,9 +298,11 @@ jobs:
           root="$mountpoint/qualification-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           mkdir "$root"
           echo "QUALIFICATION_ROOT=$root" >> "$GITHUB_ENV"
+          mkdir -p work
           python scripts/qa/frozen_recovery_probe.py --binary dist/vinc \
             --output work/persistent-recovery --trials 3 --durable-ack --lose-local-disk \
-            --check-retry-fencing --persistent-root "$root/persistent"
+            --check-retry-fencing --persistent-root "$root/persistent" \
+            --source-sha "$PROBE_SOURCE_SHA" --request-timeout "${{ inputs.diagnostic_timeout }}"
           cp work/persistent-recovery/result.json work/persistent-recovery-result.json
 
       - name: Unmount the qualification share
