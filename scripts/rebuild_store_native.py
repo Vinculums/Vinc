@@ -202,6 +202,13 @@ def rebuild(src: str, dst: str) -> dict:
             # 원본에 없던 검색 색인(예: 기동 수리 전 사본의 chunk_vec)도 세운다 — 대상은
             # 온전한 스토어여야 한다. 폭은 설정이 아니라 들여온 열에서 읽는다.
             d.ensure_search_indexes(dim=d._stored_vec_dim(1024))
+            # 일반 검색 보장은 Chunk 색인만 만든다. 원본에 있던 노드 미러 색인은
+            # 모든 벡터를 들인 뒤 따로 복원하고, 생성 실패는 그대로 거절한다.
+            if ("NodeVec.node_vec" in report["src_indexes"] and
+                    "NodeVec.node_vec" not in _indexes(d)):
+                error = d.create_node_vector_index()
+                if error:
+                    raise RuntimeError(f"NodeVec index rebuild failed: {error}")
             d.run("CHECKPOINT")
             report["index_s"] = round(time.monotonic() - t, 1)
             report["dst_counts"] = _counts(d)

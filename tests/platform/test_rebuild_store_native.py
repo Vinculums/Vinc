@@ -60,6 +60,7 @@ def _seed(path: str) -> None:
         s.run("MATCH (d:Decision {decision_id:'d1'}), (c:Concept {concept_id:'k1'}) "
               "MERGE (d)-[r:DERIVES_FROM]->(c) SET r.evidence='decision', r.confidence=0.25")
         s.ensure_search_indexes(dim=4)
+        assert not s.create_node_vector_index()
     finally:
         s.close()
 
@@ -83,6 +84,8 @@ class NativeRebuildTests(unittest.TestCase):
         self.assertEqual(report["src_counts"], report["dst_counts"])
         self.assertIn("Chunk.chunk_ft", report["dst_indexes"])
         self.assertIn("Concept._PK", report["dst_indexes"])
+        self.assertIn("NodeVec.node_vec", report["src_indexes"])
+        self.assertIn("NodeVec.node_vec", report["dst_indexes"])
         self.assertTrue(report["probe_after"]["ok"], report["probe_after"])
         self.assertTrue(os.path.exists(self.dst))
 
