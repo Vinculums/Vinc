@@ -70,7 +70,7 @@ jobs:
       # `ci.yml` 의 core 잡과 **같은 목록**이다. 갈리면 이 워크플로가 재는 것이
       # ci 가 재는 것과 달라지고, 그러면 여기 초록이 아무것도 뜻하지 않는다.
       - name: Install deps (ladybug pinned + argon2 + pytest + pypdf)
-        run: pip install ladybug==0.20.4 argon2-cffi pyyaml pytest pypdf
+        run: pip install ladybug==0.21.2 argon2-cffi pyyaml pytest pypdf
       - name: Point to bundled G0 extensions (no network)
         run: echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
       # ⚠ 이 스텝을 빼면 이 워크플로는 있으나 마나다. 드라이버가 없으면 17개 파일이
@@ -135,7 +135,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install deps (ladybug pinned + argon2 + pytest + pypdf)
-        run: pip install ladybug==0.20.4 argon2-cffi pyyaml pytest pypdf
+        run: pip install ladybug==0.21.2 argon2-cffi pyyaml pytest pypdf
       - name: Point to bundled G0 extensions (no network)
         run: echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
       - name: Assert driver is importable (no silent skips)

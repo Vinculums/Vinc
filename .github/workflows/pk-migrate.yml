@@ -70,7 +70,7 @@ jobs:
         with:
           python-version: "3.12"
       # ci.yml 과 같은 목록. 여기서 빠지면 스토어를 못 연다.
-      - run: pip install ladybug==0.20.4 argon2-cffi pyyaml pypdf
+      - run: pip install ladybug==0.21.2 argon2-cffi pyyaml pypdf
 
       - uses: azure/login@v2
         with:

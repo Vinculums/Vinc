@@ -90,7 +90,7 @@ docker 에서 연다(Windows 휠에는 FTS 확장이 없어 로컬에서 못 연
 ```bash
 docker run --rm -v "$PWD:/w" -w /w python:3.12-slim sh -c '
   mkdir -p /root/.lbdb && cp -r /w/ext/extension /root/.lbdb/
-  pip install -q ladybug==0.20.4
+  pip install -q ladybug==0.21.2
   python - <<PY
 import ladybug
 c = ladybug.Connection(ladybug.Database("/w/bak/db"))

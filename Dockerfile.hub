@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 
 # 드라이버 버전 핀(명칭 churn 대비, pyproject.toml 주석과 동일 근거).
 # pypdf — 허브도 /doc/put-file 을 프록시로 받으므로 서버측 추출기가 필요하다.
-RUN pip install --no-cache-dir ladybug==0.20.4 argon2-cffi pypdf==6.14.2
+RUN pip install --no-cache-dir ladybug==0.21.2 argon2-cffi pypdf==6.14.2
 
 # 임베딩 워커 스택 — **torch 가 아니라 ONNX** 다(vinc_rag/embed/worker.py 주석 참조).
 # 이미지 260MB → 500MB(실측). torch 를 실으면 +2.7GB 이고 런타임 RSS 도 ~800MiB 라

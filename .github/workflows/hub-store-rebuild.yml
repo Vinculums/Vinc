@@ -21,7 +21,7 @@
 # step=lex (VIN-273) 는 재구축 대신 v21 검색 색인 이관(`vinc migrate-lex`)을 사본에 돌린다.
 # 허브는 기본 `VINC_LEX_BACKFILL=defer` 라 서비스 중에 색인을 옮기지 않는다 — 두 글자 묶음
 # 색인 빌드는 DDL 가드로 프로세스 전체를 멈추고 허브 크기면 몇 분이다. measure 가 그 시간을
-# 허브 엔진(0.20.4·리눅스)에서 재고, apply 가 같은 사본으로 갈아탄다.
+# 허브 엔진(0.21.2·리눅스)에서 재고, apply 가 같은 사본으로 갈아탄다.
 # 근거: [[vinc.plan.korean-retrieval-p1-p2-2026-10-02 §2.7]]
 name: hub-store-rebuild
 on:
@@ -80,7 +80,7 @@ jobs:
         with:
           python-version: "3.12"
       # ci.yml 과 같은 목록. 여기서 빠지면 스토어를 못 연다.
-      - run: pip install ladybug==0.20.4 argon2-cffi pyyaml pypdf
+      - run: pip install ladybug==0.21.2 argon2-cffi pyyaml pypdf
       - name: Azure 프로필을 이 잡 전용으로
         run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
       - uses: azure/login@v2

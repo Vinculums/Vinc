@@ -247,7 +247,7 @@ jobs:
         #
         # 부수 효과로 **테스트한 것과 배포한 것이 달랐던 것도 함께 고쳐진다**:
         # 이 자리가 핀이 없어 v0.6.7 은 그날의 최신(0.18.3)으로 빌드돼 나갔는데,
-        # ci.yml 은 0.18.0 으로 테스트하고 있었다. 이제 핀은 모두 같은 판이다(지금 0.20.4).
+        # ci.yml 은 0.18.0 으로 테스트하고 있었다. 이제 핀은 모두 같은 판이다(지금 0.21.2).
         #
         # ⚠ 위 "0.19.0 이 C API 공유 라이브러리를 분리했다"는 추정은 틀렸다(2026-09-24
         # 재조사). 0.19.0 부터 휠이 OpenSSL 3 을 싣지 않아 Windows 에서 네이티브 모듈이
@@ -255,19 +255,13 @@ jobs:
         # 올리면서 sidecar.spec 이 OpenSSL 3 을 비변형 이름으로 함께 싣는다.
         # 근거: [[vinc.ops.ladybug-upgrade-review-2026-09-24]] §2.4
         #
-        # ⚠ **Windows 만 0.20.3 이다.** 0.20.4 의 win_amd64 엔진은 FTS 확장(v0.20.0)으로
-        # `CREATE_FTS_INDEX` 를 부르면 빈 표에서도 접근 위반으로 죽는다(0xC0000409, 로컬
-        # 4/4 재현 · 상류가 INSTALL 로 준 확장도 같다). 같은 확장 파일로 0.20.3 은 4/4
-        # 정상이고, 벡터 색인은 두 판 모두 정상이다. 저장 파일은 0.20.3 ↔ 0.20.4 양방향으로
-        # 열린다(실측). 그래서 v0.9.4 첫 태그 빌드의 Windows 스모크가 /health 를 못 받았다.
-        # 상류가 고치면 이 분기를 지운다.
+        # 0.21.2는 Windows·Linux·macOS 15의 동결 빌드로 FTS·components·오프라인 조회,
+        # 구판 백업 복구와 강제 종료 후 durable ACK 복구를 통과했다(VIN-156, PR692–694).
+        # 따라서 Windows의 0.20.3 예외를 지운다. 캐시된 파라미터 FTS 크래시는 여전히
+        # 재현되므로 제품의 Ladybug 가드는 유지한다. 확장 바이트는 아래 해시 목록으로 고정한다.
         shell: bash
         run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            pip install ladybug==0.20.3 pyyaml pyinstaller pypdf
-          else
-            pip install ladybug==0.20.4 pyyaml pyinstaller pypdf
-          fi
+          pip install ladybug==0.21.2 pyyaml pyinstaller pypdf
       # ⚠ ladybug 의 `INSTALL` 을 쓰지 않는다. 0.18.0 의 내장 다운로더가 확장 서버
       # 인증서를 검증하지 못해 **CI 에서만** 죽는다(2026-08-01 실측):
       #   RuntimeException: Failed to download extension: vector
@@ -288,7 +282,7 @@ jobs:
       - name: Seed LadybugDB extensions (G0 오프라인 번들 — spec 이 datas 로 동봉)
         shell: bash
         env:
-          LBUG_VER: "0.20.4"
+          LBUG_VER: "0.21.2"
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
