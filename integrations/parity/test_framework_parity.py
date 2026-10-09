@@ -346,3 +346,38 @@ def test_same_sources_line_in_context_mode_in_both_frameworks():
             return ctx.instructions[0]
     ma_block = asyncio.run(run())
     assert lg_block == ma_block and lg_block.startswith(SOURCES_LINE + "\n")
+
+
+@pytest.mark.parametrize("instructions", ["Review the policy.", "근거에 따라 검토하세요."])
+def test_native_agents_deliver_identical_plain_system_instructions(instructions):
+    from langchain.agents import create_agent
+    from langchain_core.messages import HumanMessage
+    from vinc_agent_framework import VincContextProvider
+    from vinc_langgraph import VincContextMiddleware
+
+    class CaptureSystem(RecordedModel):
+        system_contents: list = []
+        def bind_tools(self, tools, **kwargs):
+            return self
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            self.system_contents.append(messages[0].content)
+            return ChatResult(generations=[ChatGeneration(message=AIMessage("done"))])
+
+    model = CaptureSystem()
+    with VincClient(KEY, transport=httpx.MockTransport(lambda req: response(req, []))) as client:
+        create_agent(model, tools=lg_tools(client), system_prompt=instructions,
+                     middleware=[VincContextMiddleware(client=client)]).invoke(
+                         {"messages": [HumanMessage("Review evidence.")]})
+
+    async def run():
+        async with AsyncVincClient(KEY, transport=httpx.MockTransport(
+                lambda req: response(req, []))) as client:
+            chat = RecordedClient()
+            await Agent(chat, instructions=instructions,
+                        context_providers=[VincContextProvider(client, expose_tools=True)]).run(
+                            "Review evidence.")
+            return chat.calls[0]["instructions"]
+
+    ma_instructions = asyncio.run(run())
+    assert isinstance(model.system_contents[0], str)
+    assert model.system_contents == [ma_instructions]
