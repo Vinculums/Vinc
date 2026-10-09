@@ -1,0 +1,959 @@
+{
+  "candidate_reads_start_utc": "2026-10-09T09:26:19.110064+00:00",
+  "candidate_reads_end_utc": "2026-10-09T10:31:15.328919+00:00",
+  "unique_cached_reads": 6974,
+  "confirmed_missing_responses": 397,
+  "excluded_counts": {
+    "exact_node_read_unavailable": 166,
+    "short_title": 5
+  },
+  "unreadable_node_ids_with_non_ascii": 166,
+  "search_notes": [
+    {
+      "note": null,
+      "count": 1456
+    },
+    {
+      "note": "TimeoutError: The read operation timed out",
+      "count": 1099
+    },
+    {
+      "note": "HTTPError: HTTP Error 503: Service Unavailable",
+      "count": 50
+    },
+    {
+      "note": "vector index is being rebuilt after a write: full-text results only for now",
+      "count": 6
+    },
+    {
+      "note": "HTTPError: HTTP Error 502: Bad Gateway",
+      "count": 3
+    }
+  ],
+  "domains_after": [
+    {
+      "domain": "vinc/ai/eval",
+      "episodes": 56,
+      "concepts": 36,
+      "records": 81,
+      "decisions": 20,
+      "total": 193
+    },
+    {
+      "domain": "vinc/design/surfaces",
+      "episodes": 53,
+      "concepts": 27,
+      "records": 76,
+      "decisions": 28,
+      "total": 184
+    },
+    {
+      "domain": "vinc/agent/orchestration",
+      "episodes": 43,
+      "concepts": 15,
+      "records": 42,
+      "decisions": 73,
+      "total": 173
+    },
+    {
+      "domain": "vinc/infra/deploy",
+      "episodes": 36,
+      "concepts": 18,
+      "records": 82,
+      "decisions": 14,
+      "total": 150
+    },
+    {
+      "domain": "vinc/agent/qa",
+      "episodes": 23,
+      "concepts": 31,
+      "records": 78,
+      "decisions": 0,
+      "total": 132
+    },
+    {
+      "domain": "vinc/engineering/mcp-server",
+      "episodes": 25,
+      "concepts": 27,
+      "records": 66,
+      "decisions": 12,
+      "total": 130
+    },
+    {
+      "domain": "vinc/engineering/search",
+      "episodes": 23,
+      "concepts": 10,
+      "records": 82,
+      "decisions": 12,
+      "total": 127
+    },
+    {
+      "domain": "vinc/engineering/store",
+      "episodes": 19,
+      "concepts": 13,
+      "records": 81,
+      "decisions": 5,
+      "total": 118
+    },
+    {
+      "domain": "vinc/design/view",
+      "episodes": 11,
+      "concepts": 13,
+      "records": 33,
+      "decisions": 39,
+      "total": 96
+    },
+    {
+      "domain": "vinc/engineering/desktop",
+      "episodes": 36,
+      "concepts": 8,
+      "records": 49,
+      "decisions": 1,
+      "total": 94
+    },
+    {
+      "domain": "vinc/design/copy",
+      "episodes": 27,
+      "concepts": 4,
+      "records": 32,
+      "decisions": 22,
+      "total": 85
+    },
+    {
+      "domain": "vinc/product/account",
+      "episodes": 26,
+      "concepts": 23,
+      "records": 18,
+      "decisions": 18,
+      "total": 85
+    },
+    {
+      "domain": "vinc/governance/claim-decay",
+      "episodes": 10,
+      "concepts": 17,
+      "records": 41,
+      "decisions": 7,
+      "total": 75
+    },
+    {
+      "domain": "vinc/infra/hub",
+      "episodes": 12,
+      "concepts": 9,
+      "records": 47,
+      "decisions": 3,
+      "total": 71
+    },
+    {
+      "domain": "vinc/ai/retrieval",
+      "episodes": 10,
+      "concepts": 9,
+      "records": 44,
+      "decisions": 5,
+      "total": 68
+    },
+    {
+      "domain": "vinc/agent/roles",
+      "episodes": 3,
+      "concepts": 24,
+      "records": 7,
+      "decisions": 30,
+      "total": 64
+    },
+    {
+      "domain": "vinc/design/layouts",
+      "episodes": 3,
+      "concepts": 3,
+      "records": 38,
+      "decisions": 18,
+      "total": 62
+    },
+    {
+      "domain": "vinc/infra/runner",
+      "episodes": 4,
+      "concepts": 3,
+      "records": 45,
+      "decisions": 7,
+      "total": 59
+    },
+    {
+      "domain": "vinc/product/milestones",
+      "episodes": 26,
+      "concepts": 16,
+      "records": 8,
+      "decisions": 8,
+      "total": 58
+    },
+    {
+      "domain": "vinc/product/research",
+      "episodes": 10,
+      "concepts": 30,
+      "records": 17,
+      "decisions": 0,
+      "total": 57
+    },
+    {
+      "domain": "vinc/product/docs",
+      "episodes": 20,
+      "concepts": 7,
+      "records": 21,
+      "decisions": 8,
+      "total": 56
+    },
+    {
+      "domain": "vinc/product/book",
+      "episodes": 9,
+      "concepts": 25,
+      "records": 17,
+      "decisions": 3,
+      "total": 54
+    },
+    {
+      "domain": "vinc/design/tokens",
+      "episodes": 9,
+      "concepts": 15,
+      "records": 26,
+      "decisions": 2,
+      "total": 52
+    },
+    {
+      "domain": "vinc/product/book/part1-structure",
+      "episodes": 0,
+      "concepts": 52,
+      "records": 0,
+      "decisions": 0,
+      "total": 52
+    },
+    {
+      "domain": "vinc/design/marks",
+      "episodes": 5,
+      "concepts": 4,
+      "records": 19,
+      "decisions": 23,
+      "total": 51
+    },
+    {
+      "domain": "vinc/infra/embed",
+      "episodes": 5,
+      "concepts": 3,
+      "records": 38,
+      "decisions": 1,
+      "total": 47
+    },
+    {
+      "domain": "vinc/product/book/part1-interface",
+      "episodes": 0,
+      "concepts": 47,
+      "records": 0,
+      "decisions": 0,
+      "total": 47
+    },
+    {
+      "domain": "vinc/product/book/part1-space",
+      "episodes": 0,
+      "concepts": 45,
+      "records": 0,
+      "decisions": 0,
+      "total": 45
+    },
+    {
+      "domain": "vinc/engineering/account",
+      "episodes": 11,
+      "concepts": 4,
+      "records": 25,
+      "decisions": 3,
+      "total": 43
+    },
+    {
+      "domain": "vinc/governance/repo",
+      "episodes": 6,
+      "concepts": 3,
+      "records": 28,
+      "decisions": 6,
+      "total": 43
+    },
+    {
+      "domain": "vinc/product/book/part0-system",
+      "episodes": 0,
+      "concepts": 43,
+      "records": 0,
+      "decisions": 0,
+      "total": 43
+    },
+    {
+      "domain": "vinc/governance/methodology",
+      "episodes": 13,
+      "concepts": 8,
+      "records": 14,
+      "decisions": 6,
+      "total": 41
+    },
+    {
+      "domain": "vinc/governance/graph-md",
+      "episodes": 1,
+      "concepts": 8,
+      "records": 14,
+      "decisions": 17,
+      "total": 40
+    },
+    {
+      "domain": "vinc/product/book/part0-memory",
+      "episodes": 0,
+      "concepts": 38,
+      "records": 0,
+      "decisions": 0,
+      "total": 38
+    },
+    {
+      "domain": "vinc/governance/docs-canon",
+      "episodes": 8,
+      "concepts": 3,
+      "records": 17,
+      "decisions": 8,
+      "total": 36
+    },
+    {
+      "domain": "vinc/engineering/fragment",
+      "episodes": 0,
+      "concepts": 6,
+      "records": 23,
+      "decisions": 5,
+      "total": 34
+    },
+    {
+      "domain": "vinc/security/isolation",
+      "episodes": 8,
+      "concepts": 5,
+      "records": 17,
+      "decisions": 4,
+      "total": 34
+    },
+    {
+      "domain": "vinc/infra/azure",
+      "episodes": 13,
+      "concepts": 5,
+      "records": 15,
+      "decisions": 0,
+      "total": 33
+    },
+    {
+      "domain": "vinc/engineering/docstore",
+      "episodes": 2,
+      "concepts": 6,
+      "records": 23,
+      "decisions": 1,
+      "total": 32
+    },
+    {
+      "domain": "vinc/engineering/integrations",
+      "episodes": 12,
+      "concepts": 2,
+      "records": 15,
+      "decisions": 2,
+      "total": 31
+    },
+    {
+      "domain": "vinc/product/book/part2",
+      "episodes": 0,
+      "concepts": 31,
+      "records": 0,
+      "decisions": 0,
+      "total": 31
+    },
+    {
+      "domain": "vinc/agent/integrations",
+      "episodes": 9,
+      "concepts": 3,
+      "records": 12,
+      "decisions": 6,
+      "total": 30
+    },
+    {
+      "domain": "vinc/design/review",
+      "episodes": 18,
+      "concepts": 0,
+      "records": 4,
+      "decisions": 7,
+      "total": 29
+    },
+    {
+      "domain": "vinc/infra/cost",
+      "episodes": 2,
+      "concepts": 2,
+      "records": 22,
+      "decisions": 1,
+      "total": 27
+    },
+    {
+      "domain": "vinc/product/roadmap",
+      "episodes": 7,
+      "concepts": 10,
+      "records": 6,
+      "decisions": 4,
+      "total": 27
+    },
+    {
+      "domain": "vinc/product/desktop-0-9-4",
+      "episodes": 9,
+      "concepts": 0,
+      "records": 8,
+      "decisions": 9,
+      "total": 26
+    },
+    {
+      "domain": "vinc/ai/embedding",
+      "episodes": 5,
+      "concepts": 2,
+      "records": 17,
+      "decisions": 1,
+      "total": 25
+    },
+    {
+      "domain": "vinc/engineering/agents",
+      "episodes": 12,
+      "concepts": 0,
+      "records": 12,
+      "decisions": 0,
+      "total": 24
+    },
+    {
+      "domain": "vinc/engineering/mcp-server/directory",
+      "episodes": 5,
+      "concepts": 3,
+      "records": 14,
+      "decisions": 2,
+      "total": 24
+    },
+    {
+      "domain": "vinc/security/audit",
+      "episodes": 6,
+      "concepts": 3,
+      "records": 9,
+      "decisions": 3,
+      "total": 21
+    },
+    {
+      "domain": "vinc/engineering/releases",
+      "episodes": 18,
+      "concepts": 0,
+      "records": 2,
+      "decisions": 0,
+      "total": 20
+    },
+    {
+      "domain": "vinc/product/packs",
+      "episodes": 4,
+      "concepts": 1,
+      "records": 12,
+      "decisions": 3,
+      "total": 20
+    },
+    {
+      "domain": "vinc/product",
+      "episodes": 4,
+      "concepts": 13,
+      "records": 2,
+      "decisions": 0,
+      "total": 19
+    },
+    {
+      "domain": "vinc/design/research",
+      "episodes": 3,
+      "concepts": 13,
+      "records": 1,
+      "decisions": 0,
+      "total": 17
+    },
+    {
+      "domain": "vinc/engineering/sync",
+      "episodes": 1,
+      "concepts": 1,
+      "records": 12,
+      "decisions": 2,
+      "total": 16
+    },
+    {
+      "domain": "vinc/security/keys",
+      "episodes": 1,
+      "concepts": 3,
+      "records": 9,
+      "decisions": 3,
+      "total": 16
+    },
+    {
+      "domain": "vinc/engineering/mcp-server/efficiency",
+      "episodes": 2,
+      "concepts": 4,
+      "records": 9,
+      "decisions": 0,
+      "total": 15
+    },
+    {
+      "domain": "vinc/agent",
+      "episodes": 0,
+      "concepts": 9,
+      "records": 2,
+      "decisions": 2,
+      "total": 13
+    },
+    {
+      "domain": "vinc/agent/openclaw",
+      "episodes": 2,
+      "concepts": 2,
+      "records": 8,
+      "decisions": 1,
+      "total": 13
+    },
+    {
+      "domain": "vinc/engineering/share",
+      "episodes": 4,
+      "concepts": 2,
+      "records": 5,
+      "decisions": 2,
+      "total": 13
+    },
+    {
+      "domain": "vinc/engineering/core",
+      "episodes": 5,
+      "concepts": 0,
+      "records": 7,
+      "decisions": 0,
+      "total": 12
+    },
+    {
+      "domain": "vinc/security/teams",
+      "episodes": 0,
+      "concepts": 2,
+      "records": 10,
+      "decisions": 0,
+      "total": 12
+    },
+    {
+      "domain": "vinc/agent/steward",
+      "episodes": 5,
+      "concepts": 2,
+      "records": 4,
+      "decisions": 0,
+      "total": 11
+    },
+    {
+      "domain": "vinc/cli",
+      "episodes": 6,
+      "concepts": 0,
+      "records": 5,
+      "decisions": 0,
+      "total": 11
+    },
+    {
+      "domain": "vinc/engineering/release",
+      "episodes": 5,
+      "concepts": 1,
+      "records": 5,
+      "decisions": 0,
+      "total": 11
+    },
+    {
+      "domain": "vinc/engineering/mcp-server/disclosure",
+      "episodes": 1,
+      "concepts": 3,
+      "records": 5,
+      "decisions": 1,
+      "total": 10
+    },
+    {
+      "domain": "vinc/engineering/app",
+      "episodes": 5,
+      "concepts": 0,
+      "records": 4,
+      "decisions": 0,
+      "total": 9
+    },
+    {
+      "domain": "vinc/infra/release",
+      "episodes": 3,
+      "concepts": 0,
+      "records": 4,
+      "decisions": 2,
+      "total": 9
+    },
+    {
+      "domain": "vinc/engineering/api",
+      "episodes": 3,
+      "concepts": 1,
+      "records": 3,
+      "decisions": 1,
+      "total": 8
+    },
+    {
+      "domain": "vinc/api",
+      "episodes": 3,
+      "concepts": 0,
+      "records": 3,
+      "decisions": 0,
+      "total": 6
+    },
+    {
+      "domain": "vinc/design/motion",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 2,
+      "decisions": 3,
+      "total": 6
+    },
+    {
+      "domain": "vinc/engineering/site",
+      "episodes": 3,
+      "concepts": 0,
+      "records": 3,
+      "decisions": 0,
+      "total": 6
+    },
+    {
+      "domain": "vinc/store/durability",
+      "episodes": 3,
+      "concepts": 0,
+      "records": 3,
+      "decisions": 0,
+      "total": 6
+    },
+    {
+      "domain": "vinc/engineering/testing",
+      "episodes": 0,
+      "concepts": 0,
+      "records": 5,
+      "decisions": 0,
+      "total": 5
+    },
+    {
+      "domain": "vinc/desktop/documents",
+      "episodes": 2,
+      "concepts": 0,
+      "records": 2,
+      "decisions": 0,
+      "total": 4
+    },
+    {
+      "domain": "vinc/docs/store",
+      "episodes": 2,
+      "concepts": 0,
+      "records": 2,
+      "decisions": 0,
+      "total": 4
+    },
+    {
+      "domain": "vinc/product/api-cli",
+      "episodes": 2,
+      "concepts": 0,
+      "records": 2,
+      "decisions": 0,
+      "total": 4
+    },
+    {
+      "domain": "vinc/product/release",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 0,
+      "decisions": 3,
+      "total": 4
+    },
+    {
+      "domain": "(none)",
+      "episodes": 3,
+      "concepts": 0,
+      "records": 0,
+      "decisions": 0,
+      "total": 3
+    },
+    {
+      "domain": "vinc/product/book/part3",
+      "episodes": 0,
+      "concepts": 3,
+      "records": 0,
+      "decisions": 0,
+      "total": 3
+    },
+    {
+      "domain": "vinc/product/promo-film",
+      "episodes": 0,
+      "concepts": 2,
+      "records": 0,
+      "decisions": 1,
+      "total": 3
+    },
+    {
+      "domain": "vinc/app",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/design",
+      "episodes": 0,
+      "concepts": 2,
+      "records": 0,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/design/brand",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/desktop/packaging",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/engineering",
+      "episodes": 2,
+      "concepts": 0,
+      "records": 0,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/model/data",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/product/api",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/product/business-plan",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 0,
+      "decisions": 1,
+      "total": 2
+    },
+    {
+      "domain": "vinc/product/integrations",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/product/qa",
+      "episodes": 0,
+      "concepts": 0,
+      "records": 0,
+      "decisions": 2,
+      "total": 2
+    },
+    {
+      "domain": "vinc/product/retrieval/eval",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/rag/query",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/research/retrieval",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/store/embedding",
+      "episodes": 0,
+      "concepts": 0,
+      "records": 2,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/ai",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 0,
+      "decisions": 0,
+      "total": 1
+    },
+    {
+      "domain": "vinc/desktop/security",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 0,
+      "decisions": 0,
+      "total": 1
+    },
+    {
+      "domain": "vinc/engineering/ci",
+      "episodes": 0,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 1
+    },
+    {
+      "domain": "vinc/eval",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 0,
+      "decisions": 0,
+      "total": 1
+    },
+    {
+      "domain": "vinc/platform/deploy",
+      "episodes": 0,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 1
+    },
+    {
+      "domain": "vinc/product/agent",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 0,
+      "decisions": 0,
+      "total": 1
+    },
+    {
+      "domain": "vinc/product/releases",
+      "episodes": 0,
+      "concepts": 0,
+      "records": 0,
+      "decisions": 1,
+      "total": 1
+    },
+    {
+      "domain": "vinc/qa",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 0,
+      "decisions": 0,
+      "total": 1
+    },
+    {
+      "domain": "vinc/research/laya",
+      "episodes": 0,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 1
+    }
+  ],
+  "domain_count_drift": [
+    {
+      "domain": "vinc/agent/qa",
+      "before": {
+        "concepts": 31,
+        "records": 76,
+        "decisions": 0,
+        "episodes": 23,
+        "bridges": 0,
+        "entities": 0
+      },
+      "after": {
+        "concepts": 31,
+        "records": 78,
+        "decisions": 0,
+        "episodes": 23,
+        "bridges": 0,
+        "entities": 0
+      }
+    },
+    {
+      "domain": "vinc/engineering/search",
+      "before": {
+        "concepts": 10,
+        "records": 80,
+        "decisions": 12,
+        "episodes": 23,
+        "bridges": 0,
+        "entities": 0
+      },
+      "after": {
+        "concepts": 10,
+        "records": 82,
+        "decisions": 12,
+        "episodes": 23,
+        "bridges": 0,
+        "entities": 0
+      }
+    },
+    {
+      "domain": "vinc/engineering/store",
+      "before": {
+        "concepts": 13,
+        "records": 80,
+        "decisions": 5,
+        "episodes": 19,
+        "bridges": 0,
+        "entities": 0
+      },
+      "after": {
+        "concepts": 13,
+        "records": 81,
+        "decisions": 5,
+        "episodes": 19,
+        "bridges": 0,
+        "entities": 0
+      }
+    },
+    {
+      "domain": "vinc/infra/deploy",
+      "before": {
+        "concepts": 18,
+        "records": 81,
+        "decisions": 14,
+        "episodes": 36,
+        "bridges": 0,
+        "entities": 0
+      },
+      "after": {
+        "concepts": 18,
+        "records": 82,
+        "decisions": 14,
+        "episodes": 36,
+        "bridges": 0,
+        "entities": 0
+      }
+    },
+    {
+      "domain": "vinc/product/releases",
+      "before": null,
+      "after": {
+        "concepts": 0,
+        "records": 0,
+        "decisions": 1,
+        "episodes": 0,
+        "bridges": 0,
+        "entities": 0
+      }
+    }
+  ],
+  "atomic_snapshot": false,
+  "read_parallelism_max": 4
+}

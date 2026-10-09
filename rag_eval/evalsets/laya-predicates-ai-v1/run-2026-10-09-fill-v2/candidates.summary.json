@@ -1,0 +1,2452 @@
+{
+  "domains": [
+    {
+      "domain": "vinc/ai/eval",
+      "episodes": 56,
+      "concepts": 36,
+      "records": 81,
+      "decisions": 20,
+      "total": 193
+    },
+    {
+      "domain": "vinc/design/surfaces",
+      "episodes": 53,
+      "concepts": 27,
+      "records": 76,
+      "decisions": 28,
+      "total": 184
+    },
+    {
+      "domain": "vinc/agent/orchestration",
+      "episodes": 43,
+      "concepts": 15,
+      "records": 42,
+      "decisions": 73,
+      "total": 173
+    },
+    {
+      "domain": "vinc/infra/deploy",
+      "episodes": 36,
+      "concepts": 18,
+      "records": 81,
+      "decisions": 14,
+      "total": 149
+    },
+    {
+      "domain": "vinc/agent/qa",
+      "episodes": 23,
+      "concepts": 31,
+      "records": 76,
+      "decisions": 0,
+      "total": 130
+    },
+    {
+      "domain": "vinc/engineering/mcp-server",
+      "episodes": 25,
+      "concepts": 27,
+      "records": 66,
+      "decisions": 12,
+      "total": 130
+    },
+    {
+      "domain": "vinc/engineering/search",
+      "episodes": 23,
+      "concepts": 10,
+      "records": 80,
+      "decisions": 12,
+      "total": 125
+    },
+    {
+      "domain": "vinc/engineering/store",
+      "episodes": 19,
+      "concepts": 13,
+      "records": 80,
+      "decisions": 5,
+      "total": 117
+    },
+    {
+      "domain": "vinc/design/view",
+      "episodes": 11,
+      "concepts": 13,
+      "records": 33,
+      "decisions": 39,
+      "total": 96
+    },
+    {
+      "domain": "vinc/engineering/desktop",
+      "episodes": 36,
+      "concepts": 8,
+      "records": 49,
+      "decisions": 1,
+      "total": 94
+    },
+    {
+      "domain": "vinc/design/copy",
+      "episodes": 27,
+      "concepts": 4,
+      "records": 32,
+      "decisions": 22,
+      "total": 85
+    },
+    {
+      "domain": "vinc/product/account",
+      "episodes": 26,
+      "concepts": 23,
+      "records": 18,
+      "decisions": 18,
+      "total": 85
+    },
+    {
+      "domain": "vinc/governance/claim-decay",
+      "episodes": 10,
+      "concepts": 17,
+      "records": 41,
+      "decisions": 7,
+      "total": 75
+    },
+    {
+      "domain": "vinc/infra/hub",
+      "episodes": 12,
+      "concepts": 9,
+      "records": 47,
+      "decisions": 3,
+      "total": 71
+    },
+    {
+      "domain": "vinc/ai/retrieval",
+      "episodes": 10,
+      "concepts": 9,
+      "records": 44,
+      "decisions": 5,
+      "total": 68
+    },
+    {
+      "domain": "vinc/agent/roles",
+      "episodes": 3,
+      "concepts": 24,
+      "records": 7,
+      "decisions": 30,
+      "total": 64
+    },
+    {
+      "domain": "vinc/design/layouts",
+      "episodes": 3,
+      "concepts": 3,
+      "records": 38,
+      "decisions": 18,
+      "total": 62
+    },
+    {
+      "domain": "vinc/infra/runner",
+      "episodes": 4,
+      "concepts": 3,
+      "records": 45,
+      "decisions": 7,
+      "total": 59
+    },
+    {
+      "domain": "vinc/product/milestones",
+      "episodes": 26,
+      "concepts": 16,
+      "records": 8,
+      "decisions": 8,
+      "total": 58
+    },
+    {
+      "domain": "vinc/product/research",
+      "episodes": 10,
+      "concepts": 30,
+      "records": 17,
+      "decisions": 0,
+      "total": 57
+    },
+    {
+      "domain": "vinc/product/docs",
+      "episodes": 20,
+      "concepts": 7,
+      "records": 21,
+      "decisions": 8,
+      "total": 56
+    },
+    {
+      "domain": "vinc/product/book",
+      "episodes": 9,
+      "concepts": 25,
+      "records": 17,
+      "decisions": 3,
+      "total": 54
+    },
+    {
+      "domain": "vinc/design/tokens",
+      "episodes": 9,
+      "concepts": 15,
+      "records": 26,
+      "decisions": 2,
+      "total": 52
+    },
+    {
+      "domain": "vinc/product/book/part1-structure",
+      "episodes": 0,
+      "concepts": 52,
+      "records": 0,
+      "decisions": 0,
+      "total": 52
+    },
+    {
+      "domain": "vinc/design/marks",
+      "episodes": 5,
+      "concepts": 4,
+      "records": 19,
+      "decisions": 23,
+      "total": 51
+    },
+    {
+      "domain": "vinc/infra/embed",
+      "episodes": 5,
+      "concepts": 3,
+      "records": 38,
+      "decisions": 1,
+      "total": 47
+    },
+    {
+      "domain": "vinc/product/book/part1-interface",
+      "episodes": 0,
+      "concepts": 47,
+      "records": 0,
+      "decisions": 0,
+      "total": 47
+    },
+    {
+      "domain": "vinc/product/book/part1-space",
+      "episodes": 0,
+      "concepts": 45,
+      "records": 0,
+      "decisions": 0,
+      "total": 45
+    },
+    {
+      "domain": "vinc/engineering/account",
+      "episodes": 11,
+      "concepts": 4,
+      "records": 25,
+      "decisions": 3,
+      "total": 43
+    },
+    {
+      "domain": "vinc/governance/repo",
+      "episodes": 6,
+      "concepts": 3,
+      "records": 28,
+      "decisions": 6,
+      "total": 43
+    },
+    {
+      "domain": "vinc/product/book/part0-system",
+      "episodes": 0,
+      "concepts": 43,
+      "records": 0,
+      "decisions": 0,
+      "total": 43
+    },
+    {
+      "domain": "vinc/governance/methodology",
+      "episodes": 13,
+      "concepts": 8,
+      "records": 14,
+      "decisions": 6,
+      "total": 41
+    },
+    {
+      "domain": "vinc/governance/graph-md",
+      "episodes": 1,
+      "concepts": 8,
+      "records": 14,
+      "decisions": 17,
+      "total": 40
+    },
+    {
+      "domain": "vinc/product/book/part0-memory",
+      "episodes": 0,
+      "concepts": 38,
+      "records": 0,
+      "decisions": 0,
+      "total": 38
+    },
+    {
+      "domain": "vinc/governance/docs-canon",
+      "episodes": 8,
+      "concepts": 3,
+      "records": 17,
+      "decisions": 8,
+      "total": 36
+    },
+    {
+      "domain": "vinc/engineering/fragment",
+      "episodes": 0,
+      "concepts": 6,
+      "records": 23,
+      "decisions": 5,
+      "total": 34
+    },
+    {
+      "domain": "vinc/security/isolation",
+      "episodes": 8,
+      "concepts": 5,
+      "records": 17,
+      "decisions": 4,
+      "total": 34
+    },
+    {
+      "domain": "vinc/infra/azure",
+      "episodes": 13,
+      "concepts": 5,
+      "records": 15,
+      "decisions": 0,
+      "total": 33
+    },
+    {
+      "domain": "vinc/engineering/docstore",
+      "episodes": 2,
+      "concepts": 6,
+      "records": 23,
+      "decisions": 1,
+      "total": 32
+    },
+    {
+      "domain": "vinc/engineering/integrations",
+      "episodes": 12,
+      "concepts": 2,
+      "records": 15,
+      "decisions": 2,
+      "total": 31
+    },
+    {
+      "domain": "vinc/product/book/part2",
+      "episodes": 0,
+      "concepts": 31,
+      "records": 0,
+      "decisions": 0,
+      "total": 31
+    },
+    {
+      "domain": "vinc/agent/integrations",
+      "episodes": 9,
+      "concepts": 3,
+      "records": 12,
+      "decisions": 6,
+      "total": 30
+    },
+    {
+      "domain": "vinc/design/review",
+      "episodes": 18,
+      "concepts": 0,
+      "records": 4,
+      "decisions": 7,
+      "total": 29
+    },
+    {
+      "domain": "vinc/infra/cost",
+      "episodes": 2,
+      "concepts": 2,
+      "records": 22,
+      "decisions": 1,
+      "total": 27
+    },
+    {
+      "domain": "vinc/product/roadmap",
+      "episodes": 7,
+      "concepts": 10,
+      "records": 6,
+      "decisions": 4,
+      "total": 27
+    },
+    {
+      "domain": "vinc/product/desktop-0-9-4",
+      "episodes": 9,
+      "concepts": 0,
+      "records": 8,
+      "decisions": 9,
+      "total": 26
+    },
+    {
+      "domain": "vinc/ai/embedding",
+      "episodes": 5,
+      "concepts": 2,
+      "records": 17,
+      "decisions": 1,
+      "total": 25
+    },
+    {
+      "domain": "vinc/engineering/agents",
+      "episodes": 12,
+      "concepts": 0,
+      "records": 12,
+      "decisions": 0,
+      "total": 24
+    },
+    {
+      "domain": "vinc/engineering/mcp-server/directory",
+      "episodes": 5,
+      "concepts": 3,
+      "records": 14,
+      "decisions": 2,
+      "total": 24
+    },
+    {
+      "domain": "vinc/security/audit",
+      "episodes": 6,
+      "concepts": 3,
+      "records": 9,
+      "decisions": 3,
+      "total": 21
+    },
+    {
+      "domain": "vinc/engineering/releases",
+      "episodes": 18,
+      "concepts": 0,
+      "records": 2,
+      "decisions": 0,
+      "total": 20
+    },
+    {
+      "domain": "vinc/product/packs",
+      "episodes": 4,
+      "concepts": 1,
+      "records": 12,
+      "decisions": 3,
+      "total": 20
+    },
+    {
+      "domain": "vinc/product",
+      "episodes": 4,
+      "concepts": 13,
+      "records": 2,
+      "decisions": 0,
+      "total": 19
+    },
+    {
+      "domain": "vinc/design/research",
+      "episodes": 3,
+      "concepts": 13,
+      "records": 1,
+      "decisions": 0,
+      "total": 17
+    },
+    {
+      "domain": "vinc/engineering/sync",
+      "episodes": 1,
+      "concepts": 1,
+      "records": 12,
+      "decisions": 2,
+      "total": 16
+    },
+    {
+      "domain": "vinc/security/keys",
+      "episodes": 1,
+      "concepts": 3,
+      "records": 9,
+      "decisions": 3,
+      "total": 16
+    },
+    {
+      "domain": "vinc/engineering/mcp-server/efficiency",
+      "episodes": 2,
+      "concepts": 4,
+      "records": 9,
+      "decisions": 0,
+      "total": 15
+    },
+    {
+      "domain": "vinc/agent",
+      "episodes": 0,
+      "concepts": 9,
+      "records": 2,
+      "decisions": 2,
+      "total": 13
+    },
+    {
+      "domain": "vinc/agent/openclaw",
+      "episodes": 2,
+      "concepts": 2,
+      "records": 8,
+      "decisions": 1,
+      "total": 13
+    },
+    {
+      "domain": "vinc/engineering/share",
+      "episodes": 4,
+      "concepts": 2,
+      "records": 5,
+      "decisions": 2,
+      "total": 13
+    },
+    {
+      "domain": "vinc/engineering/core",
+      "episodes": 5,
+      "concepts": 0,
+      "records": 7,
+      "decisions": 0,
+      "total": 12
+    },
+    {
+      "domain": "vinc/security/teams",
+      "episodes": 0,
+      "concepts": 2,
+      "records": 10,
+      "decisions": 0,
+      "total": 12
+    },
+    {
+      "domain": "vinc/agent/steward",
+      "episodes": 5,
+      "concepts": 2,
+      "records": 4,
+      "decisions": 0,
+      "total": 11
+    },
+    {
+      "domain": "vinc/cli",
+      "episodes": 6,
+      "concepts": 0,
+      "records": 5,
+      "decisions": 0,
+      "total": 11
+    },
+    {
+      "domain": "vinc/engineering/release",
+      "episodes": 5,
+      "concepts": 1,
+      "records": 5,
+      "decisions": 0,
+      "total": 11
+    },
+    {
+      "domain": "vinc/engineering/mcp-server/disclosure",
+      "episodes": 1,
+      "concepts": 3,
+      "records": 5,
+      "decisions": 1,
+      "total": 10
+    },
+    {
+      "domain": "vinc/engineering/app",
+      "episodes": 5,
+      "concepts": 0,
+      "records": 4,
+      "decisions": 0,
+      "total": 9
+    },
+    {
+      "domain": "vinc/infra/release",
+      "episodes": 3,
+      "concepts": 0,
+      "records": 4,
+      "decisions": 2,
+      "total": 9
+    },
+    {
+      "domain": "vinc/engineering/api",
+      "episodes": 3,
+      "concepts": 1,
+      "records": 3,
+      "decisions": 1,
+      "total": 8
+    },
+    {
+      "domain": "vinc/api",
+      "episodes": 3,
+      "concepts": 0,
+      "records": 3,
+      "decisions": 0,
+      "total": 6
+    },
+    {
+      "domain": "vinc/design/motion",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 2,
+      "decisions": 3,
+      "total": 6
+    },
+    {
+      "domain": "vinc/engineering/site",
+      "episodes": 3,
+      "concepts": 0,
+      "records": 3,
+      "decisions": 0,
+      "total": 6
+    },
+    {
+      "domain": "vinc/store/durability",
+      "episodes": 3,
+      "concepts": 0,
+      "records": 3,
+      "decisions": 0,
+      "total": 6
+    },
+    {
+      "domain": "vinc/engineering/testing",
+      "episodes": 0,
+      "concepts": 0,
+      "records": 5,
+      "decisions": 0,
+      "total": 5
+    },
+    {
+      "domain": "vinc/desktop/documents",
+      "episodes": 2,
+      "concepts": 0,
+      "records": 2,
+      "decisions": 0,
+      "total": 4
+    },
+    {
+      "domain": "vinc/docs/store",
+      "episodes": 2,
+      "concepts": 0,
+      "records": 2,
+      "decisions": 0,
+      "total": 4
+    },
+    {
+      "domain": "vinc/product/api-cli",
+      "episodes": 2,
+      "concepts": 0,
+      "records": 2,
+      "decisions": 0,
+      "total": 4
+    },
+    {
+      "domain": "vinc/product/release",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 0,
+      "decisions": 3,
+      "total": 4
+    },
+    {
+      "domain": "(none)",
+      "episodes": 3,
+      "concepts": 0,
+      "records": 0,
+      "decisions": 0,
+      "total": 3
+    },
+    {
+      "domain": "vinc/product/book/part3",
+      "episodes": 0,
+      "concepts": 3,
+      "records": 0,
+      "decisions": 0,
+      "total": 3
+    },
+    {
+      "domain": "vinc/product/promo-film",
+      "episodes": 0,
+      "concepts": 2,
+      "records": 0,
+      "decisions": 1,
+      "total": 3
+    },
+    {
+      "domain": "vinc/app",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/design",
+      "episodes": 0,
+      "concepts": 2,
+      "records": 0,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/design/brand",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/desktop/packaging",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/engineering",
+      "episodes": 2,
+      "concepts": 0,
+      "records": 0,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/model/data",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/product/api",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/product/business-plan",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 0,
+      "decisions": 1,
+      "total": 2
+    },
+    {
+      "domain": "vinc/product/integrations",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/product/qa",
+      "episodes": 0,
+      "concepts": 0,
+      "records": 0,
+      "decisions": 2,
+      "total": 2
+    },
+    {
+      "domain": "vinc/product/retrieval/eval",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/rag/query",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/research/retrieval",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/store/embedding",
+      "episodes": 0,
+      "concepts": 0,
+      "records": 2,
+      "decisions": 0,
+      "total": 2
+    },
+    {
+      "domain": "vinc/ai",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 0,
+      "decisions": 0,
+      "total": 1
+    },
+    {
+      "domain": "vinc/desktop/security",
+      "episodes": 1,
+      "concepts": 0,
+      "records": 0,
+      "decisions": 0,
+      "total": 1
+    },
+    {
+      "domain": "vinc/engineering/ci",
+      "episodes": 0,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 1
+    },
+    {
+      "domain": "vinc/eval",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 0,
+      "decisions": 0,
+      "total": 1
+    },
+    {
+      "domain": "vinc/platform/deploy",
+      "episodes": 0,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 1
+    },
+    {
+      "domain": "vinc/product/agent",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 0,
+      "decisions": 0,
+      "total": 1
+    },
+    {
+      "domain": "vinc/qa",
+      "episodes": 0,
+      "concepts": 1,
+      "records": 0,
+      "decisions": 0,
+      "total": 1
+    },
+    {
+      "domain": "vinc/research/laya",
+      "episodes": 0,
+      "concepts": 0,
+      "records": 1,
+      "decisions": 0,
+      "total": 1
+    }
+  ],
+  "census_checks": [
+    {
+      "domain": "vinc/agent",
+      "expected": 13,
+      "observed": 12,
+      "reconciled": 13
+    },
+    {
+      "domain": "vinc/agent/integrations",
+      "expected": 21,
+      "observed": 21,
+      "reconciled": 21
+    },
+    {
+      "domain": "vinc/agent/openclaw",
+      "expected": 11,
+      "observed": 11,
+      "reconciled": 11
+    },
+    {
+      "domain": "vinc/agent/orchestration",
+      "expected": 130,
+      "observed": 122,
+      "reconciled": 130
+    },
+    {
+      "domain": "vinc/agent/qa",
+      "expected": 107,
+      "observed": 89,
+      "reconciled": 107
+    },
+    {
+      "domain": "vinc/agent/roles",
+      "expected": 61,
+      "observed": 60,
+      "reconciled": 61
+    },
+    {
+      "domain": "vinc/agent/steward",
+      "expected": 6,
+      "observed": 6,
+      "reconciled": 6
+    },
+    {
+      "domain": "vinc/ai",
+      "expected": 1,
+      "observed": 0,
+      "reconciled": 1
+    },
+    {
+      "domain": "vinc/ai/embedding",
+      "expected": 20,
+      "observed": 20,
+      "reconciled": 20
+    },
+    {
+      "domain": "vinc/ai/eval",
+      "expected": 137,
+      "observed": 119,
+      "reconciled": 137
+    },
+    {
+      "domain": "vinc/ai/retrieval",
+      "expected": 58,
+      "observed": 58,
+      "reconciled": 58
+    },
+    {
+      "domain": "vinc/api",
+      "expected": 3,
+      "observed": 3,
+      "reconciled": 3
+    },
+    {
+      "domain": "vinc/app",
+      "expected": 1,
+      "observed": 1,
+      "reconciled": 1
+    },
+    {
+      "domain": "vinc/cli",
+      "expected": 5,
+      "observed": 5,
+      "reconciled": 5
+    },
+    {
+      "domain": "vinc/design",
+      "expected": 2,
+      "observed": 2,
+      "reconciled": 2
+    },
+    {
+      "domain": "vinc/design/brand",
+      "expected": 2,
+      "observed": 2,
+      "reconciled": 2
+    },
+    {
+      "domain": "vinc/design/copy",
+      "expected": 58,
+      "observed": 57,
+      "reconciled": 58
+    },
+    {
+      "domain": "vinc/design/layouts",
+      "expected": 59,
+      "observed": 59,
+      "reconciled": 59
+    },
+    {
+      "domain": "vinc/design/marks",
+      "expected": 46,
+      "observed": 46,
+      "reconciled": 46
+    },
+    {
+      "domain": "vinc/design/motion",
+      "expected": 6,
+      "observed": 6,
+      "reconciled": 6
+    },
+    {
+      "domain": "vinc/design/research",
+      "expected": 14,
+      "observed": 14,
+      "reconciled": 14
+    },
+    {
+      "domain": "vinc/design/review",
+      "expected": 11,
+      "observed": 11,
+      "reconciled": 11
+    },
+    {
+      "domain": "vinc/design/surfaces",
+      "expected": 131,
+      "observed": 124,
+      "reconciled": 131
+    },
+    {
+      "domain": "vinc/design/tokens",
+      "expected": 43,
+      "observed": 43,
+      "reconciled": 43
+    },
+    {
+      "domain": "vinc/design/view",
+      "expected": 85,
+      "observed": 84,
+      "reconciled": 85
+    },
+    {
+      "domain": "vinc/desktop/documents",
+      "expected": 2,
+      "observed": 2,
+      "reconciled": 2
+    },
+    {
+      "domain": "vinc/desktop/packaging",
+      "expected": 1,
+      "observed": 1,
+      "reconciled": 1
+    },
+    {
+      "domain": "vinc/docs/store",
+      "expected": 2,
+      "observed": 2,
+      "reconciled": 2
+    },
+    {
+      "domain": "vinc/engineering/account",
+      "expected": 32,
+      "observed": 31,
+      "reconciled": 32
+    },
+    {
+      "domain": "vinc/engineering/agents",
+      "expected": 12,
+      "observed": 12,
+      "reconciled": 12
+    },
+    {
+      "domain": "vinc/engineering/api",
+      "expected": 5,
+      "observed": 5,
+      "reconciled": 5
+    },
+    {
+      "domain": "vinc/engineering/app",
+      "expected": 4,
+      "observed": 4,
+      "reconciled": 4
+    },
+    {
+      "domain": "vinc/engineering/ci",
+      "expected": 1,
+      "observed": 1,
+      "reconciled": 1
+    },
+    {
+      "domain": "vinc/engineering/core",
+      "expected": 7,
+      "observed": 7,
+      "reconciled": 7
+    },
+    {
+      "domain": "vinc/engineering/desktop",
+      "expected": 58,
+      "observed": 58,
+      "reconciled": 58
+    },
+    {
+      "domain": "vinc/engineering/docstore",
+      "expected": 30,
+      "observed": 30,
+      "reconciled": 30
+    },
+    {
+      "domain": "vinc/engineering/fragment",
+      "expected": 34,
+      "observed": 34,
+      "reconciled": 34
+    },
+    {
+      "domain": "vinc/engineering/integrations",
+      "expected": 19,
+      "observed": 19,
+      "reconciled": 19
+    },
+    {
+      "domain": "vinc/engineering/mcp-server",
+      "expected": 105,
+      "observed": 101,
+      "reconciled": 105
+    },
+    {
+      "domain": "vinc/engineering/mcp-server/directory",
+      "expected": 19,
+      "observed": 19,
+      "reconciled": 19
+    },
+    {
+      "domain": "vinc/engineering/mcp-server/disclosure",
+      "expected": 9,
+      "observed": 9,
+      "reconciled": 9
+    },
+    {
+      "domain": "vinc/engineering/mcp-server/efficiency",
+      "expected": 13,
+      "observed": 13,
+      "reconciled": 13
+    },
+    {
+      "domain": "vinc/engineering/release",
+      "expected": 6,
+      "observed": 6,
+      "reconciled": 6
+    },
+    {
+      "domain": "vinc/engineering/releases",
+      "expected": 2,
+      "observed": 2,
+      "reconciled": 2
+    },
+    {
+      "domain": "vinc/engineering/search",
+      "expected": 102,
+      "observed": 102,
+      "reconciled": 102
+    },
+    {
+      "domain": "vinc/engineering/share",
+      "expected": 9,
+      "observed": 9,
+      "reconciled": 9
+    },
+    {
+      "domain": "vinc/engineering/site",
+      "expected": 3,
+      "observed": 3,
+      "reconciled": 3
+    },
+    {
+      "domain": "vinc/engineering/store",
+      "expected": 98,
+      "observed": 97,
+      "reconciled": 98
+    },
+    {
+      "domain": "vinc/engineering/sync",
+      "expected": 15,
+      "observed": 15,
+      "reconciled": 15
+    },
+    {
+      "domain": "vinc/engineering/testing",
+      "expected": 5,
+      "observed": 5,
+      "reconciled": 5
+    },
+    {
+      "domain": "vinc/eval",
+      "expected": 1,
+      "observed": 1,
+      "reconciled": 1
+    },
+    {
+      "domain": "vinc/governance/claim-decay",
+      "expected": 65,
+      "observed": 63,
+      "reconciled": 65
+    },
+    {
+      "domain": "vinc/governance/docs-canon",
+      "expected": 28,
+      "observed": 28,
+      "reconciled": 28
+    },
+    {
+      "domain": "vinc/governance/graph-md",
+      "expected": 39,
+      "observed": 39,
+      "reconciled": 39
+    },
+    {
+      "domain": "vinc/governance/methodology",
+      "expected": 28,
+      "observed": 26,
+      "reconciled": 28
+    },
+    {
+      "domain": "vinc/governance/repo",
+      "expected": 37,
+      "observed": 37,
+      "reconciled": 37
+    },
+    {
+      "domain": "vinc/infra/azure",
+      "expected": 20,
+      "observed": 18,
+      "reconciled": 20
+    },
+    {
+      "domain": "vinc/infra/cost",
+      "expected": 25,
+      "observed": 24,
+      "reconciled": 25
+    },
+    {
+      "domain": "vinc/infra/deploy",
+      "expected": 113,
+      "observed": 113,
+      "reconciled": 113
+    },
+    {
+      "domain": "vinc/infra/embed",
+      "expected": 42,
+      "observed": 42,
+      "reconciled": 42
+    },
+    {
+      "domain": "vinc/infra/hub",
+      "expected": 59,
+      "observed": 59,
+      "reconciled": 59
+    },
+    {
+      "domain": "vinc/infra/release",
+      "expected": 6,
+      "observed": 6,
+      "reconciled": 6
+    },
+    {
+      "domain": "vinc/infra/runner",
+      "expected": 55,
+      "observed": 54,
+      "reconciled": 55
+    },
+    {
+      "domain": "vinc/model/data",
+      "expected": 2,
+      "observed": 2,
+      "reconciled": 2
+    },
+    {
+      "domain": "vinc/platform/deploy",
+      "expected": 1,
+      "observed": 1,
+      "reconciled": 1
+    },
+    {
+      "domain": "vinc/product",
+      "expected": 15,
+      "observed": 2,
+      "reconciled": 15
+    },
+    {
+      "domain": "vinc/product/account",
+      "expected": 59,
+      "observed": 53,
+      "reconciled": 59
+    },
+    {
+      "domain": "vinc/product/agent",
+      "expected": 1,
+      "observed": 1,
+      "reconciled": 1
+    },
+    {
+      "domain": "vinc/product/api",
+      "expected": 1,
+      "observed": 1,
+      "reconciled": 1
+    },
+    {
+      "domain": "vinc/product/api-cli",
+      "expected": 2,
+      "observed": 2,
+      "reconciled": 2
+    },
+    {
+      "domain": "vinc/product/book",
+      "expected": 45,
+      "observed": 33,
+      "reconciled": 45
+    },
+    {
+      "domain": "vinc/product/book/part0-memory",
+      "expected": 38,
+      "observed": 33,
+      "reconciled": 38
+    },
+    {
+      "domain": "vinc/product/book/part0-system",
+      "expected": 43,
+      "observed": 37,
+      "reconciled": 43
+    },
+    {
+      "domain": "vinc/product/book/part1-interface",
+      "expected": 47,
+      "observed": 42,
+      "reconciled": 47
+    },
+    {
+      "domain": "vinc/product/book/part1-space",
+      "expected": 45,
+      "observed": 40,
+      "reconciled": 45
+    },
+    {
+      "domain": "vinc/product/book/part1-structure",
+      "expected": 52,
+      "observed": 43,
+      "reconciled": 52
+    },
+    {
+      "domain": "vinc/product/book/part2",
+      "expected": 31,
+      "observed": 25,
+      "reconciled": 31
+    },
+    {
+      "domain": "vinc/product/book/part3",
+      "expected": 3,
+      "observed": 2,
+      "reconciled": 3
+    },
+    {
+      "domain": "vinc/product/business-plan",
+      "expected": 2,
+      "observed": 1,
+      "reconciled": 2
+    },
+    {
+      "domain": "vinc/product/desktop-0-9-4",
+      "expected": 17,
+      "observed": 17,
+      "reconciled": 17
+    },
+    {
+      "domain": "vinc/product/docs",
+      "expected": 36,
+      "observed": 36,
+      "reconciled": 36
+    },
+    {
+      "domain": "vinc/product/integrations",
+      "expected": 1,
+      "observed": 1,
+      "reconciled": 1
+    },
+    {
+      "domain": "vinc/product/milestones",
+      "expected": 32,
+      "observed": 31,
+      "reconciled": 32
+    },
+    {
+      "domain": "vinc/product/packs",
+      "expected": 16,
+      "observed": 16,
+      "reconciled": 16
+    },
+    {
+      "domain": "vinc/product/promo-film",
+      "expected": 3,
+      "observed": 2,
+      "reconciled": 3
+    },
+    {
+      "domain": "vinc/product/qa",
+      "expected": 2,
+      "observed": 2,
+      "reconciled": 2
+    },
+    {
+      "domain": "vinc/product/release",
+      "expected": 3,
+      "observed": 3,
+      "reconciled": 3
+    },
+    {
+      "domain": "vinc/product/research",
+      "expected": 47,
+      "observed": 43,
+      "reconciled": 47
+    },
+    {
+      "domain": "vinc/product/retrieval/eval",
+      "expected": 1,
+      "observed": 1,
+      "reconciled": 1
+    },
+    {
+      "domain": "vinc/product/roadmap",
+      "expected": 20,
+      "observed": 20,
+      "reconciled": 20
+    },
+    {
+      "domain": "vinc/qa",
+      "expected": 1,
+      "observed": 1,
+      "reconciled": 1
+    },
+    {
+      "domain": "vinc/rag/query",
+      "expected": 1,
+      "observed": 1,
+      "reconciled": 1
+    },
+    {
+      "domain": "vinc/research/laya",
+      "expected": 1,
+      "observed": 1,
+      "reconciled": 1
+    },
+    {
+      "domain": "vinc/research/retrieval",
+      "expected": 1,
+      "observed": 1,
+      "reconciled": 1
+    },
+    {
+      "domain": "vinc/security/audit",
+      "expected": 15,
+      "observed": 15,
+      "reconciled": 15
+    },
+    {
+      "domain": "vinc/security/isolation",
+      "expected": 26,
+      "observed": 26,
+      "reconciled": 26
+    },
+    {
+      "domain": "vinc/security/keys",
+      "expected": 15,
+      "observed": 15,
+      "reconciled": 15
+    },
+    {
+      "domain": "vinc/security/teams",
+      "expected": 12,
+      "observed": 12,
+      "reconciled": 12
+    },
+    {
+      "domain": "vinc/store/durability",
+      "expected": 3,
+      "observed": 3,
+      "reconciled": 3
+    },
+    {
+      "domain": "vinc/store/embedding",
+      "expected": 2,
+      "observed": 2,
+      "reconciled": 2
+    }
+  ],
+  "census_nodes": 2785,
+  "eligible_nodes": 2614,
+  "excluded_nodes": [
+    {
+      "id": "concept:agent는-기억의-사용자이면서-기억의-일부가-된다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:agent를-concept로-표현한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:agent에게도-같은-원칙을-적용한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:agent와-prompt를-분리한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:ai가-많아질수록-기억은-더-중요해진다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:bridge는-일반-edge와-다르다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:brief는-검색의-다른-이름이-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:causal-cone은-관계에서-만들어진다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:causal-cone은-시간의-공간화다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:causal-structure와-layout을-분리한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:causal-time은-또-다른-문제다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:coda",
+      "reason": "short_title"
+    },
+    {
+      "id": "concept:concept가-이-경계를-보여준다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:confidence는-evidence와-다르다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:decision도-같은-방식으로-취급할-수-없다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:decision은-측정의-결과다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:doc.vinc.guide.overview",
+      "reason": "short_title"
+    },
+    {
+      "id": "concept:doc.vinc.guide.quick-start",
+      "reason": "short_title"
+    },
+    {
+      "id": "concept:document와-chunk는-다른-층이다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:edge는-방향과-의미를-함께-나른다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:edge도-종류가-있다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:edge와-evidence는-다른-정보다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:embedding-dimension은-저장-계약이다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:empty-retrieval도-정보다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:episode는-다른-역할을-가진다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:episode는-또-다른-시간-구조를-가진다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:evidence는-문장에-붙을-수-있다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:gaussian-layout은-이-문제에서-출발했다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:graph-md는-기억의-사용-설명서가-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:graph는-agent를-지휘하는-스케줄러가-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:graph는-지휘자가-아니라-계약서다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:graph도-모든-것을-하지-않는다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:graph와-document는-서로-다른-정보를-준다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:layout과-evidence도-구분해야-한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:layout은-함수여야-한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:mcp는-vinc의-경계이지-vinc-자체가-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:metric은-만들지-않는다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:mission이-먼저다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:node는-이름표가-아니라-계약이다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:node와-edge를-나누는-이유",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:node의-종류는-모양으로-표현할-수-있다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:quantization은-모델의-일부다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:record는-concept와-다른-실체다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:record에는-유효-기간도-있을-수-있다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:recovery를-측정한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:role은-행동의-경계를-설명한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:scope와-viewpoint는-분리된다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:silent-truncation",
+      "reason": "short_title"
+    },
+    {
+      "id": "concept:tauri-shell",
+      "reason": "short_title"
+    },
+    {
+      "id": "concept:topic과-domain은-자연스러운-밀도-구조를-만든다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:vector-arm의-실패도-같은-문제를-만든다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:view는-데이터와-해석-사이의-계층이다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:view는-좌표-이상의-개념이다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:vinc는-무엇인가",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:같은-기억은-같은-자리에-있어야-한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:같은-조건에서-비교한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:개념과-기록은-같은-것이-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:거절도-검증-가능해야-한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:거절은-실패가-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:검색-실패도-하나의-상태다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:검색-품질과-실행-조건을-함께-기록한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:검색-품질은-모델-하나로-결정되지-않는다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:검색은-하나의-방법이-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:결과에도-경계가-필요하다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:결국-공간은-여러-층의-결과다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:결정도-기억해야-한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:공간에는-여러-의미가-공존한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:공간은-관계를-보이게-한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:공간은-기억을-대신하지-않는다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:공유하는-것은-정보만이-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:관계도-출처를-가진다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:구조가-생기면-그래프가-살아난다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:그래프-시간",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:그래프는-기억의-관계를-보존한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:그렇다면-기억에는-관계가-필요하다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:근거가-없는-관계는-다르게-다뤄야-한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:근거는-graph의-일부가-된다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:기계도-이-문법을-읽어야-한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:기억과-인지는-같은-것이-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:기억에-대한-거절",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:기억에는-시간이-하나가-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:기억은-개인을-넘어간다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:기억은-답을-조건화한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:기억은-목록만으로-충분하지-않다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:기억은-시간이-지나면서-늙는다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:기억을-정의하면-다음-문제가-생긴다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:기억의-문법은-결국-사람을-위한-것이다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:기억의-최소-단위는-무엇인가",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:기억의-품질이-답의-품질을-결정한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:기억하기-전에-구분해야-한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:다음-단계는-발견이다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:답변-재료는-중간-계층이다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:도구는-기능이-아니라-안전-경계를-가진다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:두-개의-통로-하나의-중계기",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:말에-대해서도-경계를-둔다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:모델은-숫자-하나가-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:모델을-기억-안에-넣지-않는다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:모델을-바꾸는-비용",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:모든-거절은-같은-것을-지킨다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:모든-규칙이-같은-종류는-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:모든-기억은-같은-종류가-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:문법은-기억을-반복-가능하게-만든다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:문서에서-node로-간다는-것",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:문장을-마음대로-생성하지-않는다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:믿음이-아니라-검증-가능성이-필요하다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:밀도는-집합의-특성이다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:방향성은-중요한-정보다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:벡터-차원은-저장-구조의-일부다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:벡터는-기억-그-자체가-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:벡터와-의미의-경계",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:벡터화는-의미-공간으로의-변환이다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:뼈-하나에서-우주선까지",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:세-가지-동작으로-계약을-지킨다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:세계-시간",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:숫자가-나왔다고-성공한-것이-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:숫자만으로는-비교할-수-없다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:시간-순서와-인과-순서는-다르다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:시간은-viewpoint가-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:시간은-관계의-의미도-바꾼다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:실제-재구축-비용",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:얇은-다리",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:언어-차이는-검색-이후의-문제이기도-하다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:언어가-달라도-같은-기억일-수-있다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:없는-값을-만들지-않는다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:여러-역할이-이어지면-하나의-흐름이-된다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:여섯-종류는-왜-이렇게-나뉘는가",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:역할에는-담장이-필요하다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:역할은-밖으로도-보일-수-있어야-한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:역할을-node로-만드는-이유",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:역할이-그래프를-만들면-명단이-된다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:연결의-대가는-믿음이다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:오류를-조용히-지우지-않는다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:완전한-신뢰는-목표가-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:우리는-같은-정보를-서로-다르게-해석한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:우리의-기억은-모델의-학습-데이터에-없다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:위치는-의미와-동일하지-않다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:유사하다는-이유만으로-기억을-합치지-않는다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:이-경계가-하지-않는-것",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:이것이-ontology의-시작이다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:이름은-마지막에-다시-돌아온다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:이름을-붙이는-것은-세계를-자르는-일이다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:이제-기억을-사용하는-존재가-필요하다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:이제-도구가-달라졌다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:인과-공간은-의미-공간과-다르다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:인과-관계는-부분-순서로-읽는다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:인과-순서는-좌표보다-먼저다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:인상적인-것보다-확인-가능한-것을-선택한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:인증과-공간은-함께-관리된다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:인지는-빌려-쓸-수-있다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:일반적인-질문에는-일반적인-답이-나온다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:읽는-순서도-계약의-일부다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:자동-추출과-사람이-다듬은-의미는-다르다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:자료가-부족하면-부족하다고-말해야-한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:자료는-많을수록-좋은-게-아니다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:자료의-중심에는-확정된-node가-있다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:재현-가능한-측정",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:조각이-먼저-있어야-한다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:존재하지-않는-의미까지-만들어서는-안-된다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:책임을-나누면-무엇이-좋아지는가",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:첫-단계는-보존이다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:측정-가능한-기억",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:통과해야-하는-문",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:평가-조건은-측정값의-일부다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:하나의-기억-여러-개의-문",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:하지만-gaussian을-기본-배치로-채택하지-않았다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:호출-횟수도-설계의-일부다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:확인했다-와-확인할-수-있다-는-다르다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:확정된-하나에서-자료를-꺼낸다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:후보는-여러-경로에서-온다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:후보에서-대상으로",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    },
+    {
+      "id": "concept:후보와-확정은-다른-상태다",
+      "reason": "exact_node_read_unavailable",
+      "http_status": 404
+    }
+  ],
+  "pairs": 16394,
+  "by_generator": {
+    "ties": 2183,
+    "search": 13399,
+    "comention": 1007,
+    "random": 200,
+    "merge": 50
+  },
+  "by_kind_pair": {
+    "concept+concept": 3703,
+    "concept+record": 4968,
+    "concept+decision": 1465,
+    "decision+decision": 1124,
+    "decision+record": 1330,
+    "record+record": 3804
+  },
+  "search_degraded": 1158,
+  "merge": {
+    "kind": "merge_candidates",
+    "executed": true,
+    "candidates": [
+      {
+        "a_id": "concept:agent-copy-owner",
+        "a_title": "Agent role: Localization Engineer",
+        "b_id": "concept:agent-deploy",
+        "b_title": "Agent role: Deployment Engineer",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      },
+      {
+        "a_id": "concept:agent-copy-owner",
+        "a_title": "Agent role: Localization Engineer",
+        "b_id": "concept:agent-dev-app",
+        "b_title": "Agent role: Frontend Engineer",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      },
+      {
+        "a_id": "concept:agent-copy-owner",
+        "a_title": "Agent role: Localization Engineer",
+        "b_id": "concept:agent-infra",
+        "b_title": "Agent role: Infrastructure Engineer",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      },
+      {
+        "a_id": "concept:agent-copy-owner",
+        "a_title": "Agent role: Localization Engineer",
+        "b_id": "concept:agent-qa",
+        "b_title": "Agent role: QA Engineer",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      },
+      {
+        "a_id": "concept:agent-copy-owner",
+        "a_title": "Agent role: Localization Engineer",
+        "b_id": "concept:agent-security",
+        "b_title": "Agent role: Security Engineer",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      },
+      {
+        "a_id": "concept:agent-deploy",
+        "a_title": "Agent role: Deployment Engineer",
+        "b_id": "concept:agent-dev-app",
+        "b_title": "Agent role: Frontend Engineer",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      },
+      {
+        "a_id": "concept:agent-deploy",
+        "a_title": "Agent role: Deployment Engineer",
+        "b_id": "concept:agent-infra",
+        "b_title": "Agent role: Infrastructure Engineer",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      },
+      {
+        "a_id": "concept:agent-deploy",
+        "a_title": "Agent role: Deployment Engineer",
+        "b_id": "concept:agent-qa",
+        "b_title": "Agent role: QA Engineer",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      },
+      {
+        "a_id": "concept:agent-deploy",
+        "a_title": "Agent role: Deployment Engineer",
+        "b_id": "concept:agent-security",
+        "b_title": "Agent role: Security Engineer",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      },
+      {
+        "a_id": "concept:agent-dev-app",
+        "a_title": "Agent role: Frontend Engineer",
+        "b_id": "concept:agent-infra",
+        "b_title": "Agent role: Infrastructure Engineer",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      },
+      {
+        "a_id": "concept:agent-dev-app",
+        "a_title": "Agent role: Frontend Engineer",
+        "b_id": "concept:agent-qa",
+        "b_title": "Agent role: QA Engineer",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      },
+      {
+        "a_id": "concept:agent-dev-app",
+        "a_title": "Agent role: Frontend Engineer",
+        "b_id": "concept:agent-security",
+        "b_title": "Agent role: Security Engineer",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      },
+      {
+        "a_id": "concept:agent-infra",
+        "a_title": "Agent role: Infrastructure Engineer",
+        "b_id": "concept:agent-qa",
+        "b_title": "Agent role: QA Engineer",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      },
+      {
+        "a_id": "concept:agent-product-designer",
+        "a_title": "Agent role: Product Designer",
+        "b_id": "concept:agent-product-owner",
+        "b_title": "Agent role: Product Owner",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      },
+      {
+        "a_id": "concept:agent-qa",
+        "a_title": "Agent role: QA Engineer",
+        "b_id": "concept:agent-security",
+        "b_title": "Agent role: Security Engineer",
+        "score": 0.6,
+        "reason": "token_overlap",
+        "same_domain": true
+      }
+    ],
+    "count": 15,
+    "total": 15,
+    "suppressed": {
+      "structural": 46,
+      "rejected": 4
+    }
+  },
+  "seed": 20261007,
+  "hub": "https://mcp.vincs.io",
+  "new_read_calls": 880,
+  "candidates_sha256": "e8052327ec55849da49a21eaaa60f20e249c7eb96453c7d81736799180f9f3ab"
+}

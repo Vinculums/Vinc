@@ -193,7 +193,8 @@ def collect(hub, out):
             for row in ties.get("suggestions", []):
                 add(nid, row["id"], "ties", score=row.get("score"), formula=ties.get("formula"))
         res = hub.request("/v1/search", {"query": node["title"][:200], "limit": 6})
-        diagnostics.append({"node": nid, "arms": res.get("arms"), "vector_note": res.get("vector_note")})
+        diagnostics.append({"node_sha256": hashlib.sha256(nid.encode()).hexdigest(),
+                            "arms": res.get("arms"), "vector_note": res.get("vector_note")})
         hits = [r["id"] for r in res.get("node_hits", []) if r["id"] != nid and r["id"] in nodes][:5]
         for other in hits:
             add(nid, other, "search", seed=nid, arms=res.get("arms"))
