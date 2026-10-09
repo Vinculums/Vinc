@@ -40,6 +40,43 @@ def inspect(rows, kind, limit):
     return classify_rows(rows, {'id': 'measurement-only', 'max_distance': {kind: limit}}, kind=kind)
 
 
+def validation_metrics(baseline, candidates):
+    """비교 결과는 실제 보정 검색에서 읽는다. 보정 전 그래프 후보를 재사용하지 않는다."""
+    assert len(baseline) == len(candidates)
+    metrics = {}
+    for name in ('calibration', 'holdout'):
+        counts = {'queries': 0, 'negative_queries': 0, 'negative_with_primary': 0,
+                  'node_gold_baseline_found': 0, 'node_gold_lost': 0,
+                  'chunk_gold_baseline_found': 0, 'chunk_gold_lost': 0,
+                  'unclassified_negative_hits': 0, 'negative_primary_by_basis': {}}
+        for (item, response), candidate in zip(baseline, candidates):
+            if split(item['query']) != name:
+                continue
+            counts['queries'] += 1
+            labelled = {}
+            for kind, key, goldkey, identity in (('node', 'node_hits', 'gold_node_id', 'id'),
+                                                ('chunk', 'rows', 'gold_doc_id', 'doc_id')):
+                labelled[kind] = candidate[key]
+                gold = item.get(goldkey)
+                found = bool(gold) and any(h.get(identity) == gold for h in response[key])
+                kept = bool(gold) and any(h.get(identity) == gold and h['relevance']['level'] != 'weak'
+                                         for h in labelled[kind])
+                counts[kind + '_gold_baseline_found'] += found
+                counts[kind + '_gold_lost'] += found and not kept
+            if item.get('negative'):
+                counts['negative_queries'] += 1
+                hits = labelled['node'] + labelled['chunk']
+                counts['negative_with_primary'] += any(h['relevance']['level'] != 'weak' for h in hits)
+                counts['unclassified_negative_hits'] += sum(h['relevance']['level'] == 'unclassified' for h in hits)
+                for kind, rows in labelled.items():
+                    for h in rows:
+                        if h['relevance']['level'] != 'weak':
+                            basis = kind + ':' + h['relevance']['basis']
+                            counts['negative_primary_by_basis'][basis] = counts['negative_primary_by_basis'].get(basis, 0) + 1
+        metrics[name] = counts
+    return metrics
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--store', type=Path, required=True)
@@ -61,7 +98,7 @@ def main():
               'encoder_build': os.environ.get('VINC_ENCODER_BUILD'),
               'image_source': os.environ.get('VINC_MEASURE_IMAGE_SHA'),
               'deployed_image_build_verified': False,
-              'queries': len(items), 'completed_queries': 0,
+              'queries': len(items), 'completed_queries': 0, 'completed_candidate_queries': 0,
               'limits': ['Frozen current snapshot and deployed image, not production activation',
                          'No transport or native parity claim from this measurement']}
     store = None
@@ -101,8 +138,11 @@ def main():
                 result[kind + '_runtime_counts'] = [{'stamp': x['stamp'], 'count': x['n']} for x in stamps]
             enc = Encoder(cfg.embedding_model, onnx_path=str(model), batch=2)
             baseline = []
+            embeddings = []
             for item in items:
-                response = retrieval.search(item['query'], query_embedding=enc.encode([item['query']], kind='query')[0],
+                embedding = enc.encode([item['query']], kind='query')[0]
+                embeddings.append(embedding)
+                response = retrieval.search(item['query'], query_embedding=embedding,
                                             query_runtime=runtime, top_k=20, owner=args.owner, cfg=cfg, store=store)
                 if response.get('error') or response.get('vector_note') or response.get('encoder_runtime_warning'):
                     result['diagnostics'] = {k: response[k] for k in ('error', 'vector_note', 'encoder_runtime_warning') if k in response}
@@ -111,7 +151,6 @@ def main():
                 result['completed_queries'] += 1
                 if result['completed_queries'] % 10 == 0:
                     print(json.dumps({'progress': result['completed_queries']}), flush=True)
-            close_store()
             bounds = {}
             evidence_counts = {}
             for kind, key, goldkey, identity in (('node', 'node_hits', 'gold_node_id', 'id'),
@@ -135,31 +174,23 @@ def main():
                 for name in ('calibration', 'holdout')}
             assert set(bounds) == {'node', 'chunk'}, 'missing independently labelled semantic positive calibration for an arm'
             result['proposal'] = {'max_distance': bounds, 'status': 'experimental'}
-            metrics = {}
-            for name in ('calibration', 'holdout'):
-                counts = {'queries': 0, 'negative_queries': 0, 'negative_with_primary': 0,
-                          'node_gold_baseline_found': 0, 'node_gold_lost': 0,
-                          'chunk_gold_baseline_found': 0, 'chunk_gold_lost': 0,
-                          'unclassified_negative_hits': 0}
-                for item, response in baseline:
-                    if split(item['query']) != name:
-                        continue
-                    counts['queries'] += 1
-                    labelled = {}
-                    for kind, key, goldkey, identity in (('node', 'node_hits', 'gold_node_id', 'id'),
-                                                        ('chunk', 'rows', 'gold_doc_id', 'doc_id')):
-                        labelled[kind] = inspect(response[key], kind, bounds[kind])
-                        gold = item.get(goldkey)
-                        found = bool(gold) and any(h.get(identity) == gold for h in response[key])
-                        kept = bool(gold) and any(h.get(identity) == gold and h['relevance']['level'] != 'weak' for h in labelled[kind])
-                        counts[kind + '_gold_baseline_found'] += found
-                        counts[kind + '_gold_lost'] += found and not kept
-                    if item.get('negative'):
-                        counts['negative_queries'] += 1
-                        hits = labelled['node'] + labelled['chunk']
-                        counts['negative_with_primary'] += any(h['relevance']['level'] != 'weak' for h in hits)
-                        counts['unclassified_negative_hits'] += sum(h['relevance']['level'] == 'unclassified' for h in hits)
-                metrics[name] = counts
+            # active 상태는 이 네트워크 차단 사본에서만 제품 경로를 실행하기 위한 값이다.
+            # 숫자는 여전히 실험 제안이며 어떤 파일·운영 설정에도 저장하지 않는다.
+            revision = 'sha256:' + result['snapshot_sha256']
+            simulation = {'version': 1, 'id': 'isolated-counterfactual', 'status': 'approved',
+                          'encoder_model': cfg.embedding_model, 'encoder_runtime': runtime,
+                          'corpus_revision': revision, 'evidence_sha256': args.inputs_sha,
+                          'max_distance': bounds}
+            candidates = []
+            for item, embedding in zip(items, embeddings):
+                candidate = retrieval.search(item['query'], query_embedding=embedding,
+                    query_runtime=runtime, top_k=20, owner=args.owner, cfg=cfg, store=store,
+                    relevance_profile=simulation, relevance_corpus_revision=revision)
+                assert candidate.get('relevance_policy', {}).get('state') == 'active', 'candidate policy not exercised'
+                assert not any(candidate.get(k) for k in ('error', 'vector_note', 'encoder_runtime_warning')), 'degraded candidate search'
+                candidates.append(candidate)
+                result['completed_candidate_queries'] += 1
+            metrics = validation_metrics(baseline, candidates)
             result['validation'] = metrics
             result['status'] = 'measured'
             result['quality_pass'] = all(v['negative_queries'] > 0 and v['negative_with_primary'] == 0
