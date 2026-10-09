@@ -567,7 +567,7 @@ const EN = {
       noPending: "Nothing waiting. Your assistant has stayed inside the vocabulary.",
       ratify: "Approve", reject: "Reject", rename: "Rename",
       kindNode: "node type", kindEdge: "relation type",
-      webOnly: "To approve vocabulary, turn on local storage in the desktop app's Settings > Data.",
+      webOnly: "To approve vocabulary, turn on local storage in the desktop app's Settings > Account · storage.",
     },
     tools: {
       title: "Tools",
@@ -1751,7 +1751,7 @@ const KO: Deck = {
       noPending: "기다리는 것이 없어요. 어시스턴트가 어휘 안에서만 쓰고 있어요",
       ratify: "승인하기", reject: "거부하기", rename: "이름 바꾸기",
       kindNode: "노드 타입", kindEdge: "관계 타입",
-      webOnly: "어휘를 승인하려면 데스크톱 앱 설정 > 정보에서 로컬 저장을 켜 주세요",
+      webOnly: "어휘를 승인하려면 데스크톱 앱 설정 > 계정·저장에서 로컬 저장을 켜 주세요",
     },
     tools: {
       title: "도구",
