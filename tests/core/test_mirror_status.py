@@ -72,7 +72,6 @@ def test_invalid_or_oversized_body_is_not_exposed(tmp_path):
     ({"state": "current", "index_ok": False}, 1),
     ({"state": "disabled"}, 0),
     ({"state": "failed", "reason": "private raw upstream body"}, 1),
-    (None, 1),
 ])
 def test_observer_terminates_without_printing_raw_health(state, expected):
     response = io.BytesIO(json.dumps({"node_mirror": state, "owners": ["user:private"]}).encode())
@@ -89,3 +88,26 @@ def test_pending_observer_uses_elapsed_deadline_and_never_rebuilds():
             patch("time.monotonic", side_effect=[0, 0, 0, 1, 3]), patch("time.sleep"):
         assert observe("https://example.invalid/health", timeout=2, interval=20) == 1
     assert get.call_args.args == ("https://example.invalid/health",)
+
+
+def test_startup_health_without_mirror_waits_for_verified_completion():
+    responses = [io.BytesIO(b'{"status":"ok"}'),
+                 io.BytesIO(b'{"node_mirror":{"state":"complete","index_ok":true}}')]
+    with patch("urllib.request.urlopen", side_effect=responses) as get, patch("time.sleep"):
+        assert observe("https://example.invalid/health") == 0
+    assert get.call_count == 2
+
+
+def test_unavailable_startup_status_still_has_a_deadline():
+    response = lambda *a, **k: io.BytesIO(b'{"status":"ok"}')
+    with patch("urllib.request.urlopen", side_effect=response) as get, \
+            patch("time.monotonic", side_effect=[0, 0, 0, 1, 3]), patch("time.sleep"):
+        assert observe("https://example.invalid/health", timeout=2, interval=20) == 1
+    assert get.call_count == 1
+
+
+def test_temporary_health_timeout_does_not_skip_completion_check():
+    complete = io.BytesIO(b'{"node_mirror":{"state":"current","index_ok":true}}')
+    with patch("urllib.request.urlopen", side_effect=[TimeoutError(), complete]) as get, patch("time.sleep"):
+        assert observe("https://example.invalid/health") == 0
+    assert get.call_count == 2

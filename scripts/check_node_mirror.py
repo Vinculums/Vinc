@@ -35,11 +35,9 @@ def observe(url: str, *, timeout: float = 720, interval: float = 20) -> int:
                     print("::warning::node-mirror completion status invalid")
                     return 1
             else:
-                print("::warning::node-mirror completion status unavailable")
-                return 1
+                print("node-mirror: completion status not available yet; waiting")
         except (urllib.error.URLError, TimeoutError, ValueError):
-            print("::warning::node-mirror health request failed; result unconfirmed")
-            return 1
+            print("node-mirror: health not available yet; waiting")
         time.sleep(max(0, min(interval, deadline - time.monotonic())))
     print("::warning::node-mirror completion was not observed within the deadline")
     return 1
