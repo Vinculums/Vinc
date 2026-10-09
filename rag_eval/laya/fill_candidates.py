@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 from itertools import combinations
 import json
@@ -74,6 +75,14 @@ class ReadHub:
     def node(self, nid):
         return self.request("/v1/nodes/" + urllib.parse.quote(nid, safe=":"))
 
+    def prefetch(self, requests):
+        # 같은 캐시 파일을 두 스레드가 쓰지 않도록 요청을 먼저 중복 제거한다.
+        unique = list({digest([path, body]): (path, body) for path, body in requests}.values())
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for i, _ in enumerate(pool.map(lambda item: self.request(*item), unique)):
+                if (i + 1) % 100 == 0:
+                    print(f"read prefetch {i+1}/{len(unique)}", flush=True)
+
     def neighbors(self, nid, *, allow_missing=False):
         result = self.request("/v1/nodes/" + urllib.parse.quote(nid, safe=":") + "/neighbors?limit=500")
         if allow_missing and result.get("http_status") == 404:
@@ -114,6 +123,8 @@ def census(hub):
         if result.get("found") and result.get("node"):
             members[nid] = result["node"]
     # 연결된 Record/Decision도 도메인 엣지가 빠질 수 있다. 알려진 개념 고리로 대조한다.
+    hub.prefetch(("/v1/nodes/" + urllib.parse.quote(n, safe=":") + "/neighbors?limit=500", None)
+                 for n in sorted(members) if n.startswith("concept:"))
     for i, nid in enumerate(sorted(n for n in members if n.startswith("concept:"))):
         for row in hub.neighbors(nid, allow_missing=True):
             if row["id"].split(":")[0] in KINDS and row["id"] not in members:
@@ -131,6 +142,7 @@ def collect(hub, out):
     domains, members, checks = census(hub)
     print(f"census: {len(members)} candidate-kind nodes in {len(checks)} domains", flush=True)
     nodes, excluded, pairs, diagnostics = {}, [], {}, []
+    hub.prefetch(("/v1/nodes/" + urllib.parse.quote(n, safe=":"), None) for n in sorted(members))
     for i, nid in enumerate(sorted(members)):
         response = hub.node(nid)
         node = response.get("node")
@@ -168,6 +180,12 @@ def collect(hub, out):
                 row["context_ids"].append(context_id)
         row["provenance"].append({"generator": source, **extra})
 
+    reads = []
+    for nid, node in sorted(nodes.items()):
+        reads.append(("/v1/search", {"query": node["title"][:200], "limit": 6}))
+        if node["kind"] == "concept":
+            reads.append(("/v1/nodes/" + urllib.parse.quote(nid, safe=":") + "/tie-suggestions?limit=5", None))
+    hub.prefetch(reads)
     for i, (nid, node) in enumerate(sorted(nodes.items())):
         encoded = urllib.parse.quote(nid, safe=":")
         if node["kind"] == "concept":

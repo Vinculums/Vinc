@@ -129,8 +129,25 @@ def test_read_cache_never_accepts_a_mutating_post(tmp_path):
         hub.request("/v1/fragments",{"nodes":[]})
 
 
+def test_prefetch_deduplicates_cache_writes_and_propagates_read_errors(tmp_path):
+    hub = ReadHub("https://example.invalid", "unused", tmp_path)
+    calls = []
+    def request(path, body):
+        calls.append((path, body))
+        if path == "/v1/fails":
+            raise ValueError("failed read")
+        return {}
+    hub.request = request
+    hub.prefetch([("/v1/search", {"query": "one"})] * 2)
+    assert len(calls) == 1
+    with pytest.raises(ValueError, match="failed read"):
+        hub.prefetch([("/v1/fails", None)])
+
+
 def test_census_refuses_an_unexplained_missing_node():
     class Hub:
+        def prefetch(self, requests):
+            pass
         def request(self,path):
             if path == "/v1/domains":
                 return {"rows":[{"domain":"vinc/ai","concepts":2}]}
