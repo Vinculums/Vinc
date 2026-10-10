@@ -22,12 +22,12 @@ self.onmessage = async (event: MessageEvent<{ nodes: GraphNode[]; edges: GraphEd
       if (!callsDone) progress();
       const start = performance.now();
       try { return await elk.layout(input); } finally { elkMs += performance.now() - start; callsDone++; }
-    } }, async (ns, es) => {
+    } }, async (ns, es, batching) => {
       if (!es.length) return [];
       phase = "routing"; activeNodes = ns.length; activeEdges = es.length; progress();
       const start = performance.now();
       await AvoidLib.load(wasmUrl);
-      try { return routeAcrossTopics(AvoidLib.getInstance(), ns, es); }
+      try { return routeAcrossTopics(AvoidLib.getInstance(), ns, es, batching); }
       finally { routingMs += performance.now() - start; }
     }, ordering, aspectRatio);
     self.postMessage({ graph, timings: { elkMs: Math.round(elkMs), routingMs: Math.round(routingMs) } });

@@ -17,7 +17,7 @@ const { movedRoute, routeLength, pointOnRoute, simplifyRoute } = await source(".
 const { RoutedLinkObject } = await source("../src/surfaces/view-routes3d.ts");
 await AvoidLib.load(fileURLToPath(new URL("../node_modules/libavoid-js/dist/libavoid.wasm", import.meta.url)));
 const elk = new ELK();
-const route = (ns, es) => Promise.resolve(routeAcrossTopics(AvoidLib.getInstance(), ns, es));
+const route = (ns, es, batching) => Promise.resolve(routeAcrossTopics(AvoidLib.getInstance(), ns, es, batching));
 const n = (id, date, domain = "topic", recorded = date) => ({ id, label: id, kind: "concept", domain,
   degree: 2, content_ts: date, ts: recorded });
 const edge = (source, target, type = "PREREQUISITE_OF", id = `${source}-${target}-${type}`) =>
@@ -168,6 +168,18 @@ test("topic-pair routing adds distant obstacles reached by detours and restores 
   });
 });
 
+test("hundreds of repeated access legs route once without losing direction or evidence", () => {
+  const nodes = [{ ...n("a", "2020"), x: 0, y: 0, z: 0 },
+    { ...n("b", "2021"), x: 0, y: 1, z: .26 }, { ...n("wall", ""), x: 0, y: .5, z: 0 }];
+  const edges = Array.from({ length: 640 }, (_, i) => ({ ...edge(i % 2 ? "b" : "a", i % 2 ? "a" : "b", "RELATED_TO"),
+    id: `repeated${i}`, confidence: i / 640, evidence: `access evidence${i}` }));
+  const at = performance.now(), routed = routeAcrossTopics(AvoidLib.getInstance(), nodes, edges);
+  check({ nodes, edges: routed, topicEdges: [] }, edges);
+  assert.ok(performance.now() - at < 3000, "duplicate connector geometry makes access-leg routing unbounded");
+  assert.deepEqual(routed[0].route.points, [...routed[1].route.points].reverse());
+  assert.ok(routed[0].route.points.some(p => Math.abs(p.x) >= .114), "shared route cuts through the intervening label");
+});
+
 test("many connectors in a modest Topic graph remain bounded and avoid every label", t => {
   const nodes = Array.from({ length: 96 }, (_, i) => ({ ...n(`dense${i}`, "2020"),
     x: i % 12 * .33, y: Math.floor(i / 12) * .33, z: 0 }));
@@ -290,6 +302,30 @@ test("many-topic graph keeps every cross relation within the worker deadline", a
     }
   }
   t.diagnostic(JSON.stringify({ nodes: 4000, topics: 79, authoredEdges: edges.length, elapsedMs, synthetic: true }));
+});
+
+test("large maps share Topic corridors while preserving parallel and reversed relation metadata", async () => {
+  const nodes = Array.from({ length: 600 }, (_, i) => n(`shared${i}`, "2020", `topic/${i % 2}`));
+  const edges = Array.from({ length: 48 }, (_, i) => ({ ...edge(`shared${i * 2}`, `shared${i * 2 + 1}`, "RELATED_TO"),
+    id: `original${i}`, confidence: i / 48, evidence: `evidence${i}` }));
+  edges.push({ ...edges[0], id: "parallel", confidence: .7, evidence: "parallel evidence" },
+    { ...edges[0], id: "reversed", source: edges[0].target, target: edges[0].source, evidence: "reverse evidence" });
+  let corridorCount = 0;
+  const graph = await temporalLayout(nodes, edges, "content", elk, (ns, es, batching) => {
+    if (batching === "connector") corridorCount += es.length;
+    return route(ns, es, batching);
+  });
+  check(graph, edges);
+  assert.ok(corridorCount > 0 && corridorCount < edges.length, "external corridor geometry was recomputed per original relation");
+  for (const e of graph.edges) for (const node of graph.nodes) {
+    if (node.id === e.source || node.id === e.target) continue;
+    for (let i = 1; i < e.route.points.length; i++) {
+      const a = e.route.points[i - 1], b = e.route.points[i];
+      assert.ok(!(Math.max(a.x, b.x) > node.x - .11 + 1e-8 && Math.min(a.x, b.x) < node.x + .11 - 1e-8 &&
+        Math.max(a.y, b.y) > node.y - .024 + 1e-8 && Math.min(a.y, b.y) < node.y + .066 - 1e-8),
+        `shared corridor ${e.id} cuts through ${node.id}`);
+    }
+  }
 });
 
 test("a connected timeline with unique instants branches around its Topic without losing continuation edges", async () => {
