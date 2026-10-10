@@ -1,0 +1,94 @@
+{
+ "n": 120,
+ "length_only_auroc": {
+  "all": {
+   "supports": 0.539,
+   "contradicts": 0.44,
+   "same_as": 0.602
+  },
+  "en": {
+   "supports": 0.767,
+   "contradicts": 0.344,
+   "same_as": 0.618
+  },
+  "ko": {
+   "supports": 0.488,
+   "contradicts": 0.391,
+   "same_as": 0.673
+  },
+  "mixed": {
+   "supports": 0.611,
+   "contradicts": 0.413,
+   "same_as": 0.823
+  }
+ },
+ "labels": {
+  "supports": {
+   "0": 96,
+   "1": 24
+  },
+  "contradicts": {
+   "0": 96,
+   "1": 24
+  },
+  "same_as": {
+   "0": 96,
+   "1": 24
+  }
+ },
+ "languages": {
+  "ko": 60,
+  "mixed": 30,
+  "en": 30
+ },
+ "label_class_by_language": {
+  "en": {
+   "same_as": 6,
+   "none": 12,
+   "contradicts": 6,
+   "supports": 6
+  },
+  "mixed": {
+   "none": 12,
+   "supports": 6,
+   "contradicts": 6,
+   "same_as": 6
+  },
+  "ko": {
+   "none": 24,
+   "same_as": 12,
+   "supports": 12,
+   "contradicts": 12
+  }
+ },
+ "hard_kind": {
+  "evidence_supports_grounded": 8,
+  "grounded_supports_claim": 8,
+  "lexical_overlap": 12,
+  "negation": 8,
+  "paraphrase": 18,
+  "reason_supports_conclusion": 8,
+  "reversed_direction": 12,
+  "scope_shift": 12,
+  "semantic_reversal": 8,
+  "topical_only": 12,
+  "translation": 6,
+  "value_conflict": 8
+ },
+ "pack_domain": {
+  "bridge": 24,
+  "physics": 55,
+  "math": 41
+ },
+ "documents": 26,
+ "negation_cue_among_contradicts": {
+  "one_side": 3,
+  "none": 20,
+  "both": 1
+ },
+ "negation_cue_among_non_contradicts": {
+  "none": 83,
+  "one_side": 11,
+  "both": 2
+ }
+}
