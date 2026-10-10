@@ -86,6 +86,20 @@ class _RosterBridge(Bridge):
 
     def request(self, method, path, params=None, body=None, timeout=60):
         self.calls.append((method, path, dict(params or {}), body))
+        if path == "/roles":
+            selected = [r for r in self.roles if roles.is_role_id(r["id"])]
+            rid = (params or {}).get("role")
+            if not rid:
+                return {"executed": True, "roles": [
+                    {"id": r["id"], "title": r["label"], "domain": r["domain"]} for r in selected],
+                    "next_offset": None}
+            node = next((r for r in selected if r["id"] == rid), None)
+            if node is None:
+                return {"executed": True, "found": False}
+            ring = _ring(node, self.roles)
+            return {"executed": True, "found": True, "node": _graph_node(node),
+                    "peers": ring["nodes"], "relations": [
+                        {"from": e["source"], "to": e["target"], "type": e["type"]} for e in ring["edges"]]}
         if path == "/neighbors":
             node = (params or {}).get("node")
             root = f"domain:{roles.DOMAIN}"
@@ -174,18 +188,11 @@ class ListPrompts(unittest.TestCase):
         self.assertEqual([p["name"] for p in roles.list_prompts(b)["prompts"]],
                          ["agent-loud"])
 
-    def test_list_is_one_bridge_call_per_domain_level(self):
-        """역할마다 서브그래프를 끌면 호스트가 붙을 때마다 조회 열여섯 건이다. 도메인에
-        한 번, 직계 자식 도메인이 있으면 자식마다 한 번 — 그 이상은 없다."""
-        b = _RosterBridge()
-        roles.list_prompts(b)
-        # 역할 주제가 둘(`agent` · 옛 `vinc/agent`)이라 주제마다 한 번이다.
-        self.assertEqual([(c[0], c[1]) for c in b.calls], [("GET", "/neighbors")] * 2)
-        b = _RosterBridge(nested=True)
-        roles.list_prompts(b)
-        self.assertEqual([c[2]["node"] for c in b.calls],
-                         ["domain:agent", "domain:agent/openclaw", "domain:agent/roles",
-                          "domain:vinc/agent"])
+    def test_list_uses_the_shared_role_endpoint(self):
+        for nested in (False, True):
+            b = _RosterBridge(nested=nested)
+            roles.list_prompts(b)
+            self.assertEqual([(c[0], c[1]) for c in b.calls], [("GET", "/roles")])
 
     def test_roles_filed_one_level_down_are_still_the_roster(self):
         """2026-09-04 에 역할 열일곱이 vinc/agent/roles 로 옮겨지자 직속만 읽던 목록이
@@ -253,7 +260,7 @@ class GetPrompt(unittest.TestCase):
 
     def test_get_is_one_bridge_call_without_a_focus(self):
         _, _, b = self._text()
-        self.assertEqual([(c[0], c[1]) for c in b.calls], [("GET", "/graph")])
+        self.assertEqual([(c[0], c[1]) for c in b.calls], [("GET", "/roles")])
 
     def test_an_unknown_name_never_reaches_the_bridge(self):
         """클라이언트 문자열이 임의의 노드 id 로 번역돼 조회로 나가는 자리를 없앤다.
@@ -313,11 +320,11 @@ class Focus(unittest.TestCase):
 
     def test_a_node_id_is_read_one_hop(self):
         self.assertEqual(self._calls("concept:agent-orchestration"),
-                         [("GET", "/graph"), ("GET", "/neighbors")])
+                         [("GET", "/roles"), ("GET", "/neighbors")])
 
     def test_a_phrase_is_searched(self):
         self.assertEqual(self._calls("how do waves merge"),
-                         [("GET", "/graph"), ("GET", "/search")])
+                         [("GET", "/roles"), ("GET", "/search")])
 
     def test_nothing_found_says_so_rather_than_leaving_an_empty_fence(self):
         class _Empty(_RosterBridge):
@@ -359,11 +366,10 @@ class Tenancy(unittest.TestCase):
         roles.list_prompts(b)
         self.assertEqual(b.calls[0][2]["owner"], "user:local")
 
-    def test_the_list_reads_only_the_agent_domain(self):
+    def test_the_list_reads_the_shared_role_endpoint(self):
         b = _RosterBridge()
         roles.list_prompts(b)
-        self.assertEqual([c[2]["node"] for c in b.calls],
-                         ["domain:agent", "domain:vinc/agent"])
+        self.assertEqual([c[1] for c in b.calls], ["/roles"])
 
 
 class TeamRoleGate(unittest.TestCase):

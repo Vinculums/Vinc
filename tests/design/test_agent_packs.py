@@ -171,6 +171,14 @@ class _FreshSpace(Bridge):
     def request(self, method, path, params=None, body=None, timeout=60):
         self.calls.append((method, path, dict(params or {})))
         params = params or {}
+        if path == "/roles":
+            if params.get("role"):
+                node = next((n for n in self.nodes if n["id"] == params["role"]), None)
+                return {"executed": True, "found": node is not None,
+                        "node": node, "peers": [], "relations": []}
+            return {"executed": True, "roles": [
+                {"id": n["id"], "title": n["title"], "domain": n["domain"],
+                 "mission": n["one_liner"]} for n in self.nodes], "next_offset": None}
         if path == "/neighbors":
             if params.get("node") == f"domain:{roles.DOMAIN}":
                 return {"executed": True, "found": True, "neighbors": [

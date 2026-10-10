@@ -22,7 +22,7 @@ import re
 from engines.domain_hierarchy import normalize
 from api.role_gate_contract import check as check_gates
 
-#: 역할 주제. 앞의 것이 새 역할의 자리, 뒤의 것은 계속 읽는 옛 자리. 근거: [[decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02]]
+#: 새 역할의 기본 주제와 기존 호환 주제. 역할 식별은 주제 분류와 별개다.
 TOPICS = ("agent", "vinc/agent")
 DOMAIN = TOPICS[0]
 ID_PREFIX = "concept:agent-"
@@ -47,6 +47,25 @@ def is_role_id(nid: str) -> bool:
     return nid.startswith(ID_PREFIX) and nid != ROSTER_CONCEPT
 
 
+def has_contract(props: dict) -> bool:
+    """기존 역할 계약으로 식별한다. 주제는 에이전트의 정체성이 아니다."""
+    return (isinstance(props, dict)
+            and isinstance(props.get("mission"), str) and bool(props["mission"].strip())
+            and props.get("tier") in TIERS and props.get("rung") in RUNGS
+            and isinstance(props.get("never"), list)
+            and all(isinstance(item, str) and item.strip() for item in props["never"])
+            and isinstance(props.get("person_only"), list)
+            and not check({"id": ID_PREFIX + "contract", "props": props}, created=True))
+
+
+def is_role(nid: str, domain: str | None, props: dict) -> bool:
+    if not is_role_id(nid) or not isinstance(props, dict) or props.get("active") is False:
+        return False
+    d = normalize(domain)
+    legacy = any(d == t or d.startswith(t + "/") for t in TOPICS)
+    return legacy or bool(_SLUG.fullmatch(nid[len(ID_PREFIX):]) and has_contract(props))
+
+
 def check(node: dict, *, created: bool, stored_domain: str | None = None) -> list[str]:
     """역할 주제의 노드 → 경고 목록. 미지정 domain은 ``stored_domain``으로 판정한다."""
     nid = str(node.get("id") or "").strip()
@@ -58,7 +77,8 @@ def check(node: dict, *, created: bool, stored_domain: str | None = None) -> lis
         dom = stored_domain
     d = normalize(dom)
     root = next((t for t in TOPICS if d == t or d.startswith(t + "/")), None)
-    if root is None:
+    props = node.get("props")
+    if root is None and not (isinstance(props, dict) and all(k in props for k in REQUIRED)):
         return []
     out: list[str] = []
     why = "see vinc.canon.agent-roles"
@@ -67,11 +87,6 @@ def check(node: dict, *, created: bool, stored_domain: str | None = None) -> lis
     if not _SLUG.match(slug):
         out.append(f"role id {nid}: use lowercase letters, digits and hyphens after "
                    f"'{ID_PREFIX}'; the slug is the prompt name a host shows ({why})")
-
-    if d.count("/") > root.count("/") + 1:
-        out.append(f"role {nid} is filed under '{d}', more than one level below "
-                   f"{root}; prompts/list reads only one level down, so it will "
-                   f"not be listed ({why})")
 
     title = node.get("title")
     if isinstance(title, str) and title.strip().lower().startswith(TITLE_PREFIX):

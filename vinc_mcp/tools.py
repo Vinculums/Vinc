@@ -498,7 +498,8 @@ def _t_node(args, bridge):
 
 def _t_role(args, bridge):
     from .roles import contract
-    return contract(args.get("role"), bridge, forced_owner=_owner(args, bridge))
+    return contract(args.get("role"), bridge, forced_owner=_owner(args, bridge),
+                    limit=args.get("limit"), offset=args.get("offset", 0))
 
 
 def _t_role_check(args, bridge):
@@ -747,10 +748,15 @@ TOOLS: list[dict] = [
                        "type, evidence and confidence, and a compact rendered contract fenced as graph data. "
                        "An unknown, foreign or non-role node returns found:false. Oversized contracts return "
                        "an explicit error without truncating permissions. Omit role to list the role roster "
-                       "without full contracts. This reads only roles in agent or vinc/agent topics and "
-                       "their direct child topics; it does not execute or delegate the role. Read-only.",
+                       "without full contracts. Valid role contracts can live in any topic; legacy agent "
+                       "and vinc/agent roles remain readable. Inactive roles (props.active=false) are "
+                       "excluded. It does not execute or delegate the role. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "role": {"type": "string", "description": "Role slug (agent-dev-core) or exact concept:agent- id; omit to list."},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 1000,
+                      "description": "Optional roster candidate page size. Follow next_offset even for an empty page."},
+            "offset": {"type": "integer", "minimum": 0, "maximum": 2147483647,
+                       "description": "Roster candidate offset, from next_offset; default 0."},
             "owner": {"type": "string"}}, "required": []},
         "run": _t_role,
     },
