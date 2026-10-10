@@ -1,0 +1,45 @@
+{
+ "cross_split_id_overlap": 0,
+ "cross_split_text_overlap": 0,
+ "files": {
+  "calib.jsonl": "5fa17353824dfe7431be8a963769adf5b3a70058f4e9a65d6d0c5cebe4c736fa",
+  "calib.split.json": "74e407da81035ae2f078d939d68385edc0240a39aaa148a7f5be39ebde6c0459",
+  "eval.jsonl": "d508ff79fd462cfd3e46a7a33cc90ff6cdad01d5fa435d58f314a75134494a57",
+  "eval.split.json": "280c80116f9d70ba372dd87c342460418fa65c89263fce2849348f51c28611cf",
+  "train.jsonl": "f8b6619dc305c0b8a2121f96896cd692326261643b0852ac7f55ef4c2d9fbf46",
+  "training.jsonl": "7cb7c4f9c9db6458cf01b60fbd812899e33d719e7a21a2308d669418f3281ba0"
+ },
+ "questions_hash": "500e613737d1",
+ "sources": {
+  "calib": {
+   "agreed_sha256": "a69d4bc5d063d903898b9a9a79e19938c4990d347f9f007bcfb4015d133d8454",
+   "dataset": "laya-predicates-community-calib-v1",
+   "excluded": [
+    "k0082",
+    "k0093"
+   ],
+   "gold_sha256": "6d86522103a96e32ac91095c9e1c9311bce2c1f250026652defbbe7e1ec06142",
+   "pairs": 115
+  },
+  "eval": {
+   "agreed_sha256": "62b1409d501812b9e3497f79415acfd194c156c4fcb0ff02fcaa6ade5b50493c",
+   "dataset": "laya-predicates-community-v1",
+   "excluded": [],
+   "gold_sha256": "1551ce8b1a6da919e6805ef5ea82eb4862bfa4a6061c6623c00613dbb11f5f69",
+   "pairs": 140
+  },
+  "train": {
+   "agreed_sha256": "f76d76f7ca2ed797be4ac31dcc8bdcbbfcff0d0083856f4186c865c5beaf885c",
+   "dataset": "laya-predicates-community-train-v1",
+   "excluded": [
+    "t0072",
+    "t0119",
+    "t0121"
+   ],
+   "gold_sha256": "d5e3c28ace596e48c8df852541e082449a47262c306d86d656f5544817b6bc6f",
+   "pairs": 502
+  }
+ },
+ "training_items": 2510,
+ "training_rows": 1004
+}
