@@ -14,6 +14,7 @@ import { markTexture, MARK_TEX_PX } from "./view-planar";
 import { glassShapeOf, glassSprite, type GlassShape } from "../glass-sprite";
 import { HIT_MIN_PX, wireDragConnect, type DragEnd, type DragHit } from "./drag-connect";
 import { SMALL_GRAPH_LABEL_LIMIT, nonOverlappingLabels, type LabelBox } from "../view-labels";
+import { movedRoute, pointOnRoute, routeLength, type RoutePoint } from "../view-route";
 
 /** 유리 마크의 노드 색 — 그림 모드는 그림 밖 칸을 노드 색으로 채우므로 투명이어야 한다. */
 const CLEAR = "rgba(0,0,0,0)";
@@ -45,6 +46,7 @@ const CLEAR = "rgba(0,0,0,0)";
  *  이 신호가 없으면 "이미 화면에 있는 노드"까지 매번 재조회·재마운트하게 된다. */
 export type Handle2d = {
   dispose(): void; fit(): void; focus(id: string): boolean;
+  camera(): { x: number; y: number; ratio: number; angle: number };
   /** 줌 한 걸음. `factor < 1` 이 가까이다 — sigma 는 ratio 가 작을수록 파고든다.
    *  3D 의 `zoomBy3d` 와 **같은 배율 규약**을 쓰도록 뒤집지 않고 그대로 곱한다. */
   zoom(factor: number): void;
@@ -175,7 +177,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
        /** Alt 끌기로 두 노드를 골랐다(끌어서 잇기). 쓰기는 호출측의 관계 고르기가 한다. */
        onConnect?: (a: DragEnd, b: DragEnd) => void;
        canConnect?: (a: string, b: string) => boolean },
-  prefs: ViewPrefs): Handle2d {
+  prefs: ViewPrefs, keepCamera?: ReturnType<Handle2d["camera"]> | null): Handle2d {
   // 물러난 선과 미니맵이 섞어 드는 배경. 테마 전환이 다시 읽는다(`retheme`).
   let bg = hexStr(pal().background);
   el.innerHTML = `<div class="a2-stage"></div>
@@ -184,6 +186,11 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   const stage = el.querySelector<HTMLElement>(".a2-stage")!;
   const badgeBox = el.querySelector<HTMLElement>(".a2-badges")!;
   const mini = el.querySelector<HTMLCanvasElement>(".a2-minimap")!;
+  const routesCanvas = document.createElement("canvas");
+  routesCanvas.dataset.viewLayout = "elk-temporal-v1";
+  routesCanvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
+  stage.appendChild(routesCanvas);
+  const layoutSpread = prefs.spread;
 
   /** 평면 정본(D74). 이 렌더러는 **x2/y2 를 읽는다** — z 를 눌러 접은 값이 아니라
    *  같은 도메인 트리를 평면 문법(부채꼴)으로 다시 배치한 좌표라, 3D 의 원뿔에서
@@ -288,7 +295,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     return tints?.get((n.domain || "").trim()) ?? ink();
   };
 
-  const g = new Graph();
+  const g = new Graph({ multi: true });
   for (const n of shown) {
     // z 는 읽지 않는다 — 그것이 이 렌더러의 존재 이유다(위 주석). px/py 가 평면
     // 정본(x2/y2)을 집어 오고, 구 사이드카에서만 x/y 로 강등된다.
@@ -317,7 +324,6 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   const edgeOf = new Map<string, GraphEdge>();
   for (const e of edges) {
     if (!g.hasNode(e.source) || !g.hasNode(e.target)) continue;
-    if (g.hasEdge(e.source, e.target)) continue;
     const dir = DIRECTED.includes(e.type);
     // 정본 §1.2 는 관계를 **선의 형태**로 가른다(실선·파선·점선·이중선). sigma 는
     // 파선 프로그램이 없어 형태 대신 **굵기·농도 계단**으로 같은 서열을 만든다:
@@ -333,6 +339,8 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
             * (prefs.edgeScale ?? 1),
       color: edgeColor(e),                     // 램프와 하한(위 edgeColor 주석)
       directed: dir,
+      route: e.route,
+      relationId: e.id,
     });
     edgeOf.set(key, e);
   }
@@ -352,7 +360,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     allowInvalidContainer: true,
     // 아래 `clickEdge` 가 뜨려면 켜야 한다 — sigma 3 기본이 false 라 핸들러가 붙어
     // 있어도 선 클릭이 한 번도 안 왔다(2026-08-17). 값은 엣지 피킹 패스 하나.
-    enableEdgeEvents: true,
+    enableEdgeEvents: edges.some(e => !e.route),
     // 화살촉 프로그램은 기본 등록이 아니다 — 켜 두지 않으면 type:"arrow" 가 무시된다.
     edgeProgramClasses: { arrow: EdgeArrowProgram },
     // 종별 마크는 `@sigma/node-image` 가 그린다(위 markOf → markTexture). 셰이더를 직접 쓰지 않는
@@ -399,6 +407,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   // dev 전용 진단 핸들(프로덕션 번들에서는 상수 폴딩으로 제거됨) — 3D 의 `__g3` 와 같은
   // 자리다. 노드·선 색과 설정값을 수치로 대조하는 데 쓴다(테마 전환 검증).
   if (import.meta.env.DEV) (window as any).__s2 = sigma;
+  if (keepCamera) sigma.getCamera().setState(keepCamera);
 
   const syncHubLabels = () => {
     if (!forceHubLabels) return;
@@ -500,7 +509,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   // 화살촉이 말한다 — 한 번에 한 노드 분량만 뜰 뿐이다. 초점이 없으면 지도는 점만
   // 남고, 그때 위계는 크기(√연결수)와 허브 배지가 계속 말한다.
   const focusOnly = () => prefs.edges === "focus";
-  sigma.setSetting("edgeReducer", (id, data) => {
+  const reduceEdge = (id: string, data: Record<string, any>) => {
     // 선은 **끝점을 따라간다** — 한쪽이 아직 안 생겼으면 그릴 곳이 없다.
     if (timeVisible) {
       const [a2, b2] = g.extremities(id);
@@ -527,6 +536,64 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     // Lc 0 이라 선이 사라진다. fade 는 하한 Lc 15 위로 잡혀 있다. 짚을 때만 모드에서는
     // 후퇴가 아니라 **숨김**이다: 물러난 선까지 남기면 헤어볼이 옅어질 뿐 안 사라진다.
     return focusOnly() ? { ...data, hidden: true } : { ...data, color: ramp().fade };
+  };
+  // Sigma's endpoint programs keep adjacency and source identity, but routed
+  // edges are drawn below its node canvases with the same display reducer.
+  sigma.setSetting("edgeReducer", (id, data) => {
+    const display = reduceEdge(id, data);
+    return edgeOf.get(id)?.route ? { ...display, hidden: true } : display;
+  });
+  const hitPaths = new Map<string, RoutePoint[]>();
+  const drawRoutes = () => {
+    const width = stage.clientWidth, height = stage.clientHeight, dpr = window.devicePixelRatio || 1;
+    if (routesCanvas.width !== Math.round(width * dpr) || routesCanvas.height !== Math.round(height * dpr)) {
+      routesCanvas.width = Math.round(width * dpr); routesCanvas.height = Math.round(height * dpr);
+    }
+    const ctx = routesCanvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, width, height);
+    hitPaths.clear();
+    edgeOf.forEach((edge, key) => {
+      if (!edge.route) return;
+      const display = reduceEdge(key, g.getEdgeAttributes(key));
+      if (display.hidden) return;
+      const original = edge.route.points.map(p => ({ x: p.x * layoutSpread, y: -p.y * layoutSpread, z: 0 }));
+      const endpoint = (id: string): RoutePoint => ({ x: g.getNodeAttribute(id, "x"), y: g.getNodeAttribute(id, "y"), z: 0 });
+      const points = movedRoute(original, endpoint(edge.source), endpoint(edge.target)).map(p =>
+        ({ ...sigma.graphToViewport(p), z: 0 }));
+      if (points.length < 2) return;
+      ctx.strokeStyle = display.color; ctx.fillStyle = display.color;
+      ctx.lineWidth = sigma.scaleSize(display.size); ctx.lineJoin = "miter";
+      ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
+      for (const p of points.slice(1)) ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      hitPaths.set(key, points);
+      if (display.directed && prefs.arrows) {
+        const radius = sigma.scaleSize(sigma.getNodeDisplayData(edge.target)?.size ?? 6);
+        const length = routeLength(points), tip = pointOnRoute(points, length - radius - 1);
+        const back = pointOnRoute(points, length - radius - 1.1);
+        const angle = Math.atan2(tip.y - back.y, tip.x - back.x), size = Math.max(4, ctx.lineWidth * 3);
+        ctx.beginPath(); ctx.moveTo(tip.x, tip.y);
+        ctx.lineTo(tip.x - Math.cos(angle - .45) * size, tip.y - Math.sin(angle - .45) * size);
+        ctx.lineTo(tip.x - Math.cos(angle + .45) * size, tip.y - Math.sin(angle + .45) * size);
+        ctx.closePath(); ctx.fill();
+      }
+    });
+  };
+  sigma.on("afterRender", drawRoutes);
+  sigma.on("clickStage", ({ event }) => {
+    let nearest: GraphEdge | undefined, distance = 6;
+    hitPaths.forEach((points, key) => {
+      const edge = edgeOf.get(key)!;
+      if (!DIRECTED.includes(edge.type) || edge.presentation) return;
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i], dx = b.x - a.x, dy = b.y - a.y;
+        const t = Math.max(0, Math.min(1, ((event.x - a.x) * dx + (event.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+        const d = Math.hypot(event.x - a.x - t * dx, event.y - a.y - t * dy);
+        if (d < distance) { nearest = edge; distance = d; }
+      }
+    });
+    if (nearest) o.onEdge?.(nearest);
   });
 
   // ── 수치 배지 + 지표바(캔버스 위 DOM) ─────────────────────────────────────
@@ -820,6 +887,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   });
 
   return {
+    camera: () => sigma.getCamera().getState(),
     setTimeVisible(ids) {
       timeVisible = ids;
       sigma.refresh();          // 좌표는 그대로 — 리듀서만 다시 돈다

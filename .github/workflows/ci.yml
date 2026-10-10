@@ -731,11 +731,11 @@ jobs:
       - name: Install
         working-directory: app
         run: npm ci --no-audit --no-fund
-      # `build` 안에 접혀 있던 tsc 를 분리해 여기서 단독으로 돌린다 — 타입 오류가
-      # "빌드 실패" 로 뭉뚱그려지지 않고 그 자체로 드러난다.
-      - name: Typecheck
+      # View layout has separate worker and WASM assets. Check types, semantic
+      # regressions, and their production packaging before accepting the PR.
+      - name: Typecheck, layout tests and production build
         working-directory: app
-        run: npm run typecheck
+        run: npm run build
       # `app/dev/*-check.ts` 는 브라우저 없이 도는 순수 검사다(인과 폐포 · 주소 문법 ·
       # 카메라 겨눔). **여태 CI 가 하나도 안 돌렸다** — 계획 문서 §7 은 "closure 검사가
       # 돈다"고 적고 있었는데 실제로는 손으로만 도는 것이라, 아무도 안 돌리는 순간

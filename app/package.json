@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run typecheck && vite build",
+    "build": "npm run typecheck && npm run test:view-layout && vite build",
+    "test:view-layout": "node --test tests/view-layout.test.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri"
@@ -23,8 +24,10 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.12.0",
     "3d-force-graph": "^1.80.0",
+    "elkjs": "0.12.0",
     "graphology": "^0.26.0",
     "katex": "^0.18.7",
+    "libavoid-js": "0.4.5",
     "mermaid": "^11.17.2",
     "sigma": "^3.0.3",
     "three": "^0.186.0"

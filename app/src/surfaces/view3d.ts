@@ -19,6 +19,8 @@ import { edgeKey, type Spot } from "../spotlight";
 import { aimAt, restRadius, zoomStep } from "../camera-aim";
 import { HIT_MIN_PX, wireDragConnect, type DragEnd, type DragHit } from "./drag-connect";
 import { nonOverlappingLabels, type LabelBox } from "../view-labels";
+import type { ViewRoute } from "../view-route";
+import { RoutedLinkObject } from "./view-routes3d";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -85,7 +87,8 @@ export type N3 = {
 // 갈래가 **도달 불가능**했다. 삭제하는 대신 실제로 흐르는 신호로 갈아 끼운다 —
 // `confidence`(E-G6, 0~1)는 백엔드가 이미 엣지에 싣고 GraphEdge 로 앱까지 온다.
 export type L3 = { source: string; target: string; type?: string; cross?: boolean;
-                   confidence?: number };
+  id?: string; confidence?: number; evidence?: string; role?: string;
+  route?: ViewRoute; presentation?: boolean };
 
 // 재질의 이력: D77(2026-08-03)이 노드의 유리를 은퇴시켰고, 2026-08-15 에 반무광 MeshPhysical 로
 // 돌아왔고, 2026-09-26 에 히어로와 같은 유광 유리가 됐다(아래 GLASS). D37 Liquid Glass 는
@@ -517,6 +520,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // 멈추는 타이밍에 전 노드가 (0,0,0)에 뭉친다(세부 뷰 2D 미적용의 실측 원인).
   // fx/fy/fz 는 "엔진이 돌아도 못 움직이게" 하는 핀으로 병기한다.
   place();
+  el.dataset.viewLayout = "elk-temporal-v1";
   // 캔버스 투명(alpha) — 환경 대기(body 그라데이션)가 그래프 뒤로 비친다(D37 보강).
   // 다크는 반전 팔레트(D39): 어두운 배경 + 밝은 잉크 마크 — 양 테마 모두 투명.
   // `let` 인 이유: 테마가 뒤집히면 `__retheme` 이 갈아 끼운다. 아래 접근자들(선색·라벨·
@@ -561,6 +565,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   let scene: THREE.Scene | undefined;
   let instMeshes: THREE.InstancedMesh[] = [];
   const instRefs = new Map<string, InstRef>();
+  const instState = new Map<string, string>();
   // 지오메트리는 빌드마다 복제본이고 재질도 빌드마다 새로 만든다 — 둘 다 여기서 함께
   // 버린다(InstancedMesh.dispose 는 인스턴스 버퍼만 놓는다).
   const disposeInstMeshes = () => {
@@ -574,6 +579,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     instRefs.clear();
   };
   const buildInstancedNodes = () => {
+    instState.clear();
     disposeInstMeshes();
     const counts: Record<InstKind, number> = { sphere: 0, bridge: 0, doc: 0 };
     for (const n of nodes) if (canInstance(n)) counts[instKindOf(n)]++;
@@ -667,11 +673,13 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     // 그대로(0)이고, 올릴 때만 튜브로 굵어진다 — 기본 화면은 D33 이 정한 모습 그대로.
     .linkWidth(linkWidthFn())
     .linkOpacity(0.85)
-    .linkCurvature(0.18)
+    .linkCurvature((l: any) => l.route ? 0 : .18)
+    .linkThreeObject((l: any) => l.route ? new RoutedLinkObject(l.route) : undefined as any)
+    .linkPositionUpdate((_object: THREE.Object3D, _ends: unknown, l: any) => !!l.route)
     // 방향 화살촉 — prerequisite/derives/inherits 만 (spec §1.2); 표시 여부는 D31 열린 층
-    .linkDirectionalArrowLength(arrowLenFn())
+    .linkDirectionalArrowLength((l: any) => l.route ? 0 : arrowLenFn()(l))
     // 입자 모드 — 방향 3종에만(위 상수 주석 ②). 흐름이 방향을 말하므로 화살촉은 끈다.
-    .linkDirectionalParticles((l: any) => particlesOn && isDirectedLink(l)
+    .linkDirectionalParticles((l: any) => !l.route && particlesOn && isDirectedLink(l)
       ? PARTICLES_PER_LINK : 0)
     .linkDirectionalParticleWidth(PARTICLE_WIDTH)
     .linkDirectionalParticleSpeed(PARTICLE_SPEED)
@@ -705,7 +713,33 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // follows camera movement, resize and dragging without a second animation loop.
   const labelWorld = new THREE.Vector3(), labelScale = new THREE.Vector3();
   const labelCamera = new THREE.Vector3(), labelNdc = new THREE.Vector3();
+  const instMatrix = new THREE.Matrix4();
   scene.onBeforeRender = (_renderer, _scene, camera) => {
+    const nodeVisibility: any = g.nodeVisibility(), linkVisibility: any = g.linkVisibility();
+    const isVisible = (rule: any, value: any) => typeof rule === "function" ? !!rule(value)
+      : typeof rule === "string" ? !!value[rule] : rule !== false;
+    for (const n of nodes) {
+      const ref = instRefs.get(n.id);
+      if (!ref) continue;
+      const r = isVisible(nodeVisibility, n) ? ref.baseR * (prefs.nodeScale ?? 1) : 0;
+      const key = `${n.x},${n.y},${n.z},${r},${ref.idx}`;
+      if (instState.get(n.id) === key) continue;
+      instState.set(n.id, key);
+      instMatrix.compose(new THREE.Vector3(n.x || 0, n.y || 0, n.z || 0), INST_ROT[ref.kind], new THREE.Vector3(r, r, r));
+      ref.mesh.setMatrixAt(ref.idx, instMatrix); ref.mesh.instanceMatrix.needsUpdate = true;
+    }
+    for (const link of links as any[]) {
+      const object = link.__lineObj;
+      if (!(object instanceof RoutedLinkObject)) continue;
+      const source = typeof link.source === "object" ? link.source : nodes.find(n => n.id === link.source);
+      const target = typeof link.target === "object" ? link.target : nodes.find(n => n.id === link.target);
+      if (!source || !target) continue;
+      object.update(source, target, S, { color: linkColorFn(link), width: linkWidthFn()(),
+        arrow: !!prefs.arrows && !particlesOn && !nodesOnly && isDirectedLink(link),
+        particles: particlesOn && isDirectedLink(link), particleColor: pal.link.heavy,
+        visible: isVisible(linkVisibility, link) && isVisible(nodeVisibility, source) && isVisible(nodeVisibility, target),
+        targetRadius: nodeRadius(target, prefs) }, performance.now());
+    }
     const width = el.clientWidth, height = el.clientHeight;
     const boxes: LabelBox[] = [];
     for (const id of hubIds) {
@@ -873,6 +907,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     for (const ev of ["pointermove", "pointerdown", "wheel", "keydown"] as const)
       el.removeEventListener(ev, onWakeEvent);
     disposeInstMeshes();
+    if (raf) cancelAnimationFrame(raf);
     baseDestructor?.();
     // dispose() 만으로는 WebGL 컨텍스트가 GC 때까지 살아 있다 — 옵션 클릭 16번에
     // "Too many active WebGL contexts" 가 났다(2026-08-17). 명시적으로 잃게 한다.
@@ -905,6 +940,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       buildInstancedNodes();                     // 인스턴스 배치도 새 인코딩으로 다시 굽는다
       g.nodeThreeObject(nodeFactory());          // 새 함수 = 노드 오브젝트 전부 다시 굽기
     } else if (changed.includes("nodeScale")) {
+      instState.clear();
       // 반지름을 다시 굽지 않고 메시를 곱한다 — 라벨·글로우도 같이 커지지만 슬라이더
       // 한 프레임에 175개 지오메트리를 새로 만드는 것보다 훨씬 싸다.
       const k = (np.nodeScale ?? 1) / builtScale;
@@ -923,8 +959,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
         ref.mesh.instanceMatrix.needsUpdate = true;
       }
     }
-    if (changed.includes("edgeScale")) g.linkWidth(linkWidthFn());
-    if (changed.includes("arrows")) g.linkDirectionalArrowLength(arrowLenFn());
+    if (changed.includes("edgeScale") && links.some(l => !l.route)) g.linkWidth(linkWidthFn());
+    if (changed.includes("arrows")) g.linkDirectionalArrowLength((l: any) => l.route ? 0 : arrowLenFn()(l));
     wake(600);                                     // 바뀐 것을 그릴 프레임
     return true;
   };
@@ -948,6 +984,12 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     // 고르는 손짓 하나가 카메라까지 끌고 들어가면 되돌릴 방법이 손에 없었다.
     centerOn3d(g, n, prefs);
     handlers.onClick?.(n);
+  });
+  g.onNodeDrag(() => wake(600));
+  g.onNodeDragEnd((n: any) => {
+    n.fx = n.x; n.fy = n.y; n.fz = n.z;
+    n.__x0 = n.x / S; n.__y0 = n.y / S; n.__z0 = n.z / S;
+    wake(600);
   });
   if (handlers.onRightClick)
     g.onNodeRightClick((n: any, ev: MouseEvent) => handlers.onRightClick!(n, ev));
