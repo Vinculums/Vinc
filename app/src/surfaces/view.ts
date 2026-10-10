@@ -2055,6 +2055,7 @@ export async function renderView(el: HTMLElement) {
   let reuseGraph = false;
   let keepCam2: ReturnType<Handle2d["camera"]> | null = null;
   let rawGraph: { executed: boolean; nodes?: GraphNode[]; edges?: GraphEdge[] } | undefined;
+  let rawGraphScope: string | undefined;
   let layoutCache: { raw: typeof rawGraph; basis: ViewPrefs["timeBasis"]; layout: ViewPrefs["layout"]; graph: LayoutGraph } | undefined;
   let layoutJob: AbortController | undefined;
   const removalObserver = new MutationObserver(() => {
@@ -2066,15 +2067,17 @@ export async function renderView(el: HTMLElement) {
   removalObserver.observe(document.body, { childList: true, subtree: true });
   async function fetchGraph(p: ViewPrefs, scope: { domains?: string[] }):
       Promise<{ executed: boolean; stale?: boolean; nodes?: GraphNode[]; edges?: GraphEdge[]; topicEdges?: GraphEdge[] }> {
-    const cached = reuseGraph && rawGraph;
+    const domains = scope.domains || [];
+    const scopeKey = JSON.stringify([...domains].sort());
+    const cached = reuseGraph && rawGraph?.executed && rawGraphScope === scopeKey && rawGraph;
     reuseGraph = false;
     const mySeq = showSeq;
-    const domains = scope.domains || [];
     const res = cached || await api.graph(cfg.owner, {
       ...(domains.length ? { domains } : {}), layout: isPlanar(p.view) ? p.layout : "hub",
       ...(isPlanar(p.view) && p.cone !== 1 ? { cone: p.cone } : {}) });
     if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
     rawGraph = res;
+    rawGraphScope = scopeKey;
     if (isPlanar(p.view) || !res.executed) return res;
     if (layoutCache && layoutCache.raw === res && layoutCache.basis === p.timeBasis && layoutCache.layout === p.layout)
       return { executed: true, ...layoutCache.graph };
