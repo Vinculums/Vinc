@@ -6,7 +6,8 @@ import { simplifyRoute, type RoutePoint } from "./view-route";
 export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEdge[]): GraphEdge[] {
   if (!edges.length) return [];
   const router = new Avoid.Router(Avoid.OrthogonalRouting);
-  const temporaries: any[] = [], shapes = new Map<string, { shape: any; ports: any[] }>();
+  const temporaries: any[] = [], shapes = new Map<string, any>();
+  const loops = new Set(edges.filter(e => e.source === e.target).map(e => e.source));
   const own = (v: any) => { temporaries.push(v); return v; };
   const map = new Map(nodes.map(n => [n.id, n]));
   const raw = (n: GraphNode): RoutePoint => ({ x: n.x! * 1000, y: n.y! * 1000, z: n.z! * 1000 });
@@ -21,23 +22,24 @@ export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEd
         own(new Avoid.Point(n.x + 110, n.y + 66))));
       const shape = new Avoid.ShapeRef(router, rectangle);
       const ports = [
-        { id: 1, x: n.x + 110, y: n.y, px: 1, py: 24 / 90, dir: Avoid.ConnDirRight },
-        { id: 2, x: n.x - 110, y: n.y, px: 0, py: 24 / 90, dir: Avoid.ConnDirLeft },
-        { id: 3, x: n.x, y: n.y - 24, px: .5, py: 0, dir: Avoid.ConnDirUp },
+        { x: 220, y: 24, dir: Avoid.ConnDirRight },
+        { x: 0, y: 24, dir: Avoid.ConnDirLeft },
       ];
-      for (const p of ports) new Avoid.ShapeConnectionPin(shape, p.id, p.px, p.py, true, 0, p.dir).setExclusive(false);
-      shapes.set(node.id, { shape, ports });
+      // Route from the actual mark centre with all departure directions. This
+      // makes bend cost include the complete visible path rather than choosing
+      // a boundary port first and appending centre-to-port stubs afterwards.
+      new Avoid.ShapeConnectionPin(shape, 1, 110, 24, false, 0, Avoid.ConnDirAll).setExclusive(false);
+      if (loops.has(node.id)) for (let i = 0; i < 2; i++) {
+        const p = ports[i];
+        new Avoid.ShapeConnectionPin(shape, i + 2, p.x, p.y, false, 0, p.dir).setExclusive(false);
+      }
+      shapes.set(node.id, shape);
     }
     const connections = edges.map(edge => {
       const a = shapes.get(edge.source)!, b = shapes.get(edge.target)!;
-      let best: { pa: any; pb: any; length: number } | undefined;
-      for (const pa of a.ports) for (const pb of b.ports) {
-        if (edge.source === edge.target && pa.id === pb.id) continue;
-        const length = Math.abs(pa.x - pb.x) + Math.abs(pa.y - pb.y);
-        if (!best || length < best.length) best = { pa, pb, length };
-      }
+      const loop = edge.source === edge.target;
       const connection = new Avoid.ConnRef(router,
-        own(new Avoid.ConnEnd(a.shape, best!.pa.id)), own(new Avoid.ConnEnd(b.shape, best!.pb.id)));
+        own(new Avoid.ConnEnd(a, loop ? 2 : 1)), own(new Avoid.ConnEnd(b, loop ? 3 : 1)));
       connection.setRoutingType(Avoid.ConnType_Orthogonal);
       return { edge, connection };
     });
@@ -49,7 +51,7 @@ export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEd
         const p = path.get_ps(i); points.push({ x: p.x, y: p.y, z: a.z });
       }
       if (points.length < 3) throw new Error("Missing libavoid route");
-      // Change depth at the target port, keeping every segment axis aligned.
+      // Change depth at the target mark, keeping every segment axis aligned.
       points.push({ ...points[points.length - 1], z: b.z }, b);
       return { ...edge, route: { engine: "libavoid" as const, points: simplifyRoute(points)
         .map(p => ({ x: p.x / 1000, y: p.y / 1000, z: p.z / 1000 })) } };

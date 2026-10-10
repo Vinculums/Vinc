@@ -6,7 +6,6 @@ export type LayoutGraph = { nodes: GraphNode[]; edges: GraphEdge[]; topicEdges: 
 export type LayoutEngine = { layout(graph: ElkNode): Promise<ElkNode> };
 export type CrossRouter = (nodes: GraphNode[], edges: GraphEdge[]) => Promise<GraphEdge[]>;
 const UNIT = 1000;
-const directed = new Set(["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"]);
 const timeOf = (n: GraphNode, basis: "recorded" | "content") => {
   const value = (basis === "content" ? n.content_ts : n.ts) || "";
   // Partial dates retain their authored precision. Explicit ISO instants are
@@ -96,13 +95,15 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
       if (!wingIds.size) continue;
       const anchor = `@topic-anchor:${ti}:${wing}`;
       const edges = inside.filter(e => wingIds.has(e.source));
-      const incoming = new Set(edges.filter(e => directed.has(e.type)).map(e => ancestry(e)[1]));
       const guides: GraphEdge[] = [];
       for (const group of groups.filter(g => wingIds.has(g[0]))) {
-        let roots = group.filter(id => !incoming.has(id));
-        if (!roots.length) roots = [group.slice().sort((a, b) =>
-          timeOf(map.get(a)!, basis).localeCompare(timeOf(map.get(b)!, basis)) || a.localeCompare(b))[0]];
-        for (const id of roots) guides.push({ source: topic.id, target: id,
+        // One membership guide anchors a connected component. Linking every
+        // causal root duplicates membership and sends long guides across the
+        // very branches the original relations already connect.
+        const dated = group.filter(id => timeOf(map.get(id)!, basis));
+        const id = (dated.length ? dated : group).slice().sort((a, b) =>
+          timeOf(map.get(a)!, basis).localeCompare(timeOf(map.get(b)!, basis)) || a.localeCompare(b))[0];
+        guides.push({ source: topic.id, target: id,
           type: "IN_DOMAIN", cross_domain: false, presentation: true });
       }
       const entries = [...edges.map(e => ({ edge: e, ends: ancestry(e), original: e })),
@@ -119,7 +120,15 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
         "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP", "elk.partitioning.activate": "true",
       }, children: [root, ...members.filter(n => wingIds.has(n.id)).map(n =>
         child(n.id, partitions.get(timeOf(n, basis)) ?? 1))],
-      edges: entries.map((e, i) => ({ id: String(i), sources: [`${e.ends[0]}:out`], targets: [`${e.ends[1]}:in`] })) });
+      edges: entries.map((e, i) => {
+        const partition = (id: string) => id === anchor ? 0 : partitions.get(timeOf(map.get(id)!, basis)) ?? 1;
+        // Relation direction and chronological placement are independent. A
+        // backwards edge must leave toward its target instead of taking a lap
+        // around both nodes through forward-facing ports.
+        const backwards = partition(e.ends[0]) > partition(e.ends[1]);
+        return { id: String(i), sources: [`${e.ends[0]}:${backwards ? "in" : "out"}`],
+          targets: [`${e.ends[1]}:${backwards ? "out" : "in"}`] };
+      }) });
       const origin = result.children!.find(n => n.id === anchor)!;
       const sign = wing === 0 ? 1 : -1;
       const convert = (p: { x: number; y: number }): RoutePoint =>
