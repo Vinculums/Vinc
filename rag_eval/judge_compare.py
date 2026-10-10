@@ -213,9 +213,9 @@ def audit_counts(rows):
     return result
 
 
-def prepared(directory, root):
+def prepared(directory, root, contract_path=CONTRACT):
     manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
-    if manifest["contract"] != json.loads(CONTRACT.read_text(encoding="utf-8")):
+    if manifest["contract"] != json.loads(Path(contract_path).read_text(encoding="utf-8")):
         raise ValueError("prepared contract differs from the reviewed contract")
     provider = manifest["provider"]
     if manifest["provenance"] != provenance(provider, manifest["contract"]):
@@ -253,14 +253,16 @@ def main(argv=None):
     ap.add_argument("--root", type=Path, required=True)
     ap.add_argument("--directory", type=Path, required=True)
     ap.add_argument("--provider", choices=("jev", "openai_decisions"))
-    ap.add_argument("--set", dest="set_name", choices=("calib", "a", "b", "c", "d"))
+    ap.add_argument("--set", dest="set_name")
     ap.add_argument("--journal", type=Path)
+    # 계약 파일이 셋의 목록을 정한다. 기본은 VIN-425 의 다섯 셋이고, 커뮤니티 전용 계약은 calib 과 c 둘뿐이다.
+    ap.add_argument("--contract", type=Path, default=CONTRACT)
     args = ap.parse_args(argv)
     directory, root = args.directory, args.root
     if args.action == "prepare":
         if not args.provider:
             ap.error("prepare requires --provider")
-        contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+        contract = json.loads(args.contract.read_text(encoding="utf-8"))
         sets = check_contract(root, contract)
         pins = provenance(args.provider, contract)
         directory.mkdir(parents=True, exist_ok=False)
@@ -271,7 +273,7 @@ def main(argv=None):
         requests = requests_for(args.provider, pins["model"], "calib", sets["calib"])
         write_rows(directory / "requests-calib.jsonl", requests, pins)
         return 0
-    manifest, sets = prepared(directory, root)
+    manifest, sets = prepared(directory, root, args.contract)
     provider, pins = manifest["provider"], manifest["provenance"]
     if args.action == "release-eval":
         from .laya.run_gold import load_calib
@@ -306,13 +308,15 @@ def main(argv=None):
             files[f"calibration/{path.name}"] = file_hash(path)
         write_json(directory / "calibration-frozen.json", {
             "frozen_at": datetime.now(timezone.utc).isoformat(), "files": files, "provenance": pins})
-        for name in ("a", "b", "c", "d"):
+        for name in (n for n in sets if n != "calib"):
             write_rows(directory / f"requests-{name}.jsonl",
                        requests_for(provider, pins["model"], name, sets[name]), pins)
         return 0
     if not args.journal or not args.set_name:
         ap.error("import requires --journal and --set")
     name = args.set_name
+    if name not in sets:
+        ap.error("--set must be one of the contract's sets: " + ", ".join(sets))
     requests = requests_for(provider, pins["model"], name, sets[name])
     calibration, frozen_at = None, None
     if name != "calib":

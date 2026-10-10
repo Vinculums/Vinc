@@ -1,0 +1,11 @@
+{
+  "provider": "openai_decisions",
+  "model": "gpt-6-luna",
+  "endpoint": "https://api.openai.com/v1/decisions",
+  "contract_url": "https://developers.openai.com/api/reference/python/resources/decisions",
+  "questions_hash": "500e613737d1",
+  "contract_sha256": "82b80a3265aaab8df7863a0f425a1ce6c3bb3368b4d3e4e67ee9c44a77a8000b",
+  "epsilon": 1e-12,
+  "logits_kind": "probability_pseudo_logits",
+  "source_calibration": "6d86522103a96e32ac91095c9e1c9311bce2c1f250026652defbbe7e1ec06142"
+}

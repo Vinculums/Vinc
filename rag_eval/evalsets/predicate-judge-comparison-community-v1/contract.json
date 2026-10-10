@@ -1,0 +1,65 @@
+{
+  "schema": "vinc.predicate_judge_comparison.v1",
+  "questions_hash": "500e613737d1",
+  "scope": "community_text_only",
+  "gates": {
+    "auroc_margin": 0.05,
+    "ece_max": 0.1,
+    "coverage_min": 0.5
+  },
+  "target_error": 0.05,
+  "asymmetry_abstain": 0.2,
+  "calibration": {
+    "temp_min": 0.5,
+    "temp_max": 5.0,
+    "min_bucket_n": 30,
+    "seed": 20261007,
+    "mixed_uses": "en",
+    "epsilon": 1e-12
+  },
+  "providers": {
+    "jev": {
+      "model": "jev-1.13.0",
+      "endpoint": "https://api.typesafe.ai/v1/systemone",
+      "contract_url": "https://docs.typesafe.ai/api"
+    },
+    "openai_decisions": {
+      "model": "gpt-6-luna",
+      "endpoint": "https://api.openai.com/v1/decisions",
+      "contract_url": "https://developers.openai.com/api/reference/python/resources/decisions"
+    }
+  },
+  "sets": {
+    "calib": {
+      "gold": "rag_eval/evalsets/laya-predicates-community-calib-v1/gold.jsonl",
+      "gold_sha256": "6d86522103a96e32ac91095c9e1c9311bce2c1f250026652defbbe7e1ec06142",
+      "split": "rag_eval/evalsets/laya-predicates-community-calib-v1/gold.split.json",
+      "split_sha256": "44b3be5c438c2cf70b66278f5ae0986004cffc0ea0fa4b49ea61eb953d934a68",
+      "partition": "calib",
+      "pairs": 117,
+      "requests": 234,
+      "answers": 585
+    },
+    "c": {
+      "gold": "rag_eval/evalsets/laya-predicates-community-v1/gold.jsonl",
+      "gold_sha256": "1551ce8b1a6da919e6805ef5ea82eb4862bfa4a6061c6623c00613dbb11f5f69",
+      "split": "rag_eval/evalsets/laya-predicates-community-v1/gold.split.json",
+      "split_sha256": "1bd7b94a21c317e31189de6fdd448bb099bb155aacd21b9808fa1a7f05264fde",
+      "partition": "eval",
+      "pairs": 140,
+      "requests": 280,
+      "answers": 700
+    }
+  },
+  "per_provider": {
+    "requests": 514,
+    "answers": 1285
+  },
+  "live_calls_authorized": true,
+  "execution": {
+    "max_requests_total": 3000,
+    "counted_by": "one shared ledger file for both providers and every set; a request is counted before it is sent",
+    "text_scope": "community starter pack text and statements written against it; no personal graph text",
+    "authorized_by": "decision:judge-comparison-runs-on-community-text-only-within-3000-requests-2026-10-10"
+  }
+}
