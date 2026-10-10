@@ -6,10 +6,17 @@ import urllib.request
 from http.server import HTTPServer
 
 from api.server import _Handler
+from api.graph_loading import encode_result
 
 
 class JsonWireTests(unittest.TestCase):
     def test_unicode_nested_values_and_byte_length_over_http(self):
+        self._assert_json_wire(serialized=False)
+
+    def test_serialized_graph_bytes_use_the_same_http_contract(self):
+        self._assert_json_wire(serialized=True)
+
+    def _assert_json_wire(self, serialized):
         payload = {'executed': True, 'nodes': [{'id': 'concept:synthetic',
                    'label': '합성 ✓', 'props': {'text': 'line\nquote "',
                    'list': [False, None, 0, -0.0, 1.25]}}],
@@ -17,7 +24,7 @@ class JsonWireTests(unittest.TestCase):
 
         class Handler(_Handler):
             def do_GET(self):
-                self._send(200, payload)
+                self._send(200, encode_result((200, payload))[1] if serialized else payload)
 
         with HTTPServer(('127.0.0.1', 0), Handler) as server:
             thread = threading.Thread(target=server.serve_forever, daemon=True)

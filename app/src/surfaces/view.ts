@@ -1,6 +1,6 @@
 import Graph from "graphology";
 import Sigma from "sigma";
-import { api, cfg, docMidWrite, spaceName, storeDownReason, type GraphEdge, type GraphNode,
+import { api, cfg, WEB, docMidWrite, spaceName, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
@@ -8,6 +8,7 @@ import { absoluteViewUrl, formatViewUrl, parseViewUrl } from "../view-url";
 import { camera3d, centerOn3d, enableLasso, findNode3d, mount3d, zoomBy3d,
          type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
+import { readGraphProgressively, mountGraphPreview } from "../view-graph-loading";
 import { layoutInWorker } from "../view-layout-client";
 import type { LayoutGraph } from "../view-layout";
 import type { DragEnd } from "./drag-connect";
@@ -1962,6 +1963,7 @@ export async function renderView(el: HTMLElement) {
   /** 커서를 **살아 있는 렌더러에** 건다. 마운트 직후에도 한 번 불러 첫 화면이
    *  커서를 반영하게 한다(마운트는 이제 전량을 싣는다). */
   function applyTimeCut(): void {
+    removePreview();
     const ids = timeVisibleIds();
     if (g3) {
       const lid = (v: any) => (v && typeof v === "object" ? v.id : v);
@@ -2112,13 +2114,16 @@ export async function renderView(el: HTMLElement) {
    *    부를 때의 세대를 기억해, 돌아왔을 때 세대가 지났으면 `stale` 로 답한다. */
   let reuseGraph = false;
   let keepCam2: ReturnType<Handle2d["camera"]> | null = null;
+  let graphReadJob: AbortController | undefined;
+  let clearPreview: (() => void) | undefined;
+  function removePreview() { clearPreview?.(); clearPreview = undefined; }
   let rawGraph: { executed: boolean; nodes?: GraphNode[]; edges?: GraphEdge[] } | undefined;
   let rawGraphScope: string | undefined;
   let layoutCache: { raw: typeof rawGraph; basis: ViewPrefs["timeBasis"]; layout: ViewPrefs["layout"]; aspectRatio: number; graph: LayoutGraph } | undefined;
   let layoutJob: AbortController | undefined;
   const removalObserver = new MutationObserver(() => {
     if (canvas.isConnected && myGen === liveGen) return;
-    layoutJob?.abort();
+    layoutJob?.abort(); graphReadJob?.abort(); removePreview();
     removalObserver.disconnect();
     swapSurface();
   });
@@ -2136,9 +2141,24 @@ export async function renderView(el: HTMLElement) {
     layoutJob?.abort();
     const start = performance.now();
     let res: typeof rawGraph;
-    try { res = cached || await api.graph(cfg.owner, {
-      ...(domains.length ? { domains } : {}), layout: serverLayout,
-      ...(cone !== 1 ? { cone } : {}) }); }
+    const options = { ...(domains.length ? { domains } : {}), layout: serverLayout,
+      ...(cone !== 1 ? { cone } : {}) };
+    try {
+      const initial = WEB && !cached && !g3 && !g2 && !planar && !useRoots
+        && ["2d", "3d"].includes(p.view) && p.when === 1 && p.unlinked === "show" && !p.edgeOff.length;
+      if (initial) {
+        const job = graphReadJob = new AbortController();
+        const capturedScope = { team: cfg.team || null };
+        const owner = cfg.owner;
+        res = await readGraphProgressively((stage, token) =>
+          api.graphStage(owner, options, stage, token, capturedScope, job.signal), preview => {
+            if (job.signal.aborted || mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return;
+            clearPreview?.(); clearPreview = mountGraphPreview(canvas, preview, {
+              edges: curPrefs().edges !== "none", label: COPY.view.preview,
+            }); setMsg("");
+          }, job.signal);
+      } else res = cached || await api.graph(cfg.owner, options);
+    }
     catch (failure) {
       console.error(`View graph read failed ${JSON.stringify({ elapsedMs: Math.round(performance.now() - start),
         status: Number((failure as { status?: number }).status) || 0 })}`);
@@ -4051,6 +4071,7 @@ export async function renderView(el: HTMLElement) {
    *  그리기 **직전**에 부른다. 빈 상태·오류 상자도 이 뒤에 그린다(옛 지도 위에 얹지 않게).
    *  캔버스를 투명하게 두고 나가면 revealSurface() 가 첫 그림을 페이드인한다. */
   function swapSurface() {
+    removePreview();
     extraSigmas.forEach((s) => s.kill());
     extraSigmas = [];
     killReplay();
@@ -4072,6 +4093,7 @@ export async function renderView(el: HTMLElement) {
   async function show(level: Level,
                       opts?: { keepPanel?: boolean; keepCamera?: boolean; keepDetail?: boolean }) {
     const seq = ++showSeq;
+    graphReadJob?.abort(); removePreview();
     layoutJob?.abort();
     setBusy(true, opts?.keepPanel ? 120 : 400);
     // 옵션만 바뀐 재마운트는 카메라를 잇는다 — 전체 맞춤으로 되감기는 것이 "옵션을
@@ -4125,7 +4147,8 @@ export async function renderView(el: HTMLElement) {
       // 노드로 데려가는 일(검색 착지·트리 클릭·딥링크)은 focusNode 가 진다 — 마운트가
       // 자리를 잡은 뒤 한 번 더 날리는 지연도 거기 있다. 여기서는 층만 그린다.
     } catch (e) {
-      if (seq !== showSeq) return;              // 옛 세대의 실패는 새 화면에 적지 않는다
+      if (seq !== showSeq) return;
+      removePreview();
       // 위 세 관점과 같은 상자(2026-08-05) — 예외 경로만 다른 모양으로 남기면
       // "왜 어떤 실패는 붉은 띠고 어떤 실패는 빈 상자인가"라는 질문만 남는다.
       //

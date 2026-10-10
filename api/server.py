@@ -133,6 +133,7 @@ from store import request_timing
 from store.backend import open_store
 from store.embedded_backend import DdlGuardTimeout
 
+from .graph_loading import GraphWire
 from . import query as q
 from . import preference as pref
 from . import activate as act
@@ -309,6 +310,8 @@ class VincApp:
         # D11-R2. 그래프(store)와 분리 — 어휘는 사용자 저작, 그래프는 인스턴스.
         from store.theme_store import ThemeStore
         self.themes = themes if themes is not None else ThemeStore(self.cfg.data_dir)
+        from .graph_loading import GraphReads
+        self._graph_reads = GraphReads()
         self._conn_lock = threading.Lock()    # reader Connection 파생 가드
         self._index_lock = threading.Lock()
         self._index_job = None
@@ -614,6 +617,7 @@ class VincApp:
         해야 스토어가 살아 있다. 이 한 번이 "정상 종료면 아무것도 안 잃는다"를
         만든다 — 주기 스냅샷은 급사에 대비한 것이고 이건 예고된 종료용이다.
         (SIGKILL·OOM 은 여기 못 온다. 그때 잃는 양의 상한이 스냅샷 주기다.)"""
+        self._graph_reads.close()
         self.jobs.shutdown(drain=True)
         if self.store is not None:
             state = self._maybe_snapshot(force=True)
@@ -645,12 +649,46 @@ class VincApp:
     def read_learner(self, p):
         return self._read(lambda r: q.learner_model(owner=_req(p, "owner"), store=r))
 
-    def read_graph(self, p):
+    def read_graph(self, p, *, wire=False):
+        owner = _req(p, "owner")
+        stage = p.get("stage")
+        if stage in ("preview", "complete", "cancel"):
+            scope = json.dumps({k: v for k, v in p.items() if k not in ("stage", "snapshot")},
+                               sort_keys=True, separators=(",", ":"))
+        if stage == "complete":
+            return self._graph_reads.finish(owner, scope, p.get("snapshot") or "", wire=wire)
+        if stage == "cancel":
+            return self._graph_reads.cancel(owner, scope, p.get("snapshot") or "")
+        # Keep the optional preview narrow: legacy all-population hub/radial View.
+        if (stage == "preview" and not p.get("seed") and not p.get("review_mirror")
+                and not p.get("max_nodes") and (p.get("layout") or "radial") in ("hub", "radial")):
+            def produce(publish, control):
+                def read(r):
+                    snapshot = getattr(r, "graph_snapshot_scope", None)
+                    if not callable(snapshot):
+                        return self._query_graph(p, r)
+                    with snapshot(control):
+                        preview = q.graph_preview(owner=owner, domains=_domains(p.get("domains"))
+                            or ([p["domain"]] if p.get("domain") else None),
+                            layout=p.get("layout") or "radial", cone=_float(p.get("cone"), 1.0),
+                            basis=p.get("basis") or q.BASIS_RECORDED, store=r)
+                        control.check()
+                        publish(preview)
+                        result = self._query_graph(p, r)
+                        control.check()
+                        return result
+                return self._read(read)
+            response = self._graph_reads.start(owner, scope, produce, wire=wire)
+            if response is not None:
+                return response
+        return self._read(lambda r: self._query_graph(p, r))
+
+    def _query_graph(self, p, r):
         # seed 지정 시 seed+depth ego 서브그래프(View L2 = MCP vinc_graph 동일 경로).
         # layout = 프리셋(radial·circle·tree·organic·rank·dendro — 미지 값 radial 강등).
         # basis(D72) = 시간축. 미지 값은 조용히 recorded 로 강등하고 응답이 에코한다.
         from .mirror_provenance import graph_with_mirror_review
-        return self._read(lambda r: graph_with_mirror_review(owner=_req(p, "owner"),
+        return graph_with_mirror_review(owner=_req(p, "owner"),
                                             domain=p.get("domain"), seed=p.get("seed"),
                                             # 주제 여럿(쉼표 결합). 스코프는 하위
                                             # 트리 포함이다 — query.normalize_domains.
@@ -669,7 +707,7 @@ class VincApp:
                                             # 예산을 층으로 채울지(기본) 상금(ppr)으로 채울지.
                                             select=p.get("select") or "layers",
                                             review_mirror=p.get("review_mirror", False),
-                                            store=r))
+                                            store=r)
 
     def read_view(self, p):
         # View L0(D16) — 도메인 분포 + 결합 행렬.
@@ -2220,7 +2258,7 @@ class _Handler(BaseHTTPRequestHandler):
         return self.server.app   # type: ignore[attr-defined]
 
     def _send(self, code: int, obj: dict):
-        body = (json.dumps(obj, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+        body = obj if isinstance(obj, GraphWire) else (json.dumps(obj, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -2399,7 +2437,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/neighbors": app.read_neighbors, "/path": app.read_path,
             "/node-edges": app.read_node_edges,
             "/roles": app.read_roles,
-            "/learner": app.read_learner, "/graph": app.read_graph,
+            "/learner": app.read_learner, "/graph": lambda p: app.read_graph(p, wire=True),
             "/search": app.read_search, "/decide": app.read_decide,
             "/themes": app.read_themes, "/types": app.read_types,
             # 문서 정본(D45 P4) — get(복원+검증) · list. + 노드 클릭 상세(D45-V).

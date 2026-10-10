@@ -411,7 +411,7 @@ async function searchCall(query: string, top_k: number): Promise<any> {
 /** 계정 모드와 무관하게 이 기기의 사이드카(웹이면 계정 프록시)로 간다. 모드 전환이 쓴다:
  *  계정 모드에서 도는 옮기기 잡의 진행(`/jobs/`)은 계정이 아니라 사이드카에 있다. */
 async function localCall(path: string, params?: Record<string, string | number | undefined>,
-                         body?: unknown, scope?: Scope): Promise<any> {
+                         body?: unknown, scope?: Scope, signal?: AbortSignal): Promise<any> {
   // 웹모드: 경로를 계정 프록시 프리픽스(/api/graph)로 옮긴다(같은 오리진 vincs.io).
   //   call("/view") → /api/graph/view · call("/ingest/fragment") → /api/graph/ingest/fragment
   const url = new URL(WEB ? "/api/graph" + path : path, cfg.base);
@@ -424,6 +424,7 @@ async function localCall(path: string, params?: Record<string, string | number |
   if (WEB && team) url.searchParams.set("team", team);
   const isWrite = body !== undefined;
   const res = await fetch(url, {
+    signal,
     method: isWrite ? "POST" : "GET",
     // 웹: 계정 세션 쿠키를 실어 보낸다(같은 오리진). 셸: 쿠키 없음.
     ...(WEB ? { credentials: "include" as const } : {}),
@@ -744,6 +745,14 @@ export const api = {
     const { domains, ...rest } = opts;
     return call("/graph", { owner, ...rest,
                             ...(domains?.length ? { domains: domains.join(",") } : {}) });
+  },
+  // Initial web View only. Capture Space and cancellation for both stages and fallback.
+  graphStage: (owner: string, opts: { domains?: string[]; layout?: string; cone?: number },
+      stage: "preview" | "complete" | "cancel" | undefined, snapshot: string | undefined,
+      scope: Scope, signal: AbortSignal) => {
+    const { domains, ...rest } = opts;
+    return localCall("/graph", { owner, ...rest, stage, snapshot,
+      ...(domains?.length ? { domains: domains.join(",") } : {}) }, undefined, scope, stage === "cancel" ? undefined : signal);
   },
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20) => searchCall(query, top_k),
