@@ -6,6 +6,7 @@ async (page) => {
   const errors = [], evidence = [];
   let graphRequests = 0;
   let failNextGraph = false;
+  let mapFixture = false;
   let holdNextScope = false, releaseScope, signalScopeStarted;
   let navEnabled = false;
   const scopeStarted = new Promise(resolve => { signalScopeStarted = resolve; });
@@ -38,6 +39,10 @@ async (page) => {
       data = failNextGraph ? { executed: false, error: "store_busy" } : {
         executed: true, nodes: shown, edges: edges.filter(e => ids.has(e.source) && ids.has(e.target)) };
       failNextGraph = false;
+      if (mapFixture) data = { executed: true, edges: [], nodes: Array.from({ length: 24 }, (_, i) => [
+        { id: `concept:map${i}`, label: `Map ${i}`, kind: "concept", domain: `map/${i}`, degree: 0, ts: "2020", content_ts: "2020" },
+        { id: `domain:map/${i}`, label: `${i}`, kind: "domain", domain: "map", degree: 1 },
+      ]).flat() };
     }
     if (path === "/health") data = { ok: true, version: "0.9.7", store_ready: true };
     if (path === "/nav-tree" && navEnabled) data = { executed: true, domains: ["qa/a", "qa/b"].map(domain =>
@@ -62,6 +67,16 @@ async (page) => {
   });
   assert(initial.nodes === 27 && initial.original === 25, "parallel or original relations lost");
   evidence.push({ check: "2d actual graph and parallel relation identity", ...initial, positions: undefined });
+  const grid2d = await page.evaluate(() => {
+    const g = window.__s2.getGraph(), t = g.getNodeAttributes("domain:qa/a");
+    const ns = g.nodes().filter(id => /^concept:qa-(?:[0-9]|1[01])$/.test(id)).map(id => g.getNodeAttributes(id));
+    return { east: ns.some(n => n.x > t.x), west: ns.some(n => n.x < t.x),
+      north: ns.some(n => n.y > t.y), south: ns.some(n => n.y < t.y),
+      grid: ns.every(n => [n.x - t.x, n.y - t.y].every(v => Math.abs(v / .33 - Math.round(v / .33)) < 1e-7)) };
+  });
+  assert(Object.values(grid2d).every(Boolean), "actual 2d Topic does not spread across the regular grid in four directions");
+  evidence.push({ check: "actual 2d Topic roots spread in four directions on a regular grid", ...grid2d });
+  await page.screenshot({ path: "D:/Projects/AIProjects/vinc-project/_wt/vin427-view-elk/output/view-elk-qa/grid-app-2d.jpg" });
   const clickAt = await page.evaluate(() => {
     const s = window.__s2, g = s.getGraph(), rect = document.querySelector(".a2-stage").getBoundingClientRect();
     for (const id of g.edges()) {
@@ -132,6 +147,16 @@ async (page) => {
   });
   assert(geometry.orthogonal && geometry.original === 25 && geometry.metadata === "QA authored evidence" && geometry.builtInArrowsDisabled, "3d route or metadata mismatch");
   evidence.push({ check: "3d actual sections and original evidence", ...geometry });
+  const grid3d = await page.evaluate(() => {
+    const ns = window.__g3.graphData().nodes, t = ns.find(n => n.id === "domain:qa/a");
+    const members = ns.filter(n => /^concept:qa-(?:[0-9]|1[01])$/.test(n.id));
+    return { east: members.some(n => n.x > t.x), west: members.some(n => n.x < t.x),
+      north: members.some(n => n.y < t.y), south: members.some(n => n.y > t.y),
+      grid: members.every(n => [n.x - t.x, n.y - t.y].every(v => Math.abs(v / .33 - Math.round(v / .33)) < 1e-7)) };
+  });
+  assert(Object.values(grid3d).every(Boolean), "actual 3d Topic does not spread across the regular grid in four directions");
+  evidence.push({ check: "actual 3d Topic roots spread in four directions on a regular grid", ...grid3d });
+  await page.screenshot({ path: "D:/Projects/AIProjects/vinc-project/_wt/vin427-view-elk/output/view-elk-qa/grid-app-3d.jpg" });
   await page.waitForTimeout(600);
   const requestsBeforeRank3 = graphRequests;
   await page.evaluate(() => {
@@ -228,6 +253,21 @@ async (page) => {
   assert(await page.evaluate(() => window.__s2.getGraph().nodes().every(id =>
     id === "domain:qa/a" || /^concept:qa-(?:[0-9]|1[01])$/.test(id))), "old topic leaked into new scope");
   evidence.push({ check: "layout change during a topic fetch cannot reuse the previous scope", pass: true });
+  mapFixture = true;
+  await page.goto("http://127.0.0.1:5207/#view/as/2d");
+  await page.waitForFunction(() => window.__s2?.getGraph().order === 48);
+  const composition = await page.evaluate(() => {
+    const s = window.__s2, g = s.getGraph(), topics = g.nodes().filter(id => id.startsWith("domain:"));
+    const points = topics.map(id => s.graphToViewport(g.getNodeAttributes(id)));
+    const rect = document.querySelector(".a2-stage").getBoundingClientRect();
+    return { columns: new Set(topics.map(id => g.getNodeAttribute(id, "x"))).size,
+      rows: new Set(topics.map(id => g.getNodeAttribute(id, "y"))).size,
+      width: (Math.max(...points.map(p => p.x)) - Math.min(...points.map(p => p.x))) / rect.width,
+      height: (Math.max(...points.map(p => p.y)) - Math.min(...points.map(p => p.y))) / rect.height };
+  });
+  assert(composition.columns > 1 && composition.rows > 1 && composition.width > .3 && composition.height > .3,
+    "Topic map leaves an axis unused");
+  evidence.push({ check: "actual 2d renderer distributes Topics across the canvas", ...composition });
   assert(errors.length === 0, `page errors: ${errors.join("; ")}`);
   return { evidence, pageErrors: errors };
 }

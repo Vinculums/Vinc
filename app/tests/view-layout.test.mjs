@@ -243,5 +243,83 @@ test("many-topic graph keeps every cross relation within the worker deadline", a
   check(result, edges);
   const elapsedMs = Math.round(performance.now() - start);
   assert.ok(elapsedMs < 60000, "many-topic layout exceeds the production worker deadline");
+  for (const e of result.edges.slice(-300).filter((_, i) => i % 10 === 0)) {
+    for (const obstacle of result.nodes) {
+      if (obstacle.id === e.source || obstacle.id === e.target) continue;
+      for (let j = 1; j < e.route.points.length; j++) {
+        const a = e.route.points[j - 1], b = e.route.points[j];
+        assert.ok(!(Math.max(a.x, b.x) > obstacle.x - .11 + 1e-8 && Math.min(a.x, b.x) < obstacle.x + .11 - 1e-8 &&
+          Math.max(a.y, b.y) > obstacle.y - .024 + 1e-8 && Math.min(a.y, b.y) < obstacle.y + .066 - 1e-8),
+          `hierarchical cross-topic route ${e.id} cuts through ${obstacle.id}: ${JSON.stringify([a, b])} at ${JSON.stringify([obstacle.x, obstacle.y])}`);
+      }
+    }
+  }
   t.diagnostic(JSON.stringify({ nodes: 4000, topics: 79, authoredEdges: edges.length, elapsedMs, synthetic: true }));
+});
+
+test("a connected timeline with unique instants branches around its Topic without losing continuation edges", async () => {
+  const nodes = Array.from({ length: 180 }, (_, i) => n(`instant${i}`,
+    new Date(Date.UTC(2020, 0, 1, 0, 0, i)).toISOString()));
+  const edges = nodes.slice(1).map((node, i) => edge(nodes[i].id, node.id));
+  edges.push(edge(nodes[170].id, nodes[2].id, "RELATED_TO"));
+  const branches = [];
+  const observedElk = { layout: graph => {
+    if (graph.layoutOptions["elk.algorithm"] === "layered") branches.push({
+      ids: new Set(graph.children.map(n => n.id)), direction: graph.layoutOptions["elk.direction"] });
+    return elk.layout(graph);
+  } };
+  const result = await temporalLayout(nodes, edges, "content", observedElk, route, "temporal", 1.6);
+  check(result, edges);
+  const topic = result.nodes.find(n => n.kind === "domain");
+  assert.ok(result.nodes.some(n => n.x < topic.x) && result.nodes.some(n => n.x > topic.x));
+  assert.ok(result.nodes.some(n => n.y < topic.y) && result.nodes.some(n => n.y > topic.y));
+  assert.deepEqual(new Set(branches.map(b => b.direction)), new Set(["RIGHT", "LEFT", "UP", "DOWN"]));
+  const width = Math.max(...result.nodes.map(n => n.x)) - Math.min(...result.nodes.map(n => n.x));
+  const height = Math.max(...result.nodes.map(n => n.y)) - Math.min(...result.nodes.map(n => n.y));
+  assert.ok(width / height > .6 && width / height < 4, "connected timeline is still an elongated list");
+  assert.ok(result.edges.some(e => e.route.engine === "libavoid"), "continuation edges between branches were discarded");
+  for (const e of result.edges.filter(e => e.route.engine === "elk" && e.type === "PREREQUISITE_OF")) {
+    const a = result.nodes.find(n => n.id === e.source), b = result.nodes.find(n => n.id === e.target);
+    const direction = branches.find(branch => branch.ids.has(a.id) && branch.ids.has(b.id)).direction;
+    const outward = { RIGHT: b.x - a.x, LEFT: a.x - b.x, DOWN: b.y - a.y, UP: a.y - b.y }[direction];
+    assert.ok(outward > 0, `within-branch chronology does not point ${direction} outward`);
+  }
+});
+
+test("four Topic arms share a regular grid without rotating marks or cutting through their labels", async () => {
+  const nodes = Array.from({ length: 16 }, (_, i) => n(`grid${i}`, `2020-${String(i + 1).padStart(2, "0")}-01`));
+  const edges = nodes.slice(1).map((node, i) => edge(nodes[i].id, node.id));
+  edges.push(edge("grid14", "grid1", "RELATED_TO"));
+  const graph = await temporalLayout(nodes, edges, "content", elk, route);
+  check(graph, edges);
+  const topic = graph.nodes.find(n => n.kind === "domain");
+  for (const node of graph.nodes) for (const axis of ["x", "y"]) {
+    const cell = (node[axis] - topic[axis]) / .33;
+    assert.ok(Math.abs(cell - Math.round(cell)) < 1e-7, `${node.id} is off the ${axis} grid`);
+  }
+  for (const a of graph.nodes) for (const b of graph.nodes) if (a !== b)
+    assert.ok(Math.abs(a.x - b.x) >= .22 || Math.abs(a.y - b.y) >= .09, "mark/label rectangles overlap");
+  for (const edge of [...graph.edges, ...graph.topicEdges]) for (const node of graph.nodes) {
+    if (node.id === edge.source || node.id === edge.target) continue;
+    for (let i = 1; i < edge.route.points.length; i++) {
+      const a = edge.route.points[i - 1], b = edge.route.points[i];
+      assert.ok(!(Math.max(a.x, b.x) > node.x - .11 + 1e-8 && Math.min(a.x, b.x) < node.x + .11 - 1e-8 &&
+        Math.max(a.y, b.y) > node.y - .024 + 1e-8 && Math.min(a.y, b.y) < node.y + .066 - 1e-8),
+        `${edge.id || edge.type} cuts through ${node.id}`);
+    }
+  }
+});
+
+test("Topic composition uses both axes and responds to landscape and portrait aspect ratios", async () => {
+  const nodes = Array.from({ length: 24 }, (_, i) => n(`map${i}`, "2020", `topic/${i}`));
+  const landscape = await temporalLayout(nodes, [], "content", elk, route, "temporal", 2.4);
+  const portrait = await temporalLayout(nodes, [], "content", elk, route, "temporal", .6);
+  const extent = graph => {
+    const ts = graph.nodes.filter(n => n.kind === "domain");
+    assert.ok(new Set(ts.map(n => n.x)).size > 1 && new Set(ts.map(n => n.y)).size > 1);
+    return (Math.max(...ts.map(n => n.x)) - Math.min(...ts.map(n => n.x))) /
+      (Math.max(...ts.map(n => n.y)) - Math.min(...ts.map(n => n.y)));
+  };
+  assert.ok(extent(landscape) > extent(portrait));
+  for (const graph of [landscape, portrait]) check(graph, []);
 });

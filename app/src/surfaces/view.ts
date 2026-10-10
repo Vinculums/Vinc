@@ -2056,7 +2056,7 @@ export async function renderView(el: HTMLElement) {
   let keepCam2: ReturnType<Handle2d["camera"]> | null = null;
   let rawGraph: { executed: boolean; nodes?: GraphNode[]; edges?: GraphEdge[] } | undefined;
   let rawGraphScope: string | undefined;
-  let layoutCache: { raw: typeof rawGraph; basis: ViewPrefs["timeBasis"]; layout: ViewPrefs["layout"]; graph: LayoutGraph } | undefined;
+  let layoutCache: { raw: typeof rawGraph; basis: ViewPrefs["timeBasis"]; layout: ViewPrefs["layout"]; aspectRatio: number; graph: LayoutGraph } | undefined;
   let layoutJob: AbortController | undefined;
   const removalObserver = new MutationObserver(() => {
     if (canvas.isConnected && myGen === liveGen) return;
@@ -2072,22 +2072,34 @@ export async function renderView(el: HTMLElement) {
     const cached = reuseGraph && rawGraph?.executed && rawGraphScope === scopeKey && rawGraph;
     reuseGraph = false;
     const mySeq = showSeq;
-    const res = cached || await api.graph(cfg.owner, {
+    layoutJob?.abort();
+    const start = performance.now();
+    let res: typeof rawGraph;
+    try { res = cached || await api.graph(cfg.owner, {
       ...(domains.length ? { domains } : {}), layout: isPlanar(p.view) ? p.layout : "hub",
-      ...(isPlanar(p.view) && p.cone !== 1 ? { cone: p.cone } : {}) });
+      ...(isPlanar(p.view) && p.cone !== 1 ? { cone: p.cone } : {}) }); }
+    catch (failure) {
+      console.error("View graph read failed", { elapsedMs: Math.round(performance.now() - start),
+        status: Number((failure as { status?: number }).status) || 0 });
+      throw failure;
+    }
+    console.info("View graph read", { elapsedMs: Math.round(performance.now() - start), cached: !!cached,
+      executed: !!res?.executed, nodes: res?.nodes?.length || 0, edges: res?.edges?.length || 0 });
     if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
     rawGraph = res;
     rawGraphScope = scopeKey;
+    if (!res) return { executed: false };
     if (isPlanar(p.view) || !res.executed) return res;
-    if (layoutCache && layoutCache.raw === res && layoutCache.basis === p.timeBasis && layoutCache.layout === p.layout)
+    const aspectRatio = Math.round((canvas.clientWidth || 1200) / (canvas.clientHeight || 750) * 10) / 10;
+    if (layoutCache && layoutCache.raw === res && layoutCache.basis === p.timeBasis && layoutCache.layout === p.layout && layoutCache.aspectRatio === aspectRatio)
       return { executed: true, ...layoutCache.graph };
     layoutJob?.abort();
     const job = layoutJob = new AbortController();
     try {
       const graph = await layoutInWorker(res.nodes || [], res.edges || [], p.timeBasis, job.signal,
-        p.layout === "rank" ? "ranked" : "temporal");
+        p.layout === "rank" ? "ranked" : "temporal", undefined, aspectRatio);
       if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
-      layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, graph };
+      layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph };
       return { executed: true, ...graph };
     } catch (error) {
       if (job.signal.aborted) return { executed: false, stale: true };
@@ -3689,6 +3701,7 @@ export async function renderView(el: HTMLElement) {
     drawMetrics(atTime(gnodes));      // 3D 와 같은 규칙(위 주석)
     // 3D 와 같은 이유로 **전량**이다(위 `shown3` 주석) — 커서는 가시성이 건다.
     const shown2 = gnodes.map((nd) => ({ ...nd, gateway: isGateway(nd, domains) }));
+    const mountedAt = performance.now();
     g2 = mount2d(canvas, shown2, pruneEdges([...visibleEdges(), ...topicGuides], shown2), {
       markId: lnbFocus.nodeId,
       onClick: (nd) => focusOnMap(toN3([nd])[0]),   // 3D 와 같은 약속
@@ -3697,6 +3710,8 @@ export async function renderView(el: HTMLElement) {
       onEdge: (e) => void openEdgeDetail(e),
       onConnect: connectByDrag, canConnect: canLinkPair,
     }, p, keepCam2);
+    console.info("View scene ready", { renderer: "2d", nodes: shown2.length,
+      elapsedMs: Math.round(performance.now() - mountedAt) });
     applyTimeCut();
   }
 
