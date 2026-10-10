@@ -40,17 +40,17 @@ def inspect(rows, kind, limit):
     return classify_rows(rows, {'id': 'measurement-only', 'max_distance': {kind: limit}}, kind=kind)
 
 
-def validation_metrics(baseline, candidates):
+def validation_metrics(baseline, candidates, splitter=split, names=('calibration', 'holdout')):
     """비교 결과는 실제 보정 검색에서 읽는다. 보정 전 그래프 후보를 재사용하지 않는다."""
     assert len(baseline) == len(candidates)
     metrics = {}
-    for name in ('calibration', 'holdout'):
+    for name in names:
         counts = {'queries': 0, 'negative_queries': 0, 'negative_with_primary': 0,
                   'node_gold_baseline_found': 0, 'node_gold_lost': 0,
                   'chunk_gold_baseline_found': 0, 'chunk_gold_lost': 0,
                   'unclassified_negative_hits': 0, 'negative_primary_by_basis': {}}
         for (item, response), candidate in zip(baseline, candidates):
-            if split(item['query']) != name:
+            if splitter(item['query']) != name:
                 continue
             counts['queries'] += 1
             labelled = {}
@@ -77,6 +77,24 @@ def validation_metrics(baseline, candidates):
     return metrics
 
 
+def passes(metrics):
+    return all(v['negative_queries'] > 0 and v['negative_with_primary'] == 0
+               and v['node_gold_baseline_found'] > 0 and v['node_gold_lost'] == 0
+               and v['chunk_gold_baseline_found'] > 0 and v['chunk_gold_lost'] == 0
+               for v in metrics.values())
+
+
+def load_validation(path, sha, calibration_items):
+    """독립 검증셋: 보정에 한 번도 쓰지 않는다. 기존 116개와 질의가 겹치면 독립이 아니다."""
+    assert digest(path) == sha, 'preregistered validation inputs changed'
+    items = json.loads(Path(path).read_text(encoding='utf-8'))
+    queries = [x['query'] for x in items]
+    assert len(set(queries)) == len(queries), 'duplicate validation query'
+    assert not set(queries) & {x['query'] for x in calibration_items}, 'validation overlaps calibration inputs'
+    assert any(x.get('negative') for x in items) and any(x.get('gold_node_id') for x in items)         and any(x.get('gold_doc_id') for x in items), 'validation needs negative, node and chunk labels'
+    return items
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--store', type=Path, required=True)
@@ -84,11 +102,15 @@ def main():
     ap.add_argument('--inputs-sha', required=True)
     ap.add_argument('--owner', required=True)
     ap.add_argument('--out', type=Path, required=True)
+    ap.add_argument('--validation-inputs', type=Path)
+    ap.add_argument('--validation-sha')
     args = ap.parse_args()
+    assert bool(args.validation_inputs) == bool(args.validation_sha), 'validation inputs need their SHA'
     assert digest(args.inputs) == args.inputs_sha, 'preregistered inputs changed'
     items = json.loads(args.inputs.read_text(encoding='utf-8'))
     assert len({x['query'] for x in items}) == len(items)
     assert len(items) == 116 and sum(bool(x.get('negative')) for x in items) == 40
+    validation = load_validation(args.validation_inputs, args.validation_sha, items) if args.validation_inputs else []
     model = Path(os.environ['VINC_EMBED_MODEL_PATH'])
     runtime = fingerprint()
     result = {'status': 'failed_not_a_measurement', 'activation': 'off',
@@ -128,7 +150,7 @@ def main():
             stack.callback(close_store)
             # Product provisioning on the disposable copy retains its existing vectors.
             store.provision(dim=cfg.embedding_dim)
-            gold_docs = sorted({x['gold_doc_id'] for x in items if x.get('gold_doc_id')})
+            gold_docs = sorted({x['gold_doc_id'] for x in items + validation if x.get('gold_doc_id')})
             result['labelled_documents_present'] = store.run(
                 'MATCH (d:_DocMeta) WHERE d.owner_id=$o AND d.doc_id IN $ids RETURN count(d) AS n',
                 {'o': args.owner, 'ids': gold_docs})[0]['n']
@@ -192,11 +214,26 @@ def main():
                 result['completed_candidate_queries'] += 1
             metrics = validation_metrics(baseline, candidates)
             result['validation'] = metrics
+            if validation:
+                # 같은 경계·같은 스냅샷으로 검증셋만 따로 잰다. 경계는 위 보정 절반에서만 나왔다.
+                result['validation_inputs_sha256'] = args.validation_sha
+                vbase, vcand = [], []
+                for item in validation:
+                    embedding = enc.encode([item['query']], kind='query')[0]
+                    kwargs = dict(query_embedding=embedding, query_runtime=runtime, top_k=20,
+                                  owner=args.owner, cfg=cfg, store=store)
+                    response = retrieval.search(item['query'], **kwargs)
+                    candidate = retrieval.search(item['query'], relevance_profile=simulation,
+                                                 relevance_corpus_revision=revision, **kwargs)
+                    for r in (response, candidate):
+                        assert not any(r.get(k) for k in ('error', 'vector_note', 'encoder_runtime_warning')), 'degraded validation search'
+                    vbase.append((item, response))
+                    vcand.append(candidate)
+                independent = validation_metrics(vbase, vcand, lambda q: 'independent', ('independent',))
+                result['independent_validation'] = independent['independent']
+                result['independent_quality_pass'] = passes(independent)
             result['status'] = 'measured'
-            result['quality_pass'] = all(v['negative_queries'] > 0 and v['negative_with_primary'] == 0
-                                        and v['node_gold_baseline_found'] > 0 and v['node_gold_lost'] == 0
-                                        and v['chunk_gold_baseline_found'] > 0 and v['chunk_gold_lost'] == 0
-                                        for v in metrics.values())
+            result['quality_pass'] = passes(metrics)
     except Exception as exc:
         result['error'] = f'{type(exc).__name__}: {exc}'
     finally:
