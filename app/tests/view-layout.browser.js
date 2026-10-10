@@ -67,6 +67,16 @@ async (page) => {
   });
   assert(initial.nodes === 27 && initial.original === 25, "parallel or original relations lost");
   evidence.push({ check: "2d actual graph and parallel relation identity", ...initial, positions: undefined });
+  const grid2d = await page.evaluate(() => {
+    const g = window.__s2.getGraph(), t = g.getNodeAttributes("domain:qa/a");
+    const ns = g.nodes().filter(id => /^concept:qa-(?:[0-9]|1[01])$/.test(id)).map(id => g.getNodeAttributes(id));
+    return { east: ns.some(n => n.x > t.x), west: ns.some(n => n.x < t.x),
+      north: ns.some(n => n.y > t.y), south: ns.some(n => n.y < t.y),
+      grid: ns.every(n => [n.x - t.x, n.y - t.y].every(v => Math.abs(v / .33 - Math.round(v / .33)) < 1e-7)) };
+  });
+  assert(Object.values(grid2d).every(Boolean), "actual 2d Topic does not spread across the regular grid in four directions");
+  evidence.push({ check: "actual 2d Topic roots spread in four directions on a regular grid", ...grid2d });
+  await page.screenshot({ path: "D:/Projects/AIProjects/vinc-project/_wt/vin427-view-elk/output/view-elk-qa/grid-app-2d.jpg" });
   const clickAt = await page.evaluate(() => {
     const s = window.__s2, g = s.getGraph(), rect = document.querySelector(".a2-stage").getBoundingClientRect();
     for (const id of g.edges()) {
@@ -137,6 +147,16 @@ async (page) => {
   });
   assert(geometry.orthogonal && geometry.original === 25 && geometry.metadata === "QA authored evidence" && geometry.builtInArrowsDisabled, "3d route or metadata mismatch");
   evidence.push({ check: "3d actual sections and original evidence", ...geometry });
+  const grid3d = await page.evaluate(() => {
+    const ns = window.__g3.graphData().nodes, t = ns.find(n => n.id === "domain:qa/a");
+    const members = ns.filter(n => /^concept:qa-(?:[0-9]|1[01])$/.test(n.id));
+    return { east: members.some(n => n.x > t.x), west: members.some(n => n.x < t.x),
+      north: members.some(n => n.y < t.y), south: members.some(n => n.y > t.y),
+      grid: members.every(n => [n.x - t.x, n.y - t.y].every(v => Math.abs(v / .33 - Math.round(v / .33)) < 1e-7)) };
+  });
+  assert(Object.values(grid3d).every(Boolean), "actual 3d Topic does not spread across the regular grid in four directions");
+  evidence.push({ check: "actual 3d Topic roots spread in four directions on a regular grid", ...grid3d });
+  await page.screenshot({ path: "D:/Projects/AIProjects/vinc-project/_wt/vin427-view-elk/output/view-elk-qa/grid-app-3d.jpg" });
   await page.waitForTimeout(600);
   const requestsBeforeRank3 = graphRequests;
   await page.evaluate(() => {

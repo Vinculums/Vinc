@@ -8,6 +8,22 @@ export type LayoutEngine = { layout(graph: ElkNode): Promise<ElkNode> };
 export type LayoutOrdering = "temporal" | "ranked";
 export type CrossRouter = (nodes: GraphNode[], edges: GraphEdge[]) => Promise<GraphEdge[]>;
 const UNIT = 1000;
+const GRID = 330;
+type Direction = "RIGHT" | "LEFT" | "DOWN" | "UP";
+// ELK가 정한 순서·직각 경로를 함께 늘려 격자에 맞춘다. 축을 줄이지 않아
+// 원래 경로가 피한 글자 상자 안으로 선을 밀어 넣지 않는다.
+function gridAxis(values: number[]): (value: number) => number {
+  const xs = [...new Set([0, ...values].map(x => Math.round(x * 1e6) / 1e6))].sort((a, b) => a - b);
+  const zero = xs.indexOf(0), ys = new Array<number>(xs.length); ys[zero] = 0;
+  for (let i = zero + 1; i < xs.length; i++) ys[i] = ys[i - 1] + Math.ceil((xs[i] - xs[i - 1]) / GRID) * GRID;
+  for (let i = zero - 1; i >= 0; i--) ys[i] = ys[i + 1] - Math.ceil((xs[i + 1] - xs[i]) / GRID) * GRID;
+  return value => {
+    if (value <= xs[0]) return ys[0] + value - xs[0];
+    for (let i = 1; i < xs.length; i++) if (value <= xs[i])
+      return ys[i - 1] + (value - xs[i - 1]) * (ys[i] - ys[i - 1]) / (xs[i] - xs[i - 1]);
+    return ys.at(-1)! + value - xs.at(-1)!;
+  };
+}
 const timeOf = (n: GraphNode, basis: "recorded" | "content") => {
   const value = (basis === "content" ? n.content_ts : n.ts) || "";
   // Partial dates retain their authored precision. Explicit ISO instants are
@@ -47,12 +63,16 @@ function components(ids: string[], edges: GraphEdge[]): string[][] {
  * paths are restored to the original relation's source-to-target direction. */
 const ancestry = (e: GraphEdge) => ["DERIVES_FROM", "INHERITS_FROM"].includes(e.type)
   ? [e.target, e.source] : [e.source, e.target];
-function child(id: string, partition: number): ElkNode {
+function child(id: string, partition: number, direction: Direction): ElkNode {
+  const ports = {
+    RIGHT: [[220, 24, "EAST"], [0, 24, "WEST"]], LEFT: [[0, 24, "WEST"], [220, 24, "EAST"]],
+    DOWN: [[110, 90, "SOUTH"], [110, 0, "NORTH"]], UP: [[110, 0, "NORTH"], [110, 90, "SOUTH"]],
+  }[direction];
   return { id, width: 220, height: 90,
     layoutOptions: { "elk.portConstraints": "FIXED_POS", "elk.partitioning.partition": String(partition) },
     ports: [
-      { id: `${id}:out`, x: 220, y: 24, layoutOptions: { "elk.port.side": "EAST" } },
-      { id: `${id}:in`, x: 0, y: 24, layoutOptions: { "elk.port.side": "WEST" } },
+      ...ports.map(([x, y, side], i) => ({ id: `${id}:${i ? "in" : "out"}`, x: Number(x), y: Number(y),
+        layoutOptions: { "elk.port.side": String(side) } })),
     ] };
 }
 
@@ -90,10 +110,10 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
     const inside = usable.filter(e => ids.has(e.source) && ids.has(e.target));
     // 큰 연결 묶음도 날짜·관계를 버리지 않고 여러 가지로 나눈다. 가지 사이의
     // 원래 관계는 아래 공통 라우터가 잇는다. 날짜 순서는 각 가지의 바깥 방향이다.
-    const limit = Math.max(6, Math.min(32, Math.ceil(Math.sqrt(members.length * aspectRatio / 7.8))));
+    const limit = members.length < 8 ? 32 : Math.max(2, Math.min(32, Math.ceil(members.length / 4)));
     let groups = components([...ids], inside).flatMap(group => {
       const dates = new Set(group.map(id => timeOf(map.get(id)!, basis)).filter(Boolean));
-      if (group.length <= 32 && dates.size <= 16) return [group];
+      if (group.length <= limit && dates.size <= 16) return [group];
       const adj = new Map(group.map(id => [id, [] as string[]]));
       for (const e of inside) if (adj.has(e.source) && adj.has(e.target)) {
         adj.get(e.source)!.push(e.target); adj.get(e.target)!.push(e.source);
@@ -129,15 +149,18 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
       if (pending.length) batches.push(pending);
       groups = batches;
     }
-    const wings: string[][][] = [[], []], loads = [0, 0];
+    const wings: string[][][] = [[], [], [], []], loads = [0, 0, 0, 0];
     for (const group of groups) {
-      const wing = loads[0] <= loads[1] ? 0 : 1;
+      const wing = loads.indexOf(Math.min(...loads));
       wings[wing].push(group); loads[wing] += group.length;
     }
     const paths: { edge: GraphEdge; points: RoutePoint[]; original?: GraphEdge }[] = [];
     positions.set(topic.id, { x: 0, y: 0, z: 0 });
-    for (let wing = 0; wing < 2; wing++) {
-      const branches: { ids: string[]; height: number; points: typeof paths; top: number }[] = [];
+    const directions: Direction[] = ["RIGHT", "LEFT", "DOWN", "UP"];
+    const arms: { direction: Direction; branches: { ids: string[]; span: number; points: typeof paths; start: number }[]; span: number }[] = [];
+    for (let wing = 0; wing < 4; wing++) {
+      const direction = directions[wing], horizontal = wing < 2;
+      const branches: (typeof arms)[number]["branches"] = [];
       for (let bi = 0; bi < wings[wing].length; bi++) {
         const group = wings[wing][bi], wingIds = new Set(group);
         if (!wingIds.size) continue;
@@ -161,10 +184,10 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
         }
         const entries = [...edges.map(e => ({ edge: e, ends: ancestry(e), original: e })),
           ...guides.map(e => ({ edge: e, ends: [anchor, e.target], original: undefined }))];
-        const root = child(anchor, 0);
+        const root = child(anchor, 0, direction);
         root.layoutOptions!["elk.layered.layering.layerConstraint"] = "FIRST";
         const result = await elk.layout({ id: `topic:${ti}:${wing}:${bi}`, layoutOptions: {
-          "elk.algorithm": "layered", "elk.direction": "RIGHT", "elk.edgeRouting": "ORTHOGONAL",
+          "elk.algorithm": "layered", "elk.direction": direction, "elk.edgeRouting": "ORTHOGONAL",
           "elk.randomSeed": "10", "elk.separateConnectedComponents": "false",
           "elk.spacing.nodeNode": "80", "elk.layered.spacing.nodeNodeBetweenLayers": "110",
           "elk.spacing.edgeNode": "30", "elk.layered.spacing.edgeNodeBetweenLayers": "30",
@@ -178,7 +201,7 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
           "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
           "elk.partitioning.activate": String(ordering === "temporal"),
         }, children: [root, ...members.filter(n => wingIds.has(n.id)).map(n =>
-          child(n.id, partitions.get(timeOf(n, basis)) ?? 1))],
+          child(n.id, partitions.get(timeOf(n, basis)) ?? 1, direction))],
         edges: entries.map((e, i) => {
           const partition = (id: string) => id === anchor ? 0 : partitions.get(timeOf(map.get(id)!, basis)) ?? 1;
           // Relation direction and chronological placement are independent. A
@@ -189,14 +212,17 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
             targets: [`${e.ends[1]}:${backwards ? "out" : "in"}`] };
         }) });
         const origin = result.children!.find(n => n.id === anchor)!;
-        const sign = wing === 0 ? 1 : -1;
+        const centres = result.children!.filter(n => n.id !== anchor).map(n =>
+          ({ x: n.x! - origin.x!, y: n.y! - origin.y! }));
+        const gx = gridAxis(centres.map(p => p.x)), gy = gridAxis(centres.map(p => p.y));
         const convert = (p: { x: number; y: number }): RoutePoint =>
-          ({ x: sign * (p.x - origin.x! - 110), y: p.y - origin.y! - 24, z: 0 });
-        let y0 = -24, y1 = 66;
+          ({ x: gx(p.x - origin.x! - 110), y: gy(p.y - origin.y! - 24), z: 0 });
+        let low = 0, high = 0;
         for (const n of result.children!) {
-          y0 = Math.min(y0, n.y! - origin.y! - 24);
-          y1 = Math.max(y1, n.y! + n.height! - origin.y! - 24);
-          if (n.id !== anchor) positions.set(n.id, convert({ x: n.x! + 110, y: n.y! + 24 }));
+          if (n.id === anchor) continue;
+          const p = convert({ x: n.x! + 110, y: n.y! + 24 });
+          positions.set(n.id, p);
+          low = Math.min(low, horizontal ? p.y : p.x); high = Math.max(high, horizontal ? p.y : p.x);
         }
         const branchPaths: typeof paths = [];
         for (const output of result.edges as ElkExtendedEdge[]) {
@@ -208,18 +234,26 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
           if (entry.original && entry.ends[0] !== entry.original.source) points = points.reverse();
           branchPaths.push({ edge: entry.edge, original: entry.original, points });
         }
-        branches.push({ ids: group, height: y1 - y0, top: y0, points: branchPaths });
+        branches.push({ ids: group, span: high - low, start: low, points: branchPaths });
       }
-      const height = branches.reduce((sum, b) => sum + b.height, 0) + Math.max(0, branches.length - 1) * 80;
-      let cursor = -height / 2;
-      for (const branch of branches) {
-        const dy = branches.length === 1 ? 0 : cursor - branch.top;
-        for (const id of branch.ids) { const p = positions.get(id)!; positions.set(id, { ...p, y: p.y + dy }); }
+      const span = branches.reduce((sum, b) => sum + b.span, 0) + Math.max(0, branches.length - 1) * GRID;
+      arms.push({ direction, branches, span });
+    }
+    // 위·아래 가지의 폭을 비워 좌우 가지와 겹치지 않게 한다. 마크·글자는 회전하지 않는다.
+    const coreWidth = Math.ceil(Math.max(arms[2].span, arms[3].span) / 2 / GRID) * GRID;
+    for (const arm of arms) {
+      const horizontal = arm.direction === "RIGHT" || arm.direction === "LEFT";
+      let cursor = -Math.floor(arm.span / 2 / GRID) * GRID;
+      for (const branch of arm.branches) {
+        const across = cursor - branch.start;
+        const dx = horizontal ? (arm.direction === "RIGHT" ? coreWidth : -coreWidth) : across;
+        const dy = horizontal ? across : 0;
+        for (const id of branch.ids) { const p = positions.get(id)!; positions.set(id, { ...p, x: p.x + dx, y: p.y + dy }); }
         for (const path of branch.points) {
-          if (!path.original && branches.length > 1) topicEdges.push({ ...path.edge });
-          else paths.push({ ...path, points: path.points.map(p => ({ ...p, y: p.y + dy })) });
+          if (!path.original && (dx || dy)) topicEdges.push({ ...path.edge });
+          else paths.push({ ...path, points: path.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy })) });
         }
-        cursor += branch.height + 80;
+        cursor += branch.span + GRID;
       }
     }
     for (const { edge, points, original } of paths) {
@@ -229,13 +263,13 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
     }
     const boxIds = [topic.id, ...members.map(n => n.id)], ps = boxIds.map(id => positions.get(id)!);
     // 대칭 여백은 Topic을 각 묶음의 중앙에 둔다. 글자 상자는 회전하거나 늘리지 않는다.
-    const radius = Math.max(...ps.map(p => Math.abs(p.x) + 110));
-    const top = Math.min(...ps.map(p => p.y - 24)), bottom = Math.max(...ps.map(p => p.y + 66));
-    boxes.push({ id: topic.id, width: radius * 2, height: bottom - top, left: -radius, top, ids: boxIds });
+    const radius = Math.ceil(Math.max(...ps.map(p => Math.abs(p.x) + 110)) / GRID) * GRID;
+    const radiusY = Math.ceil(Math.max(...ps.map(p => Math.max(Math.abs(p.y - 24), Math.abs(p.y + 66)))) / GRID) * GRID;
+    boxes.push({ id: topic.id, width: radius * 2, height: radiusY * 2, left: -radius, top: -radiusY, ids: boxIds });
   }
   // Topic 묶음 자체도 ELK가 화면 비율에 맞춰 배치한다. 세로 목록을 직접 만들지 않는다.
   const packed = await elk.layout({ id: "view-topics", layoutOptions: { "elk.algorithm": "rectpacking",
-    "elk.aspectRatio": String(aspectRatio), "elk.spacing.nodeNode": "240",
+    "elk.aspectRatio": String(aspectRatio), "elk.spacing.nodeNode": String(GRID * 2),
     "elk.rectpacking.widthApproximation.targetWidth": String(Math.sqrt(boxes.reduce((sum, b) =>
       sum + (b.width + 240) * (b.height + 240), 0) * aspectRatio)) },
     children: boxes.map(b => ({ id: b.id, width: b.width, height: b.height })) });
@@ -244,6 +278,7 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
     const box = boxes[i], at = packed.children!.find(n => n.id === box.id)!;
     const shift = { x: at.x! - box.left - (packed.width || 0) / 2,
       y: at.y! - box.top - (packed.height || 0) / 2, z: (i % 7) * 260 };
+    shift.x = Math.round(shift.x / GRID) * GRID; shift.y = Math.round(shift.y / GRID) * GRID;
     for (const id of box.ids) {
       const p = positions.get(id)!; positions.set(id, { x: p.x + shift.x, y: p.y + shift.y, z: shift.z });
       shifts.set(id, shift);
