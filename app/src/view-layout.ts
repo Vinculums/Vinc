@@ -6,7 +6,7 @@ import type { RoutingNode } from "./view-layout-avoid";
 export type LayoutGraph = { nodes: GraphNode[]; edges: GraphEdge[]; topicEdges: GraphEdge[] };
 export type LayoutEngine = { layout(graph: ElkNode): Promise<ElkNode> };
 export type LayoutOrdering = "temporal" | "ranked";
-export type CrossRouter = (nodes: GraphNode[], edges: GraphEdge[]) => Promise<GraphEdge[]>;
+export type CrossRouter = (nodes: GraphNode[], edges: GraphEdge[], batching?: "connector") => Promise<GraphEdge[]>;
 const UNIT = 1000;
 const GRID = 330;
 type Direction = "RIGHT" | "LEFT" | "DOWN" | "UP";
@@ -339,13 +339,17 @@ async function routeMap(nodes: GraphNode[], edges: GraphEdge[],
   const portal = (id: string, toward: string) => {
     const node = map.get(id)!, other = map.get(toward)!, box = byBox.get(boxOf.get(id)!)!.routingBox!;
     const dx = other.x! - node.x!, dy = other.y! - node.y!;
-    let x = node.x! * UNIT, y = node.y! * UNIT;
+    // Share access points on Topic boundaries. Each original relation keeps
+    // its individual source and target legs; external geometry is reused.
+    let x = Math.round((box.left + box.right) / 2 / GRID) * GRID;
+    let y = Math.round((box.top + box.bottom) / 2 / GRID) * GRID;
     if (Math.abs(dx) / Math.max(1, box.right - box.left) >= Math.abs(dy) / Math.max(1, box.bottom - box.top))
       x = dx >= 0 ? box.right + 120 : box.left - 120;
     else y = dy >= 0 ? box.bottom + 120 : box.top - 120;
     const key = `@portal:${boxOf.get(id)}:${x}:${y}`;
     if (!portals.has(key)) portals.set(key, { id: key, label: "", kind: "concept", degree: 0, domain: topicOf(node),
-      x: x / UNIT, y: y / UNIT, z: node.z, routingBox: { left: x - .5, right: x + .5, top: y - .5, bottom: y + .5 } });
+      x: x / UNIT, y: y / UNIT, z: node.z, routingObstacle: false,
+      routingBox: { left: x - .5, right: x + .5, top: y - .5, bottom: y + .5 } });
     return key;
   };
   const result: GraphEdge[] = new Array(edges.length);
@@ -365,9 +369,13 @@ async function routeMap(nodes: GraphNode[], edges: GraphEdge[],
       ...obstacles.filter(n => n.id !== `@box:${id}`)], batch.edges);
     batch.edges.forEach((e, i) => { localPaths.set(e, out[i]); if (batch.indices[i] >= 0) result[batch.indices[i]] = out[i]; });
   }
-  const middles = await router([...obstacles, ...portals.values()], legs.map(l => l.middle));
-  legs.forEach((l, i) => { result[l.index] = { ...edges[l.index], route: { engine: "libavoid", points: simplifyRoute([
-    ...localPaths.get(l.source)!.route!.points, ...middles[i].route!.points, ...localPaths.get(l.target)!.route!.points,
+  const unique = new Map<string, GraphEdge>();
+  const keyOf = (e: GraphEdge) => JSON.stringify([e.source, e.target]);
+  for (const l of legs) if (!unique.has(keyOf(l.middle))) unique.set(keyOf(l.middle), l.middle);
+  const corridors = await router([...obstacles, ...portals.values()], [...unique.values()], "connector");
+  const middlePaths = new Map([...unique.keys()].map((key, i) => [key, corridors[i].route!.points]));
+  legs.forEach(l => { result[l.index] = { ...edges[l.index], route: { engine: "libavoid", points: simplifyRoute([
+    ...localPaths.get(l.source)!.route!.points, ...middlePaths.get(keyOf(l.middle))!, ...localPaths.get(l.target)!.route!.points,
   ]) } }; });
   return result;
 }

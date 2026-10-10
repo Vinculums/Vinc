@@ -830,8 +830,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     requestAnimationFrame(() => {
       if (dead) return;
       wake(700);
-      console.info("View scene ready", { renderer: "3d", nodes: nodes.length, edges: links.length,
-        elapsedMs: Math.round(performance.now() - mountedAt) });
+      console.info(`View scene ready ${JSON.stringify({ renderer: "3d", nodes: nodes.length, edges: links.length,
+        elapsedMs: Math.round(performance.now() - mountedAt) })}`);
       if (!keepCam) (g as any).zoomToFit?.(400, 60);
       // zoomToFit 은 카메라를 코드로 옮기므로 controls 의 change 가 안 나올 수 있다.
       // 애니메이션(400ms)이 끝난 뒤 fog 를 새 거리에 맞춘다.

@@ -1,7 +1,7 @@
 import type { GraphEdge, GraphNode } from "./api";
 import { simplifyRoute, type RoutePoint } from "./view-route";
 
-export type RoutingNode = GraphNode & { routingBox?: { left: number; right: number; top: number; bottom: number } };
+export type RoutingNode = GraphNode & { routingBox?: { left: number; right: number; top: number; bottom: number }; routingObstacle?: boolean };
 const rectangleOf = (n: RoutingNode) => n.routingBox || { left: n.x! * 1000 - 110, right: n.x! * 1000 + 110,
   top: n.y! * 1000 - 24, bottom: n.y! * 1000 + 66 };
 
@@ -73,8 +73,23 @@ function routeBatch(Avoid: any, nodes: GraphNode[], edges: GraphEdge[]): GraphEd
 /** A full-store visibility graph grows even when only two topics are linked.
  * Route each topic pair from its endpoint shapes, then check every mark.
  * Any obstacle reached by a detour is added before recomputing the whole pair. */
-export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEdge[]): GraphEdge[] {
+export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEdge[], batching?: "connector"): GraphEdge[] {
   if (!edges.length) return [];
+  // Geometry is independent of relation type/evidence. Shared access legs can
+  // repeat hundreds of times; routing/nudging each copy multiplies WASM work.
+  // Retain every original relation and restore its direction after routing.
+  const pairKey = (e: GraphEdge) => JSON.stringify([e.source, e.target].sort());
+  const unique = new Map<string, GraphEdge>();
+  for (const e of edges) if (!unique.has(pairKey(e))) unique.set(pairKey(e), e);
+  if (unique.size < edges.length) {
+    const geometry = routeAcrossTopics(Avoid, nodes, [...unique.values()], batching);
+    const paths = new Map([...unique.keys()].map((key, i) => [key, geometry[i]]));
+    return edges.map(e => {
+      const path = paths.get(pairKey(e))!;
+      return { ...e, route: { ...path.route!, points: e.source === path.source
+        ? path.route!.points : [...path.route!.points].reverse() } };
+    });
+  }
   const map = new Map(nodes.map(n => [n.id, n]));
   const topic = (id: string) => { const n = map.get(id)!; return n.kind === "domain" ? n.id.slice(7) : n.domain || ""; };
   const batches = new Map<string, number[]>();
@@ -82,11 +97,27 @@ export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEd
     // Large topic pairs can span many columns. Combining their unrelated
     // corridors recreates the full-store visibility graph; keep each original
     // connector's obstacle set bounded instead.
-    const key = JSON.stringify((nodes.length > 500 ? [e.source, e.target] : [topic(e.source), topic(e.target)]).sort());
+    const endpoints = batching === "connector" || nodes.length > 500 ? [e.source, e.target] : [topic(e.source), topic(e.target)];
+    // Shared corridors already deduplicate parallel geometry. Do not nudge an
+    // opposing corridor against its reverse in the same visibility graph.
+    const key = JSON.stringify(batching === "connector" ? endpoints : endpoints.sort());
     if (!batches.has(key)) batches.set(key, []);
     batches.get(key)!.push(i);
   });
-  const bounds = nodes.map(n => { const r = rectangleOf(n); return { n, left: r.left - 4, right: r.right + 4,
+  // 전체 노드가 적어도 한 Topic 쌍에 끝점이 몰리면 가시성 그래프가 커진다.
+  // 평행 관계는 같은 끝점 묶음에 남기고, 서로 다른 연결은 따로 계산한다.
+  const bounded: number[][] = [];
+  for (const indices of batches.values()) {
+    const endpointCount = new Set(indices.flatMap(i => [edges[i].source, edges[i].target])).size;
+    if (endpointCount <= 48 && indices.length <= 64) { bounded.push(indices); continue; }
+    const pairs = new Map<string, number[]>();
+    for (const i of indices) {
+      const key = JSON.stringify([edges[i].source, edges[i].target].sort());
+      if (!pairs.has(key)) pairs.set(key, []); pairs.get(key)!.push(i);
+    }
+    bounded.push(...pairs.values());
+  }
+  const bounds = nodes.filter(n => (n as RoutingNode).routingObstacle !== false).map(n => { const r = rectangleOf(n); return { n, left: r.left - 4, right: r.right + 4,
     top: r.top - 4, bottom: r.bottom + 4 }; });
   // 모든 장애물을 색인한다. 각 직각 구간과 겹치는 칸만 조회하며 멀리 우회한 선도 검사한다.
   const cells = new Map<string, typeof bounds>(), cellSize = 500;
@@ -95,7 +126,7 @@ export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEd
       const key = `${x}:${y}`; if (!cells.has(key)) cells.set(key, []); cells.get(key)!.push(b);
     }
   const result: GraphEdge[] = new Array(edges.length);
-  for (const indices of batches.values()) {
+  for (const indices of bounded) {
     const batch = indices.map(i => edges[i]);
     const endpoints = new Set(batch.flatMap(e => [e.source, e.target]));
     const included = new Set(endpoints);

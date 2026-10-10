@@ -2134,12 +2134,12 @@ export async function renderView(el: HTMLElement) {
       ...(domains.length ? { domains } : {}), layout: isPlanar(p.view) ? p.layout : "hub",
       ...(isPlanar(p.view) && p.cone !== 1 ? { cone: p.cone } : {}) }); }
     catch (failure) {
-      console.error("View graph read failed", { elapsedMs: Math.round(performance.now() - start),
-        status: Number((failure as { status?: number }).status) || 0 });
+      console.error(`View graph read failed ${JSON.stringify({ elapsedMs: Math.round(performance.now() - start),
+        status: Number((failure as { status?: number }).status) || 0 })}`);
       throw failure;
     }
-    console.info("View graph read", { elapsedMs: Math.round(performance.now() - start), cached: !!cached,
-      executed: !!res?.executed, nodes: res?.nodes?.length || 0, edges: res?.edges?.length || 0 });
+    console.info(`View graph read ${JSON.stringify({ elapsedMs: Math.round(performance.now() - start), cached: !!cached,
+      executed: !!res?.executed, nodes: res?.nodes?.length || 0, edges: res?.edges?.length || 0 })}`);
     if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
     rawGraph = res;
     rawGraphScope = scopeKey;
@@ -3782,8 +3782,8 @@ export async function renderView(el: HTMLElement) {
       onEdge: (e) => void openEdgeDetail(e),
       onConnect: connectByDrag, canConnect: canLinkPair,
     }, p, keepCam2);
-    console.info("View scene ready", { renderer: "2d", nodes: shown2.length,
-      elapsedMs: Math.round(performance.now() - mountedAt) });
+    console.info(`View scene ready ${JSON.stringify({ renderer: "2d", nodes: shown2.length,
+      elapsedMs: Math.round(performance.now() - mountedAt) })}`);
     applyTimeCut();
   }
 
