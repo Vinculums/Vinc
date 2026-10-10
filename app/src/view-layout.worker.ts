@@ -30,7 +30,8 @@ self.onmessage = async (event: MessageEvent<{ nodes: GraphNode[]; edges: GraphEd
       try { return routeAcrossTopics(AvoidLib.getInstance(), ns, es, batching); }
       finally { routingMs += performance.now() - start; }
     }, ordering, aspectRatio);
-    self.postMessage({ graph, timings: { elkMs: Math.round(elkMs), routingMs: Math.round(routingMs) } });
+    self.postMessage({ graph, timings: { elkMs: Math.round(elkMs), routingMs: Math.round(routingMs),
+      compositionMs: Math.round(Math.max(0, performance.now() - started - elkMs - routingMs)) } });
   } catch (error) {
     self.postMessage({ error: error instanceof Error ? error.message : String(error) });
   } finally { clearInterval(heartbeat); elk.terminateWorker(); }

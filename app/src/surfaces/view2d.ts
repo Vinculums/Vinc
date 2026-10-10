@@ -557,7 +557,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       if (!edge.route) return;
       const display = reduceEdge(key, g.getEdgeAttributes(key));
       if (display.hidden) return;
-      const original = edge.route.points.map(p => ({ x: p.x * layoutSpread, y: -p.y * layoutSpread, z: 0 }));
+      const original = (edge.route.points2d ?? edge.route.points).map(p => ({ x: p.x * layoutSpread, y: -p.y * layoutSpread, z: 0 }));
       const endpoint = (id: string): RoutePoint => ({ x: g.getNodeAttribute(id, "x"), y: g.getNodeAttribute(id, "y"), z: 0 });
       const points = movedRoute(original, endpoint(edge.source), endpoint(edge.target)).map(p =>
         ({ ...sigma.graphToViewport(p), z: 0 }));

@@ -30,7 +30,7 @@ export function layoutInWorker(nodes: GraphNode[], edges: GraphEdge[], basis: "r
     const timer = setTimeout(() => finish(new Error(`View layout timed out${lastProgress
       ? ` (${JSON.stringify(lastProgress)})` : ""}`)), 60000);
     signal.addEventListener("abort", abort, { once: true });
-    worker.onmessage = (event: MessageEvent<{ graph?: LayoutGraph; error?: string; timings?: { elkMs: number; routingMs: number }; progress?: typeof lastProgress }>) => {
+    worker.onmessage = (event: MessageEvent<{ graph?: LayoutGraph; error?: string; timings?: { elkMs: number; routingMs: number; compositionMs?: number }; progress?: typeof lastProgress }>) => {
       const progress = event.data.progress;
       if (progress && ["elk", "routing"].includes(progress.phase) &&
           [progress.callsDone, progress.activeNodes, progress.activeEdges, progress.elapsedMs].every(Number.isFinite)) {

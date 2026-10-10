@@ -800,6 +800,13 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     const tgt = controls?.target as THREE.Vector3 | undefined;
     const dist = tgt ? cam.position.distanceTo(tgt) : cam.position.length();
     if (!(dist > 0)) return;
+    // ELK maps can exceed the renderer's fixed sky/camera range. Fit and zoom
+    // must not clip the actual marks while near routed sections remain visible.
+    const extent = Math.max(S, ...nodes.map(n => Math.hypot((n.x || 0) - (tgt?.x || 0),
+      (n.y || 0) - (tgt?.y || 0), (n.z || 0) - (tgt?.z || 0)) + nodeRadius(n, prefs)));
+    cam.far = Math.max(2000, dist + extent * 2);
+    cam.updateProjectionMatrix();
+    if (controls && "maxDistance" in controls) controls.maxDistance = Math.max(5000, extent * 8);
     if (fog) { fog.near = dist * FOG_NEAR_K; fog.far = dist * FOG_FAR_K; }
   };
   syncCamera();
