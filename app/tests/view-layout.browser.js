@@ -6,6 +6,7 @@ async (page) => {
   const errors = [], evidence = [];
   let graphRequests = 0;
   let failNextGraph = false;
+  let failEdgeTransport = false;
   let mapFixture = false;
   let holdNextScope = false, releaseScope, signalScopeStarted;
   let navEnabled = false;
@@ -48,7 +49,12 @@ async (page) => {
     if (path === "/nav-tree" && navEnabled) data = { executed: true, domains: ["qa/a", "qa/b"].map(domain =>
       ({ domain, concepts: 12, docs: [], nodes: [] })), counts: { domains: 3, docs: 0, unfiled: 0, kinds: { concept: 24 } } };
     if (path === "/node-context") data = { executed: true, node: { id: "concept:qa-0", title: "QA knowledge", domain: "qa/a", kind: "concept" }, docs: [], links: [], records: [] };
-    if (path === "/edge-context") data = { executed: true, src: { title: "QA source" }, dst: { title: "QA target" }, confidence: .8, evidence: "QA authored evidence" };
+    // The live endpoint may reject an authored decision/record relation. Its
+    // existing graph metadata must still reach the detail UI without invention.
+    if (path === "/edge-context") {
+      if (failEdgeTransport) return route.fulfill({ status: 502, json: { error: "upstream unavailable" } });
+      data = { executed: false, note: "unknown edge" };
+    }
     await route.fulfill({ json: data });
   });
   await page.goto("http://127.0.0.1:5207/#view");
@@ -77,7 +83,7 @@ async (page) => {
   assert(Object.values(grid2d).every(Boolean), "actual 2d Topic does not spread across the regular grid in four directions");
   evidence.push({ check: "actual 2d Topic roots spread in four directions on a regular grid", ...grid2d });
   await page.screenshot({ path: "D:/Projects/AIProjects/vinc-project/_wt/vin427-view-elk/output/view-elk-qa/grid-app-2d.jpg" });
-  const clickAt = await page.evaluate(() => {
+  const findEdgeClick = () => page.evaluate(() => {
     const s = window.__s2, g = s.getGraph(), rect = document.querySelector(".a2-stage").getBoundingClientRect();
     for (const id of g.edges()) {
       if (!g.getEdgeAttribute(id, "directed")) continue;
@@ -91,10 +97,25 @@ async (page) => {
       }
     }
   });
+  const clickAt = await findEdgeClick();
   assert(clickAt, "no routed edge click target");
   await page.mouse.click(clickAt.x, clickAt.y);
   await page.getByText("QA authored evidence", { exact: true }).waitFor();
-  evidence.push({ check: "2d routed edge picking opens authored evidence", pass: true });
+  assert(await page.getByText("confidence 80%", { exact: false }).count() > 0,
+    "known relation confidence is dropped after a rejected context read");
+  evidence.push({ check: "2d routed edge picking preserves authored evidence and confidence after rejected context read", pass: true });
+  await page.keyboard.press("Escape");
+  // The detail pane collapses with a width transition; let Sigma's resize
+  // observer update its projection before choosing another physical hit point.
+  await page.waitForTimeout(350);
+  failEdgeTransport = true;
+  const retryClick = await findEdgeClick();
+  await page.mouse.click(retryClick.x, retryClick.y);
+  await page.getByText("QA authored evidence", { exact: true }).waitFor();
+  assert(await page.getByText("confidence 80%", { exact: false }).count() > 0,
+    "failed context transport drops an already-loaded relation's confidence");
+  evidence.push({ check: "failed relation transport preserves the exact loaded authored metadata", pass: true });
+  failEdgeTransport = false;
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "View and legend, 2D" }).click();
   await page.getByRole("slider", { name: "Time cursor" }).evaluate(el => { el.value = ".25"; el.dispatchEvent(new Event("input", { bubbles: true })); });
