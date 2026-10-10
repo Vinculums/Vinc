@@ -2201,7 +2201,7 @@ export async function renderView(el: HTMLElement) {
     const shown3 = filterUnlinked(toN3(nodes, domains, lnbFocus.nodeId));
     g3 = mount3d(canvas, shown3, toL3(pruneEdges([...visibleEdges(), ...topicGuides], shown3)), {
       onLinkClick: (edge) => { if (DIRECTED_RELS.includes(edge.type || "") && !edge.presentation)
-        void openEdgeDetail({ source: typeof edge.source === "object" ? edge.source.id : edge.source,
+        void openEdgeDetail({ id: edge.id, source: typeof edge.source === "object" ? edge.source.id : edge.source,
           target: typeof edge.target === "object" ? edge.target.id : edge.target, type: edge.type || "" }); },
       // 게이트웨이(렌즈 밖 노드)는 그 주제로 건너뛴다 — 주제 렌즈에서만 성립하고,
       // 전체 화면에는 렌즈가 없으므로 toN3 가 애초에 표식을 달지 않는다.
@@ -2717,16 +2717,28 @@ export async function renderView(el: HTMLElement) {
     void loadNodeSource(nd);
   }
 
-  async function openEdgeDetail(e: { source: string; target: string; type: string;
+  async function openEdgeDetail(e: { id?: string; source: string; target: string; type: string;
                                      srcTitle?: string; dstTitle?: string }) {
     // D45-V 1단계 — 흐름 선 클릭: "왜 A 가 B 로 이어지는가". 클릭=고정(pin) —
     // 상세 패널 자리를 그대로 쓴다(노드 상세와 같은 표면, ESC/다른 클릭으로 이동).
     openRail();
     detail.innerHTML = `<p class="hint">${COPY.ui.viewx.relLoading}</p>`;
+    const pending = detail.firstChild, graphAtOpen = curEdges;
+    // Use only an exact authored relation from this already-authorized graph.
+    // A parallel relation without an ID must never borrow another one's evidence.
+    const matches = curEdges.filter(x => !x.presentation && x.source === e.source
+      && x.target === e.target && x.type === e.type && (!e.id || x.id === e.id));
+    const known = matches.length === 1 ? matches[0] : undefined;
     try {
-      let res = await api.edgeContext(cfg.owner, e.source, e.target, e.type);
+      let res: Awaited<ReturnType<typeof api.edgeContext>>;
+      try { res = await api.edgeContext(cfg.owner, e.source, e.target, e.type); }
+      catch (error) { if (!known) throw error; res = { executed: false }; }
       let guessed = false;   // 서버가 이 관계를 못 읽었다 — 근거가 있는지도 모른다
-      if (detail.hidden) return;   // 그 사이 다른 층으로 이동 — 늦은 응답 폐기
+      if (detail.hidden || detail.firstChild !== pending || curEdges !== graphAtOpen) return;
+      if (!res.executed && known) res = { executed: true,
+        confidence: known.confidence, evidence: known.evidence,
+        src: { id: e.source, title: curNodes.find(n => n.id === e.source)?.label || e.srcTitle },
+        dst: { id: e.target, title: curNodes.find(n => n.id === e.target)?.label || e.dstTitle } };
       // 관계 상세 조회는 개념끼리만 안다(결정·기록이 낀 관계는 거절한다). 이름을 들고 왔으면
       // 근거 없이 그 관계를 그대로 보이고 지우는 문은 남긴다 — 이은 것을 못 지우면 안 된다.
       if (!res.executed) {
@@ -2781,7 +2793,8 @@ export async function renderView(el: HTMLElement) {
         } catch { say(A.edgeDelFail); }
       });
     } catch {
-      if (!detail.hidden) detail.innerHTML = `<p class="hint">${COPY.ui.viewx.relFail}</p>`;
+      if (!detail.hidden && detail.firstChild === pending && curEdges === graphAtOpen)
+        detail.innerHTML = `<p class="hint">${COPY.ui.viewx.relFail}</p>`;
     }
   }
 
