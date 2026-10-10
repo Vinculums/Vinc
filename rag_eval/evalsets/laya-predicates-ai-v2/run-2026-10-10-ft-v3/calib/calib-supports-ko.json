@@ -1,0 +1,46 @@
+{
+ "pins": {
+  "package": "laya==0.3.28",
+  "repo": "convaiinnovations/laya-multilingual",
+  "revision": "e4e9ddf21a7b1903b7acffd8814ad4307bf63a67",
+  "sha256": {
+   "model.safetensors": "9d628fd971b700382ac6f65920a86f149777b2e748e0c955fb3b19695aa8f204"
+  },
+  "backend": "eager",
+  "max_len": 1024,
+  "seed": 20261007,
+  "questions_hash": "500e613737d1",
+  "python": "3.12.9",
+  "machine": "Windows-10-10.0.19045-SP0",
+  "written_at": "2026-10-10T03:15:26Z",
+  "laya": "0.3.28",
+  "torch": "2.14.1+cpu",
+  "transformers": "5.19.0",
+  "cuda": false
+ },
+ "predicate": "supports",
+ "lang": "ko",
+ "n": 40,
+ "seed": 20261007,
+ "questions_hash": "500e613737d1",
+ "bucket": "noul:2",
+ "temperature": 3.500455856323242,
+ "status": "ok",
+ "min_confidence": 1.0,
+ "laya_report": {
+  "ece_before": NaN,
+  "ece_after": NaN,
+  "n": 40.0,
+  "n_eval": 0.0,
+  "buckets_excluded_from_eval": [
+   "noul:2"
+  ]
+ },
+ "thresholds": {
+  "noul:2": 1.0
+ },
+ "ece_before_in_sample": 0.20217332263315402,
+ "ece_after_in_sample": 0.1867797289196246,
+ "underpowered": true,
+ "calibration_id": "1fb2d1d33d5c"
+}

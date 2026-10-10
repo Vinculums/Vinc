@@ -1,0 +1,16 @@
+{
+ "physical_attempt": 1,
+ "started_at": "2026-10-10T03:15:17.117198+00:00",
+ "command": [
+  "D:/Projects/AIProjects/vinc-project/_scratch/laya/venv/Scripts/python.exe",
+  "-u",
+  "-m",
+  "rag_eval.laya.fit_calib",
+  "--in",
+  "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\out\\ft-v3\\calib.jsonl",
+  "--out",
+  "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\out\\ft-v3\\calib"
+ ],
+ "finished_at": "2026-10-10T03:15:35.936991+00:00",
+ "exit_code": 0
+}
