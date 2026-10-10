@@ -85,7 +85,9 @@ def main(argv=None) -> int:
     ap.add_argument("--gold", type=Path, default=None, help="규칙 기준선용 원문 텍스트(없으면 규칙 기준선 생략)")
     ap.add_argument("--cosine", type=Path, default=None)
     ap.add_argument("--out", required=True, type=Path)
+    ap.add_argument("--provenance", type=Path, help="Optional provider pins JSON for imported probabilities")
     args = ap.parse_args(argv)
+    pins = json.loads(args.provenance.read_text(encoding="utf-8")) if args.provenance else pin_header()
 
     rows = read_jsonl(args.inp)
     gold = {p["pair_id"]: {"a_text": p["a"]["text"], "b_text": p["b"]["text"], "context": p.get("context")}
@@ -99,11 +101,11 @@ def main(argv=None) -> int:
         if r.get("label") in (0, 1) and not r.get("truncated"):
             by[(r["predicate"], r["pair_id"])][r["direction"]] = r
 
-    result = {"pins": pin_header(), "gate": GATE, "target_error": TARGET_ERROR,
+    result = {"pins": pins, "gate": GATE, "target_error": TARGET_ERROR,
               "asymmetry_abstain": ASYMMETRY_ABSTAIN, "rows": len(rows),
               "rows_truncated_excluded": n_truncated, "rows_unlabeled_excluded": n_unlabeled,
               "table": [], "curves": {}}
-    lines = ["# Laya 술어 측정 보고서", "",
+    lines = [f"# {pins.get('provider', 'Laya')} 술어 측정 보고서", "",
              f"입력: `{args.inp}`  행 {len(rows)} (절단으로 제외 {n_truncated}, 라벨 없음 {n_unlabeled})", "",
              "| 술어 | 언어 | n | Brier | ECE | AUROC | coverage@동결 문턱 (실제 오류) | 기권 문턱/비대칭 | 게이트 |",
              "|---|---|---|---|---|---|---|---|---|"]

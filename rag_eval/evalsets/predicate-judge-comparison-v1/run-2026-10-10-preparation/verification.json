@@ -1,0 +1,26 @@
+{
+  "scope": "offline_preparation",
+  "synthetic_test_responses_are_not_model_evidence": true,
+  "tests_passed": 68,
+  "new_tests": 31,
+  "existing_laya_tests": 37,
+  "frozen_gold_and_split_files_verified": 10,
+  "prepared_requests_per_provider": 240,
+  "released_eval_requests": 0,
+  "model_inference_calls": 0,
+  "paid_calls": 0,
+  "training_runs": 0,
+  "live_belief_writes": 0,
+  "planned_http_requests_per_provider": 1256,
+  "planned_binary_answers_per_provider": 3140,
+  "synthetic_fit_smoke": {
+    "provider": "synthetic_fixture",
+    "six_calibration_files": 6,
+    "pairs_or_rows_not_model_measurements": true
+  },
+  "gates": {
+    "auroc_margin": 0.05,
+    "ece_max": 0.1,
+    "coverage_min": 0.5
+  }
+}

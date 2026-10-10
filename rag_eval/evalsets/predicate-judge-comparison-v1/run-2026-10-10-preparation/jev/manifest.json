@@ -1,0 +1,111 @@
+{
+  "contract": {
+    "schema": "vinc.predicate_judge_comparison.v1",
+    "questions_hash": "500e613737d1",
+    "scope": "offline_preparation",
+    "gates": {
+      "auroc_margin": 0.05,
+      "ece_max": 0.1,
+      "coverage_min": 0.5
+    },
+    "target_error": 0.05,
+    "asymmetry_abstain": 0.2,
+    "calibration": {
+      "temp_min": 0.5,
+      "temp_max": 5.0,
+      "min_bucket_n": 30,
+      "seed": 20261007,
+      "mixed_uses": "en",
+      "epsilon": 1e-12
+    },
+    "providers": {
+      "jev": {
+        "model": "jev-1.13.0",
+        "endpoint": "https://api.typesafe.ai/v1/systemone",
+        "contract_url": "https://docs.typesafe.ai/api"
+      },
+      "openai_decisions": {
+        "model": "gpt-6-luna",
+        "endpoint": "https://api.openai.com/v1/decisions",
+        "contract_url": "https://developers.openai.com/api/reference/python/resources/decisions"
+      }
+    },
+    "sets": {
+      "calib": {
+        "gold": "rag_eval/evalsets/laya-predicates-ai-v2/ft-v3-inputs/holdout/gold.jsonl",
+        "gold_sha256": "5082bd413ba73519abb1b03f2030f02d934abe349c609899ef12ac56db72e9e3",
+        "split": "rag_eval/evalsets/laya-predicates-ai-v2/ft-v3-inputs/holdout/gold.split.json",
+        "split_sha256": "a7c4499b6290e941c62b149ee9758e911fa26455901bc831d8060fddd87f7319",
+        "partition": "calib",
+        "pairs": 120,
+        "requests": 240,
+        "answers": 600
+      },
+      "a": {
+        "gold": "rag_eval/evalsets/laya-predicates-ai-v2/gold.jsonl",
+        "gold_sha256": "c2f684259e7d0092e41901f446a61a519c012ed689b2ed368bdf04ad83fcbaea",
+        "split": "rag_eval/evalsets/laya-predicates-ai-v2/gold.split.json",
+        "split_sha256": "f35bc325e03263740cf4099fa303d814c7a5974ee33c2dc737799e73ee3d0c8e",
+        "partition": "eval",
+        "pairs": 173,
+        "requests": 346,
+        "answers": 865
+      },
+      "b": {
+        "gold": "rag_eval/evalsets/laya-predicates-ai-v1/gold.jsonl",
+        "gold_sha256": "49cf4b34be2fd840c56e54bcca152abfaaebd76afa844938c6d7a7eccb29fd0a",
+        "split": "rag_eval/evalsets/laya-predicates-ai-v1/gold.split.json",
+        "split_sha256": "223d6b6b5eaaf4f687c68330c23c0a494ecd23dc90d9f64d55dda38138020e3f",
+        "partition": "eval",
+        "pairs": 150,
+        "requests": 300,
+        "answers": 750
+      },
+      "c": {
+        "gold": "rag_eval/evalsets/laya-predicates-community-v1/gold.jsonl",
+        "gold_sha256": "1551ce8b1a6da919e6805ef5ea82eb4862bfa4a6061c6623c00613dbb11f5f69",
+        "split": "rag_eval/evalsets/laya-predicates-community-v1/gold.split.json",
+        "split_sha256": "1bd7b94a21c317e31189de6fdd448bb099bb155aacd21b9808fa1a7f05264fde",
+        "partition": "eval",
+        "pairs": 140,
+        "requests": 280,
+        "answers": 700
+      },
+      "d": {
+        "gold": "rag_eval/evalsets/laya-predicates-ai-v2/ft-v3-inputs/audit-diagnostic/gold.jsonl",
+        "gold_sha256": "088d35c00b998094d83a0d018e2dfcca4bf415547442c30a06810a8596c59a29",
+        "split": "rag_eval/evalsets/laya-predicates-ai-v2/ft-v3-inputs/audit-diagnostic/gold.split.json",
+        "split_sha256": "430b13c075dbea742394187e3aaa6bed4cee6dcc2c50b0230f1fcd4b45a8908d",
+        "partition": "eval",
+        "pairs": 45,
+        "requests": 90,
+        "answers": 225
+      }
+    },
+    "per_provider": {
+      "requests": 1256,
+      "answers": 3140
+    },
+    "live_calls_authorized": false
+  },
+  "provider": "jev",
+  "provenance": {
+    "provider": "jev",
+    "model": "jev-1.13.0",
+    "endpoint": "https://api.typesafe.ai/v1/systemone",
+    "contract_url": "https://docs.typesafe.ai/api",
+    "questions_hash": "500e613737d1",
+    "contract_sha256": "788573a8ecdd1c87f82eac68692d0b6aa8426a47831d382f79609c53b0bec809",
+    "epsilon": 1e-12,
+    "logits_kind": "probability_pseudo_logits",
+    "source_calibration": "5082bd413ba73519abb1b03f2030f02d934abe349c609899ef12ac56db72e9e3"
+  },
+  "code_sha256": {
+    "rag_eval/judge_compare.py": "c918b01f60855ea0a0a1a562e132bccac5609b1aeb473f82f1a5c27b16ba993e",
+    "rag_eval/laya/fit_calib.py": "78c35b070dde4461d5d6bdfc256c5ea3da011ffc4d7aae5df2bfe2aa0009c7ea",
+    "rag_eval/laya/report.py": "fa0202c6387e1286a7dbd639998736ec9a1c25d42982185b12c25668b9128812",
+    "rag_eval/laya/pins.py": "22b1caee785cebc48cae15f0994ef76c0a8b43d48fb3c54ca52877f614a42af7",
+    "rag_eval/laya/run_gold.py": "5686761abc96ddabac6940d9993914df0b4d60761b7a4b893b7e5852c3dc6433",
+    "rag_eval/laya/metrics.py": "299f6d6bb8ca3bfe32f75d7e54f0e8db56264af432da1e3c5557f01ad1d4617a"
+  }
+}

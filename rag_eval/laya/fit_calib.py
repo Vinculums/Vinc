@@ -26,7 +26,9 @@ def main(argv=None) -> int:
     ap.add_argument("--in", dest="inp", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--min-bucket-n", type=int, default=30)
+    ap.add_argument("--provenance", type=Path, help="Optional provider pins JSON for imported probabilities")
     args = ap.parse_args(argv)
+    pins = json.loads(args.provenance.read_text(encoding="utf-8")) if args.provenance else pin_header()
 
     import numpy as np
     from laya.calibrate import TEMP_MAX, TEMP_MIN, fit_abstention_thresholds, fit_temperatures, temp_bucket
@@ -46,6 +48,9 @@ def main(argv=None) -> int:
                        for r in recs_rows]
             entry = {"predicate": pred, "lang": lang, "n": len(records), "seed": SEED,
                      "questions_hash": questions_hash(), "bucket": temp_bucket(2, 2)}
+            if args.provenance:
+                entry.update(source_input_sha256=hashlib.sha256(args.inp.read_bytes()).hexdigest(),
+                             min_bucket_n=args.min_bucket_n)
             if not records:
                 entry.update(temperature=1.0, status="no_records", min_confidence=None, underpowered=True)
             else:
@@ -74,7 +79,7 @@ def main(argv=None) -> int:
             blob = json.dumps(entry, ensure_ascii=False, sort_keys=True, default=str)
             entry["calibration_id"] = hashlib.sha256(blob.encode()).hexdigest()[:12]
             path = args.out / f"calib-{pred}-{lang}.json"
-            path.write_text(json.dumps({"pins": pin_header(), **entry}, ensure_ascii=False, indent=1, default=str),
+            path.write_text(json.dumps({"pins": pins, **entry}, ensure_ascii=False, indent=1, default=str),
                             encoding="utf-8")
             summary.append({k: entry.get(k) for k in ("predicate", "lang", "n", "temperature", "status",
                                                       "min_confidence", "calibration_id", "underpowered")})

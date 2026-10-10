@@ -1,0 +1,13 @@
+{
+  "files": {
+    "jev/manifest.json": "8bbd43ac18564beb6975013aea7357d960d967e1e664fae73c60a95c508f3966",
+    "jev/provenance.json": "a1f01dbe189e22734075ba5a76f3b613a6daa17f3ab3d796026c2ec65147639c",
+    "jev/requests-calib.jsonl": "77a252288d4ed0dec2deaed479814ea28ba2476b2c2b148663b27fba377ff2f1",
+    "openai/manifest.json": "19d4ef5380d15e75e6ac14f661380a96186ba127e31f8974721b310492951f97",
+    "openai/provenance.json": "944bd821c8888f12915b22e8988e5a399cae29696ed7fd747a24e3a87c70ae2c",
+    "openai/requests-calib.jsonl": "33cd34af6fae48fd0ea82b829f5b300a320d9cfc2770934c15722e6761390f73",
+    "verification.json": "2c44d56996c1b02dca1b7766ccfee749d37fd20d348c0498fcb56073827eb4a9"
+  },
+  "artifact_files": 7,
+  "physical_model_calls": 0
+}
