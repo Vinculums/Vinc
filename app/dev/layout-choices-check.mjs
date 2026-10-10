@@ -64,8 +64,8 @@ try {
   for (const view of ["3d", "2d"]) {
     if (view === "2d") await page.locator("#tb-viewpoints [data-view='2d']").click();
     await page.waitForFunction(v => v === "2d" ? window.__s2?.getGraph()?.order === 12 : window.__g3?.graphData()?.nodes.length === 12, view);
-    assert.equal(await page.locator("[data-pref='layout']").count(), 4);
-    for (const layout of ["hub", "rank", "temporalRoots", "rankedRoots", "hub"]) {
+    assert.equal(await page.locator("[data-pref='layout']").count(), 2);
+    for (const layout of ["hub", "temporalRoots", "hub"]) {
       const beforeWorkers = await page.evaluate(() => window.layoutWorkers);
       await page.evaluate(v => { window.previousLayoutHandle = v === "2d" ? window.__s2 : window.__g3; }, view);
       const already = await page.locator(`[data-pref='layout'][data-val='${layout}']`).getAttribute("aria-checked") === "true";
