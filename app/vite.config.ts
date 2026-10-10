@@ -37,7 +37,8 @@ const API_RE = new RegExp("^/(health|view|graph|ledger|recall|search|domains|lea
   + "|conventions|themes|types"
   // 변경 표식(VIN-129) — 열린 화면이 12초마다 묻는다(`live.ts`). 빠지면 index.html 을
   // 받아 JSON 파싱이 조용히 실패하고, 브라우저 dev 에서만 저절로 새로워지지 않는다.
-  + "|changes|roles"
+  + "|changes"
+  + "|roles"
   // 저장 설정과 재기동 전 종료(VIN-130). 빠지면 설정의 로컬 모드 덩어리가 브라우저 dev 에서
   // 조용히 사라진다(설정을 못 읽으면 저장 줄만 남긴다).
   + "|config|shutdown"

@@ -755,7 +755,7 @@ TOOLS: list[dict] = [
             "role": {"type": "string", "description": "Role slug (agent-dev-core) or exact concept:agent- id; omit to list."},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000,
                       "description": "Optional roster candidate page size. Follow next_offset even for an empty page."},
-            "offset": {"type": "integer", "minimum": 0,
+            "offset": {"type": "integer", "minimum": 0, "maximum": 2147483647,
                        "description": "Roster candidate offset, from next_offset; default 0."},
             "owner": {"type": "string"}}, "required": []},
         "run": _t_role,

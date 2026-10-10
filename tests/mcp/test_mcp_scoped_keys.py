@@ -41,6 +41,8 @@ class _StubBridge(Bridge):
 
     def request(self, method, path, params=None, body=None, timeout=60):
         self.calls.append((method, path, params, body))
+        if path == "/roles":
+            return {"executed": True, "roles": [], "next_offset": None}
         return {"executed": False, "echo": path}
 
 

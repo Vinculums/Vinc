@@ -38,6 +38,7 @@
             "schema": {
               "type": "integer",
               "minimum": 0,
+              "maximum": 2147483647,
               "description": "Roster candidate offset, from next_offset; default 0."
             }
           },
