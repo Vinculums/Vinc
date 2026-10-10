@@ -60,7 +60,9 @@ def frozen_coverage(items: list[dict]) -> dict:
         if th is None:
             no_th += 1
             continue
-        ok = it["conf"] >= th
+        # laya 0.3.28 fits cuts on answer_confidence rounded to four decimals.
+        # Compare on that same scale; a fitted cut of 1.0 can represent 0.99999.
+        ok = round(it["conf"], 4) >= th
         if not ok:
             below += 1
         if it["asym"] is not None and it["asym"] > ASYMMETRY_ABSTAIN:
@@ -100,6 +102,7 @@ def main(argv=None) -> int:
             by[(r["predicate"], r["pair_id"])][r["direction"]] = r
 
     result = {"pins": pin_header(), "gate": GATE, "target_error": TARGET_ERROR,
+              "confidence_decimals": 4,
               "asymmetry_abstain": ASYMMETRY_ABSTAIN, "rows": len(rows),
               "rows_truncated_excluded": n_truncated, "rows_unlabeled_excluded": n_unlabeled,
               "table": [], "curves": {}}

@@ -234,5 +234,17 @@ class FrozenCoverageTests(unittest.TestCase):
             self.assertIn("동결 문턱 없음", out.read_text(encoding="utf-8"))
 
 
+class FrozenConfidencePrecisionTests(unittest.TestCase):
+    def test_uses_the_calibration_confidence_precision(self):
+        for confidence, threshold, covered in [
+            (0.99999, 1.0, 1), (0.99994, 1.0, 0),
+            (0.83329, 0.8333, 1), (0.83324, 0.8333, 0),
+        ]:
+            with self.subTest(confidence=confidence, threshold=threshold):
+                result = report.frozen_coverage([{"conf": confidence, "threshold": threshold,
+                                                 "correct": 1.0, "asym": None, "has_reverse": True}])
+                self.assertEqual(result["covered"], covered)
+
+
 if __name__ == "__main__":
     sys.exit(unittest.main())

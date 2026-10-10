@@ -1,0 +1,347 @@
+{
+ "source_package": "laya==0.3.28",
+ "source_function": "fit_abstention_thresholds",
+ "source_file_sha256": "47fa2432429df481a953ef8f3115144e248694311d522432c06f1d5fcfdbbff3",
+ "calibration_cuts": [
+  {
+   "predicate": "contradicts",
+   "lang": "en",
+   "n": 156,
+   "errors": 16,
+   "frozen_threshold": 0.9872,
+   "safe_cut_exists": true,
+   "selected_safe_cut": {
+    "threshold": 0.9872,
+    "accepted": 104,
+    "conservative_risk": 0.047619047619047616
+   },
+   "full_precision_accepted": 103,
+   "rounded_accepted": 104
+  },
+  {
+   "predicate": "contradicts",
+   "lang": "ko",
+   "n": 74,
+   "errors": 3,
+   "frozen_threshold": 0.9743,
+   "safe_cut_exists": true,
+   "selected_safe_cut": {
+    "threshold": 0.9743,
+    "accepted": 71,
+    "conservative_risk": 0.041666666666666664
+   },
+   "full_precision_accepted": 70,
+   "rounded_accepted": 71
+  },
+  {
+   "predicate": "same_as",
+   "lang": "en",
+   "n": 156,
+   "errors": 6,
+   "frozen_threshold": 0.5102,
+   "safe_cut_exists": true,
+   "selected_safe_cut": {
+    "threshold": 0.5102,
+    "accepted": 156,
+    "conservative_risk": 0.044585987261146494
+   },
+   "full_precision_accepted": 155,
+   "rounded_accepted": 156
+  },
+  {
+   "predicate": "same_as",
+   "lang": "ko",
+   "n": 74,
+   "errors": 0,
+   "frozen_threshold": 1.0,
+   "safe_cut_exists": true,
+   "selected_safe_cut": {
+    "threshold": 1.0,
+    "accepted": 74,
+    "conservative_risk": 0.013333333333333334
+   },
+   "full_precision_accepted": 0,
+   "rounded_accepted": 74
+  },
+  {
+   "predicate": "supports",
+   "lang": "en",
+   "n": 78,
+   "errors": 16,
+   "frozen_threshold": 1.0,
+   "safe_cut_exists": false,
+   "selected_safe_cut": null,
+   "full_precision_accepted": 0,
+   "rounded_accepted": 0
+  },
+  {
+   "predicate": "supports",
+   "lang": "ko",
+   "n": 37,
+   "errors": 8,
+   "frozen_threshold": 1.0,
+   "safe_cut_exists": false,
+   "selected_safe_cut": null,
+   "full_precision_accepted": 0,
+   "rounded_accepted": 0
+  }
+ ],
+ "confidence_decimals": 4,
+ "gate_values_changed": false,
+ "temperature_values_changed": false,
+ "model_inference_repeated": false,
+ "report_changes": [
+  {
+   "predicate": "supports",
+   "lang": "ko",
+   "registered_covered": 0,
+   "runtime_aligned_covered": 0,
+   "n": 40,
+   "registered_gate": {
+    "auroc_ok": true,
+    "ece_ok": false,
+    "coverage_ok": false,
+    "error_within_target": null,
+    "pass": false
+   },
+   "runtime_aligned_gate": {
+    "auroc_ok": true,
+    "ece_ok": false,
+    "coverage_ok": false,
+    "error_within_target": null,
+    "pass": false
+   }
+  },
+  {
+   "predicate": "supports",
+   "lang": "en",
+   "registered_covered": 0,
+   "runtime_aligned_covered": 0,
+   "n": 60,
+   "registered_gate": {
+    "auroc_ok": true,
+    "ece_ok": false,
+    "coverage_ok": false,
+    "error_within_target": null,
+    "pass": false
+   },
+   "runtime_aligned_gate": {
+    "auroc_ok": true,
+    "ece_ok": false,
+    "coverage_ok": false,
+    "error_within_target": null,
+    "pass": false
+   }
+  },
+  {
+   "predicate": "supports",
+   "lang": "mixed",
+   "registered_covered": 0,
+   "runtime_aligned_covered": 0,
+   "n": 40,
+   "registered_gate": {
+    "auroc_ok": true,
+    "ece_ok": false,
+    "coverage_ok": false,
+    "error_within_target": null,
+    "pass": false
+   },
+   "runtime_aligned_gate": {
+    "auroc_ok": true,
+    "ece_ok": false,
+    "coverage_ok": false,
+    "error_within_target": null,
+    "pass": false
+   }
+  },
+  {
+   "predicate": "supports",
+   "lang": "all",
+   "registered_covered": 0,
+   "runtime_aligned_covered": 0,
+   "n": 140,
+   "registered_gate": {
+    "auroc_ok": true,
+    "ece_ok": false,
+    "coverage_ok": false,
+    "error_within_target": null,
+    "pass": false
+   },
+   "runtime_aligned_gate": {
+    "auroc_ok": true,
+    "ece_ok": false,
+    "coverage_ok": false,
+    "error_within_target": null,
+    "pass": false
+   }
+  },
+  {
+   "predicate": "contradicts",
+   "lang": "ko",
+   "registered_covered": 35,
+   "runtime_aligned_covered": 35,
+   "n": 40,
+   "registered_gate": {
+    "auroc_ok": true,
+    "ece_ok": true,
+    "coverage_ok": true,
+    "error_within_target": false,
+    "pass": true
+   },
+   "runtime_aligned_gate": {
+    "auroc_ok": true,
+    "ece_ok": true,
+    "coverage_ok": true,
+    "error_within_target": false,
+    "pass": true
+   }
+  },
+  {
+   "predicate": "contradicts",
+   "lang": "en",
+   "registered_covered": 35,
+   "runtime_aligned_covered": 35,
+   "n": 60,
+   "registered_gate": {
+    "auroc_ok": true,
+    "ece_ok": true,
+    "coverage_ok": true,
+    "error_within_target": true,
+    "pass": true
+   },
+   "runtime_aligned_gate": {
+    "auroc_ok": true,
+    "ece_ok": true,
+    "coverage_ok": true,
+    "error_within_target": true,
+    "pass": true
+   }
+  },
+  {
+   "predicate": "contradicts",
+   "lang": "mixed",
+   "registered_covered": 26,
+   "runtime_aligned_covered": 26,
+   "n": 40,
+   "registered_gate": {
+    "auroc_ok": true,
+    "ece_ok": false,
+    "coverage_ok": true,
+    "error_within_target": true,
+    "pass": false
+   },
+   "runtime_aligned_gate": {
+    "auroc_ok": true,
+    "ece_ok": false,
+    "coverage_ok": true,
+    "error_within_target": true,
+    "pass": false
+   }
+  },
+  {
+   "predicate": "contradicts",
+   "lang": "all",
+   "registered_covered": 96,
+   "runtime_aligned_covered": 96,
+   "n": 140,
+   "registered_gate": {
+    "auroc_ok": true,
+    "ece_ok": true,
+    "coverage_ok": true,
+    "error_within_target": true,
+    "pass": true
+   },
+   "runtime_aligned_gate": {
+    "auroc_ok": true,
+    "ece_ok": true,
+    "coverage_ok": true,
+    "error_within_target": true,
+    "pass": true
+   }
+  },
+  {
+   "predicate": "same_as",
+   "lang": "ko",
+   "registered_covered": 0,
+   "runtime_aligned_covered": 38,
+   "n": 40,
+   "registered_gate": {
+    "auroc_ok": true,
+    "ece_ok": true,
+    "coverage_ok": false,
+    "error_within_target": null,
+    "pass": false
+   },
+   "runtime_aligned_gate": {
+    "auroc_ok": true,
+    "ece_ok": true,
+    "coverage_ok": true,
+    "error_within_target": true,
+    "pass": true
+   }
+  },
+  {
+   "predicate": "same_as",
+   "lang": "en",
+   "registered_covered": 59,
+   "runtime_aligned_covered": 59,
+   "n": 60,
+   "registered_gate": {
+    "auroc_ok": true,
+    "ece_ok": true,
+    "coverage_ok": true,
+    "error_within_target": true,
+    "pass": true
+   },
+   "runtime_aligned_gate": {
+    "auroc_ok": true,
+    "ece_ok": true,
+    "coverage_ok": true,
+    "error_within_target": true,
+    "pass": true
+   }
+  },
+  {
+   "predicate": "same_as",
+   "lang": "mixed",
+   "registered_covered": 36,
+   "runtime_aligned_covered": 36,
+   "n": 40,
+   "registered_gate": {
+    "auroc_ok": true,
+    "ece_ok": true,
+    "coverage_ok": true,
+    "error_within_target": true,
+    "pass": true
+   },
+   "runtime_aligned_gate": {
+    "auroc_ok": true,
+    "ece_ok": true,
+    "coverage_ok": true,
+    "error_within_target": true,
+    "pass": true
+   }
+  },
+  {
+   "predicate": "same_as",
+   "lang": "all",
+   "registered_covered": 95,
+   "runtime_aligned_covered": 133,
+   "n": 140,
+   "registered_gate": {
+    "auroc_ok": true,
+    "ece_ok": true,
+    "coverage_ok": true,
+    "error_within_target": true,
+    "pass": true
+   },
+   "runtime_aligned_gate": {
+    "auroc_ok": true,
+    "ece_ok": true,
+    "coverage_ok": true,
+    "error_within_target": true,
+    "pass": true
+   }
+  }
+ ]
+}
