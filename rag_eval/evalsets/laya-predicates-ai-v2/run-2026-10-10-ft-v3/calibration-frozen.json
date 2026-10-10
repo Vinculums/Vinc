@@ -1,0 +1,48 @@
+{
+ "frozen_at": "2026-10-10T03:16:04.236893+00:00",
+ "model_sha256": "1501b71c298c386d728e6c259c26ed416c3ad52c12cb2c0ae85b39816a68d495",
+ "holdout_sha256": "5082bd413ba73519abb1b03f2030f02d934abe349c609899ef12ac56db72e9e3",
+ "training_sha256": "a6f83fbb9056800acc74b0f517faf47cdd1b50e600e5154dcabd7a4c28282466",
+ "input_manifest_sha256": "1e52bef87730f9761b8e9e81b69f4e3632e07a744447a976f30b217a4d23611c",
+ "calibration_sha256": {
+  "calib-contradicts-en.json": "ccc523fdd86efb5b43d9d173542635570432e70d371db291315fd807ef3bcc91",
+  "calib-contradicts-ko.json": "c0fa619e1a1d0a338658869038d05f7e127077cbeb8d17e81847061ce4b9c5e1",
+  "calib-same_as-en.json": "c695cfb2a67ec1e5fcdb3e0a78430aadc12e2b14f7455f77e9aa53cb0df9c9bc",
+  "calib-same_as-ko.json": "e80ace5996f43b3aeeb3e4fc51689144759d176fd268ba88b3781dc41af2522c",
+  "calib-supports-en.json": "0757936ee734b6b6d753ce2f74c1d3dec853fbefb7f90a7717042d213c0e15a1",
+  "calib-supports-ko.json": "ac3545e0428891ce3520faf65e062e6107a24a7a8e9f6540abd6d8b8709ab0bc",
+  "summary.json": "4aa5a38bc98603a5013e9ab03f9dfcd66fa5278026ba0789d203bbe6269b773f"
+ },
+ "calibration_pairs": 120,
+ "min_bucket_n": 30,
+ "gate": {
+  "auroc_margin": 0.05,
+  "ece_max": 0.1,
+  "coverage_min": 0.5
+ },
+ "measurements": {
+  "a-primary": {
+   "gold_sha256": "c2f684259e7d0092e41901f446a61a519c012ed689b2ed368bdf04ad83fcbaea",
+   "eval_pairs": 173
+  },
+  "b-continuity": {
+   "gold_sha256": "49cf4b34be2fd840c56e54bcca152abfaaebd76afa844938c6d7a7eccb29fd0a",
+   "eval_pairs": 150
+  },
+  "c-community": {
+   "gold_sha256": "1551ce8b1a6da919e6805ef5ea82eb4862bfa4a6061c6623c00613dbb11f5f69",
+   "eval_pairs": 140
+  },
+  "d-audit": {
+   "gold_sha256": "088d35c00b998094d83a0d018e2dfcca4bf415547442c30a06810a8596c59a29",
+   "eval_pairs": 45
+  }
+ },
+ "order": [
+  "a-primary",
+  "b-continuity",
+  "c-community",
+  "d-audit"
+ ],
+ "one_logical_pass_per_measurement": true
+}

@@ -1,0 +1,32 @@
+{
+ "what": "Independent blind relabel of blind-inputs.jsonl by a second AI reader (Claude Fable, a separate session that saw only blind-inputs.jsonl and questions.json), compared with reference-labels.jsonl after the fact. The reference labels were not changed.",
+ "reviewer": "Claude Fable (AI; blind subagent, 2026-10-08)",
+ "reviewed_at": "2026-10-08",
+ "input_sha256": "a201a83002776c3c3a82d032b66343e48e58643ff60d2f93daa6019397b3272c",
+ "reference_sha256": "89eeaef06f96ce1ed25aac1b21c6c11b90cedd9b1bda4d596fd95aded5044e0d",
+ "review_sha256": "03bd09360bba94b8e99abfaf433327c69c00d1dca7249ca5cae8ecf48dbff353",
+ "n_pairs": 300,
+ "n_labels": 900,
+ "agreement": {
+  "supports": 300,
+  "contradicts": 300,
+  "same_as": 300
+ },
+ "disagreements": 0,
+ "unsure": {
+  "supports": 0,
+  "contradicts": 0,
+  "same_as": 0
+ },
+ "reviewer_positives": {
+  "supports": 60,
+  "contradicts": 60,
+  "same_as": 60
+ },
+ "hard_calls_noted_by_reviewer": 9,
+ "limits": [
+  "Both readers are LLMs; agreement between two AI readers is not human validation and does not open the author axis in the sense of decision:a-gate-whose-rule-and-exam-share-an-author-ships-off.",
+  "Every synthetic family holds exactly one supports, one contradicts and one same_as pair, so the fixture design is contrastive and the labels are easy to recover from the text; full agreement is weak evidence of label quality.",
+  "The 120 frozen candidate pairs are all negative on every predicate, so the review exercised positives only on synthetic fixtures."
+ ]
+}

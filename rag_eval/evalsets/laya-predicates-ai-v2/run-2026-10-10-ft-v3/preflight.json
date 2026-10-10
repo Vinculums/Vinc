@@ -1,0 +1,15 @@
+{
+ "issue": "VIN-421",
+ "plan": "vinc.plan.laya-finetune-v3-2026-10-10",
+ "owner_decision": "decision:laya-predicates-ai-v2-and-community-v1-accepted-as-gold-and-v3-run-ordered-2026-10-10",
+ "input_commit": "cb366ad66b53b76acbba2b833a9ac063ba8f58cb",
+ "input_manifest_sha256": "1e52bef87730f9761b8e9e81b69f4e3632e07a744447a976f30b217a4d23611c",
+ "make_inputs_check": "PASS",
+ "tests": {"passed":37,"command":"python -m pytest tests/rag/test_laya_training.py tests/rag/test_laya_harness.py -q"},
+ "base_revision":"e4e9ddf21a7b1903b7acffd8814ad4307bf63a67",
+ "base_model_sha256":"9d628fd971b700382ac6f65920a86f149777b2e748e0c955fb3b19695aa8f204",
+ "training_sha256":"a6f83fbb9056800acc74b0f517faf47cdd1b50e600e5154dcabd7a4c28282466",
+ "training_physical_attempts":1,
+ "weights_policy":"local only",
+ "measurement_policy":"one logical pass for each registered set, no completed direction requery"
+}

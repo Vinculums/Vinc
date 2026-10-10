@@ -1,0 +1,8 @@
+{
+ "torch": "2.14.1+cpu",
+ "laya": "0.3.28",
+ "transformers": "5.19.0",
+ "python": "3.12.9",
+ "cuda_available": false,
+ "default_dtype": "torch.float32"
+}

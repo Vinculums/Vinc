@@ -1,0 +1,18 @@
+{
+  "dataset": "laya-predicates-ai-v1",
+  "sha256": {
+    "blind-inputs.jsonl": "a201a83002776c3c3a82d032b66343e48e58643ff60d2f93daa6019397b3272c",
+    "calib.jsonl": "0041150c8effb747208dc218370a3d39386b42420c0a83f21239e9145dad3bc2",
+    "eval.jsonl": "110f3dfa9938a56a1aad6cbf2a9b7015d7a93229be22ab3c8aba52332641bb01",
+    "gold-review.csv": "403025bc9f7ea741645e10fac9ea3a636646d22e8df530f551e0c4718c405523",
+    "gold.jsonl": "49cf4b34be2fd840c56e54bcca152abfaaebd76afa844938c6d7a7eccb29fd0a",
+    "gold.split.json": "223d6b6b5eaaf4f687c68330c23c0a494ecd23dc90d9f64d55dda38138020e3f",
+    "handoff.json": "821fa5c864ff472c7c363945e1fa89dd6374292ebca2e73553f606549422a17b",
+    "provenance.json": "a0279f55512282266a43d15c6348f62055d93fb10db15b8b81916eb0c4f02f14",
+    "questions.json": "dc91cf0ff911d5bc177e9f72ea80aa2698b73803e485cc8d3974e065631c838a",
+    "reference-labels.jsonl": "89eeaef06f96ce1ed25aac1b21c6c11b90cedd9b1bda4d596fd95aded5044e0d",
+    "summary.json": "bc5250bf101eee40be4898fe5ae7e0d66b7060a89bade784edb516e50a8b39ad",
+    "validation.json": "5a4d93f0e7060e1c6d575be02ed98de0603b65a334134c5b40a99ff41f25740a",
+    "verify.py": "7af74c24c449a69081777643f4df0f7e71e171046b406a367821b0ee645a4444"
+  }
+}

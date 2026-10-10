@@ -28,3 +28,11 @@ packaging/lbug-ext-*.sha256 text eol=lf
 # 폰트는 바이너리다. Windows 작업트리에서 텍스트로 오인되면 CRLF 변환이 파일을
 # 깨뜨리는데, 그 고장은 "글자가 폴백으로 뜬다"로만 보여 원인까지 멀다.
 *.woff2     binary
+
+# 평가셋(골드·분할·후보)은 파일 sha256 을 기록 노드와 대조한다. CRLF 로 체크아웃되면 다이제스트가
+# 어긋난다(laya-predicates-ai-v1/verify.py 가 윈도우 작업트리에서 실패, 2026-10-08 실측).
+rag_eval/evalsets/** text eol=lf
+# 예외 하나: v1 검토 시트는 CRLF 바이트로 커밋됐고 manifest.json 이 그 바이트의 sha256 을 적는다.
+# 위 규칙이 걸리면 내용 변경 없이도 늘 "수정됨"으로 보이고, LF 로 고쳐 커밋하면 승인된 v1 의
+# 해시가 깨진다. 그래서 이 파일만 줄바꿈 변환에서 뺀다. 순서가 뜻을 가진다: 뒤 줄이 이긴다.
+rag_eval/evalsets/laya-predicates-ai-v1/gold-review.csv -text

@@ -1,0 +1,22 @@
+{
+ "physical_attempt": 1,
+ "started_at": "2026-10-10T03:54:02.122302+00:00",
+ "command": [
+  "D:/Projects/AIProjects/vinc-project/_scratch/laya/venv/Scripts/python.exe",
+  "-u",
+  "-m",
+  "rag_eval.laya.run_gold",
+  "--model-dir",
+  "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\ckpt\\laya-multilingual-vinc-ft-v3",
+  "--calib",
+  "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\out\\ft-v3\\calib",
+  "--split",
+  "eval",
+  "--gold",
+  "D:\\Projects\\AIProjects\\vinc-project\\_wt\\vin421-laya-v3\\rag_eval\\evalsets\\laya-predicates-ai-v2\\ft-v3-inputs\\audit-diagnostic\\gold.jsonl",
+  "--out",
+  "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\out\\ft-v3\\d-audit.jsonl"
+ ],
+ "finished_at": "2026-10-10T03:56:52.759827+00:00",
+ "exit_code": 0
+}

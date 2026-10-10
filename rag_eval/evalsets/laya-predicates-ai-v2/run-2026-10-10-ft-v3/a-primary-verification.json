@@ -1,0 +1,403 @@
+{
+ "model_sha256": "1501b71c298c386d728e6c259c26ed416c3ad52c12cb2c0ae85b39816a68d495",
+ "gate": {
+  "auroc_margin": 0.05,
+  "ece_max": 0.1,
+  "coverage_min": 0.5
+ },
+ "cosine_baseline": "omitted",
+ "continuity_checkpoint_exposures": 4,
+ "calibration": [
+  {
+   "predicate": "supports",
+   "lang": "ko",
+   "n": 40,
+   "temperature": 3.500455856323242,
+   "status": "ok",
+   "min_confidence": 1.0,
+   "calibration_id": "1fb2d1d33d5c",
+   "underpowered": true
+  },
+  {
+   "predicate": "supports",
+   "lang": "en",
+   "n": 80,
+   "temperature": 3.392599105834961,
+   "status": "ok",
+   "min_confidence": 1.0,
+   "calibration_id": "bd2cb4388d77",
+   "underpowered": false
+  },
+  {
+   "predicate": "contradicts",
+   "lang": "ko",
+   "n": 80,
+   "temperature": 5.0,
+   "status": "temperature_at_max",
+   "min_confidence": 1.0,
+   "calibration_id": "7a062aac03a8",
+   "underpowered": false
+  },
+  {
+   "predicate": "contradicts",
+   "lang": "en",
+   "n": 160,
+   "temperature": 5.0,
+   "status": "temperature_at_max",
+   "min_confidence": 0.9136,
+   "calibration_id": "fc6b1062bae2",
+   "underpowered": false
+  },
+  {
+   "predicate": "same_as",
+   "lang": "ko",
+   "n": 80,
+   "temperature": 3.526175022125244,
+   "status": "ok",
+   "min_confidence": 0.8283,
+   "calibration_id": "85d99d9ad4e1",
+   "underpowered": false
+  },
+  {
+   "predicate": "same_as",
+   "lang": "en",
+   "n": 160,
+   "temperature": 4.63071346282959,
+   "status": "ok",
+   "min_confidence": 0.9699,
+   "calibration_id": "e4f8bdc0901f",
+   "underpowered": false
+  }
+ ],
+ "sets": {
+  "a-primary": {
+   "pairs": 173,
+   "rows": 865,
+   "truncated": 0,
+   "header": {
+    "package": "laya==0.3.28",
+    "repo": "convaiinnovations/laya-multilingual",
+    "revision": "e4e9ddf21a7b1903b7acffd8814ad4307bf63a67",
+    "sha256": {
+     "model.safetensors": "9d628fd971b700382ac6f65920a86f149777b2e748e0c955fb3b19695aa8f204"
+    },
+    "backend": "eager",
+    "max_len": 1024,
+    "seed": 20261007,
+    "questions_hash": "500e613737d1",
+    "python": "3.12.9",
+    "machine": "Windows-10-10.0.19045-SP0",
+    "written_at": "2026-10-10T03:18:26Z",
+    "model_dir": "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\ckpt\\laya-multilingual-vinc-ft-v3",
+    "model_dir_sha256": "1501b71c298c386d728e6c259c26ed416c3ad52c12cb2c0ae85b39816a68d495",
+    "note": "model_dir overrides the pinned checkpoint; revision/sha256 above are the base it was tuned from",
+    "laya": "0.3.28",
+    "torch": "2.14.1+cpu",
+    "transformers": "5.19.0",
+    "cuda": false,
+    "kind": "run_gold",
+    "gold": "D:\\Projects\\AIProjects\\vinc-project\\_wt\\vin421-laya-v3\\rag_eval\\evalsets\\laya-predicates-ai-v2\\gold.jsonl",
+    "split": "eval",
+    "n_pairs": 173,
+    "load_s": 21.5,
+    "calib_files": [
+     "contradicts:en",
+     "contradicts:ko",
+     "same_as:en",
+     "same_as:ko",
+     "supports:en",
+     "supports:ko"
+    ]
+   },
+   "timing": {
+    "kind": "timing",
+    "n_states": 346,
+    "median_s_predict": 1.089,
+    "median_s_logits": 1.099,
+    "median_s_total": 2.18,
+    "batch16_s_per_state": 1.527,
+    "batch16_n_states": 32,
+    "truncated_states": 0,
+    "note": "per-state seconds cover two forwards (system_one + records_from_labeled); batch16_s_per_state is the predict_batch(batch_size=16) throughput on the first states"
+   },
+   "table": [
+    {
+     "predicate": "supports",
+     "lang": "ko",
+     "n": 59,
+     "auroc": 0.7925531914893617,
+     "ece": 0.1541862009521437,
+     "best_baseline": 0.5,
+     "coverage": 0.0,
+     "covered": 0,
+     "covered_errors": 0,
+     "covered_predicted_positive": 0,
+     "covered_positive_correct": 0,
+     "asymmetry": null,
+     "gate": {
+      "auroc_ok": true,
+      "ece_ok": false,
+      "coverage_ok": false,
+      "error_within_target": null,
+      "pass": false
+     }
+    },
+    {
+     "predicate": "supports",
+     "lang": "en",
+     "n": 56,
+     "auroc": 0.7007575757575758,
+     "ece": 0.1182052904610808,
+     "best_baseline": 0.5,
+     "coverage": 0.0,
+     "covered": 0,
+     "covered_errors": 0,
+     "covered_predicted_positive": 0,
+     "covered_positive_correct": 0,
+     "asymmetry": null,
+     "gate": {
+      "auroc_ok": true,
+      "ece_ok": false,
+      "coverage_ok": false,
+      "error_within_target": null,
+      "pass": false
+     }
+    },
+    {
+     "predicate": "supports",
+     "lang": "mixed",
+     "n": 58,
+     "auroc": 0.7891682785299806,
+     "ece": 0.1373425038161147,
+     "best_baseline": 0.5,
+     "coverage": 0.0,
+     "covered": 0,
+     "covered_errors": 0,
+     "covered_predicted_positive": 0,
+     "covered_positive_correct": 0,
+     "asymmetry": null,
+     "gate": {
+      "auroc_ok": true,
+      "ece_ok": false,
+      "coverage_ok": false,
+      "error_within_target": null,
+      "pass": false
+     }
+    },
+    {
+     "predicate": "supports",
+     "lang": "all",
+     "n": 173,
+     "auroc": 0.7753623188405797,
+     "ece": 0.08033191309821212,
+     "best_baseline": 0.5,
+     "coverage": 0.0,
+     "covered": 0,
+     "covered_errors": 0,
+     "covered_predicted_positive": 0,
+     "covered_positive_correct": 0,
+     "asymmetry": null,
+     "gate": {
+      "auroc_ok": true,
+      "ece_ok": true,
+      "coverage_ok": false,
+      "error_within_target": null,
+      "pass": false
+     }
+    },
+    {
+     "predicate": "contradicts",
+     "lang": "ko",
+     "n": 59,
+     "auroc": 0.8971631205673759,
+     "ece": 0.1469828086739363,
+     "best_baseline": 0.6134751773049646,
+     "coverage": 0.0,
+     "covered": 0,
+     "covered_errors": 0,
+     "covered_predicted_positive": 0,
+     "covered_positive_correct": 0,
+     "asymmetry": {
+      "mean": 0.13807280816271936,
+      "over_0_2": 0.23728813559322035
+     },
+     "gate": {
+      "auroc_ok": true,
+      "ece_ok": false,
+      "coverage_ok": false,
+      "error_within_target": null,
+      "pass": false
+     }
+    },
+    {
+     "predicate": "contradicts",
+     "lang": "en",
+     "n": 56,
+     "auroc": 0.7878787878787878,
+     "ece": 0.11086219804449615,
+     "best_baseline": 0.5595959595959596,
+     "coverage": 0.6071428571428571,
+     "covered": 34,
+     "covered_errors": 4,
+     "covered_predicted_positive": 0,
+     "covered_positive_correct": 0,
+     "asymmetry": {
+      "mean": 0.0929562921105737,
+      "over_0_2": 0.14285714285714285
+     },
+     "gate": {
+      "auroc_ok": true,
+      "ece_ok": false,
+      "coverage_ok": true,
+      "error_within_target": false,
+      "pass": false
+     }
+    },
+    {
+     "predicate": "contradicts",
+     "lang": "mixed",
+     "n": 58,
+     "auroc": 0.7427536231884058,
+     "ece": 0.1464169626864685,
+     "best_baseline": 0.5,
+     "coverage": 0.7586206896551724,
+     "covered": 44,
+     "covered_errors": 6,
+     "covered_predicted_positive": 0,
+     "covered_positive_correct": 0,
+     "asymmetry": {
+      "mean": 0.05154102451778298,
+      "over_0_2": 0.017241379310344827
+     },
+     "gate": {
+      "auroc_ok": true,
+      "ece_ok": false,
+      "coverage_ok": true,
+      "error_within_target": false,
+      "pass": false
+     }
+    },
+    {
+     "predicate": "contradicts",
+     "lang": "all",
+     "n": 173,
+     "auroc": 0.7879917184265011,
+     "ece": 0.09429011733757875,
+     "best_baseline": 0.534368530020704,
+     "coverage": 0.4508670520231214,
+     "covered": 78,
+     "covered_errors": 10,
+     "covered_predicted_positive": 0,
+     "covered_positive_correct": 0,
+     "asymmetry": {
+      "mean": 0.09445796220707504,
+      "over_0_2": 0.1329479768786127
+     },
+     "gate": {
+      "auroc_ok": true,
+      "ece_ok": true,
+      "coverage_ok": false,
+      "error_within_target": false,
+      "pass": false
+     }
+    },
+    {
+     "predicate": "same_as",
+     "lang": "ko",
+     "n": 59,
+     "auroc": 0.8812056737588653,
+     "ece": 0.09499475321012911,
+     "best_baseline": 0.5,
+     "coverage": 0.8305084745762712,
+     "covered": 49,
+     "covered_errors": 0,
+     "covered_predicted_positive": 5,
+     "covered_positive_correct": 5,
+     "asymmetry": {
+      "mean": 0.08350773987214104,
+      "over_0_2": 0.1016949152542373
+     },
+     "gate": {
+      "auroc_ok": true,
+      "ece_ok": true,
+      "coverage_ok": true,
+      "error_within_target": true,
+      "pass": true
+     }
+    },
+    {
+     "predicate": "same_as",
+     "lang": "en",
+     "n": 56,
+     "auroc": 0.9734848484848485,
+     "ece": 0.1550145162571593,
+     "best_baseline": 0.5189393939393939,
+     "coverage": 0.08928571428571429,
+     "covered": 5,
+     "covered_errors": 0,
+     "covered_predicted_positive": 0,
+     "covered_positive_correct": 0,
+     "asymmetry": {
+      "mean": 0.12339038813090607,
+      "over_0_2": 0.23214285714285715
+     },
+     "gate": {
+      "auroc_ok": true,
+      "ece_ok": false,
+      "coverage_ok": false,
+      "error_within_target": true,
+      "pass": false
+     }
+    },
+    {
+     "predicate": "same_as",
+     "lang": "mixed",
+     "n": 58,
+     "auroc": 0.8278985507246377,
+     "ece": 0.10835407868669093,
+     "best_baseline": 0.5,
+     "coverage": 0.1724137931034483,
+     "covered": 10,
+     "covered_errors": 0,
+     "covered_predicted_positive": 0,
+     "covered_positive_correct": 0,
+     "asymmetry": {
+      "mean": 0.09295354194357787,
+      "over_0_2": 0.15517241379310345
+     },
+     "gate": {
+      "auroc_ok": true,
+      "ece_ok": false,
+      "coverage_ok": false,
+      "error_within_target": true,
+      "pass": false
+     }
+    },
+    {
+     "predicate": "same_as",
+     "lang": "all",
+     "n": 173,
+     "auroc": 0.8868613138686131,
+     "ece": 0.09038695323349999,
+     "best_baseline": 0.5065896188158961,
+     "coverage": 0.3699421965317919,
+     "covered": 64,
+     "covered_errors": 0,
+     "covered_predicted_positive": 5,
+     "covered_positive_correct": 5,
+     "asymmetry": {
+      "mean": 0.09958453075441952,
+      "over_0_2": 0.16184971098265896
+     },
+     "gate": {
+      "auroc_ok": true,
+      "ece_ok": true,
+      "coverage_ok": false,
+      "error_within_target": true,
+      "pass": false
+     }
+    }
+   ]
+  }
+ }
+}
