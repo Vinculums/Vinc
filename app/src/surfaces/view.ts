@@ -1240,10 +1240,10 @@ export async function renderView(el: HTMLElement) {
       // 기준을 바꿔 방금 고른 시점이 다른 곳을 가리키게 된다. Timeline 은 처음부터
       // 이 순서였다 — 셋을 맞춘다.
       case "3d":
-        return ["size", "nodeScale", "labels", "arrows", "unlinked",
+        return ["size", "layout", "nodeScale", "labels", "arrows", "unlinked",
                 "spread", "edgeWidth", "edgeShow", "basis", "when", "replay"];
       case "2d":
-        return ["size", "nodeScale", "labels", "arrows", "unlinked", "spread",
+        return ["size", "layout", "nodeScale", "labels", "arrows", "unlinked", "spread",
                 "edgeWidth", "edgeShow", "basis", "when"];
       // D49 — `깊이` 는 **씨앗이 있을 때만** 뜻이 있다("씨앗에서 몇 세대"). 씨앗 없는
       // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
@@ -1379,9 +1379,9 @@ export async function renderView(el: HTMLElement) {
       unlinked: swRow(COPY.ui.panel.unlinkedNodes, "unlinked", p.unlinked === "show",
         COPY.ui.panel.show, COPY.ui.panel.hide, "show", "hide", "showU", "hideU"),
       layout: tileRow(COPY.ui.panel.layout, LAYOUTS.map((l) => ({
-        val: l, label: COPY.ui.panel.layoutName[l],
+        val: l, label: (isPlanar(p.view) ? COPY.ui.panel.layoutName : COPY.ui.panel.rootsLayoutName)[l],
         art: l === "hub" ? ART.layoutHub : ART.layoutRank,
-        help: l, active: p.layout === l,
+        help: isPlanar(p.view) ? l : l === "hub" ? "temporalRoots" : "rankedRoots", active: p.layout === l,
       })), "layout"),
       spread: slider("pref-spread", COPY.ui.panel.spread, 0.6, 1.6, 0.02, p.spread,
                      undefined, "spread"),
@@ -1782,8 +1782,8 @@ export async function renderView(el: HTMLElement) {
     // 세 층으로 갈리는 이유는 [[vinc.research.view-interaction-audit]] §2.2~2.4: 옵션
     // 하나에 왕복 + 재구성 + 컨텍스트 하나가 들었고, 슬라이더는 그 재구성이 자기
     // 손잡이를 DOM 에서 떼어 내서 끌 수가 없었다.
-    const serverLayout = "layout" in mut || "cone" in mut;
-    const relayout = serverLayout || "timeBasis" in mut;
+    const serverLayout = isPlanar(curPrefs().view) && ("layout" in mut || "cone" in mut);
+    const relayout = serverLayout || "layout" in mut || "timeBasis" in mut;
     const np = curPrefs();
     const live = (g3 as { __update?: (p: ViewPrefs) => boolean } | null)?.__update
       ?? g2?.update;
@@ -2055,7 +2055,7 @@ export async function renderView(el: HTMLElement) {
   let reuseGraph = false;
   let keepCam2: ReturnType<Handle2d["camera"]> | null = null;
   let rawGraph: { executed: boolean; nodes?: GraphNode[]; edges?: GraphEdge[] } | undefined;
-  let layoutCache: { raw: typeof rawGraph; basis: ViewPrefs["timeBasis"]; graph: LayoutGraph } | undefined;
+  let layoutCache: { raw: typeof rawGraph; basis: ViewPrefs["timeBasis"]; layout: ViewPrefs["layout"]; graph: LayoutGraph } | undefined;
   let layoutJob: AbortController | undefined;
   const removalObserver = new MutationObserver(() => {
     if (canvas.isConnected && myGen === liveGen) return;
@@ -2076,14 +2076,15 @@ export async function renderView(el: HTMLElement) {
     if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
     rawGraph = res;
     if (isPlanar(p.view) || !res.executed) return res;
-    if (layoutCache && layoutCache.raw === res && layoutCache.basis === p.timeBasis)
+    if (layoutCache && layoutCache.raw === res && layoutCache.basis === p.timeBasis && layoutCache.layout === p.layout)
       return { executed: true, ...layoutCache.graph };
     layoutJob?.abort();
     const job = layoutJob = new AbortController();
     try {
-      const graph = await layoutInWorker(res.nodes || [], res.edges || [], p.timeBasis, job.signal);
+      const graph = await layoutInWorker(res.nodes || [], res.edges || [], p.timeBasis, job.signal,
+        p.layout === "rank" ? "ranked" : "temporal");
       if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
-      layoutCache = { raw: res, basis: p.timeBasis, graph };
+      layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, graph };
       return { executed: true, ...graph };
     } catch (error) {
       if (job.signal.aborted) return { executed: false, stale: true };

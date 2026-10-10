@@ -89,6 +89,18 @@ test("connected groups stay in one topic wing and disconnected roots surround th
   assert.equal(map.get("domain:topic").x, 0);
 });
 
+test("ranked follows relationship stages when dates disagree, retaining cycles and original direction", async () => {
+  const nodes = [n("root", "2022"), n("middle", "2021"), n("leaf", "2020")];
+  const edges = [edge("root", "middle"), edge("leaf", "middle", "DERIVES_FROM")];
+  const temporal = await temporalLayout(nodes, edges, "content", elk, route);
+  const ranked = await temporalLayout(nodes, edges, "content", elk, route, "ranked");
+  check(temporal, edges); check(ranked, edges);
+  assert.ok(temporal.nodes[0].x > temporal.nodes[1].x && temporal.nodes[1].x > temporal.nodes[2].x);
+  assert.ok(ranked.nodes[0].x < ranked.nodes[1].x && ranked.nodes[1].x < ranked.nodes[2].x);
+  const cycles = [...edges, edge("leaf", "root"), edge("middle", "middle"), edge("root", "leaf", "RELATED_TO")];
+  check(await temporalLayout([...nodes, n("unknown", "")], cycles, "content", elk, route, "ranked"), cycles);
+});
+
 test("explicit timestamp offsets compare as instants while invalid dates stay unknown", async () => {
   const nodes = [n("a", "2020-01-01T23:00:00+09:00"), n("b", "2020-01-01T20:00:00Z"), n("invalid", "2020-02-31")];
   const edges = [edge("a", "b"), edge("invalid", "a", "RELATED_TO")];
@@ -136,10 +148,30 @@ test("centre pin routes avoid intervening node and label rectangles and preserve
   }
 });
 
+test("topic-pair routing adds distant obstacles reached by detours and restores input edge order", () => {
+  const positioned = (id, x, y, domain) => ({ ...n(id, "2020", domain), x, y, z: 0 });
+  const nodes = [positioned("a", 0, 0, "a"), positioned("b", 0, 1, "b"),
+    ...[-.55, -.33, -.11, .11, .33, .55].map((x, i) => positioned(`wall${i}`, x, .5, "wall")),
+    positioned("c", 3, 0, "c"), positioned("d", 3, 1, "d")];
+  const edges = [edge("a", "b", "RELATED_TO"), edge("c", "d"), edge("b", "a", "DERIVES_FROM")];
+  const routed = routeAcrossTopics(AvoidLib.getInstance(), nodes, edges);
+  routed.forEach((e, i) => {
+    const { route, ...metadata } = e; assert.deepEqual(metadata, edges[i]); axisAligned(route.points);
+    for (const obstacle of nodes.filter(n => n.id.startsWith("wall"))) {
+      for (let j = 1; j < route.points.length; j++) {
+        const a = route.points[j - 1], b = route.points[j];
+        assert.ok(!(Math.max(a.x, b.x) > obstacle.x - .114 + 1e-8 && Math.min(a.x, b.x) < obstacle.x + .114 - 1e-8 &&
+          Math.max(a.y, b.y) > obstacle.y - .028 + 1e-8 && Math.min(a.y, b.y) < obstacle.y + .070 - 1e-8),
+          `detour crossed ${obstacle.id}`);
+      }
+    }
+  });
+});
+
 test("empty graph avoids worker allocation; singleton remains navigable", async () => {
   assert.deepEqual(await temporalLayout([], [], "content", elk, route), { nodes: [], edges: [], topicEdges: [] });
   assert.deepEqual(await layoutInWorker([], [], "content", new AbortController().signal,
-    () => { throw new Error("must not create a worker"); }), { nodes: [], edges: [], topicEdges: [] });
+    "temporal", () => { throw new Error("must not create a worker"); }), { nodes: [], edges: [], topicEdges: [] });
   const result = await temporalLayout([n("a", "")], [], "content", elk, route);
   assert.ok(Number.isFinite(result.nodes[0].x)); assert.equal(result.topicEdges.length, 1);
 });
@@ -147,9 +179,11 @@ test("empty graph avoids worker allocation; singleton remains navigable", async 
 test("layout jobs terminate on success, abort, worker error and invalid messages", async () => {
   for (const outcome of ["success", "abort", "error", "messageerror"]) {
     let terminated = 0;
-    const worker = { terminate: () => terminated++, postMessage: () => {} };
+    let posted;
+    const worker = { terminate: () => terminated++, postMessage: value => { posted = value; } };
     const controller = new AbortController();
-    const job = layoutInWorker([n("a", "")], [], "content", controller.signal, () => worker);
+    const job = layoutInWorker([n("a", "")], [], "content", controller.signal, "ranked", () => worker);
+    assert.equal(posted.ordering, "ranked");
     if (outcome === "success") worker.onmessage({ data: { graph: { nodes: [], edges: [], topicEdges: [] } } });
     if (outcome === "abort") controller.abort();
     if (outcome === "error") worker.onerror({ message: "test failure" });
@@ -198,4 +232,16 @@ test("larger graph retains every authored relation and finishes within the worke
   const elapsedMs = Math.round(performance.now() - start);
   assert.ok(elapsedMs < 60000, "layout exceeds the production worker deadline");
   t.diagnostic(JSON.stringify({ nodes: 1000, authoredEdges: edges.length, elapsedMs, synthetic: true }));
+});
+
+test("many-topic graph keeps every cross relation within the worker deadline", async (t) => {
+  const nodes = Array.from({ length: 4000 }, (_, i) => n(`n${i}`, `2020-${String(i % 12 + 1).padStart(2, "0")}`, `topic/${i % 79}`));
+  const edges = nodes.slice(79).map((node, i) => edge(nodes[i].id, node.id));
+  for (let i = 0; i < 300; i++) edges.push(edge(nodes[i].id, nodes[i + 1].id, "RELATED_TO"));
+  const start = performance.now();
+  const result = await temporalLayout(nodes, edges, "content", elk, route);
+  check(result, edges);
+  const elapsedMs = Math.round(performance.now() - start);
+  assert.ok(elapsedMs < 60000, "many-topic layout exceeds the production worker deadline");
+  t.diagnostic(JSON.stringify({ nodes: 4000, topics: 79, authoredEdges: edges.length, elapsedMs, synthetic: true }));
 });

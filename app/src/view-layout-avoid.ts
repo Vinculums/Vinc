@@ -3,7 +3,7 @@ import { simplifyRoute, type RoutePoint } from "./view-route";
 
 /** The WASM binding has incomplete type declarations. Keep that boundary here.
  * The router owns shapes, pins, and connectors; temporary value objects do not. */
-export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEdge[]): GraphEdge[] {
+function routeBatch(Avoid: any, nodes: GraphNode[], edges: GraphEdge[]): GraphEdge[] {
   if (!edges.length) return [];
   const router = new Avoid.Router(Avoid.OrthogonalRouting);
   const temporaries: any[] = [], shapes = new Map<string, any>();
@@ -12,8 +12,11 @@ export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEd
   const map = new Map(nodes.map(n => [n.id, n]));
   const raw = (n: GraphNode): RoutePoint => ({ x: n.x! * 1000, y: n.y! * 1000, z: n.z! * 1000 });
   try {
-    for (const [key, value] of [["segmentPenalty", 120], ["crossingPenalty", 50],
-      ["shapeBufferDistance", 4], ["idealNudgingDistance", 12], ["reverseDirectionPenalty", 80]] as const)
+    // libavoid documents crossing penalties as experimental: they add a global
+    // crossing-detection/rerouting pass and can create detours. Keep the normal
+    // orthogonal route and bend cost, plus obstacle clearance and nudging.
+    for (const [key, value] of [["segmentPenalty", 120],
+      ["shapeBufferDistance", 4], ["idealNudgingDistance", 12]] as const)
       router.setRoutingParameter(Avoid[key], value);
     router.setRoutingOption(Avoid.nudgeSharedPathsWithCommonEndPoint, true);
     for (const node of nodes) {
@@ -60,4 +63,49 @@ export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEd
     Avoid.destroy(router);
     for (const value of temporaries.reverse()) Avoid.destroy(value);
   }
+}
+
+/** A full-store visibility graph grows even when only two topics are linked.
+ * Route each topic pair from its endpoint shapes, then check every mark.
+ * Any obstacle reached by a detour is added before recomputing the whole pair. */
+export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEdge[]): GraphEdge[] {
+  if (!edges.length) return [];
+  const map = new Map(nodes.map(n => [n.id, n]));
+  const topic = (id: string) => { const n = map.get(id)!; return n.kind === "domain" ? n.id.slice(7) : n.domain || ""; };
+  const batches = new Map<string, number[]>();
+  edges.forEach((e, i) => {
+    // Large topic pairs can span many columns. Combining their unrelated
+    // corridors recreates the full-store visibility graph; keep each original
+    // connector's obstacle set bounded instead.
+    const key = JSON.stringify((nodes.length > 500 ? [e.source, e.target] : [topic(e.source), topic(e.target)]).sort());
+    if (!batches.has(key)) batches.set(key, []);
+    batches.get(key)!.push(i);
+  });
+  const bounds = nodes.map(n => ({ n, left: n.x! * 1000 - 114, right: n.x! * 1000 + 114,
+    top: n.y! * 1000 - 28, bottom: n.y! * 1000 + 70 }));
+  const result: GraphEdge[] = new Array(edges.length);
+  for (const indices of batches.values()) {
+    const batch = indices.map(i => edges[i]);
+    const endpoints = new Set(batch.flatMap(e => [e.source, e.target]));
+    const included = new Set(endpoints);
+    while (true) {
+      const routed = routeBatch(Avoid, nodes.filter(n => included.has(n.id)), batch);
+      const missed = new Set<string>();
+      for (const e of routed) for (const b of bounds) {
+        if (included.has(b.n.id)) continue;
+        const ps = e.route!.points;
+        for (let i = 1; i < ps.length; i++) {
+          const a = ps[i - 1], c = ps[i];
+          const x0 = Math.min(a.x, c.x) * 1000, x1 = Math.max(a.x, c.x) * 1000;
+          const y0 = Math.min(a.y, c.y) * 1000, y1 = Math.max(a.y, c.y) * 1000;
+          if (x1 > b.left + 1e-6 && x0 < b.right - 1e-6 && y1 > b.top + 1e-6 && y0 < b.bottom - 1e-6) {
+            missed.add(b.n.id); break;
+          }
+        }
+      }
+      if (!missed.size) { indices.forEach((index, i) => { result[index] = routed[i]; }); break; }
+      for (const id of missed) included.add(id);
+    }
+  }
+  return result;
 }
