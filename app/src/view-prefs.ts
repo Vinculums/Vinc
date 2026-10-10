@@ -6,7 +6,7 @@
  *  and is deliberately not user-configurable. Persisted per machine via
  *  localStorage; no sidecar contract involved (coords stay D17 canonical). */
 
-// 프리셋은 **2종뿐**이다(발주자 지시 2026-08-02 — D34 개정, 6종에서 축소).
+// 기존 두 프리셋의 저장값은 기존 좌표를 유지한다. 가지 배치는 별도 선택값이다.
 //   rank  (D50) — 전역 위상 순서를 좌표에 인코딩(x=랭크). 계보가 있는 데이터를
 //                 "무엇이 무엇보다 먼저인가"로 읽는다. 도메인 클러스터를 만들지 않는다.
 //   hub         — 연결이 많은 노드가 가운데, 적을수록 바깥으로 밀려나는 동심 배치.
@@ -14,8 +14,12 @@
 //                 를 대체한다(옛 이름은 loadPrefs 가 hub 로 접는다).
 // 둘을 남긴 기준: 하나는 **순서**를, 하나는 **중심성**을 말한다. 나머지는 그 둘의
 // 변주라 고를 이유가 없었다.
-export type ViewLayout = "hub" | "rank";
-export const LAYOUTS: ViewLayout[] = ["hub", "rank"];
+export type ViewLayout = "hub" | "rank" | "temporalRoots" | "rankedRoots";
+export const LAYOUTS: ViewLayout[] = ["hub", "rank", "temporalRoots", "rankedRoots"];
+export const isRootsLayout = (layout: ViewLayout) => layout === "temporalRoots" || layout === "rankedRoots";
+export const layoutsFor = (view: Viewpoint): ViewLayout[] => isPlanar(view) ? ["hub", "rank"] : LAYOUTS;
+/** 서버는 기존 두 배치만 안다. 가지 배치는 받은 그래프를 워커에서 재배치한다. */
+export const serverLayoutFor = (layout: ViewLayout): "hub" | "rank" => layout === "rank" ? "rank" : "hub";
 /** 폐기된 프리셋 이름 → 대체. 저장된 값과 딥링크가 조용히 깨지지 않게 접어 받는다. */
 const LAYOUT_ALIAS: Record<string, ViewLayout> = {
   radial: "hub", circle: "hub", tree: "hub", organic: "hub", dendro: "hub", shell: "hub",
@@ -122,7 +126,7 @@ export type ViewPrefs = {
   edges: EdgeShow;             // 2D — 선을 상시로 그릴지, 짚은 노드에서만 그릴지
   spread: number;              // layout spread multiplier (0.6–1.6)
   unlinked: "show" | "hide";   // orphan nodes (degree 0) — D32 orphan minimization
-  layout: ViewLayout;         // D34 preset — coords stay sidecar-computed (D17)
+  layout: ViewLayout;         // 기존 좌표는 서버, 추가 가지 배치는 워커가 계산한다.
   timelineDocs: boolean;       // Timeline — 문서(ABOUT/ATTACHES_TO) 아크 포함
   railW: number;               // D70 — 우측 문서 패널 폭(rem). 끌어서 조절, 기기별 지속
   // D72 — 시간축. `recorded` = 기록 시각(기본), `content` = 내용상 시점.
