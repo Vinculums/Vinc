@@ -8,6 +8,8 @@ import { absoluteViewUrl, formatViewUrl, parseViewUrl } from "../view-url";
 import { camera3d, centerOn3d, enableLasso, findNode3d, mount3d, zoomBy3d,
          type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
+import { layoutInWorker } from "../view-layout-client";
+import type { LayoutGraph } from "../view-layout";
 import type { DragEnd } from "./drag-connect";
 import { bucketRange, gateway3dSvg, mark3dSvg, markSvg, mountColumns, pickGrain,
          timelinePool, type Grain,
@@ -308,6 +310,7 @@ export async function renderView(el: HTMLElement) {
   let pickTarget: ((id: string, title: string) => void) | null = null;
   let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
   let curEdges: GraphEdge[] = [];     // 현재 레벨 엣지 — 상세 레일 in/out 표기용
+  let topicGuides: GraphEdge[] = [];
   // 지금 그린 노드들 — focusNode 가 id 만 받고도 라벨·주제를 알아야 한다(D70).
   // 렌더러마다 노드를 꺼내는 법이 달라(3D 는 graphData, 2D 는 graphology, 평면은
   // DOM) 마운트 시점에 한 벌 챙겨 두는 편이 확실하다.
@@ -1237,10 +1240,10 @@ export async function renderView(el: HTMLElement) {
       // 기준을 바꿔 방금 고른 시점이 다른 곳을 가리키게 된다. Timeline 은 처음부터
       // 이 순서였다 — 셋을 맞춘다.
       case "3d":
-        return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "cone",
+        return ["size", "nodeScale", "labels", "arrows", "unlinked",
                 "spread", "edgeWidth", "edgeShow", "basis", "when", "replay"];
       case "2d":
-        return ["size", "nodeScale", "labels", "arrows", "unlinked", "layout", "spread",
+        return ["size", "nodeScale", "labels", "arrows", "unlinked", "spread",
                 "edgeWidth", "edgeShow", "basis", "when"];
       // D49 — `깊이` 는 **씨앗이 있을 때만** 뜻이 있다("씨앗에서 몇 세대"). 씨앗 없는
       // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
@@ -1761,7 +1764,7 @@ export async function renderView(el: HTMLElement) {
     // (`g3`·`g2` 가 없다) — 그쪽은 원래 경로로 다시 그린다.
     const timeOnly = (Object.keys(mut) as string[])
       .every((k) => k === "when" || k === "timeBasis");
-    if (timeOnly && (g3 || g2 || curPrefs().view === "bundle")) {
+    if (timeOnly && (!("timeBasis" in mut) || curPrefs().view === "bundle") && (g3 || g2 || curPrefs().view === "bundle")) {
       // ⚠ **패널을 다시 그리지 않는다**(발주자 지적 2026-09-10: "마우스로 커서
       //    움직이려 해도 한 칸만 움직인다"). `openPanel()` 은 `drawViewPanel()` 을
       //    거쳐 패널을 innerHTML 로 통째로 갈아 끼우는데, 그러면 **끌고 있던 그
@@ -1779,7 +1782,8 @@ export async function renderView(el: HTMLElement) {
     // 세 층으로 갈리는 이유는 [[vinc.research.view-interaction-audit]] §2.2~2.4: 옵션
     // 하나에 왕복 + 재구성 + 컨텍스트 하나가 들었고, 슬라이더는 그 재구성이 자기
     // 손잡이를 DOM 에서 떼어 내서 끌 수가 없었다.
-    const relayout = "layout" in mut || "cone" in mut;
+    const serverLayout = "layout" in mut || "cone" in mut;
+    const relayout = serverLayout || "timeBasis" in mut;
     const np = curPrefs();
     const live = (g3 as { __update?: (p: ViewPrefs) => boolean } | null)?.__update
       ?? g2?.update;
@@ -1794,9 +1798,9 @@ export async function renderView(el: HTMLElement) {
     }
     // 행을 내보낸 층 = 그 프리퍼런스를 실제로 읽는 층이다(Grid 포함). 보이는 컨트롤은
     // 언제나 화면을 바꾼다 — 좌표는 그대로 두고 프리퍼런스만 재적용한다.
-    reuseGraph = !relayout;                       // fetchGraph 가 읽고 바로 끈다
+    reuseGraph = !serverLayout;
     if (rowsFor(np).length > 0)
-      await show(lv, { keepPanel: true, keepCamera: !relayout });
+      await show(lv, { keepPanel: true, keepCamera: !serverLayout });
     openPanel();                                  // 내용 갱신 + aria·포커스 재확정(닫지 않는다)
     if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
   }
@@ -1861,7 +1865,8 @@ export async function renderView(el: HTMLElement) {
     // B1 — confidence 를 함께 넘긴다. 3D 렌더러의 잉크 농도 램프가 이 값으로 갈린다
     // (구 `weight` 는 싣는 곳이 없어 램프가 사문이었다 — D77/M4).
     return edges.map((e) => ({ source: e.source, target: e.target, type: e.type,
-                               cross: e.cross_domain, confidence: e.confidence }));
+      cross: e.cross_domain, confidence: e.confidence, evidence: e.evidence,
+      id: e.id, role: e.role, route: e.route, presentation: e.presentation }));
   }
   /** 시간 커서(2026-08-17 발주자 결정 — 시간은 뷰포인트가 아니라 **세 번째 상태 축**).
    *
@@ -1906,6 +1911,7 @@ export async function renderView(el: HTMLElement) {
       const lid = (v: any) => (v && typeof v === "object" ? v.id : v);
       g3.nodeVisibility((n: any) => !ids || ids.has(n.id));
       g3.linkVisibility((l: any) => !ids || (ids.has(lid(l.source)) && ids.has(lid(l.target))));
+      (g3 as any).__wake?.(600);
     }
     g2?.setTimeVisible(ids);
     // Weave — 링 각도는 마운트 때 전량으로 잡혀 있으므로 그리기만 다시 한다
@@ -2047,20 +2053,42 @@ export async function renderView(el: HTMLElement) {
    *  · **순서**: 빠르게 연달아 show() 가 나면 늦게 도착한 옛 응답이 새 그림을 덮었다.
    *    부를 때의 세대를 기억해, 돌아왔을 때 세대가 지났으면 `stale` 로 답한다. */
   let reuseGraph = false;
+  let keepCam2: ReturnType<Handle2d["camera"]> | null = null;
+  let rawGraph: { executed: boolean; nodes?: GraphNode[]; edges?: GraphEdge[] } | undefined;
+  let layoutCache: { raw: typeof rawGraph; basis: ViewPrefs["timeBasis"]; graph: LayoutGraph } | undefined;
+  let layoutJob: AbortController | undefined;
+  const removalObserver = new MutationObserver(() => {
+    if (canvas.isConnected && myGen === liveGen) return;
+    layoutJob?.abort();
+    removalObserver.disconnect();
+    swapSurface();
+  });
+  removalObserver.observe(document.body, { childList: true, subtree: true });
   async function fetchGraph(p: ViewPrefs, scope: { domains?: string[] }):
-      Promise<{ executed: boolean; stale?: boolean; nodes?: GraphNode[]; edges?: GraphEdge[] }> {
-    if (reuseGraph && curNodes.length) {
-      reuseGraph = false;
-      return { executed: true, nodes: curNodes, edges: curEdges };
-    }
+      Promise<{ executed: boolean; stale?: boolean; nodes?: GraphNode[]; edges?: GraphEdge[]; topicEdges?: GraphEdge[] }> {
+    const cached = reuseGraph && rawGraph;
     reuseGraph = false;
     const mySeq = showSeq;
     const domains = scope.domains || [];
-    const res = await api.graph(cfg.owner, {
-      ...(domains.length ? { domains } : {}), layout: p.layout,
-      ...(p.cone === 1 ? {} : { cone: p.cone }) });
-    if (mySeq !== showSeq) return { executed: false, stale: true };
-    return res;
+    const res = cached || await api.graph(cfg.owner, {
+      ...(domains.length ? { domains } : {}), layout: isPlanar(p.view) ? p.layout : "hub",
+      ...(isPlanar(p.view) && p.cone !== 1 ? { cone: p.cone } : {}) });
+    if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
+    rawGraph = res;
+    if (isPlanar(p.view) || !res.executed) return res;
+    if (layoutCache && layoutCache.raw === res && layoutCache.basis === p.timeBasis)
+      return { executed: true, ...layoutCache.graph };
+    layoutJob?.abort();
+    const job = layoutJob = new AbortController();
+    try {
+      const graph = await layoutInWorker(res.nodes || [], res.edges || [], p.timeBasis, job.signal);
+      if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
+      layoutCache = { raw: res, basis: p.timeBasis, graph };
+      return { executed: true, ...graph };
+    } catch (error) {
+      if (job.signal.aborted) return { executed: false, stale: true };
+      throw error;
+    } finally { if (layoutJob === job) layoutJob = undefined; }
   }
 
   async function showGraphScope(scope: { domains?: string[] }) {
@@ -2085,6 +2113,7 @@ export async function renderView(el: HTMLElement) {
     }
     setMsg("");
     curEdges = res.edges || [];
+    topicGuides = res.topicEdges || [];
     setCurNodes(nodes);
     // 지표는 **커서가 고른 모집단**을 센다. 시간을 잘라 놓고 수는 전량을 말하면
     // 그 줄이 화면을 거짓으로 서술한다. 다만 `unlinked` 는 반영하지 않는다 — 고아
@@ -2099,7 +2128,10 @@ export async function renderView(el: HTMLElement) {
     //    `filterUnlinked` 는 전량 기준이 오히려 옳다: 커서가 이웃을 잠시 가렸다고
     //    그 노드가 고아가 되는 것은 아니다.
     const shown3 = filterUnlinked(toN3(nodes, domains, lnbFocus.nodeId));
-    g3 = mount3d(canvas, shown3, toL3(pruneEdges(visibleEdges(), shown3)), {
+    g3 = mount3d(canvas, shown3, toL3(pruneEdges([...visibleEdges(), ...topicGuides], shown3)), {
+      onLinkClick: (edge) => { if (DIRECTED_RELS.includes(edge.type || "") && !edge.presentation)
+        void openEdgeDetail({ source: typeof edge.source === "object" ? edge.source.id : edge.source,
+          target: typeof edge.target === "object" ? edge.target.id : edge.target, type: edge.type || "" }); },
       // 게이트웨이(렌즈 밖 노드)는 그 주제로 건너뛴다 — 주제 렌즈에서만 성립하고,
       // 전체 화면에는 렌즈가 없으므로 toN3 가 애초에 표식을 달지 않는다.
       onClick: (nd) => {
@@ -3641,6 +3673,7 @@ export async function renderView(el: HTMLElement) {
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
     const gnodes: GraphNode[] = res.nodes || [];
     curEdges = res.edges || [];
+    topicGuides = res.topicEdges || [];
     setCurNodes(gnodes);
     if (gnodes.length === 0) {
       // CTA 를 **항상** 붙인다 — Sankey 가 그렇게 한다. 스코프가 좁아 비었을 때
@@ -3652,14 +3685,14 @@ export async function renderView(el: HTMLElement) {
     drawMetrics(atTime(gnodes));      // 3D 와 같은 규칙(위 주석)
     // 3D 와 같은 이유로 **전량**이다(위 `shown3` 주석) — 커서는 가시성이 건다.
     const shown2 = gnodes.map((nd) => ({ ...nd, gateway: isGateway(nd, domains) }));
-    g2 = mount2d(canvas, shown2, pruneEdges(visibleEdges(), shown2), {
+    g2 = mount2d(canvas, shown2, pruneEdges([...visibleEdges(), ...topicGuides], shown2), {
       markId: lnbFocus.nodeId,
       onClick: (nd) => focusOnMap(toN3([nd])[0]),   // 3D 와 같은 약속
       onRightClick: (nd, ev) => nodeMenu(toN3([nd])[0], ev),
       // D53 — 흐름 폐기로 갈 곳을 잃은 관계 근거 패널(D45-V)의 새 진입점.
       onEdge: (e) => void openEdgeDetail(e),
       onConnect: connectByDrag, canConnect: canLinkPair,
-    }, p);
+    }, p, keepCam2);
     applyTimeCut();
   }
 
@@ -3929,10 +3962,12 @@ export async function renderView(el: HTMLElement) {
   async function show(level: Level,
                       opts?: { keepPanel?: boolean; keepCamera?: boolean; keepDetail?: boolean }) {
     const seq = ++showSeq;
+    layoutJob?.abort();
     setBusy(true, opts?.keepPanel ? 120 : 400);
     // 옵션만 바뀐 재마운트는 카메라를 잇는다 — 전체 맞춤으로 되감기는 것이 "옵션을
     // 누르면 보던 곳을 잃는다"의 정체였다(실측 2026-08-17). 캡처는 파괴 **전에**.
     keepCam = opts?.keepCamera && g3 ? camera3d(g3) : null;
+    keepCam2 = opts?.keepCamera && g2 ? g2.camera() : null;
     ctxCache = null;                           // 층이 바뀌면 노드 맥락 메모도 버린다
     spot = null;   // 렌더러가 통째로 갈리므로 점등도 함께 버린다(핸들이 사라진다)
     kindSpot = null;   // 〃 — 서 있는 것도 함께. 새 렌더러에 다시 걸리는 것은 아래 훅이다.
