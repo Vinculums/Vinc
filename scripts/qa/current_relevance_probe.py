@@ -150,6 +150,9 @@ def main():
             stack.callback(close_store)
             # Product provisioning on the disposable copy retains its existing vectors.
             store.provision(dim=cfg.embedding_dim)
+            # Prepare indexes on the copy before collecting any search response.
+            print(json.dumps({'stage': 'preparing_search_indexes'}), flush=True)
+            result['index_preparation'] = store.ensure_search_indexes(dim=cfg.embedding_dim)
             gold_docs = sorted({x['gold_doc_id'] for x in items + validation if x.get('gold_doc_id')})
             result['labelled_documents_present'] = store.run(
                 'MATCH (d:_DocMeta) WHERE d.owner_id=$o AND d.doc_id IN $ids RETURN count(d) AS n',
