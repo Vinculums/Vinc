@@ -618,7 +618,7 @@ const EN = {
       groupNodes: "Nodes", groupLines: "Lines", groupOther: "Other",
       // 프리셋 2종(2026-08-02). 이름은 무엇을 보여주는지로 짓는다 — 알고리즘 이름
       // (radial·dendro)은 사용자에게 아무 것도 말해 주지 않았다.
-      layoutName: { hub: "by centre", rank: "by order", temporalRoots: "time branches", rankedRoots: "relation branches" } as Record<string, string>,
+      layoutName: { hub: "by centre", temporalRoots: "time branches" } as Record<string, string>,
       // v2 — **값마다 한 줄 설명 한 벌**. 옛 per-row Help 키들(edgeShowHelp·layoutHelp
       // ·bundleDepthHelp…)을 이 표로 모았다: 설명은 패널 바닥의 고정 줄이 받고,
       // 가리키거나 포커스가 닿은 값의 줄로 바뀐다(뜨는 툴팁 아님 — WCAG 1.4.13 을
@@ -641,9 +641,7 @@ const EN = {
         showU: "Unlinked marks are drawn, so you can see what is not tied in yet.",
         hideU: "Unlinked marks are hidden. Only what connects remains.",
         hub: "Everything spreads from the centre. Inside a topic, the best connected sits nearest.",
-        rank: "Left comes first, right comes later. Within a column the best connected sits on top.",
         temporalRoots: "Branches spread from each topic in date order, using the selected time basis.",
-        rankedRoots: "Branches follow relationship stages. Date order is not guaranteed.",
         recorded: "Stood up by when you wrote it, so one import clusters in one place.",
         content: "Stood up by when it happened, regardless of when it was written down.",
         docsOn: "Documents are drawn as marks, hung off their concepts.",
@@ -1804,7 +1802,7 @@ const KO: Deck = {
       unlinkedNodes: "연결 안 된 노드", show: "표시", hide: "숨김",
       layout: "배치", spread: "간격",
       groupNodes: "노드", groupLines: "선", groupOther: "기타",
-      layoutName: { hub: "중심에서", rank: "순서대로", temporalRoots: "시간순 가지", rankedRoots: "관계순 가지" } as Record<string, string>,
+      layoutName: { hub: "중심에서", temporalRoots: "시간순 가지" } as Record<string, string>,
       // v2 — 값마다 한 줄 설명 한 벌(EN 쪽 주석 참조). 바닥 고정 줄이 받는다.
       helpTip: "설명 펼치기",
       close: "닫기",
@@ -1824,9 +1822,7 @@ const KO: Deck = {
         showU: "연결 없는 마디도 그려요. 아직 이어지지 않은 것이 보여요",
         hideU: "연결 없는 마디를 숨겨요. 이어진 것만 남아 View가 조용해져요",
         hub: "가운데에서 사방으로 퍼져요. 한 주제 안에서는 연결이 많은 것이 가운데에 가까워요",
-        rank: "왼쪽이 먼저, 오른쪽이 나중이에요. 같은 줄에서는 연결이 많은 것이 위에 와요",
         temporalRoots: "주제를 중심으로, 선택한 날짜 기준에 따라 가지가 시간순으로 퍼져요",
-        rankedRoots: "관계의 단계에 따라 가지가 퍼져요. 날짜 순서와는 다를 수 있어요",
         recorded: "언제 적었는지로 세워요. 한 번에 적재한 것들이 같은 자리에 몰려요",
         content: "언제 있었던 일인지로 세워요. 적은 날과 무관하게 퍼져요",
         docsOn: "문서도 마디로 그려 개념에 매달아요",

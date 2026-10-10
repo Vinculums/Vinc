@@ -116,9 +116,8 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
     // 큰 연결 묶음도 날짜·관계를 버리지 않고 여러 가지로 나눈다. 가지 사이의
     // 원래 관계는 아래 공통 라우터가 잇는다. 날짜 순서는 각 가지의 바깥 방향이다.
     const limit = members.length < 8 ? 32 : Math.max(2, Math.min(32, Math.ceil(members.length / 4)));
-    let groups = components([...ids], inside).flatMap(group => {
-      const dates = new Set(group.map(id => timeOf(map.get(id)!, basis)).filter(Boolean));
-      if (group.length <= limit && dates.size <= 16) return [group];
+    // 날짜만으로 잘라 관계를 대량 분단하지 않도록 실제 이웃을 따라 가지 순서를 만든다.
+    const branchOrder = (group: string[]) => {
       const adj = new Map(group.map(id => [id, [] as string[]]));
       for (const e of inside) if (adj.has(e.source) && adj.has(e.target)) {
         adj.get(e.source)!.push(e.target); adj.get(e.target)!.push(e.source);
@@ -128,7 +127,6 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
       const seen = new Set<string>(), sorted: string[] = [];
       const incoming = new Set(inside.filter(e => ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"].includes(e.type))
         .map(e => ancestry(e)[1]));
-      // 날짜만으로 잘라 관계를 대량 분단하지 않도록 실제 이웃을 따라 가지를 묶는다.
       for (const root of group.slice().sort((a, b) => ordering === "ranked"
         ? Number(incoming.has(a)) - Number(incoming.has(b)) || compare(a, b) : compare(a, b))) {
         if (seen.has(root)) continue;
@@ -138,10 +136,25 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
           for (const next of adj.get(id)!.slice().sort(compare)) if (!seen.has(next)) { seen.add(next); queue.push(next); }
         }
       }
-      const parts: string[][] = [];
+      return sorted;
+    };
+    let groups = components([...ids], inside).flatMap(group => {
+      const dates = new Set(group.map(id => timeOf(map.get(id)!, basis)).filter(Boolean));
+      if (group.length <= limit && dates.size <= 16) return [group];
+      const sorted = branchOrder(group), parts: string[][] = [];
       for (let i = 0; i < sorted.length; i += limit) parts.push(sorted.slice(i, i + limit));
       return parts;
     });
+    // Topic은 가지들의 중심에 있어야 한다. 작은 Topic(구성원 8 미만)은 위 분할 한도가 32라
+    // 연결 묶음 하나가 날개 하나를 통째로 차지하고 Topic이 그 끝으로 밀렸다. 절반을 넘는
+    // 묶음(다섯 이상)만 이웃 순서대로 반씩 나눠 맞은편 날개로 보낸다. 넷 이하는 한 방향
+    // 사슬로 둔다. 나뉜 가지 사이의 원래 관계는 큰 묶음을 자를 때처럼 공통 라우터가 잇는다.
+    for (;;) {
+      const largest = groups.reduce((a, b) => b.length > a.length ? b : a, [] as string[]);
+      if (largest.length < 5 || largest.length * 2 <= ids.size) break;
+      const sorted = branchOrder(largest), half = Math.ceil(sorted.length / 2);
+      groups = [...groups.filter(g => g !== largest), sorted.slice(0, half), sorted.slice(half)];
+    }
     // 고립된 작은 묶음마다 worker 왕복을 만들지 않는다. ELK 안에서는 서로
     // 다른 연결 묶음과 각 소속선을 유지한 채 한 번에 계산한다.
     if (groups.length > 8) {

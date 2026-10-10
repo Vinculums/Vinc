@@ -28,27 +28,25 @@ const { routeAcrossTopics } = await source("../src/view-layout-avoid.ts");
 const { layoutInWorker } = await source("../src/view-layout-client.ts");
 const { LAYOUTS, normalizeLayout, layoutsFor, serverLayoutFor, isRootsLayout, loadPrefs, savePrefs } = await source("../src/view-prefs.ts");
 
-test("existing saved layouts and defaults retain their identity beside independent roots choices", () => {
+test("two layout choices remain and retired choices fold into time branches", () => {
   const saved = new Map();
   globalThis.localStorage = { getItem: k => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, v) };
   try {
     assert.equal(loadPrefs().layout, "hub");
-    for (const layout of ["hub", "rank", "temporalRoots", "rankedRoots"]) {
+    for (const layout of ["hub", "temporalRoots"]) {
       savePrefs({ ...loadPrefs(), layout });
       assert.equal(loadPrefs().layout, layout);
       assert.equal(normalizeLayout(layout), layout);
     }
-    assert.deepEqual(LAYOUTS, ["hub", "rank", "temporalRoots", "rankedRoots"]);
+    assert.deepEqual(LAYOUTS, ["hub", "temporalRoots"]);
+    assert.equal(normalizeLayout("rank"), "temporalRoots");
+    assert.equal(normalizeLayout("rankedRoots"), "temporalRoots");
     assert.equal(normalizeLayout("radial"), "hub");
     assert.equal(normalizeLayout("unknown"), "hub");
-    assert.equal(serverLayoutFor("rank"), "rank");
-    for (const layout of ["hub", "temporalRoots", "rankedRoots"]) assert.equal(serverLayoutFor(layout), "hub");
-    for (const view of ["2d", "3d"]) assert.deepEqual(layoutsFor(view), LAYOUTS);
-    for (const view of ["timeline", "bundle"]) assert.deepEqual(layoutsFor(view), ["hub", "rank"]);
+    for (const layout of LAYOUTS) assert.equal(serverLayoutFor(layout), "hub");
+    for (const view of ["2d", "3d", "timeline", "bundle"]) assert.deepEqual(layoutsFor(view), LAYOUTS);
     assert.equal(isRootsLayout("hub"), false);
-    assert.equal(isRootsLayout("rank"), false);
     assert.equal(isRootsLayout("temporalRoots"), true);
-    assert.equal(isRootsLayout("rankedRoots"), true);
   } finally { delete globalThis.localStorage; }
 });
 const { movedRoute, routeLength, pointOnRoute, simplifyRoute } = await source("../src/view-route.ts");
@@ -126,6 +124,16 @@ test("connected groups stay in one topic wing and disconnected roots surround th
   assert.ok(map.get("c").x * map.get("d").x > 0);
   assert.ok(map.get("a").x * map.get("c").x < 0);
   assert.equal(map.get("domain:topic").x, 0);
+});
+
+test("a small Topic with one connected chain keeps its Topic at the centre", async () => {
+  const nodes = Array.from({ length: 6 }, (_, i) => n(`c${i}`, `202${i}`));
+  const edges = nodes.slice(1).map((x, i) => edge(nodes[i].id, x.id));
+  const result = await temporalLayout(nodes, edges, "content", elk, route);
+  check(result, edges);
+  const xs = result.nodes.filter(n => n.kind !== "domain").map(n => n.x);
+  assert.equal(result.nodes.find(n => n.kind === "domain").x, 0);
+  assert.ok(Math.min(...xs) < 0 && Math.max(...xs) > 0, "every branch sat on one side of its Topic");
 });
 
 test("ranked follows relationship stages when dates disagree, retaining cycles and original direction", async () => {

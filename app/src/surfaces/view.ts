@@ -1436,7 +1436,7 @@ export async function renderView(el: HTMLElement) {
         COPY.ui.panel.show, COPY.ui.panel.hide, "show", "hide", "showU", "hideU"),
       layout: tileRow(COPY.ui.panel.layout, layoutsFor(p.view).map((l) => ({
         val: l, label: COPY.ui.panel.layoutName[l],
-        art: l === "hub" || l === "temporalRoots" ? ART.layoutHub : ART.layoutRank,
+        art: l === "hub" ? ART.layoutHub : ART.layoutRank,
         help: l, active: (isPlanar(p.view) ? serverLayoutFor(p.layout) : p.layout) === l,
       })), "layout"),
       spread: slider("pref-spread", COPY.ui.panel.spread, 0.6, 1.6, 0.02, p.spread,
@@ -2156,7 +2156,7 @@ export async function renderView(el: HTMLElement) {
     const job = layoutJob = new AbortController();
     try {
       const graph = await layoutInWorker(res.nodes || [], res.edges || [], p.timeBasis, job.signal,
-        p.layout === "rankedRoots" ? "ranked" : "temporal", undefined, aspectRatio);
+        "temporal", undefined, aspectRatio);
       if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
       layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph };
       return { executed: true, ...graph };

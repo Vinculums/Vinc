@@ -14,15 +14,18 @@
 //                 를 대체한다(옛 이름은 loadPrefs 가 hub 로 접는다).
 // 둘을 남긴 기준: 하나는 **순서**를, 하나는 **중심성**을 말한다. 나머지는 그 둘의
 // 변주라 고를 이유가 없었다.
-export type ViewLayout = "hub" | "rank" | "temporalRoots" | "rankedRoots";
-export const LAYOUTS: ViewLayout[] = ["hub", "rank", "temporalRoots", "rankedRoots"];
-export const isRootsLayout = (layout: ViewLayout) => layout === "temporalRoots" || layout === "rankedRoots";
-export const layoutsFor = (view: Viewpoint): ViewLayout[] => isPlanar(view) ? ["hub", "rank"] : LAYOUTS;
-/** 서버는 기존 두 배치만 안다. 가지 배치는 받은 그래프를 워커에서 재배치한다. */
-export const serverLayoutFor = (layout: ViewLayout): "hub" | "rank" => layout === "rank" ? "rank" : "hub";
+// 선택지는 둘이다(발주자 지시 2026-10-11): `중심에서`(서버 좌표)와 `시간순 가지`(워커).
+// `순서대로`·`관계순 가지`는 뺐고, 그 저장값은 아래 별칭이 `시간순 가지`로 접는다.
+export type ViewLayout = "hub" | "temporalRoots";
+export const LAYOUTS: ViewLayout[] = ["hub", "temporalRoots"];
+export const isRootsLayout = (layout: ViewLayout) => layout === "temporalRoots";
+export const layoutsFor = (_view: Viewpoint): ViewLayout[] => LAYOUTS;
+/** 서버는 `hub` 좌표만 받는다. 가지 배치는 받은 그래프를 워커에서 재배치한다. */
+export const serverLayoutFor = (_layout: ViewLayout): "hub" => "hub";
 /** 폐기된 프리셋 이름 → 대체. 저장된 값과 딥링크가 조용히 깨지지 않게 접어 받는다. */
 const LAYOUT_ALIAS: Record<string, ViewLayout> = {
   radial: "hub", circle: "hub", tree: "hub", organic: "hub", dendro: "hub", shell: "hub",
+  rank: "temporalRoots", rankedRoots: "temporalRoots",
 };
 export const normalizeLayout = (v: unknown): ViewLayout =>
   LAYOUTS.includes(v as ViewLayout) ? v as ViewLayout
