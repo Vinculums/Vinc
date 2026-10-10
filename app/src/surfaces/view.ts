@@ -25,7 +25,7 @@ import { blocksSurfaceShortcuts, isTypingTarget } from "../keys";
 import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
 
-import { LAYOUTS, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
+import { layoutsFor, isRootsLayout, serverLayoutFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
          WHEN_SCALE, timeCutoff, nodeTimeOn, visibleAt,
          EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, DIRECTED_RELS,
          edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
@@ -1296,6 +1296,7 @@ export async function renderView(el: HTMLElement) {
       // 이 순서였다 — 셋을 맞춘다.
       case "3d":
         return ["size", "layout", "nodeScale", "labels", "arrows", "unlinked",
+                ...(!isRootsLayout(p.layout) ? ["cone"] : []),
                 "spread", "edgeWidth", "edgeShow", "basis", "when", "replay"];
       case "2d":
         return ["size", "layout", "nodeScale", "labels", "arrows", "unlinked", "spread",
@@ -1433,10 +1434,10 @@ export async function renderView(el: HTMLElement) {
       })), "edges"),
       unlinked: swRow(COPY.ui.panel.unlinkedNodes, "unlinked", p.unlinked === "show",
         COPY.ui.panel.show, COPY.ui.panel.hide, "show", "hide", "showU", "hideU"),
-      layout: tileRow(COPY.ui.panel.layout, LAYOUTS.map((l) => ({
-        val: l, label: (isPlanar(p.view) ? COPY.ui.panel.layoutName : COPY.ui.panel.rootsLayoutName)[l],
-        art: l === "hub" ? ART.layoutHub : ART.layoutRank,
-        help: isPlanar(p.view) ? l : l === "hub" ? "temporalRoots" : "rankedRoots", active: p.layout === l,
+      layout: tileRow(COPY.ui.panel.layout, layoutsFor(p.view).map((l) => ({
+        val: l, label: COPY.ui.panel.layoutName[l],
+        art: l === "hub" || l === "temporalRoots" ? ART.layoutHub : ART.layoutRank,
+        help: l, active: (isPlanar(p.view) ? serverLayoutFor(p.layout) : p.layout) === l,
       })), "layout"),
       spread: slider("pref-spread", COPY.ui.panel.spread, 0.6, 1.6, 0.02, p.spread,
                      undefined, "spread"),
@@ -1819,7 +1820,7 @@ export async function renderView(el: HTMLElement) {
     // (`g3`·`g2` 가 없다) — 그쪽은 원래 경로로 다시 그린다.
     const timeOnly = (Object.keys(mut) as string[])
       .every((k) => k === "when" || k === "timeBasis");
-    if (timeOnly && (!("timeBasis" in mut) || curPrefs().view === "bundle") && (g3 || g2 || curPrefs().view === "bundle")) {
+    if (timeOnly && (!("timeBasis" in mut) || !isRootsLayout(curPrefs().layout) || curPrefs().view === "bundle") && (g3 || g2 || curPrefs().view === "bundle")) {
       // ⚠ **패널을 다시 그리지 않는다**(발주자 지적 2026-09-10: "마우스로 커서
       //    움직이려 해도 한 칸만 움직인다"). `openPanel()` 은 `drawViewPanel()` 을
       //    거쳐 패널을 innerHTML 로 통째로 갈아 끼우는데, 그러면 **끌고 있던 그
@@ -1837,8 +1838,8 @@ export async function renderView(el: HTMLElement) {
     // 세 층으로 갈리는 이유는 [[vinc.research.view-interaction-audit]] §2.2~2.4: 옵션
     // 하나에 왕복 + 재구성 + 컨텍스트 하나가 들었고, 슬라이더는 그 재구성이 자기
     // 손잡이를 DOM 에서 떼어 내서 끌 수가 없었다.
-    const serverLayout = isPlanar(curPrefs().view) && ("layout" in mut || "cone" in mut);
-    const relayout = serverLayout || "layout" in mut || "timeBasis" in mut;
+    const serverLayout = (isPlanar(curPrefs().view) || !isRootsLayout(curPrefs().layout)) && ("layout" in mut || "cone" in mut);
+    const relayout = serverLayout || "layout" in mut || (isRootsLayout(curPrefs().layout) && "timeBasis" in mut);
     const np = curPrefs();
     const live = (g3 as { __update?: (p: ViewPrefs) => boolean } | null)?.__update
       ?? g2?.update;
@@ -2123,7 +2124,10 @@ export async function renderView(el: HTMLElement) {
   async function fetchGraph(p: ViewPrefs, scope: { domains?: string[] }):
       Promise<{ executed: boolean; stale?: boolean; nodes?: GraphNode[]; edges?: GraphEdge[]; topicEdges?: GraphEdge[] }> {
     const domains = scope.domains || [];
-    const scopeKey = JSON.stringify([...domains].sort());
+    const useRoots = !isPlanar(p.view) && isRootsLayout(p.layout);
+    const serverLayout = serverLayoutFor(p.layout);
+    const cone = useRoots ? 1 : p.cone;
+    const scopeKey = JSON.stringify({ domains: [...domains].sort(), layout: serverLayout, cone });
     const cached = reuseGraph && rawGraph?.executed && rawGraphScope === scopeKey && rawGraph;
     reuseGraph = false;
     const mySeq = showSeq;
@@ -2131,8 +2135,8 @@ export async function renderView(el: HTMLElement) {
     const start = performance.now();
     let res: typeof rawGraph;
     try { res = cached || await api.graph(cfg.owner, {
-      ...(domains.length ? { domains } : {}), layout: isPlanar(p.view) ? p.layout : "hub",
-      ...(isPlanar(p.view) && p.cone !== 1 ? { cone: p.cone } : {}) }); }
+      ...(domains.length ? { domains } : {}), layout: serverLayout,
+      ...(cone !== 1 ? { cone } : {}) }); }
     catch (failure) {
       console.error(`View graph read failed ${JSON.stringify({ elapsedMs: Math.round(performance.now() - start),
         status: Number((failure as { status?: number }).status) || 0 })}`);
@@ -2144,7 +2148,7 @@ export async function renderView(el: HTMLElement) {
     rawGraph = res;
     rawGraphScope = scopeKey;
     if (!res) return { executed: false };
-    if (isPlanar(p.view) || !res.executed) return res;
+    if (!useRoots || !res.executed) return res;
     const aspectRatio = Math.round((canvas.clientWidth || 1200) / (canvas.clientHeight || 750) * 10) / 10;
     if (layoutCache && layoutCache.raw === res && layoutCache.basis === p.timeBasis && layoutCache.layout === p.layout && layoutCache.aspectRatio === aspectRatio)
       return { executed: true, ...layoutCache.graph };
@@ -2152,7 +2156,7 @@ export async function renderView(el: HTMLElement) {
     const job = layoutJob = new AbortController();
     try {
       const graph = await layoutInWorker(res.nodes || [], res.edges || [], p.timeBasis, job.signal,
-        p.layout === "rank" ? "ranked" : "temporal", undefined, aspectRatio);
+        p.layout === "rankedRoots" ? "ranked" : "temporal", undefined, aspectRatio);
       if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
       layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph };
       return { executed: true, ...graph };
