@@ -286,7 +286,7 @@ function wireFocus(el: HTMLElement, h: {
   seg?: (dom: string, mark: string) => void;
   /** 타임라인 월-밴드 클릭 — data-month("YYYY-MM"). 노드(data-id)보다 **나중**에
    *  검사해 점 클릭이 우선한다(빈 밴드 클릭만 기간 선택, D45-V2 4단계). */
-  month?: (m: string) => void;
+  month?: (m: string, trigger: SVGElement) => void;
 }): () => void {
   const hit = (e: Event) => (e.target as Element).closest?.("[data-id]") as SVGElement | null;
   const over = (e: Event) => { const g = hit(e); if (g) h.focus(g.dataset.id!); else h.clear(); };
@@ -304,16 +304,26 @@ function wireFocus(el: HTMLElement, h: {
     }
     if (h.month) {
       const gm = (e.target as Element).closest?.("[data-month]") as SVGElement | null;
-      if (gm) h.month(gm.dataset.month!);
+      if (gm) h.month(gm.dataset.month!, gm);
     }
+  };
+  const key = (e: KeyboardEvent) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const band = (e.target as Element).closest?.(".pl-band-hit") as SVGElement | null;
+    if (!band || !h.month) return;
+    e.preventDefault();
+    e.stopPropagation();
+    h.month(band.dataset.month!, band);
   };
   el.addEventListener("mouseover", over);
   el.addEventListener("mouseleave", leave);
   el.addEventListener("click", click);
+  el.addEventListener("keydown", key);
   return () => {
     el.removeEventListener("mouseover", over);
     el.removeEventListener("mouseleave", leave);
     el.removeEventListener("click", click);
+    el.removeEventListener("keydown", key);
   };
 }
 
@@ -363,7 +373,7 @@ function wireFocus(el: HTMLElement, h: {
 export function mountColumns(el: HTMLElement,
   nodes: (PlanarNode & { ts?: string; kind?: string; degree?: number; gateway?: boolean;
                          tint?: string })[],
-  o: { docs: boolean; onOpen: (id: string) => void; onMonth?: (bucket: string) => void;
+  o: { docs: boolean; onOpen: (id: string) => void; onMonth?: (bucket: string, trigger: SVGElement) => void;
        lineage?: { source: string; target: string; type: string }[];
        /** 초점이 걸렸을 때 **남을 것**을 정하는 관계 — 갈래를 가리지 않고 전부 받는다.
         *  그려지는 선(lineage)과 다른 입력인 이유: 그리는 것은 방향 관계만이지만,
@@ -491,7 +501,7 @@ const PAD_L = 42, PAD_R = 22, TOP = 58, BOT = 26;
       const hit = o.onMonth
         ? `<rect class="pl-band-hit" data-month="${esc(s.m)}" x="${num(x0)}" y="${num(y)}"`
           + ` width="${num(wSpan)}" height="${num(hh)}" fill="transparent"`
-          + ` style="cursor:pointer"/>` : "";
+          + ` role="button" tabindex="0" aria-label="${esc(s.m)}" style="cursor:pointer"/>` : "";
       return `${i % 2 === 1 ? `<rect class="pl-band" x="${num(x0)}" y="${num(y)}"`
         + ` width="${num(wSpan)}" height="${num(hh)}"/>` : ""}${hit}${tick}${name}`;
     }).join("");
@@ -634,7 +644,7 @@ const PAD_L = 42, PAD_R = 22, TOP = 58, BOT = 26;
     // 전량을 그리므로 파고들 곳이 없고, 파고들면 방금 짚은 그림이 사라진다.
     // 그래서 클릭 = 고정(다시 누르면 해제) + 상세 레일이다.
     open: (id) => { pinned = pinned === id ? "" : id; paint(pinned); o.onOpen(id); },
-    month: o.onMonth ? (m) => o.onMonth!(m) : undefined,
+    month: o.onMonth,
   });
   return {
     dispose() { stopSize(); stopFocus(); el.innerHTML = ""; },

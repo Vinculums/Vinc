@@ -1978,6 +1978,13 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
    눌러 두고, 아래 규칙은 패널이 표면 안에 남는 임베드 배치를 위해 유지한다. */
 #surface { --rail-w: 0px; }
 #rail-grip:hover, #rail-grip:active { background: hsl(var(--muted-foreground) / .35); }
+#rail-grip:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.pl-band-hit:focus-visible { stroke: hsl(var(--ring)); stroke-width: 2; outline: none; }
+#period-body h2 { word-break: keep-all; }
+.period-i {
+  display: block; width: 100%; text-align: left; font: inherit; color: inherit;
+  background: none; border: 0; border-bottom: 1px solid hsl(var(--border)); cursor: pointer;
+}
 
 /* 인캔버스 크롬 — 레일이 열리면 그 폭만큼 비켜선다(자리 다툼 방지: 같은 우상단을
    두 층이 쓰면 레일의 닫기(✕)가 칩 밑에 깔린다). 예전엔 JS 가 인라인 style 로
