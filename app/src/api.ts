@@ -709,6 +709,24 @@ async function importPackInChunks(pack: any, owner: string, scope?: Scope,
 }
 
 export const api = {
+  roleRoster: async (owner: string) => {
+    const scope = { team: cfg.team || null };
+    const nodes = new Map<string, any>();
+    const edges: GraphEdge[] = [];
+    let offset = 0;
+    for (;;) {
+      const page = await call("/roles", { owner, roster: 1, limit: 100, offset }, undefined, scope);
+      if (!page?.executed || !Array.isArray(page.roles) || !Array.isArray(page.relations))
+        throw new Error(page?.error || "role roster unavailable");
+      for (const r of page.roles) nodes.set(r.id, { ...r, label: r.title, kind: "concept" });
+      for (const e of page.relations) edges.push({ ...e, source: e.from, target: e.to });
+      if (page.next_offset == null) break;
+      if (!Number.isInteger(page.next_offset) || page.next_offset <= offset)
+        throw new Error("invalid role roster pagination");
+      offset = page.next_offset;
+    }
+    return { nodes: [...nodes.values()], edges };
+  },
   health: () => call("/health"),
   /** 변경 표식(VIN-129). 값은 비교만 한다: 같으면 그대로, 다르면 다시 읽는다(`live.ts`). */
   changes: (owner: string): Promise<{ marker?: string }> => call("/changes", { owner }),

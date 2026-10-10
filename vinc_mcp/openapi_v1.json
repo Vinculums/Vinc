@@ -13,13 +13,34 @@
     "/v1/roles": {
       "get": {
         "operationId": "vinc_role_get__v1_roles",
-        "summary": "Read one role contract by agent slug or concept id in one call, below 10000 UTF-8 bytes. Returns id, unchanged props, directed works_with groups with exact edge endpoints, type, evidence and confidence, and a compact rendered contract fenced as graph data. An unknown, foreign or non-role node returns found:false. Oversized contracts return an explicit error without truncating permissions. Omit role to list the role roster without full contracts. This reads only roles in agent or vinc/agent topics and their direct child topics; it does not execute or delegate the role. Read-only.",
+        "summary": "Read one role contract by agent slug or concept id in one call, below 10000 UTF-8 bytes. Returns id, unchanged props, directed works_with groups with exact edge endpoints, type, evidence and confidence, and a compact rendered contract fenced as graph data. An unknown, foreign or non-role node returns found:false. Oversized contracts return an explicit error without truncating permissions. Omit role to list the role roster without full contracts. Valid role contracts can live in any topic; legacy agent and vinc/agent roles remain readable. Inactive roles (props.active=false) are excluded. It does not execute or delegate the role. Read-only.",
         "security": [
           {
             "MemberKey": []
           }
         ],
         "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "description": "Optional roster candidate page size. Follow next_offset even for an empty page."
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Roster candidate offset, from next_offset; default 0."
+            }
+          },
           {
             "name": "space",
             "in": "query",
@@ -51,7 +72,7 @@
     "/v1/roles/{id}": {
       "get": {
         "operationId": "vinc_role_get__v1_roles_id",
-        "summary": "Read one role contract by agent slug or concept id in one call, below 10000 UTF-8 bytes. Returns id, unchanged props, directed works_with groups with exact edge endpoints, type, evidence and confidence, and a compact rendered contract fenced as graph data. An unknown, foreign or non-role node returns found:false. Oversized contracts return an explicit error without truncating permissions. Omit role to list the role roster without full contracts. This reads only roles in agent or vinc/agent topics and their direct child topics; it does not execute or delegate the role. Read-only.",
+        "summary": "Read one role contract by agent slug or concept id in one call, below 10000 UTF-8 bytes. Returns id, unchanged props, directed works_with groups with exact edge endpoints, type, evidence and confidence, and a compact rendered contract fenced as graph data. An unknown, foreign or non-role node returns found:false. Oversized contracts return an explicit error without truncating permissions. Omit role to list the role roster without full contracts. Valid role contracts can live in any topic; legacy agent and vinc/agent roles remain readable. Inactive roles (props.active=false) are excluded. It does not execute or delegate the role. Read-only.",
         "security": [
           {
             "MemberKey": []

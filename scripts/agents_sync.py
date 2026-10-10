@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""agents_sync.py — 그래프의 역할 정의(`agent`·`vinc/agent`)와 역할 껍데기 파일을 잇는다.
+"""agents_sync.py — 토픽과 무관한 그래프 역할 정의와 역할 껍데기 파일을 잇는다.
 
 역할 정의의 정본은 그래프다([[concept:agent-orchestration]]). 하지만 하네스는 실행
 시점에 `.claude/agents/<name>.md` 를 **파일로** 읽는다. 그래서 파일이 있어야 하고,
@@ -72,7 +72,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from vinc_mcp.roles import (TOPICS, ID_PREFIX, build_payload,  # noqa: E402
-                            render_shell, roster_rows, works_with)
+                            render_shell, works_with)
 
 SNAPSHOT = ROOT / "agents" / "roles.json"
 SHELL_DIR = ROOT / "agents" / "shells"
@@ -190,18 +190,24 @@ def cmd_pull() -> int:
     """**여기만 네트워크를 쓴다** — `refresh_graph_refs.py` 와 같은 자리, 같은 이유."""
     from vinc_mcp import remote
 
-    def _neighbors(node: str) -> list[dict]:
-        res = remote.call("vinc_neighbors", {"node": node, "limit": 200})
-        if res.get("isError"):
-            raise SystemExit(f"[agents] {node} 조회 실패: {res.get('error') or res}")
-        # 멤버 없는 자식 도메인은 found:false 로 온다 — 고장이 아니라 비어 있는 것이다.
-        return res.get("neighbors", []) or []
-
-    # 직속 + 직계 자식 도메인. prompts/list 와 **같은 함수**를 지난다(Vinc#204: 역할이
-    # vinc/agent/roles 로 옮겨지자 직속만 읽던 이 자리가 역할 0건을 쓸 판이었다).
-    ids = [str(r["id"]) for r in roster_rows(_neighbors)]
+    # 역할 발견은 UI와 같은 서버 판정을 쓴다. 빈 후보 페이지도 이어 읽는다.
+    found = {}
+    offset = 0
+    while True:
+        page = remote.call("vinc_role", {"limit": 100, "offset": offset})
+        if page.get("isError") or not page.get("executed") or not isinstance(page.get("roles"), list):
+            raise SystemExit("[agents] role roster unavailable")
+        for row in page["roles"]:
+            found[str(row["id"])] = row
+        next_offset = page.get("next_offset")
+        if next_offset is None:
+            break
+        if isinstance(next_offset, bool) or not isinstance(next_offset, int) or next_offset <= offset:
+            raise SystemExit("[agents] invalid role roster pagination")
+        offset = next_offset
+    ids = sorted(found)
     if not ids:
-        raise SystemExit(f"[agents] {', '.join(TOPICS)} 에 역할 노드가 없다 — 도메인 이름을 확인하라")
+        raise SystemExit("[agents] no active roles in this space")
     print(f"[agents] 역할 {len(ids)}개")
 
     roles = []
@@ -218,8 +224,11 @@ def cmd_pull() -> int:
             # ([[record:isolated-seed-read-back-reported-empty-fields]]). 조용히 빈
             # 역할을 쓰느니 여기서 죽는 편이 낫다.
             raise SystemExit(f"[agents] {rid} 가 자기 응답의 nodes 에 없다")
-        roles.append(dict(node, works_with=works_with(rid, got.get("nodes") or [],
-                                                      got.get("edges") or [])))
+        # 계약 전문은 기존 그래프 응답에서 보존한다. 협업 상대는 발견된 활성 역할만 쓴다.
+        peers = [n for n in got.get("nodes") or [] if n.get("id") in found]
+        edges = [e for e in got.get("edges") or []
+                 if e.get("source") in found and e.get("target") in found]
+        roles.append(dict(node, works_with=works_with(rid, peers, edges)))
 
     write_snapshot(build_payload(roles))
     print(f"[agents] 썼다: {SNAPSHOT.relative_to(ROOT)} — git diff 가 그래프가 앞서간 만큼이다")

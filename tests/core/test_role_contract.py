@@ -79,7 +79,7 @@ class CheckSaysWhatIsWrong(unittest.TestCase):
         # 근거: [[decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02]]
         self.assertEqual(rc.check(good(domain="agent"), created=True), [])
         self.assertEqual(rc.check(good(domain="agent/release"), created=True), [])
-        self._one(good(domain="agent/release/ops"), needle="more than one level below agent")
+        self.assertEqual(rc.check(good(domain="agent/release/ops"), created=True), [])
         self.assertEqual(rc.check(good(domain="agents"), created=True), [])
 
     def test_the_roster_concept_and_other_ids_are_not_roles(self):
@@ -93,8 +93,8 @@ class CheckSaysWhatIsWrong(unittest.TestCase):
         self.assertNotIn("—", out[0])     # 호스트 화면에 뜨는 문장이다(em-dash 금지)
         return out[0]
 
-    def test_two_levels_down_is_invisible(self):
-        self._one(good(domain="vinc/agent/team/ops"), needle="one level")
+    def test_deep_topics_are_visible(self):
+        self.assertEqual(rc.check(good(domain="vinc/agent/team/ops"), created=True), [])
 
     def test_outside_the_topic(self):
         for topic in ("agent-lab", "agents", "vinc/agent-lab", "vinc/engineering"):
@@ -273,7 +273,7 @@ class ThroughTheRealWritePath(unittest.TestCase):
         self.assertEqual(res["merged"]["nodes"]["created"], 1)
         text = " ".join(res.get("warnings") or [])
         self.assertIn("prefix", text)
-        self.assertIn("one level", text)
+        self.assertNotIn("one level", text)
         stored = {n["id"]: n for n in res.get("stored") or []}
         self.assertEqual(stored[node["id"]]["props"]["tier"], "deliver")
 

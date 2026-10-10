@@ -720,7 +720,14 @@ class VincApp:
 
     def read_roles(self, p):
         from .roles import read
-        return self._read(lambda r: read(p.get("role"), owner=_req(p, "owner"), store=r))
+        try:
+            limit = int(p["limit"]) if p.get("limit") is not None else None
+            offset = int(p.get("offset", 0))
+        except (TypeError, ValueError):
+            return {"executed": False, "error": "invalid role pagination"}
+        return self._read(lambda r: read(p.get("role"), owner=_req(p, "owner"), store=r,
+            limit=limit, offset=offset,
+            roster=p.get("roster") == "1"))
 
     def read_path(self, p):
         # E-G7/E-G8 최단 경로 증거 체인 — 두 개념 사이 경로(조회 전용).

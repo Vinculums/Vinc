@@ -77,9 +77,7 @@ const tintStyle = (domain: string): string => {
 /** 종 레일 한 칸. `dest` 는 종이 아니라 목적지(Agent). `offTopic` 은 주제 트리에
  *  서지 않는 종(Entity·Bridge)이라 조회를 보내지 않고 지도 렌즈만 건다.
  *  `group` 은 같은 표식을 쓰는 종을 자리로 묶는다(구/정사면체). */
-/** 역할이 사는 주제, 읽는 순서대로(`vinc_mcp.roles.TOPICS` 와 같다). 앞의 것이 새 역할의
- *  자리이고, 뒤의 것은 Vinc 자기 그래프와 그 전에 시드된 스페이스의 자리라 계속 읽는다.
- *  근거: [[decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02]] */
+/** 새 역할의 기본 주제와 기존 호환 주제. 목록 발견은 이 주제로 제한하지 않는다. */
 export const AGENT_TOPICS = ["agent", "vinc/agent"] as const;
 /** 주제가 역할 주제이거나 그 아래인가. `agents`·`vinc/agentic` 은 아니다. */
 export const inAgentTopic = (d: string): boolean =>
@@ -188,7 +186,7 @@ export function setLnbTopicPicker(fn: TopicPicker | null) {
   // 저장된 레일이 Agent 인 채로 새로 열면 setRailKey 를 안 거치므로 스코프가 안 걸린다.
   // View 가 피커를 처음 걸 때 한 번만 건다(딥링크로 들어왔으면 그 착지를 덮지 않는다).
   // View 의 첫 show 뒤에 도는 것은 안전하다 — show 는 세대 번호로 옛 것을 버린다.
-  if (fn && !launchScoped && railKey === "agent") {
+  if (fn && !launchScoped && railKey === "agent" && agentRoster !== null) {
     launchScoped = true;
     const here = location.hash.replace(/^#/, "");
     if (here === "" || here === "view") queueMicrotask(scopeAgentGraph);
@@ -246,18 +244,6 @@ const hasNodes = (t: NavTreeRes | null): boolean =>
 /** 레일이 그리는 개수 — 응답의 `counts.kinds` 하나에서 온다(제목을 싣지 않는 집계).
  *  종을 갈아 끼워도 이 값은 안 바뀌므로 마지막으로 받은 것을 들고 있는다. */
 let kindCounts: Record<string, number> = {};
-
-/** Agent 레일은 주제 필터다. 역할은 역할 주제(`AGENT_TOPICS`) 아래에 서고, 그 아래
- *  한 단계(`agent/release`)에도 선다. 이름에 agent 가 든 주제는 남기고, 역할 id 접두
- *  `concept:agent-` 가 그 밖의 주제에 선 역할을 구한다. */
-function isAgentRow(domain: string, nodes?: { id: string }[]): boolean {
-  if (/(^|\/)agent(\/|$)/.test(domain)) return true;
-  return (nodes || []).some((n) => n.id.startsWith("concept:agent-"));
-}
-function filterAgentTree(t: NavTreeRes): NavTreeRes {
-  const domains = (t.domains || []).filter((g) => isAgentRow(g.domain, g.nodes));
-  return { ...t, domains };
-}
 
 /** 역할 id 접두. 로스터 개념 `concept:agent-orchestration` 은 접두가 같아
  *  역할이 아니다(`vinc_mcp.roles.is_role_id`). */
@@ -325,7 +311,7 @@ function roleRels(rid: string, byId: Map<string, GraphRoleNode>,
     const src = e.source || "";
     const dst = e.target || "";
     if (rid !== src && rid !== dst) continue;
-    if (src === dst || !isRoleId(src) || !isRoleId(dst)) continue;
+    if (src === dst || !byId.has(src) || !byId.has(dst)) continue;
     const other = src === rid ? dst : src;
     const kind = String(e.type || "").toUpperCase();
     if (kind === "PREREQUISITE_OF") {
@@ -350,7 +336,8 @@ function teamRoleRank(role: string): number {
 
 function buildAgentRoster(g: { nodes?: GraphRoleNode[]; edges?: GraphEdge[] } | null
                           | undefined): AgentRole[] {
-  const nodes = (g?.nodes || []).filter((n) => isRoleId(n.id));
+  const nodes = [...new Map((g?.nodes || []).filter((n) => isRoleId(n.id))
+    .map((n) => [n.id, n])).values()];
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const edges = g?.edges || [];
   const rows: AgentRole[] = nodes.map((n) => ({
@@ -449,6 +436,14 @@ export async function refreshLnb(opts: { quiet?: boolean } = {}): Promise<void> 
         } catch { /* 개수만 못 받았다 */ }
       }
       paintRail();
+    } else if (r?.dest) {
+      // 주제 트리로 강등하지 않는다. 빈 로스터와 조회 실패를 구별한다.
+      const roster = await api.roleRoster(cfg.owner);
+      if (stale()) return;
+      tree = { executed: true, domains: [], unfiled: [] };
+      agentRoster = buildAgentRoster(roster);
+      failed = false;
+      if (!opts.quiet && ["", "view"].includes(location.hash.replace(/^#/, ""))) scopeAgentGraph();
     } else {
       // 늘 노드까지 받는다 — 층 2 가 문서를 **노드 아래** 세우므로 노드 목록이
       // 없으면 그릴 것이 없다. 대신 **한 종만** 받는다: 넷을 한꺼번에 실으면 응답이
@@ -456,27 +451,11 @@ export async function refreshLnb(opts: { quiet?: boolean } = {}): Promise<void> 
       // 종을 안 골랐으면 `kind` 를 안 싣는다 — 서버는 그때 네 종을 모두 준다.
       // 응답은 지역에 받고, 세대가 그대로일 때만 상태에 쓴다(늦게 온 앞 종의 응답이
       // 뒤 종의 트리를 덮지 않게).
-      let next = await api.navTree(cfg.owner, { nodes: true, kind: r?.kind,
-                                                 domains: r?.topics ? [...r.topics] : undefined });
+      const next = await api.navTree(cfg.owner, { nodes: true, kind: r?.kind });
       if (stale()) return;
-      if (next?.executed && r?.topics) next = filterAgentTree(next);
-      // Agent 목록의 팀·관계는 `/graph` 의 역할 노드와 그 사이 엣지에서 접는다.
-      // nav-tree 는 제목·주제만 주고 props.team 과 works_with 를 안 싣는다.
-      // 그래프를 못 받으면 주제 트리로 강등한다(빈 목록을 "역할이 없다"로 읽히게 두지 않는다).
-      let roster: AgentRole[] | null = null;
-      if (r?.topics && next?.executed) {
-        try {
-          const rows = buildAgentRoster(
-            await api.graph(cfg.owner, { domains: [...AGENT_TOPICS] }));
-          // 접은 역할이 없으면 주제 트리로 강등한다. 빈 배열을 그리면
-          // 트리에 있던 역할이 "없다"로 읽힌다.
-          roster = rows.length ? rows : null;
-        } catch { roster = null; }
-        if (stale()) return;
-      }
       tree = next;
       failed = !tree?.executed;
-      agentRoster = roster;
+      agentRoster = null;
     }
     // 개수는 이 응답에 함께 온다. 못 받았으면 지난 값을 지우지 않는다 — 레일의
     // 숫자가 조회 실패마다 사라지면 그것이 곧 "종이 없어졌다"로 읽힌다.
@@ -494,22 +473,18 @@ export async function refreshLnb(opts: { quiet?: boolean } = {}): Promise<void> 
   paint();
 }
 
-/** Agent 를 고르면 지도는 역할 주제의 하위 트리다(역할 도메인 전량). 역할이 실제로 선
- *  주제만 건다: 새 스페이스에는 `agent` 만, Vinc 자기 그래프에는 `vinc/agent` 만 있다.
- *  아직 목록을 못 받았으면 둘 다 건다(없는 주제는 지도에 아무것도 더하지 않는다).
- *  상세는 목록에서 역할을 고른 뒤에만 연다. 근거: 소유자 지시 2026-09-22.
- *  **토글이 아니라 건다**(`set`) — 이미 역할 주제로 좁혀져 있을 때 Agent 를 다시
- *  고르면 토글 피커는 스코프를 벗겨 버린다. */
+/** 역할들의 실제 주제로 지도를 연다. 빈 목록에는 기존 역할 주제를 쓴다. */
+let agentGraphTopics: string[] = [...AGENT_TOPICS];
 function scopeAgentGraph(): void {
-  const here = AGENT_TOPICS.filter((t) =>
-    (agentRoster || []).some((r) => r.domain === t || r.domain.startsWith(t + "/")));
-  pickTopic?.(here.length ? here : [...AGENT_TOPICS], false, true);
+  const here = [...new Set((agentRoster || []).map((r) => r.domain).filter(Boolean))];
+  agentGraphTopics = here.length ? here : [...AGENT_TOPICS];
+  pickTopic?.(agentGraphTopics, false, true);
 }
 
 /** Agent 를 떠나면 그 주제 스코프를 벗긴다. pickTopic 은 해시를 안 바꾸므로
  *  `#view` 가 이미 자리여도 hashchange 를 한 번 보내 L0 로 되돌린다. */
 function unscopeAgentGraph(): void {
-  const agentScope = [...picked].some(inAgentTopic);
+  const agentScope = [...picked].some((d) => agentGraphTopics.includes(d));
   if (!agentScope) return;
   const here = location.hash.replace(/^#/, "");
   if (here === "view" || here.startsWith("view/")) {
@@ -569,7 +544,7 @@ function paintRail(): void {
   const railBtn = (r: RailItem): string => {
     const on = r.key === railKey;
     const name = names[r.key] || r.key;
-    // 개수는 그 **종**의 수다. Agent 는 주제라, Entity·Bridge 는 주제 집계 밖이라
+    // 개수는 그 **종**의 수다. Agent 는 역할 목록이고 Entity·Bridge 는 주제 집계 밖이라
     // 숫자를 내지 않는다 — 셀 수 없는 것에 그럴싸한 숫자를 붙이지 않는다.
     const cnt = (r.dest || r.offTopic) ? 0 : (kindCounts[r.key] || 0);
     const mark = r.icon

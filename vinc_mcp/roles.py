@@ -346,11 +346,13 @@ def _fence(body: str) -> str:
     return f"{tick}\n{body}\n{tick}"
 
 
-def contract(role: str | None, bridge, *, forced_owner: str | None = None) -> dict:
+def contract(role: str | None, bridge, *, forced_owner: str | None = None,
+             limit: int | None = None, offset: int = 0) -> dict:
     """역할 계약을 한 브리지 호출로 얻는다. 전체 props와 방향·근거를 잃지 않는다."""
     import json
     got = bridge.request("GET", "/roles", params={
-        "owner": _owner_of(bridge, forced_owner), **({"role": role} if role else {})})
+        "owner": _owner_of(bridge, forced_owner), **({"role": role} if role else {}),
+        **({"limit": limit, "offset": offset} if limit is not None or offset else {})})
     if not role or not got.get("executed") or not got.get("found"):
         return got
     node = got["node"]
@@ -397,18 +399,7 @@ def serialize_result(value) -> str:
 
 
 def roster_rows(neighbors) -> list[dict]:
-    """역할 행 — 역할 주제(`TOPICS`)마다 직속 멤버에 **직계 자식 도메인의 멤버**를 더해,
-    `concept:agent-` 접두 행만 id 순으로.
-
-    왜 자식까지 읽나: 2026-09-04 에 역할 열일곱이 `vinc/agent/roles` 로 옮겨졌는데 이
-    함수의 전신은 직속만 읽어 라이브 `prompts/list` 가 비었고 `--pull` 은 역할 0건을
-    쓸 판이었다(record:prompts-list-and-agents-sync-read-only-the-direct-members-of-vinc-agent-2026-09-05,
-    Vinc#204). 도메인 좌표의 neighbors 는 자식 도메인(PARENT_OF)과 직속 멤버(IN_DOMAIN)
-    만 내므로 자식을 한 홉 더 읽는다. 한 단계만인 이유: 역할을 두 단계보다 깊이 둘
-    이유가 없고, 트리 전체를 걷는 것은 `vinc_domains` 의 일이다.
-
-    `neighbors(node)` 는 행 목록을 돌려주는 호출자다. prompts 는 브리지로, agents_sync
-    는 remote 로 넘긴다 — 같은 함수를 지나야 두 표면이 같은 로스터를 본다."""
+    """기존 호출자의 토픽 탐색 호환 도우미. 제품의 발견 경로는 discover_roles를 쓴다."""
     rows: list[dict] = []
     for topic in TOPICS:
         top = list(neighbors(f"domain:{topic}"))
@@ -426,34 +417,39 @@ def roster_rows(neighbors) -> list[dict]:
 
 
 def list_prompts(bridge, forced_owner: str | None = None) -> dict:
-    """`prompts/list` — 역할 주제(`agent`·`vinc/agent`)에 속한 역할 개념을 프롬프트로 낸다.
-
-    `/neighbors` 를 도메인에 한 번, 직계 자식 도메인마다 한 번 부른다(`roster_rows`).
-    역할마다 서브그래프를 끌지는 않는다: description 을 `props.mission` 으로 채우려면
-    역할마다 서브그래프를 한 번씩 더 끌어야 하는데(neighbors 는 props 를 안 준다),
-    그건 호스트가 붙을 때마다 조회 열여섯 건이고 **고르는 화면의 부제** 값으로는
-    비싸다. 임무 문장은 그것이 실제로 일을 하는 자리인 `prompts/get` 이 싣는다.
-
-    로스터가 없는 그래프에서는 빈 목록이 정답이다 — 오류가 아니다. 이 기능은
-    도그푸딩 전용이 아니라 제품이고, 남의 그래프에 역할 주제가 없는 것은
-    고장이 아니다."""
+    """서버의 역할 판정과 페이지를 사용해 MCP 프롬프트를 발견한다."""
     owner = _owner_of(bridge, forced_owner)
 
-    def _neighbors(node: str) -> list[dict]:
-        res = bridge.request("GET", "/neighbors", params={
-            "owner": owner, "node": node, "limit": 200})
-        return res.get("neighbors") or []
-
     out = []
-    for row in roster_rows(_neighbors):
+    for row in discover_roles(bridge, owner):
         rid = str(row.get("id") or "")
         # `title` 은 안 싣는다 — 여기서는 description 과 같은 문자열이 되고, 같은
         # 값을 두 필드로 내면 나중에 한쪽만 고쳐진다. description 은 2024-11-05
         # 부터 모든 리비전이 알고, title 은 그렇지 않다.
         out.append({"name": rid.split(":", 1)[1],
-                    "description": row.get("one_liner") or row.get("title") or rid,
+                    "description": row.get("mission") or row.get("title") or rid,
                     "arguments": PROMPT_ARGUMENTS})
     return {"prompts": out}
+
+
+def discover_roles(bridge, owner: str) -> list[dict]:
+    """서버의 역할 판정과 페이지를 쓴다. 실패는 빈 로스터가 아니다."""
+    offset = 0
+    found = {}
+    while True:
+        result = bridge.request("GET", "/roles", params={
+            "owner": owner, "limit": 100, "offset": offset})
+        if not result.get("executed") or not isinstance(result.get("roles"), list):
+            raise ValueError(result.get("error") or "role roster unavailable")
+        for row in result["roles"]:
+            if is_role_id(str(row.get("id") or "")):
+                found[row["id"]] = row
+        next_offset = result.get("next_offset")
+        if next_offset is None:
+            return [found[k] for k in sorted(found)]
+        if isinstance(next_offset, bool) or not isinstance(next_offset, int) or next_offset <= offset:
+            raise ValueError("invalid role roster pagination")
+        offset = next_offset
 
 
 def get_prompt(name: str, arguments: dict | None, bridge,
@@ -468,13 +464,14 @@ def get_prompt(name: str, arguments: dict | None, bridge,
     if not is_role_id(rid):
         raise ValueError(f"unknown prompt: {slug}")
     owner = _owner_of(bridge, forced_owner)
-    got = bridge.request("GET", "/graph", params={
-        "owner": owner, "seed": rid, "depth": 1})
-    node = next((n for n in (got.get("nodes") or []) if n.get("id") == rid), None)
-    if node is None:
+    got = bridge.request("GET", "/roles", params={"owner": owner, "role": rid})
+    if not got.get("executed"):
+        raise ValueError(got.get("error") or "role contract unavailable")
+    node = got.get("node")
+    if not got.get("found") or node is None:
         raise ValueError(f"unknown prompt: {slug}")
-    node = dict(node, works_with=works_with(rid, got.get("nodes") or [],
-                                            got.get("edges") or []))
+    node = dict(node, works_with=works_with(rid, got.get("peers") or [],
+        [{**e, "source": e["from"], "target": e["to"]} for e in got.get("relations") or []]))
     role = build_payload([node])["roles"][0]
     mission = " ".join((role["props"].get("mission") or role.get("label") or slug).split())
 
