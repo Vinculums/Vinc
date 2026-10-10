@@ -36,14 +36,27 @@ class Fake:
         return 200, answer(self.provider, body, model)
 
 
-def prepare(tmp_path, provider="jev", contract=COMMUNITY):
+def mock_contract(directory):
+    return directory.parent / f"mock-contract-{directory.name}.json"
+
+
+def prepare(tmp_path, provider="jev", contract=COMMUNITY, mock_authorized=True):
     directory = tmp_path / provider
+    if contract == COMMUNITY and mock_authorized:
+        # Authorization is synthetic and used only with the Fake transport below.
+        body = json.loads(COMMUNITY.read_text(encoding="utf-8"))
+        body["live_calls_authorized"] = True
+        contract = mock_contract(directory)
+        contract.parent.mkdir(parents=True, exist_ok=True)
+        J.write_json(contract, body)
     assert J.main(["prepare", "--root", str(ROOT), "--directory", str(directory), "--provider", provider,
                    "--contract", str(contract)]) == 0
     return directory
 
 
 def go(directory, send, tmp_path, set_name="calib", contract=COMMUNITY, **kw):
+    if contract == COMMUNITY and mock_contract(directory).exists():
+        contract = mock_contract(directory)
     return X.run(root=ROOT, contract_path=contract, directory=directory, set_name=set_name,
                  journal=directory / f"journal-{set_name}.jsonl", ledger=tmp_path / "ledger.jsonl", key=KEY, send=send,
                  sleep=lambda s: None, log=lambda m: None, **kw)
@@ -62,7 +75,7 @@ def test_a_resumed_run_sends_every_request_exactly_once_and_imports(tmp_path, pr
     assert send.urls == {json.loads((directory / "provenance.json").read_text())["endpoint"]}
     # 실행기가 쓴 저널을 오프라인 임포터가 그대로 받는다
     assert J.main(["import", "--root", str(ROOT), "--directory", str(directory), "--set", "calib",
-                   "--journal", str(directory / "journal-calib.jsonl"), "--contract", str(COMMUNITY)]) == 0
+                   "--journal", str(directory / "journal-calib.jsonl"), "--contract", str(mock_contract(directory))]) == 0
     assert len(J.read_journal(directory / "calib.jsonl")) == 117 * 5
     for name in ("journal-calib.jsonl", "calib.jsonl", "calib-usage.json"):
         assert KEY not in (directory / name).read_text(encoding="utf-8")
@@ -101,7 +114,7 @@ def test_the_first_http_failure_stops_the_run_and_is_never_retried(tmp_path, sta
     assert len(send.bodies) == 3
     with pytest.raises((ValueError, KeyError)):                       # 끊긴 저널은 임포트되지 않는다
         J.main(["import", "--root", str(ROOT), "--directory", str(directory), "--set", "calib",
-                "--journal", str(directory / "journal-calib.jsonl"), "--contract", str(COMMUNITY)])
+                "--journal", str(directory / "journal-calib.jsonl"), "--contract", str(mock_contract(directory))])
 
 
 def test_an_answer_the_importer_would_refuse_stops_after_one_request(tmp_path):
@@ -128,7 +141,7 @@ def test_refusals_send_nothing(tmp_path):
     with pytest.raises(X.Refused):                                    # 보정을 동결하기 전에는 측정 요청이 없다
         go(directory, send, tmp_path, set_name="c")
     with pytest.raises(X.Refused):
-        X.run(root=ROOT, contract_path=COMMUNITY, directory=directory, set_name="calib", journal=directory / "j.jsonl",
+        X.run(root=ROOT, contract_path=mock_contract(directory), directory=directory, set_name="calib", journal=directory / "j.jsonl",
               ledger=tmp_path / "ledger.jsonl", key="", send=send, log=lambda m: None)
     assert go(directory, send, tmp_path, dry_run=True) == X.OK
     # 개인 그래프 문장이 든 VIN-425 계약은 실행 승인이 없다
@@ -157,9 +170,8 @@ def test_community_contract_holds_only_community_text_and_fits_the_cap():
 def test_measurement_requests_leave_only_after_the_freeze_and_import_cleanly(tmp_path):
     import hashlib
     from rag_eval.laya.pins import QUESTIONS
-    args = ["--root", str(ROOT), "--directory", None, "--contract", str(COMMUNITY)]
     directory = prepare(tmp_path)
-    args[3] = str(directory)
+    args = ["--root", str(ROOT), "--directory", str(directory), "--contract", str(mock_contract(directory))]
     send = Fake("jev")
     assert go(directory, send, tmp_path) == X.OK
     assert J.main(["import", *args, "--set", "calib", "--journal", str(directory / "journal-calib.jsonl")]) == 0
@@ -185,3 +197,24 @@ def test_measurement_requests_leave_only_after_the_freeze_and_import_cleanly(tmp
     path.write_text(path.read_text(encoding="utf-8").replace('"temperature": 1', '"temperature": 2'), encoding="utf-8")
     with pytest.raises(ValueError, match="changed"):
         go(directory, send, tmp_path, set_name="c")
+
+
+@pytest.mark.parametrize("provider", ["jev", "openai_decisions"])
+def test_owner_revoked_contract_sends_nothing(tmp_path, provider):
+    directory = prepare(tmp_path, provider, mock_authorized=False)
+    send = Fake(provider)
+    with pytest.raises(X.Refused, match="does not authorize live calls"):
+        go(directory, send, tmp_path)
+    assert send.bodies == []
+    assert not (tmp_path / "ledger.jsonl").exists()
+
+
+def test_previously_authorized_preparation_cannot_use_the_revoked_contract(tmp_path):
+    directory = prepare(tmp_path)
+    send = Fake("jev")
+    with pytest.raises(ValueError, match="prepared contract differs"):
+        X.run(root=ROOT, contract_path=COMMUNITY, directory=directory, set_name="calib",
+              journal=directory / "journal-calib.jsonl", ledger=tmp_path / "ledger.jsonl",
+              key=KEY, send=send, log=lambda m: None)
+    assert send.bodies == []
+    assert not (tmp_path / "ledger.jsonl").exists()

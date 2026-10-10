@@ -55,11 +55,12 @@
     "requests": 514,
     "answers": 1285
   },
-  "live_calls_authorized": true,
+  "live_calls_authorized": false,
   "execution": {
     "max_requests_total": 3000,
     "counted_by": "one shared ledger file for both providers and every set; a request is counted before it is sent",
     "text_scope": "community starter pack text and statements written against it; no personal graph text",
-    "authorized_by": "decision:judge-comparison-runs-on-community-text-only-within-3000-requests-2026-10-10"
+    "authorized_by": "decision:judge-comparison-runs-on-community-text-only-within-3000-requests-2026-10-10",
+    "revoked_by": "decision:vinc-owns-its-system1-judge-and-external-apis-are-customer-managed-2026-10-10"
   }
 }
