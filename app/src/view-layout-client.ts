@@ -12,6 +12,8 @@ export function layoutInWorker(nodes: GraphNode[], edges: GraphEdge[], basis: "r
   return new Promise((resolve, reject) => {
     const worker = factory();
     let settled = false;
+    let lastProgress: { phase: string; callsDone: number; activeNodes: number; activeEdges: number; elapsedMs: number } | undefined;
+    let loggedPhase = "", loggedWindow = -1;
     const finish = (error?: Error, graph?: LayoutGraph) => {
       if (settled) return;
       settled = true;
@@ -25,11 +27,23 @@ export function layoutInWorker(nodes: GraphNode[], edges: GraphEdge[], basis: "r
       } else resolve(graph!);
     };
     const abort = () => finish(new DOMException("Aborted", "AbortError"));
-    const timer = setTimeout(() => finish(new Error("View layout timed out")), 60000);
+    const timer = setTimeout(() => finish(new Error(`View layout timed out${lastProgress
+      ? ` (${JSON.stringify(lastProgress)})` : ""}`)), 60000);
     signal.addEventListener("abort", abort, { once: true });
-    worker.onmessage = (event: MessageEvent<{ graph?: LayoutGraph; error?: string; timings?: { elkMs: number; routingMs: number } }>) => {
+    worker.onmessage = (event: MessageEvent<{ graph?: LayoutGraph; error?: string; timings?: { elkMs: number; routingMs: number }; progress?: typeof lastProgress }>) => {
+      const progress = event.data.progress;
+      if (progress && ["elk", "routing"].includes(progress.phase) &&
+          [progress.callsDone, progress.activeNodes, progress.activeEdges, progress.elapsedMs].every(Number.isFinite)) {
+        lastProgress = progress;
+        const window = Math.floor(progress.elapsedMs / 10000);
+        if (progress.phase !== loggedPhase || window !== loggedWindow) {
+          console.info(`View layout progress ${JSON.stringify(progress)}`);
+          loggedPhase = progress.phase; loggedWindow = window;
+        }
+        return;
+      }
       const { graph, error } = event.data;
-      if (event.data.timings) console.info("View layout stages", event.data.timings);
+      if (event.data.timings) console.info(`View layout stages ${JSON.stringify(event.data.timings)}`);
       if (error) finish(new Error(error));
       else if (graph && Array.isArray(graph.nodes) && Array.isArray(graph.edges) && Array.isArray(graph.topicEdges)) finish(undefined, graph);
       else finish(new Error("Invalid View layout worker response"));

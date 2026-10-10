@@ -86,6 +86,19 @@ export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEd
     if (!batches.has(key)) batches.set(key, []);
     batches.get(key)!.push(i);
   });
+  // 전체 노드가 적어도 한 Topic 쌍에 끝점이 몰리면 가시성 그래프가 커진다.
+  // 평행 관계는 같은 끝점 묶음에 남기고, 서로 다른 연결은 따로 계산한다.
+  const bounded: number[][] = [];
+  for (const indices of batches.values()) {
+    const endpointCount = new Set(indices.flatMap(i => [edges[i].source, edges[i].target])).size;
+    if (endpointCount <= 48 && indices.length <= 64) { bounded.push(indices); continue; }
+    const pairs = new Map<string, number[]>();
+    for (const i of indices) {
+      const key = JSON.stringify([edges[i].source, edges[i].target].sort());
+      if (!pairs.has(key)) pairs.set(key, []); pairs.get(key)!.push(i);
+    }
+    bounded.push(...pairs.values());
+  }
   const bounds = nodes.map(n => { const r = rectangleOf(n); return { n, left: r.left - 4, right: r.right + 4,
     top: r.top - 4, bottom: r.bottom + 4 }; });
   // 모든 장애물을 색인한다. 각 직각 구간과 겹치는 칸만 조회하며 멀리 우회한 선도 검사한다.
@@ -95,7 +108,7 @@ export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEd
       const key = `${x}:${y}`; if (!cells.has(key)) cells.set(key, []); cells.get(key)!.push(b);
     }
   const result: GraphEdge[] = new Array(edges.length);
-  for (const indices of batches.values()) {
+  for (const indices of bounded) {
     const batch = indices.map(i => edges[i]);
     const endpoints = new Set(batch.flatMap(e => [e.source, e.target]));
     const included = new Set(endpoints);
