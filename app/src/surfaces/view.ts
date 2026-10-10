@@ -1966,7 +1966,9 @@ export async function renderView(el: HTMLElement) {
     if (g3) {
       const lid = (v: any) => (v && typeof v === "object" ? v.id : v);
       g3.nodeVisibility((n: any) => !ids || ids.has(n.id));
-      g3.linkVisibility((l: any) => !ids || (ids.has(lid(l.source)) && ids.has(lid(l.target))));
+      // 시간 필터도 선 숨김을 유지해야 불필요한 메시가 다시 생기지 않는다.
+      g3.linkVisibility(curPrefs().edges === "none" ? false
+        : (l: any) => !ids || (ids.has(lid(l.source)) && ids.has(lid(l.target))));
       (g3 as any).__wake?.(600);
     }
     g2?.setTimeVisible(ids);
