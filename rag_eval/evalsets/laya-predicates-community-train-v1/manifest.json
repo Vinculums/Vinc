@@ -1,0 +1,19 @@
+{
+ "dataset": "laya-predicates-community-train-v1",
+ "sha256": {
+  "README.md": "46d17b60a93d0d475ed702891cd9f027a5ea494d74007741067c10e7e6663eb0",
+  "authoring-spec.md": "79ea5b2b9a8a1f9f5924fe7342e6514f031f2442e7a0012bc60823e031f8d64b",
+  "blind-inputs.jsonl": "a15990ac62dbf22ca973708e71709ac3b246e240a37f8177d21cc963d638e788",
+  "disputed.jsonl": "9fc838baeb8bbdd2d2f4e5300977eb84271b6842ca0ebf0e702f057abfe200fb",
+  "gold-review.csv": "90620d4a73326b03a4af4f668f4de6e928283b900f2ab46d8b1c9fc2e8e2855f",
+  "gold.jsonl": "d5e3c28ace596e48c8df852541e082449a47262c306d86d656f5544817b6bc6f",
+  "gold.split.json": "7f917f55966cf26faab4d98f19c1ab91c1a2439dea0d38be29e9a12b742611bc",
+  "provenance.json": "bc63316e8d660f7b483a5934c887438449af54ab8789e41943906d9a375822a6",
+  "questions.json": "dc91cf0ff911d5bc177e9f72ea80aa2698b73803e485cc8d3974e065631c838a",
+  "reference-labels.jsonl": "d2ca1fa561c4737e9157a68703d36cb58e84402a4cf385120470fb3005b82975",
+  "review-labels-blind.jsonl": "de05387498798ba069425f2adf8904267efef98af38fa17c34087ebf6f9dbb2c",
+  "review.json": "64fa57671492f58ab41d63f1e2044b426601a69ab2b684b71cd4ed5b38bcb055",
+  "summary.json": "36644731849d62ec86679656cd4c05c2a27b0b9d5f085f2cdce582690fc19159",
+  "verify.py": "5c2c52958e3be042d5eb7c2eaa5b5c3820d7a097d6384398916368218ea5de71"
+ }
+}

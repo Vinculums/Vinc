@@ -6,8 +6,10 @@ measurement on `laya-predicates-community-v1` (art and economics). The two sets 
 (`verify.py` checks it). Method: `vinc.plan.laya-test-method-2026-10-07`; the run it serves is in the graph document
 `vinc.plan.predicate-judge-comparison-community-run-2026-10-10`.
 
-**Status: made at the owner's direction on 2026-10-10** (community text only for the judge comparison). The labels were
-written by an AI and no person read them pair by pair. No model was run by this directory.
+**Status: made at the owner's direction on 2026-10-10.** It was first written for a comparison of hosted judges that
+the owner stopped the same day. It now serves the Laya path: calibration for a checkpoint tuned on
+`laya-predicates-community-train-v1`, which uses none of these nodes. The labels were written by an AI and no person
+read them pair by pair. No model was run by this directory.
 
 ## 117 calibration pairs
 
@@ -24,10 +26,11 @@ One side of every pair is a pack node's one-liner as shipped (English) or the au
 side is another pack one-liner or a statement written against it. The packs hold no Korean text, so every Korean side is
 the author's.
 
-## Not for Laya checkpoints
+## Which checkpoints may use it
 
-`laya-predicates-community-v1/train-negatives.jsonl` holds text of these same physics and mathematics nodes, and the v3
-checkpoint was trained on a sample of it. Use this set to calibrate judges that were not trained on that file.
+Not the v3 checkpoint: it was trained on a sample of `laya-predicates-community-v1/train-negatives.jsonl`, which holds
+text of these same nodes. A later checkpoint may use it only if its training data leaves these 26 nodes out, negatives
+included.
 
 ## Review
 

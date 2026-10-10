@@ -1,0 +1,31 @@
+{
+ "what": "Blind relabel of every authored pair by a second AI reader in ten separate sessions that saw only pair_id, the two texts and the frozen question wording and criteria.",
+ "reviewer": "Anthropic Claude Sonnet (AI; ten blind subagent sessions, 2026-10-10)",
+ "author": "Anthropic Claude Sonnet (AI; thirteen authoring subagents working from pack documents under a written specification, 2026-10-10)",
+ "specification_and_audit": "Anthropic Claude (AI; configured model id claude-opus-5-5; this conversation) wrote the specification, assembled, filtered and audited",
+ "pairs_reviewed": 525,
+ "pairs_with_any_disagreement": 12,
+ "pair_agreement": 0.9771,
+ "label_disagreements_by_predicate": {
+  "supports": 11,
+  "contradicts": 0,
+  "same_as": 5
+ },
+ "removed_for_talking_about_the_note_itself": 8,
+ "resolution": "Every pair with a disagreement was removed to disputed.jsonl with both readings. No reference label was changed.",
+ "audit": {
+  "by": "the specifying session",
+  "pairs_read": 39,
+  "labels_found_wrong": 0,
+  "sample": "three or four kept pairs per language and label class, ordered by a hash",
+  "observations": [
+   "a few statements referred to the notes by number; those pairs were then removed by pattern",
+   "the subject matter leans heavily to quantum gravity"
+  ]
+ },
+ "limits": [
+  "Authors and reviewers are the same model family; agreement is a consistency filter, not validation.",
+  "Removing disputed pairs makes the kept set easier by construction.",
+  "The audit read a sample, not every pair."
+ ]
+}
