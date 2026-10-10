@@ -5,6 +5,7 @@ async (page) => {
   const assert = (value, reason) => { if (!value) throw new Error(reason); };
   const errors = [], evidence = [];
   let graphRequests = 0;
+  let failNextGraph = false;
   page.on("pageerror", error => errors.push(error.message));
   await page.unrouteAll();
   await page.route("**/*", async route => {
@@ -22,7 +23,11 @@ async (page) => {
     edges.push({ id: "qa-cycle", source: nodes[6].id, target: nodes[2].id, type: "PREREQUISITE_OF", cross_domain: false },
       { id: "qa-parallel", source: nodes[0].id, target: nodes[1].id, type: "RELATED_TO", cross_domain: false });
     let data = { executed: true, domains: [], docs: [], nodes: [], edges: [], themes: [], marker: "qa" };
-    if (path === "/graph") { graphRequests++; data = { executed: true, nodes, edges }; }
+    if (path === "/graph") {
+      graphRequests++;
+      data = failNextGraph ? { executed: false, error: "store_busy" } : { executed: true, nodes, edges };
+      failNextGraph = false;
+    }
     if (path === "/health") data = { ok: true, version: "0.9.7", store_ready: true };
     if (path === "/node-context") data = { executed: true, node: { id: "concept:qa-0", title: "QA knowledge", domain: "qa/a", kind: "concept" }, docs: [], links: [], records: [] };
     if (path === "/edge-context") data = { executed: true, src: { title: "QA source" }, dst: { title: "QA target" }, confidence: .8, evidence: "QA authored evidence" };
@@ -187,6 +192,16 @@ async (page) => {
     return JSON.stringify([n.x, n.y, n.z]) !== JSON.stringify(window.__qaDragBefore) && Math.hypot(p.getX(0)-n.x,p.getY(0)-n.y,p.getZ(0)-n.z) < .001;
   });
   evidence.push({ check: "3d physical node drag moves the route endpoint with its body", pass: true });
+  failNextGraph = true;
+  await page.getByRole("button", { name: "View and legend, 3D" }).click();
+  await page.getByRole("button", { name: "2D", exact: true }).click();
+  await page.getByText("View couldn't load. Retry anytime. Your documents are untouched.", { exact: true }).waitFor();
+  const requestsAfterFailure = graphRequests;
+  await page.evaluate(() => { window.__qaSigma = window.__s2; });
+  await page.getByRole("radio", { name: "ranked", exact: true }).click();
+  await page.waitForFunction(() => window.__s2 !== window.__qaSigma && window.__s2.getGraph().order === 27);
+  assert(graphRequests === requestsAfterFailure + 1, "failed API response was reused instead of retried");
+  evidence.push({ check: "layout selection retries a failed graph response", pass: true });
   assert(errors.length === 0, `page errors: ${errors.join("; ")}`);
   return { evidence, pageErrors: errors };
 }

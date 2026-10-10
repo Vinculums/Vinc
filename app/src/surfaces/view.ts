@@ -2066,7 +2066,7 @@ export async function renderView(el: HTMLElement) {
   removalObserver.observe(document.body, { childList: true, subtree: true });
   async function fetchGraph(p: ViewPrefs, scope: { domains?: string[] }):
       Promise<{ executed: boolean; stale?: boolean; nodes?: GraphNode[]; edges?: GraphEdge[]; topicEdges?: GraphEdge[] }> {
-    const cached = reuseGraph && rawGraph;
+    const cached = reuseGraph && rawGraph?.executed && rawGraph;
     reuseGraph = false;
     const mySeq = showSeq;
     const domains = scope.domains || [];
