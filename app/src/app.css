@@ -974,7 +974,7 @@ body {
   box-shadow: var(--shadow-elev-3);
 }
 /* 검색 카드가 남는 폭을 전부 갖는다. 보기 카드는 자기 내용 폭만. */
-#tb-find { flex: 1 1 auto; }
+#tb-find { flex: 1 1 0; min-width: min(100%, 18rem); }
 /* 보기 카드 — 관점 세그 + 렌즈(옵션·범례). 문서 트리 첫 칸에 있던 동안에는 트리를
    접으면 관점 손잡이가 함께 사라졌다. 둘 다 View 가 채우고 떠날 때 비우므로(topbar.ts
    `refreshTopbar`), 둘 다 비면 카드째 숨는다 — 빈 카드가 검색 옆에 남으면 누를 것이
@@ -983,22 +983,27 @@ body {
    보이고 폭은 그 내용 폭이다. **열림**(`data-open`, 렌즈 패널이 열린 동안): 관점 세그가
    왼쪽으로 미끄러져 나오고 폭이 **렌즈 패널과 같아진다**(`--lens-panel-w`) — 패널이 이
    카드 바로 아래에서 열리고 양 끝이 같은 세로선에 서야 한다(2026-09-26 지시, 그대로).
-   열린 카드는 검색 카드를 **밀지 않고 그 위로 겹친다**(Q1.1): 음수 왼쪽 여백이 자란
-   폭만큼을 되돌려 바깥 폭이 닫힌 폭(`--vc-closed-w`, JS 가 잰다) 그대로다 — 그래서 검색
-   입력이 흔들리지 않는다. 모션은 view.ts `setCardOpen` 이 폭과 여백을 함께 움직인다.
-   근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] §1 */
-#tb-viewctl { flex: 0 0 auto; position: relative; z-index: 1; }
+    카드가 자라는 폭은 상단 바가 배분한다. 검색은 최소 폭을 남기고 줄어들며, 관점은
+    남은 폭 안에서 스크롤한다. 모션 중에도 두 카드 사이 간격을 유지한다. */
+#tb-viewctl {
+  flex: 0 1 auto; position: relative; z-index: 1;
+  max-width: calc(100% - min(100%, 18rem) - var(--shell-gap));
+}
 #tb-viewctl[data-open] {
   width: var(--lens-panel-w);
-  margin-left: calc(var(--vc-closed-w, var(--lens-panel-w)) - var(--lens-panel-w));
 }
 #tb-viewctl:has(> #tb-viewpoints:empty):has(> #tb-lens:empty) { display: none; }
 /* 세그는 자라는 카드 안에서 잘리며 드러난다 — 넘침을 자기 상자가 받는다. */
-#tb-viewpoints { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+#tb-viewpoints {
+  display: flex; align-items: center; flex: 1 1 auto; min-width: 0;
+  overflow-x: auto; scrollbar-width: none;
+}
+#tb-viewpoints::-webkit-scrollbar { display: none; }
 #tb-viewctl:not([data-open]) > #tb-viewpoints { display: none; }
-#tb-viewpoints .seg { width: 100%; }
+#tb-viewpoints .seg { width: max-content; min-width: 100%; flex: 0 0 auto; }
 #tb-viewpoints .seg .chip { flex: 1 1 auto; }
-#tb-lens { display: flex; align-items: center; flex: 0 0 auto; }
+#tb-lens { display: flex; align-items: center; flex: 0 0 auto; min-width: 0; }
+#tb-viewctl:not([data-open]) > #tb-lens { flex-shrink: 1; }
 #tb-viewpoints:empty, #tb-lens:empty { display: none; }
 /* 여는 순간에만 칩이 12px 왼쪽으로 미끄러지며 20ms 씩 차례로 들어온다. 관점을 바꿀 때
    세그가 다시 그려져도 되풀이되지 않게 여는 동안만 붙는 클래스(`vc-enter`)에 건다. */
@@ -2440,10 +2445,12 @@ textarea.props-val {
 .lens-vp { display: none; }
 #tb-viewctl:not([data-open]) .lens-btn {
   width: auto; grid-auto-flow: column; gap: .4rem;
+  max-width: 100%; grid-template-columns: max-content minmax(0, 1fr);
   padding: 0 var(--space-3, .75rem) 0 var(--space-2, .5rem);
 }
 #tb-viewctl:not([data-open]) .lens-vp {
   display: inline; font-size: .8125rem; font-weight: 500; white-space: nowrap;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
   color: hsl(var(--foreground));
 }
 /* 패널 머리의 닫기 — 탭줄 오른쪽 끝. 모양은 `?` 토글과 같은 급(작은 아이콘 버튼)이다. */
@@ -2629,13 +2636,16 @@ textarea.props-val {
      열려도 닫힌 모양(버튼 + 관점 이름) 그대로이고, 관점 세그는 판 머리(`.lens-vprow`)로
      간다. 판 머리 세그는 네 칩이 같은 몫을 갖는다(손가락으로 누르는 폭). */
   #tb-viewctl[data-open] { width: auto; margin-left: 0; }
+  #tb-viewctl > #tb-lens { flex-shrink: 1; }
   #tb-viewctl > #tb-viewpoints { display: none; }
   #tb-viewctl .lens-btn {
     width: auto; grid-auto-flow: column; gap: .4rem;
+    max-width: 100%; grid-template-columns: max-content minmax(0, 1fr);
     padding: 0 var(--space-3, .75rem) 0 var(--space-2, .5rem);
   }
   #tb-viewctl .lens-vp {
     display: inline; font-size: .8125rem; font-weight: 500; white-space: nowrap;
+    min-width: 0; overflow: hidden; text-overflow: ellipsis;
     color: hsl(var(--foreground));
   }
   .lens-vprow { display: block; position: relative; z-index: 1; padding: var(--space-3, .75rem) var(--space-4, 1rem) 0; }
@@ -2683,7 +2693,7 @@ textarea.props-val {
    다시 잰다 — 그래서 둘째 줄이 생겨도 그것들이 그 밑에 깔리지 않는다. */
 @container topbar (max-width: 420px) {
   #tb-find { flex: 1 1 100%; }
-  #tb-viewctl { margin-left: auto; }
+  #tb-viewctl { margin-left: auto; max-width: 100%; }
 }
 /* ── 낮은 창(높이 ≤560 · 폰 가로, 작은 노트북 창) — 레일이 이름을 접는다 ───────
    레일에는 손잡이 · 홈 · Agent · 종 여섯 · 설정이 세로로 선다. 이름과 개수 두 줄을
