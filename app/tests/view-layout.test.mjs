@@ -10,11 +10,25 @@ const source = async (entry) => {
     bundle: true, platform: "node", format: "esm", write: false });
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 };
-const { temporalLayout } = await source("../src/view-layout.ts");
+const { temporalLayout: spatialTemporalLayout } = await source("../src/view-layout.ts");
+// Retain the full planar regression suite, and validate the independently
+// composed spatial result before projecting its saved 2D contract for it.
+const temporalLayout = async (...args) => {
+  const graph = await spatialTemporalLayout(...args);
+  check(graph, args[1]);
+  const zs = new Map();
+  for (const e of [...graph.edges, ...graph.topicEdges]) if (e.route?.points2d) {
+    zs.set(e.source, e.route.points2d[0].z); zs.set(e.target, e.route.points2d.at(-1).z);
+  }
+  return { nodes: graph.nodes.map(n => ({ ...n, x: n.x2, y: -n.y2, z: zs.get(n.id) ?? 0 })),
+    edges: graph.edges.map(e => ({ ...e, route: e.route && { ...e.route, points: e.route.points2d, engine: e.route.engine2d } })),
+    topicEdges: graph.topicEdges.map(e => ({ ...e, route: { ...e.route, points: e.route.points2d, engine: e.route.engine2d } })) };
+};
 const { routeAcrossTopics } = await source("../src/view-layout-avoid.ts");
 const { layoutInWorker } = await source("../src/view-layout-client.ts");
 const { movedRoute, routeLength, pointOnRoute, simplifyRoute } = await source("../src/view-route.ts");
 const { RoutedLinkObject } = await source("../src/surfaces/view-routes3d.ts");
+const { shortenPlanarRoutes } = await source("../src/view-route-shortcuts.ts");
 await AvoidLib.load(fileURLToPath(new URL("../node_modules/libavoid-js/dist/libavoid.wasm", import.meta.url)));
 const elk = new ELK();
 const route = (ns, es, batching) => Promise.resolve(routeAcrossTopics(AvoidLib.getInstance(), ns, es, batching));
@@ -393,4 +407,64 @@ test("Topic composition uses both axes and responds to landscape and portrait as
   };
   assert.ok(extent(landscape) > extent(portrait));
   for (const graph of [landscape, portrait]) check(graph, []);
+});
+
+test("spatial Topics have six outward arms, distinct depth and clear original directed routes", async () => {
+  for (const ordering of ["temporal", "ranked"]) {
+    const nodes = Array.from({ length: 36 }, (_, i) => n(`space${i}`,
+      new Date(Date.UTC(2020, 0, i + 1)).toISOString()));
+    const edges = nodes.slice(1).map((node, i) => edge(nodes[i].id, node.id));
+    edges.push(edge("space31", "space2", "RELATED_TO"), edge("space0", "space0"),
+      edge("space8", "space7", "DERIVES_FROM"));
+    const graph = await spatialTemporalLayout(nodes, edges, "content", elk, route, ordering);
+    check(graph, edges);
+    const topic = graph.nodes.find(n => n.kind === "domain"), axes = ["x", "y", "z"];
+    const arm = node => { const axis = axes.toSorted((a, b) =>
+      Math.abs(node[b] - topic[b]) - Math.abs(node[a] - topic[a]))[0];
+      return `${axis}:${Math.sign(node[axis] - topic[axis])}`; };
+    assert.equal(new Set(graph.nodes.filter(n => n.kind !== "domain").map(arm)).size, 6);
+    for (const node of graph.nodes) for (const axis of axes)
+      assert.ok(Math.abs((node[axis] - topic[axis]) / .33 - Math.round((node[axis] - topic[axis]) / .33)) < 1e-7);
+    for (const e of graph.edges) {
+      axisAligned(e.route.points2d);
+      const a = graph.nodes.find(n => n.id === e.source), b = graph.nodes.find(n => n.id === e.target);
+      assert.deepEqual(e.route.points2d[0], { x: a.x2, y: -a.y2, z: e.route.points2d[0].z });
+      if (e.source !== e.target && e.type === "PREREQUISITE_OF" && arm(a) === arm(b) &&
+          axes.filter(axis => axis !== arm(a)[0]).every(axis => Math.abs(a[axis] - b[axis]) < 1e-8)) {
+        const axis = arm(a)[0], sign = Math.sign(a[axis] - topic[axis]);
+        assert.ok(sign * (b[axis] - a[axis]) > 0, `spatial branch reverses ${ordering} ${e.source}->${e.target} ${JSON.stringify([a,b])}`);
+      }
+    }
+    for (const e of [...graph.edges, ...graph.topicEdges]) for (const node of graph.nodes) {
+      if (node.id === e.source || node.id === e.target) continue;
+      for (let i = 1; i < e.route.points.length; i++) {
+        const a = e.route.points[i - 1], b = e.route.points[i];
+        assert.ok(!axes.every(axis => Math.max(a[axis], b[axis]) > node[axis] - .12 + 1e-8 &&
+          Math.min(a[axis], b[axis]) < node[axis] + .12 - 1e-8), "spatial route intersects another mark");
+      }
+    }
+  }
+});
+
+test("Topic centres fill depth as well as both planar axes without colliding", async () => {
+  const nodes = Array.from({ length: 24 }, (_, i) => n(`volume${i}`, "2020", `topic/${i}`));
+  const graph = await spatialTemporalLayout(nodes, [], "content", elk, route);
+  const topics = graph.nodes.filter(n => n.kind === "domain");
+  for (const axis of ["x", "y", "z"]) assert.ok(new Set(topics.map(n => n[axis])).size > 1);
+  assert.equal(new Set(graph.nodes.map(n => [n.x, n.y, n.z].join(":"))).size, graph.nodes.length);
+});
+
+test("shortcuts remove empty detours but preserve required obstacle detours and self loops", () => {
+  const nodes = [{ ...n("a", ""), x: 0, y: 0, z: 0 }, { ...n("b", ""), x: 2, y: 0, z: 0 }];
+  const detour = [{ x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 },
+    { x: 2, y: 1, z: 0 }, { x: 2, y: 0, z: 0 }];
+  const e = { ...edge("a", "b"), route: { engine: "libavoid", points: detour } };
+  shortenPlanarRoutes(nodes, [e]);
+  assert.equal(routeLength(e.route.points), 2); assert.equal(e.route.points.length, 2);
+  const blocked = { ...edge("a", "b"), route: { engine: "libavoid", points: detour } };
+  shortenPlanarRoutes([...nodes, { ...n("obstacle", ""), x: 1, y: 0, z: 0 }], [blocked]);
+  assert.ok(routeLength(blocked.route.points) > 2);
+  const loop = { ...edge("a", "a"), route: { engine: "libavoid", points: [...detour, detour[0]] } };
+  const snapshot = structuredClone(loop);
+  shortenPlanarRoutes(nodes, [loop]); assert.deepEqual(loop, snapshot);
 });

@@ -2,6 +2,8 @@ import type { GraphNode, GraphEdge } from "./api";
 import type { ElkNode, ElkExtendedEdge } from "elkjs/lib/elk-api";
 import { simplifyRoute, type RoutePoint } from "./view-route";
 import type { RoutingNode } from "./view-layout-avoid";
+import { spatialLayout, type SpatialTopic } from "./view-layout-spatial";
+import { shortenPlanarRoutes } from "./view-route-shortcuts";
 
 export type LayoutGraph = { nodes: GraphNode[]; edges: GraphEdge[]; topicEdges: GraphEdge[] };
 export type LayoutEngine = { layout(graph: ElkNode): Promise<ElkNode> };
@@ -101,10 +103,13 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
   const localRoutes = new Map<GraphEdge, GraphEdge>();
   const topicEdges: GraphEdge[] = [];
   const orderedTopics = [...topics].sort(([a], [b]) => a.localeCompare(b));
+  const spatialTopics: SpatialTopic[] = [];
   const boxes: { id: string; width: number; height: number; left: number; top: number; ids: string[] }[] = [];
   aspectRatio = Number.isFinite(aspectRatio) ? Math.max(.5, Math.min(3, aspectRatio)) : 1.6;
   for (let ti = 0; ti < orderedTopics.length; ti++) {
     const [domain, topic] = orderedTopics[ti];
+    const spatialTopic: SpatialTopic = { id: topic.id, branches: [] };
+    spatialTopics.push(spatialTopic);
     const members = nodes.filter(n => n.kind !== "domain" && topicOf(n) === domain);
     const ids = new Set(members.map(n => n.id));
     const inside = usable.filter(e => ids.has(e.source) && ids.has(e.target));
@@ -234,6 +239,9 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
           if (entry.original && entry.ends[0] !== entry.original.source) points = points.reverse();
           branchPaths.push({ edge: entry.edge, original: entry.original, points });
         }
+        spatialTopic.branches.push({ ids: group, horizontal, sign: wing % 2 ? -1 : 1,
+          positions: new Map(group.map(id => { const p = positions.get(id)!;
+            return [id, { x: p.x / UNIT, y: p.y / UNIT, z: 0 }]; })) });
         branches.push({ ids: group, span: high - low, start: low, points: branchPaths });
       }
       const span = branches.reduce((sum, b) => sum + b.span, 0) + Math.max(0, branches.length - 1) * GRID;
@@ -310,9 +318,12 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
   const routed = nodes.length > 500 ? await routeMap(nodes, toRoute, boxes, positions, topicOf, crossRouter) : await crossRouter(nodes, toRoute);
   const crossMap = new Map(cross.map((e, i) => [e, routed[i]]));
   const originalEdges = inputEdges.map(e => localRoutes.get(e) ?? crossMap.get(e) ?? { ...e });
-  return { nodes, edges: originalEdges, topicEdges: [
+  const finalTopicEdges = [
     ...topicEdges.filter(e => e.route), ...routed.slice(cross.length),
-  ] };
+  ];
+  shortenPlanarRoutes(nodes, [...originalEdges, ...finalTopicEdges]);
+  spatialLayout(nodes, [...originalEdges, ...finalTopicEdges], spatialTopics);
+  return { nodes, edges: originalEdges, topicEdges: finalTopicEdges };
 }
 
 async function routeMap(nodes: GraphNode[], edges: GraphEdge[],

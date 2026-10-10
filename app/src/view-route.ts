@@ -1,7 +1,8 @@
 /** One source-to-target path, shared by the two renderers. Coordinates use the
  * same graph units as GraphNode; sections never become topology nodes. */
 export type RoutePoint = { x: number; y: number; z: number };
-export type ViewRoute = { points: RoutePoint[]; engine: "elk" | "libavoid" };
+export type ViewRoute = { points: RoutePoint[]; points2d?: RoutePoint[];
+  engine: "elk" | "libavoid" | "spatial"; engine2d?: "elk" | "libavoid" };
 
 export function simplifyRoute(points: RoutePoint[]): RoutePoint[] {
   const out: RoutePoint[] = [];

@@ -81,7 +81,8 @@ async (page) => {
     const s = window.__s2, g = s.getGraph(), rect = document.querySelector(".a2-stage").getBoundingClientRect();
     for (const id of g.edges()) {
       if (!g.getEdgeAttribute(id, "directed")) continue;
-      const points = g.getEdgeAttribute(id, "route").points.map(p => s.graphToViewport({ x: p.x, y: -p.y }));
+      const r = g.getEdgeAttribute(id, "route");
+      const points = (r.points2d ?? r.points).map(p => s.graphToViewport({ x: p.x, y: -p.y }));
       for (let i = 1; i < points.length; i++) {
         const a = points[i - 1], b = points[i], x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
         if (Math.hypot(a.x - b.x, a.y - b.y) < 35) continue;
@@ -152,12 +153,25 @@ async (page) => {
     const members = ns.filter(n => /^concept:qa-(?:[0-9]|1[01])$/.test(n.id));
     return { east: members.some(n => n.x > t.x), west: members.some(n => n.x < t.x),
       north: members.some(n => n.y < t.y), south: members.some(n => n.y > t.y),
-      grid: members.every(n => [n.x - t.x, n.y - t.y].every(v => Math.abs(v / .33 - Math.round(v / .33)) < 1e-7)) };
+      front: members.some(n => n.z > t.z), back: members.some(n => n.z < t.z),
+      grid: members.every(n => [n.__x0 - t.__x0, n.__y0 - t.__y0, n.__z0 - t.__z0]
+        .every(v => Math.abs(v / .33 - Math.round(v / .33)) < 1e-7)) };
   });
-  assert(Object.values(grid3d).every(Boolean), "actual 3d Topic does not spread across the regular grid in four directions");
-  evidence.push({ check: "actual 3d Topic roots spread in four directions on a regular grid", ...grid3d });
-  await page.screenshot({ path: "D:/Projects/AIProjects/vinc-project/_wt/vin427-view-elk/output/view-elk-qa/grid-app-3d.jpg" });
+  assert(Object.values(grid3d).every(Boolean), "actual 3d Topic does not spread across the spatial grid in six directions");
+  evidence.push({ check: "actual 3d Topic roots spread in six directions on a spatial grid", ...grid3d });
   await page.waitForTimeout(600);
+  const framing = await page.evaluate(() => {
+    const g = window.__g3, camera = g.camera();
+    const matrix = camera.matrixWorldInverse.elements;
+    const visible = g.graphData().nodes.filter(n => {
+      const depth = -(matrix[2]*n.x + matrix[6]*n.y + matrix[10]*n.z + matrix[14]);
+      return depth > camera.near && depth < camera.far;
+    }).length;
+    return { depthVisible: visible, total: g.graphData().nodes.length, far: camera.far };
+  });
+  assert(framing.depthVisible === framing.total, "fitted3d marks fall outside camera depth range");
+  evidence.push({ check: "fitted3d camera includes every actual mark depth", ...framing });
+  await page.screenshot({ path: "D:/Projects/AIProjects/vinc-project/_wt/vin427-view-elk/output/view-elk-qa/grid-app-3d.jpg" });
   const requestsBeforeRank3 = graphRequests;
   await page.evaluate(() => {
     window.__qaGraph3 = window.__g3;
