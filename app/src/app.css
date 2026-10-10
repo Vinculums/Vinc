@@ -1980,6 +1980,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 #rail-grip:hover, #rail-grip:active { background: hsl(var(--muted-foreground) / .35); }
 #rail-grip:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
 .pl-band-hit:focus-visible { stroke: hsl(var(--ring)); stroke-width: 2; outline: none; }
+#period-body h2 { word-break: keep-all; }
 .period-i {
   display: block; width: 100%; text-align: left; font: inherit; color: inherit;
   background: none; border: 0; border-bottom: 1px solid hsl(var(--border)); cursor: pointer;
