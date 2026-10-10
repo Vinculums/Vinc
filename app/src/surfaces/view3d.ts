@@ -613,7 +613,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     scene?.add(...instMeshes);
   };
   buildInstancedNodes();
-  let builtScale = prefs.nodeScale ?? 1;         // 마지막으로 메시를 구웠을 때의 배율
+  const renderedRadii = new Map<string, number>();
   /** 노드 메시 공장. **새 함수 객체**를 넘기면 3d-force-graph 가 노드 오브젝트를 전부
    *  다시 만든다 — 크기 인코딩·틴트·라벨을 제자리에서 갈아 끼우는 값싼 길이다
    *  (씬·렌더러·컨텍스트는 그대로). 배율(nodeScale)은 여기 안 넣고 scale 로 곱한다.
@@ -628,22 +628,29 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     return (n: any) => {
       if (canInstance(n)) {
         const ghost = ghostNode(nodeRadius(n, prefs));
+        ghost.userData.baseRadius = nodeRadius(n, prefs);
         // 유령은 `visible=false` 라 렌더러가 순회에서 자식째 건너뛴다 — 허브 라벨을
         // 유령의 자식으로 달면 라벨도 함께 안 그려진다. 라벨이 있는 노드만 보이는
         // 빈 그룹으로 감싸 유령과 라벨을 형제로 둔다(위치 추적은 그룹이 받는다).
         if (prefs.labels !== "none" && hubIds.has(n.id)) {
           const group = new THREE.Group();
           group.add(ghost, hubLabel(n));
+          group.userData.mark = ghost;
           return group;
         }
-        return ghost;
+        const group = new THREE.Group();
+        group.add(ghost); group.userData.mark = ghost;
+        return group;
       }
       const mesh = nodeObject(n, prefs, pal, true);
+      mesh.userData.baseRadius = nodeRadius(n, prefs);
+      const group = new THREE.Group();
+      group.add(mesh); group.userData.mark = mesh;
       // V7 — 허브(연결수 상위)는 **상시 라벨**을 단다. 2D 가 이미 쓰는 문법인데
       // 3D 만 hover 를 기다려, 42노드 렌즈가 "이름 없는 별자리"였다(실측: 한 번에
       // 하나씩 짚어야만 이름을 알 수 있었다). 나머지는 그대로 hover 로 뜬다.
-      if (prefs.labels !== "none" && hubIds.has(n.id)) mesh.add(hubLabel(n));
-      return mesh;
+      if (prefs.labels !== "none" && hubIds.has(n.id)) group.add(hubLabel(n));
+      return group;
     };
   };
   // D33 — 엣지 = 헤어라인이 **기본**이다: linkWidth 0 = 튜브 메시가 아닌 THREE.Line.
@@ -719,10 +726,26 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     const nodeVisibility: any = g.nodeVisibility(), linkVisibility: any = g.linkVisibility();
     const isVisible = (rule: any, value: any) => typeof rule === "function" ? !!rule(value)
       : typeof rule === "string" ? !!value[rule] : rule !== false;
+    const matrix = camera.matrixWorldInverse.elements;
+    const pixelsAtUnitDepth = camera.projectionMatrix.elements[5] * el.clientHeight / 2;
+    const originalPixels = new Map<string, number>();
     for (const n of nodes) {
+      const base = nodeRadius(n, prefs);
+      const depth = -(matrix[2] * (n.x || 0) + matrix[6] * (n.y || 0) + matrix[10] * (n.z || 0) + matrix[14]);
+      const pixelsPerUnit = depth > 0 ? pixelsAtUnitDepth / depth : 0;
+      // Enlarge the existing body, never a halo or replacement glyph. A shared
+      // reference radius preserves degree/pin/type size ratios at the same depth.
+      // The user's size slider still scales both the close and distant marks.
+      const boost = !flat && pixelsPerUnit > 0
+        ? Math.max(1, 2.5 / (4.4 * pixelsPerUnit)) : 1;
+      const radius = base * boost;
+      renderedRadii.set(n.id, radius);
+      originalPixels.set(n.id, base * pixelsPerUnit);
+      const mark = (n as any).__threeObj?.userData.mark as THREE.Object3D | undefined;
+      if (mark) mark.scale.setScalar(radius / mark.userData.baseRadius);
       const ref = instRefs.get(n.id);
       if (!ref) continue;
-      const r = isVisible(nodeVisibility, n) ? ref.baseR * (prefs.nodeScale ?? 1) : 0;
+      const r = isVisible(nodeVisibility, n) ? radius : 0;
       const key = `${n.x},${n.y},${n.z},${r},${ref.idx}`;
       if (instState.get(n.id) === key) continue;
       instState.set(n.id, key);
@@ -735,11 +758,17 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       const source = typeof link.source === "object" ? link.source : nodes.find(n => n.id === link.source);
       const target = typeof link.target === "object" ? link.target : nodes.find(n => n.id === link.target);
       if (!source || !target) continue;
+      const emphasized = hoverId ? source.id === hoverId || target.id === hoverId
+        : !!spot?.edges.has(edgeKey({ source: source.id, target: target.id, type: link.type || "" }));
+      // Far overview lines must not form an opaque fence over subpixel bodies.
+      // Restore the original ink on approach and for explicitly traced relations.
+      const pixels = Math.min(originalPixels.get(source.id) || 0, originalPixels.get(target.id) || 0);
+      const detail = flat || emphasized ? 1 : .08 + .92 * Math.min(1, pixels / 2.5) ** 2;
       object.update(source, target, S, { color: linkColorFn(link), width: linkWidthFn()(),
         arrow: !!prefs.arrows && !particlesOn && !nodesOnly && isDirectedLink(link),
         particles: particlesOn && isDirectedLink(link), particleColor: pal.link.heavy,
         visible: isVisible(linkVisibility, link) && isVisible(nodeVisibility, source) && isVisible(nodeVisibility, target),
-        targetRadius: nodeRadius(target, prefs) }, performance.now());
+        targetRadius: renderedRadii.get(target.id) ?? nodeRadius(target, prefs), detail }, performance.now());
     }
     const width = el.clientWidth, height = el.clientHeight;
     const boxes: LabelBox[] = [];
@@ -895,7 +924,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
         const s = g.graph2ScreenCoords(at.x, at.y, at.z);
         const d = Math.hypot(s.x - x, s.y - y);
         if (d >= bestD) continue;
-        const r = nodeRadius(n, prefs);
+        const r = renderedRadii.get(n.id) ?? nodeRadius(n, prefs);
         const e = g.graph2ScreenCoords(at.x + right.x * r, at.y + right.y * r, at.z + right.z * r);
         const rp = Math.max(HIT_MIN_PX, Math.hypot(e.x - s.x, e.y - s.y));
         if (d <= rp) { best = { id: n.id, title: n.label, x: s.x, y: s.y, r: rp }; bestD = d; }
@@ -946,28 +975,12 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     }
     if (changed.some((k) => k === "labels" || k === "size")) {
       applyTints();
-      builtScale = np.nodeScale ?? 1;
       buildInstancedNodes();                     // 인스턴스 배치도 새 인코딩으로 다시 굽는다
       g.nodeThreeObject(nodeFactory());          // 새 함수 = 노드 오브젝트 전부 다시 굽기
     } else if (changed.includes("nodeScale")) {
       instState.clear();
-      // 반지름을 다시 굽지 않고 메시를 곱한다 — 라벨·글로우도 같이 커지지만 슬라이더
-      // 한 프레임에 175개 지오메트리를 새로 만드는 것보다 훨씬 싸다.
-      const k = (np.nodeScale ?? 1) / builtScale;
-      for (const n of g.graphData().nodes as any[]) n.__threeObj?.scale.setScalar(k);
-      // 인스턴스 노드는 유령의 scale 이 아니라 행렬 자체를 다시 쓴다(안 그리므로
-      // 무의미) — baseR(빌드 시점 nodeScale=1 기준 반지름)에 새 배율만 곱해 절대값을
-      // 다시 세운다(반복 호출에도 누적 오차가 안 생기게).
-      const m4 = new THREE.Matrix4();
-      for (const n of nodes) {
-        const ref = instRefs.get(n.id);
-        if (!ref) continue;
-        const r = ref.baseR * (np.nodeScale ?? 1);
-        m4.compose(new THREE.Vector3(n.x || 0, n.y || 0, n.z || 0), INST_ROT[ref.kind],
-                   new THREE.Vector3(r, r, r));
-        ref.mesh.setMatrixAt(ref.idx, m4);
-        ref.mesh.instanceMatrix.needsUpdate = true;
-      }
+      // The next render updates bodies and hit ghosts together; labels keep
+      // their own size and the camera-dependent correction never accumulates.
     }
     if (changed.includes("edgeScale") && links.some(l => !l.route)) g.linkWidth(linkWidthFn());
     if (changed.includes("arrows")) g.linkDirectionalArrowLength((l: any) => l.route ? 0 : arrowLenFn()(l));

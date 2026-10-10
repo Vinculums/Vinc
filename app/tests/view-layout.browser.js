@@ -171,6 +171,48 @@ async (page) => {
   });
   assert(framing.depthVisible === framing.total, "fitted3d marks fall outside camera depth range");
   evidence.push({ check: "fitted3d camera includes every actual mark depth", ...framing });
+  const overview = await page.evaluate(() => {
+    const g = window.__g3, c = g.camera(), t = g.controls().target;
+    window.__qaOverviewCamera = { pos: { x: c.position.x, y: c.position.y, z: c.position.z }, tgt: { x: t.x, y: t.y, z: t.z } };
+    window.__qaLabelSizes = g.graphData().nodes.map(n => n.__threeObj.children.filter(o => o.isSprite).map(o => o.scale.toArray()));
+    g.cameraPosition({ x: t.x + (c.position.x-t.x)*20, y: t.y + (c.position.y-t.y)*20, z: t.z + (c.position.z-t.z)*20 }, t, 0);
+    g.__wake(600);
+    return true;
+  });
+  await page.waitForTimeout(200);
+  const distant = await page.evaluate(() => {
+    const g = window.__g3, c = g.camera(), m = c.matrixWorldInverse.elements;
+    const radii = g.graphData().nodes.map(n => {
+      const mark = n.__threeObj.userData.mark, depth = -(m[2]*n.x + m[6]*n.y + m[10]*n.z + m[14]);
+      return mark.userData.baseRadius * mark.scale.x * c.projectionMatrix.elements[5] * g.renderer().domElement.clientHeight / (2*depth);
+    });
+    return { minRadiusPixels: Math.min(...radii), maxLineOpacity: Math.max(...g.graphData().links.map(l => l.__lineObj.children[0].material.opacity)),
+      sameLabels: JSON.stringify(window.__qaLabelSizes) === JSON.stringify(g.graphData().nodes.map(n => n.__threeObj.children.filter(o => o.isSprite).map(o => o.scale.toArray()))) };
+  });
+  assert(overview && distant.minRadiusPixels >= 1.7 && distant.maxLineOpacity < .25 && distant.sameLabels,
+    "distant3d relations overwhelm bodies or enlarge labels with marks");
+  evidence.push({ check: "distant3d bodies stay visible without replacing marks or scaling labels", ...distant });
+  await page.evaluate(() => { const g = window.__g3; g.onNodeHover()(g.graphData().nodes.find(n => n.id === "concept:qa-0")); g.__wake(500); });
+  await page.waitForTimeout(120);
+  assert(await page.evaluate(() => window.__g3.graphData().links.find(l => l.id === "qa-edge-0").__lineObj.children[0].material.opacity === .85),
+    "distant traced relation does not restore its ink");
+  evidence.push({ check: "hover restores distant routed relation ink", pass: true });
+  await page.evaluate(() => {
+    const g = window.__g3; g.onNodeHover()(null);
+    const l = g.graphData().links.find(l => l.id === "qa-edge-0"), a = l.source, b = l.target;
+    const mid = { x: (a.x+b.x)/2, y: (a.y+b.y)/2, z: (a.z+b.z)/2 };
+    g.cameraPosition({ x: mid.x, y: mid.y, z: mid.z+150 }, mid, 0); g.__wake(600);
+  });
+  await page.waitForTimeout(200);
+  const close = await page.evaluate(() => {
+    const g = window.__g3, l = g.graphData().links.find(l => l.id === "qa-edge-0");
+    return { sameBodies: [l.source, l.target].every(n => Math.abs(n.__threeObj.userData.mark.scale.x-1) < 1e-7),
+      restoredInk: l.__lineObj.children[0].material.opacity === .85 };
+  });
+  assert(close.sameBodies && close.restoredInk, "close3d view does not restore original bodies and ink");
+  evidence.push({ check: "close3d view restores original node geometry size and relation ink", ...close });
+  await page.evaluate(() => { const g = window.__g3, c = window.__qaOverviewCamera; g.cameraPosition(c.pos, c.tgt, 0); g.__wake(600); });
+  await page.waitForTimeout(200);
   await page.screenshot({ path: "D:/Projects/AIProjects/vinc-project/_wt/vin427-view-elk/output/view-elk-qa/grid-app-3d.jpg" });
   const requestsBeforeRank3 = graphRequests;
   await page.evaluate(() => {

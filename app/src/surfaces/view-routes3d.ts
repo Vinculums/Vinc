@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { movedRoute, pointOnRoute, routeLength, type ViewRoute, type RoutePoint } from "../view-route";
 
 type Paint = { color: string; width: number; arrow: boolean; particles: boolean;
-  particleColor: string; visible: boolean; targetRadius: number };
+  particleColor: string; visible: boolean; targetRadius: number; detail?: number };
 const UP = new THREE.Vector3(0, 1, 0);
 
 /** A link remains one pickable ForceGraph object. Its geometry, arrow and
@@ -10,7 +10,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 export class RoutedLinkObject extends THREE.Group {
   private line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ transparent: true, opacity: .85 }));
   private arrow = new THREE.Mesh(new THREE.ConeGeometry(.8, 2.6, 8), new THREE.MeshBasicMaterial({ transparent: true, opacity: .85 }));
-  private photons = Array.from({ length: 2 }, () => new THREE.Mesh(new THREE.SphereGeometry(.55, 8, 6), new THREE.MeshBasicMaterial()));
+  private photons = Array.from({ length: 2 }, () => new THREE.Mesh(new THREE.SphereGeometry(.55, 8, 6), new THREE.MeshBasicMaterial({ transparent: true })));
   private cylinders: THREE.Mesh[] = [];
   private points: RoutePoint[] = [];
   private length = 0;
@@ -46,7 +46,8 @@ export class RoutedLinkObject extends THREE.Group {
         this.cylinders.push(cylinder); this.add(cylinder);
       }
     }
-    const alpha = paint.color.length === 9 ? parseInt(paint.color.slice(7), 16) / 255 : 1;
+    const detail = paint.detail ?? 1;
+    const alpha = (paint.color.length === 9 ? parseInt(paint.color.slice(7), 16) / 255 : 1) * detail;
     this.line.material.color.set(paint.color.slice(0, 7));
     this.line.visible = alpha > 0 && !paint.width;
     this.line.material.opacity = .85 * alpha;
@@ -63,12 +64,14 @@ export class RoutedLinkObject extends THREE.Group {
       this.arrow.quaternion.setFromUnitVectors(UP, direction);
       this.arrow.position.set(tip.x - direction.x * 1.3, tip.y - direction.y * 1.3, tip.z - direction.z * 1.3);
       this.arrow.material.color.set(paint.color.slice(0, 7));
+      this.arrow.material.opacity = .85 * alpha;
     }
     this.photons.forEach((p, i) => {
-      p.visible = paint.particles && this.length > 0;
+      p.visible = paint.particles && detail > 0 && this.length > 0;
       if (!p.visible) return;
       const at = pointOnRoute(this.points, ((now * .00036 + i / 2) % 1) * this.length);
       p.position.set(at.x, at.y, at.z); p.material.color.set(paint.particleColor);
+      p.material.opacity = detail;
     });
   }
 }

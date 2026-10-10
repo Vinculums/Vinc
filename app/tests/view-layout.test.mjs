@@ -281,6 +281,14 @@ test("3d arrows and photons follow the routed geometry and visibility", () => {
   object.update(points[0], { x: 20, y: 10, z: 0 }, 10, { ...paint, color: "#ffffff00", particles: false }, 3000);
   assert.equal(line.visible, false); assert.equal(arrow.visible, false);
   assert.ok(photons.every(p => !p.visible));
+  // Overview detail changes ink, never relation geometry or particle direction.
+  object.update(points[0], { x: 20, y: 10, z: 0 }, 10, { ...paint, detail: .1 }, 4000);
+  assert.equal(line.material.opacity, .085);
+  assert.equal(arrow.material.opacity, .085);
+  assert.ok(photons.every(p => p.material.opacity === .1));
+  object.update(points[0], { x: 20, y: 10, z: 0 }, 10, paint, 4000);
+  assert.equal(line.material.opacity, .85);
+  assert.ok(photons.every(p => p.material.opacity === 1));
 });
 
 test("larger graph retains every authored relation and finishes within the worker deadline", async (t) => {
