@@ -119,7 +119,7 @@ class NarrowBarWraps(unittest.TestCase):
         self.assertNotIn("@container topbar (max-width: 700px)", CSS)
         m = _at("@container topbar (max-width: 420px)")
         self.assertRegex(m, r"#tb-find \{[^}]*flex: 1 1 100%")
-        self.assertIn("#tb-viewctl { margin-left: auto; }", m)
+        self.assertRegex(m, r"#tb-viewctl \{[^}]*margin-left: auto;")
 
     def test_no_viewport_wrap_left_behind(self):
         self.assertNotIn("@media (max-width: 520px)", CSS)

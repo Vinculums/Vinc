@@ -2,9 +2,9 @@
 
 소스 잠금이다. 동작 자체는 브라우저에서 실측했다(창 1024 · 800 · 390): 관점 전환 · 옵션 ·
 탭 · 기간 · 날짜 선택을 거쳐도 패널이 열려 있고, 닫기 버튼 · 렌즈 버튼 · 바깥 누르기 ·
-Esc 넷으로만 닫히며, 열린 카드와 패널의 양 끝이 같은 세로선(680 · 1008)에 서고 검색
-입력은 한 픽셀도 움직이지 않았다. 여기서는 그 동작을 만든 자리가 조용히 옛 모양으로
-돌아가지 않게 붙잡는다:
+Esc 넷으로만 닫혔다. 2026-10-10 요구에 따라 펼친 카드가 검색 공간을 차지하도록 바꿨다.
+검색 폭의 축소·복원과 전환 중 겹침은 app/dev/viewpoint-layout-check.mjs가 실측한다.
+여기서는 패널 동작과 카드 상태가 옛 모양으로 돌아가지 않게 붙잡는다:
 
 - 관점을 바꾸면 패널을 닫던 두 줄(`applyViewpoint`)과 `show()` 의 기본 닫기
 - 바깥 누르기의 예외가 렌즈 버튼 하나뿐이라 관점 칩을 누르는 것도 "바깥"이던 것
@@ -89,13 +89,10 @@ class TwoStatesOfTheCard(unittest.TestCase):
     def test_closed_card_hides_the_segment(self):
         self.assertIn("#tb-viewctl:not([data-open]) > #tb-viewpoints { display: none; }", CSS)
 
-    def test_open_card_overlays_instead_of_pushing(self):
+    def test_open_card_reserves_its_width_beside_search(self):
         m = re.search(r"(?m)^#tb-viewctl\[data-open\] \{[^}]*\}", CSS)
         self.assertTrue(m)
-        # 바깥 폭 = 닫힌 폭(음수 왼쪽 여백 + 패널 폭) — 검색 입력이 흔들리지 않는다(Q1.1).
-        self.assertIn(
-            "margin-left: calc(var(--vc-closed-w, var(--lens-panel-w)) - var(--lens-panel-w))",
-            m.group(0))
+        self.assertNotIn("margin-left", m.group(0))
 
     def test_closed_button_names_the_viewpoint(self):
         self.assertIn('class="lens-vp">${esc(vp)}</span>', VIEW)

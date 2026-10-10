@@ -675,25 +675,25 @@ export async function renderView(el: HTMLElement) {
   }
 
   /** 보기 카드(상단 바) — 닫히면 렌즈 버튼 하나, 열리면 관점 세그가 왼쪽으로 미끄러져
-   *  나와 렌즈 패널과 같은 폭(`--lens-panel-w`)이 된다. 열린 동안 카드는 검색 카드의
-   *  오른쪽 끝 **위로 겹쳐** 자란다: 바깥 폭(음수 왼쪽 여백 + 폭)은 닫힌 폭 그대로라
-   *  검색 입력이 한 픽셀도 밀리지 않는다(Q1.1). 좁은 창(≤900)은 패널이 전폭 판이라
-   *  카드가 자라지 않고 세그가 판 머리로 간다(CSS).
-   *  근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] §1 */
+   *  나와 가용 폭 안에서 렌즈 패널 폭(`--lens-panel-w`)까지 자란다. 검색 카드도 매 프레임
+   *  남은 폭을 받는다. 좁은 창(≤900)은 세그가 판 머리로 간다(CSS). */
   const viewCard = () => {
     const c = legend.closest<HTMLElement>(".tb-card");
     return c && c.id === "tb-viewctl" ? c : null;
   };
   let cardAnim: Animation | null = null;
+  let cardTargetOpen = false;
   async function setCardOpen(open: boolean): Promise<void> {
     const c = viewCard();
-    if (!c || (c.dataset.open === "true") === open) return;
+    if (!c || (cardAnim ? cardTargetOpen : c.dataset.open === "true") === open) return;
+    const fromW = c.getBoundingClientRect().width;
     cardAnim?.cancel();
     cardAnim = null;
+    cardTargetOpen = open;
+    c.classList.remove("vc-enter");
     // 닫힌 폭은 그때그때 잰다 — 버튼에 실린 관점 이름에 따라 폭이 다르다.
     c.removeAttribute("data-open");
     const closedW = c.getBoundingClientRect().width;
-    c.style.setProperty("--vc-closed-w", `${closedW}px`);
     c.dataset.open = "true";
     const openW = c.getBoundingClientRect().width;
     // 움직임 줄이기 · 좁은 창(카드가 자라지 않는다)은 상태만 바꾼다.
@@ -703,9 +703,9 @@ export async function renderView(el: HTMLElement) {
     }
     // 여는 데 200ms, 닫는 데 160ms — 하루에도 여러 번 쓰는 손잡이라 `--dur-in`(400)보다
     // 짧게 간다(관점 페이드가 160 인 것과 같은 이유). 오른쪽 끝을 축으로 폭만 바꾼다.
-    const frame = (w: number) => ({ width: `${w}px`, marginLeft: `${closedW - w}px` });
+    const frame = (w: number) => ({ width: `${w}px` });
     if (open) c.classList.add("vc-enter");
-    const anim = c.animate(open ? [frame(closedW), frame(openW)] : [frame(openW), frame(closedW)],
+    const anim = c.animate([frame(fromW), frame(open ? openW : closedW)],
       { duration: open ? 200 : 160, easing: "cubic-bezier(.22, 1, .36, 1)" });
     cardAnim = anim;
     try { await anim.finished; } catch { /* 반대로 뒤집혔다 — 새 호출이 상태를 쥔다 */ return; }
