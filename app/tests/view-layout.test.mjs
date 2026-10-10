@@ -13,7 +13,7 @@ const source = async (entry) => {
 const { temporalLayout } = await source("../src/view-layout.ts");
 const { routeAcrossTopics } = await source("../src/view-layout-avoid.ts");
 const { layoutInWorker } = await source("../src/view-layout-client.ts");
-const { movedRoute, routeLength, pointOnRoute } = await source("../src/view-route.ts");
+const { movedRoute, routeLength, pointOnRoute, simplifyRoute } = await source("../src/view-route.ts");
 const { RoutedLinkObject } = await source("../src/surfaces/view-routes3d.ts");
 await AvoidLib.load(fileURLToPath(new URL("../node_modules/libavoid-js/dist/libavoid.wasm", import.meta.url)));
 const elk = new ELK();
@@ -59,6 +59,17 @@ test("temporal partitions preserve backwards edges, cycles, parallels, self loop
   assert.equal(result.nodes.filter(n => n.kind === "domain").length, 1);
 });
 
+test("chronological backwards relations use facing ports without a gratuitous loop", async () => {
+  for (const type of ["DERIVES_FROM", "INHERITS_FROM", "PREREQUISITE_OF", "RELATED_TO"]) {
+    const nodes = [n("a", "2020"), n("b", "2021")];
+    const edges = [edge(type === "DERIVES_FROM" || type === "INHERITS_FROM" ? "a" : "b",
+      type === "DERIVES_FROM" || type === "INHERITS_FROM" ? "b" : "a", type)];
+    const result = await temporalLayout(nodes, edges, "content", elk, route);
+    check(result, edges);
+    assert.equal(result.edges[0].route.points.length, 2, type);
+  }
+});
+
 test("recorded and content bases change ordering without inventing dates", async () => {
   const nodes = [n("a", "2020", "topic", "2022"), n("b", "2022", "topic", "2020")], edges = [edge("a", "b")];
   const content = await temporalLayout(nodes, edges, "content", elk, route);
@@ -96,6 +107,33 @@ test("cross topic routing preserves source direction and moves depth orthogonall
   assert.equal(result.edges[0].route.engine, "libavoid");
   assert.ok(result.topicEdges.some(e => e.type === "PARENT_OF"));
   assert.ok(new Set(result.edges[0].route.points.map(p => p.z)).size > 1);
+});
+
+test("vertically aligned topics use facing vertical ports instead of a side detour", () => {
+  const nodes = [{ ...n("a", "2020"), x: 0, y: 0, z: 0 }, { ...n("b", "2021"), x: 0, y: 1, z: .26 }];
+  const e = edge("a", "b", "RELATED_TO");
+  const [result] = routeAcrossTopics(AvoidLib.getInstance(), nodes, [e]);
+  axisAligned(result.route.points);
+  assert.equal(simplifyRoute(result.route.points.map(p => ({ ...p, z: 0 }))).length, 2);
+  const { route: ignored, ...metadata } = result;
+  assert.deepEqual(metadata, e);
+});
+
+test("centre pin routes avoid intervening node and label rectangles and preserve self loops", () => {
+  const nodes = [{ ...n("a", "2020"), x: 0, y: 0, z: 0 },
+    { ...n("b", "2021"), x: 0, y: 1, z: 0 }, { ...n("obstacle", ""), x: 0, y: .5, z: 0 }];
+  const edges = [edge("a", "b", "RELATED_TO"), edge("a", "a", "RELATED_TO")];
+  const result = routeAcrossTopics(AvoidLib.getInstance(), nodes, edges);
+  result.forEach(e => axisAligned(e.route.points));
+  assert.ok(routeLength(result[1].route.points) > .2, "self relation collapsed at the centre pin");
+  for (let i = 1; i < result[0].route.points.length; i++) {
+    const a = result[0].route.points[i - 1], b = result[0].route.points[i];
+    const horizontal = Math.abs(a.y - b.y) < 1e-8;
+    const crosses = horizontal
+      ? a.y > .476 && a.y < .566 && Math.max(a.x, b.x) > -.11 && Math.min(a.x, b.x) < .11
+      : a.x > -.11 && a.x < .11 && Math.max(a.y, b.y) > .476 && Math.min(a.y, b.y) < .566;
+    assert.ok(!crosses, "route cuts through the intervening label rectangle");
+  }
 });
 
 test("empty graph avoids worker allocation; singleton remains navigable", async () => {
