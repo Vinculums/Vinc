@@ -762,6 +762,7 @@ const EN = {
       edFmLabel: "Front matter",
       railTitle: "Node detail",
       railClose: "Close",
+      railResize: "Resize panel",
       // 문서 열 크기 전환(글자 단추). 지금 상태가 아니라 **누르면 갈 곳**을 말한다.
       railFull: "Full width",
       railSide: "Side panel",
@@ -1913,6 +1914,7 @@ const KO: Deck = {
       edFmLabel: "머리말",
       railTitle: "노드 상세",
       railClose: "닫기",
+      railResize: "패널 폭 조절",
       railFull: "크게 보기",
       railSide: "작게 보기",
       propsTitle: "속성",

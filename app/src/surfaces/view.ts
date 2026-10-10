@@ -186,7 +186,8 @@ export async function renderView(el: HTMLElement) {
     <div id="view-detail" hidden></div>
     <!-- 폭 조절 그립은 패널의 **형제**다: 패널 내용은 화면마다 innerHTML 로 갈리는데
          (상세·관계·드릴다운·기간·리더) 그 안에 두면 매번 다시 붙이고 다시 배선해야 한다. -->
-    <div id="rail-grip" role="separator" aria-orientation="vertical" hidden></div>
+    <div id="rail-grip" role="separator" aria-orientation="vertical"
+         aria-controls="view-detail" tabindex="0" hidden></div>
     <!-- 인캔버스 크롬의 위치는 CSS 가 정한다. 문서 패널이 캔버스 위에 떠 있으므로
          패널 폭만큼 크롬을 밀지 않는다. 임베드 배치의 오프셋은 CSS 변수가 맡는다. -->
     <div id="view-msg"></div>
@@ -731,6 +732,7 @@ export async function renderView(el: HTMLElement) {
   function setRailWidth(rem: number) {
     const w = Math.min(RAIL_MAX, Math.max(RAIL_MIN, rem));
     (shell ?? el).style.setProperty("--rail-size", `${w}rem`);
+    updateRailGrip();
     // 열려 있는 렌즈 패널은 이 폭에 걸려 있다(positionPanel 이 읽는 면의 왼쪽 끝을
     // 오른쪽 한계로 쓴다). 폭의 단일 원천이 여기 하나이므로 재배치도 여기서 부른다 -
     // 안 부르면 폭을 넓히는 동안 패널이 읽는 면 아래로 들어간다.
@@ -746,6 +748,8 @@ export async function renderView(el: HTMLElement) {
    *  "Details" 로 열 때 넓게 열리면 지도를 보던 손이 끊긴다.
    *  근거: [[decision:side-navigation-picks-open-the-document-pane-full-width-2026-09-25]] */
   let railFull = false;
+  let railRevision = 0;
+  let periodTrigger: SVGElement | null = null;
   function setRailFull(full: boolean) {
     railFull = full;
     if (!detail.hidden) railChrome(true);
@@ -767,7 +771,7 @@ export async function renderView(el: HTMLElement) {
         <span class="rail-head-acts">
           <button class="rail-x rail-size" id="rail-size" type="button"
                   aria-pressed="${railFull}">${railFull ? V.railSide : V.railFull}</button>
-          <button class="rail-x" id="rail-close" aria-label="${V.railClose}"
+          <button class="rail-x" id="rail-close" type="button" aria-label="${V.railClose}"
                   data-tip="${V.railClose}">✕</button>
         </span>
       </div>`;
@@ -786,6 +790,7 @@ export async function renderView(el: HTMLElement) {
     if (docpane) docpane.hidden = !open;
     // 지도 칸 전체로 연 패널에는 끌어서 줄일 모서리가 없다.
     railGrip.hidden = !open || railFull;
+    updateRailGrip();
     // 읽는 면이 열리거나 닫히면 렌즈 패널의 오른쪽 한계가 바뀐다(positionPanel 이
     // 그 왼쪽 끝을 읽는다). 폭 변경(setRailWidth)과 **열림 변경**은 다른 사건이라
     // 둘 다 걸어야 한다 - 안 걸면 "렌즈를 열어 둔 채 문서를 여는" 순서에서만 겹친다.
@@ -806,6 +811,8 @@ export async function renderView(el: HTMLElement) {
   /** 끄는 동안 고리 모양만 가른다 — 관계 넷 중 하나라도 규칙에 맞으면 이을 수 있는 쌍이다. */
   const canLinkPair = (a: string, b: string) => RELS.some((r) => !relRefusal(r, a, b));
   function closeRail() {
+    ++railRevision;
+    const returnFocus = detail.contains(document.activeElement) || document.activeElement === railGrip;
     dropPick();
     detail.hidden = true;
     // 열의 내용을 지우기 **전에** 그 안의 편집기를 확정·해제한다. 아래 innerHTML 은
@@ -820,8 +827,15 @@ export async function renderView(el: HTMLElement) {
     railChrome(false);
     // 카드는 선택에 딸린 물건이라 선택이 끝나면 같이 사라진다(떠 있는 창을 남기지 않는다).
     closeFloatPanel();
+    const trigger = periodTrigger?.isConnected ? periodTrigger
+      : periodTrigger ? canvas.querySelector<SVGElement>(
+        `.pl-band-hit[data-month="${CSS.escape(periodTrigger.dataset.month!)}"]`) : null;
+    if (returnFocus) trigger?.focus();
+    periodTrigger = null;
   }
   function openRail() {
+    ++railRevision;
+    periodTrigger = null;
     dropPick();
     // 여는 것도 **덮어쓰는** 것이다: 이 뒤에 오는 것은 예외 없이 `detail.innerHTML`
     // 대입이다(상세 · 관계 · 드릴다운 · 기간 · 리더 재진입). 그 자리가 스무 곳이
@@ -829,17 +843,48 @@ export async function renderView(el: HTMLElement) {
     disposeEditorsIn(detail);
     detail.hidden = false;
     railChrome(true);
+    return railRevision;
+  }
+  // CSS가 화면 폭으로 접은 실제 범위를 키보드와 접근성 값도 함께 쓴다.
+  function railBounds() {
+    const root = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const pane = docpane ?? detail;
+    const gap = parseFloat(getComputedStyle(pane).right) || 0;
+    const max = Math.max(0, Math.min(RAIL_MAX,
+      ((pane.parentElement?.clientWidth ?? window.innerWidth) - gap * 2) / root));
+    return { root, min: Math.min(RAIL_MIN, max), max };
+  }
+  function updateRailGrip() {
+    if (railGrip.hidden) return;
+    const { root, min, max } = railBounds();
+    const now = (docpane ?? detail).getBoundingClientRect().width / root;
+    railGrip.setAttribute("aria-label", COPY.ui.viewx.railResize);
+    railGrip.setAttribute("aria-valuemin", String(min));
+    railGrip.setAttribute("aria-valuemax", String(max));
+    railGrip.setAttribute("aria-valuenow", String(Math.min(max, Math.max(min, now))));
   }
   /** 패널 **왼쪽** 모서리 그립 — 왼쪽으로 끌면 문서가 넓어진다. 포인터 캡처라
    *  커서가 WebGL 캔버스로 넘어가도 드래그가 끊기지 않는다. 확정 값만
    *  프리퍼런스에 적는다(끄는 동안 매 프레임 저장하지 않는다). */
   function wireRailGrip(grip: HTMLElement) {
+    grip.addEventListener("keydown", (e) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const { root, min, max } = railBounds();
+      const now = (docpane ?? detail).getBoundingClientRect().width / root;
+      const next = e.key === "Home" ? min : e.key === "End" ? max
+        : now + (e.key === "ArrowLeft" ? 1 : -1) * (e.shiftKey ? 4 : 1);
+      const w = setRailWidth(Math.min(max, Math.max(min, next)));
+      savePrefs({ ...loadPrefs(), railW: w });
+    });
     grip.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || !e.isPrimary) return;
       e.preventDefault();
       grip.setPointerCapture(e.pointerId);
       const root = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
       const startX = e.clientX;
-      const startW = detail.getBoundingClientRect().width / root;
+      const startW = (docpane ?? detail).getBoundingClientRect().width / root;
       let live = startW;
       const move = (ev: PointerEvent) => {
         // ⚠ 부호가 **뺄셈**이다: 패널이 오른쪽에 붙어 있으므로(R1) 왼쪽으로 끌 때
@@ -849,6 +894,8 @@ export async function renderView(el: HTMLElement) {
       const up = () => {
         grip.removeEventListener("pointermove", move);
         grip.removeEventListener("pointerup", up);
+        grip.removeEventListener("pointercancel", up);
+        grip.removeEventListener("lostpointercapture", up);
         // ⚠ applyPrefs 를 쓰지 않는다: 그것은 "행을 내보낸 층은 다시 그린다"는 계약이라
         // 폭만 바꿨는데 그래프가 재마운트되고 렌즈 패널까지 열린다. 폭은 렌더러가
         // 읽는 값이 아니므로 저장만 한다.
@@ -856,7 +903,15 @@ export async function renderView(el: HTMLElement) {
       };
       grip.addEventListener("pointermove", move);
       grip.addEventListener("pointerup", up);
+      grip.addEventListener("pointercancel", up);
+      grip.addEventListener("lostpointercapture", up);
     });
+    const observer = new ResizeObserver(() => {
+      if (myGen !== liveGen || !grip.isConnected) { observer.disconnect(); return; }
+      updateRailGrip();
+    });
+    observer.observe(docpane ?? detail);
+    observer.observe((docpane ?? detail).parentElement!);
   }
   // Esc 단계 후퇴(정본 §2) 1단계 — 레일이 열려 있으면 레일부터 닫는다. 보기 패널이
   // 열려 있을 땐 그쪽 핸들러가 먼저 잡으므로(패널에 포커스가 있다) 충돌하지 않는다.
@@ -2781,7 +2836,7 @@ export async function renderView(el: HTMLElement) {
    *  브러시는 밴드 하나 = 한 버킷으로 이산화돼 있다(자유 픽셀 드래그 아님).
    *  ⚠ 구간과 **기준(basis)** 둘 다 차트가 쓴 것을 그대로 넘긴다(D72) — 하나라도
    *  어긋나면 밴드가 보여 준 수와 목록의 수가 달라져 화면이 자기를 반박한다. */
-  async function openPeriod(bucket: string, domain?: string) {
+  async function openPeriod(bucket: string, domain?: string, trigger?: SVGElement) {
     const p = curPrefs();
     const onContent = p.timeBasis === "content";
     let [start, end] = bucketRange(bucket, periodGrain);
@@ -2791,30 +2846,44 @@ export async function renderView(el: HTMLElement) {
       if (periodGrain === "day") end = nextTimeKey(bucket);
       [start, end] = [localKeyToUtc(start), localKeyToUtc(end)];
     }
-    openRail();
-    detail.innerHTML = `<p class="hint">${COPY.ui.viewx.periodLoading}</p>`;
+    const revision = openRail();
+    periodTrigger = trigger ?? null;
+    const current = () => revision === railRevision && myGen === liveGen && !detail.hidden;
+    // 날짜 목록도 문서와 같은 머리와 동작을 쓴다. 응답은 본문만 바꿔 포커스를 보존한다.
+    detail.innerHTML = `${railHeadHTML(COPY.ui.viewx.timeline)}<div id="period-body"></div>`;
+    wireRailHead();
+    const body = detail.querySelector<HTMLElement>("#period-body")!;
+    body.innerHTML = `<p class="hint" role="status">${COPY.ui.viewx.periodLoading}</p>`;
+    if (trigger && document.activeElement === trigger)
+      detail.querySelector<HTMLButtonElement>("#rail-close")?.focus();
     try {
       const res = await api.docsInRange(cfg.owner, start, end, domain, p.timeBasis);
-      if (detail.hidden) return;
-      if (!res.executed) { detail.innerHTML = `<p class="hint">${COPY.ui.viewx.periodFail}</p>`; return; }
+      if (!current()) return;
+      if (!res.executed) { body.innerHTML = `<p class="hint" role="status">${COPY.ui.viewx.periodFail}</p>`; return; }
       const items = res.items || [];
       const head = `<h2>${esc(COPY.ui.viewx.periodHeader(bucket, res.total || 0))}</h2>`;
       if (items.length === 0) {
-        detail.innerHTML = head + `<p class="hint">${COPY.ui.viewx.periodEmpty}</p>`;
+        body.innerHTML = head + `<p class="hint">${COPY.ui.viewx.periodEmpty}</p>`;
         return;
       }
-      detail.innerHTML = head + items.map((it) => `
-        <div class="list-row period-i" data-id="${esc(it.id)}" data-lab="${esc(it.title)}"
-             data-dom="${esc(it.domain)}" style="display:block;cursor:pointer">
+      body.innerHTML = head + items.map((it) => `
+        <button type="button" class="list-row period-i" data-id="${esc(it.id)}" data-lab="${esc(it.title)}"
+             data-dom="${esc(it.domain)}">
           <span class="title" style="font-size:.9em">${esc(it.title)}
             <span class="hint">· ${esc(onContent ? it.ts : localStamp(it.ts).replace("T", " "))}</span></span>
-        </div>`).join("");
+        </button>`).join("");
       detail.querySelectorAll<HTMLElement>(".period-i").forEach((row) =>
-        row.addEventListener("click", () => openDetail({
-          id: row.dataset.id!, label: row.dataset.lab!, domain: row.dataset.dom!, degree: 0,
-        } as N3)));
+        row.addEventListener("click", () => {
+          const trigger = periodTrigger;
+          const keyboard = document.activeElement === row;
+          openDetail({ id: row.dataset.id!, label: row.dataset.lab!, domain: row.dataset.dom!, degree: 0 } as N3);
+          if (keyboard) {
+            periodTrigger = trigger;
+            detail.querySelector<HTMLButtonElement>("#rail-close")?.focus();
+          }
+        }));
     } catch {
-      if (!detail.hidden) detail.innerHTML = `<p class="hint">${COPY.ui.viewx.periodFail}</p>`;
+      if (current()) body.innerHTML = `<p class="hint" role="status">${COPY.ui.viewx.periodFail}</p>`;
     }
   }
 
@@ -3427,7 +3496,8 @@ export async function renderView(el: HTMLElement) {
    *  `/doc/context` 가 이미 실어 오므로, 검색이 그것을 알아내려 한 번 더 왕복할
    *  이유가 없다(청크 id `<doc>#00007` 의 뒷자리가 곧 번호다). */
   async function openReader(docId: string, conceptId?: string, chunkIndex?: number) {
-    openRail();
+    const revision = openRail();
+    const current = () => revision === railRevision && myGen === liveGen && !detail.hidden;
     detail.innerHTML = `<p class="hint">${COPY.ui.viewx.readerLoading}</p>`;
     try {
       // 셋을 나란히 부른다. 밑줄과 머리는 **증강**이라 실패해도 문서는 열려야 한다 —
@@ -3442,7 +3512,7 @@ export async function renderView(el: HTMLElement) {
       ]) as [Awaited<ReturnType<typeof api.docGet>>,
              Partial<Awaited<ReturnType<typeof api.docHighlights>>>,
              Partial<Awaited<ReturnType<typeof api.docContext>>>];
-      if (detail.hidden) return;
+      if (!current()) return;
       if (!doc.executed || doc.text === undefined) {
         // ⚠ **이 이른 반환은 이 패키지가 만든 것이 아니다.** `!doc.executed ||
         // doc.text === undefined` 는 P17b 이전부터 여기 있었고, 편집기를 세우지 않는
@@ -3550,6 +3620,7 @@ export async function renderView(el: HTMLElement) {
       // 뿐이다. 여태 둘은 다른 화면이었고, 보기 화면은 `$$…$$`·`**…**` 같은
       // 소스를 그대로 노출했다(실측).
       const { mountDocEditor, openDocSheet } = await import("../doc-editor");
+      if (!current()) return;
       const state = detail.querySelector<HTMLElement>("#rdr-state")!;
       const rdrHost = detail.querySelector<HTMLElement>("#rdr-host")!;
       let handle = await mountDocEditor(rdrHost, {
@@ -3571,6 +3642,7 @@ export async function renderView(el: HTMLElement) {
         // 아니고, 노드로 갈 문은 바로 위 칩이 이미 들고 있다.
         onDocLink: (id) => void openReader(id),
       });
+      if (!current()) { await handle.dispose(); return; }
       // 본문 복사. 화면을 긁는 대신 **소스 그대로**를 준다 — 문서의 정본은
       // 마크다운이라, 렌더된 글자를 복사하면 붙여넣은 곳에서 다른 문서가 된다.
       detail.querySelector<HTMLElement>("#rdr-copy")?.addEventListener("click", (e) => {
@@ -3624,7 +3696,7 @@ export async function renderView(el: HTMLElement) {
         await openDocSheet({ owner: cfg.owner, docId });
       })());
     } catch {
-      if (!detail.hidden) detail.innerHTML = `<p class="hint">${COPY.ui.viewx.readerFail}</p>`;
+      if (current()) detail.innerHTML = `<p class="hint">${COPY.ui.viewx.readerFail}</p>`;
     }
   }
 
@@ -3857,7 +3929,7 @@ export async function renderView(el: HTMLElement) {
           const nd = gnodes.find((n) => n.id === id);
           if (nd) focusOnMap(nd as unknown as N3);   // 3D·2D 와 같은 약속
         },
-        onMonth: (m) => void openPeriod(m, periodDomain),
+        onMonth: (m, trigger) => void openPeriod(m, periodDomain, trigger),
         lineage,
         // 초점이 남길 것 = **갈래를 가리지 않은 전체 관계**. 그려지는 선(lineage)은
         // 방향 3종뿐이지만, "이어져 있다"는 그보다 넓다(연관·부착·다리도 이어진 것).
@@ -3993,7 +4065,7 @@ export async function renderView(el: HTMLElement) {
     dropPick();
     // `keepDetail` — 방금 만든 것을 지도에 세우는 재그리기(revealNode)는 문서 열을 닫지
     // 않는다. 거기서 쓰고 있던 글이 첫 저장과 함께 사라지면 안 된다.
-    if (!opts?.keepDetail) detail.hidden = true;
+    if (!opts?.keepDetail) { ++railRevision; periodTrigger = null; detail.hidden = true; }
     closeFloatPanel();   // 층이 바뀌면 카드가 가리키던 노드도 화면에서 사라진다
     float.hidden = true;
     lassoHint.hidden = true;   // 기본 숨김 — wireLasso 가 다시 켠다

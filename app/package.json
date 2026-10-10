@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "npm run typecheck && npm run test:view-layout && vite build",
     "test:view-layout": "node --test tests/view-layout.test.mjs",
+    "test:timeline-panel": "node dev/timeline-panel-check.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri"
