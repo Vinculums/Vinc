@@ -6,6 +6,7 @@ async (page) => {
   const errors = [], evidence = [];
   let graphRequests = 0;
   let failNextGraph = false;
+  let mapFixture = false;
   let holdNextScope = false, releaseScope, signalScopeStarted;
   let navEnabled = false;
   const scopeStarted = new Promise(resolve => { signalScopeStarted = resolve; });
@@ -38,6 +39,10 @@ async (page) => {
       data = failNextGraph ? { executed: false, error: "store_busy" } : {
         executed: true, nodes: shown, edges: edges.filter(e => ids.has(e.source) && ids.has(e.target)) };
       failNextGraph = false;
+      if (mapFixture) data = { executed: true, edges: [], nodes: Array.from({ length: 24 }, (_, i) => [
+        { id: `concept:map${i}`, label: `Map ${i}`, kind: "concept", domain: `map/${i}`, degree: 0, ts: "2020", content_ts: "2020" },
+        { id: `domain:map/${i}`, label: `${i}`, kind: "domain", domain: "map", degree: 1 },
+      ]).flat() };
     }
     if (path === "/health") data = { ok: true, version: "0.9.7", store_ready: true };
     if (path === "/nav-tree" && navEnabled) data = { executed: true, domains: ["qa/a", "qa/b"].map(domain =>
@@ -228,6 +233,21 @@ async (page) => {
   assert(await page.evaluate(() => window.__s2.getGraph().nodes().every(id =>
     id === "domain:qa/a" || /^concept:qa-(?:[0-9]|1[01])$/.test(id))), "old topic leaked into new scope");
   evidence.push({ check: "layout change during a topic fetch cannot reuse the previous scope", pass: true });
+  mapFixture = true;
+  await page.goto("http://127.0.0.1:5207/#view/as/2d");
+  await page.waitForFunction(() => window.__s2?.getGraph().order === 48);
+  const composition = await page.evaluate(() => {
+    const s = window.__s2, g = s.getGraph(), topics = g.nodes().filter(id => id.startsWith("domain:"));
+    const points = topics.map(id => s.graphToViewport(g.getNodeAttributes(id)));
+    const rect = document.querySelector(".a2-stage").getBoundingClientRect();
+    return { columns: new Set(topics.map(id => g.getNodeAttribute(id, "x"))).size,
+      rows: new Set(topics.map(id => g.getNodeAttribute(id, "y"))).size,
+      width: (Math.max(...points.map(p => p.x)) - Math.min(...points.map(p => p.x))) / rect.width,
+      height: (Math.max(...points.map(p => p.y)) - Math.min(...points.map(p => p.y))) / rect.height };
+  });
+  assert(composition.columns > 1 && composition.rows > 1 && composition.width > .3 && composition.height > .3,
+    "Topic map leaves an axis unused");
+  evidence.push({ check: "actual 2d renderer distributes Topics across the canvas", ...composition });
   assert(errors.length === 0, `page errors: ${errors.join("; ")}`);
   return { evidence, pageErrors: errors };
 }

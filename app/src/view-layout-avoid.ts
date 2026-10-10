@@ -1,6 +1,10 @@
 import type { GraphEdge, GraphNode } from "./api";
 import { simplifyRoute, type RoutePoint } from "./view-route";
 
+export type RoutingNode = GraphNode & { routingBox?: { left: number; right: number; top: number; bottom: number } };
+const rectangleOf = (n: RoutingNode) => n.routingBox || { left: n.x! * 1000 - 110, right: n.x! * 1000 + 110,
+  top: n.y! * 1000 - 24, bottom: n.y! * 1000 + 66 };
+
 /** The WASM binding has incomplete type declarations. Keep that boundary here.
  * The router owns shapes, pins, and connectors; temporary value objects do not. */
 function routeBatch(Avoid: any, nodes: GraphNode[], edges: GraphEdge[]): GraphEdge[] {
@@ -21,8 +25,9 @@ function routeBatch(Avoid: any, nodes: GraphNode[], edges: GraphEdge[]): GraphEd
     router.setRoutingOption(Avoid.nudgeSharedPathsWithCommonEndPoint, true);
     for (const node of nodes) {
       const n = raw(node);
-      const rectangle = own(new Avoid.Rectangle(own(new Avoid.Point(n.x - 110, n.y - 24)),
-        own(new Avoid.Point(n.x + 110, n.y + 66))));
+      const rect = rectangleOf(node);
+      const rectangle = own(new Avoid.Rectangle(own(new Avoid.Point(rect.left, rect.top)),
+        own(new Avoid.Point(rect.right, rect.bottom))));
       const shape = new Avoid.ShapeRef(router, rectangle);
       const ports = [
         { x: 220, y: 24, dir: Avoid.ConnDirRight },
@@ -31,7 +36,7 @@ function routeBatch(Avoid: any, nodes: GraphNode[], edges: GraphEdge[]): GraphEd
       // Route from the actual mark centre with all departure directions. This
       // makes bend cost include the complete visible path rather than choosing
       // a boundary port first and appending centre-to-port stubs afterwards.
-      new Avoid.ShapeConnectionPin(shape, 1, 110, 24, false, 0, Avoid.ConnDirAll).setExclusive(false);
+      new Avoid.ShapeConnectionPin(shape, 1, n.x - rect.left, n.y - rect.top, false, 0, Avoid.ConnDirAll).setExclusive(false);
       if (loops.has(node.id)) for (let i = 0; i < 2; i++) {
         const p = ports[i];
         new Avoid.ShapeConnectionPin(shape, i + 2, p.x, p.y, false, 0, p.dir).setExclusive(false);
@@ -81,26 +86,34 @@ export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEd
     if (!batches.has(key)) batches.set(key, []);
     batches.get(key)!.push(i);
   });
-  const bounds = nodes.map(n => ({ n, left: n.x! * 1000 - 114, right: n.x! * 1000 + 114,
-    top: n.y! * 1000 - 28, bottom: n.y! * 1000 + 70 }));
+  const bounds = nodes.map(n => { const r = rectangleOf(n); return { n, left: r.left - 4, right: r.right + 4,
+    top: r.top - 4, bottom: r.bottom + 4 }; });
+  // 모든 장애물을 색인한다. 각 직각 구간과 겹치는 칸만 조회하며 멀리 우회한 선도 검사한다.
+  const cells = new Map<string, typeof bounds>(), cellSize = 500;
+  for (const b of bounds) for (let x = Math.floor(b.left / cellSize); x <= Math.floor(b.right / cellSize); x++)
+    for (let y = Math.floor(b.top / cellSize); y <= Math.floor(b.bottom / cellSize); y++) {
+      const key = `${x}:${y}`; if (!cells.has(key)) cells.set(key, []); cells.get(key)!.push(b);
+    }
   const result: GraphEdge[] = new Array(edges.length);
   for (const indices of batches.values()) {
     const batch = indices.map(i => edges[i]);
     const endpoints = new Set(batch.flatMap(e => [e.source, e.target]));
     const included = new Set(endpoints);
     while (true) {
-      const routed = routeBatch(Avoid, nodes.filter(n => included.has(n.id)), batch);
+      const routed = routeBatch(Avoid, [...included].map(id => map.get(id)!), batch);
       const missed = new Set<string>();
-      for (const e of routed) for (const b of bounds) {
-        if (included.has(b.n.id)) continue;
+      for (const e of routed) {
         const ps = e.route!.points;
         for (let i = 1; i < ps.length; i++) {
           const a = ps[i - 1], c = ps[i];
           const x0 = Math.min(a.x, c.x) * 1000, x1 = Math.max(a.x, c.x) * 1000;
           const y0 = Math.min(a.y, c.y) * 1000, y1 = Math.max(a.y, c.y) * 1000;
-          if (x1 > b.left + 1e-6 && x0 < b.right - 1e-6 && y1 > b.top + 1e-6 && y0 < b.bottom - 1e-6) {
-            missed.add(b.n.id); break;
-          }
+          const candidates = new Set<(typeof bounds)[number]>();
+          for (let x = Math.floor(x0 / cellSize); x <= Math.floor(x1 / cellSize); x++)
+            for (let y = Math.floor(y0 / cellSize); y <= Math.floor(y1 / cellSize); y++)
+              for (const b of cells.get(`${x}:${y}`) || []) if (!included.has(b.n.id)) candidates.add(b);
+          for (const b of candidates) if (x1 > b.left + 1e-6 && x0 < b.right - 1e-6 && y1 > b.top + 1e-6 && y0 < b.bottom - 1e-6)
+            missed.add(b.n.id);
         }
       }
       if (!missed.size) { indices.forEach((index, i) => { result[index] = routed[i]; }); break; }

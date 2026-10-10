@@ -491,6 +491,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   canConnect?: (a: string, b: string) => boolean;
 }, prefs: ViewPrefs = loadPrefs(), keepCam: Cam3 | null = null,
    tintDomains: (string | undefined)[] | null = null): ForceGraph3DInstance {
+  const mountedAt = performance.now();
   const flat = prefs.view === "2d";        // D31 — 동일 렌더러의 z 평면화
   let S = SCALE * prefs.spread;
   /** 사이드카 원좌표(단위원)를 노드에 남겨 둔다 — 아래 `place` 가 배율만 바꿔 다시
@@ -829,6 +830,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     requestAnimationFrame(() => {
       if (dead) return;
       wake(700);
+      console.info("View scene ready", { renderer: "3d", nodes: nodes.length, edges: links.length,
+        elapsedMs: Math.round(performance.now() - mountedAt) });
       if (!keepCam) (g as any).zoomToFit?.(400, 60);
       // zoomToFit 은 카메라를 코드로 옮기므로 controls 의 change 가 안 나올 수 있다.
       // 애니메이션(400ms)이 끝난 뒤 fog 를 새 거리에 맞춘다.
