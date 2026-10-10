@@ -3410,7 +3410,7 @@ def _brief_semantic_none(res: dict) -> bool:
     """Reject distant, exclusively zero-token semantic candidates on a healthy arm.
 
     VIN-327: the owner approved the measured cutoff with zero answerable losses
-    on the pinned evaluation set. Lexical matches and unavailable measurements
+    on the pinned evaluation set. Lexical/graph matches and unavailable measurements
     keep their existing resolution behavior. See [[vinc.manual.rag]].
     """
     hits = res.get("node_hits") or []
@@ -3427,12 +3427,12 @@ def _brief_semantic_none(res: dict) -> bool:
     if any(type(h.get("hit_tokens")) is not int or h["hit_tokens"] != 0
            for h in hits):
         return False
-    semantic = [h for h in hits if "semantic" in (h.get("arms") or [])]
-    if not semantic:
+    # Lexical/graph evidence is outside semantic-only abstention.
+    if any(set(h.get("arms") or []) != {"semantic"} for h in hits):
         return False
-    distances = [h.get("distance") for h in semantic]
+    distances = [h.get("distance") for h in hits]
     if any(type(d) not in (int, float) or not math.isfinite(d)
-           for d in distances):
+           or not 0.0 <= d <= 2.0 for d in distances):
         return False
     return min(distances) > _BRIEF_SEMANTIC_NONE_DISTANCE
 

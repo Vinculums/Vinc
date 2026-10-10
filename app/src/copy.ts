@@ -1170,6 +1170,8 @@ const EN = {
       acctDisconnect: "Disconnect",
       acctDisconnectHint: "Removes the key from this machine. To revoke it entirely, manage keys at vincs.io/account.",
       acctOnDisk: "This device has no system keychain, so the key is kept in the app's own folder instead. Anything running as your user can read it there.",
+      acctKeyFailed: "The saved key couldn't be checked. Try again.",
+      acctKeyRetry: "Try again",
       acctFail: "Connection didn't complete",
       acctExpired: "The request expired. Try again.",
       // 첫 실행에서 오프라인을 골랐거나 그 화면을 못 본 사람이 여기 온다. 지금
@@ -1179,6 +1181,7 @@ const EN = {
       syncKey: "Account key (manual)",
       syncKeyHint: "Fallback: create a key at vincs.io/account and paste it here. It's stored only on this machine.",
       syncKeySave: "Save key", syncKeySaved: "Saved. The field is cleared on purpose - the key is never kept on screen.",
+      syncKeySaveFailed: "The key could not be saved. Try again.",
       // 웹 Vinc 전용 계정·스페이스 줄. 예전엔 settings.ts 안에 EN/KO 사전이
       // 통째로 인라인돼 있었다("셸 편집 충돌 회피"가 사유였는데 그 충돌은 이미
       // 없다). 덱 밖 카피는 언어 전환도 검사도 받지 못하므로 여기로 옮긴다.
@@ -2263,12 +2266,15 @@ const KO: Deck = {
       acctDisconnect: "연결 해제하기",
       acctDisconnectHint: "이 기기에서 키를 지워요. 완전히 폐기하려면 vincs.io/account에서 키를 관리하세요.",
       acctOnDisk: "이 기기에는 시스템 키체인이 없어서 키를 앱 폴더에 보관해요. 같은 사용자로 실행되는 프로그램은 거기서 키를 읽을 수 있어요.",
+      acctKeyFailed: "저장된 키를 확인하지 못했어요. 다시 시도해 주세요.",
+      acctKeyRetry: "다시 시도하기",
       acctFail: "연결을 마치지 못했어요",
       acctExpired: "요청 시간이 지났어요. 다시 시도해 보세요.",
       acctOffline: "이 기기에는 연결된 계정이 없어요.",
       syncKey: "계정 키 (수동)",
       syncKeyHint: "자동 연결이 안 될 때 쓰는 방법이에요. vincs.io/account에서 키를 만들어 여기에 붙여넣으세요. 키는 이 기기에만 저장돼요.",
       syncKeySave: "키 저장", syncKeySaved: "저장했어요. 입력칸을 비우는 것은 일부러예요 · 키를 화면에 남기지 않아요",
+      syncKeySaveFailed: "키를 저장하지 못했어요. 다시 시도해 주세요.",
       webNotSignedIn: "로그인하지 않았어요",
       webManage: "계정 관리",
       webSignedAs: (w) => `로그인됨 · ${w}`,

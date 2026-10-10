@@ -357,14 +357,35 @@ export async function renderSettings(
           <p>${U.acctConnected(who ? esc(who) : "")}
              <button class="btn" id="acct-disc" style="margin-left:.5rem">${U.acctDisconnect}</button></p>
           <p class="hint">${U.acctDisconnectHint}</p>
-          <p class="hint" id="acct-ondisk" hidden>${U.acctOnDisk}</p>`;
+          <p class="hint" id="acct-ondisk" hidden>${U.acctOnDisk}</p>
+          <p class="hint" id="acct-key-failure" role="status" aria-live="polite" hidden>
+            ${U.acctKeyFailed} <button class="btn" id="acct-key-retry">${U.acctKeyRetry}</button></p>`;
         // OS 저장소 유무는 물어봐야 안다(프로브가 쓰고 지운다). 약한 상태를
         // 기본으로 두지 않고 **화면에 적는다** — 안 적으면 사용자는 자기 키가
         // 어디 있는지 모른다.
-        void accountKey().then(() => {
-          const n = acctBox.querySelector<HTMLElement>("#acct-ondisk");
-          if (n) n.hidden = !keyIsOnDisk();
-        });
+        const onDisk = acctBox.querySelector<HTMLElement>("#acct-ondisk")!;
+        const failure = acctBox.querySelector<HTMLElement>("#acct-key-failure")!;
+        const retry = acctBox.querySelector<HTMLButtonElement>("#acct-key-retry")!;
+        let checkingKey = false;
+        async function checkKey() {
+          if (checkingKey) return;
+          checkingKey = true;
+          retry.disabled = true;
+          failure.hidden = true;
+          try {
+            await accountKey();
+            onDisk.hidden = !keyIsOnDisk();
+          } catch {
+            // 이행 저장 실패도 여기로 온다. 연결이나 기존 키를 지우지 않고 재시도를 열어 둔다.
+            onDisk.hidden = true;
+            failure.hidden = false;
+          } finally {
+            checkingKey = false;
+            retry.disabled = false;
+          }
+        }
+        void checkKey();
+        retry.addEventListener("click", () => void checkKey());
         acctBox.querySelector("#acct-disc")!.addEventListener("click", () => {
           forgetAccount();
           renderAccount(body);
@@ -641,14 +662,23 @@ export async function renderSettings(
     // 실은 저장되고 있었다 — 다만 곧바로 입력칸을 비우는데(위 M8 규칙) 아무 말도
     // 안 해서, 비워지는 것이 "버려졌다"로 읽혔다. 지우는 것을 되돌리지 않고
     // **왜 지우는지를 말한다**: 키를 화면에 남기지 않는 것이 그 규칙의 목적이므로.
-    const save = () => {
+    let saving = false;
+    const save = async () => {
       const v = keyInput.value.trim();
-      if (!v) return;
-      void setAccountKey(v);
-      localStorage.removeItem("vinc.sync.email");   // 수동 키 = 이메일 미상
-      keyInput.value = "";                          // 입력칸에도 남기지 않는다
-      keySaid.textContent = U.syncKeySaved;
-      keySaid.hidden = false;
+      if (!v || saving) return;
+      saving = true;
+      try {
+        await setAccountKey(v);
+        localStorage.removeItem("vinc.sync.email"); // 수동 키 = 이메일 미상
+        // 저장을 기다리는 동안 새로 적은 값은 지우지 않는다.
+        if (keyInput.value.trim() === v) keyInput.value = "";
+        keySaid.textContent = U.syncKeySaved;
+      } catch {
+        keySaid.textContent = U.syncKeySaveFailed;
+      } finally {
+        keySaid.hidden = false;
+        saving = false;
+      }
     };
     // 버튼이 **정본 경로**다. `change` 만 두면 입력칸에 포커스를 둔 채 시트를 닫을 때
     // 이벤트가 아예 안 뜨고 키가 조용히 사라진다(실측 경로: Esc·딤 클릭).
