@@ -4,6 +4,7 @@ async (page) => {
   await page.bringToFront();
   const assert = (value, reason) => { if (!value) throw new Error(reason); };
   const errors = [], evidence = [];
+  let graphRequests = 0;
   page.on("pageerror", error => errors.push(error.message));
   await page.unrouteAll();
   await page.route("**/*", async route => {
@@ -21,7 +22,7 @@ async (page) => {
     edges.push({ id: "qa-cycle", source: nodes[6].id, target: nodes[2].id, type: "PREREQUISITE_OF", cross_domain: false },
       { id: "qa-parallel", source: nodes[0].id, target: nodes[1].id, type: "RELATED_TO", cross_domain: false });
     let data = { executed: true, domains: [], docs: [], nodes: [], edges: [], themes: [], marker: "qa" };
-    if (path === "/graph") data = { executed: true, nodes, edges };
+    if (path === "/graph") { graphRequests++; data = { executed: true, nodes, edges }; }
     if (path === "/health") data = { ok: true, version: "0.9.7", store_ready: true };
     if (path === "/node-context") data = { executed: true, node: { id: "concept:qa-0", title: "QA knowledge", domain: "qa/a", kind: "concept" }, docs: [], links: [], records: [] };
     if (path === "/edge-context") data = { executed: true, src: { title: "QA source" }, dst: { title: "QA target" }, confidence: .8, evidence: "QA authored evidence" };
@@ -75,6 +76,28 @@ async (page) => {
   await page.waitForFunction(() => window.__s2 !== window.__qaSigma);
   assert(await page.evaluate(() => JSON.stringify(window.__s2.getCamera().getState()) === window.__qaCamera2), "date basis resets 2d camera");
   evidence.push({ check: "date basis recomputes temporal layout", pass: true });
+  const requestsBeforeRank = graphRequests;
+  const recordedPositions = await page.evaluate(() => {
+    window.__qaSigma = window.__s2;
+    const g = window.__s2.getGraph();
+    return JSON.stringify(g.nodes().map(id => [id, g.getNodeAttribute(id, "x"), g.getNodeAttribute(id, "y")]));
+  });
+  await page.getByRole("radio", { name: "ranked", exact: true }).click();
+  await page.waitForFunction(() => window.__s2 !== window.__qaSigma);
+  const ranked2d = await page.evaluate(() => { const s = window.__s2, g = s.getGraph(); return {
+    camera: JSON.stringify(s.getCamera().getState()),
+    positions: JSON.stringify(g.nodes().map(id => [id, g.getNodeAttribute(id, "x"), g.getNodeAttribute(id, "y")])),
+    original: g.edges().filter(id => g.getEdgeAttribute(id, "relationId")).length }; });
+  assert(ranked2d.camera === await page.evaluate(() => window.__qaCamera2), "ranked resets camera");
+  assert(ranked2d.positions !== recordedPositions && ranked2d.original === 25 && graphRequests === requestsBeforeRank,
+    "ranked uses stale temporal cache, loses relations or refetches the graph");
+  evidence.push({ check: "2d ranked changes coordinates without refetch or camera reset", pass: true });
+  await page.evaluate(() => { window.__qaSigma = window.__s2; });
+  await page.getByRole("radio", { name: "by time", exact: true }).click();
+  await page.waitForFunction(() => window.__s2 !== window.__qaSigma);
+  assert(await page.evaluate(() => { const g = window.__s2.getGraph(); return JSON.stringify(g.nodes().map(id =>
+    [id, g.getNodeAttribute(id, "x"), g.getNodeAttribute(id, "y")])); }) === recordedPositions,
+    "switching back does not restore deterministic temporal coordinates");
   await page.getByRole("slider", { name: "Time cursor" }).evaluate(el => { el.value = "1"; el.dispatchEvent(new Event("input", { bubbles: true })); });
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("vinc.view.prefs")).when === 1);
   await page.getByRole("button", { name: "3D", exact: true }).click();
@@ -91,6 +114,20 @@ async (page) => {
   });
   assert(geometry.orthogonal && geometry.original === 25 && geometry.metadata === "QA authored evidence" && geometry.builtInArrowsDisabled, "3d route or metadata mismatch");
   evidence.push({ check: "3d actual sections and original evidence", ...geometry });
+  await page.waitForTimeout(600);
+  const requestsBeforeRank3 = graphRequests;
+  await page.evaluate(() => {
+    window.__qaGraph3 = window.__g3;
+    window.__qaCamera3 = JSON.stringify(window.__g3.cameraPosition());
+  });
+  await page.getByRole("radio", { name: "ranked", exact: true }).click();
+  await page.waitForFunction(() => window.__g3 !== window.__qaGraph3 && window.__g3.graphData().links.length > 0);
+  assert(await page.evaluate(() => JSON.stringify(window.__g3.cameraPosition()) === window.__qaCamera3), "ranked resets 3d camera");
+  assert(graphRequests === requestsBeforeRank3, "ranked refetches the 3d graph");
+  await page.evaluate(() => { window.__qaGraph3 = window.__g3; });
+  await page.getByRole("radio", { name: "by time", exact: true }).click();
+  await page.waitForFunction(() => window.__g3 !== window.__qaGraph3 && window.__g3.graphData().links.length > 0);
+  evidence.push({ check: "3d ranked and temporal selection keeps camera without refetch", pass: true });
   await page.getByRole("slider", { name: "Time cursor" }).evaluate(el => { el.value = ".25"; el.dispatchEvent(new Event("input", { bubbles: true })); });
   await page.waitForFunction(() => { let found = false; window.__g3.scene().traverse(obj => {
     if (obj.isInstancedMesh) for (let i = 0; i < obj.count; i++) {
