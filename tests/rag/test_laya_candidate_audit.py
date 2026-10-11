@@ -86,10 +86,14 @@ class CandidateAudit(unittest.TestCase):
             A.observation_receipt(raw, recipe)
 
     def test_authoring_intent_does_not_override_endpoint_text(self):
-        pair = copy.deepcopy(self.bundle["pairs"][0])
-        pair["a"]["text"] += " mutation"
-        with self.assertRaisesRegex(ValueError, "authoring recipe"):
-            A.recipe_endpoints(self.recipes["source:laya-p1-fact01"], pair)
+        for target in ("endpoint", "context"):
+            pair = copy.deepcopy(self.bundle["pairs"][0])
+            if target == "endpoint":
+                pair["a"]["text"] += " mutation"
+            else:
+                pair["context"] += " mutation"
+            with self.assertRaisesRegex(ValueError, "authoring recipe"):
+                A.recipe_endpoints(self.recipes["source:laya-p1-fact01"], pair)
 
     def test_issue_anchor_and_hash_are_bound_to_source(self):
         contents = {sid: (PILOT / s["snapshot_path"]).read_bytes().decode() for sid, s in self.sources.items()}

@@ -57,6 +57,7 @@ def recipe_endpoints(recipe, pair):
               "scope_time_condition": ("evidence", "scope_change"), "reverse_or_conflict": ("claim", "counterclaim")}
     a, b = fields[pair["contrast"]]
     D.require(pair["a"]["text"] == recipe[a][pair["a"]["language"]] and pair["b"]["text"] == recipe[b][pair["b"]["language"]], "pair differs from authoring recipe")
+    D.require(pair.get("context") == recipe["context"][pair["a"]["language"]], "pair context differs from authoring recipe")
 
 
 def issue_receipts(issues, bundle, contents):
