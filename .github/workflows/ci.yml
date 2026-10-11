@@ -621,6 +621,13 @@ jobs:
               sys.exit(1)
           print("pk namespacing: on")
           PY
+      # 실제 Python PID 1에 신호를 보낸다. 모델/DB/운영 자원은 사용하지 않는다.
+      # namespace를 만들 수 없으면 실패한다. Windows의 signal 모의로 대체하지 않는다.
+      - name: Encoder SIGTERM as Linux PID 1
+        run: |
+          sudo -n env VINC_TEST_ENCODER_PID1=on "$(command -v python)" -m pytest \
+            -q -s -x tests/rag/test_encode_shutdown.py -k pid1
+
       - name: Run the whole suite with the flag on
         run: python -m pytest -q tests
 
