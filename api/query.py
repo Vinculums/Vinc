@@ -2233,6 +2233,44 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             "basis": used, **shaped}
 
 
+def graph_preview(*, owner, domains=None, layout="hub", cone=1.0, basis="recorded", cfg=None, store=None):
+    """A bounded real Concept subgraph, read inside the continuation's transaction.
+
+    This is explicitly partial: no full-population metrics or fabricated edges.
+    Other axes arrive with the unchanged final graph response.
+    """
+    where, params = ["c.owner_id = $owner"], {"owner": owner}
+    doms = normalize_domains(None, domains)
+    if doms:
+        where.append(domain_subtree_where(["c.domain"], doms, params))
+    rows = execute(QueryPlan("graph_preview_nodes",
+        "MATCH (c:Concept) WHERE " + " AND ".join(where) +
+        " RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
+        "coalesce(c.created, c.updated_at, '') AS ts, "
+        "coalesce(c.content_time, '') AS content_ts ORDER BY c.concept_id LIMIT 128",
+        params), cfg, store=store)
+    if not rows.get("executed"):
+        return {"executed": False}
+    nodes = list(rows.get("rows", []))
+    if not nodes:
+        return {"executed": True, "nodes": [], "edges": []}
+    ids = pkns.keys(owner, [n["id"] for n in nodes])
+    edges = execute(QueryPlan("graph_preview_edges",
+        "MATCH (c:Concept)-[r]->(d:Concept) WHERE c.owner_id = $owner AND d.owner_id = $owner "
+        "AND c.concept_id IN $ids AND d.concept_id IN $ids "
+        "RETURN c.concept_id AS id, d.concept_id AS target, label(r) AS rel "
+        "ORDER BY c.concept_id, d.concept_id, label(r) LIMIT 512",
+        {"owner": owner, "ids": ids}), cfg, store=store)
+    if not edges.get("executed"):
+        return {"executed": False}
+    shaped = shape_graph(nodes + list(edges.get("rows", [])))
+    shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout,
+                                       topic_marks=False, cone=cone)
+    used = _apply_basis(shaped, basis)
+    _order_graph_result(shaped)
+    return {"kind": "graph_preview", "executed": True, "partial": True, "basis": used, **shaped}
+
+
 def domain_ties_plan(*, owner: str) -> QueryPlan:
     """View L0 결합 행렬(D16) — 도메인이 다른 Concept 간 직접 엣지를 도메인 쌍으로 집계."""
     cypher = (

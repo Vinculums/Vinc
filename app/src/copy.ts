@@ -288,6 +288,7 @@ const EN = {
     scopeEmpty: "Nothing in this topic yet. Show everything, or add something here.",
     idleCta: "Import files",
     loading: (d: number) => d > 0 ? `Arranging ${d} topics…` : "Arranging this View…",
+    preview: "Partial overview · Loading the full View…",
     error: "View couldn't load. Retry anytime. Your documents are untouched.",
     // 스토어를 못 읽는 상태 전용. "비어 있다"와 **반드시 다른 말**이어야 한다 —
     // 사이드카가 읽지 못하는 것을 빈 View 로 그리면 정보 유실과 구분되지 않는다.
@@ -1537,6 +1538,7 @@ const KO: Deck = {
     scopeEmpty: "이 주제에는 아직 아무것도 없어요. 전체를 보거나 여기에 새로 추가해 보세요",
     idleCta: "파일 추가하기",
     loading: (d) => d > 0 ? `주제 ${d}개를 배치하는 중…` : "View를 배치하는 중…",
+    preview: "일부 개요 · 전체 View를 불러오는 중…",
     error: "View를 불러오지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
     storeDown: "지금은 저장된 정보를 읽을 수 없어요. 읽기 문제라서 잃어버린 것은 없어요. Vinc를 다시 실행하고, 다른 Vinc가 이미 켜져 있지 않은지 확인해 주세요",
     storeDownWhy: "자세히",

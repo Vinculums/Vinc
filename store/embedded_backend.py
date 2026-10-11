@@ -829,6 +829,27 @@ class _ReaderView:
         finally:
             self._leave_request_guard()
 
+    @contextmanager
+    def graph_snapshot_scope(self, control):
+        """One owned reader: shared snapshot, cooperative cancellation/query deadline.
+
+        Never interrupts the writer or another reader. Each native query receives the remaining timeout;
+        Python shaping/layout checks cancellation at phase ends.
+        Shutdown still joins the producer before closing its database.
+        """
+        self._graph_control = control
+        begun = False
+        try:
+            self.run("BEGIN TRANSACTION READ ONLY")
+            begun = True
+            yield
+            control.check()
+        finally:
+            self._graph_control = None
+            self._conn.set_query_timeout(0)
+            if begun:
+                self.run("ROLLBACK")
+
     def _at_write_point(self, label: str, fn, timeout: float):
         if self._writer is None:
             return fn()
@@ -843,7 +864,14 @@ class _ReaderView:
                 self._enter_request_guard()
 
     def run(self, query: str, params: dict | None = None) -> list[dict]:
-        return _exec_to_dicts(self._conn, query, params or None)
+        control = getattr(self, "_graph_control", None)
+        if control is not None:
+            control.check()
+            self._conn.set_query_timeout(max(1, int(control.remaining() * 1000)))
+        rows = _exec_to_dicts(self._conn, query, params or None)
+        if control is not None:
+            control.check()
+        return rows
 
     def fulltext_search(self, text, top_k, filters=None) -> list[dict]:
         return self._b.fulltext_search(text, top_k, filters, conn=self._conn)
