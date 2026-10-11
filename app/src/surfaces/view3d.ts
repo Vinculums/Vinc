@@ -11,6 +11,7 @@ import { changedRendererPrefs, canUpdateViewStyle } from "../view-controls";
  *  (L0 Domain). Gateways are translucent. Sidecar supplies deterministic
  *  x/y/z (D17) — positions are pinned (fx/fy/fz), no client force simulation. */
 import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
+import { ViewIdleFrames } from "./view-idle-frames";
 import * as THREE from "three";
 import { loadPrefs, DIRECTED_RELS, type ViewPrefs } from "../view-prefs";
 import { palette as signal, viewScene, hexStr, type ThemeMode } from "../theme";
@@ -898,6 +899,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     if (dead) return;
     sizeTo();                                    // 컨테이너가 변했으면 캔버스를 맞추고
     (g.controls() as any)?.handleResize?.();     // 캔버스가 변했으면 컨트롤을 맞춘다
+    wake(300);
   });
   ro.observe(el);
   ro.observe(g.renderer().domElement);           // 캔버스 변화는 digest 뒤에 온다(위 주석)
@@ -908,16 +910,32 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // "움직일 이유"가 있는 동안만 깨어 있는다: 포인터·휠·카메라 변화·hover 페이드·비행·
   // 옵션 반영은 각자 wake(ms) 를 부르고, 마감이 지나면 pauseAnimation(). 입자 모드는
   // 상시 애니메이션이라 재우지 않는다. resumeAnimation 은 첫 프레임을 곧장 그린다.
-  let awakeUntil = performance.now() + 2500;      // 마운트·프레이밍이 끝날 때까지
-  let napping = false;
-  const wake = (ms = 300) => {
-    awakeUntil = Math.max(awakeUntil, performance.now() + ms);
-    if (napping) { napping = false; (g as any).resumeAnimation?.(); }
+  const idleCamera = g.camera() as THREE.PerspectiveCamera;
+  const paintedPosition = new THREE.Vector3(), paintedRotation = new THREE.Quaternion();
+  const paintedTarget = new THREE.Vector3(), paintedProjection = new THREE.Matrix4();
+  let painted = false;
+  const idle = new ViewIdleFrames({
+    now: () => performance.now(), defer: (fn) => queueMicrotask(fn),
+    // Kapsule digest는 1ms debounce다. 그 task가 끝난 다음 rAF에서 재개한다.
+    deferSettle: (fn) => window.setTimeout(fn, 2),
+    deferResume: (fn) => window.setTimeout(() => requestAnimationFrame(fn), 2),
+    pause: () => (g as any).pauseAnimation?.(), resume: () => (g as any).resumeAnimation?.(),
+    continuous: () => particlesOn,
+    hasUnpaintedChanges: () => !painted || !paintedPosition.equals(idleCamera.position)
+      || !paintedRotation.equals(idleCamera.quaternion)
+      || !paintedProjection.equals(idleCamera.projectionMatrix)
+      || !!controls?.target && !paintedTarget.equals(controls.target),
+  });
+  const wake = (ms = 300) => idle.wake(ms);
+  const napTimer = window.setInterval(() => idle.check(), 200);
+  // 카메라 tween은 render 뒤에 진행된다. 실제 그린 상태와 달라졌으면 다음 프레임을 남긴다.
+  scene.onAfterRender = () => {
+    paintedPosition.copy(idleCamera.position); paintedRotation.copy(idleCamera.quaternion);
+    paintedProjection.copy(idleCamera.projectionMatrix);
+    if (controls?.target) paintedTarget.copy(controls.target);
+    painted = true;
+    idle.afterRender();
   };
-  const napTimer = window.setInterval(() => {
-    if (dead || particlesOn || napping) return;
-    if (performance.now() > awakeUntil) { napping = true; (g as any).pauseAnimation?.(); }
-  }, 200);
   const onWakeEvent = () => wake(300);
   for (const ev of ["pointermove", "pointerdown", "wheel", "keydown"] as const)
     el.addEventListener(ev, onWakeEvent, { passive: true });
@@ -957,6 +975,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   const baseDestructor = (g as any)._destructor?.bind(g);
   (g as any)._destructor = () => {
     dead = true; ro.disconnect();
+    idle.dispose();
     unwireConnect?.();
     controls?.removeEventListener?.("change", syncCamera);
     window.clearInterval(napTimer);
