@@ -5899,7 +5899,7 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
     """측정 뒤에 경로가 바뀐 **현재** 주장. 변경 근거는 `props.files` 를 가진 Episode 다.
 
     판정하지 않는다. "이 주장을 잰 뒤에 그 파일이 바뀌었다"는 사실만 낸다. 같은 커밋
-    (`measured_ref == head_sha`)에서 잰 것은 낡지 않았다. 날짜가 없는 쪽은 비교하지
+    (`measured_ref` 와 `head_sha` 가 접두로 겹침)에서 잰 것은 낡지 않았다. 측정과 같은 날의 변경은 `same_day` 로 표시해 낸다. 날짜가 없는 쪽은 비교하지
     않는다(없는 시간을 지어내지 않는다). 주장마다 가장 최근 변경 하나만 붙인다.
     근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] 를 잇는
     그래프 문서 vinc.plan.spec-drift-graphiti-0-9-8-2026-10-11 §3."""
@@ -5931,8 +5931,13 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
         ref = str(props.get("measured_ref") or "")
         if not sp or not at:
             continue
+        # 같은 커밋인지는 접두로 본다 — 측정 기록은 짧은 sha 를, 변경 기록은 긴 sha 를
+        # 흔히 싣는다. 날짜가 같으면 하루 안의 순서를 알 수 없으므로 감추지 않고
+        # `same_day` 로 표시해 낸다(조용히 빠지면 같은 날 머지가 주장을 영영 못 건드린다).
+        def same_commit(sha: str) -> bool:
+            return bool(ref and sha) and (sha.startswith(ref) or ref.startswith(sha))
         hits = [c for c in changes
-                if c["date"] > at and (not ref or c["head_sha"] != ref)
+                if c["date"] >= at and not same_commit(c["head_sha"])
                 and any(_path_covers(sp, f) for f in c["files"])]
         if not hits:
             continue
@@ -5941,7 +5946,8 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
         out.append({"claim": {"id": rid, "title": r.get("title") or rid, "subject_path": sp,
                               "measured_at": at, "measured_ref": ref},
                     "change": {k: latest[k] for k in ("id", "title", "date", "head_sha")},
-                    "changes_since": len(hits)})
+                    "changes_since": len(hits),
+                    "same_day": latest["date"] == at})
     out.sort(key=lambda x: (x["change"]["date"], x["claim"]["id"]), reverse=True)
     return out
 

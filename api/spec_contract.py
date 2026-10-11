@@ -56,9 +56,14 @@ def _review(props: dict, schema: str, allowed=REVIEW) -> str:
 
 def validate(node: dict) -> str | None:
     """계약 대상이면 스키마 이름을, 아니면 None 을 돌려준다. 어기면 InvalidSpecRecord."""
+    nid = str(node.get("id") or "")
+    if "props" not in node:
+        # props 키가 없는 재전송은 "기존 props 보존"이다(엣지 끝점 선언·도메인만 바꾸기).
+        # 검사할 새 값이 없으므로 통과시킨다. 실측: 2026-10-11 라이브에서 이 경우를
+        # 예약 접두 위반으로 거절했다.
+        return None
     props = node.get("props")
     schema = props.get("spec_schema") if isinstance(props, dict) else None
-    nid = str(node.get("id") or "")
     if schema is None:
         if any(nid.startswith(p) for p in PREFIX.values()):
             raise InvalidSpecRecord(f"{nid} uses a reserved spec id prefix without props.spec_schema")

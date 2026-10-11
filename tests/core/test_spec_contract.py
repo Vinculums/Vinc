@@ -121,3 +121,30 @@ def test_stale_reports_claims_whose_path_changed_after_measurement(st):
     hit = stale["record:specclaim-sync-v1"]
     assert hit["change"]["id"] == "episode:change-vinc-pr-2" and hit["changes_since"] == 1
     assert got["stale_count"] == 1
+
+
+def test_a_resend_without_props_keeps_them_and_is_not_refused(st):
+    out = fragment.merge_fragment({"owner": OWNER, "nodes": [claim()]}, store=st, authored=True)
+    assert out["executed"] is not False, out
+    bare = {"id": "record:specclaim-as-of-search-v2", "type": "record",
+            "domain": "vinc/governance/claim-decay"}
+    out = fragment.merge_fragment({"owner": OWNER, "nodes": [bare]}, store=st, authored=True)
+    assert out["executed"] is not False, out
+    assert spec_contract.validate(bare) is None
+
+
+def test_same_day_changes_are_flagged_and_short_refs_match_long_shas(st):
+    nodes = [
+        {**claim(subject_path="vinc:api/server.py", measured_at="2026-10-11",
+                 measured_ref="46c1546"), "id": "record:specclaim-server-v1"},
+        {**claim(subject_path="vinc:api/docsync.py", measured_at="2026-10-11",
+                 measured_ref="1e2d838"), "id": "record:specclaim-docsync-v1"},
+        change("episode:change-vinc-pr-749", "2026-10-11",
+               ["vinc:api/server.py", "vinc:api/docsync.py"],
+               "1e2d838801703bfb4e387948a2aef688876ac558"),
+    ]
+    out = fragment.merge_fragment({"owner": OWNER, "nodes": nodes}, store=st, authored=True)
+    assert out["executed"] is not False, out
+    stale = {s["claim"]["id"]: s for s in query.claim_diagnosis(owner=OWNER, store=st)["stale"]}
+    assert stale["record:specclaim-server-v1"]["same_day"] is True
+    assert "record:specclaim-docsync-v1" not in stale     # 측정한 바로 그 커밋이다
