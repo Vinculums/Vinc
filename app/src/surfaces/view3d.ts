@@ -22,6 +22,7 @@ import { HIT_MIN_PX, wireDragConnect, type DragEnd, type DragHit } from "./drag-
 import { nonOverlappingLabels, type LabelBox } from "../view-labels";
 import type { ViewRoute } from "../view-route";
 import { RoutedLinkObject } from "./view-routes3d";
+import { CurvedLinkObject } from "./view-curves3d";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -531,10 +532,10 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // 입자는 **상시 애니메이션**이다. 모션 감도를 밝힌 사용자에게는 켜지 않고 선으로
   // 되돌린다 — 이 모드의 이득(덜 붐빔)이 그 비용을 정당화하지 못하는 유일한 경우다.
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-  const particlesOn = prefs.edges === "particles" && !reduceMotion;
+  let particlesOn = prefs.edges === "particles" && !reduceMotion;
   //: 노드만 — 선을 그리지 않는다(기본). 관계는 점등과 카드가 말한다.
   //: 근거: [[decision:bring-and-go-is-retired-and-nodes-only-is-the-default]]
-  const nodesOnly = prefs.edges === "none";
+  let nodesOnly = prefs.edges === "none";
   // 상시 라벨 대상 — 2D 와 같은 규칙(연결수 상위 8, 고아 제외).
   const hubIds = new Set(nodes.slice()
     .sort((a, b) => (b.degree || 0) - (a.degree || 0) || (a.id < b.id ? -1 : 1))
@@ -684,8 +685,12 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     .linkWidth(linkWidthFn())
     .linkOpacity(0.85)
     .linkCurvature((l: any) => l.route ? 0 : .18)
-    .linkThreeObject((l: any) => l.route ? new RoutedLinkObject(l.route) : undefined as any)
-    .linkPositionUpdate((_object: THREE.Object3D, _ends: unknown, l: any) => !!l.route)
+    .linkThreeObject((l: any) => l.route ? new RoutedLinkObject(l.route) : new CurvedLinkObject())
+    .linkPositionUpdate((object: THREE.Object3D, ends: any, l: any) => {
+      if (object instanceof CurvedLinkObject)
+        object.update(ends.start, ends.end, l.__curve, linkWidthFn()(), linkColorFn(l));
+      return true;
+    })
     // 방향 화살촉 — prerequisite/derives/inherits 만 (spec §1.2); 표시 여부는 D31 열린 층
     .linkDirectionalArrowLength((l: any) => l.route ? 0 : arrowLenFn()(l))
     // 입자 모드 — 방향 3종에만(위 상수 주석 ②). 흐름이 방향을 말하므로 화살촉은 끈다.
@@ -756,10 +761,16 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     }
     for (const link of links as any[]) {
       const object = link.__lineObj;
-      if (!(object instanceof RoutedLinkObject)) continue;
       const source = typeof link.source === "object" ? link.source : nodes.find(n => n.id === link.source);
       const target = typeof link.target === "object" ? link.target : nodes.find(n => n.id === link.target);
       if (!source || !target) continue;
+      if (object instanceof CurvedLinkObject) {
+        // 고정 좌표의 simulation이 멈춘 뒤에도 색·폭을 갱신한다.
+        // renderer를 깨우는 것만으로는 linkPositionUpdate가 실행되지 않는다.
+        object.update(source, target, link.__curve, linkWidthFn()(), linkColorFn(link));
+        continue;
+      }
+      if (!(object instanceof RoutedLinkObject)) continue;
       const emphasized = hoverId ? source.id === hoverId || target.id === hoverId
         : !!spot?.edges.has(edgeKey({ source: source.id, target: target.id, type: link.type || "" }));
       // Far overview lines must not form an opaque fence over subpixel bodies.
@@ -970,7 +981,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   (g as any).__update = (np: ViewPrefs): boolean => {
     const prev = prefs;
     const changed = changedRendererPrefs(prev, np);
-    if (!canUpdateViewStyle(changed)) return false;
+    if (!canUpdateViewStyle(changed, true)) return false;
     prefs = np;
     if (!changed.length) return true;
     if (changed.includes("spread")) {
@@ -987,8 +998,17 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       // The next render updates bodies and hit ghosts together; labels keep
       // their own size and the camera-dependent correction never accumulates.
     }
-    if (changed.includes("edgeScale") && links.some(l => !l.route)) g.linkWidth(linkWidthFn());
-    if (changed.includes("arrows")) g.linkDirectionalArrowLength((l: any) => l.route ? 0 : arrowLenFn()(l));
+    // 폭은 custom 버퍼의 위치·paint 갱신에서 반영한다.
+    // linkWidth setter는 경로 링크까지 모든 객체를 재생성하므로 호출하지 않는다.
+    if (changed.includes("edges")) {
+      particlesOn = prefs.edges === "particles" && !reduceMotion;
+      nodesOnly = prefs.edges === "none";
+      g.linkDirectionalParticles((l: any) => !l.route && particlesOn && isDirectedLink(l) ? PARTICLES_PER_LINK : 0);
+      // 처음 숨겨졌던 링크의 곡선을 계산하도록 고정 좌표 tick을 한 번 실행한다.
+      (g as any).d3ReheatSimulation?.();
+    }
+    if (changed.includes("arrows") || changed.includes("edges"))
+      g.linkDirectionalArrowLength((l: any) => l.route ? 0 : arrowLenFn()(l));
     wake(600);                                     // 바뀐 것을 그릴 프레임
     return true;
   };

@@ -65,7 +65,9 @@ class Renderers(unittest.TestCase):
         self.assertIn('if (prefs.edges === "none") return { ...data, hidden: true };',
                       _read("surfaces/view2d.ts"))
         v3 = _read("surfaces/view3d.ts")
-        self.assertIn('const nodesOnly = prefs.edges === "none";', v3)
+        self.assertIn('let nodesOnly = prefs.edges === "none";', v3)
+        live_update = v3[v3.index('(g as any).__update ='):]
+        self.assertIn('nodesOnly = prefs.edges === "none";', live_update)
         self.assertIn("if (nodesOnly) return pal.link.base + ALPHA0;", v3)
 
     def test_패널에_노드만_칩이_있다(self):

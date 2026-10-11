@@ -1,5 +1,6 @@
 import type { GraphNode, GraphEdge } from "./api";
 import { simplifyRoute, routeLength, type RoutePoint } from "./view-route";
+import { spatialClearance } from "./view-layout-obstacles";
 
 type Axis = keyof RoutePoint;
 const AXES: Axis[] = ["x", "y", "z"];
@@ -139,30 +140,7 @@ function transform(point: RoutePoint, p: Placement): RoutePoint {
  * channels: every mark centre is on the integer grid, so these channels remain
  * clear in all three dimensions. Geometry is reused, authored edges are not. */
 function spatialRouter(nodes: GraphNode[]) {
-  const index = new Map<string, GraphNode[]>();
-  const cell = (v: number) => Math.round(v / STEP);
-  const key = (x: number, y: number, z: number) => `${x},${y},${z}`;
-  for (const n of nodes) {
-    const k = key(cell(n.x!), cell(n.y!), cell(n.z!));
-    if (index.has(k)) throw new Error("Spatial View mark centres overlap");
-    if (!index.has(k)) index.set(k, []); index.get(k)!.push(n);
-  }
-  const clear = (points: RoutePoint[], source: string, target: string) => {
-    for (let i = 1; i < points.length; i++) {
-      const a = points[i - 1], b = points[i], along = AXES.find(axis => Math.abs(a[axis] - b[axis]) > 1e-9);
-      if (!along) continue;
-      const others = AXES.filter(axis => axis !== along), [u, v] = others;
-      for (let t = Math.min(cell(a[along]), cell(b[along])); t <= Math.max(cell(a[along]), cell(b[along])); t++) {
-        const p = { ...a, [along]: t * STEP };
-        for (const n of index.get(key(cell(p.x), cell(p.y), cell(p.z))) ?? []) {
-          if (n.id === source || n.id === target) continue;
-          if (Math.abs(a[u] - n[u]!) < .12 && Math.abs(a[v] - n[v]!) < .12 &&
-              Math.max(a[along], b[along]) > n[along]! - .12 && Math.min(a[along], b[along]) < n[along]! + .12) return false;
-        }
-      }
-    }
-    return true;
-  };
+  const clear = spatialClearance(nodes);
   const permutations: Axis[][] = [["x", "y", "z"], ["x", "z", "y"], ["y", "x", "z"],
     ["y", "z", "x"], ["z", "x", "y"], ["z", "y", "x"]];
   const route = (a: RoutePoint, b: RoutePoint, source: string, target: string) => {
