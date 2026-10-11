@@ -4,7 +4,7 @@ import httpx
 import pytest
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
-from vinc_client import AsyncVincClient, VincClient
+from vinc_client import AsyncVincClient, VincAuthError, VincClient
 from vinc_langgraph import VincContextMiddleware
 
 from test_langgraph import RecordingModel
@@ -116,3 +116,35 @@ def test_inflight_read_cannot_repopulate_a_cleared_cache():
             assert "UPDATED RULE" in model.system_text() and "OLD RULE" not in model.system_text()
             assert len(seen) == 2
     asyncio.run(go())
+
+
+@pytest.mark.parametrize("invalidation", ["clear", "ttl", "disabled"])
+def test_permission_failure_after_invalidation_never_falls_back_to_cached_text(monkeypatch, invalidation):
+    clock = [0.0]
+    monkeypatch.setattr("vinc_langgraph.middleware.time.monotonic", lambda: clock[0])
+    denied = [False]
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        if denied[0]:
+            return httpx.Response(403, json={"error": {"code": "permission_denied"}})
+        return httpx.Response(200, json={"status": "resolved", "node": {
+            "id": "decision:synthetic", "title": "Synthetic permitted text"}})
+
+    with VincClient("vinc_ro_" + "a" * 32, transport=httpx.MockTransport(handler)) as client:
+        middleware = VincContextMiddleware(client, cache_seconds=0 if invalidation == "disabled" else 60)
+        agent = create_agent(RecordingModel(), middleware=[middleware])
+        invoke = lambda: agent.invoke({"messages": [HumanMessage("Synthetic question")]})
+        invoke()
+        denied[0] = True
+        if invalidation != "disabled":
+            invoke()
+            assert len(seen) == 1
+        if invalidation == "clear":
+            middleware.clear_cache()
+        elif invalidation == "ttl":
+            clock[0] = 60
+        with pytest.raises(VincAuthError, match="permission_denied"):
+            invoke()
+        assert len(seen) == 2
