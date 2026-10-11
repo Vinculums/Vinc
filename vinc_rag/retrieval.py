@@ -299,8 +299,9 @@ def _summary_row(r: dict, query_tokens: set[str] | None = None) -> dict:
     return out
 
 
-def _attach_doc_titles(store, rows: list[dict], *, owner: str | None = None) -> dict:
-    """요약 행에 문서 제목(`doc_title`)을 단다 — 페이지의 doc_id 들을 한 번에 조회한다.
+def _attach_doc_titles(store, rows: list[dict], *, owner: str | None = None,
+                       include_titles: bool = True) -> dict:
+    """청크 행에 문서 제목(`doc_title`)을 단다 — 페이지의 doc_id 들을 한 번에 조회한다.
 
     행은 doc_id 만 들고 있어서, 제목이 필요한 소비자(허브 `search`)가 발췌 첫 줄을
     제목으로 썼다 — 그래서 "```mermaid …"·"--- doc_id: …" 가 제목으로 나갔다(감사 §5
@@ -325,11 +326,12 @@ def _attach_doc_titles(store, rows: list[dict], *, owner: str | None = None) -> 
                         "d.valid_from AS vf, d.valid_until AS vu", params) or []
     except Exception:
         return {}
-    titles = {str(g.get("id") or ""): str(g.get("t") or "") for g in got}
-    for r in rows:
-        t = titles.get(r.get("doc_id") or "")
-        if t:
-            r["doc_title"] = t
+    if include_titles:
+        titles = {str(g.get("id") or ""): str(g.get("t") or "") for g in got}
+        for r in rows:
+            t = titles.get(r.get("doc_id") or "")
+            if t:
+                r["doc_title"] = t
     return {str(g.get("id") or ""): (str(g.get("vf") or ""), str(g.get("vu") or ""))
             for g in got}
 
@@ -1327,17 +1329,27 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                  "eid": str(pool[next_off].get("id") or ""), "tc": len(pool),
                  "arms": base["arms"]})
         if detail == "full":
-            base["rows"] = page
+            # 전문도 문서 유효구간으로 거른다. 원본 풀의 순위·커서 좌표는 보존한다.
+            base["rows"] = [dict(r) for r in page]
+            for r in base["rows"]:
+                rid = str(r.get("id") or "")
+                r["doc_id"] = rid.rsplit("#", 1)[0] if "#" in rid else ""
         else:
             from store.lexical import lex_tokens
             qtok = lex_tokens(query)              # 페이지에 한 번 — 행마다 다시 자르지 않는다
             base["rows"] = [_summary_row(r, qtok) for r in page]
-        if detail != "full":
-            _drop_retired_doc_rows(base, _attach_doc_titles(store, base["rows"], owner=owner),
-                                   historical=historical, scope=_scope)
+        _drop_retired_doc_rows(base, _attach_doc_titles(
+            store, base["rows"], owner=owner, include_titles=detail != "full"),
+            historical=historical, scope=_scope)
         # MCP 봉투의 크기 안전망(shrinker)이 이어받을 좌표 — 꼬리 행을 덜어낸 뒤
         # 같은 지문으로 next_cursor 를 다시 쓸 수 있게 한다.
         base["page"] = {"offset": off, "limit": max(1, int(top_k)), "fingerprint": qh}
+        if base.get("doc_validity_filtered") and base["rows"]:
+            # 축소기는 필터 뒤 행 수가 아니라 덜어낸 행의 원본 풀 위치로 이어 읽는다.
+            visible_ids = {str(r.get("id") or "") for r in base["rows"]}
+            base["page"]["row_offsets"] = {
+                str(r.get("id") or ""): off + i for i, r in enumerate(page)
+                if str(r.get("id") or "") in visible_ids}
 
         # (4-a) v17 의미 암 — 노드 미러(NodeVec)를 질의 벡터로 찾는다. **어휘가 하나도
         # 안 겹쳐도 닿는 유일한 팔**이다: 나머지 두 팔은 토큰 겹침(title)이거나 청크
@@ -1406,7 +1418,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # 의미 팔이 더 걸러 냈으면 (3) 에서 적은 공개를 갱신한다 — 셈은 두 팔이 지운 id 의
         # 합집합이다(두 팔이 같은 노드를 지우면 한 번).
         if _vstats.get("dropped_not_current"):
-            base["validity_filtered"] = _vstats["dropped_not_current"]
+            base["validity_filtered"] = (_vstats["dropped_not_current"]
+                                         + int(base.get("doc_validity_filtered") or 0))
             base.setdefault("validity_best_dropped",
                             list(_vstats.get("best_dropped_score") or (0, 0)))
             base.setdefault("validity_note", _vnote)

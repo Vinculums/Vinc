@@ -64,15 +64,16 @@ def test_bad_values_are_refused_not_cleared(st):
     assert docstore.get_doc(store, "plan.old", owner=OWNER)["valid_until"] == "2026-10-07"
 
 
-def test_search_hides_chunks_of_retired_documents_by_default(st):
+@pytest.mark.parametrize("detail", ["summary", "full"])
+def test_search_hides_chunks_of_retired_documents_by_default(st, detail):
     store, _ = st
     put(store, valid_from="2026-09-28", valid_until="2026-10-07")
-    hidden = query.search("Zebrafish marker", owner=OWNER, store=store)
-    assert not [r for r in hidden["rows"] if r.get("doc_id") == "plan.old"], hidden["rows"]
+    hidden = query.search("Zebrafish marker", owner=OWNER, detail=detail, store=store)
+    assert hidden["rows"] == []
     assert hidden["doc_validity_filtered"] >= 1
-    shown = query.search("Zebrafish marker", owner=OWNER, historical=True, store=store)
+    shown = query.search("Zebrafish marker", owner=OWNER, historical=True, detail=detail, store=store)
     assert [r for r in shown["rows"] if r.get("doc_id") == "plan.old"]
-    then = query.search("Zebrafish marker", owner=OWNER, as_of="2026-10-01", store=store)
+    then = query.search("Zebrafish marker", owner=OWNER, as_of="2026-10-01", detail=detail, store=store)
     assert [r for r in then["rows"] if r.get("doc_id") == "plan.old"]
 
 
@@ -93,3 +94,68 @@ def test_docsync_carries_validity_including_a_metadata_only_change(st):
         assert (got["valid_until"], got["superseded_by"]) == ("2026-10-07", "plan.new"), got
     finally:
         peer.close()
+
+
+@pytest.mark.parametrize("detail", [None, "summary", "full", " FULL ", "unknown"])
+def test_search_document_validity_keeps_current_rows_and_detail_contract(st, detail):
+    store, _ = st
+    put(store, valid_from="2020-09-28", valid_until="2020-10-07")
+    current_text = "# Current plan\n\nZebrafish marker. " + "Current guidance. " * 30
+    docstore.put_doc(store, owner=OWNER, text=current_text, doc_id="plan.current",
+                    title="Current plan", valid_from="2020-10-08")
+    options = {"owner": OWNER, "detail": detail, "store": store}
+    all_rows = query.search("Zebrafish marker", historical=True, **options)
+    current = query.search("Zebrafish marker", **options)
+    assert all_rows["executed"] and current["executed"]
+    assert "error" not in all_rows and "error" not in current
+    assert {row["doc_id"] for row in all_rows["rows"]} == {"plan.old", "plan.current"}
+    assert [row["doc_id"] for row in current["rows"]] == ["plan.current"]
+    assert current["doc_validity_filtered"] == 1
+    assert current["validity_filtered"] >= 1
+    row = current["rows"][0]
+    assert row == next(r for r in all_rows["rows"] if r["doc_id"] == "plan.current")
+    assert row["id"].startswith("plan.current#")
+    assert "score" in row and "arms" in row and "cite_id" in row
+    if (detail or "").strip().lower() == "full":
+        assert row["text"] == current_text
+        assert "doc_title" not in row
+        assert "snippet" not in row and "truncated" not in row
+    else:
+        assert "text" not in row
+        assert row["doc_title"] == "Current plan"
+        assert len(row["snippet"]) <= 240 and row["truncated"] is True
+    assert current["total_count"] == all_rows["total_count"] == 2
+    assert current["has_more"] is False and current["next_cursor"] is None
+    before = query.search("Zebrafish marker", as_of="2020-10-01", **options)
+    assert [row["doc_id"] for row in before["rows"]] == ["plan.old"]
+    assert before["doc_validity_filtered"] == 1
+    outside = query.search("Zebrafish marker", historical=True, as_of="2020-09-01", **options)
+    assert outside["rows"] == [] and outside["doc_validity_filtered"] == 2
+
+
+@pytest.mark.parametrize("detail", ["summary", "full"])
+def test_search_document_validity_preserves_cursor_traversal(st, detail):
+    store, _ = st
+    put(store, valid_until="2020-10-07")
+    for doc_id in ("plan.current", "plan.other"):
+        docstore.put_doc(store, owner=OWNER, text=TEXT, doc_id=doc_id, title=doc_id)
+    all_rows = query.search("Zebrafish marker", owner=OWNER, detail=detail,
+                            historical=True, store=store)
+    expected = [row["id"] for row in all_rows["rows"] if row["doc_id"] != "plan.old"]
+    cursor, seen, filtered = None, [], 0
+    for _ in range(3):
+        page = query.search("Zebrafish marker", owner=OWNER, detail=detail,
+                            top_k=1, cursor=cursor, store=store)
+        assert page["executed"] and "error" not in page
+        assert page["total_count"] == 3
+        seen.extend(row["id"] for row in page["rows"])
+        filtered += page.get("doc_validity_filtered", 0)
+        if not page["has_more"]:
+            assert page["next_cursor"] is None
+            break
+        assert page["next_cursor"]
+        cursor = page["next_cursor"]
+    else:
+        pytest.fail("cursor traversal did not finish")
+    assert seen == expected and len(set(seen)) == len(seen)
+    assert filtered == 1
