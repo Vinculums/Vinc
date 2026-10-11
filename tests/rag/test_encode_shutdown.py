@@ -403,7 +403,7 @@ def test_pid1_signal_drains_inflight_batches_and_complete_response(pid1, deliver
 def test_pid1_unfinished_request_exits_nonzero_within_platform_grace(pid1, blocked):
     process, host_pid, port, folder, log = pid1
     client = socket.create_connection(("127.0.0.1", port), timeout=2)
-    body = b'{"texts":["0"]}'
+    body = b'{"texts":["0"],"raw":true}'
     try:
         if blocked == "body":
             client.sendall(b"POST /encode HTTP/1.0\r\nContent-Length: 500\r\n\r\n{")
