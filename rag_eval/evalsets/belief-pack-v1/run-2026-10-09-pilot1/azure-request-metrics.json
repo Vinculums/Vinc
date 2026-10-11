@@ -1,0 +1,85 @@
+{
+  "metric": "AzureOpenAIRequests",
+  "deployment": "lab-mini",
+  "query_start": "2026-10-09T13:54:00Z",
+  "query_end": "2026-10-09T13:58:00Z",
+  "interval": "PT1M",
+  "series": [
+    {
+      "data": [
+        {
+          "timeStamp": "2026-10-09T13:54:00Z",
+          "total": 0.0
+        },
+        {
+          "timeStamp": "2026-10-09T13:55:00Z",
+          "total": 0.0
+        },
+        {
+          "timeStamp": "2026-10-09T13:56:00Z",
+          "total": 15.0
+        },
+        {
+          "timeStamp": "2026-10-09T13:57:00Z",
+          "total": 0.0
+        }
+      ],
+      "metadatavalues": [
+        {
+          "name": {
+            "localizedValue": "modeldeploymentname",
+            "value": "modeldeploymentname"
+          },
+          "value": "lab-mini"
+        },
+        {
+          "name": {
+            "localizedValue": "statuscode",
+            "value": "statuscode"
+          },
+          "value": "200"
+        }
+      ]
+    },
+    {
+      "data": [
+        {
+          "timeStamp": "2026-10-09T13:54:00Z",
+          "total": 0.0
+        },
+        {
+          "timeStamp": "2026-10-09T13:55:00Z",
+          "total": 0.0
+        },
+        {
+          "timeStamp": "2026-10-09T13:56:00Z",
+          "total": 1.0
+        },
+        {
+          "timeStamp": "2026-10-09T13:57:00Z",
+          "total": 0.0
+        }
+      ],
+      "metadatavalues": [
+        {
+          "name": {
+            "localizedValue": "modeldeploymentname",
+            "value": "modeldeploymentname"
+          },
+          "value": "lab-mini"
+        },
+        {
+          "name": {
+            "localizedValue": "statuscode",
+            "value": "statuscode"
+          },
+          "value": "429"
+        }
+      ]
+    }
+  ],
+  "status_totals": {
+    "200": 15.0,
+    "429": 1.0
+  }
+}

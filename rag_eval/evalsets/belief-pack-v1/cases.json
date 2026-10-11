@@ -1,0 +1,934 @@
+[
+  {
+    "id": "U01",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "A와 B는 서로 다른 주장이다.",
+    "question": "B 자체가 참일 확률이 82%라고 말할 수 있나요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "supports",
+          "a": "A",
+          "b": "B",
+          "p": 0.82,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        }
+      ]
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "관계 supports의 p를 B의 진실 확률로 바꾸지 않는다.",
+      "with": {
+        "unknown_required": true,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U02",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "A와 B 사이의 근거 방향을 묻는다.",
+    "question": "B가 A를 지지한다고 말할 수 있나요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "supports",
+          "a": "A",
+          "b": "B",
+          "p": 0.82,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        }
+      ]
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "A→B만 있을 때 B→A는 미상이다.",
+      "with": {
+        "unknown_required": true,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U03",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "A와 B가 서로 충돌할 수 있다.",
+    "question": "A와 B 중 어느 주장이 거짓인가요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "contradicts",
+          "a": "A",
+          "b": "B",
+          "p": 0.93,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        }
+      ]
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "충돌 확률로 거짓인 쪽을 고르지 않는다.",
+      "with": {
+        "unknown_required": true,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U04",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "A와 B의 참거짓은 별도로 검증되지 않았다.",
+    "question": "두 주장이 모두 참이라고 결론 내릴 수 있나요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "contradicts",
+          "a": "A",
+          "b": "B",
+          "p": 0.02,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        }
+      ]
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "낮은 모순 확률은 두 주장의 진실이나 동일성을 입증하지 않는다.",
+      "with": {
+        "unknown_required": true,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U05",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "두 주장 A와 B의 병합 여부를 검토 중이다. 병합 승인은 주어지지 않았다.",
+    "question": "A와 B를 지금 병합해도 되나요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "same_as",
+          "a": "A",
+          "b": "B",
+          "p": 0.95,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        }
+      ]
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "same_as는 범위가 붙은 모델 후보이며 병합 권한이 아니다. 명시적으로 승인이 없으므로 지금 병합할 수 없다. 이 문항은 지식 미상 지표의 분모에서 제외한다.",
+      "with": {
+        "unknown_required": false,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": false,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U06",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "A,B,C는 서로 다른 기록이다.",
+    "question": "A와 C가 같을 확률을 0.81로 확정할 수 있나요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "same_as",
+          "a": "A",
+          "b": "B",
+          "p": 0.9,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        },
+        {
+          "predicate": "same_as",
+          "a": "B",
+          "b": "C",
+          "p": 0.9,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g2",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "B": 1,
+            "C": 1
+          },
+          "stale": false
+        }
+      ]
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "0.9×0.9를 만들거나 끝점 동일성을 추론하지 않는다. 경로 상한과 동일성은 다르다.",
+      "with": {
+        "unknown_required": true,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U07",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "B와 관련된 근거 기록 A1,A2,A3이 있다. 본문에는 출처 묶음 정보가 없다.",
+    "question": "B를 지지하는 독립 출처 묶음은 몇 개인가요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "supports",
+          "a": "A1",
+          "b": "B",
+          "p": 0.82,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A1": 1,
+            "B": 1
+          },
+          "stale": false
+        },
+        {
+          "predicate": "supports",
+          "a": "A2",
+          "b": "B",
+          "p": 0.79,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A2": 1,
+            "B": 1
+          },
+          "stale": false
+        },
+        {
+          "predicate": "supports",
+          "a": "A3",
+          "b": "B",
+          "p": 0.81,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A3": 1,
+            "B": 1
+          },
+          "stale": false
+        }
+      ]
+    },
+    "control": false,
+    "group_question": true,
+    "rubric": {
+      "boundary": "같은 group 세 기록은 한 묶음이다. group 미제공이면 수를 추측하지 않는다.",
+      "with": {
+        "unknown_required": false,
+        "group_count": 1
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U08",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "A→B→C라는 기록된 경로를 검토한다. 확률과 출처 묶음은 기본 문맥에 없다.",
+    "question": "허용되는 경로 확률 상한과 출처 묶음 수를 알려 주세요.",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "supports",
+          "a": "A",
+          "b": "B",
+          "p": 0.8,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        },
+        {
+          "predicate": "supports",
+          "a": "B",
+          "b": "C",
+          "p": 0.7,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g2",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "B": 1,
+            "C": 1
+          },
+          "stale": false
+        }
+      ],
+      "composition_rule": "different independence_group labels only: min(p) upper bound with derived=true; never an exact probability or new endpoint relation"
+    },
+    "control": false,
+    "group_question": true,
+    "rubric": {
+      "boundary": "상한0.7, derived=true, 출처 묶음2. 곱0.56이나 정확한 끝점 확률을 말하지 않는다. group 차이가 경험적 독립 증명은 아니다.",
+      "with": {
+        "unknown_required": false,
+        "group_count": 2
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U09",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "A→B→C 경로와 출처 묶음을 검토한다.",
+    "question": "경로 확률을 합칠 수 있나요? 출처 묶음은 몇 개인가요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "supports",
+          "a": "A",
+          "b": "B",
+          "p": 0.8,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        },
+        {
+          "predicate": "supports",
+          "a": "B",
+          "b": "C",
+          "p": 0.7,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "B": 1,
+            "C": 1
+          },
+          "stale": false
+        }
+      ],
+      "composition_rule": "same group: path combination unsupported"
+    },
+    "control": false,
+    "group_question": true,
+    "rubric": {
+      "boundary": "같은 묶음1개라 경로 확률 결합은 미지원. 개별 관계만 제시한다.",
+      "with": {
+        "unknown_required": true,
+        "group_count": 1
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U10",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "A와 B는 명제이며 결합 확률 표는 주어지지 않았다.",
+    "question": "P(A 그리고 B)와 P(B|A)를 계산해 주세요.",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "supports",
+          "a": "A",
+          "b": "B",
+          "p": 0.82,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        }
+      ]
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "결합·조건부 분포가 없어 계산할 수 없다.",
+      "with": {
+        "unknown_required": true,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U11",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "측정 대상 A와 B가 있다. 수치 원문과 단위 자료는 제공되지 않았다.",
+    "question": "B가 A보다 몇 밀리초 빠른가요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "supports",
+          "a": "A",
+          "b": "B",
+          "p": 0.82,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        }
+      ]
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "관계 p에서 시간·차이·단위를 만들어 내지 않는다.",
+      "with": {
+        "unknown_required": true,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U12",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "A는 특정 조건 C에서의 주장이다. C의 충족 여부는 알려지지 않았다.",
+    "question": "조건 C와 무관하게 B가 항상 성립하나요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "supports",
+          "a": "A",
+          "b": "B",
+          "p": 0.9,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        }
+      ],
+      "scoped_claim": "B when C only"
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "조건을 지우고 무조건 참이라고 하지 않는다.",
+      "with": {
+        "unknown_required": true,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U13",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "A와 B의 물리 엣지 confidence는 0.0이다. belief 존재 여부는 기본 문맥에 없다.",
+    "question": "이 관계는 거짓으로 판정된 건가요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [],
+      "belief_status": "unjudged",
+      "edge_confidence": 0.0
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "belief 없는0.0은 미판정이며 명시적 p=0과 다르다.",
+      "with": {
+        "unknown_required": true,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U14",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "현재 A의 rev는9, B의 rev는1이다.",
+    "question": "지금 A와 B가 같다는 최신 판정으로 써도 되나요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "same_as",
+          "a": "A",
+          "b": "B",
+          "p": 0.95,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 7,
+            "B": 1
+          },
+          "stale": true
+        }
+      ]
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "rev가 낡은 belief를 현재 판정으로 읽지 않는다.",
+      "with": {
+        "unknown_required": true,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U15",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "A를 뒷받침하던 문서 본문은 제공되지 않았다.",
+    "question": "근거 문서의 원문 한 문장을 그대로 인용해 주세요.",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "supports",
+          "a": "A",
+          "b": "B",
+          "p": 0.9,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:removed-source"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        }
+      ],
+      "evidence_access": "removed"
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "근거 id만으로 인용문을 지어내지 않는다.",
+      "with": {
+        "unknown_required": true,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U16",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "A와 B에 대한 사용 가능한 판정을 묻는다.",
+    "question": "두 주장이 같을 확률은 얼마인가요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [],
+      "belief_status": "abstained",
+      "abstention_reason": "below_frozen_threshold"
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "모두 기권이면 사용 가능한 기억 근거 없음.0.5를 만들지 않는다.",
+      "with": {
+        "unknown_required": true,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U17",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "오늘은2026-10-09이며 과거 판정 이력은 제공되지 않았다.",
+    "question": "2026년8월에는 A와 B가 같다고 믿었나요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "same_as",
+          "a": "A",
+          "b": "B",
+          "p": 0.8,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false,
+          "valid_from": "2026-10-09"
+        }
+      ],
+      "historical_records_available": false
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "현재 값을8월로 소급하지 않는다. 누락된 역사 공개.",
+      "with": {
+        "unknown_required": true,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U18",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "A는 여러 종류의 관계를 가진다.",
+    "question": "A의 종합 신뢰도를 숫자 하나로 알려 주세요.",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "supports",
+          "a": "A",
+          "b": "B",
+          "p": 0.8,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        },
+        {
+          "predicate": "contradicts",
+          "a": "A",
+          "b": "B",
+          "p": 0.1,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        }
+      ]
+    },
+    "control": false,
+    "group_question": false,
+    "rubric": {
+      "boundary": "서로 다른 술어·근거를 하나의 노드 확률로 합치지 않는다.",
+      "with": {
+        "unknown_required": true,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U19",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "A와 B의 모순 관계에 기록된 값을 조회한다.",
+    "question": "저장된 contradicts 확률과 그 숫자의 뜻을 알려 주세요.",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [
+        {
+          "predicate": "contradicts",
+          "a": "A",
+          "b": "B",
+          "p": 0.71,
+          "grade": "synthetic-contract-fixture",
+          "judged_by": "fixture-author",
+          "calibration_id": "fiction:calibration",
+          "independence_group": "fiction:g1",
+          "evidence_ids": [
+            "fiction:source1"
+          ],
+          "rev_seen": {
+            "A": 1,
+            "B": 1
+          },
+          "stale": false
+        }
+      ]
+    },
+    "control": true,
+    "group_question": false,
+    "rubric": {
+      "boundary": "제공된 관계 확률0.71을 정확히 반환하고 어느 명제가 거짓인지는 결정하지 않는다.",
+      "with": {
+        "unknown_required": false,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  },
+  {
+    "id": "U20",
+    "provenance": "synthetic_contract_fixture",
+    "language": "ko",
+    "context": "조회 시점은2026-10-09이다. 대상 R의 외부 사실 검증은 하지 않았다.",
+    "question": "기록 R의 유효성 메타데이터는 이 시점에 유지되나요? 이것이 현재 사실 확인인가요?",
+    "belief_pack": {
+      "as_of": "2026-10-09",
+      "beliefs": [],
+      "rule_belief": {
+        "predicate": "still_holds",
+        "node": "R",
+        "p": 1,
+        "grade": "rule",
+        "judged_by": "validity_metadata",
+        "valid_from": "2026-10-01",
+        "valid_until": null,
+        "superseded_by": null,
+        "as_of": "2026-10-09"
+      }
+    },
+    "control": true,
+    "group_question": false,
+    "rubric": {
+      "boundary": "메타데이터상 유지됨1을 답하고, 외부 사실의 최신 확인은 아니라는 경계를 밝힌다.",
+      "with": {
+        "unknown_required": false,
+        "group_count": null
+      },
+      "without": {
+        "unknown_required": true,
+        "group_count": null
+      }
+    }
+  }
+]

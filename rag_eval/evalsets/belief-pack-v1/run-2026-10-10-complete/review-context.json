@@ -1,0 +1,9 @@
+{
+  "approved": false,
+  "purpose": "offline review projection only, never execution approval",
+  "parent_journal_sha256": "0b93134feb9b501149415b6590c1aefe245b8770639f685d1c8b0f43fd9f356a",
+  "parent_approval_sha256": "2d7e6a98fa7d4e22c5f62cb016754a7649e8e9bfc356cf3bb5209f359af3b222",
+  "continuation_journal_sha256": "40619e73cc51ab8a74874acf9053a2b1dd23b6327acea1f69e135bf116ea13a8",
+  "continuation_approval_sha256": "a80c43a5868a1abf94a3871bdef75f22dbae7c2b62e8edeab5236a707eb38625",
+  "continuation_plan_sha256": "891d9c3bc959feb652d15865930f582fe80a017f8b3b518d92bba304906cb489"
+}

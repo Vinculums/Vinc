@@ -1,0 +1,13 @@
+{
+  "approved": false,
+  "plan_sha256": "934232e494479e6cb05e3a01875f6d2a5674a49dc8be97be2cda8261c87b136e",
+  "approved_by": null,
+  "decision_ref": null,
+  "run_id": "vin409-pilot-1",
+  "run_dir": "D:/Projects/AIProjects/vinc-project/_scratch/vin409/pilot-1",
+  "approved_at": null,
+  "expires_at": null,
+  "max_calls": 40,
+  "max_usd": 0.1,
+  "second_vendor": "deferred_single_vendor_pilot"
+}

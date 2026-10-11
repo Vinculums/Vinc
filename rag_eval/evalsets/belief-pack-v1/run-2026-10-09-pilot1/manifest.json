@@ -1,0 +1,11 @@
+{
+  "schema": "vin409.interrupted.manifest.v1",
+  "sha256": {
+    "approval.json": "abefd2f49855857279576a6f95345bddd65f861b91f1cef3e1c0f42cf8709bb7",
+    "audit.json": "72a4a1d3fa0f057c19372a2bd69f24c00674423991b0495ae3226f41ae0daaa2",
+    "azure-request-metrics.json": "11d7d03b15465643b94f6748168479155079bcf733860af1bfef36070e7576aa",
+    "continuation.approval.template.json": "bf0bc1fbe3e72c8f6338dd8fb246f48ef322c7e54c3485ff0e220a33540f7976",
+    "continuation.plan.json": "8a2e81fcf48039c7c9213277858a42a74187e537ffcd36382c5c3c7344420b48",
+    "journal.jsonl": "0b93134feb9b501149415b6590c1aefe245b8770639f685d1c8b0f43fd9f356a"
+  }
+}
