@@ -26,29 +26,30 @@ const temporalLayout = async (...args) => {
 };
 const { routeAcrossTopics } = await source("../src/view-layout-avoid.ts");
 const { layoutInWorker } = await source("../src/view-layout-client.ts");
-const { LAYOUTS, normalizeLayout, layoutsFor, serverLayoutFor, isRootsLayout, loadPrefs, savePrefs } = await source("../src/view-prefs.ts");
+const { LAYOUTS, normalizeLayout, layoutsFor, serverLayoutFor, rootsOrderingFor, isRootsLayout, loadPrefs, savePrefs } = await source("../src/view-prefs.ts");
 
-test("two layout choices remain and retired choices fold into time branches", () => {
+test("all four layouts preserve their saved keys and original server layouts", () => {
   const saved = new Map();
   globalThis.localStorage = { getItem: k => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, v) };
   try {
     assert.equal(loadPrefs().layout, "hub");
-    for (const layout of ["hub", "temporalRoots"]) {
+    assert.deepEqual(LAYOUTS, ["hub", "rank", "temporalRoots", "rankedRoots"]);
+    for (const layout of LAYOUTS) {
       savePrefs({ ...loadPrefs(), layout });
       assert.equal(loadPrefs().layout, layout);
       assert.equal(normalizeLayout(layout), layout);
+      assert.equal(serverLayoutFor(layout), layout === "rank" ? "rank" : "hub");
+      assert.equal(isRootsLayout(layout), layout.endsWith("Roots"));
     }
-    assert.deepEqual(LAYOUTS, ["hub", "temporalRoots"]);
-    assert.equal(normalizeLayout("rank"), "temporalRoots");
-    assert.equal(normalizeLayout("rankedRoots"), "temporalRoots");
+    assert.equal(rootsOrderingFor("rankedRoots"), "ranked");
+    assert.equal(rootsOrderingFor("temporalRoots"), "temporal");
+    for (const view of ["2d", "3d"]) assert.deepEqual(layoutsFor(view), LAYOUTS);
+    for (const view of ["timeline", "bundle"]) assert.deepEqual(layoutsFor(view), ["hub", "rank"]);
     assert.equal(normalizeLayout("radial"), "hub");
     assert.equal(normalizeLayout("unknown"), "hub");
-    for (const layout of LAYOUTS) assert.equal(serverLayoutFor(layout), "hub");
-    for (const view of ["2d", "3d", "timeline", "bundle"]) assert.deepEqual(layoutsFor(view), LAYOUTS);
-    assert.equal(isRootsLayout("hub"), false);
-    assert.equal(isRootsLayout("temporalRoots"), true);
   } finally { delete globalThis.localStorage; }
 });
+
 const { movedRoute, routeLength, pointOnRoute, simplifyRoute } = await source("../src/view-route.ts");
 const { RoutedLinkObject } = await source("../src/surfaces/view-routes3d.ts");
 const { shortenPlanarRoutes } = await source("../src/view-route-shortcuts.ts");

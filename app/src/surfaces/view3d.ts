@@ -1,3 +1,4 @@
+import { changedRendererPrefs, canUpdateViewStyle } from "../view-controls";
 /** View 3D renderer (DEC D21 revised — full 3D, owner decision 2026-07-10).
  *
  *  Monochrome 3D discipline (as-built: [[vinc.reference.view-controls]]):
@@ -968,12 +969,10 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
    *  틴트·크기 인코딩은 노드 오브젝트 재생성으로 — 씬·렌더러·컨텍스트·카메라는 그대로다. */
   (g as any).__update = (np: ViewPrefs): boolean => {
     const prev = prefs;
-    const changed = (Object.keys(np) as (keyof ViewPrefs)[])
-      .filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(np[k]));
-    const ok = new Set<keyof ViewPrefs>(
-      ["nodeScale", "edgeScale", "arrows", "labels", "size", "spread", "railW"]);
-    if (!changed.every((k) => ok.has(k))) return false;
+    const changed = changedRendererPrefs(prev, np);
+    if (!canUpdateViewStyle(changed)) return false;
     prefs = np;
+    if (!changed.length) return true;
     if (changed.includes("spread")) {
       S = SCALE * np.spread;
       place();                                   // 핀 좌표를 새 배율로 다시 놓고

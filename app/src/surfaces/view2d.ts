@@ -1,3 +1,4 @@
+import { changedRendererPrefs, canUpdateViewStyle } from "../view-controls";
 import Graph from "graphology";
 import { esc } from "../components";
 import Sigma from "sigma";
@@ -923,12 +924,10 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
      *  흔들리는데, 이 손잡이들은 그림의 **표현**만 바꾼다. */
     update(np) {
       const prev = prefs;
-      const changed = (Object.keys(np) as (keyof ViewPrefs)[])
-        .filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(np[k]));
-      const ok = new Set<keyof ViewPrefs>(
-        ["nodeScale", "edgeScale", "arrows", "labels", "size", "spread", "railW"]);
-      if (!changed.every((k) => ok.has(k))) return false;
+      const changed = changedRendererPrefs(prev, np);
+      if (!canUpdateViewStyle(changed)) return false;
       prefs = np;
+      if (!changed.length) return true;
       tints = tintsNow();
       for (const n of shown) {
         if (!g.hasNode(n.id)) continue;
