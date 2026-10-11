@@ -53,11 +53,11 @@ class SubgraphPlanTests(unittest.TestCase):
             self.assertEqual(res["edges"], [])
 
     def test_graph_seed_prunes_ego_boundary(self):
-        # 응답 키는 graph_rows_for_ids_plan 고유 substring — 축 플랜(F2)도 "IN $ids"
-        # 를 포함하므로 범용 키는 더블 충돌을 낳는다(축 플랜은 무응답 → 빈 행).
+        # 관계 패턴과 독립적으로 Concept 그래프의 반환 열로 fixture를 선택한다.
+        # 축 쿼리는 다른 별칭을 사용하므로 이 fixture 행을 반환하지 않는다.
         fake = _FakeStore({
             "DISTINCT m.concept_id": [{"id": "b"}],
-            "OPTIONAL MATCH (c)-[r]->(d:Concept)": [
+            "RETURN c.concept_id AS id, c.title AS label": [
                 {"id": "a", "label": "A", "domain": "math",
                  "rel": "RELATED_TO", "target": "b", "target_domain": "physics"},
                 # depth+1 유출 엣지 — target 'z' 는 id 집합 밖 → shape 후 제거돼야 함
@@ -77,7 +77,7 @@ class SubgraphPlanTests(unittest.TestCase):
         # 양팔 엣지로 렌더되고 keep 에 편입된다. F3 — 팔이 degree 에 반영된다.
         fake = _FakeStore({
             "DISTINCT m.concept_id": [{"id": "b"}],
-            "OPTIONAL MATCH (c)-[r]->(d:Concept)": [
+            "RETURN c.concept_id AS id, c.title AS label": [
                 {"id": "a", "label": "A", "domain": "math"},
                 {"id": "b", "label": "B", "domain": "physics"},
             ],
@@ -674,7 +674,7 @@ class SuggestTiesTests(unittest.TestCase):
                 {"id": "d", "title": "D", "domain": "art", "tags": []},
                 {"id": "e", "title": "E", "domain": "math", "tags": []},
             ],
-            "OPTIONAL MATCH (c)-[r]->(d:Concept)": [
+            "RETURN c.concept_id AS id, c.title AS label": [
                 {"id": "a", "target": None},            # a 는 고아
                 {"id": "b", "target": "e"},
             ],
@@ -702,7 +702,7 @@ class SuggestTiesTests(unittest.TestCase):
                 {"id": "a", "title": "A", "domain": "math", "tags": ["x"]},
                 {"id": "b", "title": "B", "domain": "math", "tags": ["x"]},
             ],
-            "OPTIONAL MATCH (c)-[r]->(d:Concept)": [
+            "RETURN c.concept_id AS id, c.title AS label": [
                 {"id": "b", "target": "a"},             # 기존 b→a — 재제안 금지
             ],
         })
@@ -964,7 +964,7 @@ class BridgeDomainTests(unittest.TestCase):
         """/graph 응답에서 계산된다 — 저장하지 않으므로 연결이 바뀌면 따라 바뀐다."""
         fake = _FakeStore({
             "DISTINCT m.concept_id": [{"id": "b"}],
-            "OPTIONAL MATCH (c)-[r]->(d:Concept)": [
+            "RETURN c.concept_id AS id, c.title AS label": [
                 {"id": "a", "label": "A", "domain": "vinc/security"},
                 {"id": "b", "label": "B", "domain": "vinc/engineering"},
             ],

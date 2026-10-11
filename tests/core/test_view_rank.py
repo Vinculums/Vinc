@@ -259,17 +259,19 @@ class GraphSelect(_Store):
 
         def spy(fn):
             def wrapped(*a, **kw):
-                seen.append(len(kw["ids"] if "ids" in kw else a[0]))
+                seen.append(tuple(kw["ids"] if "ids" in kw else a[0]))
                 return fn(*a, **kw)
             return wrapped
 
         with mock.patch.object(q, "graph_rows_for_ids_plan", spy(q.graph_rows_for_ids_plan)), \
-                mock.patch.object(q, "_GRAPH_AXIS_PLANS",
-                                  tuple(spy(f) for f in q._GRAPH_AXIS_PLANS)):
+                mock.patch.object(q, "_GRAPH_READ_PLANS",
+                                  tuple(spy(f) for f in q._GRAPH_READ_PLANS)):
             res = self.g(depth=2, max_nodes=5, select="prize")
         self.assertEqual(res["selection"]["kept"], 5)
-        self.assertEqual(len(seen), 1 + len(q._GRAPH_AXIS_PLANS))
-        self.assertEqual(max(seen), 6)             # 도달 집합(15)이 아니라 시드 + 예산
+        self.assertEqual(len(seen), 1 + len(q._GRAPH_READ_PLANS))
+        self.assertIn(self.SEED, seen[0])
+        self.assertTrue(all(ids == seen[0] for ids in seen))
+        self.assertEqual(len(seen[0]), 6)             # 도달 집합(15)이 아니라 시드 + 예산
 
     def test_the_cap_counts_concepts(self):
         from unittest import mock
