@@ -487,7 +487,7 @@ def shape_graph(rows: list[dict]) -> dict:
             if r.get("role"):
                 edge["role"] = r["role"]
             # E-G6 — 관계 증거·신뢰도(선택 열). 상류 미저작 시 키를 붙이지 않는다(role 과 동형).
-            if r.get("confidence"):
+            if r.get("confidence") is not None:
                 edge["confidence"] = float(r["confidence"])
             if r.get("evidence"):
                 edge["evidence"] = r["evidence"]
@@ -1113,6 +1113,55 @@ def decision_rows_plan(*, owner: str, domain: str | None = None, domains: list[s
         + _track_cols("d") + ", " + _track_cols("c", "target_")
     )
     return QueryPlan("graph_axis_decision", cypher, params, note="decision axis rows (v12)")
+
+
+def decision_relation_rows_plan(*, owner: str, domain: str | None = None,
+                                domains: list[str] | None = None) -> QueryPlan:
+    """전체/주제 그래프에서 기존 축이 읽지 않는 Decision 관계를 보충한다.
+
+    끝점 조합은 스키마 파생 계약을 사용한다. 기존 ABOUT→Concept 축과 겹치지
+    않으며, 렌즈 소속은 기존 부착 축처럼 어느 한 끝점의 domain으로 판정한다.
+    시드 조회는 기존 도달 집합과 결정 시드 플랜을 유지한다.
+    """
+    doms = normalize_domains(domain, domains)
+    params: dict = {"owner": owner}
+    pairs: dict[tuple, list[str]] = {}
+    for rel in _EDGE_CTX_TYPES:
+        for pair in SYNC_EDGE_RELS[rel]:
+            sl, _sp, dl, _dp = pair
+            if "Decision" not in (sl, dl):
+                continue
+            if rel == "ABOUT" and dl == "Concept":
+                continue
+            pairs.setdefault(pair, []).append(rel)
+
+    def cols(alias: str, label: str, pk: str, prefix: str = "") -> str:
+        nid = "target" if prefix else "id"
+        time_col = "date" if label == "Episode" else "created"
+        ol = f"coalesce({alias}.one_liner, '')" if label == "Concept" else "''"
+        ct = f"coalesce({alias}.content_time, '')" if label == "Concept" else "''"
+        return (
+            f"{alias}.{pk} AS {nid}, {alias}.title AS {prefix}label, "
+            f"{alias}.domain AS {prefix}domain, {alias}.props AS {prefix}props, "
+            f"coalesce({alias}.tags, []) AS {prefix}tags, '{label.lower()}' AS {prefix}kind, "
+            f"coalesce({alias}.{time_col}, {alias}.updated_at, '') AS {prefix}ts, "
+            f"{ct} AS {prefix}content_ts, {ol} AS {prefix}one_liner, "
+            + _track_cols(alias, prefix)
+        )
+
+    arms = []
+    for (sl, sp, dl, dp), rels in pairs.items():
+        where = ["a.owner_id = $owner", "b.owner_id = $owner"]
+        if doms:
+            where.append(domain_subtree_where(["a.domain", "b.domain"], doms, params))
+        arms.append(
+            f"MATCH (a:{sl})-[r:{'|'.join(rels)}]->(b:{dl}) "
+            f"WHERE {' AND '.join(where)} RETURN "
+            + cols("a", sl, sp) + ", " + cols("b", dl, dp, "target_") + ", "
+            "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence"
+        )
+    return QueryPlan("graph_decision_relations", " UNION ALL ".join(arms), params,
+                     note="decision relations outside the existing attachment axes")
 
 
 _GRAPH_AXIS_PLANS = (bridge_rows_plan, episode_rows_plan, record_rows_plan,
@@ -2219,7 +2268,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
     rows = list(res.get("rows", []))
     # F2 — 부착 축 합류(L1/전체 뷰). 고정 순서 concat: Concept 축 선행 = 노드 dedup
     # 의 선착 우선이 Concept 투영을 이기게(결정론).
-    for plan_fn in _GRAPH_AXIS_PLANS:
+    for plan_fn in _GRAPH_AXIS_PLANS + (decision_relation_rows_plan,):
         ax = execute(plan_fn(owner=owner, domains=doms), cfg, store=store)
         if ax.get("executed"):
             rows += ax.get("rows", [])
@@ -3701,8 +3750,9 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
     "왜 A 가 B 로 이어지는가"에 답한다. 조회 전용.
 
     반환: 관계의 evidence(원문 구절)·confidence + 양끝 노드 메타(title·one_liner/
-    summary)와 대표 정본 발췌 1건씩(MENTIONS 첫 건 — 개념만; Episode 는 summary 가
-    곧 설명). RELATED_TO 는 무방향 매치(저장 방향 무관), ABOUT 은 Episode→Concept.
+    summary)와 대표 정본 발췌 1건씩(MENTIONS 첫 건 — 개념·결정; Episode 는
+    summary가 곧 설명). RELATED_TO는 무방향 매치(저장 방향 무관)다.
+    관계별 끝점 조합은 스키마에서 파생한 SYNC_EDGE_RELS를 따른다.
     evidence 가 빈 관계도 executed=True 로 돌려준다 — UI 는 Empty 상태로 그린다
     (클릭 불가 대신 "기록된 근거 없음"을 말한다, 조용한 실패 금지)."""
     cfg = cfg or load_config()
@@ -3718,32 +3768,34 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
         base["note"] = "no reachable store"
         return base
     try:
-        if etype == "ABOUT":
-            rows = store.run(
-                "MATCH (a:Episode)-[r:ABOUT]->(b:Concept) "
-                "WHERE a.episode_id = $s AND b.concept_id = $d "
+        arrow = "-" if etype == "RELATED_TO" else "->"
+        arms = []
+        # 스키마 파생 끝점 계약을 공유한다. Decision에는 one_liner 열이 없다.
+        for sl, sp, dl, dp in SYNC_EDGE_RELS[etype]:
+            def detail(alias: str, label: str) -> str:
+                column = {"Concept": "one_liner", "Episode": "summary"}.get(label)
+                return f"{alias}.{column}" if column else "''"
+            arms.append(
+                f"MATCH (a:{sl})-[r:{etype}]{arrow}(b:{dl}) "
+                f"WHERE a.{sp} = $s AND b.{dp} = $d "
                 "AND a.owner_id = $owner AND b.owner_id = $owner "
                 "RETURN r.evidence AS ev, r.confidence AS cf, "
-                "a.title AS at, a.summary AS ad, b.title AS bt, b.one_liner AS bd",
-                {"s": pkns.key(owner, src), "d": pkns.key(owner, dst),
-                 "owner": owner}) or []
-        else:
-            arrow = "-" if etype == "RELATED_TO" else "->"
-            rows = store.run(
-                f"MATCH (a:Concept)-[r:{etype}]{arrow}(b:Concept) "
-                "WHERE a.concept_id = $s AND b.concept_id = $d "
-                "AND a.owner_id = $owner AND b.owner_id = $owner "
-                "RETURN r.evidence AS ev, r.confidence AS cf, "
-                "a.title AS at, a.one_liner AS ad, b.title AS bt, b.one_liner AS bd",
-                {"s": pkns.key(owner, src), "d": pkns.key(owner, dst),
-                 "owner": owner}) or []
+                f"a.title AS at, {detail('a', sl)} AS ad, "
+                f"b.title AS bt, {detail('b', dl)} AS bd, "
+                f"'{sl}' AS src_label, '{dl}' AS dst_label")
+        rows = store.run(" UNION ALL ".join(arms),
+                         {"s": pkns.key(owner, src), "d": pkns.key(owner, dst),
+                          "owner": owner}) or []
         if not rows:
             base["note"] = "unknown edge (또는 소유 스코프 밖)"
             return base
         r = rows[0]
-        def _mention_excerpt(cid: str) -> dict | None:
+        def _mention_excerpt(cid: str, label: str) -> dict | None:
+            if label not in _SEMANTIC_PK:
+                return None
             m = store.run(
-                "MATCH (ch:Chunk)-[m:MENTIONS]->(c:Concept) WHERE c.concept_id = $id "
+                f"MATCH (ch:Chunk)-[m:MENTIONS]->(c:{label}) "
+                f"WHERE c.{_SEMANTIC_PK[label]} = $id AND c.owner_id = $owner "
                 "AND (ch.owner_id = $owner OR ch.owner_id = '') "
                 "RETURN ch.doc_id AS doc_id, ch.text AS text "
                 "ORDER BY CASE m.method WHEN 'title' THEN 0 WHEN 'stem' THEN 1 ELSE 2 END, "
@@ -3758,9 +3810,9 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
             evidence=r.get("ev") or "",
             confidence=float(r.get("cf") or 0.0),
             src={"id": src, "title": r.get("at") or src, "one_liner": r.get("ad") or "",
-                 "excerpt": None if etype == "ABOUT" else _mention_excerpt(src)},
+                 "excerpt": _mention_excerpt(src, r["src_label"])},
             dst={"id": dst, "title": r.get("bt") or dst, "one_liner": r.get("bd") or "",
-                 "excerpt": _mention_excerpt(dst)})
+                 "excerpt": _mention_excerpt(dst, r["dst_label"])})
         return base
     except Exception as exc:
         base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
