@@ -1217,6 +1217,7 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     edges = list(fragment.get("edges") or [])
     owner_explicit = bool((fragment.get("owner") or "").strip())
     owner = (fragment.get("owner") or "").strip() or DEFAULT_OWNER
+    beliefs = []
     if authored:
         # 저작 시점의 근거를 검사한다. sync/팩 복원은 근거보다 패키지가 먼저 올 수 있다.
         # 근거: [[vinc.canon.mcp-contract]] Record props와 공개 저작 경로
@@ -1226,6 +1227,13 @@ def merge_fragment(fragment: dict, *, store, themes=None,
             return _finalize({"merged": None, "executed": False,
                               "error": "invalid_package", "note": denial},
                              ["invalid_package: " + denial])
+        from . import belief_contract
+        try:
+            nodes, edges, beliefs = belief_contract.prepare(nodes, edges, store=store, owner=owner)
+        except belief_contract.InvalidBelief as exc:
+            return _finalize({"merged": None, "executed": False,
+                              "error": "invalid_belief", "note": str(exc)},
+                             ["invalid_belief: " + str(exc)])
     if max_domains is not None and owner_explicit:
         denial = _domain_gate(nodes, store=store, owner=owner, max_domains=max_domains)
         if denial:
@@ -1274,6 +1282,8 @@ def merge_fragment(fragment: dict, *, store, themes=None,
         e_created += (r == "created")
         e_skipped_dup += (r == "skipped_duplicate")
     _flush_edge_warnings(edge_rollup, warnings)
+    if authored and edges:
+        belief_contract.apply(beliefs, edges, store=store, owner=owner, warnings=warnings)
     _warn_orphan_decisions(store, types, warnings, owner=owner)
     edges_out = {"created": e_created}
     if e_skipped_dup:
