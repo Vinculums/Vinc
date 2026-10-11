@@ -77,7 +77,7 @@ export function mountGraphPreview(el: HTMLElement, graph: GraphRead,
     const a=positions.get(edge.source), b=positions.get(edge.target); if (!a || !b) continue;
     const line=document.createElementNS(ns,"line");
     for (const [key,value] of Object.entries({x1:a.x,y1:a.y,x2:b.x,y2:b.y})) line.setAttribute(key,String(value));
-    line.setAttribute("stroke","var(--ink-mute, #999)"); line.setAttribute("stroke-opacity",".22");
+    line.setAttribute("stroke","hsl(var(--muted-foreground))"); line.setAttribute("stroke-opacity",".22");
     line.setAttribute("stroke-width",String(unit)); svg.append(line);
   }
   for (const [index,node] of nodes.entries()) {
@@ -85,16 +85,16 @@ export function mountGraphPreview(el: HTMLElement, graph: GraphRead,
     const mark=document.createElementNS(ns,"circle");mark.dataset.nodeId=node.id;
     mark.setAttribute("cx",String(p.x));mark.setAttribute("cy",String(p.y));
     mark.setAttribute("r",String(unit*(node.kind==="domain"?6:3)));
-    mark.setAttribute("fill","var(--ink, #aaa)");svg.append(mark);
+    mark.setAttribute("fill","hsl(var(--foreground))");svg.append(mark);
     if(node.kind==="domain" || index<16) {
       const label=document.createElementNS(ns,"text");label.textContent=node.label;
       label.setAttribute("x",String(p.x+unit*8));label.setAttribute("y",String(p.y+unit*4));
-      label.setAttribute("font-size",String(unit*12));label.setAttribute("fill","var(--ink, #aaa)");svg.append(label);
+      label.setAttribute("font-size",String(unit*12));label.setAttribute("fill","hsl(var(--foreground))");svg.append(label);
     }
   }
   const status = document.createElement("div"); status.textContent = options.label;
   status.setAttribute("role", "status");
-  status.style.cssText = "position:absolute;bottom:12px;left:12px;font-size:12px;color:var(--ink-mute,#999);pointer-events:none";
+  status.style.cssText = "position:absolute;bottom:12px;left:12px;font-size:12px;color:hsl(var(--muted-foreground));pointer-events:none";
   el.append(svg, status);
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     if(!svg.isConnected) return;
