@@ -395,7 +395,8 @@ def _resolve_model(model: str, cache: str) -> str:
 class _Embedder:
     """ONNX 세션 + 토크나이저. 지연 로드 — 일감이 있을 때만 올린다(idle RSS 절약)."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, prepare_split: bool = True) -> None:
+        self._prepare_split = prepare_split
         self._sess = None
         self._tok = None
         self._names: list[str] = []
@@ -446,7 +447,7 @@ class _Embedder:
         # ⚠ truncation·padding 이 켜진 이 인스턴스를 그대로 쓰면 길이가 512 에서 잘려
         # "항상 ≤512" 로 보인다 — 세는 용도로는 **자르지 않는 별도 인스턴스**가 필요하다.
         # 조각내기가 구운 파일로 이미 올렸으면 메모리 고점인 여기서 또 올리지 않는다.
-        if _SPLIT.tok is None:
+        if self._prepare_split and _SPLIT.tok is None:
             counter = Tokenizer.from_file(tok_path)
             _SPLIT.tok = lambda s: len(counter.encode(s).ids)
         # 스레드 1개 — 허브는 0.5 vCPU 를 사이드카·MCP 와 나눠 쓴다. 배경 작업이
@@ -798,7 +799,8 @@ def main() -> int:
         print(f"[embed] 원격 인코더 사용 · {REMOTE_ENCODE} "
               f"(이 프로세스는 모델을 올리지 않는다)", flush=True)
     else:
-        emb = _Embedder()
+        # 서버 전용 모드는 이미 나뉜 입력만 인코딩하므로 분할용 토크나이저가 필요 없다.
+        emb = _Embedder(prepare_split=not args.serve_only)
 
     # ⚠ 루프백 밖으로 여는데 토큰이 없으면 **인증 없는 인코더**다. 기동 시점에 막는다
     # — 요청이 올 때 막으면 그 사이에 이미 열려 있었다.
