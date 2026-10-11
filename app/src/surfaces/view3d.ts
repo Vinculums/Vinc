@@ -671,6 +671,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   const g = new ForceGraph3D(el, { rendererConfig: { alpha: true, antialias: true } } as any)
     .backgroundColor("rgba(0,0,0,0)")
     .showNavInfo(false)
+    .linkVisibility(!nodesOnly)             // Skip hidden line objects while retaining every relationship.
     .cooldownTicks(0)                       // 좌표는 사이드카 정본 — 시뮬레이션 없음
     .nodeThreeObject(nodeFactory())
     .nodeLabel((n: any) => prefs.labels === "none" ? "" :
@@ -871,7 +872,12 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       if (!keepCam) (g as any).zoomToFit?.(400, 60);
       // zoomToFit 은 카메라를 코드로 옮기므로 controls 의 change 가 안 나올 수 있다.
       // 애니메이션(400ms)이 끝난 뒤 fog 를 새 거리에 맞춘다.
-      setTimeout(() => { if (!dead) syncCamera(); }, 460);
+      setTimeout(() => {
+        if (dead) return;
+        syncCamera();
+        console.info(`View scene complete ${JSON.stringify({ renderer: "3d", nodes: nodes.length, edges: links.length,
+          elapsedMs: Math.round(performance.now() - mountedAt) })}`);
+      }, 460);
     });
   };
   requestAnimationFrame(() => settle(0));

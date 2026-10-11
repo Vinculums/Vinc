@@ -1,7 +1,7 @@
 import "./app.css";
 import { COPY } from "./copy";
 import { icon } from "./icons";
-import { renderView, repaintView } from "./surfaces/view";
+import { renderView, repaintView, leaveView } from "./surfaces/view";
 import { renderSearch } from "./surfaces/search";
 import { openSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL, decideDataMode,
@@ -95,6 +95,8 @@ function current(): Surface {
   return "view";   // 기본 첫 화면 = View(최상단)
 }
 
+let activeSurface: Surface | undefined;
+
 async function route() {
   // 구 표면 해시로 진입 시 정본 해시로 정규화(활성 하이라이트·딥링크 일치).
   const rawHead = location.hash.replace(/^#/, "").split("/")[0];
@@ -110,6 +112,9 @@ async function route() {
     return;                                                          // hashchange → 재진입
   }
   const s = current();
+  const resumeView = s === "view" && activeSurface === "search" && location.hash === "#view";
+  activeSurface = s;
+  leaveView();
   surfaceEl.innerHTML = "";
   // 문서 열은 셸의 것이지만 내용은 표면이 심는다(View 가 자기 상세를 옮겨 온다).
   // 표면이 사라질 때 그 내용도 함께 사라져야 한다 — 표면 컨테이너를 비우는 것만으로는
@@ -132,7 +137,8 @@ async function route() {
   // 좌측 트리의 착지 훅도 같이 끈다 — View 가 없으면 "그 노드로 날아가기"가
   // 성립하지 않으므로 문서 클릭은 해시 착지로 강등된다(lnb.openDoc).
   setLnbNavigator(null);
-  await SURFACES[s](surfaceEl);
+  if (s === "view") await renderView(surfaceEl, resumeView);
+  else await SURFACES[s](surfaceEl);
 }
 
 window.addEventListener("hashchange", route);

@@ -235,9 +235,9 @@ class MirrorProvenance(unittest.TestCase):
 
     def test_sidecar_parses_boolean_over_existing_read_route(self):
         from api.server import VincApp
-        from types import SimpleNamespace
         mid = self.put()
-        fake = SimpleNamespace(_read=lambda fn: (200, fn(self.ro)))
+        fake = VincApp.__new__(VincApp)
+        fake._read = lambda fn: (200, fn(self.ro))
         status, result = VincApp.read_graph(fake, {"owner": self.owner, "seed": mid,
                                                   "depth": "1", "review_mirror": "True"})
         self.assertEqual(status, 200)
