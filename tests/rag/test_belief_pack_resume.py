@@ -92,7 +92,7 @@ def test_second_http_failure_stops_and_preserves_status(bundle):
     def fail(*_):
         calls.append(1);raise HTTPError('https://fiction.example',429,'secret',{},None)
     with pytest.raises(RuntimeError):c.execute(plan,parent,cases,pa,journal,a,out,fail,lambda _:None)
-    raw=(out/'journal.jsonl').read_text()
+    raw=(out/'journal.jsonl').read_text(encoding="utf-8")
     assert len(calls)==1 and '"http_status":429' in raw and 'secret' not in raw
     with pytest.raises(ValueError):
         c.execute(plan,parent,cases,pa,journal,a,out,lambda *_:pytest.fail('retry'),lambda _:None)

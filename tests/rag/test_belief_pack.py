@@ -88,7 +88,7 @@ def test_failure_stops_and_never_retries(bundle):
         raise TimeoutError('secret-must-not-be-logged')
     with pytest.raises(RuntimeError):r.execute(plan,cases,approval,out,fail)
     assert len(calls)==1
-    assert 'secret-must-not-be-logged' not in (out/'journal.jsonl').read_text()
+    assert 'secret-must-not-be-logged' not in (out/'journal.jsonl').read_text(encoding="utf-8")
     with pytest.raises(ValueError,match='failed/unknown'):
         r.execute(plan,cases,approval,out,lambda *_:pytest.fail('retry'))
 
@@ -111,7 +111,7 @@ def test_existing_lock_is_preserved(bundle):
     cases,plan,approval,out=bundle
     out.mkdir();(out/'run.lock').write_text('another-run')
     with pytest.raises(FileExistsError):r.execute(plan,cases,approval,out,answer)
-    assert (out/'run.lock').read_text()=='another-run'
+    assert (out/'run.lock').read_text(encoding="utf-8")=='another-run'
 
 
 @pytest.mark.parametrize('field,value',[('finish_reason','length'),('model','changed'),('text',''),('refusal','refused')])
@@ -120,7 +120,7 @@ def test_bad_response_kept_but_stops(bundle,field,value):
     def invalid(s,j):
         data=answer(s,j);data[field]=value;return data
     with pytest.raises(RuntimeError):r.execute(plan,cases,approval,out,invalid)
-    data=[json.loads(x) for x in (out/'journal.jsonl').read_text().splitlines()]
+    data=[json.loads(x) for x in (out/'journal.jsonl').read_text(encoding="utf-8").splitlines()]
     assert len(data)==2 and data[-1]['result'][field]==value
 
 
@@ -160,9 +160,9 @@ def test_journal_tampering_and_duplicate_response_refused(bundle):
     cases,plan,approval,out=bundle
     r.execute(plan,cases,approval,out,answer)
     path=out/'journal.jsonl'
-    lines=path.read_text().splitlines()
+    lines=path.read_text(encoding="utf-8").splitlines()
     row=json.loads(lines[1]);row['result']['text']='edited';lines[1]=json.dumps(row)
-    path.write_text('\n'.join(lines)+'\n')
+    path.write_text('\n'.join(lines)+'\n', encoding='utf-8')
     with pytest.raises(ValueError,match='invalid completion'):r.completed(plan,approval,path)
 
 
