@@ -30,7 +30,7 @@ const server = createServer(async (req, res) => {
     body = Buffer.from(JSON.stringify(JSON.parse(internal)));
     backendMeasures = {...JSON.parse(response.headers.get('x-synthetic-measures')), proxyParseSerializeMs:performance.now()-start};
   }
-  else if (path === '/api/me') body = Buffer.from('{"publicId":"synthetic","name":"Synthetic"}');
+  else if (path === '/api/me') body = Buffer.from('{"user":{"email":"synthetic@example.invalid","name":"Synthetic"}}');
   else if (path === '/api/teams') body = Buffer.from('{"teams":[]}');
   else if (path === '/api/graph/changes') body = Buffer.from('{"marker":"synthetic-static"}');
   else if (path.startsWith('/api/')) body = Buffer.from('{"executed":true,"domains":[],"unfiled":[],"counts":{"kinds":{}},"teams":[]}');

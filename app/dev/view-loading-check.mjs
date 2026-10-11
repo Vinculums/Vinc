@@ -44,7 +44,7 @@ try {
     if(url.pathname==='/assets/gnb.js')return route.fulfill({body:'',contentType:'text/javascript'});
     if(!url.pathname.startsWith('/api/'))return route.continue();
     assert.equal(req.method(),'GET');requests.push({path:url.pathname,query:url.search});
-    if(url.pathname==='/api/me')return route.fulfill({json:{publicId:'synthetic',name:'Synthetic'}});
+    if(url.pathname==='/api/me')return route.fulfill({json:{user:{email:'synthetic@example.invalid',name:'Synthetic'}}});
     if(url.pathname==='/api/teams')return route.fulfill({json:{teams:[{id:'synthetic-team',name:'Synthetic team',role:'owner',status:'active'}]}});
     if(url.pathname==='/api/graph/graph'){
       if(holdNext){holdNext=false;held=route;return;}

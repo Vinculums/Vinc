@@ -1,6 +1,6 @@
 import Graph from "graphology";
 import Sigma from "sigma";
-import { api, cfg, WEB, docMidWrite, spaceName, storeDownReason, type GraphEdge, type GraphNode,
+import { api, cfg, WEB, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
@@ -8,6 +8,7 @@ import { absoluteViewUrl, formatViewUrl, parseViewUrl } from "../view-url";
 import { camera3d, centerOn3d, enableLasso, findNode3d, mount3d, zoomBy3d,
          type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
+import { viewSessionCache } from "../view-session-cache";
 import { readGraphProgressively, mountGraphPreview } from "../view-graph-loading";
 import { layoutInWorker } from "../view-layout-client";
 import type { LayoutGraph } from "../view-layout";
@@ -157,6 +158,8 @@ const THEME = {
 /** 마운트 세대 — 라우터가 표면을 갈아끼워도 컨테이너는 남으므로, "내가 아직 살아
  *  있는가"는 이 카운터로만 판별한다(전역 리스너 누수 방지). */
 let liveGen = 0;
+let disposeView: (() => void) | undefined;
+export function leaveView(): void { disposeView?.(); disposeView = undefined; ++liveGen; }
 
 /** 지금 지도가 칠한 주제 색 — 마운트가 짓고 노드 카드가 읽는다. 주제 틴트를 끄면 null
  *  이라 카드의 표식도 잉크 그대로다(지도와 같다). */
@@ -169,8 +172,19 @@ let themeRepaint: (() => void) | null = null;
  *  근거: [[decision:a-theme-switch-repaints-the-open-view-in-place]] */
 export function repaintView(): void { themeRepaint?.(); }
 
-export async function renderView(el: HTMLElement) {
+export async function renderView(el: HTMLElement, resume = false) {
+  leaveView();
   const myGen = ++liveGen;
+  const restoreEntryCamera = resume && location.hash === "#view";
+  const mountScope = viewScope();
+  const accessJob = new AbortController();
+  disposeView = () => accessJob.abort();
+  const firstAccess = WEB ? viewAccess(mountScope, accessJob.signal).catch(() => null) : Promise.resolve(null);
+  const entryAccess = WEB && (viewSessionCache.count || viewSessionCache.hasBookmark) ? await firstAccess : null;
+  if (myGen !== liveGen || mountScope.key !== viewScope().key) { accessJob.abort(); return; }
+  if (entryAccess) viewSessionCache.activate(entryAccess.session, entryAccess.revision);
+  const bookmark = entryAccess && restoreEntryCamera ? viewSessionCache.last(entryAccess.session) : undefined;
+  let firstAccessUsed = false;
   el.innerHTML = `
     <div id="view-canvas"></div>
     <!-- 하단 바에는 **지표만** 남는다(D71). 렌즈와 관점 세그는 상단 바로 올라갔고,
@@ -374,7 +388,8 @@ export async function renderView(el: HTMLElement) {
   // 공유 문법 밖은 앱 전용 `#view/read/<id>[/<doc>]`(LNB 착지) 하나라 그것만 따로 읽는다.
   const rawParts = location.hash.split("/").map(decodeURIComponent);
   const readRoute = rawParts[1] === "read";
-  const addr = readRoute ? null : parseViewUrl(location.hash);
+  const addr = readRoute ? null : parseViewUrl(bookmark?.domains.length
+    ? formatViewUrl({ kind: "domains", domains: bookmark.domains }) : location.hash);
   // /as/<view> 는 이 마운트에서만 저장값을 이긴다 — 절대 savePrefs 하지 않는다
   // (공유 링크가 받는 사람의 저장 관점을 영구히 덮어쓰지 않게).
   const asAt = rawParts.indexOf("as");
@@ -2121,11 +2136,27 @@ export async function renderView(el: HTMLElement) {
   let rawGraphScope: string | undefined;
   let layoutCache: { raw: typeof rawGraph; basis: ViewPrefs["timeBasis"]; layout: ViewPrefs["layout"]; aspectRatio: number; graph: LayoutGraph } | undefined;
   let layoutJob: AbortController | undefined;
+  let retained: { session: string; revision: string; key: string; prefs: string } | undefined;
+  const cameraPrefs = (p: ViewPrefs) => JSON.stringify([p,
+    Math.round((canvas.clientWidth || 1200) / (canvas.clientHeight || 750) * 10) / 10]);
+  let displayedScene: { key: string; prefs: string; domains: string[]; seq: number } | undefined;
+  const markDisplayed = (p: ViewPrefs, domains: string[]) => {
+    displayedScene = { key: rawGraphScope!, prefs: cameraPrefs(p), domains: [...domains], seq: showSeq };
+  };
+  const dispose = () => {
+    if (retained && displayedScene?.key === retained.key
+        && mountScope.key === viewScope().key && myGen === liveGen) {
+      viewSessionCache.remember(retained.session, retained.key, retained.revision,
+        { prefs: displayedScene.seq === showSeq ? cameraPrefs(curPrefs()) : displayedScene.prefs,
+          camera2: g2?.camera(), camera3: g3 ? camera3d(g3) : undefined }, displayedScene.domains);
+    }
+    accessJob.abort(); layoutJob?.abort(); graphReadJob?.abort(); removePreview();
+    removalObserver.disconnect(); swapSurface();
+  };
+  disposeView = dispose;
   const removalObserver = new MutationObserver(() => {
     if (canvas.isConnected && myGen === liveGen) return;
-    layoutJob?.abort(); graphReadJob?.abort(); removePreview();
-    removalObserver.disconnect();
-    swapSurface();
+    dispose();
   });
   removalObserver.observe(document.body, { childList: true, subtree: true });
   async function fetchGraph(p: ViewPrefs, scope: { domains?: string[] }):
@@ -2135,12 +2166,33 @@ export async function renderView(el: HTMLElement) {
     const serverLayout = serverLayoutFor(p.layout);
     const cone = useRoots ? 1 : p.cone;
     const scopeKey = JSON.stringify({ domains: [...domains].sort(), layout: serverLayout, cone });
-    const cached = reuseGraph && rawGraph?.executed && rawGraphScope === scopeKey && rawGraph;
+    let cached = reuseGraph && rawGraph?.executed && rawGraphScope === scopeKey && rawGraph;
     reuseGraph = false;
     const mySeq = showSeq;
     layoutJob?.abort();
     const start = performance.now();
     let res: typeof rawGraph;
+    const canRetain = WEB && ["2d", "3d"].includes(p.view);
+    const access = canRetain ? (firstAccessUsed ? viewAccess(mountScope, accessJob.signal).catch(() => null) : firstAccess) : Promise.resolve(null);
+    firstAccessUsed = true;
+    // Confirm the marker before starting the graph snapshot; a late probe cannot label an older read.
+    const grant = canRetain ? await access : null;
+    if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected || mountScope.key !== viewScope().key)
+      return { executed: false, stale: true };
+    if (canRetain && (!grant || retained?.session !== grant.session || retained?.revision !== grant.revision)) cached = false;
+    if (grant) {
+      viewSessionCache.activate(grant.session, grant.revision);
+      cached ||= viewSessionCache.get(grant.session, scopeKey, grant.revision);
+      if (cached) {
+        retained = { ...grant, key: scopeKey, prefs: cameraPrefs(p) };
+        const state = viewSessionCache.getState(grant.session, scopeKey, grant.revision, cameraPrefs(p));
+        if (restoreEntryCamera && !g3 && !g2 && state) {
+          keepCam = state.camera3 as Cam3 | undefined ?? null;
+          keepCam2 = state.camera2 as ReturnType<Handle2d["camera"]> | undefined ?? null;
+        }
+      }
+    } else if (canRetain && viewSessionCache.count) viewSessionCache.clear();
+    const generation = viewSessionCache.generation;
     const options = { ...(domains.length ? { domains } : {}), layout: serverLayout,
       ...(cone !== 1 ? { cone } : {}) };
     try {
@@ -2157,23 +2209,50 @@ export async function renderView(el: HTMLElement) {
               edges: curPrefs().edges !== "none", label: COPY.view.preview,
             }); setMsg("");
           }, job.signal);
-      } else res = cached || await api.graph(cfg.owner, options);
+      } else if (cached) res = cached;
+      else if (WEB) {
+        const job = graphReadJob = new AbortController();
+        res = await api.graphStage(mountScope.owner, options, undefined, undefined,
+          { team: mountScope.team || null }, job.signal);
+      } else res = await api.graph(cfg.owner, options);
     }
     catch (failure) {
+      if (graphReadJob?.signal.aborted) return { executed: false, stale: true };
       console.error(`View graph read failed ${JSON.stringify({ elapsedMs: Math.round(performance.now() - start),
         status: Number((failure as { status?: number }).status) || 0 })}`);
       throw failure;
     }
     console.info(`View graph read ${JSON.stringify({ elapsedMs: Math.round(performance.now() - start), cached: !!cached,
       executed: !!res?.executed, nodes: res?.nodes?.length || 0, edges: res?.edges?.length || 0 })}`);
-    if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
+    if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected || mountScope.key !== viewScope().key) return { executed: false, stale: true };
     rawGraph = res;
     rawGraphScope = scopeKey;
     if (!res) return { executed: false };
-    if (!useRoots || !res.executed) return res;
+    const remember = (layout?: { key: string; graph: LayoutGraph }) => {
+      if (!canRetain || (cached && !layout) || !res?.executed) return;
+      // 두 표식이 일치할 때만 보관한다. 저장 검증은 첫 렌더를 기다리게 하지 않는다.
+      void access.then(async before => {
+        if (!before || accessJob.signal.aborted || generation !== viewSessionCache.generation) return;
+        const after = await viewAccess(mountScope, accessJob.signal).catch(() => null);
+        if (!after || before.session !== after.session || before.revision !== after.revision
+            || mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected
+            || mountScope.key !== viewScope().key || generation !== viewSessionCache.generation) return;
+        const ticket = viewSessionCache.activate(before.session, before.revision);
+        if (viewSessionCache.put(before.session, scopeKey, before.revision, res!, ticket, layout))
+          retained = { ...before, key: scopeKey, prefs: cameraPrefs(p) };
+      });
+    };
+    if (!useRoots || !res.executed) { remember(); return res; }
     const aspectRatio = Math.round((canvas.clientWidth || 1200) / (canvas.clientHeight || 750) * 10) / 10;
     if (layoutCache && layoutCache.raw === res && layoutCache.basis === p.timeBasis && layoutCache.layout === p.layout && layoutCache.aspectRatio === aspectRatio)
       return { executed: true, ...layoutCache.graph };
+    const layoutKey = JSON.stringify([p.timeBasis, p.layout, aspectRatio]);
+    const retainedLayout = grant && cached && viewSessionCache.getLayout(grant.session, scopeKey, grant.revision, layoutKey);
+    if (retainedLayout) {
+      layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph: retainedLayout };
+      console.info("View layout reused");
+      return { executed: true, ...retainedLayout };
+    }
     layoutJob?.abort();
     const job = layoutJob = new AbortController();
     try {
@@ -2181,6 +2260,7 @@ export async function renderView(el: HTMLElement) {
         p.layout === "rankedRoots" ? "ranked" : "temporal", undefined, aspectRatio);
       if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
       layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph };
+      remember({ key: layoutKey, graph });
       return { executed: true, ...graph };
     } catch (error) {
       if (job.signal.aborted) return { executed: false, stale: true };
@@ -2238,6 +2318,7 @@ export async function renderView(el: HTMLElement) {
       onRightClick: (nd, ev) => nodeMenu(nd, ev),
       onConnect: connectByDrag, canConnect: canLinkPair,
     }, p, keepCam, curNodes.map((n) => n.domain));   // 색 순위는 전량으로(setCurNodes 주석)
+    markDisplayed(p, domains);
     keepCam = null;                               // 한 번 실어 보내면 끝 — 다음 마운트는 전체 맞춤
     applyTimeCut();                               // 첫 화면부터 커서를 반영한다
     wireLasso();
@@ -3821,6 +3902,7 @@ export async function renderView(el: HTMLElement) {
       onEdge: (e) => void openEdgeDetail(e),
       onConnect: connectByDrag, canConnect: canLinkPair,
     }, p, keepCam2);
+    markDisplayed(p, domains);
     console.info(`View scene ready ${JSON.stringify({ renderer: "2d", nodes: shown2.length,
       elapsedMs: Math.round(performance.now() - mountedAt) })}`);
     applyTimeCut();
@@ -4071,6 +4153,7 @@ export async function renderView(el: HTMLElement) {
    *  그리기 **직전**에 부른다. 빈 상태·오류 상자도 이 뒤에 그린다(옛 지도 위에 얹지 않게).
    *  캔버스를 투명하게 두고 나가면 revealSurface() 가 첫 그림을 페이드인한다. */
   function swapSurface() {
+    displayedScene = undefined;
     removePreview();
     extraSigmas.forEach((s) => s.kill());
     extraSigmas = [];
@@ -4300,6 +4383,7 @@ export async function renderView(el: HTMLElement) {
     if (myGen !== liveGen) return;
     // 잇기 대상을 고르는 중에도 기다린다 — 다시 그리기가 그 고르기를 푼다.
     if (replayTimer || isFloatPanelOpen() || !detail.hidden || pickTarget) return false;
+    viewSessionCache.clear(); rawGraph = undefined; layoutCache = undefined; reuseGraph = false;
     await show(trail[trail.length - 1], { keepPanel: true, keepCamera: true });
   });
 

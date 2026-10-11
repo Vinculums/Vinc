@@ -6,13 +6,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run typecheck && npm run test:view-layout && npm run test:view-loading && vite build",
+    "build": "npm run typecheck && npm run test:view-layout && npm run test:view-loading && npm run test:view-session && vite build",
     "test:view-loading": "node --test tests/view-graph-loading.test.mjs",
     "test:view-layout": "node --test tests/view-layout.test.mjs",
     "test:timeline-panel": "node dev/timeline-panel-check.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test:view-session": "node --test tests/view-session-cache.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

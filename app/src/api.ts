@@ -1,3 +1,4 @@
+import { viewSessionCache } from "./view-session-cache";
 /** Sidecar client — data plane is localhost HTTP + session token (control will
  *  be Tauri IPC when the shell lands, P4). Graph/query logic never lives here. */
 import { chunkPack, type StageCounts } from "./packchunks";
@@ -44,7 +45,7 @@ export const dataMode = {
     const v = localStorage.getItem(MODE_KEY);
     return v === "account" || v === "local" ? v : null;
   },
-  set(v: DataMode) { localStorage.setItem(MODE_KEY, v); },
+  set(v: DataMode) { viewSessionCache.clear(); localStorage.setItem(MODE_KEY, v); },
 };
 
 /** 셸이고 계정 모드인가. 모드는 로그인 뒤에 바뀔 수 있어서 상수가 아니라 함수다. */
@@ -68,11 +69,11 @@ function csrfToken(): string {
 export const cfg = {
   // 기본 = 셸에서는 고정 사이드카 주소, 브라우저에서는 same-origin(vite dev proxy 경유).
   get base(): string { return localStorage.getItem(BASE_KEY) || DEFAULT_BASE; },
-  set base(v: string) { localStorage.setItem(BASE_KEY, v); },
+  set base(v: string) { viewSessionCache.clear(); localStorage.setItem(BASE_KEY, v); },
   get token(): string { return localStorage.getItem(TOKEN_KEY) || ""; },
-  set token(v: string) { localStorage.setItem(TOKEN_KEY, v); },
+  set token(v: string) { viewSessionCache.clear(); localStorage.setItem(TOKEN_KEY, v); },
   get owner(): string { return localStorage.getItem(OWNER_KEY) || "tenant:local"; },
-  set owner(v: string) { localStorage.setItem(OWNER_KEY, v); },
+  set owner(v: string) { viewSessionCache.clear(); localStorage.setItem(OWNER_KEY, v); },
   // D42 — 표면 언어. 무설정 = **영어**. OS 로케일은 보지 않는다: 한국어는 설정에서
   // 사람이 고른 뒤에만 나온다([[decision:english-is-the-default-surface-language]]).
   // 덱 둘은 그대로 한 빌드에 실린다(D42). 고른 값은 LANG_KEY 에 남아 그대로 따라온다.
@@ -87,6 +88,7 @@ export const cfg = {
    *  getter 에서 `remote()` 를 함께 본다. */
   get team(): string { return remote() ? localStorage.getItem(TEAM_KEY) || "" : ""; },
   set team(v: string) {
+    viewSessionCache.clear();
     if (v) localStorage.setItem(TEAM_KEY, v);
     else localStorage.removeItem(TEAM_KEY);
   },
@@ -252,7 +254,7 @@ async function memberKey(): Promise<string> {
   return memberKeyCache;
 }
 /** 들고 있던 멤버 키를 버린다(로그아웃·키 교체·거절 뒤). */
-export function forgetMemberKey(): void { memberKeyCache = ""; }
+export function forgetMemberKey(): void { viewSessionCache.clear(); memberKeyCache = ""; }
 
 /** 계정 모드의 실패 종류. 화면은 이것으로 가르고 영어 서버 문자열을 읽지 않는다.
  *  `signIn` = 키가 더는 통하지 않는다(로그인 시트) · `unreachable` = 계정·허브에 못
@@ -428,6 +430,7 @@ async function localCall(path: string, params?: Record<string, string | number |
     method: isWrite ? "POST" : "GET",
     // 웹: 계정 세션 쿠키를 실어 보낸다(같은 오리진). 셸: 쿠키 없음.
     ...(WEB ? { credentials: "include" as const } : {}),
+    ...(WEB && path === "/changes" ? { cache: "no-store" as const } : {}),
     headers: {
       // 셸: 세션 토큰(Bearer). 웹: 쿠키 세션이라 Bearer 불필요, 쓰기엔 CSRF 더블서브밋.
       ...(!WEB && cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
@@ -437,6 +440,7 @@ async function localCall(path: string, params?: Record<string, string | number |
     body: isWrite ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
+    if (res.status === 401 || res.status === 403) viewSessionCache.clear();
     // 웹모드에서 세션 만료(401) → 로그인으로 보낸다(앱=/app/, 로그인=/login).
     // 죽은 사이드카에 조용히 실패하지 않고 "다시 로그인" 경로를 준다.
     if (WEB && res.status === 401) {
@@ -710,6 +714,27 @@ async function importPackInChunks(pack: any, owner: string, scope?: Scope,
     onStep?.({ total, done: { ...done } });
   }
   return out;
+}
+
+/** 캐시의 데이터 경로를 고정한다. 식별값은 진단 로그에 쓰지 않는다. */
+export function viewScope() {
+  const owner = cfg.owner, team = cfg.team;
+  return { owner, team, key: JSON.stringify([owner, team, cfg.base, dataMode.get(),
+    WEB, cfg.token, WEB ? csrfToken() : ""]) };
+}
+
+/** 웹 재사용은 현재 계정 identity와 현재 Space 권한을 매번 다시 확인한다. */
+export async function viewAccess(scope: ReturnType<typeof viewScope>, signal?: AbortSignal) {
+  const [me, changes] = await Promise.all([
+    fetch(new URL("/api/me", location.origin), { credentials: "include", cache: "no-store", signal }),
+    localCall("/changes", { owner: scope.owner }, undefined, { team: scope.team || null }, signal),
+  ]);
+  if (!me.ok) { viewSessionCache.clear(); throw new Error("View access unavailable"); }
+  const user = (await me.json()).user;
+  const identity = typeof user?.email === "string" ? user.email : "";
+  const marker = typeof changes?.marker === "string" ? changes.marker : "";
+  if (!identity || !marker || scope.key !== viewScope().key || signal?.aborted) return null;
+  return { session: JSON.stringify([scope.key, identity]), revision: marker };
 }
 
 export const api = {
