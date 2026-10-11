@@ -106,6 +106,8 @@ class Contracts(unittest.TestCase):
             (lambda b: b["sources"].append(copy.deepcopy(b["sources"][0])), "duplicate"),
             (lambda b: b["sources"][0]["eligibility"]["training"].pop("decision_ref"), "approval"),
             (lambda b: b["exposure_registry"].update(sha256="wrong"), "registry hash"),
+            (lambda b: b["sources"][0].update(license_id="unknown"), "resolved license"),
+            (lambda b: b["sources"][0].update(captured_at="2026-10-12T00:00:00Z"), "snapshot must precede"),
         ]
         for mutation, message in mutations:
             with self.subTest(message=message):

@@ -54,6 +54,17 @@ class Pilot(unittest.TestCase):
         pair["review_required"] = True
         self.assertEqual(len(P.prepare(self.b, self.root)[0]), 61)
 
+    def test_unmarked_disagreement_is_also_added(self):
+        queue, _ = P.prepare(self.b, self.root)
+        selected = {x["pair_id"] for x in queue}
+        pair = next(p for p in self.b["pairs"] if p["pair_id"] not in selected)
+        events = copy.deepcopy(fixture(self.root)["annotations"])
+        for event in events:
+            event.update(pair_id=pair["pair_id"], pair_sha256=D.fingerprint(pair))
+        events[1]["labels"]["supports"] = 0
+        self.b["annotations"] = events
+        self.assertEqual(len(P.prepare(self.b, self.root)[0]), 61)
+
     def test_shared_doc_is_not_sixty_independent_families(self):
         self.b["sources"][1]["document_id"] = self.b["sources"][0]["document_id"]
         with self.assertRaisesRegex(ValueError, "independent pilot family"):

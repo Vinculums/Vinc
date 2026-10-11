@@ -124,9 +124,11 @@ def validate(bundle, root):
             require(grant.get("status") in {"approved", "pending", "denied"}, "invalid eligibility")
             if grant["status"] == "approved":
                 require(nonempty(grant.get("decision_ref")) and nonempty(grant.get("approved_by")), "approval needs decision and actor")
+                require(source["license_id"].casefold() not in {"unknown", "unassigned", "pending"}, "approved source needs a resolved license declaration")
         assignment = assignments[sid]
         require(assignment["role"] in ROLES, "invalid split role")
         stamp(assignment["assigned_at"])
+        require(stamp(source["captured_at"]) <= stamp(assignment["assigned_at"]), "source snapshot must precede split assignment")
         require(assignment.get("groups") and all(qualified(x) for x in assignment["groups"]), "lineage groups required")
         for group in ["source:" + sid, "document:" + source["document_id"], "snapshot:" + source["sha256"], *assignment["groups"]]:
             groups[group].add(assignment["role"])

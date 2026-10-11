@@ -37,13 +37,14 @@ def prepare(bundle, root, *, seed=20261011):
     require(len({s["category"] for s in bundle["sources"]}) >= 3, "pilot needs three source categories")
     span_sources = {s["span_id"]: s["source_id"] for s in bundle["spans"]}
     source_docs = {s["source_id"]: s["document_id"] for s in bundle["sources"]}
+    source_hashes = {s["source_id"]: s["sha256"] for s in bundle["sources"]}
     source_groups = {s["source_id"]: s["groups"] for s in bundle["assignments"]}
     lineage = defaultdict(set)
     for pair in bundle["pairs"]:
         refs = {r for k in ("a", "b") for r in pair[k]["evidence"]} | set(pair.get("context_evidence", []))
         for ref in refs:
             sid = span_sources[ref]
-            for key in ["source:" + sid, "doc:" + source_docs[sid], *source_groups[sid]]:
+            for key in ["source:" + sid, "doc:" + source_docs[sid], "snapshot:" + source_hashes[sid], *source_groups[sid]]:
                 lineage[key].add(pair["family_id"])
     require(all(len(f) == 1 for f in lineage.values()), "shared source lineage is not an independent pilot family")
     # 표본 순서는 seed와 쌍 id로 고정한다. 이 큐가 사람 검토 결과를 대신하지는 않는다.
@@ -58,8 +59,14 @@ def prepare(bundle, root, *, seed=20261011):
         selected.extend(list(by_family.values())[:15])
     # 쟁점은 표본 밖이어도 남긴다. labels/rationale/contrast는 blind 입력으로 보내지 않는다.
     selected_ids = {p["pair_id"] for p in selected}
+    histories = defaultdict(list)
+    for event in bundle["annotations"]:
+        histories[event["pair_id"]].append(event)
     for pair in bundle["pairs"]:
-        if pair.get("review_required") and pair["pair_id"] not in selected_ids:
+        events = histories[pair["pair_id"]]
+        disputed = len({fingerprint(e["labels"]) for e in events}) > 1
+        ambiguous = any(e["evidence_strength"] == "ambiguous" or any(v is None for v in e["labels"].values()) for e in events)
+        if (pair.get("review_required") or disputed or ambiguous) and pair["pair_id"] not in selected_ids:
             selected.append(pair)
     spans = {s["span_id"]: s for s in bundle["spans"]}
     sources = {s["source_id"]: s for s in bundle["sources"]}
