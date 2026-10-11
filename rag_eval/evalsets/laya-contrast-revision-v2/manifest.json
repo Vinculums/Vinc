@@ -1,0 +1,13 @@
+{
+  "files": {
+    "authoring-recipes.json": "aef14df10704e92a2665ed82254fb35bc56c11a40c137890b97a78976d8ad16c",
+    "bundle.json": "cc46ed18f2c5c8701b1f573101116b9b038df73c125f055802345fcec0e8d778",
+    "joint-validation.json": "e405249d43c2b42770e50877a271e249de1410933db973051bf4560b8ac2468c",
+    "review/blind-review.json": "d34e880d36583e0d7b2550cb74c7f8c760d2c29b2619c142a2e38c399d9130f5",
+    "review/human-input.json": "2e59bab81514a90b7fce60f6b7c649d8556b48b522d9749d9f35aa1c3b654f3e",
+    "review/manifest.json": "c39436ff079008fe48948a49d0564faaba175024c608f416ddb2f1fc755488e5",
+    "selection.json": "d57c21edfd30debc95fe4a0c8adcafd1da4fa28655cea723e5a7a7f3ad8e328a",
+    "validation.json": "59678ca5d4ab91887790dc4fc15d690822ed327cdcbedd13c8ddabaed76e15f4"
+  },
+  "schema": "vinc.laya.artifacts.v1"
+}

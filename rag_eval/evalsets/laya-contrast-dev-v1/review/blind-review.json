@@ -1,0 +1,1922 @@
+[
+  {
+    "a": "The pinned Rust Reference states: Evaluating return transfers control to the caller frame.",
+    "b": "This rule also applies without exception to every unrelated programming language: Evaluating return transfers control to the caller frame.",
+    "context": "Rust Reference commit 5baa209fc199, spec02. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 443,
+        "excerpt_sha256": "a6b23549590b80afd29e584abd854497e9c32b6d081d3eaab07e09d3053d632c",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/return-expr.md",
+        "snapshot_path": "sources/spec02.txt",
+        "source_sha256": "b0a5df6b4b546d676e9bc9f0500fed243ef0a8c6d609b9e4434abec43e432158",
+        "span_id": "span:laya-dev1-spec02-r2-0",
+        "start": 210
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:08dc438697adb393",
+    "pair_sha256": "9aba633ec3f663f4fbf910eda31e74e076da688babcebfedd49cd683240ecb16",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "Isolated SQLite case obs08 exited 0 and printed rows [[\"a\", 5], [\"b\", 5]].",
+    "b": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 그룹별 쿼리에서 a와 b의 합은 각각 5였다.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs08. SQL: CREATE TABLE t(k,v); INSERT INTO t VALUES ('a',2),('a',3),('b',5); SELECT k,sum(v) FROM t GROUP BY k ORDER BY k;",
+    "evidence": [
+      {
+        "end": 1095,
+        "excerpt_sha256": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+        "origin_uri": "vinc-local-observation:obs08",
+        "snapshot_path": "sources/obs08.txt",
+        "source_sha256": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+        "span_id": "span:laya-dev1-obs08-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:0c41ee27f2e8e636",
+    "pair_sha256": "c6f0933ac2dcd9e7960d2f740f547e39e6b3b0a49f9838f1934180b07ecc9923",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "격리된 SQLite 시험 obs01의 종료 코드는 0이며 출력된 행은 [[3, 2]]이다.",
+    "b": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 이번 쿼리에서 count(*)는 3이고 count(x)는 2였다.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs01다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9); SELECT count(*), count(x) FROM t;",
+    "evidence": [
+      {
+        "end": 997,
+        "excerpt_sha256": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+        "origin_uri": "vinc-local-observation:obs01",
+        "snapshot_path": "sources/obs01.txt",
+        "source_sha256": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+        "span_id": "span:laya-dev1-obs01-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:130fae705eff8a5f",
+    "pair_sha256": "d489647bbe1ec1abccb602d61bd3ce9885b9761038b16e87eb4f742a0ebeb471",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "PAFA has a metadata elevation greater than 130 m.",
+    "b": "The metadata elevation for PAFA is at most 130 m.",
+    "context": "NWS station PAFA, captured 2026-10-11T09:50:51.577758+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2148,
+        "excerpt_sha256": "f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+        "origin_uri": "https://api.weather.gov/stations/PAFA",
+        "snapshot_path": "sources/fact06.txt",
+        "source_sha256": "f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+        "span_id": "span:laya-dev1-fact06-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:17c28c8c12564f7a",
+    "pair_sha256": "ed22aa9b21240fc447c584845a4b3f461536cfe62f6b01397cba58f066e86fc6",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "격리된 SQLite 시험 obs03의 종료 코드는 0이며 출력된 행은 [[1]]이다.",
+    "b": "All other database systems and all datasets must produce this recorded outcome: The unique-key table held one row after the ignored duplicate insert.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs03다. SQL: CREATE TABLE t(x INTEGER UNIQUE); INSERT INTO t VALUES (3); INSERT OR IGNORE INTO t VALUES (3); SELECT count(*) FROM t;",
+    "evidence": [
+      {
+        "end": 1045,
+        "excerpt_sha256": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+        "origin_uri": "vinc-local-observation:obs03",
+        "snapshot_path": "sources/obs03.txt",
+        "source_sha256": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+        "span_id": "span:laya-dev1-obs03-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:1b41496290ccfe9b",
+    "pair_sha256": "d4693bfa480b8f02c30f9204a6eefd862d8a77ea66981cebef09ef1ecac74bcb",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "타입 별칭은 기존 타입에 다른 이름을 붙인다.",
+    "b": "타입 별칭을 선언하면 기존 타입을 가리키는 새 이름이 생긴다.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec05다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 542,
+        "excerpt_sha256": "e2cbe245b37e27ba3e4abdf4ba8c1ef25aa6cae2adb3d54d25ccb9f4f7f5a149",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/type-aliases.md",
+        "snapshot_path": "sources/spec05.txt",
+        "source_sha256": "c3085a4a860f703edc5dc65e16a62dc87dbf8c9a29f12158ff048ca383ef2db1",
+        "span_id": "span:laya-dev1-spec05-r2-0",
+        "start": 199
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:1c13d2c7feaa0ebf",
+    "pair_sha256": "a1a4e0b6b8a0db193568e2ebd080da5bbeb5cdb4d7416d00a3739429e81cb39e",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The pinned Rust Reference states: A private item may be accessed by its module and that module’s descendants.",
+    "b": "비공개 항목은 해당 모듈과 그 하위 모듈에서 접근할 수 있다.",
+    "context": "Rust Reference commit 5baa209fc199, spec08. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 2029,
+        "excerpt_sha256": "41dfb9e9e95d12beb7b6950b870b3172054704bc8a056f10dc417e8177318e6d",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/visibility-and-privacy.md",
+        "snapshot_path": "sources/spec08.txt",
+        "source_sha256": "6c188645970168efd11cfb397708a9641220c3c72921ca9d82a8fe13fa7072a5",
+        "span_id": "span:laya-dev1-spec08-r2-0",
+        "start": 1720
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:26f62084bfcce26b",
+    "pair_sha256": "6ea3c931602375e0c04e5ae8fad61adabf7399cdbef52619b9b54653dccde540",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The pinned Rust Reference states: A one-element tuple expression needs a comma after its operand.",
+    "b": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. 원소가 하나인 튜플 표현식은 피연산자 뒤에 쉼표가 필요하다.",
+    "context": "Rust Reference commit 5baa209fc199, spec04. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 621,
+        "excerpt_sha256": "2b33c651f7161288d3ef7f7b9d59fe85d63d2924410f291f19b8b3c7688e9c41",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/tuple-expr.md",
+        "snapshot_path": "sources/spec04.txt",
+        "source_sha256": "909e6f0ad921fd84ddf8c0a482a100d33d2b2e0fc89c68bbf2773109986e02a8",
+        "span_id": "span:laya-dev1-spec04-r2-0",
+        "start": 451
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:28803ba8a7981b2a",
+    "pair_sha256": "2c2d7d7057ff381730fafacf100115cefd7034e3ae18751730ea5aaa33b92e1a",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "중복을 제거하고 정렬한 쿼리는 1과 2의 두 행을 반환했다.",
+    "b": "The distinct query returned three rows: 1, 1 and 2.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs07다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (1),(1),(2); SELECT DISTINCT x FROM t ORDER BY x;",
+    "evidence": [
+      {
+        "end": 1011,
+        "excerpt_sha256": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+        "origin_uri": "vinc-local-observation:obs07",
+        "snapshot_path": "sources/obs07.txt",
+        "source_sha256": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+        "span_id": "span:laya-dev1-obs07-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:29cd7a5e657cf28a",
+    "pair_sha256": "4ca8c19661d2f543976d6b8fa49da32f3db360d6c327b0519e6d64fb20cf1265",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 NWS KSFO 메타데이터의 county 구역 식별자는 CAC081다.",
+    "b": "This same field value is guaranteed for every station at every future update: The county-zone link for KSFO ends with CAC081.",
+    "context": "NWS 관측소 KSFO, 수집 시점 2026-10-11T09:50:51.902731+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2151,
+        "excerpt_sha256": "d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+        "origin_uri": "https://api.weather.gov/stations/KSFO",
+        "snapshot_path": "sources/fact07.txt",
+        "source_sha256": "d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+        "span_id": "span:laya-dev1-fact07-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:2c1f6951ed9cfb15",
+    "pair_sha256": "dd528666769e4f154d393cd45947ef91deb98127c51b779df75a76256852b85c",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 NWS KSEA 메타데이터의 timeZone은 America/Los_Angeles다.",
+    "b": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. 이 기록에서 KSEA의 시간대 식별자는 America/Los_Angeles다.",
+    "context": "NWS 관측소 KSEA, 수집 시점 2026-10-11T09:50:50.240294+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2153,
+        "excerpt_sha256": "9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+        "origin_uri": "https://api.weather.gov/stations/KSEA",
+        "snapshot_path": "sources/fact01.txt",
+        "source_sha256": "9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+        "span_id": "span:laya-dev1-fact01-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:2f5ab60a75f00b31",
+    "pair_sha256": "e5fe070ba3fad3986d87edfe7de1683a54dc17f7cc755b0febde452d67550456",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "References to the same constant need not share one memory address.",
+    "b": "The same constant can be referenced without an identical address guarantee.",
+    "context": "Rust Reference commit 5baa209fc199, spec06. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 646,
+        "excerpt_sha256": "09fa676fe77eecb94f18f227867e279c8a5316de027c3db639231139a63012b9",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/constant-items.md",
+        "snapshot_path": "sources/spec06.txt",
+        "source_sha256": "1f39ac3e895b4228ddc7a840743355707c0956831ce6097d8b43676e76cd12f1",
+        "span_id": "span:laya-dev1-spec06-r2-0",
+        "start": 313
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:31e6410d61638024",
+    "pair_sha256": "3cbbda28d7a0bd2620d4f93d04e75e1939c21e640ad4d782807d916ab66f33e9",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The frozen NWS metadata for KDEN lists elevation 1647.1392 m.",
+    "b": "KDEN has a metadata elevation greater than 1646 m.",
+    "context": "NWS station KDEN, captured 2026-10-11T09:50:50.487729+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2140,
+        "excerpt_sha256": "6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+        "origin_uri": "https://api.weather.gov/stations/KDEN",
+        "snapshot_path": "sources/fact02.txt",
+        "source_sha256": "6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+        "span_id": "span:laya-dev1-fact02-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:3430a93f23be66d6",
+    "pair_sha256": "f57a1bce8e436fee669af7696326b7e7b47a8ea3c0a9e52aaed994c4ca6c596a",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The frozen NWS metadata for KMIA lists provider ASOS-HFM.",
+    "b": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. KMIA에 저장된 provider 필드의 값은 ASOS-HFM다.",
+    "context": "NWS station KMIA, captured 2026-10-11T09:50:52.158756+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2135,
+        "excerpt_sha256": "ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+        "origin_uri": "https://api.weather.gov/stations/KMIA",
+        "snapshot_path": "sources/fact08.txt",
+        "source_sha256": "ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+        "span_id": "span:laya-dev1-fact08-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:34cd1b7128e5b051",
+    "pair_sha256": "6bb171a70957c138da33ff4a21bcdeba51e37c35d9cffdc411a5528f4fbe61c3",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "Isolated SQLite case obs06 exited 0 and printed rows [[\"integer\", 3, 3.5]].",
+    "b": "The integer division produced 3; the real-valued division produced 3.5.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs06. SQL:  SELECT typeof(7/2), 7/2, 7.0/2;",
+    "evidence": [
+      {
+        "end": 917,
+        "excerpt_sha256": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+        "origin_uri": "vinc-local-observation:obs06",
+        "snapshot_path": "sources/obs06.txt",
+        "source_sha256": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+        "span_id": "span:laya-dev1-obs06-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:358b1ecbad8cc6de",
+    "pair_sha256": "8e17146a4b2238e6ec91213181628f7ecaa9d3e7b01a74a910b7bf238dccda34",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "Isolated SQLite case obs04 exited 0 and printed rows [[8], [5]].",
+    "b": "내림차순으로 제한한 쿼리 결과는 8 다음 5였다.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs04. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (8),(2),(5); SELECT x FROM t ORDER BY x DESC LIMIT 2;",
+    "evidence": [
+      {
+        "end": 1019,
+        "excerpt_sha256": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+        "origin_uri": "vinc-local-observation:obs04",
+        "snapshot_path": "sources/obs04.txt",
+        "source_sha256": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+        "span_id": "span:laya-dev1-obs04-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:3670203fd3dbe582",
+    "pair_sha256": "bc0e4b684297aff8b5da4047a5bff54c3e20612e71fccc511a711fd932a394f3",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "이 기록에서 KSEA의 시간대 식별자는 America/Los_Angeles다.",
+    "b": "이 메타데이터에서 KSEA에 연결한 시간대 이름은 America/Los_Angeles다.",
+    "context": "NWS 관측소 KSEA, 수집 시점 2026-10-11T09:50:50.240294+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2153,
+        "excerpt_sha256": "9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+        "origin_uri": "https://api.weather.gov/stations/KSEA",
+        "snapshot_path": "sources/fact01.txt",
+        "source_sha256": "9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+        "span_id": "span:laya-dev1-fact01-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:3ada99ca70e40554",
+    "pair_sha256": "43ba7e331fff65cc3893f5bc54f216db7602fd377575a2e72f017cfdbc57fb35",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 NWS KORD 메타데이터의 county 구역 식별자는 ILC031다.",
+    "b": "The county-zone link for KORD ends with ILC031.",
+    "context": "NWS 관측소 KORD, 수집 시점 2026-10-11T09:50:50.755734+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2148,
+        "excerpt_sha256": "c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+        "origin_uri": "https://api.weather.gov/stations/KORD",
+        "snapshot_path": "sources/fact03.txt",
+        "source_sha256": "c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+        "span_id": "span:laya-dev1-fact03-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:3c10f5e4f766b5ff",
+    "pair_sha256": "7c2e80dcaca77f158b35e35c80006e791bf77f131eac4d3245240f3c25db4d39",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "격리된 SQLite 시험 obs05의 종료 코드는 0이며 출력된 행은 [[0, null, 0.0]]이다.",
+    "b": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 빈 테이블에서 sum(x)는 NULL, total(x)는 0.0이었다.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs05다. SQL: CREATE TABLE t(x); SELECT count(*), sum(x), total(x) FROM t;",
+    "evidence": [
+      {
+        "end": 961,
+        "excerpt_sha256": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+        "origin_uri": "vinc-local-observation:obs05",
+        "snapshot_path": "sources/obs05.txt",
+        "source_sha256": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+        "span_id": "span:laya-dev1-obs05-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:3df8961d8efe48cc",
+    "pair_sha256": "414093211010212cd7234afed30ba110a54550a71437e1551552c04892c831af",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "Evaluating return transfers control to the caller frame.",
+    "b": "Evaluating return keeps control in the current function frame.",
+    "context": "Rust Reference commit 5baa209fc199, spec02. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 443,
+        "excerpt_sha256": "a6b23549590b80afd29e584abd854497e9c32b6d081d3eaab07e09d3053d632c",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/return-expr.md",
+        "snapshot_path": "sources/spec02.txt",
+        "source_sha256": "b0a5df6b4b546d676e9bc9f0500fed243ef0a8c6d609b9e4434abec43e432158",
+        "span_id": "span:laya-dev1-spec02-r2-0",
+        "start": 210
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:3e43c8cfb5dbb55d",
+    "pair_sha256": "56ae35387d444c53f637e2a5a76fc73db3d6fd4baf35125b2a7ac8638ce13ca0",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The descending limited query returned 8 followed by 5.",
+    "b": "내림차순으로 제한한 쿼리 결과는 2 다음 5였다.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs04. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (8),(2),(5); SELECT x FROM t ORDER BY x DESC LIMIT 2;",
+    "evidence": [
+      {
+        "end": 1019,
+        "excerpt_sha256": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+        "origin_uri": "vinc-local-observation:obs04",
+        "snapshot_path": "sources/obs04.txt",
+        "source_sha256": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+        "span_id": "span:laya-dev1-obs04-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:3f886720afc1c8db",
+    "pair_sha256": "71f963a526d700d281f00451603f226905f30ebae66860cf4dd98940fd09f7cc",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The frozen NWS metadata for KBOS lists provider ASOS-HFM.",
+    "b": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. KBOS에 저장된 provider 필드의 값은 ASOS-HFM다.",
+    "context": "NWS station KBOS, captured 2026-10-11T09:50:50.986739+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2136,
+        "excerpt_sha256": "35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+        "origin_uri": "https://api.weather.gov/stations/KBOS",
+        "snapshot_path": "sources/fact04.txt",
+        "source_sha256": "35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+        "span_id": "span:laya-dev1-fact04-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:41db9eb2ddd09e8b",
+    "pair_sha256": "efd3819635fc40d924c4e525acdcf233cd06d10a1ada350a46dd768070e6ac2d",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "ASOS-HFM is the provider field stored for KMIA.",
+    "b": "KMIA에 저장된 provider 필드의 값은 NONE이다.",
+    "context": "NWS station KMIA, captured 2026-10-11T09:50:52.158756+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2135,
+        "excerpt_sha256": "ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+        "origin_uri": "https://api.weather.gov/stations/KMIA",
+        "snapshot_path": "sources/fact08.txt",
+        "source_sha256": "ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+        "span_id": "span:laya-dev1-fact08-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:423a967780c4436e",
+    "pair_sha256": "685f5034420f898beae4cc2f5ceb54d8858b37f502ea2a14678411f3562801ee",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The pinned Rust Reference states: References to the same constant need not share one memory address.",
+    "b": "References to the same constant need not share one memory address.",
+    "context": "Rust Reference commit 5baa209fc199, spec06. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 646,
+        "excerpt_sha256": "09fa676fe77eecb94f18f227867e279c8a5316de027c3db639231139a63012b9",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/constant-items.md",
+        "snapshot_path": "sources/spec06.txt",
+        "source_sha256": "1f39ac3e895b4228ddc7a840743355707c0956831ce6097d8b43676e76cd12f1",
+        "span_id": "span:laya-dev1-spec06-r2-0",
+        "start": 313
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:437daad9aa4813d9",
+    "pair_sha256": "b747172752724d889e1a5ae00ad2036a4355303b7474f0c0fde782f159fef7b0",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "ASOS-HFM is the provider field stored for KBOS.",
+    "b": "이 항목은 KBOS의 provider를 ASOS-HFM로 기록한다.",
+    "context": "NWS station KBOS, captured 2026-10-11T09:50:50.986739+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2136,
+        "excerpt_sha256": "35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+        "origin_uri": "https://api.weather.gov/stations/KBOS",
+        "snapshot_path": "sources/fact04.txt",
+        "source_sha256": "35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+        "span_id": "span:laya-dev1-fact04-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:43bae2bfdc4f4547",
+    "pair_sha256": "7a53dd3a0e3ce997b4008026c3a207597c478d701348d5a9abb02b56dc9b6640",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "빈 테이블에서 sum(x)는 NULL, total(x)는 0.0이었다.",
+    "b": "빈 입력의 sum과 total은 각각 NULL과 0.0으로 달랐다.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs05다. SQL: CREATE TABLE t(x); SELECT count(*), sum(x), total(x) FROM t;",
+    "evidence": [
+      {
+        "end": 961,
+        "excerpt_sha256": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+        "origin_uri": "vinc-local-observation:obs05",
+        "snapshot_path": "sources/obs05.txt",
+        "source_sha256": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+        "span_id": "span:laya-dev1-obs05-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:448aff2c0330c1f1",
+    "pair_sha256": "1b54445c5a80dc37819709899c1b662789403352daf224ee89eb0e9db2bd8b85",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "NULL IS NULL returned 1, while NULL = NULL returned null.",
+    "b": "The IS comparison was true, but equality yielded null in this run.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs02. SQL:  SELECT NULL IS NULL, NULL = NULL;",
+    "evidence": [
+      {
+        "end": 893,
+        "excerpt_sha256": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+        "origin_uri": "vinc-local-observation:obs02",
+        "snapshot_path": "sources/obs02.txt",
+        "source_sha256": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+        "span_id": "span:laya-dev1-obs02-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:4918712dde2cbad4",
+    "pair_sha256": "49e382db4d9e3724ef04007c6227c5bc264dd60f16240af0f925115c0255452c",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 Rust Reference의 설명은 다음과 같다. 타입 별칭은 기존 타입에 다른 이름을 붙인다.",
+    "b": "타입 별칭은 기존 타입에 다른 이름을 붙인다.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec05다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 542,
+        "excerpt_sha256": "e2cbe245b37e27ba3e4abdf4ba8c1ef25aa6cae2adb3d54d25ccb9f4f7f5a149",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/type-aliases.md",
+        "snapshot_path": "sources/spec05.txt",
+        "source_sha256": "c3085a4a860f703edc5dc65e16a62dc87dbf8c9a29f12158ff048ca383ef2db1",
+        "span_id": "span:laya-dev1-spec05-r2-0",
+        "start": 199
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:4a3b39a69da74bb1",
+    "pair_sha256": "8bf5b688b0484acf01b7aa8c05692d956c97b944ca9b507fa32f9cf0d739335a",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "격리된 SQLite 시험 obs01의 종료 코드는 0이며 출력된 행은 [[3, 2]]이다.",
+    "b": "이번 쿼리에서 count(*)는 3이고 count(x)는 2였다.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs01다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9); SELECT count(*), count(x) FROM t;",
+    "evidence": [
+      {
+        "end": 997,
+        "excerpt_sha256": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+        "origin_uri": "vinc-local-observation:obs01",
+        "snapshot_path": "sources/obs01.txt",
+        "source_sha256": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+        "span_id": "span:laya-dev1-obs01-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:4a50c905bda6fa0f",
+    "pair_sha256": "d2a4a98d7c9a1e9c7cf60cabc513eb6580640a2ce68538ec001b1e7fb67d8d05",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 NWS KORD 메타데이터의 county 구역 식별자는 ILC031다.",
+    "b": "This same field value is guaranteed for every station at every future update: The county-zone link for KORD ends with ILC031.",
+    "context": "NWS 관측소 KORD, 수집 시점 2026-10-11T09:50:50.755734+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2148,
+        "excerpt_sha256": "c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+        "origin_uri": "https://api.weather.gov/stations/KORD",
+        "snapshot_path": "sources/fact03.txt",
+        "source_sha256": "c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+        "span_id": "span:laya-dev1-fact03-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:4a7cd47c121cfc13",
+    "pair_sha256": "7d5f1dc5174d7aadcbb2142f5e0caf297b1c2bb8de20402ba1223d4cb3231b37",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "References to the same constant need not share one memory address.",
+    "b": "All references to the same constant are guaranteed to share an address.",
+    "context": "Rust Reference commit 5baa209fc199, spec06. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 646,
+        "excerpt_sha256": "09fa676fe77eecb94f18f227867e279c8a5316de027c3db639231139a63012b9",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/constant-items.md",
+        "snapshot_path": "sources/spec06.txt",
+        "source_sha256": "1f39ac3e895b4228ddc7a840743355707c0956831ce6097d8b43676e76cd12f1",
+        "span_id": "span:laya-dev1-spec06-r2-0",
+        "start": 313
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:4a845515a2f8bc50",
+    "pair_sha256": "60a97c77fe2555c3a1cf229e1df19b1a7baab663fc3dbb9210e7ba4506089fc9",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 Rust Reference의 설명은 다음과 같다. 배열에 나열한 값들은 작성한 순서대로 들어간다.",
+    "b": "The listed array values keep their written order.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec03다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 692,
+        "excerpt_sha256": "d622336a195a7580d9c648128e42e3058f9705dfc5d712a991be6299927ca8df",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/array-expr.md",
+        "snapshot_path": "sources/spec03.txt",
+        "source_sha256": "2b5e385fc7243d93e9c9387931b214f069ba91b2528480758aaf186e43372a2b",
+        "span_id": "span:laya-dev1-spec03-r2-0",
+        "start": 578
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:4fa7dbc033cbf4fd",
+    "pair_sha256": "b1234eac9479c37c16a7b4245f59433838cfe85ee950a869bfb209c478dccce1",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "Isolated SQLite case obs04 exited 0 and printed rows [[8], [5]].",
+    "b": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 내림차순으로 제한한 쿼리 결과는 8 다음 5였다.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs04. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (8),(2),(5); SELECT x FROM t ORDER BY x DESC LIMIT 2;",
+    "evidence": [
+      {
+        "end": 1019,
+        "excerpt_sha256": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+        "origin_uri": "vinc-local-observation:obs04",
+        "snapshot_path": "sources/obs04.txt",
+        "source_sha256": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+        "span_id": "span:laya-dev1-obs04-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:5c1b29c0fac67ab7",
+    "pair_sha256": "27b1817ac8027c2a9daecc4e261e5203bf121da6cd4288a7f3f15ec8aacec0a6",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "배열에 나열한 값들은 작성한 순서대로 들어간다.",
+    "b": "The listed array values are inserted in reverse written order.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec03다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 692,
+        "excerpt_sha256": "d622336a195a7580d9c648128e42e3058f9705dfc5d712a991be6299927ca8df",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/array-expr.md",
+        "snapshot_path": "sources/spec03.txt",
+        "source_sha256": "2b5e385fc7243d93e9c9387931b214f069ba91b2528480758aaf186e43372a2b",
+        "span_id": "span:laya-dev1-spec03-r2-0",
+        "start": 578
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:5d95d677cd10d73b",
+    "pair_sha256": "d68aa6c19dc6006be3d38add3fc5a296c167ef03751310b530af52e3394352bd",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 Rust Reference의 설명은 다음과 같다. 타입 별칭은 기존 타입에 다른 이름을 붙인다.",
+    "b": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. 타입 별칭은 기존 타입에 다른 이름을 붙인다.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec05다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 542,
+        "excerpt_sha256": "e2cbe245b37e27ba3e4abdf4ba8c1ef25aa6cae2adb3d54d25ccb9f4f7f5a149",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/type-aliases.md",
+        "snapshot_path": "sources/spec05.txt",
+        "source_sha256": "c3085a4a860f703edc5dc65e16a62dc87dbf8c9a29f12158ff048ca383ef2db1",
+        "span_id": "span:laya-dev1-spec05-r2-0",
+        "start": 199
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:5fc91424f5a0c7a5",
+    "pair_sha256": "dedfd53a0a4bc6f00981b2082864c10b9aeec696dffa75340179876b9e774718",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The grouped query returned a sum of 5 for both a and b.",
+    "b": "그룹별 쿼리 결과는 a가 2, b가 5였다.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs08. SQL: CREATE TABLE t(k,v); INSERT INTO t VALUES ('a',2),('a',3),('b',5); SELECT k,sum(v) FROM t GROUP BY k ORDER BY k;",
+    "evidence": [
+      {
+        "end": 1095,
+        "excerpt_sha256": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+        "origin_uri": "vinc-local-observation:obs08",
+        "snapshot_path": "sources/obs08.txt",
+        "source_sha256": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+        "span_id": "span:laya-dev1-obs08-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:60620b3b8b6904f5",
+    "pair_sha256": "550b44f33b55e90d386bd01e8657e7753e1a7e33040eade3e4e1939354535fbd",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "이 기록에서 PHNL의 시간대 식별자는 Pacific/Honolulu다.",
+    "b": "이 기록에서 PHNL의 시간대 식별자는 Etc/UTC다.",
+    "context": "NWS 관측소 PHNL, 수집 시점 2026-10-11T09:50:51.278730+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2134,
+        "excerpt_sha256": "022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+        "origin_uri": "https://api.weather.gov/stations/PHNL",
+        "snapshot_path": "sources/fact05.txt",
+        "source_sha256": "022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+        "span_id": "span:laya-dev1-fact05-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:6a1c7f77c626dd0a",
+    "pair_sha256": "9678a4d945c35f6a1bb652899aa2adf07cce5faeb8fc68901146014ae03b60a8",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 NWS PHNL 메타데이터의 timeZone은 Pacific/Honolulu다.",
+    "b": "이 기록에서 PHNL의 시간대 식별자는 Pacific/Honolulu다.",
+    "context": "NWS 관측소 PHNL, 수집 시점 2026-10-11T09:50:51.278730+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2134,
+        "excerpt_sha256": "022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+        "origin_uri": "https://api.weather.gov/stations/PHNL",
+        "snapshot_path": "sources/fact05.txt",
+        "source_sha256": "022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+        "span_id": "span:laya-dev1-fact05-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:6a942742c7d4fd9c",
+    "pair_sha256": "4c264c889069ce72203b532be16e84d7220e18a0f641658d6843bfa212bc5c93",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "Isolated SQLite case obs08 exited 0 and printed rows [[\"a\", 5], [\"b\", 5]].",
+    "b": "그룹별 쿼리에서 a와 b의 합은 각각 5였다.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs08. SQL: CREATE TABLE t(k,v); INSERT INTO t VALUES ('a',2),('a',3),('b',5); SELECT k,sum(v) FROM t GROUP BY k ORDER BY k;",
+    "evidence": [
+      {
+        "end": 1095,
+        "excerpt_sha256": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+        "origin_uri": "vinc-local-observation:obs08",
+        "snapshot_path": "sources/obs08.txt",
+        "source_sha256": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+        "span_id": "span:laya-dev1-obs08-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:6d94994f9114302c",
+    "pair_sha256": "d556652fd9d326ae51742bee17e7e5a73d9bd502e9e6a63af62ad27dbfc49fe8",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "KDEN has a metadata elevation greater than 1646 m.",
+    "b": "The recorded station elevation for KDEN exceeds 1646 metres.",
+    "context": "NWS station KDEN, captured 2026-10-11T09:50:50.487729+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2140,
+        "excerpt_sha256": "6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+        "origin_uri": "https://api.weather.gov/stations/KDEN",
+        "snapshot_path": "sources/fact02.txt",
+        "source_sha256": "6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+        "span_id": "span:laya-dev1-fact02-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:7198d8e9a60237f2",
+    "pair_sha256": "96a47bffc052cc2bf1e0a564e8474fc4d40baca7aac2441c0fd043fd95038788",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The frozen NWS metadata for PAFA lists elevation 131.9784 m.",
+    "b": "This same field value is guaranteed for every station at every future update: PAFA has a metadata elevation greater than 130 m.",
+    "context": "NWS station PAFA, captured 2026-10-11T09:50:51.577758+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2148,
+        "excerpt_sha256": "f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+        "origin_uri": "https://api.weather.gov/stations/PAFA",
+        "snapshot_path": "sources/fact06.txt",
+        "source_sha256": "f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+        "span_id": "span:laya-dev1-fact06-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:72f3037d2f898dc5",
+    "pair_sha256": "6b7a63e6c327052fae6e1b7d053b8ef89e8b85b931d5cf6f7c24c19981cd5b83",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 NWS KSEA 메타데이터의 timeZone은 America/Los_Angeles다.",
+    "b": "이 기록에서 KSEA의 시간대 식별자는 America/Los_Angeles다.",
+    "context": "NWS 관측소 KSEA, 수집 시점 2026-10-11T09:50:50.240294+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2153,
+        "excerpt_sha256": "9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+        "origin_uri": "https://api.weather.gov/stations/KSEA",
+        "snapshot_path": "sources/fact01.txt",
+        "source_sha256": "9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+        "span_id": "span:laya-dev1-fact01-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:76b80595ead268dd",
+    "pair_sha256": "1e97287c7a2cae09e3097b82dcdcd4ee14a144bda8bc31c356a04caf58ebca50",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 Rust Reference의 설명은 다음과 같다. use 선언은 기본적으로 자신이 속한 모듈 안에서 비공개다.",
+    "b": "This rule also applies without exception to every unrelated programming language: A use declaration is private to its containing module by default.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec07다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 2666,
+        "excerpt_sha256": "3e809920f18b43a5c04c9c3135dc349390976d0cb2e895df9bfe4132e85a1fef",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/use-declarations.md",
+        "snapshot_path": "sources/spec07.txt",
+        "source_sha256": "86ca81b9c4e4b3cde24e308e48e305233abc10ceadc5006aacd60b948187265d",
+        "span_id": "span:laya-dev1-spec07-r2-0",
+        "start": 2235
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:77c0d727e20da67a",
+    "pair_sha256": "5df7fb441613eb5c38b9fbe8e61ecd8b0e74301ed1912252d3bbb73049e73cb6",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "타입 별칭은 기존 타입에 다른 이름을 붙인다.",
+    "b": "타입 별칭은 반드시 별개의 새 타입을 만든다.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec05다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 542,
+        "excerpt_sha256": "e2cbe245b37e27ba3e4abdf4ba8c1ef25aa6cae2adb3d54d25ccb9f4f7f5a149",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/type-aliases.md",
+        "snapshot_path": "sources/spec05.txt",
+        "source_sha256": "c3085a4a860f703edc5dc65e16a62dc87dbf8c9a29f12158ff048ca383ef2db1",
+        "span_id": "span:laya-dev1-spec05-r2-0",
+        "start": 199
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:7951205f1ab54007",
+    "pair_sha256": "99644315a557c06016531d97eac4bfa8aeef56eafa5e57ebf5a919605f0c6ee6",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "Evaluating return transfers control to the caller frame.",
+    "b": "A return expression passes control back to the calling frame.",
+    "context": "Rust Reference commit 5baa209fc199, spec02. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 443,
+        "excerpt_sha256": "a6b23549590b80afd29e584abd854497e9c32b6d081d3eaab07e09d3053d632c",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/return-expr.md",
+        "snapshot_path": "sources/spec02.txt",
+        "source_sha256": "b0a5df6b4b546d676e9bc9f0500fed243ef0a8c6d609b9e4434abec43e432158",
+        "span_id": "span:laya-dev1-spec02-r2-0",
+        "start": 210
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:7a53d65cb0993a69",
+    "pair_sha256": "093f7c506d7502928fff55911638778a4e624f8912414e999b10c7c16ec19b1a",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The frozen NWS metadata for PAFA lists elevation 131.9784 m.",
+    "b": "PAFA has a metadata elevation greater than 130 m.",
+    "context": "NWS station PAFA, captured 2026-10-11T09:50:51.577758+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2148,
+        "excerpt_sha256": "f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+        "origin_uri": "https://api.weather.gov/stations/PAFA",
+        "snapshot_path": "sources/fact06.txt",
+        "source_sha256": "f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+        "span_id": "span:laya-dev1-fact06-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:7ac5ea03366db94d",
+    "pair_sha256": "b1dcd99fe6c7d024646dea9da31f044db48543b0a525fcaa51461effd8d11782",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The pinned Rust Reference states: References to the same constant need not share one memory address.",
+    "b": "This rule also applies without exception to every unrelated programming language: References to the same constant need not share one memory address.",
+    "context": "Rust Reference commit 5baa209fc199, spec06. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 646,
+        "excerpt_sha256": "09fa676fe77eecb94f18f227867e279c8a5316de027c3db639231139a63012b9",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/constant-items.md",
+        "snapshot_path": "sources/spec06.txt",
+        "source_sha256": "1f39ac3e895b4228ddc7a840743355707c0956831ce6097d8b43676e76cd12f1",
+        "span_id": "span:laya-dev1-spec06-r2-0",
+        "start": 313
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:86acddad989186e8",
+    "pair_sha256": "a0e7462db5349348f6d576485b4ad765668fafc6881ec657631589d41f7faa0e",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The pinned Rust Reference states: Evaluating return transfers control to the caller frame.",
+    "b": "Evaluating return transfers control to the caller frame.",
+    "context": "Rust Reference commit 5baa209fc199, spec02. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 443,
+        "excerpt_sha256": "a6b23549590b80afd29e584abd854497e9c32b6d081d3eaab07e09d3053d632c",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/return-expr.md",
+        "snapshot_path": "sources/spec02.txt",
+        "source_sha256": "b0a5df6b4b546d676e9bc9f0500fed243ef0a8c6d609b9e4434abec43e432158",
+        "span_id": "span:laya-dev1-spec02-r2-0",
+        "start": 210
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:8774405ffa2a2c48",
+    "pair_sha256": "33a28f290738d3e8179c7c80deedcbcff427ebbf5809ce68c642271f68444a0f",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "A one-element tuple expression needs a comma after its operand.",
+    "b": "원소가 하나인 튜플 표현식은 피연산자 뒤에 쉼표를 쓸 수 없다.",
+    "context": "Rust Reference commit 5baa209fc199, spec04. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 621,
+        "excerpt_sha256": "2b33c651f7161288d3ef7f7b9d59fe85d63d2924410f291f19b8b3c7688e9c41",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/tuple-expr.md",
+        "snapshot_path": "sources/spec04.txt",
+        "source_sha256": "909e6f0ad921fd84ddf8c0a482a100d33d2b2e0fc89c68bbf2773109986e02a8",
+        "span_id": "span:laya-dev1-spec04-r2-0",
+        "start": 451
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:8823026bdf713771",
+    "pair_sha256": "c22da4d6c90496194bdafdde44e386111e3bceb1bd0303d78497884d978b18d8",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "KORD의 county 구역 링크는 ILC031로 끝난다.",
+    "b": "ILC031 is the final identifier in this record’s county link for KORD.",
+    "context": "NWS 관측소 KORD, 수집 시점 2026-10-11T09:50:50.755734+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2148,
+        "excerpt_sha256": "c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+        "origin_uri": "https://api.weather.gov/stations/KORD",
+        "snapshot_path": "sources/fact03.txt",
+        "source_sha256": "c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+        "span_id": "span:laya-dev1-fact03-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:8a2cb78992e030d0",
+    "pair_sha256": "1056a2c64dd494dc2bb7006d62a432b8c48c2c3f800e843f5999e3bdbb7346bc",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "이 기록에서 PHNL의 시간대 식별자는 Pacific/Honolulu다.",
+    "b": "이 메타데이터에서 PHNL에 연결한 시간대 이름은 Pacific/Honolulu다.",
+    "context": "NWS 관측소 PHNL, 수집 시점 2026-10-11T09:50:51.278730+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2134,
+        "excerpt_sha256": "022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+        "origin_uri": "https://api.weather.gov/stations/PHNL",
+        "snapshot_path": "sources/fact05.txt",
+        "source_sha256": "022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+        "span_id": "span:laya-dev1-fact05-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:8d5e20dcf7176fd6",
+    "pair_sha256": "6fd7c878645a799353415b9423e59b0e6f37379cf0edf90f4b126c1c90e995b0",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 Rust Reference의 설명은 다음과 같다. 배열에 나열한 값들은 작성한 순서대로 들어간다.",
+    "b": "This rule also applies without exception to every unrelated programming language: The listed array values keep their written order.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec03다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 692,
+        "excerpt_sha256": "d622336a195a7580d9c648128e42e3058f9705dfc5d712a991be6299927ca8df",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/array-expr.md",
+        "snapshot_path": "sources/spec03.txt",
+        "source_sha256": "2b5e385fc7243d93e9c9387931b214f069ba91b2528480758aaf186e43372a2b",
+        "span_id": "span:laya-dev1-spec03-r2-0",
+        "start": 578
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:904c8fc80a62d1f5",
+    "pair_sha256": "8b4d628b3c6eb668b6adeed44af6fb219978edbfcd71d63a049b0a51a48ba956",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The frozen NWS metadata for KDEN lists elevation 1647.1392 m.",
+    "b": "This same field value is guaranteed for every station at every future update: KDEN has a metadata elevation greater than 1646 m.",
+    "context": "NWS station KDEN, captured 2026-10-11T09:50:50.487729+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2140,
+        "excerpt_sha256": "6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+        "origin_uri": "https://api.weather.gov/stations/KDEN",
+        "snapshot_path": "sources/fact02.txt",
+        "source_sha256": "6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+        "span_id": "span:laya-dev1-fact02-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:9873ff18f960f069",
+    "pair_sha256": "0fb6bb2cd065579c4507fe3097deb44a244f90e127363da0f1c6a19d788838af",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 Rust Reference의 설명은 다음과 같다. use 선언은 기본적으로 자신이 속한 모듈 안에서 비공개다.",
+    "b": "A use declaration is private to its containing module by default.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec07다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 2666,
+        "excerpt_sha256": "3e809920f18b43a5c04c9c3135dc349390976d0cb2e895df9bfe4132e85a1fef",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/use-declarations.md",
+        "snapshot_path": "sources/spec07.txt",
+        "source_sha256": "86ca81b9c4e4b3cde24e308e48e305233abc10ceadc5006aacd60b948187265d",
+        "span_id": "span:laya-dev1-spec07-r2-0",
+        "start": 2235
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:99059f5f4e1cf585",
+    "pair_sha256": "4e5ed6641102c5fb1cfe6243306a6b18a20f4eb85864e48460ed8d940d6f738f",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 NWS PHNL 메타데이터의 timeZone은 Pacific/Honolulu다.",
+    "b": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. 이 기록에서 PHNL의 시간대 식별자는 Pacific/Honolulu다.",
+    "context": "NWS 관측소 PHNL, 수집 시점 2026-10-11T09:50:51.278730+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2134,
+        "excerpt_sha256": "022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+        "origin_uri": "https://api.weather.gov/stations/PHNL",
+        "snapshot_path": "sources/fact05.txt",
+        "source_sha256": "022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+        "span_id": "span:laya-dev1-fact05-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:997f0e429ed7b5bb",
+    "pair_sha256": "ef47594c97d7f13ba6b3d95fdad6c514657f86d9ecdbfbb79fb924ff2bd10e76",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "격리된 SQLite 시험 obs03의 종료 코드는 0이며 출력된 행은 [[1]]이다.",
+    "b": "The unique-key table held one row after the ignored duplicate insert.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs03다. SQL: CREATE TABLE t(x INTEGER UNIQUE); INSERT INTO t VALUES (3); INSERT OR IGNORE INTO t VALUES (3); SELECT count(*) FROM t;",
+    "evidence": [
+      {
+        "end": 1045,
+        "excerpt_sha256": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+        "origin_uri": "vinc-local-observation:obs03",
+        "snapshot_path": "sources/obs03.txt",
+        "source_sha256": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+        "span_id": "span:laya-dev1-obs03-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:9b824843e8646feb",
+    "pair_sha256": "3414b7000317a2b9e93297dfa6cddd886ce1427170b4b043acddf4812ade335c",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The frozen NWS metadata for KMIA lists provider ASOS-HFM.",
+    "b": "KMIA에 저장된 provider 필드의 값은 ASOS-HFM다.",
+    "context": "NWS station KMIA, captured 2026-10-11T09:50:52.158756+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2135,
+        "excerpt_sha256": "ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+        "origin_uri": "https://api.weather.gov/stations/KMIA",
+        "snapshot_path": "sources/fact08.txt",
+        "source_sha256": "ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+        "span_id": "span:laya-dev1-fact08-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:9c5936e2c0c98105",
+    "pair_sha256": "a4e79a8a2bcaa196141c5792fd6e694eb2daba5112e6542a430fa60aa8ca8427",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "중복 삽입을 무시한 뒤 고유 키 테이블에는 한 행이 남았다.",
+    "b": "The ignored duplicate insert increased the row count to two.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs03다. SQL: CREATE TABLE t(x INTEGER UNIQUE); INSERT INTO t VALUES (3); INSERT OR IGNORE INTO t VALUES (3); SELECT count(*) FROM t;",
+    "evidence": [
+      {
+        "end": 1045,
+        "excerpt_sha256": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+        "origin_uri": "vinc-local-observation:obs03",
+        "snapshot_path": "sources/obs03.txt",
+        "source_sha256": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+        "span_id": "span:laya-dev1-obs03-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:a019c72e99c45ff8",
+    "pair_sha256": "dd4e247fb2c9df13a58f7652bb15a199411a132aacbbffa328f36dbe46b0562c",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "Isolated SQLite case obs02 exited 0 and printed rows [[1, null]].",
+    "b": "NULL IS NULL returned 1, while NULL = NULL returned null.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs02. SQL:  SELECT NULL IS NULL, NULL = NULL;",
+    "evidence": [
+      {
+        "end": 893,
+        "excerpt_sha256": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+        "origin_uri": "vinc-local-observation:obs02",
+        "snapshot_path": "sources/obs02.txt",
+        "source_sha256": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+        "span_id": "span:laya-dev1-obs02-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:a372891000140a07",
+    "pair_sha256": "44f3174be1099d104bbc5ef9454f36449822ee745389a01f1fb660aeb02a0759",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The integer division produced 3; the real-valued division produced 3.5.",
+    "b": "Dividing 7 by 2 gave 3, whereas dividing 7.0 by 2 gave 3.5.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs06. SQL:  SELECT typeof(7/2), 7/2, 7.0/2;",
+    "evidence": [
+      {
+        "end": 917,
+        "excerpt_sha256": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+        "origin_uri": "vinc-local-observation:obs06",
+        "snapshot_path": "sources/obs06.txt",
+        "source_sha256": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+        "span_id": "span:laya-dev1-obs06-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:a3a7435f0ad2be74",
+    "pair_sha256": "9fda7025fc6f2d22733a5bb9a27a2dbf53333d962dfd966cb0071affce055e37",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "중복을 제거하고 정렬한 쿼리는 1과 2의 두 행을 반환했다.",
+    "b": "Removing duplicate x values left 1 and 2 in the result.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs07다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (1),(1),(2); SELECT DISTINCT x FROM t ORDER BY x;",
+    "evidence": [
+      {
+        "end": 1011,
+        "excerpt_sha256": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+        "origin_uri": "vinc-local-observation:obs07",
+        "snapshot_path": "sources/obs07.txt",
+        "source_sha256": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+        "span_id": "span:laya-dev1-obs07-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:a3f5802b89aa9e92",
+    "pair_sha256": "ff317868f058c1361b99abb4a946bdb0cbe17c8d8ce63e4c8e5f736f8bbe5b11",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "NULL IS NULL returned 1, while NULL = NULL returned null.",
+    "b": "Both NULL comparisons returned 1 in this run.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs02. SQL:  SELECT NULL IS NULL, NULL = NULL;",
+    "evidence": [
+      {
+        "end": 893,
+        "excerpt_sha256": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+        "origin_uri": "vinc-local-observation:obs02",
+        "snapshot_path": "sources/obs02.txt",
+        "source_sha256": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+        "span_id": "span:laya-dev1-obs02-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:a8dbc8a41656b027",
+    "pair_sha256": "5ebdc018f3ac9af99266cdec1659e45f5f68b8326476f049dfca3e2b62e4cbee",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "A one-element tuple expression needs a comma after its operand.",
+    "b": "뒤에 붙인 쉼표가 원소 하나인 튜플을 괄호 표현식과 구별한다.",
+    "context": "Rust Reference commit 5baa209fc199, spec04. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 621,
+        "excerpt_sha256": "2b33c651f7161288d3ef7f7b9d59fe85d63d2924410f291f19b8b3c7688e9c41",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/tuple-expr.md",
+        "snapshot_path": "sources/spec04.txt",
+        "source_sha256": "909e6f0ad921fd84ddf8c0a482a100d33d2b2e0fc89c68bbf2773109986e02a8",
+        "span_id": "span:laya-dev1-spec04-r2-0",
+        "start": 451
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:ace5672151c1a624",
+    "pair_sha256": "eec4a3b9878115fea040886350f9997f748392cea462a86517ba736f815fa20e",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "use 선언은 기본적으로 자신이 속한 모듈 안에서 비공개다.",
+    "b": "Without pub, a use declaration defaults to module-private visibility.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec07다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 2666,
+        "excerpt_sha256": "3e809920f18b43a5c04c9c3135dc349390976d0cb2e895df9bfe4132e85a1fef",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/use-declarations.md",
+        "snapshot_path": "sources/spec07.txt",
+        "source_sha256": "86ca81b9c4e4b3cde24e308e48e305233abc10ceadc5006aacd60b948187265d",
+        "span_id": "span:laya-dev1-spec07-r2-0",
+        "start": 2235
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:ad0b9eb7d2791560",
+    "pair_sha256": "aa0e39ef70da5eb84b69aeba5f402ca9f498da09ed3aff68005bedc4f5f7df9e",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The grouped query returned a sum of 5 for both a and b.",
+    "b": "두 키의 집계값은 각각 5였다.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs08. SQL: CREATE TABLE t(k,v); INSERT INTO t VALUES ('a',2),('a',3),('b',5); SELECT k,sum(v) FROM t GROUP BY k ORDER BY k;",
+    "evidence": [
+      {
+        "end": 1095,
+        "excerpt_sha256": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+        "origin_uri": "vinc-local-observation:obs08",
+        "snapshot_path": "sources/obs08.txt",
+        "source_sha256": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+        "span_id": "span:laya-dev1-obs08-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:af5ccf124621bf27",
+    "pair_sha256": "33510becac595aba3d6c9eea95c6a1c849bef06633cf02271574dbf5a0dd87fd",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "PAFA has a metadata elevation greater than 130 m.",
+    "b": "The recorded station elevation for PAFA exceeds 130 metres.",
+    "context": "NWS station PAFA, captured 2026-10-11T09:50:51.577758+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2148,
+        "excerpt_sha256": "f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+        "origin_uri": "https://api.weather.gov/stations/PAFA",
+        "snapshot_path": "sources/fact06.txt",
+        "source_sha256": "f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+        "span_id": "span:laya-dev1-fact06-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:b1a300e4ab4826f2",
+    "pair_sha256": "f2cc2bfda7032effe1f7282c39349ac1cb265dfbd311c3fde74452430c3835b3",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "이번 쿼리에서 count(*)는 3이고 count(x)는 2였다.",
+    "b": "NULL이 포함된 이번 입력의 행 수는 3, NULL이 아닌 x의 수는 2였다.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs01다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9); SELECT count(*), count(x) FROM t;",
+    "evidence": [
+      {
+        "end": 997,
+        "excerpt_sha256": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+        "origin_uri": "vinc-local-observation:obs01",
+        "snapshot_path": "sources/obs01.txt",
+        "source_sha256": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+        "span_id": "span:laya-dev1-obs01-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:b473d1b754eb6af3",
+    "pair_sha256": "e2363d90c3cb4b56d8c45e824cd9936089bbd4da691942d84250420cd3380ff7",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "Rust의 start..end 범위는 상한값을 포함하지 않는다.",
+    "b": "Rust의 start..end 범위 밖에 상한값 end가 있다.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec01다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 1413,
+        "excerpt_sha256": "bc53b4adf44ceb5577d0626148e25083f89060e6d7d9a2ec41e1413b8fb29ccc",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/range-expr.md",
+        "snapshot_path": "sources/spec01.txt",
+        "source_sha256": "81d5e0721c0fbbd11e29859902b9ab7c6a4d630531f46e07b9bf474d0e86b819",
+        "span_id": "span:laya-dev1-spec01-r2-0",
+        "start": 452
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:b4ddca0fe0f1a145",
+    "pair_sha256": "91e7a8b16e905d3a60548296bd9b019dc1ecfef902c6bb83366b1d9d783d1e01",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "KSFO의 county 구역 링크는 CAC081로 끝난다.",
+    "b": "The county-zone link for KSFO ends with ZZZ999.",
+    "context": "NWS 관측소 KSFO, 수집 시점 2026-10-11T09:50:51.902731+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2151,
+        "excerpt_sha256": "d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+        "origin_uri": "https://api.weather.gov/stations/KSFO",
+        "snapshot_path": "sources/fact07.txt",
+        "source_sha256": "d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+        "span_id": "span:laya-dev1-fact07-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:b693cabbb075f943",
+    "pair_sha256": "59f1f58bafceeb46dd3c0690085d4206b69092a514c5713df4cb9238ddf5b49e",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "이번 쿼리에서 count(*)는 3이고 count(x)는 2였다.",
+    "b": "이번 쿼리에서 두 개수는 모두 3이었다.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs01다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9); SELECT count(*), count(x) FROM t;",
+    "evidence": [
+      {
+        "end": 997,
+        "excerpt_sha256": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+        "origin_uri": "vinc-local-observation:obs01",
+        "snapshot_path": "sources/obs01.txt",
+        "source_sha256": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+        "span_id": "span:laya-dev1-obs01-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:b769b37022616178",
+    "pair_sha256": "43c9c86ca5c42dc586522de28758654e55bcc80f2b0124216724e81cb22872e7",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "KORD의 county 구역 링크는 ILC031로 끝난다.",
+    "b": "The county-zone link for KORD ends with ZZZ999.",
+    "context": "NWS 관측소 KORD, 수집 시점 2026-10-11T09:50:50.755734+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2148,
+        "excerpt_sha256": "c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+        "origin_uri": "https://api.weather.gov/stations/KORD",
+        "snapshot_path": "sources/fact03.txt",
+        "source_sha256": "c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+        "span_id": "span:laya-dev1-fact03-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:ba0dc7d2ea21d874",
+    "pair_sha256": "3a96f805c6994de2c6ddd8db749c6dc7e8730268a88e6775e1eb0d5a8b39000c",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "중복 삽입을 무시한 뒤 고유 키 테이블에는 한 행이 남았다.",
+    "b": "Ignoring the duplicate kept the row count at one.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs03다. SQL: CREATE TABLE t(x INTEGER UNIQUE); INSERT INTO t VALUES (3); INSERT OR IGNORE INTO t VALUES (3); SELECT count(*) FROM t;",
+    "evidence": [
+      {
+        "end": 1045,
+        "excerpt_sha256": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+        "origin_uri": "vinc-local-observation:obs03",
+        "snapshot_path": "sources/obs03.txt",
+        "source_sha256": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+        "span_id": "span:laya-dev1-obs03-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:c1bcb47656356c3d",
+    "pair_sha256": "129d48827f2a23df96d32793bdca222614aa5ab32a334114e41953f0e0ab633a",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "use 선언은 기본적으로 자신이 속한 모듈 안에서 비공개다.",
+    "b": "Every use declaration is public by default.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec07다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 2666,
+        "excerpt_sha256": "3e809920f18b43a5c04c9c3135dc349390976d0cb2e895df9bfe4132e85a1fef",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/use-declarations.md",
+        "snapshot_path": "sources/spec07.txt",
+        "source_sha256": "86ca81b9c4e4b3cde24e308e48e305233abc10ceadc5006aacd60b948187265d",
+        "span_id": "span:laya-dev1-spec07-r2-0",
+        "start": 2235
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:c4dbfcf092439085",
+    "pair_sha256": "710749903e6104d5773fbe83243e4e3d1654a5679902a1389f2afa92a671e834",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "격리된 SQLite 시험 obs07의 종료 코드는 0이며 출력된 행은 [[1], [2]]이다.",
+    "b": "All other database systems and all datasets must produce this recorded outcome: The distinct ordered query returned two rows: 1 and 2.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs07다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (1),(1),(2); SELECT DISTINCT x FROM t ORDER BY x;",
+    "evidence": [
+      {
+        "end": 1011,
+        "excerpt_sha256": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+        "origin_uri": "vinc-local-observation:obs07",
+        "snapshot_path": "sources/obs07.txt",
+        "source_sha256": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+        "span_id": "span:laya-dev1-obs07-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:c76ee13cb9c999ed",
+    "pair_sha256": "0ab39fc59dff60c238d4cf2865e75aad8739dd99b59b8423cb324578a0ba7356",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "A private item may be accessed by its module and that module’s descendants.",
+    "b": "비공개 항목은 어떤 하위 모듈에서도 접근할 수 없다.",
+    "context": "Rust Reference commit 5baa209fc199, spec08. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 2029,
+        "excerpt_sha256": "41dfb9e9e95d12beb7b6950b870b3172054704bc8a056f10dc417e8177318e6d",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/visibility-and-privacy.md",
+        "snapshot_path": "sources/spec08.txt",
+        "source_sha256": "6c188645970168efd11cfb397708a9641220c3c72921ca9d82a8fe13fa7072a5",
+        "span_id": "span:laya-dev1-spec08-r2-0",
+        "start": 1720
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:ca282e92fde7172a",
+    "pair_sha256": "60de79a795e945cab2ee0265f2f823bb601065e13f3d0116577d16ee38776dcd",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "격리된 SQLite 시험 obs05의 종료 코드는 0이며 출력된 행은 [[0, null, 0.0]]이다.",
+    "b": "빈 테이블에서 sum(x)는 NULL, total(x)는 0.0이었다.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs05다. SQL: CREATE TABLE t(x); SELECT count(*), sum(x), total(x) FROM t;",
+    "evidence": [
+      {
+        "end": 961,
+        "excerpt_sha256": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+        "origin_uri": "vinc-local-observation:obs05",
+        "snapshot_path": "sources/obs05.txt",
+        "source_sha256": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+        "span_id": "span:laya-dev1-obs05-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:cd1a7a12194606d4",
+    "pair_sha256": "73c1ea541fa0035456c974fe3cad033a7266473056384cb2de1b209f99629d59",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "ASOS-HFM is the provider field stored for KBOS.",
+    "b": "KBOS에 저장된 provider 필드의 값은 NONE이다.",
+    "context": "NWS station KBOS, captured 2026-10-11T09:50:50.986739+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2136,
+        "excerpt_sha256": "35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+        "origin_uri": "https://api.weather.gov/stations/KBOS",
+        "snapshot_path": "sources/fact04.txt",
+        "source_sha256": "35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+        "span_id": "span:laya-dev1-fact04-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:cfbe1c714f2a7ad7",
+    "pair_sha256": "58ea617e57819ada86737c0585accd00f225fd9b76e2ecb61054b4111a3e713e",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "KSFO의 county 구역 링크는 CAC081로 끝난다.",
+    "b": "CAC081 is the final identifier in this record’s county link for KSFO.",
+    "context": "NWS 관측소 KSFO, 수집 시점 2026-10-11T09:50:51.902731+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2151,
+        "excerpt_sha256": "d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+        "origin_uri": "https://api.weather.gov/stations/KSFO",
+        "snapshot_path": "sources/fact07.txt",
+        "source_sha256": "d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+        "span_id": "span:laya-dev1-fact07-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:d134b54992d2f3e4",
+    "pair_sha256": "31a60f7f2c73ce58c4631a48e5c99601a72308743b012e484545a8c315d08fe6",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The pinned Rust Reference states: A one-element tuple expression needs a comma after its operand.",
+    "b": "원소가 하나인 튜플 표현식은 피연산자 뒤에 쉼표가 필요하다.",
+    "context": "Rust Reference commit 5baa209fc199, spec04. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 621,
+        "excerpt_sha256": "2b33c651f7161288d3ef7f7b9d59fe85d63d2924410f291f19b8b3c7688e9c41",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/tuple-expr.md",
+        "snapshot_path": "sources/spec04.txt",
+        "source_sha256": "909e6f0ad921fd84ddf8c0a482a100d33d2b2e0fc89c68bbf2773109986e02a8",
+        "span_id": "span:laya-dev1-spec04-r2-0",
+        "start": 451
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:d463879696a41272",
+    "pair_sha256": "fb1c25bfe6bb79b1fb8816a1a4fab9f323b94c0639ec64e06c812a68be1db798",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "배열에 나열한 값들은 작성한 순서대로 들어간다.",
+    "b": "An array formed by listing values retains their source order.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec03다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 692,
+        "excerpt_sha256": "d622336a195a7580d9c648128e42e3058f9705dfc5d712a991be6299927ca8df",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/array-expr.md",
+        "snapshot_path": "sources/spec03.txt",
+        "source_sha256": "2b5e385fc7243d93e9c9387931b214f069ba91b2528480758aaf186e43372a2b",
+        "span_id": "span:laya-dev1-spec03-r2-0",
+        "start": 578
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:d4f4f2fc372cb9f7",
+    "pair_sha256": "95f1266d93ba99bc4afd2887bfdab4064cc6069c428ad5741bc426b3c721a93d",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "이 기록에서 KSEA의 시간대 식별자는 America/Los_Angeles다.",
+    "b": "이 기록에서 KSEA의 시간대 식별자는 Etc/UTC다.",
+    "context": "NWS 관측소 KSEA, 수집 시점 2026-10-11T09:50:50.240294+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2153,
+        "excerpt_sha256": "9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+        "origin_uri": "https://api.weather.gov/stations/KSEA",
+        "snapshot_path": "sources/fact01.txt",
+        "source_sha256": "9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+        "span_id": "span:laya-dev1-fact01-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:d63f0915e83780e1",
+    "pair_sha256": "eb887155db5c17abd81c571461aa959d19221996a9ee3271a219b775510f6450",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 Rust Reference의 설명은 다음과 같다. Rust의 start..end 범위는 상한값을 포함하지 않는다.",
+    "b": "Rust의 start..end 범위는 상한값을 포함하지 않는다.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec01다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 1413,
+        "excerpt_sha256": "bc53b4adf44ceb5577d0626148e25083f89060e6d7d9a2ec41e1413b8fb29ccc",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/range-expr.md",
+        "snapshot_path": "sources/spec01.txt",
+        "source_sha256": "81d5e0721c0fbbd11e29859902b9ab7c6a4d630531f46e07b9bf474d0e86b819",
+        "span_id": "span:laya-dev1-spec01-r2-0",
+        "start": 452
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:d6d377816a9bd90a",
+    "pair_sha256": "18eda19c6affdef779c3d7987705ecf250de1f228b119f9b7213ccdac9ece9db",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "Rust의 start..end 범위는 상한값을 포함하지 않는다.",
+    "b": "Rust의 start..end 범위는 상한값 end를 포함한다.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec01다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 1413,
+        "excerpt_sha256": "bc53b4adf44ceb5577d0626148e25083f89060e6d7d9a2ec41e1413b8fb29ccc",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/range-expr.md",
+        "snapshot_path": "sources/spec01.txt",
+        "source_sha256": "81d5e0721c0fbbd11e29859902b9ab7c6a4d630531f46e07b9bf474d0e86b819",
+        "span_id": "span:laya-dev1-spec01-r2-0",
+        "start": 452
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:de375f29c0c28fd8",
+    "pair_sha256": "6b2f45f63c1b9ae8d16e91164f80e097bbd63a16634391e1e52a3c76557dc111",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The frozen NWS metadata for KBOS lists provider ASOS-HFM.",
+    "b": "KBOS에 저장된 provider 필드의 값은 ASOS-HFM다.",
+    "context": "NWS station KBOS, captured 2026-10-11T09:50:50.986739+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2136,
+        "excerpt_sha256": "35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+        "origin_uri": "https://api.weather.gov/stations/KBOS",
+        "snapshot_path": "sources/fact04.txt",
+        "source_sha256": "35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+        "span_id": "span:laya-dev1-fact04-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:dea54e5782edc91a",
+    "pair_sha256": "6d1cec4778f31c6164f344029a3e842ca36cceab5b2384e7684a7255f757b092",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "격리된 SQLite 시험 obs07의 종료 코드는 0이며 출력된 행은 [[1], [2]]이다.",
+    "b": "The distinct ordered query returned two rows: 1 and 2.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs07다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (1),(1),(2); SELECT DISTINCT x FROM t ORDER BY x;",
+    "evidence": [
+      {
+        "end": 1011,
+        "excerpt_sha256": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+        "origin_uri": "vinc-local-observation:obs07",
+        "snapshot_path": "sources/obs07.txt",
+        "source_sha256": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+        "span_id": "span:laya-dev1-obs07-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:e0fc3e4ca4939373",
+    "pair_sha256": "5d783ff718bc0a7440f0d6f9781a0ceff5888b067da9af331d1c3b39eb8c2a2d",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "빈 테이블에서 sum(x)는 NULL, total(x)는 0.0이었다.",
+    "b": "빈 테이블에서 sum(x)와 total(x)는 모두 NULL을 반환했다.",
+    "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs05다. SQL: CREATE TABLE t(x); SELECT count(*), sum(x), total(x) FROM t;",
+    "evidence": [
+      {
+        "end": 961,
+        "excerpt_sha256": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+        "origin_uri": "vinc-local-observation:obs05",
+        "snapshot_path": "sources/obs05.txt",
+        "source_sha256": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+        "span_id": "span:laya-dev1-obs05-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:e2b5742fdab4a093",
+    "pair_sha256": "4d7aae67a6f2e84d17297839af5cb9284ceb9020e183e7c993db36053ff10277",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The descending limited query returned 8 followed by 5.",
+    "b": "이번 정렬과 개수 제한으로 반환된 값은 8 다음 5였다.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs04. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (8),(2),(5); SELECT x FROM t ORDER BY x DESC LIMIT 2;",
+    "evidence": [
+      {
+        "end": 1019,
+        "excerpt_sha256": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+        "origin_uri": "vinc-local-observation:obs04",
+        "snapshot_path": "sources/obs04.txt",
+        "source_sha256": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+        "span_id": "span:laya-dev1-obs04-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:e4857da3f751488a",
+    "pair_sha256": "067d8374e74438582a48065b730a9143ac2a760ff27797bf96310b33575e36ad",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The integer division produced 3; the real-valued division produced 3.5.",
+    "b": "Both divisions produced 3.5 in this query.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs06. SQL:  SELECT typeof(7/2), 7/2, 7.0/2;",
+    "evidence": [
+      {
+        "end": 917,
+        "excerpt_sha256": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+        "origin_uri": "vinc-local-observation:obs06",
+        "snapshot_path": "sources/obs06.txt",
+        "source_sha256": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+        "span_id": "span:laya-dev1-obs06-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:ecc08b1b8f8b9691",
+    "pair_sha256": "7e5a9ab8385393c37a04cfea05a8878773767f358242e34dcadb27654b803b2f",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 NWS KSFO 메타데이터의 county 구역 식별자는 CAC081다.",
+    "b": "The county-zone link for KSFO ends with CAC081.",
+    "context": "NWS 관측소 KSFO, 수집 시점 2026-10-11T09:50:51.902731+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+    "evidence": [
+      {
+        "end": 2151,
+        "excerpt_sha256": "d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+        "origin_uri": "https://api.weather.gov/stations/KSFO",
+        "snapshot_path": "sources/fact07.txt",
+        "source_sha256": "d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+        "span_id": "span:laya-dev1-fact07-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:ee6dc6a78d942c41",
+    "pair_sha256": "31d8f44966936d3ba263870f14cf915c98526ffbec7f70a9b2c21ff71ce2a67e",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "Isolated SQLite case obs02 exited 0 and printed rows [[1, null]].",
+    "b": "All other database systems and all datasets must produce this recorded outcome: NULL IS NULL returned 1, while NULL = NULL returned null.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs02. SQL:  SELECT NULL IS NULL, NULL = NULL;",
+    "evidence": [
+      {
+        "end": 893,
+        "excerpt_sha256": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+        "origin_uri": "vinc-local-observation:obs02",
+        "snapshot_path": "sources/obs02.txt",
+        "source_sha256": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+        "span_id": "span:laya-dev1-obs02-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:ef04a357424cd5da",
+    "pair_sha256": "5c9d4a06b2b2d5eb1ebec5f2bdfbde63fb869d80ae126766b3d532ca722b160a",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "A private item may be accessed by its module and that module’s descendants.",
+    "b": "모듈의 하위 모듈은 그 모듈의 비공개 항목에 접근할 수 있다.",
+    "context": "Rust Reference commit 5baa209fc199, spec08. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 2029,
+        "excerpt_sha256": "41dfb9e9e95d12beb7b6950b870b3172054704bc8a056f10dc417e8177318e6d",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/visibility-and-privacy.md",
+        "snapshot_path": "sources/spec08.txt",
+        "source_sha256": "6c188645970168efd11cfb397708a9641220c3c72921ca9d82a8fe13fa7072a5",
+        "span_id": "span:laya-dev1-spec08-r2-0",
+        "start": 1720
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:f8a821a8223c5355",
+    "pair_sha256": "121a3a24ced406a7a47bd0c2fd57c470146f130568e403d794fe98de51e16ba0",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "ASOS-HFM is the provider field stored for KMIA.",
+    "b": "이 항목은 KMIA의 provider를 ASOS-HFM로 기록한다.",
+    "context": "NWS station KMIA, captured 2026-10-11T09:50:52.158756+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2135,
+        "excerpt_sha256": "ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+        "origin_uri": "https://api.weather.gov/stations/KMIA",
+        "snapshot_path": "sources/fact08.txt",
+        "source_sha256": "ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+        "span_id": "span:laya-dev1-fact08-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:f9f38c6bae16b8aa",
+    "pair_sha256": "dbdfd6562f936c1f8ceedec11d7197328b990fd0a5f8260027c0f5212d2b51ee",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "고정한 Rust Reference의 설명은 다음과 같다. Rust의 start..end 범위는 상한값을 포함하지 않는다.",
+    "b": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. Rust의 start..end 범위는 상한값을 포함하지 않는다.",
+    "context": "Rust Reference 5baa209fc199 판본의 spec01다. 실행 관측이 아닌 언어 문서의 설명이다.",
+    "evidence": [
+      {
+        "end": 1413,
+        "excerpt_sha256": "bc53b4adf44ceb5577d0626148e25083f89060e6d7d9a2ec41e1413b8fb29ccc",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/range-expr.md",
+        "snapshot_path": "sources/spec01.txt",
+        "source_sha256": "81d5e0721c0fbbd11e29859902b9ab7c6a4d630531f46e07b9bf474d0e86b819",
+        "span_id": "span:laya-dev1-spec01-r2-0",
+        "start": 452
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:fa7929e7f0e5e6b4",
+    "pair_sha256": "7d11e7dc27ec6d649749e36744dee26060f4876218f08346bdbdeaed671c44ca",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "Isolated SQLite case obs06 exited 0 and printed rows [[\"integer\", 3, 3.5]].",
+    "b": "All other database systems and all datasets must produce this recorded outcome: The integer division produced 3; the real-valued division produced 3.5.",
+    "context": "One isolated SQLite 3.45.3 execution, case obs06. SQL:  SELECT typeof(7/2), 7/2, 7.0/2;",
+    "evidence": [
+      {
+        "end": 917,
+        "excerpt_sha256": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+        "origin_uri": "vinc-local-observation:obs06",
+        "snapshot_path": "sources/obs06.txt",
+        "source_sha256": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+        "span_id": "span:laya-dev1-obs06-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:fd169263dbc7cf65",
+    "pair_sha256": "35a2fa97f9fd8acae645b6b5962e96ea798ef1553ef2ee30e8f1ceabcda4e7d7",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "The pinned Rust Reference states: A private item may be accessed by its module and that module’s descendants.",
+    "b": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. 비공개 항목은 해당 모듈과 그 하위 모듈에서 접근할 수 있다.",
+    "context": "Rust Reference commit 5baa209fc199, spec08. This is language documentation, not a runtime observation.",
+    "evidence": [
+      {
+        "end": 2029,
+        "excerpt_sha256": "41dfb9e9e95d12beb7b6950b870b3172054704bc8a056f10dc417e8177318e6d",
+        "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/visibility-and-privacy.md",
+        "snapshot_path": "sources/spec08.txt",
+        "source_sha256": "6c188645970168efd11cfb397708a9641220c3c72921ca9d82a8fe13fa7072a5",
+        "span_id": "span:laya-dev1-spec08-r2-0",
+        "start": 1720
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:fe8c4bb560e5a154",
+    "pair_sha256": "cf21d874a37442095805194307a9051bb9fb0359b73d110cb49e99cec7eb5b18",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  },
+  {
+    "a": "KDEN has a metadata elevation greater than 1646 m.",
+    "b": "The metadata elevation for KDEN is at most 1646 m.",
+    "context": "NWS station KDEN, captured 2026-10-11T09:50:50.487729+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+    "evidence": [
+      {
+        "end": 2140,
+        "excerpt_sha256": "6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+        "origin_uri": "https://api.weather.gov/stations/KDEN",
+        "snapshot_path": "sources/fact02.txt",
+        "source_sha256": "6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+        "span_id": "span:laya-dev1-fact02-r2-0",
+        "start": 0
+      }
+    ],
+    "pair_id": "development:laya-contrast-v1:ff769e436f8a4609",
+    "pair_sha256": "cac3e3c94f84006f58676624db1e3175f6769ec446967b98a0ecfd24c0707871",
+    "questions_hash": "500e613737d1",
+    "rubric_id": "rubric:laya-evidence-contrast-v1"
+  }
+]
