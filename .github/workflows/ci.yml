@@ -625,8 +625,8 @@ jobs:
       # namespace를 만들 수 없으면 실패한다. Windows의 signal 모의로 대체하지 않는다.
       - name: Encoder SIGTERM as Linux PID 1
         run: |
-          sudo -n env VINC_TEST_ENCODER_PID1=on "$(command -v python)" -m pytest \
-            -q -s -x tests/rag/test_encode_shutdown.py -k pid1
+          sudo -n env VINC_TEST_ENCODER_PID1=on "$(command -v python)" -B -m pytest \
+            -p no:cacheprovider -q -s -x tests/rag/test_encode_shutdown.py -k pid1
 
       - name: Run the whole suite with the flag on
         run: python -m pytest -q tests

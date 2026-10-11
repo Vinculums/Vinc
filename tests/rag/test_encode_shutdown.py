@@ -279,6 +279,12 @@ def test_startup_failure_restores_signal_handlers(worker, monkeypatch):
     assert {sig: signal.getsignal(sig) for sig in before} == before
 
 
+def publish(path, text):
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(text)
+    temporary.replace(path)
+
+
 def child_worker(folder):
     """모델/DB/외부 접속 없이 실제 main과 HTTP 서버를 실행한다."""
     worker = load_worker()
@@ -296,7 +302,7 @@ def child_worker(folder):
         def _encode_batch(self, texts, **kwargs):
             self._sess = object()
             if texts[0] == "0":
-                (folder / "entered").write_text(str(threading.get_native_id()))
+                publish(folder / "entered", str(threading.get_native_id()))
                 while not (folder / "release").exists():
                     time.sleep(0.01)
             return [[float(text), 1.0] for text in texts]
@@ -309,7 +315,7 @@ def child_worker(folder):
     def start(emb, port):
         service = original_start(emb, 0)
         port = service.port if hasattr(service, "port") else service
-        (folder / "ready").write_text(json.dumps({"pid": os.getpid(), "port": port}))
+        publish(folder / "ready", json.dumps({"pid": os.getpid(), "port": port}))
         return service
 
     setattr(worker, name, start)
@@ -329,7 +335,7 @@ def pid1(tmp_path):
     with log.open("w") as output:
         process = subprocess.Popen(
             ["unshare", "--pid", "--fork", "--mount-proc", "--kill-child=KILL",
-             sys.executable, str(Path(__file__).resolve()), "--worker", str(tmp_path)],
+             sys.executable, "-B", str(Path(__file__).resolve()), "--worker", str(tmp_path)],
             cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT,
             start_new_session=True)
         try:

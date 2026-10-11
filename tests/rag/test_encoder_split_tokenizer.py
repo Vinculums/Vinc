@@ -95,11 +95,12 @@ def test_serve_only_main_loads_one_tokenizer_on_first_request(model, monkeypatch
         assert not tokenizers
         emb._load()
         entered.append(port)
+        return types.SimpleNamespace(close=lambda: True)
 
     def stop(seconds):
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(worker, "serve_encode", serve)
+    monkeypatch.setattr(worker, "_start_encode", serve)
     monkeypatch.setattr(worker.time, "sleep", stop)
     assert worker.main() == 0
     assert entered == [8791]

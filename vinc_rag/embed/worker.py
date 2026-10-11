@@ -70,11 +70,13 @@ import argparse
 import json
 import os
 import secrets
+import signal
 import sys
 import threading
 import time
 import urllib.parse
 import urllib.request
+from http.server import ThreadingHTTPServer
 
 # Windows 콘솔/파이프 기본 인코딩(cp949)에서 비ASCII 출력이 UnicodeEncodeError 로
 # 죽는다 — 이 워커는 한국어 오류 메시지를 찍으므로 api/cli.py 와 같은 규율을 따른다.
@@ -628,7 +630,73 @@ class _RemoteEncoder:
         return vecs
 
 
+class _EncodeServer(ThreadingHTTPServer):
+    # 느린 본문/응답이나 멈춘 추론 때문에 프로세스 종료까지 무한히 기다리지 않는다.
+    # 정상 종료는 별도 drain에서 기다리고, 기한 초과는 성공으로 보고하지 않는다.
+    daemon_threads = True
+
+    def __init__(self, *args):
+        self._drained = threading.Condition()
+        self._active = 0
+        super().__init__(*args)
+
+    def process_request(self, request, client_address):
+        # 새 스레드가 실행되기 전에 센다. 수신 루프가 닫힐 때 누락되는 창을 없앤다.
+        with self._drained:
+            self._active += 1
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._request_finished()
+            raise
+
+    def _request_finished(self):
+        with self._drained:
+            self._active -= 1
+            self._drained.notify_all()
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            # 응답 전송과 연결 정리까지 끝나야 요청이 완료된 것이다.
+            self._request_finished()
+
+
+class _EncodeService:
+    def __init__(self, server: _EncodeServer, thread: threading.Thread):
+        self.server = server
+        self.thread = thread
+        self.port = server.server_address[1]
+
+    def close(self, timeout: float = 25.0) -> bool:
+        """전체 종료에 한 기한을 적용한다. 미완료 연결/수신 루프는 실패다."""
+        deadline = time.monotonic() + timeout
+        # shutdown 자체가 내부 Event를 무한 대기한다. 수신 루프가 멈춘 경우에도
+        # 종료 기한을 지키도록 별도 daemon에서 요청한다.
+        closer = threading.Thread(target=self.server.shutdown, daemon=True,
+                                  name="vinc-embed-shutdown")
+        closer.start()
+        closer.join(max(0.0, deadline - time.monotonic()))
+        self.thread.join(max(0.0, deadline - time.monotonic()))
+        self.server.server_close()
+        with self.server._drained:
+            self.server._drained.wait_for(
+                lambda: self.server._active == 0,
+                timeout=max(0.0, deadline - time.monotonic()))
+            pending = self.server._active
+        stopped = not self.thread.is_alive() and not closer.is_alive()
+        print(f"[embed] encode shutdown: pending={pending} listener_stopped={stopped}",
+              flush=True)
+        return stopped and pending == 0
+
+
 def serve_encode(emb: "_Embedder", port: int) -> int:
+    """배치 워커와 기존 호출자의 포트 반환 계약을 유지한다."""
+    return _start_encode(emb, port).port
+
+
+def _start_encode(emb: "_Embedder", port: int) -> _EncodeService:
     """루프백 인코딩 서비스 — 사이드카가 **쿼리 임베딩**을 얻어 가는 창구.
 
     왜 여기냐: 임베딩 모델을 들고 있는 프로세스가 이 워커뿐이다. 사이드카(데스크탑·허브
@@ -648,7 +716,7 @@ def serve_encode(emb: "_Embedder", port: int) -> int:
     - 이 서버가 죽어도 워커 본체는 살아야 한다(부가 기능이 본업을 죽이지 않는다).
     """
     import json as _json
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from http.server import BaseHTTPRequestHandler
 
     instance_id = secrets.token_hex(16)
 
@@ -731,16 +799,58 @@ def serve_encode(emb: "_Embedder", port: int) -> int:
             self.end_headers()
             self.wfile.write(out)
 
-    srv = ThreadingHTTPServer((ENCODE_BIND, port), _H)
+    srv = _EncodeServer((ENCODE_BIND, port), _H)
     bound = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True, name="vinc-embed-encode")
-    t.start()
-    print(f"[embed] encode service on {ENCODE_BIND}:{bound}"
-          f"{' (token 인증)' if ENCODE_TOKEN else ''}", flush=True)
+    service = _EncodeService(srv, t)
+    try:
+        t.start()
+        print(f"[embed] encode service on {ENCODE_BIND}:{bound}"
+              f"{' (token 인증)' if ENCODE_TOKEN else ''}", flush=True)
+    except BaseException:
+        if t.ident is not None:
+            service.close()
+        else:
+            srv.server_close()
+        raise
     # 실제로 바인드된 포트를 돌려준다 — port=0 이면 OS 가 고른다. 호출부가 미리
     # 빈 포트를 찾아 두고(bind→close) 다시 바인드하는 방식은 그 사이에 다른
     # 프로세스가 채 갈 수 있어 **산발적으로만** 실패한다(실측: 전체 스위트 1회 실패).
-    return bound
+    return service
+
+
+def _serve_only(emb: "_Embedder", port: int) -> int:
+    # PID 1은 기본 SIGTERM 동작에 기대면 안 된다. 신호 처리기에서는 잠금이나
+    # 서버 종료를 실행하지 않고 메인 루프가 안전한 위치에서 처리하게 한다.
+    requested = False
+
+    def request_stop(*_):
+        nonlocal requested
+        requested = True
+
+    previous = {}
+    service = None
+    drained = True
+    try:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            previous[sig] = signal.signal(sig, request_stop)
+        service = _start_encode(emb, port)
+        print("[embed] serve-only — 배치 작업 없이 인코딩 요청만 받는다", flush=True)
+        try:
+            while not requested:
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            pass
+    finally:
+        try:
+            if service is not None:
+                drained = service.close()
+        finally:
+            for sig, handler in previous.items():
+                signal.signal(sig, handler)
+    # serve-only는 DB를 쓰지 않는다. 기한 안에 응답을 못 받은 호출자는 실패를
+    # 처리해야 한다. 진행 중 ONNX 세션을 해제/취소하지 않고 프로세스가 회수한다.
+    return 0 if drained else 1
 
 
 def prefix(text: str, kind: str, model: str) -> str:
@@ -815,15 +925,8 @@ def main() -> int:
             print("[embed] --serve-only 에는 --encode-port(또는 VINC_EMBED_PORT)가 "
                   "필요하다", file=sys.stderr, flush=True)
             return 2
-        serve_encode(emb, args.encode_port)
-        print("[embed] serve-only — 배치 루프 없이 인코딩 요청만 받는다", flush=True)
-        # 모델은 **첫 요청에서** 올라간다(지연 로드). 그래야 scale-to-zero 로 깨어난
-        # 리비전이 프로브만 받고 도로 자는 동안 646MB 를 올리지 않는다.
-        try:
-            while True:
-                time.sleep(3600)
-        except KeyboardInterrupt:
-            return 0
+        # 모델은 첫 요청에서만 적재한다. 종료 처리도 선행 적재를 요구하지 않는다.
+        return _serve_only(emb, args.encode_port)
     # ⚠ 생존 신호가 없으면 **워커의 죽음과 정상 대기가 구분되지 않는다.** 원래 워커가
     # Azure 이관 때 사라졌는데 일주일 넘게 아무도 몰랐던 이유가 정확히 이것이다(조용한
     # happy path). 그래서 ① 첫 성공 조회를 무조건 한 번 찍어 루프백이 살아있음을
