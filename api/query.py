@@ -342,13 +342,13 @@ def graph_plan(*, owner: str, domain: str | None = None,
         where.append(domain_subtree_where(["c.domain"], doms, params))
     clause = "WHERE " + " AND ".join(where)
     # 관계 타입은 `label(r)` — 임베디드에 `type()` 이 없다(Neo4j 도 label 을 받아
-    # 백엔드 중립). ⚠ evidence/confidence 투영은 **CC 4종이 후보인 플랜에서만** 된다 —
+    # 백엔드 중립). ⚠ evidence/confidence 투영은 공통 CC 읽기 계약 안에서만 된다 —
     # CONNECTS/ATTACHES_TO/TYPED 가 후보인 축에 붙이면 Binder 오류다.
     # ⚠ owner 는 **먼 끝점에도** 건다 — 시작점만 스코프하면 남의 증거 문장이
     # 클라이언트까지 간다: [[record:an-unlabelled-hop-binds-only-tables-that-share-the-projected-columns]].
     cypher = (
         f"MATCH (c:Concept) {clause} "
-        "OPTIONAL MATCH (c)-[r]->(d:Concept) WHERE d.owner_id = $owner "
+        f"OPTIONAL MATCH (c)-[r:{_CONCEPT_READ_PATTERN}]->(d:Concept) WHERE d.owner_id = $owner "
         "RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
         "c.props AS props, c.tags AS tags, "
         "coalesce(c.created, c.updated_at, '') AS ts, "
@@ -862,9 +862,8 @@ def decision_seed_rows_plan(seed: str, *, owner: str | None = None,
                             rels: str = "PREREQUISITE_OF|DERIVES_FROM|INHERITS_FROM"
                             ) -> QueryPlan:
     """결정 시드 자신의 의미층 엣지(PREREQUISITE_OF·DERIVES_FROM·INHERITS_FROM) 한 방향·
-    한 상대 라벨. :func:`graph_rows_for_ids_plan` 은 `(c:Concept)-[r]->(d:Concept)` 만
-    보고 결정 축(:func:`decision_rows_plan`)은 ABOUT 만 보므로, 이 셋이 결정 시드에서
-    **어느 플랜에도** 안 잡혔다. 시드 단계에서만 쓴다(공유 플랜은 그대로).
+    한 상대 라벨. :func:`decide`가 결정 시드의 로컬 관계를 읽는 플랜이다.
+    :func:`graph`는 공통 읽기 계약의 decision_relation_rows_plan을 사용한다.
 
     ``rels`` 는 :func:`decide` 만 바꾼다 — 거기엔 결정 축 플랜이 안 돌아서 ABOUT 도
     이 플랜으로 싣는다(결정 축 플랜은 owner 필수라 로컬 무소유 호출에서 못 쓴다).
@@ -923,7 +922,7 @@ def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Quer
         params["owner"] = owner
     cypher = (
         f"MATCH (c:Concept) WHERE {c_where} "
-        f"OPTIONAL MATCH (c)-[r]->(d:Concept){d_where} "
+        f"OPTIONAL MATCH (c)-[r:{_CONCEPT_READ_PATTERN}]->(d:Concept){d_where} "
         "RETURN c.concept_id AS id, c.title AS label, c.domain AS domain, "
         "c.props AS props, c.tags AS tags, "
         "coalesce(c.created, c.updated_at, '') AS ts, "
@@ -1116,24 +1115,27 @@ def decision_rows_plan(*, owner: str, domain: str | None = None, domains: list[s
 
 
 def decision_relation_rows_plan(*, owner: str, domain: str | None = None,
-                                domains: list[str] | None = None) -> QueryPlan:
-    """전체/주제 그래프에서 기존 축이 읽지 않는 Decision 관계를 보충한다.
+                                domains: list[str] | None = None,
+                                ids: list[str] | None = None) -> QueryPlan:
+    """기존 축이 읽지 않는 Decision 관계를 전체/주제/시드 그래프에 보충한다.
 
     끝점 조합은 스키마 파생 계약을 사용한다. 기존 ABOUT→Concept 축과 겹치지
     않으며, 렌즈 소속은 기존 부착 축처럼 어느 한 끝점의 domain으로 판정한다.
-    시드 조회는 기존 도달 집합과 결정 시드 플랜을 유지한다.
+    ids 모드는 어느 한 끝점이 기존 도달 집합에 속한 관계만 한 번 합류한다.
+    이웃을 다시 순회하지 않으므로 Concept 도달 집합과 예산은 그대로다.
     """
     doms = normalize_domains(domain, domains)
     params: dict = {"owner": owner}
     pairs: dict[tuple, list[str]] = {}
-    for rel in _EDGE_CTX_TYPES:
-        for pair in SYNC_EDGE_RELS[rel]:
-            sl, _sp, dl, _dp = pair
-            if "Decision" not in (sl, dl):
-                continue
-            if rel == "ABOUT" and dl == "Concept":
-                continue
-            pairs.setdefault(pair, []).append(rel)
+    for pair, rels in _GRAPH_READ_PAIRS.items():
+        sl, _sp, dl, _dp = pair
+        if "Decision" not in (sl, dl):
+            continue
+        selected = [rel for rel in rels if not (rel == "ABOUT" and dl == "Concept")]
+        if selected:
+            pairs[pair] = selected
+    if ids is not None:
+        params["ids"] = pkns.keys(owner, ids)
 
     def cols(alias: str, label: str, pk: str, prefix: str = "") -> str:
         nid = "target" if prefix else "id"
@@ -1152,7 +1154,9 @@ def decision_relation_rows_plan(*, owner: str, domain: str | None = None,
     arms = []
     for (sl, sp, dl, dp), rels in pairs.items():
         where = ["a.owner_id = $owner", "b.owner_id = $owner"]
-        if doms:
+        if ids is not None:
+            where.append(f"(a.{sp} IN $ids OR b.{dp} IN $ids)")
+        elif doms:
             where.append(domain_subtree_where(["a.domain", "b.domain"], doms, params))
         arms.append(
             f"MATCH (a:{sl})-[r:{'|'.join(rels)}]->(b:{dl}) "
@@ -1166,6 +1170,7 @@ def decision_relation_rows_plan(*, owner: str, domain: str | None = None,
 
 _GRAPH_AXIS_PLANS = (bridge_rows_plan, episode_rows_plan, record_rows_plan,
                      decision_rows_plan)
+_GRAPH_READ_PLANS = _GRAPH_AXIS_PLANS + (decision_relation_rows_plan,)
 
 
 # ── entity-시드 L2(F1) — TYPED 는 Entity↔Entity 폐쇄 성분 ────────────────────
@@ -2086,8 +2091,8 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
     entity: 시드는 전용 순회(TYPED 폐쇄 성분 — :func:`entity_subgraph_ids_plan`).
 
     decision: 시드는 시드 칸만 Decision 으로 바꿔 같은 도달 집합 플랜을 탄다(개념
-    시드와 같은 모양으로 퍼진다). 결정 자신의 PREREQUISITE_OF·DERIVES_FROM·
-    INHERITS_FROM 은 :func:`decision_seed_rows_plan` 이 따로 싣는다.
+    시드와 같은 모양으로 퍼진다). 의미 관계는 :func:`decision_relation_rows_plan`이
+    기존 도달 집합에 한 번 합류한다(새 이웃을 다시 순회하지 않는다).
 
     ``max_nodes`` — 노드 예산(개념 도달 집합 기준). **주는 호출만** 영향을 받는다:
     도달 집합이 예산을 넘으면 깊이를 층 단위로 줄여(최소 1) 그 층까지만 싣고
@@ -2128,7 +2133,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         # (시드 + 개념 `max_nodes`). 고른 뒤에는 아래 행 조회·축 합류가 층 자르기와 똑같이
         # 고른 개념에만 돈다 — 부착(레코드·에피소드·브릿지·결정)은 예산 밖이다.
         # 결정 시드는 층 자르기로 간다: 결정↔개념 엣지는 순위 그래프(개념↔개념)에 없고, 시드
-        # 자신의 엣지가 고리 전체를 예산 밖에서 다시 싣는다(아래 decision_seed 합류).
+        # 자신의 엣지가 고리 전체를 예산 밖에서 다시 싣는다(아래 의미 관계 합류).
         # 개념으로 이어진 후보가 예산 안일 때도 층 자르기로 간다(:func:`_prize_pick`).
         selection: dict | None = None
         prized = False
@@ -2180,7 +2185,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             # 레코드)와 그 팔을 합류시키고, 양 끝점을 keep 에 편입한다(매개자 렌더 +
             # episode:/record:/bridge: 시드의 depth-1 이웃). 플랜별 강등이 미마이그레이션
             # 스토어를 자가 처리한다(빈 행 — Concept 축은 산다).
-            for plan_fn in _GRAPH_AXIS_PLANS:
+            for plan_fn in _GRAPH_READ_PLANS:
                 ax = execute(plan_fn(owner=owner, ids=ids), cfg, store=store)
                 if not ax.get("executed"):
                     continue
@@ -2191,21 +2196,6 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
                         keep.add(r["id"])
                     if r.get("target"):
                         keep.add(r["target"])
-        if decision_seed:
-            # 결정 시드 자신의 의미층 엣지 — 위 두 플랜 어느 쪽에도 안 잡힌다.
-            for other in ("Concept", "Decision"):
-                for outgoing in (True, False):
-                    dx = execute(decision_seed_rows_plan(seed, owner=owner, other=other,
-                                                         outgoing=outgoing),
-                                 cfg, store=store)
-                    if not dx.get("executed"):
-                        continue
-                    for r in dx.get("rows", []):
-                        rows.append(r)
-                        if r.get("id"):
-                            keep.add(r["id"])
-                        if r.get("target"):
-                            keep.add(r["target"])
         shaped = shape_graph(rows)
         shaped["edges"] = [e for e in shaped["edges"] if e["target"] in keep and e["source"] in keep]
         shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in keep]
@@ -2268,7 +2258,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
     rows = list(res.get("rows", []))
     # F2 — 부착 축 합류(L1/전체 뷰). 고정 순서 concat: Concept 축 선행 = 노드 dedup
     # 의 선착 우선이 Concept 투영을 이기게(결정론).
-    for plan_fn in _GRAPH_AXIS_PLANS + (decision_relation_rows_plan,):
+    for plan_fn in _GRAPH_READ_PLANS:
         ax = execute(plan_fn(owner=owner, domains=doms), cfg, store=store)
         if ax.get("executed"):
             rows += ax.get("rows", [])
@@ -2965,7 +2955,7 @@ def _node_links(store, node: str, *, owner: str,
                 with_evidence: bool = False, offset: int = 0) -> dict:
     """개념의 연결 요약 + 관계 목록(:func:`node_context` ④). 조회 전용.
 
-    개념↔개념(방향 3종 + RELATED_TO)은 양방향으로 세고, 부착(Bridge 매개·Episode
+    개념·결정 사이 공통 읽기 계약의 관계는 양방향으로 세고, 부착(Bridge 매개·Episode
     ABOUT·Record ATTACHES_TO)은 따로 센다 — 화면이 "연결 N · → 나감 · ← 들어옴"과
     "부착 N"을 다른 줄에 싣기 때문이다.
 
@@ -2993,18 +2983,23 @@ def _node_links(store, node: str, *, owner: str,
         _sl, _spk = "Concept", "concept_id"
     rows: list[dict] = []
     try:
-        cc = " UNION ALL ".join(
-            f"MATCH (c:{_sl})-[r]->(o:{ol}) "
-            f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND o.owner_id = $owner "
-            f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain, "
-            "label(r) AS type, 'out' AS dir, r.evidence AS ev, r.confidence AS conf"
-            for ol, opk in _SEMANTIC_PK.items())
-        cc += " UNION ALL " + " UNION ALL ".join(
-            f"MATCH (o:{ol})-[r]->(c:{_sl}) "
-            f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND o.owner_id = $owner "
-            f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain, "
-            "label(r) AS type, 'in' AS dir, r.evidence AS ev, r.confidence AS conf"
-            for ol, opk in _SEMANTIC_PK.items())
+        arms = []
+        for (sl, sp, dl, dp), rels in _GRAPH_READ_PAIRS.items():
+            if sl not in _SEMANTIC_LABELS or dl not in _SEMANTIC_LABELS:
+                continue
+            for outgoing in (True, False):
+                if (sl if outgoing else dl) != _sl:
+                    continue
+                ol, opk = (dl, dp) if outgoing else (sl, sp)
+                pattern = (f"(c:{_sl})-[r:{'|'.join(rels)}]->(o:{ol})" if outgoing
+                           else f"(o:{ol})-[r:{'|'.join(rels)}]->(c:{_sl})")
+                arms.append(
+                    f"MATCH {pattern} "
+                    f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND o.owner_id = $owner "
+                    f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain, "
+                    f"label(r) AS type, '{'out' if outgoing else 'in'}' AS dir, "
+                    "r.evidence AS ev, r.confidence AS conf")
+        cc = " UNION ALL ".join(arms)
         rows = store.run(cc, {"id": pkns.key(owner, node), "owner": owner}) or []
     except Exception:
         return empty
@@ -3752,7 +3747,7 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
     반환: 관계의 evidence(원문 구절)·confidence + 양끝 노드 메타(title·one_liner/
     summary)와 대표 정본 발췌 1건씩(MENTIONS 첫 건 — 개념·결정; Episode 는
     summary가 곧 설명). RELATED_TO는 무방향 매치(저장 방향 무관)다.
-    관계별 끝점 조합은 스키마에서 파생한 SYNC_EDGE_RELS를 따른다.
+    관계별 끝점 조합은 graph·node_context와 같은 스키마 파생 읽기 계약을 따른다.
     evidence 가 빈 관계도 executed=True 로 돌려준다 — UI 는 Empty 상태로 그린다
     (클릭 불가 대신 "기록된 근거 없음"을 말한다, 조용한 실패 금지)."""
     cfg = cfg or load_config()
@@ -3771,7 +3766,9 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
         arrow = "-" if etype == "RELATED_TO" else "->"
         arms = []
         # 스키마 파생 끝점 계약을 공유한다. Decision에는 one_liner 열이 없다.
-        for sl, sp, dl, dp in SYNC_EDGE_RELS[etype]:
+        for (sl, sp, dl, dp), rels in _GRAPH_READ_PAIRS.items():
+            if etype not in rels:
+                continue
             def detail(alias: str, label: str) -> str:
                 column = {"Concept": "one_liner", "Episode": "summary"}.get(label)
                 return f"{alias}.{column}" if column else "''"
@@ -6564,6 +6561,24 @@ def _derive_sync_edge_rels() -> dict[str, tuple[tuple[str, str, str, str], ...]]
 
 _SYNCED_EDGE_RELS = _CC_RELS + ("ABOUT", "ATTACHES_TO", "SUPERSEDES")
 SYNC_EDGE_RELS: dict[str, tuple[tuple[str, str, str, str], ...]] = _derive_sync_edge_rels()
+
+
+def _graph_read_pairs() -> dict[tuple[str, str, str, str], tuple[str, ...]]:
+    """graph/node/edge context의 끝점 계약. 표면별 분류와 whitelist는 별도로 유지한다.
+
+    sync 계약의 스키마 파생 쌍 중 의미 관계·SUPERSEDES와 ABOUT만 읽는다. RETURNS_TO는 기존
+    Concept 관계이고, ATTACHES_TO/CONNECTS는 계속 부착 카드 경로가 담당한다.
+    """
+    groups: dict[tuple[str, str, str, str], list[str]] = {}
+    for rel in _CC_RELS + ("ABOUT", "SUPERSEDES"):
+        for pair in SYNC_EDGE_RELS[rel]:
+            if (pair[0] in _SEMANTIC_LABELS and pair[2] in _SEMANTIC_LABELS) or rel == "ABOUT":
+                groups.setdefault(pair, []).append(rel)
+    return {pair: tuple(rels) for pair, rels in groups.items()}
+
+
+_GRAPH_READ_PAIRS = _graph_read_pairs()
+_CONCEPT_READ_PATTERN = "|".join(_GRAPH_READ_PAIRS[("Concept", "concept_id", "Concept", "concept_id")])
 _FRAGMENT_EDGE_TO_REL = {   # fragment 엣지 타입명 → rel (api/fragment 와 동형)
     "relates_to": "RELATED_TO", "prerequisite_of": "PREREQUISITE_OF",
     "derives_from": "DERIVES_FROM", "inherits_from": "INHERITS_FROM",

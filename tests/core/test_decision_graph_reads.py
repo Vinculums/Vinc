@@ -59,6 +59,7 @@ def reads(request, tmp_path_factory):
                 "full": q.graph(owner=OWNER, cfg=cfg, store=st),
                 "scoped": q.graph(owner=OWNER, domains=["vinc/inside"], cfg=cfg, store=st),
                 "outside": q.graph(owner=OWNER, domain="vinc/unrelated", cfg=cfg, store=st),
+                "target_scope": q.graph(owner=OWNER, domain="vinc/outside", cfg=cfg, store=st),
             }
         finally:
             st.close()
@@ -75,7 +76,14 @@ def test_semantic_relations_preserve_direction_and_metadata(reads, rel, src_labe
     assert node["executed"], node
     link = next(e for e in node["links"]["items"] if e["id"] == dst and e["type"] == rel and e["dir"] == "out")
     assert link["evidence_text"] == evidence and link["confidence"] == confidence
-    for graph in (graphs["full"], graphs["scoped"]):
+    incoming = q.node_context(owner=OWNER, node=dst, with_evidence=True, cfg=cfg, store=st)
+    back = next(e for e in incoming["links"]["items"]
+                if e["id"] == src and e["type"] == rel and e["dir"] == "in")
+    assert back["evidence_text"] == evidence and back["confidence"] == confidence
+    lenses = [graphs["full"], graphs["scoped"]]
+    if "Decision" in (src_label, dst_label):
+        lenses.append(graphs["target_scope"])
+    for graph in lenses:
         assert graph["executed"], graph
         edges = [e for e in graph["edges"] if (e["source"], e["target"], e["type"]) == (src, dst, rel)]
         assert len(edges) == 1, (src, dst, rel, graph["edges"])
@@ -102,7 +110,15 @@ def test_semantic_relations_preserve_direction_and_metadata(reads, rel, src_labe
 def test_about_relations_and_context(reads, src_label, dst_label):
     st, cfg, graphs = reads
     src, dst = SRC[src_label], DST[dst_label]
-    for graph in (graphs["full"], graphs["scoped"]):
+    node = q.node_context(owner=OWNER, node=src, with_evidence=True, cfg=cfg, store=st)
+    forward = next(e for e in node["links"]["items"]
+                   if e["id"] == dst and e["type"] == "ABOUT" and e["dir"] == "out")
+    assert forward["evidence_text"] == f"Synthetic {src_label} ABOUT {dst_label}"
+    incoming = q.node_context(owner=OWNER, node=dst, with_evidence=True, cfg=cfg, store=st)
+    direction = "att" if src_label == "Episode" else "in"
+    assert any(e["id"] == src and e["type"] == "ABOUT" and e["dir"] == direction
+               for e in incoming["links"]["items"])
+    for graph in (graphs["full"], graphs["scoped"], graphs["target_scope"]):
         found = [e for e in graph["edges"] if (e["source"], e["target"], e["type"]) == (src, dst, "ABOUT")]
         assert len(found) == 1, graph["edges"]
         assert found[0]["evidence"] == f"Synthetic {src_label} ABOUT {dst_label}"
@@ -163,3 +179,100 @@ def test_unknown_and_foreign_edges_do_not_disclose_metadata(reads):
         assert merged["executed"], merged
         ctx = q.edge_context(owner=OWNER, src=SRC["Decision"], dst=DST["Decision"], etype="DERIVES_FROM", cfg=cfg, store=st)
         assert ctx["evidence"] == "Synthetic Decision DERIVES_FROM Decision"
+
+
+@pytest.mark.parametrize("seed_label", ["Concept", "Decision"])
+def test_seeded_relations_are_joined_once(reads, seed_label):
+    st, cfg, _ = reads
+    graph = q.graph(owner=OWNER, seed=SRC[seed_label], depth=1, cfg=cfg, store=st)
+    assert graph["executed"], graph
+    triples = [(e["source"], e["target"], e["type"]) for e in graph["edges"]]
+    assert len(triples) == len(set(triples)), triples
+    for dst_label in ("Concept", "Decision"):
+        for rel in RELS:
+            assert (SRC[seed_label], DST[dst_label], rel) in triples
+    if seed_label == "Decision":
+        assert (SRC["Decision"], DST["Decision"], "ABOUT") in triples
+        assert (SRC["Episode"], DST["Decision"], "ABOUT") not in triples
+    for node in graph["nodes"]:
+        assert node["degree"] == sum(node["id"] in (e["source"], e["target"])
+                                     for e in graph["edges"])
+
+
+def test_returns_to_keeps_its_existing_surface_policy(reads):
+    st, cfg, _ = reads
+    src, dst = "concept:agent-vin433-reviewer", "concept:agent-vin433-author"
+    nodes = [{"id": nid, "type": "concept", "title": title, "domain": "vinc/agent/roles",
+              "props": {"mission": "Synthetic review", "tier": "verify", "rung": "fast",
+                        "never": ["publish"], "person_only": [
+                            {"action": "publish", "reason": "Synthetic policy"}]}}
+             for nid, title in ((src, "Fixture reviewer"), (dst, "Fixture author"))]
+    merged = frag.merge_fragment({"owner": OWNER, "nodes": nodes, "edges": [
+        {"from": src, "to": dst, "type": "returns_to",
+         "evidence": "Synthetic loop", "confidence": 0.0}]}, store=st)
+    assert merged["executed"] and not merged.get("warnings"), merged
+    node = q.node_context(owner=OWNER, node=src, with_evidence=True, cfg=cfg, store=st)
+    link = next(e for e in node["links"]["items"] if e["type"] == "RETURNS_TO")
+    assert link["evidence_text"] == "Synthetic loop" and link["confidence"] == 0.0
+    for kwargs in ({}, {"seed": src, "depth": 1}):
+        graph = q.graph(owner=OWNER, cfg=cfg, store=st, **kwargs)
+        edge = next(e for e in graph["edges"] if e["type"] == "RETURNS_TO")
+        assert edge["confidence"] == 0.0 and edge["evidence"] == "Synthetic loop"
+    context = q.edge_context(owner=OWNER, src=src, dst=dst, etype="RETURNS_TO", cfg=cfg, store=st)
+    assert not context["executed"] and context["error"] == "unsupported edge type: RETURNS_TO"
+
+
+def test_seed_join_preserves_concept_budget_and_does_not_expand_again(reads, tmp_path):
+    _, _, _ = reads  # Reuse the fixture's PK mode, but keep this graph isolated.
+    cfg = load_config({"data_dir": str(tmp_path / "budget-db")})
+    st = open_store(cfg)
+    assert st is not None
+    try:
+        st.provision(dim=cfg.embedding_dim)
+        nodes = [
+            {"id": f"concept:{name}", "type": "concept", "title": name,
+             "domain": f"budget/{name}"} for name in ("root", "near", "far", "hidden")
+        ] + [{"id": "decision:joined", "type": "decision", "title": "joined", "domain": "budget/decision"}]
+        edges = [
+            {"from": "concept:root", "to": "concept:near", "type": "relates_to"},
+            {"from": "concept:near", "to": "concept:far", "type": "relates_to"},
+            {"from": "concept:near", "to": "decision:joined", "type": "derives_from"},
+            {"from": "decision:joined", "to": "concept:hidden", "type": "derives_from"},
+            {"from": "decision:joined", "to": "concept:near", "type": "about"},
+        ]
+        result = frag.merge_fragment({"owner": OWNER, "nodes": nodes, "edges": edges}, store=st)
+        assert result["executed"] and not result.get("warnings"), result
+        graph = q.graph(owner=OWNER, seed="concept:root", depth=2, max_nodes=1, cfg=cfg, store=st)
+        assert graph["executed"] and graph["depth"] == 1, graph
+        assert graph["depth_budget"] == {"requested_depth": 2, "served_depth": 1,
+                                         "reach_at_requested": 2, "reach_served": 1, "max_nodes": 1}
+        assert {n["id"] for n in graph["nodes"]} == {"concept:root", "concept:near", "decision:joined"}
+        triples = [(e["source"], e["target"], e["type"]) for e in graph["edges"]]
+        assert set(triples) == {("concept:root", "concept:near", "RELATED_TO"),
+                                ("concept:near", "decision:joined", "DERIVES_FROM"),
+                                ("decision:joined", "concept:near", "ABOUT")}
+        assert len(triples) == 3
+    finally:
+        st.close()
+
+
+@pytest.mark.parametrize("src_label,dst_label", PAIRS)
+def test_existing_semantic_supersedes_stays_visible(reads, src_label, dst_label):
+    st, cfg, _ = reads
+    src, dst = SRC[src_label], DST[dst_label]
+    sp, dp = q._SEMANTIC_PK[src_label], q._SEMANTIC_PK[dst_label]
+    st.run(f"MATCH (a:{src_label}), (b:{dst_label}) "
+           f"WHERE a.{sp}=$src AND b.{dp}=$dst "
+           "MERGE (a)-[r:SUPERSEDES]->(b) SET r.evidence='Synthetic supersession', r.confidence=0.0",
+           {"src": pkns.key(OWNER, src), "dst": pkns.key(OWNER, dst)})
+    for node_id, other, direction in ((src, dst, "out"), (dst, src, "in")):
+        node = q.node_context(owner=OWNER, node=node_id, with_evidence=True, cfg=cfg, store=st)
+        link = next(e for e in node["links"]["items"]
+                    if e["id"] == other and e["type"] == "SUPERSEDES" and e["dir"] == direction)
+        assert link["evidence_text"] == "Synthetic supersession" and link["confidence"] == 0.0
+    for kwargs in ({}, {"seed": src, "depth": 1}):
+        graph = q.graph(owner=OWNER, cfg=cfg, store=st, **kwargs)
+        found = [e for e in graph["edges"] if (e["source"], e["target"], e["type"]) == (src, dst, "SUPERSEDES")]
+        assert len(found) == 1 and found[0]["confidence"] == 0.0, graph
+    ctx = q.edge_context(owner=OWNER, src=src, dst=dst, etype="SUPERSEDES", cfg=cfg, store=st)
+    assert not ctx["executed"] and ctx["error"] == "unsupported edge type: SUPERSEDES"
