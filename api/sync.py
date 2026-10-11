@@ -536,6 +536,12 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
                             cfg, store=store)
             if res.get("executed"):
                 extra_rows.extend(res.get("rows", []))
+        # 대체 엣지는 근거가 필수라 근거째 나른다(아래 `_supersedes_edges_plan`).
+        for pair in _SUPERSEDES_PAIRS:
+            res = q.execute(_supersedes_edges_plan(sorted(ids), owner=owner, pair=pair),
+                            cfg, store=store)
+            if res.get("executed"):
+                extra_rows.extend(res.get("rows", []))
         seen = set()
         for r in [*rel_res.get("rows", []), *extra_rows]:
             ftype = r.get("ftype") or _REL_TO_FRAGMENT.get(r.get("rel") or "")
@@ -549,7 +555,7 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
             e = {"from": r["id"], "to": tgt, "type": ftype}
             if r.get("edge_created"):
                 e["created"] = r["edge_created"]
-            if ftype == "returns_to":
+            if ftype in ("returns_to", "supersedes"):
                 # 반려 경로는 근거가 필수다. 동기화가 근거를 버리면 수신측이
                 # 동일 엣지를 다시 적재할 수 없으므로 두 필드를 함께 보존한다.
                 for field in ("evidence", "confidence"):
@@ -635,6 +641,29 @@ def _record_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPl
     return q.QueryPlan(f"sync_edges_Record_{dl}", cypher,
                        {"ids": pkns.keys(owner, ids), "owner": owner},
                        note=f"Record->{dl} ATTACHES_TO edges for sync bundle")
+
+
+#: 대체(SUPERSEDES)는 같은 종류끼리만 쓰인다(`api/fragment`). `_REL_TO_FRAGMENT` 에
+#: 넣지 않고 전용 플랜으로 나르는 이유: 쓰기 경로가 근거 없는 대체를 거절하므로 근거를
+#: 버리면 수신측이 같은 엣지를 다시 적재하지 못한다.
+_SUPERSEDES_PAIRS: tuple[tuple[str, str], ...] = (
+    ("Record", "record_id"), ("Decision", "decision_id"), ("Concept", "concept_id"),
+)
+
+
+def _supersedes_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPlan":
+    """번들 안의 같은 종류 SUPERSEDES 엣지, 근거·신뢰도 포함."""
+    lbl, pk = pair
+    cypher = (
+        f"MATCH (a:{lbl})-[r:SUPERSEDES]->(b:{lbl}) "
+        f"WHERE a.{pk} IN $ids AND b.{pk} IN $ids "
+        "AND a.owner_id = $owner AND b.owner_id = $owner "
+        f"RETURN a.{pk} AS id, 'supersedes' AS ftype, b.{pk} AS target, "
+        "r.created AS edge_created, r.evidence AS evidence, r.confidence AS confidence"
+    )
+    return q.QueryPlan(f"sync_edges_supersedes_{lbl}", cypher,
+                       {"ids": pkns.keys(owner, ids), "owner": owner},
+                       note=f"{lbl}->{lbl} SUPERSEDES edges for sync bundle")
 
 
 def _extra_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPlan":

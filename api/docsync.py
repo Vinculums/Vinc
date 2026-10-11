@@ -45,6 +45,9 @@ def export_docs(store, *, owner: str, since: int = 0, everything: bool = False) 
         # v7(D72) — 시간축 두 열도 함께 나른다. 안 실으면 수신 기기가 자기 시각으로
         # created_at 을 새로 찍어, 같은 문서가 기기마다 다른 "만든 날"을 갖게 된다.
         "d.created_at AS created_at, d.content_time AS content_time, "
+        # v22 — 문서 유효구간도 나른다. 안 실으면 은퇴시킨 문서가 다른 기기에서 현재로 남는다.
+        "d.valid_from AS valid_from, d.valid_until AS valid_until, "
+        "d.superseded_by AS superseded_by, "
         "d.sync_seq AS sync_seq ORDER BY d.sync_seq",
         {"o": owner, "s": int(since)})
     docs = []
@@ -66,6 +69,9 @@ def export_docs(store, *, owner: str, since: int = 0, everything: bool = False) 
             "updated_at": r.get("updated_at") or "", "text": got.get("text") or "",
             "created_at": r.get("created_at") or "",
             "content_time": r.get("content_time") or "",
+            "valid_from": r.get("valid_from") or "",
+            "valid_until": r.get("valid_until") or "",
+            "superseded_by": r.get("superseded_by") or "",
         })
         cursor = max(cursor, int(r.get("sync_seq") or 0))
     if everything:
@@ -117,18 +123,27 @@ def import_docs(store, *, owner: str, payload: dict) -> dict:
         fields = {"title": d.get("title"), "origin": d.get("origin") or "",
                   "updated_at": remote_ua or None,
                   "created_at": d.get("created_at") or None,
-                  "content_time": d.get("content_time")}
+                  "content_time": d.get("content_time"),
+                  # v22 — 구 송신자는 키가 없어 None(보존)이 된다(하위호환).
+                  "valid_from": d.get("valid_from"), "valid_until": d.get("valid_until"),
+                  "superseded_by": d.get("superseded_by")}
         if cur is not None:
             if (cur.get("owner_id") or "") != owner:   # 무소유도 남의 것(VIN-226)
                 skipped += 1
                 continue
             if cur.get("content_hash") == d.get("content_hash"):
-                if ds.chunks_intact(store, doc_id):
+                intact = ds.chunks_intact(store, doc_id)
+                meta_only = intact and _newer(remote_ua, cur.get("updated_at") or "") and any(
+                    d.get(k) is not None for k in ("valid_from", "valid_until", "superseded_by"))
+                if intact and not meta_only:
                     skipped += 1
                     continue
-                # 본문이 같은데 로컬 청크가 깨졌다(쓰기 창 표식·꼬리 청크) — LWW 와 무관하게
-                # 같은 본문으로 다시 쓴다. 제목·출처·시각은 로컬 것을 그대로 둔다(RV-12).
-                fields = {"updated_at": cur.get("updated_at") or None}
+                if not intact:
+                    # 본문이 같은데 로컬 청크가 깨졌다(쓰기 창 표식·꼬리 청크) — LWW 와 무관하게
+                    # 같은 본문으로 다시 쓴다. 제목·출처·시각은 로컬 것을 그대로 둔다(RV-12).
+                    fields = {"updated_at": cur.get("updated_at") or None}
+                # meta_only: 본문이 같고 원격이 더 새다. put_doc 이 유효구간만 바꾼다
+                # (v22). 유효구간이 같으면 put_doc 이 스킵하므로 해가 없다.
             elif not _newer(remote_ua, cur.get("updated_at") or ""):
                 skipped += 1          # 로컬이 같거나 더 새다 → LWW 로 로컬 유지
                 continue

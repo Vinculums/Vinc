@@ -406,6 +406,10 @@
                   "as_of": {
                     "type": "string",
                     "description": "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD, or 'query' to take the one absolute date written in the question (e.g. '2026-08', 'August 2026', '2026년 8월', 'in 2025'). Hides claims that did not hold at any time in that period, counted in `validity_filtered`, and echoes what it used in `time_scope`. With 'query', a question with no date or with two different dates is read with today's view and `time_scope.applied` is false. Omit for today's view (the default, unchanged)."
+                  },
+                  "known_at": {
+                    "type": "string",
+                    "description": "Read what the graph had RECORDED by a period (graph time, not valid time): YYYY, YYYY-MM or YYYY-MM-DD. Hides nodes stored after it, counted in `known_at_filtered`. A node with no stored creation time (every Episode, and nodes from before birth stamps) is kept and counted in `known_at_unknown`, never guessed. Omit for now."
                   }
                 },
                 "required": [
@@ -480,6 +484,10 @@
                   "as_of": {
                     "type": "string",
                     "description": "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD, or 'query' to take the one absolute date written in the question (e.g. '2026-08', 'August 2026', '2026년 8월', 'in 2025'). Hides claims that did not hold at any time in that period, counted in `validity_filtered`, and echoes what it used in `time_scope`. With 'query', a question with no date or with two different dates is read with today's view and `time_scope.applied` is false. Omit for today's view (the default, unchanged)."
+                  },
+                  "known_at": {
+                    "type": "string",
+                    "description": "Read what the graph had RECORDED by a period (graph time, not valid time): YYYY, YYYY-MM or YYYY-MM-DD. Hides nodes stored after it, counted in `known_at_filtered`. A node with no stored creation time (every Episode, and nodes from before birth stamps) is kept and counted in `known_at_unknown`, never guessed. Omit for now."
                   }
                 },
                 "required": [
@@ -623,6 +631,24 @@
               "minimum": 1,
               "maximum": 500,
               "description": "Max neighbors returned. If cut, `neighbors_truncated` is true."
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD. Hides neighbours whose own interval did not overlap that period (a Record's valid_from/valid_until, a Decision's props interval, an Episode dated after it); concepts carry no interval and always stay. The seed itself is never hidden. Counts land in `validity_filtered` and the period is echoed in `time_scope`. Omit for today's view."
+            }
+          },
+          {
+            "name": "known_at",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Read what the graph had RECORDED by a period (graph time, not valid time): YYYY, YYYY-MM or YYYY-MM-DD. Hides nodes stored after it, counted in `known_at_filtered`. A node with no stored creation time (every Episode, and nodes from before birth stamps) is kept and counted in `known_at_unknown`, never guessed. Omit for now."
             }
           },
           {
@@ -868,6 +894,24 @@
             }
           },
           {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD. Hides neighbours whose own interval did not overlap that period (a Record's valid_from/valid_until, a Decision's props interval, an Episode dated after it); concepts carry no interval and always stay. The seed itself is never hidden. Counts land in `validity_filtered` and the period is echoed in `time_scope`. Omit for today's view."
+            }
+          },
+          {
+            "name": "known_at",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Read what the graph had RECORDED by a period (graph time, not valid time): YYYY, YYYY-MM or YYYY-MM-DD. Hides nodes stored after it, counted in `known_at_filtered`. A node with no stored creation time (every Episode, and nodes from before birth stamps) is kept and counted in `known_at_unknown`, never guessed. Omit for now."
+            }
+          },
+          {
             "name": "space",
             "in": "query",
             "required": false,
@@ -961,6 +1005,14 @@
                     "type": "boolean",
                     "default": false,
                     "description": "For one exact concept:doc.<doc_id> seed only, include bounded read-only mirror_review provenance. No source text, repair or semantic census inference. Absent/unreadable seeds keep the ordinary not-found response."
+                  },
+                  "as_of": {
+                    "type": "string",
+                    "description": "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD. Hides neighbours whose own interval did not overlap that period (a Record's valid_from/valid_until, a Decision's props interval, an Episode dated after it); concepts carry no interval and always stay. The seed itself is never hidden. Counts land in `validity_filtered` and the period is echoed in `time_scope`. Omit for today's view."
+                  },
+                  "known_at": {
+                    "type": "string",
+                    "description": "Read what the graph had RECORDED by a period (graph time, not valid time): YYYY, YYYY-MM or YYYY-MM-DD. Hides nodes stored after it, counted in `known_at_filtered`. A node with no stored creation time (every Episode, and nodes from before birth stamps) is kept and counted in `known_at_unknown`, never guessed. Omit for now."
                   }
                 },
                 "required": [],
@@ -1083,6 +1135,24 @@
             }
           },
           {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD. Hides neighbours whose own interval did not overlap that period (a Record's valid_from/valid_until, a Decision's props interval, an Episode dated after it); concepts carry no interval and always stay. The seed itself is never hidden. Counts land in `validity_filtered` and the period is echoed in `time_scope`. Omit for today's view."
+            }
+          },
+          {
+            "name": "known_at",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Read what the graph had RECORDED by a period (graph time, not valid time): YYYY, YYYY-MM or YYYY-MM-DD. Hides nodes stored after it, counted in `known_at_filtered`. A node with no stored creation time (every Episode, and nodes from before birth stamps) is kept and counted in `known_at_unknown`, never guessed. Omit for now."
+            }
+          },
+          {
             "name": "space",
             "in": "query",
             "required": false,
@@ -1157,6 +1227,24 @@
             "schema": {
               "type": "string",
               "description": "Opaque next_cursor from a previous page of the same query."
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD. Hides neighbours whose own interval did not overlap that period (a Record's valid_from/valid_until, a Decision's props interval, an Episode dated after it); concepts carry no interval and always stay. The seed itself is never hidden. Counts land in `validity_filtered` and the period is echoed in `time_scope`. Omit for today's view."
+            }
+          },
+          {
+            "name": "known_at",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Read what the graph had RECORDED by a period (graph time, not valid time): YYYY, YYYY-MM or YYYY-MM-DD. Hides nodes stored after it, counted in `known_at_filtered`. A node with no stored creation time (every Episode, and nodes from before birth stamps) is kept and counted in `known_at_unknown`, never guessed. Omit for now."
             }
           },
           {
@@ -1247,7 +1335,7 @@
     "/v1/diagnose": {
       "get": {
         "operationId": "vinc_diagnose_get__v1_diagnose",
-        "summary": "Structural diagnosis of the owner's concept graph (read-only, E-G3). kind='components' (default) runs weakly-connected-components: returns {components:[{group,size,members}], orphans:[id…], component_count, orphan_count} — the disconnected 'islands' and singleton concepts that want linking (feeds vinc_suggest_ties). kind='communities' runs Leiden: returns {communities:[{community,size,dominant_domain,quality,members}]} — the measured clusters (distinct from the domain axis), a basis for proposing themes (ratified by the user, never auto-written). kind='community_context' (requires `node`) answers a broad 'what is over in this area' question with no generation: takes ONE seed concept id, finds the Leiden community it belongs to, and returns {community, size, quality, dominant_domain, representatives:[{id,title,one_liner,excerpt}], members:[{id,title}], members_truncated} — up to 5 representatives (ranked by how many chunks mention them) carry a quoted source excerpt, the rest are id/title only. executed:false with a note if the seed is unknown or isolated (community -1). Member id lists are capped by `member_limit` (default 50): `size` always reports the TRUE total, and a group whose list was cut carries members_truncated:true — raise member_limit to see the rest. Computed in Vinc over your own nodes only (no engine extension), and deterministic: the same graph always yields the same groups. Leiden never returns a disconnected community. `quality` carries numbers, not a verdict: connected, internal_edges, boundary_edges, density, conductance (lower is a cleaner cut) and modularity_share (negative means the group is no better than chance). kind='claims' reads record props instead of graph structure. It returns {conflicts:[{subject_path,newer,older}], conflict_count, unanchored:[{id,title,path_hint}], unanchored_count, anchored_count, scanned}. `conflicts` pairs the most recent measurement of a file with every earlier one that carries a different measured_at, so the question it poses is 'does this older claim still stand'. It does NOT decide which side is right; open the path and look. `unanchored` lists records that name a file in their text but carry no props.subject_path, so they cannot be compared with anything: that count is meant to be driven down by adding the field. Both lists are capped by member_limit. kind='domain_roots' is a steward topic census: root counts/shares, largest_root (null on a tie), unassigned_nodes and domains outside the largest root. Counts cover Concept, Decision, Record and Episode, not derived Domain or Bridge. Multiple roots can be intentional; this report never rejects writes or changes layout. Outside-domain rows are capped by member_limit with members_truncated and full counts.",
+        "summary": "Structural diagnosis of the owner's concept graph (read-only, E-G3). kind='components' (default) runs weakly-connected-components: returns {components:[{group,size,members}], orphans:[id…], component_count, orphan_count} — the disconnected 'islands' and singleton concepts that want linking (feeds vinc_suggest_ties). kind='communities' runs Leiden: returns {communities:[{community,size,dominant_domain,quality,members}]} — the measured clusters (distinct from the domain axis), a basis for proposing themes (ratified by the user, never auto-written). kind='community_context' (requires `node`) answers a broad 'what is over in this area' question with no generation: takes ONE seed concept id, finds the Leiden community it belongs to, and returns {community, size, quality, dominant_domain, representatives:[{id,title,one_liner,excerpt}], members:[{id,title}], members_truncated} — up to 5 representatives (ranked by how many chunks mention them) carry a quoted source excerpt, the rest are id/title only. executed:false with a note if the seed is unknown or isolated (community -1). Member id lists are capped by `member_limit` (default 50): `size` always reports the TRUE total, and a group whose list was cut carries members_truncated:true — raise member_limit to see the rest. Computed in Vinc over your own nodes only (no engine extension), and deterministic: the same graph always yields the same groups. Leiden never returns a disconnected community. `quality` carries numbers, not a verdict: connected, internal_edges, boundary_edges, density, conductance (lower is a cleaner cut) and modularity_share (negative means the group is no better than chance). kind='claims' reads record props instead of graph structure. It returns {conflicts:[{subject_path,newer,older}], conflict_count, unanchored:[{id,title,path_hint}], unanchored_count, anchored_count, scanned}. `conflicts` pairs the most recent measurement of a file with every earlier one that carries a different measured_at, so the question it poses is 'does this older claim still stand'. It does NOT decide which side is right; open the path and look. `unanchored` lists records that name a file in their text but carry no props.subject_path, so they cannot be compared with anything: that count is meant to be driven down by adding the field. `stale` lists current records whose props.subject_path covers a file that a later change episode (an Episode with props.files as repo:path and a date, optionally props.head_sha) touched after the record's measured_at, with the latest such change; same commit as measured_ref is not stale. It is a prompt to re-measure, not a verdict. All three lists are capped by member_limit. kind='domain_roots' is a steward topic census: root counts/shares, largest_root (null on a tie), unassigned_nodes and domains outside the largest root. Counts cover Concept, Decision, Record and Episode, not derived Domain or Bridge. Multiple roots can be intentional; this report never rejects writes or changes layout. Outside-domain rows are capped by member_limit with members_truncated and full counts.",
         "security": [
           {
             "MemberKey": []
@@ -1625,6 +1713,18 @@
                   "topic": {
                     "type": "string",
                     "description": "The topic this document is about, as a domain path (e.g. vinc/infra/deploy). Authored, not inferred: it is recorded on the document's own concept:doc.<id> node and takes precedence over the topic derived from body matching. Omit to leave the existing answer alone — passing \"\" does NOT clear it."
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "description": "When the document's content became true, YYYY[-MM[-DD]]. Omit to keep the stored value; empty string clears it."
+                  },
+                  "valid_until": {
+                    "type": "string",
+                    "description": "When the document stopped being true (half-open), YYYY[-MM[-DD]]. Setting it retires the document without deleting it: its chunks leave the default vinc_search and return with historical=true or an as_of period it held in. Omit to keep; empty string clears it (current again). A metadata-only change does not rewrite the text."
+                  },
+                  "superseded_by": {
+                    "type": "string",
+                    "description": "doc_id of the document that replaced this one. Omit to keep; empty clears."
                   }
                 },
                 "required": [
@@ -1759,6 +1859,18 @@
                   "topic": {
                     "type": "string",
                     "description": "The topic this document is about, as a domain path (e.g. vinc/infra/deploy). Authored, not inferred: it is recorded on the document's own concept:doc.<id> node and takes precedence over the topic derived from body matching. Omit to leave the existing answer alone — passing \"\" does NOT clear it."
+                  },
+                  "valid_from": {
+                    "type": "string",
+                    "description": "When the document's content became true, YYYY[-MM[-DD]]. Omit to keep the stored value; empty string clears it."
+                  },
+                  "valid_until": {
+                    "type": "string",
+                    "description": "When the document stopped being true (half-open), YYYY[-MM[-DD]]. Setting it retires the document without deleting it: its chunks leave the default vinc_search and return with historical=true or an as_of period it held in. Omit to keep; empty string clears it (current again). A metadata-only change does not rewrite the text."
+                  },
+                  "superseded_by": {
+                    "type": "string",
+                    "description": "doc_id of the document that replaced this one. Omit to keep; empty clears."
                   }
                 },
                 "required": [
@@ -1818,7 +1930,7 @@
     "/v1/fragments": {
       "post": {
         "operationId": "vinc_ingest_post__v1_fragments",
-        "summary": "MERGE an authored graph fragment (nodes + edges) into the store by exact id. The primary write surface (see vinc_delete / vinc_merge_nodes for cleanup). Reuse existing ids (read-before-write). Node types record|concept|domain|bridge|episode|decision route to dedicated tables; ANY other node type persists to the open Entity carrier and is folded into the theme vocabulary as proposed (returned in proposed_types for ratification). Edges — allowed pairs (concept and decision are interchangeable endpoints, except relates_to which stays concept→concept): relates_to = concept→concept; prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; returns_to = distinct role concepts, with nonempty evidence; record → concept|decision for any of those four; connects_via = bridge → concept|decision; about = episode|decision → concept|decision; any-type = open-entity→open-entity (TYPED carrier). relates_to dedupes the reverse direction; connects_via takes an optional role; a record edge preserves its type on ATTACHES_TO. Nodes are skipped when malformed (no id, no type, an Entity with no title) or when the id is ALREADY OWNED BY SOMEONE ELSE on the hosted graph; edges are skipped on an unsupported (from,to) pair AND when an endpoint node was itself skipped, since an edge cannot outlive its endpoint. Everything skipped is reported in warnings with partial:true, so read them — `merged` counts only what actually landed. An id owned by someone else is reported separately in `id_conflicts`, because it is the one skip a retry cannot fix: node ids are a single global namespace, so that slug is not available to you at all. Pick a different id rather than retrying. The result also carries `stored` — each node READ BACK as it now sits in the graph (id, kind, and the fields that kind actually keeps). Diff it against what you sent instead of trusting the counts: a field a kind has no column for is absent from `stored`, and a domain you sent appears there in its normalized form. `stored_truncated` means the read-back hit its size budget and that many nodes were left out (they were still written). Call vinc_conventions once before your first write in a session: it carries this owner's node/relation conventions and their existing domains, so your writes match what is already there.",
+        "summary": "MERGE an authored graph fragment (nodes + edges) into the store by exact id. The primary write surface (see vinc_delete / vinc_merge_nodes for cleanup). Reuse existing ids (read-before-write). Node types record|concept|domain|bridge|episode|decision route to dedicated tables; ANY other node type persists to the open Entity carrier and is folded into the theme vocabulary as proposed (returned in proposed_types for ratification). Edges — allowed pairs (concept and decision are interchangeable endpoints, except relates_to which stays concept→concept): supersedes = new→old of the same kind (record→record, decision→decision, concept:doc.*→concept:doc.*), with nonempty evidence; relates_to = concept→concept; prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; returns_to = distinct role concepts, with nonempty evidence; record → concept|decision for any of those four; connects_via = bridge → concept|decision; about = episode|decision → concept|decision; any-type = open-entity→open-entity (TYPED carrier). relates_to dedupes the reverse direction; connects_via takes an optional role; a record edge preserves its type on ATTACHES_TO. Nodes are skipped when malformed (no id, no type, an Entity with no title) or when the id is ALREADY OWNED BY SOMEONE ELSE on the hosted graph; edges are skipped on an unsupported (from,to) pair AND when an endpoint node was itself skipped, since an edge cannot outlive its endpoint. Everything skipped is reported in warnings with partial:true, so read them — `merged` counts only what actually landed. An id owned by someone else is reported separately in `id_conflicts`, because it is the one skip a retry cannot fix: node ids are a single global namespace, so that slug is not available to you at all. Pick a different id rather than retrying. The result also carries `stored` — each node READ BACK as it now sits in the graph (id, kind, and the fields that kind actually keeps). Diff it against what you sent instead of trusting the counts: a field a kind has no column for is absent from `stored`, and a domain you sent appears there in its normalized form. `stored_truncated` means the read-back hit its size budget and that many nodes were left out (they were still written). Call vinc_conventions once before your first write in a session: it carries this owner's node/relation conventions and their existing domains, so your writes match what is already there.",
         "security": [
           {
             "MemberKey": []
@@ -1934,7 +2046,7 @@
                         },
                         "type": {
                           "type": "string",
-                          "description": "allowed pairs (concept and decision are interchangeable endpoints, except relates_to which stays concept→concept): relates_to = concept→concept; prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; returns_to = distinct role concepts, with nonempty evidence; record → concept|decision for any of those four; connects_via = bridge → concept|decision; about = episode|decision → concept|decision; any-type = open-entity→open-entity (TYPED carrier). A record edge preserves its type on ATTACHES_TO. An unsupported (from,to) pair is skipped with a warning and partial:true, not an error."
+                          "description": "allowed pairs (concept and decision are interchangeable endpoints, except relates_to which stays concept→concept): supersedes = new→old of the same kind (record→record, decision→decision, concept:doc.*→concept:doc.*), with nonempty evidence; relates_to = concept→concept; prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; returns_to = distinct role concepts, with nonempty evidence; record → concept|decision for any of those four; connects_via = bridge → concept|decision; about = episode|decision → concept|decision; any-type = open-entity→open-entity (TYPED carrier). A record edge preserves its type on ATTACHES_TO. An unsupported (from,to) pair is skipped with a warning and partial:true, not an error."
                         },
                         "role": {
                           "type": "string",
@@ -2033,7 +2145,7 @@
     "/v1/edges": {
       "delete": {
         "operationId": "vinc_delete_edge_delete__v1_edges",
-        "summary": "Delete ONE relationship between two nodes (the nodes stay). Covers the SYNCED relation types only: relates_to | prerequisite_of | derives_from | inherits_from | returns_to | about | ATTACHES_TO. A Record source can select its authored edge type (relates_to, prerequisite_of, derives_from or inherits_from), preserving that qualifier in its deletion tombstone, or select the physical ATTACHES_TO carrier. CONNECTS and TYPED remain outside this surface. Endpoints follow the same rule as vinc_ingest: concept and decision are interchangeable (so derives_from covers all four concept/decision combinations, and about is episode|decision → concept|decision), except relates_to which stays concept→concept. relates_to is undirected — both physical directions are removed. The deletion is recorded with an edge tombstone so it propagates to synced devices instead of resurrecting. Irreversible (re-create via vinc_ingest if needed). Returns {executed, found, deleted:{edges}}; found:false if no such edge.",
+        "summary": "Delete ONE relationship between two nodes (the nodes stay). Covers the SYNCED relation types only: relates_to | prerequisite_of | derives_from | inherits_from | returns_to | about | supersedes | ATTACHES_TO (supersedes runs new→old between two records, two decisions or two concept:doc.* mirrors). A Record source can select its authored edge type (relates_to, prerequisite_of, derives_from or inherits_from), preserving that qualifier in its deletion tombstone, or select the physical ATTACHES_TO carrier. CONNECTS and TYPED remain outside this surface. Endpoints follow the same rule as vinc_ingest: concept and decision are interchangeable (so derives_from covers all four concept/decision combinations, and about is episode|decision → concept|decision), except relates_to which stays concept→concept. relates_to is undirected — both physical directions are removed. The deletion is recorded with an edge tombstone so it propagates to synced devices instead of resurrecting. Irreversible (re-create via vinc_ingest if needed). Returns {executed, found, deleted:{edges}}; found:false if no such edge.",
         "security": [
           {
             "MemberKey": []
@@ -2064,7 +2176,7 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "relates_to | prerequisite_of | derives_from | inherits_from | returns_to | about | ATTACHES_TO"
+              "description": "relates_to | prerequisite_of | derives_from | inherits_from | returns_to | about | supersedes | ATTACHES_TO"
             }
           },
           {

@@ -63,7 +63,13 @@ _CC_EDGES = {   # Concept→Concept fragment 엣지 → rel 테이블
 # Episode 참여 엣지 — _CC_EDGES 에 넣지 않는다: sync 의 _REL_TO_FRAGMENT 가
 # _CC_EDGES 를 역맵으로 파생하므로(Concept 엣지 export 전용) 섞이면 오염된다.
 _EC_EDGES = {"about": "ABOUT"}
-_EDGE_TYPES = set(_CC_EDGES) | set(_EC_EDGES) | {"connects_via"}
+#: 대체 관계 — 새 것 → 옛 것. 같은 종류끼리만이고 근거가 필수다. 쓰기 경로는
+#: 유효구간을 **판정하지 않는다**: 옛 것의 `valid_until` 이 비었거나 새 것의 시작과
+#: 다르면 경고만 하고 어느 값도 대신 쓰지 않는다.
+#: 근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] §2
+_SUPERSEDES_EDGE, _SUPERSEDES_REL = "supersedes", "SUPERSEDES"
+_SUPERSEDES_KINDS = ("record", "decision", "concept")
+_EDGE_TYPES = set(_CC_EDGES) | set(_EC_EDGES) | {"connects_via", _SUPERSEDES_EDGE}
 
 # 개방층 캐리어(F1 — D11-R2 포팅). 어휘(타입 이름)는 theme_store, 물리는 여기.
 _ENTITY_LABEL, _ENTITY_ID, _TYPED_REL = "Entity", "entity_id", "TYPED"
@@ -682,6 +688,8 @@ _ERR_DISALLOWED_PAIR = "edge_disallowed_pair"
 _ALLOWED_PAIRS_HINT = (
     "allowed pairs (concept and decision are interchangeable endpoints, "
     "except relates_to which stays concept→concept): "
+    "supersedes = new→old of the same kind (record→record, decision→decision, "
+    "concept:doc.*→concept:doc.*), with nonempty evidence; "
     "relates_to = concept→concept; "
     "prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; "
     "returns_to = distinct role concepts, with nonempty evidence; "
@@ -1022,6 +1030,32 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 f"MERGE (a)-[r:CONNECTS]->(b){b_set}",
                 {"s": ksrc, "d": kdst, **op, **b_p})
         return "created"
+    if etype == _SUPERSEDES_EDGE:
+        ok = (st == dt and st in _SUPERSEDES_KINDS and src != dst
+              and (st != "concept" or (src.startswith("concept:doc.")
+                                       and dst.startswith("concept:doc.")))
+              and isinstance(edge.get("evidence"), str) and edge["evidence"].strip())
+        if not ok:
+            warnings.append(
+                f"{_ERR_DISALLOWED_PAIR}: supersedes expects two distinct nodes of the same "
+                "kind (record, decision, or concept:doc.* document mirrors) and nonempty "
+                f"evidence — skipped ({st or '?'}→{dt or '?'})")
+            return None
+        ends = (_end(st), _end(dt))
+        (sl, sp), (dl, dp) = ends
+        was = _edge_exists(store, _SUPERSEDES_REL, ends, ksrc, kdst, owner=owner, osc=osc)
+        ev_set, ev_p = _ev_set("r", _SUPERSEDES_REL)
+        b_set, b_p = _birth_set("r")
+        store.run(
+            f"MATCH (a:{sl}), (b:{dl}) "
+            f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
+            f"MERGE (a)-[r:{_SUPERSEDES_REL}]->(b){b_set}{ev_set}",
+            {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
+        if not was and stamp_edges:
+            _stamp_edge_endpoints(store, _SUPERSEDES_REL, ends, ksrc, kdst, eowner,
+                                  osc=osc, warnings=warnings)
+        _warn_supersede_interval(store, st, ends, ksrc, kdst, src, dst, warnings)
+        return "created"
     if etype in _EC_EDGES:
         # F4 — episodic↔semantic 다리. 비대칭 쌍이라 역방향 dedupe 불요(ATTACHES_TO
         # 동형). 삭제 전파는 엣지 툼스톤(S4 확장 — query.delete_edge)이 담당한다.
@@ -1109,6 +1143,41 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         f"{_ERR_DISALLOWED_PAIR}: edge '{etype}' between {st}→{dt} 미지원 — skipped; "
         f"{_ALLOWED_PAIRS_HINT}")
     return None
+
+
+def _interval_of(store, kind: str, label_pk: tuple[str, str], key: str) -> tuple[str, str] | None:
+    """노드의 저작된 유효구간. Record 는 열, Decision 은 props(정책상 그 자리)다.
+    Concept 은 구간이 없어 None — 대체 경고를 내지 않는다."""
+    label, pk = label_pk
+    if kind == "record":
+        rows = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $k "
+                         "RETURN n.valid_from AS vf, n.valid_until AS vu", {"k": key})
+        return (str(rows[0].get("vf") or ""), str(rows[0].get("vu") or "")) if rows else None
+    if kind == "decision":
+        rows = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $k RETURN n.props AS p", {"k": key})
+        if not rows:
+            return None
+        try:
+            props = json.loads(rows[0].get("p") or "{}") if isinstance(rows[0].get("p"), str) \
+                else (rows[0].get("p") or {})
+        except ValueError:
+            props = {}
+        return (str(props.get("valid_from") or ""), str(props.get("valid_until") or ""))
+    return None
+
+
+def _warn_supersede_interval(store, kind, ends, ksrc, kdst, src, dst, warnings) -> None:
+    """대체 엣지의 구간 정합 경고. **값을 쓰지 않는다** — 판정은 저작자 몫이다."""
+    new, old = (_interval_of(store, kind, ends[0], ksrc),
+                _interval_of(store, kind, ends[1], kdst))
+    if new is None or old is None:
+        return
+    if not old[1]:
+        warnings.append(f"supersedes {src}→{dst}: the old node has no valid_until; "
+                        "set it to the date the new one starts so it leaves the current read")
+    elif new[0] and old[1] != new[0]:
+        warnings.append(f"supersedes {src}→{dst}: old valid_until {old[1]} differs from "
+                        f"new valid_from {new[0]}")
 
 
 def _warn_orphan_decisions(store, types: dict[str, str], warnings: list[str],
@@ -1227,6 +1296,12 @@ def merge_fragment(fragment: dict, *, store, themes=None,
             return _finalize({"merged": None, "executed": False,
                               "error": "invalid_package", "note": denial},
                              ["invalid_package: " + denial])
+        from .spec_contract import validate_nodes as validate_spec_nodes
+        denial = validate_spec_nodes(nodes)
+        if denial:
+            return _finalize({"merged": None, "executed": False,
+                              "error": "invalid_spec_record", "note": denial},
+                             ["invalid_spec_record: " + denial])
         from . import belief_contract
         try:
             nodes, edges, beliefs = belief_contract.prepare(nodes, edges, store=store, owner=owner)

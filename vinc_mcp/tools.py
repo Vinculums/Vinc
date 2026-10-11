@@ -39,6 +39,8 @@ from .bridge import Bridge
 _ALLOWED_PAIRS_HINT = (
     "allowed pairs (concept and decision are interchangeable endpoints, "
     "except relates_to which stays concept→concept): "
+    "supersedes = new→old of the same kind (record→record, decision→decision, "
+    "concept:doc.*→concept:doc.*), with nonempty evidence; "
     "relates_to = concept→concept; "
     "prerequisite_of|derives_from|inherits_from = concept|decision → concept|decision; "
     "returns_to = distinct role concepts, with nonempty evidence; "
@@ -47,6 +49,18 @@ _ALLOWED_PAIRS_HINT = (
     "about = episode|decision → concept|decision; "
     "any-type = open-entity→open-entity (TYPED carrier)"
 )
+
+_AS_OF_GRAPH_PROP = {"type": "string", "description": (
+    "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD. Hides "
+    "neighbours whose own interval did not overlap that period (a Record's valid_from/"
+    "valid_until, a Decision's props interval, an Episode dated after it); concepts carry "
+    "no interval and always stay. The seed itself is never hidden. Counts land in "
+    "`validity_filtered` and the period is echoed in `time_scope`. Omit for today's view.")}
+_KNOWN_AT_PROP = {"type": "string", "description": (
+    "Read what the graph had RECORDED by a period (graph time, not valid time): YYYY, "
+    "YYYY-MM or YYYY-MM-DD. Hides nodes stored after it, counted in `known_at_filtered`. "
+    "A node with no stored creation time (every Episode, and nodes from before birth "
+    "stamps) is kept and counted in `known_at_unknown`, never guessed. Omit for now.")}
 
 # F1 개방층: type enum 을 제거했다 — 서버가 라우팅 SSoT 이며 이제 *모든* 타입을
 # 영속한다(6종 전용 테이블 / 그 외 Entity·TYPED 캐리어). 스키마 수준 거부는
@@ -203,8 +217,13 @@ def _t_search(args, bridge):
         "query": args["query"], "top_k": args.get("limit", 20),
         "cursor": args.get("cursor"), "detail": args.get("detail"),
         "historical": "true" if args.get("historical") else None,
-        "as_of": args.get("as_of"),
+        "as_of": args.get("as_of"), "known_at": args.get("known_at"),
         "owner": _owner(args, bridge)})
+
+
+def _time_params(args: dict) -> dict:
+    """시점 읽기 두 축. 값이 없으면 키도 없다(Bridge 가 None 을 거르지만 모양을 지킨다)."""
+    return {k: args[k] for k in ("as_of", "known_at") if args.get(k)}
 
 
 def _t_recall(args, bridge):
@@ -218,7 +237,7 @@ def _t_recall(args, bridge):
         # 호출자는 page 를 안 보내서 예전 모양 그대로다.
         # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S3.
         "page": "true", "cursor": args.get("cursor"),
-        "debug": "true" if args.get("debug") else None})
+        **_time_params(args), "debug": "true" if args.get("debug") else None})
 
 
 #: vinc_graph depth 2 이상의 노드 예산(시드에서 닿는 개념 수). 넘으면 깊이를 층
@@ -291,6 +310,7 @@ def _t_graph(args, bridge):
             params["max_nodes"] = GRAPH_NODE_BUDGET
     except (TypeError, ValueError):
         pass
+    params.update(_time_params(args))
     out = bridge.request("GET", "/graph", params=params)
     if (not (args.get("seed_id") or "").strip()) and args.get("url")             and isinstance(out, dict):
         out.setdefault("from_url", seed)
@@ -330,7 +350,7 @@ def _t_neighbors(args, bridge):
     # E-G5 단일 홉 관측(SoG) — 개념의 1-hop 관계망(조회 전용).
     return bridge.request("GET", "/neighbors", params={
         "owner": _owner(args, bridge), "node": args["node"],
-        "limit": args.get("limit", 50)})
+        "limit": args.get("limit", 50), **_time_params(args)})
 
 
 def _t_edges(args, bridge):
@@ -346,7 +366,7 @@ def _t_path(args, bridge):
     return bridge.request("GET", "/path", params={
         "owner": _owner(args, bridge), "a": args["a"], "b": args["b"],
         "max_depth": args.get("max_depth", 6),
-        "weight": args.get("weight", "hops")})
+        "weight": args.get("weight", "hops"), **_time_params(args)})
 
 
 def _t_merge_candidates(args, bridge):
@@ -449,7 +469,8 @@ def _t_doc_put(args, bridge):
     return bridge.request("POST", "/doc/put", body={
         "owner": _owner(args, bridge), "text": args["text"],
         "id": args.get("doc_id"), "title": args.get("title"),
-        "origin": args.get("origin"), "topic": args.get("topic")})
+        "origin": args.get("origin"), "topic": args.get("topic"),
+        **{k: args[k] for k in ("valid_from", "valid_until", "superseded_by") if k in args}})
 
 
 def _t_conventions(args, bridge):
@@ -536,7 +557,7 @@ def _t_brief(args, bridge):
         "owner": _owner(args, bridge), "query": args["query"],
         "max_excerpts": args.get("max_excerpts", 3),
         "historical": "true" if args.get("historical") else None,
-        "as_of": args.get("as_of")})
+        "as_of": args.get("as_of"), "known_at": args.get("known_at")})
     from .roles import is_role_id
     if is_role_id(args["query"].strip()) and out.get("executed"):
         role = _t_role({**args, "role": args["query"].strip()}, bridge)
@@ -714,6 +735,7 @@ TOOLS: list[dict] = [
                        "degraded search and a complete one look identical from the results, so "
                        "silence here reads as \"nothing else exists\".",
         "inputSchema": {"type": "object", "properties": {
+            "known_at": _KNOWN_AT_PROP,
             "query": {"type": "string"},
             "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
             "cursor": {"type": "string",
@@ -856,6 +878,7 @@ TOOLS: list[dict] = [
                        "historical node as the present state. "
                        "Read-only.",
         "inputSchema": {"type": "object", "properties": {
+            "known_at": _KNOWN_AT_PROP,
             "query": {"type": "string",
                       "description": "The question, in natural language."},
             "max_excerpts": {"type": "integer", "default": 3, "minimum": 1, "maximum": 12,
@@ -905,6 +928,7 @@ TOOLS: list[dict] = [
                        "relevance search — for 'find anything about X' use vinc_search, which also covers "
                        "concepts and document text. Read-only.",
         "inputSchema": {"type": "object", "properties": {
+            "as_of": _AS_OF_GRAPH_PROP, "known_at": _KNOWN_AT_PROP,
             "owner": {"type": "string"},
             "domain": {"type": "string"},
             "tags": {"type": "array", "items": {"type": "string"}},
@@ -940,6 +964,7 @@ TOOLS: list[dict] = [
                        "you read before you overwrite it; nothing on the write path demands them yet. "
                        "Read-only.",
         "inputSchema": {"type": "object", "properties": {
+            "as_of": _AS_OF_GRAPH_PROP, "known_at": _KNOWN_AT_PROP,
             "seed_id": {"type": "string",
                         "description": "Exact node id. Give this OR `url`, not neither."},
             "url": {"type": "string",
@@ -1078,6 +1103,7 @@ TOOLS: list[dict] = [
                        "'vinc/design' files that node under 'vinc' automatically, no edges to author. "
                        "Read-only.",
         "inputSchema": {"type": "object", "properties": {
+            "as_of": _AS_OF_GRAPH_PROP, "known_at": _KNOWN_AT_PROP,
             "node": {"type": "string", "description": "Exact node id to observe (e.g. "
                                                       "concept:duality, record:pricing-note), "
                                                       "or a topic address (e.g. domain:vinc)."},
@@ -1120,6 +1146,7 @@ TOOLS: list[dict] = [
                        "degenerates exactly to 'hops'. Returns {found, length, weight, "
                        "paths:[{ids,titles,length,[cost]}], count}. Read-only.",
         "inputSchema": {"type": "object", "properties": {
+            "as_of": _AS_OF_GRAPH_PROP, "known_at": _KNOWN_AT_PROP,
             "a": {"type": "string", "description": "Exact source concept id (must start with `concept:`)."},
             "b": {"type": "string", "description": "Exact target concept id (must start with `concept:`)."},
             "max_depth": {"type": "integer", "default": 6, "minimum": 1, "maximum": 8,
@@ -1226,7 +1253,13 @@ TOOLS: list[dict] = [
                        "which side is right; open the path and look. `unanchored` lists records "
                        "that name a file in their text but carry no props.subject_path, so they "
                        "cannot be compared with anything: that count is meant to be driven down "
-                       "by adding the field. Both lists are capped by member_limit. "
+                       "by adding the field. `stale` lists current records whose "
+                       "props.subject_path covers a file that a later change episode "
+                       "(an Episode with props.files as repo:path and a date, optionally "
+                       "props.head_sha) touched after the record's measured_at, with the "
+                       "latest such change; same commit as measured_ref is not stale. It is a "
+                       "prompt to re-measure, not a verdict. All three lists are capped by "
+                       "member_limit. "
                        "kind='domain_roots' is a steward topic census: root counts/shares, "
                        "largest_root (null on a tie), unassigned_nodes and domains outside "
                        "the largest root. Counts cover Concept, Decision, Record and Episode, "
@@ -1375,7 +1408,9 @@ TOOLS: list[dict] = [
         "name": "vinc_delete_edge",
         "description": "Delete ONE relationship between two nodes (the nodes stay). "
                        "Covers the SYNCED relation types only: relates_to | prerequisite_of | "
-                       "derives_from | inherits_from | returns_to | about | ATTACHES_TO. A Record source can "
+                       "derives_from | inherits_from | returns_to | about | supersedes | ATTACHES_TO "
+                       "(supersedes runs new→old between two records, two decisions or two "
+                       "concept:doc.* mirrors). A Record source can "
                        "select its authored edge type (relates_to, prerequisite_of, derives_from "
                        "or inherits_from), preserving that qualifier in its deletion tombstone, "
                        "or select the physical ATTACHES_TO carrier. CONNECTS and TYPED remain "
@@ -1393,7 +1428,7 @@ TOOLS: list[dict] = [
             "from_id": {"type": "string", "description": "Exact source node id (e.g. concept:a, episode:s1)."},
             "to_id": {"type": "string", "description": "Exact target node id (e.g. concept:b)."},
             "type": {"type": "string",
-                     "description": "relates_to | prerequisite_of | derives_from | inherits_from | returns_to | about | ATTACHES_TO"},
+                     "description": "relates_to | prerequisite_of | derives_from | inherits_from | returns_to | about | supersedes | ATTACHES_TO"},
             **_OWNER_PROP,
         }, "required": ["from_id", "to_id", "type"]},
         "run": _t_delete_edge,
@@ -1441,6 +1476,17 @@ TOOLS: list[dict] = [
                        "under that topic and the answer survives re-writes; the response echoes it "
                        "back as `topic`.",
         "inputSchema": {"type": "object", "properties": {
+            "valid_from": {"type": "string", "description": (
+                "When the document's content became true, YYYY[-MM[-DD]]. Omit to keep the "
+                "stored value; empty string clears it.")},
+            "valid_until": {"type": "string", "description": (
+                "When the document stopped being true (half-open), YYYY[-MM[-DD]]. Setting it "
+                "retires the document without deleting it: its chunks leave the default "
+                "vinc_search and return with historical=true or an as_of period it held in. "
+                "Omit to keep; empty string clears it (current again). A metadata-only change "
+                "does not rewrite the text.")},
+            "superseded_by": {"type": "string", "description": (
+                "doc_id of the document that replaced this one. Omit to keep; empty clears.")},
             "text": {"type": "string", "description": "Full document text (the canonical content)."},
             "doc_id": {"type": "string", "description": "Existing doc to edit; omit to create."},
             "title": {"type": "string", "description": "Document title. OMIT IT TO KEEP THE TITLE THE DOCUMENT ALREADY HAS — it is not defaulted to empty. Pass \"\" only to actually clear the title. This matters on an edit: the title is separate from any title: line in the body, which this tool never reads."},

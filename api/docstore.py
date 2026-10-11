@@ -49,6 +49,7 @@ from engines import domain_hierarchy
 from store import pkns
 from store.embedded_backend import DDL_GUARD, keep_vector_index
 from store.lexical import lex_text
+from store.querybase import validity_state
 # 청킹은 순수 함수라 아래 층에 있다. 임베딩 워커와 리랭커(vinc_rag)도 같은 경계를 쓴다.
 from store.chunking import (DEFAULT_MAX_CHARS, _HEADING_RE, _section_title,  # noqa: F401
                             chunk_doc, estimate_tokens, normalize_boundaries,
@@ -127,7 +128,10 @@ def _meta(store, doc_id: str) -> dict | None:
         "d.content_hash AS content_hash, d.chunk_count AS chunk_count, "
         "d.updated_at AS updated_at, d.needs_embed AS needs_embed, "
         # v7(D72) — put_doc 이 created_at 을 보존하려면 먼저 읽어야 한다.
-        "d.created_at AS created_at, d.content_time AS content_time", {"id": doc_id})
+        "d.created_at AS created_at, d.content_time AS content_time, "
+        # v22 — 문서 유효구간. put_doc 이 3값(미지정 보존)을 지키려면 먼저 읽어야 한다.
+        "d.valid_from AS valid_from, d.valid_until AS valid_until, "
+        "d.superseded_by AS superseded_by", {"id": doc_id})
     return rows[0] if rows else None
 
 
@@ -362,13 +366,18 @@ def _with_fts_repair(store, fn: Callable[[], Any]) -> Any:
         return fn()
 
 
+#: 문서 유효구간 형식(Record 와 같은 계약).
+_VALIDITY_FORMAT = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
+
+
 def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             title: str | None = None, origin: str | None = None, layer: str = "ssot",
             max_chars: int = DEFAULT_MAX_CHARS,
             boundaries: list[int] | None = None,
             link: bool = True, updated_at: str | None = None,
             created_at: str | None = None, content_time: str | None = None,
-            topic: str | None = None) -> dict:
+            topic: str | None = None, valid_from: str | None = None,
+            valid_until: str | None = None, superseded_by: str | None = None) -> dict:
     """raw 텍스트를 doc 단위로 적재/갱신(파일 I/O 없음) — Chunk=SSoT 의 쓰기 정본.
 
     - 신규: doc_id 미지정 시 결정론 파생(make_doc_id). 반환 doc_id 로 이후 편집.
@@ -418,6 +427,25 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
     # 노드 쪽은 `fragment._KEPT_FIELDS` 로 같은 수술이 끝나 있었고 문서 쪽만 남아 있었다.
     kept_title = title if title is not None else str((prev or {}).get("title") or "")
     kept_origin = origin if origin is not None else str((prev or {}).get("origin") or "")
+    # v22 — 문서 유효구간도 같은 3값이다(키 부재=보존 · ""=비움 · 값=설정). 형식은
+    # Record 와 같은 `YYYY[-MM[-DD]]` 이고 어긋나면 **쓰지 않고 거절한다**: 조용히 비우면
+    # 은퇴시키려던 문서가 현재로 남는다.
+    validity = {}
+    for key, val in (("valid_from", valid_from), ("valid_until", valid_until)):
+        if val is None:
+            validity[key] = str((prev or {}).get(key) or "")
+        elif val == "" or _VALIDITY_FORMAT.match(val.strip()):
+            validity[key] = val.strip()
+        else:
+            base["error"] = f"invalid {key} {val!r}: use YYYY, YYYY-MM or YYYY-MM-DD"
+            return base
+    validity["superseded_by"] = (superseded_by.strip() if superseded_by is not None
+                                 else str((prev or {}).get("superseded_by") or ""))
+    if validity["superseded_by"] == doc_id:
+        base["error"] = "superseded_by must name a different document"
+        return base
+    validity_changed = prev is not None and any(
+        validity[k] != str(prev.get(k) or "") for k in validity)
     # 소유의 정본은 메타다. 메타 없이 남은 청크(첫 쓰기가 ③ 전에 끊긴 잔해)는 청크의
     # owner_id 가 유일한 근거라, 하나라도 남의 것(무소유 포함)이면 지우지도 덮지도
     # 않는다 — 아래 MERGE 가 남의 청크 owner_id 를 덮어쓰던 길이다(RV-12).
@@ -438,36 +466,41 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         # 같은 본문 re-put 이 성공을 답한 채 그 문서가 영영 안 읽힌다(RV-12).
         if prev.get("content_hash") == content_hash and prev.get("title") == kept_title \
                 and n_live == int(prev.get("chunk_count") or 0):
-            if origin is not None and origin != str(prev.get("origin") or ""):
-                # 출처만 바뀌면 원문 청크와 임베딩을 다시 만들 필요가 없다. 쓰기 창
+            origin_changed = origin is not None and origin != str(prev.get("origin") or "")
+            if origin_changed or validity_changed:
+                # 출처나 유효구간만 바뀌면 원문 청크와 임베딩을 다시 만들 필요가 없다. 쓰기 창
                 # 표식은 청크·메타 사이에서 끊겨도 다음 re-put 이 복구하게 한다.
                 stamp = updated_at or _stamp_updated_at(store)
                 seq = _next_doc_seq(store, owner)
                 count = int(prev.get("chunk_count") or 0)
                 store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id "
                           "SET d.chunk_count = -1", {"id": doc_id})
-                store.run("MATCH (c:Chunk) WHERE c.doc_id = $id "
-                          "SET c.source_file = $origin",
-                          {"id": doc_id, "origin": kept_origin})
-                # source_file 은 MENTIONS 의 source 매칭에도 쓰인다. 옛 링크를
-                # 지우고 같은 링커로 다시 만들되 청크 원문은 보존한다.
-                from store.embedded_schema import body_mentions_ready
-                keep_body = ("AND (m.method IS NULL OR m.method <> 'body') "
-                             if body_mentions_ready(store) else "")
-                store.run("MATCH (c:Chunk)-[m:MENTIONS]->() WHERE c.doc_id = $id "
-                          + keep_body + "DELETE m", {"id": doc_id})
-                linked = _relink_mentions(store, doc_id, owner=owner,
-                                          origin=kept_origin) if link else 0
+                linked = 0
+                if origin_changed:
+                    store.run("MATCH (c:Chunk) WHERE c.doc_id = $id "
+                              "SET c.source_file = $origin",
+                              {"id": doc_id, "origin": kept_origin})
+                    # source_file 은 MENTIONS 의 source 매칭에도 쓰인다. 옛 링크를
+                    # 지우고 같은 링커로 다시 만들되 청크 원문은 보존한다.
+                    from store.embedded_schema import body_mentions_ready
+                    keep_body = ("AND (m.method IS NULL OR m.method <> 'body') "
+                                 if body_mentions_ready(store) else "")
+                    store.run("MATCH (c:Chunk)-[m:MENTIONS]->() WHERE c.doc_id = $id "
+                              + keep_body + "DELETE m", {"id": doc_id})
+                    linked = _relink_mentions(store, doc_id, owner=owner,
+                                              origin=kept_origin) if link else 0
                 store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id "
                           "SET d.origin = $origin, d.updated_at = $ts, "
-                          "d.sync_seq = $seq, d.chunk_count = $count",
+                          "d.sync_seq = $seq, d.chunk_count = $count, "
+                          "d.valid_from = $vf, d.valid_until = $vu, d.superseded_by = $sb",
                           {"id": doc_id, "origin": kept_origin, "ts": stamp,
-                           "seq": seq, "count": count})
+                           "seq": seq, "count": count, "vf": validity["valid_from"],
+                           "vu": validity["valid_until"], "sb": validity["superseded_by"]})
                 _clear_doc_tombstone(store, doc_id)
                 base.update(executed=True, skipped=False, created=False,
                             chunks=count, replaced=0, title=kept_title,
                             content_hash=content_hash, mentions=linked,
-                            updated_at=stamp, sync_seq=seq,
+                            updated_at=stamp, sync_seq=seq, **validity,
                             warnings=_doc_id_warnings(text, doc_id))
                 if topic:
                     base["topic"] = _set_authored_topic(
@@ -561,10 +594,13 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         "MERGE (d:_DocMeta {doc_id: $id}) SET d.owner_id = $owner, d.title = $title, "
         "d.origin = $origin, d.content_hash = $hash, d.chunk_count = $n, "
         "d.updated_at = $ts, d.sync_seq = $seq, d.needs_embed = $ne, "
-        "d.created_at = $born, d.content_time = $ctime",
+        "d.created_at = $born, d.content_time = $ctime, "
+        "d.valid_from = $vf, d.valid_until = $vu, d.superseded_by = $sb",
         {"id": doc_id, "owner": owner, "title": kept_title, "origin": kept_origin,
          "hash": content_hash, "n": len(chunks), "ts": stamp, "seq": seq,
-         "ne": needs_embed, "born": born, "ctime": ctime})
+         "ne": needs_embed, "born": born, "ctime": ctime,
+         "vf": validity["valid_from"], "vu": validity["valid_until"],
+         "sb": validity["superseded_by"]})
     # 재생성 = 로컬 doc 툼스톤 상쇄(낡은 삭제가 동기화에서 재전파되지 않게, P3).
     _clear_doc_tombstone(store, doc_id)
 
@@ -780,7 +816,12 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
                 needs_embed=bool(int(meta.get("needs_embed") or 0)),
                 # v7(D72) — 편집기가 내용 시점을 편집하려면 지금 값을 알아야 한다.
                 created_at=meta.get("created_at") or "",
-                content_time=meta.get("content_time") or "")
+                content_time=meta.get("content_time") or "",
+                # v22 — 문서 유효구간과 파생 상태. 상태는 저장하지 않고 읽을 때 낸다.
+                valid_from=meta.get("valid_from") or "",
+                valid_until=meta.get("valid_until") or "",
+                superseded_by=meta.get("superseded_by") or "",
+                validity=validity_state(meta.get("valid_from"), meta.get("valid_until")))
     if not verified:
         base["note"] = ("복원 검증 실패 — 레거시(오프셋 미기록) 또는 부분 기록. "
                         "re-put 으로 치유 가능")

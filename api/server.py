@@ -259,6 +259,16 @@ def _omit_absent_rows(res: dict) -> dict:
     return res
 
 
+def _timed(kind: str, p: dict, store, res, *, seed=None):
+    """시점 읽기 후처리(`as_of`·`known_at`). 둘 다 없으면 결과 그대로다.
+    search·brief 의 `as_of` 는 자기 경로가 이미 처리하므로 거기서는 `known_at` 만 넘긴다.
+    근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] §1"""
+    from . import temporal_read
+    as_of = None if kind in ("search", "brief") else p.get("as_of")
+    return temporal_read.apply(kind, res, store=store, owner=p.get("owner") or None,
+                               as_of=as_of, known_at=p.get("known_at"), seed=seed)
+
+
 class VincApp:
     """사이드카 상태: 설정 · 공유 스토어(단일 Database, writer) · 세션 인증 · 잡 큐 ·
     ingest 레지스트리 · 백업 소스 경로. 라우트 메서드는 (status, dict) 를 돌려준다."""
@@ -628,14 +638,14 @@ class VincApp:
 
     # ── 읽기 라우트(CLI 1:1) ──────────────────────────────────────────────
     def read_recall(self, p) -> tuple[int, dict]:
-        return self._read(lambda r: _omit_absent_rows(q.recall(
+        return self._read(lambda r: _timed("recall", p, r, _omit_absent_rows(q.recall(
             p.get("query", ""), owner=p.get("owner"), domain=p.get("domain"),
             tenant=p.get("tenant"), workspace=p.get("workspace"),
             rank=p.get("rank", "recency"), tags=_csv(p.get("tags")),
             limit=_int(p.get("limit"), 10), store=r, debug=_flag(p.get("debug")),
             # 커서 페이징은 opt-in 이다 — `page`·`cursor` 없이 오는 호출(웹 op recall)은
             # 응답 모양이 그대로다. [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S3.
-            page=_flag(p.get("page")), cursor=p.get("cursor") or None)))
+            page=_flag(p.get("page")), cursor=p.get("cursor") or None))))
 
     def read_domains(self, p):
         return self._read(lambda r: q.domains(owner=p.get("owner"), store=r,
@@ -688,7 +698,9 @@ class VincApp:
         # layout = 프리셋(radial·circle·tree·organic·rank·dendro — 미지 값 radial 강등).
         # basis(D72) = 시간축. 미지 값은 조용히 recorded 로 강등하고 응답이 에코한다.
         from .mirror_provenance import graph_with_mirror_review
-        return graph_with_mirror_review(owner=_req(p, "owner"),
+        # 시점 읽기(as_of·known_at)는 완성된 결과에만 건다. 단계 미리보기는 앱 전용이고
+        # 앱은 두 인자를 보내지 않는다.
+        return _timed("graph", p, r, graph_with_mirror_review(owner=_req(p, "owner"),
                                             domain=p.get("domain"), seed=p.get("seed"),
                                             # 주제 여럿(쉼표 결합). 스코프는 하위
                                             # 트리 포함이다 — query.normalize_domains.
@@ -707,7 +719,7 @@ class VincApp:
                                             # 예산을 층으로 채울지(기본) 상금(ppr)으로 채울지.
                                             select=p.get("select") or "layers",
                                             review_mirror=p.get("review_mirror", False),
-                                            store=r)
+                                            store=r), seed=p.get("seed"))
 
     def read_view(self, p):
         # View L0(D16) — 도메인 분포 + 결합 행렬.
@@ -740,9 +752,9 @@ class VincApp:
 
     def read_neighbors(self, p):
         # E-G5 단일 홉 관측(SoG) — 개념의 1-hop 관계망 요약(조회 전용).
-        return self._read(lambda r: q.neighbors(
+        return self._read(lambda r: _timed("neighbors", p, r, q.neighbors(
             _req(p, "node"), owner=_req(p, "owner"),
-            limit=_int(p.get("limit"), 50), store=r))
+            limit=_int(p.get("limit"), 50), store=r), seed=p.get("node")))
 
     def read_node_edges(self, p):
         nodes = p.get("nodes")
@@ -770,9 +782,9 @@ class VincApp:
     def read_path(self, p):
         # E-G7/E-G8 최단 경로 증거 체인 — 두 개념 사이 경로(조회 전용).
         # weight=confidence 면 가중 갈래(E-G8 다익스트라), 그 외는 홉 최단(기본).
-        return self._read(lambda r: q.shortest_path(
+        return self._read(lambda r: _timed("path", p, r, q.shortest_path(
             _req(p, "a"), _req(p, "b"), max_depth=_int(p.get("max_depth"), 6),
-            owner=_req(p, "owner"), weight=p.get("weight") or q.WEIGHT_HOPS, store=r))
+            owner=_req(p, "owner"), weight=p.get("weight") or q.WEIGHT_HOPS, store=r)))
 
     def read_merge_candidates(self, p):
         # E-G4 병합 후보(조회 전용) — 확정은 /merge-nodes 경유(자동 병합 금지 T1).
@@ -839,22 +851,18 @@ class VincApp:
         qvec, vnote = self._query_embedding(query)
         # SEC-1: owner 는 선택(로컬 단일 사용자는 미지정 = 전역). 호스티드 원격은
         # MCP 가 토큰에서 해석한 owner 를 항상 실어 보내 스코프를 강제한다.
-        code, res = self._read(lambda r: q.search(query,
-                                                  query_embedding=qvec,
-                                                  query_runtime=(_ENCODER_RESPONSE_RUNTIME.get()
-                                                                 if qvec is not None else None),
-                                                  top_k=_int(p.get("top_k"), 5),
-                                                  filters=filters or None,
-                                                  cursor=p.get("cursor") or None,
-                                                  detail=p.get("detail") or "summary",
-                                                  historical=_flag(p.get("historical")),
-                                                  as_of=p.get("as_of") or None,
-                                                  owner=p.get("owner") or None, store=r))
+        code, res = self._read(lambda r: _timed("search", p, r, q.search(
+            query, query_embedding=qvec,
+            query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
+            top_k=_int(p.get("top_k"), 5), filters=filters or None,
+            cursor=p.get("cursor") or None, detail=p.get("detail") or "summary",
+            historical=_flag(p.get("historical")), as_of=p.get("as_of") or None,
+            owner=p.get("owner") or None, store=r)))
         # GM-14: 무효/실효 커서는 **명시적 클라이언트 오류**다 — 조용히 첫 페이지로
         # 폴백하면 호출자가 같은 페이지를 무한히 읽는다. 본문은 그대로 돌려준다
         # (Bridge 가 HTTPError 본문을 verbatim 통과시켜 MCP 도 같은 사유를 본다).
         if isinstance(res, dict) and str(res.get("error") or "").startswith(
-                ("invalid_cursor", "stale_cursor", "invalid_as_of")):
+                ("invalid_cursor", "stale_cursor", "invalid_as_of", "invalid_time_scope")):
             code = 400
         # **조용한 강등 금지.** 어느 팔이 돌았는지는 `q.search` 가 `arms` 로 남긴다
         # (CLI 와 같은 값이어야 §11 게이트① 동등성이 성립한다). 여기서는 **시도했는데
@@ -1200,12 +1208,13 @@ class VincApp:
                        else self._query_embedding(query))
         # 유효구간 기본은 current 만이다(채택된 시간 정책 §4.2). `historical=true` 가
         # 명시적 요청 경로이고, 기본으로 켜 두면 정책이 막으려는 것을 그대로 낸다.
-        code, res = self._read(lambda r: q.brief(
+        code, res = self._read(lambda r: _timed("brief", p, r, q.brief(
             query, owner=_req(p, "owner"), query_embedding=qvec,
             query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
             max_excerpts=_int(p.get("max_excerpts"), 3),
-            historical=_flag(p.get("historical")), as_of=p.get("as_of") or None, store=r))
-        if isinstance(res, dict) and str(res.get("error") or "").startswith("invalid_as_of"):
+            historical=_flag(p.get("historical")), as_of=p.get("as_of") or None, store=r)))
+        if isinstance(res, dict) and str(res.get("error") or "").startswith(
+                ("invalid_as_of", "invalid_time_scope")):
             code = 400
         # **시도했는데 실패한 경우에만** 사유를 덧붙인다(`/search` 와 같은 규칙 —
         # 시도조차 안 한 경우에 빈 필드를 붙이면 게이트① 동등성이 깨진다).
@@ -1388,7 +1397,10 @@ class VincApp:
                 origin=body.get("origin"),
                 content_time=None if ctime is None else str(ctime),
                 # 주제는 적는 값이다. 빈 값은 지움이 아니라 안 건드림이다.
-                topic=body.get("topic") or None)
+                topic=body.get("topic") or None,
+                # v22 — 문서 유효구간은 3값이다(키 부재=보존 · ""=비움).
+                **{k: str(body[k]) for k in ("valid_from", "valid_until", "superseded_by")
+                   if body.get(k) is not None})
         res = self.jobs.run_sync("doc.put", _put)
         return (400 if res.get("error") == "title must not be empty" else 200), res
 
