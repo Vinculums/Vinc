@@ -388,8 +388,9 @@ export async function renderView(el: HTMLElement, resume = false) {
   // 공유 문법 밖은 앱 전용 `#view/read/<id>[/<doc>]`(LNB 착지) 하나라 그것만 따로 읽는다.
   const rawParts = location.hash.split("/").map(decodeURIComponent);
   const readRoute = rawParts[1] === "read";
-  const addr = readRoute ? null : parseViewUrl(bookmark?.domains.length
-    ? formatViewUrl({ kind: "domains", domains: bookmark.domains }) : location.hash);
+  let addr = readRoute ? null : parseViewUrl(location.hash);
+  if (!readRoute && bookmark?.domains.length)
+    addr = parseViewUrl(formatViewUrl({ kind: "domains", domains: bookmark.domains }));
   // /as/<view> 는 이 마운트에서만 저장값을 이긴다 — 절대 savePrefs 하지 않는다
   // (공유 링크가 받는 사람의 저장 관점을 영구히 덮어쓰지 않게).
   const asAt = rawParts.indexOf("as");
