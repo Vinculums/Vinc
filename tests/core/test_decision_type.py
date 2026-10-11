@@ -15,6 +15,8 @@
 """
 from __future__ import annotations
 
+from contextlib import ExitStack
+
 import os
 import sys
 import tempfile
@@ -35,15 +37,20 @@ def _fresh_store():
     """임시 스토어 + env 복원 책임을 호출부에 넘긴다(전역 오염 방지)."""
     keys = ("MEMORY_STORE_BACKEND", "MEMORY_DATA_DIR", "MEMORY_EMBEDDING_MODEL")
     keep = {k: os.environ.get(k) for k in keys}
-    os.environ["MEMORY_STORE_BACKEND"] = "embedded"
-    os.environ["MEMORY_DATA_DIR"] = os.path.join(tempfile.mkdtemp(), "store")
-    os.environ["MEMORY_EMBEDDING_MODEL"] = "local-en"
-    from store.backend import open_store
-    from store.config import load_config
-    cfg = load_config()
-    store = open_store(cfg)
-    store.provision(dim=cfg.embedding_dim)
-    return store, keep
+    # 준비 중 실패하면 닫기와 환경 복원을 실행하고, 성공할 때만 호출자에게 넘긴다.
+    with ExitStack() as cleanup:
+        cleanup.callback(_restore, keep)
+        os.environ["MEMORY_STORE_BACKEND"] = "embedded"
+        os.environ["MEMORY_DATA_DIR"] = os.path.join(tempfile.mkdtemp(), "store")
+        os.environ["MEMORY_EMBEDDING_MODEL"] = "local-en"
+        from store.backend import open_store
+        from store.config import load_config
+        cfg = load_config()
+        store = open_store(cfg)
+        cleanup.callback(store.close)
+        store.provision(dim=cfg.embedding_dim)
+        cleanup.pop_all()
+        return store, keep
 
 
 def _restore(keep):
@@ -57,6 +64,9 @@ def _restore(keep):
 class DecisionEndToEnd(unittest.TestCase):
     def setUp(self):
         self.store, self._keep = _fresh_store()
+        # unittest는 setUp 실패 시 tearDown을 부르지 않으므로 먼저 정리를 등록한다.
+        self.addCleanup(_restore, self._keep)
+        self.addCleanup(self.store.close)
         res = frag.merge_fragment({
             "owner": OWNER,
             "nodes": [
@@ -94,10 +104,6 @@ class DecisionEndToEnd(unittest.TestCase):
         self.assertEqual([w for w in res.get("warnings") or [] if "decision:d19" not in w],
                          [], res.get("warnings"))
         self.assertEqual(res["merged"]["edges"]["created"], 5, res)
-
-    def tearDown(self):
-        self.store.close()
-        _restore(self._keep)
 
     def test_노드가_전용_테이블에_값과_함께_앉는다(self):
         """개방층(Entity)으로 새면 domain·props 가 조용히 사라진다 — 그 형태를 잰다."""
@@ -370,6 +376,68 @@ class DecisionEndToEnd(unittest.TestCase):
         n = self.store.run("MATCH (:Chunk)-[m:MENTIONS]->(:Decision) RETURN count(m) AS c")
         self.assertGreaterEqual(int(n[0]["c"]), 1,
                                 "문서가 결정을 언급했는데 링크가 안 생겼다")
+
+
+class DecisionFixtureIsolationTests(unittest.TestCase):
+    """fixture 실패 뒤에도 열린 스토어와 환경이 다음 테스트에 남지 않는다."""
+
+    def setUp(self):
+        from unittest import mock
+        self.before = {
+            "MEMORY_STORE_BACKEND": "synthetic-before-backend",
+            "MEMORY_DATA_DIR": "synthetic-before-directory",
+            "MEMORY_EMBEDDING_MODEL": "synthetic-before-model",
+        }
+        env = mock.patch.dict(os.environ, self.before)
+        env.start()
+        self.addCleanup(env.stop)
+
+    def _assert_environment_restored(self):
+        self.assertEqual({key: os.environ.get(key) for key in self.before}, self.before)
+
+    def test_open_failure_restores_environment(self):
+        from unittest import mock
+        with mock.patch("store.backend.open_store", side_effect=RuntimeError("synthetic open failure")):
+            with self.assertRaisesRegex(RuntimeError, "synthetic open failure"):
+                _fresh_store()
+        self._assert_environment_restored()
+
+    def test_provision_failure_closes_store_and_restores_environment(self):
+        from unittest import mock
+        store = mock.Mock()
+        store.provision.side_effect = RuntimeError("synthetic provision failure")
+        with mock.patch("store.backend.open_store", return_value=store):
+            with self.assertRaisesRegex(RuntimeError, "synthetic provision failure"):
+                _fresh_store()
+        store.close.assert_called_once_with()
+        self._assert_environment_restored()
+
+    def _run_failed_setup(self, *, close_error=False):
+        from unittest import mock
+        store = mock.Mock()
+        if close_error:
+            store.close.side_effect = RuntimeError("synthetic close failure")
+        body = mock.Mock()
+
+        class FailedFixture(DecisionEndToEnd):
+            def runTest(self):
+                body()
+
+        result = unittest.TestResult()
+        with mock.patch("store.backend.open_store", return_value=store), \
+                mock.patch.object(frag, "merge_fragment", side_effect=RuntimeError("synthetic merge failure")):
+            FailedFixture().run(result)
+        body.assert_not_called()
+        self.assertEqual(len(result.errors), 2 if close_error else 1, result.errors)
+        self.assertIn("synthetic merge failure", result.errors[0][1])
+        store.close.assert_called_once_with()
+        self._assert_environment_restored()
+
+    def test_setup_failure_runs_cleanup_without_teardown(self):
+        self._run_failed_setup()
+
+    def test_environment_restores_even_when_store_close_fails(self):
+        self._run_failed_setup(close_error=True)
 
 
 if __name__ == "__main__":
