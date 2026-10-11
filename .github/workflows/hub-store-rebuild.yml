@@ -23,6 +23,7 @@
 # 색인 빌드는 DDL 가드로 프로세스 전체를 멈추고 허브 크기면 몇 분이다. measure 가 그 시간을
 # 허브 엔진(0.20.4·리눅스)에서 재고, apply 가 같은 사본으로 갈아탄다.
 # 근거: [[vinc.plan.korean-retrieval-p1-p2-2026-10-02 §2.7]]
+# Upload integrity and pre-switch recovery: [[record:rebuild-apply-verifies-upload-and-recovers-before-switch-2026-10-09]]
 name: hub-store-rebuild
 on:
   workflow_dispatch:
@@ -172,6 +173,9 @@ jobs:
               --query "properties.template.containers[0].env[?name=='$1'].value | [0]" -o tsv
           }
           dir=$(env_of VINC_STORE_SNAPSHOT)
+          if [ -n "$dir" ]; then
+            echo 'SNAPSHOT_CONFIGURED=true' >> "$GITHUB_ENV"
+          fi
           [ -n "$dir" ] || dir=$(env_of VINC_DATA_DIR)
           case "$dir" in
             /data/*) ;;
@@ -180,13 +184,17 @@ jobs:
           src=${dir#/data/}
           case "$src" in ""|*/*|*..*) echo "::error::원본 파일명이 이상하다: '$src'" >&2; exit 1 ;; esac
           if [ "${{ inputs.step }}" = "lex" ]; then
-            dst="db.lex-$(date -u +%Y%m%d%H%M)"
+            dst="db.lex-$GITHUB_RUN_ID"
           else
-            dst="db.rebuilt-$(date -u +%Y%m%d%H%M)"
+            dst="db.rebuilt-$GITHUB_RUN_ID"
           fi
           pkns=$(env_of VINC_PK_NAMESPACED)
           durable=$(env_of VINC_DURABLE_ACK)
           case "${durable,,}" in 1|true|on) durable=on ;; *) durable=off ;; esac
+          if [ "${{ inputs.mode }}" = apply ] && [ "$durable" = on ]; then
+            echo '::error::generation-backed apply requires a separate reviewed migration; refusing base-only switch'
+            exit 1
+          fi
           echo "DURABLE_ACK=$durable" >> "$GITHUB_ENV"
           echo "SRC=$src" >> "$GITHUB_ENV"
           echo "DST=$dst" >> "$GITHUB_ENV"
@@ -202,11 +210,12 @@ jobs:
         run: |
           set -euo pipefail
           actives=$(az containerapp revision list $APP --query "[?properties.active].name" -o tsv)
+          [ "$(echo "$actives" | awk 'NF {n++} END {print n+0}')" = 1 ] || { echo '::error::apply requires exactly one active writer revision'; exit 1; }
+          echo "STOPPED_REVS=$(echo $actives)" >> "$GITHUB_ENV"
           for rev in $actives; do
             echo "deactivating: $rev"
             az containerapp revision deactivate $APP --revision "$rev" --output none
           done
-          echo "STOPPED_REVS=$(echo $actives)" >> "$GITHUB_ENV"
           # 활성 플래그가 아니라 **살아 있는 레플리카**를 기다린다(hub-deploy 와 같은 이유).
           gone=0
           for i in $(seq 1 20); do
@@ -325,6 +334,9 @@ jobs:
         if: inputs.mode == 'apply'
         run: |
           set -euo pipefail
+          exists=$(az storage file exists --share-name "$SHARE" --path "$DST" \
+            --account-name "$ACCOUNT" --account-key "$AZ_KEY" --query exists -o tsv)
+          [ "$exists" = false ] || { echo '::error::destination already exists; refusing overwrite'; exit 1; }
           az storage file upload --share-name "$SHARE" --source "work/$DST" --path "$DST" \
             --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none
           remote=$(az storage file show --share-name "$SHARE" --path "$DST" \
@@ -333,12 +345,26 @@ jobs:
           local=$(stat -c %s "work/$DST")
           echo "올린 크기 $remote / 로컬 $local"
           [ "$remote" = "$local" ] || { echo "::error::올린 크기가 다르다 — 갈아타지 않는다(허브는 내려가 있다. 되살리려면 이전 리비전을 다시 활성화할 것)" >&2; exit 1; }
+          az storage file download --share-name "$SHARE" --path "$DST" \
+            --dest "$RUNNER_TEMP/rebuilt-upload-$GITHUB_RUN_ID.db" \
+            --account-name "$ACCOUNT" --account-key "$AZ_KEY" --output none
+          expected=$(sha256sum "work/$DST" | awk '{print $1}')
+          actual=$(sha256sum "$RUNNER_TEMP/rebuilt-upload-$GITHUB_RUN_ID.db" | awk '{print $1}')
+          [ "$actual" = "$expected" ] || { echo '::error::uploaded store hash differs; refusing switch'; exit 1; }
+          printf '{"size_bytes":%s,"sha256":"%s","verified":true}\n' "$local" "$actual" > work/upload-verification.json
 
       - name: Switch the hub over
         if: inputs.mode == 'apply'
         run: |
           set -euo pipefail
-          if ! az containerapp update $APP --set-env-vars "VINC_DATA_DIR=/data/$DST" --output none; then
+          # After this marker a new revision may have accepted writes. Automatic
+          # rollback would discard them; preserve both stores for operator review.
+          echo 'SWITCH_STARTED=true' >> "$GITHUB_ENV"
+          switch_env=("VINC_DATA_DIR=/data/$DST")
+          if [ "${SNAPSHOT_CONFIGURED:-}" = true ]; then
+            switch_env+=("VINC_STORE_SNAPSHOT=/data/$DST")
+          fi
+          if ! az containerapp update $APP --set-env-vars "${switch_env[@]}" --output none; then
             echo "::error::env 교체 실패 — **허브는 지금 내려가 있다.** 원본 /data/$SRC 는 그대로다." >&2
             prev=$(echo "${STOPPED_REVS:-}" | awk '{print $NF}')
             echo "되살리려면: az containerapp revision activate -n vinc-hub -g vincsRG --revision $prev" >&2
@@ -372,6 +398,23 @@ jobs:
             *) echo "::error::허브가 응답했으나 tools/list 에 도구 목록이 없다" >&2; exit 1 ;;
           esac
           echo "⚠ 완료 판정은 이것이 아니다 — 거절되던 쓰기(문서 저장)를 한 번 해 볼 것."
+
+      - name: Restore the original revision after a pre-switch failure
+        if: ${{ failure() && inputs.mode == 'apply' && env.STOPPED_REVS != '' && env.SWITCH_STARTED != 'true' }}
+        run: |
+          set -euo pipefail
+          for rev in $STOPPED_REVS; do
+            az containerapp revision activate $APP --revision "$rev" --output none
+            ready=0
+            for i in $(seq 1 30); do
+              state=$(az containerapp revision show $APP --revision "$rev" \
+                --query properties.runningState -o tsv)
+              case "$state" in Running|RunningAtMaxScale) ready=1; break ;; esac
+              sleep 10
+            done
+            [ "$ready" = 1 ] || { echo '::error::original revision did not recover; operator intervention required'; exit 1; }
+          done
+          echo 'Original revision restored before any store switch; both store files retained.'
 
       # 이 실행에서 만든 사본만 지운다. --snapshot 없는 삭제는 라이브 공유를 지운다.
       - name: Remove the rehearsal snapshot
