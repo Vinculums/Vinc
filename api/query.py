@@ -4558,6 +4558,23 @@ def node_attachments_plan(node: str, *, owner: str | None = None) -> QueryPlan:
                      note="record/episode/bridge attachments (F14)")
 
 
+def record_supersedes_plan(node: str, *, owner: str | None = None) -> QueryPlan:
+    """Record 시드의 SUPERSEDES 이웃(양방향). 방향은 `vinc_edges` 가 준다."""
+    params: dict = {"node": pkns.key(owner, node)}
+    scope = ""
+    if owner:
+        params["owner"] = owner
+        scope = " AND a.owner_id = $owner AND m.owner_id = $owner"
+    arms = [f"MATCH {pat} WHERE a.record_id = $node{scope} "
+            "RETURN 'SUPERSEDES' AS rel, m.record_id AS id, m.title AS title, "
+            "m.domain AS domain, '' AS one_liner, " + _track_cols("m") + ", "
+            + _validity_cols("m")
+            for pat in ("(a:Record)-[:SUPERSEDES]->(m:Record)",
+                        "(m:Record)-[:SUPERSEDES]->(a:Record)")]
+    return QueryPlan("record_supersedes", " UNION ALL ".join(arms), params,
+                     note="record supersession axis")
+
+
 def _attach_reverse_cypher(s_label: str, owner: str | None) -> str:
     """부착 노드(Record·Episode·Bridge) 시드 → 그것이 붙어 있는 개념·결정.
 
@@ -4654,6 +4671,12 @@ def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
     # 부착 축이 못 뜨더라도(구 스토어·확장 부재) 개념 축 결과는 그대로 낸다.
     att = execute(node_attachments_plan(node, owner=owner), cfg, store=store)
     rows = list(res.get("rows", [])) + (list(att.get("rows", [])) if att.get("executed") else [])
+    if node.startswith("record:"):
+        # 대체 축 — Record 끼리의 SUPERSEDES. 위 두 플랜은 양 끝 중 하나가 의미층이라
+        # Record→Record 를 모양에서 놓친다. 이게 없으면 옛 기록에서 후속을 못 걷는다.
+        sup = execute(record_supersedes_plan(node, owner=owner), cfg, store=store)
+        if sup.get("executed"):
+            rows += list(sup.get("rows", []))
     seen: set = set()
     out: list[dict] = []
     by_rel: dict[str, int] = {}
@@ -5767,6 +5790,7 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
     if owns:
         store = open_store(cfg)
     base = {"kind": "claim_diagnosis", "executed": False, "conflicts": [],
+            "stale": [], "stale_count": 0,
             "conflict_count": 0, "unanchored": [], "unanchored_count": 0,
             "unanchored_truncated": False, "anchored_count": 0, "scanned": 0}
     if store is None:
@@ -5776,9 +5800,11 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
         where = "WHERE r.owner_id = $owner " if owner else ""
         rows = store.run(
             f"MATCH (r:Record) {where}"
-            "RETURN r.record_id AS id, r.title AS title, r.props AS props",
+            "RETURN r.record_id AS id, r.title AS title, r.props AS props, "
+            "r.valid_until AS valid_until",
             {"owner": owner} if owner else {})
         lim = _clamp_limit(limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
+        stale = _stale_claims(store, rows, owner=owner)
         by_path: dict[str, list[dict]] = {}
         unanchored: list[dict] = []
         for r in rows:
@@ -5815,11 +5841,69 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
                     unanchored=unanchored[:lim], unanchored_count=len(unanchored),
                     unanchored_truncated=len(unanchored) > lim,
                     anchored_count=sum(len(v) for v in by_path.values()),
+                    stale=stale[:lim], stale_count=len(stale),
+                    stale_truncated=len(stale) > lim,
                     scanned=len(rows))
     finally:
         if owns:
             store.close()
     return base
+
+
+def _path_covers(subject: str, changed: str) -> bool:
+    """주장의 경로가 바뀐 파일을 덮는가. 같은 파일이거나 그 디렉터리 아래다."""
+    return changed == subject or changed.startswith(subject.rstrip("/") + "/")
+
+
+def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[dict]:
+    """측정 뒤에 경로가 바뀐 **현재** 주장. 변경 근거는 `props.files` 를 가진 Episode 다.
+
+    판정하지 않는다. "이 주장을 잰 뒤에 그 파일이 바뀌었다"는 사실만 낸다. 같은 커밋
+    (`measured_ref == head_sha`)에서 잰 것은 낡지 않았다. 날짜가 없는 쪽은 비교하지
+    않는다(없는 시간을 지어내지 않는다). 주장마다 가장 최근 변경 하나만 붙인다.
+    근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] 를 잇는
+    그래프 문서 vinc.plan.spec-drift-graphiti-0-9-8-2026-10-11 §3."""
+    from .fragment import _norm_subject_path
+    where = "WHERE e.owner_id = $owner " if owner else ""
+    changes = []
+    for e in store.run(f"MATCH (e:Episode) {where}"
+                       "RETURN e.episode_id AS id, e.title AS title, e.date AS date, "
+                       "e.props AS props", {"owner": owner} if owner else {}):
+        props = _props_to_obj(e.get("props"))
+        files = props.get("files")
+        date = str(e.get("date") or props.get("date") or "")
+        if not isinstance(files, list) or not files or not date:
+            continue
+        changes.append({"id": pkns.strip(e.get("id") or ""), "title": e.get("title") or "",
+                        "date": date, "head_sha": str(props.get("head_sha") or ""),
+                        "files": [_norm_subject_path(f) for f in files if isinstance(f, str)]})
+    if not changes:
+        return []
+    today = _dt.date.today().isoformat()
+    out = []
+    for r in record_rows:
+        until = str(r.get("valid_until") or "")
+        if until and until <= today:
+            continue                       # 은퇴한 주장은 낡을 수 없다
+        props = _props_to_obj(r.get("props"))
+        sp = str(props.get("subject_path") or "").strip()
+        at = str(props.get("measured_at") or "")
+        ref = str(props.get("measured_ref") or "")
+        if not sp or not at:
+            continue
+        hits = [c for c in changes
+                if c["date"] > at and (not ref or c["head_sha"] != ref)
+                and any(_path_covers(sp, f) for f in c["files"])]
+        if not hits:
+            continue
+        latest = max(hits, key=lambda c: (c["date"], c["id"]))
+        rid = pkns.strip(r.get("id") or "")
+        out.append({"claim": {"id": rid, "title": r.get("title") or rid, "subject_path": sp,
+                              "measured_at": at, "measured_ref": ref},
+                    "change": {k: latest[k] for k in ("id", "title", "date", "head_sha")},
+                    "changes_since": len(hits)})
+    out.sort(key=lambda x: (x["change"]["date"], x["claim"]["id"]), reverse=True)
+    return out
 
 
 def communities(*, owner: str | None = None, cfg=None, store=None,
@@ -6386,13 +6470,14 @@ def _derive_sync_edge_rels() -> dict[str, tuple[tuple[str, str, str, str], ...]]
     return {k: tuple(v) for k, v in out.items()}
 
 
-_SYNCED_EDGE_RELS = _CC_RELS + ("ABOUT", "ATTACHES_TO")
+_SYNCED_EDGE_RELS = _CC_RELS + ("ABOUT", "ATTACHES_TO", "SUPERSEDES")
 SYNC_EDGE_RELS: dict[str, tuple[tuple[str, str, str, str], ...]] = _derive_sync_edge_rels()
 _FRAGMENT_EDGE_TO_REL = {   # fragment 엣지 타입명 → rel (api/fragment 와 동형)
     "relates_to": "RELATED_TO", "prerequisite_of": "PREREQUISITE_OF",
     "derives_from": "DERIVES_FROM", "inherits_from": "INHERITS_FROM",
     "about": "ABOUT",
     "returns_to": "RETURNS_TO",
+    "supersedes": "SUPERSEDES",
 }
 
 

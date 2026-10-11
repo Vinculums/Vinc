@@ -299,7 +299,7 @@ def _summary_row(r: dict, query_tokens: set[str] | None = None) -> dict:
     return out
 
 
-def _attach_doc_titles(store, rows: list[dict], *, owner: str | None = None) -> None:
+def _attach_doc_titles(store, rows: list[dict], *, owner: str | None = None) -> dict:
     """요약 행에 문서 제목(`doc_title`)을 단다 — 페이지의 doc_id 들을 한 번에 조회한다.
 
     행은 doc_id 만 들고 있어서, 제목이 필요한 소비자(허브 `search`)가 발췌 첫 줄을
@@ -308,24 +308,55 @@ def _attach_doc_titles(store, rows: list[dict], *, owner: str | None = None) -> 
     페이지 크기에 묶인다. `_DocMeta.doc_id` 는 소유자로 네임스페이싱되지 않으므로
     owner 를 반드시 건다 — 같은 doc_id 를 가진 남의 문서 제목이 새면 안 된다.
     실패는 삼킨다: 제목은 부가 정보이고, 없으면 소비자가 doc_id 로 대신한다.
+
+    v22 — 같은 조회에서 문서 유효구간도 읽어 `{doc_id: (valid_from, valid_until)}` 로
+    돌려준다(:func:`_drop_retired_doc_rows`). 페이지당 조회는 여전히 한 번이다.
     근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S12"""
     ids = sorted({r.get("doc_id") for r in rows if r.get("doc_id")})
     if not ids:
-        return
+        return {}
     where = "d.doc_id IN $ids" + (" AND d.owner_id = $owner" if owner else "")
     params: dict = {"ids": ids}
     if owner:
         params["owner"] = owner
     try:
         got = store.run(f"MATCH (d:_DocMeta) WHERE {where} "
-                        "RETURN d.doc_id AS id, d.title AS t", params) or []
+                        "RETURN d.doc_id AS id, d.title AS t, "
+                        "d.valid_from AS vf, d.valid_until AS vu", params) or []
     except Exception:
-        return
+        return {}
     titles = {str(g.get("id") or ""): str(g.get("t") or "") for g in got}
     for r in rows:
         t = titles.get(r.get("doc_id") or "")
         if t:
             r["doc_title"] = t
+    return {str(g.get("id") or ""): (str(g.get("vf") or ""), str(g.get("vu") or ""))
+            for g in got}
+
+
+def _drop_retired_doc_rows(base: dict, validity: dict, *, historical: bool, scope) -> None:
+    """청크 행을 **문서의** 유효구간으로 거른다(v22). 기본은 은퇴한 문서를 감추고,
+    `historical` 이면 그대로, `as_of` 기간이면 그 기간에 성립한 문서만 남긴다. 감춘 수는
+    `validity_filtered` 에 더하고 `doc_validity_filtered` 로도 센다. 순위와 커서는 그대로라
+    이 페이지가 `limit` 보다 짧아질 수 있다.
+    근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] §3"""
+    if (historical and scope is None) or not validity:
+        return
+    kept, hidden = [], 0
+    for r in base.get("rows") or []:
+        vf, vu = validity.get(r.get("doc_id") or "", ("", ""))
+        ok = (holds_during(vf, vu, scope) if scope is not None
+              else validity_state(vf, vu) != "historical")
+        if ok:
+            kept.append(r)
+        else:
+            hidden += 1
+    if hidden:
+        base["rows"] = kept
+        base["validity_filtered"] = int(base.get("validity_filtered") or 0) + hidden
+        base["doc_validity_filtered"] = hidden
+        base.setdefault("validity_note", "hid chunks of documents whose validity ended; "
+                                         "pass historical=true to include them")
 
 
 def recall(query: str = "", *, owner: str | None = None, tenant: str | None = None,
@@ -1302,7 +1333,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             qtok = lex_tokens(query)              # 페이지에 한 번 — 행마다 다시 자르지 않는다
             base["rows"] = [_summary_row(r, qtok) for r in page]
         if detail != "full":
-            _attach_doc_titles(store, base["rows"], owner=owner)
+            _drop_retired_doc_rows(base, _attach_doc_titles(store, base["rows"], owner=owner),
+                                   historical=historical, scope=_scope)
         # MCP 봉투의 크기 안전망(shrinker)이 이어받을 좌표 — 꼬리 행을 덜어낸 뒤
         # 같은 지문으로 next_cursor 를 다시 쓸 수 있게 한다.
         base["page"] = {"offset": off, "limit": max(1, int(top_k)), "fingerprint": qh}

@@ -210,7 +210,12 @@ _META_TABLES: dict[str, dict] = {
         #                  비교·버킷이 문자열 사전식이라 형식이 곧 계약이다.
         # 둘 다 '' 가 합법이다(레거시·미입력) — 없으면 없다고 말한다
         # ([[vinc.spec.dataplane §7]]).
-        ("created_at", "STRING"), ("content_time", "STRING")]},
+        ("created_at", "STRING"), ("content_time", "STRING"),
+        # v22 — 문서 유효구간과 후속 문서. Record 와 같은 반개구간 `[valid_from,
+        # valid_until)` 이고 '' 는 미기재(= current)다. 청크가 아니라 문서에 둔다: 편집이
+        # 청크를 다시 만들고 동기화가 수신측에서 재청킹하므로 청크 열은 살아남지 못한다.
+        # 근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] §3
+        ("valid_from", "STRING"), ("valid_until", "STRING"), ("superseded_by", "STRING")]},
     # 문서 삭제 표식 — 하드삭제만으론 상대 사본이 다음 delta 에 실려 부활한다
     # (엣지 툼스톤과 같은 병 · [[vinc.spec.dataplane §6.2]]).
     "_DocTombstone": {"pk": "doc_id", "cols": [
@@ -252,7 +257,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
 # 그것이 v13 이 존재하는 이유와 같다(아래 `DOMAIN_HIERARCHY_VERSION` 주석). 백필은
 # 스토어가 **뒤처져 있을 때만** 도는데, 라이브가 이미 최신을 기록하고 있으면 상수만
 # 올려서는 안 돈다 — 목표 버전이 함께 움직여야 한다.
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 
 #: v21 — 전문 색인이 `Chunk.lex` 위에 섰다는 표지(`_SchemaMeta` 의 키, 값 `ready`).
 #: **스키마 버전과 분리한다.** 버전은 기동 때 ALTER 와 함께 기록되는데 색인 이관은 기동 뒤에
@@ -396,6 +401,9 @@ def migration_statements(from_version: int) -> list[str]:
         # 색인을 옮기는 것은 데이터 단계(`EmbeddedBackend.migrate_lex_index`)이고 그 끝에
         # `LEX_INDEX_KEY` 표지가 선다. 버전은 기동 때 기록되므로 표지가 될 수 없다.
         stmts.append("ALTER TABLE Chunk ADD lex STRING DEFAULT ''")
+    if from_version < 22:  # v22 — 문서 유효구간(`_DocMeta` 주석). 백필 없음: '' 는 미기재다.
+        for col in ("valid_from", "valid_until", "superseded_by"):
+            stmts.append(f"ALTER TABLE _DocMeta ADD {col} STRING DEFAULT ''")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
@@ -415,7 +423,7 @@ _EDGE_BIRTH_COL: tuple[str, str] = ("created", "STRING")
 #: 출생 열을 갖는 관계 — DDL·마이그레이션·쓰기 경로가 **이 하나**를 읽는다.
 EDGE_BIRTH_RELS: tuple[str, ...] = (
     "PREREQUISITE_OF", "DERIVES_FROM", "RELATED_TO", "INHERITS_FROM",
-    "RETURNS_TO", "CONNECTS", "ATTACHES_TO", "ABOUT", "TYPED",
+    "RETURNS_TO", "CONNECTS", "ATTACHES_TO", "ABOUT", "TYPED", "SUPERSEDES",
 )
 
 # v12 — **결정은 개념과 같은 층이다.** 개념이 끝점일 수 있는 자리마다 결정도 끝점일 수
@@ -459,6 +467,13 @@ _REL_TABLES: list[tuple] = [
     # 범용 관계 캐리어 — 사용자 저작 엣지 타입의 집(Entity→Entity, D11-R2 §4).
     # exact (from, type, to) MERGE 로 rel-property `type` 이 매칭 키에 참여한다.
     ("TYPED", "Entity", "Entity", [("type", "STRING")]),
+    # 대체(supersedes) — **새 것에서 옛 것으로**(derives_from 과 같은 역방향 관례).
+    # 같은 종류끼리만 쓴다(Record→Record·Decision→Decision·문서 미러 Concept→Concept).
+    # 표는 곱집합으로 열리지만 다른 종류 쌍은 쓰기 경로(`api/fragment`)가 거절한다.
+    # 신규 rel 테이블이라 매 부팅 멱등 DDL 이 만들고 ALTER 스텝이 없다(ABOUT 전례).
+    # 근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] §2
+    ("SUPERSEDES", ("Record", "Decision", "Concept"), ("Record", "Decision", "Concept"),
+     list(_EDGE_EVIDENCE_COLS)),
     # E-G1 — 그래프-검색 접속(이부 그래프). Chunk(벡터/FTS 검색 노드)를 그것이
     # 언급하는 Concept 에 잇는다. 생성은 LLM OpenIE 가 아니라 **결정론**(source_file
     # basename 일치 또는 title/stem 토큰 매칭 — engines/mentions_link.py). 이 다리로
