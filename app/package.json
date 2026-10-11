@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run typecheck && npm run test:view-controls && npm run test:view-layout && npm run test:view-loading && npm run test:view-session && vite build",
+    "build": "npm run typecheck && npm run test:view-controls && npm run test:view-links && npm run test:view-layout && npm run test:view-loading && npm run test:view-session && vite build",
+    "test:view-links": "node --test tests/view-link-performance.test.mjs",
     "test:view-controls": "node --test tests/view-controls.test.mjs",
     "test:view-loading": "node --test tests/view-graph-loading.test.mjs",
     "test:view-layout": "node --test tests/view-layout.test.mjs",

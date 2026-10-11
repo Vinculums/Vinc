@@ -1828,6 +1828,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     const live = (g3 as { __update?: (p: ViewPrefs) => boolean } | null)?.__update
       ?? g2?.update;
     if (work.mode === "style" && live && live(np)) {
+      if (changed.includes("edges")) applyTimeCut();
       // 제자리 반영 성공. 슬라이더(input 마다 한 번)는 패널을 다시 그리지 않는다 —
       // 숫자 표시는 자기 배선으로 이미 따라 움직이고, 다시 그리면 끌던 손잡이가
       // 새 노드로 바뀌어 드래그가 끊긴다. 칩은 활성 상태가 바뀌므로 다시 그린다.

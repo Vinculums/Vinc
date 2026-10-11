@@ -24,7 +24,8 @@ export function changedRendererPrefs(previous: ViewPrefs, next: ViewPrefs): Pref
   return changedViewPrefs(previous, next).filter(key => key !== "when" && key !== "timeBasis");
 }
 
-export const canUpdateViewStyle = (keys: PrefKey[]) => keys.every(key => STYLE_KEYS.has(key));
+export const canUpdateViewStyle = (keys: PrefKey[], liveLinks = false) =>
+  keys.every(key => STYLE_KEYS.has(key) || liveLinks && key === "edges");
 
 /** One panel inventory for every viewpoint. Only hub consumes cone geometry. */
 export function viewControlRows(p: ViewPrefs): string[] {
@@ -55,7 +56,7 @@ export function viewPreferenceWork(p: ViewPrefs, keys: PrefKey[],
   else if (keys.every(key => key === "when" || key === "timeBasis")
     && (!keys.includes("timeBasis") || !isRootsLayout(p.layout) || p.view === "bundle")
     && (available.map || p.view === "bundle")) mode = "time";
-  else if (!relayout && available.map && canUpdateViewStyle(keys)) mode = "style";
+  else if (!relayout && available.map && canUpdateViewStyle(keys, p.view === "3d")) mode = "style";
   return { mode, serverLayout, relayout, reuseGraph: !serverLayout, keepCamera: !serverLayout,
     refreshPanel: !keys.every(key => key === "nodeScale" || key === "edgeScale" || key === "spread") };
 }
