@@ -27,7 +27,7 @@ import { blocksSurfaceShortcuts, isTypingTarget } from "../keys";
 import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
 
-import { layoutsFor, isRootsLayout, serverLayoutFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
+import { layoutsFor, isRootsLayout, serverLayoutFor, rootsOrderingFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
          WHEN_SCALE, timeCutoff, nodeTimeOn, visibleAt,
          EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, DIRECTED_RELS,
          edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
@@ -35,6 +35,7 @@ import { layoutsFor, isRootsLayout, serverLayoutFor, VIEWPOINTS, RAIL_MIN, RAIL_
          localStamp, localKeyToUtc, nextTimeKey,
          type ViewPrefs, type PeriodKey, type Viewpoint, type BundleDepth,
          type EdgeKind } from "../view-prefs";
+import { changedViewPrefs, viewControlRows, viewPreferenceWork } from "../view-controls";
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
 import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbKindLens, lnbKind,
          refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
@@ -1254,7 +1255,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   async function applyPeriod(mut: Partial<ViewPrefs>, refocus?: string) {
     if (!viewPanel.hidden) { await applyPrefs(mut, refocus); return; }
     const cur = loadPrefs();
-    if ((Object.keys(mut) as (keyof ViewPrefs)[]).every((k) => cur[k] === mut[k])) return;
+    if (!changedViewPrefs(cur, mut).length) return;
     savePrefs({ ...cur, ...mut });
     reuseGraph = true;                    // 좌표·데이터는 그대로다 — 거르는 것만 바뀐다
     await show(trail[trail.length - 1], { keepPanel: true, keepCamera: true });
@@ -1298,40 +1299,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     ].filter((g) => g.keys.length > 0);
   }
 
-  function rowsFor(p: ViewPrefs): string[] {
-    switch (p.view) {
-      // `선 보이기`(edgeShow)는 둘 다에 있지만 **고를 수 있는 값이 다르다**
-      // (edgeShowsFor) — 3D 만 입자를 고를 수 있다(sigma 에 입자가 없다). 기본으로
-      // 떨어지는 자리는 양쪽 다 모아 보기·짚을 때만이다(edgeShowFor).
-      // `가지 벌어짐`(cone)은 **3D 에만** 있다. 2D 는 같은 트리를 부채꼴로 눕히는데
-      // 부채꼴은 무게 비례로 각도를 나눠 갖는 구조라 벌릴 여지가 없다 — 2D 에 내놓으면
-      // 아무 일도 안 하는 손잡이가 된다(§1 의 규칙).
-      // ⚠ `basis` 가 `when` **앞**이다(발주자 지시 2026-09-10). 기준이 시점의 뜻을
-      // 정하기 때문이다: 같은 슬라이더 자리라도 "기록한 때"냐 "일어난 때"냐에 따라
-      // 다른 축을 자른다. 고르는 순서가 읽는 순서와 어긋나면 슬라이더를 먼저 만지고
-      // 기준을 바꿔 방금 고른 시점이 다른 곳을 가리키게 된다. Timeline 은 처음부터
-      // 이 순서였다 — 셋을 맞춘다.
-      case "3d":
-        return ["size", "layout", "nodeScale", "labels", "arrows", "unlinked",
-                ...(!isRootsLayout(p.layout) ? ["cone"] : []),
-                "spread", "edgeWidth", "edgeShow", "basis", "when", "replay"];
-      case "2d":
-        return ["size", "layout", "nodeScale", "labels", "arrows", "unlinked", "spread",
-                "edgeWidth", "edgeShow", "basis", "when"];
-      // D49 — `깊이` 는 **씨앗이 있을 때만** 뜻이 있다("씨앗에서 몇 세대"). 씨앗 없는
-      // 층(L0/L1)에서는 자를 기준점이 없어 렌더러가 상한을 걸지 않으므로, 아무 일도
-      // 안 하는 컨트롤을 내놓지 않는다(보이는 손잡이는 반드시 무언가를 해야 한다).
-      // 기간(period)이 맨 위다 — 무엇을 그릴지부터 정하고, 그다음 어느 시계로 볼지다.
-      case "timeline": return ["period", "basis", "docs", "lineage"];
-      // 번들 — `단`은 선이 어느 계층에서 묶이는지다(잎은 안 줄어든다. **라벨은**
-      // 둘레에 들어갈 만큼만 그린다 — 2026-08-16),
-      // `선`은 스키마 타입별 켜고 끄기. 좌표를 안 쓰므로 layout·spread·size 는 무의미하다.
-      // Weave 도 시간을 갖는다(발주자 지시 2026-09-10 — 신설). 링 각도가 전량으로
-      // 잡혀 있어 커서가 자리를 안 흔든다는 것이 그 전제다.
-      case "bundle":
-        return ["bundleDepth", "bundleRels", "labels", "basis", "when", "replay"];
-    }
-  }
+  const rowsFor = viewControlRows;
 
   /** 슬라이더 한 벌(2026-08-05 재설계). 여태 세 개가 각자 인라인 스타일로 그려진
    *  **UA 기본 range** 였다: 트랙이 실선 한 줄, 손잡이가 작고, 무엇보다 **값이 어디에도
@@ -1811,7 +1779,8 @@ export async function renderView(el: HTMLElement, resume = false) {
     const cur = loadPrefs();
     // 이미 활성인 옵션을 다시 누르면 무동작이다(applyViewpoint·applyFrame 과 같은 계약).
     // 없으면 3D 는 카메라 프레이밍이, 평면 뷰는 스크롤 위치가 재마운트로 되감긴다.
-    if ((Object.keys(mut) as (keyof ViewPrefs)[]).every((k) => cur[k] === mut[k])) {
+    const changed = changedViewPrefs(cur, mut);
+    if (!changed.length) {
       if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
       return;
     }
@@ -1820,10 +1789,12 @@ export async function renderView(el: HTMLElement, resume = false) {
     // show() 로 내려가면 `/graph` 를 통째로 다시 받는데, 그것이 리서치
     // [[vinc.research.view-interaction-perf]] 가 지목한 낭비다 — 옵션 여덟 개 중 하나만
     // 서버가 필요한데 전부 전량 재조회 + 재마운트를 하고 있었다. 여기서만 끊는다.
-    const bundleOnly = (Object.keys(mut) as string[]).every(
-      (k) => k === "bundleDepth" || k === "bundleOff" || k === "labels");
     const bh = planar as (PlanarHandle & { update?: (o: unknown) => void }) | null;
-    if (curPrefs().view === "bundle" && bundleOnly && bh?.update) {
+    const np = curPrefs();
+    const work = viewPreferenceWork(np, changed, {
+      map: !!(g3 || g2), bundle: !!bh?.update, current: pendingShowSeq === undefined,
+    });
+    if (work.mode === "bundle" && bh?.update) {
       const np = curPrefs();
       bh.update({ depth: np.bundleDepth, off: np.bundleOff, labels: np.labels !== "none" });
       openPanel();
@@ -1835,9 +1806,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 카메라·배치·점등이 매 걸음 되감긴다. 3D·2D 는 전량을 싣고 있으므로 가시성만
     // 갈아 끼우면 끝이다. 평면 관점(타임라인)은 축 자체가 시간이라 여기 안 걸린다
     // (`g3`·`g2` 가 없다) — 그쪽은 원래 경로로 다시 그린다.
-    const timeOnly = (Object.keys(mut) as string[])
-      .every((k) => k === "when" || k === "timeBasis");
-    if (timeOnly && (!("timeBasis" in mut) || !isRootsLayout(curPrefs().layout) || curPrefs().view === "bundle") && (g3 || g2 || curPrefs().view === "bundle")) {
+    if (work.mode === "time") {
       // ⚠ **패널을 다시 그리지 않는다**(발주자 지적 2026-09-10: "마우스로 커서
       //    움직이려 해도 한 칸만 움직인다"). `openPanel()` 은 `drawViewPanel()` 을
       //    거쳐 패널을 innerHTML 로 통째로 갈아 끼우는데, 그러면 **끌고 있던 그
@@ -1855,25 +1824,21 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 세 층으로 갈리는 이유는 [[vinc.research.view-interaction-audit]] §2.2~2.4: 옵션
     // 하나에 왕복 + 재구성 + 컨텍스트 하나가 들었고, 슬라이더는 그 재구성이 자기
     // 손잡이를 DOM 에서 떼어 내서 끌 수가 없었다.
-    const serverLayout = (isPlanar(curPrefs().view) || !isRootsLayout(curPrefs().layout)) && ("layout" in mut || "cone" in mut);
-    const relayout = serverLayout || "layout" in mut || (isRootsLayout(curPrefs().layout) && "timeBasis" in mut);
-    const np = curPrefs();
+
     const live = (g3 as { __update?: (p: ViewPrefs) => boolean } | null)?.__update
       ?? g2?.update;
-    if (!relayout && live && live(np)) {
+    if (work.mode === "style" && live && live(np)) {
       // 제자리 반영 성공. 슬라이더(input 마다 한 번)는 패널을 다시 그리지 않는다 —
       // 숫자 표시는 자기 배선으로 이미 따라 움직이고, 다시 그리면 끌던 손잡이가
       // 새 노드로 바뀌어 드래그가 끊긴다. 칩은 활성 상태가 바뀌므로 다시 그린다.
-      const sliderOnly = (Object.keys(mut) as string[]).every(
-        (k) => k === "nodeScale" || k === "edgeScale" || k === "spread");
-      if (!sliderOnly) { openPanel(); if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true }); }
+      if (work.refreshPanel) { openPanel(); if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true }); }
       return;
     }
     // 행을 내보낸 층 = 그 프리퍼런스를 실제로 읽는 층이다(Grid 포함). 보이는 컨트롤은
     // 언제나 화면을 바꾼다 — 좌표는 그대로 두고 프리퍼런스만 재적용한다.
-    reuseGraph = !serverLayout;
+    reuseGraph = work.reuseGraph;
     if (rowsFor(np).length > 0)
-      await show(lv, { keepPanel: true, keepCamera: !serverLayout });
+      await show(lv, { keepPanel: true, keepCamera: work.keepCamera });
     openPanel();                                  // 내용 갱신 + aria·포커스 재확정(닫지 않는다)
     if (refocus) viewPanel.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
   }
@@ -2258,7 +2223,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     const job = layoutJob = new AbortController();
     try {
       const graph = await layoutInWorker(res.nodes || [], res.edges || [], p.timeBasis, job.signal,
-        "temporal", undefined, aspectRatio);
+        rootsOrderingFor(p.layout), undefined, aspectRatio);
       if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
       layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph };
       remember({ key: layoutKey, graph });
@@ -4174,9 +4139,11 @@ export async function renderView(el: HTMLElement, resume = false) {
     canvas.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
   }
   let showSeq = 0;
+  let pendingShowSeq: number | undefined;
   async function show(level: Level,
                       opts?: { keepPanel?: boolean; keepCamera?: boolean; keepDetail?: boolean }) {
     const seq = ++showSeq;
+    pendingShowSeq = seq;
     graphReadJob?.abort(); removePreview();
     layoutJob?.abort();
     setBusy(true, opts?.keepPanel ? 120 : 400);
@@ -4252,6 +4219,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       }
     } finally {
       if (seq === showSeq) {
+        pendingShowSeq = undefined;
         setBusy(false); revealSurface();   // 새 세대가 돌고 있으면 그쪽이 끈다
         // 범례의 개수·갈래는 새로 실린 그래프에서 나온다 — 그린 뒤에 한 번 더.
         if (redrawPanel && !viewPanel.hidden) openPanel({ focus: false });
