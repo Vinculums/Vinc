@@ -1,0 +1,358 @@
+<!--- Hugo front matter used to generate the website version of this page:
+linkTitle: SDK
+weight: 3
+--->
+
+# Resource SDK
+
+**Status**: [Stable](../document-status.md) except where otherwise specified
+
+A [Resource](../overview.md#resources) is an immutable representation of the
+observed entity for which telemetry is being produced. A Resource is composed of
+a collection of (**Development**) [Entities](#entities) and a set of
+[Attributes](../common/README.md#attribute).
+For example, a process running in a container on Kubernetes has a Pod name, it
+is in a namespace and possibly is part of a Deployment which also has a name.
+Each of these may be represented as an `Entity` within the `Resource`, and all of
+their attributes are included in the `Resource`. Note that there are certain
+[attributes](https://github.com/open-telemetry/semantic-conventions/blob/main/docs/resource/README.md)
+that have prescribed meanings.
+
+The primary purpose of resources as a first-class concept in the SDK is
+decoupling of discovery of resource information from exporters. This allows for
+independent development and easy customization for users that need to integrate
+with closed source environments. The SDK MUST allow for creation of `Resources` and
+for associating them with telemetry.
+
+When used with distributed tracing, a resource can be associated with the
+[TracerProvider](../trace/api.md#tracerprovider) when the TracerProvider is created.
+That association cannot be changed later.
+When associated with a `TracerProvider`,
+all `Span`s produced by any `Tracer` from the provider MUST be associated with this `Resource`.
+
+Analogous to distributed tracing, when used with metrics,
+a resource can be associated with a `MeterProvider`.
+When associated with a [`MeterProvider`](../metrics/api.md#meterprovider),
+all metrics produced by any `Meter` from the provider will be
+associated with this `Resource`.
+
+Similarly, when used with logs,
+a resource can be associated with a `LoggerProvider`.
+When associated with a [`LoggerProvider`](../logs/api.md#loggerprovider),
+all log records produced by any `Logger` from the provider will be
+associated with this `Resource`.
+
+## Entities
+
+**Status**: [Development](../document-status.md)
+
+An Entity represents an object of interest associated with produced telemetry.
+For example, a service, a host, a container, or a Kubernetes pod are all
+entities. An Entity has:
+
+- **Type**: A string that defines the type of the entity (e.g. `"service"`,
+  `"host"`). MUST NOT change during the lifetime of the entity.
+- **Schema URL**: Identifies the schema version for the entity's attributes.
+  Used to determine entity merge compatibility.
+- **Identifying attributes**: Attributes that uniquely identify the entity.
+  MUST NOT change during the lifetime of the entity. MUST contain at least one
+  attribute. SHOULD be detected synchronously during
+  SDK initialization.
+- **Descriptive attributes**: Non-identifying attributes of the entity. MAY
+  change over the lifetime of the entity. MAY be empty.
+  <!-- TODO: The mechanism by which descriptive attributes change over the
+  lifetime of the entity (e.g. how changes are communicated to the SDK and
+  how the SDK propagates them) is not yet specified. -->
+
+A Resource MAY contain zero or more entities. The identifying and descriptive
+attributes of all entities in a Resource MUST be included in the Resource's
+attributes. When entities are present, Resource identity is determined by the
+collection of all attributes whose keys are NOT found in any entity's
+descriptive attribute keys. When no entities are present, Resource identity is
+the collection of all attributes (both keys and values), preserving backwards
+compatibility.
+
+See [Entity Data Model](../entities/data-model.md) and
+[OTEP 264: Resource and Entities](../../oteps/entities/0264-resource-and-entities.md)
+for more details.
+
+## SDK-provided resource attributes
+
+The SDK MUST provide access to a Resource with at least the attributes listed at
+[Semantic Attributes with SDK-provided Default Value](https://github.com/open-telemetry/semantic-conventions/blob/main/docs/resource/README.md#semantic-attributes-with-sdk-provided-default-value).
+This resource MUST be associated with a `TracerProvider`, `MeterProvider`,
+or `LoggerProvider` if another resource was not explicitly specified.
+
+Note: This means that it is possible to create and associate a resource that
+does not have all or any of the SDK-provided attributes present. However, that
+does not happen by default. If a user wants to combine custom attributes with
+the default resource, they can use [`Merge`](#merge) with their custom resource
+or specify their attributes by implementing
+[Custom resource detectors](#resource-detector)
+instead of explicitly associating a resource.
+
+## Resource creation
+
+The SDK must support two ways to instantiate new resources. Those are:
+
+### Create
+
+The interface MUST provide a way to create a new resource.
+Examples include a factory method or a constructor for a resource
+object. A factory method is recommended to enable support for cached objects.
+
+Parameters:
+
+- [`Attributes`](../common/README.md#attribute)
+- [since 1.4.0] `schema_url` (optional): Specifies the Schema URL that should be
+  recorded in the emitted resource. If the `schema_url` parameter is unspecified
+  then the created resource will have an empty Schema URL.
+- **Status**: [Development](../document-status.md) since 1.60.0 - `Entities` (optional):
+  Specifies the [entities](data-model.md) that
+  should be recorded in the emitted resource. If the `entities` parameter is
+  unspecified then the created resource will have no entities.
+
+When both `Entities` and `Attributes` are provided in the create method,
+the system MUST behave as if a Resource is created with just `Attributes`
+and then merges with another Resource created with just `Entities`.
+
+### Merge
+
+The interface MUST provide a way for an old resource and an
+updating resource to be merged into a new resource.
+
+Note: This is intended to be utilized for merging of resources whose attributes
+come from different sources,
+such as environment variables, or metadata extracted from the host or container.
+
+Required parameters:
+
+- the old resource
+- the updating resource whose attributes take precedence
+
+If either resource contains `Entities` then
+[merge behavior with Entities](#merge-behavior-with-entities) MUST be used,
+otherwise [merge behavior without Entities](#merge-behavior-without-entities)
+MUST be used.
+
+#### Merge behavior without Entities
+
+The resulting resource MUST have all attributes that are on any of the two input resources.
+If a key exists on both the old and updating resource, the value of the updating
+resource MUST be picked (even if the updated value is empty).
+
+The resulting resource will have the Schema URL calculated as follows:
+
+- If the old resource's Schema URL is empty then the resulting resource's Schema
+  URL will be set to the Schema URL of the updating resource,
+- Else if the updating resource's Schema URL is empty then the resulting
+  resource's Schema URL will be set to the Schema URL of the old resource,
+- Else if the Schema URLs of the old and updating resources are the same then
+  that will be the Schema URL of the resulting resource,
+- Else this is a merging error (this is the case when the Schema URL of the old
+  and updating resources are not empty and are different). The resulting resource is
+  undefined, and its contents are implementation-specific.
+
+#### Merge behavior with entities
+
+**Status**: [Development](../document-status.md)
+
+When either Resource contains entities, the merge operation MUST follow the
+[resource data model's merge algorithm](./data-model.md#merging-resources).
+
+When invoking the [Merging An Entity into a Resource](./data-model.md#merging-an-entity-into-a-resource)
+algorithm, the old resource's entities MUST be used as the initial entity
+set `E`, and the updating resource's entities MUST be processed as the
+incoming merge list. This ensures the updating resource's entities take
+precedence when identity conflicts require entity replacement.
+
+For raw attribute merging, the updating resource's raw attributes MUST be
+processed as the higher-priority source in the algorithm's raw-attribute merge
+step.
+
+The resulting `SchemaURL` MUST match the behavior defined in the merge
+algorithm.
+
+> [!NOTE]
+> `SchemaURL` on Resource is preserved as a backwards-compatibility measure.
+> It is not used in entity-aware systems, where multiple `SchemaURL`s will
+> apply to `Resource`.
+
+### The empty resource
+
+It is recommended, but not required, to provide a way to quickly create an empty
+resource.
+
+### Resource Detector
+
+Custom resource detectors related to generic platforms (e.g. Docker, Kubernetes)
+or vendor specific environments (e.g. EKS, AKS, GKE) MUST be implemented as
+packages separate from the SDK.
+
+Resource detector packages MUST provide a method that returns a resource. This
+can then be associated with `TracerProvider`, `MeterProvider`, or
+`LoggerProvider` instances as described above.
+
+Resource detector packages MAY detect resource information from multiple
+possible sources and merge the result using the `Merge` operation described
+above.
+
+Resource detection logic is expected to complete quickly since this code will be
+run during application initialization. Errors should be handled as specified in
+the [Error Handling
+principles](../error-handling.md#basic-error-handling-principles). Note the
+failure to detect any resource information MUST NOT be considered an error,
+whereas an error that occurs during an attempt to detect resource information
+SHOULD be considered an error.
+
+Resource detectors that populate resource attributes according to OpenTelemetry
+semantic conventions MUST ensure that the resource has a Schema URL set to a
+value that matches the semantic conventions. Empty Schema URL SHOULD be used if
+the detector does not populate the resource with any known attributes that have
+a semantic convention or if the detector does not know what attributes it will
+populate (e.g. the detector that reads the attributes from environment values
+will not know what Schema URL to use). If multiple detectors are combined and
+the detectors use different non-empty Schema URL it MUST be an error since it is
+impossible to merge such resources. The resulting resource is undefined, and its
+contents are implementation specific.
+
+Resource detector packages MAY also return (**Development**) [Entities](#entities) alongside
+resource attributes.
+
+**Status**: [Development](../document-status.md)
+
+Entity-aware resource detectors SHOULD detect entity attributes synchronously.
+Entity attributes MAY be detected asynchronously (e.g. via a future or promise
+that resolves after initialization). The entity MUST be included in the Resource
+immediately with any already-resolved attributes. Unresolved attributes MAY be
+represented as asynchronous values. As attributes resolve, the Resource Provider
+MUST construct a new Resource reflecting the resolved values. Identifying
+attributes MUST all be resolved before the first export.
+
+#### Resource detector name
+
+**Status**: [Development](../document-status.md)
+
+Resource detectors SHOULD have a unique name for reference in configuration. For
+example, users list and configure individual resource detectors by name
+in [declarative configuration](../configuration/README.md#declarative-configuration).
+Names SHOULD be [snake_case](https://en.wikipedia.org/wiki/Snake_case) and
+consist of lowercase alphanumeric and `_` characters, which ensures they conform
+to declarative
+configuration [property name requirements](https://github.com/open-telemetry/opentelemetry-configuration/blob/main/CONTRIBUTING.md#property-name-case).
+
+Resource detector names SHOULD reflect
+the [root namespace](https://github.com/open-telemetry/semantic-conventions/blob/main/docs/general/naming.md#general-naming-considerations)
+of attributes and entities they populate. For example, a resource detector named
+`os` populates an `os` entity with `os.*` attributes. Resource detectors which
+populate attributes from multiple root namespaces SHOULD choose a name which
+appropriately conveys their purpose.
+
+An SDK which identifies multiple resource detectors with the same name SHOULD
+report an error. In order to limit collisions, resource detectors SHOULD
+document their name in a manner which is easily discoverable. Authors of
+resource detectors should check existing resource detectors to ensure their
+target name isn't already in use. Additionally, the following detector names are
+reserved for built-in resource detectors published with language SDKs:
+
+* `container`:
+  Populates [container](https://opentelemetry.io/docs/specs/semconv/registry/entities/container/)
+  entity, or all relevant attributes of the entity, if entity support is not
+  included yet.
+* `host`:
+  Populates [host](https://opentelemetry.io/docs/specs/semconv/registry/entities/host/) and [os](https://opentelemetry.io/docs/specs/semconv/registry/entities/os/)
+  entities, or all relevant attributes of the entities, if entity support is
+  not included yet.
+* `process`:
+  Populates [process](https://opentelemetry.io/docs/specs/semconv/registry/entities/process/)
+  entity, or all relevant attributes of the entity, if entity support is
+  not included yet.
+* `service`: Populates `service` and `service.instance` entities described
+  [here](https://opentelemetry.io/docs/specs/semconv/registry/entities/service/),
+  or all relevant attributes of the entities, if entity support is not included
+  yet. Populates [`service.name`](https://github.com/open-telemetry/semantic-conventions/blob/main/docs/registry/attributes/service.md#service-name)
+  from the [OTEL_SERVICE_NAME](../configuration/sdk-environment-variables.md#general-sdk-configuration)
+  environment variable and SHOULD fall back to language- or platform-specific
+  sources (for example `spring.application.name`, a JAR manifest, or a
+  Composer/package manifest, at the discretion of the specific SDK); populates `service.instance.id`
+  as [defined here](https://github.com/open-telemetry/semantic-conventions/blob/main/docs/registry/attributes/service.md#service-attributes).
+* `env`: Populates entities based on [Entity Propagation](../entities/entity-propagation.md).
+
+#### Entity-aware resource detectors
+
+**Status**: [Development](../document-status.md)
+
+Resource detectors SHOULD produce resources with [entities](../entities/data-model.md)
+attached.
+
+### Resource Provider
+
+**Status**: [Development](../document-status.md)
+
+The Resource Provider is a component responsible for running all configured
+resource detectors and constructing a `Resource` for the SDK.
+
+The Resource Provider MUST:
+
+- Run all configured resource detectors. Detectors MAY run concurrently.
+- Merge detector results in the order they are configured according to [Merging an Entity Into a Resource](./data-model.md#merging-an-entity-into-a-resource)
+
+When descriptive attributes are detected asynchronously, the priority for
+merging MUST be determined by the configured order of the resource detectors,
+not by the order in which asynchronous results resolve.
+
+### Specifying resource information via an environment variable
+
+The SDK MUST extract information from the `OTEL_RESOURCE_ATTRIBUTES` environment
+variable and [merge](#merge) this, as the secondary resource, with any resource
+information provided by the user, i.e. the user provided resource information
+has higher priority.
+
+The `OTEL_RESOURCE_ATTRIBUTES` environment variable will contain of a list of
+key-value pairs, represented as `key1=value1,key2=value2`.
+All attribute values MUST be considered strings. The `,` and `=` characters
+in keys and values MUST be percent encoded. Other characters MAY be
+[percent-encoded](https://datatracker.ietf.org/doc/html/rfc3986#section-2.1),
+e.g. values outside the ANSI characters set.
+
+In case of any error, e.g. failure during the decoding process, the entire environment
+variable value SHOULD be discarded and an error SHOULD be reported following the
+[Error Handling principles](../error-handling.md#basic-error-handling-principles).
+
+## Resource operations
+
+Resources are immutable. Thus, in addition to resource creation,
+only the following operations should be provided:
+
+### Retrieve attributes
+
+The SDK should provide a way to retrieve a read only collection of attributes
+associated with a resource.
+
+There is no need to guarantee the order of the attributes.
+
+When entities are present for the Resource, this list MUST
+include all attributes, including those associated with entities.
+
+The most common operation when retrieving attributes is to enumerate over them. As
+such, it is recommended to optimize the resulting collection for fast
+enumeration over other considerations such as a way to quickly retrieve a value
+for a attribute with a specific key.
+
+### Retrieve entities
+
+**Status**: [Development](../document-status.md)
+
+The SDK SHOULD provide a way to retrieve the entities associated with a
+resource.
+
+There is no need to guarantee the order of entities.
+
+### Retrieve unassociated attributes
+
+**Status**: [Development](../document-status.md)
+
+The SDK SHOULD provide a way to retrieve attributes which are NOT associated
+with an entity in the resource.
+
+There is no need to guarantee the order of attributes.

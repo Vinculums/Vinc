@@ -1,0 +1,15 @@
+{
+  "case_id": "bisect",
+  "code": "from bisect import bisect_left,bisect_right; print(bisect_left([1,2,2,3],2),bisect_right([1,2,2,3],2))",
+  "code_author": "OpenAI Codex assistant; exact served model unavailable",
+  "completed_at": "2026-10-11T07:53:13.700468+00:00",
+  "executable_sha256": "3638cd6a1236660910fe5e278994d309c073fb4bb49ee061f48bd4ccaaa0a191",
+  "implementation": "CPython",
+  "origin": "locally_observed",
+  "platform": "Windows-10-10.0.19045-SP0",
+  "python": "3.12.9 (tags/v3.12.9:fdb8142, Feb  4 2025, 15:27:58) [MSC v.1942 64 bit (AMD64)]",
+  "returncode": 0,
+  "started_at": "2026-10-11T07:53:13.457465+00:00",
+  "stderr": "",
+  "stdout": "1 3\n"
+}
