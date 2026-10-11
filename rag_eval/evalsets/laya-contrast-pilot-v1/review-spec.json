@@ -1,0 +1,84 @@
+{
+  "additional_review": "all marked disputed cases; expand when the rubric remains unresolved",
+  "authoring_ready": true,
+  "canonical_plan": "vinc.plan.laya-training-data-pipeline-2026-10-11",
+  "contrasts": [
+    "support",
+    "restatement_or_topical",
+    "scope_time_condition",
+    "reverse_or_conflict"
+  ],
+  "draft_pairs_authored": 240,
+  "families": 60,
+  "human_reviews_completed": 0,
+  "instructions": [
+    "Judge all three predicates independently. Do not infer a label from the contrast name.",
+    "Supports requires additional evidence or a reason. Mere translation and restatement are not evidence.",
+    "Compare the same entity, version, time, condition and scope. Reversal is not automatically false.",
+    "A partly supported compound conclusion remains unresolved: split the claim or record null and request adjudication.",
+    "No evidence is not a known negative. Use null for missing information and retain a rationale.",
+    "Keep source quotations exact; authored paraphrases, fictional examples and observed results have distinct provenance.",
+    "Record actor identity as known; never describe AI agreement as human review.",
+    "Review each non-null target against its cited source spans. Do not copy generator rationales.",
+    "Keep linked translations and near duplicates in one source family and one assigned role.",
+    "This review queue authorizes no training or model evaluation."
+  ],
+  "language_cells": {
+    "en_en": 60,
+    "en_ko": 60,
+    "ko_en": 60,
+    "ko_ko": 60
+  },
+  "minimum_human_review_per_cell": 15,
+  "pairs": 240,
+  "pairs_per_family": 4,
+  "questions": {
+    "contradicts": {
+      "criteria": {
+        "false": "A and B can both hold, or they are about different things.",
+        "true": "Accepting A requires rejecting B, including when the opposition is in meaning rather than in wording."
+      },
+      "instructions": "Do statements A and B make claims that cannot both be true?",
+      "type": "noul"
+    },
+    "same_as": {
+      "criteria": {
+        "false": "A and B differ in subject, scope, time or verdict, or one adds a claim the other lacks.",
+        "true": "A and B assert the same fact or decision, possibly in different words or languages."
+      },
+      "instructions": "Do statements A and B make the same claim about the same thing?",
+      "type": "noul"
+    },
+    "supports": {
+      "criteria": {
+        "false": "A is unrelated to B, merely restates B, or argues against B.",
+        "true": "A provides a measurement, result or argument that makes B more credible."
+      },
+      "instructions": "Does statement A give evidence or a reason for statement B?",
+      "type": "noul"
+    }
+  },
+  "questions_hash": "500e613737d1",
+  "rubric_decision": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+  "rubric_id": "rubric:laya-evidence-contrast-v1",
+  "schema": "vinc.laya.pilot-review.v1",
+  "source_categories": [
+    {
+      "families": 20,
+      "id": "dated_engineering_measurement",
+      "training_eligibility": "pending"
+    },
+    {
+      "families": 20,
+      "id": "general_factual_evidence",
+      "training_eligibility": "pending"
+    },
+    {
+      "families": 20,
+      "id": "technical_specification",
+      "training_eligibility": "pending"
+    }
+  ],
+  "source_selection_decision": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+  "status": "candidates_ready_for_human_annotation"
+}
