@@ -33,7 +33,8 @@ async function setup(view='3d',layout='hub',hash='#view') {
   const graphFor=url=>{
     const scope=[state.identity,url.searchParams.get('team')||'personal',url.searchParams.get('owner')||'',state.revision].join('|');
     const id=x=>`${scope}:${x}`;
-    return {...fixture,nodes:fixture.nodes.map(n=>({...n,id:id(n.id)})),edges:fixture.edges.map(e=>({...e,source:id(e.source),target:id(e.target)})),topicEdges:(fixture.topicEdges||[]).map(e=>({...e,source:id(e.source),target:id(e.target)}))};
+    // The server labels each read with the marker it took before computing it (marker=1).
+    return {...fixture,...(state.unlabelled?{}:{marker:state.revision}),nodes:fixture.nodes.map(n=>({...n,id:id(n.id)})),edges:fixture.edges.map(e=>({...e,source:id(e.source),target:id(e.target)})),topicEdges:(fixture.topicEdges||[]).map(e=>({...e,source:id(e.source),target:id(e.target)}))};
   };
   await context.route('**/*',async route=>{
     const req=route.request(),url=new URL(req.url());
@@ -177,12 +178,21 @@ try {
     for(const h of a.state.heldGraphs.splice(0))await h.route.fulfill({json:h.graph}).catch(()=>{});
     await a.page.waitForTimeout(100);assert.equal(await a.page.locator('#view-canvas').count(),0);assert.equal((await a.cache()).count,0);
     rows.push({test:'leaving during graph read aborts fetch and ignores late full response'});
-    // The before-marker must resolve before a first graph read, even with an empty cache.
+    // With nothing to reuse the first graph read starts without waiting for the marker probe. The
+    // read is labelled by the marker its response carries, and kept only when the same marker is
+    // confirmed afterwards.
     await a.search();await a.page.evaluate(async()=>{(await import('/src/view-session-cache.ts')).viewSessionCache.clear();});
     a.state.requests.length=0;a.state.holdChanges=true;await a.page.evaluate(()=>location.hash='#view');await waitHeld(a,'heldChanges');
-    await a.page.waitForTimeout(100);assert.equal(a.graphCount(),0);
-    a.state.holdChanges=false;for(const r of a.state.heldChanges.splice(0))await r.fulfill({json:{marker:a.state.revision}}).catch(()=>{});
-    await a.complete();await a.cached();rows.push({test:'first marker is confirmed before starting graph snapshot'});
+    for(let i=0;i<100&&!a.graphCount();i++)await a.page.waitForTimeout(20);
+    assert.ok(a.graphCount()>0,'the graph read starts while the marker probe is still pending');
+    assert.equal((await a.cache()).count,0,'nothing is retained before the marker is confirmed');
+    a.state.holdChanges=false;for(const r of a.state.heldChanges.splice(0))await r.fulfill({json:{executed:true,marker:a.state.revision}}).catch(()=>{});
+    await a.complete();await a.cached();rows.push({test:'first graph read starts before the marker probe and is retained under its response marker'});
+    // A server that does not label the read (older hub) gives nothing to retain under.
+    await a.search();await a.page.evaluate(async()=>{(await import('/src/view-session-cache.ts')).viewSessionCache.clear();});
+    a.state.unlabelled=true;await a.enter();await a.page.waitForTimeout(250);
+    assert.equal((await a.cache()).count,0,'an unlabelled read is not retained');a.state.unlabelled=false;
+    rows.push({test:'a read without a marker label is displayed but not retained'});
     for(const event of ['vinc:signin-required','vinc:write','pagehide']){
       const g=(await a.cache()).generation;await a.page.evaluate(event=>window.dispatchEvent(new Event(event)),event);
       assert.equal((await a.cache()).count,0);assert.ok((await a.cache()).generation>g);

@@ -17,7 +17,9 @@ import type { LayoutGraph } from "./view-layout";
  *  - 탭별(`viewSessionCache`): 직렬화된 완료 DTO. 다른 마운트로 돌아올 때 쓴다.
  * 둘을 합치지 않은 것은 의도다. 앞의 것은 객체 동일성에 기대고, 뒤의 것은 복사본이어야
  * 렌더러의 변형이 다음 마운트에 번지지 않는다. */
-export type RawGraph = { executed: boolean; nodes?: GraphNode[]; edges?: GraphEdge[]; topicEdges?: GraphEdge[] };
+/** `marker` 는 서버가 읽기 전에 잡은 변경 표식이다(요청에 `marker=1` 을 실었을 때만 온다). */
+export type RawGraph = { executed: boolean; nodes?: GraphNode[]; edges?: GraphEdge[]; topicEdges?: GraphEdge[];
+  marker?: string };
 export type FetchedGraph = RawGraph & { stale?: boolean };
 
 export type GraphLoaderContext = {
@@ -82,10 +84,15 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
         ? (firstAccessUsed ? viewAccess(ctx.mountScope, ctx.accessJob.signal).catch(() => null) : ctx.firstAccess)
         : Promise.resolve(null);
       firstAccessUsed = true;
+      // 재사용할 후보가 하나도 없으면 표식 확인을 기다리지 않고 읽기를 바로 시작한다. 이때
+      // 읽기의 라벨은 확인 결과가 아니라 **응답이 실어 온 표식**(서버가 읽기 전에 잡은 값)이고,
+      // 보관은 읽기가 끝난 뒤 같은 표식이 다시 확인될 때만 한다. 후보가 있으면 그것을 쓸 수
+      // 있는지 표식으로 먼저 가려야 하므로 예전 순서(확인 → 읽기)를 그대로 쓴다.
+      const early = canRetain && !cached && !viewSessionCache.count && !viewSessionCache.hasBookmark;
       // Confirm the marker before starting the graph snapshot; a late probe cannot label an older read.
-      const grant = canRetain ? await access : null;
+      const grant = canRetain && !early ? await access : null;
       if (!live()) return { executed: false, stale: true };
-      if (canRetain && (!grant || loader.retained?.session !== grant.session
+      if (canRetain && !early && (!grant || loader.retained?.session !== grant.session
           || loader.retained?.revision !== grant.revision)) cached = false;
       if (grant) {
         viewSessionCache.activate(grant.session, grant.revision);
@@ -95,7 +102,7 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
           const state = viewSessionCache.getState(grant.session, scopeKey, grant.revision, ctx.cameraPrefs(p));
           if (ctx.restoreEntryCamera && !ctx.mounted() && state) ctx.restoreCameras(state.camera3, state.camera2);
         }
-      } else if (canRetain && viewSessionCache.count) viewSessionCache.clear();
+      } else if (canRetain && !early && viewSessionCache.count) viewSessionCache.clear();
       const generation = viewSessionCache.generation;
       try {
         if (wantsStagedRead(p, { cached: !!cached, mounted: ctx.mounted(), planar: ctx.planar() })) {
@@ -130,12 +137,16 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
         // 두 표식이 일치할 때만 보관한다. 저장 검증은 첫 렌더를 기다리게 하지 않는다.
         void access.then(async before => {
           if (!before || ctx.accessJob.signal.aborted || generation !== viewSessionCache.generation) return;
+          // 바로 시작한 읽기는 응답의 표식으로, 확인 뒤에 시작한 읽기는 그 확인의 표식으로 라벨한다.
+          // 서버가 표식을 안 실어 주면(옛 허브) 라벨이 없으므로 보관하지 않는다.
+          const label = early ? res!.marker : before.revision;
+          if (typeof label !== "string" || !label) return;
           const after = await viewAccess(ctx.mountScope, ctx.accessJob.signal).catch(() => null);
-          if (!after || before.session !== after.session || before.revision !== after.revision
+          if (!after || before.session !== after.session || after.revision !== label
               || !live() || generation !== viewSessionCache.generation) return;
-          const ticket = viewSessionCache.activate(before.session, before.revision);
-          if (viewSessionCache.put(before.session, scopeKey, before.revision, res!, ticket, layout))
-            loader.retained = { ...before, key: scopeKey, prefs: ctx.cameraPrefs(p) };
+          const ticket = viewSessionCache.activate(before.session, label);
+          if (viewSessionCache.put(before.session, scopeKey, label, res!, ticket, layout))
+            loader.retained = { session: before.session, revision: label, key: scopeKey, prefs: ctx.cameraPrefs(p) };
         });
       };
       if (!useRoots || !res.executed) { remember(); return res; }
