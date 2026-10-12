@@ -10,6 +10,7 @@ import { camera3d, centerOn3d, enableLasso, findNode3d, mount3d, zoomBy3d,
 import { mount2d, type Handle2d } from "./view2d";
 import { viewSessionCache } from "../view-session-cache";
 import { readGraphProgressively, mountGraphPreview } from "../view-graph-loading";
+import { graphReadPlan, wantsStagedRead } from "../view-graph-read";
 import { layoutInWorker } from "../view-layout-client";
 import type { LayoutGraph } from "../view-layout";
 import type { DragEnd } from "./drag-connect";
@@ -27,7 +28,7 @@ import { blocksSurfaceShortcuts, isTypingTarget } from "../keys";
 import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
 
-import { layoutsFor, isRootsLayout, serverLayoutFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
+import { layoutsFor, serverLayoutFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
          WHEN_SCALE, timeCutoff, nodeTimeOn, visibleAt,
          EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, DIRECTED_RELS,
          edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
@@ -2128,14 +2129,13 @@ export async function renderView(el: HTMLElement, resume = false) {
   removalObserver.observe(document.body, { childList: true, subtree: true });
   async function fetchGraph(p: ViewPrefs, scope: { domains?: string[] }):
       Promise<{ executed: boolean; stale?: boolean; nodes?: GraphNode[]; edges?: GraphEdge[]; topicEdges?: GraphEdge[] }> {
-    const domains = scope.domains || [];
-    const useRoots = !isPlanar(p.view) && isRootsLayout(p.layout);
-    const serverLayout = serverLayoutFor(p.layout);
-    const cone = useRoots ? 1 : p.cone;
-    const scopeKey = JSON.stringify({ domains: [...domains].sort(), layout: serverLayout, cone });
+    const { useRoots, scopeKey, options } = graphReadPlan(p, scope.domains || []);
     let cached = reuseGraph && rawGraph?.executed && rawGraphScope === scopeKey && rawGraph;
     reuseGraph = false;
     const mySeq = showSeq;
+    // 이 읽기를 낳은 마운트·세대·스코프가 아직 화면의 주인인가. 모든 await 뒤에 같은 식으로 묻는다.
+    const live = () => mySeq === showSeq && myGen === liveGen && canvas.isConnected
+      && mountScope.key === viewScope().key;
     layoutJob?.abort();
     const start = performance.now();
     let res: typeof rawGraph;
@@ -2144,8 +2144,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     firstAccessUsed = true;
     // Confirm the marker before starting the graph snapshot; a late probe cannot label an older read.
     const grant = canRetain ? await access : null;
-    if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected || mountScope.key !== viewScope().key)
-      return { executed: false, stale: true };
+    if (!live()) return { executed: false, stale: true };
     if (canRetain && (!grant || retained?.session !== grant.session || retained?.revision !== grant.revision)) cached = false;
     if (grant) {
       viewSessionCache.activate(grant.session, grant.revision);
@@ -2160,18 +2159,14 @@ export async function renderView(el: HTMLElement, resume = false) {
       }
     } else if (canRetain && viewSessionCache.count) viewSessionCache.clear();
     const generation = viewSessionCache.generation;
-    const options = { ...(domains.length ? { domains } : {}), layout: serverLayout,
-      ...(cone !== 1 ? { cone } : {}) };
     try {
-      const initial = !cached && !g3 && !g2 && !planar
-        && ["2d", "3d"].includes(p.view) && p.when === 1 && p.unlinked === "show" && !p.edgeOff.length;
-      if (initial) {
+      if (wantsStagedRead(p, { cached: !!cached, mounted: !!(g3 || g2), planar: !!planar })) {
         const job = graphReadJob = new AbortController();
         const capturedScope = { team: cfg.team || null };
         const owner = cfg.owner;
         res = await readGraphProgressively((stage, token) =>
           api.graphStage(owner, options, stage, token, capturedScope, job.signal), preview => {
-            if (job.signal.aborted || mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return;
+            if (job.signal.aborted || !live()) return;
             clearPreview?.(); clearPreview = mountGraphPreview(canvas, preview, {
               edges: curPrefs().edges !== "none", label: COPY.view.preview,
             }); setMsg("");
@@ -2191,7 +2186,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     }
     console.info(`View graph read ${JSON.stringify({ elapsedMs: Math.round(performance.now() - start), cached: !!cached,
       executed: !!res?.executed, nodes: res?.nodes?.length || 0, edges: res?.edges?.length || 0 })}`);
-    if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected || mountScope.key !== viewScope().key) return { executed: false, stale: true };
+    if (!live()) return { executed: false, stale: true };
     rawGraph = res;
     rawGraphScope = scopeKey;
     if (!res) return { executed: false };
@@ -2202,8 +2197,7 @@ export async function renderView(el: HTMLElement, resume = false) {
         if (!before || accessJob.signal.aborted || generation !== viewSessionCache.generation) return;
         const after = await viewAccess(mountScope, accessJob.signal).catch(() => null);
         if (!after || before.session !== after.session || before.revision !== after.revision
-            || mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected
-            || mountScope.key !== viewScope().key || generation !== viewSessionCache.generation) return;
+            || !live() || generation !== viewSessionCache.generation) return;
         const ticket = viewSessionCache.activate(before.session, before.revision);
         if (viewSessionCache.put(before.session, scopeKey, before.revision, res!, ticket, layout))
           retained = { ...before, key: scopeKey, prefs: cameraPrefs(p) };
@@ -2225,7 +2219,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     try {
       const graph = await layoutInWorker(res.nodes || [], res.edges || [], p.timeBasis, job.signal,
         "temporal", undefined, aspectRatio);
-      if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
+      if (!live()) return { executed: false, stale: true };
       layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph };
       remember({ key: layoutKey, graph });
       return { executed: true, ...graph };
