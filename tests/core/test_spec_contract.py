@@ -172,14 +172,16 @@ def test_resend_exemption_does_not_cross_owners(st):
 
 
 def test_resend_keeps_the_saved_props(st):
-    fragment.merge_fragment({"owner": OWNER, "nodes": [claim()]}, store=st, authored=True)
+    first = fragment.merge_fragment({"owner": OWNER, "nodes": [claim()]}, store=st,
+                                    authored=True, read_back=True)
+    assert first["executed"] is True, first
+    saved = first["stored"][0]["props"]
     bare = {"id": "record:specclaim-as-of-search-v2", "type": "record",
             "domain": "vinc/governance/claim-decay"}
     out = fragment.merge_fragment({"owner": OWNER, "nodes": [bare]}, store=st, authored=True,
                                   read_back=True)
     assert out["executed"] is not False, out
-    got = query._probe_node("record:specclaim-as-of-search-v2", owner=OWNER, cfg=None, store=st)
-    assert "vinc.specclaim.v1" in str(got.get("props")), got
+    assert out["stored"][0]["props"] == saved, out
 
 
 def test_branch_refs_compare_exactly_and_only_hashes_by_prefix(st):
@@ -192,3 +194,114 @@ def test_branch_refs_compare_exactly_and_only_hashes_by_prefix(st):
     assert out["executed"] is not False, out
     stale = {s["claim"]["id"] for s in query.claim_diagnosis(owner=OWNER, store=st)["stale"]}
     assert "record:specclaim-branch-ref-v1" in stale     # main 은 main-fix 의 접두가 아니다
+
+
+def reserved_record(schema, suffix):
+    if schema == spec_contract.CLAIM:
+        node = claim()
+    elif schema == spec_contract.DRIFT:
+        node = {"type": "record", "props": {
+            "spec_schema": schema, "claim": "record:specclaim-example",
+            "evidence": "episode:change-example", "observed": "path changed",
+            "generated_by": "rule", "review": "candidate"}}
+    else:
+        node = {"type": "record", "props": {
+            "spec_schema": schema, "claim": "record:specclaim-example",
+            "check": "tests/core/test_spec_contract.py", "run_ref": "ci-example",
+            "measured_ref": "1234567", "measured_at": "2026-10-12", "result": "pass"}}
+    node["id"] = spec_contract.PREFIX[schema] + suffix
+    node["props"]["extra"] = {"preserved": ["whole", "props"]}
+    return node
+
+
+@pytest.mark.parametrize("namespaced", ["off", "on"])
+@pytest.mark.parametrize("schema", list(spec_contract.PREFIX))
+def test_all_new_reserved_prefixes_require_props(st, monkeypatch, namespaced, schema):
+    monkeypatch.setenv("VINC_PK_NAMESPACED", namespaced)
+    node = {"id": spec_contract.PREFIX[schema] + "missing-" + namespaced, "type": "record"}
+    out = fragment.merge_fragment({"owner": OWNER, "nodes": [node]}, store=st, authored=True)
+    assert out["executed"] is False and out["error"] == "invalid_spec_record", out
+
+
+@pytest.mark.parametrize("namespaced", ["off", "on"])
+@pytest.mark.parametrize("schema", list(spec_contract.PREFIX))
+def test_resend_requires_saved_record_and_owner_and_preserves_all_props(
+        st, monkeypatch, namespaced, schema):
+    monkeypatch.setenv("VINC_PK_NAMESPACED", namespaced)
+    node = reserved_record(schema, "scoped-resend-" + namespaced)
+    first = fragment.merge_fragment({"owner": OWNER, "nodes": [node]}, store=st,
+                                    authored=True, read_back=True)
+    assert first["executed"] is True, first
+    saved = first["stored"][0]["props"]
+    bare = {"id": node["id"], "type": "record", "domain": "vinc/governance/claim-decay"}
+    out = fragment.merge_fragment({"owner": OWNER, "nodes": [bare]}, store=st,
+                                  authored=True, read_back=True)
+    assert out["executed"] is True and out["stored"][0]["props"] == saved, out
+    for wrong in ("concept", "decision", "custom"):
+        out = fragment.merge_fragment({"owner": OWNER, "nodes": [{**bare, "type": wrong}]},
+                                      store=st, authored=True)
+        assert out["executed"] is False and out["error"] == "invalid_spec_record", out
+    out = fragment.merge_fragment({"owner": "user:other-spec-owner", "nodes": [bare]},
+                                  store=st, authored=True)
+    assert out["executed"] is False and out["error"] == "invalid_spec_record", out
+
+
+@pytest.mark.parametrize("schema", list(spec_contract.PREFIX))
+def test_a_saved_different_carrier_cannot_exempt_a_new_record(st, schema):
+    nid = spec_contract.PREFIX[schema] + "stored-concept"
+    first = fragment.merge_fragment({"owner": OWNER, "nodes": [
+        {"id": nid, "type": "concept", "title": "A different carrier"}]}, store=st)
+    assert first["executed"] is True, first
+    out = fragment.merge_fragment({"owner": OWNER, "nodes": [{"id": nid, "type": "record"}]},
+                                  store=st, authored=True)
+    assert out["executed"] is False and out["error"] == "invalid_spec_record", out
+
+
+@pytest.mark.parametrize("schema", list(spec_contract.PREFIX))
+@pytest.mark.parametrize("props", [None, {}], ids=["null", "empty"])
+def test_null_and_empty_props_are_strict_for_new_and_saved_reserved_records(st, schema, props):
+    suffix = "explicit-null" if props is None else "explicit-empty"
+    node = reserved_record(schema, suffix)
+    for existing in (False, True):
+        if existing:
+            first = fragment.merge_fragment({"owner": OWNER, "nodes": [node]}, store=st,
+                                            authored=True, read_back=True)
+            assert first["executed"] is True, first
+            saved = first["stored"][0]["props"]
+        out = fragment.merge_fragment({"owner": OWNER, "nodes": [
+            {"id": node["id"], "type": "record", "props": props}]}, store=st, authored=True)
+        assert out["executed"] is False and out["error"] == "invalid_spec_record", out
+        if existing:
+            got = fragment.merge_fragment({"owner": OWNER, "nodes": [
+                {"id": node["id"], "type": "record"}]}, store=st, authored=True, read_back=True)
+            assert got["stored"][0]["props"] == saved, got
+
+
+@pytest.mark.parametrize("ref,sha,same", [
+    ("main", "main", True),
+    ("main", "main-fix", False),
+    ("main-fix", "main", False),
+    ("refs/heads/main", "refs/heads/main", True),
+    ("release/v1", "release/v1.1", False),
+    ("main", "MAIN", False),
+    ("1234567", "1234567890abcdef1234567890abcdef12345678", True),
+    ("1234567890abcdef1234567890abcdef12345678", "1234567", True),
+    ("1234567", "abcdef0123456789abcdef0123456789abcdef01", False),
+    ("abc", "abcdef0123456789abcdef0123456789abcdef01", False),
+    ("", "1234567", False),
+    ("", "", False),
+])
+def test_stale_ref_contract_preserves_literal_refs_and_hash_abbreviations(st, ref, sha, same):
+    suffix = f"ref-contract-{ref}-{sha}"
+    path = "vinc:api/" + suffix + ".py"
+    node = {**claim(subject_path=path, measured_at="2026-10-12", measured_ref=ref or "unknown"),
+            "id": "record:specclaim-" + suffix}
+    # 참조가 없는 복원 기록도 진단한다. 저작 스키마의 필수 문자열 검사와 분리한다.
+    node["props"]["measured_ref"] = ref
+    out = fragment.merge_fragment({"owner": OWNER, "nodes": [node,
+        change("episode:change-" + suffix, "2026-10-12", [path], sha)]}, store=st)
+    assert out["executed"] is True, out
+    stale = {s["claim"]["id"]: s for s in query.claim_diagnosis(owner=OWNER, store=st)["stale"]}
+    assert (node["id"] not in stale) is same, stale.get(node["id"])
+    if not same:
+        assert stale[node["id"]]["same_day"] is True
