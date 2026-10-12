@@ -3,7 +3,7 @@ import { viewSessionCache } from "./view-session-cache";
 import { readGraphProgressively, type GraphRead } from "./view-graph-loading";
 import { graphReadPlan, wantsStagedRead } from "./view-graph-read";
 import { layoutInWorker } from "./view-layout-client";
-import { rootsOrderingFor, type ViewPrefs } from "./view-prefs";
+import type { ViewPrefs } from "./view-prefs";
 import type { LayoutGraph } from "./view-layout";
 
 /** 한 번의 View 마운트가 그래프를 읽고 필요하면 가지 배치까지 얹어 돌려주는 곳.
@@ -154,7 +154,7 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
       const job = layoutJob = new AbortController();
       try {
         const graph = await layoutInWorker(res.nodes || [], res.edges || [], p.timeBasis, job.signal,
-          rootsOrderingFor(p.layout), undefined, aspectRatio);
+          "temporal", undefined, aspectRatio);
         if (!live()) return { executed: false, stale: true };
         layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph };
         remember({ key: layoutKey, graph });
