@@ -56,7 +56,8 @@ def _review(props: dict, schema: str, allowed=REVIEW) -> str:
 
 def validate(node: dict, *, existing: bool = False) -> str | None:
     """계약 대상이면 스키마 이름을, 아니면 None 을 돌려준다. 어기면 InvalidSpecRecord."""
-    nid = str(node.get("id") or "")
+    # 저장 경로와 같은 ID를 검사한다. 앞뒤 공백이 예약 접두사를 숨기면 안 된다.
+    nid = str(node.get("id") or "").strip()
     if "props" not in node and existing:
         # props 키가 없는 재전송은 "기존 props 보존"이다(엣지 끝점 선언·도메인만 바꾸기).
         # 면제는 **이미 저장된** 같은 소유자의 Record 에만 준다. 새 예약 id 는 아래에서
@@ -113,13 +114,13 @@ def _existing_records(store, ids: list[str], owner: str | None) -> set[str]:
 
 def validate_nodes(nodes: list[dict], *, store=None, owner: str | None = None) -> str | None:
     """첫 위반의 사유. 없으면 None. props 없는 재전송 면제는 ``store`` 의 기존 Record 에만."""
-    bare = [str(n.get("id") or "") for n in nodes
+    bare = [str(n.get("id") or "").strip() for n in nodes
             if "props" not in n and n.get("type") == "record"
-            and any(str(n.get("id") or "").startswith(p) for p in PREFIX.values())]
+            and any(str(n.get("id") or "").strip().startswith(p) for p in PREFIX.values())]
     existing = _existing_records(store, bare, owner)
     for node in nodes:
         try:
-            validate(node, existing=str(node.get("id") or "") in existing
+            validate(node, existing=str(node.get("id") or "").strip() in existing
                      and node.get("type") == "record")
         except InvalidSpecRecord as exc:
             return f"{node.get('id') or '?'}: {exc}"

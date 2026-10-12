@@ -216,9 +216,11 @@ def reserved_record(schema, suffix):
 
 @pytest.mark.parametrize("namespaced", ["off", "on"])
 @pytest.mark.parametrize("schema", list(spec_contract.PREFIX))
-def test_all_new_reserved_prefixes_require_props(st, monkeypatch, namespaced, schema):
+@pytest.mark.parametrize("padding", ["", " "], ids=["plain", "trimmed"])
+def test_all_new_reserved_prefixes_require_props(st, monkeypatch, namespaced, schema, padding):
     monkeypatch.setenv("VINC_PK_NAMESPACED", namespaced)
-    node = {"id": spec_contract.PREFIX[schema] + "missing-" + namespaced, "type": "record"}
+    node = {"id": padding + spec_contract.PREFIX[schema] + "missing-" + namespaced + padding,
+            "type": "record"}
     out = fragment.merge_fragment({"owner": OWNER, "nodes": [node]}, store=st, authored=True)
     assert out["executed"] is False and out["error"] == "invalid_spec_record", out
 
@@ -235,6 +237,10 @@ def test_resend_requires_saved_record_and_owner_and_preserves_all_props(
     saved = first["stored"][0]["props"]
     bare = {"id": node["id"], "type": "record", "domain": "vinc/governance/claim-decay"}
     out = fragment.merge_fragment({"owner": OWNER, "nodes": [bare]}, store=st,
+                                  authored=True, read_back=True)
+    assert out["executed"] is True and out["stored"][0]["props"] == saved, out
+    padded = {**bare, "id": " " + bare["id"] + " "}
+    out = fragment.merge_fragment({"owner": OWNER, "nodes": [padded]}, store=st,
                                   authored=True, read_back=True)
     assert out["executed"] is True and out["stored"][0]["props"] == saved, out
     for wrong in ("concept", "decision", "custom"):
