@@ -141,6 +141,7 @@ from . import fragment as frag
 from . import share
 from . import spaceproxy
 from . import changes
+from .graph_cache import GraphResultCache, cache_key as _graph_cache_key
 from . import localmode
 from . import sync
 from . import docstore
@@ -316,6 +317,8 @@ class VincApp:
         self._sync_running = False            # 동시 sync 거부 플래그(S2, 커서 경합 방지)
         # 열린 화면이 다시 읽을 때를 아는 값(VIN-129). 메모리에만 있다(`api.changes`).
         self.changes = changes.ChangeMarker()
+        # 같은 소유자·인자·변경 표식의 전체 그래프 읽기를 다시 계산하지 않는다(`api.graph_cache`).
+        self._graph_results = GraphResultCache()
         # 주제·타입 어휘 스토어(그래프 밖 메타 — <data_dir>.themes.json, DB 파일 형제).
         # D11-R2. 그래프(store)와 분리 — 어휘는 사용자 저작, 그래프는 인스턴스.
         from store.theme_store import ThemeStore
@@ -694,6 +697,25 @@ class VincApp:
         return self._read(lambda r: self._query_graph(p, r))
 
     def _query_graph(self, p, r):
+        # 표식은 **계산 전에** 잡는다: 계산 중 끝난 쓰기는 옛 표식 아래로 들어가 다시 읽히지
+        # 않고, 읽은 뒤에 잡으면 옛 데이터가 새 표식 아래 남는다(`api.graph_cache`).
+        key = _graph_cache_key(p)
+        owner = _req(p, "owner") if key else None
+        marker = self.changes.read(owner) if key else None
+        if key:
+            hit = self._graph_results.get(owner, key, marker)
+            if hit is not None:
+                return json.loads(hit)
+        result = self._compute_graph(p, r)
+        if key and isinstance(result, dict) and result.get("executed") is True:
+            try:
+                self._graph_results.put(owner, key, marker,
+                                        json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+            except (TypeError, ValueError):
+                pass   # 직렬화되지 않는 결과는 캐시하지 않는다. 읽기 자체는 그대로 돌려준다.
+        return result
+
+    def _compute_graph(self, p, r):
         # seed 지정 시 seed+depth ego 서브그래프(View L2 = MCP vinc_graph 동일 경로).
         # layout = 프리셋(radial·circle·tree·organic·rank·dendro — 미지 값 radial 강등).
         # basis(D72) = 시간축. 미지 값은 조용히 recorded 로 강등하고 응답이 에코한다.
