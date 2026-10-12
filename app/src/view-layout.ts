@@ -91,6 +91,74 @@ export type TopicPiece = {
   spatial: SpatialTopic;
 };
 export type PieceCache = { get(key: string): TopicPiece | undefined; set(key: string, piece: TopicPiece): void };
+/** Where each topic box sat last time: its shift, depth and size. Passing the previous
+ * placement keeps unchanged boxes where they were, so the corridors between them can be reused. */
+export type BoxPlacement = { x: number; y: number; z: number; width: number; height: number; left: number; top: number };
+/** Routes keyed by everything the router saw. A stored route is reused only if it still clears every box. */
+export type RouteCache = { get(key: string): RoutePoint[][] | undefined; set(key: string, routes: RoutePoint[][]): void };
+export type LayoutOptions = {
+  pieces?: PieceCache;
+  routes?: RouteCache;
+  /** In: the previous placement. Out: `next` receives this run's placement. */
+  placement?: { previous?: Map<string, BoxPlacement>; next?: Map<string, BoxPlacement> };
+};
+type Rect = { x0: number; y0: number; x1: number; y1: number };
+const overlaps = (a: Rect, b: Rect, gap: number) =>
+  a.x0 < b.x1 + gap && b.x0 < a.x1 + gap && a.y0 < b.y1 + gap && b.y0 < a.y1 + gap;
+/** Keep boxes whose size is unchanged where they were. A changed or new box goes back to its old
+ * spot if it is free, otherwise to the nearest free spot beside an already placed box. */
+function stablePlacement(boxes: { id: string; width: number; height: number; left: number; top: number }[],
+  previous: Map<string, BoxPlacement>): Map<string, BoxPlacement> {
+  const gap = GRID * 2, placed: Rect[] = [], out = new Map<string, BoxPlacement>();
+  const rectAt = (b: { width: number; height: number; left: number; top: number }, x: number, y: number): Rect =>
+    ({ x0: x + b.left, y0: y + b.top, x1: x + b.left + b.width, y1: y + b.top + b.height });
+  const same = (b: (typeof boxes)[number], q: BoxPlacement) =>
+    q.width === b.width && q.height === b.height && q.left === b.left && q.top === b.top;
+  // Unchanged boxes first, in topic order, so they never move.
+  for (const b of boxes) {
+    const q = previous.get(b.id);
+    if (q && same(b, q)) { out.set(b.id, { ...q }); placed.push(rectAt(b, q.x, q.y)); }
+  }
+  const used = [...out.values()].map(q => q.z);
+  for (const [i, b] of boxes.entries()) {
+    if (out.has(b.id)) continue;
+    const q = previous.get(b.id);
+    const want = q ? { x: q.x, y: q.y } : { x: 0, y: 0 };
+    const free = (x: number, y: number) => !placed.some(r => overlaps(rectAt(b, x, y), r, gap));
+    let at = q && free(q.x, q.y) ? { x: q.x, y: q.y } : undefined;
+    if (!at) {
+      const candidates: { x: number; y: number }[] = [];
+      for (const r of placed) {
+        candidates.push({ x: r.x1 + gap - b.left, y: r.y0 - b.top }, { x: r.x0 - b.left, y: r.y1 + gap - b.top },
+          { x: r.x0 - gap - b.width - b.left, y: r.y0 - b.top }, { x: r.x0 - b.left, y: r.y0 - gap - b.height - b.top });
+      }
+      if (!placed.length) candidates.push(want);
+      at = candidates.map(c => ({ x: Math.round(c.x / GRID) * GRID, y: Math.round(c.y / GRID) * GRID }))
+        .filter(c => free(c.x, c.y))
+        .map(c => ({ c, d: Math.hypot(c.x - want.x, c.y - want.y) }))
+        .sort((a, b2) => a.d - b2.d || a.c.x - b2.c.x || a.c.y - b2.c.y)[0]?.c;
+      // Candidates beside placed boxes always include a free one past the outermost box.
+      if (!at) throw new Error("No free spot for a topic box");
+    }
+    // Depth: keep the old level; a new box takes the least used of the seven levels.
+    const z = q ? q.z : [0, 1, 2, 3, 4, 5, 6].map(k => k * 260)
+      .sort((a, b2) => used.filter(u => u === a).length - used.filter(u => u === b2).length || a - b2)[0];
+    used.push(z);
+    out.set(b.id, { x: at.x, y: at.y, z, width: b.width, height: b.height, left: b.left, top: b.top });
+    placed.push(rectAt(b, at.x, at.y));
+    void i;
+  }
+  return out;
+}
+const clears = (points: RoutePoint[], boxes: Rect[]) => {
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1], b = points[i];
+    const seg = { x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x), y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y) };
+    for (const r of boxes) if (seg.x1 > r.x0 + 1e-6 && seg.x0 < r.x1 - 1e-6 && seg.y1 > r.y0 + 1e-6 && seg.y0 < r.y1 - 1e-6) return false;
+  }
+  return true;
+};
+
 /** Bump when layoutTopic changes what it produces for the same inputs, so stored pieces are not reused. */
 export const PIECE_VERSION = 1;
 /** Everything a piece depends on, in the order it is read. Member and relation order matter:
@@ -290,7 +358,7 @@ async function layoutTopic(topic: GraphNode, members: GraphNode[], inside: Graph
 export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphEdge[],
   basis: "recorded" | "content", elk: LayoutEngine, crossRouter: CrossRouter,
   ordering: LayoutOrdering = "temporal", aspectRatio = 1.6,
-  options: { pieces?: PieceCache } = {}): Promise<LayoutGraph> {
+  options: LayoutOptions = {}): Promise<LayoutGraph> {
   const pieces = options.pieces;
   if (!inputNodes.length) return { nodes: [], edges: [], topicEdges: [] };
   // Clone rather than changing the API cache, details, or source relation metadata.
@@ -337,17 +405,30 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
       positions: new Map([...branch.positions].map(([id, point]) => [id, { ...point }])) })) });
   }
   // Topic 묶음 자체도 ELK가 화면 비율에 맞춰 배치한다. 세로 목록을 직접 만들지 않는다.
-  const packed = await elk.layout({ id: "view-topics", layoutOptions: { "elk.algorithm": "rectpacking",
-    "elk.aspectRatio": String(aspectRatio), "elk.spacing.nodeNode": String(GRID * 2),
-    "elk.rectpacking.widthApproximation.targetWidth": String(Math.sqrt(boxes.reduce((sum, b) =>
-      sum + (b.width + 240) * (b.height + 240), 0) * aspectRatio)) },
-    children: boxes.map(b => ({ id: b.id, width: b.width, height: b.height })) });
+  // 이전 배치가 있으면 다시 채우지 않는다: 크기가 같은 상자는 제자리에 남고, 그래야
+  // 상자 사이 통로를 다시 계산하지 않는다. 근거: [[vinc.plan.incremental-derived-view-results-2026-10-12]]
+  const previous = options.placement?.previous;
+  let placement: Map<string, BoxPlacement>;
+  if (previous && boxes.some(b => previous.has(b.id))) placement = stablePlacement(boxes, previous);
+  else {
+    const packed = await elk.layout({ id: "view-topics", layoutOptions: { "elk.algorithm": "rectpacking",
+      "elk.aspectRatio": String(aspectRatio), "elk.spacing.nodeNode": String(GRID * 2),
+      "elk.rectpacking.widthApproximation.targetWidth": String(Math.sqrt(boxes.reduce((sum, b) =>
+        sum + (b.width + 240) * (b.height + 240), 0) * aspectRatio)) },
+      children: boxes.map(b => ({ id: b.id, width: b.width, height: b.height })) });
+    placement = new Map();
+    for (let i = 0; i < boxes.length; i++) {
+      const box = boxes[i], at = packed.children!.find(n => n.id === box.id)!;
+      placement.set(box.id, { x: Math.round((at.x! - box.left - (packed.width || 0) / 2) / GRID) * GRID,
+        y: Math.round((at.y! - box.top - (packed.height || 0) / 2) / GRID) * GRID, z: (i % 7) * 260,
+        width: box.width, height: box.height, left: box.left, top: box.top });
+    }
+  }
+  if (options.placement?.next) for (const [id, q] of placement) options.placement.next.set(id, { ...q });
   const shifts = new Map<string, RoutePoint>();
   for (let i = 0; i < boxes.length; i++) {
-    const box = boxes[i], at = packed.children!.find(n => n.id === box.id)!;
-    const shift = { x: at.x! - box.left - (packed.width || 0) / 2,
-      y: at.y! - box.top - (packed.height || 0) / 2, z: (i % 7) * 260 };
-    shift.x = Math.round(shift.x / GRID) * GRID; shift.y = Math.round(shift.y / GRID) * GRID;
+    const box = boxes[i], q = placement.get(box.id)!;
+    const shift = { x: q.x, y: q.y, z: q.z };
     for (const id of box.ids) {
       const p = positions.get(id)!; positions.set(id, { x: p.x + shift.x, y: p.y + shift.y, z: shift.z });
       shifts.set(id, shift);
@@ -376,7 +457,8 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
   const toRoute = [...cross, ...topicEdges.filter(e => !e.route)];
   // 큰 지도는 Topic 내부와 Topic 사이를 별도로 라우팅한다. 전량의 작은 글자
   // 상자가 서로 먼 연결 하나의 가시성 그래프에 들어가지 않도록 한다.
-  const routed = nodes.length > 500 ? await routeMap(nodes, toRoute, boxes, positions, topicOf, crossRouter) : await crossRouter(nodes, toRoute);
+  const routed = nodes.length > 500 ? await routeMap(nodes, toRoute, boxes, positions, topicOf, crossRouter, options.routes)
+    : await crossRouter(nodes, toRoute);
   const crossMap = new Map(cross.map((e, i) => [e, routed[i]]));
   const originalEdges = inputEdges.map(e => localRoutes.get(e) ?? crossMap.get(e) ?? { ...e });
   const finalTopicEdges = [
@@ -389,7 +471,8 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
 
 async function routeMap(nodes: GraphNode[], edges: GraphEdge[],
   boxes: { id: string; width: number; height: number; left: number; top: number; ids: string[] }[],
-  positions: Map<string, RoutePoint>, topicOf: (n: GraphNode) => string, router: CrossRouter): Promise<GraphEdge[]> {
+  positions: Map<string, RoutePoint>, topicOf: (n: GraphNode) => string, router: CrossRouter,
+  cache?: RouteCache): Promise<GraphEdge[]> {
   const map = new Map(nodes.map(n => [n.id, n])), boxOf = new Map<string, string>();
   const obstacles: RoutingNode[] = [];
   for (const box of boxes) {
@@ -434,18 +517,41 @@ async function routeMap(nodes: GraphNode[], edges: GraphEdge[],
     legs.push({ index, source, target, middle });
   });
   const localPaths = new Map<GraphEdge, GraphEdge>();
+  // 상자는 GRID*2 떨어져 있으므로 한 상자의 다리 경로가 닿을 수 있는 이웃은 그 거리 안의 상자뿐이다.
+  const near = (box: { left: number; right: number; top: number; bottom: number }, margin: number) => obstacles
+    .filter(o => o.routingBox!.right > box.left - margin && o.routingBox!.left < box.right + margin
+      && o.routingBox!.bottom > box.top - margin && o.routingBox!.top < box.bottom + margin)
+    .map(o => [o.id, o.routingBox!.left, o.routingBox!.top, o.routingBox!.right, o.routingBox!.bottom]);
   for (const [id, batch] of local) {
     const subset = nodes.filter(n => boxOf.get(n.id) === id);
     const extra = new Set(batch.edges.flatMap(e => [e.source, e.target]).filter(id => portals.has(id)));
-    const out = await router([...subset, ...[...extra].map(id => portals.get(id)!),
-      ...obstacles.filter(n => n.id !== `@box:${id}`)], batch.edges);
+    // 라우터가 본 것 전부가 키다: 상자 안 마크 위치, 포털, 관계 끝점, 닿을 수 있는 이웃 상자.
+    const key = cache && JSON.stringify(["local", id, subset.map(n => [n.id, n.x, n.y]), [...extra].sort(),
+      batch.edges.map(e => [e.source, e.target]), near(byBox.get(id)!.routingBox!, GRID * 3)]);
+    const stored = key ? cache!.get(key) : undefined;
+    const out = stored ? batch.edges.map((e, i) => ({ ...e, route: { engine: "libavoid" as const, points: stored[i].map(q => ({ ...q })) } }))
+      : await router([...subset, ...[...extra].map(id => portals.get(id)!),
+        ...obstacles.filter(n => n.id !== `@box:${id}`)], batch.edges);
+    if (key && !stored) cache!.set(key, out.map(e => e.route!.points.map(q => ({ ...q }))));
     batch.edges.forEach((e, i) => { localPaths.set(e, out[i]); if (batch.indices[i] >= 0) result[batch.indices[i]] = out[i]; });
   }
   const unique = new Map<string, GraphEdge>();
   const keyOf = (e: GraphEdge) => JSON.stringify([e.source, e.target]);
   for (const l of legs) if (!unique.has(keyOf(l.middle))) unique.set(keyOf(l.middle), l.middle);
-  const corridors = await router([...obstacles, ...portals.values()], [...unique.values()], "connector");
-  const middlePaths = new Map([...unique.keys()].map((key, i) => [key, corridors[i].route!.points]));
+  // 통로는 양 끝 포털(상자 id 와 절대 좌표)이 같고 지금 어느 상자도 가로지르지 않을 때만 다시 쓴다.
+  const boxRects = obstacles.map(o => ({ x0: o.routingBox!.left / UNIT, x1: o.routingBox!.right / UNIT,
+    y0: o.routingBox!.top / UNIT, y1: o.routingBox!.bottom / UNIT }));
+  const middlePaths = new Map<string, RoutePoint[]>(), pending: string[] = [];
+  for (const key of unique.keys()) {
+    const stored = cache?.get("corridor:" + key)?.[0];
+    if (stored && clears(stored, boxRects)) middlePaths.set(key, stored.map(q => ({ ...q })));
+    else pending.push(key);
+  }
+  const corridors = pending.length ? await router([...obstacles, ...portals.values()], pending.map(key => unique.get(key)!), "connector") : [];
+  pending.forEach((key, i) => {
+    middlePaths.set(key, corridors[i].route!.points);
+    cache?.set("corridor:" + key, [corridors[i].route!.points.map(q => ({ ...q }))]);
+  });
   legs.forEach(l => { result[l.index] = { ...edges[l.index], route: { engine: "libavoid", points: simplifyRoute([
     ...localPaths.get(l.source)!.route!.points, ...middlePaths.get(keyOf(l.middle))!, ...localPaths.get(l.target)!.route!.points,
   ]) } }; });

@@ -561,3 +561,58 @@ test("a topic piece does not depend on how large the rest of the graph is", asyn
     "temporal", 1.6, { pieces: store });
   assert.equal(calls.filter(id => id.startsWith("topic:domain:vinc/a:")).length, 0, "the small topic is reused from the store");
 });
+
+test("a previous placement keeps unchanged topic boxes and their corridors, and a change reroutes only what it touches", async (t) => {
+  // More than 500 marks so routing goes through Topic boxes, portals and corridors.
+  const nodes = [], edges = [];
+  for (let k = 0; k < 8; k++) for (let i = 0; i < 70; i++)
+    nodes.push(n(`k${k}n${i}`, `2025-${String(i % 12 + 1).padStart(2, "0")}`, `vinc/k${k}`));
+  for (let k = 0; k < 8; k++) for (let i = 1; i < 70; i++) edges.push(edge(`k${k}n${i - 1}`, `k${k}n${i}`));
+  for (let k = 0; k < 8; k++) for (let j = 0; j < 4; j++) edges.push(edge(`k${k}n${j * 9}`, `k${(k + j + 1) % 8}n${j * 7 + 3}`, "RELATED_TO"));
+  const elkCalls = [], routerCalls = [];
+  const engine = { layout: input => { elkCalls.push(input.id); return elk.layout(input); } };
+  const router = (ns, es, b) => { routerCalls.push({ edges: es.length, batching: b || "" }); return route(ns, es, b); };
+  const pieces = new Map(), routes = new Map();
+  const run = async (ns, es, previous) => {
+    const next = new Map();
+    const graph = await spatialTemporalLayout(structuredClone(ns), structuredClone(es), "content", engine, router, "temporal", 1.6,
+      { pieces, routes, placement: { previous, next } });
+    return { graph, next };
+  };
+  const fresh = await spatialTemporalLayout(structuredClone(nodes), structuredClone(edges), "content", elk, route, "temporal", 1.6);
+  const first = await run(nodes, edges);
+  assert.deepEqual(first.graph, fresh, "the first run equals a layout without any store");
+  assert.equal(first.next.size, 8);
+
+  elkCalls.length = 0; routerCalls.length = 0;
+  const again = await run(nodes, edges, first.next);
+  assert.deepEqual(again.graph, first.graph, "the same inputs with the previous placement give the same layout");
+  assert.deepEqual(elkCalls, [], "no topic and no packing is laid out again");
+  assert.deepEqual(routerCalls, [], "no corridor or leg is routed again");
+
+  // k3 grows by one mark and one relation.
+  const grownNodes = [...nodes, n("k3n70", "2025-11", "vinc/k3")], grownEdges = [...edges, edge("k3n69", "k3n70")];
+  elkCalls.length = 0; routerCalls.length = 0;
+  const grown = await run(grownNodes, grownEdges, first.next);
+  check(grown.graph, grownEdges);
+  assert.deepEqual([...new Set(elkCalls.filter(id => id.startsWith("topic:")).map(id => id.split(":").slice(1, -2).join(":")))],
+    ["domain:vinc/k3"], "only the grown topic is laid out");
+  assert.ok(!elkCalls.includes("view-topics"), "the boxes are not packed again");
+  for (const [id, q] of first.next) if (id !== "domain:vinc/k3") assert.deepEqual(grown.next.get(id), q, `${id} stays in place`);
+  const corridorEdges = routerCalls.filter(c => c.batching === "connector").reduce((s, c) => s + c.edges, 0);
+  const firstCorridors = [...routes.keys()].filter(k => k.startsWith("corridor:")).length;
+  assert.ok(corridorEdges < firstCorridors, `only corridors touching the changed box are routed (${corridorEdges} of ${firstCorridors})`);
+  // Every route still clears every mark it does not end at, on the 2D projection the map draws.
+  const marks = grown.graph.nodes.map(m => ({ ...m, x: m.x2, y: -m.y2 }));
+  for (const e of grown.graph.edges) for (const mark of marks) {
+    const points = e.route?.points2d;
+    if (mark.id === e.source || mark.id === e.target || mark.kind === "domain" || !points) continue;
+    for (let j = 1; j < points.length; j++) {
+      const a = points[j - 1], b = points[j];
+      assert.ok(!(Math.max(a.x, b.x) > mark.x - .11 + 1e-8 && Math.min(a.x, b.x) < mark.x + .11 - 1e-8 &&
+        Math.max(a.y, b.y) > mark.y - .024 + 1e-8 && Math.min(a.y, b.y) < mark.y + .066 - 1e-8),
+        `route ${e.id} cuts through ${mark.id}`);
+    }
+  }
+  t.diagnostic(JSON.stringify({ corridorsRouted: corridorEdges, corridorsStored: firstCorridors }));
+});
