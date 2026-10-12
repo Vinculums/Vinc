@@ -29,7 +29,8 @@ try {
   });
   const graphFor=url=>{
     const scope=[url.searchParams.get('team')||'personal',state.identity].join('|'),id=x=>`${scope}:${x}`;
-    return {...fixture,nodes:fixture.nodes.map(n=>({...n,id:id(n.id)})),edges:fixture.edges.map(e=>({...e,source:id(e.source),target:id(e.target)})),topicEdges:[]};
+    // The server labels each read with the marker it took before computing it (marker=1).
+    return {...fixture,marker:state.revision[url.searchParams.get('team')?'team':'personal'],nodes:fixture.nodes.map(n=>({...n,id:id(n.id)})),edges:fixture.edges.map(e=>({...e,source:id(e.source),target:id(e.target)})),topicEdges:[]};
   };
   await context.route('**/*',async route=>{
     const req=route.request(),url=new URL(req.url());

@@ -780,7 +780,8 @@ export const api = {
       stage: "preview" | "complete" | "cancel" | undefined, snapshot: string | undefined,
       scope: Scope, signal: AbortSignal) => {
     const { domains, ...rest } = opts;
-    const params = { owner, ...rest, stage, snapshot,
+    // `marker`: 응답이 읽기 전에 잡은 변경 표식을 싣게 한다(`api/server.py _query_graph`).
+    const params = { owner, ...rest, stage, snapshot, marker: 1,
       ...(domains?.length ? { domains: domains.join(",") } : {}) };
     // 취소 요청은 접힌 신호에 묶지 않는다: 그 신호가 접혔기 때문에 보내는 것이다.
     const live = stage === "cancel" ? undefined : signal;
