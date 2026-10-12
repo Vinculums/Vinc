@@ -212,6 +212,10 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # 주소와 시크릿 참조만 준비한다. 실제 env 변경은 구 리비전을 내린 뒤의 update에서 한다.
+      - name: 배치 앱의 구조와 공용 시크릿 준비 여부
+        run: python scripts/layout_app.py hub-env --out "$GITHUB_ENV"
+
       # ⚠ 배포 **전** env 게이트. 허브 런타임 env 는 IaC 가 아니라 손으로 넣은 값이라
       # 앱을 재생성하면 조용히 빠진다 — 실제로 `VINC_MCP_ISSUER` 하나가 빠져 커넥터가
       # 전면 불가였는데 `/health` 는 200 이었다(2026-07-30). 빠진 채로 배포하면
@@ -404,6 +408,9 @@ jobs:
           # 임베딩 적용 멈춤 스위치. 위와 달리 **매번 싣는다**: 변수를 비우면 off 가
           # 들어가 멈춤이 풀린다(건너뛰면 한 번 켠 on 이 env 에 영영 남는다).
           ENVARGS+=(--set-env-vars "VINC_EMBED_APPLY_PAUSED=${{ vars.VINC_EMBED_APPLY_PAUSED || 'off' }}")
+          if [ "${LAYOUT_PRESENT:-0}" = '1' ]; then
+            ENVARGS+=(--set-env-vars "VINC_LAYOUT_REMOTE=$LAYOUT_REMOTE" "VINC_LAYOUT_TOKEN=secretref:layout-token")
+          fi
           # ⚠ 이 update 가 앞 단계에서 내린 구 리비전을 **한 번 더 띄운다.** 단일 리비전
           # 모드의 롤링 전환은 새 리비전이 준비될 때까지 구 리비전에 트래픽 100% 를
           # 되돌리고, 그것은 /data 에서 복원해 1분쯤 살다가 두 번째 최종 스냅샷을 쓰려
@@ -559,6 +566,25 @@ jobs:
       # 의도한 변경이면 `python scripts/gate_app_config.py --write` 로 기준선을
       # 같은 커밋에 갱신한다. 08-30 사고(excludedPaths 소실, 경보도 배포도 초록)가
       # 이 게이트의 존재 이유다. 포털 수동 변경은 다음 배포의 이 스텝에서 걸린다.
+      - name: 저장 배치가 계정 경로에서 ready이고 그래프 표식과 맞는가
+        if: env.LAYOUT_PRESENT == '1'
+        env:
+          VINC_GRAPH_READONLY_KEY: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
+        run: python scripts/verify_layout_remote.py
+
+      - name: 새 앱을 포함한 라이브 기준선 수집 (시크릿 값 제외)
+        if: env.LAYOUT_PRESENT == '1'
+        run: |
+          python scripts/gate_app_config.py --write --require-present --apps vinc-hub vinc-encode vinc-account vinc-layout \
+            --baseline "$RUNNER_TEMP/layout-app-config.json"
+
+      - uses: actions/upload-artifact@v4
+        if: env.LAYOUT_PRESENT == '1'
+        with:
+          name: layout-app-config-${{ github.run_id }}
+          path: ${{ runner.temp }}/layout-app-config.json
+          retention-days: 7
+
       - name: App config drift gate (구조 기준선 대조)
         run: python3 scripts/gate_app_config.py
 

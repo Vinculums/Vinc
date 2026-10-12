@@ -1,0 +1,142 @@
+# vinc-layout CD — 시간 가지 배치 컨테이너(app/service/layout-server.mjs).
+#
+# 허브(hub-deploy)와 따로 나간다. 이 컨테이너는 스토어를 안 물고 상태는 메모리 캐시뿐이라
+# 단일 writer 순서(구 리비전 먼저 내리기)가 필요 없고, 배포가 끝나면 캐시가 비어 첫 요청이
+# 전체 배치를 한 번 더 할 뿐이다. 허브가 이 컨테이너를 못 부르는 동안 화면은 직접 배치한다.
+#
+# 앱이 아직 없으면(운영자가 만들기 전) 빌드도 하지 않고 끝낸다. 없는 것과 확인 못 한 것은
+# hub-deploy 의 인코더 스텝처럼 가른다.
+# 근거: [[decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12]]
+name: layout-deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - app/src/view-layout.ts
+      - app/src/view-layout-avoid.ts
+      - app/src/view-layout-spatial.ts
+      - app/src/view-layout-wire.ts
+      - app/src/view-route.ts
+      - app/src/view-route-shortcuts.ts
+      - app/src/layout-service.ts
+      - app/service/**
+      - app/package.json
+      - app/package-lock.json
+      - packaging/Dockerfile.layout
+      - .github/workflows/layout-deploy.yml
+      - scripts/layout_app.py
+  workflow_dispatch:
+    inputs:
+      provision:
+        description: "없는 vinc-layout을 만들고 허브에 공용 토큰 시크릿을 준비한다"
+        type: boolean
+        default: false
+      confirm:
+        description: "생성할 때만: 정확히 vinc-layout이라고 적을 것"
+        type: string
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 수동 운영은 운영 담당과 main에서만
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          ACTOR: ${{ github.triggering_actor }}
+          OPERATORS: ${{ vars.PROD_OPERATORS }}
+          PROVISION: ${{ inputs.provision }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          python3 - <<'PY'
+          import os
+          e = os.environ
+          assert e['GITHUB_REF'] == 'refs/heads/main', 'main dispatch only'
+          assert e['ACTOR'] in [s.strip() for s in e['OPERATORS'].split(',')], 'PROD_OPERATORS only'
+          assert e['PROVISION'] != 'true' or e['CONFIRM'] == 'vinc-layout', 'confirm vinc-layout'
+          PY
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: vinc-layout 이 있는가
+        run: |
+          set -euo pipefail
+          if err=$(az containerapp show -n vinc-layout -g vincsRG --output none 2>&1); then
+            echo "LAYOUT_PRESENT=1" >> "$GITHUB_ENV"
+          elif printf '%s' "$err" | grep -qiE 'ResourceNotFound|was not found|could not be found'; then
+            echo "vinc-layout 없음: 건너뛴다"
+            echo "LAYOUT_PRESENT=0" >> "$GITHUB_ENV"
+          else
+            echo "::error::vinc-layout 조회 실패: $err" >&2
+            exit 1
+          fi
+
+      - name: 생성 요청도 main의 CI가 초록일 때만
+        if: github.event_name == 'workflow_dispatch' && inputs.provision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          conclusion=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$GITHUB_SHA" \
+            --event push --limit 1 --json conclusion --jq '.[0].conclusion')
+          [ "$conclusion" = success ] || { echo '::error::main CI is not green'; exit 1; }
+
+      - uses: actions/setup-node@v4
+        if: env.LAYOUT_PRESENT == '1' || (github.event_name == 'workflow_dispatch' && inputs.provision)
+        with:
+          node-version: 22
+
+      - name: 서비스 테스트와 번들
+        if: env.LAYOUT_PRESENT == '1' || (github.event_name == 'workflow_dispatch' && inputs.provision)
+        working-directory: app
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run test:layout-service
+          node service/build.mjs "$RUNNER_TEMP/layout"
+          cp ../packaging/Dockerfile.layout "$RUNNER_TEMP/layout/Dockerfile"
+
+      - name: Build & push image (ACR Tasks)
+        if: env.LAYOUT_PRESENT == '1' || (github.event_name == 'workflow_dispatch' && inputs.provision)
+        run: |
+          az acr build --registry vincacr \
+            --image "vinc-layout:${GITHUB_SHA}" --image vinc-layout:latest \
+            "$RUNNER_TEMP/layout"
+
+      - name: 명시적으로 요청한 앱 생성과 공용 시크릿 준비
+        if: github.event_name == 'workflow_dispatch' && inputs.provision
+        env:
+          PROD_OPERATORS: ${{ vars.PROD_OPERATORS }}
+          LAYOUT_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          python3 scripts/layout_app.py provision --image "vincacr.azurecr.io/vinc-layout:${GITHUB_SHA}"
+          echo 'LAYOUT_PRESENT=1' >> "$GITHUB_ENV"
+
+      - name: Deploy to Container Apps
+        if: env.LAYOUT_PRESENT == '1'
+        run: |
+          set -euo pipefail
+          az containerapp update --name vinc-layout --resource-group vincsRG \
+            --image "vincacr.azurecr.io/vinc-layout:${GITHUB_SHA}" --output none
+          img=$(az containerapp show -n vinc-layout -g vincsRG --query 'properties.template.containers[0].image' -o tsv)
+          [ "$img" = "vincacr.azurecr.io/vinc-layout:${GITHUB_SHA}" ] || {
+            echo "::error::vinc-layout 이미지가 바뀌지 않았다: $img" >&2
+            exit 1
+          }
+          echo "vinc-layout 갱신: ${GITHUB_SHA}"

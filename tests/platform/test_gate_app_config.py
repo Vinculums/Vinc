@@ -5,10 +5,11 @@
 (excludedPaths·앱 부재)의 변화가 투영 차이로 드러난다."""
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-from gate_app_config import project_app   # noqa: E402
+from gate_app_config import project_app, measure   # noqa: E402
 
 
 def _show(env=None, excluded=None):
@@ -49,6 +50,15 @@ def _auth(excluded):
 
 
 class ProjectionTests(unittest.TestCase):
+
+    def test_strict_capture_does_not_turn_an_unanswered_read_into_a_baseline(self):
+        with patch("gate_app_config._az", side_effect=RuntimeError("unavailable")):
+            self.assertTrue(measure(apps=("vinc-layout",))["vinc-layout"]["missing"])
+            with self.assertRaises(RuntimeError):
+                measure(apps=("vinc-layout",), strict=True)
+        with patch("gate_app_config._az", side_effect=[_show(), RuntimeError("auth unavailable")]):
+            with self.assertRaises(RuntimeError):
+                measure(apps=("vinc-layout",), strict=True)
 
     def test_값은_투영에_실리지_않는다(self):
         """env 값·시크릿 값이 기준선에 새면 기준선 파일이 유출면이 된다."""

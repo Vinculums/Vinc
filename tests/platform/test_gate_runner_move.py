@@ -213,7 +213,12 @@ class ThisRepo(unittest.TestCase):
         성질이다 — 제품 상태를 바꾸지 않고 라이브 허브의 지연을 잰다. 직렬화하는 이유는
         **측정끼리 겹치면 서로를 오염시키기 때문**이다: 1코어 허브에 벤치 둘이 동시에
         붙으면 둘 다 느려진다. 큐가 막혀도 밀리는 것은 측정뿐이고, dispatch 로만 돈다.
-        근거: [[vinc.plan.vin397-prefetch-half-latency-2026-10-07]]"""
+        근거: [[vinc.plan.vin397-prefetch-half-latency-2026-10-07]]
+
+        열둘이 된 경위: `layout-deploy.yml`(2026-10-12)은 `vinc-layout` 하나의 이미지를 바꾼다.
+        같은 앱에 `containerapp update` 둘이 겹치면 뒤의 것이 앞의 것을 덮고 끝의 이미지 대조가
+        엉뚱한 런에서 실패한다. 스토어를 안 물어 허브 그룹 키는 빌리지 않는다.
+        근거: [[decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12]]"""
         import yaml
         serial = []
         for p in sorted((_ROOT / ".github" / "workflows").glob("*.yml")):
@@ -223,7 +228,7 @@ class ThisRepo(unittest.TestCase):
                 serial.append(p.name)
         self.assertEqual(serial, ["encode-m3-probe.yml", "hub-capacity-trial.yml", "hub-data-repair.yml", "hub-deploy.yml", "hub-durability-latency.yml",
                                   "hub-relevance-measure.yml", "hub-store-rebuild.yml",
-                                  "hub-store-recover.yml", "infra.yml", "integrations-publish.yml", "pk-migrate.yml",
+                                  "hub-store-recover.yml", "infra.yml", "integrations-publish.yml", "layout-deploy.yml", "pk-migrate.yml",
                                   "prefetch-bench.yml", "release.yml"], serial)
 
 

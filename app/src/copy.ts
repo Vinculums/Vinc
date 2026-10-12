@@ -289,6 +289,9 @@ const EN = {
     idleCta: "Import files",
     loading: (d: number) => d > 0 ? `Arranging ${d} topics…` : "Arranging this View…",
     preview: "Partial overview · Loading the full View…",
+    // 시간순 가지 배치가 오래 걸리면 중심에서 배치로 먼저 보여 준다(그동안의 안내).
+    layoutPending: "Time branches are still being laid out. Showing by centre until they're ready.",
+    layoutFailed: "Time branches couldn't be laid out for this graph, so it's shown by centre.",
     error: "View couldn't load. Retry anytime. Your documents are untouched.",
     // 스토어를 못 읽는 상태 전용. "비어 있다"와 **반드시 다른 말**이어야 한다 —
     // 사이드카가 읽지 못하는 것을 빈 View 로 그리면 정보 유실과 구분되지 않는다.
@@ -619,7 +622,7 @@ const EN = {
       groupNodes: "Nodes", groupLines: "Lines", groupOther: "Other",
       // 프리셋 2종(2026-08-02). 이름은 무엇을 보여주는지로 짓는다 — 알고리즘 이름
       // (radial·dendro)은 사용자에게 아무 것도 말해 주지 않았다.
-      layoutName: { hub: "by centre", rank: "by order", temporalRoots: "time branches", rankedRoots: "relation branches" } as Record<string, string>,
+      layoutName: { hub: "by centre", temporalRoots: "time branches" } as Record<string, string>,
       // v2 — **값마다 한 줄 설명 한 벌**. 옛 per-row Help 키들(edgeShowHelp·layoutHelp
       // ·bundleDepthHelp…)을 이 표로 모았다: 설명은 패널 바닥의 고정 줄이 받고,
       // 가리키거나 포커스가 닿은 값의 줄로 바뀐다(뜨는 툴팁 아님 — WCAG 1.4.13 을
@@ -642,9 +645,7 @@ const EN = {
         showU: "Unlinked marks are drawn, so you can see what is not tied in yet.",
         hideU: "Unlinked marks are hidden. Only what connects remains.",
         hub: "Everything spreads from the centre. Inside a topic, the best connected sits nearest.",
-        rank: "Left comes first, right comes later. Within a column the best connected sits on top.",
         temporalRoots: "Branches spread from each topic in date order, using the selected time basis.",
-        rankedRoots: "Branches spread from each topic in relationship order.",
         recorded: "Stood up by when you wrote it, so one import clusters in one place.",
         content: "Stood up by when it happened, regardless of when it was written down.",
         docsOn: "Documents are drawn as marks, hung off their concepts.",
@@ -1541,6 +1542,8 @@ const KO: Deck = {
     idleCta: "파일 추가하기",
     loading: (d) => d > 0 ? `주제 ${d}개를 배치하는 중…` : "View를 배치하는 중…",
     preview: "일부 개요 · 전체 View를 불러오는 중…",
+    layoutPending: "시간순 가지를 아직 그리는 중이에요. 다 될 때까지 중심에서 배치로 보여 드려요",
+    layoutFailed: "이 그래프는 시간순 가지로 그리지 못해 중심에서 배치로 보여 드려요",
     error: "View를 불러오지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
     storeDown: "지금은 저장된 정보를 읽을 수 없어요. 읽기 문제라서 잃어버린 것은 없어요. Vinc를 다시 실행하고, 다른 Vinc가 이미 켜져 있지 않은지 확인해 주세요",
     storeDownWhy: "자세히",
@@ -1806,7 +1809,7 @@ const KO: Deck = {
       unlinkedNodes: "연결 안 된 노드", show: "표시", hide: "숨김",
       layout: "배치", spread: "간격",
       groupNodes: "노드", groupLines: "선", groupOther: "기타",
-      layoutName: { hub: "중심에서", rank: "순서대로", temporalRoots: "시간순 가지", rankedRoots: "관계순 가지" } as Record<string, string>,
+      layoutName: { hub: "중심에서", temporalRoots: "시간순 가지" } as Record<string, string>,
       // v2 — 값마다 한 줄 설명 한 벌(EN 쪽 주석 참조). 바닥 고정 줄이 받는다.
       helpTip: "설명 펼치기",
       close: "닫기",
@@ -1826,9 +1829,7 @@ const KO: Deck = {
         showU: "연결 없는 마디도 그려요. 아직 이어지지 않은 것이 보여요",
         hideU: "연결 없는 마디를 숨겨요. 이어진 것만 남아 View가 조용해져요",
         hub: "가운데에서 사방으로 퍼져요. 한 주제 안에서는 연결이 많은 것이 가운데에 가까워요",
-        rank: "왼쪽이 먼저, 오른쪽이 나중이에요. 같은 줄에서는 연결이 많은 것이 위에 와요",
         temporalRoots: "주제를 중심으로, 선택한 날짜 기준에 따라 가지가 시간순으로 퍼져요",
-        rankedRoots: "주제를 중심으로, 가지가 관계 순서에 따라 퍼져요",
         recorded: "언제 적었는지로 세워요. 한 번에 적재한 것들이 같은 자리에 몰려요",
         content: "언제 있었던 일인지로 세워요. 적은 날과 무관하게 퍼져요",
         docsOn: "문서도 마디로 그려 개념에 매달아요",

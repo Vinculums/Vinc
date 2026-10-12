@@ -9,9 +9,9 @@ import { camera3d, centerOn3d, enableLasso, findNode3d, mount3d, zoomBy3d,
          type Cam3, type L3, type N3 } from "./view3d";
 import { mount2d, type Handle2d } from "./view2d";
 import { viewSessionCache } from "../view-session-cache";
-import { readGraphProgressively, mountGraphPreview } from "../view-graph-loading";
-import { layoutInWorker } from "../view-layout-client";
-import type { LayoutGraph } from "../view-layout";
+import { mountGraphPreview } from "../view-graph-loading";
+import { createGraphLoader } from "../view-graph-loader";
+import { retainedViews, restoreRetained } from "../view-retained";
 import type { DragEnd } from "./drag-connect";
 import { bucketRange, gateway3dSvg, mark3dSvg, markSvg, mountColumns, pickGrain,
          timelinePool, type Grain,
@@ -27,7 +27,7 @@ import { blocksSurfaceShortcuts, isTypingTarget } from "../keys";
 import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
 
-import { layoutsFor, isRootsLayout, serverLayoutFor, rootsOrderingFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
+import { layoutsFor, serverLayoutFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
          WHEN_SCALE, timeCutoff, nodeTimeOn, visibleAt,
          EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, DIRECTED_RELS,
          edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
@@ -181,11 +181,19 @@ export async function renderView(el: HTMLElement, resume = false) {
   const accessJob = new AbortController();
   disposeView = () => accessJob.abort();
   const firstAccess = WEB ? viewAccess(mountScope, accessJob.signal).catch(() => null) : Promise.resolve(null);
-  const entryAccess = WEB && (viewSessionCache.count || viewSessionCache.hasBookmark) ? await firstAccess : null;
+  // 스페이스 전환으로 보관해 둔 항목이 있을 수 있으면 신원·표식을 먼저 확인한다.
+  const holdsRetained = WEB && !viewSessionCache.count && !viewSessionCache.hasBookmark && retainedViews.has();
+  const entryAccess = WEB && (viewSessionCache.count || viewSessionCache.hasBookmark || holdsRetained)
+    ? await firstAccess : null;
   if (myGen !== liveGen || mountScope.key !== viewScope().key) { accessJob.abort(); return; }
-  if (entryAccess) viewSessionCache.activate(entryAccess.session, entryAccess.revision);
+  if (entryAccess) {
+    viewSessionCache.activate(entryAccess.session, entryAccess.revision);
+    if (holdsRetained) {
+      await restoreRetained(entryAccess.session, entryAccess.revision);
+      if (myGen !== liveGen || mountScope.key !== viewScope().key) { accessJob.abort(); return; }
+    }
+  }
   const bookmark = entryAccess && restoreEntryCamera ? viewSessionCache.last(entryAccess.session) : undefined;
-  let firstAccessUsed = false;
   el.innerHTML = `
     <div id="view-canvas"></div>
     <!-- 하단 바에는 **지표만** 남는다(D71). 렌즈와 관점 세그는 상단 바로 올라갔고,
@@ -1257,7 +1265,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     const cur = loadPrefs();
     if (!changedViewPrefs(cur, mut).length) return;
     savePrefs({ ...cur, ...mut });
-    reuseGraph = true;                    // 좌표·데이터는 그대로다 — 거르는 것만 바뀐다
+    loader.reuseGraph = true;             // 좌표·데이터는 그대로다 — 거르는 것만 바뀐다
     await show(trail[trail.length - 1], { keepPanel: true, keepCamera: true });
   }
   /** 날짜 선택을 연다. 프리셋을 고르면 직접 설정한 범위(from·to)는 남겨 둔다 — 다음에
@@ -1422,7 +1430,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       layout: tileRow(COPY.ui.panel.layout, layoutsFor(p.view).map((l) => ({
         val: l, label: COPY.ui.panel.layoutName[l],
         art: l === "hub" ? ART.layoutHub : ART.layoutRank,
-        help: l, active: (isPlanar(p.view) ? serverLayoutFor(p.layout) : p.layout) === l,
+        help: l, active: p.layout === l,
       })), "layout"),
       spread: slider("pref-spread", COPY.ui.panel.spread, 0.6, 1.6, 0.02, p.spread,
                      undefined, "spread"),
@@ -1837,7 +1845,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     }
     // 행을 내보낸 층 = 그 프리퍼런스를 실제로 읽는 층이다(Grid 포함). 보이는 컨트롤은
     // 언제나 화면을 바꾼다 — 좌표는 그대로 두고 프리퍼런스만 재적용한다.
-    reuseGraph = work.reuseGraph;
+    loader.reuseGraph = work.reuseGraph;
     if (rowsFor(np).length > 0)
       await show(lv, { keepPanel: true, keepCamera: work.keepCamera });
     openPanel();                                  // 내용 갱신 + aria·포커스 재확정(닫지 않는다)
@@ -1945,7 +1953,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   /** 커서를 **살아 있는 렌더러에** 건다. 마운트 직후에도 한 번 불러 첫 화면이
    *  커서를 반영하게 한다(마운트는 이제 전량을 싣는다). */
   function applyTimeCut(): void {
-    removePreview();
+    loader.removePreview();
     const ids = timeVisibleIds();
     if (g3) {
       const lid = (v: any) => (v && typeof v === "object" ? v.id : v);
@@ -2094,30 +2102,61 @@ export async function renderView(el: HTMLElement, resume = false) {
    *    절반이었다.
    *  · **순서**: 빠르게 연달아 show() 가 나면 늦게 도착한 옛 응답이 새 그림을 덮었다.
    *    부를 때의 세대를 기억해, 돌아왔을 때 세대가 지났으면 `stale` 로 답한다. */
-  let reuseGraph = false;
   let keepCam2: ReturnType<Handle2d["camera"]> | null = null;
-  let graphReadJob: AbortController | undefined;
-  let clearPreview: (() => void) | undefined;
-  function removePreview() { clearPreview?.(); clearPreview = undefined; }
-  let rawGraph: { executed: boolean; nodes?: GraphNode[]; edges?: GraphEdge[] } | undefined;
-  let rawGraphScope: string | undefined;
-  let layoutCache: { raw: typeof rawGraph; basis: ViewPrefs["timeBasis"]; layout: ViewPrefs["layout"]; aspectRatio: number; graph: LayoutGraph } | undefined;
-  let layoutJob: AbortController | undefined;
-  let retained: { session: string; revision: string; key: string; prefs: string } | undefined;
   const cameraPrefs = (p: ViewPrefs) => JSON.stringify([p,
     Math.round((canvas.clientWidth || 1200) / (canvas.clientHeight || 750) * 10) / 10]);
+  // 그래프 읽기와 가지 배치, 두 캐시의 상태는 `view-graph-loader.ts` 가 든다.
+  const loader = createGraphLoader({
+    mountScope, accessJob, firstAccess, restoreEntryCamera,
+    seq: () => showSeq,
+    alive: () => myGen === liveGen && canvas.isConnected,
+    canvasRatio: () => Math.round((canvas.clientWidth || 1200) / (canvas.clientHeight || 750) * 10) / 10,
+    mounted: () => !!(g3 || g2),
+    planar: () => !!planar,
+    cameraPrefs,
+    showPreview: (graph) => {
+      const remove = mountGraphPreview(canvas, graph, { edges: curPrefs().edges !== "none", label: COPY.view.preview });
+      setMsg("");
+      return remove;
+    },
+    restoreCameras: (camera3, camera2) => {
+      keepCam = camera3 as Cam3 | undefined ?? null;
+      keepCam2 = camera2 as ReturnType<Handle2d["camera"]> | undefined ?? null;
+    },
+    // 중심에서 화면 뒤에서 가지 배치가 끝났다. 받은 그래프는 그대로 두고 배치만 갈아 끼운다.
+    layoutReady: () => {
+      loader.reuseGraph = true;
+      void show(trail[trail.length - 1], { keepPanel: true, keepDetail: true });
+    },
+    layoutFailed: () => showLayoutNote(COPY.view.layoutFailed),
+  });
+  // 시간순 가지 대신 중심에서 배치를 그렸을 때의 한 줄 안내. 다음 화면이 그려지면 사라진다.
+  let layoutNote: HTMLElement | undefined;
+  function clearLayoutNote() { layoutNote?.remove(); layoutNote = undefined; }
+  function showLayoutNote(text: string) {
+    clearLayoutNote();
+    const note = document.createElement("div");
+    note.setAttribute("role", "status"); note.dataset.layoutNote = "true"; note.textContent = text;
+    note.style.cssText = "position:absolute;bottom:12px;left:12px;max-width:min(560px,70%);font-size:12px;"
+      + "color:hsl(var(--muted-foreground));pointer-events:none";
+    canvas.append(note); layoutNote = note;
+  }
+  const noteLayout = (layout: "pending" | "failed" | undefined) => {
+    if (layout) showLayoutNote(layout === "pending" ? COPY.view.layoutPending : COPY.view.layoutFailed);
+  };
   let displayedScene: { key: string; prefs: string; domains: string[]; seq: number } | undefined;
   const markDisplayed = (p: ViewPrefs, domains: string[]) => {
-    displayedScene = { key: rawGraphScope!, prefs: cameraPrefs(p), domains: [...domains], seq: showSeq };
+    displayedScene = { key: loader.scopeKey!, prefs: cameraPrefs(p), domains: [...domains], seq: showSeq };
   };
   const dispose = () => {
+    const retained = loader.retained;
     if (retained && displayedScene?.key === retained.key
         && mountScope.key === viewScope().key && myGen === liveGen) {
       viewSessionCache.remember(retained.session, retained.key, retained.revision,
         { prefs: displayedScene.seq === showSeq ? cameraPrefs(curPrefs()) : displayedScene.prefs,
           camera2: g2?.camera(), camera3: g3 ? camera3d(g3) : undefined }, displayedScene.domains);
     }
-    accessJob.abort(); layoutJob?.abort(); graphReadJob?.abort(); removePreview();
+    accessJob.abort(); loader.abort(); loader.removePreview();
     removalObserver.disconnect(); swapSurface();
   };
   disposeView = dispose;
@@ -2126,120 +2165,11 @@ export async function renderView(el: HTMLElement, resume = false) {
     dispose();
   });
   removalObserver.observe(document.body, { childList: true, subtree: true });
-  async function fetchGraph(p: ViewPrefs, scope: { domains?: string[] }):
-      Promise<{ executed: boolean; stale?: boolean; nodes?: GraphNode[]; edges?: GraphEdge[]; topicEdges?: GraphEdge[] }> {
-    const domains = scope.domains || [];
-    const useRoots = !isPlanar(p.view) && isRootsLayout(p.layout);
-    const serverLayout = serverLayoutFor(p.layout);
-    const cone = useRoots ? 1 : p.cone;
-    const scopeKey = JSON.stringify({ domains: [...domains].sort(), layout: serverLayout, cone });
-    let cached = reuseGraph && rawGraph?.executed && rawGraphScope === scopeKey && rawGraph;
-    reuseGraph = false;
-    const mySeq = showSeq;
-    layoutJob?.abort();
-    const start = performance.now();
-    let res: typeof rawGraph;
-    const canRetain = WEB && ["2d", "3d"].includes(p.view);
-    const access = canRetain ? (firstAccessUsed ? viewAccess(mountScope, accessJob.signal).catch(() => null) : firstAccess) : Promise.resolve(null);
-    firstAccessUsed = true;
-    // Confirm the marker before starting the graph snapshot; a late probe cannot label an older read.
-    const grant = canRetain ? await access : null;
-    if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected || mountScope.key !== viewScope().key)
-      return { executed: false, stale: true };
-    if (canRetain && (!grant || retained?.session !== grant.session || retained?.revision !== grant.revision)) cached = false;
-    if (grant) {
-      viewSessionCache.activate(grant.session, grant.revision);
-      cached ||= viewSessionCache.get(grant.session, scopeKey, grant.revision);
-      if (cached) {
-        retained = { ...grant, key: scopeKey, prefs: cameraPrefs(p) };
-        const state = viewSessionCache.getState(grant.session, scopeKey, grant.revision, cameraPrefs(p));
-        if (restoreEntryCamera && !g3 && !g2 && state) {
-          keepCam = state.camera3 as Cam3 | undefined ?? null;
-          keepCam2 = state.camera2 as ReturnType<Handle2d["camera"]> | undefined ?? null;
-        }
-      }
-    } else if (canRetain && viewSessionCache.count) viewSessionCache.clear();
-    const generation = viewSessionCache.generation;
-    const options = { ...(domains.length ? { domains } : {}), layout: serverLayout,
-      ...(cone !== 1 ? { cone } : {}) };
-    try {
-      const initial = WEB && !cached && !g3 && !g2 && !planar && !useRoots
-        && ["2d", "3d"].includes(p.view) && p.when === 1 && p.unlinked === "show" && !p.edgeOff.length;
-      if (initial) {
-        const job = graphReadJob = new AbortController();
-        const capturedScope = { team: cfg.team || null };
-        const owner = cfg.owner;
-        res = await readGraphProgressively((stage, token) =>
-          api.graphStage(owner, options, stage, token, capturedScope, job.signal), preview => {
-            if (job.signal.aborted || mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return;
-            clearPreview?.(); clearPreview = mountGraphPreview(canvas, preview, {
-              edges: curPrefs().edges !== "none", label: COPY.view.preview,
-            }); setMsg("");
-          }, job.signal);
-      } else if (cached) res = cached;
-      else if (WEB) {
-        const job = graphReadJob = new AbortController();
-        res = await api.graphStage(mountScope.owner, options, undefined, undefined,
-          { team: mountScope.team || null }, job.signal);
-      } else res = await api.graph(cfg.owner, options);
-    }
-    catch (failure) {
-      if (graphReadJob?.signal.aborted) return { executed: false, stale: true };
-      console.error(`View graph read failed ${JSON.stringify({ elapsedMs: Math.round(performance.now() - start),
-        status: Number((failure as { status?: number }).status) || 0 })}`);
-      throw failure;
-    }
-    console.info(`View graph read ${JSON.stringify({ elapsedMs: Math.round(performance.now() - start), cached: !!cached,
-      executed: !!res?.executed, nodes: res?.nodes?.length || 0, edges: res?.edges?.length || 0 })}`);
-    if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected || mountScope.key !== viewScope().key) return { executed: false, stale: true };
-    rawGraph = res;
-    rawGraphScope = scopeKey;
-    if (!res) return { executed: false };
-    const remember = (layout?: { key: string; graph: LayoutGraph }) => {
-      if (!canRetain || (cached && !layout) || !res?.executed) return;
-      // 두 표식이 일치할 때만 보관한다. 저장 검증은 첫 렌더를 기다리게 하지 않는다.
-      void access.then(async before => {
-        if (!before || accessJob.signal.aborted || generation !== viewSessionCache.generation) return;
-        const after = await viewAccess(mountScope, accessJob.signal).catch(() => null);
-        if (!after || before.session !== after.session || before.revision !== after.revision
-            || mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected
-            || mountScope.key !== viewScope().key || generation !== viewSessionCache.generation) return;
-        const ticket = viewSessionCache.activate(before.session, before.revision);
-        if (viewSessionCache.put(before.session, scopeKey, before.revision, res!, ticket, layout))
-          retained = { ...before, key: scopeKey, prefs: cameraPrefs(p) };
-      });
-    };
-    if (!useRoots || !res.executed) { remember(); return res; }
-    const aspectRatio = Math.round((canvas.clientWidth || 1200) / (canvas.clientHeight || 750) * 10) / 10;
-    if (layoutCache && layoutCache.raw === res && layoutCache.basis === p.timeBasis && layoutCache.layout === p.layout && layoutCache.aspectRatio === aspectRatio)
-      return { executed: true, ...layoutCache.graph };
-    const layoutKey = JSON.stringify([p.timeBasis, p.layout, aspectRatio]);
-    const retainedLayout = grant && cached && viewSessionCache.getLayout(grant.session, scopeKey, grant.revision, layoutKey);
-    if (retainedLayout) {
-      layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph: retainedLayout };
-      console.info("View layout reused");
-      return { executed: true, ...retainedLayout };
-    }
-    layoutJob?.abort();
-    const job = layoutJob = new AbortController();
-    try {
-      const graph = await layoutInWorker(res.nodes || [], res.edges || [], p.timeBasis, job.signal,
-        rootsOrderingFor(p.layout), undefined, aspectRatio);
-      if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
-      layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph };
-      remember({ key: layoutKey, graph });
-      return { executed: true, ...graph };
-    } catch (error) {
-      if (job.signal.aborted) return { executed: false, stale: true };
-      throw error;
-    } finally { if (layoutJob === job) layoutJob = undefined; }
-  }
-
   async function showGraphScope(scope: { domains?: string[] }) {
     const domains = scope.domains || [];
     const p = curPrefs();
     setMsg(`<p class="hint">${COPY.view.loading(domains.length ? 1 : 0)}</p>`);
-    const res = await fetchGraph(p, scope);
+    const res = await loader.fetchGraph(p, scope);
     if (res.stale) return;                        // 더 새 show() 가 이미 화면을 가져갔다
     swapSurface();
     // 도달 불가도 **Sankey 와 같은 상자**로 낸다(발주자 지시 2026-08-05). 붉은 배너만
@@ -2286,6 +2216,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       onConnect: connectByDrag, canConnect: canLinkPair,
     }, p, keepCam, curNodes.map((n) => n.domain));   // 색 순위는 전량으로(setCurNodes 주석)
     markDisplayed(p, domains);
+    noteLayout(res.layout);
     keepCam = null;                               // 한 번 실어 보내면 끝 — 다음 마운트는 전체 맞춤
     applyTimeCut();                               // 첫 화면부터 커서를 반영한다
     wireLasso();
@@ -3842,7 +3773,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 쓰므로 관점을 바꿔도 같은 것을 다르게 볼 뿐, 다른 것을 보게 되지 않는다.
     const domains = lvDomains(level);
     setMsg(`<p class="hint">${COPY.view.loading(domains.length ? 1 : 0)}</p>`);
-    const res = await fetchGraph(p, { domains });
+    const res = await loader.fetchGraph(p, { domains });
     if (res.stale) return;
     swapSurface();
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
@@ -3870,6 +3801,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       onConnect: connectByDrag, canConnect: canLinkPair,
     }, p, keepCam2);
     markDisplayed(p, domains);
+    noteLayout(res.layout);
     console.info(`View scene ready ${JSON.stringify({ renderer: "2d", nodes: shown2.length,
       elapsedMs: Math.round(performance.now() - mountedAt) })}`);
     applyTimeCut();
@@ -3908,7 +3840,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     // (query.py `graph()` "기본은 owner(±domain) 스코프 전체"). call() 이 undefined
     // 파라미터를 빼므로 요청은 그대로 `/graph?owner=…&layout=…` 이 된다.
     setMsg(`<p class="hint">${COPY.view.loading(level.kind === "l0" ? 0 : 1)}</p>`);
-    const res = await fetchGraph(p, { domains });
+    const res = await loader.fetchGraph(p, { domains });
     if (res.stale) return;
     swapSurface();
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
@@ -4121,7 +4053,8 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  캔버스를 투명하게 두고 나가면 revealSurface() 가 첫 그림을 페이드인한다. */
   function swapSurface() {
     displayedScene = undefined;
-    removePreview();
+    loader.removePreview();
+    clearLayoutNote();
     extraSigmas.forEach((s) => s.kill());
     extraSigmas = [];
     killReplay();
@@ -4145,8 +4078,7 @@ export async function renderView(el: HTMLElement, resume = false) {
                       opts?: { keepPanel?: boolean; keepCamera?: boolean; keepDetail?: boolean }) {
     const seq = ++showSeq;
     pendingShowSeq = seq;
-    graphReadJob?.abort(); removePreview();
-    layoutJob?.abort();
+    loader.abort(); loader.removePreview();
     setBusy(true, opts?.keepPanel ? 120 : 400);
     // 옵션만 바뀐 재마운트는 카메라를 잇는다 — 전체 맞춤으로 되감기는 것이 "옵션을
     // 누르면 보던 곳을 잃는다"의 정체였다(실측 2026-08-17). 캡처는 파괴 **전에**.
@@ -4200,7 +4132,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       // 자리를 잡은 뒤 한 번 더 날리는 지연도 거기 있다. 여기서는 층만 그린다.
     } catch (e) {
       if (seq !== showSeq) return;
-      removePreview();
+      loader.removePreview();
       // 위 세 관점과 같은 상자(2026-08-05) — 예외 경로만 다른 모양으로 남기면
       // "왜 어떤 실패는 붉은 띠고 어떤 실패는 빈 상자인가"라는 질문만 남는다.
       //
@@ -4353,7 +4285,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     if (myGen !== liveGen) return;
     // 잇기 대상을 고르는 중에도 기다린다 — 다시 그리기가 그 고르기를 푼다.
     if (replayTimer || isFloatPanelOpen() || !detail.hidden || pickTarget) return false;
-    viewSessionCache.clear(); rawGraph = undefined; layoutCache = undefined; reuseGraph = false;
+    loader.reset();
     await show(trail[trail.length - 1], { keepPanel: true, keepCamera: true });
   });
 
