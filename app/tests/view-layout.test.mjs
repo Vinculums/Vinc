@@ -512,3 +512,37 @@ test("shortcuts remove empty detours but preserve required obstacle detours and 
   const snapshot = structuredClone(loop);
   shortenPlanarRoutes(nodes, [loop]); assert.deepEqual(loop, snapshot);
 });
+
+test("stored topic pieces reproduce a full layout and only a changed topic is laid out again", async () => {
+  const nodes = [];
+  for (let t = 0; t < 4; t++) for (let i = 0; i < 9; i++) nodes.push(n(`t${t}n${i}`, `2025-${String(i % 12 + 1).padStart(2, "0")}`, `vinc/t${t}`));
+  const edges = [];
+  for (let t = 0; t < 4; t++) for (let i = 1; i < 9; i++) edges.push(edge(`t${t}n${i - 1}`, `t${t}n${i}`));
+  edges.push(edge("t0n2", "t1n3", "RELATED_TO"), edge("t2n4", "t3n1", "DERIVES_FROM"));
+  const calls = [];
+  const counted = { layout: input => { calls.push(input.id); return elk.layout(input); } };
+  const run = (ns, es, pieces) => spatialTemporalLayout(structuredClone(ns), structuredClone(es), "content", counted, route,
+    "temporal", 1.6, pieces ? { pieces } : {});
+  const store = new Map();
+  const fresh = await run(nodes, edges);
+  calls.length = 0;
+  const cold = await run(nodes, edges, store);
+  assert.deepEqual(cold, fresh, "a cold cache gives the full layout");
+  const coldTopicCalls = calls.filter(id => id.startsWith("topic:")).length;
+  assert.ok(coldTopicCalls >= 4 && store.size === 4);
+  calls.length = 0;
+  const warm = await run(nodes, edges, store);
+  assert.deepEqual(warm, fresh, "stored pieces give the same layout");
+  assert.deepEqual(calls.filter(id => id.startsWith("topic:")), [], "no topic is laid out again");
+  // One new node and relation in topic t2 only.
+  const changedNodes = [...nodes, n("t2n9", "2025-10", "vinc/t2")], changedEdges = [...edges, edge("t2n8", "t2n9")];
+  calls.length = 0;
+  const incremental = await run(changedNodes, changedEdges, store);
+  const laidOut = new Set(calls.filter(id => id.startsWith("topic:")).map(id => id.split(":").slice(1, -2).join(":")));
+  assert.deepEqual([...laidOut], ["domain:vinc/t2"], "only the changed topic is laid out");
+  assert.deepEqual(incremental, await run(changedNodes, changedEdges), "the incremental result equals a full layout");
+  // A stored piece is not changed by using it.
+  const snapshot = structuredClone([...store.values()]);
+  await run(changedNodes, changedEdges, store);
+  assert.deepEqual(structuredClone([...store.values()]).slice(0, snapshot.length), snapshot);
+});
