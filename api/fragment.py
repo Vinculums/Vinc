@@ -1297,7 +1297,7 @@ def merge_fragment(fragment: dict, *, store, themes=None,
                               "error": "invalid_package", "note": denial},
                              ["invalid_package: " + denial])
         from .spec_contract import validate_nodes as validate_spec_nodes
-        denial = validate_spec_nodes(nodes)
+        denial = validate_spec_nodes(nodes, store=store, owner=owner)
         if denial:
             return _finalize({"merged": None, "executed": False,
                               "error": "invalid_spec_record", "note": denial},

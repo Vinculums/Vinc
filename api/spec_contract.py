@@ -54,11 +54,18 @@ def _review(props: dict, schema: str, allowed=REVIEW) -> str:
     return review
 
 
-def validate(node: dict) -> str | None:
+def validate(node: dict, *, existing: bool = False) -> str | None:
     """계약 대상이면 스키마 이름을, 아니면 None 을 돌려준다. 어기면 InvalidSpecRecord."""
+    # 저장 경로와 같은 ID를 검사한다. 앞뒤 공백이 예약 접두사를 숨기면 안 된다.
+    nid = str(node.get("id") or "").strip()
+    if "props" not in node and existing:
+        # props 키가 없는 재전송은 "기존 props 보존"이다(엣지 끝점 선언·도메인만 바꾸기).
+        # 면제는 **이미 저장된** 같은 소유자의 Record 에만 준다. 새 예약 id 는 아래에서
+        # 거절된다(props 없이 새 기록을 만드는 길이 되면 안 된다). null·빈 props 는
+        # 키가 있으므로 면제 대상이 아니다.
+        return None
     props = node.get("props")
     schema = props.get("spec_schema") if isinstance(props, dict) else None
-    nid = str(node.get("id") or "")
     if schema is None:
         if any(nid.startswith(p) for p in PREFIX.values()):
             raise InvalidSpecRecord(f"{nid} uses a reserved spec id prefix without props.spec_schema")
@@ -93,11 +100,28 @@ def validate(node: dict) -> str | None:
     return schema
 
 
-def validate_nodes(nodes: list[dict]) -> str | None:
-    """첫 위반의 사유. 없으면 None."""
+def _existing_records(store, ids: list[str], owner: str | None) -> set[str]:
+    """선택된 소유자 범위에 이미 있는 Record id."""
+    if store is None or not ids:
+        return set()
+    from store import pkns
+    scope = " AND r.owner_id = $owner" if owner else ""
+    rows = store.run(f"MATCH (r:Record) WHERE r.record_id IN $ids{scope} "
+                     "RETURN r.record_id AS id",
+                     {"ids": pkns.keys(owner, ids), "owner": owner or ""}) or []
+    return {pkns.strip(r.get("id") or "") for r in rows}
+
+
+def validate_nodes(nodes: list[dict], *, store=None, owner: str | None = None) -> str | None:
+    """첫 위반의 사유. 없으면 None. props 없는 재전송 면제는 ``store`` 의 기존 Record 에만."""
+    bare = [str(n.get("id") or "").strip() for n in nodes
+            if "props" not in n and n.get("type") == "record"
+            and any(str(n.get("id") or "").strip().startswith(p) for p in PREFIX.values())]
+    existing = _existing_records(store, bare, owner)
     for node in nodes:
         try:
-            validate(node)
+            validate(node, existing=str(node.get("id") or "").strip() in existing
+                     and node.get("type") == "record")
         except InvalidSpecRecord as exc:
             return f"{node.get('id') or '?'}: {exc}"
     return None
