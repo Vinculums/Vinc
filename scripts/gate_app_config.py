@@ -105,7 +105,7 @@ def project_app(show: dict, auth: dict) -> dict:
     }
 
 
-def measure(rg: str = RG, apps: tuple[str, ...] = APPS) -> dict:
+def measure(rg: str = RG, apps: tuple[str, ...] = APPS, *, strict: bool = False) -> dict:
     """세 앱의 라이브 구조. 앱이 없으면 {'missing': True} — 기준선에는 이 형태가
     없으므로 대조가 시끄럽게 실패한다(넷째-앱-누락 사고의 재발 방지가 이 줄이다)."""
     out: dict = {}
@@ -113,12 +113,16 @@ def measure(rg: str = RG, apps: tuple[str, ...] = APPS) -> dict:
         try:
             show = _az(["containerapp", "show", "-n", app, "-g", rg, "-o", "json"])
         except Exception as exc:      # noqa: BLE001 — 부재도 측정 결과다
+            if strict:
+                raise RuntimeError(f"{app} structure could not be read") from None
             out[app] = {"missing": True, "reason": str(exc)[:200]}
             continue
         try:
             auth = _az(["containerapp", "auth", "show", "-n", app, "-g", rg,
                         "-o", "json"])
         except Exception:
+            if strict:
+                raise RuntimeError(f"{app} authentication structure could not be read") from None
             auth = {}
         out[app] = project_app(show, auth)
     return out
@@ -134,9 +138,13 @@ def main(argv: list[str] | None = None) -> int:
                     help="기준선을 라이브로 재생성한다(의도한 변경 — 같은 커밋에)")
     ap.add_argument("--baseline", default=str(BASELINE))
     ap.add_argument("--rg", default=RG)
+    ap.add_argument("--apps", nargs="+", default=list(APPS),
+                    help="새 앱을 기준선에 편입하기 전 라이브 구조를 함께 수집한다")
+    ap.add_argument("--require-present", action="store_true",
+                    help="모든 앱과 인증 구조를 읽었을 때만 기준선을 수집한다")
     a = ap.parse_args(argv)
     try:
-        live = measure(a.rg)
+        live = measure(a.rg, tuple(a.apps), strict=a.require_present)
     except RuntimeError as exc:
         print(f"측정 불가: {exc}", file=sys.stderr)
         return 2
