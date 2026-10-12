@@ -317,11 +317,11 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
   const spatialTopics: SpatialTopic[] = [];
   const boxes: { id: string; width: number; height: number; left: number; top: number; ids: string[] }[] = [];
   aspectRatio = Number.isFinite(aspectRatio) ? Math.max(.5, Math.min(3, aspectRatio)) : 1.6;
-  const thorough = inputNodes.length > 500 ? "1" : "7";
   for (const [domain, topic] of orderedTopics) {
     const members = nodes.filter(n => n.kind !== "domain" && topicOf(n) === domain);
     const ids = new Set(members.map(n => n.id));
     const inside = usable.filter(e => ids.has(e.source) && ids.has(e.target));
+    const thorough = members.length > 32 ? "1" : "7";
     const key = pieces && pieceKey(topic, members, inside, basis, ordering, thorough);
     let piece = key ? pieces!.get(key) : undefined;
     if (!piece) { piece = await layoutTopic(topic, members, inside, basis, elk, ordering, thorough); if (key) pieces!.set(key, piece); }

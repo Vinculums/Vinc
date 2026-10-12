@@ -546,3 +546,18 @@ test("stored topic pieces reproduce a full layout and only a changed topic is la
   await run(changedNodes, changedEdges, store);
   assert.deepEqual(structuredClone([...store.values()]).slice(0, snapshot.length), snapshot);
 });
+
+test("a topic piece does not depend on how large the rest of the graph is", async () => {
+  const topic = Array.from({ length: 6 }, (_, i) => n(`a${i}`, `2025-0${i + 1}`, "vinc/a"));
+  const inner = topic.slice(1).map((node, i) => edge(topic[i].id, node.id));
+  // Past 500 nodes the whole-graph rule used to lower ELK thoroughness for every topic.
+  const crowd = Array.from({ length: 520 }, (_, i) => n(`b${i}`, `2025-0${i % 9 + 1}`, `vinc/b${i % 20}`));
+  const calls = [];
+  const counted = { layout: input => { calls.push(input.id); return elk.layout(input); } };
+  const store = new Map();
+  await spatialTemporalLayout(structuredClone(topic), structuredClone(inner), "content", counted, route, "temporal", 1.6, { pieces: store });
+  calls.length = 0;
+  await spatialTemporalLayout(structuredClone([...topic, ...crowd]), structuredClone(inner), "content", counted, route,
+    "temporal", 1.6, { pieces: store });
+  assert.equal(calls.filter(id => id.startsWith("topic:domain:vinc/a:")).length, 0, "the small topic is reused from the store");
+});
