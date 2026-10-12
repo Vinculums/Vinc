@@ -27,7 +27,7 @@ import { blocksSurfaceShortcuts, isTypingTarget } from "../keys";
 import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
 
-import { layoutsFor, isRootsLayout, serverLayoutFor, rootsOrderingFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
+import { layoutsFor, isRootsLayout, serverLayoutFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
          WHEN_SCALE, timeCutoff, nodeTimeOn, visibleAt,
          EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, DIRECTED_RELS,
          edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
@@ -1422,7 +1422,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       layout: tileRow(COPY.ui.panel.layout, layoutsFor(p.view).map((l) => ({
         val: l, label: COPY.ui.panel.layoutName[l],
         art: l === "hub" ? ART.layoutHub : ART.layoutRank,
-        help: l, active: (isPlanar(p.view) ? serverLayoutFor(p.layout) : p.layout) === l,
+        help: l, active: p.layout === l,
       })), "layout"),
       spread: slider("pref-spread", COPY.ui.panel.spread, 0.6, 1.6, 0.02, p.spread,
                      undefined, "spread"),
@@ -2224,7 +2224,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     const job = layoutJob = new AbortController();
     try {
       const graph = await layoutInWorker(res.nodes || [], res.edges || [], p.timeBasis, job.signal,
-        rootsOrderingFor(p.layout), undefined, aspectRatio);
+        "temporal", undefined, aspectRatio);
       if (mySeq !== showSeq || myGen !== liveGen || !canvas.isConnected) return { executed: false, stale: true };
       layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph };
       remember({ key: layoutKey, graph });
