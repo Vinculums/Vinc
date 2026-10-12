@@ -254,7 +254,7 @@ async function memberKey(): Promise<string> {
   return memberKeyCache;
 }
 /** 들고 있던 멤버 키를 버린다(로그아웃·키 교체·거절 뒤). */
-export function forgetMemberKey(): void { viewSessionCache.clear(); memberKeyCache = ""; }
+export function forgetMemberKey(): void { viewSessionCache.purge(); memberKeyCache = ""; }
 
 /** 계정 모드의 실패 종류. 화면은 이것으로 가르고 영어 서버 문자열을 읽지 않는다.
  *  `signIn` = 키가 더는 통하지 않는다(로그인 시트) · `unreachable` = 계정·허브에 못
@@ -442,7 +442,7 @@ async function localCall(path: string, params?: Record<string, string | number |
     body: isWrite ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
-    if (res.status === 401 || res.status === 403) viewSessionCache.clear();
+    if (res.status === 401 || res.status === 403) viewSessionCache.purge();
     // 웹모드에서 세션 만료(401) → 로그인으로 보낸다(앱=/app/, 로그인=/login).
     // 죽은 사이드카에 조용히 실패하지 않고 "다시 로그인" 경로를 준다.
     if (WEB && res.status === 401) {
@@ -731,7 +731,7 @@ export async function viewAccess(scope: ReturnType<typeof viewScope>, signal?: A
     fetch(new URL("/api/me", location.origin), { credentials: "include", cache: "no-store", signal }),
     localCall("/changes", { owner: scope.owner }, undefined, { team: scope.team || null }, signal),
   ]);
-  if (!me.ok) { viewSessionCache.clear(); throw new Error("View access unavailable"); }
+  if (!me.ok) { viewSessionCache.purge(); throw new Error("View access unavailable"); }
   const user = (await me.json()).user;
   const identity = typeof user?.email === "string" ? user.email : "";
   const marker = typeof changes?.marker === "string" ? changes.marker : "";

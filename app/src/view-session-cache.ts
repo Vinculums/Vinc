@@ -5,8 +5,10 @@ export type CachedGraph = { executed: boolean; nodes?: GraphNode[]; edges?: Grap
   topicEdges?: GraphEdge[]; partial?: boolean; snapshot?: unknown; graphSnapshotPending?: boolean };
 export type ViewBookmark = { domains: string[] };
 export type ViewCameraState = { prefs: string; camera2?: unknown; camera3?: unknown };
-type Entry = { revision: string; raw: string; layoutKey?: string; layout?: string;
+export type Entry = { revision: string; raw: string; layoutKey?: string; layout?: string;
   state?: string; size: number; expires: number };
+/** 한 세션이 들고 있는 완료 DTO 묶음. 스페이스를 떠날 때 잠깐 보관하려고 내보낸다. */
+export type RetainedSnapshot = { session: string; revision: string; entries: [string, Entry][] };
 
 /** 완료된 DTO만 보관한다. 렌더러가 좌표·endpoint를 바꿔도 다음 마운트에 전파되지 않는다.
  * 권한 있는 현재 scope/identity와 변경 표식 확인은 호출자가 매 재진입에서 수행한다.
@@ -24,8 +26,33 @@ export class ViewSessionCache {
   get count() { this.prune(); return this.entries.size; }
   get hasBookmark() { this.prune(); return !!this.bookmark; }
   get bytes() { return [...this.entries.values()].reduce((n, e) => n + e.size, (this.bookmark?.length || 0) * 2); }
+  private purgeListeners: (() => void)[] = [];
   clear(): void {
     this.entries.clear(); this.session = ""; this.revision = ""; this.bookmark = undefined; ++this.epoch;
+  }
+  /** 메모리만이 아니라 보관해 둔 것까지 버린다: 로그인이 풀렸거나 계정이 바뀌었다. */
+  purge(): void { this.clear(); for (const fn of this.purgeListeners) fn(); }
+  onPurge(fn: () => void): void { this.purgeListeners.push(fn); }
+  /** 지금 세션의 살아 있는 항목. 없으면 undefined. 카메라 상태는 포함하지만 책갈피는 아니다. */
+  snapshot(): RetainedSnapshot | undefined {
+    this.prune();
+    if (!this.session || !this.revision || !this.entries.size) return;
+    return { session: this.session, revision: this.revision,
+      entries: [...this.entries].filter(([, e]) => e.revision === this.revision) };
+  }
+  /** 보관해 둔 항목을 되돌린다. 세션·표식은 호출자가 방금 새로 확인한 값이어야 한다.
+   *  이미 같은 세션에 항목이 있으면 건드리지 않는다. 되돌린 개수를 돌려준다. */
+  restore(session: string, revision: string, entries: [string, Entry][], expires: number): number {
+    if (!session || !revision) return 0;
+    this.activate(session, revision);
+    if (this.entries.size) return 0;
+    let n = 0;
+    for (const [key, e] of entries) {
+      if (e.revision !== revision || key.length > 16_384 || this.entries.size >= this.maxEntries) continue;
+      if (this.bytes + e.size > this.maxBytes) continue;
+      this.entries.set(key, { ...e, expires }); n++;
+    }
+    return n;
   }
   activate(session: string, revision: string): number {
     if (session !== this.session) { this.clear(); this.session = session; }
@@ -91,9 +118,11 @@ export class ViewSessionCache {
 
 export const viewSessionCache = new ViewSessionCache();
 if (typeof window !== "undefined") {
-  for (const event of ["vinc:signin-required", "vinc:write", "pagehide"])
+  // 쓰기와 페이지 이탈은 메모리만 비운다. 보관본은 표식으로 다시 확인하고 쓰므로 남긴다.
+  for (const event of ["vinc:write", "pagehide"])
     window.addEventListener(event, () => viewSessionCache.clear());
+  window.addEventListener("vinc:signin-required", () => viewSessionCache.purge());
   window.addEventListener("storage", event => {
-    if (!event.key || /^vinc\.(owner|team|mode|sidecar\.|account)/.test(event.key)) viewSessionCache.clear();
+    if (!event.key || /^vinc\.(owner|team|mode|sidecar\.|account)/.test(event.key)) viewSessionCache.purge();
   });
 }

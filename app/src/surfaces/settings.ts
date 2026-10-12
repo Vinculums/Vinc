@@ -4,6 +4,7 @@ import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyI
          setAccountKey } from "../account-connect";
 import { COPY } from "../copy";
 import { esc, openSheet, type SheetHandle } from "../components";
+import { retainBeforeSwitch } from "../view-retained";
 import { loadPrefs, savePrefs, RAIL_MIN, RAIL_MAX } from "../view-prefs";
 import { disposeEditorsIn } from "../doc-editor";
 import { mountStorage } from "../storage-mode";
@@ -331,9 +332,13 @@ export async function renderSettings(
           if (note) note.textContent = visible.some(t => t.status !== "active") ? U.spaceActivationHint
             : visible.length ? "" : U.spaceNone;
         }).catch(() => { if (note) note.textContent = U.spaceListFailed; });
-        pick.addEventListener("change", () => {
+        pick.addEventListener("change", async () => {
           if (pick.selectedOptions[0]?.disabled) return;
-          cfg.team = pick.value;
+          const next = pick.value;
+          // 떠나는 스페이스의 완료 항목을 잠깐 보관한다: 돌아왔을 때 다시 읽지 않도록.
+          // 최선 노력이고 오래 걸리면 기다리지 않는다. 쓰는 때는 이 한 번뿐이다.
+          await retainBeforeSwitch().catch(() => false);
+          cfg.team = next;
           // 스페이스는 전역이라 부분 갱신하지 않는다 — 어떤 표면이 옛 스코프의
           // 데이터를 들고 남으면 지금 어느 그래프를 보는지 알 수 없게 된다.
           location.reload();
