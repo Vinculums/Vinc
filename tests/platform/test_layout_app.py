@@ -55,7 +55,8 @@ class Azure:
             self.tokens[la.APP] = args[args.index("--secrets") + 1].split("=", 1)[1]
             return {}
         if args[:3] == ("containerapp", "secret", "list"):
-            return self.tokens.get(name)
+            # Azure CLI는 이 옵션이 없으면 이름만 돌려준다. value 쿼리는 null이다.
+            return self.tokens.get(name) if "--show-values" in args else None
         if args[:3] == ("containerapp", "secret", "set"):
             if self.fail_bind_once:
                 self.fail_bind_once = False
@@ -118,6 +119,7 @@ class ProvisionTests(unittest.TestCase):
         fake = Azure(present=True, hub_token="synthetic-other-token")
         with self.assertRaises(la.DeploymentError) as caught:
             la.provision(IMAGE, call=fake, environ=AUTH)
+        self.assertIn("token values differ", str(caught.exception))
         self.assertNotIn("synthetic-other-token", str(caught.exception))
         self.assertEqual(fake.writes, [])
 
