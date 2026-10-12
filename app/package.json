@@ -17,7 +17,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test:view-session": "node --test tests/view-session-cache.test.mjs",
-    "test:view-graph-read": "node --test tests/view-graph-read.test.mjs",
+    "test:view-graph-read": "node --test tests/view-graph-read.test.mjs tests/view-graph-loader.test.mjs",
     "test:view-retained": "node --test tests/view-retained.test.mjs",
     "test:layout-service": "node --test tests/layout-service.test.mjs",
     "build:layout-service": "node service/build.mjs"
