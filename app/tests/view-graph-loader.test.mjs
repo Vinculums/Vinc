@@ -102,8 +102,24 @@ for (const change of ['abort','space','sequence']) test(`${change} rejects an ob
 });
 test('a slow roots read times out and uses the worker',async()=>{
   h.roots=(_owner,_basis,signal)=>new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));
-  const hold=setTimeout(()=>{},3000);
-  try {await make().fetchGraph(prefs,{});assert.equal(workers().length,1);} finally {clearTimeout(hold);}
+  await make({rootsTimeoutMs:1}).fetchGraph(prefs,{});assert.equal(workers().length,1);
+});
+test('a ready answer arriving after patience swaps from by-centre without a worker',async()=>{
+  const d=deferred();h.roots=()=>d.promise;
+  const loader=make({patienceMs:1});
+  const result=await loader.fetchGraph(prefs,{});
+  assert.equal(result.layout,'pending');assert.equal(result.nodes[0].x,1);assert.equal(workers().length,0);
+  d.resolve(ready());await new Promise(r=>setTimeout(r,0));
+  assert.equal(h.calls.filter(c=>c[0]==='layoutReady').length,1);assert.equal(workers().length,0);
+  loader.reuseGraph=true;
+  assert.equal((await loader.fetchGraph(prefs,{})).nodes[0].x,10);
+});
+test('a stored answer arriving after an aborted by-centre handoff cannot replace the screen',async()=>{
+  const d=deferred();h.roots=()=>d.promise;
+  const loader=make({patienceMs:1});await loader.fetchGraph(prefs,{});loader.abort();
+  d.resolve(ready());await new Promise(r=>setTimeout(r,0));
+  assert.equal(h.calls.filter(c=>c[0]==='layoutReady'||c[0]==='layoutFailed').length,0);
+  assert.equal(workers().length,0);
 });
 test('off still shows by-centre after patience and swaps when the worker finishes',async()=>{
   h.roots=async()=>({executed:true,state:'off'});
