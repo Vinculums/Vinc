@@ -303,12 +303,12 @@ async function logSearchFailure(status: number, duration: number): Promise<void>
 /** 통과로를 한 번 태운다. 계정의 상태코드와 몸통이 그대로 돌아온다(`api/spaceproxy.py`). */
 async function viaProxy(key: string, method: "GET" | "POST", path: string,
                         params: Record<string, string>, body: unknown,
-                        team: string): Promise<Response> {
+                        team: string, signal?: AbortSignal): Promise<Response> {
   const started = performance.now();
   let response: Response;
   try {
     response = await fetch(new URL("/space/proxy", cfg.base), {
-      method: "POST",
+      method: "POST", signal,
       headers: {
         ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
         "Content-Type": "application/json",
@@ -332,7 +332,7 @@ async function viaProxy(key: string, method: "GET" | "POST", path: string,
 /** 셸 계정 모드의 데이터 호출. 경로는 웹과 같은 이름이고(`/view`·`/ingest/fragment`),
  *  사이드카 통과로가 `/api/graph` 접두를 붙여 계정으로 넘긴다. */
 async function accountCall(path: string, params: Record<string, string | number | undefined> | undefined,
-                           body: unknown, scope?: Scope): Promise<any> {
+                           body: unknown, scope?: Scope, signal?: AbortSignal): Promise<any> {
   const key = await memberKey();
   if (!key) throw accountFailure("sign in required", "signIn", 401);
   const q: Record<string, string> = {};
@@ -342,8 +342,10 @@ async function accountCall(path: string, params: Record<string, string | number 
   const method = body !== undefined ? "POST" : "GET";
   let res: Response;
   try {
-    res = await viaProxy(key, method, path, q, body, team);
+    res = await viaProxy(key, method, path, q, body, team, signal);
   } catch (e: any) {
+    // 호출자가 접었다. 엔진 문제가 아니므로 그대로 올려 보낸다.
+    if (signal?.aborted) throw e;
     // 사이드카 자체에 못 닿았다. 계정 문제가 아니라 이 기기의 엔진 문제다.
     throw new Error(`engine unreachable: ${e?.message || e}`);
   }
@@ -771,13 +773,20 @@ export const api = {
     return call("/graph", { owner, ...rest,
                             ...(domains?.length ? { domains: domains.join(",") } : {}) });
   },
-  // Initial web View only. Capture Space and cancellation for both stages and fallback.
+  // Initial View read in stages. Capture Space and cancellation for both stages and fallback.
+  // 웹은 계정 프록시(`/api/graph`)로, 데스크톱 계정 모드는 사이드카 통과로로, 로컬 모드는
+  // 이 기기 사이드카로 간다. 세 길 모두 같은 `/graph` 핸들러에 `stage`·`snapshot` 이 닿는다.
   graphStage: (owner: string, opts: { domains?: string[]; layout?: string; cone?: number },
       stage: "preview" | "complete" | "cancel" | undefined, snapshot: string | undefined,
       scope: Scope, signal: AbortSignal) => {
     const { domains, ...rest } = opts;
-    return localCall("/graph", { owner, ...rest, stage, snapshot,
-      ...(domains?.length ? { domains: domains.join(",") } : {}) }, undefined, scope, stage === "cancel" ? undefined : signal);
+    const params = { owner, ...rest, stage, snapshot,
+      ...(domains?.length ? { domains: domains.join(",") } : {}) };
+    // 취소 요청은 접힌 신호에 묶지 않는다: 그 신호가 접혔기 때문에 보내는 것이다.
+    const live = stage === "cancel" ? undefined : signal;
+    return accountMode() && !sidecarOnly("/graph")
+      ? accountCall("/graph", params, undefined, scope, live)
+      : localCall("/graph", params, undefined, scope, live);
   },
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20) => searchCall(query, top_k),
