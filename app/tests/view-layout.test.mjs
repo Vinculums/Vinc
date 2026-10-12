@@ -292,6 +292,24 @@ test("content-free stage progress leaves the job alive until its actual graph ar
   assert.deepEqual(await job, graph); assert.equal(terminated, 1);
 });
 
+test("the layout deadline follows progress and still has an overall cap", async () => {
+  const run = (limits, beats) => {
+    let terminated = 0;
+    const worker = { terminate: () => terminated++, postMessage: () => {} };
+    const job = layoutInWorker([n("a", "")], [], "content", new AbortController().signal, "temporal", () => worker, 1.6, limits);
+    const timer = setInterval(() => { if (beats-- > 0) worker.onmessage({ data: { progress: { phase: "elk", callsDone: 1,
+      activeNodes: 1, activeEdges: 0, elapsedMs: 1 } } }); }, 20);
+    return { job: job.finally(() => clearInterval(timer)), terminated: () => terminated };
+  };
+  const stalled = run({ idleMs: 60, capMs: 5000 }, 0);
+  await assert.rejects(stalled.job, /no progress/); assert.equal(stalled.terminated(), 1);
+  const reporting = run({ idleMs: 60, capMs: 300 }, 1000);
+  const started = Date.now();
+  await assert.rejects(reporting.job, /over the cap/);
+  assert.ok(Date.now() - started >= 250, "progress kept the job alive past the idle limit");
+  assert.equal(reporting.terminated(), 1);
+});
+
 test("drag translations and independent endpoint movement retain orthogonal sections", () => {
   const points = [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 1, y: 1, z: 0 }, { x: 2, y: 1, z: 0 }];
   const translate = movedRoute(points, { x: 3, y: 2, z: 1 }, { x: 5, y: 3, z: 1 });

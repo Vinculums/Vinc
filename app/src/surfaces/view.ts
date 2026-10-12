@@ -2123,7 +2123,27 @@ export async function renderView(el: HTMLElement, resume = false) {
       keepCam = camera3 as Cam3 | undefined ?? null;
       keepCam2 = camera2 as ReturnType<Handle2d["camera"]> | undefined ?? null;
     },
+    // 중심에서 화면 뒤에서 가지 배치가 끝났다. 받은 그래프는 그대로 두고 배치만 갈아 끼운다.
+    layoutReady: () => {
+      loader.reuseGraph = true;
+      void show(trail[trail.length - 1], { keepPanel: true, keepDetail: true });
+    },
+    layoutFailed: () => showLayoutNote(COPY.view.layoutFailed),
   });
+  // 시간순 가지 대신 중심에서 배치를 그렸을 때의 한 줄 안내. 다음 화면이 그려지면 사라진다.
+  let layoutNote: HTMLElement | undefined;
+  function clearLayoutNote() { layoutNote?.remove(); layoutNote = undefined; }
+  function showLayoutNote(text: string) {
+    clearLayoutNote();
+    const note = document.createElement("div");
+    note.setAttribute("role", "status"); note.dataset.layoutNote = "true"; note.textContent = text;
+    note.style.cssText = "position:absolute;bottom:12px;left:12px;max-width:min(560px,70%);font-size:12px;"
+      + "color:hsl(var(--muted-foreground));pointer-events:none";
+    canvas.append(note); layoutNote = note;
+  }
+  const noteLayout = (layout: "pending" | "failed" | undefined) => {
+    if (layout) showLayoutNote(layout === "pending" ? COPY.view.layoutPending : COPY.view.layoutFailed);
+  };
   let displayedScene: { key: string; prefs: string; domains: string[]; seq: number } | undefined;
   const markDisplayed = (p: ViewPrefs, domains: string[]) => {
     displayedScene = { key: loader.scopeKey!, prefs: cameraPrefs(p), domains: [...domains], seq: showSeq };
@@ -2196,6 +2216,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       onConnect: connectByDrag, canConnect: canLinkPair,
     }, p, keepCam, curNodes.map((n) => n.domain));   // 색 순위는 전량으로(setCurNodes 주석)
     markDisplayed(p, domains);
+    noteLayout(res.layout);
     keepCam = null;                               // 한 번 실어 보내면 끝 — 다음 마운트는 전체 맞춤
     applyTimeCut();                               // 첫 화면부터 커서를 반영한다
     wireLasso();
@@ -3780,6 +3801,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       onConnect: connectByDrag, canConnect: canLinkPair,
     }, p, keepCam2);
     markDisplayed(p, domains);
+    noteLayout(res.layout);
     console.info(`View scene ready ${JSON.stringify({ renderer: "2d", nodes: shown2.length,
       elapsedMs: Math.round(performance.now() - mountedAt) })}`);
     applyTimeCut();
@@ -4032,6 +4054,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   function swapSurface() {
     displayedScene = undefined;
     loader.removePreview();
+    clearLayoutNote();
     extraSigmas.forEach((s) => s.kill());
     extraSigmas = [];
     killReplay();
