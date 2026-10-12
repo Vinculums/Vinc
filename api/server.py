@@ -319,6 +319,10 @@ class VincApp:
         self.changes = changes.ChangeMarker()
         # 같은 소유자·인자·변경 표식의 전체 그래프 읽기를 다시 계산하지 않는다(`api.graph_cache`).
         self._graph_results = GraphResultCache()
+        # 시간 가지 배치를 배치 컨테이너에 맡기고 결과를 들고 있는다(`api.layout_remote`).
+        # `VINC_LAYOUT_REMOTE` 가 없으면 꺼져 있고 화면이 직접 배치한다.
+        from . import layout_remote
+        self.roots = layout_remote.from_env(read_graph=self._roots_graph, marker=self.changes.read)
         # 주제·타입 어휘 스토어(그래프 밖 메타 — <data_dir>.themes.json, DB 파일 형제).
         # D11-R2. 그래프(store)와 분리 — 어휘는 사용자 저작, 그래프는 인스턴스.
         from store.theme_store import ThemeStore
@@ -631,6 +635,7 @@ class VincApp:
         만든다 — 주기 스냅샷은 급사에 대비한 것이고 이건 예고된 종료용이다.
         (SIGKILL·OOM 은 여기 못 온다. 그때 잃는 양의 상한이 스냅샷 주기다.)"""
         self._graph_reads.close()
+        self.roots.close()
         self.jobs.shutdown(drain=True)
         if self.store is not None:
             state = self._maybe_snapshot(force=True)
@@ -695,6 +700,15 @@ class VincApp:
             if response is not None:
                 return response
         return self._read(lambda r: self._query_graph(p, r))
+
+    def read_graph_roots(self, p):
+        """들고 있는 시간 가지 배치. 범위는 전체 그래프 하나다(주제를 고른 읽기는 화면이 직접 배치한다)."""
+        return self.roots.get(_req(p, "owner"), p.get("basis") or "recorded")
+
+    def _roots_graph(self, owner):
+        # 화면의 시간 가지 읽기와 같은 인구다: hub 배치, 주제 선택 없음, 원뿔 1.
+        code, result = self._read(lambda r: self._query_graph({"owner": owner, "layout": "hub"}, r))
+        return result if code == 200 else None
 
     def _query_graph(self, p, r):
         # 표식은 **계산 전에** 잡는다: 계산 중 끝난 쓰기는 옛 표식 아래로 들어가 다시 읽히지
@@ -1329,8 +1343,10 @@ class VincApp:
         if code == 202 and isinstance(obj, dict) and obj.get("job_id"):
             pred = changes.sync_brought_something if path == "/sync" else None
             self.changes.bump_when_done(owner, self.jobs.get(str(obj["job_id"])), pred)
+            self.roots.note_write(owner)
             return
         self.changes.bump(owner)
+        self.roots.note_write(owner)
 
     def read_conventions(self, p):
         """관례(GRAPH.md) 조회 — 어시스턴트가 **쓰기 전에** 읽는 채널([[vinc.canon.graph-conventions]] §6.2).
@@ -2482,6 +2498,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/node-edges": app.read_node_edges,
             "/roles": app.read_roles,
             "/learner": app.read_learner, "/graph": lambda p: app.read_graph(p, wire=True),
+            "/graph/roots": app.read_graph_roots,   # 들고 있는 시간 가지 배치(`api.layout_remote`)
             "/search": app.read_search, "/decide": app.read_decide,
             "/themes": app.read_themes, "/types": app.read_types,
             # 문서 정본(D45 P4) — get(복원+검증) · list. + 노드 클릭 상세(D45-V).
