@@ -1,8 +1,9 @@
-import { api, cfg, viewAccess, viewScope, WEB, type GraphNode, type GraphEdge } from "./api";
+import { api, viewAccess, viewScope, WEB, type GraphNode, type GraphEdge } from "./api";
 import { viewSessionCache } from "./view-session-cache";
 import { readGraphProgressively, type GraphRead } from "./view-graph-loading";
 import { graphReadPlan, wantsStagedRead } from "./view-graph-read";
 import { layoutInWorker } from "./view-layout-client";
+import { applyLayoutAnswer } from "./view-layout-wire";
 import type { ViewPrefs } from "./view-prefs";
 import type { LayoutGraph } from "./view-layout";
 
@@ -117,24 +118,34 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
         }
       } else if (canRetain && !early && viewSessionCache.count) viewSessionCache.clear();
       const generation = viewSessionCache.generation;
+      graphReadJob?.abort();
+      const readJob = graphReadJob = new AbortController();
+      const capturedScope = { team: ctx.mountScope.team || null };
+      // 저장 배치는 전체 주제·원뿔 1 읽기에만 맞는다. 준비 여부를 기다리다 그래프나
+      // 15초 대체 배치가 막히지 않도록 이 읽기는 2초 안에 접고 워커로 넘긴다.
+      const roots = useRoots && !options.domains?.length && (options.cone ?? 1) === 1
+        ? api.graphRoots(ctx.mountScope.owner, p.timeBasis,
+          AbortSignal.any([readJob.signal, AbortSignal.timeout(2_000)]), capturedScope).catch(() => null)
+        : Promise.resolve(null);
       try {
         if (wantsStagedRead(p, { cached: !!cached, mounted: ctx.mounted(), planar: ctx.planar() })) {
-          const job = graphReadJob = new AbortController();
-          const capturedScope = { team: cfg.team || null };
-          const owner = cfg.owner;
+          const job = readJob;
+          const owner = ctx.mountScope.owner;
           res = await readGraphProgressively((stage, token) =>
             api.graphStage(owner, options, stage, token, capturedScope, job.signal), preview => {
               if (job.signal.aborted || !live()) return;
               clearPreview?.(); clearPreview = ctx.showPreview(preview);
             }, job.signal);
         } else if (cached) res = cached;
-        else if (WEB) {
-          const job = graphReadJob = new AbortController();
+        else {
+          const job = readJob;
           res = await api.graphStage(ctx.mountScope.owner, options, undefined, undefined,
-            { team: ctx.mountScope.team || null }, job.signal);
-        } else res = await api.graph(cfg.owner, options);
+            capturedScope, job.signal);
+        }
       } catch (failure) {
-        if (graphReadJob?.signal.aborted) return { executed: false, stale: true };
+        const cancelled = readJob.signal.aborted;
+        readJob.abort();
+        if (cancelled || !live()) return { executed: false, stale: true };
         console.error(`View graph read failed ${JSON.stringify({ elapsedMs: Math.round(performance.now() - start),
           status: Number((failure as { status?: number }).status) || 0 })}`);
         throw failure;
@@ -173,6 +184,19 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
         layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph: retainedLayout };
         console.info("View layout reused");
         return { executed: true, ...retainedLayout };
+      }
+      const stored = await roots;
+      if (readJob.signal.aborted || !live()) return { executed: false, stale: true };
+      if (stored?.executed && stored.state === "ready" && typeof res.marker === "string"
+          && res.marker && stored.marker === res.marker && stored.answer) {
+        let graph: LayoutGraph | null = null;
+        try { graph = applyLayoutAnswer(res.nodes || [], res.edges || [], stored.answer); } catch {}
+        if (graph) {
+          layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph };
+          remember({ key: layoutKey, graph });
+          console.info("View layout loaded from hub");
+          return { executed: true, ...graph };
+        }
       }
       layoutJob?.abort();
       const job = layoutJob = new AbortController();

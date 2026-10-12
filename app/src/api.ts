@@ -1,4 +1,5 @@
 import { viewSessionCache } from "./view-session-cache";
+import type { LayoutAnswer } from "./view-layout-wire";
 /** Sidecar client — data plane is localhost HTTP + session token (control will
  *  be Tauri IPC when the shell lands, P4). Graph/query logic never lives here. */
 import { chunkPack, type StageCounts } from "./packchunks";
@@ -739,6 +740,14 @@ export async function viewAccess(scope: ReturnType<typeof viewScope>, signal?: A
   return { session: JSON.stringify([scope.key, identity]), revision: marker };
 }
 
+export type GraphRootsAnswer = {
+  executed: boolean;
+  state: "off" | "pending" | "stale" | "ready" | "failed";
+  marker?: string;
+  nodes?: number;
+  answer?: LayoutAnswer;
+};
+
 export const api = {
   roleRoster: async (owner: string) => {
     const scope = { team: cfg.team || null };
@@ -789,6 +798,11 @@ export const api = {
       ? accountCall("/graph", params, undefined, scope, live)
       : localCall("/graph", params, undefined, scope, live);
   },
+  graphRoots: (owner: string, basis: "recorded" | "content", signal: AbortSignal,
+      scope: Scope = { team: cfg.team || null }): Promise<GraphRootsAnswer> =>
+    accountMode() && !sidecarOnly("/graph/roots")
+      ? accountCall("/graph/roots", { owner, basis }, undefined, scope, signal)
+      : localCall("/graph/roots", { owner, basis }, undefined, scope, signal),
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20) => searchCall(query, top_k),
   // 정확한 제목은 저장된 메타에서 찾는다. 본문 색인·그래프 노드 유무와 무관하다.
