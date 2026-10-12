@@ -29,6 +29,8 @@ export type FetchedGraph = RawGraph & { stale?: boolean; layout?: "pending" | "f
 
 /** 시간순 가지 배치를 이만큼 기다린 뒤에는 중심에서 좌표로 먼저 그린다. */
 export const LAYOUT_PATIENCE_MS = 15_000;
+/** 큰 저장 배치의 전송도 기다리되, 화면은 그 전에 patience 기준으로 넘긴다. */
+export const ROOTS_READ_TIMEOUT_MS = 30_000;
 
 export type GraphLoaderContext = {
   mountScope: ReturnType<typeof viewScope>;
@@ -54,6 +56,8 @@ export type GraphLoaderContext = {
   layoutFailed(): void;
   /** 시험용으로 기다리는 시간을 바꾼다. 없으면 `LAYOUT_PATIENCE_MS`. */
   patienceMs?: number;
+  /** 시험용 저장 배치 읽기 제한. 화면 대기 시간은 patienceMs와 별개다. */
+  rootsTimeoutMs?: number;
 };
 
 export type RetainedRef = { session: string; revision: string; key: string; prefs: string };
@@ -122,10 +126,11 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
       const readJob = graphReadJob = new AbortController();
       const capturedScope = { team: ctx.mountScope.team || null };
       // 저장 배치는 전체 주제·원뿔 1 읽기에만 맞는다. 준비 여부를 기다리다 그래프나
-      // 15초 대체 배치가 막히지 않도록 이 읽기는 2초 안에 접고 워커로 넘긴다.
+      // 15초 대체 배치가 막히지 않도록 답을 기다리는 시간도 아래 배치 작업에 포함한다.
       const roots = useRoots && !options.domains?.length && (options.cone ?? 1) === 1
         ? api.graphRoots(ctx.mountScope.owner, p.timeBasis,
-          AbortSignal.any([readJob.signal, AbortSignal.timeout(2_000)]), capturedScope).catch(() => null)
+          AbortSignal.any([readJob.signal, AbortSignal.timeout(ctx.rootsTimeoutMs ?? ROOTS_READ_TIMEOUT_MS)]),
+          capturedScope).catch(() => null)
         : Promise.resolve(null);
       try {
         if (wantsStagedRead(p, { cached: !!cached, mounted: ctx.mounted(), planar: ctx.planar() })) {
@@ -185,19 +190,6 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
         console.info("View layout reused");
         return { executed: true, ...retainedLayout };
       }
-      const stored = await roots;
-      if (readJob.signal.aborted || !live()) return { executed: false, stale: true };
-      if (stored?.executed && stored.state === "ready" && typeof res.marker === "string"
-          && res.marker && stored.marker === res.marker && stored.answer) {
-        let graph: LayoutGraph | null = null;
-        try { graph = applyLayoutAnswer(res.nodes || [], res.edges || [], stored.answer); } catch {}
-        if (graph) {
-          layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph };
-          remember({ key: layoutKey, graph });
-          console.info("View layout loaded from hub");
-          return { executed: true, ...graph };
-        }
-      }
       layoutJob?.abort();
       const job = layoutJob = new AbortController();
       const held = res;
@@ -208,8 +200,19 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
       // 결과가 오기 전에 화면을 넘겨줄 수 있도록 배치 작업과 기다림을 나눈다. 큰 그래프에서
       // 배치가 기다림보다 길어도 작업은 계속 돌고, 끝나면 같은 화면에 갈아 끼운다.
       let outcome: { graph?: LayoutGraph; error?: unknown } | undefined;
-      const work = layoutInWorker(held.nodes || [], held.edges || [], p.timeBasis, job.signal,
-        "temporal", undefined, aspectRatio)
+      const work = (async () => {
+        const stored = await roots;
+        if (readJob.signal.aborted || job.signal.aborted || !live())
+          throw new DOMException("Layout read was canceled", "AbortError");
+        if (stored?.executed && stored.state === "ready" && typeof held.marker === "string"
+            && held.marker && stored.marker === held.marker && stored.answer) {
+          let graph: LayoutGraph | null = null;
+          try { graph = applyLayoutAnswer(held.nodes || [], held.edges || [], stored.answer); } catch {}
+          if (graph) { console.info("View layout loaded from hub"); return graph; }
+        }
+        return layoutInWorker(held.nodes || [], held.edges || [], p.timeBasis, job.signal,
+          "temporal", undefined, aspectRatio);
+      })()
         .then(graph => { outcome = { graph }; return graph; }, error => { outcome = { error }; throw error; })
         .finally(() => { if (layoutJob === job) layoutJob = undefined; });
       let patience: ReturnType<typeof setTimeout> | undefined;
