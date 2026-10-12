@@ -25,13 +25,24 @@ on:
       - app/package-lock.json
       - packaging/Dockerfile.layout
       - .github/workflows/layout-deploy.yml
+      - scripts/layout_app.py
   workflow_dispatch:
+    inputs:
+      provision:
+        description: "없는 vinc-layout을 만들고 허브에 공용 토큰 시크릿을 준비한다"
+        type: boolean
+        default: false
+      confirm:
+        description: "생성할 때만: 정확히 vinc-layout이라고 적을 것"
+        type: string
+        default: ""
 
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
 
 permissions:
+  actions: read
   id-token: write
   contents: read
 
@@ -40,6 +51,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: 수동 운영은 운영 담당과 main에서만
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          ACTOR: ${{ github.triggering_actor }}
+          OPERATORS: ${{ vars.PROD_OPERATORS }}
+          PROVISION: ${{ inputs.provision }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          python3 - <<'PY'
+          import os
+          e = os.environ
+          assert e['GITHUB_REF'] == 'refs/heads/main', 'main dispatch only'
+          assert e['ACTOR'] in [s.strip() for s in e['OPERATORS'].split(',')], 'PROD_OPERATORS only'
+          assert e['PROVISION'] != 'true' or e['CONFIRM'] == 'vinc-layout', 'confirm vinc-layout'
+          PY
       - uses: actions/checkout@v4
 
       - uses: azure/login@v2
@@ -61,13 +87,23 @@ jobs:
             exit 1
           fi
 
+      - name: 생성 요청도 main의 CI가 초록일 때만
+        if: github.event_name == 'workflow_dispatch' && inputs.provision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          conclusion=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$GITHUB_SHA" \
+            --event push --limit 1 --json conclusion --jq '.[0].conclusion')
+          [ "$conclusion" = success ] || { echo '::error::main CI is not green'; exit 1; }
+
       - uses: actions/setup-node@v4
-        if: env.LAYOUT_PRESENT == '1'
+        if: env.LAYOUT_PRESENT == '1' || (github.event_name == 'workflow_dispatch' && inputs.provision)
         with:
           node-version: 22
 
       - name: 서비스 테스트와 번들
-        if: env.LAYOUT_PRESENT == '1'
+        if: env.LAYOUT_PRESENT == '1' || (github.event_name == 'workflow_dispatch' && inputs.provision)
         working-directory: app
         run: |
           set -euo pipefail
@@ -77,11 +113,20 @@ jobs:
           cp ../packaging/Dockerfile.layout "$RUNNER_TEMP/layout/Dockerfile"
 
       - name: Build & push image (ACR Tasks)
-        if: env.LAYOUT_PRESENT == '1'
+        if: env.LAYOUT_PRESENT == '1' || (github.event_name == 'workflow_dispatch' && inputs.provision)
         run: |
           az acr build --registry vincacr \
             --image "vinc-layout:${GITHUB_SHA}" --image vinc-layout:latest \
             "$RUNNER_TEMP/layout"
+
+      - name: 명시적으로 요청한 앱 생성과 공용 시크릿 준비
+        if: github.event_name == 'workflow_dispatch' && inputs.provision
+        env:
+          PROD_OPERATORS: ${{ vars.PROD_OPERATORS }}
+          LAYOUT_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          python3 scripts/layout_app.py provision --image "vincacr.azurecr.io/vinc-layout:${GITHUB_SHA}"
+          echo 'LAYOUT_PRESENT=1' >> "$GITHUB_ENV"
 
       - name: Deploy to Container Apps
         if: env.LAYOUT_PRESENT == '1'
