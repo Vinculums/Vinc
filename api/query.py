@@ -5939,6 +5939,9 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
     return base
 
 
+_SHA = re.compile(r"[0-9a-f]{7,40}")
+
+
 def _path_covers(subject: str, changed: str) -> bool:
     """주장의 경로가 바뀐 파일을 덮는가. 같은 파일이거나 그 디렉터리 아래다."""
     return changed == subject or changed.startswith(subject.rstrip("/") + "/")
@@ -5984,7 +5987,13 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
         # 흔히 싣는다. 날짜가 같으면 하루 안의 순서를 알 수 없으므로 감추지 않고
         # `same_day` 로 표시해 낸다(조용히 빠지면 같은 날 머지가 주장을 영영 못 건드린다).
         def same_commit(sha: str) -> bool:
-            return bool(ref and sha) and (sha.startswith(ref) or ref.startswith(sha))
+            # 둘 다 커밋 해시(7~40자 16진)일 때만 접두로 맞춘다. 브랜치 이름 같은 다른
+            # 참조는 글자 그대로 같아야 같다 — `main` 이 `main-fix` 의 접두가 되면 안 된다.
+            if not (ref and sha):
+                return False
+            if _SHA.fullmatch(ref) and _SHA.fullmatch(sha):
+                return sha.startswith(ref) or ref.startswith(sha)
+            return sha == ref
         hits = [c for c in changes
                 if c["date"] >= at and not same_commit(c["head_sha"])
                 and any(_path_covers(sp, f) for f in c["files"])]

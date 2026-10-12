@@ -130,7 +130,9 @@ def test_a_resend_without_props_keeps_them_and_is_not_refused(st):
             "domain": "vinc/governance/claim-decay"}
     out = fragment.merge_fragment({"owner": OWNER, "nodes": [bare]}, store=st, authored=True)
     assert out["executed"] is not False, out
-    assert spec_contract.validate(bare) is None
+    assert spec_contract.validate(bare, existing=True) is None
+    with pytest.raises(spec_contract.InvalidSpecRecord):
+        spec_contract.validate(bare)                        # 저장된 기록이 아니면 면제 없음
 
 
 def test_same_day_changes_are_flagged_and_short_refs_match_long_shas(st):
@@ -148,3 +150,45 @@ def test_same_day_changes_are_flagged_and_short_refs_match_long_shas(st):
     stale = {s["claim"]["id"]: s for s in query.claim_diagnosis(owner=OWNER, store=st)["stale"]}
     assert stale["record:specclaim-server-v1"]["same_day"] is True
     assert "record:specclaim-docsync-v1" not in stale     # 측정한 바로 그 커밋이다
+
+
+@pytest.mark.parametrize("node", [
+    {"id": "record:specclaim-brand-new", "type": "record"},                  # 새 예약 id
+    {"id": "record:specclaim-as-of-search-v2", "type": "record", "props": None},
+    {"id": "record:specclaim-as-of-search-v2", "type": "record", "props": {}},
+])
+def test_resend_exemption_is_only_for_an_existing_record_without_a_props_key(st, node):
+    fragment.merge_fragment({"owner": OWNER, "nodes": [claim()]}, store=st, authored=True)
+    out = fragment.merge_fragment({"owner": OWNER, "nodes": [node]}, store=st, authored=True)
+    assert out["executed"] is False and out["error"] == "invalid_spec_record", out
+
+
+def test_resend_exemption_does_not_cross_owners(st):
+    fragment.merge_fragment({"owner": OWNER, "nodes": [claim()]}, store=st, authored=True)
+    bare = {"id": "record:specclaim-as-of-search-v2", "type": "record"}
+    out = fragment.merge_fragment({"owner": "user:someone-else", "nodes": [bare]},
+                                  store=st, authored=True)
+    assert out["executed"] is False and out["error"] == "invalid_spec_record", out
+
+
+def test_resend_keeps_the_saved_props(st):
+    fragment.merge_fragment({"owner": OWNER, "nodes": [claim()]}, store=st, authored=True)
+    bare = {"id": "record:specclaim-as-of-search-v2", "type": "record",
+            "domain": "vinc/governance/claim-decay"}
+    out = fragment.merge_fragment({"owner": OWNER, "nodes": [bare]}, store=st, authored=True,
+                                  read_back=True)
+    assert out["executed"] is not False, out
+    got = query._probe_node("record:specclaim-as-of-search-v2", owner=OWNER, cfg=None, store=st)
+    assert "vinc.specclaim.v1" in str(got.get("props")), got
+
+
+def test_branch_refs_compare_exactly_and_only_hashes_by_prefix(st):
+    nodes = [
+        {**claim(subject_path="vinc:api/sync.py", measured_at="2026-10-11",
+                 measured_ref="main"), "id": "record:specclaim-branch-ref-v1"},
+        change("episode:change-vinc-main-fix", "2026-10-11", ["vinc:api/sync.py"], "main-fix"),
+    ]
+    out = fragment.merge_fragment({"owner": OWNER, "nodes": nodes}, store=st, authored=True)
+    assert out["executed"] is not False, out
+    stale = {s["claim"]["id"] for s in query.claim_diagnosis(owner=OWNER, store=st)["stale"]}
+    assert "record:specclaim-branch-ref-v1" in stale     # main 은 main-fix 의 접두가 아니다
