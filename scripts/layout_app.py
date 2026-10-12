@@ -76,7 +76,7 @@ def authorised(environ: dict[str, str]) -> None:
 
 def secret_value(name: str, call=az) -> str | None:
     return call("containerapp", "secret", "list", "-n", name, "-g", RG,
-                "--query", f"[?name=='{TOKEN_SECRET}'].value | [0]")
+                "--show-values", "--query", f"[?name=='{TOKEN_SECRET}'].value | [0]")
 
 
 def provision(image: str, *, call=az, environ=None, new_token=secrets.token_hex) -> dict:
