@@ -289,6 +289,9 @@ const EN = {
     idleCta: "Import files",
     loading: (d: number) => d > 0 ? `Arranging ${d} topics…` : "Arranging this View…",
     preview: "Partial overview · Loading the full View…",
+    // 시간순 가지 배치가 오래 걸리면 중심에서 배치로 먼저 보여 준다(그동안의 안내).
+    layoutPending: "Time branches are still being laid out. Showing by centre until they're ready.",
+    layoutFailed: "Time branches couldn't be laid out for this graph, so it's shown by centre.",
     error: "View couldn't load. Retry anytime. Your documents are untouched.",
     // 스토어를 못 읽는 상태 전용. "비어 있다"와 **반드시 다른 말**이어야 한다 —
     // 사이드카가 읽지 못하는 것을 빈 View 로 그리면 정보 유실과 구분되지 않는다.
@@ -1539,6 +1542,8 @@ const KO: Deck = {
     idleCta: "파일 추가하기",
     loading: (d) => d > 0 ? `주제 ${d}개를 배치하는 중…` : "View를 배치하는 중…",
     preview: "일부 개요 · 전체 View를 불러오는 중…",
+    layoutPending: "시간순 가지를 아직 그리는 중이에요. 다 될 때까지 중심에서 배치로 보여 드려요",
+    layoutFailed: "이 그래프는 시간순 가지로 그리지 못해 중심에서 배치로 보여 드려요",
     error: "View를 불러오지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
     storeDown: "지금은 저장된 정보를 읽을 수 없어요. 읽기 문제라서 잃어버린 것은 없어요. Vinc를 다시 실행하고, 다른 Vinc가 이미 켜져 있지 않은지 확인해 주세요",
     storeDownWhy: "자세히",
