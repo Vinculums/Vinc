@@ -26,25 +26,27 @@ const temporalLayout = async (...args) => {
 };
 const { routeAcrossTopics } = await source("../src/view-layout-avoid.ts");
 const { layoutInWorker } = await source("../src/view-layout-client.ts");
-const { LAYOUTS, normalizeLayout, layoutsFor, serverLayoutFor, rootsOrderingFor, isRootsLayout, loadPrefs, savePrefs } = await source("../src/view-prefs.ts");
+const { LAYOUTS, normalizeLayout, layoutsFor, serverLayoutFor, isRootsLayout, loadPrefs, savePrefs } = await source("../src/view-prefs.ts");
 
-test("all four layouts preserve their saved keys and original server layouts", () => {
+test("two layouts remain and retired saved values fold into time branches", () => {
   const saved = new Map();
   globalThis.localStorage = { getItem: k => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, v) };
   try {
     assert.equal(loadPrefs().layout, "hub");
-    assert.deepEqual(LAYOUTS, ["hub", "rank", "temporalRoots", "rankedRoots"]);
+    assert.deepEqual(LAYOUTS, ["hub", "temporalRoots"]);
     for (const layout of LAYOUTS) {
       savePrefs({ ...loadPrefs(), layout });
       assert.equal(loadPrefs().layout, layout);
       assert.equal(normalizeLayout(layout), layout);
-      assert.equal(serverLayoutFor(layout), layout === "rank" ? "rank" : "hub");
-      assert.equal(isRootsLayout(layout), layout.endsWith("Roots"));
+      assert.equal(serverLayoutFor(layout), "hub");
+      assert.equal(isRootsLayout(layout), layout === "temporalRoots");
     }
-    assert.equal(rootsOrderingFor("rankedRoots"), "ranked");
-    assert.equal(rootsOrderingFor("temporalRoots"), "temporal");
-    for (const view of ["2d", "3d"]) assert.deepEqual(layoutsFor(view), LAYOUTS);
-    for (const view of ["timeline", "bundle"]) assert.deepEqual(layoutsFor(view), ["hub", "rank"]);
+    for (const view of ["2d", "3d", "timeline", "bundle"]) assert.deepEqual(layoutsFor(view), LAYOUTS);
+    for (const retired of ["rank", "rankedRoots"]) {
+      assert.equal(normalizeLayout(retired), "temporalRoots");
+      saved.set("vinc.view.prefs", JSON.stringify({ layout: retired }));
+      assert.equal(loadPrefs().layout, "temporalRoots");
+    }
     assert.equal(normalizeLayout("radial"), "hub");
     assert.equal(normalizeLayout("unknown"), "hub");
   } finally { delete globalThis.localStorage; }

@@ -34,25 +34,23 @@ test("time visibility followed by style changes remains a live update in both ma
 test("structural renderer changes still require a remount", () => {
   const previous = prefs();
   for (const change of [{ edges: "always" }, { edgeOff: ["directed"] },
-    { unlinked: "hide" }, { layout: "rank" }, { cone: .9 }]) {
+    { unlinked: "hide" }, { layout: "temporalRoots" }, { cone: .9 }]) {
     const next = { ...previous, ...change };
     assert.equal(canUpdateViewStyle(changedRendererPrefs(previous, next)), false);
   }
   assert.equal(canUpdateViewStyle(changedRendererPrefs(previous, { ...previous, edgeOff: [] })), true);
 });
 
-test("both roots recompute for their time basis and preserve the current camera", () => {
-  for (const layout of ["temporalRoots", "rankedRoots"]) {
-    const work = viewPreferenceWork(prefs({ layout }), ["timeBasis"], available);
-    assert.equal(work.mode, "remount");
-    assert.equal(work.relayout, true);
-    assert.equal(work.serverLayout, false);
-    assert.equal(work.reuseGraph, true);
-    assert.equal(work.keepCamera, true);
-  }
-  const rank = viewPreferenceWork(prefs({ layout: "rank" }), ["layout"], available);
-  assert.equal(rank.serverLayout, true);
-  assert.equal(rank.keepCamera, false);
+test("time branches recompute for their time basis and preserve the current camera", () => {
+  const work = viewPreferenceWork(prefs({ layout: "temporalRoots" }), ["timeBasis"], available);
+  assert.equal(work.mode, "remount");
+  assert.equal(work.relayout, true);
+  assert.equal(work.serverLayout, false);
+  assert.equal(work.reuseGraph, true);
+  assert.equal(work.keepCamera, true);
+  const centre = viewPreferenceWork(prefs({ layout: "hub" }), ["layout"], available);
+  assert.equal(centre.serverLayout, true);
+  assert.equal(centre.keepCamera, false);
 });
 
 test("Timeline and Weave keep separate filter semantics and update routes", () => {
@@ -73,9 +71,7 @@ test("shared panel inventory preserves viewpoint-specific controls", () => {
   assert.deepEqual(viewControlRows(prefs({ view: "timeline" })), ["period", "basis", "docs", "lineage"]);
   assert.deepEqual(viewControlRows(prefs({ view: "bundle" })), ["bundleDepth", "bundleRels", "labels", "basis", "when", "replay"]);
   assert.equal(viewControlRows(prefs()).includes("cone"), true);
-  for (const layout of ["rank", "temporalRoots", "rankedRoots"]) {
-    assert.equal(viewControlRows(prefs({ layout })).includes("cone"), false);
-  }
+  assert.equal(viewControlRows(prefs({ layout: "temporalRoots" })).includes("cone"), false);
   assert.equal(viewControlRows(prefs({ view: "2d" })).includes("cone"), false);
   assert.equal(viewControlRows(prefs({ view: "2d" })).includes("replay"), false);
 });
