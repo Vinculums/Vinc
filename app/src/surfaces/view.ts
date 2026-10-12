@@ -11,6 +11,7 @@ import { mount2d, type Handle2d } from "./view2d";
 import { viewSessionCache } from "../view-session-cache";
 import { readGraphProgressively, mountGraphPreview } from "../view-graph-loading";
 import { graphReadPlan, wantsStagedRead } from "../view-graph-read";
+import { retainedViews, restoreRetained } from "../view-retained";
 import { layoutInWorker } from "../view-layout-client";
 import type { LayoutGraph } from "../view-layout";
 import type { DragEnd } from "./drag-connect";
@@ -182,9 +183,18 @@ export async function renderView(el: HTMLElement, resume = false) {
   const accessJob = new AbortController();
   disposeView = () => accessJob.abort();
   const firstAccess = WEB ? viewAccess(mountScope, accessJob.signal).catch(() => null) : Promise.resolve(null);
-  const entryAccess = WEB && (viewSessionCache.count || viewSessionCache.hasBookmark) ? await firstAccess : null;
+  // 스페이스 전환으로 보관해 둔 항목이 있을 수 있으면 신원·표식을 먼저 확인한다.
+  const holdsRetained = WEB && !viewSessionCache.count && !viewSessionCache.hasBookmark && retainedViews.has();
+  const entryAccess = WEB && (viewSessionCache.count || viewSessionCache.hasBookmark || holdsRetained)
+    ? await firstAccess : null;
   if (myGen !== liveGen || mountScope.key !== viewScope().key) { accessJob.abort(); return; }
-  if (entryAccess) viewSessionCache.activate(entryAccess.session, entryAccess.revision);
+  if (entryAccess) {
+    viewSessionCache.activate(entryAccess.session, entryAccess.revision);
+    if (holdsRetained) {
+      await restoreRetained(entryAccess.session, entryAccess.revision);
+      if (myGen !== liveGen || mountScope.key !== viewScope().key) { accessJob.abort(); return; }
+    }
+  }
   const bookmark = entryAccess && restoreEntryCamera ? viewSessionCache.last(entryAccess.session) : undefined;
   let firstAccessUsed = false;
   el.innerHTML = `
