@@ -700,13 +700,23 @@ class VincApp:
         # 표식은 **계산 전에** 잡는다: 계산 중 끝난 쓰기는 옛 표식 아래로 들어가 다시 읽히지
         # 않고, 읽은 뒤에 잡으면 옛 데이터가 새 표식 아래 남는다(`api.graph_cache`).
         key = _graph_cache_key(p)
-        owner = _req(p, "owner") if key else None
-        marker = self.changes.read(owner) if key else None
+        # `marker=1` 을 보낸 클라이언트(웹 View)는 이 읽기의 표식을 응답에서 받는다. 표식을
+        # 읽기 **전에** 잡았으므로 응답은 그 표식 이상으로 새롭다: 읽기가 끝난 뒤에도 표식이
+        # 같으면 그 사이에 쓰기가 없었다. 그래서 클라이언트는 먼저 표식을 묻고 기다리지 않고
+        # 읽기를 바로 시작할 수 있다.
+        want = str(p.get("marker") or "").lower() in ("1", "true")
+        owner = _req(p, "owner") if (key or want) else None
+        marker = self.changes.read(owner) if (key or want) else None
         if key:
             hit = self._graph_results.get(owner, key, marker)
             if hit is not None:
-                return json.loads(hit)
+                found = json.loads(hit)
+                if want and isinstance(found, dict):
+                    found["marker"] = marker
+                return found
         result = self._compute_graph(p, r)
+        if want and isinstance(result, dict) and result.get("executed") is True:
+            result["marker"] = marker
         if key and isinstance(result, dict) and result.get("executed") is True:
             try:
                 self._graph_results.put(owner, key, marker,

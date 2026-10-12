@@ -138,5 +138,50 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(len(self.app._graph_results), 0)
 
 
+class MarkerLabelTests(unittest.TestCase):
+    """`marker=1` 읽기는 **읽기 전에** 잡은 표식을 응답에 싣는다(웹 View 가 표식 확인을
+    기다리지 않고 읽기를 시작하게 하는 계약). 틀리면 옛 그래프가 새 표식 아래 캐시된다."""
+
+    def setUp(self):
+        self.app = _app()
+        self.writes_during_read = []
+
+        def fake(**kwargs):
+            for owner in self.writes_during_read:
+                self.app.note_write("/ingest/fragment", owner, 200, {})
+            return {"executed": True, "nodes": [{"id": kwargs["owner"]}], "edges": []}
+        patcher = mock.patch.object(mirror_provenance, "graph_with_mirror_review", fake)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.app.close)
+
+    def test_the_flag_adds_the_markers_the_changes_route_reports(self):
+        code, body = self.app.read_graph({"owner": "user:a", "layout": "hub", "marker": "1"})
+        self.assertEqual(code, 200)
+        self.assertEqual(body["marker"], self.app.changes.read("user:a"))
+        code, plain = self.app.read_graph({"owner": "user:a", "layout": "hub"})
+        self.assertNotIn("marker", plain)
+
+    def test_a_repeated_read_reports_the_current_marker_and_a_write_moves_it(self):
+        read = lambda: self.app.read_graph({"owner": "user:a", "layout": "hub", "marker": "1"})[1]["marker"]
+        first = read()
+        self.assertEqual(read(), first)
+        self.app.note_write("/ingest/fragment", "user:a", 200, {})
+        self.assertNotEqual(read(), first)
+
+    def test_the_label_is_taken_before_the_read_so_a_write_during_it_is_visible_after(self):
+        before = self.app.changes.read("user:a")
+        self.writes_during_read = ["user:a"]
+        code, body = self.app.read_graph({"owner": "user:a", "layout": "hub", "marker": "1"})
+        self.assertEqual(body["marker"], before)                 # 읽기 전 표식
+        self.assertNotEqual(self.app.changes.read("user:a"), body["marker"])   # 클라이언트는 이걸 본다
+
+    def test_flagged_and_plain_reads_do_not_share_an_entry(self):
+        self.app.read_graph({"owner": "user:a", "layout": "hub"})
+        code, flagged = self.app.read_graph({"owner": "user:a", "layout": "hub", "marker": "1"})
+        self.assertIn("marker", flagged)
+        self.assertEqual(len(self.app._graph_results), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
