@@ -22,6 +22,8 @@ function fixture(rows, error = false) {
     document: { createElement: () => ({}) },
     U: { spaceNone: "none", spacePending: "pending", spaceSuspended: "paused", spaceActivationHint: "activate on account", spaceListFailed: "failed" },
     location: { reload: () => calls.push("reload") },
+    // 스페이스 선택기는 떠나기 전에 결과를 잠깐 보관한 뒤 전환한다(`retainBeforeSwitch`).
+    retainBeforeSwitch: async () => { calls.push("retain"); return true; },
     teamsApi: { list: async opts => { assert.equal(opts.throwOnError, true); if (error) throw new Error("offline"); return rows; } },
   };
   vm.createContext(state);
@@ -36,8 +38,9 @@ test("pending and suspended teams are visible but cannot become the active graph
   await settle();
   assert.deepEqual(s.options.map(o => o.value), ["", "active", "pending", "paused"]);
   assert.equal(s.options[1].selected, true); assert.equal(s.options[2].disabled, true); assert.equal(s.options[3].disabled, true);
-  s.pick.value = "pending"; s.handlers.change(); assert.equal(s.cfg.team, "active"); assert.equal(s.calls.length, 0);
-  s.pick.value = ""; s.handlers.change(); assert.equal(s.cfg.team, ""); assert.deepEqual(s.calls, ["reload"]);
+  s.pick.value = "pending"; await s.handlers.change(); assert.equal(s.cfg.team, "active"); assert.equal(s.calls.length, 0);
+  s.pick.value = ""; await s.handlers.change(); assert.equal(s.cfg.team, ""); assert.deepEqual(s.calls, ["retain", "reload"]);
+  assert.equal(s.pick.disabled, true, "the picker is locked while the left Space is retained");
   assert.equal(s.note.textContent, "activate on account");
 });
 test("list failure is distinguished from successful empty membership", async () => {
