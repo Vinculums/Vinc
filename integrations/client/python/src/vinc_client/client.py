@@ -26,9 +26,9 @@ from .errors import (VincAuthError, VincError, VincInvalidArgument, VincPartialW
                      VincNotFound, VincQuotaExceeded, VincUnavailable, error_class)
 from .package import (DEFAULT_PACKAGE_MAX_CHARS, build_package_fragment, format_package,
                       package_space, validate_package)
-from .prefetch import (DEFAULT_PREFETCH_MAX_CHARS, PREFETCH_READ_CONCURRENCY, check_budget,
-                       citation_policy, cite_id, document_key, reading_list, render_prefetch, required_reading,
-                       role_context, with_citation)
+from .prefetch import (DEFAULT_PREFETCH_MAX_CHARS, PREFETCH_READ_CONCURRENCY, cite_id,
+                       document_key, reading_list, required_context, required_reading,
+                       with_citation, _with_task_evidence)
 
 log = logging.getLogger("vinc_client")
 
@@ -321,7 +321,6 @@ class VincClient(_Base):
                 contract = self.role(role_id, space=space)
                 specs = []
                 reads = reading_list(contract)
-                required_size = len(role_context(contract))
                 query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
                 if early:
                     optional.append(pool.submit(self.search, query, limit=5, space=space))
@@ -333,14 +332,13 @@ class VincClient(_Base):
                         for index, doc in enumerate(batch):
                             result = (futures[index].result() if futures
                                       else self._required_document(doc, space=space))
-                            required_size += 2 + len(required_reading(doc, result))
+                            required_reading(doc, result)
                             specs.append((doc, result))
                     finally:
                         # 아직 시작하지 않은 요청은 취소한다. 실행 중인 스레드는 풀 종료 때 회수한다.
                         for future in futures:
                             future.cancel()
-                required_size += 2 + len(citation_policy(contract, specs))
-                check_budget(required_size, max_chars)
+                required = required_context(contract, specs, max_chars=max_chars)
                 # 선택 읽기 결과(와 그 예외)는 필수 검증과 예산을 통과한 뒤에만 꺼낸다.
                 if early:
                     brief, search = [future.result() for future in optional]
@@ -350,7 +348,7 @@ class VincClient(_Base):
             finally:
                 for future in optional:
                     future.cancel()
-        return render_prefetch(contract, task, specs, brief, search, max_chars=max_chars)
+        return _with_task_evidence(required, brief, search, max_chars=max_chars)
 
     def search(self, query: str, *, limit: int | None = None, cursor: str | None = None,
                detail: str | None = None, historical: bool | None = None,
@@ -537,7 +535,6 @@ class AsyncVincClient(_Base):
             contract = await self.role(role_id, space=space)
             specs = []
             reads = reading_list(contract)
-            required_size = len(role_context(contract))
             query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
             if early:
                 optional.append(asyncio.create_task(
@@ -550,15 +547,14 @@ class AsyncVincClient(_Base):
                     for index, doc in enumerate(batch):
                         result = (await tasks[index] if tasks
                                   else await self._required_document(doc, space=space))
-                        required_size += 2 + len(required_reading(doc, result))
+                        required_reading(doc, result)
                         specs.append((doc, result))
                 finally:
                     # 호출 종료 후 요청이나 관측되지 않은 예외를 남기지 않는다.
                     for pending in tasks:
                         pending.cancel()
                     await asyncio.gather(*tasks, return_exceptions=True)
-            required_size += 2 + len(citation_policy(contract, specs))
-            check_budget(required_size, max_chars)
+            required = required_context(contract, specs, max_chars=max_chars)
             # 선택 읽기 결과(와 그 예외)는 필수 검증과 예산을 통과한 뒤에만 꺼낸다.
             if early:
                 brief, search = [await pending for pending in optional]
@@ -569,7 +565,7 @@ class AsyncVincClient(_Base):
             for pending in optional:
                 pending.cancel()
             await asyncio.gather(*optional, return_exceptions=True)
-        return render_prefetch(contract, task, specs, brief, search, max_chars=max_chars)
+        return _with_task_evidence(required, brief, search, max_chars=max_chars)
 
     async def search(self, query: str, *, limit: int | None = None, cursor: str | None = None,
                      detail: str | None = None, historical: bool | None = None,

@@ -1,3 +1,4 @@
+import { changedRendererPrefs, canUpdateViewStyle } from "../view-controls";
 /** View 3D renderer (DEC D21 revised — full 3D, owner decision 2026-07-10).
  *
  *  Monochrome 3D discipline (as-built: [[vinc.reference.view-controls]]):
@@ -10,6 +11,7 @@
  *  (L0 Domain). Gateways are translucent. Sidecar supplies deterministic
  *  x/y/z (D17) — positions are pinned (fx/fy/fz), no client force simulation. */
 import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
+import { ViewIdleFrames } from "./view-idle-frames";
 import * as THREE from "three";
 import { loadPrefs, DIRECTED_RELS, type ViewPrefs } from "../view-prefs";
 import { palette as signal, viewScene, hexStr, type ThemeMode } from "../theme";
@@ -21,6 +23,7 @@ import { HIT_MIN_PX, wireDragConnect, type DragEnd, type DragHit } from "./drag-
 import { nonOverlappingLabels, type LabelBox } from "../view-labels";
 import type { ViewRoute } from "../view-route";
 import { RoutedLinkObject } from "./view-routes3d";
+import { CurvedLinkObject } from "./view-curves3d";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -530,10 +533,10 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // 입자는 **상시 애니메이션**이다. 모션 감도를 밝힌 사용자에게는 켜지 않고 선으로
   // 되돌린다 — 이 모드의 이득(덜 붐빔)이 그 비용을 정당화하지 못하는 유일한 경우다.
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-  const particlesOn = prefs.edges === "particles" && !reduceMotion;
+  let particlesOn = prefs.edges === "particles" && !reduceMotion;
   //: 노드만 — 선을 그리지 않는다(기본). 관계는 점등과 카드가 말한다.
   //: 근거: [[decision:bring-and-go-is-retired-and-nodes-only-is-the-default]]
-  const nodesOnly = prefs.edges === "none";
+  let nodesOnly = prefs.edges === "none";
   // 상시 라벨 대상 — 2D 와 같은 규칙(연결수 상위 8, 고아 제외).
   const hubIds = new Set(nodes.slice()
     .sort((a, b) => (b.degree || 0) - (a.degree || 0) || (a.id < b.id ? -1 : 1))
@@ -683,8 +686,12 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     .linkWidth(linkWidthFn())
     .linkOpacity(0.85)
     .linkCurvature((l: any) => l.route ? 0 : .18)
-    .linkThreeObject((l: any) => l.route ? new RoutedLinkObject(l.route) : undefined as any)
-    .linkPositionUpdate((_object: THREE.Object3D, _ends: unknown, l: any) => !!l.route)
+    .linkThreeObject((l: any) => l.route ? new RoutedLinkObject(l.route) : new CurvedLinkObject())
+    .linkPositionUpdate((object: THREE.Object3D, ends: any, l: any) => {
+      if (object instanceof CurvedLinkObject)
+        object.update(ends.start, ends.end, l.__curve, linkWidthFn()(), linkColorFn(l));
+      return true;
+    })
     // 방향 화살촉 — prerequisite/derives/inherits 만 (spec §1.2); 표시 여부는 D31 열린 층
     .linkDirectionalArrowLength((l: any) => l.route ? 0 : arrowLenFn()(l))
     // 입자 모드 — 방향 3종에만(위 상수 주석 ②). 흐름이 방향을 말하므로 화살촉은 끈다.
@@ -755,10 +762,16 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     }
     for (const link of links as any[]) {
       const object = link.__lineObj;
-      if (!(object instanceof RoutedLinkObject)) continue;
       const source = typeof link.source === "object" ? link.source : nodes.find(n => n.id === link.source);
       const target = typeof link.target === "object" ? link.target : nodes.find(n => n.id === link.target);
       if (!source || !target) continue;
+      if (object instanceof CurvedLinkObject) {
+        // 고정 좌표의 simulation이 멈춘 뒤에도 색·폭을 갱신한다.
+        // renderer를 깨우는 것만으로는 linkPositionUpdate가 실행되지 않는다.
+        object.update(source, target, link.__curve, linkWidthFn()(), linkColorFn(link));
+        continue;
+      }
+      if (!(object instanceof RoutedLinkObject)) continue;
       const emphasized = hoverId ? source.id === hoverId || target.id === hoverId
         : !!spot?.edges.has(edgeKey({ source: source.id, target: target.id, type: link.type || "" }));
       // Far overview lines must not form an opaque fence over subpixel bodies.
@@ -886,6 +899,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     if (dead) return;
     sizeTo();                                    // 컨테이너가 변했으면 캔버스를 맞추고
     (g.controls() as any)?.handleResize?.();     // 캔버스가 변했으면 컨트롤을 맞춘다
+    wake(300);
   });
   ro.observe(el);
   ro.observe(g.renderer().domElement);           // 캔버스 변화는 digest 뒤에 온다(위 주석)
@@ -896,16 +910,32 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // "움직일 이유"가 있는 동안만 깨어 있는다: 포인터·휠·카메라 변화·hover 페이드·비행·
   // 옵션 반영은 각자 wake(ms) 를 부르고, 마감이 지나면 pauseAnimation(). 입자 모드는
   // 상시 애니메이션이라 재우지 않는다. resumeAnimation 은 첫 프레임을 곧장 그린다.
-  let awakeUntil = performance.now() + 2500;      // 마운트·프레이밍이 끝날 때까지
-  let napping = false;
-  const wake = (ms = 300) => {
-    awakeUntil = Math.max(awakeUntil, performance.now() + ms);
-    if (napping) { napping = false; (g as any).resumeAnimation?.(); }
+  const idleCamera = g.camera() as THREE.PerspectiveCamera;
+  const paintedPosition = new THREE.Vector3(), paintedRotation = new THREE.Quaternion();
+  const paintedTarget = new THREE.Vector3(), paintedProjection = new THREE.Matrix4();
+  let painted = false;
+  const idle = new ViewIdleFrames({
+    now: () => performance.now(), defer: (fn) => queueMicrotask(fn),
+    // Kapsule digest는 1ms debounce다. 그 task가 끝난 다음 rAF에서 재개한다.
+    deferSettle: (fn) => window.setTimeout(fn, 2),
+    deferResume: (fn) => window.setTimeout(() => requestAnimationFrame(fn), 2),
+    pause: () => (g as any).pauseAnimation?.(), resume: () => (g as any).resumeAnimation?.(),
+    continuous: () => particlesOn,
+    hasUnpaintedChanges: () => !painted || !paintedPosition.equals(idleCamera.position)
+      || !paintedRotation.equals(idleCamera.quaternion)
+      || !paintedProjection.equals(idleCamera.projectionMatrix)
+      || !!controls?.target && !paintedTarget.equals(controls.target),
+  });
+  const wake = (ms = 300) => idle.wake(ms);
+  const napTimer = window.setInterval(() => idle.check(), 200);
+  // 카메라 tween은 render 뒤에 진행된다. 실제 그린 상태와 달라졌으면 다음 프레임을 남긴다.
+  scene.onAfterRender = () => {
+    paintedPosition.copy(idleCamera.position); paintedRotation.copy(idleCamera.quaternion);
+    paintedProjection.copy(idleCamera.projectionMatrix);
+    if (controls?.target) paintedTarget.copy(controls.target);
+    painted = true;
+    idle.afterRender();
   };
-  const napTimer = window.setInterval(() => {
-    if (dead || particlesOn || napping) return;
-    if (performance.now() > awakeUntil) { napping = true; (g as any).pauseAnimation?.(); }
-  }, 200);
   const onWakeEvent = () => wake(300);
   for (const ev of ["pointermove", "pointerdown", "wheel", "keydown"] as const)
     el.addEventListener(ev, onWakeEvent, { passive: true });
@@ -945,6 +975,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   const baseDestructor = (g as any)._destructor?.bind(g);
   (g as any)._destructor = () => {
     dead = true; ro.disconnect();
+    idle.dispose();
     unwireConnect?.();
     controls?.removeEventListener?.("change", syncCamera);
     window.clearInterval(napTimer);
@@ -968,12 +999,10 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
    *  틴트·크기 인코딩은 노드 오브젝트 재생성으로 — 씬·렌더러·컨텍스트·카메라는 그대로다. */
   (g as any).__update = (np: ViewPrefs): boolean => {
     const prev = prefs;
-    const changed = (Object.keys(np) as (keyof ViewPrefs)[])
-      .filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(np[k]));
-    const ok = new Set<keyof ViewPrefs>(
-      ["nodeScale", "edgeScale", "arrows", "labels", "size", "spread", "railW"]);
-    if (!changed.every((k) => ok.has(k))) return false;
+    const changed = changedRendererPrefs(prev, np);
+    if (!canUpdateViewStyle(changed, true)) return false;
     prefs = np;
+    if (!changed.length) return true;
     if (changed.includes("spread")) {
       S = SCALE * np.spread;
       place();                                   // 핀 좌표를 새 배율로 다시 놓고
@@ -988,8 +1017,17 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       // The next render updates bodies and hit ghosts together; labels keep
       // their own size and the camera-dependent correction never accumulates.
     }
-    if (changed.includes("edgeScale") && links.some(l => !l.route)) g.linkWidth(linkWidthFn());
-    if (changed.includes("arrows")) g.linkDirectionalArrowLength((l: any) => l.route ? 0 : arrowLenFn()(l));
+    // 폭은 custom 버퍼의 위치·paint 갱신에서 반영한다.
+    // linkWidth setter는 경로 링크까지 모든 객체를 재생성하므로 호출하지 않는다.
+    if (changed.includes("edges")) {
+      particlesOn = prefs.edges === "particles" && !reduceMotion;
+      nodesOnly = prefs.edges === "none";
+      g.linkDirectionalParticles((l: any) => !l.route && particlesOn && isDirectedLink(l) ? PARTICLES_PER_LINK : 0);
+      // 처음 숨겨졌던 링크의 곡선을 계산하도록 고정 좌표 tick을 한 번 실행한다.
+      (g as any).d3ReheatSimulation?.();
+    }
+    if (changed.includes("arrows") || changed.includes("edges"))
+      g.linkDirectionalArrowLength((l: any) => l.route ? 0 : arrowLenFn()(l));
     wake(600);                                     // 바뀐 것을 그릴 프레임
     return true;
   };

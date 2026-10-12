@@ -1,4 +1,5 @@
 import { viewSessionCache } from "./view-session-cache";
+import type { LayoutAnswer } from "./view-layout-wire";
 /** Sidecar client — data plane is localhost HTTP + session token (control will
  *  be Tauri IPC when the shell lands, P4). Graph/query logic never lives here. */
 import { chunkPack, type StageCounts } from "./packchunks";
@@ -254,7 +255,7 @@ async function memberKey(): Promise<string> {
   return memberKeyCache;
 }
 /** 들고 있던 멤버 키를 버린다(로그아웃·키 교체·거절 뒤). */
-export function forgetMemberKey(): void { viewSessionCache.clear(); memberKeyCache = ""; }
+export function forgetMemberKey(): void { viewSessionCache.purge(); memberKeyCache = ""; }
 
 /** 계정 모드의 실패 종류. 화면은 이것으로 가르고 영어 서버 문자열을 읽지 않는다.
  *  `signIn` = 키가 더는 통하지 않는다(로그인 시트) · `unreachable` = 계정·허브에 못
@@ -303,12 +304,12 @@ async function logSearchFailure(status: number, duration: number): Promise<void>
 /** 통과로를 한 번 태운다. 계정의 상태코드와 몸통이 그대로 돌아온다(`api/spaceproxy.py`). */
 async function viaProxy(key: string, method: "GET" | "POST", path: string,
                         params: Record<string, string>, body: unknown,
-                        team: string): Promise<Response> {
+                        team: string, signal?: AbortSignal): Promise<Response> {
   const started = performance.now();
   let response: Response;
   try {
     response = await fetch(new URL("/space/proxy", cfg.base), {
-      method: "POST",
+      method: "POST", signal,
       headers: {
         ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
         "Content-Type": "application/json",
@@ -332,7 +333,7 @@ async function viaProxy(key: string, method: "GET" | "POST", path: string,
 /** 셸 계정 모드의 데이터 호출. 경로는 웹과 같은 이름이고(`/view`·`/ingest/fragment`),
  *  사이드카 통과로가 `/api/graph` 접두를 붙여 계정으로 넘긴다. */
 async function accountCall(path: string, params: Record<string, string | number | undefined> | undefined,
-                           body: unknown, scope?: Scope): Promise<any> {
+                           body: unknown, scope?: Scope, signal?: AbortSignal): Promise<any> {
   const key = await memberKey();
   if (!key) throw accountFailure("sign in required", "signIn", 401);
   const q: Record<string, string> = {};
@@ -342,8 +343,10 @@ async function accountCall(path: string, params: Record<string, string | number 
   const method = body !== undefined ? "POST" : "GET";
   let res: Response;
   try {
-    res = await viaProxy(key, method, path, q, body, team);
+    res = await viaProxy(key, method, path, q, body, team, signal);
   } catch (e: any) {
+    // 호출자가 접었다. 엔진 문제가 아니므로 그대로 올려 보낸다.
+    if (signal?.aborted) throw e;
     // 사이드카 자체에 못 닿았다. 계정 문제가 아니라 이 기기의 엔진 문제다.
     throw new Error(`engine unreachable: ${e?.message || e}`);
   }
@@ -440,7 +443,7 @@ async function localCall(path: string, params?: Record<string, string | number |
     body: isWrite ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
-    if (res.status === 401 || res.status === 403) viewSessionCache.clear();
+    if (res.status === 401 || res.status === 403) viewSessionCache.purge();
     // 웹모드에서 세션 만료(401) → 로그인으로 보낸다(앱=/app/, 로그인=/login).
     // 죽은 사이드카에 조용히 실패하지 않고 "다시 로그인" 경로를 준다.
     if (WEB && res.status === 401) {
@@ -729,13 +732,21 @@ export async function viewAccess(scope: ReturnType<typeof viewScope>, signal?: A
     fetch(new URL("/api/me", location.origin), { credentials: "include", cache: "no-store", signal }),
     localCall("/changes", { owner: scope.owner }, undefined, { team: scope.team || null }, signal),
   ]);
-  if (!me.ok) { viewSessionCache.clear(); throw new Error("View access unavailable"); }
+  if (!me.ok) { viewSessionCache.purge(); throw new Error("View access unavailable"); }
   const user = (await me.json()).user;
   const identity = typeof user?.email === "string" ? user.email : "";
   const marker = typeof changes?.marker === "string" ? changes.marker : "";
   if (!identity || !marker || scope.key !== viewScope().key || signal?.aborted) return null;
   return { session: JSON.stringify([scope.key, identity]), revision: marker };
 }
+
+export type GraphRootsAnswer = {
+  executed: boolean;
+  state: "off" | "pending" | "stale" | "ready" | "failed";
+  marker?: string;
+  nodes?: number;
+  answer?: LayoutAnswer;
+};
 
 export const api = {
   roleRoster: async (owner: string) => {
@@ -771,14 +782,27 @@ export const api = {
     return call("/graph", { owner, ...rest,
                             ...(domains?.length ? { domains: domains.join(",") } : {}) });
   },
-  // Initial web View only. Capture Space and cancellation for both stages and fallback.
+  // Initial View read in stages. Capture Space and cancellation for both stages and fallback.
+  // 웹은 계정 프록시(`/api/graph`)로, 데스크톱 계정 모드는 사이드카 통과로로, 로컬 모드는
+  // 이 기기 사이드카로 간다. 세 길 모두 같은 `/graph` 핸들러에 `stage`·`snapshot` 이 닿는다.
   graphStage: (owner: string, opts: { domains?: string[]; layout?: string; cone?: number },
       stage: "preview" | "complete" | "cancel" | undefined, snapshot: string | undefined,
       scope: Scope, signal: AbortSignal) => {
     const { domains, ...rest } = opts;
-    return localCall("/graph", { owner, ...rest, stage, snapshot,
-      ...(domains?.length ? { domains: domains.join(",") } : {}) }, undefined, scope, stage === "cancel" ? undefined : signal);
+    // `marker`: 응답이 읽기 전에 잡은 변경 표식을 싣게 한다(`api/server.py _query_graph`).
+    const params = { owner, ...rest, stage, snapshot, marker: 1,
+      ...(domains?.length ? { domains: domains.join(",") } : {}) };
+    // 취소 요청은 접힌 신호에 묶지 않는다: 그 신호가 접혔기 때문에 보내는 것이다.
+    const live = stage === "cancel" ? undefined : signal;
+    return accountMode() && !sidecarOnly("/graph")
+      ? accountCall("/graph", params, undefined, scope, live)
+      : localCall("/graph", params, undefined, scope, live);
   },
+  graphRoots: (owner: string, basis: "recorded" | "content", signal: AbortSignal,
+      scope: Scope = { team: cfg.team || null }): Promise<GraphRootsAnswer> =>
+    accountMode() && !sidecarOnly("/graph/roots")
+      ? accountCall("/graph/roots", { owner, basis }, undefined, scope, signal)
+      : localCall("/graph/roots", { owner, basis }, undefined, scope, signal),
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20) => searchCall(query, top_k),
   // 정확한 제목은 저장된 메타에서 찾는다. 본문 색인·그래프 노드 유무와 무관하다.
@@ -1112,6 +1136,7 @@ export async function ensureWebAuth(): Promise<boolean> {
   // 아예 없으면 로그인한 적 없음 → 서버 확인 없이 즉시 /login (never-logged-in = 흔한
   // 경우, 완전 즉시 리다이렉트). 쿠키가 있으면 만료됐을 수 있어 /api/me 로 검증한다.
   if (!/(?:^|;\s*)__Host-csrf=/.test(document.cookie)) {
+    viewSessionCache.purge();       // 로그아웃된 브라우저에 보관본을 남기지 않는다
     location.assign("/login");
     return false;
   }
@@ -1119,6 +1144,7 @@ export async function ensureWebAuth(): Promise<boolean> {
     const res = await fetch(new URL("/api/me", location.origin), { credentials: "include" });
     if (res.ok) return true;
   } catch { /* 네트워크 실패 → 아래 로그인으로(안전측) */ }
+  viewSessionCache.purge();
   location.assign("/login");
   return false;
 }

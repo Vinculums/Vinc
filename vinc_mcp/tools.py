@@ -1831,9 +1831,13 @@ def _shrink_search_result(out: dict, budget: int) -> dict | None:
     if not rows:
         return None                     # 행 1개조차 예산을 넘는다 — 거부가 정직하다
     if dropped:
+        next_off = int(page.get("offset") or 0) + len(rows)
+        row_offsets = page.get("row_offsets")
+        if isinstance(row_offsets, dict):
+            next_off = int(row_offsets.get(str(dropped[0].get("id") or ""), next_off))
         out["has_more"] = True
         out["next_cursor"] = _cursor_encode(
-            {"v": 1, "off": int(page.get("offset") or 0) + len(rows),
+            {"v": 1, "off": next_off,
              "qh": page.get("fingerprint"),
              "eid": str(dropped[0].get("id") or ""),
              "tc": out.get("total_count"), "arms": out.get("arms")})

@@ -1,6 +1,6 @@
 """컨테이너 앱 구조 설정의 드리프트 게이트 — 선언 없는 층에 기준선을 준다.
 
-Terraform(infra/)은 컨테이너 앱 셋을 의도적으로 안 든다(시크릿이 state 에 평문으로
+Terraform(infra/)은 컨테이너 앱을 의도적으로 안 든다(시크릿이 state 에 평문으로
 남고, 이미지 태그는 배포마다 바뀌어 매 배포가 drift 가 된다 — infra/imports.tf).
 그런데 실측된 인벤토리 표류는 전부 이 층에서 났다: 인벤토리에 없던 넷째 앱
 ([[record:the-infrastructure-inventory-is-missing-the-encoder-app]]), "라이브 확인
@@ -16,8 +16,8 @@ ingress·볼륨·auth(excludedPaths 포함). 이미지·리비전은 안 본다 
 hub-deploy 가 배포 직후 수행한다 — 포털 수동 변경은 다음 배포에서 걸린다. 주기
 실행이 아니라 배포 시점 실행인 이유는 az 로그인이 이미 있는 자리라서다.
 
-빨간 게이트는 **드리프트 경보이지 배포 실패가 아니다**. 배포·헬스 검증은 이 앞에서
-이미 통과했다.
+배포·헬스 검증은 이 앞에서 이미 통과한다. 다만 hub-deploy는 이 게이트가 실패하면
+실행을 실패로 남긴다. 서비스 상태와 기준선 차이를 따로 확인하고 의도한 변경을 등록한다.
 
 ponytail: 배포 사이의 드리프트 창은 못 본다. 주기 감시가 필요해지면 infra.yml 의
 Reader 신원에 main-ref 페더레이티드 자격증명을 더해 schedule 잡으로 올릴 것.
@@ -32,7 +32,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-APPS = ("vinc-hub", "vinc-encode", "vinc-account")
+APPS = ("vinc-hub", "vinc-encode", "vinc-account", "vinc-layout")
 RG = "vincsRG"
 BASELINE = Path(__file__).resolve().parent / "app-config-baseline.json"
 
@@ -105,20 +105,24 @@ def project_app(show: dict, auth: dict) -> dict:
     }
 
 
-def measure(rg: str = RG, apps: tuple[str, ...] = APPS) -> dict:
-    """세 앱의 라이브 구조. 앱이 없으면 {'missing': True} — 기준선에는 이 형태가
+def measure(rg: str = RG, apps: tuple[str, ...] = APPS, *, strict: bool = False) -> dict:
+    """대상 앱의 라이브 구조. 앱이 없으면 {'missing': True} — 기준선에는 이 형태가
     없으므로 대조가 시끄럽게 실패한다(넷째-앱-누락 사고의 재발 방지가 이 줄이다)."""
     out: dict = {}
     for app in apps:
         try:
             show = _az(["containerapp", "show", "-n", app, "-g", rg, "-o", "json"])
         except Exception as exc:      # noqa: BLE001 — 부재도 측정 결과다
+            if strict:
+                raise RuntimeError(f"{app} structure could not be read") from None
             out[app] = {"missing": True, "reason": str(exc)[:200]}
             continue
         try:
             auth = _az(["containerapp", "auth", "show", "-n", app, "-g", rg,
                         "-o", "json"])
         except Exception:
+            if strict:
+                raise RuntimeError(f"{app} authentication structure could not be read") from None
             auth = {}
         out[app] = project_app(show, auth)
     return out
@@ -134,9 +138,13 @@ def main(argv: list[str] | None = None) -> int:
                     help="기준선을 라이브로 재생성한다(의도한 변경 — 같은 커밋에)")
     ap.add_argument("--baseline", default=str(BASELINE))
     ap.add_argument("--rg", default=RG)
+    ap.add_argument("--apps", nargs="+", default=list(APPS),
+                    help="새 앱을 기준선에 편입하기 전 라이브 구조를 함께 수집한다")
+    ap.add_argument("--require-present", action="store_true",
+                    help="모든 앱과 인증 구조를 읽었을 때만 기준선을 수집한다")
     a = ap.parse_args(argv)
     try:
-        live = measure(a.rg)
+        live = measure(a.rg, tuple(a.apps), strict=a.require_present)
     except RuntimeError as exc:
         print(f"측정 불가: {exc}", file=sys.stderr)
         return 2

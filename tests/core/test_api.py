@@ -122,7 +122,9 @@ class PlanTests(unittest.TestCase):
         self.assertIn("(c.domain = $dom0 OR c.domain STARTS WITH $domp0)", plan.cypher)
         self.assertEqual(plan.params["dom0"], "math")
         self.assertEqual(plan.params["domp0"], "math/")
-        self.assertIn("OPTIONAL MATCH (c)-[r]->(d:Concept)", plan.cypher)
+        self.assertRegex(plan.cypher,
+                         r"OPTIONAL MATCH \(c\)-\[r:[A-Z_]+(?:\|[A-Z_]+)*\]->\(d:Concept\) "
+                         r"WHERE d\.owner_id = \$owner")
 
     def test_bridge_rows_plan_lens_and_ids_modes(self):
         # F2 축 플랜 — L1(domain)과 L2 후조회(ids)는 상호 배제, 투영에 kind/domain2/role.

@@ -23,7 +23,7 @@ export class RoutedLinkObject extends THREE.Group {
   update(source: RoutePoint, target: RoutePoint, scale: number, paint: Paint, now: number): void {
     this.visible = paint.visible;
     if (!paint.visible) return;
-    const signature = `${source.x},${source.y},${source.z},${target.x},${target.y},${target.z},${scale},${paint.width}`;
+    const signature = `${source.x},${source.y},${source.z},${target.x},${target.y},${target.z},${scale}`;
     if (signature !== this.signature) {
       this.signature = signature;
       this.points = movedRoute(this.route.points,
@@ -35,24 +35,31 @@ export class RoutedLinkObject extends THREE.Group {
       this.line.geometry = new THREE.BufferGeometry().setFromPoints(this.points.map(p => new THREE.Vector3(p.x, p.y, p.z)));
       for (const cylinder of this.cylinders) { this.remove(cylinder); cylinder.geometry.dispose(); (cylinder.material as THREE.Material).dispose(); }
       this.cylinders = [];
-      if (paint.width > 0) for (let i = 1; i < this.points.length; i++) {
-        const a = this.points[i - 1], b = this.points[i];
-        const direction = new THREE.Vector3(b.x - a.x, b.y - a.y, b.z - a.z), length = direction.length();
-        if (!length) continue;
-        const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(paint.width / 2, paint.width / 2, length, 6),
-          new THREE.MeshBasicMaterial({ transparent: true, opacity: .85 }));
-        cylinder.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
-        cylinder.quaternion.setFromUnitVectors(UP, direction.normalize());
-        this.cylinders.push(cylinder); this.add(cylinder);
-      }
+    }
+    if (paint.width > 0 && !this.cylinders.length) for (let i = 1; i < this.points.length; i++) {
+      const a = this.points[i - 1], b = this.points[i];
+      const direction = new THREE.Vector3(b.x - a.x, b.y - a.y, b.z - a.z), length = direction.length();
+      if (!length) continue;
+      const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(.5, .5, length, 6),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: .85 }));
+      cylinder.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+      cylinder.quaternion.setFromUnitVectors(UP, direction.normalize());
+      const raycast = cylinder.raycast.bind(cylinder);
+      cylinder.raycast = (ray, hits) => { if (cylinder.visible) raycast(ray, hits); };
+      this.cylinders.push(cylinder); this.add(cylinder);
     }
     const detail = paint.detail ?? 1;
     const alpha = (paint.color.length === 9 ? parseInt(paint.color.slice(7), 16) / 255 : 1) * detail;
     this.line.material.color.set(paint.color.slice(0, 7));
-    this.line.visible = alpha > 0 && !paint.width;
+    const lineVisible = alpha > 0 && !paint.width;
+    if (this.line.visible && !lineVisible) this.line.geometry.dispose();
+    this.line.visible = lineVisible;
     this.line.material.opacity = .85 * alpha;
     for (const c of this.cylinders) {
-      c.visible = alpha > 0;
+      const visible = alpha > 0 && paint.width > 0;
+      if (c.visible && !visible) c.geometry.dispose();
+      c.visible = visible;
+      c.scale.set(paint.width, 1, paint.width);
       const material = c.material as THREE.MeshBasicMaterial;
       material.color.set(paint.color.slice(0, 7)); material.opacity = .85 * alpha;
     }

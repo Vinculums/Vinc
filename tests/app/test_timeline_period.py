@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 VIEW = (ROOT / "app" / "src" / "surfaces" / "view.ts").read_text(encoding="utf-8")
 PREFS = (ROOT / "app" / "src" / "view-prefs.ts").read_text(encoding="utf-8")
+CONTROLS = (ROOT / "app" / "src" / "view-controls.ts").read_text(encoding="utf-8")
 PICKER = (ROOT / "app" / "src" / "date-range.ts").read_text(encoding="utf-8")
 CSS = (ROOT / "app" / "src" / "app.css").read_text(encoding="utf-8")
 
@@ -47,7 +48,9 @@ class FilterBeforeTheCap(unittest.TestCase):
 
 class OneStateTwoDoors(unittest.TestCase):
     def test_period_leads_the_timeline_options(self):
-        self.assertIn('case "timeline": return ["period", "basis", "docs", "lineage"];', VIEW)
+        self.assertIn("const rowsFor = viewControlRows;", VIEW)
+        self.assertIn('if (p.view === "timeline") return ["period", "basis", "docs", "lineage"];',
+                      CONTROLS)
 
     def test_chip_in_the_status_bar(self):
         chrome = VIEW[VIEW.index('<div id="view-chrome">'):VIEW.index('<div id="view-metrics">')]

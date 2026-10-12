@@ -14,10 +14,12 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -25,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from api import docstore as ds          # noqa: E402
 from api import query as q              # noqa: E402
 from vinc_rag import retrieval         # noqa: E402  (search 가 부르는 이름은 여기 산다)
+from vinc_mcp import tools as mcp_tools # noqa: E402
 
 _NODE = {"id": "concept:design-hub", "title": "Design hub", "kind": "concept",
          "domain": "vinc/design", "matched_in": "title", "hit_tokens": 1,
@@ -41,9 +44,10 @@ class _Store:
     driver_name = "fake"
     scoped_chunk_search = True     # owner 필터를 적용한다고 신고(청크 팔 fail-closed 통과)
 
-    def __init__(self, rows, titles=None):
+    def __init__(self, rows, titles=None, validity=None):
         self.rows = rows
         self.titles = titles or {}
+        self.validity = validity or {}
         self.meta_calls: list[tuple[str, dict]] = []
 
     def fulltext_search(self, text, k, filters=None):
@@ -52,8 +56,11 @@ class _Store:
     def run(self, cypher, params=None):
         if "_DocMeta" in cypher:
             self.meta_calls.append((cypher, dict(params or {})))
-            return [{"id": i, "t": self.titles[i]}
-                    for i in (params or {}).get("ids", []) if i in self.titles]
+            return [{"id": i, "t": self.titles.get(i, ""),
+                     "vf": self.validity.get(i, ("", ""))[0],
+                     "vu": self.validity.get(i, ("", ""))[1]}
+                    for i in (params or {}).get("ids", [])
+                    if i in self.titles or i in self.validity]
         return []
 
     def close(self):
@@ -126,10 +133,56 @@ class DocTitleTests(unittest.TestCase):
         rows = q.search("x", store=_Store(_mk_rows(2)), top_k=5)["rows"]
         self.assertTrue(all("doc_title" not in r for r in rows))
 
-    def test_full_행에는_달지_않는다(self):
+    def test_full_행은_유효구간만_읽고_제목은_달지_않는다(self):
         store = _Store(_mk_rows(2), titles={"docA": "T"})
-        q.search("x", store=store, top_k=5, detail="full")
-        self.assertEqual(store.meta_calls, [])
+        rows = q.search("x", store=store, top_k=5, detail="full", owner="user:a")["rows"]
+        self.assertTrue(all(r["doc_id"] == "docA" and "doc_title" not in r for r in rows))
+        self.assertEqual(len(store.meta_calls), 1)
+        cypher, params = store.meta_calls[0]
+        self.assertIn("valid_until", cypher)
+        self.assertIn("owner_id = $owner", cypher)
+        self.assertEqual(params, {"ids": ["docA"], "owner": "user:a"})
+
+
+class DocValidityBoundaryTests(unittest.TestCase):
+    def _store(self):
+        rows = [{"id": f"plan.{key}#00000", "text": "probe material " + "x" * 500,
+                 "score": float(4 - i)} for i, key in enumerate("abcd")]
+        return _Store(rows, validity={"plan.a": ("", "2020-10-07")})
+
+    def test_node_and_document_filter_counts_are_added(self):
+        def retired_node(store, query, **kw):
+            kw["stats"].update(dropped_ids={"record:retired"}, dropped_not_current=1)
+            return []
+        for detail in ("summary", "full"):
+            with self.subTest(detail=detail), patch.object(
+                    retrieval, "_node_fallback_search", side_effect=retired_node):
+                res = q.search("probe", owner="user:a", store=self._store(), detail=detail)
+                self.assertEqual(res["doc_validity_filtered"], 1)
+                self.assertEqual(res["validity_filtered"], 2)
+
+    def test_shrunk_filtered_page_continues_at_the_original_pool_offset(self):
+        for detail in ("summary", "full"):
+            with self.subTest(detail=detail):
+                store = self._store()
+                first = q.search("probe", owner="user:a", store=store, top_k=3, detail=detail)
+                self.assertEqual([r["doc_id"] for r in first["rows"]], ["plan.b", "plan.c"])
+                self.assertEqual(first["page"]["row_offsets"],
+                                 {"plan.b#00000": 1, "plan.c#00000": 2})
+                slim = mcp_tools._shrink_search_result(
+                    first, len(json.dumps(first, ensure_ascii=False)) - 1)
+                self.assertIsNotNone(slim)
+                self.assertEqual([r["doc_id"] for r in slim["rows"]], ["plan.b"])
+                cursor = q.cursor_decode(slim["next_cursor"])
+                self.assertEqual((cursor["off"], cursor["eid"]), (2, "plan.c#00000"))
+                next_page = q.search("probe", owner="user:a", store=store, top_k=3,
+                                     detail=detail, cursor=slim["next_cursor"])
+                self.assertTrue(next_page["executed"])
+                self.assertNotIn("error", next_page)
+                self.assertEqual([r["doc_id"] for r in next_page["rows"]], ["plan.c", "plan.d"])
+                self.assertFalse(next_page["has_more"])
+                self.assertEqual(next_page["total_count"], 4)
+                self.assertTrue(all("doc_id" not in r for r in store.rows))
 
 
 class DocTitleEndToEnd(unittest.TestCase):

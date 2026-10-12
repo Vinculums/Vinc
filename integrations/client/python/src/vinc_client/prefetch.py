@@ -116,8 +116,13 @@ def citation_policy(contract: dict[str, Any], specs: list[tuple[str, dict]]) -> 
             + SOURCES_LINE)
 
 
-def render_prefetch(contract: dict[str, Any], task: str, specs: list[tuple[str, dict]],
-                    brief: dict, search: dict, *, max_chars: int) -> str:
+def required_context(contract: dict[str, Any], specs: list[tuple[str, dict]], *,
+                     max_chars: int) -> tuple[str, str, int]:
+    """Assemble and budget the full required context before using task evidence.
+
+    Pure formatting of this call's verified responses; it performs no reads or caching.
+    Both client modes and the renderer use the same citation-inclusive size.
+    """
     parts = [role_context(contract)]
     for doc_id, result in specs:
         parts.append(required_reading(doc_id, result))
@@ -125,6 +130,19 @@ def render_prefetch(contract: dict[str, Any], task: str, specs: list[tuple[str, 
     footer = citation_policy(contract, specs)
     required_size = len(joined) + 2 + len(footer)
     check_budget(required_size, max_chars)
+    return joined, footer, required_size
+
+
+def render_prefetch(contract: dict[str, Any], task: str, specs: list[tuple[str, dict]],
+                    brief: dict, search: dict, *, max_chars: int) -> str:
+    required = required_context(contract, specs, max_chars=max_chars)
+    return _with_task_evidence(required, brief, search, max_chars=max_chars)
+
+
+def _with_task_evidence(required: tuple[str, str, int], brief: dict, search: dict, *,
+                        max_chars: int) -> str:
+    # 이 호출에서 이미 검증·예산 확인한 문자열을 재사용한다. 호출 사이에는 보관하지 않는다.
+    joined, footer, required_size = required
     block = format_answer(brief, search,
                           max_chars=min(TASK_EVIDENCE_MAX_CHARS, max_chars - required_size - 2))
     if block:

@@ -181,7 +181,7 @@ def test_required_failure_discards_optional_results(async_mode, mode, monkeypatc
     """answered·optional_fails: 선택 읽기가 끝난 뒤 두 번째 문서 404.
     blocked: 선택 읽기가 끝내 응답하지 않는 동안 두 번째 문서가 바로 404."""
     rendered = []
-    monkeypatch.setattr(client_module, "render_prefetch",
+    monkeypatch.setattr(client_module, "_with_task_evidence",
                         lambda *a, **k: rendered.append(a) or "rendered")
     started, answered = [], []
 
