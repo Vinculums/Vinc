@@ -20,7 +20,14 @@ import type { LayoutGraph } from "./view-layout";
 /** `marker` 는 서버가 읽기 전에 잡은 변경 표식이다(요청에 `marker=1` 을 실었을 때만 온다). */
 export type RawGraph = { executed: boolean; nodes?: GraphNode[]; edges?: GraphEdge[]; topicEdges?: GraphEdge[];
   marker?: string };
-export type FetchedGraph = RawGraph & { stale?: boolean };
+/** `layout`: 시간순 가지를 요청했는데 그 배치가 아직 없을 때 무엇을 그렸는가.
+ *  - `pending`: 배치가 오래 걸려 서버의 중심에서 좌표로 먼저 그렸다. 끝나면 `layoutReady` 가 불린다.
+ *  - `failed`: 배치가 실패했거나 진척이 멈췄다. 중심에서 좌표를 그대로 쓴다.
+ *  근거: [[vinc.plan.incremental-derived-view-results-2026-10-12]] §4 의 1 */
+export type FetchedGraph = RawGraph & { stale?: boolean; layout?: "pending" | "failed" };
+
+/** 시간순 가지 배치를 이만큼 기다린 뒤에는 중심에서 좌표로 먼저 그린다. */
+export const LAYOUT_PATIENCE_MS = 15_000;
 
 export type GraphLoaderContext = {
   mountScope: ReturnType<typeof viewScope>;
@@ -40,6 +47,12 @@ export type GraphLoaderContext = {
   showPreview(graph: GraphRead): () => void;
   /** 되돌린 카메라를 마운트에 넘긴다(다음 마운트에만 쓰인다). */
   restoreCameras(camera3: unknown, camera2: unknown): void;
+  /** 먼저 그려 둔 중심에서 화면 뒤에서 시간순 가지 배치가 끝났다(같은 화면일 때만 불린다). */
+  layoutReady(): void;
+  /** 그 배치가 실패했다(같은 화면일 때만 불린다). */
+  layoutFailed(): void;
+  /** 시험용으로 기다리는 시간을 바꾼다. 없으면 `LAYOUT_PATIENCE_MS`. */
+  patienceMs?: number;
 };
 
 export type RetainedRef = { session: string; revision: string; key: string; prefs: string };
@@ -132,10 +145,10 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
       rawGraph = res;
       rawGraphScope = scopeKey;
       if (!res) return { executed: false };
-      const remember = (layout?: { key: string; graph: LayoutGraph }) => {
+      const remember = (layout?: { key: string; graph: LayoutGraph }): Promise<void> | undefined => {
         if (!canRetain || (cached && !layout) || !res?.executed) return;
         // 두 표식이 일치할 때만 보관한다. 저장 검증은 첫 렌더를 기다리게 하지 않는다.
-        void access.then(async before => {
+        return access.then(async before => {
           if (!before || ctx.accessJob.signal.aborted || generation !== viewSessionCache.generation) return;
           // 바로 시작한 읽기는 응답의 표식으로, 확인 뒤에 시작한 읽기는 그 확인의 표식으로 라벨한다.
           // 서버가 표식을 안 실어 주면(옛 허브) 라벨이 없으므로 보관하지 않는다.
@@ -163,17 +176,35 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
       }
       layoutJob?.abort();
       const job = layoutJob = new AbortController();
-      try {
-        const graph = await layoutInWorker(res.nodes || [], res.edges || [], p.timeBasis, job.signal,
-          "temporal", undefined, aspectRatio);
-        if (!live()) return { executed: false, stale: true };
-        layoutCache = { raw: res, basis: p.timeBasis, layout: p.layout, aspectRatio, graph };
-        remember({ key: layoutKey, graph });
-        return { executed: true, ...graph };
-      } catch (error) {
-        if (job.signal.aborted) return { executed: false, stale: true };
-        throw error;
-      } finally { if (layoutJob === job) layoutJob = undefined; }
+      const held = res;
+      const keep = (graph: LayoutGraph) => {
+        layoutCache = { raw: held, basis: p.timeBasis, layout: p.layout, aspectRatio, graph };
+        return remember({ key: layoutKey, graph });
+      };
+      // 결과가 오기 전에 화면을 넘겨줄 수 있도록 배치 작업과 기다림을 나눈다. 큰 그래프에서
+      // 배치가 기다림보다 길어도 작업은 계속 돌고, 끝나면 같은 화면에 갈아 끼운다.
+      let outcome: { graph?: LayoutGraph; error?: unknown } | undefined;
+      const work = layoutInWorker(held.nodes || [], held.edges || [], p.timeBasis, job.signal,
+        "temporal", undefined, aspectRatio)
+        .then(graph => { outcome = { graph }; return graph; }, error => { outcome = { error }; throw error; })
+        .finally(() => { if (layoutJob === job) layoutJob = undefined; });
+      let patience: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([work.catch(() => undefined),
+        new Promise<void>(done => { patience = setTimeout(done, ctx.patienceMs ?? LAYOUT_PATIENCE_MS); })]);
+      clearTimeout(patience);
+      if (job.signal.aborted || !live()) return { executed: false, stale: true };
+      if (outcome?.graph) { keep(outcome.graph); return { executed: true, ...outcome.graph }; }
+      // 실패하면 오류 상자가 아니라 서버가 이미 준 중심에서 좌표로 그린다.
+      if (outcome) return { ...held, executed: true, layout: "failed" };
+      void work.then(async graph => {
+        if (job.signal.aborted || !live()) return;
+        // 보관이 끝난 뒤에 갈아 끼운다. 먼저 다시 그리면 재사용 검증이 보관 전 상태를 보고
+        // 그래프를 다시 읽어 배치를 처음부터 시작한다.
+        await keep(graph);
+        if (job.signal.aborted || !live()) return;
+        ctx.layoutReady();
+      }, () => { if (!job.signal.aborted && live()) ctx.layoutFailed(); });
+      return { ...held, executed: true, layout: "pending" };
     },
   };
   return loader;
