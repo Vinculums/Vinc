@@ -50,7 +50,9 @@ export class ViewSessionCache {
     for (const [key, e] of entries) {
       if (e.revision !== revision || key.length > 16_384 || this.entries.size >= this.maxEntries) continue;
       if (this.bytes + e.size > this.maxBytes) continue;
-      this.entries.set(key, { ...e, expires }); n++;
+      // 되돌린 항목의 수명은 메모리 항목과 같이 짧게 둔다. 신선도는 표식이 정하지만 표식이
+      // 세지 않는 변화가 있으므로 오래 들고 있을 이유가 없다.
+      this.entries.set(key, { ...e, expires: Math.min(expires, this.clock() + this.ttl) }); n++;
     }
     return n;
   }
@@ -123,6 +125,9 @@ if (typeof window !== "undefined") {
     window.addEventListener(event, () => viewSessionCache.clear());
   window.addEventListener("vinc:signin-required", () => viewSessionCache.purge());
   window.addEventListener("storage", event => {
-    if (!event.key || /^vinc\.(owner|team|mode|sidecar\.|account)/.test(event.key)) viewSessionCache.purge();
+    // 스페이스 전환은 다른 탭에서도 일어난다: 그 탭의 보관본을 지우지 않는다(메모리만 비운다).
+    if (event.key === "vinc.team") viewSessionCache.clear();
+    // 로그아웃은 `vinc.site.signedin` 으로 알려진다(계정 페이지가 쓴다).
+    else if (!event.key || /^vinc\.(owner|mode|sidecar\.|account|site\.signedin)/.test(event.key)) viewSessionCache.purge();
   });
 }

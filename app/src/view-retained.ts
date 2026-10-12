@@ -27,6 +27,8 @@ export interface RetainedBackend {
   delete(id: string): Promise<void>;
   all(): Promise<RetainedRecord[]>;
   clear(): Promise<void>;
+  /** 이 보관소가 이미 만들어져 있는가. 없으면 비우려고 새로 만들지 않는다. */
+  exists(): Promise<boolean>;
 }
 
 const DB = "vinc-view-retained", STORE = "records";
@@ -56,6 +58,11 @@ export function idbBackend(factory: IDBFactory | undefined = typeof indexedDB ==
     delete: async id => { await run("readwrite", s => s.delete(id)); },
     all: () => run("readonly", s => s.getAll() as IDBRequest<RetainedRecord[]>),
     clear: async () => { await run("readwrite", s => s.clear()); },
+    exists: async () => {
+      const list = (factory as IDBFactory & { databases?: () => Promise<{ name?: string }[]> }).databases;
+      if (typeof list !== "function") return true;
+      try { return (await list.call(factory)).some(d => d.name === DB); } catch { return true; }
+    },
   };
 }
 
@@ -68,20 +75,32 @@ export async function sessionId(session: string): Promise<string> {
 
 /** "보관본이 있을 수 있다"는 시각 하나. 데이터가 아니라 만료 시각이라 localStorage 에 둬도
  * 되고, 화면을 그리기 전에 기록 전체를 읽지 않고도 기다릴지 정하게 해 준다. */
-export interface RetainedMark { get(): number; set(until: number): void; clear(): void }
-const MARK_KEY = "vinc.view.retained.until";
+export interface RetainedMark {
+  get(): number; set(until: number): void; clear(): void;
+  /** 마지막으로 보관본을 버린 시각. 다른 탭의 저장이 그 뒤에 끝나면 그 기록을 되지운다. */
+  purgedAt(): number; markPurged(at: number): void;
+}
+const MARK_KEY = "vinc.view.retained.until", PURGED_KEY = "vinc.view.retained.purged";
 export const storageMark: RetainedMark = {
   get() { try { return Number(localStorage.getItem(MARK_KEY)) || 0; } catch { return 0; } },
   set(until) { try { localStorage.setItem(MARK_KEY, String(until)); } catch { /* 없어도 동작한다 */ } },
   clear() { try { localStorage.removeItem(MARK_KEY); } catch { /* 없어도 동작한다 */ } },
+  purgedAt() { try { return Number(localStorage.getItem(PURGED_KEY)) || 0; } catch { return 0; } },
+  markPurged(at) { try { localStorage.setItem(PURGED_KEY, String(at)); } catch { /* 없어도 동작한다 */ } },
 };
 
-/** 세션 문자열(`[스코프, 신원]`)의 신원 지문. 다른 사람이 같은 브라우저로 들어오면 그 사람의
- * 것이 아닌 기록을 알아보고 지우는 데 쓴다. 읽을 수 없으면 빈 문자열이고 그 기록은 아무에게도 맞지 않는다. */
+/** 세션 문자열(`[스코프, 신원]`)의 **로그인** 지문. 스코프 키 안의 CSRF 값은 로그인마다 새로
+ * 뽑히는 비밀이라, 다른 사람이 같은 브라우저로 들어오거나 같은 사람이 다시 로그인하면 값이
+ * 달라져 이전 기록이 쓸모없어진다. 이메일 같은 추측 가능한 값으로 지문을 만들지 않는다
+ * (프로필을 읽을 수 있는 사람이 추측을 오프라인으로 확인할 수 있다). CSRF 값이 없으면 신원
+ * 문자열로 물러난다(웹이 아닌 환경과 테스트). 읽을 수 없으면 빈 문자열이다. */
 export async function identityId(session: string, hash: (s: string) => Promise<string> = sessionId): Promise<string> {
   try {
-    const identity = JSON.parse(session)?.[1];
-    return typeof identity === "string" && identity ? await hash(identity) : "";
+    const [scope, identity] = JSON.parse(session) as [unknown, unknown];
+    let secret: unknown;
+    try { secret = JSON.parse(String(scope))?.[6]; } catch { secret = undefined; }
+    const basis = typeof secret === "string" && secret ? secret : identity;
+    return typeof basis === "string" && basis ? await hash("login:" + basis) : "";
   } catch { return ""; }
 }
 
@@ -113,7 +132,8 @@ export class RetainedViews {
       if (!who) return false;
       const bytes = snapshot.entries.reduce((n, [, e]) => n + e.size, 0);
       if (bytes > this.maxBytes) return false;
-      const expires = this.clock() + this.ttl;
+      const started = this.clock();
+      const expires = started + this.ttl;
       const others = (await this.live()).filter(r => r.id !== id).sort((a, b) => b.expires - a.expires);
       let kept = bytes;
       const keep: RetainedRecord[] = [];
@@ -123,8 +143,11 @@ export class RetainedViews {
         }
         keep.push(r); kept += r.bytes;
       }
-      await this.backend.put({ id, who, revision: snapshot.revision, expires, bytes, entries: snapshot.entries });
+      // 표식을 먼저 둔다: 기록만 쓰이고 표식이 없으면 아무도 그 기록을 찾지 못한다.
       this.mark.set(Math.max(expires, ...keep.map(r => r.expires)));
+      await this.backend.put({ id, who, revision: snapshot.revision, expires, bytes, entries: snapshot.entries });
+      // 저장 도중 다른 탭이 보관본을 버렸다면 방금 쓴 기록도 버린다.
+      if (this.mark.purgedAt() >= started) { await this.backend.delete(id); return false; }
       return true;
     } catch { return false; }
   }
@@ -136,7 +159,7 @@ export class RetainedViews {
       const id = await this.hash(session);
       const who = await identityId(session, this.hash);
       // 이 신원의 것이 아닌 기록은 쓸 일이 없다. 같은 브라우저를 다른 사람이 쓰면 지운다.
-      for (const other of await this.backend.all()) {
+      for (const other of await this.live()) {
         if (other.who !== who) await this.backend.delete(other.id);
       }
       const record = await this.backend.get(id);
@@ -148,13 +171,26 @@ export class RetainedViews {
   }
 
   async clear(): Promise<void> {
+    this.mark.markPurged(this.clock());
     this.mark.clear();
     try { await this.backend?.clear(); } catch { /* 보관은 최선 노력이다 */ }
+  }
+
+  /** 앱이 열릴 때마다 부른다. 보관 시한이 지났거나 표식이 없으면 남은 기록은 아무도 쓰지 않는
+   *  것이므로(탭을 닫았거나 표식이 어긋난 경우) 통째로 비운다. 기록을 읽지 않는다. */
+  async sweep(): Promise<void> {
+    if (!this.backend || this.mark.get() > this.clock()) return;
+    try {
+      if (!(await this.backend.exists())) return;
+      await this.backend.clear();
+    } catch { /* 보관은 최선 노력이다 */ }
+    this.mark.clear();
   }
 }
 
 export const retainedViews = new RetainedViews(idbBackend());
 viewSessionCache.onPurge(() => { void retainedViews.clear(); });
+void retainedViews.sweep();
 
 /** 스페이스를 떠나기 직전에 부른다. 오래 걸리면 기다리지 않고 넘어간다. */
 export async function retainBeforeSwitch(limitMs = 2000): Promise<boolean> {

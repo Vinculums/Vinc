@@ -1121,6 +1121,7 @@ export async function ensureWebAuth(): Promise<boolean> {
   // 아예 없으면 로그인한 적 없음 → 서버 확인 없이 즉시 /login (never-logged-in = 흔한
   // 경우, 완전 즉시 리다이렉트). 쿠키가 있으면 만료됐을 수 있어 /api/me 로 검증한다.
   if (!/(?:^|;\s*)__Host-csrf=/.test(document.cookie)) {
+    viewSessionCache.purge();       // 로그아웃된 브라우저에 보관본을 남기지 않는다
     location.assign("/login");
     return false;
   }
@@ -1128,6 +1129,7 @@ export async function ensureWebAuth(): Promise<boolean> {
     const res = await fetch(new URL("/api/me", location.origin), { credentials: "include" });
     if (res.ok) return true;
   } catch { /* 네트워크 실패 → 아래 로그인으로(안전측) */ }
+  viewSessionCache.purge();
   location.assign("/login");
   return false;
 }

@@ -335,6 +335,7 @@ export async function renderSettings(
         pick.addEventListener("change", async () => {
           if (pick.selectedOptions[0]?.disabled) return;
           const next = pick.value;
+          pick.disabled = true;   // 보관하는 동안 두 번째 선택이 끼어 다른 스페이스로 열리지 않게
           // 떠나는 스페이스의 완료 항목을 잠깐 보관한다: 돌아왔을 때 다시 읽지 않도록.
           // 최선 노력이고 오래 걸리면 기다리지 않는다. 쓰는 때는 이 한 번뿐이다.
           await retainBeforeSwitch().catch(() => false);

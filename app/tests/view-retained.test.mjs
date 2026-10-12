@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import {test} from 'node:test';
+import {test,beforeEach} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import ts from 'typescript';
 const js=async name=>ts.transpileModule(await readFile(new URL(`../src/${name}`,import.meta.url),'utf8'),
   {compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
 const url=code=>`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 globalThis.localStorage={_m:new Map(),getItem(k){return this._m.get(k)??null},setItem(k,v){this._m.set(k,String(v))},removeItem(k){this._m.delete(k)}};
+beforeEach(()=>globalThis.localStorage._m.clear());
 const cacheUrl=url(await js('view-session-cache.ts'));
 const retainedJs=(await js('view-retained.ts')).replace('"./view-session-cache"',JSON.stringify(cacheUrl));
 const {RetainedViews,storageMark,TTL_MS}=await import(url(retainedJs));
@@ -13,7 +14,7 @@ const {ViewSessionCache}=await import(cacheUrl);
 
 const memory=()=>{const m=new Map();return {m,
   get:async id=>m.get(id),put:async r=>{m.set(r.id,structuredClone(r));},delete:async id=>{m.delete(id);},
-  all:async()=>[...m.values()].map(r=>structuredClone(r)),clear:async()=>{m.clear();}};};
+  all:async()=>[...m.values()].map(r=>structuredClone(r)),clear:async()=>{m.clear();},exists:async()=>m.size>0};};
 const fakeHash=async s=>`h:${s}`;
 const graph={executed:true,nodes:[{id:'concept:a',x:1,y:1}],edges:[]};
 const sess=(scope,who='a@x')=>JSON.stringify([scope,who]);
@@ -100,4 +101,47 @@ test('another identity on the same browser deletes records that are not theirs',
 test('a session without a readable identity is never stored',async()=>{
   const views=make(memory());
   assert.equal(await views.save(filled('not-json').snapshot()),false);
+});
+
+test('the restored entry lives no longer than a memory entry',async()=>{
+  const views=make(memory());
+  await views.save(filled().snapshot());
+  const taken=await views.take(sess('s1'),'r1');
+  const fresh=new ViewSessionCache(1<<20,4,300000,()=>5000);
+  fresh.restore(sess('s1'),'r1',taken.entries,5000+TTL_MS);
+  assert.equal(fresh.snapshot().entries[0][1].expires,5000+300000);
+});
+
+test('another login of the same person gets none of the earlier records',async()=>{
+  const backend=memory(),views=make(backend);
+  const login=csrf=>JSON.stringify([JSON.stringify(['u','t','b','account',true,'tok',csrf]),'a@x']);
+  await views.save(filled(login('csrf-1')).snapshot());
+  assert.equal(await views.take(login('csrf-2'),'r1'),null);
+  assert.equal(backend.m.size,0,'a record of the earlier login is removed, not left at rest');
+});
+
+test('expired records of the same identity are removed when another one is taken',async()=>{
+  const backend=memory();let now=1000;const views=make(backend,()=>now);
+  await views.save(filled(sess('old')).snapshot());
+  now+=TTL_MS+1;
+  await views.save(filled(sess('new')).snapshot());
+  assert.equal(backend.m.size,1,'only the live record is kept');
+});
+
+test('the boot sweep empties the store once the marker has expired and leaves a live one alone',async()=>{
+  const backend=memory();let now=1000;const views=make(backend,()=>now);
+  await views.save(filled().snapshot());
+  await views.sweep();
+  assert.equal(backend.m.size,1,'a live marker keeps its records');
+  now+=TTL_MS+1;
+  await views.sweep();
+  assert.equal(backend.m.size,0,'records past the marker are removed');
+});
+
+test('a purge that lands while a save is writing removes that record',async()=>{
+  const backend=memory();let now=1000;
+  const racing={...backend,put:async r=>{await backend.put(r);now+=1;storageMark.markPurged(now);}};
+  const views=make(racing,()=>now);
+  assert.equal(await views.save(filled().snapshot()),false);
+  assert.equal(backend.m.size,0);
 });
