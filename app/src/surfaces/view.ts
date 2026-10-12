@@ -2163,7 +2163,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     const options = { ...(domains.length ? { domains } : {}), layout: serverLayout,
       ...(cone !== 1 ? { cone } : {}) };
     try {
-      const initial = WEB && !cached && !g3 && !g2 && !planar
+      const initial = !cached && !g3 && !g2 && !planar
         && ["2d", "3d"].includes(p.view) && p.when === 1 && p.unlinked === "show" && !p.edgeOff.length;
       if (initial) {
         const job = graphReadJob = new AbortController();
