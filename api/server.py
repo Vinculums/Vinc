@@ -621,7 +621,7 @@ class VincApp:
         try:
             scope = getattr(r, "request_read_scope", None)
             with (scope() if callable(scope) else nullcontext()), request_timing.measure("query"):
-                if getattr(self.store, "_topic_conversion_guard", False):
+                if getattr(getattr(self, "store", None), "_topic_conversion_guard", False):
                     from . import topic_conversion as conversion
                     conversion.check_read(r, conversion.request_owner.get())
                 return 200, fn(r)

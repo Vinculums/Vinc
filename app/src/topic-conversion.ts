@@ -4,6 +4,13 @@ import { esc } from "./components";
 import { TopicConversion, type Checkpoint } from "./topic-conversion-state";
 import { retainBeforeSwitch } from "./view-retained";
 
+const namedBlockers = new Set([
+  "boundary_relation", "bridge_crosses_topic", "external_reference", "incoming_reference",
+  "external_attachments_not_supported", "search_index_repair_required",
+  "entity_topic_membership_not_supported", "owner_vocabulary_sidecar_not_supported",
+  "unclassified_tombstone_topic_history", "document_integrity_failed", "target_not_empty",
+]);
+
 export function mountTopicConversion(el: HTMLElement): () => void {
   let alive = true;
   const U = COPY.ui.settingsUi;
@@ -39,9 +46,9 @@ export function mountTopicConversion(el: HTMLElement): () => void {
         <input id="conversion-name" value="${esc(flow.name)}" ${reserved || flow.busy ? "disabled" : ""} maxlength="120">
         <p class="hint">${esc(U.conversionLimits)}</p>
         ${flow.check ? `<p>${esc(U.conversionCounts(flow.check.documents, Object.entries(flow.check.counts).filter(([kind]) => ["Concept","Record","Decision","Episode","LearnerPattern","Bridge"].includes(kind)).reduce((n,[,count]) => n+count,0)))}</p>
-          ${flow.check.blockers.length ? `<p role="alert">${esc(U.conversionBlocked)}: ${flow.check.blockers.map(code => esc(U.conversionBlocker(code))).join("; ")}</p>` : ""}` : ""}
+          ${flow.check.blockers.length ? `<p role="alert">${esc(U.conversionBlocked)}: ${flow.check.blockers.map(code => esc(U.conversionBlocker(namedBlockers.has(code) ? code : ""))).join("; ")}</p>` : ""}` : ""}
         ${reserved ? `<p role="status" aria-live="polite">${esc(flow.busy ? U.conversionWorking : done ? U.conversionDone : state === "graph_committed" ? U.conversionVerifying : state === "committing" ? U.conversionPending : U.conversionPrepared)}</p>` : ""}
-        ${flow.error ? `<p role="alert">${esc(U.conversionError(flow.error))}</p>` : ""}
+        ${flow.error ? `<p role="alert">${reserved ? esc(U.conversionFailed) + " " : ""}${esc(U.conversionError(flow.error))}</p>` : ""}
         ${!reserved ? `<p><button class="btn" id="conversion-check" ${flow.busy || !flow.topic.trim() ? "disabled" : ""}>${esc(U.conversionCheck)}</button></p>
           ${flow.check?.ready ? `<p><label><input id="conversion-consent" type="checkbox"> ${esc(U.conversionConsent)}</label></p>
             <button class="btn" id="conversion-prepare" ${flow.busy || !flow.name.trim() ? "disabled" : ""}>${esc(U.conversionPrepare)}</button>` : ""}` : done ?

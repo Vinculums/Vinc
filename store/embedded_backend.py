@@ -1060,7 +1060,7 @@ class EmbeddedBackend:
         self.driver_name = driver_name
         self._cfg = cfg
         self._topic_conversion_guard = os.environ.get("VINC_TOPIC_CONVERSION") == "1"
-        if not self._topic_conversion_guard:
+        if not self._topic_conversion_guard and db is not None:
             try:
                 self._topic_conversion_guard = bool(_exec_to_dicts(conn,
                     "MATCH (m:_SyncMeta) WHERE m.key STARTS WITH 'topic-conversion:' RETURN m.key AS key LIMIT 1",
