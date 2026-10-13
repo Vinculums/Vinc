@@ -166,6 +166,17 @@ def test_generic_mcp_write_cannot_bypass_revisions(app, name):
     assert app.bridge.calls == []
 
 
+def test_static_bridge_cannot_override_owner_to_write_a_community(app):
+    with pytest.raises(PermissionError, match="account revisions"):
+        tools.call("vinc_ingest", {"owner": A, "nodes": []}, app.bridge, allow_target=False)
+    assert app.bridge.calls == []
+
+
+def test_generic_mcp_reads_still_stamp_the_community_owner(app):
+    tools.call("vinc_search", {"query": "same", "owner": B}, app.bridge, forced_owner=A, allow_target=False)
+    assert app.bridge.calls[0][2]["owner"] == A
+
+
 def test_two_community_owners_keep_identical_ids_and_private_owner_separate(tmp_path, monkeypatch):
     from api import docstore, fragment, query, server
     from store.backend import open_store

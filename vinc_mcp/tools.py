@@ -2213,7 +2213,7 @@ def call(name: str, args: dict | None, bridge: Bridge,
     if tool is None:
         raise KeyError(f"unknown tool: {name}")
     # 커뮤니티 일반 쓰기는 수정 이력 경로를 우회할 수 없다. 계정 전용 도구가 따로 받는다.
-    effective_owner = forced_owner or getattr(bridge, "owner", None)
+    effective_owner = forced_owner or (args or {}).get("owner") or getattr(bridge, "owner", None)
     if effective_owner and effective_owner.startswith("community:") and tool_tier(name) != "viewer":
         raise PermissionError("community mutations must go through account revisions")
     args = dict(args or {})                     # 복사 — 호출자 dict 불변, target 제거
