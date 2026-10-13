@@ -31,6 +31,7 @@ export type MemoryCorpusSearchResult = {
   sourceType?: string;
   sourcePath?: string;
   updatedAt?: string;
+  temporal?: Record<string, unknown>;
 };
 
 export type MemoryCorpusGetResult = {
@@ -46,6 +47,7 @@ export type MemoryCorpusGetResult = {
   sourceType?: string;
   sourcePath?: string;
   updatedAt?: string;
+  temporal?: Record<string, unknown>;
 };
 
 export type MemoryCorpusSupplement = {
@@ -55,6 +57,10 @@ export type MemoryCorpusSupplement = {
     agentId?: string;
     agentSessionKey?: string;
     sandboxed?: boolean;
+    mode?: "general" | "current" | "historical";
+    historical?: boolean;
+    as_of?: string;
+    known_at?: string;
   }): Promise<MemoryCorpusSearchResult[]>;
   get(params: {
     lookup: string;
@@ -255,14 +261,21 @@ export function createVincCorpusSupplement(options: VincSupplementOptions): Memo
     async search(input) {
       try {
         const limit = Math.min(input.maxResults ?? defaultLimit, HUB_SEARCH_LIMIT_MAX);
-        const r = (await callTool(o, "vinc_search", { query: input.query, limit })) as {
-          rows?: Array<{ id?: string; doc_id?: string; score?: number; snippet?: string }>;
+        const temporalArgs = Object.fromEntries(
+          ["mode", "historical", "as_of", "known_at"].flatMap((key) => {
+            const value = input[key as keyof typeof input];
+            return value === undefined ? [] : [[key, value]];
+          }),
+        );
+        const r = (await callTool(o, "vinc_search", { query: input.query, limit, ...temporalArgs })) as {
+          rows?: Array<{ id?: string; doc_id?: string; score?: number; snippet?: string; temporal?: Record<string, unknown> }>;
           node_hits?: Array<{
             id?: string;
             title?: string;
             kind?: string;
             domain?: string;
             rrf_score?: number;
+            temporal?: Record<string, unknown>;
           }>;
         };
         const out: MemoryCorpusSearchResult[] = [];
@@ -278,6 +291,7 @@ export function createVincCorpusSupplement(options: VincSupplementOptions): Memo
             citation: row.doc_id,
             provenanceLabel: "vinc:doc",
             sourceType: "vinc-doc",
+            ...(row.temporal ? { temporal: row.temporal } : {}),
           });
         }
         for (const hit of r.node_hits ?? []) {
@@ -294,6 +308,7 @@ export function createVincCorpusSupplement(options: VincSupplementOptions): Memo
             citation: hit.id,
             provenanceLabel: "vinc:node",
             sourceType: "vinc-node",
+            ...(hit.temporal ? { temporal: hit.temporal } : {}),
           });
         }
         return out.slice(0, limit);
@@ -312,6 +327,7 @@ export function createVincCorpusSupplement(options: VincSupplementOptions): Memo
             text?: string;
             title?: string;
             updated_at?: string;
+            temporal?: Record<string, unknown>;
           };
           if (typeof r.text !== "string") return null;
           return {
@@ -324,6 +340,7 @@ export function createVincCorpusSupplement(options: VincSupplementOptions): Memo
             provenanceLabel: "vinc:doc",
             sourceType: "vinc-doc",
             ...sliceLines(r.text, input.fromLine, input.lineCount),
+            ...(r.temporal ? { temporal: r.temporal } : {}),
           };
         }
         const seedId = node as string;

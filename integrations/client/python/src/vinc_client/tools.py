@@ -5,7 +5,7 @@ the same tool schema whichever framework runs it.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -26,13 +26,27 @@ def _no_titles(schema: dict[str, Any]) -> None:
         prop.pop("title", None)
 
 
-class BriefArgs(BaseModel):
+class TemporalArgs(BaseModel):
     model_config = ConfigDict(json_schema_extra=_no_titles)
+    mode: Literal["general", "current", "historical"] | None = Field(
+        default=None, description="General preserves the default; current checks current validity; historical includes expired evidence.")
+    historical: bool | None = Field(default=None, description="Include expired evidence (legacy option).")
+    as_of: str | None = Field(default=None, description="ISO date or period overlap; incompatible with current mode.")
+    known_at: str | None = Field(default=None, description="Initial creation cutoff, not restoration of an old revision.")
+
+
+def temporal_options(mode=None, historical=None, as_of=None, known_at=None) -> dict[str, Any]:
+    """Forward only supplied options, preserving existing client call shapes."""
+    return {key: value for key, value in zip(
+        ("mode", "historical", "as_of", "known_at"), (mode, historical, as_of, known_at))
+        if value is not None}
+
+
+class BriefArgs(TemporalArgs):
     query: str = Field(description="A question, or an exact node id such as decision:some-slug.")
 
 
-class SearchArgs(BaseModel):
-    model_config = ConfigDict(json_schema_extra=_no_titles)
+class SearchArgs(TemporalArgs):
     query: str = Field(description="What to look for.")
     limit: int = Field(default=SEARCH_LIMIT_DEFAULT, ge=1, le=20,
                        description="How many matches of each kind.")

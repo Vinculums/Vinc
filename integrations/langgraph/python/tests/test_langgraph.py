@@ -238,3 +238,19 @@ def test_example_graph_writes_only_after_approval(approved):
     else:
         assert writes.seen == [] and done["written"] is None
     assert reads.paths() == ["/v1/brief"]
+
+
+@pytest.mark.parametrize("name,path", [("vinc_brief", "/v1/brief"), ("vinc_search", "/v1/search")])
+@pytest.mark.parametrize("async_mode", [False, True])
+def test_tools_forward_optional_temporal_scope(name, path, async_mode):
+    routes = Routes({("POST", path): {"status": "none", "rows": [], "node_hits": []}})
+    options = {"query": "synthetic", "mode": "historical", "historical": True,
+               "as_of": "2020", "known_at": "2021"}
+    if async_mode:
+        tool = {t.name: t for t in create_vinc_tools(async_client=async_client(routes))}[name]
+        asyncio.run(tool.ainvoke(options))
+    else:
+        tool = {t.name: t for t in create_vinc_tools(client=sync_client(routes))}[name]
+        tool.invoke(options)
+    body = json.loads(routes.seen[0].content)
+    assert all(body[k] == v for k, v in options.items())

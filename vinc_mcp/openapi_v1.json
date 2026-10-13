@@ -410,6 +410,15 @@
                   "known_at": {
                     "type": "string",
                     "description": "Read what the graph had RECORDED by a period (graph time, not valid time): YYYY, YYYY-MM or YYYY-MM-DD. Hides nodes stored after it, counted in `known_at_filtered`. A node with no stored creation time (every Episode, and nodes from before birth stamps) is kept and counted in `known_at_unknown`, never guessed. Omit for now."
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "general",
+                      "current",
+                      "historical"
+                    ],
+                    "description": "Optional explicit search mode. Omit or general preserves legacy filters and relevance. Current hides future and expired claims, keeps unknown dates, reports comparable claim conflicts and evidenced supersession. Current conflicts with historical=true or as_of. Historical includes past claims; as_of still selects overlapping intervals. Dates are metadata, never embedding text. known_at is a creation cutoff, not revision restoration."
                   }
                 },
                 "required": [
@@ -488,6 +497,15 @@
                   "known_at": {
                     "type": "string",
                     "description": "Read what the graph had RECORDED by a period (graph time, not valid time): YYYY, YYYY-MM or YYYY-MM-DD. Hides nodes stored after it, counted in `known_at_filtered`. A node with no stored creation time (every Episode, and nodes from before birth stamps) is kept and counted in `known_at_unknown`, never guessed. Omit for now."
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "general",
+                      "current",
+                      "historical"
+                    ],
+                    "description": "Explicit temporal search mode, with the same conflicts and filters as vinc_search. Current mode abstains on conflicting or unknown current claim evidence."
                   }
                 },
                 "required": [

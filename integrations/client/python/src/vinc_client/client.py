@@ -188,9 +188,10 @@ class _Base:
         return _Call("GET", "/v1/me", space=space)
 
     @staticmethod
-    def _brief(query, max_excerpts, historical, space) -> _Call:
+    def _brief(query, max_excerpts, historical, space, mode=None, as_of=None, known_at=None) -> _Call:
         return _Call("POST", "/v1/brief", body=_drop_none(
-            {"query": query, "max_excerpts": max_excerpts, "historical": historical}), space=space)
+            {"query": query, "max_excerpts": max_excerpts, "historical": historical,
+             "mode": mode, "as_of": as_of, "known_at": known_at}), space=space)
 
     @staticmethod
     def _node(node_id, space) -> _Call:
@@ -205,10 +206,10 @@ class _Base:
         return _Call("GET", f"/v1/roles/{_segment(role_id)}", space=space)
 
     @staticmethod
-    def _search(query, limit, cursor, detail, historical, space) -> _Call:
+    def _search(query, limit, cursor, detail, historical, space, mode=None, as_of=None, known_at=None) -> _Call:
         return _Call("POST", "/v1/search", body=_drop_none(
             {"query": query, "limit": limit, "cursor": cursor, "detail": detail,
-             "historical": historical}), space=space)
+             "historical": historical, "mode": mode, "as_of": as_of, "known_at": known_at}), space=space)
 
     @staticmethod
     def _recall(domain, tags, limit, cursor, space) -> _Call:
@@ -258,9 +259,10 @@ class VincClient(_Base):
         return self._send(self._whoami(space))
 
     def brief(self, query: str, *, max_excerpts: int | None = None,
-              historical: bool | None = None, space: str | None = None) -> dict[str, Any]:
+              historical: bool | None = None, space: str | None = None,
+              mode: str | None = None, as_of: str | None = None, known_at: str | None = None) -> dict[str, Any]:
         """``POST /v1/brief``: resolve a question (or a node id) to one node with its material."""
-        return self._send(self._brief(query, max_excerpts, historical, space))
+        return self._send(self._brief(query, max_excerpts, historical, space, mode, as_of, known_at))
 
     def node(self, node_id: str, *, space: str | None = None) -> dict[str, Any]:
         """``GET /v1/nodes/{id}``: read one node by id. Raises ``VincNotFound`` if absent."""
@@ -352,9 +354,10 @@ class VincClient(_Base):
 
     def search(self, query: str, *, limit: int | None = None, cursor: str | None = None,
                detail: str | None = None, historical: bool | None = None,
+               mode: str | None = None, as_of: str | None = None, known_at: str | None = None,
                space: str | None = None) -> dict[str, Any]:
         """``POST /v1/search``: hybrid text and meaning search, paged by ``cursor``."""
-        return self._send(self._search(query, limit, cursor, detail, historical, space))
+        return self._send(self._search(query, limit, cursor, detail, historical, space, mode, as_of, known_at))
 
     def recall(self, *, domain: str | None = None, tags: Iterable[str] | None = None,
                limit: int | None = None, cursor: str | None = None,
@@ -486,8 +489,9 @@ class AsyncVincClient(_Base):
         return await self._send(self._whoami(space))
 
     async def brief(self, query: str, *, max_excerpts: int | None = None,
-                    historical: bool | None = None, space: str | None = None) -> dict[str, Any]:
-        return await self._send(self._brief(query, max_excerpts, historical, space))
+                    historical: bool | None = None, space: str | None = None,
+                    mode: str | None = None, as_of: str | None = None, known_at: str | None = None) -> dict[str, Any]:
+        return await self._send(self._brief(query, max_excerpts, historical, space, mode, as_of, known_at))
 
     async def node(self, node_id: str, *, space: str | None = None) -> dict[str, Any]:
         return await self._send(self._node(node_id, space))
@@ -569,8 +573,9 @@ class AsyncVincClient(_Base):
 
     async def search(self, query: str, *, limit: int | None = None, cursor: str | None = None,
                      detail: str | None = None, historical: bool | None = None,
+                     mode: str | None = None, as_of: str | None = None, known_at: str | None = None,
                      space: str | None = None) -> dict[str, Any]:
-        return await self._send(self._search(query, limit, cursor, detail, historical, space))
+        return await self._send(self._search(query, limit, cursor, detail, historical, space, mode, as_of, known_at))
 
     async def recall(self, *, domain: str | None = None, tags: Iterable[str] | None = None,
                      limit: int | None = None, cursor: str | None = None,

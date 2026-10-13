@@ -1,10 +1,11 @@
-import { api, cfg } from "../api";
+import { api, cfg, type SearchOptions } from "../api";
 import { COPY } from "../copy";
 import { header, armsNoticeBadge } from "../components";
 import { renderBrowse } from "./records";
 import { viewHooks } from "../topbar";
 import { renderSearchError } from "../search-error";
 import { partitionSearchResults } from "../search-relevance";
+import { temporalEntries } from "../search-temporal";
 
 function esc(s: string): string {
   return String(s ?? "").replace(/[&<>"]/g, (c) =>
@@ -37,6 +38,11 @@ export function renderSearch(el: HTMLElement) {
              style="width:100%;font:inherit;padding:var(--space-3,.75rem);
                     border:1px solid hsl(var(--input));border-radius:var(--radius);
                     background:hsl(var(--card));color:hsl(var(--foreground))" />
+      <label class="hint" for="search-scope">${COPY.search.modeLabel}</label>
+      <select id="search-scope" class="btn" aria-label="${COPY.search.modeLabel}">
+        ${Object.entries(COPY.search.modes).map(([value, label]) =>
+          `<option value="${value}">${esc(label)}</option>`).join("")}
+      </select>
     </form>
     <div id="search-body"><p class="hint">${COPY.search.idle}</p></div>`;
   const body = el.querySelector<HTMLElement>("#search-body")!;
@@ -44,6 +50,12 @@ export function renderSearch(el: HTMLElement) {
   const RECENT_KEY = "vinc.search.recent";
   const recent: string[] = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
   let seq = 0;
+  const scope = el.querySelector<HTMLSelectElement>("#search-scope")!;
+  scope.addEventListener("change", () => {
+    clearTimeout(debounce);
+    const raw = (el.querySelector("#q") as HTMLInputElement).value.trim();
+    if (raw) void run(raw, false);
+  });
 
   // 빈 검색어(부팅·필드 비움) = 전체 문서 브라우즈(구 Records 흡수) + 최근검색 칩.
   function showEmpty() {
@@ -95,9 +107,13 @@ export function renderSearch(el: HTMLElement) {
     const { text, domain, tag } = parseQuery(raw);
     body.innerHTML = `<div class="hint">${COPY.search.searching}</div>`;
     try {
+      const mode = scope.value as SearchOptions["mode"];
+      // Explicit scopes use one retrieval path so title matches cannot bypass its filters.
       const [res, docs] = await Promise.all([
-        api.search(text || raw), api.docTitleMatches(text || raw).catch(() => null),
+        api.search(text || raw, 20, { mode }),
+        mode === "general" ? api.docTitleMatches(text || raw).catch(() => null) : Promise.resolve(null),
       ]);
+
       if (mine !== seq) return;
       // Chunk 결과(rows)와 **개념/레코드 타이틀·그래프 매치(node_hits)를 함께** 보여준다.
       // 백엔드(T3b)는 Chunk 인덱스에 없는 Concept/Record 를 항상 node_hits 로 반환한다
@@ -109,7 +125,7 @@ export function renderSearch(el: HTMLElement) {
         _node: true,
       }));
       const exact = (docs?.docs || []).map((d) => ({
-        id: d.doc_id, doc_id: d.doc_id, title: d.title, arms: ["keyword"],
+        ...d, id: d.doc_id, arms: ["keyword"],
       }));
       let rows: any[] = [...exact, ...(res.rows || []), ...nodeHits];
       if (domain) rows = rows.filter((r) => (r.domain || r.doc_id || "").includes(domain));
@@ -121,7 +137,7 @@ export function renderSearch(el: HTMLElement) {
       // 문자열이라 화면은 지금 그대로다.
       // 결과 마크업은 **이 한 곳으로만** 나간다 — 갈래마다 배지를 따로 붙이면 빠지기
       // 쉬운 쪽이 하필 빈 결과이고, 반쪽 검색의 0건이 진짜 0건으로 읽힌다.
-      const show = (html: string) => { body.innerHTML = armsNoticeBadge(res) + html; };
+      const show = (html: string) => { body.innerHTML = armsNoticeBadge(res) + (res.temporal_error ? `<p class="hint">${COPY.search.temporalNotice}</p>` : "") + html; };
       if (rows.length === 0) {
         show(`<div class="empty"><p>${esc(COPY.search.empty(raw))}</p>
           <a class="btn" href="#view">${COPY.search.emptyCta}</a></div>`);
@@ -149,6 +165,8 @@ export function renderSearch(el: HTMLElement) {
         // 왜 맞았는지를 한 줄 더 보여준다(D24 §4.2) — 제목만으로는 고를 수 없다.
         const snip = r.one_liner || r.snippet || r.text || r.section_title || "";
         const clickable = target || cdoc;
+        const dates = temporalEntries(r).map(([key, value]) =>
+          `${(COPY.search.temporal as Record<string, string>)[key]}: ${value === "unknown" ? COPY.search.unknownDate : (COPY.search.temporalValues as Record<string, string>)[value] || value}`).join(" · ");
         return `
           <div class="list-row" ${target ? `data-go="${esc(target)}"` : ""}
                ${cdoc ? `data-doc="${esc(cdoc)}"${Number.isFinite(cidx)
@@ -157,6 +175,7 @@ export function renderSearch(el: HTMLElement) {
             <span class="meta"${score}>${marks || "≡"}</span>
             <span style="min-width:0">
               <span class="title">${esc(r.title || r.section_title || r.id)}</span>
+              <span class="meta" style="display:block">${esc(dates)}</span>
               ${snip ? `<span class="hint" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${
                 esc(String(snip).slice(0, 140))}</span>` : ""}
             </span>
