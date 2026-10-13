@@ -1,0 +1,137 @@
+{
+  "actor_identity_authenticated": false,
+  "actual_submission_available": false,
+  "automatic_ingestion_supported": true,
+  "exportable_pairs": 0,
+  "frozen_input_files_unchanged": true,
+  "frozen_input_inventory_sha256": {
+    "laya-candidate-context-v1": "adfa51bb3abd00fc6be3d3fce5e3565dea2d71205899e8957b2cd6aec8a66f5f",
+    "laya-contrast-dev-v1": "2f82d39a46ac4c406eb9a5b2522e234134c3a18791531c19e2f61d8f19483378",
+    "laya-contrast-pilot-v1": "1e9714ca41d5869390fabae667b650f2b294590b59d47da29837c7e26d789af0",
+    "laya-contrast-revision-v2": "ae4ec73c4b4ae0aa93a28e7c2c32e3422737ceac09bb75ef2c3602e3f3c7e66f",
+    "vin476-prepared": "d2ba71a3bd62e66bc2e6d489bf6bc009f582b82cc8aecd6e47e7cee04110886b"
+  },
+  "human_annotation_events": 0,
+  "initial_session_bytes_unchanged": true,
+  "model_calls": 0,
+  "predicate_gold": 0,
+  "prepared_manifest_sha256": "b06747c4216ddfad31b8d6161c02f03b272a3640a71e617b29ac1e4ad709b547",
+  "queue_cases": 360,
+  "review_groups": {
+    "development": {
+      "actor_identity_authenticated": false,
+      "automatic_ingestion_supported": true,
+      "cohort": "development",
+      "cohort_role": "dev",
+      "declared_human_annotation_events": 0,
+      "ever_disagreed_cases": 0,
+      "exportable_pairs": 0,
+      "files": {
+        "review.html": "f8916049ed744047df0d9a22ee1985a1adc5e9536450c0b9f2e22868c94e4feb",
+        "session.json": "0cec97948661d77a14095a0e3d00bdd000feae24ef579368d66602355d08548a"
+      },
+      "imported_batches": 0,
+      "language_state_counts": {
+        "en_en": {
+          "unannotated": 24
+        },
+        "en_ko": {
+          "unannotated": 24
+        },
+        "ko_en": {
+          "unannotated": 24
+        },
+        "ko_ko": {
+          "unannotated": 24
+        }
+      },
+      "ledger_sha256": "5dc918afbb2f8edae922d9c182913d819157a80ede33838e73acb9d5753b03ce",
+      "model_calls": 0,
+      "queue_cases": 96,
+      "rubric_admission_separate": true,
+      "session_cases": 96,
+      "session_sha256": "0cec97948661d77a14095a0e3d00bdd000feae24ef579368d66602355d08548a",
+      "source_admission_separate": true,
+      "stage": "author",
+      "state_counts": {
+        "unannotated": 96
+      },
+      "training_authorized": false
+    },
+    "native": {
+      "actor_identity_authenticated": false,
+      "automatic_ingestion_supported": true,
+      "cohort": "native",
+      "cohort_role": "train-candidate",
+      "declared_human_annotation_events": 0,
+      "ever_disagreed_cases": 0,
+      "exportable_pairs": 0,
+      "files": {
+        "review.html": "202199a903e282d138781e959746064c1666f2629970ab13484b891fe19a127c",
+        "session.json": "f62d00188c64367089de4b25e5abcc730d2edcfd5a9bfbc5f758fcfd95795b41"
+      },
+      "imported_batches": 0,
+      "language_state_counts": {
+        "en_en": {
+          "unannotated": 24
+        }
+      },
+      "ledger_sha256": "e5ce22b721978499d6cbf14b94736ca21c68f7b8f33611bec9b6dae5171bde66",
+      "model_calls": 0,
+      "queue_cases": 24,
+      "rubric_admission_separate": true,
+      "session_cases": 24,
+      "session_sha256": "f62d00188c64367089de4b25e5abcc730d2edcfd5a9bfbc5f758fcfd95795b41",
+      "source_admission_separate": true,
+      "stage": "author",
+      "state_counts": {
+        "unannotated": 24
+      },
+      "training_authorized": false
+    },
+    "pilot": {
+      "actor_identity_authenticated": false,
+      "automatic_ingestion_supported": true,
+      "cohort": "pilot",
+      "cohort_role": "train-candidate",
+      "declared_human_annotation_events": 0,
+      "ever_disagreed_cases": 0,
+      "exportable_pairs": 0,
+      "files": {
+        "review.html": "b2eb69ac604da5b4b0f655b4f770da1f49df4bdf3b2eda11b6e5852390fbb738",
+        "session.json": "1289642be0562a3b557b355d377741fab65070218948da767670c10a770285c9"
+      },
+      "imported_batches": 0,
+      "language_state_counts": {
+        "en_en": {
+          "unannotated": 60
+        },
+        "en_ko": {
+          "unannotated": 60
+        },
+        "ko_en": {
+          "unannotated": 60
+        },
+        "ko_ko": {
+          "unannotated": 60
+        }
+      },
+      "ledger_sha256": "9c05c5e2c7cc221acbbcb3116624e55854a57f746cfef448c4793f65a437218a",
+      "model_calls": 0,
+      "queue_cases": 240,
+      "rubric_admission_separate": true,
+      "session_cases": 240,
+      "session_sha256": "1289642be0562a3b557b355d377741fab65070218948da767670c10a770285c9",
+      "source_admission_separate": true,
+      "stage": "author",
+      "state_counts": {
+        "unannotated": 240
+      },
+      "training_authorized": false
+    }
+  },
+  "rubric_admission_separate": true,
+  "schema": "vinc.laya.cohort-judgments.v1",
+  "source_admission_separate": true,
+  "training_authorized": false
+}
