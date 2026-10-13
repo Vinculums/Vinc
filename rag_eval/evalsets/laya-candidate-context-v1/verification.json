@@ -1,0 +1,36 @@
+{
+  "authored_candidates": 24,
+  "deferred": 9,
+  "priorities": 33,
+  "review_groups": {
+    "development": {
+      "cases": 96,
+      "language_cells": {
+        "en_en": 24,
+        "en_ko": 24,
+        "ko_en": 24,
+        "ko_ko": 24
+      },
+      "session_sha256": "0cec97948661d77a14095a0e3d00bdd000feae24ef579368d66602355d08548a"
+    },
+    "native": {
+      "cases": 24,
+      "language_cells": {
+        "en_en": 24
+      },
+      "session_sha256": "f62d00188c64367089de4b25e5abcc730d2edcfd5a9bfbc5f758fcfd95795b41"
+    },
+    "pilot": {
+      "cases": 240,
+      "language_cells": {
+        "en_en": 60,
+        "en_ko": 60,
+        "ko_en": 60,
+        "ko_ko": 60
+      },
+      "session_sha256": "1289642be0562a3b557b355d377741fab65070218948da767670c10a770285c9"
+    }
+  },
+  "training_exportable_pairs": 0,
+  "verified": true
+}

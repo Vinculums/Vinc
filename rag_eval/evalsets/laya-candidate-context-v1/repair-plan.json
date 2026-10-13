@@ -1,0 +1,346 @@
+{
+  "audit_sha256": "97137a4f4d62fd8ce672364e57e9c201359256443e8d555ed50ce4beb5dcd98d",
+  "authored_at": "2026-10-13T12:16:03.522337+00:00",
+  "inputs_sha256": "21c6a6237f09d0d6b985700898cb0027257830e70233a78317f37de42385356e",
+  "repairs": [
+    {
+      "claim": "In the medical ICU studied, pharmacist participation in rounds was associated with fewer preventable adverse drug events caused by prescribing errors.",
+      "context": "Before-after study with a coronary-care control unit. The intervention included pharmacist rounds and consultation; the measured outcome was preventable prescribing ADEs, not every adverse event.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:941:12258338:0",
+      "reason": "Restore intervention and ICU/outcome scope; retain before-after/control design. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        7,
+        11,
+        12
+      ]
+    },
+    {
+      "claim": "ROR-gamma antagonism is a potential therapeutic approach for AR-expressing CRPC, supported by the cited cell-line and xenograft results.",
+      "context": "Frozen study abstract, not established clinical efficacy. The cited experiments concern AR-expressing cell/tumour models and antagonists; potential remains a qualifier.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:1043:17671145:1",
+      "reason": "Use experimental result sentences4-6 and retain potential/model qualifiers. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        4,
+        6
+      ]
+    },
+    {
+      "claim": "In the cited alcohol-risk analysis, cancer risk increased with increasing alcohol consumption.",
+      "context": "Alcohol use and burden analysis for 195 locations, 1990-2016. Reported risk estimates are study findings, not independently verified medical truth.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:1268:52072815:1",
+      "reason": "Retain alcohol identity, analysis population/time and observational/model limitations. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        2,
+        11
+      ]
+    },
+    {
+      "claim": "Ectopic expression of Sall4, Nanog, Esrrb, and Lin28 generates induced pluripotent stem cells from mouse embryonic fibroblasts more efficiently than other factor combinations.",
+      "context": "Tetraploid-complementation comparison in mouse embryonic fibroblasts; SNEL versus other factor combinations including OSKM. This is a reported experiment.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:369:6826100:0",
+      "reason": "Retain assay and comparator; add a matched restatement/scope-change contrast later. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        4
+      ]
+    },
+    {
+      "claim": null,
+      "context": null,
+      "disposition": "deferred",
+      "parent_id": "scifact:1381:13481880:1",
+      "reason": "Saved abstract gives activation/sufficiency, not the required necessity intervention.",
+      "sentence_indices": []
+    },
+    {
+      "claim": "Mfge8 contributes to dietary-fat absorption through the reported integrin-dependent fatty-acid uptake pathway.",
+      "context": "The cited study uses Mfge8-deficient mice and cellular uptake/signaling results. Integrin-dependent mechanism is retained; direct binding is not independently proved by this candidate.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:736:5389095:0",
+      "reason": "Retain receptor/ligand context and distinguish mechanistic support from complete proof. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        3,
+        4
+      ]
+    },
+    {
+      "claim": "Among participants in this trial, the stated high-dose folic acid/B-vitamin regimen produced no statistically significant difference in time to dialysis versus placebo.",
+      "context": "Advanced CKD/end-stage renal disease trial with high homocysteine. Regimen includes folic acid 40 mg, B6 100mg and B12 2mg daily. Nonsignificance does not establish zero possible effect.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:12:33409100:0",
+      "reason": "Replace with relevant outcome/design spans only as a proposal; scope regimen/population/outcome and adjudicate null-effect wording. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        5,
+        11
+      ]
+    },
+    {
+      "claim": "JMJD6 was reported to hydroxylate p53 at lysine 382 and repress p53 transcriptional activity.",
+      "context": "Frozen mechanistic study abstract. Both parts of the claim cite explicit results; p53 is the named substrate and transcription target.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:661:37204802:0",
+      "reason": "Bind p53 and lysine382, include direct activity evidence, split the two propositions if needed. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "claim": "Astrocyte calcium signaling influenced ictal discharge in the cited in vitro seizure models.",
+      "context": "Rat entorhinal-cortex slices and local NMDA seizure models. The evidence includes selective inhibition/stimulation, not correlation alone; interictal discharge is a distinct endpoint.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:469:1410197:0",
+      "reason": "Retain model/ictal scope and include intervention sentence9 before stronger causal wording. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        5,
+        9
+      ]
+    },
+    {
+      "claim": "At three years, the DESMOND intervention and usual-care groups did not show a significant difference in weight in the reported trial.",
+      "context": "DESMOND diabetes education/self-management programme, from the frozen article title. Weight is a specified secondary outcome; the comparison is at three years, not all programmes or times.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:1159:12584053:0",
+      "reason": "Bind programme, weight outcome and three-year scope; distinguish nonsignificance from no possible effect. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        7,
+        10
+      ]
+    },
+    {
+      "claim": "In the cited Framingham cohort, residual lifetime hypertension risk was estimated at 90% for participants aged 55 who were free of hypertension at baseline.",
+      "context": "Framingham cohort1976-1998; residual lifetime risk definition and blood-pressure/treatment criteria are source-specific. The finding is not a universal current risk estimate.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:854:12206390:0",
+      "reason": "Retain cohort/year/definition; do not present as current universal medical fact. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "claim": "Microcin J25 inhibition of transcription was attributed to interference with NTP uptake or NTP binding by bacterial RNA polymerase.",
+      "context": "The biochemical result leaves uptake versus binding disjunctive. Neither alternative is individually established by this candidate.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:788:4740447:0",
+      "reason": "Retain the alternative mechanism or obtain discriminating evidence; bind microcin. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        0,
+        1
+      ]
+    },
+    {
+      "claim": "The study reports cell-autonomous regulation of cortical progenitor clonal output in primate culture systems.",
+      "context": "Human and three nonhuman primate progenitors in 2D/3D culture. The claim is confined to cortical progenitor output in this experimental setting.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:1255:16939583:0",
+      "reason": "Include lineage context and retain primate cortical/in-culture scope. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "claim": "The cited yeast study identifies Snf1 as a regulator of carbon and energy metabolism.",
+      "context": "Frozen yeast AMPK/Snf1 network study using wild-type/knockout mRNA, protein and metabolite observations. Carbon and energy statements remain linked to this study.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:1182:14541844:0",
+      "reason": "Include specific carbon/energy evidence and species/complex scope, or split the claim. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        0,
+        1,
+        3
+      ]
+    },
+    {
+      "claim": "Within the studied Drosophila/mouse systems, COPI participates in regulation of lipid storage and lipolysis.",
+      "context": "RNAi screening and reported conserved regulatory function, with PAT/ATGL mechanism. This is bounded model-system evidence, not every organism.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:210:13794374:1",
+      "reason": "Retain cell/model scope and exact mechanistic endpoints. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "claim": null,
+      "context": null,
+      "disposition": "deferred",
+      "parent_id": "scifact:34:11705328:0",
+      "reason": "Supplementation outcome does not establish the original deficiency-specific claim.",
+      "sentence_indices": []
+    },
+    {
+      "claim": null,
+      "context": null,
+      "disposition": "deferred",
+      "parent_id": "scifact:441:2014909:0",
+      "reason": "Saved mechanism does not resolve both expansion and infiltration endpoints.",
+      "sentence_indices": []
+    },
+    {
+      "claim": "Feeding rapamycin to adult Drosophila extended lifespan in the reported experiments.",
+      "context": "Lifespan and resistance endpoints in adult flies. The narrowed claim does not equate lifespan extension with every aspect of aging.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:1015:6277638:0",
+      "reason": "Use the measured lifespan claim or define and verify an aging endpoint; keep species and intervention scope. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        2,
+        3
+      ]
+    },
+    {
+      "claim": null,
+      "context": null,
+      "disposition": "deferred",
+      "parent_id": "scifact:258:22080671:0",
+      "reason": "Saved text does not resolve the complete cholesterol-to-KLF4-to-cytokine causal chain.",
+      "sentence_indices": []
+    },
+    {
+      "claim": "In the cited qualitative consultation study, misunderstandings were associated with potential or actual adverse outcomes including non-adherence.",
+      "context": "Qualitative prescribing study in 20 practices with 35 consulting patients. Association and potential outcomes are preserved; a general causal effect is not asserted.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:792:3610080:0",
+      "reason": "Keep consultation/study scope and causal-strength caveat. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        5,
+        6,
+        7
+      ]
+    },
+    {
+      "claim": "uPAR signaling in podocytes contributes to foot process effacement and proteinuria in the reported experimental models.",
+      "context": "Frozen experimental study with mice and gene-transfer observations. The claim names the studied cells/outcomes rather than general kidney-disease progression.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:626:16355392:0",
+      "reason": "Retain model/intervention context; the reported result is not independently verified biomedical truth. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "claim": "In the cited electronic-health-record cohort, higher diastolic blood pressure was associated with abdominal aortic aneurysm.",
+      "context": "CALIBER cohort1997-2010, initially free of cardiovascular disease. Observational association is retained; no intervention/treatment benefit is claimed.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:607:4506414:0",
+      "reason": "Retain cohort and association wording; do not infer treatment benefit. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        2,
+        9
+      ]
+    },
+    {
+      "claim": null,
+      "context": null,
+      "disposition": "deferred",
+      "parent_id": "scifact:44:56893404:0",
+      "reason": "Available frozen abstract has no age14 diabetes-risk endpoint.",
+      "sentence_indices": []
+    },
+    {
+      "claim": null,
+      "context": null,
+      "disposition": "deferred",
+      "parent_id": "scifact:951:21414718:3",
+      "reason": "Migration/binding evidence does not establish the original sensor role.",
+      "sentence_indices": []
+    },
+    {
+      "claim": "PTEN regulates SRF-dependent transcription in the studied smooth-muscle-cell context.",
+      "context": "Frozen mechanistic report of nuclear PTEN/SRF interaction and promoter/activity changes. Smooth-muscle transcription is the scoped endpoint.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:917:34071621:0",
+      "reason": "Use explicit activity/mechanism spans3-4 and retain smooth-muscle context. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "claim": "Genetic deficiency of mast cells leads to decreased weight gain in a mouse model of diet-induced obesity.",
+      "context": "Mice on a Western diet; genetic mast-cell deficiency is distinguished from pharmacological stabilization. The candidate concerns reported weight-gain results.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:458:597790:0",
+      "reason": "Retain intervention/model scope and distinguish experimental result from a generic summary. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        3
+      ]
+    },
+    {
+      "claim": "Adding the studied aerobic-exercise programme to usual care improved self-reported KCCQ health-status scores in medically stable heart-failure outpatients.",
+      "context": "HF-ACTION trial, ejection fraction 35% or less; 36 supervised sessions followed by home training. Endpoint is self-reported KCCQ health status, not universal quality of life.",
+      "disposition": "authored_candidate",
+      "parent_id": "scifact:965:40817021:2",
+      "reason": "Restore heart-failure population, programme and health-status measure. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": [
+        2,
+        4,
+        10,
+        11
+      ]
+    },
+    {
+      "claim": "Severine Silva's explanation attributes the fleeing Catholics' retention of Christian faith to a wish to combine Hindu customs with Catholic practices.",
+      "context": "Frozen Goa Inquisition Wikipedia revision 461738336. This is an attributed historical explanation about retaining faith; it does not establish why the Catholics fled.",
+      "disposition": "authored_candidate",
+      "parent_id": "vitaminc:5ece9461c9e77c0008465b5c_3",
+      "reason": "Adjudicate proposition/causal attachment; retain original text and source label. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": []
+    },
+    {
+      "claim": "Under parliamentary limits, the cited source says Rayalaseema's area may exceed 46% of the state area.",
+      "context": "Frozen Rayalaseema Wikipedia revision 637359601. Geographic definition and may remain explicit; the amount is not asserted as a measured current fact.",
+      "disposition": "authored_candidate",
+      "parent_id": "vitaminc:5ed7ad00c9e77c00084a5df5_1",
+      "reason": "Adjudicate modality; retain may and the geographic definition. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": []
+    },
+    {
+      "claim": "The cited historical description presents HBO as a network intended for regional or national cable distribution.",
+      "context": "Frozen Cable television in the United States Wikipedia revision 859718557. Intended distribution is distinct from proven actual coverage throughout the United States.",
+      "disposition": "authored_candidate",
+      "parent_id": "vitaminc:5ebbf32bc9e77c0009295219_2",
+      "reason": "Obtain actual coverage evidence or narrow the proposed claim. Original claim is not adjudicated by this authored revision.",
+      "sentence_indices": []
+    },
+    {
+      "claim": null,
+      "context": null,
+      "disposition": "deferred",
+      "parent_id": "vitaminc:5ebe6f31c9e77c0008409214_1",
+      "reason": "Saved row does not identify the specific song; compound release/count claim remains unresolved.",
+      "sentence_indices": []
+    },
+    {
+      "claim": null,
+      "context": null,
+      "disposition": "deferred",
+      "parent_id": "vitaminc:5ec284fdc9e77c0008416624_4",
+      "reason": "Saved row does not resolve both actors of they.",
+      "sentence_indices": []
+    },
+    {
+      "claim": null,
+      "context": null,
+      "disposition": "deferred",
+      "parent_id": "vitaminc:5ed4de09c9e77c000848abb5_4",
+      "reason": "Saved flattened table lacks B-2 variant headings and mixes engine/airframe properties.",
+      "sentence_indices": []
+    }
+  ],
+  "schema": "vinc.laya.candidate-context.v1",
+  "training_authorized": false
+}

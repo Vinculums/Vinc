@@ -1,0 +1,89 @@
+{
+  "audit_sha256": "97137a4f4d62fd8ce672364e57e9c201359256443e8d555ed50ce4beb5dcd98d",
+  "authored_candidates": 24,
+  "automatic_ingestion_supported": false,
+  "deferred": 9,
+  "existing_sessions_rebased": false,
+  "files": {
+    "before-after.json": "a3bdbfb09f0f9c22bd1e6f167aba776313eb92dd1ad58cad7179f1303b5dc087",
+    "development/manifest.json": "1d906b8e7e8aecf826d03fd0a2e72d52221d8678711b9603f35541dcd4dffaf2",
+    "development/review.html": "79b192d2929e045342bf0964bdd5b6b36d8ec48e37a23786e1d6be01f31f1c48",
+    "development/session.json": "0cec97948661d77a14095a0e3d00bdd000feae24ef579368d66602355d08548a",
+    "native-bundle.json": "fb6ee3a341755b5304cd6c21208074f3fcd12d136a7e5f56a54c90aae0d0a8c9",
+    "native/manifest.json": "9a5b7d88a3e5d09b8c563a48831db0009125349c666fe85451c0f3258d1b2bec",
+    "native/review.html": "445bdf5b5efbc9824f996d03c8494f405eb60d1db664e7a671723c0563c83ccb",
+    "native/session.json": "f62d00188c64367089de4b25e5abcc730d2edcfd5a9bfbc5f758fcfd95795b41",
+    "pilot/manifest.json": "0b3d0760a2776a791186c9d1ae2a3bd9294fce10642825cbb6149a5a8a8489a5",
+    "pilot/review.html": "30ed737114e62d07c457152dbdc0017c7367dcd18c118224f52b1b3c521dd2d8",
+    "pilot/session.json": "1289642be0562a3b557b355d377741fab65070218948da767670c10a770285c9"
+  },
+  "human_reviews": 0,
+  "inputs_sha256": "21c6a6237f09d0d6b985700898cb0027257830e70233a78317f37de42385356e",
+  "model_calls": 0,
+  "native_bundle_sha256": "fb6ee3a341755b5304cd6c21208074f3fcd12d136a7e5f56a54c90aae0d0a8c9",
+  "native_parent_files_unchanged": true,
+  "native_parent_manifest_sha256": "91330ac87d9dd63894e5511054d872ddd8449c16681af48dbab88842d3a15ed4",
+  "observed_truth_or_predicate_labels_verified": false,
+  "plan_sha256": "9a483f5a5eaf02cfae545c95b861f4483636e33d46a7761945baf3bc0364f1af",
+  "predicate_gold": 0,
+  "priorities": 33,
+  "replay_byte_identical": true,
+  "reuse": {
+    "active_candidates": 240,
+    "cross_role_near_matches": 0,
+    "development_families": 24,
+    "development_language_cells": {
+      "en_en": 24,
+      "en_ko": 24,
+      "ko_en": 24,
+      "ko_ko": 24
+    },
+    "development_literal_language_checks": 32,
+    "development_manifest_sha256": "38bd9c3d47c94f4e644a945dea553ea248d66341bfb7f75a5fa0bfddc7524299",
+    "development_pairs": 96,
+    "historical_exposure_registry_is_exhaustive": false,
+    "history_pairs": 252,
+    "human_annotations": 0,
+    "joint_pairs_checked": 348,
+    "lexical_screen_proves_cross_language_independence": false,
+    "model_calls": 0,
+    "original_pairs": 240,
+    "revised_candidates": 12,
+    "revision_manifest_sha256": "39dedf1de7282ac28e25b662aaa39eb7686c2de9dac9d442c4d43511b3028f2c",
+    "training_exportable_pairs": 0,
+    "verified": true
+  },
+  "review_groups": {
+    "development": {
+      "cases": 96,
+      "language_cells": {
+        "en_en": 24,
+        "en_ko": 24,
+        "ko_en": 24,
+        "ko_ko": 24
+      },
+      "session_sha256": "0cec97948661d77a14095a0e3d00bdd000feae24ef579368d66602355d08548a"
+    },
+    "native": {
+      "cases": 24,
+      "language_cells": {
+        "en_en": 24
+      },
+      "session_sha256": "f62d00188c64367089de4b25e5abcc730d2edcfd5a9bfbc5f758fcfd95795b41"
+    },
+    "pilot": {
+      "cases": 240,
+      "language_cells": {
+        "en_en": 60,
+        "en_ko": 60,
+        "ko_en": 60,
+        "ko_ko": 60
+      },
+      "session_sha256": "1289642be0562a3b557b355d377741fab65070218948da767670c10a770285c9"
+    }
+  },
+  "schema": "vinc.laya.candidate-context.v1",
+  "semantic_independence_proven": false,
+  "source_eligibility_inherited_not_promoted": true,
+  "training_exportable_pairs": 0
+}
