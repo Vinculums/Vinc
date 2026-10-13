@@ -56,6 +56,7 @@ from store.chunking import (DEFAULT_MAX_CHARS, _HEADING_RE, _section_title,  # n
                             plan_boundaries)
 
 from . import graphmd
+from .authoring import document_retrieval
 
 #: `concept:doc.<doc_id>` — 문서의 개념 그래프 쪽 자리(미러). 그 `domain` 은 **사람이
 #: 적은 주제**이고, 본문 매칭에서 나오는 파생 주제보다 우선한다.
@@ -508,6 +509,8 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                 if topic:
                     base["topic"] = _set_authored_topic(
                         store, doc_id, topic, owner=owner, title=kept_title)
+                base["needs_embed"] = None if prev.get("needs_embed") is None else bool(prev["needs_embed"])
+                base["retrieval"] = document_retrieval(prev.get("needs_embed"))
                 return base
             base.update(executed=True, skipped=True, created=False,
                         chunks=int(prev.get("chunk_count") or 0), title=kept_title,
@@ -519,6 +522,8 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             if topic:
                 base["topic"] = _set_authored_topic(store, doc_id, topic, owner=owner,
                                                     title=kept_title)
+            base.update(**validity, needs_embed=None if prev.get("needs_embed") is None else bool(prev["needs_embed"]))
+            base["retrieval"] = document_retrieval(prev.get("needs_embed"))
             return base
 
     # 청크는 언제나 쓰고, 지울 옛 행이 있으면 자식 벡터도 지운다 — 그 표에 잔해가 있으면 멈춘다.
@@ -629,6 +634,8 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                 note="search indexes dropped — 검색 경로가 지연 재빌드(T3b)")
     if topic:
         base["topic"] = authored
+    base.update(**validity)
+    base["retrieval"] = document_retrieval(bool(needs_embed))
     return base
 
 
