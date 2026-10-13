@@ -384,13 +384,17 @@ async function call(path: string, params?: Record<string, string | number | unde
   return localCall(path, params, body, scope);
 }
 
-async function searchCall(query: string, top_k: number): Promise<any> {
+export type SearchOptions = { mode?: "general" | "current" | "historical";
+  historical?: boolean; as_of?: string; known_at?: string };
+
+async function searchCall(query: string, top_k: number, options: SearchOptions = {}): Promise<any> {
   const scope = { team: cfg.team || null };
   const mode = dataMode.get();
   for (let attempt = 0; ; attempt++) {
     const started = performance.now();
     try {
-      const result = await call("/search", { query, top_k }, undefined, scope);
+      const result = await call("/search", { query, top_k, ...options,
+        historical: options.historical === undefined ? undefined : String(options.historical) }, undefined, scope);
       // 오류 봉투가 HTTP 200 으로 와도 빈 결과로 읽지 않는다.
       if (result?.error || result?.executed === false) {
         if (accountMode()) await logSearchFailure(200, performance.now() - started);
@@ -804,9 +808,9 @@ export const api = {
       ? accountCall("/graph/roots", { owner, basis }, undefined, scope, signal)
       : localCall("/graph/roots", { owner, basis }, undefined, scope, signal),
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
-  search: (query: string, top_k = 20) => searchCall(query, top_k),
+  search: (query: string, top_k = 20, options: SearchOptions = {}) => searchCall(query, top_k, options),
   // 정확한 제목은 저장된 메타에서 찾는다. 본문 색인·그래프 노드 유무와 무관하다.
-  docTitleMatches: (title: string): Promise<{ docs?: { doc_id: string; title: string }[] }> =>
+  docTitleMatches: (title: string): Promise<{ docs?: { doc_id: string; title: string; temporal?: any }[] }> =>
     call("/docs", { owner: cfg.owner, title, detail: "summary", limit: 8 }),
   coupling: (owner: string, a: string, b: string) => call("/coupling", { owner, a, b }),
   // scope 를 주면 그 스페이스의 주제를 읽는다 — 개인 → 팀 불러오기 화면이

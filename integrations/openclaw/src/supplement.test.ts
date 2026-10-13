@@ -5,6 +5,29 @@ import assert from "node:assert/strict";
 import { createVincCorpusSupplement, renderNode } from "./supplement.ts";
 import entry, { register, DEFAULT_HUB_URL, type VincPluginApi } from "./index.ts";
 
+test("search preserves temporal metadata and explicit temporal arguments", async () => {
+  const temporal = { created_at: null, valid_from: null, valid_until: "2001", validity: "historical", superseded_by: "record:new" };
+  const { supplement, hub } = makeSupplement(() => ({
+    rows: [{ id: "synthetic#0", doc_id: "synthetic", snippet: "Original body", temporal }],
+    node_hits: [{ id: "record:old", title: "Old", temporal }],
+  }));
+  const result = await supplement.search({ query: "Marker", mode: "historical", as_of: "2000", known_at: "2026" });
+  assert.deepEqual(result[0].temporal, temporal);
+  assert.deepEqual(result[1].temporal, temporal);
+  assert.equal(result[0].snippet, "Original body");
+  assert.equal(hub.calls[0].args.mode, "historical");
+  assert.equal(hub.calls[0].args.as_of, "2000");
+  assert.equal(hub.calls[0].args.known_at, "2026");
+});
+
+test("document get preserves temporal metadata without changing canonical content", async () => {
+  const temporal = { created_at: null, validity: "unknown" };
+  const { supplement } = makeSupplement(() => ({ text: "Original body", temporal }));
+  const result = await supplement.get({ lookup: "vinc://doc/synthetic" });
+  assert.equal(result?.content, "Original body");
+  assert.deepEqual(result?.temporal, temporal);
+});
+
 // tools/call 요청을 받아 도구별 응답을 돌려주는 가짜 허브.
 function hubFetch(handler: (name: string, args: Record<string, unknown>) => unknown) {
   const calls: Array<{ url: string; headers: Record<string, string>; name: string; args: Record<string, unknown> }> = [];

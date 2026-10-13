@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vinc-client"
-version = "0.1.6"
+version = "0.1.7"
 description = "Python client for the Vinc REST v1 API: read a knowledge graph you share with AI, and write episodes to it on purpose."
 readme = "README.md"
 requires-python = ">=3.10"

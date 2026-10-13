@@ -234,6 +234,14 @@ def _main(argv: list[str] | None = None) -> int:
     b.add_argument("--owner", default=None)
     b.add_argument("--max-excerpts", type=int, default=3)
 
+    for parser in (s, b):
+        parser.add_argument("--mode", choices=["general", "current", "historical"], default=None)
+        parser.add_argument("--historical", action="store_true", default=None,
+                            help="include expired evidence (legacy option)")
+        parser.add_argument("--as-of", default=None, help="ISO date or period overlap")
+        parser.add_argument("--known-at", default=None,
+                            help="initial creation cutoff; does not restore past revisions")
+
     d = sub.add_parser("decide", help="decision-support graph traversal")
     d.add_argument("--topic", required=True)
     d.add_argument("--depth", type=int, default=2)

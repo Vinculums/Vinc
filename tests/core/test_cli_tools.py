@@ -113,14 +113,14 @@ class ToolVerbTests(unittest.TestCase):
             with patch.dict("os.environ", {"MEMORY_DATA_DIR": data}):
                 out, err = io.StringIO(), io.StringIO()
                 with redirect_stdout(out), redirect_stderr(err):
-                    code = cli.main(["--format", "json", "call", "vinc_neighbors",
+                    code = cli.main(["--target", "local", "--format", "json", "call", "vinc_neighbors",
                                      "--args", '{"node":"concept:missing"}'])
                 self.assertEqual(code, 1)
                 self.assertEqual(out.getvalue(), "")
                 self.assertEqual(_failure_json(err.getvalue())["kind"], "neighbors")
                 out, err = io.StringIO(), io.StringIO()
                 with redirect_stdout(out), redirect_stderr(err):
-                    code = cli.main(["call", "vinc_neighbors", "--args", "{}"])
+                    code = cli.main(["--target", "local", "call", "vinc_neighbors", "--args", "{}"])
                 self.assertEqual(code, 2)
                 self.assertEqual(out.getvalue(), "")
                 self.assertIn("node is required", err.getvalue())
@@ -137,7 +137,7 @@ class ToolVerbTests(unittest.TestCase):
                     expected = tools.call("vinc_neighbors", {"node": "concept:missing"}, bridge)
                 out, err = io.StringIO(), io.StringIO()
                 with redirect_stdout(out), redirect_stderr(err):
-                    status = cli.main(["--format", "json", "node", "neighbors",
+                    status = cli.main(["--target", "local", "--format", "json", "node", "neighbors",
                                        "concept:missing"])
             self.assertEqual(status, 1)
             self.assertEqual(out.getvalue(), "")
@@ -146,3 +146,15 @@ class ToolVerbTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TemporalVerbTests(unittest.TestCase):
+    def test_search_and_brief_forward_only_supplied_temporal_options(self):
+        for cmd in ("search", "brief"):
+            flags = {"cmd": cmd, "owner": None, "query": "synthetic", "top_k": 5,
+                     "cursor": None, "detail": "summary", "max_excerpts": 3}
+            _, defaults, _ = _tool_request(SimpleNamespace(**flags))
+            self.assertFalse(set(defaults) & {"mode", "historical", "as_of", "known_at"})
+            options = {"mode": "historical", "historical": True, "as_of": "2020", "known_at": "2021"}
+            _, explicit, _ = _tool_request(SimpleNamespace(**flags, **options))
+            self.assertTrue(all(explicit[key] == value for key, value in options.items()))

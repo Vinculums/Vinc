@@ -34,7 +34,7 @@ SOURCES_LINE = (
 DEFAULT_MAX_CHARS = 4000
 _TRUNCATED = "(truncated to fit the context budget)"
 STATE_KEYS = ("validity", "validity_note", "valid_from", "valid_until", "superseded_by",
-              "rev", "updated_at", "content_hash")
+              "rev", "created_at", "updated_at", "content_time", "content_hash", "temporal")
 
 
 def evidence_metadata(node: dict[str, Any]) -> dict[str, Any]:
@@ -51,7 +51,8 @@ def _state_lines(node: dict[str, Any]) -> list[str]:
 
 def _notice_lines(result: dict[str, Any]) -> list[str]:
     keys = ("partial", "partial_note", "warnings", "error", "arms", "vector_note",
-            "vector_rebuilding", "time_scope", "validity_note")
+            "vector_rebuilding", "time_scope", "validity_note", "mode", "temporal_error",
+            "claim_assessment_scope", "known_at_filtered", "known_at_unknown")
     return [f"Retrieval {key}: {_one_line(json.dumps(result[key], ensure_ascii=False), 800)}"
             for key in keys if key in result and result[key] not in (None, "", [], {})]
 
@@ -120,7 +121,10 @@ def _brief_lines(brief: dict[str, Any]) -> list[str]:
         if not candidates:
             return _notice_lines(brief)
         lines = _notice_lines(brief) + ["The question matched several nodes equally; none was chosen:"]
-        return lines + [f"- {_one_line(c.get('title'), 200)} ({_citation(c)})" for c in candidates]
+        for candidate in candidates:
+            lines.append(f"- {_one_line(candidate.get('title'), 200)} ({_citation(candidate)})")
+            lines.extend(_state_lines(candidate))
+        return lines
     if status != "resolved":
         return _notice_lines(brief)
     node = brief.get("node") or {}

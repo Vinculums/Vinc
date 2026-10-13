@@ -305,3 +305,22 @@ The helper checks the complete conclusion and claims, preserves their exact
 wording and attribution, and refuses empty or unresolved manifests. It neither
 routes nor executes a task. Orchestrators quote this incoming block and add their
 own selected role, bounded package, acceptance criteria and delivery order.
+
+
+### Time and validity
+
+`search` and `brief` accept optional `mode="general"`, `"current"`, or `"historical"`.
+Omitting the mode preserves existing behavior. Historical mode keeps expired evidence
+available; current mode checks present validity and reports unknown dates and conflicting
+claims. It cannot be combined with `historical=True` or `as_of`.
+
+```python
+client.search("service release", mode="current")
+client.search("service release", mode="historical", as_of="2025")
+```
+
+`as_of` selects overlapping half-open validity periods. `known_at` filters initial creation
+time; it does not restore an earlier body revision. Search nodes and passages carry a
+`temporal` object with nullable creation, update, occurrence and validity dates, successor
+metadata, explicit supersession evidence and conflicts. Update time is not occurrence time.
+The read tools in both framework adapters expose these optional parameters too.

@@ -200,3 +200,13 @@ def test_record_episode_writes_one_fragment():
     run(record_episode(client, "Merged the contrast fix", about=["decision:tokens-are-oklch"],
                        date="2026-09-28"))
     assert [r.url.path for r in seen] == ["/v1/nodes/decision:tokens-are-oklch", "/v1/fragments"]
+
+
+@pytest.mark.parametrize("tool_name,path", [("vinc_brief", "/v1/brief"), ("vinc_search", "/v1/search")])
+def test_tools_forward_optional_temporal_scope(tool_name, path):
+    client, seen = vinc({("POST", path): {"status": "none", "rows": [], "node_hits": []}})
+    tool = {t.name: t for t in create_vinc_tools(client)}[tool_name]
+    run(tool.invoke(query="synthetic", mode="historical", historical=True, as_of="2020", known_at="2021"))
+    body = json.loads(seen[0].content)
+    assert {key: body[key] for key in ("mode", "historical", "as_of", "known_at")} == {
+        "mode": "historical", "historical": True, "as_of": "2020", "known_at": "2021"}

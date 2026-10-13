@@ -218,6 +218,7 @@ def _t_search(args, bridge):
         "cursor": args.get("cursor"), "detail": args.get("detail"),
         "historical": "true" if args.get("historical") else None,
         "as_of": args.get("as_of"), "known_at": args.get("known_at"),
+        "mode": args.get("mode"),
         "owner": _owner(args, bridge)})
 
 
@@ -557,7 +558,7 @@ def _t_brief(args, bridge):
         "owner": _owner(args, bridge), "query": args["query"],
         "max_excerpts": args.get("max_excerpts", 3),
         "historical": "true" if args.get("historical") else None,
-        "as_of": args.get("as_of"), "known_at": args.get("known_at")})
+        "as_of": args.get("as_of"), "known_at": args.get("known_at"), "mode": args.get("mode")})
     from .roles import is_role_id
     if is_role_id(args["query"].strip()) and out.get("executed"):
         role = _t_role({**args, "role": args["query"].strip()}, bridge)
@@ -736,6 +737,8 @@ TOOLS: list[dict] = [
                        "silence here reads as \"nothing else exists\".",
         "inputSchema": {"type": "object", "properties": {
             "known_at": _KNOWN_AT_PROP,
+            "mode": {"type": "string", "enum": ["general", "current", "historical"],
+                     "description": "Optional explicit search mode. Omit or general preserves legacy filters and relevance. Current hides future and expired claims, keeps unknown dates, reports comparable claim conflicts and evidenced supersession. Current conflicts with historical=true or as_of. Historical includes past claims; as_of still selects overlapping intervals. Dates are metadata, never embedding text. known_at is a creation cutoff, not revision restoration."},
             "query": {"type": "string"},
             "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
             "cursor": {"type": "string",
@@ -881,6 +884,8 @@ TOOLS: list[dict] = [
             "known_at": _KNOWN_AT_PROP,
             "query": {"type": "string",
                       "description": "The question, in natural language."},
+            "mode": {"type": "string", "enum": ["general", "current", "historical"],
+                     "description": "Explicit temporal search mode, with the same conflicts and filters as vinc_search. Current mode abstains on conflicting or unknown current claim evidence."},
             "max_excerpts": {"type": "integer", "default": 3, "minimum": 1, "maximum": 12,
                              "description": "How many canonical document excerpts to "
                                             "attach to a resolved node."},

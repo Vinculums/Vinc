@@ -129,12 +129,13 @@ def search(query: str, *, query_embedding: list[float] | None = None,
            top_k: int = 5, filters: dict | None = None, owner: str | None = None,
            cursor: str | None = None, detail: str = "summary",
            historical: bool = False, as_of: str | None = None,
+           mode: str | None = None, known_at: str | None = None,
            query_runtime: str | None = None, cfg=None, store=None) -> dict:
     """검색 순위와 페이지는 그대로 두고 공개 응답에 정확한 인용 id를 붙인다."""
     result = _retrieval.search(
         query, query_embedding=query_embedding, top_k=top_k, filters=filters,
         owner=owner, cursor=cursor, detail=detail, historical=historical,
-        as_of=as_of, query_runtime=query_runtime, cfg=cfg, store=store)
+        as_of=as_of, mode=mode, known_at=known_at, query_runtime=query_runtime, cfg=cfg, store=store)
     result["node_hits"] = [{**hit, "cite_id": hit.get("id") or None}
                            for hit in result.get("node_hits") or []]
     rows = result.get("rows") or []
@@ -1336,6 +1337,15 @@ def node_plan(node_id: str, *, owner: str) -> QueryPlan:
     # 근거: [[vinc.spec.dataplane §2.2]]
     columns = node_table_specs()[label]["cols"]
     fields = ", ".join(f"n.{col} AS {'id' if col == pk else col}" for col in columns)
+    if node_id.startswith("concept:doc."):
+        from store.search_temporal import FIELDS
+        dates = ", ".join(f"d.{key} AS _doc_{key}" for key in FIELDS)
+        return QueryPlan("node", f"MATCH (n:{label}) WHERE n.{pk} = $node "
+                         "AND n.owner_id = $owner OPTIONAL MATCH (d:_DocMeta) "
+                         "WHERE d.doc_id = $doc AND d.owner_id = $owner "
+                         f"RETURN {fields}, d.doc_id AS _doc_id, {dates}",
+                         {"node": pkns.key(owner, node_id), "owner": owner,
+                          "doc": node_id[len("concept:doc."):]})
     return QueryPlan("node", f"MATCH (n:{label}) WHERE n.{pk} = $node "
                      f"AND n.owner_id = $owner RETURN {fields}",
                      {"node": pkns.key(owner, node_id), "owner": owner})
@@ -1351,12 +1361,28 @@ def node(node_id: str, *, owner: str, cfg=None, store=None) -> dict:
     result["node"] = None
     if rows:
         stored = dict(rows[0])
+        doc_meta = None
+        if "_doc_id" in stored:
+            from store.search_temporal import FIELDS
+            present = stored.pop("_doc_id") is not None
+            values = {key: stored.pop("_doc_" + key, None) for key in FIELDS}
+            if present:
+                doc_meta = values
         if node_id.startswith("domain:"):
             stored = {"id": node_id, "kind": "domain", "name": stored["name"]}
         else:
             stored["kind"] = stored.get("type") or _seed_table(node_id)[0].lower()
         if "props" in stored:
             stored["props"] = _props_to_obj(stored["props"])
+        from store.search_temporal import metadata
+        # A domain is a namespace container, not dated evidence. Keep its exact read shape.
+        # Other kinds retain their stored top-level columns; normalized dates are nested.
+        if stored.get("kind") != "domain":
+            stored["temporal"] = metadata(doc_meta if doc_meta is not None else stored)
+            # Exact reads retain their single-query, neighbor-independent contract.
+            # Context/brief/search assess lineage; this endpoint exposes stored dates only.
+            stored["temporal"]["claim_status"] = "unassessed"
+            stored["temporal"]["claim_assessment_scope"] = "stored_fields"
         result["node"] = stored
     return result
 
@@ -2584,7 +2610,42 @@ def _ledger_ego_ids(seed: str, *, owner: str, depth: int = 2,
 _NODE_SOURCES_CAP = 50
 
 
-def node_context(*, owner: str, node: str, limit: int = 4,
+def node_context(**kwargs) -> dict:
+    """상세·요약도 검색과 같은 시간 메타를 보존한다."""
+    from store import search_temporal as temporal
+    store = kwargs.get("store")
+    owns = store is None
+    if owns:
+        store = open_store(kwargs.get("cfg") or load_config())
+    if store is None:
+        return _node_context(**kwargs)
+    try:
+        res = _node_context(**{**kwargs, "store": store})
+        if res.get("executed"):
+            try:
+                owner, nid = kwargs.get("owner"), kwargs["node"]
+                source = temporal.node_sources(store, [nid], owner=owner).get(nid, res)
+                temporal.stamp(res, source)
+                candidates = [{"id": nid, "kind": source.get("kind", res.get("node_kind"))}]
+                temporal.finish_nodes(store, candidates, owner=owner)
+                res["temporal"] = candidates[0]["temporal"]
+                excerpts = res.get("excerpts") or []
+                docs = temporal.doc_sources(store, [r.get("doc_id") for r in excerpts], owner=owner)
+                for row in excerpts:
+                    temporal.stamp(row, docs.get(row.get("doc_id"), {}))
+                temporal.finish_docs(store, excerpts, owner=owner)
+                temporal.finish_nodes(store, (res.get("links") or {}).get("items") or [], owner=owner)
+            except Exception as exc:
+                temporal.stamp(res, res)
+                res["partial"] = True
+                res["temporal_error"] = f"{type(exc).__name__}: {exc}"
+        return res
+    finally:
+        if owns:
+            store.close()
+
+
+def _node_context(*, owner: str, node: str, limit: int = 4,
                  with_evidence: bool = False, links_offset: int = 0,
                  sources_offset: int = 0, cfg=None, store=None) -> dict:
     """노드→정본 컨텍스트(D45-V) — 뷰에서 노드를 눌렀을 때 보여줄 "이건 무엇이고,
@@ -3156,6 +3217,13 @@ def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
                     "valid_until": ctx.get("valid_until") or "",
                     "validity": ctx.get("validity") or "current",
                     "superseded_by": ctx.get("superseded_by") or ""}
+    from store.search_temporal import stamp
+    stamp(base["node"], ctx)
+    if "temporal" in ctx:
+        base["node"]["temporal"] = cand.get("temporal") or ctx["temporal"]
+    for key in ("created_at", "updated_at", "content_time", "temporal_error"):
+        if key in ctx:
+            base["node"][key] = ctx[key]
     if base["node"]["validity"] != "current":
         _sb = base["node"]["superseded_by"]
         base.setdefault("validity_note",
@@ -3406,6 +3474,8 @@ def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
         "matched_in": h.get("matched_in") or "",
         "hit_tokens": _brief_int(h.get("hit_tokens")),
         "title_tokens": _brief_int(h.get("title_tokens")),
+        **{k: h[k] for k in ("temporal", "created_at", "updated_at", "content_time",
+                             "valid_from", "valid_until", "validity", "superseded_by") if k in h},
     } for h in picked]
 
 
@@ -3521,6 +3591,7 @@ def _brief_semantic_none(res: dict) -> bool:
 
 def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
           max_excerpts: int = 3, historical: bool = False, as_of: str | None = None,
+          mode: str | None = None,
           cfg=None, store=None, _reask: bool = False,
           query_runtime: str | None = None) -> dict:
     """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
@@ -3547,9 +3618,10 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
     # Direct-ID reads bypass search by design, but an explicit time request must
     # still be validated and applied before the early return.
     try:
-        direct_scope, direct_scope_info = resolve_as_of(as_of, query)
+        from store.search_temporal import mode_scope, overlaps_scope as temporal_overlap
+        historical, direct_scope, direct_scope_info = mode_scope(mode, historical, as_of, query)
     except ValueError as exc:
-        base["note"] = base["error"] = f"invalid_as_of: {exc}"
+        base["note"] = base["error"] = f"invalid_temporal_mode: {exc}" if mode else f"invalid_as_of: {exc}"
         return base
     if direct_scope_info is not None:
         base["time_scope"] = direct_scope_info
@@ -3573,12 +3645,21 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             got = node_context(owner=owner, node=qid, limit=max_excerpts,
                                with_evidence=True, store=store)
             if got.get("executed"):
-                if direct_scope is not None and not holds_during(
-                        got.get("valid_from"), got.get("valid_until"), direct_scope):
+                if mode == "current" and got.get("temporal", {}).get("validity") in ("future", "historical"):
+                    out_of_scope_ids.append(qid)
+                    continue
+                if mode != "current" and direct_scope is not None and not temporal_overlap(
+                        got.get("temporal", got).get("valid_from"),
+                        got.get("temporal", got).get("valid_until"), direct_scope):
                     out_of_scope_ids.append(qid)
                     continue
                 base["executed"] = True
                 base["status"] = "resolved"
+                if mode == "current" and (got.get("temporal", {}).get("validity") == "unknown" or got.get("temporal", {}).get("claim_status") in ("conflict", "cycle", "superseded", "unknown")):
+                    base["status"] = "choose"
+                    base["candidates"] = _brief_candidate_rows([{"id": qid, "kind": got.get("node_kind"), "title": got.get("title"), "temporal": got.get("temporal")}])
+                    base["validity_note"] = "the current claim is uncertain; no current state was chosen"
+                    return base
                 base["resolved_via"] = "id"
                 # 앞선 후보가 안 열려 ASCII 접두나 다음 id 로 열었으면 그 대체를
                 # 밝힌다 — 잘린 접두는 우연히 실재하는 다른 노드일 수 있다.
@@ -3605,7 +3686,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             return base
         res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
                      owner=owner, store=store, historical=historical,
-                     as_of=as_of, query_runtime=query_runtime)
+                     as_of=as_of, mode=mode, query_runtime=query_runtime)
         # executed 는 노드 팔 기준이다 — 청크 팔만 죽어도 노드 팔은 owner 스코프 결과를 낸다.
         base["executed"] = bool(res.get("executed") or res.get("node_hits"))
         # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`
@@ -3616,7 +3697,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         for k in ("note", "node_error",
                   "arms", "vector_note", "vector_rebuilding", "time_scope",
                   "encoder_runtime_warning",
-                  "validity_filtered", "validity_note", "validity_best_dropped"):
+                  "validity_filtered", "validity_note", "validity_best_dropped",
+                  "temporal_error", "partial", "mode", "claim_assessment_scope"):
             if res.get(k):
                 base[k] = res[k]
         # 검색의 `error` 는 청크 팔 실패다(FTS 잔해·확장 미가용·색인 부재 …). 같은 검색의
@@ -3631,6 +3713,9 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             base["note"] = "no sufficiently close semantic candidate"
             return base
         status, picked = _brief_resolve(query, res.get("node_hits") or [])
+        if mode == "current" and any(h.get("temporal", {}).get("validity") == "unknown" or h.get("temporal", {}).get("claim_status") in ("conflict", "cycle", "unknown") for h in picked):
+            status = "choose"
+            base["validity_note"] = "current claim evidence is conflicting or unknown; no current state was chosen"
         # 🔴 **유효구간 필터가 동점을 깨서 확신을 만들면 안 된다.** 지운 행이 남은 1위와
         # 같은 점수였다면, 원래 이 질문은 "모르겠다"(choose)였다. 그 자리에서 확정을
         # 주면 필터가 **보이는 것**이 아니라 **답**을 바꾼 것이고, 그건 §4.2 가 의도한
@@ -3686,7 +3771,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             if base["candidates"] and not _reask and _brief_choose_material_on():
                 base["candidate_material"] = _brief_candidate_material(
                     base["candidates"][0], owner=owner, max_excerpts=max_excerpts,
-                    historical=historical, cfg=cfg, store=store)
+                    historical=historical, mode=mode, as_of=as_of, cfg=cfg, store=store)
             return base
         if status == "none":
             return base

@@ -2,6 +2,7 @@
  *  6:57/7:2/7:78) carried over with approved deltas (D18 English copy). */
 import { icon, stateDot } from "./icons";
 import { COPY } from "./copy";
+import { temporalEntries } from "./search-temporal";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
 
 /** ── 바깥 클릭으로 닫기 ────────────────────────────────────────────────────
@@ -486,4 +487,28 @@ export function armsNoticeBadge(res: any): string {
   return `<div style="margin:0 0 var(--space-2,.5rem)"><span class="badge"
     style="border-color:hsl(var(--${tone}))">${
     stateDot(n.benign ? "half" : "empty", 12)} ${n.text}</span></div>`;
+}
+
+
+/** The same evidence labels in full Search and the topbar. */
+export function searchTemporalText(row: any): string {
+  const labels: Record<string, string> = {
+    created_at: COPY.search.temporal.created_at, updated_at: COPY.search.temporal.updated_at,
+    valid_from: COPY.search.temporal.valid_from, valid_until: COPY.search.temporal.valid_until,
+    superseded_by: COPY.search.temporal.superseded_by, validity: COPY.search.temporal.validity,
+    claim_status: COPY.search.temporal.claim_status, conflicts: COPY.search.temporal.conflicts,
+    supersession: COPY.search.temporal.supersession,
+  };
+  const states: Record<string, string> = {
+    current: COPY.search.temporalValues.current, future: COPY.search.temporalValues.future,
+    historical: COPY.search.temporalValues.historical, candidate: COPY.search.temporalValues.candidate,
+    date_unknown: COPY.search.temporalValues.date_unknown, conflict: COPY.search.temporalValues.conflict,
+    cycle: COPY.search.temporalValues.cycle, superseded: COPY.search.temporalValues.superseded,
+    unknown: COPY.search.temporalValues.unknown,
+  };
+  return temporalEntries(row).map(([key, value]) => {
+    const text = value === "unknown" && key !== "validity" && key !== "claim_status"
+      ? COPY.search.unknownDate : states[value] || value;
+    return `${labels[key]}: ${text}`;
+  }).join(" · ");
 }
