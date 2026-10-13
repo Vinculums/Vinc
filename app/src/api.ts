@@ -1080,7 +1080,7 @@ export const teamsApi = {
 };
 
 export type ConversionCheck = { ready: boolean; topic: string; fingerprint?: string;
-  counts: Record<string, number>; documents: number; blockers: string[] };
+  counts_known?: boolean; counts: Record<string, number> | null; documents: number | null; blockers: string[] };
 export type ConversionRun = { id: string; topic: string; name: string; team: string;
   state: "prepared" | "committing" | "graph_committed" | "active" | "cancelled" };
 /** Account-owned control plane, shared by web sessions and desktop member keys. */
