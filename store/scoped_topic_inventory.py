@@ -48,6 +48,12 @@ class _Reader:
         return rows
 
     def scan(self, head, projection, order, params=None):
+        # Most relationship tables have no rows. Avoid allocating a sorter for
+        # a result that fits in one page; only paged scans need stable order.
+        first = self.page(f"{head} RETURN {projection} LIMIT {PAGE_ROWS}", params)
+        if len(first) < PAGE_ROWS:
+            yield from first
+            return
         offset = 0
         while True:
             rows = self.page(f"{head} RETURN {projection} ORDER BY {order} "
