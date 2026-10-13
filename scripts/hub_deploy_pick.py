@@ -66,6 +66,7 @@ HUB_PATHS = (
     "scripts/check_hub_env.py",
     "scripts/layout_app.py",
     "scripts/verify_layout_remote.py",
+    "scripts/verify_search_temporal_remote.py",
     ".github/workflows/hub-deploy.yml",
 )
 
