@@ -283,6 +283,22 @@ class MutationLifecycleTests(unittest.TestCase):
         self.assertFalse(result["preview"]["apply_supported"])
         self.assertEqual("ABOUT", result["preview"]["unsupported_edges"][0]["type"])
 
+    def test_mixed_decision_endpoints_are_not_claimed_rewireable_by_label(self):
+        self.seed("concept:keep")
+        self.seed("concept:drop")
+        fragment.merge_fragment({"owner":OWNER,"nodes":[{"id":"decision:reason","type":"decision","title":"Reason"}],
+            "edges":[{"from":"concept:drop","to":"decision:reason","type":"derives_from","evidence":"Retain"}]},store=self.store)
+        args = {"keep":"concept:keep","drop":"concept:drop"}
+        result = mutation_preview.preview(self.store,owner=OWNER,operation="merge_nodes",arguments=args)
+        self.assertTrue(result["executed"], result)
+        self.assertFalse(result["preview"]["apply_supported"])
+        edge = result["preview"]["unsupported_edges"][0]
+        self.assertEqual(("DERIVES_FROM","Concept","Decision"),(edge["type"],edge["source_kind"],edge["target_kind"]))
+        applied = mutation_preview.apply_checked(self.store,owner=OWNER,operation="merge_nodes",arguments=args,
+            digest=result["preview_digest"],apply=lambda:self.fail("unsupported pair must not mutate"))
+        self.assertEqual("preview_apply_not_supported", applied["error"])
+        self.assertTrue(query.node("concept:drop",owner=OWNER,store=self.store)["found"])
+
     def test_failed_and_malformed_reads_do_not_become_empty_props_or_absent_ids(self):
         from store import pkns
         a = self.seed(props={"saved": 1})
