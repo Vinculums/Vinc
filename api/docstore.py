@@ -133,7 +133,8 @@ def _meta(store, doc_id: str, *, strict=False) -> dict | None:
         # v22 — 문서 유효구간. put_doc 이 3값(미지정 보존)을 지키려면 먼저 읽어야 한다.
         "d.valid_from AS valid_from, d.valid_until AS valid_until, "
         "d.superseded_by AS superseded_by", {"id": doc_id})
-    if strict and rows is None:
+    from .operation_receipts import in_transaction
+    if (strict or in_transaction.get()) and rows is None:
         raise RuntimeError("document_metadata_unavailable")
     return rows[0] if rows else None
 
@@ -142,7 +143,8 @@ def _live_chunks(store, doc_id: str, *, strict=False) -> dict[str, int]:
     """doc_id 로 살아 있는 Chunk 행 수를 청크의 owner_id 별로 센다('' = 무소유)."""
     rows = store.run("MATCH (c:Chunk) WHERE c.doc_id = $d "
                      "RETURN c.owner_id AS o, count(c) AS n", {"d": doc_id})
-    if strict and rows is None:
+    from .operation_receipts import in_transaction
+    if (strict or in_transaction.get()) and rows is None:
         raise RuntimeError("document_chunks_unavailable")
     rows = rows or []
     return {str(r.get("o") or ""): int(r.get("n") or 0) for r in rows}

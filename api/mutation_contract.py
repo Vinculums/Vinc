@@ -67,6 +67,8 @@ def prepare_fragment(store, fragment: dict, owner: str) -> dict:
             continue
         if not isinstance(entry.get("id"), str) or not entry.get("type"):
             raise MutationConflict("invalid_conditional_node")
+        if "\x1f" in entry["id"]:
+            raise MutationConflict("invalid_conditional_identity")
         kind = str(entry["type"]).lower()
         if entry["id"].partition(":")[0] != kind:
             raise MutationConflict("invalid_conditional_identity")
@@ -79,6 +81,17 @@ def prepare_fragment(store, fragment: dict, owner: str) -> dict:
         existing = rows[0] if rows else None
         if create and existing is not None:
             raise MutationConflict(node_id=entry["id"], current_rev=existing.get("rev"))
+        if create and existing is None:
+            from store import pkns
+            label, pk = query._seed_table(entry["id"])
+            # 비네임스페이스 저장소의 다른 소유자 PK도 쓰기 전에 거절한다.
+            # 행의 제목·속성·소유자·revision은 읽거나 돌려주지 않는다.
+            occupied = store.run(f"MATCH (n:{label}) WHERE n.{pk}=$id RETURN count(n) AS n",
+                                 {"id": pkns.key(owner, entry["id"])})
+            if not occupied:
+                raise MutationConflict("write_precondition_unavailable")
+            if occupied[0]["n"]:
+                raise MutationConflict("write_target_unavailable", node_id=entry["id"])
         if expected is not None:
             if existing is None:
                 raise MutationConflict("write_target_unavailable", node_id=entry["id"])

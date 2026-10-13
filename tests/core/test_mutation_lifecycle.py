@@ -259,6 +259,29 @@ class MutationLifecycleTests(unittest.TestCase):
         self.assertFalse(result["preview_complete"])
         self.assertEqual("preview_incomplete", result["error"])
 
+    def test_create_only_foreign_pk_collision_refuses_the_whole_legacy_fragment(self):
+        fragment.merge_fragment({"owner":"user:foreign","nodes":[{"id":"concept:taken","type":"concept",
+            "title":"Private title","props":{"secret":"private"}}]}, store=self.store)
+        result = self.ingest([{"id":"concept:free","type":"concept","title":"Free"},
+                              {"id":"concept:taken","type":"concept","title":"Mine"}], create_only=True)
+        if self.pk_mode == "off":
+            self.assertFalse(result["executed"], result)
+            self.assertEqual("write_target_unavailable", result["error"])
+            self.assertFalse(query.node("concept:free", owner=OWNER, store=self.store)["found"])
+            self.assertNotIn("Private title", str(result))
+            self.assertNotIn("current_rev", result)
+        else:
+            self.assertTrue(result["executed"], result)
+            self.assertEqual("Mine", query.node("concept:taken", owner=OWNER, store=self.store)["node"]["title"])
+
+    def test_receipts_refuse_a_backend_without_the_native_atomicity_contract(self):
+        class OtherStore:
+            def run(self, *args):
+                raise AssertionError("unsupported backend must not receive a write")
+        result = operation_receipts.execute(OtherStore(), owner=OWNER, operation="doc.put", arguments={},
+            operation_id=str(uuid4()), apply=lambda:self.fail("unsupported backend cannot apply"))
+        self.assertEqual("receipt_atomicity_not_supported", result["error"])
+
 
 class MutationLifecycleLegacyTests(MutationLifecycleTests):
     pk_mode = "off"

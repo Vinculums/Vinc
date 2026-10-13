@@ -94,6 +94,9 @@ def _summary(result):
 def execute(store, *, owner, operation, arguments, operation_id, apply):
     """기존 단일 writer 안에서 수행한다. 내용과 완료 기록은 같은 DB 트랜잭션이다."""
     base = {"executed": False, "kind": operation}
+    from store.embedded_backend import EmbeddedBackend
+    if not isinstance(store, EmbeddedBackend):
+        return {**base, "error": "receipt_atomicity_not_supported", "status": "unsupported_kind"}
     try:
         key = _key(owner, operation_id)
     except ValueError:
