@@ -1,0 +1,99 @@
+{
+  "adapter_exclusions": {
+    "paws_blank_or_NS_excluded": 307
+  },
+  "counts": {
+    "dev": {
+      "klue-nli:ko_ko": 50,
+      "klue-sts:ko_ko": 50,
+      "pawsx:en_en": 50,
+      "pawsx:ko_ko": 50,
+      "scifact:en_en": 50,
+      "vitaminc:en_en": 50
+    },
+    "train": {
+      "klue-nli:ko_ko": 200,
+      "klue-sts:ko_ko": 200,
+      "pawsx:en_en": 200,
+      "pawsx:ko_ko": 200,
+      "scifact:en_en": 200,
+      "vitaminc:en_en": 200
+    }
+  },
+  "eligible_pairs": 349066,
+  "exclusions": {
+    "duplicate_pair": 2819,
+    "native_unknown_excluded": 68964,
+    "train_reserved_for_dev_component": 14369
+  },
+  "files": {
+    "dev-pairs.jsonl": "2de651560a6d1a283b0fe074b9427828fc3e49472750213571bde0f7f01cd33e",
+    "development.jsonl": "8c6fd247d7b18f132197bf8f81ae702ee034d4b5f6523bf295a4df0d2d12e8a0",
+    "train-pairs.jsonl": "58a0490d49923868ebeea1d1d41ee3a67eb511347a805f1eeb6bb046b73d4339",
+    "training.jsonl": "d2723762ca1c47250e5c7f5886bd98fb60c08dbe518db382ea3993e2722e0379"
+  },
+  "native_labels": {
+    "dev": {
+      "klue-nli:contradiction": 25,
+      "klue-nli:entailment": 25,
+      "klue-sts:0": 25,
+      "klue-sts:1": 25,
+      "pawsx:0": 50,
+      "pawsx:1": 50,
+      "scifact:CONTRADICT": 25,
+      "scifact:SUPPORT": 25,
+      "vitaminc:REFUTES": 25,
+      "vitaminc:SUPPORTS": 25
+    },
+    "train": {
+      "klue-nli:contradiction": 100,
+      "klue-nli:entailment": 100,
+      "klue-sts:0": 100,
+      "klue-sts:1": 100,
+      "pawsx:0": 200,
+      "pawsx:1": 200,
+      "scifact:CONTRADICT": 100,
+      "scifact:SUPPORT": 100,
+      "vitaminc:REFUTES": 100,
+      "vitaminc:SUPPORTS": 100
+    }
+  },
+  "new_human_reviews": 0,
+  "no_new_mixed_language_gold": true,
+  "parsed_native_pairs": 435218,
+  "production_weights_approved": false,
+  "question_sha256": "a3a4bf95c558c0ed681214cb80ab046a097adb07a76a5da04844100187ad7440",
+  "schema": "vinc.laya.native-auxiliary.v1",
+  "selection": {
+    "dev_per_cell": 25,
+    "train_per_cell": 100
+  },
+  "selection_digest": "0b6e57380dd144025222fd2c576f86f96d7809be92f350c920d869d2bbb10325",
+  "source_freezes": [
+    {
+      "bytes": 50326548,
+      "files": 12,
+      "freeze_sha256": "b7eb5a2de99c8e8d4cf9d0cb255ff1109f1422bb957b607cab7a95d7830a561d",
+      "verified": true
+    },
+    {
+      "bytes": 18639613,
+      "files": 6,
+      "freeze_sha256": "b0393efc64b822f6ebe5bccfa8c71c6876e2718a415981e9c38e80c52942c986",
+      "verified": true
+    }
+  ],
+  "source_reader": {
+    "pyarrow": "23.0.1"
+  },
+  "teacher_calls": 0,
+  "validation": {
+    "cross_role_identity_keys": 0,
+    "dev_components": 277,
+    "dev_pairs": 300,
+    "semantic_cross_language_independence_proven": false,
+    "train_components": 1104,
+    "train_pairs": 1200,
+    "underlying_document_ids_complete": false
+  }
+}

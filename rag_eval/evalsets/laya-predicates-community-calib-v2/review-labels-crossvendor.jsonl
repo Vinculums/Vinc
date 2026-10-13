@@ -1,0 +1,120 @@
+{"pair_id":"j0001","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0002","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0003","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0004","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0005","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0006","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0007","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0008","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0009","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0010","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0011","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0012","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The listed central learning methods give a reason for the strong dependence claim, without proving that every learning method requires probability."}
+{"pair_id":"j0013","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The mathematical correspondences supply evidence for the same-calculation claim despite B not naming the concrete models."}
+{"pair_id":"j0014","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0015","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0016","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The pendulum example supports the mechanism claim but does not demonstrate it for all constraints."}
+{"pair_id":"j0017","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":true,"note":"The need for clock corrections does not identify the direction or cause of the particular moving-clock effect."}
+{"pair_id":"j0018","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0019","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0020","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0021","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0022","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0023","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0024","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0025","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0026","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0027","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0028","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0029","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0030","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0031","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0032","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0033","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0034","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0035","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0036","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0037","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0038","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0039","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0040","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0041","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0042","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0043","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0044","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0045","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0046","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0047","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0048","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0049","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0050","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":true,"note":"An evaluation recommendation does not establish Langlands conjectures as existing training material."}
+{"pair_id":"j0051","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0052","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"A large discrepancy gives a reason to revise one of the assumed model or measurement accounts, without logically proving which."}
+{"pair_id":"j0053","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0054","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":true,"note":"Timelike causal possibility alone does not give evidence for the separate spacelike prohibition."}
+{"pair_id":"j0055","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0056","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0057","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0058","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0059","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0060","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0061","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0062","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0063","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0064","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0065","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0066","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0067","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0068","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0069","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The ideal-engine bound gives a reason for the impossibility claim under its intended heat-engine scope."}
+{"pair_id":"j0070","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"Time-symmetric dynamics plus one-way entropy give an argument for the entropy-based arrow of time."}
+{"pair_id":"j0071","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0072","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0073","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"Restoring conservation under changing fields gives a reason for the removed-inconsistency claim."}
+{"pair_id":"j0074","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"A topological invariant gives a reason for robustness to small changes, assuming they do not change the phase."}
+{"pair_id":"j0075","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0076","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0077","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0078","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The modularity correspondence supplies evidence for a partial realization of the stated broader program."}
+{"pair_id":"j0079","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0080","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0081","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0082","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0083","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0084","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0085","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0086","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0087","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0088","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0089","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0090","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0091","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0092","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0093","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0094","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0095","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The noncommuting position and momentum operators give a mathematical reason for their joint precision limit."}
+{"pair_id":"j0096","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0097","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0098","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0099","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0100","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0101","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0102","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0103","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0104","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0105","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0106","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0107","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0108","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":true,"note":"A current deflecting a compass does not establish gauge freedom's role in later particle physics."}
+{"pair_id":"j0109","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"j0110","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0111","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0112","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0113","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0114","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0115","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0116","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0117","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0118","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The matching optical behavior of experimentally generated waves provides evidence for the electromagnetic account of light."}
+{"pair_id":"j0119","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"j0120","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}

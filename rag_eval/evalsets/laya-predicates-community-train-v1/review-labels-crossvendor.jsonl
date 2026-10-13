@@ -1,0 +1,505 @@
+{"pair_id":"t0001","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0002","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0003","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0004","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0005","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0006","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0008","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0009","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0010","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The state-size argument supports ordinary-memory infeasibility, not universal impossibility for every structured state."}
+{"pair_id":"t0011","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0012","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0013","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0014","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0015","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0016","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0017","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"Boundary duality supports the general possibility, but exactness is stronger than the low-energy symmetry stated."}
+{"pair_id":"t0018","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0019","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0020","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0021","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0022","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0023","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0024","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0025","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0026","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0027","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0029","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0030","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0031","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0032","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0033","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0034","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The symmetry correspondence supports a CFT reformulation, but is not itself a complete amplitude construction."}
+{"pair_id":"t0035","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0036","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0037","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0038","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0039","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0040","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0041","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0042","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The stated infinite-category theorems support formalization, but do not independently verify the author, date or page count."}
+{"pair_id":"t0043","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0044","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0045","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0046","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0047","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0048","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0049","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0050","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The candidate non-Abelian anyons give a reason to investigate protected qubits without establishing an implemented qubit."}
+{"pair_id":"t0051","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0052","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0053","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0054","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0056","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"A supports the relative accuracy comparison, but not the precise numerical errors in B."}
+{"pair_id":"t0057","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0059","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0060","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0061","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0062","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0063","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0064","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0065","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0066","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0067","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0068","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0069","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0070","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0071","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0072","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":true,"note":"A dates two later independent proofs but does not explicitly deny an earlier proof by Riemann."}
+{"pair_id":"t0073","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0074","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0075","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0077","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0078","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0079","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0080","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0081","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0082","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0083","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0084","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0085","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":true,"note":"A states a later algebra-variety theorem, not evidence of the field's historical origin."}
+{"pair_id":"t0086","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0087","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0088","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0089","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0090","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0091","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0092","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0093","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0094","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0095","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The field-range inequality supports the large-field implication, but does not provide the precise 0.001 threshold."}
+{"pair_id":"t0097","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0098","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0099","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0100","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0101","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The saddle comparison supports incompleteness, not the unqualified assertion that Hawking was not wrong."}
+{"pair_id":"t0102","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0103","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0104","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0105","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0106","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0107","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0108","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0109","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The crossing experiment supports the fluctuation-theorem test, without independently identifying its authors or year."}
+{"pair_id":"t0110","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0111","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0112","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0113","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0114","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0115","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0116","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0117","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0118","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0119","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":true,"note":"The two dated proof claims need not conflict unless each is understood as claiming the first proof."}
+{"pair_id":"t0120","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0121","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"A identifies a thermal-noise mechanism but gives no quantitative sensitivity bound."}
+{"pair_id":"t0122","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0123","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0124","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0125","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0126","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0127","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0128","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0129","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0130","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0131","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0132","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0133","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0134","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0135","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The examples support dependence on Hodge numbers, not that they determine every part of the spectrum."}
+{"pair_id":"t0136","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0137","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0138","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0139","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0140","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0141","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0142","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The causal-wedge restriction supplies a reason for the horizon limitation, assuming the stated boundary region."}
+{"pair_id":"t0144","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0145","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The crossover calculation supports the proposed Page-time identification but does not establish its attribution or date."}
+{"pair_id":"t0146","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0147","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0148","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The spectrum argument supports the radius duality but does not itself establish the IIA to IIB mapping."}
+{"pair_id":"t0149","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0150","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0151","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0152","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0153","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0154","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0155","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0156","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0157","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"Repeated independent matches support confidence in the duality without quantifying how unlikely failure is."}
+{"pair_id":"t0158","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0159","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0160","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0161","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0162","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0163","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0164","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0165","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0166","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0167","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0168","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The entropy-area relation supports an entanglement origin of geometry without proving that emergence."}
+{"pair_id":"t0169","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0170","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0171","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0172","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0173","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0174","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0175","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0176","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0177","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0178","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0179","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0180","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0181","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0182","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The pure-state argument supports interior entanglement, although the phrase old radiation emitted after Page time is ambiguous."}
+{"pair_id":"t0183","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0184","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0185","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0186","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0187","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0188","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The numerical trend supports the conjectured arithmetic-analytic link without deriving its exact equality."}
+{"pair_id":"t0189","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0190","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0191","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0192","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0193","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0194","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0195","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0196","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0197","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0198","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0199","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":true,"note":"I read candidate non-unitary as assigning non-unitarity to the proposed theory rather than leaving its unitarity wholly open."}
+{"pair_id":"t0200","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0201","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0202","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0203","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0204","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0205","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0206","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0207","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0208","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0209","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0210","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0211","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0212","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"A persistent measurable displacement supports detectability of memory but does not independently establish the soft-graviton interpretation or named instruments."}
+{"pair_id":"t0213","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0214","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0215","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0216","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0217","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0218","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0219","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0220","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0221","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0222","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0223","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0224","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0225","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0226","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0227","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0228","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0229","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0230","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0231","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0232","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0233","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0234","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The example supports access to nonperturbative gauge results through gravity but does not establish the claim that only lattice methods were previously possible."}
+{"pair_id":"t0235","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0236","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0237","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0238","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0239","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0240","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0241","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0242","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0243","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0244","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0245","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0246","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0247","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0248","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0249","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0250","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0251","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0252","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0253","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0254","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0255","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0256","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0257","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0258","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0259","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":true,"note":"I read the still-under-study vanishing conjecture as incompatible with an already established proof of nonzero elements."}
+{"pair_id":"t0260","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0261","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0262","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0263","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0264","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0265","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0266","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0267","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The algebraic construction supports an exact algebraic description of the bridge without deriving every wording of the commutant claim."}
+{"pair_id":"t0268","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0269","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0270","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0271","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0272","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0273","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0274","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0275","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0276","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0277","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0278","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The shared L-function example supports the two-readings view but does not prove the stronger rejection of all division of labor."}
+{"pair_id":"t0279","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0280","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0281","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0282","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0283","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0284","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0285","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0286","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0287","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0288","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0289","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0290","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0291","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0292","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The white-dwarf observation supports the fermion-pressure mechanism but gives no separate evidence about neutron stars."}
+{"pair_id":"t0293","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0294","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The positron observation supports the prediction claim assuming the usual connection to the Dirac equation."}
+{"pair_id":"t0295","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0296","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0297","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0298","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0300","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0302","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0303","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0304","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0305","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0306","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0307","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0308","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0309","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0310","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The evaporation-time calculation supports the age comparison, but the mass referred to as this range is not specified in A."}
+{"pair_id":"t0311","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0312","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0313","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0314","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0315","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0316","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"State-determined modular flow supports the state-based time proposal without establishing that all physical evolution equals modular flow."}
+{"pair_id":"t0317","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0318","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0319","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0320","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0321","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0322","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0323","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0324","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0325","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0326","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0327","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0328","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0329","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0330","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0331","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0332","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0333","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0334","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0335","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0336","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0337","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"Current proof manuscripts support reaching a proof stage, but ongoing verification does not certify a complete accepted proof."}
+{"pair_id":"t0339","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0340","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0341","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0342","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0343","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0344","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0345","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0346","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The thermofield-double geometry supports ER=EPR as an example without establishing its attribution, date or extension to individual particles."}
+{"pair_id":"t0347","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"Twelve-digit agreement supports exceptional precision without comparing every other theory."}
+{"pair_id":"t0348","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0349","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0350","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The observed effective mass supports the gauge-symmetry-breaking interpretation but does not independently identify BCS pairing."}
+{"pair_id":"t0351","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0352","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0353","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0354","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0355","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0356","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The gapless material example supports the general surface claim without proving protection for every allowed perturbation."}
+{"pair_id":"t0357","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0358","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0359","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0360","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0362","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"Observer-dependent thermal detection supports nonabsolute vacuum without establishing the historical attribution."}
+{"pair_id":"t0363","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0364","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0365","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":true,"note":"I treat the conjecture sentence as endorsing its no-vacuum claim rather than merely reporting that a possibly false conjecture exists."}
+{"pair_id":"t0366","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"Equality of saddle actions supports a transition at Page time but does not specify which saddle dominates afterward."}
+{"pair_id":"t0367","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0368","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0369","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The partition-function test supports strong evidence for duality without establishing that a complete proof is absent."}
+{"pair_id":"t0370","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0371","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0372","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0374","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0375","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0376","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0377","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0378","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0379","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0380","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0381","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0382","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The moonshine construction supports the vertex-algebra bridge assuming its string-theory connection, which A leaves implicit."}
+{"pair_id":"t0383","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The finite-dimensional proposal supports a difference from AdS assuming the infinite-dimensional AdS comparison given only in B."}
+{"pair_id":"t0384","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0385","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The simulation supports attraction-free phase separation without isolating the proposed slowing feedback as its mechanism."}
+{"pair_id":"t0386","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0387","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0388","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0390","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0391","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0392","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0393","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0394","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0395","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0396","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0397","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0398","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0399","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0400","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0401","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0402","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0403","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The permanent displacement supports a geometric memory effect without locating it specifically at future null infinity."}
+{"pair_id":"t0404","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0405","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0406","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0407","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0408","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0409","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0410","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"Reproducing the entropy curve supports quantitative recovery but does not demonstrate a complete information-decoding map."}
+{"pair_id":"t0411","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0412","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0413","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0414","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0415","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0416","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0417","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0418","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0419","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0420","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0421","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0422","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0423","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0424","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0425","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0426","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0427","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0428","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0429","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0430","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0431","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0432","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0433","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0435","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0436","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0437","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0438","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0439","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0440","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0441","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0442","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"Finite entropy supports the possibility of a finite-state description but does not mathematically require a finite-dimensional Hilbert space."}
+{"pair_id":"t0443","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0444","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0445","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0446","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0447","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0448","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0449","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0450","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0451","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0452","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0453","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0455","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0456","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0457","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0458","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0459","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0460","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0461","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0462","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0463","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0464","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0465","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0466","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0467","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0468","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0469","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0470","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0471","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0472","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0473","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0474","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0475","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0476","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0477","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0478","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0479","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0480","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0481","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0482","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0483","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0484","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0485","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0486","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0487","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0489","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0490","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0491","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The microstate-filled interior supports an information-preserving picture without alone deriving its unitary evaporation dynamics."}
+{"pair_id":"t0492","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0493","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"Matching modular flows support the proposed reconstruction method without alone proving recovery of every bulk operator."}
+{"pair_id":"t0494","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0495","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0496","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0497","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0498","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0499","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0501","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0502","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0503","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0504","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0505","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0506","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0507","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0508","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0509","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0510","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0511","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0512","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":true,"note":"The operator-to-Hecke correspondence supports the physical-mathematical link without proving that the entire structures are exactly identical."}
+{"pair_id":"t0513","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0514","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0516","labels":{"supports":0,"contradicts":0,"same_as":1},"hard":false,"note":""}
+{"pair_id":"t0517","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0519","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0520","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0521","labels":{"supports":1,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0522","labels":{"supports":0,"contradicts":0,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0523","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}
+{"pair_id":"t0525","labels":{"supports":0,"contradicts":1,"same_as":0},"hard":false,"note":""}

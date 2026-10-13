@@ -1,0 +1,308 @@
+{
+  "arm": "low-expanded",
+  "input_hashes": {
+    "core": "7896874db0eaa0e9075d7a24c26be0f468e21ba9d0e76dd9b8d08a0c0be85409",
+    "native": "c66cd41600207c640678dcc07b79e5dd4d7c4f2d1b188b917dfe2a9a331e61cd"
+  },
+  "items": 3012,
+  "native_labels_are_vinc_gold": false,
+  "positive_items": 1506,
+  "schema": "vinc.laya.balanced-exposure.v1",
+  "seed": 20261007,
+  "strata": [
+    {
+      "available_unique_items": 804,
+      "draws": 400,
+      "observed_unique_items": 400,
+      "stratum": [
+        "core",
+        "contradicts",
+        "",
+        "",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 200,
+      "draws": 400,
+      "observed_unique_items": 200,
+      "stratum": [
+        "core",
+        "contradicts",
+        "",
+        "",
+        1
+      ]
+    },
+    {
+      "available_unique_items": 798,
+      "draws": 400,
+      "observed_unique_items": 400,
+      "stratum": [
+        "core",
+        "same_as",
+        "",
+        "",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 206,
+      "draws": 400,
+      "observed_unique_items": 206,
+      "stratum": [
+        "core",
+        "same_as",
+        "",
+        "",
+        1
+      ]
+    },
+    {
+      "available_unique_items": 406,
+      "draws": 400,
+      "observed_unique_items": 400,
+      "stratum": [
+        "core",
+        "supports",
+        "",
+        "",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 96,
+      "draws": 400,
+      "observed_unique_items": 96,
+      "stratum": [
+        "core",
+        "supports",
+        "",
+        "",
+        1
+      ]
+    },
+    {
+      "available_unique_items": 100,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_entails",
+        "klue-nli",
+        "ko_ko",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 100,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_entails",
+        "klue-nli",
+        "ko_ko",
+        1
+      ]
+    },
+    {
+      "available_unique_items": 432,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_fact_refutes",
+        "scifact",
+        "en_en",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 217,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_fact_refutes",
+        "scifact",
+        "en_en",
+        1
+      ]
+    },
+    {
+      "available_unique_items": 1000,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_fact_refutes",
+        "vitaminc",
+        "en_en",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 1000,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_fact_refutes",
+        "vitaminc",
+        "en_en",
+        1
+      ]
+    },
+    {
+      "available_unique_items": 217,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_fact_supports",
+        "scifact",
+        "en_en",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 432,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_fact_supports",
+        "scifact",
+        "en_en",
+        1
+      ]
+    },
+    {
+      "available_unique_items": 1000,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_fact_supports",
+        "vitaminc",
+        "en_en",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 1000,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_fact_supports",
+        "vitaminc",
+        "en_en",
+        1
+      ]
+    },
+    {
+      "available_unique_items": 100,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_nli_contradicts",
+        "klue-nli",
+        "ko_ko",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 100,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_nli_contradicts",
+        "klue-nli",
+        "ko_ko",
+        1
+      ]
+    },
+    {
+      "available_unique_items": 100,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_paraphrase",
+        "pawsx",
+        "en_en",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 100,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_paraphrase",
+        "pawsx",
+        "en_en",
+        1
+      ]
+    },
+    {
+      "available_unique_items": 100,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_paraphrase",
+        "pawsx",
+        "ko_ko",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 100,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_paraphrase",
+        "pawsx",
+        "ko_ko",
+        1
+      ]
+    },
+    {
+      "available_unique_items": 100,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_sts_ge3",
+        "klue-sts",
+        "ko_ko",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 100,
+      "draws": 34,
+      "observed_unique_items": 34,
+      "stratum": [
+        "native",
+        "aux_sts_ge3",
+        "klue-sts",
+        "ko_ko",
+        1
+      ]
+    }
+  ],
+  "training_sha256": "705f613190b1ab15c7463cdc30bb38ab73c1c0cac9dee5fd027535bf76954feb",
+  "unique_items": 2314,
+  "unique_pairs": {
+    "core": 501,
+    "native": 577
+  }
+}

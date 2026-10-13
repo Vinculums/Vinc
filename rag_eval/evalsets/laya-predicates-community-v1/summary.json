@@ -1,0 +1,83 @@
+{
+ "n": 140,
+ "labels": {
+  "supports": {
+   "0": 112,
+   "1": 28
+  },
+  "contradicts": {
+   "0": 112,
+   "1": 28
+  },
+  "same_as": {
+   "0": 112,
+   "1": 28
+  }
+ },
+ "languages": {
+  "mixed": 40,
+  "ko": 40,
+  "en": 60
+ },
+ "label_class_by_language": {
+  "en": {
+   "supports": 12,
+   "none": 24,
+   "same_as": 12,
+   "contradicts": 12
+  },
+  "mixed": {
+   "contradicts": 8,
+   "none": 16,
+   "same_as": 8,
+   "supports": 8
+  },
+  "ko": {
+   "same_as": 8,
+   "none": 16,
+   "supports": 8,
+   "contradicts": 8
+  }
+ },
+ "hard_kind": {
+  "negation_cue": 13,
+  "paraphrase": 20,
+  "anchored_evidence": 28,
+  "topical_only": 21,
+  "scope_shift": 9,
+  "lexical_overlap": 10,
+  "random": 6,
+  "reversed_direction": 10,
+  "semantic_reversal": 15,
+  "translation": 8
+ },
+ "construction": {
+  "pack_anchor_authored": 107,
+  "pack_content_both": 21,
+  "pack_pack": 12
+ },
+ "negation_cue_among_contradicts": {
+  "none": 21,
+  "one_side": 7
+ },
+ "families": 32,
+ "pack_nodes_used": 57,
+ "measurement_side_nodes_available": 57,
+ "train_negatives": {
+  "n": 404,
+  "nodes": 53,
+  "edge_types": {
+   "relates_to": 316,
+   "prerequisite_of|relates_to": 13,
+   "derives_from|prerequisite_of|relates_to": 7,
+   "derives_from|relates_to": 51,
+   "derives_from": 14,
+   "derives_from|prerequisite_of": 3
+  },
+  "domain_pairs": {
+   "math": 57,
+   "math+physics": 44,
+   "physics": 303
+  }
+ }
+}

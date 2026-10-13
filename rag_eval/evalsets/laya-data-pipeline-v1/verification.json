@@ -1,0 +1,26 @@
+{
+  "checks_passed": 180,
+  "method": "1000 family cluster bootstrap replicates, percentile order statistics 25 and 975; descriptive AI-reference uncertainty only; not a registered gate",
+  "seed": 20261011,
+  "families": 57,
+  "supports_interval_95": {
+    "auroc": [
+      0.7714927048260382,
+      0.8843479494820491
+    ],
+    "ece": [
+      0.09886124060315182,
+      0.18163437792192816
+    ],
+    "positive_recall_at_half": [
+      0.1896551724137931,
+      0.42105263157894735
+    ],
+    "coverage": [
+      0.2861736334405145,
+      0.3787375415282392
+    ]
+  },
+  "analysis_sha256": "cb412ad6ca14051dea663fbe595a08693615c9f7437b12282522c2e61baa264e",
+  "model_calls": 0
+}

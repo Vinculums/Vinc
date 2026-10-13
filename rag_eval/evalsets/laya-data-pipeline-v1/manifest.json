@@ -1,0 +1,18 @@
+{
+  "actual_pilot_pairs": 0,
+  "base_commit": "dacaf2daa76c7ab5f53d6279404cd114301f1051",
+  "files": {
+    "analysis.json": "cb412ad6ca14051dea663fbe595a08693615c9f7437b12282522c2e61baa264e",
+    "contract-example.json": "bdcbcb789e4dcced902064f4e8839ac9b8aa2a6295e16725bc95c53b3c2d89f8",
+    "contract-validation.json": "4d3ac0a89859ce9f50719b21bddfa8f68f174485a8686736f7a6cf76e60b73fb",
+    "historical-exposure.json": "5a33163321a25ce52bb53294602005f3830ad2ef475da7b6d29638af89ac2724",
+    "pilot-review-spec.json": "6fde8f37f7f6e2ff143969460c0aa6cd2d337b753848b2147e659c782dd89d9e",
+    "synthetic-source.txt": "c0c5967c5cff6694a0297bd27bc682e391f018ae32bf9892f4627c159ac04c52",
+    "verification.json": "9742c8ddca4e5efe3f263768cf7772caf1cacc3381a5e7a1836d3f894d66a860"
+  },
+  "issue": "VIN-441",
+  "model_calls": 0,
+  "schema": "vinc.laya.preparation.v1",
+  "schema_example_pairs": 4,
+  "training_exports": 0
+}

@@ -1,0 +1,196 @@
+{
+  "annotations": [],
+  "assignments": [
+    {
+      "assigned_at": "2026-10-11T06:51:00Z",
+      "groups": [
+        "example:r12-lineage"
+      ],
+      "role": "train",
+      "source_id": "example:r12"
+    }
+  ],
+  "dataset_id": "example:vin441",
+  "exposure_registry": {
+    "path": "historical-exposure.json",
+    "sha256": "5a33163321a25ce52bb53294602005f3830ad2ef475da7b6d29638af89ac2724"
+  },
+  "exposures": [],
+  "pairs": [
+    {
+      "a": {
+        "endpoint_id": "example:r12-0-a",
+        "evidence": [
+          "example:r12-full"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "In fictional run R12, version 2 rejected all ten inputs with missing source references; version 1 rejected seven."
+      },
+      "authored_at": "2026-10-11T06:52:00Z",
+      "b": {
+        "endpoint_id": "example:r12-0-b",
+        "evidence": [
+          "example:r12-full"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "가상 실행 R12의 열 가지 입력에 한해서는 버전 2가 버전 1보다 출처 누락을 더 많이 잡아냈다."
+      },
+      "claim_time": "2026-10-11",
+      "context": null,
+      "contrast": "support",
+      "domain": "engineering",
+      "family_id": "example:r12-family",
+      "mechanism": "bounded_validation_observation",
+      "pair_id": "example:vin441:p0",
+      "parents": [],
+      "render_sha256": "96e7ee87c62bb991ab213c22a331f6258c89480534c617d8b43bfc88c434fb0d"
+    },
+    {
+      "a": {
+        "endpoint_id": "example:r12-1-a",
+        "evidence": [
+          "example:r12-full"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "가상 실행 R12에서 버전 2는 출처가 없는 입력 열 개를 모두 거절했다."
+      },
+      "authored_at": "2026-10-11T06:52:00Z",
+      "b": {
+        "endpoint_id": "example:r12-1-b",
+        "evidence": [
+          "example:r12-full"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "버전 2는 가상 실행 R12에서 출처가 빠진 열 개 입력 전부를 받아들이지 않았다."
+      },
+      "claim_time": "2026-10-11",
+      "context": null,
+      "contrast": "restatement_or_topical",
+      "domain": "engineering",
+      "family_id": "example:r12-family",
+      "mechanism": "bounded_validation_observation",
+      "pair_id": "example:vin441:p1",
+      "parents": [],
+      "render_sha256": "854e10209450ff611fa99ba1a1907de7a78ede116204759552bdb21999d57e5b"
+    },
+    {
+      "a": {
+        "endpoint_id": "example:r12-2-a",
+        "evidence": [
+          "example:r12-full"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Version 2 rejected all ten missing-source inputs in fictional run R12."
+      },
+      "authored_at": "2026-10-11T06:52:00Z",
+      "b": {
+        "endpoint_id": "example:r12-2-b",
+        "evidence": [
+          "example:r12-full"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Version 2 will reject every malformed input in every future production run."
+      },
+      "claim_time": "2026-10-11",
+      "context": null,
+      "contrast": "scope_time_condition",
+      "domain": "engineering",
+      "family_id": "example:r12-family",
+      "mechanism": "bounded_validation_observation",
+      "pair_id": "example:vin441:p2",
+      "parents": [],
+      "render_sha256": "d4a34e3de3a57eeb22c62ba7262f37785e94f1d10ecd4b3de841e57649e6688c"
+    },
+    {
+      "a": {
+        "endpoint_id": "example:r12-3-a",
+        "evidence": [
+          "example:r12-full"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "가상 실행 R12에서 버전 2는 출처가 없는 입력 열 개를 모두 거절했다."
+      },
+      "authored_at": "2026-10-11T06:52:00Z",
+      "b": {
+        "endpoint_id": "example:r12-3-b",
+        "evidence": [
+          "example:r12-full"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "In the same fictional run R12, version 2 accepted two of those ten missing-source inputs."
+      },
+      "claim_time": "2026-10-11",
+      "context": null,
+      "contrast": "reverse_or_conflict",
+      "domain": "engineering",
+      "family_id": "example:r12-family",
+      "mechanism": "bounded_validation_observation",
+      "pair_id": "example:vin441:p3",
+      "parents": [],
+      "render_sha256": "9aa9d8a52331ca8c388633c850636f53388904f22df6b35127699a46bda56429"
+    }
+  ],
+  "questions_hash": "500e613737d1",
+  "render_version": "laya-state-v1",
+  "rubric": {
+    "approved_by": null,
+    "decision_ref": null,
+    "id": "rubric:laya-evidence-contrast-v1",
+    "status": "proposed"
+  },
+  "schema": "vinc.laya.dataset.v1",
+  "sources": [
+    {
+      "captured_at": "2026-10-11T06:50:30Z",
+      "category": "synthetic_schema_example",
+      "document_id": "example:r12-doc",
+      "eligibility": {
+        "export": {
+          "approved_by": null,
+          "decision_ref": null,
+          "status": "pending"
+        },
+        "training": {
+          "approved_by": null,
+          "decision_ref": null,
+          "status": "pending"
+        }
+      },
+      "license_id": "unassigned",
+      "origin_kind": "synthetic",
+      "origin_uri": "fixture:vin441-r12",
+      "owner_scope": "synthetic-review-example",
+      "redaction_version": "no-private-inputs",
+      "revision": "1",
+      "sha256": "c0c5967c5cff6694a0297bd27bc682e391f018ae32bf9892f4627c159ac04c52",
+      "snapshot_path": "synthetic-source.txt",
+      "source_id": "example:r12"
+    }
+  ],
+  "spans": [
+    {
+      "end": 301,
+      "excerpt_sha256": "c0c5967c5cff6694a0297bd27bc682e391f018ae32bf9892f4627c159ac04c52",
+      "source_id": "example:r12",
+      "source_sha256": "c0c5967c5cff6694a0297bd27bc682e391f018ae32bf9892f4627c159ac04c52",
+      "span_id": "example:r12-full",
+      "start": 0
+    }
+  ]
+}

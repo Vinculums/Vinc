@@ -1,0 +1,102 @@
+{
+ "issue": "VIN-431",
+ "run_id": "oc-20261010-vin431-1",
+ "plan": "vinc.plan.laya-fresh-community-training-2026-10-10",
+ "input_commit": "924a12102f04a742bddea934bf643f7786515280",
+ "input_manifest_sha256": "058c4b5680e1e5f29412120fa3709ee615b78770f7500c2448a6477f42a74f8b",
+ "training_sha256": "7cb7c4f9c9db6458cf01b60fbd812899e33d719e7a21a2308d669418f3281ba0",
+ "model_sha256": "1db9aac2366ff630f24a093c51749bb6580affec797fbc0b3f86e3843d7322b8",
+ "weights_committed": false,
+ "gate": {
+  "auroc_margin": 0.05,
+  "ece_max": 0.1,
+  "coverage_min": 0.5
+ },
+ "measurements": {
+  "community": {
+   "gold_sha256": "d508ff79fd462cfd3e46a7a33cc90ff6cdad01d5fa435d58f314a75134494a57",
+   "split_sha256": "280c80116f9d70ba372dd87c342460418fa65c89263fce2849348f51c28611cf",
+   "eval_pairs": 140
+  }
+ },
+ "logical_measurement_passes": {
+  "community": 1
+ },
+ "physical_measurement_attempts": {
+  "community": 1
+ },
+ "line_endings": "LF",
+ "calibration_lf_before_freeze": true,
+ "nonfinite_report_values_encoded_as": "null",
+ "report_pins_field": "base",
+ "measured_model_field": "verification.model_sha256",
+ "sha256": {
+  "calib/calib-contradicts-en.json": "20aeac10cd069cf6a626b5873d0ec90ed44366afa5fa0e133918b1cdc9f0b50e",
+  "calib/calib-contradicts-ko.json": "88861b42fb3a0aeb5df1354560708f5c300403c63b3049805c5142891eb80251",
+  "calib/calib-same_as-en.json": "d3e098bb927fd4ab177607e3a5ab9e092092678e372927553b414d6854744bbf",
+  "calib/calib-same_as-ko.json": "5b6fad1d5c87b6026c28bc1b31efc7fbdd09aff9199a5eb8718582d776bf4b50",
+  "calib/calib-supports-en.json": "f381e3a1dd89db598953a214a9b2ec14b2f2006feea08384b78d4d2a975dd365",
+  "calib/calib-supports-ko.json": "f07a6cac271dc7a62ad084346c8752971cc2632bbc347ce8930aa9b275c386c4",
+  "calib/summary.json": "4778f11b0a621109e3705feb7bfffa992925f9e69c89ee53ae19f4e1b58decb4",
+  "calib.jsonl": "45977cc2f4ff93a29c11aab5926770613f8df12fb04f07c01fcfcff8ff33d7bb",
+  "calibration-attempt.json": "af6713083cb60f16cdd0faf61ef06abf27789dfd8a3b3beb80e5927bcbc5fd4f",
+  "calibration-frozen.json": "b6a23519de9ef3f0b94c00f33aee6fcf1b95feff2b7358ca7c306bb8d3f1c8aa",
+  "calibration.log": "9af46185fcc583c8b331ca7a4ca8b4208b0c9ea3d2d9c769c4c8d094d92092ad",
+  "community-attempt.json": "eb7c4d4d8ba9e344dd1e8033601a196a838f909c1d0007a9d02a056fbbfd2be8",
+  "community-report-attempt.json": "0f791289e6b518c2cd3efc2484fd934542f23ddac4017f6e1ebd5dcbed6aae42",
+  "community-report.json": "e9e80bd08ef8009b41878f4158bc00f82f00a8d43b84db5810cd15dfc66c829f",
+  "community.jsonl": "6e4aa2f3559fa0e4cfb7c142d61cc170ac58867a0dbe6b31ec5edee5f5054046",
+  "community.log": "5a2779836edabcaa531fbcd94ae448ae52bd312873c1d896a1f5a0d8569b917e",
+  "eval-once.lock.json": "b6a23519de9ef3f0b94c00f33aee6fcf1b95feff2b7358ca7c306bb8d3f1c8aa",
+  "execute.py": "1779ea2aeeb8380993463be51444e8b951a35d1f17518e96a0861c2561843af2",
+  "fit-calibration-attempt.json": "8587b3d05fbfec2d6da1b62527519746c63bdc7d99764a59c41c8a850b68a49b",
+  "fit-calibration.log": "095f446963f3a8a2d9c54456713fc9e08c0d5ab2d0966f1c50a305222c1d366f",
+  "freeze-record-receipt.json": "c05505da8831605f48014a187da722dba1f34d36d765233f7ecfaf6d1bdff900",
+  "freeze.py": "0fe6260632221ef005fa8a5fa73ec9630f6d62382037c59d441008eca05c6f84",
+  "package.py": "da757f5dde1e6bf764a85d78f67bf5ee8f6bc71dd372b8742c322f430b102e2c",
+  "training-config.json": "83d69d3ed4ba3793dc56752f36e3677356c57f86616dbeec529a35d36c0641e6",
+  "training.json": "d0e0d20675d3f69325ea58339a5b7c14eafb079b0428863cc87ab68478ed6fad",
+  "validate.py": "3c2df2ced85a32fb42622d6612d561e82b2d365b420b1f4bf54d1a73242ce011",
+  "verification.json": "43fa9e91cc0736d6c678632224ff11c95cb1ed7f240c158de684a2384b0c3f87",
+  "diagnose.py": "2b8333834e351839a55bc0883cf072ad13adee11a8b8b340cde9a15a24d1a410",
+  "diagnostics.json": "d97174538cecd45bfa2fbe6b9d5b27c836f64f347e37549046dd6cfa33ca6020",
+  "runtime-aligned-report.json": "894fafdbb430e26e05c96956548a4f225182d64c133364f49577ab058e601c99",
+  "runtime-aligned-report-attempt.json": "b894ec3b3b6c8f979f346a813bf8ddf25135a13a009d4b3ca1fa251303d5b864"
+ },
+ "scratch_source_sha256": {
+  "calib.jsonl": "e49458179d3b6b5288bfb3987d4aa0d08e77fe2b606c6e3b63e8067bf3d8ebb0",
+  "calib/calib-contradicts-en.json": "20aeac10cd069cf6a626b5873d0ec90ed44366afa5fa0e133918b1cdc9f0b50e",
+  "calib/calib-contradicts-ko.json": "88861b42fb3a0aeb5df1354560708f5c300403c63b3049805c5142891eb80251",
+  "calib/calib-same_as-en.json": "d3e098bb927fd4ab177607e3a5ab9e092092678e372927553b414d6854744bbf",
+  "calib/calib-same_as-ko.json": "5b6fad1d5c87b6026c28bc1b31efc7fbdd09aff9199a5eb8718582d776bf4b50",
+  "calib/calib-supports-en.json": "f381e3a1dd89db598953a214a9b2ec14b2f2006feea08384b78d4d2a975dd365",
+  "calib/calib-supports-ko.json": "f07a6cac271dc7a62ad084346c8752971cc2632bbc347ce8930aa9b275c386c4",
+  "calib/summary.json": "4778f11b0a621109e3705feb7bfffa992925f9e69c89ee53ae19f4e1b58decb4",
+  "calibration-attempt.json": "af6713083cb60f16cdd0faf61ef06abf27789dfd8a3b3beb80e5927bcbc5fd4f",
+  "calibration-frozen.json": "b6a23519de9ef3f0b94c00f33aee6fcf1b95feff2b7358ca7c306bb8d3f1c8aa",
+  "calibration.log": "982af6187bdf3d2696c90e051c4f71eeadbd187f14c8bb8d3308b08b9dd97cd4",
+  "community-attempt.json": "eb7c4d4d8ba9e344dd1e8033601a196a838f909c1d0007a9d02a056fbbfd2be8",
+  "community-report-attempt.json": "0f791289e6b518c2cd3efc2484fd934542f23ddac4017f6e1ebd5dcbed6aae42",
+  "community-report.json": "653d5701f51dd2b975a6512ef8a26edce15765c286f8510e48393328fd3c2b05",
+  "community.jsonl": "f9138390c9326c75d90d38d717e75de75c46dc36712b4a2ec25b5529a39df72c",
+  "community.log": "a92bbee6899a08e9bcab3af3543c0e09980d687c556a0c901937e1885518d469",
+  "eval-once.lock.json": "b6a23519de9ef3f0b94c00f33aee6fcf1b95feff2b7358ca7c306bb8d3f1c8aa",
+  "execute.py": "1779ea2aeeb8380993463be51444e8b951a35d1f17518e96a0861c2561843af2",
+  "fit-calibration-attempt.json": "8587b3d05fbfec2d6da1b62527519746c63bdc7d99764a59c41c8a850b68a49b",
+  "fit-calibration.log": "c20d5109210480745a9231356c4bd53e098fe6a425d96ac01c42ff2611480947",
+  "freeze-record-receipt.json": "c05505da8831605f48014a187da722dba1f34d36d765233f7ecfaf6d1bdff900",
+  "freeze.py": "0fe6260632221ef005fa8a5fa73ec9630f6d62382037c59d441008eca05c6f84",
+  "package.py": "da757f5dde1e6bf764a85d78f67bf5ee8f6bc71dd372b8742c322f430b102e2c",
+  "training-config.json": "555ff17373145325514880c18fadec9f9c011708d716f3ba7101897e353341e7",
+  "training.json": "ad956c7e086ff2db51ce91419d60f1bc63108298b9bcf7194d355cbf3378d51b",
+  "validate.py": "3c2df2ced85a32fb42622d6612d561e82b2d365b420b1f4bf54d1a73242ce011",
+  "verification.json": "43fa9e91cc0736d6c678632224ff11c95cb1ed7f240c158de684a2384b0c3f87"
+ },
+ "precision_diagnosis": {
+  "previous_manifest_sha256": "79adedcd5b1198ded4de8fec56b336075d32c9378ebc3f1ab5228ad3cfe8c01f",
+  "script": "diagnose.py",
+  "registered_report": "community-report.json",
+  "supplementary_report": "runtime-aligned-report.json",
+  "data": "diagnostics.json"
+ }
+}

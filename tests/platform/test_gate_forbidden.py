@@ -5,11 +5,13 @@
 (weg-memory 금지 / weg-9000-memory 허용).
 """
 import contextlib
+import hashlib
 import io
 import json
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
@@ -24,6 +26,32 @@ def _scan_text(name: str, content: str):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
         return g.scan(Path(d))
+
+
+class TestFrozenExternalData(unittest.TestCase):
+    def test_exact_catalog_bytes_only_exempt_the_external_name(self):
+        root = Path(__file__).resolve().parents[2]
+        for name, sha in g._EXTERNAL_F8_SHA256.items():
+            raw = (root / name).read_bytes()
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), sha)
+            with tempfile.TemporaryDirectory() as d:
+                p = Path(d) / name
+                p.parent.mkdir(parents=True)
+                p.write_bytes(raw)
+                self.assertEqual(g.scan(Path(d)), [])
+                p.write_bytes(raw + b'\n{"surface":"atlas"}\n')
+                self.assertTrue(any(v.gate == "F8" for v in g.scan(Path(d))))
+
+    def test_same_bytes_outside_pinned_path_are_checked(self):
+        raw = (Path(__file__).resolve().parents[2] / next(iter(g._EXTERNAL_F8_SHA256))).read_text(encoding="utf-8")
+        self.assertTrue(any(v.gate == "F8" for v in _scan_text("app/src/copied.json", raw)))
+
+    def test_other_rules_still_apply_to_an_exact_external_file(self):
+        raw = b'atlas usage_record = 1'
+        name = next(iter(g._EXTERNAL_F8_SHA256))
+        with patch.dict(g._EXTERNAL_F8_SHA256, {name: hashlib.sha256(raw).hexdigest()}):
+            findings = _scan_text(name, raw.decode())
+        self.assertEqual([v.gate for v in findings], ["F1"])
 
 
 class TestGate(unittest.TestCase):

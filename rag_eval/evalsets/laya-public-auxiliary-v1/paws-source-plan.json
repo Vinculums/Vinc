@@ -1,0 +1,63 @@
+{
+  "authority": "decision:proceed-with-ordered-laya-public-data-and-local-development-2026-10-13",
+  "files": [
+    {
+      "kind": "rights",
+      "license": "Google dataset terms",
+      "max_bytes": 100000,
+      "name": "pawsx/rights.txt",
+      "revision": "02b29f3af1143620d1b7f352247e65c0bdd2ec18",
+      "source": "pawsx",
+      "url": "https://raw.githubusercontent.com/google-research-datasets/paws/02b29f3af1143620d1b7f352247e65c0bdd2ec18/LICENSE"
+    },
+    {
+      "kind": "readme",
+      "license": "Google dataset terms",
+      "max_bytes": 100000,
+      "name": "pawsx/readme.txt",
+      "revision": "4cd8187c404bda33cb1f62b49b001115862acf37",
+      "source": "pawsx",
+      "url": "https://huggingface.co/datasets/google-research-datasets/paws-x/raw/4cd8187c404bda33cb1f62b49b001115862acf37/README.md"
+    },
+    {
+      "kind": "data",
+      "license": "Google dataset terms",
+      "max_bytes": 20000000,
+      "name": "pawsx/en-train.parquet",
+      "revision": "4cd8187c404bda33cb1f62b49b001115862acf37",
+      "source": "pawsx",
+      "url": "https://huggingface.co/datasets/google-research-datasets/paws-x/resolve/4cd8187c404bda33cb1f62b49b001115862acf37/en/train-00000-of-00001.parquet"
+    },
+    {
+      "kind": "data",
+      "license": "Google dataset terms",
+      "max_bytes": 20000000,
+      "name": "pawsx/en-validation.parquet",
+      "revision": "4cd8187c404bda33cb1f62b49b001115862acf37",
+      "source": "pawsx",
+      "url": "https://huggingface.co/datasets/google-research-datasets/paws-x/resolve/4cd8187c404bda33cb1f62b49b001115862acf37/en/validation-00000-of-00001.parquet"
+    },
+    {
+      "kind": "data",
+      "license": "Google dataset terms",
+      "max_bytes": 20000000,
+      "name": "pawsx/ko-train.parquet",
+      "revision": "4cd8187c404bda33cb1f62b49b001115862acf37",
+      "source": "pawsx",
+      "url": "https://huggingface.co/datasets/google-research-datasets/paws-x/resolve/4cd8187c404bda33cb1f62b49b001115862acf37/ko/train-00000-of-00001.parquet"
+    },
+    {
+      "kind": "data",
+      "license": "Google dataset terms",
+      "max_bytes": 20000000,
+      "name": "pawsx/ko-validation.parquet",
+      "revision": "4cd8187c404bda33cb1f62b49b001115862acf37",
+      "source": "pawsx",
+      "url": "https://huggingface.co/datasets/google-research-datasets/paws-x/resolve/4cd8187c404bda33cb1f62b49b001115862acf37/ko/validation-00000-of-00001.parquet"
+    }
+  ],
+  "original_archive_excluded": "HTTP 403; author namespace parquet mirror pinned independently",
+  "production_weights_approved": false,
+  "schema": "vinc.laya.public-source-plan.v1",
+  "scope": "local-auxiliary-development"
+}

@@ -1,0 +1,34 @@
+{
+ "frozen_at": "2026-10-10T11:00:13.878332+00:00",
+ "model_sha256": "1db9aac2366ff630f24a093c51749bb6580affec797fbc0b3f86e3843d7322b8",
+ "holdout_sha256": "5fa17353824dfe7431be8a963769adf5b3a70058f4e9a65d6d0c5cebe4c736fa",
+ "training_sha256": "7cb7c4f9c9db6458cf01b60fbd812899e33d719e7a21a2308d669418f3281ba0",
+ "input_manifest_sha256": "058c4b5680e1e5f29412120fa3709ee615b78770f7500c2448a6477f42a74f8b",
+ "calibration_sha256": {
+  "calib-contradicts-en.json": "20aeac10cd069cf6a626b5873d0ec90ed44366afa5fa0e133918b1cdc9f0b50e",
+  "calib-contradicts-ko.json": "88861b42fb3a0aeb5df1354560708f5c300403c63b3049805c5142891eb80251",
+  "calib-same_as-en.json": "d3e098bb927fd4ab177607e3a5ab9e092092678e372927553b414d6854744bbf",
+  "calib-same_as-ko.json": "5b6fad1d5c87b6026c28bc1b31efc7fbdd09aff9199a5eb8718582d776bf4b50",
+  "calib-supports-en.json": "f381e3a1dd89db598953a214a9b2ec14b2f2006feea08384b78d4d2a975dd365",
+  "calib-supports-ko.json": "f07a6cac271dc7a62ad084346c8752971cc2632bbc347ce8930aa9b275c386c4",
+  "summary.json": "4778f11b0a621109e3705feb7bfffa992925f9e69c89ee53ae19f4e1b58decb4"
+ },
+ "calibration_pairs": 115,
+ "min_bucket_n": 30,
+ "gate": {
+  "auroc_margin": 0.05,
+  "ece_max": 0.1,
+  "coverage_min": 0.5
+ },
+ "measurements": {
+  "community": {
+   "gold_sha256": "d508ff79fd462cfd3e46a7a33cc90ff6cdad01d5fa435d58f314a75134494a57",
+   "split_sha256": "280c80116f9d70ba372dd87c342460418fa65c89263fce2849348f51c28611cf",
+   "eval_pairs": 140
+  }
+ },
+ "order": [
+  "community"
+ ],
+ "one_logical_pass_per_measurement": true
+}

@@ -1,0 +1,27 @@
+{
+  "author": "OpenAI Codex (AI; this conversation)",
+  "label_author_is_human": false,
+  "authorized_by": "User: 음 내가 하기 보다 너가 다해도됨",
+  "intended_evaluator": "Claude / Fable (not invoked here)",
+  "repository_commit": "94b9279eaba4040f4c810890808f543cd4630cb7",
+  "candidate_file_sha256": "97e07c7f44fb1c3cbdca00c2a95b8c28ba2ca4f368bc4aeca7cc09f56b845ed7",
+  "method_doc_id": "vinc.plan.laya-test-method-2026-10-07",
+  "method_verified_by_vinc": true,
+  "method_snapshot_sha256": "6cabd5a0dbebc74ad8d86d82d93dfad0f5b77d86beba60bf8fbd51890dcacf91",
+  "synthetic_scenarios": 60,
+  "synthetic_pairs": 180,
+  "frozen_candidate_pairs": 120,
+  "gold_sha256": "49cf4b34be2fd840c56e54bcca152abfaaebd76afa844938c6d7a7eccb29fd0a",
+  "dataset_version": "laya-predicates-ai-v1",
+  "protocol_deviations": [
+    "AI labels instead of owner human labels, explicitly authorized in this conversation",
+    "Source coverage shortfalls are reported in summary.json; no provenance relabeling to fill quotas",
+    "Authored contrastive families kept together in the split instead of independent pair stratification"
+  ],
+  "not_claimed": [
+    "Original M1 gold compliance",
+    "Production go/no-go result",
+    "Independent expert validation",
+    "Actual measurements for authored fictional fixtures"
+  ]
+}

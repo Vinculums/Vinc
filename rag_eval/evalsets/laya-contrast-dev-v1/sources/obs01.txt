@@ -1,0 +1,24 @@
+{
+  "case_id": "obs01",
+  "code": "import sqlite3,json; c=sqlite3.connect(':memory:'); c.executescript('CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9);'); print(json.dumps(c.execute('SELECT count(*), count(x) FROM t;').fetchall(),ensure_ascii=False)); print(sqlite3.sqlite_version)",
+  "code_author": "OpenAI Codex assistant",
+  "completed_at": "2026-10-11T09:50:48.365288+00:00",
+  "exact_served_model": null,
+  "executable_sha256": "3638cd6a1236660910fe5e278994d309c073fb4bb49ee061f48bd4ccaaa0a191",
+  "origin": "locally_observed",
+  "platform": "Windows-10-10.0.19045-SP0",
+  "python": "3.12.9 (tags/v3.12.9:fdb8142, Feb  4 2025, 15:27:58) [MSC v.1942 64 bit (AMD64)]",
+  "query": "SELECT count(*), count(x) FROM t;",
+  "returncode": 0,
+  "rows": [
+    [
+      3,
+      2
+    ]
+  ],
+  "setup": "CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9);",
+  "sqlite_version": "3.45.3",
+  "started_at": "2026-10-11T09:50:47.964287+00:00",
+  "stderr": "",
+  "stdout": "[[3, 2]]\n3.45.3\n"
+}

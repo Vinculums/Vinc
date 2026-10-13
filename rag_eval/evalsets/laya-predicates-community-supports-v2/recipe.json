@@ -1,0 +1,25 @@
+{
+ "amp": true,
+ "base_model_sha256": "9d628fd971b700382ac6f65920a86f149777b2e748e0c955fb3b19695aa8f204",
+ "base_revision": "e4e9ddf21a7b1903b7acffd8814ad4307bf63a67",
+ "budget": {
+  "micro_batches_per_epoch": 377,
+  "opportunities_per_epoch": 48,
+  "opportunities_total": 384
+ },
+ "calib_frac": 0.0,
+ "calib_max": 0,
+ "encoder_lr": 2.5e-05,
+ "epochs": 8,
+ "expected_items": 3012,
+ "frozen": "encoder embeddings (names containing 'embeddings')",
+ "grad_accum": 8,
+ "gradient_checkpointing": true,
+ "head_lr": 0.0001,
+ "head_max_len": 256,
+ "loss": "rlcd",
+ "max_len": 1024,
+ "micro_batch": 8,
+ "seed": 20261007,
+ "training_sha256": "7896874db0eaa0e9075d7a24c26be0f468e21ba9d0e76dd9b8d08a0c0be85409"
+}

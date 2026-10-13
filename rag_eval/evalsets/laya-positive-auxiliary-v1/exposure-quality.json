@@ -1,0 +1,378 @@
+{
+  "arms": {
+    "core": {
+      "core_pair_id_crossings": 0,
+      "draw_slices": [
+        {
+          "draws": 167,
+          "label": 0,
+          "language": "en",
+          "task": "contradicts",
+          "tier": "core"
+        },
+        {
+          "draws": 164,
+          "label": 1,
+          "language": "en",
+          "task": "contradicts",
+          "tier": "core"
+        },
+        {
+          "draws": 157,
+          "label": 0,
+          "language": "en",
+          "task": "same_as",
+          "tier": "core"
+        },
+        {
+          "draws": 165,
+          "label": 1,
+          "language": "en",
+          "task": "same_as",
+          "tier": "core"
+        },
+        {
+          "draws": 159,
+          "label": 0,
+          "language": "en",
+          "task": "supports",
+          "tier": "core"
+        },
+        {
+          "draws": 173,
+          "label": 1,
+          "language": "en",
+          "task": "supports",
+          "tier": "core"
+        },
+        {
+          "draws": 165,
+          "label": 0,
+          "language": "ko",
+          "task": "contradicts",
+          "tier": "core"
+        },
+        {
+          "draws": 168,
+          "label": 1,
+          "language": "ko",
+          "task": "contradicts",
+          "tier": "core"
+        },
+        {
+          "draws": 168,
+          "label": 0,
+          "language": "ko",
+          "task": "same_as",
+          "tier": "core"
+        },
+        {
+          "draws": 170,
+          "label": 1,
+          "language": "ko",
+          "task": "same_as",
+          "tier": "core"
+        },
+        {
+          "draws": 165,
+          "label": 0,
+          "language": "ko",
+          "task": "supports",
+          "tier": "core"
+        },
+        {
+          "draws": 173,
+          "label": 1,
+          "language": "ko",
+          "task": "supports",
+          "tier": "core"
+        },
+        {
+          "draws": 170,
+          "label": 0,
+          "language": "mixed",
+          "task": "contradicts",
+          "tier": "core"
+        },
+        {
+          "draws": 170,
+          "label": 1,
+          "language": "mixed",
+          "task": "contradicts",
+          "tier": "core"
+        },
+        {
+          "draws": 177,
+          "label": 0,
+          "language": "mixed",
+          "task": "same_as",
+          "tier": "core"
+        },
+        {
+          "draws": 167,
+          "label": 1,
+          "language": "mixed",
+          "task": "same_as",
+          "tier": "core"
+        },
+        {
+          "draws": 178,
+          "label": 0,
+          "language": "mixed",
+          "task": "supports",
+          "tier": "core"
+        },
+        {
+          "draws": 156,
+          "label": 1,
+          "language": "mixed",
+          "task": "supports",
+          "tier": "core"
+        }
+      ],
+      "full_core_source_independence_established": false,
+      "native_component_crossings": 0,
+      "native_components": 0,
+      "native_pair_crossings": 0,
+      "semantic_cross_language_independence_established": false,
+      "training_sha256": "cf138f7533496646bbdbb2d8b1a2b63c1ba017e3741d4f27442e84d9a312c9c7"
+    },
+    "mixed": {
+      "core_pair_id_crossings": 0,
+      "draw_slices": [
+        {
+          "draws": 99,
+          "label": 0,
+          "language": "en",
+          "task": "contradicts",
+          "tier": "core"
+        },
+        {
+          "draws": 84,
+          "label": 1,
+          "language": "en",
+          "task": "contradicts",
+          "tier": "core"
+        },
+        {
+          "draws": 95,
+          "label": 0,
+          "language": "en",
+          "task": "same_as",
+          "tier": "core"
+        },
+        {
+          "draws": 86,
+          "label": 1,
+          "language": "en",
+          "task": "same_as",
+          "tier": "core"
+        },
+        {
+          "draws": 77,
+          "label": 0,
+          "language": "en",
+          "task": "supports",
+          "tier": "core"
+        },
+        {
+          "draws": 88,
+          "label": 1,
+          "language": "en",
+          "task": "supports",
+          "tier": "core"
+        },
+        {
+          "draws": 82,
+          "label": 0,
+          "language": "ko",
+          "task": "contradicts",
+          "tier": "core"
+        },
+        {
+          "draws": 85,
+          "label": 1,
+          "language": "ko",
+          "task": "contradicts",
+          "tier": "core"
+        },
+        {
+          "draws": 84,
+          "label": 0,
+          "language": "ko",
+          "task": "same_as",
+          "tier": "core"
+        },
+        {
+          "draws": 85,
+          "label": 1,
+          "language": "ko",
+          "task": "same_as",
+          "tier": "core"
+        },
+        {
+          "draws": 89,
+          "label": 0,
+          "language": "ko",
+          "task": "supports",
+          "tier": "core"
+        },
+        {
+          "draws": 83,
+          "label": 1,
+          "language": "ko",
+          "task": "supports",
+          "tier": "core"
+        },
+        {
+          "draws": 70,
+          "label": 0,
+          "language": "mixed",
+          "task": "contradicts",
+          "tier": "core"
+        },
+        {
+          "draws": 82,
+          "label": 1,
+          "language": "mixed",
+          "task": "contradicts",
+          "tier": "core"
+        },
+        {
+          "draws": 72,
+          "label": 0,
+          "language": "mixed",
+          "task": "same_as",
+          "tier": "core"
+        },
+        {
+          "draws": 80,
+          "label": 1,
+          "language": "mixed",
+          "task": "same_as",
+          "tier": "core"
+        },
+        {
+          "draws": 85,
+          "label": 0,
+          "language": "mixed",
+          "task": "supports",
+          "tier": "core"
+        },
+        {
+          "draws": 80,
+          "label": 1,
+          "language": "mixed",
+          "task": "supports",
+          "tier": "core"
+        },
+        {
+          "draws": 168,
+          "label": 0,
+          "language": "en_en",
+          "task": "aux_fact_refutes",
+          "tier": "native"
+        },
+        {
+          "draws": 168,
+          "label": 1,
+          "language": "en_en",
+          "task": "aux_fact_refutes",
+          "tier": "native"
+        },
+        {
+          "draws": 168,
+          "label": 0,
+          "language": "en_en",
+          "task": "aux_fact_supports",
+          "tier": "native"
+        },
+        {
+          "draws": 168,
+          "label": 1,
+          "language": "en_en",
+          "task": "aux_fact_supports",
+          "tier": "native"
+        },
+        {
+          "draws": 83,
+          "label": 0,
+          "language": "en_en",
+          "task": "aux_paraphrase",
+          "tier": "native"
+        },
+        {
+          "draws": 83,
+          "label": 1,
+          "language": "en_en",
+          "task": "aux_paraphrase",
+          "tier": "native"
+        },
+        {
+          "draws": 84,
+          "label": 0,
+          "language": "ko_ko",
+          "task": "aux_entails",
+          "tier": "native"
+        },
+        {
+          "draws": 84,
+          "label": 1,
+          "language": "ko_ko",
+          "task": "aux_entails",
+          "tier": "native"
+        },
+        {
+          "draws": 84,
+          "label": 0,
+          "language": "ko_ko",
+          "task": "aux_nli_contradicts",
+          "tier": "native"
+        },
+        {
+          "draws": 84,
+          "label": 1,
+          "language": "ko_ko",
+          "task": "aux_nli_contradicts",
+          "tier": "native"
+        },
+        {
+          "draws": 83,
+          "label": 0,
+          "language": "ko_ko",
+          "task": "aux_paraphrase",
+          "tier": "native"
+        },
+        {
+          "draws": 83,
+          "label": 1,
+          "language": "ko_ko",
+          "task": "aux_paraphrase",
+          "tier": "native"
+        },
+        {
+          "draws": 83,
+          "label": 0,
+          "language": "ko_ko",
+          "task": "aux_sts_ge3",
+          "tier": "native"
+        },
+        {
+          "draws": 83,
+          "label": 1,
+          "language": "ko_ko",
+          "task": "aux_sts_ge3",
+          "tier": "native"
+        }
+      ],
+      "full_core_source_independence_established": false,
+      "native_component_crossings": 0,
+      "native_components": 999,
+      "native_pair_crossings": 0,
+      "semantic_cross_language_independence_established": false,
+      "training_sha256": "f11f38815326258e0ff37a3360b3f9c27f697955eac228092f54618fd5f72dc5"
+    }
+  },
+  "schema": "vinc.laya.sampled-exposure-audit.v1",
+  "sealed_test_opened": false
+}

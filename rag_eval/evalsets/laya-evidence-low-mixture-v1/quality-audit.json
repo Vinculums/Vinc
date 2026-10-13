@@ -1,0 +1,27 @@
+{
+  "arms": {
+    "low-expanded": {
+      "native_unique_components": 541,
+      "native_unique_pairs": 577,
+      "new_native_components": 137,
+      "new_native_pair_ids": 187
+    },
+    "low-original": {
+      "native_unique_components": 516,
+      "native_unique_pairs": 547,
+      "new_native_components": 0,
+      "new_native_pair_ids": 0
+    }
+  },
+  "byte_identical_replay": true,
+  "core_normalized_endpoint_crossings": 0,
+  "manifest_sha256": "91330ac87d9dd63894e5511054d872ddd8449c16681af48dbab88842d3a15ed4",
+  "matched_core_and_nonfact_draws_sha256": "387b1889f363436c9982d5822ff23dddeaedf158fbb9da266d49ef9973f2d7aa",
+  "new_human_reviews": 0,
+  "new_positive_unique_components": 969,
+  "new_vinc_gold_pairs": 0,
+  "review_queue_new_components": 60,
+  "review_queue_new_pair_ids": 60,
+  "review_queue_pairs": 60,
+  "schema": "vinc.laya.evidence-expansion-audit.v1"
+}

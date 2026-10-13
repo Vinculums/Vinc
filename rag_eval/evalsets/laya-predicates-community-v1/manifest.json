@@ -1,0 +1,19 @@
+{
+ "dataset": "laya-predicates-community-v1",
+ "sha256": {
+  "README.md": "22043817106b728ca5066bc9a00595e1d2f697a31b5b7366e6909c603e7b9daa",
+  "blind-inputs.jsonl": "8a253b254e2293e703477b37b4a285210fc61f4f5d755208b507f1cf644fa59c",
+  "disputed.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "gold-review.csv": "50baeff6939360da46688830191591c73c4491309bc84daa3cc3852dd07c7a17",
+  "gold.jsonl": "1551ce8b1a6da919e6805ef5ea82eb4862bfa4a6061c6623c00613dbb11f5f69",
+  "gold.split.json": "1bd7b94a21c317e31189de6fdd448bb099bb155aacd21b9808fa1a7f05264fde",
+  "provenance.json": "a22c25e2f66b5562cfbab457064df8e2a2a18dcbc7f7317159e22017a6f54b27",
+  "questions.json": "dc91cf0ff911d5bc177e9f72ea80aa2698b73803e485cc8d3974e065631c838a",
+  "reference-labels.jsonl": "4ee5dcb1f6debdd461a5fcf1dd8fc6378b63f3a084eedf83c02f1f2e1a8eb87b",
+  "review-labels-blind.jsonl": "8464f3560754291aba71ceb8ffcfcc32f178a3d39a7ee97278c242181fc6bda5",
+  "review.json": "8b02365465336565d800c81a060e448112c2dda9b7d8ba9d3917c535519c7f96",
+  "summary.json": "8633453cf800e52a86c6b222fa6678d8cb199e8acf7394f3d0eb7b58517f8bb4",
+  "train-negatives.jsonl": "3b2d302430fa6a97e43f2d82adbd4e2fa7cdf79ffe976f766f22b8168ad8ba5d",
+  "verify.py": "fff2617d636099140a5fdcef4acf15baa00fa1b256e3a2c8703ba3f5552794cf"
+ }
+}

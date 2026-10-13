@@ -1,0 +1,65 @@
+{
+  "arm": "low-expanded",
+  "authority": "decision:continue-laya-evidence-expansion-and-low-mixture-2026-10-13",
+  "auxiliary_items": 612,
+  "base_sha256": "9d628fd971b700382ac6f65920a86f149777b2e748e0c955fb3b19695aa8f204",
+  "conditional_rule": "Complete exactly two newly registered arms, no extra seed or threshold tuning; previous four-run scope stays closed.",
+  "core_development_limitation": "Historical AI reference with 140 exposed pairs, shared pack nodes with old final measurement; development only.",
+  "core_items": 2400,
+  "development": [
+    {
+      "path": "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\vin471\\core-development.jsonl",
+      "sha256": "34a158c391ecdf6a9b0ca2849a419faf000086f2cf65f6dc7c8ad33e9c02c642"
+    },
+    {
+      "path": "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\vin471\\auxiliary\\development.jsonl",
+      "sha256": "8c6fd247d7b18f132197bf8f81ae702ee034d4b5f6523bf295a4df0d2d12e8a0"
+    }
+  ],
+  "development_module_sha256": "ac08b7f80a203e3c882831f5d0b610727b815301079d5ef4ac9e1ea98df19a9e",
+  "epochs": 2,
+  "expansion_manifest": {
+    "path": "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\vin473\\expanded-final\\manifest.json",
+    "sha256": "91330ac87d9dd63894e5511054d872ddd8449c16681af48dbab88842d3a15ed4"
+  },
+  "exposure": {
+    "path": "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\vin473\\balanced\\low-expanded-exposure.json",
+    "sha256": "e87c6b1f75006faa1955ff7ba400679ca956d89f50948f21c38a4203af6a0082"
+  },
+  "hypothesis": "Source-native fact pool expansion at fixed20.3187% auxiliary share, matched core/nonfact draws and scheduled budget. No new Vinc supports gold.",
+  "intervention_module_sha256": "4e7712515d00643aa7e85a7a8b0b8566b912f3992f27763d5938e06a6b10d085",
+  "item_cap": 3012,
+  "laya_train_sha256": "f47cafba33377aaae907cbf2dbc7167570fb810654f81755144eaacc54dd44f9",
+  "loss": "soft-ce",
+  "max_gpu_hours": 1,
+  "max_training_runs": 2,
+  "native_development_limitation": "300 source-disjoint native task pairs; not Vinc gold or new mixed-language gold.",
+  "no_new_paid_resource": true,
+  "protocol_doc": "vinc.impl.laya-evidence-expansion-low-mixture-2026-10-13",
+  "sampling_inputs": {
+    "core": [
+      {
+        "path": "D:\\Projects\\AIProjects\\vinc-project\\_wt\\vin473-evidence-low\\rag_eval\\evalsets\\laya-predicates-community-supports-v2\\training.jsonl",
+        "sha256": "7896874db0eaa0e9075d7a24c26be0f468e21ba9d0e76dd9b8d08a0c0be85409"
+      }
+    ],
+    "native": [
+      {
+        "path": "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\vin473\\expanded-final\\training.jsonl",
+        "sha256": "c66cd41600207c640678dcc07b79e5dd4d7c4f2d1b188b917dfe2a9a331e61cd"
+      }
+    ]
+  },
+  "scheduled_updates": 96,
+  "schema": "vinc.laya.low-mixture-development.v1",
+  "sealed_test": false,
+  "seed": 20261007,
+  "selection": "core_supports_f1_then_recall_then_nll",
+  "selection_threshold": 0.5,
+  "training": [
+    {
+      "path": "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\vin473\\balanced\\low-expanded-training.jsonl",
+      "sha256": "705f613190b1ab15c7463cdc30bb38ab73c1c0cac9dee5fd027535bf76954feb"
+    }
+  ]
+}

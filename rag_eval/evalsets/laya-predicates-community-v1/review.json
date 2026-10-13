@@ -1,0 +1,20 @@
+{
+ "what": "Blind relabel of all authored pairs by a second AI reader in two separate sessions that saw only pair_id, the two texts and the frozen question wording and criteria.",
+ "reviewer": "Anthropic Claude Sonnet (AI; two blind subagent sessions, 2026-10-10)",
+ "author": "Anthropic Claude (AI; configured model id claude-opus-5-5; this conversation)",
+ "pairs_reviewed": 140,
+ "pairs_with_any_disagreement": 0,
+ "pair_agreement": 1.0,
+ "label_disagreements_by_predicate": {
+  "supports": 0,
+  "contradicts": 0,
+  "same_as": 0
+ },
+ "resolution": "Every pair with a disagreement was removed to disputed.jsonl with both readings. No reference label was changed.",
+ "reviewer_hard_calls_on_kept_pairs": 17,
+ "limits": [
+  "Author and reviewer are the same vendor; agreement is a consistency filter, not validation.",
+  "The two readers agreed on every pair. Full agreement mostly shows that the labels are easy to recover from how the pairs were built, as in v1; it is weak evidence of label quality and says the set is easier than the in-domain v2 set (350 of 360).",
+  "train-negatives.jsonl was not reviewed pair by pair: a random sample of 36 was read and all 36 held."
+ ]
+}

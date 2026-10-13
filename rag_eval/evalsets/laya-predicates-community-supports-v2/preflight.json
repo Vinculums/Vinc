@@ -1,0 +1,15 @@
+{
+ "budget": {
+  "micro_batches_per_epoch": 377,
+  "opportunities_per_epoch": 48,
+  "opportunities_total": 384
+ },
+ "factory_restored": true,
+ "laya_train_sha256": "f47cafba33377aaae907cbf2dbc7167570fb810654f81755144eaacc54dd44f9",
+ "original_model_loaded": false,
+ "skipped": {},
+ "tiny_cpu_optimizer_steps": 2,
+ "tokenizer_items": 3012,
+ "torch": "2.14.1+cu126",
+ "training_experiment_started": false
+}

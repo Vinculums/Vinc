@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'">
+<title>Laya 증거 판정</title>
+<style>
+body{font:16px/1.6 system-ui,sans-serif;background:#f4f5f7;color:#182333;max-width:1000px;margin:24px auto;padding:0 18px}
+section,fieldset{background:white;border:1px solid #c8cfda;border-radius:8px;margin:16px 0;padding:18px}
+h1,h2{line-height:1.3}h2{font-size:20px}label{display:block;margin:8px 0}input[type=text],textarea,select{font:inherit;padding:8px;border:1px solid #8795a9;border-radius:4px;box-sizing:border-box;max-width:100%}
+textarea{width:100%;min-height:90px}button{font:inherit;padding:8px 14px;margin:4px;border:1px solid #687991;border-radius:5px;background:white;cursor:pointer}button.primary{background:#174da0;color:white}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f5f7;padding:12px}#message{color:#9b2917;min-height:26px}small{overflow-wrap:anywhere}.toolbar{position:sticky;top:0;background:#f4f5f7;padding:8px 0;z-index:1}.help{color:#405069}
+</style>
+<h1>Laya 증거 판정</h1>
+<p id="stage"></p>
+<p>문장 A와 B를 출처와 함께 읽고 세 관계를 각각 판정하세요. 미정은 정보가 부족하다는 뜻입니다. 거짓과 구분해 주세요.</p>
+<section>
+<label>판정자 이름 또는 식별자 <input id="actor" type="text" autocomplete="off"></label>
+<label><input id="attest" type="checkbox"> 내가 직접 읽고 판정한 입력입니다.</label>
+<p class="help">입력한 신원은 별도로 인증되지 않습니다. 확정한 입력이 있으면 판정자 정보를 바꿀 수 없습니다. 다른 사람은 새 화면에서 검토하세요.</p>
+<button id="download">입력 파일 저장</button>
+<label>저장한 입력 이어서 열기 <input id="resume" type="file" accept="application/json,.json"></label>
+<p class="help">저장 버튼으로 내려받은 JSON 파일만 보관됩니다. 브라우저를 닫기 전에 저장하세요. 미확정 입력도 파일에 남으며 수집 단계에서 판정으로 세지 않습니다.</p>
+</section>
+<details><summary>판정 기준 보기</summary><section id="instructions"></section></details>
+<div class="toolbar"><button id="prev">이전</button><span id="progress"></span><button id="next">다음</button></div>
+<p id="message" role="alert"></p>
+<section><small id="pair"></small><h2>문맥</h2><pre id="context"></pre><h2>A</h2><pre id="a"></pre><h2>B</h2><pre id="b"></pre></section>
+<section><h2>출처와 증거</h2><div id="evidence"></div></section>
+<section id="prior" hidden><h2>이전 판정</h2><pre id="priorText"></pre></section>
+<form id="form"><div id="predicates"></div>
+<section><label>증거 수준 <select id="strength"><option value="">선택하세요</option><option value="direct">직접 확인</option><option value="inference">추론이 필요함</option><option value="ambiguous">불명확함</option></select></label>
+<button class="primary" id="confirm" type="submit">이 판정 확정</button><span id="state"></span></section></form>
+<script id="session" type="application/json">__SESSION_JSON__</script>
+<script>
+'use strict';
+const session = JSON.parse(document.getElementById('session').textContent);
+const sessionHash = '__SESSION_HASH__';
+const predicates = ['supports','contradicts','same_as'];
+const titles = {supports:'A가 B를 뒷받침하는가',contradicts:'A와 B가 서로 모순되는가',same_as:'A와 B가 같은 주장인가'};
+const stages = {author:'초기 판정',review:'독립 검토',adjudication:'의견 조정'};
+const byId = id => document.getElementById(id);
+let position = 0;
+let entries = session.cases.map(c => ({pair_id:c.pair_id,pair_sha256:c.pair_sha256,reviews:c.reviews,status:'draft',at:null,labels:Object.fromEntries(predicates.map(p=>[p,''])),rationale:Object.fromEntries(predicates.map(p=>[p,''])),evidence_strength:''}));
+byId('stage').textContent = stages[session.stage] + ' · ' + session.cases.length + '쌍';
+for (const text of session.instructions.instructions) {
+  const p = document.createElement('p'); p.textContent = text; byId('instructions').append(p);
+}
+for (const p of predicates) {
+  const field = document.createElement('fieldset');
+  const legend = document.createElement('legend'); legend.textContent = titles[p]; field.append(legend);
+  const question = session.instructions.questions[p];
+  const help = document.createElement('p'); help.textContent = question.instructions + ' / 참: ' + question.criteria.true + ' / 거짓: ' + question.criteria.false; field.append(help);
+  const label = document.createElement('label'); label.textContent = '판정 ';
+  const select = document.createElement('select'); select.id = 'label-' + p;
+  for (const [value,text] of [['','선택하세요'],['1','참'],['0','거짓'],['null','미정']]) {
+    const option = document.createElement('option'); option.value=value; option.textContent=text; select.append(option);
+  }
+  label.append(select); field.append(label);
+  const reasonLabel = document.createElement('label'); reasonLabel.textContent='판정 근거';
+  const reason = document.createElement('textarea'); reason.id='reason-'+p; reasonLabel.append(reason); field.append(reasonLabel);
+  byId('predicates').append(field);
+}
+function lockIdentity() {
+  const locked = entries.some(e=>e.status==='submitted'); byId('actor').disabled=locked; byId('attest').disabled=locked;
+}
+function capture(edited=false) {
+  const e=entries[position];
+  for (const p of predicates) {
+    const value=byId('label-'+p).value;
+    e.labels[p]=value===''?'':value==='null'?null:Number(value);
+    e.rationale[p]=byId('reason-'+p).value;
+  }
+  e.evidence_strength=byId('strength').value;
+  if(edited){e.status='draft';e.at=null;byId('state').textContent='미확정';}
+  lockIdentity();
+}
+function render() {
+  const c=session.cases[position],e=entries[position];
+  byId('pair').textContent=c.pair_id; byId('context').textContent=c.context||'별도 문맥 없음'; byId('a').textContent=c.a;byId('b').textContent=c.b;
+  byId('evidence').replaceChildren();
+  for(const source of c.evidence){
+    const pre=document.createElement('pre');pre.textContent=source.text;
+    const meta=document.createElement('small');meta.textContent=source.origin_uri+' · SHA256 '+source.source_sha256;
+    byId('evidence').append(pre,meta);
+  }
+  byId('prior').hidden=!c.prior_judgments;
+  byId('priorText').textContent=c.prior_judgments?JSON.stringify(c.prior_judgments,null,2):'';
+  for(const p of predicates){byId('label-'+p).value=e.labels[p]===null?'null':String(e.labels[p]);byId('reason-'+p).value=e.rationale[p];}
+  byId('strength').value=e.evidence_strength;
+  byId('state').textContent=e.status==='submitted'?'확정됨 · '+e.at:'미확정';
+  byId('progress').textContent=(position+1)+' / '+entries.length+' · 확정 '+entries.filter(x=>x.status==='submitted').length+'쌍';
+  byId('prev').disabled=position===0;byId('next').disabled=position===entries.length-1;byId('message').textContent='';lockIdentity();
+}
+byId('form').addEventListener('input',()=>capture(true));
+byId('prev').onclick=()=>{capture();position--;render();};byId('next').onclick=()=>{capture();position++;render();};
+byId('form').onsubmit=event=>{
+  event.preventDefault();capture();const e=entries[position],actor=byId('actor').value.trim();
+  if(!actor||!byId('attest').checked){byId('message').textContent='판정자 정보와 직접 판정 확인이 필요합니다.';return;}
+  if(actor===session.cases[position].author_actor){byId('message').textContent='초기 판정자와 다른 사람이 독립 검토해야 합니다.';return;}
+  if(predicates.some(p=>e.labels[p]===''||!e.rationale[p].trim())||!e.evidence_strength){byId('message').textContent='세 판정과 근거, 증거 수준을 모두 입력하세요.';return;}
+  byId('actor').value=actor;e.status='submitted';e.at=new Date().toISOString();render();
+};
+byId('download').onclick=()=>{
+  capture();
+  const data={schema:'vinc.laya.human-submission.v1',session_sha256:sessionHash,bundle_sha256:session.bundle_sha256,stage:session.stage,actor:byId('actor').value.trim(),human_attestation:byId('attest').checked,entries};
+  const blob=new Blob([JSON.stringify(data,null,2)+'\n'],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download='laya-'+session.stage+'-input.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
+byId('resume').onchange=async event=>{
+  try{
+    const data=JSON.parse(await event.target.files[0].text());
+    if(data.schema!=='vinc.laya.human-submission.v1'||data.session_sha256!==sessionHash||data.bundle_sha256!==session.bundle_sha256||data.stage!==session.stage)throw Error('다른 검토 버전의 입력 파일입니다.');
+    if(typeof data.actor!=='string'||typeof data.human_attestation!=='boolean'||!Array.isArray(data.entries)||data.entries.length!==entries.length)throw Error('입력 형식을 확인하세요.');
+    for(let i=0;i<entries.length;i++){
+      const e=data.entries[i],c=session.cases[i];
+      if(e.pair_id!==c.pair_id||e.pair_sha256!==c.pair_sha256||JSON.stringify(e.reviews)!==JSON.stringify(c.reviews)||!['draft','submitted'].includes(e.status))throw Error('쌍 또는 검토 이력이 다릅니다.');
+      if(!e.labels||Object.keys(e.labels).sort().join()!==predicates.slice().sort().join()||predicates.some(p=>!['',null,0,1].includes(e.labels[p])||typeof e.rationale?.[p]!=='string')||!['','direct','inference','ambiguous'].includes(e.evidence_strength))throw Error('판정 형식을 확인하세요.');
+      if(e.status==='submitted'&&(!data.actor.trim()||!data.human_attestation||data.actor===c.author_actor||predicates.some(p=>e.labels[p]===''||!e.rationale[p].trim())||!e.evidence_strength||typeof e.at!=='string'||!Number.isFinite(Date.parse(e.at))))throw Error('확정한 입력의 필수 항목이 빠졌습니다.');
+    }
+    entries=data.entries;byId('actor').value=data.actor;byId('attest').checked=data.human_attestation;position=0;render();
+  }catch(error){byId('message').textContent=error.message;}
+};
+window.addEventListener('beforeunload',event=>{if(entries.some(e=>e.status==='submitted'||predicates.some(p=>e.labels[p]!==''||e.rationale[p]))){event.preventDefault();event.returnValue='';}});
+render();
+</script>
+</html>

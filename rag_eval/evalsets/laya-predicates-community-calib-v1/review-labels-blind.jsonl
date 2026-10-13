@@ -1,0 +1,117 @@
+{"pair_id": "k0001", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0002", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0003", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0005", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "B is historical background on Riemann, not evidence for the 1915 equivalence claim."}
+{"pair_id": "k0006", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0007", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0008", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A asserts a formal decidability limit of the set reduction; B is the arithmetic incompleteness instance, so A weakly backs B."}
+{"pair_id": "k0009", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0010", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0011", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0012", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0013", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0014", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0015", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0016", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0017", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0018", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0019", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0020", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0021", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A's decidability-limit claim makes B's undecidable-statements claim more credible, but they are not the same claim."}
+{"pair_id": "k0022", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "B would support A, but the asked direction (A as evidence for B) does not hold."}
+{"pair_id": "k0023", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0024", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0025", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0026", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0027", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0028", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0029", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A states the general topological-invariant/quantized-response link, of which the quantum Hall statement in B is an instance."}
+{"pair_id": "k0030", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0031", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0032", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0033", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0034", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "B supports A's normative claim, not the reverse; direction is wrong for supports."}
+{"pair_id": "k0035", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0036", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "B supports A's teaching recommendation, not the reverse."}
+{"pair_id": "k0037", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0038", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0039", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0040", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0041", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0042", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0043", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0044", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0045", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A gives the induction experiments behind mutual generation of E and B, but not the light-wave part of B."}
+{"pair_id": "k0046", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0047", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0048", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0049", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0050", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0051", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A asserts Turing's algorithmic limits, which weakly backs the halting-problem undecidability in B."}
+{"pair_id": "k0052", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0053", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0054", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0055", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0056", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0057", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0058", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A's emergence of new order from many particles is a reason for B's claim that properties are not a sum of single-particle ones."}
+{"pair_id": "k0059", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0060", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0061", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0062", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0063", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0065", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "Modularity of elliptic curves over Q is a proven special case of the Langlands program, so it lends credibility to the conjecture."}
+{"pair_id": "k0067", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0068", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0069", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0070", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0071", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0072", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0073", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "Electromagnetic induction is partial evidence for mutual creation of electricity and magnetism."}
+{"pair_id": "k0074", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0075", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0076", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0077", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0078", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0079", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0080", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0081", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0082", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0083", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0084", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0085", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0086", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0087", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0088", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0089", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0090", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0091", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0092", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0093", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "B is a consequence of A but omits A's claim that force is the cause changing momentum, so not the same claim."}
+{"pair_id": "k0094", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0095", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0096", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0097", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0098", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0099", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0100", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0101", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0102", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0103", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0104", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A is a normative claim about teaching; B would support A, not the reverse."}
+{"pair_id": "k0105", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0106", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0107", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0108", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0109", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0110", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "B would be a reason for A, not the other way round."}
+{"pair_id": "k0111", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0112", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0113", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0114", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0115", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "k0116", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0117", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0118", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "k0119", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A is a normative claim that B would support, not the reverse."}
+{"pair_id": "k0120", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A is a practical recommendation that B would support, not the reverse."}

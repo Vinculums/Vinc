@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "dataset": "laya-predicates-community-calib-v1",
+  "role": "calibration",
+  "labeling_model": {
+    "provider": "OpenAI",
+    "runtime": "Codex current agent session",
+    "family": "GPT-6",
+    "exact_served_model_id": null,
+    "version": null,
+    "planned_executor": "GPT (Astra)",
+    "planned_executor_identity_verified": false
+  },
+  "labeling_date": "2026-10-10",
+  "sessions": 1,
+  "review_mode": "direct_agent_manual_blind_labels",
+  "judging_api_calls": 0,
+  "other_model_calls": 0,
+  "pairs_read": 117,
+  "pairs_agreed": 115,
+  "pairs_disagreed": 2,
+  "disagreements_by_predicate": {
+    "supports": 2,
+    "contradicts": 0,
+    "same_as": 0
+  },
+  "disagreement_pair_ids_by_predicate": {
+    "supports": [
+      "k0082",
+      "k0093"
+    ],
+    "contradicts": [],
+    "same_as": []
+  },
+  "by_language": {
+    "ko": {
+      "pairs_read": 38,
+      "pairs_agreed": 37,
+      "pairs_disagreed": 1,
+      "disagreements_by_predicate": {
+        "supports": 1,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 6,
+        "contradicts": 8,
+        "same_as": 8
+      },
+      "hard_count": 5
+    },
+    "en": {
+      "pairs_read": 39,
+      "pairs_agreed": 39,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 7,
+        "contradicts": 8,
+        "same_as": 8
+      },
+      "hard_count": 5
+    },
+    "mixed": {
+      "pairs_read": 40,
+      "pairs_agreed": 39,
+      "pairs_disagreed": 1,
+      "disagreements_by_predicate": {
+        "supports": 1,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 7,
+        "contradicts": 8,
+        "same_as": 8
+      },
+      "hard_count": 8
+    }
+  },
+  "hard_count": 18,
+  "hard_pair_ids": [
+    "k0008",
+    "k0010",
+    "k0022",
+    "k0029",
+    "k0034",
+    "k0036",
+    "k0045",
+    "k0051",
+    "k0065",
+    "k0073",
+    "k0075",
+    "k0082",
+    "k0093",
+    "k0104",
+    "k0110",
+    "k0111",
+    "k0119",
+    "k0120"
+  ],
+  "agreed_positive_counts": {
+    "supports": 20,
+    "contradicts": 24,
+    "same_as": 24
+  },
+  "gold_sha256": "6d86522103a96e32ac91095c9e1c9311bce2c1f250026652defbbe7e1ec06142",
+  "blind_labels_sha256": "41e8ade120e6e27b6f896b421c4a1589b0169ec45040c3a27f27134b397a535e",
+  "question_file_sha256": "dc91cf0ff911d5bc177e9f72ea80aa2698b73803e485cc8d3974e065631c838a",
+  "blind_label_commit": "1b6e26c78fd2fa6fc84514f42998c26ade38e860",
+  "blind_label_commit_precedes_comparison_commit": true,
+  "label_files_frozen_before_gold_comparison": true,
+  "per_pair_gold_seen_before_freeze": false,
+  "prior_aggregate_handoff_seen": true,
+  "gold_labels_changed": false,
+  "blind_labels_changed_after_freeze": false,
+  "historical_laya_v3_measurement_exposure_pairs": 0,
+  "calibration_bucket_records": {
+    "supports": {
+      "ko": 37,
+      "en": 78
+    },
+    "contradicts": {
+      "ko": 74,
+      "en": 156
+    },
+    "same_as": {
+      "ko": 74,
+      "en": 156
+    }
+  },
+  "calibration_min_bucket_n": 30,
+  "calibration_bucket_minimum_met": true
+}

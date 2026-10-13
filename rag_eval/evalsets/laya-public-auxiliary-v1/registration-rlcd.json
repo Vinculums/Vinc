@@ -1,0 +1,36 @@
+{
+  "authority": "decision:proceed-with-ordered-laya-public-data-and-local-development-2026-10-13",
+  "base_sha256": "9d628fd971b700382ac6f65920a86f149777b2e748e0c955fb3b19695aa8f204",
+  "conditional_rule": "After the paired loss check, run one auxiliary-data intervention and a second seed only if core supports NLL improves by at least 0.02 and positive recall does not decrease versus the original baseline; retain other predicate regressions.",
+  "core_development_limitation": "Historical AI reference with 140 exposed pairs, shared pack nodes with old final measurement; development only.",
+  "development": [
+    {
+      "path": "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\vin471\\core-development.jsonl",
+      "sha256": "34a158c391ecdf6a9b0ca2849a419faf000086f2cf65f6dc7c8ad33e9c02c642"
+    },
+    {
+      "path": "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\vin471\\auxiliary\\development.jsonl",
+      "sha256": "8c6fd247d7b18f132197bf8f81ae702ee034d4b5f6523bf295a4df0d2d12e8a0"
+    }
+  ],
+  "development_module_sha256": "9ae58031a916f0f696ceb8f987bf7802170f184c032be9f97022cc871eaa21a3",
+  "epochs": 2,
+  "item_cap": 3012,
+  "laya_train_sha256": "f47cafba33377aaae907cbf2dbc7167570fb810654f81755144eaacc54dd44f9",
+  "loss": "rlcd",
+  "max_gpu_hours": 4,
+  "max_training_runs": 4,
+  "native_development_limitation": "300 source-disjoint native task pairs; not Vinc gold or new mixed-language gold.",
+  "no_new_paid_resource": true,
+  "scheduled_updates": 96,
+  "schema": "vinc.laya.local-development.v1",
+  "sealed_test": false,
+  "seed": 20261007,
+  "selection": "core_supports_nll_then_positive_recall",
+  "training": [
+    {
+      "path": "D:\\Projects\\AIProjects\\vinc-project\\_wt\\vin471-public-data\\rag_eval\\evalsets\\laya-predicates-community-supports-v2\\training.jsonl",
+      "sha256": "7896874db0eaa0e9075d7a24c26be0f468e21ba9d0e76dd9b8d08a0c0be85409"
+    }
+  ]
+}
