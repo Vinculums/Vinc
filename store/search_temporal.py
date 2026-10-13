@@ -30,6 +30,18 @@ def instant(value):
         return None
 
 
+def overlaps_scope(valid_from, valid_until, scope):
+    """Keep half-open period overlap, comparing timestamp offsets as UTC instants."""
+    vf, vu = instant(valid_from), instant(valid_until)
+    if (valid_from and vf is None) or (valid_until and vu is None):
+        return holds_during(valid_from, valid_until, scope)
+    start, end = instant(scope[0]), instant(scope[1])
+    if start is None or end is None:
+        return holds_during(valid_from, valid_until, scope)
+    return bool((vf is None or vf < end) and (vu is None or start < vu)
+                and not (vf and vu and vf >= vu))
+
+
 def metadata(row, *, now=None, scope=None):
     props = _props_to_obj(row.get("props_raw", row.get("props")))
     out = {key: row.get(key) or None for key in FIELDS}
@@ -56,7 +68,7 @@ def metadata(row, *, now=None, scope=None):
         state = "current"
     out.update(validity=state, interval_known=bool(vf or vu) and not invalid,
                interval_invalid=bool(invalid),
-               holds_in_scope=(holds_during(out["valid_from"], out["valid_until"], scope)
+               holds_in_scope=(overlaps_scope(out["valid_from"], out["valid_until"], scope)
                                if scope and not invalid else None),
                supersession=[], supersedes=[], claim_status="unscoped", conflicts=[])
     return out

@@ -1337,6 +1337,15 @@ def node_plan(node_id: str, *, owner: str) -> QueryPlan:
     # 근거: [[vinc.spec.dataplane §2.2]]
     columns = node_table_specs()[label]["cols"]
     fields = ", ".join(f"n.{col} AS {'id' if col == pk else col}" for col in columns)
+    if node_id.startswith("concept:doc."):
+        from store.search_temporal import FIELDS
+        dates = ", ".join(f"d.{key} AS _doc_{key}" for key in FIELDS)
+        return QueryPlan("node", f"MATCH (n:{label}) WHERE n.{pk} = $node "
+                         "AND n.owner_id = $owner OPTIONAL MATCH (d:_DocMeta) "
+                         "WHERE d.doc_id = $doc AND d.owner_id = $owner "
+                         f"RETURN {fields}, d.doc_id AS _doc_id, {dates}",
+                         {"node": pkns.key(owner, node_id), "owner": owner,
+                          "doc": node_id[len("concept:doc."):]})
     return QueryPlan("node", f"MATCH (n:{label}) WHERE n.{pk} = $node "
                      f"AND n.owner_id = $owner RETURN {fields}",
                      {"node": pkns.key(owner, node_id), "owner": owner})
@@ -1352,6 +1361,13 @@ def node(node_id: str, *, owner: str, cfg=None, store=None) -> dict:
     result["node"] = None
     if rows:
         stored = dict(rows[0])
+        doc_meta = None
+        if "_doc_id" in stored:
+            from store.search_temporal import FIELDS
+            present = stored.pop("_doc_id") is not None
+            values = {key: stored.pop("_doc_" + key, None) for key in FIELDS}
+            if present:
+                doc_meta = values
         if node_id.startswith("domain:"):
             stored = {"id": node_id, "kind": "domain", "name": stored["name"]}
         else:
@@ -1362,7 +1378,11 @@ def node(node_id: str, *, owner: str, cfg=None, store=None) -> dict:
         # A domain is a namespace container, not dated evidence. Keep its exact read shape.
         # Other kinds retain their stored top-level columns; normalized dates are nested.
         if stored.get("kind") != "domain":
-            stored["temporal"] = metadata(stored)
+            stored["temporal"] = metadata(doc_meta if doc_meta is not None else stored)
+            # Exact reads retain their single-query, neighbor-independent contract.
+            # Context/brief/search assess lineage; this endpoint exposes stored dates only.
+            stored["temporal"]["claim_status"] = "unassessed"
+            stored["temporal"]["claim_assessment_scope"] = "stored_fields"
         result["node"] = stored
     return result
 
@@ -3598,7 +3618,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
     # Direct-ID reads bypass search by design, but an explicit time request must
     # still be validated and applied before the early return.
     try:
-        from store.search_temporal import mode_scope
+        from store.search_temporal import mode_scope, overlaps_scope as temporal_overlap
         historical, direct_scope, direct_scope_info = mode_scope(mode, historical, as_of, query)
     except ValueError as exc:
         base["note"] = base["error"] = f"invalid_temporal_mode: {exc}" if mode else f"invalid_as_of: {exc}"
@@ -3628,8 +3648,9 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                 if mode == "current" and got.get("temporal", {}).get("validity") in ("future", "historical"):
                     out_of_scope_ids.append(qid)
                     continue
-                if mode != "current" and direct_scope is not None and not holds_during(
-                        got.get("valid_from"), got.get("valid_until"), direct_scope):
+                if mode != "current" and direct_scope is not None and not temporal_overlap(
+                        got.get("temporal", got).get("valid_from"),
+                        got.get("temporal", got).get("valid_until"), direct_scope):
                     out_of_scope_ids.append(qid)
                     continue
                 base["executed"] = True

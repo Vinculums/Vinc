@@ -57,6 +57,12 @@ def test_document_mirror_lineage_reaches_chunks_and_get(st, detail):
     context = query.node_context(owner=OWNER, node="concept:doc.synthetic.old", store=st)
     assert context["executed"]
     assert context["temporal"]["supersession"] == old["temporal"]["supersession"]
+    from unittest.mock import patch
+    with patch.object(st, "run", wraps=st.run) as run:
+        exact = query.node("concept:doc.synthetic.old", owner=OWNER, store=st)
+        assert run.call_count == 1
+    assert all(exact["node"]["temporal"][k] == context["temporal"][k] for k in temporal.FIELDS)
+    assert exact["node"]["temporal"]["claim_status"] == "unassessed"
     for excerpt in context.get("excerpts") or []:
         if excerpt.get("doc_id") == "synthetic.old":
             assert excerpt["temporal"]["supersession"] == old["temporal"]["supersession"]
@@ -435,3 +441,19 @@ def test_invalid_interval_cannot_be_supersession_evidence():
     assert old["validity"] == "unknown" and old["interval_invalid"]
     assert not old["interval_known"] and old["claim_status"] != "superseded"
     assert old["supersession"][0]["status"] == "uncomparable"
+
+
+def test_explicit_period_uses_utc_offsets_and_half_open_end(st):
+    ingest(st, [node("offset", vf="2026-10-12")])
+    st.run("MATCH (n:Record) WHERE n.record_id=$id SET n.valid_from=$vf, n.valid_until=$vu",
+           {"id": pkns.key(OWNER, "record:offset"),
+            "vf": "2026-10-13T00:30:00+09:00", "vu": "2026-10-13T09:00:00+09:00"})
+    before = query.search("Marker", owner=OWNER, store=st, mode="historical", as_of="2026-10-12")
+    assert [h["id"] for h in before["node_hits"]] == ["record:offset"]
+    assert before["node_hits"][0]["temporal"]["holds_in_scope"] is True
+    at_end = query.search("Marker", owner=OWNER, store=st, mode="historical", as_of="2026-10-13")
+    assert at_end["node_hits"] == []
+    assert query.brief("record:offset", owner=OWNER, store=st, mode="historical",
+                       as_of="2026-10-12")["status"] == "resolved"
+    assert query.brief("record:offset", owner=OWNER, store=st, mode="historical",
+                       as_of="2026-10-13")["status"] == "none"

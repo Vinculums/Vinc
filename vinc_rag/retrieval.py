@@ -363,7 +363,7 @@ def _drop_retired_doc_rows(base: dict, validity: dict, *, historical: bool, scop
     kept, hidden = [], 0
     for r in base.get("rows") or []:
         vf, vu = validity.get(r.get("doc_id") or "", ("", ""))
-        ok = (holds_during(vf, vu, scope) if scope is not None
+        ok = (temporal.overlaps_scope(vf, vu, scope) if scope is not None
               else validity_state(vf, vu) != "historical")
         if ok:
             kept.append(r)
@@ -479,7 +479,7 @@ def _visible(valid_from, valid_until, *, historical: bool,
              scope: tuple[str, str] | None) -> bool:
     """검색 두 팔(제목·의미)이 함께 쓰는 판정. 기간이 있으면 그 기간, 없으면 오늘 규칙."""
     if scope is not None:
-        return holds_during(valid_from, valid_until, scope)
+        return temporal.overlaps_scope(valid_from, valid_until, scope)
     if historical:
         return True
     return validity_state(valid_from, valid_until) != "historical"
