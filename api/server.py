@@ -1527,6 +1527,16 @@ class VincApp:
         res = self.jobs.run_sync("doc.put", _put)
         return (400 if res.get("error") == "title must not be empty" else 200), res
 
+    def write_topic_description(self, body):
+        from api import topic_description
+        if not body.get("owner") or not isinstance(body.get("text"), str) \
+                or not isinstance(body.get("expected_content_hash"), str):
+            return 400, {"executed": False, "status": "invalid_request"}
+        result = self.jobs.run_sync("topic.description", lambda: topic_description.put(
+            self.store, owner=body["owner"], node=body.get("node"), text=body["text"],
+            expected_content_hash=body["expected_content_hash"]))
+        return 200, result
+
     def write_conventions_build(self, body):
         """관례 재생성 — 앱의 [다시 생성]. **산문은 건드리지 않는다**(graphmd.build).
 
@@ -2664,6 +2674,7 @@ class _Handler(BaseHTTPRequestHandler):
         table = {
             "/pin": app.write_pin, "/tag": app.write_tag, "/touch": app.write_touch,
             "/topic-conversion": app.write_topic_conversion,
+            "/topic-description": app.write_topic_description,
             "/activate": app.write_activate, "/backup": app.submit_backup,
             "/ingest": app.write_ingest,
             "/delete": app.write_delete, "/delete-edge": app.write_delete_edge,

@@ -36,7 +36,7 @@ class TopicContextTests(unittest.TestCase):
         self.assertTrue(root["executed"], root)
         self.assertEqual("domain", root["node_kind"])
         self.assertEqual({"path", "parent", "child_topics", "direct_nodes", "subtree_nodes",
-                          "descendant_nodes", "structure"}, set(root["topic"]))
+                          "descendant_nodes", "structure", "description"}, set(root["topic"]))
         self.assertIsNone(root["topic"]["parent"])
         self.assertEqual((1, 1, 2, 3), tuple(root["topic"][k] for k in
                          ("child_topics", "direct_nodes", "descendant_nodes", "subtree_nodes")))
