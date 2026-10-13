@@ -45,9 +45,8 @@ def check_inventory_budget(snapshot, *, extra_rows=0, extra_bytes=0):
         raise TransferRefused("conversion_inventory_limit")
 
 
-def read_snapshot(store, *, vocabulary_owner: str | None = None,
-                  max_rows: int = MAX_INVENTORY_ROWS, max_bytes: int = MAX_INVENTORY_BYTES) -> dict:
-    """Strict, read-only canonical inventory; never narrow away unknown columns."""
+def verify_store_shape(store, *, vocabulary_owner: str | None = None) -> None:
+    """Validate sidecar and every physical table before any scoped inventory."""
     path = getattr(store, "path", None) or getattr(getattr(store, "_cfg", None), "data_dir", None)
     if not path:
         raise TransferRefused("external_store_state_unchecked")
@@ -72,6 +71,22 @@ def read_snapshot(store, *, vocabulary_owner: str | None = None,
     expected = set(specs) | {r["label"] for r in rel_table_specs()}
     if have != expected:
         raise TransferRefused("unsupported_schema_tables")
+    for label, spec in specs.items():
+        cols = {r["name"] for r in store.run(f"CALL table_info('{label}') RETURN *", raw=True)}
+        if cols != set(spec["cols"]):
+            raise TransferRefused("unsupported_schema_columns:" + label)
+    for spec in rel_table_specs():
+        label = spec["label"]
+        cols = {r["name"] for r in store.run(f"CALL table_info('{label}') RETURN *", raw=True)}
+        if cols != set(spec["props"]):
+            raise TransferRefused("unsupported_schema_columns:" + label)
+
+
+def read_snapshot(store, *, vocabulary_owner: str | None = None,
+                  max_rows: int = MAX_INVENTORY_ROWS, max_bytes: int = MAX_INVENTORY_BYTES) -> dict:
+    """Strict, read-only canonical inventory for synthetic rehearsal."""
+    verify_store_shape(store, vocabulary_owner=vocabulary_owner)
+    specs = {**node_table_specs(), **meta_table_specs()}
     result = {"schema_version": SCHEMA_VERSION, "nodes": {}, "meta": {}, "edges": []}
     remaining_rows, remaining_bytes = max_rows, max_bytes
     def bounded(q):
@@ -83,17 +98,11 @@ def read_snapshot(store, *, vocabulary_owner: str | None = None,
             raise TransferRefused("conversion_inventory_limit")
         return rows
     for label, spec in specs.items():
-        cols = {r["name"] for r in store.run(f"CALL table_info('{label}') RETURN *", raw=True)}
-        if cols != set(spec["cols"]):
-            raise TransferRefused("unsupported_schema_columns:" + label)
         projection = ", ".join(f"n.{c} AS {c}" for c in spec["cols"])
         group = "meta" if label.startswith("_") else "nodes"
         result[group][label] = bounded(f"MATCH (n:{label}) RETURN {projection}")
     for spec in rel_table_specs():
         label, src, dst = spec["label"], spec["from"], spec["to"]
-        cols = {r["name"] for r in store.run(f"CALL table_info('{label}') RETURN *", raw=True)}
-        if cols != set(spec["props"]):
-            raise TransferRefused("unsupported_schema_columns:" + label)
         fields = [f"a.{specs[src]['pk']} AS src", f"b.{specs[dst]['pk']} AS dst"]
         fields += [f"r.{c} AS {c}" for c in spec["props"]]
         rows = bounded(f"MATCH (a:{src})-[r:{label}]->(b:{dst}) RETURN {', '.join(fields)}")
@@ -123,6 +132,21 @@ _REFERENCE = re.compile(r"\[\[([^\]\s|]+)(?:[^\]]*)\]\]")
 _ATTACHMENTS = {"attachment", "attachments", "file", "files", "blob", "blobs", "asset", "assets"}
 _EXTERNAL_RESOURCE = re.compile(r"^(?:[A-Za-z]:[\\/]|(?:file|blob|s3|azure|gs|az|https?):|[/\\])", re.I)
 _IMAGE_REFERENCE = re.compile(r"!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>", re.I)
+
+
+def referenced_ids(value):
+    """Logical references covered by the lossless transfer boundary check."""
+    if isinstance(value, dict):
+        for key, val in value.items():
+            compact = re.sub(r"[^a-z0-9]", "", key.lower())
+            if compact in ("docid", "supersededby", "nodeid", "ref") and isinstance(val, str):
+                yield pkns.strip(val)
+            yield from referenced_ids(val)
+    elif isinstance(value, list):
+        for val in value:
+            yield from referenced_ids(val)
+    elif isinstance(value, str):
+        yield from _REFERENCE.findall(value)
 
 
 def _validate_snapshot(snapshot: dict) -> set[str]:
@@ -246,19 +270,6 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
     logical = {pkns.strip(nid) for _, nid in selected}
     # Logical links have no relationship row. Moving their target must not
     # silently leave a different topic's text or structured references broken.
-    def references(value):
-        if isinstance(value, dict):
-            for key, val in value.items():
-                compact = re.sub(r"[^a-z0-9]", "", key.lower())
-                if compact in ("docid", "supersededby", "nodeid", "ref") and isinstance(val, str):
-                    yield pkns.strip(val)
-                yield from references(val)
-        elif isinstance(value, list):
-            for val in value:
-                yield from references(val)
-        elif isinstance(value, str):
-            yield from _REFERENCE.findall(value)
-
     for label, rows in allrows.items():
         if label not in _KINDS + ("Bridge", "Chunk", "_DocMeta"):
             continue
@@ -274,7 +285,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
                 except (TypeError, ValueError):
                     # Unclassified properties outside the scope can hide links.
                     blocks.add("opaque_props:" + key)
-            refs = set(references(fields))
+            refs = set(referenced_ids(fields))
             if (label, key) in selected:
                 for ref in refs - (logical | docs):
                     blocks.add("external_reference:" + ref)
@@ -285,7 +296,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
         if a not in selected and b not in selected:
             owned = any(r.get("owner_id") == source and r[specs[label]["pk"]] == key
                         for label, key in (a, b) for r in allrows[label])
-            if owned and set(references(edge["props"])) & (logical | docs):
+            if owned and set(referenced_ids(edge["props"])) & (logical | docs):
                 blocks.add("incoming_reference:relationship")
     for row in snapshot["nodes"]["NodeVec"]:
         if row["owner_id"] == source and row["node_id"] in logical:
@@ -441,7 +452,8 @@ def transformed_snapshot(snapshot: dict, plan: Plan, *, stamp: str) -> dict:
     return out
 
 
-def _write_difference(store, before: dict, after: dict, *, fail_at=None, vocabulary_owner=None):
+def _write_difference(store, before: dict, after: dict, *, fail_at=None, vocabulary_owner=None,
+                      verify_snapshot=None):
     specs = {**node_table_specs(), **meta_table_specs()}
     # 전체 스토어를 지우지 않는다. 키가 바뀌는 선택 행만 새로 만들고 관계를 옮긴다.
     for group in ("nodes", "meta"):
@@ -478,7 +490,9 @@ def _write_difference(store, before: dict, after: dict, *, fail_at=None, vocabul
                     store.run(f"MATCH (n:{label}) WHERE n.{pk}=$key DETACH DELETE n", {"key": row[pk]}, raw=True)
     if fail_at == "delete":
         raise RuntimeError("injected_after_delete")
-    if fingerprint(read_snapshot(store, vocabulary_owner=vocabulary_owner)) != fingerprint(after):
+    observed = (verify_snapshot() if verify_snapshot is not None else
+                read_snapshot(store, vocabulary_owner=vocabulary_owner))
+    if fingerprint(observed) != fingerprint(after):
         raise TransferRefused("payload_verification_failed")
 
 

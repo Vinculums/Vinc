@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_topic_transfer import RawStore, SOURCE, TARGET, TOPIC, STAMP, seed, insert
 from store.embedded_schema import render_embedded_ddl
-from store.topic_transfer import TransferRefused, fingerprint, plan_transfer, read_snapshot
+from store.topic_transfer import TransferRefused, fingerprint, plan_transfer, read_snapshot, transformed_snapshot
 from api import topic_conversion as tc
 
 RUN = "00000000-0000-4000-8000-000000000099"
@@ -106,6 +106,98 @@ def test_other_tenant_writes_do_not_invalidate_preflight(native):
                     expected=expected, stamp=STAMP)["status"] == "graph_committed"
 
 
+def test_large_unrelated_tenant_is_not_in_the_move_budget(native, monkeypatch):
+    import store.scoped_topic_inventory as scoped
+
+    for index in range(150):
+        native.run("CREATE (c:Concept {concept_id:$id, owner_id:'user:other', domain:'other', title:'kept'})",
+                   {"id": f"user:other\x1fconcept:{index:04d}"})
+    with pytest.raises(TransferRefused, match="conversion_inventory_limit"):
+        read_snapshot(native, max_rows=100)
+    monkeypatch.setattr(scoped, "MAX_INVENTORY_ROWS", 100)
+    before = read_snapshot(native)
+    expected = transformed_snapshot(before, plan_transfer(before, source=SOURCE, target=TARGET, topic=TOPIC),
+                                    stamp=STAMP)
+    check = tc.preflight(native, SOURCE, TOPIC)
+    assert check["ready"] and check["inventory_rows"] < 100
+    assert check["projected_rows"] > check["inventory_rows"]
+    assert check["projected_rows"] <= 5000 and check["projected_bytes"] <= 32 * 1024 * 1024
+    assert check["documents"] == 1
+    assert stage(native)["status"] == "graph_committed"
+    assert native.run("MATCH (c:Concept) WHERE c.owner_id='user:other' RETURN count(c) AS n")[0]["n"] == 150
+    observed = read_snapshot(native)
+    observed["meta"]["_SyncMeta"] = [r for r in observed["meta"]["_SyncMeta"]
+                                      if not r["key"].startswith(tc.PREFIX)]
+    assert fingerprint(observed) == fingerprint(expected)
+    assert tc.release(native, source=SOURCE, target=TARGET, topic=TOPIC, run=RUN)["status"] == "active"
+
+
+def test_paged_source_dependency_scan_blocks_incoming_reference(native):
+    for index in range(130):
+        native.run("CREATE (c:Concept {concept_id:$id, owner_id:$owner, domain:'other', title:$title})",
+                   {"id": SOURCE + f"\x1fconcept:outside-{index:04d}", "owner": SOURCE,
+                    "title": "unrelated"})
+    assert tc.preflight(native, SOURCE, TOPIC)["ready"]
+    native.run("MATCH (c:Concept) WHERE c.concept_id=$id SET c.title='[[concept:a]]'",
+               {"id": SOURCE + "\x1fconcept:outside-0129"})
+    before = fingerprint(read_snapshot(native))
+    check = tc.preflight(native, SOURCE, TOPIC)
+    assert not check["ready"] and "incoming_reference" in check["blockers"]
+    assert check["inspected_rows"] > 130
+    assert fingerprint(read_snapshot(native)) == before
+    assert not tc.journals(native)
+
+
+@pytest.mark.parametrize("budget", [{"MAX_INVENTORY_ROWS": 10}, {"MAX_INVENTORY_BYTES": 100}])
+def test_selected_closure_still_fails_closed_at_the_original_cap(native, monkeypatch, budget):
+    import store.scoped_topic_inventory as scoped
+    for key, value in budget.items():
+        monkeypatch.setattr(scoped, key, value)
+    before = fingerprint(read_snapshot(native))
+    check = tc.preflight(native, SOURCE, TOPIC)
+    assert not check["ready"] and check["blockers"] == ["conversion_inventory_limit"]
+    assert check["counts_known"] is False
+    assert fingerprint(read_snapshot(native)) == before
+    assert not tc.journals(native)
+
+
+def test_unexpected_target_row_blocks_release_under_fence(native):
+    assert stage(native)["status"] == "graph_committed"
+    native.run("CREATE (c:Concept {concept_id:$id, owner_id:$owner, domain:'outside'})",
+               {"id": TARGET + "\x1fconcept:unexpected", "owner": TARGET})
+    with pytest.raises(TransferRefused, match="committed_payload_changed"):
+        tc.release(native, source=SOURCE, target=TARGET, topic=TOPIC, run=RUN)
+    assert tc.fenced(native, TARGET)
+
+
+def test_foreign_row_at_mapped_target_key_is_refused_before_dml(native):
+    native.run("CREATE (v:NodeVec {vec_id:$id, owner_id:'user:foreign', node_id:'concept:a'})",
+               {"id": TARGET + "#concept:a"})
+    check = tc.preflight(native, SOURCE, TOPIC)
+    assert check["ready"]  # The new team's actual id is not known until reserve.
+    before = fingerprint(read_snapshot(native))
+    with pytest.raises(TransferRefused, match="key_collision"):
+        stage(native)
+    assert fingerprint(read_snapshot(native)) == before
+    assert not tc.journals(native)
+
+
+def test_scoped_scan_keeps_source_history_blockers(native):
+    native.run("CREATE (r:_MergeRejection {pair_key:'synthetic-reject', owner_id:$owner, "
+               "a_id:'concept:a', b_id:'concept:other'})", {"owner": SOURCE})
+    check = tc.preflight(native, SOURCE, TOPIC)
+    assert not check["ready"] and "merge_rejection_history_not_supported" in check["blockers"]
+    assert not tc.journals(native)
+
+
+def test_unrelated_source_tombstone_still_requires_classification(native):
+    native.run("CREATE (t:_Tombstone {node_id:$id, owner_id:$owner, label:'Concept'})",
+               {"id": SOURCE + "\x1fconcept:outside", "owner": SOURCE})
+    check = tc.preflight(native, SOURCE, TOPIC)
+    assert not check["ready"] and "unclassified_tombstone_topic_history" in check["blockers"]
+    assert not tc.journals(native)
+
+
 def test_durable_commit_resume_after_reopen(native):
     expected = tc.preflight(native, SOURCE, TOPIC)["fingerprint"]
     stage(native)
@@ -116,6 +208,19 @@ def test_durable_commit_resume_after_reopen(native):
     native._ensure_index = lambda table: pytest.fail("unindexed fixture unexpectedly rebuilt an index")
     assert tc.stage(native, **args, expected=expected, stamp=STAMP)["status"] == "graph_committed"
     tc.release(native, **args)
+
+
+@pytest.mark.parametrize("prepared", [False, True])
+def test_prior_full_inventory_run_remains_resumable(native, prepared):
+    old_expected = tc.scoped_hash(read_snapshot(native), SOURCE, tc.PREFLIGHT_TARGET)
+    if prepared:
+        tc._save(native, RUN, {"source": SOURCE, "target": TARGET, "topic": TOPIC,
+                               "expected": old_expected, "indexes": [], "status": "prepared"})
+    args = dict(source=SOURCE, target=TARGET, topic=TOPIC, run=RUN)
+    assert tc.stage(native, **args, expected=old_expected, stamp=STAMP)["status"] == "graph_committed"
+    assert tc.journals(native)[0]["inventory_version"] == 1
+    assert tc.stage(native, **args, expected=old_expected, stamp=STAMP)["status"] == "graph_committed"
+    assert tc.release(native, **args)["status"] == "active"
 
 
 def test_run_cannot_be_retargeted(native):
@@ -171,11 +276,11 @@ def test_inventory_budget_includes_unrelated_owners(native):
         read_snapshot(native, max_rows=base_rows + 3)
 
 
-@pytest.mark.parametrize("limit", [{"max_rows": 1}, {"max_bytes": 100}])
-def test_preflight_does_not_report_an_unknown_topic_as_empty(native, monkeypatch, limit):
+def test_preflight_does_not_report_an_unknown_topic_as_empty(native, monkeypatch):
     before = fingerprint(read_snapshot(native))
-    real_read = tc.read_snapshot
-    monkeypatch.setattr(tc, "read_snapshot", lambda store, **kwargs: real_read(store, **kwargs, **limit))
+    def over_budget(*_args, **_kwargs):
+        raise TransferRefused("conversion_inventory_limit")
+    monkeypatch.setattr(tc, "_inventory", over_budget)
     result = tc.preflight(native, SOURCE, TOPIC)
     assert result == {"ready": False, "scope": "topic", "topic": TOPIC,
                       "counts_known": False, "counts": None, "documents": None,
