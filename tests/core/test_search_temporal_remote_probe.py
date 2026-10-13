@@ -144,8 +144,7 @@ def test_persistent_account_gateway_error_exhausts_budget_and_fails():
 
 def test_other_http_errors_and_mcp_gateway_error_fail_immediately():
     from urllib.parse import parse_qs, urlsplit
-    for error in ("search read returned HTTP 401", "search read returned HTTP 503",
-                  "search read could not complete"):
+    for error in ("search read returned HTTP 401", "search read returned HTTP 503"):
         def fail_read(*args):
             raise VerificationError(error)
         with pytest.raises(VerificationError, match=error):
@@ -158,3 +157,29 @@ def test_other_http_errors_and_mcp_gateway_error_fail_immediately():
     with pytest.raises(VerificationError, match="HTTP 502"):
         verify("synthetic", get=good_read, mcp_key="synthetic", mcp_get=bad_mcp,
             sleep=lambda _: pytest.fail("unexpected retry"))
+
+
+def test_account_timeout_requires_a_subsequent_verified_result():
+    from urllib.parse import parse_qs, urlsplit
+    state = {"now": 0, "calls": 0}
+    def get(path, key, timeout):
+        state["calls"] += 1
+        if state["calls"] == 1:
+            raise VerificationError("search read could not complete")
+        return response(mode=parse_qs(urlsplit(path).query).get("mode", [None])[0])
+    result = verify("synthetic", get=get, clock=lambda: state["now"],
+                    sleep=lambda seconds: state.__setitem__("now", state["now"] + seconds))
+    assert state == {"now": 5, "calls": 6}
+    assert result["checks"][0]["transport_retries"] == 1
+    assert all(check["contract"] == "pass" for check in result["checks"])
+
+
+def test_persistent_account_timeout_fails_at_the_existing_deadline():
+    state = {"now": 0, "calls": 0}
+    def get(*args):
+        state["calls"] += 1
+        raise VerificationError("search read could not complete")
+    with pytest.raises(VerificationError, match="could not complete"):
+        verify("synthetic", get=get, clock=lambda: state["now"],
+               sleep=lambda seconds: state.__setitem__("now", state["now"] + seconds), wait_s=12)
+    assert state == {"now": 12, "calls": 4}
