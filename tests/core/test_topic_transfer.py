@@ -58,7 +58,7 @@ def seed():
     add("_SyncMeta", "topic-transfer:synthetic", value="tests-only")
     add("_SyncBase", SOURCE + SEP + "concept:a", label="Concept", fields='{"title":"concept:a"}',
         base_rev=7, base_updated_at="2020-01-01T00:00:00.000Z")
-    body = "Synthetic body \u001f with [[concept:a]] and complete offsets."
+    body = "Synthetic body \u001f with " + "[[" + "concept:a" + "]] and complete offsets."
     add("_DocMeta", "doc1", owner_id=SOURCE, title="Synthetic document", origin="synthetic",
         content_hash=hashlib.sha256(body.encode()).hexdigest(), chunk_count=1,
         sync_seq=41, needs_embed=0, updated_at="2020-01-01T00:00:00.000Z",
@@ -127,7 +127,7 @@ def test_incoming_document_successor_blocks():
 
 def test_outgoing_wiki_reference_in_native_title_blocks():
     data = seed()
-    data["nodes"]["Concept"][0]["title"] = "See [[concept:other]]"
+    data["nodes"]["Concept"][0]["title"] = "See [[" + "concept:other" + "]]"
     assert "external_reference:concept:other" in plan(data).blockers
 
 
@@ -143,7 +143,7 @@ def test_other_owner_logical_alias_is_not_a_source_dependency():
     data = seed()
     other = copy.deepcopy(data["nodes"]["Concept"][-1])
     other.update(concept_id="user:another" + SEP + "concept:other", owner_id="user:another",
-                 title="An alias to my own [[concept:a]]")
+                 title="An alias to my own [[" + "concept:a" + "]]")
     data["nodes"]["Concept"].append(other)
     assert plan(data).ready
 
