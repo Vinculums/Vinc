@@ -101,7 +101,23 @@ class Wiring(_Env):
         app = VincApp(load_config({"data_dir": self.live}), store=None)
         self.addCleanup(app.jobs.shutdown, drain=False)
         self.assertIsNotNone(app._durable)
-        self.assertIs(app.jobs._on_before_done, app._durable)
+        self.assertEqual(app.jobs._on_before_done, app._ack_before_done)
+
+    def test_receipt_ack_is_stamped_only_after_successful_publication(self):
+        app = VincApp(load_config({"data_dir": self.live}), store=None)
+        self.addCleanup(app.jobs.shutdown, drain=False)
+        app._durable = mock.Mock(sequence=7)
+        result = app.jobs.run_sync("doc.put", lambda: {"executed":True,"receipt":{"state":"committed"}})
+        self.assertEqual("published_generation", result["durability"])
+        self.assertEqual(7, result["durable_sequence"])
+        app._durable.assert_called_once()
+        app._durable.side_effect = persistence.DurableAckError("synthetic publication failure")
+        result = {"executed":True,"receipt":{"state":"committed"}}
+        from api.jobs import JobError
+        with self.assertRaises(JobError) as caught:
+            app.jobs.run_sync("doc.put", lambda: result)
+        self.assertTrue(caught.exception.write_may_have_applied)
+        self.assertNotIn("durability", result)
 
     def test_off_by_default_wires_nothing(self):
         for env in ({persistence.DURABLE_ENV: ""},
