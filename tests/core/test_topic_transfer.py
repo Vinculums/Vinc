@@ -102,6 +102,52 @@ def plan(snapshot=None):
     return plan_transfer(snapshot or seed(), source=SOURCE, target=TARGET, topic=TOPIC)
 
 
+@pytest.mark.parametrize("field,value", [
+    ("props", '{"nested":{"nodeId":"concept:a"}}'),
+    ("title", "See [[doc1]]"),
+])
+def test_incoming_logical_references_block_without_expanding_scope(field, value):
+    data = seed()
+    other = next(r for r in data["nodes"]["Concept"] if r["concept_id"].endswith("concept:other"))
+    other[field] = value
+    before = fingerprint(data)
+    result = plan(data)
+    assert any(b.startswith("incoming_reference:") for b in result.blockers)
+    assert ("Concept", other["concept_id"]) not in result.selected
+    assert fingerprint(data) == before
+
+
+def test_incoming_document_successor_blocks():
+    data = seed()
+    meta = copy.deepcopy(data["meta"]["_DocMeta"][0])
+    meta.update(doc_id="outside", superseded_by="doc1")
+    data["meta"]["_DocMeta"].append(meta)
+    assert any(b.startswith("incoming_reference:") for b in plan(data).blockers)
+
+
+def test_outgoing_wiki_reference_in_native_title_blocks():
+    data = seed()
+    data["nodes"]["Concept"][0]["title"] = "See [[concept:other]]"
+    assert "external_reference:concept:other" in plan(data).blockers
+
+
+def test_wiki_aliases_retain_the_target_identity():
+    data = seed()
+    data["nodes"]["Concept"][0]["title"] = "[[concept:b|Inside]]"
+    assert plan(data).ready
+    data["nodes"]["Concept"][0]["title"] = "[[concept:other|Outside]]"
+    assert "external_reference:concept:other" in plan(data).blockers
+
+
+def test_other_owner_logical_alias_is_not_a_source_dependency():
+    data = seed()
+    other = copy.deepcopy(data["nodes"]["Concept"][-1])
+    other.update(concept_id="user:another" + SEP + "concept:other", owner_id="user:another",
+                 title="An alias to my own [[concept:a]]")
+    data["nodes"]["Concept"].append(other)
+    assert plan(data).ready
+
+
 class RawStore:
     def __init__(self, path):
         from store.embedded_backend import _import_driver

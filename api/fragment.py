@@ -371,6 +371,9 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     각인되는 주제 귀속(THEME-DEEP §6) — 호출부(_ThemeFold)가 해석해 넘긴다."""
     ntype = (node.get("type") or "").strip()
     nid = (node.get("id") or "").strip()
+    if getattr(store, "_topic_conversion_guard", False):
+        from .topic_conversion import check_write
+        check_write(store, owner, node)
     if not ntype:
         warnings.append(f"node without type — skipped ({nid or '?'})")
         return None
@@ -1286,6 +1289,9 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     edges = list(fragment.get("edges") or [])
     owner_explicit = bool((fragment.get("owner") or "").strip())
     owner = (fragment.get("owner") or "").strip() or DEFAULT_OWNER
+    if getattr(store, "_topic_conversion_guard", False):
+        from .topic_conversion import check_write
+        check_write(store, owner, fragment)
     beliefs = []
     if authored:
         # 저작 시점의 근거를 검사한다. sync/팩 복원은 근거보다 패키지가 먼저 올 수 있다.

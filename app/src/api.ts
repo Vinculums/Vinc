@@ -1068,6 +1068,22 @@ export const teamsApi = {
   },
 };
 
+export type ConversionCheck = { ready: boolean; topic: string; fingerprint?: string;
+  counts: Record<string, number>; documents: number; blockers: string[] };
+export type ConversionRun = { id: string; topic: string; name: string; team: string;
+  state: "prepared" | "committing" | "graph_committed" | "active" | "cancelled" };
+/** Account-owned control plane, shared by web sessions and desktop member keys. */
+export const conversionApi = {
+  capabilities: (): Promise<{ enabled: boolean; subject: string; pending?: { id: string; name: string; topic: string; fingerprint: string } | null }> =>
+    call("/conversion/capabilities", undefined, undefined, { team: null }),
+  preflight: (topic: string): Promise<ConversionCheck> => call("/conversion/preflight", undefined, { topic }, { team: null }),
+  reserve: (body: { id: string; name: string; topic: string; fingerprint: string }): Promise<ConversionRun> =>
+    call("/conversion/runs", undefined, body, { team: null }),
+  status: (id: string): Promise<ConversionRun> => call(`/conversion/runs/${encodeURIComponent(id)}`, undefined, undefined, { team: null }),
+  resume: (id: string): Promise<ConversionRun> => call(`/conversion/runs/${encodeURIComponent(id)}/resume`, undefined, {}, { team: null }),
+  cancel: (id: string): Promise<ConversionRun> => call(`/conversion/runs/${encodeURIComponent(id)}/cancel`, undefined, {}, { team: null }),
+};
+
 // ── 주소의 스페이스 ─────────────────────────────────────────────────────────
 // 노드 주소는 자기 스페이스를 말한다: 해시 앞 쿼리 `?space=`. 값은 셋 중 하나다 —
 // `personal` · 팀 id · `local`(이 기기에만 있는 그래프, 로컬 모드). 그래서 채팅에

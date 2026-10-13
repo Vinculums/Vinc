@@ -310,6 +310,7 @@ class VincApp:
                          if durable_ack_enabled() and self.cfg.data_dir else None)
         self.jobs = jobs or JobQueue(on_idle=self._maybe_snapshot,
                                      on_before_done=self._durable,
+                                     on_before_run=self._conversion_write_guard,
                                      tick_s=tick_s or None)
         self.packs_dir = packs_dir
         self.profile_path = profile_path
@@ -618,7 +619,15 @@ class VincApp:
         try:
             scope = getattr(r, "request_read_scope", None)
             with (scope() if callable(scope) else nullcontext()), request_timing.measure("query"):
+                if getattr(self.store, "_topic_conversion_guard", False):
+                    from . import topic_conversion as conversion
+                    conversion.check_read(r, conversion.request_owner.get())
                 return 200, fn(r)
+        except ValueError as exc:
+            from store.topic_transfer import TransferRefused
+            if isinstance(exc, TransferRefused):
+                return 409, {"executed": False, "error": str(exc)}
+            raise
         except DdlGuardTimeout:
             return 503, {"executed": False, "error": "store_busy",
                          "note": "Index or schema maintenance is in progress. Retry shortly.",
@@ -626,6 +635,54 @@ class VincApp:
         finally:
             with request_timing.measure("reader_close"):
                 r.close()
+
+    def _conversion_write_guard(self, job):
+        if self.store is not None and getattr(self.store, "_topic_conversion_guard", False) \
+                and not job.kind.startswith("topic-conversion."):
+            from . import topic_conversion as conversion
+            conversion.check_write(self.store, conversion.request_owner.get(),
+                                   conversion.request_payload.get())
+
+    def write_topic_conversion(self, body):
+        from . import topic_conversion as conversion
+        from . import revstamp
+        from store.topic_transfer import TransferRefused
+        if body.get("action") == "preflight" and os.environ.get("VINC_TOPIC_CONVERSION") != "1":
+            return 503, {"error": "topic_conversion_unavailable"}
+        source = body.get("owner")
+        action = body.get("action")
+        if not isinstance(source, str) or not source.startswith("user:"):
+            return 400, {"error": "personal_source_required"}
+        if action not in ("preflight", "stage", "status", "release", "cancel"):
+            return 400, {"error": "invalid_conversion_action"}
+        # An account may not acknowledge a move in a non-durable hub setup.
+        if action in ("preflight", "stage", "release", "cancel") and self._durable is None:
+            return 503, {"error": "conversion_requires_durable_ack"}
+        def work():
+            try:
+                if action == "preflight":
+                    return conversion.preflight(self.store, source, str(body.get("topic") or ""))
+                args = dict(source=source, target=body["target"], topic=body["topic"], run=body["run"])
+                if action == "stage":
+                    args.update(expected=body["fingerprint"], stamp=revstamp.hlc_now(self.store))
+                    out = conversion.stage(self.store, **args)
+                elif action == "release":
+                    out = conversion.release(self.store, **args)
+                elif action == "cancel":
+                    out = conversion.cancel(self.store, **args)
+                else:
+                    out = conversion.status(self.store, **args)
+                if action in ("stage", "release", "cancel"):
+                    for owner in (source, body["target"]):
+                        self._graph_results.clear_owner(owner)
+                        self._graph_reads.invalidate_owner(owner)
+                        getattr(self.store, "runtime_stamps", {}).pop(owner, None)
+                        self.changes.bump(owner)
+                return out
+            except (TransferRefused, ValueError, KeyError) as exc:
+                return {"status": "blocked", "error": str(exc).split(":", 1)[0]}
+        out = self.jobs.run_sync("topic-conversion." + action, work)
+        return (409 if out.get("status") == "blocked" else 200), out
 
     def close(self):
         """clean shutdown(E6): 워커 드레인 → **마지막 스냅샷** → 공유 스토어 close.
@@ -2464,12 +2521,24 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             if method == "GET":
                 params = {k: v[0] for k, v in urllib.parse.parse_qs(parsed.query).items()}
-                code, obj = self._route_get(path, params)
+                from .topic_conversion import request_owner
+                token = request_owner.set(params.get("owner"))
+                try:
+                    code, obj = self._route_get(path, params)
+                finally:
+                    request_owner.reset(token)
             else:
                 body = self._body()
                 # 소유자는 **라우팅 전에** 읽는다. 핸들러가 바디를 고쳐 쓰는 일이 있다.
                 owner = body.get("owner") if isinstance(body, dict) else None
-                code, obj = self._route_post(path, body)
+                from .topic_conversion import request_owner, request_payload
+                token = request_owner.set(owner)
+                payload_token = request_payload.set(body)
+                try:
+                    code, obj = self._route_post(path, body)
+                finally:
+                    request_payload.reset(payload_token)
+                    request_owner.reset(token)
                 self.app.note_write(path, owner, code, obj)
         except _Missing as exc:
             code, obj = 400, {"error": f"missing field: {exc.args[0]}"}
@@ -2487,6 +2556,12 @@ class _Handler(BaseHTTPRequestHandler):
     # ── 라우트 표(CLI 1:1) ────────────────────────────────────────────────
     def _route_get(self, path: str, p: dict):
         app = self.app
+        if app.store is not None and getattr(app.store, "_topic_conversion_guard", False):
+            # Covers cached staged reads and remote layouts which bypass _read.
+            from . import topic_conversion as conversion
+            code, result = app._read(lambda r: conversion.check_read(r, p.get("owner")))
+            if code != 200:
+                return code, result
         table = {
             "/recall": app.read_recall, "/domains": app.read_domains,
             "/view": app.read_view, "/ledger": app.read_ledger, "/share": app.read_share,
@@ -2570,6 +2645,7 @@ class _Handler(BaseHTTPRequestHandler):
         app = self.app
         table = {
             "/pin": app.write_pin, "/tag": app.write_tag, "/touch": app.write_touch,
+            "/topic-conversion": app.write_topic_conversion,
             "/activate": app.write_activate, "/backup": app.submit_backup,
             "/ingest": app.write_ingest,
             "/delete": app.write_delete, "/delete-edge": app.write_delete_edge,

@@ -1026,6 +1026,23 @@ const EN = {
       diag: "Diagnostic",
     },
     settingsUi: {
+      conversionError: (code: string): string => code === "preflight_changed" ? "The topic changed. Check its scope again before preparing a team." : code === "team_entitlement_required" ? "This team needs an eligible trial or subscription. Your personal topic has not moved. You can cancel this attempt." : "The move needs attention. Check and resume, or cancel if it has not committed.",
+      conversionBlocker: (code: string) => ({ boundary_relation: "A relationship crosses this topic", bridge_crosses_topic: "A bridge crosses this topic", external_reference: "A reference points outside this topic", incoming_reference: "Another topic refers to items in this topic", external_attachments_not_supported: "External attachments need separate handling", search_index_repair_required: "Search indexes need repair before moving", entity_topic_membership_not_supported: "Custom data has no reliable topic boundary", owner_vocabulary_sidecar_not_supported: "Personal vocabulary needs separate handling", unclassified_tombstone_topic_history: "Deleted item history needs separate handling", document_integrity_failed: "Document integrity must be repaired", target_not_empty: "The reserved team is no longer empty" } as Record<string,string>)[code] || "A dependency is not supported for lossless conversion",
+
+      conversionTitle: "Move a personal topic to a new team space",
+      conversionIntro: "Move one topic and all its subtopics. The original IDs, documents, evidence and vectors stay intact. Other topics stay personal.",
+      conversionTopic: "Personal topic path", conversionName: "New team name",
+      conversionLimits: "The check blocks shared documents, boundary relationships, external attachments and unsupported vocabulary or history. Nothing is silently added or discarded. Whole graph conversion is not available yet.",
+      conversionCounts: (docs: number, rows: number) => `${docs} document${docs === 1 ? "" : "s"} and ${rows} knowledge item${rows === 1 ? "" : "s"} selected.`,
+      conversionBlocked: "Resolve these dependencies before moving", conversionCheck: "Check topic",
+      conversionConsent: "I have checked the scope. Prepare a new team for this topic. Team access requires an eligible trial or subscription.",
+      conversionPrepare: "Prepare new team", conversionPrepared: "The new team is reserved. Choose Move to start, or Cancel to keep the topic personal.",
+      conversionPending: "The move has started. Check and resume to confirm its outcome.",
+      conversionVerifying: "The preserved graph is in the reserved team. Verification and activation still need to finish.",
+      conversionMove: "Move topic", conversionResume: "Check and resume", conversionWorking: "Checking and moving. You can close this sheet and resume here.",
+      conversionDone: "The topic is now in the new team space.", conversionOpen: "Open new space",
+      conversionCancel: "Cancel move", conversionFailed: "The move needs attention. Check and resume, or cancel if it has not committed.",
+
       // 모달 탭(GNB) 라벨 + 섹션 소제목
       title: "Settings", close: "Close",
       navGeneral: "General · appearance",
@@ -2142,6 +2159,23 @@ const KO: Deck = {
       diag: "진단",
     },
     settingsUi: {
+      conversionError: (code: string): string => code === "preflight_changed" ? "토픽이 바뀌었어요. 팀을 준비하기 전에 범위를 다시 확인해 주세요." : code === "team_entitlement_required" ? "팀에 사용할 수 있는 체험 또는 구독이 필요해요. 개인 토픽은 아직 이동하지 않았으며 이번 시도를 취소할 수 있어요." : "이동 상태를 확인해 주세요. 확인하고 재개하거나, 이동이 아직 확정되지 않았다면 취소할 수 있어요.",
+      conversionBlocker: (code: string) => ({ boundary_relation: "관계가 토픽 경계를 넘어가요", bridge_crosses_topic: "브리지가 토픽 경계를 넘어가요", external_reference: "참조가 이 토픽 밖을 가리켜요", incoming_reference: "다른 토픽이 이 토픽의 항목을 참조해요", external_attachments_not_supported: "외부 첨부를 별도로 처리해야 해요", search_index_repair_required: "이동 전에 검색 색인을 복구해야 해요", entity_topic_membership_not_supported: "사용자 정의 데이터의 토픽 경계를 확인할 수 없어요", owner_vocabulary_sidecar_not_supported: "개인 어휘를 별도로 처리해야 해요", unclassified_tombstone_topic_history: "삭제된 항목의 이력을 별도로 처리해야 해요", document_integrity_failed: "문서 무결성을 먼저 복구해야 해요", target_not_empty: "예약한 팀이 더 이상 비어 있지 않아요" } as Record<string,string>)[code] || "무손실 전환이 지원하지 않는 의존성이 있어요",
+
+      conversionTitle: "개인 토픽을 새 팀 공간으로 옮기기",
+      conversionIntro: "토픽 하나와 모든 하위 토픽을 옮겨요. ID, 문서, 근거와 벡터는 그대로 유지하고 다른 토픽은 개인 공간에 남겨요.",
+      conversionTopic: "개인 토픽 경로", conversionName: "새 팀 이름",
+      conversionLimits: "공유 문서, 경계 관계, 외부 첨부, 미지원 어휘·이력이 있으면 검사가 이동을 막아요. 내용을 자동으로 추가하거나 버리지 않아요. 전체 그래프 전환은 아직 지원하지 않아요.",
+      conversionCounts: (docs: number, rows: number) => `문서 ${docs}개, 지식 항목 ${rows}개가 선택됐어요.`,
+      conversionBlocked: "이 의존성을 해결한 뒤 옮겨 주세요", conversionCheck: "토픽 검사",
+      conversionConsent: "범위를 확인했어요. 이 토픽을 위한 새 팀을 준비해 주세요. 팀 이용에는 유효한 체험 또는 구독이 필요해요.",
+      conversionPrepare: "새 팀 준비", conversionPrepared: "새 팀을 예약했어요. 이동을 시작하거나 취소해서 토픽을 개인 공간에 남길 수 있어요.",
+      conversionPending: "이동을 시작했어요. 확인하고 재개해서 결과를 확인해 주세요.",
+      conversionVerifying: "그래프는 예약한 팀에 보존돼 있어요. 검증과 활성화를 마쳐야 해요.",
+      conversionMove: "토픽 옮기기", conversionResume: "확인하고 재개", conversionWorking: "확인하고 옮기는 중이에요. 창을 닫아도 여기서 재개할 수 있어요.",
+      conversionDone: "토픽이 새 팀 공간으로 옮겨졌어요.", conversionOpen: "새 공간 열기",
+      conversionCancel: "이동 취소", conversionFailed: "이동 상태를 확인해야 해요. 확인하고 재개하거나, 아직 커밋되지 않았다면 취소해 주세요.",
+
       // 모달 탭(GNB) 라벨 + 섹션 소제목
       title: "설정", close: "닫기",
       navGeneral: "일반·화면",

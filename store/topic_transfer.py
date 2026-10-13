@@ -20,6 +20,10 @@ class TransferRefused(ValueError):
     pass
 
 
+MAX_INVENTORY_ROWS = 5000
+MAX_INVENTORY_BYTES = 32 * 1024 * 1024
+
+
 def _canonical(value):
     return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
 
@@ -34,14 +38,34 @@ def fingerprint(snapshot: dict) -> str:
     return hashlib.sha256(_canonical(normalized).encode()).hexdigest()
 
 
-def read_snapshot(store) -> dict:
+def check_inventory_budget(snapshot, *, extra_rows=0, extra_bytes=0):
+    count = len(snapshot["edges"]) + sum(len(rows) for group in ("nodes", "meta")
+                                          for rows in snapshot[group].values())
+    if count + extra_rows > MAX_INVENTORY_ROWS or len(_canonical(snapshot).encode()) + extra_bytes > MAX_INVENTORY_BYTES:
+        raise TransferRefused("conversion_inventory_limit")
+
+
+def read_snapshot(store, *, vocabulary_owner: str | None = None,
+                  max_rows: int = MAX_INVENTORY_ROWS, max_bytes: int = MAX_INVENTORY_BYTES) -> dict:
     """Strict, read-only canonical inventory; never narrow away unknown columns."""
     path = getattr(store, "path", None) or getattr(getattr(store, "_cfg", None), "data_dir", None)
     if not path:
         raise TransferRefused("external_store_state_unchecked")
     # DB 밖 소유자 어휘를 이전하지 못하므로, 파일이 있으면 내용과 무관하게 거절한다.
-    if Path(str(path) + ".themes.json").exists():
-        raise TransferRefused("owner_vocabulary_sidecar_not_supported")
+    sidecar = Path(str(path) + ".themes.json")
+    if sidecar.exists():
+        if vocabulary_owner is None:
+            raise TransferRefused("owner_vocabulary_sidecar_not_supported")
+        from .theme_store import owner_theme_id
+        try:
+            vocabulary = json.loads(sidecar.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            raise TransferRefused("owner_vocabulary_sidecar_not_supported") from None
+        # A file shared with other tenants is not itself a source dependency.
+        # Unknown shapes and any vocabulary belonging to this source fail closed.
+        if not isinstance(vocabulary, dict) or not isinstance(vocabulary.get("themes"), dict) \
+                or owner_theme_id(vocabulary_owner) in vocabulary["themes"]:
+            raise TransferRefused("owner_vocabulary_sidecar_not_supported")
     specs = {**node_table_specs(), **meta_table_specs()}
     tables = store.run("CALL show_tables() RETURN *", raw=True)
     have = {r["name"] for r in tables}
@@ -49,13 +73,22 @@ def read_snapshot(store) -> dict:
     if have != expected:
         raise TransferRefused("unsupported_schema_tables")
     result = {"schema_version": SCHEMA_VERSION, "nodes": {}, "meta": {}, "edges": []}
+    remaining_rows, remaining_bytes = max_rows, max_bytes
+    def bounded(q):
+        nonlocal remaining_rows, remaining_bytes
+        rows = store.run(q + f" LIMIT {remaining_rows + 1}", raw=True)
+        remaining_rows -= len(rows)
+        remaining_bytes -= len(_canonical(rows).encode())
+        if remaining_rows < 0 or remaining_bytes < 0:
+            raise TransferRefused("conversion_inventory_limit")
+        return rows
     for label, spec in specs.items():
         cols = {r["name"] for r in store.run(f"CALL table_info('{label}') RETURN *", raw=True)}
         if cols != set(spec["cols"]):
             raise TransferRefused("unsupported_schema_columns:" + label)
         projection = ", ".join(f"n.{c} AS {c}" for c in spec["cols"])
         group = "meta" if label.startswith("_") else "nodes"
-        result[group][label] = store.run(f"MATCH (n:{label}) RETURN {projection}", raw=True)
+        result[group][label] = bounded(f"MATCH (n:{label}) RETURN {projection}")
     for spec in rel_table_specs():
         label, src, dst = spec["label"], spec["from"], spec["to"]
         cols = {r["name"] for r in store.run(f"CALL table_info('{label}') RETURN *", raw=True)}
@@ -63,7 +96,7 @@ def read_snapshot(store) -> dict:
             raise TransferRefused("unsupported_schema_columns:" + label)
         fields = [f"a.{specs[src]['pk']} AS src", f"b.{specs[dst]['pk']} AS dst"]
         fields += [f"r.{c} AS {c}" for c in spec["props"]]
-        rows = store.run(f"MATCH (a:{src})-[r:{label}]->(b:{dst}) RETURN {', '.join(fields)}", raw=True)
+        rows = bounded(f"MATCH (a:{src})-[r:{label}]->(b:{dst}) RETURN {', '.join(fields)}")
         for row in rows:
             result["edges"].append({"label": label, "from_label": src, "to_label": dst,
                                     "from": row.pop("src"), "to": row.pop("dst"), "props": row})
@@ -86,7 +119,7 @@ class Plan:
 
 
 _KINDS = ("Concept", "Record", "Decision", "Episode", "LearnerPattern")
-_REFERENCE = re.compile(r"\[\[([^\]\s]+)(?:[^\]]*)\]\]")
+_REFERENCE = re.compile(r"\[\[([^\]\s|]+)(?:[^\]]*)\]\]")
 _ATTACHMENTS = {"attachment", "attachments", "file", "files", "blob", "blobs", "asset", "assets"}
 _EXTERNAL_RESOURCE = re.compile(r"^(?:[A-Za-z]:[\\/]|(?:file|blob|s3|azure|gs|az|https?):|[/\\])", re.I)
 _IMAGE_REFERENCE = re.compile(r"!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>", re.I)
@@ -176,6 +209,10 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
             if label == "Concept" and pkns.strip(nid).startswith("concept:doc.")}
     metas = {r["doc_id"]: r for r in snapshot["meta"]["_DocMeta"]}
     for doc in docs:
+        if any(r["doc_id"] == doc for r in snapshot["meta"]["_DocTombstone"]):
+            # This table's physical PK is global doc_id. A live document plus
+            # historical tombstone cannot also retain a new source tombstone.
+            blocks.add("document_tombstone_conflicts_with_live_doc:" + doc)
         if doc not in metas or metas[doc].get("owner_id") != source:
             blocks.add("document_owner_missing:" + doc)
             continue
@@ -207,6 +244,49 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
             if vector["doc_id"] == doc and vector["chunk_id"] not in chunk_keys:
                 blocks.add("chunk_vector_join_mismatch:" + doc)
     logical = {pkns.strip(nid) for _, nid in selected}
+    # Logical links have no relationship row. Moving their target must not
+    # silently leave a different topic's text or structured references broken.
+    def references(value):
+        if isinstance(value, dict):
+            for key, val in value.items():
+                compact = re.sub(r"[^a-z0-9]", "", key.lower())
+                if compact in ("docid", "supersededby", "nodeid", "ref") and isinstance(val, str):
+                    yield pkns.strip(val)
+                yield from references(val)
+        elif isinstance(value, list):
+            for val in value:
+                yield from references(val)
+        elif isinstance(value, str):
+            yield from _REFERENCE.findall(value)
+
+    for label, rows in allrows.items():
+        if label not in _KINDS + ("Bridge", "Chunk", "_DocMeta"):
+            continue
+        for row in rows:
+            if row.get("owner_id") != source:
+                continue
+            key = row[specs[label]["pk"]]
+            props = row.get("props")
+            fields = dict(row)
+            if props:
+                try:
+                    fields["props"] = json.loads(props)
+                except (TypeError, ValueError):
+                    # Unclassified properties outside the scope can hide links.
+                    blocks.add("opaque_props:" + key)
+            refs = set(references(fields))
+            if (label, key) in selected:
+                for ref in refs - (logical | docs):
+                    blocks.add("external_reference:" + ref)
+            elif refs & (logical | docs):
+                blocks.add("incoming_reference:" + key)
+    for edge in snapshot["edges"]:
+        a, b = (edge["from_label"], edge["from"]), (edge["to_label"], edge["to"])
+        if a not in selected and b not in selected:
+            owned = any(r.get("owner_id") == source and r[specs[label]["pk"]] == key
+                        for label, key in (a, b) for r in allrows[label])
+            if owned and set(references(edge["props"])) & (logical | docs):
+                blocks.add("incoming_reference:relationship")
     for row in snapshot["nodes"]["NodeVec"]:
         if row["owner_id"] == source and row["node_id"] in logical:
             selected.add(("NodeVec", row["vec_id"]))
@@ -249,7 +329,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
                             blocks.add("owner_vocabulary_not_supported:" + nid)
                         if compact in ("graphmd", "conventions") and val:
                             blocks.add("owner_conventions_require_separate_decision:" + nid)
-                        if key in ("doc_id", "superseded_by", "node_id", "ref") and val and isinstance(val, str):
+                        if compact in ("docid", "supersededby", "nodeid", "ref") and val and isinstance(val, str):
                             if val not in logical and val not in docs:
                                 blocks.add("external_reference:" + val)
                         inspect(val)
@@ -361,7 +441,7 @@ def transformed_snapshot(snapshot: dict, plan: Plan, *, stamp: str) -> dict:
     return out
 
 
-def _write_difference(store, before: dict, after: dict, *, fail_at=None):
+def _write_difference(store, before: dict, after: dict, *, fail_at=None, vocabulary_owner=None):
     specs = {**node_table_specs(), **meta_table_specs()}
     # 전체 스토어를 지우지 않는다. 키가 바뀌는 선택 행만 새로 만들고 관계를 옮긴다.
     for group in ("nodes", "meta"):
@@ -398,7 +478,7 @@ def _write_difference(store, before: dict, after: dict, *, fail_at=None):
                     store.run(f"MATCH (n:{label}) WHERE n.{pk}=$key DETACH DELETE n", {"key": row[pk]}, raw=True)
     if fail_at == "delete":
         raise RuntimeError("injected_after_delete")
-    if fingerprint(read_snapshot(store)) != fingerprint(after):
+    if fingerprint(read_snapshot(store, vocabulary_owner=vocabulary_owner)) != fingerprint(after):
         raise TransferRefused("payload_verification_failed")
 
 

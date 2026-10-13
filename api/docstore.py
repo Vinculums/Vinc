@@ -415,6 +415,9 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         if seat is not None and seat.get("owner_id") != owner:
             doc_id = graphmd.conventions_doc_id(owner)
     doc_id = doc_id or make_doc_id(owner, content_hash, title or "", origin or "")
+    if getattr(store, "_topic_conversion_guard", False):
+        from .topic_conversion import check_write
+        check_write(store, owner, {"id": doc_id, "topic": topic})
     base["doc_id"] = doc_id
 
     prev = _meta(store, doc_id)
