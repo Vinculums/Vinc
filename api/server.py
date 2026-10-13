@@ -265,7 +265,9 @@ def _timed(kind: str, p: dict, store, res, *, seed=None):
     search·brief 의 `as_of` 는 자기 경로가 이미 처리하므로 거기서는 `known_at` 만 넘긴다.
     근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] §1"""
     from . import temporal_read
-    as_of = None if kind in ("search", "brief") else p.get("as_of")
+    if kind == "search":
+        return res
+    as_of = None if kind == "brief" else p.get("as_of")
     return temporal_read.apply(kind, res, store=store, owner=p.get("owner") or None,
                                as_of=as_of, known_at=p.get("known_at"), seed=seed)
 
@@ -960,12 +962,13 @@ class VincApp:
             top_k=_int(p.get("top_k"), 5), filters=filters or None,
             cursor=p.get("cursor") or None, detail=p.get("detail") or "summary",
             historical=_flag(p.get("historical")), as_of=p.get("as_of") or None,
+            mode=p.get("mode") or None, known_at=p.get("known_at") or None,
             owner=p.get("owner") or None, store=r)))
         # GM-14: 무효/실효 커서는 **명시적 클라이언트 오류**다 — 조용히 첫 페이지로
         # 폴백하면 호출자가 같은 페이지를 무한히 읽는다. 본문은 그대로 돌려준다
         # (Bridge 가 HTTPError 본문을 verbatim 통과시켜 MCP 도 같은 사유를 본다).
         if isinstance(res, dict) and str(res.get("error") or "").startswith(
-                ("invalid_cursor", "stale_cursor", "invalid_as_of", "invalid_time_scope")):
+                ("invalid_cursor", "stale_cursor", "invalid_as_of", "invalid_time_scope", "invalid_temporal_mode")):
             code = 400
         # **조용한 강등 금지.** 어느 팔이 돌았는지는 `q.search` 가 `arms` 로 남긴다
         # (CLI 와 같은 값이어야 §11 게이트① 동등성이 성립한다). 여기서는 **시도했는데
@@ -1315,9 +1318,9 @@ class VincApp:
             query, owner=_req(p, "owner"), query_embedding=qvec,
             query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
             max_excerpts=_int(p.get("max_excerpts"), 3),
-            historical=_flag(p.get("historical")), as_of=p.get("as_of") or None, store=r)))
+            historical=_flag(p.get("historical")), as_of=p.get("as_of") or None, mode=p.get("mode") or None, store=r)))
         if isinstance(res, dict) and str(res.get("error") or "").startswith(
-                ("invalid_as_of", "invalid_time_scope")):
+                ("invalid_as_of", "invalid_time_scope", "invalid_temporal_mode")):
             code = 400
         # **시도했는데 실패한 경우에만** 사유를 덧붙인다(`/search` 와 같은 규칙 —
         # 시도조차 안 한 경우에 빈 필드를 붙이면 게이트① 동등성이 깨진다).

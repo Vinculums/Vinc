@@ -16,6 +16,7 @@ import os
 from store.config import load_config
 from store.backend import open_store
 from store import pkns
+from store import search_temporal as temporal
 from store.embedded_backend import vector_generation
 from store.querybase import (
     QueryPlan,
@@ -213,12 +214,21 @@ CHUNK_RRF_K = 20
 
 
 def _query_fingerprint(query: str, owner: str | None, filters: dict | None,
-                       detail: str, as_of: str | None = None) -> str:
+                       detail: str, as_of: str | None = None, *, mode=None,
+                       historical=False, known_at=None) -> str:
     basis = [query, owner or "", sorted((filters or {}).items()), detail]
     # 시점이 다른 요청의 커서로 이어 읽으면 두 시점의 결과가 한 목록에 섞인다. 기본값
     # (as_of 없음)에서는 지문이 예전과 같게 둔다 — 이미 나간 커서가 무효가 되지 않게.
     if as_of:
         basis.append("as_of:" + as_of.strip())
+    if mode:
+        basis.append("mode:" + mode)
+        if mode == "current":
+            basis.append("current_at:" + temporal.dt.datetime.now(temporal.dt.timezone.utc).date().isoformat())
+    if historical:
+        basis.append("historical:true")
+    if known_at:
+        basis.append("known_at:" + known_at.strip())
     basis = json.dumps(basis, ensure_ascii=False)
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:12]
 
@@ -323,9 +333,15 @@ def _attach_doc_titles(store, rows: list[dict], *, owner: str | None = None,
     try:
         got = store.run(f"MATCH (d:_DocMeta) WHERE {where} "
                         "RETURN d.doc_id AS id, d.title AS t, "
-                        "d.valid_from AS vf, d.valid_until AS vu", params) or []
+                        "d.valid_from AS vf, d.valid_until AS vu, "
+                        "d.created_at AS created_at, d.updated_at AS updated_at, "
+                        "d.content_time AS content_time, d.superseded_by AS superseded_by", params) or []
     except Exception:
-        return {}
+        raise
+    meta = {str(g.get("id") or ""): g for g in got}
+    for r in rows:
+        g = meta.get(r.get("doc_id"), {})
+        temporal.stamp(r, {**g, "valid_from": g.get("vf"), "valid_until": g.get("vu")})
     if include_titles:
         titles = {str(g.get("id") or ""): str(g.get("t") or "") for g in got}
         for r in rows:
@@ -347,7 +363,7 @@ def _drop_retired_doc_rows(base: dict, validity: dict, *, historical: bool, scop
     kept, hidden = [], 0
     for r in base.get("rows") or []:
         vf, vu = validity.get(r.get("doc_id") or "", ("", ""))
-        ok = (holds_during(vf, vu, scope) if scope is not None
+        ok = (temporal.overlaps_scope(vf, vu, scope) if scope is not None
               else validity_state(vf, vu) != "historical")
         if ok:
             kept.append(r)
@@ -463,7 +479,7 @@ def _visible(valid_from, valid_until, *, historical: bool,
              scope: tuple[str, str] | None) -> bool:
     """검색 두 팔(제목·의미)이 함께 쓰는 판정. 기간이 있으면 그 기간, 없으면 오늘 규칙."""
     if scope is not None:
-        return holds_during(valid_from, valid_until, scope)
+        return temporal.overlaps_scope(valid_from, valid_until, scope)
     if historical:
         return True
     return validity_state(valid_from, valid_until) != "historical"
@@ -1067,10 +1083,11 @@ def _encoder_runtime_warning(store, owner: str | None, runtime: str) -> str:
     return ""
 
 
-def search(query: str, *, query_embedding: list[float] | None = None,
+def _search(query: str, *, query_embedding: list[float] | None = None,
            top_k: int = 5, filters: dict | None = None, owner: str | None = None,
            cursor: str | None = None, detail: str = "summary",
            historical: bool = False, as_of: str | None = None,
+           mode: str | None = None, known_at: str | None = None,
            query_runtime: str | None = None,
            relevance_profile: dict | None = None,
            relevance_corpus_revision: str | None = None,
@@ -1132,13 +1149,20 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     if profile_error:
         base["relevance_policy"] = {"state": "invalid_profile", "error": profile_error}
     # 커서 검증은 스토어를 열기 전에 — 무효 커서에 조회 비용을 쓰지 않는다.
-    qh = _query_fingerprint(query, owner, filters, detail, as_of)
+    qh = _query_fingerprint(query, owner, filters, detail, as_of, mode=mode,
+                            historical=historical, known_at=known_at)
     # 시점 인자도 스토어를 열기 전에 검사한다. 틀린 값이 조용히 오늘로 떨어지면 부르는
     # 쪽은 과거를 읽은 줄 안다.
     try:
-        _scope, _scope_info = resolve_as_of(as_of, query)
+        historical, _scope, _scope_info = temporal.mode_scope(mode, historical, as_of, query)
     except ValueError as exc:
-        base["note"] = base["error"] = f"invalid_as_of: {exc}"
+        base["note"] = base["error"] = f"invalid_temporal_mode: {exc}" if mode else f"invalid_as_of: {exc}"
+        return base
+    if mode:
+        base["mode"] = mode
+        base["claim_assessment_scope"] = "retrieved_candidates"
+    if known_at and not temporal.time_scope(known_at):
+        base["error"] = f"invalid_time_scope: invalid known_at {known_at!r}"
         return base
     off, want_eid, want_arms = 0, None, None
     if cursor:
@@ -1186,15 +1210,22 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                   "pass historical=true to include them")
         try:
             if not continuation:
-                title_hits = _node_fallback_search(store, query, limit=top_k, owner=owner,
-                                                   historical=historical, stats=_vstats,
-                                                   scope=_scope)
+                title_hits = _node_fallback_search(store, query, limit=NODE_SCAN_CAP if mode == "current" else top_k, owner=owner,
+                                                   historical=True if mode == "current" else historical, stats=_vstats,
+                                                   scope=None if mode == "current" else _scope)
+                if mode == "current":
+                    temporal.finish_nodes(store, title_hits, owner=owner, scope=_scope, current=True, known_at=known_at, stats=_vstats)
+                    if _vstats.get("current_hidden"):
+                        base["validity_filtered"] = len(_vstats["current_hidden"])
+                    if known_at:
+                        base["known_at_filtered"] = len(_vstats.get("known_hidden", ()))
+                        base["known_at_unknown"] = len(_vstats.get("known_unknown", ()))
         except Exception as exc:
             base["node_error"] = f"{type(exc).__name__}: {exc}"
         # 걸러 냈으면 **말한다**. 조용히 줄어든 결과는 "그래프에 이것뿐"으로 읽히고,
         # 그건 이 필터가 막으려는 고장과 같은 종이다(`vector_note` 와 같은 태도).
         if _vstats.get("dropped_not_current"):
-            base["validity_filtered"] = _vstats["dropped_not_current"]
+            base["validity_filtered"] = _vstats["dropped_not_current"] + len(_vstats.get("current_hidden", ()))
             base["validity_best_dropped"] = list(_vstats.get("best_dropped_score") or (0, 0))
             base["validity_note"] = _vnote
         base["node_hits"] = title_hits   # 그래프 암 실패해도 최소 title 폴백은 보장
@@ -1299,6 +1330,34 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # 사이에 결과가 흔들리면 안 되므로 정렬 키에 id 를 반드시 묶는다.
         pool.sort(key=lambda r: (-(float(r.get("rrf_score") or r.get("score") or 0.0)),
                                  str(r.get("id") or "")))
+        if mode == "current":
+            for r in pool:
+                rid = str(r.get("id") or "")
+                r["doc_id"] = r.get("doc_id") or (rid.rsplit("#", 1)[0] if "#" in rid else "")
+            try:
+                meta = temporal.doc_sources(store, [r.get("doc_id") for r in pool], owner=owner)
+            except Exception as exc:
+                meta = {}
+                base["partial"] = True
+                base["temporal_error"] = f"{type(exc).__name__}: {exc}"
+            for r in pool:
+                temporal.stamp(r, meta.get(r.get("doc_id"), {}), scope=_scope)
+            visible = [r for r in pool if r["temporal"]["validity"] not in ("historical", "future")]
+            base["validity_filtered"] = int(base.get("validity_filtered") or 0) + len(pool) - len(visible)
+            base["doc_validity_filtered"] = len(pool) - len(visible)
+            pool = visible
+            before_lineage = len(pool)
+            try:
+                temporal.finish_docs(store, pool, owner=owner, scope=_scope, current=True, known_at=known_at)
+                base["validity_filtered"] += before_lineage - len(pool)
+                base["doc_validity_filtered"] += before_lineage - len(pool)
+            except Exception as exc:
+                base["partial"] = True
+                base["temporal_error"] = f"{type(exc).__name__}: {exc}"
+            temporal.current_order(pool)
+            # Keep the assessed cohort until the public wrapper reconstructs page rows.
+            # A display limit must not erase a conflict already observed in retrieval.
+            base["_current_doc_temporal"] = {r["doc_id"]: r["temporal"] for r in pool}
         base["total_count"] = len(pool)
         # 풀은 SEARCH_POOL_CAP 에서 잘린다 — 그 수에 닿았으면 total_count 는 "전부"가
         # 아니라 "적어도"다. 여태 거의 모든 질의가 200·199 를 읽혀 전체 수처럼 보였다
@@ -1338,9 +1397,14 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             from store.lexical import lex_tokens
             qtok = lex_tokens(query)              # 페이지에 한 번 — 행마다 다시 자르지 않는다
             base["rows"] = [_summary_row(r, qtok) for r in page]
-        _drop_retired_doc_rows(base, _attach_doc_titles(
-            store, base["rows"], owner=owner, include_titles=detail != "full"),
-            historical=historical, scope=_scope)
+        try:
+            _drop_retired_doc_rows(base, _attach_doc_titles(
+                store, base["rows"], owner=owner, include_titles=detail != "full"),
+                historical=True if mode == "current" else historical,
+                scope=None if mode == "current" else _scope)
+        except Exception as exc:
+            base["partial"] = True
+            base["temporal_error"] = f"{type(exc).__name__}: {exc}"
         # MCP 봉투의 크기 안전망(shrinker)이 이어받을 좌표 — 꼬리 행을 덜어낸 뒤
         # 같은 지문으로 next_cursor 를 다시 쓸 수 있게 한다.
         base["page"] = {"offset": off, "limit": max(1, int(top_k)), "fingerprint": qh}
@@ -1366,7 +1430,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                 # 라벨은 **제목**이다. 미러의 `text` 는 찾는 표면이라 한줄설명이 붙어
                 # 있고(1365 중 225 행), 그것을 title 자리에 넣으면 그대로 화면에 나간다.
                 _raw = store.node_vector_search(
-                    query_embedding, top_k, owner=owner) or []
+                    query_embedding, SEARCH_POOL_CAP if mode == "current" else top_k, owner=owner) or []
                 # 유효구간 기본 필터(§4.2) — 이 팔은 미러를 읽어 구간 열이 없으므로 id 로
                 # 되찾아 본다. 제목 팔만 걸러 내면 폐기된 노드가 **이 팔로 되돌아온다**
                 # (라이브 재현 2026-09-11: 제목 팔이 걸러 낸 d44 가 semantic 표로 다시
@@ -1419,7 +1483,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         # 합집합이다(두 팔이 같은 노드를 지우면 한 번).
         if _vstats.get("dropped_not_current"):
             base["validity_filtered"] = (_vstats["dropped_not_current"]
-                                         + int(base.get("doc_validity_filtered") or 0))
+                                         + int(base.get("doc_validity_filtered") or 0)
+                                         + len(_vstats.get("current_hidden", ())))
             base.setdefault("validity_best_dropped",
                             list(_vstats.get("best_dropped_score") or (0, 0)))
             base.setdefault("validity_note", _vnote)
@@ -1455,7 +1520,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
             chunk_ids = [r.get("id") for r in base.get("rows", []) if r.get("id")
                          and r.get("relevance", {}).get("level") != "weak"]
             graph_hits = _graph_arm_search(store, chunk_ids, owner=owner, limit=top_k)
-            base["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=top_k,
+            base["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=NODE_SCAN_CAP if mode == "current" else top_k,
                                                 vec_hits=vec_hits)
             # 융합은 id 당 행 하나만 남기므로(제목 행이 이기면 의미 행의 표가 사라진다)
             # 융합 **뒤에** id 로 찾아 단다. 거리도 같다 — 안 달면 제목 팔도 찾은 노드는
@@ -1472,7 +1537,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
                     _r["sem_decisive"] = True
         except Exception as exc:
             base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
-            base["node_hits"] = _fuse_node_hits(title_hits, [], top_k=top_k,
+            base["node_hits"] = _fuse_node_hits(title_hits, [], top_k=NODE_SCAN_CAP if mode == "current" else top_k,
                                                 vec_hits=vec_hits)
     finally:
         if owns:
@@ -1480,3 +1545,73 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     if relevance_profile is not None and base.get("relevance_policy", {}).get("state") == "active":
         base["node_hits"] = classify_rows(base["node_hits"], relevance_profile, kind="node")
     return base
+
+
+def search(query: str, *, mode: str | None = None, known_at: str | None = None, **kwargs) -> dict:
+    """모든 결과 경로에 시간 메타를 붙인다. 기본 순위와 저장 데이터는 보존한다."""
+    try:
+        temporal.mode_scope(mode, kwargs.get("historical", False), kwargs.get("as_of"), query)
+        if known_at and not temporal.time_scope(known_at):
+            raise ValueError("invalid known_at")
+    except ValueError as exc:
+        prefix = "invalid_time_scope" if "known_at" in str(exc) else "invalid_temporal_mode" if mode else "invalid_as_of"
+        return {"kind": "search", "executed": False, "rows": [], "node_hits": [], "arms": "none", "total_count": 0, "has_more": False, "next_cursor": None, "error": f"{prefix}: {exc}"}
+    store = kwargs.get("store")
+    owns = store is None
+    if owns:
+        store = open_store(kwargs.get("cfg") or load_config())
+    if store is None:
+        return _search(query, mode=mode, known_at=known_at, **kwargs)
+    try:
+        res = _search(query, mode=mode, known_at=known_at, **{**kwargs, "store": store})
+        doc_states = res.pop("_current_doc_temporal", {})
+        if not res.get("error", "").startswith(("invalid_", "stale_cursor")):
+            try:
+                _, scope, _ = temporal.mode_scope(mode, kwargs.get("historical", False), kwargs.get("as_of"), query)
+                stats = {}
+                temporal.finish_nodes(store, res.get("node_hits") or [], owner=kwargs.get("owner"), scope=scope, current=mode == "current", known_at=known_at, stats=stats)
+                hidden = len(stats.get("current_hidden", ()))
+                if hidden:
+                    res["validity_filtered"] = int(res.get("validity_filtered") or 0) + hidden
+                if mode == "current":
+                    res["node_hits"] = res.get("node_hits", [])[:kwargs.get("top_k", 5)]
+                if res.get("validity_filtered"):
+                    res.setdefault("validity_note", "some claims are outside the selected time scope; use historical mode to include them")
+                for row in res.get("rows") or []:
+                    if "temporal" not in row:
+                        temporal.stamp(row, {})
+                if mode == "current":
+                    for row in res.get("rows") or []:
+                        if row.get("doc_id") in doc_states:
+                            row["temporal"] = dict(doc_states[row["doc_id"]])
+                else:
+                    temporal.finish_docs(store, res.get("rows") or [], owner=kwargs.get("owner"),
+                                         scope=scope, known_at=known_at)
+                if known_at:
+                    # 생성시각 컷오프일 뿐, 과거 본문 revision을 복원하지 않는다.
+                    until = temporal.instant(temporal.time_scope(known_at)[1])
+                    hidden = int(res.get("known_at_filtered") or 0) + len(stats.get("known_hidden", ()))
+                    unknown = set(stats.get("known_unknown", ()))
+                    for key in ("rows", "node_hits"):
+                        kept = []
+                        for row in res.get(key) or []:
+                            created = temporal.instant(row["temporal"]["created_at"])
+                            if created is None:
+                                unknown.add(row.get("doc_id") or row.get("id"))
+                            if created is not None and created >= until:
+                                hidden += 1
+                            else:
+                                kept.append(row)
+                        res[key] = kept
+                    res["known_at_filtered"], res["known_at_unknown"] = hidden, len(unknown)
+                    res.setdefault("time_scope", {})["known_at"] = {"value": known_at,
+                        "from": temporal.time_scope(known_at)[0], "until": temporal.time_scope(known_at)[1]}
+            except Exception as exc:
+                res["partial"] = True
+                res["temporal_error"] = f"{type(exc).__name__}: {exc}"
+                for row in (res.get("node_hits") or []) + (res.get("rows") or []):
+                    temporal.stamp(row, {})
+        return res
+    finally:
+        if owns:
+            store.close()

@@ -825,6 +825,13 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
                 valid_until=meta.get("valid_until") or "",
                 superseded_by=meta.get("superseded_by") or "",
                 validity=validity_state(meta.get("valid_from"), meta.get("valid_until")))
+    from store.search_temporal import stamp, finish_docs
+    stamp(base)
+    try:
+        finish_docs(store, [base], owner=owner)
+    except Exception as exc:
+        base["partial"] = True
+        base["temporal_error"] = f"{type(exc).__name__}: {exc}"
     if not verified:
         base["note"] = ("복원 검증 실패 — 레거시(오프셋 미기록) 또는 부분 기록. "
                         "re-put 으로 치유 가능")
@@ -1107,7 +1114,8 @@ def list_docs(store, *, owner: str | None = None, limit: int | None = None,
         f"MATCH (d:_DocMeta) {where}RETURN d.doc_id AS doc_id, d.title AS title, "
         "d.origin AS origin, d.chunk_count AS chunks, d.updated_at AS updated_at, "
         "d.needs_embed AS needs_embed, "
-        "d.created_at AS created_at, d.content_time AS content_time "   # v7(D72)
+        "d.created_at AS created_at, d.content_time AS content_time, "
+        "d.valid_from AS valid_from, d.valid_until AS valid_until, d.superseded_by AS superseded_by "   # v7(D72)
         "ORDER BY d.updated_at DESC", params or None)
     # 관례(GRAPH.md)는 자료가 아니라 **자료에 대한 규약**이다. 문서 목록·좌측 트리
     # (nav_tree 가 이 함수를 그대로 쓴다)에서 빼서 사용자의 실제 자료 사이에 끼지 않게
@@ -1139,12 +1147,19 @@ def list_docs(store, *, owner: str | None = None, limit: int | None = None,
         off = raw_off
     page = docs[off:off + limit] if limit else docs[off:]
 
+    from store import search_temporal as temporal
+    if detail != "summary" or title is not None:
+        for doc in page:
+            temporal.stamp(doc)
+        temporal.finish_docs(store, page, owner=owner)
+
     if detail == "summary":
         # 요약형은 언급 집계를 **건너뛴다.** topics·primary_concept 는 전 문서의
         # MENTIONS 를 훑어야 나오는 파생값이라, 목록을 보려고 그것까지 계산하면
         # 크기와 시간을 함께 낸다.
         page = [{"doc_id": d["doc_id"], "title": d.get("title") or "",
-                 "updated_at": d.get("updated_at") or "", "chunks": d.get("chunks")}
+                 "updated_at": d.get("updated_at") or "", "chunks": d.get("chunks"),
+                 **({"temporal": d["temporal"]} if title is not None else {})}
                 for d in page]
     else:
         tally = mention_tally(store, owner=owner)

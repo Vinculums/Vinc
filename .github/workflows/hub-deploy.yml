@@ -525,6 +525,12 @@ jobs:
       # (`/health` 200 · tools/list 200 · 그런데 커넥터는 전면 불가).
       # 그래서 커넥터가 실제로 밟는 discovery 경로를 공개 도메인으로 확인한다.
       # DEPLOYMENT.md §4.4.2 의 수기 점검을 CD 로 옮긴 것.
+      - name: Verify temporal search through the existing read only account key
+        env:
+          VINC_GRAPH_READONLY_KEY: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
+          VINC_MCP_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
+        run: python scripts/verify_search_temporal_remote.py
+
       - name: Verify connector surface (OAuth discovery)
         run: |
           set -euo pipefail

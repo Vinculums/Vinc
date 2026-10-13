@@ -16,7 +16,7 @@ from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS, package_space
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
 from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, SEARCH_DESCRIPTION,
                                SEARCH_LIMIT_DEFAULT, SEARCH_NAME, TOOL_CALLS_PER_RUN, BriefArgs,
-                               SearchArgs, ToolCallCap)
+                               SearchArgs, ToolCallCap, temporal_options)
 
 DEFAULT_SOURCE_ID = "vinc"
 
@@ -44,11 +44,12 @@ def create_vinc_tools(client: AsyncVincClient, *, max_chars: int = DEFAULT_MAX_C
 
     # 이름·설명·인자 스키마는 vinc-client 한 곳에서 온다. LangGraph 쪽과 같은 스키마다.
     @tool(name=BRIEF_NAME, description=BRIEF_DESCRIPTION, schema=BriefArgs)
-    async def vinc_brief(query: str) -> str:
+    async def vinc_brief(query: str, mode: str | None = None, historical: bool | None = None,
+                         as_of: str | None = None, known_at: str | None = None) -> str:
         if cap is not None and not cap.spend():
             return cap.message
         try:
-            return (format_brief(await client.brief(query), max_chars=max_chars)
+            return (format_brief(await client.brief(query, **temporal_options(mode, historical, as_of, known_at)), max_chars=max_chars)
                     or "Vinc has no single node for that; try vinc_search.")
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return f"Vinc is not available right now ({exc.code}); answer without it."
@@ -58,11 +59,13 @@ def create_vinc_tools(client: AsyncVincClient, *, max_chars: int = DEFAULT_MAX_C
             return f"Vinc found nothing for that ({exc.code}); try a different query."
 
     @tool(name=SEARCH_NAME, description=SEARCH_DESCRIPTION, schema=SearchArgs)
-    async def vinc_search(query: str, limit: int = SEARCH_LIMIT_DEFAULT) -> str:
+    async def vinc_search(query: str, limit: int = SEARCH_LIMIT_DEFAULT, mode: str | None = None,
+                          historical: bool | None = None, as_of: str | None = None,
+                          known_at: str | None = None) -> str:
         if cap is not None and not cap.spend():
             return cap.message
         try:
-            return (format_search(await client.search(query, limit=limit), max_chars=max_chars,
+            return (format_search(await client.search(query, limit=limit, **temporal_options(mode, historical, as_of, known_at)), max_chars=max_chars,
                                   limit=limit)
                     or "No matches in Vinc.")
         except (VincUnavailable, VincQuotaExceeded) as exc:

@@ -15,7 +15,7 @@ from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
 from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, SEARCH_DESCRIPTION,
-                               SEARCH_LIMIT_DEFAULT, SEARCH_NAME, BriefArgs, SearchArgs)
+                               SEARCH_LIMIT_DEFAULT, SEARCH_NAME, BriefArgs, SearchArgs, temporal_options)
 
 
 def last_user_text(messages: str | Sequence[Any]) -> str:
@@ -112,9 +112,10 @@ def create_vinc_tools(client: VincClient | None = None,
     if client is None and async_client is None:
         raise ValueError("pass a VincClient, an AsyncVincClient, or both")
 
-    def brief(query: str) -> str:
+    def brief(query: str, mode: str | None = None, historical: bool | None = None,
+                     as_of: str | None = None, known_at: str | None = None) -> str:
         try:
-            return (format_brief(client.brief(query), max_chars=max_chars)  # type: ignore[union-attr]
+            return (format_brief(client.brief(query, **temporal_options(mode, historical, as_of, known_at)), max_chars=max_chars)  # type: ignore[union-attr]
                     or "Vinc has no single node for that; try vinc_search.")
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return _DOWN.format(code=exc.code)
@@ -123,9 +124,10 @@ def create_vinc_tools(client: VincClient | None = None,
                 raise
             return _MISSING.format(code=exc.code)
 
-    async def abrief(query: str) -> str:
+    async def abrief(query: str, mode: str | None = None, historical: bool | None = None,
+                     as_of: str | None = None, known_at: str | None = None) -> str:
         try:
-            return (format_brief(await async_client.brief(query), max_chars=max_chars)  # type: ignore[union-attr]
+            return (format_brief(await async_client.brief(query, **temporal_options(mode, historical, as_of, known_at)), max_chars=max_chars)  # type: ignore[union-attr]
                     or "Vinc has no single node for that; try vinc_search.")
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return _DOWN.format(code=exc.code)
@@ -134,16 +136,20 @@ def create_vinc_tools(client: VincClient | None = None,
                 raise
             return _MISSING.format(code=exc.code)
 
-    def search(query: str, limit: int = SEARCH_LIMIT_DEFAULT) -> str:
+    def search(query: str, limit: int = SEARCH_LIMIT_DEFAULT, mode: str | None = None,
+                      historical: bool | None = None, as_of: str | None = None,
+                      known_at: str | None = None) -> str:
         try:
-            return (format_search(client.search(query, limit=limit),  # type: ignore[union-attr]
+            return (format_search(client.search(query, limit=limit, **temporal_options(mode, historical, as_of, known_at)),  # type: ignore[union-attr]
                                   max_chars=max_chars, limit=limit) or "No matches in Vinc.")
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return _DOWN.format(code=exc.code)
 
-    async def asearch(query: str, limit: int = SEARCH_LIMIT_DEFAULT) -> str:
+    async def asearch(query: str, limit: int = SEARCH_LIMIT_DEFAULT, mode: str | None = None,
+                      historical: bool | None = None, as_of: str | None = None,
+                      known_at: str | None = None) -> str:
         try:
-            return (format_search(await async_client.search(query, limit=limit),  # type: ignore[union-attr]
+            return (format_search(await async_client.search(query, limit=limit, **temporal_options(mode, historical, as_of, known_at)),  # type: ignore[union-attr]
                                   max_chars=max_chars, limit=limit) or "No matches in Vinc.")
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return _DOWN.format(code=exc.code)

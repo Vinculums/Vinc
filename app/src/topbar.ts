@@ -3,7 +3,7 @@ import { COPY } from "./copy";
 import { partitionSearchResults } from "./search-relevance";
 import { docTitle } from "./doc-title";
 import { icon } from "./icons";
-import { armsNotice, type ArmsNotice } from "./components";
+import { armsNotice, type ArmsNotice, searchTemporalText } from "./components";
 import { renderSearchError } from "./search-error";
 
 /** 상단 바 (DEC D56·D57) — 셸의 주된 크롬.
@@ -246,7 +246,7 @@ export function mountTopbar() {
   }
 
   type Hit = { id: string; title: string; domain: string; mark: string; snippet: string;
-               docId?: string };
+               docId?: string; temporal?: string };
   let hits: Hit[] = [];
   let weakHits: Hit[] = [];
   /** 마지막 질의에서 벡터 팔이 빠졌는가. 정상이면 null 이라 드롭다운은 그대로다. */
@@ -292,6 +292,7 @@ export function mountTopbar() {
         <span class="tb-rmain">
           <span class="tb-rtitle">${esc(h.title)}</span>
           ${h.snippet ? `<span class="hint tb-rsnip">${esc(h.snippet)}</span>` : ""}
+          ${h.temporal ? `<span class="hint">${esc(h.temporal)}</span>` : ""}
         </span>
         <span class="hint tb-rmeta">${esc(h.domain)}</span>
       </button>`;
@@ -375,11 +376,13 @@ export function mountTopbar() {
       ]);
       if (mine !== seq) return false;            // 지나간 질의 — 버린다
       notice = armsNotice(res);
+      const dates = searchTemporalText;
       const exact: Hit[] = (docs?.docs || []).map((d) => ({
-        id: d.doc_id, docId: d.doc_id, title: docTitle(d.title), domain: "", mark: "≡", snippet: "",
+        temporal: dates(d), id: d.doc_id, docId: d.doc_id, title: docTitle(d.title), domain: "", mark: "≡", snippet: "",
       }));
       const classified = partitionSearchResults<any>(res.node_hits || []);
       const toHit = (n: any): Hit => ({
+        temporal: dates(n),
         id: String(n.id || ""),
         title: String(n.title || n.id || ""),
         domain: String(n.domain || ""),

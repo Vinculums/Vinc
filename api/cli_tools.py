@@ -118,10 +118,12 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
                                        "vinc_merge_nodes", "vinc_doc_delete"} else None
         return name, data, destructive
     # 구 동사 9개의 출력도 도구 결과 모양으로 통일한다(C6, D7).
+    temporal = {key: getattr(args, key) for key in ("mode", "historical", "as_of", "known_at")
+                if getattr(args, key, None) is not None} if cmd in ("search", "brief") else {}
     if cmd == "search":
         return "vinc_search", {**common, "query": args.query,
                                "limit": args.top_k, "cursor": args.cursor,
-                               "detail": args.detail}, None
+                               "detail": args.detail, **temporal}, None
     if cmd == "recall":
         if legacy_recall(args):
             raise ValueError("--query, --tenant, --workspace and --rank preference work on "
@@ -131,7 +133,7 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
                                "tags": tags or None, "limit": args.limit}, None
     if cmd == "brief":
         return "vinc_brief", {**common, "query": args.query,
-                              "max_excerpts": args.max_excerpts}, None
+                              "max_excerpts": args.max_excerpts, **temporal}, None
     if cmd == "decide":
         return "vinc_decide", {**common, "topic": args.topic,
                                "depth": args.depth}, None
