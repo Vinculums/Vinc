@@ -113,6 +113,23 @@ def test_projection_is_narrow_not_admin(app, op):
     assert app.bridge.calls == []
 
 
+@pytest.mark.parametrize("rel", ["relates_to", "RELATED_TO", "prerequisite_of", "PREREQUISITE_OF",
+                                "derives_from", "DERIVES_FROM", "inherits_from", "INHERITS_FROM"])
+def test_projector_can_remove_only_obsolete_wiki_relations(app, rel):
+    args = {"from": "concept:page-one", "to": "concept:page-two", "type": rel}
+    project(app, "delete-edge", args)
+    assert app.bridge.calls == [("POST", "/delete-edge", None, {**args, "owner": A})]
+
+
+@pytest.mark.parametrize("over", [{"from": "concept:doc.graph.md"}, {"to": "episode:talk-"+SOCIAL},
+                                  {"from": "concept:a--b"}, {"to": "concept:a-"},
+                                  {"from": "concept:"+"a"*81}, {"type": "about"}, {"type": "TYPED"}])
+def test_projector_relation_cleanup_refuses_other_surfaces(app, over):
+    with pytest.raises(PermissionError):
+        project(app, "delete-edge", {"from": "concept:a", "to": "concept:b", "type": "relates_to", **over})
+    assert app.bridge.calls == []
+
+
 @pytest.mark.parametrize("claims", [
     {"role": "editor"}, {"role": "admin"}, {"role": None},
     {"visibility": "private"}, {"visibility": None},

@@ -127,7 +127,11 @@ _COMMUNITY_READ_OPS = frozenset({
     "graph-roots", "conventions",
 })
 _COMMUNITY_PROJECT_OPS = frozenset({
-    "ingest-fragment", "doc-put", "conventions-build", "delete", "doc-delete",
+    "ingest-fragment", "doc-put", "conventions-build", "delete", "doc-delete", "delete-edge",
+})
+_COMMUNITY_PAGE_NODE_RE = re.compile(r"concept:[a-z0-9][a-z0-9-]{0,79}")
+_COMMUNITY_WIKI_RELS = frozenset({
+    "relates_to", "related_to", "prerequisite_of", "derives_from", "inherits_from",
 })
 _COMMUNITY_OBJECT_UUID = (
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
@@ -802,6 +806,12 @@ class MCPHTTPApp:
                     raise PermissionError("only projected social nodes may be deleted")
                 if op == "doc-delete" and not _COMMUNITY_SOCIAL_DOC_RE.fullmatch(str(args.get("id") or "")):
                     raise PermissionError("only projected social documents may be deleted")
+                if op == "delete-edge":
+                    ends = (args.get("from"), args.get("to"))
+                    if (any(not isinstance(n, str) or not _COMMUNITY_PAGE_NODE_RE.fullmatch(n)
+                            or n.endswith("-") or "--" in n for n in ends)
+                            or str(args.get("type") or "").strip().lower() not in _COMMUNITY_WIKI_RELS):
+                        raise PermissionError("only projected wiki page relations may be deleted")
             elif op not in _COMMUNITY_READ_OPS:
                 raise PermissionError("community mutations must go through account revisions")
             owner = graph_owner.lower()
