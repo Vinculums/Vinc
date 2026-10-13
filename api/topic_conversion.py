@@ -97,21 +97,28 @@ def preflight(store, source, topic):
     try:
         snap = read_snapshot(store, vocabulary_owner=source)
         plan = plan_transfer(snap, source=source, target=PREFLIGHT_TARGET, topic=topic)
+    except TransferRefused as exc:
+        # An incomplete inventory cannot establish the scope. Zero here would
+        # falsely say the topic is empty, while a reservation must stay blocked.
+        return {"ready": False, "scope": "topic", "topic": topic,
+                "counts_known": False, "counts": None, "documents": None,
+                "blockers": [str(exc).split(":", 1)[0]]}
+    counts = {}
+    for label, _ in plan.selected:
+        counts[label] = counts.get(label, 0) + 1
+    blockers = {b.split(":", 1)[0] for b in plan.blockers}
+    try:
         _index_inventory(store)
         if plan.ready:
             preview = transformed_snapshot(snap, plan, stamp="9999-12-31T23:59:59.999Z")
             _conversion_budget(preview, _audit(snap, plan))
-        counts = {}
-        for label, _ in plan.selected:
-            counts[label] = counts.get(label, 0) + 1
-        # Boundary identities can belong to another tenant: expose codes only.
-        return {"ready": plan.ready, "scope": "topic", "topic": topic,
-                "fingerprint": scoped_hash(snap, source, PREFLIGHT_TARGET),
-                "counts": counts, "documents": len(plan.documents),
-                "blockers": sorted({b.split(":", 1)[0] for b in plan.blockers})}
     except TransferRefused as exc:
-        return {"ready": False, "scope": "topic", "topic": topic,
-                "counts": {}, "documents": 0, "blockers": [str(exc).split(":", 1)[0]]}
+        blockers.add(str(exc).split(":", 1)[0])
+    # Boundary identities can belong to another tenant: expose codes only.
+    return {"ready": not blockers, "scope": "topic", "topic": topic,
+            "fingerprint": scoped_hash(snap, source, PREFLIGHT_TARGET),
+            "counts_known": True, "counts": counts, "documents": len(plan.documents),
+            "blockers": sorted(blockers)}
 
 
 def _get(store, run):

@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_topic_transfer import RawStore, SOURCE, TARGET, TOPIC, STAMP, seed, insert
 from store.embedded_schema import render_embedded_ddl
-from store.topic_transfer import TransferRefused, fingerprint, read_snapshot
+from store.topic_transfer import TransferRefused, fingerprint, plan_transfer, read_snapshot
 from api import topic_conversion as tc
 
 RUN = "00000000-0000-4000-8000-000000000099"
@@ -156,6 +156,45 @@ def test_inventory_limits_fail_closed_without_changes(native):
         with pytest.raises(TransferRefused, match="conversion_inventory_limit"):
             read_snapshot(native, **limit)
     assert fingerprint(read_snapshot(native)) == before
+
+
+def test_inventory_budget_includes_unrelated_owners(native):
+    before = read_snapshot(native)
+    base_rows = len(before["edges"]) + sum(len(rows) for group in ("nodes", "meta")
+                                            for rows in before[group].values())
+    selected = plan_transfer(before, source=SOURCE, target=TARGET, topic=TOPIC).selected
+    for index in range(4):
+        native.run("CREATE (c:Concept {concept_id:$id, owner_id:'user:other', domain:'other'})",
+                   {"id": f"user:other\x1fconcept:extra-{index}"})
+    assert plan_transfer(read_snapshot(native), source=SOURCE, target=TARGET, topic=TOPIC).selected == selected
+    with pytest.raises(TransferRefused, match="conversion_inventory_limit"):
+        read_snapshot(native, max_rows=base_rows + 3)
+
+
+@pytest.mark.parametrize("limit", [{"max_rows": 1}, {"max_bytes": 100}])
+def test_preflight_does_not_report_an_unknown_topic_as_empty(native, monkeypatch, limit):
+    before = fingerprint(read_snapshot(native))
+    real_read = tc.read_snapshot
+    monkeypatch.setattr(tc, "read_snapshot", lambda store, **kwargs: real_read(store, **kwargs, **limit))
+    result = tc.preflight(native, SOURCE, TOPIC)
+    assert result == {"ready": False, "scope": "topic", "topic": TOPIC,
+                      "counts_known": False, "counts": None, "documents": None,
+                      "blockers": ["conversion_inventory_limit"]}
+    assert fingerprint(read_snapshot(native)) == before
+    assert not tc.journals(native)
+
+
+def test_post_plan_budget_refusal_retains_verified_scope_counts(native, monkeypatch):
+    before = fingerprint(read_snapshot(native))
+    def over_budget(*_args):
+        raise TransferRefused("conversion_inventory_limit")
+    monkeypatch.setattr(tc, "_conversion_budget", over_budget)
+    result = tc.preflight(native, SOURCE, TOPIC)
+    assert not result["ready"] and result["blockers"] == ["conversion_inventory_limit"]
+    assert result["counts_known"] and result["documents"] == 1
+    assert result["counts"]["Concept"] > 0 and result["fingerprint"]
+    assert fingerprint(read_snapshot(native)) == before
+    assert not tc.journals(native)
 
 
 def test_http_preflight_requires_durable_ack_configuration(monkeypatch):
