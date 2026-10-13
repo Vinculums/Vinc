@@ -1358,8 +1358,11 @@ def node(node_id: str, *, owner: str, cfg=None, store=None) -> dict:
             stored["kind"] = stored.get("type") or _seed_table(node_id)[0].lower()
         if "props" in stored:
             stored["props"] = _props_to_obj(stored["props"])
-        from store.search_temporal import stamp
-        stamp(stored)
+        from store.search_temporal import metadata
+        # A domain is a namespace container, not dated evidence. Keep its exact read shape.
+        # Other kinds retain their stored top-level columns; normalized dates are nested.
+        if stored.get("kind") != "domain":
+            stored["temporal"] = metadata(stored)
         result["node"] = stored
     return result
 
@@ -2610,6 +2613,7 @@ def node_context(**kwargs) -> dict:
                 docs = temporal.doc_sources(store, [r.get("doc_id") for r in excerpts], owner=owner)
                 for row in excerpts:
                     temporal.stamp(row, docs.get(row.get("doc_id"), {}))
+                temporal.finish_docs(store, excerpts, owner=owner)
                 temporal.finish_nodes(store, (res.get("links") or {}).get("items") or [], owner=owner)
             except Exception as exc:
                 temporal.stamp(res, res)

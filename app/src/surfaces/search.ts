@@ -1,11 +1,10 @@
 import { api, cfg, type SearchOptions } from "../api";
 import { COPY } from "../copy";
-import { header, armsNoticeBadge } from "../components";
+import { header, armsNoticeBadge, searchTemporalText } from "../components";
 import { renderBrowse } from "./records";
 import { viewHooks } from "../topbar";
 import { renderSearchError } from "../search-error";
 import { partitionSearchResults } from "../search-relevance";
-import { temporalEntries } from "../search-temporal";
 
 function esc(s: string): string {
   return String(s ?? "").replace(/[&<>"]/g, (c) =>
@@ -40,7 +39,7 @@ export function renderSearch(el: HTMLElement) {
                     background:hsl(var(--card));color:hsl(var(--foreground))" />
       <label class="hint" for="search-scope">${COPY.search.modeLabel}</label>
       <select id="search-scope" class="btn" aria-label="${COPY.search.modeLabel}">
-        ${Object.entries(COPY.search.modes).map(([value, label]) =>
+        ${[["general", COPY.search.modes.general], ["current", COPY.search.modes.current], ["historical", COPY.search.modes.historical]].map(([value, label]) =>
           `<option value="${value}">${esc(label)}</option>`).join("")}
       </select>
     </form>
@@ -137,7 +136,10 @@ export function renderSearch(el: HTMLElement) {
       // 문자열이라 화면은 지금 그대로다.
       // 결과 마크업은 **이 한 곳으로만** 나간다 — 갈래마다 배지를 따로 붙이면 빠지기
       // 쉬운 쪽이 하필 빈 결과이고, 반쪽 검색의 0건이 진짜 0건으로 읽힌다.
-      const show = (html: string) => { body.innerHTML = armsNoticeBadge(res) + (res.temporal_error ? `<p class="hint">${COPY.search.temporalNotice}</p>` : "") + html; };
+      const show = (html: string) => {
+        if (res.temporal_error) html = `<p class="hint">${COPY.search.temporalNotice}</p>` + html;
+        body.innerHTML = armsNoticeBadge(res) + html;
+      };
       if (rows.length === 0) {
         show(`<div class="empty"><p>${esc(COPY.search.empty(raw))}</p>
           <a class="btn" href="#view">${COPY.search.emptyCta}</a></div>`);
@@ -165,8 +167,7 @@ export function renderSearch(el: HTMLElement) {
         // 왜 맞았는지를 한 줄 더 보여준다(D24 §4.2) — 제목만으로는 고를 수 없다.
         const snip = r.one_liner || r.snippet || r.text || r.section_title || "";
         const clickable = target || cdoc;
-        const dates = temporalEntries(r).map(([key, value]) =>
-          `${(COPY.search.temporal as Record<string, string>)[key]}: ${value === "unknown" ? COPY.search.unknownDate : (COPY.search.temporalValues as Record<string, string>)[value] || value}`).join(" · ");
+        const dates = searchTemporalText(r);
         return `
           <div class="list-row" ${target ? `data-go="${esc(target)}"` : ""}
                ${cdoc ? `data-doc="${esc(cdoc)}"${Number.isFinite(cidx)

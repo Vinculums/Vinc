@@ -1,4 +1,4 @@
-"""검색 시간 메타데이터와 명시적 모드. 본문과 저장된 구간은 바꾸지 않는다."""
+"""Search time metadata and explicit modes, without changing bodies or stored intervals."""
 from __future__ import annotations
 
 import datetime as dt
@@ -15,7 +15,7 @@ KINDS = {"concept": ("Concept", "concept_id"), "record": ("Record", "record_id")
 
 
 def instant(value):
-    """부분 날짜는 기간의 시작, 시간대가 있는 시각은 UTC로 비교한다."""
+    """Expand partial dates to period starts; compare timestamp offsets in UTC."""
     if not value:
         return None
     value = str(value).strip()
@@ -34,6 +34,8 @@ def metadata(row, *, now=None, scope=None):
     props = _props_to_obj(row.get("props_raw", row.get("props")))
     out = {key: row.get(key) or None for key in FIELDS}
     out["created_at"] = row.get("created_at") or row.get("created") or None
+    if row.get("kind", row.get("node_kind")) == "episode":
+        out["content_time"] = row.get("content_time") or row.get("date") or None
     if row.get("kind", row.get("node_kind")) == "decision":
         for key in ("valid_from", "valid_until"):
             out[key] = props.get(key) or None
@@ -62,7 +64,7 @@ def metadata(row, *, now=None, scope=None):
 
 def stamp(row, source=None, **kw):
     row["temporal"] = metadata(source if source is not None else row, **kw)
-    # 기존 상세의 빈 문자열 계약은 유지하고 검색의 누락 필드만 보충한다.
+    # Keep legacy detail strings and fill only absent search fields.
     for key in FIELDS:
         row.setdefault(key, row["temporal"][key])
     row.setdefault("validity", row["temporal"]["validity"])
@@ -128,7 +130,7 @@ def doc_sources(store, ids, *, owner=None):
 
 def supersession_edges(store, sources, *, owner=None):
     edges = []
-    # 양 끝의 같은 소유자와 같은 종류를 확인한다. props의 포인터는 근거가 아니다.
+    # Require the same owner and kind at both ends; a props pointer is not evidence.
     for kind in ("record", "decision", "concept"):
         label, pk = KINDS[kind]
         ids = [nid for nid, r in sources.items() if r.get("kind") == kind]
@@ -148,7 +150,7 @@ def supersession_edges(store, sources, *, owner=None):
 
 def claim_key(row):
     p = _props_to_obj(row.get("props_raw", row.get("props")))
-    # 제목·주제의 비슷함은 동일 주장 증거가 아니다. 범위까지 명시된 키만 비교한다.
+    # Similar titles or topics do not establish claim identity; require an explicit scope key.
     if not all(k in p and p[k] is not None for k in ("entity", "predicate", "scope")):
         return None
     if not p["entity"] or not p["predicate"]:
@@ -204,7 +206,7 @@ def annotate_claims(hits, sources, edges, *, scope=None):
     for group in groups.values():
         active = [h for h in group if h["id"] not in retired and h["temporal"]["interval_known"] and not h["temporal"]["interval_invalid"] and (
             h["temporal"]["holds_in_scope"] if scope else h["temporal"]["validity"] == "current")]
-        # 같은 근거의 JSON과 구간을 쌍마다 다시 파싱하지 않는다. 캐시는 이 호출 안에만 둔다.
+        # Parse each value and interval once; this cache lives only inside this call.
         missing = object()
         values = {h["id"]: _props_to_obj(sources.get(h["id"], {}).get("props_raw")).get("value", missing)
                   for h in active}
@@ -231,7 +233,7 @@ def _interval(t):
 
 
 def current_order(rows, sources=None):
-    """유효성, 기존 관련도, 동일 주장의 동점에서만 유효 시작시각. 수정일은 쓰지 않는다."""
+    """Order by validity and relevance; use claim freshness only on ties, never update time."""
     sources = sources or {}
     def relevance(r):
         if "rrf_score" in r or "score" in r:
@@ -253,7 +255,7 @@ def finish_nodes(store, hits, *, owner=None, scope=None, current=False, known_at
     sources = node_sources(store, [h.get("id") for h in hits], owner=owner)
     edges, seen_edges = [], set()
     exhausted = True
-    # 연결된 대체 계보만 유한하게 읽는다. 상한에 닿으면 대체 판정을 하지 않는다.
+    # Read only bounded connected lineage; abstain on supersession if the limit is reached.
     for _ in range(8):
         found = supersession_edges(store, sources, owner=owner)
         for edge in found:

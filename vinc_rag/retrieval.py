@@ -1355,6 +1355,9 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                 base["partial"] = True
                 base["temporal_error"] = f"{type(exc).__name__}: {exc}"
             temporal.current_order(pool)
+            # Keep the assessed cohort until the public wrapper reconstructs page rows.
+            # A display limit must not erase a conflict already observed in retrieval.
+            base["_current_doc_temporal"] = {r["doc_id"]: r["temporal"] for r in pool}
         base["total_count"] = len(pool)
         # 풀은 SEARCH_POOL_CAP 에서 잘린다 — 그 수에 닿았으면 total_count 는 "전부"가
         # 아니라 "적어도"다. 여태 거의 모든 질의가 200·199 를 읽혀 전체 수처럼 보였다
@@ -1561,6 +1564,7 @@ def search(query: str, *, mode: str | None = None, known_at: str | None = None, 
         return _search(query, mode=mode, known_at=known_at, **kwargs)
     try:
         res = _search(query, mode=mode, known_at=known_at, **{**kwargs, "store": store})
+        doc_states = res.pop("_current_doc_temporal", {})
         if not res.get("error", "").startswith(("invalid_", "stale_cursor")):
             try:
                 _, scope, _ = temporal.mode_scope(mode, kwargs.get("historical", False), kwargs.get("as_of"), query)
@@ -1576,8 +1580,13 @@ def search(query: str, *, mode: str | None = None, known_at: str | None = None, 
                 for row in res.get("rows") or []:
                     if "temporal" not in row:
                         temporal.stamp(row, {})
-                temporal.finish_docs(store, res.get("rows") or [], owner=kwargs.get("owner"),
-                                     scope=scope, current=mode == "current", known_at=known_at)
+                if mode == "current":
+                    for row in res.get("rows") or []:
+                        if row.get("doc_id") in doc_states:
+                            row["temporal"] = dict(doc_states[row["doc_id"]])
+                else:
+                    temporal.finish_docs(store, res.get("rows") or [], owner=kwargs.get("owner"),
+                                         scope=scope, known_at=known_at)
                 if known_at:
                     # 생성시각 컷오프일 뿐, 과거 본문 revision을 복원하지 않는다.
                     until = temporal.instant(temporal.time_scope(known_at)[1])

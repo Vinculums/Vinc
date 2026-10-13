@@ -1145,9 +1145,10 @@ def list_docs(store, *, owner: str | None = None, limit: int | None = None,
     page = docs[off:off + limit] if limit else docs[off:]
 
     from store import search_temporal as temporal
-    for doc in page:
-        temporal.stamp(doc)
-    temporal.finish_docs(store, page, owner=owner)
+    if detail != "summary" or title is not None:
+        for doc in page:
+            temporal.stamp(doc)
+        temporal.finish_docs(store, page, owner=owner)
 
     if detail == "summary":
         # 요약형은 언급 집계를 **건너뛴다.** topics·primary_concept 는 전 문서의
@@ -1155,7 +1156,7 @@ def list_docs(store, *, owner: str | None = None, limit: int | None = None,
         # 크기와 시간을 함께 낸다.
         page = [{"doc_id": d["doc_id"], "title": d.get("title") or "",
                  "updated_at": d.get("updated_at") or "", "chunks": d.get("chunks"),
-                 "temporal": d["temporal"]}
+                 **({"temporal": d["temporal"]} if title is not None else {})}
                 for d in page]
     else:
         tally = mention_tally(store, owner=owner)

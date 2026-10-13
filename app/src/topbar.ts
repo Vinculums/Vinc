@@ -1,10 +1,9 @@
 import { api, cfg } from "./api";
 import { COPY } from "./copy";
 import { partitionSearchResults } from "./search-relevance";
-import { temporalEntries } from "./search-temporal";
 import { docTitle } from "./doc-title";
 import { icon } from "./icons";
-import { armsNotice, type ArmsNotice } from "./components";
+import { armsNotice, type ArmsNotice, searchTemporalText } from "./components";
 import { renderSearchError } from "./search-error";
 
 /** 상단 바 (DEC D56·D57) — 셸의 주된 크롬.
@@ -377,8 +376,7 @@ export function mountTopbar() {
       ]);
       if (mine !== seq) return false;            // 지나간 질의 — 버린다
       notice = armsNotice(res);
-      const dates = (row: any) => temporalEntries(row).map(([key, value]) =>
-        `${(COPY.search.temporal as Record<string, string>)[key]}: ${value === "unknown" ? COPY.search.unknownDate : (COPY.search.temporalValues as Record<string, string>)[value] || value}`).join(" · ");
+      const dates = searchTemporalText;
       const exact: Hit[] = (docs?.docs || []).map((d) => ({
         temporal: dates(d), id: d.doc_id, docId: d.doc_id, title: docTitle(d.title), domain: "", mark: "≡", snippet: "",
       }));

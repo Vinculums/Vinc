@@ -6,7 +6,7 @@ import pytest
 from api import docstore, fragment, query
 from store.backend import open_store
 from store.config import load_config
-from store import search_temporal as temporal
+from store import search_temporal as temporal, pkns
 from vinc_rag import retrieval
 from vinc_mcp import tools
 
@@ -54,6 +54,29 @@ def test_document_mirror_lineage_reaches_chunks_and_get(st, detail):
     assert {r["doc_id"] for r in current["rows"]} == {"synthetic.new"}
     direct = docstore.get_doc(st, "synthetic.old", owner=OWNER)
     assert direct["verified"] and direct["temporal"]["supersession"] == old["temporal"]["supersession"]
+    context = query.node_context(owner=OWNER, node="concept:doc.synthetic.old", store=st)
+    assert context["executed"]
+    assert context["temporal"]["supersession"] == old["temporal"]["supersession"]
+    for excerpt in context.get("excerpts") or []:
+        if excerpt.get("doc_id") == "synthetic.old":
+            assert excerpt["temporal"]["supersession"] == old["temporal"]["supersession"]
+
+
+@pytest.mark.parametrize("detail", ["summary", "full"])
+def test_current_page_limit_preserves_observed_document_conflict(st, detail):
+    for suffix in ("a", "b"):
+        docstore.put_doc(st, owner=OWNER, doc_id="synthetic.conflict." + suffix,
+                         text="Marker synthetic conflicting passage " * 20,
+                         title="Marker conflict " + suffix, valid_from="2000")
+    ingest(st, [{"id": "concept:doc.synthetic.conflict." + suffix, "type": "concept",
+                 "title": "Marker conflict " + suffix,
+                 "props": {"entity": "service", "predicate": "release",
+                           "scope": "synthetic", "value": suffix}} for suffix in ("a", "b")])
+    result = query.search("Marker", owner=OWNER, store=st, mode="current", detail=detail, top_k=1)
+    assert len(result["rows"]) == 1 and result["has_more"]
+    assert result["rows"][0]["temporal"]["claim_status"] == "conflict"
+    assert result["rows"][0]["temporal"]["conflicts"]
+    assert "_current_doc_temporal" not in result
 
 
 @pytest.fixture
@@ -291,7 +314,7 @@ def test_no_evidence_and_disjoint_periods_cannot_supersede_or_conflict(st):
     ingest(st, [node("old", vu="2001"), node("new", value="b", vf="2002")])
     st.run("MATCH (a:Record), (b:Record) WHERE a.record_id = $new AND b.record_id = $old "
            "MERGE (a)-[e:SUPERSEDES]->(b) SET e.evidence = ''",
-           {"new": "record:new", "old": "record:old"})
+         {"new": pkns.key(OWNER, "record:new"), "old": pkns.key(OWNER, "record:old")})
     history = query.search("Marker", owner=OWNER, store=st, mode="historical", as_of="2000")
     old = history["node_hits"][0]
     assert old["temporal"]["claim_status"] != "superseded"

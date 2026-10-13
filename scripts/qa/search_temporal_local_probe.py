@@ -71,7 +71,7 @@ def seed(store, count, *, dense=False):
     store.run("UNWIND $rows AS r CREATE (:_DocMeta {doc_id:r.id, owner_id:$owner, title:'Marker document', "
               "content_hash:r.hash, chunk_count:1, valid_from:r.vf, valid_until:r.vu, "
               "created_at:r.created, updated_at:'2099-01-01T00:00:00Z'})", {"rows": docs, "owner": owner})
-    store.build_search_indexes(dim=4)
+    store.ensure_search_indexes(dim=4)
     return owner, len(docs)
 
 
@@ -156,7 +156,7 @@ def main():
                     full_control = behavior(baseline.search("Marker", detail="full", **common))
                     full_control["rows"] = control[-1]["rows"]
                     control.append(full_control)
-                    # main 코드만 사용하며, 사이에 중립적인 읽기를 넣어 실행 순서를 흔든다.
+                    # Use only main code, with neutral reads interleaved to vary execution order.
                     st.run("MATCH (r:Record) WHERE r.owner_id = $owner RETURN count(r) AS n", {"owner": owner})
                 receipt["baseline_stability"].append({"records": count,
                     "stable": all(r == control[0] for r in control),
