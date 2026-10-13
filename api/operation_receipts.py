@@ -62,11 +62,13 @@ def _summary(result):
     out = {"executed": result.get("executed") is not False,
            "partial": bool(result.get("partial")), "verification_required": True}
     for field in ("kind", "created", "skipped", "found", "rev", "content_hash", "doc_id", "node_id", "status",
-                  "current_rev", "current_content_hash", "rolled_back", "deleted_chunks", "deleted_meta"):
+                  "current_rev", "current_content_hash", "rolled_back", "deleted_chunks", "deleted_meta",
+                  "node", "src", "dst", "rel", "keep", "drop", "dropped", "a_id", "b_id", "undo",
+                  "repointed", "source_hash"):
         if field in result and isinstance(result[field], (str, int, bool)):
             if not isinstance(result[field], str) or len(result[field]) <= 2048:
                 out[field] = result[field]
-    for field in ("deleted", "merged"):
+    for field in ("deleted", "merged", "applied"):
         value = result.get(field)
         if isinstance(value, int):
             out[field] = value

@@ -1975,16 +1975,8 @@ class VincApp:
                                          max_domains=cap))
             return 200, res
         if engine == "fragment":
-            # MCP vinc_ingest(D11 §5) — 단일 write 표면 유지를 위해 잡 큐 직렬화(R4).
-            # fragment MERGE 는 짧은 뮤테이션이라 동기(run_sync→200). themes 전달로
-            # 개방층(F1) 어휘 편입 활성 — /ingest 와 동일 계약.
-            cap = _pop_max_domains(body)
-            res = self.jobs.run_sync("ingest:fragment",
-                                     lambda: frag.merge_fragment(body, store=self.store,
-                                                                 themes=self.themes,
-                                                                 max_domains=cap,
-                                                                 read_back=True, authored=True))
-            return 200, res
+            # MCP·REST·CLI가 쓰는 별칭도 같은 조건 검사·영수증·writer 경로를 탄다.
+            return self.write_ingest(body)
         fn = self.ingest.get(engine)
         if fn is None:
             return 400, {"error": f"unknown ingest engine: {engine}"}

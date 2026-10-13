@@ -3,7 +3,7 @@ from copy import deepcopy
 import datetime as dt
 import json
 import os
-from types import SimpleNamespace, MethodType
+from types import SimpleNamespace
 
 import pytest
 
@@ -230,8 +230,8 @@ def test_public_ingest_routes_preserve_advisories_in_serial_writer(graph, route)
         def run_sync(self, name, fn):
             seen.append(name)
             return fn()
-    app = SimpleNamespace(store=graph, themes=None, jobs=Jobs())
-    app._run_mutation = MethodType(VincApp._run_mutation, app)
+    app = object.__new__(VincApp)
+    app.store, app.themes, app.jobs = graph, None, Jobs()
     body = {"owner": OWNER, "nodes": [claim("new", "0.2.0", "2026-10-13")], "review_claims": True}
     status, result = (VincApp.write_ingest(app, body) if route == "direct"
                       else VincApp.submit_ingest(app, "fragment", body))

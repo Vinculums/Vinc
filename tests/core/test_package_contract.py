@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from types import SimpleNamespace, MethodType
+from types import SimpleNamespace
 
 import pytest
 
@@ -114,8 +114,8 @@ def test_both_public_ingest_handlers_validate_in_the_serial_write_queue(graph, r
     def run_sync(name, fn):
         seen.append(name)
         return fn()
-    app = SimpleNamespace(store=graph, themes=None, jobs=SimpleNamespace(run_sync=run_sync))
-    app._run_mutation = MethodType(VincApp._run_mutation, app)
+    app = object.__new__(VincApp)
+    app.store, app.themes, app.jobs = graph, None, SimpleNamespace(run_sync=run_sync)
     node = package("record:http-denied")
     node["props"]["claims"][0]["evidence_ids"] = ["concept:private"]
     body = {"owner": OWNER, "nodes": [node]}
