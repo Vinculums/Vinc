@@ -160,7 +160,10 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
                 text = sys.stdin.read()
                 origin, title = args.origin, args.title
             return "vinc_doc_put", {"text": text, "doc_id": args.id,
-                                    "title": title, "origin": origin, **common}, None
+                                    "title": title, "origin": origin, **common,
+                                    **{key: getattr(args, key) for key in (
+                                        "topic", "valid_from", "valid_until", "superseded_by")
+                                       if getattr(args, key, None) is not None}}, None
     if cmd == "whoami":
         return "vinc_whoami", common, None
     if cmd == "conventions":
@@ -185,7 +188,10 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
         return "vinc_diagnose", {**common, "kind": args.kind,
                                  "node": args.node}, None
     if cmd == "ingest":
-        return "vinc_ingest", {**common, **_json_file(args.file)}, None
+        data = {**common, **_json_file(args.file)}
+        if getattr(args, "review_claims", False):
+            data["review_claims"] = True
+        return "vinc_ingest", data, None
     if cmd == "delete":
         return "vinc_delete", {**common, "node_id": args.id}, args.id
     if cmd == "edge":

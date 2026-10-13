@@ -133,7 +133,7 @@ Write in English, titles and bodies alike, whatever language you are thinking in
 
 ## Node kinds [schema-fixed]
 - Concept: one reusable idea. If it will not be reused, do not create it.
-- Episode: something that happened (a session, an event). It is tied to a time.
+- Episode: something that happened (a session, an event). Supply date; title is keyword-searchable, summary is recall material.
 - Record: a note on a concept, or a measurement about code: then add props.subject_path as repo:path (vinc:api/sync.py), measured_at, measured_ref.
 - Decision: what you chose at a point in time, and why. Tie it with `about`.
 - Bridge: a junction that ties domains together.
@@ -160,14 +160,14 @@ Record to either: any of the first four. Those edges and about must carry `evide
 Not sure: use relates_to. Never flip a directed edge to make it fit.
 
 ## Documents [schema-fixed]
-Source text goes in through vinc_doc_put and the store keeps the canonical copy. Do
-not paste a whole document into a Record; link concepts through the document, not a copy.
+Store canonical text through vinc_doc_put; link concepts through it instead of copying the text into a Record.
+Pass validity as arguments, not front matter. Check needs_embed before semantic search. Document deletion retains its concept mirror.
 
 ## Validity [this graph decides]
-A Record asserting a present state carries valid_from; retire it with valid_until instead of
-deleting it, because a retired claim still describes what held then. Reads default to current
-only, and an unstated valid_from reads as current, so leaving it empty hides nothing.
-Currency is derived from the interval: never store a status of stale, current or new.
+A Record asserting a present state carries valid_from; retire it with valid_until instead of deleting history.
+Use props.entity, predicate, scope and value to identify comparable claims; preserve existing props when resending.
+An unstated valid_from reads as current for legacy visibility, so it is not hidden; temporal metadata stays unknown. Recording time is not validity.
+Confirm replacement before setting valid_until and an evidenced new-to-old supersedes edge. Advisories never do it. Derive currency from intervals; never store a status of stale, current or new.
 
 ## Roles [schema-fixed]
 An Agent role is a Concept: id concept:agent-<name>, titled with the job name (no "Agent role:" prefix), topic agent or one level below it (vinc/agent is read too). The agent- prefix is reserved for roles.
@@ -201,7 +201,7 @@ concept:optimistic-locking, decision:drop-the-cache, record:pricing-note.
 
 ## 노드 종류 [스키마 고정]
 - Concept: 재사용되는 하나의 관념. 재사용되지 않을 것이면 만들지 마십시오.
-- Episode: 일어난 일(세션·사건). 시간에 묶입니다.
+- Episode: 일어난 일(세션·사건). date 를 적으십시오. 제목은 키워드 검색 대상이고, 요약은 사건 조회의 내용입니다.
 - Record: 개념에 붙는 메모, 또는 코드에 대한 측정: 그때는 props.subject_path 를 repo:path 로(vinc:api/sync.py)·measured_at·measured_ref.
 - Decision: 그때 무엇을 골랐고 왜 그랬는지. `about` 으로 그 대상에 이으십시오.
 - Bridge: 도메인을 가로질러 묶는 매듭.
@@ -228,14 +228,14 @@ Record 에서 둘 중 어디로든 위 넷 중 아무거나. 그 엣지들과 ab
 확신이 없으면 relates_to. 맞추려고 방향을 뒤집지 마십시오.
 
 ## 문서 [스키마 고정]
-원문은 vinc_doc_put 으로 넣고, 정본은 스토어가 보관합니다. 문서 전문을 Record 에
-붙여넣지 마십시오. 개념은 문서를 통해 연결하고, 사본을 통해 연결하지 마십시오.
+정본은 vinc_doc_put 으로 저장하고 개념을 문서에 연결하십시오. 문서 전문을 Record 에 복사하지 마십시오.
+유효기간은 도구 인자로 보내십시오. 본문 머리말만으로는 반영되지 않습니다. 의미 검색 전 needs_embed 를 확인하십시오. 문서를 지워도 개념 노드는 남습니다.
 
 ## 유효구간 [이 그래프가 정함]
-현재 상태를 주장하는 Record 에는 valid_from 을 답니다. 폐기는 지우기가 아니라
-valid_until 입니다. 지나간 주장도 그때 무엇이 참이었는지는 그대로 말하기 때문입니다.
-읽기 기본값은 current 뿐이고, valid_from 을 안 적으면 current 로 읽으므로 비워도
-숨겨지지 않습니다. 현재성은 구간에서 파생합니다. stale·current·new 를 저장하지 마십시오.
+현재 상태를 주장하는 Record 에는 valid_from 을 적고, 과거 기록을 지우는 대신 valid_until 로 유효기간을 닫으십시오.
+비교할 주장에는 props.entity, predicate, scope, value 를 적으십시오. 다시 보낼 때 기존 props 도 보존하십시오.
+valid_from 을 안 적으면 기존 가시성 정책에서 current 로 읽으므로 숨기지 않습니다. 시간 정보는 unknown 이며, 기록 시각은 유효기간이 아닙니다.
+대체를 확인한 뒤 valid_until 과 근거 있는 새 주장→이전 주장 supersedes 관계를 쓰십시오. 검토 권고는 이를 자동 변경하지 않습니다. 현재성은 구간에서 판단하고 stale·current·new 를 저장하지 마십시오.
 
 ## 역할 [스키마 고정]
 Agent 역할은 Concept 입니다: id 는 concept:agent-<이름>, 제목은 직무명("Agent role:" 접두 없이), 주제는 agent 이거나 그 바로 아래입니다(vinc/agent 도 읽습니다). agent- 접두사는 역할 전용입니다.

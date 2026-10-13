@@ -80,7 +80,7 @@ READ_ROUTES = (
 WRITE_ROUTES = (
     Route("POST", "/v1/merge-rejections", "vinc_merge_reject",
           body=("a", "b", "note", "undo")),
-    Route("POST", "/v1/fragments", "vinc_ingest", body=("nodes", "edges")),
+    Route("POST", "/v1/fragments", "vinc_ingest", body=("nodes", "edges", "review_claims")),
     Route("POST", "/v1/nodes/merge", "vinc_merge_nodes",
           body=("keep_id", "drop_id")),
     Route("DELETE", "/v1/nodes/{id}", "vinc_delete",
