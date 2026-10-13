@@ -36,6 +36,8 @@ class Route:
 
 
 READ_ROUTES = (
+    Route("GET", "/v1/operations/{operation_id}", "vinc_operation_status",
+          path_args=(("operation_id", "operation_id"),)),
     Route("GET", "/v1/roles", "vinc_role", query=("limit", "offset")),
     Route("GET", "/v1/roles/{id}", "vinc_role", path_args=(("id", "role"),)),
     Route("POST", "/v1/roles/{id}/check", "vinc_role_check",
@@ -79,24 +81,25 @@ READ_ROUTES = (
 # while every other public MCP tool must have a route.
 WRITE_ROUTES = (
     Route("POST", "/v1/merge-rejections", "vinc_merge_reject",
-          body=("a", "b", "note", "undo")),
-    Route("POST", "/v1/fragments", "vinc_ingest", body=("nodes", "edges", "review_claims")),
+          body=("a", "b", "note", "undo", "operation_id")),
+    Route("POST", "/v1/fragments", "vinc_ingest", body=("nodes", "edges", "review_claims", "create_only", "operation_id")),
     Route("POST", "/v1/nodes/merge", "vinc_merge_nodes",
-          body=("keep_id", "drop_id")),
+          body=("keep_id", "drop_id", "dry_run", "preview_digest", "operation_id")),
     Route("DELETE", "/v1/nodes/{id}", "vinc_delete",
-          query=("dry_run",), path_args=(("id", "node_id"),)),
+          query=("dry_run", "preview_digest", "operation_id"), path_args=(("id", "node_id"),)),
     Route("DELETE", "/v1/edges", "vinc_delete_edge",
-          query=("from_id", "to_id", "type")),
+          query=("from_id", "to_id", "type", "dry_run", "preview_digest", "operation_id")),
     Route("PUT", "/v1/documents/{doc_id}", "vinc_doc_put",
-          body=("text", "title", "origin", "topic", "valid_from", "valid_until", "superseded_by"),
+          body=("text", "title", "origin", "topic", "valid_from", "valid_until", "superseded_by", "expected_content_hash", "create_only", "operation_id"),
           path_args=(("doc_id", "doc_id"),)),
     Route("POST", "/v1/documents", "vinc_doc_put",
           body=("text", "title", "origin", "topic", "valid_from", "valid_until",
-                "superseded_by"), success=201),
+                "superseded_by", "expected_content_hash", "create_only", "operation_id"), success=201),
     Route("DELETE", "/v1/documents/{doc_id}", "vinc_doc_delete",
+          query=("dry_run", "preview_digest", "operation_id"),
           path_args=(("doc_id", "doc_id"),)),
     Route("POST", "/v1/documents/{doc_id}/extract", "vinc_doc_extract",
-          body=("apply", "candidates"), path_args=(("doc_id", "doc_id"),)),
+          body=("apply", "candidates", "operation_id"), path_args=(("doc_id", "doc_id"),)),
 )
 ROUTES = READ_ROUTES + WRITE_ROUTES
 HOST_EXCLUSIONS = frozenset({"search", "fetch"})

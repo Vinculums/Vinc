@@ -103,6 +103,17 @@ def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
     error = str(result.get("error") or "")
     note = str(result.get("note") or "")
     reason = (error + " " + note).lower()
+    if name == "vinc_operation_status" and result.get("executed") is True:
+        return None
+    if result.get("status") == "conflict" or error in ("write_conflict", "preview_conflict", "operation_id_conflict"):
+        return (409, error, "The saved state no longer matches this request.",
+                {k: result[k] for k in ("node_id", "current_rev", "current_content_hash", "operation_id") if k in result})
+    if error in ("write_target_unavailable", "document_unavailable", "preview_target_unavailable"):
+        return 404, "not_found", "The requested graph item was not found."
+    if error.startswith("preview_") and error not in ("preview_read_unavailable", "preview_boundary_unavailable"):
+        return 400, error, "A complete supported preview is required before applying."
+    if result.get("status") in ("invalid_request", "unsupported_kind"):
+        return 400, error, error
     if error == "store_busy":
         # 유지보수 거절은 서버 내부 오류가 아니다. SDK가 재시도 가능한 503을 받아야 한다.
         return (503, "upstream_unavailable", note or "Store maintenance is in progress.",

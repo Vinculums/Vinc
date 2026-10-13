@@ -5,6 +5,7 @@
     {"shape": "unexpected tool exception or unclassified executed:false", "code": "internal"}
   ],
   "tools": {
+    "vinc_operation_status": [{"shape": "found:false unknown receipt is not proof of nonapplication", "code": "success"}, {"shape": "executed:false receipt_read_unavailable", "code": "upstream_unavailable"}],
     "vinc_role": [{"shape": "found:false unknown, foreign or non-role id", "code": "not_found"}, {"shape": "executed:false no reachable store", "code": "upstream_unavailable"}, {"shape": "executed:false role_contract_too_large without truncation", "code": "internal"}],
     "vinc_role_check": [{"shape": "found:false unknown, foreign or non-role id", "code": "not_found"}, {"shape": "executed:false role_required or output_required", "code": "invalid_argument"}, {"shape": "executed:false no reachable store", "code": "upstream_unavailable"}, {"shape": "verdict block or interrupt is a successful check, not an error", "code": "success"}],
     "vinc_edges": [{"shape": "found:false unknown or inaccessible seed", "code": "not_found"}, {"shape": "found:true edges:[] isolated seed", "code": "success"}],

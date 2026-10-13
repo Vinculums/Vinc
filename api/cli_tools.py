@@ -97,6 +97,11 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
     cmd = args.cmd
     owner = getattr(args, "owner", None)
     common = {"owner": owner} if owner else {}
+    if cmd in {"ingest", "delete", "edge", "merge", "doc"}:
+        common.update({key: getattr(args, key) for key in ("operation_id", "dry_run", "preview_digest",
+            "create_only", "expected_content_hash") if getattr(args, key, None) is not None})
+    if cmd == "operation":
+        return "vinc_operation_status", {**common, "operation_id": args.operation_id}, None
     if cmd == "call":
         name = args.tool if args.tool.startswith("vinc_") else "vinc_" + args.tool
         if name not in {t["name"] for t in tools.TOOLS}:
@@ -225,7 +230,7 @@ def run(args) -> tuple[dict | None, int | None]:
         name, data, destructive = _tool_request(args)
     except (ValueError, json.JSONDecodeError) as exc:
         return None, usage_error(str(exc))
-    if destructive and not _confirm(args, destructive):
+    if destructive and not data.get("dry_run") and not _confirm(args, destructive):
         return None, usage_error("confirmation required; pass --yes")
     try:
         tools.validate_args(name, data)

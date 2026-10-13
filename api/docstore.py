@@ -378,7 +378,8 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             link: bool = True, updated_at: str | None = None,
             created_at: str | None = None, content_time: str | None = None,
             topic: str | None = None, valid_from: str | None = None,
-            valid_until: str | None = None, superseded_by: str | None = None) -> dict:
+            valid_until: str | None = None, superseded_by: str | None = None,
+            expected_content_hash: str | None = None, create_only: bool = False) -> dict:
     """raw 텍스트를 doc 단위로 적재/갱신(파일 I/O 없음) — Chunk=SSoT 의 쓰기 정본.
 
     - 신규: doc_id 미지정 시 결정론 파생(make_doc_id). 반환 doc_id 로 이후 편집.
@@ -464,6 +465,12 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         base["error"] = ("doc_id unavailable: this id cannot be written from this "
                          "account; choose a different doc_id")
         return base
+    from .mutation_contract import document_guard, MutationConflict
+    try:
+        document_guard(prev, owner=owner, create_only=create_only,
+                       expected_content_hash=expected_content_hash)
+    except MutationConflict as exc:
+        return {**base, **exc.result}
     if prev is not None:
         # 무변경 스킵은 살아 있는 행 수가 `chunk_count` 와 같을 때만이다. 쓰기 창 표식
         # (-1, 아래 ⓪)·꼬리 청크·빠진 청크가 남은 문서는 get_doc 이 거절하는데, 스킵하면
@@ -2191,7 +2198,8 @@ def _extract_body_doc(store, doc_id: str, *, owner: str, apply: bool,
             return {**base, "error": "body mentions schema is not enabled"}
         transaction = False
         try:
-            if apply:
+            from .operation_receipts import in_transaction
+            if apply and not in_transaction.get():
                 store.run("BEGIN TRANSACTION")
                 transaction = True
             got = get_doc(store, doc_id, owner=owner)
@@ -2252,7 +2260,8 @@ def _extract_body_doc(store, doc_id: str, *, owner: str, apply: bool,
                                       candidates=chosen)
             if not linked:
                 raise ValueError("body candidates have no owner-scoped source chunks")
-            store.run("COMMIT")
+            if transaction:
+                store.run("COMMIT")
             transaction = False
             base.update(executed=True, applied={"created": created, "matched": matched},
                         approved_candidate_ids=approved_ids, mentions=linked)

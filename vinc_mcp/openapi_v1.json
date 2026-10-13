@@ -10,6 +10,54 @@
     }
   ],
   "paths": {
+    "/v1/operations/{operation_id}": {
+      "get": {
+        "operationId": "vinc_operation_status_get__v1_operations_operation_id",
+        "summary": "Read an owner-scoped mutation receipt by operation_id. accepted means outcome unknown; committed means graph transaction committed, not proof of published durability. Unknown or inaccessible receipts never mean not applied. Replayed results are historical summaries; read targets to verify.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "A fresh lowercase UUID for one logical operation. Reuse it with identical arguments after a lost response; a changed body conflicts. Check vinc_operation_status before deciding what to do. Receipts are owner scoped, retained until owner purge, and bounded to 5000 per owner."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/roles": {
       "get": {
         "operationId": "vinc_role_get__v1_roles",
@@ -589,7 +637,26 @@
             "schema": {
               "type": "boolean",
               "default": false,
-              "description": "Preview all incident edges without writing. Default false deletes."
+              "description": "Read a complete bounded preview without mutation. Over-budget or inaccessible targets refuse; preview_digest binds the later apply to this state."
+            }
+          },
+          {
+            "name": "preview_digest",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Digest from this operation's complete dry_run. Apply refuses if affected state or scope changed."
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "A fresh lowercase UUID for one logical operation. Reuse it with identical arguments after a lost response; a changed body conflicts. Check vinc_operation_status before deciding what to do. Receipts are owner scoped, retained until owner purge, and bounded to 5000 per owner."
             }
           },
           {
@@ -1591,6 +1658,11 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Forget a previous rejection instead of recording one."
+                  },
+                  "operation_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "A fresh lowercase UUID for one logical operation. Reuse it with identical arguments after a lost response; a changed body conflicts. Check vinc_operation_status before deciding what to do. Receipts are owner scoped, retained until owner purge, and bounded to 5000 per owner."
                   }
                 },
                 "required": [
@@ -1743,6 +1815,20 @@
                   "superseded_by": {
                     "type": "string",
                     "description": "doc_id of the document that replaced this one. Omit to keep; empty clears."
+                  },
+                  "expected_content_hash": {
+                    "type": "string",
+                    "description": "Content hash read from vinc_doc_get. A different current hash refuses before mutation; empty string requires an absent document."
+                  },
+                  "create_only": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Refuse existing identities before any mutation. Omitted keeps the existing upsert behavior."
+                  },
+                  "operation_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "A fresh lowercase UUID for one logical operation. Reuse it with identical arguments after a lost response; a changed body conflicts. Check vinc_operation_status before deciding what to do. Receipts are owner scoped, retained until owner purge, and bounded to 5000 per owner."
                   }
                 },
                 "required": [
@@ -1889,6 +1975,20 @@
                   "superseded_by": {
                     "type": "string",
                     "description": "doc_id of the document that replaced this one. Omit to keep; empty clears."
+                  },
+                  "expected_content_hash": {
+                    "type": "string",
+                    "description": "Content hash read from vinc_doc_get. A different current hash refuses before mutation; empty string requires an absent document."
+                  },
+                  "create_only": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Refuse existing identities before any mutation. Omitted keeps the existing upsert behavior."
+                  },
+                  "operation_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "A fresh lowercase UUID for one logical operation. Reuse it with identical arguments after a lost response; a changed body conflicts. Check vinc_operation_status before deciding what to do. Receipts are owner scoped, retained until owner purge, and bounded to 5000 per owner."
                   }
                 },
                 "required": [
@@ -1915,6 +2015,35 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "description": "Read a complete bounded preview without mutation. Over-budget or inaccessible targets refuse; preview_digest binds the later apply to this state."
+            }
+          },
+          {
+            "name": "preview_digest",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Digest from this operation's complete dry_run. Apply refuses if affected state or scope changed."
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "A fresh lowercase UUID for one logical operation. Reuse it with identical arguments after a lost response; a changed body conflicts. Check vinc_operation_status before deciding what to do. Receipts are owner scoped, retained until owner purge, and bounded to 5000 per owner."
             }
           },
           {
@@ -2043,6 +2172,20 @@
                         "props": {
                           "type": "object",
                           "description": "Free-form extension properties (legacy types only — not persisted on open-type nodes). Three keys are reserved on a **record** that states something about code, and only there: `subject_path` (WHICH repo and WHICH file, as repo:path, for example vinc:api/sync.py; the bare path alone cannot be compared because this graph holds records about three repositories), `measured_at` (YYYY[-MM[-DD]], when you looked) and `measured_ref` (branch or commit you looked at). They are what lets two claims about the same file be compared instead of both standing as assertions; `subject_path` is normalized on write so different spellings of one path land on one key."
+                        },
+                        "expected_rev": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "Revision from vinc_node. Mismatch refuses the whole fragment before any mutation."
+                        },
+                        "create_only": {
+                          "type": "boolean",
+                          "default": false,
+                          "description": "Refuse existing identities before any mutation. Omitted keeps the existing upsert behavior."
+                        },
+                        "props_patch": {
+                          "type": "object",
+                          "description": "JSON Merge Patch on stored props; requires expected_rev and excludes props. Null removes a key, nested objects merge, arrays replace. Omitted props keeps existing behavior; props replaces."
                         }
                       },
                       "required": [
@@ -2090,6 +2233,16 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Opt in to bounded comparison of explicitly keyed Record/Decision claims against this owner's saved claims. Default performs date checks only with no candidate query. Adds advisory lookup cost; never retires claims."
+                  },
+                  "create_only": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Refuse existing identities before any mutation. Omitted keeps the existing upsert behavior."
+                  },
+                  "operation_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "A fresh lowercase UUID for one logical operation. Reuse it with identical arguments after a lost response; a changed body conflicts. Check vinc_operation_status before deciding what to do. Receipts are owner scoped, retained until owner purge, and bounded to 5000 per owner."
                   }
                 },
                 "required": [
@@ -2152,6 +2305,20 @@
                   "drop_id": {
                     "type": "string",
                     "description": "Concept id to merge in and delete."
+                  },
+                  "dry_run": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Read a complete bounded preview without mutation. Over-budget or inaccessible targets refuse; preview_digest binds the later apply to this state."
+                  },
+                  "preview_digest": {
+                    "type": "string",
+                    "description": "Digest from this operation's complete dry_run. Apply refuses if affected state or scope changed."
+                  },
+                  "operation_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "A fresh lowercase UUID for one logical operation. Reuse it with identical arguments after a lost response; a changed body conflicts. Check vinc_operation_status before deciding what to do. Receipts are owner scoped, retained until owner purge, and bounded to 5000 per owner."
                   }
                 },
                 "required": [
@@ -2200,6 +2367,35 @@
             "schema": {
               "type": "string",
               "description": "relates_to | prerequisite_of | derives_from | inherits_from | returns_to | about | supersedes | ATTACHES_TO"
+            }
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "description": "Read a complete bounded preview without mutation. Over-budget or inaccessible targets refuse; preview_digest binds the later apply to this state."
+            }
+          },
+          {
+            "name": "preview_digest",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Digest from this operation's complete dry_run. Apply refuses if affected state or scope changed."
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "A fresh lowercase UUID for one logical operation. Reuse it with identical arguments after a lost response; a changed body conflicts. Check vinc_operation_status before deciding what to do. Receipts are owner scoped, retained until owner purge, and bounded to 5000 per owner."
             }
           },
           {
@@ -2304,6 +2500,11 @@
                         "title"
                       ]
                     }
+                  },
+                  "operation_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "A fresh lowercase UUID for one logical operation. Reuse it with identical arguments after a lost response; a changed body conflicts. Check vinc_operation_status before deciding what to do. Receipts are owner scoped, retained until owner purge, and bounded to 5000 per owner."
                   }
                 },
                 "required": [],

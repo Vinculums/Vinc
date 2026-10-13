@@ -317,6 +317,9 @@ def _main(argv: list[str] | None = None) -> int:
     dp.add_argument("--valid-from", default=None, help="effective start YYYY[-MM[-DD]]; omit to preserve")
     dp.add_argument("--valid-until", default=None, help="effective end (half-open); empty string clears")
     dp.add_argument("--superseded-by", default=None, help="successor document id; omit to preserve")
+    dp.add_argument("--expected-content-hash", default=None, help="require the document hash read before editing")
+    dp.add_argument("--create-only", action="store_true", default=None, help="refuse an existing document id")
+    dp.add_argument("--operation-id", default=None, help="UUID for result lookup and identical retry")
     dp.add_argument("--file", default=None,
                     help='read .md/.txt/.rst/.pdf; title and origin default to the filename')
     dp.add_argument("--data", default=None, help="data home (default: MEMORY_DATA_DIR or ~/.vinc/db)")
@@ -336,6 +339,11 @@ def _main(argv: list[str] | None = None) -> int:
     # MCP 도구와 같은 결과 봉투를 쓰는 로컬 동사. 오래된 동사는 C6에서 옮긴다.
     wi = sub.add_parser("whoami", help='show graph identity, target and accessible spaces')
     wi.add_argument("--owner", default=None)
+    op = sub.add_parser("operation", help="check a mutation receipt without applying again")
+    ops = op.add_subparsers(dest="operationcmd", required=True)
+    ost = ops.add_parser("status")
+    ost.add_argument("operation_id")
+    ost.add_argument("--owner", default=None)
     cv = sub.add_parser("conventions", help="read graph conventions")
     cv.add_argument("--lang", default=None)
     cv.add_argument("--owner", default=None)
@@ -403,6 +411,14 @@ def _main(argv: list[str] | None = None) -> int:
     dx.add_argument("--apply", action="store_true")
     dx.add_argument("--owner", default=None)
     ca = sub.add_parser("call", help='call a registered MCP tool')
+    for mutation_parser in (dr, de, edel, mgo):
+        mutation_parser.add_argument("--dry-run", action="store_true", default=None,
+                                    help="read a complete bounded preview without applying")
+        mutation_parser.add_argument("--preview-digest", default=None, help="apply only the state in a complete preview")
+        mutation_parser.add_argument("--operation-id", default=None, help="UUID for identical retry and result lookup")
+    for mutation_parser in (ig, mgr, dx):
+        mutation_parser.add_argument("--operation-id", default=None, help="UUID for identical retry and result lookup")
+    ig.add_argument("--create-only", action="store_true", default=None, help="refuse existing node ids")
     ca.add_argument("tool")
     source = ca.add_mutually_exclusive_group()
     source.add_argument("--args", default=None, help="JSON object")
