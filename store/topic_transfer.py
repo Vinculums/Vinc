@@ -139,7 +139,8 @@ def referenced_ids(value):
     if isinstance(value, dict):
         for key, val in value.items():
             compact = re.sub(r"[^a-z0-9]", "", key.lower())
-            if compact in ("docid", "supersededby", "nodeid", "ref") and isinstance(val, str):
+            # 빈 후속 문서·참조 값에는 옮길 대상이 없다. 실제 id는 그대로 검사한다.
+            if compact in ("docid", "supersededby", "nodeid", "ref") and isinstance(val, str) and val:
                 yield pkns.strip(val)
             yield from referenced_ids(val)
     elif isinstance(value, list):

@@ -95,6 +95,7 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     # put=적재/편집(단일 writer 직렬화), extract=정본→개념 파생(남의 개념 불가침),
     # reembed=편집 후 재임베딩 큐에 되돌림(벡터는 허브의 자체호스팅 임베딩 워커가 채운다).
     "doc-put": ("POST", "/doc/put"),
+    "topic-description": ("POST", "/topic-description"),
     "conventions-build": ("POST", "/conventions/build"),   # 관례 재생성(GM-8)
     # 파일 바이트 입구(텍스트·PDF) — 본문은 base64 라 4/3 로 부푼다. 아래 MAX_BODY
     # (4MB)가 실효 상한을 결정하므로 웹에서 올릴 수 있는 원본은 대략 2.8MB 다.
@@ -151,6 +152,7 @@ _EDITOR_OPS = frozenset({
     "pin", "tag", "touch", "activate",
     "ingest-fragment", "ingest-pack",
     "doc-put", "doc-put-file", "doc-extract", "doc-reembed",
+    "topic-description",
     "evidence-backfill", "conventions-build",
 })
 _ADMIN_OPS = frozenset({

@@ -1,6 +1,6 @@
 import Graph from "graphology";
 import Sigma from "sigma";
-import { api, cfg, WEB, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, type GraphEdge, type GraphNode,
+import { api, cfg, WEB, teamsApi, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
@@ -51,6 +51,7 @@ import { setLiveRefresher } from "../live";
 import { emptyInviteHtml } from "../empty-invite";
 import { RELS, relRefusal, takePendingNewDoc } from "../authoring";
 import { detailState, detailFailure, detailMessage, topicDetailHTML, type DetailState } from "../topic-detail";
+import { bindTopicDescription, type TopicDraft } from "../topic-description";
 
 /** Surface 3 — View (spec: [[vinc.spec.viewpoints]] · as-built [[vinc.reference.view-controls]]).
  *
@@ -2489,6 +2490,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   let docWriting = false;
 
   let ctxCache: { id: string; scope: string; p: ReturnType<typeof api.nodeContext> } | null = null;
+  const topicDrafts = new Map<string, TopicDraft>();
   const nodeContextOnce = (id: string) => {
     const scope = viewScope().key;
     if (ctxCache?.id !== id || ctxCache.scope !== scope)
@@ -2521,6 +2523,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     const current = () => box.isConnected && myGen === liveGen && focusId === nd.id
       && viewScope().key === scopeKey && (!pane || (revision === railRevision && !detail.hidden));
     const scope = { team: cfg.team || null };
+    const requestOwner = cfg.owner;
     box.innerHTML = `<p class="card-note">${esc(COPY.ui.viewx.detailLoading)}</p>`;
     const fail = (state: DetailState) => {
       box.innerHTML = detailErrorHTML(state);
@@ -2534,7 +2537,20 @@ export async function renderView(el: HTMLElement, resume = false) {
       const state = detailState(res);
       if (state !== "ready") { fail(state); return; }
       if (!res.topic) { fail("unsupported"); return; }
+      let canEdit = !scope.team;
+      if (scope.team) {
+        const teams = await teamsApi.list({ throwOnError: true }).catch(() => []);
+        canEdit = teams.some(team => team.id === scope.team && ["editor", "admin"].includes(team.role));
+      }
+      if (!current()) return;
       box.innerHTML = topicDetailHTML(res.topic, COPY.ui.viewx, esc);
+      bindTopicDescription({
+        root: box.querySelector<HTMLElement>("[data-topic-description]")!,
+        description: res.topic.description, copy: COPY.ui.viewx, esc,
+        drafts: topicDrafts, key: JSON.stringify([scopeKey, nd.id]), canEdit, current,
+        save: (text, hash) => api.topicDescription(requestOwner, nd.id, text, hash, scope),
+        reload: () => { ctxCache = null; void loadTopicDetail(box, nd, pane, offset); },
+      });
       box.querySelectorAll<HTMLElement>("[data-topic-go]").forEach(b => b.addEventListener("click", () =>
         void followDetail(nd, b.dataset.topicGo!, b.dataset.dom || undefined, pane)));
       box.querySelectorAll<HTMLElement>("[data-topic-more]").forEach(b => b.addEventListener("click", () =>

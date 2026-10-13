@@ -37,6 +37,7 @@ export function topicDetailHTML(topic: TopicDetail, copy: Copy, esc: (s: string)
       + (items.length ? "" : `<p class="card-note">${esc(copy.topicEmpty)}</p>`) + "</section>";
   };
   return `<p class="hint">${esc(copy.topicPath)}</p><p>${path}</p>
+    <section data-topic-description></section>
     ${row(copy.topicDirect, topic.direct_nodes)}${row(copy.topicDescendants, topic.descendant_nodes)}
     ${row(copy.topicSubtree, topic.subtree_nodes)}
     <h3 class="hint rail-sec">${esc(copy.topicStructure)}</h3>

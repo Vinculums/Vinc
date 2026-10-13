@@ -646,7 +646,13 @@ export type NodeLinks = {
   degree: number; out: number; in: number; attached: number;
   items: NodeLink[]; truncated: boolean; executed: boolean;
 };
+export type TopicDescription = {
+  executed: boolean; status: "ok" | "query_failed" | "unavailable" | "invalid_request" | "conflict" | "unconfirmed";
+  text?: string; content_hash?: string; exists?: boolean; doc_id?: string;
+  write_may_have_applied?: boolean;
+};
 export type TopicDetail = {
+  description?: TopicDescription;
   path: string;
   parent: { id: string; title: string; domain: string } | null;
   child_topics: number; direct_nodes: number; subtree_nodes: number; descendant_nodes: number;
@@ -862,6 +868,9 @@ export const api = {
   nodeContext: (owner: string, node: string, limit = 4, scope?: Scope,
                 linksOffset = 0): Promise<NodeContext> =>
     call("/node-context", { owner, node, limit, links_offset: linksOffset }, undefined, scope),
+  topicDescription: (owner: string, node: string, text: string, expected_content_hash: string,
+                     scope?: Scope): Promise<TopicDescription> =>
+    call("/topic-description", undefined, { owner, node, text, expected_content_hash }, scope),
   // D45-V2 2단계 — Reader 서브뷰: 정본 전문(무손실 복원 + 해시 검증) + 밑줄 범위.
   docGet: (owner: string, id: string, scope?: Scope): Promise<{
     executed: boolean; text?: string; title?: string; verified?: boolean;
