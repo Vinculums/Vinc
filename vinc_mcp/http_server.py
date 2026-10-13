@@ -116,6 +116,29 @@ _JOB_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 # 서명이 진짜여도 `team:../../etc` 같은 값이 그대로 owner 가 되면 안 된다.
 _TEAM_OWNER_RE = re.compile(
     r"team:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_COMMUNITY_OWNER_RE = re.compile(
+    r"community:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+# 일반 열람자는 그래프를 직접 고치지 않는다. 계정의 커밋된 outbox만 현재 값을 반영한다.
+_COMMUNITY_PROJECTOR_SUB = "account:community-projector"
+_COMMUNITY_READ_OPS = frozenset({
+    "view", "ledger", "graph", "recall", "search", "coupling", "suggest-ties",
+    "decide", "domains", "promote-candidates", "learner", "share", "doc", "docs",
+    "doc-highlights", "doc-context", "node", "node-context", "node-edges", "roles",
+    "edge-context", "ledger-drilldown", "docs-in-range", "nav-tree", "changes",
+    "graph-roots", "conventions",
+})
+_COMMUNITY_PROJECT_OPS = frozenset({
+    "ingest-fragment", "doc-put", "conventions-build", "delete", "doc-delete", "delete-edge",
+})
+_COMMUNITY_PAGE_NODE_RE = re.compile(r"concept:[a-z0-9][a-z0-9-]{0,79}")
+_COMMUNITY_WIKI_RELS = frozenset({
+    "relates_to", "related_to", "prerequisite_of", "derives_from", "inherits_from",
+})
+_COMMUNITY_OBJECT_UUID = (
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_COMMUNITY_SOCIAL_NODE_RE = re.compile(r"episode:(?:talk|lounge)-" + _COMMUNITY_OBJECT_UUID)
+_COMMUNITY_SOCIAL_DOC_RE = re.compile(r"(?:talk|lounge)\." + _COMMUNITY_OBJECT_UUID)
 
 # ── 팀 역할별 op 등급(AP-1 §4.4) ──────────────────────────────────────────────
 # 세밀한 주제별·노드별 권한은 전 질의 플랜 개작이 필요해 v1 범위 밖이다. 대신 **이미
@@ -709,9 +732,10 @@ class MCPHTTPApp:
                             raw_body: bytes | None = None) -> dict:
         """계정 서명 어서션을 검증해 owner 를 **강제**하고 op 를 사이드카로 프록시한다.
 
-        받는 유형 둘(AP-1 §4.3):
+        받는 그래프 유형:
           - ``typ=proxy``      개인 그래프. owner = ``user:{sub}`` (기존, 바이트 동일).
           - ``typ=proxy-team`` 팀 그래프. owner = 서명된 ``graph_owner``, ``role`` 로 op 판정.
+          - ``typ=proxy-community`` 공개 커뮤니티. 계정 outbox만 쓰고 일반 요청은 읽는다.
 
         **팀을 별도 유형으로 가른 것이 이 함수의 핵심 안전장치다.** 기존 ``proxy`` 에
         필드만 덧붙였다면, 구 허브 + 신 계정 조합에서 팀 작업이 조용히 **멤버의 개인
@@ -725,7 +749,7 @@ class MCPHTTPApp:
             raise PermissionError("graph proxy is not configured")
         payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
         typ = payload.get("typ") if payload else None
-        if not payload or typ not in ("proxy", "proxy-team", "proxy-conversion") \
+        if not payload or typ not in ("proxy", "proxy-team", "proxy-conversion", "proxy-community") \
                 or payload.get("iss") != "account" or payload.get("aud") != "mcp":
             raise PermissionError("invalid or expired proxy request")
         # 서명된 지문과 받은 본문이 같은가 · 이 어서션을 처음 쓰는가(감사 M2).
@@ -766,7 +790,34 @@ class MCPHTTPApp:
             raise ValueError(f"unsupported proxy op: {op!r}")
         method, path = route
 
-        if typ == "proxy-team":
+        if typ == "proxy-community":
+            from store import pkns
+            if not pkns.enabled():
+                raise PermissionError("community graphs require owner namespaced node keys")
+            graph_owner = payload.get("graph_owner")
+            if not isinstance(graph_owner, str) or not _COMMUNITY_OWNER_RE.fullmatch(graph_owner):
+                raise ValueError("community proxy request has an invalid graph owner")
+            role = payload.get("role")
+            if payload.get("visibility") != "public" or role not in ("reader", "operator", "projector"):
+                raise PermissionError("invalid public community capability")
+            if role == "projector":
+                if sub != _COMMUNITY_PROJECTOR_SUB or op not in _COMMUNITY_PROJECT_OPS:
+                    raise PermissionError("invalid community projection capability")
+                # 위키는 퇴역으로 남긴다. 삭제는 반영된 Talk/Lounge 항목만 허용한다.
+                if op == "delete" and not _COMMUNITY_SOCIAL_NODE_RE.fullmatch(str(args.get("node") or "")):
+                    raise PermissionError("only projected social nodes may be deleted")
+                if op == "doc-delete" and not _COMMUNITY_SOCIAL_DOC_RE.fullmatch(str(args.get("id") or "")):
+                    raise PermissionError("only projected social documents may be deleted")
+                if op == "delete-edge":
+                    ends = (args.get("from"), args.get("to"))
+                    if (any(not isinstance(n, str) or not _COMMUNITY_PAGE_NODE_RE.fullmatch(n)
+                            or n.endswith("-") or "--" in n for n in ends)
+                            or str(args.get("type") or "").strip().lower() not in _COMMUNITY_WIKI_RELS):
+                        raise PermissionError("only projected wiki page relations may be deleted")
+            elif op not in _COMMUNITY_READ_OPS:
+                raise PermissionError("community mutations must go through account revisions")
+            owner = graph_owner.lower()
+        elif typ == "proxy-team":
             graph_owner = payload.get("graph_owner")
             if not isinstance(graph_owner, str) or not _TEAM_OWNER_RE.fullmatch(graph_owner):
                 raise ValueError("team proxy request has an invalid graph owner")
