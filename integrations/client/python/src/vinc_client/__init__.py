@@ -2,7 +2,7 @@
 
 Design and scope: [[vinc.plan.framework-integration-packages-2026-09-28]].
 """
-__version__ = "0.1.7"
+__version__ = "0.1.8"
 
 from .client import AsyncVincClient, VincClient  # noqa: E402
 from .context import (BOUNDARY, SOURCES_LINE, fence, format_answer, format_brief,  # noqa: E402

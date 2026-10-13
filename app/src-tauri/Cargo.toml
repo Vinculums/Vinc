@@ -5,7 +5,7 @@
 [package]
 name = "vinc-app"   # 엔진이 `vinc` 를 갖는다(VIN-72). Tauri 는 사이드카와
                     # 패키지 이름이 같으면 빌드를 거절한다.
-version = "0.9.7"
+version = "0.9.8"
 edition = "2021"
 authors = ["Vinc <support@vincs.io>"]
 
