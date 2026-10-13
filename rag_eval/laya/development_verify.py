@@ -78,6 +78,8 @@ def verify(root):
         validate_registration(reg)
         if reg['schema'] != SCHEMA or reg['selection'] != selection or digest(registration_bytes) != summary['registration_sha256']:
             raise ValueError('saved registration changed')
+        if summary['loss'] != reg['loss']:
+            raise ValueError('registered objective changed')
         core,native=(checked_rows(reg['sampling_inputs'][tier]) for tier in ('core','native'))
         rows,exposure=balanced_rows(core,native,reg['arm'],reg['seed'])
         train=Path(reg['training'][0]['path']).read_bytes()

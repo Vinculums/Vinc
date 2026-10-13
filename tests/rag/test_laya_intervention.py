@@ -105,6 +105,7 @@ def intervention_run(root):
         history.append({'epoch':epoch,'development':values,'executed_updates_cumulative':epoch*48})
     (root/'history.json').write_bytes(D.encoded(history))
     summary={'registration_sha256':D.digest(registration),'selected_epoch':1,'selection':I.SELECTION,
+             'loss':'soft-ce',
              'selected':values,'baseline':values,'executed_updates':96,'AMP_skips':0,'scheduled_updates':96,
              'model_sha256':D.digest(b'fixture'),'sealed_test_opened':False,'production_approved':False}
     (root/'summary.json').write_bytes(D.encoded(summary))
