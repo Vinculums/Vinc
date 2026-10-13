@@ -158,6 +158,15 @@ def members_cypher() -> str:
         for lbl, pk in DOMAIN_LABELS.items()])
 
 
+def scoped_counts_cypher() -> str:
+    """분류 열에서 직접 소속과 하위 전체를 센다. 모든 팔에 소유 범위를 건다."""
+    return _union_all([
+        f"MATCH (n:{label}) WHERE n.owner_id = $owner "
+        "AND (n.domain = $domain OR starts_with(n.domain, $prefix)) "
+        "RETURN n.domain AS domain, count(n) AS total"
+        for label in DOMAIN_LABELS])
+
+
 def child_domains_cypher(*, depth: int = MAX_DEPTH) -> str:
     """``$domain`` 의 **직계 자식** 중 ``$owner`` 의 노드를 하위에 가진 것만.
 
