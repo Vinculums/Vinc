@@ -70,14 +70,25 @@ def verify(key: str, *, get=read, clock=time.monotonic, sleep=time.sleep, wait_s
     if not key:
         raise VerificationError("VINC_GRAPH_READONLY_KEY is absent")
     deadline = clock() + wait_s
+    transport_retries = 0
     while clock() < deadline:
         timeout = max(1, min(30, deadline - clock()))
-        roots = get("/graph/roots?basis=recorded", key, timeout)
+        try:
+            roots = get("/graph/roots?basis=recorded", key, timeout)
+            graph = (get("/graph?layout=hub&marker=1", key, max(1, min(30, deadline - clock())))
+                     if roots.get("state") == "ready" else None)
+        except VerificationError as exc:
+            if str(exc) not in ("account read returned HTTP 502", "account read could not complete"):
+                raise
+            transport_retries += 1
+            sleep(min(10, max(0, deadline - clock())))
+            continue
         state = roots.get("state")
         if state == "ready":
-            graph = get("/graph?layout=hub&marker=1", key, max(1, min(30, deadline - clock())))
             result = coverage(roots, graph)
             if result:
+                if transport_retries:
+                    result["transport_retries"] = transport_retries
                 return result
         elif state not in ("pending", "stale"):
             raise VerificationError(f"stored layout state is {state if state in ('off', 'failed') else 'invalid'}")

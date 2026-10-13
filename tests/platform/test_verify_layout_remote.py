@@ -58,6 +58,37 @@ class VerificationTests(unittest.TestCase):
         with self.assertRaises(vr.VerificationError):
             vr.verify("")
 
+    def test_transport_recovery_requires_full_roots_and_graph_coverage(self):
+        for error in ("account read returned HTTP 502", "account read could not complete"):
+            for failed_call in (1, 2):
+                now, calls = [0], [0]
+                def get(path, *args):
+                    calls[0] += 1
+                    if calls[0] == failed_call:
+                        raise vr.VerificationError(error)
+                    return ROOTS if "roots" in path else GRAPH
+                result = vr.verify("synthetic", get=get, clock=lambda: now[0],
+                                   sleep=lambda seconds: now.__setitem__(0, now[0] + seconds))
+                self.assertEqual(result, {"state": "ready", "marker_matches": True,
+                                          "nodes": 2, "edges": 2, "transport_retries": 1})
+
+    def test_persistent_transport_failure_is_bounded(self):
+        now = [0]
+        def get(*args):
+            raise vr.VerificationError("account read could not complete")
+        with self.assertRaisesRegex(vr.VerificationError, "deadline"):
+            vr.verify("synthetic", get=get, clock=lambda: now[0],
+                      sleep=lambda seconds: now.__setitem__(0, now[0] + seconds), wait_s=25)
+        self.assertEqual(now[0], 25)
+
+    def test_auth_and_contract_errors_are_not_retried(self):
+        for error in ("account read returned HTTP 401", "account read was not executed",
+                      "account reply was not JSON"):
+            def get(*args):
+                raise vr.VerificationError(error)
+            with self.assertRaisesRegex(vr.VerificationError, error):
+                vr.verify("synthetic", get=get, sleep=lambda _: self.fail("unexpected retry"))
+
 
 if __name__ == "__main__":
     unittest.main()

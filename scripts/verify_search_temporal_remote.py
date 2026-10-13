@@ -75,17 +75,24 @@ def verify(key: str, *, get=read, mcp_key=None, mcp_get=read_mcp,
                         {"mode": "historical", "as_of": "2020", "known_at": "2025"}):
             busy_retries = 0
             gateway_retries = 0
+            transport_retries = 0
             while True:
                 try:
                     result = fetch(options)
                 except VerificationError as exc:
                     # The account proxy maps both an upstream 503 DDL guard and
-                    # its own short fetch timeout to HTTP 502. Allow startup to
-                    # settle, but only a subsequent fully verified read passes.
-                    if (transport != "account" or str(exc) != "search read returned HTTP 502"
+                    # its own short fetch timeout to HTTP 502. A cold encoder can
+                    # also outlast this probe's socket timeout. Keep the same
+                    # startup deadline; only a fully verified later read passes.
+                    reason = str(exc)
+                    if (transport != "account" or reason not in (
+                            "search read returned HTTP 502", "search read could not complete")
                             or clock() >= deadline):
                         raise
-                    gateway_retries += 1
+                    if reason == "search read returned HTTP 502":
+                        gateway_retries += 1
+                    else:
+                        transport_retries += 1
                     sleep(min(5, max(0, deadline - clock())))
                     continue
                 # A newly restored store can hold a short DDL guard. Retry only this
@@ -125,6 +132,7 @@ def verify(key: str, *, get=read, mcp_key=None, mcp_get=read_mcp,
             checks.append({"transport": transport, "mode": options.get("mode", "legacy"),
                            "items_checked": len(items), "busy_retries": busy_retries,
                            "gateway_retries": gateway_retries,
+                           "transport_retries": transport_retries,
                            "time_scope_requested": "as_of" in options,
                            "semantic_degraded": bool(result.get("vector_note")), "contract": "pass"})
     if not any(c["items_checked"] for c in checks):
