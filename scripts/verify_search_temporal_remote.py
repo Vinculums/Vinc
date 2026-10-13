@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from urllib.parse import urlencode
 import urllib.error
 import urllib.request
@@ -58,10 +59,12 @@ def read_mcp(options, key, timeout):
     raise VerificationError("MCP search reply did not contain a result")
 
 
-def verify(key: str, *, get=read, mcp_key=None, mcp_get=read_mcp) -> dict:
+def verify(key: str, *, get=read, mcp_key=None, mcp_get=read_mcp,
+           clock=time.monotonic, sleep=time.sleep, wait_s=300) -> dict:
     if not key:
         raise VerificationError("VINC_GRAPH_READONLY_KEY is absent")
     checks = []
+    deadline = clock() + wait_s
     transports = [("account", lambda opts: get("/search?" + urlencode({
         "query": "vinc", "top_k": 1, **opts}), key, 30))]
     if mcp_key:
@@ -70,7 +73,17 @@ def verify(key: str, *, get=read, mcp_key=None, mcp_get=read_mcp) -> dict:
         for options in ({}, {"mode": "general"}, {"mode": "current"},
                         {"mode": "historical", "detail": "full"},
                         {"mode": "historical", "as_of": "2020", "known_at": "2025"}):
-            result = fetch(options)
+            busy_retries = 0
+            while True:
+                result = fetch(options)
+                # A newly restored store can hold a short DDL guard. Retry only this
+                # explicit transient code; every other error still fails immediately.
+                if (isinstance(result, dict) and result.get("error") == "store_busy"
+                        and clock() < deadline):
+                    busy_retries += 1
+                    sleep(min(5, max(0, deadline - clock())))
+                    continue
+                break
             if isinstance(result, dict) and result.get("executed") is not True:
                 # Only bounded stable codes, never error detail, owner, or returned content.
                 known_codes = {"index_missing", "extension_unavailable", "index_build_failed",
@@ -98,7 +111,8 @@ def verify(key: str, *, get=read, mcp_key=None, mcp_get=read_mcp) -> dict:
             if result.get("temporal_error"):
                 raise VerificationError("temporal metadata read was partial")
             checks.append({"transport": transport, "mode": options.get("mode", "legacy"),
-                           "items_checked": len(items), "time_scope_requested": "as_of" in options,
+                           "items_checked": len(items), "busy_retries": busy_retries,
+                           "time_scope_requested": "as_of" in options,
                            "semantic_degraded": bool(result.get("vector_note")), "contract": "pass"})
     if not any(c["items_checked"] for c in checks):
         raise VerificationError("no evidence metadata was available to verify")

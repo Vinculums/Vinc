@@ -73,3 +73,41 @@ def test_failure_diagnostics_keep_only_stable_code():
                error="index_build_failed: synthetic private identifier"))
     assert "error_code=index_build_failed" in str(exc.value)
     assert "private identifier" not in str(exc.value)
+
+
+def test_only_store_busy_is_retried_until_a_valid_result():
+    from urllib.parse import parse_qs, urlsplit
+    state = {"now": 0, "calls": 0}
+    def get(path, key, timeout):
+        state["calls"] += 1
+        if state["calls"] <= 3:
+            return response(executed=False, rows=[], error="store_busy")
+        return response(mode=parse_qs(urlsplit(path).query).get("mode", [None])[0])
+    def sleep(seconds):
+        state["now"] += seconds
+    result = verify("synthetic", get=get, clock=lambda: state["now"], sleep=sleep)
+    assert state == {"now": 15, "calls": 8}
+    assert result["checks"][0]["busy_retries"] == 3
+    assert sum(check["busy_retries"] for check in result["checks"]) == 3
+
+
+def test_persistent_store_busy_exhausts_budget_and_fails():
+    state = {"now": 0, "calls": 0}
+    def get(*args):
+        state["calls"] += 1
+        return response(executed=False, rows=[], error="store_busy")
+    with pytest.raises(VerificationError, match="error_code=store_busy"):
+        verify("synthetic", get=get, clock=lambda: state["now"],
+               sleep=lambda seconds: state.__setitem__("now", state["now"] + seconds),
+               wait_s=12)
+    assert state == {"now": 12, "calls": 4}
+
+
+def test_unrelated_execution_failure_is_not_retried():
+    state = {"calls": 0}
+    def get(*args):
+        state["calls"] += 1
+        return response(executed=False, rows=[], error="index_build_failed: private detail")
+    with pytest.raises(VerificationError, match="error_code=index_build_failed"):
+        verify("synthetic", get=get, sleep=lambda seconds: pytest.fail("unexpected retry"))
+    assert state["calls"] == 1
