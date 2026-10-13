@@ -111,3 +111,50 @@ def test_unrelated_execution_failure_is_not_retried():
     with pytest.raises(VerificationError, match="error_code=index_build_failed"):
         verify("synthetic", get=get, sleep=lambda seconds: pytest.fail("unexpected retry"))
     assert state["calls"] == 1
+
+
+def test_transient_account_gateway_error_requires_verified_result():
+    from urllib.parse import parse_qs, urlsplit
+    state = {"now": 0, "calls": 0}
+    def get(path, key, timeout):
+        state["calls"] += 1
+        if state["calls"] <= 2:
+            raise VerificationError("search read returned HTTP 502")
+        mode = parse_qs(urlsplit(path).query).get("mode", [None])[0]
+        return response(mode=mode)
+    def sleep(seconds):
+        state["now"] += seconds
+    result = verify("synthetic", get=get, clock=lambda: state["now"], sleep=sleep)
+    assert state == {"now": 10, "calls": 7}
+    assert result["checks"][0]["gateway_retries"] == 2
+    assert all(check["contract"] == "pass" for check in result["checks"])
+
+
+def test_persistent_account_gateway_error_exhausts_budget_and_fails():
+    state = {"now": 0, "calls": 0}
+    def get(*args):
+        state["calls"] += 1
+        raise VerificationError("search read returned HTTP 502")
+    with pytest.raises(VerificationError, match="HTTP 502"):
+        verify("synthetic", get=get, clock=lambda: state["now"],
+               sleep=lambda seconds: state.__setitem__("now", state["now"] + seconds),
+               wait_s=12)
+    assert state == {"now": 12, "calls": 4}
+
+
+def test_other_http_errors_and_mcp_gateway_error_fail_immediately():
+    from urllib.parse import parse_qs, urlsplit
+    for error in ("search read returned HTTP 401", "search read returned HTTP 503",
+                  "search read could not complete"):
+        def fail_read(*args):
+            raise VerificationError(error)
+        with pytest.raises(VerificationError, match=error):
+            verify("synthetic", get=fail_read,
+                   sleep=lambda _: pytest.fail("unexpected retry"))
+    def good_read(path, key, timeout):
+        return response(mode=parse_qs(urlsplit(path).query).get("mode", [None])[0])
+    def bad_mcp(*args):
+        raise VerificationError("search read returned HTTP 502")
+    with pytest.raises(VerificationError, match="HTTP 502"):
+        verify("synthetic", get=good_read, mcp_key="synthetic", mcp_get=bad_mcp,
+            sleep=lambda _: pytest.fail("unexpected retry"))
