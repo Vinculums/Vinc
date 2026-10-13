@@ -21,8 +21,9 @@ PREFLIGHT_TARGET = "team:00000000-0000-0000-0000-000000000000"
 
 
 def journals(store):
+    # Only JSON values are selected; the request reader has no raw-key API.
     rows = store.run("MATCH (m:_SyncMeta) WHERE m.key STARTS WITH $prefix RETURN m.value AS value",
-                     {"prefix": PREFIX}, raw=True)
+                     {"prefix": PREFIX})
     return [json.loads(r["value"]) for r in rows]
 
 
