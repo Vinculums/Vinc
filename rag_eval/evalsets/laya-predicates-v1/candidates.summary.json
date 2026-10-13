@@ -1,0 +1,33 @@
+{
+ "pairs": 726,
+ "seeds": 76,
+ "calls": 714,
+ "node_misses": 7,
+ "by_source": {
+  "ties": 163,
+  "search": 415,
+  "merge": 54,
+  "random": 60,
+  "comention": 63
+ },
+ "by_lang": {
+  "en": 416,
+  "mixed": 203,
+  "ko": 107
+ },
+ "with_context": 63,
+ "by_kind_pair": {
+  "concept+concept": 374,
+  "concept+record": 133,
+  "concept+decision": 41,
+  "decision+record": 19,
+  "decision+decision": 59,
+  "record+record": 100
+ },
+ "hub": "https://mcp.vincs.io",
+ "seed": 20261007,
+ "written_at": "2026-10-07T03:27:28Z",
+ "file": "candidates.jsonl",
+ "sha256": "6fce6dca609f95c0f0aa06a908b617608a95e3c21b6b6396853429c9b0f9d359",
+ "labels": "all null; the owner labels 300 of these into gold.jsonl (vinc.plan.laya-test-method-2026-10-07 §3)"
+}

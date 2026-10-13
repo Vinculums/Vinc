@@ -1,0 +1,38 @@
+{
+  "annotation_events": 0,
+  "automatic_ingestion_supported": false,
+  "bundle_sha256": "77a32a77f677ee047f1ea960aa5c5c3186603b523b966fe87a57ba322c6fc463",
+  "existing_vin443_session_rebased": false,
+  "human_reviews_completed": 0,
+  "model_calls": 0,
+  "questions": {
+    "contradicts": {
+      "criteria": {
+        "false": "A and B can both hold, or they are about different things.",
+        "true": "Accepting A requires rejecting B, including when the opposition is in meaning rather than in wording."
+      },
+      "instructions": "Do statements A and B make claims that cannot both be true?",
+      "type": "noul"
+    },
+    "same_as": {
+      "criteria": {
+        "false": "A and B differ in subject, scope, time or verdict, or one adds a claim the other lacks.",
+        "true": "A and B assert the same fact or decision, possibly in different words or languages."
+      },
+      "instructions": "Do statements A and B make the same claim about the same thing?",
+      "type": "noul"
+    },
+    "supports": {
+      "criteria": {
+        "false": "A is unrelated to B, merely restates B, or argues against B.",
+        "true": "A provides a measurement, result or argument that makes B more credible."
+      },
+      "instructions": "Does statement A give evidence or a reason for statement B?",
+      "type": "noul"
+    }
+  },
+  "questions_hash": "500e613737d1",
+  "queue_sha256": "bb575c108361720ae08c31d9152e9622eb0e74f66f80e862ed6745e71eb9d87f",
+  "selected": 96,
+  "training_exportable_pairs": 0
+}

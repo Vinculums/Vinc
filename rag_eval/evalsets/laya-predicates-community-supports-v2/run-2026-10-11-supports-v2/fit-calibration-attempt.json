@@ -1,0 +1,18 @@
+{
+ "physical_attempt": 1,
+ "started_at": "2026-10-11T04:37:33.136535+00:00",
+ "command": [
+  "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\venv\\Scripts\\python.exe",
+  "-u",
+  "-m",
+  "rag_eval.laya.fit_calib",
+  "--in",
+  "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\out\\community-supports-v2\\calib.jsonl",
+  "--out",
+  "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\out\\community-supports-v2\\calib",
+  "--min-bucket-n",
+  "30"
+ ],
+ "finished_at": "2026-10-11T04:37:49.399661+00:00",
+ "exit_code": 0
+}

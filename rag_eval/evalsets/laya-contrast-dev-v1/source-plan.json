@@ -1,0 +1,164 @@
+{
+  "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+  "documents": [
+    {
+      "key": "spec01",
+      "license_id": "MIT OR Apache-2.0",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/range-expr.md"
+    },
+    {
+      "key": "spec02",
+      "license_id": "MIT OR Apache-2.0",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/return-expr.md"
+    },
+    {
+      "key": "spec03",
+      "license_id": "MIT OR Apache-2.0",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/array-expr.md"
+    },
+    {
+      "key": "spec04",
+      "license_id": "MIT OR Apache-2.0",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/tuple-expr.md"
+    },
+    {
+      "key": "spec05",
+      "license_id": "MIT OR Apache-2.0",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/type-aliases.md"
+    },
+    {
+      "key": "spec06",
+      "license_id": "MIT OR Apache-2.0",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/constant-items.md"
+    },
+    {
+      "key": "spec07",
+      "license_id": "MIT OR Apache-2.0",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/use-declarations.md"
+    },
+    {
+      "key": "spec08",
+      "license_id": "MIT OR Apache-2.0",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/visibility-and-privacy.md"
+    }
+  ],
+  "observations": [
+    {
+      "key": "obs01",
+      "query": "SELECT count(*), count(x) FROM t;",
+      "setup": "CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9);"
+    },
+    {
+      "key": "obs02",
+      "query": "SELECT NULL IS NULL, NULL = NULL;",
+      "setup": ""
+    },
+    {
+      "key": "obs03",
+      "query": "SELECT count(*) FROM t;",
+      "setup": "CREATE TABLE t(x INTEGER UNIQUE); INSERT INTO t VALUES (3); INSERT OR IGNORE INTO t VALUES (3);"
+    },
+    {
+      "key": "obs04",
+      "query": "SELECT x FROM t ORDER BY x DESC LIMIT 2;",
+      "setup": "CREATE TABLE t(x); INSERT INTO t VALUES (8),(2),(5);"
+    },
+    {
+      "key": "obs05",
+      "query": "SELECT count(*), sum(x), total(x) FROM t;",
+      "setup": "CREATE TABLE t(x);"
+    },
+    {
+      "key": "obs06",
+      "query": "SELECT typeof(7/2), 7/2, 7.0/2;",
+      "setup": ""
+    },
+    {
+      "key": "obs07",
+      "query": "SELECT DISTINCT x FROM t ORDER BY x;",
+      "setup": "CREATE TABLE t(x); INSERT INTO t VALUES (1),(1),(2);"
+    },
+    {
+      "key": "obs08",
+      "query": "SELECT k,sum(v) FROM t GROUP BY k ORDER BY k;",
+      "setup": "CREATE TABLE t(k,v); INSERT INTO t VALUES ('a',2),('a',3),('b',5);"
+    }
+  ],
+  "rights": [
+    {
+      "key": "rust-mit",
+      "uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/LICENSE-MIT"
+    },
+    {
+      "key": "rust-apache",
+      "uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/LICENSE-APACHE"
+    },
+    {
+      "key": "nws-rights",
+      "uri": "https://www.weather.gov/disclaimer"
+    },
+    {
+      "key": "nws-api",
+      "uri": "https://www.weather.gov/documentation/services-web-api"
+    }
+  ],
+  "schema": "vinc.laya.development-source-plan.v1",
+  "stations": [
+    {
+      "key": "fact01",
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "station": "KSEA",
+      "uri": "https://api.weather.gov/stations/KSEA"
+    },
+    {
+      "key": "fact02",
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "station": "KDEN",
+      "uri": "https://api.weather.gov/stations/KDEN"
+    },
+    {
+      "key": "fact03",
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "station": "KORD",
+      "uri": "https://api.weather.gov/stations/KORD"
+    },
+    {
+      "key": "fact04",
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "station": "KBOS",
+      "uri": "https://api.weather.gov/stations/KBOS"
+    },
+    {
+      "key": "fact05",
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "station": "PHNL",
+      "uri": "https://api.weather.gov/stations/PHNL"
+    },
+    {
+      "key": "fact06",
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "station": "PAFA",
+      "uri": "https://api.weather.gov/stations/PAFA"
+    },
+    {
+      "key": "fact07",
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "station": "KSFO",
+      "uri": "https://api.weather.gov/stations/KSFO"
+    },
+    {
+      "key": "fact08",
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "station": "KMIA",
+      "uri": "https://api.weather.gov/stations/KMIA"
+    }
+  ]
+}

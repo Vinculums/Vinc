@@ -1,0 +1,13 @@
+{
+  "annotation_events": 0,
+  "bundle_sha256": "121ee1daba954f38cb57e6948dd3f021355441afb044bed12091fbd0834e1f3a",
+  "human_reviews_completed": 0,
+  "initial_human_annotations_completed": 0,
+  "model_calls": 0,
+  "queue_sha256": "4e16cc8a4870df4de5e7e5827335e7f9b7d48898b9cf33af23704a19877d4391",
+  "review_spec_sha256": "f9182ef30aaa26a56140a7d2582496cac98df556f99d1b64d193123b3e001f46",
+  "screening_tier": "human_review_pending",
+  "seed": 20261011,
+  "selected": 63,
+  "training_exportable_pairs": 0
+}

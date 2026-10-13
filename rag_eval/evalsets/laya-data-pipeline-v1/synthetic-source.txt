@@ -1,0 +1,1 @@
+Fictional schema example only; this is not an observed Vinc run. In scenario R12 on 2026-10-11, version 2 rejects all ten test inputs that lack a source reference. Version 1 rejects seven of those ten inputs. These inputs test missing source references only. No other production behavior was measured.

@@ -1,0 +1,92 @@
+{
+ "n": 300,
+ "length_only_auroc": {
+  "all": {
+   "supports": 0.486,
+   "contradicts": 0.475,
+   "same_as": 0.551
+  },
+  "en": {
+   "supports": 0.39,
+   "contradicts": 0.44,
+   "same_as": 0.628
+  },
+  "ko": {
+   "supports": 0.576,
+   "contradicts": 0.386,
+   "same_as": 0.734
+  },
+  "mixed": {
+   "supports": 0.434,
+   "contradicts": 0.445,
+   "same_as": 0.67
+  }
+ },
+ "labels": {
+  "supports": {
+   "0": 240,
+   "1": 60
+  },
+  "contradicts": {
+   "0": 240,
+   "1": 60
+  },
+  "same_as": {
+   "0": 240,
+   "1": 60
+  }
+ },
+ "languages": {
+  "en": 120,
+  "mixed": 90,
+  "ko": 90
+ },
+ "label_class_by_language": {
+  "en": {
+   "same_as": 24,
+   "supports": 24,
+   "none": 48,
+   "contradicts": 24
+  },
+  "mixed": {
+   "same_as": 18,
+   "supports": 18,
+   "contradicts": 18,
+   "none": 36
+  },
+  "ko": {
+   "contradicts": 18,
+   "none": 36,
+   "same_as": 18,
+   "supports": 18
+  }
+ },
+ "hard_kind": {
+  "evidence_supports_grounded": 20,
+  "grounded_supports_claim": 20,
+  "lexical_overlap": 30,
+  "negation": 20,
+  "paraphrase": 42,
+  "reason_supports_conclusion": 20,
+  "reversed_direction": 30,
+  "scope_shift": 30,
+  "semantic_reversal": 20,
+  "topical_only": 30,
+  "translation": 18,
+  "value_conflict": 20
+ },
+ "pack_domain": {
+  "art": 180,
+  "economics": 120
+ },
+ "documents": 57,
+ "negation_cue_among_contradicts": {
+  "none": 50,
+  "one_side": 10
+ },
+ "negation_cue_among_non_contradicts": {
+  "none": 211,
+  "one_side": 26,
+  "both": 3
+ }
+}

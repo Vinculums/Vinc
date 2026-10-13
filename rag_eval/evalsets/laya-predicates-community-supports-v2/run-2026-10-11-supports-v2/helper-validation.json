@@ -1,0 +1,8 @@
+{
+ "model_calls": 0,
+ "metric_boundary_check": "passed",
+ "manifest_key_corrected_before_training": true,
+ "skipped_count_type": "empty dictionary",
+ "check_training_guard_corrected": "not skipped",
+ "execution_helper_sha256_after_guard_correction": "8a905baea6ce13056061e4cce7e4fe1704fed615bbfb2de8d69964556ce41659"
+}

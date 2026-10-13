@@ -22,6 +22,7 @@ stdlib 전용. exit 0=PASS(0건) · 1=위반 발견 · 3=내부 오류.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -104,6 +105,28 @@ _ALLOWLIST_SUFFIXES = (
     "starter-packs/work/art/02-case-applications-2.md",
     "starter-packs/work/art/01-case-applications.md",
 )
+
+# 고정한 외부 사건 목록의 출처 식별자다. F8-a만 제외하며 바이트가 바뀌면 다시 검사한다.
+# 근거: [[vinc.canon.terminology §7]]
+_USGS_DATA_ROOT = "rag_eval/evalsets/laya-contrast-pilot-v1/"
+_EXTERNAL_F8_SHA256 = {_USGS_DATA_ROOT + name: sha for name, sha in {
+    "source-freeze.json": "87ce2212029d3be1f2f2c37b7e3b9fe043f42de6e75631e3d93f7f29c8a47a02",
+    "sources/fact01.txt": "a522d9cd83df603a9c56a6b079b204fb2af578ca6490759fe0e25d70bbbc0df0",
+    "sources/fact02.txt": "512e8e91495e69e83e5804f28a15915de67e3fa81ebb82226ebab4af3f920551",
+    "sources/fact03.txt": "d3d0bb8427a79c55452af5e38947f2eb1651da3bb33ced6d2a2d7811a474910e",
+    "sources/fact04.txt": "02e9bd06c8182ff0ebb0f26e8c26421608f5be819471a592c0d1c31a484a3b2c",
+    "sources/fact05.txt": "48a208cbe202ec038c7fff3bc9f2d592301d211bb56bf697d8e9039993089e55",
+    "sources/fact06.txt": "eac56cf4f0c28f8fde813909bd6730871519c64f735da6a93e933f43e5840583",
+    "sources/fact07.txt": "5b518d27b33653bc49d3e975924749e23ff0a4a1f3d837e6e587ba7122fac9ae",
+    "sources/fact08.txt": "634a76ca999b9e479e78344a8c840681ef25a834c21e4e671777367df239a24b",
+    "sources/fact09.txt": "35ffedc809ed311797f1e77dafec5e852a4faf361f0c9215942a3525c9e11238",
+    "sources/fact10.txt": "95c9087d7476a8e6e2aca211aae3cfc77529435e875bb366a260bd828af92203",
+    "sources/fact11.txt": "d58d43a216e2c5f8911f9d190c6d4d8ac8f3c49a790b5757d8a31383170a502f",
+    "sources/fact12.txt": "bbedc08d4a74aaef045bc4ba91a0bd15a1e2e00d2e61df11d0d790784184c12f",
+    "sources/fact13.txt": "87210b6af5ac14dfe78f3797e86119b5d2010d6ae259d0f57bd73520cc4e7f21",
+    "sources/fact15.txt": "560de263ab0925edd8232dff05d2208c48c0c27c53a2e9e7e7ec850f003d3352",
+    "sources/fact16.txt": "4af47016170d0c993e96befa0a30ac704491239f6570ce1c4fc8ed6bbdd6dab3",
+}.items()}
 
 
 @dataclass
@@ -325,11 +348,14 @@ def scan(root: Path) -> list[Violation]:
     out: list[Violation] = []
     for path, rel in _iter_files(root):
         try:
-            text = path.read_text(encoding="utf-8")
+            raw = path.read_bytes()
+            text = raw.decode("utf-8")
         except (UnicodeDecodeError, OSError):
             continue
         rules = [r for r in ALL_RULES
                  if not r.scope or any(rel.startswith(s) for s in r.scope)]
+        if rel in _EXTERNAL_F8_SHA256 and hashlib.sha256(raw).hexdigest() == _EXTERNAL_F8_SHA256[rel]:
+            rules = [r for r in rules if not (r.gate == "F8" and r.label == "atlas")]
         if not rules:
             continue
         lines = text.splitlines()

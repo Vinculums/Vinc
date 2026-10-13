@@ -1,0 +1,3469 @@
+{
+  "allocation": [
+    {
+      "family_id": "family:laya-p1-fact01",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-fact01"
+    },
+    {
+      "family_id": "family:laya-p1-fact02",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-fact02"
+    },
+    {
+      "family_id": "family:laya-p1-fact03",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-fact03"
+    },
+    {
+      "family_id": "family:laya-p1-fact04",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-fact04"
+    },
+    {
+      "family_id": "family:laya-p1-fact05",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-fact05"
+    },
+    {
+      "family_id": "family:laya-p1-fact06",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-fact06"
+    },
+    {
+      "family_id": "family:laya-p1-fact07",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-fact07"
+    },
+    {
+      "family_id": "family:laya-p1-fact08",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-fact08"
+    },
+    {
+      "family_id": "family:laya-p1-fact09",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-fact09"
+    },
+    {
+      "family_id": "family:laya-p1-fact10",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-fact10"
+    },
+    {
+      "family_id": "family:laya-p1-fact11",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-fact11"
+    },
+    {
+      "family_id": "family:laya-p1-fact12",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-fact12"
+    },
+    {
+      "family_id": "family:laya-p1-fact13",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-fact13"
+    },
+    {
+      "family_id": "family:laya-p1-fact14",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-fact14"
+    },
+    {
+      "family_id": "family:laya-p1-fact15",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-fact15"
+    },
+    {
+      "family_id": "family:laya-p1-fact16",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-fact16"
+    },
+    {
+      "family_id": "family:laya-p1-fact17",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-fact17"
+    },
+    {
+      "family_id": "family:laya-p1-fact18",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-fact18"
+    },
+    {
+      "family_id": "family:laya-p1-fact19",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-fact19"
+    },
+    {
+      "family_id": "family:laya-p1-fact20",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-fact20"
+    },
+    {
+      "family_id": "family:laya-p1-obs01",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-obs01"
+    },
+    {
+      "family_id": "family:laya-p1-obs02",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-obs02"
+    },
+    {
+      "family_id": "family:laya-p1-obs03",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-obs03"
+    },
+    {
+      "family_id": "family:laya-p1-obs04",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-obs04"
+    },
+    {
+      "family_id": "family:laya-p1-obs05",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-obs05"
+    },
+    {
+      "family_id": "family:laya-p1-obs06",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-obs06"
+    },
+    {
+      "family_id": "family:laya-p1-obs07",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-obs07"
+    },
+    {
+      "family_id": "family:laya-p1-obs08",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-obs08"
+    },
+    {
+      "family_id": "family:laya-p1-obs09",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-obs09"
+    },
+    {
+      "family_id": "family:laya-p1-obs10",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-obs10"
+    },
+    {
+      "family_id": "family:laya-p1-obs11",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-obs11"
+    },
+    {
+      "family_id": "family:laya-p1-obs12",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-obs12"
+    },
+    {
+      "family_id": "family:laya-p1-obs13",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-obs13"
+    },
+    {
+      "family_id": "family:laya-p1-obs14",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-obs14"
+    },
+    {
+      "family_id": "family:laya-p1-obs15",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-obs15"
+    },
+    {
+      "family_id": "family:laya-p1-obs16",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-obs16"
+    },
+    {
+      "family_id": "family:laya-p1-obs17",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-obs17"
+    },
+    {
+      "family_id": "family:laya-p1-obs18",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-obs18"
+    },
+    {
+      "family_id": "family:laya-p1-obs19",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-obs19"
+    },
+    {
+      "family_id": "family:laya-p1-obs20",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-obs20"
+    },
+    {
+      "family_id": "family:laya-p1-spec01",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-spec01"
+    },
+    {
+      "family_id": "family:laya-p1-spec02",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-spec02"
+    },
+    {
+      "family_id": "family:laya-p1-spec03",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-spec03"
+    },
+    {
+      "family_id": "family:laya-p1-spec04",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-spec04"
+    },
+    {
+      "family_id": "family:laya-p1-spec05",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-spec05"
+    },
+    {
+      "family_id": "family:laya-p1-spec06",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-spec06"
+    },
+    {
+      "family_id": "family:laya-p1-spec07",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-spec07"
+    },
+    {
+      "family_id": "family:laya-p1-spec08",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-spec08"
+    },
+    {
+      "family_id": "family:laya-p1-spec09",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-spec09"
+    },
+    {
+      "family_id": "family:laya-p1-spec10",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-spec10"
+    },
+    {
+      "family_id": "family:laya-p1-spec11",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-spec11"
+    },
+    {
+      "family_id": "family:laya-p1-spec12",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-spec12"
+    },
+    {
+      "family_id": "family:laya-p1-spec13",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-spec13"
+    },
+    {
+      "family_id": "family:laya-p1-spec14",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-spec14"
+    },
+    {
+      "family_id": "family:laya-p1-spec15",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-spec15"
+    },
+    {
+      "family_id": "family:laya-p1-spec16",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-spec16"
+    },
+    {
+      "family_id": "family:laya-p1-spec17",
+      "language_cell": "ko_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-spec17"
+    },
+    {
+      "family_id": "family:laya-p1-spec18",
+      "language_cell": "en_en",
+      "role": "train",
+      "source_id": "source:laya-p1-spec18"
+    },
+    {
+      "family_id": "family:laya-p1-spec19",
+      "language_cell": "ko_en",
+      "role": "train",
+      "source_id": "source:laya-p1-spec19"
+    },
+    {
+      "family_id": "family:laya-p1-spec20",
+      "language_cell": "en_ko",
+      "role": "train",
+      "source_id": "source:laya-p1-spec20"
+    }
+  ],
+  "assignments": [
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usp000a3qq"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact01"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usp000ah4q"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact02"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usp000bg0m"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact03"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usp000c8kv"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact04"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usp000dbed"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact05"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usp000dk85"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact06"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usp000exfn"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact07"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usp000fmz4"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact08"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usp000g650"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact09"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usp000h1ys"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact10"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usp000h7rf"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact11"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usp000hvnu"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact12"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usp000jhh2"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact13"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usb000h4jh"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact14"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-usc000nzvd"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact15"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-us20003k7a"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact16"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-us200081v8"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact17"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-us2000ahv0"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact18"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-us1000gcii"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact19"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-us60003sc0"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-fact20"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs01"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs01"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs02"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs02"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs03"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs03"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs04"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs04"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs05"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs05"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs06"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs06"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs07"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs07"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs08"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs08"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs09"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs09"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs10"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs10"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs11"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs11"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs12"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs12"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs13"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs13"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs14"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs14"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs15"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs15"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs16"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs16"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs17"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs17"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs18"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs18"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs19"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs19"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-obs20"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-obs20"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-baggage/api.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec01"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-common/attribute-naming.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec02"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-common/attribute-requirement-level.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec03"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-common/instrumentation-scope.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec04"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-configuration/sdk-environment-variables.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec05"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-context/api-propagators.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec06"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-context/README.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec07"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-error-handling.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec08"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-library-guidelines.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec09"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-logs/data-model.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec10"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-logs/noop.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec11"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-metrics/sdk_exporters/in-memory.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec12"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-metrics/sdk_exporters/prometheus.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec13"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-performance.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec14"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-resource/sdk.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec15"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-schemas/file_format_v1.1.0.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec16"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-trace/exceptions.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec17"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-trace/tracestate-handling.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec18"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-trace/sdk_exporters/stdout.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec19"
+    },
+    {
+      "assigned_at": "2026-10-11T07:53:18.807024+00:00",
+      "groups": [
+        "document:laya-p1-versioning-and-stability.md"
+      ],
+      "role": "train",
+      "source_id": "source:laya-p1-spec20"
+    }
+  ],
+  "created_at": "2026-10-11T07:53:18.807024+00:00",
+  "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+  "final_measurement": false,
+  "licenses": {
+    "otel-license": {
+      "captured_at": "2026-10-11T07:53:15.826032+00:00",
+      "path": "rights/otel-license.txt",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/LICENSE"
+    },
+    "usgs-rights": {
+      "captured_at": "2026-10-11T07:53:18.469019+00:00",
+      "path": "rights/usgs-rights.txt",
+      "sha256": "4fe84d5197990fd074a9b2e8b87252e24191deccd6c94685490b44a9750b0ef4",
+      "uri": "https://www.usgs.gov/faqs/are-usgs-reportspublications-copyrighted"
+    }
+  },
+  "schema": "vinc.laya.source-freeze.v1",
+  "source_metadata": [
+    {
+      "event_id": "usp000a3qq",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            152.169,
+            -3.98,
+            33
+          ],
+          "type": "Point"
+        },
+        "id": "usp000a3qq",
+        "properties": {
+          "alert": null,
+          "cdi": null,
+          "code": "p000a3qq",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usp000a3qq&format=geojson",
+          "dmin": null,
+          "felt": null,
+          "gap": null,
+          "ids": ",usp000a3qq,gcmtm111600b,gcmt20001116045456,duputel111600b,atlas20001116045457,iscgem1913438,",
+          "mag": 8,
+          "magType": "mwc",
+          "mmi": 7.106,
+          "net": "us",
+          "nst": 254,
+          "place": "2000 New Ireland Earthquake",
+          "rms": 1.2,
+          "sig": 985,
+          "sources": ",us,gcmt,gcmt,duputel,atlas,iscgem,",
+          "status": "reviewed",
+          "time": 974350496740,
+          "title": "M 8.0 - 2000 New Ireland Earthquake",
+          "tsunami": 0,
+          "type": "earthquake",
+          "types": ",earthquake-name,finite-fault,focal-mechanism,general-text,ground-failure,impact-text,moment-tensor,origin,phase-data,shakemap,trump-shakemap,",
+          "tz": null,
+          "updated": 1764175729647,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usp000a3qq"
+        },
+        "type": "Feature"
+      },
+      "key": "fact01"
+    },
+    {
+      "event_id": "usp000ah4q",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            -73.641,
+            -16.265,
+            33
+          ],
+          "type": "Point"
+        },
+        "id": "usp000ah4q",
+        "properties": {
+          "alert": null,
+          "cdi": null,
+          "code": "p000ah4q",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usp000ah4q&format=geojson",
+          "dmin": null,
+          "felt": null,
+          "gap": null,
+          "ids": ",usp000ah4q,choy20010623203314,gcmtm062301e,official20010623203314130_33,duputel062301e,gcmt20010623203314,atlas20010623203314,iscgem1893467,",
+          "mag": 8.4,
+          "magType": "mwc",
+          "mmi": 8.112,
+          "net": "us",
+          "nst": 518,
+          "place": "6 km SSW of Atico, Peru",
+          "rms": 1.05,
+          "sig": 1086,
+          "sources": ",us,choy,gcmt,official,duputel,gcmt,atlas,iscgem,",
+          "status": "reviewed",
+          "time": 993328394130,
+          "title": "M 8.4 - 6 km SSW of Atico, Peru",
+          "tsunami": 0,
+          "type": "earthquake",
+          "types": ",finite-fault,focal-mechanism,general-header,general-text,ground-failure,impact-text,moment-tensor,origin,phase-data,shakemap,trump-impact-text,trump-origin,trump-phase-data,trump-shakemap,",
+          "tz": null,
+          "updated": 1651260209022,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usp000ah4q"
+        },
+        "type": "Feature"
+      },
+      "key": "fact02"
+    },
+    {
+      "event_id": "usp000bg0m",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            -147.444,
+            63.517,
+            4.9
+          ],
+          "type": "Point"
+        },
+        "id": "usp000bg0m",
+        "properties": {
+          "alert": null,
+          "cdi": 7.9,
+          "code": "p000bg0m",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usp000bg0m&format=geojson",
+          "dmin": null,
+          "felt": 3067,
+          "gap": null,
+          "ids": ",ak002e435qpj,ak22614036,usp000bg0m,choy20021103221241,gcmtm110302j,duputel110302j,gcmt20021103221241,iscgem6123395,atlas20021103221243,",
+          "mag": 7.9,
+          "magType": "mwc",
+          "mmi": 8.583,
+          "net": "us",
+          "nst": 771,
+          "place": "2002 Denali Fault, Alaska Earthquake",
+          "rms": null,
+          "sig": 1750,
+          "sources": ",ak,ak,us,choy,gcmt,duputel,gcmt,iscgem,atlas,",
+          "status": "reviewed",
+          "time": 1036361561000,
+          "title": "M 7.9 - 2002 Denali Fault, Alaska Earthquake",
+          "tsunami": 0,
+          "type": "earthquake",
+          "types": ",associate,dyfi,earthquake-name,finite-fault,focal-mechanism,general-link,general-text,ground-failure,impact-text,moment-tensor,origin,phase-data,poster,shakemap,trump-shakemap,",
+          "tz": null,
+          "updated": 1733871907865,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usp000bg0m"
+        },
+        "type": "Feature"
+      },
+      "key": "fact03"
+    },
+    {
+      "event_id": "usp000c8kv",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            143.91,
+            41.815,
+            27
+          ],
+          "type": "Point"
+        },
+        "id": "usp000c8kv",
+        "properties": {
+          "alert": null,
+          "cdi": null,
+          "code": "p000c8kv",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usp000c8kv&format=geojson",
+          "dmin": null,
+          "felt": null,
+          "gap": 27.4,
+          "ids": ",official20030925195006360_27,usp000c8kv,choy20030925195006,gcmtm092503c,gcmt20030925195006,duputel092503c,iscgem7134409,atlas20030925195006,",
+          "mag": 8.3,
+          "magType": "mwc",
+          "mmi": 8.674,
+          "net": "us",
+          "nst": 669,
+          "place": "2003 Tokachi-Oki Earthquake",
+          "rms": 0.88,
+          "sig": 1024,
+          "sources": ",official,us,choy,gcmt,gcmt,duputel,iscgem,atlas,",
+          "status": "reviewed",
+          "time": 1064519406360,
+          "title": "M 8.3 - 2003 Tokachi-Oki Earthquake",
+          "tsunami": 0,
+          "type": "earthquake",
+          "types": ",earthquake-name,finite-fault,focal-mechanism,general-header,general-text,ground-failure,impact-text,moment-tensor,origin,phase-data,poster,scitech-link,shakemap,trump-origin,",
+          "tz": null,
+          "updated": 1754413520677,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usp000c8kv"
+        },
+        "type": "Feature"
+      },
+      "key": "fact04"
+    },
+    {
+      "event_id": "usp000dbed",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            95.982,
+            3.295,
+            30
+          ],
+          "type": "Point"
+        },
+        "id": "usp000dbed",
+        "properties": {
+          "alert": null,
+          "cdi": 8.6,
+          "code": "p000dbed",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usp000dbed&format=geojson",
+          "dmin": null,
+          "felt": 5,
+          "gap": 22,
+          "ids": ",official20041226005853450_30,duputel122604a,us2004slav,choy20041226005853,gcmtm122604a,usp000dbed,gcmt20041226005850,atlas20041226005853,iscgem7453151,",
+          "mag": 9,
+          "magType": "mwc",
+          "mmi": 7.909,
+          "net": "us",
+          "nst": 601,
+          "place": "2004 Sumatra - Andaman Islands Earthquake",
+          "rms": 1.17,
+          "sig": 1278,
+          "sources": ",official,duputel,us,choy,gcmt,us,gcmt,atlas,iscgem,",
+          "status": "reviewed",
+          "time": 1104022733450,
+          "title": "M 9.0 - 2004 Sumatra - Andaman Islands Earthquake",
+          "tsunami": 0,
+          "type": "earthquake",
+          "types": ",associate,dyfi,finite-fault,focal-mechanism,general-header,general-text,ground-failure,impact-text,moment-tensor,origin,phase-data,poster,shakemap,trump-origin,trump-shakemap,",
+          "tz": null,
+          "updated": 1780672574192,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usp000dbed"
+        },
+        "type": "Feature"
+      },
+      "key": "fact05"
+    },
+    {
+      "event_id": "usp000dk85",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            97.108,
+            2.085,
+            30
+          ],
+          "type": "Point"
+        },
+        "id": "usp000dk85",
+        "properties": {
+          "alert": null,
+          "cdi": null,
+          "code": "p000dk85",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usp000dk85&format=geojson",
+          "dmin": null,
+          "felt": null,
+          "gap": 22.1,
+          "ids": ",us2005weax,usp000dk85,choy20050328160936,gcmtc200503281609a,official20050328160936530_30,gcmt20050328160936,duputel200503281609a,atlas20050328160936,iscgem7486110,",
+          "mag": 8.6,
+          "magType": "mwc",
+          "mmi": 8.475,
+          "net": "us",
+          "nst": 510,
+          "place": "78 km WSW of Singkil, Indonesia",
+          "rms": 0.91,
+          "sig": 1138,
+          "sources": ",us,us,choy,gcmt,official,gcmt,duputel,atlas,iscgem,",
+          "status": "reviewed",
+          "time": 1112026176530,
+          "title": "M 8.6 - 78 km WSW of Singkil, Indonesia",
+          "tsunami": 0,
+          "type": "earthquake",
+          "types": ",associate,finite-fault,focal-mechanism,general-text,impact-text,moment-tensor,origin,phase-data,poster,shakemap,trump-impact-text,trump-origin,trump-phase-data,trump-shakemap,",
+          "tz": null,
+          "updated": 1657818493141,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usp000dk85"
+        },
+        "type": "Feature"
+      },
+      "key": "fact06"
+    },
+    {
+      "event_id": "usp000exfn",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            153.266,
+            46.592,
+            10
+          ],
+          "type": "Point"
+        },
+        "id": "usp000exfn",
+        "properties": {
+          "alert": null,
+          "cdi": 3.8,
+          "code": "p000exfn",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usp000exfn&format=geojson",
+          "dmin": null,
+          "felt": 12,
+          "gap": 20.9,
+          "ids": ",usp000exfn,us2006vcam,choy20061115111413,gcmtm200611151114a,duputel200611151114a,gcmt20061115111417,iscgem9235276,atlas20061115111413,",
+          "mag": 8.3,
+          "magType": "mwc",
+          "mmi": 6.9,
+          "net": "us",
+          "nst": 576,
+          "place": "2006 Kuril Islands Earthquake",
+          "rms": 1.07,
+          "sig": 1064,
+          "sources": ",us,us,choy,gcmt,duputel,gcmt,iscgem,atlas,",
+          "status": "reviewed",
+          "time": 1163589253570,
+          "title": "M 8.3 - 2006 Kuril Islands Earthquake",
+          "tsunami": 0,
+          "type": "earthquake",
+          "types": ",associate,dyfi,earthquake-name,finite-fault,focal-mechanism,general-text,impact-text,moment-tensor,origin,phase-data,poster,shakemap,",
+          "tz": null,
+          "updated": 1764182929365,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usp000exfn"
+        },
+        "type": "Feature"
+      },
+      "key": "fact07"
+    },
+    {
+      "event_id": "usp000fmz4",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            101.367,
+            -4.438,
+            34
+          ],
+          "type": "Point"
+        },
+        "id": "usp000fmz4",
+        "properties": {
+          "alert": null,
+          "cdi": null,
+          "code": "p000fmz4",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usp000fmz4&format=geojson",
+          "dmin": null,
+          "felt": null,
+          "gap": 32.3,
+          "ids": ",us2007hear,usp000fmz4,choy20070912111026,gcmtc200709121110a,official20070912111026830_34,duputel200709121110a,gcmt20070912111026,iscgem13203322,atlas20070912111026,",
+          "mag": 8.5,
+          "magType": "mwc",
+          "mmi": 6.446,
+          "net": "us",
+          "nst": 411,
+          "place": "122 km SW of Bengkulu, Indonesia",
+          "rms": 1.03,
+          "sig": 1086,
+          "sources": ",us,us,choy,gcmt,official,duputel,gcmt,iscgem,atlas,",
+          "status": "reviewed",
+          "time": 1189595426830,
+          "title": "M 8.5 - 122 km SW of Bengkulu, Indonesia",
+          "tsunami": 0,
+          "type": "earthquake",
+          "types": ",associate,finite-fault,focal-mechanism,general-header,general-text,impact-text,moment-tensor,origin,phase-data,shakemap,trump-impact-text,trump-origin,trump-phase-data,trump-shakemap,",
+          "tz": null,
+          "updated": 1657768227019,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usp000fmz4"
+        },
+        "type": "Feature"
+      },
+      "key": "fact08"
+    },
+    {
+      "event_id": "usp000g650",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            103.322,
+            31.002,
+            19
+          ],
+          "type": "Point"
+        },
+        "id": "usp000g650",
+        "properties": {
+          "alert": null,
+          "cdi": 9.1,
+          "code": "p000g650",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usp000g650&format=geojson",
+          "dmin": null,
+          "felt": 1236,
+          "gap": 11.3,
+          "ids": ",us2008ryan,usp000g650,choy20080512062801,gcmtc200805120628a,gcmt20080512062801,duputel200805120628a,atlas20080512062801,iscgem13228121,",
+          "mag": 7.9,
+          "magType": "mwc",
+          "mmi": 9.08,
+          "net": "us",
+          "nst": 774,
+          "place": "58 km W of Tianpeng, China",
+          "rms": 1.2,
+          "sig": 1870,
+          "sources": ",us,us,choy,gcmt,gcmt,duputel,atlas,iscgem,",
+          "status": "reviewed",
+          "time": 1210573681570,
+          "title": "M 7.9 - 58 km W of Tianpeng, China",
+          "tsunami": 0,
+          "type": "earthquake",
+          "types": ",associate,dyfi,finite-fault,focal-mechanism,general-link,general-text,ground-failure,impact-text,moment-tensor,origin,phase-data,poster,shakemap,trump-shakemap,",
+          "tz": null,
+          "updated": 1757654699612,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usp000g650"
+        },
+        "type": "Feature"
+      },
+      "key": "fact09"
+    },
+    {
+      "event_id": "usp000h1ys",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            -172.095,
+            -15.489,
+            18
+          ],
+          "type": "Point"
+        },
+        "id": "usp000h1ys",
+        "properties": {
+          "alert": null,
+          "cdi": 7.2,
+          "code": "p000h1ys",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usp000h1ys&format=geojson",
+          "dmin": null,
+          "felt": 66,
+          "gap": 20.8,
+          "ids": ",us2009mdbi,usp000h1ys,choy20090929174811,gcmtc200909291748a,duputel200909291748a,gcmt20090929174811,atlas20090929174810,iscgem15162203,",
+          "mag": 8.1,
+          "magType": "mwc",
+          "mmi": 5.681,
+          "net": "us",
+          "nst": 520,
+          "place": "2009 Samoa Earthquake",
+          "rms": 1.01,
+          "sig": 1057,
+          "sources": ",us,us,choy,gcmt,duputel,gcmt,atlas,iscgem,",
+          "status": "reviewed",
+          "time": 1254246490990,
+          "title": "M 8.1 - 2009 Samoa Earthquake",
+          "tsunami": 0,
+          "type": "earthquake",
+          "types": ",associate,dyfi,earthquake-name,finite-fault,focal-mechanism,general-text,impact-text,moment-tensor,origin,phase-data,poster,shakemap,trump-shakemap,",
+          "tz": null,
+          "updated": 1764175286460,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usp000h1ys"
+        },
+        "type": "Feature"
+      },
+      "key": "fact10"
+    },
+    {
+      "event_id": "usp000h7rf",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            -72.898,
+            -36.122,
+            22.9
+          ],
+          "type": "Point"
+        },
+        "id": "usp000h7rf",
+        "properties": {
+          "alert": null,
+          "cdi": 9.1,
+          "code": "p000h7rf",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usp000h7rf&format=geojson",
+          "dmin": null,
+          "felt": 2851,
+          "gap": 17.8,
+          "ids": ",usp000h7rf,us2010tfan,official20100227063411530_30,choy20100227063411,gcmtc201002270634a,duputel201002270634a,gcmt20100227063415,atlas20100227063414,iscgem14340585,",
+          "mag": 8.8,
+          "magType": "mwc",
+          "mmi": 8.249,
+          "net": "us",
+          "nst": 454,
+          "place": "2010 Maule, Chile Earthquake",
+          "rms": 1.09,
+          "sig": 2101,
+          "sources": ",us,us,official,choy,gcmt,duputel,gcmt,atlas,iscgem,",
+          "status": "reviewed",
+          "time": 1267252451530,
+          "title": "M 8.8 - 2010 Maule, Chile Earthquake",
+          "tsunami": 0,
+          "type": "earthquake",
+          "types": ",associate,dyfi,earthquake-name,finite-fault,focal-mechanism,general-header,general-text,ground-failure,impact-text,moment-tensor,origin,phase-data,poster,scitech-link,scitech-text,shakemap,trump-impact-text,trump-origin,trump-phase-data,trump-shakemap,",
+          "tz": null,
+          "updated": 1783884520054,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usp000h7rf"
+        },
+        "type": "Feature"
+      },
+      "key": "fact11"
+    },
+    {
+      "event_id": "usp000hvnu",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            142.373,
+            38.297,
+            29
+          ],
+          "type": "Point"
+        },
+        "id": "usp000hvnu",
+        "properties": {
+          "alert": null,
+          "cdi": 9.1,
+          "code": "p000hvnu",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usp000hvnu&format=geojson",
+          "dmin": null,
+          "felt": 1459,
+          "gap": 9.5,
+          "ids": ",usc0001xgp,official20110311054624120_30,usp000hvnu,choy20110311054623,duputel201103110546a,atlas20110311054624,iscgem16461282,",
+          "mag": 9,
+          "magType": "mww",
+          "mmi": 8.18,
+          "net": "us",
+          "nst": 541,
+          "place": "2011 Great Tohoku Earthquake, Japan",
+          "rms": 1.16,
+          "sig": 2184,
+          "sources": ",us,official,us,choy,duputel,atlas,iscgem,",
+          "status": "reviewed",
+          "time": 1299822384120,
+          "title": "M 9.0 - 2011 Great Tohoku Earthquake, Japan",
+          "tsunami": 0,
+          "type": "earthquake",
+          "types": ",dyfi,finite-fault,focal-mechanism,general-header,general-link,general-text,ground-failure,impact-text,moment-tensor,origin,phase-data,poster,scitech-link,scitech-text,shakemap,trump-impact-text,trump-origin,trump-phase-data,trump-shakemap,",
+          "tz": null,
+          "updated": 1790377722510,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usp000hvnu"
+        },
+        "type": "Feature"
+      },
+      "key": "fact12"
+    },
+    {
+      "event_id": "usp000jhh2",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            93.063,
+            2.327,
+            20
+          ],
+          "type": "Point"
+        },
+        "id": "usp000jhh2",
+        "properties": {
+          "alert": "yellow",
+          "cdi": 9.1,
+          "code": "p000jhh2",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usp000jhh2&format=geojson",
+          "dmin": null,
+          "felt": 3311,
+          "gap": 16.6,
+          "ids": ",usp000jhh2,usc000905e,official20120411083836720_20,duputel201204110838a,iscgem600860404,atlas20120411083836,",
+          "mag": 8.6,
+          "magType": "mww",
+          "mmi": 6.755,
+          "net": "us",
+          "nst": 499,
+          "place": "2012 Wharton Basin Earthquake",
+          "rms": 1.33,
+          "sig": 2048,
+          "sources": ",us,us,official,duputel,iscgem,atlas,",
+          "status": "reviewed",
+          "time": 1334133516720,
+          "title": "M 8.6 - 2012 Wharton Basin Earthquake",
+          "tsunami": 0,
+          "type": "earthquake",
+          "types": ",associate,dyfi,earthquake-name,finite-fault,focal-mechanism,general-header,general-text,impact-text,losspager,moment-tensor,origin,phase-data,poster,shakemap,trump-origin,trump-phase-data,trump-shakemap,",
+          "tz": null,
+          "updated": 1764176327655,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usp000jhh2"
+        },
+        "type": "Feature"
+      },
+      "key": "fact13"
+    },
+    {
+      "event_id": "usb000h4jh",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            153.221,
+            54.892,
+            598.1
+          ],
+          "type": "Point"
+        },
+        "id": "usb000h4jh",
+        "properties": {
+          "alert": "green",
+          "cdi": 5.4,
+          "code": "b000h4jh",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usb000h4jh&format=geojson",
+          "dmin": null,
+          "felt": 103,
+          "gap": 10,
+          "ids": ",pt13144001,at00mnafyn,usb000h4jh,iscgem603007131,",
+          "mag": 8.3,
+          "magType": "mww",
+          "mmi": 4.89,
+          "net": "us",
+          "nst": 385,
+          "place": "2013 Sea of Okhotsk Earthquake",
+          "rms": 1.02,
+          "sig": 1115,
+          "sources": ",pt,at,us,iscgem,",
+          "status": "reviewed",
+          "time": 1369374288980,
+          "title": "M 8.3 - 2013 Sea of Okhotsk Earthquake",
+          "tsunami": 1,
+          "type": "earthquake",
+          "types": ",cap,dyfi,earthquake-name,finite-fault,general-text,impact-link,impact-text,losspager,moment-tensor,origin,phase-data,poster,scitech-link,shakemap,",
+          "tz": null,
+          "updated": 1764182814263,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usb000h4jh"
+        },
+        "type": "Feature"
+      },
+      "key": "fact14"
+    },
+    {
+      "event_id": "usc000nzvd",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            -70.7691,
+            -19.6097,
+            25
+          ],
+          "type": "Point"
+        },
+        "id": "usc000nzvd",
+        "properties": {
+          "alert": "yellow",
+          "cdi": 8.5,
+          "code": "c000nzvd",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=usc000nzvd&format=geojson",
+          "dmin": 0.609,
+          "felt": 357,
+          "gap": 23,
+          "ids": ",pt14091000,at00n3dm1y,usc000nzvd,iscgem610102185,atlas20140401234647,",
+          "mag": 8.2,
+          "magType": "mww",
+          "mmi": 8.204,
+          "net": "us",
+          "nst": null,
+          "place": "93 km NW of Iquique, Chile",
+          "rms": 0.66,
+          "sig": 1338,
+          "sources": ",pt,at,us,iscgem,atlas,",
+          "status": "reviewed",
+          "time": 1396396007260,
+          "title": "M 8.2 - 93 km NW of Iquique, Chile",
+          "tsunami": 1,
+          "type": "earthquake",
+          "types": ",cap,dyfi,finite-fault,general-text,ground-failure,impact-link,losspager,moment-tensor,origin,phase-data,poster,shakemap,trump,",
+          "tz": null,
+          "updated": 1785000468656,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usc000nzvd"
+        },
+        "type": "Feature"
+      },
+      "key": "fact15"
+    },
+    {
+      "event_id": "us20003k7a",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            -71.6744,
+            -31.5729,
+            22.44
+          ],
+          "type": "Point"
+        },
+        "id": "us20003k7a",
+        "properties": {
+          "alert": "orange",
+          "cdi": 9,
+          "code": "20003k7a",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=us20003k7a&format=geojson",
+          "dmin": 0.684,
+          "felt": 1216,
+          "gap": 19,
+          "ids": ",us20003k7a,at00nuskyv,pt15259054,gcmt20150916225433,iscgem611531714,atlas20150916225432,",
+          "mag": 8.3,
+          "magType": "mww",
+          "mmi": 8.189,
+          "net": "us",
+          "nst": null,
+          "place": "48 km W of Illapel, Chile",
+          "rms": 1.02,
+          "sig": 1960,
+          "sources": ",us,at,pt,gcmt,iscgem,atlas,",
+          "status": "reviewed",
+          "time": 1442444072860,
+          "title": "M 8.3 - 48 km W of Illapel, Chile",
+          "tsunami": 1,
+          "type": "earthquake",
+          "types": ",associate,cap,dyfi,finite-fault,general-link,general-text,ground-failure,impact-link,impact-text,losspager,moment-tensor,origin,phase-data,poster,scitech-link,shakemap,",
+          "tz": null,
+          "updated": 1780712634945,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us20003k7a"
+        },
+        "type": "Feature"
+      },
+      "key": "fact16"
+    },
+    {
+      "event_id": "us200081v8",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            153.5216,
+            -4.5049,
+            94.54
+          ],
+          "type": "Point"
+        },
+        "id": "us200081v8",
+        "properties": {
+          "alert": "yellow",
+          "cdi": 8.7,
+          "code": "200081v8",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=us200081v8&format=geojson",
+          "dmin": 1.389,
+          "felt": 14,
+          "gap": 13,
+          "ids": ",us200081v8,at00oibstb,pt16352050,iscgem611831311,",
+          "mag": 7.9,
+          "magType": "mww",
+          "mmi": 7.476,
+          "net": "us",
+          "nst": null,
+          "place": "140 km E of Kokopo, Papua New Guinea",
+          "rms": 0.97,
+          "sig": 972,
+          "sources": ",us,at,pt,iscgem,",
+          "status": "reviewed",
+          "time": 1481971870500,
+          "title": "M 7.9 - 140 km E of Kokopo, Papua New Guinea",
+          "tsunami": 1,
+          "type": "earthquake",
+          "types": ",dyfi,finite-fault,general-text,impact-link,impact-text,losspager,moment-tensor,origin,phase-data,poster,shakemap,",
+          "tz": null,
+          "updated": 1701449179052,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us200081v8"
+        },
+        "type": "Feature"
+      },
+      "key": "fact17"
+    },
+    {
+      "event_id": "us2000ahv0",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            -93.8993,
+            15.0222,
+            47.39
+          ],
+          "type": "Point"
+        },
+        "id": "us2000ahv0",
+        "properties": {
+          "alert": "red",
+          "cdi": 9.1,
+          "code": "2000ahv0",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=us2000ahv0&format=geojson",
+          "dmin": 0.944,
+          "felt": 2654,
+          "gap": 22,
+          "ids": ",at00ovy2q7,pt17251000,us2000ahv0,iscgem611600536,",
+          "mag": 8.2,
+          "magType": "mww",
+          "mmi": 7.398,
+          "net": "us",
+          "nst": null,
+          "place": "2017 Tehuantepec, Mexico Earthquake",
+          "rms": 1.22,
+          "sig": 2910,
+          "sources": ",at,pt,us,iscgem,",
+          "status": "reviewed",
+          "time": 1504846159180,
+          "title": "M 8.2 - 2017 Tehuantepec, Mexico Earthquake",
+          "tsunami": 1,
+          "type": "earthquake",
+          "types": ",dyfi,earthquake-name,finite-fault,general-link,general-text,ground-failure,impact-link,impact-text,losspager,moment-tensor,origin,phase-data,poster,scitech-link,shakemap,",
+          "tz": null,
+          "updated": 1791480353252,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us2000ahv0"
+        },
+        "type": "Feature"
+      },
+      "key": "fact18"
+    },
+    {
+      "event_id": "us1000gcii",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            -178.153,
+            -18.1125,
+            600
+          ],
+          "type": "Point"
+        },
+        "id": "us1000gcii",
+        "properties": {
+          "alert": "green",
+          "cdi": 5,
+          "code": "1000gcii",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=us1000gcii&format=geojson",
+          "dmin": 3.63,
+          "felt": 36,
+          "gap": 13,
+          "ids": ",at00pdom8q,pt18231000,us1000gcii,iscgem616641704,",
+          "mag": 8.2,
+          "magType": "mww",
+          "mmi": 4.033,
+          "net": "us",
+          "nst": null,
+          "place": "2018 Fiji Earthquake",
+          "rms": 0.79,
+          "sig": 1052,
+          "sources": ",at,pt,us,iscgem,",
+          "status": "reviewed",
+          "time": 1534637980670,
+          "title": "M 8.2 - 2018 Fiji Earthquake",
+          "tsunami": 1,
+          "type": "earthquake",
+          "types": ",dyfi,earthquake-name,finite-fault,general-text,impact-link,impact-text,losspager,moment-tensor,origin,phase-data,poster,shakemap,",
+          "tz": null,
+          "updated": 1764175192070,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us1000gcii"
+        },
+        "type": "Feature"
+      },
+      "key": "fact19"
+    },
+    {
+      "event_id": "us60003sc0",
+      "feature": {
+        "geometry": {
+          "coordinates": [
+            -75.2697,
+            -5.8119,
+            122.57
+          ],
+          "type": "Point"
+        },
+        "id": "us60003sc0",
+        "properties": {
+          "alert": "orange",
+          "cdi": 8.9,
+          "code": "60003sc0",
+          "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=us60003sc0&format=geojson",
+          "dmin": 3.18,
+          "felt": 1080,
+          "gap": 17,
+          "ids": ",at00ps3pco,pt19146001,us60003sc0,iscgem615748456,",
+          "mag": 8,
+          "magType": "mww",
+          "mmi": 7.945,
+          "net": "us",
+          "nst": null,
+          "place": "78 km NE of Navarro, Peru",
+          "rms": 0.84,
+          "sig": 1890,
+          "sources": ",at,pt,us,iscgem,",
+          "status": "reviewed",
+          "time": 1558856475073,
+          "title": "M 8.0 - 78 km NE of Navarro, Peru",
+          "tsunami": 1,
+          "type": "earthquake",
+          "types": ",dyfi,finite-fault,general-text,ground-failure,impact-link,impact-text,losspager,moment-tensor,origin,phase-data,poster,shakemap,",
+          "tz": null,
+          "updated": 1787982578488,
+          "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us60003sc0"
+        },
+        "type": "Feature"
+      },
+      "key": "fact20"
+    },
+    {
+      "case_id": "sorted_stability",
+      "key": "obs01"
+    },
+    {
+      "case_id": "decimal_sum",
+      "key": "obs02"
+    },
+    {
+      "case_id": "float_sum",
+      "key": "obs03"
+    },
+    {
+      "case_id": "unicode_normalize",
+      "key": "obs04"
+    },
+    {
+      "case_id": "casefold",
+      "key": "obs05"
+    },
+    {
+      "case_id": "json_roundtrip",
+      "key": "obs06"
+    },
+    {
+      "case_id": "url_encode",
+      "key": "obs07"
+    },
+    {
+      "case_id": "path_suffix",
+      "key": "obs08"
+    },
+    {
+      "case_id": "leap_day",
+      "key": "obs09"
+    },
+    {
+      "case_id": "timezone",
+      "key": "obs10"
+    },
+    {
+      "case_id": "gzip_roundtrip",
+      "key": "obs11"
+    },
+    {
+      "case_id": "sha256_empty",
+      "key": "obs12"
+    },
+    {
+      "case_id": "counter",
+      "key": "obs13"
+    },
+    {
+      "case_id": "bisect",
+      "key": "obs14"
+    },
+    {
+      "case_id": "regex_fullmatch",
+      "key": "obs15"
+    },
+    {
+      "case_id": "csv_quoted",
+      "key": "obs16"
+    },
+    {
+      "case_id": "fraction",
+      "key": "obs17"
+    },
+    {
+      "case_id": "set_subset",
+      "key": "obs18"
+    },
+    {
+      "case_id": "dict_order",
+      "key": "obs19"
+    },
+    {
+      "case_id": "heap_order",
+      "key": "obs20"
+    },
+    {
+      "key": "spec01",
+      "upstream_path": "baggage/api.md"
+    },
+    {
+      "key": "spec02",
+      "upstream_path": "common/attribute-naming.md"
+    },
+    {
+      "key": "spec03",
+      "upstream_path": "common/attribute-requirement-level.md"
+    },
+    {
+      "key": "spec04",
+      "upstream_path": "common/instrumentation-scope.md"
+    },
+    {
+      "key": "spec05",
+      "upstream_path": "configuration/sdk-environment-variables.md"
+    },
+    {
+      "key": "spec06",
+      "upstream_path": "context/api-propagators.md"
+    },
+    {
+      "key": "spec07",
+      "upstream_path": "context/README.md"
+    },
+    {
+      "key": "spec08",
+      "upstream_path": "error-handling.md"
+    },
+    {
+      "key": "spec09",
+      "upstream_path": "library-guidelines.md"
+    },
+    {
+      "key": "spec10",
+      "upstream_path": "logs/data-model.md"
+    },
+    {
+      "key": "spec11",
+      "upstream_path": "logs/noop.md"
+    },
+    {
+      "key": "spec12",
+      "upstream_path": "metrics/sdk_exporters/in-memory.md"
+    },
+    {
+      "key": "spec13",
+      "upstream_path": "metrics/sdk_exporters/prometheus.md"
+    },
+    {
+      "key": "spec14",
+      "upstream_path": "performance.md"
+    },
+    {
+      "key": "spec15",
+      "upstream_path": "resource/sdk.md"
+    },
+    {
+      "key": "spec16",
+      "upstream_path": "schemas/file_format_v1.1.0.md"
+    },
+    {
+      "key": "spec17",
+      "upstream_path": "trace/exceptions.md"
+    },
+    {
+      "key": "spec18",
+      "upstream_path": "trace/tracestate-handling.md"
+    },
+    {
+      "key": "spec19",
+      "upstream_path": "trace/sdk_exporters/stdout.md"
+    },
+    {
+      "key": "spec20",
+      "upstream_path": "versioning-and-stability.md"
+    }
+  ],
+  "sources": [
+    {
+      "captured_at": "2026-10-11T07:53:18.471020+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usp000a3qq",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2000-01-01&endtime=2001-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1764175729647",
+      "sha256": "a522d9cd83df603a9c56a6b079b204fb2af578ca6490759fe0e25d70bbbc0df0",
+      "snapshot_path": "sources/fact01.txt",
+      "source_id": "source:laya-p1-fact01"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.474024+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usp000ah4q",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2001-01-01&endtime=2002-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1651260209022",
+      "sha256": "512e8e91495e69e83e5804f28a15915de67e3fa81ebb82226ebab4af3f920551",
+      "snapshot_path": "sources/fact02.txt",
+      "source_id": "source:laya-p1-fact02"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.476021+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usp000bg0m",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2002-01-01&endtime=2003-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1733871907865",
+      "sha256": "d3d0bb8427a79c55452af5e38947f2eb1651da3bb33ced6d2a2d7811a474910e",
+      "snapshot_path": "sources/fact03.txt",
+      "source_id": "source:laya-p1-fact03"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.477018+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usp000c8kv",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2003-01-01&endtime=2004-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1754413520677",
+      "sha256": "02e9bd06c8182ff0ebb0f26e8c26421608f5be819471a592c0d1c31a484a3b2c",
+      "snapshot_path": "sources/fact04.txt",
+      "source_id": "source:laya-p1-fact04"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.479018+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usp000dbed",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2004-01-01&endtime=2005-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1780672574192",
+      "sha256": "48a208cbe202ec038c7fff3bc9f2d592301d211bb56bf697d8e9039993089e55",
+      "snapshot_path": "sources/fact05.txt",
+      "source_id": "source:laya-p1-fact05"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.481020+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usp000dk85",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2005-01-01&endtime=2006-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1657818493141",
+      "sha256": "eac56cf4f0c28f8fde813909bd6730871519c64f735da6a93e933f43e5840583",
+      "snapshot_path": "sources/fact06.txt",
+      "source_id": "source:laya-p1-fact06"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.570016+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usp000exfn",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2006-01-01&endtime=2007-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1764182929365",
+      "sha256": "5b518d27b33653bc49d3e975924749e23ff0a4a1f3d837e6e587ba7122fac9ae",
+      "snapshot_path": "sources/fact07.txt",
+      "source_id": "source:laya-p1-fact07"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.572018+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usp000fmz4",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2007-01-01&endtime=2008-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1657768227019",
+      "sha256": "634a76ca999b9e479e78344a8c840681ef25a834c21e4e671777367df239a24b",
+      "snapshot_path": "sources/fact08.txt",
+      "source_id": "source:laya-p1-fact08"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.573019+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usp000g650",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2008-01-01&endtime=2009-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1757654699612",
+      "sha256": "35ffedc809ed311797f1e77dafec5e852a4faf361f0c9215942a3525c9e11238",
+      "snapshot_path": "sources/fact09.txt",
+      "source_id": "source:laya-p1-fact09"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.576022+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usp000h1ys",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2009-01-01&endtime=2010-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1764175286460",
+      "sha256": "95c9087d7476a8e6e2aca211aae3cfc77529435e875bb366a260bd828af92203",
+      "snapshot_path": "sources/fact10.txt",
+      "source_id": "source:laya-p1-fact10"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.578045+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usp000h7rf",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2010-01-01&endtime=2011-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1783884520054",
+      "sha256": "d58d43a216e2c5f8911f9d190c6d4d8ac8f3c49a790b5757d8a31383170a502f",
+      "snapshot_path": "sources/fact11.txt",
+      "source_id": "source:laya-p1-fact11"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.580016+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usp000hvnu",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2011-01-01&endtime=2012-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1790377722510",
+      "sha256": "bbedc08d4a74aaef045bc4ba91a0bd15a1e2e00d2e61df11d0d790784184c12f",
+      "snapshot_path": "sources/fact12.txt",
+      "source_id": "source:laya-p1-fact12"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.583034+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usp000jhh2",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2012-01-01&endtime=2013-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1764176327655",
+      "sha256": "87210b6af5ac14dfe78f3797e86119b5d2010d6ae259d0f57bd73520cc4e7f21",
+      "snapshot_path": "sources/fact13.txt",
+      "source_id": "source:laya-p1-fact13"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.585022+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usb000h4jh",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2013-01-01&endtime=2014-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1764182814263",
+      "sha256": "f35a5bd31806fd56c555b1896bc09f90e04be7aebe85f62d6c53944a95ada9a4",
+      "snapshot_path": "sources/fact14.txt",
+      "source_id": "source:laya-p1-fact14"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.587016+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-usc000nzvd",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2014-01-01&endtime=2015-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1785000468656",
+      "sha256": "560de263ab0925edd8232dff05d2208c48c0c27c53a2e9e7e7ec850f003d3352",
+      "snapshot_path": "sources/fact15.txt",
+      "source_id": "source:laya-p1-fact15"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.588017+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-us20003k7a",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2015-01-01&endtime=2016-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1780712634945",
+      "sha256": "4af47016170d0c993e96befa0a30ac704491239f6570ce1c4fc8ed6bbdd6dab3",
+      "snapshot_path": "sources/fact16.txt",
+      "source_id": "source:laya-p1-fact16"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.589017+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-us200081v8",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2016-01-01&endtime=2017-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1701449179052",
+      "sha256": "b8fbc4b6775a087e4bad59845b1c84f95691e457d3f2e3a65415493fdcf62592",
+      "snapshot_path": "sources/fact17.txt",
+      "source_id": "source:laya-p1-fact17"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.592024+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-us2000ahv0",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2017-01-01&endtime=2018-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1791480353252",
+      "sha256": "37f2e01cd1d4823cf21c0b6542c6211b24212d5a5a578446d4a48891dff38018",
+      "snapshot_path": "sources/fact18.txt",
+      "source_id": "source:laya-p1-fact18"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.594017+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-us1000gcii",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2018-01-01&endtime=2019-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1764175192070",
+      "sha256": "47eb28a62203e5dae91eef2a5524a1a6d58fd6c979c8e0c9ad7b60cd1020a570",
+      "snapshot_path": "sources/fact19.txt",
+      "source_id": "source:laya-p1-fact19"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.596019+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-p1-us60003sc0",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-USGS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2019-01-01&endtime=2020-01-01&minmagnitude=6&catalog=us&orderby=magnitude&limit=1",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "1787982578488",
+      "sha256": "c5bad3239ab0b2e377ccc5b5220bf9fe9c38a2c85304a028a223aedf33472829",
+      "snapshot_path": "sources/fact20.txt",
+      "source_id": "source:laya-p1-fact20"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.597018+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs01",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:sorted_stability",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "b27ebe21248ff41acb4394007629cceac98fe1a4c6c276c74803694fd51ae482",
+      "sha256": "b27ebe21248ff41acb4394007629cceac98fe1a4c6c276c74803694fd51ae482",
+      "snapshot_path": "sources/obs01.txt",
+      "source_id": "source:laya-p1-obs01"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.599016+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs02",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:decimal_sum",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "30206fc3950b3063321016f3a2db40b51a5b4c80708bb7d2f9543dbe084c43c0",
+      "sha256": "30206fc3950b3063321016f3a2db40b51a5b4c80708bb7d2f9543dbe084c43c0",
+      "snapshot_path": "sources/obs02.txt",
+      "source_id": "source:laya-p1-obs02"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.601017+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs03",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:float_sum",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "ee9d87e38e4e46492cbf270520e7c4504c443414a987157f6007a4ce8a397851",
+      "sha256": "ee9d87e38e4e46492cbf270520e7c4504c443414a987157f6007a4ce8a397851",
+      "snapshot_path": "sources/obs03.txt",
+      "source_id": "source:laya-p1-obs03"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.603017+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs04",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:unicode_normalize",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "b83deeb6019170a985eff11c762c316ec4c5e8679b575cc5522c7b4b2886b05f",
+      "sha256": "b83deeb6019170a985eff11c762c316ec4c5e8679b575cc5522c7b4b2886b05f",
+      "snapshot_path": "sources/obs04.txt",
+      "source_id": "source:laya-p1-obs04"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.604016+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs05",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:casefold",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "bbe12661d263879e5f3d17ea1220c7a00dddbb6c33ee5788697ad4aeb85a5707",
+      "sha256": "bbe12661d263879e5f3d17ea1220c7a00dddbb6c33ee5788697ad4aeb85a5707",
+      "snapshot_path": "sources/obs05.txt",
+      "source_id": "source:laya-p1-obs05"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.606019+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs06",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:json_roundtrip",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "4ff3353b7c64a2b72d0d9715d741bdff566f83e69ed80ac836415fa7a5121392",
+      "sha256": "4ff3353b7c64a2b72d0d9715d741bdff566f83e69ed80ac836415fa7a5121392",
+      "snapshot_path": "sources/obs06.txt",
+      "source_id": "source:laya-p1-obs06"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.610025+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs07",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:url_encode",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "ab19f8df122329877fd109c2975f104f1dfc17c3d0543b4420c98c2583fadd62",
+      "sha256": "ab19f8df122329877fd109c2975f104f1dfc17c3d0543b4420c98c2583fadd62",
+      "snapshot_path": "sources/obs07.txt",
+      "source_id": "source:laya-p1-obs07"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.611017+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs08",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:path_suffix",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "873a0702b1234e0397a7c6fa8a81e57656a84a5dd4c03eaa805762673ec93347",
+      "sha256": "873a0702b1234e0397a7c6fa8a81e57656a84a5dd4c03eaa805762673ec93347",
+      "snapshot_path": "sources/obs08.txt",
+      "source_id": "source:laya-p1-obs08"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.613017+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs09",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:leap_day",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "985455ca0228bac3cb3b89f58bbd341f13416ea6cb53b244878494655f93fab4",
+      "sha256": "985455ca0228bac3cb3b89f58bbd341f13416ea6cb53b244878494655f93fab4",
+      "snapshot_path": "sources/obs09.txt",
+      "source_id": "source:laya-p1-obs09"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.615018+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs10",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:timezone",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "d0b3d51ca7d495199b1a48885d0d13c8483e966a540d55c4235b6651b31b5578",
+      "sha256": "d0b3d51ca7d495199b1a48885d0d13c8483e966a540d55c4235b6651b31b5578",
+      "snapshot_path": "sources/obs10.txt",
+      "source_id": "source:laya-p1-obs10"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.616018+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs11",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:gzip_roundtrip",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "6bb5e436174f8a01ca91ec9b92a9d61df0bbb0098053395efce88fbd21c8d84a",
+      "sha256": "6bb5e436174f8a01ca91ec9b92a9d61df0bbb0098053395efce88fbd21c8d84a",
+      "snapshot_path": "sources/obs11.txt",
+      "source_id": "source:laya-p1-obs11"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.618019+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs12",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:sha256_empty",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "590d24cef6387634c3479282810254da8ce2ef276ddd800c7fd48a87e117f041",
+      "sha256": "590d24cef6387634c3479282810254da8ce2ef276ddd800c7fd48a87e117f041",
+      "snapshot_path": "sources/obs12.txt",
+      "source_id": "source:laya-p1-obs12"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.620018+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs13",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:counter",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "bf1e9d057c57a596bbdf19923ef0191c4e4b611c913bd5dd8a0d7a4edb18c281",
+      "sha256": "bf1e9d057c57a596bbdf19923ef0191c4e4b611c913bd5dd8a0d7a4edb18c281",
+      "snapshot_path": "sources/obs13.txt",
+      "source_id": "source:laya-p1-obs13"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.621022+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs14",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:bisect",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "9c6cf7ad03bda32e89d15b311877d46dd4544a11c188b009cf322d7c4ba3ab11",
+      "sha256": "9c6cf7ad03bda32e89d15b311877d46dd4544a11c188b009cf322d7c4ba3ab11",
+      "snapshot_path": "sources/obs14.txt",
+      "source_id": "source:laya-p1-obs14"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.623025+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs15",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:regex_fullmatch",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "39edf58219a04b2d29d0f05f87fac7e5934acfedb33de92f49d0174014c0aa55",
+      "sha256": "39edf58219a04b2d29d0f05f87fac7e5934acfedb33de92f49d0174014c0aa55",
+      "snapshot_path": "sources/obs15.txt",
+      "source_id": "source:laya-p1-obs15"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.625021+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs16",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:csv_quoted",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "ce45b4f4e56b7b679db1b1c96d0d8854175dfc96390fda357964b2b541ee27a7",
+      "sha256": "ce45b4f4e56b7b679db1b1c96d0d8854175dfc96390fda357964b2b541ee27a7",
+      "snapshot_path": "sources/obs16.txt",
+      "source_id": "source:laya-p1-obs16"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.626020+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs17",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:fraction",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "cc103fda28948f0a1bfa008f293c9421e9def7fe234286250aca522d3534d704",
+      "sha256": "cc103fda28948f0a1bfa008f293c9421e9def7fe234286250aca522d3534d704",
+      "snapshot_path": "sources/obs17.txt",
+      "source_id": "source:laya-p1-obs17"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.628029+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs18",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:set_subset",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "ff005ad6ae680c68da65be9749c69c0e7ec8c044861aff5a145de26b1ae726bc",
+      "sha256": "ff005ad6ae680c68da65be9749c69c0e7ec8c044861aff5a145de26b1ae726bc",
+      "snapshot_path": "sources/obs18.txt",
+      "source_id": "source:laya-p1-obs18"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.640026+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs19",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:dict_order",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "2fd29f8f1e7f436f409d4ad9e45d51db93aec66f28da03b096ef7a981bd1c776",
+      "sha256": "2fd29f8f1e7f436f409d4ad9e45d51db93aec66f28da03b096ef7a981bd1c776",
+      "snapshot_path": "sources/obs19.txt",
+      "source_id": "source:laya-p1-obs19"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.697014+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-p1-obs20",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:heap_order",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "8bee9dc9242024cc70b7ddea3dda5b206571ad4e5d89e6eab64e7dfc4152cfe3",
+      "sha256": "8bee9dc9242024cc70b7ddea3dda5b206571ad4e5d89e6eab64e7dfc4152cfe3",
+      "snapshot_path": "sources/obs20.txt",
+      "source_id": "source:laya-p1-obs20"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.699017+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-baggage/api.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/baggage/api.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "90892a0a5d17d4c251bf3ee6d9f0f4f95c71beadfe7297cffd6ca7f5b0fd09ef",
+      "snapshot_path": "sources/spec01.txt",
+      "source_id": "source:laya-p1-spec01"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.700016+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-common/attribute-naming.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/common/attribute-naming.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "e4f432272f10587f970be3993174b0e3933aafaf831463eaa6333d4d7f7a0669",
+      "snapshot_path": "sources/spec02.txt",
+      "source_id": "source:laya-p1-spec02"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.702018+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-common/attribute-requirement-level.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/common/attribute-requirement-level.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "b3b4fe8dc378af3bc1762d7c8718f93e8b27cb951c0ee3a8e064a7a7742eef3b",
+      "snapshot_path": "sources/spec03.txt",
+      "source_id": "source:laya-p1-spec03"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.703017+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-common/instrumentation-scope.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/common/instrumentation-scope.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "da6a3aabbc9d2f6cab7fe3e317d74732425484adae071154f13f0c0d9c66e875",
+      "snapshot_path": "sources/spec04.txt",
+      "source_id": "source:laya-p1-spec04"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.704016+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-configuration/sdk-environment-variables.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/configuration/sdk-environment-variables.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "e2d14315a6bd638c59f3d74cfd0425e717fc13688caa4e2fac39fbf22ca9a305",
+      "snapshot_path": "sources/spec05.txt",
+      "source_id": "source:laya-p1-spec05"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.706018+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-context/api-propagators.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/context/api-propagators.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "7447db9e546f8f59b045294c38ddd47ee643d02fc5e70cb5b253e6b1f78c36bd",
+      "snapshot_path": "sources/spec06.txt",
+      "source_id": "source:laya-p1-spec06"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.707018+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-context/README.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/context/README.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "66a4f02ba3666f6d0c3412d36dd74c00723af50a9764f53069ce7c9946cd7fa7",
+      "snapshot_path": "sources/spec07.txt",
+      "source_id": "source:laya-p1-spec07"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.756020+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-error-handling.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/error-handling.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "443b9c553bc1cf4de02158b805b96086945ee8b1a1cfda8324210d7ed9d1c4c5",
+      "snapshot_path": "sources/spec08.txt",
+      "source_id": "source:laya-p1-spec08"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.758019+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-library-guidelines.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/library-guidelines.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "f1f94cd6768a456620aeb86cc10109c000f8c6d86915b01c2c32eb517ea920d7",
+      "snapshot_path": "sources/spec09.txt",
+      "source_id": "source:laya-p1-spec09"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.760017+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-logs/data-model.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/logs/data-model.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "3ee2c391a5d3262130582df89a3dc5a5640d837d010734ea79458fe3ece31173",
+      "snapshot_path": "sources/spec10.txt",
+      "source_id": "source:laya-p1-spec10"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.762015+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-logs/noop.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/logs/noop.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "0ef1c46d75747df4029aff20c586ece78fe27ae1c9e5b5be15fd8ff844c62797",
+      "snapshot_path": "sources/spec11.txt",
+      "source_id": "source:laya-p1-spec11"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.764019+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-metrics/sdk_exporters/in-memory.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/metrics/sdk_exporters/in-memory.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "cdb6dd6d18c01069a72748aff33588affcd7ceaf0662e44e28cae7aa4553c4cc",
+      "snapshot_path": "sources/spec12.txt",
+      "source_id": "source:laya-p1-spec12"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.766040+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-metrics/sdk_exporters/prometheus.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/metrics/sdk_exporters/prometheus.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "9d8a68bcfc4af68eabf04ab7cbac9cf6e2ae77bcb13b09c0a9c370663f69a077",
+      "snapshot_path": "sources/spec13.txt",
+      "source_id": "source:laya-p1-spec13"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.768019+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-performance.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/performance.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "437a68cf21ef80f0df374d780031d5f78ebd2c2cd6d2743d31833da46305d1c0",
+      "snapshot_path": "sources/spec14.txt",
+      "source_id": "source:laya-p1-spec14"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.770035+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-resource/sdk.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/resource/sdk.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "5355ddbd7a7ac4b9b199c81d5b9723652e516b290393dfc95933582c99a7777e",
+      "snapshot_path": "sources/spec15.txt",
+      "source_id": "source:laya-p1-spec15"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.774018+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-schemas/file_format_v1.1.0.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/schemas/file_format_v1.1.0.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "2b26da1550848dfa1b5da933f450fa35a8e0f31bbe3361712f860b76043301cf",
+      "snapshot_path": "sources/spec16.txt",
+      "source_id": "source:laya-p1-spec16"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.775019+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-trace/exceptions.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/trace/exceptions.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "a1ceb5082f4cab5255caac1f75b5d38e37ae7b335fcbe1df5c56ea11b7a0350c",
+      "snapshot_path": "sources/spec17.txt",
+      "source_id": "source:laya-p1-spec17"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.777016+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-trace/tracestate-handling.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/trace/tracestate-handling.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "00ee494dde905086cad12366e0695e45eaf539350f674db2795c34b12f850fbb",
+      "snapshot_path": "sources/spec18.txt",
+      "source_id": "source:laya-p1-spec18"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.803024+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-trace/sdk_exporters/stdout.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/trace/sdk_exporters/stdout.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "64a2ca89570c5b41ad9bebf1a763c5525d16ed4678be113aa4c453bb90e7dc48",
+      "snapshot_path": "sources/spec19.txt",
+      "source_id": "source:laya-p1-spec19"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.807024+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-p1-versioning-and-stability.md",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner continuation; Codex source inspection",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-human-data-review",
+          "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/specification/versioning-and-stability.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "ef25ddb7d2ab36a194412c1c3bf71ae5900afdec",
+      "sha256": "03b60b7768ec1623b1ac5b4f69d809ed092e730521a24aade3d8a6d7ab20c666",
+      "snapshot_path": "sources/spec20.txt",
+      "source_id": "source:laya-p1-spec20"
+    }
+  ],
+  "training_authorized": false
+}

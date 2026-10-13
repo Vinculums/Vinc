@@ -1,0 +1,149 @@
+{
+ "run_id": "oc-20261009-vin411-1",
+ "gold_sha256": "49cf4b34be2fd840c56e54bcca152abfaaebd76afa844938c6d7a7eccb29fd0a",
+ "checkpoint_sha256": "4fcae459d3226e565e05324577250bfc379fc4ebd529ec1ef02d6d442df30931",
+ "eval_runs": 1,
+ "weights_committed": false,
+ "line_endings": "LF",
+ "runtime_workarounds": {
+  "temporary_directory_mode": "scratch process maps 0700 to 0777",
+  "platform": "standard fallback for unavailable WMI",
+  "agent_reuse": "same loaded CPU checkpoint for calibration and evaluation"
+ },
+ "files": {
+  "holdout-v2.json": {
+   "sha256": "fd12df181e1b44d76f96d9a25a3d312fb61aae6a40b87ca529d1fed40510bb5b",
+   "git_blob_sha": "6b0aa3a82f27f86dcbbb0cc5c69cf649f22161ff",
+   "bytes": 2374
+  },
+  "holdout.jsonl": {
+   "sha256": "565c1ef1721552122221a71c791eebe6e975f5b0d1a20557b94a2a5f0a21ee96",
+   "git_blob_sha": "5e906696f3921b22d8e7a855be8aecb4b57f53c1",
+   "bytes": 82072
+  },
+  "holdout.split.json": {
+   "sha256": "3e5ce1883ea58dbca5693eae5156c4b3217d4bbbd23b327d315c75a1e6d91312",
+   "git_blob_sha": "8c0845429f7baccc07e71cef2b79e411fdb783bd",
+   "bytes": 911
+  },
+  "same-as-graph-v2.jsonl": {
+   "sha256": "3a1953c8efef7ea78f4aa6f9d94d6393f697828c16c08cdee480804a8d1ef19e",
+   "git_blob_sha": "994104ac15dce8db489e262ff9172f3b03b46eec",
+   "bytes": 10679
+  },
+  "training-calib-v2.json": {
+   "sha256": "76e7ed77685248a7e9501f68f9bb168ff4fe0b063a2a646534b4971185ff17c9",
+   "git_blob_sha": "ee3b3d31d4d052be29243b139a78c5cecec0347a",
+   "bytes": 3028
+  },
+  "calib.jsonl": {
+   "sha256": "3722b050d9a61c017d06c7a8012a25bc829d0f248d9084d055a5e26aac6e6b29",
+   "git_blob_sha": "a9d80352b835813ab170b611316f2901766d5476",
+   "bytes": 101607
+  },
+  "calibration-frozen.json": {
+   "sha256": "d2f671c32f26ecd2ddb4e0d393169bed196403de6f0d1b45aecfebaa85ee9b71",
+   "git_blob_sha": "791ec59f15dcb924f754580b352b20c283e90aad",
+   "bytes": 988
+  },
+  "eval-once.lock.json": {
+   "sha256": "d2f671c32f26ecd2ddb4e0d393169bed196403de6f0d1b45aecfebaa85ee9b71",
+   "git_blob_sha": "791ec59f15dcb924f754580b352b20c283e90aad",
+   "bytes": 988
+  },
+  "eval.jsonl": {
+   "sha256": "022dea7c6d7c9cc4c816b60ad583e4e0bf98ba8743e9ce12e294c20ccd734701",
+   "git_blob_sha": "88e6004d610832e46d1484154143d0009890294f",
+   "bytes": 321244
+  },
+  "report.json": {
+   "sha256": "a0f8b4fe995e98d5e3d4b77b5a770ac5692450839757422d0579131f9b25f27d",
+   "git_blob_sha": "98667cc7129b27f529ec961109571ce6c81688d5",
+   "bytes": 35866
+  },
+  "report.md": {
+   "sha256": "19a6fdce76aeeefdcefdc6fe8cca9e46ab87fbb28a7d4afbb6711af3ac5e84d3",
+   "git_blob_sha": "cd049940eeb81f2581618a19bf0df89f25943ef1",
+   "bytes": 2539
+  },
+  "diagnostics.json": {
+   "sha256": "9c71de763d724aeba511d90b853324de42fef74bb82f0c2ec6160f8f9af686ad",
+   "git_blob_sha": "657bf2563ac8614134db7212b4b5ccad86555e66",
+   "bytes": 7330
+  },
+  "calib/calib-contradicts-en.json": {
+   "sha256": "10ce8afffb3050afbcf49e0179bd9906fe3aa879d9e03ce845a739edd7b44add",
+   "git_blob_sha": "8b2ce41ce674b91a72d08f7afe2d06efc10d95d5",
+   "bytes": 1095
+  },
+  "calib/calib-contradicts-ko.json": {
+   "sha256": "efad0ef391a621155b98c2a7c8b58538de2b56e5cea237643e82e5b9fc3c6515",
+   "git_blob_sha": "325cb373dad61dfdafb313f5024d520d462b7737",
+   "bytes": 1097
+  },
+  "calib/calib-same_as-en.json": {
+   "sha256": "a279870b9129db40c96d33089ce33327f8aceb33f3a378a8a32e95c55a48f54f",
+   "git_blob_sha": "3d8b6dd961ada0670e8b9a088248a5bfe03b18b5",
+   "bytes": 1086
+  },
+  "calib/calib-same_as-ko.json": {
+   "sha256": "b0314f7f02d52b4221d0c665fa19946f4023c35aa77c87b776b35bc44c150ce2",
+   "git_blob_sha": "a3da173e977af375d94942cd978a3a075bc0da74",
+   "bytes": 1083
+  },
+  "calib/calib-supports-en.json": {
+   "sha256": "8eff300ccd0c75a4eaef570bc0ddab20ae648d8dad49c37e2444bcab298f18a6",
+   "git_blob_sha": "9f285983cd79d33c4ef6a702b388ef8e61e45919",
+   "bytes": 1082
+  },
+  "calib/calib-supports-ko.json": {
+   "sha256": "a4777296f33a141d28a14500ad2eb559c8ae5c31f00d0a23eef34579fcd98073",
+   "git_blob_sha": "3ed1fec4507adc59520a3d178a69aa209112c38c",
+   "bytes": 1066
+  },
+  "calib/summary.json": {
+   "sha256": "99752bacb6ae2a692757750e60b781bf1bd99ed720b7e7eb1c90afb24aff333c",
+   "git_blob_sha": "a7b393b63ccc4c16a1549ec96a52fd5c85e9bb9a",
+   "bytes": 1214
+  },
+  "train/train-v2.jsonl": {
+   "sha256": "bae28e406ee2b265ba1bce869782f9a451bb6a7170b883a0117f1ecc0591f3e1",
+   "git_blob_sha": "178cbdd3d7c4da22bbce7671f110e668df3d5aa2",
+   "bytes": 1186138
+  },
+  "train/train-v2.summary.json": {
+   "sha256": "9ace8d14d460368946b1d31b4ade60d029d53c58faa41a080ef6c12476d9c8b2",
+   "git_blob_sha": "9dd74f89602bdd5f6f90063230891b6b796dc4b3",
+   "bytes": 1215
+  },
+  "train/laya-multilingual-vinc-ft-v2.log.json": {
+   "sha256": "cacd10c76f1a4ed21ec7b95e65c550d6bb37c9f82fb1333c8518ada2f5660c6d",
+   "git_blob_sha": "ff52e884c55028fc6a898b236f880eaddc3bbb5b",
+   "bytes": 2626
+  },
+  "train/checkpoint.rl_agent_config.json": {
+   "sha256": "509ddf2a77ee8ad8129e3b79e5f7505f6ed1b9507f7618a1a539ba9bdabfe666",
+   "git_blob_sha": "536b71f815df9bf1ea84860c380a2d33101538a2",
+   "bytes": 2217
+  },
+  "evaluation-recovery.json": {
+   "sha256": "7dc4e5ab8a4085f4a673cc44c4cc42e6188fe36093131cc85a82ba196578f762",
+   "git_blob_sha": "0b4a637efd0035dd0abcef21cfd6a8372ca6513c",
+   "bytes": 1228
+  },
+  "eval-interrupted-20261009T0528.jsonl": {
+   "sha256": "47a47023fd6239a8f120371936dd534a0ddacf566202f9151c4efe4c8cdcdd63",
+   "git_blob_sha": "1431e254a4e11eca49a4f45f59e540bbf0a4ab47",
+   "bytes": 185698
+  },
+  "eval-resume.jsonl": {
+   "sha256": "343faf1ee7ee936ba9fd7be39d925edb1d3fb5c2676cb0edeef0fc09dfcd257b",
+   "git_blob_sha": "58d6fd0401dc838da3737ea299deff08c6ca38fd",
+   "bytes": 136439
+  }
+ },
+ "physical_eval_attempts": 2,
+ "completed_states_not_repeated": 173,
+ "remaining_states_on_recovery": 127,
+ "latency_scope": "resume portion only; interrupted portion timings unavailable"
+}

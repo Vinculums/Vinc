@@ -1,0 +1,6 @@
+{'predicate': 'supports', 'lang': 'ko', 'n': 97, 'temperature': 5.0, 'status': 'temperature_at_max', 'min_confidence': 1.0, 'calibration_id': '623ba7976c4e', 'underpowered': False}
+{'predicate': 'supports', 'lang': 'en', 'n': 138, 'temperature': 5.0, 'status': 'temperature_at_max', 'min_confidence': 0.9994, 'calibration_id': '448efa613daf', 'underpowered': False}
+{'predicate': 'contradicts', 'lang': 'ko', 'n': 194, 'temperature': 5.0, 'status': 'temperature_at_max', 'min_confidence': 0.9746, 'calibration_id': '42875a1b689f', 'underpowered': False}
+{'predicate': 'contradicts', 'lang': 'en', 'n': 276, 'temperature': 5.0, 'status': 'temperature_at_max', 'min_confidence': 0.9936, 'calibration_id': 'b6d532aca74d', 'underpowered': False}
+{'predicate': 'same_as', 'lang': 'ko', 'n': 194, 'temperature': 5.0, 'status': 'temperature_at_max', 'min_confidence': 0.6173, 'calibration_id': '862f91ee222a', 'underpowered': False}
+{'predicate': 'same_as', 'lang': 'en', 'n': 276, 'temperature': 5.0, 'status': 'temperature_at_max', 'min_confidence': 0.6014, 'calibration_id': '76d46cfce4e9', 'underpowered': False}

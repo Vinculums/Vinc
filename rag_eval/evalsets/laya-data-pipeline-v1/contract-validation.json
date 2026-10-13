@@ -1,0 +1,29 @@
+{
+  "bundle_sha256": "bdcbcb789e4dcced902064f4e8839ac9b8aa2a6295e16725bc95c53b3c2d89f8",
+  "dataset_id": "example:vin441",
+  "excluded": {
+    "example:vin441:p0": "rubric_unapproved",
+    "example:vin441:p1": "rubric_unapproved",
+    "example:vin441:p2": "rubric_unapproved",
+    "example:vin441:p3": "rubric_unapproved"
+  },
+  "exportable_pairs": 0,
+  "families": 1,
+  "language_cells": {
+    "en_en": 1,
+    "en_ko": 1,
+    "ko_en": 1,
+    "ko_ko": 1
+  },
+  "lexical_screen_proves_cross_language_independence": false,
+  "model_calls": 0,
+  "pairs": 4,
+  "ready_for_export": false,
+  "roles": {
+    "train": 4
+  },
+  "schema": "vinc.laya.dataset.v1",
+  "source_permissions_are_declared_not_authenticated": true,
+  "sources": 1,
+  "unresolved_near_duplicates": []
+}

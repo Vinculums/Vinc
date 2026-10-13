@@ -1,0 +1,82 @@
+{
+  "recipient": "Claude / Fable",
+  "task": "Independently review the AI reference labels, then perform Laya calibration and evaluation. Label review is distinct from Laya measurement.",
+  "issue": "https://linear.app/vincs/issue/VIN-404",
+  "eval_issue": "https://linear.app/vincs/issue/VIN-406",
+  "dataset_status": "AI-authored reference set; ready for independent label review and exploratory evaluation; not the original preregistered human-authored corpus",
+  "author": "OpenAI Codex (AI; this conversation)",
+  "owner_delegated_all_authoring": true,
+  "no_owner_human_labels_claimed": true,
+  "not_for_unqualified_original_M1_gate": true,
+  "paths": {
+    "gold": "gold.jsonl",
+    "split": "gold.split.json",
+    "blind_input": "blind-inputs.jsonl",
+    "reference_labels": "reference-labels.jsonl",
+    "validation": "validation.json",
+    "statistics": "summary.json",
+    "review_table": "gold-review.csv"
+  },
+  "required_reporting": [
+    "State AI authorship and all protocol departures before any model metric.",
+    "Separate synthetic positives from frozen candidate negative controls; source/style is confounded with label pattern.",
+    "State that this corpus does not satisfy the original source mix. Do not claim the original M1 gate passed from this dataset.",
+    "Treat hypotheses in fixture: nodes as fictional test situations, not real Vinc measurements.",
+    "Record SHA256 of the exact gold, split, calibration files, checkpoint and question wording.",
+    "Do not silently overwrite or revise labels after looking at Laya predictions. Corrections need a new dataset version and frozen split."
+  ],
+  "label_review": {
+    "input": "blind-inputs.jsonl",
+    "instructions": "Apply questions.json criteria to visible A/B/context only. Produce an independent three-label judgment before consulting reference-labels.jsonl; include disagreements and unsure labels. The model under test must never receive source/gen/note/rationale/labels.",
+    "same_as_not_supports": "Mere restatement is supports=0.",
+    "scope_rule": "Check subject, scope, time and verdict before calling a contradiction or equivalence.",
+    "semantic_reversal": "The 44 semantic_reversal rows are contradicts=1; the method prose groups them under hard negatives ambiguously. Explicit negation is a separate tag."
+  },
+  "split": {
+    "seed": 20261007,
+    "calib": 150,
+    "eval": 150,
+    "method": "Keep all three pairs in each authored scenario on one side; stratify scenarios by language and frozen candidates by source/language.",
+    "departure": "Original PR #675 splits individual pairs; that would split 44 of these 60 authored families across calib/eval.",
+    "remaining_limitation": "33 frozen statement texts occur on both sides; this is not globally node-disjoint."
+  },
+  "model_run": {
+    "base_commit": "94b9279eaba4040f4c810890808f543cd4630cb7",
+    "package": "laya==0.3.28",
+    "checkpoint": "convaiinnovations/laya-multilingual",
+    "revision": "e4e9ddf21a7b1903b7acffd8814ad4307bf63a67",
+    "model_safetensors_sha256": "9d628fd971b700382ac6f65920a86f149777b2e748e0c955fb3b19695aa8f204",
+    "questions_hash": "500e613737d1",
+    "backend": "eager CPU fp32",
+    "max_len": 1024,
+    "run_here": false,
+    "sequence": [
+      "verify.py",
+      "run_gold --split calib",
+      "fit_calib using calibration outputs only",
+      "Freeze all temperatures and abstention thresholds",
+      "run_gold --split eval exactly once",
+      "Report every eligible prediction, every abstention, every truncation and all protocol deviations."
+    ]
+  },
+  "commands_from_repo_root": [
+    "python rag_eval/evalsets/laya-predicates-ai-v1/verify.py",
+    "python -m rag_eval.laya.run_gold --gold rag_eval/evalsets/laya-predicates-ai-v1/gold.jsonl --split calib --out out/laya-ai-v1/calib.jsonl",
+    "python -m rag_eval.laya.fit_calib --in out/laya-ai-v1/calib.jsonl --out out/laya-ai-v1/calibration",
+    "python -m rag_eval.laya.run_gold --gold rag_eval/evalsets/laya-predicates-ai-v1/gold.jsonl --split eval --calib out/laya-ai-v1/calibration --out out/laya-ai-v1/eval.jsonl"
+  ],
+  "harness_review_findings_before_formal_reporting": [
+    "At the pinned commit, report.py calls coverage_at_error on evaluation predictions rather than using the calibrated abstain_below values. A post-hoc threshold on evaluation labels is not the preregistered frozen-threshold measurement.",
+    "At the pinned commit, report.py drops high-asymmetry pairs before computing the reported coverage denominator. Report coverage against all eligible evaluation pairs with asymmetry refusals counted as abstentions.",
+    "run_gold calls system_one and records_from_labeled separately per state; median_s includes both. Its timing is not a measured batch_size=16 throughput.",
+    "Check actual tokenizer usage during inference: only the 400-character input limit was checked here."
+  ],
+  "source_quota_shortfalls": {
+    "ties": 30,
+    "search": 29,
+    "merge": 0,
+    "comention": 10,
+    "random": 0
+  },
+  "no_actual_model_scores_in_this_package": true
+}

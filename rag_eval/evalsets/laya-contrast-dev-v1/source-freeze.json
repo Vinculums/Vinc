@@ -1,0 +1,1005 @@
+{
+  "allocation": [
+    {
+      "family_id": "family:laya-dev1-spec01",
+      "language_cell": "ko_ko",
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec01"
+    },
+    {
+      "family_id": "family:laya-dev1-spec02",
+      "language_cell": "en_en",
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec02"
+    },
+    {
+      "family_id": "family:laya-dev1-spec03",
+      "language_cell": "ko_en",
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec03"
+    },
+    {
+      "family_id": "family:laya-dev1-spec04",
+      "language_cell": "en_ko",
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec04"
+    },
+    {
+      "family_id": "family:laya-dev1-spec05",
+      "language_cell": "ko_ko",
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec05"
+    },
+    {
+      "family_id": "family:laya-dev1-spec06",
+      "language_cell": "en_en",
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec06"
+    },
+    {
+      "family_id": "family:laya-dev1-spec07",
+      "language_cell": "ko_en",
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec07"
+    },
+    {
+      "family_id": "family:laya-dev1-spec08",
+      "language_cell": "en_ko",
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec08"
+    },
+    {
+      "family_id": "family:laya-dev1-obs01",
+      "language_cell": "ko_ko",
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs01"
+    },
+    {
+      "family_id": "family:laya-dev1-obs02",
+      "language_cell": "en_en",
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs02"
+    },
+    {
+      "family_id": "family:laya-dev1-obs03",
+      "language_cell": "ko_en",
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs03"
+    },
+    {
+      "family_id": "family:laya-dev1-obs04",
+      "language_cell": "en_ko",
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs04"
+    },
+    {
+      "family_id": "family:laya-dev1-obs05",
+      "language_cell": "ko_ko",
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs05"
+    },
+    {
+      "family_id": "family:laya-dev1-obs06",
+      "language_cell": "en_en",
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs06"
+    },
+    {
+      "family_id": "family:laya-dev1-obs07",
+      "language_cell": "ko_en",
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs07"
+    },
+    {
+      "family_id": "family:laya-dev1-obs08",
+      "language_cell": "en_ko",
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs08"
+    },
+    {
+      "family_id": "family:laya-dev1-fact01",
+      "language_cell": "ko_ko",
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact01"
+    },
+    {
+      "family_id": "family:laya-dev1-fact02",
+      "language_cell": "en_en",
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact02"
+    },
+    {
+      "family_id": "family:laya-dev1-fact03",
+      "language_cell": "ko_en",
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact03"
+    },
+    {
+      "family_id": "family:laya-dev1-fact04",
+      "language_cell": "en_ko",
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact04"
+    },
+    {
+      "family_id": "family:laya-dev1-fact05",
+      "language_cell": "ko_ko",
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact05"
+    },
+    {
+      "family_id": "family:laya-dev1-fact06",
+      "language_cell": "en_en",
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact06"
+    },
+    {
+      "family_id": "family:laya-dev1-fact07",
+      "language_cell": "ko_en",
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact07"
+    },
+    {
+      "family_id": "family:laya-dev1-fact08",
+      "language_cell": "en_ko",
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact08"
+    }
+  ],
+  "assignments": [
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec01"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec01"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec02"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec02"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec03"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec03"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec04"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec04"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec05"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec05"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec06"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec06"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec07"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec07"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec08"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec08"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs01"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs01"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs02"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs02"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs03"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs03"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs04"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs04"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs05"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs05"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs06"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs06"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs07"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs07"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs08"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs08"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact01"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact01"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact02"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact02"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact03"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact03"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact04"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact04"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact05"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact05"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact06"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact06"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact07"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact07"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact08"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact08"
+    }
+  ],
+  "created_at": "2026-10-11T09:50:52.161758+00:00",
+  "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+  "final_measurement": false,
+  "independent_statistical_draws_claimed": false,
+  "licenses": {
+    "nws-api": {
+      "captured_at": "2026-10-11T09:50:46.161293+00:00",
+      "key": "nws-api",
+      "path": "rights/nws-api.txt",
+      "sha256": "8ce9618ace389afe1d0f914ea078b9b42fc3b4c3b8223ff73c15516687d1e5ca",
+      "uri": "https://www.weather.gov/documentation/services-web-api"
+    },
+    "nws-rights": {
+      "captured_at": "2026-10-11T09:50:45.581186+00:00",
+      "key": "nws-rights",
+      "path": "rights/nws-rights.txt",
+      "sha256": "95186edce4e6fb78c8d974c5478a506b7088cba89c7c17c5e2efa6f73f6af8ed",
+      "uri": "https://www.weather.gov/disclaimer"
+    },
+    "rust-apache": {
+      "captured_at": "2026-10-11T09:50:45.250074+00:00",
+      "key": "rust-apache",
+      "path": "rights/rust-apache.txt",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/LICENSE-APACHE"
+    },
+    "rust-mit": {
+      "captured_at": "2026-10-11T09:50:44.971080+00:00",
+      "key": "rust-mit",
+      "path": "rights/rust-mit.txt",
+      "sha256": "0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720",
+      "uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/LICENSE-MIT"
+    }
+  },
+  "schema": "vinc.laya.source-freeze.v1",
+  "source_plan_sha256": "68ed812f23ff76a8d5018e33132a33133e5bb4262bcdf6d68ba1b1193bd44beb",
+  "sources": [
+    {
+      "captured_at": "2026-10-11T09:50:46.179304+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec01",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/range-expr.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "81d5e0721c0fbbd11e29859902b9ab7c6a4d630531f46e07b9bf474d0e86b819",
+      "snapshot_path": "sources/spec01.txt",
+      "source_id": "source:laya-dev1-spec01"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:46.427290+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec02",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/return-expr.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "b0a5df6b4b546d676e9bc9f0500fed243ef0a8c6d609b9e4434abec43e432158",
+      "snapshot_path": "sources/spec02.txt",
+      "source_id": "source:laya-dev1-spec02"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:46.704307+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec03",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/array-expr.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "2b5e385fc7243d93e9c9387931b214f069ba91b2528480758aaf186e43372a2b",
+      "snapshot_path": "sources/spec03.txt",
+      "source_id": "source:laya-dev1-spec03"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:46.945286+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec04",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/tuple-expr.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "909e6f0ad921fd84ddf8c0a482a100d33d2b2e0fc89c68bbf2773109986e02a8",
+      "snapshot_path": "sources/spec04.txt",
+      "source_id": "source:laya-dev1-spec04"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:47.199292+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec05",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/type-aliases.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "c3085a4a860f703edc5dc65e16a62dc87dbf8c9a29f12158ff048ca383ef2db1",
+      "snapshot_path": "sources/spec05.txt",
+      "source_id": "source:laya-dev1-spec05"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:47.444287+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec06",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/constant-items.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "1f39ac3e895b4228ddc7a840743355707c0956831ce6097d8b43676e76cd12f1",
+      "snapshot_path": "sources/spec06.txt",
+      "source_id": "source:laya-dev1-spec06"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:47.707289+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec07",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/use-declarations.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "86ca81b9c4e4b3cde24e308e48e305233abc10ceadc5006aacd60b948187265d",
+      "snapshot_path": "sources/spec07.txt",
+      "source_id": "source:laya-dev1-spec07"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:47.961285+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec08",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/visibility-and-privacy.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "6c188645970168efd11cfb397708a9641220c3c72921ca9d82a8fe13fa7072a5",
+      "snapshot_path": "sources/spec08.txt",
+      "source_id": "source:laya-dev1-spec08"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:48.570299+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs01",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs01",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+      "sha256": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+      "snapshot_path": "sources/obs01.txt",
+      "source_id": "source:laya-dev1-obs01"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:48.758285+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs02",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs02",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+      "sha256": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+      "snapshot_path": "sources/obs02.txt",
+      "source_id": "source:laya-dev1-obs02"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:48.995286+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs03",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs03",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+      "sha256": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+      "snapshot_path": "sources/obs03.txt",
+      "source_id": "source:laya-dev1-obs03"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:49.223287+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs04",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs04",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+      "sha256": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+      "snapshot_path": "sources/obs04.txt",
+      "source_id": "source:laya-dev1-obs04"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:49.423288+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs05",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs05",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+      "sha256": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+      "snapshot_path": "sources/obs05.txt",
+      "source_id": "source:laya-dev1-obs05"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:49.623288+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs06",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs06",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+      "sha256": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+      "snapshot_path": "sources/obs06.txt",
+      "source_id": "source:laya-dev1-obs06"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:49.806308+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs07",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs07",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+      "sha256": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+      "snapshot_path": "sources/obs07.txt",
+      "source_id": "source:laya-dev1-obs07"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:49.994287+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs08",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs08",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+      "sha256": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+      "snapshot_path": "sources/obs08.txt",
+      "source_id": "source:laya-dev1-obs08"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:50.240294+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact01",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/KSEA",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+      "sha256": "9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+      "snapshot_path": "sources/fact01.txt",
+      "source_id": "source:laya-dev1-fact01"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:50.487729+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact02",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/KDEN",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+      "sha256": "6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+      "snapshot_path": "sources/fact02.txt",
+      "source_id": "source:laya-dev1-fact02"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:50.755734+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact03",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/KORD",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+      "sha256": "c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+      "snapshot_path": "sources/fact03.txt",
+      "source_id": "source:laya-dev1-fact03"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:50.986739+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact04",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/KBOS",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+      "sha256": "35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+      "snapshot_path": "sources/fact04.txt",
+      "source_id": "source:laya-dev1-fact04"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:51.278730+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact05",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/PHNL",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+      "sha256": "022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+      "snapshot_path": "sources/fact05.txt",
+      "source_id": "source:laya-dev1-fact05"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:51.577758+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact06",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/PAFA",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+      "sha256": "f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+      "snapshot_path": "sources/fact06.txt",
+      "source_id": "source:laya-dev1-fact06"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:51.902731+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact07",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/KSFO",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+      "sha256": "d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+      "snapshot_path": "sources/fact07.txt",
+      "source_id": "source:laya-dev1-fact07"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:52.158756+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact08",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/KMIA",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+      "sha256": "ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+      "snapshot_path": "sources/fact08.txt",
+      "source_id": "source:laya-dev1-fact08"
+    }
+  ],
+  "training_authorized": false
+}
