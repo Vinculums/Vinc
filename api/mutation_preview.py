@@ -172,9 +172,13 @@ def preview(store, *, owner, operation, arguments):
             a, b = _node(store, owner, keep), _node(store, owner, drop)
             edges = _incident(store, owner, [keep, drop])
             # 기존 병합의 재배선 목록 밖인 관계는 잃을 수 있다. 미리보기 적용은 거절한다.
-            supported = {"RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM",
-                         "ATTACHES_TO", "CONNECTS", "IN_DOMAIN"}
-            unsupported = [e for e in edges if drop in (e["source"], e["target"]) and e["type"] not in supported]
+            def supported(edge):
+                pair = (edge["source_kind"], edge["target_kind"])
+                return (edge["type"] in query._CC_RELS and pair == ("Concept", "Concept")
+                    or edge["type"] == "ATTACHES_TO" and pair == ("Record", "Concept")
+                    or edge["type"] == "CONNECTS" and pair == ("Bridge", "Concept")
+                    or edge["type"] == "IN_DOMAIN" and pair == ("Concept", "Domain"))
+            unsupported = [e for e in edges if drop in (e["source"], e["target"]) and not supported(e)]
             details = {"kept_node": a, "discarded_fields": b, "affected_edges": edges,
                        "unsupported_edges": unsupported, "apply_supported": not unsupported,
                        "discarded_edge_properties": [e for e in edges if drop in (e["source"], e["target"])
