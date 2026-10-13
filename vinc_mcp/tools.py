@@ -497,7 +497,7 @@ def _t_whoami(args, bridge):
     이 도구가 왜 생겼나(`vinc_conventions` 가 이미 신원을 싣는데도):
     [[decision:the-space-is-an-argument-and-the-default-is-personal]]"""
     owner = _owner(args, bridge)
-    scope = ("team" if owner.startswith("team:")
+    scope = ("community" if owner.startswith("community:") else "team" if owner.startswith("team:")
              else "personal" if owner.startswith("user:") else "unscoped")
     out = {"owner": owner, "scope": scope,
            "how": "pass space:'<id>' to any tool to act in that space; omit it for "
@@ -2237,6 +2237,10 @@ def call(name: str, args: dict | None, bridge: Bridge,
     tool = _BY_NAME.get(name)
     if tool is None:
         raise KeyError(f"unknown tool: {name}")
+    # 커뮤니티 일반 쓰기는 수정 이력 경로를 우회할 수 없다. 계정 전용 도구가 따로 받는다.
+    effective_owner = forced_owner or (args or {}).get("owner") or getattr(bridge, "owner", None)
+    if effective_owner and effective_owner.startswith("community:") and tool_tier(name) != "viewer":
+        raise PermissionError("community mutations must go through account revisions")
     args = dict(args or {})                     # 복사 — 호출자 dict 불변, target 제거
     target = (args.pop("target", None) or "local").lower()
     # `space` 는 **라우팅 메타데이터**지 도구 인자가 아니다. 기본은 벗기는 것이다 —

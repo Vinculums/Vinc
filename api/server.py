@@ -207,16 +207,18 @@ def store_unavailable() -> dict:
 #: 둘이 어긋나면 팀 그래프가 personal 로 보고되므로 교차계약 테스트가 대조한다
 #: (`record:fact-ap1-role-table-mirror` 와 같은 처방).
 _TEAM_OWNER_PREFIX = "team:"
+_COMMUNITY_OWNER_PREFIX = "community:"
 
 
 def _owner_scope(owner: str | None) -> str:
-    """이 owner 가 어느 종류의 그래프인가 — `personal` · `team` · `unscoped`.
+    """이 owner 가 어느 종류의 그래프인가 — `personal` · `team` · `community` · `unscoped`.
 
     `unscoped` 는 owner 없이 도는 로컬 단일 사용자 스토어다. 빈 문자열로 두면
     호출부가 "모른다"와 "개인이다"를 구분할 수 없어서 이름을 준다."""
     if not owner:
         return "unscoped"
-    return "team" if owner.startswith(_TEAM_OWNER_PREFIX) else "personal"
+    return ("community" if owner.startswith(_COMMUNITY_OWNER_PREFIX)
+            else "team" if owner.startswith(_TEAM_OWNER_PREFIX) else "personal")
 
 
 def connect_origins() -> list[str]:
