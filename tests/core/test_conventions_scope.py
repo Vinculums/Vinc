@@ -105,8 +105,8 @@ class ConventionsContractTests(unittest.TestCase):
         conv = next(t for t in TOOLS if t["name"] == "vinc_conventions")["description"]
         for field in ("`owner`", "`scope`"):
             self.assertIn(field, conv, "첫 문이 신원을 계속 실어야 한다: " + field)
-        # 수는 **의도한 추가**로만 움직인다(23 = W1 brief, 24 = whoami, 25 = node, 26 = edges, 27 = role, 28 = role_check).
-        self.assertEqual(len(TOOLS), 28)
+        # 수는 **의도한 추가**로만 움직인다(23 = W1 brief, 24 = whoami, 25 = node, 26 = edges, 27 = role, 28 = role_check, 29 = community_write).
+        self.assertEqual(len(TOOLS), 29)
 
     def test_whoami_는_조회_전용이라_열람자도_부른다(self):
         """등급이 viewer 여야 한다. editor 이상이면 팀 열람자가 자기가 닿을 수 있는

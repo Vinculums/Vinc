@@ -2955,6 +2955,8 @@ def _domain_context(store, node_id: str, *, owner: str, offset: int, cfg=None) -
              "child_topics": len(children), "direct_nodes": len(members),
              "subtree_nodes": subtree, "descendant_nodes": subtree - direct,
              "structure": {"total": len(rows), **_window(rows, offset)}}
+    from api import topic_description
+    topic["description"] = topic_description.read(store, owner=owner, domain=domain)
     # 열은 분류의 정본, 엣지는 파생물이다. 불일치는 자동 수리하지 않는다.
     if direct != len(members) or expected_children != {r["title"] for r in children}:
         topic["consistency"] = {"status": "membership_drift", "column_direct_nodes": direct,

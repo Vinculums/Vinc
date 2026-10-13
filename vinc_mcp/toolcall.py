@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from . import tools, viewurl
+from . import community, tools, viewurl
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,10 @@ def preflight(name: str, args: dict, *, base_auth: dict,
             if not auth["ok"]:
                 return Outcome("space_not_found", message=(
                     "no such space. Call vinc_whoami to see the spaces you can reach."))
+    is_community = community.is_space(auth.get("owner"))
+    if is_community and tools.tool_tier(name) != "viewer" and name != community.WRITE_TOOL:
+        return Outcome("role_denied", auth=auth,
+                       message="Community mutations require vinc_community_write and an explicit community space.")
     if str(auth.get("owner") or "").startswith("team:"):
         role = auth.get("role") or ""
         if not tools.role_allows(role, name):
@@ -47,6 +51,12 @@ def preflight(name: str, args: dict, *, base_auth: dict,
         return Outcome("read_only", auth=auth,
                        message=(f"this key is read-only: {name} writes to the graph. "
                                 "Mint a full-access key at https://vincs.io/account"))
+    if name == community.WRITE_TOOL:
+        creating = args.get("action") == "community_create"
+        if ((creating and not str(auth.get("owner") or "").startswith("user:"))
+                or (not creating and not is_community)):
+            return Outcome("role_denied", auth=auth,
+                           message="Community creation uses personal identity; all other actions require community:<uuid> space.")
     return Outcome("ok", auth=auth)
 
 
@@ -54,7 +64,7 @@ def execute(name: str, args: dict | None, bridge: Any, *,
             forced_owner: str | None = None, plan: str | None = None,
             quota: Callable[[str, str | None], dict | None] | None = None,
             entitlements: dict | None = None, allow_target: bool = True,
-            local_only: bool = False) -> Outcome:
+            local_only: bool = False, community_write=None) -> Outcome:
     """인자 검증은 한도 소비보다 앞선다. 실행 결과 봉투는 호출 표면이 만든다."""
     args = args or {}
     try:
@@ -68,7 +78,7 @@ def execute(name: str, args: dict | None, bridge: Any, *,
     try:
         result = tools.call(name, args, bridge, forced_owner=forced_owner,
                             entitlements=entitlements, allow_target=allow_target,
-                            local_only=local_only)
+                            local_only=local_only, community_write=community_write)
     except tools.InvalidArgument as exc:
         return Outcome("invalid_argument", result=exc.result(), error=exc)
     except (KeyError, ValueError) as exc:

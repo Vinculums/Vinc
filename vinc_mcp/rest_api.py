@@ -7,7 +7,7 @@ import re
 import secrets
 from urllib.parse import parse_qs, urlparse
 
-from . import entitlement, rest_routes, toolcall, tools
+from . import community, entitlement, rest_routes, toolcall, tools
 from store import request_timing
 from .http_server import MAX_BODY, _UUID_RE
 
@@ -101,6 +101,11 @@ def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
     """도구 결과 모양을 v1 상태로 옮긴다. 표는 tests/mcp/test_rest_v1.py 의 FAILURE_CASES 가 고정한다.
     반환은 (status, code, message) 또는 (status, code, message, details)."""
     error = str(result.get("error") or "")
+    if name == community.WRITE_TOOL and result.get("status") in (400, 401, 403, 404, 409, 429):
+        status = result["status"]
+        code = {400: "invalid_argument", 401: "not_authenticated", 403: "role_forbidden",
+                404: "not_found", 409: "conflict", 429: "quota_exceeded"}[status]
+        return status, code, error
     note = str(result.get("note") or "")
     reason = (error + " " + note).lower()
     if name == "vinc_operation_status" and result.get("executed") is True:
@@ -224,7 +229,7 @@ def _handle(handler, method: str) -> bool:
     if "space" in query:
         query["space"] = query["space"].strip().lower()   # /mcp 와 같은 정규화
     space = query.get("space") or "personal"
-    if space != "personal" and not _UUID_RE.fullmatch(space):
+    if space != "personal" and not _UUID_RE.fullmatch(space) and not community.is_space(space):
         fail(404, "space_not_found", "No such space.")
         return True
     header = handler.headers.get("Authorization") or ""
@@ -273,7 +278,7 @@ def _handle(handler, method: str) -> bool:
             gated = toolcall.preflight(
                 route.tool, args, base_auth=auth, address_space=None,
                 authenticate=lambda want: handler._auth(want, presented_at="/mcp"),
-                valid_space=lambda want: bool(_UUID_RE.fullmatch(want)))
+                valid_space=lambda want: bool(_UUID_RE.fullmatch(want)) or community.is_space(want))
     except Exception:
         fail(503, "upstream_unavailable", "Space membership verification is unavailable.",
              extra={"Retry-After": "1"})
@@ -291,9 +296,11 @@ def _handle(handler, method: str) -> bool:
     authenticated = True
     outcome = toolcall.execute(route.tool, args, handler.app.bridge,
                                forced_owner=resolved.get("owner"), plan=resolved.get("plan"),
-                               quota=handler.app.quota_check,
+                               quota=handler.app.quota_for(resolved),
                                entitlements=handler.app.entitlements_for(resolved.get("plan")),
-                               allow_target=False)
+                               allow_target=False,
+                               community_write=(lambda args: handler.app.community_write(resolved, args))
+                               if handler.app.community_write is not None else None)
     if outcome.kind == "invalid_argument":
         fail(400, "invalid_argument", _message(outcome.result))
         return True
@@ -308,6 +315,10 @@ def _handle(handler, method: str) -> bool:
     if outcome.kind != "ok":
         error = outcome.error
         message = _message(outcome.result) if outcome.result else str(error)
+        if isinstance(error, community.WriteUnconfirmed):
+            fail(503, "upstream_unavailable", message,
+                 details={"retryable": False, "write_may_have_applied": True})
+            return True
         if isinstance(error, json.JSONDecodeError):
             # 사이드카가 JSON 이 아닌 200 을 줬다. 요청이 아니라 뒤쪽 문제다.
             fail(503, "upstream_unavailable", "The graph service returned an unreadable answer.")

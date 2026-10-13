@@ -270,6 +270,7 @@ def verify_member(sub: str, team: str) -> dict | None:
 #: 스페이스 목록 캐시. `_cache` 와 **따로 둔다** — 저기는 인가 판정(dict|None)을
 #: 담는 표고 여기는 목록이라, 한 표에 섞으면 타입이 거짓말을 한다.
 _spaces_cache: dict[str, tuple[float, list | None]] = {}
+_communities_cache: dict[str, tuple[float, list | None]] = {}
 
 
 def list_spaces(sub: str) -> list[dict] | None:
@@ -317,6 +318,8 @@ def list_spaces(sub: str) -> list[dict] | None:
                 rid, name, role = r.get("id"), r.get("name"), r.get("role")
                 if not (isinstance(rid, str) and rid and isinstance(role, str) and role):
                     continue
+                if rid.startswith("community:"):
+                    continue
                 rows.append({"id": rid, "name": name if isinstance(name, str) else "",
                              "role": role})
     except Exception:
@@ -324,6 +327,37 @@ def list_spaces(sub: str) -> list[dict] | None:
 
     with _lock:
         _spaces_cache[ckey] = (now + (_POS_TTL if rows is not None else _NEG_TTL), rows)
+    return rows
+
+
+def list_communities(sub: str) -> list[dict] | None:
+    """가입 목록은 발견 정보다. 읽기 권한은 요청마다 공개 상태로 다시 확인한다."""
+    from . import community
+    seed = _seed()
+    if not sub or seed is None:
+        return None
+    now = time.time()
+    with _lock:
+        hit = _communities_cache.get(sub)
+        if hit and hit[0] > now:
+            return hit[1]
+    rows = None
+    try:
+        req = urllib.request.Request(_account_url() + "/internal/mcp/spaces",
+                                     data=json.dumps({"sub": sub}).encode("utf-8"),
+                                     headers={"Content-Type": "application/json", "X-Vinc-Assertion": _sign_assertion(seed)},
+                                     method="POST")
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        raw = body.get("communities")
+        if isinstance(raw, list):
+            rows = [{"id": r["id"].lower(), "name": r.get("name") if isinstance(r.get("name"), str) else "",
+                     "role": r["role"]} for r in raw if isinstance(r, dict)
+                    and community.is_space(r.get("id")) and r.get("role") in ("reader", "operator")]
+    except Exception:
+        rows = None
+    with _lock:
+        _communities_cache[sub] = (now + (_POS_TTL if rows is not None else _NEG_TTL), rows)
     return rows
 
 

@@ -969,6 +969,9 @@ def _main(argv: list[str] | None = None) -> int:
             # 같다 — 키 검증이 되는 배포면 이것도 된다. 꺼지면 팀 주소의 OAuth 만
             # 닫히고(404) 키 경로와 개인 OAuth 는 그대로다.
             vm = entitlement.verify_member if entitlement.enabled() else None
+            from vinc_mcp import community
+            vc = community.resolve if entitlement.enabled() else None
+            cw = community.write if entitlement.enabled() else None
             # 티어 쿼터(B-D2) — 인증된 회원(owner) 의 tools/call 만 소비. 미설정 시
             # 무제한(로컬·파일럿 프로파일 무영향). free 초과 → LOCK_HOURS 잠금.
             quota_cfg = None
@@ -1007,6 +1010,7 @@ def _main(argv: list[str] | None = None) -> int:
             return serve_http(
                 bridge, host=args.host, port=args.port,
                 static_token=static, oauth=gate, verify_key=vk, verify_member=vm,
+                verify_community=vc, community_write=cw,
                 quota_config=quota_cfg,
                 mcp_seed=_ev.load_seed(seed_raw) if seed_raw else None,
                 account_public=_ev.load_public(acct_raw) if acct_raw else None,

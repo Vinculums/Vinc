@@ -80,6 +80,7 @@ READ_ROUTES = (
 # A2 adds editor/admin routes here. Search/fetch belong to a host directory,
 # while every other public MCP tool must have a route.
 WRITE_ROUTES = (
+    Route("POST", "/v1/community", "vinc_community_write", body=("action", "payload", "client_name")),
     Route("POST", "/v1/merge-rejections", "vinc_merge_reject",
           body=("a", "b", "note", "undo", "operation_id")),
     Route("POST", "/v1/fragments", "vinc_ingest", body=("nodes", "edges", "review_claims", "create_only", "operation_id")),
