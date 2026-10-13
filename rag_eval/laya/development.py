@@ -14,6 +14,7 @@ from unittest.mock import patch
 from .finetune import count_optimizer_steps, freeze_embeddings, update_budget
 from .metrics import auroc, brier, ece, softmax
 from .public_sources import digest, encoded
+from .intervention import SCHEMA, SELECTION, select_checkpoint
 
 BASE_SHA = '9d628fd971b700382ac6f65920a86f149777b2e748e0c955fb3b19695aa8f204'
 
@@ -23,14 +24,20 @@ def read_rows(path):
 
 
 def validate_registration(reg):
-    if reg.get('schema') != 'vinc.laya.local-development.v1' or reg.get('base_sha256') != BASE_SHA:
+    if reg.get('schema') not in ('vinc.laya.local-development.v1', SCHEMA) or reg.get('base_sha256') != BASE_SHA:
         raise ValueError('published original-weight registration required')
     if reg.get('loss') not in ('rlcd', 'soft-ce') or reg.get('sealed_test') is not False:
         raise ValueError('development-only loss comparison required')
     if reg.get('epochs') != 2 or reg.get('item_cap') != 3012 or reg.get('scheduled_updates') != 96:
         raise ValueError('registered diagnostic budget changed')
-    if type(reg.get('seed')) is not int or reg.get('selection') != 'core_supports_nll_then_positive_recall':
+    selection = SELECTION if reg['schema'] == SCHEMA else 'core_supports_nll_then_positive_recall'
+    if type(reg.get('seed')) is not int or reg.get('selection') != selection:
         raise ValueError('fixed seed and development selection required')
+    if reg['schema'] == SCHEMA:
+        if reg.get('loss') != 'soft-ce' or reg.get('arm') not in ('core', 'mixed'):
+            raise ValueError('fixed auxiliary comparison required')
+        if reg.get('max_training_runs') != 2 or reg.get('no_new_paid_resource') is not True:
+            raise ValueError('bounded local comparison required')
     if any(Path(r['path']).name.startswith(('eval', 'calib')) for r in reg['development']):
         raise ValueError('calibration or sealed file is not development')
 
@@ -112,6 +119,9 @@ def main(argv=None):
     validate_registration(reg)
     if digest(Path(__file__).read_bytes()) != reg['development_module_sha256']:
         raise ValueError('registered development implementation changed')
+    if reg['schema'] == SCHEMA:
+        if digest(Path(__file__).with_name('intervention.py').read_bytes()) != reg['intervention_module_sha256']:
+            raise ValueError('registered intervention implementation changed')
     if digest((args.snapshot/'model.safetensors').read_bytes()) != BASE_SHA:
         raise ValueError('retired or non-original checkpoint refused')
     os.environ.update(HF_HOME=str(args.hf_home), HF_HUB_OFFLINE='1')
@@ -124,6 +134,13 @@ def main(argv=None):
     if digest(Path(T.__file__).read_bytes()) != reg['laya_train_sha256']:
         raise ValueError('installed training implementation changed')
     train_rows, dev_rows = checked_rows(reg['training']), checked_rows(reg['development'])
+    if reg['schema'] == SCHEMA:
+        exposure_path = Path(reg['exposure']['path'])
+        if digest(exposure_path.read_bytes()) != reg['exposure']['sha256']:
+            raise ValueError('registered sampling exposure changed')
+        exposure = json.loads(exposure_path.read_bytes())
+        if exposure['arm'] != reg['arm'] or exposure['seed'] != reg['seed'] or len(train_rows) != reg['item_cap']:
+            raise ValueError('registered sampling arm changed')
     items, meta = prepare_items(T,tok,train_rows,cfg['max_len'],cfg['head_max_len'],reg['item_cap'],reg['seed'])
     dev_items, dev_meta = prepare_items(T,tok,dev_rows,cfg['max_len'],cfg['head_max_len'])
     budget = update_budget(len(items),reg['epochs'])
@@ -140,12 +157,17 @@ def main(argv=None):
                  'torch':torch.__version__,'laya_train_sha256':reg['laya_train_sha256'],'base_sha256':BASE_SHA,
                  'development_module_sha256':reg['development_module_sha256'],
                  'data_rows':len(train_rows),'development_rows':len(dev_rows), 'gpu':torch.cuda.get_device_name(0)}
+    if reg['schema'] == SCHEMA:
+        preflight['exposure'] = exposure
+        preflight['task_class_counts'] = dict(__import__('collections').Counter(
+            f"{m['task']}:{int(item['target'][1])}" for item, m in zip(items, meta)))
     if args.preflight:
         print(json.dumps(preflight,sort_keys=True));return
     # 실행을 시작하기 전에 시도 영수증을 독점 생성한다. 재실행은 다른 등록을 요구한다.
     args.out.mkdir(parents=True,exist_ok=False)
     (args.out/'attempt.json').write_bytes(encoded({'started_at':time.time(),'registration_sha256':digest(raw)}))
     (args.out/'preflight.json').write_bytes(encoded(preflight))
+    (args.out/'registration.json').write_bytes(raw)
     device = torch.device('cuda')
     trainable,total = freeze_embeddings(model)
     model.to(device)
@@ -202,7 +224,7 @@ def main(argv=None):
 
     with count_optimizer_steps(torch.optim) as counters, patch.object(T,'soft_ce_loss',ce), patch.object(T,'rlcd_loss',rl), patch.object(torch.nn.utils,'clip_grad_norm_',clip):
         T.train_model(model,tok,items,config,device,cfg['max_len'],cfg['head_max_len'],on_epoch_end=epoch_end,parallel=T.uses_parallel_layout(cfg))
-    chosen=min(history,key=lambda h:(h['development']['supports']['nll'],-h['development']['supports']['positive_recall'],h['epoch']))
+    chosen=select_checkpoint(history,reg['selection'])
     summary={'registration_sha256':digest(raw),'model_sha256':digest((args.out/f'epoch-{chosen["epoch"]}'/'model.safetensors').read_bytes()),
              'selected_epoch':chosen['epoch'],'selection':reg['selection'],'loss':reg['loss'],'baseline':baseline,'selected':chosen['development'],
              'executed_updates':counters['executed'],'scheduled_updates':budget['opportunities_total'],
