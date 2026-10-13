@@ -14,7 +14,7 @@ from unittest.mock import patch
 from .finetune import count_optimizer_steps, freeze_embeddings, update_budget
 from .metrics import auroc, brier, ece, softmax
 from .public_sources import digest, encoded
-from .intervention import SCHEMA, SELECTION, select_checkpoint
+from .intervention import SCHEMA, LOW_SCHEMA, SELECTION, select_checkpoint
 
 BASE_SHA = '9d628fd971b700382ac6f65920a86f149777b2e748e0c955fb3b19695aa8f204'
 
@@ -24,20 +24,23 @@ def read_rows(path):
 
 
 def validate_registration(reg):
-    if reg.get('schema') not in ('vinc.laya.local-development.v1', SCHEMA) or reg.get('base_sha256') != BASE_SHA:
+    if reg.get('schema') not in ('vinc.laya.local-development.v1', SCHEMA, LOW_SCHEMA) or reg.get('base_sha256') != BASE_SHA:
         raise ValueError('published original-weight registration required')
     if reg.get('loss') not in ('rlcd', 'soft-ce') or reg.get('sealed_test') is not False:
         raise ValueError('development-only loss comparison required')
     if reg.get('epochs') != 2 or reg.get('item_cap') != 3012 or reg.get('scheduled_updates') != 96:
         raise ValueError('registered diagnostic budget changed')
-    selection = SELECTION if reg['schema'] == SCHEMA else 'core_supports_nll_then_positive_recall'
+    selection = SELECTION if reg['schema'] in (SCHEMA,LOW_SCHEMA) else 'core_supports_nll_then_positive_recall'
     if type(reg.get('seed')) is not int or reg.get('selection') != selection:
         raise ValueError('fixed seed and development selection required')
-    if reg['schema'] == SCHEMA:
-        if reg.get('loss') != 'soft-ce' or reg.get('arm') not in ('core', 'mixed'):
+    if reg['schema'] in (SCHEMA,LOW_SCHEMA):
+        arms=('low-original','low-expanded') if reg['schema']==LOW_SCHEMA else ('core','mixed')
+        if reg.get('loss') != 'soft-ce' or reg.get('arm') not in arms:
             raise ValueError('fixed auxiliary comparison required')
         if reg.get('max_training_runs') != 2 or reg.get('no_new_paid_resource') is not True:
             raise ValueError('bounded local comparison required')
+        if reg['schema']==LOW_SCHEMA and (reg.get('core_items')!=2400 or reg.get('auxiliary_items')!=612):
+            raise ValueError('registered lower mixture changed')
     if any(Path(r['path']).name.startswith(('eval', 'calib')) for r in reg['development']):
         raise ValueError('calibration or sealed file is not development')
 
@@ -119,7 +122,7 @@ def main(argv=None):
     validate_registration(reg)
     if digest(Path(__file__).read_bytes()) != reg['development_module_sha256']:
         raise ValueError('registered development implementation changed')
-    if reg['schema'] == SCHEMA:
+    if reg['schema'] in (SCHEMA,LOW_SCHEMA):
         if digest(Path(__file__).with_name('intervention.py').read_bytes()) != reg['intervention_module_sha256']:
             raise ValueError('registered intervention implementation changed')
     if digest((args.snapshot/'model.safetensors').read_bytes()) != BASE_SHA:
@@ -134,7 +137,7 @@ def main(argv=None):
     if digest(Path(T.__file__).read_bytes()) != reg['laya_train_sha256']:
         raise ValueError('installed training implementation changed')
     train_rows, dev_rows = checked_rows(reg['training']), checked_rows(reg['development'])
-    if reg['schema'] == SCHEMA:
+    if reg['schema'] in (SCHEMA,LOW_SCHEMA):
         exposure_path = Path(reg['exposure']['path'])
         if digest(exposure_path.read_bytes()) != reg['exposure']['sha256']:
             raise ValueError('registered sampling exposure changed')
@@ -157,7 +160,7 @@ def main(argv=None):
                  'torch':torch.__version__,'laya_train_sha256':reg['laya_train_sha256'],'base_sha256':BASE_SHA,
                  'development_module_sha256':reg['development_module_sha256'],
                  'data_rows':len(train_rows),'development_rows':len(dev_rows), 'gpu':torch.cuda.get_device_name(0)}
-    if reg['schema'] == SCHEMA:
+    if reg['schema'] in (SCHEMA,LOW_SCHEMA):
         preflight['exposure'] = exposure
         preflight['task_class_counts'] = dict(__import__('collections').Counter(
             f"{m['task']}:{int(item['target'][1])}" for item, m in zip(items, meta)))

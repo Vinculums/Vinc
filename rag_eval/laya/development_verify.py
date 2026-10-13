@@ -8,7 +8,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from .public_sources import digest, encoded
-from .intervention import SCHEMA, balanced_rows, jsonl_bytes
+from .intervention import SCHEMA, LOW_SCHEMA, balanced_rows, jsonl_bytes
 
 
 def score(outputs):
@@ -76,7 +76,7 @@ def verify(root):
         reg=json.loads(registration_bytes)
         from .development import validate_registration, checked_rows
         validate_registration(reg)
-        if reg['schema'] != SCHEMA or reg['selection'] != selection or digest(registration_bytes) != summary['registration_sha256']:
+        if reg['schema'] not in (SCHEMA,LOW_SCHEMA) or reg['selection'] != selection or digest(registration_bytes) != summary['registration_sha256']:
             raise ValueError('saved registration changed')
         if summary['loss'] != reg['loss']:
             raise ValueError('registered objective changed')

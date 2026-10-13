@@ -11,6 +11,7 @@ from .public_sources import digest, encoded
 
 SELECTION = 'core_supports_f1_then_recall_then_nll'
 SCHEMA = 'vinc.laya.positive-auxiliary-development.v1'
+LOW_SCHEMA = 'vinc.laya.low-mixture-development.v1'
 
 
 def positive_f1(values):
@@ -32,10 +33,10 @@ def select_checkpoint(history, selection):
 
 
 def balanced_rows(core, native, arm, seed):
-    if arm not in ('core', 'mixed'):
+    if arm not in ('core', 'mixed', 'low-original', 'low-expanded'):
         raise ValueError('unknown data intervention arm')
     groups = defaultdict(dict)
-    for tier, rows in [('core', core), ('native', native if arm == 'mixed' else [])]:
+    for tier, rows in [('core', core), ('native', native if arm != 'core' else [])]:
         for row in rows:
             for task, question in row['questions'].items():
                 target = row['gold'][task]
@@ -61,14 +62,14 @@ def balanced_rows(core, native, arm, seed):
     if {key for key in groups if key[0] == 'core'} != expected_core:
         raise ValueError('missing core task/class stratum')
     native_cells = sorted({key[:-1] for key in groups if key[0] == 'native'})
-    if arm == 'mixed' and (len(native_cells) != 9 or any((*key, y) not in groups for key in native_cells for y in (0, 1))):
+    if arm != 'core' and (len(native_cells) != 9 or any((*key, y) not in groups for key in native_cells for y in (0, 1))):
         raise ValueError('frozen native task/source/language strata changed')
     selected, exposure = [], []
     for key, candidates in sorted(groups.items()):
         if key[0] == 'core':
-            quota = 502 if arm == 'core' else 251
+            quota = 400 if arm.startswith('low-') else 502 if arm == 'core' else 251
         else:
-            quota = 84 if native_cells.index(key[:-1]) < 6 else 83
+            quota = 34 if arm.startswith('low-') else 84 if native_cells.index(key[:-1]) < 6 else 83
         ordered = [candidates[i] for i in sorted(candidates)]
         rng = random.Random(digest(encoded({'seed': seed, 'stratum': key})))
         draws = []
