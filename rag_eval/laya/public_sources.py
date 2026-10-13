@@ -44,7 +44,7 @@ def validate_plan(plan):
         if not row.get('license') or not row.get('revision') or type(row['max_bytes']) is not int or not 0 < row['max_bytes'] <= 120_000_000:
             raise ValueError('rights, revision and bounded bytes required')
     for source in {r['source'] for r in plan['files']}:
-        if {r['kind'] for r in plan['files'] if r['source'] == source} < {'rights', 'readme'}:
+        if not {'rights', 'readme'} <= {r['kind'] for r in plan['files'] if r['source'] == source}:
             raise ValueError('primary rights and readme required')
 
 
