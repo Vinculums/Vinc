@@ -65,7 +65,7 @@ def put(store, *, owner: str, node: str, text: str, expected_content_hash: str) 
             return {**base, "status": "query_failed"}
         if current["content_hash"] != expected_content_hash:
             return {**base, "status": "conflict"}
-        if not current["exists"] and not text:
+        if current["text"] == text:
             return {**current, "kind": "topic-description"}
     except Exception:
         return {**base, "status": "query_failed"}
@@ -73,7 +73,8 @@ def put(store, *, owner: str, node: str, text: str, expected_content_hash: str) 
         origin_id = docstore.doc_id_for_origin(owner, ORIGIN + ":" + domain)
         result = docstore.put_doc(
             store, owner=owner, text=text, doc_id=current.get("doc_id") or origin_id,
-            title="Topic description: " + domain, origin=ORIGIN, topic=domain, link=False)
+            title=None if current["exists"] else "Topic description: " + domain,
+            origin=ORIGIN, topic=domain, link=False)
         if result.get("executed"):
             saved = read(store, owner=owner, domain=domain)
             if saved.get("executed") and saved.get("text") == text:

@@ -63,6 +63,13 @@ class TopicDescriptionTests(unittest.TestCase):
         self.assertEqual(before, read_snapshot(self.store))
         self.assertEqual(winner["text"], self.read()["text"])
 
+    def test_unchanged_save_does_not_stamp_a_new_revision(self):
+        first = self.save("Already saved")
+        before = read_snapshot(self.store)
+        same = self.save(first["text"], first["content_hash"])
+        self.assertTrue(same["executed"])
+        self.assertEqual(before, read_snapshot(self.store))
+
     def test_serial_writer_accepts_only_one_concurrent_edit(self):
         from concurrent.futures import ThreadPoolExecutor
         from api.jobs import JobQueue
