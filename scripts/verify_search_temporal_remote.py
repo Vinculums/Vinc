@@ -74,8 +74,20 @@ def verify(key: str, *, get=read, mcp_key=None, mcp_get=read_mcp,
                         {"mode": "historical", "detail": "full"},
                         {"mode": "historical", "as_of": "2020", "known_at": "2025"}):
             busy_retries = 0
+            gateway_retries = 0
             while True:
-                result = fetch(options)
+                try:
+                    result = fetch(options)
+                except VerificationError as exc:
+                    # The account proxy maps both an upstream 503 DDL guard and
+                    # its own short fetch timeout to HTTP 502. Allow startup to
+                    # settle, but only a subsequent fully verified read passes.
+                    if (transport != "account" or str(exc) != "search read returned HTTP 502"
+                            or clock() >= deadline):
+                        raise
+                    gateway_retries += 1
+                    sleep(min(5, max(0, deadline - clock())))
+                    continue
                 # A newly restored store can hold a short DDL guard. Retry only this
                 # explicit transient code; every other error still fails immediately.
                 if (isinstance(result, dict) and result.get("error") == "store_busy"
@@ -112,6 +124,7 @@ def verify(key: str, *, get=read, mcp_key=None, mcp_get=read_mcp,
                 raise VerificationError("temporal metadata read was partial")
             checks.append({"transport": transport, "mode": options.get("mode", "legacy"),
                            "items_checked": len(items), "busy_retries": busy_retries,
+                           "gateway_retries": gateway_retries,
                            "time_scope_requested": "as_of" in options,
                            "semantic_degraded": bool(result.get("vector_note")), "contract": "pass"})
     if not any(c["items_checked"] for c in checks):
