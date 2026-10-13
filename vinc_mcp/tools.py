@@ -1025,7 +1025,7 @@ TOOLS: list[dict] = [
                        "that does not fit the least connected neighbours are left out and counted in "
                        "`ring_truncated`; read the full ring with vinc_neighbors. `shrunk` and `note` count "
                        "what was kept. `rev` and `updated_at` are the node's current version, so you can hold what "
-                       "you read before you overwrite it; nothing on the write path demands them yet. "
+                       "you read before you overwrite it; pass expected_rev to guard an edit against a newer write. "
                        "Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "as_of": _AS_OF_GRAPH_PROP, "known_at": _KNOWN_AT_PROP,
