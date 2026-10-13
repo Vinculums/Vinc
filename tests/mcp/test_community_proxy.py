@@ -82,6 +82,8 @@ def test_members_and_operators_cannot_skip_account_revisions(app, role, op):
     ("delete", {"node": "episode:lounge-" + SOCIAL}),
     ("doc-delete", {"id": "talk." + SOCIAL}),
     ("doc-delete", {"id": "lounge." + SOCIAL}),
+    ("doc-delete", {"id": "talk." + SOCIAL + ".comment." + SOCIAL}),
+    ("doc-delete", {"id": "lounge." + SOCIAL + ".comment." + SOCIAL}),
 ])
 def test_account_service_projects_authorized_committed_values(app, op, args):
     project(app, op, {**args, "owner": B, "theme_id": "other", "_entitlements": {"forged": True}})
@@ -98,6 +100,9 @@ def test_account_service_projects_authorized_committed_values(app, op, args):
     ("doc-delete", {"id": "graph.md"}),
     ("doc-delete", {"id": "graph.md~1234567890abcdef"}),
     ("doc-delete", {"id": "talk." + SOCIAL + "/other"}),
+    ("doc-delete", {"id": "talk." + SOCIAL + ".comment.bad"}),
+    ("doc-delete", {"id": "talk." + SOCIAL + ".comment." + SOCIAL + ".extra"}),
+    ("doc-delete", {"id": "page." + SOCIAL + ".comment." + SOCIAL}),
     ("doc-delete", {"doc_id": "talk." + SOCIAL, "id": "graph.md"}),
 ])
 def test_projector_cannot_delete_wiki_or_rules(app, op, args):
@@ -176,7 +181,9 @@ def test_unnamespaced_store_cannot_accept_community_scope(app, monkeypatch):
     assert app.bridge.calls == []
 
 
-@pytest.mark.parametrize("name", [t["name"] for t in tools.TOOLS if tools.tool_tier(t["name"]) != "viewer"])
+@pytest.mark.parametrize("name", [t["name"] for t in tools.TOOLS
+                                  if tools.tool_tier(t["name"]) != "viewer"
+                                  and t["name"] != "vinc_community_write"])
 def test_generic_mcp_write_cannot_bypass_revisions(app, name):
     with pytest.raises(PermissionError, match="account revisions"):
         tools.call(name, {}, app.bridge, forced_owner=A, allow_target=False)

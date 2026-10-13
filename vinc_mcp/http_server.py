@@ -39,7 +39,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import edverify, entitlement, toolcall, tools, viewurl
+from . import community, edverify, entitlement, toolcall, tools, viewurl
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
 from .rpc import PROTOCOL_VERSIONS, Dispatcher
@@ -137,7 +137,9 @@ _COMMUNITY_OBJECT_UUID = (
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _COMMUNITY_SOCIAL_NODE_RE = re.compile(r"episode:(?:talk|lounge)-" + _COMMUNITY_OBJECT_UUID)
-_COMMUNITY_SOCIAL_DOC_RE = re.compile(r"(?:talk|lounge)\." + _COMMUNITY_OBJECT_UUID)
+_COMMUNITY_SOCIAL_DOC_RE = re.compile(
+    r"(?:talk|lounge)\." + _COMMUNITY_OBJECT_UUID +
+    r"(?:\.comment\." + _COMMUNITY_OBJECT_UUID + r")?")
 
 # ── 팀 역할별 op 등급(AP-1 §4.4) ──────────────────────────────────────────────
 # 세밀한 주제별·노드별 권한은 전 질의 플랜 개작이 필요해 v1 범위 밖이다. 대신 **이미
@@ -240,7 +242,7 @@ _FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="42 38 436 604
 class MCPHTTPApp:
     def __init__(self, bridge: Bridge, *, static_token: str | None = None,
                  oauth: OAuthGate | None = None, verify_key=None,
-                 verify_member=None,
+                 verify_member=None, verify_community=None, community_write=None,
                  store=None, quota_config: dict | None = None,
                  mcp_seed: bytes | None = None, account_public: bytes | None = None,
                  connect_url: str | None = None, free_max_domains: int | None = None):
@@ -262,6 +264,8 @@ class MCPHTTPApp:
         # 개인 OAuth 는 그대로다 — 계정이 그 라우트를 아직 안 배포한 동안에도 허브가
         # 정상으로 도는 형태이고, 꺼진 방향이 닫힌 쪽이다(팀 주소는 404).
         self.verify_member = verify_member
+        self.verify_community = verify_community
+        self.community_write = community_write
         # 쿼터(B-D2): usage 카운터는 store 에 영속. quota_config 없으면 무제한
         # (기존 테스트·로컬 프로파일 무영향) — cli 가 env 로 명시 활성화한다.
         self.store = store if store is not None else (oauth.store if oauth else None)
@@ -338,6 +342,12 @@ class MCPHTTPApp:
             return {}
         return {"max_domains": self.free_max_domains}
 
+    def quota_for(self, auth: dict):
+        # 공개 커뮤니티는 공동 쿼터를 소비하지 않는다. 인증된 사람의 기존 한도를 쓴다.
+        if community.is_space(auth.get("owner")):
+            return lambda _owner, _plan: self.quota_check(auth.get("member"), auth.get("plan"))
+        return self.quota_check
+
     def dispatcher(self) -> Dispatcher:
         """공유 Dispatcher. 세션별 인스턴스가 없어졌으므로 인자도 없다(위 __init__ 참조)."""
         return self._dispatcher
@@ -382,6 +392,21 @@ class MCPHTTPApp:
         miss = {"ok": False, "owner": None, "plan": None, "scope": None, "source": None}
         if not header or not header.startswith("Bearer "):
             return miss
+        if community.is_space(space):
+            from store import pkns
+            if not pkns.enabled() or self.verify_community is None:
+                return miss
+            base = self.resolve_auth(header, presented_at=presented_at)
+            actor = base.get("owner") or ""
+            if not base.get("ok") or not actor.startswith("user:"):
+                return miss
+            resolved = self.verify_community(actor[5:], space.lower())
+            if (not resolved or resolved.get("owner") != space.lower()
+                    or resolved.get("visibility") != "public"
+                    or resolved.get("role") not in ("reader", "operator")):
+                return miss
+            return {**base, "owner": space.lower(), "role": resolved["role"],
+                    "member": actor, "visibility": "public"}
         if space:
             # 팀 주소. 키와 OAuth 둘 다 받되 **개인으로 떨어지지 않는다** — 실패는 실패다.
             tok = header[7:].strip()
@@ -1306,15 +1331,16 @@ class _Handler(BaseHTTPRequestHandler):
             # 이긴다(`seed_id` 가 url 의 시드를 이기는 것과 같은 규칙).
             # 근거: [[decision:a-node-address-names-its-space]]
             def _gate_for(m):
-                if m.get("method") != "tools/call":
+                method = m.get("method")
+                if method != "tools/call" and not str(method or "").startswith("prompts/"):
                     return toolcall.Outcome("ok", auth=auth)
                 params = m.get("params") or {}
-                args = params.get("arguments") or {}
+                args = params.get("arguments") or (params if method != "tools/call" else {})
                 return toolcall.preflight(
-                    params.get("name") or "", args, base_auth=auth,
+                    (params.get("name") or "") if method == "tools/call" else "vinc_role", args, base_auth=auth,
                     address_space=space,
                     authenticate=lambda want: self._auth(want, presented_at="/mcp"),
-                    valid_space=lambda want: bool(_UUID_RE.match(want)))
+                    valid_space=lambda want: bool(_UUID_RE.fullmatch(want)) or community.is_space(want))
 
             # 배치는 기존 게이트 우선순위를 유지한다: 모든 메시지의 스페이스를
             # 먼저 보고, 그 다음 역할, 읽기 전용 키 순서로 첫 거절을 고른다.
@@ -1357,8 +1383,10 @@ class _Handler(BaseHTTPRequestHandler):
                 # 팀은 매번 계정 멤버십 검증을 거치며 등급도 TEAM으로 해석된다.
                 ents = (self.app.entitlements_for(a["plan"]) if a["owner"] else None)
                 return d.handle(m, forced_owner=a["owner"], plan=a["plan"],
-                                quota=self.app.quota_check,
-                                entitlements=ents)
+                                quota=self.app.quota_for(a),
+                                entitlements=ents,
+                                community_write=(lambda args: self.app.community_write(a, args))
+                                if self.app.community_write is not None else None)
 
             replies = [r for r in (_run(m, a) for m, a in pairs) if r is not None]
             # 전부 notification 이면 본문 없이 202 — 배치도 같다(스펙).
@@ -1703,12 +1731,13 @@ def make_server(app: MCPHTTPApp, host: str = "127.0.0.1", port: int = 8790,
 
 def serve_http(bridge: Bridge, *, host: str = "127.0.0.1", port: int = 8790,
                static_token: str | None = None, oauth: OAuthGate | None = None,
-               verify_key=None, verify_member=None,
+               verify_key=None, verify_member=None, verify_community=None, community_write=None,
                quota_config: dict | None = None,
                mcp_seed: bytes | None = None, account_public: bytes | None = None,
                connect_url: str | None = None, free_max_domains: int | None = None) -> int:
     app = MCPHTTPApp(bridge, static_token=static_token, oauth=oauth,
                      verify_key=verify_key, verify_member=verify_member,
+                     verify_community=verify_community, community_write=community_write,
                      quota_config=quota_config,
                      mcp_seed=mcp_seed, account_public=account_public,
                      connect_url=connect_url, free_max_domains=free_max_domains)

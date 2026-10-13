@@ -70,9 +70,9 @@ class ToolVerbTests(unittest.TestCase):
                 self.assertEqual((got_name, got_args, destructive),
                                  (name, expected, want_guard))
 
-    def test_call_registry_covers_all_28_tools(self):
+    def test_call_registry_covers_all_29_tools(self):
         names = {item["name"] for item in tools.TOOLS}
-        self.assertEqual(len(names), 28)
+        self.assertEqual(len(names), 29)
         guarded = {"vinc_delete", "vinc_delete_edge", "vinc_merge_nodes",
                    "vinc_doc_delete"}
         for name in sorted(names):

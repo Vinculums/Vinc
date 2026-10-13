@@ -202,6 +202,15 @@ class DocAddressTests(unittest.TestCase):
 
 
 class CitationTests(unittest.TestCase):
+    def test_커뮤니티_인용은_공개_커뮤니티_스페이스를_유지한다(self):
+        owner = f"community:{TEAM}"
+        for kind, ident in (("node", "concept:energy"), ("doc", f"page.{TEAM}.energy")):
+            url = tools._cite_url(kind, ident, owner)
+            self.assertEqual(viewurl.space_of(url), owner)
+            parsed = viewurl.parse(url)
+            self.assertEqual(parsed["seed"] if kind == "node" else parsed["doc"], ident)
+            self.assertNotIn("space=personal", url)
+
     def test_팀에서_나간_인용은_팀_주소다(self):
         self.assertEqual(
             tools._cite_url("node", "concept:x", f"team:{TEAM}"),
