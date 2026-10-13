@@ -1,0 +1,107 @@
+{
+  "ai_author_events": 360,
+  "changed_label_cases": 3,
+  "cohorts": {
+    "development": {
+      "families": 24,
+      "hard_target_candidates": 71,
+      "label_counts": {
+        "contradicts": {
+          "0": 72,
+          "1": 24
+        },
+        "same_as": {
+          "0": 68,
+          "1": 28
+        },
+        "supports": {
+          "0": 52,
+          "1": 19,
+          "unknown": 25
+        }
+      },
+      "language_cells": {
+        "en_en": 24,
+        "en_ko": 24,
+        "ko_en": 24,
+        "ko_ko": 24
+      },
+      "pairs": 96,
+      "unknown_or_ambiguous": 25
+    },
+    "native": {
+      "families": 24,
+      "hard_target_candidates": 21,
+      "label_counts": {
+        "contradicts": {
+          "0": 24
+        },
+        "same_as": {
+          "0": 22,
+          "1": 2
+        },
+        "supports": {
+          "0": 4,
+          "1": 17,
+          "unknown": 3
+        }
+      },
+      "language_cells": {
+        "en_en": 24
+      },
+      "pairs": 24,
+      "unknown_or_ambiguous": 3
+    },
+    "pilot": {
+      "families": 60,
+      "hard_target_candidates": 174,
+      "label_counts": {
+        "contradicts": {
+          "0": 180,
+          "1": 60
+        },
+        "same_as": {
+          "0": 182,
+          "1": 58
+        },
+        "supports": {
+          "0": 120,
+          "1": 54,
+          "unknown": 66
+        }
+      },
+      "language_cells": {
+        "en_en": 60,
+        "en_ko": 60,
+        "ko_en": 60,
+        "ko_ko": 60
+      },
+      "pairs": 240,
+      "unknown_or_ambiguous": 66
+    }
+  },
+  "decision_ref": "decision:delegate-laya-dataset-annotation-and-curation-to-ai-2026-10-13",
+  "human_annotation_events": 0,
+  "independent_review_events": 0,
+  "label_from_generator_intent": false,
+  "laya_model_calls": 0,
+  "pairs": 360,
+  "rubric_promoted": false,
+  "runtime_files": {
+    "author.jsonl": "9e5e894a4e06c4f92caa3f9d07cd18445dd3a9dcbdc659fc0b2d8475d59934ad",
+    "authorization.json": "1385e37958e14b9563064f5c2f1d4e8b10723e3670bec7095dc7459c9b3972da",
+    "development.jsonl": "d35d2237eb35a791ad616b6f36bfd3ee391411ddc790f1d8de8bfedaa052954d",
+    "native.jsonl": "8cd27df50948deea270edb0ff3d2c77e6451a16e8190265fd633751238205fc8",
+    "pilot.jsonl": "d94fb27392c786e8134761691e861eabb30666afe836e29ead44e82eb285b32e",
+    "self-review.jsonl": "5b7dc056ad9a4c42c1d2b17fff4be2f5b67673e53ed76ddcbffc0e7499f07ba2"
+  },
+  "same_agent_review_events": 360,
+  "schema": "vinc.laya.ai-candidate-freeze.v1",
+  "semantic_correctness_independently_verified": false,
+  "source_permissions_promoted": false,
+  "teacher_api_calls": 0,
+  "tier": "owner-delegated-ai-candidate-v1",
+  "training_authorized": false,
+  "training_exportable_pairs": 0,
+  "training_runs": 0
+}

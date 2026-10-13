@@ -1,0 +1,29 @@
+{
+  "allowed_actors": [
+    "codex:oc-20261013-vin483-1:primary"
+  ],
+  "author_sha256": "9e5e894a4e06c4f92caa3f9d07cd18445dd3a9dcbdc659fc0b2d8475d59934ad",
+  "cohort_counts": {
+    "development": 96,
+    "native": 24,
+    "pilot": 240
+  },
+  "decision_ref": "decision:delegate-laya-dataset-annotation-and-curation-to-ai-2026-10-13",
+  "human_review_claim": false,
+  "independent_review_claim": false,
+  "model_admission_authorized": false,
+  "owner_delegation": true,
+  "owner_instruction": "Delegate all next Laya dataset work to the assistant; the owner performs no manual tasks.",
+  "prepared_manifest_sha256": "b06747c4216ddfad31b8d6161c02f03b272a3640a71e617b29ac1e4ad709b547",
+  "self_review_sha256": "5b7dc056ad9a4c42c1d2b17fff4be2f5b67673e53ed76ddcbffc0e7499f07ba2",
+  "session_sha256": {
+    "development": "0cec97948661d77a14095a0e3d00bdd000feae24ef579368d66602355d08548a",
+    "native": "f62d00188c64367089de4b25e5abcc730d2edcfd5a9bfbc5f758fcfd95795b41",
+    "pilot": "1289642be0562a3b557b355d377741fab65070218948da767670c10a770285c9"
+  },
+  "source_permission_promotion": false,
+  "teacher_api_authorized": false,
+  "tier": "owner-delegated-ai-candidate-v1",
+  "training_authorized": false,
+  "valid_from": "2026-10-13T13:43:04.473Z"
+}
