@@ -24,9 +24,9 @@ PREFLIGHT_TARGET = "team:00000000-0000-0000-0000-000000000000"
 SCOPED_INVENTORY_VERSION = 2
 
 
-def _inventory(store, source, target, topic, *, after=False):
+def _inventory(store, source, target, topic, *, after=False, verify_shape=True):
     return read_scoped_inventory(store, source=source, target=target, topic=topic,
-                                 after=after)
+                                 after=after, verify_shape=verify_shape)
 
 
 def _plan(inventory, source, target, topic):
@@ -290,7 +290,10 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None):
         try:
             _write_difference(store, before, after, fail_at=fail_at, vocabulary_owner=source,
                               verify_snapshot=(None if legacy else
-                                  lambda: _inventory(store, source, target, topic, after=True).snapshot))
+                                  # The shape was checked again after intent was saved,
+                                  # before DDL and this transaction began.
+                                  lambda: _inventory(store, source, target, topic,
+                                                     after=True, verify_shape=False).snapshot))
             _save(store, run, {"source": source, "target": target, "topic": topic,
                               "expected": expected, "after_hash": scoped_hash(after, source, target),
                               "indexes": index_inventory, "prior_sync_metadata": audit, "status": "graph_committed",

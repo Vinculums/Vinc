@@ -86,13 +86,14 @@ def _batches(values):
 
 
 def read_scoped_inventory(store, *, source: str, target: str, topic: str,
-                          after: bool = False) -> ScopedInventory:
+                          after: bool = False, verify_shape: bool = True) -> ScopedInventory:
     """Read one owner/topic closure and prove its external dependencies boundedly.
 
     ``after`` selects the committed target closure for exact write verification
     and recovery. The ordinary mode selects the personal source before reserve.
     """
-    verify_store_shape(store, vocabulary_owner=source)
+    if verify_shape:
+        verify_store_shape(store, vocabulary_owner=source)
     specs = {**node_table_specs(), **meta_table_specs()}
     reader = _Reader(store)
     owner = target if after else source
