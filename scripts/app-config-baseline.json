@@ -3,6 +3,8 @@
     "auth": {
       "excludedPaths": [
         "/internal/bo/stats",
+        "/internal/mcp/community",
+        "/internal/mcp/community-resolve",
         "/internal/mcp/plan",
         "/internal/mcp/spaces",
         "/internal/mcp/team-membership",
@@ -23,6 +25,7 @@
       "BO_ADMIN_EMAILS",
       "BO_OTP_KEY",
       "BO_STATS_PUBLIC_KEY",
+      "COMMUNITY_ENABLED",
       "CSRF_SECRET",
       "DB_HOST",
       "DB_NAME",
