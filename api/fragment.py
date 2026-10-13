@@ -1287,6 +1287,10 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     created = matched = e_created = e_skipped_dup = 0
     nodes = list(fragment.get("nodes") or [])
     edges = list(fragment.get("edges") or [])
+    review_claims = fragment.get("review_claims", False) if authored else False
+    if type(review_claims) is not bool:
+        return _finalize({"merged": None, "executed": False, "error": "review_claims must be a boolean"},
+                         ["review_claims must be a boolean"])
     owner_explicit = bool((fragment.get("owner") or "").strip())
     owner = (fragment.get("owner") or "").strip() or DEFAULT_OWNER
     if getattr(store, "_topic_conversion_guard", False):
@@ -1387,4 +1391,18 @@ def merge_fragment(fragment: dict, *, store, themes=None,
         # warnings 안의 산문이 아니라 **필드**로 낸다. 호스트가 warnings 를 접거나
         # 안 보여 주면 저작자는 자기 노드가 사라진 줄도 모른다(감사 H1 의 조용한 절반).
         result["id_conflicts"] = id_conflicts
+    if authored and read_back and types:
+        from . import authoring
+        result["retrieval"] = authoring.node_retrieval()
+        try:
+            review = authoring.review(store, result.get("stored") or [], owner=owner,
+                                      compare_claims=review_claims)
+            if review:
+                result.update(review)
+        except Exception:
+            result["advisory_review"] = {"state": "unavailable"}
+        if result.get("stored_truncated") and result.get("advisory_review", {}).get("state") != "unavailable":
+            result.setdefault("advisory_review", {})["state"] = "limited"
+        if any(w.startswith("read-back") for w in warnings):
+            result.setdefault("advisory_review", {})["state"] = "unavailable"
     return _finalize(result, warnings)

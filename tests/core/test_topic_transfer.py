@@ -153,7 +153,10 @@ class RawStore:
         from store.embedded_backend import _import_driver
         driver, _ = _import_driver()
         self.path = str(path)
-        self.db = driver.Database(str(path), buffer_pool_size=64 * 1024 * 1024, max_num_threads=2)
+        # Conversion verifies every table while a write transaction pins pages.
+        # Keep the synthetic pool large enough for that engine overhead; the
+        # independent 5,000-row / 32-MiB conversion budget remains unchanged.
+        self.db = driver.Database(str(path), buffer_pool_size=256 * 1024 * 1024, max_num_threads=2)
         self.conn = driver.Connection(self.db)
 
     def run(self, q, params=None, *, raw=True):

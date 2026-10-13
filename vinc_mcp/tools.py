@@ -69,6 +69,10 @@ _KNOWN_AT_PROP = {"type": "string", "description": (
 _FRAGMENT_SCHEMA = {
     "type": "object",
     "properties": {
+        "review_claims": {"type": "boolean", "default": False,
+                          "description": "Opt in to bounded comparison of explicitly keyed Record/Decision claims "
+                                         "against this owner's saved claims. Default performs date checks only "
+                                         "with no candidate query. Adds advisory lookup cost; never retires claims."},
         "nodes": {
             "type": "array",
             "description": "Nodes to MERGE by exact id (reuse ids found via vinc_search/vinc_recall first — read-before-write).",
@@ -415,6 +419,8 @@ def _t_diagnose(args, bridge):
 def _t_ingest(args, bridge):
     fragment = {"nodes": args.get("nodes") or [], "edges": args.get("edges") or [],
                 "owner": _owner(args, bridge)}
+    if "review_claims" in args:
+        fragment["review_claims"] = args["review_claims"]
     if args.get("theme_id"):   # F1 — 개방층 어휘 편입 대상 테마(선택)
         fragment["theme_id"] = args["theme_id"]
     # 주제 상한(AP-1 §3.4). call() 이 서버 해석값으로 이미 덮어썼으므로 여기 있는
@@ -745,9 +751,14 @@ TOOLS: list[dict] = [
                        "fusion because none of its top rows covered half of the query's "
                        "terms (typically a Korean question over English text), so the order "
                        "is the semantic arm's. "
-                       "`node_hits` = Concept/Record matches on their title/one_liner/props "
-                       "(each with id, title, kind, domain, matched_in), ALWAYS populated by a "
-                       "title-substring scan, so concepts and records are findable even in a "
+                       "`node_hits` = Concept/Record/Decision/Episode candidates. Lexical fields "
+                       "are title/id for all four, Concept.one_liner and Concept/Record/Decision.props; "
+                       "Episode.summary is excluded from lexical matching. Node semantic text "
+                       "is title plus Concept.one_liner or the first 300 Episode.summary characters; "
+                       "Record/Decision props are not embedded. Node vectors refresh at release "
+                       "boundaries; fresh node text can be stored but not yet semantically searchable. "
+                       "Each carries id, title, kind, domain and matched_in. The first page always "
+                       "runs a lexical scan, so these four kinds are findable even in a "
                        "store with zero indexed text chunks. Responses are paginated: "
                        "`total_count`, `has_more` and `next_cursor` describe the result window; "
                        "pass `cursor` to continue where the last page ended (an invalid or "
@@ -1423,6 +1434,13 @@ TOOLS: list[dict] = [
                        "no column for is absent from `stored`, and a domain you sent appears there "
                        "in its normalized form. `stored_truncated` means the read-back hit its size "
                        "budget and that many nodes were left out (they were still written). "
+                       "props REPLACE the entire existing object when supplied: read, merge and "
+                       "resend it to preserve keys. `advisories` are bounded deterministic claim "
+                       "review suggestions, separate from partial-write warnings; they never "
+                       "retire another claim. Dates are checked by default; opt in with review_claims:true "
+                       "for bounded same-owner claim comparison. Check advisory_review.state "
+                       "(not_requested, complete, limited or unavailable), and retrieval for field coverage and unverified node-vector "
+                       "freshness. A stored fact is not necessarily an embedded fact. "
                        "Call vinc_conventions once before your first write "
                        "in a session: it carries this owner's node/relation conventions and "
                        "their existing domains, so your writes match what is already there.",
@@ -1524,7 +1542,11 @@ TOOLS: list[dict] = [
                        "document that cites other documents rather than naming concepts can end up "
                        "with no topic at all or a misleading one. Passing it files the document "
                        "under that topic and the answer survives re-writes; the response echoes it "
-                       "back as `topic`.",
+                       "back as `topic`. Effective valid_from/valid_until/superseded_by must be "
+                       "tool arguments; front matter alone does not set stored validity. The "
+                       "response echoes stored validity and needs_embed; retrieval separates "
+                       "document-vector readiness from the query index (not checked here). "
+                       "Keyword text is stored immediately; embedding is asynchronous.",
         "inputSchema": {"type": "object", "properties": {
             "valid_from": {"type": "string", "description": (
                 "When the document's content became true, YYYY[-MM[-DD]]. Omit to keep the "
@@ -1636,7 +1658,10 @@ TOOLS: list[dict] = [
                        "document with vinc_doc_get before you call, so you know what is being "
                        "destroyed. ⚠ A `doc_id:` line in the document body is NOT its store id "
                        "— deleting by the declared value removes a different document or "
-                       "nothing at all. Returns {executed, deleted_chunks, deleted_meta}.",
+                       "nothing at all. The concept:doc.<doc_id> mirror is deliberately retained, "
+                       "including its authored title and graph relations; document deletion is not "
+                       "concept deletion. Inspect the mirror before separately deleting any node. "
+                       "Returns {executed, deleted_chunks, deleted_meta}.",
         "inputSchema": {"type": "object", "properties": {
             "doc_id": {"type": "string"},
         }, "required": ["doc_id"]},

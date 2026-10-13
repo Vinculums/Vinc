@@ -313,6 +313,10 @@ def _main(argv: list[str] | None = None) -> int:
     dp.add_argument("--title", default=None,
                     help="document title (omit to preserve an existing title; pass --title '' to clear)")
     dp.add_argument("--origin", default="", help='source label for display; not an identity key')
+    dp.add_argument("--topic", default=None, help="authored topic path; omit to preserve")
+    dp.add_argument("--valid-from", default=None, help="effective start YYYY[-MM[-DD]]; omit to preserve")
+    dp.add_argument("--valid-until", default=None, help="effective end (half-open); empty string clears")
+    dp.add_argument("--superseded-by", default=None, help="successor document id; omit to preserve")
     dp.add_argument("--file", default=None,
                     help='read .md/.txt/.rst/.pdf; title and origin default to the filename')
     dp.add_argument("--data", default=None, help="data home (default: MEMORY_DATA_DIR or ~/.vinc/db)")
@@ -363,6 +367,7 @@ def _main(argv: list[str] | None = None) -> int:
     ig = sub.add_parser("ingest", help="ingest a graph fragment")
     ig.add_argument("--file", required=True)
     ig.add_argument("--owner", default=None)
+    ig.add_argument("--review-claims", action="store_true", help="request bounded comparable-claim review")
     de = sub.add_parser("delete", help="delete one node")
     de.add_argument("id")
     de.add_argument("--owner", default=None)

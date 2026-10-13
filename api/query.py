@@ -2621,7 +2621,7 @@ def node_context(**kwargs) -> dict:
         return _node_context(**kwargs)
     try:
         res = _node_context(**{**kwargs, "store": store})
-        if res.get("executed"):
+        if res.get("executed") and res.get("node_kind") != "domain":
             try:
                 owner, nid = kwargs.get("owner"), kwargs["node"]
                 source = temporal.node_sources(store, [nid], owner=owner).get(nid, res)
@@ -2715,6 +2715,15 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
         return base
     try:
         lim = max(1, min(int(limit), 12))
+        if node.startswith(domain_hierarchy.ID_PREFIX):
+            return _domain_context(store, node, owner=owner, offset=links_offset, cfg=cfg)
+        if _seed_table(node)[0] not in (*_SEMANTIC_LABELS, "Record", "Episode"):
+            exact = execute(node_plan(node, owner=owner), cfg, store=store)
+            if not exact.get("executed"):
+                return {**base, "status": "query_failed", "error": exact.get("error") or exact.get("note")}
+            found = bool(exact.get("rows"))
+            return {**base, "status": "unsupported_kind" if found else "unavailable",
+                    "found": found, "note": "node context unavailable for this kind"}
         # ① 노드 메타 — 의미층(개념·결정) 우선, 없으면 Episode(타임라인 클릭 대상).
         #
         # v12 — 라벨을 id 접두사에서 꺼낸다. 여기 Concept 이 박혀 있으면 결정을
@@ -2793,6 +2802,8 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
                                                     with_evidence=with_evidence,
                                                     offset=links_offset)
                         return base
+                base["status"] = "unavailable"
+                base["found"] = False
                 base["note"] = f"unknown node: {node}"
                 return base
             base.update(executed=True, node_kind="episode",
@@ -2899,6 +2910,7 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
                                     offset=links_offset)
         return base
     except Exception as exc:
+        base["status"] = "query_failed"
         base["note"] = base["error"] = f"{type(exc).__name__}: {exc}"
         return base
     finally:
@@ -2909,6 +2921,46 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
 # 상세 레일 관계 목록 상한 — 허브(차수 30+)에서 레일이 끝없이 길어지지 않게.
 # 잘렸는지는 `truncated` 로 밝힌다(조용한 축소 금지).
 _NODE_LINKS_CAP = 24
+
+
+def _domain_context(store, node_id: str, *, owner: str, offset: int, cfg=None) -> dict:
+    """공유 좌표의 존재는 정확한 소유 범위 조회로, 구조는 기존 이웃 조회로 읽는다."""
+    base = {"kind": "node-context", "executed": False, "node": node_id,
+            "node_kind": "domain"}
+    domain = domain_hierarchy.parse_id(node_id)
+    if not domain or not owner:
+        return {**base, "status": "unavailable", "found": False}
+    exact = node(domain_hierarchy.make_id(domain), owner=owner, cfg=cfg, store=store)
+    if not exact.get("executed"):
+        return {**base, "status": "query_failed", "error": exact.get("error") or exact.get("note")}
+    if not exact.get("found"):
+        # 남의 빈 공유 좌표와 없는 좌표는 구분하지 않는다.
+        return {**base, "status": "unavailable", "found": False}
+    ring = _domain_neighbors(node_id, owner=owner, limit=None, cfg=cfg, store=store)
+    if not ring.get("executed") or ring.get("error"):
+        return {**base, "status": "query_failed", "error": ring.get("error") or ring.get("note")}
+    rows = ring["neighbors"]
+    children = [r for r in rows if r["rel"] == "PARENT_OF"]
+    members = [r for r in rows if r["rel"] == "IN_DOMAIN"]
+    counts = store.run(domain_hierarchy.scoped_counts_cypher(),
+                       {"owner": owner, "domain": domain, "prefix": domain + "/"}) or []
+    direct = sum(int(r.get("total") or 0) for r in counts if r.get("domain") == domain)
+    subtree = sum(int(r.get("total") or 0) for r in counts)
+    expected_children = {domain + "/" + r["domain"][len(domain) + 1:].split("/")[0]
+                         for r in counts if r.get("domain", "").startswith(domain + "/")}
+    parent_path = domain.rpartition("/")[0]
+    parent = ({"id": domain_hierarchy.make_id(parent_path), "title": parent_path,
+               "domain": parent_path} if parent_path else None)
+    topic = {"path": domain, "parent": parent,
+             "child_topics": len(children), "direct_nodes": len(members),
+             "subtree_nodes": subtree, "descendant_nodes": subtree - direct,
+             "structure": {"total": len(rows), **_window(rows, offset)}}
+    # 열은 분류의 정본, 엣지는 파생물이다. 불일치는 자동 수리하지 않는다.
+    if direct != len(members) or expected_children != {r["title"] for r in children}:
+        topic["consistency"] = {"status": "membership_drift", "column_direct_nodes": direct,
+                                "column_child_topics": len(expected_children)}
+    return {**base, "executed": True, "found": True, "status": "ok",
+            "title": domain.split("/")[-1], "domain": domain, "topic": topic}
 
 
 def _window(items: list[dict], offset: int, cap: int = _NODE_LINKS_CAP) -> dict:
@@ -4767,7 +4819,7 @@ def _attach_reverse_cypher(s_label: str, owner: str | None) -> str:
         for m_label, m_pk in _SEMANTIC_PK.items())
 
 
-def _domain_neighbors(node: str, *, owner: str | None, limit: int,
+def _domain_neighbors(node: str, *, owner: str | None, limit: int | None,
                       cfg=None, store=None) -> dict:
     """`domain:` 좌표의 1-hop (E-1). :func:`neighbors` 와 **같은 반환 모양**이라
     상류가 분기 없이 그대로 걸어 내려갈 수 있다.
@@ -4810,7 +4862,7 @@ def _domain_neighbors(node: str, *, owner: str | None, limit: int,
         for r in rows:
             by_rel[r["rel"]] = by_rel.get(r["rel"], 0) + 1
         out = {"kind": "neighbors", "executed": True, "found": bool(rows),
-               "node": node, "neighbors": rows[:max(1, int(limit))],
+               "node": node, "neighbors": rows if limit is None else rows[:max(1, int(limit))],
                "by_rel": by_rel, "count": len(rows)}
         if not rows:
             out["hint"] = (f"No nodes of yours are under {domain!r}. Domains come "

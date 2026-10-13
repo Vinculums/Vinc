@@ -14,7 +14,7 @@ window.fetch=async (url,options={})=>{
  if(path==='/api/me') value={user:{username:'synthetic',email:'synthetic@example.invalid',plan:'free'}};
  else if(path==='/api/teams')value={teams:[]};
  else if(path.endsWith('/conversion/capabilities'))value={enabled:true,subject:'synthetic-qa-'+(new URLSearchParams(location.search).get('lang')||'en'),pending:run};
- else if(path.endsWith('/conversion/preflight'))value=body.topic==='project/blocked'?{...check,ready:false,topic:body.topic,blockers:['boundary_relation','external_attachments_not_supported']}:{...check,topic:body.topic};
+ else if(path.endsWith('/conversion/preflight'))value=body.topic==='project/oversize'?{...check,ready:false,topic:body.topic,counts_known:false,counts:null,documents:null,blockers:['conversion_inventory_limit']}:body.topic==='project/blocked'?{...check,ready:false,topic:body.topic,blockers:['boundary_relation','external_attachments_not_supported']}:{...check,topic:body.topic};
  else if(path.endsWith('/conversion/runs')){if(!run||run.id!==body.id)run={...body,team:'synthetic-team',state:'prepared'};value=run;}
  else if(path.endsWith('/resume')){run={...run,state:'active'};value=run;}
  else if(path.endsWith('/cancel')){run={...run,state:'cancelled'};value=run;}

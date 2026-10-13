@@ -52,6 +52,12 @@ test('blocked dependencies never prepare a team',async()=>{
   const {flow,calls}=setup({preflight:async()=>({...check,ready:false,blockers:['boundary_relation']})});
   await flow.preflight();await flow.reserve(true);assert.equal(calls.length,0);
 });
+test('an incomplete inventory never reserves a team or invents zero scope counts',async()=>{
+  const unknown={ready:false,topic:'project',counts_known:false,counts:null,documents:null,blockers:['conversion_inventory_limit']};
+  const {flow,calls}=setup({preflight:async()=>unknown});
+  await flow.preflight();await flow.reserve(true);
+  assert.deepEqual(flow.check,unknown);assert.equal(calls.length,0);
+});
 
 test('a known stale preflight rejection permits checking the scope again',async()=>{
   const {flow,saved}=setup({reserve:async()=>{throw {code:'preflight_changed'};}});

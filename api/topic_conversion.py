@@ -8,16 +8,40 @@ from __future__ import annotations
 
 import json
 from contextvars import ContextVar
+from dataclasses import replace
 from uuid import UUID
 
 from store.embedded_backend import DDL_GUARD
+from store.scoped_topic_inventory import read_scoped_inventory
 from store.topic_transfer import (TransferRefused, fingerprint, read_snapshot,
-                                 plan_transfer, transformed_snapshot, _write_difference, check_inventory_budget, _REFERENCE)
+                                 plan_transfer, transformed_snapshot, _write_difference, check_inventory_budget,
+                                 _canonical, _REFERENCE)
 
 request_owner = ContextVar("conversion_request_owner", default=None)
 request_payload = ContextVar("conversion_request_payload", default=None)
 PREFIX = "topic-conversion:"
 PREFLIGHT_TARGET = "team:00000000-0000-0000-0000-000000000000"
+SCOPED_INVENTORY_VERSION = 2
+
+
+def _inventory(store, source, target, topic, *, after=False, verify_shape=True):
+    return read_scoped_inventory(store, source=source, target=target, topic=topic,
+                                 after=after, verify_shape=verify_shape)
+
+
+def _plan(inventory, source, target, topic):
+    plan = plan_transfer(inventory.snapshot, source=source, target=target, topic=topic)
+    if inventory.blockers:
+        plan = replace(plan, blockers=tuple(sorted(set(plan.blockers) | set(inventory.blockers))))
+    return plan
+
+
+def _committed_snapshot(store, source, target, topic, journal):
+    if journal.get("inventory_version", 1) == 1:
+        return read_snapshot(store, vocabulary_owner=source)
+    if journal["inventory_version"] != SCOPED_INVENTORY_VERSION:
+        raise TransferRefused("unsupported_conversion_inventory_version")
+    return _inventory(store, source, target, topic, after=True).snapshot
 
 
 def journals(store):
@@ -95,23 +119,39 @@ def scoped_hash(snapshot, source, target):
 def preflight(store, source, topic):
     check_read(store, source)
     try:
-        snap = read_snapshot(store, vocabulary_owner=source)
-        plan = plan_transfer(snap, source=source, target=PREFLIGHT_TARGET, topic=topic)
+        inventory = _inventory(store, source, PREFLIGHT_TARGET, topic)
+        snap = inventory.snapshot
+        plan = _plan(inventory, source, PREFLIGHT_TARGET, topic)
+    except TransferRefused as exc:
+        # An incomplete inventory cannot establish the scope. Zero here would
+        # falsely say the topic is empty, while a reservation must stay blocked.
+        return {"ready": False, "scope": "topic", "topic": topic,
+                "counts_known": False, "counts": None, "documents": None,
+                "blockers": [str(exc).split(":", 1)[0]]}
+    counts = {}
+    for label, _ in plan.selected:
+        counts[label] = counts.get(label, 0) + 1
+    blockers = {b.split(":", 1)[0] for b in plan.blockers}
+    projected_rows = projected_bytes = None
+    try:
         _index_inventory(store)
         if plan.ready:
             preview = transformed_snapshot(snap, plan, stamp="9999-12-31T23:59:59.999Z")
-            _conversion_budget(preview, _audit(snap, plan))
-        counts = {}
-        for label, _ in plan.selected:
-            counts[label] = counts.get(label, 0) + 1
-        # Boundary identities can belong to another tenant: expose codes only.
-        return {"ready": plan.ready, "scope": "topic", "topic": topic,
-                "fingerprint": scoped_hash(snap, source, PREFLIGHT_TARGET),
-                "counts": counts, "documents": len(plan.documents),
-                "blockers": sorted({b.split(":", 1)[0] for b in plan.blockers})}
+            audit = _audit(snap, plan)
+            projected_rows = (len(preview["edges"]) + sum(len(rows) for group in ("nodes", "meta")
+                                                        for rows in preview[group].values()) + 1)
+            projected_bytes = len(_canonical(preview).encode()) + 4096 + 3 * len(json.dumps(audit).encode())
+            _conversion_budget(preview, audit)
     except TransferRefused as exc:
-        return {"ready": False, "scope": "topic", "topic": topic,
-                "counts": {}, "documents": 0, "blockers": [str(exc).split(":", 1)[0]]}
+        blockers.add(str(exc).split(":", 1)[0])
+    # Boundary identities can belong to another tenant: expose codes only.
+    return {"ready": not blockers, "scope": "topic", "topic": topic,
+            "fingerprint": scoped_hash(snap, source, PREFLIGHT_TARGET),
+            "counts_known": True, "counts": counts, "documents": len(plan.documents),
+            "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
+            "inspected_rows": inventory.inspected_rows,
+            "projected_rows": projected_rows, "projected_bytes": projected_bytes,
+            "blockers": sorted(blockers)}
 
 
 def _get(store, run):
@@ -189,54 +229,83 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None):
                 return {"status": "active", "run": run}
             if previous["status"] == "graph_committed":
                 _indexes(store, previous["indexes"])
-                snap = read_snapshot(store, vocabulary_owner=source)
+                snap = _committed_snapshot(store, source, target, topic, previous)
                 if scoped_hash(snap, source, target) != previous["after_hash"]:
                     raise TransferRefused("committed_payload_changed")
                 return {"status": "graph_committed", "run": run}
         else:
             check_read(store, source)
             check_read(store, target)
-        before = read_snapshot(store, vocabulary_owner=source)
+        legacy = bool(previous and previous.get("inventory_version", 1) == 1)
+        def checked_before():
+            if legacy:
+                snapshot = read_snapshot(store, vocabulary_owner=source)
+                return snapshot, plan_transfer(snapshot, source=source, target=target, topic=topic)
+            current = _inventory(store, source, target, topic)
+            return current.snapshot, _plan(current, source, target, topic)
+        try:
+            before, plan = checked_before()
+        except TransferRefused as scoped_error:
+            if previous:
+                raise
+            # An already-reserved run from the prior full-inventory protocol
+            # can still stage if its old fingerprint is exactly current.
+            old = read_snapshot(store, vocabulary_owner=source)
+            if scoped_hash(old, source, PREFLIGHT_TARGET) != expected:
+                raise scoped_error
+            legacy = True
+            before, plan = old, plan_transfer(old, source=source, target=target, topic=topic)
         if scoped_hash(before, source, PREFLIGHT_TARGET) != expected:
-            raise TransferRefused("plan_stale")
-        plan = plan_transfer(before, source=source, target=target, topic=topic)
+            if previous:
+                raise TransferRefused("plan_stale")
+            old = read_snapshot(store, vocabulary_owner=source)
+            if scoped_hash(old, source, PREFLIGHT_TARGET) != expected:
+                raise TransferRefused("plan_stale")
+            legacy = True
+            before, plan = old, plan_transfer(old, source=source, target=target, topic=topic)
         after = transformed_snapshot(before, plan, stamp=stamp)
         audit = _audit(before, plan)
         _conversion_budget(after, audit)
-        inventory = list(previous["indexes"]) if previous else []
+        index_inventory = list(previous["indexes"]) if previous else []
         for table in _index_inventory(store):
-            if table not in inventory:
-                inventory.append(table)
+            if table not in index_inventory:
+                index_inventory.append(table)
         # Persist intent and fences BEFORE DDL. A process killed between index
         # drops and the ownership transaction can restore the exact inventory.
         if previous is None:
             _save(store, run, {"source": source, "target": target, "topic": topic,
-                              "expected": expected, "indexes": inventory, "status": "prepared"})
-            before = read_snapshot(store, vocabulary_owner=source)
-            plan = plan_transfer(before, source=source, target=target, topic=topic)
+                              "expected": expected, "indexes": index_inventory, "status": "prepared",
+                              "inventory_version": 1 if legacy else SCOPED_INVENTORY_VERSION})
+            before, plan = checked_before()
             after = transformed_snapshot(before, plan, stamp=stamp)
         # Keep the crash-sensitive HNSW mutation guard. All readers are excluded.
-        if "ChunkVec" in inventory:
+        if "ChunkVec" in index_inventory:
             store.drop_vector_index()
-        if "NodeVec" in inventory:
+        if "NodeVec" in index_inventory:
             store.drop_node_vector_index()
-        if "Chunk" in inventory:
+        if "Chunk" in index_inventory:
             store._load_ext("fts")
             store._drop_index(f"CALL DROP_FTS_INDEX('Chunk','{store._FTS_INDEX}')", "conversion FTS")
         store.run("BEGIN TRANSACTION", raw=True)
         try:
-            _write_difference(store, before, after, fail_at=fail_at, vocabulary_owner=source)
+            _write_difference(store, before, after, fail_at=fail_at, vocabulary_owner=source,
+                              verify_snapshot=(None if legacy else
+                                  # The shape was checked again after intent was saved,
+                                  # before DDL and this transaction began.
+                                  lambda: _inventory(store, source, target, topic,
+                                                     after=True, verify_shape=False).snapshot))
             _save(store, run, {"source": source, "target": target, "topic": topic,
                               "expected": expected, "after_hash": scoped_hash(after, source, target),
-                              "indexes": inventory, "prior_sync_metadata": audit, "status": "graph_committed"})
+                              "indexes": index_inventory, "prior_sync_metadata": audit, "status": "graph_committed",
+                              "inventory_version": 1 if legacy else SCOPED_INVENTORY_VERSION})
             if fail_at == "journal":
                 raise RuntimeError("injected_before_commit")
             store.run("COMMIT", raw=True)
         except BaseException:
             store.run("ROLLBACK", raw=True)
-            _indexes(store, inventory)
+            _indexes(store, index_inventory)
             raise
-        _indexes(store, inventory)
+        _indexes(store, index_inventory)
         store._topic_conversion_guard = True
         return {"status": "graph_committed", "run": run}
 
@@ -250,7 +319,7 @@ def release(store, *, source, target, topic, run):
     if journal["status"] not in ("graph_committed", "active"):
         raise TransferRefused("run_not_committed")
     if journal["status"] != "active":
-        snap = read_snapshot(store, vocabulary_owner=source)
+        snap = _committed_snapshot(store, source, target, topic, journal)
         if scoped_hash(snap, source, target) != journal["after_hash"]:
             raise TransferRefused("committed_payload_changed")
         journal["status"] = "active"
