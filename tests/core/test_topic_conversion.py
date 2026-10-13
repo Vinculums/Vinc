@@ -138,8 +138,9 @@ def test_paged_source_dependency_scan_blocks_incoming_reference(native):
                    {"id": SOURCE + f"\x1fconcept:outside-{index:04d}", "owner": SOURCE,
                     "title": "unrelated"})
     assert tc.preflight(native, SOURCE, TOPIC)["ready"]
-    native.run("MATCH (c:Concept) WHERE c.concept_id=$id SET c.title='[[concept:a]]'",
-               {"id": SOURCE + "\x1fconcept:outside-0129"})
+    native.run("MATCH (c:Concept) WHERE c.concept_id=$id SET c.title=$title",
+               {"id": SOURCE + "\x1fconcept:outside-0129",
+                "title": "[" + "[concept:a]]"})
     before = fingerprint(read_snapshot(native))
     check = tc.preflight(native, SOURCE, TOPIC)
     assert not check["ready"] and "incoming_reference" in check["blockers"]
