@@ -1,0 +1,154 @@
+{
+  "candidate_count": 0,
+  "cross_role_lexical_candidates": [],
+  "length_slices": {
+    "dev:klue-nli:ko_ko:contradiction": {
+      "a_longer": 23,
+      "median_a_chars": 50,
+      "median_b_chars": 23,
+      "n": 25
+    },
+    "dev:klue-nli:ko_ko:entailment": {
+      "a_longer": 19,
+      "median_a_chars": 36,
+      "median_b_chars": 23,
+      "n": 25
+    },
+    "dev:klue-sts:ko_ko:0": {
+      "a_longer": 12,
+      "median_a_chars": 32,
+      "median_b_chars": 27,
+      "n": 25
+    },
+    "dev:klue-sts:ko_ko:1": {
+      "a_longer": 15,
+      "median_a_chars": 25,
+      "median_b_chars": 27,
+      "n": 25
+    },
+    "dev:pawsx:en_en:0": {
+      "a_longer": 14,
+      "median_a_chars": 105,
+      "median_b_chars": 104,
+      "n": 25
+    },
+    "dev:pawsx:en_en:1": {
+      "a_longer": 11,
+      "median_a_chars": 126,
+      "median_b_chars": 118,
+      "n": 25
+    },
+    "dev:pawsx:ko_ko:0": {
+      "a_longer": 14,
+      "median_a_chars": 63,
+      "median_b_chars": 63,
+      "n": 25
+    },
+    "dev:pawsx:ko_ko:1": {
+      "a_longer": 13,
+      "median_a_chars": 52,
+      "median_b_chars": 58,
+      "n": 25
+    },
+    "dev:scifact:en_en:CONTRADICT": {
+      "a_longer": 24,
+      "median_a_chars": 188,
+      "median_b_chars": 76,
+      "n": 25
+    },
+    "dev:scifact:en_en:SUPPORT": {
+      "a_longer": 24,
+      "median_a_chars": 198,
+      "median_b_chars": 83,
+      "n": 25
+    },
+    "dev:vitaminc:en_en:REFUTES": {
+      "a_longer": 20,
+      "median_a_chars": 139,
+      "median_b_chars": 70,
+      "n": 25
+    },
+    "dev:vitaminc:en_en:SUPPORTS": {
+      "a_longer": 20,
+      "median_a_chars": 119,
+      "median_b_chars": 82,
+      "n": 25
+    },
+    "train:klue-nli:ko_ko:contradiction": {
+      "a_longer": 87,
+      "median_a_chars": 41.5,
+      "median_b_chars": 24.0,
+      "n": 100
+    },
+    "train:klue-nli:ko_ko:entailment": {
+      "a_longer": 87,
+      "median_a_chars": 37.0,
+      "median_b_chars": 22.0,
+      "n": 100
+    },
+    "train:klue-sts:ko_ko:0": {
+      "a_longer": 53,
+      "median_a_chars": 31.0,
+      "median_b_chars": 28.0,
+      "n": 100
+    },
+    "train:klue-sts:ko_ko:1": {
+      "a_longer": 41,
+      "median_a_chars": 29.0,
+      "median_b_chars": 29.0,
+      "n": 100
+    },
+    "train:pawsx:en_en:0": {
+      "a_longer": 45,
+      "median_a_chars": 115.0,
+      "median_b_chars": 115.0,
+      "n": 100
+    },
+    "train:pawsx:en_en:1": {
+      "a_longer": 48,
+      "median_a_chars": 119.0,
+      "median_b_chars": 117.0,
+      "n": 100
+    },
+    "train:pawsx:ko_ko:0": {
+      "a_longer": 48,
+      "median_a_chars": 66.0,
+      "median_b_chars": 65.0,
+      "n": 100
+    },
+    "train:pawsx:ko_ko:1": {
+      "a_longer": 48,
+      "median_a_chars": 64.0,
+      "median_b_chars": 62.0,
+      "n": 100
+    },
+    "train:scifact:en_en:CONTRADICT": {
+      "a_longer": 99,
+      "median_a_chars": 221.5,
+      "median_b_chars": 94.0,
+      "n": 100
+    },
+    "train:scifact:en_en:SUPPORT": {
+      "a_longer": 92,
+      "median_a_chars": 173.5,
+      "median_b_chars": 82.0,
+      "n": 100
+    },
+    "train:vitaminc:en_en:REFUTES": {
+      "a_longer": 86,
+      "median_a_chars": 143.5,
+      "median_b_chars": 72.5,
+      "n": 100
+    },
+    "train:vitaminc:en_en:SUPPORTS": {
+      "a_longer": 93,
+      "median_a_chars": 147.5,
+      "median_b_chars": 70.0,
+      "n": 100
+    }
+  },
+  "native_targets_not_vinc_gold": true,
+  "not_semantic_independence_proof": true,
+  "schema": "vinc.laya.auxiliary-audit.v1",
+  "threshold": 0.8
+}
