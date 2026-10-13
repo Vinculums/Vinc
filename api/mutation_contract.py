@@ -72,10 +72,11 @@ def prepare_fragment(store, fragment: dict, owner: str) -> dict:
             raise MutationConflict("invalid_conditional_identity")
         if kind == "domain":
             raise MutationConflict("write_precondition_not_supported")
-        found = query.node(entry["id"], owner=owner, store=store)
+        found = query.execute(query.node_plan(entry["id"], owner=owner), store=store)
         if not found.get("executed"):
             raise MutationConflict("write_precondition_unavailable")
-        existing = found.get("node") if found.get("found") else None
+        rows = found.get("rows") or []
+        existing = rows[0] if rows else None
         if create and existing is not None:
             raise MutationConflict(node_id=entry["id"], current_rev=existing.get("rev"))
         if expected is not None:

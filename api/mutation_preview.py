@@ -21,12 +21,12 @@ def _canonical(value):
 
 
 def _node(store, owner, ident):
-    result = query.node(ident, owner=owner, store=store)
+    result = query.execute(query.node_plan(ident, owner=owner), store=store)
     if not result.get("executed"):
         raise PreviewRefused("preview_read_unavailable")
-    if not result.get("found"):
+    if not result.get("rows"):
         raise PreviewRefused("preview_target_unavailable")
-    return result["node"]
+    return result["rows"][0]
 
 
 def _incident(store, owner, identities, *, label_override=None):

@@ -16,6 +16,29 @@ vinc --target account whoami
 vinc --target account search --query "release checklist"
 ```
 
+Read a node with `vinc node get <id>`, then send its `rev` as `expected_rev` when
+editing a fragment. `props_patch` is JSON Merge Patch and requires that revision;
+`props` retains its existing whole-value replacement behavior. `--create-only`
+refuses existing identities. Documents accept `--expected-content-hash` from the
+previous read.
+
+`vinc delete <id> --dry-run`, `vinc doc rm --id <id> --dry-run`,
+`vinc edge delete --from <id> --to <id> --type <type> --dry-run`, and
+`vinc merge nodes <keep> <drop> --dry-run` return a bounded complete preview or
+refuse it. Review deleted and retained content, then pass its `--preview-digest`
+with `--yes`; changed affected state conflicts before mutation. The merge preview
+lists unsupported edges and any relationship properties the existing merge loses.
+
+For a write whose response might be lost, generate a fresh lowercase UUID and pass
+`--operation-id <uuid>`. `vinc operation status <uuid>` reads that space's receipt.
+An identical retry uses the stored result without applying again; changed arguments
+conflict. `accepted` and `unknown` do not prove nonapplication. `committed` proves a
+graph transaction; published persistence is confirmed only by
+`durability: published_generation` in the write response. Receipts are retained
+until owner purge, bounded to 5000 per owner, and contain result summaries rather
+than authored text. Replayed results are historical; read the current targets.
+CLI, MCP and REST never retry uncertain writes automatically.
+
 The account CLI uses the same commands and error handling as the desktop's CLI.
 This Python install does not bundle the native local database, extensions or
 embedding model. For a self-contained local CLI, use the signed terminal download
