@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**29종** — 읽기 20(search·node·role·role_check·edges·brief·recall·graph·decide·domains·suggest_ties·
-neighbors·path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami) + 쓰기 9
+**30종** — 읽기 21(search·node·role·role_check·edges·brief·recall·graph·decide·domains·suggest_ties·
+neighbors·path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami·operation_status) + 쓰기 9
 (ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete·community_write).
 "단일 write 표면(ingest 하나)"은
 SEC-3(삭제·병합)과 D45(문서 정본 doc_*)를 거치며 깨진 낡은 서술이었다 —
@@ -383,11 +383,21 @@ def _t_merge_candidates(args, bridge):
         "include_structural": "true" if args.get("include_structural") else None})
 
 
+def _mutation_options(args):
+    return {k: args[k] for k in ("operation_id", "preview_digest", "dry_run",
+        "create_only", "expected_content_hash") if k in args}
+
+
+def _t_operation_status(args, bridge):
+    return bridge.request("GET", "/operation-status", params={
+        "owner": _owner(args, bridge), "operation_id": args["operation_id"]})
+
+
 def _t_merge_reject(args, bridge):
     # F10-b 기각 기억 — 병합(비가역)과 짝을 이루는 가역 쓰기. undo 로 취소된다.
     return bridge.request("POST", "/merge-reject", body={
         "owner": _owner(args, bridge), "a": args["a"], "b": args["b"],
-        "note": args.get("note") or "", "undo": bool(args.get("undo"))})
+        "note": args.get("note") or "", "undo": bool(args.get("undo")), **_mutation_options(args)})
 
 
 def _t_merge_rejections(args, bridge):
@@ -401,7 +411,7 @@ def _t_doc_extract(args, bridge):
     # 닫혀 있었다(문서는 쓸 수 있는데 거기서 개념을 못 뽑는다).
     return bridge.request("POST", "/doc/extract", body={
         "owner": _owner(args, bridge), "id": args["doc_id"],
-        "apply": bool(args.get("apply")), "candidates": args.get("candidates")})
+        "apply": bool(args.get("apply")), "candidates": args.get("candidates"), **_mutation_options(args)})
 
 
 def _t_diagnose(args, bridge):
@@ -418,7 +428,7 @@ def _t_diagnose(args, bridge):
 
 def _t_ingest(args, bridge):
     fragment = {"nodes": args.get("nodes") or [], "edges": args.get("edges") or [],
-                "owner": _owner(args, bridge)}
+                "owner": _owner(args, bridge), **_mutation_options(args)}
     if "review_claims" in args:
         fragment["review_claims"] = args["review_claims"]
     if args.get("theme_id"):   # F1 — 개방층 어휘 편입 대상 테마(선택)
@@ -437,7 +447,7 @@ def _t_ingest(args, bridge):
 # 읽기 도구가 이미 엄격 술어로 정상 동작한다는 것이다 — 스탬프가 없으면 읽기부터
 # 비어 있었을 테니, 삭제만 넓게 열어 둘 이유가 없다.
 def _t_delete(args, bridge):
-    body = {"node": args["node_id"], "owner": _owner(args, bridge)}
+    body = {"node": args["node_id"], "owner": _owner(args, bridge), **_mutation_options(args)}
     if "dry_run" in args:
         body["dry_run"] = args["dry_run"]
     return bridge.request("POST", "/delete", body=body)
@@ -446,13 +456,13 @@ def _t_delete(args, bridge):
 def _t_merge(args, bridge):
     return bridge.request("POST", "/merge-nodes",
                           body={"keep": args["keep_id"], "drop": args["drop_id"],
-                                "owner": _owner(args, bridge)})
+                                "owner": _owner(args, bridge), **_mutation_options(args)})
 
 
 def _t_delete_edge(args, bridge):
     return bridge.request("POST", "/delete-edge",
                           body={"from": args["from_id"], "to": args["to_id"],
-                                "type": args["type"], "owner": _owner(args, bridge)})
+                                "type": args["type"], "owner": _owner(args, bridge), **_mutation_options(args)})
 
 
 # ── 문서 정본(Chunk=SSoT, D45 P4) — 편집 표면 도구 ────────────────────────────
@@ -477,7 +487,7 @@ def _t_doc_put(args, bridge):
     return bridge.request("POST", "/doc/put", body={
         "owner": _owner(args, bridge), "text": args["text"],
         "id": args.get("doc_id"), "title": args.get("title"),
-        "origin": args.get("origin"), "topic": args.get("topic"),
+        "origin": args.get("origin"), "topic": args.get("topic"), **_mutation_options(args),
         **{k: args[k] for k in ("valid_from", "valid_until", "superseded_by") if k in args}})
 
 
@@ -520,7 +530,7 @@ def _t_whoami(args, bridge):
 
 def _t_doc_delete(args, bridge):
     return bridge.request("POST", "/doc/delete", body={
-        "id": args["doc_id"], "owner": _owner(args, bridge)})
+        "id": args["doc_id"], "owner": _owner(args, bridge), **_mutation_options(args)})
 
 
 def _t_node(args, bridge):
@@ -1015,7 +1025,7 @@ TOOLS: list[dict] = [
                        "that does not fit the least connected neighbours are left out and counted in "
                        "`ring_truncated`; read the full ring with vinc_neighbors. `shrunk` and `note` count "
                        "what was kept. `rev` and `updated_at` are the node's current version, so you can hold what "
-                       "you read before you overwrite it; nothing on the write path demands them yet. "
+                       "you read before you overwrite it; pass expected_rev to guard an edit against a newer write. "
                        "Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "as_of": _AS_OF_GRAPH_PROP, "known_at": _KNOWN_AT_PROP,
@@ -1669,6 +1679,48 @@ TOOLS: list[dict] = [
     },
 ]
 
+# 선택적 쓰기 계약도 TOOLS에서 파생한다. 기존 호출은 그대로이며 새 조건은 명시해야 한다.
+_OPERATION_ID_PROP = {"type": "string", "format": "uuid", "description":
+    "A fresh lowercase UUID for one logical operation. Reuse it with identical arguments after a lost "
+    "response; a changed body conflicts. Check vinc_operation_status before deciding what to do. "
+    "Receipts are owner scoped, retained until owner purge, and bounded to 5000 per owner."}
+_PREVIEW_DIGEST_PROP = {"type": "string", "description":
+    "Digest from this operation's complete dry_run. Apply refuses if affected state or scope changed."}
+_CREATE_ONLY_PROP = {"type": "boolean", "default": False, "description":
+    "Refuse existing identities before any mutation. Omitted keeps the existing upsert behavior."}
+_HASH_PROP = {"type": "string", "description":
+    "Content hash read from vinc_doc_get. A different current hash refuses before mutation; "
+    "empty string requires an absent document."}
+_FRAGMENT_SCHEMA["properties"]["create_only"] = _CREATE_ONLY_PROP
+_FRAGMENT_SCHEMA["properties"]["operation_id"] = _OPERATION_ID_PROP
+_FRAGMENT_SCHEMA["properties"]["nodes"]["items"]["properties"].update({
+    "expected_rev": {"type": "integer", "minimum": 0, "description":
+        "Revision from vinc_node. Mismatch refuses the whole fragment before any mutation."},
+    "create_only": _CREATE_ONLY_PROP,
+    "props_patch": {"type": "object", "description":
+        "JSON Merge Patch on stored props; requires expected_rev and excludes props. Null removes "
+        "a key, nested objects merge, arrays replace. Omitted props keeps existing behavior; props replaces."},
+})
+for _tool in TOOLS:
+    _name = _tool["name"]
+    if _name in {"vinc_ingest", "vinc_delete", "vinc_delete_edge", "vinc_merge_nodes", "vinc_merge_reject",
+                 "vinc_doc_put", "vinc_doc_delete", "vinc_doc_extract"}:
+        _tool["inputSchema"]["properties"]["operation_id"] = _OPERATION_ID_PROP
+    if _name in {"vinc_delete", "vinc_delete_edge", "vinc_merge_nodes", "vinc_doc_delete"}:
+        _tool["inputSchema"]["properties"].update({"preview_digest": _PREVIEW_DIGEST_PROP,
+            "dry_run": {"type": "boolean", "default": False, "description":
+                "Read a complete bounded preview without mutation. Over-budget or inaccessible "
+                "targets refuse; preview_digest binds the later apply to this state."}})
+    if _name == "vinc_doc_put":
+        _tool["inputSchema"]["properties"].update({"expected_content_hash": _HASH_PROP,
+                                                   "create_only": _CREATE_ONLY_PROP})
+TOOLS.append({"name": "vinc_operation_status", "description":
+    "Read an owner-scoped mutation receipt by operation_id. accepted means outcome unknown; committed "
+    "means graph transaction committed, not proof of published durability. Unknown or inaccessible "
+    "receipts never mean not applied. Replayed results are historical summaries; read targets to verify.",
+    "inputSchema": {"type": "object", "properties": {"operation_id": _OPERATION_ID_PROP},
+                    "required": ["operation_id"]}, "run": _t_operation_status})
+
 HOST_TOOLS: list[dict] = [
     {
         "name": "search",
@@ -1716,6 +1768,7 @@ _BY_NAME = {t["name"]: t for t in TOOLS + HOST_TOOLS}
 # ([[vinc.canon.mcp-contract]]). destructiveHint 는 기본값이 true 라 파괴적이지 않은
 # 쓰기는 명시적으로 false 를 줘야 하고, openWorldHint 는 전부 false 다(닫힌 도메인).
 _ANNOTATIONS: dict[str, dict] = {
+    "vinc_operation_status": {"title": "Check a mutation result", "readOnlyHint": True},
     community.WRITE_TOOL: {"title": "Edit a community", "readOnlyHint": False,
                            "destructiveHint": False, "idempotentHint": False},
     "vinc_search": {"title": "Search knowledge", "readOnlyHint": True},

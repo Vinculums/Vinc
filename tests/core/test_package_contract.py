@@ -114,7 +114,8 @@ def test_both_public_ingest_handlers_validate_in_the_serial_write_queue(graph, r
     def run_sync(name, fn):
         seen.append(name)
         return fn()
-    app = SimpleNamespace(store=graph, themes=None, jobs=SimpleNamespace(run_sync=run_sync))
+    app = object.__new__(VincApp)
+    app.store, app.themes, app.jobs = graph, None, SimpleNamespace(run_sync=run_sync)
     node = package("record:http-denied")
     node["props"]["claims"][0]["evidence_ids"] = ["concept:private"]
     body = {"owner": OWNER, "nodes": [node]}

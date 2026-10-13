@@ -253,7 +253,8 @@ def test_public_ingest_handlers_use_the_serial_validation_path(graph, route):
     def run_sync(name, fn):
         calls.append(name)
         return fn()
-    app = SimpleNamespace(store=graph, themes=None, jobs=SimpleNamespace(run_sync=run_sync))
+    app = object.__new__(VincApp)
+    app.store, app.themes, app.jobs = graph, None, SimpleNamespace(run_sync=run_sync)
     body = payload()
     body["nodes"][2]["props"]["p"] = False
     status, result = (VincApp.write_ingest(app, body) if route == "direct"

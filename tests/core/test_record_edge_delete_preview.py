@@ -119,6 +119,13 @@ def test_preview_does_not_enqueue_a_write_job(store):
             pytest.fail('Preview must not create a job')
     app = object.__new__(VincApp)
     app.store, app.jobs = store, NoJobs()
+    def read(fn):
+        reader = store.reader_view()
+        try:
+            return 200, fn(reader)
+        finally:
+            reader.close()
+    app._read = read
     status, result = app.write_delete({'owner':OWNER,'node':'record:source','dry_run':True})
     assert status == 200 and result['preview']['edge_count'] == 3
 

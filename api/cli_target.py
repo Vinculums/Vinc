@@ -6,7 +6,7 @@ import os
 from store.config import read_local_config
 
 #: MCP 도구로 답하는 그래프 동사. 기기 작업은 DEVICE_CMDS가 별도로 제한한다.
-TOOL_CMDS = frozenset({"whoami", "conventions", "node", "path", "ties", "diagnose",
+TOOL_CMDS = frozenset({"whoami", "conventions", "node", "path", "ties", "diagnose", "operation",
                        "ingest", "delete", "edge", "merge", "call", "search", "recall",
                        "brief", "decide", "domains", "doc"})
 

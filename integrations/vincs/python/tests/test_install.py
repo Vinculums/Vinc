@@ -27,10 +27,18 @@ def test_client_aliases_and_module_isolation():
 
 
 def test_cli_help_and_version_without_native_engine():
-    for args in [("--help",), ("search", "--help"), ("--version",)]:
+    for args in [("--help",), ("search", "--help"), ("--version",),
+                 ("operation", "status", "--help"), ("delete", "--help"), ("doc", "put", "--help")]:
         result = run_cli(*args)
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip()
+
+
+def test_installed_cli_exposes_guards_and_preview():
+    deletion = run_cli("delete", "--help")
+    assert all(flag in deletion.stdout for flag in ("--dry-run", "--preview-digest", "--operation-id"))
+    document = run_cli("doc", "put", "--help")
+    assert all(flag in document.stdout for flag in ("--expected-content-hash", "--create-only", "--operation-id"))
 
 
 def test_account_cli_missing_key_is_a_stderr_failure():

@@ -57,7 +57,7 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              "vinc_brief", "vinc_node",
              # 스페이스가 주소에서 **인자**로 내려오면서 생긴 자리(발주자 지시
              # 2026-08-31). `space` 에 실을 id 를 받을 곳이 없으면 그 인자는 못 쓴다.
-             "vinc_whoami", "vinc_community_write"}
+             "vinc_whoami", "vinc_operation_status", "vinc_community_write"}
 
 
 class _StubBridge(Bridge):
@@ -96,7 +96,8 @@ class ToolContractTests(unittest.TestCase):
                     "from_id": "concept:x", "to_id": "concept:y", "type": "relates_to",
                     "a": "concept:x", "b": "concept:y",   # E-G7 vinc_path 필수 인자
                     "text": "x", "doc_id": "d0",          # D45 P4 문서 정본 필수 인자
-                    "role": "concept:agent-x", "output": "x"}   # vinc_role_check 필수 인자
+                    "role": "concept:agent-x", "output": "x",
+                    "operation_id": "00000000-0000-4000-8000-000000000488"}   # 필수 조회 인자
             if t["name"] == "vinc_edges":
                 args.pop("nodes")
             tools.call(t["name"], args, b)

@@ -318,8 +318,8 @@ class VincApp:
             if os.environ.get("VINC_TOPIC_CONVERSION") == "1" and
             resolve_snapshot_path() and self.cfg.data_dir else None)
         self.jobs = jobs or JobQueue(on_idle=self._maybe_snapshot,
-                                     on_before_done=self._durable or (
-                                         self._ack_before_done if self._conversion_durable else None),
+                                     on_before_done=self._ack_before_done if (
+                                         self._durable or self._conversion_durable) else None,
                                      on_before_run=self._conversion_write_guard,
                                      tick_s=tick_s or None)
         self.packs_dir = packs_dir
@@ -648,11 +648,47 @@ class VincApp:
 
     def _ack_before_done(self, job, result):
         durable = self._durable
-        if durable is None and job.kind in (
-                "topic-conversion.stage", "topic-conversion.release", "topic-conversion.cancel"):
+        if durable is None and (job.kind in (
+                "topic-conversion.stage", "topic-conversion.release", "topic-conversion.cancel")
+                or isinstance(result, dict) and result.get("receipt")):
             durable = self._conversion_durable
         if durable is not None:
             durable(job, result)
+            if isinstance(result, dict) and result.get("receipt"):
+                result["durability"] = "published_generation"
+                result["durable_sequence"] = durable.sequence
+
+    def _run_mutation(self, kind, body, apply):
+        from . import mutation_preview, operation_receipts
+        if type(body.get("dry_run", False)) is not bool:
+            return {"executed": False, "error": "invalid_dry_run"}
+        if body.get("dry_run"):
+            return self._read(lambda r: mutation_preview.preview(r, owner=body.get("owner"),
+                operation=kind, arguments=body))[1]
+        digest = body.get("preview_digest")
+        if digest is not None and (not isinstance(digest, str) or len(digest) != 64):
+            return {"executed": False, "error": "invalid_preview_digest"}
+        # 미리보기 재검증과 조건 검사도 같은 writer 안에서 읽는다.
+        def checked():
+            if digest is not None:
+                return mutation_preview.apply_checked(self.store, owner=body.get("owner"),
+                    operation=kind, arguments=body, digest=digest, apply=apply)
+            return apply()
+        def run():
+            if "operation_id" not in body:
+                return checked()
+            arguments = {k: v for k, v in body.items() if k != "operation_id"}
+            return operation_receipts.execute(self.store, owner=body.get("owner"),
+                operation=kind, arguments=arguments, operation_id=body["operation_id"], apply=checked)
+        result = self.jobs.run_sync(kind, run)
+        if "operation_id" in body:
+            result.setdefault("durability", "graph_commit_only")
+        return result
+
+    def read_operation_status(self, p):
+        from . import operation_receipts
+        return self._read(lambda r: operation_receipts.status(r, owner=_req(p, "owner"),
+            operation_id=_req(p, "operation_id")))
 
     def _conversion_write_guard(self, job):
         if self.store is not None and getattr(self.store, "_topic_conversion_guard", False) \
@@ -1175,7 +1211,7 @@ class VincApp:
         # 포팅돼 revstamp·SEC-3·dedupe 를 승계한다(`engines/fragment_ingest.py` 는
         # 계보 참조용, 호출부 없음 · [[vinc.spec.dataplane §3]]).
         cap = _pop_max_domains(body)
-        res = self.jobs.run_sync("ingest:fragment",
+        res = self._run_mutation("ingest:fragment", body,
                                  lambda: frag.merge_fragment(body, store=self.store,
                                                              themes=self.themes,
                                                              max_domains=cap,
@@ -1259,9 +1295,9 @@ class VincApp:
         preview = body.get("dry_run", False)
         if type(preview) is not bool:
             raise ValueError("dry_run must be a boolean")
-        if preview:
+        if preview and not owner:
             return 200, q.delete_node(node, owner=owner, store=self.store, dry_run=True)
-        res = self.jobs.run_sync("delete",
+        res = self._run_mutation("delete", body,
                                  lambda: q.delete_node(node, owner=owner, store=self.store))
         return 200, res
 
@@ -1271,7 +1307,7 @@ class VincApp:
         src, dst = _req(body, "from"), _req(body, "to")
         etype = _req(body, "type")
         owner = body.get("owner") or None
-        res = self.jobs.run_sync("delete_edge",
+        res = self._run_mutation("delete_edge", body,
                                  lambda: q.delete_edge(src, etype, dst, owner=owner,
                                                        store=self.store))
         return 200, res
@@ -1280,7 +1316,7 @@ class VincApp:
         # SEC-3: owner 전달 → merge_nodes 가 keep·drop 소유 일치 시에만 병합(교차테넌트 봉쇄).
         keep, drop = _req(body, "keep"), _req(body, "drop")
         owner = body.get("owner") or None
-        res = self.jobs.run_sync("merge_nodes",
+        res = self._run_mutation("merge_nodes", body,
                                  lambda: q.merge_nodes(keep, drop, owner=owner, store=self.store))
         return 200, res
 
@@ -1290,7 +1326,7 @@ class VincApp:
         # owner 는 query 층이 필수로 강제한다(미전달 시 executed=false + error).
         a, b = _req(body, "a"), _req(body, "b")
         owner = body.get("owner") or ""
-        res = self.jobs.run_sync("merge_reject", lambda: q.reject_merge_pair(
+        res = self._run_mutation("merge_reject", body, lambda: q.reject_merge_pair(
             owner=owner, a_id=a, b_id=b, note=body.get("note") or "",
             undo=bool(body.get("undo")), store=self.store))
         return 200, res
@@ -1508,6 +1544,8 @@ class VincApp:
         # title 도 같은 3값이다. 여기서 `or ""` 로 뭉개면 **본문만 재전송한 호출이
         # 제목을 지운다** — 그것이 라이브 문서 여덟 건의 제목을 비운 경로였다.
         btitle = body.get("title")
+        if "expected_content_hash" in body and not isinstance(body["expected_content_hash"], str):
+            return 400, {"executed": False, "error": "invalid_expected_content_hash"}
 
         def _put():
             # 기존 문서의 명시적 제목 비움은 3값 계약이다. 새 id의 빈 제목만 거절한다.
@@ -1523,10 +1561,12 @@ class VincApp:
                 content_time=None if ctime is None else str(ctime),
                 # 주제는 적는 값이다. 빈 값은 지움이 아니라 안 건드림이다.
                 topic=body.get("topic") or None,
+                expected_content_hash=body.get("expected_content_hash"),
+                create_only=body.get("create_only", False),
                 # v22 — 문서 유효구간은 3값이다(키 부재=보존 · ""=비움).
                 **{k: str(body[k]) for k in ("valid_from", "valid_until", "superseded_by")
                    if body.get(k) is not None})
-        res = self.jobs.run_sync("doc.put", _put)
+        res = self._run_mutation("doc.put", body, _put)
         return (400 if res.get("error") == "title must not be empty" else 200), res
 
     def write_topic_description(self, body):
@@ -1599,7 +1639,7 @@ class VincApp:
         return 200, res
 
     def write_doc_delete(self, body):
-        res = self.jobs.run_sync("doc.delete", lambda: docstore.delete_doc(
+        res = self._run_mutation("doc.delete", body, lambda: docstore.delete_doc(
             self.store, _req(body, "id"), owner=body.get("owner") or None))
         return 200, res
 
@@ -1627,7 +1667,7 @@ class VincApp:
         owner = body.get("owner") or None
         if not owner:
             return 400, {"error": "owner required — 추출·반영은 소유 스코프(SEC-1)"}
-        res = self.jobs.run_sync("doc.extract", lambda: docstore.extract_doc(
+        res = self._run_mutation("doc.extract", body, lambda: docstore.extract_doc(
             self.store, _req(body, "id"), owner=owner,
             apply=bool(body.get("apply")), candidates=body.get("candidates"),
             approved_candidate_ids=body.get("approved_candidate_ids")))
@@ -1935,16 +1975,8 @@ class VincApp:
                                          max_domains=cap))
             return 200, res
         if engine == "fragment":
-            # MCP vinc_ingest(D11 §5) — 단일 write 표면 유지를 위해 잡 큐 직렬화(R4).
-            # fragment MERGE 는 짧은 뮤테이션이라 동기(run_sync→200). themes 전달로
-            # 개방층(F1) 어휘 편입 활성 — /ingest 와 동일 계약.
-            cap = _pop_max_domains(body)
-            res = self.jobs.run_sync("ingest:fragment",
-                                     lambda: frag.merge_fragment(body, store=self.store,
-                                                                 themes=self.themes,
-                                                                 max_domains=cap,
-                                                                 read_back=True, authored=True))
-            return 200, res
+            # MCP·REST·CLI가 쓰는 별칭도 같은 조건 검사·영수증·writer 경로를 탄다.
+            return self.write_ingest(body)
         fn = self.ingest.get(engine)
         if fn is None:
             return 400, {"error": f"unknown ingest engine: {engine}"}
@@ -2617,6 +2649,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/doc/context": app.read_doc_context,   # 리더 머리(개념 칩·목차·청크 오프셋)
             "/node": app.read_node,
             "/node-context": app.read_node_context,
+            "/operation-status": app.read_operation_status,
             "/brief": app.read_brief,   # W1 — 질문 하나로 답변 재료 조인
             "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)
             "/ledger-drilldown": app.read_ledger_drilldown,   # 합계 구간 클릭(D45-V2 3단계)

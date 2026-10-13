@@ -15,6 +15,33 @@ def client(recorder: Recorder, key: str = RO_KEY, **kwargs) -> VincClient:
     return VincClient(key, transport=httpx.MockTransport(recorder), **kwargs)
 
 
+def test_guarded_ingest_and_receipt_keep_the_same_space(env_clean):
+    op = "00000000-0000-4000-8000-000000000488"
+    rec = Recorder({("POST", "/v1/fragments"): ok({"executed": True}),
+                    ("GET", "/v1/operations/" + op): ok({"state": "committed"})})
+    c = client(rec, SK_KEY, space=TEAM)
+    node = {"id": "concept:a", "type": "concept", "expected_rev": 4, "props_patch": {"removed": None}}
+    c.ingest([node], create_only=False, operation_id=op, review_claims=True)
+    assert rec.body() == {"nodes": [node], "edges": [], "create_only": False,
+                          "operation_id": op, "review_claims": True}
+    assert c.operation_status(op)["state"] == "committed"
+    assert all(r.url.params["space"] == TEAM for r in rec.requests)
+
+
+def test_async_guarded_ingest_and_receipt_do_not_retry_conflicts(env_clean):
+    op = "00000000-0000-4000-8000-000000000488"
+    rec = Recorder({("POST", "/v1/fragments"): fail(409, "write_conflict", details={"current_rev": 5}),
+                    ("GET", "/v1/operations/" + op): ok({"state": "unknown", "applied": "unknown"})})
+    async def run():
+        async with AsyncVincClient(SK_KEY, space=TEAM, transport=httpx.MockTransport(rec)) as c:
+            with pytest.raises(VincInvalidArgument) as error:
+                await c.ingest([], operation_id=op)
+            assert error.value.details["current_rev"] == 5
+            assert (await c.operation_status(op))["applied"] == "unknown"
+    asyncio.run(run())
+    assert len(rec.requests) == 2
+
+
 # ── 키·주소·스페이스 ────────────────────────────────────────────────────────────
 
 def test_missing_key_is_an_auth_error(env_clean):
