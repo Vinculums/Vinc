@@ -143,6 +143,65 @@ class MutationLifecycleTests(unittest.TestCase):
         finally:
             app.jobs.shutdown()
 
+    def test_actual_mcp_ingest_alias_and_direct_route_share_one_receipt(self):
+        from api.server import VincApp
+        from api.cli_tools import _InProcessBridge
+        from vinc_mcp import tools
+        app = VincApp(store=self.store)
+        bridge = _InProcessBridge(app)
+        bridge.owner = OWNER
+        op = str(uuid4())
+        nodes = [{"id":"concept:once","type":"concept","title":"Once"}]
+        args = {"nodes":nodes,"edges":[],"operation_id":op,"create_only":True}
+        try:
+            first = tools.call("vinc_ingest", args, bridge)
+            self.assertTrue(first["executed"], first)
+            self.assertEqual("committed", first["receipt"]["state"])
+            again = tools.call("vinc_ingest", args, bridge)
+            self.assertTrue(again["replayed"], again)
+            alias = app.write_ingest({**args,"owner":OWNER})[1]
+            self.assertTrue(alias["replayed"], alias)
+            self.assertEqual(1, query.node("concept:once", owner=OWNER, store=self.store)["node"]["rev"])
+            status = tools.call("vinc_operation_status", {"operation_id":op}, bridge)
+            self.assertEqual("committed", status["state"], status)
+        finally:
+            app.jobs.shutdown()
+
+    def test_each_other_public_writer_replays_its_receipt_through_the_real_dispatcher(self):
+        from api.server import VincApp
+        from api.cli_tools import _InProcessBridge
+        from vinc_mcp import tools
+        self.seed("concept:keep")
+        self.seed("concept:drop")
+        self.seed("concept:delete")
+        fragment.merge_fragment({"owner":OWNER,"edges":[{"from":"concept:keep","to":"concept:delete",
+            "type":"derives_from"}]}, store=self.store)
+        docstore.put_doc(self.store,owner=OWNER,doc_id="outline",title="Outline",text="## Heading\nSynthetic section",topic="project")
+        cases = [
+            ("vinc_doc_put", {"doc_id":"edited","text":"Exact synthetic body","title":"Doc","topic":"project"}),
+            ("vinc_doc_extract", {"doc_id":"outline","apply":True,"candidates":[{"title":"Extracted","one_liner":"Synthetic."}]}),
+            ("vinc_merge_reject", {"a":"concept:keep","b":"concept:drop","note":"Synthetic"}),
+            ("vinc_delete_edge", {"from_id":"concept:keep","to_id":"concept:delete","type":"derives_from"}),
+            ("vinc_merge_nodes", {"keep_id":"concept:keep","drop_id":"concept:drop"}),
+            ("vinc_delete", {"node_id":"concept:delete"}),
+            ("vinc_doc_delete", {"doc_id":"edited"}),
+        ]
+        app = VincApp(store=self.store)
+        bridge = _InProcessBridge(app)
+        bridge.owner = OWNER
+        try:
+            for name, arguments in cases:
+                with self.subTest(name=name):
+                    arguments["operation_id"] = str(uuid4())
+                    first = tools.call(name, arguments, bridge)
+                    self.assertTrue(first["executed"], first)
+                    self.assertEqual("committed", first["receipt"]["state"])
+                    again = tools.call(name, arguments, bridge)
+                    self.assertTrue(again["replayed"], again)
+                    self.assertEqual(first["receipt"], again["receipt"])
+        finally:
+            app.jobs.shutdown()
+
     def test_lost_commit_response_is_confirmed_on_identical_retry(self):
         op = str(uuid4())
         original = self.store.run
