@@ -23,24 +23,6 @@
       "max_bytes": 100000
     },
     {
-      "source": "pawsx",
-      "name": "pawsx/rights.txt",
-      "url": "https://raw.githubusercontent.com/google-research-datasets/paws/02b29f3af1143620d1b7f352247e65c0bdd2ec18/LICENSE",
-      "kind": "rights",
-      "revision": "02b29f3af1143620d1b7f352247e65c0bdd2ec18",
-      "license": "Google dataset terms",
-      "max_bytes": 100000
-    },
-    {
-      "source": "pawsx",
-      "name": "pawsx/readme.txt",
-      "url": "https://raw.githubusercontent.com/google-research-datasets/paws/02b29f3af1143620d1b7f352247e65c0bdd2ec18/pawsx/README.md",
-      "kind": "readme",
-      "revision": "02b29f3af1143620d1b7f352247e65c0bdd2ec18",
-      "license": "Google dataset terms",
-      "max_bytes": 100000
-    },
-    {
       "source": "klue",
       "name": "klue/rights.txt",
       "url": "https://raw.githubusercontent.com/KLUE-benchmark/KLUE/3efd98708a40ff49251fddde35453f8fbb11f536/License.md",
@@ -83,15 +65,6 @@
       "kind": "archive",
       "revision": "68b98a56d93e0f9da0d2aab4e6c3294699a0f72e",
       "license": "CC-BY-4.0 and ODC-By-1.0",
-      "max_bytes": 100000000
-    },
-    {
-      "source": "pawsx",
-      "name": "pawsx/data.tar.gz",
-      "url": "https://storage.googleapis.com/paws/pawsx/x-final.tar.gz",
-      "kind": "archive",
-      "revision": "02b29f3af1143620d1b7f352247e65c0bdd2ec18",
-      "license": "Google dataset terms",
       "max_bytes": 100000000
     },
     {
@@ -138,6 +111,12 @@
       "revision": "152c9639f1e33ca295d0776b618c17884088f72f",
       "license": "Wikipedia article terms or CC-BY-SA-3.0",
       "max_bytes": 120000000
+    }
+  ],
+  "excluded": [
+    {
+      "source": "pawsx",
+      "reason": "primary data archive returns HTTP 403; no completed snapshot or data claimed"
     }
   ]
 }
