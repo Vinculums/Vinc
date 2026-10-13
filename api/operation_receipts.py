@@ -34,8 +34,10 @@ def _load(store, key):
 
 
 def _save(store, key, value):
-    store.run("MERGE (m:_SyncMeta {key:$key}) SET m.value=$value",
-              {"key": key, "value": canonical(value)})
+    rows = store.run("MERGE (m:_SyncMeta {key:$key}) SET m.value=$value",
+                     {"key": key, "value": canonical(value)})
+    if rows is None:
+        raise RuntimeError("receipt_write_unavailable")
 
 
 def status(store, *, owner, operation_id):
@@ -98,6 +100,9 @@ def execute(store, *, owner, operation, arguments, operation_id, apply):
         return {**base, "error": "invalid_operation_id"}
     try:
         payload = canonical({"operation": operation, "owner": owner, "arguments": arguments})
+    except (ValueError, TypeError):
+        return {**base, "error": "invalid_receipt_arguments", "status": "invalid_request"}
+    try:
         if len(payload.encode("utf-8")) > MAX_REQUEST_BYTES:
             return {**base, "error": "receipt_request_too_large"}
         digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()

@@ -224,6 +224,41 @@ class MutationLifecycleTests(unittest.TestCase):
         self.assertFalse(result["preview"]["apply_supported"])
         self.assertEqual("ABOUT", result["preview"]["unsupported_edges"][0]["type"])
 
+    def test_failed_and_malformed_reads_do_not_become_empty_props_or_absent_ids(self):
+        from store import pkns
+        a = self.seed(props={"saved": 1})
+        self.store.run("MATCH (n:Concept) WHERE n.concept_id=$id SET n.props='malformed'",
+                      {"id": pkns.key(OWNER, "concept:a")})
+        malformed = self.ingest([{"id":"concept:a","type":"concept","expected_rev":a["rev"],"props_patch":{"new":2}}])
+        self.assertEqual("stored_props_unavailable", malformed["error"])
+        original = self.store.run
+        def unavailable(cy, *args, **kw):
+            if "AS id" in cy and "Concept" in cy:
+                return None
+            return original(cy, *args, **kw)
+        with patch.object(self.store, "run", side_effect=unavailable):
+            failed = self.ingest([{"id":"concept:a","type":"concept","create_only":True}])
+        self.assertEqual("write_precondition_unavailable", failed["error"])
+
+    def test_receipt_capacity_refuses_before_apply(self):
+        def apply():
+            return {"executed":True}
+        with patch.object(operation_receipts, "MAX_OWNER_RECEIPTS", 1):
+            first = operation_receipts.execute(self.store, owner=OWNER, operation="ingest:fragment",
+                arguments={}, operation_id=str(uuid4()), apply=apply)
+            self.assertTrue(first["executed"], first)
+            second = operation_receipts.execute(self.store, owner=OWNER, operation="ingest:fragment",
+                arguments={}, operation_id=str(uuid4()), apply=lambda:self.fail("capacity refusal must not write"))
+            self.assertEqual("receipt_capacity_unavailable", second["error"])
+
+    def test_over_budget_preview_never_claims_completeness(self):
+        self.seed()
+        with patch.object(mutation_preview, "MAX_BYTES", 1):
+            result = mutation_preview.preview(self.store, owner=OWNER, operation="delete", arguments={"node":"concept:a"})
+        self.assertFalse(result["executed"], result)
+        self.assertFalse(result["preview_complete"])
+        self.assertEqual("preview_incomplete", result["error"])
+
 
 class MutationLifecycleLegacyTests(MutationLifecycleTests):
     pk_mode = "off"
