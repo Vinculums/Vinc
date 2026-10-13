@@ -137,7 +137,9 @@ _COMMUNITY_OBJECT_UUID = (
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _COMMUNITY_SOCIAL_NODE_RE = re.compile(r"episode:(?:talk|lounge)-" + _COMMUNITY_OBJECT_UUID)
-_COMMUNITY_SOCIAL_DOC_RE = re.compile(r"(?:talk|lounge)\." + _COMMUNITY_OBJECT_UUID)
+_COMMUNITY_SOCIAL_DOC_RE = re.compile(
+    r"(?:talk|lounge)\." + _COMMUNITY_OBJECT_UUID +
+    r"(?:\.comment\." + _COMMUNITY_OBJECT_UUID + r")?")
 
 # ── 팀 역할별 op 등급(AP-1 §4.4) ──────────────────────────────────────────────
 # 세밀한 주제별·노드별 권한은 전 질의 플랜 개작이 필요해 v1 범위 밖이다. 대신 **이미

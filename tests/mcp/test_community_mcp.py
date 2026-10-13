@@ -145,6 +145,14 @@ def test_public_unjoined_reads_are_isolated_and_bill_the_actor(service):
     assert not service["revisions"]
 
 
+def test_a_community_citation_roundtrips_to_the_same_owner_without_explicit_space(service):
+    url = tools._cite_url("node", "concept:energy", B)
+    _, result = rpc(service, "vinc_graph", {"url": url}, token="vinc_ro_user")
+    assert result["owner"] == B
+    assert service["bridge"].calls[-1][2]["owner"] == B
+    assert service["quota"] == [("user:" + USER, "free")]
+
+
 def test_write_reaches_account_revision_channel_not_raw_graph(service):
     _, result = rpc(service, WRITE, write_args(payload={"slug": "same", "body": "exact", "channel": "web", "editor": OPERATOR}))
     assert result == {"saved": True, "revision": 1, "graph": "pending"}
