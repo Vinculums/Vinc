@@ -408,6 +408,7 @@ jobs:
           # 임베딩 적용 멈춤 스위치. 위와 달리 **매번 싣는다**: 변수를 비우면 off 가
           # 들어가 멈춤이 풀린다(건너뛰면 한 번 켠 on 이 env 에 영영 남는다).
           ENVARGS+=(--set-env-vars "VINC_EMBED_APPLY_PAUSED=${{ vars.VINC_EMBED_APPLY_PAUSED || 'off' }}")
+          ENVARGS+=(--set-env-vars "VINC_TOPIC_CONVERSION=1")
           if [ "${LAYOUT_PRESENT:-0}" = '1' ]; then
             ENVARGS+=(--set-env-vars "VINC_LAYOUT_REMOTE=$LAYOUT_REMOTE" "VINC_LAYOUT_TOKEN=secretref:layout-token")
           fi

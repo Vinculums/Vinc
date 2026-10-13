@@ -123,6 +123,7 @@ def _get(store, run):
 def _save(store, run, journal):
     store.run("MERGE (m:_SyncMeta {key:$key}) SET m.value=$value",
               {"key": PREFIX + run, "value": json.dumps(journal, sort_keys=True)}, raw=True)
+    store._topic_conversion_guard = True
 
 
 def _identity(journal, source, target, topic):

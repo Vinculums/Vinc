@@ -310,8 +310,14 @@ class VincApp:
         # 훅이 없어 잡 큐는 예전과 같다. 근거: [[vinc.plan.vin82-durable-ack-2026-09-29]]
         self._durable = (DurableAck(lambda: self.store, self.cfg.data_dir)
                          if durable_ack_enabled() and self.cfg.data_dir else None)
+        # 전환의 영속 확인은 일반 쓰기의 전역 ACK 플래그와 별개다.
+        self._conversion_durable = self._durable or (
+            DurableAck(lambda: self.store, self.cfg.data_dir)
+            if os.environ.get("VINC_TOPIC_CONVERSION") == "1" and
+            resolve_snapshot_path() and self.cfg.data_dir else None)
         self.jobs = jobs or JobQueue(on_idle=self._maybe_snapshot,
-                                     on_before_done=self._durable,
+                                     on_before_done=self._durable or (
+                                         self._ack_before_done if self._conversion_durable else None),
                                      on_before_run=self._conversion_write_guard,
                                      tick_s=tick_s or None)
         self.packs_dir = packs_dir
@@ -638,6 +644,14 @@ class VincApp:
             with request_timing.measure("reader_close"):
                 r.close()
 
+    def _ack_before_done(self, job, result):
+        durable = self._durable
+        if durable is None and job.kind in (
+                "topic-conversion.stage", "topic-conversion.release", "topic-conversion.cancel"):
+            durable = self._conversion_durable
+        if durable is not None:
+            durable(job, result)
+
     def _conversion_write_guard(self, job):
         if self.store is not None and getattr(self.store, "_topic_conversion_guard", False) \
                 and not job.kind.startswith("topic-conversion."):
@@ -658,7 +672,8 @@ class VincApp:
         if action not in ("preflight", "stage", "status", "release", "cancel"):
             return 400, {"error": "invalid_conversion_action"}
         # An account may not acknowledge a move in a non-durable hub setup.
-        if action in ("preflight", "stage", "release", "cancel") and self._durable is None:
+        if action in ("preflight", "stage", "release", "cancel") and \
+                self._durable is None and getattr(self, "_conversion_durable", None) is None:
             return 503, {"error": "conversion_requires_durable_ack"}
         def work():
             try:

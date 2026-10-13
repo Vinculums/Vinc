@@ -44,6 +44,7 @@
       "SESSION_SECRET",
       "SITE_BASE_URL",
       "TEAMS_ENABLED",
+      "TOPIC_CONVERSION_ENABLED",
       "TRIAL_UNTIL",
       "VINC_MCP_INTERNAL_URL"
     ],
@@ -143,6 +144,7 @@
       "VINC_SIDECAR_TOKEN",
       "VINC_STORE_LOCAL",
       "VINC_STORE_SNAPSHOT_EVERY",
+      "VINC_TOPIC_CONVERSION",
       "VINC_WAL_REPLAY_TOLERANT"
     ],
     "ingress": {

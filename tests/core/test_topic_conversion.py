@@ -167,6 +167,45 @@ def test_http_preflight_requires_durable_ack_configuration(monkeypatch):
     assert code == 503 and result["error"] == "conversion_requires_durable_ack"
 
 
+def test_conversion_ack_does_not_enable_durability_for_ordinary_writes():
+    from types import SimpleNamespace
+    from api.server import VincApp
+    calls = []
+    app = SimpleNamespace(_durable=None, _conversion_durable=lambda job, result: calls.append(job.kind))
+    for kind in ("ingest", "topic-conversion.preflight", "topic-conversion.status",
+                 "topic-conversion.stage", "topic-conversion.release", "topic-conversion.cancel"):
+        VincApp._ack_before_done(app, SimpleNamespace(kind=kind), {})
+    assert calls == ["topic-conversion.stage", "topic-conversion.release", "topic-conversion.cancel"]
+
+
+def test_existing_global_ack_is_not_published_twice_for_conversion():
+    from types import SimpleNamespace
+    from api.server import VincApp
+    calls = []
+    app = SimpleNamespace(_durable=lambda job, result: calls.append(job.kind),
+                          _conversion_durable=lambda *args: pytest.fail("duplicate ACK"))
+    for kind in ("ingest", "topic-conversion.stage"):
+        VincApp._ack_before_done(app, SimpleNamespace(kind=kind), {})
+    assert calls == ["ingest", "topic-conversion.stage"]
+
+
+def test_failed_conversion_publication_never_reports_done():
+    from types import SimpleNamespace
+    from api.server import VincApp
+    from api.jobs import JobQueue
+    from store.persistence import DurableAckError
+    def failed_publication(job, result):
+        raise DurableAckError("synthetic publication failure")
+    app = SimpleNamespace(_durable=None, _conversion_durable=failed_publication)
+    queue = JobQueue(on_before_done=lambda job, result: VincApp._ack_before_done(app, job, result))
+    try:
+        job = queue.submit("topic-conversion.stage", lambda: {"status": "graph_committed"})
+        assert job._done.wait(5)
+        assert job.status == "error" and job.write_may_have_applied
+    finally:
+        queue.shutdown()
+
+
 def test_canonical_indexes_are_restored_after_move(native):
     from store.embedded_backend import EmbeddedBackend
     from store.config import StoreConfig
