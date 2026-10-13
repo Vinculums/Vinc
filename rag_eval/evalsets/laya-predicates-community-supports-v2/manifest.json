@@ -1,0 +1,213 @@
+{
+ "dev_eval_shared_pack_nodes": true,
+ "files": {
+  "calib.jsonl": "16aa7c35595ffa41c4380718702f25790068bddcb32a04ee428bf54b278e7145",
+  "calib.split.json": "339b587c56917a37b3c5059058014f8c0edebb52c5ed22c691ed32769a4e4dec",
+  "dev.jsonl": "d508ff79fd462cfd3e46a7a33cc90ff6cdad01d5fa435d58f314a75134494a57",
+  "dev.split.json": "7cec86a17014017d274e5425286ec0cfa944713a0532b7b593e1240963f716e0",
+  "eval.jsonl": "8d744c81b9a5b5f20ceb0824b15e4e70c7b4cc3a952ccc1d22cee23e40cb6369",
+  "eval.split.json": "ad6fa887927903e67908b4a54ca71dcbad403777b423de2e1e14ae9150ac71d9",
+  "recipe.json": "2d12fffd1091a2131ebdf3c54f0e0193f5b7607b3ebd337051063bf9ce297062",
+  "train.jsonl": "f8b6619dc305c0b8a2121f96896cd692326261643b0852ac7f55ef4c2d9fbf46",
+  "training.jsonl": "7896874db0eaa0e9075d7a24c26be0f468e21ba9d0e76dd9b8d08a0c0be85409"
+ },
+ "groups": {
+  "calib": {
+   "all": {
+    "pairs": 235,
+    "positives": {
+     "contradicts": 48,
+     "same_as": 48,
+     "supports": 44
+    }
+   },
+   "en": {
+    "pairs": 69,
+    "positives": {
+     "contradicts": 14,
+     "same_as": 14,
+     "supports": 13
+    }
+   },
+   "ko": {
+    "pairs": 97,
+    "positives": {
+     "contradicts": 20,
+     "same_as": 20,
+     "supports": 18
+    }
+   },
+   "mixed": {
+    "pairs": 69,
+    "positives": {
+     "contradicts": 14,
+     "same_as": 14,
+     "supports": 13
+    }
+   }
+  },
+  "dev": {
+   "all": {
+    "pairs": 140,
+    "positives": {
+     "contradicts": 28,
+     "same_as": 28,
+     "supports": 28
+    }
+   },
+   "en": {
+    "pairs": 60,
+    "positives": {
+     "contradicts": 12,
+     "same_as": 12,
+     "supports": 12
+    }
+   },
+   "ko": {
+    "pairs": 40,
+    "positives": {
+     "contradicts": 8,
+     "same_as": 8,
+     "supports": 8
+    }
+   },
+   "mixed": {
+    "pairs": 40,
+    "positives": {
+     "contradicts": 8,
+     "same_as": 8,
+     "supports": 8
+    }
+   }
+  },
+  "eval": {
+   "all": {
+    "pairs": 300,
+    "positives": {
+     "contradicts": 60,
+     "same_as": 60,
+     "supports": 60
+    }
+   },
+   "en": {
+    "pairs": 120,
+    "positives": {
+     "contradicts": 24,
+     "same_as": 24,
+     "supports": 24
+    }
+   },
+   "ko": {
+    "pairs": 90,
+    "positives": {
+     "contradicts": 18,
+     "same_as": 18,
+     "supports": 18
+    }
+   },
+   "mixed": {
+    "pairs": 90,
+    "positives": {
+     "contradicts": 18,
+     "same_as": 18,
+     "supports": 18
+    }
+   }
+  },
+  "train": {
+   "all": {
+    "pairs": 502,
+    "positives": {
+     "contradicts": 100,
+     "same_as": 103,
+     "supports": 96
+    }
+   },
+   "en": {
+    "pairs": 164,
+    "positives": {
+     "contradicts": 33,
+     "same_as": 34,
+     "supports": 33
+    }
+   },
+   "ko": {
+    "pairs": 171,
+    "positives": {
+     "contradicts": 34,
+     "same_as": 35,
+     "supports": 33
+    }
+   },
+   "mixed": {
+    "pairs": 167,
+    "positives": {
+     "contradicts": 33,
+     "same_as": 34,
+     "supports": 30
+    }
+   }
+  }
+ },
+ "items_by_predicate": {
+  "contradicts": 1004,
+  "same_as": 1004,
+  "supports": 1004
+ },
+ "questions_file_sha256": "dc91cf0ff911d5bc177e9f72ea80aa2698b73803e485cc8d3974e065631c838a",
+ "questions_hash": "500e613737d1",
+ "sources": {
+  "calib": [
+   {
+    "agreed_sha256": "a69d4bc5d063d903898b9a9a79e19938c4990d347f9f007bcfb4015d133d8454",
+    "dataset": "laya-predicates-community-calib-v1",
+    "excluded": [
+     "k0082",
+     "k0093"
+    ],
+    "gold_sha256": "6d86522103a96e32ac91095c9e1c9311bce2c1f250026652defbbe7e1ec06142",
+    "pairs": 115
+   },
+   {
+    "agreed_sha256": "e3fc7b2eca00ebd6e56a5e04423b157e10ca8ee030b60421928293b3527fcbea",
+    "dataset": "laya-predicates-community-calib-v2",
+    "excluded": [],
+    "gold_sha256": "9b896130ee049548346510ea8a43d5fd16e4093ac3037d483bb370457f73fc10",
+    "pairs": 120
+   }
+  ],
+  "dev": [
+   {
+    "agreed_sha256": "62b1409d501812b9e3497f79415acfd194c156c4fcb0ff02fcaa6ade5b50493c",
+    "dataset": "laya-predicates-community-v1",
+    "excluded": [],
+    "gold_sha256": "1551ce8b1a6da919e6805ef5ea82eb4862bfa4a6061c6623c00613dbb11f5f69",
+    "pairs": 140
+   }
+  ],
+  "eval": [
+   {
+    "agreed_sha256": "86faa5e3c7c2f4e95cdede802a79545282578e284bfb9ec27b75400ff75516fe",
+    "dataset": "laya-predicates-community-v2",
+    "excluded": [],
+    "gold_sha256": "307c28e22ce4264efdcbfd00cf97c6043d5784aca180afa65a76c2de770372a7",
+    "pairs": 300
+   }
+  ],
+  "train": [
+   {
+    "agreed_sha256": "f76d76f7ca2ed797be4ac31dcc8bdcbbfcff0d0083856f4186c865c5beaf885c",
+    "dataset": "laya-predicates-community-train-v1",
+    "excluded": [
+     "t0072",
+     "t0119",
+     "t0121"
+    ],
+    "gold_sha256": "d5e3c28ace596e48c8df852541e082449a47262c306d86d656f5544817b6bc6f",
+    "pairs": 502
+   }
+  ]
+ },
+ "training_items": 3012,
+ "training_rows": 1506
+}

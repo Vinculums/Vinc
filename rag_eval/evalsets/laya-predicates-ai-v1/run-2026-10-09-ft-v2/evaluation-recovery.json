@@ -1,0 +1,28 @@
+{
+ "logical_eval_runs": 1,
+ "physical_eval_attempts": 2,
+ "completed_rows_preserved": 433,
+ "completed_states_not_repeated": 173,
+ "remaining_states": 127,
+ "calibration_frozen": {
+  "model_sha256": "4fcae459d3226e565e05324577250bfc379fc4ebd529ec1ef02d6d442df30931",
+  "holdout_sha256": "565c1ef1721552122221a71c791eebe6e975f5b0d1a20557b94a2a5f0a21ee96",
+  "calibration_sha256": {
+   "calib-contradicts-en.json": "10ce8afffb3050afbcf49e0179bd9906fe3aa879d9e03ce845a739edd7b44add",
+   "calib-contradicts-ko.json": "efad0ef391a621155b98c2a7c8b58538de2b56e5cea237643e82e5b9fc3c6515",
+   "calib-same_as-en.json": "a279870b9129db40c96d33089ce33327f8aceb33f3a378a8a32e95c55a48f54f",
+   "calib-same_as-ko.json": "b0314f7f02d52b4221d0c665fa19946f4023c35aa77c87b776b35bc44c150ce2",
+   "calib-supports-en.json": "8eff300ccd0c75a4eaef570bc0ddab20ae648d8dad49c37e2444bcab298f18a6",
+   "calib-supports-ko.json": "a4777296f33a141d28a14500ad2eb559c8ae5c31f00d0a23eef34579fcd98073",
+   "summary.json": "99752bacb6ae2a692757750e60b781bf1bd99ed720b7e7eb1c90afb24aff333c"
+  },
+  "eval_pairs": 150,
+  "min_bucket_n": 30,
+  "gate": {
+   "auroc_margin": 0.05,
+   "ece_max": 0.1,
+   "coverage_min": 0.5
+  }
+ },
+ "no_model_or_threshold_changes": true
+}

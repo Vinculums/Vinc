@@ -29,3 +29,6 @@ packaging/lbug-ext-*.sha256 text eol=lf
 # 깨뜨리는데, 그 고장은 "글자가 폴백으로 뜬다"로만 보여 원인까지 멀다.
 *.woff2     binary
 rag_eval/evalsets/** text eol=lf
+
+# 이미 승인된 리뷰 CSV의 CRLF 바이트와 해시를 보존한다.
+rag_eval/evalsets/laya-predicates-ai-v1/gold-review.csv -text

@@ -1,0 +1,16 @@
+{
+ "dataset": "laya-predicates-community-calib-v2",
+ "sha256": {
+  "README.md": "123389a0a830a12617fec23b7d7bf51165eef6951847ea02592523bbb85ec8b2",
+  "authoring-spec.md": "8185e1c5c8e9f39de9c2b9c2cc0ef25ea23931905c102b3d0ae34ba35624b087",
+  "blind-inputs.jsonl": "7c7ac7d2c972080d0881e10000f373d09d20e0dfc7c8826d60a26a26cb1fc952",
+  "gold-review.csv": "cfc7d558e4d14f575c2a8a4387704e732416d8cb8cfeff4aa201b72c5537803f",
+  "gold.jsonl": "9b896130ee049548346510ea8a43d5fd16e4093ac3037d483bb370457f73fc10",
+  "gold.split.json": "82f5c4004052dbca11d47b0377de6a004a3a8fdf056b56a8ea034c603b7e1c32",
+  "provenance.json": "d1e9fb6e00914d9a61623823c138d4d7bd54929b39d6827395b0bbd1bd539810",
+  "questions.json": "dc91cf0ff911d5bc177e9f72ea80aa2698b73803e485cc8d3974e065631c838a",
+  "reference-labels.jsonl": "ca35277b91f257ce0548e745c099ba15cb4c918bbd25a7dd480058ad57d343d8",
+  "summary.json": "1e4588f51ac64dfac41ede8da2e28cfcdb7ea3022410e939aba5b9aef16abb13",
+  "verify.py": "f35d3c46bd0d93a92459a7584a3c2ca449aa6f90130195d2c35fea18f13728af"
+ }
+}

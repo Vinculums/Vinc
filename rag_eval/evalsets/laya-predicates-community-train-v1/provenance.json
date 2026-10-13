@@ -1,0 +1,27 @@
+{
+ "dataset_version": "laya-predicates-community-train-v1",
+ "author": "Anthropic Claude Sonnet (AI; thirteen authoring subagents working from pack documents under a written specification, 2026-10-10)",
+ "specification_and_audit": "Anthropic Claude (AI; configured model id claude-opus-5-5; this conversation) wrote the specification, assembled, filtered and audited",
+ "label_author_is_human": false,
+ "authorized_by": "Owner, 2026-10-10 (this conversation): the judge is Laya only, and more data should be built from the community packs",
+ "method_doc_id": "vinc.plan.laya-test-method-2026-10-07",
+ "source": {
+  "repository": "Vinculums/Vinc",
+  "commit": "0d033773b837bd511b98ce3f496a66ba593a4699",
+  "path": "starter-packs/vinc-pack-*.vincpack, documents/*.json text",
+  "documents_used": 35,
+  "selection": "training-side nodes (physics, mathematics and their bridges) that the calibration set does not use, minus the three bridges that reach into art or economics"
+ },
+ "role": "training only, for a Laya checkpoint that may be served because it is tuned on shareable text",
+ "kept_apart_from": {
+  "laya-predicates-community-v1": "measurement, art and economics",
+  "laya-predicates-community-calib-v1": "calibration, 26 other physics and mathematics nodes"
+ },
+ "how_made": "Each authoring session read three documents and wrote 15 pairs per document to a fixed plan of language, label and kind; each pair holds at least one statement grounded in the document. The specification is authoring-spec.md.",
+ "not_claimed": [
+  "Human or cross-vendor validation",
+  "Any training or measurement result",
+  "That written fixture statements are true",
+  "Korean-original text: every Korean statement was written by the authoring model"
+ ]
+}

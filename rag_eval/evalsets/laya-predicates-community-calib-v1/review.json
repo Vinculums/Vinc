@@ -1,0 +1,19 @@
+{
+ "what": "Blind relabel of all authored pairs by a second AI reader in two separate sessions that saw only pair_id, the two texts and the frozen question wording and criteria.",
+ "reviewer": "Anthropic Claude Sonnet (AI; two blind subagent sessions, 2026-10-10)",
+ "author": "Anthropic Claude (AI; configured model id claude-opus-5-5; this conversation)",
+ "pairs_reviewed": 120,
+ "pairs_with_any_disagreement": 3,
+ "pair_agreement": 0.975,
+ "label_disagreements_by_predicate": {
+  "supports": 3,
+  "contradicts": 0,
+  "same_as": 0
+ },
+ "resolution": "Every pair with a disagreement was removed to disputed.jsonl with both readings. No reference label was changed.",
+ "reviewer_hard_calls_on_kept_pairs": 17,
+ "limits": [
+  "Author and reviewer are the same vendor; agreement is a consistency filter, not validation.",
+  "Removing disputed pairs makes the kept set easier by construction."
+ ]
+}

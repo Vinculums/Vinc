@@ -1,0 +1,136 @@
+{
+  "n": 300,
+  "labels": {
+    "supports": {
+      "0": 240,
+      "1": 60,
+      "unsure": 0
+    },
+    "contradicts": {
+      "0": 240,
+      "1": 60,
+      "unsure": 0
+    },
+    "same_as": {
+      "0": 240,
+      "1": 60,
+      "unsure": 0
+    }
+  },
+  "languages": {
+    "en": 157,
+    "mixed": 78,
+    "ko": 65
+  },
+  "sources_multicount": {
+    "merge": 40,
+    "ties": 10,
+    "search": 11,
+    "authored": 180,
+    "random": 40,
+    "comention": 30
+  },
+  "hard_checks": {
+    "lexical_overlap": 36,
+    "topical_only": 44,
+    "paraphrase": 60,
+    "explicit_negation": 16,
+    "semantic_reversal": 44
+  },
+  "synthetic": 180,
+  "splits": {
+    "calib": {
+      "n": 150,
+      "labels": {
+        "supports": {
+          "0": 120,
+          "1": 30,
+          "unsure": 0
+        },
+        "contradicts": {
+          "0": 120,
+          "1": 30,
+          "unsure": 0
+        },
+        "same_as": {
+          "0": 120,
+          "1": 30,
+          "unsure": 0
+        }
+      },
+      "languages": {
+        "en": 79,
+        "ko": 33,
+        "mixed": 38
+      },
+      "sources_multicount": {
+        "merge": 20,
+        "authored": 90,
+        "ties": 5,
+        "search": 6,
+        "random": 20,
+        "comention": 15
+      },
+      "hard_checks": {
+        "lexical_overlap": 19,
+        "explicit_negation": 9,
+        "topical_only": 21,
+        "semantic_reversal": 21,
+        "paraphrase": 30
+      },
+      "synthetic": 90
+    },
+    "eval": {
+      "n": 150,
+      "labels": {
+        "supports": {
+          "0": 120,
+          "1": 30,
+          "unsure": 0
+        },
+        "contradicts": {
+          "0": 120,
+          "1": 30,
+          "unsure": 0
+        },
+        "same_as": {
+          "0": 120,
+          "1": 30,
+          "unsure": 0
+        }
+      },
+      "languages": {
+        "mixed": 40,
+        "ko": 32,
+        "en": 78
+      },
+      "sources_multicount": {
+        "ties": 5,
+        "search": 5,
+        "authored": 90,
+        "random": 20,
+        "merge": 20,
+        "comention": 15
+      },
+      "hard_checks": {
+        "topical_only": 23,
+        "paraphrase": 30,
+        "explicit_negation": 7,
+        "semantic_reversal": 23,
+        "lexical_overlap": 17
+      },
+      "synthetic": 90
+    }
+  },
+  "gold_sha256": "49cf4b34be2fd840c56e54bcca152abfaaebd76afa844938c6d7a7eccb29fd0a",
+  "source_minimum_shortfalls": {
+    "ties": 30,
+    "search": 29,
+    "merge": 0,
+    "comention": 10,
+    "random": 0
+  },
+  "dataset_status": "AI-authored reference set; ready for independent label review and exploratory evaluation; not the original preregistered human-authored corpus",
+  "original_protocol_fully_satisfied": false,
+  "model_evaluation_performed": false
+}

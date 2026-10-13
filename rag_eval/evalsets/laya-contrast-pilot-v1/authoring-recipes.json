@@ -1,0 +1,1922 @@
+[
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Its recorded magnitude exceeded 7.",
+      "ko": "기록된 규모는 7보다 컸다."
+    },
+    "context": {
+      "en": "USGS catalog event usp000a3qq, frozen update 1764175729647. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usp000a3qq, 고정한 갱신값 1764175729647. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "Its recorded magnitude was at most 7.",
+      "ko": "기록된 규모는 7 이하였다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usp000a3qq reports magnitude 8.",
+      "ko": "고정한 USGS 항목 usp000a3qq에 기록된 값은 규모 8다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "The catalog magnitude was above 7.",
+      "ko": "목록상의 규모는 7를 넘었다."
+    },
+    "scope_change": {
+      "en": "Every earthquake that year exceeded magnitude 7.",
+      "ko": "그해 발생한 모든 지진의 규모는 7를 넘었다."
+    },
+    "source_id": "source:laya-p1-fact01"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Its catalog depth was less than 43 km.",
+      "ko": "목록상의 깊이는 43km 미만이었다."
+    },
+    "context": {
+      "en": "USGS catalog event usp000ah4q, frozen update 1651260209022. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usp000ah4q, 고정한 갱신값 1651260209022. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "Its catalog depth was at least 43 km.",
+      "ko": "목록상의 깊이는 43km 이상이었다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usp000ah4q reports depth 33 km.",
+      "ko": "고정한 USGS 항목 usp000ah4q에 기록된 값은 깊이 33km다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "The recorded depth lay below the 43 km threshold.",
+      "ko": "기록된 깊이는 43km에 못 미쳤다."
+    },
+    "scope_change": {
+      "en": "Every earthquake that year had depth less than 43 km.",
+      "ko": "그해 발생한 모든 지진의 깊이는 43km 미만이었다."
+    },
+    "source_id": "source:laya-p1-fact02"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The recorded epicenter lay in the northern hemisphere.",
+      "ko": "기록된 진앙은 북반구에 있었다."
+    },
+    "context": {
+      "en": "USGS catalog event usp000bg0m, frozen update 1733871907865. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usp000bg0m, 고정한 갱신값 1733871907865. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "The recorded epicenter lay in the southern hemisphere.",
+      "ko": "기록된 진앙은 남반구에 있었다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usp000bg0m reports latitude 63.517 degrees.",
+      "ko": "고정한 USGS 항목 usp000bg0m에 기록된 값은 위도 63.517도다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "The epicenter was on the northern side of the equator in this record.",
+      "ko": "이 기록에서 진앙은 적도의 북쪽에 있었다."
+    },
+    "scope_change": {
+      "en": "Every epicenter that year was in the northern hemisphere.",
+      "ko": "그해의 모든 진앙은 북반구에 있었다."
+    },
+    "source_id": "source:laya-p1-fact03"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The catalog located the epicenter in the eastern hemisphere.",
+      "ko": "목록에서 진앙은 동반구에 위치했다."
+    },
+    "context": {
+      "en": "USGS catalog event usp000c8kv, frozen update 1754413520677. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usp000c8kv, 고정한 갱신값 1754413520677. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "The catalog located the epicenter in the western hemisphere.",
+      "ko": "목록에서 진앙은 서반구에 위치했다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usp000c8kv reports longitude 143.91 degrees.",
+      "ko": "고정한 USGS 항목 usp000c8kv에 기록된 값은 경도 143.91도다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "The recorded longitude placed the epicenter in the eastern hemisphere.",
+      "ko": "기록된 경도에 따르면 진앙은 동반구에 있었다."
+    },
+    "scope_change": {
+      "en": "Every epicenter that year was in the eastern hemisphere.",
+      "ko": "그해의 모든 진앙은 동반구에 있었다."
+    },
+    "source_id": "source:laya-p1-fact04"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The catalog dates this event to 2004.",
+      "ko": "목록은 이 사건을 2004년에 일어난 것으로 기록한다."
+    },
+    "context": {
+      "en": "USGS catalog event usp000dbed, frozen update 1780672574192. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usp000dbed, 고정한 갱신값 1780672574192. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "The catalog dates this event to 2005.",
+      "ko": "목록은 이 사건을 2005년에 일어난 것으로 기록한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usp000dbed reports UTC date 2004-12-26.",
+      "ko": "고정한 USGS 항목 usp000dbed에 기록된 값은 UTC 날짜 2004-12-26다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "This record places the event within the calendar year 2004 in UTC.",
+      "ko": "이 기록에서 사건이 발생한 UTC 연도는 2004년이다."
+    },
+    "scope_change": {
+      "en": "Every timezone assigns this event to the same calendar year as UTC.",
+      "ko": "어느 시간대에서 보더라도 이 사건의 연도는 UTC 기준 연도와 같다."
+    },
+    "source_id": "source:laya-p1-fact05"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Its recorded magnitude exceeded 7.",
+      "ko": "기록된 규모는 7보다 컸다."
+    },
+    "context": {
+      "en": "USGS catalog event usp000dk85, frozen update 1657818493141. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usp000dk85, 고정한 갱신값 1657818493141. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "Its recorded magnitude was at most 7.",
+      "ko": "기록된 규모는 7 이하였다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usp000dk85 reports magnitude 8.6.",
+      "ko": "고정한 USGS 항목 usp000dk85에 기록된 값은 규모 8.6다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "The catalog magnitude was above 7.",
+      "ko": "목록상의 규모는 7를 넘었다."
+    },
+    "scope_change": {
+      "en": "Every earthquake that year exceeded magnitude 7.",
+      "ko": "그해 발생한 모든 지진의 규모는 7를 넘었다."
+    },
+    "source_id": "source:laya-p1-fact06"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Its catalog depth was less than 20 km.",
+      "ko": "목록상의 깊이는 20km 미만이었다."
+    },
+    "context": {
+      "en": "USGS catalog event usp000exfn, frozen update 1764182929365. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usp000exfn, 고정한 갱신값 1764182929365. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "Its catalog depth was at least 20 km.",
+      "ko": "목록상의 깊이는 20km 이상이었다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usp000exfn reports depth 10 km.",
+      "ko": "고정한 USGS 항목 usp000exfn에 기록된 값은 깊이 10km다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "The recorded depth lay below the 20 km threshold.",
+      "ko": "기록된 깊이는 20km에 못 미쳤다."
+    },
+    "scope_change": {
+      "en": "Every earthquake that year had depth less than 20 km.",
+      "ko": "그해 발생한 모든 지진의 깊이는 20km 미만이었다."
+    },
+    "source_id": "source:laya-p1-fact07"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The recorded epicenter lay in the southern hemisphere.",
+      "ko": "기록된 진앙은 남반구에 있었다."
+    },
+    "context": {
+      "en": "USGS catalog event usp000fmz4, frozen update 1657768227019. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usp000fmz4, 고정한 갱신값 1657768227019. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "The recorded epicenter lay in the northern hemisphere.",
+      "ko": "기록된 진앙은 북반구에 있었다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usp000fmz4 reports latitude -4.438 degrees.",
+      "ko": "고정한 USGS 항목 usp000fmz4에 기록된 값은 위도 -4.438도다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "The epicenter was on the southern side of the equator in this record.",
+      "ko": "이 기록에서 진앙은 적도의 남쪽에 있었다."
+    },
+    "scope_change": {
+      "en": "Every epicenter that year was in the southern hemisphere.",
+      "ko": "그해의 모든 진앙은 남반구에 있었다."
+    },
+    "source_id": "source:laya-p1-fact08"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The catalog located the epicenter in the eastern hemisphere.",
+      "ko": "목록에서 진앙은 동반구에 위치했다."
+    },
+    "context": {
+      "en": "USGS catalog event usp000g650, frozen update 1757654699612. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usp000g650, 고정한 갱신값 1757654699612. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "The catalog located the epicenter in the western hemisphere.",
+      "ko": "목록에서 진앙은 서반구에 위치했다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usp000g650 reports longitude 103.322 degrees.",
+      "ko": "고정한 USGS 항목 usp000g650에 기록된 값은 경도 103.322도다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "The recorded longitude placed the epicenter in the eastern hemisphere.",
+      "ko": "기록된 경도에 따르면 진앙은 동반구에 있었다."
+    },
+    "scope_change": {
+      "en": "Every epicenter that year was in the eastern hemisphere.",
+      "ko": "그해의 모든 진앙은 동반구에 있었다."
+    },
+    "source_id": "source:laya-p1-fact09"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The catalog dates this event to 2009.",
+      "ko": "목록은 이 사건을 2009년에 일어난 것으로 기록한다."
+    },
+    "context": {
+      "en": "USGS catalog event usp000h1ys, frozen update 1764175286460. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usp000h1ys, 고정한 갱신값 1764175286460. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "The catalog dates this event to 2010.",
+      "ko": "목록은 이 사건을 2010년에 일어난 것으로 기록한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usp000h1ys reports UTC date 2009-09-29.",
+      "ko": "고정한 USGS 항목 usp000h1ys에 기록된 값은 UTC 날짜 2009-09-29다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "This record places the event within the calendar year 2009 in UTC.",
+      "ko": "이 기록에서 사건이 발생한 UTC 연도는 2009년이다."
+    },
+    "scope_change": {
+      "en": "Every timezone assigns this event to the same calendar year as UTC.",
+      "ko": "어느 시간대에서 보더라도 이 사건의 연도는 UTC 기준 연도와 같다."
+    },
+    "source_id": "source:laya-p1-fact10"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Its recorded magnitude exceeded 7.",
+      "ko": "기록된 규모는 7보다 컸다."
+    },
+    "context": {
+      "en": "USGS catalog event usp000h7rf, frozen update 1783884520054. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usp000h7rf, 고정한 갱신값 1783884520054. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "Its recorded magnitude was at most 7.",
+      "ko": "기록된 규모는 7 이하였다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usp000h7rf reports magnitude 8.8.",
+      "ko": "고정한 USGS 항목 usp000h7rf에 기록된 값은 규모 8.8다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "The catalog magnitude was above 7.",
+      "ko": "목록상의 규모는 7를 넘었다."
+    },
+    "scope_change": {
+      "en": "Every earthquake that year exceeded magnitude 7.",
+      "ko": "그해 발생한 모든 지진의 규모는 7를 넘었다."
+    },
+    "source_id": "source:laya-p1-fact11"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Its catalog depth was less than 39 km.",
+      "ko": "목록상의 깊이는 39km 미만이었다."
+    },
+    "context": {
+      "en": "USGS catalog event usp000hvnu, frozen update 1790377722510. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usp000hvnu, 고정한 갱신값 1790377722510. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "Its catalog depth was at least 39 km.",
+      "ko": "목록상의 깊이는 39km 이상이었다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usp000hvnu reports depth 29 km.",
+      "ko": "고정한 USGS 항목 usp000hvnu에 기록된 값은 깊이 29km다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "The recorded depth lay below the 39 km threshold.",
+      "ko": "기록된 깊이는 39km에 못 미쳤다."
+    },
+    "scope_change": {
+      "en": "Every earthquake that year had depth less than 39 km.",
+      "ko": "그해 발생한 모든 지진의 깊이는 39km 미만이었다."
+    },
+    "source_id": "source:laya-p1-fact12"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The recorded epicenter lay in the northern hemisphere.",
+      "ko": "기록된 진앙은 북반구에 있었다."
+    },
+    "context": {
+      "en": "USGS catalog event usp000jhh2, frozen update 1764176327655. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usp000jhh2, 고정한 갱신값 1764176327655. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "The recorded epicenter lay in the southern hemisphere.",
+      "ko": "기록된 진앙은 남반구에 있었다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usp000jhh2 reports latitude 2.327 degrees.",
+      "ko": "고정한 USGS 항목 usp000jhh2에 기록된 값은 위도 2.327도다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "The epicenter was on the northern side of the equator in this record.",
+      "ko": "이 기록에서 진앙은 적도의 북쪽에 있었다."
+    },
+    "scope_change": {
+      "en": "Every epicenter that year was in the northern hemisphere.",
+      "ko": "그해의 모든 진앙은 북반구에 있었다."
+    },
+    "source_id": "source:laya-p1-fact13"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The catalog located the epicenter in the eastern hemisphere.",
+      "ko": "목록에서 진앙은 동반구에 위치했다."
+    },
+    "context": {
+      "en": "USGS catalog event usb000h4jh, frozen update 1764182814263. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usb000h4jh, 고정한 갱신값 1764182814263. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "The catalog located the epicenter in the western hemisphere.",
+      "ko": "목록에서 진앙은 서반구에 위치했다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usb000h4jh reports longitude 153.221 degrees.",
+      "ko": "고정한 USGS 항목 usb000h4jh에 기록된 값은 경도 153.221도다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "The recorded longitude placed the epicenter in the eastern hemisphere.",
+      "ko": "기록된 경도에 따르면 진앙은 동반구에 있었다."
+    },
+    "scope_change": {
+      "en": "Every epicenter that year was in the eastern hemisphere.",
+      "ko": "그해의 모든 진앙은 동반구에 있었다."
+    },
+    "source_id": "source:laya-p1-fact14"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The catalog dates this event to 2014.",
+      "ko": "목록은 이 사건을 2014년에 일어난 것으로 기록한다."
+    },
+    "context": {
+      "en": "USGS catalog event usc000nzvd, frozen update 1785000468656. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 usc000nzvd, 고정한 갱신값 1785000468656. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "The catalog dates this event to 2015.",
+      "ko": "목록은 이 사건을 2015년에 일어난 것으로 기록한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry usc000nzvd reports UTC date 2014-04-01.",
+      "ko": "고정한 USGS 항목 usc000nzvd에 기록된 값은 UTC 날짜 2014-04-01다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "This record places the event within the calendar year 2014 in UTC.",
+      "ko": "이 기록에서 사건이 발생한 UTC 연도는 2014년이다."
+    },
+    "scope_change": {
+      "en": "Every timezone assigns this event to the same calendar year as UTC.",
+      "ko": "어느 시간대에서 보더라도 이 사건의 연도는 UTC 기준 연도와 같다."
+    },
+    "source_id": "source:laya-p1-fact15"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Its recorded magnitude exceeded 7.",
+      "ko": "기록된 규모는 7보다 컸다."
+    },
+    "context": {
+      "en": "USGS catalog event us20003k7a, frozen update 1780712634945. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 us20003k7a, 고정한 갱신값 1780712634945. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "Its recorded magnitude was at most 7.",
+      "ko": "기록된 규모는 7 이하였다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry us20003k7a reports magnitude 8.3.",
+      "ko": "고정한 USGS 항목 us20003k7a에 기록된 값은 규모 8.3다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "The catalog magnitude was above 7.",
+      "ko": "목록상의 규모는 7를 넘었다."
+    },
+    "scope_change": {
+      "en": "Every earthquake that year exceeded magnitude 7.",
+      "ko": "그해 발생한 모든 지진의 규모는 7를 넘었다."
+    },
+    "source_id": "source:laya-p1-fact16"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Its catalog depth was less than 104 km.",
+      "ko": "목록상의 깊이는 104km 미만이었다."
+    },
+    "context": {
+      "en": "USGS catalog event us200081v8, frozen update 1701449179052. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 us200081v8, 고정한 갱신값 1701449179052. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "Its catalog depth was at least 104 km.",
+      "ko": "목록상의 깊이는 104km 이상이었다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry us200081v8 reports depth 94.54 km.",
+      "ko": "고정한 USGS 항목 us200081v8에 기록된 값은 깊이 94.54km다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "The recorded depth lay below the 104 km threshold.",
+      "ko": "기록된 깊이는 104km에 못 미쳤다."
+    },
+    "scope_change": {
+      "en": "Every earthquake that year had depth less than 104 km.",
+      "ko": "그해 발생한 모든 지진의 깊이는 104km 미만이었다."
+    },
+    "source_id": "source:laya-p1-fact17"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The recorded epicenter lay in the northern hemisphere.",
+      "ko": "기록된 진앙은 북반구에 있었다."
+    },
+    "context": {
+      "en": "USGS catalog event us2000ahv0, frozen update 1791480353252. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 us2000ahv0, 고정한 갱신값 1791480353252. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "The recorded epicenter lay in the southern hemisphere.",
+      "ko": "기록된 진앙은 남반구에 있었다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry us2000ahv0 reports latitude 15.0222 degrees.",
+      "ko": "고정한 USGS 항목 us2000ahv0에 기록된 값은 위도 15.0222도다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "The epicenter was on the northern side of the equator in this record.",
+      "ko": "이 기록에서 진앙은 적도의 북쪽에 있었다."
+    },
+    "scope_change": {
+      "en": "Every epicenter that year was in the northern hemisphere.",
+      "ko": "그해의 모든 진앙은 북반구에 있었다."
+    },
+    "source_id": "source:laya-p1-fact18"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The catalog located the epicenter in the western hemisphere.",
+      "ko": "목록에서 진앙은 서반구에 위치했다."
+    },
+    "context": {
+      "en": "USGS catalog event us1000gcii, frozen update 1764175192070. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 us1000gcii, 고정한 갱신값 1764175192070. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "The catalog located the epicenter in the eastern hemisphere.",
+      "ko": "목록에서 진앙은 동반구에 위치했다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry us1000gcii reports longitude -178.153 degrees.",
+      "ko": "고정한 USGS 항목 us1000gcii에 기록된 값은 경도 -178.153도다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "The recorded longitude placed the epicenter in the western hemisphere.",
+      "ko": "기록된 경도에 따르면 진앙은 서반구에 있었다."
+    },
+    "scope_change": {
+      "en": "Every epicenter that year was in the western hemisphere.",
+      "ko": "그해의 모든 진앙은 서반구에 있었다."
+    },
+    "source_id": "source:laya-p1-fact19"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The catalog dates this event to 2019.",
+      "ko": "목록은 이 사건을 2019년에 일어난 것으로 기록한다."
+    },
+    "context": {
+      "en": "USGS catalog event us60003sc0, frozen update 1787982578488. Claims concern the catalog entry, not independently verified geophysical truth.",
+      "ko": "USGS 사건 us60003sc0, 고정한 갱신값 1787982578488. 독립 검증한 지구물리적 진실이 아니라 목록에 기록된 내용을 다룬다."
+    },
+    "counterclaim": {
+      "en": "The catalog dates this event to 2020.",
+      "ko": "목록은 이 사건을 2020년에 일어난 것으로 기록한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen USGS entry us60003sc0 reports UTC date 2019-05-26.",
+      "ko": "고정한 USGS 항목 us60003sc0에 기록된 값은 UTC 날짜 2019-05-26다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "This record places the event within the calendar year 2019 in UTC.",
+      "ko": "이 기록에서 사건이 발생한 UTC 연도는 2019년이다."
+    },
+    "scope_change": {
+      "en": "Every timezone assigns this event to the same calendar year as UTC.",
+      "ko": "어느 시간대에서 보더라도 이 사건의 연도는 UTC 기준 연도와 같다."
+    },
+    "source_id": "source:laya-p1-fact20"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The equal-key entries a and c kept their input order.",
+      "ko": "키가 같은 원소 a와 c는 입력 순서를 유지했다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: import json; print(json.dumps(sorted([[2,'a'],[1,'b'],[2,'c']],key=lambda x:x[0])))",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: import json; print(json.dumps(sorted([[2,'a'],[1,'b'],[2,'c']],key=lambda x:x[0])))"
+    },
+    "counterclaim": {
+      "en": "The tied entries c and a reversed their input order in this run.",
+      "ko": "이번 실행에서 같은 키의 원소 c와 a는 입력 순서가 뒤집혔다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case sorted_stability exited with code 0 and printed '[[1, \"b\"], [2, \"a\"], [2, \"c\"]]'.",
+      "ko": "로컬 시험 sorted_stability의 종료 코드는 0이었고 출력은 '[[1, \"b\"], [2, \"a\"], [2, \"c\"]]'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "For the tied key, a still preceded c after this sort.",
+      "ko": "이번 정렬 뒤에도 같은 키의 a가 c보다 앞에 남았다."
+    },
+    "scope_change": {
+      "en": "Every sort algorithm preserves the order of tied elements.",
+      "ko": "모든 정렬 알고리즘은 같은 키의 원소 순서를 보존한다."
+    },
+    "source_id": "source:laya-p1-obs01"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The tested decimal addition returned the exact decimal value 0.3.",
+      "ko": "시험한 Decimal 덧셈은 정확한 십진수 값 0.3을 반환했다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: from decimal import Decimal; print(Decimal('0.1')+Decimal('0.2'))",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: from decimal import Decimal; print(Decimal('0.1')+Decimal('0.2'))"
+    },
+    "counterclaim": {
+      "en": "This decimal calculation returned 0.4.",
+      "ko": "이 Decimal 계산은 0.4를 반환했다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case decimal_sum exited with code 0 and printed '0.3'.",
+      "ko": "로컬 시험 decimal_sum의 종료 코드는 0이었고 출력은 '0.3'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "This decimal calculation produced three tenths.",
+      "ko": "이 Decimal 계산 결과는 10분의 3이었다."
+    },
+    "scope_change": {
+      "en": "The binary floating-point sum 0.1 + 0.2 is exactly 0.3.",
+      "ko": "이진 부동소수점으로 0.1과 0.2를 더하면 정확히 0.3이다."
+    },
+    "source_id": "source:laya-p1-obs02"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The tested binary floating-point sum did not compare equal to 0.3.",
+      "ko": "시험한 이진 부동소수점 합은 0.3과 같다고 비교되지 않았다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: print(0.1+0.2 == 0.3)",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: print(0.1+0.2 == 0.3)"
+    },
+    "counterclaim": {
+      "en": "The tested floating-point comparison evaluated to true.",
+      "ko": "시험한 부동소수점 비교 결과는 참이었다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case float_sum exited with code 0 and printed 'False'.",
+      "ko": "로컬 시험 float_sum의 종료 코드는 0이었고 출력은 'False'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "That floating-point equality comparison evaluated to false.",
+      "ko": "해당 부동소수점 동등 비교의 결과는 거짓이었다."
+    },
+    "scope_change": {
+      "en": "The binary floating-point sum 0.5 + 0.5 fails to equal 1.0.",
+      "ko": "이진 부동소수점으로 0.5와 0.5를 더한 값은 1.0과 같지 않다."
+    },
+    "source_id": "source:laya-p1-obs03"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "NFC normalization made these two accent spellings equal.",
+      "ko": "NFC 정규화 뒤 두 악센트 표기가 같아졌다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: import unicodedata; print(unicodedata.normalize('NFC','e\\u0301') == '\\u00e9')",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: import unicodedata; print(unicodedata.normalize('NFC','e\\u0301') == '\\u00e9')"
+    },
+    "counterclaim": {
+      "en": "The tested spellings stayed unequal after NFC normalization.",
+      "ko": "시험한 두 표기는 NFC 정규화 뒤에도 서로 달랐다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case unicode_normalize exited with code 0 and printed 'True'.",
+      "ko": "로컬 시험 unicode_normalize의 종료 코드는 0이었고 출력은 'True'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "The two tested spellings matched after NFC normalization.",
+      "ko": "시험한 두 표기는 NFC 정규화를 거친 뒤 일치했다."
+    },
+    "scope_change": {
+      "en": "NFC normalization makes any two visually similar characters equal.",
+      "ko": "NFC 정규화는 겉모양이 비슷한 문자를 모두 같게 만든다."
+    },
+    "source_id": "source:laya-p1-obs04"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The casefold operation expanded the sharp s in this input to ss.",
+      "ko": "이 입력을 casefold한 결과 독일어 ß 문자가 ss로 바뀌었다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: print('Straße'.casefold())",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: print('Straße'.casefold())"
+    },
+    "counterclaim": {
+      "en": "Case folding produced straße with the sharp s preserved.",
+      "ko": "casefold 결과는 독일어 ß가 남은 straße였다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case casefold exited with code 0 and printed 'strasse'.",
+      "ko": "로컬 시험 casefold의 종료 코드는 0이었고 출력은 'strasse'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "Case folding produced strasse for this input.",
+      "ko": "이 입력의 casefold 결과는 strasse였다."
+    },
+    "scope_change": {
+      "en": "Lowercasing this input also expands the sharp s to ss.",
+      "ko": "이 입력을 소문자로 바꿔도 날카로운 s는 ss로 바뀐다."
+    },
+    "source_id": "source:laya-p1-obs05"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "This JSON round trip preserved the tested nested value.",
+      "ko": "이번 JSON 왕복 변환은 시험한 중첩 값을 보존했다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: import json; print(json.loads(json.dumps({'x':[1,True,None]})) == {'x':[1,True,None]})",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: import json; print(json.loads(json.dumps({'x':[1,True,None]})) == {'x':[1,True,None]})"
+    },
+    "counterclaim": {
+      "en": "Encoding then decoding changed the value in this test.",
+      "ko": "이번 시험에서 인코딩 뒤 디코딩한 값은 원래와 달랐다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case json_roundtrip exited with code 0 and printed 'True'.",
+      "ko": "로컬 시험 json_roundtrip의 종료 코드는 0이었고 출력은 'True'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "Encoding then decoding yielded the same value for this input.",
+      "ko": "이 입력은 인코딩한 뒤 디코딩해도 같은 값이었다."
+    },
+    "scope_change": {
+      "en": "A JSON round trip preserves Python tuples as tuples.",
+      "ko": "JSON 왕복 변환은 파이썬 튜플도 튜플로 보존한다."
+    },
+    "source_id": "source:laya-p1-obs06"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The space in the tested query value was encoded as a plus sign.",
+      "ko": "시험한 쿼리 값의 공백은 더하기 기호로 인코딩됐다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: from urllib.parse import urlencode; print(urlencode({'q':'a b'}))",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: from urllib.parse import urlencode; print(urlencode({'q':'a b'}))"
+    },
+    "counterclaim": {
+      "en": "This query encoded its space as the literal sequence %20.",
+      "ko": "이 쿼리는 공백을 문자 배열 %20으로 인코딩했다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case url_encode exited with code 0 and printed 'q=a+b'.",
+      "ko": "로컬 시험 url_encode의 종료 코드는 0이었고 출력은 'q=a+b'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "For this query value, the encoded space appeared as +.",
+      "ko": "이 쿼리 값에서는 공백이 +로 표시됐다."
+    },
+    "scope_change": {
+      "en": "Every URL encoder represents every space with a plus sign.",
+      "ko": "모든 URL 인코더는 모든 공백을 더하기 기호로 표시한다."
+    },
+    "source_id": "source:laya-p1-obs07"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The suffix property returned only the final .gz extension.",
+      "ko": "suffix 속성은 마지막 확장자인 .gz만 반환했다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: from pathlib import PurePosixPath; print(PurePosixPath('archive.tar.gz').suffix)",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: from pathlib import PurePosixPath; print(PurePosixPath('archive.tar.gz').suffix)"
+    },
+    "counterclaim": {
+      "en": "The suffix property returned .tar.gz in this test.",
+      "ko": "이번 시험에서 suffix 속성은 .tar.gz를 반환했다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case path_suffix exited with code 0 and printed '.gz'.",
+      "ko": "로컬 시험 path_suffix의 종료 코드는 0이었고 출력은 '.gz'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "The returned suffix was .gz rather than the whole .tar.gz ending.",
+      "ko": "반환된 접미사는 전체 .tar.gz가 아니라 .gz였다."
+    },
+    "scope_change": {
+      "en": "The suffixes property returns only .gz for this same path.",
+      "ko": "같은 경로에서 suffixes 속성도 .gz만 반환한다."
+    },
+    "source_id": "source:laya-p1-obs08"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The tested date interval spanned two days.",
+      "ko": "시험한 날짜 간격은 이틀이었다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: from datetime import date; print((date(2024,3,1)-date(2024,2,28)).days)",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: from datetime import date; print((date(2024,3,1)-date(2024,2,28)).days)"
+    },
+    "counterclaim": {
+      "en": "The two tested dates were exactly one day apart.",
+      "ko": "시험한 두 날짜는 정확히 하루 차이였다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case leap_day exited with code 0 and printed '2'.",
+      "ko": "로컬 시험 leap_day의 종료 코드는 0이었고 출력은 '2'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "Two days separated the two dates in this calculation.",
+      "ko": "이 계산의 두 날짜 사이에는 이틀의 차이가 있었다."
+    },
+    "scope_change": {
+      "en": "The same calendar-date interval is two days in every year.",
+      "ko": "같은 월일 간격은 어느 해에나 이틀이다."
+    },
+    "source_id": "source:laya-p1-obs09"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The tested timezone representations identified the same instant.",
+      "ko": "시험한 두 시간대 표기는 같은 순간을 가리켰다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: from datetime import datetime; print(datetime.fromisoformat('2024-01-01T09:00:00+09:00').timestamp() == datetime.fromisoformat('2024-01-01T00:00:00+00:00').timestamp())",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: from datetime import datetime; print(datetime.fromisoformat('2024-01-01T09:00:00+09:00').timestamp() == datetime.fromisoformat('2024-01-01T00:00:00+00:00').timestamp())"
+    },
+    "counterclaim": {
+      "en": "The two tested timestamps denoted different instants.",
+      "ko": "시험한 두 타임스탬프는 서로 다른 순간을 가리켰다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case timezone exited with code 0 and printed 'True'.",
+      "ko": "로컬 시험 timezone의 종료 코드는 0이었고 출력은 'True'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "Both timestamps in the test represented one moment in time.",
+      "ko": "시험의 두 타임스탬프는 동일한 시점을 나타냈다."
+    },
+    "scope_change": {
+      "en": "Removing timezone offsets still leaves these clock readings equal.",
+      "ko": "시간대 오프셋을 제거해도 이 두 시계 표기는 같다."
+    },
+    "source_id": "source:laya-p1-obs10"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Gzip compression and decompression preserved the tested bytes.",
+      "ko": "gzip 압축과 해제를 거쳐도 시험한 바이트는 보존됐다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: import gzip; x=b'vinc evidence'*20; print(gzip.decompress(gzip.compress(x,mtime=0)) == x)",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: import gzip; x=b'vinc evidence'*20; print(gzip.decompress(gzip.compress(x,mtime=0)) == x)"
+    },
+    "counterclaim": {
+      "en": "The decompressed bytes differed from the input in this run.",
+      "ko": "이번 실행에서 압축을 푼 바이트는 입력과 달랐다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case gzip_roundtrip exited with code 0 and printed 'True'.",
+      "ko": "로컬 시험 gzip_roundtrip의 종료 코드는 0이었고 출력은 'True'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "The decompressed bytes matched the original input in this run.",
+      "ko": "이번 실행에서 압축을 푼 바이트는 원래 입력과 일치했다."
+    },
+    "scope_change": {
+      "en": "Decompression recovers this input even after arbitrary compressed-byte corruption.",
+      "ko": "압축 바이트를 임의로 훼손해도 해제하면 이 입력을 복원한다."
+    },
+    "source_id": "source:laya-p1-obs11"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The digest of the empty input began with e3b0c442.",
+      "ko": "빈 입력의 해시는 e3b0c442로 시작했다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: import hashlib; print(hashlib.sha256(b'').hexdigest())",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: import hashlib; print(hashlib.sha256(b'').hexdigest())"
+    },
+    "counterclaim": {
+      "en": "The empty-input digest began with 00000000.",
+      "ko": "빈 입력의 해시는 00000000으로 시작했다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case sha256_empty exited with code 0 and printed 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'.",
+      "ko": "로컬 시험 sha256_empty의 종료 코드는 0이었고 출력은 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "For this empty input, e3b0c442 was the digest prefix.",
+      "ko": "이 빈 입력에서 해시의 첫 부분은 e3b0c442였다."
+    },
+    "scope_change": {
+      "en": "The digest of every one-byte input also starts with e3b0c442.",
+      "ko": "1바이트 입력의 해시도 모두 e3b0c442로 시작한다."
+    },
+    "source_id": "source:laya-p1-obs12"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The Counter found three occurrences of a in banana.",
+      "ko": "Counter는 banana에서 a가 세 번 나온다고 계산했다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: from collections import Counter; print(Counter('banana')['a'])",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: from collections import Counter; print(Counter('banana')['a'])"
+    },
+    "counterclaim": {
+      "en": "The Counter found only two occurrences of a in this input.",
+      "ko": "Counter는 이 입력에서 a가 두 번만 나온다고 계산했다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case counter exited with code 0 and printed '3'.",
+      "ko": "로컬 시험 counter의 종료 코드는 0이었고 출력은 '3'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "In the tested string, a was counted three times.",
+      "ko": "시험한 문자열에서 a의 개수는 셋이었다."
+    },
+    "scope_change": {
+      "en": "The Counter finds three uppercase A characters in banana.",
+      "ko": "Counter는 banana에서 대문자 A를 세 개 찾는다."
+    },
+    "source_id": "source:laya-p1-obs13"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The insertion positions bracketed both occurrences of 2.",
+      "ko": "삽입 위치 두 개는 값 2의 두 원소를 양쪽에서 감쌌다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: from bisect import bisect_left,bisect_right; print(bisect_left([1,2,2,3],2),bisect_right([1,2,2,3],2))",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: from bisect import bisect_left,bisect_right; print(bisect_left([1,2,2,3],2),bisect_right([1,2,2,3],2))"
+    },
+    "counterclaim": {
+      "en": "Both insertion positions were 1 in this test.",
+      "ko": "이번 시험에서 두 삽입 위치는 모두 1이었다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case bisect exited with code 0 and printed '1 3'.",
+      "ko": "로컬 시험 bisect의 종료 코드는 0이었고 출력은 '1 3'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "Left and right insertion positions were 1 and 3 in this test.",
+      "ko": "이번 시험의 왼쪽 삽입 위치는 1, 오른쪽은 3이었다."
+    },
+    "scope_change": {
+      "en": "The same insertion positions hold if the list is unsorted.",
+      "ko": "리스트가 정렬되지 않아도 같은 삽입 위치가 나온다."
+    },
+    "source_id": "source:laya-p1-obs14"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The full-match operation rejected the trailing b.",
+      "ko": "전체 일치 검사는 뒤에 붙은 b 때문에 실패했다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: import re; print(bool(re.fullmatch(r'a+','aaab')))",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: import re; print(bool(re.fullmatch(r'a+','aaab')))"
+    },
+    "counterclaim": {
+      "en": "The pattern fully matched aaab in this test.",
+      "ko": "이번 시험에서 패턴은 aaab 전체와 일치했다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case regex_fullmatch exited with code 0 and printed 'False'.",
+      "ko": "로컬 시험 regex_fullmatch의 종료 코드는 0이었고 출력은 'False'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "The pattern did not fully match aaab in this test.",
+      "ko": "이번 시험에서 패턴은 aaab 전체와 일치하지 않았다."
+    },
+    "scope_change": {
+      "en": "A prefix-match operation also rejects aaab for the pattern a+.",
+      "ko": "접두 일치 검사에서도 패턴 a+는 aaab를 거부한다."
+    },
+    "source_id": "source:laya-p1-obs15"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The comma inside quotes remained part of the first field.",
+      "ko": "따옴표 안의 쉼표는 첫 번째 필드의 일부로 남았다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: import csv; print(next(csv.reader(['\"a,b\",c'])))",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: import csv; print(next(csv.reader(['\"a,b\",c'])))"
+    },
+    "counterclaim": {
+      "en": "The CSV reader split the quoted comma into a third field.",
+      "ko": "CSV 판독기는 따옴표 안의 쉼표까지 나눠 필드를 세 개 만들었다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case csv_quoted exited with code 0 and printed \"['a,b', 'c']\".",
+      "ko": "로컬 시험 csv_quoted의 종료 코드는 0이었고 출력은 \"['a,b', 'c']\"였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "The CSV reader produced two fields, with a,b as the first.",
+      "ko": "CSV 판독 결과는 두 필드였고 첫 번째는 a,b였다."
+    },
+    "scope_change": {
+      "en": "Splitting this CSV line on every comma produces the same two fields.",
+      "ko": "이 CSV 행을 모든 쉼표에서 나눠도 같은 두 필드가 나온다."
+    },
+    "source_id": "source:laya-p1-obs16"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The tested fraction sum was exactly one half.",
+      "ko": "시험한 분수 합은 정확히 2분의 1이었다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: from fractions import Fraction; print(Fraction(1,3)+Fraction(1,6))",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: from fractions import Fraction; print(Fraction(1,3)+Fraction(1,6))"
+    },
+    "counterclaim": {
+      "en": "Adding these fractions produced 2/9.",
+      "ko": "이 두 분수를 더한 결과는 2/9였다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case fraction exited with code 0 and printed '1/2'.",
+      "ko": "로컬 시험 fraction의 종료 코드는 0이었고 출력은 '1/2'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "Adding the two fractions produced 1/2 in this run.",
+      "ko": "이번 실행에서 두 분수를 더한 결과는 1/2이었다."
+    },
+    "scope_change": {
+      "en": "Adding the same numerators and denominators separately also yields one half.",
+      "ko": "분자끼리, 분모끼리 각각 더해도 같은 2분의 1이 나온다."
+    },
+    "source_id": "source:laya-p1-obs17"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The first tested set was a subset of the second.",
+      "ko": "시험한 첫 번째 집합은 두 번째 집합의 부분집합이었다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: print({1,2} <= {1,2,3})",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: print({1,2} <= {1,2,3})"
+    },
+    "counterclaim": {
+      "en": "The first tested set contained an element absent from the second.",
+      "ko": "시험한 첫 집합에는 둘째 집합에 없는 원소가 있었다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case set_subset exited with code 0 and printed 'True'.",
+      "ko": "로컬 시험 set_subset의 종료 코드는 0이었고 출력은 'True'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "Every element of the first set appeared in the second in this test.",
+      "ko": "이번 시험에서는 첫 집합의 모든 원소가 둘째 집합에도 있었다."
+    },
+    "scope_change": {
+      "en": "The second tested set is also a subset of the first.",
+      "ko": "시험한 두 번째 집합도 첫 번째 집합의 부분집합이다."
+    },
+    "source_id": "source:laya-p1-obs18"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The dictionary iteration kept b before a.",
+      "ko": "딕셔너리 순회에서 b는 a보다 앞에 남았다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: print(list(dict([('b',2),('a',1)])))",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: print(list(dict([('b',2),('a',1)])))"
+    },
+    "counterclaim": {
+      "en": "The dictionary iteration returned a before b in this run.",
+      "ko": "이번 실행에서 딕셔너리를 순회하자 a가 b보다 먼저 나왔다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case dict_order exited with code 0 and printed \"['b', 'a']\".",
+      "ko": "로컬 시험 dict_order의 종료 코드는 0이었고 출력은 \"['b', 'a']\"였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "The keys appeared in insertion order, b then a, in this run.",
+      "ko": "이번 실행의 키 순서는 삽입 순서와 같은 b 다음 a였다."
+    },
+    "scope_change": {
+      "en": "The keys remain b then a after sorting the keys alphabetically.",
+      "ko": "키를 알파벳순으로 정렬한 뒤에도 순서는 b 다음 a다."
+    },
+    "source_id": "source:laya-p1-obs19"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Repeated heap removals returned the tested numbers in ascending order.",
+      "ko": "힙에서 반복해서 꺼낸 시험 숫자들은 오름차순으로 나왔다."
+    },
+    "context": {
+      "en": "One recorded execution only. Input code: import heapq; x=[4,1,3,2]; heapq.heapify(x); print([heapq.heappop(x) for _ in range(4)])",
+      "ko": "기록된 한 번의 실행만 다룬다. 입력 코드: import heapq; x=[4,1,3,2]; heapq.heapify(x); print([heapq.heappop(x) for _ in range(4)])"
+    },
+    "counterclaim": {
+      "en": "This run removed the numbers in descending order.",
+      "ko": "이번 실행에서는 숫자를 내림차순으로 꺼냈다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Local case heap_order exited with code 0 and printed '[1, 2, 3, 4]'.",
+      "ko": "로컬 시험 heap_order의 종료 코드는 0이었고 출력은 '[1, 2, 3, 4]'였다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "This run removed 1, 2, 3, 4 in that order.",
+      "ko": "이번 실행에서는 1, 2, 3, 4 순서로 꺼냈다."
+    },
+    "scope_change": {
+      "en": "Removing the first element of the original list repeatedly gives ascending order.",
+      "ko": "원래 리스트의 첫 원소를 반복해서 지워도 오름차순으로 나온다."
+    },
+    "source_id": "source:laya-p1-obs20"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Merging baggage keys User and user would violate this requirement.",
+      "ko": "Baggage 키 User와 user를 합치면 이 요구를 위반한다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec01; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec01 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "The rule permits treating User and user as the same baggage key.",
+      "ko": "이 규칙은 Baggage 키 User와 user를 같게 취급하도록 허용한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The baggage API requires case-sensitive names and values.",
+      "ko": "Baggage API는 이름과 값의 대소문자를 구분하도록 요구한다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "Under this rule, User and user cannot be collapsed into one baggage key.",
+      "ko": "이 규칙에 따르면 User와 user를 하나의 Baggage 키로 취급할 수 없다."
+    },
+    "scope_change": {
+      "en": "HTTP header names must distinguish User from user.",
+      "ko": "HTTP 헤더 이름은 User와 user를 구분해야 한다."
+    },
+    "source_id": "source:laya-p1-spec01"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "The linked Naming page is the indicated destination for this moved document.",
+      "ko": "이 문서가 옮겨 간 곳은 링크된 Naming 페이지다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec02; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec02 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "This document identifies the Logs API page as its new location.",
+      "ko": "이 문서는 새 위치로 Logs API 페이지를 가리킨다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The pinned Attribute Naming page directs readers to the semantic conventions Naming page.",
+      "ko": "고정한 Attribute Naming 페이지는 의미 규약의 Naming 페이지로 독자를 안내한다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "This document points to Naming as its new location.",
+      "ko": "이 문서는 새 위치로 Naming 페이지를 가리킨다."
+    },
+    "scope_change": {
+      "en": "The linked Naming page will remain the destination in every future revision.",
+      "ko": "앞으로 나올 모든 판본도 Naming 페이지를 목적지로 삼을 것이다."
+    },
+    "source_id": "source:laya-p1-spec02"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "That linked page is the destination named by this relocation notice.",
+      "ko": "이 이전 안내가 가리키는 목적지는 해당 링크의 페이지다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec03; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec03 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "The relocation notice names the Baggage API page as its destination.",
+      "ko": "이 이전 안내는 Baggage API 페이지를 목적지로 지정한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The requirement-level page contains a move notice linking to the semantic conventions requirement-level page.",
+      "ko": "요구 수준 페이지에는 의미 규약의 요구 수준 페이지로 옮겼다는 안내와 링크가 있다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "The notice names the linked requirement-level page as the new location.",
+      "ko": "안내문은 링크된 요구 수준 페이지를 새 위치로 지정한다."
+    },
+    "scope_change": {
+      "en": "Every semantic convention document has moved to this requirement-level page.",
+      "ko": "모든 의미 규약 문서가 이 요구 수준 페이지로 옮겨 갔다."
+    },
+    "source_id": "source:laya-p1-spec03"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Choosing a plugin as an instrumentation scope is allowed by this definition.",
+      "ko": "이 정의는 플러그인을 계측 범위로 선택하는 것을 허용한다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec04; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec04 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "This definition forbids using a plugin as an instrumentation scope.",
+      "ko": "이 정의는 플러그인을 계측 범위로 쓰는 것을 금지한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Instrumentation scope may identify a module, package, class or plugin as well as an instrumentation library.",
+      "ko": "계측 범위는 계측 라이브러리뿐 아니라 모듈, 패키지, 클래스, 플러그인으로도 식별할 수 있다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "A plugin is an admissible choice of instrumentation scope here.",
+      "ko": "여기서 플러그인은 계측 범위로 삼을 수 있는 대상이다."
+    },
+    "scope_change": {
+      "en": "A plugin is an admissible scope in every telemetry system.",
+      "ko": "모든 텔레메트리 시스템에서 플러그인을 범위로 삼을 수 있다."
+    },
+    "source_id": "source:laya-p1-spec04"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "An empty value cannot acquire a special meaning distinct from an unset variable under this rule.",
+      "ko": "이 규칙에서 빈 값에 미설정 상태와 다른 특별한 의미를 부여할 수 없다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec05; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec05 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "This rule requires an empty value to have different semantics from an unset variable.",
+      "ko": "이 규칙은 빈 값과 미설정 변수를 서로 다르게 해석하도록 요구한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The SDK must interpret an empty environment-variable value as if the variable were unset.",
+      "ko": "SDK는 환경 변수 값이 비어 있으면 변수가 설정되지 않은 것처럼 해석해야 한다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "For this rule, an empty setting cannot be given semantics different from absence.",
+      "ko": "이 규칙에 따르면 빈 설정값을 설정 자체가 없는 경우와 다르게 해석할 수 없다."
+    },
+    "scope_change": {
+      "en": "An empty command-line argument always means the option is absent.",
+      "ko": "명령행 인자가 비어 있으면 언제나 옵션이 없는 것과 같다."
+    },
+    "source_id": "source:laya-p1-spec05"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Returning the second value for a present multivalue key would violate this rule.",
+      "ko": "값이 여러 개인 키에서 두 번째 값을 반환하면 이 규칙을 위반한다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec06; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec06 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "For a present multivalue key, this rule requires Get to return its second value.",
+      "ko": "이 규칙은 값이 여러 개인 키에서 Get이 두 번째 값을 반환하도록 요구한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Get must return the first value for a propagation key, or null when the key is absent.",
+      "ko": "Get은 전파 키의 첫 번째 값을 반환해야 하며 키가 없으면 null을 반환해야 한다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "For a multivalue key, choosing its second value is noncompliant here.",
+      "ko": "여기서는 다중 값 키의 두 번째 값을 고르면 규격에 어긋난다."
+    },
+    "scope_change": {
+      "en": "GetAll must return only the first value for a multivalue key.",
+      "ko": "GetAll은 다중 값 키의 첫 번째 값만 반환해야 한다."
+    },
+    "source_id": "source:laya-p1-spec06"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Updating an existing Context in place would violate the stated write contract.",
+      "ko": "기존 Context를 제자리에서 변경하면 명시된 쓰기 계약을 위반한다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec07; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec07 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "The write contract requires mutating the original Context in place.",
+      "ko": "이 쓰기 계약은 원본 Context를 제자리에서 바꾸도록 요구한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Context must be immutable and writes must create a new Context.",
+      "ko": "Context는 불변이어야 하며 쓰기 작업은 새 Context를 만들어야 한다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "The write contract rules out mutating the original Context.",
+      "ko": "이 쓰기 계약은 원본 Context의 변경을 허용하지 않는다."
+    },
+    "scope_change": {
+      "en": "The data referenced by a Context must itself be immutable.",
+      "ko": "Context가 참조하는 데이터 자체도 반드시 불변이어야 한다."
+    },
+    "source_id": "source:laya-p1-spec07"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Initialization failure is permitted by this clause despite its runtime restriction.",
+      "ko": "이 조항은 실행 중 실패를 제한하면서도 초기화 실패는 허용한다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec08; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec08 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "This clause forbids initialization failure without exception.",
+      "ko": "이 조항은 예외 없이 초기화 실패를 금지한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The API or SDK may fail during initialization but must not make the application fail later at runtime.",
+      "ko": "API나 SDK는 초기화 중 실패할 수 있지만 이후 실행 중에 애플리케이션을 실패하게 해서는 안 된다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "Under this clause, an initialization failure is allowed.",
+      "ko": "이 조항에서 초기화 실패는 허용되는 경우다."
+    },
+    "scope_change": {
+      "en": "Initialization failure is permitted by every telemetry library.",
+      "ko": "모든 텔레메트리 라이브러리는 초기화 실패를 허용한다."
+    },
+    "source_id": "source:laya-p1-spec08"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "A caller should not need a special null check just because the minimal implementation is active.",
+      "ko": "최소 구현이 사용된다는 이유만으로 호출자에게 별도의 null 검사가 필요해져서는 안 된다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec09; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec09 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "The minimal implementation requires callers to add a special null check whenever it is active.",
+      "ko": "최소 구현을 사용하면 호출자는 항상 별도의 null 검사를 추가해야 한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The minimal API implementation should return valid values without requiring callers to add checks.",
+      "ko": "최소 API 구현은 호출자가 검사를 추가하지 않아도 되는 유효한 값을 반환해야 한다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "Using the minimal implementation should not impose an extra null check on callers.",
+      "ko": "최소 구현을 쓴다고 호출자의 null 검사 부담이 늘어나서는 안 된다."
+    },
+    "scope_change": {
+      "en": "An SDK export failure never requires a caller-side check.",
+      "ko": "SDK 내보내기가 실패해도 호출자의 검사는 필요하지 않다."
+    },
+    "source_id": "source:laya-p1-spec09"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "A later collection time belongs to ObservedTimestamp rather than the event-time field.",
+      "ko": "나중에 수집한 시각은 사건 발생 시각 필드가 아니라 ObservedTimestamp에 해당한다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec10; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec10 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "A later collection time must replace the original event time in Timestamp under these definitions.",
+      "ko": "이 정의에 따르면 나중의 수집 시각으로 Timestamp의 원래 발생 시각을 대체해야 한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The table defines Timestamp as event time and ObservedTimestamp as observation time.",
+      "ko": "표는 Timestamp를 사건 발생 시각, ObservedTimestamp를 관찰 시각으로 정의한다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "The observation-time field is the appropriate place for a later collection time.",
+      "ko": "뒤늦게 수집한 시각을 나타낼 필드는 관찰 시각 필드다."
+    },
+    "scope_change": {
+      "en": "In every log format, collection time has its own field.",
+      "ko": "모든 로그 형식에는 수집 시각을 담는 별도 필드가 있다."
+    },
+    "source_id": "source:laya-p1-spec10"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Reusing a No-Op Logger instance is permitted here.",
+      "ko": "여기서는 No-Op Logger 인스턴스를 재사용해도 된다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec11; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec11 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "This clause demands a distinct No-Op Logger instance for every creation request.",
+      "ko": "이 조항은 생성 요청마다 서로 다른 No-Op Logger 인스턴스를 요구한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The No-Op provider may return the same Logger instances to creation requests because they share empty state.",
+      "ko": "No-Op 제공자는 로거들이 빈 상태를 공유하므로 생성 요청에 같은 Logger 인스턴스를 반환할 수 있다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "A reused No-Op Logger instance is allowed by this clause.",
+      "ko": "이 조항은 No-Op Logger 인스턴스의 재사용을 허용한다."
+    },
+    "scope_change": {
+      "en": "An ordinary stateful Logger may always be shared across all providers.",
+      "ko": "상태가 있는 일반 Logger도 항상 모든 제공자가 공유해도 된다."
+    },
+    "source_id": "source:laya-p1-spec11"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Defaulting a counter to delta temporality would violate this exporter requirement.",
+      "ko": "카운터의 기본 시간성을 델타로 설정하면 이 내보내기 요구를 위반한다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec12; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec12 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "For this exporter, a counter must default to delta temporality.",
+      "ko": "이 내보내기에서 카운터의 기본 시간성은 델타여야 한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The in-memory exporter must default every instrument kind to cumulative temporality.",
+      "ko": "메모리 내보내기는 모든 계측기 종류의 기본 시간성을 누적으로 설정해야 한다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "For this exporter, a counter cannot use delta as its default temporality.",
+      "ko": "이 내보내기에서는 카운터의 기본 시간성으로 델타를 쓸 수 없다."
+    },
+    "scope_change": {
+      "en": "Delta temporality is forbidden even when explicitly configured here.",
+      "ko": "여기서는 명시적으로 설정하더라도 델타 시간성이 금지된다."
+    },
+    "source_id": "source:laya-p1-spec12"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Selecting delta temporality for its histogram would violate this rule.",
+      "ko": "이 내보내기의 히스토그램에 델타 시간성을 선택하면 규칙을 위반한다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec13; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec13 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "This rule requires delta temporality for that histogram.",
+      "ko": "이 규칙은 해당 히스토그램에 델타 시간성을 요구한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "A Prometheus exporter must use cumulative temporality for every instrument kind.",
+      "ko": "Prometheus 내보내기는 모든 계측기 종류에 누적 시간성을 사용해야 한다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "This rule rules out delta temporality for that histogram.",
+      "ko": "이 규칙은 해당 히스토그램의 델타 시간성을 허용하지 않는다."
+    },
+    "scope_change": {
+      "en": "Every metrics exporter must use cumulative temporality for histograms.",
+      "ko": "모든 메트릭 내보내기는 히스토그램에 누적 시간성을 써야 한다."
+    },
+    "source_id": "source:laya-p1-spec13"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "An exporter design with unbounded memory consumption conflicts with the stated memory principle.",
+      "ko": "메모리를 무제한으로 소비하는 내보내기 설계는 명시된 메모리 원칙과 어긋난다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec14; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec14 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "The stated memory principle endorses unbounded memory consumption by exporters.",
+      "ko": "명시된 메모리 원칙은 내보내기의 무제한 메모리 소비를 권장한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The performance principles say the library should not block the application by default or consume unbounded memory.",
+      "ko": "성능 원칙은 라이브러리가 기본적으로 애플리케이션을 막거나 메모리를 무제한 소비하지 않아야 한다고 명시한다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "The stated principle rejects an unbounded-memory exporter design.",
+      "ko": "명시된 원칙은 내보내기가 메모리를 무제한 소비하는 설계를 받아들이지 않는다."
+    },
+    "scope_change": {
+      "en": "Every application memory allocation must have a fixed global upper bound.",
+      "ko": "모든 애플리케이션 메모리 할당에는 고정된 전역 상한이 있어야 한다."
+    },
+    "source_id": "source:laya-p1-spec14"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Mutating an existing Resource would conflict with this definition.",
+      "ko": "기존 Resource를 변경하면 이 정의와 충돌한다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec15; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec15 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "This definition requires changing existing Resource objects in place.",
+      "ko": "이 정의는 기존 Resource 객체를 제자리에서 변경하도록 요구한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The Resource is defined as an immutable representation of the observed entity.",
+      "ko": "Resource는 관찰 대상 엔터티의 불변 표현으로 정의된다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "This definition does not permit changing an existing Resource in place.",
+      "ko": "이 정의는 기존 Resource를 제자리에서 바꾸는 것을 허용하지 않는다."
+    },
+    "scope_change": {
+      "en": "The observed entity represented by a Resource cannot change over time.",
+      "ko": "Resource가 나타내는 관찰 대상 자체는 시간이 지나도 바뀔 수 없다."
+    },
+    "source_id": "source:laya-p1-spec15"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "This format does not promise conversion from an unrelated schema family.",
+      "ko": "이 형식은 관련 없는 스키마 계열에서의 변환을 보장하지 않는다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec16; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec16 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "This format guarantees conversion from every unrelated schema family.",
+      "ko": "이 형식은 관련 없는 모든 스키마 계열에서의 변환을 보장한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "A version 1.1.0 schema file is YAML and describes transformations from older compatible versions of its schema family.",
+      "ko": "1.1.0 스키마 파일은 YAML이며 같은 스키마 계열의 호환 가능한 이전 버전에서 수행할 변환을 설명한다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "Conversion across unrelated schema families is outside the stated promise.",
+      "ko": "서로 관련 없는 스키마 계열 사이의 변환은 명시된 보장 범위 밖이다."
+    },
+    "scope_change": {
+      "en": "An older incompatible schema version is guaranteed to convert successfully.",
+      "ko": "호환되지 않는 이전 스키마 버전도 변환에 성공한다고 보장된다."
+    },
+    "source_id": "source:laya-p1-spec16"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "An exception handled before span end does not meet this recording condition.",
+      "ko": "스팬이 끝나기 전에 처리한 예외는 이 기록 조건을 충족하지 않는다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec17; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec17 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "An exception handled before span end necessarily meets this recording condition.",
+      "ko": "스팬 종료 전에 처리한 예외는 반드시 이 기록 조건을 충족한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "An exception should be recorded as a span event iff it remains unhandled when the span ends and sets the status to ERROR.",
+      "ko": "예외는 스팬 종료 시까지 처리되지 않고 상태를 ERROR로 만들었을 때에만 스팬 이벤트로 기록하도록 권고된다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_ko",
+    "paraphrase": {
+      "en": "This condition excludes exceptions already handled before the span finishes.",
+      "ko": "이 조건은 스팬 종료 전에 이미 처리한 예외를 제외한다."
+    },
+    "scope_change": {
+      "en": "An exception in a log record follows the same span-end recording condition.",
+      "ko": "로그 레코드의 예외에도 같은 스팬 종료 기록 조건이 적용된다."
+    },
+    "source_id": "source:laya-p1-spec17"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "A fifteen-digit rv value would fail this format requirement.",
+      "ko": "15자리 rv 값은 이 형식 요구를 충족하지 못한다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec18; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec18 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "This requirement accepts every fifteen-digit lowercase hexadecimal rv.",
+      "ko": "이 요구는 소문자 16진수 15자리 rv를 모두 허용한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The explicit randomness value rv must contain exactly fourteen lowercase hexadecimal digits.",
+      "ko": "명시적 난수 값 rv는 소문자 16진수 숫자 정확히 14자리로 구성해야 한다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_en",
+    "paraphrase": {
+      "en": "This requirement excludes a fifteen-character hexadecimal rv.",
+      "ko": "이 요구는 15자리 16진수 rv를 허용하지 않는다."
+    },
+    "scope_change": {
+      "en": "A TraceID must contain exactly fourteen hexadecimal characters.",
+      "ko": "TraceID는 정확히 14자리 16진수 문자로 구성해야 한다."
+    },
+    "source_id": "source:laya-p1-spec18"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "A consumer cannot rely on this specification to promise identical output formats across implementations.",
+      "ko": "소비자는 이 규격이 구현 간 동일한 출력 형식을 보장한다고 기대할 수 없다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec19; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec19 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "The specification guarantees identical output formatting across all implementations.",
+      "ko": "이 규격은 모든 구현의 출력 형식이 같다고 보장한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The standard-output span exporter has no specified output format and implementations may differ.",
+      "ko": "표준 출력 스팬 내보내기의 출력 형식은 정해져 있지 않아 구현마다 다를 수 있다."
+    },
+    "exact_served_model": null,
+    "language_cell": "ko_en",
+    "paraphrase": {
+      "en": "The specification supplies no cross-implementation guarantee of identical output formatting.",
+      "ko": "이 규격에는 서로 다른 구현의 출력 형식이 같다는 보장이 없다."
+    },
+    "scope_change": {
+      "en": "OTLP exporters have no specified output format either.",
+      "ko": "OTLP 내보내기도 출력 형식이 정해져 있지 않다."
+    },
+    "source_id": "source:laya-p1-spec19"
+  },
+  {
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "claim": {
+      "en": "Ending all support after two years would violate this minimum support period.",
+      "ko": "2년 뒤 지원을 모두 종료하면 이 최소 지원 기간을 위반한다."
+    },
+    "context": {
+      "en": "OpenTelemetry specification revision ef25ddb7d2ab, spec20; normative requirement, not a measured implementation result.",
+      "ko": "OpenTelemetry 규격 ef25ddb7d2ab 판본의 spec20 항목이다. 구현의 실측 결과가 아닌 규격상 요구를 다룬다."
+    },
+    "counterclaim": {
+      "en": "The minimum period permits terminating all support after only two years.",
+      "ko": "이 최소 기간은 불과 2년 뒤 지원을 전부 종료하는 것을 허용한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "A major API version must be supported for at least three years after the next major version is released.",
+      "ko": "API 주 버전은 다음 주 버전이 출시된 뒤에도 최소 3년 동안 지원해야 한다."
+    },
+    "exact_served_model": null,
+    "language_cell": "en_ko",
+    "paraphrase": {
+      "en": "The minimum period rules out terminating all support at the two-year mark.",
+      "ko": "최소 지원 기간에 따르면 2년이 지난 시점에 지원을 전부 끝낼 수 없다."
+    },
+    "scope_change": {
+      "en": "Every SDK major version gets the same three-year minimum support.",
+      "ko": "모든 SDK 주 버전에도 동일한 최소 3년 지원이 적용된다."
+    },
+    "source_id": "source:laya-p1-spec20"
+  }
+]

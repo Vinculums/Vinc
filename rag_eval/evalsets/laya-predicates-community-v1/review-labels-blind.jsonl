@@ -1,0 +1,140 @@
+{"pair_id": "m0001", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0002", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0003", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A describes causation-from-correlation as the field's central struggle; plausible but indirect evidence that correlation alone is not accepted."}
+{"pair_id": "m0004", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0005", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0006", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0007", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0008", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0009", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0010", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0011", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0012", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0013", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A is a normative prescription following from B; not evidence for B and not the same claim, though close."}
+{"pair_id": "m0014", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0015", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0016", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "B would support A (reverse direction); A is a policy prescription, not evidence for B."}
+{"pair_id": "m0017", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0018", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0019", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0020", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0021", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0022", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0023", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0024", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0025", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "B is evidence for A (reverse direction); A is a prescription, not evidence for B."}
+{"pair_id": "m0026", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0027", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0028", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0029", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0030", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0031", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A is a specific neuroimaging finding supporting the general claim that aesthetic experience is grounded in brain circuits; B also adds evolutionary and redefinition claims."}
+{"pair_id": "m0032", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0033", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0034", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0035", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0036", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0037", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "B is evidence for A (reverse direction); A is a normative definition claim."}
+{"pair_id": "m0038", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0039", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0040", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0041", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0042", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0043", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0044", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0045", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0046", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0047", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0048", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0049", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "B is evidence for A (reverse direction); A is a prescription, not evidence for B."}
+{"pair_id": "m0050", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0051", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0052", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A is a specific insula finding consistent with B's insula-amygdala-striatum circuit claim; B is broader."}
+{"pair_id": "m0053", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0054", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0055", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0056", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0057", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0058", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "B is evidence for A (reverse direction); A is a prescription, not evidence for B."}
+{"pair_id": "m0059", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0060", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0061", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "B motivates A (reverse direction); A is a methodological norm, not evidence for B."}
+{"pair_id": "m0062", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0063", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0064", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0065", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A is a replication-failure finding backing B's claim that limits were exposed; B adds more claims."}
+{"pair_id": "m0066", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0067", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0068", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0069", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0070", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0071", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0072", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0073", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0074", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0075", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0076", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0077", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0078", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0079", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0080", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0081", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0082", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0083", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0084", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0085", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0086", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A is a normative claim; B would support A, but the question asks whether A supports B."}
+{"pair_id": "m0087", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0088", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0089", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "Answers changed five times and two still underway implies no settled answer; indirect evidence, depends on strictness."}
+{"pair_id": "m0090", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0091", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0092", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0093", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A shows Japanese prints influenced the West (Hiroshige, not Hokusai specifically); supports B's influence claim only partly."}
+{"pair_id": "m0094", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0095", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0096", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0097", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0098", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0099", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0100", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0101", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0102", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0103", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0104", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0105", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A gives specific dimension additions that instantiate B's general claim; B adds AI and Wagner framing."}
+{"pair_id": "m0106", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0107", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0108", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0109", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0110", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0111", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0112", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0113", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0114", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0115", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0116", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0117", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0118", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0119", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0120", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0121", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0122", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0123", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0124", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0125", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0126", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0127", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0128", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0129", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": true, "note": "B would support A (normative claim), but direction asked is A for B; A is a recommendation, not evidence."}
+{"pair_id": "m0130", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0131", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0132", "labels": {"supports": 0, "contradicts": 1, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0133", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0134", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0135", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": true, "note": "A implies destruction is intrinsic to capitalism, so destruction alone is not failure; indirect reasoning."}
+{"pair_id": "m0136", "labels": {"supports": 1, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0137", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0138", "labels": {"supports": 0, "contradicts": 0, "same_as": 1}, "hard": false, "note": ""}
+{"pair_id": "m0139", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}
+{"pair_id": "m0140", "labels": {"supports": 0, "contradicts": 0, "same_as": 0}, "hard": false, "note": ""}

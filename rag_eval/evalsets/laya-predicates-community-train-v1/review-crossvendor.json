@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "dataset": "laya-predicates-community-train-v1",
+  "role": "training",
+  "labeling_model": {
+    "provider": "OpenAI",
+    "runtime": "Codex current agent session",
+    "family": "GPT-6",
+    "exact_served_model_id": null,
+    "version": null,
+    "planned_executor": "GPT (Astra)",
+    "planned_executor_identity_verified": false
+  },
+  "labeling_date": "2026-10-10",
+  "sessions": 1,
+  "review_mode": "direct_agent_manual_blind_labels",
+  "judging_api_calls": 0,
+  "other_model_calls": 0,
+  "pairs_read": 505,
+  "pairs_agreed": 502,
+  "pairs_disagreed": 3,
+  "disagreements_by_predicate": {
+    "supports": 1,
+    "contradicts": 2,
+    "same_as": 0
+  },
+  "disagreement_pair_ids_by_predicate": {
+    "supports": [
+      "t0121"
+    ],
+    "contradicts": [
+      "t0072",
+      "t0119"
+    ],
+    "same_as": []
+  },
+  "by_language": {
+    "ko": {
+      "pairs_read": 171,
+      "pairs_agreed": 171,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 33,
+        "contradicts": 34,
+        "same_as": 35
+      },
+      "hard_count": 21
+    },
+    "en": {
+      "pairs_read": 166,
+      "pairs_agreed": 164,
+      "pairs_disagreed": 2,
+      "disagreements_by_predicate": {
+        "supports": 1,
+        "contradicts": 1,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 33,
+        "contradicts": 33,
+        "same_as": 34
+      },
+      "hard_count": 11
+    },
+    "mixed": {
+      "pairs_read": 168,
+      "pairs_agreed": 167,
+      "pairs_disagreed": 1,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 1,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 30,
+        "contradicts": 33,
+        "same_as": 34
+      },
+      "hard_count": 17
+    }
+  },
+  "hard_count": 49,
+  "hard_pair_ids": [
+    "t0010",
+    "t0017",
+    "t0034",
+    "t0042",
+    "t0050",
+    "t0056",
+    "t0072",
+    "t0085",
+    "t0095",
+    "t0101",
+    "t0109",
+    "t0119",
+    "t0121",
+    "t0135",
+    "t0142",
+    "t0145",
+    "t0148",
+    "t0157",
+    "t0168",
+    "t0182",
+    "t0188",
+    "t0199",
+    "t0212",
+    "t0234",
+    "t0259",
+    "t0267",
+    "t0278",
+    "t0292",
+    "t0294",
+    "t0310",
+    "t0316",
+    "t0337",
+    "t0346",
+    "t0347",
+    "t0350",
+    "t0356",
+    "t0362",
+    "t0365",
+    "t0366",
+    "t0369",
+    "t0382",
+    "t0383",
+    "t0385",
+    "t0403",
+    "t0410",
+    "t0442",
+    "t0491",
+    "t0493",
+    "t0512"
+  ],
+  "agreed_positive_counts": {
+    "supports": 96,
+    "contradicts": 100,
+    "same_as": 103
+  },
+  "gold_sha256": "d5e3c28ace596e48c8df852541e082449a47262c306d86d656f5544817b6bc6f",
+  "blind_labels_sha256": "1c8c9be606af940c4f4c372b640700a1a4a7e0ea70d059e99c997558c973b2ed",
+  "question_file_sha256": "dc91cf0ff911d5bc177e9f72ea80aa2698b73803e485cc8d3974e065631c838a",
+  "blind_label_commit": "1b6e26c78fd2fa6fc84514f42998c26ade38e860",
+  "blind_label_commit_precedes_comparison_commit": true,
+  "label_files_frozen_before_gold_comparison": true,
+  "per_pair_gold_seen_before_freeze": false,
+  "prior_aggregate_handoff_seen": true,
+  "gold_labels_changed": false,
+  "blind_labels_changed_after_freeze": false,
+  "historical_laya_v3_measurement_exposure_pairs": 0
+}

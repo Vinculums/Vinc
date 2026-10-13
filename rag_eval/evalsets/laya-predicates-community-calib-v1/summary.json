@@ -1,0 +1,67 @@
+{
+ "n": 117,
+ "labels": {
+  "supports": {
+   "0": 95,
+   "1": 22
+  },
+  "contradicts": {
+   "0": 93,
+   "1": 24
+  },
+  "same_as": {
+   "0": 93,
+   "1": 24
+  }
+ },
+ "languages": {
+  "ko": 38,
+  "en": 39,
+  "mixed": 40
+ },
+ "label_class_by_language": {
+  "en": {
+   "same_as": 8,
+   "none": 16,
+   "supports": 7,
+   "contradicts": 8
+  },
+  "mixed": {
+   "same_as": 8,
+   "none": 16,
+   "contradicts": 8,
+   "supports": 8
+  },
+  "ko": {
+   "same_as": 8,
+   "supports": 7,
+   "none": 15,
+   "contradicts": 8
+  }
+ },
+ "hard_kind": {
+  "paraphrase": 16,
+  "translation": 8,
+  "scope_shift": 6,
+  "anchored_evidence": 22,
+  "negation_cue": 18,
+  "topical_only": 24,
+  "random": 6,
+  "reversed_direction": 7,
+  "lexical_overlap": 4,
+  "semantic_reversal": 6
+ },
+ "construction": {
+  "pack_anchor_authored": 85,
+  "pack_content_both": 22,
+  "pack_pack": 10
+ },
+ "negation_cue_among_contradicts": {
+  "one_side": 9,
+  "none": 14,
+  "both": 1
+ },
+ "families": 7,
+ "pack_nodes_used": 26,
+ "physics_and_mathematics_nodes_available": 64
+}

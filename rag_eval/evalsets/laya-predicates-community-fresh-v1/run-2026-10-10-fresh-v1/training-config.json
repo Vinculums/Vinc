@@ -1,0 +1,92 @@
+{
+  "encoder": "jhu-clsp/mmBERT-base",
+  "head_layers": 2,
+  "max_len": 1024,
+  "head_max_len": 256,
+  "max_prefixes": 6,
+  "act_costs": {
+    "escalate": 0.5
+  },
+  "cost_wrong_act": 3.0,
+  "amp_dtype": "bf16",
+  "model_name": "rl-agent",
+  "temperature": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "temperature_by_options": {},
+  "training": {
+    "updates": 15987,
+    "epochs_completed": 4,
+    "hours": 4.97,
+    "world_size": 1,
+    "fine_tuned_from_checkpoint": false,
+    "laya_train": {
+      "epochs": 4,
+      "micro_batch": 8,
+      "grad_accum": 8,
+      "encoder_lr": 2.5e-05,
+      "head_lr": 0.0001,
+      "min_lr": 1e-06,
+      "weight_decay": 0.01,
+      "grad_clip": 1.0,
+      "loss": "rlcd",
+      "rl_samples": 4,
+      "sigma_start": 0.4,
+      "sigma_end": 0.1,
+      "w_sph": 0.75,
+      "w_rps": 1.0,
+      "shuffle_options": [],
+      "option_layout": null,
+      "freeze_encoder": false,
+      "calib_max": 0,
+      "calib_frac": 0.0,
+      "calib_seed": 20260922,
+      "seed": 20261007,
+      "max_len": null,
+      "head_max_len": null,
+      "amp": true,
+      "gradient_checkpointing": true,
+      "log_every": 50,
+      "label_smoothing": 0.0,
+      "text_column": "text",
+      "label_column": "label",
+      "question_id": "label",
+      "instructions": null
+    },
+    "vinc_m1_8": {
+      "base_revision": "e4e9ddf21a7b1903b7acffd8814ad4307bf63a67",
+      "data_sha256": "7cb7c4f9c9db6458cf01b60fbd812899e33d719e7a21a2308d669418f3281ba0",
+      "frozen": "encoder embeddings (names containing 'embeddings')",
+      "items": 2510,
+      "history": [
+        {
+          "epoch": 1,
+          "mean_loss": 0.32243743411318704,
+          "elapsed_s": 234.6,
+          "peak_alloc_gib": 3.13
+        },
+        {
+          "epoch": 2,
+          "mean_loss": 0.3199403242816301,
+          "elapsed_s": 450.4,
+          "peak_alloc_gib": 3.13
+        },
+        {
+          "epoch": 3,
+          "mean_loss": 0.3004199265879214,
+          "elapsed_s": 666.5,
+          "peak_alloc_gib": 3.13
+        },
+        {
+          "epoch": 4,
+          "mean_loss": 0.16740518746129068,
+          "elapsed_s": 880.0,
+          "peak_alloc_gib": 3.13
+        }
+      ]
+    }
+  },
+  "fine_tuned": true
+}

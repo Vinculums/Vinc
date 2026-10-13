@@ -1,0 +1,39 @@
+{
+  "checks": {
+    "exactly_300_pairs": true,
+    "exactly_900_binary_labels": true,
+    "unique_pair_ids": true,
+    "no_duplicate_unordered_text_pairs": true,
+    "no_self_pairs": true,
+    "all_language_tags_match_pinned_detector": true,
+    "node_text_at_most_400_chars": true,
+    "context_at_most_400_chars": true,
+    "candidate_text_ids_revs_context_source_preserved": true,
+    "all_labels_attributed_to_ai": true,
+    "all_synthetic_ids_are_local": true,
+    "positive_negative_min_60": true,
+    "each_language_min_60": true,
+    "hard_categories_min_30": true,
+    "split_150_150": true,
+    "authored_families_do_not_cross_split": true,
+    "pinned_reader_accepts_300_rows": true,
+    "harness_600_states_1500_predicate_outputs": true,
+    "pinned_question_hash": true
+  },
+  "all_structural_checks_passed": true,
+  "original_source_quotas_passed": false,
+  "original_human_authorship_requirement_passed": false,
+  "authorship_override": "User explicitly delegated all authoring and labels to Codex in this conversation. No human-label claim is made.",
+  "original_splitter_authored_family_leaks": 44,
+  "frozen_candidate_shared_texts_across_splits": 33,
+  "independent_semantic_review_performed": false,
+  "tokenizer_truncation_test_performed": false,
+  "notes": [
+    "Semantic labels are authored/reviewed by the same AI, not independently validated.",
+    "Semantic reversal cases are contradicts positives, even though the method paragraph places the phrase under hard negatives.",
+    "lexical_overlap is an explicit hard_kind extension; the pinned harness passes it through.",
+    "All positives are synthetic fixtures and frozen candidates are negative controls: source/style confounding must be reported.",
+    "Repeated role templates and shared frozen node text across splits limit generalization; split unit is not globally node-disjoint.",
+    "The actual model tokenizer must record usage and exclude truncated=true rows during Fable evaluation."
+  ]
+}

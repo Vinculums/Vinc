@@ -1,0 +1,29 @@
+{
+  "questions_hash": "500e613737d1",
+  "questions": {
+    "supports": {
+      "type": "noul",
+      "instructions": "Does statement A give evidence or a reason for statement B?",
+      "criteria": {
+        "true": "A provides a measurement, result or argument that makes B more credible.",
+        "false": "A is unrelated to B, merely restates B, or argues against B."
+      }
+    },
+    "contradicts": {
+      "type": "noul",
+      "instructions": "Do statements A and B make claims that cannot both be true?",
+      "criteria": {
+        "true": "Accepting A requires rejecting B, including when the opposition is in meaning rather than in wording.",
+        "false": "A and B can both hold, or they are about different things."
+      }
+    },
+    "same_as": {
+      "type": "noul",
+      "instructions": "Do statements A and B make the same claim about the same thing?",
+      "criteria": {
+        "true": "A and B assert the same fact or decision, possibly in different words or languages.",
+        "false": "A and B differ in subject, scope, time or verdict, or one adds a claim the other lacks."
+      }
+    }
+  }
+}
