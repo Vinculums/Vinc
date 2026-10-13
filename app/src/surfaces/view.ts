@@ -50,6 +50,7 @@ import { icon } from "../icons";
 import { setLiveRefresher } from "../live";
 import { emptyInviteHtml } from "../empty-invite";
 import { RELS, relRefusal, takePendingNewDoc } from "../authoring";
+import { detailState, detailFailure, detailMessage, topicDetailHTML, type DetailState } from "../topic-detail";
 
 /** Surface 3 — View (spec: [[vinc.spec.viewpoints]] · as-built [[vinc.reference.view-controls]]).
  *
@@ -2340,7 +2341,10 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  끝에는 떠 있는 카드가 열린다. `card=false` 는 LNB 가 쓴다 — 거기서 고른 것은
    *  카드 대신 넓게 열린 문서 열로 보여 준다(`openFromNav`). 착지한 노드를 돌려준다
    *  (없는 노드면 null). */
-  async function focusNode(id: string, domain?: string, card = true): Promise<N3 | null> {
+  let focusRevision = 0;
+  const detailHistory: N3[] = [];
+  async function focusNode(id: string, domain?: string, card = true, keepHistory = false): Promise<N3 | null> {
+    const revision = ++focusRevision;
     // 주제를 밖에서 알려 주면 먼저 기억한다 — 합계 뷰는 개념 마크가 없어 그래프
     // 노드로 되짚을 수 없고(가운데 열이 주제다), 트리는 그 값을 이미 안다.
     // 노드 id 는 주제를 모를 때도 적어 둔다: 다시 그릴 때 그 마크를 초점색으로
@@ -2355,27 +2359,28 @@ export async function renderView(el: HTMLElement, resume = false) {
         trail.length = 1;                       // 바닥은 언제나 l0
         if (domain) trail.push({ kind: "l1", domains: [domain] });
         await show(trail[trail.length - 1]);
+        if (revision !== focusRevision || myGen !== liveGen) return null;
       }
       // 마운트 직후에는 좌표가 아직 앉지 않아 한 번에 못 난다. 자리를 잡은 뒤 다시
       // 한 번(D70). 넓혔든(재마운트) 아니든(딥링크로 방금 그린 화면) 사정은 같다.
       if (!centerMounted(id, domain))
-        setTimeout(() => { if (myGen === liveGen) centerMounted(id, domain); }, 420);
+        setTimeout(() => { if (myGen === liveGen && focusId === id) centerMounted(id, domain); }, 420);
     }
     const raw = curNodes.find((n) => n.id === id);
     // 전량을 그린 화면에도 없으면 그 노드는 **없는 것**이다(오래된 딥링크가 이 경우다).
     // 빈 상세를 열어 있는 척하지 않는다 — 화면은 전체 지도로 남는다.
-    if (!raw && trail[trail.length - 1].kind === "l0") {
+    if (!raw && trail[trail.length - 1].kind === "l0" && !keepHistory && !id.startsWith("domain:")) {
       lnbFocus = {}; setLnbActive({}); return null;
     }
     // 못 찾았지만 스코프가 좁은 경우(평면 캡에 잘렸거나 렌즈 밖)는 최소 정보로 연다 —
     // 제목은 곧 node-context 가 채운다.
     const nd = raw ? toN3([raw])[0]
-      : ({ id, label: id.replace(/^[a-z]+:/, ""), degree: 0 } as N3);
+      : ({ id, label: id.replace(/^[a-z]+:/, ""), domain: domain || "", degree: 0 } as N3);
     // 레일은 열지 않는다 — 관계 줄·트리·검색이 전부 여기로 오는데, 그때마다 문서
     // 원문까지 딸려 열리면 지도를 보는 일이 계속 끊긴다. 레일을 여는 것은 카드의
     // "Details and source" 와 컨텍스트 메뉴의 "열기" 둘뿐이다(발주자 지시 2026-08-27).
     // (LNB 는 예외다 — `openFromNav` 가 이 뒤에 넓은 열을 연다.)
-    focusOnMap(nd, card);
+    focusOnMap(nd, card, keepHistory);
     lnbFocus = { domain: nd.domain, nodeId: id };
     setLnbActive(lnbFocus);
     return nd;
@@ -2483,11 +2488,71 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  높지만, 앱을 다시 열었을 때까지 편집으로 남아 있을 이유는 없다. */
   let docWriting = false;
 
-  let ctxCache: { id: string; p: ReturnType<typeof api.nodeContext> } | null = null;
+  let ctxCache: { id: string; scope: string; p: ReturnType<typeof api.nodeContext> } | null = null;
   const nodeContextOnce = (id: string) => {
-    if (ctxCache?.id !== id) ctxCache = { id, p: api.nodeContext(cfg.owner, id) };
+    const scope = viewScope().key;
+    if (ctxCache?.id !== id || ctxCache.scope !== scope)
+      ctxCache = { id, scope, p: api.nodeContext(cfg.owner, id, 4, { team: cfg.team || null }) };
     return ctxCache.p;
   };
+
+  function detailErrorHTML(state: DetailState) {
+    return `<p class="card-note" role="status">${esc(detailMessage(state, COPY.ui.viewx))}</p>`
+      + (state === "failed" ? `<button type="button" class="btn" data-detail-retry>${esc(COPY.ui.viewx.detailRetry)}</button>` : "");
+  }
+  async function followDetail(from: N3, id: string, domain: string | undefined, pane: boolean) {
+    if (from.id === id) return;
+    if (detailHistory.at(-1)?.id !== from.id) detailHistory.push(from);
+    const nd = await focusNode(id, domain, !pane, true);
+    if (pane && nd && myGen === liveGen) railFor(nd);
+  }
+  async function backDetail(pane: boolean) {
+    const previous = detailHistory.pop();
+    if (!previous) return;
+    const nd = await focusNode(previous.id, previous.domain, !pane, true);
+    if (pane && nd && myGen === liveGen) railFor(nd);
+  }
+  function wireDetailBack(scope: HTMLElement, pane: boolean) {
+    scope.querySelector("[data-detail-back]")?.addEventListener("click", () => void backDetail(pane));
+  }
+  async function loadTopicDetail(box: HTMLElement, nd: N3, pane: boolean, offset = 0) {
+    const revision = railRevision;
+    const scopeKey = viewScope().key;
+    const current = () => box.isConnected && myGen === liveGen && focusId === nd.id
+      && viewScope().key === scopeKey && (!pane || (revision === railRevision && !detail.hidden));
+    const scope = { team: cfg.team || null };
+    box.innerHTML = `<p class="card-note">${esc(COPY.ui.viewx.detailLoading)}</p>`;
+    const fail = (state: DetailState) => {
+      box.innerHTML = detailErrorHTML(state);
+      box.querySelector("[data-detail-retry]")?.addEventListener("click", () => {
+        ctxCache = null; void loadTopicDetail(box, nd, pane, offset);
+      });
+    };
+    try {
+      const res = await (offset ? api.nodeContext(cfg.owner, nd.id, 4, scope, offset) : nodeContextOnce(nd.id));
+      if (!current() || scope.team !== (cfg.team || null)) return;
+      const state = detailState(res);
+      if (state !== "ready") { fail(state); return; }
+      if (!res.topic) { fail("unsupported"); return; }
+      box.innerHTML = topicDetailHTML(res.topic, COPY.ui.viewx, esc);
+      box.querySelectorAll<HTMLElement>("[data-topic-go]").forEach(b => b.addEventListener("click", () =>
+        void followDetail(nd, b.dataset.topicGo!, b.dataset.dom || undefined, pane)));
+      box.querySelectorAll<HTMLElement>("[data-topic-more]").forEach(b => b.addEventListener("click", () =>
+        void loadTopicDetail(box, nd, pane, Number(b.dataset.topicMore))));
+    } catch (error) { if (current()) fail(detailFailure(error)); }
+  }
+
+  function openTopicCard(nd: N3) {
+    const home = homeCardPos(), V = COPY.ui.viewx;
+    const card = openFloatPanel({ title: nd.label, x: home.x, y: home.y, closeLabel: V.railClose });
+    card.body.innerHTML = `<div class="card-rows">
+      ${detailHistory.length ? `<button class="btn" type="button" data-detail-back>${esc(V.readerBack)}</button>` : ""}
+      <button class="card-row" type="button" data-topic-open>${esc(V.topicDetail)}${chev("right")}</button>
+      <div data-topic-body></div></div>`;
+    wireDetailBack(card.body, false);
+    card.body.querySelector("[data-topic-open]")?.addEventListener("click", () => railFor(nd));
+    void loadTopicDetail(card.body.querySelector<HTMLElement>("[data-topic-body]")!, nd, false);
+  }
 
   /** 노드 카드 — 디자인 정본 `Vinc Node Card.dc.html` (2a Final) 그대로.
    *
@@ -2505,6 +2570,7 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  인과 원뿔은 줄에서 뺐다 — 노드를 고르는 순간 `focusOnMap` 이 이미 과거·미래
    *  폐포를 점등하므로 카드가 다시 부를 일이 아니다. */
   async function openRelsCard(nd: N3) {
+    if (nd.id.startsWith("domain:")) { openTopicCard(nd); return; }
     // 카드의 **집은 지도 카드의 좌상단**이다(발주자 지시 2026-09-09,
     // `수정항목/노드 클릭 플로팅 모달.JPG` 가 그 자리를 가리킨다). 여태는 노드의
     // 화면좌표 옆이었고, 그것이 낸 문제 둘:
@@ -2532,6 +2598,7 @@ export async function renderView(el: HTMLElement, resume = false) {
 
     card.body.innerHTML = `
       <div class="card-rows">
+        ${detailHistory.length ? `<button class="btn" type="button" data-detail-back>${esc(V.readerBack)}</button>` : ""}
         <button type="button" class="card-row" id="c-open">
           <span class="row-name">${V.cardOpen}</span>
           <span class="row-meta" id="c-docs"></span>
@@ -2563,6 +2630,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       </div>`;
 
     const q = <T extends HTMLElement>(s: string) => card.body.querySelector<T>(s);
+    wireDetailBack(card.body, false);
     const url = (depth: number) =>
       absoluteViewUrl({ kind: "node", id: nd.id }, { depth, viewpoint: curPrefs().view },
                       spaceName());
@@ -2605,17 +2673,29 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 지도 위 카드 위에 또 유리를 얹으면 글자가 배경을 통과한다.
     const setCounts = wireAsk(card.body, () => card.el.isConnected,
       (deg, docs) => nodeAskItems(nd, deg, docs));
+    const scopeKey = viewScope().key;
 
     try {
       const res = await nodeContextOnce(nd.id);
-      if (!card.el.isConnected) return;
-      card.setTitle(nd.label);
+      if (!card.el.isConnected || myGen !== liveGen || focusId !== nd.id || viewScope().key !== scopeKey) return;
+      const state = detailState(res);
+      if (state !== "ready") {
+        linksBox.hidden = false; linksBox.innerHTML = detailErrorHTML(state);
+        linksBox.querySelector("[data-detail-retry]")?.addEventListener("click", () => {
+          ctxCache = null; void openRelsCard(nd);
+        });
+        return;
+      }
+      card.setTitle(res.title || nd.label);
       const docs = (res.excerpts || []).length;
       const dq = q("#c-docs");
       if (dq && docs) dq.textContent = V.cardDocs(docs);
       const links = res.links;
       if (!links?.executed) {
-        linksBox.innerHTML = `<p class="card-note">${V.relsNone}</p>`;
+        linksBox.hidden = false; linksBox.innerHTML = detailErrorHTML("failed");
+        linksBox.querySelector("[data-detail-retry]")?.addEventListener("click", () => {
+          ctxCache = null; void openRelsCard(nd);
+        });
         return;
       }
       const mq = q("#c-linkmeta");
@@ -2623,8 +2703,13 @@ export async function renderView(el: HTMLElement, resume = false) {
       linksBox.innerHTML = relsHTML(links);
       wireRels(linksBox, nd, links);
       setCounts(links.degree + links.attached, docs);
-    } catch {
-      if (card.el.isConnected) linksBox.innerHTML = `<p class="card-note">${V.relsNone}</p>`;
+    } catch (error) {
+      if (card.el.isConnected && myGen === liveGen && focusId === nd.id && viewScope().key === scopeKey) {
+        linksBox.hidden = false; linksBox.innerHTML = detailErrorHTML(detailFailure(error));
+        linksBox.querySelector("[data-detail-retry]")?.addEventListener("click", () => {
+          ctxCache = null; void openRelsCard(nd);
+        });
+      }
     }
   }
 
@@ -2635,7 +2720,9 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  누른 노드마다 그것이 열리면 지도를 보는 일이 계속 끊긴다. 이제 클릭은 여기까지고,
    *  레일은 카드의 버튼이 연다. 나머지 진입점(컨텍스트 메뉴 "열기" · 트리 · 검색 ·
    *  드릴다운)은 그대로 `openDetail` 을 부르므로 거기서는 아무것도 안 달라진다. */
-  function focusOnMap(nd: N3, card = true) {
+  function focusOnMap(nd: N3, card = true, keepHistory = false) {
+    ++focusRevision;
+    if (!keepHistory) detailHistory.length = 0;
     // 잇기(흐름 F)가 대상을 고르는 중이면 이 초점은 그 대상이다 — 지도 클릭·검색 착지가
     // 전부 이 깔때기로 오므로 여기 한 곳에서 가로챈다.
     if (pickTarget) { const f = pickTarget; pickTarget = null; f(nd.id, nd.label); return; }
@@ -2669,6 +2756,15 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  `openDetail` 을 부르면 카드가 자기를 다시 그려 접어 둔 목록이 도로 펴진다. */
   function railFor(nd: N3) {
     openRail();
+    if (nd.id.startsWith("domain:")) {
+      railAskCounts = null;
+      detail.innerHTML = `${railHeadHTML(COPY.ui.viewx.topicDetail)}
+        ${detailHistory.length ? `<button class="btn" type="button" data-detail-back>${esc(COPY.ui.viewx.readerBack)}</button>` : ""}
+        <h2>${esc(nd.label)}</h2><div data-topic-body></div>`;
+      wireRailHead(); wireDetailBack(detail, true);
+      void loadTopicDetail(detail.querySelector<HTMLElement>("[data-topic-body]")!, nd, true);
+      return;
+    }
     // 수치는 여기서 세지 않는다 — loadNodeSource 가 node-context 응답(links)으로
     // 채운다. 여태 이 자리에서 `curEdges`(마지막으로 그린 그래프의 잔상)를 세고
     // 드릴다운 경로에서는 degree 를 0 으로 박아, 같은 노드가 동선마다 다른 숫자를
@@ -2678,6 +2774,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     // LNB 에서 온 것이고 그때는 카드가 없다.
     detail.innerHTML = `
       ${railHeadHTML(COPY.ui.viewx.railTitle)}
+      ${detailHistory.length ? `<button class="btn" type="button" data-detail-back>${esc(COPY.ui.viewx.readerBack)}</button>` : ""}
       ${askRowHTML()}
       <h2>${esc(isAgentRoleId(nd.id) ? stripRolePrefix(nd.label) : nd.label)}</h2>
       <div id="node-stats"><p class="hint">${COPY.ui.viewx.sourceLoading}</p></div>
@@ -2693,6 +2790,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       <div id="node-source"></div>
       <div id="ties-suggest"></div>`;
     wireRailHead();
+    wireDetailBack(detail, true);
     // 카드와 **같은 줄**이다. 수치는 loadNodeSource 가 node-context 를 받고 채운다.
     railAskCounts = wireAsk(detail, () => !detail.hidden,
       (deg, docs) => nodeAskItems(nd, deg, docs));
@@ -3180,21 +3278,8 @@ export async function renderView(el: HTMLElement, resume = false) {
   function drawNodeStats(nd: N3, links?: NodeLinks) {
     const box = detail.querySelector<HTMLElement>("#node-stats");
     if (!box) return;
-    let out: number, inn: number, att: number, degree: number, exact: boolean;
-    if (links?.executed) {
-      ({ out, in: inn, attached: att, degree } = links);
-      exact = true;
-    } else {
-      // 강등 경로 — 여기 수치는 "지금 그린 그래프"의 것이라 스코프에 따라 달라진다.
-      const DIRECTED = ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"];
-      const ATTACH = ["CONNECTS", "ABOUT", "ATTACHES_TO"];
-      out = curEdges.filter((e) => e.source === nd.id && DIRECTED.includes(e.type)).length;
-      inn = curEdges.filter((e) => e.target === nd.id && DIRECTED.includes(e.type)).length;
-      att = curEdges.filter((e) =>
-        (e.source === nd.id || e.target === nd.id) && ATTACH.includes(e.type)).length;
-      degree = nd.degree ?? out + inn;
-      exact = false;
-    }
+    if (!links?.executed) { box.innerHTML = detailErrorHTML("failed"); return; }
+    const { out, in: inn, attached: att, degree } = links;
     const row = (k: string, v: string) =>
       `<div class="stat-row"><span class="hint">${k}</span><b>${v}</b></div>`;
     box.innerHTML =
@@ -3203,8 +3288,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       + (out + inn > 0 ? row(COPY.ui.viewx.statDirection, COPY.ui.viewx.statDir(out, inn)) : "")
       + (att > 0 ? row(COPY.ui.viewx.statAttached, String(att)) : "")
       + (nd.gateway ? `<p class="hint">${COPY.ui.viewx.gateway.replace(/^ · /, "")}</p>` : "")
-      + `<p class="hint stat-note">${exact
-        ? COPY.ui.viewx.statsFrom : COPY.ui.viewx.statsFromView}</p>`;
+      + `<p class="hint stat-note">${COPY.ui.viewx.statsFrom}</p>`;
   }
 
   /** 캐럿이 **목적지를 말한다**: 오른쪽 = 여기서 나간다(문서 열), 아래 = 여기서
@@ -3388,20 +3472,36 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 발췌는 증강 — 실패·부재가 상세 패널을 깨지 않는다(문구만 남기고 조용히).
     const box = detail.querySelector<HTMLElement>("#node-source");
     if (!box) return;
+    const revision = railRevision;
+    const scopeKey = viewScope().key;
+    const current = () => myGen === liveGen && revision === railRevision && detail.contains(box)
+      && !detail.hidden && viewScope().key === scopeKey;
+    const fail = (state: DetailState) => {
+      box.innerHTML = detailErrorHTML(state);
+      const stats = detail.querySelector("#node-stats");
+      if (stats) stats.innerHTML = "";
+      box.querySelector("[data-detail-retry]")?.addEventListener("click", () => {
+        ctxCache = null; void loadNodeSource(nd);
+      });
+    };
     box.innerHTML = `<p class="hint">${COPY.ui.viewx.sourceLoading}</p>`;
     try {
       const res = await nodeContextOnce(nd.id);
-      // 수치는 발췌보다 먼저 — 실패해도(구 사이드카) 강등본이 뜬다. 관계 목록은
-      // 이 패널을 떠나 노드 옆 카드로 갔다(D70).
+      if (!current()) return;
+      const state = detailState(res);
+      if (state !== "ready") { fail(state); return; }
+      // 수치는 조회 성공 값만 쓴다. 응답 실패를 화면의 선이나 0으로 대신하지 않는다.
       drawNodeStats(nd, res.links);
+      detail.querySelector("#node-stats [data-detail-retry]")?.addEventListener("click", () => {
+        ctxCache = null; void loadNodeSource(nd);
+      });
       // 카드와 같은 줄이므로 부제도 같은 수치를 말해야 한다.
-      railAskCounts?.(((res.links?.degree ?? 0) + (res.links?.attached ?? 0)),
-                      (res.excerpts || []).length);
+      if (res.links?.executed) railAskCounts?.(res.links.degree + res.links.attached,
+                                               (res.excerpts || []).length);
       // D32 고아 최소화 — "확실히 연결 0"일 때만 잇기 후보를 낸다. 여태 드릴다운
       // 경로가 degree 0 을 박아 33연결 허브에도 제안이 떴다.
       if (res.links?.executed && res.links.degree + res.links.attached === 0)
         void suggestTiesInto(nd);
-      if (!res.executed) { box.innerHTML = ""; return; }
       // 패널이 그 사이 다른 노드로 갱신됐으면 버린다(늦은 응답이 남의 상세를 덮지 않게).
       if (!detail.contains(box) || detail.hidden) return;
       drawNodeProps(nd, res.props, { kind: res.node_kind, rev: res.rev });
@@ -3440,9 +3540,8 @@ export async function renderView(el: HTMLElement, resume = false) {
       box.querySelectorAll<HTMLElement>(".rdr-open").forEach((row) =>
         row.addEventListener("click", () =>
           void openReader(row.dataset.doc!, nd.id)));
-    } catch {
-      box.innerHTML = "";       // 발췌 불가(구 사이드카 등) — 상세는 그대로 유효
-      drawNodeStats(nd);        // 수치는 강등본으로라도 채운다(빈 자리를 남기지 않는다)
+    } catch (error) {
+      if (current()) fail(detailFailure(error));
     }
   }
 

@@ -646,6 +646,21 @@ export type NodeLinks = {
   degree: number; out: number; in: number; attached: number;
   items: NodeLink[]; truncated: boolean; executed: boolean;
 };
+export type TopicDetail = {
+  path: string;
+  parent: { id: string; title: string; domain: string } | null;
+  child_topics: number; direct_nodes: number; subtree_nodes: number; descendant_nodes: number;
+  structure: { total: number; offset: number; truncated: boolean; next_offset?: number;
+    items: { rel: "PARENT_OF" | "IN_DOMAIN"; id: string; title: string; domain: string }[] };
+  consistency?: { status: "membership_drift"; column_direct_nodes: number };
+};
+export type NodeContext = {
+  executed: boolean; title?: string; one_liner?: string; arm?: string; note?: string;
+  error?: string; status?: "ok" | "query_failed" | "unavailable" | "unsupported_kind";
+  found?: boolean; props?: Record<string, unknown>; node_kind?: string; rev?: number;
+  excerpts?: { doc_id: string; doc_title: string; section: string; excerpt: string; method: string }[];
+  links?: NodeLinks; topic?: TopicDetail;
+};
 /** D69 좌측 문서 트리. 문서는 주제 열을 갖지 않으므로 주제도 착지 노드도 언급
  *  (MENTIONS)에서 유도된다 — `모든 문서` 목록과 같은 원천이라 두 화면이 같은 문서를
  *  다른 주제에 걸지 않는다. `depth` 는 그 주제 안 개념 계층(선행·파생 BFS)이고,
@@ -840,21 +855,13 @@ export const api = {
   suggestTies: (owner: string, node: string) => call("/suggest-ties", { owner, node }),
   // D45-V — 노드 클릭 상세: 노드 설명(one_liner/summary) + 정본 근거 발췌.
   // arm: 'mentions'(언급 링크) | 'fts'(제목 일치 폴백) | 'none'(발췌 없음 — 무해).
-  // links(신설): 상세 레일 수치의 정본. 구 사이드카 응답엔 키 자체가 없다 —
-  // 프론트는 그 부재로 구버전을 판별해 그래프 잔상 집계로 우아하게 강등한다.
+  // 관계 수는 이 응답의 조회 성공 값만 쓴다. 선 표시 설정·화면 안내선으로 대신 세지 않는다.
   // props(D73): 개념의 자유 속성. `one_liner` 는 쓰기 경로가 없어 MCP 적재분이
   // 전량 빈 값이고 사람이 쓴 요약은 실제로 props 에 들어 있다 — 호출부는
   // one_liner → props 순으로 본문을 고른다. 구 사이드카엔 키가 없다(undefined).
-  nodeContext: (owner: string, node: string, limit = 4, scope?: Scope): Promise<{
-    executed: boolean; title?: string; one_liner?: string; arm?: string; note?: string;
-    props?: Record<string, unknown>;
-    // 속성 편집이 읽는다: 무슨 종인가(props 를 싣는가) · 어느 판을 읽었는가(W3).
-    // 구 사이드카엔 키가 없다 — 없으면 편집 단추를 내지 않고, 판은 0 으로 본다.
-    node_kind?: string; rev?: number;
-    excerpts?: { doc_id: string; doc_title: string; section: string;
-                 excerpt: string; method: string }[];
-    links?: NodeLinks;
-  }> => call("/node-context", { owner, node, limit }, undefined, scope),
+  nodeContext: (owner: string, node: string, limit = 4, scope?: Scope,
+                linksOffset = 0): Promise<NodeContext> =>
+    call("/node-context", { owner, node, limit, links_offset: linksOffset }, undefined, scope),
   // D45-V2 2단계 — Reader 서브뷰: 정본 전문(무손실 복원 + 해시 검증) + 밑줄 범위.
   docGet: (owner: string, id: string, scope?: Scope): Promise<{
     executed: boolean; text?: string; title?: string; verified?: boolean;
