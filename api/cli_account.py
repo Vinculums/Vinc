@@ -16,7 +16,7 @@ def run(args, *, space: str) -> tuple[dict | None, int | None]:
         name, data, destructive = _tool_request(args)
     except (ValueError, json.JSONDecodeError) as exc:
         return None, usage_error(str(exc))
-    if destructive and not _confirm(args, destructive):
+    if destructive and not data.get("dry_run") and not _confirm(args, destructive):
         return None, usage_error("confirmation required; pass --yes")
     try:
         tools.validate_args(name, data)

@@ -122,7 +122,7 @@ def chunk_id_of(doc_id: str, index: int) -> str:
 
 # ── DB 경계 ──────────────────────────────────────────────────────────────────
 
-def _meta(store, doc_id: str) -> dict | None:
+def _meta(store, doc_id: str, *, strict=False) -> dict | None:
     rows = store.run(
         "MATCH (d:_DocMeta) WHERE d.doc_id = $id RETURN d.doc_id AS doc_id, "
         "d.owner_id AS owner_id, d.title AS title, d.origin AS origin, "
@@ -133,13 +133,18 @@ def _meta(store, doc_id: str) -> dict | None:
         # v22 — 문서 유효구간. put_doc 이 3값(미지정 보존)을 지키려면 먼저 읽어야 한다.
         "d.valid_from AS valid_from, d.valid_until AS valid_until, "
         "d.superseded_by AS superseded_by", {"id": doc_id})
+    if strict and rows is None:
+        raise RuntimeError("document_metadata_unavailable")
     return rows[0] if rows else None
 
 
-def _live_chunks(store, doc_id: str) -> dict[str, int]:
+def _live_chunks(store, doc_id: str, *, strict=False) -> dict[str, int]:
     """doc_id 로 살아 있는 Chunk 행 수를 청크의 owner_id 별로 센다('' = 무소유)."""
     rows = store.run("MATCH (c:Chunk) WHERE c.doc_id = $d "
-                     "RETURN c.owner_id AS o, count(c) AS n", {"d": doc_id}) or []
+                     "RETURN c.owner_id AS o, count(c) AS n", {"d": doc_id})
+    if strict and rows is None:
+        raise RuntimeError("document_chunks_unavailable")
+    rows = rows or []
     return {str(r.get("o") or ""): int(r.get("n") or 0) for r in rows}
 
 
@@ -378,7 +383,8 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             link: bool = True, updated_at: str | None = None,
             created_at: str | None = None, content_time: str | None = None,
             topic: str | None = None, valid_from: str | None = None,
-            valid_until: str | None = None, superseded_by: str | None = None) -> dict:
+            valid_until: str | None = None, superseded_by: str | None = None,
+            expected_content_hash: str | None = None, create_only: bool = False) -> dict:
     """raw 텍스트를 doc 단위로 적재/갱신(파일 I/O 없음) — Chunk=SSoT 의 쓰기 정본.
 
     - 신규: doc_id 미지정 시 결정론 파생(make_doc_id). 반환 doc_id 로 이후 편집.
@@ -407,13 +413,19 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         base["error"] = "owner/doc_id/title/origin must not contain U+001F (reserved for PK namespacing)"
         return base
 
+    conditional = expected_content_hash is not None or create_only is not False
     content_hash = _sha(text)
     # 옛 고정 id(`graph.md`)를 그대로 지목한 쓰기(MCP `vinc_doc_put` · API)가 **남이 점유한**
     # 그 행을 겨누면 이 owner 의 파생 id 로 돌린다. 안 돌리면 점유자 아닌 전원이
     # `owner mismatch` 로 거절된다(Vinc #342). 점유자 자신과 빈 자리는 그대로 둔다.
     if doc_id == graphmd.LEGACY_CONVENTIONS_DOC_ID:
-        seat = _meta(store, doc_id)
+        try:
+            seat = _meta(store, doc_id, strict=True) if conditional else _meta(store, doc_id)
+        except Exception:
+            return {**base, "error": "write_precondition_unavailable", "status": "query_failed"}
         if seat is not None and seat.get("owner_id") != owner:
+            if conditional:
+                return {**base, "error": "document_unavailable", "status": "unavailable"}
             doc_id = graphmd.conventions_doc_id(owner)
     doc_id = doc_id or make_doc_id(owner, content_hash, title or "", origin or "")
     if getattr(store, "_topic_conversion_guard", False):
@@ -421,8 +433,11 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         check_write(store, owner, {"id": doc_id, "topic": topic})
     base["doc_id"] = doc_id
 
-    prev = _meta(store, doc_id)
-    live = _live_chunks(store, doc_id)
+    try:
+        prev = _meta(store, doc_id, strict=True) if conditional else _meta(store, doc_id)
+        live = _live_chunks(store, doc_id, strict=True) if conditional else _live_chunks(store, doc_id)
+    except Exception:
+        return {**base, "error": "write_precondition_unavailable", "status": "query_failed"}
     n_live = sum(live.values())
     # title 은 `content_time` 과 같은 3값이다: **키 부재(None)=기존 보존 · ""=비움 ·
     # 값=설정.** 여태 무조건 SET 이라 본문만 재전송한 호출이 제목을 빈 문자열로 덮었고,
@@ -464,6 +479,12 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         base["error"] = ("doc_id unavailable: this id cannot be written from this "
                          "account; choose a different doc_id")
         return base
+    from .mutation_contract import document_guard, MutationConflict
+    try:
+        document_guard(prev, owner=owner, create_only=create_only,
+                       expected_content_hash=expected_content_hash)
+    except MutationConflict as exc:
+        return {**base, **exc.result}
     if prev is not None:
         # 무변경 스킵은 살아 있는 행 수가 `chunk_count` 와 같을 때만이다. 쓰기 창 표식
         # (-1, 아래 ⓪)·꼬리 청크·빠진 청크가 남은 문서는 get_doc 이 거절하는데, 스킵하면
@@ -2191,7 +2212,8 @@ def _extract_body_doc(store, doc_id: str, *, owner: str, apply: bool,
             return {**base, "error": "body mentions schema is not enabled"}
         transaction = False
         try:
-            if apply:
+            from .operation_receipts import in_transaction
+            if apply and not in_transaction.get():
                 store.run("BEGIN TRANSACTION")
                 transaction = True
             got = get_doc(store, doc_id, owner=owner)
@@ -2252,7 +2274,8 @@ def _extract_body_doc(store, doc_id: str, *, owner: str, apply: bool,
                                       candidates=chosen)
             if not linked:
                 raise ValueError("body candidates have no owner-scoped source chunks")
-            store.run("COMMIT")
+            if transaction:
+                store.run("COMMIT")
             transaction = False
             base.update(executed=True, applied={"created": created, "matched": matched},
                         approved_candidate_ids=approved_ids, mentions=linked)

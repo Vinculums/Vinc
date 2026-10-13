@@ -218,9 +218,15 @@ class _Base:
             "limit": limit, "cursor": cursor}, space=space)
 
     @staticmethod
-    def _ingest(nodes, edges, space) -> _Call:
+    def _ingest(nodes, edges, space, create_only=None, operation_id=None, review_claims=None) -> _Call:
         return _Call("POST", "/v1/fragments",
-                     body={"nodes": list(nodes), "edges": list(edges or [])}, space=space)
+                     body=_drop_none({"nodes": list(nodes), "edges": list(edges or []),
+                         "create_only": create_only, "operation_id": operation_id,
+                         "review_claims": review_claims}), space=space)
+
+    @staticmethod
+    def _operation_status(operation_id, space) -> _Call:
+        return _Call("GET", "/v1/operations/" + quote(operation_id, safe=""), space=space)
 
 
 class VincClient(_Base):
@@ -366,14 +372,21 @@ class VincClient(_Base):
         return self._send(self._recall(domain, tags, limit, cursor, space))
 
     def ingest(self, nodes: Iterable[dict[str, Any]], edges: Iterable[dict[str, Any]] | None = None,
-               *, space: str | None = None) -> dict[str, Any]:
+               *, space: str | None = None, create_only: bool | None = None,
+               operation_id: str | None = None, review_claims: bool | None = None) -> dict[str, Any]:
         """``POST /v1/fragments``: merge nodes and edges by id.
 
         ``props`` sent for a node replace its stored props whole; read them first
-        and send the merged dict. Raises ``VincPartialWrite`` when part was skipped.
+        and send the merged dict, or use expected_rev with props_patch for a guarded patch.
+        operation_id binds identical retries; check operation_status after an uncertain response.
+        Raises ``VincPartialWrite`` when part was skipped.
         """
         self._require_write_key()
-        return _raise_if_partial(self._send(self._ingest(nodes, edges, space)))
+        return _raise_if_partial(self._send(self._ingest(nodes, edges, space, create_only, operation_id, review_claims)))
+
+    def operation_status(self, operation_id: str, *, space: str | None = None) -> dict[str, Any]:
+        """Read a historical owner-scoped receipt. Unknown is not proof that no write happened."""
+        return self._send(self._operation_status(operation_id, space))
 
     def get_context(self, query: str, *, search_fallback: bool = False,
                     max_chars: int = DEFAULT_MAX_CHARS, max_excerpts: int = 3,
@@ -584,9 +597,13 @@ class AsyncVincClient(_Base):
 
     async def ingest(self, nodes: Iterable[dict[str, Any]],
                      edges: Iterable[dict[str, Any]] | None = None, *,
-                     space: str | None = None) -> dict[str, Any]:
+                     space: str | None = None, create_only: bool | None = None,
+                     operation_id: str | None = None, review_claims: bool | None = None) -> dict[str, Any]:
         self._require_write_key()
-        return _raise_if_partial(await self._send(self._ingest(nodes, edges, space)))
+        return _raise_if_partial(await self._send(self._ingest(nodes, edges, space, create_only, operation_id, review_claims)))
+
+    async def operation_status(self, operation_id: str, *, space: str | None = None) -> dict[str, Any]:
+        return await self._send(self._operation_status(operation_id, space))
 
     async def get_context(self, query: str, *, search_fallback: bool = False,
                           max_chars: int = DEFAULT_MAX_CHARS, max_excerpts: int = 3,

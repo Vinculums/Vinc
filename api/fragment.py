@@ -1293,6 +1293,13 @@ def merge_fragment(fragment: dict, *, store, themes=None,
                          ["review_claims must be a boolean"])
     owner_explicit = bool((fragment.get("owner") or "").strip())
     owner = (fragment.get("owner") or "").strip() or DEFAULT_OWNER
+    from .mutation_contract import prepare_fragment, MutationConflict
+    try:
+        fragment = prepare_fragment(store, fragment, owner)
+        nodes = list(fragment.get("nodes") or [])
+        edges = list(fragment.get("edges") or [])
+    except MutationConflict as exc:
+        return _finalize({"merged": None, **exc.result}, [exc.result["error"]])
     if getattr(store, "_topic_conversion_guard", False):
         from .topic_conversion import check_write
         check_write(store, owner, fragment)
