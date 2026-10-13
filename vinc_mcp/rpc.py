@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 
 from . import __version__
-from . import roles
+from . import community, roles
 from . import tools
 from . import toolcall
 from .bridge import Bridge
@@ -89,7 +89,7 @@ class Dispatcher:
     # entitlements: 등급에서 해석된 숫자(주제 상한 등) — 사이드카로 그대로 실린다.
     def handle(self, msg: dict, forced_owner: str | None = None,
                plan: str | None = None, quota=None,
-               entitlements: dict | None = None) -> dict | None:
+               entitlements: dict | None = None, community_write=None) -> dict | None:
         method = msg.get("method")
         msg_id = msg.get("id")
         params = msg.get("params") or {}
@@ -101,7 +101,8 @@ class Dispatcher:
             return None
         try:
             result = self._dispatch(method, params, forced_owner=forced_owner,
-                                    plan=plan, quota=quota, entitlements=entitlements)
+                                    plan=plan, quota=quota, entitlements=entitlements,
+                                    community_write=community_write)
         except _MethodNotFound:
             return _err(msg_id, -32601, f"method not found: {method}")
         except _QuotaDenied as e:
@@ -119,7 +120,7 @@ class Dispatcher:
 
     def _dispatch(self, method: str, params: dict, *, forced_owner: str | None = None,
                   plan: str | None = None, quota=None,
-                  entitlements: dict | None = None) -> dict:
+                  entitlements: dict | None = None, community_write=None) -> dict:
         if method == "initialize":
             want = params.get("protocolVersion")
             negotiated = want if want in PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION
@@ -174,13 +175,17 @@ class Dispatcher:
                                        forced_owner=forced_owner, plan=plan, quota=quota,
                                        entitlements=entitlements,
                                        allow_target=self.allow_target,
-                                       local_only=self.local_only)
+                                       local_only=self.local_only, community_write=community_write)
             if outcome.kind == "protocol_error":
                 raise outcome.error
             if outcome.kind != "ok":
                 return outcome.result
+            if name == community.WRITE_TOOL and outcome.result.get("isError"):
+                return _tool_result(roles.serialize_result(outcome.result), name, is_error=True)
             return _result_text(roles.serialize_result(outcome.result), name, args)
         if method in ("prompts/list", "prompts/get"):
+            if community.is_space(forced_owner):
+                raise PermissionError("Community roles are data. Add a role to your own graph before using it as a prompt.")
             # 쿼터를 tools/call 과 **같이** 센다. 이 둘은 initialize·ping 과 달리
             # 스토어를 실제로 조회하므로, 무료로 두면 인증된 호출자에게 계량되지 않는
             # 조회 루프가 열린다(허브는 단일 라이터다). 로컬 stdio 는 forced_owner 가

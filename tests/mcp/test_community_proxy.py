@@ -176,7 +176,9 @@ def test_unnamespaced_store_cannot_accept_community_scope(app, monkeypatch):
     assert app.bridge.calls == []
 
 
-@pytest.mark.parametrize("name", [t["name"] for t in tools.TOOLS if tools.tool_tier(t["name"]) != "viewer"])
+@pytest.mark.parametrize("name", [t["name"] for t in tools.TOOLS
+                                  if tools.tool_tier(t["name"]) != "viewer"
+                                  and t["name"] != "vinc_community_write"])
 def test_generic_mcp_write_cannot_bypass_revisions(app, name):
     with pytest.raises(PermissionError, match="account revisions"):
         tools.call(name, {}, app.bridge, forced_owner=A, allow_target=False)

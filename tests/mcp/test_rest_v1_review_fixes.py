@@ -18,6 +18,11 @@ from vinc_mcp.rest_api import _failure
 
 # (도구, 결과, by_id, 기대 상태, 기대 코드). 상태가 None 이면 성공으로 통과해야 한다.
 FAILURE_CASES = [
+    ("vinc_community_write", {"saved": True, "revision": 1, "graph": "pending"}, False, None, None),
+    ("vinc_community_write", {"isError": True, "status": 403, "error": "protected_rules"}, False,
+     403, "role_forbidden"),
+    ("vinc_community_write", {"isError": True, "status": 409, "error": "edit_conflict"}, False,
+     409, "conflict"),
     ("vinc_role", {"executed": True, "found": False}, True, 404, "not_found"),
     ("vinc_role", {"executed": False, "note": "no reachable store"}, True, 503, "upstream_unavailable"),
     ("vinc_role_check", {"kind": "role_check", "executed": True, "found": False}, True, 404, "not_found"),
