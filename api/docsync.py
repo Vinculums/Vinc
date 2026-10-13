@@ -105,6 +105,12 @@ def import_docs(store, *, owner: str, payload: dict) -> dict:
     - SEC-1: 인바운드 owner 는 호출 owner 로 고정(payload 를 신뢰하지 않는다).
     삭제 표식은 로컬 문서가 더 새로 쓰이지 않았을 때만 적용(재생성이 삭제를 이긴다).
     """
+    from store.ownership_moves import blocked_sync_references
+    moved = blocked_sync_references(store, owner=owner, payload=payload)
+    if moved:
+        return {"kind": "docsync.import", "owner": owner, "executed": False,
+                "applied": 0, "updated": 0, "skipped": 0, "deleted": 0,
+                "error": "ownership_moved", "moved_ids": moved}
     applied = updated = skipped = deleted = 0
     for d in payload.get("docs", []) or []:
         doc_id = d.get("doc_id")
