@@ -85,6 +85,18 @@ class _Env(unittest.TestCase):
 
 
 class Wiring(_Env):
+    def test_conversion_flag_wires_only_conversion_mutation_ack(self):
+        with mock.patch.dict(os.environ, {persistence.DURABLE_ENV: "", "VINC_TOPIC_CONVERSION": "1"}):
+            app = VincApp(load_config({"data_dir": self.live}), store=None)
+            self.addCleanup(app.jobs.shutdown, drain=False)
+            self.assertIsNone(app._durable)
+            self.assertIsNotNone(app._conversion_durable)
+            app._conversion_durable = mock.Mock()
+            app.jobs.run_sync("ingest", lambda: {"ok": True})
+            app._conversion_durable.assert_not_called()
+            app.jobs.run_sync("topic-conversion.stage", lambda: {"status": "graph_committed"})
+            app._conversion_durable.assert_called_once()
+
     def test_on_wires_the_hook_into_the_app_queue(self):
         app = VincApp(load_config({"data_dir": self.live}), store=None)
         self.addCleanup(app.jobs.shutdown, drain=False)

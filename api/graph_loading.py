@@ -185,6 +185,16 @@ class GraphReads:
             read.preview, read.result, read.size = None, None, 0
         return 200, {'executed': True, 'cancelled': True}
 
+    def invalidate_owner(self, owner):
+        """Invalidate retained continuations when ownership changes."""
+        with self._lock:
+            for key, read in list(self._reads.items()):
+                if read.owner == owner:
+                    read.control.cancelled.set()
+                    read.preview, read.result, read.size = None, None, 0
+                    if read.ready.is_set():
+                        del self._reads[key]
+
     def close(self):
         with self._lock:
             self._closed = True

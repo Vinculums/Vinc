@@ -21,6 +21,7 @@ from __future__ import annotations
 import queue
 import sys
 import threading
+from contextvars import copy_context
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -87,13 +88,14 @@ class JobQueue:
     사이드카는 이 값을 준다. 틱은 잡의 순서도 지연도 바꾸지 않는다: 대기에 상한만
     둘 뿐이고 ``Queue.get`` 은 항목이 들어오면 즉시 깬다."""
 
-    def __init__(self, *, on_idle=None, on_before_done=None,
+    def __init__(self, *, on_idle=None, on_before_done=None, on_before_run=None,
                  tick_s: float | None = None) -> None:
         self._on_idle = on_idle
         # A required durability hook runs on the sole writer before a successful
         # response or DONE can be observed. Unlike on_idle, its error is fatal to
         # this job; the caller must treat a post-mutation failure as indeterminate.
         self._on_before_done = on_before_done
+        self._on_before_run = on_before_run
         self._tick_s = tick_s
         self._q: "queue.Queue" = queue.Queue()
         self._jobs: dict[str, Job] = {}
@@ -142,7 +144,12 @@ class JobQueue:
         job = Job(self._next_id(), kind)
         with self._lock:
             self._jobs[job.id] = job
-        self._q.put((job, fn))
+        context = copy_context()
+        def guarded():
+            if self._on_before_run is not None:
+                self._on_before_run(job)
+            return fn()
+        self._q.put((job, lambda: context.run(guarded)))
         self._ensure_worker()   # 앞선 잡이 워커를 무너뜨렸어도 이 잡은 돈다
         return job
 

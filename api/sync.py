@@ -809,6 +809,13 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         out["note"] = "no reachable store"
         return out
 
+    from store.ownership_moves import blocked_sync_references
+    moved = blocked_sync_references(store, owner=owner, payload=bundle)
+    if moved:
+        out.update(error="ownership_moved", moved_ids=moved,
+                   warnings=["Moved content cannot be uploaded to its former space."])
+        return out
+
     writes: list[dict] = []          # merge_fragment 로 쓸 노드(스탬프 포함)
     base_updates: list[tuple] = []   # (nid, label, base_fields, base_rev, base_ua)
     births: list[tuple] = []         # (label, pk, nid, remote_created) — 병합과 무관

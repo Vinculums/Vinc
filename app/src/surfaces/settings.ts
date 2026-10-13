@@ -8,6 +8,7 @@ import { retainBeforeSwitch } from "../view-retained";
 import { loadPrefs, savePrefs, RAIL_MIN, RAIL_MAX } from "../view-prefs";
 import { disposeEditorsIn } from "../doc-editor";
 import { mountStorage } from "../storage-mode";
+import { mountTopicConversion } from "../topic-conversion";
 
 /** Settings — 왼쪽 분류 레일 + 본문(2026-09-22).
  *  종 레일 바닥의 설정 버튼이 예전 Settings · GRAPH.md · Tools(쓰기/가져오기/공유)
@@ -280,13 +281,16 @@ export async function renderSettings(
       <label>${U.space}</label>
       <p class="hint">${U.spaceHint}</p>
       <p><select id="space-pick"><option value="">${U.spacePersonal}</option></select></p>
-      <div id="space-note" class="hint" style="font-size:.8rem"></div>` : ""}
+      <div id="space-note" class="hint" style="font-size:.8rem"></div>
+      ${!cfg.team ? '<div id="topic-conversion"></div>' : ""}` : ""}
       ${!remote() ? `
       <label>${U.account}</label>
       <div id="acct-box"></div>` : ""}`;
     const stBox = body.querySelector<HTMLElement>("#st-box");
     if (stBox) mountStorage(stBox);
     if (remote()) {
+      const conversion = body.querySelector<HTMLElement>("#topic-conversion");
+      if (conversion) cleanup = mountTopicConversion(conversion);
       // 웹모드: /api/me 로 로그인 계정 표시(@username 우선). 연결/동기화 섹션은 없음(셸 전용).
       // 셸 계정 모드: 쿠키가 없어 /api/me 를 못 부른다. 기기 플로우가 남긴 이름을 쓰고,
       // 로그아웃을 여기 둔다(로그아웃하면 로그인 시트로 돌아간다, VIN-128).

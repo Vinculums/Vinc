@@ -50,13 +50,13 @@ test("list failure is distinguished from successful empty membership", async () 
 test("strict settings lookup propagates failures without changing optional consumers", async () => {
   const state = { accountMode: () => true, call: async () => { throw new Error("offline"); } };
   vm.createContext(state);
-  run(slice(api, "export const teamsApi =", "// ── 주소의 스페이스").replace("export const", "var"), state);
+  run((slice(api, "export const teamsApi =", "\n};") + "\n};").replace("export const", "var"), state);
   await assert.rejects(state.teamsApi.list({ throwOnError: true }), /offline/);
   assert.equal((await state.teamsApi.list()).length, 0);
 });
 test("strict lookup rejects malformed successful list responses", async () => {
   const state = { accountMode: () => true, call: async () => ({}) };
   vm.createContext(state);
-  run(slice(api, "export const teamsApi =", "// ── 주소의 스페이스").replace("export const", "var"), state);
+  run((slice(api, "export const teamsApi =", "\n};") + "\n};").replace("export const", "var"), state);
   await assert.rejects(state.teamsApi.list({ throwOnError: true }), /team_list_unavailable/);
 });

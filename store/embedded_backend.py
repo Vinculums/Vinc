@@ -1059,6 +1059,18 @@ class EmbeddedBackend:
         self._conn = conn
         self.driver_name = driver_name
         self._cfg = cfg
+        self._topic_conversion_guard = os.environ.get("VINC_TOPIC_CONVERSION") == "1"
+        if not self._topic_conversion_guard and db is not None:
+            try:
+                self._topic_conversion_guard = bool(_exec_to_dicts(conn,
+                    "MATCH (m:_SyncMeta) WHERE m.key STARTS WITH 'topic-conversion:' RETURN m.key AS key LIMIT 1",
+                    None, raw=True))
+            except Exception as exc:
+                # New databases have not been provisioned yet. Other failures
+                # must not disable ownership barriers on an existing store.
+                text = str(exc).lower()
+                if "_syncmeta" not in text or not any(s in text for s in ("does not exist", "cannot find table", "not found")):
+                    raise
         #: 이 Database 에 로드된 확장 이름. `LOAD EXTENSION` 은 **Database 스코프**라
         #: (실측: 로드 뒤 새로 만든 커넥션도 자기 LOAD 없이 FTS 호출 성공) 프로세스당
         #: 1회면 충분하다. 이 집합이 없으면 매 검색이 LOAD 를 재발행하고, LOAD 는

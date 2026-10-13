@@ -28,6 +28,21 @@ def test_owner_scope_token_isolation_and_idempotent_result():
         reads.close()
 
 
+def test_ownership_conversion_invalidates_only_both_affected_scopes():
+    reads = GraphReads()
+    try:
+        _, first = reads.start('user:a', 'scope', producer)
+        _, other = reads.start('user:b', 'scope', producer)
+        a, b = first['snapshot']['token'], other['snapshot']['token']
+        reads.finish('user:a', 'scope', a)
+        reads.finish('user:b', 'scope', b)
+        reads.invalidate_owner('user:a')
+        assert reads.finish('user:a', 'scope', a)[0] == 404
+        assert reads.finish('user:b', 'scope', b)[0] == 200
+    finally:
+        reads.close()
+
+
 def test_expiry_and_closed_store_fail_without_data():
     now = [0]; reads = GraphReads(ttl=10, clock=lambda: now[0])
     code, first = reads.start('a', 'scope', producer); token = first['snapshot']['token']

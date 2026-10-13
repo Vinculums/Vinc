@@ -723,7 +723,7 @@ class MCPHTTPApp:
             raise PermissionError("graph proxy is not configured")
         payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
         typ = payload.get("typ") if payload else None
-        if not payload or typ not in ("proxy", "proxy-team") \
+        if not payload or typ not in ("proxy", "proxy-team", "proxy-conversion") \
                 or payload.get("iss") != "account" or payload.get("aud") != "mcp":
             raise PermissionError("invalid or expired proxy request")
         # 서명된 지문과 받은 본문이 같은가 · 이 어서션을 처음 쓰는가(감사 M2).
@@ -735,6 +735,30 @@ class MCPHTTPApp:
         if not isinstance(sub, str) or not sub:
             raise ValueError("proxy request is missing a subject")
         op = payload.get("op")
+        if typ == "proxy-conversion":
+            actions = {"topic-conversion:" + a: a for a in ("preflight", "stage", "status", "release", "cancel")}
+            action = actions.get(op) if isinstance(op, str) else None
+            if action is None:
+                raise PermissionError("unsupported conversion capability")
+            from uuid import UUID
+            try:
+                UUID(sub)
+            except ValueError:
+                raise PermissionError("invalid conversion subject") from None
+            body = dict(args or {})
+            for field in ("owner", "target", "run", "action", "_entitlements"):
+                body.pop(field, None)
+            body.update(owner=f"user:{sub}", action=action)
+            if action != "preflight":
+                target, run = payload.get("target"), payload.get("run")
+                if not isinstance(target, str) or not _TEAM_OWNER_RE.fullmatch(target):
+                    raise PermissionError("invalid conversion target")
+                try:
+                    UUID(run)
+                except (ValueError, TypeError, AttributeError):
+                    raise PermissionError("invalid conversion run") from None
+                body.update(target=target, run=run)
+            return self.bridge.request("POST", "/topic-conversion", body=body)
         route = _PROXY_OPS.get(op) if isinstance(op, str) else None
         if route is None:
             raise ValueError(f"unsupported proxy op: {op!r}")
