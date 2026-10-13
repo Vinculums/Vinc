@@ -528,6 +528,7 @@ jobs:
       - name: Verify temporal search through the existing read only account key
         env:
           VINC_GRAPH_READONLY_KEY: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
+          VINC_MCP_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
         run: python scripts/verify_search_temporal_remote.py
 
       - name: Verify connector surface (OAuth discovery)
