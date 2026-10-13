@@ -1,0 +1,143 @@
+{
+  "schema": "vinc.laya.public-source-plan.v1",
+  "authority": "decision:proceed-with-ordered-laya-public-data-and-local-development-2026-10-13",
+  "scope": "local-auxiliary-development",
+  "production_weights_approved": false,
+  "files": [
+    {
+      "source": "scifact",
+      "name": "scifact/rights.txt",
+      "url": "https://raw.githubusercontent.com/allenai/scifact/68b98a56d93e0f9da0d2aab4e6c3294699a0f72e/LICENSE.md",
+      "kind": "rights",
+      "revision": "68b98a56d93e0f9da0d2aab4e6c3294699a0f72e",
+      "license": "CC-BY-4.0 and ODC-By-1.0",
+      "max_bytes": 100000
+    },
+    {
+      "source": "scifact",
+      "name": "scifact/readme.txt",
+      "url": "https://raw.githubusercontent.com/allenai/scifact/68b98a56d93e0f9da0d2aab4e6c3294699a0f72e/README.md",
+      "kind": "readme",
+      "revision": "68b98a56d93e0f9da0d2aab4e6c3294699a0f72e",
+      "license": "CC-BY-4.0 and ODC-By-1.0",
+      "max_bytes": 100000
+    },
+    {
+      "source": "pawsx",
+      "name": "pawsx/rights.txt",
+      "url": "https://raw.githubusercontent.com/google-research-datasets/paws/02b29f3af1143620d1b7f352247e65c0bdd2ec18/LICENSE",
+      "kind": "rights",
+      "revision": "02b29f3af1143620d1b7f352247e65c0bdd2ec18",
+      "license": "Google dataset terms",
+      "max_bytes": 100000
+    },
+    {
+      "source": "pawsx",
+      "name": "pawsx/readme.txt",
+      "url": "https://raw.githubusercontent.com/google-research-datasets/paws/02b29f3af1143620d1b7f352247e65c0bdd2ec18/pawsx/README.md",
+      "kind": "readme",
+      "revision": "02b29f3af1143620d1b7f352247e65c0bdd2ec18",
+      "license": "Google dataset terms",
+      "max_bytes": 100000
+    },
+    {
+      "source": "klue",
+      "name": "klue/rights.txt",
+      "url": "https://raw.githubusercontent.com/KLUE-benchmark/KLUE/3efd98708a40ff49251fddde35453f8fbb11f536/License.md",
+      "kind": "rights",
+      "revision": "3efd98708a40ff49251fddde35453f8fbb11f536",
+      "license": "CC-BY-SA-4.0",
+      "max_bytes": 100000
+    },
+    {
+      "source": "klue",
+      "name": "klue/readme.txt",
+      "url": "https://raw.githubusercontent.com/KLUE-benchmark/KLUE/3efd98708a40ff49251fddde35453f8fbb11f536/README.md",
+      "kind": "readme",
+      "revision": "3efd98708a40ff49251fddde35453f8fbb11f536",
+      "license": "CC-BY-SA-4.0",
+      "max_bytes": 100000
+    },
+    {
+      "source": "vitaminc",
+      "name": "vitaminc/rights.txt",
+      "url": "https://raw.githubusercontent.com/TalSchuster/VitaminC/eb532922b88b199df68ed26afeb58dca5501b52f/DATA_LICENSE",
+      "kind": "rights",
+      "revision": "eb532922b88b199df68ed26afeb58dca5501b52f",
+      "license": "Wikipedia article terms or CC-BY-SA-3.0",
+      "max_bytes": 100000
+    },
+    {
+      "source": "vitaminc",
+      "name": "vitaminc/readme.txt",
+      "url": "https://raw.githubusercontent.com/TalSchuster/VitaminC/eb532922b88b199df68ed26afeb58dca5501b52f/README.md",
+      "kind": "readme",
+      "revision": "eb532922b88b199df68ed26afeb58dca5501b52f",
+      "license": "Wikipedia article terms or CC-BY-SA-3.0",
+      "max_bytes": 100000
+    },
+    {
+      "source": "scifact",
+      "name": "scifact/data.tar.gz",
+      "url": "https://scifact.s3-us-west-2.amazonaws.com/release/latest/data.tar.gz",
+      "kind": "archive",
+      "revision": "68b98a56d93e0f9da0d2aab4e6c3294699a0f72e",
+      "license": "CC-BY-4.0 and ODC-By-1.0",
+      "max_bytes": 100000000
+    },
+    {
+      "source": "pawsx",
+      "name": "pawsx/data.tar.gz",
+      "url": "https://storage.googleapis.com/paws/pawsx/x-final.tar.gz",
+      "kind": "archive",
+      "revision": "02b29f3af1143620d1b7f352247e65c0bdd2ec18",
+      "license": "Google dataset terms",
+      "max_bytes": 100000000
+    },
+    {
+      "source": "klue",
+      "name": "klue/nli-train.json",
+      "url": "https://raw.githubusercontent.com/KLUE-benchmark/KLUE/3efd98708a40ff49251fddde35453f8fbb11f536/klue_benchmark/klue-nli-v1.1/klue-nli-v1.1_train.json",
+      "kind": "data",
+      "revision": "3efd98708a40ff49251fddde35453f8fbb11f536",
+      "license": "CC-BY-SA-4.0",
+      "max_bytes": 20000000
+    },
+    {
+      "source": "klue",
+      "name": "klue/nli-dev.json",
+      "url": "https://raw.githubusercontent.com/KLUE-benchmark/KLUE/3efd98708a40ff49251fddde35453f8fbb11f536/klue_benchmark/klue-nli-v1.1/klue-nli-v1.1_dev.json",
+      "kind": "data",
+      "revision": "3efd98708a40ff49251fddde35453f8fbb11f536",
+      "license": "CC-BY-SA-4.0",
+      "max_bytes": 20000000
+    },
+    {
+      "source": "klue",
+      "name": "klue/sts-train.json",
+      "url": "https://raw.githubusercontent.com/KLUE-benchmark/KLUE/3efd98708a40ff49251fddde35453f8fbb11f536/klue_benchmark/klue-sts-v1.1/klue-sts-v1.1_train.json",
+      "kind": "data",
+      "revision": "3efd98708a40ff49251fddde35453f8fbb11f536",
+      "license": "CC-BY-SA-4.0",
+      "max_bytes": 20000000
+    },
+    {
+      "source": "klue",
+      "name": "klue/sts-dev.json",
+      "url": "https://raw.githubusercontent.com/KLUE-benchmark/KLUE/3efd98708a40ff49251fddde35453f8fbb11f536/klue_benchmark/klue-sts-v1.1/klue-sts-v1.1_dev.json",
+      "kind": "data",
+      "revision": "3efd98708a40ff49251fddde35453f8fbb11f536",
+      "license": "CC-BY-SA-4.0",
+      "max_bytes": 20000000
+    },
+    {
+      "source": "vitaminc",
+      "name": "vitaminc/data.zip",
+      "url": "https://raw.githubusercontent.com/TalSchuster/talschuster.github.io/152c9639f1e33ca295d0776b618c17884088f72f/static/vitaminc.zip",
+      "kind": "archive",
+      "revision": "152c9639f1e33ca295d0776b618c17884088f72f",
+      "license": "Wikipedia article terms or CC-BY-SA-3.0",
+      "max_bytes": 120000000
+    }
+  ]
+}
