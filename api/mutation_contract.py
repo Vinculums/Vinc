@@ -73,7 +73,7 @@ def prepare_fragment(store, fragment: dict, owner: str) -> dict:
         if kind == "domain":
             raise MutationConflict("write_precondition_not_supported")
         found = query.execute(query.node_plan(entry["id"], owner=owner), store=store)
-        if not found.get("executed"):
+        if not found.get("executed") or found.get("rows") is None:
             raise MutationConflict("write_precondition_unavailable")
         rows = found.get("rows") or []
         existing = rows[0] if rows else None

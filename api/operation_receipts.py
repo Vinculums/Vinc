@@ -18,7 +18,7 @@ def canonical(value):
 
 
 def _key(owner, operation_id):
-    if not isinstance(owner, str) or not owner or "\x1f" in owner:
+    if not isinstance(owner, str) or not owner or owner != owner.strip() or "\x1f" in owner:
         raise ValueError("receipt_owner_required")
     if not isinstance(operation_id, str) or str(UUID(operation_id)) != operation_id:
         raise ValueError("invalid_operation_id")
@@ -59,10 +59,11 @@ def status(store, *, owner, operation_id):
 def _summary(result):
     out = {"executed": result.get("executed") is not False,
            "partial": bool(result.get("partial")), "verification_required": True}
-    for field in ("kind", "created", "skipped", "rev", "content_hash", "doc_id", "node_id", "status",
+    for field in ("kind", "created", "skipped", "found", "rev", "content_hash", "doc_id", "node_id", "status",
                   "current_rev", "current_content_hash", "rolled_back", "deleted_chunks", "deleted_meta"):
         if field in result and isinstance(result[field], (str, int, bool)):
-            out[field] = result[field]
+            if not isinstance(result[field], str) or len(result[field]) <= 2048:
+                out[field] = result[field]
     for field in ("deleted", "merged"):
         value = result.get(field)
         if isinstance(value, int):
@@ -78,9 +79,13 @@ def _summary(result):
         out["targets"] = [{k: row[k] for k in ("id", "kind", "rev") if k in row}
                           for row in stored[:256] if isinstance(row, dict)]
         out["stored_truncated"] = len(stored) > 256
+        out["target_count"] = len(stored)
     if result.get("error"):
         error = str(result["error"])
         out["error"] = error if error.replace("_", "").isalnum() and len(error) <= 80 else "operation_failed"
+    if len(canonical(out).encode("utf-8")) > 40000:
+        out.pop("targets", None)
+        out["stored_truncated"] = True
     return out
 
 

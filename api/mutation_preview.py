@@ -22,7 +22,7 @@ def _canonical(value):
 
 def _node(store, owner, ident):
     result = query.execute(query.node_plan(ident, owner=owner), store=store)
-    if not result.get("executed"):
+    if not result.get("executed") or result.get("rows") is None:
         raise PreviewRefused("preview_read_unavailable")
     if not result.get("rows"):
         raise PreviewRefused("preview_target_unavailable")
@@ -105,7 +105,7 @@ def preview(store, *, owner, operation, arguments):
         details = {}
         if operation == "delete":
             ident = arguments["node"]
-            if ident.startswith("domain:"):
+            if ident.startswith("domain:") or ident.partition(":")[0] not in query._SEED_TABLES:
                 raise PreviewRefused("preview_kind_not_supported")
             target = _node(store, owner, ident)
             details = {"deleted_nodes": [target], "deleted_edges": _incident(store, owner, [ident]),
@@ -141,11 +141,17 @@ def preview(store, *, owner, operation, arguments):
                     "chunks": _fingerprint(chunks),
                     "vectors": _fingerprint(vectors),
                 },
-                "retained_mirror": query.node("concept:doc." + ident, owner=owner, store=store).get("node")}
+                "retained_mirror": None}
+            mirror = query.execute(query.node_plan("concept:doc." + ident, owner=owner), store=store)
+            if not mirror.get("executed") or mirror.get("rows") is None:
+                raise PreviewRefused("preview_read_unavailable")
+            details["retained_mirror"] = mirror["rows"][0] if mirror["rows"] else None
         elif operation == "delete_edge":
             source, target = arguments["from"], arguments["to"]
             _node(store, owner, source)
             _node(store, owner, target)
+            if source.startswith("domain:") or target.startswith("domain:"):
+                raise PreviewRefused("preview_kind_not_supported")
             raw_type = arguments["type"].strip().lower()
             rel = query._FRAGMENT_EDGE_TO_REL.get(raw_type, raw_type.upper())
             subtype = None
