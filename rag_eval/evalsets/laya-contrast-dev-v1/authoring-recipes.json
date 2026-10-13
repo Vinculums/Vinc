@@ -1,0 +1,1010 @@
+[
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-spec01-r2-0",
+        "text": "r[expr.range.behavior]\nThe `..` and `..=` operators will construct an object of one of the `std::ops::Range` (or `core::ops::Range`) variants, according to the following table:\n\n| Production             | Syntax        | Type                         | Range                 |\n|------------------------|---------------|------------------------------|-----------------------|\n| [RangeExpr]            | start`..`end  | [std::ops::Range]            | start &le; x &lt; end |\n| [RangeFromExpr]        | start`..`     | [std::ops::RangeFrom]        | start &le; x          |\n| [RangeToExpr]          | `..`end       | [std::ops::RangeTo]          |            x &lt; end |\n| [RangeFullExpr]        | `..`          | [std::ops::RangeFull]        |            -          |\n| [RangeInclusiveExpr]   | start`..=`end | [std::ops::RangeInclusive]   | start &le; x &le; end |\n| [RangeToInclusiveExpr] | `..=`end      | [std::ops::RangeToInclusive] |            x &le; end |"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "technical_specification",
+    "claim": {
+      "en": "In Rust, a start..end range excludes its upper bound.",
+      "ko": "Rust의 start..end 범위는 상한값을 포함하지 않는다."
+    },
+    "context": {
+      "en": "Rust Reference commit 5baa209fc199, spec01. This is language documentation, not a runtime observation.",
+      "ko": "Rust Reference 5baa209fc199 판본의 spec01다. 실행 관측이 아닌 언어 문서의 설명이다."
+    },
+    "counterclaim": {
+      "en": "Rust’s start..end range includes the end value.",
+      "ko": "Rust의 start..end 범위는 상한값 end를 포함한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The pinned Rust Reference states: In Rust, a start..end range excludes its upper bound.",
+      "ko": "고정한 Rust Reference의 설명은 다음과 같다. Rust의 start..end 범위는 상한값을 포함하지 않는다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "The end value is outside Rust’s start..end range.",
+      "ko": "Rust의 start..end 범위 밖에 상한값 end가 있다."
+    },
+    "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+    "scope_change": {
+      "en": "This rule also applies without exception to every unrelated programming language: In Rust, a start..end range excludes its upper bound.",
+      "ko": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. Rust의 start..end 범위는 상한값을 포함하지 않는다."
+    },
+    "source_id": "source:laya-dev1-spec01",
+    "span_ids": [
+      "span:laya-dev1-spec01-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-spec02-r2-0",
+        "text": "r[expr.return.behavior]\nEvaluating a `return` expression moves its argument into the designated output location for the current function call, destroys the current function activation frame, and transfers control to the caller frame."
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "technical_specification",
+    "claim": {
+      "en": "Evaluating return transfers control to the caller frame.",
+      "ko": "return 표현식을 평가하면 호출자 프레임으로 제어가 넘어간다."
+    },
+    "context": {
+      "en": "Rust Reference commit 5baa209fc199, spec02. This is language documentation, not a runtime observation.",
+      "ko": "Rust Reference 5baa209fc199 판본의 spec02다. 실행 관측이 아닌 언어 문서의 설명이다."
+    },
+    "counterclaim": {
+      "en": "Evaluating return keeps control in the current function frame.",
+      "ko": "return 표현식을 평가해도 현재 함수 프레임이 제어를 유지한다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The pinned Rust Reference states: Evaluating return transfers control to the caller frame.",
+      "ko": "고정한 Rust Reference의 설명은 다음과 같다. return 표현식을 평가하면 호출자 프레임으로 제어가 넘어간다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "A return expression passes control back to the calling frame.",
+      "ko": "return 표현식은 호출한 프레임으로 제어를 돌려준다."
+    },
+    "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+    "scope_change": {
+      "en": "This rule also applies without exception to every unrelated programming language: Evaluating return transfers control to the caller frame.",
+      "ko": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. return 표현식을 평가하면 호출자 프레임으로 제어가 넘어간다."
+    },
+    "source_id": "source:laya-dev1-spec02",
+    "span_ids": [
+      "span:laya-dev1-spec02-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-spec03-r2-0",
+        "text": "r[expr.array.array-behavior]\nThis produces an array containing each of these values in the order they are written."
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "technical_specification",
+    "claim": {
+      "en": "The listed array values keep their written order.",
+      "ko": "배열에 나열한 값들은 작성한 순서대로 들어간다."
+    },
+    "context": {
+      "en": "Rust Reference commit 5baa209fc199, spec03. This is language documentation, not a runtime observation.",
+      "ko": "Rust Reference 5baa209fc199 판본의 spec03다. 실행 관측이 아닌 언어 문서의 설명이다."
+    },
+    "counterclaim": {
+      "en": "The listed array values are inserted in reverse written order.",
+      "ko": "배열에 나열한 값들은 작성한 순서의 역순으로 들어간다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The pinned Rust Reference states: The listed array values keep their written order.",
+      "ko": "고정한 Rust Reference의 설명은 다음과 같다. 배열에 나열한 값들은 작성한 순서대로 들어간다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "An array formed by listing values retains their source order.",
+      "ko": "값을 나열해 만든 배열은 원문에 적힌 순서를 유지한다."
+    },
+    "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+    "scope_change": {
+      "en": "This rule also applies without exception to every unrelated programming language: The listed array values keep their written order.",
+      "ko": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. 배열에 나열한 값들은 작성한 순서대로 들어간다."
+    },
+    "source_id": "source:laya-dev1-spec03",
+    "span_ids": [
+      "span:laya-dev1-spec03-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-spec04-r2-0",
+        "text": "r[expr.tuple.unary-tuple-restriction]\n1-ary tuple expressions require a comma after their tuple initializer operand to be disambiguated with a [parenthetical expression]."
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "technical_specification",
+    "claim": {
+      "en": "A one-element tuple expression needs a comma after its operand.",
+      "ko": "원소가 하나인 튜플 표현식은 피연산자 뒤에 쉼표가 필요하다."
+    },
+    "context": {
+      "en": "Rust Reference commit 5baa209fc199, spec04. This is language documentation, not a runtime observation.",
+      "ko": "Rust Reference 5baa209fc199 판본의 spec04다. 실행 관측이 아닌 언어 문서의 설명이다."
+    },
+    "counterclaim": {
+      "en": "A unary tuple expression forbids a comma after its operand.",
+      "ko": "원소가 하나인 튜플 표현식은 피연산자 뒤에 쉼표를 쓸 수 없다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The pinned Rust Reference states: A one-element tuple expression needs a comma after its operand.",
+      "ko": "고정한 Rust Reference의 설명은 다음과 같다. 원소가 하나인 튜플 표현식은 피연산자 뒤에 쉼표가 필요하다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "The trailing comma distinguishes a unary tuple from parentheses.",
+      "ko": "뒤에 붙인 쉼표가 원소 하나인 튜플을 괄호 표현식과 구별한다."
+    },
+    "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+    "scope_change": {
+      "en": "This rule also applies without exception to every unrelated programming language: A one-element tuple expression needs a comma after its operand.",
+      "ko": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. 원소가 하나인 튜플 표현식은 피연산자 뒤에 쉼표가 필요하다."
+    },
+    "source_id": "source:laya-dev1-spec04",
+    "span_ids": [
+      "span:laya-dev1-spec04-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-spec05-r2-0",
+        "text": "r[items.type.intro]\nA _type alias_ defines a new name for an existing [type] in the [type namespace] of the module or block where it is located. Type aliases are declared with the keyword `type`. Every value has a single, specific type, but may implement several different traits, and may be compatible with several different type constraints."
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "technical_specification",
+    "claim": {
+      "en": "A type alias gives an existing type another name.",
+      "ko": "타입 별칭은 기존 타입에 다른 이름을 붙인다."
+    },
+    "context": {
+      "en": "Rust Reference commit 5baa209fc199, spec05. This is language documentation, not a runtime observation.",
+      "ko": "Rust Reference 5baa209fc199 판본의 spec05다. 실행 관측이 아닌 언어 문서의 설명이다."
+    },
+    "counterclaim": {
+      "en": "A type alias necessarily creates a distinct new type.",
+      "ko": "타입 별칭은 반드시 별개의 새 타입을 만든다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The pinned Rust Reference states: A type alias gives an existing type another name.",
+      "ko": "고정한 Rust Reference의 설명은 다음과 같다. 타입 별칭은 기존 타입에 다른 이름을 붙인다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "Declaring a type alias introduces a new name for an existing type.",
+      "ko": "타입 별칭을 선언하면 기존 타입을 가리키는 새 이름이 생긴다."
+    },
+    "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+    "scope_change": {
+      "en": "This rule also applies without exception to every unrelated programming language: A type alias gives an existing type another name.",
+      "ko": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. 타입 별칭은 기존 타입에 다른 이름을 붙인다."
+    },
+    "source_id": "source:laya-dev1-spec05",
+    "span_ids": [
+      "span:laya-dev1-spec05-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-spec06-r2-0",
+        "text": "r[items.const.behavior]\nConstants are essentially inlined wherever they are used, meaning that they are copied directly into the relevant context when used. This includes use of constants from external crates, and non-[`Copy`] types. References to the same constant are not necessarily guaranteed to refer to the same memory address."
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "technical_specification",
+    "claim": {
+      "en": "References to the same constant need not share one memory address.",
+      "ko": "같은 상수를 참조해도 메모리 주소가 같다는 보장은 없다."
+    },
+    "context": {
+      "en": "Rust Reference commit 5baa209fc199, spec06. This is language documentation, not a runtime observation.",
+      "ko": "Rust Reference 5baa209fc199 판본의 spec06다. 실행 관측이 아닌 언어 문서의 설명이다."
+    },
+    "counterclaim": {
+      "en": "All references to the same constant are guaranteed to share an address.",
+      "ko": "동일한 상수의 모든 참조는 같은 주소를 가진다고 보장된다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The pinned Rust Reference states: References to the same constant need not share one memory address.",
+      "ko": "고정한 Rust Reference의 설명은 다음과 같다. 같은 상수를 참조해도 메모리 주소가 같다는 보장은 없다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "The same constant can be referenced without an identical address guarantee.",
+      "ko": "동일한 상수의 참조라고 해서 주소까지 같다고 보장되지는 않는다."
+    },
+    "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+    "scope_change": {
+      "en": "This rule also applies without exception to every unrelated programming language: References to the same constant need not share one memory address.",
+      "ko": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. 같은 상수를 참조해도 메모리 주소가 같다는 보장은 없다."
+    },
+    "source_id": "source:laya-dev1-spec06",
+    "span_ids": [
+      "span:laya-dev1-spec06-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-spec07-r2-0",
+        "text": "r[items.use.visibility.intro]\nLike items, `use` declarations are private to the containing module, by default. Also like items, a `use` declaration can be public, if qualified by the `pub` keyword. Such a `use` declaration serves to _re-export_ a name. A public `use` declaration can therefore _redirect_ some public name to a different target definition: even a definition with a private canonical path, inside a different module."
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "technical_specification",
+    "claim": {
+      "en": "A use declaration is private to its containing module by default.",
+      "ko": "use 선언은 기본적으로 자신이 속한 모듈 안에서 비공개다."
+    },
+    "context": {
+      "en": "Rust Reference commit 5baa209fc199, spec07. This is language documentation, not a runtime observation.",
+      "ko": "Rust Reference 5baa209fc199 판본의 spec07다. 실행 관측이 아닌 언어 문서의 설명이다."
+    },
+    "counterclaim": {
+      "en": "Every use declaration is public by default.",
+      "ko": "모든 use 선언은 기본적으로 공개다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The pinned Rust Reference states: A use declaration is private to its containing module by default.",
+      "ko": "고정한 Rust Reference의 설명은 다음과 같다. use 선언은 기본적으로 자신이 속한 모듈 안에서 비공개다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "Without pub, a use declaration defaults to module-private visibility.",
+      "ko": "pub이 없는 use 선언의 기본 가시성은 모듈 내 비공개다."
+    },
+    "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+    "scope_change": {
+      "en": "This rule also applies without exception to every unrelated programming language: A use declaration is private to its containing module by default.",
+      "ko": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. use 선언은 기본적으로 자신이 속한 모듈 안에서 비공개다."
+    },
+    "source_id": "source:laya-dev1-spec07",
+    "span_ids": [
+      "span:laya-dev1-spec07-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-spec08-r2-0",
+        "text": "1. If an item is public, then it can be accessed externally from some module `m` if you can access all the item's ancestor modules from `m`. You can also potentially be able to name the item through re-exports. See below.\n2. If an item is private, it may be accessed by the current module and its descendants."
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "technical_specification",
+    "claim": {
+      "en": "A private item may be accessed by its module and that module’s descendants.",
+      "ko": "비공개 항목은 해당 모듈과 그 하위 모듈에서 접근할 수 있다."
+    },
+    "context": {
+      "en": "Rust Reference commit 5baa209fc199, spec08. This is language documentation, not a runtime observation.",
+      "ko": "Rust Reference 5baa209fc199 판본의 spec08다. 실행 관측이 아닌 언어 문서의 설명이다."
+    },
+    "counterclaim": {
+      "en": "A private item cannot be accessed by any descendant module.",
+      "ko": "비공개 항목은 어떤 하위 모듈에서도 접근할 수 없다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The pinned Rust Reference states: A private item may be accessed by its module and that module’s descendants.",
+      "ko": "고정한 Rust Reference의 설명은 다음과 같다. 비공개 항목은 해당 모듈과 그 하위 모듈에서 접근할 수 있다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "Module descendants can access a private item of that module.",
+      "ko": "모듈의 하위 모듈은 그 모듈의 비공개 항목에 접근할 수 있다."
+    },
+    "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+    "scope_change": {
+      "en": "This rule also applies without exception to every unrelated programming language: A private item may be accessed by its module and that module’s descendants.",
+      "ko": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. 비공개 항목은 해당 모듈과 그 하위 모듈에서 접근할 수 있다."
+    },
+    "source_id": "source:laya-dev1-spec08",
+    "span_ids": [
+      "span:laya-dev1-spec08-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-obs01-r2-0",
+        "text": "{\n  \"case_id\": \"obs01\",\n  \"code\": \"import sqlite3,json; c=sqlite3.connect(':memory:'); c.executescript('CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9);'); print(json.dumps(c.execute('SELECT count(*), count(x) FROM t;').fetchall(),ensure_ascii=False)); print(sqlite3.sqlite_version)\",\n  \"code_author\": \"OpenAI Codex assistant\",\n  \"completed_at\": \"2026-10-11T09:50:48.365288+00:00\",\n  \"exact_served_model\": null,\n  \"executable_sha256\": \"3638cd6a1236660910fe5e278994d309c073fb4bb49ee061f48bd4ccaaa0a191\",\n  \"origin\": \"locally_observed\",\n  \"platform\": \"Windows-10-10.0.19045-SP0\",\n  \"python\": \"3.12.9 (tags/v3.12.9:fdb8142, Feb  4 2025, 15:27:58) [MSC v.1942 64 bit (AMD64)]\",\n  \"query\": \"SELECT count(*), count(x) FROM t;\",\n  \"returncode\": 0,\n  \"rows\": [\n    [\n      3,\n      2\n    ]\n  ],\n  \"setup\": \"CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9);\",\n  \"sqlite_version\": \"3.45.3\",\n  \"started_at\": \"2026-10-11T09:50:47.964287+00:00\",\n  \"stderr\": \"\",\n  \"stdout\": \"[[3, 2]]\\n3.45.3\\n\"\n}\n"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "dated_engineering_measurement",
+    "claim": {
+      "en": "In this query, count(*) was 3 while count(x) was 2.",
+      "ko": "이번 쿼리에서 count(*)는 3이고 count(x)는 2였다."
+    },
+    "context": {
+      "en": "One isolated SQLite 3.45.3 execution, case obs01. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9); SELECT count(*), count(x) FROM t;",
+      "ko": "SQLite 3.45.3의 격리된 한 번의 실행 obs01다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9); SELECT count(*), count(x) FROM t;"
+    },
+    "counterclaim": {
+      "en": "Both counts were 3 in this query.",
+      "ko": "이번 쿼리에서 두 개수는 모두 3이었다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Isolated SQLite case obs01 exited 0 and printed rows [[3, 2]].",
+      "ko": "격리된 SQLite 시험 obs01의 종료 코드는 0이며 출력된 행은 [[3, 2]]이다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "The null-containing input gave a row count of 3 and a non-null x count of 2.",
+      "ko": "NULL이 포함된 이번 입력의 행 수는 3, NULL이 아닌 x의 수는 2였다."
+    },
+    "revision": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+    "scope_change": {
+      "en": "All other database systems and all datasets must produce this recorded outcome: In this query, count(*) was 3 while count(x) was 2.",
+      "ko": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 이번 쿼리에서 count(*)는 3이고 count(x)는 2였다."
+    },
+    "source_id": "source:laya-dev1-obs01",
+    "span_ids": [
+      "span:laya-dev1-obs01-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-obs02-r2-0",
+        "text": "{\n  \"case_id\": \"obs02\",\n  \"code\": \"import sqlite3,json; c=sqlite3.connect(':memory:'); c.executescript(''); print(json.dumps(c.execute('SELECT NULL IS NULL, NULL = NULL;').fetchall(),ensure_ascii=False)); print(sqlite3.sqlite_version)\",\n  \"code_author\": \"OpenAI Codex assistant\",\n  \"completed_at\": \"2026-10-11T09:50:48.757290+00:00\",\n  \"exact_served_model\": null,\n  \"executable_sha256\": \"3638cd6a1236660910fe5e278994d309c073fb4bb49ee061f48bd4ccaaa0a191\",\n  \"origin\": \"locally_observed\",\n  \"platform\": \"Windows-10-10.0.19045-SP0\",\n  \"python\": \"3.12.9 (tags/v3.12.9:fdb8142, Feb  4 2025, 15:27:58) [MSC v.1942 64 bit (AMD64)]\",\n  \"query\": \"SELECT NULL IS NULL, NULL = NULL;\",\n  \"returncode\": 0,\n  \"rows\": [\n    [\n      1,\n      null\n    ]\n  ],\n  \"setup\": \"\",\n  \"sqlite_version\": \"3.45.3\",\n  \"started_at\": \"2026-10-11T09:50:48.575304+00:00\",\n  \"stderr\": \"\",\n  \"stdout\": \"[[1, null]]\\n3.45.3\\n\"\n}\n"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "dated_engineering_measurement",
+    "claim": {
+      "en": "NULL IS NULL returned 1, while NULL = NULL returned null.",
+      "ko": "NULL IS NULL은 1, NULL = NULL은 NULL을 반환했다."
+    },
+    "context": {
+      "en": "One isolated SQLite 3.45.3 execution, case obs02. SQL:  SELECT NULL IS NULL, NULL = NULL;",
+      "ko": "SQLite 3.45.3의 격리된 한 번의 실행 obs02다. SQL:  SELECT NULL IS NULL, NULL = NULL;"
+    },
+    "counterclaim": {
+      "en": "Both NULL comparisons returned 1 in this run.",
+      "ko": "이번 실행에서 두 NULL 비교는 모두 1을 반환했다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Isolated SQLite case obs02 exited 0 and printed rows [[1, null]].",
+      "ko": "격리된 SQLite 시험 obs02의 종료 코드는 0이며 출력된 행은 [[1, null]]이다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "The IS comparison was true, but equality yielded null in this run.",
+      "ko": "이번 실행에서 IS 비교는 참이고 동등 비교 결과는 NULL이었다."
+    },
+    "revision": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+    "scope_change": {
+      "en": "All other database systems and all datasets must produce this recorded outcome: NULL IS NULL returned 1, while NULL = NULL returned null.",
+      "ko": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. NULL IS NULL은 1, NULL = NULL은 NULL을 반환했다."
+    },
+    "source_id": "source:laya-dev1-obs02",
+    "span_ids": [
+      "span:laya-dev1-obs02-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-obs03-r2-0",
+        "text": "{\n  \"case_id\": \"obs03\",\n  \"code\": \"import sqlite3,json; c=sqlite3.connect(':memory:'); c.executescript('CREATE TABLE t(x INTEGER UNIQUE); INSERT INTO t VALUES (3); INSERT OR IGNORE INTO t VALUES (3);'); print(json.dumps(c.execute('SELECT count(*) FROM t;').fetchall(),ensure_ascii=False)); print(sqlite3.sqlite_version)\",\n  \"code_author\": \"OpenAI Codex assistant\",\n  \"completed_at\": \"2026-10-11T09:50:48.993287+00:00\",\n  \"exact_served_model\": null,\n  \"executable_sha256\": \"3638cd6a1236660910fe5e278994d309c073fb4bb49ee061f48bd4ccaaa0a191\",\n  \"origin\": \"locally_observed\",\n  \"platform\": \"Windows-10-10.0.19045-SP0\",\n  \"python\": \"3.12.9 (tags/v3.12.9:fdb8142, Feb  4 2025, 15:27:58) [MSC v.1942 64 bit (AMD64)]\",\n  \"query\": \"SELECT count(*) FROM t;\",\n  \"returncode\": 0,\n  \"rows\": [\n    [\n      1\n    ]\n  ],\n  \"setup\": \"CREATE TABLE t(x INTEGER UNIQUE); INSERT INTO t VALUES (3); INSERT OR IGNORE INTO t VALUES (3);\",\n  \"sqlite_version\": \"3.45.3\",\n  \"started_at\": \"2026-10-11T09:50:48.761291+00:00\",\n  \"stderr\": \"\",\n  \"stdout\": \"[[1]]\\n3.45.3\\n\"\n}\n"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "dated_engineering_measurement",
+    "claim": {
+      "en": "The unique-key table held one row after the ignored duplicate insert.",
+      "ko": "중복 삽입을 무시한 뒤 고유 키 테이블에는 한 행이 남았다."
+    },
+    "context": {
+      "en": "One isolated SQLite 3.45.3 execution, case obs03. SQL: CREATE TABLE t(x INTEGER UNIQUE); INSERT INTO t VALUES (3); INSERT OR IGNORE INTO t VALUES (3); SELECT count(*) FROM t;",
+      "ko": "SQLite 3.45.3의 격리된 한 번의 실행 obs03다. SQL: CREATE TABLE t(x INTEGER UNIQUE); INSERT INTO t VALUES (3); INSERT OR IGNORE INTO t VALUES (3); SELECT count(*) FROM t;"
+    },
+    "counterclaim": {
+      "en": "The ignored duplicate insert increased the row count to two.",
+      "ko": "무시된 중복 삽입 때문에 행 수가 둘로 늘었다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Isolated SQLite case obs03 exited 0 and printed rows [[1]].",
+      "ko": "격리된 SQLite 시험 obs03의 종료 코드는 0이며 출력된 행은 [[1]]이다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "Ignoring the duplicate kept the row count at one.",
+      "ko": "중복을 무시했으므로 행 수는 하나로 유지됐다."
+    },
+    "revision": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+    "scope_change": {
+      "en": "All other database systems and all datasets must produce this recorded outcome: The unique-key table held one row after the ignored duplicate insert.",
+      "ko": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 중복 삽입을 무시한 뒤 고유 키 테이블에는 한 행이 남았다."
+    },
+    "source_id": "source:laya-dev1-obs03",
+    "span_ids": [
+      "span:laya-dev1-obs03-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-obs04-r2-0",
+        "text": "{\n  \"case_id\": \"obs04\",\n  \"code\": \"import sqlite3,json; c=sqlite3.connect(':memory:'); c.executescript('CREATE TABLE t(x); INSERT INTO t VALUES (8),(2),(5);'); print(json.dumps(c.execute('SELECT x FROM t ORDER BY x DESC LIMIT 2;').fetchall(),ensure_ascii=False)); print(sqlite3.sqlite_version)\",\n  \"code_author\": \"OpenAI Codex assistant\",\n  \"completed_at\": \"2026-10-11T09:50:49.221291+00:00\",\n  \"exact_served_model\": null,\n  \"executable_sha256\": \"3638cd6a1236660910fe5e278994d309c073fb4bb49ee061f48bd4ccaaa0a191\",\n  \"origin\": \"locally_observed\",\n  \"platform\": \"Windows-10-10.0.19045-SP0\",\n  \"python\": \"3.12.9 (tags/v3.12.9:fdb8142, Feb  4 2025, 15:27:58) [MSC v.1942 64 bit (AMD64)]\",\n  \"query\": \"SELECT x FROM t ORDER BY x DESC LIMIT 2;\",\n  \"returncode\": 0,\n  \"rows\": [\n    [\n      8\n    ],\n    [\n      5\n    ]\n  ],\n  \"setup\": \"CREATE TABLE t(x); INSERT INTO t VALUES (8),(2),(5);\",\n  \"sqlite_version\": \"3.45.3\",\n  \"started_at\": \"2026-10-11T09:50:48.999287+00:00\",\n  \"stderr\": \"\",\n  \"stdout\": \"[[8], [5]]\\n3.45.3\\n\"\n}\n"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "dated_engineering_measurement",
+    "claim": {
+      "en": "The descending limited query returned 8 followed by 5.",
+      "ko": "내림차순으로 제한한 쿼리 결과는 8 다음 5였다."
+    },
+    "context": {
+      "en": "One isolated SQLite 3.45.3 execution, case obs04. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (8),(2),(5); SELECT x FROM t ORDER BY x DESC LIMIT 2;",
+      "ko": "SQLite 3.45.3의 격리된 한 번의 실행 obs04다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (8),(2),(5); SELECT x FROM t ORDER BY x DESC LIMIT 2;"
+    },
+    "counterclaim": {
+      "en": "The descending limited query returned 2 followed by 5.",
+      "ko": "내림차순으로 제한한 쿼리 결과는 2 다음 5였다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Isolated SQLite case obs04 exited 0 and printed rows [[8], [5]].",
+      "ko": "격리된 SQLite 시험 obs04의 종료 코드는 0이며 출력된 행은 [[8], [5]]이다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "With this order and limit, the returned values were 8 and then 5.",
+      "ko": "이번 정렬과 개수 제한으로 반환된 값은 8 다음 5였다."
+    },
+    "revision": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+    "scope_change": {
+      "en": "All other database systems and all datasets must produce this recorded outcome: The descending limited query returned 8 followed by 5.",
+      "ko": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 내림차순으로 제한한 쿼리 결과는 8 다음 5였다."
+    },
+    "source_id": "source:laya-dev1-obs04",
+    "span_ids": [
+      "span:laya-dev1-obs04-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-obs05-r2-0",
+        "text": "{\n  \"case_id\": \"obs05\",\n  \"code\": \"import sqlite3,json; c=sqlite3.connect(':memory:'); c.executescript('CREATE TABLE t(x);'); print(json.dumps(c.execute('SELECT count(*), sum(x), total(x) FROM t;').fetchall(),ensure_ascii=False)); print(sqlite3.sqlite_version)\",\n  \"code_author\": \"OpenAI Codex assistant\",\n  \"completed_at\": \"2026-10-11T09:50:49.421292+00:00\",\n  \"exact_served_model\": null,\n  \"executable_sha256\": \"3638cd6a1236660910fe5e278994d309c073fb4bb49ee061f48bd4ccaaa0a191\",\n  \"origin\": \"locally_observed\",\n  \"platform\": \"Windows-10-10.0.19045-SP0\",\n  \"python\": \"3.12.9 (tags/v3.12.9:fdb8142, Feb  4 2025, 15:27:58) [MSC v.1942 64 bit (AMD64)]\",\n  \"query\": \"SELECT count(*), sum(x), total(x) FROM t;\",\n  \"returncode\": 0,\n  \"rows\": [\n    [\n      0,\n      null,\n      0.0\n    ]\n  ],\n  \"setup\": \"CREATE TABLE t(x);\",\n  \"sqlite_version\": \"3.45.3\",\n  \"started_at\": \"2026-10-11T09:50:49.226290+00:00\",\n  \"stderr\": \"\",\n  \"stdout\": \"[[0, null, 0.0]]\\n3.45.3\\n\"\n}\n"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "dated_engineering_measurement",
+    "claim": {
+      "en": "On the empty table, sum(x) was null and total(x) was 0.0.",
+      "ko": "빈 테이블에서 sum(x)는 NULL, total(x)는 0.0이었다."
+    },
+    "context": {
+      "en": "One isolated SQLite 3.45.3 execution, case obs05. SQL: CREATE TABLE t(x); SELECT count(*), sum(x), total(x) FROM t;",
+      "ko": "SQLite 3.45.3의 격리된 한 번의 실행 obs05다. SQL: CREATE TABLE t(x); SELECT count(*), sum(x), total(x) FROM t;"
+    },
+    "counterclaim": {
+      "en": "On the empty table, sum(x) and total(x) both returned null.",
+      "ko": "빈 테이블에서 sum(x)와 total(x)는 모두 NULL을 반환했다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Isolated SQLite case obs05 exited 0 and printed rows [[0, null, 0.0]].",
+      "ko": "격리된 SQLite 시험 obs05의 종료 코드는 0이며 출력된 행은 [[0, null, 0.0]]이다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "The empty-input sum and total differed: null versus 0.0.",
+      "ko": "빈 입력의 sum과 total은 각각 NULL과 0.0으로 달랐다."
+    },
+    "revision": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+    "scope_change": {
+      "en": "All other database systems and all datasets must produce this recorded outcome: On the empty table, sum(x) was null and total(x) was 0.0.",
+      "ko": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 빈 테이블에서 sum(x)는 NULL, total(x)는 0.0이었다."
+    },
+    "source_id": "source:laya-dev1-obs05",
+    "span_ids": [
+      "span:laya-dev1-obs05-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-obs06-r2-0",
+        "text": "{\n  \"case_id\": \"obs06\",\n  \"code\": \"import sqlite3,json; c=sqlite3.connect(':memory:'); c.executescript(''); print(json.dumps(c.execute('SELECT typeof(7/2), 7/2, 7.0/2;').fetchall(),ensure_ascii=False)); print(sqlite3.sqlite_version)\",\n  \"code_author\": \"OpenAI Codex assistant\",\n  \"completed_at\": \"2026-10-11T09:50:49.622289+00:00\",\n  \"exact_served_model\": null,\n  \"executable_sha256\": \"3638cd6a1236660910fe5e278994d309c073fb4bb49ee061f48bd4ccaaa0a191\",\n  \"origin\": \"locally_observed\",\n  \"platform\": \"Windows-10-10.0.19045-SP0\",\n  \"python\": \"3.12.9 (tags/v3.12.9:fdb8142, Feb  4 2025, 15:27:58) [MSC v.1942 64 bit (AMD64)]\",\n  \"query\": \"SELECT typeof(7/2), 7/2, 7.0/2;\",\n  \"returncode\": 0,\n  \"rows\": [\n    [\n      \"integer\",\n      3,\n      3.5\n    ]\n  ],\n  \"setup\": \"\",\n  \"sqlite_version\": \"3.45.3\",\n  \"started_at\": \"2026-10-11T09:50:49.426288+00:00\",\n  \"stderr\": \"\",\n  \"stdout\": \"[[\\\"integer\\\", 3, 3.5]]\\n3.45.3\\n\"\n}\n"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "dated_engineering_measurement",
+    "claim": {
+      "en": "The integer division produced 3; the real-valued division produced 3.5.",
+      "ko": "정수 나눗셈 결과는 3, 실수 나눗셈 결과는 3.5였다."
+    },
+    "context": {
+      "en": "One isolated SQLite 3.45.3 execution, case obs06. SQL:  SELECT typeof(7/2), 7/2, 7.0/2;",
+      "ko": "SQLite 3.45.3의 격리된 한 번의 실행 obs06다. SQL:  SELECT typeof(7/2), 7/2, 7.0/2;"
+    },
+    "counterclaim": {
+      "en": "Both divisions produced 3.5 in this query.",
+      "ko": "이번 쿼리에서 두 나눗셈은 모두 3.5를 반환했다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Isolated SQLite case obs06 exited 0 and printed rows [[\"integer\", 3, 3.5]].",
+      "ko": "격리된 SQLite 시험 obs06의 종료 코드는 0이며 출력된 행은 [[\"integer\", 3, 3.5]]이다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "Dividing 7 by 2 gave 3, whereas dividing 7.0 by 2 gave 3.5.",
+      "ko": "7을 2로 나누면 3, 7.0을 2로 나누면 3.5가 나왔다."
+    },
+    "revision": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+    "scope_change": {
+      "en": "All other database systems and all datasets must produce this recorded outcome: The integer division produced 3; the real-valued division produced 3.5.",
+      "ko": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 정수 나눗셈 결과는 3, 실수 나눗셈 결과는 3.5였다."
+    },
+    "source_id": "source:laya-dev1-obs06",
+    "span_ids": [
+      "span:laya-dev1-obs06-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-obs07-r2-0",
+        "text": "{\n  \"case_id\": \"obs07\",\n  \"code\": \"import sqlite3,json; c=sqlite3.connect(':memory:'); c.executescript('CREATE TABLE t(x); INSERT INTO t VALUES (1),(1),(2);'); print(json.dumps(c.execute('SELECT DISTINCT x FROM t ORDER BY x;').fetchall(),ensure_ascii=False)); print(sqlite3.sqlite_version)\",\n  \"code_author\": \"OpenAI Codex assistant\",\n  \"completed_at\": \"2026-10-11T09:50:49.805291+00:00\",\n  \"exact_served_model\": null,\n  \"executable_sha256\": \"3638cd6a1236660910fe5e278994d309c073fb4bb49ee061f48bd4ccaaa0a191\",\n  \"origin\": \"locally_observed\",\n  \"platform\": \"Windows-10-10.0.19045-SP0\",\n  \"python\": \"3.12.9 (tags/v3.12.9:fdb8142, Feb  4 2025, 15:27:58) [MSC v.1942 64 bit (AMD64)]\",\n  \"query\": \"SELECT DISTINCT x FROM t ORDER BY x;\",\n  \"returncode\": 0,\n  \"rows\": [\n    [\n      1\n    ],\n    [\n      2\n    ]\n  ],\n  \"setup\": \"CREATE TABLE t(x); INSERT INTO t VALUES (1),(1),(2);\",\n  \"sqlite_version\": \"3.45.3\",\n  \"started_at\": \"2026-10-11T09:50:49.626289+00:00\",\n  \"stderr\": \"\",\n  \"stdout\": \"[[1], [2]]\\n3.45.3\\n\"\n}\n"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "dated_engineering_measurement",
+    "claim": {
+      "en": "The distinct ordered query returned two rows: 1 and 2.",
+      "ko": "중복을 제거하고 정렬한 쿼리는 1과 2의 두 행을 반환했다."
+    },
+    "context": {
+      "en": "One isolated SQLite 3.45.3 execution, case obs07. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (1),(1),(2); SELECT DISTINCT x FROM t ORDER BY x;",
+      "ko": "SQLite 3.45.3의 격리된 한 번의 실행 obs07다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (1),(1),(2); SELECT DISTINCT x FROM t ORDER BY x;"
+    },
+    "counterclaim": {
+      "en": "The distinct query returned three rows: 1, 1 and 2.",
+      "ko": "중복 제거 쿼리는 1, 1, 2의 세 행을 반환했다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Isolated SQLite case obs07 exited 0 and printed rows [[1], [2]].",
+      "ko": "격리된 SQLite 시험 obs07의 종료 코드는 0이며 출력된 행은 [[1], [2]]이다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "Removing duplicate x values left 1 and 2 in the result.",
+      "ko": "x의 중복값을 없애자 결과에는 1과 2가 남았다."
+    },
+    "revision": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+    "scope_change": {
+      "en": "All other database systems and all datasets must produce this recorded outcome: The distinct ordered query returned two rows: 1 and 2.",
+      "ko": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 중복을 제거하고 정렬한 쿼리는 1과 2의 두 행을 반환했다."
+    },
+    "source_id": "source:laya-dev1-obs07",
+    "span_ids": [
+      "span:laya-dev1-obs07-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-obs08-r2-0",
+        "text": "{\n  \"case_id\": \"obs08\",\n  \"code\": \"import sqlite3,json; c=sqlite3.connect(':memory:'); c.executescript(\\\"CREATE TABLE t(k,v); INSERT INTO t VALUES ('a',2),('a',3),('b',5);\\\"); print(json.dumps(c.execute('SELECT k,sum(v) FROM t GROUP BY k ORDER BY k;').fetchall(),ensure_ascii=False)); print(sqlite3.sqlite_version)\",\n  \"code_author\": \"OpenAI Codex assistant\",\n  \"completed_at\": \"2026-10-11T09:50:49.992293+00:00\",\n  \"exact_served_model\": null,\n  \"executable_sha256\": \"3638cd6a1236660910fe5e278994d309c073fb4bb49ee061f48bd4ccaaa0a191\",\n  \"origin\": \"locally_observed\",\n  \"platform\": \"Windows-10-10.0.19045-SP0\",\n  \"python\": \"3.12.9 (tags/v3.12.9:fdb8142, Feb  4 2025, 15:27:58) [MSC v.1942 64 bit (AMD64)]\",\n  \"query\": \"SELECT k,sum(v) FROM t GROUP BY k ORDER BY k;\",\n  \"returncode\": 0,\n  \"rows\": [\n    [\n      \"a\",\n      5\n    ],\n    [\n      \"b\",\n      5\n    ]\n  ],\n  \"setup\": \"CREATE TABLE t(k,v); INSERT INTO t VALUES ('a',2),('a',3),('b',5);\",\n  \"sqlite_version\": \"3.45.3\",\n  \"started_at\": \"2026-10-11T09:50:49.809296+00:00\",\n  \"stderr\": \"\",\n  \"stdout\": \"[[\\\"a\\\", 5], [\\\"b\\\", 5]]\\n3.45.3\\n\"\n}\n"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "dated_engineering_measurement",
+    "claim": {
+      "en": "The grouped query returned a sum of 5 for both a and b.",
+      "ko": "그룹별 쿼리에서 a와 b의 합은 각각 5였다."
+    },
+    "context": {
+      "en": "One isolated SQLite 3.45.3 execution, case obs08. SQL: CREATE TABLE t(k,v); INSERT INTO t VALUES ('a',2),('a',3),('b',5); SELECT k,sum(v) FROM t GROUP BY k ORDER BY k;",
+      "ko": "SQLite 3.45.3의 격리된 한 번의 실행 obs08다. SQL: CREATE TABLE t(k,v); INSERT INTO t VALUES ('a',2),('a',3),('b',5); SELECT k,sum(v) FROM t GROUP BY k ORDER BY k;"
+    },
+    "counterclaim": {
+      "en": "The grouped query returned 2 for a and 5 for b.",
+      "ko": "그룹별 쿼리 결과는 a가 2, b가 5였다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "Isolated SQLite case obs08 exited 0 and printed rows [[\"a\", 5], [\"b\", 5]].",
+      "ko": "격리된 SQLite 시험 obs08의 종료 코드는 0이며 출력된 행은 [[\"a\", 5], [\"b\", 5]]이다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "Each of the two keys had an aggregate value of 5.",
+      "ko": "두 키의 집계값은 각각 5였다."
+    },
+    "revision": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+    "scope_change": {
+      "en": "All other database systems and all datasets must produce this recorded outcome: The grouped query returned a sum of 5 for both a and b.",
+      "ko": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 그룹별 쿼리에서 a와 b의 합은 각각 5였다."
+    },
+    "source_id": "source:laya-dev1-obs08",
+    "span_ids": [
+      "span:laya-dev1-obs08-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-fact01-r2-0",
+        "text": "{\n    \"@context\": [\n        \"https://geojson.org/geojson-ld/geojson-context.jsonld\",\n        {\n            \"@version\": \"1.1\",\n            \"wx\": \"https://api.weather.gov/ontology#\",\n            \"s\": \"https://schema.org/\",\n            \"geo\": \"http://www.opengis.net/ont/geosparql#\",\n            \"unit\": \"http://codes.wmo.int/common/unit/\",\n            \"@vocab\": \"https://api.weather.gov/ontology#\",\n            \"geometry\": {\n                \"@id\": \"s:GeoCoordinates\",\n                \"@type\": \"geo:wktLiteral\"\n            },\n            \"city\": \"s:addressLocality\",\n            \"state\": \"s:addressRegion\",\n            \"distance\": {\n                \"@id\": \"s:Distance\",\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"bearing\": {\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"value\": {\n                \"@id\": \"s:value\"\n            },\n            \"unitCode\": {\n                \"@id\": \"s:unitCode\",\n                \"@type\": \"@id\"\n            },\n            \"forecastOffice\": {\n                \"@type\": \"@id\"\n            },\n            \"forecastGridData\": {\n                \"@type\": \"@id\"\n            },\n            \"publicZone\": {\n                \"@type\": \"@id\"\n            },\n            \"county\": {\n                \"@type\": \"@id\"\n            }\n        }\n    ],\n    \"id\": \"https://api.weather.gov/stations/KSEA\",\n    \"type\": \"Feature\",\n    \"geometry\": {\n        \"type\": \"Point\",\n        \"coordinates\": [\n            -122.31361,\n            47.44472\n        ]\n    },\n    \"properties\": {\n        \"@id\": \"https://api.weather.gov/stations/KSEA\",\n        \"@type\": \"wx:ObservationStation\",\n        \"elevation\": {\n            \"unitCode\": \"wmoUnit:m\",\n            \"value\": 130.1496\n        },\n        \"stationIdentifier\": \"KSEA\",\n        \"name\": \"Seattle, Seattle-Tacoma International Airport\",\n        \"timeZone\": \"America/Los_Angeles\",\n        \"provider\": \"ASOS-HFM\",\n        \"subProvider\": \"\",\n        \"forecast\": \"https://api.weather.gov/zones/forecast/WAZ316\",\n        \"county\": \"https://api.weather.gov/zones/county/WAC033\",\n        \"fireWeatherZone\": \"https://api.weather.gov/zones/fire/WAZ654\"\n    }\n}"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "general_factual_evidence",
+    "claim": {
+      "en": "KSEA is assigned the time-zone identifier America/Los_Angeles in this record.",
+      "ko": "이 기록에서 KSEA의 시간대 식별자는 America/Los_Angeles다."
+    },
+    "context": {
+      "en": "NWS station KSEA, captured 2026-10-11T09:50:50.240294+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "ko": "NWS 관측소 KSEA, 수집 시점 2026-10-11T09:50:50.240294+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다."
+    },
+    "counterclaim": {
+      "en": "This record assigns KSEA the time-zone identifier Etc/UTC.",
+      "ko": "이 기록에서 KSEA의 시간대 식별자는 Etc/UTC다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen NWS metadata for KSEA lists timeZone America/Los_Angeles.",
+      "ko": "고정한 NWS KSEA 메타데이터의 timeZone은 America/Los_Angeles다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "This metadata associates KSEA with the zone named America/Los_Angeles.",
+      "ko": "이 메타데이터에서 KSEA에 연결한 시간대 이름은 America/Los_Angeles다."
+    },
+    "revision": "snapshot:9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+    "scope_change": {
+      "en": "This same field value is guaranteed for every station at every future update: KSEA is assigned the time-zone identifier America/Los_Angeles in this record.",
+      "ko": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. 이 기록에서 KSEA의 시간대 식별자는 America/Los_Angeles다."
+    },
+    "source_id": "source:laya-dev1-fact01",
+    "span_ids": [
+      "span:laya-dev1-fact01-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-fact02-r2-0",
+        "text": "{\n    \"@context\": [\n        \"https://geojson.org/geojson-ld/geojson-context.jsonld\",\n        {\n            \"@version\": \"1.1\",\n            \"wx\": \"https://api.weather.gov/ontology#\",\n            \"s\": \"https://schema.org/\",\n            \"geo\": \"http://www.opengis.net/ont/geosparql#\",\n            \"unit\": \"http://codes.wmo.int/common/unit/\",\n            \"@vocab\": \"https://api.weather.gov/ontology#\",\n            \"geometry\": {\n                \"@id\": \"s:GeoCoordinates\",\n                \"@type\": \"geo:wktLiteral\"\n            },\n            \"city\": \"s:addressLocality\",\n            \"state\": \"s:addressRegion\",\n            \"distance\": {\n                \"@id\": \"s:Distance\",\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"bearing\": {\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"value\": {\n                \"@id\": \"s:value\"\n            },\n            \"unitCode\": {\n                \"@id\": \"s:unitCode\",\n                \"@type\": \"@id\"\n            },\n            \"forecastOffice\": {\n                \"@type\": \"@id\"\n            },\n            \"forecastGridData\": {\n                \"@type\": \"@id\"\n            },\n            \"publicZone\": {\n                \"@type\": \"@id\"\n            },\n            \"county\": {\n                \"@type\": \"@id\"\n            }\n        }\n    ],\n    \"id\": \"https://api.weather.gov/stations/KDEN\",\n    \"type\": \"Feature\",\n    \"geometry\": {\n        \"type\": \"Point\",\n        \"coordinates\": [\n            -104.65622,\n            39.84658\n        ]\n    },\n    \"properties\": {\n        \"@id\": \"https://api.weather.gov/stations/KDEN\",\n        \"@type\": \"wx:ObservationStation\",\n        \"elevation\": {\n            \"unitCode\": \"wmoUnit:m\",\n            \"value\": 1647.1392\n        },\n        \"stationIdentifier\": \"KDEN\",\n        \"name\": \"Denver, Denver International Airport\",\n        \"timeZone\": \"America/Denver\",\n        \"provider\": \"ASOS-HFM\",\n        \"subProvider\": \"\",\n        \"forecast\": \"https://api.weather.gov/zones/forecast/COZ040\",\n        \"county\": \"https://api.weather.gov/zones/county/COC031\",\n        \"fireWeatherZone\": \"https://api.weather.gov/zones/fire/COZ240\"\n    }\n}"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "general_factual_evidence",
+    "claim": {
+      "en": "KDEN has a metadata elevation greater than 1646 m.",
+      "ko": "KDEN의 메타데이터 고도는 1646m보다 높다."
+    },
+    "context": {
+      "en": "NWS station KDEN, captured 2026-10-11T09:50:50.487729+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "ko": "NWS 관측소 KDEN, 수집 시점 2026-10-11T09:50:50.487729+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다."
+    },
+    "counterclaim": {
+      "en": "The metadata elevation for KDEN is at most 1646 m.",
+      "ko": "KDEN의 메타데이터 고도는 1646m 이하다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen NWS metadata for KDEN lists elevation 1647.1392 m.",
+      "ko": "고정한 NWS KDEN 메타데이터의 고도는 1647.1392m다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "The recorded station elevation for KDEN exceeds 1646 metres.",
+      "ko": "KDEN에 기록된 관측소 고도는 1646미터를 넘는다."
+    },
+    "revision": "snapshot:6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+    "scope_change": {
+      "en": "This same field value is guaranteed for every station at every future update: KDEN has a metadata elevation greater than 1646 m.",
+      "ko": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. KDEN의 메타데이터 고도는 1646m보다 높다."
+    },
+    "source_id": "source:laya-dev1-fact02",
+    "span_ids": [
+      "span:laya-dev1-fact02-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-fact03-r2-0",
+        "text": "{\n    \"@context\": [\n        \"https://geojson.org/geojson-ld/geojson-context.jsonld\",\n        {\n            \"@version\": \"1.1\",\n            \"wx\": \"https://api.weather.gov/ontology#\",\n            \"s\": \"https://schema.org/\",\n            \"geo\": \"http://www.opengis.net/ont/geosparql#\",\n            \"unit\": \"http://codes.wmo.int/common/unit/\",\n            \"@vocab\": \"https://api.weather.gov/ontology#\",\n            \"geometry\": {\n                \"@id\": \"s:GeoCoordinates\",\n                \"@type\": \"geo:wktLiteral\"\n            },\n            \"city\": \"s:addressLocality\",\n            \"state\": \"s:addressRegion\",\n            \"distance\": {\n                \"@id\": \"s:Distance\",\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"bearing\": {\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"value\": {\n                \"@id\": \"s:value\"\n            },\n            \"unitCode\": {\n                \"@id\": \"s:unitCode\",\n                \"@type\": \"@id\"\n            },\n            \"forecastOffice\": {\n                \"@type\": \"@id\"\n            },\n            \"forecastGridData\": {\n                \"@type\": \"@id\"\n            },\n            \"publicZone\": {\n                \"@type\": \"@id\"\n            },\n            \"county\": {\n                \"@type\": \"@id\"\n            }\n        }\n    ],\n    \"id\": \"https://api.weather.gov/stations/KORD\",\n    \"type\": \"Feature\",\n    \"geometry\": {\n        \"type\": \"Point\",\n        \"coordinates\": [\n            -87.90444,\n            41.97972\n        ]\n    },\n    \"properties\": {\n        \"@id\": \"https://api.weather.gov/stations/KORD\",\n        \"@type\": \"wx:ObservationStation\",\n        \"elevation\": {\n            \"unitCode\": \"wmoUnit:m\",\n            \"value\": 202.9968\n        },\n        \"stationIdentifier\": \"KORD\",\n        \"name\": \"Chicago, Chicago-O'Hare International Airport\",\n        \"timeZone\": \"America/Chicago\",\n        \"provider\": \"ASOS-HFM\",\n        \"subProvider\": \"\",\n        \"forecast\": \"https://api.weather.gov/zones/forecast/ILZ104\",\n        \"county\": \"https://api.weather.gov/zones/county/ILC031\",\n        \"fireWeatherZone\": \"https://api.weather.gov/zones/fire/ILZ014\"\n    }\n}"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "general_factual_evidence",
+    "claim": {
+      "en": "The county-zone link for KORD ends with ILC031.",
+      "ko": "KORD의 county 구역 링크는 ILC031로 끝난다."
+    },
+    "context": {
+      "en": "NWS station KORD, captured 2026-10-11T09:50:50.755734+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "ko": "NWS 관측소 KORD, 수집 시점 2026-10-11T09:50:50.755734+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다."
+    },
+    "counterclaim": {
+      "en": "The county-zone link for KORD ends with ZZZ999.",
+      "ko": "KORD의 county 구역 링크는 ZZZ999로 끝난다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen NWS metadata for KORD lists county zone ILC031.",
+      "ko": "고정한 NWS KORD 메타데이터의 county 구역 식별자는 ILC031다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "ILC031 is the final identifier in this record’s county link for KORD.",
+      "ko": "이 기록의 KORD county 링크에서 마지막 식별자는 ILC031다."
+    },
+    "revision": "snapshot:c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+    "scope_change": {
+      "en": "This same field value is guaranteed for every station at every future update: The county-zone link for KORD ends with ILC031.",
+      "ko": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. KORD의 county 구역 링크는 ILC031로 끝난다."
+    },
+    "source_id": "source:laya-dev1-fact03",
+    "span_ids": [
+      "span:laya-dev1-fact03-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-fact04-r2-0",
+        "text": "{\n    \"@context\": [\n        \"https://geojson.org/geojson-ld/geojson-context.jsonld\",\n        {\n            \"@version\": \"1.1\",\n            \"wx\": \"https://api.weather.gov/ontology#\",\n            \"s\": \"https://schema.org/\",\n            \"geo\": \"http://www.opengis.net/ont/geosparql#\",\n            \"unit\": \"http://codes.wmo.int/common/unit/\",\n            \"@vocab\": \"https://api.weather.gov/ontology#\",\n            \"geometry\": {\n                \"@id\": \"s:GeoCoordinates\",\n                \"@type\": \"geo:wktLiteral\"\n            },\n            \"city\": \"s:addressLocality\",\n            \"state\": \"s:addressRegion\",\n            \"distance\": {\n                \"@id\": \"s:Distance\",\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"bearing\": {\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"value\": {\n                \"@id\": \"s:value\"\n            },\n            \"unitCode\": {\n                \"@id\": \"s:unitCode\",\n                \"@type\": \"@id\"\n            },\n            \"forecastOffice\": {\n                \"@type\": \"@id\"\n            },\n            \"forecastGridData\": {\n                \"@type\": \"@id\"\n            },\n            \"publicZone\": {\n                \"@type\": \"@id\"\n            },\n            \"county\": {\n                \"@type\": \"@id\"\n            }\n        }\n    ],\n    \"id\": \"https://api.weather.gov/stations/KBOS\",\n    \"type\": \"Feature\",\n    \"geometry\": {\n        \"type\": \"Point\",\n        \"coordinates\": [\n            -71.01056,\n            42.36056\n        ]\n    },\n    \"properties\": {\n        \"@id\": \"https://api.weather.gov/stations/KBOS\",\n        \"@type\": \"wx:ObservationStation\",\n        \"elevation\": {\n            \"unitCode\": \"wmoUnit:m\",\n            \"value\": 6.096\n        },\n        \"stationIdentifier\": \"KBOS\",\n        \"name\": \"Boston, Logan International Airport\",\n        \"timeZone\": \"America/New_York\",\n        \"provider\": \"ASOS-HFM\",\n        \"subProvider\": \"\",\n        \"forecast\": \"https://api.weather.gov/zones/forecast/MAZ015\",\n        \"county\": \"https://api.weather.gov/zones/county/MAC025\",\n        \"fireWeatherZone\": \"https://api.weather.gov/zones/fire/MAZ015\"\n    }\n}"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "general_factual_evidence",
+    "claim": {
+      "en": "ASOS-HFM is the provider field stored for KBOS.",
+      "ko": "KBOS에 저장된 provider 필드의 값은 ASOS-HFM다."
+    },
+    "context": {
+      "en": "NWS station KBOS, captured 2026-10-11T09:50:50.986739+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "ko": "NWS 관측소 KBOS, 수집 시점 2026-10-11T09:50:50.986739+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다."
+    },
+    "counterclaim": {
+      "en": "The stored provider field for KBOS is NONE.",
+      "ko": "KBOS에 저장된 provider 필드의 값은 NONE이다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen NWS metadata for KBOS lists provider ASOS-HFM.",
+      "ko": "고정한 NWS KBOS 메타데이터의 provider는 ASOS-HFM다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "This entry identifies KBOS’s provider as ASOS-HFM.",
+      "ko": "이 항목은 KBOS의 provider를 ASOS-HFM로 기록한다."
+    },
+    "revision": "snapshot:35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+    "scope_change": {
+      "en": "This same field value is guaranteed for every station at every future update: ASOS-HFM is the provider field stored for KBOS.",
+      "ko": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. KBOS에 저장된 provider 필드의 값은 ASOS-HFM다."
+    },
+    "source_id": "source:laya-dev1-fact04",
+    "span_ids": [
+      "span:laya-dev1-fact04-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-fact05-r2-0",
+        "text": "{\n    \"@context\": [\n        \"https://geojson.org/geojson-ld/geojson-context.jsonld\",\n        {\n            \"@version\": \"1.1\",\n            \"wx\": \"https://api.weather.gov/ontology#\",\n            \"s\": \"https://schema.org/\",\n            \"geo\": \"http://www.opengis.net/ont/geosparql#\",\n            \"unit\": \"http://codes.wmo.int/common/unit/\",\n            \"@vocab\": \"https://api.weather.gov/ontology#\",\n            \"geometry\": {\n                \"@id\": \"s:GeoCoordinates\",\n                \"@type\": \"geo:wktLiteral\"\n            },\n            \"city\": \"s:addressLocality\",\n            \"state\": \"s:addressRegion\",\n            \"distance\": {\n                \"@id\": \"s:Distance\",\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"bearing\": {\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"value\": {\n                \"@id\": \"s:value\"\n            },\n            \"unitCode\": {\n                \"@id\": \"s:unitCode\",\n                \"@type\": \"@id\"\n            },\n            \"forecastOffice\": {\n                \"@type\": \"@id\"\n            },\n            \"forecastGridData\": {\n                \"@type\": \"@id\"\n            },\n            \"publicZone\": {\n                \"@type\": \"@id\"\n            },\n            \"county\": {\n                \"@type\": \"@id\"\n            }\n        }\n    ],\n    \"id\": \"https://api.weather.gov/stations/PHNL\",\n    \"type\": \"Feature\",\n    \"geometry\": {\n        \"type\": \"Point\",\n        \"coordinates\": [\n            -157.94306,\n            21.3275\n        ]\n    },\n    \"properties\": {\n        \"@id\": \"https://api.weather.gov/stations/PHNL\",\n        \"@type\": \"wx:ObservationStation\",\n        \"elevation\": {\n            \"unitCode\": \"wmoUnit:m\",\n            \"value\": 3.048\n        },\n        \"stationIdentifier\": \"PHNL\",\n        \"name\": \"Daniel K Inouye International Airport\",\n        \"timeZone\": \"Pacific/Honolulu\",\n        \"provider\": \"ASOS\",\n        \"subProvider\": \"\",\n        \"forecast\": \"https://api.weather.gov/zones/forecast/HIZ033\",\n        \"county\": \"https://api.weather.gov/zones/county/HIC003\",\n        \"fireWeatherZone\": \"https://api.weather.gov/zones/fire/HIZ308\"\n    }\n}"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "general_factual_evidence",
+    "claim": {
+      "en": "PHNL is assigned the time-zone identifier Pacific/Honolulu in this record.",
+      "ko": "이 기록에서 PHNL의 시간대 식별자는 Pacific/Honolulu다."
+    },
+    "context": {
+      "en": "NWS station PHNL, captured 2026-10-11T09:50:51.278730+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "ko": "NWS 관측소 PHNL, 수집 시점 2026-10-11T09:50:51.278730+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다."
+    },
+    "counterclaim": {
+      "en": "This record assigns PHNL the time-zone identifier Etc/UTC.",
+      "ko": "이 기록에서 PHNL의 시간대 식별자는 Etc/UTC다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen NWS metadata for PHNL lists timeZone Pacific/Honolulu.",
+      "ko": "고정한 NWS PHNL 메타데이터의 timeZone은 Pacific/Honolulu다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "This metadata associates PHNL with the zone named Pacific/Honolulu.",
+      "ko": "이 메타데이터에서 PHNL에 연결한 시간대 이름은 Pacific/Honolulu다."
+    },
+    "revision": "snapshot:022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+    "scope_change": {
+      "en": "This same field value is guaranteed for every station at every future update: PHNL is assigned the time-zone identifier Pacific/Honolulu in this record.",
+      "ko": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. 이 기록에서 PHNL의 시간대 식별자는 Pacific/Honolulu다."
+    },
+    "source_id": "source:laya-dev1-fact05",
+    "span_ids": [
+      "span:laya-dev1-fact05-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-fact06-r2-0",
+        "text": "{\n    \"@context\": [\n        \"https://geojson.org/geojson-ld/geojson-context.jsonld\",\n        {\n            \"@version\": \"1.1\",\n            \"wx\": \"https://api.weather.gov/ontology#\",\n            \"s\": \"https://schema.org/\",\n            \"geo\": \"http://www.opengis.net/ont/geosparql#\",\n            \"unit\": \"http://codes.wmo.int/common/unit/\",\n            \"@vocab\": \"https://api.weather.gov/ontology#\",\n            \"geometry\": {\n                \"@id\": \"s:GeoCoordinates\",\n                \"@type\": \"geo:wktLiteral\"\n            },\n            \"city\": \"s:addressLocality\",\n            \"state\": \"s:addressRegion\",\n            \"distance\": {\n                \"@id\": \"s:Distance\",\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"bearing\": {\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"value\": {\n                \"@id\": \"s:value\"\n            },\n            \"unitCode\": {\n                \"@id\": \"s:unitCode\",\n                \"@type\": \"@id\"\n            },\n            \"forecastOffice\": {\n                \"@type\": \"@id\"\n            },\n            \"forecastGridData\": {\n                \"@type\": \"@id\"\n            },\n            \"publicZone\": {\n                \"@type\": \"@id\"\n            },\n            \"county\": {\n                \"@type\": \"@id\"\n            }\n        }\n    ],\n    \"id\": \"https://api.weather.gov/stations/PAFA\",\n    \"type\": \"Feature\",\n    \"geometry\": {\n        \"type\": \"Point\",\n        \"coordinates\": [\n            -147.87611,\n            64.80389\n        ]\n    },\n    \"properties\": {\n        \"@id\": \"https://api.weather.gov/stations/PAFA\",\n        \"@type\": \"wx:ObservationStation\",\n        \"elevation\": {\n            \"unitCode\": \"wmoUnit:m\",\n            \"value\": 131.9784\n        },\n        \"stationIdentifier\": \"PAFA\",\n        \"name\": \"Fairbanks, Fairbanks International Airport\",\n        \"timeZone\": \"America/Anchorage\",\n        \"provider\": \"ASOS-HFM\",\n        \"subProvider\": \"\",\n        \"forecast\": \"https://api.weather.gov/zones/forecast/AKZ844\",\n        \"county\": \"https://api.weather.gov/zones/county/AKC090\",\n        \"fireWeatherZone\": \"https://api.weather.gov/zones/fire/AKZ944\"\n    }\n}"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "general_factual_evidence",
+    "claim": {
+      "en": "PAFA has a metadata elevation greater than 130 m.",
+      "ko": "PAFA의 메타데이터 고도는 130m보다 높다."
+    },
+    "context": {
+      "en": "NWS station PAFA, captured 2026-10-11T09:50:51.577758+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "ko": "NWS 관측소 PAFA, 수집 시점 2026-10-11T09:50:51.577758+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다."
+    },
+    "counterclaim": {
+      "en": "The metadata elevation for PAFA is at most 130 m.",
+      "ko": "PAFA의 메타데이터 고도는 130m 이하다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen NWS metadata for PAFA lists elevation 131.9784 m.",
+      "ko": "고정한 NWS PAFA 메타데이터의 고도는 131.9784m다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "The recorded station elevation for PAFA exceeds 130 metres.",
+      "ko": "PAFA에 기록된 관측소 고도는 130미터를 넘는다."
+    },
+    "revision": "snapshot:f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+    "scope_change": {
+      "en": "This same field value is guaranteed for every station at every future update: PAFA has a metadata elevation greater than 130 m.",
+      "ko": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. PAFA의 메타데이터 고도는 130m보다 높다."
+    },
+    "source_id": "source:laya-dev1-fact06",
+    "span_ids": [
+      "span:laya-dev1-fact06-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-fact07-r2-0",
+        "text": "{\n    \"@context\": [\n        \"https://geojson.org/geojson-ld/geojson-context.jsonld\",\n        {\n            \"@version\": \"1.1\",\n            \"wx\": \"https://api.weather.gov/ontology#\",\n            \"s\": \"https://schema.org/\",\n            \"geo\": \"http://www.opengis.net/ont/geosparql#\",\n            \"unit\": \"http://codes.wmo.int/common/unit/\",\n            \"@vocab\": \"https://api.weather.gov/ontology#\",\n            \"geometry\": {\n                \"@id\": \"s:GeoCoordinates\",\n                \"@type\": \"geo:wktLiteral\"\n            },\n            \"city\": \"s:addressLocality\",\n            \"state\": \"s:addressRegion\",\n            \"distance\": {\n                \"@id\": \"s:Distance\",\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"bearing\": {\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"value\": {\n                \"@id\": \"s:value\"\n            },\n            \"unitCode\": {\n                \"@id\": \"s:unitCode\",\n                \"@type\": \"@id\"\n            },\n            \"forecastOffice\": {\n                \"@type\": \"@id\"\n            },\n            \"forecastGridData\": {\n                \"@type\": \"@id\"\n            },\n            \"publicZone\": {\n                \"@type\": \"@id\"\n            },\n            \"county\": {\n                \"@type\": \"@id\"\n            }\n        }\n    ],\n    \"id\": \"https://api.weather.gov/stations/KSFO\",\n    \"type\": \"Feature\",\n    \"geometry\": {\n        \"type\": \"Point\",\n        \"coordinates\": [\n            -122.36558,\n            37.61961\n        ]\n    },\n    \"properties\": {\n        \"@id\": \"https://api.weather.gov/stations/KSFO\",\n        \"@type\": \"wx:ObservationStation\",\n        \"elevation\": {\n            \"unitCode\": \"wmoUnit:m\",\n            \"value\": 3.048\n        },\n        \"stationIdentifier\": \"KSFO\",\n        \"name\": \"San Francisco, San Francisco International Airport\",\n        \"timeZone\": \"America/Los_Angeles\",\n        \"provider\": \"ASOS\",\n        \"subProvider\": \"\",\n        \"forecast\": \"https://api.weather.gov/zones/forecast/CAZ508\",\n        \"county\": \"https://api.weather.gov/zones/county/CAC081\",\n        \"fireWeatherZone\": \"https://api.weather.gov/zones/fire/CAZ508\"\n    }\n}"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "general_factual_evidence",
+    "claim": {
+      "en": "The county-zone link for KSFO ends with CAC081.",
+      "ko": "KSFO의 county 구역 링크는 CAC081로 끝난다."
+    },
+    "context": {
+      "en": "NWS station KSFO, captured 2026-10-11T09:50:51.902731+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "ko": "NWS 관측소 KSFO, 수집 시점 2026-10-11T09:50:51.902731+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다."
+    },
+    "counterclaim": {
+      "en": "The county-zone link for KSFO ends with ZZZ999.",
+      "ko": "KSFO의 county 구역 링크는 ZZZ999로 끝난다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen NWS metadata for KSFO lists county zone CAC081.",
+      "ko": "고정한 NWS KSFO 메타데이터의 county 구역 식별자는 CAC081다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "CAC081 is the final identifier in this record’s county link for KSFO.",
+      "ko": "이 기록의 KSFO county 링크에서 마지막 식별자는 CAC081다."
+    },
+    "revision": "snapshot:d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+    "scope_change": {
+      "en": "This same field value is guaranteed for every station at every future update: The county-zone link for KSFO ends with CAC081.",
+      "ko": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. KSFO의 county 구역 링크는 CAC081로 끝난다."
+    },
+    "source_id": "source:laya-dev1-fact07",
+    "span_ids": [
+      "span:laya-dev1-fact07-r2-0"
+    ]
+  },
+  {
+    "anchors": [
+      {
+        "span_id": "span:laya-dev1-fact08-r2-0",
+        "text": "{\n    \"@context\": [\n        \"https://geojson.org/geojson-ld/geojson-context.jsonld\",\n        {\n            \"@version\": \"1.1\",\n            \"wx\": \"https://api.weather.gov/ontology#\",\n            \"s\": \"https://schema.org/\",\n            \"geo\": \"http://www.opengis.net/ont/geosparql#\",\n            \"unit\": \"http://codes.wmo.int/common/unit/\",\n            \"@vocab\": \"https://api.weather.gov/ontology#\",\n            \"geometry\": {\n                \"@id\": \"s:GeoCoordinates\",\n                \"@type\": \"geo:wktLiteral\"\n            },\n            \"city\": \"s:addressLocality\",\n            \"state\": \"s:addressRegion\",\n            \"distance\": {\n                \"@id\": \"s:Distance\",\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"bearing\": {\n                \"@type\": \"s:QuantitativeValue\"\n            },\n            \"value\": {\n                \"@id\": \"s:value\"\n            },\n            \"unitCode\": {\n                \"@id\": \"s:unitCode\",\n                \"@type\": \"@id\"\n            },\n            \"forecastOffice\": {\n                \"@type\": \"@id\"\n            },\n            \"forecastGridData\": {\n                \"@type\": \"@id\"\n            },\n            \"publicZone\": {\n                \"@type\": \"@id\"\n            },\n            \"county\": {\n                \"@type\": \"@id\"\n            }\n        }\n    ],\n    \"id\": \"https://api.weather.gov/stations/KMIA\",\n    \"type\": \"Feature\",\n    \"geometry\": {\n        \"type\": \"Point\",\n        \"coordinates\": [\n            -80.31639,\n            25.79056\n        ]\n    },\n    \"properties\": {\n        \"@id\": \"https://api.weather.gov/stations/KMIA\",\n        \"@type\": \"wx:ObservationStation\",\n        \"elevation\": {\n            \"unitCode\": \"wmoUnit:m\",\n            \"value\": 3.048\n        },\n        \"stationIdentifier\": \"KMIA\",\n        \"name\": \"Miami, Miami International Airport\",\n        \"timeZone\": \"America/New_York\",\n        \"provider\": \"ASOS-HFM\",\n        \"subProvider\": \"\",\n        \"forecast\": \"https://api.weather.gov/zones/forecast/FLZ074\",\n        \"county\": \"https://api.weather.gov/zones/county/FLC086\",\n        \"fireWeatherZone\": \"https://api.weather.gov/zones/fire/FLZ074\"\n    }\n}"
+      }
+    ],
+    "author": "OpenAI Codex assistant",
+    "author_kind": "ai",
+    "category": "general_factual_evidence",
+    "claim": {
+      "en": "ASOS-HFM is the provider field stored for KMIA.",
+      "ko": "KMIA에 저장된 provider 필드의 값은 ASOS-HFM다."
+    },
+    "context": {
+      "en": "NWS station KMIA, captured 2026-10-11T09:50:52.158756+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "ko": "NWS 관측소 KMIA, 수집 시점 2026-10-11T09:50:52.158756+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다."
+    },
+    "counterclaim": {
+      "en": "The stored provider field for KMIA is NONE.",
+      "ko": "KMIA에 저장된 provider 필드의 값은 NONE이다."
+    },
+    "counterclaims_are_authored_not_observed": true,
+    "evidence": {
+      "en": "The frozen NWS metadata for KMIA lists provider ASOS-HFM.",
+      "ko": "고정한 NWS KMIA 메타데이터의 provider는 ASOS-HFM다."
+    },
+    "exact_served_model": null,
+    "paraphrase": {
+      "en": "This entry identifies KMIA’s provider as ASOS-HFM.",
+      "ko": "이 항목은 KMIA의 provider를 ASOS-HFM로 기록한다."
+    },
+    "revision": "snapshot:ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+    "scope_change": {
+      "en": "This same field value is guaranteed for every station at every future update: ASOS-HFM is the provider field stored for KMIA.",
+      "ko": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. KMIA에 저장된 provider 필드의 값은 ASOS-HFM다."
+    },
+    "source_id": "source:laya-dev1-fact08",
+    "span_ids": [
+      "span:laya-dev1-fact08-r2-0"
+    ]
+  }
+]

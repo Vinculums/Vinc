@@ -1,0 +1,49 @@
+{
+  "bundle_sha256": "121ee1daba954f38cb57e6948dd3f021355441afb044bed12091fbd0834e1f3a",
+  "issues": [
+    {
+      "canonical_doc": "vinc.audit.laya-candidate-evidence-2026-10-11",
+      "family_id": "family:laya-p1-spec16",
+      "issue_id": "evidence-issue:spec16",
+      "kind": "numeric_reference_and_version_scope",
+      "origin": "assistant_source_inspection",
+      "repair_code": "distinguish_file_format_and_schema_version_in_new_revision",
+      "source_anchors": [
+        "# Schema File Format 1.1.0",
+        "# Note: the schema version number in the URL is not related in any way to\n# the file_format setting above.\nschema_url: https://opentelemetry.io/schemas/1.2.0"
+      ],
+      "source_id": "source:laya-p1-spec16",
+      "source_sha256": "2b26da1550848dfa1b5da933f450fa35a8e0f31bbe3361712f860b76043301cf",
+      "status": "proposed"
+    },
+    {
+      "canonical_doc": "vinc.audit.laya-candidate-evidence-2026-10-11",
+      "family_id": "family:laya-p1-spec09",
+      "issue_id": "evidence-issue:spec09",
+      "kind": "normative_translation_strength",
+      "origin": "assistant_source_inspection",
+      "repair_code": "clarify_normative_modality_without_claiming_measured_behavior",
+      "source_anchors": [
+        "The caller should not need to know and worry about the fact that minimal implementation is in effect."
+      ],
+      "source_id": "source:laya-p1-spec09",
+      "source_sha256": "f1f94cd6768a456620aeb86cc10109c000f8c6d86915b01c2c32eb517ea920d7",
+      "status": "proposed"
+    },
+    {
+      "canonical_doc": "vinc.audit.laya-candidate-evidence-2026-10-11",
+      "family_id": "family:laya-p1-spec10",
+      "issue_id": "evidence-issue:spec10",
+      "kind": "collection_observer_scope",
+      "origin": "assistant_source_inspection",
+      "repair_code": "name_observing_collection_system_and_extend_evidence_span",
+      "source_anchors": [
+        "Description: Time when the event was observed by the collection system."
+      ],
+      "source_id": "source:laya-p1-spec10",
+      "source_sha256": "3ee2c391a5d3262130582df89a3dc5a5640d837d010734ea79458fe3ece31173",
+      "status": "proposed"
+    }
+  ],
+  "schema": "vinc.laya.evidence-issues.v1"
+}

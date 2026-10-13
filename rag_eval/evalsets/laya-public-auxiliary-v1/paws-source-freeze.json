@@ -1,0 +1,81 @@
+{
+  "authority": "decision:proceed-with-ordered-laya-public-data-and-local-development-2026-10-13",
+  "files": [
+    {
+      "bytes": 320,
+      "captured_at": "2026-10-13T05:58:32.785325+00:00",
+      "kind": "rights",
+      "license": "Google dataset terms",
+      "max_bytes": 100000,
+      "name": "pawsx/rights.txt",
+      "revision": "02b29f3af1143620d1b7f352247e65c0bdd2ec18",
+      "sha256": "3f2d0f4e3fd88fa1bfeff353754da904c0060ec9d26c9266b8fda73ef98b8a25",
+      "source": "pawsx",
+      "url": "https://raw.githubusercontent.com/google-research-datasets/paws/02b29f3af1143620d1b7f352247e65c0bdd2ec18/LICENSE"
+    },
+    {
+      "bytes": 12870,
+      "captured_at": "2026-10-13T05:58:33.028222+00:00",
+      "kind": "readme",
+      "license": "Google dataset terms",
+      "max_bytes": 100000,
+      "name": "pawsx/readme.txt",
+      "revision": "4cd8187c404bda33cb1f62b49b001115862acf37",
+      "sha256": "a497f37155a0812792b18c2914614112171a520c7cd47ab624dcce0885488303",
+      "source": "pawsx",
+      "url": "https://huggingface.co/datasets/google-research-datasets/paws-x/raw/4cd8187c404bda33cb1f62b49b001115862acf37/README.md"
+    },
+    {
+      "bytes": 8428142,
+      "captured_at": "2026-10-13T05:58:43.322326+00:00",
+      "kind": "data",
+      "license": "Google dataset terms",
+      "max_bytes": 20000000,
+      "name": "pawsx/en-train.parquet",
+      "revision": "4cd8187c404bda33cb1f62b49b001115862acf37",
+      "sha256": "0de6e8a4ba4bd88ee79c883349d112ec1ca85cda78726b59c215fab5849e49f3",
+      "source": "pawsx",
+      "url": "https://huggingface.co/datasets/google-research-datasets/paws-x/resolve/4cd8187c404bda33cb1f62b49b001115862acf37/en/train-00000-of-00001.parquet"
+    },
+    {
+      "bytes": 307014,
+      "captured_at": "2026-10-13T05:58:44.738726+00:00",
+      "kind": "data",
+      "license": "Google dataset terms",
+      "max_bytes": 20000000,
+      "name": "pawsx/en-validation.parquet",
+      "revision": "4cd8187c404bda33cb1f62b49b001115862acf37",
+      "sha256": "e91c4c89a3d74deaf82bf2e87e626cf8d69d85f3c8e736b1ab3b6c3503ff26da",
+      "source": "pawsx",
+      "url": "https://huggingface.co/datasets/google-research-datasets/paws-x/resolve/4cd8187c404bda33cb1f62b49b001115862acf37/en/validation-00000-of-00001.parquet"
+    },
+    {
+      "bytes": 9528994,
+      "captured_at": "2026-10-13T05:58:56.327902+00:00",
+      "kind": "data",
+      "license": "Google dataset terms",
+      "max_bytes": 20000000,
+      "name": "pawsx/ko-train.parquet",
+      "revision": "4cd8187c404bda33cb1f62b49b001115862acf37",
+      "sha256": "a98fb8091c513c684e1f875b1f73002f1514572f2280ab09f8653f2541bdbd06",
+      "source": "pawsx",
+      "url": "https://huggingface.co/datasets/google-research-datasets/paws-x/resolve/4cd8187c404bda33cb1f62b49b001115862acf37/ko/train-00000-of-00001.parquet"
+    },
+    {
+      "bytes": 362273,
+      "captured_at": "2026-10-13T05:58:57.908162+00:00",
+      "kind": "data",
+      "license": "Google dataset terms",
+      "max_bytes": 20000000,
+      "name": "pawsx/ko-validation.parquet",
+      "revision": "4cd8187c404bda33cb1f62b49b001115862acf37",
+      "sha256": "6da70ff9cf51075a688fb379ac1b091ee362700f74346473dd1a0c237b8a6f12",
+      "source": "pawsx",
+      "url": "https://huggingface.co/datasets/google-research-datasets/paws-x/resolve/4cd8187c404bda33cb1f62b49b001115862acf37/ko/validation-00000-of-00001.parquet"
+    }
+  ],
+  "plan_sha256": "de0f88afcbf49686c9cfe68bf578f7c5612784308c73e31ac43a3ae402a83e9b",
+  "production_weights_approved": false,
+  "schema": "vinc.laya.public-source-freeze.v1",
+  "scope": "local-auxiliary-development"
+}

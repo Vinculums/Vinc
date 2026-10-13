@@ -1,0 +1,44 @@
+{
+  "instructions": [
+    "Judge all three predicates independently. Do not infer a label from the contrast name.",
+    "Supports requires additional evidence or a reason. Mere translation and restatement are not evidence.",
+    "Compare the same entity, version, time, condition and scope. Reversal is not automatically false.",
+    "A partly supported compound conclusion remains unresolved: split the claim or record null and request adjudication.",
+    "No evidence is not a known negative. Use null for missing information and retain a rationale.",
+    "Keep source quotations exact; authored paraphrases, fictional examples and observed results have distinct provenance.",
+    "Record actor identity as known; never describe AI agreement as human review.",
+    "Review each non-null target against its cited source spans. Do not copy generator rationales.",
+    "Keep linked translations and near duplicates in one source family and one assigned role.",
+    "This review queue authorizes no training or model evaluation.",
+    "These are unlabeled AI-authored candidates. The first human supplies author annotations; a separate independent human review is required by dataset.v1 before training export.",
+    "Blank forms are not annotation events. Do not invent a reviewer identity or timestamp.",
+    "All source training eligibility remains pending. Source inspection, annotation and independent review must precede any training export."
+  ],
+  "questions": {
+    "contradicts": {
+      "criteria": {
+        "false": "A and B can both hold, or they are about different things.",
+        "true": "Accepting A requires rejecting B, including when the opposition is in meaning rather than in wording."
+      },
+      "instructions": "Do statements A and B make claims that cannot both be true?",
+      "type": "noul"
+    },
+    "same_as": {
+      "criteria": {
+        "false": "A and B differ in subject, scope, time or verdict, or one adds a claim the other lacks.",
+        "true": "A and B assert the same fact or decision, possibly in different words or languages."
+      },
+      "instructions": "Do statements A and B make the same claim about the same thing?",
+      "type": "noul"
+    },
+    "supports": {
+      "criteria": {
+        "false": "A is unrelated to B, merely restates B, or argues against B.",
+        "true": "A provides a measurement, result or argument that makes B more credible."
+      },
+      "instructions": "Does statement A give evidence or a reason for statement B?",
+      "type": "noul"
+    }
+  },
+  "rubric_id": "rubric:laya-evidence-contrast-v1"
+}

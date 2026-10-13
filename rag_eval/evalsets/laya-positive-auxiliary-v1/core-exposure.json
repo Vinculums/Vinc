@@ -1,0 +1,92 @@
+{
+  "arm": "core",
+  "input_hashes": {
+    "core": "7896874db0eaa0e9075d7a24c26be0f468e21ba9d0e76dd9b8d08a0c0be85409",
+    "native": "d2723762ca1c47250e5c7f5886bd98fb60c08dbe518db382ea3993e2722e0379"
+  },
+  "items": 3012,
+  "native_labels_are_vinc_gold": false,
+  "positive_items": 1506,
+  "schema": "vinc.laya.balanced-exposure.v1",
+  "seed": 20261007,
+  "strata": [
+    {
+      "available_unique_items": 804,
+      "draws": 502,
+      "observed_unique_items": 502,
+      "stratum": [
+        "core",
+        "contradicts",
+        "",
+        "",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 200,
+      "draws": 502,
+      "observed_unique_items": 200,
+      "stratum": [
+        "core",
+        "contradicts",
+        "",
+        "",
+        1
+      ]
+    },
+    {
+      "available_unique_items": 798,
+      "draws": 502,
+      "observed_unique_items": 502,
+      "stratum": [
+        "core",
+        "same_as",
+        "",
+        "",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 206,
+      "draws": 502,
+      "observed_unique_items": 206,
+      "stratum": [
+        "core",
+        "same_as",
+        "",
+        "",
+        1
+      ]
+    },
+    {
+      "available_unique_items": 406,
+      "draws": 502,
+      "observed_unique_items": 406,
+      "stratum": [
+        "core",
+        "supports",
+        "",
+        "",
+        0
+      ]
+    },
+    {
+      "available_unique_items": 96,
+      "draws": 502,
+      "observed_unique_items": 96,
+      "stratum": [
+        "core",
+        "supports",
+        "",
+        "",
+        1
+      ]
+    }
+  ],
+  "training_sha256": "cf138f7533496646bbdbb2d8b1a2b63c1ba017e3741d4f27442e84d9a312c9c7",
+  "unique_items": 1912,
+  "unique_pairs": {
+    "core": 502,
+    "native": 0
+  }
+}

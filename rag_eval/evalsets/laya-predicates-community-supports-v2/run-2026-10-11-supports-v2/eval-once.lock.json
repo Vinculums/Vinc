@@ -1,0 +1,38 @@
+{
+ "frozen_at": "2026-10-11T04:38:14.638744+00:00",
+ "issue": "VIN-439",
+ "run_id": "oc-20261011-vin439-1",
+ "model_sha256": "48ab0eae32a07196bff410dba4f7c4382a94884f8e33ae13514eed6011226207",
+ "holdout_sha256": "16aa7c35595ffa41c4380718702f25790068bddcb32a04ee428bf54b278e7145",
+ "training_sha256": "7896874db0eaa0e9075d7a24c26be0f468e21ba9d0e76dd9b8d08a0c0be85409",
+ "input_manifest_sha256": "81ad849f5a2d889c1d32dfffbf3d692151a3cf93943afe1104a17ceba44df242",
+ "calibration_sha256": {
+  "calib-contradicts-en.json": "c12a05d5a5bab144e8fa9a1b69b28ab75fe6b40113eb5de1056aeb5519a6df01",
+  "calib-contradicts-ko.json": "a0e116d1f3ffc0912e844bc8641dcd51b3cd573347ea39ff61ada1297a54c971",
+  "calib-same_as-en.json": "b0ab277367fd147e0d378f53a11f8399835c962362ef232cccb69a7e5bae3831",
+  "calib-same_as-ko.json": "813e15e519ffc2b6e44850f1b28a5bb1364eb3d6008e7074f837aa41ab795384",
+  "calib-supports-en.json": "fefb8901db7e16b9685f21c903a319694d8bb794e2ecc843bb6f388c3f57551b",
+  "calib-supports-ko.json": "114b5fab5be7f83e6e9ea416788ed083541bbd1c25ee7883a5c1d66a6d2d6047",
+  "summary.json": "cab54de77cf164c3099779250070847dffdd2eb85a278687c5dfa08058429844"
+ },
+ "calibration_pairs": 235,
+ "min_bucket_n": 30,
+ "gate": {
+  "auroc_margin": 0.05,
+  "ece_max": 0.1,
+  "coverage_min": 0.5
+ },
+ "confidence_decimals": 4,
+ "symmetry_cutoff": 0.2,
+ "measurements": {
+  "community": {
+   "gold_sha256": "8d744c81b9a5b5f20ceb0824b15e4e70c7b4cc3a952ccc1d22cee23e40cb6369",
+   "split_sha256": "ad6fa887927903e67908b4a54ca71dcbad403777b423de2e1e14ae9150ac71d9",
+   "eval_pairs": 300
+  }
+ },
+ "order": [
+  "community"
+ ],
+ "one_logical_pass_per_measurement": true
+}

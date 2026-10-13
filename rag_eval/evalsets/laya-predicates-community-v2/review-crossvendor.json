@@ -1,0 +1,334 @@
+{
+  "schema_version": 1,
+  "dataset": "laya-predicates-community-v2",
+  "role": "measurement",
+  "labeling_model": {
+    "provider": "OpenAI",
+    "runtime": "Codex current agent session",
+    "family": "GPT-6",
+    "exact_served_model_id": null,
+    "version": null,
+    "planned_executor": "GPT (Astra)",
+    "planned_executor_identity_verified": false
+  },
+  "labeling_date": "2026-10-11",
+  "label_commit_at_utc": "2026-10-10T15:25:31Z",
+  "sessions": 1,
+  "review_mode": "direct_agent_manual_pair_labels_masked_prior_aggregate_exposure",
+  "judging_api_calls": 0,
+  "other_model_calls": 0,
+  "subagents": 0,
+  "pairs_read": 300,
+  "pairs_agreed": 300,
+  "pairs_disagreed": 0,
+  "disagreements_by_predicate": {
+    "supports": 0,
+    "contradicts": 0,
+    "same_as": 0
+  },
+  "disagreement_pair_ids_by_predicate": {
+    "supports": [],
+    "contradicts": [],
+    "same_as": []
+  },
+  "by_language": {
+    "ko": {
+      "pairs_read": 90,
+      "pairs_agreed": 90,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 18,
+        "contradicts": 18,
+        "same_as": 18
+      },
+      "hard_count": 7
+    },
+    "en": {
+      "pairs_read": 120,
+      "pairs_agreed": 120,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 24,
+        "contradicts": 24,
+        "same_as": 24
+      },
+      "hard_count": 12
+    },
+    "mixed": {
+      "pairs_read": 90,
+      "pairs_agreed": 90,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 18,
+        "contradicts": 18,
+        "same_as": 18
+      },
+      "hard_count": 8
+    }
+  },
+  "by_hard_kind": {
+    "evidence_supports_grounded": {
+      "pairs_read": 20,
+      "pairs_agreed": 20,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 20,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "hard_count": 11
+    },
+    "grounded_supports_claim": {
+      "pairs_read": 20,
+      "pairs_agreed": 20,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 20,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "hard_count": 7
+    },
+    "lexical_overlap": {
+      "pairs_read": 30,
+      "pairs_agreed": 30,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "hard_count": 0
+    },
+    "negation": {
+      "pairs_read": 20,
+      "pairs_agreed": 20,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 0,
+        "contradicts": 20,
+        "same_as": 0
+      },
+      "hard_count": 0
+    },
+    "paraphrase": {
+      "pairs_read": 42,
+      "pairs_agreed": 42,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 42
+      },
+      "hard_count": 0
+    },
+    "reason_supports_conclusion": {
+      "pairs_read": 20,
+      "pairs_agreed": 20,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 20,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "hard_count": 7
+    },
+    "reversed_direction": {
+      "pairs_read": 30,
+      "pairs_agreed": 30,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "hard_count": 2
+    },
+    "scope_shift": {
+      "pairs_read": 30,
+      "pairs_agreed": 30,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "hard_count": 0
+    },
+    "semantic_reversal": {
+      "pairs_read": 20,
+      "pairs_agreed": 20,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 0,
+        "contradicts": 20,
+        "same_as": 0
+      },
+      "hard_count": 0
+    },
+    "topical_only": {
+      "pairs_read": 30,
+      "pairs_agreed": 30,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "hard_count": 0
+    },
+    "translation": {
+      "pairs_read": 18,
+      "pairs_agreed": 18,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 18
+      },
+      "hard_count": 0
+    },
+    "value_conflict": {
+      "pairs_read": 20,
+      "pairs_agreed": 20,
+      "pairs_disagreed": 0,
+      "disagreements_by_predicate": {
+        "supports": 0,
+        "contradicts": 0,
+        "same_as": 0
+      },
+      "agreed_positive_counts": {
+        "supports": 0,
+        "contradicts": 20,
+        "same_as": 0
+      },
+      "hard_count": 0
+    }
+  },
+  "hard_count": 27,
+  "hard_pair_ids": [
+    "n0005",
+    "n0018",
+    "n0040",
+    "n0068",
+    "n0076",
+    "n0077",
+    "n0102",
+    "n0108",
+    "n0115",
+    "n0135",
+    "n0151",
+    "n0154",
+    "n0184",
+    "n0205",
+    "n0210",
+    "n0214",
+    "n0227",
+    "n0230",
+    "n0240",
+    "n0247",
+    "n0252",
+    "n0255",
+    "n0260",
+    "n0273",
+    "n0275",
+    "n0278",
+    "n0296"
+  ],
+  "agreed_positive_counts": {
+    "supports": 60,
+    "contradicts": 60,
+    "same_as": 60
+  },
+  "reviewer_positive_counts": {
+    "supports": 60,
+    "contradicts": 60,
+    "same_as": 60
+  },
+  "gold_sha256": "307c28e22ce4264efdcbfd00cf97c6043d5784aca180afa65a76c2de770372a7",
+  "blind_labels_sha256": "bcc84df6da9ca7ac0e0c0966b6510f69b9f2771ee9df8c9e548dd502437a07dd",
+  "question_file_sha256": "dc91cf0ff911d5bc177e9f72ea80aa2698b73803e485cc8d3974e065631c838a",
+  "blind_label_commit": "d2ff1d3db718f54e40125c1299515da745ef9ef0",
+  "blind_label_commit_precedes_comparison_commit": true,
+  "label_files_frozen_before_gold_comparison": true,
+  "per_pair_gold_seen_before_freeze": false,
+  "prior_aggregate_handoff_seen": true,
+  "perfect_aggregate_blinding": false,
+  "owner_continuation_decision": "decision:continue-community-v2-relabel-in-the-current-session-with-aggregate-exposure-disclosed-2026-10-11",
+  "gold_labels_changed": false,
+  "blind_labels_changed_after_freeze": false,
+  "disagreed_pairs_rejudged": false,
+  "model_inference_runs": 0,
+  "calibration_fits": 0,
+  "training_runs": 0
+}

@@ -1,0 +1,727 @@
+{
+  "causal_attribution_established": false,
+  "schema": "vinc.laya.saved-positive-diagnosis.v1",
+  "sealed_test_opened": false,
+  "slices": [
+    {
+      "checkpoint": "original",
+      "outputs_sha256": "e321d694c0f488cfe7f209ac9362d4c425b2d252937c55bc60ddce8f4142a057",
+      "run": "rlcd",
+      "supports": {
+        "all": {
+          "confusion": {
+            "fn": 21,
+            "fp": 46,
+            "tn": 66,
+            "tp": 7
+          },
+          "false_negative_ids": [
+            "m0003",
+            "m0009",
+            "m0011",
+            "m0018",
+            "m0022",
+            "m0026",
+            "m0038",
+            "m0052",
+            "m0059",
+            "m0063",
+            "m0065",
+            "m0066",
+            "m0081",
+            "m0089",
+            "m0093",
+            "m0095",
+            "m0098",
+            "m0108",
+            "m0116",
+            "m0127",
+            "m0136"
+          ],
+          "n": 140,
+          "negative_mean_probability": 0.4260758639084514,
+          "negative_nll": 1.3583768970627321,
+          "positive_mean_probability": 0.32514353561682485,
+          "positive_nll": 1.8808175467864374
+        },
+        "en": {
+          "confusion": {
+            "fn": 8,
+            "fp": 19,
+            "tn": 29,
+            "tp": 4
+          },
+          "false_negative_ids": [
+            "m0003",
+            "m0009",
+            "m0018",
+            "m0059",
+            "m0066",
+            "m0089",
+            "m0127",
+            "m0136"
+          ],
+          "n": 60,
+          "negative_mean_probability": 0.4275798584247598,
+          "negative_nll": 1.530818951061739,
+          "positive_mean_probability": 0.3181695183676883,
+          "positive_nll": 1.9147673534432361
+        },
+        "ko": {
+          "confusion": {
+            "fn": 5,
+            "fp": 13,
+            "tn": 19,
+            "tp": 3
+          },
+          "false_negative_ids": [
+            "m0011",
+            "m0038",
+            "m0063",
+            "m0065",
+            "m0093"
+          ],
+          "n": 40,
+          "negative_mean_probability": 0.4407480204044743,
+          "negative_nll": 1.7348265748915799,
+          "positive_mean_probability": 0.4287539362841722,
+          "positive_nll": 1.9209791060000714
+        },
+        "mixed": {
+          "confusion": {
+            "fn": 8,
+            "fp": 14,
+            "tn": 18,
+            "tp": 0
+          },
+          "false_negative_ids": [
+            "m0022",
+            "m0026",
+            "m0052",
+            "m0081",
+            "m0095",
+            "m0098",
+            "m0108",
+            "m0116"
+          ],
+          "n": 40,
+          "negative_mean_probability": 0.4091477156379659,
+          "negative_nll": 0.7232641382353749,
+          "positive_mean_probability": 0.23199416082318247,
+          "positive_nll": 1.7897312775876053
+        }
+      }
+    },
+    {
+      "checkpoint": "epoch-1",
+      "outputs_sha256": "3ba892c4b7928e6a3026edc3bff89a1e70ad662cd77cca287953f3fa14efe315",
+      "run": "rlcd",
+      "supports": {
+        "all": {
+          "confusion": {
+            "fn": 27,
+            "fp": 3,
+            "tn": 109,
+            "tp": 1
+          },
+          "false_negative_ids": [
+            "m0003",
+            "m0009",
+            "m0011",
+            "m0018",
+            "m0022",
+            "m0031",
+            "m0038",
+            "m0040",
+            "m0052",
+            "m0059",
+            "m0063",
+            "m0065",
+            "m0066",
+            "m0072",
+            "m0081",
+            "m0089",
+            "m0093",
+            "m0095",
+            "m0098",
+            "m0105",
+            "m0108",
+            "m0116",
+            "m0119",
+            "m0127",
+            "m0134",
+            "m0135",
+            "m0136"
+          ],
+          "n": 140,
+          "negative_mean_probability": 0.03740123459246914,
+          "negative_nll": 0.049967352520857995,
+          "positive_mean_probability": 0.1004684214159025,
+          "positive_nll": 3.493002934387499
+        },
+        "en": {
+          "confusion": {
+            "fn": 12,
+            "fp": 0,
+            "tn": 48,
+            "tp": 0
+          },
+          "false_negative_ids": [
+            "m0003",
+            "m0009",
+            "m0018",
+            "m0031",
+            "m0040",
+            "m0059",
+            "m0066",
+            "m0072",
+            "m0089",
+            "m0127",
+            "m0134",
+            "m0136"
+          ],
+          "n": 60,
+          "negative_mean_probability": 0.014731529568979461,
+          "negative_nll": 0.015324733254349125,
+          "positive_mean_probability": 0.025454154776642302,
+          "positive_nll": 4.27520233746955
+        },
+        "ko": {
+          "confusion": {
+            "fn": 8,
+            "fp": 0,
+            "tn": 32,
+            "tp": 0
+          },
+          "false_negative_ids": [
+            "m0011",
+            "m0038",
+            "m0063",
+            "m0065",
+            "m0093",
+            "m0105",
+            "m0119",
+            "m0135"
+          ],
+          "n": 40,
+          "negative_mean_probability": 0.03266319081969643,
+          "negative_nll": 0.035894838576524396,
+          "positive_mean_probability": 0.09529390801599939,
+          "positive_nll": 3.9207062448229917
+        },
+        "mixed": {
+          "confusion": {
+            "fn": 7,
+            "fp": 3,
+            "tn": 29,
+            "tp": 1
+          },
+          "false_negative_ids": [
+            "m0022",
+            "m0052",
+            "m0081",
+            "m0095",
+            "m0098",
+            "m0108",
+            "m0116"
+          ],
+          "n": 40,
+          "negative_mean_probability": 0.07614383590047637,
+          "negative_nll": 0.11600379536495489,
+          "positive_mean_probability": 0.21816433477469588,
+          "positive_nll": 1.8920005193289307
+        }
+      }
+    },
+    {
+      "checkpoint": "epoch-2",
+      "outputs_sha256": "bc369b96f48e68c0b4da3cbf4abce26e0686a3df73b620c035d0d7bafb2b323c",
+      "run": "rlcd",
+      "supports": {
+        "all": {
+          "confusion": {
+            "fn": 23,
+            "fp": 3,
+            "tn": 109,
+            "tp": 5
+          },
+          "false_negative_ids": [
+            "m0003",
+            "m0009",
+            "m0011",
+            "m0018",
+            "m0031",
+            "m0038",
+            "m0040",
+            "m0052",
+            "m0059",
+            "m0063",
+            "m0065",
+            "m0066",
+            "m0072",
+            "m0081",
+            "m0089",
+            "m0093",
+            "m0095",
+            "m0098",
+            "m0105",
+            "m0108",
+            "m0116",
+            "m0127",
+            "m0136"
+          ],
+          "n": 140,
+          "negative_mean_probability": 0.03084106558297975,
+          "negative_nll": 0.09709373711103608,
+          "positive_mean_probability": 0.19552958405101867,
+          "positive_nll": 6.245424752407638
+        },
+        "en": {
+          "confusion": {
+            "fn": 11,
+            "fp": 0,
+            "tn": 48,
+            "tp": 1
+          },
+          "false_negative_ids": [
+            "m0003",
+            "m0009",
+            "m0018",
+            "m0031",
+            "m0040",
+            "m0059",
+            "m0066",
+            "m0072",
+            "m0089",
+            "m0127",
+            "m0136"
+          ],
+          "n": 60,
+          "negative_mean_probability": 0.0005340073344297338,
+          "negative_nll": 0.0005353754563253017,
+          "positive_mean_probability": 0.10210661563622046,
+          "positive_nll": 7.446191966864446
+        },
+        "ko": {
+          "confusion": {
+            "fn": 6,
+            "fp": 0,
+            "tn": 32,
+            "tp": 2
+          },
+          "false_negative_ids": [
+            "m0011",
+            "m0038",
+            "m0063",
+            "m0065",
+            "m0093",
+            "m0105"
+          ],
+          "n": 40,
+          "negative_mean_probability": 0.015950798692875797,
+          "negative_nll": 0.018579530708474196,
+          "positive_mean_probability": 0.19748604660232524,
+          "positive_nll": 8.42047685956577
+        },
+        "mixed": {
+          "confusion": {
+            "fn": 6,
+            "fp": 3,
+            "tn": 29,
+            "tp": 2
+          },
+          "false_negative_ids": [
+            "m0052",
+            "m0081",
+            "m0095",
+            "m0098",
+            "m0108",
+            "m0116"
+          ],
+          "n": 40,
+          "negative_mean_probability": 0.09119191984590873,
+          "negative_nll": 0.32044548599566414,
+          "positive_mean_probability": 0.3337075741219094,
+          "positive_nll": 2.2692218235642962
+        }
+      }
+    },
+    {
+      "checkpoint": "original",
+      "outputs_sha256": "e321d694c0f488cfe7f209ac9362d4c425b2d252937c55bc60ddce8f4142a057",
+      "run": "soft-ce",
+      "supports": {
+        "all": {
+          "confusion": {
+            "fn": 21,
+            "fp": 46,
+            "tn": 66,
+            "tp": 7
+          },
+          "false_negative_ids": [
+            "m0003",
+            "m0009",
+            "m0011",
+            "m0018",
+            "m0022",
+            "m0026",
+            "m0038",
+            "m0052",
+            "m0059",
+            "m0063",
+            "m0065",
+            "m0066",
+            "m0081",
+            "m0089",
+            "m0093",
+            "m0095",
+            "m0098",
+            "m0108",
+            "m0116",
+            "m0127",
+            "m0136"
+          ],
+          "n": 140,
+          "negative_mean_probability": 0.4260758639084514,
+          "negative_nll": 1.3583768970627321,
+          "positive_mean_probability": 0.32514353561682485,
+          "positive_nll": 1.8808175467864374
+        },
+        "en": {
+          "confusion": {
+            "fn": 8,
+            "fp": 19,
+            "tn": 29,
+            "tp": 4
+          },
+          "false_negative_ids": [
+            "m0003",
+            "m0009",
+            "m0018",
+            "m0059",
+            "m0066",
+            "m0089",
+            "m0127",
+            "m0136"
+          ],
+          "n": 60,
+          "negative_mean_probability": 0.4275798584247598,
+          "negative_nll": 1.530818951061739,
+          "positive_mean_probability": 0.3181695183676883,
+          "positive_nll": 1.9147673534432361
+        },
+        "ko": {
+          "confusion": {
+            "fn": 5,
+            "fp": 13,
+            "tn": 19,
+            "tp": 3
+          },
+          "false_negative_ids": [
+            "m0011",
+            "m0038",
+            "m0063",
+            "m0065",
+            "m0093"
+          ],
+          "n": 40,
+          "negative_mean_probability": 0.4407480204044743,
+          "negative_nll": 1.7348265748915799,
+          "positive_mean_probability": 0.4287539362841722,
+          "positive_nll": 1.9209791060000714
+        },
+        "mixed": {
+          "confusion": {
+            "fn": 8,
+            "fp": 14,
+            "tn": 18,
+            "tp": 0
+          },
+          "false_negative_ids": [
+            "m0022",
+            "m0026",
+            "m0052",
+            "m0081",
+            "m0095",
+            "m0098",
+            "m0108",
+            "m0116"
+          ],
+          "n": 40,
+          "negative_mean_probability": 0.4091477156379659,
+          "negative_nll": 0.7232641382353749,
+          "positive_mean_probability": 0.23199416082318247,
+          "positive_nll": 1.7897312775876053
+        }
+      }
+    },
+    {
+      "checkpoint": "epoch-1",
+      "outputs_sha256": "04d903711fc4954f267610b419f549f028ff2b37e4a9c9bb52902b601a0430ce",
+      "run": "soft-ce",
+      "supports": {
+        "all": {
+          "confusion": {
+            "fn": 25,
+            "fp": 1,
+            "tn": 111,
+            "tp": 3
+          },
+          "false_negative_ids": [
+            "m0003",
+            "m0009",
+            "m0011",
+            "m0018",
+            "m0022",
+            "m0031",
+            "m0038",
+            "m0040",
+            "m0052",
+            "m0059",
+            "m0065",
+            "m0066",
+            "m0072",
+            "m0081",
+            "m0089",
+            "m0093",
+            "m0095",
+            "m0098",
+            "m0105",
+            "m0108",
+            "m0116",
+            "m0119",
+            "m0127",
+            "m0134",
+            "m0136"
+          ],
+          "n": 140,
+          "negative_mean_probability": 0.08566513752491803,
+          "negative_nll": 0.0985690696091754,
+          "positive_mean_probability": 0.22203149913595768,
+          "positive_nll": 1.9212779876546124
+        },
+        "en": {
+          "confusion": {
+            "fn": 12,
+            "fp": 0,
+            "tn": 48,
+            "tp": 0
+          },
+          "false_negative_ids": [
+            "m0003",
+            "m0009",
+            "m0018",
+            "m0031",
+            "m0040",
+            "m0059",
+            "m0066",
+            "m0072",
+            "m0089",
+            "m0127",
+            "m0134",
+            "m0136"
+          ],
+          "n": 60,
+          "negative_mean_probability": 0.05523780298985684,
+          "negative_nll": 0.0605776024028073,
+          "positive_mean_probability": 0.15015276255302434,
+          "positive_nll": 2.249094215924492
+        },
+        "ko": {
+          "confusion": {
+            "fn": 6,
+            "fp": 0,
+            "tn": 32,
+            "tp": 2
+          },
+          "false_negative_ids": [
+            "m0011",
+            "m0038",
+            "m0065",
+            "m0093",
+            "m0105",
+            "m0119"
+          ],
+          "n": 40,
+          "negative_mean_probability": 0.08488664489447965,
+          "negative_nll": 0.09877298269989551,
+          "positive_mean_probability": 0.23955628326018746,
+          "positive_nll": 2.014294911827403
+        },
+        "mixed": {
+          "confusion": {
+            "fn": 7,
+            "fp": 1,
+            "tn": 31,
+            "tp": 1
+          },
+          "false_negative_ids": [
+            "m0022",
+            "m0052",
+            "m0081",
+            "m0095",
+            "m0098",
+            "m0108",
+            "m0116"
+          ],
+          "n": 40,
+          "negative_mean_probability": 0.13208463195794823,
+          "negative_nll": 0.15535235732800742,
+          "positive_mean_probability": 0.3123248198861279,
+          "positive_nll": 1.3365367210770027
+        }
+      }
+    },
+    {
+      "checkpoint": "epoch-2",
+      "outputs_sha256": "039cad374bd77379dc4ab8f131d18640d6a549632dffd8611be50368d05715c4",
+      "run": "soft-ce",
+      "supports": {
+        "all": {
+          "confusion": {
+            "fn": 22,
+            "fp": 2,
+            "tn": 110,
+            "tp": 6
+          },
+          "false_negative_ids": [
+            "m0003",
+            "m0011",
+            "m0018",
+            "m0022",
+            "m0031",
+            "m0038",
+            "m0040",
+            "m0052",
+            "m0059",
+            "m0065",
+            "m0066",
+            "m0072",
+            "m0081",
+            "m0089",
+            "m0093",
+            "m0095",
+            "m0098",
+            "m0105",
+            "m0108",
+            "m0116",
+            "m0127",
+            "m0136"
+          ],
+          "n": 140,
+          "negative_mean_probability": 0.036612559964619144,
+          "negative_nll": 0.05972844541731163,
+          "positive_mean_probability": 0.2978640713276754,
+          "positive_nll": 2.4991001639861827
+        },
+        "en": {
+          "confusion": {
+            "fn": 10,
+            "fp": 0,
+            "tn": 48,
+            "tp": 2
+          },
+          "false_negative_ids": [
+            "m0003",
+            "m0018",
+            "m0031",
+            "m0040",
+            "m0059",
+            "m0066",
+            "m0072",
+            "m0089",
+            "m0127",
+            "m0136"
+          ],
+          "n": 60,
+          "negative_mean_probability": 0.007160760287676259,
+          "negative_nll": 0.0072891856793107475,
+          "positive_mean_probability": 0.24307418200362366,
+          "positive_nll": 2.8010850343273312
+        },
+        "ko": {
+          "confusion": {
+            "fn": 5,
+            "fp": 0,
+            "tn": 32,
+            "tp": 3
+          },
+          "false_negative_ids": [
+            "m0011",
+            "m0038",
+            "m0065",
+            "m0093",
+            "m0105"
+          ],
+          "n": 40,
+          "negative_mean_probability": 0.038543948596983735,
+          "negative_nll": 0.04916502179699743,
+          "positive_mean_probability": 0.3752248055898602,
+          "positive_nll": 2.8924272316558266
+        },
+        "mixed": {
+          "confusion": {
+            "fn": 7,
+            "fp": 2,
+            "tn": 30,
+            "tp": 1
+          },
+          "false_negative_ids": [
+            "m0022",
+            "m0052",
+            "m0081",
+            "m0095",
+            "m0098",
+            "m0108",
+            "m0116"
+          ],
+          "n": 40,
+          "negative_mean_probability": 0.07885887084766889,
+          "negative_nll": 0.14895075864462715,
+          "positive_mean_probability": 0.3026881710515681,
+          "positive_nll": 1.6527957908048159
+        }
+      }
+    }
+  ],
+  "threshold": 0.5,
+  "training_sha256": "7896874db0eaa0e9075d7a24c26be0f468e21ba9d0e76dd9b8d08a0c0be85409",
+  "training_task_classes": [
+    {
+      "items": 804,
+      "label": 0,
+      "task": "contradicts",
+      "unique_pairs": 402
+    },
+    {
+      "items": 200,
+      "label": 1,
+      "task": "contradicts",
+      "unique_pairs": 100
+    },
+    {
+      "items": 798,
+      "label": 0,
+      "task": "same_as",
+      "unique_pairs": 399
+    },
+    {
+      "items": 206,
+      "label": 1,
+      "task": "same_as",
+      "unique_pairs": 103
+    },
+    {
+      "items": 812,
+      "label": 0,
+      "task": "supports",
+      "unique_pairs": 406
+    },
+    {
+      "items": 192,
+      "label": 1,
+      "task": "supports",
+      "unique_pairs": 96
+    }
+  ]
+}

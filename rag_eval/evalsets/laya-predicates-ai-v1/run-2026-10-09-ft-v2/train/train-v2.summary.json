@@ -1,0 +1,38 @@
+{
+ "rows": 894,
+ "counts": {
+  "calib:shares_node_with_eval": 20,
+  "calib": 84,
+  "calib:rows": 168,
+  "calib:items": 420,
+  "same-node-title-one-liner": 18,
+  "same-node-title-one-liner:rows": 36,
+  "same-node-title-one-liner:items": 72,
+  "book-mirror:rows": 56,
+  "book-mirror:items": 140,
+  "merge-reject:rows": 4,
+  "merge-reject:items": 8,
+  "random:rows": 30,
+  "random:items": 75,
+  "typed-decisions:rows": 600,
+  "typed-decisions:items": 893
+ },
+ "excluded": {
+  "calib:holdout_leak": 66,
+  "random:blocked_text": 2
+ },
+ "misses": [],
+ "eval_pairs_excluded_by": {
+  "texts": 201,
+  "node_ids": 201
+ },
+ "typed_decisions_rows_sampled": 600,
+ "seed": 20261007,
+ "sha256": "bae28e406ee2b265ba1bce869782f9a451bb6a7170b883a0117f1ecc0591f3e1",
+ "out": "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\data\\train-v2.jsonl",
+ "base_training_sha256": "90e18e855a214710125112d9cb64ac77783585b6c2de9d77f336f12c7a144fb6",
+ "holdout_pairs": 50,
+ "holdout_sha256": "fd12df181e1b44d76f96d9a25a3d312fb61aae6a40b87ca529d1fed40510bb5b",
+ "same_as_pairs_sha256": "3a1953c8efef7ea78f4aa6f9d94d6393f697828c16c08cdee480804a8d1ef19e",
+ "gold_sha256": "49cf4b34be2fd840c56e54bcca152abfaaebd76afa844938c6d7a7eccb29fd0a"
+}

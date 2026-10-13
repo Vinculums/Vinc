@@ -1,0 +1,138 @@
+[
+  {
+    "kind": "saved_sqlite_observation",
+    "language_literals_checked": 2,
+    "replayed": false,
+    "source_id": "source:laya-dev1-obs01",
+    "source_sha256": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+    "stdout_sha256": "55dd2dd18b97f367df2ebf7e54930615051faad9d6157afdbefa062752034d8d"
+  },
+  {
+    "kind": "saved_sqlite_observation",
+    "language_literals_checked": 2,
+    "replayed": false,
+    "source_id": "source:laya-dev1-obs02",
+    "source_sha256": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+    "stdout_sha256": "c0d64acdc6806372576896b099e7715ba6f243bd26dc16f8001582b329292709"
+  },
+  {
+    "kind": "saved_sqlite_observation",
+    "language_literals_checked": 2,
+    "replayed": false,
+    "source_id": "source:laya-dev1-obs03",
+    "source_sha256": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+    "stdout_sha256": "df7c7306b463ee0775826c06e4032393cc08e198f826286f8bc698c8b1de91e4"
+  },
+  {
+    "kind": "saved_sqlite_observation",
+    "language_literals_checked": 2,
+    "replayed": false,
+    "source_id": "source:laya-dev1-obs04",
+    "source_sha256": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+    "stdout_sha256": "baf423fd19ed74270475a3bb6cec650855321c11b0fd171a305774466fccb33a"
+  },
+  {
+    "kind": "saved_sqlite_observation",
+    "language_literals_checked": 2,
+    "replayed": false,
+    "source_id": "source:laya-dev1-obs05",
+    "source_sha256": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+    "stdout_sha256": "23e7eb4adbba3b2696074c2ea31cdc144311a971e698996fc5649f6064ca2b91"
+  },
+  {
+    "kind": "saved_sqlite_observation",
+    "language_literals_checked": 2,
+    "replayed": false,
+    "source_id": "source:laya-dev1-obs06",
+    "source_sha256": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+    "stdout_sha256": "bd9c6823577395135a73446ae31dc9da2dd511b02df37b1829e5e61374f5a7c5"
+  },
+  {
+    "kind": "saved_sqlite_observation",
+    "language_literals_checked": 2,
+    "replayed": false,
+    "source_id": "source:laya-dev1-obs07",
+    "source_sha256": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+    "stdout_sha256": "80e9d7d148317fb307cce4fecef0fe24a409e33e929e27d1b85458c53b5f97c6"
+  },
+  {
+    "kind": "saved_sqlite_observation",
+    "language_literals_checked": 2,
+    "replayed": false,
+    "source_id": "source:laya-dev1-obs08",
+    "source_sha256": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+    "stdout_sha256": "e9c9b33b013ca208fca87737e0fe67cab891bf672d5ff347821a32e88206fce5"
+  },
+  {
+    "field_pointer": "/properties/timeZone",
+    "independent_geographic_verification": false,
+    "kind": "station_metadata_literal",
+    "language_literals_checked": 2,
+    "source_id": "source:laya-dev1-fact01",
+    "source_sha256": "9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+    "station_id": "KSEA"
+  },
+  {
+    "field_pointer": "/properties/elevation/value",
+    "independent_geographic_verification": false,
+    "kind": "station_metadata_literal",
+    "language_literals_checked": 2,
+    "source_id": "source:laya-dev1-fact02",
+    "source_sha256": "6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+    "station_id": "KDEN"
+  },
+  {
+    "field_pointer": "/properties/county",
+    "independent_geographic_verification": false,
+    "kind": "station_metadata_literal",
+    "language_literals_checked": 2,
+    "source_id": "source:laya-dev1-fact03",
+    "source_sha256": "c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+    "station_id": "KORD"
+  },
+  {
+    "field_pointer": "/properties/provider",
+    "independent_geographic_verification": false,
+    "kind": "station_metadata_literal",
+    "language_literals_checked": 2,
+    "source_id": "source:laya-dev1-fact04",
+    "source_sha256": "35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+    "station_id": "KBOS"
+  },
+  {
+    "field_pointer": "/properties/timeZone",
+    "independent_geographic_verification": false,
+    "kind": "station_metadata_literal",
+    "language_literals_checked": 2,
+    "source_id": "source:laya-dev1-fact05",
+    "source_sha256": "022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+    "station_id": "PHNL"
+  },
+  {
+    "field_pointer": "/properties/elevation/value",
+    "independent_geographic_verification": false,
+    "kind": "station_metadata_literal",
+    "language_literals_checked": 2,
+    "source_id": "source:laya-dev1-fact06",
+    "source_sha256": "f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+    "station_id": "PAFA"
+  },
+  {
+    "field_pointer": "/properties/county",
+    "independent_geographic_verification": false,
+    "kind": "station_metadata_literal",
+    "language_literals_checked": 2,
+    "source_id": "source:laya-dev1-fact07",
+    "source_sha256": "d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+    "station_id": "KSFO"
+  },
+  {
+    "field_pointer": "/properties/provider",
+    "independent_geographic_verification": false,
+    "kind": "station_metadata_literal",
+    "language_literals_checked": 2,
+    "source_id": "source:laya-dev1-fact08",
+    "source_sha256": "ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+    "station_id": "KMIA"
+  }
+]

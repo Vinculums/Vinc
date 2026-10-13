@@ -1,0 +1,47 @@
+{
+  "annotation_events": 0,
+  "assistant_authored_candidates": 240,
+  "category_families": {
+    "dated_engineering_measurement": 20,
+    "general_factual_evidence": 20,
+    "technical_specification": 20
+  },
+  "context_pairs": 240,
+  "families": 60,
+  "human_reviews_completed": 0,
+  "judge_model_calls": 0,
+  "labels_not_inferred_from_contrast": true,
+  "language_cells": {
+    "en_en": 60,
+    "en_ko": 60,
+    "ko_en": 60,
+    "ko_ko": 60
+  },
+  "length_by_contrast": {
+    "restatement_or_topical": {
+      "a_median": 38.0,
+      "b_median": 42.0
+    },
+    "reverse_or_conflict": {
+      "a_median": 38.0,
+      "b_median": 37.0
+    },
+    "scope_time_condition": {
+      "a_median": 55.0,
+      "b_median": 43.0
+    },
+    "support": {
+      "a_median": 55.0,
+      "b_median": 37.5
+    }
+  },
+  "pairs": 240,
+  "review_selected": 63,
+  "schema": "vinc.laya.pilot-audit.v1",
+  "source_family_independence_is_not_statistical_independence": true,
+  "source_freeze_sha256": "87ce2212029d3be1f2f2c37b7e3b9fe043f42de6e75631e3d93f7f29c8a47a02",
+  "sources": 60,
+  "training_exportable_pairs": 0,
+  "training_model_calls": 0,
+  "upstream_license_files_preserved": true
+}

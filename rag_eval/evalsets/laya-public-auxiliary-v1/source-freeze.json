@@ -1,0 +1,153 @@
+{
+  "authority": "decision:proceed-with-ordered-laya-public-data-and-local-development-2026-10-13",
+  "files": [
+    {
+      "bytes": 542,
+      "captured_at": "2026-10-13T05:56:52.613848+00:00",
+      "kind": "rights",
+      "license": "CC-BY-4.0 and ODC-By-1.0",
+      "max_bytes": 100000,
+      "name": "scifact/rights.txt",
+      "revision": "68b98a56d93e0f9da0d2aab4e6c3294699a0f72e",
+      "sha256": "56ee69bc639cbab8f0b2e4b67091ec5e9390aa99a1d65f0a35e4274686c9a806",
+      "source": "scifact",
+      "url": "https://raw.githubusercontent.com/allenai/scifact/68b98a56d93e0f9da0d2aab4e6c3294699a0f72e/LICENSE.md"
+    },
+    {
+      "bytes": 8671,
+      "captured_at": "2026-10-13T05:56:52.632846+00:00",
+      "kind": "readme",
+      "license": "CC-BY-4.0 and ODC-By-1.0",
+      "max_bytes": 100000,
+      "name": "scifact/readme.txt",
+      "revision": "68b98a56d93e0f9da0d2aab4e6c3294699a0f72e",
+      "sha256": "3f0eb7f6d009b3785fede6592918b8b583e7193d26f14173fdf0c79aba1dcc79",
+      "source": "scifact",
+      "url": "https://raw.githubusercontent.com/allenai/scifact/68b98a56d93e0f9da0d2aab4e6c3294699a0f72e/README.md"
+    },
+    {
+      "bytes": 20131,
+      "captured_at": "2026-10-13T05:56:52.652844+00:00",
+      "kind": "rights",
+      "license": "CC-BY-SA-4.0",
+      "max_bytes": 100000,
+      "name": "klue/rights.txt",
+      "revision": "3efd98708a40ff49251fddde35453f8fbb11f536",
+      "sha256": "7abe19ec9bb73b36141b999b861d24ad855e808bafe0f81e84cce28556f6c297",
+      "source": "klue",
+      "url": "https://raw.githubusercontent.com/KLUE-benchmark/KLUE/3efd98708a40ff49251fddde35453f8fbb11f536/License.md"
+    },
+    {
+      "bytes": 7721,
+      "captured_at": "2026-10-13T05:56:52.673843+00:00",
+      "kind": "readme",
+      "license": "CC-BY-SA-4.0",
+      "max_bytes": 100000,
+      "name": "klue/readme.txt",
+      "revision": "3efd98708a40ff49251fddde35453f8fbb11f536",
+      "sha256": "1f87facecc35feabf8ad25ecd2eda75bab8ea3ad074569b5239b4d57197ea059",
+      "source": "klue",
+      "url": "https://raw.githubusercontent.com/KLUE-benchmark/KLUE/3efd98708a40ff49251fddde35453f8fbb11f536/README.md"
+    },
+    {
+      "bytes": 529,
+      "captured_at": "2026-10-13T05:56:52.695846+00:00",
+      "kind": "rights",
+      "license": "Wikipedia article terms or CC-BY-SA-3.0",
+      "max_bytes": 100000,
+      "name": "vitaminc/rights.txt",
+      "revision": "eb532922b88b199df68ed26afeb58dca5501b52f",
+      "sha256": "153a128e86c7d0e978243c8c8994dbb5fba9081a36f8d380cd1f5994699e369e",
+      "source": "vitaminc",
+      "url": "https://raw.githubusercontent.com/TalSchuster/VitaminC/eb532922b88b199df68ed26afeb58dca5501b52f/DATA_LICENSE"
+    },
+    {
+      "bytes": 5268,
+      "captured_at": "2026-10-13T05:56:52.717846+00:00",
+      "kind": "readme",
+      "license": "Wikipedia article terms or CC-BY-SA-3.0",
+      "max_bytes": 100000,
+      "name": "vitaminc/readme.txt",
+      "revision": "eb532922b88b199df68ed26afeb58dca5501b52f",
+      "sha256": "8b1512acf12fa4d7e7ed152e7ce4d7077479f4f7d910fbf47c132c173589870e",
+      "source": "vitaminc",
+      "url": "https://raw.githubusercontent.com/TalSchuster/VitaminC/eb532922b88b199df68ed26afeb58dca5501b52f/README.md"
+    },
+    {
+      "bytes": 3115079,
+      "captured_at": "2026-10-13T05:57:01.247159+00:00",
+      "kind": "archive",
+      "license": "CC-BY-4.0 and ODC-By-1.0",
+      "max_bytes": 100000000,
+      "name": "scifact/data.tar.gz",
+      "revision": "68b98a56d93e0f9da0d2aab4e6c3294699a0f72e",
+      "sha256": "11c621288d41ac144d29b13b0f8503b3820b7d6e8b1f6ff24dff335c196d76be",
+      "source": "scifact",
+      "url": "https://scifact.s3-us-west-2.amazonaws.com/release/latest/data.tar.gz"
+    },
+    {
+      "bytes": 12576683,
+      "captured_at": "2026-10-13T05:57:03.998246+00:00",
+      "kind": "data",
+      "license": "CC-BY-SA-4.0",
+      "max_bytes": 20000000,
+      "name": "klue/nli-train.json",
+      "revision": "3efd98708a40ff49251fddde35453f8fbb11f536",
+      "sha256": "8d32e7e4ff97804a23f277fee8740f1341ac82e1c0c7b34f1be21952e4813996",
+      "source": "klue",
+      "url": "https://raw.githubusercontent.com/KLUE-benchmark/KLUE/3efd98708a40ff49251fddde35453f8fbb11f536/klue_benchmark/klue-nli-v1.1/klue-nli-v1.1_train.json"
+    },
+    {
+      "bytes": 1498298,
+      "captured_at": "2026-10-13T05:57:04.485165+00:00",
+      "kind": "data",
+      "license": "CC-BY-SA-4.0",
+      "max_bytes": 20000000,
+      "name": "klue/nli-dev.json",
+      "revision": "3efd98708a40ff49251fddde35453f8fbb11f536",
+      "sha256": "0699db82be17766b26e199864e6260443e17ec6e91d1870e876419e388f245b1",
+      "source": "klue",
+      "url": "https://raw.githubusercontent.com/KLUE-benchmark/KLUE/3efd98708a40ff49251fddde35453f8fbb11f536/klue_benchmark/klue-nli-v1.1/klue-nli-v1.1_dev.json"
+    },
+    {
+      "bytes": 10257839,
+      "captured_at": "2026-10-13T05:57:06.677326+00:00",
+      "kind": "data",
+      "license": "CC-BY-SA-4.0",
+      "max_bytes": 20000000,
+      "name": "klue/sts-train.json",
+      "revision": "3efd98708a40ff49251fddde35453f8fbb11f536",
+      "sha256": "9fd1d5d3af73bd06648283be00c87d1b6f6eee90e4854f285df68d0bd5ae91d8",
+      "source": "klue",
+      "url": "https://raw.githubusercontent.com/KLUE-benchmark/KLUE/3efd98708a40ff49251fddde35453f8fbb11f536/klue_benchmark/klue-sts-v1.1/klue-sts-v1.1_train.json"
+    },
+    {
+      "bytes": 454638,
+      "captured_at": "2026-10-13T05:57:06.993328+00:00",
+      "kind": "data",
+      "license": "CC-BY-SA-4.0",
+      "max_bytes": 20000000,
+      "name": "klue/sts-dev.json",
+      "revision": "3efd98708a40ff49251fddde35453f8fbb11f536",
+      "sha256": "b6a0ae0c370e21687f7eef0fdea872a328bb2ecbdb020c546cb870d28606bf80",
+      "source": "klue",
+      "url": "https://raw.githubusercontent.com/KLUE-benchmark/KLUE/3efd98708a40ff49251fddde35453f8fbb11f536/klue_benchmark/klue-sts-v1.1/klue-sts-v1.1_dev.json"
+    },
+    {
+      "bytes": 22381149,
+      "captured_at": "2026-10-13T05:57:10.014333+00:00",
+      "kind": "archive",
+      "license": "Wikipedia article terms or CC-BY-SA-3.0",
+      "max_bytes": 120000000,
+      "name": "vitaminc/data.zip",
+      "revision": "152c9639f1e33ca295d0776b618c17884088f72f",
+      "sha256": "49d82dc1690cbee420d18e2c26f687a7937710bb211845d2571430dfd4dc0337",
+      "source": "vitaminc",
+      "url": "https://raw.githubusercontent.com/TalSchuster/talschuster.github.io/152c9639f1e33ca295d0776b618c17884088f72f/static/vitaminc.zip"
+    }
+  ],
+  "plan_sha256": "0fba08a71666a811208c020abe3e35684d66e14ddafa2db7a7960e1458b203bf",
+  "production_weights_approved": false,
+  "schema": "vinc.laya.public-source-freeze.v1",
+  "scope": "local-auxiliary-development"
+}

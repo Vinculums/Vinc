@@ -1,0 +1,4895 @@
+{
+  "annotations": [],
+  "assignments": [
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec01"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec01"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec02"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec02"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec03"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec03"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec04"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec04"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec05"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec05"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec06"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec06"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec07"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec07"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-spec08"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-spec08"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs01"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs01"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs02"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs02"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs03"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs03"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs04"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs04"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs05"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs05"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs06"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs06"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs07"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs07"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-obs08"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-obs08"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact01"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact01"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact02"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact02"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact03"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact03"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact04"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact04"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact05"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact05"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact06"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact06"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact07"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact07"
+    },
+    {
+      "assigned_at": "2026-10-11T09:50:52.161758+00:00",
+      "groups": [
+        "document:laya-dev1-fact08"
+      ],
+      "role": "dev",
+      "source_id": "source:laya-dev1-fact08"
+    }
+  ],
+  "dataset_id": "development:laya-contrast-v1",
+  "exposure_registry": {
+    "path": "historical-exposure.json",
+    "sha256": "5a33163321a25ce52bb53294602005f3830ad2ef475da7b6d29638af89ac2724"
+  },
+  "exposures": [
+    {
+      "at": "2026-10-11T09:56:24.384228+00:00",
+      "document_ids": [
+        "document:laya-dev1-fact01",
+        "document:laya-dev1-fact02",
+        "document:laya-dev1-fact03",
+        "document:laya-dev1-fact04",
+        "document:laya-dev1-fact05",
+        "document:laya-dev1-fact06",
+        "document:laya-dev1-fact07",
+        "document:laya-dev1-fact08",
+        "document:laya-dev1-obs01",
+        "document:laya-dev1-obs02",
+        "document:laya-dev1-obs03",
+        "document:laya-dev1-obs04",
+        "document:laya-dev1-obs05",
+        "document:laya-dev1-obs06",
+        "document:laya-dev1-obs07",
+        "document:laya-dev1-obs08",
+        "document:laya-dev1-spec01",
+        "document:laya-dev1-spec02",
+        "document:laya-dev1-spec03",
+        "document:laya-dev1-spec04",
+        "document:laya-dev1-spec05",
+        "document:laya-dev1-spec06",
+        "document:laya-dev1-spec07",
+        "document:laya-dev1-spec08"
+      ],
+      "event_id": "exposure:laya-development-candidate-authoring-2026-10-11",
+      "family_ids": [
+        "family:laya-dev1-fact01",
+        "family:laya-dev1-fact02",
+        "family:laya-dev1-fact03",
+        "family:laya-dev1-fact04",
+        "family:laya-dev1-fact05",
+        "family:laya-dev1-fact06",
+        "family:laya-dev1-fact07",
+        "family:laya-dev1-fact08",
+        "family:laya-dev1-obs01",
+        "family:laya-dev1-obs02",
+        "family:laya-dev1-obs03",
+        "family:laya-dev1-obs04",
+        "family:laya-dev1-obs05",
+        "family:laya-dev1-obs06",
+        "family:laya-dev1-obs07",
+        "family:laya-dev1-obs08",
+        "family:laya-dev1-spec01",
+        "family:laya-dev1-spec02",
+        "family:laya-dev1-spec03",
+        "family:laya-dev1-spec04",
+        "family:laya-dev1-spec05",
+        "family:laya-dev1-spec06",
+        "family:laya-dev1-spec07",
+        "family:laya-dev1-spec08"
+      ],
+      "kind": "development_used",
+      "reference": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+      "scope": "development candidate authoring and source inspection; no model execution",
+      "source_hashes": [
+        "022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+        "1f39ac3e895b4228ddc7a840743355707c0956831ce6097d8b43676e76cd12f1",
+        "2b5e385fc7243d93e9c9387931b214f069ba91b2528480758aaf186e43372a2b",
+        "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+        "35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+        "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+        "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+        "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+        "6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+        "6c188645970168efd11cfb397708a9641220c3c72921ca9d82a8fe13fa7072a5",
+        "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+        "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+        "81d5e0721c0fbbd11e29859902b9ab7c6a4d630531f46e07b9bf474d0e86b819",
+        "86ca81b9c4e4b3cde24e308e48e305233abc10ceadc5006aacd60b948187265d",
+        "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+        "909e6f0ad921fd84ddf8c0a482a100d33d2b2e0fc89c68bbf2773109986e02a8",
+        "9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+        "b0a5df6b4b546d676e9bc9f0500fed243ef0a8c6d609b9e4434abec43e432158",
+        "c3085a4a860f703edc5dc65e16a62dc87dbf8c9a29f12158ff048ca383ef2db1",
+        "c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+        "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+        "ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+        "d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+        "f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652"
+      ],
+      "source_ids": [
+        "source:laya-dev1-fact01",
+        "source:laya-dev1-fact02",
+        "source:laya-dev1-fact03",
+        "source:laya-dev1-fact04",
+        "source:laya-dev1-fact05",
+        "source:laya-dev1-fact06",
+        "source:laya-dev1-fact07",
+        "source:laya-dev1-fact08",
+        "source:laya-dev1-obs01",
+        "source:laya-dev1-obs02",
+        "source:laya-dev1-obs03",
+        "source:laya-dev1-obs04",
+        "source:laya-dev1-obs05",
+        "source:laya-dev1-obs06",
+        "source:laya-dev1-obs07",
+        "source:laya-dev1-obs08",
+        "source:laya-dev1-spec01",
+        "source:laya-dev1-spec02",
+        "source:laya-dev1-spec03",
+        "source:laya-dev1-spec04",
+        "source:laya-dev1-spec05",
+        "source:laya-dev1-spec06",
+        "source:laya-dev1-spec07",
+        "source:laya-dev1-spec08"
+      ]
+    }
+  ],
+  "label_status": "unlabeled",
+  "pairs": [
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:b4ddca0fe0f1a145:a",
+        "evidence": [
+          "span:laya-dev1-spec01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Rust의 start..end 범위는 상한값을 포함하지 않는다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:b4ddca0fe0f1a145:b",
+        "evidence": [
+          "span:laya-dev1-spec01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Rust의 start..end 범위 밖에 상한값 end가 있다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec01다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec01-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec01",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:b4ddca0fe0f1a145",
+      "parents": [],
+      "render_sha256": "5216cdcc06454219b76282291dd87e8e99e8d8d76f6069124640db547a783039",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:de375f29c0c28fd8:a",
+        "evidence": [
+          "span:laya-dev1-spec01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Rust의 start..end 범위는 상한값을 포함하지 않는다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:de375f29c0c28fd8:b",
+        "evidence": [
+          "span:laya-dev1-spec01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Rust의 start..end 범위는 상한값 end를 포함한다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec01다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec01-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec01",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:de375f29c0c28fd8",
+      "parents": [],
+      "render_sha256": "3e2b6443bcc05e4721f26fb3fa7deae1b2c5d8617dd54c7f3898517b196993fa",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:fa7929e7f0e5e6b4:a",
+        "evidence": [
+          "span:laya-dev1-spec01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 Rust Reference의 설명은 다음과 같다. Rust의 start..end 범위는 상한값을 포함하지 않는다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:fa7929e7f0e5e6b4:b",
+        "evidence": [
+          "span:laya-dev1-spec01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. Rust의 start..end 범위는 상한값을 포함하지 않는다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec01다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec01-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec01",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:fa7929e7f0e5e6b4",
+      "parents": [],
+      "render_sha256": "d624aed2b8cefbb1b4430f02a57ff325e245df6b983157d42add3b48b576bb05",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:d6d377816a9bd90a:a",
+        "evidence": [
+          "span:laya-dev1-spec01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 Rust Reference의 설명은 다음과 같다. Rust의 start..end 범위는 상한값을 포함하지 않는다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:d6d377816a9bd90a:b",
+        "evidence": [
+          "span:laya-dev1-spec01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Rust의 start..end 범위는 상한값을 포함하지 않는다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec01다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec01-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec01",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:d6d377816a9bd90a",
+      "parents": [],
+      "render_sha256": "f7a3fb3600daadff5004ec04063a8c995c6e5681889de823fb99b6230459a3ac",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:7a53d65cb0993a69:a",
+        "evidence": [
+          "span:laya-dev1-spec02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Evaluating return transfers control to the caller frame."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:7a53d65cb0993a69:b",
+        "evidence": [
+          "span:laya-dev1-spec02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "A return expression passes control back to the calling frame."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec02. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec02-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec02",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:7a53d65cb0993a69",
+      "parents": [],
+      "render_sha256": "31bc4886b2cc39866e5f65fe1964035cdf0c8d523eee61ca227352e4ecb5d475",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:3e43c8cfb5dbb55d:a",
+        "evidence": [
+          "span:laya-dev1-spec02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Evaluating return transfers control to the caller frame."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:3e43c8cfb5dbb55d:b",
+        "evidence": [
+          "span:laya-dev1-spec02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Evaluating return keeps control in the current function frame."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec02. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec02-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec02",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:3e43c8cfb5dbb55d",
+      "parents": [],
+      "render_sha256": "dda3022eb22da926cb2c3a12cd49fd70d482e51b4791a413510f64abbfddfccb",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:08dc438697adb393:a",
+        "evidence": [
+          "span:laya-dev1-spec02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The pinned Rust Reference states: Evaluating return transfers control to the caller frame."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:08dc438697adb393:b",
+        "evidence": [
+          "span:laya-dev1-spec02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "This rule also applies without exception to every unrelated programming language: Evaluating return transfers control to the caller frame."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec02. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec02-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec02",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:08dc438697adb393",
+      "parents": [],
+      "render_sha256": "68e5bd51d181acaf17d8ce8165464ec89a86e11b2647b7be24163fb33e504468",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:8774405ffa2a2c48:a",
+        "evidence": [
+          "span:laya-dev1-spec02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The pinned Rust Reference states: Evaluating return transfers control to the caller frame."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:8774405ffa2a2c48:b",
+        "evidence": [
+          "span:laya-dev1-spec02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Evaluating return transfers control to the caller frame."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec02. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec02-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec02",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:8774405ffa2a2c48",
+      "parents": [],
+      "render_sha256": "87b1637a8e8b88b74df19557e5ab5ec6e63063ab11cb6cb8e7aebe72bccabe19",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:d4f4f2fc372cb9f7:a",
+        "evidence": [
+          "span:laya-dev1-spec03-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "배열에 나열한 값들은 작성한 순서대로 들어간다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:d4f4f2fc372cb9f7:b",
+        "evidence": [
+          "span:laya-dev1-spec03-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "An array formed by listing values retains their source order."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec03다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec03-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec03",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:d4f4f2fc372cb9f7",
+      "parents": [],
+      "render_sha256": "3becd4c6ce9a1d597ba991fa2afc9822c14000af7c4d719e0e7c022e8840efce",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:5d95d677cd10d73b:a",
+        "evidence": [
+          "span:laya-dev1-spec03-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "배열에 나열한 값들은 작성한 순서대로 들어간다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:5d95d677cd10d73b:b",
+        "evidence": [
+          "span:laya-dev1-spec03-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The listed array values are inserted in reverse written order."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec03다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec03-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec03",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:5d95d677cd10d73b",
+      "parents": [],
+      "render_sha256": "5fade45b89f27a9d7ed003bdc28fee8c49cfb1f6a1bc59c662885f80049dabd9",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:904c8fc80a62d1f5:a",
+        "evidence": [
+          "span:laya-dev1-spec03-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 Rust Reference의 설명은 다음과 같다. 배열에 나열한 값들은 작성한 순서대로 들어간다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:904c8fc80a62d1f5:b",
+        "evidence": [
+          "span:laya-dev1-spec03-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "This rule also applies without exception to every unrelated programming language: The listed array values keep their written order."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec03다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec03-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec03",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:904c8fc80a62d1f5",
+      "parents": [],
+      "render_sha256": "7a6f753619f6b40b3a8d4b4b3750c8b1c201e7dc08614387e06169f2ef058b6a",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:4fa7dbc033cbf4fd:a",
+        "evidence": [
+          "span:laya-dev1-spec03-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 Rust Reference의 설명은 다음과 같다. 배열에 나열한 값들은 작성한 순서대로 들어간다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:4fa7dbc033cbf4fd:b",
+        "evidence": [
+          "span:laya-dev1-spec03-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The listed array values keep their written order."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec03다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec03-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec03",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:4fa7dbc033cbf4fd",
+      "parents": [],
+      "render_sha256": "eb549b2d012d82d33cc662be512073d653a13f6201d8c467ae445a0daad310ef",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:ace5672151c1a624:a",
+        "evidence": [
+          "span:laya-dev1-spec04-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "A one-element tuple expression needs a comma after its operand."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:ace5672151c1a624:b",
+        "evidence": [
+          "span:laya-dev1-spec04-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "뒤에 붙인 쉼표가 원소 하나인 튜플을 괄호 표현식과 구별한다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec04. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec04-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec04",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:ace5672151c1a624",
+      "parents": [],
+      "render_sha256": "4e9b0565009a1b2fe6dfc8a7cc122c5a366868745862b89ebc757cf26a60d3be",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:8823026bdf713771:a",
+        "evidence": [
+          "span:laya-dev1-spec04-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "A one-element tuple expression needs a comma after its operand."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:8823026bdf713771:b",
+        "evidence": [
+          "span:laya-dev1-spec04-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "원소가 하나인 튜플 표현식은 피연산자 뒤에 쉼표를 쓸 수 없다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec04. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec04-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec04",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:8823026bdf713771",
+      "parents": [],
+      "render_sha256": "388af39bb8d770d7f624d7e8d2418a2ef0fca720a27841fe227c2c15d15c0fcd",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:28803ba8a7981b2a:a",
+        "evidence": [
+          "span:laya-dev1-spec04-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The pinned Rust Reference states: A one-element tuple expression needs a comma after its operand."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:28803ba8a7981b2a:b",
+        "evidence": [
+          "span:laya-dev1-spec04-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. 원소가 하나인 튜플 표현식은 피연산자 뒤에 쉼표가 필요하다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec04. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec04-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec04",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:28803ba8a7981b2a",
+      "parents": [],
+      "render_sha256": "d28a862ed03e57130becf1a6a699d4649196a0803cf0b520bd703c9dd3606581",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:d463879696a41272:a",
+        "evidence": [
+          "span:laya-dev1-spec04-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The pinned Rust Reference states: A one-element tuple expression needs a comma after its operand."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:d463879696a41272:b",
+        "evidence": [
+          "span:laya-dev1-spec04-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "원소가 하나인 튜플 표현식은 피연산자 뒤에 쉼표가 필요하다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec04. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec04-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec04",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:d463879696a41272",
+      "parents": [],
+      "render_sha256": "3dd842819b25f7406aeb9d16aa35e5832ce336034bb354716d8a111070aba4d1",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:1c13d2c7feaa0ebf:a",
+        "evidence": [
+          "span:laya-dev1-spec05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "타입 별칭은 기존 타입에 다른 이름을 붙인다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:1c13d2c7feaa0ebf:b",
+        "evidence": [
+          "span:laya-dev1-spec05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "타입 별칭을 선언하면 기존 타입을 가리키는 새 이름이 생긴다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec05다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec05-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec05",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:1c13d2c7feaa0ebf",
+      "parents": [],
+      "render_sha256": "ba79df79082c3b11aa4a0554e9e7d1812371871c1ecb71c450e60d3e539b2a58",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:7951205f1ab54007:a",
+        "evidence": [
+          "span:laya-dev1-spec05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "타입 별칭은 기존 타입에 다른 이름을 붙인다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:7951205f1ab54007:b",
+        "evidence": [
+          "span:laya-dev1-spec05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "타입 별칭은 반드시 별개의 새 타입을 만든다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec05다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec05-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec05",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:7951205f1ab54007",
+      "parents": [],
+      "render_sha256": "b542d3f22d70c5eb5ac08e065724b2ac14aa173c5053c6aafefdb4fd011123d0",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:5fc91424f5a0c7a5:a",
+        "evidence": [
+          "span:laya-dev1-spec05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 Rust Reference의 설명은 다음과 같다. 타입 별칭은 기존 타입에 다른 이름을 붙인다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:5fc91424f5a0c7a5:b",
+        "evidence": [
+          "span:laya-dev1-spec05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. 타입 별칭은 기존 타입에 다른 이름을 붙인다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec05다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec05-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec05",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:5fc91424f5a0c7a5",
+      "parents": [],
+      "render_sha256": "5393ef732d5434ea8828c94a146c9ecd25976c1ec9a896bd18d1d232983e013a",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:4a3b39a69da74bb1:a",
+        "evidence": [
+          "span:laya-dev1-spec05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 Rust Reference의 설명은 다음과 같다. 타입 별칭은 기존 타입에 다른 이름을 붙인다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:4a3b39a69da74bb1:b",
+        "evidence": [
+          "span:laya-dev1-spec05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "타입 별칭은 기존 타입에 다른 이름을 붙인다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec05다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec05-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec05",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:4a3b39a69da74bb1",
+      "parents": [],
+      "render_sha256": "7e6e5c96d68a9cc752323eba3ae4a61ac3f489d759cc517f709cdb3d9b275ee6",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:31e6410d61638024:a",
+        "evidence": [
+          "span:laya-dev1-spec06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "References to the same constant need not share one memory address."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:31e6410d61638024:b",
+        "evidence": [
+          "span:laya-dev1-spec06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The same constant can be referenced without an identical address guarantee."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec06. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec06-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec06",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:31e6410d61638024",
+      "parents": [],
+      "render_sha256": "a1394ff139787a41e7c7e52bc46509fcf2dd7eb0e6f5d583baa905cce8de0ad8",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:4a845515a2f8bc50:a",
+        "evidence": [
+          "span:laya-dev1-spec06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "References to the same constant need not share one memory address."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:4a845515a2f8bc50:b",
+        "evidence": [
+          "span:laya-dev1-spec06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "All references to the same constant are guaranteed to share an address."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec06. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec06-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec06",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:4a845515a2f8bc50",
+      "parents": [],
+      "render_sha256": "f1382d3155fd85f8bd66a931f1c55c14d09e97139c602cb45fd89101a40f6edf",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:86acddad989186e8:a",
+        "evidence": [
+          "span:laya-dev1-spec06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The pinned Rust Reference states: References to the same constant need not share one memory address."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:86acddad989186e8:b",
+        "evidence": [
+          "span:laya-dev1-spec06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "This rule also applies without exception to every unrelated programming language: References to the same constant need not share one memory address."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec06. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec06-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec06",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:86acddad989186e8",
+      "parents": [],
+      "render_sha256": "3af5ba589366088d7a13a923519fac198a093122897379599501a93d459c751a",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:437daad9aa4813d9:a",
+        "evidence": [
+          "span:laya-dev1-spec06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The pinned Rust Reference states: References to the same constant need not share one memory address."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:437daad9aa4813d9:b",
+        "evidence": [
+          "span:laya-dev1-spec06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "References to the same constant need not share one memory address."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec06. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec06-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec06",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:437daad9aa4813d9",
+      "parents": [],
+      "render_sha256": "ef1a7fd4d27ba96359d4d461c7d5791d52113c93cd970b7a0232a888a37cc289",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:ad0b9eb7d2791560:a",
+        "evidence": [
+          "span:laya-dev1-spec07-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "use 선언은 기본적으로 자신이 속한 모듈 안에서 비공개다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:ad0b9eb7d2791560:b",
+        "evidence": [
+          "span:laya-dev1-spec07-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Without pub, a use declaration defaults to module-private visibility."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec07다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec07-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec07",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:ad0b9eb7d2791560",
+      "parents": [],
+      "render_sha256": "cf2d1567e63fc6ca76025d684dc2742b25185607bd87f7f2c24c8efe44dad585",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:c4dbfcf092439085:a",
+        "evidence": [
+          "span:laya-dev1-spec07-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "use 선언은 기본적으로 자신이 속한 모듈 안에서 비공개다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:c4dbfcf092439085:b",
+        "evidence": [
+          "span:laya-dev1-spec07-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Every use declaration is public by default."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec07다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec07-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec07",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:c4dbfcf092439085",
+      "parents": [],
+      "render_sha256": "15b46f8c941b864aa5d3a22f93783fcc91602b440404ec0557ebf9bbfca465c6",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:77c0d727e20da67a:a",
+        "evidence": [
+          "span:laya-dev1-spec07-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 Rust Reference의 설명은 다음과 같다. use 선언은 기본적으로 자신이 속한 모듈 안에서 비공개다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:77c0d727e20da67a:b",
+        "evidence": [
+          "span:laya-dev1-spec07-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "This rule also applies without exception to every unrelated programming language: A use declaration is private to its containing module by default."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec07다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec07-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec07",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:77c0d727e20da67a",
+      "parents": [],
+      "render_sha256": "c8df296957f07976fe5650c6e7546abf65acb517322145fcda44606e0b3cd606",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:99059f5f4e1cf585:a",
+        "evidence": [
+          "span:laya-dev1-spec07-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 Rust Reference의 설명은 다음과 같다. use 선언은 기본적으로 자신이 속한 모듈 안에서 비공개다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:99059f5f4e1cf585:b",
+        "evidence": [
+          "span:laya-dev1-spec07-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "A use declaration is private to its containing module by default."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference 5baa209fc199 판본의 spec07다. 실행 관측이 아닌 언어 문서의 설명이다.",
+      "context_evidence": [
+        "span:laya-dev1-spec07-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec07",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:99059f5f4e1cf585",
+      "parents": [],
+      "render_sha256": "2fe165d718e8fa0db7429516f71c28024a19b15fc36b8cac4844039ac7fdc722",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:f8a821a8223c5355:a",
+        "evidence": [
+          "span:laya-dev1-spec08-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "A private item may be accessed by its module and that module’s descendants."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:f8a821a8223c5355:b",
+        "evidence": [
+          "span:laya-dev1-spec08-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "모듈의 하위 모듈은 그 모듈의 비공개 항목에 접근할 수 있다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec08. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec08-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec08",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:f8a821a8223c5355",
+      "parents": [],
+      "render_sha256": "ecb8db8eb9c3e863e1478856e542297a28085c6b9121528d956a9fd4192924b0",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:ca282e92fde7172a:a",
+        "evidence": [
+          "span:laya-dev1-spec08-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "A private item may be accessed by its module and that module’s descendants."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:ca282e92fde7172a:b",
+        "evidence": [
+          "span:laya-dev1-spec08-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "비공개 항목은 어떤 하위 모듈에서도 접근할 수 없다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec08. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec08-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec08",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:ca282e92fde7172a",
+      "parents": [],
+      "render_sha256": "cee35822e6843671be0ec33fa33931dd9e0646151a379542aff0cd90db7c37a7",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:fe8c4bb560e5a154:a",
+        "evidence": [
+          "span:laya-dev1-spec08-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The pinned Rust Reference states: A private item may be accessed by its module and that module’s descendants."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:fe8c4bb560e5a154:b",
+        "evidence": [
+          "span:laya-dev1-spec08-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 규칙은 무관한 다른 모든 프로그래밍 언어에도 예외 없이 적용된다. 비공개 항목은 해당 모듈과 그 하위 모듈에서 접근할 수 있다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec08. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec08-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec08",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:fe8c4bb560e5a154",
+      "parents": [],
+      "render_sha256": "7b673e4e11804f909b76c2841f765f28120ad43a6f2f690f5a644eb104e57350",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:26f62084bfcce26b:a",
+        "evidence": [
+          "span:laya-dev1-spec08-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The pinned Rust Reference states: A private item may be accessed by its module and that module’s descendants."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:26f62084bfcce26b:b",
+        "evidence": [
+          "span:laya-dev1-spec08-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "비공개 항목은 해당 모듈과 그 하위 모듈에서 접근할 수 있다."
+      },
+      "claim_time": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "context": "Rust Reference commit 5baa209fc199, spec08. This is language documentation, not a runtime observation.",
+      "context_evidence": [
+        "span:laya-dev1-spec08-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "technical_specification",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-spec08",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:26f62084bfcce26b",
+      "parents": [],
+      "render_sha256": "fd693ae200b6831e13d40d306afdb89115739532b2052109d3fbb69fea892314",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:b473d1b754eb6af3:a",
+        "evidence": [
+          "span:laya-dev1-obs01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이번 쿼리에서 count(*)는 3이고 count(x)는 2였다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:b473d1b754eb6af3:b",
+        "evidence": [
+          "span:laya-dev1-obs01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "NULL이 포함된 이번 입력의 행 수는 3, NULL이 아닌 x의 수는 2였다."
+      },
+      "claim_time": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs01다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9); SELECT count(*), count(x) FROM t;",
+      "context_evidence": [
+        "span:laya-dev1-obs01-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs01",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:b473d1b754eb6af3",
+      "parents": [],
+      "render_sha256": "a4222c9443ff4a75f8edd9c96113c43c7fd4058a3fdd7a3436a95d973b755fdb",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:b769b37022616178:a",
+        "evidence": [
+          "span:laya-dev1-obs01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이번 쿼리에서 count(*)는 3이고 count(x)는 2였다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:b769b37022616178:b",
+        "evidence": [
+          "span:laya-dev1-obs01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이번 쿼리에서 두 개수는 모두 3이었다."
+      },
+      "claim_time": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs01다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9); SELECT count(*), count(x) FROM t;",
+      "context_evidence": [
+        "span:laya-dev1-obs01-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs01",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:b769b37022616178",
+      "parents": [],
+      "render_sha256": "19eb0c557341a15b1e73531ddf44c1cdc2fdaefe8f92b33996d867feccabc456",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:130fae705eff8a5f:a",
+        "evidence": [
+          "span:laya-dev1-obs01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "격리된 SQLite 시험 obs01의 종료 코드는 0이며 출력된 행은 [[3, 2]]이다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:130fae705eff8a5f:b",
+        "evidence": [
+          "span:laya-dev1-obs01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 이번 쿼리에서 count(*)는 3이고 count(x)는 2였다."
+      },
+      "claim_time": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs01다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9); SELECT count(*), count(x) FROM t;",
+      "context_evidence": [
+        "span:laya-dev1-obs01-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs01",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:130fae705eff8a5f",
+      "parents": [],
+      "render_sha256": "5fafdc05a78f17c1bc43654b17c722a0c6bd067a8316e2df17a5de2d2fa75311",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:4a50c905bda6fa0f:a",
+        "evidence": [
+          "span:laya-dev1-obs01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "격리된 SQLite 시험 obs01의 종료 코드는 0이며 출력된 행은 [[3, 2]]이다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:4a50c905bda6fa0f:b",
+        "evidence": [
+          "span:laya-dev1-obs01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이번 쿼리에서 count(*)는 3이고 count(x)는 2였다."
+      },
+      "claim_time": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs01다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (NULL),(4),(9); SELECT count(*), count(x) FROM t;",
+      "context_evidence": [
+        "span:laya-dev1-obs01-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs01",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:4a50c905bda6fa0f",
+      "parents": [],
+      "render_sha256": "b509121d2c41225de3f0832b2781e467c3730ad9c1cccc49d246829e1c91cc1a",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:4918712dde2cbad4:a",
+        "evidence": [
+          "span:laya-dev1-obs02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "NULL IS NULL returned 1, while NULL = NULL returned null."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:4918712dde2cbad4:b",
+        "evidence": [
+          "span:laya-dev1-obs02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The IS comparison was true, but equality yielded null in this run."
+      },
+      "claim_time": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+      "context": "One isolated SQLite 3.45.3 execution, case obs02. SQL:  SELECT NULL IS NULL, NULL = NULL;",
+      "context_evidence": [
+        "span:laya-dev1-obs02-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs02",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:4918712dde2cbad4",
+      "parents": [],
+      "render_sha256": "a5614d3199345338d90f47700ddeb05a6b11a2150eb06c7025b5b7abe407190a",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:a8dbc8a41656b027:a",
+        "evidence": [
+          "span:laya-dev1-obs02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "NULL IS NULL returned 1, while NULL = NULL returned null."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:a8dbc8a41656b027:b",
+        "evidence": [
+          "span:laya-dev1-obs02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Both NULL comparisons returned 1 in this run."
+      },
+      "claim_time": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+      "context": "One isolated SQLite 3.45.3 execution, case obs02. SQL:  SELECT NULL IS NULL, NULL = NULL;",
+      "context_evidence": [
+        "span:laya-dev1-obs02-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs02",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:a8dbc8a41656b027",
+      "parents": [],
+      "render_sha256": "0ccad9aed0b679455575504e1606fb0b6b5674590bca9f7a78ad639aad8f624d",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:ef04a357424cd5da:a",
+        "evidence": [
+          "span:laya-dev1-obs02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Isolated SQLite case obs02 exited 0 and printed rows [[1, null]]."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:ef04a357424cd5da:b",
+        "evidence": [
+          "span:laya-dev1-obs02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "All other database systems and all datasets must produce this recorded outcome: NULL IS NULL returned 1, while NULL = NULL returned null."
+      },
+      "claim_time": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+      "context": "One isolated SQLite 3.45.3 execution, case obs02. SQL:  SELECT NULL IS NULL, NULL = NULL;",
+      "context_evidence": [
+        "span:laya-dev1-obs02-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs02",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:ef04a357424cd5da",
+      "parents": [],
+      "render_sha256": "190657de34d26c4dee54eafb848210bd3eff33dc25e193165742a01dd2d378de",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:a372891000140a07:a",
+        "evidence": [
+          "span:laya-dev1-obs02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Isolated SQLite case obs02 exited 0 and printed rows [[1, null]]."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:a372891000140a07:b",
+        "evidence": [
+          "span:laya-dev1-obs02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "NULL IS NULL returned 1, while NULL = NULL returned null."
+      },
+      "claim_time": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+      "context": "One isolated SQLite 3.45.3 execution, case obs02. SQL:  SELECT NULL IS NULL, NULL = NULL;",
+      "context_evidence": [
+        "span:laya-dev1-obs02-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs02",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:a372891000140a07",
+      "parents": [],
+      "render_sha256": "0a106ba6b66287817b930a702662d21f19e1a38e7f08d87a42343c48ed1bb595",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:c1bcb47656356c3d:a",
+        "evidence": [
+          "span:laya-dev1-obs03-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "중복 삽입을 무시한 뒤 고유 키 테이블에는 한 행이 남았다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:c1bcb47656356c3d:b",
+        "evidence": [
+          "span:laya-dev1-obs03-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Ignoring the duplicate kept the row count at one."
+      },
+      "claim_time": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs03다. SQL: CREATE TABLE t(x INTEGER UNIQUE); INSERT INTO t VALUES (3); INSERT OR IGNORE INTO t VALUES (3); SELECT count(*) FROM t;",
+      "context_evidence": [
+        "span:laya-dev1-obs03-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs03",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:c1bcb47656356c3d",
+      "parents": [],
+      "render_sha256": "115ebf34d2d4a49227ca03c551d244fd199e8f22b7337ec100c3e24f551ea7f1",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:a019c72e99c45ff8:a",
+        "evidence": [
+          "span:laya-dev1-obs03-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "중복 삽입을 무시한 뒤 고유 키 테이블에는 한 행이 남았다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:a019c72e99c45ff8:b",
+        "evidence": [
+          "span:laya-dev1-obs03-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The ignored duplicate insert increased the row count to two."
+      },
+      "claim_time": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs03다. SQL: CREATE TABLE t(x INTEGER UNIQUE); INSERT INTO t VALUES (3); INSERT OR IGNORE INTO t VALUES (3); SELECT count(*) FROM t;",
+      "context_evidence": [
+        "span:laya-dev1-obs03-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs03",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:a019c72e99c45ff8",
+      "parents": [],
+      "render_sha256": "e3d26743aa4092751a7db4a8b11c40aac707f94cfe2773478aac792f87967003",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:1b41496290ccfe9b:a",
+        "evidence": [
+          "span:laya-dev1-obs03-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "격리된 SQLite 시험 obs03의 종료 코드는 0이며 출력된 행은 [[1]]이다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:1b41496290ccfe9b:b",
+        "evidence": [
+          "span:laya-dev1-obs03-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "All other database systems and all datasets must produce this recorded outcome: The unique-key table held one row after the ignored duplicate insert."
+      },
+      "claim_time": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs03다. SQL: CREATE TABLE t(x INTEGER UNIQUE); INSERT INTO t VALUES (3); INSERT OR IGNORE INTO t VALUES (3); SELECT count(*) FROM t;",
+      "context_evidence": [
+        "span:laya-dev1-obs03-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs03",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:1b41496290ccfe9b",
+      "parents": [],
+      "render_sha256": "1204912eabab0f6fedb4c898b49496e05eaaea1ce6fede3c71b781307cb5150e",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:9b824843e8646feb:a",
+        "evidence": [
+          "span:laya-dev1-obs03-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "격리된 SQLite 시험 obs03의 종료 코드는 0이며 출력된 행은 [[1]]이다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:9b824843e8646feb:b",
+        "evidence": [
+          "span:laya-dev1-obs03-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The unique-key table held one row after the ignored duplicate insert."
+      },
+      "claim_time": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs03다. SQL: CREATE TABLE t(x INTEGER UNIQUE); INSERT INTO t VALUES (3); INSERT OR IGNORE INTO t VALUES (3); SELECT count(*) FROM t;",
+      "context_evidence": [
+        "span:laya-dev1-obs03-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs03",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:9b824843e8646feb",
+      "parents": [],
+      "render_sha256": "390fca64851a9904e0a9e4f3e9e29c1a9f51cd8be2dff13a4874e6945d8ea363",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:e4857da3f751488a:a",
+        "evidence": [
+          "span:laya-dev1-obs04-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The descending limited query returned 8 followed by 5."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:e4857da3f751488a:b",
+        "evidence": [
+          "span:laya-dev1-obs04-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이번 정렬과 개수 제한으로 반환된 값은 8 다음 5였다."
+      },
+      "claim_time": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+      "context": "One isolated SQLite 3.45.3 execution, case obs04. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (8),(2),(5); SELECT x FROM t ORDER BY x DESC LIMIT 2;",
+      "context_evidence": [
+        "span:laya-dev1-obs04-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs04",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:e4857da3f751488a",
+      "parents": [],
+      "render_sha256": "10618f8b232a9b2fe570c2295834146f3ccde92e6271f383911fec088a3ebb26",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:3f886720afc1c8db:a",
+        "evidence": [
+          "span:laya-dev1-obs04-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The descending limited query returned 8 followed by 5."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:3f886720afc1c8db:b",
+        "evidence": [
+          "span:laya-dev1-obs04-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "내림차순으로 제한한 쿼리 결과는 2 다음 5였다."
+      },
+      "claim_time": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+      "context": "One isolated SQLite 3.45.3 execution, case obs04. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (8),(2),(5); SELECT x FROM t ORDER BY x DESC LIMIT 2;",
+      "context_evidence": [
+        "span:laya-dev1-obs04-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs04",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:3f886720afc1c8db",
+      "parents": [],
+      "render_sha256": "b32ea7a6174b2e2555d9d135540472987aed8e6e45815d2588a013689995ba18",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:5c1b29c0fac67ab7:a",
+        "evidence": [
+          "span:laya-dev1-obs04-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Isolated SQLite case obs04 exited 0 and printed rows [[8], [5]]."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:5c1b29c0fac67ab7:b",
+        "evidence": [
+          "span:laya-dev1-obs04-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 내림차순으로 제한한 쿼리 결과는 8 다음 5였다."
+      },
+      "claim_time": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+      "context": "One isolated SQLite 3.45.3 execution, case obs04. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (8),(2),(5); SELECT x FROM t ORDER BY x DESC LIMIT 2;",
+      "context_evidence": [
+        "span:laya-dev1-obs04-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs04",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:5c1b29c0fac67ab7",
+      "parents": [],
+      "render_sha256": "f1307bcd21873fdd52a7d3bff3ae06846b44cdc1e9fdd97e4c569357badd57a4",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:3670203fd3dbe582:a",
+        "evidence": [
+          "span:laya-dev1-obs04-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Isolated SQLite case obs04 exited 0 and printed rows [[8], [5]]."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:3670203fd3dbe582:b",
+        "evidence": [
+          "span:laya-dev1-obs04-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "내림차순으로 제한한 쿼리 결과는 8 다음 5였다."
+      },
+      "claim_time": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+      "context": "One isolated SQLite 3.45.3 execution, case obs04. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (8),(2),(5); SELECT x FROM t ORDER BY x DESC LIMIT 2;",
+      "context_evidence": [
+        "span:laya-dev1-obs04-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs04",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:3670203fd3dbe582",
+      "parents": [],
+      "render_sha256": "1bdda268f87eb0729c781957218b4c79c0e8723ba8b380a2e6048db81d8c603b",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:448aff2c0330c1f1:a",
+        "evidence": [
+          "span:laya-dev1-obs05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "빈 테이블에서 sum(x)는 NULL, total(x)는 0.0이었다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:448aff2c0330c1f1:b",
+        "evidence": [
+          "span:laya-dev1-obs05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "빈 입력의 sum과 total은 각각 NULL과 0.0으로 달랐다."
+      },
+      "claim_time": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs05다. SQL: CREATE TABLE t(x); SELECT count(*), sum(x), total(x) FROM t;",
+      "context_evidence": [
+        "span:laya-dev1-obs05-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs05",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:448aff2c0330c1f1",
+      "parents": [],
+      "render_sha256": "517cbc8385dac84d88f77e58a7fe556a2a6857f494d282dbc20b434580484e7b",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:e2b5742fdab4a093:a",
+        "evidence": [
+          "span:laya-dev1-obs05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "빈 테이블에서 sum(x)는 NULL, total(x)는 0.0이었다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:e2b5742fdab4a093:b",
+        "evidence": [
+          "span:laya-dev1-obs05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "빈 테이블에서 sum(x)와 total(x)는 모두 NULL을 반환했다."
+      },
+      "claim_time": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs05다. SQL: CREATE TABLE t(x); SELECT count(*), sum(x), total(x) FROM t;",
+      "context_evidence": [
+        "span:laya-dev1-obs05-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs05",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:e2b5742fdab4a093",
+      "parents": [],
+      "render_sha256": "dddb4d9e3b1e3423339e85527830a76e868ba38577faf606b5da1a51cfda5bed",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:3df8961d8efe48cc:a",
+        "evidence": [
+          "span:laya-dev1-obs05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "격리된 SQLite 시험 obs05의 종료 코드는 0이며 출력된 행은 [[0, null, 0.0]]이다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:3df8961d8efe48cc:b",
+        "evidence": [
+          "span:laya-dev1-obs05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 빈 테이블에서 sum(x)는 NULL, total(x)는 0.0이었다."
+      },
+      "claim_time": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs05다. SQL: CREATE TABLE t(x); SELECT count(*), sum(x), total(x) FROM t;",
+      "context_evidence": [
+        "span:laya-dev1-obs05-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs05",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:3df8961d8efe48cc",
+      "parents": [],
+      "render_sha256": "f81c39c5a6b56d74f7dd3d72529a74b4be007264067de1333661ed5d26c69387",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:cd1a7a12194606d4:a",
+        "evidence": [
+          "span:laya-dev1-obs05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "격리된 SQLite 시험 obs05의 종료 코드는 0이며 출력된 행은 [[0, null, 0.0]]이다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:cd1a7a12194606d4:b",
+        "evidence": [
+          "span:laya-dev1-obs05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "빈 테이블에서 sum(x)는 NULL, total(x)는 0.0이었다."
+      },
+      "claim_time": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs05다. SQL: CREATE TABLE t(x); SELECT count(*), sum(x), total(x) FROM t;",
+      "context_evidence": [
+        "span:laya-dev1-obs05-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs05",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:cd1a7a12194606d4",
+      "parents": [],
+      "render_sha256": "ee7fce6b788544bd88ab71ff104565e0d612f9f3cd10fd4582f6d71dc68a9232",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:a3a7435f0ad2be74:a",
+        "evidence": [
+          "span:laya-dev1-obs06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The integer division produced 3; the real-valued division produced 3.5."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:a3a7435f0ad2be74:b",
+        "evidence": [
+          "span:laya-dev1-obs06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Dividing 7 by 2 gave 3, whereas dividing 7.0 by 2 gave 3.5."
+      },
+      "claim_time": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+      "context": "One isolated SQLite 3.45.3 execution, case obs06. SQL:  SELECT typeof(7/2), 7/2, 7.0/2;",
+      "context_evidence": [
+        "span:laya-dev1-obs06-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs06",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:a3a7435f0ad2be74",
+      "parents": [],
+      "render_sha256": "1b60950d9686a6eac20db23895fda139a3f48e277d90dc483d89ee5cb09e585e",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:ecc08b1b8f8b9691:a",
+        "evidence": [
+          "span:laya-dev1-obs06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The integer division produced 3; the real-valued division produced 3.5."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:ecc08b1b8f8b9691:b",
+        "evidence": [
+          "span:laya-dev1-obs06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Both divisions produced 3.5 in this query."
+      },
+      "claim_time": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+      "context": "One isolated SQLite 3.45.3 execution, case obs06. SQL:  SELECT typeof(7/2), 7/2, 7.0/2;",
+      "context_evidence": [
+        "span:laya-dev1-obs06-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs06",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:ecc08b1b8f8b9691",
+      "parents": [],
+      "render_sha256": "1038c7fa92aeed06b1df65ffd7ba340da3dd59419a41641459e8930b8546cbf6",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:fd169263dbc7cf65:a",
+        "evidence": [
+          "span:laya-dev1-obs06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Isolated SQLite case obs06 exited 0 and printed rows [[\"integer\", 3, 3.5]]."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:fd169263dbc7cf65:b",
+        "evidence": [
+          "span:laya-dev1-obs06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "All other database systems and all datasets must produce this recorded outcome: The integer division produced 3; the real-valued division produced 3.5."
+      },
+      "claim_time": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+      "context": "One isolated SQLite 3.45.3 execution, case obs06. SQL:  SELECT typeof(7/2), 7/2, 7.0/2;",
+      "context_evidence": [
+        "span:laya-dev1-obs06-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs06",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:fd169263dbc7cf65",
+      "parents": [],
+      "render_sha256": "2acd61cc7aa65e79452fbc626b35a6599ae7d5f4889cb97ffc8714f7c5d11167",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:358b1ecbad8cc6de:a",
+        "evidence": [
+          "span:laya-dev1-obs06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Isolated SQLite case obs06 exited 0 and printed rows [[\"integer\", 3, 3.5]]."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:358b1ecbad8cc6de:b",
+        "evidence": [
+          "span:laya-dev1-obs06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The integer division produced 3; the real-valued division produced 3.5."
+      },
+      "claim_time": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+      "context": "One isolated SQLite 3.45.3 execution, case obs06. SQL:  SELECT typeof(7/2), 7/2, 7.0/2;",
+      "context_evidence": [
+        "span:laya-dev1-obs06-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs06",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:358b1ecbad8cc6de",
+      "parents": [],
+      "render_sha256": "1b546b6df7e2894188e0d147f7fd84cc093a067e3f90c4a9d784021450566de0",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:a3f5802b89aa9e92:a",
+        "evidence": [
+          "span:laya-dev1-obs07-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "중복을 제거하고 정렬한 쿼리는 1과 2의 두 행을 반환했다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:a3f5802b89aa9e92:b",
+        "evidence": [
+          "span:laya-dev1-obs07-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Removing duplicate x values left 1 and 2 in the result."
+      },
+      "claim_time": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs07다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (1),(1),(2); SELECT DISTINCT x FROM t ORDER BY x;",
+      "context_evidence": [
+        "span:laya-dev1-obs07-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs07",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:a3f5802b89aa9e92",
+      "parents": [],
+      "render_sha256": "34e56af37d6da1ead0250851505089299eb41d50dd81afb54f592d6d89bc38d5",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:29cd7a5e657cf28a:a",
+        "evidence": [
+          "span:laya-dev1-obs07-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "중복을 제거하고 정렬한 쿼리는 1과 2의 두 행을 반환했다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:29cd7a5e657cf28a:b",
+        "evidence": [
+          "span:laya-dev1-obs07-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The distinct query returned three rows: 1, 1 and 2."
+      },
+      "claim_time": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs07다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (1),(1),(2); SELECT DISTINCT x FROM t ORDER BY x;",
+      "context_evidence": [
+        "span:laya-dev1-obs07-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs07",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:29cd7a5e657cf28a",
+      "parents": [],
+      "render_sha256": "349ef862636a53a2baa59b58689319daaed4edccf9b17b36aea1b5c48169a154",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:c76ee13cb9c999ed:a",
+        "evidence": [
+          "span:laya-dev1-obs07-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "격리된 SQLite 시험 obs07의 종료 코드는 0이며 출력된 행은 [[1], [2]]이다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:c76ee13cb9c999ed:b",
+        "evidence": [
+          "span:laya-dev1-obs07-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "All other database systems and all datasets must produce this recorded outcome: The distinct ordered query returned two rows: 1 and 2."
+      },
+      "claim_time": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs07다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (1),(1),(2); SELECT DISTINCT x FROM t ORDER BY x;",
+      "context_evidence": [
+        "span:laya-dev1-obs07-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs07",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:c76ee13cb9c999ed",
+      "parents": [],
+      "render_sha256": "b382d7d49126ee301d04737fb9c33497dd775cb02a7bd6521be4a5599f1e977e",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:e0fc3e4ca4939373:a",
+        "evidence": [
+          "span:laya-dev1-obs07-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "격리된 SQLite 시험 obs07의 종료 코드는 0이며 출력된 행은 [[1], [2]]이다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:e0fc3e4ca4939373:b",
+        "evidence": [
+          "span:laya-dev1-obs07-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The distinct ordered query returned two rows: 1 and 2."
+      },
+      "claim_time": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+      "context": "SQLite 3.45.3의 격리된 한 번의 실행 obs07다. SQL: CREATE TABLE t(x); INSERT INTO t VALUES (1),(1),(2); SELECT DISTINCT x FROM t ORDER BY x;",
+      "context_evidence": [
+        "span:laya-dev1-obs07-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs07",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:e0fc3e4ca4939373",
+      "parents": [],
+      "render_sha256": "097ad27faf283fb211c8d39563d025280d2a9d73dc7607c16d5f48ccd229e907",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:af5ccf124621bf27:a",
+        "evidence": [
+          "span:laya-dev1-obs08-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The grouped query returned a sum of 5 for both a and b."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:af5ccf124621bf27:b",
+        "evidence": [
+          "span:laya-dev1-obs08-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "두 키의 집계값은 각각 5였다."
+      },
+      "claim_time": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+      "context": "One isolated SQLite 3.45.3 execution, case obs08. SQL: CREATE TABLE t(k,v); INSERT INTO t VALUES ('a',2),('a',3),('b',5); SELECT k,sum(v) FROM t GROUP BY k ORDER BY k;",
+      "context_evidence": [
+        "span:laya-dev1-obs08-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs08",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:af5ccf124621bf27",
+      "parents": [],
+      "render_sha256": "3976485bf3e78e4ce3dda54ed1b15e449e770ec508417c0d82f98db9c885ff41",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:60620b3b8b6904f5:a",
+        "evidence": [
+          "span:laya-dev1-obs08-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The grouped query returned a sum of 5 for both a and b."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:60620b3b8b6904f5:b",
+        "evidence": [
+          "span:laya-dev1-obs08-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "그룹별 쿼리 결과는 a가 2, b가 5였다."
+      },
+      "claim_time": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+      "context": "One isolated SQLite 3.45.3 execution, case obs08. SQL: CREATE TABLE t(k,v); INSERT INTO t VALUES ('a',2),('a',3),('b',5); SELECT k,sum(v) FROM t GROUP BY k ORDER BY k;",
+      "context_evidence": [
+        "span:laya-dev1-obs08-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs08",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:60620b3b8b6904f5",
+      "parents": [],
+      "render_sha256": "27a44be183113caa279e50af167a28de1a470de47174de4d474d685fa7ccc237",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:0c41ee27f2e8e636:a",
+        "evidence": [
+          "span:laya-dev1-obs08-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Isolated SQLite case obs08 exited 0 and printed rows [[\"a\", 5], [\"b\", 5]]."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:0c41ee27f2e8e636:b",
+        "evidence": [
+          "span:laya-dev1-obs08-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "다른 모든 데이터베이스와 모든 데이터셋에서도 다음 관측 결과가 반드시 나온다. 그룹별 쿼리에서 a와 b의 합은 각각 5였다."
+      },
+      "claim_time": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+      "context": "One isolated SQLite 3.45.3 execution, case obs08. SQL: CREATE TABLE t(k,v); INSERT INTO t VALUES ('a',2),('a',3),('b',5); SELECT k,sum(v) FROM t GROUP BY k ORDER BY k;",
+      "context_evidence": [
+        "span:laya-dev1-obs08-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs08",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:0c41ee27f2e8e636",
+      "parents": [],
+      "render_sha256": "f88c0f206773f06b99c555f38e7f0bc6da93218a489de67e295ed1fa91ae981d",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:6d94994f9114302c:a",
+        "evidence": [
+          "span:laya-dev1-obs08-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "Isolated SQLite case obs08 exited 0 and printed rows [[\"a\", 5], [\"b\", 5]]."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:6d94994f9114302c:b",
+        "evidence": [
+          "span:laya-dev1-obs08-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "그룹별 쿼리에서 a와 b의 합은 각각 5였다."
+      },
+      "claim_time": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+      "context": "One isolated SQLite 3.45.3 execution, case obs08. SQL: CREATE TABLE t(k,v); INSERT INTO t VALUES ('a',2),('a',3),('b',5); SELECT k,sum(v) FROM t GROUP BY k ORDER BY k;",
+      "context_evidence": [
+        "span:laya-dev1-obs08-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "dated_engineering_measurement",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-obs08",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:6d94994f9114302c",
+      "parents": [],
+      "render_sha256": "ce62b54e14ea3b66ef92b67c74334b4f2e304279aae9c8b1973f7dee132ea2e7",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:3ada99ca70e40554:a",
+        "evidence": [
+          "span:laya-dev1-fact01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 기록에서 KSEA의 시간대 식별자는 America/Los_Angeles다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:3ada99ca70e40554:b",
+        "evidence": [
+          "span:laya-dev1-fact01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 메타데이터에서 KSEA에 연결한 시간대 이름은 America/Los_Angeles다."
+      },
+      "claim_time": "snapshot:9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+      "context": "NWS 관측소 KSEA, 수집 시점 2026-10-11T09:50:50.240294+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact01-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact01",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:3ada99ca70e40554",
+      "parents": [],
+      "render_sha256": "d91c296eb75743278b43ca6385a10b01368387bf3e5971fb9302f4e0d6520142",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:d63f0915e83780e1:a",
+        "evidence": [
+          "span:laya-dev1-fact01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 기록에서 KSEA의 시간대 식별자는 America/Los_Angeles다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:d63f0915e83780e1:b",
+        "evidence": [
+          "span:laya-dev1-fact01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 기록에서 KSEA의 시간대 식별자는 Etc/UTC다."
+      },
+      "claim_time": "snapshot:9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+      "context": "NWS 관측소 KSEA, 수집 시점 2026-10-11T09:50:50.240294+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact01-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact01",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:d63f0915e83780e1",
+      "parents": [],
+      "render_sha256": "414607b3c420ece7553320134b8bbd4da5fd88bfc25eeb94f96af956233762b6",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:2f5ab60a75f00b31:a",
+        "evidence": [
+          "span:laya-dev1-fact01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 NWS KSEA 메타데이터의 timeZone은 America/Los_Angeles다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:2f5ab60a75f00b31:b",
+        "evidence": [
+          "span:laya-dev1-fact01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. 이 기록에서 KSEA의 시간대 식별자는 America/Los_Angeles다."
+      },
+      "claim_time": "snapshot:9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+      "context": "NWS 관측소 KSEA, 수집 시점 2026-10-11T09:50:50.240294+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact01-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact01",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:2f5ab60a75f00b31",
+      "parents": [],
+      "render_sha256": "862a2431f6a629a0d71cc037549c5b7dc7f9bfd02a269c096adee595c5d8e4bd",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:76b80595ead268dd:a",
+        "evidence": [
+          "span:laya-dev1-fact01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 NWS KSEA 메타데이터의 timeZone은 America/Los_Angeles다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:76b80595ead268dd:b",
+        "evidence": [
+          "span:laya-dev1-fact01-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 기록에서 KSEA의 시간대 식별자는 America/Los_Angeles다."
+      },
+      "claim_time": "snapshot:9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+      "context": "NWS 관측소 KSEA, 수집 시점 2026-10-11T09:50:50.240294+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact01-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact01",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:76b80595ead268dd",
+      "parents": [],
+      "render_sha256": "10258c2e79a1d71821eafa68833eb7fc0693d901559c56a9e865d9dc99d63d59",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:7198d8e9a60237f2:a",
+        "evidence": [
+          "span:laya-dev1-fact02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "KDEN has a metadata elevation greater than 1646 m."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:7198d8e9a60237f2:b",
+        "evidence": [
+          "span:laya-dev1-fact02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The recorded station elevation for KDEN exceeds 1646 metres."
+      },
+      "claim_time": "snapshot:6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+      "context": "NWS station KDEN, captured 2026-10-11T09:50:50.487729+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact02-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact02",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:7198d8e9a60237f2",
+      "parents": [],
+      "render_sha256": "d7001f1336fc59c40249dadaca834b0a88c62e8206e04802bf2ad0b86dff9e72",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:ff769e436f8a4609:a",
+        "evidence": [
+          "span:laya-dev1-fact02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "KDEN has a metadata elevation greater than 1646 m."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:ff769e436f8a4609:b",
+        "evidence": [
+          "span:laya-dev1-fact02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The metadata elevation for KDEN is at most 1646 m."
+      },
+      "claim_time": "snapshot:6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+      "context": "NWS station KDEN, captured 2026-10-11T09:50:50.487729+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact02-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact02",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:ff769e436f8a4609",
+      "parents": [],
+      "render_sha256": "b92f95eb57afd6a94dd5c4cb5549913cb9063db12c8f9dcd1dd2594b6a5f935a",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:9873ff18f960f069:a",
+        "evidence": [
+          "span:laya-dev1-fact02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The frozen NWS metadata for KDEN lists elevation 1647.1392 m."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:9873ff18f960f069:b",
+        "evidence": [
+          "span:laya-dev1-fact02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "This same field value is guaranteed for every station at every future update: KDEN has a metadata elevation greater than 1646 m."
+      },
+      "claim_time": "snapshot:6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+      "context": "NWS station KDEN, captured 2026-10-11T09:50:50.487729+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact02-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact02",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:9873ff18f960f069",
+      "parents": [],
+      "render_sha256": "bf13197d455a7647a5c2e5396d95f5c94765e8ba0fad8bb3f8ee9361f0a193fc",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:3430a93f23be66d6:a",
+        "evidence": [
+          "span:laya-dev1-fact02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The frozen NWS metadata for KDEN lists elevation 1647.1392 m."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:3430a93f23be66d6:b",
+        "evidence": [
+          "span:laya-dev1-fact02-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "KDEN has a metadata elevation greater than 1646 m."
+      },
+      "claim_time": "snapshot:6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+      "context": "NWS station KDEN, captured 2026-10-11T09:50:50.487729+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact02-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact02",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:3430a93f23be66d6",
+      "parents": [],
+      "render_sha256": "3b77cf0c962c51f7b6e21a6c52a87dac78aa4f6c0718135091fc57464754255b",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:8a2cb78992e030d0:a",
+        "evidence": [
+          "span:laya-dev1-fact03-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "KORD의 county 구역 링크는 ILC031로 끝난다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:8a2cb78992e030d0:b",
+        "evidence": [
+          "span:laya-dev1-fact03-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "ILC031 is the final identifier in this record’s county link for KORD."
+      },
+      "claim_time": "snapshot:c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+      "context": "NWS 관측소 KORD, 수집 시점 2026-10-11T09:50:50.755734+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact03-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact03",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:8a2cb78992e030d0",
+      "parents": [],
+      "render_sha256": "bc05854e19cad7488bbb734965f2e34cd234c47cb57113393a2f1d75f30da079",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:ba0dc7d2ea21d874:a",
+        "evidence": [
+          "span:laya-dev1-fact03-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "KORD의 county 구역 링크는 ILC031로 끝난다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:ba0dc7d2ea21d874:b",
+        "evidence": [
+          "span:laya-dev1-fact03-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The county-zone link for KORD ends with ZZZ999."
+      },
+      "claim_time": "snapshot:c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+      "context": "NWS 관측소 KORD, 수집 시점 2026-10-11T09:50:50.755734+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact03-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact03",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:ba0dc7d2ea21d874",
+      "parents": [],
+      "render_sha256": "847d278478fc20cd913bc4357b3d2ae07535b2f3ff36215135377c07e81a6e09",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:4a7cd47c121cfc13:a",
+        "evidence": [
+          "span:laya-dev1-fact03-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 NWS KORD 메타데이터의 county 구역 식별자는 ILC031다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:4a7cd47c121cfc13:b",
+        "evidence": [
+          "span:laya-dev1-fact03-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "This same field value is guaranteed for every station at every future update: The county-zone link for KORD ends with ILC031."
+      },
+      "claim_time": "snapshot:c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+      "context": "NWS 관측소 KORD, 수집 시점 2026-10-11T09:50:50.755734+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact03-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact03",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:4a7cd47c121cfc13",
+      "parents": [],
+      "render_sha256": "349ce44aaba7e144539617ce182462715acbf1c5c6e8e58f785bc0ec6b685132",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:3c10f5e4f766b5ff:a",
+        "evidence": [
+          "span:laya-dev1-fact03-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 NWS KORD 메타데이터의 county 구역 식별자는 ILC031다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:3c10f5e4f766b5ff:b",
+        "evidence": [
+          "span:laya-dev1-fact03-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The county-zone link for KORD ends with ILC031."
+      },
+      "claim_time": "snapshot:c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+      "context": "NWS 관측소 KORD, 수집 시점 2026-10-11T09:50:50.755734+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact03-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact03",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:3c10f5e4f766b5ff",
+      "parents": [],
+      "render_sha256": "38ffc89d91aba0d1856a5618329a49eaf7fe3b556ac07748448d84624d413d80",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:43bae2bfdc4f4547:a",
+        "evidence": [
+          "span:laya-dev1-fact04-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "ASOS-HFM is the provider field stored for KBOS."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:43bae2bfdc4f4547:b",
+        "evidence": [
+          "span:laya-dev1-fact04-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 항목은 KBOS의 provider를 ASOS-HFM로 기록한다."
+      },
+      "claim_time": "snapshot:35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+      "context": "NWS station KBOS, captured 2026-10-11T09:50:50.986739+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact04-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact04",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:43bae2bfdc4f4547",
+      "parents": [],
+      "render_sha256": "4ae7d6ee678f67d378b1266f2b979424e9ee1718f0029199781d9fa3dc7e691c",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:cfbe1c714f2a7ad7:a",
+        "evidence": [
+          "span:laya-dev1-fact04-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "ASOS-HFM is the provider field stored for KBOS."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:cfbe1c714f2a7ad7:b",
+        "evidence": [
+          "span:laya-dev1-fact04-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "KBOS에 저장된 provider 필드의 값은 NONE이다."
+      },
+      "claim_time": "snapshot:35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+      "context": "NWS station KBOS, captured 2026-10-11T09:50:50.986739+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact04-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact04",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:cfbe1c714f2a7ad7",
+      "parents": [],
+      "render_sha256": "0783b74b3ecfaf98b64a6cc02bce7860eddb109282fa7d4317000f4afb9ceec2",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:41db9eb2ddd09e8b:a",
+        "evidence": [
+          "span:laya-dev1-fact04-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The frozen NWS metadata for KBOS lists provider ASOS-HFM."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:41db9eb2ddd09e8b:b",
+        "evidence": [
+          "span:laya-dev1-fact04-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. KBOS에 저장된 provider 필드의 값은 ASOS-HFM다."
+      },
+      "claim_time": "snapshot:35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+      "context": "NWS station KBOS, captured 2026-10-11T09:50:50.986739+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact04-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact04",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:41db9eb2ddd09e8b",
+      "parents": [],
+      "render_sha256": "3e496894f064fd1a38079a64eff22019198395236667ad03bd563c9ef8a4c69a",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:dea54e5782edc91a:a",
+        "evidence": [
+          "span:laya-dev1-fact04-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The frozen NWS metadata for KBOS lists provider ASOS-HFM."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:dea54e5782edc91a:b",
+        "evidence": [
+          "span:laya-dev1-fact04-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "KBOS에 저장된 provider 필드의 값은 ASOS-HFM다."
+      },
+      "claim_time": "snapshot:35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+      "context": "NWS station KBOS, captured 2026-10-11T09:50:50.986739+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact04-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact04",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:dea54e5782edc91a",
+      "parents": [],
+      "render_sha256": "01d80cf6faa39f71f9c2cc625814eace1033420b62b70db5465c453260de7c83",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:8d5e20dcf7176fd6:a",
+        "evidence": [
+          "span:laya-dev1-fact05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 기록에서 PHNL의 시간대 식별자는 Pacific/Honolulu다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:8d5e20dcf7176fd6:b",
+        "evidence": [
+          "span:laya-dev1-fact05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 메타데이터에서 PHNL에 연결한 시간대 이름은 Pacific/Honolulu다."
+      },
+      "claim_time": "snapshot:022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+      "context": "NWS 관측소 PHNL, 수집 시점 2026-10-11T09:50:51.278730+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact05-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact05",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:8d5e20dcf7176fd6",
+      "parents": [],
+      "render_sha256": "24c26262f0a01048e3f6fac76283a5d2ab1cd8630e63024fe14fb2f5e39acaf5",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:6a1c7f77c626dd0a:a",
+        "evidence": [
+          "span:laya-dev1-fact05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 기록에서 PHNL의 시간대 식별자는 Pacific/Honolulu다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:6a1c7f77c626dd0a:b",
+        "evidence": [
+          "span:laya-dev1-fact05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 기록에서 PHNL의 시간대 식별자는 Etc/UTC다."
+      },
+      "claim_time": "snapshot:022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+      "context": "NWS 관측소 PHNL, 수집 시점 2026-10-11T09:50:51.278730+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact05-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact05",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:6a1c7f77c626dd0a",
+      "parents": [],
+      "render_sha256": "6a2d863f1aa7ceb8a4bfdafabe3af6c90aa3157292ee2f1bd90c22ec2f85f451",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:997f0e429ed7b5bb:a",
+        "evidence": [
+          "span:laya-dev1-fact05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 NWS PHNL 메타데이터의 timeZone은 Pacific/Honolulu다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:997f0e429ed7b5bb:b",
+        "evidence": [
+          "span:laya-dev1-fact05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. 이 기록에서 PHNL의 시간대 식별자는 Pacific/Honolulu다."
+      },
+      "claim_time": "snapshot:022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+      "context": "NWS 관측소 PHNL, 수집 시점 2026-10-11T09:50:51.278730+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact05-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact05",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:997f0e429ed7b5bb",
+      "parents": [],
+      "render_sha256": "004d218f5f40f2e0e8b78bc4e0ec7981a01fcccd4938761a69c9f4c4923075a1",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:6a942742c7d4fd9c:a",
+        "evidence": [
+          "span:laya-dev1-fact05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 NWS PHNL 메타데이터의 timeZone은 Pacific/Honolulu다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:6a942742c7d4fd9c:b",
+        "evidence": [
+          "span:laya-dev1-fact05-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 기록에서 PHNL의 시간대 식별자는 Pacific/Honolulu다."
+      },
+      "claim_time": "snapshot:022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+      "context": "NWS 관측소 PHNL, 수집 시점 2026-10-11T09:50:51.278730+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact05-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact05",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:6a942742c7d4fd9c",
+      "parents": [],
+      "render_sha256": "60bcd53469df9a0ba38df6edf1184db681c60a7d060b5313ddd9f858cd0a0182",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:b1a300e4ab4826f2:a",
+        "evidence": [
+          "span:laya-dev1-fact06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "PAFA has a metadata elevation greater than 130 m."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:b1a300e4ab4826f2:b",
+        "evidence": [
+          "span:laya-dev1-fact06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The recorded station elevation for PAFA exceeds 130 metres."
+      },
+      "claim_time": "snapshot:f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+      "context": "NWS station PAFA, captured 2026-10-11T09:50:51.577758+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact06-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact06",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:b1a300e4ab4826f2",
+      "parents": [],
+      "render_sha256": "f570c899af4c3b9ca9ffd44dd9073b3234e12d850da2412563c90c2b1dd3b44a",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:17c28c8c12564f7a:a",
+        "evidence": [
+          "span:laya-dev1-fact06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "PAFA has a metadata elevation greater than 130 m."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:17c28c8c12564f7a:b",
+        "evidence": [
+          "span:laya-dev1-fact06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The metadata elevation for PAFA is at most 130 m."
+      },
+      "claim_time": "snapshot:f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+      "context": "NWS station PAFA, captured 2026-10-11T09:50:51.577758+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact06-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact06",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:17c28c8c12564f7a",
+      "parents": [],
+      "render_sha256": "9cdefebf2034b952ae728b5fad796f48125fdbc4929071b53d2844e890c10771",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:72f3037d2f898dc5:a",
+        "evidence": [
+          "span:laya-dev1-fact06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The frozen NWS metadata for PAFA lists elevation 131.9784 m."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:72f3037d2f898dc5:b",
+        "evidence": [
+          "span:laya-dev1-fact06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "This same field value is guaranteed for every station at every future update: PAFA has a metadata elevation greater than 130 m."
+      },
+      "claim_time": "snapshot:f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+      "context": "NWS station PAFA, captured 2026-10-11T09:50:51.577758+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact06-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact06",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:72f3037d2f898dc5",
+      "parents": [],
+      "render_sha256": "271c63a38da168036b5af72fd73996d5287b71f4a6dba1453502f0701267d037",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:7ac5ea03366db94d:a",
+        "evidence": [
+          "span:laya-dev1-fact06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The frozen NWS metadata for PAFA lists elevation 131.9784 m."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:7ac5ea03366db94d:b",
+        "evidence": [
+          "span:laya-dev1-fact06-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "PAFA has a metadata elevation greater than 130 m."
+      },
+      "claim_time": "snapshot:f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+      "context": "NWS station PAFA, captured 2026-10-11T09:50:51.577758+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact06-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact06",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:7ac5ea03366db94d",
+      "parents": [],
+      "render_sha256": "1a918140a7b86aa5c23d858b8520d333962b87f5594b0f682e9d5870b9c728f0",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:d134b54992d2f3e4:a",
+        "evidence": [
+          "span:laya-dev1-fact07-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "KSFO의 county 구역 링크는 CAC081로 끝난다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:d134b54992d2f3e4:b",
+        "evidence": [
+          "span:laya-dev1-fact07-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "CAC081 is the final identifier in this record’s county link for KSFO."
+      },
+      "claim_time": "snapshot:d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+      "context": "NWS 관측소 KSFO, 수집 시점 2026-10-11T09:50:51.902731+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact07-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact07",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:d134b54992d2f3e4",
+      "parents": [],
+      "render_sha256": "399bedd9aea0725690ab6ea67fdb63aff9e9d0b32705ac2bd2d699181b864199",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:b693cabbb075f943:a",
+        "evidence": [
+          "span:laya-dev1-fact07-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "KSFO의 county 구역 링크는 CAC081로 끝난다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:b693cabbb075f943:b",
+        "evidence": [
+          "span:laya-dev1-fact07-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The county-zone link for KSFO ends with ZZZ999."
+      },
+      "claim_time": "snapshot:d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+      "context": "NWS 관측소 KSFO, 수집 시점 2026-10-11T09:50:51.902731+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact07-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact07",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:b693cabbb075f943",
+      "parents": [],
+      "render_sha256": "9e3cb864258d42bc1767acc96529a759b30003daadd44e6a8281d882c4266293",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:2c1f6951ed9cfb15:a",
+        "evidence": [
+          "span:laya-dev1-fact07-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 NWS KSFO 메타데이터의 county 구역 식별자는 CAC081다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:2c1f6951ed9cfb15:b",
+        "evidence": [
+          "span:laya-dev1-fact07-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "This same field value is guaranteed for every station at every future update: The county-zone link for KSFO ends with CAC081."
+      },
+      "claim_time": "snapshot:d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+      "context": "NWS 관측소 KSFO, 수집 시점 2026-10-11T09:50:51.902731+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact07-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact07",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:2c1f6951ed9cfb15",
+      "parents": [],
+      "render_sha256": "723b21a0197ac461e5f3be11d05f279112cb806105b504d4ed01e7316399aeff",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:ee6dc6a78d942c41:a",
+        "evidence": [
+          "span:laya-dev1-fact07-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "고정한 NWS KSFO 메타데이터의 county 구역 식별자는 CAC081다."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:ee6dc6a78d942c41:b",
+        "evidence": [
+          "span:laya-dev1-fact07-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The county-zone link for KSFO ends with CAC081."
+      },
+      "claim_time": "snapshot:d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+      "context": "NWS 관측소 KSFO, 수집 시점 2026-10-11T09:50:51.902731+00:00. 고정 메타데이터만 다룬다. 작성한 대조 문장은 NWS 공식 자료가 아니다.",
+      "context_evidence": [
+        "span:laya-dev1-fact07-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact07",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:ee6dc6a78d942c41",
+      "parents": [],
+      "render_sha256": "5619ddaa7bdfa970507cdbaca671f1377bd54bae33edf1401805b5b4292a7835",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:f9f38c6bae16b8aa:a",
+        "evidence": [
+          "span:laya-dev1-fact08-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "ASOS-HFM is the provider field stored for KMIA."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:f9f38c6bae16b8aa:b",
+        "evidence": [
+          "span:laya-dev1-fact08-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "이 항목은 KMIA의 provider를 ASOS-HFM로 기록한다."
+      },
+      "claim_time": "snapshot:ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+      "context": "NWS station KMIA, captured 2026-10-11T09:50:52.158756+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact08-r2-0"
+      ],
+      "contrast": "restatement_or_topical",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact08",
+      "mechanism": "restatement_or_topical",
+      "pair_id": "development:laya-contrast-v1:f9f38c6bae16b8aa",
+      "parents": [],
+      "render_sha256": "ab37868e19ed63ded35adae140c17a80ce03443baa0b458007bf9ac45b6794cf",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:423a967780c4436e:a",
+        "evidence": [
+          "span:laya-dev1-fact08-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "ASOS-HFM is the provider field stored for KMIA."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:423a967780c4436e:b",
+        "evidence": [
+          "span:laya-dev1-fact08-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "KMIA에 저장된 provider 필드의 값은 NONE이다."
+      },
+      "claim_time": "snapshot:ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+      "context": "NWS station KMIA, captured 2026-10-11T09:50:52.158756+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact08-r2-0"
+      ],
+      "contrast": "reverse_or_conflict",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact08",
+      "mechanism": "reverse_or_conflict",
+      "pair_id": "development:laya-contrast-v1:423a967780c4436e",
+      "parents": [],
+      "render_sha256": "c08fdf435ed196544577af51365c59d4695df99bba6d28bb29383be9e099a3c7",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:34cd1b7128e5b051:a",
+        "evidence": [
+          "span:laya-dev1-fact08-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The frozen NWS metadata for KMIA lists provider ASOS-HFM."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:34cd1b7128e5b051:b",
+        "evidence": [
+          "span:laya-dev1-fact08-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "앞으로 갱신될 모든 시점의 모든 관측소에서도 같은 필드 값이 보장된다. KMIA에 저장된 provider 필드의 값은 ASOS-HFM다."
+      },
+      "claim_time": "snapshot:ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+      "context": "NWS station KMIA, captured 2026-10-11T09:50:52.158756+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact08-r2-0"
+      ],
+      "contrast": "scope_time_condition",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact08",
+      "mechanism": "scope_time_condition",
+      "pair_id": "development:laya-contrast-v1:34cd1b7128e5b051",
+      "parents": [],
+      "render_sha256": "b7da2ad944949eb2fb52638d9db079fba0247177b078b9e855747071941add46",
+      "review_required": true
+    },
+    {
+      "a": {
+        "endpoint_id": "development:laya-contrast-v1:9c5936e2c0c98105:a",
+        "evidence": [
+          "span:laya-dev1-fact08-r2-0"
+        ],
+        "language": "en",
+        "mode": "authored",
+        "revision": "1",
+        "text": "The frozen NWS metadata for KMIA lists provider ASOS-HFM."
+      },
+      "author": "OpenAI Codex assistant",
+      "author_kind": "ai",
+      "authored_at": "2026-10-11T09:56:24.384228+00:00",
+      "b": {
+        "endpoint_id": "development:laya-contrast-v1:9c5936e2c0c98105:b",
+        "evidence": [
+          "span:laya-dev1-fact08-r2-0"
+        ],
+        "language": "ko",
+        "mode": "authored",
+        "revision": "1",
+        "text": "KMIA에 저장된 provider 필드의 값은 ASOS-HFM다."
+      },
+      "claim_time": "snapshot:ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+      "context": "NWS station KMIA, captured 2026-10-11T09:50:52.158756+00:00. Only the frozen metadata is asserted; authored alternatives are not official NWS material.",
+      "context_evidence": [
+        "span:laya-dev1-fact08-r2-0"
+      ],
+      "contrast": "support",
+      "domain": "general_factual_evidence",
+      "exact_served_model": null,
+      "family_id": "family:laya-dev1-fact08",
+      "mechanism": "support",
+      "pair_id": "development:laya-contrast-v1:9c5936e2c0c98105",
+      "parents": [],
+      "render_sha256": "a5827e85e40e63e12da2db27497f98d63609f0aee9ad4e221f6a86682eb49c9c",
+      "review_required": true
+    }
+  ],
+  "questions_hash": "500e613737d1",
+  "render_version": "laya-state-v1",
+  "rubric": {
+    "approved_by": "owner continuation of VIN-441 proposal",
+    "decision_ref": "decision:proceed-with-the-laya-source-freeze-and-unlabeled-contrast-pilot-2026-10-11",
+    "id": "rubric:laya-evidence-contrast-v1",
+    "status": "approved"
+  },
+  "schema": "vinc.laya.dataset.v1",
+  "source_freeze_commit": "8c8d7555fd31ba15cdabb2b5380403d731611336",
+  "source_freeze_precedes_authoring": true,
+  "source_freeze_sha256": "9ee786029c1edf15c0ad78ea31e8e11ae0df60bd3c42dd4f8db2b6317386b988",
+  "sources": [
+    {
+      "captured_at": "2026-10-11T09:50:46.179304+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec01",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/range-expr.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "81d5e0721c0fbbd11e29859902b9ab7c6a4d630531f46e07b9bf474d0e86b819",
+      "snapshot_path": "sources/spec01.txt",
+      "source_id": "source:laya-dev1-spec01"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:46.427290+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec02",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/return-expr.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "b0a5df6b4b546d676e9bc9f0500fed243ef0a8c6d609b9e4434abec43e432158",
+      "snapshot_path": "sources/spec02.txt",
+      "source_id": "source:laya-dev1-spec02"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:46.704307+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec03",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/array-expr.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "2b5e385fc7243d93e9c9387931b214f069ba91b2528480758aaf186e43372a2b",
+      "snapshot_path": "sources/spec03.txt",
+      "source_id": "source:laya-dev1-spec03"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:46.945286+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec04",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/expressions/tuple-expr.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "909e6f0ad921fd84ddf8c0a482a100d33d2b2e0fc89c68bbf2773109986e02a8",
+      "snapshot_path": "sources/spec04.txt",
+      "source_id": "source:laya-dev1-spec04"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:47.199292+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec05",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/type-aliases.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "c3085a4a860f703edc5dc65e16a62dc87dbf8c9a29f12158ff048ca383ef2db1",
+      "snapshot_path": "sources/spec05.txt",
+      "source_id": "source:laya-dev1-spec05"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:47.444287+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec06",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/constant-items.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "1f39ac3e895b4228ddc7a840743355707c0956831ce6097d8b43676e76cd12f1",
+      "snapshot_path": "sources/spec06.txt",
+      "source_id": "source:laya-dev1-spec06"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:47.707289+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec07",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/items/use-declarations.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "86ca81b9c4e4b3cde24e308e48e305233abc10ceadc5006aacd60b948187265d",
+      "snapshot_path": "sources/spec07.txt",
+      "source_id": "source:laya-dev1-spec07"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:47.961285+00:00",
+      "category": "technical_specification",
+      "document_id": "document:laya-dev1-spec08",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "MIT OR Apache-2.0",
+      "origin_kind": "public",
+      "origin_uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/src/visibility-and-privacy.md",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "5baa209fc1998b8425be2ea1e8a57b613fed52d2",
+      "sha256": "6c188645970168efd11cfb397708a9641220c3c72921ca9d82a8fe13fa7072a5",
+      "snapshot_path": "sources/spec08.txt",
+      "source_id": "source:laya-dev1-spec08"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:48.570299+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs01",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs01",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+      "sha256": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+      "snapshot_path": "sources/obs01.txt",
+      "source_id": "source:laya-dev1-obs01"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:48.758285+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs02",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs02",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+      "sha256": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+      "snapshot_path": "sources/obs02.txt",
+      "source_id": "source:laya-dev1-obs02"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:48.995286+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs03",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs03",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+      "sha256": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+      "snapshot_path": "sources/obs03.txt",
+      "source_id": "source:laya-dev1-obs03"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:49.223287+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs04",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs04",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+      "sha256": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+      "snapshot_path": "sources/obs04.txt",
+      "source_id": "source:laya-dev1-obs04"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:49.423288+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs05",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs05",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+      "sha256": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+      "snapshot_path": "sources/obs05.txt",
+      "source_id": "source:laya-dev1-obs05"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:49.623288+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs06",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs06",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+      "sha256": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+      "snapshot_path": "sources/obs06.txt",
+      "source_id": "source:laya-dev1-obs06"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:49.806308+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs07",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs07",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+      "sha256": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+      "snapshot_path": "sources/obs07.txt",
+      "source_id": "source:laya-dev1-obs07"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:49.994287+00:00",
+      "category": "dated_engineering_measurement",
+      "document_id": "document:laya-dev1-obs08",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-Vinc-Owner-Authorized",
+      "origin_kind": "observed",
+      "origin_uri": "vinc-local-observation:obs08",
+      "owner_scope": "vinc-project",
+      "redaction_version": "none-no-private-input",
+      "revision": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+      "sha256": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+      "snapshot_path": "sources/obs08.txt",
+      "source_id": "source:laya-dev1-obs08"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:50.240294+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact01",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/KSEA",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+      "sha256": "9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+      "snapshot_path": "sources/fact01.txt",
+      "source_id": "source:laya-dev1-fact01"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:50.487729+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact02",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/KDEN",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+      "sha256": "6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+      "snapshot_path": "sources/fact02.txt",
+      "source_id": "source:laya-dev1-fact02"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:50.755734+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact03",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/KORD",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+      "sha256": "c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+      "snapshot_path": "sources/fact03.txt",
+      "source_id": "source:laya-dev1-fact03"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:50.986739+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact04",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/KBOS",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+      "sha256": "35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+      "snapshot_path": "sources/fact04.txt",
+      "source_id": "source:laya-dev1-fact04"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:51.278730+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact05",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/PHNL",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+      "sha256": "022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+      "snapshot_path": "sources/fact05.txt",
+      "source_id": "source:laya-dev1-fact05"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:51.577758+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact06",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/PAFA",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+      "sha256": "f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+      "snapshot_path": "sources/fact06.txt",
+      "source_id": "source:laya-dev1-fact06"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:51.902731+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact07",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/KSFO",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+      "sha256": "d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+      "snapshot_path": "sources/fact07.txt",
+      "source_id": "source:laya-dev1-fact07"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:52.158756+00:00",
+      "category": "general_factual_evidence",
+      "document_id": "document:laya-dev1-fact08",
+      "eligibility": {
+        "export": {
+          "approved_by": "owner instruction; Codex public source inspection",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "approved"
+        },
+        "training": {
+          "approved_by": "pending-data-review",
+          "decision_ref": "decision:prepare-revised-laya-candidates-and-source-separated-development-data-2026-10-11",
+          "status": "pending"
+        }
+      },
+      "license_id": "LicenseRef-NWS-Public-Domain",
+      "origin_kind": "public",
+      "origin_uri": "https://api.weather.gov/stations/KMIA",
+      "owner_scope": "public",
+      "redaction_version": "none-no-private-input",
+      "revision": "snapshot:ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+      "sha256": "ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+      "snapshot_path": "sources/fact08.txt",
+      "source_id": "source:laya-dev1-fact08"
+    }
+  ],
+  "spans": [
+    {
+      "end": 1413,
+      "excerpt_sha256": "bc53b4adf44ceb5577d0626148e25083f89060e6d7d9a2ec41e1413b8fb29ccc",
+      "source_id": "source:laya-dev1-spec01",
+      "source_sha256": "81d5e0721c0fbbd11e29859902b9ab7c6a4d630531f46e07b9bf474d0e86b819",
+      "span_id": "span:laya-dev1-spec01-r2-0",
+      "start": 452
+    },
+    {
+      "end": 443,
+      "excerpt_sha256": "a6b23549590b80afd29e584abd854497e9c32b6d081d3eaab07e09d3053d632c",
+      "source_id": "source:laya-dev1-spec02",
+      "source_sha256": "b0a5df6b4b546d676e9bc9f0500fed243ef0a8c6d609b9e4434abec43e432158",
+      "span_id": "span:laya-dev1-spec02-r2-0",
+      "start": 210
+    },
+    {
+      "end": 692,
+      "excerpt_sha256": "d622336a195a7580d9c648128e42e3058f9705dfc5d712a991be6299927ca8df",
+      "source_id": "source:laya-dev1-spec03",
+      "source_sha256": "2b5e385fc7243d93e9c9387931b214f069ba91b2528480758aaf186e43372a2b",
+      "span_id": "span:laya-dev1-spec03-r2-0",
+      "start": 578
+    },
+    {
+      "end": 621,
+      "excerpt_sha256": "2b33c651f7161288d3ef7f7b9d59fe85d63d2924410f291f19b8b3c7688e9c41",
+      "source_id": "source:laya-dev1-spec04",
+      "source_sha256": "909e6f0ad921fd84ddf8c0a482a100d33d2b2e0fc89c68bbf2773109986e02a8",
+      "span_id": "span:laya-dev1-spec04-r2-0",
+      "start": 451
+    },
+    {
+      "end": 542,
+      "excerpt_sha256": "e2cbe245b37e27ba3e4abdf4ba8c1ef25aa6cae2adb3d54d25ccb9f4f7f5a149",
+      "source_id": "source:laya-dev1-spec05",
+      "source_sha256": "c3085a4a860f703edc5dc65e16a62dc87dbf8c9a29f12158ff048ca383ef2db1",
+      "span_id": "span:laya-dev1-spec05-r2-0",
+      "start": 199
+    },
+    {
+      "end": 646,
+      "excerpt_sha256": "09fa676fe77eecb94f18f227867e279c8a5316de027c3db639231139a63012b9",
+      "source_id": "source:laya-dev1-spec06",
+      "source_sha256": "1f39ac3e895b4228ddc7a840743355707c0956831ce6097d8b43676e76cd12f1",
+      "span_id": "span:laya-dev1-spec06-r2-0",
+      "start": 313
+    },
+    {
+      "end": 2666,
+      "excerpt_sha256": "3e809920f18b43a5c04c9c3135dc349390976d0cb2e895df9bfe4132e85a1fef",
+      "source_id": "source:laya-dev1-spec07",
+      "source_sha256": "86ca81b9c4e4b3cde24e308e48e305233abc10ceadc5006aacd60b948187265d",
+      "span_id": "span:laya-dev1-spec07-r2-0",
+      "start": 2235
+    },
+    {
+      "end": 2029,
+      "excerpt_sha256": "41dfb9e9e95d12beb7b6950b870b3172054704bc8a056f10dc417e8177318e6d",
+      "source_id": "source:laya-dev1-spec08",
+      "source_sha256": "6c188645970168efd11cfb397708a9641220c3c72921ca9d82a8fe13fa7072a5",
+      "span_id": "span:laya-dev1-spec08-r2-0",
+      "start": 1720
+    },
+    {
+      "end": 997,
+      "excerpt_sha256": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+      "source_id": "source:laya-dev1-obs01",
+      "source_sha256": "7c1bfa229e482446a16952284b647e863363980a5de0c2fd21233786dd96e059",
+      "span_id": "span:laya-dev1-obs01-r2-0",
+      "start": 0
+    },
+    {
+      "end": 893,
+      "excerpt_sha256": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+      "source_id": "source:laya-dev1-obs02",
+      "source_sha256": "2c4498938662735b4cfcbf8f3f21f18caef79760bafa0a6207f58bcba83bab51",
+      "span_id": "span:laya-dev1-obs02-r2-0",
+      "start": 0
+    },
+    {
+      "end": 1045,
+      "excerpt_sha256": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+      "source_id": "source:laya-dev1-obs03",
+      "source_sha256": "3ec8783d16b88e3a1d67ee2a4e728d11d95daae426892318fbfaef94ccba99e3",
+      "span_id": "span:laya-dev1-obs03-r2-0",
+      "start": 0
+    },
+    {
+      "end": 1019,
+      "excerpt_sha256": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+      "source_id": "source:laya-dev1-obs04",
+      "source_sha256": "77884ba34287571900e69e2933b9d375af3e9849ea9d3ea8e2837f9c47e75882",
+      "span_id": "span:laya-dev1-obs04-r2-0",
+      "start": 0
+    },
+    {
+      "end": 961,
+      "excerpt_sha256": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+      "source_id": "source:laya-dev1-obs05",
+      "source_sha256": "3d14c0b7d428a5fa8b7af24ec1c96c1a511db633f4eb077dd3a34f84ae5232c5",
+      "span_id": "span:laya-dev1-obs05-r2-0",
+      "start": 0
+    },
+    {
+      "end": 917,
+      "excerpt_sha256": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+      "source_id": "source:laya-dev1-obs06",
+      "source_sha256": "511a16f9ea656d253e01eacc1637cd8039ad16fff51d214b49d3ee735b894aa0",
+      "span_id": "span:laya-dev1-obs06-r2-0",
+      "start": 0
+    },
+    {
+      "end": 1011,
+      "excerpt_sha256": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+      "source_id": "source:laya-dev1-obs07",
+      "source_sha256": "899afe3351f6f90ccd6c7899b7d305c4a09181b4d54b52e69a253af3606dbaaa",
+      "span_id": "span:laya-dev1-obs07-r2-0",
+      "start": 0
+    },
+    {
+      "end": 1095,
+      "excerpt_sha256": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+      "source_id": "source:laya-dev1-obs08",
+      "source_sha256": "c9ae29e0bc3ddc3ef37563e6d287c78082d4871c951eee3e6d14efc35c6da623",
+      "span_id": "span:laya-dev1-obs08-r2-0",
+      "start": 0
+    },
+    {
+      "end": 2153,
+      "excerpt_sha256": "9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+      "source_id": "source:laya-dev1-fact01",
+      "source_sha256": "9ee84d39a0e82b17203a8e1d8840c0258c92b5abc0f659223007e4c95b1a4878",
+      "span_id": "span:laya-dev1-fact01-r2-0",
+      "start": 0
+    },
+    {
+      "end": 2140,
+      "excerpt_sha256": "6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+      "source_id": "source:laya-dev1-fact02",
+      "source_sha256": "6490c31e495bcd7c5ab35037da9f4170d8b76bda1a35632b7e4230b146849ceb",
+      "span_id": "span:laya-dev1-fact02-r2-0",
+      "start": 0
+    },
+    {
+      "end": 2148,
+      "excerpt_sha256": "c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+      "source_id": "source:laya-dev1-fact03",
+      "source_sha256": "c6b94786263e32b01b259a1250e65e0b8b7afeb4fc9e13b993e0629e8bd96d0c",
+      "span_id": "span:laya-dev1-fact03-r2-0",
+      "start": 0
+    },
+    {
+      "end": 2136,
+      "excerpt_sha256": "35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+      "source_id": "source:laya-dev1-fact04",
+      "source_sha256": "35888cfdb2c39cb2a156b2b35329939c163bfd5de67489fa40aa35f3c6b46772",
+      "span_id": "span:laya-dev1-fact04-r2-0",
+      "start": 0
+    },
+    {
+      "end": 2134,
+      "excerpt_sha256": "022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+      "source_id": "source:laya-dev1-fact05",
+      "source_sha256": "022d602a2e3cd49374395c3071215b03c55ddbaf0507c740013e958747241cc1",
+      "span_id": "span:laya-dev1-fact05-r2-0",
+      "start": 0
+    },
+    {
+      "end": 2148,
+      "excerpt_sha256": "f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+      "source_id": "source:laya-dev1-fact06",
+      "source_sha256": "f49a3604f950980844589e54610faec1425dd48bfdf9ebb989a02e8aef2a5652",
+      "span_id": "span:laya-dev1-fact06-r2-0",
+      "start": 0
+    },
+    {
+      "end": 2151,
+      "excerpt_sha256": "d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+      "source_id": "source:laya-dev1-fact07",
+      "source_sha256": "d9f0ee031cd76d9fc9ba13efdf35ade66863eab4e1fe0298f5690d1daf1178bc",
+      "span_id": "span:laya-dev1-fact07-r2-0",
+      "start": 0
+    },
+    {
+      "end": 2135,
+      "excerpt_sha256": "ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+      "source_id": "source:laya-dev1-fact08",
+      "source_sha256": "ccbf5682c021e828bf7e598828e28379d315df6bb0eb81b4554d45a0863bea0d",
+      "span_id": "span:laya-dev1-fact08-r2-0",
+      "start": 0
+    }
+  ],
+  "training_authorized": false
+}
