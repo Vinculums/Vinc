@@ -216,6 +216,7 @@ _MARKER_RESERVE = 1_000
 
 # 응답이 큰 도구별로 '어떻게 줄일지'를 알려준다 — 그냥 "너무 큼"은 행동 불가.
 _NARROW_HINT = {
+    "vinc_community_read": "use authenticated POST /v1/community/read or the selected version's website export for the complete immutable artifact",
     # 허브의 depth 1 은 이제 축소기가 고리를 줄여 싣는다 — 여기 오는 것은 시드 노드
     # 자신이 상한을 넘을 때뿐이라 depth 를 낮추라는 말은 소용이 없다.
     # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S4
