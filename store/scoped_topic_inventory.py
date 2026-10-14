@@ -16,6 +16,7 @@ from .topic_transfer import (
     MAX_INVENTORY_BYTES, MAX_INVENTORY_ROWS, TransferRefused, _KINDS,
     _canonical, check_inventory_budget, referenced_ids, verify_store_shape,
 )
+from .topic_manifest import ManifestLimit
 
 PAGE_ROWS = 128
 PAGE_BYTES = 4 * 1024 * 1024
@@ -34,17 +35,22 @@ class ScopedInventory:
 
 
 class _Reader:
-    def __init__(self, store):
+    def __init__(self, store, *, scan_rows=SCAN_ROWS, scan_seconds=SCAN_SECONDS):
         self.store = store
+        self.scan_rows, self.scan_seconds = scan_rows, scan_seconds
         self.started = time.monotonic()
         self.inspected = 0
 
     def page(self, query, params=None):
         rows = self.store.run(query, params or None, raw=True)
         self.inspected += len(rows)
-        if (len(rows) > PAGE_ROWS or len(_canonical(rows).encode()) > PAGE_BYTES
-                or self.inspected > SCAN_ROWS or time.monotonic() - self.started > SCAN_SECONDS):
-            raise TransferRefused("conversion_inventory_limit")
+        for reason, observed, limit in (
+                ("page_rows", len(rows), PAGE_ROWS),
+                ("page_bytes", len(_canonical(rows).encode()), PAGE_BYTES),
+                ("scan_rows", self.inspected, self.scan_rows),
+                ("scan_seconds", time.monotonic() - self.started, self.scan_seconds)):
+            if observed > limit:
+                raise ManifestLimit(reason, observed=observed, limit=limit)
         return rows
 
     def scan(self, head, projection, order, params=None):
@@ -86,7 +92,8 @@ def _batches(values):
 
 
 def read_scoped_inventory(store, *, source: str, target: str, topic: str,
-                          after: bool = False, verify_shape: bool = True) -> ScopedInventory:
+                          after: bool = False, verify_shape: bool = True,
+                          manifest=None, scan_rows=SCAN_ROWS, scan_seconds=SCAN_SECONDS) -> ScopedInventory:
     """Read one owner/topic closure and prove its external dependencies boundedly.
 
     ``after`` selects the committed target closure for exact write verification
@@ -95,11 +102,15 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
     if verify_shape:
         verify_store_shape(store, vocabulary_owner=source)
     specs = {**node_table_specs(), **meta_table_specs()}
-    reader = _Reader(store)
+    reader = _Reader(store, scan_rows=scan_rows, scan_seconds=scan_seconds)
+    max_rows = manifest.max_rows if manifest else MAX_INVENTORY_ROWS
+    max_bytes = manifest.max_bytes if manifest else MAX_INVENTORY_BYTES
     owner = target if after else source
     result = {"schema_version": SCHEMA_VERSION,
               "nodes": {label: [] for label in node_table_specs()},
               "meta": {label: [] for label in meta_table_specs()}, "edges": []}
+    if manifest is not None:
+        result = manifest.snapshot
     blockers = set()
     retained = set()
     retained_bytes = 0
@@ -115,8 +126,9 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         retained.add(identity)
         result["meta" if label.startswith("_") else "nodes"][label].append(row)
         retained_bytes += len(_canonical(row).encode())
-        if len(retained) + len(result["edges"]) > MAX_INVENTORY_ROWS or retained_bytes > MAX_INVENTORY_BYTES:
-            raise TransferRefused("conversion_inventory_limit")
+        if len(retained) + len(result["edges"]) > max_rows or retained_bytes > max_bytes:
+            raise ManifestLimit("retained_payload", rows=len(retained) + len(result["edges"]),
+                                bytes=retained_bytes, row_limit=max_rows, byte_limit=max_bytes)
 
     def exact(label, key):
         pk = specs[label]["pk"]
@@ -151,8 +163,8 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
                 chosen = within(row["domain"])
             if chosen:
                 candidates.append(row["id"])
-                if len(candidates) > MAX_INVENTORY_ROWS:
-                    raise TransferRefused("conversion_inventory_limit")
+                if len(candidates) > max_rows:
+                    raise ManifestLimit("retained_rows", observed=len(candidates), limit=max_rows)
         found = 0
         for row in matching(label, candidates):
             keep(label, row)
@@ -183,8 +195,8 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
                            "n.vec_id AS id, n.node_id AS node_id", "n.vec_id", {"owner": owner}):
         if row["node_id"] in logical:
             node_vectors.append(row["id"])
-            if len(node_vectors) > MAX_INVENTORY_ROWS:
-                raise TransferRefused("conversion_inventory_limit")
+            if len(node_vectors) > max_rows:
+                raise ManifestLimit("retained_rows", observed=len(node_vectors), limit=max_rows)
     found = 0
     for row in matching("NodeVec", node_vectors):
         keep("NodeVec", row)
@@ -245,8 +257,9 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
                 result["edges"].append({"label": label, "from_label": src, "to_label": dst,
                                         "from": a[1], "to": b[1], "props": row})
                 retained_bytes += len(_canonical(result["edges"][-1]).encode())
-                if len(retained) + len(result["edges"]) > MAX_INVENTORY_ROWS or retained_bytes > MAX_INVENTORY_BYTES:
-                    raise TransferRefused("conversion_inventory_limit")
+                if len(retained) + len(result["edges"]) > max_rows or retained_bytes > max_bytes:
+                    raise ManifestLimit("retained_payload", rows=len(retained) + len(result["edges"]),
+                                        bytes=retained_bytes, row_limit=max_rows, byte_limit=max_bytes)
                 for endpoint in (a, b):
                     if endpoint[0] == "Domain":
                         boundary_ids.add(endpoint[1])
@@ -352,8 +365,9 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
             if ("_SyncBase", row["id"]) not in retained:
                 raise TransferRefused("committed_payload_changed")
 
-    check_inventory_budget(result)
+    if manifest is None:
+        check_inventory_budget(result)
     count = len(result["edges"]) + sum(len(rows) for group in ("nodes", "meta")
                                        for rows in result[group].values())
     return ScopedInventory(result, tuple(sorted(blockers)), reader.inspected,
-                           count, len(_canonical(result).encode()))
+                           count, manifest.serialized_bytes() if manifest else len(_canonical(result).encode()))

@@ -7,12 +7,17 @@ An uncertain response is resumed by run id; it is never repeated as a new move.
 from __future__ import annotations
 
 import json
+import sqlite3
+import tempfile
+from contextlib import contextmanager
+from pathlib import Path
 from contextvars import ContextVar
 from dataclasses import replace
 from uuid import UUID
 
 from store.embedded_backend import DDL_GUARD
 from store.scoped_topic_inventory import read_scoped_inventory
+from store.topic_manifest import TopicManifest, ManifestLimit
 from store.topic_transfer import (TransferRefused, fingerprint, read_snapshot,
                                  plan_transfer, transformed_snapshot, _write_difference, check_inventory_budget,
                                  _canonical, _REFERENCE)
@@ -34,6 +39,12 @@ def _plan(inventory, source, target, topic):
     if inventory.blockers:
         plan = replace(plan, blockers=tuple(sorted(set(plan.blockers) | set(inventory.blockers))))
     return plan
+
+
+def _scope_response_safe(snapshot, source):
+    # 전역 문서 키에 다른 소유자의 행이 붙어 있으면 그 크기나 해시도 공개하지 않는다.
+    return not any(row.get("owner_id") not in (None, source)
+                   for group in ("nodes", "meta") for rows in snapshot[group].values() for row in rows)
 
 
 def _committed_snapshot(store, source, target, topic, journal):
@@ -122,7 +133,13 @@ def preflight(store, source, topic):
         inventory = _inventory(store, source, PREFLIGHT_TARGET, topic)
         snap = inventory.snapshot
         plan = _plan(inventory, source, PREFLIGHT_TARGET, topic)
+        if not _scope_response_safe(snap, source):
+            return {"ready": False, "scope": "topic", "topic": topic,
+                    "counts_known": False, "counts": None, "documents": None,
+                    "blockers": sorted({"conversion_scope_inconsistent"} | {b.split(":", 1)[0] for b in plan.blockers})}
     except TransferRefused as exc:
+        if isinstance(exc, ManifestLimit) and exc.reason in ("retained_payload", "retained_rows", "retained_bytes"):
+            return inventory_diagnostics(store, source, topic)
         # An incomplete inventory cannot establish the scope. Zero here would
         # falsely say the topic is empty, while a reservation must stay blocked.
         return {"ready": False, "scope": "topic", "topic": topic,
@@ -152,6 +169,61 @@ def preflight(store, source, topic):
             "inspected_rows": inventory.inspected_rows,
             "projected_rows": projected_rows, "projected_bytes": projected_bytes,
             "blockers": sorted(blockers)}
+
+
+def inventory_diagnostics(store, source, topic):
+    """Read the complete bounded closure without authorizing the legacy executor."""
+    check_read(store, source)
+    # 로컬 임시 목록만 만들며, 공유 디스크나 그래프에 payload를 쓰지 않는다.
+    temporary_root = Path(tempfile.gettempdir())
+    if str(temporary_root).startswith(("\\\\", "//")):
+        return {"ready": False, "scope": "topic", "topic": topic,
+                "counts_known": False, "counts": None, "documents": None,
+                "blockers": ["conversion_local_scratch_required"]}
+    try:
+        with _inventory_read_transaction(store), tempfile.TemporaryDirectory(prefix="vinc-inventory-", dir=temporary_root) as directory:
+            with TopicManifest(Path(directory) / "inventory.sqlite") as manifest:
+                inventory = read_scoped_inventory(store, source=source, target=PREFLIGHT_TARGET,
+                                                   topic=topic, manifest=manifest)
+                plan = _plan(inventory, source, PREFLIGHT_TARGET, topic)
+                if not _scope_response_safe(inventory.snapshot, source):
+                    return {"ready": False, "scope": "topic", "topic": topic,
+                            "counts_known": False, "counts": None, "documents": None,
+                            "blockers": sorted({"conversion_scope_inconsistent"} | {b.split(":", 1)[0] for b in plan.blockers})}
+                counts = {}
+                for label, _ in plan.selected:
+                    counts[label] = counts.get(label, 0) + 1
+                blockers = {b.split(":", 1)[0] for b in plan.blockers}
+                # 큰 목록을 읽었다고 기존 단일 트랜잭션 실행까지 허용하지 않는다.
+                blockers.add("conversion_bounded_executor_required")
+                return {"ready": False, "scope": "topic", "topic": topic,
+                        "counts_known": True, "counts": counts, "documents": len(plan.documents),
+                        "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
+                        "inspected_rows": inventory.inspected_rows, "inventory_hash": plan.before_hash,
+                        "inventory_version": 3, "diagnostic_only": True,
+                        "blockers": sorted(blockers)}
+    except (TransferRefused, OSError, sqlite3.Error) as exc:
+        code = str(exc).split(":", 1)[0] if isinstance(exc, TransferRefused) else "conversion_scratch_unavailable"
+        result = {"ready": False, "scope": "topic", "topic": topic, "counts_known": False,
+                  "counts": None, "documents": None, "blockers": [code]}
+        if isinstance(exc, ManifestLimit):
+            result["limit"] = {"reason": exc.reason, **exc.details}
+        return result
+
+
+@contextmanager
+def _inventory_read_transaction(store):
+    # 여러 페이지가 같은 DB 스냅샷을 읽게 하며 그래프에는 쓰지 않는다.
+    store.run("BEGIN TRANSACTION READ ONLY", raw=True)
+    try:
+        yield
+    finally:
+        try:
+            store.run("ROLLBACK", raw=True)
+        except RuntimeError as exc:
+            # 엔진이 실패한 읽기 트랜잭션을 이미 중단했을 수 있다.
+            if "No active transaction" not in str(exc):
+                raise
 
 
 def _get(store, run):
