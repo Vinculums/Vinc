@@ -142,7 +142,7 @@ def test_persistent_account_gateway_error_exhausts_budget_and_fails():
     assert state == {"now": 12, "calls": 4}
 
 
-def test_other_http_errors_and_mcp_gateway_error_fail_immediately():
+def test_unrelated_http_errors_fail_immediately_on_both_transports():
     from urllib.parse import parse_qs, urlsplit
     for error in ("search read returned HTTP 401", "search read returned HTTP 503"):
         def fail_read(*args):
@@ -153,10 +153,43 @@ def test_other_http_errors_and_mcp_gateway_error_fail_immediately():
     def good_read(path, key, timeout):
         return response(mode=parse_qs(urlsplit(path).query).get("mode", [None])[0])
     def bad_mcp(*args):
-        raise VerificationError("search read returned HTTP 502")
-    with pytest.raises(VerificationError, match="HTTP 502"):
+        raise VerificationError("search read returned HTTP 503")
+    with pytest.raises(VerificationError, match="mcp/legacy: search read returned HTTP 503"):
         verify("synthetic", get=good_read, mcp_key="synthetic", mcp_get=bad_mcp,
             sleep=lambda _: pytest.fail("unexpected retry"))
+
+
+@pytest.mark.parametrize("error,counter",[("search read returned HTTP 502","gateway_retries"),
+                                        ("search read could not complete","transport_retries")])
+def test_mcp_transport_recovery_requires_all_five_verified_contracts(error,counter):
+    from urllib.parse import parse_qs, urlsplit
+    state={"now":0,"mcp_calls":0}
+    def get(path,*args):
+        return response(mode=parse_qs(urlsplit(path).query).get("mode",[None])[0])
+    def mcp(options,*args):
+        state["mcp_calls"]+=1
+        if state["mcp_calls"]<=2:
+            raise VerificationError(error)
+        return response(mode=options.get("mode"))
+    out=verify("synthetic",get=get,mcp_key="synthetic",mcp_get=mcp,clock=lambda:state["now"],
+               sleep=lambda seconds:state.__setitem__("now",state["now"]+seconds))
+    assert state=={"now":10,"mcp_calls":7}
+    assert out["checks"][5][counter]==2
+    assert len(out["checks"])==10 and all(check["contract"]=="pass" for check in out["checks"])
+
+
+def test_mcp_timeouts_exhaust_the_shared_deadline_and_do_not_become_empty_success():
+    from urllib.parse import parse_qs, urlsplit
+    state={"now":0,"mcp_calls":0}
+    def get(path,*args):
+        return response(mode=parse_qs(urlsplit(path).query).get("mode",[None])[0])
+    def mcp(*args):
+        state["mcp_calls"]+=1
+        raise VerificationError("search read could not complete")
+    with pytest.raises(VerificationError,match="mcp/legacy: search read could not complete"):
+        verify("synthetic",get=get,mcp_key="synthetic",mcp_get=mcp,clock=lambda:state["now"],
+               sleep=lambda seconds:state.__setitem__("now",state["now"]+seconds),wait_s=12)
+    assert state=={"now":12,"mcp_calls":4}
 
 
 def test_account_timeout_requires_a_subsequent_verified_result():
