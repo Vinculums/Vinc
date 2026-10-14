@@ -80,15 +80,14 @@ def verify(key: str, *, get=read, mcp_key=None, mcp_get=read_mcp,
                 try:
                     result = fetch(options)
                 except VerificationError as exc:
-                    # The account proxy maps both an upstream 503 DDL guard and
-                    # its own short fetch timeout to HTTP 502. A cold encoder can
-                    # also outlast this probe's socket timeout. Keep the same
-                    # startup deadline; only a fully verified later read passes.
+                    # Both read transports can overlap a cold encoder or a
+                    # snapshot pause. Retry only the same idempotent read under
+                    # the existing deadline; a later complete contract must pass.
                     reason = str(exc)
-                    if (transport != "account" or reason not in (
+                    if (reason not in (
                             "search read returned HTTP 502", "search read could not complete")
                             or clock() >= deadline):
-                        raise
+                        raise VerificationError(f"{transport}/{options.get('mode', 'legacy')}: {reason}") from None
                     if reason == "search read returned HTTP 502":
                         gateway_retries += 1
                     else:
