@@ -215,7 +215,7 @@ def main():
                           batches=flow.status()['batches'],phase=flow.status()['phase'],durable=durable.detail())
             flow.verify()
             report.update(passed=True,stage_seconds=round(time.monotonic()-begin,3),max_step_seconds=round(max_step,3),
-                          batches=flow.status()['batches'],durable=durable.detail(),
+                          batches=flow.status()['batches'],phase=flow.status()['phase'],durable=durable.detail(),
                           live_bytes=sum(p.stat().st_size for p in live.parent.glob('*') if p.is_file()),
                           generation_bytes=sum(p.stat().st_size for p in Path(durable.root).rglob('*') if p.is_file()))
             store.close();store=None
