@@ -465,6 +465,8 @@ def cancel(store, *, source, target, topic, run):
         journal = _get(store, run)
         if journal:
             _identity(journal, source, target, topic)
+            if journal.get("inventory_version", 1) not in (1, SCOPED_INVENTORY_VERSION):
+                raise TransferRefused("unsupported_conversion_inventory_version")
             if journal["status"] not in ("prepared", "cancelled"):
                 raise TransferRefused("conversion_resume_required")
             _indexes(store, journal["indexes"])

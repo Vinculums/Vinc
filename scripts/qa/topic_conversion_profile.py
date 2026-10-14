@@ -90,7 +90,7 @@ def seed(store,scale,dim):
 def seed_observed_shape(store,scale,dim):
     """Use observed type counts with synthetic content and a declared valid-ownership variant."""
     embedding=[((i%23)-11)/23 for i in range(dim)]
-    text='합성 문서 본문과 Unicode 이력은 그대로 보존합니다.\n'*80
+    text='합성 문서 본문과 Unicode 이력은 그대로 보존합니다.\n'*100
     counts={'Concept':371,'Decision':545,'Episode':856,'Record':1669}
     docs,chunk_count,vector_count=489*scale,3997*scale,6922*scale
     logicals=[]

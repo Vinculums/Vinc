@@ -77,7 +77,7 @@ def test_publisher_failure_keeps_fences_and_status_pending_then_resumes_same_bat
         flow.step()
     assert flow.status()["status"]=="durability_pending"
     assert legacy._get(native,RUN)["batches"]==1
-    with pytest.raises(TransferRefused,match="resume_required"):
+    with pytest.raises(TransferRefused,match="unsupported_conversion_inventory_version"):
         legacy.cancel(native,source=SOURCE,target=TARGET,topic=TOPIC,run=RUN)
     publisher.failed=False
     assert finish(flow)["status"]=="graph_committed"
@@ -176,6 +176,16 @@ def test_legacy_stage_refuses_a_new_protocol_without_mutation_or_fence_release(n
         legacy.stage(native,source=SOURCE,target=TARGET,topic=TOPIC,run=RUN,
                      expected=legacy._get(native,RUN)['expected'],stamp=STAMP)
     assert fingerprint(read_snapshot(native))==before
+    assert legacy.fenced(native,SOURCE) and legacy.fenced(native,TARGET)
+
+
+def test_legacy_cancel_cannot_release_a_new_protocol_prepared_fence(native,tmp_path):
+    flow,_,_=fixture(native,tmp_path)
+    before=fingerprint(read_snapshot(native))
+    with pytest.raises(TransferRefused,match='unsupported_conversion_inventory_version'):
+        legacy.cancel(native,source=SOURCE,target=TARGET,topic=TOPIC,run=RUN)
+    assert fingerprint(read_snapshot(native))==before
+    assert flow.status()['status']=='prepared'
     assert legacy.fenced(native,SOURCE) and legacy.fenced(native,TARGET)
 
 
