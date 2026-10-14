@@ -64,9 +64,11 @@ def _missing_document_evidence(snapshot, plan, source):
     chunks={row['doc_id'] for row in snapshot['nodes']['Chunk']}
     vectors={row['doc_id'] for row in snapshot['nodes']['ChunkVec']}
     tombstones={row['doc_id'] for row in snapshot['meta']['_DocTombstone'] if row.get('owner_id')==source}
+    unassigned={row['doc_id'] for row in snapshot['meta']['_DocTombstone'] if row.get('owner_id') in (None,'')}
     owned={row['doc_id'] for row in snapshot['meta']['_DocMeta'] if row.get('owner_id')==source}
     return {'missing_with_chunks':len(missing & chunks),'missing_with_vectors':len(missing & vectors),
             'missing_with_owned_tombstone':len(missing & tombstones),
+            'missing_with_unassigned_tombstone':len(missing & unassigned),
             'missing_without_payload_with_owned_tombstone':len((missing-chunks-vectors) & tombstones),
             'missing_without_payload_or_owned_tombstone':len(missing-chunks-vectors-tombstones),
             'live_metadata_with_owned_tombstone':len(owned & tombstones)}
