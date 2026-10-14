@@ -2639,6 +2639,8 @@ def node_context(**kwargs) -> dict:
                 temporal.stamp(res, res)
                 res["partial"] = True
                 res["temporal_error"] = f"{type(exc).__name__}: {exc}"
+            res["validity_basis"] = "legacy_visibility"
+            res["claim_validity"] = res["temporal"]["validity"]
         return res
     finally:
         if owns:
@@ -3275,6 +3277,8 @@ def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
     stamp(base["node"], ctx)
     if "temporal" in ctx:
         base["node"]["temporal"] = cand.get("temporal") or ctx["temporal"]
+    base["node"]["validity_basis"] = "legacy_visibility"
+    base["node"]["claim_validity"] = base["node"]["temporal"]["validity"]
     for key in ("created_at", "updated_at", "content_time", "temporal_error"):
         if key in ctx:
             base["node"][key] = ctx[key]

@@ -857,11 +857,15 @@ def get_doc(store, doc_id: str, *, owner: str | None = None) -> dict:
                 validity=validity_state(meta.get("valid_from"), meta.get("valid_until")))
     from store.search_temporal import stamp, finish_docs
     stamp(base)
+    # 기존 visibility 값과 명시적 유효구간의 판정을 구분한다.
+    base["validity_basis"] = "legacy_visibility"
+    base["retrieval"] = document_retrieval(base["needs_embed"])
     try:
         finish_docs(store, [base], owner=owner)
     except Exception as exc:
         base["partial"] = True
         base["temporal_error"] = f"{type(exc).__name__}: {exc}"
+    base["claim_validity"] = base["temporal"]["validity"]
     if not verified:
         base["note"] = ("복원 검증 실패 — 레거시(오프셋 미기록) 또는 부분 기록. "
                         "re-put 으로 치유 가능")

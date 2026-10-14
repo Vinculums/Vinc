@@ -127,7 +127,7 @@ def test_node_index_and_owner_fallback_keep_original_scope(monkeypatch, fallback
 
 
 @pytest.mark.parametrize("stage", ["load", "query"])
-def test_node_semantic_failure_remains_empty_but_has_a_fixed_metric(monkeypatch, stage):
+def test_node_semantic_failure_is_explicit_and_has_a_fixed_metric(monkeypatch, stage):
     backend = object.__new__(eb.EmbeddedBackend)
     backend._conn = object()
     def fail(*a, **kw): raise RuntimeError("private owner and vector")
@@ -135,7 +135,9 @@ def test_node_semantic_failure_remains_empty_but_has_a_fixed_metric(monkeypatch,
     monkeypatch.setattr(eb, "_exec_to_dicts", fail)
     monkeypatch.setattr(eb, "keep_vector_index", lambda: False)
     with timing.capture() as collected:
-        assert backend.node_vector_search([1.0], 1, owner="user:mine") == []
+        code = "node_vector_extension_unavailable" if stage == "load" else "node_vector_query_failed"
+        with pytest.raises(RuntimeError, match=code):
+            backend.node_vector_search([1.0], 1, owner="user:mine")
         header = timing.header("sidecar")
     assert f"node_vector_{stage}_error;dur=" in header
     assert "private" not in header and "user:mine" not in header

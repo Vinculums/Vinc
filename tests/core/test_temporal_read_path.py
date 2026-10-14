@@ -137,9 +137,10 @@ class ReadPathDefault(unittest.TestCase):
         # 이 스토어에는 미러가 없으므로 가짜 팔로 같은 모양을 만든다.
         self.store.node_vector_search = lambda emb, k, owner=None: [
             {"id": "record:unrelated-note-ahead", "title": "a", "kind": "record",
-             "distance": 0.1},
+             "distance": 0.1, "text": "an unrelated claim not yet in force"},
             {"id": "record:quorum-note-retired", "title": "b", "kind": "record",
-             "distance": 0.2}]
+             "distance": 0.2, "text": q.node("record:quorum-note-retired", owner=self.OWNER,
+                                           store=self.store)["node"]["title"]}]
         sem, _ = self._ids(query_embedding=[0.0, 0.0, 0.0, 1.0])
         self.assertIn("record:unrelated-note-ahead", sem, "의미 팔이 미래 시작을 감췄다")
         self.assertNotIn("record:quorum-note-retired", sem, "의미 팔이 폐기 기록을 되살렸다")
@@ -341,6 +342,8 @@ class DecisionsAndDirectReadsCarryValidity(ReadPathDefault):
                 {"id": "decision:cache-policy-new", "title": "z", "kind": "decision",
                  "distance": 0.3}]
         self.store.node_vector_search = lambda emb, k, owner=None: list(fake)
+        for hit in fake:
+            hit["text"] = q.node(hit["id"], owner=self.OWNER, store=self.store)["node"]["title"]
         emb = [0.0, 0.0, 0.0, 1.0]
         res = q.search("cache policy", owner=self.OWNER, top_k=10, store=self.store,
                        query_embedding=emb)

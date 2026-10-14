@@ -102,7 +102,7 @@ class NodeHitsPagingTests(unittest.TestCase):
         # 메타 없음). 여기 목록이 늘면 소비처 셋을 함께 확인할 것.
         res = q.search("design", store=_Store(_mk_rows(3)), top_k=5)
         self.assertEqual(set(res), {"kind", "executed", "rows", "node_hits", "arms",
-                                    "total_count", "has_more", "next_cursor", "page"})
+                                    "total_count", "has_more", "next_cursor", "page", "node_window"})
 
 
 class CappedTotalTests(unittest.TestCase):

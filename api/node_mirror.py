@@ -31,6 +31,7 @@ concept 의 산문을 그대로 물려받아 둘이 같은 낱말로 묶인다) 
 직접 든다. 인코딩이 여기 들어오면 두 경로가 서로의 의존성을 물게 된다.
 """
 from __future__ import annotations
+from store.node_mirror_state import EXTRA_CHARS, mirror_text as _mirror_text
 
 #: 미러에 담을 라벨과 그 텍스트. (라벨, PK, kind, 부가 텍스트 열 또는 None)
 SPEC = [
@@ -40,7 +41,6 @@ SPEC = [
     ("Episode", "episode_id", "episode", "summary"),
 ]
 #: 부가 텍스트를 이만큼만 쓴다. 문단 전체를 넣으면 제목이 묻힌다.
-EXTRA_CHARS = 300
 #: CREATE 한 문장에 실을 행 수. 파라미터 목록이 너무 길면 엔진이 준비 단계에서 샌다.
 INSERT_BATCH = 256
 
@@ -54,9 +54,7 @@ def vec_id(owner: str, node_id: str) -> str:
 
 def mirror_text(title: str, extra: str) -> str:
     """미러 한 행의 텍스트. 제목이 먼저다 — 그것이 이 노드의 이름이다."""
-    t = " ".join(str(title or "").split())
-    e = " ".join(str(extra or "").split())[:EXTRA_CHARS]
-    return f"{t}. {e}".strip(". ") if e else t
+    return _mirror_text(title, extra)
 
 
 def collect(store, owner: str | None = None) -> tuple[list[dict], list[dict]]:
@@ -138,8 +136,14 @@ def index_answers(store) -> bool:
     소유자는 걸지 않는다: 재는 것은 색인이지 소유자 필터가 아니다.
     `use_index=True`: 작은 미러는 검색이 정확 스캔으로 가므로, 색인을 직접 물어야 한다."""
     got = store.run("MATCH (n:NodeVec) RETURN n.embedding AS e LIMIT 1") or []
-    return bool(got and got[0].get("e")
-                and store.node_vector_search(got[0]["e"], 1, use_index=True))
+    try:
+        return bool(got and got[0].get("e")
+                    and store.node_vector_search(got[0]["e"], 1, use_index=True))
+    except RuntimeError as exc:
+        # 준비 판정만 false로 답한다. 일반 검색의 실패 보고는 유지한다.
+        if str(exc) in ("node_vector_extension_unavailable", "node_vector_query_failed"):
+            return False
+        raise
 
 
 def replace(store, rows: list[dict], model: str, encoder_runtime: str = "",
