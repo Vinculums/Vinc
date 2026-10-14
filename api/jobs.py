@@ -30,6 +30,9 @@ QUEUED = "queued"
 RUNNING = "running"
 DONE = "done"
 ERROR = "error"
+# This internal diagnostic uses the writer connection for serialized reads only.
+# It must not mark the database dirty or trigger a durable copy on completion.
+READ_ONLY_KINDS = frozenset({"topic-conversion.preflight"})
 
 
 @dataclass
@@ -205,7 +208,7 @@ class JobQueue:
             try:
                 result = fn()
                 normalized = result if isinstance(result, dict) else {"result": result}
-                if self._on_before_done is not None:
+                if self._on_before_done is not None and job.kind not in READ_ONLY_KINDS:
                     try:
                         self._on_before_done(job, normalized)
                     except BaseException:
@@ -224,7 +227,7 @@ class JobQueue:
             finally:
                 job._done.set()
                 self._q.task_done()
-            self._idle_tick(wrote=True)
+            self._idle_tick(wrote=job.kind not in READ_ONLY_KINDS)
 
     def _idle_tick(self, *, wrote: bool) -> None:
         """쓰기 스레드에서 할 일(영속 스냅샷)을 부른다.

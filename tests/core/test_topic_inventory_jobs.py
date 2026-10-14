@@ -86,3 +86,25 @@ def test_failed_work_never_looks_empty_and_finished_tickets_expire():
         assert inventories.status(OWNER,ticket)["inventory_state"]=="unknown"
     finally:
         queue.shutdown(drain=True)
+
+
+def test_inventory_does_not_publish_or_dirty_the_live_database():
+    acknowledged, ticks = [], []
+    ticked = threading.Event()
+    def idle(*, wrote):
+        ticks.append(wrote)
+        ticked.set()
+    queue = JobQueue(on_before_done=lambda job, result: acknowledged.append(job.kind), on_idle=idle)
+    inventories = InventoryJobs(queue, lambda owner: ("epoch", False))
+    try:
+        response = inventories.start(OWNER, "topic", lambda: RESULT)
+        ticket = response["inventory_ticket"]
+        assert inventories._entries[ticket].job._done.wait(5) and ticked.wait(5)
+        assert acknowledged == [] and ticks == [False]
+        assert inventories.status(OWNER, ticket)["ready"]
+        ticked.clear()
+        queue.run_sync("ordinary-write", lambda: {"ok": True})
+        assert ticked.wait(5)
+        assert acknowledged == ["ordinary-write"] and ticks == [False, True]
+    finally:
+        queue.shutdown(drain=True)
