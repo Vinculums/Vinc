@@ -27,6 +27,13 @@ class Capture(Bridge):
         return {"status": "graph_committed"}
 
 
+def test_inventory_status_forces_source_and_does_not_require_a_reservation(app):
+    args = {"owner":"user:victim","target":"team:victim","run":"victim","ticket":RUN}
+    raw = json.dumps(args).encode()
+    app.graph_owner_request(sign(raw,op="topic-conversion:inventory-status",target=None,run=None),args,raw)
+    assert app.bridge.calls[0][2] == {"owner":"user:"+SUB,"action":"inventory-status","ticket":RUN}
+
+
 def sign(raw, **overrides):
     now = int(time.time())
     return edverify.sign_assertion(SEED, {

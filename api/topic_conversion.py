@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import tempfile
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from contextvars import ContextVar
@@ -180,9 +181,10 @@ def inventory_diagnostics(store, source, topic):
         return {"ready": False, "scope": "topic", "topic": topic,
                 "counts_known": False, "counts": None, "documents": None,
                 "blockers": ["conversion_local_scratch_required"]}
+    deadline = time.monotonic() + 180
     try:
         with _inventory_read_transaction(store), tempfile.TemporaryDirectory(prefix="vinc-inventory-", dir=temporary_root) as directory:
-            with TopicManifest(Path(directory) / "inventory.sqlite") as manifest:
+            with TopicManifest(Path(directory) / "inventory.sqlite", deadline=deadline) as manifest:
                 inventory = read_scoped_inventory(store, source=source, target=PREFLIGHT_TARGET,
                                                    topic=topic, manifest=manifest)
                 plan = _plan(inventory, source, PREFLIGHT_TARGET, topic)

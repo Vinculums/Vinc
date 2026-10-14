@@ -216,3 +216,23 @@ def test_persistent_account_timeout_fails_at_the_existing_deadline():
         verify("synthetic", get=get, clock=lambda: state["now"],
                sleep=lambda seconds: state.__setitem__("now", state["now"] + seconds), wait_s=12)
     assert state == {"now": 12, "calls": 4}
+
+
+@pytest.mark.parametrize("prefix",["TimeoutError","RemoteDisconnected","ConnectionResetError","ConnectionRefusedError"])
+def test_nested_mcp_transport_error_is_classified_without_logging_private_details(monkeypatch,prefix):
+    import verify_search_temporal_remote as probe
+    monkeypatch.setattr(probe,"_json_read",lambda *args:{"result":{"isError":True,"content":[
+        {"type":"text","text":prefix+": synthetic private detail"}]}})
+    with pytest.raises(VerificationError,match="search read could not complete") as failure:
+        probe.read_mcp({},"synthetic",30)
+    assert "private detail" not in str(failure.value)
+
+
+def test_unknown_mcp_tool_and_protocol_errors_still_fail_without_disclosing_messages(monkeypatch):
+    import verify_search_temporal_remote as probe
+    for envelope in [{"error":{"code":-32602,"message":"private invalid argument"}},
+                     {"result":{"isError":True,"content":[{"type":"text","text":"RuntimeError: private failure"}]}}]:
+        monkeypatch.setattr(probe,"_json_read",lambda *args:envelope)
+        with pytest.raises(VerificationError,match="MCP search read returned an error") as failure:
+            probe.read_mcp({},"synthetic",30)
+        assert "private" not in str(failure.value)

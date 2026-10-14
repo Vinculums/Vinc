@@ -341,6 +341,7 @@ class VincApp:
         from .graph_loading import GraphReads
         self._graph_reads = GraphReads()
         self._conn_lock = threading.Lock()    # reader Connection 파생 가드
+        self._inventory_jobs_lock = threading.Lock()
         self._index_lock = threading.Lock()
         self._index_job = None
         # 미러 재구축은 통째로 갈아 끼우는 일이라 **두 벌이 겹치면 안 된다** —
@@ -763,12 +764,43 @@ class VincApp:
         action = body.get("action")
         if not isinstance(source, str) or not source.startswith("user:"):
             return 400, {"error": "personal_source_required"}
-        if action not in ("preflight", "stage", "status", "release", "cancel"):
+        if action not in ("preflight", "inventory-status", "stage", "status", "release", "cancel"):
             return 400, {"error": "invalid_conversion_action"}
         # An account may not acknowledge a move in a non-durable hub setup.
         if action in ("preflight", "stage", "release", "cancel") and \
                 self._durable is None and getattr(self, "_conversion_durable", None) is None:
             return 503, {"error": "conversion_requires_durable_ack"}
+        if action in ("preflight", "inventory-status"):
+            if self.store is None:
+                return 503, {"error": "store_unavailable"}
+            from .topic_inventory_jobs import InventoryJobs
+            if not hasattr(self, "_inventory_jobs"):
+                # HTTP 스레드가 동시에 처음 들어와도 큐와 조회권을 한 벌만 만든다.
+                with self._inventory_jobs_lock:
+                    if not hasattr(self, "_inventory_jobs"):
+                        self._inventory_jobs = InventoryJobs(self.jobs, self.changes.inventory_revision)
+            if action == "inventory-status":
+                return 200, self._inventory_jobs.status(source, body.get("ticket"))
+            topic = str(body.get("topic") or "")
+            def diagnose():
+                conn = getattr(self.store, "_conn", None)
+                try:
+                    if conn is not None:
+                        conn.set_query_timeout(120_000)
+                    return conversion.preflight(self.store, source, topic)
+                except TransferRefused as exc:
+                    return {"ready": False, "scope": "topic", "topic": topic, "counts_known": False,
+                            "counts": None, "documents": None, "blockers": [str(exc).split(":", 1)[0]]}
+                except (ValueError, KeyError, RuntimeError):
+                    return {"ready": False, "scope": "topic", "topic": topic, "counts_known": False,
+                            "counts": None, "documents": None, "blockers": ["conversion_inventory_failed"],
+                            "inventory_state": "failed"}
+                finally:
+                    if conn is not None:
+                        conn.set_query_timeout(0)
+            return 200, self._inventory_jobs.start(source, topic, diagnose)
+        if hasattr(self, "_inventory_jobs") and action in ("stage", "release", "cancel"):
+            self._inventory_jobs.invalidate(source)
         def work():
             try:
                 if action == "preflight":

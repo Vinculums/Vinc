@@ -49,7 +49,19 @@ def read_mcp(options, key, timeout):
     if not isinstance(result, dict):
         raise VerificationError("MCP search result was invalid")
     if envelope.get("error") or result.get("isError"):
-        raise VerificationError("MCP search read returned an error")
+        # Tool transport failures are inside a successful JSON-RPC HTTP reply.
+        # Classify only their exception prefix; never log returned error details.
+        message = (envelope.get("error") or {}).get("message", "") if isinstance(envelope.get("error"), dict) else ""
+        if not message:
+            message = next((part.get("text", "") for part in result.get("content") or []
+                            if isinstance(part, dict) and part.get("type") == "text"), "")
+        prefix = str(message).split(":", 1)[0]
+        transport_classes = {"TimeoutError", "RemoteDisconnected", "ConnectionResetError", "ConnectionRefusedError"}
+        if prefix in transport_classes:
+            raise VerificationError("search read could not complete")
+        code = (envelope.get("error") or {}).get("code") if isinstance(envelope.get("error"), dict) else None
+        safe_code = code if type(code) is int else "tool_error"
+        raise VerificationError(f"MCP search read returned an error; code={safe_code}; class=unclassified")
     for part in result.get("content") or []:
         if part.get("type") == "text":
             try:
@@ -142,6 +154,8 @@ def verify(key: str, *, get=read, mcp_key=None, mcp_get=read_mcp,
 if __name__ == "__main__":
     try:
         print(json.dumps(verify(os.environ.get("VINC_GRAPH_READONLY_KEY", ""),
-                                mcp_key=os.environ.get("VINC_MCP_TOKEN")), sort_keys=True))
+                                # Both reads exercise the same bound personal graph.
+                                # The control token remains for MCP tools/list health.
+                                mcp_key=os.environ.get("VINC_GRAPH_READONLY_KEY")), sort_keys=True))
     except VerificationError as exc:
         raise SystemExit(str(exc))
