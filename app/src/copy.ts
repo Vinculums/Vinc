@@ -1257,15 +1257,6 @@ const EN = {
       back: "Step back", thisSheet: "This sheet",
     },
     packsUi: {
-      publishTitle: "Share this pack with the community",
-      publishName: "Pack name", publishDesc: "What's in it? (optional)",
-      publishConsent: "I understand this pack becomes public, and any signed-in member can bring it into their own Vinc.",
-      publishGo: "Publish", publishNeedConsent: "Please confirm the pack will be public.",
-      publishNeedName: "Give the pack a name.",
-      // 게시는 공개 핸들이 붙는 유일한 행위라 서버가 username 을 요구한다
-      // (400 username_required). 시트를 닫지 않고 안내만 바꿔, 설정 후 바로 다시 누를 수 있게.
-      publishNeedHandle: "Pick a username first. It's the public handle shown on what you share.",
-      publishSetHandle: "Set it in your account",
       backupLink: "Create a full backup pack",
       // 화면 노출 문자열에 em-dash 금지(발주자 지시) — 가운뎃점·괄호·콜론으로 대체.
       backupDesc: "Export everything: for migrating to a new device or an MCP client.",
@@ -2391,13 +2382,6 @@ const KO: Deck = {
       back: "한 단계 뒤로", thisSheet: "이 도움말",
     },
     packsUi: {
-      publishTitle: "이 팩을 커뮤니티에 공유하기",
-      publishName: "팩 이름", publishDesc: "어떤 내용인가요? (선택)",
-      publishConsent: "이 팩이 공개되고, 로그인한 회원은 누구나 자기 Vinc로 가져갈 수 있음을 이해합니다",
-      publishGo: "게시하기", publishNeedConsent: "팩 공개에 먼저 동의해 주세요",
-      publishNeedName: "팩 이름을 입력해 주세요",
-      publishNeedHandle: "먼저 사용자 이름을 정해 주세요. 공유하는 모든 것에 표시되는 공개 이름이에요",
-      publishSetHandle: "계정에서 설정하기",
       backupLink: "전체 백업 팩 만들기",
       backupDesc: "새 기기나 MCP 클라이언트로 옮길 때 전체를 내보내요",
     },

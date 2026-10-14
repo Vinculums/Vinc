@@ -466,7 +466,7 @@ async function chooseDestination(
 /** Web-only same-origin handoff. Publication and consent happen in the Community task. */
 export async function publishToCommunity(sheet: Sheet, out: Record<string, unknown>): Promise<void> {
   const U = COPY.ui.sheet;
-  sheet.body.innerHTML = `<p class="hint" role="status">${esc(U.destCommunityOpening)}</p>`;
+  sheet.body.innerHTML = sheetProgress(U.destCommunityOpening);
   sheet.foot.innerHTML = sheetActions({ id: "sheet-cancel", label: COPY.ui.common.cancel });
   sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
   try {

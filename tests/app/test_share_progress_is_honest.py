@@ -209,9 +209,8 @@ class ShareProgressTests(unittest.TestCase):
         self.assertRegex(
             body, r"const id = .*\$\{\+\+",
             "이름이 호출마다 달라지지 않는다 — 올라가는 수에서 와야 한다")
-        self.assertIn(
-            '<div id="pub-progress" role="status">', self.share,
-            "커뮤니티 게시의 상주 자리에 라이브 영역이 없다")
+        self.assertNotIn('id="pub-progress"', self.share,
+                         "앱은 공개 작업으로 넘기며 게시 진행 상태를 선언하지 않는다")
         self.assertIn(
             '<div id="tl-backup-msg" role="status">', self.tl_share,
             "전체 백업의 상주 자리에 라이브 영역이 없다")
