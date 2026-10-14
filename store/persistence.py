@@ -185,7 +185,7 @@ def restore_if_missing(live_path: str, snapshot_path: str | None = None) -> str:
 
 
 def restore_newest(live_path: str, snapshot_path: str | None = None) -> str:
-    """기동 복원의 입구. 세대 모드가 꺼져 있으면 :func:`restore_if_missing` 그대로다.
+    """전역 또는 기존 전환 publisher가 켜진 기동은 게시한 세대를 복원한다.
 
     켜져 있으면 스냅샷이 담은 번호(:data:`SEEN_SUFFIX`)보다 최신 커밋 세대를 검증한다.
     그 세대가 깨졌으면 ``error`` 로 기동을 막는다. 이전 세대나 스냅샷으로 후퇴하면 이미
@@ -193,7 +193,10 @@ def restore_newest(live_path: str, snapshot_path: str | None = None) -> str:
     근거: [[vinc.plan.vin82-durable-ack-2026-09-29]]
     작업본이 있으면 아무것도 안 한다(``present``) — 이 계약은 두 경로가 같다."""
     snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
-    if not durable_ack_enabled(snapshot_path):
+    # 전환 publisher는 전역 ACK가 꺼져도 영수증을 게시한다. 복원만 같은 범위를 따른다.
+    # 일반 쓰기의 ACK 정책은 바꾸지 않는다. 양쪽이 꺼진 설치는 기존 스냅샷 복원이다.
+    scoped = bool(snapshot_path) and os.environ.get("VINC_TOPIC_CONVERSION") == "1"
+    if not (durable_ack_enabled(snapshot_path) or scoped):
         return restore_if_missing(live_path, snapshot_path)
     if os.path.exists(live_path):
         return "present"

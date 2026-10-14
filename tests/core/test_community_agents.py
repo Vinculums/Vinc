@@ -265,6 +265,57 @@ def test_published_import_generation_restores_role_and_receipt(engine, tmp_path)
         restored.close()
 
 
+def test_actual_scoped_publisher_and_boot_restore_preserve_agent_proof_with_global_ack_off(monkeypatch, tmp_path):
+    from store import persistence
+    from store.backend import open_store
+    from store.config import load_config
+    snapshot_path = str(tmp_path / "persistent")
+    monkeypatch.setenv("VINC_PK_NAMESPACED", "on")
+    monkeypatch.delenv("VINC_DURABLE_ACK", raising=False)
+    monkeypatch.setenv("VINC_TOPIC_CONVERSION", "1")
+    monkeypatch.setenv("VINC_STORE_SNAPSHOT", snapshot_path)
+    monkeypatch.setenv("VINC_STORE_SNAPSHOT_EVERY", "60")
+    monkeypatch.delenv("CONTAINER_APP_REVISION", raising=False)
+    store, keep = _fresh_store()
+    app = VincApp(store=store)
+    restored = None
+    try:
+        assert app._durable is None and app._conversion_durable is not None
+        assert persistence.save_snapshot(store, snapshot_path) == "ok"
+        snapshot, source = authored()
+        mutation = str(uuid4())
+        result = app.import_community_agent({"owner": OWNER, "snapshot": snapshot, "source": source,
+            "mutation_id": mutation})[1]
+        assert result["durability"] == "published_generation"
+        assert app._conversion_durable.publishes == 2 and result["durable_sequence"] == 2
+        status = app.read_community_agent_result({"owner": OWNER, "mutation_id": mutation})[1]
+        assert status["state"] == "committed" and status["durability"] == "published_generation"
+        # 복원 대상만 새 경로로 잡는다. 원래 작업본이나 다른 fixture는 지우지 않는다.
+        destination = str(tmp_path / "replacement")
+        assert persistence.restore_newest(destination, snapshot_path) == "restored-generation:2"
+        restored = open_store(load_config({"data_dir": destination}))
+        node = query.node(result["node_id"], owner=OWNER, store=restored)["node"]
+        assert node["props"]["shared_snapshot"] == snapshot
+        assert node["props"]["community_source"] == source
+        assert node["props"]["status"] == "proposed" and node["props"]["active"] is False
+        receipt = ca.import_result(restored, owner=OWNER, mutation_id=mutation,
+            durability_root=app._conversion_durable.root)
+        assert receipt["request_hash"] == status["request_hash"]
+        assert receipt["state"] == "committed" and receipt["applied"] is True
+        assert receipt["result"]["source_hash"] == source["hash"]
+        assert receipt["durability"] == "published_generation" and receipt["durable_sequence"] == 2
+        assert not persistence.durable_ack_enabled()
+        app.jobs.run_sync("ingest:fragment", lambda: fragment.merge_fragment({"owner": OWNER, "nodes": [
+            {"id": "concept:ordinary-after-agent", "type": "concept", "title": "Ordinary write"}]}, store=store))
+        assert app._conversion_durable.publishes == 2
+    finally:
+        if restored is not None:
+            restored.close()
+        app.jobs.shutdown()
+        store.close()
+        _restore(keep)
+
+
 def test_lost_ack_reconciles_same_version_without_duplicate(engine):
     from api.jobs import JobError
     from store.persistence import DurableAckError
