@@ -85,6 +85,7 @@ export type SheetHandle = {
   body: HTMLElement;
   foot: HTMLElement;
   close: () => void;
+  readonly closed?: boolean;
 };
 
 /** HTML 이스케이프 한 벌. 여태 이 네 글자짜리 함수가 세 벌 복제돼 있었고, 복제는
@@ -180,6 +181,7 @@ export function openSheet(opts: {
     body: el.querySelector<HTMLElement>(".sheet-body")!,
     foot: el.querySelector<HTMLElement>(".sheet-foot")!,
     close,
+    get closed() { return closed; },
   };
 }
 

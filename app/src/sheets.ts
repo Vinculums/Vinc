@@ -404,7 +404,7 @@ async function chooseDestination(
   if (WEB) {
     dests.push({
       key: "community", label: U.destCommunity, note: U.destCommunityNote, where: U.destCommunity,
-      run: () => publishToCommunity(sheet, out),
+      run: () => publishToCommunity(sheet, out, life),
     });
   }
   dests.push({
@@ -464,25 +464,30 @@ async function chooseDestination(
 }
 
 /** Web-only same-origin handoff. Publication and consent happen in the Community task. */
-export async function publishToCommunity(sheet: Sheet, out: Record<string, unknown>): Promise<void> {
+export async function publishToCommunity(sheet: Sheet, out: Record<string, unknown>, life: SheetLife = { onClose: () => {} }): Promise<void> {
   const U = COPY.ui.sheet;
+  const controller = new AbortController(); let closed = false;
+  life.onClose = () => { closed = true; controller.abort(); };
   sheet.body.innerHTML = sheetProgress(U.destCommunityOpening);
   sheet.foot.innerHTML = sheetActions({ id: "sheet-cancel", label: COPY.ui.common.cancel });
-  sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
+  const cancel = () => { life.onClose(); sheet.close(); };
+  sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", cancel);
   try {
     if (!WEB) throw new Error("A same-origin web session is required");
-    const response = await fetch("/api/community/agents/destinations", { credentials: "include", cache: "no-store" });
+    const response = await fetch("/api/community/agents/destinations", { credentials: "include", cache: "no-store", signal: controller.signal });
     const data = await response.json();
+    if (closed || sheet.closed || !sheet.el.isConnected) return;
     if (!response.ok || data.features?.agents !== true || typeof data.draftActor !== "string" || !data.draftActor) throw new Error("Community sharing is unavailable");
     // Purpose-scoped actor is only a local namespace hint, never server authority.
     sessionStorage.setItem("vinc.community.draft.app-pack..", JSON.stringify({ at: Date.now(), actor: data.draftActor, pack: out }));
     window.location.assign("/community/share/");
   } catch {
+    if (closed || sheet.closed || !sheet.el.isConnected) return;
     sheet.body.innerHTML = `<p class="error-banner" role="alert">${esc(U.destCommunityRetainFailed)}</p>`;
     sheet.foot.innerHTML = sheetActions({ id: "sheet-retry", label: COPY.accountMode.retry }, { id: "sheet-file", label: U.destFile }, { id: "sheet-cancel", label: COPY.ui.common.cancel });
-    sheet.foot.querySelector("#sheet-retry")!.addEventListener("click", () => { void publishToCommunity(sheet, out); });
+    sheet.foot.querySelector("#sheet-retry")!.addEventListener("click", () => { void publishToCommunity(sheet, out, life); });
     sheet.foot.querySelector("#sheet-file")!.addEventListener("click", () => { void downloadPack(out, "community-share.vincpack"); });
-    sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
+    sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", cancel);
   }
 }
 
