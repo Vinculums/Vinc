@@ -2,10 +2,10 @@
 """VIN-82 ACK 경계 배선 — 쓰기 잡은 영속 세대를 게시한 뒤에야 DONE·200 이다.
 
 지키는 것:
-1. ``VINC_DURABLE_ACK`` 가 꺼져 있으면 훅이 없고 기동 복원도 예전과 같다.
+1. 전역 ACK와 scoped 전환 publisher가 모두 꺼져 있으면 기동 복원도 예전과 같다.
 2. 켜져 있으면 쓰기 잡은 세대를 게시한 뒤에야 끝나고, 게시 실패는 ERROR(불확정 커밋)다.
 3. 쓰기가 없던 잡은 게시 비용을 물지 않는다.
-4. 기동은 스냅샷과 세대 중 더 새롭고 검증되는 쪽으로 복원하고, 깨진 세대는 건너뛴다.
+4. 기동은 스냅샷과 세대 중 더 새롭고 검증되는 쪽을 복원하고, 최신 커밋 손상은 거부한다.
 5. 세대 수에 상한이 있다.
 6. 실엔진: 쓰기 → ACK → 급사(스냅샷 없음) → 로컬 디스크 소실 → 복원 → 그 쓰기가 있다.
 
@@ -72,6 +72,7 @@ class _Env(unittest.TestCase):
         os.makedirs(os.path.dirname(self.live))
         os.makedirs(os.path.dirname(self.snap))
         env = mock.patch.dict(os.environ, {"VINC_STORE_SNAPSHOT": self.snap,
+                                           "VINC_TOPIC_CONVERSION": "0",
                                            persistence.DURABLE_ENV: self.durable})
         env.start()
         self.addCleanup(env.stop)
@@ -291,6 +292,57 @@ class BootRestore(_Env):
         with mock.patch.dict(os.environ, {persistence.DURABLE_ENV: ""}):
             self.assertEqual(persistence.restore_newest(self.live), "restored")
         self.assertEqual(Path(self.live).read_bytes(), b"SNAPSHOT")
+
+    def test_scoped_publisher_recovers_its_ack_without_global_ack(self):
+        self._snapshot(b"SNAPSHOT")
+        self._generation(1, b"SCOPED-ACK")
+        with mock.patch.dict(os.environ, {persistence.DURABLE_ENV: "", "VINC_TOPIC_CONVERSION": "1"}):
+            self.assertFalse(persistence.durable_ack_enabled())
+            self.assertEqual(persistence.restore_newest(self.live), "restored-generation:1")
+            self.assertFalse(persistence.durable_ack_enabled())
+        self.assertEqual(Path(self.live).read_bytes(), b"SCOPED-ACK")
+
+    def test_scoped_corrupt_latest_cannot_fall_back_to_older_snapshot(self):
+        self._generation(1, b"SCOPED-1")
+        self._snapshot(b"SNAPSHOT")
+        self._generation(2, b"SCOPED-2")
+        Path(self.root, "generation-2", "db").write_bytes(b"CORRUPT")
+        with mock.patch.dict(os.environ, {persistence.DURABLE_ENV: "", "VINC_TOPIC_CONVERSION": "1"}):
+            state = persistence.restore_newest(self.live)
+        self.assertTrue(state.startswith("error: GenerationError:"), state)
+        self.assertIsNotNone(persistence.restore_state_is_fatal(state))
+        self.assertFalse(Path(self.live).exists())
+
+    def test_scoped_newer_periodic_snapshot_keeps_later_ordinary_writes(self):
+        self._generation(1, b"SCOPED-ACK")
+        self._snapshot(b"LATER-ORDINARY-WRITE")
+        self.assertEqual(persistence._snapshot_seen(self.snap), 1)
+        Path(self.root, "generation-1", "db").write_bytes(b"CORRUPT")
+        with mock.patch.dict(os.environ, {persistence.DURABLE_ENV: "", "VINC_TOPIC_CONVERSION": "1"}):
+            self.assertEqual(persistence.restore_newest(self.live), "restored")
+        self.assertEqual(Path(self.live).read_bytes(), b"LATER-ORDINARY-WRITE")
+
+    def test_scoped_restore_still_preserves_existing_work_copy(self):
+        self._generation(1, b"SCOPED-ACK")
+        Path(self.live).write_bytes(b"LOCAL-NEWER")
+        with mock.patch.dict(os.environ, {persistence.DURABLE_ENV: "", "VINC_TOPIC_CONVERSION": "1"}):
+            self.assertEqual(persistence.restore_newest(self.live), "present")
+        self.assertEqual(Path(self.live).read_bytes(), b"LOCAL-NEWER")
+
+    def test_scoped_flag_without_snapshot_has_no_recovery_side_effect(self):
+        with mock.patch.dict(os.environ, {persistence.DURABLE_ENV: "", "VINC_TOPIC_CONVERSION": "1", "VINC_STORE_SNAPSHOT": ""}):
+            self.assertEqual(persistence.restore_newest(self.live), "off")
+        self.assertFalse(Path(self.live).exists())
+
+    def test_only_exact_scoped_enable_value_matches_the_existing_publisher(self):
+        self._snapshot(b"SNAPSHOT")
+        self._generation(1, b"SCOPED-ACK")
+        for value in ("", "0", "on", "true", "1 "):
+            with self.subTest(value=value), mock.patch.dict(os.environ, {
+                    persistence.DURABLE_ENV: "", "VINC_TOPIC_CONVERSION": value}):
+                destination = str(self.tmp / ("off-" + repr(value)))
+                self.assertEqual(persistence.restore_newest(destination), "restored")
+                self.assertEqual(Path(destination).read_bytes(), b"SNAPSHOT")
 
     def test_snapshot_records_the_generation_it_covers_only_when_one_exists(self):
         store = _FakeStore(self.live)

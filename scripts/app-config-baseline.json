@@ -4,6 +4,7 @@
       "excludedPaths": [
         "/internal/bo/stats",
         "/internal/mcp/community",
+        "/internal/mcp/community-read",
         "/internal/mcp/community-resolve",
         "/internal/mcp/plan",
         "/internal/mcp/spaces",
@@ -25,6 +26,7 @@
       "BO_ADMIN_EMAILS",
       "BO_OTP_KEY",
       "BO_STATS_PUBLIC_KEY",
+      "COMMUNITY_AGENTS_ENABLED",
       "COMMUNITY_ENABLED",
       "CSRF_SECRET",
       "DB_HOST",
