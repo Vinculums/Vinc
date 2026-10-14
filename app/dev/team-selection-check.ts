@@ -13,15 +13,17 @@ function slice(source, from, to) {
 function run(source, state) {
   vm.runInContext(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText, state);
 }
-function fixture(rows, error = false) {
+function fixture(rows, error = false, desktop = false, credential = true) {
   const options = [{ value: "", disabled: false }], handlers = {};
-  const pick = { value: "", appendChild: o => options.push(o), addEventListener: (type, cb) => { handlers[type] = cb; },
+  const pick = { value: "", isConnected: true, appendChild: o => options.push(o), addEventListener: (type, cb) => { handlers[type] = cb; },
     get selectedOptions() { return [options.find(o => o.value === this.value)]; } };
   const note = { textContent: "" }, cfg = { team: "active" }, calls = [];
   const state = { cfg, body: { querySelector: id => id === "#space-pick" ? pick : note },
     document: { createElement: () => ({}) },
     U: { spaceNone: "none", spacePending: "pending", spaceSuspended: "paused", spaceActivationHint: "activate on account", spaceListFailed: "failed" },
     location: { reload: () => calls.push("reload") },
+    accountMode: () => desktop,
+    ensureTeamCredential: async team => { calls.push("credential:"+team); return credential; },
     // 스페이스 선택기는 떠나기 전에 결과를 잠깐 보관한 뒤 전환한다(`retainBeforeSwitch`).
     retainBeforeSwitch: async () => { calls.push("retain"); return true; },
     teamsApi: { list: async opts => { assert.equal(opts.throwOnError, true); if (error) throw new Error("offline"); return rows; } },
@@ -46,6 +48,19 @@ test("pending and suspended teams are visible but cannot become the active graph
 test("list failure is distinguished from successful empty membership", async () => {
   const failed = fixture([], true), empty = fixture([]); await settle();
   assert.equal(failed.note.textContent, "failed"); assert.equal(empty.note.textContent, "none");
+});
+test("desktop switching requires a separate team key before retaining or changing the graph",async()=>{
+  for (const accepted of [false,true]) {
+    const s=fixture([{id:"next",name:"Next",status:"active"}],false,true,accepted);await settle();
+    s.pick.value="next";await s.handlers.change();
+    assert.equal(s.cfg.team,accepted?"next":"active");
+    assert.deepEqual(s.calls,accepted?["credential:next","retain","reload"]:["credential:next"]);
+    if(!accepted){assert.equal(s.pick.value,"active");assert.equal(s.pick.disabled,false);}
+  }
+});
+test("browser membership switching does not ask for an API key",async()=>{
+  const s=fixture([{id:"next",name:"Next",status:"active"}]);await settle();s.pick.value="next";await s.handlers.change();
+  assert.deepEqual(s.calls,["retain","reload"]);assert.equal(s.cfg.team,"next");
 });
 test("strict settings lookup propagates failures without changing optional consumers", async () => {
   const state = { accountMode: () => true, call: async () => { throw new Error("offline"); } };

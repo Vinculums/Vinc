@@ -9,6 +9,7 @@ import { loadPrefs, savePrefs, RAIL_MIN, RAIL_MAX } from "../view-prefs";
 import { disposeEditorsIn } from "../doc-editor";
 import { mountStorage } from "../storage-mode";
 import { mountTopicConversion } from "../topic-conversion";
+import { ensureTeamCredential } from "../team-key";
 
 /** Settings — 왼쪽 분류 레일 + 본문(2026-09-22).
  *  종 레일 바닥의 설정 버튼이 예전 Settings · GRAPH.md · Tools(쓰기/가져오기/공유)
@@ -341,7 +342,6 @@ export async function renderSettings(
           const next = pick.value;
           pick.disabled = true;   // 보관하는 동안 두 번째 선택이 끼어 다른 스페이스로 열리지 않게
           if (accountMode() && next) {
-            const { ensureTeamCredential } = await import("../team-key");
             if (!await ensureTeamCredential(next, pick.selectedOptions[0]?.textContent || "")) {
               pick.value = cfg.team; pick.disabled = false; return;
             }

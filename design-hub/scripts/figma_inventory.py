@@ -188,6 +188,9 @@ DIALOGS = {
     # Agent 레일 + 의 새 역할 양식(2026-10-02). 디자인 라운드 없이 컴포저의 부품으로 지었다.
     "role-composer.ts:R.title": None,
     "connect.ts:A.connectTitle": None,
+    # The owner excluded Figma work for this package. Reuse the existing action
+    # sheet; record its missing design counterpart without inventing a node id.
+    "team-key.ts:c.title": None,
     "authoring.ts:openContextMenu": None,
     # 빈 화면에 파일 여럿을 끌어다 놓으면 뜨는 일괄 가져오기(여태 없는 라우트로 가 사라졌다).
     "empty-invite.ts:COPY.author.menuImport": None,
