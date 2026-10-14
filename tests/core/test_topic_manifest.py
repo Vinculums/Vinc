@@ -88,6 +88,20 @@ def test_disk_inventory_survives_legacy_row_budget(native, tmp_path, monkeypatch
         assert disk.retained_rows > 2
 
 
+def test_real_legacy_row_and_byte_thresholds_are_exceeded_without_materialization(tmp_path):
+    base = seed()["nodes"]["Concept"][0]
+    with TopicManifest(tmp_path / "scratch.sqlite") as manifest:
+        for index in range(5001):
+            row = {**base, "concept_id": SOURCE + "\x1fconcept:large-" + str(index),
+                   "one_liner": "synthetic payload " + "x" * 7000}
+            manifest.add("Concept", row)
+        assert manifest.retained_rows > 5000
+        assert manifest.payload_bytes > 32 * 1024 * 1024
+        plan = plan_transfer(manifest.snapshot, source=SOURCE, target=TARGET, topic=TOPIC)
+        assert plan.ready and len(plan.selected) == 5001
+        assert len(plan.before_hash) == 64
+
+
 def test_pinned_engine_primary_key_update_refused_and_rollback_keeps_edges(native):
     before = fingerprint(read_scoped_inventory(native, source=SOURCE, target=TARGET, topic=TOPIC).snapshot)
     native.run("BEGIN TRANSACTION")
