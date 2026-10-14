@@ -46,12 +46,12 @@ class SeedWriter:
             self.pending=0
 
 
-def put(store,label,key,**fields):
-    spec=SPECS[label]
+def put(store,table,key,**fields):
+    spec=SPECS[table]
     value={column:None for column in spec['cols']}
     value.update({spec['pk']:key},**fields)
     setters=', '.join(f'n.{column}=${column}' for column in value if column!=spec['pk'])
-    store.run(f"CREATE (n:{label} {{{spec['pk']}:${spec['pk']}}})"+(' SET '+setters if setters else ''),value,raw=True)
+    store.run(f"CREATE (n:{table} {{{spec['pk']}:${spec['pk']}}})"+(' SET '+setters if setters else ''),value,raw=True)
 
 
 def seed(store,scale,dim):
@@ -87,17 +87,76 @@ def seed(store,scale,dim):
     put(store,'_SyncMeta','seq:'+SOURCE,value=str(4001*scale))
 
 
+def seed_observed_shape(store,scale,dim):
+    """Use observed type counts with synthetic content and a declared valid-ownership variant."""
+    embedding=[((i%23)-11)/23 for i in range(dim)]
+    text='합성 문서 본문과 Unicode 이력은 그대로 보존합니다.\n'*80
+    counts={'Concept':371,'Decision':545,'Episode':856,'Record':1669}
+    docs,chunk_count,vector_count=489*scale,3997*scale,6922*scale
+    logicals=[]
+    chunks=[]
+    concepts=[]
+    put(store,'Domain',TOPIC)
+    def member(label,logical):
+        key=SOURCE+'\x1f'+logical
+        title='Synthetic '+logical
+        put(store,label,key,owner_id=SOURCE,domain=TOPIC,title=title,rev=7,sync_seq=len(logicals)+1,
+            props=json.dumps({'history':[{'at':'1905','value':'preserve'}]}),updated_at='2020-01-01T00:00:00Z')
+        logicals.append((label,logical,title))
+        if label=='Concept':concepts.append(logical)
+        store.run(f"MATCH (a:{label}),(b:Domain) WHERE a.{SPECS[label]['pk']}=$id AND b.name=$topic CREATE (a)-[:IN_DOMAIN]->(b)",
+                  {'id':key,'topic':TOPIC},raw=True)
+    for label,count in counts.items():
+        for i in range(count*scale):member(label,label.lower()+':shape-'+str(i))
+    for i in range(docs):
+        doc='synthetic-shape-doc-'+str(i)
+        logical='concept:doc.'+doc
+        member('Concept',logical)
+        number=chunk_count//docs+int(i<chunk_count%docs)
+        put(store,'_DocMeta',doc,owner_id=SOURCE,title='Synthetic document '+str(i),origin='synthetic',
+            content_hash=hashlib.sha256((text*number).encode()).hexdigest(),chunk_count=number,needs_embed=0,sync_seq=i+1)
+        for index in range(number):
+            chunk=doc+'#'+str(index)
+            put(store,'Chunk',chunk,owner_id=SOURCE,doc_id=doc,text=text,lex='synthetic document',
+                chunk_index=index,char_start=index*len(text),char_end=(index+1)*len(text),char_count=len(text),source_file='synthetic')
+            chunks.append((chunk,doc,logical))
+            store.run('MATCH (a:Chunk),(b:Concept) WHERE a.chunk_id=$chunk AND b.concept_id=$id CREATE (a)-[:MENTIONS {method:$method}]->(b)',
+                      {'chunk':chunk,'id':SOURCE+'\x1f'+logical,'method':'title'},raw=True)
+    for i in range(vector_count):
+        chunk,doc,_=chunks[i%len(chunks)]
+        sequence=i//len(chunks)
+        put(store,'ChunkVec',chunk+'#vec-'+str(sequence),owner_id=SOURCE,doc_id=doc,chunk_id=chunk,seq=sequence,
+            embedding=embedding,encoder_runtime='synthetic-runtime')
+    for label,logical,title in logicals[:3928*scale]:
+        put(store,'NodeVec',SOURCE+'#'+logical,owner_id=SOURCE,node_id=logical,kind=label.lower(),text=title,
+            model='synthetic-model',embedding=embedding,encoder_runtime='synthetic-runtime')
+    for label,logical,title in logicals[:843*scale]:
+        put(store,'_SyncBase',SOURCE+'\x1f'+logical,label=label,fields=json.dumps({'title':title}),
+            base_rev=7,base_updated_at='2020-01-01T00:00:00Z')
+    # At least the observed closure size, including identical parallel relations.
+    for i in range((11502-3930-3997)*scale):
+        left,right=concepts[i%len(concepts)],concepts[(i+1)%len(concepts)]
+        store.run('MATCH (a:Concept),(b:Concept) WHERE a.concept_id=$left AND b.concept_id=$right CREATE (a)-[:DERIVES_FROM {evidence:$evidence,confidence:$confidence}]->(b)',
+                  {'left':SOURCE+'\x1f'+left,'right':SOURCE+'\x1f'+right,'evidence':'synthetic preserved direction','confidence':0.75},raw=True)
+    put(store,'_SyncMeta','seq:'+SOURCE,value=str(len(logicals)))
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scale',type=int,choices=(1,5,10),required=True)
     parser.add_argument('--indexes',action='store_true')
+    parser.add_argument('--trace-python',action='store_true',help='Track Python allocations; report the instrumentation overhead separately')
+    parser.add_argument('--shape',choices=('legacy-budget','vinc-g0'),default='legacy-budget')
     args=parser.parse_args()
     os.environ['VINC_PK_NAMESPACED']='on'
     os.environ['VINC_TOPIC_CONVERSION']='1'
     os.environ['VINC_DURABLE_ACK']=''
     started=time.monotonic()
     report={'synthetic':True,'operating_data_opened':False,'scale':args.scale,'dimension':1024,
-            'buffer_pool_mb':512,'max_batch_rows':128,'max_batch_bytes':4*1024*1024,'indexes':args.indexes,'passed':False}
+            'buffer_pool_mb':512,'max_batch_rows':128,'max_batch_bytes':4*1024*1024,'indexes':args.indexes,
+            'python_allocation_tracing':args.trace_python,'passed':False}
+    report['shape']=args.shape
+    if args.shape=='vinc-g0':report['ownership_variant']='synthetic owned metadata for all489 identities; actual11-identity ambiguity remains unmodified'
     cgroup=Path('/sys/fs/cgroup')
     for line in Path('/proc/self/cgroup').read_text().splitlines():
         if line.startswith('0::'):cgroup=cgroup/line[3:].lstrip('/')
@@ -105,7 +164,7 @@ def main():
         location=cgroup/key
         report[key]=location.read_text().strip() if location.exists() else None
     store=None
-    tracemalloc.start()
+    if args.trace_python:tracemalloc.start()
     try:
         with tempfile.TemporaryDirectory(prefix='vinc-synthetic-conversion-profile-') as directory:
             root=Path(directory)
@@ -116,7 +175,7 @@ def main():
             store.drop_vector_index();store.drop_node_vector_index()
             store._load_ext('fts');store._drop_index(f"CALL DROP_FTS_INDEX('Chunk','{store._FTS_INDEX}')",'synthetic profile')
             writer=SeedWriter(store)
-            seed(writer,args.scale,1024)
+            (seed_observed_shape if args.shape=='vinc-g0' else seed)(writer,args.scale,1024)
             writer.finish()
             report['seed_seconds']=round(time.monotonic()-started,3)
             if args.indexes:
@@ -165,7 +224,7 @@ def main():
         if store is not None:store.close()
         report['elapsed_seconds']=round(time.monotonic()-started,3)
         report['process_peak_rss_bytes']=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024
-        report['python_tracemalloc_peak_bytes']=tracemalloc.get_traced_memory()[1]
+        report['python_tracemalloc_peak_bytes']=tracemalloc.get_traced_memory()[1] if args.trace_python else None
         peak=cgroup/'memory.peak'
         report['cgroup_peak_bytes']=int(peak.read_text()) if peak.exists() else None
         print(json.dumps(report,sort_keys=True),flush=True)

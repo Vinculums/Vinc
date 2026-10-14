@@ -177,3 +177,25 @@ def test_legacy_stage_refuses_a_new_protocol_without_mutation_or_fence_release(n
                      expected=legacy._get(native,RUN)['expected'],stamp=STAMP)
     assert fingerprint(read_snapshot(native))==before
     assert legacy.fenced(native,SOURCE) and legacy.fenced(native,TARGET)
+
+
+def test_verification_uses_vector_coordinates_without_repeated_payload_scans(native,tmp_path,monkeypatch):
+    for i in range(16):
+        logical='record:vector-'+str(i)
+        native.run('CREATE (n:Record {record_id:$id,owner_id:$owner,domain:$topic,title:$title})',
+                   {'id':SOURCE+'\x1f'+logical,'owner':SOURCE,'topic':TOPIC,'title':'synthetic '+str(i)})
+        native.run('CREATE (n:NodeVec {vec_id:$id,node_id:$node,owner_id:$owner,kind:$kind,embedding:$embedding})',
+                   {'id':SOURCE+'#'+logical,'node':logical,'owner':SOURCE,'kind':'record','embedding':[1.0,0.0,0.0,0.0]})
+    flow,_,_=fixture(native,tmp_path,max_rows=128)
+    for _ in range(30):
+        if flow.status()['phase']=='verifying':break
+        flow.step()
+    from store.topic_manifest import Rows
+    original=Rows.where
+    scans=[]
+    def counted(self,**kwargs):
+        if self.label=='NodeVec':scans.append(1)
+        return original(self,**kwargs)
+    monkeypatch.setattr(Rows,'where',counted)
+    assert flow.verify()['status']=='graph_committed'
+    assert len(scans)<4, 'Each vector must not start another full disk-backed payload scan'

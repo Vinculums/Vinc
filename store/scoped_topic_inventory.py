@@ -272,10 +272,12 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         keep("_DocTombstone", row)
 
     node_vectors = []
+    vector_nodes = {}
     for row in reader.scan("MATCH (n:NodeVec) WHERE n.owner_id=$owner",
                            "n.vec_id AS id, n.node_id AS node_id", "n.vec_id", {"owner": owner}):
         if row["node_id"] in logical:
             node_vectors.append(row["id"])
+            vector_nodes[row['id']] = row['node_id']
             if len(node_vectors) > max_rows:
                 raise ManifestLimit("retained_rows", observed=len(node_vectors), limit=max_rows)
     found = 0
@@ -311,8 +313,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
             continue
         if after:
             if label == "NodeVec":
-                old = source + "#" + next(r["node_id"] for r in result["nodes"][label]
-                                          if r["vec_id"] == key)
+                old = source + '#' + vector_nodes[key]
             elif label == "_MergeRejection":
                 old = mapped_rejection_key(key, target, source)
             elif key.startswith(target + pkns.SEP):
@@ -371,7 +372,6 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         # data. MERGE would overwrite it, so reject every mapped PK collision.
         destinations = {}
         tombstone_keys = set()
-        vector_nodes = {r["vec_id"]: r["node_id"] for r in result["nodes"]["NodeVec"]}
         for label, old in tuple(retained):
             if label in ("Domain", "_SyncMeta", "_DocTombstone", "_Tombstone"):
                 continue
