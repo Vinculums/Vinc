@@ -88,6 +88,14 @@ class ChangeMarker:
                 n += self._n.get(ANY, 0)
             return f"{self._epoch}.{n}"
 
+    def inventory_revision(self, owner: str) -> tuple[str, bool]:
+        """아직 끝나지 않은 쓰기가 있으면 진단 캐시를 실행 허가로 쓰지 않는다."""
+        with self._lock:
+            self._settle()
+            n = self._n.get(owner, 0) + self._n.get(ANY, 0)
+            pending = any(scope in (owner, None, ANY) for scope, _, _ in self._pending)
+            return f"{self._epoch}.{n}", pending
+
 
 #: 성공해도 **화면에 보이는 것을 바꾸지 않는** 쓰기. 여기 없는 쓰기는 전부 센다
 #: (새 라우트를 더하고 잊으면 한 번 더 다시 읽을 뿐이고, 반대로 빠뜨리면 화면이 낡는다).
@@ -104,6 +112,8 @@ class ChangeMarker:
 #:                     허브가 센다)
 #:   /conventions/build  GRAPH.md 재생성. 그래프가 아니다
 QUIET_WRITES = frozenset({
+    # 전환 쓰기는 양쪽 소유자를 명시적으로 세며, preflight/status는 조회다.
+    "/topic-conversion",
     "/touch", "/doc/reembed", "/embed/apply", "/node-mirror/rebuild", "/backup",
     "/sync/domains", "/connect/start", "/space/proxy", "/conventions/build",
     # 저장 설정(그래프 밖 파일)과 전량 올리기(이 스토어를 안 바꾼다), VIN-130.

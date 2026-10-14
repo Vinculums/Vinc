@@ -22,7 +22,7 @@
     "test:view-retained": "node --test tests/view-retained.test.mjs",
     "test:layout-service": "node --test tests/layout-service.test.mjs",
     "build:layout-service": "node service/build.mjs",
-    "test:topic-conversion": "node --test tests/topic-conversion.test.mjs",
+    "test:topic-conversion": "node --test tests/topic-conversion.test.mjs tests/conversion-inventory.test.mjs",
     "test:topic-detail": "node --test tests/topic-detail.test.mjs"
   },
   "dependencies": {

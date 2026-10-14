@@ -1089,6 +1089,8 @@ export const teamsApi = {
 };
 
 export type ConversionCheck = { ready: boolean; topic: string; fingerprint?: string;
+  inventory_state?: "pending" | "done" | "failed" | "stale" | "unknown" | "busy";
+  inventory_ticket?: string;
   counts_known?: boolean; counts: Record<string, number> | null; documents: number | null; blockers: string[] };
 export type ConversionRun = { id: string; topic: string; name: string; team: string;
   state: "prepared" | "committing" | "graph_committed" | "active" | "cancelled" };
@@ -1096,7 +1098,12 @@ export type ConversionRun = { id: string; topic: string; name: string; team: str
 export const conversionApi = {
   capabilities: (): Promise<{ enabled: boolean; subject: string; pending?: { id: string; name: string; topic: string; fingerprint: string } | null }> =>
     call("/conversion/capabilities", undefined, undefined, { team: null }),
-  preflight: (topic: string): Promise<ConversionCheck> => call("/conversion/preflight", undefined, { topic }, { team: null }),
+  preflight: async (topic: string): Promise<ConversionCheck> => {
+    const { waitForInventory } = await import("./conversion-inventory");
+    return waitForInventory(topic,
+      () => call("/conversion/preflight", undefined, { topic }, { team: null }),
+      ticket => call(`/conversion/inventory/${encodeURIComponent(ticket)}`, undefined, undefined, { team: null }));
+  },
   reserve: (body: { id: string; name: string; topic: string; fingerprint: string }): Promise<ConversionRun> =>
     call("/conversion/runs", undefined, body, { team: null }),
   status: (id: string): Promise<ConversionRun> => call(`/conversion/runs/${encodeURIComponent(id)}`, undefined, undefined, { team: null }),

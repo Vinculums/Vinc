@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import time
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -34,6 +35,7 @@ class Rows(Sequence):
         return self.where()
 
     def __getitem__(self, index):
+        self.manifest.check_time()
         if isinstance(index, slice):
             raise TypeError("manifest rows must be streamed")
         if index < 0:
@@ -59,6 +61,7 @@ class Rows(Sequence):
             "SELECT body FROM payload WHERE " + " AND ".join(clauses) + " ORDER BY " + order, params)
         try:
             for row in cursor:
+                self.manifest.check_time()
                 yield json.loads(row[0])
         finally:
             cursor.close()
@@ -67,6 +70,7 @@ class Rows(Sequence):
         self.manifest.add(self.label, row)
 
     def get(self, key):
+        self.manifest.check_time()
         row = self.manifest.db.execute(
             "SELECT body FROM payload WHERE label=? AND pk=?", (self.label, key)).fetchone()
         return json.loads(row[0]) if row else None
@@ -83,6 +87,7 @@ class Edges(Sequence):
         cursor = self.manifest.db.execute("SELECT body FROM edges ORDER BY ordinal")
         try:
             for row in cursor:
+                self.manifest.check_time()
                 yield json.loads(row[0])
         finally:
             cursor.close()
@@ -107,7 +112,8 @@ class TopicManifest:
     이후 배치가 읽을 payload의 정본은 원래 그래프다.
     """
 
-    def __init__(self, path, *, max_rows=250_000, max_bytes=1024 * 1024 * 1024):
+    def __init__(self, path, *, max_rows=250_000, max_bytes=1024 * 1024 * 1024, deadline=None):
+        self.deadline = deadline
         self.path = Path(path)
         # 기존 작업이나 다른 실행의 파일을 덮어쓰지 않는다.
         fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -132,7 +138,12 @@ class TopicManifest:
                          "meta": {label: Rows(self, label) for label in meta_table_specs()},
                          "edges": Edges(self)}
 
+    def check_time(self):
+        if self.deadline is not None and time.monotonic() > self.deadline:
+            raise ManifestLimit("processing_seconds")
+
     def _check(self, size):
+        self.check_time()
         if self.retained_rows + 1 > self.max_rows:
             raise ManifestLimit("retained_rows", observed=self.retained_rows + 1, limit=self.max_rows)
         if self.payload_bytes + size > self.max_bytes:
@@ -165,6 +176,7 @@ class TopicManifest:
         # 기존 fingerprint의 정렬, 빈 테이블, 구분자를 스트림으로 재현한다.
         yield '{"edges":['
         for index, (body,) in enumerate(self.db.execute("SELECT body FROM edges ORDER BY body")):
+            self.check_time()
             if index:
                 yield ","
             yield body
@@ -177,6 +189,7 @@ class TopicManifest:
                 yield _canonical(label) + ":["
                 for n, (body,) in enumerate(self.db.execute(
                         "SELECT body FROM payload WHERE label=? ORDER BY body", (label,))):
+                    self.check_time()
                     if n:
                         yield ","
                     yield body

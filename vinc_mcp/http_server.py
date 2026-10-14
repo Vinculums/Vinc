@@ -802,7 +802,7 @@ class MCPHTTPApp:
             raise ValueError("proxy request is missing a subject")
         op = payload.get("op")
         if typ == "proxy-conversion":
-            actions = {"topic-conversion:" + a: a for a in ("preflight", "stage", "status", "release", "cancel")}
+            actions = {"topic-conversion:" + a: a for a in ("preflight", "inventory-status", "stage", "status", "release", "cancel")}
             action = actions.get(op) if isinstance(op, str) else None
             if action is None:
                 raise PermissionError("unsupported conversion capability")
@@ -815,7 +815,7 @@ class MCPHTTPApp:
             for field in ("owner", "target", "run", "action", "_entitlements"):
                 body.pop(field, None)
             body.update(owner=f"user:{sub}", action=action)
-            if action != "preflight":
+            if action not in ("preflight", "inventory-status"):
                 target, run = payload.get("target"), payload.get("run")
                 if not isinstance(target, str) or not _TEAM_OWNER_RE.fullmatch(target):
                     raise PermissionError("invalid conversion target")
