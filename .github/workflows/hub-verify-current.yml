@@ -1,0 +1,43 @@
+# 정상 리비전은 유지하고 실패한 배포에서 건너뛴 읽기 검증만 수행한다.
+name: hub-verify-current
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: "Exact deployed main commit to verify"
+        required: true
+        type: string
+concurrency:
+  group: hub-deploy
+  cancel-in-progress: false
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Operator gate
+        if: "!contains(format(',{0},', vars.PROD_OPERATORS), format(',{0},', github.triggering_actor))"
+        run: exit 1
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: Isolate Azure credentials
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID-verify" >> "$GITHUB_ENV"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Verify current deployment without updating it
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          VINC_MCP_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
+          VINC_GRAPH_READONLY_KEY: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
+        run: python scripts/verify_current_hub.py --sha "$EXPECTED_SHA"

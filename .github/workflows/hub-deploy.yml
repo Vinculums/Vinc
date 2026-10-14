@@ -491,10 +491,8 @@ jobs:
           # 포털에서 0으로 되돌려도 다음 배포가 되살린다. 기준선(app-config-baseline.json)은
           # 같은 커밋에서 1로 옮겼다. 아래 드리프트 게이트가 이 스텝 뒤에 돈다.
           # 근거: [[decision:vinc-encode-holds-one-replica]]
-          az containerapp update \
-            --name vinc-encode --resource-group vincsRG \
-            --image "vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA" \
-            --min-replicas 1 --output none
+          python scripts/reconcile_encoder_update.py \
+            --image "vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA"
           echo "vinc-encode 갱신: $DEPLOY_SHA (minReplicas 1)"
 
       - name: 두 앱이 같은 이미지인가 (인코더 공간 일치)
