@@ -24,8 +24,8 @@ def generate() -> dict:
         for name in route.query:
             parameters.append({"name": name, "in": "query", "required": name in required,
                                "schema": props.get(name, {"type": "string"})})
-        parameters.append({"name": "space", "in": "query", "required": False,
-                           "schema": {"type": "string", "default": "personal"}})
+        parameters.append({"name": "space", "in": "query", "required": "space" in required,
+                           "schema": props["space"] if "space" in required else {"type": "string", "default": "personal"}})
         operation = {"operationId": route.tool + "_" + route.method.lower() + "_" +
                      route.path.replace("/", "_").replace("{", "").replace("}", ""),
                      "summary": specs[route.tool]["description"].split("\n", 1)[0],

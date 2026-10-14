@@ -57,7 +57,7 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              "vinc_brief", "vinc_node",
              # 스페이스가 주소에서 **인자**로 내려오면서 생긴 자리(발주자 지시
              # 2026-08-31). `space` 에 실을 id 를 받을 곳이 없으면 그 인자는 못 쓴다.
-             "vinc_whoami", "vinc_operation_status", "vinc_community_write"}
+             "vinc_whoami", "vinc_operation_status", "vinc_community_write", "vinc_community_read"}
 
 
 class _StubBridge(Bridge):
@@ -86,6 +86,10 @@ class ToolContractTests(unittest.TestCase):
         # 정본 put/delete + F10-b 기각 기억)이어야 한다 — 조회 도구가 몰래 쓰지 않는다.
         b = _StubBridge()
         for t in tools.specs():
+            if t["name"] == "vinc_community_read":
+                with self.assertRaises(tools.InvalidArgument):
+                    tools.call(t["name"], {"action": "agent_detail", "payload": {}}, b)
+                continue
             if t["name"] == "vinc_community_write":
                 with self.assertRaises(PermissionError):
                     tools.call(t["name"], {"action": "page_save", "payload": {}, "client_name": "test"}, b)

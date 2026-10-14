@@ -64,6 +64,9 @@ def _min_args(name: str) -> dict:
     """inputSchema 의 required 에서 최소 인자를 유도한다 — 레지스트리가 정본."""
     sch = next(t for t in tools.TOOLS if t["name"] == name)["inputSchema"]
     out: dict = {}
+    if name == "vinc_community_read":
+        return {"space": "community:0198c0de-1111-7222-8333-444455556666",
+                "action": "agent_detail", "payload": {"shareId": "0198c0de-2222-7222-8333-444455556666"}}
     if name == "vinc_edges":
         out["node"] = "concept:x"
     for req in sch.get("required", []):
@@ -122,7 +125,9 @@ def _is_ro_refusal(reply: dict) -> bool:
 @pytest.fixture()
 def srv():
     bridge = _StubBridge()
-    s = _Srv(MCPHTTPApp(bridge, verify_key=_vk))
+    s = _Srv(MCPHTTPApp(bridge, verify_key=_vk,
+        verify_community=lambda subject, space: {"owner": space, "visibility": "public", "role": "reader"},
+        community_read=lambda *args, **kwargs: {"executed": True, "read": True}))
     s.bridge = bridge
     yield s
     s.stop()
@@ -137,8 +142,9 @@ def test_readonly_key_denies_every_write_tool_before_the_bridge(srv):
     assert srv.bridge.calls == [], "거부된 쓰기가 브리지에 닿았다"
 
 
-def test_readonly_key_serves_every_read_tool(srv):
+def test_readonly_key_serves_every_read_tool(srv, monkeypatch):
     """전수: 읽기 도구 전부 성공(isError 아님) — 스코프가 읽기를 좁히면 안 된다."""
+    monkeypatch.setenv("VINC_PK_NAMESPACED", "on")
     for name in READ_TOOLS:
         status, reply = _call(srv, name, "vinc_ro_key")
         assert status == 200

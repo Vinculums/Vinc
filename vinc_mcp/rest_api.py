@@ -101,10 +101,10 @@ def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
     """도구 결과 모양을 v1 상태로 옮긴다. 표는 tests/mcp/test_rest_v1.py 의 FAILURE_CASES 가 고정한다.
     반환은 (status, code, message) 또는 (status, code, message, details)."""
     error = str(result.get("error") or "")
-    if name == community.WRITE_TOOL and result.get("status") in (400, 401, 403, 404, 409, 429):
+    if name in (community.WRITE_TOOL, community.READ_TOOL) and result.get("status") in (400, 401, 403, 404, 409, 410, 429):
         status = result["status"]
         code = {400: "invalid_argument", 401: "not_authenticated", 403: "role_forbidden",
-                404: "not_found", 409: "conflict", 429: "quota_exceeded"}[status]
+                404: "not_found", 409: "conflict", 410: "gone", 429: "quota_exceeded"}[status]
         return status, code, error
     note = str(result.get("note") or "")
     reason = (error + " " + note).lower()
@@ -300,7 +300,9 @@ def _handle(handler, method: str) -> bool:
                                entitlements=handler.app.entitlements_for(resolved.get("plan")),
                                allow_target=False,
                                community_write=(lambda args: handler.app.community_write(resolved, args))
-                               if handler.app.community_write is not None else None)
+                               if handler.app.community_write is not None else None,
+                               community_read=(lambda args: handler.app.community_read(resolved, args))
+                               if handler.app.community_read is not None else None)
     if outcome.kind == "invalid_argument":
         fail(400, "invalid_argument", _message(outcome.result))
         return True

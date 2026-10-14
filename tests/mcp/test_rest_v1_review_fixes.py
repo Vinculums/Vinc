@@ -18,6 +18,8 @@ from vinc_mcp.rest_api import _failure
 
 # (도구, 결과, by_id, 기대 상태, 기대 코드). 상태가 None 이면 성공으로 통과해야 한다.
 FAILURE_CASES = [
+    ("vinc_community_read", {"executed": True, "version": 1}, False, None, None),
+    ("vinc_community_read", {"isError": True, "status": 410, "error": "withdrawn"}, False, 410, "gone"),
     ("vinc_operation_status", {"executed": True, "found": False, "state": "unknown"}, False, None, None),
     ("vinc_operation_status", {"executed": False, "error": "receipt_read_unavailable"}, False, 503, "upstream_unavailable"),
     ("vinc_doc_put", {"executed": False, "error": "write_conflict", "status": "conflict"}, False, 409, "write_conflict"),
@@ -114,6 +116,10 @@ def test_unconfirmed_write_says_it_may_have_applied():
 # ── 서버 수준 ────────────────────────────────────────────────────────────────
 
 _READ_SAMPLES = {
+    ("POST", "/v1/community/read"): ({"space": "community:0198c0de-1111-7222-8333-444455556666",
+        "action": "agent_detail", "payload": {"shareId": "0198c0de-2222-7222-8333-444455556666"}},
+        {"space": "community:0198c0de-1111-7222-8333-444455556666", "action": "agent_detail",
+         "payload": {"shareId": "0198c0de-2222-7222-8333-444455556666"}}),
     ("GET", "/v1/operations/{operation_id}"): ("", {"operation_id": "00000000-0000-4000-8000-000000000488"}),
     ("GET", "/v1/roles"): ("", {}),
     ("GET", "/v1/roles/{id}"): ("", {"role": "concept:agent-x"}),
@@ -148,7 +154,8 @@ _OK = {"executed": True, "found": True, "status": "ok", "verified": True, "rows"
 
 
 @pytest.mark.parametrize("route", rest_routes.READ_ROUTES, ids=lambda r: f"{r.method} {r.path}")
-def test_rest_equals_mcp_for_every_read_route(route):
+def test_rest_equals_mcp_for_every_read_route(route, monkeypatch):
+    monkeypatch.setenv("VINC_PK_NAMESPACED", "on")
     sample, arguments = _READ_SAMPLES[(route.method, route.path)]
     path = route.path.replace("{id}", quote("concept:x", safe="")).replace("{doc_id}", "d1").replace(
         "{operation_id}", "00000000-0000-4000-8000-000000000488")
@@ -158,7 +165,9 @@ def test_rest_equals_mcp_for_every_read_route(route):
     if isinstance(sample, str):
         path += sample
     elif isinstance(sample, dict):
-        body = sample
+        body = dict(sample)
+        if "space" in body:
+            path += "?space=" + quote(body.pop("space"), safe="")
     srv = Server()
     srv.bridge.override = dict(_OK)
     try:
@@ -176,7 +185,8 @@ def test_rest_equals_mcp_for_every_read_route(route):
         srv.close()
 
 
-def test_read_only_key_can_call_every_read_route():
+def test_read_only_key_can_call_every_read_route(monkeypatch):
+    monkeypatch.setenv("VINC_PK_NAMESPACED", "on")
     srv = Server(scope="read")
     srv.bridge.override = dict(_OK)
     try:
@@ -186,10 +196,25 @@ def test_read_only_key_can_call_every_read_route():
                 "{operation_id}", "00000000-0000-4000-8000-000000000488")
             if route.tool in ("vinc_role", "vinc_role_check"):
                 path = route.path.replace("{id}", "concept%3Aagent-x")
-            body = sample if isinstance(sample, dict) else None
+            body = dict(sample) if isinstance(sample, dict) else None
+            if body and "space" in body:
+                path += "?space=" + quote(body.pop("space"), safe="")
             path += sample if isinstance(sample, str) else ""
             status, _h, out = srv.request(route.method, path, body=body)
             assert status == 200, (route.path, out)
+    finally:
+        srv.close()
+
+
+def test_canonical_withdrawal_keeps_http_gone_status(monkeypatch):
+    monkeypatch.setenv("VINC_PK_NAMESPACED", "on")
+    srv = Server(scope="read")
+    srv.bridge.override = {"isError": True, "status": 410, "error": "withdrawn"}
+    try:
+        status, _, result = srv.request("POST", "/v1/community/read?space=community%3A0198c0de-1111-7222-8333-444455556666",
+            body={"action": "agent_export", "payload": {"shareId": "0198c0de-2222-7222-8333-444455556666", "version": 1, "format": "vincpack"}})
+        assert status == 410 and result["error"]["code"] == "gone", result
+        assert result["error"]["message"] == "withdrawn"
     finally:
         srv.close()
 

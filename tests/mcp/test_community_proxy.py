@@ -62,11 +62,14 @@ def test_explicit_read_allowlist(app, op):
     app.graph_owner_request(sign(op=op), {})
     method, path, params, body = app.bridge.calls[0]
     assert (method, path) == hs._PROXY_OPS[op]
-    assert method == "GET" and params["owner"] == A and body is None
+    if op in hs._PURE_POST_OPS:
+        assert method == "POST" and body["owner"] == A and params is None
+    else:
+        assert method == "GET" and params["owner"] == A and body is None
 
 
 @pytest.mark.parametrize("role", ["reader", "operator"])
-@pytest.mark.parametrize("op", sorted(op for op, (m, _) in hs._PROXY_OPS.items() if m == "POST"))
+@pytest.mark.parametrize("op", sorted(op for op, (m, _) in hs._PROXY_OPS.items() if m == "POST" and op not in hs._PURE_POST_OPS))
 def test_members_and_operators_cannot_skip_account_revisions(app, role, op):
     with pytest.raises(PermissionError):
         app.graph_owner_request(sign(role=role, op=op), {})

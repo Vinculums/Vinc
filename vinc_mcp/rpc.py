@@ -89,7 +89,7 @@ class Dispatcher:
     # entitlements: 등급에서 해석된 숫자(주제 상한 등) — 사이드카로 그대로 실린다.
     def handle(self, msg: dict, forced_owner: str | None = None,
                plan: str | None = None, quota=None,
-               entitlements: dict | None = None, community_write=None) -> dict | None:
+               entitlements: dict | None = None, community_write=None, community_read=None) -> dict | None:
         method = msg.get("method")
         msg_id = msg.get("id")
         params = msg.get("params") or {}
@@ -102,7 +102,7 @@ class Dispatcher:
         try:
             result = self._dispatch(method, params, forced_owner=forced_owner,
                                     plan=plan, quota=quota, entitlements=entitlements,
-                                    community_write=community_write)
+                                    community_write=community_write, community_read=community_read)
         except _MethodNotFound:
             return _err(msg_id, -32601, f"method not found: {method}")
         except _QuotaDenied as e:
@@ -120,7 +120,7 @@ class Dispatcher:
 
     def _dispatch(self, method: str, params: dict, *, forced_owner: str | None = None,
                   plan: str | None = None, quota=None,
-                  entitlements: dict | None = None, community_write=None) -> dict:
+                  entitlements: dict | None = None, community_write=None, community_read=None) -> dict:
         if method == "initialize":
             want = params.get("protocolVersion")
             negotiated = want if want in PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION
@@ -175,7 +175,7 @@ class Dispatcher:
                                        forced_owner=forced_owner, plan=plan, quota=quota,
                                        entitlements=entitlements,
                                        allow_target=self.allow_target,
-                                       local_only=self.local_only, community_write=community_write)
+                                       local_only=self.local_only, community_write=community_write, community_read=community_read)
             if outcome.kind == "protocol_error":
                 raise outcome.error
             if outcome.kind != "ok":
@@ -216,6 +216,7 @@ _MARKER_RESERVE = 1_000
 
 # 응답이 큰 도구별로 '어떻게 줄일지'를 알려준다 — 그냥 "너무 큼"은 행동 불가.
 _NARROW_HINT = {
+    "vinc_community_read": "use authenticated POST /v1/community/read or the selected version's website export for the complete immutable artifact",
     # 허브의 depth 1 은 이제 축소기가 고리를 줄여 싣는다 — 여기 오는 것은 시드 노드
     # 자신이 상한을 넘을 때뿐이라 depth 를 낮추라는 말은 소용이 없다.
     # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S4

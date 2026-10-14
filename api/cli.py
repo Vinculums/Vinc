@@ -972,6 +972,7 @@ def _main(argv: list[str] | None = None) -> int:
             from vinc_mcp import community
             vc = community.resolve if entitlement.enabled() else None
             cw = community.write if entitlement.enabled() else None
+            cr = community.read if entitlement.enabled() else None
             # 티어 쿼터(B-D2) — 인증된 회원(owner) 의 tools/call 만 소비. 미설정 시
             # 무제한(로컬·파일럿 프로파일 무영향). free 초과 → LOCK_HOURS 잠금.
             quota_cfg = None
@@ -1010,7 +1011,7 @@ def _main(argv: list[str] | None = None) -> int:
             return serve_http(
                 bridge, host=args.host, port=args.port,
                 static_token=static, oauth=gate, verify_key=vk, verify_member=vm,
-                verify_community=vc, community_write=cw,
+                verify_community=vc, community_write=cw, community_read=cr,
                 quota_config=quota_cfg,
                 mcp_seed=_ev.load_seed(seed_raw) if seed_raw else None,
                 account_public=_ev.load_public(acct_raw) if acct_raw else None,

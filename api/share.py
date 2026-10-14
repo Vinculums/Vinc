@@ -492,9 +492,14 @@ def import_share_pack(pack: dict, *, owner: str, cfg=None, store=None,
     ``max_domains``(선택, AP-1 §3.3): 무료 등급 주제 상한. 팩은 새 주제가 한 번에
     여럿 들어오는 경로라 상한을 태운다 — 안 태우면 그대로 우회로가 된다. 상한에
     걸리면 **문서 임포트 이전에** 멈춘다(개념 없이 원문만 남는 반쪽 상태 방지)."""
-    if not isinstance(pack, dict) or pack.get("vinc_pack") != PACK_VERSION:
+    from vinc_mcp import agent_export_contract
+    marked_agent = isinstance(pack, dict) and pack.get("kind") == agent_export_contract.AGENT_PACK_KIND
+    if marked_agent and (type(pack.get("vinc_pack")) is not int
+                         or pack["vinc_pack"] != agent_export_contract.AGENT_PACK_VERSION):
+        return {"executed": False, "error": "unsupported_community_agent_pack_version"}
+    if not isinstance(pack, dict) or (not marked_agent and pack.get("vinc_pack") != PACK_VERSION):
         return {"executed": False,
-                "error": f"unsupported pack version: {pack.get('vinc_pack')!r} "
+                "error": f"unsupported pack version: {(pack.get('vinc_pack') if isinstance(pack, dict) else None)!r} "
                          f"(expected {PACK_VERSION})"}
     fragment = pack.get("fragment") or {}
     documents = pack.get("documents") or []
@@ -506,6 +511,9 @@ def import_share_pack(pack: dict, *, owner: str, cfg=None, store=None,
     if store is None:
         return {"executed": False, "error": "no reachable store"}
     try:
+        if marked_agent:
+            from . import community_agents
+            return community_agents.import_file(pack, owner=owner, store=store, max_domains=max_domains)
         res = frag.merge_fragment({**fragment, "owner": owner}, store=store,
                                   max_domains=max_domains)
         if res.get("error") == "domain_limit_reached":
@@ -558,7 +566,12 @@ def scan_inbox(path: str, *, owner: str, store) -> dict:
             res = import_share_pack(pack, owner=owner, store=store)
             if res.get("executed"):
                 f.rename(f.with_name(f.name + ".done"))
-                results.append({"file": f.name, "merged": res["merged"]})
+                if res.get("kind") == "community-agent-import":
+                    results.append({"file": f.name, **{key: res[key] for key in (
+                        "kind", "node_id", "owner", "rev", "status", "source_hash", "version", "mode",
+                        "operation_id", "receipt", "replayed") if key in res}})
+                else:
+                    results.append({"file": f.name, "merged": res["merged"]})
             else:
                 errors.append({"file": f.name, "error": res.get("error", "?")})
         except (ValueError, OSError) as exc:

@@ -57,6 +57,9 @@ def preflight(name: str, args: dict, *, base_auth: dict,
                 or (not creating and not is_community)):
             return Outcome("role_denied", auth=auth,
                            message="Community creation uses personal identity; all other actions require community:<uuid> space.")
+    if name == community.READ_TOOL and not is_community:
+        return Outcome("role_denied", auth=auth,
+                       message="Community Agent reads require an explicit community:<uuid> space.")
     return Outcome("ok", auth=auth)
 
 
@@ -64,7 +67,7 @@ def execute(name: str, args: dict | None, bridge: Any, *,
             forced_owner: str | None = None, plan: str | None = None,
             quota: Callable[[str, str | None], dict | None] | None = None,
             entitlements: dict | None = None, allow_target: bool = True,
-            local_only: bool = False, community_write=None) -> Outcome:
+            local_only: bool = False, community_write=None, community_read=None) -> Outcome:
     """인자 검증은 한도 소비보다 앞선다. 실행 결과 봉투는 호출 표면이 만든다."""
     args = args or {}
     try:
@@ -78,7 +81,7 @@ def execute(name: str, args: dict | None, bridge: Any, *,
     try:
         result = tools.call(name, args, bridge, forced_owner=forced_owner,
                             entitlements=entitlements, allow_target=allow_target,
-                            local_only=local_only, community_write=community_write)
+                            local_only=local_only, community_write=community_write, community_read=community_read)
     except tools.InvalidArgument as exc:
         return Outcome("invalid_argument", result=exc.result(), error=exc)
     except (KeyError, ValueError) as exc:

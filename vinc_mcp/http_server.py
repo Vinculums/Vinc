@@ -72,6 +72,11 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "operation-status": ("GET", "/operation-status"),
     "node-edges": ("GET", "/node-edges"),
     "roles": ("GET", "/roles"),
+    "community-agent-export": ("POST", "/community-agent/export"),
+    "community-pack-inspect": ("POST", "/community-pack/inspect"),
+    "community-agent-import-preview": ("POST", "/community-agent/import-preview"),
+    "community-agent-import": ("POST", "/community-agent/import"),
+    "community-agent-import-result": ("GET", "/community-agent/import-result"),
     "edge-context": ("GET", "/edge-context"),
     "ledger-drilldown": ("GET", "/ledger-drilldown"),
     "docs-in-range": ("GET", "/docs-in-range"),
@@ -127,6 +132,8 @@ _COMMUNITY_READ_OPS = frozenset({
     "doc-highlights", "doc-context", "node", "node-context", "node-edges", "roles",
     "edge-context", "ledger-drilldown", "docs-in-range", "nav-tree", "changes",
     "graph-roots", "conventions",
+    "community-agent-export",
+    "community-pack-inspect",
 })
 _COMMUNITY_PROJECT_OPS = frozenset({
     "ingest-fragment", "doc-put", "conventions-build", "delete", "doc-delete", "delete-edge",
@@ -142,6 +149,10 @@ _COMMUNITY_SOCIAL_NODE_RE = re.compile(r"episode:(?:talk|lounge)-" + _COMMUNITY_
 _COMMUNITY_SOCIAL_DOC_RE = re.compile(
     r"(?:talk|lounge)\." + _COMMUNITY_OBJECT_UUID +
     r"(?:\.comment\." + _COMMUNITY_OBJECT_UUID + r")?")
+_COMMUNITY_AGENT_NODE_RE = re.compile(r"concept:agentv-" + _COMMUNITY_OBJECT_UUID + r"-[1-9][0-9]{0,15}")
+_COMMUNITY_AGENT_DOC_RE = re.compile(r"agent\.(" + _COMMUNITY_OBJECT_UUID + r")\." + _COMMUNITY_OBJECT_UUID + r"\.[1-9][0-9]{0,15}")
+_COMMUNITY_PACK_NODE_RE = re.compile(r"concept:pack-" + _COMMUNITY_OBJECT_UUID)
+_COMMUNITY_PACK_DOC_RE = re.compile(r"pack\.(" + _COMMUNITY_OBJECT_UUID + r")\." + _COMMUNITY_OBJECT_UUID)
 
 # ── 팀 역할별 op 등급(AP-1 §4.4) ──────────────────────────────────────────────
 # 세밀한 주제별·노드별 권한은 전 질의 플랜 개작이 필요해 v1 범위 밖이다. 대신 **이미
@@ -155,7 +166,9 @@ _EDITOR_OPS = frozenset({
     "doc-put", "doc-put-file", "doc-extract", "doc-reembed",
     "topic-description",
     "evidence-backfill", "conventions-build",
+    "community-agent-import",
 })
+_PURE_POST_OPS = frozenset({"community-agent-export", "community-agent-import-preview", "community-pack-inspect"})
 _ADMIN_OPS = frozenset({
     # 되돌릴 수 없는 것들 — 남의 작업을 지우거나 합치는 연산이다.
     "delete", "delete-edge", "merge-nodes", "doc-delete", "domain-rename",
@@ -245,7 +258,7 @@ _FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="42 38 436 604
 class MCPHTTPApp:
     def __init__(self, bridge: Bridge, *, static_token: str | None = None,
                  oauth: OAuthGate | None = None, verify_key=None,
-                 verify_member=None, verify_community=None, community_write=None,
+                 verify_member=None, verify_community=None, community_write=None, community_read=None,
                  store=None, quota_config: dict | None = None,
                  mcp_seed: bytes | None = None, account_public: bytes | None = None,
                  connect_url: str | None = None, free_max_domains: int | None = None):
@@ -269,6 +282,7 @@ class MCPHTTPApp:
         self.verify_member = verify_member
         self.verify_community = verify_community
         self.community_write = community_write
+        self.community_read = community_read
         # 쿼터(B-D2): usage 카운터는 store 에 영속. quota_config 없으면 무제한
         # (기존 테스트·로컬 프로파일 무영향) — cli 가 env 로 명시 활성화한다.
         self.store = store if store is not None else (oauth.store if oauth else None)
@@ -814,6 +828,8 @@ class MCPHTTPApp:
         route = _PROXY_OPS.get(op) if isinstance(op, str) else None
         if route is None:
             raise ValueError(f"unsupported proxy op: {op!r}")
+        if op == "community-agent-import" and payload.get("scope") != "full":
+            raise PermissionError("community Agent imports require full-access account authorization")
         method, path = route
 
         if typ == "proxy-community":
@@ -830,10 +846,15 @@ class MCPHTTPApp:
                 if sub != _COMMUNITY_PROJECTOR_SUB or op not in _COMMUNITY_PROJECT_OPS:
                     raise PermissionError("invalid community projection capability")
                 # 위키는 퇴역으로 남긴다. 삭제는 반영된 Talk/Lounge 항목만 허용한다.
-                if op == "delete" and not _COMMUNITY_SOCIAL_NODE_RE.fullmatch(str(args.get("node") or "")):
-                    raise PermissionError("only projected social nodes may be deleted")
-                if op == "doc-delete" and not _COMMUNITY_SOCIAL_DOC_RE.fullmatch(str(args.get("id") or "")):
-                    raise PermissionError("only projected social documents may be deleted")
+                if op == "delete" and not any(p.fullmatch(str(args.get("node") or ""))
+                        for p in (_COMMUNITY_SOCIAL_NODE_RE, _COMMUNITY_AGENT_NODE_RE, _COMMUNITY_PACK_NODE_RE)):
+                    raise PermissionError("only projected social or Agent metadata nodes may be deleted")
+                if op == "doc-delete":
+                    ident = str(args.get("id") or "")
+                    agent = _COMMUNITY_AGENT_DOC_RE.fullmatch(ident) or _COMMUNITY_PACK_DOC_RE.fullmatch(ident)
+                    if not _COMMUNITY_SOCIAL_DOC_RE.fullmatch(ident) and not (
+                            agent and agent.group(1).lower() == graph_owner[10:].lower()):
+                        raise PermissionError("only projected social or owned Agent metadata documents may be deleted")
                 if op == "delete-edge":
                     ends = (args.get("from"), args.get("to"))
                     if (any(not isinstance(n, str) or not _COMMUNITY_PAGE_NODE_RE.fullmatch(n)
@@ -1389,7 +1410,9 @@ class _Handler(BaseHTTPRequestHandler):
                                 quota=self.app.quota_for(a),
                                 entitlements=ents,
                                 community_write=(lambda args: self.app.community_write(a, args))
-                                if self.app.community_write is not None else None)
+                                if self.app.community_write is not None else None,
+                                community_read=(lambda args: self.app.community_read(a, args))
+                                if self.app.community_read is not None else None)
 
             replies = [r for r in (_run(m, a) for m, a in pairs) if r is not None]
             # 전부 notification 이면 본문 없이 202 — 배치도 같다(스펙).
@@ -1734,13 +1757,13 @@ def make_server(app: MCPHTTPApp, host: str = "127.0.0.1", port: int = 8790,
 
 def serve_http(bridge: Bridge, *, host: str = "127.0.0.1", port: int = 8790,
                static_token: str | None = None, oauth: OAuthGate | None = None,
-               verify_key=None, verify_member=None, verify_community=None, community_write=None,
+               verify_key=None, verify_member=None, verify_community=None, community_write=None, community_read=None,
                quota_config: dict | None = None,
                mcp_seed: bytes | None = None, account_public: bytes | None = None,
                connect_url: str | None = None, free_max_domains: int | None = None) -> int:
     app = MCPHTTPApp(bridge, static_token=static_token, oauth=oauth,
                      verify_key=verify_key, verify_member=verify_member,
-                     verify_community=verify_community, community_write=community_write,
+                     verify_community=verify_community, community_write=community_write, community_read=community_read,
                      quota_config=quota_config,
                      mcp_seed=mcp_seed, account_public=account_public,
                      connect_url=connect_url, free_max_domains=free_max_domains)
