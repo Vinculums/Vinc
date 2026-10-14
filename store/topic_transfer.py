@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
@@ -29,6 +30,11 @@ def _canonical(value):
 
 
 def fingerprint(snapshot: dict) -> str:
+    manifest = getattr(snapshot["edges"], "manifest", None)
+    if manifest is not None:
+        if manifest.snapshot is not snapshot:
+            raise TransferRefused("invalid_manifest_snapshot")
+        return manifest.fingerprint()
     # 순서만 다른 행과 병렬 관계의 개수를 모두 보존한다.
     normalized = copy.deepcopy(snapshot)
     for group in ("nodes", "meta"):
@@ -150,6 +156,19 @@ def referenced_ids(value):
         yield from _REFERENCE.findall(value)
 
 
+def _document_rows(rows, doc, *, ordered=False):
+    if hasattr(rows, "where"):
+        return rows.where(doc_id=doc, order_by="chunk_index" if ordered else "pk")
+    matches = (r for r in rows if r["doc_id"] == doc)
+    return sorted(matches, key=lambda r: r["chunk_index"]) if ordered else matches
+
+
+def _row_by_key(rows, pk, key):
+    if hasattr(rows, "get"):
+        return rows.get(key)
+    return next((r for r in rows if r[pk] == key), None)
+
+
 def _validate_snapshot(snapshot: dict) -> set[str]:
     expected = {"schema_version", "nodes", "meta", "edges"}
     if set(snapshot) != expected:
@@ -159,7 +178,7 @@ def _validate_snapshot(snapshot: dict) -> set[str]:
         raise TransferRefused("incomplete_inventory")
     blocks = set()
     for label, rows in {**snapshot["nodes"], **snapshot["meta"]}.items():
-        if not isinstance(rows, list):
+        if not isinstance(rows, Sequence):
             raise TransferRefused("invalid_inventory_rows:" + label)
         wanted = set(specs[label]["cols"])
         for row in rows:
@@ -170,7 +189,7 @@ def _validate_snapshot(snapshot: dict) -> set[str]:
             if not isinstance(row[specs[label]["pk"]], str):
                 raise TransferRefused("invalid_primary_key:" + label)
     relations = {(r["label"], r["from"], r["to"]): set(r["props"]) for r in rel_table_specs()}
-    if not isinstance(snapshot["edges"], list):
+    if not isinstance(snapshot["edges"], Sequence):
         raise TransferRefused("invalid_relationship_inventory")
     for edge in snapshot["edges"]:
         if not isinstance(edge, dict) or set(edge) != {"label", "from_label", "to_label", "from", "to", "props"}:
@@ -246,26 +265,29 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
         successor = metas[doc].get("superseded_by")
         if successor and successor not in docs:
             blocks.add("external_document_successor:" + successor)
-        chunks = sorted((r for r in snapshot["nodes"]["Chunk"] if r["doc_id"] == doc),
-                        key=lambda r: r["chunk_index"])
-        text = "".join(r["text"] or "" for r in chunks)
+        chunks = _document_rows(snapshot["nodes"]["Chunk"], doc, ordered=True)
+        digest = hashlib.sha256()
+        chunk_keys = set()
+        count = 0
         offset = 0
         for i, chunk in enumerate(chunks):
+            count += 1
+            chunk_keys.add(chunk["chunk_id"])
+            digest.update((chunk["text"] or "").encode())
             if (chunk["owner_id"] != source or chunk["chunk_index"] != i
                     or chunk["char_start"] != offset or chunk["char_end"] != offset + len(chunk["text"] or "")):
                 blocks.add("document_chunks_not_intact:" + doc)
             offset = chunk["char_end"]
-        if len(chunks) != metas[doc]["chunk_count"] or hashlib.sha256(text.encode()).hexdigest() != metas[doc]["content_hash"]:
+        if count != metas[doc]["chunk_count"] or digest.hexdigest() != metas[doc]["content_hash"]:
             blocks.add("document_integrity_failed:" + doc)
         for label in ("Chunk", "ChunkVec"):
-            for row in snapshot["nodes"][label]:
+            for row in _document_rows(snapshot["nodes"][label], doc):
                 if row["doc_id"] == doc:
                     if row["owner_id"] != source:
                         blocks.add("shared_document_owner:" + doc)
                     selected.add((label, row[specs[label]["pk"]]))
         selected.add(("_DocMeta", doc))
-        chunk_keys = {r["chunk_id"] for r in chunks}
-        for vector in snapshot["nodes"]["ChunkVec"]:
+        for vector in _document_rows(snapshot["nodes"]["ChunkVec"], doc):
             if vector["doc_id"] == doc and vector["chunk_id"] not in chunk_keys:
                 blocks.add("chunk_vector_join_mismatch:" + doc)
     logical = {pkns.strip(nid) for _, nid in selected}
@@ -317,7 +339,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
                 if ref not in logical and ref not in docs:
                     blocks.add("external_reference:" + ref)
     for label, nid in tuple(selected):
-        row = next(r for r in allrows[label] if r[specs[label]["pk"]] == nid)
+        row = _row_by_key(allrows[label], specs[label]["pk"], nid)
         if "theme_id" in row and row["theme_id"]:
             blocks.add("owner_vocabulary_not_supported:" + nid)
         source_file = str(row.get("source_file") or "")

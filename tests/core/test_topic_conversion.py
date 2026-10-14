@@ -150,14 +150,14 @@ def test_paged_source_dependency_scan_blocks_incoming_reference(native):
 
 
 @pytest.mark.parametrize("budget", [{"MAX_INVENTORY_ROWS": 10}, {"MAX_INVENTORY_BYTES": 100}])
-def test_selected_closure_still_fails_closed_at_the_original_cap(native, monkeypatch, budget):
+def test_selected_closure_beyond_legacy_cap_has_verified_counts_but_cannot_move(native, monkeypatch, budget):
     import store.scoped_topic_inventory as scoped
     for key, value in budget.items():
         monkeypatch.setattr(scoped, key, value)
     before = fingerprint(read_snapshot(native))
     check = tc.preflight(native, SOURCE, TOPIC)
-    assert not check["ready"] and check["blockers"] == ["conversion_inventory_limit"]
-    assert check["counts_known"] is False
+    assert not check["ready"] and check["blockers"] == ["conversion_bounded_executor_required"]
+    assert check["counts_known"] is True and check["diagnostic_only"]
     assert fingerprint(read_snapshot(native)) == before
     assert not tc.journals(native)
 
@@ -288,6 +288,54 @@ def test_preflight_does_not_report_an_unknown_topic_as_empty(native, monkeypatch
                       "blockers": ["conversion_inventory_limit"]}
     assert fingerprint(read_snapshot(native)) == before
     assert not tc.journals(native)
+
+
+def test_large_inventory_diagnostic_is_read_only_and_never_reserves(native, monkeypatch):
+    import store.scoped_topic_inventory as reader
+    before = fingerprint(read_snapshot(native))
+    monkeypatch.setattr(reader, "MAX_INVENTORY_ROWS", 2)
+    result = tc.preflight(native, SOURCE, TOPIC)
+    assert not result["ready"] and result["diagnostic_only"]
+    assert result["counts_known"] and result["documents"] == 1
+    assert result["counts"]["Concept"] == 3
+    assert "conversion_bounded_executor_required" in result["blockers"]
+    assert result["inventory_rows"] > 2
+    assert len(result["inventory_hash"]) == 64
+    assert fingerprint(read_snapshot(native)) == before
+    assert not tc.journals(native)
+
+
+def test_diagnostic_reports_dependency_codes_without_foreign_identities(native):
+    native.run("CREATE (n:Concept {concept_id:$id, owner_id:'user:foreign', domain:'foreign'})",
+               {"id": "user:foreign\x1fconcept:private"})
+    native.run("MATCH (a:Concept), (b:Concept) WHERE a.concept_id=$a AND b.concept_id=$b "
+               "CREATE (a)-[:DERIVES_FROM]->(b)",
+               {"a": SOURCE + "\x1fconcept:a", "b": "user:foreign\x1fconcept:private"})
+    result = tc.inventory_diagnostics(native, SOURCE, TOPIC)
+    assert result["counts_known"] and not result["ready"]
+    assert "boundary_relation" in result["blockers"]
+    assert "foreign" not in str(result) and "private" not in str(result)
+
+
+def test_diagnostic_incomplete_scan_keeps_counts_unknown(native, monkeypatch):
+    from store.topic_manifest import ManifestLimit
+    def fail(*args, **kwargs):
+        raise ManifestLimit("scan_seconds", observed=121, limit=120)
+    monkeypatch.setattr(tc, "read_scoped_inventory", fail)
+    result = tc.inventory_diagnostics(native, SOURCE, TOPIC)
+    assert not result["counts_known"] and result["counts"] is None
+    assert result["limit"] == {"reason": "scan_seconds", "observed": 121, "limit": 120}
+
+
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_foreign_document_payload_does_not_disclose_counts_or_sizes(native, diagnostic):
+    native.run("MATCH (c:Chunk) WHERE c.doc_id='doc1' SET c.owner_id='user:private-owner'")
+    result = (tc.inventory_diagnostics if diagnostic else tc.preflight)(native, SOURCE, TOPIC)
+    assert not result["ready"] and not result["counts_known"]
+    assert result["counts"] is None and result["documents"] is None
+    assert "conversion_scope_inconsistent" in result["blockers"]
+    assert not ({"inventory_hash", "inventory_rows", "inventory_bytes", "fingerprint"} & set(result))
+    assert "private-owner" not in str(result)
 
 
 def test_post_plan_budget_refusal_retains_verified_scope_counts(native, monkeypatch):
