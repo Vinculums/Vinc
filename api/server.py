@@ -701,8 +701,11 @@ class VincApp:
             operation_id=_req(p, "operation_id")))
 
     def render_community_agent(self, body):
+        from . import community_agents, packfile
         from vinc_mcp.roles import render_community_export
-        return 200, render_community_export(_req(body, "snapshot"), _req(body, "source"), _req(body, "format"))
+        snapshot, source = _req(body, "snapshot"), _req(body, "source")
+        community_agents.validate(snapshot, source)
+        return 200, render_community_export(snapshot, source, _req(body, "format"), pack_encoder=packfile.to_bytes)
 
     def inspect_community_pack(self, body):
         from . import community_agents

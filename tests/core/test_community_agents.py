@@ -53,13 +53,18 @@ def save(app, snapshot, source, **kwargs):
         "mutation_id": str(uuid4()), **kwargs})[1]
 
 
+def render(snapshot, source, format):
+    ca.validate(snapshot, source)
+    return roles.render_community_export(snapshot, source, format, pack_encoder=packfile.to_bytes)
+
+
 @pytest.mark.parametrize("format", ["claude", "gpt", "skill", "vincpack"])
 def test_exports_preserve_full_contract_and_are_byte_deterministic(format):
     snapshot, source = authored()
-    first = roles.render_community_export(snapshot, source, format)
+    first = render(snapshot, source, format)
     reverse = copy.deepcopy(snapshot)
     reverse["role"]["props"] = dict(reversed(list(reverse["role"]["props"].items())))
-    again = roles.render_community_export(reverse, source, format)
+    again = render(reverse, source, format)
     assert first == again
     content = base64.b64decode(first["content"]) if first["encoding"] == "base64" else first["content"].encode()
     assert first["content_hash"] == hashlib.sha256(content).hexdigest()
@@ -204,7 +209,7 @@ def test_downloaded_pack_uses_safe_import_and_replays_without_duplicate(engine, 
     store, app = engine
     monkeypatch.setenv("VINC_PK_NAMESPACED", "on" if namespaced else "off")
     snapshot, source = authored()
-    file = roles.render_community_export(snapshot, source, "vincpack")
+    file = render(snapshot, source, "vincpack")
     pack = packfile.from_bytes(base64.b64decode(file["content"]))
     owner = OWNER if namespaced else "user:local"
     original = snapshot["role"]["id"]
