@@ -26,7 +26,7 @@ def test_observed_shape_is_complete_and_synthetic():
             return []
     store=CountOnly()
     profile.seed_observed_shape(store,1,1024)
-    assert store.nodes=={'Concept':860,'Decision':545,'Episode':856,'Record':1669,'_DocMeta':489,
-                        'Chunk':3997,'ChunkVec':6922,'NodeVec':3928,'_SyncBase':843,'Domain':1,'_SyncMeta':1}
-    assert sum(store.nodes.values())+sum(store.edges.values())>=31601
-    assert store.edges=={'IN_DOMAIN':3930,'MENTIONS':3997,'DERIVES_FROM':3575}
+    assert store.nodes=={'Concept':862,'Decision':547,'Episode':858,'Record':1672,'_DocMeta':491,
+                        'Chunk':4007,'ChunkVec':6933,'NodeVec':3934,'_SyncBase':843,'Domain':1,'_SyncMeta':1}
+    assert sum(store.nodes.values())+sum(store.edges.values())>=profile.OBSERVED['rows']
+    assert store.edges=={'IN_DOMAIN':3939,'MENTIONS':4007,'DERIVES_FROM':3575}

@@ -753,6 +753,8 @@ class VincApp:
             from . import topic_conversion as conversion
             conversion.check_write(self.store, conversion.request_owner.get(),
                                    conversion.request_payload.get())
+            if job.kind == 'search.index':
+                conversion.check_index_write(self.store)
 
     def write_topic_conversion(self, body):
         from . import topic_conversion as conversion

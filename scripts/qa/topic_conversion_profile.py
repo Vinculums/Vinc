@@ -16,7 +16,7 @@ from uuid import uuid4
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
 from api import topic_conversion as legacy
-from api.topic_conversion_batches import Batches
+from api.topic_conversion_batches import Batches,row
 from store import topic_batch_manifest as manifest
 from store.backend import open_store
 from store.config import load_config
@@ -29,6 +29,9 @@ from store.topic_transfer import plan_transfer,TransferRefused
 SOURCE='user:synthetic-conversion-profile'
 TARGET='team:00000000-0000-4000-8000-000000000007'
 TOPIC='vinc/synthetic-profile'
+OTHER='user:synthetic-other-profile'
+OBSERVED={'Concept':862,'Decision':547,'Episode':858,'Record':1672,'documents':491,
+          'Chunk':4007,'ChunkVec':6933,'NodeVec':3934,'_SyncBase':843,'rows':31656,'bytes':269420849}
 SPECS={**node_table_specs(),**meta_table_specs()}
 
 
@@ -91,8 +94,9 @@ def seed_observed_shape(store,scale,dim):
     """Use observed type counts with synthetic content and a declared valid-ownership variant."""
     embedding=[((i%23)-11)/23 for i in range(dim)]
     text='합성 문서 본문과 Unicode 이력은 그대로 보존합니다.\n'*100
-    counts={'Concept':371,'Decision':545,'Episode':856,'Record':1669}
-    docs,chunk_count,vector_count=489*scale,3997*scale,6922*scale
+    counts={label:OBSERVED[label] for label in ('Concept','Decision','Episode','Record')}
+    counts['Concept']-=OBSERVED['documents']
+    docs,chunk_count,vector_count=(OBSERVED[key]*scale for key in ('documents','Chunk','ChunkVec'))
     logicals=[]
     chunks=[]
     concepts=[]
@@ -127,18 +131,47 @@ def seed_observed_shape(store,scale,dim):
         sequence=i//len(chunks)
         put(store,'ChunkVec',chunk+'#vec-'+str(sequence),owner_id=SOURCE,doc_id=doc,chunk_id=chunk,seq=sequence,
             embedding=embedding,encoder_runtime='synthetic-runtime')
-    for label,logical,title in logicals[:3928*scale]:
+    for label,logical,title in logicals[:OBSERVED['NodeVec']*scale]:
         put(store,'NodeVec',SOURCE+'#'+logical,owner_id=SOURCE,node_id=logical,kind=label.lower(),text=title,
             model='synthetic-model',embedding=embedding,encoder_runtime='synthetic-runtime')
-    for label,logical,title in logicals[:843*scale]:
+    for label,logical,title in logicals[:OBSERVED['_SyncBase']*scale]:
         put(store,'_SyncBase',SOURCE+'\x1f'+logical,label=label,fields=json.dumps({'title':title}),
             base_rev=7,base_updated_at='2020-01-01T00:00:00Z')
     # At least the observed closure size, including identical parallel relations.
-    for i in range((11502-3930-3997)*scale):
+    for i in range(3575*scale):
         left,right=concepts[i%len(concepts)],concepts[(i+1)%len(concepts)]
         store.run('MATCH (a:Concept),(b:Concept) WHERE a.concept_id=$left AND b.concept_id=$right CREATE (a)-[:DERIVES_FROM {evidence:$evidence,confidence:$confidence}]->(b)',
                   {'left':SOURCE+'\x1f'+left,'right':SOURCE+'\x1f'+right,'evidence':'synthetic preserved direction','confidence':0.75},raw=True)
     put(store,'_SyncMeta','seq:'+SOURCE,value=str(len(logicals)))
+
+
+def seed_other(store,dim):
+    vector=[1.0]+[0.0]*(dim-1)
+    logical='record:synthetic-foreign'
+    key=OTHER+'\x1f'+logical
+    doc='synthetic-foreign-document'
+    chunk=doc+'#0'
+    put(store,'Record',key,owner_id=OTHER,domain='vinc/foreign',title='Synthetic foreign record',rev=3,sync_seq=1)
+    put(store,'_DocMeta',doc,owner_id=OTHER,title='Synthetic foreign document',chunk_count=1,needs_embed=0)
+    put(store,'Chunk',chunk,owner_id=OTHER,doc_id=doc,text='Synthetic foreign document',lex='synthetic foreign document',chunk_index=0)
+    put(store,'ChunkVec',chunk+'#vec',owner_id=OTHER,doc_id=doc,chunk_id=chunk,embedding=vector)
+    put(store,'NodeVec',OTHER+'#'+logical,owner_id=OTHER,node_id=logical,kind='record',embedding=vector)
+    return vector,[('Record',key),('_DocMeta',doc),('Chunk',chunk),('ChunkVec',chunk+'#vec'),('NodeVec',OTHER+'#'+logical)]
+
+
+def search_other(store,vector):
+    calls={'keyword':lambda:store.fulltext_search('foreign',5,{'owner_id':OTHER}),
+           'chunk_vector':lambda:store.vector_search(vector,5,{'owner_id':OTHER}),
+           'node_vector':lambda:store.node_vector_search(vector,5,owner=OTHER)}
+    result={}
+    for name,call in calls.items():
+        started=time.monotonic()
+        try:
+            rows=call()
+            result[name]={'state':'found' if rows else 'empty','seconds':round(time.monotonic()-started,3)}
+        except Exception as error:
+            result[name]={'state':'failed','error_class':type(error).__name__,'seconds':round(time.monotonic()-started,3)}
+    return result
 
 
 def main():
@@ -147,6 +180,7 @@ def main():
     parser.add_argument('--indexes',action='store_true')
     parser.add_argument('--trace-python',action='store_true',help='Track Python allocations; report the instrumentation overhead separately')
     parser.add_argument('--shape',choices=('legacy-budget','vinc-g0'),default='legacy-budget')
+    parser.add_argument('--other-owner',action='store_true',help='Measure synthetic other-owner index availability and full-row preservation')
     args=parser.parse_args()
     os.environ['VINC_PK_NAMESPACED']='on'
     os.environ['VINC_TOPIC_CONVERSION']='1'
@@ -156,7 +190,9 @@ def main():
             'buffer_pool_mb':512,'max_batch_rows':128,'max_batch_bytes':4*1024*1024,'indexes':args.indexes,
             'python_allocation_tracing':args.trace_python,'passed':False}
     report['shape']=args.shape
-    if args.shape=='vinc-g0':report['ownership_variant']='synthetic owned metadata for all489 identities; actual11-identity ambiguity remains unmodified'
+    if args.shape=='vinc-g0':
+        report['observed_baseline']={**OBSERVED,'observed_at':'2026-10-14T13:37:24Z'}
+        report['ownership_variant']='all synthetic metadata owned; actual missing metadata and dependency findings remain unmodified'
     cgroup=Path('/sys/fs/cgroup')
     for line in Path('/proc/self/cgroup').read_text().splitlines():
         if line.startswith('0::'):cgroup=cgroup/line[3:].lstrip('/')
@@ -176,10 +212,16 @@ def main():
             store._load_ext('fts');store._drop_index(f"CALL DROP_FTS_INDEX('Chunk','{store._FTS_INDEX}')",'synthetic profile')
             writer=SeedWriter(store)
             (seed_observed_shape if args.shape=='vinc-g0' else seed)(writer,args.scale,1024)
+            other_vector,other_keys=seed_other(writer,1024) if args.other_owner else (None,[])
             writer.finish()
+            other_before={label:manifest.digest(row(store,label,key)) for label,key in other_keys}
             report['seed_seconds']=round(time.monotonic()-started,3)
             if args.indexes:
                 for label in ('Chunk','ChunkVec','NodeVec'):store._ensure_index(label)
+            if args.other_owner and args.indexes:
+                report['other_search_before']=search_other(store,other_vector)
+                if any(value['state']!='found' for value in report['other_search_before'].values()):
+                    raise RuntimeError('synthetic_other_search_baseline_failed')
             run=str(uuid4())
             sealed_path=root/'sealed.jsonl'
             begin=time.monotonic()
@@ -205,15 +247,39 @@ def main():
                 return durable.sequence
             flow=Batches(store,root=durable.root,publisher=publish,run=run,source=SOURCE,target=TARGET,topic=TOPIC,
                          qualified_indexes=args.indexes)
+            maintenance={}
+            restores=[]
+            original_drop,original_ensure=flow._drop_indexes,store._ensure_index
+            def timed_drop():
+                if 'started' not in maintenance:maintenance['started']=time.monotonic()
+                return original_drop()
+            def timed_ensure(table,**kwargs):
+                started=time.monotonic()
+                result=original_ensure(table,**kwargs)
+                restores.append({'table':table,'seconds':round(time.monotonic()-started,3)})
+                return result
+            flow._drop_indexes=timed_drop
+            store._ensure_index=timed_ensure
             begin=time.monotonic()
             flow.initialize(sealed_path,sealed['sha256'],plan.before_hash)
             max_step=0.0
             while flow.status()['phase']!='verifying':
                 if time.monotonic()-started>3600:raise RuntimeError('synthetic_work_budget_reached')
                 step=time.monotonic();flow.step();max_step=max(max_step,time.monotonic()-step)
+                if args.other_owner and args.indexes and 'other_search_during' not in report and not legacy._index_inventory(store):
+                    report['other_search_during']=search_other(store,other_vector)
             report.update(stage_seconds=round(time.monotonic()-begin,3),max_step_seconds=round(max_step,3),
                           batches=flow.status()['batches'],phase=flow.status()['phase'],durable=durable.detail())
             flow.verify()
+            report['index_restore']=restores
+            report['index_maintenance_seconds']=round(time.monotonic()-maintenance['started'],3) if maintenance else None
+            report['other_checked_rows']=len(other_keys)
+            report['other_rows_unchanged']=all(manifest.digest(row(store,label,key))==other_before[label] for label,key in other_keys) if args.other_owner else None
+            if args.other_owner and args.indexes:
+                report['other_search_after']=search_other(store,other_vector)
+                if any(value['state']!='found' for value in report['other_search_after'].values()):
+                    raise RuntimeError('synthetic_other_search_restoration_failed')
+            if args.other_owner and not report['other_rows_unchanged']:raise RuntimeError('synthetic_other_payload_changed')
             report.update(passed=True,stage_seconds=round(time.monotonic()-begin,3),max_step_seconds=round(max_step,3),
                           batches=flow.status()['batches'],phase=flow.status()['phase'],durable=durable.detail(),
                           live_bytes=sum(p.stat().st_size for p in live.parent.glob('*') if p.is_file()),

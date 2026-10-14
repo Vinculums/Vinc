@@ -110,6 +110,13 @@ def check_read(store, owner):
         raise TransferRefused("space_conversion_pending")
 
 
+def check_index_write(store):
+    # 다른 소유자의 검색이 예약한 재빌드도 전환 중인 전역 색인을 되살리지 않는다.
+    if any(r.get('inventory_version')==3 and r.get('indexes')
+           and r.get('phase') not in ('graph_committed','active','cancelled') for r in journals(store)):
+        raise TransferRefused('conversion_index_maintenance')
+
+
 def _strings(value):
     if isinstance(value, str):
         yield value
