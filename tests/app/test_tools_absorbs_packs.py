@@ -93,15 +93,16 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
         self.assertIn("api.activate(", self.share, "전체 백업 진입점이 없다")
 
     # ── ⑤ 커뮤니티 게시 ────────────────────────────────────────────────────
-    def test_커뮤니티_게시가_핸들_오류를_갈라_안내한다(self):
-        """게시는 공개 핸들이 붙는 유일한 행위라 서버가 username 을 요구한다. 이
-        분기는 구 Packs 화면에만 있었고, 일반 오류로 뭉개면 왜 안 되는지 알 길이
-        없다(같은 시트에서 설정하고 바로 다시 누를 수도 없다)."""
+    def test_커뮤니티_공유가_공개_맥락_작업으로_넘긴다(self):
+        """앱은 팩을 보관해 공개 맥락과 동의를 받는 사이트 작업으로 넘긴다."""
         pub = _body(self.sheets, "async function publishToCommunity")
         # ⚠ 토큰 전수검사로 쓰면 안 된다 — 바로 위 주석이 같은 낱말을 적고 있어서,
         # 분기를 통째로 지워도 초록이었다(변이로 실측). **코드**를 봐야 한다.
-        self.assertRegex(pub, r'code\s*===\s*"username_required"', "핸들 오류를 안 가른다")
-        self.assertIn("publishNeedHandle", pub, "핸들 안내 문구가 없다")
+        self.assertIn('data.features?.agents !== true', pub)
+        self.assertIn('actor: data.draftActor', pub)
+        self.assertIn('window.location.assign("/community/share/")', pub)
+        self.assertNotIn('community.publish(', pub)
+        self.assertIn('downloadPack(out,', pub)
 
     # ── 표면을 지우면서 조용히 깨지는 것 둘 ────────────────────────────────
     def test_숫자_단축키가_표면_수를_따라간다(self):

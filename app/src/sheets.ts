@@ -1,7 +1,7 @@
 /** Share / Import 시트 — 공통 규격(D63 `openSheet`)을 쓴다.
  *  공유 시트는 "나가기 전에 무엇이 나가는지 전부 보여준다"는 원칙 그대로
  *  (정본 §5.1): 스코프 요약 · 포함 목록(개별 제외) · 미포함 고지 · 저장. */
-import { AccountError, accountMode, api, cfg, community, IN_SHELL, shellInvoke, WEB, type PackProgress, type Scope } from "./api";
+import { accountMode, api, cfg, IN_SHELL, shellInvoke, WEB, type PackProgress, type Scope } from "./api";
 import { toBytes } from "./packfile";
 import { keptDocs, standaloneDocs } from "./share-docs";
 import { shareMerges } from "./share-merges";
@@ -23,8 +23,8 @@ const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
  *
  * 고르는 화면과 보낼 곳 고르는 화면이 **같은 표**를 쓴다: 개별 제외로 수가 줄면
  * 마지막 화면의 수도 함께 준다. 형식이 두 화면에서 같은 이유는 스페이스·커뮤니티로
- * 보낼 때도 나가는 것이 같은 팩이기 때문이다(`api.importPack`·`community.publish`
- * 둘 다 이 팩 객체를 그대로 받는다).
+ * 보낼 때도 나가는 것이 같은 팩이기 때문이다. 커뮤니티 목적지는 같은 팩을
+ * 공개 문서·토론·라운지의 공유 작업에 첨부한다.
  */
 function specRows(c: Record<string, number>, scopeLabel: string): string {
   const S = COPY.ui.sheet;
@@ -404,7 +404,7 @@ async function chooseDestination(
   if (WEB) {
     dests.push({
       key: "community", label: U.destCommunity, note: U.destCommunityNote, where: U.destCommunity,
-      run: () => publishToCommunity(sheet, out),
+      run: () => publishToCommunity(sheet, out, life),
     });
   }
   dests.push({
@@ -463,64 +463,32 @@ async function chooseDestination(
   }
 }
 
-/** 커뮤니티 게시 — 이름·설명·동의를 받는다. 동의는 기본값이 꺼짐이어야 한다
- *  (데이터가 공개되는 일이라 무심코 지나칠 수 있으면 안 된다). */
-async function publishToCommunity(sheet: Sheet, out: unknown): Promise<void> {
-  const P = COPY.ui.packsUi;
-  sheet.body.innerHTML = `
-    <p class="hint">${esc(P.publishTitle)}</p>
-    <label class="pack-field">${esc(P.publishName)}
-      <input id="pub-name" type="text" maxlength="80" />
-    </label>
-    <label class="pack-field">${esc(P.publishDesc)}
-      <input id="pub-desc" type="text" maxlength="200" />
-    </label>
-    <label class="list-row" style="cursor:pointer">
-      <input id="pub-consent" type="checkbox" />
-      <span class="meta">${esc(P.publishConsent)}</span>
-    </label>
-    <p class="hint" id="pub-err"></p>
-    <div id="pub-progress" role="status"></div>`;
-  sheet.foot.innerHTML = sheetActions(
-    { id: "sheet-pub", label: P.publishGo },
-    { id: "sheet-cancel", label: COPY.ui.common.cancel });
-  sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
-  sheet.foot.querySelector("#sheet-pub")!.addEventListener("click", () => {
-    const name = (sheet.body.querySelector("#pub-name") as HTMLInputElement).value.trim();
-    const desc = (sheet.body.querySelector("#pub-desc") as HTMLInputElement).value.trim();
-    const ok = (sheet.body.querySelector("#pub-consent") as HTMLInputElement).checked;
-    const err = sheet.body.querySelector("#pub-err")!;
-    // 진행 표시는 오류 줄과 **다른 자리**에 둔다. 실패하면 폼이 그대로 남아 다시
-    // 누를 수 있어야 하는데(다른 목적지와 달리 여기엔 사용자가 친 이름·설명이 있다),
-    // 한 자리를 돌려쓰면 실패 문구가 막대를 지우거나 막대가 문구를 지운다.
-    const prog = sheet.body.querySelector("#pub-progress")!;
-    if (!name) { err.textContent = P.publishNeedName; return; }
-    if (!ok) { err.textContent = P.publishNeedConsent; return; }
-    err.textContent = "";
-    prog.innerHTML = sheetProgress(COPY.ui.sheet.destWorking);
-    void community.publish(name, desc, out).then(
-      () => {
-        sheet.body.innerHTML = `<p class="hint">${esc(
-          COPY.ui.sheet.destDoneCommunity)}</p>`;
-        sheet.foot.innerHTML = sheetActions({ id: "sheet-done", label: COPY.ui.sheet.destClose });
-        sheet.foot.querySelector("#sheet-done")!.addEventListener("click", sheet.close);
-      },
-      (e) => {
-        prog.innerHTML = "";
-        // 게시는 공개 핸들이 붙는 **유일한** 행위라 서버가 username 을 요구한다
-        // (400 `username_required`). 이 경우만 갈라 안내한다 — 일반 오류로 뭉개면
-        // 왜 안 되는지 알 길이 없다. 폼은 그대로 두어(이름·설명이 살아 있다) 설정하고
-        // 바로 다시 누를 수 있게 한다. 구 Packs 화면이 갖고 있던 분기를 옮긴 것이고,
-        // 그 화면이 사라지면 이 안내도 함께 사라질 자리였다(P15).
-        if (e instanceof AccountError && e.code === "username_required") {
-          err.innerHTML = `<span class="hint">${esc(P.publishNeedHandle)}</span> `
-            + `<a href="/account/" target="_blank" rel="noopener">${esc(P.publishSetHandle)}</a>`;
-          return;
-        }
-        err.textContent = COPY.ui.sheet.destFailed;
-      },
-    );
-  });
+/** Web-only same-origin handoff. Publication and consent happen in the Community task. */
+export async function publishToCommunity(sheet: Sheet, out: Record<string, unknown>, life: SheetLife = { onClose: () => {} }): Promise<void> {
+  const U = COPY.ui.sheet;
+  const controller = new AbortController(); let closed = false;
+  life.onClose = () => { closed = true; controller.abort(); };
+  sheet.body.innerHTML = sheetProgress(U.destCommunityOpening);
+  sheet.foot.innerHTML = sheetActions({ id: "sheet-cancel", label: COPY.ui.common.cancel });
+  const cancel = () => { life.onClose(); sheet.close(); };
+  sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", cancel);
+  try {
+    if (!WEB) throw new Error("A same-origin web session is required");
+    const response = await fetch("/api/community/agents/destinations", { credentials: "include", cache: "no-store", signal: controller.signal });
+    const data = await response.json();
+    if (closed || sheet.closed || !sheet.el.isConnected) return;
+    if (!response.ok || data.features?.agents !== true || typeof data.draftActor !== "string" || !data.draftActor) throw new Error("Community sharing is unavailable");
+    // Purpose-scoped actor is only a local namespace hint, never server authority.
+    sessionStorage.setItem("vinc.community.draft.app-pack..", JSON.stringify({ at: Date.now(), actor: data.draftActor, pack: out }));
+    window.location.assign("/community/share/");
+  } catch {
+    if (closed || sheet.closed || !sheet.el.isConnected) return;
+    sheet.body.innerHTML = `<p class="error-banner" role="alert">${esc(U.destCommunityRetainFailed)}</p>`;
+    sheet.foot.innerHTML = sheetActions({ id: "sheet-retry", label: COPY.accountMode.retry }, { id: "sheet-file", label: U.destFile }, { id: "sheet-cancel", label: COPY.ui.common.cancel });
+    sheet.foot.querySelector("#sheet-retry")!.addEventListener("click", () => { void publishToCommunity(sheet, out, life); });
+    sheet.foot.querySelector("#sheet-file")!.addEventListener("click", () => { void downloadPack(out, "community-share.vincpack"); });
+    sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", cancel);
+  }
 }
 
 export function openImportSheet(pack: any, onDone?: (res: any) => void) {
