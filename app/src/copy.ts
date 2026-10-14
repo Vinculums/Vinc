@@ -76,8 +76,8 @@ const EN = {
     hint: "Issue a key for this active team in your account, then paste it here. Your personal key continues to open your personal graph.",
     manage: "Open account keys", label: "Team key", save: "Connect team", cancel: "Cancel",
     checking: "Checking the key's account and team…",
-    rejected: "This key cannot open this team for your signed-in account. Check its team, membership, and expiry.",
-    unavailable: "Key verification is unavailable. Update Vinc and try again.",
+    rejected: "This key cannot open this team for your signed-in account. Check its team, membership, and revocation status.",
+    unavailable: "Key verification is unavailable. Try again later.",
     vaultUnavailable: "The OS key store is unavailable. Restore it before connecting a team key on this computer.",
   },
   // 업데이트 뒤 사이드카가 검색 색인을 새로 만드는 동안 거는 한 줄(VIN-272). 그동안 검색과
@@ -1401,8 +1401,8 @@ const KO: Deck = {
     hint: "계정에서 이 팀의 키를 새로 발급한 뒤 붙여 넣어 주세요. 개인 키는 계속 개인 그래프에서 사용해요",
     manage: "계정의 키 관리 열기", label: "팀 키", save: "팀 연결하기", cancel: "취소",
     checking: "키의 계정과 팀을 확인하고 있어요",
-    rejected: "이 키로는 로그인한 계정에서 해당 팀을 열 수 없어요. 키의 팀, 멤버 권한, 만료 여부를 확인해 주세요",
-    unavailable: "키를 확인할 수 없어요. Vinc를 업데이트한 뒤 다시 시도해 주세요",
+    rejected: "이 키로는 로그인한 계정에서 해당 팀을 열 수 없어요. 키의 팀, 멤버 권한, 폐기 여부를 확인해 주세요",
+    unavailable: "지금 키를 확인할 수 없어요. 잠시 뒤 다시 시도해 주세요",
     vaultUnavailable: "OS 키 저장소를 사용할 수 없어요. 이 컴퓨터의 키 저장소를 복구한 뒤 팀 키를 연결해 주세요",
   },
   searchIndex: {
