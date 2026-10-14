@@ -79,10 +79,38 @@ def untouched_summary(store, manifest, source):
         else:
             continue
         sha,count=hashlib.sha256(),0
-        for value in reader.scan(f'MATCH (n:{label}) WHERE {condition}',_node_projection(label),f'n.{pk}',params,ordered=True):
+        def full_rows(keys):
+            from .topic_manifest import ManifestLimit
+            split=False
+            try:
+                values=reader.page(f'MATCH (n:{label}) WHERE n.{pk} IN $keys RETURN {_node_projection(label)} ORDER BY n.{pk}',{'keys':keys})
+            except ManifestLimit as exc:
+                if exc.reason!='page_bytes':raise
+                if len(keys)==1:raise ManifestLimit('single_row_bytes',**exc.details) from None
+                split=True
+            if split:
+                middle=len(keys)//2
+                yield from full_rows(keys[:middle])
+                yield from full_rows(keys[middle:])
+                return
+            if [value[pk] for value in values]!=keys:
+                raise TransferRefused('conversion_outside_payload_changed')
+            yield from values
+        keys=[]
+        def hash_rows(keys):
+            nonlocal count
+            for value in full_rows(keys):
+                manifest.check_time()
+                sha.update((_canonical(value)+'\n').encode());count+=1
+        # 먼저 키만 읽는다. 선택된 본문과 벡터를 다시 역직렬화하지 않고,
+        # 범위 밖의 행만 모든 열을 읽어 같은 순서와 전체 해시로 확인한다.
+        for coordinate in reader.scan(f'MATCH (n:{label}) WHERE {condition}',f'n.{pk} AS {pk}',f'n.{pk}',params,ordered=True):
             manifest.check_time()
-            if affected(label,value[pk]):continue
-            sha.update((_canonical(value)+'\n').encode());count+=1
+            if affected(label,coordinate[pk]):continue
+            keys.append(coordinate[pk])
+            if len(keys)==32:
+                hash_rows(keys);keys=[]
+        if keys:hash_rows(keys)
         result['rows:'+label]={'count':count,'sha256':sha.hexdigest()}
     for spec in rel_table_specs():
         src,dst,label=spec['from'],spec['to'],spec['label']

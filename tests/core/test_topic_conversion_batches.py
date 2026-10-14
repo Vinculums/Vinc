@@ -29,7 +29,7 @@ class Publication:
 def fixture(native,tmp_path,**limits):
     disk,_,plan,header,path,sealed=prepared(native,tmp_path)
     disk.close()
-    root=tmp_path/"durable"
+    root=tmp_path/"durable.db.generations"
     publisher=Publication(native,root)
     flow=Batches(native,root=root,publisher=publisher,run=RUN,source=SOURCE,target=TARGET,topic=TOPIC,**limits)
     flow.initialize(path,sealed["sha256"],plan.before_hash)
@@ -187,6 +187,122 @@ def test_legacy_cancel_cannot_release_a_new_protocol_prepared_fence(native,tmp_p
     assert fingerprint(read_snapshot(native))==before
     assert flow.status()['status']=='prepared'
     assert legacy.fenced(native,SOURCE) and legacy.fenced(native,TARGET)
+
+
+def test_cancel_publication_failure_keeps_fence_until_same_run_receipt(native,tmp_path):
+    flow,publisher,_=fixture(native,tmp_path)
+    publisher.failed=True
+    with pytest.raises(RuntimeError,match='publication_failure'):
+        flow.cancel()
+    assert flow.status()['status']=='durability_pending'
+    assert legacy.fenced(native,SOURCE) and legacy.fenced(native,TARGET)
+    publisher.failed=False
+    assert flow.cancel()['status']=='cancelled'
+    assert not legacy.fenced(native,SOURCE) and not legacy.fenced(native,TARGET)
+    # Reopening the process loses the ephemeral permission to expose a terminal run.
+    native._topic_conversion_terminals.clear()
+    assert legacy.fenced(native,SOURCE)
+    assert flow.cancel()['status']=='cancelled'
+    assert not legacy.fenced(native,SOURCE)
+
+
+def test_observed_invalid_terminal_receipt_revokes_visibility(native,tmp_path):
+    flow,_,_=fixture(native,tmp_path)
+    flow.cancel()
+    assert not legacy.fenced(native,SOURCE)
+    journal=legacy._get(native,RUN)
+    receipt=flow._receipt_path(journal)
+    receipt.write_text('{}')
+    assert flow.status()['status']=='durability_pending'
+    assert legacy.fenced(native,SOURCE) and legacy.fenced(native,TARGET)
+
+
+def test_terminal_artifact_root_symlink_revokes_visibility(native,tmp_path):
+    flow,_,_=fixture(native,tmp_path)
+    flow.cancel()
+    assert not legacy.fenced(native,SOURCE)
+    alias=tmp_path/'synthetic-durable-alias'
+    alias.symlink_to(flow.root,target_is_directory=True)
+    flow.root=alias
+    with pytest.raises(TransferRefused,match='manifest_invalid'):
+        flow.status()
+    assert legacy.fenced(native,SOURCE) and legacy.fenced(native,TARGET)
+
+
+def test_cancel_after_business_commit_requires_resume(native,tmp_path):
+    flow,_,_=fixture(native,tmp_path,max_rows=1)
+    flow.step()
+    with pytest.raises(TransferRefused,match='resume_required'):
+        flow.cancel()
+    assert legacy.fenced(native,SOURCE) and legacy.fenced(native,TARGET)
+
+
+def test_release_requires_account_activation_and_durable_publication(native,tmp_path):
+    flow,publisher,_=fixture(native,tmp_path,max_rows=128)
+    with pytest.raises(TransferRefused,match='account_activation_required'):
+        flow.release()
+    with pytest.raises(TransferRefused,match='run_not_committed'):
+        flow.release(account_active=True)
+    finish(flow)
+    publisher.failed=True
+    # The existing graph receipt is reused; failure belongs to the new active ledger.
+    with pytest.raises(RuntimeError,match='publication_failure'):
+        flow.release(account_active=True)
+    assert legacy._get(native,RUN)['status']=='active'
+    assert flow.status()['status']=='durability_pending'
+    assert legacy.fenced(native,SOURCE) and legacy.fenced(native,TARGET)
+    publisher.failed=False
+    assert flow.release(account_active=True)['status']=='active'
+    assert not legacy.fenced(native,SOURCE) and not legacy.fenced(native,TARGET)
+    native._topic_conversion_terminals.clear()
+    assert legacy.fenced(native,TARGET)
+    assert flow.release(account_active=True)['status']=='active'
+    assert not legacy.fenced(native,TARGET)
+    with pytest.raises(TransferRefused,match='moved_to_team'):
+        legacy.check_write(native,SOURCE,{'id':'concept:a'})
+    artifact=flow.root/'topic-manifests'/(RUN+'.jsonl')
+    artifact.write_text('corrupt')
+    with pytest.raises(TransferRefused,match='manifest_invalid'):
+        flow.release(account_active=True)
+    assert legacy.fenced(native,TARGET)
+
+
+def test_release_revalidates_every_payload_before_exposing_target(native,tmp_path):
+    flow,_,_=fixture(native,tmp_path,max_rows=128)
+    finish(flow)
+    native.run("MATCH (n:Concept) WHERE n.owner_id=$owner SET n.title='changed after graph receipt'",
+               {'owner':TARGET},raw=True)
+    with pytest.raises(TransferRefused,match='verification_failed'):
+        flow.release(account_active=True)
+    assert legacy._get(native,RUN)['status']=='graph_committed'
+    assert legacy.fenced(native,SOURCE) and legacy.fenced(native,TARGET)
+
+
+@pytest.mark.parametrize('terminal',['active','cancelled'])
+def test_terminal_run_restored_to_missing_local_store_stays_hidden_until_receipt(native,tmp_path,terminal,monkeypatch):
+    flow,_,_=fixture(native,tmp_path,max_rows=128)
+    if terminal=='active':
+        finish(flow)
+        flow.release(account_active=True)
+    else:
+        flow.cancel()
+    destination=tmp_path/'terminal-new-local'/'synthetic.db'
+    assert not destination.exists()
+    from store.persistence import restore_newest
+    monkeypatch.setenv('VINC_TOPIC_CONVERSION','1')
+    monkeypatch.setenv('VINC_DURABLE_ACK','')
+    assert restore_newest(str(destination),str(tmp_path/'durable.db')).startswith('restored-generation:')
+    restored=RawStore(destination)
+    restored._FTS_INDEX,restored._VEC_INDEX,restored._NODE_VEC_INDEX='chunk_ft','chunk_vec','node_vec'
+    try:
+        assert legacy.fenced(restored,SOURCE) and legacy.fenced(restored,TARGET)
+        resumed=Batches(restored,root=flow.root,publisher=Publication(restored,flow.root),run=RUN,
+                        source=SOURCE,target=TARGET,topic=TOPIC,max_rows=128)
+        result=resumed.release(account_active=True) if terminal=='active' else resumed.cancel()
+        assert result['status']==terminal
+        assert not legacy.fenced(restored,SOURCE) and not legacy.fenced(restored,TARGET)
+    finally:
+        restored.close()
 
 
 def test_verification_uses_vector_coordinates_without_repeated_payload_scans(native,tmp_path,monkeypatch):

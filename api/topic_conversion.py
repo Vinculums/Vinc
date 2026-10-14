@@ -91,8 +91,18 @@ def journals(store):
 
 
 def fenced(store, owner):
-    return any(r["status"] not in ("active", "cancelled") and (owner is None or owner in (r["source"], r["target"]))
+    return any(not _terminal_visible(store, r) and (owner is None or owner in (r["source"], r["target"]))
                for r in journals(store))
+
+
+def _terminal_visible(store, journal):
+    if journal["status"] not in ("active", "cancelled"):
+        return False
+    if journal.get("inventory_version", 1) in (1, SCOPED_INVENTORY_VERSION):
+        return True
+    # 새 프로토콜은 영속 게시 증명이 확인된 이 프로세스에서만 울타리를 해제한다.
+    # 재시작 뒤에는 봉인 파일과 같은 실행의 영수증을 다시 확인해야 한다.
+    return _canonical(journal) in getattr(store, "_topic_conversion_terminals", set())
 
 
 def check_read(store, owner):

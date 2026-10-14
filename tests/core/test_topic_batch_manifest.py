@@ -97,3 +97,27 @@ def test_publish_is_immutable_and_recovers_an_exact_synced_stage(native,tmp_path
             batches.publish(root,RUN,path,sealed["sha256"])
     finally:
         manifest.close()
+
+
+def test_outside_vector_proof_reads_every_field_without_selected_payload_rereads(native,tmp_path,monkeypatch):
+    outside=SOURCE+'#episode:untopiced-vector'
+    native.run('CREATE (n:NodeVec {vec_id:$id,node_id:$node,owner_id:$owner,embedding:$embedding})',
+               {'id':outside,'node':'episode:untopiced-vector','owner':SOURCE,'embedding':[1.0,2.0,3.0,4.0]},raw=True)
+    disk,_,_,header,_,_=prepared(native,tmp_path)
+    original=native.run
+    def guarded(query,params=None,**kwargs):
+        if 'MATCH (n:NodeVec)' in query and 'n.embedding AS embedding' in query:
+            assert params=={'keys':[outside]}, 'Selected vector payload must not be reread for an outside proof'
+        return original(query,params,**kwargs)
+    monkeypatch.setattr(native,'run',guarded)
+    try:
+        before=batches.untouched_summary(native,disk,SOURCE)
+        assert before==header['untouched_source']
+        assert before['rows:NodeVec']['count']==1
+        native.run('MATCH (n:NodeVec) WHERE n.vec_id=$id SET n.embedding=$embedding',
+                   {'id':outside,'embedding':[1.0,2.0,3.0,-4.0]},raw=True)
+        after=batches.untouched_summary(native,disk,SOURCE)
+        assert after['rows:NodeVec']['count']==1
+        assert after['rows:NodeVec']['sha256']!=before['rows:NodeVec']['sha256']
+    finally:
+        disk.close()

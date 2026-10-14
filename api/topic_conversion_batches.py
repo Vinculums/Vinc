@@ -76,10 +76,19 @@ class Batches:
     def _artifact(self, journal):
         path = self.root / "topic-manifests" / (self.run + ".jsonl")
         binding = {**self.identity, "run": self.run, "stamp": journal["stamp"]}
-        header = manifest.read(path, journal["manifest_hash"], binding=binding)
-        if header["before_hash"] != journal["expected"] or header["indexes"] != journal["indexes"]:
-            raise TransferRefused("conversion_manifest_invalid")
+        try:
+            if self.root.is_symlink() or path.parent.is_symlink():
+                raise TransferRefused('conversion_manifest_invalid')
+            header = manifest.read(path, journal["manifest_hash"], binding=binding)
+            if header["before_hash"] != journal["expected"] or header["indexes"] != journal["indexes"]:
+                raise TransferRefused("conversion_manifest_invalid")
+        except TransferRefused:
+            self._forget_terminal(journal)
+            raise
         return path, header
+
+    def _forget_terminal(self, journal):
+        getattr(self.store,'_topic_conversion_terminals',set()).discard(_canonical(journal))
 
     def initialize(self, sealed, sha, expected):
         """Caller has revalidated a fenced complete inventory against expected."""
@@ -134,6 +143,7 @@ class Batches:
     def _receipt_path(self, journal):
         directory=self.root / 'topic-receipts' / self.run
         if any(path.is_symlink() for path in (self.root,directory.parent,directory)):
+            self._forget_terminal(journal)
             raise TransferRefused('conversion_receipt_invalid')
         return directory / (str(journal["batches"]) + '.json')
 
@@ -181,8 +191,28 @@ class Batches:
                     or receipt["generation"] > dg.latest_sequence(self.root)):
                 raise ValueError
         except (OSError, ValueError, AttributeError):
+            self._forget_terminal(journal)
             raise TransferRefused("conversion_durability_pending") from None
         return receipt
+
+    def _confirm_terminal(self, journal):
+        self._artifact(journal)
+        self._receipt(journal)
+        if not hasattr(self.store, '_topic_conversion_terminals'):
+            self.store._topic_conversion_terminals=set()
+        self.store._topic_conversion_terminals.add(_canonical(journal))
+
+    def _commit_journal(self, journal):
+        self.store.run('BEGIN TRANSACTION',raw=True)
+        try:
+            legacy._save(self.store,self.run,journal)
+            self.store.run('COMMIT',raw=True)
+        except BaseException:
+            try:
+                self.store.run('ROLLBACK',raw=True)
+            except RuntimeError as exc:
+                if 'No active transaction' not in str(exc):raise
+            raise
 
     def status(self):
         journal = self._journal()
@@ -191,6 +221,8 @@ class Batches:
             receipt = self._receipt(journal)
         except TransferRefused:
             return {"status": "durability_pending", "run": self.run, "phase": journal["phase"]}
+        if journal['status'] in ('active','cancelled'):
+            self._confirm_terminal(journal)
         return {"status": journal["status"], "run": self.run, "phase": journal["phase"],
                 "batches": journal["batches"], "durable_generation": receipt["generation"]}
 
@@ -351,13 +383,21 @@ class Batches:
 
     def verify(self):
         """Compare every final row and the complete directed relationship multiset."""
-        from store.topic_manifest import TopicManifest
-        from store.scoped_topic_inventory import read_scoped_inventory
         journal = self._journal()
         path, header = self._artifact(journal)
         self._publish(journal)
-        if journal["phase"] != "verifying":
-            raise TransferRefused("conversion_verification_required")
+        if journal['phase'] != 'verifying':
+            raise TransferRefused('conversion_verification_required')
+        self._verify_payload(path,header)
+        next_journal = {**journal, "status": "graph_committed", "phase": "graph_committed",
+                        "batches": journal["batches"] + 1}
+        self._commit_journal(next_journal)
+        self._publish(next_journal)
+        return self.status()
+
+    def _verify_payload(self, path, header):
+        from store.topic_manifest import TopicManifest
+        from store.scoped_topic_inventory import read_scoped_inventory
         with tempfile.TemporaryDirectory(prefix="vinc-conversion-verify-") as directory:
             with TopicManifest(Path(directory) / "observed.sqlite", deadline=time.monotonic() + 180) as observed:
                 with legacy._inventory_read_transaction(self.store):
@@ -410,14 +450,49 @@ class Batches:
             legacy._indexes(self.store, header["indexes"])
             if sorted(legacy._index_inventory(self.store)) != sorted(header["indexes"]):
                 raise TransferRefused("conversion_index_restore_failed")
-        next_journal = {**journal, "status": "graph_committed", "phase": "graph_committed",
-                        "batches": journal["batches"] + 1}
-        self.store.run("BEGIN TRANSACTION", raw=True)
-        try:
-            legacy._save(self.store, self.run, next_journal)
-            self.store.run("COMMIT", raw=True)
-        except BaseException:
-            self.store.run("ROLLBACK", raw=True)
-            raise
-        self._publish(next_journal)
+
+    def release(self, *, account_active=False):
+        """Authorized account activation precedes a durable, revalidated release."""
+        if account_active is not True:
+            raise TransferRefused('conversion_account_activation_required')
+        journal=self._journal()
+        path,header=self._artifact(journal)
+        if journal['status'] not in ('graph_committed','active'):
+            raise TransferRefused('run_not_committed')
+        self._publish(journal)
+        if journal['status']!='active':
+            self._verify_payload(path,header)
+            journal={**journal,'status':'active','phase':'active','batches':journal['batches']+1}
+            self._commit_journal(journal)
+            self._publish(journal)
+        self._confirm_terminal(journal)
+        return self.status()
+
+    def cancel(self):
+        """Only an unchanged run with no committed business batch can cancel."""
+        journal=self._journal()
+        _,header=self._artifact(journal)
+        if journal['status']=='cancelled':
+            self._publish(journal)
+            self._confirm_terminal(journal)
+            return self.status()
+        if journal.get('business_batches')!=0 or journal['phase']!=PHASES[0]:
+            raise TransferRefused('conversion_resume_required')
+        from store.topic_manifest import TopicManifest
+        from store.scoped_topic_inventory import read_scoped_inventory
+        from store.topic_transfer import fingerprint
+        with tempfile.TemporaryDirectory(prefix='vinc-conversion-cancel-') as directory:
+            with TopicManifest(Path(directory)/'source.sqlite',deadline=time.monotonic()+180) as current:
+                with legacy._inventory_read_transaction(self.store):
+                    inventory=read_scoped_inventory(self.store,**self.identity,manifest=current)
+                    if fingerprint(inventory.snapshot)!=header['before_hash']:
+                        raise TransferRefused('conversion_payload_changed')
+        with DDL_GUARD.exclusive():
+            legacy._indexes(self.store,header['indexes'])
+            if sorted(legacy._index_inventory(self.store))!=sorted(header['indexes']):
+                raise TransferRefused('conversion_index_restore_failed')
+        journal={**journal,'status':'cancelled','phase':'cancelled','batches':journal['batches']+1}
+        self._commit_journal(journal)
+        self._publish(journal)
+        self._confirm_terminal(journal)
         return self.status()

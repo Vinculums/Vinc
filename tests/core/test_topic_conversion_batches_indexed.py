@@ -17,7 +17,7 @@ from api.topic_conversion_batches import Batches
 from store import topic_batch_manifest as manifest
 from store.backend import open_store
 from store.config import load_config
-from store.persistence import DurableAck,claim_writer
+from store.persistence import DurableAck,claim_writer,restore_newest
 from store.scoped_topic_inventory import read_scoped_inventory
 from store.topic_manifest import TopicManifest
 from store.topic_transfer import fingerprint,read_snapshot,plan_transfer,transformed_snapshot,TransferRefused
@@ -112,7 +112,7 @@ def test_process_exit_restores_atomic_ledger_and_same_run(indexed,tmp_path,point
     destination=tmp_path/'restored-local'/'synthetic.db' if missing_local else Path(live)
     if missing_local:
         assert not destination.exists()
-        assert dg.restore(durable.root,destination,skip_invalid=False).startswith('restored:')
+        assert restore_newest(str(destination),str(tmp_path/'persistent'/'synthetic.db')).startswith('restored-generation:')
     resumed_store=open_store(load_config({'data_dir':str(destination),'buffer_pool_mb':256}))
     assert resumed_store is not None
     _heal_search_indexes(resumed_store,4,quiet=True)
