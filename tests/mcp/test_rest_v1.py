@@ -46,6 +46,8 @@ class Server:
             return {"owner": "user:u1", "scope": scope, "plan": "free"}
 
         self.app = MCPHTTPApp(self.bridge, verify_key=verify,
+                              verify_community=lambda subject, space: {"owner": space, "visibility": "public", "role": "reader"},
+                              community_read=lambda *args, **kwargs: dict(self.bridge.override or {"executed": True}),
                               store=Store(":memory:") if quota else None,
                               quota_config=quota)
         self.server = make_server(self.app, "127.0.0.1", 0)

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import re
 import json
+from . import agent_export_contract
 
 #: 역할이 사는 주제, 읽는 순서대로. 앞의 것이 새 역할의 자리다(기본 팩 · GRAPH.md 안내).
 #: 뒤의 것은 Vinc 자기 그래프(모든 주제가 `vinc/` 아래)와 그 전에 시드된 스페이스의
@@ -320,8 +321,10 @@ def render_community_export(snapshot: dict, source: dict, format: str, *, pack_e
             raise ValueError("agent_pack_encoder_required")
         props = {**role["props"], "active": False, "status": "proposed",
                  "community_source": source, "shared_snapshot": snapshot}
-        pack = {"vinc_pack": 1, "kind": "community-agent", "manifest": {"agent_source": source,
-                "license": snapshot["license"], "status": "proposed"},
+        pack = {"vinc_pack": agent_export_contract.AGENT_PACK_VERSION,
+                "kind": agent_export_contract.AGENT_PACK_KIND, "manifest": {"agent_source": source,
+                "license": snapshot["license"], "status": "proposed",
+                "required_reader": agent_export_contract.required_reader()},
                 "fragment": {"nodes": [{"id": role["id"], "type": "concept", "title": role["label"],
                 "one_liner": role["props"]["mission"], "domain": "agent", "tags": role["tags"], "props": props}], "edges": []}}
         content = pack_encoder(json.loads(canonical(pack)))
@@ -335,7 +338,10 @@ def render_community_export(snapshot: dict, source: dict, format: str, *, pack_e
         mime, encoding = "text/markdown; charset=utf-8", "utf8"
     return {"executed": True, "content": base64.b64encode(content).decode("ascii") if encoding == "base64" else content.decode("utf-8"),
             "encoding": encoding, "filename": filename, "mime": mime, "hash": source["hash"],
-            "content_hash": hashlib.sha256(content).hexdigest(), "version": source["version"], "format": format}
+            "content_hash": hashlib.sha256(content).hexdigest(), "version": source["version"], "format": format,
+            **({"pack_version": agent_export_contract.AGENT_PACK_VERSION,
+                "required_reader": agent_export_contract.required_reader(),
+                "legacy_import_compatible": False} if format == "vincpack" else {})}
 
 
 # ── MCP prompts (W2) ─────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ from uuid import UUID, uuid5, NAMESPACE_URL
 
 from . import fragment, operation_receipts, query, role_contract
 from store import pkns
+from vinc_mcp import agent_export_contract
 
 MAX_SNAPSHOT_BYTES = 256 * 1024
 MAX_SAFE_INTEGER = 2**53 - 1
@@ -292,21 +293,44 @@ def import_result(store, *, owner, mutation_id, durability_root=None):
     return result
 
 
+def validate_agent_file(pack):
+    """v1로 강등하지 않는 전용 파일 계약. 중복된 계약·출처도 고정 원본과 같아야 한다."""
+    if (type(pack.get("vinc_pack")) is not int or pack["vinc_pack"] != agent_export_contract.AGENT_PACK_VERSION
+            or pack.get("kind") != agent_export_contract.AGENT_PACK_KIND
+            or set(pack) - {"vinc_pack", "kind", "manifest", "fragment", "executed"}):
+        raise ValueError("invalid_agent_pack")
+    manifest, body = pack["manifest"], pack["fragment"]
+    if not isinstance(manifest, dict) or set(manifest) != {"agent_source", "license", "status", "required_reader"}:
+        raise ValueError("invalid_agent_pack_manifest")
+    reader = manifest["required_reader"]
+    if reader != agent_export_contract.required_reader() or type(reader["version"]) is not int:
+        raise ValueError("invalid_agent_pack_reader")
+    if not isinstance(body, dict) or set(body) - {"nodes", "edges", "owner"} or body.get("edges") != []:
+        raise ValueError("invalid_agent_pack_fragment")
+    nodes = body.get("nodes")
+    if not isinstance(nodes, list) or len(nodes) != 1 or not isinstance(nodes[0], dict):
+        raise ValueError("invalid_agent_pack")
+    node = nodes[0]
+    if set(node) - {"id", "type", "title", "one_liner", "domain", "tags", "props", "owner", "status", "active"}:
+        raise ValueError("invalid_agent_pack_node")
+    props = node["props"]
+    snapshot, source = props["shared_snapshot"], manifest["agent_source"]
+    validate(snapshot, source)
+    role = snapshot["role"]
+    expected = {"id": role["id"], "type": "concept", "title": role["label"],
+                "one_liner": role["props"]["mission"], "domain": "agent", "tags": role["tags"]}
+    if (any(node.get(key) != value for key, value in expected.items())
+            or set(props) != set(role["props"]) | {"active", "status", "community_source", "shared_snapshot"} | ({"owner"} if "owner" in props else set())
+            or any(props.get(key) != value for key, value in role["props"].items())
+            or props.get("community_source") != source or manifest["license"] != snapshot["license"]):
+        raise ValueError("invalid_agent_pack_contract")
+    return snapshot, source
+
+
 def import_file(pack, *, owner, store, max_domains=None):
     """표시한 Agent 파일만 안전 경로로 보낸다. 일반 팩 MERGE로 강등하지 않는다."""
     try:
-        if (type(pack.get("vinc_pack")) is not int or pack["vinc_pack"] != 1
-                or pack.get("kind") != "community-agent"
-                or set(pack) - {"vinc_pack", "kind", "manifest", "fragment", "executed"}):
-            raise ValueError("invalid_agent_pack")
-        nodes = pack["fragment"]["nodes"]
-        if not isinstance(nodes, list) or len(nodes) != 1 or pack["fragment"].get("edges"):
-            raise ValueError("invalid_agent_pack")
-        snapshot = nodes[0]["props"]["shared_snapshot"]
-        source = pack["manifest"]["agent_source"]
-        validate(snapshot, source)
-        if pack["manifest"].get("license") != snapshot["license"]:
-            raise ValueError("invalid_agent_pack_license")
+        snapshot, source = validate_agent_file(pack)
         local = not pkns.enabled()
         validate_import(owner=owner, snapshot=snapshot, source=source, local=local)
         arguments = {"snapshot": snapshot, "source": source, "mode": "separate", "local_file": True}
@@ -342,8 +366,11 @@ def inspect_pack(pack):
                             r"(?:manifest\.json|fragment\.json|documents/[0-9]{4,8}\.json)", entry.filename) for entry in entries):
                     raise ValueError("community_pack_container_refused")
         decoded = packfile.from_bytes(raw)
-        if (not isinstance(decoded, dict) or type(decoded.get("vinc_pack")) is not int or decoded["vinc_pack"] != 1
-                or not isinstance(decoded.get("fragment"), dict)):
+        if not isinstance(decoded, dict) or not isinstance(decoded.get("fragment"), dict):
+            raise ValueError("invalid_community_pack")
+        if decoded.get("kind") == agent_export_contract.AGENT_PACK_KIND:
+            validate_agent_file(decoded)
+        elif type(decoded.get("vinc_pack")) is not int or decoded["vinc_pack"] != 1:
             raise ValueError("invalid_community_pack")
         result = {"executed": True, "pack": decoded, "content_hash": hashlib.sha256(raw).hexdigest()}
         if len(operation_receipts.canonical(result).encode("utf-8")) > maximum:

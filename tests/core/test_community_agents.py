@@ -70,6 +70,11 @@ def test_exports_preserve_full_contract_and_are_byte_deterministic(format):
     assert first["content_hash"] == hashlib.sha256(content).hexdigest()
     if format == "vincpack":
         pack = packfile.from_bytes(content)
+        assert pack["vinc_pack"] == first["pack_version"] == 2
+        assert pack["manifest"]["required_reader"] == first["required_reader"] == {
+            "capability": "community-agent-safe-import", "version": 2}
+        assert first["legacy_import_compatible"] is False
+        assert first["hash"] == source["hash"]
         props = pack["fragment"]["nodes"][0]["props"]
         assert props["shared_snapshot"] == snapshot
         assert props["community_source"] == source
@@ -311,6 +316,103 @@ def test_failed_generation_publication_is_unknown_and_retry_does_not_duplicate(e
     recovered = ca.import_result(store, owner=OWNER, mutation_id=body["mutation_id"], durability_root=actual.root)
     assert recovered["durability"] == "published_generation"
     assert query.node(again["node_id"], owner=OWNER, store=store)["node"]["rev"] == uncertain["result"]["rev"]
+
+
+@pytest.mark.parametrize("namespaced", [False, True])
+def test_exact_v097_import_boundary_refuses_agent_v2_and_keeps_ordinary_v1(engine, monkeypatch, namespaced):
+    from pathlib import Path
+    from types import SimpleNamespace
+    from api import share
+    store, app = engine
+    monkeypatch.setenv("VINC_PK_NAMESPACED", "on" if namespaced else "off")
+    owner = OWNER if namespaced else "user:local"
+    snapshot, source = authored()
+    ident = snapshot["role"]["id"]
+    fragment.merge_fragment({"owner": owner, "nodes": [{"id": ident, "type": "concept",
+        "title": "Existing native role", "props": {"active": True, "private": "Keep"}}]}, store=store)
+    before = query.node(ident, owner=owner, store=store)["node"]
+    raw = base64.b64decode(render(snapshot, source, "vincpack")["content"])
+    pack = packfile.from_bytes(raw)
+    calls = []
+    def actual_merge(*args, **kwargs):
+        calls.append(args[0])
+        return fragment.merge_fragment(*args, **kwargs)
+    namespace = {"PACK_VERSION": 1, "frag": SimpleNamespace(merge_fragment=actual_merge)}
+    legacy = Path(__file__).parents[1] / "fixtures" / "v097_share_import.py"
+    text = legacy.read_text(encoding="utf-8")
+    boundary = text[text.index("def import_share_pack"):]
+    assert hashlib.sha256(boundary.encode()).hexdigest() == "e3a44d068645fa56a1fc6befe2f7d36f49c25f31f08d3788990c721bc4ad8a13"
+    exec(compile(boundary, str(legacy), "exec"), namespace)
+    refused = namespace["import_share_pack"](pack, owner=owner, store=store)
+    assert not refused["executed"] and "unsupported pack version: 2" in refused["error"]
+    assert calls == [] and query.node(ident, owner=owner, store=store)["node"] == before
+    ordinary = {"vinc_pack": 1, "kind": "share", "fragment": {"nodes": [
+        {"id": "concept:ordinary-control", "type": "concept", "title": "Ordinary v1"}], "edges": []}}
+    assert namespace["import_share_pack"](ordinary, owner=owner, store=store)["executed"]
+    assert len(calls) == 1
+    assert share.import_share_pack(ordinary, owner=owner, store=store)["executed"]
+    assert query.node(ident, owner=owner, store=store)["node"] == before
+    applied = app.jobs.run_sync("ingest:pack", lambda: share.import_share_pack(pack, owner=owner, store=store))
+    assert applied["executed"] and applied["node_id"] != ident
+    assert query.node(ident, owner=owner, store=store)["node"] == before
+
+
+@pytest.mark.parametrize("corruption", ["version", "unmarked", "top", "manifest", "reader", "fragment",
+    "node", "props", "source", "snapshot_hash", "license"])
+def test_agent_v2_codec_rejects_unsupported_or_ambiguous_contract(corruption, engine):
+    from api import share
+    store, _ = engine
+    snapshot, source = authored()
+    pack = packfile.from_bytes(base64.b64decode(render(snapshot, source, "vincpack")["content"]))
+    clean = copy.deepcopy(pack)
+    if corruption == "version": pack["vinc_pack"] = 1
+    elif corruption == "unmarked": pack["kind"] = "share"
+    elif corruption == "top": pack["documents"] = []
+    elif corruption == "manifest": pack["manifest"]["extra"] = True
+    elif corruption == "reader": pack["manifest"]["required_reader"]["version"] = True
+    elif corruption == "fragment": pack["fragment"]["unknown"] = True
+    elif corruption == "node": pack["fragment"]["nodes"][0]["unknown"] = True
+    elif corruption == "props": pack["fragment"]["nodes"][0]["props"]["unknown"] = True
+    elif corruption == "source": pack["fragment"]["nodes"][0]["props"]["community_source"]["author"]["handle"] = "Changed"
+    elif corruption == "snapshot_hash": pack["fragment"]["nodes"][0]["props"]["shared_snapshot"]["prompt"] += "Changed"
+    elif corruption == "license": pack["manifest"]["license"] = "MIT"
+    assert not share.import_share_pack(pack, owner=OWNER, store=store)["executed"]
+    assert not query.node(snapshot["role"]["id"], owner=OWNER, store=store)["found"]
+    with pytest.raises(ValueError, match="inspection_refused"):
+        # JSON 리더도 봉투를 보존해야 한다. ZIP 작성기는 빈 documents를 생략한다.
+        ca.inspect_pack({"encoding": "base64", "content": base64.b64encode(ca.canonical(pack).encode()).decode()})
+    assert ca.inspect_pack({"encoding": "base64", "content": base64.b64encode(packfile.to_bytes(clean)).decode()})["pack"] == clean
+
+
+@pytest.mark.parametrize("namespaced", [False, True])
+def test_mixed_inbox_agent_v2_and_ordinary_v1_records_outcomes_and_replays(engine, monkeypatch, tmp_path, namespaced):
+    from api import share
+    store, app = engine
+    monkeypatch.setenv("VINC_PK_NAMESPACED", "on" if namespaced else "off")
+    owner = OWNER if namespaced else "user:local"
+    snapshot, source = authored()
+    original = snapshot["role"]["id"]
+    fragment.merge_fragment({"owner": owner, "nodes": [{"id": original, "type": "concept", "title": "Keep"}]}, store=store)
+    raw = base64.b64decode(render(snapshot, source, "vincpack")["content"])
+    (tmp_path / "a-agent.vincpack").write_bytes(raw)
+    (tmp_path / "b-ordinary.vincpack").write_bytes(packfile.to_bytes({"vinc_pack": 1, "kind": "share",
+        "fragment": {"nodes": [{"id": "concept:inbox-control", "type": "concept", "title": "Control"}], "edges": []}}))
+    result = app.jobs.run_sync("ingest:pack", lambda: share.scan_inbox(str(tmp_path), owner=owner, store=store))
+    assert result["executed"] and not result["errors"] and len(result["imported"]) == 2, result
+    agent, ordinary = result["imported"]
+    assert agent["kind"] == "community-agent-import" and "merged" not in agent
+    assert agent["status"] == "proposed" and agent["node_id"] != original
+    assert ordinary["merged"]["nodes"] == {"created": 1, "matched": 0}
+    assert (tmp_path / "a-agent.vincpack.done").exists() and (tmp_path / "b-ordinary.vincpack.done").exists()
+    node = query.node(agent["node_id"], owner=owner, store=store)["node"]
+    assert node["props"]["active"] is False
+    assert query.node(original, owner=owner, store=store)["node"]["title"] == "Keep"
+    (tmp_path / "c-agent.vincpack").write_bytes(raw)
+    replay = app.jobs.run_sync("ingest:pack", lambda: share.scan_inbox(str(tmp_path), owner=owner, store=store))
+    assert not replay["errors"] and replay["imported"][0]["replayed"] is True
+    assert replay["imported"][0]["operation_id"] == agent["operation_id"]
+    assert query.node(agent["node_id"], owner=owner, store=store)["node"] == node
+    assert share.scan_inbox(str(tmp_path), owner=owner, store=store)["imported"] == []
 
 
 def test_pack_inspection_uses_primary_reader_and_bounds_before_inflation():
