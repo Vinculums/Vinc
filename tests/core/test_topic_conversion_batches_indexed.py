@@ -1,0 +1,162 @@
+"""Production pinned driver/extensions and scoped DurableAck, synthetic only."""
+import sys
+import os
+import subprocess
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+sys.path.insert(0,str(Path(__file__).resolve().parent))
+from test_topic_transfer import SOURCE,TARGET,TOPIC,STAMP,seed,insert
+from test_topic_batch_manifest import RUN
+from test_topic_conversion_batches import finish
+from api import topic_conversion as legacy
+from api.server import _heal_search_indexes
+from api.topic_conversion_batches import Batches
+from store import topic_batch_manifest as manifest
+from store.backend import open_store
+from store.config import load_config
+from store.persistence import DurableAck,claim_writer
+from store.scoped_topic_inventory import read_scoped_inventory
+from store.topic_manifest import TopicManifest
+from store.topic_transfer import fingerprint,read_snapshot,plan_transfer,transformed_snapshot,TransferRefused
+from store import durable_generation as dg
+
+
+@pytest.fixture
+def indexed(tmp_path,monkeypatch):
+    monkeypatch.setenv('VINC_PK_NAMESPACED','on')
+    monkeypatch.setenv('VINC_TOPIC_CONVERSION','1')
+    monkeypatch.setenv('VINC_DURABLE_ACK','')
+    path=tmp_path/'local'/'synthetic.db'
+    cfg=load_config({'data_dir':str(path),'buffer_pool_mb':256})
+    store=open_store(cfg)
+    assert store is not None
+    store.provision(dim=4)
+    store.drop_vector_index();store.drop_node_vector_index()
+    store._load_ext('fts')
+    store._drop_index(f"CALL DROP_FTS_INDEX('Chunk','{store._FTS_INDEX}')",'synthetic setup FTS')
+    class Raw:
+        def run(self,q,params=None):return store.run(q,params,raw=True)
+    insert(Raw(),seed())
+    for table in ('Chunk','ChunkVec','NodeVec'):store._ensure_index(table)
+    snapshot=str(tmp_path/'persistent'/'synthetic.db')
+    Path(snapshot).parent.mkdir()
+    claim_writer(snapshot)
+    durable=DurableAck(lambda:store,str(path),snapshot_path=snapshot)
+    def publish(journal):
+        durable(SimpleNamespace(kind='topic-conversion.batch'),{})
+        return durable.sequence
+    yield store,durable,publish
+    store.close()
+
+
+def prepared(store,tmp_path):
+    with TopicManifest(tmp_path/'inventory.sqlite') as disk:
+        inventory=read_scoped_inventory(store,source=SOURCE,target=TARGET,topic=TOPIC,manifest=disk)
+        plan=plan_transfer(inventory.snapshot,source=SOURCE,target=TARGET,topic=TOPIC)
+        indexes=legacy._index_inventory(store)
+        assert set(indexes)=={'Chunk','ChunkVec','NodeVec'}
+        header=manifest.prepare(disk,plan,run=RUN,stamp=STAMP,indexes=indexes,store=store)
+        path=tmp_path/'sealed.jsonl'
+        sealed=manifest.seal(disk,path,header)
+    return plan,path,sealed
+
+
+def test_scoped_publisher_and_exact_native_indexes_restore_before_graph_receipt(indexed,tmp_path):
+    store,durable,publish=indexed
+    before=read_snapshot(store,vocabulary_owner=SOURCE)
+    expected=transformed_snapshot(before,plan_transfer(before,source=SOURCE,target=TARGET,topic=TOPIC),stamp=STAMP)
+    plan,path,sealed=prepared(store,tmp_path)
+    blocked=Batches(store,root=durable.root,publisher=publish,run=RUN,source=SOURCE,target=TARGET,topic=TOPIC)
+    with pytest.raises(TransferRefused,match='index_execution_unqualified'):
+        blocked.initialize(path,sealed['sha256'],plan.before_hash)
+    assert not legacy.journals(store)
+    flow=Batches(store,root=durable.root,publisher=publish,run=RUN,source=SOURCE,target=TARGET,topic=TOPIC,
+                 max_rows=8,qualified_indexes=True)
+    flow.initialize(path,sealed['sha256'],plan.before_hash)
+    with pytest.raises(RuntimeError,match='after_index_drop'):
+        flow.step(fail_at='after_index_drop')
+    assert legacy._get(store,RUN)['business_batches']==0
+    assert legacy.fenced(store,SOURCE)
+    assert finish(flow)['status']=='graph_committed'
+    assert set(legacy._index_inventory(store))=={'Chunk','ChunkVec','NodeVec'}
+    observed=read_snapshot(store,vocabulary_owner=SOURCE)
+    observed['meta']['_SyncMeta']=[r for r in observed['meta']['_SyncMeta'] if not r['key'].startswith(legacy.PREFIX)]
+    assert fingerprint(observed)==fingerprint(expected)
+    assert durable.publishes>1 and durable.failures==0
+    assert store.fulltext_search('synthetic',5,{'owner_id':TARGET})
+    assert store.vector_search([0.25,0.5,0.75,-1.0],5,{'owner_id':TARGET})
+    assert store.node_vector_search([1.0,-0.5,0.25,0.0],5,owner=TARGET)
+    assert not store.fulltext_search('synthetic',5,{'owner_id':SOURCE})
+    assert not store.vector_search([0.25,0.5,0.75,-1.0],5,{'owner_id':SOURCE})
+    assert not store.node_vector_search([1.0,-0.5,0.25,0.0],5,owner=SOURCE)
+
+
+@pytest.mark.parametrize('point',['before_commit','after_commit','after_publish'])
+@pytest.mark.parametrize('missing_local',[False,True])
+def test_process_exit_restores_atomic_ledger_and_same_run(indexed,tmp_path,point,missing_local):
+    store,durable,publish=indexed
+    before=read_snapshot(store,vocabulary_owner=SOURCE)
+    expected=transformed_snapshot(before,plan_transfer(before,source=SOURCE,target=TARGET,topic=TOPIC),stamp=STAMP)
+    plan,path,sealed=prepared(store,tmp_path)
+    flow=Batches(store,root=durable.root,publisher=publish,run=RUN,source=SOURCE,target=TARGET,topic=TOPIC,
+                 max_rows=8,qualified_indexes=True)
+    flow.initialize(path,sealed['sha256'],plan.before_hash)
+    live=store._cfg.data_dir
+    store.close()
+    result=subprocess.run([sys.executable,str(Path(__file__).resolve()),'crash',live,str(durable.root),point],
+                          capture_output=True,timeout=60)
+    assert result.returncode==87,(result.stdout[-1000:],result.stderr[-1000:])
+    destination=tmp_path/'restored-local'/'synthetic.db' if missing_local else Path(live)
+    if missing_local:
+        assert not destination.exists()
+        assert dg.restore(durable.root,destination,skip_invalid=False).startswith('restored:')
+    resumed_store=open_store(load_config({'data_dir':str(destination),'buffer_pool_mb':256}))
+    assert resumed_store is not None
+    _heal_search_indexes(resumed_store,4,quiet=True)
+    assert resumed_store._fts_recovery_path is None
+    assert not resumed_store._remnants
+    try:
+        snapshot=str(tmp_path/'persistent'/'synthetic.db')
+        recovered=DurableAck(lambda:resumed_store,str(destination),snapshot_path=snapshot)
+        def recovered_publish(journal):
+            recovered(SimpleNamespace(kind='topic-conversion.batch'),{})
+            return recovered.sequence
+        resumed=Batches(resumed_store,root=durable.root,publisher=recovered_publish,run=RUN,
+                        source=SOURCE,target=TARGET,topic=TOPIC,max_rows=8,qualified_indexes=True)
+        assert legacy.fenced(resumed_store,SOURCE) and legacy.fenced(resumed_store,TARGET)
+        journal=legacy._get(resumed_store,RUN)
+        assert journal['batches']==int(point=='after_publish' or point=='after_commit' and not missing_local)
+        assert finish(resumed)['status']=='graph_committed'
+        observed=read_snapshot(resumed_store,vocabulary_owner=SOURCE)
+        observed['meta']['_SyncMeta']=[r for r in observed['meta']['_SyncMeta'] if not r['key'].startswith(legacy.PREFIX)]
+        assert fingerprint(observed)==fingerprint(expected)
+        assert set(legacy._index_inventory(resumed_store))=={'Chunk','ChunkVec','NodeVec'}
+    finally:
+        resumed_store.close()
+
+
+if __name__=='__main__':
+    if len(sys.argv)!=5 or sys.argv[1]!='crash':
+        raise SystemExit('Synthetic crash harness only')
+    live,root,point=sys.argv[2:]
+    child=open_store(load_config({'data_dir':live,'buffer_pool_mb':256}))
+    assert child is not None
+    _heal_search_indexes(child,4,quiet=True)
+    snapshot=str(Path(root).parent/'synthetic.db')
+    durable=DurableAck(lambda:child,live,snapshot_path=snapshot)
+    def publish(journal):
+        if point=='after_commit':os._exit(87)
+        durable(SimpleNamespace(kind='topic-conversion.batch'),{})
+        return durable.sequence
+    original_run=child.run
+    def crash_run(query,params=None,**kwargs):
+        if point=='before_commit' and query=='COMMIT':os._exit(87)
+        return original_run(query,params,**kwargs)
+    child.run=crash_run
+    flow=Batches(child,root=root,publisher=publish,run=RUN,source=SOURCE,target=TARGET,topic=TOPIC,
+                 max_rows=8,qualified_indexes=True)
+    flow.step()
+    os._exit(87)

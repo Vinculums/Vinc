@@ -57,17 +57,31 @@ class _Reader:
     def scan(self, head, projection, order, params=None, *, ordered=False):
         # Most relationship tables have no rows. Avoid allocating a sorter for
         # a result that fits in one page; only paged scans need stable order.
+        width = PAGE_ROWS
         if not ordered:
-            first = self.page(f"{head} RETURN {projection} LIMIT {PAGE_ROWS}", params)
-            if len(first) < PAGE_ROWS:
+            while True:
+                try:
+                    first = self.page(f"{head} RETURN {projection} LIMIT {width}", params)
+                    break
+                except ManifestLimit as exc:
+                    if exc.reason != 'page_bytes':raise
+                    if width == 1:raise ManifestLimit('single_row_bytes', **exc.details) from None
+                    width = max(1, width // 2)
+            if len(first) < width:
                 yield from first
                 return
         offset = 0
         while True:
-            rows = self.page(f"{head} RETURN {projection} ORDER BY {order} "
-                             f"SKIP {offset} LIMIT {PAGE_ROWS}", params)
+            try:
+                rows = self.page(f"{head} RETURN {projection} ORDER BY {order} "
+                                 f"SKIP {offset} LIMIT {width}", params)
+            except ManifestLimit as exc:
+                if exc.reason != 'page_bytes':raise
+                if width == 1:raise ManifestLimit('single_row_bytes', **exc.details) from None
+                width = max(1,width // 2)
+                continue
             yield from rows
-            if len(rows) < PAGE_ROWS:
+            if len(rows) < width:
                 return
             offset += len(rows)
 
@@ -140,9 +154,19 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
     def matching(label, keys, *, ids_only=False):
         pk = specs[label]["pk"]
         projection = f"n.{pk} AS id" if ids_only else _node_projection(label)
-        for batch in _batches(keys):
-            yield from reader.page(f"MATCH (n:{label}) WHERE n.{pk} IN $keys "
+        def fetch(batch):
+            try:
+                rows = reader.page(f"MATCH (n:{label}) WHERE n.{pk} IN $keys "
                                    f"RETURN {projection} ORDER BY n.{pk}", {"keys": batch})
+            except ManifestLimit as exc:
+                if exc.reason != 'page_bytes':raise
+                if len(batch)==1:raise ManifestLimit('single_row_bytes', **exc.details) from None
+                middle=len(batch)//2
+                yield from fetch(batch[:middle]);yield from fetch(batch[middle:])
+                return
+            yield from rows
+        for batch in _batches(keys):
+            yield from fetch(batch)
 
     def within(value):
         return isinstance(value, str) and (value == topic or value.startswith(topic + "/"))
