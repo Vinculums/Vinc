@@ -292,12 +292,29 @@ def test_verify_key_cache_keeps_scope(monkeypatch):
 def test_verify_key_team_answer_carries_scope(monkeypatch):
     _with_account(monkeypatch,
                   lambda req: _Resp({"sub": "u1", "plan": "team", "scope": "read",
-                                     "graph_owner": "team:t1", "role": "editor"}))
+                                     "graph_owner": "team:t1", "role": "editor", "key_space": "t1"}))
     try:
         got = entitlement.verify_key("vinc_ro_k", "t1")
         assert got["owner"] == "team:t1" and got["scope"] == "read"
     finally:
         entitlement._cache.clear()
+
+
+@pytest.mark.parametrize("key_space", [None, "personal", "t2"])
+def test_team_key_verification_requires_matching_credential_scope(monkeypatch, key_space):
+    _with_account(monkeypatch, lambda req: _Resp({"sub":"u1", "plan":"team", "scope":"full",
+                                                 "graph_owner":"team:t1", "role":"admin",
+                                                 "key_space":key_space}))
+    with pytest.raises(entitlement.VerificationUnavailable):
+        entitlement.verify_key("vinc_sk_fixture", "t1")
+    assert not entitlement._cache
+
+
+def test_team_credential_never_resolves_as_personal(monkeypatch):
+    _with_account(monkeypatch, lambda req: _Resp({"sub":"u1", "plan":"free", "scope":"full", "key_space":"t1"}))
+    with pytest.raises(entitlement.VerificationUnavailable):
+        entitlement.verify_key("vinc_sk_fixture")
+    assert not entitlement._cache
 
 
 def test_sync_pull_all_flag_reaches_the_sidecar():

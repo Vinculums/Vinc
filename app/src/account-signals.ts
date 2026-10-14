@@ -41,6 +41,9 @@ function hideUnreachable(): void {
 export function mountAccountSignals(): void {
   addEventListener("vinc:account-unreachable", showUnreachable);
   addEventListener("vinc:account-reachable", hideUnreachable);
+  addEventListener("vinc:team-key-required", () => {
+    void import("./team-key").then(({ restoreTeamCredential }) => restoreTeamCredential());
+  });
   addEventListener("vinc:signin-required", () => {
     void import("./firstrun")
       .then(({ requireSignIn }) => requireSignIn("expired"))

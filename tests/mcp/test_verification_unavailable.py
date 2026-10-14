@@ -40,6 +40,8 @@ def test_outage_is_not_cached_and_immediate_retry_recovers(account, monkeypatch,
     calls = []
     good = {"sub": "u1", "plan": "free", "scope": "read",
             "graph_owner": "team:t1", "role": "viewer"}
+    if route == "team_key":
+        good["key_space"] = "t1"
 
     def upstream(req, timeout=None):
         calls.append(req.full_url)
