@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import sqlite3
+from collections import OrderedDict
 from pathlib import Path
 from uuid import UUID
 
@@ -21,6 +22,7 @@ PROTOCOL = 3
 LINE_BYTES = 16 * 1024
 MANIFEST_BYTES = 128 * 1024 * 1024
 SPECS = {**node_table_specs(), **meta_table_specs()}
+_VALIDATED = OrderedDict()
 
 
 def digest(row):
@@ -255,6 +257,13 @@ def read(path, expected, *, binding):
             raise ValueError
         if generation._digest(path)["sha256"] != expected:
             raise ValueError
+        if expected in _VALIDATED:
+            header=json.loads(_VALIDATED[expected])
+            if header['binding'] != binding:raise ValueError
+            # Every byte was hashed again. Schema validation of those exact
+            # immutable bytes can be reused without decoding every instruction.
+            _VALIDATED.move_to_end(expected)
+            return header
         with path.open("rb") as source:
             header_line = source.readline(LINE_BYTES + 1)
             header = json.loads(header_line)
@@ -274,6 +283,8 @@ def read(path, expected, *, binding):
                 count += 1
             if count != header["instructions"]:
                 raise ValueError
+        _VALIDATED[expected]=_canonical(header)
+        while len(_VALIDATED)>64:_VALIDATED.popitem(last=False)
     except (OSError, ValueError, AttributeError):
         raise TransferRefused("conversion_manifest_invalid") from None
     return header

@@ -147,6 +147,8 @@ def main():
             while flow.status()['phase']!='verifying':
                 if time.monotonic()-started>3600:raise RuntimeError('synthetic_work_budget_reached')
                 step=time.monotonic();flow.step();max_step=max(max_step,time.monotonic()-step)
+            report.update(stage_seconds=round(time.monotonic()-begin,3),max_step_seconds=round(max_step,3),
+                          batches=flow.status()['batches'],phase=flow.status()['phase'],durable=durable.detail())
             flow.verify()
             report.update(passed=True,stage_seconds=round(time.monotonic()-begin,3),max_step_seconds=round(max_step,3),
                           batches=flow.status()['batches'],durable=durable.detail(),

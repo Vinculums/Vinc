@@ -365,6 +365,7 @@ class Batches:
                     db = observed.db
                     db.execute("CREATE TABLE expected_rows(label TEXT,key TEXT,digest TEXT,PRIMARY KEY(label,key))")
                     db.execute("CREATE TABLE expected_edges(digest TEXT)")
+                    db.execute("CREATE TABLE retired_keys(label TEXT,key TEXT,PRIMARY KEY(label,key))")
                     expected_rows = expected_edges = 0
                     for _,item in manifest.instructions(path):
                         observed.check_time()
@@ -377,12 +378,20 @@ class Batches:
                             key, sha = item["row"][manifest.SPECS[label]["pk"]], item["after"]
                         elif item["kind"] == "node":
                             key, sha = item["new"], item["after"]
-                            if item["old"] != key and row(self.store, label, item["old"]) is not None:
-                                raise TransferRefused("conversion_source_retirement_incomplete")
+                            if item['old'] != key:
+                                db.execute('INSERT INTO retired_keys VALUES(?,?)',(label,item['old']))
                         else:
                             key, sha = item["key"], item["digest"]
                         db.execute("INSERT INTO expected_rows VALUES(?,?,?)", (label, key, sha))
                         expected_rows += 1
+                    for (label,) in db.execute('SELECT DISTINCT label FROM retired_keys'):
+                        cursor=db.execute('SELECT key FROM retired_keys WHERE label=? ORDER BY key',(label,))
+                        while keys := cursor.fetchmany(32):
+                            observed.check_time()
+                            pk=manifest.SPECS[label]['pk']
+                            if self.store.run(f'MATCH (n:{label}) WHERE n.{pk} IN $keys RETURN n.{pk} AS id LIMIT 1',
+                                              {'keys':[value[0] for value in keys]},raw=True):
+                                raise TransferRefused('conversion_source_retirement_incomplete')
                     if 'untouched_source' in header:
                         db.execute("CREATE TABLE instructions(ordinal INTEGER PRIMARY KEY,kind TEXT,body TEXT)")
                         db.executemany("INSERT INTO instructions VALUES(?,?,?)",((ordinal,item['kind'],_canonical(item)) for ordinal,item in manifest.instructions(path)))
