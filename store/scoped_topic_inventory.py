@@ -350,9 +350,10 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         for row in reader.scan(head, ", ".join(columns), order, {"owner": owner}):
             a, b = (src, row.pop("src")), (dst, row.pop("dst"))
             if a in selected or b in selected or a in retained or b in retained:
-                result["edges"].append({"label": label, "from_label": src, "to_label": dst,
-                                        "from": a[1], "to": b[1], "props": row})
-                retained_bytes += len(_canonical(result["edges"][-1]).encode())
+                edge={"label": label, "from_label": src, "to_label": dst,
+                      "from": a[1], "to": b[1], "props": row}
+                result['edges'].append(edge)
+                retained_bytes += len(_canonical(edge).encode())
                 if len(retained) + len(result["edges"]) > max_rows or retained_bytes > max_bytes:
                     raise ManifestLimit("retained_payload", rows=len(retained) + len(result["edges"]),
                                         bytes=retained_bytes, row_limit=max_rows, byte_limit=max_bytes)

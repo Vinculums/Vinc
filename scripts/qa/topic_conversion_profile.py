@@ -186,7 +186,12 @@ def main():
             with TopicManifest(root/'inventory.sqlite',deadline=time.monotonic()+180) as scratch:
                 with legacy._inventory_read_transaction(store):
                     inventory=read_scoped_inventory(store,source=SOURCE,target=TARGET,topic=TOPIC,manifest=scratch)
+                    report['selection_seconds']=round(time.monotonic()-begin,3)
+                    print(json.dumps({'phase':'synthetic-selection-complete','seconds':report['selection_seconds'],'rows':inventory.retained_rows,'bytes':inventory.retained_bytes}),flush=True)
+                    plan_start=time.monotonic()
                     plan=plan_transfer(inventory.snapshot,source=SOURCE,target=TARGET,topic=TOPIC)
+                    report['plan_seconds']=round(time.monotonic()-plan_start,3)
+                    print(json.dumps({'phase':'synthetic-plan-complete','seconds':report['plan_seconds'],'ready':plan.ready}),flush=True)
                     if not plan.ready:raise TransferRefused('synthetic_dependency_blocked')
                     header=manifest.prepare(scratch,plan,run=run,stamp='2026-10-14T10:00:00Z',indexes=legacy._index_inventory(store),store=store)
                     sealed=manifest.seal(scratch,sealed_path,header)
