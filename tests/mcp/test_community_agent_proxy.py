@@ -161,7 +161,7 @@ def test_actual_mcp_rest_read_only_callback_scope_quota_and_error(monkeypatch):
 def test_large_immutable_export_refused_without_truncation_and_points_to_complete_route():
     from vinc_mcp import rpc
     text = json.dumps({"version": 1, "content": "x" * rpc.MAX_RESULT_CHARS})
-    result = rpc._bounded(text, community.READ_TOOL)
+    result = rpc._result_text(text, community.READ_TOOL, {})
     assert result["isError"] is True
     assert "/v1/community/read" in result["content"][0]["text"]
     assert "x" * 100 not in result["content"][0]["text"]
