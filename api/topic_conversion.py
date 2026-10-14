@@ -48,6 +48,14 @@ def _scope_response_safe(snapshot, source):
                    for group in ("nodes", "meta") for rows in snapshot[group].values() for row in rows)
 
 
+def _document_scope_summary(snapshot, plan, source):
+    """이미 증명한 소유자 범위 안에서 문서 식별자와 메타데이터 상태를 구분한다."""
+    metas={row['doc_id']:row for row in snapshot['meta']['_DocMeta'] if row['doc_id'] in plan.documents}
+    return {'identities':len(plan.documents),'owned_metadata':sum(row.get('owner_id')==source for row in metas.values()),
+            'missing_metadata':sum(doc not in metas for doc in plan.documents),
+            'unassigned_metadata':sum(row.get('owner_id') in (None,'') for row in metas.values())}
+
+
 def _committed_snapshot(store, source, target, topic, journal):
     if journal.get("inventory_version", 1) == 1:
         return read_snapshot(store, vocabulary_owner=source)
@@ -200,6 +208,7 @@ def inventory_diagnostics(store, source, topic):
                 blockers.add("conversion_bounded_executor_required")
                 return {"ready": False, "scope": "topic", "topic": topic,
                         "counts_known": True, "counts": counts, "documents": len(plan.documents),
+                        "document_ownership": _document_scope_summary(inventory.snapshot,plan,source),
                         "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
                         "inspected_rows": inventory.inspected_rows, "inventory_hash": plan.before_hash,
                         "inventory_version": 3, "diagnostic_only": True,
