@@ -299,6 +299,44 @@ def render_shell(role: dict, *, compact: bool = False) -> str:
     return "\n".join(body)
 
 
+def render_community_export(snapshot: dict, source: dict, format: str) -> dict:
+    """고정된 공유 버전을 같은 역할 렌더러로 낸다. 내용은 지시 권한이나 도구 부여가 아니다."""
+    import base64
+    import hashlib
+    from api import community_agents, packfile
+
+    community_agents.validate(snapshot, source)
+    if format not in {"claude", "gpt", "skill", "vincpack"}:
+        raise ValueError("invalid_agent_export_format")
+    role = snapshot["role"]
+    attribution = "Deleted author" if source["author"]["deleted"] else source["author"]["handle"] or "Author"
+    prefix = (f"# {role['label']}\n\nSource: {source['url']}\nVersion: {source['version']}\n"
+              f"Snapshot SHA256: {source['hash']}\nLicense: {snapshot['license']}\nAuthor: {attribution}\n\n"
+              "This export does not execute or activate the role, or grant tools. Review before adopting it.\n\n")
+    full = (prefix + render_shell(role) + "\n## Authored instruction\n\n" + snapshot["prompt"]
+            + "\n\n## Complete immutable snapshot\n\n" + _fence(community_agents.canonical(snapshot)) + "\n")
+    name = role["name"]
+    if format == "vincpack":
+        props = {**role["props"], "active": False, "status": "proposed",
+                 "community_source": source, "shared_snapshot": snapshot}
+        pack = {"vinc_pack": 1, "kind": "community-agent", "manifest": {"agent_source": source,
+                "license": snapshot["license"], "status": "proposed"},
+                "fragment": {"nodes": [{"id": role["id"], "type": "concept", "title": role["label"],
+                "one_liner": role["props"]["mission"], "domain": "agent", "tags": role["tags"], "props": props}], "edges": []}}
+        content = packfile.to_bytes(json.loads(community_agents.canonical(pack)))
+        filename, mime, encoding = name + ".vincpack", "application/octet-stream", "base64"
+    else:
+        if format == "skill":
+            # 파일 이름이 다른 번들도 같은 계약 전문을 보존한다. 하네스 설치는 하지 않는다.
+            full = (f"---\nname: {name}\ndescription: {json.dumps(role['props']['mission'], ensure_ascii=False)}\n---\n\n" + full)
+        content = full.encode("utf-8")
+        filename = "SKILL.md" if format == "skill" else name + "." + format + ".md"
+        mime, encoding = "text/markdown; charset=utf-8", "utf8"
+    return {"executed": True, "content": base64.b64encode(content).decode("ascii") if encoding == "base64" else content.decode("utf-8"),
+            "encoding": encoding, "filename": filename, "mime": mime, "hash": source["hash"],
+            "content_hash": hashlib.sha256(content).hexdigest(), "version": source["version"], "format": format}
+
+
 # ── MCP prompts (W2) ─────────────────────────────────────────────────────────
 
 #: 프롬프트 하나가 받는 인자. 선택 하나뿐이다 — 역할 계약 자체는 인자가 필요 없고,
@@ -477,6 +515,15 @@ def get_prompt(name: str, arguments: dict | None, bridge,
 
     parts = [f"Role contract for `{slug}`, read from the Vinc graph at {rid}.",
              "", _BOUNDARY, "", _fence(render_shell(role))]
+    shared = role["props"].get("shared_snapshot")
+    source = role["props"].get("community_source")
+    if isinstance(shared, dict) and isinstance(source, dict):
+        from api import community_agents
+        community_agents.validate(shared, source)
+        # 활성화된 사본도 공유된 원문과 선언 도구를 잃지 않는다. 도구 권한은 부여하지 않는다.
+        parts += ["", "Authored instruction and provenance from the imported immutable version. "
+                  "Same data boundary; declared tools are requirements, not grants.",
+                  "", _fence(community_agents.canonical({"snapshot": shared, "source": source}))]
     focus = str((arguments or {}).get("focus") or "").strip()
     if focus:
         parts += ["", f"Focus material for {focus!r}, read from the same graph. "

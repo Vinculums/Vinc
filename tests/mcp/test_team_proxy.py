@@ -157,7 +157,7 @@ def test_role_tiers_cover_every_proxy_op():
 def test_write_ops_are_never_viewer_tier():
     """사이드카 POST 라우트는 전부 editor 이상이어야 한다 — 조회 등급으로 새면 안 된다."""
     tiers = hs.team_role_tiers()
-    writes = {op for op, (method, _p) in hs._PROXY_OPS.items() if method == "POST"}
+    writes = {op for op, (method, _p) in hs._PROXY_OPS.items() if method == "POST"} - hs._PURE_POST_OPS
     leaked = writes & tiers["viewer"]
     assert not leaked, f"열람자 등급에 쓰기 op 가 있다: {sorted(leaked)}"
 

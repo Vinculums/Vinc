@@ -16,10 +16,13 @@ OWNER_RE = re.compile(
     r"community:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 WRITE_TOOL = "vinc_community_write"
+READ_TOOL = "vinc_community_read"
+READ_ACTIONS = ("agent_detail", "agent_export", "agent_take_preview", "agent_take_result")
 ACTIONS = (
     "page_save", "page_revert", "talk_create", "talk_comment", "lounge_create",
     "lounge_comment", "react", "report", "moderate", "appoint_operator", "resolve_report",
     "social_edit", "community_join", "community_leave", "community_create",
+    "share_create", "share_version", "share_withdraw", "share_moderate", "pack_share", "agent_take",
 )
 
 
@@ -29,6 +32,10 @@ def is_space(value) -> bool:
 
 def unavailable_write(args, bridge):
     raise PermissionError("Community writes require an authenticated account connector.")
+
+
+def unavailable_read(args, bridge):
+    raise PermissionError("Community share reads require an authenticated account connector.")
 
 
 class WriteUnconfirmed(RuntimeError):
@@ -58,9 +65,9 @@ def _request(path, body, purpose, *, write=False):
             raise ValueError("invalid account result")
         return result
     except urllib.error.HTTPError as exc:
-        if not write and exc.code == 404:
+        if not write and purpose == "community-read" and path.endswith("community-resolve") and exc.code == 404:
             return None
-        if write and exc.code in (400, 401, 403, 404, 409, 429):
+        if exc.code in (400, 401, 403, 404, 409, 429):
             # 명시적 거절만 확정 실패다. 5xx/타임아웃은 커밋 여부를 단정하지 않는다.
             try:
                 result = json.loads(exc.read().decode("utf-8"))
@@ -108,3 +115,12 @@ def write(auth: dict, args: dict):
         "payload": args["payload"], "client_name": args["client_name"].strip(),
         "channel": "mcp", "scope": "full",
     }, "community-write", write=True)
+
+
+def read(auth: dict, args: dict):
+    owner, member = auth.get("owner"), auth.get("member")
+    if (not is_space(owner) or not isinstance(member, str) or not member.startswith("user:")
+            or not member[5:] or args.get("action") not in READ_ACTIONS):
+        raise PermissionError("Community share reads require an authenticated explicit community space.")
+    return _request("/internal/mcp/community-read", {"sub": member[5:], "community": owner[10:],
+        "action": args["action"], "payload": args["payload"]}, "community-read")

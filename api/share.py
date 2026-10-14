@@ -506,6 +506,9 @@ def import_share_pack(pack: dict, *, owner: str, cfg=None, store=None,
     if store is None:
         return {"executed": False, "error": "no reachable store"}
     try:
+        if pack.get("kind") == "community-agent":
+            from . import community_agents
+            return community_agents.import_file(pack, owner=owner, store=store, max_domains=max_domains)
         res = frag.merge_fragment({**fragment, "owner": owner}, store=store,
                                   max_domains=max_domains)
         if res.get("error") == "domain_limit_reached":

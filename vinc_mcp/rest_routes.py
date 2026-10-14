@@ -36,6 +36,7 @@ class Route:
 
 
 READ_ROUTES = (
+    Route("POST", "/v1/community/read", "vinc_community_read", body=("action", "payload")),
     Route("GET", "/v1/operations/{operation_id}", "vinc_operation_status",
           path_args=(("operation_id", "operation_id"),)),
     Route("GET", "/v1/roles", "vinc_role", query=("limit", "offset")),

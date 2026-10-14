@@ -655,6 +655,16 @@ class VincApp:
         if durable is not None:
             durable(job, result)
             if isinstance(result, dict) and result.get("receipt"):
+                receipt = result["receipt"]
+                if (receipt.get("operation") == "community-agent-import"
+                        and receipt.get("state") == "committed" and receipt.get("applied") is True):
+                    from . import operation_receipts
+                    # 원문 게시 뒤 표식을 적고 그 표식까지 게시한다. GET 상태 확인은 쓰지 않는다.
+                    marked, changed = operation_receipts.mark_agent_durable(self.store,
+                        owner=result["owner"], operation_id=result["operation_id"], sequence=durable.sequence)
+                    if changed:
+                        durable(job, result)
+                    result["receipt"] = marked
                 result["durability"] = "published_generation"
                 result["durable_sequence"] = durable.sequence
 
@@ -689,6 +699,49 @@ class VincApp:
         from . import operation_receipts
         return self._read(lambda r: operation_receipts.status(r, owner=_req(p, "owner"),
             operation_id=_req(p, "operation_id")))
+
+    def render_community_agent(self, body):
+        from vinc_mcp.roles import render_community_export
+        return 200, render_community_export(_req(body, "snapshot"), _req(body, "source"), _req(body, "format"))
+
+    def inspect_community_pack(self, body):
+        from . import community_agents
+        return 200, community_agents.inspect_pack(_req(body, "pack"))
+
+    def preview_community_agent(self, body):
+        from . import community_agents
+        return self._read(lambda r: community_agents.preview(r, owner=_req(body, "owner"),
+            snapshot=_req(body, "snapshot"), source=_req(body, "source"), target_id=body.get("target_id")))
+
+    def import_community_agent(self, body):
+        from . import community_agents, operation_receipts
+        # 접수 UUID와 원문 전체를 영수증에 묶는다. 기존 단일 writer와 durable ACK를 승계한다.
+        allowed = {"owner", "snapshot", "source", "mutation_id", "mode", "expected_target"}
+        if set(body) - allowed:
+            raise ValueError("invalid_agent_import_arguments")
+        owner, mutation_id = _req(body, "owner"), _req(body, "mutation_id")
+        snapshot, source = _req(body, "snapshot"), _req(body, "source")
+        community_agents.validate_import(owner=owner, snapshot=snapshot, source=source,
+            mode=body.get("mode", "separate"), expected_target=body.get("expected_target"))
+        arguments = {k: v for k, v in body.items() if k not in {"mutation_id", "owner"}}
+        def apply():
+            try:
+                return community_agents.apply_import(self.store, owner=owner,
+                    snapshot=snapshot, source=source, mode=body.get("mode", "separate"),
+                    expected_target=body.get("expected_target"))
+            except ValueError as exc:
+                return {"executed": False, "error": str(exc)}
+        res = self.jobs.run_sync("community-agent-import", lambda: operation_receipts.execute(
+            self.store, owner=owner, operation="community-agent-import", arguments=arguments,
+            operation_id=mutation_id, apply=apply))
+        res.setdefault("durability", "graph_commit_only")
+        return 200, res
+
+    def read_community_agent_result(self, p):
+        from . import community_agents
+        durable = self._durable or self._conversion_durable
+        return self._read(lambda r: community_agents.import_result(r, owner=_req(p, "owner"),
+            mutation_id=_req(p, "mutation_id"), durability_root=durable.root if durable else None))
 
     def _conversion_write_guard(self, job):
         if self.store is not None and getattr(self.store, "_topic_conversion_guard", False) \
@@ -2650,6 +2703,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/node": app.read_node,
             "/node-context": app.read_node_context,
             "/operation-status": app.read_operation_status,
+            "/community-agent/import-result": app.read_community_agent_result,
             "/brief": app.read_brief,   # W1 — 질문 하나로 답변 재료 조인
             "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)
             "/ledger-drilldown": app.read_ledger_drilldown,   # 합계 구간 클릭(D45-V2 3단계)
@@ -2679,6 +2733,8 @@ class _Handler(BaseHTTPRequestHandler):
     #: ⚠ 새 POST 라우트를 더할 때 여기 넣을지 판단할 것. 기본값은 **넣지 않는다**(가드를
     #: 받는다) — 빠뜨려도 조용히 새지 않고 503 으로 막히므로 안전측이다.
     _POST_WITHOUT_STORE = frozenset({
+        "/community-agent/export",
+        "/community-pack/inspect",
         "/themes", "/themes/activate",
         "/types/ratify", "/types/reject", "/types/rename",
         "/connect/start",
@@ -2711,6 +2767,10 @@ class _Handler(BaseHTTPRequestHandler):
             "/topic-conversion": app.write_topic_conversion,
             "/topic-description": app.write_topic_description,
             "/activate": app.write_activate, "/backup": app.submit_backup,
+            "/community-agent/export": app.render_community_agent,
+            "/community-pack/inspect": app.inspect_community_pack,
+            "/community-agent/import-preview": app.preview_community_agent,
+            "/community-agent/import": app.import_community_agent,
             "/ingest": app.write_ingest,
             "/delete": app.write_delete, "/delete-edge": app.write_delete_edge,
             "/merge-nodes": app.write_merge,

@@ -64,7 +64,7 @@ def _summary(result):
     for field in ("kind", "created", "skipped", "found", "rev", "content_hash", "doc_id", "node_id", "status",
                   "current_rev", "current_content_hash", "rolled_back", "deleted_chunks", "deleted_meta",
                   "node", "src", "dst", "rel", "keep", "drop", "dropped", "a_id", "b_id", "undo",
-                  "repointed", "source_hash"):
+                  "repointed", "source_hash", "version", "mode", "owner"):
         if field in result and isinstance(result[field], (str, int, bool)):
             if not isinstance(result[field], str) or len(result[field]) <= 2048:
                 out[field] = result[field]
@@ -91,6 +91,24 @@ def _summary(result):
         out.pop("targets", None)
         out["stored_truncated"] = True
     return out
+
+
+def mark_agent_durable(store, *, owner, operation_id, sequence):
+    """실제 게시 후에만 표식을 쓴다. 표식까지 게시하는 책임은 ACK 훅에 있다."""
+    key = _key(owner, operation_id)
+    record = _load(store, key)
+    if (not record or record.get("operation") != "community-agent-import"
+            or record.get("state") != "committed" or record.get("applied") is not True
+            or type(sequence) is not int or sequence < 1):
+        raise RuntimeError("agent_durable_receipt_unavailable")
+    if record.get("agent_durable_proof"):
+        return record, False
+    result = record["result"]
+    proof = {"owner": owner, "operation_id": operation_id, "request_hash": record["request_hash"],
+             "source_hash": result["source_hash"], "version": result["version"], "sequence": sequence}
+    record["agent_durable_proof"] = proof
+    _save(store, key, record)
+    return record, True
 
 
 def execute(store, *, owner, operation, arguments, operation_id, apply):

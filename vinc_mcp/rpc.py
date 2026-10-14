@@ -89,7 +89,7 @@ class Dispatcher:
     # entitlements: 등급에서 해석된 숫자(주제 상한 등) — 사이드카로 그대로 실린다.
     def handle(self, msg: dict, forced_owner: str | None = None,
                plan: str | None = None, quota=None,
-               entitlements: dict | None = None, community_write=None) -> dict | None:
+               entitlements: dict | None = None, community_write=None, community_read=None) -> dict | None:
         method = msg.get("method")
         msg_id = msg.get("id")
         params = msg.get("params") or {}
@@ -102,7 +102,7 @@ class Dispatcher:
         try:
             result = self._dispatch(method, params, forced_owner=forced_owner,
                                     plan=plan, quota=quota, entitlements=entitlements,
-                                    community_write=community_write)
+                                    community_write=community_write, community_read=community_read)
         except _MethodNotFound:
             return _err(msg_id, -32601, f"method not found: {method}")
         except _QuotaDenied as e:
@@ -120,7 +120,7 @@ class Dispatcher:
 
     def _dispatch(self, method: str, params: dict, *, forced_owner: str | None = None,
                   plan: str | None = None, quota=None,
-                  entitlements: dict | None = None, community_write=None) -> dict:
+                  entitlements: dict | None = None, community_write=None, community_read=None) -> dict:
         if method == "initialize":
             want = params.get("protocolVersion")
             negotiated = want if want in PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION
@@ -175,7 +175,7 @@ class Dispatcher:
                                        forced_owner=forced_owner, plan=plan, quota=quota,
                                        entitlements=entitlements,
                                        allow_target=self.allow_target,
-                                       local_only=self.local_only, community_write=community_write)
+                                       local_only=self.local_only, community_write=community_write, community_read=community_read)
             if outcome.kind == "protocol_error":
                 raise outcome.error
             if outcome.kind != "ok":

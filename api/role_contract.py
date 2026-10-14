@@ -59,7 +59,8 @@ def has_contract(props: dict) -> bool:
 
 
 def is_role(nid: str, domain: str | None, props: dict) -> bool:
-    if not is_role_id(nid) or not isinstance(props, dict) or props.get("active") is False:
+    if (not is_role_id(nid) or not isinstance(props, dict) or props.get("active") is False
+            or props.get("status") == "proposed"):
         return False
     d = normalize(domain)
     legacy = any(d == t or d.startswith(t + "/") for t in TOPICS)
