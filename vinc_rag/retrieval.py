@@ -1450,6 +1450,14 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                     base["node_semantic"].update(state)
                     if state.get("stale_candidates") or state.get("missing_candidates"):
                         base["node_semantic"]["state"] = "partial"
+                if not _raw and not any(base["node_semantic"].get(k) for k in ("stale_candidates", "missing_candidates")):
+                    counter = getattr(store, "node_vector_count", None)
+                    if callable(counter):
+                        count = counter(owner=owner)
+                        base["node_semantic"].update(stored_vectors=count,
+                            stored_vectors_scope="owner" if owner else "local_unscoped")
+                        if count == 0:
+                            base["node_semantic"].update(state="empty_mirror", freshness="not_checked")
                 # 유효구간 기본 필터(§4.2) — 이 팔은 미러를 읽어 구간 열이 없으므로 id 로
                 # 되찾아 본다. 제목 팔만 걸러 내면 폐기된 노드가 **이 팔로 되돌아온다**
                 # (라이브 재현 2026-09-11: 제목 팔이 걸러 낸 d44 가 semantic 표로 다시
@@ -1499,7 +1507,8 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
             except Exception as exc:
                 base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
                 code = str(exc) if str(exc) in ("node_vector_extension_unavailable",
-                    "node_vector_query_failed", "node_vector_validation_failed") else "node_semantic_failed"
+                    "node_vector_query_failed", "node_vector_validation_failed",
+                    "node_vector_status_unavailable") else "node_semantic_failed"
                 base["node_semantic"].update(state="degraded", error=code)
         # 의미 팔이 더 걸러 냈으면 (3) 에서 적은 공개를 갱신한다 — 셈은 두 팔이 지운 id 의
         # 합집합이다(두 팔이 같은 노드를 지우면 한 번).

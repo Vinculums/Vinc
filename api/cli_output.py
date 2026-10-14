@@ -143,6 +143,8 @@ def emit(result: Any) -> int:
                   file=sys.stderr)
         elif result.get("node_error"):
             print("vinc: node search degraded; use JSON for diagnostics", file=sys.stderr)
+        elif state.get("state") == "empty_mirror":
+            print("vinc: node semantic search has no stored vectors; lexical matches remain available", file=sys.stderr)
         if result.get("vector_note"):
             print("vinc: chunk semantic search has a diagnostic; use JSON for vector_note", file=sys.stderr)
         if fmt == "ndjson" and result.get("node_hits"):

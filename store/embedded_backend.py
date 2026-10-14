@@ -897,6 +897,9 @@ class _ReaderView:
     def validate_node_vector_hits(self, hits, *, owner=None):
         return self._b.validate_node_vector_hits(hits, owner=owner, conn=self._conn)
 
+    def node_vector_count(self, *, owner=None):
+        return self._b.node_vector_count(owner=owner, conn=self._conn)
+
     def ensure_search_indexes(self, *, dim: int | None = None) -> dict:
         """검색 인덱스 지연 보장(T3b) — **쓰기 지점으로 되돌려 보낸다**(R4).
 
@@ -2182,6 +2185,15 @@ class EmbeddedBackend:
                             hits, owner=owner)
         except Exception:
             raise RuntimeError("node_vector_validation_failed") from None
+
+    def node_vector_count(self, *, owner=None, conn=None) -> int:
+        where = " WHERE n.owner_id=$owner" if owner else ""
+        try:
+            rows = _exec_to_dicts(conn or self._conn,
+                f"MATCH (n:NodeVec){where} RETURN count(n) AS n", {"owner": owner} if owner else {})
+            return int(rows[0]["n"]) if rows else 0
+        except Exception:
+            raise RuntimeError("node_vector_status_unavailable") from None
 
     @_exclusive_ddl
     def drop_node_vector_index(self) -> None:

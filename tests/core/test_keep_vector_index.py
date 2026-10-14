@@ -106,7 +106,8 @@ class KeepIndexTests(unittest.TestCase):
             with mock.patch.object(eb, "_exec_to_dicts", spy), \
                     mock.patch.object(eb, "_NODE_VEC_EXACT_MAX_ROWS", 0):
                 rv.vector_search([1.0, 0.0, 0.0, 0.0], 1)
-                rv.node_vector_search([1.0, 0.0, 0.0, 0.0], 1, owner="o")
+                with self.assertRaisesRegex(RuntimeError, "^node_vector_query_failed$"):
+                    rv.node_vector_search([1.0, 0.0, 0.0, 0.0], 1, owner="o")
         finally:
             rv.close()
         self.assertEqual(seen, [True, True])

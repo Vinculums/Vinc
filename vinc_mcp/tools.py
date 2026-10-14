@@ -654,7 +654,7 @@ def _t_host_search(args, bridge):
         results += docs[i:i + 1] + nodes[i:i + 1]
     out = {"results": results[:limit]}
     if raw.get("node_error") or raw.get("vector_note") or raw.get("partial") or \
-            (raw.get("node_semantic") or {}).get("state") == "partial":
+            (raw.get("node_semantic") or {}).get("state") in ("partial", "empty_mirror"):
         out["diagnostics"] = {k: raw[k] for k in ("arms", "node_semantic", "node_window",
                               "vector_rebuilding", "encoder_runtime_warning") if k in raw}
         if raw.get("node_error"):
@@ -797,7 +797,9 @@ TOOLS: list[dict] = [
                        "continuation page carries an empty list with `node_hits_omitted`. "
                        "`node_window` names this first-page-only window and its lexical candidate "
                        "limit; chunk total_count never counts node hits. `node_semantic` reports "
-                       "complete/partial/degraded/disabled for the node arm separately from chunk arms. "
+                       "complete/partial/degraded/disabled/empty_mirror for the node arm separately from chunk arms. "
+                       "An empty_mirror has no stored node vectors in the selected owner scope; "
+                       "it does not mean no source nodes exist. "
                        "checked_candidates verifies only returned candidates against current "
                        "owner-scoped text, not whole-index freshness. Stale or missing candidates "
                        "are excluded without rebuilding; a failed node arm carries node_error. "

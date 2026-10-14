@@ -31,6 +31,22 @@ def test_mirror_validation_compares_the_same_text_used_by_rebuild():
         assert mirror_text(title, extra) == node_mirror.mirror_text(title, extra)
 
 
+def test_node_vector_status_is_owner_scoped_and_failure_is_explicit(monkeypatch):
+    backend = object.__new__(eb.EmbeddedBackend)
+    backend._conn = object()
+    def count(conn, cypher, params):
+        assert "n.owner_id=$owner" in cypher
+        assert params == {"owner": "user:synthetic"}
+        return [{"n": 0}]
+    monkeypatch.setattr(eb, "_exec_to_dicts", count)
+    assert backend.node_vector_count(owner="user:synthetic") == 0
+    def fail(*args, **kwargs):
+        raise RuntimeError("private driver detail")
+    monkeypatch.setattr(eb, "_exec_to_dicts", fail)
+    with pytest.raises(RuntimeError, match="^node_vector_status_unavailable$"):
+        backend.node_vector_count(owner="user:synthetic")
+
+
 def test_validation_without_owner_does_not_guess_a_cross_owner_source():
     from store.node_mirror_state import validate
     hits = [{"id": "concept:shared", "kind": "concept", "text": "Synthetic"}]

@@ -55,6 +55,10 @@ def test_episode_create_update_delete_and_candidate_freshness(db, title, new_tit
               "owner_id:$owner, date:'2026-10-14'})", {"rows": rows, "owner": OWNER})
     first = query.search(title, store=store, cfg=cfg, owner=OWNER)
     assert first["executed"] and ident in {h["id"] for h in first["node_hits"]}
+    unindexed = query.search(title, store=store, cfg=cfg, owner=OWNER, query_embedding=VECTOR)
+    assert unindexed["node_semantic"]["state"] == "empty_mirror"
+    assert unindexed["node_semantic"]["stored_vectors"] == 0
+    assert unindexed["node_semantic"]["freshness"] == "not_checked"
     fill_mirror(store)
     ready = query.search(title, store=store, cfg=cfg, owner=OWNER, query_embedding=VECTOR, top_k=400)
     hit = next(h for h in ready["node_hits"] if h["id"] == ident)
