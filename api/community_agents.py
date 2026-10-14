@@ -208,10 +208,14 @@ def preview(store, *, owner, snapshot, source, target_id=None, local=False):
         if not occupied:
             break
     else:
-        raise ValueError("agent_separate_id_collision")
+        if target_id and target is not None:
+            candidate = None
+        else:
+            raise ValueError("agent_separate_id_collision")
     return {"kind": "community-agent-preview", "executed": True, "node_id": candidate,
             "target": _target_receipt(target) if target else None, "source_hash": source["hash"],
-            "version": source["version"], "status": "proposed"}
+            "version": source["version"], "status": "proposed",
+            **({"separate_error": "agent_separate_id_collision"} if candidate is None else {})}
 
 
 def validate_import(*, owner, snapshot, source, mode="separate", expected_target=None, local=False):

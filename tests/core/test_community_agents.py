@@ -149,6 +149,23 @@ def test_default_collisions_including_hash_prefix_preserve_existing_roles(engine
     assert other["executed"] and other["node_id"] == rid
 
 
+def test_all_separate_alias_collisions_do_not_block_explicit_replace_preview(engine):
+    store, app = engine
+    snapshot, source = authored()
+    rid = snapshot["role"]["id"]
+    aliases = [rid] + [rid + "-" + source["hash"][:n] for n in [6, 12, 24, 64]]
+    target = "concept:agent-explicit-target"
+    fragment.merge_fragment({"owner": OWNER, "nodes": [{"id": n, "type": "concept", "title": "Keep"}
+        for n in aliases + [target]]}, store=store)
+    with pytest.raises(ValueError, match="separate_id_collision"):
+        ca.preview(store, owner=OWNER, snapshot=snapshot, source=source)
+    preview = ca.preview(store, owner=OWNER, snapshot=snapshot, source=source, target_id=target)
+    assert preview["node_id"] is None and preview["separate_error"] == "agent_separate_id_collision"
+    result = save(app, snapshot, source, mode="replace", expected_target=preview["target"])
+    assert result["executed"] and result["node_id"] == target
+    assert all(query.node(n, owner=OWNER, store=store)["node"]["title"] == "Keep" for n in aliases)
+
+
 def test_replace_exact_target_changed_deleted_and_two_editors(engine):
     store, app = engine
     snapshot, source = authored()
