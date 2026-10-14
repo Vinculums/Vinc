@@ -123,6 +123,8 @@ def _human(result: Any, command: str) -> str:
         if result.get("unreadable"):
             lines.append("unreadable: " + ", ".join(str(item) for item in result["unreadable"]))
         return "\n".join(line for line in lines if line)
+    if command == "search":
+        return "\n".join(_rows(result.get("rows")) + _rows(result.get("node_hits")))
     field = LIST_FIELDS.get(command)
     rows = result.get(field) if field else None
     if isinstance(rows, list):
@@ -133,6 +135,20 @@ def _human(result: Any, command: str) -> str:
 def emit(result: Any) -> int:
     fmt = chosen_format()
     code = exit_code(result)
+    if code == 0 and fmt in ("human", "ndjson") and _command.get() == "search" and isinstance(result, dict):
+        state = result.get("node_semantic") or {}
+        if state.get("state") in ("degraded", "partial"):
+            print("vinc: node search " + state["state"] +
+                  (": " + state["error"] if state.get("error") else "; stale or missing candidates excluded"),
+                  file=sys.stderr)
+        elif result.get("node_error"):
+            print("vinc: node search degraded; use JSON for diagnostics", file=sys.stderr)
+        elif state.get("state") == "empty_mirror":
+            print("vinc: node semantic search has no stored vectors; lexical matches remain available", file=sys.stderr)
+        if result.get("vector_note"):
+            print("vinc: chunk semantic search has a diagnostic; use JSON for vector_note", file=sys.stderr)
+        if fmt == "ndjson" and result.get("node_hits"):
+            print("vinc: node matches are available on this first page; use JSON to read node_hits", file=sys.stderr)
     if fmt == "human" and code:
         if _command.get() == "brief" and result.get("status") == "none" and not result.get("error"):
             print("vinc: " + _human(result, "brief"), file=sys.stderr)

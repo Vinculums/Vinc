@@ -162,7 +162,8 @@ class MirrorStore(unittest.TestCase):
         self.store = open_store(load_config())
         self.store.provision(dim=DIM)
         frag.merge_fragment({"owner": self.OWNER, "nodes": [
-            {"id": "concept:mine", "type": "concept", "title": "mine"},
+            {"id": "concept:mine", "type": "concept", "title": "mine",
+             "one_liner": "a one liner that is not the title"},
         ]}, store=self.store)
         self.store.drop_node_vector_index()
         self.store.run(
@@ -199,7 +200,7 @@ class MirrorStore(unittest.TestCase):
         self.assertEqual(hits[0]["id"], "concept:mine")
         self.assertEqual(hits[0]["kind"], "concept")
 
-    def test_a_missing_index_is_an_empty_list_not_a_crash(self):
+    def test_a_missing_index_is_reported_without_losing_keyword_matches(self):
         """이 팔은 증강이다. 없다고 검색이 죽으면 안 된다(그래프 팔과 같은 태도).
         색인 경로는 큰 미러에서만 탄다 — 문턱을 0 으로 내려 그 경로를 본다."""
         from store import embedded_backend as eb
@@ -207,8 +208,12 @@ class MirrorStore(unittest.TestCase):
         real = eb._NODE_VEC_EXACT_MAX_ROWS
         eb._NODE_VEC_EXACT_MAX_ROWS = 0
         try:
-            self.assertEqual(self.store.node_vector_search(_vec(1, 0), 5,
-                                                           owner=self.OWNER), [])
+            with self.assertRaisesRegex(RuntimeError, "node_vector_query_failed"):
+                self.store.node_vector_search(_vec(1, 0), 5, owner=self.OWNER)
+            result = q.search("mine", owner=self.OWNER, query_embedding=_vec(1, 0),
+                              top_k=5, store=self.store)
+            self.assertEqual(result["node_semantic"]["state"], "degraded")
+            self.assertIn("concept:mine", [h["id"] for h in result["node_hits"]])
         finally:
             eb._NODE_VEC_EXACT_MAX_ROWS = real
 

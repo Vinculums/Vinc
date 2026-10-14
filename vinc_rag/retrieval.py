@@ -655,7 +655,7 @@ _ID_PREFIX_TOKENS = frozenset(("concept", "episode", "record", "bridge", "entity
                                "decision"))   # v12
 
 
-#: 부분 매치 스캔이 처리할 최대 행. 넘으면 잘린 사실을 호출부가 로그로 남긴다.
+#: 어휘 순위로 선택한 후보의 상한. 저장소 반환 순서로 강한 후보를 먼저 버리지 않는다.
 NODE_SCAN_CAP = 2000
 
 
@@ -688,8 +688,8 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     호출부(묻기 등)가 "얼마나 확실한 매치인가"를 **임의 임계값 없이** 판정하려면 맞은
     토큰 수가 필요하다. 구 소비처는 새 키를 무시하면 그만이다(가산 변경).
 
-    ⚠ OR 로 넓힌 대신 랭킹이 좁힌다. UNION ALL 은 LIMIT 를 무시하므로(실측) 상한은
-    파이썬 슬라이스이고, 스캔 폭주는 :data:`NODE_SCAN_CAP` 이 자른다.
+    OR 후보를 기존 어휘 순위로 좁힌 뒤 :data:`NODE_SCAN_CAP` 상한을 적용한다.
+    잘린 후보가 있으면 통계에 남기며 저장소 반환 순서에 따라 강한 후보를 버리지 않는다.
     빈 쿼리·토큰 없음은 모든 노드를 삼키므로 스킵([])."""
     toks = normalize_query_tokens(query)
     if not toks:
@@ -772,7 +772,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
         "RETURN e.episode_id AS id, e.title AS title, 'episode' AS kind, "
         f"e.domain AS domain, '' AS one_liner, '' AS props_raw, {_VALIDITY_EMPTY}"
     )
-    rows = store.run(cypher, params)[:NODE_SCAN_CAP]
+    rows = store.run(cypher, params)
     scored: list[dict] = []
     dropped: set = set()       # 지운 id — 의미 팔이 같은 노드를 지워도 한 번만 센다
     best_dropped = (0, 0)      # 지운 행 중 가장 센 (hit_tokens, title_tokens)
@@ -822,13 +822,16 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
                        "hit_tokens": hit, "title_tokens": n_title,
                        "token_total": len(toks)})
     # 결정론 랭킹: 맞은 토큰 수 ↓ → 제목 토큰 수 ↓ → 필드 강도 ↑ → id ↑.
-    scored.sort(key=lambda r: (-r["hit_tokens"], -r["title_tokens"],
-                               _FIELD_RANK.get(r["matched_in"], 9), str(r["id"])))
     if stats is not None:
+        stats["candidate_count"] = len(scored)
+        stats["candidate_count_capped"] = len(scored) > NODE_SCAN_CAP
         stats["dropped_ids"] = dropped
         stats["dropped_not_current"] = len(dropped)
         stats["best_dropped_score"] = best_dropped
-    return scored[:max(1, int(limit))]
+    from heapq import nsmallest
+    return nsmallest(min(NODE_SCAN_CAP, max(1, int(limit))), scored,
+                     key=lambda r: (-r["hit_tokens"], -r["title_tokens"],
+                                    _FIELD_RANK.get(r["matched_in"], 9), str(r["id"])))
 
 
 def _graph_arm_search(store, chunk_ids: list[str], *, owner: str | None = None,
@@ -1237,6 +1240,11 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
         # 가 남의 문서 본문 발췌를 싣는다 — node_hits 가 막혀 있어 눈에 잘 안 띄고
         # 회귀 테스트도 노드 폴백만 봤다([[record:risk-search-chunk-unscoped]]).
         chunk_filters = dict(filters or {})
+        base["node_window"] = {"pagination": "first_page_only", "total_count_scope": "chunks",
+                               "limit": max(1, int(top_k)),
+                               "lexical_candidates": _vstats.get("candidate_count"),
+                               "lexical_candidates_capped": bool(_vstats.get("candidate_count_capped")),
+                               "candidate_limit": NODE_SCAN_CAP}
         scoped_ok = True
         if owner:
             chunk_filters["owner_id"] = owner
@@ -1425,12 +1433,31 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
         vec_hits: list[dict] = []
         _sem_decisive: str | None = None
         _sem_lead: tuple | None = None       # (의미 1위 id, 2위와의 거리 차)
+        if query_embedding is not None and not continuation and not _node_semantic_arm_on():
+            base["node_semantic"] = {"state": "disabled", "freshness": "not_checked",
+                                     "refresh": "release_boundary", "scope": "returned_candidates"}
         if query_embedding is not None and not continuation and _node_semantic_arm_on():
+            base["node_semantic"] = {"state": "complete", "freshness": "not_checked",
+                                     "refresh": "release_boundary", "scope": "returned_candidates"}
             try:
                 # 라벨은 **제목**이다. 미러의 `text` 는 찾는 표면이라 한줄설명이 붙어
                 # 있고(1365 중 225 행), 그것을 title 자리에 넣으면 그대로 화면에 나간다.
                 _raw = store.node_vector_search(
                     query_embedding, SEARCH_POOL_CAP if mode == "current" else top_k, owner=owner) or []
+                validator = getattr(store, "validate_node_vector_hits", None)
+                if callable(validator):
+                    _raw, state = validator(_raw, owner=owner)
+                    base["node_semantic"].update(state)
+                    if state.get("stale_candidates") or state.get("missing_candidates"):
+                        base["node_semantic"]["state"] = "partial"
+                if not _raw and not any(base["node_semantic"].get(k) for k in ("stale_candidates", "missing_candidates")):
+                    counter = getattr(store, "node_vector_count", None)
+                    if callable(counter):
+                        count = counter(owner=owner)
+                        base["node_semantic"].update(stored_vectors=count,
+                            stored_vectors_scope="owner" if owner else "local_unscoped")
+                        if count == 0:
+                            base["node_semantic"].update(state="empty_mirror", freshness="not_checked")
                 # 유효구간 기본 필터(§4.2) — 이 팔은 미러를 읽어 구간 열이 없으므로 id 로
                 # 되찾아 본다. 제목 팔만 걸러 내면 폐기된 노드가 **이 팔로 되돌아온다**
                 # (라이브 재현 2026-09-11: 제목 팔이 걸러 낸 d44 가 semantic 표로 다시
@@ -1479,6 +1506,10 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                         pass
             except Exception as exc:
                 base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
+                code = str(exc) if str(exc) in ("node_vector_extension_unavailable",
+                    "node_vector_query_failed", "node_vector_validation_failed",
+                    "node_vector_status_unavailable") else "node_semantic_failed"
+                base["node_semantic"].update(state="degraded", error=code)
         # 의미 팔이 더 걸러 냈으면 (3) 에서 적은 공개를 갱신한다 — 셈은 두 팔이 지운 id 의
         # 합집합이다(두 팔이 같은 노드를 지우면 한 번).
         if _vstats.get("dropped_not_current"):
@@ -1611,6 +1642,8 @@ def search(query: str, *, mode: str | None = None, known_at: str | None = None, 
                 res["temporal_error"] = f"{type(exc).__name__}: {exc}"
                 for row in (res.get("node_hits") or []) + (res.get("rows") or []):
                     temporal.stamp(row, {})
+        if "node_window" in res:
+            res["node_window"]["returned"] = len(res.get("node_hits") or [])
         return res
     finally:
         if owns:

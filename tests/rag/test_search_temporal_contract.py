@@ -411,9 +411,11 @@ def test_native_semantic_metadata_is_owner_isolated(st, monkeypatch):
     ingest(st, [node("shared-semantic", vf="2000", vu="2001", value="foreign")], owner=other)
     vector = [1.0] + [0.0] * (load_config().embedding_dim - 1)
     rows = [{"vid": node_mirror.vec_id(owner, "record:shared-semantic"), "owner": owner,
-             "node": "record:shared-semantic", "embedding": vector} for owner in (OWNER, other)]
+             "node": "record:shared-semantic", "embedding": vector,
+             "text": query.node("record:shared-semantic", owner=owner, store=st)["node"]["title"]}
+            for owner in (OWNER, other)]
     st.run("UNWIND $rows AS r CREATE (:NodeVec {vec_id:r.vid, node_id:r.node, owner_id:r.owner, "
-           "kind:'record', title:'Marker shared semantic', text:'Marker shared semantic', "
+           "kind:'record', title:r.text, text:r.text, "
            "model:'synthetic', embedding:r.embedding})", {"rows": rows})
     note = st.create_node_vector_index()
     assert not note, note

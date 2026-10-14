@@ -622,9 +622,10 @@ def _t_host_search(args, bridge):
     fetchable = ("concept:", "record:", "decision:", "episode:")
     limit = int(args.get("limit", 20))
     raw = _t_search({"query": args["query"], "limit": limit,
-                     "owner": args.get("owner")}, bridge)
-    if not isinstance(raw, dict):
-        return {"results": []}
+                     "owner": args.get("owner"),
+                     **{k: args[k] for k in ("mode", "historical", "as_of", "known_at") if k in args}}, bridge)
+    if not isinstance(raw, dict) or raw.get("error") or raw.get("executed") is False:
+        raise RuntimeError("search_unavailable")
     seen: set[str] = set()
     docs: list[dict] = []
     for row in raw.get("rows") or []:
@@ -651,7 +652,16 @@ def _t_host_search(args, bridge):
     results: list[dict] = []
     for i in range(max(len(docs), len(nodes))):
         results += docs[i:i + 1] + nodes[i:i + 1]
-    return {"results": results[:limit]}
+    out = {"results": results[:limit]}
+    if raw.get("node_error") or raw.get("vector_note") or raw.get("partial") or \
+            (raw.get("node_semantic") or {}).get("state") in ("partial", "empty_mirror"):
+        out["diagnostics"] = {k: raw[k] for k in ("arms", "node_semantic", "node_window",
+                              "vector_rebuilding", "encoder_runtime_warning") if k in raw}
+        if raw.get("node_error"):
+            out["diagnostics"]["node_search_degraded"] = True
+        if raw.get("vector_note"):
+            out["diagnostics"]["chunk_semantic_diagnostic"] = True
+    return out
 
 
 class NotFound(Exception):
@@ -785,6 +795,14 @@ TOOLS: list[dict] = [
                        "expired cursor errors explicitly instead of restarting from page one). "
                        "The cursor pages `rows` only: `node_hits` come on the first page, and a "
                        "continuation page carries an empty list with `node_hits_omitted`. "
+                       "`node_window` names this first-page-only window and its lexical candidate "
+                       "limit; chunk total_count never counts node hits. `node_semantic` reports "
+                       "complete/partial/degraded/disabled/empty_mirror for the node arm separately from chunk arms. "
+                       "An empty_mirror has no stored node vectors in the selected owner scope; "
+                       "it does not mean no source nodes exist. "
+                       "checked_candidates verifies only returned candidates against current "
+                       "owner-scoped text, not whole-index freshness. Stale or missing candidates "
+                       "are excluded without rebuilding; a failed node arm carries node_error. "
                        "`total_count_capped:true` means the candidate pool hit its ceiling, so "
                        "`total_count` is a lower bound, not the whole match count. "
                        "Call this before vinc_ingest to find existing node ids to reuse. If the "
@@ -948,6 +966,9 @@ TOOLS: list[dict] = [
                        "holds a successor. A node reached by id skips the default filter, so this "
                        "is the one place a retired claim announces itself: do not quote a "
                        "historical node as the present state. "
+                       "`node.validity_basis:legacy_visibility` labels compatibility visibility; "
+                       "`node.claim_validity` and `node.temporal.validity` assess the stored "
+                       "interval and preserve unknown dates. "
                        "Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "known_at": _KNOWN_AT_PROP,
@@ -1647,7 +1668,11 @@ TOOLS: list[dict] = [
                        "write or a delete was replacing its chunks when you read (a `chunk_count` "
                        "of -1 marks the write itself). That is not an empty document. Read it "
                        "again in a moment; if it stays that way the last write was interrupted "
-                       "and re-putting the full text heals it.",
+                       "and re-putting the full text heals it. `validity_basis:legacy_visibility` "
+                       "labels the compatibility validity field; use `claim_validity` or "
+                       "`temporal.validity` for evidence validity, including unknown dates. "
+                       "`retrieval` separates stored keyword text and document vector state "
+                       "from the query index, whose readiness this read does not check.",
         "inputSchema": {"type": "object", "properties": {
             "doc_id": {"type": "string"},
         }, "required": ["doc_id"]},
@@ -1737,12 +1762,19 @@ HOST_TOOLS: list[dict] = [
         "description": "Search the signed-in Vinc graph for documents and nodes. "
                        "Returns {results:[{id, title, url}]}, at most `limit` in "
                        "total across documents and nodes. Use fetch with a "
-                       "result id to read the full text. Read-only.",
+                       "result id to read the full text. Optional temporal arguments use the "
+                       "same semantics as vinc_search. Backend failure is an explicit tool error; "
+                       "diagnostics names incomplete semantic retrieval. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "query": {"type": "string"},
             "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 50},
+            "mode": {"type": "string", "enum": ["general", "current", "historical"]},
+            "historical": {"type": "boolean"},
+            "as_of": _AS_OF_GRAPH_PROP,
+            "known_at": _KNOWN_AT_PROP,
         }, "required": ["query"]},
         "outputSchema": {"type": "object", "properties": {
+            "diagnostics": {"type": "object", "additionalProperties": True},
             "results": {"type": "array", "items": {"type": "object", "properties": {
                 "id": {"type": "string"}, "title": {"type": "string"},
                 "url": {"type": "string"},

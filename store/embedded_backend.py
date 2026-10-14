@@ -894,6 +894,12 @@ class _ReaderView:
         return self._b.node_vector_search(embedding, top_k, owner=owner,
                                           conn=self._conn, use_index=use_index)
 
+    def validate_node_vector_hits(self, hits, *, owner=None):
+        return self._b.validate_node_vector_hits(hits, owner=owner, conn=self._conn)
+
+    def node_vector_count(self, *, owner=None):
+        return self._b.node_vector_count(owner=owner, conn=self._conn)
+
     def ensure_search_indexes(self, *, dim: int | None = None) -> dict:
         """검색 인덱스 지연 보장(T3b) — **쓰기 지점으로 되돌려 보낸다**(R4).
 
@@ -2120,8 +2126,8 @@ class EmbeddedBackend:
         SEC-1: owner 를 반드시 건다. 미러는 노드의 사본이라 스코프가 새면 남의 그래프
         제목이 후보로 올라온다 — Chunk 팔이 같은 이유로 fail-closed 인 것과 같다.
 
-        확장·미러가 없거나(큰 미러에서는) 인덱스가 없으면 **예외가 아니라 빈 목록**이다. 이 팔은 증강이고,
-        없다고 검색이 죽으면 안 된다(그래프 팔과 같은 태도).
+        확장 로드나 조회 실패는 고정 오류 코드로 보고한다. 호출부는 노드 팔의
+        강등을 표시하고 정상 청크·어휘 결과를 보존한다.
         미러가 `_NODE_VEC_EXACT_MAX_ROWS` 밑이면 HNSW 를 부르지 않고 정확 코사인으로 훑는다
         (진단 구간 `node_vector_exact`). `use_index=True` 는 행 수와 무관하게 HNSW 경로를
         탄다 — 인덱스가 실제로 답하는지 재는 쪽(:func:`api.node_mirror.index_answers`)이 쓴다.
@@ -2132,7 +2138,7 @@ class EmbeddedBackend:
                 self._load_ext("vector", reader=conn is not None)
         except Exception:
             with request_timing.measure("node_vector_load_error"):
-                return []
+                raise RuntimeError("node_vector_extension_unavailable") from None
         params: dict = {"emb": list(embedding)}
         where = ""
         if owner:
@@ -2169,8 +2175,25 @@ class EmbeddedBackend:
                     rows = _exec_to_dicts(c, exact, {**params, "k": int(top_k)})
         except Exception:
             with request_timing.measure("node_vector_query_error"):
-                return []       # 증강 팔의 강등 계약은 유지하고 실패 분기만 숫자로 표시
+                raise RuntimeError("node_vector_query_failed") from None
         return rows[:int(top_k)]
+
+    def validate_node_vector_hits(self, hits, *, owner=None, conn=None):
+        from store.node_mirror_state import validate
+        try:
+            return validate(lambda query, params: _exec_to_dicts(conn or self._conn, query, params),
+                            hits, owner=owner)
+        except Exception:
+            raise RuntimeError("node_vector_validation_failed") from None
+
+    def node_vector_count(self, *, owner=None, conn=None) -> int:
+        where = " WHERE n.owner_id=$owner" if owner else ""
+        try:
+            rows = _exec_to_dicts(conn or self._conn,
+                f"MATCH (n:NodeVec){where} RETURN count(n) AS n", {"owner": owner} if owner else {})
+            return int(rows[0]["n"]) if rows else 0
+        except Exception:
+            raise RuntimeError("node_vector_status_unavailable") from None
 
     @_exclusive_ddl
     def drop_node_vector_index(self) -> None:
