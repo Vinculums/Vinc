@@ -56,6 +56,22 @@ def _document_scope_summary(snapshot, plan, source):
             'unassigned_metadata':sum(row.get('owner_id') in (None,'') for row in metas.values())}
 
 
+def _missing_document_evidence(snapshot, plan, source):
+    """같은 조회에서 본 본문·벡터·삭제 표지만 집계하고 복구 가능성은 추정하지 않는다."""
+    identities=set(plan.documents)
+    metas={row['doc_id'] for row in snapshot['meta']['_DocMeta']}
+    missing=identities-metas
+    chunks={row['doc_id'] for row in snapshot['nodes']['Chunk']}
+    vectors={row['doc_id'] for row in snapshot['nodes']['ChunkVec']}
+    tombstones={row['doc_id'] for row in snapshot['meta']['_DocTombstone'] if row.get('owner_id')==source}
+    owned={row['doc_id'] for row in snapshot['meta']['_DocMeta'] if row.get('owner_id')==source}
+    return {'missing_with_chunks':len(missing & chunks),'missing_with_vectors':len(missing & vectors),
+            'missing_with_owned_tombstone':len(missing & tombstones),
+            'missing_without_payload_with_owned_tombstone':len((missing-chunks-vectors) & tombstones),
+            'missing_without_payload_or_owned_tombstone':len(missing-chunks-vectors-tombstones),
+            'live_metadata_with_owned_tombstone':len(owned & tombstones)}
+
+
 def _committed_snapshot(store, source, target, topic, journal):
     if journal.get("inventory_version", 1) == 1:
         return read_snapshot(store, vocabulary_owner=source)
@@ -209,6 +225,7 @@ def inventory_diagnostics(store, source, topic):
                 return {"ready": False, "scope": "topic", "topic": topic,
                         "counts_known": True, "counts": counts, "documents": len(plan.documents),
                         "document_ownership": _document_scope_summary(inventory.snapshot,plan,source),
+                        "document_missing_evidence": _missing_document_evidence(inventory.snapshot,plan,source),
                         "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
                         "inspected_rows": inventory.inspected_rows, "inventory_hash": plan.before_hash,
                         "inventory_version": 3, "diagnostic_only": True,
