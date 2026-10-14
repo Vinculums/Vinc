@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import tomllib
 from pathlib import Path
 
@@ -45,6 +46,20 @@ def select_package(event: str, ref: str, package: str, root: Path) -> tuple[str,
     version = metadata["project"]["version"]
     if tag_version is not None and tag_version != version:
         raise ValueError(f"tag version {tag_version!r} does not match {name} {version}")
+    module = "vinc" if name == "vincs" else name.replace("-", "_")
+    module_file = root / path / "src" / module / "__init__.py"
+    if not module_file.is_file():
+        raise ValueError(f"package module is absent: {module}")
+    # 의존성을 설치하거나 패키지를 실행하지 않고 업로드 전에 버전을 대조한다.
+    module_versions = [
+        ast.literal_eval(statement.value)
+        for statement in ast.parse(module_file.read_text(encoding="utf-8")).body
+        if isinstance(statement, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "__version__"
+                for target in statement.targets)
+    ]
+    if module_versions != [version]:
+        raise ValueError(f"module version {module_versions!r} does not match {name} {version}")
     return name, path, version
 
 

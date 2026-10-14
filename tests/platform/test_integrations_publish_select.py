@@ -18,6 +18,26 @@ class SelectPackageTests(unittest.TestCase):
             project.parent.mkdir(parents=True)
             project.write_text(f'[project]\nname = "{name}"\nversion = "0.1.0"\n',
                                encoding="utf-8")
+            module = "vinc" if name == "vincs" else name.replace("-", "_")
+            init = project.parent / "src" / module / "__init__.py"
+            init.parent.mkdir(parents=True)
+            init.write_text('__version__ = "0.1.0"\n', encoding="utf-8")
+
+    def test_module_mismatch_is_rejected_for_tags_and_dispatch(self):
+        init = self.root / PACKAGE_DIRS["vincs"] / "src/vinc/__init__.py"
+        init.write_text('__version__ = "0.0.9"\n', encoding="utf-8")
+        for event, ref, package in (
+            ("push", "refs/tags/integrations-vincs-v0.1.0", ""),
+            ("workflow_dispatch", "refs/heads/main", "vincs"),
+        ):
+            with self.subTest(event=event), self.assertRaisesRegex(ValueError, "module version"):
+                select_package(event, ref, package, self.root)
+
+    def test_actual_sources_match_public_module_versions(self):
+        root = Path(__file__).resolve().parents[2]
+        for name in PACKAGE_DIRS:
+            with self.subTest(name=name):
+                select_package("workflow_dispatch", "refs/heads/main", name, root)
 
     def test_each_tag_selects_only_its_own_package(self):
         for name, path in PACKAGE_DIRS.items():
