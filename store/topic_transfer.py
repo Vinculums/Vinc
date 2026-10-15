@@ -137,7 +137,40 @@ _KINDS = ("Concept", "Record", "Decision", "Episode", "LearnerPattern")
 _REFERENCE = re.compile(r"\[\[([^\]\s|]+)(?:[^\]]*)\]\]")
 _ATTACHMENTS = {"attachment", "attachments", "file", "files", "blob", "blobs", "asset", "assets"}
 _EXTERNAL_RESOURCE = re.compile(r"^(?:[A-Za-z]:[\\/]|(?:file|blob|s3|azure|gs|az|https?):|[/\\])", re.I)
+_MANAGED_RESOURCE = re.compile(r"^(?:blob|s3|azure|gs|az):", re.I)
 _IMAGE_REFERENCE = re.compile(r"!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>", re.I)
+_CITATION_FIELDS = {"url", "urls", "href", "link", "links", "source", "sources",
+                    "sourceurl", "sourcepath", "provenance", "origin", "citation",
+                    "citations", "reference", "references", "subjectpath", "repository"}
+_HISTORY = ("_Tombstone", "_EdgeTombstone", "_DocTombstone")
+
+
+def deletion_references(label, row, source):
+    fields = {"_Tombstone": ("node_id",), "_EdgeTombstone": ("src", "dst"),
+              "_DocTombstone": ("doc_id",)}[label]
+    refs = set()
+    for field in fields:
+        value = row.get(field)
+        if not isinstance(value, str) or not value or (pkns.SEP in value and not value.startswith(source + pkns.SEP)):
+            raise TransferRefused("unsupported_tombstone_identity")
+        refs.add(pkns.strip(value))
+    return refs
+
+
+def retained_history_counts(snapshot, plan):
+    logical = {pkns.strip(key) for _, key in plan.selected} | set(plan.documents)
+    counts = dict.fromkeys(_HISTORY, 0)
+    for label in _HISTORY:
+        for row in snapshot["meta"][label]:
+            if row.get("owner_id") != plan.source:
+                continue
+            try:
+                refs = deletion_references(label, row, plan.source)
+            except TransferRefused:
+                continue
+            if not refs & logical:
+                counts[label] += 1
+    return counts
 
 
 def referenced_ids(value):
@@ -401,7 +434,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
             except (TypeError, ValueError):
                 blocks.add("opaque_props:" + nid)
                 props = {}
-            def inspect(value):
+            def inspect(value, field=""):
                 if isinstance(value, dict):
                     for key, val in value.items():
                         compact = re.sub(r"[^a-z0-9]", "", key.lower())
@@ -416,13 +449,15 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
                         if compact in ("docid", "supersededby", "nodeid", "ref") and val and isinstance(val, str):
                             if val not in logical and val not in docs:
                                 blocks.add("external_reference:" + val)
-                        inspect(val)
+                        inspect(val, compact)
                 elif isinstance(value, list):
                     for val in value:
-                        inspect(val)
+                        inspect(val, field)
                 elif isinstance(value, str):
-                    if _EXTERNAL_RESOURCE.match(value):
+                    if _EXTERNAL_RESOURCE.match(value) and (field not in _CITATION_FIELDS or _MANAGED_RESOURCE.match(value)):
                         blocks.add("external_resource_reference_not_supported:" + nid)
+                    if _IMAGE_REFERENCE.search(value):
+                        blocks.add("external_attachments_not_supported:" + nid)
                     for ref in _REFERENCE.findall(value):
                         if ref not in logical and ref not in docs:
                             blocks.add("external_reference:" + ref)
@@ -458,14 +493,16 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
                 blocks.add("merge_rejection_topic_membership_unknown")
             if not refs <= logical and set(referenced_ids(row["note"])) & (logical | docs):
                 blocks.add("incoming_reference:merge_rejection")
-    for label in ("_Tombstone", "_EdgeTombstone", "_DocTombstone"):
+    for label in _HISTORY:
         for row in snapshot["meta"][label]:
             if row.get("owner_id") == source:
-                refs = {pkns.strip(row.get(k) or "") for k in ("node_id", "src", "dst", "doc_id")}
+                try:
+                    refs = deletion_references(label, row, source)
+                except TransferRefused as exc:
+                    blocks.add(str(exc))
+                    continue
                 if refs & (logical | docs):
                     blocks.add("existing_tombstone_history_not_supported")
-                else:
-                    blocks.add("unclassified_tombstone_topic_history:" + label)
     for label, nid in selected:
         if label in _KINDS + ("Bridge",) and not nid.startswith(source + pkns.SEP):
             blocks.add("namespaced_node_key_required:" + nid)

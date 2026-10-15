@@ -204,10 +204,14 @@ def test_merge_history_with_deleted_endpoint_refused():
     ("_DocTombstone", {"doc_id": "deleted-document"}),
     ("_EdgeTombstone", {"ekey": "deleted-edge", "src": "concept:gone", "dst": "concept:other", "rel": "DERIVES_FROM"}),
 ])
-def test_history_with_unknown_topic_membership_refused(label, fields):
+def test_independent_history_stays_personal_without_guessing_topic(label, fields):
     data = seed()
     add_row(data, label, owner_id=SOURCE, **fields)
-    assert_blocked(data, "unclassified_tombstone_topic_history")
+    p = plan(data)
+    assert p.ready, p.blockers
+    after = transformed_snapshot(data, p, stamp=STAMP)
+    assert all(row in after["meta"][label] for row in data["meta"][label])
+    assert not any(row["owner_id"] == TARGET for row in after["meta"][label])
 
 
 @pytest.mark.parametrize("label", ["Record", "Chunk", "ChunkVec", "NodeVec", "_DocMeta", "_SyncBase"])
@@ -300,9 +304,9 @@ def test_store_without_external_state_inventory_is_refused(native):
     ("attachments", "external_attachments_not_supported"),
     ("entity", "entity_topic_membership_not_supported"),
     ("merge_history", "unsupported_merge_rejection_key"),
-    ("node_history", "unclassified_tombstone_topic_history"),
-    ("edge_history", "unclassified_tombstone_topic_history"),
-    ("doc_history", "unclassified_tombstone_topic_history"),
+    ("node_history", "existing_tombstone_history_not_supported"),
+    ("edge_history", "existing_tombstone_history_not_supported"),
+    ("doc_history", "document_tombstone_conflicts_with_live_doc"),
 ])
 def test_native_unsupported_payload_is_preserved_and_no_dml_runs(tmp_path, case, reason):
     data = seed()
@@ -317,12 +321,12 @@ def test_native_unsupported_payload_is_preserved_and_no_dml_runs(tmp_path, case,
         add_row(data, "_MergeRejection", pair_key="synthetic-history", owner_id=SOURCE,
                 a_id=SOURCE + SEP + "concept:a", b_id=SOURCE + SEP + "concept:b")
     elif case == "node_history":
-        add_row(data, "_Tombstone", node_id="concept:deleted", owner_id=SOURCE, label="Concept")
+        add_row(data, "_Tombstone", node_id="concept:a", owner_id=SOURCE, label="Concept")
     elif case == "edge_history":
         add_row(data, "_EdgeTombstone", ekey="deleted-edge", owner_id=SOURCE,
-                src="concept:gone", dst="concept:other", rel="DERIVES_FROM")
+                src="concept:a", dst="concept:other", rel="DERIVES_FROM")
     else:
-        add_row(data, "_DocTombstone", doc_id="deleted-document", owner_id=SOURCE)
+        add_row(data, "_DocTombstone", doc_id="doc1", owner_id=SOURCE)
     store = RawStore(tmp_path / "unsupported-synthetic.db")
     try:
         for ddl in render_embedded_ddl(dim=4):

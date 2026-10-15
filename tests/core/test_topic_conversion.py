@@ -191,12 +191,17 @@ def test_scoped_scan_keeps_source_history_blockers(native):
     assert not tc.journals(native)
 
 
-def test_unrelated_source_tombstone_still_requires_classification(native):
+def test_unrelated_source_tombstone_is_reported_and_preserved(native):
     native.run("CREATE (t:_Tombstone {node_id:$id, owner_id:$owner, label:'Concept'})",
                {"id": SOURCE + "\x1fconcept:outside", "owner": SOURCE})
     check = tc.preflight(native, SOURCE, TOPIC)
-    assert not check["ready"] and "unclassified_tombstone_topic_history" in check["blockers"]
+    assert check["ready"] and check["retained_personal_history"]["_Tombstone"] == 1
     assert not tc.journals(native)
+    before = native.run("MATCH (t:_Tombstone) WHERE t.node_id=$id RETURN t.*",
+                        {"id": SOURCE + "\x1fconcept:outside"})
+    stage(native)
+    assert native.run("MATCH (t:_Tombstone) WHERE t.node_id=$id RETURN t.*",
+                      {"id": SOURCE + "\x1fconcept:outside"}) == before
 
 
 def test_durable_commit_resume_after_reopen(native):
