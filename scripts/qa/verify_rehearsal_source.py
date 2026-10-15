@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import sys
 
-REQUIRED = (".github/workflows/ci.yml", ".github/workflows/topic-copy-rehearsal.yml")
+REQUIRED = (".github/workflows/ci.yml", ".github/workflows/topic-copy-smoke.yml")
 
 
 def verify(payload, sha):
