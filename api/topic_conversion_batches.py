@@ -24,6 +24,36 @@ RELATIONS = {(r["label"], r["from"], r["to"]): r for r in rel_table_specs()}
 PHASES = ("creating_target_keys", "rewiring", "retiring_source_keys", "verifying", "graph_committed")
 
 
+def restore_terminal_visibility(store, root):
+    """기동 전에 완료 영수증을 재검증한다. 그래프 쓰기나 배치 재개는 하지 않는다."""
+    result = {"verified": 0, "blocked": 0}
+    if root is None:
+        return result
+    entries = store.run(
+        "MATCH (m:_SyncMeta) WHERE m.key STARTS WITH $prefix RETURN m.key AS key, m.value AS value",
+        {"prefix": legacy.PREFIX}, raw=True)
+
+    def no_publication(_journal):
+        raise TransferRefused("conversion_restore_is_read_only")
+
+    for entry in entries:
+        try:
+            journal = json.loads(entry["value"])
+            if not isinstance(journal, dict):
+                raise ValueError("invalid conversion journal")
+            if journal.get("inventory_version") != manifest.PROTOCOL or journal.get("status") not in ("active", "cancelled"):
+                continue
+            flow = Batches(store, root=root, publisher=no_publication,
+                           run=entry["key"][len(legacy.PREFIX):],
+                           **{key: journal[key] for key in ("source", "target", "topic")})
+            status = flow.status()
+            result["verified" if status["status"] in ("active", "cancelled") else "blocked"] += 1
+        except (TransferRefused, OSError, ValueError, TypeError, KeyError):
+            # 해당 실행의 울타리는 남긴다. 다른 소유자의 정상 기동은 막지 않는다.
+            result["blocked"] += 1
+    return result
+
+
 def row(store, label, key):
     if label not in manifest.SPECS:
         raise TransferRefused("conversion_manifest_invalid")

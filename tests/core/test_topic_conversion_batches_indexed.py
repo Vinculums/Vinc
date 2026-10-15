@@ -88,6 +88,17 @@ def test_scoped_publisher_and_exact_native_indexes_restore_before_graph_receipt(
     assert durable.publishes>1 and durable.failures==0
     assert store.fulltext_search('synthetic',5,{'owner_id':TARGET})
     assert store.vector_search([0.25,0.5,0.75,-1.0],5,{'owner_id':TARGET})
+    flow.release(account_active=True)
+    reader = store.reader_view()
+    try:
+        assert not legacy.fenced(reader, TARGET)
+        store._topic_conversion_terminals.clear()
+        assert legacy.fenced(reader, TARGET)
+        from api.topic_conversion_batches import restore_terminal_visibility
+        assert restore_terminal_visibility(store, durable.root) == {'verified': 1, 'blocked': 0}
+        assert not legacy.fenced(reader, TARGET)
+    finally:
+        reader.close()
     assert store.node_vector_search([1.0,-0.5,0.25,0.0],5,owner=TARGET)
     assert not store.fulltext_search('synthetic',5,{'owner_id':SOURCE})
     assert not store.vector_search([0.25,0.5,0.75,-1.0],5,{'owner_id':SOURCE})

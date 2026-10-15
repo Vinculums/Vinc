@@ -72,6 +72,56 @@ def test_native_bounded_move_preserves_import_provenance(native,tmp_path):
     assert observed["meta"]["_DocMeta"][0]["origin"] == origin
 
 
+@pytest.mark.parametrize("terminal", ["active", "cancelled"])
+def test_startup_restores_only_verified_terminal_visibility_without_writing(native,tmp_path,terminal):
+    from api.topic_conversion_batches import restore_terminal_visibility
+    flow, _, _ = fixture(native, tmp_path)
+    if terminal == "active":
+        finish(flow)
+        flow.release(account_active=True)
+    else:
+        flow.cancel()
+    native._topic_conversion_terminals.clear()
+    assert legacy.fenced(native, SOURCE)
+    before = fingerprint(read_snapshot(native))
+    assert restore_terminal_visibility(native, flow.root) == {"verified": 1, "blocked": 0}
+    assert not legacy.fenced(native, SOURCE)
+    assert not legacy.fenced(native, TARGET)
+    assert fingerprint(read_snapshot(native)) == before
+    flow._receipt_path(flow._journal()).write_text("corrupt")
+    assert restore_terminal_visibility(native, flow.root) == {"verified": 0, "blocked": 1}
+    assert legacy.fenced(native, SOURCE) and legacy.fenced(native, TARGET)
+    assert not legacy.fenced(native, "user:unrelated")
+
+
+def test_startup_does_not_resume_prepared_business_batches(native,tmp_path):
+    from api.topic_conversion_batches import restore_terminal_visibility
+    flow, _, _ = fixture(native, tmp_path)
+    before = fingerprint(read_snapshot(native))
+    assert restore_terminal_visibility(native, flow.root) == {"verified": 0, "blocked": 0}
+    assert legacy.fenced(native, SOURCE) and legacy.fenced(native, TARGET)
+    assert fingerprint(read_snapshot(native)) == before
+
+
+def test_app_startup_restores_cancelled_run_when_new_conversion_feature_is_off(native,tmp_path,monkeypatch):
+    from api.server import VincApp
+    from store.config import load_config
+    flow, _, _ = fixture(native, tmp_path)
+    flow.cancel()
+    native._topic_conversion_terminals.clear()
+    monkeypatch.setenv("VINC_STORE_SNAPSHOT", str(tmp_path / "durable.db"))
+    monkeypatch.delenv("VINC_TOPIC_CONVERSION", raising=False)
+    monkeypatch.delenv("VINC_DURABLE_ACK", raising=False)
+    app = VincApp(load_config({"data_dir": str(native.path)}), store=native)
+    try:
+        assert app._conversion_restored == {"verified": 1, "blocked": 0}
+        assert not legacy.fenced(native, SOURCE)
+    finally:
+        app.jobs.shutdown(drain=True)
+        app.roots.close()
+        app._graph_reads.close()
+
+
 @pytest.mark.parametrize("point",["before_ledger","before_commit","after_commit"])
 def test_native_failure_resumes_from_the_atomic_ledger_without_repeating_creates(native,tmp_path,point):
     flow,_,_=fixture(native,tmp_path,max_rows=1)

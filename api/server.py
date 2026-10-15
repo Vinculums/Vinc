@@ -317,6 +317,13 @@ class VincApp:
             DurableAck(lambda: self.store, self.cfg.data_dir)
             if os.environ.get("VINC_TOPIC_CONVERSION") == "1" and
             resolve_snapshot_path() and self.cfg.data_dir else None)
+        # 워커·HTTP를 열기 전에 완료된 새 프로토콜의 영수증만 읽어 울타리를 복원한다.
+        if store is not None and getattr(store, "_topic_conversion_guard", False):
+            from .topic_conversion_batches import restore_terminal_visibility
+            from store.persistence import generations_root
+            root = (self._conversion_durable.root if self._conversion_durable is not None else
+                    generations_root(resolve_snapshot_path()) if resolve_snapshot_path() else None)
+            self._conversion_restored = restore_terminal_visibility(store, root)
         self.jobs = jobs or JobQueue(on_idle=self._maybe_snapshot,
                                      on_before_done=self._ack_before_done if (
                                          self._durable or self._conversion_durable) else None,
