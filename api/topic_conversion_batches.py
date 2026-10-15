@@ -110,7 +110,10 @@ class Batches:
             if self.root.is_symlink() or path.parent.is_symlink():
                 raise TransferRefused('conversion_manifest_invalid')
             header = manifest.read(path, journal["manifest_hash"], binding=binding)
-            if header["before_hash"] != journal["expected"] or header["indexes"] != journal["indexes"]:
+            policy = header.get("conventions_policy", "retain")
+            if (manifest.authorized_hash(header["before_hash"], policy) != journal["expected"]
+                    or policy != journal.get("conventions_policy", "retain")
+                    or header["indexes"] != journal["indexes"]):
                 raise TransferRefused("conversion_manifest_invalid")
         except TransferRefused:
             self._forget_terminal(journal)
@@ -120,11 +123,13 @@ class Batches:
     def _forget_terminal(self, journal):
         getattr(self.store,'_topic_conversion_terminals',set()).discard(_canonical(journal))
 
-    def initialize(self, sealed, sha, expected):
+    def initialize(self, sealed, sha, expected, *, conventions_policy="retain"):
         """Caller has revalidated a fenced complete inventory against expected."""
         previous = legacy._get(self.store, self.run)
         if previous is not None:
             journal = self._journal()
+            if journal.get("conventions_policy", "retain") != conventions_policy:
+                raise TransferRefused("run_conventions_policy_changed")
             if journal["expected"] != expected or journal["manifest_hash"] != sha:
                 raise TransferRefused("run_id_reused")
             self._artifact(journal)
@@ -143,7 +148,9 @@ class Batches:
             # Indexed production execution is deliberately closed until the
             # native drop/restore and shared-maintenance qualification passes.
             raise TransferRefused("conversion_index_execution_unqualified")
-        if header["before_hash"] != expected:
+        if header.get("conventions_policy", "retain") != conventions_policy:
+            raise TransferRefused("run_conventions_policy_changed")
+        if manifest.authorized_hash(header["before_hash"], conventions_policy) != expected:
             raise TransferRefused("plan_stale")
         from store.topic_manifest import TopicManifest
         from store.scoped_topic_inventory import read_scoped_inventory
@@ -152,8 +159,8 @@ class Batches:
             with TopicManifest(Path(directory) / "source.sqlite", deadline=time.monotonic() + 180) as current:
                 with legacy._inventory_read_transaction(self.store):
                     inventory = read_scoped_inventory(self.store, **self.identity, manifest=current)
-                    plan = plan_transfer(inventory.snapshot, **self.identity)
-                    if not plan.ready or fingerprint(inventory.snapshot) != expected:
+                    plan = legacy._plan(inventory, **self.identity, conventions_policy=conventions_policy)
+                    if not plan.ready or fingerprint(inventory.snapshot) != header["before_hash"]:
                         raise TransferRefused("plan_stale")
                     if legacy._index_inventory(self.store) != header["indexes"]:
                         raise TransferRefused("conversion_index_inventory_changed")
@@ -164,6 +171,7 @@ class Batches:
                             raise TransferRefused('plan_stale')
         manifest.publish(self.root, self.run, sealed, sha)
         journal = {**self.identity, "stamp": binding["stamp"], "expected": expected,
+                   "conventions_policy": conventions_policy,
                    "manifest_hash": sha, "inventory_version": manifest.PROTOCOL,
                    "indexes": header["indexes"], "status": "prepared", "phase": PHASES[0],
                    "cursor": 0, "batches": 0, "business_batches": 0, "chain": "0" * 64}
@@ -246,7 +254,7 @@ class Batches:
 
     def status(self):
         journal = self._journal()
-        self._artifact(journal)
+        _, header = self._artifact(journal)
         try:
             receipt = self._receipt(journal)
         except TransferRefused:
@@ -254,6 +262,8 @@ class Batches:
         if journal['status'] in ('active','cancelled'):
             self._confirm_terminal(journal)
         return {"status": journal["status"], "run": self.run, "phase": journal["phase"],
+                "conventions_policy": header.get("conventions_policy", "retain"),
+                "retained_personal_history": header.get("retained_personal_history", {}),
                 "batches": journal["batches"], "durable_generation": receipt["generation"]}
 
     def _node(self, item, header):

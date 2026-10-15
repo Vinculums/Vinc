@@ -18,10 +18,11 @@ from store.topic_transfer import TransferRefused, plan_transfer, transformed_sna
 RUN = "00000000-0000-4000-8000-000000000099"
 
 
-def prepared(native, tmp_path):
+def prepared(native, tmp_path, *, conventions_policy="retain"):
     manifest = TopicManifest(tmp_path / "scratch.sqlite")
     inventory = read_scoped_inventory(native, source=SOURCE, target=TARGET, topic=TOPIC, manifest=manifest)
-    plan = plan_transfer(inventory.snapshot, source=SOURCE, target=TARGET, topic=TOPIC)
+    plan = plan_transfer(inventory.snapshot, source=SOURCE, target=TARGET, topic=TOPIC,
+                         conventions_policy=conventions_policy)
     header = batches.prepare(manifest, plan, run=RUN, stamp=STAMP, indexes=[], store=native)
     path = tmp_path / "sealed.jsonl"
     sealed = batches.seal(manifest, path, header)

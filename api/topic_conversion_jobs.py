@@ -33,7 +33,7 @@ def bounded_flow(store, durable, *, source, target, topic, run, qualified_indexe
 
 
 def bounded_step(store, durable, *, source, target, topic, run, expected, stamp,
-                 allow_new=False, qualified_indexes=False):
+                 allow_new=False, qualified_indexes=False, conventions_policy="retain"):
     """One writer-queue step; the caller supplies the qualified execution policy.
 
     New reservations remain disabled by default. Existing v1/v2 journals belong
@@ -61,17 +61,19 @@ def bounded_step(store, durable, *, source, target, topic, run, expected, stamp,
                 with legacy._inventory_read_transaction(store):
                     inventory = read_scoped_inventory(store, source=source, target=target,
                                                       topic=topic, manifest=scratch)
-                    plan = legacy._plan(inventory, source, target, topic)
+                    plan = legacy._plan(inventory, source, target, topic, conventions_policy)
                     if not plan.ready:
                         raise TransferRefused("conversion_dependency_blocked")
-                    if plan.before_hash != expected:
+                    if manifest.authorized_hash(plan.before_hash, conventions_policy) != expected:
                         raise TransferRefused("plan_stale")
                     header = manifest.prepare(scratch, plan, run=run, stamp=stamp,
                                               indexes=legacy._index_inventory(store), store=store)
                     sealed = manifest.seal(scratch, path, header)
-            flow.initialize(path, sealed["sha256"], expected)
+            flow.initialize(path, sealed["sha256"], expected, conventions_policy=conventions_policy)
         return flow.status()
     legacy._identity(journal, source=source, target=target, topic=topic)
+    if journal.get("conventions_policy", "retain") != conventions_policy:
+        raise TransferRefused("run_conventions_policy_changed")
     if journal.get("inventory_version") != manifest.PROTOCOL:
         raise TransferRefused("unsupported_conversion_inventory_version")
     if journal.get("expected") != expected:
@@ -122,13 +124,13 @@ class ConversionJobs:
                 return None
             return self._response(run, entry)
 
-    def start(self, *, source, target, topic, run, expected, advance):
+    def start(self, *, source, target, topic, run, expected, advance, conventions_policy="retain"):
         try:
             if str(UUID(run)) != run:
                 raise ValueError
         except (ValueError, TypeError, AttributeError):
             raise TransferRefused("invalid_conversion_run") from None
-        identity = (source, target, topic, expected)
+        identity = (source, target, topic, expected, conventions_policy)
         with self._lock:
             if self._closing:
                 raise TransferRefused("conversion_service_stopping")

@@ -238,6 +238,7 @@ def preflight(store, source, topic, *, conventions_policy="retain"):
 def inventory_diagnostics(store, source, topic, *, conventions_policy="retain"):
     """Read the complete bounded closure without authorizing the legacy executor."""
     check_read(store, source)
+    from store.topic_batch_manifest import authorized_hash
     # 로컬 임시 목록만 만들며, 공유 디스크나 그래프에 payload를 쓰지 않는다.
     temporary_root = Path(tempfile.gettempdir())
     if str(temporary_root).startswith(("\\\\", "//")):
@@ -268,7 +269,7 @@ def inventory_diagnostics(store, source, topic, *, conventions_policy="retain"):
                         "document_ownership": _document_scope_summary(inventory.snapshot,plan,source),
                         "document_missing_evidence": _missing_document_evidence(inventory.snapshot,plan,source),
                         "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
-                        "inspected_rows": inventory.inspected_rows, "inventory_hash": plan.before_hash,
+                        "inspected_rows": inventory.inspected_rows, "inventory_hash": authorized_hash(plan.before_hash, conventions_policy),
                         "inventory_version": 3, "diagnostic_only": True,
                         "blockers": sorted(blockers)}
     except (TransferRefused, OSError, sqlite3.Error) as exc:
@@ -363,8 +364,6 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
         previous = _get(store, run)
         if previous:
             _identity(previous, source, target, topic)
-            if previous.get("conventions_policy", "retain") != conventions_policy:
-                raise TransferRefused("run_conventions_policy_changed")
             if previous.get('inventory_version',1) not in (1,SCOPED_INVENTORY_VERSION):
                 raise TransferRefused('unsupported_conversion_inventory_version')
             if previous.get("conventions_policy", "retain") != conventions_policy:

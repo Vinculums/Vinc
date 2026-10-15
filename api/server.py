@@ -822,7 +822,7 @@ class VincApp:
                 journal = conversion._get(self.store, args["run"])
                 if journal is not None and journal.get("inventory_version") == 3:
                     conversion._identity(journal, source=source, target=body["target"], topic=body["topic"])
-                    return self._resume_bounded_conversion(action, args, body.get("fingerprint"))
+                    return self._resume_bounded_conversion(action, args, body.get("fingerprint"), conventions_policy)
                 if action == "stage":
                     args.update(expected=body["fingerprint"], stamp=revstamp.hlc_now(self.store),
                                 conventions_policy=conventions_policy)
@@ -845,7 +845,7 @@ class VincApp:
         out = self.jobs.run_sync("topic-conversion." + action, work)
         return (409 if out.get("status") == "blocked" else 200), out
 
-    def _resume_bounded_conversion(self, action, args, expected):
+    def _resume_bounded_conversion(self, action, args, expected, conventions_policy="retain"):
         """Recover an already sealed v3 run; new large reservations stay blocked."""
         from .topic_conversion_jobs import ConversionJobs, bounded_flow, bounded_step
         from store.topic_transfer import TransferRefused
@@ -874,11 +874,13 @@ class VincApp:
             def advance():
                 try:
                     return bounded_step(self.store, durable, **args, expected=expected,
-                                        stamp=revstamp.hlc_now(self.store), qualified_indexes=True)
+                                        stamp=revstamp.hlc_now(self.store), qualified_indexes=True,
+                                        conventions_policy=conventions_policy)
                 finally:
                     invalidate()
 
-            return self._conversion_jobs.start(**args, expected=expected, advance=advance)
+            return self._conversion_jobs.start(**args, expected=expected, advance=advance,
+                                               conventions_policy=conventions_policy)
         # A pre-existing sealed indexed run passed initialize's index-policy
         # gate. Resume keeps its original index set; no new run is admitted here.
         flow = bounded_flow(self.store, durable, **args, qualified_indexes=True)

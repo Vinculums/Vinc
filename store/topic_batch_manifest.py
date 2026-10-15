@@ -16,7 +16,7 @@ from uuid import UUID
 from . import durable_generation as generation, pkns
 from .embedded_schema import SCHEMA_VERSION, meta_table_specs, node_table_specs
 from .embedded_schema import rel_table_specs
-from .topic_transfer import TransferRefused, _KINDS, _canonical, fingerprint, mapped_rejection_key
+from .topic_transfer import TransferRefused, _KINDS, _canonical, fingerprint, mapped_rejection_key, retained_history_counts
 
 PROTOCOL = 3
 LINE_BYTES = 16 * 1024
@@ -27,6 +27,14 @@ _VALIDATED = OrderedDict()
 
 def digest(row):
     return hashlib.sha256(_canonical(row).encode()).hexdigest()
+
+
+def authorized_hash(before_hash, policy):
+    if policy == "retain":
+        return before_hash
+    if policy != "move_original":
+        raise TransferRefused("invalid_conventions_policy")
+    return digest({"scope": before_hash, "conventions_policy": policy})
 
 
 def mapped_key(label, key, source, target, row=None):
@@ -225,6 +233,8 @@ def prepare(manifest, plan, *, run, stamp, indexes, store):
               "sequence_before": {"source": source_before, "target": target_before},
               "sequence_after": {"source": seqs[plan.source], "target": seqs[plan.target]}}
     header['untouched_source'] = untouched_summary(store,manifest,plan.source)
+    header['conventions_policy'] = plan.conventions_policy
+    header['retained_personal_history'] = retained_history_counts(manifest.snapshot, plan)
     return header
 
 

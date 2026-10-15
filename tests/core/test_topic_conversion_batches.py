@@ -26,13 +26,15 @@ class Publication:
         return dg.publish(self.root, self.store.path, sequence=dg.next_sequence(self.root))["sequence"]
 
 
-def fixture(native,tmp_path,**limits):
-    disk,_,plan,header,path,sealed=prepared(native,tmp_path)
+def fixture(native,tmp_path,conventions_policy="retain",**limits):
+    disk,_,plan,header,path,sealed=prepared(native,tmp_path,conventions_policy=conventions_policy)
     disk.close()
     root=tmp_path/"durable.db.generations"
     publisher=Publication(native,root)
     flow=Batches(native,root=root,publisher=publisher,run=RUN,source=SOURCE,target=TARGET,topic=TOPIC,**limits)
-    flow.initialize(path,sealed["sha256"],plan.before_hash)
+    from store.topic_batch_manifest import authorized_hash
+    flow.initialize(path,sealed["sha256"],authorized_hash(plan.before_hash,conventions_policy),
+                    conventions_policy=conventions_policy)
     return flow,publisher,header
 
 
