@@ -442,10 +442,22 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
     for row in snapshot["meta"]["_MergeRejection"]:
         if row["owner_id"] == source:
             refs = {pkns.strip(row["a_id"] or ""), pkns.strip(row["b_id"] or "")}
-            if refs & logical:
+            if refs <= logical and "" not in refs:
+                a, b = row["a_id"], row["b_id"]
+                expected = source + "|" + "|".join(sorted((a, b)))
+                if (a == b or a != pkns.strip(a) or b != pkns.strip(b) or "|" in a or "|" in b
+                        or row["pair_key"] != expected):
+                    blocks.add("unsupported_merge_rejection_key")
+                else:
+                    selected.add(("_MergeRejection", row["pair_key"]))
+                    for ref in set(referenced_ids(row["note"])) - (logical | docs):
+                        blocks.add("external_reference:" + ref)
+            elif refs & logical:
                 blocks.add("merge_rejection_history_not_supported")
             elif not refs <= source_logical:
                 blocks.add("merge_rejection_topic_membership_unknown")
+            if not refs <= logical and set(referenced_ids(row["note"])) & (logical | docs):
+                blocks.add("incoming_reference:merge_rejection")
     for label in ("_Tombstone", "_EdgeTombstone", "_DocTombstone"):
         for row in snapshot["meta"][label]:
             if row.get("owner_id") == source:
@@ -458,6 +470,14 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
         if label in _KINDS + ("Bridge",) and not nid.startswith(source + pkns.SEP):
             blocks.add("namespaced_node_key_required:" + nid)
     return Plan(source, target, topic, fingerprint(snapshot), tuple(sorted(selected)), tuple(sorted(docs)), tuple(sorted(blocks)))
+
+
+def mapped_rejection_key(key: str, source: str, target: str) -> str:
+    """기각쌍의 논리 끝점은 보존하고 소유자 접두만 바꾼다."""
+    prefix = source + "|"
+    if not key.startswith(prefix):
+        raise TransferRefused("unsupported_merge_rejection_key")
+    return target + "|" + key[len(prefix):]
 
 
 def transformed_snapshot(snapshot: dict, plan: Plan, *, stamp: str) -> dict:
@@ -475,6 +495,8 @@ def transformed_snapshot(snapshot: dict, plan: Plan, *, stamp: str) -> dict:
             new = plan.target + "#" + row["node_id"]
             if nid != plan.source + "#" + row["node_id"]:
                 raise TransferRefused("unsupported_node_vector_key")
+        elif label == "_MergeRejection":
+            new = mapped_rejection_key(nid, plan.source, plan.target)
         else:
             new = plan.target + pkns.SEP + pkns.strip(nid) if nid.startswith(plan.source + pkns.SEP) else nid
         mapping[(label, nid)] = new

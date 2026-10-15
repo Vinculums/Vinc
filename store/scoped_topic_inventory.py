@@ -14,7 +14,7 @@ from . import pkns
 from .embedded_schema import SCHEMA_VERSION, meta_table_specs, node_table_specs, rel_table_specs
 from .topic_transfer import (
     MAX_INVENTORY_BYTES, MAX_INVENTORY_ROWS, TransferRefused, _KINDS,
-    _canonical, check_inventory_budget, referenced_ids, verify_store_shape,
+    _canonical, check_inventory_budget, referenced_ids, verify_store_shape, mapped_rejection_key,
 )
 from .topic_manifest import ManifestLimit
 
@@ -252,6 +252,12 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
     for row in matching("_SyncBase", (owner + pkns.SEP + logical_id for logical_id in logical)):
         keep("_SyncBase", row)
 
+    for row in reader.scan("MATCH (n:_MergeRejection) WHERE n.owner_id=$owner",
+                           _node_projection("_MergeRejection"), "n.pair_key", {"owner": owner}):
+        refs = {pkns.strip(row["a_id"] or ""), pkns.strip(row["b_id"] or "")}
+        if refs <= logical and "" not in refs:
+            keep("_MergeRejection", row)
+
     # Sequence counters and movement markers are the only sync metadata that
     # the transform reads or writes. Protocol journals are handled separately.
     for key in ("seq:" + source, "seq:" + target):
@@ -266,6 +272,8 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
             if label == "NodeVec":
                 old = source + "#" + next(r["node_id"] for r in result["nodes"][label]
                                           if r["vec_id"] == key)
+            elif label == "_MergeRejection":
+                old = mapped_rejection_key(key, target, source)
             elif key.startswith(target + pkns.SEP):
                 old = source + pkns.SEP + pkns.strip(key)
             else:
@@ -328,6 +336,8 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
                 continue
             if label == "NodeVec":
                 new = target + "#" + vector_nodes[old]
+            elif label == "_MergeRejection":
+                new = mapped_rejection_key(old, source, target)
             elif old.startswith(source + pkns.SEP):
                 new = target + pkns.SEP + pkns.strip(old)
             else:
@@ -379,9 +389,13 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
                              f"RETURN n.{specs[label]['pk']} AS id", {"source": source}):
                 blockers.add("unclassified_tombstone_topic_history:" + label)
         for row in reader.scan("MATCH (n:_MergeRejection) WHERE n.owner_id=$source",
-                               "n.pair_key AS id, n.a_id AS a_id, n.b_id AS b_id",
+                               "n.pair_key AS id, n.a_id AS a_id, n.b_id AS b_id, n.note AS note",
                                "n.pair_key", {"source": source}):
             refs = {pkns.strip(row["a_id"] or ""), pkns.strip(row["b_id"] or "")}
+            if refs <= logical and "" not in refs:
+                continue
+            if set(referenced_ids(row["note"])) & (logical | docs):
+                blockers.add("incoming_reference:merge_rejection")
             if refs & logical:
                 blockers.add("merge_rejection_history_not_supported")
             else:
