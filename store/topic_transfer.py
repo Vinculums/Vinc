@@ -254,9 +254,9 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
     metas = {r["doc_id"]: r for r in snapshot["meta"]["_DocMeta"]}
     for doc in docs:
         if any(r["doc_id"] == doc for r in snapshot["meta"]["_DocTombstone"]):
-            # This table's physical PK is global doc_id. A live document plus
-            # historical tombstone cannot also retain a new source tombstone.
-            blocks.add("document_tombstone_conflicts_with_live_doc:" + doc)
+            # 메타데이터 없는 삭제 이력을 살아 있는 문서와의 충돌로 보고하지 않는다.
+            code = "document_tombstone_conflicts_with_live_doc" if doc in metas else "existing_tombstone_history_not_supported"
+            blocks.add(code + ":" + doc)
         if doc not in metas or metas[doc].get("owner_id") != source:
             blocks.add("document_owner_missing:" + doc)
             continue

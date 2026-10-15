@@ -43,6 +43,24 @@ def test_missing_metadata_evidence_distinguishes_payload_history_and_unknown(nat
     assert result['ready'] is False
     assert result['document_ownership']['missing_metadata']==4
     assert result['document_missing_evidence']=={'missing_with_chunks':1,'missing_with_vectors':1,
-        'missing_with_owned_tombstone':1,'missing_without_payload_with_owned_tombstone':1,
+        'missing_with_owned_tombstone':1,'missing_with_unassigned_tombstone':0,'missing_without_payload_with_owned_tombstone':1,
         'missing_without_payload_or_owned_tombstone':1,'live_metadata_with_owned_tombstone':1}
     assert not any(key in result for key in ('doc_ids','metadata_rows','owners'))
+
+
+def test_deleted_mirror_is_not_reported_as_a_live_metadata_conflict(native):
+    doc='synthetic-deleted-mirror'
+    native.run('CREATE (n:Concept {concept_id:$id,owner_id:$owner,domain:$topic})',
+               {'id':SOURCE+'\x1fconcept:doc.'+doc,'owner':SOURCE,'topic':TOPIC})
+    native.run('CREATE (n:_DocTombstone {doc_id:$doc,owner_id:$owner,deleted_at:$stamp})',
+               {'doc':doc,'owner':SOURCE,'stamp':'2020-01-01T00:00:00Z'})
+    result=inventory_diagnostics(native,SOURCE,TOPIC)
+    assert result['ready'] is False
+    assert result['document_missing_evidence']['missing_without_payload_with_owned_tombstone']==1
+    assert 'existing_tombstone_history_not_supported' in result['blockers']
+    assert 'document_tombstone_conflicts_with_live_doc' not in result['blockers']
+    native.run('MATCH (n:_DocTombstone) WHERE n.doc_id=$doc SET n.owner_id=NULL',{'doc':doc})
+    result=inventory_diagnostics(native,SOURCE,TOPIC)
+    assert result['ready'] is False
+    assert result['document_missing_evidence']['missing_with_owned_tombstone']==0
+    assert result['document_missing_evidence']['missing_with_unassigned_tombstone']==1
