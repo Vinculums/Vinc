@@ -127,6 +127,7 @@ class Plan:
     selected: tuple[tuple[str, str], ...]
     documents: tuple[str, ...]
     blockers: tuple[str, ...]
+    conventions_policy: str = "retain"
 
     @property
     def ready(self):
@@ -278,9 +279,12 @@ def _derived_topic_bridges(snapshot, owner, within):
     return candidates - refused
 
 
-def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Plan:
+def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
+                  conventions_policy: str = "retain") -> Plan:
     """Select one authored topic tree. Dependencies outside it are blockers, not additions."""
     blocks = _validate_snapshot(snapshot)
+    if conventions_policy not in ("retain", "move_original"):
+        raise TransferRefused("invalid_conventions_policy")
     if not source.startswith("user:") or pkns.SEP in source or not source[5:]:
         raise TransferRefused("personal_source_required")
     try:
@@ -341,7 +345,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
         if doc not in metas or metas[doc].get("owner_id") != source:
             blocks.add("document_owner_missing:" + doc)
             continue
-        if is_conventions_doc_id(doc) or metas[doc].get("origin") == "vinc:conventions":
+        if (is_conventions_doc_id(doc) or metas[doc].get("origin") == "vinc:conventions") and conventions_policy != "move_original":
             blocks.add("owner_conventions_require_separate_decision:" + doc)
         successor = metas[doc].get("superseded_by")
         if successor and successor not in docs:
@@ -506,7 +510,13 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
     for label, nid in selected:
         if label in _KINDS + ("Bridge",) and not nid.startswith(source + pkns.SEP):
             blocks.add("namespaced_node_key_required:" + nid)
-    return Plan(source, target, topic, fingerprint(snapshot), tuple(sorted(selected)), tuple(sorted(docs)), tuple(sorted(blocks)))
+    conventions = [row for row in snapshot["meta"]["_DocMeta"]
+                   if row["owner_id"] == source and (is_conventions_doc_id(row["doc_id"])
+                                                     or row.get("origin") == "vinc:conventions")]
+    if conventions_policy == "move_original" and any(row["doc_id"] in docs for row in conventions):
+        if len(conventions) != 1 or not is_conventions_doc_id(conventions[0]["doc_id"]):
+            blocks.add("ambiguous_owner_conventions")
+    return Plan(source, target, topic, fingerprint(snapshot), tuple(sorted(selected)), tuple(sorted(docs)), tuple(sorted(blocks)), conventions_policy)
 
 
 def mapped_rejection_key(key: str, source: str, target: str) -> str:

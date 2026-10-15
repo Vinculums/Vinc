@@ -762,6 +762,9 @@ class VincApp:
             return 503, {"error": "topic_conversion_unavailable"}
         source = body.get("owner")
         action = body.get("action")
+        conventions_policy = body.get("conventions_policy", "retain")
+        if conventions_policy not in ("retain", "move_original"):
+            return 400, {"error": "invalid_conventions_policy"}
         if not isinstance(source, str) or not source.startswith("user:"):
             return 400, {"error": "personal_source_required"}
         if action not in ("preflight", "inventory-status", "stage", "status", "release", "cancel"):
@@ -787,7 +790,7 @@ class VincApp:
                 try:
                     if conn is not None:
                         conn.set_query_timeout(120_000)
-                    return conversion.preflight(self.store, source, topic)
+                    return conversion.preflight(self.store, source, topic, conventions_policy=conventions_policy)
                 except TransferRefused as exc:
                     return {"ready": False, "scope": "topic", "topic": topic, "counts_known": False,
                             "counts": None, "documents": None, "blockers": [str(exc).split(":", 1)[0]]}
@@ -798,7 +801,7 @@ class VincApp:
                 finally:
                     if conn is not None:
                         conn.set_query_timeout(0)
-            return 200, self._inventory_jobs.start(source, topic, diagnose)
+            return 200, self._inventory_jobs.start(source, topic, diagnose, policy=conventions_policy)
         if hasattr(self, "_inventory_jobs") and action in ("stage", "release", "cancel"):
             self._inventory_jobs.invalidate(source)
         def work():
@@ -807,7 +810,8 @@ class VincApp:
                     return conversion.preflight(self.store, source, str(body.get("topic") or ""))
                 args = dict(source=source, target=body["target"], topic=body["topic"], run=body["run"])
                 if action == "stage":
-                    args.update(expected=body["fingerprint"], stamp=revstamp.hlc_now(self.store))
+                    args.update(expected=body["fingerprint"], stamp=revstamp.hlc_now(self.store),
+                                conventions_policy=conventions_policy)
                     out = conversion.stage(self.store, **args)
                 elif action == "release":
                     out = conversion.release(self.store, **args)

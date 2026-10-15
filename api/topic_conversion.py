@@ -35,8 +35,9 @@ def _inventory(store, source, target, topic, *, after=False, verify_shape=True):
                                  after=after, verify_shape=verify_shape)
 
 
-def _plan(inventory, source, target, topic):
-    plan = plan_transfer(inventory.snapshot, source=source, target=target, topic=topic)
+def _plan(inventory, source, target, topic, conventions_policy="retain"):
+    plan = plan_transfer(inventory.snapshot, source=source, target=target, topic=topic,
+                         conventions_policy=conventions_policy)
     if inventory.blockers:
         plan = replace(plan, blockers=tuple(sorted(set(plan.blockers) | set(inventory.blockers))))
     return plan
@@ -154,19 +155,36 @@ def scoped_hash(snapshot, source, target):
     return fingerprint(out)
 
 
-def preflight(store, source, topic):
+def _policy_hash(snapshot, source, target, policy):
+    value = scoped_hash(snapshot, source, target)
+    if policy == "retain":
+        return value
+    if policy != "move_original":
+        raise TransferRefused("invalid_conventions_policy")
+    import hashlib
+    return hashlib.sha256(_canonical({"scope": value, "conventions_policy": policy}).encode()).hexdigest()
+
+
+def _conventions_effect(snapshot, plan):
+    from store.querybase import is_conventions_doc_id
+    count = sum(is_conventions_doc_id(doc) for doc in plan.documents)
+    return {"policy": plan.conventions_policy, "documents": count,
+            "personal_defaults_after_move": bool(count and plan.conventions_policy == "move_original")}
+
+
+def preflight(store, source, topic, *, conventions_policy="retain"):
     check_read(store, source)
     try:
         inventory = _inventory(store, source, PREFLIGHT_TARGET, topic)
         snap = inventory.snapshot
-        plan = _plan(inventory, source, PREFLIGHT_TARGET, topic)
+        plan = _plan(inventory, source, PREFLIGHT_TARGET, topic, conventions_policy)
         if not _scope_response_safe(snap, source):
             return {"ready": False, "scope": "topic", "topic": topic,
                     "counts_known": False, "counts": None, "documents": None,
                     "blockers": sorted({"conversion_scope_inconsistent"} | {b.split(":", 1)[0] for b in plan.blockers})}
     except TransferRefused as exc:
         if isinstance(exc, ManifestLimit) and exc.reason in ("retained_payload", "retained_rows", "retained_bytes"):
-            return inventory_diagnostics(store, source, topic)
+            return inventory_diagnostics(store, source, topic, conventions_policy=conventions_policy)
         # An incomplete inventory cannot establish the scope. Zero here would
         # falsely say the topic is empty, while a reservation must stay blocked.
         return {"ready": False, "scope": "topic", "topic": topic,
@@ -190,7 +208,8 @@ def preflight(store, source, topic):
         blockers.add(str(exc).split(":", 1)[0])
     # Boundary identities can belong to another tenant: expose codes only.
     return {"ready": not blockers, "scope": "topic", "topic": topic,
-            "fingerprint": scoped_hash(snap, source, PREFLIGHT_TARGET),
+            "fingerprint": _policy_hash(snap, source, PREFLIGHT_TARGET, conventions_policy),
+            "conventions": _conventions_effect(snap, plan),
             "counts_known": True, "counts": counts, "documents": len(plan.documents),
             "retained_personal_history": retained_history_counts(snap, plan),
             "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
@@ -199,7 +218,7 @@ def preflight(store, source, topic):
             "blockers": sorted(blockers)}
 
 
-def inventory_diagnostics(store, source, topic):
+def inventory_diagnostics(store, source, topic, *, conventions_policy="retain"):
     """Read the complete bounded closure without authorizing the legacy executor."""
     check_read(store, source)
     # 로컬 임시 목록만 만들며, 공유 디스크나 그래프에 payload를 쓰지 않는다.
@@ -214,7 +233,7 @@ def inventory_diagnostics(store, source, topic):
             with TopicManifest(Path(directory) / "inventory.sqlite", deadline=deadline) as manifest:
                 inventory = read_scoped_inventory(store, source=source, target=PREFLIGHT_TARGET,
                                                    topic=topic, manifest=manifest)
-                plan = _plan(inventory, source, PREFLIGHT_TARGET, topic)
+                plan = _plan(inventory, source, PREFLIGHT_TARGET, topic, conventions_policy)
                 if not _scope_response_safe(inventory.snapshot, source):
                     return {"ready": False, "scope": "topic", "topic": topic,
                             "counts_known": False, "counts": None, "documents": None,
@@ -228,6 +247,7 @@ def inventory_diagnostics(store, source, topic):
                 return {"ready": False, "scope": "topic", "topic": topic,
                         "counts_known": True, "counts": counts, "documents": len(plan.documents),
                         "retained_personal_history": retained_history_counts(inventory.snapshot, plan),
+                        "conventions": _conventions_effect(inventory.snapshot, plan),
                         "document_ownership": _document_scope_summary(inventory.snapshot,plan,source),
                         "document_missing_evidence": _missing_document_evidence(inventory.snapshot,plan,source),
                         "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
@@ -319,12 +339,15 @@ def _index_inventory(store):
     return inventory
 
 
-def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None):
+def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
+          conventions_policy="retain"):
     UUID(run)
     with DDL_GUARD.exclusive():
         previous = _get(store, run)
         if previous:
             _identity(previous, source, target, topic)
+            if previous.get("conventions_policy", "retain") != conventions_policy:
+                raise TransferRefused("run_conventions_policy_changed")
             if previous["status"] == "cancelled":
                 return {"status": "cancelled", "run": run}
             if previous["expected"] != expected:
@@ -344,9 +367,10 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None):
         def checked_before():
             if legacy:
                 snapshot = read_snapshot(store, vocabulary_owner=source)
-                return snapshot, plan_transfer(snapshot, source=source, target=target, topic=topic)
+                return snapshot, plan_transfer(snapshot, source=source, target=target, topic=topic,
+                                               conventions_policy=conventions_policy)
             current = _inventory(store, source, target, topic)
-            return current.snapshot, _plan(current, source, target, topic)
+            return current.snapshot, _plan(current, source, target, topic, conventions_policy)
         try:
             before, plan = checked_before()
         except TransferRefused as scoped_error:
@@ -355,18 +379,18 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None):
             # An already-reserved run from the prior full-inventory protocol
             # can still stage if its old fingerprint is exactly current.
             old = read_snapshot(store, vocabulary_owner=source)
-            if scoped_hash(old, source, PREFLIGHT_TARGET) != expected:
+            if _policy_hash(old, source, PREFLIGHT_TARGET, conventions_policy) != expected:
                 raise scoped_error
             legacy = True
-            before, plan = old, plan_transfer(old, source=source, target=target, topic=topic)
-        if scoped_hash(before, source, PREFLIGHT_TARGET) != expected:
+            before, plan = old, plan_transfer(old, source=source, target=target, topic=topic, conventions_policy=conventions_policy)
+        if _policy_hash(before, source, PREFLIGHT_TARGET, conventions_policy) != expected:
             if previous:
                 raise TransferRefused("plan_stale")
             old = read_snapshot(store, vocabulary_owner=source)
-            if scoped_hash(old, source, PREFLIGHT_TARGET) != expected:
+            if _policy_hash(old, source, PREFLIGHT_TARGET, conventions_policy) != expected:
                 raise TransferRefused("plan_stale")
             legacy = True
-            before, plan = old, plan_transfer(old, source=source, target=target, topic=topic)
+            before, plan = old, plan_transfer(old, source=source, target=target, topic=topic, conventions_policy=conventions_policy)
         after = transformed_snapshot(before, plan, stamp=stamp)
         audit = _audit(before, plan)
         _conversion_budget(after, audit)
@@ -378,6 +402,7 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None):
         # drops and the ownership transaction can restore the exact inventory.
         if previous is None:
             _save(store, run, {"source": source, "target": target, "topic": topic,
+                              "conventions_policy": conventions_policy,
                               "expected": expected, "indexes": index_inventory, "status": "prepared",
                               "inventory_version": 1 if legacy else SCOPED_INVENTORY_VERSION})
             before, plan = checked_before()
@@ -399,6 +424,7 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None):
                                   lambda: _inventory(store, source, target, topic,
                                                      after=True, verify_shape=False).snapshot))
             _save(store, run, {"source": source, "target": target, "topic": topic,
+                              "conventions_policy": conventions_policy,
                               "expected": expected, "after_hash": scoped_hash(after, source, target),
                               "indexes": index_inventory, "prior_sync_metadata": audit, "status": "graph_committed",
                               "inventory_version": 1 if legacy else SCOPED_INVENTORY_VERSION})
