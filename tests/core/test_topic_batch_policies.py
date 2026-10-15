@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_topic_transfer import SOURCE, TARGET, TOPIC, STAMP, RawStore, seed, insert
 from test_topic_conversion_batches import fixture, finish, Publication, RUN
 from test_topic_reference_history_policy import history
+from test_topic_rejection_history import rejection
 from api import topic_conversion as legacy, docstore
 from api.topic_conversion_batches import Batches
 from store import durable_generation as dg
@@ -25,6 +26,7 @@ def test_consent_and_retained_history_survive_missing_local_resume(tmp_path):
             store.run(ddl)
         data = json.loads(json.dumps(seed()).replace("doc1", "graph.md"))
         history(data)
+        rejected = rejection(data, "concept:a", "concept:absent")
         insert(store, data)
         before = read_snapshot(store)
         plan = plan_transfer(before, source=SOURCE, target=TARGET, topic=TOPIC, conventions_policy="move_original")
@@ -44,10 +46,12 @@ def test_consent_and_retained_history_survive_missing_local_resume(tmp_path):
                           source=SOURCE, target=TARGET, topic=TOPIC, max_rows=4)
         result = finish(resumed)
         assert result["status"] == "graph_committed" and result["conventions_policy"] == "move_original"
-        assert result["retained_personal_history"] == {"_Tombstone": 1, "_DocTombstone": 1, "_EdgeTombstone": 1}
+        assert result["retained_personal_history"] == {
+            "_Tombstone": 1, "_DocTombstone": 1, "_EdgeTombstone": 1, "_MergeRejection": 1}
         actual = read_snapshot(restored)
         actual["meta"]["_SyncMeta"] = [r for r in actual["meta"]["_SyncMeta"] if not r["key"].startswith(legacy.PREFIX)]
         assert fingerprint(actual) == fingerprint(expected)
+        assert actual["meta"]["_MergeRejection"] == [rejected]
         assert docstore.resolve_conventions_doc_id(restored, TARGET) == "graph.md"
     finally:
         if restored is not None:
