@@ -34,6 +34,16 @@ def audit(store, source, topic="vinc"):
                     return {"diagnostic_only": True, "complete": False, "error": "scope_inconsistent"}
                 selected = set(plan.selected)
                 boundary = Counter()
+                resource_nodes = Counter()
+                labels_by_id = {}
+                for label, key in selected:
+                    labels_by_id.setdefault(key, set()).add(label)
+                for blocker in plan.blockers:
+                    code, _, key = blocker.partition(":")
+                    if code in ("external_source_file_not_supported", "external_attachments_not_supported",
+                                "external_resource_reference_not_supported"):
+                        for label in labels_by_id.get(key, ("unresolved",)):
+                            resource_nodes[code + ":" + label] += 1
                 for edge in inventory.snapshot["edges"]:
                     a = (edge["from_label"], edge["from"])
                     b = (edge["to_label"], edge["to"])
@@ -51,6 +61,7 @@ def audit(store, source, topic="vinc"):
                     "retained_rows": inventory.retained_rows, "retained_bytes": inventory.retained_bytes,
                     "inspected_rows": inventory.inspected_rows,
                     "unique_dependency_counts": dict(Counter(b.split(":", 1)[0] for b in plan.blockers)),
+                    "resource_dependency_node_counts": dict(resource_nodes),
                     "boundary_relationship_counts": dict(boundary), "source_history_counts": history,
                     "document_ownership": conversion._document_scope_summary(inventory.snapshot, plan, source),
                     "document_missing_evidence": conversion._missing_document_evidence(inventory.snapshot, plan, source)}

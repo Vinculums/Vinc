@@ -3,8 +3,6 @@ import json
 from pathlib import Path
 import sys
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core"))
 from test_topic_transfer import RawStore, SOURCE, seed, insert
 from store.embedded_schema import render_embedded_ddl
@@ -54,3 +52,5 @@ def test_workflow_has_no_live_mutation_or_raw_artifact():
     assert "revision deactivate" not in text and "storage file upload" not in text
     assert '--snapshot "$SNAPSHOT"' in text
     assert "VINC_PK_NAMESPACED" in text and ".themes.json" in text
+    assert "conversion=$(env_of VINC_TOPIC_CONVERSION)" in text
+    assert 'echo "VINC_TOPIC_CONVERSION=$conversion" >> "$GITHUB_ENV"' in text

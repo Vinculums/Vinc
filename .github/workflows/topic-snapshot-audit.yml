@@ -67,8 +67,12 @@ jobs:
           case "${durable,,}" in 1|true|on) durable=on ;; *) durable=off ;; esac
           pkns=$(env_of VINC_PK_NAMESPACED)
           test "$pkns" = on
+          conversion=$(env_of VINC_TOPIC_CONVERSION)
+          case "$conversion" in ""|0|1) ;; *) exit 1 ;; esac
           echo "DURABLE_ACK=$durable" >> "$GITHUB_ENV"
           echo "VINC_PK_NAMESPACED=$pkns" >> "$GITHUB_ENV"
+          # 전역 ACK가 꺼져 있어도 전환 전용 게시 세대는 같은 복원 경로로 고른다.
+          echo "VINC_TOPIC_CONVERSION=$conversion" >> "$GITHUB_ENV"
           echo "rel=$rel" >> "$GITHUB_OUTPUT"
       - name: Create isolated share snapshot
         id: snap
