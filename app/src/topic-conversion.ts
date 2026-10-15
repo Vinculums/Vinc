@@ -13,6 +13,12 @@ const namedBlockers = new Set([
   "conversion_inventory_pending", "conversion_inventory_busy", "conversion_inventory_unknown",
   "conversion_inventory_stale", "conversion_inventory_failed", "conversion_scope_inconsistent",
   "conversion_bounded_executor_required", "empty_topic",
+  "document_owner_missing", "document_tombstone_conflicts_with_live_doc",
+  "existing_tombstone_history_not_supported", "merge_rejection_history_not_supported",
+  "merge_rejection_topic_membership_unknown", "owner_conventions_require_separate_decision",
+  "external_resource_reference_not_supported", "external_source_file_not_supported",
+  "owner_vocabulary_not_supported", "opaque_props", "external_document_successor",
+  "document_chunks_not_intact", "shared_document_owner", "chunk_vector_join_mismatch",
 ]);
 
 export function mountTopicConversion(el: HTMLElement): () => void {
@@ -43,6 +49,13 @@ export function mountTopicConversion(el: HTMLElement): () => void {
       const state = flow.run?.state;
       const done = state === "active";
       const check = flow.check;
+      const documentLabels = U.conversionDocumentEvidence;
+      const evidence = check ? Object.entries({ ...check.document_ownership, ...check.document_missing_evidence })
+        .filter(([, count]) => Number.isSafeInteger(count) && count > 0)
+        .map(([key, count]) => {
+          const label = documentLabels[key as keyof typeof documentLabels];
+          return typeof label === "string" && label ? `${label}: ${count}` : "";
+        }).filter(Boolean) : [];
       const countsKnown = check && check.counts !== null && check.documents !== null &&
         check.counts_known !== false &&
         (check.counts_known === true || !check.blockers.includes("conversion_inventory_limit"));
@@ -53,9 +66,10 @@ export function mountTopicConversion(el: HTMLElement): () => void {
         <label for="conversion-name">${esc(U.conversionName)}</label>
         <input id="conversion-name" value="${esc(flow.name)}" ${reserved || flow.busy ? "disabled" : ""} maxlength="120">
         <p class="hint">${esc(U.conversionLimits)}</p>
+        ${evidence.length ? `<details><summary>${esc(U.conversionDocumentChecks)}</summary><ul>${evidence.map(line => `<li>${esc(line)}</li>`).join("")}</ul></details>` : ""}
         ${!reserved && flow.busy ? `<p role="status" aria-live="polite">${esc(U.conversionInspecting)}</p>` : ""}
         ${check ? `${countsKnown ? `<p>${esc(U.conversionCounts(check.documents!, Object.entries(check.counts!).filter(([kind]) => ["Concept","Record","Decision","Episode","LearnerPattern","Bridge"].includes(kind)).reduce((n,[,count]) => n+count,0)))}</p>` : ""}
-          ${check.blockers.length ? `<p role="alert">${esc(U.conversionBlocked)}: ${check.blockers.map(code => esc(U.conversionInventoryMessage(code) || U.conversionBlocker(namedBlockers.has(code) ? code : ""))).join("; ")}</p>` : ""}` : ""}
+          ${check.blockers.length ? `<p role="alert">${esc(U.conversionBlocked)}: ${check.blockers.map(code => esc(U.conversionDependencyMessage(namedBlockers.has(code) ? code : "") || U.conversionInventoryMessage(code) || U.conversionBlocker(namedBlockers.has(code) ? code : ""))).join("; ")}</p>` : ""}` : ""}
         ${reserved ? `<p role="status" aria-live="polite">${esc(flow.busy ? U.conversionWorking : done ? U.conversionDone : state === "graph_committed" ? U.conversionVerifying : state === "committing" ? U.conversionPending : U.conversionPrepared)}</p>` : ""}
         ${flow.error ? `<p role="alert">${reserved ? esc(U.conversionFailed) + " " + esc(U.conversionError(flow.error)) : esc(U.conversionInventoryMessage(flow.error) || U.conversionCheckFailed)}</p>` : ""}
         ${!reserved ? `<p><button class="btn" id="conversion-check" ${flow.busy || !flow.topic.trim() ? "disabled" : ""}>${esc(U.conversionCheck)}</button></p>

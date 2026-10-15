@@ -1089,6 +1089,8 @@ export const teamsApi = {
 };
 
 export type ConversionCheck = { ready: boolean; topic: string; fingerprint?: string;
+  document_ownership?: Record<string, number>;
+  document_missing_evidence?: Record<string, number>;
   inventory_state?: "pending" | "done" | "failed" | "stale" | "unknown" | "busy";
   inventory_ticket?: string;
   counts_known?: boolean; counts: Record<string, number> | null; documents: number | null; blockers: string[] };
