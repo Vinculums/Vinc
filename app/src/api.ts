@@ -1088,25 +1088,31 @@ export const teamsApi = {
   },
 };
 
+export type ConventionsPolicy = "retain" | "move_original";
 export type ConversionCheck = { ready: boolean; topic: string; fingerprint?: string;
+  conventions?: { policy: ConventionsPolicy; documents: number; personal_defaults_after_move: boolean };
+  retained_personal_history?: Record<string, number>;
   document_ownership?: Record<string, number>;
   document_missing_evidence?: Record<string, number>;
   inventory_state?: "pending" | "done" | "failed" | "stale" | "unknown" | "busy";
   inventory_ticket?: string;
   counts_known?: boolean; counts: Record<string, number> | null; documents: number | null; blockers: string[] };
 export type ConversionRun = { id: string; topic: string; name: string; team: string;
+  conventionsPolicy?: ConventionsPolicy;
+  progress?: { status: string; phase?: string; batches?: number; durable_generation?: number;
+    retained_personal_history?: Record<string, number> };
   state: "prepared" | "committing" | "graph_committed" | "active" | "cancelled" };
 /** Account-owned control plane, shared by web sessions and desktop member keys. */
 export const conversionApi = {
-  capabilities: (): Promise<{ enabled: boolean; subject: string; pending?: { id: string; name: string; topic: string; fingerprint: string } | null }> =>
+  capabilities: (): Promise<{ enabled: boolean; subject: string; pending?: { id: string; name: string; topic: string; fingerprint: string; conventionsPolicy?: ConventionsPolicy } | null }> =>
     call("/conversion/capabilities", undefined, undefined, { team: null }),
-  preflight: async (topic: string): Promise<ConversionCheck> => {
+  preflight: async (topic: string, conventions_policy: ConventionsPolicy = "retain"): Promise<ConversionCheck> => {
     const { waitForInventory } = await import("./conversion-inventory");
     return waitForInventory(topic,
-      () => call("/conversion/preflight", undefined, { topic }, { team: null }),
+      () => call("/conversion/preflight", undefined, { topic, conventions_policy }, { team: null }),
       ticket => call(`/conversion/inventory/${encodeURIComponent(ticket)}`, undefined, undefined, { team: null }));
   },
-  reserve: (body: { id: string; name: string; topic: string; fingerprint: string }): Promise<ConversionRun> =>
+  reserve: (body: { id: string; name: string; topic: string; fingerprint: string; conventions_policy?: ConventionsPolicy }): Promise<ConversionRun> =>
     call("/conversion/runs", undefined, body, { team: null }),
   status: (id: string): Promise<ConversionRun> => call(`/conversion/runs/${encodeURIComponent(id)}`, undefined, undefined, { team: null }),
   resume: (id: string): Promise<ConversionRun> => call(`/conversion/runs/${encodeURIComponent(id)}/resume`, undefined, {}, { team: null }),
