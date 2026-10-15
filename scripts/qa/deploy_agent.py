@@ -103,6 +103,7 @@ class GitHub:
         evidence = self.attempt(verification_run, 1)
         run = evidence["run"]
         if (run.get("path") != ".github/workflows/hub-verify-current.yml"
+                or run.get("head_branch") != "main" or run.get("event") != "workflow_dispatch"
                 or run.get("status") != "completed" or run.get("conclusion") != "success"):
             raise ValueError("verification workflow did not succeed")
         jobs = [j for j in evidence["jobs"] if j.get("name") == "verify"
@@ -224,7 +225,9 @@ def merge_once(github, pr, grant, producer_head, receipt_directory: Path):
 def deployment(evidence):
     """Evaluate a host-collected hub workflow attempt; never infer image from headSha."""
     run = evidence["run"]
-    if run.get("path") != ".github/workflows/hub-deploy.yml":
+    if (run.get("path") != ".github/workflows/hub-deploy.yml"
+            or run.get("head_branch") != "main"
+            or run.get("event") not in ("workflow_run", "workflow_dispatch")):
         return {"state": "unsupported_workflow", "complete": False}
     jobs = [j for j in evidence["jobs"] if j.get("name") == "build-and-deploy"]
     if len(jobs) != 1:

@@ -51,6 +51,7 @@ def test_model_cannot_self_authorize():
 
 def evidence():
     return {"run": {"id": 38541390682, "run_attempt": 1, "status": "completed",
+                    "head_branch": "main", "event": "workflow_run",
                     "path": ".github/workflows/hub-deploy.yml", "conclusion": "failure"},
             "jobs": [{"name": "build-and-deploy", "conclusion": "failure", "steps": [
                 {"name": "Deploy to Container Apps", "conclusion": "success"},
@@ -74,6 +75,12 @@ def test_green_trigger_does_not_prove_deployed_commit():
         step["conclusion"] = "success"
     assert deployment(e)["verification_passed"]
     assert not deployment(e)["complete"]
+
+
+def test_same_workflow_name_on_untrusted_branch_is_not_deployment_evidence():
+    e = evidence()
+    e["run"]["head_branch"] = "unreviewed"
+    assert deployment(e)["state"] == "unsupported_workflow"
 
 
 def proof():
