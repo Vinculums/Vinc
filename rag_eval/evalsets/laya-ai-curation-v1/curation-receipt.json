@@ -1,0 +1,3945 @@
+{
+  "audit": {
+    "exact_overlaps": {
+      "endpoint": [],
+      "family_id": [],
+      "origin_uri": [],
+      "pair_id": [],
+      "source_sha256": []
+    },
+    "near_pairs": [],
+    "semantic_cross_language_independence_proven": false,
+    "threshold": 0.8
+  },
+  "comparison": {
+    "control_sha256": "fc3f4df8165af33ed7391d15ba450bd07febe96c2c7826ddd73b6f130b576103",
+    "core_exposure": {
+      "arm": "core",
+      "items": 3012,
+      "native_labels_are_vinc_gold": false,
+      "positive_items": 1506,
+      "schema": "vinc.laya.balanced-exposure.v1",
+      "seed": 20261007,
+      "strata": [
+        {
+          "available_unique_items": 804,
+          "draws": 502,
+          "observed_unique_items": 502,
+          "stratum": [
+            "core",
+            "contradicts",
+            "",
+            "",
+            0
+          ]
+        },
+        {
+          "available_unique_items": 200,
+          "draws": 502,
+          "observed_unique_items": 200,
+          "stratum": [
+            "core",
+            "contradicts",
+            "",
+            "",
+            1
+          ]
+        },
+        {
+          "available_unique_items": 798,
+          "draws": 502,
+          "observed_unique_items": 502,
+          "stratum": [
+            "core",
+            "same_as",
+            "",
+            "",
+            0
+          ]
+        },
+        {
+          "available_unique_items": 206,
+          "draws": 502,
+          "observed_unique_items": 206,
+          "stratum": [
+            "core",
+            "same_as",
+            "",
+            "",
+            1
+          ]
+        },
+        {
+          "available_unique_items": 406,
+          "draws": 502,
+          "observed_unique_items": 406,
+          "stratum": [
+            "core",
+            "supports",
+            "",
+            "",
+            0
+          ]
+        },
+        {
+          "available_unique_items": 96,
+          "draws": 502,
+          "observed_unique_items": 96,
+          "stratum": [
+            "core",
+            "supports",
+            "",
+            "",
+            1
+          ]
+        }
+      ],
+      "unique_items": 1912,
+      "unique_pairs": {
+        "core": 502,
+        "native": 0
+      }
+    },
+    "intervention_plan_sha256": "a3885bb62be18d5b023afd802f1e3a36cb433f322b49d3acc277d5b724d00678",
+    "replacement_items": 252,
+    "replacements": [
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:3daf6f87dd154b13",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "c1a42795f69d0f94e6aededea2d02e7c633bca18c61e19a97fb7ef7fa3fa2e9a",
+        "position": 1,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:4628ed7043e4f4a7",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "e7bc9331c6229937d71a4d9c1e14f715ac028f0ff4bdf5b286cee421083339eb",
+        "position": 2,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:2f7ae1e406f8edb1",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "d5505bba603be4c2947ce7b0b676ac5854d365b91bd317feed169a55cae9a9df",
+        "position": 3,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:dcf362441027588e",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "4cfe5d9ebd7788a00ffd3ed2fe3bbd55a960201c3dd8e0419ecfc7d01f6931d1",
+        "position": 6,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:16842211fc0e8d1f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "d74a594e1a5ab0bdc1696d89afd761014c861cf8d90f6bc5b1c7d36458bf5bac",
+        "position": 8,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:2a55b2cbf2b863b4",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "21b0da22b236b0311de887461c212241ac43c43f0b81aa1418051619005465a3",
+        "position": 11,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:71d0121cf3a1cf9aeef83f05",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0277b18e20614a8a0cd9f7da675a291eaaad848e6e9906642b3bef841ed1a457",
+        "position": 12,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:fe80091a1f9bdc5e5f4d91ed",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "280c9b22c213e9b7375c811e1f07d066c882c3871572b65644e9182ffe29a138",
+        "position": 16,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:56936c3b0ebe1e17",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "a563d0d126908c401025176443f6bcae80e59fcb14afe6934e29fe5aaacfb24c",
+        "position": 23,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:fc97a5c92595eb33d6e12ec4",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "ada0fa573280d56a965f58b2882371b9cae175c10265a2176c930941bf9a01e1",
+        "position": 27,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:3506d894a7a53b3a",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0c234763c53d44efa08147e3389a83a27c852b48d4775d15d5926d5389bab8a9",
+        "position": 30,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:5ed8b2bb0d055deabd95ecf8",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "ccb38943ac1cc9a6e1253b6fba2a62966f1046e9493fca119db9762513f0355d",
+        "position": 32,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:5e9616d4a293cb8d",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "d52b3e73fe2363acbccc93abcc2bc3f0f646fc3be50c9e32c6917ec744ed1c31",
+        "position": 38,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:3846927afe3c2af4",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "2804403c2b2fc9c7af2204050a5d6e47a63a5c6773d2a198f7904520650a099b",
+        "position": 42,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:15dd4d26d5c1d1f7",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "187fa1266077ca3c5850c13757635b0d0bdf7176006f88f7de1333b920c2276a",
+        "position": 49,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:d938180f5c9400de",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "39816b3f3244fa69167142e7d530607431fe7224850077c32615c61d0f94f4cc",
+        "position": 50,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:6cdfdeb9a3b54c60",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0c5d527619d85dcca56e638e72bf4f32f2e512c12a8f37c2b1493cc8b29ddf5a",
+        "position": 51,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:1807b706ae19ca1f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "543b8c9da64ac220e22cb548fcae38219a1e1c6086c9850f0b8a02eb860e15d3",
+        "position": 54,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ff751f2c7e6e2b4b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "f63ce0d3f7021f33fc1fffefcb3efa1cb3023318dca4371bdc3d33b7e0a72708",
+        "position": 59,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:e156a55d1e6ee257",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "4ef3115c19c1c50af939a248abd1027d523d9ebecc10f31cf14a6e71387f9f89",
+        "position": 67,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:2eaa85049aa6dee852eb0f7c",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "3194a404dc31fda186f0b065518c08ea7a96d4e341cf23149793079274ca6f37",
+        "position": 69,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:8fe37974fed0c3b901381a97",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "78771a25e837ffa2a0fb9ebc5a6d9e93ab57e6fd01a7f9a82b43546a493b4c40",
+        "position": 70,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:c2e62b9f94be5a99",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "532df33110630acad11e4a8f8c8b887e0bfe0327c2fe0c5d51c9ce6465990fa6",
+        "position": 75,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:a5dd415a55c45b43",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "c5ce06d194db4d772010ffb545513e4b1f69cd36bd13e366ada4274bbb32e9eb",
+        "position": 83,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:13eab6f0d65d46a0",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "b3267effded28e2e04b31ef196828af5e430e17aa94aa56138d739c5ddb1e6fd",
+        "position": 86,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:6636a52ef5cdd2e63be23513",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "470ee30d859fb425f820bf0a5edfc55282b1d8fdc27ba6e71dbdcc50205cd5bf",
+        "position": 87,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:2aedec678464b559",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "9ee6ed979283624526aaba153ae40f954617342562b6c38df5293a395fc24374",
+        "position": 88,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:cb680850f9158d14",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0fd4aa25fb40186937f247477770e9fefa427314ecc3c891447e6e2fa13dde2d",
+        "position": 90,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:1b3c3b962e2b289b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "cf193dd009d9403a58915fe52d81db5acea65f0cfe3c77c20ab30f8502abaac1",
+        "position": 91,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:2bda3fbecb5197be",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "9d1214382ab6cc2e94e58cf767b5706f593491a6c84c2c784fad2296eee6f050",
+        "position": 96,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:355916947c3b394d",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "9d76af9f42799e713534fc4b9f81a22b5dfe4d9af5b94cfa2fc313d74e6b9ed5",
+        "position": 99,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:fe384438a479d54b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0a1f447803dfad6c7029dd3a27d5f93411661ca473e538527ccbd158ae7e17ac",
+        "position": 100,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:8ebf1d1b78baf7d80b61ec92",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "b42aa489bd3940e4c2be5700f88c568af4639012660e587770bfe4c81b40e9ea",
+        "position": 103,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:07ad36942f6b2396",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "4be5f04d85043714d3af0b13516292659cde48291249b8450174ed4843d3f6f4",
+        "position": 104,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:4fb758c1a8bf412b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "c5b2eae1e490bb8cf370ba8a58bc987a07dd182f4c3e80ed81bdde59a4e99930",
+        "position": 106,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:d3007bfed30274e8",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "c5fefe1995bfac1715570ea2aa0fbcdf621095f9f4fa20ca6ffb7ae91d3ea21e",
+        "position": 109,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:53cc0a530c4ae590",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "c885d9686b8d0a18397a790944552848ce30103cfccdf0d8878e1d697794b28a",
+        "position": 110,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:3162d69aa954f25d693850fe",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0bf73cdc4789c82f8d282b9e2e1ea84ea4ad783b8ce07e07a21c41628b912100",
+        "position": 113,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:42d9600705e5e843",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "a22e89f77a7e1391197e14f5af18ee00df676597cd34ac3965c55c875d8c319a",
+        "position": 118,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:a11689b528bd1e04efb31d66",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "6641c550ce77ffd2c9cd56f5bfc4125469af0fed2c119ee1d7c535e45e990227",
+        "position": 126,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:864a5c0995b4f55f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "1bb8ce5c3540b49b142cbdabc05cdcec61fb2b5af26568cf369a7d4b320d73ff",
+        "position": 129,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:a5721105d4ce1012",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "a800436383122263dfa791c7db5a8dd66487d7bb2985d5ca38156cfd7f3c69da",
+        "position": 140,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:847899d0f908f233a9a90382",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "1fd294fe1025c77af89f1272ae2550ff7307e1cf86863c91c9a89e0a3cb71a33",
+        "position": 145,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:a3deeb237fd49bc7",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "9b8f06670c4d7af090272cdf9ec457add9be35efdf8d955099d3a668da538255",
+        "position": 149,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:c197b7e04bcfe98c8a7caad2",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "c0d9bc58d82fabc038f7984b53fc4c5004b87748fa99532aa6eb95795d62ecc4",
+        "position": 155,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:859c5860c425da42",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0bf1748c5baec6310cce70a15d7582ca0f9210827547aac0afdb45bf80b0d829",
+        "position": 165,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:7b4b70772061741f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "792e7d487997ada79bcefd4192d6e104a690b81145ab0e28963571ea21e066c5",
+        "position": 166,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:71e737b10557c4af",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "4a361b2877551e625553c5a16df85105161e774b038e4ce17cc31f464d102342",
+        "position": 169,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:474d187a4ac6ac93",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "c8e746e0637d4c29a9fad4c0658624ced91fe1ae1f477b8d88aeacc18d7a3457",
+        "position": 170,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:1048d2091bf4a51d",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "a2c5acd32e5d62cb4f327436df99dff435f2fddc8eec7888c312ebdc218e7102",
+        "position": 172,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:83a193f29b1f0a0b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0ff9659b0b3ffee3fa39e822a85f1602d1c5dd12cecf76044f374d290512e386",
+        "position": 173,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:832866446fda74c3",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "f6abf7871795f22d7abdbf30c980834063b381bcd53fb539c75f2a6c8175ad4c",
+        "position": 174,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:1d8868b046dd2c41",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "1b47cbd54c09c609847d9df3d1d05c85c7f52e33844571a8055b424f85f6c288",
+        "position": 175,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:6a9ff04d40c47129",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "137e46e17c66e2a786f7b29ddb2437779ab4cba75901a2c50f5a3ee30d0efbf0",
+        "position": 177,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:c24f4b5a4a397bfc",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "5b3529bbd928314b891d60ad4a16a57a583999efd3e443c393e459ada39bc809",
+        "position": 180,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:5da6a6cada580f5e",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "d90126ff54c0aca526d0854f72b74129dddfae19fa5ab15d0d217cb151e49e65",
+        "position": 183,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:62aed7e8cb48b463",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "ddda95ecd95ca068c19daf2f9420285525b5849030993ee937e5e26af183cbf0",
+        "position": 184,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:7551cddf7d75fa5d",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "37fa04711c2975fc249cc11481e71e70ad4d1da8efa7f6f378d3e389f221ec8d",
+        "position": 189,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:8561a6028a8faf03",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "237db06f47bb0dd62be0c5bf2e4baeb5a56618b9e05e245b818632a53758098d",
+        "position": 190,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:c44390abd1fc34be",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "f1e7cad74581518eb11841ae8781d6294423013195aa7c4f1a74a8fad96c77a1",
+        "position": 191,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:dd95c2e1c301b613",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "789c3a2e9db25290de36811b40dcccd14ca4d4a00923b69c7b002cb6e44df7a6",
+        "position": 192,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:c17645fd4df2c696",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "24f71d490cadb2cf5cd85ed3ae08eff48531bf58204dd1e54cd6556ef8fb9609",
+        "position": 193,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:ded54237dae1562e6ccee197",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "61adcf48a12449b57d21d7621cb6b776e8ef4669f7443c5e67f59fc205cba4b9",
+        "position": 196,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:f2a0e9e7c4b31b0f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "93b4854c5d9bf2f11e82936872345f709c9030fd1d5088bd3e96904d64130282",
+        "position": 198,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:9f7552ef7b1c7f32",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "578da18b6b131e8bc034a17885f38781ed7066043d75c100908b59e95f49c805",
+        "position": 199,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ae0e0d58c5cca075",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "faf20157537566ea0ecf57e9912814cb45579ca385bedbb144073308c21a880a",
+        "position": 201,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:90164ec325c0d29e",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "77b956fb80dc2c198eb2b7913843fe753014c5b585bd72e58911faf8e8fcd4a4",
+        "position": 204,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:fc588ec6443efeb33144c594",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "45399850570952a106b0f2c9b2bd0ebc709c3bc2e6c4a6a7422f3f93b5e5fdd6",
+        "position": 207,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:e783448ef8a2c56a",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "73fa483ed43b2997ee9863c18cf7d783b25f564c0fe58b2c55c43117b1b5fa35",
+        "position": 212,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:43822819b7ddc0dc",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "b39e3a0b0416831e93c7e241b742ef51ce2d29a8b4233f8b6a230bee7d5e225b",
+        "position": 215,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:271f99c7d0d3a255",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0e2e9555b6f831a67a14220f07bbef8b126e5730858fce753e5358817ae2586a",
+        "position": 216,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:8b1b1787d761207e",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "95543eb74d64cf3644151f7b284c4e6ce10a669abb64a2c1e528bd85407b38d2",
+        "position": 220,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:87d369dfa45db50f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "39a6124dc817f784754afa22da8c1a8c612020e63ebdcfd5d6c68b23ad7a6aa7",
+        "position": 221,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:3712c5dbd0ab2da3",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "a2cc11dc0caf98477c9b87116ee1c2b6d83490aea1b11404f0317a8e1602530d",
+        "position": 223,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:9d2b1b74dda7997a",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "d02649cf085e375168c07fd397008f8d76d96702248f98ecd8e2700938d52fb3",
+        "position": 225,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:cffac31eb3a940a6",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "32773f9ba5249063774f3a58f61dae8e60908d680f62dc7c715750e986da04ca",
+        "position": 226,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:bfc24be499b9eab1",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "27b2d27daeb65c8bf5eecf9cd29129e3f6f27e9ab32331085b52a32f114c76cb",
+        "position": 230,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ccb109fa52500b0f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "dc238616e0ea5cd79b77f211fb380f21745f1f1a6b568ea2380e1f7ec534a29a",
+        "position": 233,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:cc41bc55869bdbdc",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "93d4b49cee3ad85bd3f2341c2592c052c7faa63489e689247b969a94796e95bc",
+        "position": 236,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:8085e249a521f320",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "eb3dd39c3c6b050c735c580818a9d391ca20620619430cc85b7d0a63439f5744",
+        "position": 237,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:12c3917455f08048",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "3f79d6ed5178e258caeefa06e42ca7bb5b37db5c6c2924400fa086d4ae27dfae",
+        "position": 241,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:e5b8adca26dc22c4",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "a0086b2d3ab03a3cd2d31793684a84fa76ba2df5592b63e2f732ba2a24d10b81",
+        "position": 242,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ef09971f0b60048f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "44bcc3d10f282fcb77248ff6142fbb272a7b27578699f5e79ca40c655eafe417",
+        "position": 249,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:33929f56a3fcb9c85200684c",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "ad6ba0a6a0aefd358a33148f12f492d3766d3893f8767be1d58bbf68ac2e1d5d",
+        "position": 251,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:40b6897354d77b9b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "b1948cb480efb6524b971723c2f785e93b858fee1f7d23a8b8817d9cf60e991f",
+        "position": 252,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:f5ac8e42557e22b4",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "e328a4b48ea5ad22c08d347cf913b0eba96a141df2c26a1f1d847a571cef61f0",
+        "position": 255,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:0fe566281593b1fa",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "e0e62d59aad1ae5f5a25f2946f283291eb93e7e88fbb7d17f7ca6325d5e8a1ee",
+        "position": 257,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:59fb45e9aefac45e8bc01582",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "033288b79dc8280cf152e17508ae4c979984cf3f45621890aab65f8cafbd731a",
+        "position": 260,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:b387041fc737d2bb",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "509b629498221559a2e9d970f570fc3cbd67a8e5f978bd8cda5902e8785cfd5b",
+        "position": 262,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:90150b26adc8ec90",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "a853e0e53ad8000b22fdf103b1663b84b2d009303743c4198723844bf20f5ba8",
+        "position": 265,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:adc775b96b5c3fea",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "ea14131a31435a57d95d85a947b79caef383460a3663d358d54ae520afe6c35d",
+        "position": 269,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:6037560afe8737dc",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "4d020ba0c8103c8ae55ccb65b44dc1b2d27a0612177a9cf860ef3c761c0e97a7",
+        "position": 273,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:4cd1f7b375a415a0",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "900aff71ad9b8edc767843264702bcdb6c5e12e40c3678f70ca4a09a670afb8b",
+        "position": 275,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:6dbd7be66bb0d0f5",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "c8478212ae36eac8b2c784e54e7922dec0193977277b9de150d007dc2244f7e3",
+        "position": 279,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:8f6e0db2c02389e0",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "5dbb8ac0bfc0966ae83c2bce0f083a0022db054351bd607effe89a781833a4a2",
+        "position": 280,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:94027eda2b58b83b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "bd991a3d27e3d1cef9c8b5ba6eecc180c6f298bdff50af9808aa0beb12f3289d",
+        "position": 284,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:01afb4520634c521",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "92d281c1385990a6820e0f4b78204739c48ddf9b7452bacad2a90ac2a4b018be",
+        "position": 288,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:7af15643df7fd5ef",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "63bcc41d0dea21cfa2b334020c31cc88807d4682eefb0f48f987cf2837f4c6fa",
+        "position": 290,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:15aad0d2a65902ca",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "bc41a2021bd3ef9d405e24efae3508977d8943c8f8e3b4737be696a9c60e03d3",
+        "position": 293,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:a7139b2c3479aa07",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "8fd7a0c2ec0caf46725cec2b1d8645406bd5d589aefff11c2820c622c3d924f2",
+        "position": 294,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ccd0ab53615c492c",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "651b5d6eb6b5490aae48cb286a77cb7e0d1a3dfa651df0726002e830eaad2f6f",
+        "position": 296,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:07f9cd44ba424061",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "fda263cae887ae7d5bfd4199af215e1e710ba68a04b8978d257569a1aa2b37e2",
+        "position": 298,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:e2de7bc3d5e2586f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "b1ea23404f05db0aaacb6a3fe85a57714094b2edd2568cd65ba7579fa7c85f18",
+        "position": 300,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:f084e9698950f46d",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "75780f7ffe0a46ac3c395128656b06f8b315a663342149a93078948ec64a4f63",
+        "position": 303,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:bfd008a1df5af35f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "acadad8a92145d739c320b6bdce7c1d23aed1d86f146675a6923be250ce1d774",
+        "position": 304,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:9cb5330dbdebc139",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "45f04afabc8f32a3859f770396f46158849706ee63e80ce9bd21c7809241aae7",
+        "position": 305,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:331162cce92dcc40",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0c1579d45aa307e15ed155b92a6540468c13c925c759a1f5e7609da70e3bfad6",
+        "position": 313,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:fba4ee486d6af45b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "acb5e2197e32ac4d835d328379a2e55cf19984ebc210686d5ada6fbf9d62e456",
+        "position": 314,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:4f1430a56e62d1ac",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "57cb89dac8498ef13beebe4cb4ec691cb1af53bb0fda9b2e604454ca75fd4d13",
+        "position": 324,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:05b67c44e30d0fa2",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "85fbc9d5e703dcbce72d4eebde75b575538dde2a39f9ae39918b73105485ac1c",
+        "position": 328,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:6e538370eb09cb42",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "417c78286868e02ef115aecf74d7035ffa547b3ad7ca94dad1aef0a2f78c9764",
+        "position": 333,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:a0c073961879077a",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "ffef050191763d6d2514457c1732c2233cfeb8dad7e5ce62e43ccedc2ebefaa4",
+        "position": 334,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:4a21557694296b8c",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "049cf9c91923c6d2399d944c74b0808f2cafe6c062183a9ed1c35e3a68dd9266",
+        "position": 335,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:3a3d1b2ab4329c63",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "41fbbf4cf7b1210974b066167e4f3726b4ae50a4cd4d1b7fe50a6442b5aceb36",
+        "position": 336,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:342f24b77463491c",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "5f3ff0d06de23dc3862674a0026d59ad789b54479331d61e50c4621c98a19410",
+        "position": 338,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:d5acfd9c1abd3583",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "470773696a2be3bba57d4856fd4d61169b77c9523ee3da3ddce1281e41080b33",
+        "position": 342,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:f5ecd0123d4718e9",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "4ea205d1577ba5fcd127c0c791f1e43ec8c4546a7bdaeff116a759d076f344c0",
+        "position": 344,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:937fded39c04750d",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "46b589e151ca66295f57c05734f6f03861fa0c94a728fa9332fee664fdd8d7b9",
+        "position": 345,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:15e214cef482a473",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "913ea2f84247217da27dde07f1d2e4c436aa209edd0857616e49e7195fee6124",
+        "position": 347,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:b48dbde9729ca82c69cee1a8",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "68f9ee8dd5d2b5b48c18f253236c4cb72693227e6874f2ed0d798f989060e7c2",
+        "position": 348,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ca84eb2cb9a64cf9",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "fd2b95f748c3c1680ffd9d8e93e501d192f976d3ef54da08d13dddb261a0a83b",
+        "position": 352,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:d830ba4b6ca23a10",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "1cc19114f861124f9ca9eb65f4fd7fa8bfdc64d15a432fb7c328f6a2c6121145",
+        "position": 354,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:6de45c937ac151d7",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "76d6bf6c498fd5a6ffc56d00204e029dae97dbc51ef94e0c73fbe12242fef6c8",
+        "position": 356,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:11866fbd4fdfa553",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "feb7440cea172881b4bd416fbda318f6d22c3fbb0246a61ff7616b1ffa831116",
+        "position": 362,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:e3f984bead6a8bcf",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "b6af62757d8ef75ebdab0231b8419199bcb61711a11c4fbb7cd268e97530d971",
+        "position": 365,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:921b36172943bb84",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "1ff3d5ee943e35091274d19171a42f56cf10653bd71ee8b3b3433402f9cbd750",
+        "position": 367,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:f2ef8460a653e95d89f962ab",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "cdb0dbf3e288df3bdb43bd4fce9f2d1db0ae921214d998d263b29bf8d8ffb3d2",
+        "position": 369,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:c3e323b69b48b33e",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "7fe208db7caa2ce65100e24835b50eb71d83ec52171c8721f42200db0412db9b",
+        "position": 379,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:d74fe80db44abe79",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "d6debd8aaf4333e32993437939a1bb8167e3bd1dffa8e6df0704ea1d0a69f3d0",
+        "position": 380,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:456d60d030d70044",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "b3496b59e73926f970e30b2971e98e3781c2ec951bc0ae6f746209e872b22347",
+        "position": 383,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ff82b9c2d72e1783",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "2152f4f4e00d127418d961849e6a19b1a447696b8e808e8be40af494f963d6b3",
+        "position": 387,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:e9f32fdfd82d7ffb",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "8a2c844f8fa6c562c9fb55689c9f91092a62d804a3f4b3d0740de30cfe307b7d",
+        "position": 390,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:7f0493db69f3ae3d",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "53d06dc9374cc731a4758b339473609419600ee37a4fcdaf0db7e35b063c70b8",
+        "position": 392,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:27816892e29847f71144b118",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "f083d02592b946176b1322e55cc859fc5ea0fcba8bc6190079fbe8bf18dbae9b",
+        "position": 393,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:1e0bb5c34252682b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "c77e8854b3cd8e4ae4b33f2868eb03c60b79b5ef2f4439df14c9d9171b8aaa98",
+        "position": 394,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:7d40a7fda8c66d0d",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "8e2e128c24c0643585baf7c7aec8884aef399e1b2765d509f9537c8edcd888e9",
+        "position": 396,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:494805571c9f9209",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "2b6f4332c7792f07b66e69116fe4a959dbd1663a6a2e75d009434d1e73edfb0f",
+        "position": 399,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:dcfe0940535bbadc",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "b3129bcec23eaacbb721cf7c418daa268bc84c55afdb9e683651e6b93cd3734d",
+        "position": 401,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:d2ed5c708ecdfef2",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "516d5c73e5e9bdc6c25501fc9daf4bcd7a137ee6678568a74af9f76a18a77fab",
+        "position": 402,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:65a6320c3b2c9798",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "619ec9cba419a8310ad991444770d11ca69b93b4e7b4836f73e733042d534731",
+        "position": 404,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:bf07d1dbd2ae1a29",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "a653f09089d0d990f5004ce3fc1d65fcdb97d1fd5c0c22408127b4a35eb946f1",
+        "position": 408,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ef38d71218c6e4ec",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "1efdb12ad7df5aa36c55f6cbad72e35f6052890464aeb9900248876edb326964",
+        "position": 409,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:fb6a37ffc8d1f3fe",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "cd73900b4d58766713b00227a53c1028891a7b4942767e496c9543dce7168329",
+        "position": 410,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:d3ab907c9201e643",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "2dc9ba71349d872057e13b99ba0a08d8d7bf8ff7a41f6cc653696a7b886f968b",
+        "position": 412,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:111094dee9e24b8f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "e4be3e0c5c857725cd0b0f727ee7a8bddcae38a1a522357a6cdf40b7bf85fdde",
+        "position": 413,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:5c3a5843a0493c75",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "d9ec8027a87eb9b0d7f83ddbbb2fe4cdb19bb09271901a972f38ea0ae8027b59",
+        "position": 414,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:57bac68476636355",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "f4d17f1be6d98503ff8326f312984c6a64a0142c05ddef68c232f53914336da0",
+        "position": 415,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:1927f4b78b3fbed8",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "5f685538bcb8db092a3de669791e51d5b3c160857926a286a534879332c35ef7",
+        "position": 417,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:e94351c584f016eb",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "95422c70c389a9e42e1a746ec3e4ffbd189ac61b342261df796f61f4d1f4a362",
+        "position": 420,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:33929f56a3fcb9c85200684c",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "ad6ba0a6a0aefd358a33148f12f492d3766d3893f8767be1d58bbf68ac2e1d5d",
+        "position": 425,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:4cd1f7b375a415a0",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "900aff71ad9b8edc767843264702bcdb6c5e12e40c3678f70ca4a09a670afb8b",
+        "position": 432,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:4bdfed16ebcda558",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "b1e07cef35e0b4ebb8cadd56ed967640dcc1fec6f0079ca19170f5b27c9f7f3c",
+        "position": 440,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:a7139b2c3479aa07",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "8fd7a0c2ec0caf46725cec2b1d8645406bd5d589aefff11c2820c622c3d924f2",
+        "position": 443,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:89a9b25e9f27957c",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "24e6667bcda3d42c7d95676d6f907d96879c1a0f62433995a7b292cfa6007e6d",
+        "position": 450,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:58543310f761f5fc",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "83b0af922f96740a6bf52b643903396f93189f149001b6b10cc272d74972b2a9",
+        "position": 452,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:87d369dfa45db50f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "39a6124dc817f784754afa22da8c1a8c612020e63ebdcfd5d6c68b23ad7a6aa7",
+        "position": 462,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:5fb78ae9710ee340",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "961d30d5b0ae3bf37feac53a800f4f8f387b839bd4e501684732a5aab3782997",
+        "position": 464,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:00fa587ae5011ae4",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "909a390035343f7e4fb69fea66b358797e9e182d2b17b43450976e72df31fdae",
+        "position": 470,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:56638810816f0c72",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "99f3411315ac92d083bd09623f278030d1ece1faca3e2ad6b4772aed5c99e4b1",
+        "position": 472,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:1b3c3b962e2b289b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "cf193dd009d9403a58915fe52d81db5acea65f0cfe3c77c20ab30f8502abaac1",
+        "position": 475,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:48e59d21b4bedf3d",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "7672df3a09f1c3b4a2fcf73435ce41c1b21572f29fc923062b88981a0c82de47",
+        "position": 478,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:4762734941303872",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "4eaa0e8122d6bba754a4527432bf0eb2f8a3f0e8fe76aa61e24e5de3a4c2fc3d",
+        "position": 482,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ff751f2c7e6e2b4b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "f63ce0d3f7021f33fc1fffefcb3efa1cb3023318dca4371bdc3d33b7e0a72708",
+        "position": 483,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:154572fcc5fa01e4",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "7b26515bce471621cfcb7387cbf35a0f2337bd84516e4e1401ecfb3ebccf232c",
+        "position": 489,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:aa6d938a7604268a",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "07364a2d9417df6578de8c9e39e84b15a09fbd0a23c96e82ec526b262d767ac7",
+        "position": 490,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:1048d2091bf4a51d",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "a2c5acd32e5d62cb4f327436df99dff435f2fddc8eec7888c312ebdc218e7102",
+        "position": 492,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:7f0493db69f3ae3d",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "53d06dc9374cc731a4758b339473609419600ee37a4fcdaf0db7e35b063c70b8",
+        "position": 494,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:f7f4cd9878a0fa5d",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "921c07cc9a42ae13d5165b4641b04d61b9bd9e9596d6954359fddd4f2570b031",
+        "position": 497,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:71d0121cf3a1cf9aeef83f05",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0277b18e20614a8a0cd9f7da675a291eaaad848e6e9906642b3bef841ed1a457",
+        "position": 505,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:fc588ec6443efeb33144c594",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "45399850570952a106b0f2c9b2bd0ebc709c3bc2e6c4a6a7422f3f93b5e5fdd6",
+        "position": 507,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:5b626576617fd0ef",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "a579e211bdbe7c0617604b98e04427368cf23a56446d5f0e09685c0158d5f860",
+        "position": 509,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:71e737b10557c4af",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "4a361b2877551e625553c5a16df85105161e774b038e4ce17cc31f464d102342",
+        "position": 510,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:176821b4dadb51ae",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "5b5b10bdd04dc6f6d3704dd4206d6cd6701fd65b0a90ccd2769b98321e1b07a5",
+        "position": 514,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ee17f6060cca3303",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "52eb09c71a771a8ee26c600cb5a6565b9eb55b4f6a1396732169efa837687000",
+        "position": 516,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:8b1b1787d761207e",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "95543eb74d64cf3644151f7b284c4e6ce10a669abb64a2c1e528bd85407b38d2",
+        "position": 517,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:15056d48b9da32b1",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "887530843f4eefb5aec44b7e3c12a1013cd60ef3def5a19fa68961227062413d",
+        "position": 519,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:0b1a56392631f06b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "6269ab607b90841a81e454c13867e3da2b9ce6d5df0e9651228ec4bed3131abd",
+        "position": 520,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:070e2d717cbf1bc0",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "878b0796b970b11738313861c1931da09265bd30dbe261ff7e82b590dd360065",
+        "position": 524,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:f1584e64df4112d8",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "aee93236c7c7af66fdc8836a5db137cb9f47242ab431e0b9564cae4b739f419d",
+        "position": 525,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:3712c5dbd0ab2da3",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "a2cc11dc0caf98477c9b87116ee1c2b6d83490aea1b11404f0317a8e1602530d",
+        "position": 536,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:a190e7342152f675",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "00627e9ba8b12d41df61859d8ce1d363f71772c4e186eac5609767a1ac489dfa",
+        "position": 538,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:fba4ee486d6af45b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "acb5e2197e32ac4d835d328379a2e55cf19984ebc210686d5ada6fbf9d62e456",
+        "position": 540,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:6915efed34614fb7",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "88baa56082665669a636554dbf685eeb05034b9c57c9342a4c0e2006d22d0ebb",
+        "position": 543,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:f084e9698950f46d",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "75780f7ffe0a46ac3c395128656b06f8b315a663342149a93078948ec64a4f63",
+        "position": 544,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:fe384438a479d54b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0a1f447803dfad6c7029dd3a27d5f93411661ca473e538527ccbd158ae7e17ac",
+        "position": 547,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:74caaa1a229b96181aa159ca",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "d3867912d532feeda737301efffc6cae1ce789fca0bd978aa19b9a60ac798194",
+        "position": 550,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:8561a6028a8faf03",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "237db06f47bb0dd62be0c5bf2e4baeb5a56618b9e05e245b818632a53758098d",
+        "position": 551,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ba79d2243f071eb5",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "3fc95f12964fb5a032aa89696819d7ba5eb2e647240d9881449f14a822a0d6d0",
+        "position": 553,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:a11689b528bd1e04efb31d66",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "6641c550ce77ffd2c9cd56f5bfc4125469af0fed2c119ee1d7c535e45e990227",
+        "position": 554,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:d637de97c01bcc57",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0ad4ef55ccea02ae11bf0efc24765a059d7e91a007ddcb9465f79550ea56a898",
+        "position": 555,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:02126975ae36c648",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "370dff1ffbc5f105663992ddb6c9f40caab1b30f70b4f2c616e0cdfee132cfd2",
+        "position": 559,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:36b21aa7660251dd",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "eb5fbb8aa411ffbbdf1cd3c552938d9c12522517ebe7f7d6b72477d435b09bc6",
+        "position": 562,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:a0c073961879077a",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "ffef050191763d6d2514457c1732c2233cfeb8dad7e5ce62e43ccedc2ebefaa4",
+        "position": 569,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:2bda3fbecb5197be",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "9d1214382ab6cc2e94e58cf767b5706f593491a6c84c2c784fad2296eee6f050",
+        "position": 571,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:e3f984bead6a8bcf",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "b6af62757d8ef75ebdab0231b8419199bcb61711a11c4fbb7cd268e97530d971",
+        "position": 573,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:e9f32fdfd82d7ffb",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "8a2c844f8fa6c562c9fb55689c9f91092a62d804a3f4b3d0740de30cfe307b7d",
+        "position": 575,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:b48dbde9729ca82c69cee1a8",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "68f9ee8dd5d2b5b48c18f253236c4cb72693227e6874f2ed0d798f989060e7c2",
+        "position": 580,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:43822819b7ddc0dc",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "b39e3a0b0416831e93c7e241b742ef51ce2d29a8b4233f8b6a230bee7d5e225b",
+        "position": 582,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:82fb0aa5c27257d2",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "d52fab45ea160285e7ee20f626e1839d5399a0167bd1b455c46841e4bbe45403",
+        "position": 584,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:76365e5b9eae3c5e",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "e22bf5aef87bf2e146088c9d29c26f69f6faee6ddd8c4d601f7fc66feddcef44",
+        "position": 588,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:27816892e29847f71144b118",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "f083d02592b946176b1322e55cc859fc5ea0fcba8bc6190079fbe8bf18dbae9b",
+        "position": 589,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:419634f252050901",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "08413e20f5190af0ec50ed06743b1170b88e61aa0c6ca24dfff93ebefb74c78d",
+        "position": 590,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:342f24b77463491c",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "5f3ff0d06de23dc3862674a0026d59ad789b54479331d61e50c4621c98a19410",
+        "position": 592,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:cf16a7fad1733833",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "683e58d881d1b5fc8eef090f9041f90ebb76074b95189f76217c75dc1501d630",
+        "position": 598,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:f6f72c073eddcffb",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "7c8f1693c421d56a3dc6781332ce01abbd514ad8b952d45745021afa84db3639",
+        "position": 601,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ff82b9c2d72e1783",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "2152f4f4e00d127418d961849e6a19b1a447696b8e808e8be40af494f963d6b3",
+        "position": 602,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:e156a55d1e6ee257",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "4ef3115c19c1c50af939a248abd1027d523d9ebecc10f31cf14a6e71387f9f89",
+        "position": 603,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:56936c3b0ebe1e17",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "a563d0d126908c401025176443f6bcae80e59fcb14afe6934e29fe5aaacfb24c",
+        "position": 604,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:6cdfdeb9a3b54c60",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0c5d527619d85dcca56e638e72bf4f32f2e512c12a8f37c2b1493cc8b29ddf5a",
+        "position": 608,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:e2de7bc3d5e2586f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "b1ea23404f05db0aaacb6a3fe85a57714094b2edd2568cd65ba7579fa7c85f18",
+        "position": 609,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:07ad36942f6b2396",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "4be5f04d85043714d3af0b13516292659cde48291249b8450174ed4843d3f6f4",
+        "position": 612,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:09eca68a69ee7e7f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "31fe90e8519fe7f43b79c6b4fbaafb9c166d6b5c78839584b1920465c44d80cb",
+        "position": 616,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:d3ab907c9201e643",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "2dc9ba71349d872057e13b99ba0a08d8d7bf8ff7a41f6cc653696a7b886f968b",
+        "position": 623,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:b387041fc737d2bb",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "509b629498221559a2e9d970f570fc3cbd67a8e5f978bd8cda5902e8785cfd5b",
+        "position": 626,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:2eaa85049aa6dee852eb0f7c",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "3194a404dc31fda186f0b065518c08ea7a96d4e341cf23149793079274ca6f37",
+        "position": 629,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:e5c7370809cd474a",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "72656832e62d23f17cf7187c045e15a8a3a2b3a890c032a8750cd3a885e94e3e",
+        "position": 632,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:8682b4d7585c61a7",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "2af4b4655005aa2dd5614b31a9622adab9f65effa4ebeb0dd85e0420a7fbb630",
+        "position": 633,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:96d7fe88e7f06304",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "a11b5d7a1ea8c711d8dd0c52f3d3f5a52393579a379528a2df8c4df69d63998e",
+        "position": 635,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:d341f556c55f15c5f6640f5c",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "ded30d44bb9e9a708e6aab44e8e39e8bffc804cf5125e44cc2ada2680c81fef2",
+        "position": 638,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:12a64d974c3f01e7",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "d5851e052fb127dd0cb2d4f89d184c4700c94acec4abf834b98e6e7ab8a063bf",
+        "position": 640,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:90b34bd7dfdcb57b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "321775e72e09cdcf4f3e3b13082644c40681bfd5e5e5a0e39e915ac118c9f024",
+        "position": 649,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:07f9cd44ba424061",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "fda263cae887ae7d5bfd4199af215e1e710ba68a04b8978d257569a1aa2b37e2",
+        "position": 651,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:9a07381b851ece01",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "4a2913ef5c5dc6983549751055095f1638528b7285160376dcaddbce280e6170",
+        "position": 661,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:c44390abd1fc34be",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "f1e7cad74581518eb11841ae8781d6294423013195aa7c4f1a74a8fad96c77a1",
+        "position": 665,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:1572408214c0ef84",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "6f44d32ab7cf1d3d4a2d626fcc462856435a2b12d60e8b5b8398a2c3315c554c",
+        "position": 667,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:74783293977d39c9",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "bf537c50d4b633499a0150bc0d5b9426c80e6ee482ab3d513fdbc12393cfa4dc",
+        "position": 671,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:01afb4520634c521",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "92d281c1385990a6820e0f4b78204739c48ddf9b7452bacad2a90ac2a4b018be",
+        "position": 673,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ef09971f0b60048f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "44bcc3d10f282fcb77248ff6142fbb272a7b27578699f5e79ca40c655eafe417",
+        "position": 676,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:c32e06cfa533e282",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "345fd03c7097eecda19076269f4bdb5fe03537f345b023163a04d38b746b8894",
+        "position": 679,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:3f738e8d89c4afbf",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "94f9d776d5862580cd9e3afad153377b539efe8761038d1bd96fdb76a234a2eb",
+        "position": 684,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:3162d69aa954f25d693850fe",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "0bf73cdc4789c82f8d282b9e2e1ea84ea4ad783b8ce07e07a21c41628b912100",
+        "position": 690,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:c1648780e98711fa",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "ebfb865b86d95764012a88d3b9788e9a605b893edd78ffb001e42b04a61ff856",
+        "position": 691,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:dcfe0940535bbadc",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "b3129bcec23eaacbb721cf7c418daa268bc84c55afdb9e683651e6b93cd3734d",
+        "position": 693,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:b7fed4854c04ff20",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "414d7ff57469a417b642394ee9605882db560a7b5aac4c338e0a21cc7aba717c",
+        "position": 700,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:1f02fa7a15877853",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "8d75334c6cd713868eab5a986e5d4b8ce6e32b148e1eedd9a277e2f06991badc",
+        "position": 702,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:0fe566281593b1fa",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "e0e62d59aad1ae5f5a25f2946f283291eb93e7e88fbb7d17f7ca6325d5e8a1ee",
+        "position": 706,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ae32db187b89ce37",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "d6e784f0460b0a966b8c7786fe9061018625bbc98bf1af5b5605c5a41a0b4458",
+        "position": 707,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:15aad0d2a65902ca",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "bc41a2021bd3ef9d405e24efae3508977d8943c8f8e3b4737be696a9c60e03d3",
+        "position": 709,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:15056d48b9da32b1",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "887530843f4eefb5aec44b7e3c12a1013cd60ef3def5a19fa68961227062413d",
+        "position": 712,
+        "target": 0,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:5da6a6cada580f5e",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "d90126ff54c0aca526d0854f72b74129dddfae19fa5ab15d0d217cb151e49e65",
+        "position": 714,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:cc41bc55869bdbdc",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "93d4b49cee3ad85bd3f2341c2592c052c7faa63489e689247b969a94796e95bc",
+        "position": 725,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:8ebf1d1b78baf7d80b61ec92",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "b42aa489bd3940e4c2be5700f88c568af4639012660e587770bfe4c81b40e9ea",
+        "position": 738,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:3846927afe3c2af4",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "2804403c2b2fc9c7af2204050a5d6e47a63a5c6773d2a198f7904520650a099b",
+        "position": 743,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:6636a52ef5cdd2e63be23513",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "470ee30d859fb425f820bf0a5edfc55282b1d8fdc27ba6e71dbdcc50205cd5bf",
+        "position": 745,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:a5721105d4ce1012",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "a800436383122263dfa791c7db5a8dd66487d7bb2985d5ca38156cfd7f3c69da",
+        "position": 751,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:ccb109fa52500b0f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "dc238616e0ea5cd79b77f211fb380f21745f1f1a6b568ea2380e1f7ec534a29a",
+        "position": 753,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:59fb45e9aefac45e8bc01582",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "033288b79dc8280cf152e17508ae4c979984cf3f45621890aab65f8cafbd731a",
+        "position": 755,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:1e0bb5c34252682b",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "c77e8854b3cd8e4ae4b33f2868eb03c60b79b5ef2f4439df14c9d9171b8aaa98",
+        "position": 756,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:16842211fc0e8d1f",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "d74a594e1a5ab0bdc1696d89afd761014c861cf8d90f6bc5b1c7d36458bf5bac",
+        "position": 757,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:dcf362441027588e",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "4cfe5d9ebd7788a00ffd3ed2fe3bbd55a960201c3dd8e0419ecfc7d01f6931d1",
+        "position": 771,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "pilot:laya-contrast-v1:9cb5330dbdebc139",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "45f04afabc8f32a3859f770396f46158849706ee63e80ce9bd21c7809241aae7",
+        "position": 776,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      },
+      {
+        "curated_pair_id": "candidate:native-context-v1:fe80091a1f9bdc5e5f4d91ed",
+        "direction": "AB",
+        "label_tier": "owner-delegated-ai-candidate-v1",
+        "pair_sha256": "280c9b22c213e9b7375c811e1f07d066c882c3871572b65644e9182ffe29a138",
+        "position": 777,
+        "target": 1,
+        "task": "supports",
+        "training_authorized": false
+      }
+    ],
+    "unchanged_items": 2760,
+    "unique_replacement_pairs": 195
+  },
+  "counts": {
+    "development": {
+      "families": 24,
+      "labels_by_language": {
+        "en_en": {
+          "contradicts": {
+            "0": 12,
+            "1": 6
+          },
+          "same_as": {
+            "0": 12,
+            "1": 6
+          },
+          "supports": {
+            "0": 12,
+            "1": 6
+          }
+        },
+        "en_ko": {
+          "contradicts": {
+            "0": 11,
+            "1": 6
+          },
+          "same_as": {
+            "0": 11,
+            "1": 6
+          },
+          "supports": {
+            "0": 12,
+            "1": 5
+          }
+        },
+        "ko_en": {
+          "contradicts": {
+            "0": 12,
+            "1": 6
+          },
+          "same_as": {
+            "0": 10,
+            "1": 8
+          },
+          "supports": {
+            "0": 14,
+            "1": 4
+          }
+        },
+        "ko_ko": {
+          "contradicts": {
+            "0": 12,
+            "1": 6
+          },
+          "same_as": {
+            "0": 10,
+            "1": 8
+          },
+          "supports": {
+            "0": 14,
+            "1": 4
+          }
+        }
+      },
+      "language_cells": {
+        "en_en": 18,
+        "en_ko": 17,
+        "ko_en": 18,
+        "ko_ko": 18
+      },
+      "pairs": 71
+    },
+    "train": {
+      "families": 81,
+      "labels_by_language": {
+        "en_en": {
+          "contradicts": {
+            "0": 50,
+            "1": 15
+          },
+          "same_as": {
+            "0": 48,
+            "1": 17
+          },
+          "supports": {
+            "0": 34,
+            "1": 31
+          }
+        },
+        "en_ko": {
+          "contradicts": {
+            "0": 27,
+            "1": 15
+          },
+          "same_as": {
+            "0": 29,
+            "1": 13
+          },
+          "supports": {
+            "0": 30,
+            "1": 12
+          }
+        },
+        "ko_en": {
+          "contradicts": {
+            "0": 30,
+            "1": 15
+          },
+          "same_as": {
+            "0": 30,
+            "1": 15
+          },
+          "supports": {
+            "0": 30,
+            "1": 15
+          }
+        },
+        "ko_ko": {
+          "contradicts": {
+            "0": 28,
+            "1": 15
+          },
+          "same_as": {
+            "0": 28,
+            "1": 15
+          },
+          "supports": {
+            "0": 30,
+            "1": 13
+          }
+        }
+      },
+      "language_cells": {
+        "en_en": 65,
+        "en_ko": 42,
+        "ko_en": 45,
+        "ko_ko": 43
+      },
+      "pairs": 195
+    }
+  },
+  "exposure": "AI authored and repeatedly inspected; development only, not sealed or independent gold",
+  "independent_semantic_review": false,
+  "new_model_calls": 0,
+  "parent_manifest_sha256": "e87cf7bf6bd915d48e5061056d2ab553e39ff9300ebbd09206e604a994330078",
+  "production_authorized": false,
+  "registry_sha256": "a8c369f9b996caea77b35ba412e788d3930bc2028ec189cf2b6c99cf9530db91",
+  "schema": "vinc.laya.ai-curation-preparation.v1",
+  "selection": {
+    "development": [
+      {
+        "pair_id": "development:laya-contrast-v1:17c28c8c12564f7a",
+        "sha256": "d678c7e5e066badbd8215ccb388a03c5559bd918fa242c12f9228cc1adde334f"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:1c13d2c7feaa0ebf",
+        "sha256": "8aa8bd2e06ad1a713f043a1f63d8df0ba8b2b6a4174e39c2b99f8f6d402ea4eb"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:26f62084bfcce26b",
+        "sha256": "c63a0fe4f404f6b316be96e83fb31ce4017308956f6a63d3c768bba98a047937"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:29cd7a5e657cf28a",
+        "sha256": "a1b837e871ffe60fe3b034e55db4b516a836a74c6a159ec05c04c2076c930074"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:31e6410d61638024",
+        "sha256": "e238d64091fefd29517a259c81443a5f8b8db0e9112ae9ff72aff1d6e38d22ad"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:3430a93f23be66d6",
+        "sha256": "11e84662e7636bfc76f423781967771211a4d973eb197f1c7b0e1852820479f2"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:358b1ecbad8cc6de",
+        "sha256": "a5b2d78518bf4a92de38481c1742c746737a97444efab07f05831c2b5a0eb108"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:3670203fd3dbe582",
+        "sha256": "c56a1c73d601b2343ea89aa38c436d4e78d4622388ad2b8122188575db7b50dc"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:3ada99ca70e40554",
+        "sha256": "95993a84bfcdba959759294f3f2e9937328ba71fe4d7b6b75777a3d04639e3b9"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:3c10f5e4f766b5ff",
+        "sha256": "5af1490578d0eaad36f1a9e7e6c2062212e2fc4af8e558be1c1c201825cac478"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:3e43c8cfb5dbb55d",
+        "sha256": "5e3aefb2db26f9becad2b19829f649a4a23cb1fefe65aff558acfc478dc04a14"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:3f886720afc1c8db",
+        "sha256": "2a9bc36f0419e234c3960b7167b31f703a6b1199b0b39c0d9d0d5dd56d3d7faf"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:423a967780c4436e",
+        "sha256": "c9e6360bc8c2b77701e562dacda73623a28170cb29f25df9a5088ae513096433"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:437daad9aa4813d9",
+        "sha256": "b19408a17cf4d3bb48d68076043fc357a869a27a4a81ad1cbfa4070d673695bb"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:43bae2bfdc4f4547",
+        "sha256": "85eee8c3c8bd9da73b46354cc343de534d5786bd2a18fd62fcc8ce8fc3d3c532"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:448aff2c0330c1f1",
+        "sha256": "fa82f802ef9e68e0c2160c190812c51a1139af9b89c98db54d3debb6818cf607"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:4918712dde2cbad4",
+        "sha256": "af7861fc44aebb0b0dca8c3c2fd2f47d812fa74f520b5bc5b2f53ddfd24ff1a6"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:4a3b39a69da74bb1",
+        "sha256": "2685beb9990494e16fe1a0b84bffbf5f13b4c39dfbf120e9c0c97f1e97f6dd23"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:4a50c905bda6fa0f",
+        "sha256": "e8f4f090059bfae8a2ce547f65cebdbb46661c41538d6376ccbe9588ee211589"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:4a845515a2f8bc50",
+        "sha256": "d5e6f43b90116720a95f614658364a21cf2a0a0d18396ffe4f160acb0e60216f"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:4fa7dbc033cbf4fd",
+        "sha256": "dbc85d451f4b1b7df12ed675fe75d48dc697228c9346ea1e1c277d5d05f534c0"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:5d95d677cd10d73b",
+        "sha256": "bdee9303231c3951073b830e8323565347c36c8ecbb00f2adf3e31424a84bc78"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:60620b3b8b6904f5",
+        "sha256": "18a609f4854191e5e2fd97772defb19c26a549ae602ce266e123dd4a0744c1ce"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:6a1c7f77c626dd0a",
+        "sha256": "54ebe7dd3f6c06224b9aa1951c496d3f5a6dbf9e4549f8ea9102d86daa4332b5"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:6a942742c7d4fd9c",
+        "sha256": "ae9b14c1fe88552c0301547405e86071a2b93931981a525cc482175d12993454"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:6d94994f9114302c",
+        "sha256": "028e03d0cd138510dcb98f54375623ab742ddd06254aaca7729496b68ac869e4"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:7198d8e9a60237f2",
+        "sha256": "7b04e2109c17313a9ec17ecec01df418b5d921d156dd49c55fa641ede603f0f3"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:76b80595ead268dd",
+        "sha256": "ee4b62133aa21f5a06808b372a231f8f56cdb76882068544fdc849abd4407044"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:7951205f1ab54007",
+        "sha256": "5a9492aa916fc6ba9d284b57a969b501a920d289c1fc9fd34d0674fb1305c290"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:7a53d65cb0993a69",
+        "sha256": "958973926b3c688313446fc09c4d88ebe12d1c926169dc71686dfa3db07cd411"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:7ac5ea03366db94d",
+        "sha256": "a852bdbf79a864079263433f7baea5fcdd8f5e78cfc87f92695d92c7a60dd49d"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:8774405ffa2a2c48",
+        "sha256": "c540ce1cf021077cf47d8a1f3a4a36fa475d0d513e86d124da65a127827a5dea"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:8823026bdf713771",
+        "sha256": "136b0be3126c1e61e6fb4dc6f257912635c4c173c6b0ae58f34c9d2436f425b0"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:8a2cb78992e030d0",
+        "sha256": "d21e699476e448f5918ae217056289fe740616242ae75e0e090c26c0a5402840"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:8d5e20dcf7176fd6",
+        "sha256": "82041fc5b2294f3915b6a974a047e002c5f5675a12a63e79166a23208392b353"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:99059f5f4e1cf585",
+        "sha256": "3f9b8d54d9628353bc0e8e9e26921afb1c1b5feaed93153ddbc50567f2e74bba"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:9b824843e8646feb",
+        "sha256": "df59fe48f2e569daf4dd01bf4d0db7b7058eda55cacbfd3a54ddf5f15e1f1832"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:9c5936e2c0c98105",
+        "sha256": "b1a3a3306f415d681f08e6f4af8eac0e5c282539c4947e44b4cfa309f8b6efb5"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:a019c72e99c45ff8",
+        "sha256": "fee49d0e712c3b347d26e37ef83d1b635fa2739db31846e47f10aea73d53217b"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:a372891000140a07",
+        "sha256": "1c54e195e49e586c621762b52a7e3009acb5e26e1d6d69019674f9db5663bf53"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:a3a7435f0ad2be74",
+        "sha256": "bacb7bd870d15abdbfe18a45421f2aec9eeb1e1477d8998b6d3222390ff99a28"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:a3f5802b89aa9e92",
+        "sha256": "73a97baf28312eab53e6284890af1afe6d04d02d4794f9863c3935e94acbc7db"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:a8dbc8a41656b027",
+        "sha256": "5c7575057854710d71d5e7a93a7c3c7714fcbb6eda11fd1ceb4e1ff53b1877dc"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:ad0b9eb7d2791560",
+        "sha256": "c0e34ee725e30e31f43cb1ec01c26699623ccacc6d703e34a9a87f055af83668"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:af5ccf124621bf27",
+        "sha256": "5cdde06efaa2677f1a20f82baf201a9ab0a9f402d8a06908b0002697503b3f6f"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:b1a300e4ab4826f2",
+        "sha256": "3c2548bb0c86f1d72bdfcf83357dccc783a3aec39b0d97ecf66fd45a7675535e"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:b473d1b754eb6af3",
+        "sha256": "72c6a9aba5083120349b34b47b751fca7c55fb495ea2e0be1673cb490890e38d"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:b4ddca0fe0f1a145",
+        "sha256": "6a04bb47a1ad86a42e6260ff94c17a2c9070e842cb4f8a44c7f68d45aeb67017"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:b693cabbb075f943",
+        "sha256": "b0cc21af55d34f155da50d2b0dad2e4f76978bd383b69d7a0400dcbbc783b1e6"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:b769b37022616178",
+        "sha256": "ae38fda89b9fda909d7a13c76e5ec72957d63ac39009f2d3b2ae149634ba49d0"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:ba0dc7d2ea21d874",
+        "sha256": "32b5c1a5d95c6c25dafa03d9872e091c9af7ea374075110348a467a52a25e91c"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:c1bcb47656356c3d",
+        "sha256": "21d27f03388a011b4e80bd4d5ffa833ac863e6cf5313474346c96a8745c41fdb"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:c4dbfcf092439085",
+        "sha256": "43fc9c7f5bc3f5e29acf7725ab28699e2c3b4b45ae6820ccd6ffd0df2ccf8e7b"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:ca282e92fde7172a",
+        "sha256": "d3476c84c7aa20a4018cdef6001bbc14186da2cc8c9f98a46ebd0e5509c3b26e"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:cd1a7a12194606d4",
+        "sha256": "562e7d206a2f78fdfbab4c1080fb01ed4b60f41c76021cabb6a20f0be2e59eef"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:cfbe1c714f2a7ad7",
+        "sha256": "de2326bf286272f9fdc37faf1d7a316cf6bdcb3f5338949bbc2213aa3a034ef7"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:d134b54992d2f3e4",
+        "sha256": "2df9bd84e175b6c83fbd557a6c946618d92a0c96d2a926b0243056cd411b0c93"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:d463879696a41272",
+        "sha256": "27e2d3bb81d81eee1788acf7e55aeb112c2529919dd6c525ba833366071216c1"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:d4f4f2fc372cb9f7",
+        "sha256": "af735795f01f6d49c3f3e6248207cf4254921a9ea34276daad480863cbbca69f"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:d63f0915e83780e1",
+        "sha256": "9ec7e6fd8a59afd02f6c150317537a5026f7d0adacb572e9982db4769804e361"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:d6d377816a9bd90a",
+        "sha256": "dc7dc3690d792ab85d52777a9756935fd70c1246e1feeaf8cd1e56d1a4ba2103"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:de375f29c0c28fd8",
+        "sha256": "4bc7ceb0bd25d5560f0b44bf6feed3a4be4d32988c6335d22ed2eba250782150"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:dea54e5782edc91a",
+        "sha256": "2fe83ce8b4b837fe115cc0098f582b43f747a831f948682817539b3a713fac87"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:e0fc3e4ca4939373",
+        "sha256": "8ca5fcbb0b81c4f6ed2a5e04961939adfaa94c3313337e724eb022dd15d218af"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:e2b5742fdab4a093",
+        "sha256": "d02bfce53247d498fcaa2dc94c4262d6d0b898185a7dfa02e72356441864986b"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:e4857da3f751488a",
+        "sha256": "4d1dd30c5ca1258d6e3ccd9bc7cf4a43babcce3cfa3fff946eb7d4f099a00415"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:ecc08b1b8f8b9691",
+        "sha256": "8085b321431935f2c7d77b6b2c7e91b8a051748baadd4eccbf36b4fac79b2164"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:ee6dc6a78d942c41",
+        "sha256": "bc76b818e65d8b1072845089d497956735f2f3fce530f4fb9142463600e4c052"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:f8a821a8223c5355",
+        "sha256": "d95d689d3d8e54cf1c763e7d3985bbd9d71a164ab46b6ca5b88b9657184628a2"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:f9f38c6bae16b8aa",
+        "sha256": "4b42d82a905284f1f323a45ac5b24eecebd70278126f755a6cff98419f305cb0"
+      },
+      {
+        "pair_id": "development:laya-contrast-v1:ff769e436f8a4609",
+        "sha256": "55e9412e65eec2dde2ec9497f60784a7a7d0696273b92ea50e91ac7a1256cbaa"
+      }
+    ],
+    "excluded": [
+      "pilot:laya-contrast-v1:010555f72b348f8d",
+      "pilot:laya-contrast-v1:047d72b26ac91e2d",
+      "pilot:laya-contrast-v1:063641843f0d5862",
+      "pilot:laya-contrast-v1:0ff965b5fcf89de5",
+      "pilot:laya-contrast-v1:113c856dcb5c38fa",
+      "pilot:laya-contrast-v1:1a5571995ab7eee9",
+      "pilot:laya-contrast-v1:2147a7cce55684f8",
+      "pilot:laya-contrast-v1:21bb4840c511e29e",
+      "pilot:laya-contrast-v1:221dce7936f3dd7e",
+      "pilot:laya-contrast-v1:3141da93d71172cf",
+      "pilot:laya-contrast-v1:327edbc9909d7dda",
+      "pilot:laya-contrast-v1:361f52fa4d248566",
+      "pilot:laya-contrast-v1:3661fbfbfac9a49b",
+      "pilot:laya-contrast-v1:37e7d38ffd09ba1c",
+      "pilot:laya-contrast-v1:37f19e19290c4b3b",
+      "pilot:laya-contrast-v1:38b7d48bfd0d9e06",
+      "pilot:laya-contrast-v1:3d7fca9cb7d7e12d",
+      "pilot:laya-contrast-v1:3df8673be222b02c",
+      "pilot:laya-contrast-v1:464820d17d7df21f",
+      "pilot:laya-contrast-v1:4fde9276f7ccf941",
+      "pilot:laya-contrast-v1:5532c2613b07891f",
+      "pilot:laya-contrast-v1:5756676e2043f4b4",
+      "pilot:laya-contrast-v1:60fa55662e7bb00f",
+      "pilot:laya-contrast-v1:613ca687b1a6169e",
+      "pilot:laya-contrast-v1:6ad695104f21d0e2",
+      "pilot:laya-contrast-v1:6dfe268876d97ba8",
+      "pilot:laya-contrast-v1:6ea375d25fd9c7d5",
+      "pilot:laya-contrast-v1:6ef946ed459fe019",
+      "pilot:laya-contrast-v1:714e9bfee4da5ba0",
+      "pilot:laya-contrast-v1:7753eab6d1935cfe",
+      "pilot:laya-contrast-v1:7d006a22a600167b",
+      "pilot:laya-contrast-v1:8101b3293c4e0963",
+      "pilot:laya-contrast-v1:87f275367e835769",
+      "pilot:laya-contrast-v1:89962e93c76b6e1e",
+      "pilot:laya-contrast-v1:8cb8fcaf17c74501",
+      "pilot:laya-contrast-v1:901750e3fa52d04d",
+      "pilot:laya-contrast-v1:91720bbcf22c888f",
+      "pilot:laya-contrast-v1:9349ba53b7d10eb5",
+      "pilot:laya-contrast-v1:9ab11c144c8e82ff",
+      "pilot:laya-contrast-v1:9bb998ef10238eca",
+      "pilot:laya-contrast-v1:9d247c8756658463",
+      "pilot:laya-contrast-v1:9d8c6ed86769923d",
+      "pilot:laya-contrast-v1:9f9fdbef873f3582",
+      "pilot:laya-contrast-v1:a731d05f52761d15",
+      "pilot:laya-contrast-v1:b1aa92741a5acbc9",
+      "pilot:laya-contrast-v1:b3e688cc007271e9",
+      "pilot:laya-contrast-v1:b4e3778d8ce3addd",
+      "pilot:laya-contrast-v1:b65e1f62416de457",
+      "pilot:laya-contrast-v1:b7726c38510ecbe4",
+      "pilot:laya-contrast-v1:ba4c9b9de131165f",
+      "pilot:laya-contrast-v1:bde8745181a26796",
+      "pilot:laya-contrast-v1:c09fd4e659a1e659",
+      "pilot:laya-contrast-v1:ca4530c57782e484",
+      "pilot:laya-contrast-v1:caab11e476af1ac7",
+      "pilot:laya-contrast-v1:cbfcec04e0dfe0da",
+      "pilot:laya-contrast-v1:d6c596483b0a9ffb",
+      "pilot:laya-contrast-v1:db76b0ff316114e8",
+      "pilot:laya-contrast-v1:e7076c8ef2a3b9a4",
+      "pilot:laya-contrast-v1:f10df5af9f84e4fe",
+      "pilot:laya-contrast-v1:f1f33bf05c4054f2",
+      "pilot:laya-contrast-v1:f7a842c1029afb4d",
+      "pilot:laya-contrast-v1:f7bc2397364da079",
+      "pilot:laya-contrast-v1:f856d5dd320f0be1",
+      "pilot:laya-contrast-v1:f93001beca8139ca",
+      "pilot:laya-contrast-v1:f9f085baa046494e",
+      "pilot:laya-contrast-v1:ffe7989de0917f7e",
+      "development:laya-contrast-v1:08dc438697adb393",
+      "development:laya-contrast-v1:0c41ee27f2e8e636",
+      "development:laya-contrast-v1:130fae705eff8a5f",
+      "development:laya-contrast-v1:1b41496290ccfe9b",
+      "development:laya-contrast-v1:28803ba8a7981b2a",
+      "development:laya-contrast-v1:2c1f6951ed9cfb15",
+      "development:laya-contrast-v1:2f5ab60a75f00b31",
+      "development:laya-contrast-v1:34cd1b7128e5b051",
+      "development:laya-contrast-v1:3df8961d8efe48cc",
+      "development:laya-contrast-v1:41db9eb2ddd09e8b",
+      "development:laya-contrast-v1:4a7cd47c121cfc13",
+      "development:laya-contrast-v1:5c1b29c0fac67ab7",
+      "development:laya-contrast-v1:5fc91424f5a0c7a5",
+      "development:laya-contrast-v1:72f3037d2f898dc5",
+      "development:laya-contrast-v1:77c0d727e20da67a",
+      "development:laya-contrast-v1:86acddad989186e8",
+      "development:laya-contrast-v1:904c8fc80a62d1f5",
+      "development:laya-contrast-v1:9873ff18f960f069",
+      "development:laya-contrast-v1:997f0e429ed7b5bb",
+      "development:laya-contrast-v1:ace5672151c1a624",
+      "development:laya-contrast-v1:c76ee13cb9c999ed",
+      "development:laya-contrast-v1:ef04a357424cd5da",
+      "development:laya-contrast-v1:fa7929e7f0e5e6b4",
+      "development:laya-contrast-v1:fd169263dbc7cf65",
+      "development:laya-contrast-v1:fe8c4bb560e5a154",
+      "candidate:native-context-v1:1e42e1983d5ae5e243cb31c9",
+      "candidate:native-context-v1:b477bd42623bf6440c5cc2f5",
+      "candidate:native-context-v1:fc847527010dd30c434b74ab"
+    ],
+    "train": [
+      {
+        "pair_id": "pilot:laya-contrast-v1:00fa587ae5011ae4",
+        "sha256": "a9ee32a8de839b72699e19811ecb7084ddf25f63d2720114225691db1f60098e"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:01afb4520634c521",
+        "sha256": "26e98a487ba9c33aa4ef5f732fcc72c8036cc935e0485dabadf9223042337331"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:02126975ae36c648",
+        "sha256": "9ecb40132a2345437884b63b930eae0a8591a96c59cd82fbf29fd475127afd2f"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:05b67c44e30d0fa2",
+        "sha256": "da745f90b2c18ecd5b0e702d35bfb0bfb9ee6490dee82f9c51b3abe5a8c05a58"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:070e2d717cbf1bc0",
+        "sha256": "247301563aa641323d5d6693287be39e48c94817d6238d727782033767df976e"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:07ad36942f6b2396",
+        "sha256": "38f42b98e94b2cde4b40a5aafc2842d5d14e4d5d52ec193bd40cfa26dbc8077f"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:07f9cd44ba424061",
+        "sha256": "dc77b698af722703366877d860421498f671083c872cea5f4fc2cfbe6abcd31d"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:09eca68a69ee7e7f",
+        "sha256": "d1cfb40efb8a7d1fc89e36c3061e3a64a445236615a7eb56f796338180e0ee8e"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:0b1a56392631f06b",
+        "sha256": "116b014aec0551bd2d2e453dd91f8cfa651a00c88532166ceef053e8a222a856"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:0fe566281593b1fa",
+        "sha256": "e120a1646042c320940c8f62adce3ade0f97c5a361513d70ae70023e5252ff20"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:1048d2091bf4a51d",
+        "sha256": "88490891e4d6c56fed1caeda70f2cdc6710404d146730996193acc36d29d3529"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:111094dee9e24b8f",
+        "sha256": "5f1416c4839bae6a6d57742b68d3bd20f802e5f208a8e069da504c5483f13002"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:11866fbd4fdfa553",
+        "sha256": "037f3a0cccbc4f81cbcc5e19afbe8dcf4932527cee92ca4a1c40c31e658dea43"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:12a64d974c3f01e7",
+        "sha256": "6d8005b0e78997ae411e9cfdb3d6a19071b07f7aa80fe4137dade13958a9f790"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:12c3917455f08048",
+        "sha256": "a8178d8619bcfb7e4c1a1158dfa77ac6cb58b36ca54ac919de56565e4f2e73e1"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:13eab6f0d65d46a0",
+        "sha256": "036c3feafacaeb7016928bba4439f312c64b7fb4ec69dcbdffc2850cbb6fea3d"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:15056d48b9da32b1",
+        "sha256": "e20c4232a09eff30eeb0d83442454ae71e5f71748a6b0908727444f85b5ec45b"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:154572fcc5fa01e4",
+        "sha256": "f7c2bdd0613a4d1515c2b860f3d2a252e69eb576125c4786bb1c27e8013c29ac"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:1572408214c0ef84",
+        "sha256": "3a8030ebe571dfff49198022919690d43869ac50121849df80a04f180a151294"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:15aad0d2a65902ca",
+        "sha256": "8f8985125babfd1f2f11be44bf479219af3ecf768288799b66bb046c5e6f883c"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:15dd4d26d5c1d1f7",
+        "sha256": "3ffbab9815038282e3d807e4a007a70aa5e58e1c55440786ed4eef2c34030290"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:15e214cef482a473",
+        "sha256": "474a909ff0304d107aae488af05130ed868b1660271f93eab1b49684a2fc09fe"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:16842211fc0e8d1f",
+        "sha256": "66e679ffe47245173924f2bd0acf97eb2b9bdf4a4506631079c77bcfd24facf6"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:176821b4dadb51ae",
+        "sha256": "fe5488ed6846b24fdaa0488e90049ffa5688b00950dbe0d6c7be6e0754975840"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:1807b706ae19ca1f",
+        "sha256": "4ff54814c34c1cc38846c022ea7ae0a67d3a0d1e8a864cb444926b4e6b73a0f4"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:1927f4b78b3fbed8",
+        "sha256": "29faf2ae7b4c30bf344602cbe024cf3b1ef79a393c02de811c0399b792906a8b"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:1b3c3b962e2b289b",
+        "sha256": "5848fe302a4afa94b5337b4d247cb213e3c7a789a3848114120c3202abb4b377"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:1d8868b046dd2c41",
+        "sha256": "607d0adc8312ecb1adda995cd62a8ee79c7ecc681e6a7c416264c2140c5cbeb6"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:1e0bb5c34252682b",
+        "sha256": "cb56ead2cdfebe9b2cfd726520f5c376fb59b2a80b77e209d6e98ba00eadc917"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:1f02fa7a15877853",
+        "sha256": "929de06d14f02c1aa896197207097e4415a2ce8b4e229a65e0b86b3a91cbf1c4"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:271f99c7d0d3a255",
+        "sha256": "f6034e05d254cbf603e9a880ec8fcafd822b31d14ace214e376695c7c65e993d"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:2a55b2cbf2b863b4",
+        "sha256": "5795a309736f5a861b480848f2e2f9041549094b55015451f0c70c3d5d824d4d"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:2aedec678464b559",
+        "sha256": "bab0ded6d03e973da49feea99e2f1a1a8cfaf334ad137013370b307286193a08"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:2bda3fbecb5197be",
+        "sha256": "665ce43ee00a5eb7cd7976ebdd9fb1af4c9862b3ba1f71bd47e2966d21fab8d8"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:2f7ae1e406f8edb1",
+        "sha256": "e22ff65373cbed9a849bd5db1ecf2858b51efb40de4d266e81c23f844e1e3385"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:331162cce92dcc40",
+        "sha256": "4a12d9f256634a847b36564137fea643095dba53fbfa65fca73efa15e8bd2b8d"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:342f24b77463491c",
+        "sha256": "a713966e005398f1c643baf2d61c019c0e7981ffc0afe4dde4513b9a2f1b16ba"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:3506d894a7a53b3a",
+        "sha256": "427bc3845d47ea5106170a19d5cc3bf9a9a813abef8e3d9e8884be9a9197c50e"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:355916947c3b394d",
+        "sha256": "63c9417e470eb9a40f069288049637004940388437aa7e1a7d29d551e18bc8e7"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:36b21aa7660251dd",
+        "sha256": "6e50387a5434af015f013e629a35f122a37c27bb19499cdae99f637ff8427b5b"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:3712c5dbd0ab2da3",
+        "sha256": "722a9ba66e308c388bc40d53527104ee438c7dfdc9c94112c971722af85eeafa"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:3846927afe3c2af4",
+        "sha256": "b6ce976bb5a099f2307d694f8d895849e83b5eb9329572d6b67b19e5888003ad"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:3a3d1b2ab4329c63",
+        "sha256": "fd11cd91dd1d8aa2e0e42badfd5da54f2bf6f98364e2bf9edb609644fce76be2"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:3daf6f87dd154b13",
+        "sha256": "b48029ff2ea8ff3ba6663c6223d06e9222b64e75f7fe0d478a5066c0a5b73f56"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:3f738e8d89c4afbf",
+        "sha256": "47e144e6cc2d6cd157a6953b807aec20bcc88835703fb9dd3cd0fac3ade76447"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:40b6897354d77b9b",
+        "sha256": "e8db8e6151a8be7bdaac46fdf1e0931a453212e6999b2e3a1e166709e8248707"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:419634f252050901",
+        "sha256": "368df6fe5a61545e4a9ffa6feaf2d774a0e157b0e9922663b804acd896179a7d"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:42d9600705e5e843",
+        "sha256": "cd672ad210d6089fcfe4ad1996046fe7671f4947a3a7486ca2ab87ffb8ce4d63"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:43822819b7ddc0dc",
+        "sha256": "ab830bbe90b5e851613828284ced93425d5a8152a530471628330605df73f75f"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:456d60d030d70044",
+        "sha256": "049cabc128907ae1c4f29630dcc8f1cba620e4d0811d35e46e6a7916693543f2"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:4628ed7043e4f4a7",
+        "sha256": "9d5b318e4c190f9d5e7612526fc30305e530b0924420dbe7c675d6b39d86fa8d"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:474d187a4ac6ac93",
+        "sha256": "0125460bdecb81650e50a88736db098d9f698f5ca0d28db66cb768ceb93b1a53"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:4762734941303872",
+        "sha256": "a77951b50396e99bb5641ee4c5ee2a8cb69b504846f72a3a0b384d00ab37655d"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:48e59d21b4bedf3d",
+        "sha256": "4935b8516d9d5c8e0e53e31aede51a124ea48af8fb765cca0cbbfc0a825eb337"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:494805571c9f9209",
+        "sha256": "94a04ba1105ef18179959b78a612a86c754d1093049e13417183295369de6667"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:4a21557694296b8c",
+        "sha256": "d158983c946729374b7c71dd25a8ab80c13159861533937d0bf5982bba429c39"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:4bdfed16ebcda558",
+        "sha256": "86ed1f023df2e3099900c296b109853d2499cb60d53fe8cd475267fd78120f0d"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:4cd1f7b375a415a0",
+        "sha256": "60994f5cf647ddf0989667b20da0f229ee8d58743fc906526fc2cff55ed8e844"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:4f1430a56e62d1ac",
+        "sha256": "a906244c429f600fc7fced47a8bfecac673ddacbf7fea862d4bca2363b88e4ff"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:4fb758c1a8bf412b",
+        "sha256": "0e9b2813292415009ee938ca8d408c0cc2a16b560b1c64dc96424c409cb7beaa"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:53cc0a530c4ae590",
+        "sha256": "41116c978335bf0861534aa1c99d618ea453c4d40c3c597d6447438513c8c330"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:56638810816f0c72",
+        "sha256": "3fd7e5bda95d166d9dd4cc567cd8e1ce3d45820353ec3d4558f62790e4dd21fb"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:56936c3b0ebe1e17",
+        "sha256": "79a13fd0d2364ec5e97d0a277e3f1886e44d206e0935baf9c9952cfd783591b0"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:57bac68476636355",
+        "sha256": "9d95056f04cea1f74f780f919b24d1fd558eebb651e8b2fd5ecc20f73ef8783f"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:58543310f761f5fc",
+        "sha256": "a9a0f3c7c5e20e93934fd1c43671438d7df2dab575ecb3071b45275315ff1161"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:5b626576617fd0ef",
+        "sha256": "fca4d37b22d39802e195362d626817c0d5aa44b1e57c568d3e8b237a14a9ae1a"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:5c3a5843a0493c75",
+        "sha256": "a3b414e6e90ab2f708f410a4cf2bcacd8151aaa56409c28804feb0150b668daf"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:5da6a6cada580f5e",
+        "sha256": "4406b0cee04cc2fe29bb5ed0d32a5ceaf11cb2dd502b2e93d7bce23465e552d7"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:5e9616d4a293cb8d",
+        "sha256": "e647f970513eff4473d06881e9a793645c214e6ff1ea2ef6fa6dc151ca1105a5"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:5fb78ae9710ee340",
+        "sha256": "5e772e260819900b161e2826227fd5330a44dab9905e8650078f0aae66438620"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:6037560afe8737dc",
+        "sha256": "0365918613c57f06de2de484ab8cd65f3afabbbf157814ce7cd5b59fe8b5ad22"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:62aed7e8cb48b463",
+        "sha256": "8b4561788fd68311cdd526ff7dc75d468627b861cfb7020681c95438d25fb6c0"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:65a6320c3b2c9798",
+        "sha256": "dfbf74029b8e80d663f9605336210ee046d7e489b88ff5109cd52dd40ab7e83f"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:6915efed34614fb7",
+        "sha256": "94faf48bc918a2c316d65675c32205be357d7d1afb350ff57861ae0044b092d7"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:6a9ff04d40c47129",
+        "sha256": "0134e655633a743cfde440992c9dbe3e01f374b812608f08381be1931fd4e10b"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:6cdfdeb9a3b54c60",
+        "sha256": "4550ffb770f606068dbe6b59e8c1c19d215f768dcb6d4a22c6dd189783b3550a"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:6dbd7be66bb0d0f5",
+        "sha256": "2c54e71ee8896e46d5e7cb2f26e50e2705dcfd0e5bcd80cdae4d80a06350f78f"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:6de45c937ac151d7",
+        "sha256": "bb0eff40335a1a74260bfd0066452dad5ca4f646b184a2faf6aae8d5251daa4f"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:6e538370eb09cb42",
+        "sha256": "d55686c8b8dcc0186450c3e10fe15a0a705526f5b9b1e0449abf89ba366b6ddc"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:71e737b10557c4af",
+        "sha256": "4e28ea2b92ddc35daed2d07d08dd8f386acafb0634b4eb66f3f29d073ccaceba"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:74783293977d39c9",
+        "sha256": "f80f11948bae5bd17e47174878161edcd0b2aca571695ee1ab8956d1b4d6ed82"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:7551cddf7d75fa5d",
+        "sha256": "ca5586e2be57b2b3c3819d491c34563561f9edd2bbb03c81cd27ca61170d7581"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:76365e5b9eae3c5e",
+        "sha256": "d2a27609c40ef0d452e8e82690a84eb8695f2314db52ae96c53cb6e1d301ac97"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:7af15643df7fd5ef",
+        "sha256": "f981abddde45d69f8af2c4cb3b52aef78a7e42be05106aeae0042e3c0c664e15"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:7b4b70772061741f",
+        "sha256": "55f232f98b8352a53c9b4a1a2d3b7762acd15b1aebf43a53a0f4ce8c03b2dbf6"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:7d40a7fda8c66d0d",
+        "sha256": "4c2d6546fb1e4f5af90bec8cb8924fcad55b74f2ab1a74f07685766d32be9edf"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:7f0493db69f3ae3d",
+        "sha256": "2b3725066b5c455d8438cbf476b5ffec541e204ed61ffdd020577176755cbed0"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:8085e249a521f320",
+        "sha256": "a5954cbb13c295af3b7425f66fa14e4eb0a3e3712a1c13df8bbd60e543877703"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:82fb0aa5c27257d2",
+        "sha256": "df2a8ae6d67931244b0f7255d8819c98a71377d7e970f06fa8c165edb8a7c479"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:832866446fda74c3",
+        "sha256": "485cfac9f7fb327070ba8cb5ebd6aa0455490189eca5106d540edc34f431a331"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:83a193f29b1f0a0b",
+        "sha256": "0ca72cc79291c3af14dcef4eb981d1b766f775e6647146dc3941b5e920ceeb65"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:8561a6028a8faf03",
+        "sha256": "c4180e53ebc6ce7ff5e4f549b433581436d61bd24809f69ea270c22cedea78f5"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:859c5860c425da42",
+        "sha256": "a794c7ba49f6bb45df40e6da18cc1f3053d21e97198ecfdeb07705d90541967f"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:864a5c0995b4f55f",
+        "sha256": "d312383dd3e1e2964969e25ab78737e46789ff6bf17a74aa3f4222e70f58cdb7"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:8682b4d7585c61a7",
+        "sha256": "2c75f52b1fbd62a9759f4c3f3a329562e4d34f7ca0ed71d7ba7e364e83228f0c"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:87d369dfa45db50f",
+        "sha256": "dc71038c2dac6eff3bd56b6c6a87c01836c7e16875e41627f960e31cf98a21a3"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:89a9b25e9f27957c",
+        "sha256": "43f9a5d2c4261ef286a5bab26af527a6888d6225c002f042eb8e9b89795e9ea3"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:8b1b1787d761207e",
+        "sha256": "71ba614d9da9946cd1c638f4a93a8ac81e76b64a5850a8159631218582f675ed"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:8f6e0db2c02389e0",
+        "sha256": "edcec32d8bee40ea9ed802d39f2e2ca07c8ef42e1e0c9fc224790e79642911fa"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:90150b26adc8ec90",
+        "sha256": "952ea76cd9d4b92b57659290c7f574e4024041b139f7c93c07060a2c5a5e2b44"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:90164ec325c0d29e",
+        "sha256": "e9146156f64f0c4f09113bc5fdc5a7f32a7407720795479b11fe3f85cc546b19"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:90b34bd7dfdcb57b",
+        "sha256": "86f5445b688fdc1424ab675836a16d95c89d94ffc18fc42345651969469a838f"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:921b36172943bb84",
+        "sha256": "245492426c7b0df2ec0c73370fef04323ff0ca5e6658931b2ba37bc3f7dc4fb8"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:937fded39c04750d",
+        "sha256": "0061ccd5befff53e706225ef44d032335f5e8b575f76ed901df5a9a33a9ef7fb"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:94027eda2b58b83b",
+        "sha256": "0a463bf6f4fac01f83e9f65dd123b3bde1ae8418206cb39bd5f8176c8c5ad784"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:96d7fe88e7f06304",
+        "sha256": "3d6a88832f2f8fa46cb1978f484b14a6e0c5344844d147ab9440eedbbd9cfcc3"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:9a07381b851ece01",
+        "sha256": "b331ec0758200cfb2c690901f381bd003577bc9fb8ed3547556da50329ab02d7"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:9cb5330dbdebc139",
+        "sha256": "722cdc576294614b1fe85acdcb8fada338ab681c62d6d1069d1e8c7cfba83f23"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:9d2b1b74dda7997a",
+        "sha256": "19c93de9f6bef499da151370ecbc6b8fd612fd09d7b87addd4ab880a25e329cc"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:9f7552ef7b1c7f32",
+        "sha256": "43b19d83dc90f8fb863e8d56e7d4a3ee7c5538866944abcfb41cc4cd7048718a"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:a0c073961879077a",
+        "sha256": "4b513d3570622f4099a85efdaaef80ef3635dc19c61463f84f4b288550ca3fb4"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:a190e7342152f675",
+        "sha256": "3e2d3eeb495cdc13aefa7684c55fcc65dc4dbc10f6e1ffc81bfb9aa7af66bd54"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:a3deeb237fd49bc7",
+        "sha256": "7323e6f99703b6211860f1346b81dabc85f77c4ae4303aa0ea7152bb54961a33"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:a5721105d4ce1012",
+        "sha256": "b0431d032ba04dd23fcdaf4b7f1202b7f3f9c7dc8c54f28a9666d747c4bc4059"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:a5dd415a55c45b43",
+        "sha256": "22f393383b763b39b111cc75e7e4a096cd776a074588ad78733a928cc06692c8"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:a7139b2c3479aa07",
+        "sha256": "98652c8b11968fc84d2fb280b087be200f086c84e1a07395c9c04a9d40b637c2"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:aa6d938a7604268a",
+        "sha256": "b00989f8d329929a72288e7a5739e5bb54e04c3b7dd1a26618cf36af1b79f7ef"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:adc775b96b5c3fea",
+        "sha256": "aac0cff00c2ec285e119a941041a8854a8ba90f1a3682a66021daf7b5b1ee888"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:ae0e0d58c5cca075",
+        "sha256": "3cce01f9e05735f9bc51818a526bfd63e0b36baedde09e761d9f1f977fd71263"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:ae32db187b89ce37",
+        "sha256": "04104058b8705b6517c4c0b30271cb676adab647d5ecccd135ffea783613ec1f"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:b387041fc737d2bb",
+        "sha256": "25142c271cb8497260b1fba9f3b6a607eb15abd8ae34e04a8e4b44e0202a9089"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:b7fed4854c04ff20",
+        "sha256": "8a7ccea0867b775ef7768fa164b7e873a9f4698655d6b3506fc5f386c025c7ee"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:ba79d2243f071eb5",
+        "sha256": "f0dc44c353e77600e326aa26eaa3b1bdd41096377b7d5fd2167ff75c6590db6a"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:bf07d1dbd2ae1a29",
+        "sha256": "77a078465d1346fa5006cd2feacb151c3ce3e2737cdc4864027f9924c89e2ce5"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:bfc24be499b9eab1",
+        "sha256": "aa64558e1cb00919567268f9b1084bd80eeadfd29c04c1a7f0984598fdb35e93"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:bfd008a1df5af35f",
+        "sha256": "ae81877a1de6382dc7ee7dca6fdc0cc831cef6b5a76176da4c137450c4863938"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:c1648780e98711fa",
+        "sha256": "2b5be6044e7fb42866056f317605237466f834a28a2da89197c393361b305013"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:c17645fd4df2c696",
+        "sha256": "dc5f78a16dd4a6dfd57e3f53735c242b09a71a48912f7eeab0bf9da79816e63e"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:c24f4b5a4a397bfc",
+        "sha256": "f4eaa819d04afe99fa2ba63d669a58cf8a5c76ab18e1cd834dda83472fcaec91"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:c2e62b9f94be5a99",
+        "sha256": "fa85a1fbe0318d8304d7e446ad770f5d7f50925baf9b97fb0bb16b2fe6c34c0f"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:c32e06cfa533e282",
+        "sha256": "f71527f4d2fae390d6917cb35636ced75c1a7260bace4839b5937c040e25e3eb"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:c3e323b69b48b33e",
+        "sha256": "b30e54f260f12cf25c21600ddd645edad3a0d825ed21712f32cfbc8fa0e1812a"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:c44390abd1fc34be",
+        "sha256": "c82b3f0cc0a0a532ea3c6a77facc546a507620e6d2f2f47a920264e2ffbc7aa4"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:ca84eb2cb9a64cf9",
+        "sha256": "45fb7e7306219294094de3b69551ed7e7094a1cbc600502be4afcc8f5847066a"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:cb680850f9158d14",
+        "sha256": "291ccf540f0832dd6e4e5c2e93126ec7c775f5ee403c60fe74984c28e1c97832"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:cc41bc55869bdbdc",
+        "sha256": "b24b268bcc2073a8ef881991edda88bfab79993c4ae53d4ef80752a34f80656a"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:ccb109fa52500b0f",
+        "sha256": "32b5ee7a49da0a6d949473db41246340114bdd2dc22e2dce5d43d7747301d29b"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:ccd0ab53615c492c",
+        "sha256": "ec85968e3994b04f71fc82197b4c0940cee403cd9c19f54fcc75aaad291a8af4"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:cf16a7fad1733833",
+        "sha256": "b8f72ceb6f137208c9c80a784cd004f64a397b71f02d8dda1fa3df083a167908"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:cffac31eb3a940a6",
+        "sha256": "8ecc3f8f74b5c480fed118df7ac0e47c89ed8c37655a0ebd0226c07dc4d4c673"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:d2ed5c708ecdfef2",
+        "sha256": "5a9a0b655593d5b8bfc63fa4e7efcae8f04b85d4223a8ff668bf60abb57cb6fc"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:d3007bfed30274e8",
+        "sha256": "c1e86923cd408d1427ce50e72c0fe6bb97caf7669d127b6c9096165545377490"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:d3ab907c9201e643",
+        "sha256": "1fe78ce62c25bed95148221a506ac7afdcce063fcdb6950f8f379242437dce76"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:d5acfd9c1abd3583",
+        "sha256": "7fb2347cd77815f6f107186d59f5ba9084a70c39e8f1e708f7689550f990e26c"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:d637de97c01bcc57",
+        "sha256": "c11d804042447e4205f995026c251a2182a2e08d887dc67f704084737e257114"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:d74fe80db44abe79",
+        "sha256": "60049353fdc86f8f3760e793a2bfbbf3fbc08eae07aa5bfae7944595c8d15776"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:d830ba4b6ca23a10",
+        "sha256": "84fe3e5e6044cf7f4c9ffce8339c72c2561438001e48f13eee64e823fd788970"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:d938180f5c9400de",
+        "sha256": "75ce0344ebd1c899760d53fc5235f65e269d81b50e0542c7c9b66c0e2cd2f5db"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:dcf362441027588e",
+        "sha256": "3fa163078d2c2870062e024c487efba84694d488280f20c57285af902f3f4dc6"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:dcfe0940535bbadc",
+        "sha256": "e3dd2fda5c2f8dace0305e36cb8d10c87b5ee1f88edd06c86606cbddc02a9b3b"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:dd95c2e1c301b613",
+        "sha256": "da792338112dfce34a75e46578a62a34b2255314fec3c0fe74635770bd0e05ba"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:e156a55d1e6ee257",
+        "sha256": "a12b48689819ffb20988251dc87a1895e4f11f207f38afbf185461e9c7d06c7b"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:e2de7bc3d5e2586f",
+        "sha256": "5fa6827a4444f9d21e31dc006efa53c9b321938486922af4ecca0f70d3f59844"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:e3f984bead6a8bcf",
+        "sha256": "6da62becf333512573db88490d2badc5952d7d7ad20c86b11226ec1514dab55d"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:e5b8adca26dc22c4",
+        "sha256": "d1c67319b31e1c814cdb50c1152c6fd5f97af8d1a0942b9eb05b4e2b82dd3048"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:e5c7370809cd474a",
+        "sha256": "797fb9622d59400b28da352e3dfdff745f01978c03fcfc1dce0a9c4394415168"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:e783448ef8a2c56a",
+        "sha256": "548d0c80918c0d8076f30f5ec21a149714ce6d1e16737dec70f8834b267a3889"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:e94351c584f016eb",
+        "sha256": "1260118bc2edd63d2a4c189ba5585ed5fb309e4bcd01aedff91ab786b103da3f"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:e9f32fdfd82d7ffb",
+        "sha256": "80e6b3a24de8beb94aad39344668ed37866bf43c9554840599b8ee52fed4b735"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:ee17f6060cca3303",
+        "sha256": "6aea4ceb6064744f331cff35fed32a183369e9a5eaa82b6f37e63019edc08d9c"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:ef09971f0b60048f",
+        "sha256": "c13d12ba7a1be429afcee9fd8205548db3a1106b72e71db467b0b424e4584bfa"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:ef38d71218c6e4ec",
+        "sha256": "398f2817e75bf1c31d630a82ca9491d2e0842061851390b88cd01e05868870ed"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:f084e9698950f46d",
+        "sha256": "bd509079e86d185206590ce0d905aa7c8d54a02a11b729c0b590e47b5546c44e"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:f1584e64df4112d8",
+        "sha256": "0b8cda25a7624fff71ddfb65b52ce0d4ef6a00a7c2e9c1efc0cef27dcbd8a172"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:f2a0e9e7c4b31b0f",
+        "sha256": "89891929fb281dc29185355b43a59e0391f9bb64934dfe79fd69f8a29967cc8a"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:f5ac8e42557e22b4",
+        "sha256": "4c93bcbf8fecb92b7c60cfa6d36b9b2a35d0bc0ae41cf44c2fb3b54af66b36d6"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:f5ecd0123d4718e9",
+        "sha256": "867e918cc3b944cbb58006441c36094f75ed682b1610e9454133bd7bb228134e"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:f6f72c073eddcffb",
+        "sha256": "3dbf9bd7853091eb3c7364491f912be908ebb3c07732e199ee41802496703a7e"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:f7f4cd9878a0fa5d",
+        "sha256": "ef628ccc2109ffb1bcf39076f12c299c30d6f9b61025167440495f42733d7e6a"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:fb6a37ffc8d1f3fe",
+        "sha256": "b5f929f4f69266e95ef4124eab24efaf8ead0749b053a6406e9c1e9aeba50c0e"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:fba4ee486d6af45b",
+        "sha256": "a378eeff87e1855432c2dc6e4a42bdf4a1f59bd9e93e81e5ec676cf7f52ef2c7"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:fe384438a479d54b",
+        "sha256": "04f26c94d99794502e575a0736f26112df03709711af1719c3ad5db72ed85bbd"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:ff751f2c7e6e2b4b",
+        "sha256": "4be5eb0663a717254485945817452a44be85274715f6664558a9538d111b4718"
+      },
+      {
+        "pair_id": "pilot:laya-contrast-v1:ff82b9c2d72e1783",
+        "sha256": "2852d8372735216b66bfccf75afbe37cfe1f5e389a485be998647e4d286803ae"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:27816892e29847f71144b118",
+        "sha256": "fdac934a160b84f6707d0d68c2c163d0c1fb31215fb2ef90ecca05014715491f"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:2eaa85049aa6dee852eb0f7c",
+        "sha256": "ded826575f6528b97e06e33d23198e0b86ca45d81675435d81c0eee24eeafd57"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:3162d69aa954f25d693850fe",
+        "sha256": "3b707ec0aca147279160db4f333a01cf230bf256f91c844405f2cecd6d6315d1"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:33929f56a3fcb9c85200684c",
+        "sha256": "2ee13f03dcf7acddb6bf9cb333b3b2715e68a8dbbf3a96c57a422317a066edfc"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:59fb45e9aefac45e8bc01582",
+        "sha256": "a60c419a0e017f9f4a627fa5a647935ac6eb3a3e98f2eda1a6025f8c9d61406d"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:5ed8b2bb0d055deabd95ecf8",
+        "sha256": "3d4ea9353ae5683dd61aaa4c2f2ecd436577f5a3b4d81933fb12146946238123"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:6636a52ef5cdd2e63be23513",
+        "sha256": "43e015ce1933b66cc9d66377f7b814cd42d56c9c8111d6849b28c10ae91d4fa9"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:71d0121cf3a1cf9aeef83f05",
+        "sha256": "d4c2468a69e149d3a72b7381ed44fa7745e24a8d31a489fc3dd74f2e1655eb33"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:74caaa1a229b96181aa159ca",
+        "sha256": "907b04f3e24382ab154babe4096c4428ddaadbae1ee1f50e97c5baa0f933493f"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:847899d0f908f233a9a90382",
+        "sha256": "2416c56125906a13abc6e3a1f23c19f1bc0699814b028573ab30f8a76af09b0a"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:8ebf1d1b78baf7d80b61ec92",
+        "sha256": "197ea26ee4b234fa289f9991eb041ad10c96e4d9caa4b6fe56240edb5c526751"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:8fe37974fed0c3b901381a97",
+        "sha256": "7fb757d012f7e65d63554a5afbb9fe4e2ec93064e30f56c5e3a6a29a08d51c2f"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:a11689b528bd1e04efb31d66",
+        "sha256": "8ac6a7d247203e4f7e9227163f64943c88b75aab3307457dc93037449b613c09"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:b48dbde9729ca82c69cee1a8",
+        "sha256": "6466f29e6157bcea1a9788831b485f5a23ce88fa6802b8dbc0c73d16913279cb"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:c197b7e04bcfe98c8a7caad2",
+        "sha256": "d543b4447b29c953707308f47f06d36b6003268dfe2391fc370fc0ebad8e8d07"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:d341f556c55f15c5f6640f5c",
+        "sha256": "4b62e432f97ec50b8d64e93500cfc6d9330110fc017e52bcb086bfeb3d0d502f"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:ded54237dae1562e6ccee197",
+        "sha256": "aec2ba89fb4639c9c239350a2a7647452a9ebaa7a2ae0b53e17a0bf882700d7b"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:f2ef8460a653e95d89f962ab",
+        "sha256": "97cfd95b51e097fe1edeecd7106c8394f98c99307d0bec98550a30059316f82b"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:fc588ec6443efeb33144c594",
+        "sha256": "bc8296893c1373a92d129d6692c494c36e2e81c9c9e93c3d686a109caf9841f3"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:fc97a5c92595eb33d6e12ec4",
+        "sha256": "711c7f66cde55ecf869435c1a036ae07d9092ab0f48ad9a0b937ca0b9b78f24c"
+      },
+      {
+        "pair_id": "candidate:native-context-v1:fe80091a1f9bdc5e5f4d91ed",
+        "sha256": "1a4387250dc38da1250b53f3f25afed67e6e02cdda21ceb164df6a984df1e63a"
+      }
+    ]
+  },
+  "source_dispositions": 108,
+  "training_execution_authorized": false,
+  "unknown_labels_changed": 0,
+  "unknown_reviewed": 94
+}

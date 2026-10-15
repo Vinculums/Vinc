@@ -1,0 +1,30 @@
+{
+  "inference_calls": 0,
+  "inputs_sha256": "bb1bde071cb1e18eba91a69be6ad11c6ccc92dd25d19f23ad0dfde8882ed18fe",
+  "laya_train_sha256": "f47cafba33377aaae907cbf2dbc7167570fb810654f81755144eaacc54dd44f9",
+  "model_loaded": false,
+  "sets": {
+    "control": {
+      "items": 3012,
+      "metadata_sha256": "57d1fdc25e8228b3a0cb03aebac87be6dacf4779db6cebf288082c41434b0efa",
+      "rows": 3012,
+      "skipped": 0,
+      "state_truncations": 0
+    },
+    "development": {
+      "items": 355,
+      "metadata_sha256": "ccf0d59ae379873e43941b0f1391dde643ee794827531ca8e31f5d20b7c19920",
+      "rows": 142,
+      "skipped": 0,
+      "state_truncations": 0
+    },
+    "intervention": {
+      "items": 3012,
+      "metadata_sha256": "55ab1847271a73e25d4ad4a6f53817cea37e293f69950c1eeb1cf5619a043920",
+      "rows": 3012,
+      "skipped": 0,
+      "state_truncations": 0
+    }
+  },
+  "training_runs": 0
+}

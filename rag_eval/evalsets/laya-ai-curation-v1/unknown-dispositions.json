@@ -1,0 +1,1600 @@
+[
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "18429d5b9e67994bf1666fa0469d66414b8fd3dfcec743bb6fdb444bef559d39",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:010555f72b348f8d",
+    "pair_sha256": "b93ee2c7882bb0fab192c7839b1400fcbedaf163b883a87ae6aa347e323be3fd",
+    "reason": "An environment-variable rule does not establish universal command-line option behavior. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:ddd0c39a66e75186bde62ac784aff016d4ef9ae68c1fe28a8cd040e2e8587acf",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "f1f8fc7968cb0736c9ea548a33ea8d7c565923b666446eae95385f231dac6703",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:047d72b26ac91e2d",
+    "pair_sha256": "8423bc5b72a5de918f70ee4776235856374d25efb96887411152ce9cc1745104",
+    "reason": "Equality with timezone offsets does not establish equality after removing offsets. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:7a65dbd8b6efc619219a50818b36f1ac7903e4530ed98a85333b33fe3a2a7ee9",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "912c668a912a1d62a59044da0ea95c8ba506be2091b4cdc55718638b2415327b",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:063641843f0d5862",
+    "pair_sha256": "b3b8fcd90b47607c99ce3a77e60380ab01f89544113de88460e3be5b81b0574a",
+    "reason": "A defaults rule does not prohibit explicitly configured alternatives. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:fd6813020244f6d1e3928e67edf8c6f22e77a8a419126734de51ea990c7ab5d7",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "d5379b9b662e74b55299cfe034e87dc2212ba7cdeb7fbfef7f118b75ca05d868",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:0ff965b5fcf89de5",
+    "pair_sha256": "2013f21b28e17cb279212d38c573c18db0981ffad21b31c235d4472a33b72ca1",
+    "reason": "A states actual defined transformations; B states only capability to describe one, so the evidence-versus-restatement boundary is unresolved. Recheck: The evidence-to-claim relation remains too close to extraction or restatement to assign a hard supports label under this rubric.",
+    "reviews": "annotation:8b729ebb258d4a4044711175e7cff89e61226a435a2b2883e6a01893a09c4028",
+    "rule": "evidence_boundary"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "681472e22ac51e98879e88293cb89968ccb8e3a020ec33f7e35879b220bd0f03",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:113c856dcb5c38fa",
+    "pair_sha256": "cf7500bc3a1838b6966da983466a275843d8466d36936a136c56f225dbece3b9",
+    "reason": "Depth33 for this event cannot establish depths of every event that year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:2e126492aa568b33fd9902fa76a6cf2cc2057ba428dec26cf94abacc72b7e7bf",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "e54bbedd11085cb3374d775b6ae88577d431b7043d8d9302fd07e235a620f0ab",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:1a5571995ab7eee9",
+    "pair_sha256": "100414fdd2ec7fd636c79cdb601235c327cea0927280035fe19064b913b2846e",
+    "reason": "An unspecified standard-output exporter format does not establish the OTLP exporter's format. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:3933ea283314450c1d3e4d79f6d01d027437bbe428199f03a770177f8615e093",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "c918b9c5cfe7d3b19b43fbcf34728bde630fbb4810e3f48bcf250ec3194c56a0",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:2147a7cce55684f8",
+    "pair_sha256": "affb4a2f5e5d2907ab15adf8b13d1d67acde7537aaf651142015f5787588cfcf",
+    "reason": "One successful Python sort does not establish stability of all algorithms. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:1d4be0918382c9ea673e656347429a8b824e7fa1e5a1ee50d01b1588c686bde6",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "58e9e7b0c203d22b9246e5f62db76689149b076408bc557890a0a14a37cba33a",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:21bb4840c511e29e",
+    "pair_sha256": "6cf9d5934c0362b4fd6445a54e1de26bcb70605087409ab7cc899a1664e19a85",
+    "reason": "An OpenTelemetry definition does not establish permission in every telemetry system. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:a23a56b5d121e0f977ae181ed53a5da7f2745dbff01da3173ef883236201bed1",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "2a1e7243d51d20889e3422d403a3c0a22d95dd735c28d8a109e2cf2d438f481f",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:221dce7936f3dd7e",
+    "pair_sha256": "fe86bf97cd41b51c0b83b6f6ea24ba2ef518269f72e4ed8cae87af5fa363d2a6",
+    "reason": "A recommendation supplies no measured results for every deployed implementation. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:da7391a4395dd2539fce77fde81d2e2856c4aa41490e2ea753b5203d68b884f0",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "ab4cbf1dcbf31cf98a52bb2ba7e2b26452bbdd3e7aa26717be376bf915c5f4b2",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:3141da93d71172cf",
+    "pair_sha256": "fd2219c85b47503b30c0681ecf483aacc4b9c8b69fc9e499c4cdae40fcc3f74b",
+    "reason": "Avoiding unbounded library consumption does not require a fixed global bound on every application allocation. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:3ac6f83b386ca74064dc708f5a2ba1787f4899919ca3bea4e58b4071df2e617d",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "7f3e6b0f0b7a62d969974a44866b264e9e1446165ad9d68074cbbec0baa24296",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:327edbc9909d7dda",
+    "pair_sha256": "ae38212ffe156e4df22f158400a3ff5b81ffa31282ddfe0ee37c7e4ff8694224",
+    "reason": "The sharp-s substitution alone does not specify every character of the full output, including capital S. Recheck: The narrower premise does not settle the additional endpoint, extent or qualification in the target; retain the original exclusion.",
+    "reviews": "annotation:195c53c89776f8eee589569fa91c4caa8d33c1c21f26e5cfe9c119197eca661e",
+    "rule": "partial_claim"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "4a8aec162ce7d90959d84cd9157a582e1d09c9715145bca78fc2cb0b8b9c878b",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:361f52fa4d248566",
+    "pair_sha256": "3dc731c61744ce900195c4b214d7045c47a4b9d0a36f198b69d9a5c3137833d2",
+    "reason": "The UTC catalog date lacks an explicit rule covering every timezone. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:9e783a8e12c6ab43e5ab6e01fa9eeb8169067244101ca01fb8114eda6a9052e0",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "9f9725f2b7a1e60ca5daedc15d531525aafa7cc6853143664996969300107902",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:3661fbfbfac9a49b",
+    "pair_sha256": "7ecafd52715a3a874cd132a63f835233ebaa5d4aa84744e0c46ca88d3a33eba7",
+    "reason": "Only UTC date is supplied; the all-timezone mapping rule is not stated. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:8f944773faf743616944bddba9dafe488600e90586cb091ed9c72522b98e57e8",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "b591fcdaaedae97eb8fabb74e07f9ddda3cd3bbd264f443d3382abc413a15636",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:37e7d38ffd09ba1c",
+    "pair_sha256": "3655d2faa9ff68d807b1f97f81fdf6352a197b0a5be416a766d562399e0833cd",
+    "reason": "Longitude153.221 of one event does not establish every epicenter that year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:a27f4e65bd6043ca8eb4f774d69a6d128e1ce6b5af0e78a157809354c2f2d1fd",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "c739ee5405cb9ba58bc016ad2075475c6ae739adc8e40d0f9b0e54cab670675b",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:37f19e19290c4b3b",
+    "pair_sha256": "7bb1a12b6ee95d7b8dde0843699b72fce8268fbf4207e5d72b371c09b5ae32a2",
+    "reason": "Depth29 for one event does not establish all depths below39 in that year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:70b0fb7e91800c5a38b9128c2ee71200b869658760caee415614e63db64e47e2",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "059ba02948f84d9398acf8c929982b74e8e16468198117d77040cfd0f77dda60",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:38b7d48bfd0d9e06",
+    "pair_sha256": "2fd0ed58e10b6790342553cce6297e8e18cac7c0e0dfa0250b246598f904f354",
+    "reason": "The test supplies a sorted list, not an unsorted-list result. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:a151ebf808281c95103eef4bbf0d76f9ca88dba58b73e463fc7334a8f48ff3d7",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "79ea868a2744b9286788599c991fc1c44d820d8ea751bfbc4f9a240820e7e891",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:3d7fca9cb7d7e12d",
+    "pair_sha256": "776552451ff86d35c1c10d07e0189d6542be570dca8c44ca4cca6a9792987563",
+    "reason": "Longitude143.91 of this event cannot establish all epicenters that year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:240c2725e97ed63068be943467193d0ccd7d7ff98876e2f510961507cb802701",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "6a8e955cfcd7e8ad9bdeb37107e627db99f93ca91dc46740bf568f77306a669e",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:3df8673be222b02c",
+    "pair_sha256": "acf35b09ade9381c3e0579f67edec56cb24a301873df287203f565d0fccc1416",
+    "reason": "A provides only UTC date, without a stated all-timezone mapping rule. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:262f0e22802703b87c493e56df1ab210b6e2b2c3c5d821a99b6d08f450decd3c",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "52ada8860c2830e2bc6b5c375b515a2489de6e3ea6196debd3524e31d3f316d0",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:464820d17d7df21f",
+    "pair_sha256": "58c18b95ba541e32dd6490c68a56b69666f954c21f0dd153c4dde3f8b9cd5e2b",
+    "reason": "The0.1-plus0.2 test does not establish the separate0.5-plus0.5 claim. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:3f364f3b25a63d254df5c0f17d931c19c347037b91ff8419119b23f5cdaf6e1e",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "4503400d42432f611d61a5c53cf9d919a93d4466285bbafa44199b9ed1c72485",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:4fde9276f7ccf941",
+    "pair_sha256": "1493fe7945fab2c493f045f743783ac5abaa01182885d67f93169d4deb492364",
+    "reason": "Magnitude8.6 for one event does not establish all events exceeded7. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:3a12616b9aacca9b085a790fd669303540a55f443a69585f61adcf719f79b0d5",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "a9472e249a590fb837bc51ad11e0fcee0dc439e95b503d4afcf2a73ef40e8c00",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:5532c2613b07891f",
+    "pair_sha256": "b19f9a9958506ed22fdd4b5dd3de236acbeba3a99b0854bbcba3ee126c9f9bc6",
+    "reason": "A tests first-subset-second, not the reverse subset relation. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:eca9e2d687e357fdd7ce0611c3dde3a3bfc38e4e44cf65c60ffdda2ee3355b2e",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "df0a3fbbfff2a8a82790efe3ca10e819fbf630552bc5e6691ff9f5bc7f9a6030",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:5756676e2043f4b4",
+    "pair_sha256": "25644f21d27e29e587ab824e87796d571b164adbcba8cfffb89b2d872e6d026c",
+    "reason": "This event's depth10 does not establish every earthquake depth in the year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:7b061fbc717cf58ca820d17275446f9cd96961e087e977a0136e57cf34a6f994",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "88bc761cac13351f5c9d6e8c24df3c2a066fde42930a37d30cd30bc80cd41cb5",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:60fa55662e7bb00f",
+    "pair_sha256": "3c91aaaedb5950ffb368948823f7afc20d5cd6eec9de856e3b71e65560152069",
+    "reason": "One eastern longitude cannot establish every epicenter that year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:e31718a8a07c0eb8fa93dca9511e8c26e14ca640bc545e936129e728a89e6c2e",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "15010a397bb708bbad76a1399b04b94b8d7c5072b1afcd2b27b09d3c5c30f5a5",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:613ca687b1a6169e",
+    "pair_sha256": "5e93b77b38d5a2d0a10620db59f168c8cefbded67b5fe1600085b5fc68433d86",
+    "reason": "A measures insertion-order iteration, not a subsequent alphabetical sort. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:1c969c87a91c233ceb9794f4ba8087ddbdf3f2c83dd67a4dad96bcc562ddf484",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "d5379b9b662e74b55299cfe034e87dc2212ba7cdeb7fbfef7f118b75ca05d868",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:6ad695104f21d0e2",
+    "pair_sha256": "6651a4ffa81856a4db7d6b1c7d265bd0fdb8c701b26b2c580f3140b770947b2e",
+    "reason": "A says a file can describe an older compatible conversion; B asserts a defined telemetry transformation. Recheck: The evidence-to-claim relation remains too close to extraction or restatement to assign a hard supports label under this rubric.",
+    "reviews": "annotation:579a18554f08d7773195c5fc6c72b9b2f2cba43596d9d0ff75dfbeb3a6d2d972",
+    "rule": "evidence_boundary"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "6d435aee700c6e15370d9d11a783dc232482d832ffde3f720652808e30dcaf22",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:6dfe268876d97ba8",
+    "pair_sha256": "41983175a8515ee9293c8dbea89abc18c8aabce662ad53042dde7ce255de5c19",
+    "reason": "A measured suffix, not the different suffixes property. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:7cda3da63a8c2863e29f3975c351abc3b3fe7e37bcd250c7cdde61ca3a2132a2",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "c7b43a0311514009e62b4e4c9a3d471062860b586af8c5141b972f4df4a9431e",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:6ea375d25fd9c7d5",
+    "pair_sha256": "eef0004b5c2d0755b6eafb32c64176d3942b7ad376d90241acae5ee4cb980a7b",
+    "reason": "Decimal output does not settle the different binary floating-point calculation. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:8a67cad804f690ee1c712b8243a609210e2aac3028574b2c21271a6a9f22270f",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "790e4cb731458d2b2b181c95aaa18fde8978953384c8ee6c0a50b6828574849e",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:6ef946ed459fe019",
+    "pair_sha256": "b7625d0b11e613493f89b0a990791b72b4e3491a3dc54452c014518182ecf1e3",
+    "reason": "An empty-input hash supplies no hashes of one-byte inputs. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:5aff55e32a934f7aae6f5c169417845d8543778e34ec7dabfa3d822214741365",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "2241580e4cc386d2f91a4bba0e2e56a84c4d4e8e6c82f1b8f44a8bea3b9fea73",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:714e9bfee4da5ba0",
+    "pair_sha256": "d827128487197df6cdde129c41a17ccaecc14b3b1d11d9f7c889edf5ee57e116",
+    "reason": "Heap removals do not measure repeated removal of the original list's first item. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:7085603de87b513f974c56a2b2f766a464a88c3811fc576f4a2fde08e15df1e0",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "3b64cb68231ce20d5f0f5cd460c50a28f7cc1f7ee0e56163eab460536d712bf7",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:7753eab6d1935cfe",
+    "pair_sha256": "2c2cac386c0a2212ba9c41088590dcbbbc6f4ec2995895bf4d8a059ebb95d02c",
+    "reason": "One magnitude8.8 event does not establish all earthquakes in the year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:a7d21c9573db9ef9888a3da0b8892c96ed0c3b83e672568b41598079aa40b883",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "124d88d8675ba416b3acffc689df255433ffa3f2ddad4040b14e0fffe2c5b2ef",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:7d006a22a600167b",
+    "pair_sha256": "1b09521b9782cfa9658e89fbe82d527e1de3a763706aa1a0210c2e35ea8cf0c8",
+    "reason": "One moved requirement-level page does not establish every semantic convention document moved there. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:8a84e4993bf21445e3aea7e827e2cb6042cf23266d5a37fee999793c3e101eb6",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "b12a0dc59003b0c4e58af32e34944e9f42482669931162c897c38213bf4170cf",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:8101b3293c4e0963",
+    "pair_sha256": "d15ec108a75196e538899a28bbfddedfc5ce691bbf0095b634d14004f6647fc2",
+    "reason": "One urlencode result does not establish every encoder and every space. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:5dc948b5e2a7dc4fc0705897505d840f529f0ddecc8dfe3b4a7cab21518896e4",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "e2083428cff1202866967eac1439af06a473e8e4b8d50acadb9ff57f83029ef1",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:87f275367e835769",
+    "pair_sha256": "bd5b521f759dcbf6d0405b7079ee5db84c1029df330c49dc69ffb3918175e0bd",
+    "reason": "A single positive latitude does not establish every epicenter's hemisphere. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:adf4c143b2f45c234efa1389787ee2ad0f40a505a44e1db5ba4654d96126c92f",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "fc66a505834a0f3aeb34d771cdf91d1f1f475056639127687f39829a56b5c2c2",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:89962e93c76b6e1e",
+    "pair_sha256": "faeaee47552434bcb0bb1c07dc3241ea401e2287521350cafab33d644aa8a558",
+    "reason": "A single positive latitude does not establish every epicenter that year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:7f724415b499ada40680f4ef89af441e4deffab2454dcca0fb56a7429183676e",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "7979714d79c7aac78b11e9545f5f245a014873008b6cfed2ccc8f9bad2184d2f",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:8cb8fcaf17c74501",
+    "pair_sha256": "2d841dba827e9fdf1fa2b797498a47174981e50ff1b537c0ff8111ca152727e9",
+    "reason": "The test includes no corrupted compressed bytes. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:d961b973148e9d75eae5faa40fe42bfb9598a8404e1788c29b2f4d43854d5b18",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "6e7103ffbdbb55b2bc1596a92cfc7a478af8493640c7c922d36a6e37407247e7",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:901750e3fa52d04d",
+    "pair_sha256": "44affbed2169815a3e1c1418d2a91490f32d9a07398657f2f7cc3043e9e2b057",
+    "reason": "One positive latitude cannot establish every epicenter that year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:238e12a226b3714290a244bc6b7ad25257ee8a516fcfa2cfad7c9393ef760266",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "c3a499e35cda1aec752a3ca05a92b746636d96adcc98d5608fb1c030603c8a9e",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:91720bbcf22c888f",
+    "pair_sha256": "a0c4b7389a644423cc6ffc67f331f8b0e7b3bf193befc137bd9de06a253944a0",
+    "reason": "A Prometheus-specific rule does not establish every exporter's behavior. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:c8087d75065a717d16499ba88838de22fc70ec96d7674047b46fafd7f69950d2",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "a4cb97505e0d19e67dad8cdef09d915296e231b3a90f0a3d3f652507af90db82",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:9349ba53b7d10eb5",
+    "pair_sha256": "f71539abd623c6766c20959087aa5c50af817324bf06d81d35ab77db0d3df80f",
+    "reason": "The measured Fraction addition does not test adding numerators and denominators separately. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:d8940720691f1182fdf82a4c7e02a524b67971526ff8c74b62d0ea7b2f11c7a8",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "e1963c56940162802f27cbfb45c62955d55d6e03185b00e163c94e8fdf987574",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:9ab11c144c8e82ff",
+    "pair_sha256": "899ae103ad100c8e5b67f6553a1c9370e3fd12708f1e95136ea1585097b9bcef",
+    "reason": "One pinned relocation does not establish its destination in every future revision. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:97369f6dc959fdbc9de03f7c455a200482880251a95dc0db435a1f91c234775c",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "a09cca0e14820c712589eff698d5849359395ab591b7f9defd8fa8d67ce21659",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:9bb998ef10238eca",
+    "pair_sha256": "ebfc54a5abab7b3d537d0c6a9b36641432b2100ec595bb34db0f1fd07a2b78c8",
+    "reason": "The tested dict/list value contains no tuple, so tuple preservation is unmeasured. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:f6b5bb38bd8c45e14448cbc488be2c58fac8c5ebc4d2bd54bbd1303e0e4ee467",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "28596602e31f66933f9dc4269ecfbc1d6a5259236a7374b8772879d74606299e",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:9d247c8756658463",
+    "pair_sha256": "fe1031b3b9af59cf088e91c9462a824b9814318394f7bdd5f07b6da2cbfa0869",
+    "reason": "Get's return rule does not specify the different GetAll function. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:a77c940df29c0fc4c9a52af319b4546e06c388b2bb36a8b478f05e8c8154c886",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "e6bebd9ffdb4f71026edd960afc9e2495f0d1e6cf4002c2e1f73e0894355e0fe",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:9d8c6ed86769923d",
+    "pair_sha256": "e839207cde39cb43c9795c9b6311b9cee10766465716659dc885634282403179",
+    "reason": "An API-major support rule does not establish the same rule for all SDK majors. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:9c7347676e218d882b62d8fdc9735b73d261f3203d297f6f545deb43beabbba7",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "4b39d4a20439c7d639e0aeafbdf8ddbc507d6a0e53f291d431c3d9a29d404c2c",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:9f9fdbef873f3582",
+    "pair_sha256": "baf3740a02b56a342d22a3d0e858df7b6b48ec9dfc417926308567b9eba152f5",
+    "reason": "Magnitude8 for one event does not establish all earthquakes in that year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:ad81b0a122375a8073b3f867116cc1194872ea03f88d654fe14c06c7634aa78c",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "5eb803c603bf5730bf47be4ee1c98b5471f791a8578e8bdda1f91c4b018e8e4e",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:a731d05f52761d15",
+    "pair_sha256": "13a2e7763dfa48afe3514060c177bfa8492b7e0a677778308dee693823089aaa",
+    "reason": "One API/SDK specification does not establish permission in every telemetry library. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:87d7c1b78da79a353fd871602158ac3a9a28657922d3bc30984823c5da33d771",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "fcc8df7217ffae3e941169fed22e30a6eaa9cca149f2339ab2ba008d8bc81a3f",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:b1aa92741a5acbc9",
+    "pair_sha256": "b9ab73f8bc9c0e9e1ff99d342219e0761e47bfec5219c774174c878a2ebd3478",
+    "reason": "Immutability of the Context object does not establish immutability of referenced data. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:3902abdc9349fde119539d0ecc556b8060af907c778d16d7c48b28d6fc6b054e",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "8d245eb77df874c128ae8045c6c2f77061c211f586da516c08530142bf87bcf8",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:b3e688cc007271e9",
+    "pair_sha256": "eb215fcaa02c0e9832ea884a3e6dea17fe1693ea1c1db83f3992cdd9dcc1962c",
+    "reason": "An immutable representation does not establish that the represented entity never changes. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:ffd22878cf77a54da3c9b55f085ae1f39de7e258b88e363773594e45d2d40e1c",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "7f3e6b0f0b7a62d969974a44866b264e9e1446165ad9d68074cbbec0baa24296",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:b4e3778d8ce3addd",
+    "pair_sha256": "2793f7e44a99ffd6bcc6b3b5e8954a4111b3715cc325bde6c47d62b76dafb6e4",
+    "reason": "Casefold output does not establish the different lowercase transformation. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:527113d03f191f9a37b3e0954dce7af058cb4d28b5869c307a9d22aef62e619e",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "aa1dfb56e30843af8adc00fed4cadeb7296276c44df40d642e1a9f1d9e7eed46",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:b65e1f62416de457",
+    "pair_sha256": "4297471d1d765332311bd4718cc7dad09e4f9ccbfa347ffa60bb9832ed12dddd",
+    "reason": "A span-event exception rule does not establish a rule for log-record exceptions. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:041883288b83feaf8cd9c274044fbe1dc5193179dd5321fb11760bcd0401f1b1",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "8b6272be06ae45c0ce3cbf277640f4d8ddd0a758e020bd66a56ee7162bef0530",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:b7726c38510ecbe4",
+    "pair_sha256": "abbc2553e5d5359c100d8aa58c8ac8fce30c0c933d65e5fe585d3d59ad3085be",
+    "reason": "This negative longitude cannot establish every epicenter in the year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:c33e82941e159471cef1c872d0490d241ac8adc125e746ce3415bcf1683ab619",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "283c9d55154197ffd021d350cd31f5306a54dd5e3cb785093982754a412923a0",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:ba4c9b9de131165f",
+    "pair_sha256": "fe8796948250cdcf2f49618ad819adaaf722a04c079cffe86e4f4fbb394e8ab6",
+    "reason": "Observation time alone does not identify which clock supplies it; B adds the observer-clock source. Recheck: The evidence-to-claim relation remains too close to extraction or restatement to assign a hard supports label under this rubric.",
+    "reviews": "annotation:96017a1b2db7b3afaf2d40877a2b83c17ec3ec46a09426c9da83e72f4deb7cdb",
+    "rule": "evidence_boundary"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "c9ef2146a5a4cc612bded270b72ce8585b94a4e6c380173b46ee53dfc775a1d9",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:bde8745181a26796",
+    "pair_sha256": "ff0074cb4a190c9448793210d4d10db4d9203567aced1dc5e7959627dfc9a7c9",
+    "reason": "Retaining one comma supports part of B, but does not alone state the full field count. Recheck: The narrower premise does not settle the additional endpoint, extent or qualification in the target; retain the original exclusion.",
+    "reviews": "annotation:2a961adf24f8496713c9a9052c7580f31b6fba880ade69b52467e3848bdc0433",
+    "rule": "partial_claim"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "2a1e7243d51d20889e3422d403a3c0a22d95dd735c28d8a109e2cf2d438f481f",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:c09fd4e659a1e659",
+    "pair_sha256": "585560cd56f86092778b5219351165c907e83b1af74fba28eae495d24d1b2775",
+    "reason": "Returning valid values and avoiding caller checks overlap, but B drops the valid-values requirement. Recheck: The evidence-to-claim relation remains too close to extraction or restatement to assign a hard supports label under this rubric.",
+    "reviews": "annotation:d212d8a18a0769f2a7737165e6bf19072811e90b7b66696666844e92470776f0",
+    "rule": "evidence_boundary"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "a57796d332806bf546f34961d41af320a62f18a86e8095fc05c8b2c2492791b7",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:ca4530c57782e484",
+    "pair_sha256": "5c4a2b5e8e6f1f72fe9e64ff69c69e3c5eb1394a755f4a5b5505861cab4d9241",
+    "reason": "A tests fullmatch, not the different prefix-match operation. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:a9c77e444828909881515bc2cdeba5ff7a87fec549258fe6f72fe609c6b3ec62",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "85dc9515b390d97d12182a07930eae78604a648fc2937730fd124d2b43548b79",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:caab11e476af1ac7",
+    "pair_sha256": "3c8dc81d3f4e39a46175e5fdf6ad5389e177c2ca3fd05fa4c19f5f848d4fc090",
+    "reason": "rv's fourteen-digit rule does not establish the different TraceID format. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:625cb6c6277b1ed32d2746b30e42dd51134baf22584ab6ccc6e89efe0f849411",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "bf162f5f9481cd350d0b6480c57544f253c5905db57a19e7fc0f29f1c6aae2db",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:cbfcec04e0dfe0da",
+    "pair_sha256": "547c9d39eb70611f6fa999d63967029c88cd1b6c7f49f07a411f075fd5b343e3",
+    "reason": "One southern epicenter does not establish all epicenters that year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:82da8021ec7a3d5a64f07edc2c183374a6e25f6de7b8b1f81d8df0490846493f",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "283c9d55154197ffd021d350cd31f5306a54dd5e3cb785093982754a412923a0",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:d6c596483b0a9ffb",
+    "pair_sha256": "4932cb46ebd4b130778ea77a427be46606dbfa2439aa0e3322646ea905d6eb86",
+    "reason": "This observer's clock definition gives no permission for substitution by an unrelated collection system. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:75423cf0ed9be31e6ead662116fb01d388e3d2fd9e58a7552fcf59a7a2c25589",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "a82220754e05fd836bf5c8963f7fe56564ddc669b9902c5ef07db10dbfdc9d61",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:db76b0ff316114e8",
+    "pair_sha256": "b7f377408c264e5849230a3ddbd4ff2b36e0b04cbdc2f0d3466d066781488a75",
+    "reason": "The recorded query counts lowercase a, not uppercase A. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:0087ea7d54d3601482549dcbeab7b2ec9b88ee8d0d9bd1ae7dc333f95cd03ab8",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "d16900626e21152b1623d05a1ae1bb110f675b4218a1d1d622b4c1671c45ea97",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:e7076c8ef2a3b9a4",
+    "pair_sha256": "dd2b0dd4c65f28f53a4f1c451f7de2a47a3675368c264800ee961aaeb33440db",
+    "reason": "Only the UTC catalog date is stated; a rule covering every timezone is not specified. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:4b656707add513e8b86478b5d08781d6454eb2df9ad8957e2edec8b11b050e86",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "d5379b9b662e74b55299cfe034e87dc2212ba7cdeb7fbfef7f118b75ca05d868",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:f10df5af9f84e4fe",
+    "pair_sha256": "157aa44c890f9d04876e56459eba0e452963720dadb5a637e70b4d169a212968",
+    "reason": "Compatible same-family transformations do not guarantee every incompatible unrelated-family conversion. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:d779fb903ad9e3f65f59781654bdd86a80421a85cb6a90209ea8a9f0fdae82c2",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "af4bb7a05e7ddb8540dd3b83a476ecaeddd6fb2a2fbb6af32decb36b38fecd27",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:f1f33bf05c4054f2",
+    "pair_sha256": "949ac3dac8b222148f2b07cf97d71fe91d93a3decae48cb8e244d68dd3c1c50c",
+    "reason": "Baggage key sensitivity does not establish requirements for all HTTP header names. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:ee7feeaae4ec73413fb732ad0e647b2a139671aad3acaf6a0bf57622825ea05a",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "1c8e03f446a77d13f8f20c1ca70af78ea5f3945063211f620c6b402057878a47",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:f7a842c1029afb4d",
+    "pair_sha256": "444e93fa0c5268d9511ee195891200ab7fae72d93e9748ffefb12f9abe3b4d02",
+    "reason": "Empty No-Op state gives no all-provider sharing permission for ordinary stateful loggers. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:7552942a509884e96900dcf5955999c16521bf9a51d09957fefef49917c7fcb3",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "0aac28420440997dffcbf45bf214441d599f0d5a6b010db322acbb31a566a18f",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:f7bc2397364da079",
+    "pair_sha256": "7686ee36139d3c25bec4f2322b12a6f4db873f3069c7def4cc08064949bfbf2c",
+    "reason": "One magnitude8.3 event cannot establish every event in the year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:b20d028a7c64c078ab7ab8d8c1e404f67c6a31390c212834168a5fcf06d0e53e",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "5b577c8688ffa587720bc8fc899587742bafe3117b3afccfdcf44e27f1a7c17d",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:f856d5dd320f0be1",
+    "pair_sha256": "bbf88e4af406972890738dacf5d0ae28023ab3ab13708a1de44d6343d6cbd287",
+    "reason": "One accent example does not establish equality of every visually similar character. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:71f2cf7d98d9e0300bcee6d4380a5341d573e0ec6e484a00dc4c86601f838979",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "ba9161761b361d3bd4eb05101331629b0f695a88639623b4f1c466329a03c249",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:f93001beca8139ca",
+    "pair_sha256": "8bbdf45b0fd1a4776975dcd88a7109496fa1bcd808a66cefea4bf2b9915072a3",
+    "reason": "One leap-year interval does not establish the same interval in every year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:066d1ce13e85d0c49b2b5a0e4aa9e1fec997ea38067789f7e99205503d6e05d9",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "577f54f1e9401312ac8181674806c714bf848cf4ad6a80b999e8da82fd8d43f7",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:f9f085baa046494e",
+    "pair_sha256": "fabb9d20582eb339c4837f725b7604433e5a99eec48c1a530c62fa6c3df5df99",
+    "reason": "One depth94.54 event does not establish every earthquake depth that year. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:bb6f93be3047a5dec692710dea51ded84220d11872c5bec412fe47d54ed3996e",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "c9ef2146a5a4cc612bded270b72ce8585b94a4e6c380173b46ee53dfc775a1d9",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "pilot:laya-contrast-v1:ffe7989de0917f7e",
+    "pair_sha256": "d72b60fb6ceb08d7c0fde969775f1ec410dd7d0ee716581269e68ea2ea7ef6e0",
+    "reason": "CSV parsing with quoted delimiters does not test splitting at every comma. Recheck: The cited input, object, operation or condition does not establish the altered target condition; do not infer a new measured result.",
+    "reviews": "annotation:11d824e4dceb100890f397b87c91bee5947985ea945d2e9f71ff43d42e6084e9",
+    "rule": "condition"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "d100799007e984302468e527a9da7c43373ac31a9cae7534c3200013bdaf5f4a",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:08dc438697adb393",
+    "pair_sha256": "9aba633ec3f663f4fbf910eda31e74e076da688babcebfedd49cd683240ecb16",
+    "reason": "One Rust return rule does not establish every unrelated language's return behavior. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:abdab890e74cd353362966915a7c3f4cb32e88b872d62cea677dd41e2f806559",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "8bd9a8e1ce9cdb3d2dd23020f5830c8edf9c69cc6d0494dbf561f752ef535b14",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:0c41ee27f2e8e636",
+    "pair_sha256": "c6f0933ac2dcd9e7960d2f740f547e39e6b3b0a49f9838f1934180b07ecc9923",
+    "reason": "One grouped SQLite result does not establish every other database and dataset. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:d8cb7bb0051c46b3c7228ed39b867eb25e409f6a87ea915e364f68194aee63bf",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "b6c1e9579c3abd2d52e5995060751a8ef14cd1ef139cacdd6cb66146ce71ca64",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:130fae705eff8a5f",
+    "pair_sha256": "d489647bbe1ec1abccb602d61bd3ce9885b9761038b16e87eb4f742a0ebeb471",
+    "reason": "One SQLite query cannot establish all databases and datasets; B adds a universal conjunct. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:e39d08d9693f23b3a31b7815de3ba01b72993d7a573de0e50c87598c2d2b67b2",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "84be10a40e098023428520fadb65e1c8cb4a2eaec15379f781ba4c7917073359",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:1b41496290ccfe9b",
+    "pair_sha256": "d4693bfa480b8f02c30f9204a6eefd862d8a77ea66981cebef09ef1ecac74bcb",
+    "reason": "One SQLite duplicate-insert result cannot establish every database and dataset. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:2cb9eeb59a83ceac9767abc04d6acffd01e22af79802b2303746f71195c46c80",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "2be595b4bad4b1f2d08d4faa4dbfa065fe6ea9ccb1c133200cef218be41d07b6",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:28803ba8a7981b2a",
+    "pair_sha256": "2c2d7d7057ff381730fafacf100115cefd7034e3ae18751730ea5aaa33b92e1a",
+    "reason": "A Rust tuple rule does not establish every unrelated language's syntax. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:aef2d03963779ef40e69ff026781103421c1da92b60eb32cf0cac7c282d29107",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "be3810d89d5121fd6ffceb05b42eb75ca15cd0bd4285544fbd96fb276ca20f97",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:2c1f6951ed9cfb15",
+    "pair_sha256": "dd528666769e4f154d393cd45947ef91deb98127c51b779df75a76256852b85c",
+    "reason": "KSFO's one county identifier cannot establish all future station identifiers. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:59af1f499891e60cb581843588dd49d26a439c752d513bd870324c8b80995b8e",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "f05b2cc03ae3963c9e2a13191a72cdce95622ac7cd6a190a629c378cca453f33",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:2f5ab60a75f00b31",
+    "pair_sha256": "e5fe070ba3fad3986d87edfe7de1683a54dc17f7cc755b0febde452d67550456",
+    "reason": "One frozen KSEA timezone does not establish every station at every future update; B adds an unsupported conjunct. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:56d1c93f988eb0a704a2e808e61e8c1ef8937934c00e3c81b1aef7f4729d0c2a",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "cb460ad8121f3c8d10119cc14f6696821caa61cf02668c8a2657329aa7103a42",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:34cd1b7128e5b051",
+    "pair_sha256": "6bb171a70957c138da33ff4a21bcdeba51e37c35d9cffdc411a5528f4fbe61c3",
+    "reason": "One KMIA provider record does not establish every station and future update. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:debb8099b2d2177d53f33076bf2b02616bc1b4bf96bf81282132291b3fd3d45a",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "9f520a6c09a033d407619d29bd2ab266897eba231a983b88e2bcbc9e3db52394",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:3df8961d8efe48cc",
+    "pair_sha256": "414093211010212cd7234afed30ba110a54550a71437e1551552c04892c831af",
+    "reason": "One empty-table SQLite result does not establish every database and dataset. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:747cd130bb5cc3e9d1ab9e0faa431054d918efb65856b769e9f08f95f073a7dd",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "bd03c097ab30860d85e12e1b91c88b60710d308b71b94968a31c5a741426636b",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:41db9eb2ddd09e8b",
+    "pair_sha256": "efd3819635fc40d924c4e525acdcf233cd06d10a1ada350a46dd768070e6ac2d",
+    "reason": "One stored KBOS provider does not establish every future station value. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:8b5155d98add57296abc956931966f101c5bd603eaa9d8e2309bb8b0f034a387",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "78db16e0bba05215e7a09f7b166af38b09ff387d539504643af6a8835f1b0794",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:4a7cd47c121cfc13",
+    "pair_sha256": "7d5f1dc5174d7aadcbb2142f5e0caf297b1c2bb8de20402ba1223d4cb3231b37",
+    "reason": "KORD's one county identifier does not establish every station and future update. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:c7975160b3ea2a5e4a52a2c95f4b1475abb73d1c04b7bc373e2d5ac3d43dcd58",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "5574b2a3ba83486a453a2d721bc8c1160ae71c37795d1bb66f36f2bcfb7b325c",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:5c1b29c0fac67ab7",
+    "pair_sha256": "27b1817ac8027c2a9daecc4e261e5203bf121da6cd4288a7f3f15ec8aacec0a6",
+    "reason": "One SQLite query does not establish the same result for every database and dataset. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:ef558cc0bc761b50184c39ba4e91ee78c490734f7f955f73a9c61604c27a9eeb",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "da72c7d5ff99f34342349a92161057298b3e87389c3da6dfd774176accf1da6d",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:5fc91424f5a0c7a5",
+    "pair_sha256": "dedfd53a0a4bc6f00981b2082864c10b9aeec696dffa75340179876b9e774718",
+    "reason": "Rust alias semantics do not establish every unrelated language's aliases. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:aba8332d7686e8c149807d819f018ecee8142d557ef8359e9455348a9918642d",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "f980960bb21c506cd392cbf7bb0f3776f49cd346d802a7294253ee99ae4eefc0",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:72f3037d2f898dc5",
+    "pair_sha256": "6b7a63e6c327052fae6e1b7d053b8ef89e8b85b931d5cf6f7c24c19981cd5b83",
+    "reason": "Elevation131.9784 for PAFA does not establish every station at every update. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:f666884bb0bf760848de207ba9b1690b07b94b8015185f07aee6f4fa5b2f77cc",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "ee059ab166a167f24c9912b20cfed8673907d62be033f5981da0ef4fcc3174f2",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:77c0d727e20da67a",
+    "pair_sha256": "5df7fb441613eb5c38b9fbe8e61ecd8b0e74301ed1912252d3bbb73049e73cb6",
+    "reason": "A Rust use-visibility rule does not establish every unrelated language's declarations. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:77dd385bbf67840196d287627fb6d0f7795cf3a8640918635ef658799ba07d4d",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "6135f1b1b237ab0f4003e35dceafc6d1e6e46f9ded4011343e82ad62d6624058",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:86acddad989186e8",
+    "pair_sha256": "a0e7462db5349348f6d576485b4ad765668fafc6881ec657631589d41f7faa0e",
+    "reason": "Rust's address guarantee does not establish every unrelated language's constant semantics. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:408b07ba9ffeeebcde51e7d9fb981a393ed9d9e9cf6b5bb6a42ebe10cef03550",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "57eda6d7e78d78ca76e2d0f9f025b17e8da687aaeb32fa94338870c3278707ec",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:904c8fc80a62d1f5",
+    "pair_sha256": "8b4d628b3c6eb668b6adeed44af6fb219978edbfcd71d63a049b0a51a48ba956",
+    "reason": "Rust's array rule does not establish every unrelated language's array behavior. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:1863df904bf1ba24dee73496a5e05621fa78a1fb8bd7f246737a3eeb3eeb3cd7",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "ef4bafdfc8a0364f81cf62a62da1359dcfc527f094437d7c1e25756781f32c92",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:9873ff18f960f069",
+    "pair_sha256": "0fb6bb2cd065579c4507fe3097deb44a244f90e127363da0f1c6a19d788838af",
+    "reason": "One elevation cannot establish every future station value; B adds that universal to the current bound. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:0ea217739d18912a8079aa238793fa5060b4a850825b4c24524828c63818029f",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "7adfadd57439f19164d99fb4820797b1ed2faad3ffd6b90e4cece5fce2ac7aa5",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:997f0e429ed7b5bb",
+    "pair_sha256": "ef47594c97d7f13ba6b3d95fdad6c514657f86d9ecdbfbb79fb924ff2bd10e76",
+    "reason": "A single PHNL timezone cannot establish the universal future-station conjunct. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:c7880cb6fafcf71fdb4817c59afede0d847481be3e6c5f8c53745962b1730e38",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "2be595b4bad4b1f2d08d4faa4dbfa065fe6ea9ccb1c133200cef218be41d07b6",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:ace5672151c1a624",
+    "pair_sha256": "eec4a3b9878115fea040886350f9997f748392cea462a86517ba736f815fa20e",
+    "reason": "A states comma necessity; B adds its disambiguation role, which A alone does not explain. Recheck: The evidence-to-claim relation remains too close to extraction or restatement to assign a hard supports label under this rubric.",
+    "reviews": "annotation:709b07a79df6d73bff1163b8231a55fbd315e9eecc45f54f0c59cb6a472584e4",
+    "rule": "evidence_boundary"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "0c5b76e8fe483e2a2c71557ef37f3cdb3e58bd990adb58a851e9f54753857ae1",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:c76ee13cb9c999ed",
+    "pair_sha256": "0ab39fc59dff60c238d4cf2865e75aad8739dd99b59b8423cb324578a0ba7356",
+    "reason": "One DISTINCT result does not establish every database and dataset. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:c0aec53b3673d066f7072e7b391a65b484e0e989d8385692b0cb8e81e99de493",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "c562a7a629dfc56894a179549993f3134e8ac44f5443cb612e9dca10c7f5fca3",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:ef04a357424cd5da",
+    "pair_sha256": "5c9d4a06b2b2d5eb1ebec5f2bdfbde63fb869d80ae126766b3d532ca722b160a",
+    "reason": "One SQLite result cannot establish all databases and datasets. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:9c78f31a72c723810cda4d433b5dc3267228d263dad88f113d68311624ee637b",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "deb935d72037455cf31b73234c244ba951168524e35116907f2725d5f776e786",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:fa7929e7f0e5e6b4",
+    "pair_sha256": "7d11e7dc27ec6d649749e36744dee26060f4876218f08346bdbdeaed671c44ca",
+    "reason": "A Rust reference rule does not establish every unrelated language without exceptions. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:8503da3448ff4ce5d60de2e91240c53abb5c43fc92ffee42a984cc69ca26e91f",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "ecfe308d4331c04caa6e64fc28365223a606d107e86b5637899b8a1c1878e800",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:fd169263dbc7cf65",
+    "pair_sha256": "35a2fa97f9fd8acae645b6b5962e96ea798ef1553ef2ee30e8f1ceabcda4e7d7",
+    "reason": "One SQLite division query does not establish results for all databases and datasets. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:c5cc47a2774575c67df9d73066ad87334def0e651259121cc5c7c992308d4786",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "a063b96a1372d48b04ba848be20b4c1f377569e6358114aafcf45a49f180b585",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "development:laya-contrast-v1:fe8c4bb560e5a154",
+    "pair_sha256": "cf21d874a37442095805194307a9051bb9fb0359b73d110cb49e99cec7eb5b18",
+    "reason": "Rust's private-item rule does not establish every unrelated language's access semantics. Recheck: The pinned observation or normative rule does not establish the broader population, time or system guarantee. Keep the scope gap explicit.",
+    "reviews": "annotation:a95762e4bfd7a75fcb0158ed57adb193f3c16ba9205f4fb9b25cd04aa67c3259",
+    "rule": "scope"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "0f5fcd98a5c03f7fa76a9f982e9d640c0ca697112e9c5c62aac2c8692948ba16",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "candidate:native-context-v1:1e42e1983d5ae5e243cb31c9",
+    "pair_sha256": "991582dbfce22888ec9c433aa6427e37be5c50cf4be751adaea4bce9958ca619",
+    "reason": "B extracts the genetic-deficiency weight-gain result already asserted in A; added pharmacological/inflammatory endpoints do not clearly establish additional grounds for that same clause. Recheck: The evidence-to-claim relation remains too close to extraction or restatement to assign a hard supports label under this rubric.",
+    "reviews": "annotation:fcd01b5323ad3a038b8ad73f3581d85d67dd85b27a573f789862d3ef90aaa0bd",
+    "rule": "evidence_boundary"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "fd2f5323742897b1106697ca694ee908dee14551b7c5cb01fa620e8ce1e928e7",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "candidate:native-context-v1:b477bd42623bf6440c5cc2f5",
+    "pair_sha256": "5a44290f5578bc1fd29b6cd6deced7f5634f6e79283471faa12be1f72a7d6f6f",
+    "reason": "B largely extracts the adverse-outcome association already asserted in A; the additional categories/participation association do not clearly add grounds for that specific outcome claim. Recheck: The evidence-to-claim relation remains too close to extraction or restatement to assign a hard supports label under this rubric.",
+    "reviews": "annotation:d66eaeab98232da6ed3e15e0c342cae38a2b7c1fd109ee6dfd8bc2b9ddb186bf",
+    "rule": "evidence_boundary"
+  },
+  {
+    "action": "retain_exclusion",
+    "actor": "codex:oc-20261015-vin511-1:primary",
+    "at": "2026-10-15T06:58:54.963630+00:00",
+    "evidence_sha256": "c398290c627d091c38445b8917b14d588c51450d17162a7ad84fb8e8ad9953be",
+    "independent": false,
+    "labels": {
+      "contradicts": 0,
+      "same_as": 0,
+      "supports": null
+    },
+    "pair_id": "candidate:native-context-v1:fc847527010dd30c434b74ab",
+    "pair_sha256": "4c0e88323e5d7dec62c5a78dd6d16d595c36e0945e7034a9f256ef25ff14b6f2",
+    "reason": "The measured efficiency is high-quality iPSCs under tetraploid complementation; B omits the quality endpoint, so general iPSC efficiency is not established. Recheck: The narrower premise does not settle the additional endpoint, extent or qualification in the target; retain the original exclusion.",
+    "reviews": "annotation:0352916451d2aa0f2e48522873983d06856ac705213482fa27a4145ceb27282a",
+    "rule": "partial_claim"
+  }
+]

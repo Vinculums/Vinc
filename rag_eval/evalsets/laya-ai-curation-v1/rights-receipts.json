@@ -1,0 +1,85 @@
+{
+  "checked_at": "2026-10-15T06:58:54.963630+00:00",
+  "pins": [
+    {
+      "captured_at": "2026-10-11T07:53:15.826032+00:00",
+      "path": "rights/otel-license.txt",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "source_set": "laya-contrast-pilot-v1",
+      "uri": "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/LICENSE"
+    },
+    {
+      "captured_at": "2026-10-11T07:53:18.469019+00:00",
+      "path": "rights/usgs-rights.txt",
+      "sha256": "4fe84d5197990fd074a9b2e8b87252e24191deccd6c94685490b44a9750b0ef4",
+      "source_set": "laya-contrast-pilot-v1",
+      "uri": "https://www.usgs.gov/faqs/are-usgs-reportspublications-copyrighted"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:46.161293+00:00",
+      "key": "nws-api",
+      "path": "rights/nws-api.txt",
+      "sha256": "8ce9618ace389afe1d0f914ea078b9b42fc3b4c3b8223ff73c15516687d1e5ca",
+      "source_set": "laya-contrast-dev-v1",
+      "uri": "https://www.weather.gov/documentation/services-web-api"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:45.581186+00:00",
+      "key": "nws-rights",
+      "path": "rights/nws-rights.txt",
+      "sha256": "95186edce4e6fb78c8d974c5478a506b7088cba89c7c17c5e2efa6f73f6af8ed",
+      "source_set": "laya-contrast-dev-v1",
+      "uri": "https://www.weather.gov/disclaimer"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:45.250074+00:00",
+      "key": "rust-apache",
+      "path": "rights/rust-apache.txt",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "source_set": "laya-contrast-dev-v1",
+      "uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/LICENSE-APACHE"
+    },
+    {
+      "captured_at": "2026-10-11T09:50:44.971080+00:00",
+      "key": "rust-mit",
+      "path": "rights/rust-mit.txt",
+      "sha256": "0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720",
+      "source_set": "laya-contrast-dev-v1",
+      "uri": "https://raw.githubusercontent.com/rust-lang/reference/5baa209fc1998b8425be2ea1e8a57b613fed52d2/LICENSE-MIT"
+    },
+    {
+      "bytes": 542,
+      "captured_at": "2026-10-13T05:56:52.613848+00:00",
+      "kind": "rights",
+      "license": "CC-BY-4.0 and ODC-By-1.0",
+      "max_bytes": 100000,
+      "name": "scifact/rights.txt",
+      "revision": "68b98a56d93e0f9da0d2aab4e6c3294699a0f72e",
+      "sha256": "56ee69bc639cbab8f0b2e4b67091ec5e9390aa99a1d65f0a35e4274686c9a806",
+      "source": "scifact",
+      "source_set": "laya-public-auxiliary-v1",
+      "url": "https://raw.githubusercontent.com/allenai/scifact/68b98a56d93e0f9da0d2aab4e6c3294699a0f72e/LICENSE.md"
+    },
+    {
+      "bytes": 529,
+      "captured_at": "2026-10-13T05:56:52.695846+00:00",
+      "kind": "rights",
+      "license": "Wikipedia article terms or CC-BY-SA-3.0",
+      "max_bytes": 100000,
+      "name": "vitaminc/rights.txt",
+      "revision": "eb532922b88b199df68ed26afeb58dca5501b52f",
+      "sha256": "153a128e86c7d0e978243c8c8994dbb5fba9081a36f8d380cd1f5994699e369e",
+      "source": "vitaminc",
+      "source_set": "laya-public-auxiliary-v1",
+      "url": "https://raw.githubusercontent.com/TalSchuster/VitaminC/eb532922b88b199df68ed26afeb58dca5501b52f/DATA_LICENSE"
+    }
+  ],
+  "primary_web_rechecked": [
+    "https://www.usgs.gov/faqs/are-usgs-reportspublications-copyrighted",
+    "https://www.weather.gov/disclaimer",
+    "https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/ef25ddb7d2ab36a194412c1c3bf71ae5900afdec/LICENSE",
+    "https://raw.githubusercontent.com/allenai/scifact/68b98a56d93e0f9da0d2aab4e6c3294699a0f72e/LICENSE.md",
+    "https://raw.githubusercontent.com/TalSchuster/VitaminC/eb532922b88b199df68ed26afeb58dca5501b52f/DATA_LICENSE"
+  ],
+  "scope": "local development preparation only; attribution and change marking retained; original permission flags unchanged"
+}

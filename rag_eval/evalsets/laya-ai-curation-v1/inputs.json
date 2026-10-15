@@ -1,0 +1,12 @@
+{
+  "core_training_sha256": "7896874db0eaa0e9075d7a24c26be0f468e21ba9d0e76dd9b8d08a0c0be85409",
+  "decision_ref": "decision:continue-laya-ai-curation-and-comparison-registration-2026-10-15",
+  "files": {
+    "rights-receipts.json": "489bc5037ae04b5a68803c158b80cf1051901a377ca2483d0809e5ecd15e7f1f",
+    "source-dispositions.json": "e0bc53cc61988add9c52c80ed4aabd30086e41da2cbc227aa961af7d98dad5da",
+    "unknown-dispositions.json": "71f624d58f12342a13544ba6def90fa115a2018635988cb152cc5707f3d8c2da"
+  },
+  "parent_manifest_sha256": "e87cf7bf6bd915d48e5061056d2ab553e39ff9300ebbd09206e604a994330078",
+  "schema": "vinc.laya.ai-curation-preparation.v1",
+  "training_execution_authorized": false
+}

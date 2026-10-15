@@ -1,0 +1,382 @@
+{
+  "authority": "decision:continue-laya-ai-curation-and-comparison-registration-2026-10-15",
+  "candidate_replacement_language_counts": {
+    "en_en": 88,
+    "en_ko": 52,
+    "ko_en": 57,
+    "ko_ko": 55
+  },
+  "code_sha256": {
+    "curation.py": "7255719a45acb4bb962ec70f2af8a243b5af7075619012036ec208d0283bd539",
+    "development.py": "ac08b7f80a203e3c882831f5d0b610727b815301079d5ef4ac9e1ea98df19a9e",
+    "intervention.py": "4e7712515d00643aa7e85a7a8b0b8566b912f3992f27763d5938e06a6b10d085",
+    "pins.py": "22b1caee785cebc48cae15f0994ef76c0a8b43d48fb3c54ca52877f614a42af7"
+  },
+  "comparison": {
+    "control_sha256": "fc3f4df8165af33ed7391d15ba450bd07febe96c2c7826ddd73b6f130b576103",
+    "core_exposure": {
+      "arm": "core",
+      "items": 3012,
+      "native_labels_are_vinc_gold": false,
+      "positive_items": 1506,
+      "schema": "vinc.laya.balanced-exposure.v1",
+      "seed": 20261007,
+      "strata": [
+        {
+          "available_unique_items": 804,
+          "draws": 502,
+          "observed_unique_items": 502,
+          "stratum": [
+            "core",
+            "contradicts",
+            "",
+            "",
+            0
+          ]
+        },
+        {
+          "available_unique_items": 200,
+          "draws": 502,
+          "observed_unique_items": 200,
+          "stratum": [
+            "core",
+            "contradicts",
+            "",
+            "",
+            1
+          ]
+        },
+        {
+          "available_unique_items": 798,
+          "draws": 502,
+          "observed_unique_items": 502,
+          "stratum": [
+            "core",
+            "same_as",
+            "",
+            "",
+            0
+          ]
+        },
+        {
+          "available_unique_items": 206,
+          "draws": 502,
+          "observed_unique_items": 206,
+          "stratum": [
+            "core",
+            "same_as",
+            "",
+            "",
+            1
+          ]
+        },
+        {
+          "available_unique_items": 406,
+          "draws": 502,
+          "observed_unique_items": 406,
+          "stratum": [
+            "core",
+            "supports",
+            "",
+            "",
+            0
+          ]
+        },
+        {
+          "available_unique_items": 96,
+          "draws": 502,
+          "observed_unique_items": 96,
+          "stratum": [
+            "core",
+            "supports",
+            "",
+            "",
+            1
+          ]
+        }
+      ],
+      "unique_items": 1912,
+      "unique_pairs": {
+        "core": 502,
+        "native": 0
+      }
+    },
+    "intervention_plan_sha256": "a3885bb62be18d5b023afd802f1e3a36cb433f322b49d3acc277d5b724d00678",
+    "replacement_items": 252,
+    "unchanged_items": 2760,
+    "unique_replacement_pairs": 195
+  },
+  "diagnostics": [
+    "exposed_core140",
+    "native_development300"
+  ],
+  "execution_preconditions": [
+    "separate owner execution instruction for this exact bounded recipe",
+    "verify saved input/model/code hashes and tokenizer-only preflight",
+    "teach the existing development harness this schema with the execution authorization check; current runner refuses this preparation schema",
+    "exclusive attempt directory and failure ledger; no implicit retry or extra runs"
+  ],
+  "execution_status": "prepared_not_executed",
+  "historical_crossings": {
+    "core_train": {
+      "curated_development": {
+        "exact_endpoint_crossings": [],
+        "historical_groups_available": 0,
+        "known_component_crossings": []
+      },
+      "curated_train": {
+        "exact_endpoint_crossings": [],
+        "historical_groups_available": 0,
+        "known_component_crossings": []
+      },
+      "sha256": "7896874db0eaa0e9075d7a24c26be0f468e21ba9d0e76dd9b8d08a0c0be85409"
+    },
+    "exposed_core_dev": {
+      "curated_development": {
+        "exact_endpoint_crossings": [],
+        "historical_groups_available": 32,
+        "known_component_crossings": []
+      },
+      "curated_train": {
+        "exact_endpoint_crossings": [],
+        "historical_groups_available": 32,
+        "known_component_crossings": []
+      },
+      "sha256": "34a158c391ecdf6a9b0ca2849a419faf000086f2cf65f6dc7c8ad33e9c02c642"
+    },
+    "native_dev": {
+      "curated_development": {
+        "exact_endpoint_crossings": [],
+        "historical_groups_available": 277,
+        "known_component_crossings": []
+      },
+      "curated_train": {
+        "exact_endpoint_crossings": [],
+        "historical_groups_available": 277,
+        "known_component_crossings": []
+      },
+      "sha256": "8c6fd247d7b18f132197bf8f81ae702ee034d4b5f6523bf295a4df0d2d12e8a0"
+    }
+  },
+  "inputs": {
+    "counts": {
+      "development": {
+        "families": 24,
+        "labels_by_language": {
+          "en_en": {
+            "contradicts": {
+              "0": 12,
+              "1": 6
+            },
+            "same_as": {
+              "0": 12,
+              "1": 6
+            },
+            "supports": {
+              "0": 12,
+              "1": 6
+            }
+          },
+          "en_ko": {
+            "contradicts": {
+              "0": 11,
+              "1": 6
+            },
+            "same_as": {
+              "0": 11,
+              "1": 6
+            },
+            "supports": {
+              "0": 12,
+              "1": 5
+            }
+          },
+          "ko_en": {
+            "contradicts": {
+              "0": 12,
+              "1": 6
+            },
+            "same_as": {
+              "0": 10,
+              "1": 8
+            },
+            "supports": {
+              "0": 14,
+              "1": 4
+            }
+          },
+          "ko_ko": {
+            "contradicts": {
+              "0": 12,
+              "1": 6
+            },
+            "same_as": {
+              "0": 10,
+              "1": 8
+            },
+            "supports": {
+              "0": 14,
+              "1": 4
+            }
+          }
+        },
+        "language_cells": {
+          "en_en": 18,
+          "en_ko": 17,
+          "ko_en": 18,
+          "ko_ko": 18
+        },
+        "pairs": 71
+      },
+      "train": {
+        "families": 81,
+        "labels_by_language": {
+          "en_en": {
+            "contradicts": {
+              "0": 50,
+              "1": 15
+            },
+            "same_as": {
+              "0": 48,
+              "1": 17
+            },
+            "supports": {
+              "0": 34,
+              "1": 31
+            }
+          },
+          "en_ko": {
+            "contradicts": {
+              "0": 27,
+              "1": 15
+            },
+            "same_as": {
+              "0": 29,
+              "1": 13
+            },
+            "supports": {
+              "0": 30,
+              "1": 12
+            }
+          },
+          "ko_en": {
+            "contradicts": {
+              "0": 30,
+              "1": 15
+            },
+            "same_as": {
+              "0": 30,
+              "1": 15
+            },
+            "supports": {
+              "0": 30,
+              "1": 15
+            }
+          },
+          "ko_ko": {
+            "contradicts": {
+              "0": 28,
+              "1": 15
+            },
+            "same_as": {
+              "0": 28,
+              "1": 15
+            },
+            "supports": {
+              "0": 30,
+              "1": 13
+            }
+          }
+        },
+        "language_cells": {
+          "en_en": 65,
+          "en_ko": 42,
+          "ko_en": 45,
+          "ko_ko": 43
+        },
+        "pairs": 195
+      }
+    },
+    "curation_sha256": "ad75396dcb8fc63e48c34c6f65c78aa49c5e2d250e0e678c952f22fdadc9c453",
+    "draft_input_artifact": "local-only draft-inputs.json",
+    "draft_inputs_sha256": "bb1bde071cb1e18eba91a69be6ad11c6ccc92dd25d19f23ad0dfde8882ed18fe",
+    "parent_manifest_sha256": "e87cf7bf6bd915d48e5061056d2ab553e39ff9300ebbd09206e604a994330078"
+  },
+  "issue": "VIN-511",
+  "limitations": [
+    "same-assistant authored and reviewed AI candidates, not independent gold",
+    "unknown exclusions change the evaluation population",
+    "71 development pairs across24 families; small positive counts by language",
+    "lexical and known component separation does not prove semantic independence",
+    "native candidate texts were seen in prior auxiliary training pools",
+    "selection uses development repeatedly; no new final-test claim",
+    "dataset.v1 human contract and prior source flags remain unchanged"
+  ],
+  "no_calibration_or_sealed_test": true,
+  "paid_calls": 0,
+  "production_authorized": false,
+  "recipe": {
+    "amp": true,
+    "arms": [
+      "positive_balanced_core",
+      "curated_supports_replacement"
+    ],
+    "base_repo": "convaiinnovations/laya-multilingual",
+    "base_revision": "e4e9ddf21a7b1903b7acffd8814ad4307bf63a67",
+    "base_sha256": "9d628fd971b700382ac6f65920a86f149777b2e748e0c955fb3b19695aa8f204",
+    "encoder_lr": 2.5e-05,
+    "epochs": 2,
+    "extra_seed": false,
+    "freeze_embeddings": true,
+    "grad_accum": 8,
+    "gradient_checkpointing": true,
+    "head_lr": 0.0001,
+    "head_max_len": 256,
+    "internal_calibration": false,
+    "items_per_epoch": 3012,
+    "loss": "soft-ce",
+    "max_len": 1024,
+    "max_total_gpu_hours": 1,
+    "max_training_runs": 2,
+    "micro_batch": 8,
+    "resume_previous_weights": false,
+    "scheduled_updates_per_arm": 96,
+    "seed": 20261007
+  },
+  "report": [
+    "supports_TP_FP_TN_FN_precision_recall_F1",
+    "AUROC_Brier_ECE",
+    "language_cell_breakdown",
+    "family_clustered_uncertainty",
+    "other_predicate_and_native_regressions",
+    "actual_optimizer_steps_and_AMP_skips"
+  ],
+  "schema": "vinc.laya.ai-curation-preparation.v1",
+  "selection": {
+    "baseline_epoch_eligible_for_selection": false,
+    "cluster": "family_id",
+    "epochs_to_measure": [
+      0,
+      1,
+      2
+    ],
+    "order": [
+      "supports_F1_desc",
+      "supports_recall_desc",
+      "supports_NLL_asc",
+      "epoch_asc"
+    ],
+    "reference": "curated_development71",
+    "threshold": 0.5,
+    "unit": "supports_AB; symmetric predicates AB+BA"
+  },
+  "tokenizer_preflight": {
+    "model_loaded": false,
+    "path": "tokenizer-preflight.json",
+    "sha256": "e5fe6f40711e3267ca06de31e30476afdf82af53b0a3df3acdcc17ff98f27dee",
+    "skipped_items": 0,
+    "state_truncations": 0
+  },
+  "trained_models": 0,
+  "training_execution_authorized": false
+}
