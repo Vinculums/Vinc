@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from api.auth import SessionAuth
 from api.server import VincApp
+from api.jobs import JobError
 from api import topic_conversion as conversion
 from store.backend import open_store
 from store.config import StoreConfig
@@ -77,6 +78,38 @@ class TopicConversionReaderTests(unittest.TestCase):
             self.assertEqual(conversion.journals(reader), [journal])
         finally:
             reader.close()
+
+    def test_other_owner_index_job_cannot_rebuild_during_bounded_conversion(self):
+        journal={"status":"creating_target_keys","phase":"creating_target_keys",
+                 "inventory_version":3,"indexes":["Chunk","ChunkVec","NodeVec"],
+                 "source":SOURCE,"target":TARGET,"topic":"reader/topic"}
+        conversion._save(self.app.store,RUN,journal)
+        called=[]
+        token=conversion.request_owner.set(OTHER)
+        try:
+            with self.assertRaisesRegex(JobError,'conversion_index_maintenance'):
+                self.app.jobs.run_sync('search.index',lambda:called.append(True) or {})
+            self.assertEqual(called,[])
+            # Ordinary other-owner work is not rejected by this index-only barrier.
+            self.assertEqual(self.app.jobs.run_sync('synthetic.other-write',lambda:{'passed':True}),{'passed':True})
+            conversion._save(self.app.store,RUN,{**journal,'phase':'graph_committed','status':'graph_committed'})
+            self.app.jobs.run_sync('search.index',lambda:called.append(True) or {})
+            self.assertEqual(called,[True])
+        finally:
+            conversion.request_owner.reset(token)
+
+    def test_other_owner_search_surfaces_maintenance_without_rebuilding(self):
+        self.app.store.run("CREATE (n:Chunk {chunk_id:'synthetic-other#0',doc_id:'synthetic-other',owner_id:$owner,text:'reader probe'})",
+                           {'owner':OTHER},raw=True)
+        self.app.store._load_ext('fts')
+        self.app.store._drop_index(f"CALL DROP_FTS_INDEX('Chunk','{self.app.store._FTS_INDEX}')",'synthetic maintenance')
+        conversion._save(self.app.store,RUN,{'status':'rewiring','phase':'rewiring','inventory_version':3,
+            'indexes':['Chunk','ChunkVec','NodeVec'],'source':SOURCE,'target':TARGET,'topic':'reader/topic'})
+        code,result=self.read(OTHER,self.app.read_search,{'query':'reader probe','top_k':1})
+        self.assertEqual(code,200)
+        self.assertFalse(result.get('executed'),result)
+        self.assertIn('conversion_index_maintenance',result.get('error',''))
+        self.assertNotIn(SOURCE,result.get('error',''))
 
 
 if __name__ == "__main__":

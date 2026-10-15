@@ -57,17 +57,31 @@ class _Reader:
     def scan(self, head, projection, order, params=None, *, ordered=False):
         # Most relationship tables have no rows. Avoid allocating a sorter for
         # a result that fits in one page; only paged scans need stable order.
+        width = PAGE_ROWS
         if not ordered:
-            first = self.page(f"{head} RETURN {projection} LIMIT {PAGE_ROWS}", params)
-            if len(first) < PAGE_ROWS:
+            while True:
+                try:
+                    first = self.page(f"{head} RETURN {projection} LIMIT {width}", params)
+                    break
+                except ManifestLimit as exc:
+                    if exc.reason != 'page_bytes':raise
+                    if width == 1:raise ManifestLimit('single_row_bytes', **exc.details) from None
+                    width = max(1, width // 2)
+            if len(first) < width:
                 yield from first
                 return
         offset = 0
         while True:
-            rows = self.page(f"{head} RETURN {projection} ORDER BY {order} "
-                             f"SKIP {offset} LIMIT {PAGE_ROWS}", params)
+            try:
+                rows = self.page(f"{head} RETURN {projection} ORDER BY {order} "
+                                 f"SKIP {offset} LIMIT {width}", params)
+            except ManifestLimit as exc:
+                if exc.reason != 'page_bytes':raise
+                if width == 1:raise ManifestLimit('single_row_bytes', **exc.details) from None
+                width = max(1,width // 2)
+                continue
             yield from rows
-            if len(rows) < PAGE_ROWS:
+            if len(rows) < width:
                 return
             offset += len(rows)
 
@@ -140,9 +154,19 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
     def matching(label, keys, *, ids_only=False):
         pk = specs[label]["pk"]
         projection = f"n.{pk} AS id" if ids_only else _node_projection(label)
-        for batch in _batches(keys):
-            yield from reader.page(f"MATCH (n:{label}) WHERE n.{pk} IN $keys "
+        def fetch(batch):
+            try:
+                rows = reader.page(f"MATCH (n:{label}) WHERE n.{pk} IN $keys "
                                    f"RETURN {projection} ORDER BY n.{pk}", {"keys": batch})
+            except ManifestLimit as exc:
+                if exc.reason != 'page_bytes':raise
+                if len(batch)==1:raise ManifestLimit('single_row_bytes', **exc.details) from None
+                middle=len(batch)//2
+                yield from fetch(batch[:middle]);yield from fetch(batch[middle:])
+                return
+            yield from rows
+        for batch in _batches(keys):
+            yield from fetch(batch)
 
     def within(value):
         return isinstance(value, str) and (value == topic or value.startswith(topic + "/"))
@@ -248,10 +272,12 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         keep("_DocTombstone", row)
 
     node_vectors = []
+    vector_nodes = {}
     for row in reader.scan("MATCH (n:NodeVec) WHERE n.owner_id=$owner",
                            "n.vec_id AS id, n.node_id AS node_id", "n.vec_id", {"owner": owner}):
         if row["node_id"] in logical:
             node_vectors.append(row["id"])
+            vector_nodes[row['id']] = row['node_id']
             if len(node_vectors) > max_rows:
                 raise ManifestLimit("retained_rows", observed=len(node_vectors), limit=max_rows)
     found = 0
@@ -322,8 +348,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
             continue
         if after:
             if label == "NodeVec":
-                old = source + "#" + next(r["node_id"] for r in result["nodes"][label]
-                                          if r["vec_id"] == key)
+                old = source + '#' + vector_nodes[key]
             elif label == "_MergeRejection":
                 old = mapped_rejection_key(key, target, source)
             elif key.startswith(target + pkns.SEP):
@@ -360,9 +385,10 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         for row in reader.scan(head, ", ".join(columns), order, {"owner": owner}):
             a, b = (src, row.pop("src")), (dst, row.pop("dst"))
             if a in selected or b in selected or a in retained or b in retained:
-                result["edges"].append({"label": label, "from_label": src, "to_label": dst,
-                                        "from": a[1], "to": b[1], "props": row})
-                retained_bytes += len(_canonical(result["edges"][-1]).encode())
+                edge={"label": label, "from_label": src, "to_label": dst,
+                      "from": a[1], "to": b[1], "props": row}
+                result['edges'].append(edge)
+                retained_bytes += len(_canonical(edge).encode())
                 if len(retained) + len(result["edges"]) > max_rows or retained_bytes > max_bytes:
                     raise ManifestLimit("retained_payload", rows=len(retained) + len(result["edges"]),
                                         bytes=retained_bytes, row_limit=max_rows, byte_limit=max_bytes)
@@ -382,7 +408,6 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         # data. MERGE would overwrite it, so reject every mapped PK collision.
         destinations = {}
         tombstone_keys = set()
-        vector_nodes = {r["vec_id"]: r["node_id"] for r in result["nodes"]["NodeVec"]}
         for label, old in tuple(retained):
             if label in ("Domain", "_SyncMeta", "_DocTombstone", "_Tombstone"):
                 continue

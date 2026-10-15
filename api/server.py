@@ -315,8 +315,16 @@ class VincApp:
         # 전환의 영속 확인은 일반 쓰기의 전역 ACK 플래그와 별개다.
         self._conversion_durable = self._durable or (
             DurableAck(lambda: self.store, self.cfg.data_dir)
-            if os.environ.get("VINC_TOPIC_CONVERSION") == "1" and
+            if (os.environ.get("VINC_TOPIC_CONVERSION") == "1" or
+                getattr(store, "_topic_conversion_guard", False)) and
             resolve_snapshot_path() and self.cfg.data_dir else None)
+        # 워커·HTTP를 열기 전에 완료된 새 프로토콜의 영수증만 읽어 울타리를 복원한다.
+        if store is not None and getattr(store, "_topic_conversion_guard", False):
+            from .topic_conversion_batches import restore_terminal_visibility
+            from store.persistence import generations_root
+            root = (self._conversion_durable.root if self._conversion_durable is not None else
+                    generations_root(resolve_snapshot_path()) if resolve_snapshot_path() else None)
+            self._conversion_restored = restore_terminal_visibility(store, root)
         self.jobs = jobs or JobQueue(on_idle=self._maybe_snapshot,
                                      on_before_done=self._ack_before_done if (
                                          self._durable or self._conversion_durable) else None,
@@ -753,6 +761,8 @@ class VincApp:
             from . import topic_conversion as conversion
             conversion.check_write(self.store, conversion.request_owner.get(),
                                    conversion.request_payload.get())
+            if job.kind == 'search.index':
+                conversion.check_index_write(self.store)
 
     def write_topic_conversion(self, body):
         from . import topic_conversion as conversion
@@ -809,6 +819,10 @@ class VincApp:
                 if action == "preflight":
                     return conversion.preflight(self.store, source, str(body.get("topic") or ""))
                 args = dict(source=source, target=body["target"], topic=body["topic"], run=body["run"])
+                journal = conversion._get(self.store, args["run"])
+                if journal is not None and journal.get("inventory_version") == 3:
+                    conversion._identity(journal, source=source, target=body["target"], topic=body["topic"])
+                    return self._resume_bounded_conversion(action, args, body.get("fingerprint"), conventions_policy)
                 if action == "stage":
                     args.update(expected=body["fingerprint"], stamp=revstamp.hlc_now(self.store),
                                 conventions_policy=conventions_policy)
@@ -831,6 +845,55 @@ class VincApp:
         out = self.jobs.run_sync("topic-conversion." + action, work)
         return (409 if out.get("status") == "blocked" else 200), out
 
+    def _resume_bounded_conversion(self, action, args, expected, conventions_policy="retain"):
+        """Recover an already sealed v3 run; new large reservations stay blocked."""
+        from .topic_conversion_jobs import ConversionJobs, bounded_flow, bounded_step
+        from store.topic_transfer import TransferRefused
+        from . import revstamp
+        durable = self._durable or self._conversion_durable
+        if not hasattr(self, "_conversion_jobs"):
+            # Called only on the sole writer. The measured probe has the same
+            # one-hour work budget; exceeding it requires an explicit resume.
+            self._conversion_jobs = ConversionJobs(self.jobs, work_seconds=3600)
+        pending = self._conversion_jobs.status(args["source"], args["run"])
+        if action == "status" and pending and pending["status"] in ("pending", "resume_required"):
+            return pending
+        if action in ("release", "cancel") and pending and pending["status"] == "pending":
+            raise TransferRefused("conversion_resume_required")
+
+        def invalidate():
+            for owner in (args["source"], args["target"]):
+                self._graph_results.clear_owner(owner)
+                self._graph_reads.invalidate_owner(owner)
+                getattr(self.store, "runtime_stamps", {}).pop(owner, None)
+                self.changes.bump(owner)
+
+        if action == "stage":
+            invalidate()
+
+            def advance():
+                try:
+                    return bounded_step(self.store, durable, **args, expected=expected,
+                                        stamp=revstamp.hlc_now(self.store), qualified_indexes=True,
+                                        conventions_policy=conventions_policy)
+                finally:
+                    invalidate()
+
+            return self._conversion_jobs.start(**args, expected=expected, advance=advance,
+                                               conventions_policy=conventions_policy)
+        # A pre-existing sealed indexed run passed initialize's index-policy
+        # gate. Resume keeps its original index set; no new run is admitted here.
+        flow = bounded_flow(self.store, durable, **args, qualified_indexes=True)
+        if action == "release":
+            result = flow.release(account_active=True)
+        elif action == "cancel":
+            result = flow.cancel()
+        else:
+            return flow.status()
+        invalidate()
+        self._conversion_jobs.forget(args["source"], args["run"])
+        return result
+
     def close(self):
         """clean shutdown(E6): 워커 드레인 → **마지막 스냅샷** → 공유 스토어 close.
 
@@ -838,6 +901,8 @@ class VincApp:
         해야 스토어가 살아 있다. 이 한 번이 "정상 종료면 아무것도 안 잃는다"를
         만든다 — 주기 스냅샷은 급사에 대비한 것이고 이건 예고된 종료용이다.
         (SIGKILL·OOM 은 여기 못 온다. 그때 잃는 양의 상한이 스냅샷 주기다.)"""
+        if hasattr(self, "_conversion_jobs"):
+            self._conversion_jobs.close()
         self._graph_reads.close()
         self.roots.close()
         self.jobs.shutdown(drain=True)

@@ -798,6 +798,11 @@ class _ReaderView:
     #: 위험 감사 1.1 이 정확히 그 모양이었다. 실제 적용은 :func:`_filter_clause`.
     scoped_chunk_search = True
 
+    @property
+    def _topic_conversion_terminals(self):
+        # 완료 증명은 프로세스의 writer가 검증한다. 리더마다 복사하면 철회가 늦어진다.
+        return getattr(self._b, "_topic_conversion_terminals", set())
+
     def __init__(self, backend: "EmbeddedBackend", conn, writer=None):
         self._b = backend
         self._conn = conn

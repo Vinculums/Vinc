@@ -91,13 +91,30 @@ def journals(store):
 
 
 def fenced(store, owner):
-    return any(r["status"] not in ("active", "cancelled") and (owner is None or owner in (r["source"], r["target"]))
+    return any(not _terminal_visible(store, r) and (owner is None or owner in (r["source"], r["target"]))
                for r in journals(store))
+
+
+def _terminal_visible(store, journal):
+    if journal["status"] not in ("active", "cancelled"):
+        return False
+    if journal.get("inventory_version", 1) in (1, SCOPED_INVENTORY_VERSION):
+        return True
+    # 새 프로토콜은 영속 게시 증명이 확인된 이 프로세스에서만 울타리를 해제한다.
+    # 재시작 뒤에는 봉인 파일과 같은 실행의 영수증을 다시 확인해야 한다.
+    return _canonical(journal) in getattr(store, "_topic_conversion_terminals", set())
 
 
 def check_read(store, owner):
     if fenced(store, owner):
         raise TransferRefused("space_conversion_pending")
+
+
+def check_index_write(store):
+    # 다른 소유자의 검색이 예약한 재빌드도 전환 중인 전역 색인을 되살리지 않는다.
+    if any(r.get('inventory_version')==3 and r.get('indexes')
+           and r.get('phase') not in ('graph_committed','active','cancelled') for r in journals(store)):
+        raise TransferRefused('conversion_index_maintenance')
 
 
 def _strings(value):
@@ -221,6 +238,7 @@ def preflight(store, source, topic, *, conventions_policy="retain"):
 def inventory_diagnostics(store, source, topic, *, conventions_policy="retain"):
     """Read the complete bounded closure without authorizing the legacy executor."""
     check_read(store, source)
+    from store.topic_batch_manifest import authorized_hash
     # 로컬 임시 목록만 만들며, 공유 디스크나 그래프에 payload를 쓰지 않는다.
     temporary_root = Path(tempfile.gettempdir())
     if str(temporary_root).startswith(("\\\\", "//")):
@@ -251,7 +269,7 @@ def inventory_diagnostics(store, source, topic, *, conventions_policy="retain"):
                         "document_ownership": _document_scope_summary(inventory.snapshot,plan,source),
                         "document_missing_evidence": _missing_document_evidence(inventory.snapshot,plan,source),
                         "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
-                        "inspected_rows": inventory.inspected_rows, "inventory_hash": plan.before_hash,
+                        "inspected_rows": inventory.inspected_rows, "inventory_hash": authorized_hash(plan.before_hash, conventions_policy),
                         "inventory_version": 3, "diagnostic_only": True,
                         "blockers": sorted(blockers)}
     except (TransferRefused, OSError, sqlite3.Error) as exc:
@@ -346,6 +364,8 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
         previous = _get(store, run)
         if previous:
             _identity(previous, source, target, topic)
+            if previous.get('inventory_version',1) not in (1,SCOPED_INVENTORY_VERSION):
+                raise TransferRefused('unsupported_conversion_inventory_version')
             if previous.get("conventions_policy", "retain") != conventions_policy:
                 raise TransferRefused("run_conventions_policy_changed")
             if previous["status"] == "cancelled":
@@ -463,6 +483,8 @@ def cancel(store, *, source, target, topic, run):
         journal = _get(store, run)
         if journal:
             _identity(journal, source, target, topic)
+            if journal.get("inventory_version", 1) not in (1, SCOPED_INVENTORY_VERSION):
+                raise TransferRefused("unsupported_conversion_inventory_version")
             if journal["status"] not in ("prepared", "cancelled"):
                 raise TransferRefused("conversion_resume_required")
             _indexes(store, journal["indexes"])
