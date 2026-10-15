@@ -16,7 +16,7 @@ from uuid import UUID
 from . import durable_generation as generation, pkns
 from .embedded_schema import SCHEMA_VERSION, meta_table_specs, node_table_specs
 from .embedded_schema import rel_table_specs
-from .topic_transfer import TransferRefused, _KINDS, _canonical, fingerprint
+from .topic_transfer import TransferRefused, _KINDS, _canonical, fingerprint, mapped_rejection_key
 
 PROTOCOL = 3
 LINE_BYTES = 16 * 1024
@@ -30,6 +30,8 @@ def digest(row):
 
 
 def mapped_key(label, key, source, target, row=None):
+    if label == "_MergeRejection":
+        return mapped_rejection_key(key, source, target)
     if label == "NodeVec":
         node = row["node_id"] if row is not None else key[len(source) + 1:]
         if key != source + "#" + node:

@@ -44,7 +44,23 @@ def finish(flow):
     pytest.fail("bounded synthetic run did not finish")
 
 
-def test_native_bounded_rows_preserve_every_field_duplicate_and_other_source_row(native,tmp_path):
+def add_rejections(native):
+    from test_topic_rejection_history import rejection, outside_rejection
+    from test_topic_transfer import seed, insert
+    data = seed()
+    rejection(data)
+    outside_rejection(data)
+    extra = data["nodes"]["Concept"][-1]
+    data["nodes"] = {"Concept": [extra]}
+    data["meta"] = {"_MergeRejection": data["meta"]["_MergeRejection"]}
+    data["edges"] = []
+    insert(native, data)
+
+
+@pytest.mark.parametrize("with_rejections", [False, True])
+def test_native_bounded_rows_preserve_every_field_duplicate_and_other_source_row(native,tmp_path,with_rejections):
+    if with_rejections:
+        add_rejections(native)
     before=read_snapshot(native)
     expected=transformed_snapshot(before,plan_transfer(before,source=SOURCE,target=TARGET,topic=TOPIC),stamp=STAMP)
     flow,_,_=fixture(native,tmp_path,max_rows=2)
@@ -163,7 +179,10 @@ def test_corrupt_manifest_and_changed_original_refuse_before_business_batch(nati
         flow.status()
 
 
-def test_resume_from_a_missing_local_directory_uses_the_sealed_durable_ledger(native,tmp_path):
+@pytest.mark.parametrize("with_rejections", [False, True])
+def test_resume_from_a_missing_local_directory_uses_the_sealed_durable_ledger(native,tmp_path,with_rejections):
+    if with_rejections:
+        add_rejections(native)
     before=read_snapshot(native)
     expected=transformed_snapshot(before,plan_transfer(before,source=SOURCE,target=TARGET,topic=TOPIC),stamp=STAMP)
     flow,_,_=fixture(native,tmp_path,max_rows=4)
