@@ -146,6 +146,40 @@ _CITATION_FIELDS = {"url", "urls", "href", "link", "links", "source", "sources",
 _HISTORY = ("_Tombstone", "_EdgeTombstone", "_DocTombstone")
 
 
+def rejection_disposition(row, source, logical, endpoint_state):
+    """완전한 소유자 범위 조회로 부재가 증명된 기각 이력만 개인 공간에 둔다."""
+    a, b = row.get("a_id"), row.get("b_id")
+    if (not isinstance(a, str) or not isinstance(b, str) or not a or not b or a == b
+            or not a.startswith("concept:") or not b.startswith("concept:")
+            or a != pkns.strip(a) or b != pkns.strip(b) or "|" in a or "|" in b
+            or row.get("pair_key") != source + "|" + "|".join(sorted((a, b)))):
+        return "unsupported_merge_rejection_key"
+    states = {endpoint_state(ref) for ref in (a, b)}
+    if "ambiguous" in states:
+        return "merge_rejection_topic_membership_unknown"
+    if states == {"selected"}:
+        return "move"
+    if "missing" in states and states <= {"selected", "missing"}:
+        return "retain"
+    if "selected" in states:
+        return "merge_rejection_history_not_supported"
+    if "missing" in states:
+        return "merge_rejection_topic_membership_unknown"
+    return "outside"
+
+
+def rejection_endpoint_state(snapshot, source, logical, ref):
+    matches = [(label, row) for label in _KINDS + ("Bridge",)
+               for row in snapshot["nodes"][label]
+               if row[node_table_specs()[label]["pk"]] in (ref, source + pkns.SEP + ref)]
+    if not matches:
+        return "missing"
+    if (len(matches) != 1 or matches[0][0] != "Concept"
+            or matches[0][1].get("owner_id") != source):
+        return "ambiguous"
+    return "selected" if ref in logical else "outside"
+
+
 def deletion_references(label, row, source):
     fields = {"_Tombstone": ("node_id",), "_EdgeTombstone": ("src", "dst"),
               "_DocTombstone": ("doc_id",)}[label]
@@ -171,6 +205,12 @@ def retained_history_counts(snapshot, plan):
                 continue
             if not refs & logical:
                 counts[label] += 1
+    retained = sum(row.get("owner_id") == plan.source and rejection_disposition(
+        row, plan.source, logical,
+        lambda ref: rejection_endpoint_state(snapshot, plan.source, logical, ref)) == "retain"
+        for row in snapshot["meta"]["_MergeRejection"])
+    if retained:
+        counts["_MergeRejection"] = retained
     return counts
 
 
@@ -476,26 +516,18 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
         if row["node_id"] == source + pkns.SEP + pkns.strip(row["node_id"]) and pkns.strip(row["node_id"]) in logical:
             selected.add(("_SyncBase", row["node_id"]))
     # 이력은 추측해서 버리거나 다른 토픽과 함께 가져오지 않는다.
-    source_logical = {pkns.strip(r[specs[label]["pk"]]) for label in _KINDS + ("Bridge",)
-                      for r in snapshot["nodes"][label] if r["owner_id"] == source}
     for row in snapshot["meta"]["_MergeRejection"]:
         if row["owner_id"] == source:
             refs = {pkns.strip(row["a_id"] or ""), pkns.strip(row["b_id"] or "")}
-            if refs <= logical and "" not in refs:
-                a, b = row["a_id"], row["b_id"]
-                expected = source + "|" + "|".join(sorted((a, b)))
-                if (a == b or a != pkns.strip(a) or b != pkns.strip(b) or "|" in a or "|" in b
-                        or row["pair_key"] != expected):
-                    blocks.add("unsupported_merge_rejection_key")
-                else:
-                    selected.add(("_MergeRejection", row["pair_key"]))
-                    for ref in set(referenced_ids(row["note"])) - (logical | docs):
-                        blocks.add("external_reference:" + ref)
-            elif refs & logical:
-                blocks.add("merge_rejection_history_not_supported")
-            elif not refs <= source_logical:
-                blocks.add("merge_rejection_topic_membership_unknown")
-            if not refs <= logical and set(referenced_ids(row["note"])) & (logical | docs):
+            disposition = rejection_disposition(row, source, logical,
+                lambda ref: rejection_endpoint_state(snapshot, source, logical, ref))
+            if disposition == "move":
+                selected.add(("_MergeRejection", row["pair_key"]))
+                for ref in set(referenced_ids(row["note"])) - (logical | docs):
+                    blocks.add("external_reference:" + ref)
+            elif disposition not in ("retain", "outside"):
+                blocks.add(disposition)
+            if disposition != "move" and set(referenced_ids(row["note"])) & (logical | docs):
                 blocks.add("incoming_reference:merge_rejection")
     for label in _HISTORY:
         for row in snapshot["meta"][label]:
