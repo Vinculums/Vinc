@@ -343,7 +343,8 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
         if "theme_id" in row and row["theme_id"]:
             blocks.add("owner_vocabulary_not_supported:" + nid)
         source_file = str(row.get("source_file") or "")
-        if _EXTERNAL_RESOURCE.match(source_file) or "/" in source_file or "\\" in source_file:
+        # Chunk의 source_file은 docstore 출처 표시다. 본문은 doc_id로 연결해 보존한다.
+        if label != "Chunk" and (_EXTERNAL_RESOURCE.match(source_file) or "/" in source_file or "\\" in source_file):
             blocks.add("external_source_file_not_supported:" + nid)
         if "props" in row and row["props"]:
             try:

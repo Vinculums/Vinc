@@ -65,10 +65,44 @@ def test_external_attachment_forms_refused(properties):
 
 @pytest.mark.parametrize("path", ["D:\\synthetic\\file.pdf", "/synthetic/file.pdf", "file:synthetic", "s3:synthetic",
                                   "relative/synthetic.pdf", "https://synthetic.invalid/source.pdf"])
-def test_external_source_files_refused(path):
+def test_document_provenance_is_preserved_without_requiring_the_original_file(path):
     data = seed()
     data["nodes"]["Chunk"][0]["source_file"] = path
-    assert_blocked(data, "external_source_file_not_supported")
+    data["meta"]["_DocMeta"][0]["origin"] = path
+    before = copy.deepcopy(data)
+    selected = plan(data)
+    assert selected.ready, selected.blockers
+    after = transformed_snapshot(data, selected, stamp=STAMP)
+    assert data == before
+    assert after["nodes"]["Chunk"][0] == {**before["nodes"]["Chunk"][0], "owner_id": TARGET}
+    assert after["meta"]["_DocMeta"][0]["origin"] == path
+    assert after["meta"]["_DocMeta"][0]["content_hash"] == before["meta"]["_DocMeta"][0]["content_hash"]
+
+
+def test_provenance_does_not_exempt_real_attachments_or_logical_references():
+    data = seed()
+    data["nodes"]["Chunk"][0]["source_file"] = "https://synthetic.invalid/source.pdf"
+    data["nodes"]["Record"][0]["props"] = '{"attachments":["blob:synthetic"]}'
+    assert_blocked(data, "external_attachments_not_supported")
+    data["nodes"]["Record"][0]["props"] = '{"ref":"concept:other"}'
+    assert_blocked(data, "external_reference")
+
+
+def test_native_move_preserves_document_provenance_and_canonical_payload(native):
+    origin = "https://synthetic.invalid/import/original.pdf"
+    native.run("MATCH (n:Chunk) WHERE n.doc_id='doc1' SET n.source_file=$origin", {"origin": origin})
+    native.run("MATCH (n:_DocMeta) WHERE n.doc_id='doc1' SET n.origin=$origin", {"origin": origin})
+    before = read_snapshot(native)
+    selected = plan(before)
+    assert selected.ready, selected.blockers
+    expected = transformed_snapshot(before, selected, stamp=STAMP)
+    assert _apply_rehearsal(native, selected, run_id="synthetic-provenance", stamp=STAMP) == "committed"
+    actual = read_snapshot(native)
+    actual["meta"]["_SyncMeta"] = [r for r in actual["meta"]["_SyncMeta"]
+                                  if not r["key"].startswith("topic-transfer:run:")]
+    assert fingerprint(actual) == fingerprint(expected)
+    assert actual["nodes"]["Chunk"][0]["source_file"] == origin
+    assert actual["meta"]["_DocMeta"][0]["origin"] == origin
 
 
 @pytest.mark.parametrize("properties,reason", [
@@ -228,7 +262,6 @@ def test_store_without_external_state_inventory_is_refused(native):
 @pytest.mark.parametrize("case,reason", [
     ("graphmd", "owner_conventions_require_separate_decision"),
     ("attachments", "external_attachments_not_supported"),
-    ("source_file", "external_source_file_not_supported"),
     ("entity", "entity_topic_membership_not_supported"),
     ("merge_history", "merge_rejection_history_not_supported"),
     ("node_history", "unclassified_tombstone_topic_history"),
@@ -241,8 +274,6 @@ def test_native_unsupported_payload_is_preserved_and_no_dml_runs(tmp_path, case,
         data = json.loads(json.dumps(data).replace("doc1", "graph.md~0123456789abcdef"))
     elif case == "attachments":
         data["nodes"]["Record"][0]["props"] = '{"attachments":["blob:synthetic"]}'
-    elif case == "source_file":
-        data["nodes"]["Chunk"][0]["source_file"] = "file:synthetic.pdf"
     elif case == "entity":
         add_row(data, "Entity", entity_id=SOURCE + SEP + "entity:synthetic", owner_id=SOURCE,
                 title="Unclassified", theme_id="owner-synthetic", type="synthetic")
