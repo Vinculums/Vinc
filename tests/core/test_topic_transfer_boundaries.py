@@ -194,7 +194,7 @@ def test_malformed_merge_history_key_blocks_logical_and_physical_references(phys
 
 def test_merge_history_with_deleted_endpoint_refused():
     data = seed()
-    add_row(data, "_MergeRejection", pair_key="synthetic-history", owner_id=SOURCE,
+    add_row(data, "_MergeRejection", pair_key=SOURCE + "|concept:deleted|concept:other", owner_id=SOURCE,
             a_id="concept:deleted", b_id="concept:other")
     assert_blocked(data, "merge_rejection_topic_membership_unknown")
 

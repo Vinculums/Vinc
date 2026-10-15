@@ -15,7 +15,8 @@ from api.query import list_merge_rejections
 from store.embedded_schema import meta_table_specs, render_embedded_ddl
 from store.scoped_topic_inventory import read_scoped_inventory
 from store.topic_transfer import (_apply_rehearsal, fingerprint, plan_transfer,
-                                  read_snapshot, transformed_snapshot, TransferRefused)
+                                  read_snapshot, transformed_snapshot, TransferRefused,
+                                  retained_history_counts)
 
 
 def rejection(data, a="concept:a", b="concept:b", owner=SOURCE, key=None):
@@ -45,6 +46,80 @@ def test_selected_rejection_preserves_note_time_and_outside_history():
                 "pair_key": TARGET + "|concept:a|concept:b"}
     assert after["meta"]["_MergeRejection"] == [expected, outside]
     assert data == original
+
+
+@pytest.mark.parametrize("a,b", [("concept:a", "concept:absent"),
+                                  ("concept:absent", "concept:also-absent")])
+def test_proven_absent_endpoint_history_stays_personal(a, b):
+    data = seed()
+    row = rejection(data, a, b)
+    chosen = plan(data)
+    assert chosen.ready, chosen.blockers
+    after = transformed_snapshot(data, chosen, stamp=STAMP)
+    assert after["meta"]["_MergeRejection"] == [row]
+    assert ("_MergeRejection", row["pair_key"]) not in chosen.selected
+    assert retained_history_counts(data, chosen)["_MergeRejection"] == 1
+
+
+@pytest.mark.parametrize("phase", [None, "nodes", "delete", "journal"])
+def test_native_retained_history_exact_scoped_verification_and_rollback(tmp_path, phase):
+    store = RawStore(tmp_path / "retained.db")
+    try:
+        for statement in render_embedded_ddl(dim=4):
+            store.run(statement)
+        data = seed()
+        rows = [rejection(data, "concept:a", "concept:absent"),
+                rejection(data, "concept:gone", "concept:also-gone")]
+        rejection(data)
+        outside_rejection(data)
+        insert(store, data)
+        before = read_snapshot(store)
+        scoped = read_scoped_inventory(store, source=SOURCE, target=TARGET, topic=TOPIC)
+        chosen = plan(scoped.snapshot)
+        assert not scoped.blockers and chosen.ready, (scoped.blockers, chosen.blockers)
+        assert set(chosen.selected) == set(plan(before).selected)
+        assert retained_history_counts(scoped.snapshot, chosen)["_MergeRejection"] == 2
+        if phase:
+            with pytest.raises(RuntimeError):
+                _apply_rehearsal(store, plan(before), run_id="retained", stamp=STAMP, fail_at=phase)
+            assert fingerprint(read_snapshot(store)) == fingerprint(before)
+        else:
+            assert _apply_rehearsal(store, plan(before), run_id="retained", stamp=STAMP) == "committed"
+            after = read_scoped_inventory(store, source=SOURCE, target=TARGET, topic=TOPIC, after=True)
+            assert fingerprint(after.snapshot) == fingerprint(transformed_snapshot(scoped.snapshot, chosen, stamp=STAMP))
+            actual = read_snapshot(store)["meta"]["_MergeRejection"]
+            assert all(row in actual for row in rows)
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("foreign", [False, True])
+def test_existing_ambiguous_endpoint_is_not_absence(foreign):
+    data = seed()
+    row = copy.deepcopy(data["nodes"]["Concept"][0])
+    row["concept_id"] = SOURCE + "\x1fconcept:absent"
+    row["owner_id"] = "user:foreign" if foreign else SOURCE
+    row["domain"] = "outside"
+    data["nodes"]["Concept"].append(row)
+    rejection(data, "concept:a", "concept:absent")
+    assert not plan(data).ready
+
+
+def test_retained_history_receipt_and_source_row_survive_protocol(native):
+    data = seed()
+    row = rejection(data, "concept:a", "concept:absent")
+    fields = ", ".join(f"n.{key}=${key}" for key in row if key != "pair_key")
+    native.run("CREATE (n:_MergeRejection {pair_key:$pair_key}) SET " + fields, row)
+    check = tc.preflight(native, SOURCE, TOPIC)
+    assert check["ready"], check
+    assert check["retained_personal_history"]["_MergeRejection"] == 1
+    assert stage(native)["status"] == "graph_committed"
+    args = dict(source=SOURCE, target=TARGET, topic=TOPIC, run=RUN)
+    result = tc.release(native, **args)
+    assert result["status"] == "active"
+    assert list_merge_rejections(store=native, owner=SOURCE)["rejections"] == [
+        {key: row[key] for key in ("a_id", "b_id", "note", "rejected_at")}]
+    assert list_merge_rejections(store=native, owner=TARGET)["rejections"] == []
 
 
 @pytest.mark.parametrize("a,b,key,code", [
