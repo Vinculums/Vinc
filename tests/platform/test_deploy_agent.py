@@ -5,7 +5,7 @@ import pytest
 
 from scripts.qa.deploy_agent import (
     REQUIRED, REPO, GitHub, Grant, Snapshot, completion, deployment, merge_once, preflight,
-    parse_verification,
+    parse_verification, parse_images,
 )
 
 HEAD = "a" * 40
@@ -176,3 +176,14 @@ def test_historical_verify_success_preserves_mirror_warning():
         parse_verification(log + "\n" + json.dumps(summary))
     with pytest.raises(ValueError):
         parse_verification(log.replace("Verifying: " + REQUIRED[0], "omitted"))
+
+
+def test_observed_images_bind_deployment_independently_of_trigger_head():
+    log = f"timestamp hub    = vincacr.azurecr.io/vinc-hub:{HEAD}\n"
+    log += f"timestamp encode = vincacr.azurecr.io/vinc-hub:{HEAD}\n"
+    assert parse_images(log) == HEAD
+    with pytest.raises(ValueError):
+        parse_images(log + log)
+    with pytest.raises(ValueError):
+        parse_images(log.replace("encode = vincacr.azurecr.io/vinc-hub:" + HEAD,
+                                 "encode = vincacr.azurecr.io/vinc-hub:" + "b" * 40))

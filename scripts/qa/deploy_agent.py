@@ -98,23 +98,37 @@ class GitHub:
         jobs = self.pages(base + "/jobs", "jobs")
         return {"run": run, "jobs": jobs, "observed_at": time.time()}
 
-    def qualification(self, pr, deployment_run, verification_run):
-        original = deployment(self.attempt(deployment_run, 1))
-        evidence = self.attempt(verification_run, 1)
-        run = evidence["run"]
-        if (run.get("path") != ".github/workflows/hub-verify-current.yml"
-                or run.get("head_branch") != "main" or run.get("event") != "workflow_dispatch"
-                or run.get("status") != "completed" or run.get("conclusion") != "success"):
-            raise ValueError("verification workflow did not succeed")
-        jobs = [j for j in evidence["jobs"] if j.get("name") == "verify"
-                and j.get("conclusion") == "success"]
-        if len(jobs) != 1:
-            raise ValueError("missing verification job")
-        log = self.run(["gh", "run", "view", str(verification_run), "--repo", REPO,
-                        "--attempt", "1", "--job", str(jobs[0]["id"]), "--log"])
-        verification = parse_verification(log)
-        verification.update(conclusion="success", url=run["html_url"],
-                            completed_at=jobs[0]["completed_at"])
+    def job_log(self, run_id, job):
+        return self.run(["gh", "run", "view", str(run_id), "--repo", REPO,
+                         "--attempt", "1", "--job", str(job["id"]), "--log"])
+
+    def qualification(self, pr, deployment_run, verification_run=None):
+        observed = self.attempt(deployment_run, 1)
+        original = deployment(observed)
+        jobs = [j for j in observed["jobs"] if j.get("name") == "build-and-deploy"]
+        if len(jobs) != 1 or not original.get("rollout_observed"):
+            raise ValueError("no observed rollout")
+        original["deployment_sha"] = parse_images(self.job_log(deployment_run, jobs[0]))
+        if verification_run is None:
+            verification = {"deployment_sha": original["deployment_sha"],
+                            "verification": "passed" if original.get("verification_passed") else "failed",
+                            "required_stages": list(REQUIRED), "warnings": original["unverified_stages"],
+                            "conclusion": observed["run"]["conclusion"],
+                            "url": observed["run"]["html_url"], "completed_at": jobs[0]["completed_at"]}
+        else:
+            evidence = self.attempt(verification_run, 1)
+            run = evidence["run"]
+            if (run.get("path") != ".github/workflows/hub-verify-current.yml"
+                    or run.get("head_branch") != "main" or run.get("event") != "workflow_dispatch"
+                    or run.get("status") != "completed" or run.get("conclusion") != "success"):
+                raise ValueError("verification workflow did not succeed")
+            checks = [j for j in evidence["jobs"] if j.get("name") == "verify"
+                      and j.get("conclusion") == "success"]
+            if len(checks) != 1 or checks[0]["completed_at"] <= jobs[0]["completed_at"]:
+                raise ValueError("missing or earlier recovery verification")
+            verification = parse_verification(self.job_log(verification_run, checks[0]))
+            verification.update(conclusion="success", url=run["html_url"],
+                                completed_at=checks[0]["completed_at"])
         pull = self.get(f"repos/{REPO}/pulls/{pr}")
         if pull.get("merged") is not True:
             raise ValueError("PR is not merged")
@@ -126,6 +140,19 @@ class GitHub:
         compared = self.get(f"repos/{REPO}/compare/{merge_sha}...{deployed_sha}")
         compared["head_sha"] = deployed_sha  # Exact SHA in the host request, not run.head_sha.
         return completion(original, verification, merge_sha, deployed_sha, compared)
+
+
+def parse_images(log):
+    images = []
+    for label in ("hub", "encode"):
+        matches = re.findall(r"\b" + label + r"\s+=\s+vincacr\.azurecr\.io/vinc-hub:([0-9a-f]{40})\s*$",
+                             log, flags=re.MULTILINE)
+        if len(matches) != 1:
+            raise ValueError("missing or ambiguous observed image")
+        images.append(matches[0])
+    if images[0] != images[1]:
+        raise ValueError("hub and encoder images differ")
+    return images[0]
 
 
 def parse_verification(log):
@@ -267,7 +294,8 @@ def completion(original, verification, merge_sha, deployed_sha, comparison):
             "rollout_verification_incomplete" and original.get("deployment_sha") == deployed_sha
             else "verified") if valid else "unverified",
             "original": original, "verification": verification,
-            "reason": "all-stage qualification requires no warnings" if verification.get("warnings") else
+            "reason": "exact deployed commit and containment verified" if valid else
+            "all-stage qualification requires no warnings" if verification.get("warnings") else
             "exact deployed commit and containment required",
             "qualification_scope": "historical evidence, not current production state"}
 
@@ -283,7 +311,7 @@ def main():
     qualify = sub.add_parser("qualify")
     qualify.add_argument("--pr", type=int, required=True)
     qualify.add_argument("--deployment-run", type=int, required=True)
-    qualify.add_argument("--verification-run", type=int, required=True)
+    qualify.add_argument("--verification-run", type=int)
     args = parser.parse_args()
     github = GitHub()
     try:
