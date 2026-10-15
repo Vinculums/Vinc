@@ -115,13 +115,37 @@ def test_uncertain_merge_never_retries(tmp_path):
         def get(self, path):
             return {"merged": False}
     host = Host()
-    receipt = tmp_path / "attempt.json"
-    assert merge_once(host, 42, grant(), HEAD, receipt)["state"] == "uncertain"
+    assert merge_once(host, 42, grant(), HEAD, tmp_path)["state"] == "uncertain"
     with pytest.raises(FileExistsError):
-        merge_once(host, 42, grant(), HEAD, receipt)
+        merge_once(host, 42, grant(), HEAD, tmp_path)
     assert len(host.calls) == 1
     assert "--match-head-commit" in host.calls[0]
     assert "--admin" not in host.calls[0]
+    assert '"state": "uncertain"' in next(tmp_path.iterdir()).read_text()
+
+
+def test_head_changed_during_collection_is_refused():
+    import json
+    calls = []
+    def run(args):
+        if args[1:3] == ["pr", "checks"]:
+            return json.dumps([{"bucket": "pass"}])
+        if "/pulls/" in args[-1]:
+            calls.append(args[-1])
+            return json.dumps({"head": {"sha": HEAD if len(calls) == 1 else "b" * 40}})
+        return '{"workflow_runs": []}'
+    with pytest.raises(ValueError, match="changed"):
+        GitHub(run).snapshot(42)
+
+
+def test_invalid_grant_never_reaches_mutation(tmp_path):
+    class Host:
+        def snapshot(self, pr):
+            return snapshot()
+        def run(self, args):
+            pytest.fail("mutation must not run")
+    assert not merge_once(Host(), 42, None, HEAD, tmp_path)["allowed"]
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_pagination_reads_second_page():

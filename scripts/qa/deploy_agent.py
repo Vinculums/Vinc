@@ -6,6 +6,7 @@ This module is a gate, not an OS sandbox: the host must route mutations here.
 from __future__ import annotations
 
 import argparse
+import hashlib
 from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
@@ -180,7 +181,7 @@ def preflight(snapshot, grant, producer_head, now=None):
     return {"allowed": not reasons, "reasons": reasons, "head": head}
 
 
-def merge_once(github, pr, grant, producer_head, receipt: Path):
+def merge_once(github, pr, grant, producer_head, receipt_directory: Path):
     """Host API only. Exclusive receipt prevents replay after uncertain acknowledgement.
 
     The host owns receipt storage and grants. No admin bypass, automatic retry,
@@ -190,6 +191,8 @@ def merge_once(github, pr, grant, producer_head, receipt: Path):
     verdict = preflight(snapshot, grant, producer_head)
     if not verdict["allowed"]:
         return verdict
+    identity = json.dumps([grant.repository, grant.pr, grant.head, grant.action, grant.reference])
+    receipt = receipt_directory / (hashlib.sha256(identity.encode()).hexdigest() + ".jsonl")
     # Atomic reservation is persisted before issuing the sole mutation.
     with receipt.open("x", encoding="utf-8") as stream:
         json.dump({"state": "attempt_reserved", "grant": asdict(grant),
@@ -197,6 +200,9 @@ def merge_once(github, pr, grant, producer_head, receipt: Path):
         stream.flush()
         import os
         os.fsync(stream.fileno())
+    verdict = preflight(snapshot, grant, producer_head)
+    if not verdict["allowed"]:
+        return verdict
     try:
         github.run(["gh", "pr", "merge", str(pr), "--repo", REPO,
                     "--squash", "--match-head-commit", grant.head])
