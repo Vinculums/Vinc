@@ -794,6 +794,25 @@ def _merged_fragment_node(label: str, nid: str, ntype: str, merged: dict) -> dic
     return node
 
 
+def _edges_after_deletions(store, owner, bundle):
+    """끝점의 새 편집 증거가 없는 관계 재전송은 기존 삭제를 이기지 못한다."""
+    times = {n.get("id"): n.get("_updated_at") or "" for n in bundle.get("nodes") or []}
+    carriers = {fragment: rel for rel, fragment in _REL_TO_FRAGMENT.items()}
+    kept = []
+    for edge in bundle.get("edges") or []:
+        src, dst, kind = edge.get("from") or "", edge.get("to") or "", edge.get("type") or ""
+        rel = "ATTACHES_TO:" + kind if src.startswith("record:") else carriers.get(kind, kind)
+        rows = store.run("MATCH (t:_EdgeTombstone) WHERE t.owner_id=$owner AND t.rel=$rel "
+                         "AND ((t.src=$src AND t.dst=$dst) OR ($symmetric AND t.src=$dst AND t.dst=$src)) "
+                         "RETURN t.deleted_at AS deleted_at",
+                         {"owner": owner, "rel": rel, "src": src, "dst": dst, "symmetric": rel == "RELATED_TO"})
+        if rows and any(not (times.get(src, "") > (r.get("deleted_at") or "") and
+                                 times.get(dst, "") > (r.get("deleted_at") or "")) for r in rows):
+            continue
+        kept.append(edge)
+    return kept
+
+
 def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
     """delta 번들을 **필드단위 3-way 병합**으로 적용(S3 — 발주자 핵심 요구).
 
@@ -877,12 +896,13 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         base_updates.append((nid, label, remote_snap, r_rev, r_ua))
         revstamp.observe_hlc(store, r_ua)
 
-    if writes or bundle.get("edges"):
+    edges = _edges_after_deletions(store, owner, bundle)
+    if writes or edges:
         # stamp_edges=False — 원격발 엣지를 끝점 스탬프하면 다음 push 로 무변경 노드가
         # 에코된다(엣지 전파 스탬프는 **원 저작 기기**에서만, fragment 주석 참조).
         res = frag.merge_fragment(
             {"owner": owner, "nodes": [w["node"] for w in writes],
-             "edges": bundle.get("edges") or []}, store=store, stamp_edges=False)
+             "edges": edges}, store=store, stamp_edges=False)
         out["executed"] = bool(res.get("executed"))
         out["edges"] = (res.get("merged") or {}).get("edges", {}).get("created", 0)
         out["warnings"] += res.get("warnings") or []

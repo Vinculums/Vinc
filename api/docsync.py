@@ -122,6 +122,13 @@ def import_docs(store, *, owner: str, payload: dict) -> dict:
             skipped += 1
             continue
         remote_ua = d.get("updated_at") or ""
+        tombs = store.run("MATCH (t:_DocTombstone) WHERE t.doc_id=$id "
+                         "RETURN t.owner_id AS owner_id, t.deleted_at AS deleted_at", {"id": doc_id})
+        # 오래된 사본이 보존한 삭제 표식을 지우며 문서를 부활시키지 못하게 한다.
+        if tombs and (tombs[0].get("owner_id") != owner or
+                      not _newer(remote_ua, tombs[0].get("deleted_at") or "")):
+            skipped += 1
+            continue
         cur = _local(store, doc_id)
         # v7(D72) — 원격의 시간 두 열을 그대로 박는다. created_at 은 로컬에 없을
         # 때만 의미가 있고(put_doc 이 기존 값을 보존한다), 구 송신자는 키가 없어

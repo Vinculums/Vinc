@@ -15,6 +15,7 @@ from .embedded_schema import SCHEMA_VERSION, meta_table_specs, node_table_specs,
 from .topic_transfer import (
     MAX_INVENTORY_BYTES, MAX_INVENTORY_ROWS, TransferRefused, _KINDS,
     _canonical, check_inventory_budget, referenced_ids, verify_store_shape, mapped_rejection_key,
+    _HISTORY,
 )
 from .topic_manifest import ManifestLimit
 
@@ -258,6 +259,12 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         if refs <= logical and "" not in refs:
             keep("_MergeRejection", row)
 
+    # 과거 삭제 행은 개인 소유로 유지하며 전후 전체 값도 비교한다.
+    for label in _HISTORY:
+        for row in reader.scan(f"MATCH (n:{label}) WHERE n.owner_id=$source",
+                               _node_projection(label), f"n.{specs[label]['pk']}", {"source": source}):
+            keep(label, row)
+
     # Sequence counters and movement markers are the only sync metadata that
     # the transform reads or writes. Protocol journals are handled separately.
     for key in ("seq:" + source, "seq:" + target):
@@ -266,7 +273,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
             keep("_SyncMeta", row)
     marker_keys = set()
     for label, key in tuple(retained):
-        if label in ("Domain", "_SyncMeta", "_DocTombstone", "_Tombstone"):
+        if label in ("Domain", "_SyncMeta") + _HISTORY:
             continue
         if after:
             if label == "NodeVec":
@@ -384,10 +391,6 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         if reader.exists("MATCH (n:_SyncBase) WHERE n.node_id STARTS WITH $prefix "
                          "RETURN n.node_id AS id", {"prefix": target + pkns.SEP}):
             blockers.add("target_has_metadata")
-        for label in ("_Tombstone", "_EdgeTombstone", "_DocTombstone"):
-            if reader.exists(f"MATCH (n:{label}) WHERE n.owner_id=$source "
-                             f"RETURN n.{specs[label]['pk']} AS id", {"source": source}):
-                blockers.add("unclassified_tombstone_topic_history:" + label)
         for row in reader.scan("MATCH (n:_MergeRejection) WHERE n.owner_id=$source",
                                "n.pair_key AS id, n.a_id AS a_id, n.b_id AS b_id, n.note AS note",
                                "n.pair_key", {"source": source}):

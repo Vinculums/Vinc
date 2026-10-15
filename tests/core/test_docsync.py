@@ -123,6 +123,23 @@ class DocSyncE2E(unittest.TestCase):
         self.assertEqual(r2["skipped"], 1)
         self.assertEqual(ds.get_doc(self.B, did)["text"], "B 로컬 최신")
 
+    def test_deleted_document_rejects_stale_equal_and_foreign_replay(self):
+        did = "deleted-replay"
+        ds.put_doc(self.A, owner="user:a", text="Original", doc_id=did)
+        ds.delete_doc(self.A, did, owner="user:a")
+        tomb = self.A.run("MATCH (t:_DocTombstone) WHERE t.doc_id=$id RETURN t.deleted_at AS time",
+                          {"id": did})[0]["time"]
+        for owner, stamp in (("user:a", "2000-01-01"), ("user:a", tomb), ("user:b", "2099")):
+            result = docsync.import_docs(self.A, owner=owner, payload={"docs": [
+                {"doc_id": did, "text": "Stale", "updated_at": stamp}]})
+            self.assertEqual(result["skipped"], 1)
+            self.assertEqual(self._chunks(self.A, did), 0)
+        self.assertEqual(self.A.run("MATCH (t:_DocTombstone) WHERE t.doc_id=$id RETURN t.deleted_at AS time",
+                                    {"id": did}), [{"time": tomb}])
+        result = docsync.import_docs(self.A, owner="user:a", payload={"docs": [
+            {"doc_id": did, "text": "Deliberate later recreation", "updated_at": "2099-01-01"}]})
+        self.assertEqual(result["applied"], 1)
+
     def test_delete_propagation_and_recreate_wins(self):
         did = ds.doc_id_for_origin("user:a", "temp")
         ds.put_doc(self.A, owner="user:a", text="지울 문서", doc_id=did,

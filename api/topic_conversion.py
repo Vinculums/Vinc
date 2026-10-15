@@ -21,7 +21,7 @@ from store.scoped_topic_inventory import read_scoped_inventory
 from store.topic_manifest import TopicManifest, ManifestLimit
 from store.topic_transfer import (TransferRefused, fingerprint, read_snapshot,
                                  plan_transfer, transformed_snapshot, _write_difference, check_inventory_budget,
-                                 _canonical, _REFERENCE)
+                                 _canonical, _REFERENCE, retained_history_counts)
 
 request_owner = ContextVar("conversion_request_owner", default=None)
 request_payload = ContextVar("conversion_request_payload", default=None)
@@ -192,6 +192,7 @@ def preflight(store, source, topic):
     return {"ready": not blockers, "scope": "topic", "topic": topic,
             "fingerprint": scoped_hash(snap, source, PREFLIGHT_TARGET),
             "counts_known": True, "counts": counts, "documents": len(plan.documents),
+            "retained_personal_history": retained_history_counts(snap, plan),
             "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
             "inspected_rows": inventory.inspected_rows,
             "projected_rows": projected_rows, "projected_bytes": projected_bytes,
@@ -226,6 +227,7 @@ def inventory_diagnostics(store, source, topic):
                 blockers.add("conversion_bounded_executor_required")
                 return {"ready": False, "scope": "topic", "topic": topic,
                         "counts_known": True, "counts": counts, "documents": len(plan.documents),
+                        "retained_personal_history": retained_history_counts(inventory.snapshot, plan),
                         "document_ownership": _document_scope_summary(inventory.snapshot,plan,source),
                         "document_missing_evidence": _missing_document_evidence(inventory.snapshot,plan,source),
                         "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
