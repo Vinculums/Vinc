@@ -367,6 +367,8 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
                 raise TransferRefused("run_conventions_policy_changed")
             if previous.get('inventory_version',1) not in (1,SCOPED_INVENTORY_VERSION):
                 raise TransferRefused('unsupported_conversion_inventory_version')
+            if previous.get("conventions_policy", "retain") != conventions_policy:
+                raise TransferRefused("run_conventions_policy_changed")
             if previous["status"] == "cancelled":
                 return {"status": "cancelled", "run": run}
             if previous["expected"] != expected:
