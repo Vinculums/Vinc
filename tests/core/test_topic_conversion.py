@@ -184,8 +184,8 @@ def test_foreign_row_at_mapped_target_key_is_refused_before_dml(native):
 
 
 def test_scoped_scan_keeps_source_history_blockers(native):
-    native.run("CREATE (r:_MergeRejection {pair_key:'synthetic-reject', owner_id:$owner, "
-               "a_id:'concept:a', b_id:'concept:other'})", {"owner": SOURCE})
+    native.run("CREATE (r:_MergeRejection {pair_key:$key, owner_id:$owner, "
+               "a_id:'concept:a', b_id:'concept:other'})", {"owner": SOURCE, "key": SOURCE + "|concept:a|concept:other"})
     check = tc.preflight(native, SOURCE, TOPIC)
     assert not check["ready"] and "merge_rejection_history_not_supported" in check["blockers"]
     assert not tc.journals(native)

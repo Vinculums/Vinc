@@ -15,7 +15,7 @@ from .embedded_schema import SCHEMA_VERSION, meta_table_specs, node_table_specs,
 from .topic_transfer import (
     MAX_INVENTORY_BYTES, MAX_INVENTORY_ROWS, TransferRefused, _KINDS,
     _canonical, check_inventory_budget, referenced_ids, verify_store_shape, mapped_rejection_key,
-    _HISTORY,
+    _HISTORY, rejection_disposition,
 )
 from .topic_manifest import ManifestLimit
 
@@ -289,11 +289,44 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
     for row in matching("_SyncBase", (owner + pkns.SEP + logical_id for logical_id in logical)):
         keep("_SyncBase", row)
 
+    retained_rejections = set()
+    rejection_endpoints = {}
+
+    def rejection_endpoint(ref):
+        # 이동 후에도 선택 끝점은 팀에 존재한다. 나머지는 원래 개인 키로 대조한다.
+        if after and ref in logical:
+            return "selected"
+        if ref in rejection_endpoints:
+            return rejection_endpoints[ref]
+        matches = [(label, row) for label in _KINDS + ("Bridge",)
+                   for key in (source + pkns.SEP + ref, ref)
+                   if (row := exact(label, key)) is not None]
+        if not matches:
+            state = "missing"
+        elif len(matches) != 1 or matches[0][0] != "Concept" or matches[0][1]["owner_id"] != source:
+            state = "ambiguous"
+        else:
+            state = "selected" if ref in logical else "outside"
+        rejection_endpoints[ref] = state
+        return state
+
     for row in reader.scan("MATCH (n:_MergeRejection) WHERE n.owner_id=$owner",
                            _node_projection("_MergeRejection"), "n.pair_key", {"owner": owner}):
         refs = {pkns.strip(row["a_id"] or ""), pkns.strip(row["b_id"] or "")}
         if refs <= logical and "" not in refs:
             keep("_MergeRejection", row)
+
+    for row in reader.scan("MATCH (n:_MergeRejection) WHERE n.owner_id=$source",
+                           _node_projection("_MergeRejection"), "n.pair_key", {"source": source}):
+        disposition = rejection_disposition(row, source, logical, rejection_endpoint)
+        if disposition == "retain":
+            keep("_MergeRejection", row)
+            retained_rejections.add(row["pair_key"])
+        if not after:
+            if disposition not in ("move", "retain", "outside"):
+                blockers.add(disposition)
+            if disposition != "move" and set(referenced_ids(row["note"])) & (logical | docs):
+                blockers.add("incoming_reference:merge_rejection")
 
     # 과거 삭제 행은 개인 소유로 유지하며 전후 전체 값도 비교한다.
     for label in _HISTORY:
@@ -310,6 +343,8 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
     marker_keys = set()
     for label, key in tuple(retained):
         if label in ("Domain", "_SyncMeta") + _HISTORY:
+            continue
+        if label == "_MergeRejection" and key in retained_rejections:
             continue
         if after:
             if label == "NodeVec":
@@ -376,6 +411,8 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         for label, old in tuple(retained):
             if label in ("Domain", "_SyncMeta", "_DocTombstone", "_Tombstone"):
                 continue
+            if label == "_MergeRejection" and old in retained_rejections:
+                continue
             if label == "NodeVec":
                 new = target + "#" + vector_nodes[old]
             elif label == "_MergeRejection":
@@ -426,24 +463,6 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         if reader.exists("MATCH (n:_SyncBase) WHERE n.node_id STARTS WITH $prefix "
                          "RETURN n.node_id AS id", {"prefix": target + pkns.SEP}):
             blockers.add("target_has_metadata")
-        for row in reader.scan("MATCH (n:_MergeRejection) WHERE n.owner_id=$source",
-                               "n.pair_key AS id, n.a_id AS a_id, n.b_id AS b_id, n.note AS note",
-                               "n.pair_key", {"source": source}):
-            refs = {pkns.strip(row["a_id"] or ""), pkns.strip(row["b_id"] or "")}
-            if refs <= logical and "" not in refs:
-                continue
-            if set(referenced_ids(row["note"])) & (logical | docs):
-                blockers.add("incoming_reference:merge_rejection")
-            if refs & logical:
-                blockers.add("merge_rejection_history_not_supported")
-            else:
-                for ref in refs:
-                    if not any((existing := exact(label, key)) is not None
-                               and existing["owner_id"] == source
-                               for label in _KINDS + ("Bridge",)
-                               for key in (source + pkns.SEP + ref, ref)):
-                        blockers.add("merge_rejection_topic_membership_unknown")
-                        break
     else:
         # No new target-owned topic or metadata can appear while the durable
         # source/target fences are pending. Detect it before releasing them.
