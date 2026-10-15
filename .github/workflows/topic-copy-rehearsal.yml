@@ -1,0 +1,149 @@
+# 별도 G6 사본 실행 승인을 받은 사람이 수동 호출한다. 실제 이동은 하지 않는다.
+name: topic-copy-rehearsal
+on:
+  workflow_dispatch:
+    inputs:
+      owner_uuid:
+        description: Personal owner UUID for the vinc topic rehearsal
+        required: true
+        type: string
+      confirm:
+        description: Enter REHEARSE PERSONAL VINC COPY after owner approval
+        required: true
+        type: string
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: hub-deploy
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      RG: vincsRG
+      STORAGE: vincstorage01
+      SHARE: hub-data
+      APP: vinc-hub
+      REHEARSAL_OWNER_UUID: ${{ inputs.owner_uuid }}
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      - name: Require operator and main branch
+        env:
+          OPERATORS: ${{ vars.PROD_OPERATORS }}
+          ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$CONFIRM" = 'REHEARSE PERSONAL VINC COPY'
+          case ",$OPERATORS," in *",$ACTOR,"*) ;; *) exit 1 ;; esac
+          python -c 'import os,uuid; v=os.environ["REHEARSAL_OWNER_UUID"]; assert str(uuid.UUID(v)) == v'
+          echo "::add-mask::$REHEARSAL_OWNER_UUID"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Isolate Azure profile
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Resolve live snapshot and runtime policy
+        id: live
+        run: |
+          set -euo pipefail
+          env_of() {
+            az containerapp show -n "$APP" -g "$RG" --query "properties.template.containers[0].env[?name=='$1'].value | [0]" -o tsv
+          }
+          p=$(env_of VINC_STORE_SNAPSHOT)
+          [ -n "$p" ] || p=$(env_of VINC_DATA_DIR)
+          case "$p" in /data/*) ;; *) exit 1 ;; esac
+          rel=${p#/data/}
+          case "$rel" in ""|*/*|*..*) exit 1 ;; esac
+          durable=$(env_of VINC_DURABLE_ACK)
+          case "${durable,,}" in 1|true|on) durable=on ;; *) durable=off ;; esac
+          pkns=$(env_of VINC_PK_NAMESPACED)
+          test "$pkns" = on
+          conversion=$(env_of VINC_TOPIC_CONVERSION)
+          case "$conversion" in ""|0|1) ;; *) exit 1 ;; esac
+          # 이번 복구 근거는 현재 운영 설정과 같은 전역 ACK off / 전환 on에 한정한다.
+          test "$durable" = off
+          test "$conversion" = 1
+          echo "DURABLE_ACK=$durable" >> "$GITHUB_ENV"
+          echo "VINC_PK_NAMESPACED=$pkns" >> "$GITHUB_ENV"
+          # 전역 ACK가 꺼져 있어도 전환 전용 게시 세대는 같은 복원 경로로 고른다.
+          echo "VINC_TOPIC_CONVERSION=$conversion" >> "$GITHUB_ENV"
+          echo "rel=$rel" >> "$GITHUB_OUTPUT"
+      - name: Create isolated share snapshot
+        id: snap
+        run: |
+          set -euo pipefail
+          ts=$(az storage share snapshot --account-name "$STORAGE" --name "$SHARE" --query snapshot -o tsv)
+          test -n "$ts"
+          echo "ts=$ts" >> "$GITHUB_OUTPUT"
+      - name: Restore copy and vocabulary sidecar
+        env:
+          SOURCE: ${{ steps.live.outputs.rel }}
+          SNAPSHOT: ${{ steps.snap.outputs.ts }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir restored
+          python scripts/restore_hub_snapshot.py --account "$STORAGE" --share "$SHARE" --snapshot "$SNAPSHOT" --source "$SOURCE" --out restored/db --durable-ack "$DURABLE_ACK" > restored/restore-private.log 2>&1
+          exists=$(az storage file exists --account-name "$STORAGE" --share-name "$SHARE" --snapshot "$SNAPSHOT" --path "$SOURCE.themes.json" --query exists -o tsv)
+          case "$exists" in
+            true) az storage file download --account-name "$STORAGE" --share-name "$SHARE" --snapshot "$SNAPSHOT" --path "$SOURCE.themes.json" --dest restored/db.themes.json --output none ;;
+            false) ;;
+            *) exit 1 ;;
+          esac
+          test -s restored/db
+      - name: Build the isolated execution runtime
+        run: |
+          set -euo pipefail
+          engine=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['optional-dependencies']['embedded'][0])")
+          test "$engine" = ladybug==0.21.2
+          docker build -t vinc-copy-rehearsal - <<'DOCKERFILE'
+          FROM python:3.12-slim
+          RUN pip install --no-cache-dir ladybug==0.21.2 argon2-cffi pyyaml
+          DOCKERFILE
+      - name: Rehearse only the isolated copy with no network
+        run: |
+          set -euo pipefail
+          # Azure 자격 증명은 컨테이너에 전달하지 않는다. 실행에는 네트워크가 없다.
+          timeout --signal=TERM --kill-after=30s 75m docker run --rm --name vinc-copy-rehearsal \
+            --network none --cpus 1 --memory 2g --memory-swap 2g --pids-limit 128 \
+            --read-only --security-opt no-new-privileges --cap-drop ALL \
+            --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,nodev,size=1g \
+            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/src,readonly" \
+            --mount "type=bind,src=$GITHUB_WORKSPACE/restored,dst=/rehearsal" \
+            --workdir /src -e GITHUB_ACTIONS=true -e VINC_COPY_REHEARSAL=approved \
+            -e REHEARSAL_OWNER_UUID -e VINC_PK_NAMESPACED=on -e VINC_TOPIC_CONVERSION=1 \
+            -e VINC_DURABLE_ACK=off -e PYTHONDONTWRITEBYTECODE=1 \
+            -e VINC_LBUG_EXT_DIR=/src/packaging/lbug_extensions \
+            vinc-copy-rehearsal python -X utf8 scripts/qa/topic_copy_rehearsal.py \
+            > restored/rehearsal-private.log 2>&1
+      - name: Stop the isolated process
+        if: always()
+        run: docker rm -f vinc-copy-rehearsal 2>/dev/null || true
+      - name: Publish aggregate result only
+        if: always()
+        run: |
+          if test -f restored/report.json; then cat restored/report.json; fi
+      - name: Remove only this rehearsal snapshot
+        if: ${{ always() && steps.snap.outputs.ts != '' }}
+        env:
+          SNAPSHOT: ${{ steps.snap.outputs.ts }}
+        run: |
+          set -euo pipefail
+          test -n "$SNAPSHOT"
+          az storage share delete --account-name "$STORAGE" --name "$SHARE" --snapshot "$SNAPSHOT" --output none
+      - name: Remove private runner copy
+        if: always()
+        run: |
+          set -euo pipefail
+          test "$PWD" = "$GITHUB_WORKSPACE"
+          rm -rf -- restored
+

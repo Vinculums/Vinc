@@ -261,7 +261,8 @@ def main():
             flow._drop_indexes=timed_drop
             store._ensure_index=timed_ensure
             begin=time.monotonic()
-            flow.initialize(sealed_path,sealed['sha256'],plan.before_hash)
+            flow.initialize(sealed_path,sealed['sha256'],manifest.authorized_hash(plan.before_hash,plan.conventions_policy),
+                            conventions_policy=plan.conventions_policy)
             max_step=0.0
             while flow.status()['phase']!='verifying':
                 if time.monotonic()-started>3600:raise RuntimeError('synthetic_work_budget_reached')
