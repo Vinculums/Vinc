@@ -1,0 +1,17 @@
+{
+  "arms": [
+    "positive_balanced_core",
+    "curated_supports_replacement"
+  ],
+  "decision": "decision:execute-registered-laya-curated-comparison-2026-10-15",
+  "manifest_path": "D:\\Projects\\AIProjects\\vinc-project\\_scratch\\laya\\vin514\\inputs\\manifest.json",
+  "manifest_sha256": "872e04b2ada1744b1138bc9d1cff1dbe033c1d7dbbdf910bf75f25457477c0ee",
+  "max_total_seconds": 3600,
+  "max_training_runs": 2,
+  "owner_instruction": "그럼 다음 단계 작업 진행",
+  "paid_resources": false,
+  "production_authorized": false,
+  "registration_sha256": "81537d2998d22805860f007be5aa4d20a3f9a142f4ac26a922795c221d94ea46",
+  "schema": "vinc.laya.curated-execution.v1",
+  "training_execution_authorized": true
+}

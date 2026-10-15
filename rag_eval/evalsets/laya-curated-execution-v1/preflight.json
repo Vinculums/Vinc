@@ -1,0 +1,28 @@
+{
+  "manifest_sha256": "872e04b2ada1744b1138bc9d1cff1dbe033c1d7dbbdf910bf75f25457477c0ee",
+  "model_loaded": false,
+  "sets": {
+    "control": {
+      "items": 3012,
+      "metadata_sha256": "57d1fdc25e8228b3a0cb03aebac87be6dacf4779db6cebf288082c41434b0efa",
+      "rows": 3012,
+      "skipped": 0,
+      "truncated": 0
+    },
+    "development": {
+      "items": 1505,
+      "metadata_sha256": "600e64b1c453a98c680c5c214c53857232a23569051a1d1aa8b299a23c233293",
+      "rows": 722,
+      "skipped": 0,
+      "truncated": 0
+    },
+    "intervention": {
+      "items": 3012,
+      "metadata_sha256": "55ab1847271a73e25d4ad4a6f53817cea37e293f69950c1eeb1cf5619a043920",
+      "rows": 3012,
+      "skipped": 0,
+      "truncated": 0
+    }
+  },
+  "training_runs": 0
+}
