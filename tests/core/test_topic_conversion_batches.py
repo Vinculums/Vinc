@@ -57,6 +57,21 @@ def test_native_bounded_rows_preserve_every_field_duplicate_and_other_source_row
     assert legacy.fenced(native,SOURCE) and legacy.fenced(native,TARGET)
 
 
+def test_native_bounded_move_preserves_import_provenance(native,tmp_path):
+    origin = "https://synthetic.invalid/import/original.pdf"
+    native.run("MATCH (n:Chunk) WHERE n.doc_id='doc1' SET n.source_file=$origin", {"origin": origin})
+    native.run("MATCH (n:_DocMeta) WHERE n.doc_id='doc1' SET n.origin=$origin", {"origin": origin})
+    before = read_snapshot(native)
+    expected = transformed_snapshot(before, plan_transfer(before, source=SOURCE, target=TARGET, topic=TOPIC), stamp=STAMP)
+    flow, _, _ = fixture(native, tmp_path, max_rows=2)
+    assert finish(flow)["status"] == "graph_committed"
+    observed = read_snapshot(native)
+    observed["meta"]["_SyncMeta"] = [r for r in observed["meta"]["_SyncMeta"] if not r["key"].startswith(legacy.PREFIX)]
+    assert fingerprint(observed) == fingerprint(expected)
+    assert observed["nodes"]["Chunk"][0]["source_file"] == origin
+    assert observed["meta"]["_DocMeta"][0]["origin"] == origin
+
+
 @pytest.mark.parametrize("point",["before_ledger","before_commit","after_commit"])
 def test_native_failure_resumes_from_the_atomic_ledger_without_repeating_creates(native,tmp_path,point):
     flow,_,_=fixture(native,tmp_path,max_rows=1)
