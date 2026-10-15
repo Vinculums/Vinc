@@ -64,6 +64,66 @@ def prepared(store,tmp_path):
     return plan,path,sealed
 
 
+def test_queued_native_steps_preserve_payload_and_wait_for_scoped_publication(indexed,tmp_path):
+    from api.jobs import JobQueue
+    from api.topic_conversion_jobs import ConversionJobs, bounded_step
+    store,durable,_=indexed
+    before=read_snapshot(store,vocabulary_owner=SOURCE)
+    expected=transformed_snapshot(before,plan_transfer(before,source=SOURCE,target=TARGET,topic=TOPIC),stamp=STAMP)
+    plan,_,_=prepared(store,tmp_path)
+    args=dict(source=SOURCE,target=TARGET,topic=TOPIC,run=RUN,expected=plan.before_hash,stamp=STAMP)
+    with pytest.raises(TransferRefused,match='conversion_bounded_executor_required'):
+        bounded_step(store,durable,**args)
+    assert fingerprint(read_snapshot(store,vocabulary_owner=SOURCE))==fingerprint(before)
+    queue=JobQueue()
+    coordinator=ConversionJobs(queue,work_seconds=180)
+    try:
+        coordinator.start(**{k:v for k,v in args.items() if k!='stamp'},
+            advance=lambda:bounded_step(store,durable,**args,allow_new=True,qualified_indexes=True))
+        coordinator._runs[RUN].thread.join(180)
+        assert not coordinator._runs[RUN].thread.is_alive()
+        result=coordinator.status(SOURCE,RUN)
+        assert result['status']=='graph_committed',result
+        assert result['durable_generation']>0
+        assert legacy.fenced(store,SOURCE) and legacy.fenced(store,TARGET)
+        observed=read_snapshot(store,vocabulary_owner=SOURCE)
+        observed['meta']['_SyncMeta']=[r for r in observed['meta']['_SyncMeta'] if not r['key'].startswith(legacy.PREFIX)]
+        assert fingerprint(observed)==fingerprint(expected)
+        assert set(legacy._index_inventory(store))=={'Chunk','ChunkVec','NodeVec'}
+    finally:
+        coordinator.close()
+        queue.shutdown()
+
+
+def test_http_resumes_existing_v3_run_with_new_conversion_disabled(indexed,tmp_path,monkeypatch):
+    from api.server import VincApp
+    store,durable,publish=indexed
+    plan,path,sealed=prepared(store,tmp_path)
+    flow=Batches(store,root=durable.root,publisher=publish,run=RUN,source=SOURCE,
+                 target=TARGET,topic=TOPIC,qualified_indexes=True)
+    flow.initialize(path,sealed['sha256'],plan.before_hash)
+    monkeypatch.delenv('VINC_TOPIC_CONVERSION',raising=False)
+    monkeypatch.setenv('VINC_STORE_SNAPSHOT',durable.snapshot_path)
+    app=VincApp(load_config({'data_dir':durable.live_path,'buffer_pool_mb':256}),store=store)
+    body=dict(owner=SOURCE,target=TARGET,topic=TOPIC,run=RUN,fingerprint=plan.before_hash)
+    try:
+        assert app._durable is None and app._conversion_durable is not None
+        assert app.write_topic_conversion({**body,'action':'preflight'})[0]==503
+        code,result=app.write_topic_conversion({**body,'action':'stage'})
+        assert code==200 and result['status']=='pending'
+        app._conversion_jobs._runs[RUN].thread.join(180)
+        assert not app._conversion_jobs._runs[RUN].thread.is_alive()
+        code,result=app.write_topic_conversion({**body,'action':'status'})
+        assert code==200 and result['status']=='graph_committed',result
+        assert legacy.fenced(store,SOURCE)
+        code,result=app.write_topic_conversion({**body,'action':'release'})
+        assert code==200 and result['status']=='active',result
+        assert app.write_topic_conversion({**body,'action':'status'})[1]['status']=='active'
+        assert not legacy.fenced(store,SOURCE) and not legacy.fenced(store,TARGET)
+    finally:
+        app.close()
+
+
 def test_scoped_publisher_and_exact_native_indexes_restore_before_graph_receipt(indexed,tmp_path):
     store,durable,publish=indexed
     before=read_snapshot(store,vocabulary_owner=SOURCE)
