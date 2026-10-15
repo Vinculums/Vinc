@@ -184,12 +184,12 @@ def test_entity_cannot_be_silently_left_out_of_topic(theme):
 
 
 @pytest.mark.parametrize("physical", [False, True])
-def test_merge_history_blocks_both_logical_and_physical_references(physical):
+def test_malformed_merge_history_key_blocks_logical_and_physical_references(physical):
     data = seed()
     prefix = SOURCE + SEP if physical else ""
     add_row(data, "_MergeRejection", pair_key="synthetic-history", owner_id=SOURCE,
             a_id=prefix + "concept:a", b_id=prefix + "concept:b")
-    assert_blocked(data, "merge_rejection_history_not_supported")
+    assert_blocked(data, "unsupported_merge_rejection_key")
 
 
 def test_merge_history_with_deleted_endpoint_refused():
@@ -299,7 +299,7 @@ def test_store_without_external_state_inventory_is_refused(native):
     ("graphmd", "owner_conventions_require_separate_decision"),
     ("attachments", "external_attachments_not_supported"),
     ("entity", "entity_topic_membership_not_supported"),
-    ("merge_history", "merge_rejection_history_not_supported"),
+    ("merge_history", "unsupported_merge_rejection_key"),
     ("node_history", "unclassified_tombstone_topic_history"),
     ("edge_history", "unclassified_tombstone_topic_history"),
     ("doc_history", "unclassified_tombstone_topic_history"),
