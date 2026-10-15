@@ -1,0 +1,126 @@
+# 운영 사본의 의존성 조사만 수행한다. G6 실행 승인을 받은 사람이 수동 호출한다.
+name: topic-snapshot-audit
+on:
+  workflow_dispatch:
+    inputs:
+      owner_uuid:
+        description: Personal owner UUID for the vinc topic audit
+        required: true
+        type: string
+      confirm:
+        description: Enter AUDIT PERSONAL VINC COPY after owner approval
+        required: true
+        type: string
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: hub-deploy
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RG: vincsRG
+      STORAGE: vincstorage01
+      SHARE: hub-data
+      APP: vinc-hub
+      AUDIT_OWNER_UUID: ${{ inputs.owner_uuid }}
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      - name: Require operator and main branch
+        env:
+          OPERATORS: ${{ vars.PROD_OPERATORS }}
+          ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$CONFIRM" = 'AUDIT PERSONAL VINC COPY'
+          case ",$OPERATORS," in *",$ACTOR,"*) ;; *) exit 1 ;; esac
+          python -c 'import os,uuid; v=os.environ["AUDIT_OWNER_UUID"]; assert str(uuid.UUID(v)) == v'
+          echo "::add-mask::$AUDIT_OWNER_UUID"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Isolate Azure profile
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Resolve live snapshot and runtime policy
+        id: live
+        run: |
+          set -euo pipefail
+          env_of() {
+            az containerapp show -n "$APP" -g "$RG" --query "properties.template.containers[0].env[?name=='$1'].value | [0]" -o tsv
+          }
+          p=$(env_of VINC_STORE_SNAPSHOT)
+          [ -n "$p" ] || p=$(env_of VINC_DATA_DIR)
+          case "$p" in /data/*) ;; *) exit 1 ;; esac
+          rel=${p#/data/}
+          case "$rel" in ""|*/*|*..*) exit 1 ;; esac
+          durable=$(env_of VINC_DURABLE_ACK)
+          case "${durable,,}" in 1|true|on) durable=on ;; *) durable=off ;; esac
+          pkns=$(env_of VINC_PK_NAMESPACED)
+          test "$pkns" = on
+          conversion=$(env_of VINC_TOPIC_CONVERSION)
+          case "$conversion" in ""|0|1) ;; *) exit 1 ;; esac
+          echo "DURABLE_ACK=$durable" >> "$GITHUB_ENV"
+          echo "VINC_PK_NAMESPACED=$pkns" >> "$GITHUB_ENV"
+          # 전역 ACK가 꺼져 있어도 전환 전용 게시 세대는 같은 복원 경로로 고른다.
+          echo "VINC_TOPIC_CONVERSION=$conversion" >> "$GITHUB_ENV"
+          echo "rel=$rel" >> "$GITHUB_OUTPUT"
+      - name: Create isolated share snapshot
+        id: snap
+        run: |
+          set -euo pipefail
+          ts=$(az storage share snapshot --account-name "$STORAGE" --name "$SHARE" --query snapshot -o tsv)
+          test -n "$ts"
+          echo "ts=$ts" >> "$GITHUB_OUTPUT"
+      - name: Restore copy and vocabulary sidecar
+        env:
+          SOURCE: ${{ steps.live.outputs.rel }}
+          SNAPSHOT: ${{ steps.snap.outputs.ts }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir restored
+          python scripts/restore_hub_snapshot.py --account "$STORAGE" --share "$SHARE" --snapshot "$SNAPSHOT" --source "$SOURCE" --out restored/db --durable-ack "$DURABLE_ACK" > restored/restore-private.log 2>&1
+          exists=$(az storage file exists --account-name "$STORAGE" --share-name "$SHARE" --snapshot "$SNAPSHOT" --path "$SOURCE.themes.json" --query exists -o tsv)
+          case "$exists" in
+            true) az storage file download --account-name "$STORAGE" --share-name "$SHARE" --snapshot "$SNAPSHOT" --path "$SOURCE.themes.json" --dest restored/db.themes.json --output none ;;
+            false) ;;
+            *) exit 1 ;;
+          esac
+          test -s restored/db
+      - name: Audit the copy without transfer
+        run: |
+          set -euo pipefail
+          engine=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['optional-dependencies']['embedded'][0])")
+          test "$engine" = ladybug==0.21.2
+          pip install --quiet --disable-pip-version-check "$engine" argon2-cffi pyyaml
+          export VINC_LBUG_EXT_DIR="$GITHUB_WORKSPACE/packaging/lbug_extensions"
+          # 네이티브 로그도 비공개 임시 파일에 둔다. 집계 JSON만 다음 단계가 읽는다.
+          python -X utf8 scripts/qa/topic_snapshot_audit.py > restored/audit-private.log 2>&1
+      - name: Publish aggregate result only
+        if: always()
+        run: |
+          if test -f topic-audit-report.json; then cat topic-audit-report.json; fi
+      - name: Remove only this rehearsal snapshot
+        if: ${{ always() && steps.snap.outputs.ts != '' }}
+        env:
+          SNAPSHOT: ${{ steps.snap.outputs.ts }}
+        run: |
+          set -euo pipefail
+          test -n "$SNAPSHOT"
+          az storage share delete --account-name "$STORAGE" --name "$SHARE" --snapshot "$SNAPSHOT" --output none
+      - name: Remove private runner copy
+        if: always()
+        run: |
+          set -euo pipefail
+          test "$PWD" = "$GITHUB_WORKSPACE"
+          rm -rf -- restored
