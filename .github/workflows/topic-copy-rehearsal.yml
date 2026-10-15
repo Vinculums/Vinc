@@ -1,6 +1,11 @@
 # 별도 G6 사본 실행 승인을 받은 사람이 수동 호출한다. 실제 이동은 하지 않는다.
 name: topic-copy-rehearsal
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/topic-copy-rehearsal.yml'
+      - 'scripts/qa/topic_copy_rehearsal.py'
+      - 'tests/core/test_topic_copy_rehearsal.py'
   workflow_dispatch:
     inputs:
       owner_uuid:
@@ -13,12 +18,34 @@ on:
         type: string
 permissions:
   contents: read
-  id-token: write
 concurrency:
-  group: hub-deploy
+  group: ${{ github.event_name == 'workflow_dispatch' && 'hub-deploy' || format('topic-copy-smoke-{0}', github.ref) }}
   cancel-in-progress: false
 jobs:
+  synthetic:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and verify only synthetic data in the execution container
+        run: |
+          set -euo pipefail
+          docker build -t vinc-copy-smoke - <<'DOCKERFILE'
+          FROM python:3.12-slim
+          RUN pip install --no-cache-dir ladybug==0.21.2 argon2-cffi pyyaml pytest pytest-subtests
+          DOCKERFILE
+          docker run --rm --network none --cpus 1 --memory 2g --memory-swap 2g --pids-limit 128 \
+            --read-only --security-opt no-new-privileges --cap-drop ALL \
+            --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,nodev,size=1g \
+            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/src,readonly" --workdir /src \
+            -e PYTHONDONTWRITEBYTECODE=1 -e VINC_LBUG_EXT_DIR=/src/packaging/lbug_extensions \
+            vinc-copy-smoke python -m pytest -p no:cacheprovider tests/core/test_topic_copy_rehearsal.py -q
   audit:
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      id-token: write
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
