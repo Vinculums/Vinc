@@ -23,6 +23,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -32,6 +33,20 @@ from api import query as q              # noqa: E402
 
 OWNER = "user:nbr"
 OTHER = "user:other"
+
+
+class ExistenceFailure(unittest.TestCase):
+    def test_failed_exact_lookup_cannot_be_replaced_by_fuzzy_candidates(self):
+        for candidates in ([], [{"id": "record:x"}]):
+            with self.subTest(candidates=candidates), \
+                 mock.patch.object(q, "execute", side_effect=[
+                     {"executed": True, "rows": []}, {"executed": True, "rows": []},
+                     {"executed": True, "rows": []}, {"executed": False, "note": "store_busy"}]), \
+                 mock.patch.object(q, "near_nodes", return_value=candidates) as fuzzy:
+                result = q.neighbors("record:x", owner=OWNER, store=object())
+                self.assertFalse(result["executed"])
+                self.assertNotIn("found", result)
+                fuzzy.assert_not_called()
 
 
 def _fresh_store():

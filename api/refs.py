@@ -169,13 +169,16 @@ def verify_nodes(ids: list[str], *, call=None) -> tuple[list[str], list[str]]:
     call = call or remote.call
     alive, unreachable = [], []
     for node_id in sorted(set(ids)):
+        complete = False
         for _ in range(TRIES):
             res = call("vinc_neighbors", {"node": node_id, "limit": 1})
-            if not res.get("isError"):
+            complete = (isinstance(res, dict) and not res.get("isError")
+                        and res.get("executed") is not False and isinstance(res.get("found"), bool))
+            if complete and res["found"]:
                 break
-        if res.get("isError"):
+        if not complete:
             unreachable.append(node_id)
-            print(f"  [unreachable] {node_id} — {res.get('error')}")
+            print(f"  [unreachable] {node_id}: existence could not be verified")
         elif res.get("found"):
             alive.append(node_id)
         else:
