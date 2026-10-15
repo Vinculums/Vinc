@@ -82,9 +82,42 @@ def test_document_provenance_is_preserved_without_requiring_the_original_file(pa
 def test_provenance_does_not_exempt_real_attachments_or_logical_references():
     data = seed()
     data["nodes"]["Chunk"][0]["source_file"] = "https://synthetic.invalid/source.pdf"
+    data["nodes"]["Concept"][0]["source_file"] = "https://synthetic.invalid/source.pdf"
     data["nodes"]["Record"][0]["props"] = '{"attachments":["blob:synthetic"]}'
     assert_blocked(data, "external_attachments_not_supported")
     data["nodes"]["Record"][0]["props"] = '{"ref":"concept:other"}'
+    assert_blocked(data, "external_reference")
+
+
+@pytest.mark.parametrize("origin", ["D:\\synthetic\\source.md", "/synthetic/source.md",
+                                  "relative/source.md", "file:synthetic", "https://synthetic.invalid/source"])
+def test_concept_provenance_is_preserved_without_reopening_the_input(origin):
+    data = seed()
+    for row in data["nodes"]["Concept"]:
+        row["source_file"] = origin
+    before = copy.deepcopy(data)
+    selected = plan(data)
+    assert selected.ready, selected.blockers
+    after = transformed_snapshot(data, selected, stamp=STAMP)
+    assert data == before
+    for row in before["nodes"]["Concept"]:
+        moved = ("Concept", row["concept_id"]) in selected.selected
+        key = row["concept_id"].replace(SOURCE + SEP, TARGET + SEP, 1) if moved else row["concept_id"]
+        actual = next(r for r in after["nodes"]["Concept"] if r["concept_id"] == key)
+        assert actual["source_file"] == origin
+        if not moved:
+            assert actual == row
+
+
+def test_concept_origin_does_not_hide_its_own_resource_or_reference():
+    data = seed()
+    node = data["nodes"]["Concept"][0]
+    node["source_file"] = "/synthetic/source.md"
+    node["props"] = '{"attachment_url":"https://synthetic.invalid/private"}'
+    assert_blocked(data, "external_attachments_not_supported")
+    node["props"] = '{"resource":"blob:synthetic"}'
+    assert_blocked(data, "external_resource_reference_not_supported")
+    node["props"] = '{"ref":"concept:other"}'
     assert_blocked(data, "external_reference")
 
 
@@ -92,6 +125,8 @@ def test_native_move_preserves_document_provenance_and_canonical_payload(native)
     origin = "https://synthetic.invalid/import/original.pdf"
     native.run("MATCH (n:Chunk) WHERE n.doc_id='doc1' SET n.source_file=$origin", {"origin": origin})
     native.run("MATCH (n:_DocMeta) WHERE n.doc_id='doc1' SET n.origin=$origin", {"origin": origin})
+    native.run("MATCH (n:Concept) WHERE n.owner_id=$owner SET n.source_file=$origin",
+               {"owner": SOURCE, "origin": origin})
     before = read_snapshot(native)
     selected = plan(before)
     assert selected.ready, selected.blockers
@@ -103,6 +138,7 @@ def test_native_move_preserves_document_provenance_and_canonical_payload(native)
     assert fingerprint(actual) == fingerprint(expected)
     assert actual["nodes"]["Chunk"][0]["source_file"] == origin
     assert actual["meta"]["_DocMeta"][0]["origin"] == origin
+    assert all(row["source_file"] == origin for row in actual["nodes"]["Concept"])
 
 
 @pytest.mark.parametrize("properties,reason", [
