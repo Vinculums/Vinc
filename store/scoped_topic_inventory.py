@@ -228,6 +228,16 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
     # including another owner's malformed or shared chunk/vector.
     for row in matching("_DocMeta", docs):
         keep("_DocMeta", row)
+    from .querybase import is_conventions_doc_id
+    if any(is_conventions_doc_id(doc) for doc in docs):
+        reserved = 0
+        for row in reader.scan("MATCH (n:_DocMeta) WHERE n.owner_id=$owner AND "
+                               "(n.doc_id='graph.md' OR n.doc_id STARTS WITH 'graph.md~' OR n.origin='vinc:conventions')",
+                               "n.doc_id AS doc_id, n.origin AS origin", "n.doc_id", {"owner": owner}):
+            if is_conventions_doc_id(row["doc_id"]) or row["origin"] == "vinc:conventions":
+                reserved += 1
+        if reserved != 1:
+            blockers.add("ambiguous_owner_conventions")
     for label in ("Chunk", "ChunkVec"):
         pk = specs[label]["pk"]
         for batch in _batches(docs):

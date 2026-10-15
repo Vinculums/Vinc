@@ -111,6 +111,14 @@ def resolve_conventions_doc_id(store, owner: str | None) -> str:
         legacy = _meta(store, graphmd.LEGACY_CONVENTIONS_DOC_ID)
         if legacy is not None and legacy.get("owner_id") == owner:
             return graphmd.LEGACY_CONVENTIONS_DOC_ID
+        # 원문 이동으로 소유자 파생 id의 원소유자와 현소유자가 달라질 수 있다.
+        owned = store.run("MATCH (d:_DocMeta) WHERE d.owner_id=$owner AND d.doc_id STARTS WITH $prefix "
+                          "RETURN d.doc_id AS doc_id", {"owner": owner, "prefix": "graph.md~"})
+        reserved = [r["doc_id"] for r in owned if graphmd.is_conventions_doc_id(r["doc_id"])]
+        if len(reserved) > 1:
+            raise ValueError("ambiguous_owner_conventions")
+        if reserved:
+            return reserved[0]
     return graphmd.conventions_doc_id(owner)
 
 

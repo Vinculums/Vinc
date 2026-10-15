@@ -23,6 +23,7 @@ class _Entry:
     result: dict | None = None
     finished: float | None = None
     invalidated: bool = False
+    policy: str = "retain"
 
 
 class InventoryJobs:
@@ -58,13 +59,13 @@ class InventoryJobs:
         return {**entry.result, "inventory_state": entry.result.get("inventory_state", "done"),
                 "inventory_ticket": entry.ticket}
 
-    def start(self, owner, topic, work):
+    def start(self, owner, topic, work, *, policy="retain"):
         with self._lock:
             self._prune()
             active = [e for e in self._entries.values()
                       if e.job is None or e.job.status in ("queued", "running")]
             for entry in self._entries.values():
-                if (entry.owner, entry.topic) == (owner, topic):
+                if (entry.owner, entry.topic, entry.policy) == (owner, topic, policy):
                     result = self._status(entry)
                     if result["inventory_state"] != "stale":
                         return result
@@ -77,6 +78,7 @@ class InventoryJobs:
                 oldest = min(done, key=lambda e: e.finished or 0)
                 del self._entries[oldest.ticket]
             entry = _Entry(owner, topic, str(uuid4()))
+            entry.policy = policy
             self._entries[entry.ticket] = entry
 
             def run():

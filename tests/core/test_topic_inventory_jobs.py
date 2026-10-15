@@ -12,6 +12,22 @@ OTHER="user:other"
 RESULT={"ready":True,"counts_known":True,"counts":{"Concept":2},"documents":0,"blockers":[]}
 
 
+def test_changed_conventions_policy_does_not_reuse_prior_diagnosis():
+    queue = JobQueue()
+    inventories = InventoryJobs(queue, lambda owner: ("epoch", False))
+    try:
+        first = inventories.start(OWNER, "topic", lambda: RESULT)
+        assert inventories._entries[first["inventory_ticket"]].job._done.wait(5)
+        second = inventories.start(OWNER, "topic", lambda: {**RESULT, "policy": "move_original"},
+                                   policy="move_original")
+        assert first["inventory_ticket"] != second["inventory_ticket"]
+        assert inventories._entries[second["inventory_ticket"]].job._done.wait(5)
+        assert inventories.status(OWNER, second["inventory_ticket"])["policy"] == "move_original"
+        assert inventories.start(OWNER, "topic", lambda: RESULT)["inventory_ticket"] == first["inventory_ticket"]
+    finally:
+        queue.shutdown(drain=True)
+
+
 def test_pending_is_fast_and_owner_bound_then_cache_is_invalidated():
     queue=JobQueue()
     entered,release=threading.Event(),threading.Event()
