@@ -23,7 +23,10 @@ class Publication:
         # The synthetic fixture has one writer and no indexes/readers. Production
         # integration must use DurableAck's existing guarded snapshot method.
         self.store.run("CHECKPOINT", raw=True)
-        return dg.publish(self.root, self.store.path, sequence=dg.next_sequence(self.root))["sequence"]
+        sequence = dg.publish(self.root, self.store.path, sequence=dg.next_sequence(self.root))["sequence"]
+        # 실제 DurableAck와 같은 보존 수를 써서 합성 전체 사본이 무한히 쌓이지 않게 한다.
+        dg.prune(self.root, keep=2)
+        return sequence
 
 
 def fixture(native,tmp_path,conventions_policy="retain",**limits):

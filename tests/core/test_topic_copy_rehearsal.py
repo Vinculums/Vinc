@@ -44,19 +44,15 @@ def test_missing_explicit_runner_authority_refuses_before_open(monkeypatch):
     assert main() == 2
 
 
-def test_rehearsal_workflow_keeps_secrets_out_of_execution_and_always_cleans_up():
+def test_synthetic_workflow_has_no_production_access():
     import yaml
-    path = Path(__file__).resolve().parents[2] / ".github/workflows/topic-copy-rehearsal.yml"
+    path = Path(__file__).resolve().parents[2] / ".github/workflows/topic-copy-smoke.yml"
     workflow = yaml.safe_load(path.read_text(encoding="utf-8-sig"))
-    job = workflow["jobs"]["audit"]
+    job = workflow["jobs"]["synthetic"]
     steps = {step["name"]: step for step in job["steps"] if "name" in step}
-    run = steps["Rehearse only the isolated copy with no network"]["run"]
+    run = steps["Build and verify only synthetic data in the execution container"]["run"]
     assert "--network none" in run and "--memory 2g --memory-swap 2g" in run
-    assert "--cpus 1" in run and "--read-only" in run and "75m" in run
+    assert "--cpus 1" in run and "--read-only" in run
     assert "secrets." not in run and "AZURE_CONFIG_DIR" not in run
-    assert "refs/heads/main" in steps["Require operator and main branch"]["run"]
-    assert "REHEARSE PERSONAL VINC COPY" in steps["Require operator and main branch"]["run"]
-    assert steps["Stop the isolated process"]["if"] == "always()"
-    assert "always()" in steps["Remove only this rehearsal snapshot"]["if"]
-    assert steps["Remove private runner copy"]["if"] == "always()"
-    assert "snapshot" in steps["Remove only this rehearsal snapshot"]["run"]
+    assert workflow["permissions"] == {"contents": "read"}
+    assert "azure/login" not in path.read_text() and "storage share" not in path.read_text()
