@@ -53,13 +53,14 @@ class _Reader:
                 raise ManifestLimit(reason, observed=observed, limit=limit)
         return rows
 
-    def scan(self, head, projection, order, params=None):
+    def scan(self, head, projection, order, params=None, *, ordered=False):
         # Most relationship tables have no rows. Avoid allocating a sorter for
         # a result that fits in one page; only paged scans need stable order.
-        first = self.page(f"{head} RETURN {projection} LIMIT {PAGE_ROWS}", params)
-        if len(first) < PAGE_ROWS:
-            yield from first
-            return
+        if not ordered:
+            first = self.page(f"{head} RETURN {projection} LIMIT {PAGE_ROWS}", params)
+            if len(first) < PAGE_ROWS:
+                yield from first
+                return
         offset = 0
         while True:
             rows = self.page(f"{head} RETURN {projection} ORDER BY {order} "
@@ -175,6 +176,39 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
     selected = set(retained)
     docs = {pkns.strip(nid)[len("concept:doc."):] for label, nid in selected
             if label == "Concept" and pkns.strip(nid).startswith("concept:doc.")}
+    # 문서 목록과 같은 언급 집계다. 명시한 외부 주제는 추론으로 덮지 않는다.
+    from .document_topic import ranked_topics
+    def include_derived(doc, primary):
+        if not doc or doc in docs or not within(primary):
+            return
+        meta = exact("_DocMeta", doc)
+        if meta is None or meta["owner_id"] != owner:
+            return
+        authored = ""
+        for key in (owner + pkns.SEP + "concept:doc." + doc, "concept:doc." + doc):
+            mirror = exact("Concept", key)
+            if mirror is not None and mirror["owner_id"] == owner and mirror.get("domain"):
+                authored = mirror["domain"].strip()
+                break
+        if within(authored or primary):
+            docs.add(doc)
+    # 전체 소유자의 집계를 메모리에 모으지 않고 문서 하나의 최상위 주제만 유지한다.
+    current, best, weight = None, "", 0
+    for row in reader.scan(
+            "MATCH (ch:Chunk)-[:MENTIONS]->(c:Concept) "
+            "WHERE c.owner_id=$owner AND (ch.owner_id=$owner OR ch.owner_id='')",
+            "ch.doc_id AS doc_id, trim(c.domain) AS domain, count(*) AS n",
+            "doc_id, domain", {"owner": owner}, ordered=True):
+        doc, domain = row["doc_id"], row["domain"] or ""
+        if doc != current:
+            include_derived(current, best)
+            current, best, weight = doc, "", 0
+        if doc and domain:
+            count = int(row["n"])
+            winner = ranked_topics({best: weight, domain: count} if best else {domain: count})[0]
+            if winner == domain:
+                best, weight = domain, count
+    include_derived(current, best)
     logical = {pkns.strip(nid) for _, nid in selected}
 
     # Document identities are global, so inspect every row joined by doc_id,

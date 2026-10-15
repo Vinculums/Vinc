@@ -1019,11 +1019,9 @@ class MentionTally:
         (미러 domain 이 있는 문서 117건 중 39건에서 파생 주제와 어긋났고, 그중에는
         배포 런북이 `vinc/engineering/account` 로 걸린 것도 있었다)."""
         t = self.dom.get(doc_id) or {}
-        found = [k for k, _ in sorted(t.items(), key=lambda kv: (-kv[1], kv[0]))]
         auth = (self.authored.get(doc_id) or ("", "", ""))[0]
-        if not auth:
-            return found
-        return [auth] + [k for k in found if k != auth]
+        from store.document_topic import ranked_topics
+        return ranked_topics(t, auth)
 
     def primary(self, doc_id: str, topic: str) -> tuple[str, str]:
         """`topic` 안에서 가장 많이 언급된 개념 `(id, title)`. 없으면 `("", "")`.
