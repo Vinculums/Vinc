@@ -23,6 +23,7 @@ const namedBlockers = new Set([
 
 export function mountTopicConversion(el: HTMLElement): () => void {
   let alive = true;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const U = COPY.ui.settingsUi;
   void conversionApi.capabilities().then(async cap => {
     if (!alive || !el.isConnected || (!cap.enabled && !cap.pending) || cfg.team) return;
@@ -31,10 +32,12 @@ export function mountTopicConversion(el: HTMLElement): () => void {
     try {
       const value = JSON.parse(sessionStorage.getItem(key) || "null");
       if (value && typeof value.id === "string" && /^[a-f0-9-]{36}$/.test(value.id) &&
-          typeof value.topic === "string" && typeof value.name === "string" && /^[a-f0-9]{64}$/.test(value.fingerprint)) saved = value;
+          typeof value.topic === "string" && typeof value.name === "string" && /^[a-f0-9]{64}$/.test(value.fingerprint) &&
+          (value.conventions_policy === undefined || ["retain", "move_original"].includes(value.conventions_policy))) saved = value;
     } catch { /* An invalid checkpoint never authorizes a write. */ }
-    saved ??= cap.pending ? { id: cap.pending.id, name: cap.pending.name,
-      topic: cap.pending.topic, fingerprint: cap.pending.fingerprint } : null;
+    if (cap.pending) saved = { id: cap.pending.id, name: cap.pending.name,
+      topic: cap.pending.topic, fingerprint: cap.pending.fingerprint,
+      conventions_policy: cap.pending.conventionsPolicy ?? "retain" };
     const flow = new TopicConversion(conversionApi, value => {
       if (value) sessionStorage.setItem(key, JSON.stringify(value));
       else sessionStorage.removeItem(key);
@@ -45,10 +48,15 @@ export function mountTopicConversion(el: HTMLElement): () => void {
     }
     function paint() {
       if (!alive || !el.isConnected) return;
+      clearTimeout(timer);
       const reserved = !!flow.checkpoint;
       const state = flow.run?.state;
       const done = state === "active";
       const check = flow.check;
+      const history = flow.run?.progress?.retained_personal_history ?? check?.retained_personal_history;
+      const retained = Object.entries(history ?? {}).filter(([key, value]) =>
+        ["_Tombstone", "_DocTombstone", "_EdgeTombstone", "_MergeRejection"].includes(key) &&
+        Number.isSafeInteger(value) && value > 0).reduce((total, [, value]) => total + value, 0);
       const documentLabels = U.conversionDocumentEvidence;
       const evidence = check ? Object.entries({ ...check.document_ownership, ...check.document_missing_evidence })
         .filter(([, count]) => Number.isSafeInteger(count) && count > 0)
@@ -66,11 +74,15 @@ export function mountTopicConversion(el: HTMLElement): () => void {
         <label for="conversion-name">${esc(U.conversionName)}</label>
         <input id="conversion-name" value="${esc(flow.name)}" ${reserved || flow.busy ? "disabled" : ""} maxlength="120">
         <p class="hint">${esc(U.conversionLimits)}</p>
+        <p><label><input id="conversion-conventions" type="checkbox" ${flow.conventionsPolicy === "move_original" ? "checked" : ""} ${reserved || flow.busy ? "disabled" : ""}> ${esc(U.conversionConventions)}</label></p>
+        ${flow.conventionsPolicy === "move_original" ? `<p class="hint">${esc(U.conversionConventionsEffect)}</p>` : ""}
+        ${retained ? `<p class="hint">${esc(U.conversionRetainedHistory(retained))}</p>` : ""}
         ${evidence.length ? `<details><summary>${esc(U.conversionDocumentChecks)}</summary><ul>${evidence.map(line => `<li>${esc(line)}</li>`).join("")}</ul></details>` : ""}
         ${!reserved && flow.busy ? `<p role="status" aria-live="polite">${esc(U.conversionInspecting)}</p>` : ""}
         ${check ? `${countsKnown ? `<p>${esc(U.conversionCounts(check.documents!, Object.entries(check.counts!).filter(([kind]) => ["Concept","Record","Decision","Episode","LearnerPattern","Bridge"].includes(kind)).reduce((n,[,count]) => n+count,0)))}</p>` : ""}
           ${check.blockers.length ? `<p role="alert">${esc(U.conversionBlocked)}: ${check.blockers.map(code => esc(U.conversionDependencyMessage(namedBlockers.has(code) ? code : "") || U.conversionInventoryMessage(code) || U.conversionBlocker(namedBlockers.has(code) ? code : ""))).join("; ")}</p>` : ""}` : ""}
         ${reserved ? `<p role="status" aria-live="polite">${esc(flow.busy ? U.conversionWorking : done ? U.conversionDone : state === "graph_committed" ? U.conversionVerifying : state === "committing" ? U.conversionPending : U.conversionPrepared)}</p>` : ""}
+        ${!done && flow.run?.progress?.batches !== undefined ? `<p class="hint">${esc(U.conversionBatches(flow.run.progress.batches))}</p>` : ""}
         ${flow.error ? `<p role="alert">${reserved ? esc(U.conversionFailed) + " " + esc(U.conversionError(flow.error)) : esc(U.conversionInventoryMessage(flow.error) || U.conversionCheckFailed)}</p>` : ""}
         ${!reserved ? `<p><button class="btn" id="conversion-check" ${flow.busy || !flow.topic.trim() ? "disabled" : ""}>${esc(U.conversionCheck)}</button></p>
           ${flow.check?.ready ? `<p><label><input id="conversion-consent" type="checkbox"> ${esc(U.conversionConsent)}</label></p>
@@ -87,6 +99,9 @@ export function mountTopicConversion(el: HTMLElement): () => void {
         next.focus(); next.setSelectionRange(cursor,cursor);
       });
       el.querySelector("#conversion-check")?.addEventListener("click", () => void act(() => flow.preflight()));
+      el.querySelector<HTMLInputElement>("#conversion-conventions")?.addEventListener("change", event => {
+        flow.chooseConventions((event.currentTarget as HTMLInputElement).checked ? "move_original" : "retain"); paint();
+      });
       el.querySelector("#conversion-prepare")?.addEventListener("click", () => {
         const consent = el.querySelector<HTMLInputElement>("#conversion-consent")?.checked ?? false;
         void act(() => flow.reserve(consent));
@@ -98,9 +113,16 @@ export function mountTopicConversion(el: HTMLElement): () => void {
         await retainBeforeSwitch().catch(() => false);
         cfg.team = flow.run.team; sessionStorage.removeItem(key); location.reload();
       });
+      if (!flow.busy && !flow.error && (state === "committing" || state === "graph_committed")) {
+        timer = setTimeout(async () => {
+          if (!alive || !el.isConnected || cfg.team) return;
+          await flow.status();
+          if (alive && !cfg.team) paint();
+        }, 5000);
+      }
     }
     paint();
     if (saved) await act(() => flow.status());
   }).catch(() => { /* Feature switches expose no conversion UI before readiness. */ });
-  return () => { alive = false; };
+  return () => { alive = false; clearTimeout(timer); };
 }
