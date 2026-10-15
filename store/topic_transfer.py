@@ -202,6 +202,31 @@ def _validate_snapshot(snapshot: dict) -> set[str]:
     return blocks
 
 
+def _derived_topic_documents(snapshot, owner, within):
+    """미러가 없는 문서도 기존 문서 목록의 주제 규칙으로 선택한다."""
+    from .document_topic import ranked_topics
+    concepts = {row["concept_id"]: row for row in snapshot["nodes"]["Concept"]
+                if row["owner_id"] == owner}
+    authored = {pkns.strip(key)[len("concept:doc."):]: row["domain"].strip()
+                for key, row in concepts.items()
+                if pkns.strip(key).startswith("concept:doc.") and row.get("domain")}
+    owned = {row["doc_id"] for row in snapshot["meta"]["_DocMeta"] if row["owner_id"] == owner}
+    chunks = {row["chunk_id"]: row["doc_id"] for row in snapshot["nodes"]["Chunk"]
+              if row["owner_id"] in (owner, "") and row["doc_id"] in owned}
+    counts = {}
+    for edge in snapshot["edges"]:
+        if (edge["label"], edge["from_label"], edge["to_label"]) != ("MENTIONS", "Chunk", "Concept"):
+            continue
+        doc = chunks.get(edge["from"])
+        concept = concepts.get(edge["to"])
+        domain = (concept.get("domain") or "").strip() if concept else ""
+        if doc and domain:
+            tally = counts.setdefault(doc, {})
+            tally[domain] = tally.get(domain, 0) + 1
+    return {doc for doc, tally in counts.items()
+            if (topics := ranked_topics(tally, authored.get(doc, ""))) and within(topics[0])}
+
+
 def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Plan:
     """Select one authored topic tree. Dependencies outside it are blockers, not additions."""
     blocks = _validate_snapshot(snapshot)
@@ -251,6 +276,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
         blocks.add("entity_topic_membership_not_supported")
     docs = {pkns.strip(nid)[len("concept:doc."):] for label, nid in selected
             if label == "Concept" and pkns.strip(nid).startswith("concept:doc.")}
+    docs.update(_derived_topic_documents(snapshot, source, within))
     metas = {r["doc_id"]: r for r in snapshot["meta"]["_DocMeta"]}
     for doc in docs:
         if any(r["doc_id"] == doc for r in snapshot["meta"]["_DocTombstone"]):
