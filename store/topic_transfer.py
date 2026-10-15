@@ -227,6 +227,24 @@ def _derived_topic_documents(snapshot, owner, within):
             if (topics := ranked_topics(tally, authored.get(doc, ""))) and within(topics[0])}
 
 
+def _derived_topic_bridges(snapshot, owner, within):
+    """좌표가 없는 소유 브리지는 모든 연결 끝점이 같은 선택 범위에 있어야 한다."""
+    # 근거: [[record:bridge-layout-clump-2026-08-22]]
+    endpoints = {(label, row[pk]): row for label, pk in (("Concept", "concept_id"),
+                                                       ("Decision", "decision_id"))
+                 for row in snapshot["nodes"][label]}
+    candidates, refused = set(), set()
+    for edge in snapshot["edges"]:
+        if edge["label"] != "CONNECTS" or edge["from_label"] != "Bridge":
+            continue
+        key = edge["from"]
+        candidates.add(key)
+        endpoint = endpoints.get((edge["to_label"], edge["to"]))
+        if endpoint is None or endpoint["owner_id"] != owner or not within(endpoint.get("domain")):
+            refused.add(key)
+    return candidates - refused
+
+
 def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Plan:
     """Select one authored topic tree. Dependencies outside it are blockers, not additions."""
     blocks = _validate_snapshot(snapshot)
@@ -246,6 +264,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
         raise TransferRefused("incomplete_inventory")
     selected = set()
     within = lambda d: isinstance(d, str) and (d == topic or d.startswith(topic + "/"))
+    derived_bridges = _derived_topic_bridges(snapshot, source, within)
     allrows = {**snapshot["nodes"], **snapshot["meta"]}
     for label, rows in allrows.items():
         pk = specs[label]["pk"]
@@ -266,6 +285,9 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str) -> Pl
                     selected.add((label, row[pk]))
                 else:
                     blocks.add("bridge_crosses_topic:" + row[pk])
+            elif (label == "Bridge" and not row.get("source_domain") and not row.get("target_domain")
+                  and row[pk] in derived_bridges):
+                selected.add((label, row[pk]))
     if not selected:
         blocks.add("empty_topic")
     # owner별 관리 데이터만 있는 대상도 빈 팀으로 취급하지 않는다.

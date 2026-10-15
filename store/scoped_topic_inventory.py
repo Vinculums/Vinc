@@ -146,6 +146,16 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
     def within(value):
         return isinstance(value, str) and (value == topic or value.startswith(topic + "/"))
 
+    def bridge_endpoints_within(key):
+        seen, complete = False, True
+        for label, pk in (("Concept", "concept_id"), ("Decision", "decision_id")):
+            for end in reader.scan(
+                    f"MATCH (b:Bridge)-[r:CONNECTS]->(n:{label}) WHERE b.bridge_id=$key",
+                    "n.owner_id AS owner, n.domain AS domain", f"n.{pk}, r.role", {"key": key}):
+                seen = True
+                complete = complete and end["owner"] == owner and within(end["domain"])
+        return seen and complete
+
     # Topic selection uses only coordinates, then fetches complete selected rows.
     for label in _KINDS + ("Bridge",):
         pk = specs[label]["pk"]
@@ -158,6 +168,8 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
             if label == "Bridge":
                 left, right = within(row["source_domain"]), within(row["target_domain"])
                 chosen = left and right
+                if not row["source_domain"] and not row["target_domain"]:
+                    chosen = bridge_endpoints_within(row["id"])
                 if left != right and not after:
                     blockers.add("bridge_crosses_topic:" + row["id"])
             else:
