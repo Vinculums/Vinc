@@ -23,6 +23,22 @@ PRESENT = {"found": True, "neighbors": []}
 
 
 class VerifyNodes(unittest.TestCase):
+    def test_incomplete_and_malformed_replies_are_not_absence(self):
+        for response in ({"executed": False, "note": "store_busy"}, {},
+                         {"found": "false"}, {"found": False, "executed": False}, None):
+            with self.subTest(response=response), mock.patch.object(R.remote, "call", return_value=response) as call:
+                self.assertEqual(R.verify_nodes(["record:x"]), ([], ["record:x"]))
+                self.assertEqual(call.call_count, 3)
+
+    def test_transient_negative_read_is_confirmed_before_reporting_absence(self):
+        with mock.patch.object(R.remote, "call", side_effect=[ABSENT, PRESENT]) as call:
+            self.assertEqual(R.verify_nodes(["record:x"]), (["record:x"], []))
+            self.assertEqual(call.call_count, 2)
+
+    def test_negative_then_unavailable_does_not_become_confirmed_absence(self):
+        with mock.patch.object(R.remote, "call", side_effect=[ABSENT, TIMEOUT, TIMEOUT]):
+            self.assertEqual(R.verify_nodes(["record:x"]), ([], ["record:x"]))
+
     def test_a_server_that_answers_no_is_an_absence(self):
         with mock.patch.object(R.remote, "call", return_value=ABSENT):
             alive, unreachable = R.verify_nodes(["record:x"])

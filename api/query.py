@@ -4951,10 +4951,10 @@ def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
             # 없을 때만 후보를 뽑는다 — 있으면 쓸 데가 없고, 유사도 검색은 공짜가 아니다.
             cands = [] if exact else near_nodes(store, node, owner=owner)
         else:
-            # 프로브 자체가 못 돌았으면 **모르는 것**이지 없는 것이 아니다. 구 동작으로
-            # 물러선다 — 부정확하지만, 조회 실패를 부재로 단언하는 것보다 낫다.
-            cands = near_nodes(store, node, owner=owner)
-            exact = any(c["id"] == node for c in cands)
+            # 존재 조회 실패는 유사도 후보 유무로 대체할 수 없다.
+            return {"kind": "neighbors", "executed": False, "node": node,
+                    "neighbors": [], "by_rel": {}, "count": 0,
+                    "note": probe.get("note") or "existence lookup unavailable"}
         return {"kind": "neighbors", "executed": True, "found": exact, "node": node,
                 "neighbors": [], "by_rel": {}, "count": 0,
                 "error": None if exact else f"unknown node: {node}",
