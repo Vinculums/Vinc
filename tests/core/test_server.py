@@ -1865,12 +1865,18 @@ class DocRouteE2E(unittest.TestCase):
                                body={"owner": "user:b", "payload": exp})
             self.assertEqual(code, 200, other)
             self.assertEqual((other["applied"], other["skipped"]), (0, 1))
-            # 삭제 후 같은 델타 재적용 → 복원(수신측 재청킹 경로가 살아 있다).
+            # 삭제 이전 사본은 부활하지 않고, 이후 작성한 사본만 재청킹한다.
             code, _ = _req(base, "/doc/delete", method="POST",
                            body={"id": did, "owner": "user:a"})
             self.assertEqual(code, 200)
             code, back = _req(base, "/sync/docs-apply", method="POST",
                               body={"owner": "user:a", "payload": exp})
+            self.assertEqual(code, 200, back)
+            self.assertEqual((back["applied"], back["skipped"]), (0, 1))
+            recreated = {**exp, "docs": [{**d, "updated_at": "2099-01-01T00:00:00Z"}
+                                         for d in exp["docs"]]}
+            code, back = _req(base, "/sync/docs-apply", method="POST",
+                              body={"owner": "user:a", "payload": recreated})
             self.assertEqual(code, 200, back)
             self.assertEqual(back["applied"], 1)
             code, got = _req(base, f"/doc?id={did}&owner=user:a")
