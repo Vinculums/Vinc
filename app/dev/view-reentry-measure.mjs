@@ -1,4 +1,6 @@
-// Run after npm run build and scripts/measure_view_reentry.py:
+// Run after npm run build, with OUTPUT_DIR/backend.json naming a loopback synthetic /graph backend.
+// The Python server that wrote it (scripts/measure_view_reentry.py) was deleted in VIN-566 as an orphan;
+// recover it with: git show c6988043:scripts/measure_view_reentry.py
 // node app/dev/view-reentry-measure.mjs APP_DIR OUTPUT_DIR LABEL
 // Playwright must resolve from app/package.json or the package.json given by VINC_TEST_MODULES.
 // A LABEL starting with before reconstructs the baseline completion boundary.
