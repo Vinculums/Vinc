@@ -150,14 +150,16 @@ def test_paged_source_dependency_scan_blocks_incoming_reference(native):
 
 
 @pytest.mark.parametrize("budget", [{"MAX_INVENTORY_ROWS": 10}, {"MAX_INVENTORY_BYTES": 100}])
-def test_selected_closure_beyond_legacy_cap_has_verified_counts_but_cannot_move(native, monkeypatch, budget):
+def test_selected_closure_beyond_legacy_cap_is_ready_for_the_bounded_executor(native, monkeypatch, budget):
+    # 근거: [[decision:large-topic-conversion-admission-2026-10-16]]
     import store.scoped_topic_inventory as scoped
     for key, value in budget.items():
         monkeypatch.setattr(scoped, key, value)
     before = fingerprint(read_snapshot(native))
     check = tc.preflight(native, SOURCE, TOPIC)
-    assert not check["ready"] and check["blockers"] == ["conversion_bounded_executor_required"]
-    assert check["counts_known"] is True and check["diagnostic_only"]
+    assert check["ready"] and check["blockers"] == [] and check["inventory_version"] == 3
+    assert check["counts_known"] is True and not check["diagnostic_only"]
+    assert check["fingerprint"] == check["inventory_hash"]
     assert fingerprint(read_snapshot(native)) == before
     assert not tc.journals(native)
 
@@ -300,10 +302,10 @@ def test_large_inventory_diagnostic_is_read_only_and_never_reserves(native, monk
     before = fingerprint(read_snapshot(native))
     monkeypatch.setattr(reader, "MAX_INVENTORY_ROWS", 2)
     result = tc.preflight(native, SOURCE, TOPIC)
-    assert not result["ready"] and result["diagnostic_only"]
+    assert result["ready"] and not result["diagnostic_only"]
     assert result["counts_known"] and result["documents"] == 1
     assert result["counts"]["Concept"] == 3
-    assert "conversion_bounded_executor_required" in result["blockers"]
+    assert "conversion_bounded_executor_required" not in result["blockers"]
     assert result["inventory_rows"] > 2
     assert len(result["inventory_hash"]) == 64
     assert fingerprint(read_snapshot(native)) == before

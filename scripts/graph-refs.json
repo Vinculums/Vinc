@@ -887,6 +887,7 @@
     "decision:identity-rides-on-the-first-door-not-a-whoami",
     "decision:keep-the-chunk-vector-index-behind-a-flag-and-run-each-vector-query-alone-2026-10-03",
     "decision:ladybug-extensions-ship-from-a-vinc-release-not-the-repo-2026-09-26",
+    "decision:large-topic-conversion-admission-2026-10-16",
     "decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24",
     "decision:mcp-tool-descriptions-are-short-summaries-with-a-docs-link",
     "decision:mention-title-tokens-within-a-window",

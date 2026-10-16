@@ -124,6 +124,57 @@ def test_http_resumes_existing_v3_run_with_new_conversion_disabled(indexed,tmp_p
         app.close()
 
 
+# 근거: [[decision:large-topic-conversion-admission-2026-10-16]]
+def test_http_admits_a_new_large_topic_through_the_bounded_executor(indexed,monkeypatch):
+    import store.scoped_topic_inventory as scoped
+    from api.server import VincApp
+    store,durable,_=indexed
+    monkeypatch.setattr(scoped,'MAX_INVENTORY_ROWS',2)
+    monkeypatch.setenv('VINC_STORE_SNAPSHOT',durable.snapshot_path)
+    before=read_snapshot(store,vocabulary_owner=SOURCE)
+    expected=transformed_snapshot(before,plan_transfer(before,source=SOURCE,target=TARGET,topic=TOPIC),stamp=STAMP)
+    check=legacy.preflight(store,SOURCE,TOPIC)
+    assert check['ready'] and check['inventory_version']==3,check
+    app=VincApp(load_config({'data_dir':durable.live_path,'buffer_pool_mb':256}),store=store)
+    body=dict(owner=SOURCE,target=TARGET,topic=TOPIC,run=RUN,fingerprint=check['fingerprint'])
+    try:
+        code,result=app.write_topic_conversion({**body,'action':'stage'})
+        assert code==200 and result['status']=='pending',result
+        app._conversion_jobs._runs[RUN].thread.join(180)
+        assert not app._conversion_jobs._runs[RUN].thread.is_alive()
+        code,result=app.write_topic_conversion({**body,'action':'status'})
+        assert code==200 and result['status']=='graph_committed',result
+        assert legacy._get(store,RUN)['inventory_version']==manifest.PROTOCOL
+        code,result=app.write_topic_conversion({**body,'action':'release'})
+        assert code==200 and result['status']=='active',result
+        observed=read_snapshot(store,vocabulary_owner=SOURCE)
+        observed['meta']['_SyncMeta']=[r for r in observed['meta']['_SyncMeta'] if not r['key'].startswith(legacy.PREFIX)]
+        assert fingerprint(observed)==fingerprint(expected)
+    finally:
+        app.close()
+
+
+def test_http_refuses_a_large_topic_with_a_stale_fingerprint(indexed,monkeypatch):
+    import store.scoped_topic_inventory as scoped
+    from api.server import VincApp
+    store,durable,_=indexed
+    monkeypatch.setattr(scoped,'MAX_INVENTORY_ROWS',2)
+    monkeypatch.setenv('VINC_STORE_SNAPSHOT',durable.snapshot_path)
+    before=fingerprint(read_snapshot(store,vocabulary_owner=SOURCE))
+    app=VincApp(load_config({'data_dir':durable.live_path,'buffer_pool_mb':256}),store=store)
+    body=dict(owner=SOURCE,target=TARGET,topic=TOPIC,run=RUN,fingerprint='0'*64)
+    try:
+        code,result=app.write_topic_conversion({**body,'action':'stage'})
+        if result.get('status')=='pending':
+            app._conversion_jobs._runs[RUN].thread.join(180)
+            result=app.write_topic_conversion({**body,'action':'status'})[1]
+        assert result.get('status') not in ('graph_committed','active'),result
+        assert not legacy.journals(store)
+        assert fingerprint(read_snapshot(store,vocabulary_owner=SOURCE))==before
+    finally:
+        app.close()
+
+
 def test_scoped_publisher_and_exact_native_indexes_restore_before_graph_receipt(indexed,tmp_path):
     store,durable,publish=indexed
     before=read_snapshot(store,vocabulary_owner=SOURCE)
