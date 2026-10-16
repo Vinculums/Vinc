@@ -31,7 +31,8 @@ const SURFACE_LABEL: Record<Surface, string> = {
   view: COPY.ui.topbar.home, search: COPY.ui.topbar.search,
 };
 // 구 표면 해시 → 통합 표면(딥링크·구 CTA 하위호환).
-// `atlas` 는 리네임 전 이 표면의 코드명이었다(F8, 2026-08-15) — 무기한 유지.
+// `atlas` 는 리네임 전 이 표면의 코드명이었다(F8, 2026-08-15).
+// 제거 조건: 없음. 밖에 나간 북마크와 CTA 주소를 받는 표라 무기한 둔다(gate_forbidden F8 이 이 항목을 예외로 둔다).
 const ALIAS: Record<string, Surface> = {
   intake: "view", packs: "view", records: "search", atlas: "view",
 };

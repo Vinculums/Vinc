@@ -4265,6 +4265,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   trail.push({ kind: "l0" });
   // `#view/compare/a/b` 는 프레임 폐기(2026-08-02)로 사라진 딥링크다. 옛 주소를
   // 404 로 떨구지 않고 L0 로 받는다 — 북마크가 조용히 깨지는 것보다 낫다.
+  // 제거 조건: 없음. 밖에 나간 북마크를 받는 갈래라 main.ts `ALIAS` 와 같이 무기한 둔다.
   //
   // `#view/trace/<id>` 는 **스코프가 아니라 포커스**다(2026-08-17, 씨앗 층 폐지).
   // 층은 전량으로 두고 마운트가 끝난 뒤 그 노드로 간다 — 전량은 반드시 그 노드를
