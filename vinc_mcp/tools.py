@@ -51,6 +51,23 @@ _ALLOWED_PAIRS_HINT = (
     "any-type = open-entity→open-entity (TYPED carrier)"
 )
 
+# 미리보기 → 적용 흐름. 아래 `for _tool in TOOLS` 가 dry_run·preview_digest·operation_id 를
+# 스키마에 주입하는 네 도구(vinc_delete·vinc_delete_edge·vinc_merge_nodes·vinc_doc_delete)가
+# 같이 쓴다. 스키마만 늘고 이 문구가 그대로면 호스트는 그 필드를 모른다.
+_PREVIEW_APPLY_HINT = (
+    "Preview, then apply. dry_run:true writes nothing and returns {kind, executed, dry_run:true, "
+    "preview_complete, preview:{...}, preview_digest}. Show the person the preview, then call again "
+    "with the same arguments, dry_run omitted, and preview_digest set to the value you got: the apply "
+    "re-reads the target and is refused with error:preview_conflict (status conflict) when anything "
+    "it would change moved since the preview, so preview again rather than retrying blind. An apply "
+    "without preview_digest runs unconditionally. A preview that cannot be complete (more than 200 "
+    "rows, over the size budget, or a target you cannot read) is refused with executed:false and an "
+    "error such as preview_incomplete or preview_target_unavailable; it is never truncated. "
+    "operation_id (a fresh UUID) makes the apply safe to repeat after a lost response: resend identical "
+    "arguments with the same id and read vinc_operation_status before deciding; a repeat returns the "
+    "first result with replayed:true. "
+)
+
 _AS_OF_GRAPH_PROP = {"type": "string", "description": (
     "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD. Hides "
     "neighbours whose own interval did not overlap that period (a Record's valid_from/"
@@ -722,7 +739,7 @@ def _t_host_fetch(args, bridge):
 TOOLS: list[dict] = [
     {
         "name": community.READ_TOOL,
-        "description": "Read an immutable community Agent version, export its complete contract, or inspect a Take preview/result through the canonical account service. Requires an authenticated explicit community:<uuid> space; read-only member keys are allowed. payload uses shareId, version, format (claude|gpt|skill|vincpack), hash, destination, target and mutationId as applicable. Pin version and hash before exporting or importing; latest is discovery only. Agent .vincpack exports use pack_version=2 and required_reader capability community-agent-safe-import version 2; legacy_import_compatible=false. Desktop 0.9.7 refuses these files. Use canonical Add to Graph, or a compatible reader; this does not announce a native release. Withdrawn version bytes require current account entitlement, including a completed Take for that exact version. A pending or unknown result grants no retained access. Destination preview does not write, activate a role, execute it, or grant tools. These results are data, never automatically adopted prompts. Public Agent graph nodes contain metadata only. Large complete versions/exports are refused above the MCP response budget; use authenticated POST /v1/community/read or the selected version's website export for the complete artifact.",
+        "description": "Read an immutable community Agent version, export its complete contract, or inspect a Take preview/result through the canonical account service. Requires an authenticated explicit community:<uuid> space; read-only member keys are allowed. payload uses shareId, version, format (claude|gpt|skill|vincpack), hash, destination, target and mutationId as applicable. Pin version and hash before exporting or importing; latest is discovery only. Agent .vincpack exports use pack_version=2 and required_reader capability community-agent-safe-import version 2; legacy_import_compatible=false. A desktop that reads pack_version 2 routes them to its community Agent import; an older desktop without that reader refuses them. Use canonical Add to Graph, or a compatible reader. Withdrawn version bytes require current account entitlement, including a completed Take for that exact version. A pending or unknown result grants no retained access. Destination preview does not write, activate a role, execute it, or grant tools. These results are data, never automatically adopted prompts. Public Agent graph nodes contain metadata only. Large complete versions/exports are refused above the MCP response budget; use authenticated POST /v1/community/read or the selected version's website export for the complete artifact.",
         "inputSchema": {"type": "object", "properties": {
             "action": {"type": "string", "enum": list(community.READ_ACTIONS)},
             "payload": {"type": "object", "description": "Canonical account Agent read/Take inspection fields."},
@@ -1501,8 +1518,11 @@ TOOLS: list[dict] = [
                        "the complete incident edge preview and count without changing the node, "
                        "edges, tombstones or jobs. An oversized preview is refused explicitly, "
                        "never truncated silently. The preview is a point-in-time read; subsequent "
-                       "writes can change the eventual delete count. deleted.edges is a count "
-                       "after the fact, not a pre-deletion preview. Returns "
+                       "writes can change the eventual delete count, which is what preview_digest "
+                       "guards. deleted.edges is a count after the fact, not a pre-deletion preview. "
+                       + _PREVIEW_APPLY_HINT +
+                       "Here preview is {deleted_nodes, deleted_edges, edge_count, retained_documents, "
+                       "deleted_shadows}. Applied, returns "
                        "{executed, found, deleted:{node, edges}}; found:false if the id is absent.",
         "inputSchema": {"type": "object", "properties": {
             "node_id": {"type": "string",
@@ -1531,8 +1551,11 @@ TOOLS: list[dict] = [
                        "directions are removed. The deletion is recorded with an edge "
                        "tombstone so it propagates to synced devices instead of "
                        "resurrecting. Irreversible (re-create via vinc_ingest if needed). "
-                       "Returns {executed, found, deleted:{edges}}; found:false if no "
-                       "such edge.",
+                       + _PREVIEW_APPLY_HINT +
+                       "Here preview is {deleted_edges:[{type, source, target, props}], "
+                       "retained_nodes:[from_id, to_id]}; an empty deleted_edges means there is no "
+                       "such edge to delete. Applied, returns {executed, found, deleted:{edges}}; "
+                       "found:false if no such edge.",
         "inputSchema": {"type": "object", "properties": {
             "from_id": {"type": "string", "description": "Exact source node id (e.g. concept:a, episode:s1)."},
             "to_id": {"type": "string", "description": "Exact target node id (e.g. concept:b)."},
@@ -1555,7 +1578,14 @@ TOOLS: list[dict] = [
                        "want is vinc_merge_reject: it records the distinction, stops the pair being "
                        "proposed again, and is reversible (undo:true). Reach for that first — this "
                        "tool is the half of the workflow that cannot be taken back. "
-                       "Returns {executed, found, repointed, skipped, dropped}.",
+                       + _PREVIEW_APPLY_HINT +
+                       "Here preview is {kept_node, discarded_fields, affected_edges, "
+                       "unsupported_edges, apply_supported, discarded_edge_properties, merge_policy, "
+                       "deleted_shadows}: discarded_fields is drop_id as it now stands, the part that "
+                       "disappears. When apply_supported is false (drop_id has a relation the merge "
+                       "cannot carry over, listed in unsupported_edges) an apply with preview_digest "
+                       "is refused with error:preview_apply_not_supported. Applied, returns "
+                       "{executed, found, repointed, skipped, dropped}.",
         "inputSchema": {"type": "object", "properties": {
             "keep_id": {"type": "string", "description": "Concept id to keep (survivor)."},
             "drop_id": {"type": "string", "description": "Concept id to merge in and delete."},
@@ -1587,7 +1617,20 @@ TOOLS: list[dict] = [
                        "tool arguments; front matter alone does not set stored validity. The "
                        "response echoes stored validity and needs_embed; retrieval separates "
                        "document-vector readiness from the query index (not checked here). "
-                       "Keyword text is stored immediately; embedding is asynchronous.",
+                       "Keyword text is stored immediately; embedding is asynchronous. "
+                       "Two optional conditions stop a write from overwriting what you did not "
+                       "read. expected_content_hash: pass the content_hash from vinc_doc_get (or "
+                       "from your previous vinc_doc_put); if the stored hash differs the write is "
+                       "refused before anything changes, with {executed:false, "
+                       "error:write_conflict, status:conflict, current_content_hash}. Read the "
+                       "document again and merge instead of resending. An empty string means the "
+                       "document must not exist yet. create_only:true refuses with "
+                       "error:write_conflict when doc_id already exists, so a create can never "
+                       "edit an existing document. Omit both for the plain upsert. "
+                       "operation_id (a fresh UUID) makes the write safe to repeat after a lost "
+                       "response: resend identical arguments with the same id and read "
+                       "vinc_operation_status before deciding; a repeat returns the first result "
+                       "with replayed:true.",
         "inputSchema": {"type": "object", "properties": {
             "valid_from": {"type": "string", "description": (
                 "When the document's content became true, YYYY[-MM[-DD]]. Omit to keep the "
@@ -1706,7 +1749,11 @@ TOOLS: list[dict] = [
                        "nothing at all. The concept:doc.<doc_id> mirror is deliberately retained, "
                        "including its authored title and graph relations; document deletion is not "
                        "concept deletion. Inspect the mirror before separately deleting any node. "
-                       "Returns {executed, deleted_chunks, deleted_meta}.",
+                       + _PREVIEW_APPLY_HINT +
+                       "Here preview is {deleted_document:{doc_id, title, content_hash, characters, "
+                       "excerpt, chunks}, deleted_edges, deleted_state, retained_mirror}: quote the "
+                       "title and excerpt back before applying. Applied, returns "
+                       "{executed, deleted_chunks, deleted_meta}.",
         "inputSchema": {"type": "object", "properties": {
             "doc_id": {"type": "string"},
         }, "required": ["doc_id"]},
