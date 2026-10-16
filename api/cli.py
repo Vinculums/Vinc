@@ -493,8 +493,7 @@ def _main(argv: list[str] | None = None) -> int:
                        ("uninstall", "remove this server from a local MCP host")):
         mx = msub.add_parser(name, help=hint)
         mx.add_argument("--client", choices=list(_MCP_CLIENTS), required=True)
-        # --desktop-config 는 구 이름(하위호환) — 같은 dest 로 받는다.
-        mx.add_argument("--config-path", "--desktop-config", dest="config_path",
+        mx.add_argument("--config-path", dest="config_path",
                         default=None,
                         help="override the host config path (tests/portable installs)")
     msub.add_parser("repair",

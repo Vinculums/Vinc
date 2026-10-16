@@ -443,24 +443,6 @@ def serialize_result(value) -> str:
     return json.dumps(value, ensure_ascii=False, **({"separators": (",", ":")} if role else {}))
 
 
-def roster_rows(neighbors) -> list[dict]:
-    """기존 호출자의 토픽 탐색 호환 도우미. 제품의 발견 경로는 discover_roles를 쓴다."""
-    rows: list[dict] = []
-    for topic in TOPICS:
-        top = list(neighbors(f"domain:{topic}"))
-        rows += top
-        for child in [r for r in top if r.get("rel") == "PARENT_OF" and r.get("id")]:
-            rows += neighbors(str(child["id"]))
-    seen: set[str] = set()
-    out = []
-    for row in rows:
-        rid = str(row.get("id") or "")
-        if is_role_id(rid) and rid not in seen:
-            seen.add(rid)
-            out.append(row)
-    return sorted(out, key=lambda r: str(r.get("id") or ""))
-
-
 def list_prompts(bridge, forced_owner: str | None = None) -> dict:
     """서버의 역할 판정과 페이지를 사용해 MCP 프롬프트를 발견한다."""
     owner = _owner_of(bridge, forced_owner)

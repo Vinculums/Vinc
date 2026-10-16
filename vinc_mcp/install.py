@@ -90,11 +90,6 @@ def config_path(client: str) -> Path:
     raise ValueError(f"{client} is not a JSON-config client")
 
 
-def desktop_config_path() -> Path:
-    """하위호환 별칭 — `config_path('desktop')`."""
-    return config_path("desktop")
-
-
 def _read_config(cfg_path: Path) -> dict:
     try:
         return json.loads(cfg_path.read_text(encoding="utf-8")) or {}
@@ -214,16 +209,6 @@ def repair() -> dict:
     return {"repaired": [r for r in out if r.get("repaired")], "checked": out}
 
 
-def install_desktop(path: Path | None = None) -> dict:
-    """하위호환 별칭 — `install_json('desktop', path)`."""
-    return install_json("desktop", path)
-
-
-def uninstall_desktop(path: Path | None = None) -> dict:
-    """하위호환 별칭 — `uninstall_json('desktop', path)`."""
-    return uninstall_json("desktop", path)
-
-
 # ── CLI 위임형 ──────────────────────────────────────────────────────────────
 def _run_cli(client: str, argv: list[str], verb: str) -> dict:
     label = client_label(client)
@@ -261,32 +246,18 @@ def uninstall_cli(client: str) -> dict:
     return _run_cli(client, [binary, "mcp", "remove", *scope, "vinc"], "remove")
 
 
-def install_code() -> dict:
-    """하위호환 별칭 — `install_cli('code')`."""
-    return install_cli("code")
-
-
-def uninstall_code() -> dict:
-    """하위호환 별칭 — `uninstall_cli('code')`."""
-    return uninstall_cli("code")
-
-
 # ── 디스패치 ────────────────────────────────────────────────────────────────
-def install(client: str, *, config_path_override: str | None = None,
-            desktop_path: str | None = None) -> dict:
-    override = config_path_override or desktop_path
+def install(client: str, *, config_path_override: str | None = None) -> dict:
     if client in _JSON_CLIENTS:
-        return install_json(client, Path(override) if override else None)
+        return install_json(client, Path(config_path_override) if config_path_override else None)
     if client in _CLI_CLIENTS:
         return install_cli(client)
     raise ValueError(f"unknown client: {client} (expected {'|'.join(CLIENTS)})")
 
 
-def uninstall(client: str, *, config_path_override: str | None = None,
-              desktop_path: str | None = None) -> dict:
-    override = config_path_override or desktop_path
+def uninstall(client: str, *, config_path_override: str | None = None) -> dict:
     if client in _JSON_CLIENTS:
-        return uninstall_json(client, Path(override) if override else None)
+        return uninstall_json(client, Path(config_path_override) if config_path_override else None)
     if client in _CLI_CLIENTS:
         return uninstall_cli(client)
     raise ValueError(f"unknown client: {client} (expected {'|'.join(CLIENTS)})")
