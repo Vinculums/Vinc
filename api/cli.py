@@ -312,7 +312,9 @@ def _main(argv: list[str] | None = None) -> int:
     dp.add_argument("--id", default=None, help='doc_id (omit on create: returned; pass to edit)')
     dp.add_argument("--title", default=None,
                     help="document title (omit to preserve an existing title; pass --title '' to clear)")
-    dp.add_argument("--origin", default="", help='source label for display; not an identity key')
+    dp.add_argument("--origin", default=None,
+                    help="source label for display; not an identity key "
+                         "(omit to preserve; pass --origin '' to clear)")
     dp.add_argument("--topic", default=None, help="authored topic path; omit to preserve")
     dp.add_argument("--valid-from", default=None, help="effective start YYYY[-MM[-DD]]; omit to preserve")
     dp.add_argument("--valid-until", default=None, help="effective end (half-open); empty string clears")
@@ -321,7 +323,8 @@ def _main(argv: list[str] | None = None) -> int:
     dp.add_argument("--create-only", action="store_true", default=None, help="refuse an existing document id")
     dp.add_argument("--operation-id", default=None, help="UUID for result lookup and identical retry")
     dp.add_argument("--file", default=None,
-                    help='read .md/.txt/.rst/.pdf; title and origin default to the filename')
+                    help="read .md/.txt/.rst/.pdf; on create (no --id, or --create-only) "
+                         "title and origin default to the filename, on edit they are kept")
     dp.add_argument("--data", default=None, help="data home (default: MEMORY_DATA_DIR or ~/.vinc/db)")
     dg = dsub.add_parser("get", help="reconstruct a document from its chunks (+hash verify)")
     dg.add_argument("--id", required=True)

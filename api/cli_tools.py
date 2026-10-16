@@ -163,6 +163,9 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
         if args.doccmd == "rm":
             return "vinc_doc_delete", {"doc_id": args.id, **common}, args.id
         if args.doccmd == "put":
+            # 생략(None)은 보존, 빈 문자열은 지우기다(`vinc_doc_put` 계약). 파일 이름 기본값은
+            # 만들 때만 쓴다: `--id` 로 고치는 문서의 제목·origin 을 파일 이름으로 덮으면 안 된다.
+            origin, title = args.origin, args.title
             if args.file:
                 from . import textextract
                 import os
@@ -170,11 +173,12 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
                 if not got.get("executed"):
                     raise ValueError(str(got.get("error") or "cannot read document file"))
                 text = got["text"]
-                origin = args.origin or os.path.basename(args.file)
-                title = args.title or os.path.splitext(os.path.basename(args.file))[0]
+                if not args.id or getattr(args, "create_only", None):
+                    name = os.path.basename(args.file)
+                    origin = name if origin is None else origin
+                    title = os.path.splitext(name)[0] if title is None else title
             else:
                 text = sys.stdin.read()
-                origin, title = args.origin, args.title
             return "vinc_doc_put", {"text": text, "doc_id": args.id,
                                     "title": title, "origin": origin, **common,
                                     **{key: getattr(args, key) for key in (
