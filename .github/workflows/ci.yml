@@ -162,6 +162,20 @@ jobs:
           PY=$(command -v python3 || command -v python)
           "$PY" -X utf8 scripts/gate_ownership.py
 
+      # 죽은 코드 게이트(VIN-546). 파이썬은 vulture 신뢰도 80 이상, 허용 목록은
+      # scripts/vulture-allow.txt(이름으로 불리는 훅만). 앱(TS)의 절반은 여기서 돌지
+      # 않는다: app/tsconfig.json 의 noUnusedLocals·noUnusedParameters 를 `app` 잡의
+      # `npm run build`(tsc)가 읽는다. 여기서 tsc 를 다시 돌리려면 npm ci 가 필요하다.
+      # setup-python 을 쓰는 이유: 러너의 시스템 파이썬은 PEP 668 이라 pip 설치를 거절한다.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dead Python gate (vulture, 80 percent confidence)
+        run: |
+          set -euo pipefail
+          pip install --quiet --disable-pip-version-check vulture==2.14
+          python -X utf8 scripts/gate_vulture.py
+
       - id: f
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
