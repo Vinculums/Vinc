@@ -246,3 +246,17 @@ def test_protocol_rejection_survives_retry_release_and_stale_personal_write_guar
     with pytest.raises(TransferRefused, match="reference_moved_to_team"):
         tc.check_write(native, SOURCE, payload)
     tc.check_write(native, TARGET, payload)
+
+
+# 근거: [[decision:topic-transfer-edge-history-and-foreign-rejection-endpoints-2026-10-16]]
+def test_foreign_legacy_row_with_the_same_id_does_not_hide_a_selected_endpoint():
+    data = seed()
+    row = copy.deepcopy(data["nodes"]["Concept"][0])
+    row["concept_id"] = "concept:a"
+    row["owner_id"] = "user:foreign"
+    row["domain"] = "elsewhere"
+    data["nodes"]["Concept"].append(row)
+    rejection(data, "concept:a", "concept:b")
+    chosen = plan(data)
+    assert chosen.ready, chosen.blockers
+    assert any(label == "_MergeRejection" for label, _ in chosen.selected)

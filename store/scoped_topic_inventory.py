@@ -300,7 +300,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
             return rejection_endpoints[ref]
         matches = [(label, row) for label in _KINDS + ("Bridge",)
                    for key in (source + pkns.SEP + ref, ref)
-                   if (row := exact(label, key)) is not None]
+                   if (row := exact(label, key)) is not None and (key != ref or row["owner_id"] == source)]
         if not matches:
             state = "missing"
         elif len(matches) != 1 or matches[0][0] != "Concept" or matches[0][1]["owner_id"] != source:

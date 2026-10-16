@@ -30,7 +30,8 @@ from store.topic_manifest import TopicManifest
 from store.topic_transfer import TransferRefused, preserved_reference_counts
 
 # 원본 id 없이 종류·원인만 세는 차단. 근거: [[vinc.impl.topic-transfer-g6-rehearsal-2026-10-16]]
-DETAILED_BLOCKERS = {"existing_tombstone_history_not_supported", "merge_rejection_topic_membership_unknown"}
+DETAILED_BLOCKERS = {"existing_tombstone_history_not_supported", "merge_rejection_topic_membership_unknown",
+                     "external_attachments_not_supported"}
 
 
 def open_copy(path):
