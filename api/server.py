@@ -272,14 +272,15 @@ def _omit_absent_rows(res: dict) -> dict:
 
 def _timed(kind: str, p: dict, store, res, *, seed=None):
     """시점 읽기 후처리(`as_of`·`known_at`). 둘 다 없으면 결과 그대로다.
-    search·brief 의 `as_of` 는 자기 경로가 이미 처리하므로 거기서는 `known_at` 만 넘긴다.
+    search·brief 는 두 인자를 자기 경로에서 전부 처리하므로 여기서 건드리지 않는다.
+    brief 를 여기서 다시 거르던 시절에는 known_at 이 해소 뒤에만 걸려, 컷오프 뒤에 생긴
+    노드로 확정한 답이 알림 한 줄만 달고 나갔다(감사 B1, 2026-10-16).
     근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] §1"""
     from . import temporal_read
-    if kind == "search":
+    if kind in ("search", "brief"):
         return res
-    as_of = None if kind == "brief" else p.get("as_of")
     return temporal_read.apply(kind, res, store=store, owner=p.get("owner") or None,
-                               as_of=as_of, known_at=p.get("known_at"), seed=seed)
+                               as_of=p.get("as_of"), known_at=p.get("known_at"), seed=seed)
 
 
 class VincApp:
@@ -1184,6 +1185,10 @@ class VincApp:
         qvec, vnote = self._query_embedding(query)
         # SEC-1: owner 는 선택(로컬 단일 사용자는 미지정 = 전역). 호스티드 원격은
         # MCP 가 토큰에서 해석한 owner 를 항상 실어 보내 스코프를 강제한다.
+        # D13 — 기본 페이지 크기는 진입점마다 다르다. 이 라우트와 CLI(`vinc search
+        # --top-k`)는 5, MCP vinc_search 와 REST /v1/search 는 도구 핸들러가 20 을 실어
+        # 보낸다(`vinc_mcp.tools._t_search`). top_k 를 안 보내면 5 다. 바꾸면 화면과
+        # 스크립트의 페이지가 함께 바뀌므로 기본값은 그대로 둔다.
         code, res = self._read(lambda r: _timed("search", p, r, q.search(
             query, query_embedding=qvec,
             query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
@@ -1342,8 +1347,23 @@ class VincApp:
         if kind == "decide":
             return 200, q.decide_plan(p.get("topic", "")).to_dict()
         if kind == "search":
+            # D14 — 실제로 도는 것을 말한다. 청크 두 팔은 CHUNK_RRF_K 로 융합하고(60 이
+            # 아니다), 키워드 관문이 키워드 목록을 뺄 수 있다. 노드 후보는 별도 팔 셋을
+            # rrf_fuse 기본 k 로 융합한다. 값은 코드에서 읽는다 — 손으로 적으면 또 낡는다.
+            import inspect
+            from vinc_rag import retrieval as _r
+            node_k = inspect.signature(_r.rrf_fuse).parameters["k"].default
             return 200, {"kind": "search", "arms": ["fulltext(BM25)", "vector(주입 시)"],
-                         "fusion": "RRF(k=60)", "note": "store 메서드 경유 — 단일 Cypher 아님"}
+                         "fusion": f"RRF(k={_r.CHUNK_RRF_K})",
+                         "keyword_gate": {
+                             "threshold": _r.KEYWORD_GATE, "rows": _r.GATE_TOP,
+                             "note": "drops the keyword list from fusion when the vector arm "
+                                     "returned rows and the best of the top keyword rows "
+                                     "covers less of the query than the threshold"},
+                         "node_arms": ["title", "graph"]
+                         + (["semantic"] if _r._node_semantic_arm_on() else []),
+                         "node_fusion": f"RRF(k={node_k})",
+                         "note": "store 메서드 경유 — 단일 Cypher 아님"}
         return 400, {"error": f"unknown plan kind: {kind}"}
 
     # ── 쓰기 라우트(동기, 잡 큐 직렬화 R4) ─────────────────────────────────
@@ -1542,11 +1562,14 @@ class VincApp:
                        else self._query_embedding(query))
         # 유효구간 기본은 current 만이다(채택된 시간 정책 §4.2). `historical=true` 가
         # 명시적 요청 경로이고, 기본으로 켜 두면 정책이 막으려는 것을 그대로 낸다.
+        # 시간 인자는 넷 다 q.brief 가 적용한다(B1). `known_at` 을 여기서 빠뜨리면 brief 가
+        # 그것을 모른 채 해소한다.
         code, res = self._read(lambda r: _timed("brief", p, r, q.brief(
             query, owner=_req(p, "owner"), query_embedding=qvec,
             query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
             max_excerpts=_int(p.get("max_excerpts"), 3),
-            historical=truthy(p.get("historical")), as_of=p.get("as_of") or None, mode=p.get("mode") or None, store=r)))
+            historical=truthy(p.get("historical")), as_of=p.get("as_of") or None,
+            mode=p.get("mode") or None, known_at=p.get("known_at") or None, store=r)))
         if isinstance(res, dict) and str(res.get("error") or "").startswith(
                 ("invalid_as_of", "invalid_time_scope", "invalid_temporal_mode")):
             code = 400

@@ -650,7 +650,10 @@ def _t_host_search(args, bridge):
     raw = _t_search({"query": args["query"], "limit": limit,
                      "owner": args.get("owner"),
                      **{k: args[k] for k in ("mode", "historical", "as_of", "known_at") if k in args}}, bridge)
-    if not isinstance(raw, dict) or raw.get("error") or raw.get("executed") is False:
+    # B9 — 청크 팔만 실패하고 노드 후보가 있으면 그것으로 답한다. 둘 다 없을 때만 실패다.
+    failed = not isinstance(raw, dict) or raw.get("error") or raw.get("executed") is False
+    if failed and not (isinstance(raw, dict) and raw.get("node_hits")
+                       and not str(raw.get("error") or "").startswith(("invalid_", "stale_cursor"))):
         raise RuntimeError("search_unavailable")
     seen: set[str] = set()
     docs: list[dict] = []
@@ -679,10 +682,12 @@ def _t_host_search(args, bridge):
     for i in range(max(len(docs), len(nodes))):
         results += docs[i:i + 1] + nodes[i:i + 1]
     out = {"results": results[:limit]}
-    if raw.get("node_error") or raw.get("vector_note") or raw.get("partial") or \
+    if failed or raw.get("node_error") or raw.get("vector_note") or raw.get("partial") or \
             (raw.get("node_semantic") or {}).get("state") in ("partial", "empty_mirror"):
         out["diagnostics"] = {k: raw[k] for k in ("arms", "node_semantic", "node_window",
                               "vector_rebuilding", "encoder_runtime_warning") if k in raw}
+        if failed:
+            out["diagnostics"]["search_error"] = str(raw.get("error") or "chunk search did not run")
         if raw.get("node_error"):
             out["diagnostics"]["node_search_degraded"] = True
         if raw.get("vector_note"):

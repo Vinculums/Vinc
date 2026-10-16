@@ -77,6 +77,9 @@ def _check_json_type(name: str, value, spec: dict) -> None:
 
 def _arguments(route: rest_routes.Route, path_fields: dict[str, str],
                query: dict[str, str], body: dict) -> dict:
+    # 빠진 인자의 기본값은 여기서 채우지 않는다. 도구 핸들러가 MCP 와 같은 값을 쓴다 —
+    # 그래서 /v1/search 의 기본 limit 은 20 이고, 사이드카 /search 와 CLI 의 5 와 다르다
+    # (감사 D13, `api/server.py` read_search 주석).
     schema = _SCHEMAS[route.tool].get("properties") or {}
     extras = (set(query) - set(route.query) - {"space"}) | (set(body) - set(route.body) - {"owner"})
     if extras:
@@ -95,6 +98,23 @@ def _arguments(route: rest_routes.Route, path_fields: dict[str, str],
     if query.get("space"):
         args["space"] = query["space"]
     return args
+
+
+def _partial_search(name: str, result: dict) -> dict:
+    """B9 — 청크 팔만 실패하고 노드 팔이 후보를 냈으면 버리지 않고 성공으로 낸다.
+
+    사유는 `search_error` 로 옮긴다. vinc_brief 가 같은 실패를 그렇게 싣는다 — 최상위
+    `error` 는 이 봉투가 HTTP 오류로 바꾸므로 살아 있는 node_hits 까지 함께 사라졌다.
+    `executed` 는 brief 와 같이 노드 팔 기준이다. 노드 후보도 없으면 그대로 실패다.
+    인자 오류(invalid_*·stale_cursor)는 노드 팔과 무관하게 실패로 남긴다."""
+    error = str(result.get("error") or "")
+    if (name != "vinc_search" or not error or not result.get("node_hits")
+            or error == "store_busy" or error.startswith(("invalid_", "stale_cursor"))):
+        return result
+    out = {key: value for key, value in result.items() if key != "error"}
+    out["search_error"] = error
+    out["executed"] = True
+    return out
 
 
 def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
@@ -333,7 +353,7 @@ def _handle(handler, method: str) -> bool:
         else:
             fail(500, "internal", message)
         return True
-    result = outcome.result or {}
+    result = _partial_search(route.tool, outcome.result or {})
     failure = _failure(route.tool, result, by_id=bool(route.path_args))
     if failure:
         status, code, message, *rest = failure
