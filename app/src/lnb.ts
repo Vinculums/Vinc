@@ -38,6 +38,7 @@ type TopicPicker = (path: string | string[], add: boolean, set?: boolean) => voi
 
 const KEY_OPEN = "vinc.shell.lnb";        // 열림 상태(접기는 사용자 소유)
 // 펼친 주제 목록을 담던 옛 키. 이제 저장하지 않으므로 켤 때 한 번 지우기만 한다.
+// 제거 조건: 0.9.8 태그 뒤. 이 키를 쓴 마지막 판은 0.9.3 이고, 남은 값은 아무도 읽지 않아 해가 없다.
 const KEY_EXPANDED = "vinc.shell.lnb.groups";
 const KEY_KIND = "vinc.shell.lnb.kind";   // 종 레일이 고른 것
 

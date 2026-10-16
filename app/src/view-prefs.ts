@@ -22,7 +22,8 @@ export const serverLayoutFor = (_layout: ViewLayout): "hub" => "hub";
 /** 0.9.7 에서 뺀 배치 이름(`rank`=순서대로, `rankedRoots`=관계순 가지) → 대체.
  *  판 3(`PREFS_VERSION`) 이전에 저장된 값에만 쓰는 옮겨 읽기다(loadPrefs). 판 3 으로
  *  한 번 저장되면 다시 읽히지 않는다. 그 전의 radial·circle·tree·organic·dendro·shell 은
- *  별칭 없이 모르는 값과 같이 `hub` 로 떨어진다(결과가 같아서 표를 뺐다). */
+ *  별칭 없이 모르는 값과 같이 `hub` 로 떨어진다(결과가 같아서 표를 뺐다).
+ *  제거 조건: 0.9.9 태그 뒤(판 3 을 쓰는 0.9.8 이 한 판 나간 뒤). 빼면 남은 두 이름도 `hub` 로 떨어질 뿐이다. */
 const LAYOUT_ALIAS: Record<string, ViewLayout> = {
   rank: "temporalRoots", rankedRoots: "temporalRoots",
 };

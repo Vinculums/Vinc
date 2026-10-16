@@ -2322,6 +2322,7 @@ class VincApp:
             "mode": mode if mode in ("account", "local") else None,
             # 사람이 고른 모드인가(VIN-131). 앱이 자동으로 정한 값과 가른다: 0.9.4·0.9.5 는
             # 이 기기에 데이터가 있으면 말없이 로컬로 정했고, 그 설치는 한 번 물어야 한다.
+            # 제거 조건: 없음(키가 없으면 '고르지 않음'인 규칙은 새 설치도 쓴다). 위 0.9.4·0.9.5 문장만 그 판의 업그레이드를 더 받지 않을 때 뺀다.
             "mode_chosen": conf.get("mode_chosen") is True,
             "data_path": conf.get("data_path") or None,
             "data_file": cur,

@@ -204,7 +204,8 @@ def emit(result: Any) -> int:
         # 실패도 한 줄이다 — ndjson 소비자는 줄 단위로만 읽는다.
         sys.stderr.write(json.dumps(result, ensure_ascii=False) + "\n")
     else:
-        # 0.9.6 이전 JSON 바이트 형식을 그대로 둔다.
+        # `json` 형식(파이프일 때 기본)은 0.9.6 이전 CLI 와 같은 바이트다: 들여쓰기 2 의 객체 하나.
+        # 제거 조건: 없음. 출력을 읽는 스크립트의 공개 계약이라 모양을 바꾸려면 새 형식 이름을 연다.
         stream = sys.stderr if code else sys.stdout
         stream.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
     return code
