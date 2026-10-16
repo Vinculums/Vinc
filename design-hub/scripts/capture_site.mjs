@@ -49,27 +49,27 @@ const KEYS = { keys: [
   { id: 13, prefix: "vinc_ro_9zz1", name: null, scope: "read", created_at: "2026-08-20T10:00:00.000Z", last_used_at: null, revoked: false },
 ] };
 const FRESH_KEY = { id: 14, prefix: "vinc_sk_c3d4", name: null, scope: "full", key: "vinc_sk_c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8" };
-const pack = (i, title, concepts, doms, official = true, author = null) => ({
-  publicId: `018f0000-0000-7000-9000-00000000000${i}`, title, description: `A curated ${title.toLowerCase()} knowledge graph with full English notes on every concept.`,
-  summary: { concepts, records: concepts * 3, edges: Math.round(concepts * 6.5), domains: doms.map(([d, c]) => ({ domain: d, count: c })), dominantDomain: doms[0][0], crossDomainPct: 11 + i, topTags: [{ tag: doms[0][0], count: 9 }], edgeTypes: [{ type: "relates_to", count: concepts * 2 }] },
-  sizeBytes: 90000 + concepts * 1500, downloadCount: [0, 2, 3, 1, 0, 45, 7, 12, 0][i - 1] ?? 0, createdAt: `2026-0${(i % 8) + 1}-1${i}T11:00:00.000Z`, authorUsername: author, isOfficial: official,
-});
-const PACKS = { packs: [
-  pack(1, "Physics: Foundations to Frontiers", 74, [["physics", 40], ["economics", 14], ["math", 12], ["art", 8]]),
-  pack(2, "Mathematics: Foundations to Langlands", 38, [["physics", 22], ["math", 13], ["art", 2], ["economics", 1]]),
-  pack(3, "Economics: Micro to Econometrics", 27, [["economics", 15], ["physics", 7], ["math", 5]]),
-  pack(4, "Art: Aesthetics, Traditions, and Artists", 54, [["art", 42], ["math", 7], ["physics", 5]]),
-  pack(5, "Default Agents", 4, [["vinc/agent", 4]]),
-  pack(6, "Software Agents", 5, [["vinc/agent", 5]]),
-  pack(7, "Design Agents", 3, [["vinc/agent", 3]]),
-  pack(8, "Reading notes on cognition", 31, [["psychology", 20], ["neuroscience", 11]], false, "jade_kim"),
-  pack(9, "Urban planning in Seoul", 19, [["urban", 12], ["policy", 7]], false, "minsu"),
-] };
-const MINE = { packs: [ { ...pack(1, "Physics starter pack", 74, [["physics", 60], ["math", 14]]), downloadCount: 45, status: "published" }, { ...pack(2, "Old reading list", 12, [["books", 12]]), downloadCount: 3, status: "unlisted" } ] };
-const IMPORT_OK = { title: "Physics: Foundations to Frontiers", result: { merged: { nodes: { created: 74, matched: 0 }, edges: { created: 481 } }, documents: { applied: 0 }, warnings: [], partial: false } };
-const IMPORT_MATCHED = { ...IMPORT_OK, result: { ...IMPORT_OK.result, merged: { nodes: { created: 41, matched: 33 }, edges: { created: 312 } }, documents: { applied: 3 } } };
-const IMPORT_PARTIAL = { ...IMPORT_OK, result: { ...IMPORT_OK.result, partial: true, warnings: ["3 nodes skipped: id owned by another pack", "edge evidence dropped on 2 links"] } };
-const IMPORT_WARN = { ...IMPORT_OK, result: { ...IMPORT_OK.result, warnings: ["record:quantum-notes already existed and was kept", "2 documents were not carried: no reader access"] } };
+// 커뮤니티(위키 셸) 픽스처. 모양은 Vinc-homepage test/site/community/fixture-server.mjs·agents-fixture.mjs 와 같다.
+const C_ID = (n) => `019fa000-0000-7000-8000-${String(n).padStart(12, "0")}`;
+const C_WHEN = "2026-10-13T09:00:00.000Z";
+const C_SOURCES = [{ title: "W3C Design Tokens Format", url: "https://tr.designtokens.org/format/" }];
+const C_REV = { revNo: 2, title: "Design tokens", body: "A design token is a named value that the build reads instead of a hard-coded colour or size.\n\n## Name the role, not the value\nCall it `surface-raised`, not `grey-900`.\n\n> A token that names its value has to be renamed every time the value moves.\n\n## Where the values live\nOne JSON file is the source; CSS and theme files are generated from it. See the [format draft](https://tr.designtokens.org/format/).", summary: "Explain role names", editor: "jade_kim", editorDeleted: false, channel: "web", clientName: "", originThread: null, revertedFrom: null, sources: C_SOURCES, links: [], createdAt: C_WHEN };
+const C_PAGE = { publicId: C_ID(1), slug: "design-tokens", title: C_REV.title, isRules: false, locked: false, status: "active", updatedAt: C_WHEN, current: C_REV };
+const C_RULES = { ...C_PAGE, publicId: C_ID(2), slug: "rules", title: "Frontend rules", isRules: true, current: { ...C_REV, title: "Frontend rules", body: "## Scope\nExplain how interfaces are built and reviewed, and cite a source for every claim." } };
+const C_PAGES = [C_PAGE, C_RULES, { ...C_PAGE, publicId: C_ID(6), slug: "focus-states", title: "Focus states" }, { ...C_PAGE, publicId: C_ID(7), slug: "spacing-scale", title: "Spacing scale" }];
+const C_THREAD = { publicId: C_ID(3), title: "Should spacing tokens use rem?", body: "The page says nothing about units. Could we add a short section on rem versus px?", author: "minsu", authorDeleted: false, status: "open", reactionCount: 2, myReaction: false, commentCount: 1, createdAt: C_WHEN, lastActivityAt: C_WHEN, canEdit: false };
+const C_POST = { ...C_THREAD, publicId: C_ID(4), title: "What does your token review look like?", body: "We diff the token file in every pull request. Curious how other teams do it.", author: "jade_kim", status: "published", reactionCount: 4 };
+const C_COMMENTS = [{ publicId: C_ID(5), body: "rem for spacing, px for borders. I can draft the section.", status: "published", author: "jade_kim", authorDeleted: false, createdAt: C_WHEN, reactionCount: 1, myReaction: false }];
+const C_COMMUNITY = { community: { publicId: C_ID(90), slug: "frontend", name: "Frontend", topic: "Building and reviewing web interfaces: tokens, layout, accessibility.", createdAt: C_WHEN, operators: ["jade_kim"] }, myRole: null, canModerate: false, features: { agents: true } };
+const C_DIRECTORY = { communities: [{ slug: "frontend", name: "Frontend", topic: C_COMMUNITY.community.topic, createdAt: C_WHEN }, { slug: "backend", name: "Backend", topic: "APIs, storage and the services behind them.", createdAt: C_WHEN }, { slug: "design-systems", name: "Design systems", topic: "Components, tokens and how teams keep them in step.", createdAt: C_WHEN }] };
+const C_SHARE_ID = "019fb000-0000-7000-8000-000000000001";
+const C_HASH = "a".repeat(64);
+const C_SHARE = { publicId: C_SHARE_ID, community: { slug: "frontend", publicId: C_ID(90), name: "Frontend" }, status: "published", author: "jade_kim", authorDeleted: false, latestVersion: 2, origin: { kind: "page", page: "design-tokens", url: "/community/frontend/p/design-tokens" }, canVersion: false, canWithdraw: false };
+const C_VERSION = { version: 2, hash: C_HASH, role: { id: "concept:agent-token-reviewer", label: "Token reviewer", domain: "vinc/agent", tags: ["agent", "review", "role"], props: { mission: "Review a pull request's colour and spacing values against the token file.", tier: "review", rung: "strong", never: ["Never approve a hard-coded colour."], person_only: [{ action: "merge", reason: "A person merges." }] } }, prompt: "Read the Frontend rules first.\nOpen the token file and the diff.\nList every value that bypasses a token.", tools: ["vinc_conventions", "vinc_search", "vinc_doc_get"], references: [{ kind: "page", title: "Design tokens · revision 2", url: "/community/frontend/p/design-tokens" }], license: "CC-BY-SA-4.0", parent: null, authors: ["jade_kim"], createdAt: C_WHEN };
+const C_AGENT_CARD = { publicId: C_SHARE_ID, title: "Token reviewer", mission: C_VERSION.role.props.mission, author: "jade_kim", latestVersion: 2, license: C_VERSION.license, tools: C_VERSION.tools };
+const C_PACK_CARD = { publicId: "019fb000-0000-7000-8000-000000000003", title: "Frontend review notes", description: "Token and focus-state notes from our reviews.", sizeBytes: 48200, author: "ada", status: "published", communitySlug: "frontend", canWithdraw: true, downloadUrl: "/api/community/packs/019fb000-0000-7000-8000-000000000003/download" };
+// Take 행선지는 개인 그래프 하나만 둔다(팀 행선지는 사이트에서 걷히는 중이다).
+const C_DESTINATIONS = { features: { agents: true }, draftActor: "capture-draft-actor-opaque-0123456789", destinations: [{ kind: "personal", name: "Personal", allowed: true }] };
 const dom = (domain, e, c, r, d) => ({ domain, episodes: e, concepts: c, records: r, decisions: d, total: e + c + r + d });
 const DOMAINS = { executed: true, rows: [
   dom("vinc/product", 40, 120, 300, 8), dom("vinc/design/tokens", 20, 60, 140, 3), dom("vinc/product/book/intro", 12, 40, 90, 1),
@@ -114,7 +114,7 @@ async function install(page, table) {
 }
 
 // ── 상태 목록 ───────────────────────────────────────────────────────────────
-// { id, url, trigger, api, ls, vp, ua, scheme, full, before(page) }
+// { id, url, route?, trigger, api, ls, vp, ua, scheme, full, before(page) }   route: 매니페스트 행의 라우트(생략 시 url 의 경로)
 const S = [];
 const add = (o) => S.push({ full: true, ls: {}, api: [], ...o });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -140,36 +140,53 @@ add({ id: "landing__newsletter-invalid", url: "/", trigger: "newsletter submit w
 add({ id: "landing__newsletter-error", url: "/", trigger: "newsletter submit 500", api: [...baseApi(null), ["POST", /\/api\/subscribe/, E500]], full: false, before: (p) => newsletter(p, "ada@example.com") });
 
 // community
-const commApi = (me, packs = ok(PACKS), imp = ok(IMPORT_OK)) => [...baseApi(me), ["GET", /\/api\/community\/packs\?/, packs], ["POST", /\/api\/community\/packs\/[^/]+\/import/, imp]];
-const openModal = async (p, via = "card") => { await p.waitForSelector("#grid > *"); if (via === "card") await p.locator("#grid > *").first().click(); else await p.locator("#grid button").first().click(); await p.waitForSelector("#modal", { state: "visible" }); await sleep(300); };
-add({ id: "community__default", url: "/community/", trigger: "load, signed out", api: commApi(null) });
-add({ id: "community__signed-in", url: "/community/", trigger: "load with a session", api: commApi(ME), ls: { "vinc.site.signedin": "1" } });
-add({ id: "community__loading", url: "/community/", trigger: "packs request pending", api: commApi(null, "hang"), full: false });
-add({ id: "community__empty", url: "/community/", trigger: "packs: []", api: commApi(null, ok({ packs: [] })), full: false });
-add({ id: "community__error", url: "/community/", trigger: "packs 500", api: commApi(null, E500), full: false });
-add({ id: "community__no-match", url: "/community/", trigger: "search 'zzzz' matches nothing", api: commApi(null), full: false, before: async (p) => { await p.waitForSelector("#grid > *"); await p.fill("#q", "zzzz"); await sleep(400); } });
-add({ id: "community__modal-confirm-card", url: "/community/", trigger: "click a card: confirm modal (Close / Import)", api: commApi(ME), full: false, before: (p) => openModal(p, "card") });
-add({ id: "community__modal-confirm-button", url: "/community/", trigger: "click Import on a card: confirm modal (Cancel / Confirm)", api: commApi(ME), full: false, before: (p) => openModal(p, "button") });
-add({ id: "community__modal-legend-focus", url: "/community/", trigger: "click a legend chip in the modal: one domain focused", api: commApi(ME), full: false, before: async (p) => { await openModal(p); const chip = p.locator("#mViz button, #mViz [role=button], #mViz .chip, #mViz li, #mViz [data-domain]").first(); if (await chip.count()) await chip.click(); else await p.locator("#mViz").getByText(/physics/i).first().click(); await sleep(300); } });
-add({ id: "community__modal-signed-out", url: "/community/", trigger: "Import while signed out: sign-in modal", api: commApi(null), full: false, before: async (p) => { await p.waitForSelector("#grid > *"); await p.locator("#grid button").first().click(); await p.waitForSelector("#modal", { state: "visible" }); await sleep(300); } });
-const importFlow = (imp) => async (p) => { await openModal(p); await p.locator("#mGo").click(); await sleep(900); };
-add({ id: "community__modal-busy", url: "/community/", trigger: "Confirm: import pending, four steps animate", api: commApi(ME, ok(PACKS), "hang"), full: false, before: importFlow() });
-add({ id: "community__modal-result-ok", url: "/community/", trigger: "import 200: Imported", api: commApi(ME), full: false, before: importFlow() });
-add({ id: "community__modal-result-matched", url: "/community/", trigger: "import 200 with matched concepts and documents", api: commApi(ME, ok(PACKS), ok(IMPORT_MATCHED)), full: false, before: importFlow() });
-add({ id: "community__modal-result-partial", url: "/community/", trigger: "import 200 partial:true", api: commApi(ME, ok(PACKS), ok(IMPORT_PARTIAL)), full: false, before: importFlow() });
-add({ id: "community__modal-result-warnings", url: "/community/", trigger: "import 200 with warnings: Skipped box", api: commApi(ME, ok(PACKS), ok(IMPORT_WARN)), full: false, before: importFlow() });
-add({ id: "community__modal-result-429", url: "/community/", trigger: "import 429: rate-limited copy", api: commApi(ME, ok(PACKS), ERR("too_many_requests", "Slow down", 429)), full: false, before: importFlow() });
-add({ id: "community__modal-result-error", url: "/community/", trigger: "import 500: Import failed", api: commApi(ME, ok(PACKS), E500), full: false, before: importFlow() });
-add({ id: "community__modal-result-401", url: "/community/", trigger: "import 401 mid-flight: sign-in modal", api: commApi(ME, ok(PACKS), E401), full: false, before: importFlow() });
-add({ id: "community__mobile-390", url: "/community/", trigger: "viewport 390", api: commApi(null), vp: MOBILE });
+const C_API = "/api/community";
+const C_C = `${C_API}/c/frontend`;
+const commApi = (me = null, extra = []) => [...baseApi(me), ...extra,
+  ["GET", `${C_API}/communities`, ok(C_DIRECTORY)],
+  ["GET", `${C_API}/communities/mine`, me ? ok({ communities: [C_DIRECTORY.communities[0]] }) : E401],
+  ["GET", C_C, ok(C_COMMUNITY)],
+  ["GET", `${C_C}/pages`, ok({ pages: C_PAGES.map(({ current, ...p }) => p) })],
+  ["GET", `${C_C}/recent`, ok({ edits: [{ ...C_REV, page: "design-tokens" }] })],
+  ["GET", /^\/api\/community\/c\/frontend\/(p\/[^/]+|rules)$/, (url) => ok({ page: C_PAGES.find((p) => url.pathname.endsWith("/" + p.slug)) ?? C_PAGE })],
+  ["GET", /\/p\/[^/]+\/projection\?/, ok({ revision: 2, state: "current", projectedRevision: 2 })],
+  ["GET", /\/p\/[^/]+\/talk(\?|$)/, ok({ threads: [C_THREAD], nextCursor: null })],
+  ["GET", /\/p\/[^/]+\/talk\/[0-9a-f-]+/, ok({ thread: C_THREAD, comments: C_COMMENTS, nextCommentCursor: null })],
+  ["GET", /\/c\/frontend\/lounge(\?|$)/, ok({ posts: [C_POST], nextCursor: null })],
+  ["GET", /\/c\/frontend\/lounge\/[0-9a-f-]+/, ok({ post: C_POST, comments: C_COMMENTS, nextCommentCursor: null })],
+  ["GET", /\/p\/[^/]+\/agents(\?|$)/, ok({ agents: [C_AGENT_CARD], nextCursor: null })],
+  ["GET", /\/c\/frontend\/attachments\?/, ok({ agents: [C_AGENT_CARD], packs: [] })],
+  ["GET", `${C_API}/agents/destinations`, me ? ok(C_DESTINATIONS) : ok({ features: { agents: true }, destinations: [] })],
+  ["GET", /\/a\/[0-9a-f-]+\/v\/\d+\/take-preview\?/, ok({ draftActor: C_DESTINATIONS.draftActor, shareId: C_SHARE_ID, version: 2, hash: C_HASH, destination: { kind: "personal" }, candidate: { id: "concept:agent-token-reviewer-aaaaaa", exists: false }, defaultMode: "separate" })],
+  ["GET", /^\/api\/community\/a\/[0-9a-f-]+(\/v\/\d+)?$/, ok({ share: C_SHARE, version: C_VERSION, versions: [{ version: 1, hash: "b".repeat(64), title: "Token reviewer", license: C_VERSION.license }, { version: 2, hash: C_HASH, title: "Token reviewer", license: C_VERSION.license }], retainedVersions: [], access: "public" })],
+  ["GET", /^\/api\/community\/u\/[^/]+$/, (url) => ok({ profile: { handle: url.pathname.split("/").pop() }, edits: [{ community: "frontend", page: "design-tokens", revision: 2, title: C_PAGE.title, summary: C_REV.summary, channel: "web", createdAt: C_WHEN }], threads: [], posts: [], agents: [], packs: [] })],
+];
+// 셸이 다 그린 뒤 찍는다: #community-main 의 aria-busy 가 빠지는 것이 렌더 끝 신호다.
+const shellReady = async (p) => { await p.locator("#community-main:not([aria-busy])").waitFor(); await sleep(400); };
+// SPA 라 하위 경로도 한 파일(community/index.html)이 그린다. 매니페스트의 route 는 그 파일 기준으로 둔다.
+const comm = (id, url, trigger, opts = {}) => add({ id: `community__${id}`, url, route: "/community/", trigger, api: commApi(opts.me ?? null), ls: opts.me ? { "vinc.site.signedin": "1" } : {}, vp: opts.vp, full: opts.full ?? true, before: shellReady });
+const C_PAGE_URL = "/community/frontend/p/design-tokens";
+const C_AGENT_URL = `/community/a/${C_SHARE_ID}/v/2`;
+comm("default", "/community/", "directory: communities, signed out");
+comm("signed-in", "/community/", "directory with a session: my communities", { me: ME });
+comm("home", "/community/frontend", "community home: topic, Rules link, page index");
+comm("page-read", C_PAGE_URL, "wiki page, Read tab: body, sources, revision line");
+comm("talk", `${C_PAGE_URL}/talk/${C_THREAD.publicId}`, "Talk tab: one thread with a reply");
+comm("lounge", "/community/frontend/lounge", "Lounge: post index");
+comm("agent-share", C_AGENT_URL, "agent share, pinned version 2: role, tools, license, hash");
+comm("agent-take", `${C_AGENT_URL}/take`, "Take panel signed in: exports and Add to my Graph (personal)", { me: ME });
+comm("mobile-390", C_PAGE_URL, "viewport 390: wiki page, Read tab", { vp: MOBILE });
 
 // account
-const acctApi = ({ me = ME, billing = BILLING.trial, keys = KEYS, mine = MINE, domains = DOMAINS, extra = [] } = {}) => [
-  ...baseApi(me), ["GET", "/api/billing/status", ok(billing)], ["GET", "/api/account/keys", ok(keys)], ["GET", "/api/community/mine", ok(mine)], ["GET", /\/api\/graph\/domains/, ok(domains)],
+// 계정의 Community 절은 위키 셸 API 를 읽는다: 가입한 커뮤니티 · 내 기여(/u/:handle) · 내가 공유한 에이전트와 팩(/agents/mine).
+const C_NOTHING = [["GET", `${C_API}/communities/mine`, ok({ communities: [] })], ["GET", /^\/api\/community\/u\/[^/]+$/, (url) => ok({ profile: { handle: url.pathname.split("/").pop() }, edits: [], threads: [], posts: [], agents: [], packs: [] })]];
+const acctApi = ({ me = ME, billing = BILLING.trial, keys = KEYS, shares = { agents: [C_AGENT_CARD], packs: [C_PACK_CARD] }, joined = true, domains = DOMAINS, extra = [] } = {}) => [
+  ...baseApi(me), ["GET", "/api/billing/status", ok(billing)], ["GET", "/api/account/keys", ok(keys)], ["GET", /\/api\/graph\/domains/, ok(domains)],
   ["GET", /\/api\/username\/check/, (url) => { const u = url.searchParams.get("u") || ""; if (u === "ada") return ok({ valid: true, available: false, reason: "taken" }); if (u.length < 3) return ok({ valid: false, available: false, reason: "too_short" }); if (u === "admin") return ok({ valid: false, available: false, reason: "reserved" }); if (/[^a-z0-9_]/.test(u)) return ok({ valid: false, available: false, reason: "bad_format" }); return ok({ valid: true, available: true, reason: null }); }],
+  ["GET", `${C_API}/agents/mine`, ok(shares)], ...commApi(me, joined ? [] : C_NOTHING).slice(baseApi(me).length),
   ...extra];
 const acct = (id, trigger, opts = {}, before, full = true) => add({ id: `account__${id}`, url: "/account/", trigger, api: acctApi(opts), ls: { "vinc.site.signedin": "1" }, before, full });
-acct("default", "load: free plan, trial open, two keys, one published pack, graph at the vinc level (top 6 + 3 more)");
+acct("default", "load: free plan, trial open, two keys, one joined community with a shared agent and pack, graph at the vinc level (top 6 + 3 more)");
 acct("pro", "plan pro: header badge, topics tile without the limit", { me: ME_PRO, billing: BILLING.active });
 acct("team-member", "user with teams: Team plan badge, LNB lists the teams", { me: ME_TEAM, billing: BILLING.none });
 acct("plan-get-pro", "billing: trial closed, checkout open: Get Pro", { billing: BILLING.checkout }, async (p) => p.locator("#planCard").scrollIntoViewIfNeeded(), false);
@@ -200,10 +217,9 @@ acct("graph-more-open", "graph: '3 more' expanded", {}, async (p) => { await gra
 acct("graph-drill-product", "graph: legend row 'product' › descends, breadcrumb All › product", {}, async (p) => { await graph(p); await p.locator("#gLegend button", { hasText: /product/ }).first().click(); await sleep(500); }, false);
 acct("graph-drill-book", "graph: product › book, two leaves", {}, async (p) => { await graph(p); await p.locator("#gLegend button", { hasText: /product/ }).first().click(); await sleep(400); await p.locator("#gLegend button", { hasText: /book/ }).first().click(); await sleep(500); }, false);
 acct("graph-empty", "graph: rows [] : Nothing synced yet", { domains: { executed: true, rows: [] } }, graph, false);
-const comm = async (p) => p.locator("#acc-community").scrollIntoViewIfNeeded();
-acct("community-list", "published packs: one live, one taken down", {}, comm, false);
-acct("community-empty", "no published packs", { mine: { packs: [] } }, comm, false);
-acct("community-takedown-confirm", "Take down: native confirm (text in manifest)", {}, async (p) => { await comm(p); await p.locator("#packList button").first().click(); await sleep(300); }, false);
+const commCard = async (p) => { await p.locator("#acc-community").scrollIntoViewIfNeeded(); await p.locator("#communityShares h3").first().waitFor(); await sleep(300); };
+acct("community-list", "Community: one joined community, one contribution, one shared agent and one shared pack", {}, commCard, false);
+acct("community-empty", "Community: nothing joined, contributed or shared", { joined: false, shares: { agents: [], packs: [] } }, commCard, false);
 const delOpen = async (p) => { await p.locator("#delCard").scrollIntoViewIfNeeded(); await p.locator("#delOpenBtn").click(); await p.waitForSelector("#delModal", { state: "visible" }); await sleep(300); };
 acct("delete-ask", "Delete: modal, Delete disabled until the word is typed", {}, delOpen, false);
 acct("delete-typed", "Delete: DELETE typed, button enabled", {}, async (p) => { await delOpen(p); await p.fill("#delTyped", "DELETE"); await sleep(200); }, false);
@@ -241,7 +257,6 @@ team("drill-loading", "drill rail, request pending", { extra: [["GET", /\/api\/g
 team("drill-empty", "drill rail, nodes []", { extra: [["GET", /\/api\/graph\/graph\?/, ok({ nodes: [] })]] }, rail, false);
 team("drill-error", "drill rail 500", { extra: [["GET", /\/api\/graph\/graph\?/, E500]] }, rail, false);
 team("drill-detail", "click a concept: detail with excerpts and related, Back chevron", {}, async (p) => { await rail(p); await p.locator("#drillBody button").first().click(); await sleep(600); }, false);
-team("community-tab", "Community tab: informational only", {}, async (p) => { await settled(p); await p.locator('[data-sub="community"], [data-tab="community"], button:has-text("Community")').first().click(); await sleep(400); }, false);
 team("create-modal", "New team: create modal", {}, async (p) => { await settled(p); await p.locator("#newTeamBtn").click(); await p.waitForSelector("#createModal", { state: "visible" }); await sleep(300); }, false);
 team("create-error", "Create 500: inline error", { extra: [["POST", "/api/teams", E500]] }, async (p) => { await settled(p); await p.locator("#newTeamBtn").click(); await p.fill("#crName", "Research Guild"); await p.locator("#crGo").click(); await sleep(500); }, false);
 
@@ -354,7 +369,7 @@ for (const s of states) {
   // 네이티브 대화상자는 하나의 핸들러만 둔다(둘이면 두 번째 accept/dismiss 가 던져 실행이 통째로 죽는다).
   // 상태가 확인을 눌러야 하면 before() 안에서 page.acceptDialogs = true 로 표시한다.
   page.on("dialog", async (d) => { dialogs.push({ type: d.type(), message: d.message() }); await (page.acceptDialogs ? d.accept() : d.dismiss()).catch(() => {}); });
-  const row = { id: s.id, route: s.url.replace(/[#?].*$/, ""), state: s.id.split("__")[1], trigger: s.trigger, viewport: vp, scheme: s.scheme ?? "dark", file: `${s.id}.png` };
+  const row = { id: s.id, route: s.route ?? s.url.replace(/[#?].*$/, ""), state: s.id.split("__")[1], trigger: s.trigger, viewport: vp, scheme: s.scheme ?? "dark", file: `${s.id}.png` };
   try {
     await install(page, s.api);
     await page.goto(BASE + s.url, { waitUntil: "networkidle", timeout: 45000 }).catch(async () => page.goto(BASE + s.url, { waitUntil: "load", timeout: 45000 }));
@@ -380,8 +395,10 @@ const mpath = path.join(OUT, "manifest.json");
 if (onlyList && fs.existsSync(mpath)) {
   const known = new Set(S.map((s) => s.id));   // 스크립트에서 빠진 상태의 옛 행은 버린다
   const old = JSON.parse(fs.readFileSync(mpath, "utf8")); const byId = new Map(old.states.filter((r) => known.has(r.id)).map((r) => [r.id, r]));
-  for (const r of manifest.states) byId.set(r.id, r);
+  // 다른 base(예: 로컬 사이트)로 다시 찍은 행은 자기 base·siteRev 를 단다. 매니페스트 머리는 나머지 행의 출처라 그대로 둔다.
+  for (const r of manifest.states) byId.set(r.id, old.base && old.base !== BASE ? { ...r, base: BASE, siteRev } : r);
   manifest.states = [...byId.values()]; manifest.capturedAt = old.capturedAt; manifest.updatedAt = T;
+  if (old.base && old.base !== BASE) { delete manifest.siteRev; for (const [k, v] of Object.entries(old)) if (k !== "states" && k !== "updatedAt") manifest[k] = v; }
 }
 fs.writeFileSync(mpath, JSON.stringify(manifest, null, 1));
 console.log(`\n${manifest.states.length - fails} captured, ${fails} failed → ${path.relative(HUB, OUT)}`);
