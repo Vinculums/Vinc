@@ -1365,8 +1365,8 @@ class VincApp:
 
     def write_ingest(self, body):
         # 적재 단일화 — `/ingest` 는 fragment 단일 경로로 수렴한다. 개방층은 그 경로에
-        # 포팅돼 revstamp·SEC-3·dedupe 를 승계한다(`engines/fragment_ingest.py` 는
-        # 계보 참조용, 호출부 없음 · [[vinc.spec.dataplane §3]]).
+        # 포팅돼 revstamp·SEC-3·dedupe 를 승계한다(옛 `engines/fragment_ingest.py` 는
+        # VIN-553 에서 삭제 · [[vinc.spec.dataplane §3]]).
         cap = _pop_max_domains(body)
         res = self._run_mutation("ingest:fragment", body,
                                  lambda: frag.merge_fragment(body, store=self.store,

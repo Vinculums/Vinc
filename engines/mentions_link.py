@@ -39,7 +39,6 @@ Chunk(벡터/FTS 검색 노드)를 그것이 언급하는 Concept 에 잇는 규
 
 사용:
     python -m engines.mentions_link [--owner <id>] [--dry-run] [--reset]
-    (또는 embed_pipeline 이 적재 후 link_mentions(store) 로 호출)
     --reset: 기존 :MENTIONS 를 지우고 현재 규칙으로 다시 만든다(relink_all)
 """
 from __future__ import annotations
@@ -153,7 +152,7 @@ def compute_links(chunks: list[dict], concepts: list[dict]) -> list[dict]:
 
 def _fetch_chunks(store, owner: str | None = None) -> list[dict]:
     """owner 를 주면 그 소유자의 청크만(호스티드 단일 스토어 — 남의 청크에 링크 금지).
-    None 이면 전부(로컬 단일 사용자 — embed_pipeline 이 그렇게 부른다)."""
+    None 이면 전부(로컬 단일 사용자)."""
     where = "WHERE c.owner_id = $o " if owner else ""
     rows = store.run("MATCH (c:Chunk) " + where + "RETURN c.chunk_id AS chunk_id, "
                      "c.source_file AS source_file, c.text AS text",
@@ -261,7 +260,7 @@ def link_mentions(store, *, owner: str | None = None, dry_run: bool = False,
     {chunks, concepts, links, by_method}. ``dry_run`` 이면 MERGE 없이 계산만.
 
     ``scope_chunks`` 가 참이면 청크도 owner 로 좁힌다. 기본이 거짓인 이유: 로컬
-    적재(embed_pipeline)는 owner 를 개념에만 걸어 왔고, 구 스토어의 청크는
+    적재(옛 embed_pipeline, VIN-553 에서 삭제)는 owner 를 개념에만 걸어 왔고, 구 스토어의 청크는
     owner_id 가 빈 값이라 좁히면 통째로 빠진다. 호스티드 전량 재링크(relink_all)만
     켠다."""
     chunks = _fetch_chunks(store, owner if scope_chunks else None)

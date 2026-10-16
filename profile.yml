@@ -49,7 +49,7 @@ retention:
 # concepts_ingest·bridges_ingest·learner_ingest·skill_tracker·pack_ingest 는
 # 2026-08-12 삭제됨 — v1(weg-9000, Neo4j) 일회성 이관 도구, 제품 호출부 0건
 # (agent-wiki-comparison §8; record:fact-orphan-engines-deleted).
+# embed_pipeline(weg9000-hub 시절 배치 CLI)은 2026-10-16 삭제됨(VIN-553).
 engines:
   enabled:
-    - embed_pipeline    # chunk + 로컬 임베딩 + parquet 체크포인트(증분)
     - recall_ingest     # 3-tier episodic memory (:Episode)

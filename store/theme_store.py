@@ -32,7 +32,7 @@ from typing import Any
 
 # 구 전역 enum(D11 R1) — 폐기되지 않고 **기본 초안(system_draft)**으로 지위만 강등.
 # 이름만 산다: 검증 게이트로 절대 쓰이지 않고, create_theme 시 시드 소스로만 참조된다.
-# (물리 라벨·id 컬럼 바인딩은 engines/fragment_ingest.py 소관 — 어휘와 분리.)
+# (물리 라벨·id 컬럼 바인딩은 api/fragment.py 소관 — 어휘와 분리.)
 LEGACY_NODE_TYPES: tuple[str, ...] = ("concept", "domain", "bridge", "episode")
 LEGACY_EDGE_TYPES: tuple[str, ...] = ("relates_to", "prerequisite_of",
                                       "derives_from", "connects_via")
