@@ -901,6 +901,7 @@
     "decision:the-windows-release-leg-goes-back-to-hosted-2026-09-07",
     "decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12",
     "decision:topic-transfer-edge-history-and-foreign-rejection-endpoints-2026-10-16",
+    "decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16",
     "decision:topic-transfer-plain-references-and-external-images-2026-10-16",
     "decision:topics-wear-the-homepage-jewels-2026-09-26",
     "decision:view-3d-nodes-are-instanced-and-recede-by-blending-to-the-background",
