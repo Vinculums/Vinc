@@ -5613,7 +5613,9 @@ def node_edges(node: str | None = None, *, nodes: list[str] | None = None,
                   "evidence": r["evidence"], "confidence": r["confidence"],
                   **({"subtype": r["subtype"]} if r["subtype"] else {}),
                   **({"role": r["role"]} if r["role"] else {}),
-                  "created": r["created"] or None,
+                  # 출생 시각은 저장된 엣지에만 있다. 파생 엣지(IN_DOMAIN 등)는 열이 없어
+                  # 키를 달지 않는다(subtype·role 과 같은 규칙).
+                  **({"created": r["created"]} if r["created"] else {}),
                   "derived": r["type"] in ("IN_DOMAIN", "PARENT_OF", "MENTIONS")}
                  for r in res["rows"]]
         edges.sort(key=lambda e: (e["from"], e["to"], e["type"],
