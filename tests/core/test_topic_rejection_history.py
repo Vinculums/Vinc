@@ -168,8 +168,13 @@ def test_history_note_references_do_not_expand_selection(direction):
     row = outside_rejection(data) if direction == "incoming" else rejection(data)
     target = "concept:a" if direction == "incoming" else "concept:other"
     row["note"] = "[[" + target + "]]"
-    prefix = "incoming_reference:" if direction == "incoming" else "external_reference:"
-    assert any(code.startswith(prefix) for code in plan(data).blockers)
+    p = plan(data)
+    if direction == "incoming":
+        assert any(code.startswith("incoming_reference:") for code in p.blockers)
+    else:
+        # 옮기는 기각 메모가 토픽 밖을 가리키면 원문 그대로 옮기고 건수만 공개한다.
+        assert "external_reference:" + target in p.preserved
+        assert not any(code.startswith("external_reference:") for code in p.blockers)
 
 
 @pytest.mark.parametrize("phase", ["nodes", "delete", "journal"])

@@ -125,10 +125,14 @@ def test_incoming_document_successor_blocks():
     assert any(b.startswith("incoming_reference:") for b in plan(data).blockers)
 
 
-def test_outgoing_wiki_reference_in_native_title_blocks():
+def test_outgoing_wiki_reference_in_native_title_is_preserved_and_counted():
     data = seed()
     data["nodes"]["Concept"][0]["title"] = "See [[" + "concept:other" + "]]"
-    assert "external_reference:concept:other" in plan(data).blockers
+    p = plan(data)
+    assert p.ready, p.blockers
+    assert "external_reference:concept:other" in p.preserved
+    after = transformed_snapshot(data, p, stamp=STAMP)
+    assert after["nodes"]["Concept"][0]["title"] == "See [[" + "concept:other" + "]]"
 
 
 def test_wiki_aliases_retain_the_target_identity():
@@ -136,7 +140,7 @@ def test_wiki_aliases_retain_the_target_identity():
     data["nodes"]["Concept"][0]["title"] = "[[concept:b|Inside]]"
     assert plan(data).ready
     data["nodes"]["Concept"][0]["title"] = "[[concept:other|Outside]]"
-    assert "external_reference:concept:other" in plan(data).blockers
+    assert "external_reference:concept:other" in plan(data).preserved
 
 
 def test_other_owner_logical_alias_is_not_a_source_dependency():
@@ -239,7 +243,7 @@ def test_subtree_only_and_all_payload_fields_preserved():
 
 
 @pytest.mark.parametrize("problem", ["outgoing", "incoming", "shared_doc", "foreign_doc", "bridge",
-                                    "integrity", "attachments", "reference", "rejection", "tombstone",
+                                    "integrity", "attachments", "managed_resource", "rejection", "tombstone",
                                     "nonempty", "metadata", "extra_column", "missing_table", "conventions"])
 def test_preflight_refuses_without_mutation(problem):
     data = seed()
@@ -259,8 +263,8 @@ def test_preflight_refuses_without_mutation(problem):
         data["nodes"]["Chunk"][0]["text"] += "broken"
     elif problem == "attachments":
         data["nodes"]["Record"][0]["props"] = '{"attachments":["private/blob"]}'
-    elif problem == "reference":
-        data["nodes"]["Decision"][0]["props"] = '{"superseded_by":"decision:outside"}'
+    elif problem == "managed_resource":
+        data["nodes"]["Decision"][0]["props"] = '{"resource":"s3:private"}'
     elif problem == "rejection":
         specs = meta_table_specs()["_MergeRejection"]
         row = {c: None for c in specs["cols"]}

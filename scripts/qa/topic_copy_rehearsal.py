@@ -27,7 +27,7 @@ from store.config import load_config
 from store.persistence import DurableAck, restore_newest
 from store.scoped_topic_inventory import read_scoped_inventory, _Reader
 from store.topic_manifest import TopicManifest
-from store.topic_transfer import TransferRefused
+from store.topic_transfer import TransferRefused, preserved_reference_counts
 
 
 def open_copy(path):
@@ -88,6 +88,7 @@ def rehearse(original, root, source, *, topic="vinc", max_rows=128):
                 inventory = read_scoped_inventory(store, source=source, target=target, topic=topic, manifest=scratch)
                 plan = legacy._plan(inventory, source, target, topic, conventions_policy="move_original")
                 report.update(documents=len(plan.documents), selected_counts=dict(Counter(k for k, _ in plan.selected)),
+                              preserved_references=preserved_reference_counts(plan),
                               retained_rows=inventory.retained_rows, retained_bytes=inventory.retained_bytes)
                 if not plan.ready:
                     report["dependency_counts"] = dict(Counter(b.split(":", 1)[0] for b in plan.blockers))

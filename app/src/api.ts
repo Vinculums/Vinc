@@ -1092,6 +1092,7 @@ export type ConventionsPolicy = "retain" | "move_original";
 export type ConversionCheck = { ready: boolean; topic: string; fingerprint?: string;
   conventions?: { policy: ConventionsPolicy; documents: number; personal_defaults_after_move: boolean };
   retained_personal_history?: Record<string, number>;
+  preserved_references?: { external_references?: number; external_attachments?: number };
   document_ownership?: Record<string, number>;
   document_missing_evidence?: Record<string, number>;
   inventory_state?: "pending" | "done" | "failed" | "stale" | "unknown" | "busy";

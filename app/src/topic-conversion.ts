@@ -57,6 +57,10 @@ export function mountTopicConversion(el: HTMLElement): () => void {
       const retained = Object.entries(history ?? {}).filter(([key, value]) =>
         ["_Tombstone", "_DocTombstone", "_EdgeTombstone", "_MergeRejection"].includes(key) &&
         Number.isSafeInteger(value) && value > 0).reduce((total, [, value]) => total + value, 0);
+      const preserved = check?.preserved_references;
+      const count = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : 0;
+      const outsideLinks = count(preserved?.external_references);
+      const externalAttachments = count(preserved?.external_attachments);
       const documentLabels = U.conversionDocumentEvidence;
       const evidence = check ? Object.entries({ ...check.document_ownership, ...check.document_missing_evidence })
         .filter(([, count]) => Number.isSafeInteger(count) && count > 0)
@@ -77,6 +81,8 @@ export function mountTopicConversion(el: HTMLElement): () => void {
         <p><label><input id="conversion-conventions" type="checkbox" ${flow.conventionsPolicy === "move_original" ? "checked" : ""} ${reserved || flow.busy ? "disabled" : ""}> ${esc(U.conversionConventions)}</label></p>
         ${flow.conventionsPolicy === "move_original" ? `<p class="hint">${esc(U.conversionConventionsEffect)}</p>` : ""}
         ${retained ? `<p class="hint">${esc(U.conversionRetainedHistory(retained))}</p>` : ""}
+        ${outsideLinks ? `<p class="hint">${esc(U.conversionPreservedReferences(outsideLinks))}</p>` : ""}
+        ${externalAttachments ? `<p class="hint">${esc(U.conversionPreservedAttachments(externalAttachments))}</p>` : ""}
         ${evidence.length ? `<details><summary>${esc(U.conversionDocumentChecks)}</summary><ul>${evidence.map(line => `<li>${esc(line)}</li>`).join("")}</ul></details>` : ""}
         ${!reserved && flow.busy ? `<p role="status" aria-live="polite">${esc(U.conversionInspecting)}</p>` : ""}
         ${check ? `${countsKnown ? `<p>${esc(U.conversionCounts(check.documents!, Object.entries(check.counts!).filter(([kind]) => ["Concept","Record","Decision","Episode","LearnerPattern","Bridge"].includes(kind)).reduce((n,[,count]) => n+count,0)))}</p>` : ""}
