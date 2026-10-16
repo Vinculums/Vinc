@@ -756,7 +756,8 @@ def _id_token(t: str) -> bool:
 def _node_fallback_search(store, query: str, *, limit: int = 20,
                           owner: str | None = None, historical: bool = False,
                           stats: dict | None = None,
-                          scope: tuple[str, str] | None = None) -> list[dict]:
+                          scope: tuple[str, str] | None = None,
+                          doc_intervals: bool = False) -> list[dict]:
     """Concept·Record·Decision·Episode 의 어휘 폴백 검색(T3b C1 **핵심**) — FTS·벡터 결과와
     **무관하게 항상** 수행한다. Concept/Record 는 Chunk 인덱스에 안 들어가(제목·요약을
     가진 노드가 여태 검색 자체가 불가) Chunk 0개 스토어에선 검색이 통째로 비었다 —
@@ -774,7 +775,9 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
 
     찾는 표면: Concept 는 title·one_liner·props·id, Record·Decision 은 title·props·id,
     Episode 는 title·id 다(요약은 넣지 않는다, 아래 주석). props 는 **값만** 맞춘다
-    (:data:`_PROPS_KEY_PATTERN`). 문서 미러의 유효구간은 그 문서의 구간이다(:func:`_mirror_validity`).
+    (:data:`_PROPS_KEY_PATTERN`). ``doc_intervals`` 면 문서 미러의 유효구간을 그 문서의 구간으로
+    읽어 거른다(:func:`_mirror_validity`). 검색(:func:`_search`)이 켠다. 끈 호출부(`near_nodes`
+    의 힌트)는 `_DocMeta` 를 읽지 않는다.
 
     반환 행: {id, title, kind('concept'|'record'|'decision'|'episode'), domain,
     matched_in('title'|'one_liner'|'props'|'id'), hit_tokens, title_tokens, token_total}
@@ -876,7 +879,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     rows = store.run(cypher, params)
     # 문서 미러는 구간 열이 없다. 걸러야 할 때만 그 문서의 구간을 읽는다.
     mirror_iv = (_mirror_validity(store, [r.get("id") for r in rows], owner=owner)
-                 if (scope is not None or not historical) else {})
+                 if doc_intervals and (scope is not None or not historical) else {})
     scored: list[dict] = []
     dropped: set = set()       # 지운 id — 의미 팔이 같은 노드를 지워도 한 번만 센다
     best_dropped = (0, 0)      # 지운 행 중 가장 센 (hit_tokens, title_tokens)
@@ -1333,7 +1336,8 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
             if not continuation:
                 title_hits = _node_fallback_search(store, query, limit=NODE_SCAN_CAP if _wide else top_k, owner=owner,
                                                    historical=True if mode == "current" else historical, stats=_vstats,
-                                                   scope=None if mode == "current" else _scope)
+                                                   scope=None if mode == "current" else _scope,
+                                                   doc_intervals=True)
                 if mode == "current":
                     temporal.finish_nodes(store, title_hits, owner=owner, scope=_scope, current=True, known_at=known_at, stats=_vstats)
                     if _vstats.get("current_hidden"):
