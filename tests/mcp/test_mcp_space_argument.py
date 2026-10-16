@@ -2,7 +2,7 @@
 """스페이스는 **인자로도** 정해진다(발주자 지시 2026-08-31, A안).
 
 종전 불변식은 "주소 = 스페이스"였다
-([[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]).
+(지금은 [[decision:the-space-is-an-argument-and-the-default-is-personal]] 가 그것을 대체했다).
 그 결정이 실제로 막던 것은 **무음 오배송**이지 주소 자체가 아니다 — 지금도 개인 키
 하나가 주소만 알면 자기가 멤버인 모든 팀에 닿으므로(`verify_key(raw, team)`) 주소는
 라우팅이지 권한이 아니었다. 그래서 인자를 열되 **판정은 한 줄도 안 옮긴다**: 같은

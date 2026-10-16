@@ -158,7 +158,7 @@ def verify_key(raw: str, team: str | None = None) -> dict | None:
 
     ⚠ **캐시 키에 team 이 들어간다.** 안 넣으면 개인 스코프 답이 팀 질문을 TTL 동안
     만족시킨다 — 같은 키로 두 스페이스를 묻는 것이 정상 흐름이라 이건 이론이 아니다.
-    근거: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]
+    근거: [[decision:the-space-is-an-argument-and-the-default-is-personal]]
     """
     if not raw or not raw.startswith(KEY_PREFIXES):
         return None
@@ -228,7 +228,7 @@ def verify_member(sub: str, team: str) -> dict | None:
 
     캐시는 `verify_key` 와 **같은 표를 쓰되 접두로 갈라 둔다**. 안 가르면 키 해시와
     publicId 가 같은 이름공간에 섞인다.
-    근거: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]
+    근거: [[decision:the-space-is-an-argument-and-the-default-is-personal]]
     """
     if not sub or not team:
         return None

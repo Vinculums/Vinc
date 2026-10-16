@@ -587,7 +587,7 @@ def _filter_clause(var: str, filters: dict | None, params: dict, *,
 # 커넥션의 스캔과 겹치면** 엔진이 힙을 깨고 프로세스가 죽는다(파이썬 예외가 아니라
 # SIGABRT — except 로 못 막는다). 그래서 DDL 은 배타, 모든 문장 실행은 공유로 잡는다.
 # 공유는 `_exec_to_dicts` 한 곳에서 잡으므로 호출부는 이 가드를 모른다.
-# 근거: [[record:hub-segfault-loop-index-ddl-races-readers-2026-09-25]]
+# 근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
 #
 # 규칙(깨면 교착이나 크래시다):
 #   - 배타 대기 중이면 **새** 공유는 기다린다(라이터 우선 — DDL 이 굶지 않게).

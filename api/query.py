@@ -1411,7 +1411,7 @@ _DIRECTED_RELS = ("PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")
 # ⚠ 이 표를 고치면 **기존 지도의 뜻이 바뀐다**(상속을 가진 그래프의 x 축 순서).
 # 그래서 앱의 인과 원뿔(`app/src/spotlight.ts` `UPSTREAM_REVERSED`)과 **같은 값**을
 # 유지해야 한다 — 한쪽만 옮기면 하이라이트가 배치를 반박한다.
-# 근거: [[record:inherits-from-is-absent-from-the-reversed-relation-table]]
+# 근거: [[record:inherits-from-now-reverses-with-derives-from]]
 _REVERSED_RELS = ("DERIVES_FROM", "INHERITS_FROM")
 
 

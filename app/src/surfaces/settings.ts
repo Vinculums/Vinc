@@ -467,7 +467,7 @@ export async function renderSettings(
       <!-- 원격 호스트. 위의 넷은 앱 모드를 따르지만 여기는 계정 그래프에 붙으므로 계정이
            있어야 한다(루프백은 구조적으로 원격에 노출할 수 없다). 여태 이 경로는
            화면에 아예 없어서, 계정이 도움이 될 사람조차 존재를 몰랐다.
-           근거: [[decision:account-is-a-path-not-a-wall]] -->
+           근거: [[decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting]] -->
       <label>${U.mcpRemote}</label><p class="hint">${U.mcpRemoteHint}</p>
       <ul class="rowlist">
         <li class="row">

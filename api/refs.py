@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sys
+import time
 
 from vinc_mcp import remote
 
@@ -16,13 +17,24 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, "scripts", "graph-refs.json")
 SCAN_EXT = (".py", ".ts", ".tsx", ".rs", ".md", ".yml", ".yaml", ".tf")
 SKIP_DIRS = {"node_modules", ".git", ".venv", "venv", "dist", "target", "build",
-             "_migration", "__pycache__", ".claude"}
-SKIP_FILES = {"scripts/gate_graph_refs.py", "scripts/refresh_graph_refs.py"}
+             "_migration", "__pycache__", ".claude", "_wt"}
+#: CHANGELOG 은 릴리스 이력이다. 고치지 않는 기록이라 대조하지 않는다(gate_forbidden 과 같은 예외).
+SKIP_FILES = {"scripts/gate_graph_refs.py", "scripts/refresh_graph_refs.py", "CHANGELOG.md"}
 WIKILINK = re.compile(r"\[\[([^\]\n]{1,120})\]\]")
 DOC_ID = re.compile(r"^vinc\.[a-z0-9]+\.[a-z0-9.-]+$")
 NODE_ID = re.compile(r"^(record|concept|decision|episode|bridge|domain):[a-z0-9._-]+$")
 GEN_DOC_ID = re.compile(r"^[0-9a-f]{17}$")
 NODE_KINDS = ("record:", "concept:", "decision:", "episode:", "bridge:", "domain:")
+#: 두 칸짜리 구 문서 id(`vinc.arch`·`vinc.mcp`). DOC_ID 는 세 칸을 요구하므로 이 모양은
+#: 인용으로도 오류로도 잡히지 않고 지나갔다. 이제 "그래프 id 아님"으로 막는다.
+LEGACY_DOC_ID = re.compile(r"^vinc\.[a-z0-9-]+$")
+#: id 처럼 생겼지만 그래프 id 모양이 아닌 것(메모리 파일 이름 따위). 소문자, 하이픈이나 점,
+#: 공백 없음, 8자 이상, 글자 하나 이상. 숫자 배열(`[[1.0, 0]]`)·자리표시자(`[[doc_id]]`)·
+#: 한국어·`{ref}` 는 이 모양이 아니라 계속 무시된다.
+SLUG_LIKE = re.compile(r"^(?:[a-z]+:)?[a-z0-9_]+(?:[-.][a-z0-9_]+)+$")
+SLUG_MIN = 8
+#: 이 유효성 값을 가진 노드는 인용할 수 없다. 후속이 있으면 후속을, 없으면 지금 사실을 인용한다.
+BLOCKED_VALIDITY = ("historical",)
 #: 전송 오류 재시도 횟수. 타임아웃은 일시적이고, 이 판정은 배포를 막는다.
 TRIES = 3
 #: 쓰기 모드가 받아 주는 '없다' 의 상한(건). 인용된 노드의 10% 와 이 값 중 큰 쪽.
@@ -32,20 +44,32 @@ MISS_CEILING = 20
 
 
 def normalize(raw: str) -> str:
-    return re.split(r"\s*§", raw.strip(), maxsplit=1)[0].strip()
+    """절 표시(`§7`)와 앵커(`#§5`)를 떼고 id 만 남긴다."""
+    return re.split(r"\s*[§#]", raw.strip(), maxsplit=1)[0].strip()
 
 
 def is_citation(ref: str) -> bool:
     return bool(DOC_ID.match(ref) or NODE_ID.match(ref) or GEN_DOC_ID.match(ref))
 
 
+def is_not_graph_id(ref: str) -> bool:
+    """인용하려던 것이 분명한데 그래프 id 모양이 아니다. 대조할 수 없으니 그 자체가 결함이다."""
+    if is_citation(ref):
+        return False
+    if LEGACY_DOC_ID.match(ref):
+        return True
+    return (len(ref) >= SLUG_MIN and bool(SLUG_LIKE.match(ref))
+            and any(ch.isalpha() for ch in ref))
+
+
 def scan_file(path: str) -> list[tuple[int, str]]:
+    """인용과, 인용 자리에 쓰였지만 그래프 id 가 아닌 토큰을 함께 돌려준다(가르는 것은 호출자)."""
     out = []
     with io.open(path, encoding="utf-8", errors="replace") as fh:
         for lineno, line in enumerate(fh, 1):
             for match in WIKILINK.finditer(line):
                 ref = normalize(match.group(1))
-                if is_citation(ref):
+                if is_citation(ref) or is_not_graph_id(ref):
                     out.append((lineno, ref))
     return out
 
@@ -80,7 +104,52 @@ def load_manifest(path: str = MANIFEST) -> set[str]:
         values = data.get(field, [])
         if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
             raise ValueError(f"manifest {field} must be a list of identifiers")
+    if not isinstance(data.get("validity", {}), dict):
+        raise ValueError("manifest validity must be an object")
     return set(data.get("docs", [])) | set(data.get("nodes", []))
+
+
+def load_validity(path: str = MANIFEST) -> dict[str, dict]:
+    """노드별 `{validity, superseded_by}`. 이 맵이 없는 옛 매니페스트는 빈 맵으로 읽는다."""
+    try:
+        with io.open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    validity = data.get("validity") if isinstance(data, dict) else None
+    if not isinstance(validity, dict):
+        return {}
+    return {k: v for k, v in validity.items() if isinstance(k, str) and isinstance(v, dict)}
+
+
+def findings(hits, known: set[str], validity: dict[str, dict]) -> list[dict]:
+    """대조 결과의 결함 목록. reason 은 missing · not_graph_id · superseded · historical."""
+    out = []
+    for file, line, ref in hits:
+        if not is_citation(ref):
+            out.append({"file": file, "line": line, "ref": ref, "reason": "not_graph_id"})
+        elif ref not in known:
+            out.append({"file": file, "line": line, "ref": ref, "reason": "missing"})
+        else:
+            entry = validity.get(ref) or {}
+            successor = entry.get("superseded_by") or ""
+            if successor:
+                out.append({"file": file, "line": line, "ref": ref, "reason": "superseded",
+                            "successor": successor})
+            elif entry.get("validity") in BLOCKED_VALIDITY:
+                out.append({"file": file, "line": line, "ref": ref, "reason": "historical"})
+    return out
+
+
+def _describe(item: dict) -> str:
+    reason = item["reason"]
+    if reason == "superseded":
+        return f"superseded: cite [[{item['successor']}]] instead"
+    if reason == "historical":
+        return "historical with no successor: cite the current fact instead"
+    if reason == "not_graph_id":
+        return "not a graph id (legacy id or file name)"
+    return "not in the graph"
 
 
 def offline_result(*, manifest: str, roots: list[str]) -> dict:
@@ -95,12 +164,18 @@ def offline_result(*, manifest: str, roots: list[str]) -> dict:
         return result
     hits = scan_roots(roots)
     result["cited"] = len(hits)
-    result["missing"] = [{"file": file, "line": line, "ref": ref}
-                         for file, line, ref in hits if ref not in known]
+    bad = findings(hits, known, load_validity(manifest))
+    result["missing"] = [{"file": i["file"], "line": i["line"], "ref": i["ref"]}
+                         for i in bad if i["reason"] == "missing"]
+    result["invalid"] = [i for i in bad if i["reason"] != "missing"]
     if result["missing"]:
         result.update(status=1, executed=False, error={"code": "unresolved_refs",
             "message": f"{len(result['missing'])} missing citations in manifest {manifest}. "
                        "Correct the references or run vinc refs refresh."})
+    elif result["invalid"]:
+        result.update(status=1, executed=False, error={"code": "invalid_refs",
+            "message": f"{len(result['invalid'])} citations are superseded, historical or not graph ids. "
+                       "Cite the successor or the current fact."})
     return result
 
 
@@ -113,14 +188,15 @@ def offline_check(*, manifest: str = MANIFEST, roots: list[str] | None = None,
         return 2
     known = (load or load_manifest)(manifest)
     hits = (scan or scan_repo)() if roots == [ROOT] else scan_roots(roots)
-    missing = [(f, n, r) for f, n, r in hits if r not in known]
-    if missing:
-        print(f"[gate_graph_refs] BLOCK — 그래프에 없는 인용 {len(missing)}건 "
+    bad = findings(hits, known, load_validity(manifest))
+    if bad:
+        print(f"[gate_graph_refs] BLOCK — 쓸 수 없는 인용 {len(bad)}건 "
               f"(매니페스트 {len(known)}개 대조)")
-        for file, lineno, ref in missing:
-            print(f"  {file}:{lineno}  [[{ref}]]")
-        print("\n  고치는 법: 그래프에 그 문서·노드를 쓰거나, 인용을 실재하는 id 로 바꾼다.\n"
-              "  그래프에 방금 썼다면 `python scripts/refresh_graph_refs.py` 로 매니페스트를\n"
+        for item in bad:
+            print(f"  {item['file']}:{item['line']}  [[{item['ref']}]]  {_describe(item)}")
+        print("\n  고치는 법: 대체된 노드는 후속 id 로, 후속 없이 만료된 노드는 지금 사실을 담은\n"
+              "  노드로, 그래프 id 가 아닌 것(두 칸 구 문서 id·메모리 파일 이름)은 실재하는 id 로\n"
+              "  바꾼다. 그래프에 방금 썼다면 `python scripts/refresh_graph_refs.py` 로 매니페스트를\n"
               "  갱신해 같은 커밋에 넣을 것 — 매니페스트가 낡으면 이 게이트가 거짓말한다.")
         return 1
     print(f"[gate_graph_refs] PASS — 인용 {len(hits)}건 전부 실재 "
@@ -139,7 +215,7 @@ def _citable(ident: str) -> bool:
     return not any(rule.pattern.search(ident) for rule in ALL_RULES)
 
 
-def fetch_docs(*, call=None) -> list[str]:
+def fetch_docs(*, call=None, sleep=time.sleep) -> list[str]:
     call = call or remote.call
     docs = []
     cursor = None
@@ -147,7 +223,13 @@ def fetch_docs(*, call=None) -> list[str]:
         args = {"limit": 200}
         if cursor:
             args["cursor"] = cursor
-        res = call("vinc_doc_list", args)
+        for _ in range(TRIES):
+            res = call("vinc_doc_list", args)
+            # store_busy 는 일시적이다. 알려 준 만큼 기다렸다 다시 묻는다.
+            wait = res.get("retry_after_s") if isinstance(res, dict) else None
+            if res.get("executed") is not False or not isinstance(wait, (int, float)):
+                break
+            sleep(min(float(wait), 5.0))
         if res.get("isError") or res.get("error"):
             raise SystemExit(f"[refresh] Account query failed: {res.get('error')}")
         docs.extend(d["doc_id"] for d in res.get("docs", []) if _citable(d["doc_id"]))
@@ -158,29 +240,51 @@ def fetch_docs(*, call=None) -> list[str]:
             return docs
 
 
-def verify_nodes(ids: list[str], *, call=None) -> tuple[list[str], list[str]]:
-    """인용된 노드가 실재하는지 한 건씩 본다. `(있다, 못 물어봤다)` 를 돌려준다.
+def _validity_of(res: dict) -> dict:
+    """`vinc_node` 응답에서 유효성과 후속 id 를 꺼낸다(`temporal` 이 정본, 없으면 props)."""
+    node = res.get("node") if isinstance(res.get("node"), dict) else {}
+    temporal = node.get("temporal") if isinstance(node.get("temporal"), dict) else {}
+    props = node.get("props") if isinstance(node.get("props"), dict) else {}
+    entry = {"validity": temporal.get("validity") or "unknown"}
+    successor = (temporal.get("superseded_by") or node.get("superseded_by")
+                 or props.get("superseded_by"))
+    if isinstance(successor, str) and successor:
+        entry["superseded_by"] = successor
+    return entry
+
+
+def verify_nodes(ids: list[str], *, call=None, validity: dict | None = None,
+                 sleep=time.sleep) -> tuple[list[str], list[str]]:
+    """인용된 노드가 실재하는지 한 건씩 본다. `(있다, 못 물어봤다)` 를 돌려주고, `validity`
+    를 주면 있는 노드의 `{validity, superseded_by}` 를 거기 채운다.
 
     🔴 **"없다"와 "못 물어봤다"를 가른다.** 전송 실패는 `isError`, 진짜 부재는 `found:false`
     다. 둘을 같이 처리하면 타임아웃 한 번이 죽은 인용으로 찍혀 배포를 죽인다(2026-09-09).
     ⚠ **`vinc_graph` 로 물으면 안 된다** — 허브 노드에서 응답 상한을 넘어 `isError` 로 오고,
-    그것을 부재로 읽으면 중심 개념일수록 인용이 막힌다. `vinc_neighbors` 는 같은 `found` 를
-    주면서 `limit=1` 로 잘려 크기에 안 걸린다."""
+    그것을 부재로 읽으면 중심 개념일수록 인용이 막힌다. `vinc_node` 는 이웃 없이 노드 하나만
+    주므로 크기에 안 걸리고, 유효성(`temporal.validity`·`superseded_by`)을 함께 준다
+    (`vinc_neighbors` 는 그 둘을 싣지 않는다)."""
     call = call or remote.call
     alive, unreachable = [], []
     for node_id in sorted(set(ids)):
         complete = False
         for _ in range(TRIES):
-            res = call("vinc_neighbors", {"node": node_id, "limit": 1})
+            res = call("vinc_node", {"node_id": node_id})
             complete = (isinstance(res, dict) and not res.get("isError")
                         and res.get("executed") is not False and isinstance(res.get("found"), bool))
             if complete and res["found"]:
                 break
+            # store_busy 는 기다릴 시간을 알려 준다. 곧바로 세 번 물으면 셋 다 바쁨으로 끝난다.
+            wait = res.get("retry_after_s") if isinstance(res, dict) else None
+            if isinstance(wait, (int, float)) and wait > 0:
+                sleep(min(float(wait), 5.0))
         if not complete:
             unreachable.append(node_id)
             print(f"  [unreachable] {node_id}: existence could not be verified")
         elif res.get("found"):
             alive.append(node_id)
+            if validity is not None:
+                validity[node_id] = _validity_of(res)
         else:
             print(f"  [miss] {node_id}: not found in this graph")
     return alive, unreachable
@@ -191,7 +295,7 @@ def live_check(*, scan=scan_repo, fetch=fetch_docs, verify=verify_nodes) -> int:
         print("[check] VINC_REMOTE_MCP_TOKEN 미설정 — 라이브 대조는 키가 필요하다",
               file=sys.stderr)
         return 2
-    hits = scan()
+    hits = [h for h in scan() if is_citation(h[2])]
     cited = sorted({r for _, _, r in hits})
     cited_nodes = [r for r in cited if r.startswith(NODE_KINDS)]
     cited_docs = [r for r in cited if not r.startswith(NODE_KINDS)]
@@ -222,12 +326,13 @@ def live_check(*, scan=scan_repo, fetch=fetch_docs, verify=verify_nodes) -> int:
 
 def refresh(*, manifest: str = MANIFEST, root: str = ROOT,
             scan=scan_repo, fetch=fetch_docs, verify=verify_nodes) -> int:
-    cited = [ref for _, _, ref in scan()]
+    cited = [ref for _, _, ref in scan() if is_citation(ref)]
     cited_nodes = [r for r in cited if r.startswith(NODE_KINDS)]
     print(f"[refresh] {len(set(cited))} cited IDs ({len(set(cited_nodes))} node IDs)")
     docs = fetch()
     print(f"[refresh] {len(docs)} documents")
-    nodes, unreachable = verify(cited_nodes)
+    validity: dict[str, dict] = {}
+    nodes, unreachable = verify(cited_nodes, validity=validity)
     if unreachable:
         print(f"[refresh] Stopped: {len(unreachable)} nodes could not be queried. "
               "The existing manifest was preserved.", file=sys.stderr)
@@ -239,11 +344,14 @@ def refresh(*, manifest: str = MANIFEST, root: str = ROOT,
               f"were not found (limit {ceiling}). Check account connectivity before refreshing. "
               "The existing manifest was preserved.", file=sys.stderr)
         return 1
-    print(f"[refresh] {len(nodes)} nodes verified")
+    blocked = [n for n in nodes if (validity.get(n) or {}).get("superseded_by")
+               or (validity.get(n) or {}).get("validity") in BLOCKED_VALIDITY]
+    print(f"[refresh] {len(nodes)} nodes verified ({len(blocked)} superseded or historical)")
     payload = {"note": "generated by scripts/refresh_graph_refs.py — do not hand edit. "
                        "gate_graph_refs.py checks code citations against this. "
                        "Identifiers only: titles would carry forbidden vocabulary into the repo.",
-               "docs": sorted(docs), "nodes": sorted(nodes)}
+               "docs": sorted(docs), "nodes": sorted(nodes),
+               "validity": {n: validity[n] for n in sorted(nodes) if n in validity}}
     os.makedirs(os.path.dirname(os.path.abspath(manifest)), exist_ok=True)
     with io.open(manifest, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2, sort_keys=False)

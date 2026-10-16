@@ -3,7 +3,7 @@
 """PR-0 measurement (v0.8.4 axis 1): node PK collision and legacy-owner exposure.
 
 Read-only. Opens the store through store/backend.py open_store (the only
-opener, per [[vinc.spec.dataplane sec 1]]) and reports, per label, the
+opener, per [[vinc.spec.dataplane §1]]) and reports, per label, the
 numbers vinc.release.0-8-4 PR-0 asks for before any namespacing code lands.
 No production write path is touched.
 

@@ -50,10 +50,10 @@
 껍데기가 아니라 꼬리 한 곳에 둔 것과 같다 — 사본이 둘이면 보편 규칙 하나를 고칠 때 한
 벌만 고쳐진다. 서버 쪽에 둔 이유는 동결 바이너리가 `scripts/` 를 안 싣기 때문이다.
 
-스냅샷이 **읽히는 필드만** 싣는 것이 이 파일의 불변식이다. 노드의 one_liner 는 쓸 수는
-있어도 어떤 MCP 도구도 돌려주지 않으므로([[record:one-liner-is-write-only-over-mcp]]),
-생성기가 재현해야 하는 것은 전부 `props` 에 있어야 한다. 임무 문장이 `props.mission`
-인 이유가 그것이다.
+스냅샷이 **읽히는 필드만** 싣는 것이 이 파일의 불변식이다. 생성기가 재현해야 하는 것은
+전부 `props` 에 둔다. 임무 문장이 `props.mission` 인 것은 one_liner 가 MCP 로 읽히지
+않던 때의 선택이고, 0.8.5 부터는 one_liner 도 `vinc_neighbors`·`vinc_graph` 로 돌아온다
+([[vinc.plan.mcp-agent-surface §2.6]]).
 """
 from __future__ import annotations
 
