@@ -16,7 +16,7 @@ LIST_FIELDS = {
     "recall": "rows", "domains": "rows", "search": "rows",
     "doc ls": "docs", "graph": "nodes", "decide": "nodes",
     "node neighbors": "neighbors", "merge candidates": "candidates",
-    "merge rejections": "rejections", "diagnose": "components",
+    "merge rejections": "rejections", "diagnose": "components", "edges": "edges",
 }
 
 
@@ -38,6 +38,9 @@ def exit_code(result: Any) -> int:
     if result.get("executed") is False or result.get("isError") is True or result.get("error"):
         return 1
     if result.get("status") == "none":
+        return 1
+    # 역할 검사는 verdict 가 곧 결과다. pass 가 아니면 실패로 끝내 스크립트가 넘겨주기를 멈춘다.
+    if result.get("kind") == "role_check" and result.get("verdict", "pass") != "pass":
         return 1
     return 0
 
@@ -87,6 +90,32 @@ def _human(result: Any, command: str) -> str:
                      for e in edges[:20])
         if len(edges) > 20:
             lines.append(f"... {len(edges) - 20} more edges")
+        return "\n".join(lines)
+    if command == "edges":
+        # 줄 수는 사용자가 --limit 으로 정한다. 잘린 것은 count 와 함께 말한다.
+        edges = result.get("edges") or []
+        lines = [f"edges: {len(edges)}; count: {result.get('count', len(edges))}"]
+        for edge in edges:
+            kind = str(edge.get("type", "")) + (f"/{edge['subtype']}" if edge.get("subtype") else "")
+            confidence = [str(edge["confidence"])] if edge.get("confidence") is not None else []
+            line = "\t".join([f"{edge.get('from', '')} -> {edge.get('to', '')}", kind, *confidence])
+            lines.append(line if len(line) <= 240 else line[:237] + "...")
+        if result.get("edges_truncated"):
+            lines.append(f"... {result.get('count', 0) - len(edges)} more; raise --limit")
+        if result.get("missing_nodes"):
+            lines.append("missing: " + ", ".join(str(n) for n in result["missing_nodes"]))
+        return "\n".join(lines)
+    if command == "role get":
+        header = _rows([{key: result.get(key) for key in ("id", "title", "domain")}])
+        return "\n".join([*header, str(result.get("rendered") or "")])
+    if command == "role check":
+        lines = [f"verdict: {result.get('verdict', '')}"]
+        for key, label in (("failed_checks", "failed"), ("person_only_actions", "person only")):
+            if result.get(key):
+                lines.append(f"{label}: " + ", ".join(str(item) for item in result[key]))
+        lines.extend("evidence: " + str(item) for item in result.get("evidence_sentences") or [])
+        if result.get("note"):
+            lines.append("note: " + str(result["note"]))
         return "\n".join(lines)
     if command == "path":
         lines = [f"{result.get('a', '')} -> {result.get('b', '')}; "
@@ -152,6 +181,9 @@ def emit(result: Any) -> int:
     if fmt == "human" and code:
         if _command.get() == "brief" and result.get("status") == "none" and not result.get("error"):
             print("vinc: " + _human(result, "brief"), file=sys.stderr)
+            return code
+        if _command.get() == "role check" and result.get("verdict") and not result.get("error"):
+            print("vinc: " + _human(result, "role check"), file=sys.stderr)
             return code
         error = result.get("error") if isinstance(result, dict) else None
         message = error.get("message", "") if isinstance(error, dict) else error

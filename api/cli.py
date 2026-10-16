@@ -365,6 +365,29 @@ def _main(argv: list[str] | None = None) -> int:
             child.add_argument("--depth", type=int, default=2)
             child.add_argument("--review-mirror", action="store_true",
                                help="include read-only provenance for one document mirror")
+    eg = sub.add_parser("edges", help="read directed incident edges with evidence")
+    eg.add_argument("id", nargs="?", default=None, help="exact node id or domain:<name>")
+    eg.add_argument("--nodes", nargs="+", default=None, metavar="ID",
+                    help="read 1..100 exact ids in one call instead of one node")
+    eg.add_argument("--type", default=None, help="relation label or authored subtype")
+    eg.add_argument("--dir", choices=("in", "out", "both"), default=None,
+                    help="edge direction relative to the node (default both)")
+    eg.add_argument("--limit", type=int, default=None, help="max edges returned (default 500)")
+    eg.add_argument("--owner", default=None)
+    rl = sub.add_parser("role", help="read a role contract or check an output against it")
+    rls = rl.add_subparsers(dest="rolecmd", required=True)
+    rlg = rls.add_parser("get", help="read one role contract")
+    rlg.add_argument("id", help="role slug (agent-dev-core) or exact concept:agent- id")
+    rlg.add_argument("--owner", default=None)
+    rlc = rls.add_parser("check", help="check one final output against the role's structured checks")
+    rlc.add_argument("id", help="role slug (agent-dev-core) or exact concept:agent- id")
+    rlc.add_argument("--output", required=True, metavar="FILE",
+                     help="file holding the complete output, or - for stdin")
+    rlc.add_argument("--person-only-requests", default=None, metavar="JSON",
+                     help='JSON array of {"action": ..., "reason": ...} requests for a person')
+    rlc.add_argument("--self-authored", action="store_true", default=None,
+                     help="the output is a diff this role wrote; removed lines are not proposals")
+    rlc.add_argument("--owner", default=None)
     pa = sub.add_parser("path", help="find a graph path")
     pa.add_argument("a")
     pa.add_argument("b")
@@ -510,7 +533,7 @@ def _main(argv: list[str] | None = None) -> int:
     _add_output_options(ap, root=True)
     args = ap.parse_args(argv)
     command = args.cmd
-    for name in ("doccmd", "gmcmd", "mcpcmd", "nodecmd", "edgecmd", "mergecmd", "refscmd"):
+    for name in ("doccmd", "gmcmd", "mcpcmd", "nodecmd", "edgecmd", "mergecmd", "refscmd", "rolecmd"):
         if getattr(args, name, None):
             command += " " + getattr(args, name)
     cli_output.configure(args.console_format, command)
@@ -600,10 +623,13 @@ def _main(argv: list[str] | None = None) -> int:
             result, exit_code = run_tool(args)
         if result is None:
             return exit_code or 2
-        if (args.cmd == "node" and args.nodecmd == "get"
+        exact = ("Node" if args.cmd == "node" and args.nodecmd == "get" else
+                 "Node" if args.cmd == "edges" and args.id is not None else
+                 "Role" if args.cmd == "role" else None)
+        if (exact and isinstance(result, dict)
                 and result.get("executed") is not False and result.get("found") is False):
             result = {**result, "error": {"code": "not_found",
-                                         "message": f"Node not found: {args.id}"}}
+                                         "message": f"{exact} not found: {args.id}"}}
         if args.cmd == "whoami" and isinstance(result, dict) and not result.get("error"):
             from .remote_client import api_key
             key = api_key() or ""
