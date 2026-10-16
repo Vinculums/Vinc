@@ -66,8 +66,11 @@ def bounded_step(store, durable, *, source, target, topic, run, expected, stamp,
                         raise TransferRefused("conversion_dependency_blocked")
                     if manifest.authorized_hash(plan.before_hash, conventions_policy) != expected:
                         raise TransferRefused("plan_stale")
+                    # 목록 읽기와 봉인은 각자 처리 시간 한도를 갖는다.
+                    scratch.deadline = time.monotonic() + 180
                     header = manifest.prepare(scratch, plan, run=run, stamp=stamp,
                                               indexes=legacy._index_inventory(store), store=store)
+                    scratch.deadline = time.monotonic() + 180
                     sealed = manifest.seal(scratch, path, header)
             flow.initialize(path, sealed["sha256"], expected, conventions_policy=conventions_policy)
         return flow.status()
