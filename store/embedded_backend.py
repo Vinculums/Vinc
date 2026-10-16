@@ -711,6 +711,7 @@ def _keep_vec_engine_ok(ver: str) -> bool:
 
 def keep_vector_index() -> bool:
     """`VINC_KEEP_VECTOR_INDEX=on` 이고 엔진이 측정한 판일 때만 참(기본 거짓).
+    켜는 값은 다른 플래그와 같이 `store.envflag.truthy` 가 정한다.
 
     참이면 두 자리가 함께 바뀐다: 임베딩 적용이 색인을 드롭하지 않고
     (`api.docstore._apply_embeddings`), 벡터 질의가 배타 가드 안에서 돈다
