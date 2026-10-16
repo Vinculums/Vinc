@@ -173,7 +173,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     """검색 순위와 페이지는 그대로 두고 공개 응답에 정확한 인용 id를 붙인다.
 
     as_of 기간이 있으면 그 기간이 끝난 뒤에 시작한 사건(Episode)을 node_hits 에서 뺀다
-    (:func:`_drop_unstarted_episodes`). 다른 종류의 구간 판정은 검색 코어가 이미 한다."""
+    (:func:`_drop_unstarted_episodes`). 다른 종류의 구간 검사는 검색 코어가 이미 한다."""
     result = _retrieval.search(
         query, query_embedding=query_embedding, top_k=top_k, filters=filters,
         owner=owner, cursor=cursor, detail=detail, historical=historical,
@@ -522,7 +522,7 @@ def shape_graph(rows: list[dict]) -> dict:
                   ts=r.get("target_ts"), content_ts=r.get("target_content_ts"),
                   one_liner=r.get("target_one_liner"), rev=r.get("target_rev"),
                   updated_at=r.get("target_updated_at"),
-                  # 기록끼리의 SUPERSEDES 는 도착점도 Record 다. 옛 기록의 구간이
+                  # 기록끼리의 SUPERSEDES 는 도착점도 Record 다. 대체된 기록의 구간이
                   # 빠지면 은퇴한 기록이 그래프에서 유효한 것처럼 보인다.
                   valid_from=r.get("target_valid_from"),
                   valid_until=r.get("target_valid_until"))
@@ -1016,7 +1016,7 @@ def bridge_rows_plan(*, owner: str, domain: str | None = None, domains: list[str
     있다(L2 에선 보임, v1 수용). owner: Bridge 과도기 술어 + 도착점 엄격.
 
     도착점은 의미층 라벨마다 한 팔이다(개념·결정). 개념만 보면 결정에 걸린 다리가
-    vinc_neighbors 에는 보이고 그래프에는 안 보인다(감사 F2, 2026-10-16)."""
+    vinc_neighbors 에는 보이고 그래프에는 안 보인다(감사 F2)."""
     doms = normalize_domains(domain, domains)
     assert not (doms and ids), "domain and ids are mutually exclusive"
     where = [_bridge_owner_pred("b"), "c.owner_id = $owner"]
@@ -1193,11 +1193,11 @@ def decision_relation_rows_plan(*, owner: str, domain: str | None = None,
 
     이름과 달리 Decision 관계만이 아니다. 개념끼리(graph_plan)와 ABOUT→Concept
     (사건·결정 축)를 뺀 공통 읽기 계약의 나머지 전부다 — 결정의 의미 관계, 사건→결정
-    ABOUT, 그리고 기록끼리의 SUPERSEDES(감사 F2, 2026-10-16). 이름을 그대로 둔 것은
+    ABOUT, 그리고 기록끼리의 SUPERSEDES(감사 F2). 이름을 그대로 둔 것은
     호출부와 테스트가 이 이름으로 부르기 때문이다.
 
     끝점 조합은 스키마 파생 계약을 사용한다. 렌즈 소속은 기존 부착 축처럼 어느 한
-    끝점의 domain으로 판정한다. ids 모드는 어느 한 끝점이 기존 도달 집합에 속한
+    끝점의 domain으로 가린다. ids 모드는 어느 한 끝점이 기존 도달 집합에 속한
     관계만 한 번 합류한다. 이웃을 다시 순회하지 않으므로 Concept 도달 집합과 예산은
     그대로다.
     """
@@ -2784,7 +2784,7 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
            갖고, 값이 있으면 그 기록의 유효구간이다(반개구간·YYYY[-MM[-DD]]).
 
     ``props`` 는 노드의 자유 속성(dict)이다. Episode 도 이 열을 갖고 여기서 읽는다
-    (감사 F11 — 예전에는 고르지 않아 늘 {} 였다). Entity 는 열이 없어 {} 다.
+    (감사 F11). Entity 는 열이 없어 {} 다.
 
     ``concept:doc.*`` 미러의 유효구간은 Concept 열이 아니라 그 문서(`_DocMeta`)의
     것이다(감사 F13). Concept 에는 구간 열이 없어서, 은퇴한 문서의 미러가 current 로
@@ -2866,7 +2866,7 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
             _stamp_validity(base, _p.get("valid_from"), _p.get("valid_until"))
             if meta_label == "Concept" and node.startswith("concept:doc."):
                 # 문서 미러의 구간은 문서의 것이다(F13). 문서가 없으면 개념 규칙 그대로다.
-                # 구간 열이 없는 옛 스토어(v22 이전)에서는 이 조회만 실패하고 개념 규칙으로
+                # 구간 열이 없는 v22 이전 스토어에서는 이 조회만 실패하고 개념 규칙으로
                 # 남는다 — 발췌·관계까지 함께 잃으면 안 된다. 사유는 싣는다.
                 try:
                     dm = store.run(
@@ -3223,7 +3223,7 @@ def _record_links(store, node: str, *, owner: str,
     except Exception:
         return empty
     # 대체 상대도 Record 라 그 구간을 함께 싣는다(W13 과 같은 신분). 따로 묻는 이유:
-    # SUPERSEDES 표가 없는 옛 스토어에서 이 팔이 Binder 로 죽어도 부착은 남아야 한다
+    # SUPERSEDES 표가 없는 이전 판 스토어에서 이 팔이 Binder 로 죽어도 부착은 남아야 한다
     # (neighbors 의 record_supersedes_plan 도 따로 돈다). 못 읽었으면 표식을 단다.
     sup_failed = False
     try:
@@ -3435,7 +3435,7 @@ def _node_links(store, node: str, *, owner: str,
 #: brief 가 내부 search 에 넘기는 top_k. 청크 페이지만이 아니라 **node_hits 도 이 수로
 #: 잘린다**(노드 팔의 top_k 가 같은 값이다). 그래서 `VINC_BRIEF_EXPOSE` 를 5 보다 크게
 #: 줘도 되묻기 후보는 5 를 넘지 않는다. 값은 그대로 둔다 — 넓히면 brief 계약이 바뀐다
-#: (감사 D12, 2026-10-16).
+#: (감사 D12).
 _BRIEF_TOP_K = 5
 #: 되묻을 때 실을 후보 수. 3 에서 5 로 늘렸다 — 같은 풀의 앞자리를 더 보여 줄 뿐이라
 #: 보이던 정답이 가려지지 않고, 풀 안의 정답이 전부 보인다(G0 43 → 47/60). 앱의 ask.ts 는
@@ -3463,7 +3463,7 @@ _BRIEF_ID_ASCII_RE = re.compile(
 #: 개방 타입(Entity) id 후보 — 접두가 사용자 저작 타입이라 열거할 수 없다(`theory:x`).
 #: 문법만으로는 `note:foo` 같은 문장 조각과 못 가르므로 **스토어에 실재할 때만** 연다
 #: (:func:`_brief_entity_ids`). 없으면 무시하고 랭킹으로 간다 — 위 네 접두와 달리
-#: "없다"고 답하지 않는다. 근거: 감사 F12(2026-10-16).
+#: "없다"고 답하지 않는다. 근거: 감사 F12.
 _BRIEF_OPEN_ID_RE = re.compile(r"(?<![\w/.:-])([A-Za-z][\w-]*):[^\W_](?:[\w.-]*[^\W_])?")
 _BRIEF_NOT_OPEN = frozenset(("concept", "record", "decision", "episode", "domain",
                              "bridge", "http", "https", "ftp", "mailto", "file", "urn"))
@@ -3520,7 +3520,7 @@ def brief_reads_by_id(query: str) -> bool:
     바뀌면 여기도 함께 바꿀 것 — 안 그러면 그 검색이 의미 팔 없이 돈다.
 
     개방 타입(Entity) id 는 여기서 참이 되지 않는다. 실재를 스토어로 가려야 하는데 이
-    판정은 스토어 없이 돈다. 그 질문은 임베딩을 한 번 더 구할 뿐 답은 같다."""
+    검사는 스토어 없이 돈다. 그 질문은 임베딩을 한 번 더 구할 뿐 답은 같다."""
     return bool(_brief_query_ids(query))
 
 
@@ -3548,7 +3548,7 @@ def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
     for key in ("created_at", "updated_at", "content_time", "temporal_error"):
         if key in ctx:
             base["node"][key] = ctx[key]
-    # 알림은 증거 유효성(claim_validity)에서 낸다(감사 F13). 레거시 validity 는 구간이
+    # 알림은 증거 유효성(claim_validity)에서 낸다(감사 F13). 기존 validity 필드는 구간이
     # 없는 노드를 current 로 읽어서, 은퇴한 문서의 미러가 알림 없이 나갔다. unknown 은
     # "날짜를 모른다"이지 "현재가 아니다"가 아니므로 알리지 않는다.
     claim = base["node"]["claim_validity"]
@@ -3950,7 +3950,7 @@ def _brief_current_uncertain(store, *, owner: str, answer: dict, hits: list[dict
 
 def _brief_holds(ctx: dict, scope) -> bool:
     """직참조 노드가 as_of 기간에 성립했나. 사건은 날짜가 시작이고 끝나지 않는다 —
-    `api.temporal_read` 와 검색이 같은 판정을 쓴다(감사 F14)."""
+    `api.temporal_read` 와 검색이 같은 규칙을 쓴다(감사 F14)."""
     from store.search_temporal import overlaps_scope
     t = ctx.get("temporal") or ctx
     if (ctx.get("node_kind") or ctx.get("kind")) == "episode":
@@ -3968,7 +3968,7 @@ def _brief_known(row: dict, known_scope) -> bool | None:
 
 
 def _brief_excerpt_kept(row: dict, *, mode, historical: bool, as_of_scope) -> bool:
-    """발췌 한 줄을 그 문서의 유효구간으로 판정한다. 검색이 청크를 거르는 규칙과 같다
+    """발췌 한 줄을 그 문서의 유효구간으로 가린다. 검색이 청크를 거르는 규칙과 같다
     (`vinc_rag.retrieval._drop_retired_doc_rows`, current 는 계보까지)."""
     from store.search_temporal import overlaps_scope
     t = row.get("temporal") or {}
@@ -3990,9 +3990,9 @@ def _brief_scope_material(ctx: dict, store, base: dict, *, owner: str, mode,
 
     - 발췌(B2): 문서 유효구간 — 기본은 은퇴한 문서, as_of 는 그 기간, current 는 현재·계보.
       known_at 은 문서가 처음 저장된 시각. 검색이 감추는 청크를 brief 가 인용하면 안 된다.
-    - 관계(F14·B1): as_of 와 known_at 을 `api.temporal_read.Gate` 로 판정한다 —
+    - 관계(F14·B1): as_of 와 known_at 을 `api.temporal_read.Gate` 로 거른다 —
       vinc_neighbors 가 같은 요청에서 감추는 노드를 여기서도 감춘다. 수(out·in·attached·
-      total)도 감춘 만큼 줄인다. 잘린 창 뒤(next_offset)의 관계는 여기서 판정하지 않는다.
+      total)도 감춘 만큼 줄인다. 잘린 창 뒤(next_offset)의 관계는 여기서 거르지 않는다.
     감춘 수는 validity_filtered(구간)와 known_at_filtered(저장 시각)에 더한다."""
     ctx = dict(ctx)
     hidden_validity = hidden_known = 0
@@ -4086,7 +4086,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
 
     시간 인자(`as_of`·`mode`·`historical`·`known_at`)는 여기서 전부 적용한다 —
     해소(검색), 직참조 노드, 발췌, 관계 모두에. 사이드카가 뒤에서 다시 거르지 않는다
-    (감사 B1·B2·F14, 2026-10-16). `known_at` 은 저장 시각 컷오프이고 과거 본문을
+    (감사 B1·B2·F14). `known_at` 은 저장 시각 컷오프이고 과거 본문을
     복원하지 않는다(검색과 같다).
     근거: [[vinc.plan.mcp-agent-surface §4]]"""
     cfg = cfg or load_config()
@@ -4109,7 +4109,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
     if known_scope is not None:
         base["time_scope"] = {**(base.get("time_scope") or {}), "known_at": {
             "value": known_at.strip(), "from": known_scope[0], "until": known_scope[1]}}
-    # 재료(발췌·관계)를 거를 as_of 기간. current 는 기간이 아니라 상태로 판정한다.
+    # 재료(발췌·관계)를 거를 as_of 기간. current 는 기간이 아니라 상태로 가린다.
     as_of_scope = direct_scope if mode != "current" else None
     rule = {"owner": owner, "mode": mode, "historical": historical,
             "as_of_scope": as_of_scope, "known_scope": known_scope}
@@ -4144,7 +4144,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                     out_of_scope_ids.append(qid)
                     continue
                 if known_scope is not None:
-                    # B1 — 컷오프 뒤에 저장된 노드는 그때 그래프에 없었다. 저장 시각을
+                    # B1 — 컷오프 뒤에 저장된 노드는 그 시점의 그래프에 없었다. 저장 시각을
                     # 모르면 감추지 않고 센다(검색과 같다).
                     known = _brief_known(got, known_scope)
                     if known is False:
@@ -4231,9 +4231,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             base["note"] = "no sufficiently close semantic candidate"
             return base
         status, picked = _brief_resolve(query, res.get("node_hits") or [])
-        # B5 — current 의 기권은 답(1위)과 그 주장 키를 공유하는 후보만 본다. 예전에는
-        # 후보 **아무나** 날짜를 모르면 기권했고, 개념은 구간이 없어 늘 unknown 이라 개념
-        # 후보 하나가 다른 주장의 답을 막았다.
+        # B5 — current 의 기권은 답(1위)과 그 주장 키를 공유하는 후보만 본다. 후보 아무나
+        # 보면 구간이 없어 늘 unknown 인 개념 후보 하나가 다른 주장의 답을 막는다.
         if mode == "current" and picked and _brief_current_uncertain(
                 store, owner=owner, answer=picked[0], hits=res.get("node_hits") or []):
             status = "choose"
@@ -4242,7 +4241,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # current 는 "지금 성립하는 것"을 묻고, 은퇴한 노드는 그 질문의 경쟁자가 아니다.
         # 아래 동점 가드는 일반 모드에서 감춘 행의 점수(validity_best_dropped)를 보는데,
         # current 에서는 finish_nodes 가 은퇴한 노드를 감추며 그 점수를 남기지 않으므로
-        # 가드가 서지 않는다. 그 차이가 이 뜻을 구현한다(감사 D11, 2026-10-16).
+        # 가드가 서지 않는다. 그 차이가 이 뜻을 구현한다(감사 D11).
         # 🔴 **유효구간 필터가 동점을 깨서 확신을 만들면 안 된다.** 지운 행이 남은 1위와
         # 같은 점수였다면, 원래 이 질문은 "모르겠다"(choose)였다. 그 자리에서 확정을
         # 주면 필터가 **보이는 것**이 아니라 **답**을 바꾼 것이고, 그건 §4.2 가 의도한
@@ -5212,7 +5211,7 @@ def neighbors_plan(node: str, *, owner: str | None = None) -> QueryPlan:
 
 def _typed_neighbors_cypher(owner: str | None) -> str:
     """Entity 시드의 TYPED 이웃(양방향). 저작 타입은 `subtype` 으로 낸다. Entity 에는
-    도메인·한줄 설명 열이 없어 리터럴로 맞춘다. 근거: 감사 F12(2026-10-16)."""
+    도메인·한줄 설명 열이 없어 리터럴로 맞춘다. 근거: 감사 F12."""
     n_scope = " AND n.owner_id = $owner" if owner else ""
     m_scope = " AND m.owner_id = $owner" if owner else ""
     return " UNION ALL ".join(

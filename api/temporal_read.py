@@ -14,7 +14,7 @@ Episode 의 날짜)을 본다. `known_at` 은 **그래프 시간**이고 노드�
 늘 남는다.
 
 search·brief 는 이 후처리를 타지 않는다. 둘 다 시간 인자를 자기 경로에서 적용하고,
-brief 는 관계를 거를 때 이 모듈의 `Gate` 를 그대로 쓴다(같은 요청이면 같은 판정).
+brief 는 관계를 거를 때 이 모듈의 `Gate` 를 그대로 쓴다(같은 요청이면 같은 결과).
 
 근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] §1
 """
@@ -139,7 +139,7 @@ class Gate:
 
 
 #: 이 후처리가 다루는 결과. search·brief 는 시간 인자를 자기 경로에서 전부 적용하므로
-#: 여기 없다(감사 B1, 2026-10-16) — 여기서 다시 거르면 해소가 끝난 뒤의 판정이 된다.
+#: 여기 없다(감사 B1). 여기서 다시 거르면 해소가 끝난 뒤에 거르는 셈이 된다.
 KINDS = ("neighbors", "graph", "path", "recall")
 
 
