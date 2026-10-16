@@ -786,7 +786,7 @@ type GraphRootsAnswer = {
 
 export const api = {
   /** 웹 계정 세션(`/api/me`). 쿠키 세션이라 웹·같은 출처에서만 뜻이 있다.
-   *  응답을 그대로 돌려준다 — 상태 판정과 본문 해석은 부르는 쪽 몫이다. */
+   *  응답을 그대로 돌려준다 — 상태 확인과 본문 해석은 부르는 쪽 몫이다. */
   me: (init: { cache?: RequestCache; signal?: AbortSignal } = {}): Promise<Response> =>
     fetch(new URL("/api/me", location.origin), { credentials: "include", ...init }),
   /** 커뮤니티 공유 행선지(웹 전용 같은 출처). 응답을 그대로 돌려준다. */
