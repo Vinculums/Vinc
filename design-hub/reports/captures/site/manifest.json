@@ -14,9 +14,11 @@
    },
    "scheme": "dark",
    "file": "landing__default.png",
-   "sha1": "1d5d434b6fd8ddd22822a9c8506fa636b06e421f",
-   "height": 6818,
-   "finalUrl": "/"
+   "sha1": "92c5b2fe8c9f3ea383072f7dbac0d6020d209154",
+   "height": 6877,
+   "finalUrl": "/",
+   "base": "http://127.0.0.1:8796",
+   "siteRev": "01a5d6a7fc2aacd1c6103b4c5ce072ff03f28be4"
   },
   {
    "id": "landing__signed-in",
@@ -29,9 +31,11 @@
    },
    "scheme": "dark",
    "file": "landing__signed-in.png",
-   "sha1": "e7b30b46c5ebc31c1ebdd233df6e25c752400b7f",
-   "height": 6818,
-   "finalUrl": "/"
+   "sha1": "2ddc2e55d4c34f231edf52909cc733e309d4226d",
+   "height": 6877,
+   "finalUrl": "/",
+   "base": "http://127.0.0.1:8796",
+   "siteRev": "01a5d6a7fc2aacd1c6103b4c5ce072ff03f28be4"
   },
   {
    "id": "landing__light",
@@ -44,9 +48,11 @@
    },
    "scheme": "light",
    "file": "landing__light.png",
-   "sha1": "601b4cf7d993e6d2bdec234ab4be9a8488eeda8e",
-   "height": 6818,
-   "finalUrl": "/"
+   "sha1": "cc3f45c15128bb34555538134399fed2790f8945",
+   "height": 6877,
+   "finalUrl": "/",
+   "base": "http://127.0.0.1:8796",
+   "siteRev": "01a5d6a7fc2aacd1c6103b4c5ce072ff03f28be4"
   },
   {
    "id": "landing__ko",
@@ -59,9 +65,11 @@
    },
    "scheme": "dark",
    "file": "landing__ko.png",
-   "sha1": "6d26eb0198791a1c7ddfb96d54845b65c64b63cf",
-   "height": 6646,
-   "finalUrl": "/"
+   "sha1": "939ce4dee8a3e2f479099d799aee60892f8c9a00",
+   "height": 6734,
+   "finalUrl": "/",
+   "base": "http://127.0.0.1:8796",
+   "siteRev": "01a5d6a7fc2aacd1c6103b4c5ce072ff03f28be4"
   },
   {
    "id": "landing__mobile-390",
@@ -74,54 +82,11 @@
    },
    "scheme": "dark",
    "file": "landing__mobile-390.png",
-   "sha1": "fd35827522b75c642fda58e6ce7d6c5a6a4cbe00",
-   "height": 9298,
-   "finalUrl": "/"
-  },
-  {
-   "id": "landing__steps-1",
-   "route": "/",
-   "state": "steps-1",
-   "trigger": "three-steps dot 1",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "landing__steps-1.png",
-   "sha1": "f6386e7e29b67ea81971428671f31648f17274a4",
-   "height": 900,
-   "finalUrl": "/#how"
-  },
-  {
-   "id": "landing__steps-2",
-   "route": "/",
-   "state": "steps-2",
-   "trigger": "three-steps dot 2",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "landing__steps-2.png",
-   "sha1": "4d40e924640ce6f4c7be07d4f3d1f548839de552",
-   "height": 900,
-   "finalUrl": "/#how"
-  },
-  {
-   "id": "landing__steps-3",
-   "route": "/",
-   "state": "steps-3",
-   "trigger": "three-steps dot 3",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "landing__steps-3.png",
-   "sha1": "d07520770ba49bf6e12ab73386b4005f73956185",
-   "height": 900,
-   "finalUrl": "/#how"
+   "sha1": "7cacbc941d532b738dfc8c86ba0ed30f1517634b",
+   "height": 9315,
+   "finalUrl": "/",
+   "base": "http://127.0.0.1:8796",
+   "siteRev": "01a5d6a7fc2aacd1c6103b4c5ce072ff03f28be4"
   },
   {
    "id": "landing__newsletter-busy",
@@ -134,9 +99,11 @@
    },
    "scheme": "dark",
    "file": "landing__newsletter-busy.png",
-   "sha1": "1e1475ea9322536e9a0cd784cd9d55379d8e1cc0",
+   "sha1": "f5b2db37249a80340b3b7a31f5b9bbde2f9fe461",
    "height": 900,
-   "finalUrl": "/"
+   "finalUrl": "/",
+   "base": "http://127.0.0.1:8796",
+   "siteRev": "01a5d6a7fc2aacd1c6103b4c5ce072ff03f28be4"
   },
   {
    "id": "landing__newsletter-success",
@@ -149,9 +116,11 @@
    },
    "scheme": "dark",
    "file": "landing__newsletter-success.png",
-   "sha1": "665367304bee3a6e21d2515f7536f1210d4d5bf1",
+   "sha1": "f85408c5662ec62525c34ba096c9624382d978c7",
    "height": 900,
-   "finalUrl": "/"
+   "finalUrl": "/",
+   "base": "http://127.0.0.1:8796",
+   "siteRev": "01a5d6a7fc2aacd1c6103b4c5ce072ff03f28be4"
   },
   {
    "id": "landing__newsletter-invalid",
@@ -164,9 +133,11 @@
    },
    "scheme": "dark",
    "file": "landing__newsletter-invalid.png",
-   "sha1": "3b24585f85b678ef5e5c9e423240d940fcc7c0b4",
+   "sha1": "b4fe86fbc6a1b3ff865f31f96feffd946c7aeef7",
    "height": 900,
-   "finalUrl": "/"
+   "finalUrl": "/",
+   "base": "http://127.0.0.1:8796",
+   "siteRev": "01a5d6a7fc2aacd1c6103b4c5ce072ff03f28be4"
   },
   {
    "id": "landing__newsletter-error",
@@ -179,9 +150,11 @@
    },
    "scheme": "dark",
    "file": "landing__newsletter-error.png",
-   "sha1": "43bdf54e3c1a00479aa4914e551ac659bdea337e",
+   "sha1": "c49c32a302e2d214529597c9069f19888f977137",
    "height": 900,
-   "finalUrl": "/"
+   "finalUrl": "/",
+   "base": "http://127.0.0.1:8796",
+   "siteRev": "01a5d6a7fc2aacd1c6103b4c5ce072ff03f28be4"
   },
   {
    "id": "community__default",
@@ -2266,7 +2239,7 @@
    "siteRev": "472b03b51a6c7b37a66d4beb0d25a58c0d083367"
   }
  ],
- "updatedAt": "2026-10-16T06:46:03.031Z",
+ "updatedAt": "2026-10-16T10:58:34.400Z",
  "siteRev": "6772164e1c212354943ba5ab4c8588030e320c92",
  "siteRevNote": "Vinc-homepage commit deployed at vincs.io when the captures ran"
 }
