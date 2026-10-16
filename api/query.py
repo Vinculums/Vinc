@@ -22,6 +22,7 @@ from store.envflag import truthy
 from engines import domain_hierarchy
 
 from . import graphmd
+from vinc_rag import excerpt as _excerpt
 from vinc_rag import retrieval as _retrieval
 
 # 바닥 보조 함수는 store 로, 검색 코어는 vinc_rag 로 옮겼다(VIN-243). 같은 이름을 여기서
@@ -2977,6 +2978,9 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
                     "RETURN ch.chunk_id AS cid, ch.doc_id AS doc_id, "
                     "ch.section_title AS section, ch.text AS text, "
                     "'fts' AS method", {"ids": ids, "owner": owner}) or []
+                # `IN $ids` 는 BM25 순위를 지키지 않는다 — 되돌리지 않으면 같은 노드의 발췌
+                # 순서가 호출마다(REST 와 MCP 사이에서도) 달라진다.
+                ment = _excerpt.by_rank(ment, ids)
                 arm = "fts" if ment else "none"
         # ④-0 이 노드에 딸린 **문서 전부**. 발췌와 다른 계약이다: 발췌는 청크를
         # `lim` 개로 자르므로 그 넷이 한 문서에서 나오면 **문서도 하나로 보인다** —
@@ -3017,7 +3021,9 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
             "doc_id": r.get("doc_id") or "",
             "doc_title": titles.get(r.get("doc_id") or "", "") or (r.get("doc_id") or ""),
             "section": r.get("section") or "",
-            "excerpt": " ".join((r.get("text") or "").split())[:240],
+            # 노드 토큰이 모인 자리의 240자(`VINC_EXCERPT_WINDOW=head` 면 맨 앞 240자).
+            "excerpt": _excerpt.excerpt(r.get("text") or "", base["title"],
+                                        base.get("one_liner") or ""),
             "method": r.get("method") or "",
         } for r in ment]
         try:
@@ -4407,7 +4413,7 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
             base["note"] = "unknown edge (또는 소유 스코프 밖)"
             return base
         r = rows[0]
-        def _mention_excerpt(cid: str, label: str) -> dict | None:
+        def _mention_excerpt(cid: str, label: str, title: str, detail: str) -> dict | None:
             if label not in _SEMANTIC_PK:
                 return None
             m = store.run(
@@ -4421,15 +4427,17 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
             if not m:
                 return None
             return {"doc_id": m[0].get("doc_id") or "",
-                    "excerpt": " ".join((m[0].get("text") or "").split())[:240]}
+                    "excerpt": _excerpt.excerpt(m[0].get("text") or "", title, detail)}
         base.update(
             executed=True,
             evidence=r.get("ev") or "",
             confidence=float(r.get("cf") or 0.0),
             src={"id": src, "title": r.get("at") or src, "one_liner": r.get("ad") or "",
-                 "excerpt": _mention_excerpt(src, r["src_label"])},
+                 "excerpt": _mention_excerpt(src, r["src_label"], r.get("at") or "",
+                                             r.get("ad") or "")},
             dst={"id": dst, "title": r.get("bt") or dst, "one_liner": r.get("bd") or "",
-                 "excerpt": _mention_excerpt(dst, r["dst_label"])})
+                 "excerpt": _mention_excerpt(dst, r["dst_label"], r.get("bt") or "",
+                                             r.get("bd") or "")})
         return base
     except Exception as exc:
         base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
