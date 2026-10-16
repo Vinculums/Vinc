@@ -5,9 +5,8 @@ import wasmUrl from "../node_modules/libavoid-js/dist/libavoid.wasm?url";
 import { temporalLayout } from "./view-layout";
 import { routeAcrossTopics } from "./view-layout-avoid";
 import type { GraphEdge, GraphNode } from "./api";
-import type { LayoutOrdering } from "./view-layout";
 
-self.onmessage = async (event: MessageEvent<{ nodes: GraphNode[]; edges: GraphEdge[]; basis: "recorded" | "content"; ordering?: LayoutOrdering; aspectRatio?: number }>) => {
+self.onmessage = async (event: MessageEvent<{ nodes: GraphNode[]; edges: GraphEdge[]; basis: "recorded" | "content"; aspectRatio?: number }>) => {
   const elk = new ELK({ workerUrl: elkWorkerUrl });
   let elkMs = 0, routingMs = 0;
   const started = performance.now();
@@ -16,7 +15,7 @@ self.onmessage = async (event: MessageEvent<{ nodes: GraphNode[]; edges: GraphEd
     elapsedMs: Math.round(performance.now() - started), elkMs: Math.round(elkMs), routingMs: Math.round(routingMs) } });
   const heartbeat = setInterval(progress, 5000);
   try {
-    const { nodes, edges, basis, ordering, aspectRatio } = event.data;
+    const { nodes, edges, basis, aspectRatio } = event.data;
     const graph = await temporalLayout(nodes, edges, basis, { layout: async input => {
       phase = "elk"; activeNodes = input.children?.length || 0; activeEdges = input.edges?.length || 0;
       if (!callsDone) progress();
@@ -29,7 +28,7 @@ self.onmessage = async (event: MessageEvent<{ nodes: GraphNode[]; edges: GraphEd
       await AvoidLib.load(wasmUrl);
       try { return routeAcrossTopics(AvoidLib.getInstance(), ns, es, batching); }
       finally { routingMs += performance.now() - start; }
-    }, ordering, aspectRatio);
+    }, aspectRatio);
     self.postMessage({ graph, timings: { elkMs: Math.round(elkMs), routingMs: Math.round(routingMs),
       compositionMs: Math.round(Math.max(0, performance.now() - started - elkMs - routingMs)) } });
   } catch (error) {

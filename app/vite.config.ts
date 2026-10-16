@@ -28,10 +28,17 @@ const SIDECAR = process.env.VINC_SIDECAR || "http://127.0.0.1:8787";
 // 죽어 있었다). 개별 열거 대신 **접두 정규식 하나**로 바꿔 새 라우트가 자동으로
 // 실린다 — 앱이 부르는 경로는 전부 아래 접두 중 하나로 시작한다.
 // (앱 자산은 /, /src, /@vite, /node_modules 로 오므로 충돌하지 않는다.)
-const API_RE = new RegExp("^/(health|view|graph|ledger|recall|search|domains|learner"
-  + "|decide|activate|backup|pin|tag|touch|ingest|jobs|plan|share|coupling"
-  + "|suggest-ties|sync|connect|doc|docs|docs-in-range|node|node-context|node-edges|edge-context"
-  + "|ledger-drilldown|nav-tree|delete|delete-edge|merge-nodes|promote-candidates"
+// 목록은 `app/src` 가 실제로 부르는 경로와 같아야 한다. 앱이 더는 부르지 않는 이름은 뺀다
+// (`ledger`·`node` 처럼 접두가 같은 형제는 `ledger-drilldown`·`node-context` 로 따로 실린다).
+const API_RE = new RegExp("^/(health|view|graph|recall|search|domains"
+  + "|activate|backup|pin|ingest|jobs|share|coupling"
+  + "|suggest-ties|sync|connect|doc|docs|docs-in-range|node-context|edge-context"
+  + "|ledger-drilldown|nav-tree|delete|delete-edge|promote-candidates"
+  // 0.9.8 — 주제 설명(`topic-description`, 사이드카 라우트)과 계정 평면의 두 경로
+  // (`conversion/*` 주제→팀 전환, `spaces` 팀 목록). 뒤의 둘은 사이드카에 라우트가 없어
+  // 브라우저 dev 에서는 404 JSON 을 받는다. 빠져 있으면 index.html(200)을 받아 JSON
+  // 파싱이 실패하고, 앱은 그것을 고장으로 읽는다.
+  + "|topic-description|conversion|spaces"
   // 관례·어휘(GM-8) — `conventions`(관례 읽기/재생성)와 `themes`/`types`(재가 대기
   // 목록·승인·거부·개명). 앱이 여태 어휘 라우트를 부른 적이 없어 빠져 있었다.
   + "|conventions|themes|types"

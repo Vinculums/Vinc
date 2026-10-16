@@ -1,4 +1,4 @@
-/** View view preferences (DEC D31 — as-built [[vinc.reference.view-controls]]).
+/** View preferences (DEC D31 — as-built [[vinc.reference.view-controls]]).
  *
  *  Two-layer policy: these are the OPEN layer only ("how strongly to show") —
  *  view dimension, size scale, label density, arrowheads, spread. The CLOSED
@@ -6,16 +6,12 @@
  *  and is deliberately not user-configurable. Persisted per machine via
  *  localStorage; no sidecar contract involved (coords stay D17 canonical). */
 
-// 기존 두 프리셋의 저장값은 기존 좌표를 유지한다. 가지 배치는 별도 선택값이다.
-//   rank  (D50) — 전역 위상 순서를 좌표에 인코딩(x=랭크). 계보가 있는 데이터를
-//                 "무엇이 무엇보다 먼저인가"로 읽는다. 도메인 클러스터를 만들지 않는다.
-//   hub         — 연결이 많은 노드가 가운데, 적을수록 바깥으로 밀려나는 동심 배치.
-//                 "무엇이 중심인가"를 한눈에 준다. 구 radial/circle/tree/organic/dendro
-//                 를 대체한다(옛 이름은 loadPrefs 가 hub 로 접는다).
-// 둘을 남긴 기준: 하나는 **순서**를, 하나는 **중심성**을 말한다. 나머지는 그 둘의
-// 변주라 고를 이유가 없었다.
-// 선택지는 둘이다(발주자 지시 2026-10-11): `중심에서`(서버 좌표)와 `시간순 가지`(워커).
-// `순서대로`·`관계순 가지`는 뺐고, 그 저장값은 아래 별칭이 `시간순 가지`로 접는다.
+// 배치는 둘이다(발주자 지시 2026-10-11).
+//   hub           — `중심에서`. 서버가 준 좌표 그대로다: 연결이 많은 노드가 가운데,
+//                   적을수록 바깥으로 밀려나는 동심 배치. "무엇이 중심인가"를 말한다.
+//   temporalRoots — `시간순 가지`. 받은 그래프를 워커가 주제마다 날짜 순서의 가지로
+//                   재배치한다(view-layout.ts). "무엇이 먼저인가"를 말한다.
+// `순서대로`·`관계순 가지`는 뺐고, 그 저장값은 loadPrefs 의 옮겨 읽기가 `시간순 가지`로 접는다.
 // 근거: [[decision:view-offers-two-layouts-by-centre-and-time-branches-2026-10-11]]
 type ViewLayout = "hub" | "temporalRoots";
 export const LAYOUTS: ViewLayout[] = ["hub", "temporalRoots"];
@@ -23,14 +19,16 @@ export const isRootsLayout = (layout: ViewLayout) => layout === "temporalRoots";
 export const layoutsFor = (_view: Viewpoint): ViewLayout[] => LAYOUTS;
 /** 서버는 `hub` 좌표만 받는다. 가지 배치는 받은 그래프를 워커에서 재배치한다. */
 export const serverLayoutFor = (_layout: ViewLayout): "hub" => "hub";
-/** 폐기된 프리셋 이름 → 대체. 저장된 값과 딥링크가 조용히 깨지지 않게 접어 받는다. */
+/** 0.9.7 에서 뺀 배치 이름(`rank`=순서대로, `rankedRoots`=관계순 가지) → 대체.
+ *  판 3(`PREFS_VERSION`) 이전에 저장된 값에만 쓰는 옮겨 읽기다(loadPrefs). 판 3 으로
+ *  한 번 저장되면 다시 읽히지 않는다. 그 전의 radial·circle·tree·organic·dendro·shell 은
+ *  별칭 없이 모르는 값과 같이 `hub` 로 떨어진다(결과가 같아서 표를 뺐다). */
 const LAYOUT_ALIAS: Record<string, ViewLayout> = {
-  radial: "hub", circle: "hub", tree: "hub", organic: "hub", dendro: "hub", shell: "hub",
   rank: "temporalRoots", rankedRoots: "temporalRoots",
 };
+/** 지금 있는 배치 이름만 받는다. 모르는 값은 기본(`hub`)이다. */
 export const normalizeLayout = (v: unknown): ViewLayout =>
-  LAYOUTS.includes(v as ViewLayout) ? v as ViewLayout
-  : LAYOUT_ALIAS[String(v)] || "hub";
+  LAYOUTS.includes(v as ViewLayout) ? v as ViewLayout : "hub";
 
 // D53 — `flow` 관점 폐기(발주자 지시 2026-07-26). 노드 단위로 훑는 피로가 크고,
 // 2D 의 `rank` 프리셋이 같은 위상 순서를 더 넓은 맥락과 함께 보여준다.
@@ -273,8 +271,9 @@ export const RAIL_MAX = 120;   // rem — 사실상 화면 폭(CSS 가 100% 로 
 // loadPrefs 가 그냥 읽지 않는다(마이그레이션 불필요 — 남은 키는 무해).
 
 const KEY = "vinc.view.prefs";
-/** 저장값의 판. 2 = 2026-09-26 기본값 개정 이후(loadPrefs 의 옮겨 읽기). */
-const PREFS_VERSION = 2;
+/** 저장값의 판. loadPrefs 의 옮겨 읽기가 판마다 하나씩이다.
+ *  2 = 2026-09-26 기본값 개정 이후. 3 = 0.9.7 에서 뺀 배치 이름(`LAYOUT_ALIAS`)을 접은 뒤. */
+const PREFS_VERSION = 3;
 const DEFAULTS: ViewPrefs = {
   //: 크기 배율·밀도(`cone`) 기본은 0.7, 선은 **노드만**(`none`)이다(사람 지시 2026-09-26).
   //: 근거: [[decision:bring-and-go-is-retired-and-nodes-only-is-the-default]]
@@ -352,10 +351,16 @@ export function loadPrefs(): ViewPrefs {
     // 기본값 개정(2026-09-26) 이전의 저장값: 저장은 늘 **객체 통째로** 하므로, 손대지 않은
     // 사람도 옛 기본(크기 1 · 밀도 1 · bring)을 값으로 들고 있다. 판(`pv`)이 없고 값이
     // 옛 기본과 **같으면** 손대지 않은 것으로 보고 새 기본을 준다 — 고른 값은 그대로다.
-    if (!(Number(p.pv) >= PREFS_VERSION)) {
+    // ⚠ 판 비교는 `PREFS_VERSION` 이 아니라 **그 옮겨 읽기가 생긴 판**(2)과 한다. 판을
+    // 올릴 때마다 판 2 사용자가 고른 크기 1 을 기본값으로 되돌리지 않게.
+    const pv = Number(p.pv) || 0;
+    if (pv < 2) {
       if (p.nodeScale === 1) p.nodeScale = DEFAULTS.nodeScale;
       if (p.cone === 1) p.cone = DEFAULTS.cone;
     }
+    // 판 3 이전에 저장된 `rank`·`rankedRoots` 는 `시간순 가지`로 접는다(`LAYOUT_ALIAS`).
+    if (pv < 3 && typeof p.layout === "string" && Object.prototype.hasOwnProperty.call(LAYOUT_ALIAS, p.layout))
+      p.layout = LAYOUT_ALIAS[p.layout];
     return {
       view: VIEWPOINTS.includes(p.view) ? p.view : "3d",
       size: p.size === "uniform" ? "uniform" : "links",
@@ -371,7 +376,7 @@ export function loadPrefs(): ViewPrefs {
         : ["none", "always", "focus", "particles"].includes(p.edges) ? p.edges : "always",
       spread: Math.min(1.6, Math.max(0.6, Number(p.spread) || 1)),
       unlinked: p.unlinked === "hide" ? "hide" : "show",
-      // 폐기된 프리셋(radial 등)이 저장돼 있어도 조용히 hub 로 접는다.
+      // 모르는 이름(폐기된 프리셋 포함)은 조용히 hub 로 접는다.
       layout: normalizeLayout(p.layout),
       timelineDocs: p.timelineDocs !== false,
       railW: Math.min(RAIL_MAX, Math.max(RAIL_MIN, Number(p.railW) || DEFAULTS.railW)),
