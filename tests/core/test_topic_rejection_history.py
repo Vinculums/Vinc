@@ -9,6 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_topic_transfer import SOURCE, TARGET, TOPIC, STAMP, RawStore, seed, insert, plan
+from test_topic_transfer_boundaries import add_row
 from test_topic_conversion import native, stage, RUN
 from api import topic_conversion as tc
 from api.query import list_merge_rejections
@@ -131,7 +132,19 @@ def test_retained_history_receipt_and_source_row_survive_protocol(native):
 def test_ambiguous_and_malformed_history_refused(a, b, key, code):
     data = seed()
     rejection(data, a, b, key=key)
-    assert code in plan(data).blockers
+    assert code in {blocker.split(":", 1)[0] for blocker in plan(data).blockers}
+
+
+def test_unknown_membership_and_history_blockers_name_the_cause_without_raw_ids():
+    data = seed()
+    rejection(data, "concept:missing", "concept:other")
+    add_row(data, "_Tombstone", node_id="concept:a", owner_id=SOURCE, label="Concept")
+    blockers = plan(data).blockers
+    unknown = [b for b in blockers if b.startswith("merge_rejection_topic_membership_unknown:")]
+    deleted = [b for b in blockers if b.startswith("existing_tombstone_history_not_supported:")]
+    assert [b.rsplit(":", 1)[0] for b in unknown] == ["merge_rejection_topic_membership_unknown:missing+outside"]
+    assert [b.rsplit(":", 1)[0] for b in deleted] == ["existing_tombstone_history_not_supported:_Tombstone"]
+    assert not any("concept:" in b for b in unknown + deleted)
 
 
 def test_native_history_full_scoped_after_and_retry(tmp_path):

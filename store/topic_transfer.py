@@ -156,8 +156,10 @@ def rejection_disposition(row, source, logical, endpoint_state):
             or row.get("pair_key") != source + "|" + "|".join(sorted((a, b)))):
         return "unsupported_merge_rejection_key"
     states = {endpoint_state(ref) for ref in (a, b)}
-    if "ambiguous" in states:
-        return "merge_rejection_topic_membership_unknown"
+    # 접미(끝점 상태·행 해시)는 리허설 리포트가 원본 id 없이 행 수와 원인을 세게 한다.
+    unknown = "merge_rejection_topic_membership_unknown:" + "+".join(sorted(states)) + ":" + row_digest(row["pair_key"])
+    if any(state.startswith("ambiguous") for state in states):
+        return unknown
     if states == {"selected"}:
         return "move"
     if "missing" in states and states <= {"selected", "missing"}:
@@ -165,8 +167,22 @@ def rejection_disposition(row, source, logical, endpoint_state):
     if "selected" in states:
         return "merge_rejection_history_not_supported"
     if "missing" in states:
-        return "merge_rejection_topic_membership_unknown"
+        return unknown
     return "outside"
+
+
+def row_digest(value):
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+
+
+def endpoint_ambiguity(matches):
+    if len(matches) != 1:
+        return "ambiguous_multiple"
+    return "ambiguous_kind" if matches[0][0] != "Concept" else "ambiguous_owner"
+
+
+def tombstone_blocker(label, refs):
+    return f"existing_tombstone_history_not_supported:{label}:{row_digest(chr(31).join(sorted(refs)))}"
 
 
 def rejection_endpoint_state(snapshot, source, logical, ref):
@@ -177,7 +193,7 @@ def rejection_endpoint_state(snapshot, source, logical, ref):
         return "missing"
     if (len(matches) != 1 or matches[0][0] != "Concept"
             or matches[0][1].get("owner_id") != source):
-        return "ambiguous"
+        return endpoint_ambiguity(matches)
     return "selected" if ref in logical else "outside"
 
 
@@ -592,7 +608,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
                     blocks.add(str(exc))
                     continue
                 if refs & (logical | docs):
-                    blocks.add("existing_tombstone_history_not_supported")
+                    blocks.add(tombstone_blocker(label, refs & (logical | docs)))
     for label, nid in selected:
         if label in _KINDS + ("Bridge",) and not nid.startswith(source + pkns.SEP):
             blocks.add("namespaced_node_key_required:" + nid)
