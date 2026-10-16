@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import hashlib
-import json
 
 from api import docstore, query
-from store import pkns
+from store import canon, pkns
 from store.embedded_schema import node_table_specs, rel_table_specs
 
 MAX_ROWS = 200
@@ -16,8 +15,7 @@ class PreviewRefused(ValueError):
     pass
 
 
-def _canonical(value):
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+_canonical = canon.canonical_json
 
 
 def _node(store, owner, ident):

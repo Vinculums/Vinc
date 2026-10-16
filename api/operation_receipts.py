@@ -7,14 +7,15 @@ import datetime as dt
 from contextvars import ContextVar
 from uuid import UUID
 
+from store import canon
+
 PREFIX = "mutation-receipt:"
 MAX_OWNER_RECEIPTS = 5000
 MAX_REQUEST_BYTES = 4 * 1024 * 1024
 in_transaction = ContextVar("mutation_receipt_transaction", default=False)
 
 
-def canonical(value):
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+canonical = canon.canonical_json
 
 
 def _key(owner, operation_id):

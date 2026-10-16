@@ -304,8 +304,7 @@ def render_community_export(snapshot: dict, source: dict, format: str, *, pack_e
     """고정된 공유 버전을 같은 역할 렌더러로 낸다. 내용은 지시 권한이나 도구 부여가 아니다."""
     import base64
     import hashlib
-    def canonical(value):
-        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    from store.canon import canonical_json as canonical
     if format not in {"claude", "gpt", "skill", "vincpack"}:
         raise ValueError("invalid_agent_export_format")
     role = snapshot["role"]
