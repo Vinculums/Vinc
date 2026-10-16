@@ -381,3 +381,41 @@ def test_native_agents_deliver_identical_plain_system_instructions(instructions)
     ma_instructions = asyncio.run(run())
     assert isinstance(model.system_contents[0], str)
     assert model.system_contents == [ma_instructions]
+
+
+def test_write_helpers_share_the_retry_contract_in_both_frameworks():
+    # VIN-601: 두 패키지의 쓰기 헬퍼가 같은 인자를 받고 같은 본문을 보낸다(create_only·operation_id 포함).
+    import inspect
+    from vinc_agent_framework import record_episode as maf_episode, write_package as maf_package
+    from vinc_langgraph import (arecord_episode as lg_aepisode, awrite_package as lg_apackage,
+                                record_episode as lg_episode, write_package as lg_package)
+    def params(fn):
+        return [p for p in inspect.signature(fn).parameters if p != "client"]
+    assert params(maf_episode) == params(lg_episode) == params(lg_aepisode)
+    assert params(maf_package) == params(lg_package) == params(lg_apackage)
+    for name in ("create_only", "operation_id"):
+        assert name in params(maf_episode) and name in params(maf_package)
+
+    op = "00000000-0000-4000-8000-000000000601"
+    episode = {"episode_id": "episode:run-one", "date": "2026-10-16",
+               "create_only": True, "operation_id": op}
+    package = {"claims": [{"claim": "Holds.", "evidence_ids": ["decision:policy"]}],
+               "produced_by": "agent:writer", "run_id": "run-1", "package_id": "record:handoff",
+               "space": SPACE, "create_only": True, "operation_id": op}
+    sk = "vinc_sk_" + "b" * 32
+    sync_seen, ma_seen, lg_seen = [], [], []
+    with VincClient(sk, transport=httpx.MockTransport(lambda r: response(r, sync_seen))) as client:
+        lg_episode(client, "Approved", **episode)
+        lg_package(client, "Which?", "This.", **package)
+    async def run():
+        async with AsyncVincClient(sk, transport=httpx.MockTransport(
+                lambda r: response(r, ma_seen))) as client:
+            await maf_episode(client, "Approved", **episode)
+            await maf_package(client, "Which?", "This.", **package)
+        async with AsyncVincClient(sk, transport=httpx.MockTransport(
+                lambda r: response(r, lg_seen))) as client:
+            await lg_aepisode(client, "Approved", **episode)
+            await lg_apackage(client, "Which?", "This.", **package)
+    asyncio.run(run())
+    assert sync_seen == ma_seen == lg_seen and len(ma_seen) == 2
+    assert all((row[3]["create_only"], row[3]["operation_id"]) == (True, op) for row in ma_seen)
