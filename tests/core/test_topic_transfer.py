@@ -262,7 +262,7 @@ def test_preflight_refuses_without_mutation(problem):
     elif problem == "integrity":
         data["nodes"]["Chunk"][0]["text"] += "broken"
     elif problem == "attachments":
-        data["nodes"]["Record"][0]["props"] = '{"attachments":["private/blob"]}'
+        data["nodes"]["Record"][0]["props"] = '{"attachments":["blob:private"]}'
     elif problem == "managed_resource":
         data["nodes"]["Decision"][0]["props"] = '{"resource":"s3:private"}'
     elif problem == "rejection":

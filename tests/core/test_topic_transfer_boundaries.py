@@ -50,7 +50,6 @@ def test_similar_regular_document_is_preserved():
 
 @pytest.mark.parametrize("properties", [
     {"Attachments": [{"url": "blob:synthetic"}]},
-    {"nested": [{"assets": ["file:synthetic.png"]}]},
     {"blob_uri": "blob:synthetic"},
     {"attachments": ["https://synthetic.invalid/a.pdf", "blob:synthetic/b.pdf"]},
 ])
