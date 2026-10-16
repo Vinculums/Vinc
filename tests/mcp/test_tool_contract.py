@@ -432,6 +432,37 @@ def test_conditional_document_write_names_its_conditions():
             assert word in d, f"{name}: 설명이 {word} 를 말하지 않는다"
 
 
+# VIN-611: 주입 필드는 미리보기 넷과 vinc_doc_put 만이 아니다. operation_id 는 쓰기 여덟에,
+# create_only 는 vinc_ingest 에도 실린다. 주입된 필드마다 그 이름을 설명이 부르는지 본다.
+_INJECTED_FIELDS = ("operation_id", "create_only", "preview_digest", "dry_run",
+                    "expected_content_hash")
+
+
+@pytest.mark.parametrize("field", _INJECTED_FIELDS)
+def test_every_injected_field_is_named_in_the_description(field):
+    tools = [n for n, t in SERVED.items() if field in _params(t)]
+    assert tools, f"{field} 를 받는 도구가 없다"
+    for name in tools:
+        assert field in SERVED[name]["description"], f"{name}: 설명이 {field} 를 말하지 않는다"
+
+
+def test_operation_id_writes_say_how_to_retry():
+    tools = [n for n, t in SERVED.items() if "operation_id" in _params(t)]
+    assert set(tools) >= {"vinc_ingest", "vinc_delete", "vinc_delete_edge", "vinc_merge_nodes",
+                          "vinc_merge_reject", "vinc_doc_put", "vinc_doc_delete",
+                          "vinc_doc_extract", "vinc_operation_status"}
+    for name in set(tools) - {"vinc_operation_status"}:
+        d = SERVED[name]["description"]
+        for word in ("vinc_operation_status", "replayed:true"):
+            assert word in d, f"{name}: 설명이 {word} 를 말하지 않는다"
+
+
+def test_conditional_ingest_names_its_conditions():
+    d = SERVED["vinc_ingest"]["description"]
+    for word in ("create_only", "expected_rev", "props_patch", "write_conflict", "current_rev"):
+        assert word in d, f"vinc_ingest: 설명이 {word} 를 말하지 않는다"
+
+
 def test_community_read_names_the_pack_version_not_a_release():
     """출하 번호로 적으면 다음 릴리스가 나가는 순간 거짓이 된다. 팩 판으로 적는다."""
     import re
