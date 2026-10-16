@@ -91,6 +91,12 @@ REFERENCE_ONLY = {
     "pricing__ko": "보드는 영어다(§8 D2)",
     "team__invite-accepted": "수락 직후 700ms 에 페이지가 새로 고쳐져 DOM 직렬화가 끝나기 전에 사라진다; PNG 참조만",
 }
+#: 매니페스트에 새로 들어왔지만 아직 보드를 그리지 않은 상태. 값이 None 인 상태는 부패가 아니라
+#: 선언된 결손(gap)으로 센다. 보드를 그리면 여기서 지운다.
+BOARD_PENDING = frozenset({
+    "community__home", "community__page-read", "community__talk", "community__lounge",
+    "community__agent-share", "community__agent-take",
+})
 MANIFEST_ROUTE_ALIAS = {"/this-page-is-not-here/": "/404"}
 
 
@@ -113,7 +119,7 @@ def _site_axis_from_manifest() -> tuple[dict, dict]:
         route = MANIFEST_ROUTE_ALIAS.get(row["route"], row["route"])
         if route.startswith("/docs/"):
             continue                          # 문서 보드는 12 · Docs Screens 의 DOCS_ROUTES 가 답한다
-        board = site_board_name(sid)
+        board = None if sid in BOARD_PENDING else site_board_name(sid)
         routes.setdefault(route, board)
         states.setdefault(route, {})[sid.split("__", 1)[1]] = board
     return routes, states

@@ -41,8 +41,8 @@ const T = [
   ["view__topic-rename-prompt", "last:.sheet[role=dialog]", ""],
   ["view__node-delete-confirm", ".sheet[role=alertdialog]", ""],
   ["view__tooltip-short", ".tip", ""], ["view__tooltip-long", ".tip", ""],
-  // 웹 전용 두 단계(목적지 고르기 · 커뮤니티 게시 폼). 아래 EXTRA 의 web 상태로 잰다.
-  ["topbar__share-destination", "last:.sheet[role=dialog]", EXPAND_SHEET], ["topbar__share-publish", "last:.sheet[role=dialog]", EXPAND_SHEET],
+  // 웹 전용 단계(목적지 고르기). 아래 EXTRA 의 web 상태로 잰다.
+  ["topbar__share-destination", "last:.sheet[role=dialog]", EXPAND_SHEET],
 ];
 // 캡처 목록에 없는 상태 셋 — 보드는 없고 Figma 컴포넌트만 있는 것들(노드 컨텍스트 메뉴 · 툴팁 둘).
 // 노드 메뉴는 WebGL 캔버스 우클릭 대신 앱 모듈을 그대로 불러 같은 항목으로 연다(카피는 COPY 에서, 정본).
@@ -64,7 +64,8 @@ const WEB_COOKIE = () => { Object.defineProperty(Document.prototype, "cookie", {
 const WEB_API = [["GET", /^\/api\/me(\?|$)/, { status: 200, json: { sub: "capture" } }], ["GET", /^\/api\/teams(\?|$)/, { status: 200, json: { teams: [] } }], ["*", /^\/api\/graph\//, "sidecar"]];
 const WEB_LS = { "vinc.sidecar.base": "", "vinc.sidecar.token": "", "vinc.skin": "desktop" };
 const sheetL = (p) => p.locator(".sheet[role=dialog]").last();
-const webShare = async (p, step) => {
+// 공유 시트의 행선지 고르기까지만 잰다. 커뮤니티 행선지는 앱 안 폼이 아니라 진행 표시 뒤 사이트 /community/share/ 로 넘어가므로 잴 오버레이가 없다.
+const webShare = async (p) => {
   await settled(p);
   await p.locator("#tb-tools").click(); await sheetL(p).waitFor({ state: "visible" });
   await sheetL(p).locator("button", { hasText: /^Share$/ }).first().click();
@@ -72,11 +73,9 @@ const webShare = async (p, step) => {
   await p.waitForSelector(".sheet[role=dialog] #sheet-save", { timeout: 30000 }); await sleep(800);
   await p.locator("#sheet-save").click();
   await p.waitForSelector(".dest-pick", { timeout: 15000 }); await sleep(300);
-  if (step === "publish") { await p.locator('.dest-pick [data-dest="community"]').click(); await p.waitForSelector("#pub-name", { timeout: 10000 }); await sleep(300); }
 };
 EXTRA.push(
-  { id: "topbar__share-destination", url: "#view", web: true, app: WEB_APP, ls: WEB_LS, api: WEB_API, before: (p) => webShare(p, "destination") },
-  { id: "topbar__share-publish", url: "#view", web: true, app: WEB_APP, ls: WEB_LS, api: WEB_API, before: (p) => webShare(p, "publish") },
+  { id: "topbar__share-destination", url: "#view", web: true, app: WEB_APP, ls: WEB_LS, api: WEB_API, before: webShare },
 );
 const SKIP_EXISTING = process.argv.includes("--skip-existing");
 const EXT = String.raw`window.__ext = (root) => {

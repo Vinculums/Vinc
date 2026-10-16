@@ -187,301 +187,69 @@
    "id": "community__default",
    "route": "/community/",
    "state": "default",
-   "trigger": "load, signed out",
+   "trigger": "directory: communities, signed out",
    "viewport": {
     "width": 1440,
     "height": 900
    },
    "scheme": "dark",
    "file": "community__default.png",
-   "sha1": "e5b17fe06afcd36624388a9dd36a478c0e433c0a",
-   "height": 1969,
-   "finalUrl": "/community/"
+   "sha1": "c0f889135da001d57d0aac0277e96baf69bc9a1c",
+   "height": 907,
+   "finalUrl": "/community/",
+   "base": "http://127.0.0.1:8791",
+   "siteRev": "472b03b51a6c7b37a66d4beb0d25a58c0d083367"
   },
   {
    "id": "community__signed-in",
    "route": "/community/",
    "state": "signed-in",
-   "trigger": "load with a session",
+   "trigger": "directory with a session: my communities",
    "viewport": {
     "width": 1440,
     "height": 900
    },
    "scheme": "dark",
    "file": "community__signed-in.png",
-   "sha1": "ed9ee0022443054c85a5eeffa3df8fd68fd134a2",
-   "height": 1969,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__loading",
-   "route": "/community/",
-   "state": "loading",
-   "trigger": "packs request pending",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__loading.png",
-   "sha1": "0569b5e64bc7962415028bcbf759585ec2069f97",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__empty",
-   "route": "/community/",
-   "state": "empty",
-   "trigger": "packs: []",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__empty.png",
-   "sha1": "283cafed8546bad3d6403ac727125466c485550f",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__error",
-   "route": "/community/",
-   "state": "error",
-   "trigger": "packs 500",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__error.png",
-   "sha1": "5cd89abd17ce2aeb14b5b7cce6611e24a2f25e67",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__no-match",
-   "route": "/community/",
-   "state": "no-match",
-   "trigger": "search 'zzzz' matches nothing",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__no-match.png",
-   "sha1": "3377158b0312a45093611e71a60476ece8b33f0e",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__modal-confirm-card",
-   "route": "/community/",
-   "state": "modal-confirm-card",
-   "trigger": "click a card: confirm modal (Close / Import)",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__modal-confirm-card.png",
-   "sha1": "141886f570fd40321ef511d32cc4146dd58d53c1",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__modal-confirm-button",
-   "route": "/community/",
-   "state": "modal-confirm-button",
-   "trigger": "click Import on a card: confirm modal (Cancel / Confirm)",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__modal-confirm-button.png",
-   "sha1": "230fd630c1441b8b697cec4e099d84878663bc96",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__modal-legend-focus",
-   "route": "/community/",
-   "state": "modal-legend-focus",
-   "trigger": "click a legend chip in the modal: one domain focused",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__modal-legend-focus.png",
-   "sha1": "b2644d1bf3b3df46613edcf666a5906c74a7698b",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__modal-signed-out",
-   "route": "/community/",
-   "state": "modal-signed-out",
-   "trigger": "Import while signed out: sign-in modal",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__modal-signed-out.png",
-   "sha1": "a3c87c9497fda5fd730fbcce72531129c705cfd9",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__modal-busy",
-   "route": "/community/",
-   "state": "modal-busy",
-   "trigger": "Confirm: import pending, four steps animate",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__modal-busy.png",
-   "sha1": "b9bd671efac10edd53d2a4529995d8f4a8f41d42",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__modal-result-ok",
-   "route": "/community/",
-   "state": "modal-result-ok",
-   "trigger": "import 200: Imported",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__modal-result-ok.png",
-   "sha1": "eb83cd7e5f0c42cfffb82cc3b3a63ffd9d126ff3",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__modal-result-matched",
-   "route": "/community/",
-   "state": "modal-result-matched",
-   "trigger": "import 200 with matched concepts and documents",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__modal-result-matched.png",
-   "sha1": "d3b6897d27f2b39b0cb80f76540e4343d8d90475",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__modal-result-partial",
-   "route": "/community/",
-   "state": "modal-result-partial",
-   "trigger": "import 200 partial:true",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__modal-result-partial.png",
-   "sha1": "83c2942cc8cfe373b9e6f2e16e84a336ee16d54e",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__modal-result-warnings",
-   "route": "/community/",
-   "state": "modal-result-warnings",
-   "trigger": "import 200 with warnings: Skipped box",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__modal-result-warnings.png",
-   "sha1": "60b71f5f4e3f6b51f4a9de5c682cefb00413e185",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__modal-result-429",
-   "route": "/community/",
-   "state": "modal-result-429",
-   "trigger": "import 429: rate-limited copy",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__modal-result-429.png",
-   "sha1": "5a0644a0537049d6f4c9313c58697187b0b18a87",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__modal-result-error",
-   "route": "/community/",
-   "state": "modal-result-error",
-   "trigger": "import 500: Import failed",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__modal-result-error.png",
-   "sha1": "62ab6ba2c88aa77ad33898469f7d75ba7fcd3993",
-   "height": 900,
-   "finalUrl": "/community/"
-  },
-  {
-   "id": "community__modal-result-401",
-   "route": "/community/",
-   "state": "modal-result-401",
-   "trigger": "import 401 mid-flight: sign-in modal",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__modal-result-401.png",
-   "sha1": "3d1e00fdfa43c9b867435aeaf161fb91fc105419",
-   "height": 900,
-   "finalUrl": "/community/"
+   "sha1": "5cb91581d1925ec6df07a03b215b07012c24333c",
+   "height": 1008,
+   "finalUrl": "/community/",
+   "base": "http://127.0.0.1:8791",
+   "siteRev": "472b03b51a6c7b37a66d4beb0d25a58c0d083367"
   },
   {
    "id": "community__mobile-390",
    "route": "/community/",
    "state": "mobile-390",
-   "trigger": "viewport 390",
+   "trigger": "viewport 390: wiki page, Read tab",
    "viewport": {
     "width": 390,
     "height": 844
    },
    "scheme": "dark",
    "file": "community__mobile-390.png",
-   "sha1": "d43eafb2994554da31ad41c61f5bd422758b8d7c",
-   "height": 4429,
-   "finalUrl": "/community/"
+   "sha1": "799e87d2a59b4da8dd27276b50f168e97d4e9f34",
+   "height": 1829,
+   "finalUrl": "/community/frontend/p/design-tokens",
+   "base": "http://127.0.0.1:8791",
+   "siteRev": "472b03b51a6c7b37a66d4beb0d25a58c0d083367"
   },
   {
    "id": "account__default",
    "route": "/account/",
    "state": "default",
-   "trigger": "load: free plan, trial open, two keys, one published pack, graph at the vinc level (top 6 + 3 more)",
+   "trigger": "load: free plan, trial open, two keys, one joined community with a shared agent and pack, graph at the vinc level (top 6 + 3 more)",
    "viewport": {
     "width": 1440,
     "height": 900
    },
    "scheme": "dark",
    "file": "account__default.png",
-   "sha1": "27619c7f8eae8110b85d75684fc04c9ce54fd9f0",
-   "height": 2380,
-   "finalUrl": "/account/"
+   "sha1": "cec0c79a2539e819e547f185c374b0595cd6d96a",
+   "height": 3245,
+   "finalUrl": "/account/",
+   "base": "http://127.0.0.1:8791",
+   "siteRev": "472b03b51a6c7b37a66d4beb0d25a58c0d083367"
   },
   {
    "id": "account__pro",
@@ -904,52 +672,35 @@
    "id": "account__community-list",
    "route": "/account/",
    "state": "community-list",
-   "trigger": "published packs: one live, one taken down",
+   "trigger": "Community: one joined community, one contribution, one shared agent and one shared pack",
    "viewport": {
     "width": 1440,
     "height": 900
    },
    "scheme": "dark",
    "file": "account__community-list.png",
-   "sha1": "a5052f890c795f9f2961046f35cc4143d5aa1c4e",
+   "sha1": "93b5275b9ac23c5a285294e2b237e616ff24a10f",
    "height": 900,
-   "finalUrl": "/account/"
+   "finalUrl": "/account/",
+   "base": "http://127.0.0.1:8791",
+   "siteRev": "472b03b51a6c7b37a66d4beb0d25a58c0d083367"
   },
   {
    "id": "account__community-empty",
    "route": "/account/",
    "state": "community-empty",
-   "trigger": "no published packs",
+   "trigger": "Community: nothing joined, contributed or shared",
    "viewport": {
     "width": 1440,
     "height": 900
    },
    "scheme": "dark",
    "file": "account__community-empty.png",
-   "sha1": "f99989ddd253a1702f0de8b892f2cdc653532140",
+   "sha1": "1936b2f38e2a62957fde48363dcf88395799c469",
    "height": 900,
-   "finalUrl": "/account/"
-  },
-  {
-   "id": "account__community-takedown-confirm",
-   "route": "/account/",
-   "state": "community-takedown-confirm",
-   "trigger": "Take down: native confirm (text in manifest)",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "account__community-takedown-confirm.png",
-   "sha1": "b7d0d052bda44fef8b83ed3a57f6bc42286ced21",
-   "height": 900,
-   "dialogs": [
-    {
-     "type": "confirm",
-     "message": "Take this pack down? It disappears from the gallery. Copies people already downloaded stay with them."
-    }
-   ],
-   "finalUrl": "/account/"
+   "finalUrl": "/account/",
+   "base": "http://127.0.0.1:8791",
+   "siteRev": "472b03b51a6c7b37a66d4beb0d25a58c0d083367"
   },
   {
    "id": "account__delete-ask",
@@ -1344,21 +1095,6 @@
    "scheme": "dark",
    "file": "team__drill-detail.png",
    "sha1": "d36474c258c57b602578950ea8686c08ee2ee9ef",
-   "height": 900,
-   "finalUrl": "/account/team/"
-  },
-  {
-   "id": "team__community-tab",
-   "route": "/account/team/",
-   "state": "community-tab",
-   "trigger": "Community tab: informational only",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "team__community-tab.png",
-   "sha1": "b72db55e4f87b5a65773f092983e9d600cfe6202",
    "height": 900,
    "finalUrl": "/account/team/"
   },
@@ -2426,9 +2162,111 @@
    "sha1": "e84052c1731ac2456e2252994ee49bc37d3e5ab7",
    "height": 3393,
    "finalUrl": "/docs/"
+  },
+  {
+   "id": "community__home",
+   "route": "/community/",
+   "state": "home",
+   "trigger": "community home: topic, Rules link, page index",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "community__home.png",
+   "sha1": "161f4d177a61b591f9f3b74b28bd6fcb20552f16",
+   "height": 1117,
+   "finalUrl": "/community/frontend",
+   "base": "http://127.0.0.1:8791",
+   "siteRev": "472b03b51a6c7b37a66d4beb0d25a58c0d083367"
+  },
+  {
+   "id": "community__page-read",
+   "route": "/community/",
+   "state": "page-read",
+   "trigger": "wiki page, Read tab: body, sources, revision line",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "community__page-read.png",
+   "sha1": "ce1d91d8c5a8eed9a01d9f7d3b1c72dad3bc229e",
+   "height": 1291,
+   "finalUrl": "/community/frontend/p/design-tokens",
+   "base": "http://127.0.0.1:8791",
+   "siteRev": "472b03b51a6c7b37a66d4beb0d25a58c0d083367"
+  },
+  {
+   "id": "community__talk",
+   "route": "/community/",
+   "state": "talk",
+   "trigger": "Talk tab: one thread with a reply",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "community__talk.png",
+   "sha1": "152077037f01b0b6b3b06d3aa83e193cf33a3f06",
+   "height": 2108,
+   "finalUrl": "/community/frontend/p/design-tokens/talk/019fa000-0000-7000-8000-000000000003",
+   "base": "http://127.0.0.1:8791",
+   "siteRev": "472b03b51a6c7b37a66d4beb0d25a58c0d083367"
+  },
+  {
+   "id": "community__lounge",
+   "route": "/community/",
+   "state": "lounge",
+   "trigger": "Lounge: post index",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "community__lounge.png",
+   "sha1": "b233f06274dc34ca63b80437da2894ebd71212c2",
+   "height": 900,
+   "finalUrl": "/community/frontend/lounge",
+   "base": "http://127.0.0.1:8791",
+   "siteRev": "472b03b51a6c7b37a66d4beb0d25a58c0d083367"
+  },
+  {
+   "id": "community__agent-share",
+   "route": "/community/",
+   "state": "agent-share",
+   "trigger": "agent share, pinned version 2: role, tools, license, hash",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "community__agent-share.png",
+   "sha1": "f68ce706990e860d254fbdbab81849d0daaba2f0",
+   "height": 994,
+   "finalUrl": "/community/a/019fb000-0000-7000-8000-000000000001/v/2",
+   "base": "http://127.0.0.1:8791",
+   "siteRev": "472b03b51a6c7b37a66d4beb0d25a58c0d083367"
+  },
+  {
+   "id": "community__agent-take",
+   "route": "/community/",
+   "state": "agent-take",
+   "trigger": "Take panel signed in: exports and Add to my Graph (personal)",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "community__agent-take.png",
+   "sha1": "f30ca5f0ee58320874d881fbb890df2576c438f5",
+   "height": 1314,
+   "finalUrl": "/community/a/019fb000-0000-7000-8000-000000000001/v/2/take",
+   "base": "http://127.0.0.1:8791",
+   "siteRev": "472b03b51a6c7b37a66d4beb0d25a58c0d083367"
   }
  ],
- "updatedAt": "2026-09-06T07:09:29.956Z",
+ "updatedAt": "2026-10-16T06:46:03.031Z",
  "siteRev": "6772164e1c212354943ba5ab4c8588030e320c92",
  "siteRevNote": "Vinc-homepage commit deployed at vincs.io when the captures ran"
 }
