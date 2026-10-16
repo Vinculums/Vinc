@@ -11,7 +11,7 @@ FILE = Path(__file__).with_name("openapi_v1.json")
 
 
 def generate() -> dict:
-    specs = {item["name"]: item for item in tools.specs(allow_target=False)}
+    specs = {item["name"]: item for item in tools.specs(hub=True)}
     paths: dict = {}
     for route in rest_routes.ROUTES:
         schema = specs[route.tool]["inputSchema"]

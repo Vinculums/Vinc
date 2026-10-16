@@ -1404,9 +1404,9 @@ TOOLS: list[dict] = [
                        "`warnings`. "
                        "THE RESPONSE ALSO TELLS YOU WHERE YOU ARE: `owner` is the graph you "
                        "are connected as, `scope` is 'personal' or 'team' (or 'unscoped' "
-                       "for a local single-user store), and `target` echoes local versus "
-                       "remote. Read them before your first write. Use vinc_whoami when you "
-                       "want that answer on its own, or the list of spaces you can reach; "
+                       "for a local single-user store). Read them before your first write. "
+                       "Use vinc_whoami when you want that answer on its own, or the list of "
+                       "spaces you can reach; "
                        "this tool carries it too so the first door already tells you. "
                        "On a hosted connector the space is your personal graph unless you "
                        "say otherwise: pass `space` to any tool to act in a team instead "
@@ -1885,15 +1885,6 @@ def _directory_annotations(ann: dict) -> dict:
         out["destructiveHint"] = False if out.get("readOnlyHint") else True
     return out
 
-# A1.9 A2 — 데스크탑 커넥터 1개 통합: 모든 도구가 target 으로 로컬/원격을 고른다.
-# 원본 스키마는 깨끗이 두고 specs() 에서 주입한다(9개 스키마 반복 편집 회피).
-_TARGET_PROP = {"target": {
-    "type": "string", "enum": ["local", "remote"], "default": "local",
-    "description": "Which store to act on: 'local' (this machine's Vinc, the default) or "
-                   "'remote' (your account graph on mcp.vincs.io). Remote needs a key "
-                   "(VINC_REMOTE_MCP_TOKEN); its owner is fixed by that key."}}
-
-
 #: 호스티드 프로파일의 스페이스 선택자. 주소 대신 인자로도 스페이스를 고른다.
 #:
 #: ⚠ **안 실으면 개인이다.** 그래서 팀에 쓰려던 호출이 오류 없이 개인 그래프에
@@ -1915,49 +1906,25 @@ _SPACE_PROP = {"space": {
                    "A View address passed as `url` names its own space (?space=...), so you "
                    "can leave this out when you have one."}}
 
-#: 데스크탑 프로파일에서 덧붙는 한 문장. 거기에는 `target` 이 있고, 스페이스는
-#: **계정 그래프에만 존재한다** — 로컬 스토어에는 고를 것이 없다. 그래서 두 인자의
-#: 조합 중 하나는 뜻이 없고, 뜻이 없는 조합은 조용히 무시하지 말고 거절해야 한다
-#: (무시하면 팀에 쓰려던 호출이 로컬에 쌓인다).
-_SPACE_LOCAL_NOTE = (" On this desktop connector a space exists only on your account "
-                     "graph, so `space` requires target:'remote'; sending it with "
-                     "target:'local' is an error rather than a silent local write.")
+def specs(*, hub: bool = False) -> list[dict]:
+    """도구 목록. 프로파일은 둘이다.
 
-
-def specs(*, allow_target: bool = True, local_only: bool = False) -> list[dict]:
-    """도구 목록. ``allow_target=False`` 면 `target` 프로퍼티를 주입하지 않는다.
-
-    ``local_only=True`` 는 **로컬 모드의 stdio**다(VIN-132): 앱 모드가 그래프를 정하므로
-    호출마다 고르는 `target` 도, 계정 그래프에만 있는 `space` 도 싣지 않는다. 호스트
-    전용 도구(search·fetch)도 없다. 근거:
-    [[vinc.plan.mcp-follows-the-app-mode-vin-132-2026-09-29]]
-
-    **왜 프로파일로 가르나**(위험 감사 5.5). `target` 은 데스크탑 커넥터 하나로
-    로컬·원격을 고르라고 만든 것이다(A1.9 A2). 그런데 주입이 무조건이라 **허브가
-    내보내는 목록에도** 실렸고, 허브에서 `target:"remote"` 가 오면 허브가 자기
-    자신 밖으로 아웃바운드를 시도한다 — 서버가 스스로에게 클라이언트가 되는,
-    의도한 적 없는 경로다. 허브(`vinc_mcp.http_server`)는 False 로 부른다."""
+    - **로컬**(기본, ``hub=False``): 로컬 모드의 stdio 와 CLI 의 로컬 경로다(VIN-132).
+      앱 모드가 그래프를 정하므로 `target` 도, 계정 그래프에만 있는 `space` 도 싣지
+      않는다. 호스트 전용 도구(search·fetch)도 없다. 근거:
+      [[vinc.plan.mcp-follows-the-app-mode-vin-132-2026-09-29]]
+    - **허브**(``hub=True``, `vinc_mcp.http_server`·REST): 허브가 곧 계정 그래프라
+      `target` 이 없고, 스페이스는 `space` 인자로 고른다."""
     out = []
-    for t in (TOOLS if (allow_target or local_only) else TOOLS + HOST_TOOLS):
+    for t in (TOOLS + HOST_TOOLS if hub else TOOLS):
         sch = t["inputSchema"]
         props = {**sch.get("properties", {})}
-        # `space` 는 **양쪽 프로파일에** 싣는다. 허브에서는 주소 대신 스페이스를 고르는
-        # 인자고, 데스크탑에서는 `target:"remote"` 로 간 호출이 허브에서 같은 판정을
-        # 받게 하는 통로다. 데스크탑에만 문장 하나가 붙는다 — 거기에는 `target` 이
-        # 있어서 뜻 없는 조합(local + space)이 생기기 때문이다.
-        if local_only:
-            pass                                # 원본 스키마 그대로: target·space 없음
-        elif allow_target:
-            props.update(_TARGET_PROP)
-            sp = dict(_SPACE_PROP["space"])
-            sp["description"] += _SPACE_LOCAL_NOTE
-            props["space"] = sp
-        else:
+        if hub:
             props.update(_SPACE_PROP)
             # 허브는 `debug` 를 실행 경로에서 벗긴다(call). 광고도 하지 않는다 —
             # 안 듣는 스위치를 목록에 두면 호스트가 켜 놓고 효과를 기다린다.
             props.pop("debug", None)
-        if t["name"] == community.READ_TOOL and not local_only:
+        if t["name"] == community.READ_TOOL and hub:
             props["space"] = {"type": "string", "pattern": "^community:" + community.OWNER_RE.pattern[10:] + "$",
                               "description": "Explicit public community address; joining is optional."}
             sch = {**sch, "required": list(sch.get("required", [])) + ["space"]}
@@ -2396,8 +2363,7 @@ def validate_args(name: str, args: dict | None) -> None:
 def call(name: str, args: dict | None, bridge: Bridge,
          forced_owner: str | None = None,
          entitlements: dict | None = None,
-         allow_target: bool = True,
-         local_only: bool = False, community_write=None, community_read=None) -> dict:
+         hub: bool = False, community_write=None, community_read=None) -> dict:
     tool = _BY_NAME.get(name)
     if tool is None:
         raise KeyError(f"unknown tool: {name}")
@@ -2408,54 +2374,37 @@ def call(name: str, args: dict | None, bridge: Bridge,
         raise PermissionError("community mutations must go through account revisions")
     args = dict(args or {})                     # 복사 — 호출자 dict 불변, target 제거
     target = (args.pop("target", None) or "local").lower()
-    # `space` 는 **라우팅 메타데이터**지 도구 인자가 아니다. 기본은 벗기는 것이다 —
-    # 사이드카 핸들러는 params 를 명시로 조립하니 흘러가도 무해하지만, `remote.call` 은
-    # `owner`·`target` 만 빼고 **전부 넘기므로** 벗기지 않으면 아무 데나 새어 나간다.
-    #
-    # 예외는 하나. **데스크탑에서 `target:"remote"` 로 가는 호출**은 그대로 실어
-    # 보낸다(스키마가 그 조합을 광고한다). 판정은 허브가 한다 — 키가 그 팀의 멤버임을
-    # 계정에 묻고 역할로 게이트한다. 여기서 판정을 흉내 내면 두 번째 표가 생긴다.
-    #
-    # 허브 자신(`allow_target=False`)은 이 분기에 안 들어온다: 거기서 `space` 는 HTTP
-    # 층이 이미 읽어 스페이스를 정한 뒤라, 남은 값은 벗기는 것이 맞다.
+    # `space` 는 **라우팅 메타데이터**지 도구 인자가 아니다. 허브에서는 HTTP 층이 이미
+    # 읽어 스페이스를 정한 뒤라 남은 값을 벗기고, 로컬에는 고를 스페이스가 없다.
     space = args.pop("space", None)
-    # 로컬 모드의 stdio(VIN-132): 앱 모드가 그래프를 정한다. 스키마에서 뺀 `target`·`space`
-    # 가 와도 조용히 무시하지 않는다 — 무시하면 계정에 쓰려던 것이 로컬에 쌓인다.
-    if local_only and target != "local":
-        raise ValueError(
-            "this computer is in local mode, so this connector reads only the local store. "
-            "To reach your account graph, switch the Vinc app to account mode and restart "
-            "this AI host.")
-    if local_only and space:
-        raise ValueError(
-            "local mode has no spaces: spaces live on your account graph. Switch the Vinc "
-            "app to account mode and restart this AI host to use them.")
-    if allow_target and space:
-        if target != "remote":
-            # 로컬 스토어에는 고를 스페이스가 없다. 조용히 무시하면 팀에 쓰려던 것이
-            # 로컬에 쌓인다 — 이 표면 전체가 막으려는 그 고장이다.
+    if not hub:
+        # 로컬 프로파일(VIN-132): 앱 모드가 그래프를 정한다. 스키마에서 뺀 `target`·
+        # `space` 가 와도 조용히 무시하지 않는다 — 무시하면 계정에 쓰려던 것이 로컬에
+        # 쌓인다.
+        if target != "local":
             raise ValueError(
-                "space applies to your account graph: pass target:'remote' with it "
-                "(target:'local' has no spaces to choose from).")
-        args["space"] = space
-    # 붙여넣은 주소가 계정 그래프의 스페이스를 말하는데(`?space=personal`·팀 id)
-    # 로컬 스토어로 가려는 호출이다. 조용히 로컬에서 찾으면 **같은 id 의 다른 노드**나
-    # "없음"을 답한다. 위의 space + local 조합과 같은 이유로 거절하고 길을 말한다.
-    # `target:"remote"` 면 url 을 그대로 실어 보내고 허브가 주소에서 스페이스를 읽는다.
-    # 근거: [[decision:a-node-address-names-its-space]]
-    if (allow_target or local_only) and not space and target != "remote" and args.get("url"):
-        from . import viewurl
-        at = viewurl.space_of(str(args["url"]))
-        if at and at != viewurl.LOCAL:
+                "this computer is in local mode, so this connector reads only the local store. "
+                "To reach your account graph, switch the Vinc app to account mode and restart "
+                "this AI host.")
+        if space:
             raise ValueError(
-                f"that address was copied from your account graph (space {at}), and "
-                + ("this computer is in local mode: switch the Vinc app to account mode "
-                   "and restart this AI host to read it where it lives." if local_only else
-                   "this desktop connector reads the local store unless told otherwise: "
-                   "pass target:'remote' to read it where it lives."))
+                "local mode has no spaces: spaces live on your account graph. Switch the Vinc "
+                "app to account mode and restart this AI host to use them.")
+        # 붙여넣은 주소가 계정 그래프의 스페이스를 말하는데(`?space=personal`·팀 id)
+        # 로컬 스토어로 가려는 호출이다. 조용히 로컬에서 찾으면 **같은 id 의 다른 노드**나
+        # "없음"을 답한다. 위의 space 와 같은 이유로 거절하고 길을 말한다.
+        # 근거: [[decision:a-node-address-names-its-space]]
+        if args.get("url"):
+            from . import viewurl
+            at = viewurl.space_of(str(args["url"]))
+            if at and at != viewurl.LOCAL:
+                raise ValueError(
+                    f"that address was copied from your account graph (space {at}), and "
+                    "this computer is in local mode: switch the Vinc app to account mode "
+                    "and restart this AI host to read it where it lives.")
     # 스키마에서 뺀 것만으로는 부족하다 — 클라이언트는 선언되지 않은 필드도 보낼 수
     # 있다. 허브 프로파일에서는 실행 경로에서도 막는다(위험 감사 5.5).
-    if not allow_target and target != "local":
+    elif target != "local":
         raise ValueError(
             "target is not available on this server: this endpoint IS the remote "
             "graph. Drop the target argument.")
@@ -2485,14 +2434,11 @@ def call(name: str, args: dict | None, bridge: Bridge,
     # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] S13.
     if forced_owner:
         args.pop("debug", None)
-    if name == community.READ_TOOL and not allow_target:
+    if name == community.READ_TOOL and hub:
         # 이 도구는 계정 콜백만 부른다. 명시 주소를 검증할 때까지 보존하고 원문 질의에 흘리지 않는다.
         args["space"] = space
     validate_args(name, args)
-    if target == "remote":
-        from . import remote                    # 지연 import — 로컬 경로엔 부담 0
-        out = remote.call(name, args)
-    elif name == community.WRITE_TOOL and community_write is not None:
+    if name == community.WRITE_TOOL and community_write is not None:
         out = community_write(args)
     elif name == community.READ_TOOL and community_read is not None:
         out = community_read(args)
@@ -2506,7 +2452,7 @@ def call(name: str, args: dict | None, bridge: Bridge,
             reason = ("cursor does not belong to this query" if "different" in err
                       else "malformed cursor")
             raise _invalid_cursor(name, reason)
-    return _stamp_identity(name, out, target, allow_target)
+    return _stamp_identity(name, out, hub)
 
 
 #: 정체(어느 그래프에 썼는가)를 싣는 도구 셋. **전부에 달지 않는다** — 조회 스무 개에
@@ -2549,22 +2495,15 @@ def role_allows(role: str, tool: str) -> bool:
 _IDENTITY_TOOLS = frozenset({"vinc_conventions", "vinc_ingest", "vinc_doc_put"})
 
 
-def _stamp_identity(name: str, out: dict, target: str, allow_target: bool = True) -> dict:
-    """응답에 `target` 을 얹는다. `owner` 는 **손대지 않는다** — 쓴 쪽(사이드카·허브)이
-    자기가 실제로 스탬핑한 값을 이미 싣고 오고, 여기서 클라이언트가 아는 값으로
-    덮으면 호스티드에서 거짓말이 된다(거기서는 키가 owner 를 고정하고 인자는 무시된다).
-    자기 실수에 동의해 주는 답이 제일 나쁘다.
+def _stamp_identity(name: str, out: dict, hub: bool = False) -> dict:
+    """로컬 프로파일의 정체 도구 응답에 `target: "local"` 을 얹는다. `owner` 는
+    **손대지 않는다** — 쓴 쪽(사이드카·허브)이 자기가 실제로 스탬핑한 값을 이미 싣고
+    온다.
 
-    ⚠ **자기가 곧 원격인 서버는 이 필드를 안 찍는다**(`allow_target=False` — 허브
-    프로파일). 라이브에서 물린 자리다(2026-08-17 배포 직후 실측): 허브도 이 깔때기를
-    도는데 거기서 target 은 언제나 "local" 이라, 원격으로 간 호출이 `"target":
-    "local"` 을 받아 왔다. 그 값을 "remote" 로 덮는 것은 **새 클라이언트**뿐이고,
-    데스크탑 업데이트는 사용자 클릭이라 구 클라이언트 창이 한동안 간다.
-
-    위 독스트링이 경계하던 바로 그 고장을 이 필드가 만들고 있었다 — 계정 그래프에
-    썼는지 확인하려고 target 을 본 세션이 반대 답을 듣고 로컬에 다시 쓸 수 있다.
-    고침의 방향은 더 정확한 값을 지어내는 것이 아니라 **아예 답하지 않는 것**이다:
-    호출자의 local/remote 개념은 호출자만 안다."""
-    if allow_target and name in _IDENTITY_TOOLS and isinstance(out, dict):
-        out["target"] = target
+    ⚠ **허브는 이 필드를 안 찍는다.** 허브도 이 깔때기를 도는데 거기서 target 은
+    언제나 "local" 이라, 계정 그래프에 쓴 호출이 `"target": "local"` 을 받아 왔다
+    (2026-08-17 배포 직후 실측). 고침의 방향은 더 정확한 값을 지어내는 것이 아니라
+    **아예 답하지 않는 것**이다."""
+    if not hub and name in _IDENTITY_TOOLS and isinstance(out, dict):
+        out["target"] = "local"
     return out

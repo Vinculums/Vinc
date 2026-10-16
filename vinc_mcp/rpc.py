@@ -38,8 +38,8 @@ LATEST_PROTOCOL_VERSION = PROTOCOL_VERSIONS[0]
 # 설명에 흡수했으므로 계층 자체를 걷어낸다. 정본은 tools.py 하나다.
 
 
-def _tool_specs(allow_target: bool = True, local_only: bool = False) -> list[dict]:
-    return tools.specs(allow_target=allow_target, local_only=local_only)
+def _tool_specs(hub: bool = False) -> list[dict]:
+    return tools.specs(hub=hub)
 
 
 def _where_am_i(forced_owner: str | None) -> str | None:
@@ -74,14 +74,12 @@ def _where_am_i(forced_owner: str | None) -> str | None:
 
 
 class Dispatcher:
-    def __init__(self, bridge: Bridge, *, allow_target: bool = True, local_only: bool = False):
+    def __init__(self, bridge: Bridge, *, hub: bool = False):
         self.bridge = bridge
         self.initialized = False
-        # `target`(로컬/원격 선택)은 **데스크탑 커넥터에만** 의미가 있다. 허브는
-        # 이미 그 '원격'이므로 자기 자신에게 다시 아웃바운드를 걸 이유가 없다
-        # (위험 감사 5.5). 기본 True 는 stdio·테스트의 현행 동작 유지.
-        self.allow_target = allow_target
-        self.local_only = local_only
+        # 프로파일은 둘이다: 로컬(stdio, 기본)과 허브. 허브는 이미 계정 그래프 자신이라
+        # `target` 을 받지 않고 `space` 로 스페이스를 고른다(tools.specs).
+        self.hub = hub
 
     # 반환 None = 응답 없음(notification 또는 id 없는 요청).
     # forced_owner: 원격 인증경로가 해석한 소유자(멀티테넌트 강제 스탬핑, B-B2).
@@ -165,7 +163,7 @@ class Dispatcher:
         if method == "ping":
             return {}
         if method == "tools/list":
-            return {"tools": _tool_specs(self.allow_target, self.local_only)}
+            return {"tools": _tool_specs(self.hub)}
         if method == "tools/call":
             name = params.get("name") or ""
             args = params.get("arguments") or {}
@@ -174,8 +172,7 @@ class Dispatcher:
             outcome = toolcall.execute(name, args, self.bridge,
                                        forced_owner=forced_owner, plan=plan, quota=quota,
                                        entitlements=entitlements,
-                                       allow_target=self.allow_target,
-                                       local_only=self.local_only, community_write=community_write, community_read=community_read)
+                                       hub=self.hub, community_write=community_write, community_read=community_read)
             if outcome.kind == "protocol_error":
                 raise outcome.error
             if outcome.kind != "ok":

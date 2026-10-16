@@ -77,7 +77,7 @@ class RangeRefusalTests(unittest.TestCase):
 
     def test_호스트_search_상한_50(self):
         b = _CapBridge()
-        res = _call(Dispatcher(b, allow_target=False), "search",
+        res = _call(Dispatcher(b, hub=True), "search",
                     {"query": "x", "limit": 51})["result"]
         self.assertEqual(res["_meta"]["vinc_invalid_argument"]["maximum"], 50)
         self.assertEqual(b.calls, [])
@@ -118,7 +118,7 @@ class QuotaOrderTests(unittest.TestCase):
             return None
 
         b = _CapBridge()
-        d = Dispatcher(b, allow_target=False)
+        d = Dispatcher(b, hub=True)
         _call(d, "vinc_search", {"query": "x", "limit": 101},
               forced_owner="user:u", quota=quota)
         _call(d, "vinc_search", {}, forced_owner="user:u", quota=quota)
@@ -229,9 +229,9 @@ class DebugGateTests(unittest.TestCase):
     def test_호스티드는_debug_를_벗긴다(self):
         b = _CapBridge()
         tools.call("vinc_domains", {"debug": True}, b, forced_owner="user:u",
-                   allow_target=False)
+                   hub=True)
         tools.call("vinc_recall", {"debug": True}, b, forced_owner="user:u",
-                   allow_target=False)
+                   hub=True)
         for _m, _p, params, _b in b.calls:
             self.assertIsNone(params.get("debug"))
 
@@ -241,8 +241,8 @@ class DebugGateTests(unittest.TestCase):
         self.assertEqual(b.calls[0][2]["debug"], "true")
 
     def test_허브_목록은_debug_를_광고하지_않는다(self):
-        hub = {t["name"]: t for t in tools.specs(allow_target=False)}
-        local = {t["name"]: t for t in tools.specs(allow_target=True)}
+        hub = {t["name"]: t for t in tools.specs(hub=True)}
+        local = {t["name"]: t for t in tools.specs()}
         for name in ("vinc_recall", "vinc_domains"):
             self.assertNotIn("debug", hub[name]["inputSchema"]["properties"])
             self.assertIn("debug", local[name]["inputSchema"]["properties"])

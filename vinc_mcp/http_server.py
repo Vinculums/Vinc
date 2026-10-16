@@ -296,7 +296,7 @@ class MCPHTTPApp:
         # 레플리카가 둘 이상이라는 것을 볼 것 — 프로세스 로컬이라 같은 세션 id 가
         # 레플리카를 넘나든다([[vinc.plan.mcp-second-pass]]).
         # 허브는 **이미 원격 그래프 자신**이라 `target` 을 내보내지도 받지도 않는다.
-        self._dispatcher = Dispatcher(self.bridge, allow_target=False)
+        self._dispatcher = Dispatcher(self.bridge, hub=True)
 
     def quota_snapshot(self, owner: str, plan: str | None) -> dict | None:
         """내부 사용량 읽기. 공개 whoami 연결·소비·잠금 생성은 하지 않는다.

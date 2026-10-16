@@ -49,11 +49,11 @@ def _cimd(url: str) -> dict:
 
 def test_hub_lists_search_and_fetch_desktop_does_not():
     desktop = {s["name"] for s in tools.specs()}
-    hub = {s["name"] for s in tools.specs(allow_target=False)}
+    hub = {s["name"] for s in tools.specs(hub=True)}
     assert "search" not in desktop and "fetch" not in desktop
     assert {"search", "fetch"} <= hub
-    search = next(s for s in tools.specs(allow_target=False) if s["name"] == "search")
-    fetch = next(s for s in tools.specs(allow_target=False) if s["name"] == "fetch")
+    search = next(s for s in tools.specs(hub=True) if s["name"] == "search")
+    fetch = next(s for s in tools.specs(hub=True) if s["name"] == "fetch")
     for spec in (search, fetch):
         ann = spec["annotations"]
         assert ann["readOnlyHint"] is True
@@ -73,7 +73,7 @@ def test_search_maps_rows_and_nodes_to_citable_results():
         "node_hits": [{"id": "concept:vinc-mcp", "title": "Vinc MCP server"}],
     }
     out = tools.call("search", {"query": "chatgpt"}, _StubBridge(payload),
-                     allow_target=False)
+                     hub=True)
     assert [r["id"] for r in out["results"]] == ["doc:vinc.plan.x", "concept:vinc-mcp"]
     assert out["results"][0]["title"] == "Listing plan"
     assert out["results"][1]["title"] == "Vinc MCP server"
@@ -86,7 +86,7 @@ def test_search_without_a_doc_title_falls_back_to_the_id_not_the_snippet():
                          "snippet": "--- doc_id: vinc.canon.mcp-contract layer: canon"}],
                "node_hits": []}
     out = tools.call("search", {"query": "MCP contract"}, _StubBridge(payload),
-                     allow_target=False)
+                     hub=True)
     assert out["results"][0]["title"] == "vinc.canon.mcp-contract"
 
 
@@ -96,7 +96,7 @@ def test_search_limit_counts_documents_and_nodes_together(limit):
     rows = [{"doc_id": f"d{i}", "doc_title": f"D{i}", "snippet": "s"} for i in range(20)]
     hits = [{"id": f"concept:c{i}", "title": f"C{i}"} for i in range(14)]
     b = _StubBridge({"rows": rows, "node_hits": hits})
-    out = tools.call("search", {"query": "x", "limit": limit}, b, allow_target=False)
+    out = tools.call("search", {"query": "x", "limit": limit}, b, hub=True)
     assert len(out["results"]) == limit
     assert b.calls[0][2]["top_k"] == limit
     if limit >= 2:
@@ -113,7 +113,7 @@ def test_search_never_emits_ids_fetch_cannot_open():
             {"id": "episode:e", "title": "E"},
             {"id": "concept:c", "title": "C"}]
     out = tools.call("search", {"query": "x"}, _StubBridge({"rows": [], "node_hits": hits}),
-                     allow_target=False)
+                     hub=True)
     ids = [r["id"] for r in out["results"]]
     assert ids == ["record:r", "decision:d", "episode:e", "concept:c"]
     for r in out["results"]:
@@ -132,11 +132,11 @@ def test_fetch_reads_a_document_and_a_node():
         return {}
 
     b = _StubBridge(_payload)
-    doc = tools.call("fetch", {"id": "doc:vinc.plan.x"}, b, allow_target=False)
+    doc = tools.call("fetch", {"id": "doc:vinc.plan.x"}, b, hub=True)
     assert doc["id"] == "doc:vinc.plan.x"
     assert doc["title"] == "Plan" and doc["text"] == "body"
     assert doc["url"] == "https://vincs.io/app/?space=personal#view/doc/vinc.plan.x"
-    node = tools.call("fetch", {"id": "concept:vinc-mcp"}, b, allow_target=False)
+    node = tools.call("fetch", {"id": "concept:vinc-mcp"}, b, hub=True)
     assert node["title"] == "Vinc MCP server"
     assert "A connector." in node["text"] and "quoted" in node["text"]
     assert node["url"] == "https://vincs.io/app/?space=personal#view/trace/concept:vinc-mcp"
@@ -159,7 +159,7 @@ def _fetch_missing(method, path, params, body):
 def test_fetch_of_a_missing_id_is_a_tool_error_not_an_empty_text(ident):
     """감사 §5 결함 10: 없는 id 에 text:"" 인 성공을 주었고, 딥리서치 호스트는
     그것을 인용 가능한 빈 문서로 읽었다. 이제 rpc 가 isError:true 로 내린다."""
-    d = rpc.Dispatcher(_StubBridge(_fetch_missing), allow_target=False)
+    d = rpc.Dispatcher(_StubBridge(_fetch_missing), hub=True)
     r = d.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                   "params": {"name": "fetch", "arguments": {"id": ident}}})
     assert "error" not in r, r                      # 프로토콜 오류가 아니라 도구 오류
@@ -175,13 +175,13 @@ def test_fetch_does_not_answer_a_node_id_with_another_node():
     b = _StubBridge({"status": "resolved", "one_liner": "Other.",
                      "node": {"id": "concept:other", "title": "Other"}})
     with pytest.raises(tools.NotFound):
-        tools.call("fetch", {"id": "concept:asked"}, b, allow_target=False)
+        tools.call("fetch", {"id": "concept:asked"}, b, hub=True)
 
 
 def test_search_and_fetch_carry_structured_content():
     d = rpc.Dispatcher(
         _StubBridge({"rows": [{"doc_id": "d1", "snippet": "T"}], "node_hits": []}),
-        allow_target=False)
+        hub=True)
     r = d.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                   "params": {"name": "search", "arguments": {"query": "x"}}})
     assert r["result"]["isError"] is False

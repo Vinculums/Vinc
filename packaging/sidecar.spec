@@ -106,7 +106,7 @@ a = Analysis(
         "vinc_mcp.bridge", "vinc_mcp.stdio", "vinc_mcp.http_server",
         "vinc_mcp.oauth", "vinc_mcp.install",
         # v0.1.9/v0.2.0 — 호출 시점 지연 임포트라 정적 분석이 놓칠 수 있다:
-        #   remote      : tools.call() 안에서 target=remote 일 때만
+        #   remote      : api/refs.py(인용 대조)를 거쳐서만
         #   entitlement : cli 의 serve-http 분기 안에서만
         # store/edverify 는 oauth·http_server 가 최상위로 끌지만 명시해 못 박는다.
         "vinc_mcp.remote", "vinc_mcp.entitlement",

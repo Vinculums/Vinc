@@ -429,15 +429,15 @@ def test_delete_tools_send_an_owner_scope():
 
 def test_hub_profile_hides_and_rejects_target():
     """허브는 이미 원격 그래프다 — target 을 내보내지도 받지도 않는다(감사 5.5)."""
-    hub = tools.specs(allow_target=False)
+    hub = tools.specs(hub=True)
     assert all("target" not in s["inputSchema"]["properties"] for s in hub)
-    # 데스크탑 stdio 는 그대로 갖는다(기본값 유지).
-    assert all("target" in s["inputSchema"]["properties"] for s in tools.specs())
+    # 로컬 stdio 도 갖지 않는다(VIN-132: 앱 모드가 그래프를 정한다).
+    assert all("target" not in s["inputSchema"]["properties"] for s in tools.specs())
 
     # 스키마에서 뺐어도 클라이언트는 보낼 수 있다 — 실행 경로에서도 막는다.
     try:
         tools.call("vinc_search", {"query": "x", "target": "remote"},
-                   _StubBridge(), allow_target=False)
+                   _StubBridge(), hub=True)
     except ValueError as exc:
         assert "target" in str(exc)
     else:

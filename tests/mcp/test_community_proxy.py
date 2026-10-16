@@ -189,18 +189,18 @@ def test_unnamespaced_store_cannot_accept_community_scope(app, monkeypatch):
                                   and t["name"] != "vinc_community_write"])
 def test_generic_mcp_write_cannot_bypass_revisions(app, name):
     with pytest.raises(PermissionError, match="account revisions"):
-        tools.call(name, {}, app.bridge, forced_owner=A, allow_target=False)
+        tools.call(name, {}, app.bridge, forced_owner=A, hub=True)
     assert app.bridge.calls == []
 
 
 def test_static_bridge_cannot_override_owner_to_write_a_community(app):
     with pytest.raises(PermissionError, match="account revisions"):
-        tools.call("vinc_ingest", {"owner": A, "nodes": []}, app.bridge, allow_target=False)
+        tools.call("vinc_ingest", {"owner": A, "nodes": []}, app.bridge, hub=True)
     assert app.bridge.calls == []
 
 
 def test_generic_mcp_reads_still_stamp_the_community_owner(app):
-    tools.call("vinc_search", {"query": "same", "owner": B}, app.bridge, forced_owner=A, allow_target=False)
+    tools.call("vinc_search", {"query": "same", "owner": B}, app.bridge, forced_owner=A, hub=True)
     assert app.bridge.calls[0][2]["owner"] == A
 
 

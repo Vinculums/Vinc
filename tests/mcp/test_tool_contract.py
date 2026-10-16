@@ -255,7 +255,7 @@ def test_writes_and_conventions_carry_the_target_back():
 
 
 def test_a_server_that_is_the_remote_does_not_answer_the_target_question():
-    """허브 프로파일(`allow_target=False`)에서는 `target` 을 **안 찍는다**.
+    """허브 프로파일(`hub=True`)에서는 `target` 을 **안 찍는다**.
 
     라이브에서 물린 자리다(2026-08-17 배포 직후): 허브도 같은 깔때기를 도는데 거기서
     target 은 언제나 "local" 이라, **원격으로 간 호출이 `"local"` 을 받아 왔다.**
@@ -271,7 +271,7 @@ def test_a_server_that_is_the_remote_does_not_answer_the_target_question():
         def request(self, *a, **k):
             return {"executed": True, "owner": "user:hosted"}
 
-    out = T.call("vinc_ingest", {"nodes": []}, _FakeBridge(), allow_target=False)
+    out = T.call("vinc_ingest", {"nodes": []}, _FakeBridge(), hub=True)
     assert "target" not in out, "자기가 곧 원격인 서버가 target 을 답했다"
     assert out["owner"] == "user:hosted"       # owner 는 그대로 실린다
     # 로컬 프로파일에서는 계속 찍는다(회귀 가드)
