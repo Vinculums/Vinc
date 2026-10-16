@@ -141,7 +141,9 @@ def check(node: dict, *, created: bool, stored_domain: str | None = None) -> lis
                        f"action/reason objects ({why})")
     mission = props.get("mission")
     one = node.get("one_liner")
-    if (isinstance(one, str) and isinstance(mission, str)
+    # 빈 one_liner 는 어긋남이 아니다. 읽는 쪽(api/roles)이 비면 mission 으로 물러서고,
+    # 동기화 번들은 빈 값도 키째 싣는다.
+    if (isinstance(one, str) and one.strip() and isinstance(mission, str)
             and " ".join(one.split()) != " ".join(mission.split())):
         out.append(f"role {nid}: one_liner and props.mission differ; hosts show the "
                    f"first when listing roles and the second when running one ({why})")
