@@ -120,7 +120,7 @@ def rehearse(original, root, source, *, topic="vinc", max_rows=128, progress=Non
                     report["dependency_detail"] = dict(Counter(d for d in map(blocker_detail, plan.blockers) if d))
                     return report
                 reached("seal")
-                # 단계마다 처리 시간 한도를 새로 준다. 근거: [[decision:topic-conversion-phase-deadlines-2026-10-16]]
+                # 단계마다 처리 시간 한도를 새로 준다. 전체 리허설은 워크플로 작업 한도가 묶는다.
                 scratch.deadline = time.monotonic() + PHASE_SECONDS
                 stamp = datetime.now(timezone.utc).isoformat()
                 header = manifest.prepare(scratch, plan, run=run, stamp=stamp,
