@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """스페이스는 주소로 정하고, 자격증명이 들어갈 수 있는지 증명한다.
 
-정본: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]].
+처음에는 주소만이 스페이스를 정했고, 그 결정은 스페이스를 인자로도 받는 지금 결정으로
+대체됐다. 주소 경로는 그대로 남아 이 파일이 지킨다. 정본: [[decision:the-space-is-an-argument-and-the-default-is-personal]].
 
 `/mcp` 는 개인 그래프, `/t/<uuid>/mcp` 는 그 팀 그래프. **URL 은 의도, 키는 권한.**
 팀 id 를 안다는 것만으로는 아무것도 못 하고, 키 하나가 모든 스페이스를 섬긴다.

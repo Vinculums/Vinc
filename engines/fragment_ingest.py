@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """MCP `vinc_ingest` graph fragment → 임베디드 스토어 MERGE (D11-R2 · 사용자 저작 타입).
 
-[[vinc.mcp#§5]] 의 `{theme_id, nodes, edges, owner}` fragment 를 받아 MERGE 한다.
+[[vinc.spec.mcp-server §5]] 의 `{theme_id, nodes, edges, owner}` fragment 를 받아 MERGE 한다.
 **타입은 전역 고정 enum 이 아니라 주제(theme)별 사용자 저작 어휘**로 해석한다
 (store/theme_store.py). 어휘 밖 타입은 *스킵되지 않고* `status:proposed,
 provenance:ingest_proposed` 로 어휘에 편입되며 응답 `proposed_types` 로 재가를
@@ -188,7 +188,7 @@ def _merge_edge(session, edge: dict, node_types: dict[str, Any],
 
 def merge_fragment(session, fragment: dict, *, theme_id: str | None = None,
                    themes=None) -> dict:
-    """[[vinc.mcp#§5]] fragment 를 MERGE. 어휘 밖 타입은 `themes` 어휘에 proposed 로
+    """[[vinc.spec.mcp-server §5]] fragment 를 MERGE. 어휘 밖 타입은 `themes` 어휘에 proposed 로
     편입(themes+theme_id 제공 시). 반환은 D11-R2 §3 계약 —
     `merged.nodes.{created,matched}` · `merged.edges.created` · `skipped` ·
     `proposed_types` · `warnings`."""

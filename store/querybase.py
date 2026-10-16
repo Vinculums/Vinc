@@ -206,7 +206,7 @@ def validity_state(valid_from: str | None, valid_until: str | None,
     그 해가 시작되는 순간부터 historical 이다(반개구간의 뜻 그대로).
 
     근거: [[decision:temporal-model-operational-policy-2026-09-09]] ·
-    [[record:current-only-retrieval-would-hide-seven-in-ten-records-2026-09-09]]"""
+    [[record:time-axis-census-2026-09-11]]"""
     now = now or _today()
     vf = (valid_from or "").strip()
     vu = (valid_until or "").strip()

@@ -7,7 +7,7 @@
 낡은 것이 아니라 코퍼스의 7할이 사라진다. 그래서 두 규칙은 함께 나가거나 둘 다 안 나간다.
 
 근거: [[decision:temporal-model-operational-policy-2026-09-09]] ·
-[[record:current-only-retrieval-would-hide-seven-in-ten-records-2026-09-09]]
+[[record:time-axis-census-2026-09-11]]
 """
 from __future__ import annotations
 

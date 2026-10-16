@@ -63,7 +63,7 @@ const seenDefault = new Set<string>();
  *  자기 주제 전량을 늘 갖고 있어 집합이 안정적이라 이쪽을 정본으로 뒀다.
  *  대가는 **같은 주제가 지도와 다른 색으로 보일 수 있다**는 것이고, 받아들이는
  *  근거는 이 색이 뜻을 나르지 않는다는 성질이다(꺼도 아무 정보가 사라지지 않는다:
- *  [[decision:topic-tint-ships-on]]). */
+ *  [[decision:topics-wear-the-homepage-jewels-2026-09-26]]). */
 let tints: Map<string, string> | null = null;
 const themeMode = (): ThemeMode =>
   document.documentElement.dataset.theme === "dark" ? "dark" : "light";

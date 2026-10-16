@@ -201,7 +201,7 @@ def _role_allows(role: str, op: str) -> bool:
 #: **URL 은 의도, 자격증명은 권한.** 주소가 어느 그래프인지 말하고, 키가 들어갈 수
 #: 있는지와 어떤 역할인지를 증명한다. 그래서 팀 id 를 안다는 것만으로는 아무것도
 #: 못 하고, 키 하나로 모든 스페이스를 쓸 수 있다(스페이스마다 키를 발급할 필요가 없다).
-#: 근거: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]
+#: 근거: [[decision:the-space-is-an-argument-and-the-default-is-personal]]
 #: 스페이스 id 의 모양. 주소(`/t/<uuid>/mcp`)와 인자(`space`) **양쪽이 같은 것을
 #: 쓴다** — 두 벌로 두면 한쪽만 조여도 다른 쪽이 뚫린 채 남는다.
 _UUID = (r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
@@ -1642,7 +1642,7 @@ class _Handler(BaseHTTPRequestHandler):
         호출부 셋이 각자 `self.app.resolve_auth(...)` 를 부르는데 owner 를 기억하는
         자리가 없어서, 성공한 요청을 계정에 귀속할 방법이 아무 데도 없었다. 쿼터
         카운터는 현재 창만 들고 아무도 읽지 않고, 로그는 실패만 남았다. 근거:
-        [[record:per-account-usage-exists-only-as-the-quota-counter-and-nothing-reads-it]]
+        [[record:log-analytics-attributes-hub-mcp-requests-by-owner-hash-since-2026-09-02]]
         """
         # ⚠ `presented_at` 을 `space` 에서 **유도하지 않는다.** 2026-09-22 에 이 자리에서
         # `f"/t/{space}/mcp" if space else "/mcp"` 로 유도했다가 같은 결함을 한 층 아래로

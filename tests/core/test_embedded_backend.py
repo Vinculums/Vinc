@@ -1130,7 +1130,7 @@ class EmbeddedE2E(unittest.TestCase):
     def test_bridge_owner_scoping_2owner_with_legacy(self):
         """F5 — alice/bob 브릿지 + 레거시 '' 브릿지: view_l0(alice) 의 Bridge 결합에
         bob 것은 없고, 자기 것 + 레거시(과도기 술어)는 있다. 실엔진 2-소유자 검증
-        ([[vinc-owner-isolation-sec1]] — 스텁 아님)."""
+        ([[decision:sec-1]] — 스텁 아님)."""
         from store.config import load_config
         from store.backend import open_store
         from api import fragment as frag

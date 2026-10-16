@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import unittest
 
+from api.refs import is_not_graph_id
 from scripts.gate_graph_refs import is_citation, main, normalize
 
 
@@ -25,6 +26,22 @@ class ShapeRules(unittest.TestCase):
         for ref in ("doc_id", "a", "1.0", "windows-embedded-test-fails",
                     "https://example.com"):
             self.assertFalse(is_citation(ref), ref)
+
+    def test_id_shaped_tokens_that_are_not_graph_ids_are_reported(self):
+        # 두 칸 구 문서 id 와 메모리 파일 이름. 예전에는 조용히 무시돼 아무것도 가리키지 않았다.
+        for ref in ("vinc.arch", "vinc.mcp", "vinc-owner-isolation-sec1",
+                    "windows-embedded-test-fails"):
+            self.assertTrue(is_not_graph_id(ref), ref)
+
+    def test_obvious_non_ids_stay_ignored(self):
+        # 제품 위키링크 문법·배열·자리표시자·한국어는 인용이 아니다. 잡으면 게이트가 꺼진다.
+        for ref in ("doc_id", "...", "1.0", "0.0, 1.0", "{ref}", "문서 id", "wikilinks",
+                    "concept:a|Moved item", '"concept:a", "concept:b"', "doc:x", "a|display"):
+            self.assertFalse(is_not_graph_id(ref), ref)
+            self.assertFalse(is_citation(ref), ref)
+
+    def test_anchor_is_stripped_like_a_section(self):
+        self.assertEqual(normalize("vinc.mcp#§5"), "vinc.mcp")
 
     def test_a_retired_id_still_looks_like_a_citation(self):
         # 구 id 는 모양이 멀쩡하다 — 그래서 매니페스트 대조가 필요하다. 모양만으로는
@@ -70,3 +87,65 @@ class ScanReach(unittest.TestCase):
                 fh.write('{"x": "[[vinc.spec.dataplane]]"}' + os.linesep)
             found = {rel for rel, _, _ in scan_repo(root)}
         self.assertEqual(found, set(names))
+
+
+class ValidityBlocks(unittest.TestCase):
+    """존재만 보던 게이트는 대체된 노드도 통과시켰다(2026-10-16 감사에서 9건·18자리).
+    매니페스트의 `validity` 맵으로 오프라인에서 막는다."""
+
+    def _run(self, manifest: dict, text: str):
+        import io as _io
+        import json
+        import os
+        import tempfile
+        from contextlib import redirect_stdout
+
+        from api import refs
+
+        with tempfile.TemporaryDirectory() as root:
+            with open(os.path.join(root, "a.py"), "w", encoding="utf-8") as fh:
+                fh.write(text + os.linesep)
+            path = os.path.join(root, "m.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(manifest, fh)
+            out = _io.StringIO()
+            with redirect_stdout(out):
+                rc = refs.offline_check(manifest=path, roots=[root, root])
+            product = refs.offline_result(manifest=path, roots=[root])
+        return rc, out.getvalue(), product
+
+    def test_superseded_node_is_blocked_with_its_successor(self):
+        rc, out, product = self._run(
+            {"docs": [], "nodes": ["decision:old"],
+             "validity": {"decision:old": {"validity": "historical", "superseded_by": "decision:new"}}},
+            "# [[" + "decision:old" + "]]")
+        self.assertEqual(rc, 1)
+        self.assertIn("decision:new", out)
+        self.assertEqual(product["status"], 1)
+        self.assertEqual(product["invalid"][0]["successor"], "decision:new")
+
+    def test_historical_node_without_successor_is_blocked(self):
+        rc, out, _ = self._run(
+            {"docs": [], "nodes": ["record:old"], "validity": {"record:old": {"validity": "historical"}}},
+            "# [[" + "record:old" + "]]")
+        self.assertEqual(rc, 1)
+        self.assertIn("historical", out)
+
+    def test_current_node_passes(self):
+        rc, _, product = self._run(
+            {"docs": [], "nodes": ["record:x"], "validity": {"record:x": {"validity": "current"}}},
+            "# [[" + "record:x" + "]]")
+        self.assertEqual((rc, product["status"]), (0, 0))
+
+    def test_a_manifest_without_validity_still_parses(self):
+        rc, _, _ = self._run({"docs": ["vinc.spec.dataplane"], "nodes": []}, "# [[" + "vinc.spec.dataplane" + "]]")
+        self.assertEqual(rc, 0)
+
+    def test_a_legacy_id_is_blocked_even_when_nothing_else_is_wrong(self):
+        rc, out, _ = self._run({"docs": [], "nodes": []}, "# [[" + "vinc.arch" + "]]")
+        self.assertEqual(rc, 1)
+        self.assertIn("not a graph id", out)
+
+    def test_worktrees_are_not_scanned(self):
+        from api.refs import SKIP_DIRS
+        self.assertIn("_wt", SKIP_DIRS)

@@ -2,7 +2,7 @@
 """DDL 배타 가드 — 인덱스·스키마 DDL 이 다른 커넥션의 읽기와 겹치지 않는다.
 
 허브가 3~10분마다 네이티브 힙 손상으로 죽던 것(2026-09-24~)의 방어선이다.
-근거: [[record:hub-segfault-loop-index-ddl-races-readers-2026-09-25]]
+근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
 """
 from __future__ import annotations
 

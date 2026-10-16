@@ -1,6 +1,6 @@
 //! Vinc 셸의 Rust 코어(Tauri) — 창·세션·수명주기 · 로컬 파일 다이얼로그 · **사이드카 spawn**.
 //!
-//! 아키텍처 계약([[vinc.arch]]): **제어 = Tauri IPC**(이 파일의 `#[command]`),
+//! 아키텍처 계약([[vinc.spec.architecture]]): **제어 = Tauri IPC**(이 파일의 `#[command]`),
 //! **데이터 = localhost HTTP**(프론트엔드가 사이드카를 직접 호출). 여기서는
 //! 데이터 왕복을 하지 않는다 — 사이드카를 띄우고 그 접속 정보(host/port/token)를
 //! 프론트엔드에 넘겨줄 뿐이다.

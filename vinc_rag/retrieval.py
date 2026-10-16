@@ -1238,7 +1238,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
         # 아래에서 안정 정렬 위의 오프셋으로 자른다.
         # 🔴 **SEC-1 청크 팔 owner 스코프.** owner 를 여기서 빼면 호스티드에서 `rows[]`
         # 가 남의 문서 본문 발췌를 싣는다 — node_hits 가 막혀 있어 눈에 잘 안 띄고
-        # 회귀 테스트도 노드 폴백만 봤다([[record:risk-search-chunk-unscoped]]).
+        # 회귀 테스트도 노드 폴백만 봤다([[record:the-search-chunk-arm-is-owner-scoped-and-fails-closed]]).
         chunk_filters = dict(filters or {})
         base["node_window"] = {"pagination": "first_page_only", "total_count_scope": "chunks",
                                "limit": max(1, int(top_k)),
