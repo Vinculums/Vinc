@@ -5,8 +5,28 @@
 ## Install
 
 ```bash
-pip install vinc-agent-framework
+pip install "vinc-agent-framework>=0.1.5"
 ```
+
+This README describes vinc-agent-framework 0.1.5, which requires vinc-client 0.1.9 or later.
+
+Set `VINC_API_KEY` to a member key. A `vinc_ro_` key is enough for the providers, the tools and `prefetch`. `record_episode` and `write_package` need a `vinc_sk_` key; with a read only key they raise `VincAuthError` (`read_only_key`) before anything is sent. Give the write key only to the step that writes.
+
+## Helpers
+
+The functions take an `AsyncVincClient` first and are awaited.
+
+| Helper | Parameters | What it does |
+|---|---|---|
+| `VincContextProvider` | `client`, `api_key`, `base_url`, `space`, `source_id`, `search_fallback=True`, `max_chars`, `max_excerpts=3`, `min_query_chars=3`, `expose_tools=False`, `prefetch_role`, `prefetch_max_chars`, `tool_calls_per_run=4` | context before each run, and optionally the read tools |
+| `PackageProvider` | `client`, `package_id`, `space` (required), `source_id`, `max_chars` | a handoff package before each run |
+| `create_vinc_tools` | `client`, `max_chars`, `cap` | the read only tools `vinc_brief` and `vinc_search` |
+| `prefetch` | `client`, `role_id`, `task`, `space`, `max_chars` | the role's required reading and task evidence |
+| `record_episode` | `client`, `title`, `summary`, `about`, `date`, `domain`, `tags`, `space`, `episode_id`, `create_only`, `operation_id` | one Episode, `vinc_sk_` key |
+| `write_package` | `client`, `question`, `conclusion`, `claims`, `produced_by`, `run_id`, `space` (required), `package_id`, `create_only`, `operation_id` | one handoff Record, `vinc_sk_` key |
+| `run_review` | `agent`, `messages`, `native_structured=True`, `options` | a `ReviewOutput` with one parse retry |
+| `VincOutputGateMiddleware` | `gate`, `evidence` | checks the final response of a non streaming run |
+| `VincPersonOnlyExecutor` | `gate`, `role_id`, `run_id`, `evidence`, `id` | an approval executor with a native `request_info` event |
 
 ## Add context to every run
 
@@ -56,6 +76,17 @@ await record_episode(
 ```
 
 
+
+## Retrying a write and previewing a delete
+
+Since 0.1.5 the write helpers take `create_only` and `operation_id` and pass them to vinc-client unchanged.
+
+- Before the approval boundary, store a fresh lowercase UUID next to the episode id in host state. Pass it as `operation_id` on the first attempt and on every retry of that write. An identical retry returns the stored result without applying again; changed arguments under the same id conflict.
+- After an uncertain response (`VincUnavailable`), read `client.operation_status(operation_id)` before deciding. `accepted` and `unknown` do not prove the write did not happen; `committed` means the graph transaction committed. Receipts are owner scoped and a read only key can read them.
+- `create_only=True` refuses an id that already exists, before any change. Retry such a write with the same `operation_id`, or the retry is refused because the first attempt created the node.
+- Nothing retries on its own.
+
+Delete and merge are not wrapped by this package. Call the client's `delete`, `delete_edge`, `merge_nodes` or `doc_delete` with `dry_run=True` first; it changes nothing and returns the preview with a `preview_digest`. Show the preview to a person, then apply with `preview_digest=` (and an `operation_id`); if the affected state changed in between, the apply is refused. Both calls need a `vinc_sk_` key. The vinc-client README has the details.
 
 ## Structured review with one parse retry
 
@@ -142,6 +173,14 @@ No prefetch cache or automatic reuse is added. To keep sequential reads, pass a
 reader created with `prefetch_concurrency=1`; the client default is 8. A new role must be chosen by the application/operator, never by
 text found in the graph.
 
+
+## Version notes
+
+| Version | Change |
+|---|---|
+| 0.1.5 | The write helpers take `create_only` and `operation_id`. Requires vinc-client 0.1.9; its version notes list `operation_status`, `edges`, `role_check` and the delete and merge previews. |
+| 0.1.4 | The read tools take `mode`, `as_of` and `known_at`. |
+| 0.1.3 | Vinc tool calls are capped at 4 per run, and both packages send the same tool schema. |
 
 ## License
 
