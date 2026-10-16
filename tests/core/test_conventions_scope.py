@@ -17,7 +17,10 @@ whoami 뒤에 두지 않고 **안 물어도 오는 자리**에 뒀다(`vinc_conv
   ② 팀 접두 사본이 MCP 층의 정본과 어긋나지 않는다. 어긋나면 **팀 그래프가
      personal 로 보고되고**, 그건 조용한 오답이라 최악이다.
   ③ 도구 설명이 그 필드들의 존재를 말한다. 값이 선에 있는데 계약이 침묵하면
-     아무도 안 읽는다(R2 가 한 층 아래에서 겪은 그것)."""
+     아무도 안 읽는다(R2 가 한 층 아래에서 겪은 그것).
+  ④ 관례와 whoami 가 같은 owner 에 같은 scope 를 말한다(VIN-589). 로컬 기본 소유자
+     `tenant:local` 을 관례는 personal, whoami 는 unscoped 로 답하던 것을 unscoped 로
+     맞췄다. personal 은 계정의 개인 그래프(`user:`)라서 로컬 스토어에 맞지 않는다."""
 from __future__ import annotations
 
 import sys
@@ -42,6 +45,43 @@ class OwnerScopeTests(unittest.TestCase):
         """빈 문자열을 돌려주면 호출부가 '모른다'와 '개인이다'를 못 가른다.
         로컬 단일 사용자 스토어는 소유자가 아예 없는 것이지 개인 그래프가 아니다."""
         self.assertNotEqual(sv._owner_scope(None), sv._owner_scope("user:x"))
+
+
+class ScopeAgreementTests(unittest.TestCase):
+    """사이드카(`vinc_conventions`)와 MCP(`vinc_whoami`)의 scope 판정은 두 벌이다. 사이드카는
+    MCP 층을 import 하지 않으므로 한 벌로 합치지 못하고, 대신 여기서 대조한다."""
+
+    SAMPLES = ("tenant:local", "user:local", "user:019fae48-cc62-7984-b2b0-1698f4de55d4",
+               "team:0198c0de-1111-7222-8333-444455556666",
+               "community:0191f0aa-3333-7abc-8def-0123456789ab", "", None)
+
+    def test_두_사본이_같은_값을_낸다(self):
+        from vinc_mcp.tools import owner_scope
+        for owner in self.SAMPLES:
+            self.assertEqual(sv._owner_scope(owner), owner_scope(owner), owner)
+
+    def test_로컬_기본_소유자는_unscoped(self):
+        """정해진 뜻: unscoped 는 계정 그래프가 아닌 로컬 단일 사용자 스토어다."""
+        from vinc_mcp.bridge import DEFAULT_OWNER
+        from vinc_mcp.tools import owner_scope
+        self.assertEqual(DEFAULT_OWNER, "tenant:local")
+        self.assertEqual(sv._owner_scope(DEFAULT_OWNER), "unscoped")
+        self.assertEqual(owner_scope(DEFAULT_OWNER), "unscoped")
+
+    def test_whoami_가_로컬_소유자를_unscoped_로_답한다(self):
+        """실경로: 로컬 stdio 의 브리지 기본 owner 로 whoami 를 부른다. 계정에 묻지 않는다."""
+        from vinc_mcp import tools
+
+        class _Bridge:
+            owner = "tenant:local"
+
+            def request(self, *a, **k):
+                raise AssertionError("whoami 는 그래프를 읽지 않는다")
+
+        out = tools.call("vinc_whoami", {}, _Bridge())
+        self.assertEqual((out["owner"], out["scope"], out["spaces_source"]),
+                         ("tenant:local", "unscoped", "not_applicable"))
+        self.assertNotIn("spaces", out)
 
 
 class TeamPrefixMirrorTests(unittest.TestCase):
@@ -164,6 +204,8 @@ class ConventionsResponseE2E(unittest.TestCase):
         self.assertEqual(self._scope("team:0198c0de-1111-7222-8333-444455556666")[1],
                          "team")
         self.assertEqual(self._scope(None), ("default", "unscoped", ""))
+        # 로컬 stdio 가 실제로 보내는 owner 다. whoami 와 같은 값이어야 한다(VIN-589).
+        self.assertEqual(self._scope("tenant:local"), ("default", "unscoped", "tenant:local"))
 
     def test_저장본_분기도_scope_를_싣는다(self):
         """반환 지점 둘 중 이쪽이 실제 소유자가 타는 길이다."""

@@ -216,17 +216,27 @@ def store_unavailable() -> dict:
 #: (`record:fact-ap1-role-table-mirror` 와 같은 처방).
 _TEAM_OWNER_PREFIX = "team:"
 _COMMUNITY_OWNER_PREFIX = "community:"
+_PERSONAL_OWNER_PREFIX = "user:"
 
 
 def _owner_scope(owner: str | None) -> str:
     """이 owner 가 어느 종류의 그래프인가 — `personal` · `team` · `community` · `unscoped`.
 
-    `unscoped` 는 owner 없이 도는 로컬 단일 사용자 스토어다. 빈 문자열로 두면
-    호출부가 "모른다"와 "개인이다"를 구분할 수 없어서 이름을 준다."""
+    `unscoped` 는 계정 그래프가 아닌 로컬 단일 사용자 스토어다: owner 가 없거나, 로컬
+    기본 소유자 `tenant:local` 처럼 계정 접두가 없는 owner. 빈 문자열로 두면 호출부가
+    "모른다"와 "개인이다"를 구분할 수 없어서 이름을 준다. `personal` 은 계정의 개인
+    그래프(`user:`)만이다.
+
+    ⚠ `vinc_mcp.tools.owner_scope`(vinc_whoami)와 같은 값을 내야 한다. 여기만
+    `tenant:local` 을 personal 로 답해서, 같은 로컬 연결에서 관례와 whoami 가 서로 다른
+    scope 를 말했다. 대조는 tests/core/test_conventions_scope.py 가 한다."""
     if not owner:
         return "unscoped"
-    return ("community" if owner.startswith(_COMMUNITY_OWNER_PREFIX)
-            else "team" if owner.startswith(_TEAM_OWNER_PREFIX) else "personal")
+    if owner.startswith(_COMMUNITY_OWNER_PREFIX):
+        return "community"
+    if owner.startswith(_TEAM_OWNER_PREFIX):
+        return "team"
+    return "personal" if owner.startswith(_PERSONAL_OWNER_PREFIX) else "unscoped"
 
 
 def connect_origins() -> list[str]:

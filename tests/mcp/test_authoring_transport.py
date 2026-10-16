@@ -74,3 +74,36 @@ def test_cli_ingest_comparison_flag_is_explicit(tmp_path):
         assert cli.main(["--target", "account", "ingest", "--file", str(path), "--review-claims"]) == 0
         assert cli.main(["--target", "account", "ingest", "--file", str(path)]) == 0
     assert seen[0]["review_claims"] is True and "review_claims" not in seen[1]
+
+
+def test_mcp_doc_put_content_time_is_three_valued():
+    """키 부재는 보존, 빈 문자열은 비움, 값은 설정. 사이드카가 셋을 가르려면 키가 있을 때만
+    실어야 한다(VIN-589)."""
+    seen = []
+
+    class Bridge:
+        owner = "user:author"
+
+        def request(self, method, path, body=None, **kwargs):
+            assert path == "/doc/put"
+            seen.append(body)
+            return {"executed": True, "doc_id": "probe"}
+
+    for args in ({}, {"content_time": ""}, {"content_time": "1905"}):
+        tools.call("vinc_doc_put", {"text": "body", "doc_id": "probe", **args}, Bridge())
+    assert "content_time" not in seen[0]
+    assert seen[1]["content_time"] == ""
+    assert seen[2]["content_time"] == "1905"
+    schema = next(s for s in tools.specs(hub=True) if s["name"] == "vinc_doc_put")
+    assert schema["inputSchema"]["properties"]["content_time"]["type"] == "string"
+
+
+def test_rest_document_put_forwards_content_time():
+    server = Server(role="editor")
+    try:
+        status, _, _ = server.request("PUT", "/v1/documents/probe",
+                                      body={"text": "body", "content_time": "1905-06"})
+        assert status in (200, 201)
+        assert server.bridge.calls[-1][3]["content_time"] == "1905-06"
+    finally:
+        server.close()
