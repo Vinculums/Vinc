@@ -166,9 +166,15 @@ _EDITOR_OPS = frozenset({
     "doc-put", "doc-put-file", "doc-extract", "doc-reembed",
     "topic-description",
     "evidence-backfill", "conventions-build",
-    "community-agent-import",
 })
 _PURE_POST_OPS = frozenset({"community-agent-export", "community-agent-import-preview", "community-pack-inspect"})
+#: 팀 그래프에서는 **어느 역할로도** 못 하는 op. 공유 Agent 가져오기·미리보기·내보내기와
+#: 팩 검사는 개인 그래프(`typ=proxy`) 전용이다(2026-10-16 소유자 판정: 팀 관리에서
+#: 커뮤니티 기능을 뺀다). 등급표 밖에 두는 것이 요점이다 — editor 에서 빼기만 하면
+#: 나머지 op 처럼 조회로 분류돼 열람자에게 열린다.
+#: 근거: [[vinc.audit.code-cleanup-community-alignment-2026-10-16]] §2.2
+_TEAM_REFUSED_OPS = frozenset(
+    op for op in _PROXY_OPS if op.startswith("community-agent-") or op == "community-pack-inspect")
 _ADMIN_OPS = frozenset({
     # 되돌릴 수 없는 것들 — 남의 작업을 지우거나 합치는 연산이다.
     "delete", "delete-edge", "merge-nodes", "doc-delete", "domain-rename",
@@ -187,7 +193,7 @@ _TEAM_PLAN = "team"
 
 def _role_allows(role: str, op: str) -> bool:
     """팀 역할이 이 op 를 할 수 있는가. 모르는 역할은 **거부**(fail-closed)."""
-    if role not in _TEAM_ROLES:
+    if role not in _TEAM_ROLES or op in _TEAM_REFUSED_OPS:
         return False
     if op in _ADMIN_OPS:
         return role == "admin"
@@ -233,7 +239,7 @@ def team_role_tiers() -> dict[str, frozenset[str]]:
 
     새 op 를 추가하면서 역할을 안 정하면 조회로 조용히 분류된다 — 쓰기 op 가 열람자에게
     열리는 사고가 그렇게 난다. 테스트가 그 침묵을 깨는 역할을 한다."""
-    viewer = frozenset(_PROXY_OPS) - _EDITOR_OPS - _ADMIN_OPS
+    viewer = frozenset(_PROXY_OPS) - _EDITOR_OPS - _ADMIN_OPS - _TEAM_REFUSED_OPS
     return {"viewer": viewer, "editor": _EDITOR_OPS, "admin": _ADMIN_OPS}
 
 
@@ -868,6 +874,9 @@ class MCPHTTPApp:
             graph_owner = payload.get("graph_owner")
             if not isinstance(graph_owner, str) or not _TEAM_OWNER_RE.fullmatch(graph_owner):
                 raise ValueError("team proxy request has an invalid graph owner")
+            if op in _TEAM_REFUSED_OPS:
+                # 역할과 무관한 거부다. 공유 Agent 는 개인 그래프로만 가져온다.
+                raise PermissionError(f"{op!r} is not available in a team graph")
             role = payload.get("role")
             if not isinstance(role, str) or not _role_allows(role, op):
                 # 역할이 모자란 것도, 역할이 이상한 것도 같은 거부다(fail-closed).

@@ -58,19 +58,54 @@ def snapshot():
 
 
 @pytest.mark.parametrize("role", ["viewer", "editor", "admin"])
-def test_signed_team_import_editor_only_and_owner_forced(native, role):
+@pytest.mark.parametrize("op", sorted(hs._TEAM_REFUSED_OPS))
+def test_team_graph_refuses_every_community_agent_op(native, role, op):
+    """팀 그래프에는 공유 Agent 를 가져올 수 없다. 역할이 무엇이든 허브가 막는다."""
     from api import query
     store, _, app = native
     args = {**snapshot(), "owner": OWNER, "mutation_id": str(uuid4())}
-    token, raw = signed(args, "community-agent-import", typ="proxy-team", graph_owner=TEAM, role=role)
-    if role == "viewer":
-        with pytest.raises(PermissionError):
-            app.graph_owner_request(token, args, raw_body=raw)
-    else:
-        result = app.graph_owner_request(token, args, raw_body=raw)
-        assert result["executed"] and result["status"] == "proposed", result
-        assert query.node(result["node_id"], owner=TEAM, store=store)["found"]
-        assert not query.node(result["node_id"], owner=OWNER, store=store)["found"]
+    token, raw = signed(args, op, typ="proxy-team", graph_owner=TEAM, role=role)
+    with pytest.raises(PermissionError, match="not available in a team graph"):
+        app.graph_owner_request(token, args, raw_body=raw)
+    assert not query.node("concept:agent-safe", owner=TEAM, store=store)["found"]
+
+
+def test_team_refused_ops_cover_every_community_agent_route():
+    assert hs._TEAM_REFUSED_OPS == {op for op in hs._PROXY_OPS
+        if op.startswith("community-agent-") or op == "community-pack-inspect"}
+    assert {"community-agent-import", "community-agent-import-preview",
+        "community-agent-export", "community-pack-inspect"} <= hs._TEAM_REFUSED_OPS
+    assert not hs._TEAM_REFUSED_OPS & (hs._EDITOR_OPS | hs._ADMIN_OPS)
+    for role in ("viewer", "editor", "admin"):
+        assert not any(hs._role_allows(role, op) for op in hs._TEAM_REFUSED_OPS)
+
+
+def test_personal_import_still_lands_in_the_signed_user_graph(native):
+    from api import query
+    store, _, app = native
+    args = {**snapshot(), "owner": TEAM, "mutation_id": str(uuid4())}
+    token, raw = signed(args, "community-agent-import")
+    result = app.graph_owner_request(token, args, raw_body=raw)
+    assert result["executed"] and result["status"] == "proposed", result
+    assert query.node(result["node_id"], owner=OWNER, store=store)["found"]
+    assert not query.node(result["node_id"], owner=TEAM, store=store)["found"]
+
+
+def test_team_destination_is_a_validation_error_not_a_crash(native):
+    from api import community_agents
+    store, core, _ = native
+    snap = snapshot()
+    with pytest.raises(ValueError, match="invalid_agent_destination"):
+        community_agents.preview(store, owner=TEAM, snapshot=snap["snapshot"], source=snap["source"])
+    # 사이드카 라우트도 500 이 아니라 같은 검증 오류를 400 으로 돌려준다.
+    body = {**snap, "owner": TEAM}
+    assert core.preview_community_agent(body) == (400, {"executed": False, "error": "invalid_agent_destination"})
+    code, res = core.import_community_agent({**body, "mutation_id": str(uuid4())})
+    assert (code, res["error"]) == (400, "invalid_agent_destination")
+    code, res = core.read_community_agent_result({"owner": TEAM, "mutation_id": str(uuid4())})
+    assert (code, res["error"]) == (400, "invalid_agent_destination")
+    from api import query
+    assert not query.node("concept:agent-safe", owner=TEAM, store=store)["found"]
 
 
 @pytest.mark.parametrize("scope", [None, "read", "FULL", True])
@@ -94,8 +129,12 @@ def test_signed_pure_post_reads_and_body_replay_boundary(native):
         app.graph_owner_request(token, args, raw_body=raw)
     preview_args = snapshot()
     token, raw = signed(preview_args, "community-agent-import-preview", typ="proxy-team", graph_owner=TEAM, role="viewer")
-    assert app.graph_owner_request(token, preview_args, raw_body=raw)["target"] is None
+    with pytest.raises(PermissionError, match="team graph"):
+        app.graph_owner_request(token, preview_args, raw_body=raw)
     assert not query.node("concept:agent-safe", owner=TEAM, store=store)["found"]
+    token, raw = signed(preview_args, "community-agent-import-preview")
+    assert app.graph_owner_request(token, preview_args, raw_body=raw)["target"] is None
+    assert not query.node("concept:agent-safe", owner=OWNER, store=store)["found"]
     token, raw = signed(preview_args, "community-agent-import-preview")
     with pytest.raises(PermissionError, match="body"):
         app.graph_owner_request(token, preview_args, raw_body=raw + b" ")
