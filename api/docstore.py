@@ -764,7 +764,7 @@ def _relink_mentions(store, doc_id: str, *, owner: str, origin: str) -> int:
     """이 doc 의 청크만 대상으로 :MENTIONS 재생성. 링크 규칙·우선순위는 E-G1
     링커(engines.mentions_link)를 그대로 재사용한다 — 규칙 분기 금지(SSoT 하나).
     구 링크는 put_doc 의 DETACH DELETE 가 이미 지웠다. 실패는 적재를 무효화하지
-    않는다(증강 — embed_pipeline 의 링크 단계와 동일한 태도)."""
+    않는다(증강)."""
     try:
         from engines.mentions_link import compute_links, merge_links, _fetch_concepts
         rows = store.run(

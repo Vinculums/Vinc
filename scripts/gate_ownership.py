@@ -196,7 +196,7 @@ def roster_drift(teams: dict, roles: dict, rules, exists) -> list[str]:
 #: 2026-09-30 에 걷었고(VIN-242: `procutil` 은 store 로 내리고, 재구축의 재큐는 인자로
 #: 주입), 그 뒤로 다시 생기지 않게 여기서 잠근다. 함수 안 지연 import 도 잡는다 —
 #: 순환을 피하려고 지연시킨 import 가 정확히 그 방향을 숨기던 것이었다.
-#: `engines` 는 아직 어느 쪽에도 없다: `embed_pipeline`·`recall_ingest` 가 `api` 를 써서
+#: `engines` 는 아직 어느 쪽에도 없다: `recall_ingest` 가 `api` 를 써서
 #: `vinc_rag` 로 옮길 수 없고(VIN-244 는 워커·인코더·리랭커만 옮겼다), 반대로
 #: `store/embedded_backend.py` 가 `engines.domain_hierarchy` 를 쓴다. 그것을 정리한 뒤
 #: `store/` 의 금지에 `engines` 를 더한다.

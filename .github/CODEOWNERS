@@ -32,7 +32,6 @@
 /agents/                                         @Vinculums/platform
 /infra/                                          @Vinculums/platform
 /packaging/                                      @Vinculums/platform
-/engines/embed_pipeline.py                       @Vinculums/rag
 /engines/recall_ingest.py                        @Vinculums/rag
 /packaging/bake_embed_model.py                   @Vinculums/rag
 /scripts/assert_m3_dim.py                        @Vinculums/rag
