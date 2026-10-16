@@ -70,7 +70,8 @@ class ConventionsContractTests(unittest.TestCase):
         **응답이 그것을 알려 준다는 말이 0건**이었다(2026-08-25 실측)."""
         from vinc_mcp.tools import TOOLS
         d = next(t for t in TOOLS if t["name"] == "vinc_conventions")["description"]
-        for field in ("`owner`", "`scope`", "`target`"):
+        # `target` 은 허브가 내지 않던 약속이라 설명에서 뺐다(VIN-550). owner·scope 만 남는다.
+        for field in ("`owner`", "`scope`"):
             self.assertIn(field, d, field)
 
     def test_설명이_팀에_닿는_주소를_말한다(self):
