@@ -468,7 +468,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     edgeParticles: `<circle cx="4" cy="12" r="2.6" ${AF}/><circle cx="10" cy="12" r="1.5" ${AF} opacity=".9"/><circle cx="14.5" cy="12" r="1.2" ${AF} opacity=".7"/><circle cx="18.5" cy="12" r="1" ${AF} opacity=".5"/><circle cx="24" cy="12" r="2.2" ${AF} opacity=".85"/>`,
     edgeNone: `<circle cx="5" cy="12" r="2.8" ${AF}/><circle cx="14" cy="6" r="2" ${AF}/><circle cx="14" cy="18" r="2" ${AF}/><circle cx="22" cy="12" r="2.4" ${AF}/>`,
     layoutHub: `<circle cx="14" cy="12" r="3" ${AF}/><path d="M14 12 14 4M14 12 21 7.5M14 12 21 16.5M14 12 14 20M14 12 7 16.5M14 12 7 7.5" ${AS} stroke-width=".9" opacity=".45"/><circle cx="14" cy="4" r="1.5" ${AF}/><circle cx="21" cy="7.5" r="1.5" ${AF}/><circle cx="21" cy="16.5" r="1.5" ${AF}/><circle cx="14" cy="20" r="1.5" ${AF}/><circle cx="7" cy="16.5" r="1.5" ${AF}/><circle cx="7" cy="7.5" r="1.5" ${AF}/>`,
-    layoutRank: `<circle cx="5" cy="8" r="1.8" ${AF}/><circle cx="5" cy="15" r="1.8" ${AF}/><circle cx="13" cy="6" r="1.8" ${AF}/><circle cx="13" cy="12" r="1.8" ${AF}/><circle cx="13" cy="18" r="1.8" ${AF}/><circle cx="22" cy="9" r="1.8" ${AF}/><circle cx="22" cy="16" r="1.8" ${AF}/><path d="M6.6 8 11.4 6M6.6 15 11.4 12M14.6 6 20.4 9M14.6 12 20.4 16" ${AS} stroke-width=".9" opacity=".5"/>`,
+    layoutTemporalRoots: `<circle cx="5" cy="8" r="1.8" ${AF}/><circle cx="5" cy="15" r="1.8" ${AF}/><circle cx="13" cy="6" r="1.8" ${AF}/><circle cx="13" cy="12" r="1.8" ${AF}/><circle cx="13" cy="18" r="1.8" ${AF}/><circle cx="22" cy="9" r="1.8" ${AF}/><circle cx="22" cy="16" r="1.8" ${AF}/><path d="M6.6 8 11.4 6M6.6 15 11.4 12M14.6 6 20.4 9M14.6 12 20.4 16" ${AS} stroke-width=".9" opacity=".5"/>`,
     /* 시간 기준 — 가르는 것은 **몰림 대 퍼짐**이다(도움말: "한 번에 적재한 것들이
        같은 자리에 몰려요" 대 "적은 날과 무관하게 퍼져요"). 여태 둘 다 "축 + 눈금 +
        점"이라 눈금 개수만 달랐고, 28×24 에서 그 차이는 안 보였다(발주자 지적
@@ -1413,7 +1413,7 @@ export async function renderView(el: HTMLElement, resume = false) {
         COPY.ui.panel.show, COPY.ui.panel.hide, "show", "hide", "showU", "hideU"),
       layout: tileRow(COPY.ui.panel.layout, layoutsFor(p.view).map((l) => ({
         val: l, label: COPY.ui.panel.layoutName[l],
-        art: l === "hub" ? ART.layoutHub : ART.layoutRank,
+        art: l === "hub" ? ART.layoutHub : ART.layoutTemporalRoots,
         help: l, active: p.layout === l,
       })), "layout"),
       spread: slider("pref-spread", COPY.ui.panel.spread, 0.6, 1.6, 0.02, p.spread,
