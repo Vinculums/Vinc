@@ -37,6 +37,7 @@ import sys
 import time
 
 from . import durable_generation as dg
+from .envflag import truthy
 
 #: 스냅샷 주기 기본값(초) = 최대 손실 창. env `VINC_STORE_SNAPSHOT_EVERY`.
 DEFAULT_SNAPSHOT_EVERY = 300.0
@@ -91,8 +92,7 @@ DURABLE_KEEP = 2
 
 def durable_ack_enabled(snapshot_path: str | None = None) -> bool:
     snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
-    flag = (os.environ.get(DURABLE_ENV) or "").strip().lower()
-    return bool(snapshot_path) and flag in ("1", "true", "on")
+    return bool(snapshot_path) and truthy(os.environ.get(DURABLE_ENV))
 
 
 def generations_root(snapshot_path: str) -> str:
@@ -241,7 +241,7 @@ def restore_state_is_fatal(state: str) -> str | None:
             or head.startswith("restored-generation:")):
         return None
     if head == "empty":
-        if (os.environ.get(BOOTSTRAP_ENV) or "").strip().lower() in ("1", "true", "on"):
+        if truthy(os.environ.get(BOOTSTRAP_ENV)):
             return None
         return (f"영속 스냅샷이 보이지 않는다({resolve_snapshot_path()}). 진짜 첫 기동이면 "
                 f"{BOOTSTRAP_ENV}=1 로 한 번만 켤 것. 그게 아니면 마운트·권한 문제이며, "

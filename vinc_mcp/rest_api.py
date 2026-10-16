@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import community, entitlement, rest_routes, toolcall, tools
 from store import request_timing
+from store.envflag import truthy_strict
 from .http_server import MAX_BODY, _UUID_RE
 
 #: v1 결과 상한. MCP 의 72,000자(rpc.MAX_RESULT_CHARS)는 모델 컨텍스트용 상한이라 스크립트가
@@ -49,11 +50,10 @@ def _coerce(value: str, spec: dict):
             raise ValueError("must be a finite number")
         return number
     if kind == "boolean":
-        if value.lower() in ("true", "1"):
-            return True
-        if value.lower() in ("false", "0"):
-            return False
-        raise ValueError("must be true or false")
+        parsed = truthy_strict(value)
+        if parsed is None:
+            raise ValueError("must be true or false")
+        return parsed
     if kind == "array":
         return value.split(",") if value else []
     return value

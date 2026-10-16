@@ -31,6 +31,7 @@ import weakref
 from contextlib import contextmanager, nullcontext
 
 from . import pkns, request_timing
+from .envflag import truthy
 from .open_diagnostics import emit_open_failure
 from .config import StoreConfig
 from .embedded_schema import (DOMAIN_HIERARCHY_VERSION,
@@ -324,8 +325,7 @@ def _driver_kwargs(cfg) -> dict:
         kwargs["buffer_pool_size"] = int(cfg.buffer_pool_mb) * 1024 * 1024
     if getattr(cfg, "checkpoint_threshold_mb", 0):
         kwargs["checkpoint_threshold"] = int(cfg.checkpoint_threshold_mb) * 1024 * 1024
-    wal_tolerant = os.environ.get("VINC_WAL_REPLAY_TOLERANT", "").strip().lower() \
-        in ("1", "true", "on")
+    wal_tolerant = truthy(os.environ.get("VINC_WAL_REPLAY_TOLERANT"))
     kwargs["throw_on_wal_replay_failure"] = not wal_tolerant
     return kwargs
 
@@ -716,7 +716,7 @@ def keep_vector_index() -> bool:
     (`api.docstore._apply_embeddings`), 벡터 질의가 배타 가드 안에서 돈다
     (:meth:`EmbeddedBackend.vector_search` · :meth:`EmbeddedBackend.node_vector_search`).
     하나만 바꾸면 세그폴트 자리로 돌아간다."""
-    if os.environ.get("VINC_KEEP_VECTOR_INDEX", "").strip().lower() not in ("1", "true", "on"):
+    if not truthy(os.environ.get("VINC_KEEP_VECTOR_INDEX")):
         return False
     try:
         ver = str(getattr(__import__("ladybug"), "__version__", "") or "")

@@ -246,7 +246,7 @@ class MirrorProvenance(unittest.TestCase):
                                                "depth": "1", "review_mirror": "false"})
         self.assertNotIn("mirror_review", disabled)
         with self.assertRaises(ValueError):
-            VincApp.read_graph(fake, {"owner": self.owner, "seed": mid, "review_mirror": "yes"})
+            VincApp.read_graph(fake, {"owner": self.owner, "seed": mid, "review_mirror": "maybe"})
 
 
 if __name__ == "__main__":
