@@ -58,7 +58,7 @@ def test_managed_and_local_resources_remain_guarded(props, reason):
 @pytest.mark.parametrize("props,expected", [
     ({"unknown_payload": "https://example.invalid/a.pdf"}, {}),
     ({"pr": "https://github.invalid/org/repo/pull/1", "path": "/api/sync.py",
-      "local": "D:\\notes\\a.md", "file_url": "file:notes"}, {}),
+      "local": "D:\\notes\\a.md", "notes_link": "file:notes"}, {}),
     ({"attachments": ["https://example.invalid/a.pdf"]}, {"external_attachments": 1}),
     ({"note": "<img src='https://example.invalid/a.png'>"}, {"external_attachments": 1}),
     ({"note": "![web](https://example.invalid/b.png)"}, {"external_attachments": 1}),
