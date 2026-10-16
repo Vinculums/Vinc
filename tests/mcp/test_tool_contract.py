@@ -404,3 +404,37 @@ def test_the_silent_failure_tools_tell_the_reader_to_speak():
     for name in ("vinc_search", "vinc_doc_get"):
         d = SERVED[name]["description"].lower()
         assert "say so" in d, f"{name}: 사용자에게 말하라는 지시가 없다"
+
+
+# ── 스키마가 받는 조건 필드를 설명이 이름으로 부르는가 (VIN-602) ──────────────
+# dry_run·preview_digest·expected_content_hash 는 TOOLS 정의 뒤에 스키마로 주입된다.
+# 그래서 스키마는 늘었는데 호스트가 읽는 설명은 되돌릴 수 없는 호출만 말하던 때가
+# 있었다(삭제·병합 셋과 vinc_doc_put). 스키마에서 파생해 검사하므로 새 도구가
+# 주입 목록에 들어오면 설명도 함께 고쳐야 한다.
+
+def test_preview_tools_describe_the_preview_then_apply_flow():
+    tools = [n for n, t in SERVED.items() if "preview_digest" in _params(t)]
+    assert set(tools) >= {"vinc_delete", "vinc_delete_edge", "vinc_merge_nodes", "vinc_doc_delete"}
+    for name in tools:
+        d = SERVED[name]["description"]
+        for word in ("dry_run", "preview_digest", "operation_id", "preview_conflict",
+                     "preview:{", "Applied, returns"):
+            assert word in d, f"{name}: 설명이 {word} 를 말하지 않는다"
+
+
+def test_conditional_document_write_names_its_conditions():
+    tools = [n for n, t in SERVED.items() if "expected_content_hash" in _params(t)]
+    assert "vinc_doc_put" in tools
+    for name in tools:
+        d = SERVED[name]["description"]
+        for word in ("expected_content_hash", "create_only", "operation_id",
+                     "write_conflict", "current_content_hash"):
+            assert word in d, f"{name}: 설명이 {word} 를 말하지 않는다"
+
+
+def test_community_read_names_the_pack_version_not_a_release():
+    """출하 번호로 적으면 다음 릴리스가 나가는 순간 거짓이 된다. 팩 판으로 적는다."""
+    import re
+    d = SERVED["vinc_community_read"]["description"]
+    assert "pack_version 2" in d
+    assert not re.search(r"\b0\.\d+\.\d+\b", d), "설명이 데스크톱 출하 번호를 단정한다"
