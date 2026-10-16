@@ -174,6 +174,16 @@ def row_digest(value):
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
 
 
+def concept_endpoint(matches, source):
+    """병합 기각은 개념 사이의 기록이다. 이 소유자의 개념 행이 하나뿐이면 그것이 끝점이다.
+
+    같은 id 가 기록·사건 표에도 있으면(타입을 바꿔 다시 쓴 흔적) 그 행은 끝점이 아니다.
+    근거: [[decision:topic-transfer-rejection-endpoint-is-the-owners-concept-2026-10-16]]
+    """
+    own = [match for match in matches if match[0] == "Concept" and match[1].get("owner_id") == source]
+    return own if len(own) == 1 else matches
+
+
 def endpoint_ambiguity(matches, source=None):
     if len(matches) != 1:
         # 리허설이 원인을 세도록 겹친 행의 표와 소유 관계만 붙인다(id 는 붙이지 않는다).
@@ -204,6 +214,7 @@ def rejection_endpoint_state(snapshot, source, logical, ref):
             if row[node_table_specs()[label]["pk"]] in (ref, source + pkns.SEP + ref)]
     matches = ([(label, row) for label, row, composed in rows if composed]
                or [(label, row) for label, row, _ in rows if row.get("owner_id") == source])
+    matches = concept_endpoint(matches, source)
     if not matches:
         return "missing"
     if (len(matches) != 1 or matches[0][0] != "Concept"

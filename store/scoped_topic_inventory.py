@@ -15,7 +15,7 @@ from .embedded_schema import SCHEMA_VERSION, meta_table_specs, node_table_specs,
 from .topic_transfer import (
     MAX_INVENTORY_BYTES, MAX_INVENTORY_ROWS, TransferRefused, _KINDS,
     _canonical, check_inventory_budget, referenced_ids, verify_store_shape, mapped_rejection_key,
-    _HISTORY, rejection_disposition, endpoint_ambiguity, tombstone_blocker,
+    _HISTORY, rejection_disposition, endpoint_ambiguity, tombstone_blocker, concept_endpoint,
 )
 from .topic_manifest import ManifestLimit
 
@@ -303,6 +303,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
                     if (row := exact(label, source + pkns.SEP + ref)) is not None]
                    or [(label, row) for label in _KINDS + ("Bridge",)
                        if (row := exact(label, ref)) is not None and row["owner_id"] == source])
+        matches = concept_endpoint(matches, source)
         if not matches:
             state = "missing"
         elif len(matches) != 1 or matches[0][0] != "Concept" or matches[0][1]["owner_id"] != source:

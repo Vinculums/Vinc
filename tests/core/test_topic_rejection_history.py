@@ -277,12 +277,26 @@ def test_composed_endpoint_wins_over_a_legacy_row_of_the_same_owner():
 
 def test_multiple_endpoint_rows_report_their_tables_without_ids():
     data = seed()
-    row = copy.deepcopy(data["nodes"]["Decision"][0])
-    row["decision_id"] = SOURCE + "\x1fconcept:a"
-    row["domain"] = "elsewhere"
-    data["nodes"]["Decision"].append(row)
-    rejection(data, "concept:a", "concept:b")
+    for table, pk in (("Decision", "decision_id"), ("Record", "record_id")):
+        row = copy.deepcopy(data["nodes"][table][0])
+        row[pk] = SOURCE + "\x1fconcept:missing"
+        row["domain"] = "elsewhere"
+        data["nodes"][table].append(row)
+    rejection(data, "concept:missing", "concept:b")
     codes = [b.rsplit(":", 1)[0] for b in plan(data).blockers
              if b.startswith("merge_rejection_topic_membership_unknown:")]
     assert codes == ["merge_rejection_topic_membership_unknown:"
-                     "ambiguous_multiple(Concept/own,Decision/own)+selected"]
+                     "ambiguous_multiple(Decision/own,Record/own)+selected"]
+
+
+# 근거: [[decision:topic-transfer-rejection-endpoint-is-the-owners-concept-2026-10-16]]
+def test_owner_concept_is_the_endpoint_when_the_same_id_sits_in_other_tables():
+    data = seed()
+    for table, pk in (("Episode", "episode_id"), ("Record", "record_id")):
+        row = copy.deepcopy(data["nodes"][table][0])
+        row[pk] = SOURCE + "\x1fconcept:a"
+        data["nodes"][table].append(row)
+    rejection(data, "concept:a", "concept:b")
+    chosen = plan(data)
+    assert not any(b.startswith("merge_rejection") for b in chosen.blockers), chosen.blockers
+    assert any(label == "_MergeRejection" for label, _ in chosen.selected)
