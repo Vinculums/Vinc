@@ -10,6 +10,7 @@
 3. **팀 소거는 별도 문**이다 — 개인 purge 경로로는 팀 소유자를 만들 수 없다.
    이것이 "멤버가 계정을 지워도 팀 그래프는 안전하다"의 근거다.
 4. 역할 표는 프록시 op 전량을 덮는다(새 op 를 추가하면서 역할을 안 정하면 CI 가 깨진다).
+5. op 이름 전량은 커밋된 스냅샷(`hub-proxy-ops.json`)과 같다 — 계정 프록시가 그 사본과 대조한다.
 """
 from __future__ import annotations
 
@@ -160,6 +161,33 @@ def test_write_ops_are_never_viewer_tier():
     writes = {op for op, (method, _p) in hs._PROXY_OPS.items() if method == "POST"} - hs._PURE_POST_OPS
     leaked = writes & tiers["viewer"]
     assert not leaked, f"열람자 등급에 쓰기 op 가 있다: {sorted(leaked)}"
+
+
+_PROXY_OPS_SNAPSHOT = Path(__file__).with_name("hub-proxy-ops.json")
+
+
+def test_proxy_op_names_match_the_committed_snapshot():
+    """`_PROXY_OPS` 이름 전량이 커밋된 스냅샷과 같다(VIN-547).
+
+    계정은 이 스냅샷 사본(`Vinc-homepage account/test/hub-proxy-ops.json`)을 자기
+    `GET_OPS`/`POST_OPS`·Take 경로와 대조한다. 그래서 허브에서 op 를 더하거나 빼면
+    여기가 먼저 깨지고, 스냅샷 diff 가 계정 쪽에 옮길 것을 보여 준다.
+    다시 쓰기: `VINC_UPDATE_HUB_PROXY_OPS=1` 로 이 테스트를 돌린다."""
+    import json
+    import os
+
+    ops = sorted(hs._PROXY_OPS)
+    snap = json.loads(_PROXY_OPS_SNAPSHOT.read_text(encoding="utf-8"))
+    if os.environ.get("VINC_UPDATE_HUB_PROXY_OPS") == "1":
+        snap["ops"] = ops
+        _PROXY_OPS_SNAPSHOT.write_text(
+            json.dumps(snap, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+    added = sorted(set(ops) - set(snap["ops"]))
+    removed = sorted(set(snap["ops"]) - set(ops))
+    assert not added and not removed, (
+        f"_PROXY_OPS 가 스냅샷과 다르다. 허브에만: {added} · 스냅샷에만: {removed}. "
+        "VINC_UPDATE_HUB_PROXY_OPS=1 로 다시 쓰고 계정 사본도 같은 커밋 묶음으로 갱신할 것")
+    assert snap["ops"] == sorted(snap["ops"]), "스냅샷 ops 는 정렬돼 있어야 한다"
 
 
 # ── 5. 팀 소거는 별도 문 ─────────────────────────────────────────────────────
