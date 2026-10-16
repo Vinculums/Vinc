@@ -6,6 +6,10 @@ on:
         description: Exact deployed image SHA
         required: true
         type: string
+      validation_sha:
+        description: SHA256 of rag_eval/fixtures/current_relevance_validation.json (blank skips independent validation)
+        required: false
+        type: string
 permissions:
   id-token: write
   contents: read
@@ -21,6 +25,7 @@ jobs:
       ACCOUNT: vincstorage01
       SHARE: hub-data
       INPUTS_SHA: 4ae9c0381a72053dda9a619184654de0f16a41db16ef416583288721ef1cee42
+      VALIDATION_SHA: ${{ inputs.validation_sha }}
     steps:
       - name: Require an authorized operator
         if: github.event_name == 'workflow_dispatch' && !contains(format(',{0},', vars.PROD_OPERATORS), format(',{0},', github.triggering_actor))
@@ -41,6 +46,9 @@ jobs:
           set -euo pipefail
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           echo "$INPUTS_SHA  rag_eval/fixtures/current_relevance_acceptance.json" | sha256sum --check
+          if [ -n "$VALIDATION_SHA" ]; then
+            echo "$VALIDATION_SHA  rag_eval/fixtures/current_relevance_validation.json" | sha256sum --check
+          fi
           az containerapp show -n vinc-hub -g vincsRG > "$RUNNER_TEMP/hub.json"
           python - "$RUNNER_TEMP/hub.json" <<'PY'
           import json, os, re
@@ -87,7 +95,11 @@ jobs:
           os.umask(0o077)
           open('work/owner', 'w').write(identity['owner'])
           PY
-          docker run --rm --network none --entrypoint python \
+          extra=()
+          if [ -n "$VALIDATION_SHA" ]; then
+            extra=(-v "$PWD/rag_eval/fixtures/current_relevance_validation.json:/validation.json:ro")
+          fi
+          docker run --rm --network none --entrypoint python "${extra[@]}" \
             -e VINC_PK_NAMESPACED -e HF_HUB_OFFLINE=1 -e VINC_EVAL_THREADS=1 \
             -e VINC_MEASURE_IMAGE_SHA="$EXPECTED_SHA" \
             -v "$PWD/work:/probe-work" \
@@ -95,7 +107,7 @@ jobs:
             -v "$PWD/rag_eval/fixtures/current_relevance_acceptance.json:/inputs.json:ro" \
             "vincacr.azurecr.io/vinc-hub:$EXPECTED_SHA" /probe.py \
             --store /probe-work/db --inputs /inputs.json --inputs-sha "$INPUTS_SHA" \
-            --owner "$(cat work/owner)" --out /probe-work/current-relevance-result.json
+            --owner "$(cat work/owner)" --out /probe-work/current-relevance-result.json             ${VALIDATION_SHA:+--validation-inputs /validation.json --validation-sha "$VALIDATION_SHA"}
       - name: Remove only this run's share snapshot
         if: always() && steps.snapshot.outputs.timestamp != ''
         env:
