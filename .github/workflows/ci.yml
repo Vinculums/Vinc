@@ -162,6 +162,15 @@ jobs:
           PY=$(command -v python3 || command -v python)
           "$PY" -X utf8 scripts/gate_ownership.py
 
+      # 허브의 역할 출력 게이트(vinc_mcp/role_output_gate.py)는 SDK 원본
+      # (vinc_client/output_gate.py)에서 생성한 사본이다. 원본만 고치고 재생성을
+      # 잊은 PR 을 여기서 막는다. 표준 라이브러리만 쓴다.
+      - name: Role output gate copy is fresh
+        run: |
+          set -euo pipefail
+          PY=$(command -v python3 || command -v python)
+          "$PY" -X utf8 scripts/sync_output_gate.py --check
+
       # 죽은 코드 게이트(VIN-546). 파이썬은 vulture 신뢰도 80 이상, 허용 목록은
       # scripts/vulture-allow.txt(이름으로 불리는 훅만). 앱(TS)의 절반은 여기서 돌지
       # 않는다: app/tsconfig.json 의 noUnusedLocals·noUnusedParameters 를 `app` 잡의

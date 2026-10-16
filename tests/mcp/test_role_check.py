@@ -2,8 +2,8 @@
 """vinc_role_check — 패키지와 같은 결정론 출력 게이트를 허브에서 돌린다(VIN-386).
 
 허브 사본과 패키지 원본이 갈리면 같은 출력이 경로에 따라 다른 판정을 받는다.
-그래서 사본은 바이트까지 같아야 하고, 사람이 판정해 둔 사례가 두 경로에서 같은
-답을 내야 한다."""
+그래서 사본은 원본에서 생성되고(scripts/sync_output_gate.py) 생성 결과가 최신이어야
+하며, 사람이 판정해 둔 사례가 두 경로에서 같은 답을 내야 한다."""
 from __future__ import annotations
 
 import json
@@ -25,12 +25,12 @@ PROFILES = {p["id"]: p for p in json.loads(
     (FIXTURES / "proposed-role-checks.json").read_text(encoding="utf-8"))["profiles"]}
 
 
-def test_hub_copy_is_byte_identical_to_the_package_gate():
-    hub = (ROOT / "vinc_mcp" / "role_output_gate.py").read_bytes()
-    package = (ROOT / "integrations" / "client" / "python" / "src" / "vinc_client"
-               / "output_gate.py").read_bytes()
-    assert hub == package, ("vinc_mcp/role_output_gate.py 가 vinc_client/output_gate.py 와 "
-                            "갈렸다. 패키지 쪽을 고쳤으면 같은 커밋에서 그대로 복사할 것")
+def test_hub_copy_is_generated_from_the_package_gate():
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import sync_output_gate
+    assert sync_output_gate.TARGET.read_bytes() == sync_output_gate.expected(), (
+        "vinc_mcp/role_output_gate.py 가 vinc_client/output_gate.py 에서 생성된 결과와 "
+        "다르다. 원본만 고치고 python -X utf8 scripts/sync_output_gate.py 로 다시 생성할 것")
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c["id"])
