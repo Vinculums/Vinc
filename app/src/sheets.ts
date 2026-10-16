@@ -7,10 +7,8 @@ import { keptDocs, standaloneDocs } from "./share-docs";
 import { shareMerges } from "./share-merges";
 import { COPY } from "./copy";
 import { docTitle } from "./doc-title";
-import { openSheet, sheetActions, sheetProgress } from "./components";
-
-const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+import { dayOf } from "./view-prefs";
+import { esc, openSheet, sheetActions, sheetProgress } from "./components";
 
 /**
  * 팩 사양 표 — 나가는 것의 수치.
@@ -474,7 +472,7 @@ export async function publishToCommunity(sheet: Sheet, out: Record<string, unkno
   sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", cancel);
   try {
     if (!WEB) throw new Error("A same-origin web session is required");
-    const response = await fetch("/api/community/agents/destinations", { credentials: "include", cache: "no-store", signal: controller.signal });
+    const response = await api.communityDestinations(controller.signal);
     const data = await response.json();
     if (closed || sheet.closed || !sheet.el.isConnected) return;
     if (!response.ok || data.features?.agents !== true || typeof data.draftActor !== "string" || !data.draftActor) throw new Error("Community sharing is unavailable");
@@ -498,7 +496,7 @@ export function openImportSheet(pack: any, onDone?: (res: any) => void) {
                             subtitle: COPY.ui.sheet.importSub });
   sheet.body.innerHTML = `
     <div class="sheet-spec">
-      <div><span class="hint">${COPY.ui.sheet.specCreated}</span><b>${esc(String(m.created || "?").slice(0, 10))}</b></div>
+      <div><span class="hint">${COPY.ui.sheet.specCreated}</span><b>${esc(dayOf(String(m.created || "?")))}</b></div>
       <div><span class="hint">${COPY.ui.sheet.specConcepts}</span><b>${c.concepts ?? n}</b></div>
       <div><span class="hint">${COPY.ui.sheet.specRecords}</span><b>${c.records ?? 0}</b></div>
       <div><span class="hint">${COPY.ui.sheet.specDecisions}</span><b>${c.decisions ?? 0}</b></div>

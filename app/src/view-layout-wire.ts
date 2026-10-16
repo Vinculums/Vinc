@@ -1,4 +1,5 @@
 import type { GraphEdge, GraphNode } from "./api";
+import { edgeKey } from "./spotlight";
 
 /** What the layout service needs from a graph, and nothing else: no labels, evidence or props.
  * Both the hub (which sends it) and the app (which merges the answer) build it the same way. */
@@ -17,11 +18,12 @@ export type LayoutAnswer = {
 };
 
 /** Relations carry no id. Key them by their ends and type, numbering repeats in order, so a
- * route lands on the same relation however the read happens to order them. */
+ * route lands on the same relation however the read happens to order them. 바탕 키는
+ * 스포트라이트의 `edgeKey` 와 같은 한 벌이다. */
 export function edgeKeys(edges: { source: string; target: string; type?: string }[]): string[] {
   const seen = new Map<string, number>();
   return edges.map(e => {
-    const base = `${e.source}\u0000${e.target}\u0000${e.type || ""}`;
+    const base = edgeKey({ source: e.source, target: e.target, type: e.type || "" });
     const n = seen.get(base) || 0;
     seen.set(base, n + 1);
     return `${base}\u0000${n}`;

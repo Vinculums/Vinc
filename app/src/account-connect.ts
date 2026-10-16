@@ -11,7 +11,7 @@
  *
  *  데스크톱은 로그인해야 쓴다(2026-09-24, `firstrun.ts`). 이 모듈은 그 로그인의 한 벌이다.
  */
-import { cfg, forgetMemberKey, shellInvoke } from "./api";
+import { cfg, forgetMemberKey, shellInvoke, sleep } from "./api";
 
 const K_KEY = "vinc.sync.key";
 /** 기기별 MCP 키(VIN-132). OS 저장소에만 둔다: 엔진의 `vinc mcp serve` 가 거기서 직접
@@ -193,7 +193,7 @@ export async function connectAccount(onState?: (s: "opening" | "waiting") => voi
     if (canceled()) return "aborted";
     onState?.("waiting");
     for (let i = 0; i < 300 && !canceled(); i++) {   // 2s × 300 = TTL(10분)
-      await new Promise((r) => setTimeout(r, 2000));
+      await sleep(2000);
       if (canceled()) return "aborted";
       const st = await api.connectStatus(state).catch(() => null);
       if (canceled()) return "aborted";

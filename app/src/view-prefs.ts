@@ -71,8 +71,11 @@ export const BUNDLE_RELS = [
  *  판정 함수(`edgeKindOf`)를 여기 한 곳에 둔다. */
 export type EdgeKind = "directed" | "bridge" | "cross" | "related";
 export const EDGE_KINDS: EdgeKind[] = ["directed", "related", "cross", "bridge"];
-/** 화살촉이 붙는 방향 3종 — view2d/view-planar 의 DIRECTED 와 같은 정의. */
-export const DIRECTED_RELS = ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"];
+/** 끝이 원천(조상)을 가리키는 관계 — "a 가 b 에서 나왔다". 시간순 배치는 이 둘만
+ *  뒤집어 조상을 앞에 세운다(`view-layout.ts` 의 `ancestry`). */
+export const ANCESTRY_RELS = ["DERIVES_FROM", "INHERITS_FROM"];
+/** 화살촉이 붙는 방향 3종. 렌더러(view2d·view3d·view)가 모두 이 목록을 읽는다. */
+export const DIRECTED_RELS = ["PREREQUISITE_OF", ...ANCESTRY_RELS];
 export function edgeKindOf(e: { type: string; cross_domain?: boolean }): EdgeKind {
   if (DIRECTED_RELS.includes(e.type)) return "directed";
   if (e.type === "CONNECTS") return "bridge";
@@ -199,8 +202,11 @@ export function nextTimeKey(k: string): string {
   }
   return utcDay(new Date(Date.UTC(y, m - 1, d + 1)));
 }
+/** 시각 문자열의 날짜 머리 `YYYY-MM-DD`(앞 10자). 변환하지 않는다 — 이미 정한 달력(UTC
+ *  ISO 면 UTC, `localStamp` 를 거쳤으면 현지)의 날을 그대로 자른다. 짧은 값은 그대로 온다. */
+export const dayOf = (ts: string): string => ts.slice(0, 10);
 /** UTC 달력의 `YYYY-MM-DD`. 달력 셈(다음 날·달의 길이)에만 쓴다 — 오늘이 언제인지는 `localDay`. */
-export const utcDay = (t: Date): string => t.toISOString().slice(0, 10);
+export const utcDay = (t: Date): string => dayOf(t.toISOString());
 
 /** 기록 시각(UTC ISO)을 현지 시각 `YYYY-MM-DDTHH:MM:SS` 로 바꾼다. 접두가 곧 현지의 날·달·해라
  *  타임라인의 열·점·기간이 사람이 보는 달력으로 나뉜다(VIN-262: UTC 로 나누면 한국 00~09시
@@ -212,7 +218,7 @@ export function localStamp(t: Date | string): string {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
 }
 /** 현지 달력의 `YYYY-MM-DD`. */
-export const localDay = (t: Date): string => localStamp(t).slice(0, 10);
+export const localDay = (t: Date): string => dayOf(localStamp(t));
 /** 현지 시점 키(`YYYY`·`YYYY-MM`·`YYYY-MM-DD`)가 시작하는 순간의 UTC ISO. 서버는 저장된 UTC
  *  시각과 비교하므로 현지 칸을 물을 때 경계를 이렇게 옮겨 보낸다. */
 export function localKeyToUtc(k: string): string {

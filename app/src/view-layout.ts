@@ -1,15 +1,16 @@
 import type { GraphNode, GraphEdge } from "./api";
 import type { ElkNode, ElkExtendedEdge } from "elkjs/lib/elk-api";
 import { simplifyRoute, type RoutePoint } from "./view-route";
-import type { RoutingNode } from "./view-layout-avoid";
+import { NODE_BELOW, NODE_H, NODE_HALF_W, NODE_PORT_Y, NODE_W, UNIT, type RoutingNode } from "./view-layout-avoid";
 import { spatialLayout, type SpatialTopic } from "./view-layout-spatial";
 import { shortenPlanarRoutes } from "./view-route-shortcuts";
+import { topicOf } from "./node-topic";
+import { ANCESTRY_RELS, utcDay } from "./view-prefs";
 
 export type LayoutGraph = { nodes: GraphNode[]; edges: GraphEdge[]; topicEdges: GraphEdge[] };
 export type LayoutEngine = { layout(graph: ElkNode): Promise<ElkNode> };
 export type LayoutOrdering = "temporal" | "ranked";
 export type CrossRouter = (nodes: GraphNode[], edges: GraphEdge[], batching?: "connector") => Promise<GraphEdge[]>;
-const UNIT = 1000;
 const GRID = 330;
 type Direction = "RIGHT" | "LEFT" | "DOWN" | "UP";
 // ELK가 정한 순서·직각 경로를 함께 늘려 격자에 맞춘다. 축을 줄이지 않아
@@ -34,7 +35,7 @@ const timeOf = (n: GraphNode, basis: "recorded" | "content") => {
   if (/^\d{4}-\d{2}$/.test(value) && +value.slice(5) >= 1 && +value.slice(5) <= 12) return value;
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const instant = Date.parse(value);
-    return Number.isFinite(instant) && new Date(instant).toISOString().slice(0, 10) === value ? value : "";
+    return Number.isFinite(instant) && utcDay(new Date(instant)) === value ? value : "";
   }
   if (/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
     const instant = Date.parse(value); return Number.isFinite(instant) ? new Date(instant).toISOString() : "";
@@ -63,14 +64,14 @@ function components(ids: string[], edges: GraphEdge[]): string[][] {
 /** Port dimensions and ELK options come from the approved temporal prototype.
  * Only the presentation's ancestry input reverses derives/inherits; output
  * paths are restored to the original relation's source-to-target direction. */
-const ancestry = (e: GraphEdge) => ["DERIVES_FROM", "INHERITS_FROM"].includes(e.type)
+const ancestry = (e: GraphEdge) => ANCESTRY_RELS.includes(e.type)
   ? [e.target, e.source] : [e.source, e.target];
 function child(id: string, partition: number, direction: Direction): ElkNode {
   const ports = {
-    RIGHT: [[220, 24, "EAST"], [0, 24, "WEST"]], LEFT: [[0, 24, "WEST"], [220, 24, "EAST"]],
-    DOWN: [[110, 90, "SOUTH"], [110, 0, "NORTH"]], UP: [[110, 0, "NORTH"], [110, 90, "SOUTH"]],
+    RIGHT: [[NODE_W, NODE_PORT_Y, "EAST"], [0, NODE_PORT_Y, "WEST"]], LEFT: [[0, NODE_PORT_Y, "WEST"], [NODE_W, NODE_PORT_Y, "EAST"]],
+    DOWN: [[NODE_HALF_W, NODE_H, "SOUTH"], [NODE_HALF_W, 0, "NORTH"]], UP: [[NODE_HALF_W, 0, "NORTH"], [NODE_HALF_W, NODE_H, "SOUTH"]],
   }[direction];
-  return { id, width: 220, height: 90,
+  return { id, width: NODE_W, height: NODE_H,
     layoutOptions: { "elk.portConstraints": "FIXED_POS", "elk.partitioning.partition": String(partition) },
     ports: [
       ...ports.map(([x, y, side], i) => ({ id: `${id}:${i ? "in" : "out"}`, x: Number(x), y: Number(y),
@@ -299,11 +300,11 @@ async function layoutTopic(topic: GraphNode, members: GraphNode[], inside: Graph
         ({ x: n.x! - origin.x!, y: n.y! - origin.y! }));
       const gx = gridAxis(centres.map(p => p.x)), gy = gridAxis(centres.map(p => p.y));
       const convert = (p: { x: number; y: number }): RoutePoint =>
-        ({ x: gx(p.x - origin.x! - 110), y: gy(p.y - origin.y! - 24), z: 0 });
+        ({ x: gx(p.x - origin.x! - NODE_HALF_W), y: gy(p.y - origin.y! - NODE_PORT_Y), z: 0 });
       let low = 0, high = 0;
       for (const n of result.children!) {
         if (n.id === anchor) continue;
-        const p = convert({ x: n.x! + 110, y: n.y! + 24 });
+        const p = convert({ x: n.x! + NODE_HALF_W, y: n.y! + NODE_PORT_Y });
         positions.set(n.id, p);
         low = Math.min(low, horizontal ? p.y : p.x); high = Math.max(high, horizontal ? p.y : p.x);
       }
@@ -349,8 +350,8 @@ async function layoutTopic(topic: GraphNode, members: GraphNode[], inside: Graph
   }
   const boxIds = [topic.id, ...members.map(n => n.id)], ps = boxIds.map(id => positions.get(id)!);
   // 대칭 여백은 Topic을 각 묶음의 중앙에 둔다. 글자 상자는 회전하거나 늘리지 않는다.
-  const radius = Math.ceil(Math.max(...ps.map(p => Math.abs(p.x) + 110)) / GRID) * GRID;
-  const radiusY = Math.ceil(Math.max(...ps.map(p => Math.max(Math.abs(p.y - 24), Math.abs(p.y + 66)))) / GRID) * GRID;
+  const radius = Math.ceil(Math.max(...ps.map(p => Math.abs(p.x) + NODE_HALF_W)) / GRID) * GRID;
+  const radiusY = Math.ceil(Math.max(...ps.map(p => Math.max(Math.abs(p.y - NODE_PORT_Y), Math.abs(p.y + NODE_BELOW)))) / GRID) * GRID;
   const box = { id: topic.id, width: radius * 2, height: radiusY * 2, left: -radius, top: -radiusY, ids: boxIds };
   return { positions: [...positions], localRoutes, guides, box, spatial: spatialTopic };
 }
@@ -364,7 +365,6 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
   // Clone rather than changing the API cache, details, or source relation metadata.
   const nodes = inputNodes.map(n => ({ ...n }));
   const map = new Map(nodes.map(n => [n.id, n]));
-  const topicOf = (n: GraphNode) => n.kind === "domain" ? n.id.slice(7) : n.domain || "";
   const topics = new Map<string, GraphNode>();
   for (const n of nodes) if (n.kind === "domain") topics.set(topicOf(n), n);
   for (const n of inputNodes) {
@@ -477,8 +477,8 @@ async function routeMap(nodes: GraphNode[], edges: GraphEdge[],
   const obstacles: RoutingNode[] = [];
   for (const box of boxes) {
     const ps = box.ids.map(id => positions.get(id)!);
-    const left = Math.min(...ps.map(p => p.x - 110)), right = Math.max(...ps.map(p => p.x + 110));
-    const top = Math.min(...ps.map(p => p.y - 24)), bottom = Math.max(...ps.map(p => p.y + 66));
+    const left = Math.min(...ps.map(p => p.x - NODE_HALF_W)), right = Math.max(...ps.map(p => p.x + NODE_HALF_W));
+    const top = Math.min(...ps.map(p => p.y - NODE_PORT_Y)), bottom = Math.max(...ps.map(p => p.y + NODE_BELOW));
     const x = (left + right) / 2, y = (top + bottom) / 2;
     obstacles.push({ id: `@box:${box.id}`, label: "", kind: "domain", degree: 0, domain: box.id, x: x / UNIT, y: y / UNIT,
       z: 0, routingBox: { left, right, top, bottom } });

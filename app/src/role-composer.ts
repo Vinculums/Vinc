@@ -7,7 +7,7 @@
  *  받고 계약을 한 화면에서 채운다. 서버의 역할 계약 경고(`api/role_contract.py`)는
  *  저장 뒤 그대로 보여 준다 — 거절이 아니라 알림이라 저장은 된다.
  *  근거: [[vinc.canon.agent-roles]] · [[decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02]] */
-import { api, cfg } from "./api";
+import { api, cfg, messageOf } from "./api";
 import { COPY } from "./copy";
 import { esc, openSheet, sheetActions } from "./components";
 import { viewHooks } from "./topbar";
@@ -140,7 +140,7 @@ export function openRoleComposer(): void {
     msg(esc(A.creating));
     let res: any;
     try { res = await api.ingestFragment({ nodes: [node], edges: [] }); }
-    catch (e: any) { res = { executed: false, error: String(e?.message || "") }; }
+    catch (e: any) { res = { executed: false, error: messageOf(e, "") }; }
     busy = false;
     btn.disabled = false;
     if (res?.executed === false) {

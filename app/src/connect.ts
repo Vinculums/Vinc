@@ -10,7 +10,7 @@
  *
  *  여태 관계를 만드는 길은 둘뿐이었고 둘 다 `relates_to` 로 박혀 있었다(연결이 없을
  *  때만 뜨는 제안 · Tools 의 문서 잇기). 종류를 고를 길도, 지울 길도 없었다. */
-import { api, cfg } from "./api";
+import { api, cfg, messageOf } from "./api";
 import { COPY } from "./copy";
 import { esc, openSheet, sheetActions } from "./components";
 import { viewHooks } from "./topbar";
@@ -229,7 +229,7 @@ export function openRelationPicker(a: End, b: End): void {
     try {
       res = await api.ingestFragment({ edges: [{ type: rel, from: from.id, to: to.id,
                                                  ...(evidence ? { evidence } : {}) }] });
-    } catch (e: any) { res = { executed: false, error: String(e?.message || "") }; }
+    } catch (e: any) { res = { executed: false, error: messageOf(e, "") }; }
     go.disabled = false;
     if (res?.executed === false) {
       msg.innerHTML = `<span class="error-banner">${esc(A.connectFail)}</span>`

@@ -7,7 +7,7 @@
  *     교체되므로, 기록·결정의 한 줄 설명(props.note)을 고칠 때는 지금 props 전체에 합쳐서
  *     보낸다 — 안 실은 키가 경고 없이 사라지는 함정이 거기 있다.
  *  근거: [[decision:node-props-are-edited-in-the-document-pane-as-a-whole-and-checked-against-the-read-revision-2026-09-26]] */
-import { api, cfg } from "./api";
+import { api, cfg, messageOf, type NodeContext } from "./api";
 import { COPY } from "./copy";
 import { esc } from "./components";
 import { fillTopicList, forgetTopics, isWhen } from "./authoring";
@@ -15,10 +15,7 @@ import { fillTopicList, forgetTopics, isWhen } from "./authoring";
 type Kind = "concept" | "record" | "decision" | "episode";
 type Basics = { title: string; oneLiner: string; topic: string; tags: string[]; when: string };
 /** node-context 가 준 것 — 제목·주제·한 줄·props·판. */
-type BasicsSource = {
-  node_kind?: string; rev?: number; title?: string; domain?: string;
-  one_liner?: string; props?: Record<string, unknown>;
-};
+type BasicsSource = NodeContext & { domain?: string };
 
 /** 한 줄 설명이 사는 자리 — 개념은 `one_liner`, 사건은 `summary`, 기록·결정은 props.note. */
 const lineField = (k: Kind): "one_liner" | "summary" | "note" =>
@@ -157,7 +154,7 @@ export async function drawBasics(box: HTMLElement, id: string, src: BasicsSource
         onSaved(next.topic);
       } catch (err: any) {
         btns.forEach((b) => { b.disabled = false; });
-        const why = String(err?.message || "").trim();
+        const why = messageOf(err, "").trim();
         status(`<span class="error-banner">${esc(A.basicsFail)}</span>${why ? ` <span class="hint">${esc(why)}</span>` : ""}`);
       }
     }

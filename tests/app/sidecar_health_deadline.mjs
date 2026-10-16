@@ -16,7 +16,9 @@ async function withServer(handler, verify) {
   const server = createServer(handler);
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const context = { cfg: { base: `http://127.0.0.1:${server.address().port}` },
-    fetch, URL, AbortSignal, performance, setTimeout, sidecarDiag: '', migrations: 0, startIndexWatch() { context.migrations++; } };
+    fetch, URL, AbortSignal, performance, setTimeout, sidecarDiag: '', migrations: 0, startIndexWatch() { context.migrations++; },
+    // api.ts 의 `sleep` 과 같은 것. 함수 하나만 떼어 돌리므로 모듈 수준 헬퍼는 여기서 건넨다.
+    sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) };
   try { await verify(runInNewContext(`(${functionSource})`, context), context); }
   finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 }

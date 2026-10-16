@@ -9,7 +9,8 @@ import { COPY } from "../copy";
 import { icon } from "../icons";
 import { palette as signal, hexStr, type ThemeMode } from "../theme";
 import { tintMap } from "../view-tint";
-import type { ViewPrefs } from "../view-prefs";
+import { topicOf } from "../node-topic";
+import { DIRECTED_RELS, type ViewPrefs } from "../view-prefs";
 import { edgeKey, type Spot } from "../spotlight";
 import { markTexture, MARK_TEX_PX } from "./view-planar";
 import { glassShapeOf, glassSprite, type GlassShape } from "../glass-sprite";
@@ -70,9 +71,6 @@ export type Handle2d = {
    *  건드리지 않아 그 성질이 공짜다. */
   setTimeVisible(ids: Set<string> | null): void;
 };
-
-/** 방향 3종 — 화살촉이 붙는 관계(view-planar 의 DIRECTED 와 같은 정의). */
-const DIRECTED = ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"];
 
 const mode = (): ThemeMode =>
   document.documentElement.dataset.theme === "dark" ? "dark" : "light";
@@ -314,7 +312,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   // 불가시 하한(Lc 15) 위에서 멈춘다 — 물러남이지 삭제가 아니다.
   // 마운트와 테마 전환(`retheme`)이 이 한 벌을 읽는다.
   const edgeColor = (e: GraphEdge) => {
-    if (DIRECTED.includes(e.type)) return ramp().mid;
+    if (DIRECTED_RELS.includes(e.type)) return ramp().mid;
     return e.type === "CONNECTS" ? mixFloor(ramp().base, bg, 0.6)
       : e.cross_domain ? mixFloor(ramp().base, bg, 0.8) : ramp().base;
   };
@@ -325,7 +323,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   const edgeOf = new Map<string, GraphEdge>();
   for (const e of edges) {
     if (!g.hasNode(e.source) || !g.hasNode(e.target)) continue;
-    const dir = DIRECTED.includes(e.type);
+    const dir = DIRECTED_RELS.includes(e.type);
     // 정본 §1.2 는 관계를 **선의 형태**로 가른다(실선·파선·점선·이중선). sigma 는
     // 파선 프로그램이 없어 형태 대신 **굵기·농도 계단**으로 같은 서열을 만든다:
     // 방향(뼈대) > 같은 주제 무방향(살) > 주제를 넘는 연결(배경 쪽) > 다리 매개.
@@ -585,7 +583,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     let nearest: GraphEdge | undefined, distance = 6;
     hitPaths.forEach((points, key) => {
       const edge = edgeOf.get(key)!;
-      if (!DIRECTED.includes(edge.type) || edge.presentation) return;
+      if (!DIRECTED_RELS.includes(edge.type) || edge.presentation) return;
       for (let i = 1; i < points.length; i++) {
         const a = points[i - 1], b = points[i], dx = b.x - a.x, dy = b.y - a.y;
         const t = Math.max(0, Math.min(1, ((event.x - a.x) * dx + (event.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
@@ -746,7 +744,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
    *  살짝 딸려 온다 — 잎 하나가 무리 전체를 통째로 끌면 배치의 뜻이 사라진다. */
   const pathOf = (id: string) => {
     const n = byId.get(id);
-    const d = id.startsWith("domain:") ? id.slice(7) : (n?.domain || "");
+    const d = topicOf(n ?? { id });
     return d ? d.split("/") : [];
   };
   function pull(fromId: string, toId: string): number {
@@ -877,7 +875,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
   // 선 클릭 → 관계 근거(D45-V). 방향 관계에만 근거가 실리므로 그때만 연다.
   sigma.on("clickEdge", ({ edge }) => {
     const e = edgeOf.get(edge);
-    if (e && o.onEdge && DIRECTED.includes(e.type)) o.onEdge(e);
+    if (e && o.onEdge && DIRECTED_RELS.includes(e.type)) o.onEdge(e);
   });
   sigma.on("rightClickNode", ({ node, event }) => {
     event.preventSigmaDefault();
@@ -937,7 +935,7 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
       // 간격은 2D 에서 화면을 안 바꾼다(auto-fit) — 좌표는 손대지 않는다.
       edgeOf.forEach((e, key) => {
         if (!g.hasEdge(key)) return;
-        const dir = DIRECTED.includes(e.type);
+        const dir = DIRECTED_RELS.includes(e.type);
         const bridged = e.type === "CONNECTS";
         g.setEdgeAttribute(key, "type", dir && prefs.arrows ? "arrow" : "line");
         g.setEdgeAttribute(key, "size",

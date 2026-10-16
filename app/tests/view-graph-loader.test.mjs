@@ -17,7 +17,7 @@ const modules = {
     };`),
   './view-session-cache': url(await js('view-session-cache.ts')),
   './view-layout-client': url(`export const layoutInWorker=(...a)=>globalThis.__loader.worker(...a);`),
-  './view-layout-wire': url(await js('view-layout-wire.ts')),
+  './view-layout-wire': url((await js('view-layout-wire.ts')).replace('"./spotlight"', JSON.stringify(url(await js('spotlight.ts'))))),
 };
 const prefsUrl = url(await js('view-prefs.ts'));
 modules['./view-graph-read'] = url((await js('view-graph-read.ts')).replace('"./view-prefs"', JSON.stringify(prefsUrl)));

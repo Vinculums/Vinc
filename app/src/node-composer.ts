@@ -8,7 +8,7 @@
  *   · 소유자를 싣지 않는다(서버가 이 앱의 소유자로 정하고, 계정 경로는 허브가 정한다)
  *  Enter 는 만들기, Ctrl/Cmd+Enter 는 만들고 열기, "계속 만들기"는 제목만 비우고 종류와
  *  주제를 남긴다. 쓰기 결과는 만든 것 · 맞춘 것 · 거절된 연결과 그 이유를 말한다. */
-import { api, cfg } from "./api";
+import { api, cfg, messageOf } from "./api";
 import { COPY } from "./copy";
 import { esc, openSheet, sheetActions, showNotice } from "./components";
 import { viewHooks } from "./topbar";
@@ -302,7 +302,7 @@ function mount(sheet: ReturnType<typeof openSheet>, o: ComposerOpts, done: (m: M
     try {
       res = await api.ingestFragment({ nodes: [node], edges });
     } catch (e: any) {
-      res = { executed: false, error: String(e?.message || "") };
+      res = { executed: false, error: messageOf(e, "") };
     }
     busy = false;
     btns.forEach((b) => { b.disabled = false; });

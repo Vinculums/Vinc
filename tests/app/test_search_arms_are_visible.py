@@ -44,7 +44,7 @@ SURFACES = {
 BRIDGES = {
     "ask.ts": ("lastNote = armsNotice(res)?.text", "note: lastNote"),
     # `[[` 목록은 편집기 쪽 부품이 그린다 — 판정이 거기까지 건너가야 한다.
-    "cm-assist.ts": ("this.note = got.note", "escHtml(this.note)"),
+    "cm-assist.ts": ("this.note = got.note", "esc(this.note)"),
 }
 
 

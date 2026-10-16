@@ -3,7 +3,7 @@ import { COPY } from "./copy";
 import { partitionSearchResults } from "./search-relevance";
 import { docTitle } from "./doc-title";
 import { icon } from "./icons";
-import { armsNotice, type ArmsNotice, searchTemporalText } from "./components";
+import { esc, armsNotice, type ArmsNotice, searchTemporalText } from "./components";
 import { renderSearchError } from "./search-error";
 
 /** 상단 바 (DEC D56·D57) — 셸의 주된 크롬.
@@ -267,8 +267,6 @@ export function mountTopbar() {
   applyMode(mode, false);
 
   function draw(loading = false) {
-    const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
     const head = `<div class="tb-rhead"><span class="hint">${COPY.ui.topbar.results}</span>
       <span class="hint">${COPY.ui.topbar.enterHint}</span></div>`
       // 벡터 팔이 빠졌으면 결과 위에 그 사실을 적는다. 특히 "결과 없음"과 겹칠 때
