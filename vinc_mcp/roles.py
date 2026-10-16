@@ -415,7 +415,9 @@ def contract(role: str | None, bridge, *, forced_owner: str | None = None,
             key = "hands_to" if edge["from"] == rid else "receives_from"
         else:
             continue
-        groups[key].append(edge)
+        # 엣지의 출생 시각(created)은 역할 계약에 싣지 않는다. 협업 관계를 말하는 데 쓰이지
+        # 않고, 계약은 10,000바이트 예산 안에 들어야 한다(tests/core/test_roles_read.py).
+        groups[key].append({k: v for k, v in edge.items() if k != "created"})
     entry = build_payload([{**node, "works_with": works_with(rid, got.get("peers") or [],
         [{**e, "source": e["from"], "target": e["to"]} for e in relations])}])["roles"][0]
     out = {"kind": "role", "executed": True, "found": True, "id": rid,
