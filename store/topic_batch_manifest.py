@@ -13,7 +13,7 @@ from collections import OrderedDict
 from pathlib import Path
 from uuid import UUID
 
-from . import durable_generation as generation, pkns
+from . import canon, durable_generation as generation, pkns
 from .embedded_schema import SCHEMA_VERSION, meta_table_specs, node_table_specs
 from .embedded_schema import rel_table_specs
 from .topic_transfer import TransferRefused, _KINDS, _canonical, fingerprint, mapped_rejection_key, retained_history_counts
@@ -25,8 +25,7 @@ SPECS = {**node_table_specs(), **meta_table_specs()}
 _VALIDATED = OrderedDict()
 
 
-def digest(row):
-    return hashlib.sha256(_canonical(row).encode()).hexdigest()
+digest = canon.digest_ascii_v1
 
 
 def authorized_hash(before_hash, policy):

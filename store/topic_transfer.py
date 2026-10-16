@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
-from . import pkns
+from . import canon, pkns
 from .embedded_schema import (
     SCHEMA_VERSION, meta_table_specs, node_table_specs, rel_table_specs,
 )
@@ -25,8 +25,8 @@ MAX_INVENTORY_ROWS = 5000
 MAX_INVENTORY_BYTES = 32 * 1024 * 1024
 
 
-def _canonical(value):
-    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+# 저장된 지문과 다시 대조하므로 ASCII 형식을 쓴다. 바꾸지 말 것(canon 모듈 설명).
+_canonical = canon.canonical_json_ascii_v1
 
 
 def fingerprint(snapshot: dict) -> str:

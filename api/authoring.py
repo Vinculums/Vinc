@@ -6,7 +6,7 @@ from decimal import Decimal
 import json
 import re
 
-from store import pkns
+from store import canon, pkns
 from store.search_temporal import instant
 
 MAX_CLAIMS = 16
@@ -36,8 +36,7 @@ def document_retrieval(needs_embed):
 
 
 def _canonical(value):
-    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True,
-                         separators=(",", ":"), allow_nan=False)
+    encoded = canon.canonical_json(value)
     if len(encoded) > MAX_VALUE_CHARS:
         raise ValueError("claim value exceeds review budget")
     return encoded

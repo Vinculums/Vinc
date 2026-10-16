@@ -5,14 +5,13 @@ import copy
 import base64
 import hashlib
 import io
-import json
 import re
 import zipfile
 from pathlib import Path
 from uuid import UUID, uuid5, NAMESPACE_URL
 
 from . import fragment, operation_receipts, query, role_contract
-from store import pkns
+from store import canon, pkns
 from vinc_mcp import agent_export_contract
 
 MAX_SNAPSHOT_BYTES = 256 * 1024
@@ -60,7 +59,7 @@ def canonical(value):
         check(value)
     except UnicodeError:
         raise ValueError("snapshot_unicode_invalid") from None
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return canon.canonical_json(value)
 
 
 def digest(value):

@@ -10,12 +10,13 @@
 """
 from __future__ import annotations
 
-import hashlib
 import importlib.metadata as md
 import json
 import pathlib
 import platform
 import sys
+
+from store import canon
 
 #: 벡터 값을 바꿀 수 있는 패키지. 락의 `encoder_runtime` 과 이 셋을 대조한다.
 RUNTIME_PACKAGES = ("onnxruntime", "tokenizers", "numpy")
@@ -39,12 +40,7 @@ def fingerprint() -> dict:
             "executable": sys.executable}
 
 
-def file_sha256(path: pathlib.Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for block in iter(lambda: f.read(1 << 20), b""):
-            h.update(block)
-    return h.hexdigest()
+file_sha256 = canon.file_sha256
 
 
 def lock_entry(key: str) -> dict:
