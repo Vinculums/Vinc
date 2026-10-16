@@ -56,3 +56,25 @@ def test_synthetic_workflow_has_no_production_access():
     assert "secrets." not in run and "AZURE_CONFIG_DIR" not in run
     assert workflow["permissions"] == {"contents": "read"}
     assert "azure/login" not in path.read_text() and "storage share" not in path.read_text()
+
+
+def test_failed_rehearsal_names_its_stage_without_content(tmp_path, monkeypatch):
+    from api.topic_conversion_batches import Batches
+    monkeypatch.setenv("VINC_PK_NAMESPACED", "on")
+    monkeypatch.setenv("VINC_TOPIC_CONVERSION", "1")
+    monkeypatch.setenv("VINC_DURABLE_ACK", "off")
+    original = tmp_path / "original.db"
+    store = RawStore(original)
+    try:
+        for ddl in render_embedded_ddl(dim=4):
+            store.run(ddl)
+        insert(store, seed())
+    finally:
+        store.close()
+    def broken(self, *args, **kwargs):
+        raise RuntimeError("synthetic_step_failure:" + SOURCE)
+    monkeypatch.setattr(Batches, "step", broken)
+    progress = {}
+    with pytest.raises(RuntimeError):
+        rehearse(original, tmp_path / "execution", SOURCE, topic=TOPIC, max_rows=4, progress=progress)
+    assert progress == {"failed_stage": "first_step"}
