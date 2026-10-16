@@ -26,7 +26,7 @@ from typing import IO, Any
 
 from . import __version__, hubhttp
 from .remote import _endpoint
-from .rpc import LATEST_PROTOCOL_VERSION, PROTOCOL_VERSIONS
+from .rpc import LATEST_PROTOCOL_VERSION, PROTOCOL_VERSIONS, error_reply
 
 #: 호스티드의 무거운 연산은 계정 쪽에서 45초까지 허용된다. 그보다 넉넉히 기다린다.
 TIMEOUT_S = 90.0
@@ -64,8 +64,10 @@ def wants_account_mode(*, base: str | None, token: str | None, owner: str | None
     return str((config or {}).get("mode") or "") == "account"
 
 
-def _err(msg_id: Any, message: str, code: int = ERR_ACCOUNT) -> dict:
-    return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": code, "message": message}}
+def _fail(msg_id: Any, message: str) -> list[dict]:
+    """계정 쪽 실패를 답 목록으로. 봉투는 `rpc.error_reply` 한 벌이고, 알림이면 빈 목록이다."""
+    reply = error_reply(msg_id, ERR_ACCOUNT, message)
+    return [reply] if reply else []
 
 
 def _is_request(msg: Any) -> bool:
@@ -99,7 +101,7 @@ class Proxy:
             }}]
         if method == "ping":
             return [{"jsonrpc": "2.0", "id": msg["id"], "result": {}}]
-        return [_err(msg["id"], SIGN_IN)]
+        return _fail(msg["id"], SIGN_IN)
 
     # ── 넘기기 ──────────────────────────────────────────────────────────────
     def handle(self, msg: Any) -> list[dict]:
@@ -126,7 +128,7 @@ class Proxy:
                     return self._http_error(msg, msg_id, e)
                 e = e.cause
             print(f"vinc-mcp: hosted MCP unreachable: {type(e).__name__}: {e}", file=sys.stderr)
-            return [_err(msg_id, UNREACHABLE.format(why=type(e).__name__))] if _is_request(msg) else []
+            return _fail(msg_id, UNREACHABLE.format(why=type(e).__name__)) if _is_request(msg) else []
         replies = _parse(raw, ctype)
         if isinstance(msg, dict) and msg.get("method") == "initialize":
             for r in replies:
@@ -146,8 +148,8 @@ class Proxy:
         if not _is_request(msg):
             return []
         if e.status in (401, 403):
-            return [_err(msg_id, REFUSED.format(code=e.status))]
-        return [_err(msg_id, UNREACHABLE.format(why=f"HTTP {e.status}"))]
+            return _fail(msg_id, REFUSED.format(code=e.status))
+        return _fail(msg_id, UNREACHABLE.format(why=f"HTTP {e.status}"))
 
 
 def _parse(raw: str, ctype: str) -> list[dict]:

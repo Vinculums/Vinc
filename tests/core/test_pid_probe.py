@@ -78,13 +78,11 @@ def test_구현_사본을_다시_만들지_않는다():
     from api import server
     from vinc_mcp import bridge
 
-    assert server._pid_alive(os.getpid()) is True
+    # 감싸는 함수조차 두지 않는다 — 두 진입점이 procutil 의 그 함수 객체 자체다.
+    assert server.pid_alive is procutil.pid_alive
+    assert bridge._pid_alive is procutil.pid_alive, \
+        "브리지가 다시 자기 사본을 갖는다 — 한쪽만 고쳐지면 Windows 에서 앱이 죽는다"
     assert bridge._pid_alive(os.getpid()) is True
-
-    src_bridge = __import__("inspect").getsource(bridge._pid_alive)
-    assert "os.kill" not in src_bridge.split('"""')[-1], \
-        "브리지가 다시 os.kill 을 직접 부른다 — Windows 에서 앱이 죽는다"
-    assert "procutil" in src_bridge
 
 
 def test_세션이_죽은_pid_면_stale_로_본다(tmp_path, monkeypatch):

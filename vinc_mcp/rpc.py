@@ -102,16 +102,16 @@ class Dispatcher:
                                     plan=plan, quota=quota, entitlements=entitlements,
                                     community_write=community_write, community_read=community_read)
         except _MethodNotFound:
-            return _err(msg_id, -32601, f"method not found: {method}")
+            return error_reply(msg_id, -32601, f"method not found: {method}")
         except _QuotaDenied as e:
             # 쿼터 거절문은 tools/call **결과 봉투**로 만들어져 있는데 prompts 에는
             # 그 봉투가 없다. 같은 문장을 프로토콜 오류로 낸다 — 조용히 서빙하는
             # 것보다 낫고, 호스트가 사용자에게 보여 줄 문장은 그대로다.
-            return _err(msg_id, -32603, str(e))
+            return error_reply(msg_id, -32603, str(e))
         except (KeyError, ValueError) as e:
-            return _err(msg_id, -32602, str(e))
+            return error_reply(msg_id, -32602, str(e))
         except Exception as e:              # 브리지 연결 실패 등
-            return _err(msg_id, -32603, f"{type(e).__name__}: {e}")
+            return error_reply(msg_id, -32603, f"{type(e).__name__}: {e}")
         if msg_id is None:
             return None
         return {"jsonrpc": "2.0", "id": msg_id, "result": result}
@@ -287,7 +287,8 @@ def _denial_text(denial: dict) -> str:
     return "rate limit reached"
 
 
-def _err(msg_id, code: int, message: str) -> dict | None:
+def error_reply(msg_id, code: int, message: str) -> dict | None:
+    """JSON-RPC 오류 봉투 한 벌(프록시도 이것을 쓴다). 알림(`id` 없음)에는 답하지 않는다 → None."""
     if msg_id is None:
         return None
     return {"jsonrpc": "2.0", "id": msg_id,

@@ -48,7 +48,7 @@ from engines import domain_hierarchy
 from store import pkns
 from store.embedded_backend import DDL_GUARD, keep_vector_index
 from store.lexical import lex_text
-from store.querybase import validity_state
+from store.querybase import now_iso, validity_state
 # 청킹은 순수 함수라 아래 층에 있다. 임베딩 워커와 리랭커(vinc_rag)도 같은 경계를 쓴다.
 from store.chunking import (DEFAULT_MAX_CHARS, _HEADING_RE, _section_title,  # noqa: F401
                             chunk_doc, estimate_tokens, normalize_boundaries,
@@ -69,14 +69,10 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-
 def _age_s(iso_ts: str) -> float | None:
-    """`_now_iso()` 문자열 → 지금까지 경과 초. 비어 있거나 못 읽으면 None(모른다).
+    """`now_iso()` 문자열 → 지금까지 경과 초. 비어 있거나 못 읽으면 None(모른다).
 
-    `time.gmtime()` 으로 찍은 문자열이라 되돌릴 때도 지역시간 가정이 없는
+    UTC 로 찍은 문자열이라 되돌릴 때도 지역시간 가정이 없는
     `calendar.timegm` 을 쓴다(`time.mktime` 은 로컬 타임존을 가정해 틀린다)."""
     if not iso_ts:
         return None
@@ -226,7 +222,7 @@ def _stamp_updated_at(store) -> str:
         from . import revstamp
         return revstamp.hlc_now(store)
     except Exception:
-        return _now_iso()
+        return now_iso()
 
 
 def _next_doc_seq(store, owner: str) -> int:
@@ -258,7 +254,7 @@ def _node_stamp(store, owner: str, rev: int = 0) -> dict:
         from . import revstamp
         return revstamp.make_stamp(store, {"owner": owner, "rev": rev})
     except Exception:
-        return {"updated_at": _now_iso(), "rev": int(rev or 0) + 1, "sync_seq": 0}
+        return {"updated_at": now_iso(), "rev": int(rev or 0) + 1, "sync_seq": 0}
 
 
 def doc_id_for_origin(owner: str, origin: str) -> str:
@@ -1395,7 +1391,7 @@ def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
     # 자체가 알람이다 — 진행 지표만으로는 정지를 못 본다
     # ([[record:worker-heartbeat-separates-backlog-from-death]]).
     store.run("MERGE (m:_SchemaMeta {key: $k}) SET m.value = $v",
-              {"k": _EMBED_APPLIED_KEY, "v": _now_iso()})
+              {"k": _EMBED_APPLIED_KEY, "v": now_iso()})
     base.update(executed=True, embedded=applied)
     return base
 
@@ -2187,7 +2183,7 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
              # 시간 원천을 비워 두면 타임라인이 이 개념을 "만진 때"로만 알게 된다.
              # 벽시계가 아니라 **스탬프의 HLC** 를 쓴다: 출생 시각은 기기 간 비교
              # (`x.created > $born`)로 화해되는데 그 비교가 사전식이라, 초 단위
-             # `_now_iso` 와 밀리초 HLC 가 섞이면 같은 순간이 다르게 정렬된다.
+             # `now_iso` 와 밀리초 HLC 가 섞이면 같은 순간이 다르게 정렬된다.
              "now": st["updated_at"], "ct": ctime,
              "ua": st["updated_at"], "rev": st["rev"], "seq": st["sync_seq"]})
         _link_domain(store, key, ndom)
