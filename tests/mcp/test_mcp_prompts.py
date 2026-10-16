@@ -73,6 +73,18 @@ def _ring(node: dict, roster: list[dict]) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
+class _PagedRoles:
+    """`GET /roles` 페이지를 거르지 않고 그대로 돌려주는 가짜. discover_roles 의 판정만 본다."""
+
+    def __init__(self, pages):
+        self.pages = pages
+
+    def request(self, method, path, params=None, body=None, timeout=60):
+        i = (params or {}).get("offset", 0)
+        nxt = i + 1 if i + 1 < len(self.pages) else None
+        return {"executed": True, "roles": self.pages[i], "next_offset": nxt}
+
+
 class _RosterBridge(Bridge):
     """로스터를 답하는 가짜 사이드카. 호출 궤적을 남긴다."""
 
@@ -203,25 +215,18 @@ class ListPrompts(unittest.TestCase):
         self.assertEqual(len(got["prompts"]), 23)
 
     def test_a_role_seen_in_two_domains_is_listed_once(self):
-        rows = roles.roster_rows(lambda node: [
-            {"rel": "PARENT_OF", "id": "domain:vinc/agent/roles"},
-            {"rel": "IN_DOMAIN", "id": "concept:agent-x"}] if node == "domain:vinc/agent"
-            else [{"rel": "IN_DOMAIN", "id": "concept:agent-x"},
-                  {"rel": "IN_DOMAIN", "id": "concept:agent-a"},
-                  {"rel": "IN_DOMAIN", "id": "decision:agent-not-a-role"}])
+        rows = roles.discover_roles(_PagedRoles([
+            [{"id": "concept:agent-x"}],
+            [{"id": "concept:agent-x"}, {"id": "concept:agent-a"},
+             {"id": "decision:agent-not-a-role"}]]), "user:test")
         self.assertEqual([r["id"] for r in rows], ["concept:agent-a", "concept:agent-x"])
 
     def test_the_roster_concept_is_not_a_role(self):
         """concept:agent-orchestration 은 로스터를 정의하는 개념이라 역할과 접두가 같다.
         자식 도메인 vinc/agent/orchestration 으로 옮겨지자 열아홉째 프롬프트가 됐다
         (2026-09-12 라이브 prompts/list 실측). 목록에도 get 에도 없어야 한다."""
-        rows = roles.roster_rows(lambda node: [
-            {"rel": "PARENT_OF", "id": "domain:vinc/agent/orchestration"},
-            {"rel": "PARENT_OF", "id": "domain:vinc/agent/roles"}]
-            if node == "domain:vinc/agent"
-            else [{"rel": "IN_DOMAIN", "id": roles.ROSTER_CONCEPT}]
-            if node == "domain:vinc/agent/orchestration"
-            else [{"rel": "IN_DOMAIN", "id": "concept:agent-steward"}])
+        rows = roles.discover_roles(_PagedRoles([
+            [{"id": roles.ROSTER_CONCEPT}, {"id": "concept:agent-steward"}]]), "user:test")
         self.assertEqual([r["id"] for r in rows], ["concept:agent-steward"])
         with self.assertRaises(ValueError):
             roles.get_prompt("agent-orchestration", None, _RosterBridge())
