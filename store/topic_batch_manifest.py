@@ -148,6 +148,7 @@ def prepare(manifest, plan, *, run, stamp, indexes, store):
     db.execute("CREATE TABLE instructions(ordinal INTEGER PRIMARY KEY, kind TEXT, body TEXT NOT NULL)")
     db.execute("CREATE INDEX instruction_kinds ON instructions(kind,ordinal)")
     db.execute("CREATE TABLE edge_multiplicity(digest TEXT PRIMARY KEY,total INTEGER NOT NULL)")
+    db.execute("CREATE TABLE planned_keys(label TEXT,key TEXT,PRIMARY KEY(label,key))")
     selected = set(plan.selected)
     seqs = {}
     for owner in (plan.source, plan.target):
@@ -170,8 +171,17 @@ def prepare(manifest, plan, *, run, stamp, indexes, store):
         db.execute("INSERT INTO instructions(kind,body) VALUES(?,?)", (instruction["kind"], body))
         count += 1
 
+    def claim(label, key):
+        # 한 매니페스트의 두 지시가 같은 대상 키로 가면 뒤 배치가 앞 배치의 행과 부딪힌다.
+        # 배치를 돌리기 전에 표 이름을 달아 거절한다(식별자는 싣지 않는다).
+        try:
+            db.execute("INSERT INTO planned_keys VALUES(?,?)", (label, key))
+        except sqlite3.IntegrityError:
+            raise TransferRefused("key_collision:" + label) from None
+
     def generated(label, row):
         nonlocal projected_bytes
+        claim(label, row[SPECS[label]["pk"]])
         projected_bytes += len(_canonical(row).encode())
         emit({"kind": "generated", "label": label, "row": row, "after": digest(row)})
 
@@ -186,6 +196,7 @@ def prepare(manifest, plan, *, run, stamp, indexes, store):
                     continue
                 item = {"kind": "node", "label": label, "old": old,
                         "new": mapped_key(label, old, plan.source, plan.target, row), "before": digest(row)}
+                claim(label, item["new"])
                 if "sync_seq" in row:
                     seqs[plan.target] += 1
                     item["sync_seq"] = seqs[plan.target]
