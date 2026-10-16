@@ -15,7 +15,7 @@ from .embedded_schema import SCHEMA_VERSION, meta_table_specs, node_table_specs,
 from .topic_transfer import (
     MAX_INVENTORY_BYTES, MAX_INVENTORY_ROWS, TransferRefused, _KINDS,
     _canonical, check_inventory_budget, referenced_ids, verify_store_shape, mapped_rejection_key,
-    _HISTORY, rejection_disposition,
+    _HISTORY, rejection_disposition, endpoint_ambiguity, tombstone_blocker,
 )
 from .topic_manifest import ManifestLimit
 
@@ -304,7 +304,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         if not matches:
             state = "missing"
         elif len(matches) != 1 or matches[0][0] != "Concept" or matches[0][1]["owner_id"] != source:
-            state = "ambiguous"
+            state = endpoint_ambiguity(matches)
         else:
             state = "selected" if ref in logical else "outside"
         rejection_endpoints[ref] = state
@@ -428,8 +428,8 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         for label, keys in destinations.items():
             if any(matching(label, keys, ids_only=True)):
                 blockers.add("key_collision:" + label)
-        if any(matching("_Tombstone", tombstone_keys, ids_only=True)):
-            blockers.add("existing_tombstone_history_not_supported")
+        for row in matching("_Tombstone", tombstone_keys, ids_only=True):
+            blockers.add(tombstone_blocker("_Tombstone", {pkns.strip(row["id"])}))
 
         # Scan the source's other topics without retaining them. Opaque props
         # remain blockers because a hidden reference cannot be classified.

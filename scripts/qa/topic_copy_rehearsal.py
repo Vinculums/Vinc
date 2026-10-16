@@ -29,6 +29,9 @@ from store.scoped_topic_inventory import read_scoped_inventory, _Reader
 from store.topic_manifest import TopicManifest
 from store.topic_transfer import TransferRefused, preserved_reference_counts
 
+# 원본 id 없이 종류·원인만 세는 차단. 근거: [[vinc.impl.topic-transfer-g6-rehearsal-2026-10-16]]
+DETAILED_BLOCKERS = {"existing_tombstone_history_not_supported", "merge_rejection_topic_membership_unknown"}
+
 
 def open_copy(path):
     store = open_store(load_config({"data_dir": str(path), "buffer_pool_mb": 512}))
@@ -92,6 +95,8 @@ def rehearse(original, root, source, *, topic="vinc", max_rows=128):
                               retained_rows=inventory.retained_rows, retained_bytes=inventory.retained_bytes)
                 if not plan.ready:
                     report["dependency_counts"] = dict(Counter(b.split(":", 1)[0] for b in plan.blockers))
+                    report["dependency_detail"] = dict(Counter(":".join(b.split(":", 2)[:2]) for b in plan.blockers
+                                                               if b.split(":", 1)[0] in DETAILED_BLOCKERS))
                     return report
                 stamp = datetime.now(timezone.utc).isoformat()
                 header = manifest.prepare(scratch, plan, run=run, stamp=stamp,
