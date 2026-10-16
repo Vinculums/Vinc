@@ -109,7 +109,7 @@ a = Analysis(
         #   remote      : api/refs.py(인용 대조)를 거쳐서만
         #   entitlement : cli 의 serve-http 분기 안에서만
         # store/edverify 는 oauth·http_server 가 최상위로 끌지만 명시해 못 박는다.
-        "vinc_mcp.remote", "vinc_mcp.entitlement",
+        "vinc_mcp.remote", "vinc_mcp.hubhttp", "vinc_mcp.entitlement",
         "vinc_mcp.store", "vinc_mcp.edverify",
         # W2 — 역할 렌더러 + prompts. rpc 가 최상위로 끄므로 정적 분석이 잡지만,
         # store/edverify 와 같은 이유로 명시해 못 박는다. 이 모듈이 빠지면 rpc 임포트

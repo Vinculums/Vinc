@@ -396,11 +396,10 @@ class VerifyKeyCacheTests(unittest.TestCase):
                               "graph_owner": f"team:{body['team']}", "role": "viewer"})
             return _Resp({"sub": "u1", "plan": "pro"})
 
-        import urllib.request
-        real_open, real_seed = urllib.request.urlopen, entitlement._seed
+        real_open, real_seed = entitlement.hubhttp.urlopen, entitlement._seed
         entitlement._cache.clear()
         try:
-            urllib.request.urlopen = fake_urlopen
+            entitlement.hubhttp.urlopen = fake_urlopen
             entitlement._seed = lambda: b"\x01" * 32
             a = entitlement.verify_key("vinc_sk_x")
             b = entitlement.verify_key("vinc_sk_x", TEAM)
@@ -409,7 +408,7 @@ class VerifyKeyCacheTests(unittest.TestCase):
             self.assertEqual(b["owner"], f"team:{TEAM}")
             self.assertEqual(b["role"], "viewer")
         finally:
-            urllib.request.urlopen = real_open
+            entitlement.hubhttp.urlopen = real_open
             entitlement._seed = real_seed
             entitlement._cache.clear()
 

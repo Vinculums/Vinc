@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
-import urllib.request
+
+from . import hubhttp
 
 DEFAULT_REMOTE_URL = "https://mcp.vincs.io/mcp"
 
@@ -40,17 +40,13 @@ def call(name: str, args: dict, *, timeout: float = 60) -> dict:
                    "arguments": {k: v for k, v in (args or {}).items()
                                  if k not in ("owner", "target")}},
     }
-    req = urllib.request.Request(_endpoint(), data=json.dumps(payload).encode("utf-8"),
-                                 method="POST")
-    req.add_header("Authorization", f"Bearer {token}")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Accept", "application/json")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        hint = " (key invalid or expired — reconnect at vincs.io/account)" if e.code == 401 else ""
-        return {"error": f"remote HTTP {e.code}{hint}", "isError": True}
+        data = hubhttp.post_json(_endpoint(), token=token, payload=payload, timeout=timeout)
+    except hubhttp.HubHTTPError as e:
+        if e.status is None:
+            return {"error": f"remote unreachable: {type(e.cause).__name__}: {e.cause}", "isError": True}
+        hint = " (key invalid or expired — reconnect at vincs.io/account)" if e.status == 401 else ""
+        return {"error": f"remote HTTP {e.status}{hint}", "isError": True}
     except Exception as e:  # noqa: BLE001 — 네트워크/파싱 실패 전부 강등
         return {"error": f"remote unreachable: {type(e).__name__}: {e}", "isError": True}
     if data.get("error"):

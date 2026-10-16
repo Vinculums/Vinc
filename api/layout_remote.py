@@ -25,9 +25,10 @@ import json
 import os
 import threading
 import time
-import urllib.request
 from collections import OrderedDict
 from typing import Callable
+
+from vinc_mcp import hubhttp
 
 BASES = ("recorded", "content")
 
@@ -51,11 +52,7 @@ def slim_payload(owner: str, basis: str, graph: dict) -> dict:
 
 
 def _post(url: str, token: str, payload: dict, timeout: float) -> dict:
-    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    req = urllib.request.Request(url, data=body, headers={
-        "Authorization": f"Bearer {token}", "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    return hubhttp.post_json(url, token=token, payload=payload, timeout=timeout)
 
 
 class _Item:

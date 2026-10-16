@@ -15,15 +15,12 @@ sha256(key) 기준 60s 캐시 — 커넥션마다 계정을 때리지 않는다.
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import os
 import threading
 import time
-import urllib.error
-import urllib.request
 
-from . import edverify
+from . import edverify, hubhttp
 
 _POS_TTL = 60.0     # 유효 키 캐시(초)
 _NEG_TTL = 5.0      # 무효 키 캐시(짧게 — 방금 만든 키가 오래 막히지 않게)
@@ -44,11 +41,11 @@ class VerificationUnavailable(RuntimeError):
 
 def _verification_failure(exc: Exception) -> None:
     # 계정 계약의 명시적 거절은 404뿐이다. 서비스 어서션 401도 키 무효가 아니다.
-    if isinstance(exc, urllib.error.HTTPError) and exc.code == 404:
+    status = exc.status if isinstance(exc, hubhttp.HubHTTPError) else None
+    if status == 404:
         return
-    status = exc.code if isinstance(exc, urllib.error.HTTPError) else None
-    _log.warning("account verification unavailable: kind=%s status=%s",
-                 type(exc).__name__, status)
+    kind = type(exc.cause if isinstance(exc, hubhttp.HubHTTPError) and status is None else exc).__name__
+    _log.warning("account verification unavailable: kind=%s status=%s", kind, status)
     raise VerificationUnavailable() from None
 
 #: 와이어에서 허용되는 등급 값. **Free 와 Team 둘뿐이다**(2026-09-19 지시로 Pro 폐기).
@@ -175,15 +172,10 @@ def verify_key(raw: str, team: str | None = None) -> dict | None:
 
     result: dict | None = None
     try:
-        req = urllib.request.Request(
-            _account_url() + "/internal/mcp/verify-key",
-            data=json.dumps({"key": raw, **({"team": team} if team else {})})
-            .encode("utf-8"),
-            headers={"Content-Type": "application/json",
-                     "X-Vinc-Assertion": _sign_assertion(seed)},
-            method="POST")
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+        body = hubhttp.post_json(
+            _account_url() + "/internal/mcp/verify-key", token=None,
+            payload={"key": raw, **({"team": team} if team else {})},
+            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
         sub = body.get("sub")
         if isinstance(sub, str) and sub:
             plan = normalize_plan(body.get("plan"), source="verify-key")
@@ -245,14 +237,10 @@ def verify_member(sub: str, team: str) -> dict | None:
 
     result: dict | None = None
     try:
-        req = urllib.request.Request(
-            _account_url() + "/internal/mcp/team-membership",
-            data=json.dumps({"sub": sub, "team": team}).encode("utf-8"),
-            headers={"Content-Type": "application/json",
-                     "X-Vinc-Assertion": _sign_assertion(seed)},
-            method="POST")
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+        body = hubhttp.post_json(
+            _account_url() + "/internal/mcp/team-membership", token=None,
+            payload={"sub": sub, "team": team},
+            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
         go, role = body.get("graph_owner"), body.get("role")
         if (isinstance(go, str) and go.startswith("team:")
                 and isinstance(role, str) and role):
@@ -301,14 +289,10 @@ def list_spaces(sub: str) -> list[dict] | None:
 
     rows: list[dict] | None = None
     try:
-        req = urllib.request.Request(
-            _account_url() + "/internal/mcp/spaces",
-            data=json.dumps({"sub": sub}).encode("utf-8"),
-            headers={"Content-Type": "application/json",
-                     "X-Vinc-Assertion": _sign_assertion(seed)},
-            method="POST")
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+        body = hubhttp.post_json(
+            _account_url() + "/internal/mcp/spaces", token=None,
+            payload={"sub": sub},
+            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
         raw = body.get("spaces")
         if isinstance(raw, list):
             rows = []
@@ -343,12 +327,10 @@ def list_communities(sub: str) -> list[dict] | None:
             return hit[1]
     rows = None
     try:
-        req = urllib.request.Request(_account_url() + "/internal/mcp/spaces",
-                                     data=json.dumps({"sub": sub}).encode("utf-8"),
-                                     headers={"Content-Type": "application/json", "X-Vinc-Assertion": _sign_assertion(seed)},
-                                     method="POST")
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+        body = hubhttp.post_json(
+            _account_url() + "/internal/mcp/spaces", token=None,
+            payload={"sub": sub},
+            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
         raw = body.get("communities")
         if isinstance(raw, list):
             rows = [{"id": r["id"].lower(), "name": r.get("name") if isinstance(r.get("name"), str) else "",
@@ -375,14 +357,10 @@ def lookup_plan(sub: str) -> str | None:
     if seed is None:
         return None
     try:
-        req = urllib.request.Request(
-            _account_url() + "/internal/mcp/plan",
-            data=json.dumps({"sub": sub}).encode("utf-8"),
-            headers={"Content-Type": "application/json",
-                     "X-Vinc-Assertion": _sign_assertion(seed)},
-            method="POST")
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+        body = hubhttp.post_json(
+            _account_url() + "/internal/mcp/plan", token=None,
+            payload={"sub": sub},
+            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
     except Exception:
         return None
     if body.get("sub") != sub:

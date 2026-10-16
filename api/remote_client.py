@@ -8,28 +8,13 @@ import time
 from store import diagnostics
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import Request
 
 from vinc_mcp import rest_routes
+from vinc_mcp.hubhttp import urlopen  # 리다이렉트를 따르지 않는 한 자리. 테스트가 이 이름을 바꿔 끼운다
 from vinc_mcp.entitlement import KEY_PREFIXES
 
 _LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
-
-
-class _NoRedirect(HTTPRedirectHandler):
-    """리다이렉트를 따라가지 않는다. 따라가면 Authorization 헤더가 그 주소로 가고,
-    POST 쓰기가 본문 없는 GET 으로 바뀌어 성공처럼 보인다."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
-_OPENER = build_opener(_NoRedirect)
-
-
-def urlopen(request, *, timeout: float):
-    """모든 요청이 지나는 한 자리 — 리다이렉트를 따르지 않는 opener 를 쓴다."""
-    return _OPENER.open(request, timeout=timeout)
 
 
 def api_key() -> str | None:

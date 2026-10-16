@@ -11,12 +11,16 @@ import copy
 import json
 import os
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 from gate_app_config import BASELINE, project_app
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from vinc_mcp import hubhttp  # noqa: E402
 
 APP = ["-n", "vinc-hub", "-g", "vincsRG"]
 BASE = "https://mcp.vincs.io"
@@ -75,15 +79,10 @@ def health():
     token = os.environ.get("VINC_MCP_TOKEN", "")
     if not token:
         raise RuntimeError("Authenticated health probe credential unavailable")
-    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list",
-                       "params": {}}).encode()
-    req = urllib.request.Request(BASE + "/mcp", body, {
-        "Authorization": "Bearer " + token, "Content-Type": "application/json",
-        "Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as response:
-        data = json.load(response)
-        if not isinstance(data.get("result", {}).get("tools"), list):
-            raise RuntimeError("MCP tools/list failed")
+    data = hubhttp.post_json(BASE + "/mcp", token=token, payload={
+        "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}, timeout=30)
+    if not isinstance(data.get("result", {}).get("tools"), list):
+        raise RuntimeError("MCP tools/list failed")
     with urllib.request.urlopen(BASE + "/.well-known/oauth-protected-resource", timeout=30) as response:
         if response.status != 200:
             raise RuntimeError("OAuth discovery failed")

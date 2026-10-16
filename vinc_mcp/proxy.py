@@ -21,12 +21,10 @@ from __future__ import annotations
 import json
 import os
 import sys
-import urllib.error
-import urllib.request
 from collections.abc import Mapping
 from typing import IO, Any
 
-from . import __version__
+from . import __version__, hubhttp
 from .remote import _endpoint
 from .rpc import LATEST_PROTOCOL_VERSION, PROTOCOL_VERSIONS
 
@@ -108,25 +106,25 @@ class Proxy:
         if not self.token:
             return self._signed_out(msg)
         body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(self.url, data=body, method="POST")
-        req.add_header("Authorization", f"Bearer {self.token}")
-        req.add_header("Content-Type", "application/json")
-        req.add_header("Accept", "application/json, text/event-stream")
+        extra = {}
         if self.session_id:
-            req.add_header("Mcp-Session-Id", self.session_id)
+            extra["Mcp-Session-Id"] = self.session_id
         if self.protocol:
-            req.add_header("MCP-Protocol-Version", self.protocol)
+            extra["MCP-Protocol-Version"] = self.protocol
         msg_id = msg.get("id") if isinstance(msg, dict) else None
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                sid = resp.headers.get("Mcp-Session-Id")
-                if sid:
-                    self.session_id = sid
-                ctype = (resp.headers.get("Content-Type") or "").lower()
-                raw = resp.read().decode("utf-8")
-        except urllib.error.HTTPError as e:
-            return self._http_error(msg, msg_id, e)
+            resp = hubhttp.request(self.url, token=self.token, data=body, timeout=self.timeout,
+                                   accept="application/json, text/event-stream", headers=extra)
+            sid = resp.headers.get("Mcp-Session-Id")
+            if sid:
+                self.session_id = sid
+            ctype = (resp.headers.get("Content-Type") or "").lower()
+            raw = resp.text
         except Exception as e:  # noqa: BLE001 — 네트워크·시간 초과는 전부 요청의 오류로
+            if isinstance(e, hubhttp.HubHTTPError):
+                if e.status is not None:
+                    return self._http_error(msg, msg_id, e)
+                e = e.cause
             print(f"vinc-mcp: hosted MCP unreachable: {type(e).__name__}: {e}", file=sys.stderr)
             return [_err(msg_id, UNREACHABLE.format(why=type(e).__name__))] if _is_request(msg) else []
         replies = _parse(raw, ctype)
@@ -138,21 +136,18 @@ class Proxy:
                     self.protocol = pv
         return replies
 
-    def _http_error(self, msg: Any, msg_id: Any, e: urllib.error.HTTPError) -> list[dict]:
-        try:
-            raw = e.read().decode("utf-8")
-        except Exception:  # noqa: BLE001
-            raw = ""
+    def _http_error(self, msg: Any, msg_id: Any, e: hubhttp.HubHTTPError) -> list[dict]:
+        raw = e.body
         # 호스티드가 JSON-RPC 오류 본문을 실어 보냈으면 그것이 가장 정확한 말이다.
-        passed = [r for r in _parse(raw, (e.headers.get("Content-Type") or "").lower())
+        passed = [r for r in _parse(raw, ((e.headers or {}).get("Content-Type") or "").lower())
                   if isinstance(r, dict) and r.get("jsonrpc") == "2.0"]
         if passed:
             return passed if _is_request(msg) else []
         if not _is_request(msg):
             return []
-        if e.code in (401, 403):
-            return [_err(msg_id, REFUSED.format(code=e.code))]
-        return [_err(msg_id, UNREACHABLE.format(why=f"HTTP {e.code}"))]
+        if e.status in (401, 403):
+            return [_err(msg_id, REFUSED.format(code=e.status))]
+        return [_err(msg_id, UNREACHABLE.format(why=f"HTTP {e.status}"))]
 
 
 def _parse(raw: str, ctype: str) -> list[dict]:

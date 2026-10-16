@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 import urllib.error
 import urllib.request
 
-from verify_layout_remote import BASE, NoRedirect, VerificationError
+from verify_layout_remote import BASE, VerificationError, urlopen
 
 FIELDS = {"created_at", "updated_at", "content_time", "valid_from", "valid_until",
           "superseded_by", "validity", "supersession", "supersedes", "claim_status", "conflicts"}
@@ -16,7 +16,7 @@ FIELDS = {"created_at", "updated_at", "content_time", "valid_from", "valid_until
 
 def _json_read(request, timeout):
     try:
-        with urllib.request.build_opener(NoRedirect()).open(request, timeout=timeout) as response:
+        with urlopen(request, timeout=timeout) as response:
             data = response.read(8 * 1024 * 1024 + 1)
     except urllib.error.HTTPError as exc:
         raise VerificationError(f"search read returned HTTP {exc.code}") from None
