@@ -73,7 +73,10 @@ class _StubBridge(Bridge):
 
 class ToolContractTests(unittest.TestCase):
     def test_tool_names_match_d11(self):
-        self.assertEqual({t["name"] for t in tools.specs()}, D11_TOOLS)
+        self.assertEqual({t["name"] for t in tools.TOOLS}, D11_TOOLS)
+        # 로컬 프로파일은 계정 전용 커뮤니티 도구 둘을 내보내지 않는다(늘 실패하므로).
+        self.assertEqual({t["name"] for t in tools.specs()},
+                         D11_TOOLS - set(tools._ACCOUNT_ONLY_TOOLS))
 
     def test_specs_have_schema_and_description(self):
         for t in tools.specs():
@@ -84,7 +87,7 @@ class ToolContractTests(unittest.TestCase):
         # 쓰기 표면은 **명시된 것만**(ingest + 오염 정리 delete/merge + D45 P4 문서
         # 정본 put/delete + F10-b 기각 기억)이어야 한다 — 조회 도구가 몰래 쓰지 않는다.
         b = _StubBridge()
-        for t in tools.specs():
+        for t in tools.TOOLS:                   # 레지스트리 전부: 목록에서 빠진 도구도 호출 경로는 있다
             if t["name"] == "vinc_community_read":
                 with self.assertRaises(tools.InvalidArgument):
                     tools.call(t["name"], {"action": "agent_detail", "payload": {}}, b)
@@ -183,7 +186,8 @@ class DispatcherTests(unittest.TestCase):
 
     def test_tools_list_and_call(self):
         r = self._rpc("tools/list")
-        self.assertEqual({t["name"] for t in r["result"]["tools"]}, D11_TOOLS)
+        self.assertEqual({t["name"] for t in r["result"]["tools"]},
+                         D11_TOOLS - set(tools._ACCOUNT_ONLY_TOOLS))
         r = self._rpc("tools/call", {"name": "vinc_search", "arguments": {"query": "x"}})
         self.assertFalse(r["result"]["isError"])
         payload = json.loads(r["result"]["content"][0]["text"])

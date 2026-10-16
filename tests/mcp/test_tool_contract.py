@@ -31,6 +31,8 @@ from vinc_mcp.tools import TOOLS                     # noqa: E402
 #: 통째로 갈아치우는 override 계층이 있어서 tools.py 를 고쳐도 안 닿았다 —
 #: 설명 계약은 반드시 이 경로로 검사한다.
 SERVED = {t['name']: t for t in _tool_specs()}
+#: 허브 프로파일. 계정 전용 커뮤니티 도구 둘은 여기서만 나간다(로컬 목록에는 없다).
+HUB = {t['name']: t for t in _tool_specs(hub=True)}
 
 NUMERIC = ("integer", "number")
 
@@ -158,7 +160,9 @@ def test_served_descriptions_are_exactly_the_canonical_ones():
     한다. rpc 의 override 계층이 recall·domains 를 조용히 갈아치우고 있었다 — 그래서
     tools.py 를 고쳐도 호스트는 옛 문구를 봤다."""
     canon = {t["name"]: t["description"] for t in TOOLS}
-    drift = [n for n, d in canon.items() if SERVED[n]["description"] != d]
+    assert set(canon) <= set(HUB), "허브 목록에 빠진 도구가 있다"
+    drift = [n for n, d in canon.items() if HUB[n]["description"] != d]
+    drift += [n for n, t in SERVED.items() if n in canon and t["description"] != canon[n]]
     assert not drift, f"tools.py 와 tools/list 설명이 다른 도구: {drift}"
 
 
@@ -221,8 +225,11 @@ def test_docstring_tool_count_matches_the_list():
     from vinc_mcp import tools as _t
     m = re.search(r"\*\*(\d+)종\*\*", _t.__doc__ or "")
     assert m, "독스트링에서 도구 수를 못 찾았다"
-    assert int(m.group(1)) == len(TOOLS) == len(SERVED), (
-        f"독스트링 {m.group(1)}종 vs TOOLS {len(TOOLS)}개 vs 서빙 {len(SERVED)}개")
+    assert int(m.group(1)) == len(TOOLS), f"독스트링 {m.group(1)}종 vs TOOLS {len(TOOLS)}개"
+    # 로컬 목록은 계정 전용 도구 둘을 뺀 나머지, 허브 목록은 레지스트리 전부를 낸다.
+    assert len(SERVED) == len(TOOLS) - len(_t._ACCOUNT_ONLY_TOOLS), (
+        f"로컬 서빙 {len(SERVED)}개 vs TOOLS {len(TOOLS)}개")
+    assert {t["name"] for t in TOOLS} <= set(HUB)
 
 
 # ── 정체 각인(2026-08-18) — "어느 그래프에 썼는가"가 응답에 있는가 ──────────────
@@ -466,6 +473,43 @@ def test_conditional_ingest_names_its_conditions():
 def test_community_read_names_the_pack_version_not_a_release():
     """출하 번호로 적으면 다음 릴리스가 나가는 순간 거짓이 된다. 팩 판으로 적는다."""
     import re
-    d = SERVED["vinc_community_read"]["description"]
+    d = HUB["vinc_community_read"]["description"]
     assert "pack_version 2" in d
     assert not re.search(r"\b0\.\d+\.\d+\b", d), "설명이 데스크톱 출하 번호를 단정한다"
+
+
+# ── VIN-589: 핸들러가 이미 지키는 한계를 스키마도 말한다 ─────────────────────────
+def test_delete_edge_type_enum_is_the_handler_list():
+    """`vinc_delete_edge.type` 의 enum 은 핸들러가 받는 목록이다: fragment 타입명
+    (`api/query.py` `_FRAGMENT_EDGE_TO_REL`)과 물리 부착 ATTACHES_TO. 목록이 갈리면 MCP 가
+    핸들러가 받는 값을 거절하거나 못 받는 값을 광고한다."""
+    from api import query
+    spec = SERVED["vinc_delete_edge"]["inputSchema"]["properties"]["type"]
+    assert set(spec["enum"]) == set(query._FRAGMENT_EDGE_TO_REL) | {"ATTACHES_TO"}
+    for value in spec["enum"]:
+        rel = query._FRAGMENT_EDGE_TO_REL.get(value.lower(), value.upper())
+        assert rel in query.SYNC_EDGE_RELS, f"{value} 는 핸들러가 지울 수 없는 타입이다"
+
+
+def test_delete_edge_refuses_a_type_outside_the_enum_before_the_bridge():
+    from vinc_mcp import tools as T
+
+    class _Bridge:
+        owner = "user:test"
+
+        def request(self, *a, **k):
+            raise AssertionError("거절은 사이드카에 닿기 전이어야 한다")
+
+    with pytest.raises(T.InvalidArgument) as err:
+        T.call("vinc_delete_edge", {"from_id": "concept:a", "to_id": "concept:b",
+                                    "type": "connects_via"}, _Bridge())
+    assert "ATTACHES_TO" in err.value.text
+
+
+def test_role_check_output_limit_matches_the_handler():
+    from vinc_mcp import tools as T
+    spec = SERVED["vinc_role_check"]["inputSchema"]["properties"]["output"]
+    assert spec["maxLength"] == 131072
+    out = T._t_role_check({"role": "agent-dev-core", "output": "x" * (spec["maxLength"] + 1)},
+                          bridge=None)
+    assert out["error"] == "output_required"
