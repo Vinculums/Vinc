@@ -713,6 +713,7 @@
     "vinc.research.cli-brief-threshold-2026-10-03",
     "vinc.research.cli-plan-vs-main-2026-09-27",
     "vinc.research.coding-agent-supervisor",
+    "vinc.research.commitment-and-recall-evidence-2026-10-16",
     "vinc.research.community-design-ia-reassessment-2026-10-13",
     "vinc.research.community-interface-principles",
     "vinc.research.community-need-evidence-2026-10-13",
@@ -743,6 +744,7 @@
     "vinc.research.gaussian-layout",
     "vinc.research.google-sign-in-2026-09-26",
     "vinc.research.graph-defined-agents-usage-2026-09-28",
+    "vinc.research.graph-storage-and-search-audit-2026-10-16",
     "vinc.research.graph-structure",
     "vinc.research.graph-write-method-2026-10-14",
     "vinc.research.graphrag-agent-memory-literature-2026-09-28",
@@ -995,7 +997,6 @@
     "record:path-called-an-existing-concept-unknown-2026-09-08",
     "record:planar-leaves-cluster-because-arms-read-as-a-vortex",
     "record:query-scope-ignored-the-topic-tree-it-was-standing-on",
-    "record:r3a-sampler-runs-on-a-heavy-write-day-2026-09-08",
     "record:rebuild-apply-verifies-upload-and-recovers-before-switch-2026-10-09",
     "record:rebuild-store-fails-on-a-store-whose-node-mirror-predates-v18-2026-09-13",
     "record:rel-tables-take-multiple-endpoint-pairs",
@@ -1266,6 +1267,9 @@
       "validity": "unknown"
     },
     "decision:topic-transfer-edge-history-and-foreign-rejection-endpoints-2026-10-16": {
+      "validity": "unknown"
+    },
+    "decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16": {
       "validity": "unknown"
     },
     "decision:topic-transfer-plain-references-and-external-images-2026-10-16": {
@@ -1545,9 +1549,6 @@
       "validity": "current"
     },
     "record:query-scope-ignored-the-topic-tree-it-was-standing-on": {
-      "validity": "current"
-    },
-    "record:r3a-sampler-runs-on-a-heavy-write-day-2026-09-08": {
       "validity": "current"
     },
     "record:rebuild-apply-verifies-upload-and-recovers-before-switch-2026-10-09": {
