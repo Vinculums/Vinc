@@ -1372,6 +1372,37 @@ def _domain_gate(fragment_nodes: list[dict], *, store, owner: str,
             "current": len(existing), "attempted": sorted(fresh)}
 
 
+def _mention_fields(store, owner: str, ids: list[str]) -> dict | None:
+    """개념·결정의 링크를 셀 재료(제목·stem·출처). 읽지 못하면 None 이고, 호출부는 전부 다시 센다."""
+    if not ids:
+        return {}
+    try:
+        from engines.mentions_link import link_fields
+        return link_fields(store, owner, ids)
+    except Exception:
+        return None
+
+
+def _link_mentions(store, owner: str, ids: list[str], before: dict | None) -> None:
+    """새로 생기거나 제목·stem·출처가 바뀐 개념·결정을 owner 의 **이미 있는** 청크에 잇는다.
+
+    `put_doc` 은 문서 쪽에서만 링크를 세므로, 이 단계가 없으면 문서보다 늦게 들어온 개념은
+    링크가 0이고 발췌가 전부 제목 전문 검색 폴백으로 간다. 재료가 그대로인 노드는 건너뛴다
+    (다시 보낸 개념마다 청크를 훑지 않게). 실패는 쓰기를 무효로 만들지 않는다 — 링크는
+    증강이다. 규칙과 쓰기는 링커의 것(`engines.mentions_link.link_nodes`) 하나다."""
+    if not ids:
+        return
+    try:
+        from engines.mentions_link import link_fields, link_nodes
+        after = link_fields(store, owner, ids)
+        changed = [i for i in ids if before is None or after.get(i) != before.get(i)]
+        if changed:
+            link_nodes(store, owner=owner, ids=changed)
+    except Exception as exc:
+        import sys
+        print(f"[fragment] mentions not linked ({len(ids)} nodes): {exc}", file=sys.stderr)
+
+
 def merge_fragment(fragment: dict, *, store, themes=None,
                    stamp_edges: bool = True,
                    max_domains: int | None = None,
@@ -1454,6 +1485,10 @@ def merge_fragment(fragment: dict, *, store, themes=None,
                 f"new topics rejected: {', '.join(denial['attempted'])}. "
                 "Existing topics keep working."])
     fold = _ThemeFold(themes, fragment)
+    # 링크(MENTIONS)를 다시 셀 노드를 고르려고 쓰기 **전** 재료를 읽는다(`_link_mentions`).
+    mention_ids = sorted({(n.get("id") or "").strip() for n in nodes
+                          if (n.get("type") or "").strip() in _SEMANTIC_TYPES} - {""})
+    mention_before = _mention_fields(store, owner, mention_ids)
     # 끝점 해석표는 **실제로 MERGE 된 노드**로만 짓는다 — 스킵된 노드가 끝점으로
     # 등록되면 그리로 향하는 엣지가 0행을 만나고도 created 로 세어진다.
     # ⚠ 판정은 **`r is not None`** 이다. "경고가 없었나"로 재면 안 된다 — 경고를
@@ -1498,6 +1533,7 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     if authored and edges:
         belief_contract.apply(beliefs, edges, store=store, owner=owner, warnings=warnings)
     _warn_orphan_decisions(store, types, warnings, owner=owner)
+    _link_mentions(store, owner, [i for i in mention_ids if i in types], mention_before)
     edges_out = {"created": e_created}
     if e_skipped_dup:
         edges_out["skipped_duplicate"] = e_skipped_dup

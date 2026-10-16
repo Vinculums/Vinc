@@ -25,10 +25,16 @@ Chunk(벡터/FTS 검색 노드)를 그것이 언급하는 Concept 에 잇는 규
 하나도 늘거나 줄지 않는다(3858 → 3858, 라벨만 142건 이동). 실측:
 [[record:title-before-source-clears-every-all-source-korean-window-while-suffix-stripping-buys-nothing-2026-09-14]]
 
-규칙이 바뀌면 `MENTIONS_RULE` 을 올린다. 재링크는 `put_doc` 에서만 일어나므로 규칙만
-바꾸면 **이미 적재된 문서의 링크는 옛 규칙 그대로 남는다** — `ensure_rule` 이 기동 시
-`_SchemaMeta` 의 표식과 대조해 다르면 전량 재링크한다(임베딩 모델 전환과 같은 형태,
-`api.docstore.switch_embed_model`).
+링크는 양쪽에서 계산한다. `put_doc` 은 그 문서의 청크를 소유자의 개념 전부와,
+`merge_fragment`(ingest·sync·팩)는 새로 생기거나 제목·stem·출처가 바뀐 개념·결정을
+소유자의 청크 전부와 대조한다(`link_nodes`). 한쪽만 있으면 문서보다 늦게 들어온 개념은
+링크가 0이다.
+
+규칙이 바뀌면 `MENTIONS_RULE` 을 올린다. 규칙만 바꾸면 **이미 적재된 문서의 링크는 옛
+규칙 그대로 남는다** — `ensure_rule` 이 기동 시 `_SchemaMeta` 의 표식과 대조해 다르면
+전량 재링크한다(임베딩 모델 전환과 같은 형태, `api.docstore.switch_embed_model`).
+⚠ 표식을 올리면 평가 하네스가 그 표식이 다른 핀을 전부 거부한다(`rag_eval/evalkit/
+run_nodes.py`). 규칙이 그대로인 빈틈 메우기는 따로 표식을 둔다(`ensure_late_links`).
 
 `_node_fallback_search`(api/query.py)의 토큰화 규약과 동형(소문자 split). owner 를
 주면 Concept 를 그 소유자로 스코프한다(호스티드 — 남의 개념에 링크 금지).
@@ -325,6 +331,90 @@ def ensure_rule(store) -> dict:
               {"k": _RULE_KEY, "v": MENTIONS_RULE})
     out.update(executed=True, changed=True, owners=per, skipped_ownerless=skipped,
                ownerless_remaining=back.get("remaining", -1))
+    return out
+
+
+def link_fields(store, owner: str, ids: list[str]) -> dict[str, tuple]:
+    """개념·결정 ``ids``(논리 id) 가운데 owner 의 것이 지금 가진 링크 판정 재료.
+
+    반환은 {논리 id: (라벨, title, stem, source_file)}. 없는 id 는 빠진다. 쓰기 전후에 한
+    번씩 읽어 비교하면 "링크를 다시 셀 노드"가 나온다 — 재료가 같으면 링크도 같다."""
+    out: dict[str, tuple] = {}
+    if not ids:
+        return out
+    for label, pk, has_stem in _LINK_TARGETS:
+        proj = "c.stem AS stem, c.source_file AS source_file" if has_stem else \
+            "'' AS stem, '' AS source_file"
+        rows = store.run(
+            f"MATCH (c:{label}) WHERE c.owner_id = $o AND c.{pk} IN $keys "
+            f"RETURN c.{pk} AS id, c.title AS title, " + proj,
+            {"o": owner, "keys": [pkns.key(owner, i) for i in ids]}) or []
+        for r in rows:
+            out[pkns.strip(r["id"])] = (label, r.get("title") or "", r.get("stem") or "",
+                                        r.get("source_file") or "")
+    return out
+
+
+def link_nodes(store, *, owner: str, ids: list[str]) -> int:
+    """개념·결정 ``ids``(논리 id) 를 owner 의 **이미 있는** 청크에 잇는다. 반환은 링크 수.
+
+    규칙은 `compute_links` 하나다(`put_doc` 과 같다). 그 노드로 향하던 링크는 본문 근거
+    (`body`)만 남기고 먼저 지운다 — 제목이 바뀐 개념에 바뀌기 전 제목의 링크가 남지 않게.
+    청크는 owner 로 좁힌다: 남의 청크에 내 개념을 걸면 교차 테넌트 링크다.
+    비용은 owner 의 청크를 한 번 훑는 것이라 노드 수가 아니라 호출 수에 비례한다."""
+    fields = link_fields(store, owner, ids)
+    if not fields:
+        return 0
+    pk_of = {lbl: pk for lbl, pk, _ in _LINK_TARGETS}
+    by_label: dict[str, list[str]] = {}
+    for nid, got in fields.items():
+        by_label.setdefault(got[0], []).append(pkns.key(owner, nid))
+    for label, keys in by_label.items():
+        store.run(f"MATCH (:Chunk)-[m:MENTIONS]->(co:{label}) WHERE co.{pk_of[label]} IN $keys "
+                  "AND (m.method IS NULL OR m.method <> 'body') DELETE m", {"keys": keys})
+    concepts = [{"concept_id": nid, "title": title, "stem": stem, "source_file": src,
+                 "label": label} for nid, (label, title, stem, src) in sorted(fields.items())]
+    links = compute_links(_fetch_chunks(store, owner), concepts)
+    return merge_links(store, links, concepts, owner)
+
+
+#: 규칙과 별개인 1회 작업의 표식. `link_nodes` 가 생기기 전에 문서보다 늦게 들어온
+#: 개념·결정은 링크가 0이다. 값을 바꾸면 다시 돈다.
+_LATE_KEY = "mentions_late_nodes"
+_LATE_MARK = "1"
+
+
+def ensure_late_links(store) -> dict:
+    """링크가 하나도 없는 개념·결정을 소유자의 청크에 한 번 잇는다(멱등, 표식 하나).
+
+    이미 링크가 있는 노드는 건드리지 않는다. **청크 소유자가 둘 이상인 스토어(허브)에서만
+    돈다.** 단일 소유자 스토어는 평가 핀이기도 해서, 기동이 링크를 바꾸면 사이드카로 잰
+    값과 프로세스 안에서 잰 값이 갈린다. 단일 소유자 스토어는 표식만 남기고, 필요하면
+    `python -m engines.mentions_link --reset` 으로 전량 재링크한다."""
+    out: dict = {"kind": "mentions.late", "executed": False}
+    rows = store.run("MATCH (m:_SchemaMeta) WHERE m.key = $k RETURN m.value AS v",
+                     {"k": _LATE_KEY}) or []
+    if rows and (rows[0].get("v") or "") == _LATE_MARK:
+        out.update(executed=True, changed=False)
+        return out
+    owners = [o for o in _chunk_owners(store) if o]
+    per: dict[str, int] = {}
+    if len(owners) > 1:
+        for o in owners:
+            ids: list[str] = []
+            for label, pk, _ in _LINK_TARGETS:
+                every = store.run(f"MATCH (c:{label}) WHERE c.owner_id = $o RETURN c.{pk} AS id",
+                                  {"o": o}) or []
+                linked = store.run(
+                    f"MATCH (:Chunk)-[:MENTIONS]->(c:{label}) WHERE c.owner_id = $o "
+                    f"RETURN DISTINCT c.{pk} AS id", {"o": o}) or []
+                seen = {r["id"] for r in linked}
+                ids += [pkns.strip(r["id"]) for r in every if r["id"] not in seen]
+            if ids:
+                per[o] = link_nodes(store, owner=o, ids=ids)
+    store.run("MERGE (m:_SchemaMeta {key: $k}) SET m.value = $v",
+              {"k": _LATE_KEY, "v": _LATE_MARK})
+    out.update(executed=True, changed=True, owners=per, skipped_single_owner=len(owners) <= 1)
     return out
 
 

@@ -500,6 +500,14 @@ class VincApp:
             if (res.get("ownerless_remaining") or 0) > 0:
                 print(f"vinc: ⚠ owner 없는 청크 {res['ownerless_remaining']}개 — "
                       "재링크가 건너뛴다(문서 메타가 없는 고아)", file=sys.stderr)
+            # 규칙과 별개로, 문서보다 늦게 들어와 링크가 0인 개념·결정을 한 번 잇는다.
+            # 같은 잡 안이라 전량 재링크 뒤에 선다. 전량 재링크가 돈 기동이면 메울 것이 없다.
+            from engines.mentions_link import ensure_late_links
+            late = ensure_late_links(store)
+            if late.get("changed") and late.get("owners") and not self.quiet_boot:
+                print(f"vinc: MENTIONS 빈틈 메우기 — 소유자 {len(late['owners'])}곳 · "
+                      f"링크 {sum(late['owners'].values())}개", file=sys.stderr)
+            res["late"] = late
             return res
 
         try:
