@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 import os
 
+from .envflag import truthy
+
 #: 물리 키의 owner\x1fid 구분자. 사용자 저작 문자열에 나타나면 안 된다 — 나타나면
 #: 물리 키로 오인되어 strip 이 owner 를 잘라낸다(PR-B 의 판별자가 바로 이 바이트다).
 SEP = "\x1f"
@@ -27,8 +29,7 @@ _NORMALIZE = {
 
 def enabled() -> bool:
     """네임스페이싱이 켜져 있나. 로컬 스토어는 영구히 off(vinc.plan.node-pk-namespacing §7)."""
-    return str(os.environ.get("VINC_PK_NAMESPACED") or "").strip().lower() in (
-        "1", "true", "yes", "on")
+    return truthy(os.environ.get("VINC_PK_NAMESPACED"))
 
 
 def compose(owner: str, id: str, normalize: bool = True) -> str:

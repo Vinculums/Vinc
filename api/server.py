@@ -131,6 +131,7 @@ from store.config import load_config
 from store import config as store_config
 from store import request_timing
 from store.backend import open_store
+from store.envflag import truthy
 from store.embedded_backend import DdlGuardTimeout
 
 from .graph_loading import GraphWire
@@ -929,14 +930,14 @@ class VincApp:
             p.get("query", ""), owner=p.get("owner"), domain=p.get("domain"),
             tenant=p.get("tenant"), workspace=p.get("workspace"),
             rank=p.get("rank", "recency"), tags=_csv(p.get("tags")),
-            limit=_int(p.get("limit"), 10), store=r, debug=_flag(p.get("debug")),
+            limit=_int(p.get("limit"), 10), store=r, debug=truthy(p.get("debug")),
             # 커서 페이징은 opt-in 이다 — `page`·`cursor` 없이 오는 호출(웹 op recall)은
             # 응답 모양이 그대로다. [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S3.
-            page=_flag(p.get("page")), cursor=p.get("cursor") or None))))
+            page=truthy(p.get("page")), cursor=p.get("cursor") or None))))
 
     def read_domains(self, p):
         return self._read(lambda r: q.domains(owner=p.get("owner"), store=r,
-                                              debug=_flag(p.get("debug"))))
+                                              debug=truthy(p.get("debug"))))
 
     def read_owner_stats(self, p):
         # 소유자 전체의 노드·문서 수(W1c). 허브의 계정 서명 경로 `/internal/usage` 만
@@ -997,7 +998,7 @@ class VincApp:
         # 읽기 **전에** 잡았으므로 응답은 그 표식 이상으로 새롭다: 읽기가 끝난 뒤에도 표식이
         # 같으면 그 사이에 쓰기가 없었다. 그래서 클라이언트는 먼저 표식을 묻고 기다리지 않고
         # 읽기를 바로 시작할 수 있다.
-        want = str(p.get("marker") or "").lower() in ("1", "true")
+        want = truthy(p.get("marker"))
         owner = _req(p, "owner") if (key or want) else None
         marker = self.changes.read(owner) if (key or want) else None
         if key:
@@ -1118,7 +1119,7 @@ class VincApp:
         return self._read(lambda r: q.suggest_merge_candidates(
             owner=_req(p, "owner"), min_score=float(p.get("min_score") or 0.6),
             limit=_int(p.get("limit"), 20),
-            include_structural=_flag(p.get("include_structural")), store=r))
+            include_structural=truthy(p.get("include_structural")), store=r))
 
     def read_merge_rejections(self, p):
         # F10-b 기각 목록(조회 전용) — 무엇을 되살릴 수 있는지 보여 준다.
@@ -1181,7 +1182,7 @@ class VincApp:
             query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
             top_k=_int(p.get("top_k"), 5), filters=filters or None,
             cursor=p.get("cursor") or None, detail=p.get("detail") or "summary",
-            historical=_flag(p.get("historical")), as_of=p.get("as_of") or None,
+            historical=truthy(p.get("historical")), as_of=p.get("as_of") or None,
             mode=p.get("mode") or None, known_at=p.get("known_at") or None,
             owner=p.get("owner") or None, store=r)))
         # GM-14: 무효/실효 커서는 **명시적 클라이언트 오류**다 — 조용히 첫 페이지로
@@ -1519,7 +1520,7 @@ class VincApp:
         return self._read(lambda r: q.node_context(
             owner=_req(p, "owner"), node=_req(p, "node"),
             limit=_int(p.get("limit"), 4),
-            with_evidence=_flag(p.get("evidence")),
+            with_evidence=truthy(p.get("evidence")),
             links_offset=_int(p.get("links_offset"), 0),
             sources_offset=_int(p.get("sources_offset"), 0), store=r))
 
@@ -1538,7 +1539,7 @@ class VincApp:
             query, owner=_req(p, "owner"), query_embedding=qvec,
             query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
             max_excerpts=_int(p.get("max_excerpts"), 3),
-            historical=_flag(p.get("historical")), as_of=p.get("as_of") or None, mode=p.get("mode") or None, store=r)))
+            historical=truthy(p.get("historical")), as_of=p.get("as_of") or None, mode=p.get("mode") or None, store=r)))
         if isinstance(res, dict) and str(res.get("error") or "").startswith(
                 ("invalid_as_of", "invalid_time_scope", "invalid_temporal_mode")):
             code = 400
@@ -1688,7 +1689,7 @@ class VincApp:
         # 것이 계약이라 여기에 "전부" 값은 없다 - 개수는 counts.kinds 가 따로 준다.
         # `domain=` 은 그 주제의 **하위 트리**로 좁힌다(목록·개수·문서가 같은 술어).
         return self._read(lambda r: q.nav_tree(
-            owner=_req(p, "owner"), nodes=_flag(p.get("nodes")),
+            owner=_req(p, "owner"), nodes=truthy(p.get("nodes")),
             kind=p.get("kind"), domain=p.get("domain"),
             domains=_domains(p.get("domains")), store=r))
 
@@ -2189,7 +2190,7 @@ class VincApp:
         우회한다(허브는 "이 owner 의 전부를 서빙"이 맞는 의미 — 로컬쪽 도메인 선택은
         push 시 로컬 스토어에서 이미 적용됨, apply_delta 는 도메인 필터가 없다)."""
         owner = _req(p, "owner")
-        if _flag(p.get("all")):
+        if truthy(p.get("all")):
             # 모드 전환의 전량 받기(VIN-130). 아래 도메인 목록은 **주제가 빈 노드를 못
             # 잡는다**(`IN` 은 빈 값과 맞지 않는다) — 그대로 두면 계정에서 기기로 옮길 때
             # 주제 없는 노드가 조용히 남는다. 그래서 주제를 아예 안 가린다.
@@ -2216,7 +2217,7 @@ class VincApp:
         owner = _req(p, "owner")
         # `all` = 순번과 무관하게 전부(모드 전환의 전량 받기, VIN-130 · docsync 주석).
         return self._read(lambda r: docsync.export_docs(
-            r, owner=owner, since=_int(p.get("since"), 0), everything=_flag(p.get("all"))))
+            r, owner=owner, since=_int(p.get("since"), 0), everything=truthy(p.get("all"))))
 
     def write_sync_docs_apply(self, body):
         """문서 정본 delta 적용(D45 P3 — doc 단위 LWW, 로컬 재청킹). 쓰기 → 잡 직렬화.
@@ -2368,7 +2369,7 @@ class VincApp:
                 info = localmode.inspect_folder(str(raw))
                 if not info["ok"]:
                     return 400, {"error": info["problem"], "inspect": info}
-                if info["risks"] and not _flag(body.get("accept_risk")):
+                if info["risks"] and not truthy(body.get("accept_risk")):
                     return 409, {"error": "risky_folder", "inspect": info}
                 try:
                     os.makedirs(info["path"], exist_ok=True)
@@ -2522,7 +2523,7 @@ def _int(val, default: int) -> int:
 
 def embed_apply_paused() -> bool:
     """`VINC_EMBED_APPLY_PAUSED` 가 켜졌는가(on/1/true/yes). 매번 env 를 읽는다."""
-    return _flag(os.environ.get("VINC_EMBED_APPLY_PAUSED"))
+    return truthy(os.environ.get("VINC_EMBED_APPLY_PAUSED"))
 
 
 #: 기동 수리 — (백엔드 메서드, 로그 이름). 셋은 서로 독립이다: 하나가 실패해도 나머지는 돈다.
@@ -2556,15 +2557,6 @@ def _heal_search_indexes(store, dim: int, *, quiet=False) -> None:
             rows = f"{res['rows']} rows, " if res.get("rows") is not None else ""
             print(f"vinc: {what} {res['state']} at boot ({rows}{res.get('seconds')}s)",
                   file=sys.stderr, flush=True)
-
-
-def _flag(val) -> bool:
-    """쿼리스트링·JSON 양쪽에서 오는 불리언. HTTP 로 오면 문자열 `"true"` 이고
-    MCP/CLI 로 오면 진짜 bool 이라 둘 다 받아야 한다 — `bool("false")` 가 True 인
-    것이 이 자리의 함정이다(F3 의 debug 옵트인이 항상 켜져 버린다)."""
-    if isinstance(val, bool):
-        return val
-    return str(val or "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _pop_max_domains(body) -> int | None:
@@ -2698,7 +2690,7 @@ class _Handler(BaseHTTPRequestHandler):
                 # 종일 활성 요금 구간에 붙잡아 둔 원인 후보였다. 상태 판정(ok·degraded)과
                 # 스냅샷 상태는 메모리 값이라 그대로 싣는다.
                 # 근거: [[vinc.ops.container-apps-cost-rise-2026-09-25]] §4
-                if not migrating and not _flag(
+                if not migrating and not truthy(
                         urllib.parse.parse_qs(parsed.query).get("live", [""])[0]):
                     try:
                         body["embed"] = self.app.embed_health()

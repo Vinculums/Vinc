@@ -100,6 +100,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from store.encoder_runtime import fingerprint as _encoder_fingerprint  # noqa: E402
+from store.envflag import truthy  # noqa: E402
 ENCODER_RUNTIME = _encoder_fingerprint()
 ENCODER_BUILD = os.environ.get("VINC_ENCODER_BUILD", "").strip()
 ENCODER_BUILD_REQUIRED = os.environ.get("VINC_ENCODER_BUILD_REQUIRED") == "on"
@@ -164,8 +165,7 @@ QUARANTINE_S = float(os.environ.get("VINC_EMBED_QUARANTINE_S", "21600"))
 def _apply_paused() -> bool:
     """`VINC_EMBED_APPLY_PAUSED` 가 켜졌는가. 사이드카 `api/server.py` 의
     `embed_apply_paused` 와 같은 판정이다(이 스크립트는 api 를 import 하지 않는다)."""
-    return os.environ.get("VINC_EMBED_APPLY_PAUSED", "").strip().lower() in (
-        "1", "true", "yes", "on")
+    return truthy(os.environ.get("VINC_EMBED_APPLY_PAUSED"))
 
 
 def _call(path: str, body: dict | None = None) -> dict:

@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from store.config import StoreConfig, load_config
 from store.backend import open_store
 from store import pkns
+from store.envflag import truthy
 from store.embedded_backend import vector_generation
 from engines import domain_hierarchy
 
@@ -3358,8 +3359,7 @@ _STRICT_MARGIN = 2
 def _brief_sem_promote_on() -> bool:
     """되묻기 1위를 의미 우위로 확정할 것인가. **기본은 꺼짐**(`VINC_BRIEF_SEM_PROMOTE`).
     켜는 것은 규칙과 시험지의 저자가 다른 골드(VIN-57)가 같은 이득을 낼 때 결정으로 한다."""
-    return str(os.environ.get("VINC_BRIEF_SEM_PROMOTE", "")).strip().lower() in (
-        "1", "on", "true", "yes")
+    return truthy(os.environ.get("VINC_BRIEF_SEM_PROMOTE"))
 
 
 #: 승격에 필요한 의미 우위: 의미 팔 원시 목록에서 1위가 나머지보다 가까운 거리(`sem_lead`,
@@ -3488,16 +3488,14 @@ def _brief_answerability_on() -> bool:
     끄고 켤 수 있어야 하는 이유: 이 문턱은 정답 81문항 중 **확정 18건** 위에서 골랐고,
     답 불가 21문항 중 15문항을 이 세션에 내가 썼다. 즉 시험지 절반이 이 신호를 편들
     수 있다. 기본값을 바꾸기 전에 남이 쓴 문항이 늘어나야 한다."""
-    return str(os.environ.get("VINC_BRIEF_ANSWERABILITY", "")).strip().lower() in (
-        "1", "on", "true", "yes")
+    return truthy(os.environ.get("VINC_BRIEF_ANSWERABILITY"))
 
 
 def _brief_choose_material_on() -> bool:
     """choose 에서 첫 후보 둘레로 답변 재료를 모을 것인가. **기본은 꺼짐**
     (`VINC_BRIEF_CHOOSE_MATERIAL`). 꺼져 있으면 응답은 이 플래그가 없던 때와 같다.
     근거: [[decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13]]"""
-    return str(os.environ.get("VINC_BRIEF_CHOOSE_MATERIAL", "")).strip().lower() in (
-        "1", "on", "true", "yes")
+    return truthy(os.environ.get("VINC_BRIEF_CHOOSE_MATERIAL"))
 
 
 def _brief_expose_n() -> int:
@@ -3518,8 +3516,7 @@ def _brief_list_resolved_on() -> bool:
     (`VINC_BRIEF_LIST_RESOLVED`). 확정이 틀렸을 때 그 뒤에 가려진 정답을 부르는 쪽이
     볼 수 있게 한다(X1). status 와 node 는 그대로다 — 목록이 답을 바꾸지 않는다.
     근거: [[vinc.plan.rag-eval-v2-0-9-6]]"""
-    return str(os.environ.get("VINC_BRIEF_LIST_RESOLVED", "")).strip().lower() in (
-        "1", "on", "true", "yes")
+    return truthy(os.environ.get("VINC_BRIEF_LIST_RESOLVED"))
 
 
 def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
