@@ -1105,7 +1105,7 @@ export const api = {
   // `props_patch`(JSON Merge Patch)를 실어 서버가 저장된 props 에 합치게 한다.
   // owner 를 싣는 이유: 판 확인은 owner 스코프로 읽는다. 빼면 로컬 기본 owner 로 읽어
   // 견본 스페이스의 노드가 "없음"으로 거절된다. 계정·웹은 허브가 세션 owner 로 바꾼다.
-  // 근거: [[record:guarded-node-edits-carry-the-view-owner-2026-10-16]]
+  // 근거 기록은 tests/app/test_node_props_edit.py 머리말이 가리킨다.
   editNode: (node: { id: string; type: string } & Record<string, unknown>, rev: number) =>
     call("/ingest/fragment", undefined, { owner: cfg.owner, nodes: [{ ...node, expected_rev: rev }] }),
 

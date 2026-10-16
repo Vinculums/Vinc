@@ -129,7 +129,7 @@ const holdsNull = (v: unknown): boolean =>
 /** 편집 전후 props 의 차이를 JSON Merge Patch(RFC 7386)로 만든다. 서버(0.9.8
  *  `props_patch`)가 저장된 props 에 합친다: null 은 키 삭제, 객체는 안으로 합침, 그 밖의
  *  값(배열 포함)은 통째로 교체. 바꾼 값에 null 이 들어 있으면 patch 로 표현할 수 없어서
- *  null 을 돌려준다. 그때 호출부는 편집 결과 전체(`props`)를 보낸다. */
+ *  null 을 돌려주고, 호출부는 편집 결과 전체(`props`)를 보낸다. */
 export function propsPatchOf(before: Record<string, unknown>,
                              after: Record<string, unknown>): Record<string, unknown> | null {
   const patch: Record<string, unknown> = {};
