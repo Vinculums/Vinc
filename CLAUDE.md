@@ -71,11 +71,10 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
   필드 이력이 없으므로 **복구는 없다.** 키 하나를 더하려면 **기존 props 를 먼저 읽어
   합쳐서** 통째로 보낼 것(`vinc_ingest` 의 `stored` 가 현재 값을 그대로 준다).
   아래 Entity `tags` 함정과 같은 종인데 그쪽만 명시돼 있어서 이 줄을 더한다.
-- **그 후속: Entity 는 `tags`·`theme_id` 가 여전히 무가드다.** 개방 타입 노드의
-  Entity 분기는 두 필드를 **무조건 SET** 한다 — id 와 title 만 실은 부분 재전송이
-  `tags` 를 빈 배열로 지운다. 그리고 `themes=None` 으로 부르는 경로(sync·share·
-  테스트)는 `theme_id` 를 `""` 로 덮는다. 개방 타입 노드를 다시 보낼 때는 tags 를
-  함께 실을 것.
+- ~~**그 후속: Entity 는 `tags`·`theme_id` 가 여전히 무가드다.**~~ **해소됨**(VIN-587).
+  이제 Entity 의 `tags` 도 미지정 시 보존되고, `theme_id` 는 신규 노드이거나 fragment 가
+  `theme_id` 를 값으로 직접 실었을 때만 바뀐다(`themes=None` 경로가 `""` 로 덮지 않는다).
+  남은 함정은 위 줄의 `props` 통째 교체다.
 - **도메인은 `vinc/` 아래에 둔다 — 접두를 빼면 지도가 통째로 다시 뿌리내린다.**
   배치는 모든 노드 도메인의 **공통 접두**를 뿌리로 벗긴다(`api/query.py` `_build_tree`).
   2026-09-18 에 노드 **셋**이 `product`·`engineering` 으로 들어오자 공통 접두가

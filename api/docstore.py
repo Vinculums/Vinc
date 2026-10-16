@@ -474,6 +474,21 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         return base
     validity_changed = prev is not None and any(
         validity[k] != str(prev.get(k) or "") for k in validity)
+    # 내용 시점도 같은 3값이다(키 부재=보존 · ""=비움 · 값=설정). 형식이 틀리면 쓰지 않고
+    # 저장된 값을 남기며 말한다 — 노드 content_time 과 같은 규칙이고, 조용히 비우면
+    # 오타 한 번이 저장된 시점을 지운다.
+    stored_ctime = str((prev or {}).get("content_time") or "")
+    ctime_warnings: list[str] = []
+    if content_time is None:
+        ctime = stored_ctime
+    else:
+        ctime = _norm_content_time(content_time)
+        if not ctime and str(content_time).strip():
+            ctime = stored_ctime
+            ctime_warnings.append(
+                f"content_time '{content_time}' is not YYYY[-MM[-DD]] — kept the "
+                f"stored value")
+    ctime_changed = prev is not None and ctime != stored_ctime
     # 소유의 정본은 메타다. 메타 없이 남은 청크(첫 쓰기가 ③ 전에 끊긴 잔해)는 청크의
     # owner_id 가 유일한 근거라, 하나라도 남의 것(무소유 포함)이면 지우지도 덮지도
     # 않는다 — 아래 MERGE 가 남의 청크 owner_id 를 덮어쓰던 길이다(RV-12).
@@ -501,9 +516,9 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         if prev.get("content_hash") == content_hash and prev.get("title") == kept_title \
                 and n_live == int(prev.get("chunk_count") or 0):
             origin_changed = origin is not None and origin != str(prev.get("origin") or "")
-            if origin_changed or validity_changed:
-                # 출처나 유효구간만 바뀌면 원문 청크와 임베딩을 다시 만들 필요가 없다. 쓰기 창
-                # 표식은 청크·메타 사이에서 끊겨도 다음 re-put 이 복구하게 한다.
+            if origin_changed or validity_changed or ctime_changed:
+                # 출처·유효구간·내용 시점만 바뀌면 원문 청크와 임베딩을 다시 만들 필요가 없다.
+                # 쓰기 창 표식은 청크·메타 사이에서 끊겨도 다음 re-put 이 복구하게 한다.
                 stamp = updated_at or _stamp_updated_at(store)
                 seq = _next_doc_seq(store, owner)
                 count = int(prev.get("chunk_count") or 0)
@@ -526,16 +541,18 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                 store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id "
                           "SET d.origin = $origin, d.updated_at = $ts, "
                           "d.sync_seq = $seq, d.chunk_count = $count, "
-                          "d.valid_from = $vf, d.valid_until = $vu, d.superseded_by = $sb",
+                          "d.valid_from = $vf, d.valid_until = $vu, d.superseded_by = $sb, "
+                          "d.content_time = $ctime",
                           {"id": doc_id, "origin": kept_origin, "ts": stamp,
                            "seq": seq, "count": count, "vf": validity["valid_from"],
-                           "vu": validity["valid_until"], "sb": validity["superseded_by"]})
+                           "vu": validity["valid_until"], "sb": validity["superseded_by"],
+                           "ctime": ctime})
                 _clear_doc_tombstone(store, doc_id)
                 base.update(executed=True, skipped=False, created=False,
                             chunks=count, replaced=0, title=kept_title,
                             content_hash=content_hash, mentions=linked,
                             updated_at=stamp, sync_seq=seq, **validity,
-                            warnings=_doc_id_warnings(text, doc_id))
+                            warnings=_doc_id_warnings(text, doc_id) + ctime_warnings)
                 if topic:
                     base["topic"] = _set_authored_topic(
                         store, doc_id, topic, owner=owner, title=kept_title)
@@ -544,7 +561,8 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                 return base
             base.update(executed=True, skipped=True, created=False,
                         chunks=int(prev.get("chunk_count") or 0), title=kept_title,
-                        content_hash=content_hash, warnings=_doc_id_warnings(text, doc_id))
+                        content_hash=content_hash,
+                        warnings=_doc_id_warnings(text, doc_id) + ctime_warnings)
             # ⚠ 주제는 본문과 **독립**이다. 본문이 그대로라고 "이 문서를 X 밑에 둬라"를
             # 버리면 그 지시가 조용히 사라진다 — 부르는 쪽에서 가장 흔한 형태가
             # "본문은 그대로 두고 주제만 적는다" 인데 그것이 정확히 안 먹혔다
@@ -626,8 +644,6 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         born = created_at or stamp          # 신규 — 지금이 곧 최초 시각
     else:
         born = str(prev.get("created_at") or "")   # 편집 — 있으면 보존, 없으면 ''
-    ctime = _norm_content_time(content_time) if content_time is not None \
-        else str((prev or {}).get("content_time") or "")
     store.run(
         "MERGE (d:_DocMeta {doc_id: $id}) SET d.owner_id = $owner, d.title = $title, "
         "d.origin = $origin, d.content_hash = $hash, d.chunk_count = $n, "
@@ -660,7 +676,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                 chunks=len(chunks), replaced=removed, title=kept_title,
                 content_hash=content_hash, mentions=linked, updated_at=stamp,
                 sync_seq=seq, needs_embed=bool(needs_embed),
-                warnings=_doc_id_warnings(text, doc_id),
+                warnings=_doc_id_warnings(text, doc_id) + ctime_warnings,
                 note="search indexes dropped — 검색 경로가 지연 재빌드(T3b)")
     if topic:
         base["topic"] = authored
