@@ -74,7 +74,7 @@ def outside_owners(store, source, target):
     return sorted(owners)
 
 
-def rehearse(original, root, source, *, topic="vinc", max_rows=128, progress=None):
+def rehearse(original, root, source, *, topic="vinc", max_rows=128, progress=None, stage_file=None):
     """원본 사본을 닫힌 채 보존하고 별도 작업본에서 같은 실행을 복구한다."""
     original, root = Path(original), Path(root)
     if original.is_symlink() or root.exists() or not original.is_file():
@@ -106,6 +106,12 @@ def rehearse(original, root, source, *, topic="vinc", max_rows=128, progress=Non
     def reached(stage):
         # 실패 보고에 단계 이름만 남긴다(내용·식별자 없음).
         progress["failed_stage"] = stage
+        # 보고서를 못 쓰고 죽어도(메모리 한도·네이티브 충돌·디스크) 워크플로가 이 이름을 싣는다.
+        if stage_file is not None:
+            try:
+                Path(stage_file).write_text(stage, encoding="utf-8")
+            except OSError:
+                pass
 
     try:
         reached("open")
@@ -223,7 +229,8 @@ def main():
             raise ValueError("invalid_runtime")
         if os.environ.get("VINC_DURABLE_ACK") != "off" or os.environ.get("VINC_TOPIC_CONVERSION") != "1":
             raise ValueError("invalid_recovery_policy")
-        report = rehearse(root / "db", root / "execution", "user:" + owner, progress=progress)
+        report = rehearse(root / "db", root / "execution", "user:" + owner, progress=progress,
+                          stage_file=root / "stage.txt")
     except Exception as exc:
         # 내용·식별자를 품을 수 있는 예외 메시지는 싣지 않는다. 단계, 예외 클래스,
         # 소문자 코드 형태의 앞머리만 남긴다.
@@ -238,8 +245,22 @@ def main():
     report["process_peak_rss_bytes"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
     for key in ("memory.max", "memory.swap.max", "memory.peak", "cpu.max"):
         path = Path("/sys/fs/cgroup") / key
-        report[key] = path.read_text().strip() if path.is_file() else None
-    (root / "report.json").write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
+        try:
+            report[key] = path.read_text().strip() if path.is_file() else None
+        except OSError:
+            report[key] = None
+    try:
+        text = json.dumps(report, sort_keys=True)
+    except (TypeError, ValueError) as exc:
+        # 실패 보고가 직렬화되지 않아도 보고서 없이 끝나지 않게 최소 보고를 쓴다.
+        text = json.dumps({"isolated_copy": True, "qualified": False, "error": "report_unserializable",
+                           "write_exception": type(exc).__name__,
+                           "failed_stage": progress.get("failed_stage")}, sort_keys=True)
+    try:
+        (root / "report.json").write_text(text, encoding="utf-8")
+    except OSError:
+        # 디스크가 찼으면 보고서도 못 쓴다. 단계 파일과 워크플로의 숫자(종료 코드·남은 공간)가 남는다.
+        return 1
     return 0 if report.get("qualified") else 1
 
 

@@ -177,8 +177,13 @@ jobs:
           trap stop_container EXIT
           trap 'exit 130' INT
           trap 'exit 143' TERM
+          # 보고서 없이 죽어도 원인을 가를 수 있게 숫자만 남긴다(내용·식별자 없음).
+          free_bytes() { df --output=avail -B1 "$GITHUB_WORKSPACE" | tail -1 | tr -d ' '; }
+          before=$(free_bytes)
           # Azure 자격 증명은 컨테이너에 전달하지 않는다. 실행에는 네트워크가 없다.
-          run_bounded 4500 docker run --rm --name vinc-copy-rehearsal \
+          # --rm 을 쓰지 않는다: 끝난 뒤 종료 코드와 OOMKilled 를 읽고, EXIT 트랩이 지운다.
+          rc=0
+          run_bounded 4500 docker run --name vinc-copy-rehearsal \
             --network none --cpus 1 --memory 2g --memory-swap 2g --pids-limit 128 \
             --read-only --security-opt no-new-privileges --cap-drop ALL \
             --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,nodev,size=1g \
@@ -189,13 +194,22 @@ jobs:
             -e VINC_DURABLE_ACK=off -e PYTHONDONTWRITEBYTECODE=1 \
             -e VINC_LBUG_EXT_DIR=/src/packaging/lbug_extensions \
             vinc-copy-rehearsal python -X utf8 scripts/qa/topic_copy_rehearsal.py \
-            > restored/rehearsal-private.log 2>&1
+            > restored/rehearsal-private.log 2>&1 || rc=$?
+          state=$(timeout --kill-after=5s 20s docker inspect -f '{{.State.ExitCode}} {{.State.OOMKilled}}' vinc-copy-rehearsal 2>/dev/null || echo "unknown unknown")
+          read -r container_exit oom_killed <<< "$state"
+          after=$(free_bytes || true)
+          printf '{"step_exit": %s, "container_exit": "%s", "oom_killed": "%s", "free_bytes_before": "%s", "free_bytes_after": "%s"}\n' \
+            "$rc" "$container_exit" "$oom_killed" "$before" "$after" > "$RUNNER_TEMP/rehearsal-facts.json"
+          exit "$rc"
       - name: Stop the isolated process
         if: always()
         run: timeout --kill-after=5s 20s docker rm -f vinc-copy-rehearsal 2>/dev/null || true
       - name: Publish aggregate result only
         if: always()
         run: |
+          if test -f "$RUNNER_TEMP/rehearsal-facts.json"; then cat "$RUNNER_TEMP/rehearsal-facts.json"; fi
+          # 단계 이름만 싣는다. 소문자·숫자·밑줄·콜론 밖의 글자는 지운다.
+          if test -f restored/stage.txt; then printf '{"last_stage": "%s"}\n' "$(head -c 64 restored/stage.txt | tr -cd 'a-z0-9_:')"; fi
           if test -f restored/report.json; then cat restored/report.json; fi
       - name: Remove only this rehearsal snapshot
         if: ${{ always() && steps.snap.outcome != 'skipped' && steps.snap.outcome != '' }}
