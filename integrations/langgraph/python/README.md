@@ -5,11 +5,34 @@
 ## Install
 
 ```bash
-pip install vinc-langgraph            # node helpers and tools
-pip install "vinc-langgraph[agents]"  # plus the middleware for create_agent
+pip install "vinc-langgraph>=0.1.5"            # node helpers and tools
+pip install "vinc-langgraph[agents]>=0.1.5"    # plus the middleware for create_agent
 ```
 
-Set `VINC_API_KEY` to a member key. A `vinc_ro_` key is enough for everything except `record_episode`.
+This README describes vinc-langgraph 0.1.5, which requires vinc-client 0.1.9 or later.
+
+Set `VINC_API_KEY` to a member key. A `vinc_ro_` key is enough for every read helper, the middleware and the tools. `record_episode` and `write_package` need a `vinc_sk_` key; with a read only key they raise `VincAuthError` (`read_only_key`) before anything is sent. Give the write key only to the node that writes.
+
+## Helpers
+
+Every helper takes the client first. The `a` prefixed twins take an `AsyncVincClient` and are awaited.
+
+| Helper | Parameters | What it does |
+|---|---|---|
+| `get_vinc_context`, `aget_vinc_context` | `client`, `messages`, `search_fallback=True`, `max_chars`, `max_excerpts=3` | a fenced block for the newest human message, or `None` |
+| `prefetch`, `aprefetch` | `client`, `role_id`, `task`, `space`, `max_chars` | the role's required reading and task evidence |
+| `get_vinc_package_context`, `aget_vinc_package_context` | `client`, `package_id`, `space` (required), `max_chars` | a handoff package, rechecked with this key |
+| `build_system_message` | `block`, `base` | a `SystemMessage` with the block added |
+| `last_user_text` | `messages` | the newest human message text |
+| `create_vinc_tools` | `client`, `async_client`, `max_chars` | the read only tools `vinc_brief` and `vinc_search` |
+| `record_episode`, `arecord_episode` | `client`, `title`, `summary`, `about`, `date`, `domain`, `tags`, `space`, `episode_id`, `create_only`, `operation_id` | one Episode, `vinc_sk_` key |
+| `write_package`, `awrite_package` | `client`, `question`, `conclusion`, `claims`, `produced_by`, `run_id`, `space` (required), `package_id`, `create_only`, `operation_id` | one handoff Record, `vinc_sk_` key |
+| `VincContextMiddleware` | `client`, `async_client`, `api_key`, `base_url`, `space`, `search_fallback=True`, `max_chars`, `max_excerpts=3`, `cache_seconds=60`, `prefetch_role`, `prefetch_max_chars`, `tool_calls_per_run=4` | context for each `create_agent` model call (`agents` extra) |
+| `PackageProvider` | `package_id`, `space` (required), `client`, `async_client`, `api_key`, `base_url`, `max_chars` | a handoff package for each model call (`agents` extra) |
+| `run_review`, `arun_review` | `model`, `messages`, `native_structured=True`, `config`, `options` | a `ReviewOutput` with one parse retry |
+| `create_output_gate_middleware` | `gate`, `evidence` | checks the final response of a `create_agent` agent |
+| `evaluate_output_node`, `require_output_pass` | `state`, `gate`, `evidence` | the same check as a graph node |
+| `create_person_only_node` | `gate`, `role_id`, `run_id`, `evidence` | an approval node with a native `interrupt` |
 
 ## In a graph node
 
@@ -68,6 +91,17 @@ retry. This merges the same Episode; it does not make other side effects run
 exactly once.
 
 
+
+## Retrying a write and previewing a delete
+
+Since 0.1.5 the write helpers take `create_only` and `operation_id` and pass them to vinc-client unchanged.
+
+- Before the approval boundary, store a fresh lowercase UUID next to the episode id in host state. Pass it as `operation_id` on the first attempt and on every retry of that write. An identical retry returns the stored result without applying again; changed arguments under the same id conflict.
+- After an uncertain response (`VincUnavailable`), read `client.operation_status(operation_id)` before deciding. `accepted` and `unknown` do not prove the write did not happen; `committed` means the graph transaction committed. Receipts are owner scoped and a read only key can read them.
+- `create_only=True` refuses an id that already exists, before any change. Retry such a write with the same `operation_id`, or the retry is refused because the first attempt created the node.
+- Nothing retries on its own.
+
+Delete and merge are not wrapped by this package. Call the client's `delete`, `delete_edge`, `merge_nodes` or `doc_delete` with `dry_run=True` first; it changes nothing and returns the preview with a `preview_digest`. Show the preview to a person, then apply with `preview_digest=` (and an `operation_id`); if the affected state changed in between, the apply is refused. Both calls need a `vinc_sk_` key. The vinc-client README has the details.
 
 ## Structured review with one parse retry
 
@@ -170,6 +204,14 @@ No prefetch cache or automatic reuse is added. To keep sequential reads, pass a
 reader created with `prefetch_concurrency=1`; the client default is 8.
 Model citation quality must be evaluated separately.
 
+
+## Version notes
+
+| Version | Change |
+|---|---|
+| 0.1.5 | The write helpers take `create_only` and `operation_id`. Requires vinc-client 0.1.9; its version notes list `operation_status`, `edges`, `role_check` and the delete and merge previews. |
+| 0.1.4 | The read tools take `mode`, `as_of` and `known_at`. |
+| 0.1.3 | Vinc tool calls are capped at 4 per run, and both packages send the same tool schema. |
 
 ## License
 

@@ -9,12 +9,21 @@ Looking for the `vinc` command? See [the terminal CLI installation guide](https:
 ## Install
 
 ```bash
-pip install vinc-client
+pip install "vinc-client>=0.1.9"
 ```
+
+This README describes vinc-client 0.1.9. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
 
 ## Keys and spaces
 
-Create a member key in your Vinc account. A `vinc_ro_` key reads; a `vinc_sk_` key can also write. Use a read-only key wherever the agent only needs context.
+Create a member key in your Vinc account. `VincClient()` reads it from `VINC_API_KEY`; `VINC_API_URL` overrides the hub address (https, or http on loopback only).
+
+| Key | What it can call |
+|---|---|
+| `vinc_ro_` (read only) | every read in the tables below, including `operation_status` and `role_check` |
+| `vinc_sk_` (full) | the reads, plus `ingest`, `record_episode`, `write_package`, `delete`, `delete_edge`, `merge_nodes`, `doc_delete` |
+
+With a read only key every write method raises `VincAuthError` with code `read_only_key` before anything is sent. A `dry_run` preview of a delete or merge counts as a write, because the server ranks it with the change it previews. `vinc.read_only` says which kind you hold. Use a read only key wherever the agent only needs context.
 
 ```python
 from vinc_client import VincClient
@@ -22,6 +31,57 @@ from vinc_client import VincClient
 vinc = VincClient()                      # reads VINC_API_KEY
 team = VincClient(space="<team id>")     # a team's shared graph instead of your personal one
 ```
+
+`VincClient(api_key=None, *, base_url=None, space=None, timeout=30.0, transport=None, prefetch_concurrency=8)`. Every method also takes `space=` to override the client's default for one call.
+
+## Methods
+
+`AsyncVincClient` has the same methods, awaited. Optional parameters are keyword only.
+
+Reads (either key):
+
+| Method | Parameters | What it does |
+|---|---|---|
+| `whoami` | | the key's owner, plan and reachable teams |
+| `brief` | `query`, `max_excerpts`, `historical`, `mode`, `as_of`, `known_at` | one node with its excerpts and relations |
+| `search` | `query`, `limit`, `cursor`, `detail`, `historical`, `mode`, `as_of`, `known_at` | text and meaning search, paged by `cursor` |
+| `recall` | `domain`, `tags`, `limit`, `cursor` | episode timeline, newest first |
+| `node` | `node_id` | one node by id; `VincNotFound` when absent |
+| `edges` | `node` or `nodes`, `type`, `dir`, `limit` | stored edges with direction and evidence; pass exactly one of `node` and `nodes` |
+| `role` | `role_id` | a role's complete contract and links |
+| `document` | `doc_id` | exact document text with its content hash |
+| `role_check` | `role_id`, `output`, `person_only_requests`, `self_authored` | the hub applies the role's checks; verdict `pass`, `block` or `interrupt`, and `pass` grants no permission |
+| `operation_status` | `operation_id` | the receipt of an earlier write (see below) |
+| `get_context` | `query`, `search_fallback`, `max_chars`, `max_excerpts`, `min_query_chars` | a fenced context block, or `None` |
+| `prefetch` | `role_id`, `task`, `max_chars` | the role's required reading and task evidence before a model call |
+| `get_package_context` | `package_id`, `space` (required), `max_chars` | a handoff package, rechecked with this key |
+
+Writes (`vinc_sk_` key):
+
+| Method | Parameters | What it does |
+|---|---|---|
+| `ingest` | `nodes`, `edges`, `create_only`, `operation_id`, `review_claims` | merge nodes and edges by id |
+| `record_episode` | `title`, `summary`, `about`, `date`, `domain`, `tags`, `episode_id`, `create_only`, `operation_id` | one Episode about existing nodes |
+| `write_package` | `question`, `conclusion`, `claims`, `produced_by`, `run_id`, `space` (required), `title`, `package_id`, `create_only`, `operation_id` | one handoff Record |
+| `delete` | `node_id`, `dry_run`, `preview_digest`, `operation_id` | delete a node and its edges |
+| `delete_edge` | `from_id`, `to_id`, `type`, `dry_run`, `preview_digest`, `operation_id` | delete one relationship |
+| `merge_nodes` | `keep_id`, `drop_id`, `dry_run`, `preview_digest`, `operation_id` | fold `drop_id` into `keep_id` |
+| `doc_delete` | `doc_id`, `dry_run`, `preview_digest`, `operation_id` | delete one document |
+
+Module exports, described in the sections below:
+
+| Export | Parameters |
+|---|---|
+| `OutputGate` | `props`, `extra_gates`, `self_authored`; methods `evaluate(answer, proofs, person_only_requests, phase, manifest, resolved_sources, repositories)` and `require_pass` |
+| `ToolProof` | a host observed tool result for `evaluate` |
+| `sources_line` | `text`; the ids on the final `Sources:` line |
+| `preserve_required_route` | `base`, `override` |
+| `prepare_person_only` | `output`, `gate`, `role_id`, `run_id`, `evidence` |
+| `resolve_person_only` | `request`, `decision` |
+| `parse_review` | `value` |
+| `check_package_handoff` | `node`, `space`, `gate`, `readable_ids`, `repositories`, `evidence_nodes`, `proofs`, `max_chars` |
+| `format_context`, `format_brief`, `format_search`, `format_answer`, `fence` | render read results as a fenced block |
+| `build_episode_fragment`, `build_package_fragment`, `format_package` | the fragments the write helpers send, and the package block |
 
 ## Context for a model turn
 
@@ -42,6 +102,7 @@ vinc.brief("release checklist")          # one node, its excerpts and relations
 vinc.search("spacing scale", limit=10)   # text and meaning search
 vinc.recall(domain="vinc/design")        # episode timeline, newest first
 vinc.node("decision:tokens-are-oklch")   # one node by id
+vinc.edges("decision:tokens-are-oklch")  # its stored edges
 ```
 
 ## Writing, on purpose
@@ -59,20 +120,53 @@ vinc.record_episode(
 
 Every `about` id is read before the write, so a typo raises `VincNotFound` instead of creating an empty node.
 
+`props` sent with `ingest` replace a node's stored props whole. Read the node first and send the merged dict, or send the node's `expected_rev` (its `rev` from `node`) with `props_patch`, a JSON Merge Patch on the stored props. If someone wrote in between, the whole fragment is refused before any change and `details["current_rev"]` holds the newer revision.
+
+## Retrying a write
+
+A write whose response was lost may or may not have landed. Generate a fresh lowercase UUID for each logical write and pass it as `operation_id`:
+
+```python
+import uuid
+from vinc_client import VincUnavailable
+
+op = str(uuid.uuid4())
+try:
+    vinc.record_episode("Release checklist approved", about=["decision:release-plan"],
+                        episode_id="episode:release-checklist-approved", operation_id=op)
+except VincUnavailable:
+    receipt = vinc.operation_status(op)   # decide from the receipt, then retry with the same op
+```
+
+- An identical retry with the same `operation_id` returns the stored result without applying again. Changed arguments under the same id conflict.
+- `operation_status(op)` reads the receipt. `accepted` and `unknown` do not prove the write did not happen; `committed` means the graph transaction committed. A replayed result is a historical summary, so read the targets to see their current state.
+- Receipts are owner scoped, kept until the owner is purged, and bounded to 5000 per owner.
+- `create_only=True` refuses identities that already exist, before any change. Without it a write keeps the usual upsert behaviour.
+- `record_episode` and `write_package` pass `create_only` and `operation_id` to `ingest` unchanged. The client never retries a write on its own.
+
+## Delete and merge with a preview
+
+`delete`, `delete_edge`, `merge_nodes` and `doc_delete` change the graph irreversibly. Call them twice: first with `dry_run=True`, which changes nothing and returns the complete preview with a `preview_digest`; then with that digest.
+
+```python
+preview = vinc.merge_nodes("concept:colour-tokens", "concept:color-tokens", dry_run=True)
+# show the preview to a person, then apply exactly what they saw:
+vinc.merge_nodes("concept:colour-tokens", "concept:color-tokens",
+                 preview_digest=preview["preview_digest"], operation_id=op)
+```
+
+If the affected state changed after the preview, the apply call is refused instead of acting on something nobody saw. A preview that would be too large, or that touches a target the key cannot reach, is refused too. Both calls need a `vinc_sk_` key.
+
 ## Errors
 
 | Class | Meaning |
 |---|---|
-| `VincAuthError` | missing, malformed, refused or read-only key; configuration is wrong |
+| `VincAuthError` | missing, malformed, refused or read only key; configuration is wrong |
 | `VincNotFound` | the node, document or space does not exist for this key |
-| `VincInvalidArgument` | the request was malformed or refused (for example a topic limit) |
+| `VincInvalidArgument` | the request was malformed or refused: a topic limit, a `create_only` identity that exists, an `expected_rev` or `preview_digest` that no longer matches, an `operation_id` reused with different arguments |
 | `VincQuotaExceeded` | the daily limit is spent; `retry_after` is in seconds |
-| `VincUnavailable` | network or server failure; for a write, check `details["write_may_have_applied"]` |
+| `VincUnavailable` | network or server failure; for a write, check `details["write_may_have_applied"]` and `operation_status` |
 | `VincPartialWrite` | part of a write was skipped; `result` holds what the server said |
-
-## Async
-
-`AsyncVincClient` has the same methods, awaited.
 
 
 
@@ -228,6 +322,18 @@ The check prints only role ids and sizes, never keys or retrieved document bodie
 This provides evidence before the model runs; model citation quality needs a
 separate evaluation.
 
+
+## Version notes
+
+| Version | Change |
+|---|---|
+| 0.1.9 | `record_episode` and `write_package` take `create_only` and `operation_id`. New `delete`, `delete_edge`, `merge_nodes` and `doc_delete` with `dry_run` and `preview_digest`. New `edges` and `role_check`. The adapters 0.1.5 pass the two write parameters through and require this client. |
+| 0.1.8 | `ingest` takes `create_only` and `operation_id`; `operation_status` reads a write's receipt; `expected_rev` and `props_patch` guard a node edit. |
+| 0.1.7 | `brief` and `search` take `mode`, `as_of` and `known_at`, and results carry a `temporal` object. Prefetch gives a `cite as` id only for a readable mirror. The adapters 0.1.4 expose the same read parameters. |
+| 0.1.6 | `get_context` blocks end with the same `Sources:` line instruction as prefetch. |
+| 0.1.5 | The prefetch block names the citable id of each required reading and asks for a final `Sources:` line; `sources_line` reads it. Both adapters share one tool schema. The adapters 0.1.3 cap Vinc tool calls at 4 per run. |
+| 0.1.4 | Optional prefetch reads start before validation. |
+| 0.1.3 | Required prefetch reads run in concurrent batches; a budget error reports the complete required size. |
 
 ## License
 
