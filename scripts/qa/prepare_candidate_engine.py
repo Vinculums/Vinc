@@ -14,6 +14,11 @@ from pathlib import Path
 import shutil
 import sys
 
+try:
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -56,7 +61,7 @@ def main() -> None:
     candidate_checksums = None
     if args.engine == "0.21.2":
         # 실제 검증한 바이트를 고정한다. 상류가 같은 URL을 바꾸면 새 검증 없이 넘기지 않는다.
-        checksum_path = Path(__file__).resolve().parents[2] / "packaging/lbug-ext-0.21.2.sha256"
+        checksum_path = ROOT / "packaging/lbug-ext-0.21.2.sha256"
         candidate_checksums = dict(line.split()[::-1] for line in checksum_path.read_text().splitlines() if line.strip())
         release_assets = root / "release-assets"
         release_assets.mkdir()
@@ -72,7 +77,7 @@ def main() -> None:
             machine = platform.machine().lower().replace("x86_64", "amd64").replace("aarch64", "arm64")
             if machine != expected_machine:
                 raise RuntimeError("release assets do not match the host architecture")
-            checksums = Path(__file__).resolve().parents[2] / "packaging/lbug-ext-0.20.4.sha256"
+            checksums = ROOT / "packaging/lbug-ext-0.20.4.sha256"
             expected = dict(line.split()[::-1] for line in checksums.read_text().splitlines() if line.strip())
         else:
             db = ladybug.Database(str(root / "install.db"), buffer_pool_size=128 * 1024**2,

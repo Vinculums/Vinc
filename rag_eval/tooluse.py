@@ -23,10 +23,9 @@ import json
 import os
 import sys
 import tempfile
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+# `python -m rag_eval.tooluse` 로 돈다(리포 루트가 cwd 라 `scripts` 패키지가 보인다).
+from scripts._root import ROOT  # noqa: E402  리포 루트를 sys.path 맨 앞에 올린다
 
 EVALSET = ROOT / "rag_eval" / "fixtures" / "tooluse_evalset.json"
 

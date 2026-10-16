@@ -29,9 +29,11 @@ from __future__ import annotations
 import hashlib
 import re
 import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+try:
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT
 
 #: 허브가 내보내는 파일들. 허브의 sync_out.py MAP 과 짝이다 — 한쪽만 늘리면
 #: 새 파일이 검사 밖에 남으므로, 여기 없는 생성물이 app/src 에 있으면 경고한다.

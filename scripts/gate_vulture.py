@@ -30,7 +30,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+try:
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT
 ALLOW = ROOT / "scripts" / "vulture-allow.txt"
 MIN_CONFIDENCE = 80
 

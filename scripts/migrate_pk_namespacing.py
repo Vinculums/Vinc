@@ -104,9 +104,11 @@ import json
 import os
 import shutil
 import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+try:
+    from scripts._root import ROOT  # noqa: F401
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT  # noqa: F401
 
 from store import pkns                          # noqa: E402
 from store import embedded_schema as schema     # noqa: E402

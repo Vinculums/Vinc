@@ -6,9 +6,11 @@
 근거: [[decision:the-eval-harness-lives-in-top-level-rag-eval-not-inside-vinc-rag-2026-10-01]]
 """
 import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+try:
+    from scripts._root import ROOT  # noqa: F401
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT  # noqa: F401
 
 from rag_eval.search import *  # noqa: E402,F401,F403  (옛 import 경로를 쓰던 호출부용)
 from rag_eval.search import main  # noqa: E402

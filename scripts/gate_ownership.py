@@ -36,9 +36,14 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+try:
+    from scripts._gitutil import git
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _gitutil import git
+    from _root import ROOT
+
 TEAMS = ROOT / "agents" / "teams.json"
 ROLES = ROOT / "agents" / "roles.json"
 CODEOWNERS = ROOT / ".github" / "CODEOWNERS"
@@ -241,14 +246,8 @@ def teams_touched(changed: list[str], rules, teams: dict) -> list[str]:
 
 # ── 실행 ─────────────────────────────────────────────────────────────────────
 
-def _git(*args: str) -> str:
-    return subprocess.run(["git", "-c", "core.quotepath=off", *args], cwd=ROOT,
-                          capture_output=True, text=True, encoding="utf-8",
-                          check=True).stdout
-
-
 def tracked_files() -> list[str]:
-    return [f for f in _git("ls-files", "-z").split("\0") if f]
+    return [f for f in git(["ls-files", "-z"], cwd=ROOT).split("\0") if f]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -292,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
     base, head = os.environ.get("BASE"), os.environ.get("HEAD")
     if base and head:
         try:
-            changed = [f for f in _git("diff", "--name-only", base, head).splitlines() if f]
+            changed = [f for f in git(["diff", "--name-only", base, head], cwd=ROOT).splitlines() if f]
         except subprocess.CalledProcessError:
             changed = []
             print(f"::warning::변경 목록을 못 구했다({base}..{head}) — 닿은 팀을 비운다")

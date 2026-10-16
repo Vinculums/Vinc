@@ -64,7 +64,10 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+try:
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from api import docstore                                  # noqa: E402
@@ -433,7 +436,7 @@ def keyform(s) -> tuple[dict, list[str]]:
 
 
 #: 허브 이미지(사이드카·vinc-encode 가 같은 이미지로 뜬다)의 설치 줄 — 인코더 판의 정본.
-_DOCKERFILE = Path(__file__).resolve().parents[1] / "Dockerfile.hub"
+_DOCKERFILE = ROOT / "Dockerfile.hub"
 _VEC_TABLES = ("ChunkVec", "NodeVec")
 
 

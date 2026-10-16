@@ -35,7 +35,10 @@ import sys
 import tokenize
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+try:
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT
 BASELINE = ROOT / "scripts" / "comment-history-baseline.json"
 
 #: 기준선에 없는 새 파일이 표지 줄을 이만큼까지는 가져도 된다.

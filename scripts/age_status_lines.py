@@ -32,7 +32,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+try:
+    from scripts._gitutil import git, git_ok
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _gitutil import git, git_ok
+    from _root import ROOT
 
 #: 헤더의 as-of. `status_as_of` 가 정본이고 `updated` 는 그것이 없을 때의 대타다 —
 #: 기존 문서 전부가 `updated` 만 갖고 있어서, 대타가 없으면 이 검사는 새 문서에만
@@ -46,12 +51,11 @@ _LAYER = re.compile(r"^layer\s*:\s*(\S+)\s*$", re.M)
 
 
 def _git(*args: str) -> str:
+    """실패하면(없는 해시·git 부재·시간 초과) '' 를 준다. 호출부는 빈 값을 '모른다'로 읽는다."""
     try:
-        out = subprocess.run(["git", *args], cwd=ROOT, capture_output=True,
-                             text=True, timeout=20)
+        return git(args, cwd=ROOT, timeout=20).strip()
     except (OSError, subprocess.SubprocessError):
         return ""
-    return out.stdout.strip() if out.returncode == 0 else ""
 
 
 def landed_at(sha: str, branch: str = "main") -> str:
@@ -62,8 +66,7 @@ def landed_at(sha: str, branch: str = "main") -> str:
     (주 가지에 직접 얹힌 커밋) 자기 날짜를 쓴다."""
     if not sha or _git("rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}") == "":
         return ""
-    if subprocess.run(["git", "merge-base", "--is-ancestor", sha, branch],
-                      cwd=ROOT, capture_output=True).returncode != 0:
+    if not git_ok(["merge-base", "--is-ancestor", sha, branch], cwd=ROOT):
         return ""
     merges = _git("rev-list", "--merges", "--ancestry-path", f"{sha}..{branch}").split()
     return _git("log", "-1", "--format=%cs", merges[-1] if merges else sha)

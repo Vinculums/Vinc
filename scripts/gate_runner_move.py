@@ -55,6 +55,11 @@ except ImportError:  # pragma: no cover - CI 는 pyyaml 을 깐다
     print("::error::pyyaml 이 필요하다", file=sys.stderr)
     raise SystemExit(2)
 
+try:
+    from scripts._gitutil import git
+except ImportError:  # 직접 실행: 리포 루트가 sys.path 에 없다
+    from _gitutil import git
+
 WORKFLOW_DIR = ".github/workflows/"
 
 
@@ -69,8 +74,10 @@ def _git(*args: str) -> str | None:
     경우까지 같은 값으로 오면 호출부가 그것을 '변경 없음' 으로 읽고 게이트가 아무것도
     검사하지 않은 채 통과한다. 그래서 리비전 존재 여부는 `require_revisions` 가
     **먼저, 따로** 확인한다."""
-    r = subprocess.run(["git", *args], capture_output=True, text=True)
-    return r.stdout if r.returncode == 0 else None
+    try:
+        return git(args)
+    except subprocess.CalledProcessError:
+        return None
 
 
 def require_revisions(*revs: str) -> None:

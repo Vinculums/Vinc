@@ -36,8 +36,12 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
 import sys
+
+try:
+    from scripts._gitutil import git
+except ImportError:  # 직접 실행: 리포 루트가 sys.path 에 없다
+    from _gitutil import git
 
 #: `main` 의 어디까지 훑어 제목을 모을 것인가. 400커밋이면 이 리포의 두 달이다.
 #: 그보다 오래된 브랜치는 어차피 릴리스 판정 대상이 아니라 목록에 나오는 편이 낫다.
@@ -48,8 +52,8 @@ _PR_SUFFIX = re.compile(r"\s*\(#\d+\)\s*$")
 
 
 def _git(*args: str) -> str:
-    return subprocess.run(["git", *args], capture_output=True, text=True,
-                          encoding="utf-8", errors="replace").stdout
+    """실패해도 stdout 을 그대로 준다(대개 빈 문자열) — 목록이 비는 쪽으로 강등한다."""
+    return git(args, check=False)
 
 
 def norm(subject: str) -> str:

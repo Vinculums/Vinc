@@ -27,7 +27,10 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+try:
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from api import docstore as ds        # noqa: E402
@@ -62,7 +65,7 @@ def main() -> int:
     ap.add_argument("--owner", required=True)
     ap.add_argument("--per-lang", type=int, default=30)
     ap.add_argument("--out", default=str(
-        Path(__file__).resolve().parents[1] / "rag_eval" / "fixtures" / "evalset_live.json"))
+        ROOT / "rag_eval" / "fixtures" / "evalset_live.json"))
     ap.add_argument("--stdout", action="store_true", help="파일 대신 표준출력으로")
     args = ap.parse_args()
 

@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+try:
+    from scripts._root import ROOT  # noqa: F401
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT  # noqa: F401
 from vinc_mcp.openapi_v1 import FILE, serialized  # noqa: E402
 
 

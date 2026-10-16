@@ -48,6 +48,9 @@
 /tests/rag/                                      @Vinculums/rag
 /tests/app/                                      @Vinculums/app
 /tests/design/                                   @Vinculums/design-content
+/scripts/_azutil.py                              @Vinculums/platform
+/scripts/_gitutil.py                             @Vinculums/platform
+/scripts/_root.py                                @Vinculums/platform
 /scripts/age_status_lines.py                     @Vinculums/platform
 /scripts/agents_sync.py                          @Vinculums/platform
 /scripts/app-config-baseline.json                @Vinculums/platform

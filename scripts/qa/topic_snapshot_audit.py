@@ -9,12 +9,14 @@ from collections import Counter
 import json
 import os
 from pathlib import Path
-import sys
 import tempfile
 import time
 from uuid import UUID
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+try:
+    from scripts._root import ROOT  # noqa: F401
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT  # noqa: F401
 
 from api import topic_conversion as conversion
 from store.scoped_topic_inventory import read_scoped_inventory
