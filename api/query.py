@@ -22,6 +22,7 @@ from store.envflag import truthy
 from engines import domain_hierarchy
 
 from . import graphmd
+from vinc_rag import excerpt as _excerpt
 from vinc_rag import retrieval as _retrieval
 
 # 바닥 보조 함수는 store 로, 검색 코어는 vinc_rag 로 옮겼다(VIN-243). 같은 이름을 여기서
@@ -2741,7 +2742,8 @@ def node_context(**kwargs) -> dict:
 
 def _node_context(*, owner: str, node: str, limit: int = 4,
                  with_evidence: bool = False, links_offset: int = 0,
-                 sources_offset: int = 0, cfg=None, store=None) -> dict:
+                 sources_offset: int = 0, cfg=None, store=None,
+                 query_embedding: list[float] | None = None) -> dict:
     """노드→정본 컨텍스트(D45-V) — 뷰에서 노드를 눌렀을 때 보여줄 "이건 무엇이고,
     어느 정본이 근거인가". 조회 전용.
 
@@ -2947,6 +2949,11 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
                                            with_evidence=with_evidence,
                                            offset=links_offset)
             return base
+        # 발췌 플래그 둘(기본 꺼짐, :mod:`vinc_rag.excerpt`). 꺼져 있으면 아래 쿼리·상한·응답 키가
+        # 오늘과 같다. 질문 순서를 매길 때만 후보를 `POOL` 까지 넓혀 받고 `lim` 으로 자른다.
+        xorder, xwin = _excerpt.order_mode(), _excerpt.window_mode()
+        pool = (max(lim, _excerpt.POOL)
+                if xorder == "query" and query_embedding is not None else lim)
         # ② MENTIONS 역참조 — 정본 발췌.
         ment = store.run(
             f"MATCH (ch:Chunk)-[m:MENTIONS]->(c:{meta_label}) "
@@ -2960,14 +2967,14 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
             # doc_id·chunk_index 는 동순위 타이브레이크로 남겨 결과를 결정론으로 유지할 것.
             # 근거: [[record:korean-titled-nodes-answer-with-provenance-excerpts-2026-09-14]]
             "ORDER BY CASE m.method WHEN 'title' THEN 0 WHEN 'stem' THEN 1 ELSE 2 END, "
-            f"ch.doc_id, ch.chunk_index LIMIT {lim}",
+            f"ch.doc_id, ch.chunk_index LIMIT {pool}",
             {"id": pkns.key(owner, node), "owner": owner}) or []
         arm = "mentions" if ment else "none"
         # ③ FTS 폴백 — 링크 없는 개념도 제목으로 관련 정본을 찾는다(증강).
         # B7 — 전문 검색을 **소유자로 좁혀** 묻는다. 전역 상위 몇 개를 받아 남의 행을
         # 버리면 공유 허브에서 남의 청크가 창을 채우고 내 발췌가 빈다.
         if not ment and base["title"]:
-            ids, fts_error = _owner_fts_ids(store, base["title"], lim, owner=owner)
+            ids, fts_error = _owner_fts_ids(store, base["title"], pool, owner=owner)
             if fts_error:
                 base["excerpt_error"] = fts_error
             if ids:
@@ -2978,6 +2985,12 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
                     "ch.section_title AS section, ch.text AS text, "
                     "'fts' AS method", {"ids": ids, "owner": owner}) or []
                 arm = "fts" if ment else "none"
+                # `IN $ids` 는 BM25 순위를 지키지 않는다. 플래그가 켜졌을 때만 순위로 되돌린다.
+                if xorder:
+                    ment = _excerpt.by_rank(ment, ids)
+        if xorder:
+            ment = _order_excerpts(store, ment, xorder, query_embedding,
+                                   owner=owner, base=base)[:lim]
         # ④-0 이 노드에 딸린 **문서 전부**. 발췌와 다른 계약이다: 발췌는 청크를
         # `lim` 개로 자르므로 그 넷이 한 문서에서 나오면 **문서도 하나로 보인다** —
         # 노드가 열 개 문서에 언급돼 있어도 그렇다. 소스 선택기가 그것을 전체 목록으로
@@ -3013,11 +3026,14 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
                       key=lambda s: (s["title"], s["doc_id"]))
         base["sources"] = {"total": len(_src),
                            **_window(_src, sources_offset, _NODE_SOURCES_CAP)}
+        toks = (_excerpt.node_tokens(base["title"], base.get("one_liner") or "")
+                if xwin else None)
         base["excerpts"] = [{
             "doc_id": r.get("doc_id") or "",
             "doc_title": titles.get(r.get("doc_id") or "", "") or (r.get("doc_id") or ""),
             "section": r.get("section") or "",
-            "excerpt": " ".join((r.get("text") or "").split())[:240],
+            "excerpt": (_excerpt.focus(r.get("text") or "", toks) if xwin
+                        else " ".join((r.get("text") or "").split())[:240]),
             "method": r.get("method") or "",
         } for r in ment]
         try:
@@ -3108,6 +3124,49 @@ def _window(items: list[dict], offset: int, cap: int = _NODE_LINKS_CAP) -> dict:
     if more:
         out["next_offset"] = off + len(page)
     return out
+
+
+def _chunk_query_distances(store, cids: list[str], query_embedding: list[float], *,
+                           owner: str) -> dict[str, float]:
+    """후보 청크마다 질문과 **가장 가까운 조각**의 코사인 거리. 조각이 없는 청크는 빠진다.
+
+    벡터 검색의 필터 폴백(`EmbeddedStore.vector_search`)과 같은 식이다: 색인을 타지 않는
+    매개변수 조회라 읽기 커넥션에서 돌고 DDL 이 없다. 청크는 소유자로 다시 좁힌다."""
+    if not cids:
+        return {}
+    rows = store.run(
+        "MATCH (p:Chunk) WHERE p.chunk_id IN $ids "
+        "AND (p.owner_id = $owner OR p.owner_id = '') "
+        "MATCH (v:ChunkVec) WHERE v.chunk_id = p.chunk_id "
+        "RETURN p.chunk_id AS cid, "
+        "min(1 - array_cosine_similarity(v.embedding, $emb)) AS d",
+        {"ids": list(cids), "owner": owner, "emb": list(query_embedding)}) or []
+    return {str(r["cid"]): float(r["d"]) for r in rows
+            if r.get("cid") and r.get("d") is not None}
+
+
+def _order_excerpts(store, rows: list[dict], mode: str, query_embedding, *,
+                    owner: str, base: dict) -> list[dict]:
+    """발췌 후보의 순서(플래그가 켜졌을 때만 불린다). 어느 순서를 썼는지 `excerpt_order` 에,
+    질문 순서를 못 매겼으면 그 사유를 `excerpt_order_note` 에 적는다."""
+    base["excerpt_order"] = "rank"
+    if mode != "query":
+        return rows
+    if query_embedding is None:
+        base["excerpt_order_note"] = "no_query_vector"
+        return rows
+    try:
+        dist = _chunk_query_distances(store, [str(r.get("cid") or "") for r in rows],
+                                      query_embedding, owner=owner)
+    except Exception as exc:
+        base["excerpt_order_note"] = f"distance_failed: {type(exc).__name__}: {exc}"
+        return rows
+    ordered, note = _excerpt.by_distance(rows, dist)
+    if note:
+        base["excerpt_order_note"] = note
+    else:
+        base["excerpt_order"] = "query"
+    return ordered
 
 
 def _owner_fts_ids(store, text: str, limit: int, *, owner: str | None
@@ -3579,6 +3638,10 @@ def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
         row["cite_id"] for row in base["excerpts"] + items if row.get("cite_id")})
     if ctx.get("citation_error"):
         base["citation_error"] = ctx["citation_error"]
+    # 발췌 순서 플래그가 켜졌을 때만 있는 키 — 어느 순서로 골랐는지 호스트가 볼 수 있게 옮긴다.
+    for key in ("excerpt_order", "excerpt_order_note"):
+        if ctx.get(key):
+            base[key] = ctx[key]
     # 노드는 읽었는데 그 뒤(발췌·문서 제목·관계)가 실패했으면 **반쪽**이라고 말한다.
     # node_context 는 그때도 executed 를 세우므로, 표식이 없으면 빈 관계·빈 발췌가 "연결
     # 없는 노드"로 읽힌다. 최상위 `error` 는 쓰지 않는다 — REST v1 이 해소된 답을 500 으로 바꾼다.
@@ -3812,7 +3875,8 @@ def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
 #: 후보 재료로 옮겨 싣는 키 — 확정 답의 재료 꼴(:func:`_brief_material`)과 같다.
 _BRIEF_MATERIAL_KEYS = ("node", "one_liner", "body_src", "body_cite", "excerpts",
                         "links", "grounds", "cite_grounds", "citation_error",
-                        "validity_note", "partial", "partial_note")
+                        "validity_note", "partial", "partial_note",
+                        "excerpt_order", "excerpt_order_note")
 
 
 def _brief_candidate_material(cand: dict, **kw) -> dict:
@@ -4066,8 +4130,13 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
           max_excerpts: int = 3, historical: bool = False, as_of: str | None = None,
           mode: str | None = None, known_at: str | None = None,
           cfg=None, store=None, _reask: bool = False,
-          query_runtime: str | None = None) -> dict:
+          query_runtime: str | None = None,
+          excerpt_embedding: list[float] | None = None) -> dict:
     """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
+
+    ``excerpt_embedding`` 은 발췌 순서(``VINC_EXCERPT_ORDER=query``)만 쓰는 질문 벡터다. 비우면
+    ``query_embedding`` 을 쓴다. 따로 둔 이유는 choose 의 되묻기다: 그때 검색은 후보 제목으로
+    돌지만 발췌는 **원래 질문**에 맞춰 골라야 한다.
 
     질문에 노드 id 가 그대로 들어 있으면 그 노드를 **직참조**한다(검색·랭킹 생략,
     resolved_via="id"). 아니면 search 로 후보를 찾아 해소하고, 확정되면
@@ -4091,6 +4160,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
     복원하지 않는다(검색과 같다).
     근거: [[vinc.plan.mcp-agent-surface §4]]"""
     cfg = cfg or load_config()
+    _xemb = excerpt_embedding if excerpt_embedding is not None else query_embedding
     base: dict = {"kind": "brief", "executed": False, "query": query,
                   "status": "none", "candidates": [], "grounds": []}
     # Direct-ID reads bypass search by design, but an explicit time request must
@@ -4135,7 +4205,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         qids = _brief_query_ids(query) or _brief_entity_ids(store, query, owner=owner)
         for qid in qids:
             got = node_context(owner=owner, node=qid, limit=max_excerpts,
-                               with_evidence=True, store=store)
+                               with_evidence=True, store=store,
+                               query_embedding=_xemb)
             if got.get("executed"):
                 if mode == "current" and got.get("temporal", {}).get("validity") in ("future", "historical"):
                     out_of_scope_ids.append(qid)
@@ -4306,7 +4377,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                 base["candidate_material"] = _brief_candidate_material(
                     base["candidates"][0], owner=owner, max_excerpts=max_excerpts,
                     historical=historical, mode=mode, as_of=as_of, known_at=known_at,
-                    cfg=cfg, store=store)
+                    cfg=cfg, store=store, excerpt_embedding=_xemb)
             return base
         if status == "none":
             return base
@@ -4325,7 +4396,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             if not cid:
                 continue
             got = node_context(owner=owner, node=cid, limit=max_excerpts,
-                               with_evidence=True, store=store)
+                               with_evidence=True, store=store,
+                               query_embedding=_xemb)
             if got.get("executed"):
                 hit, ctx = cand, got
                 break
@@ -4407,7 +4479,9 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
             base["note"] = "unknown edge (또는 소유 스코프 밖)"
             return base
         r = rows[0]
-        def _mention_excerpt(cid: str, label: str) -> dict | None:
+        xwin = _excerpt.window_mode()
+
+        def _mention_excerpt(cid: str, label: str, title: str, detail: str) -> dict | None:
             if label not in _SEMANTIC_PK:
                 return None
             m = store.run(
@@ -4420,16 +4494,20 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
                 {"id": pkns.key(owner, cid), "owner": owner}) or []
             if not m:
                 return None
+            text = m[0].get("text") or ""
             return {"doc_id": m[0].get("doc_id") or "",
-                    "excerpt": " ".join((m[0].get("text") or "").split())[:240]}
+                    "excerpt": (_excerpt.focus(text, _excerpt.node_tokens(title, detail))
+                                if xwin else " ".join(text.split())[:240])}
         base.update(
             executed=True,
             evidence=r.get("ev") or "",
             confidence=float(r.get("cf") or 0.0),
             src={"id": src, "title": r.get("at") or src, "one_liner": r.get("ad") or "",
-                 "excerpt": _mention_excerpt(src, r["src_label"])},
+                 "excerpt": _mention_excerpt(src, r["src_label"], r.get("at") or "",
+                                             r.get("ad") or "")},
             dst={"id": dst, "title": r.get("bt") or dst, "one_liner": r.get("bd") or "",
-                 "excerpt": _mention_excerpt(dst, r["dst_label"])})
+                 "excerpt": _mention_excerpt(dst, r["dst_label"], r.get("bt") or "",
+                                             r.get("bd") or "")})
         return base
     except Exception as exc:
         base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
