@@ -185,8 +185,8 @@ class ShareProgressTests(unittest.TestCase):
 
         `sheetProgress` 의 마크업은 내용과 함께 삽입되므로, 거기에 `role="status"` 를
         달면 스크린리더가 관찰할 대상이 애초에 없다 — 알리는 척만 하는 것이다. 붙일
-        상주 자리가 있는 곳은 커뮤니티 게시(`#pub-progress`)와 전체 백업
-        (`#tl-backup-msg`) 둘뿐이고, 나머지 셋은 담는 자리를 통째로 갈아치운다.
+        상주 자리가 있는 곳은 전체 백업(`#tl-backup-msg`) 하나뿐이고, 나머지는 담는
+        자리를 통째로 갈아치운다.
 
         라벨 중복도 같이 막는다. 보이는 `<p>` 와 `aria-label` 로 두 번 실으면 두 번
         읽힌다 — 가리키는 것(`aria-labelledby`)은 한 번이다.

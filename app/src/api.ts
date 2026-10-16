@@ -1029,40 +1029,6 @@ export const api = {
   jobStatus: (jobId: string) => call(`/jobs/${jobId}`),
 };
 
-// ── 커뮤니티 공유(웹 전용) ─────────────────────────────────────────────────
-// 그래프 프록시(/api/graph)와 별개인 계정 라우트(/api/community). 세션 쿠키 +
-// 쓰기 CSRF. 셸/브라우저 dev 에는 세션이 없어 사실상 웹모드 전용(버튼도 WEB 가드).
-/** 계정 API 오류 — `code` 를 실어 호출부가 문자열 매칭 없이 분기하게 한다.
- *  (계정 백엔드의 오류 봉투는 `{error:{code,message,request_id}}` 고정.) */
-export class AccountError extends Error {
-  constructor(readonly status: number, readonly code: string, message: string) {
-    super(message);
-    this.name = "AccountError";
-  }
-}
-
-async function communityPost(path: string, body: unknown): Promise<any> {
-  const res = await fetch(new URL(path, location.origin), {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    if (res.status === 401) { location.assign("/login"); throw new Error("session expired"); }
-    // 오류 봉투를 파싱해 code 를 살린다 — 예전엔 상태코드+본문을 통째로 message 에
-    // 밀어넣어, 호출부가 "왜 실패했는지"로 분기하려면 문자열을 뒤져야 했다.
-    const raw = await res.text();
-    let code = "", message = raw;
-    try {
-      const e = JSON.parse(raw)?.error;
-      if (e?.code) { code = String(e.code); message = String(e.message ?? raw); }
-    } catch { /* 본문이 JSON 이 아니면 원문 그대로 */ }
-    throw new AccountError(res.status, code, message);
-  }
-  return res.json();
-}
-
 /** 팀 목록 — 그래프 프록시가 아니라 계정 라우트(/api/teams). 세션 쿠키만 필요하다.
  *  웹모드가 아니면 팀 자체가 없으므로 빈 배열로 끝낸다(호출부 분기 제거). */
 export const teamsApi = {
@@ -1172,12 +1138,6 @@ export async function adoptSpaceFromAddress(): Promise<"" | "member" | "local"> 
   writeSpaceToAddress();
   return refused;
 }
-
-export const community = {
-  /** 지식 팩을 공개 갤러리에 게시. 반환 {publicId}. 데이터가 공개된다(호출부가 동의 확인). */
-  publish: (title: string, description: string, pack: unknown): Promise<{ publicId: string }> =>
-    communityPost("/api/community/publish", { title, description, pack }),
-};
 
 /** 웹모드 부팅 인증 게이트 — /api/me 로 세션을 **먼저** 확인한다. 미인증이면 서피스를
  *  렌더하기 전에 /login 으로 보내고 false 를 돌려준다(main.ts 가 렌더를 중단). 이게 없으면
