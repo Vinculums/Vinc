@@ -902,6 +902,7 @@
     "decision:the-top-bar-is-a-search-card-and-a-view-card-2026-09-26",
     "decision:the-windows-release-leg-goes-back-to-hosted-2026-09-07",
     "decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12",
+    "decision:topic-conversion-phase-deadlines-2026-10-16",
     "decision:topic-transfer-edge-history-and-foreign-rejection-endpoints-2026-10-16",
     "decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16",
     "decision:topic-transfer-plain-references-and-external-images-2026-10-16",
@@ -1265,6 +1266,9 @@
       "validity": "current"
     },
     "decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12": {
+      "validity": "unknown"
+    },
+    "decision:topic-conversion-phase-deadlines-2026-10-16": {
       "validity": "unknown"
     },
     "decision:topic-transfer-edge-history-and-foreign-rejection-endpoints-2026-10-16": {

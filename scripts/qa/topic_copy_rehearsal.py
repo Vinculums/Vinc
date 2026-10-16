@@ -45,6 +45,9 @@ def blocker_detail(blocker):
     return None
 
 
+PHASE_SECONDS = 180
+
+
 def open_copy(path):
     store = open_store(load_config({"data_dir": str(path), "buffer_pool_mb": 512}))
     if store is None:
@@ -117,11 +120,19 @@ def rehearse(original, root, source, *, topic="vinc", max_rows=128, progress=Non
                     report["dependency_detail"] = dict(Counter(d for d in map(blocker_detail, plan.blockers) if d))
                     return report
                 reached("seal")
+                # 단계마다 처리 시간 한도를 새로 준다. 근거: [[decision:topic-conversion-phase-deadlines-2026-10-16]]
+                scratch.deadline = time.monotonic() + PHASE_SECONDS
                 stamp = datetime.now(timezone.utc).isoformat()
                 header = manifest.prepare(scratch, plan, run=run, stamp=stamp,
                                           indexes=legacy._index_inventory(store), store=store)
+                reached("outside_summary")
                 owners = outside_owners(store, source, target)
-                outside = {owner: manifest.untouched_summary(store, scratch, owner) for owner in owners}
+                outside = {}
+                for owner in owners:
+                    scratch.deadline = time.monotonic() + PHASE_SECONDS
+                    outside[owner] = manifest.untouched_summary(store, scratch, owner)
+                reached("seal")
+                scratch.deadline = time.monotonic() + PHASE_SECONDS
                 sealed_path = root / "sealed.jsonl"
                 sealed = manifest.seal(scratch, sealed_path, header)
             report.update(selection_seconds=round(time.monotonic() - started, 3),
@@ -175,9 +186,11 @@ def rehearse(original, root, source, *, topic="vinc", max_rows=128, progress=Non
             reached("release")
             result = flow.release(account_active=True)
             reached("acceptance")
-            scratch.deadline = time.monotonic() + 180
+            unchanged = True
             with legacy._inventory_read_transaction(store):
-                unchanged = all(manifest.untouched_summary(store, scratch, owner) == outside[owner] for owner in owners)
+                for owner in owners:
+                    scratch.deadline = time.monotonic() + PHASE_SECONDS
+                    unchanged = unchanged and manifest.untouched_summary(store, scratch, owner) == outside[owner]
             if not unchanged or result["status"] != "active" or legacy.fenced(store, source) or legacy.fenced(store, target):
                 raise RuntimeError("copy_acceptance_failed")
             report.update(qualified=True, status=result["status"], batches=result["batches"],
@@ -214,6 +227,9 @@ def main():
         # 소문자 코드 형태의 앞머리만 남긴다.
         report.update(progress)
         report["exception"] = type(exc).__name__
+        reason = getattr(exc, "reason", None)
+        if isinstance(reason, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,63}", reason):
+            report["error_reason"] = reason
         code = str(exc).split(":", 1)[0]
         if re.fullmatch(r"[a-z][a-z0-9_]{0,63}", code):
             report["error_code"] = code
