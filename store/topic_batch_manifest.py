@@ -148,7 +148,8 @@ def prepare(manifest, plan, *, run, stamp, indexes, store):
     db.execute("CREATE TABLE instructions(ordinal INTEGER PRIMARY KEY, kind TEXT, body TEXT NOT NULL)")
     db.execute("CREATE INDEX instruction_kinds ON instructions(kind,ordinal)")
     db.execute("CREATE TABLE edge_multiplicity(digest TEXT PRIMARY KEY,total INTEGER NOT NULL)")
-    db.execute("CREATE TABLE planned_keys(label TEXT,key TEXT,PRIMARY KEY(label,key))")
+    db.execute("CREATE TABLE planned_keys(label TEXT,key TEXT,origin TEXT NOT NULL,PRIMARY KEY(label,key))")
+    collisions = {}
     selected = set(plan.selected)
     seqs = {}
     for owner in (plan.source, plan.target):
@@ -171,17 +172,20 @@ def prepare(manifest, plan, *, run, stamp, indexes, store):
         db.execute("INSERT INTO instructions(kind,body) VALUES(?,?)", (instruction["kind"], body))
         count += 1
 
-    def claim(label, key):
+    def claim(label, key, origin):
         # 한 매니페스트의 두 지시가 같은 대상 키로 가면 뒤 배치가 앞 배치의 행과 부딪힌다.
-        # 배치를 돌리기 전에 표 이름을 달아 거절한다(식별자는 싣지 않는다).
+        # 끝까지 세어 (대상 표:원본 표 쌍)별 건수를 모으고, 배치를 돌리기 전에 거절한다.
+        # 원본 표는 그 지시를 낳은 행의 표다(식별자는 싣지 않는다).
         try:
-            db.execute("INSERT INTO planned_keys VALUES(?,?)", (label, key))
+            db.execute("INSERT INTO planned_keys VALUES(?,?,?)", (label, key, origin))
         except sqlite3.IntegrityError:
-            raise TransferRefused("key_collision:" + label) from None
+            first = db.execute("SELECT origin FROM planned_keys WHERE label=? AND key=?", (label, key)).fetchone()[0]
+            name = label + ":" + "+".join(sorted((first, origin)))
+            collisions[name] = collisions.get(name, 0) + 1
 
-    def generated(label, row):
+    def generated(label, row, origin):
         nonlocal projected_bytes
-        claim(label, row[SPECS[label]["pk"]])
+        claim(label, row[SPECS[label]["pk"]], origin)
         projected_bytes += len(_canonical(row).encode())
         emit({"kind": "generated", "label": label, "row": row, "after": digest(row)})
 
@@ -196,7 +200,7 @@ def prepare(manifest, plan, *, run, stamp, indexes, store):
                     continue
                 item = {"kind": "node", "label": label, "old": old,
                         "new": mapped_key(label, old, plan.source, plan.target, row), "before": digest(row)}
-                claim(label, item["new"])
+                claim(label, item["new"], label)
                 if "sync_seq" in row:
                     seqs[plan.target] += 1
                     item["sync_seq"] = seqs[plan.target]
@@ -209,13 +213,13 @@ def prepare(manifest, plan, *, run, stamp, indexes, store):
                     seqs[plan.source] += 1
                     generated("_Tombstone", {"node_id": old, "label": label, "owner_id": plan.source,
                         "deleted_at": stamp, "rev": after.get("rev") or 1,
-                        "sync_seq": seqs[plan.source], "origin": "topic-transfer"})
+                        "sync_seq": seqs[plan.source], "origin": "topic-transfer"}, label)
                 if label == "_DocMeta":
                     seqs[plan.source] += 1
                     generated("_DocTombstone", {"doc_id": old, "owner_id": plan.source,
-                        "deleted_at": stamp, "sync_seq": seqs[plan.source]})
+                        "deleted_at": stamp, "sync_seq": seqs[plan.source]}, label)
                 generated("_SyncMeta", {"key": "topic-transfer:moved:" + plan.source + ":" + label + ":" + pkns.strip(old),
-                                        "value": plan.target})
+                                        "value": plan.target}, label)
     # Edges stay at the source until all rewiring batches finish. A sealed
     # endpoint locator and property digest preserve identical parallel edges.
     for edge in manifest.snapshot["edges"]:
@@ -235,7 +239,11 @@ def prepare(manifest, plan, *, run, stamp, indexes, store):
         instruction["multiplicity"] = db.execute("SELECT total FROM edge_multiplicity WHERE digest=?", (instruction["before"],)).fetchone()[0]
         db.execute("UPDATE instructions SET body=? WHERE ordinal=?", (_canonical(instruction), ordinal))
     for owner, value in seqs.items():
-        generated("_SyncMeta", {"key": "seq:" + owner, "value": str(value)})
+        generated("_SyncMeta", {"key": "seq:" + owner, "value": str(value)}, "_SyncMeta")
+    if collisions:
+        refused = TransferRefused("key_collision:" + sorted(collisions)[0].split(":", 1)[0])
+        refused.collisions = dict(sorted(collisions.items()))
+        raise refused
     header = {"protocol": PROTOCOL, "executor": "ownership-batches-v1", "schema_version": SCHEMA_VERSION,
               "binding": binding, "before_hash": plan.before_hash, "instructions": count,
               "indexes": list(indexes), "selected_rows": len(selected), "documents": len(plan.documents),

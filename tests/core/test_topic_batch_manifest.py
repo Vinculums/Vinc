@@ -73,8 +73,10 @@ def test_duplicate_destination_keys_are_refused_before_any_batch(native, tmp_pat
         return target + "#collide" if label == "Concept" else new
 
     monkeypatch.setattr(batches, "mapped_key", colliding)
-    with pytest.raises(TransferRefused, match=r"^key_collision:Concept$"):
+    with pytest.raises(TransferRefused, match=r"^key_collision:Concept$") as refused:
         prepared(native, tmp_path)
+    # 끝까지 세어 (대상 표:원본 표 쌍)별 건수를 싣는다.
+    assert refused.value.collisions.get("Concept:Concept+Concept", 0) >= 1
 
 
 def test_missing_corrupt_foreign_and_truncated_artifacts_are_refused(native,tmp_path):
