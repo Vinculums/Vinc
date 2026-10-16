@@ -8,8 +8,10 @@
 컴파일 타임 `Deck` 타입은 EN↔KO 누락만 잡는다. 나머지는 여태 사람 눈이었다.
 """
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -52,6 +54,102 @@ class TestNoOrphanDeckKeys(unittest.TestCase):
             [], [k for k, _, _ in dead],
             "호출부가 0 인 덱 키가 있다. 화면이 사라졌으면 키도 지울 것"
             " (vinc.spec.ui-copy §8).")
+
+    def test_server_code_tables_are_real_and_read_whole(self):
+        """면제 목록이 낡으면 죽은 표 하나가 통째로 숨는다. 셋 다 덱에 객체로 있고
+        앱 코드가 통째로 받아 `표[코드]` 로 읽는지 확인한다."""
+        lines = (ROOT / inv._DECK).read_text(encoding="utf-8").splitlines()
+        en_s, en_e, _, _ = inv._deck_bounds(lines)
+        objects = {p for p, _, is_obj, _ in inv._walk(lines, en_s, en_e) if is_obj}
+        sources = [inv._code_only(p.read_text(encoding="utf-8"))
+                   for p in sorted((ROOT / "app" / "src").rglob("*.ts"))
+                   if p.name != "copy.ts"]
+        for table in sorted(inv.SERVER_CODE_TABLES):
+            self.assertIn(table, objects, f"{'.'.join(table)} 이 덱에 없다")
+            self.assertTrue(inv._read_whole(table[-1], sources),
+                            f"{'.'.join(table)} 를 통째로 읽는 곳이 없다")
+
+
+_FIXTURE_DECK = """\
+const EN = {
+  ui: {
+    common: { cancel: "Cancel", local: "Local" },
+    tools: { create: "Create", saveFirst: "Write something first." },
+    pick: { alpha: "A", beta: "B" },
+    codes: { not_found: "Missing" },
+    blocker: (code: string) => ({ boundary_relation: "Crosses" } as Record<string, string>)[code] || "",
+  },
+};
+type Deck = typeof EN;
+
+const KO: Deck = {
+  ui: {
+    common: { cancel: "취소", local: "로컬" },
+    tools: { create: "만들기", saveFirst: "먼저 적어 주세요." },
+    pick: { alpha: "가", beta: "나" },
+    codes: { not_found: "없음" },
+    blocker: (code: string) => ({ boundary_relation: "넘어감" } as Record<string, string>)[code] || "",
+  },
+};
+"""
+
+# 맨 이름 충돌: `local` 이라는 지역 변수가 있어 옛 판정(잎 이름 전수 grep)은
+# `ui.common.local` 을 살려 두었다. `T[k]` 는 `ui.tools` 를 통째로 읽지만 `k` 는
+# "create" 로만 온다.
+_FIXTURE_CONSUMER = """\
+import { COPY } from "./copy";
+const local = navigator.onLine;
+export const label = local ? COPY.ui.common.cancel : "";
+export function tabs() {
+  const T = COPY.ui.tools;
+  return (["create"] as const).map((k) => T[k]).join("");
+}
+export function pick(which: string) {
+  const P = COPY.ui.pick;
+  return which === "alpha" ? P[which] : "";
+}
+export function code(c: string) {
+  const C = COPY.ui.codes;
+  return C[c as keyof typeof C] || COPY.ui.blocker(c);
+}
+"""
+
+
+class TestPropertyAccessTier(unittest.TestCase):
+    """속성 접근 단계가 맨 이름 충돌과 `T[k]` 의 과잉 면제를 잡는지 고정한다(VIN-548)."""
+
+    def _dead(self, server_tables=frozenset()):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "app" / "src").mkdir(parents=True)
+            (root / inv._DECK).write_text(_FIXTURE_DECK, encoding="utf-8")
+            (root / "app" / "src" / "use.ts").write_text(_FIXTURE_CONSUMER, encoding="utf-8")
+            with mock.patch.object(inv, "SERVER_CODE_TABLES", server_tables):
+                return [k for k, _, _ in inv.dead_deck_keys(root)]
+
+    def test_bare_name_collision_is_caught(self):
+        self.assertRegex(_FIXTURE_CONSUMER, r"\blocal\b")   # 옛 판정이 속던 자리
+        self.assertIn("ui.common.local", self._dead())
+
+    def test_indexed_parent_does_not_cover_keys_that_never_arrive(self):
+        dead = self._dead()
+        self.assertIn("ui.tools.saveFirst", dead)
+        self.assertNotIn("ui.tools.create", dead)
+        self.assertIn("ui.pick.beta", dead)
+        self.assertNotIn("ui.pick.alpha", dead)
+
+    def test_inline_lookup_inside_the_deck_is_live(self):
+        self.assertNotIn("ui.blocker.boundary_relation", self._dead())
+
+    def test_server_code_table_is_live_only_when_listed(self):
+        self.assertIn("ui.codes.not_found", self._dead())
+        self.assertNotIn("ui.codes.not_found",
+                         self._dead(frozenset({("ui", "codes")})))
+
+    def test_exact_dead_set(self):
+        self.assertEqual(
+            sorted(self._dead()),
+            ["ui.codes.not_found", "ui.common.local", "ui.pick.beta", "ui.tools.saveFirst"])
 
 
 class TestKoDeckBannedStem(unittest.TestCase):

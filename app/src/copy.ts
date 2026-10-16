@@ -273,7 +273,6 @@ const EN = {
   records: {
     idle: "No documents yet.",
     idleCta: "Import files",
-    header: (n: number, m: number) => `${n} documents · ${m} topics`,
     edited: (d: string) => `edited ${d}`,
     filterPh: "Filter by title",
     docsN: (n: number) => `${n} document${n === 1 ? "" : "s"}`,
@@ -281,7 +280,6 @@ const EN = {
     noTopic: "No topic yet",
     noMatch: "Nothing matches that.",
     error: "Documents couldn't load. Retry anytime. Nothing was changed.",
-    actions: { view: "Show in View", pin: "Pin", tag: "Tag" },
   },
   view: {
     idle: "No graph yet. Write a document, make a node, or import files to start.",
@@ -354,7 +352,7 @@ const EN = {
       unassign: "Remove from this topic",
       renameAsk: (d: string) => `Rename the topic "${d}". Everything in it moves along.`,
     },
-    common: { cancel: "Cancel", loading: "Loading…", none: "none", local: "Local" },
+    common: { cancel: "Cancel", loading: "Loading…", none: "none" },
     update: {
       available: (v: string) => `Vinc ${v} is ready to install.`,
       install: "Install & restart", later: "Later",
@@ -471,7 +469,6 @@ const EN = {
       forms: "What is X · Sources for X",
       examplesHint: "Try",
       thinking: "Looking…",
-      you: "You",
       notFound: (q: string) => `Nothing in your knowledge matched "${q}".`,
       notFoundHint: "Try a name that appears in your notes, or switch to Find.",
       ambiguous: "Which one did you mean?",
@@ -598,7 +595,6 @@ const EN = {
       linkNone: "No other documents yet.",
       noConcept: "No concept yet, so it cannot be linked.",
       linkCta: (n: number) => n === 0 ? "Done" : `Link ${n} and finish`,
-      saveFirst: "Write something first. It saves as you type.",
       linking: "Linking…",
       linked: (n: number) => `Linked ${n}.`,
       linkPartial: (ok: number, bad: number) =>
@@ -1173,7 +1169,7 @@ const EN = {
       acctSignOutHint: "Signing out brings back the sign-in screen. Nothing in your account is deleted.",
       workspace: "Workspace",
       workspaceHint: "The space you're viewing. Switch back after trying the sample.",
-      theme: "Theme", language: "Language", advanced: "Advanced",
+      theme: "Theme", language: "Language",
       engine: "Engine address", secret: "Connection secret",
       // ⚠ **값을 화면에 그리지 않는다.** 바로 위 동기화 키가 그 규율을 지키는데
       // (감사 M8) 이 칸만 `value=` 로 시크릿을 DOM 에 눕히고 있었다. 같은 탭에서
@@ -1575,7 +1571,6 @@ const KO: Deck = {
   records: {
     idle: "아직 문서가 없어요. 파일을 추가하면 여기에 나타나요",
     idleCta: "파일 추가하기",
-    header: (n, m) => `문서 ${n}개 · 주제 ${m}개`,
     edited: (d) => `${d} 수정`,
     filterPh: "제목으로 좁히기",
     docsN: (n) => `문서 ${n}개`,
@@ -1583,7 +1578,6 @@ const KO: Deck = {
     noTopic: "주제 없음",
     noMatch: "조건에 맞는 문서가 없어요",
     error: "문서를 불러오지 못했어요. 다시 시도해 보세요. 바뀐 것은 없어요",
-    actions: { view: "View에서 보기", pin: "고정", tag: "태그" },
   },
   view: {
     idle: "아직 그래프가 없어요. 문서를 쓰거나 노드를 만들거나 파일을 가져와 시작해 보세요",
@@ -1649,7 +1643,7 @@ const KO: Deck = {
       unassign: "주제에서 빼기",
       renameAsk: (d) => `'${d}' 주제의 이름을 바꿔요. 안에 있는 것도 함께 옮겨져요`,
     },
-    common: { cancel: "닫기", loading: "불러오는 중…", none: "없음", local: "로컬" },
+    common: { cancel: "닫기", loading: "불러오는 중…", none: "없음" },
     update: {
       available: (v) => `Vinc ${v} 버전을 설치할 수 있어요`,
       install: "설치하고 다시 시작하기", later: "나중에",
@@ -1738,7 +1732,6 @@ const KO: Deck = {
       forms: "X의 뜻 · X의 근거",
       examplesHint: "예시",
       thinking: "찾는 중…",
-      you: "나",
       notFound: (q) => `'${q}'에 맞는 기록을 찾지 못했어요`,
       notFoundHint: "기록에 나오는 이름으로 물어보거나, 찾기 모드로 바꿔 보세요",
       ambiguous: "이 중 어느 것인가요?",
@@ -1842,7 +1835,6 @@ const KO: Deck = {
       linkNone: "아직 다른 문서가 없어요",
       noConcept: "아직 개념이 없어서 연결할 수 없어요",
       linkCta: (n: number) => n === 0 ? "닫기" : `${n}건 연결하고 마치기`,
-      saveFirst: "먼저 내용을 써 주세요. 쓰는 대로 저장돼요",
       linking: "연결하는 중…",
       linked: (n: number) => `${n}건 연결했어요`,
       linkPartial: (ok: number, bad: number) => `${ok}건 연결했어요. ${bad}건은 연결하지 못했어요. 문서 자체는 저장돼 있어요`,
@@ -2328,7 +2320,7 @@ const KO: Deck = {
       acctSignOutHint: "로그아웃하면 로그인 화면으로 돌아가요. 계정에 있는 것은 지워지지 않아요",
       workspace: "작업 공간",
       workspaceHint: "지금 보고 있는 공간이에요. 샘플을 둘러본 뒤에는 원래대로 되돌리세요.",
-      theme: "테마", language: "언어", advanced: "고급",
+      theme: "테마", language: "언어",
       engine: "엔진 주소", secret: "연결 시크릿",
       secretHint: "앱이 자동으로 채우고, 여기에는 보여 주지 않아요. 엔진을 직접 돌릴 때만 입력하세요. 비워 두면 그대로예요.",
       mcpHosts: { desktop: "Claude Desktop", code: "Claude Code",
