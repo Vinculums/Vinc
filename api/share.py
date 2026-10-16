@@ -121,6 +121,9 @@ def _share_edges_plan(*, owner: str, ids: list[str]) -> q.QueryPlan:
     pairs += [(s, t, "ABOUT") for s in ("episode", "decision")
               for t in ("concept", "decision")]
     pairs += [("record", t, "ATTACHES_TO") for t in ("concept", "decision")]
+    # 대체는 같은 종류끼리만 쓰인다(fragment `_SUPERSEDES_KINDS`). 빠지면 받는 쪽에서
+    # 대체된 것과 대체한 것이 둘 다 현재로 남는다.
+    pairs += [(kind, kind, "SUPERSEDES") for kind in frag._SUPERSEDES_KINDS]
     arms = []
     for source, target, relation in pairs:
         sl, sp = frag._NODE_MAP[source]
@@ -381,9 +384,17 @@ def build_share_pack(*, owner: str, domain: str | None = None,
         for r in e_res.get("rows", []):
             relation = r.get("rel") or ""
             ftype = (r.get("role") if relation == "ATTACHES_TO" else
-                     "about" if relation == "ABOUT" else _REL_TO_FRAGMENT.get(relation))
+                     "about" if relation == "ABOUT" else
+                     "supersedes" if relation == "SUPERSEDES" else
+                     _REL_TO_FRAGMENT.get(relation))
             tgt = r.get("target")
             if not tgt or tgt not in id_set or r["id"] not in id_set:
+                continue
+            if relation == "SUPERSEDES" and not str(r.get("evidence") or "").strip():
+                # 쓰기 경로가 근거 없는 대체를 거절하므로 실어도 받는 쪽에서 떨어진다.
+                # 팩을 실패시키지 않고 빼고 말한다.
+                warnings.append(f"{relation} {r['id']} -> {tgt} has no evidence; "
+                                "left out of the pack")
                 continue
             if (not ftype or (relation == "ATTACHES_TO" and ftype not in frag._CC_EDGES)):
                 # 타입 없는 ATTACHES_TO 는 병합 경로(query.py)가 실제로 쓴다. 그 엣지
@@ -403,8 +414,10 @@ def build_share_pack(*, owner: str, domain: str | None = None,
                 e["created"] = r["edge_created"]
             # 값이 있을 때만 싣는다. ALTER 로 열을 얻은 스토어는 빈 엣지도 ''·0.0 을
             # 돌려주고, 그것을 실으면 수신측의 실제 근거·신뢰도를 덮어 지운다.
+            # RETURNS_TO·SUPERSEDES 는 열과 함께 만들어져 0.0 도 저작한 값이다.
+            authored = relation in ("RETURNS_TO", "SUPERSEDES")
             for field in ("evidence", "confidence"):
-                if r.get(field) or (relation == "RETURNS_TO" and r.get(field) is not None):
+                if r.get(field) or (authored and r.get(field) is not None):
                     e[field] = r[field]
             edges.append(e)
 

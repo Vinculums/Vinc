@@ -139,6 +139,10 @@ class CheckSaysWhatIsWrong(unittest.TestCase):
     def test_one_liner_and_mission_drift(self):
         self._one(good(one_liner="Something else."), needle="differ")
 
+    def test_an_empty_one_liner_is_not_drift(self):
+        # 읽는 쪽은 빈 one_liner 에서 mission 으로 물러선다. 동기화 번들은 빈 값도 싣는다.
+        self.assertEqual(rc.check(good(one_liner=""), created=False), [])
+
     def test_bad_slug(self):
         self._one(good(id="concept:agent-Release_Manager"), needle="lowercase")
 

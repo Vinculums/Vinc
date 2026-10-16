@@ -56,7 +56,9 @@ def test_about_edges_covered_by_rel_map_and_plan():
     assert sync._REL_TO_FRAGMENT["RELATED_TO"] == "relates_to"   # 기존 역맵 불변
     p = sync._extra_edges_plan(["episode:e1", "concept:c1"], owner=OWNER,
                                pair=("Episode", "episode_id", "Concept", "concept_id"))
-    assert "MATCH (a:Episode)-[r]->(b:Concept)" in p.cypher
+    # 라벨을 명시한다. 열어 두면 근거 열이 없는 rel 까지 걸려 근거를 투영할 수 없다.
+    assert "MATCH (a:Episode)-[r:ABOUT]->(b:Concept)" in p.cypher
+    assert "r.evidence AS evidence, r.confidence AS confidence" in p.cypher
     assert "a.episode_id IN $ids" in p.cypher
     assert "b.concept_id IN $ids" in p.cypher
     assert "a.owner_id = $owner" in p.cypher
@@ -85,8 +87,8 @@ def test_export_carries_about_edges_when_both_endpoints_in_bundle():
             {"id": "concept:c1", "title": "C1", "domain": "d", "sync_seq": 1}],
         "MATCH (e:Episode) WHERE": [
             {"id": "episode:e1", "title": "E1", "domain": "d", "sync_seq": 2}],
-        # v12 — 전용 플랜이 rel 을 좁히지 않고 label(r) 로 뽑는다(끝점 조합별 1플랜).
-        "MATCH (a:Episode)-[r]->(b:Concept)": [
+        # 전용 플랜이 그 조합의 동기화 rel 을 명시하고 label(r) 로 뽑는다(끝점 조합별 1플랜).
+        "MATCH (a:Episode)-[r:ABOUT]->(b:Concept)": [
             {"id": "episode:e1", "rel": "ABOUT", "target": "concept:c1"},
             # 번들 밖 끝점 — 실리면 안 된다(수신측 fragment 가 타입 해석 불가)
             {"id": "episode:ghost", "rel": "ABOUT", "target": "concept:c1"}],
@@ -95,6 +97,24 @@ def test_export_carries_about_edges_when_both_endpoints_in_bundle():
     assert out["executed"]
     assert {"from": "episode:e1", "to": "concept:c1", "type": "about"} in out["edges"]
     assert all(e["from"] != "episode:ghost" for e in out["edges"])
+
+
+def test_edge_signal_drops_alter_defaults_but_keeps_authored_zero():
+    """ALTER 로 열을 얻은 rel 의 ''·0.0 은 "모름"이라 싣지 않는다(받는 쪽 값을 덮는다).
+    열과 함께 만들어진 RETURNS_TO·SUPERSEDES 의 0.0 은 저작한 값이라 싣는다."""
+    assert sync._edge_signal({"rel": "RELATED_TO", "evidence": "", "confidence": 0.0}) == {}
+    assert sync._edge_signal({"rel": "ATTACHES_TO", "evidence": "why",
+                              "confidence": 0.4}) == {"evidence": "why", "confidence": 0.4}
+    assert sync._edge_signal({"rel": "RETURNS_TO", "evidence": "back",
+                              "confidence": 0.0}) == {"evidence": "back", "confidence": 0.0}
+    assert sync._edge_signal({"rel": "ABOUT", "evidence": None, "confidence": None}) == {}
+    # 근거 열을 가진 rel 만 한 패턴에 묶인다(섞이면 r.evidence 를 투영할 수 없다).
+    for pair in sync._EXTRA_EDGE_PAIRS:
+        for rels in sync._extra_rel_groups(pair):
+            plan = sync._extra_edges_plan(["x"], owner=OWNER, pair=pair, rels=rels)
+            assert f"-[r:{'|'.join(rels)}]->" in plan.cypher
+    assert "r.evidence AS evidence" in sync._record_edges_plan(
+        ["x"], owner=OWNER, pair=("Concept", "concept_id")).cypher
 
 
 # ── S4 확장: 엣지 툼스톤(삭제 전파) ───────────────────────────────────────────

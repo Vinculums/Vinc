@@ -54,22 +54,25 @@ def _payload(args) -> tuple[dict, dict, dict]:
 
 
 def _enrich(bundle: dict, graph: dict) -> None:
-    # sync 번들은 내용 필드를 보존하지만 표시용 one_liner와 관계 근거는 뺀다.
-    # 같은 소유자의 전체 graph 읽기 한 번으로 둘을 채운다.
+    # sync 번들이 개념 one_liner 와 관계 근거를 직접 나른다. graph 읽기는 그 값을 싣지
+    # 않는 옛 사이드카 번들과 다른 종류의 노드를 채우는 대체 경로라, 번들 값을 덮지 않는다.
     if not graph.get("executed"):
         bundle["executed"] = False
         bundle["error"] = graph.get("error") or graph.get("note") or "graph detail unavailable"
         return
     details = {n["id"]: n for n in graph.get("nodes", [])}
     for node in bundle.get("nodes", []):
-        node["one_liner"] = details.get(node["id"], {}).get("one_liner") or ""
+        if node.get("one_liner") is None:
+            node["one_liner"] = details.get(node["id"], {}).get("one_liner") or ""
     from .sync import _REL_TO_FRAGMENT
     evidence = {(e.get("source"), e.get("target"),
                  e.get("role") or _REL_TO_FRAGMENT.get(e.get("type"),
                                                        str(e.get("type") or "").lower())):
                 e.get("evidence") for e in graph.get("edges", [])}
     for edge in bundle.get("edges", []):
-        edge["evidence"] = evidence.get((edge.get("from"), edge.get("to"), edge.get("type"))) or ""
+        if not edge.get("evidence"):
+            edge["evidence"] = evidence.get(
+                (edge.get("from"), edge.get("to"), edge.get("type"))) or ""
 
 
 def _safe_name(raw: str) -> str:
@@ -120,9 +123,26 @@ def _csv_bytes(header: list[str], rows: list[dict], *, excel: bool) -> bytes:
     return ("\ufeff" if excel else "").encode("utf-8") + stream.getvalue().encode("utf-8")
 
 
+#: 열과 앞머리 키. **뒤에만 붙인다** — 기존 열의 이름·순서는 소비자가 기대는 계약이다.
+_NODE_KEYS = ["id", "type", "title", "domain", "tags", "valid_from", "valid_until",
+              "one_liner", "props", "content_time", "created", "date", "summary"]
+_NODE_FRONT = ["id", "kind", "title", "domain", "tags", "valid_from", "valid_until",
+               "one_liner", "content_time", "created", "date", "summary"]
+_EDGE_KEYS = ["from", "to", "type", "evidence", "confidence", "created"]
+_DOC_TIME = ["content_time", "created_at", "valid_from", "valid_until", "superseded_by"]
+_DOC_KEYS = ["doc_id", "title", "topic", "origin", "updated_at", "content_hash", "text",
+             *_DOC_TIME]
+_DOC_FRONT = ["doc_id", "title", "topic", "origin", "updated_at", "content_hash", *_DOC_TIME]
+
+
+def _node_row(node: dict) -> dict:
+    """번들 노드를 내보내기 행으로. 출생은 번들에서 `_created` 스탬프로 온다."""
+    return {**node, "created": node.get("created") or node.get("_created") or ""}
+
+
 def build_files(owner: str, fmt: str, node_bundle: dict, doc_bundle: dict,
                 doc_list: dict, *, domain: str | None = None, excel: bool = False) -> dict[str, bytes]:
-    nodes = sorted((n for n in node_bundle.get("nodes", [])
+    nodes = sorted((_node_row(n) for n in node_bundle.get("nodes", [])
                     if _scoped(n.get("domain") or "", domain)),
                    key=lambda n: n["id"].encode("utf-8"))
     ids = {n["id"] for n in nodes}
@@ -136,14 +156,9 @@ def build_files(owner: str, fmt: str, node_bundle: dict, doc_bundle: dict,
                   key=lambda d: d["doc_id"].encode("utf-8"))
     files: dict[str, bytes] = {}
     if fmt == "csv":
-        files["nodes.csv"] = _csv_bytes(
-            ["id", "type", "title", "domain", "tags", "valid_from", "valid_until",
-             "one_liner", "props"], nodes, excel=excel)
-        files["edges.csv"] = _csv_bytes(
-            ["from", "to", "type", "evidence"], edges, excel=excel)
-        files["documents.csv"] = _csv_bytes(
-            ["doc_id", "title", "topic", "origin", "updated_at", "content_hash", "text"],
-            docs, excel=excel)
+        files["nodes.csv"] = _csv_bytes(_NODE_KEYS, nodes, excel=excel)
+        files["edges.csv"] = _csv_bytes(_EDGE_KEYS, edges, excel=excel)
+        files["documents.csv"] = _csv_bytes(_DOC_KEYS, docs, excel=excel)
     else:
         used_nodes: dict[str, set[str]] = {}
         kind_dirs: dict[str, str] = {}
@@ -153,9 +168,7 @@ def build_files(owner: str, fmt: str, node_bundle: dict, doc_bundle: dict,
             # 대소문자만 다른 타입은 먼저 나온 이름의 한 폴더를 같이 쓴다.
             folder = kind_dirs.setdefault(_safe_name(kind).casefold(), _safe_name(kind))
             stem = _safe_stem(node["id"], used_nodes.setdefault(folder.casefold(), set()))
-            front = _front(["id", "kind", "title", "domain", "tags", "valid_from",
-                            "valid_until", "one_liner"],
-                           {**node, "kind": kind})
+            front = _front(_NODE_FRONT, {**node, "kind": kind})
             props = json.dumps(node.get("props") or {}, ensure_ascii=False,
                                indent=2, sort_keys=True)
             relations = "".join(
@@ -167,8 +180,7 @@ def build_files(owner: str, fmt: str, node_bundle: dict, doc_bundle: dict,
         used_docs: set[str] = set()
         for doc in docs:
             stem = _safe_stem(doc["doc_id"], used_docs)
-            front = _front(["doc_id", "title", "topic", "origin", "updated_at",
-                            "content_hash"], doc)
+            front = _front(_DOC_FRONT, doc)
             files[f"documents/{stem}.md"] = (front + doc.get("text", "")).encode("utf-8")
         files["vinc-export.json"] = (json.dumps(
             {"format_version": 1, "owner": owner,
