@@ -103,6 +103,8 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
         self.assertIn('window.location.assign("/community/share/")', pub)
         self.assertNotIn('community.publish(', pub)
         self.assertIn('downloadPack(out,', pub)
+        # 갤러리 시절 게시 클라이언트는 호출부 없이 남아 있었다(VIN-569). 다시 생기지 않게.
+        self.assertNotIn('/api/community/publish', (APP / "api.ts").read_text(encoding="utf-8"))
 
     # ── 표면을 지우면서 조용히 깨지는 것 둘 ────────────────────────────────
     def test_숫자_단축키가_표면_수를_따라간다(self):

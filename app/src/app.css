@@ -1577,10 +1577,10 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
 .dest-pick .title { font-weight: 600; }
 .dest-pick .meta { color: hsl(var(--muted-foreground)); font-size: var(--fs-sm); line-height: 1.45; }
 /* 진행 표시 — 공유 시트의 기다림이 이 한 벌을 쓴다(팩 준비 · 파일로 받기 · 커뮤니티
-   게시). 전에는 자리마다 문구 한 줄이라 같은 일을 기다리는데 모양이 자리마다 달랐다.
+   공유로 넘기기). 전에는 자리마다 문구 한 줄이라 같은 일을 기다리는데 모양이 자리마다 달랐다.
    스페이스로 보내기는 아래 확정 막대를 쓴다.
    **불확정 막대다.** 네 자리가 기다리는 모양은 하나가 아니라 셋으로 갈리는데
-   (`call()` · `communityPost` · `toBytes`), 셋 다 보고할 단계가 없거나 셀 수 있어도
+   (`call()` · 커뮤니티 목적지 조회 `fetch` · `toBytes`), 셋 다 보고할 단계가 없거나 셀 수 있어도
    이 막대가 그릴 값이 못 된다. 판정과 그 근거는 `sheets.ts` 의 `sheetProgress`
    주석에 있다.
    기하(4px · radius 2px · --muted 트랙 위 --primary 채움)는 커뮤니티 페이지의 원본에서,

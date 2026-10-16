@@ -39,9 +39,10 @@ npm run build      # tsc --noEmit + vite build (게이트)
   (`main.ts`). 셸 전용(웹 Vinc·브라우저 dev 는 no-op). Tauri v2 updater 가
   `tauri.conf.json` 의 pubkey 로 다운로드 아티팩트의 minisign 서명을 강제하며, 새 버전이
   **있을 때만** 하단 토스트로 알린다("나중에" 가 기본, 확인 실패는 무음).
-- **커뮤니티 공유(웹 전용)** — Packs 표면의 `Share to community` CTA(WEB 게이트) →
-  `api.share` 도메인 슬라이스 팩 → 동의 게이트 게시 시트 → `community.publish`
-  (`/api/community/publish`) → 공개 갤러리 `/community`. owner 는 세션 강제(`cfg.owner` 무시).
+- **커뮤니티 공유(웹 전용)** — 공유 시트의 커뮤니티 목적지(WEB 게이트) → `api.share` 팩 →
+  `publishToCommunity`(`sheets.ts`)가 `/api/community/agents/destinations` 로 사용 가능 여부를
+  확인하고 팩을 `sessionStorage` 에 맡긴 뒤 사이트의 공유 작업 `/community/share/` 로 넘긴다.
+  공개 맥락과 동의는 그 작업이 받는다. 데스크톱에는 아직 커뮤니티 목적지가 없다(VIN-458).
 - **디자인 토큰**: `src/tokens.css` 는 `Vinc-docs/DESIGN`(design-tokens.json →
   gen_tokens.py)의 소비 사본 — 수기 수정 금지, 갱신은 gen_tokens.py 재실행 후 복사.
 - **Atlas**: L0(`GET /atlas`) → L1(`GET /graph?domain=`, 게이트웨이 = 결합 노드) →
