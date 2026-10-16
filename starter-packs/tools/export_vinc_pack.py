@@ -162,7 +162,7 @@ def build_all(created: str) -> tuple[dict[str, dict], dict]:
                                     "title": n.title_en, "props": props}
             continue
         # scaffolding tags carry no retrieval value (every note has them) and
-        # crowd out real topic chips in the community gallery summary
+        # crowd out real topic chips in the pack summary
         tags = [t for t in (n.fm.get("tags") or [])
                 if t and t not in ("learning-note", "learning")]
         if n.kind == "person" and "person" not in tags:
