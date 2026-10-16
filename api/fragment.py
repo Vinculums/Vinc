@@ -429,8 +429,8 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     개방층(F1): 레거시 6종 밖 타입은 스킵이 아니라 Entity 캐리어로 라우팅된다 —
     스킵은 형태 오류(id 부재, Entity 는 title 부재)뿐. ``theme_id`` 는 Entity 행에
     각인되는 주제 귀속(THEME-DEEP §6) — 호출부(_ThemeFold)가 해석해 넘긴다.
-    ``theme_explicit`` 은 fragment 가 theme_id 를 직접 실었는가다 — 그때만 기존 Entity
-    의 주제를 바꾼다."""
+    ``theme_explicit`` 은 fragment 가 theme_id 를 직접 실었는가다. 실었을 때만 기존
+    Entity 의 주제를 바꾼다."""
     ntype = (node.get("type") or "").strip()
     nid = (node.get("id") or "").strip()
     if getattr(store, "_topic_conversion_guard", False):
