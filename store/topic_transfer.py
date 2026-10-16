@@ -181,14 +181,26 @@ def endpoint_ambiguity(matches):
     return "ambiguous_kind" if matches[0][0] != "Concept" else "ambiguous_owner"
 
 
+def retained_edge_deletion(label, row, source):
+    """선택 노드 사이 엣지 삭제 표식은 개인 소유 그대로 남기고 팀으로 복사하지 않는다.
+
+    소유자 합성 키일 때만이다. 레거시 키는 팀이 같은 엣지를 지울 때 같은 행을 덮는다.
+    근거: [[decision:topic-transfer-edge-history-and-foreign-rejection-endpoints-2026-10-16]]
+    """
+    return label == "_EdgeTombstone" and str(row.get("ekey") or "").startswith(source + pkns.SEP)
+
+
 def tombstone_blocker(label, refs):
     return f"existing_tombstone_history_not_supported:{label}:{row_digest(chr(31).join(sorted(refs)))}"
 
 
 def rejection_endpoint_state(snapshot, source, logical, ref):
+    # 합성 키 없는 레거시 행은 이 소유자 것일 때만 끝점 후보다. 같은 id 의 남의 행은 무관하다.
+    # 근거: [[decision:topic-transfer-edge-history-and-foreign-rejection-endpoints-2026-10-16]]
     matches = [(label, row) for label in _KINDS + ("Bridge",)
                for row in snapshot["nodes"][label]
-               if row[node_table_specs()[label]["pk"]] in (ref, source + pkns.SEP + ref)]
+               if row[node_table_specs()[label]["pk"]] == source + pkns.SEP + ref
+               or (row[node_table_specs()[label]["pk"]] == ref and row.get("owner_id") == source)]
     if not matches:
         return "missing"
     if (len(matches) != 1 or matches[0][0] != "Concept"
@@ -220,7 +232,7 @@ def retained_history_counts(snapshot, plan):
                 refs = deletion_references(label, row, plan.source)
             except TransferRefused:
                 continue
-            if not refs & logical:
+            if not refs & logical or retained_edge_deletion(label, row, plan.source):
                 counts[label] += 1
     retained = sum(row.get("owner_id") == plan.source and rejection_disposition(
         row, plan.source, logical,
@@ -254,6 +266,25 @@ def _web_only(value):
     if isinstance(value, list):
         return bool(value) and all(_web_only(v) for v in value)
     return isinstance(value, str) and bool(_WEB_URL.match(value))
+
+
+def attachment_kind(value):
+    """첨부 키 값의 진단 분류. 리허설은 이 종류만 세고 값은 내보내지 않는다."""
+    leaves = []
+    def walk(v):
+        if isinstance(v, dict):
+            for item in v.values():
+                walk(item)
+        elif isinstance(v, list):
+            for item in v:
+                walk(item)
+        else:
+            leaves.append(v)
+    walk(value)
+    if leaves and all(isinstance(v, str) and v and not _MANAGED_RESOURCE.match(v)
+                      and not v.lower().startswith("data:") for v in leaves):
+        return "attachment_key_path"
+    return "attachment_key_other"
 
 
 def preserved_reference_counts(plan):
@@ -546,7 +577,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
                             if _web_only(val):
                                 preserved.add("external_attachment:" + nid)
                             else:
-                                blocks.add("external_attachments_not_supported:" + nid)
+                                blocks.add("external_attachments_not_supported:" + attachment_kind(val) + ":" + nid)
                         if compact in ("vocabulary", "themeid") and val:
                             blocks.add("owner_vocabulary_not_supported:" + nid)
                         if compact in ("graphmd", "conventions") and val:
@@ -567,7 +598,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
                         if image[0]:
                             preserved.add("external_attachment:" + nid)
                         else:
-                            blocks.add("external_attachments_not_supported:" + nid)
+                            blocks.add("external_attachments_not_supported:props_image:" + nid)
                     for ref in _REFERENCE.findall(value):
                         if ref not in logical and ref not in docs:
                             preserved.add("external_reference:" + ref)
@@ -578,7 +609,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
                 if image[0]:
                     preserved.add("external_attachment:" + nid)
                 else:
-                    blocks.add("external_attachments_not_supported:" + nid)
+                    blocks.add("external_attachments_not_supported:chunk_image:" + nid)
             for ref in _REFERENCE.findall(row["text"] or ""):
                 if ref not in logical and ref not in docs:
                     preserved.add("external_reference:" + ref)
@@ -607,7 +638,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
                 except TransferRefused as exc:
                     blocks.add(str(exc))
                     continue
-                if refs & (logical | docs):
+                if refs & (logical | docs) and not retained_edge_deletion(label, row, source):
                     blocks.add(tombstone_blocker(label, refs & (logical | docs)))
     for label, nid in selected:
         if label in _KINDS + ("Bridge",) and not nid.startswith(source + pkns.SEP):

@@ -144,3 +144,38 @@ def test_retained_relationship_deletion_filters_stale_wire_replay(tmp_path, monk
         assert sync._edges_after_deletions(store, TARGET, {"edges": [edge]}) == [edge]
     finally:
         store.close()
+
+
+# 근거: [[decision:topic-transfer-edge-history-and-foreign-rejection-endpoints-2026-10-16]]
+def edge_between_selected(data, ekey):
+    add_row(data, "_EdgeTombstone", ekey=ekey, owner_id=SOURCE, src="concept:a", dst="concept:b",
+            rel="DERIVES_FROM", deleted_at="2020-01-03", sync_seq=10, origin="original")
+
+
+def test_edge_deletion_between_selected_nodes_stays_personal(tmp_path):
+    data = seed()
+    edge_between_selected(data, SOURCE + "\x1fconcept:a|DERIVES_FROM|concept:b")
+    chosen = plan(data)
+    assert chosen.ready, chosen.blockers
+    assert retained_history_counts(data, chosen)["_EdgeTombstone"] == 1
+    after = transformed_snapshot(data, chosen, stamp=STAMP)
+    assert after["meta"]["_EdgeTombstone"] == data["meta"]["_EdgeTombstone"]
+    store = RawStore(tmp_path / "edge-between.db")
+    try:
+        for ddl in render_embedded_ddl(dim=4):
+            store.run(ddl)
+        insert(store, data)
+        before = read_snapshot(store)
+        scoped = read_scoped_inventory(store, source=SOURCE, target=TARGET, topic=TOPIC)
+        assert not scoped.blockers, scoped.blockers
+        assert _apply_rehearsal(store, plan(before), run_id="edge-between", stamp=STAMP) == "committed"
+        observed = read_snapshot(store)["meta"]["_EdgeTombstone"]
+        assert observed == before["meta"]["_EdgeTombstone"]
+    finally:
+        store.close()
+
+
+def test_legacy_edge_deletion_key_between_selected_nodes_stays_blocked():
+    data = seed()
+    edge_between_selected(data, "concept:a|DERIVES_FROM|concept:b")
+    assert_blocked(data, "existing_tombstone_history_not_supported:_EdgeTombstone")
