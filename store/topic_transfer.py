@@ -174,9 +174,11 @@ def row_digest(value):
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
 
 
-def endpoint_ambiguity(matches):
+def endpoint_ambiguity(matches, source=None):
     if len(matches) != 1:
-        return "ambiguous_multiple"
+        # 리허설이 원인을 세도록 겹친 행의 표와 소유 관계만 붙인다(id 는 붙이지 않는다).
+        kinds = sorted(f"{label}/{'own' if row.get('owner_id') == source else 'other'}" for label, row in matches)
+        return "ambiguous_multiple(" + ",".join(kinds) + ")"
     return "ambiguous_kind" if matches[0][0] != "Concept" else "ambiguous_owner"
 
 
@@ -206,7 +208,7 @@ def rejection_endpoint_state(snapshot, source, logical, ref):
         return "missing"
     if (len(matches) != 1 or matches[0][0] != "Concept"
             or matches[0][1].get("owner_id") != source):
-        return endpoint_ambiguity(matches)
+        return endpoint_ambiguity(matches, source)
     return "selected" if ref in logical else "outside"
 
 

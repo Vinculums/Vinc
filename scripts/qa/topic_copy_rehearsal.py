@@ -34,6 +34,16 @@ DETAILED_BLOCKERS = {"existing_tombstone_history_not_supported", "merge_rejectio
                      "external_attachments_not_supported"}
 
 
+def blocker_detail(blocker):
+    """코드와 종류만 남긴다. 경계 관계는 관계 이름과 바깥 끝점의 타입 접두까지만 센다."""
+    parts = blocker.split(":")
+    if parts[0] == "boundary_relation":
+        return ":".join(parts[:3])
+    if parts[0] in DETAILED_BLOCKERS:
+        return ":".join(parts[:2])
+    return None
+
+
 def open_copy(path):
     store = open_store(load_config({"data_dir": str(path), "buffer_pool_mb": 512}))
     if store is None:
@@ -96,8 +106,7 @@ def rehearse(original, root, source, *, topic="vinc", max_rows=128):
                               retained_rows=inventory.retained_rows, retained_bytes=inventory.retained_bytes)
                 if not plan.ready:
                     report["dependency_counts"] = dict(Counter(b.split(":", 1)[0] for b in plan.blockers))
-                    report["dependency_detail"] = dict(Counter(":".join(b.split(":", 2)[:2]) for b in plan.blockers
-                                                               if b.split(":", 1)[0] in DETAILED_BLOCKERS))
+                    report["dependency_detail"] = dict(Counter(d for d in map(blocker_detail, plan.blockers) if d))
                     return report
                 stamp = datetime.now(timezone.utc).isoformat()
                 header = manifest.prepare(scratch, plan, run=run, stamp=stamp,

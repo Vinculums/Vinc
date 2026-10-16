@@ -306,7 +306,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         if not matches:
             state = "missing"
         elif len(matches) != 1 or matches[0][0] != "Concept" or matches[0][1]["owner_id"] != source:
-            state = endpoint_ambiguity(matches)
+            state = endpoint_ambiguity(matches, source)
         else:
             state = "selected" if ref in logical else "outside"
         rejection_endpoints[ref] = state
