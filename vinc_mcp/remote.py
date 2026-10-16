@@ -1,18 +1,17 @@
 # -*- coding: utf-8 -*-
-"""원격 MCP 프록시(A1.9 A2) — `target="remote"` 도구 호출을 호스티드 어댑터
-(`mcp.vincs.io/mcp`)로 JSON-RPC `tools/call` 왕복한다.
+"""허브 도구 호출 클라이언트 — 호스티드 어댑터(`mcp.vincs.io/mcp`)에 JSON-RPC
+`tools/call` 을 한 번 왕복한다. 지금 부르는 쪽은 `api/refs.py`(인용 대조)와
+`scripts/agents_sync.py` 이고, `proxy.py` 는 주소(`_endpoint`)만 빌린다. MCP 도구
+디스패처(`tools.call`)는 이 모듈을 부르지 않는다.
 
 - stdlib `urllib` 만(F5 오프라인·외부 의존 0 유지).
-- 인증: env `VINC_REMOTE_MCP_TOKEN`(v0.1.9 수동; v0.2.0 회원 발급 키 `vinc_sk_*`).
+- 인증: env `VINC_REMOTE_MCP_TOKEN`(회원 발급 키 `vinc_sk_*`).
   URL 은 env `VINC_REMOTE_MCP_URL`(기본 `https://mcp.vincs.io/mcp`).
-- **owner 는 전송하지 않는다** — 원격이 토큰으로 owner 를 정하는 게 권위(멀티테넌트,
-  v0.2.0). 로컬 owner 를 실어 보내면 남의 스코프를 넘볼 여지가 되므로 제거한다.
-- **`target` 도 전송하지 않는다** — 그것은 "어느 스토어로 갈까"라는 **호출부의 질문**이고,
-  이 함수를 부른 시점에 이미 답이 났다. 허브에는 갈 곳이 하나뿐이라 인자를 받으면
-  거절한다(`target is not available on this server: this endpoint IS the remote graph`).
-  tools.py 는 부르기 전에 pop 해서 멀쩡했지만 스크립트 셋은 그대로 실어 보내 전부
-  막혀 있었다 — 그래서 호출부마다가 아니라 **여기서** 뗀다.
-- 원격 서버의 `_dispatch` 는 `tools/call` 을 initialize 없이 처리한다(rpc.py) → 단건 POST.
+- **owner 는 전송하지 않는다** — 허브가 토큰으로 owner 를 정하는 게 권위다(멀티테넌트).
+  로컬 owner 를 실어 보내면 남의 스코프를 넘볼 여지가 되므로 제거한다.
+- **`target` 도 전송하지 않는다** — 허브는 그 인자를 받으면 거절한다. 호출부가 실수로
+  실어도 막히지 않도록 여기서 뗀다.
+- 허브의 `_dispatch` 는 `tools/call` 을 initialize 없이 처리한다(rpc.py) → 단건 POST.
 """
 from __future__ import annotations
 
@@ -33,7 +32,7 @@ def call(name: str, args: dict, *, timeout: float = 60) -> dict:
     친절히 전달하도록)."""
     token = os.environ.get("VINC_REMOTE_MCP_TOKEN") or ""
     if not token:
-        return {"error": "remote target requires a key — set VINC_REMOTE_MCP_TOKEN "
+        return {"error": "the hub call requires a key — set VINC_REMOTE_MCP_TOKEN "
                          "(get one at https://vincs.io/account).", "isError": True}
     payload = {
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",

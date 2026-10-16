@@ -17,7 +17,7 @@ from .http_server import MAX_BODY, _UUID_RE
 MAX_RESULT_BYTES = 16 * 1024 * 1024
 
 
-_SCHEMAS = {item["name"]: item["inputSchema"] for item in tools.specs(allow_target=False)}
+_SCHEMAS = {item["name"]: item["inputSchema"] for item in tools.specs(hub=True)}
 
 
 def _message(result: dict | None) -> str:
@@ -298,7 +298,7 @@ def _handle(handler, method: str) -> bool:
                                forced_owner=resolved.get("owner"), plan=resolved.get("plan"),
                                quota=handler.app.quota_for(resolved),
                                entitlements=handler.app.entitlements_for(resolved.get("plan")),
-                               allow_target=False,
+                               hub=True,
                                community_write=(lambda args: handler.app.community_write(resolved, args))
                                if handler.app.community_write is not None else None,
                                community_read=(lambda args: handler.app.community_read(resolved, args))

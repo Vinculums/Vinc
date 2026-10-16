@@ -188,9 +188,8 @@ class LocalProfileTest(unittest.TestCase):
 
     def test_the_local_profile_carries_neither_target_nor_space(self):
         from vinc_mcp import tools
-        local = tools.specs(local_only=True)
-        desktop = tools.specs()
-        self.assertEqual({s["name"] for s in local}, {s["name"] for s in desktop})
+        local = tools.specs()
+        self.assertEqual({s["name"] for s in local}, {t["name"] for t in tools.TOOLS})
         for s in local:
             props = s["inputSchema"].get("properties") or {}
             self.assertNotIn("target", props, s["name"])
@@ -200,13 +199,13 @@ class LocalProfileTest(unittest.TestCase):
         from vinc_mcp import tools
         for extra, word in (({"target": "remote"}, "local mode"), ({"space": "personal"}, "no spaces")):
             with self.assertRaises(ValueError) as cm:
-                tools.call("vinc_domains", dict(extra), bridge=None, local_only=True)
+                tools.call("vinc_domains", dict(extra), bridge=None)
             self.assertIn(word, str(cm.exception))
 
     def test_stdio_serves_the_local_profile(self):
         import inspect
         from vinc_mcp import stdio
-        self.assertIn("Dispatcher(bridge, local_only=True)", inspect.getsource(stdio.serve))
+        self.assertIn("Dispatcher(bridge)", inspect.getsource(stdio.serve))
 
 
 class KeychainTest(unittest.TestCase):
