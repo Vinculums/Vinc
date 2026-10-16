@@ -5,9 +5,8 @@
 
 # urllib.request.HTTPRedirectHandler.redirect_request 를 덮는다. 매개변수 이름은
 # 상위 시그니처라 못 뺀다.
-api/remote_client.py newurl  # redirect_request 시그니처
+vinc_mcp/hubhttp.py newurl  # redirect_request 시그니처
 rag_eval/belief_pack/run.py newurl  # redirect_request 시그니처
-scripts/verify_layout_remote.py newurl  # redirect_request 시그니처
 
 # http.server.BaseHTTPRequestHandler 는 do_<METHOD>·log_request 를 이름으로 부른다.
 vinc_mcp/http_server.py do_PUT  # http.server 가 메서드 이름으로 디스패치

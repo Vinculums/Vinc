@@ -355,16 +355,16 @@ class ListSpacesShapeTests(unittest.TestCase):
             def __exit__(self, *a):
                 return False
 
-        old_open = E.urllib.request.urlopen
+        old_open = E.hubhttp.urlopen
         old_seed, old_sign = E._seed, E._sign_assertion
         E._seed = lambda: b"\x00" * 32
         E._sign_assertion = lambda seed: "assertion"
-        E.urllib.request.urlopen = lambda req, timeout=None: _Resp(
+        E.hubhttp.urlopen = lambda req, timeout=None: _Resp(
             json.dumps(payload).encode())
         try:
             return E.list_spaces("u1")
         finally:
-            E.urllib.request.urlopen = old_open
+            E.hubhttp.urlopen = old_open
             E._seed, E._sign_assertion = old_seed, old_sign
             E._spaces_cache.clear()
 

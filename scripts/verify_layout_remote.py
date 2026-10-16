@@ -4,10 +4,15 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
 import time
 import urllib.error
 import urllib.request
 from collections import defaultdict
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from vinc_mcp.hubhttp import urlopen  # noqa: E402  리다이렉트를 따르지 않는 한 자리
 
 BASE = "https://vincs.io/api/graph"
 
@@ -16,16 +21,11 @@ class VerificationError(RuntimeError):
     pass
 
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
 def read(path: str, key: str, timeout: float) -> dict:
     request = urllib.request.Request(BASE + path, headers={"Authorization": "Bearer " + key,
                                      "Cache-Control": "no-store"})
     try:
-        with urllib.request.build_opener(NoRedirect()).open(request, timeout=timeout) as response:
+        with urlopen(request, timeout=timeout) as response:
             data = response.read(64 * 1024 * 1024 + 1)
     except urllib.error.HTTPError as exc:
         raise VerificationError(f"account read returned HTTP {exc.code}") from None

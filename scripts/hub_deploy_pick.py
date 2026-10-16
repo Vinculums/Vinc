@@ -40,15 +40,17 @@ hub-deploy 는 main 의 CI(ci.yml)가 끝날 때마다 불린다(`workflow_run`)
 """
 from __future__ import annotations
 
-import json
 import os
 import re
 import subprocess
 import sys
 import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from vinc_mcp import hubhttp  # noqa: E402
 
 #: 허브 이미지에 들어가거나 배포 절차를 바꾸는 경로. 옛 `on.push.paths` 를 옮겼다.
 #: `/` 로 끝나면 디렉터리 접두, 아니면 정확한 파일이다.
@@ -249,11 +251,8 @@ def _ci_status_via_api(api: str, repo: str, token: str,
     memo: dict[str, str] = {}
 
     def get(path: str) -> dict:
-        req = urllib.request.Request(f"{api}/repos/{repo}{path}", headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.load(resp)
+        return hubhttp.get_json(f"{api}/repos/{repo}{path}", token=token,
+                                accept="application/vnd.github+json", timeout=30)
 
     def status(sha: str) -> str:
         if sha in memo:

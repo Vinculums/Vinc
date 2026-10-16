@@ -61,11 +61,12 @@ import random
 import re
 import sys
 import time
-import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+
+from vinc_mcp import hubhttp  # noqa: E402
 
 # ── 하네스 버전 · 프롬프트 ────────────────────────────────────────────────────
 #: 프롬프트가 바뀌면 수치도 바뀐다. §3.2 가 "프롬프트를 실행마다 고정해 기록하라"고
@@ -172,13 +173,8 @@ class Tokens:
 def _post(url: str, body: dict, api_key: str, timeout: float = 60.0) -> dict:
     """stdlib 로 Anthropic API 호출. 이 venv 에는 requests·httpx·anthropic 이 없고,
     그것 하나 때문에 의존성을 늘릴 값이 없다(eval_search.py 도 urllib 를 쓴다)."""
-    req = urllib.request.Request(
-        url, data=json.dumps(body).encode("utf-8"),
-        headers={"content-type": "application/json",
-                 "x-api-key": api_key,
-                 "anthropic-version": "2023-06-01"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    return hubhttp.post_json(url, token=None, payload=body, timeout=timeout, accept=None,
+                             headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"})
 
 
 def llm(prompt: str, user: str, *, model: str, api_key: str, base_url: str,

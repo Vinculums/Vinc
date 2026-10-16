@@ -245,7 +245,7 @@ class _Resp:
 
 def _with_account(monkeypatch, responder):
     monkeypatch.setattr(entitlement, "_seed", lambda: b"\x01" * 32)
-    monkeypatch.setattr(urllib.request, "urlopen",
+    monkeypatch.setattr(entitlement.hubhttp, "urlopen",
                         lambda req, timeout=None: responder(req))
     entitlement._cache.clear()
 

@@ -6,11 +6,9 @@ import hashlib
 import json
 import re
 import time
-import urllib.error
-import urllib.request
 import uuid
 
-from . import edverify
+from . import edverify, hubhttp
 
 OWNER_RE = re.compile(
     r"community:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
@@ -55,25 +53,24 @@ def _request(path, body, purpose, *, write=False):
         "iat": now, "exp": now + 120, "jti": uuid.uuid4().hex,
         "bh": base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).rstrip(b"=").decode(),
     })
-    req = urllib.request.Request(entitlement._account_url() + path, data=raw,
-                                 headers={"Content-Type": "application/json", "X-Vinc-Assertion": assertion},
-                                 method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=30 if write else 4) as response:
-            result = json.loads(response.read().decode("utf-8"))
+        # 본문 해시(bh)가 서명에 묶여 있으므로 바이트를 다시 인코딩하지 않고 그대로 보낸다.
+        result = hubhttp.request(entitlement._account_url() + path, data=raw,
+                                 headers={"X-Vinc-Assertion": assertion},
+                                 timeout=30 if write else 4).json()
         if not isinstance(result, dict):
             raise ValueError("invalid account result")
         return result
-    except urllib.error.HTTPError as exc:
-        if not write and purpose == "community-read" and path.endswith("community-resolve") and exc.code == 404:
+    except hubhttp.HubHTTPError as exc:
+        if not write and purpose == "community-read" and path.endswith("community-resolve") and exc.status == 404:
             return None
-        if exc.code in (400, 401, 403, 404, 409, 429):
+        if exc.status in (400, 401, 403, 404, 409, 429):
             # 명시적 거절만 확정 실패다. 5xx/타임아웃은 커밋 여부를 단정하지 않는다.
             try:
-                result = json.loads(exc.read().decode("utf-8"))
+                result = json.loads(exc.body)
             except (ValueError, UnicodeDecodeError):
                 result = {}
-            return {"executed": False, "isError": True, "status": exc.code,
+            return {"executed": False, "isError": True, "status": exc.status,
                     "error": result.get("error", "community_request_refused") if isinstance(result, dict) else "community_request_refused"}
         if write:
             raise WriteUnconfirmed() from None

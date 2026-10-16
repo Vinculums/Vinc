@@ -239,7 +239,7 @@ def test_account_write_timeout_is_explicitly_unconfirmed(monkeypatch):
     monkeypatch.setattr(entitlement, "_seed", lambda: SEED)
     def timeout(*args, **kwargs):
         raise TimeoutError()
-    monkeypatch.setattr(urllib.request, "urlopen", timeout)
+    monkeypatch.setattr(community.hubhttp, "urlopen", timeout)
     with pytest.raises(community.WriteUnconfirmed, match="read history"):
         community.write({"owner": A, "member": "user:"+USER, "scope": "full"}, write_args())
 

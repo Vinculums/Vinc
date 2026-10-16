@@ -24,7 +24,8 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.request
+
+from vinc_mcp import hubhttp
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -79,12 +80,8 @@ class LocalStack:
         url = f"http://127.0.0.1:{self.encode_port}"
 
         def encode_ok() -> bool:
-            req = urllib.request.Request(url + "/encode", data=json.dumps(
-                {"texts": ["warmup"], "kind": "query"}).encode(), headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.encode_token}"})
-            with urllib.request.urlopen(req, timeout=60) as r:
-                return bool(json.loads(r.read()).get("vectors"))
+            return bool(hubhttp.post_json(url + "/encode", token=self.encode_token, payload={
+                "texts": ["warmup"], "kind": "query"}, timeout=60).get("vectors"))
         _wait(encode_ok, "인코딩 창구", enc, 240)
 
         # 2) 사이드카 — 스토어 사본을 연다. 질의 임베딩은 위 창구에 묻는다.

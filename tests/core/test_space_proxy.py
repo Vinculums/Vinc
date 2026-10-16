@@ -30,6 +30,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from api import spaceproxy  # noqa: E402
+from vinc_mcp import hubhttp  # noqa: E402
 
 TEAM = "0198c0de-1111-7222-8333-444455556666"
 
@@ -79,29 +80,29 @@ class PathBoundaryTests(unittest.TestCase):
         위 두 검사가 입구를 막지만, 막는 이유가 여기 있다 — 이것이 깨지면
         위의 거절은 목적을 잃는다."""
         seen = {}
-        old = spaceproxy.urllib.request.urlopen
+        old = hubhttp.urlopen
 
         def spy(req, *a, **k):
             seen["selector"] = req.selector
             return _Resp(b"{}")
 
-        spaceproxy.urllib.request.urlopen = spy
+        hubhttp.urlopen = spy
         try:
             spaceproxy.call(token="k", team="TEAM-1", method="GET", path="/view")
         finally:
-            spaceproxy.urllib.request.urlopen = old
+            hubhttp.urlopen = old
         self.assertIn("team=TEAM-1", seen["selector"])
         self.assertEqual(seen["selector"].count("team="), 1, seen["selector"])
 
     def test_나쁜_경로는_아예_안_나간다(self):
         called = []
-        old = spaceproxy.urllib.request.urlopen
-        spaceproxy.urllib.request.urlopen = lambda *a, **k: called.append(a) or _Resp(b"{}")
+        old = hubhttp.urlopen
+        hubhttp.urlopen = lambda *a, **k: called.append(a) or _Resp(b"{}")
         try:
             st, out = spaceproxy.call(token="vinc_sk_x", team=TEAM,
                                       method="GET", path="https://evil.example/x")
         finally:
-            spaceproxy.urllib.request.urlopen = old
+            hubhttp.urlopen = old
         self.assertEqual(st, 400)
         self.assertEqual(called, [], "거절은 요청을 보내지 않는다")
 
@@ -111,14 +112,14 @@ class CredentialTests(unittest.TestCase):
 
     def test_키가_없으면_400_이고_안_나간다(self):
         called = []
-        old = spaceproxy.urllib.request.urlopen
-        spaceproxy.urllib.request.urlopen = lambda *a, **k: called.append(a) or _Resp(b"{}")
+        old = hubhttp.urlopen
+        hubhttp.urlopen = lambda *a, **k: called.append(a) or _Resp(b"{}")
         try:
             for team in (TEAM, ""):
                 self.assertEqual(spaceproxy.call(token="", team=team, method="GET",
                                                  path="/view")[0], 400)
         finally:
-            spaceproxy.urllib.request.urlopen = old
+            hubhttp.urlopen = old
         self.assertEqual(called, [])
 
 
@@ -135,12 +136,12 @@ class WireTests(unittest.TestCase):
             seen["data"] = req.data
             return _Resp(json.dumps({"executed": True}).encode())
 
-        old = spaceproxy.urllib.request.urlopen
-        spaceproxy.urllib.request.urlopen = _open
+        old = hubhttp.urlopen
+        hubhttp.urlopen = _open
         try:
             st, out = spaceproxy.call(**kw)
         finally:
-            spaceproxy.urllib.request.urlopen = old
+            hubhttp.urlopen = old
         return st, out, seen
 
     def test_계정의_그래프_평면으로_간다(self):
@@ -184,12 +185,12 @@ class WireTests(unittest.TestCase):
             seen["timeout"] = timeout
             return _Resp(b"{}")
 
-        old = spaceproxy.urllib.request.urlopen
-        spaceproxy.urllib.request.urlopen = _open
+        old = hubhttp.urlopen
+        hubhttp.urlopen = _open
         try:
             spaceproxy.call(token="k", team="", method="POST", path="/doc/put", body={})
         finally:
-            spaceproxy.urllib.request.urlopen = old
+            hubhttp.urlopen = old
         self.assertGreaterEqual(seen["timeout"], 45.0)
 
     def test_빈_파라미터는_안_싣는다(self):
@@ -222,12 +223,12 @@ class RefusalPassthroughTests(unittest.TestCase):
         def _open(req, timeout=None):
             raise urllib.error.HTTPError(req.full_url, code, "err", {},
                                          io.BytesIO(body))
-        old = spaceproxy.urllib.request.urlopen
-        spaceproxy.urllib.request.urlopen = _open
+        old = hubhttp.urlopen
+        hubhttp.urlopen = _open
         try:
             return spaceproxy.call(token="k", team=TEAM, method="GET", path="/view")
         finally:
-            spaceproxy.urllib.request.urlopen = old
+            hubhttp.urlopen = old
 
     def test_계정의_거절은_그대로_온다(self):
         st, out = self._http_error(401, b'{"error":"not_authenticated"}')
@@ -244,12 +245,12 @@ class RefusalPassthroughTests(unittest.TestCase):
     def test_네트워크_실패는_502_다(self):
         def _open(req, timeout=None):
             raise OSError("dns")
-        old = spaceproxy.urllib.request.urlopen
-        spaceproxy.urllib.request.urlopen = _open
+        old = hubhttp.urlopen
+        hubhttp.urlopen = _open
         try:
             st, out = spaceproxy.call(token="k", team=TEAM, method="GET", path="/view")
         finally:
-            spaceproxy.urllib.request.urlopen = old
+            hubhttp.urlopen = old
         self.assertEqual(st, 502)
         self.assertEqual(out["error"], "account_unreachable")
 
@@ -259,7 +260,7 @@ def test_search_failure_logs_safe_fields_and_preserves_response(status, caplog):
     payload = {"error": "synthetic-private-response"}
     error = urllib.error.HTTPError("https://example.invalid/private", status,
                                    "private-reason", {}, io.BytesIO(json.dumps(payload).encode()))
-    with patch.object(spaceproxy.urllib.request, "urlopen", side_effect=error) as request, \
+    with patch.object(hubhttp, "urlopen", side_effect=error) as request, \
             patch.object(spaceproxy.time, "monotonic", side_effect=[10.0, 10.125]):
         result = spaceproxy.call(token="synthetic-private-key", team="private-team",
                                  method="GET", path="/search",
@@ -272,7 +273,7 @@ def test_search_failure_logs_safe_fields_and_preserves_response(status, caplog):
 
 
 def test_search_transport_failure_logs_no_exception_details(caplog):
-    with patch.object(spaceproxy.urllib.request, "urlopen",
+    with patch.object(hubhttp, "urlopen",
                       side_effect=TimeoutError("synthetic-private-key-query-body")) as request:
         status, payload = spaceproxy.call(token="synthetic-key", team="", method="GET", path="/search")
     assert (status, payload) == (502, {"error": "account_unreachable", "detail": "TimeoutError"})
@@ -283,10 +284,10 @@ def test_search_transport_failure_logs_no_exception_details(caplog):
 
 
 def test_successful_search_and_write_do_not_log_or_retry(caplog):
-    with patch.object(spaceproxy.urllib.request, "urlopen", return_value=_Resp(b'{}')) as request:
+    with patch.object(hubhttp, "urlopen", return_value=_Resp(b'{}')) as request:
         assert spaceproxy.call(token="k", team="", method="GET", path="/search") == (200, {})
         request.assert_called_once()
-    with patch.object(spaceproxy.urllib.request, "urlopen", side_effect=OSError("private")) as request:
+    with patch.object(hubhttp, "urlopen", side_effect=OSError("private")) as request:
         assert spaceproxy.call(token="k", team="", method="POST", path="/doc/put", body={})[0] == 502
         request.assert_called_once()
     assert not caplog.records

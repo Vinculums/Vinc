@@ -51,7 +51,7 @@ def test_outage_is_not_cached_and_immediate_retry_recovers(account, monkeypatch,
             raise urllib.error.HTTPError(req.full_url, failure, "private detail", {}, None)
         return Response(failure)
 
-    monkeypatch.setattr(urllib.request, "urlopen", upstream)
+    monkeypatch.setattr(E.hubhttp, "urlopen", upstream)
     verify = (lambda: E.verify_member("u1", "t1")) if route == "team_oauth" else (
         lambda: E.verify_key("vinc_ro_secret", "t1" if route == "team_key" else None))
     with pytest.raises(E.VerificationUnavailable, match="temporarily unavailable") as caught:
@@ -71,7 +71,7 @@ def test_explicit_rejection_is_cached_per_scope(account, monkeypatch, route):
         calls.append(req.full_url)
         raise urllib.error.HTTPError(req.full_url, 404, "not found", {}, None)
 
-    monkeypatch.setattr(urllib.request, "urlopen", upstream)
+    monkeypatch.setattr(E.hubhttp, "urlopen", upstream)
     verify = (lambda: E.verify_member("u1", "t1")) if route == "team_oauth" else (
         lambda: E.verify_key("vinc_ro_secret", "t1" if route == "team_key" else None))
     assert verify() is None and verify() is None
