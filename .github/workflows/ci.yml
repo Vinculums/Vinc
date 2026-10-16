@@ -176,6 +176,20 @@ jobs:
           pip install --quiet --disable-pip-version-check vulture==2.14
           python -X utf8 scripts/gate_vulture.py
 
+      # 주석 속 이력 표지(날짜·이슈 키·PR 번호·경위 어휘)가 파일마다 기준선
+      # scripts/comment-history-baseline.json 을 넘지 않는가. 래칫이라 줄이는 것은 늘
+      # 통과하고, 낮아진 값은 `--write-baseline` 으로 다시 잠근다. 위 두 게이트와 같은
+      # 이유로 여기 붙인다. BASE·HEAD 는 위반 파일에서 이 PR 이 더한 줄만 골라 보이는 데 쓴다.
+      # 계약: [[vinc.canon.code-annotation]]
+      - name: Comment history budget gate
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          PY=$(command -v python3 || command -v python)
+          "$PY" -X utf8 scripts/gate_comment_history.py
+
       - id: f
         env:
           BASE: ${{ github.event.pull_request.base.sha }}

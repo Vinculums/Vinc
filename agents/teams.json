@@ -114,6 +114,8 @@
         "scripts/gate_design_sync.py",
         "scripts/gate_contrast.py",
         "scripts/app-config-baseline.json",
+        "scripts/gate_comment_history.py",
+        "scripts/comment-history-baseline.json",
         "scripts/setup_runner.sh",
         "scripts/hub_deploy_pick.py",
         "scripts/integrations_publish_select.py",

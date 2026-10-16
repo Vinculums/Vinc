@@ -52,7 +52,9 @@
 /scripts/agents_sync.py                          @Vinculums/platform
 /scripts/app-config-baseline.json                @Vinculums/platform
 /scripts/check_hub_env.py                        @Vinculums/platform
+/scripts/comment-history-baseline.json           @Vinculums/platform
 /scripts/gate_app_config.py                      @Vinculums/platform
+/scripts/gate_comment_history.py                 @Vinculums/platform
 /scripts/gate_contrast.py                        @Vinculums/platform
 /scripts/gate_design_sync.py                     @Vinculums/platform
 /scripts/gate_escape.py                          @Vinculums/platform
