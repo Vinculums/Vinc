@@ -9,6 +9,7 @@ from collections import Counter
 from datetime import datetime, timezone
 import json
 import os
+import re
 from pathlib import Path
 import resource
 import shutil
@@ -68,7 +69,7 @@ def outside_owners(store, source, target):
     return sorted(owners)
 
 
-def rehearse(original, root, source, *, topic="vinc", max_rows=128):
+def rehearse(original, root, source, *, topic="vinc", max_rows=128, progress=None):
     """원본 사본을 닫힌 채 보존하고 별도 작업본에서 같은 실행을 복구한다."""
     original, root = Path(original), Path(root)
     if original.is_symlink() or root.exists() or not original.is_file():
@@ -95,7 +96,14 @@ def rehearse(original, root, source, *, topic="vinc", max_rows=128):
     report = {"isolated_copy": True, "qualified": False, "account_activation": "simulated",
               "ordinary_durable_ack": False, "scoped_conversion_publishing": True,
               "buffer_pool_mb": 512, "max_batch_rows": max_rows}
+    progress = {} if progress is None else progress
+
+    def reached(stage):
+        # 실패 보고에 단계 이름만 남긴다(내용·식별자 없음).
+        progress["failed_stage"] = stage
+
     try:
+        reached("open")
         store = open_copy(live)
         with TopicManifest(root / "inventory.sqlite", deadline=time.monotonic() + 180) as scratch:
             with legacy._inventory_read_transaction(store):
@@ -108,6 +116,7 @@ def rehearse(original, root, source, *, topic="vinc", max_rows=128):
                     report["dependency_counts"] = dict(Counter(b.split(":", 1)[0] for b in plan.blockers))
                     report["dependency_detail"] = dict(Counter(d for d in map(blocker_detail, plan.blockers) if d))
                     return report
+                reached("seal")
                 stamp = datetime.now(timezone.utc).isoformat()
                 header = manifest.prepare(scratch, plan, run=run, stamp=stamp,
                                           indexes=legacy._index_inventory(store), store=store)
@@ -127,11 +136,14 @@ def rehearse(original, root, source, *, topic="vinc", max_rows=128):
                                source=source, target=target, topic=topic, max_rows=max_rows,
                                qualified_indexes=True)
 
+            reached("initialize")
             flow = make_flow()
             flow.initialize(sealed_path, sealed["sha256"], manifest.authorized_hash(plan.before_hash, "move_original"),
                             conventions_policy="move_original")
+            reached("first_step")
             flow.step()
             checkpoint = flow.status()
+            reached("missing_local_restore")
             store.close(); store = None
             live = root / "missing-local" / "db"
             # 일반 ACK가 꺼져 있어도 실제 기동 복원 선택기가 같은 세대를 골라야 한다.
@@ -150,14 +162,19 @@ def rehearse(original, root, source, *, topic="vinc", max_rows=128):
             report["missing_local_recovery"] = True
             max_step = 0.0
             while flow.status()["phase"] != "verifying":
+                reached("step:" + str(flow.status()["phase"]))
+                progress["batches"] = flow.status().get("batches")
                 begin = time.monotonic()
                 flow.step()
                 max_step = max(max_step, time.monotonic() - begin)
+            reached("verify")
             verified = flow.verify()
             if verified["status"] != "graph_committed":
                 raise RuntimeError("verification_incomplete")
             # 계정 서버 호출 없이 사본에만 활성화 확인을 공급한다.
+            reached("release")
             result = flow.release(account_active=True)
+            reached("acceptance")
             scratch.deadline = time.monotonic() + 180
             with legacy._inventory_read_transaction(store):
                 unchanged = all(manifest.untouched_summary(store, scratch, owner) == outside[owner] for owner in owners)
@@ -183,6 +200,7 @@ def main():
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("VINC_COPY_REHEARSAL") != "approved":
         return 2
     report = {"isolated_copy": True, "qualified": False, "error": "rehearsal_failed"}
+    progress = {}
     try:
         from importlib.metadata import version
         owner = os.environ["REHEARSAL_OWNER_UUID"]
@@ -190,10 +208,15 @@ def main():
             raise ValueError("invalid_runtime")
         if os.environ.get("VINC_DURABLE_ACK") != "off" or os.environ.get("VINC_TOPIC_CONVERSION") != "1":
             raise ValueError("invalid_recovery_policy")
-        report = rehearse(root / "db", root / "execution", "user:" + owner)
-    except Exception:
-        # 내용·식별자를 품을 수 있는 예외는 집계 보고서에 싣지 않는다.
-        pass
+        report = rehearse(root / "db", root / "execution", "user:" + owner, progress=progress)
+    except Exception as exc:
+        # 내용·식별자를 품을 수 있는 예외 메시지는 싣지 않는다. 단계, 예외 클래스,
+        # 소문자 코드 형태의 앞머리만 남긴다.
+        report.update(progress)
+        report["exception"] = type(exc).__name__
+        code = str(exc).split(":", 1)[0]
+        if re.fullmatch(r"[a-z][a-z0-9_]{0,63}", code):
+            report["error_code"] = code
     report["process_peak_rss_bytes"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
     for key in ("memory.max", "memory.swap.max", "memory.peak", "cpu.max"):
         path = Path("/sys/fs/cgroup") / key
