@@ -45,7 +45,10 @@ class Prefs(unittest.TestCase):
 
     def test_옛_기본을_든_저장값은_새_기본으로_읽는다(self):
         body = self.src[self.src.index("export function loadPrefs"):]
-        self.assertIn("Number(p.pv) >= PREFS_VERSION", body)
+        # 이 옮겨 읽기는 판 2 에서 생겼다. `PREFS_VERSION` 과 비교하면 판을 올릴 때마다
+        # 판 2 사용자가 고른 크기 1 이 기본으로 되돌아간다(VIN-600 에서 판 3 으로 올렸다).
+        self.assertIn("if (pv < 2) {", body)
+        self.assertNotIn("Number(p.pv) >= PREFS_VERSION", body)
         self.assertIn("if (p.nodeScale === 1) p.nodeScale = DEFAULTS.nodeScale;", body)
         self.assertIn("if (p.cone === 1) p.cone = DEFAULTS.cone;", body)
         self.assertIn("pv: PREFS_VERSION", self.src[self.src.index("export function savePrefs"):])

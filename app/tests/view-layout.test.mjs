@@ -42,13 +42,29 @@ test("two layouts remain and retired saved values fold into time branches", () =
       assert.equal(isRootsLayout(layout), layout === "temporalRoots");
     }
     for (const view of ["2d", "3d", "timeline", "bundle"]) assert.deepEqual(layoutsFor(view), LAYOUTS);
+    // 0.9.7 에서 뺀 두 이름은 판 3 이전 저장값에서만 `시간순 가지`로 접힌다.
     for (const retired of ["rank", "rankedRoots"]) {
-      assert.equal(normalizeLayout(retired), "temporalRoots");
-      saved.set("vinc.view.prefs", JSON.stringify({ layout: retired }));
-      assert.equal(loadPrefs().layout, "temporalRoots");
+      assert.equal(normalizeLayout(retired), "hub");
+      for (const pv of [undefined, 1, 2]) {
+        saved.set("vinc.view.prefs", JSON.stringify({ layout: retired, pv }));
+        assert.equal(loadPrefs().layout, "temporalRoots");
+      }
+      saved.set("vinc.view.prefs", JSON.stringify({ layout: retired, pv: 3 }));
+      assert.equal(loadPrefs().layout, "hub");
     }
-    assert.equal(normalizeLayout("radial"), "hub");
-    assert.equal(normalizeLayout("unknown"), "hub");
+    // 그 전의 이름(D50 이전)은 별칭 없이 모르는 값과 같이 hub 로 떨어진다.
+    for (const retired of ["radial", "circle", "tree", "organic", "dendro", "shell", "toString", "unknown"]) {
+      assert.equal(normalizeLayout(retired), "hub");
+      saved.set("vinc.view.prefs", JSON.stringify({ layout: retired }));
+      assert.equal(loadPrefs().layout, "hub");
+    }
+    // 판을 올려도 판 2 사용자가 고른 크기 1 은 기본값으로 되돌아가지 않는다.
+    saved.set("vinc.view.prefs", JSON.stringify({ nodeScale: 1, cone: 1, pv: 2 }));
+    assert.equal(loadPrefs().nodeScale, 1); assert.equal(loadPrefs().cone, 1);
+    saved.set("vinc.view.prefs", JSON.stringify({ nodeScale: 1, cone: 1 }));
+    assert.equal(loadPrefs().nodeScale, 0.7); assert.equal(loadPrefs().cone, 0.7);
+    savePrefs(loadPrefs());
+    assert.equal(JSON.parse(saved.get("vinc.view.prefs")).pv, 3);
   } finally { delete globalThis.localStorage; }
 });
 
@@ -139,16 +155,14 @@ test("a small Topic with one connected chain keeps its Topic at the centre", asy
   assert.ok(Math.min(...xs) < 0 && Math.max(...xs) > 0, "every branch sat on one side of its Topic");
 });
 
-test("ranked follows relationship stages when dates disagree, retaining cycles and original direction", async () => {
+test("time branches follow dates when relations disagree, retaining cycles and original direction", async () => {
   const nodes = [n("root", "2022"), n("middle", "2021"), n("leaf", "2020")];
   const edges = [edge("root", "middle"), edge("leaf", "middle", "DERIVES_FROM")];
   const temporal = await temporalLayout(nodes, edges, "content", elk, route);
-  const ranked = await temporalLayout(nodes, edges, "content", elk, route, "ranked");
-  check(temporal, edges); check(ranked, edges);
+  check(temporal, edges);
   assert.ok(temporal.nodes[0].x > temporal.nodes[1].x && temporal.nodes[1].x > temporal.nodes[2].x);
-  assert.ok(ranked.nodes[0].x < ranked.nodes[1].x && ranked.nodes[1].x < ranked.nodes[2].x);
   const cycles = [...edges, edge("leaf", "root"), edge("middle", "middle"), edge("root", "leaf", "RELATED_TO")];
-  check(await temporalLayout([...nodes, n("unknown", "")], cycles, "content", elk, route, "ranked"), cycles);
+  check(await temporalLayout([...nodes, n("unknown", "")], cycles, "content", elk, route), cycles);
 });
 
 test("explicit timestamp offsets compare as instants while invalid dates stay unknown", async () => {
@@ -254,7 +268,7 @@ test("many connectors in a modest Topic graph remain bounded and avoid every lab
 test("empty graph avoids worker allocation; singleton remains navigable", async () => {
   assert.deepEqual(await temporalLayout([], [], "content", elk, route), { nodes: [], edges: [], topicEdges: [] });
   assert.deepEqual(await layoutInWorker([], [], "content", new AbortController().signal,
-    "temporal", () => { throw new Error("must not create a worker"); }), { nodes: [], edges: [], topicEdges: [] });
+    () => { throw new Error("must not create a worker"); }), { nodes: [], edges: [], topicEdges: [] });
   const result = await temporalLayout([n("a", "")], [], "content", elk, route);
   assert.ok(Number.isFinite(result.nodes[0].x)); assert.equal(result.topicEdges.length, 1);
 });
@@ -265,8 +279,8 @@ test("layout jobs terminate on success, abort, worker error and invalid messages
     let posted;
     const worker = { terminate: () => terminated++, postMessage: value => { posted = value; } };
     const controller = new AbortController();
-    const job = layoutInWorker([n("a", "")], [], "content", controller.signal, "ranked", () => worker);
-    assert.equal(posted.ordering, "ranked");
+    const job = layoutInWorker([n("a", "")], [], "content", controller.signal, () => worker);
+    assert.equal(posted.basis, "content");
     if (outcome === "success") worker.onmessage({ data: { graph: { nodes: [], edges: [], topicEdges: [] } } });
     if (outcome === "abort") controller.abort();
     if (outcome === "error") worker.onerror({ message: "test failure" });
@@ -281,7 +295,7 @@ test("layout jobs terminate on success, abort, worker error and invalid messages
 test("content-free stage progress leaves the job alive until its actual graph arrives", async () => {
   let terminated = 0, settled = false;
   const worker = { terminate: () => terminated++, postMessage: () => {} };
-  const job = layoutInWorker([n("a", "")], [], "content", new AbortController().signal, "temporal", () => worker);
+  const job = layoutInWorker([n("a", "")], [], "content", new AbortController().signal, () => worker);
   job.then(() => { settled = true; });
   worker.onmessage({ data: { progress: { phase: "elk", callsDone: 4, activeNodes: 12, activeEdges: 18, elapsedMs: 5000 } } });
   worker.onmessage({ data: { progress: { phase: "routing", callsDone: 5, activeNodes: 30, activeEdges: 4, elapsedMs: 10000 } } });
@@ -296,7 +310,7 @@ test("the layout deadline follows progress and still has an overall cap", async 
   const run = (limits, beats) => {
     let terminated = 0;
     const worker = { terminate: () => terminated++, postMessage: () => {} };
-    const job = layoutInWorker([n("a", "")], [], "content", new AbortController().signal, "temporal", () => worker, 1.6, limits);
+    const job = layoutInWorker([n("a", "")], [], "content", new AbortController().signal, () => worker, 1.6, limits);
     const timer = setInterval(() => { if (beats-- > 0) worker.onmessage({ data: { progress: { phase: "elk", callsDone: 1,
       activeNodes: 1, activeEdges: 0, elapsedMs: 1 } } }); }, 20);
     return { job: job.finally(() => clearInterval(timer)), terminated: () => terminated };
@@ -415,7 +429,7 @@ test("a connected timeline with unique instants branches around its Topic withou
       ids: new Set(graph.children.map(n => n.id)), direction: graph.layoutOptions["elk.direction"] });
     return elk.layout(graph);
   } };
-  const result = await temporalLayout(nodes, edges, "content", observedElk, route, "temporal", 1.6);
+  const result = await temporalLayout(nodes, edges, "content", observedElk, route, 1.6);
   check(result, edges);
   const topic = result.nodes.find(n => n.kind === "domain");
   assert.ok(result.nodes.some(n => n.x < topic.x) && result.nodes.some(n => n.x > topic.x));
@@ -459,8 +473,8 @@ test("four Topic arms share a regular grid without rotating marks or cutting thr
 
 test("Topic composition uses both axes and responds to landscape and portrait aspect ratios", async () => {
   const nodes = Array.from({ length: 24 }, (_, i) => n(`map${i}`, "2020", `topic/${i}`));
-  const landscape = await temporalLayout(nodes, [], "content", elk, route, "temporal", 2.4);
-  const portrait = await temporalLayout(nodes, [], "content", elk, route, "temporal", .6);
+  const landscape = await temporalLayout(nodes, [], "content", elk, route, 2.4);
+  const portrait = await temporalLayout(nodes, [], "content", elk, route, .6);
   const extent = graph => {
     const ts = graph.nodes.filter(n => n.kind === "domain");
     assert.ok(new Set(ts.map(n => n.x)).size > 1 && new Set(ts.map(n => n.y)).size > 1);
@@ -472,13 +486,13 @@ test("Topic composition uses both axes and responds to landscape and portrait as
 });
 
 test("spatial Topics have six outward arms, distinct depth and clear original directed routes", async () => {
-  for (const ordering of ["temporal", "ranked"]) {
+  {
     const nodes = Array.from({ length: 36 }, (_, i) => n(`space${i}`,
       new Date(Date.UTC(2020, 0, i + 1)).toISOString()));
     const edges = nodes.slice(1).map((node, i) => edge(nodes[i].id, node.id));
     edges.push(edge("space31", "space2", "RELATED_TO"), edge("space0", "space0"),
       edge("space8", "space7", "DERIVES_FROM"));
-    const graph = await spatialTemporalLayout(nodes, edges, "content", elk, route, ordering);
+    const graph = await spatialTemporalLayout(nodes, edges, "content", elk, route);
     check(graph, edges);
     const topic = graph.nodes.find(n => n.kind === "domain"), axes = ["x", "y", "z"];
     const arm = node => { const axis = axes.toSorted((a, b) =>
@@ -494,7 +508,7 @@ test("spatial Topics have six outward arms, distinct depth and clear original di
       if (e.source !== e.target && e.type === "PREREQUISITE_OF" && arm(a) === arm(b) &&
           axes.filter(axis => axis !== arm(a)[0]).every(axis => Math.abs(a[axis] - b[axis]) < 1e-8)) {
         const axis = arm(a)[0], sign = Math.sign(a[axis] - topic[axis]);
-        assert.ok(sign * (b[axis] - a[axis]) > 0, `spatial branch reverses ${ordering} ${e.source}->${e.target} ${JSON.stringify([a,b])}`);
+        assert.ok(sign * (b[axis] - a[axis]) > 0, `spatial branch reverses ${e.source}->${e.target} ${JSON.stringify([a,b])}`);
       }
     }
     for (const e of [...graph.edges, ...graph.topicEdges]) for (const node of graph.nodes) {
@@ -540,7 +554,7 @@ test("stored topic pieces reproduce a full layout and only a changed topic is la
   const calls = [];
   const counted = { layout: input => { calls.push(input.id); return elk.layout(input); } };
   const run = (ns, es, pieces) => spatialTemporalLayout(structuredClone(ns), structuredClone(es), "content", counted, route,
-    "temporal", 1.6, pieces ? { pieces } : {});
+    1.6, pieces ? { pieces } : {});
   const store = new Map();
   const fresh = await run(nodes, edges);
   calls.length = 0;
@@ -573,10 +587,10 @@ test("a topic piece does not depend on how large the rest of the graph is", asyn
   const calls = [];
   const counted = { layout: input => { calls.push(input.id); return elk.layout(input); } };
   const store = new Map();
-  await spatialTemporalLayout(structuredClone(topic), structuredClone(inner), "content", counted, route, "temporal", 1.6, { pieces: store });
+  await spatialTemporalLayout(structuredClone(topic), structuredClone(inner), "content", counted, route, 1.6, { pieces: store });
   calls.length = 0;
   await spatialTemporalLayout(structuredClone([...topic, ...crowd]), structuredClone(inner), "content", counted, route,
-    "temporal", 1.6, { pieces: store });
+    1.6, { pieces: store });
   assert.equal(calls.filter(id => id.startsWith("topic:domain:vinc/a:")).length, 0, "the small topic is reused from the store");
 });
 
@@ -593,11 +607,11 @@ test("a previous placement keeps unchanged topic boxes and their corridors, and 
   const pieces = new Map(), routes = new Map();
   const run = async (ns, es, previous) => {
     const next = new Map();
-    const graph = await spatialTemporalLayout(structuredClone(ns), structuredClone(es), "content", engine, router, "temporal", 1.6,
+    const graph = await spatialTemporalLayout(structuredClone(ns), structuredClone(es), "content", engine, router, 1.6,
       { pieces, routes, placement: { previous, next } });
     return { graph, next };
   };
-  const fresh = await spatialTemporalLayout(structuredClone(nodes), structuredClone(edges), "content", elk, route, "temporal", 1.6);
+  const fresh = await spatialTemporalLayout(structuredClone(nodes), structuredClone(edges), "content", elk, route, 1.6);
   const first = await run(nodes, edges);
   assert.deepEqual(first.graph, fresh, "the first run equals a layout without any store");
   assert.equal(first.next.size, 8);

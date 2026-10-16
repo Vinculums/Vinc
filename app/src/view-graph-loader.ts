@@ -211,7 +211,7 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
           if (graph) { console.info("View layout loaded from hub"); return graph; }
         }
         return layoutInWorker(held.nodes || [], held.edges || [], p.timeBasis, job.signal,
-          "temporal", undefined, aspectRatio);
+          undefined, aspectRatio);
       })()
         .then(graph => { outcome = { graph }; return graph; }, error => { outcome = { error }; throw error; })
         .finally(() => { if (layoutJob === job) layoutJob = undefined; });

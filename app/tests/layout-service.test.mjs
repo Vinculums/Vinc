@@ -42,7 +42,7 @@ test("a stored answer puts the same layout on the read, however the read orders 
   const service = createLayoutService(elk, router);
   const { answer } = await service.layout(request(g));
   assert.ok(!JSON.stringify(answer).includes("never sent"), "the service never sees props or labels");
-  const direct = await temporalLayout(g.nodes, g.edges, "recorded", elk, router, "temporal", 1.6);
+  const direct = await temporalLayout(g.nodes, g.edges, "recorded", elk, router, 1.6);
   const shuffled = [...g.edges].reverse();
   const applied = applyLayoutAnswer(g.nodes, shuffled, answer);
   assert.ok(applied);

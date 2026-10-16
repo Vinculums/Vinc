@@ -9,7 +9,6 @@ import { ANCESTRY_RELS, utcDay } from "./view-prefs";
 
 export type LayoutGraph = { nodes: GraphNode[]; edges: GraphEdge[]; topicEdges: GraphEdge[] };
 export type LayoutEngine = { layout(graph: ElkNode): Promise<ElkNode> };
-export type LayoutOrdering = "temporal" | "ranked";
 export type CrossRouter = (nodes: GraphNode[], edges: GraphEdge[], batching?: "connector") => Promise<GraphEdge[]>;
 const GRID = 330;
 type Direction = "RIGHT" | "LEFT" | "DOWN" | "UP";
@@ -165,13 +164,13 @@ const PIECE_VERSION = 1;
 /** Everything a piece depends on, in the order it is read. Member and relation order matter:
  * they are the order ELK receives its children and edges in. */
 function pieceKey(topic: GraphNode, members: GraphNode[], inside: GraphEdge[], basis: "recorded" | "content",
-  ordering: LayoutOrdering, thorough: string): string {
-  return JSON.stringify([PIECE_VERSION, topic.id, basis, ordering, thorough,
+  thorough: string): string {
+  return JSON.stringify([PIECE_VERSION, topic.id, basis, thorough,
     members.map(n => [n.id, timeOf(n, basis)]), inside.map(e => [e.source, e.target, e.type])]);
 }
 
 async function layoutTopic(topic: GraphNode, members: GraphNode[], inside: GraphEdge[], basis: "recorded" | "content",
-  elk: LayoutEngine, ordering: LayoutOrdering, thorough: string): Promise<TopicPiece> {
+  elk: LayoutEngine, thorough: string): Promise<TopicPiece> {
   const map = new Map(members.map(n => [n.id, n]));
   const positions = new Map<string, RoutePoint>();
   const insideIndex = new Map(inside.map((e, i) => [e, i]));
@@ -191,10 +190,7 @@ async function layoutTopic(topic: GraphNode, members: GraphNode[], inside: Graph
     const compare = (a: string, b: string) =>
       timeOf(map.get(a)!, basis).localeCompare(timeOf(map.get(b)!, basis)) || a.localeCompare(b);
     const seen = new Set<string>(), sorted: string[] = [];
-    const incoming = new Set(inside.filter(e => ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"].includes(e.type))
-      .map(e => ancestry(e)[1]));
-    for (const root of group.slice().sort((a, b) => ordering === "ranked"
-      ? Number(incoming.has(a)) - Number(incoming.has(b)) || compare(a, b) : compare(a, b))) {
+    for (const root of group.slice().sort(compare)) {
       if (seen.has(root)) continue;
       const queue = [root]; seen.add(root);
       for (let at = 0; at < queue.length; at++) {
@@ -257,11 +253,8 @@ async function layoutTopic(topic: GraphNode, members: GraphNode[], inside: Graph
         // One membership guide anchors a connected component. Linking every
         // causal root duplicates membership and sends long guides across the
         // very branches the original relations already connect.
-        const roots = ordering === "ranked" ? branch.filter(id => !edges.some(e =>
-          ["PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"].includes(e.type) && ancestry(e)[1] === id)) : branch;
-        const candidates = roots.length ? roots : branch;
-        const dated = candidates.filter(id => timeOf(map.get(id)!, basis));
-        const id = (dated.length ? dated : candidates).slice().sort((a, b) =>
+        const dated = branch.filter(id => timeOf(map.get(id)!, basis));
+        const id = (dated.length ? dated : branch).slice().sort((a, b) =>
           timeOf(map.get(a)!, basis).localeCompare(timeOf(map.get(b)!, basis)) || a.localeCompare(b))[0];
         guides.push({ source: topic.id, target: id,
           type: "IN_DOMAIN", cross_domain: false, presentation: true });
@@ -283,7 +276,7 @@ async function layoutTopic(topic: GraphNode, members: GraphNode[], inside: Graph
         "elk.layered.layering.strategy": wingIds.size > 128 ? "LONGEST_PATH" : "NETWORK_SIMPLEX",
         "elk.layered.thoroughness": thorough,
         "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
-        "elk.partitioning.activate": String(ordering === "temporal"),
+        "elk.partitioning.activate": "true",
       }, children: [root, ...members.filter(n => wingIds.has(n.id)).map(n =>
         child(n.id, partitions.get(timeOf(n, basis)) ?? 1, direction))],
       edges: entries.map((e, i) => {
@@ -291,7 +284,7 @@ async function layoutTopic(topic: GraphNode, members: GraphNode[], inside: Graph
         // Relation direction and chronological placement are independent. A
         // backwards edge must leave toward its target instead of taking a lap
         // around both nodes through forward-facing ports.
-        const backwards = ordering === "temporal" && partition(e.ends[0]) > partition(e.ends[1]);
+        const backwards = partition(e.ends[0]) > partition(e.ends[1]);
         return { id: String(i), sources: [`${e.ends[0]}:${backwards ? "in" : "out"}`],
           targets: [`${e.ends[1]}:${backwards ? "out" : "in"}`] };
       }) });
@@ -358,8 +351,7 @@ async function layoutTopic(topic: GraphNode, members: GraphNode[], inside: Graph
 
 export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphEdge[],
   basis: "recorded" | "content", elk: LayoutEngine, crossRouter: CrossRouter,
-  ordering: LayoutOrdering = "temporal", aspectRatio = 1.6,
-  options: LayoutOptions = {}): Promise<LayoutGraph> {
+  aspectRatio = 1.6, options: LayoutOptions = {}): Promise<LayoutGraph> {
   const pieces = options.pieces;
   if (!inputNodes.length) return { nodes: [], edges: [], topicEdges: [] };
   // Clone rather than changing the API cache, details, or source relation metadata.
@@ -390,9 +382,9 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
     const ids = new Set(members.map(n => n.id));
     const inside = usable.filter(e => ids.has(e.source) && ids.has(e.target));
     const thorough = members.length > 32 ? "1" : "7";
-    const key = pieces && pieceKey(topic, members, inside, basis, ordering, thorough);
+    const key = pieces && pieceKey(topic, members, inside, basis, thorough);
     let piece = key ? pieces!.get(key) : undefined;
-    if (!piece) { piece = await layoutTopic(topic, members, inside, basis, elk, ordering, thorough); if (key) pieces!.set(key, piece); }
+    if (!piece) { piece = await layoutTopic(topic, members, inside, basis, elk, thorough); if (key) pieces!.set(key, piece); }
     // A stored piece is never changed: everything below copies what it reads.
     for (const [id, point] of piece.positions) positions.set(id, { ...point });
     piece.localRoutes.forEach((points, i) => {
