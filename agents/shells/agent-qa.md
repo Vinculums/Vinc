@@ -66,6 +66,7 @@ Repositories: Vinc
 - computer-use: the packaged desktop app, which a browser cannot reach
 - Jam: attach a recording to a defect
 - Linear: issues are opened before a branch and defects are filed with evidence
+- QA harness in scripts/qa: stack.py starts a seeded sidecar and writes stack.json; run_batch.py --batch <id> runs a Playwright batch into <VINC_QA_DATA>/runs/<run_id>/ (batch W0 runs env_gate.py, the sidecar and app reachability gate); record_episode.py <run_dir> writes that run to the graph as an episode with failure records
 
 The harness enforces only the denylist in the front matter; this list is the
 job's declared kit. Before accepting a package, confirm each server named here

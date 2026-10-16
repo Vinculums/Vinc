@@ -1,4 +1,6 @@
-// Run after npm run build and scripts/measure_staged_view.py:
+// Run after npm run build, with OUTPUT_DIR/backend.json naming a loopback synthetic /graph backend.
+// The Python server that wrote it (scripts/measure_staged_view.py) was deleted in VIN-566 as an orphan;
+// recover it with: git show c6988043:scripts/measure_staged_view.py
 // node app/dev/view-staged-measure.mjs APP_DIR OUTPUT_DIR LABEL
 // Playwright must resolve from app/package.json or the package.json given by VINC_TEST_MODULES.
 // Compare against local commit 6f049ad3 or another version with the same completion marker.
