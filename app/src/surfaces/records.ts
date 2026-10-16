@@ -5,6 +5,8 @@ import { emptyInviteHtml, wireEmptyInvite } from "../empty-invite";
 import { stateDot } from "../icons";
 import { openDocSheet } from "../doc-editor";
 import { viewHooks } from "../topbar";
+import { esc } from "../components";
+import { dayOf } from "../view-prefs";
 
 /** 모든 문서 — **주제 → 문서** 2단(D66).
  *
@@ -37,12 +39,9 @@ type BrowseOpts = { close?: () => void };
  *  내보이면 "원본이 있어야 열리나?" 라는 오해를 부른다 — 실제로는 원본 없이 복원된다.
  *  ISO 타임스탬프(`2026-07-26T05:08:41.939Z`)도 사람이 읽는 형식이 아니다. 날짜만. */
 function docMeta(d: Doc): string {
-  const day = (d.updated_at || "").slice(0, 10);
+  const day = dayOf(d.updated_at || "");
   return day ? COPY.records.edited(day) : "";
 }
-
-const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 export async function renderBrowse(body: HTMLElement, opts: BrowseOpts = {}) {
   body.innerHTML = `<div class="hint">${COPY.ui.common.loading}</div>`;

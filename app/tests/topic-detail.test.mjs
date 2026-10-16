@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
-const js = ts.transpileModule(await readFile(new URL('../src/topic-detail.ts', import.meta.url), 'utf8'),
+const transpile = async name => ts.transpileModule(await readFile(new URL(`../src/${name}`, import.meta.url), 'utf8'),
   { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+const dataUrl = code => `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
+const js = (await transpile('topic-detail.ts'))
+  .replace('"./node-topic"', JSON.stringify(dataUrl(await transpile('node-topic.ts'))));
 const { detailState, detailFailure, topicDetailHTML } = await import(
   `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 const copy = new Proxy({ relsMore: n => `More ${n}` }, { get: (o, k) => o[k] ?? k });

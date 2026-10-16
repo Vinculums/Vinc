@@ -1,15 +1,10 @@
 import { api, cfg, type SearchOptions } from "../api";
 import { COPY } from "../copy";
-import { header, armsNoticeBadge, searchTemporalText } from "../components";
+import { esc, header, armsNoticeBadge, searchTemporalText } from "../components";
 import { renderBrowse } from "./records";
 import { viewHooks } from "../topbar";
 import { renderSearchError } from "../search-error";
 import { partitionSearchResults } from "../search-relevance";
-
-function esc(s: string): string {
-  return String(s ?? "").replace(/[&<>"]/g, (c) =>
-    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
-}
 
 /** Surface 4 — Search (spec: [[vinc.spec.surface-search]], DEC D24).
  *  Single field + operators (domain:, tag:, "phrase"). Results grouped by

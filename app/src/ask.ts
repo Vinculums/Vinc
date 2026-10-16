@@ -1,6 +1,6 @@
 import { api, cfg } from "./api";
 import { COPY } from "./copy";
-import { openSheet, armsNotice } from "./components";
+import { esc, openSheet, armsNotice } from "./components";
 import { viewHooks } from "./topbar";
 
 /** 묻기 — 앱 안의 **무LLM 대화**(D73).
@@ -61,9 +61,6 @@ let onClose: (() => void) | null = null;
 let busy = false;
 /** 마지막 `resolve` 의 벡터 팔 상태. `busy` 가 턴을 직렬화하므로 겹치지 않는다. */
 let lastNote: string | undefined;
-
-const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 function load(): Turn[] {
   try {

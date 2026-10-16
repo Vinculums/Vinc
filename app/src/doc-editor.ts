@@ -7,6 +7,7 @@ import { api, cfg, docMidWrite, storeDownReason, shellInvoke } from "./api";
 import { COPY } from "./copy";
 import { docTitle } from "./doc-title";
 import { hydrateRich } from "./rich-blocks";
+import { esc } from "./components";
 
 /** 결정론 미니 마크다운 렌더러(폴백 미리보기·Reader 공용). **표시 전용** — 소스는
  *  변형하지 않는다. 전부 이스케이프 후 최소 문법만. */
@@ -100,9 +101,6 @@ export function renderMarkdown(src: string): string {
   closeList();
   return out.join("");
 }
-
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 /** 마운트 핸들 — 읽기/편집 전환이 **같은 렌더 위에서** 일어난다(D45-E 개정).
  *  구조상 Reader 라는 별도 화면이 없어졌다: 문서는 언제나 렌더된 모습이고,

@@ -1,4 +1,6 @@
 import { COPY } from "../copy";
+import { esc } from "../components";
+import { dayOf } from "../view-prefs";
 
 /** View 평면 뷰 (D43) — Timeline · Sankey.
  *
@@ -114,7 +116,7 @@ export function pickGrain(list: string[]): Grain {
 }
 
 function bucketKey(ts: string, g: Grain): string {
-  if (g === "day") return ts.slice(0, 10);
+  if (g === "day") return dayOf(ts);
   if (g === "month") return ts.slice(0, 7);
   if (g === "year") return ts.slice(0, 4);
   return `${ts.slice(0, 3)}0`;      // 190x → 1900
@@ -154,8 +156,6 @@ export const PAD_BOT = 16;
 const SBAR = 18;
 
 // ── 문자열 조립 헬퍼 ───────────────────────────────────────────────────────
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 /** 좌표 소수 1자리 — 문자열이 흔들리지 않게(결정론 + diff 가독). */
 const num = (v: number) => String(Math.round(v * 10) / 10);
 //: 주제 틴트로 실릴 수 있는 유일한 형태. style 속성에 넣기 전 확인한다.
@@ -246,15 +246,21 @@ export function gateway3dSvg(px: number, cls = ""): string {
 
 const wrap = (svg: string) => `<div class="pl-wrap">${svg}</div>`;
 
+/** 타임라인 그림이 들어갈 상자 — 바깥 컨테이너에서 `.pl-wrap` 여백과 위 크롬을 뺀다. */
+const planarBox = (el: HTMLElement): [number, number] =>
+  [Math.max(el.clientWidth - PAD_X * 2, 360), Math.max(el.clientHeight - PAD_TOP - PAD_BOT, 260)];
+
 /** 컨테이너 실측 추적 — draw 는 (w,h) 의 순수 함수라 리사이즈는 "다시 그릴" 뿐이다.
- *  rAF 로 합치고 크기가 실제로 변할 때만 그린다(리사이즈 폭주 방지). */
-function trackSize(el: HTMLElement, paint: (w: number, h: number) => void): () => void {
+ *  rAF 로 합치고 크기가 실제로 변할 때만 그린다(리사이즈 폭주 방지). 그림이 들어갈
+ *  상자는 `measure` 가 정한다 — 평면 뷰마다 여백 규칙이 다르다(타임라인은 `planarBox`,
+ *  번들은 정사각 링이라 제 상자를 쓴다). */
+export function trackSize(el: HTMLElement, measure: (el: HTMLElement) => [number, number],
+                          paint: (w: number, h: number) => void): () => void {
   let last = "";
   let raf = 0;
   const run = () => {
     raf = 0;
-    const w = Math.max(el.clientWidth - PAD_X * 2, 360);
-    const h = Math.max(el.clientHeight - PAD_TOP - PAD_BOT, 260);
+    const [w, h] = measure(el);
     const key = `${w}x${h}`;
     if (key === last) return;
     last = key;
@@ -626,7 +632,7 @@ const PAD_L = 42, PAD_R = 22, TOP = 58, BOT = 26;
   }
   const focus = (id: string) => paint(domOf.has(id) ? id : pinned);
   const clear = () => paint(pinned);
-  const stopSize = trackSize(el, (w, h) => {
+  const stopSize = trackSize(el, planarBox, (w, h) => {
     el.innerHTML = wrap(draw(w, h)); collect();
     if (pinned) paint(pinned);           // 다시 그려도 짚어 둔 것은 남는다
   });

@@ -1,10 +1,9 @@
 import type { GraphNode, GraphEdge } from "./api";
 import { simplifyRoute, routeLength, type RoutePoint } from "./view-route";
-import { spatialClearance } from "./view-layout-obstacles";
+import { spatialClearance, STEP } from "./view-layout-obstacles";
 
 type Axis = keyof RoutePoint;
 const AXES: Axis[] = ["x", "y", "z"];
-const STEP = .33;
 type SpatialBranch = { ids: string[]; positions: Map<string, RoutePoint>; horizontal: boolean; sign: number };
 export type SpatialTopic = { id: string; branches: SpatialBranch[] };
 type Placement = { branch: SpatialBranch; primary: Axis; across: Axis; sign: number; start: number; lateral: number; offset: RoutePoint };

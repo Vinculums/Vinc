@@ -1,5 +1,5 @@
 import { api, cfg, WEB } from "./api";
-import type { GraphEdge, NavGroup, NavNode, NavTreeRes } from "./api";
+import type { GraphEdge, GraphNode, NavGroup, NavNode, NavTreeRes } from "./api";
 import { COPY } from "./copy";
 import { docTitle } from "./doc-title";
 import { icon } from "./icons";
@@ -7,6 +7,7 @@ import { applyDefaults, foldsOwnRows, ownKey } from "./lnb-tree";
 import type { ThemeMode } from "./theme";
 import { tintMap } from "./view-tint";
 import { mark3dSvg, markSvg } from "./surfaces/view-planar";
+import { esc } from "./components";
 
 /** 좌측 문서 트리 (DEC D69) — 셸의 두 번째 크롬.
  *
@@ -140,8 +141,6 @@ function kindMark(kind: string, px: number): string {
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
-const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 /** 저장된 **넓은 창의** 선호 — 트리를 열로 펴 둘지. */
 function isOpen(): boolean {
@@ -273,11 +272,8 @@ type AgentRole = {
   teamRole: string; rel: AgentRel;
 };
 
-/** `/graph` 가 노드에 싣는 props. 클라 GraphNode 타입은 이 열을 아직 안 적는다. */
-type GraphRoleNode = {
-  id: string; label?: string; domain?: string; kind?: string;
-  props?: Record<string, unknown>;
-};
+/** `/graph` 가 노드에 싣는 props 까지 읽는 노드. 클라 GraphNode 타입은 이 열을 아직 안 적는다. */
+type GraphRoleNode = GraphNode & { props?: Record<string, unknown> };
 
 let agentRoster: AgentRole[] | null = null;
 

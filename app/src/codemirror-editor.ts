@@ -19,6 +19,7 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
 import { MentionMenu, SelectionBar, MENTION_RE,
          type MentionOpts, type SelectionOpts } from "./cm-assist";
+import { esc } from "./components";
 
 /** 슬래시 커맨드 항목 — 결정론 블록 삽입(오프라인·무LLM). insert = 삽입할 마크다운
  *  템플릿, cursorBack = 삽입 후 커서를 끝에서 몇 칸 되돌릴지(코드펜스 안쪽 등). */
@@ -67,9 +68,6 @@ const HR = /^(-{3,}|\*{3,})\s*$/;
 //     `--` 연속 2개 이상을 요구해 `| - | - |`(대시가 셀 내용인 정상 행)와 가른다.
 const TABLE_ROW = /^\s*\|/;
 const TABLE_DELIM = /^[\s|:-]+$/;
-
-const escHtml = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 // ── 프론트매터(YAML) — 문서가 **가진 값**이지 문서의 산문이 아니다 ────────────
 // 정본에는 그대로 두고 화면에서만 접는다(소스=정본 계약: 저장은 여전히 바이트
@@ -128,8 +126,8 @@ class FmWidget extends WidgetType {
     el.setAttribute("aria-expanded", this.open ? "true" : "false");
     el.tabIndex = 0;
     el.innerHTML =
-      `<span class="cm-r-fm-cap">${this.open ? "▾" : "▸"} ${escHtml(this.label)}</span>`
-      + (this.open ? "" : `<span class="cm-r-fm-sum">${escHtml(this.summary)}</span>`);
+      `<span class="cm-r-fm-cap">${this.open ? "▾" : "▸"} ${esc(this.label)}</span>`
+      + (this.open ? "" : `<span class="cm-r-fm-sum">${esc(this.summary)}</span>`);
     const toggle = (e: Event) => {
       e.preventDefault();
       view.dispatch({ effects: fmToggle.of(!this.open) });
@@ -162,7 +160,7 @@ function splitCells(line: string): string[] {
 
 /** 셀 안 인라인. **이스케이프가 먼저**다 — 아래 치환이 innerHTML 로 들어간다. */
 function cellHtml(raw: string): string {
-  return escHtml(raw)
+  return esc(raw)
     .replace(/`([^`]+)`/g, '<code class="cm-r-code">$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>")

@@ -14,10 +14,7 @@
  */
 import { api, cfg, remote } from "./api";
 import { COPY } from "./copy";
-import { sheetActions } from "./components";
-
-const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+import { esc, sheetActions } from "./components";
 
 const GEN_START = /^<!--\s*vinc:generated start\b.*-->\s*$/;
 const GEN_END = /^<!--\s*vinc:generated end\s*-->\s*$/;

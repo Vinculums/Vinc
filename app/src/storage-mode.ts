@@ -14,7 +14,7 @@
  *
  *  근거: [[decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting]]
  */
-import { accountMode, cfg, dataMode, pollJob, restartSidecar, shellInvoke, storage,
+import { accountMode, cfg, dataMode, messageOf, pollJob, restartSidecar, shellInvoke, storage,
          type FolderCheck, type StorageConfig } from "./api";
 import { accountKey } from "./account-connect";
 import { COPY } from "./copy";
@@ -244,7 +244,7 @@ async function turnOn(path: string, acceptRisk: boolean, copy: boolean, result: 
     result.textContent = copied ?? U.localReady;
     finish();
   } catch (e: any) {
-    result.textContent = `${U.moveFail}: ${(e && e.message) || e}`;
+    result.textContent = `${U.moveFail}: ${messageOf(e)}`;
   }
 }
 
@@ -282,7 +282,7 @@ function askTurnOff(panel: HTMLElement, result: HTMLElement): void {
       result.textContent = U.localOffKept;
       finish();
     } catch (e: any) {
-      result.textContent = `${U.moveFail}: ${(e && e.message) || e}`;
+      result.textContent = `${U.moveFail}: ${messageOf(e)}`;
     } finally {
       keep.disabled = go.disabled = false;
     }
@@ -304,7 +304,7 @@ function askTurnOff(panel: HTMLElement, result: HTMLElement): void {
       result.textContent = notes.join(" ");
       finish();
     } catch (e: any) {
-      result.textContent = `${U.moveFail}: ${(e && e.message) || e}`;
+      result.textContent = `${U.moveFail}: ${messageOf(e)}`;
     } finally {
       go.disabled = false;
     }

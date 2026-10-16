@@ -7,7 +7,7 @@
  *
  *  "다시 권하지 않음"은 이 기기의 기억이다(localStorage, 문서별). 서버는 권한 기록을
  *  갖지 않으므로 다른 기기에서는 한 번 더 뜬다 — 반영된 것은 거기서 "이미 있음"으로 뜬다. */
-import { api } from "./api";
+import { api, messageOf } from "./api";
 import { COPY } from "./copy";
 import { esc } from "./components";
 import { fillTopicList, forgetTopics } from "./authoring";
@@ -148,7 +148,7 @@ export async function offerExtraction(box: HTMLElement, o: {
     catch (e: any) {
       applying = false;
       acts.forEach((b) => { b.disabled = false; });
-      msg(`<span class="error-banner">${esc(A.exRefused)} ${esc(String(e?.message || ""))}</span>`);
+      msg(`<span class="error-banner">${esc(A.exRefused)} ${esc(messageOf(e, ""))}</span>`);
       return;
     }
     applying = false;

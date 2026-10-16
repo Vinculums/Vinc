@@ -1,4 +1,4 @@
-import { accountMode, buildId, cfg, forgetMemberKey, remote, teamsApi, WEB, shellInvoke } from "../api";
+import { accountMode, api, buildId, cfg, forgetMemberKey, messageOf, remote, teamsApi, WEB, shellInvoke } from "../api";
 import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyIsOnDisk,
          mcpKeyPresent,
          setAccountKey } from "../account-connect";
@@ -307,7 +307,7 @@ async function renderSettings(
           location.reload();
         });
       } else if (box) {
-        fetch("/api/me", { credentials: "include" })
+        api.me()
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => {
             const u = d && d.user;
@@ -561,7 +561,7 @@ async function renderSettings(
           say(action === "install" ? U.mcpDone(host) : U.mcpRemoved(host));
         }
       } catch (e: any) {
-        say(`${U.mcpFail}: ${(e && e.message) || e}`);
+        say(`${U.mcpFail}: ${messageOf(e)}`);
       } finally {
         busyHosts.delete(client);
         paintConnections();
@@ -623,7 +623,7 @@ async function renderSettings(
       const invoke = await shellInvoke();
       if (!invoke) { paintCli(null); return; }   // 웹 Vinc — 행 자체가 의미 없다
       try { paintCli(await invoke(cmd) as any); }
-      catch (e: any) { paintCli(null, (e && e.message) || String(e)); }
+      catch (e: any) { paintCli(null, messageOf(e)); }
     }
     cliAdd.addEventListener("click", () => cliAction("cli_link_install"));
     cliRm.addEventListener("click", () => cliAction("cli_link_remove"));

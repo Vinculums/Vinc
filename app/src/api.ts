@@ -142,7 +142,7 @@ export async function connectSidecar(): Promise<void> {
     sidecarDiag = `v${buildId} conn.port=${c?.port ?? "?"} base=${cfg.base} `
       + `token=${c?.token ? c.token.length + "ch" : "MISSING"}`;
   } catch (e: any) {
-    sidecarDiag = `invoke sidecar_conn threw: ${e?.message || e}`;
+    sidecarDiag = `invoke sidecar_conn threw: ${messageOf(e)}`;
   }
   // 사이드카 기동 대기 ≤ ~12s — PyInstaller 단일파일은 첫 실행에 압축 해제가 있어
   // (특히 macOS 콜드 스타트) 5s 로는 정상 기동도 오판할 수 있다.
@@ -150,7 +150,7 @@ export async function connectSidecar(): Promise<void> {
   // 실패하면 "왜"를 반드시 싣는다 — 셸이 모아둔 사이드카 수명 이벤트(종료코드·
   // 시그널·stderr)를 붙여, health TIMEOUT 이 원인 불명으로 끝나지 않게 한다.
   let why = "";
-  try { why = await invoke("sidecar_status") as string; } catch (e: any) { why = `sidecar_status failed: ${e?.message || e}`; }
+  try { why = await invoke("sidecar_status") as string; } catch (e: any) { why = `sidecar_status failed: ${messageOf(e)}`; }
   sidecarDiag += ` · health TIMEOUT · sidecar[${why}]`;
 }
 
@@ -196,7 +196,7 @@ async function waitForSidecar(tries: number): Promise<boolean> {
       }
     } catch {}
     const remaining = deadline - performance.now();
-    if (remaining > 0) await new Promise((r) => setTimeout(r, Math.min(250, remaining)));
+    if (remaining > 0) await sleep(Math.min(250, remaining));
   }
   return false;
 }
@@ -348,7 +348,7 @@ async function accountCall(path: string, params: Record<string, string | number 
     // 호출자가 접었다. 엔진 문제가 아니므로 그대로 올려 보낸다.
     if (signal?.aborted) throw e;
     // 사이드카 자체에 못 닿았다. 계정 문제가 아니라 이 기기의 엔진 문제다.
-    throw new Error(`engine unreachable: ${e?.message || e}`);
+    throw new Error(`engine unreachable: ${messageOf(e)}`);
   }
   if (res.ok) { accountSuccess++; return res.json(); }
   const b: any = await res.json().catch(() => ({}));
@@ -566,7 +566,7 @@ export const storage = {
                             data_path?: string | null; accept_risk?: boolean }): Promise<any> => {
     try { return await localCall("/config", undefined, body); }
     catch (e: any) {
-      const m = /^(400|409) (.*)$/s.exec(String(e?.message || ""));
+      const m = /^(400|409) (.*)$/s.exec(messageOf(e, ""));
       if (m) { try { return { status: Number(m[1]), ...JSON.parse(m[2]!) }; } catch {} }
       throw e;
     }
@@ -594,6 +594,17 @@ export function storeDownReason(e: unknown): string | null {
   const err = e as any;
   return err?.storeDown ? (err.reason || "") : null;
 }
+
+/** 잡은 예외의 사람이 읽을 사유. `message` 가 비었으면 `fallback`, 그것도 안 주면
+ *  값 자체를 문자열로 바꾼다(문자열을 던진 자리도 사유가 남는다). */
+export function messageOf(e: unknown, fallback?: string): string {
+  const m = (e as { message?: unknown } | null | undefined)?.message;
+  if (m) return String(m);
+  return fallback ?? String(e);
+}
+
+/** `ms` 만큼 기다린다. */
+export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** 이 `doc_get` 거절이 **쓰기 창·중간에 끊긴 쓰기**인가(P17, `api/docstore.py` get_doc).
  *  그 갈래만 응답에 청크 수를 단다 — 모르는 id·소유자 불일치·죽은 사이드카에는 없다.
@@ -754,7 +765,7 @@ export function viewScope() {
 /** 웹 재사용은 현재 계정 identity와 현재 Space 권한을 매번 다시 확인한다. */
 export async function viewAccess(scope: ReturnType<typeof viewScope>, signal?: AbortSignal) {
   const [me, changes] = await Promise.all([
-    fetch(new URL("/api/me", location.origin), { credentials: "include", cache: "no-store", signal }),
+    api.me({ cache: "no-store", signal }),
     localCall("/changes", { owner: scope.owner }, undefined, { team: scope.team || null }, signal),
   ]);
   if (!me.ok) { viewSessionCache.purge(); throw new Error("View access unavailable"); }
@@ -774,6 +785,13 @@ type GraphRootsAnswer = {
 };
 
 export const api = {
+  /** 웹 계정 세션(`/api/me`). 쿠키 세션이라 웹·같은 출처에서만 뜻이 있다.
+   *  응답을 그대로 돌려준다 — 상태 판정과 본문 해석은 부르는 쪽 몫이다. */
+  me: (init: { cache?: RequestCache; signal?: AbortSignal } = {}): Promise<Response> =>
+    fetch(new URL("/api/me", location.origin), { credentials: "include", ...init }),
+  /** 커뮤니티 공유 행선지(웹 전용 같은 출처). 응답을 그대로 돌려준다. */
+  communityDestinations: (signal?: AbortSignal): Promise<Response> =>
+    fetch("/api/community/agents/destinations", { credentials: "include", cache: "no-store", signal }),
   roleRoster: async (owner: string) => {
     const scope = { team: cfg.team || null };
     const nodes = new Map<string, any>();
@@ -1153,7 +1171,7 @@ export async function ensureWebAuth(): Promise<boolean> {
     return false;
   }
   try {
-    const res = await fetch(new URL("/api/me", location.origin), { credentials: "include" });
+    const res = await api.me();
     if (res.ok) return true;
   } catch { /* 네트워크 실패 → 아래 로그인으로(안전측) */ }
   viewSessionCache.purge();
@@ -1172,6 +1190,6 @@ export async function pollJob(jobId: string, onTick?: (s: any) => void,
     if (s.status === "done") return s;
     if (s.status === "error") throw new Error(s.error || "sync job failed");
     if (Date.now() - t0 > timeoutMs) throw new Error("sync timed out");
-    await new Promise((r) => setTimeout(r, intervalMs));
+    await sleep(intervalMs);
   }
 }

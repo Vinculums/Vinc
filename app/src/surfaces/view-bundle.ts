@@ -21,7 +21,8 @@
  */
 import { COPY } from "../copy";
 import type { BundleDepth } from "../view-prefs";
-import { markSvg, PAD_BOT, PAD_TOP, PAD_X, type PlanarHandle } from "./view-planar";
+import { markSvg, PAD_BOT, PAD_TOP, PAD_X, trackSize, type PlanarHandle } from "./view-planar";
+import { esc } from "../components";
 
 export type BundleNode = { id: string; label: string; domain: string; kind?: string;
                            /** 라벨을 솎을 때의 우선순위. 없으면 0 취급. */
@@ -256,8 +257,6 @@ export function bundleStatsByType(nodes: BundleNode[], edges: BundleEdge[],
 }
 
 // ── 렌더 ────────────────────────────────────────────────────────────────────
-const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 const PAD = 8;
 const LABEL_GAP = 6;      // 링과 글자 사이
@@ -271,30 +270,12 @@ const LABEL_MAX_CH = 26;
 //: 라벨 하나가 링 둘레에서 차지해야 하는 최소 간격(px). 폰트 8.5px × 여유.
 const LABEL_PITCH = 10.5;
 
-/** 컨테이너 실측 추적. view-planar 의 같은 이름 함수와 형제지만 여백 규칙이
- *  달라(정사각 링) 공유하지 않는다 — 파라미터로 억지로 합치면 둘 다 읽기 어려워진다. */
 /** 그림이 들어갈 상자다. `el` 은 바깥 컨테이너라 그 폭을 그대로 쓰면 `.pl-wrap` 의
  *  패딩만큼 SVG 가 넘쳐 잘린다(실측 2026-08-16: 폭 819 를 793 짜리 상자에 그려
  *  26px 이 스크롤 밖으로 나갔다). 패딩 값은 view-planar 와 app.css 가 같이 쓴다. */
 function box(el: HTMLElement): [number, number] {
   return [Math.max(el.clientWidth - PAD_X * 2 - PAD * 2, 320),
           Math.max(el.clientHeight - PAD_TOP - PAD_BOT - PAD * 2, 320)];
-}
-
-function trackSize(el: HTMLElement, paint: (w: number, h: number) => void): () => void {
-  let last = "", raf = 0;
-  const run = () => {
-    raf = 0;
-    const [w, h] = box(el);
-    const key = `${w}x${h}`;
-    if (key === last) return;
-    last = key;
-    paint(w, h);
-  };
-  run();
-  const ro = new ResizeObserver(() => { if (!raf) raf = requestAnimationFrame(run); });
-  ro.observe(el);
-  return () => { ro.disconnect(); if (raf) cancelAnimationFrame(raf); };
 }
 
 type BundleOpts = {
@@ -463,7 +444,7 @@ export function mountBundle(el: HTMLElement, nodes: BundleNode[], edges: BundleE
   };
   // 첫 그리기 한 번은 모션을 태운다(관점에 들어선 순간) — 그 뒤 리사이즈는 조용하다.
   let first = o.entrance !== false;
-  let stop = trackSize(el, (w, h) => { paint(w, h, first); first = false; });
+  let stop = trackSize(el, box, (w, h) => { paint(w, h, first); first = false; });
 
   const TAU = Math.PI * 2;
   /** 클릭한 잎을 3시 방향으로 돌린다. 각도에 회전을 실어 다시 그린 뒤(라벨 뒤집힘까지
@@ -614,7 +595,7 @@ export function mountBundle(el: HTMLElement, nodes: BundleNode[], edges: BundleE
     update(next: Partial<BundleOpts>, anim = true) {
       opts = { ...opts, ...next };
       stop();
-      stop = trackSize(el, (w, h) => paint(w, h));
+      stop = trackSize(el, box, (w, h) => paint(w, h));
       // 시간 커서를 밟는 동안에는 안무를 끈다 — 걸음마다 선을 다시 그려 내면
       // 흐름이 아니라 깜빡임으로 보인다(재생은 걸음이 곧 모션이다).
       paint(...box(el), anim);

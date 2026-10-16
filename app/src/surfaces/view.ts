@@ -1,4 +1,4 @@
-import { api, cfg, WEB, teamsApi, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, type GraphEdge, type GraphNode,
+import { api, cfg, WEB, teamsApi, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, messageOf, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
@@ -30,7 +30,7 @@ import { layoutsFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CON
          EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, DIRECTED_RELS,
          edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
          loadPrefs, savePrefs, periodRange, inPeriod, PERIODS,
-         localStamp, localKeyToUtc, nextTimeKey,
+         localStamp, localKeyToUtc, nextTimeKey, dayOf,
          type ViewPrefs, type Viewpoint, type BundleDepth,
          type EdgeKind } from "../view-prefs";
 import { changedViewPrefs, viewControlRows, viewPreferenceWork } from "../view-controls";
@@ -1011,7 +1011,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       cell(COPY.ui.viewx.mDocs, String(total))
       + cell(COPY.ui.viewx.mLinked, `${linked}/${total} (${rate}%)`)
       + cell(COPY.ui.viewx.mOrphan, String(orphan), orphan > 0)
-      + (latest ? cell(COPY.ui.viewx.mLatest, esc(localStamp(latest).slice(0, 10)),
+      + (latest ? cell(COPY.ui.viewx.mLatest, esc(dayOf(localStamp(latest))),
         false, `${COPY.ui.viewx.mDateTip} ${localStamp(latest).replace("T", " ")}`) : "");
     const openOrphans = () =>
       void openDrilldown(lvDomain(trail[trail.length - 1]), "orphan");
@@ -1325,7 +1325,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     const cut = timeCutoff(curNodes.map((n) => nodeTimeOn(n, p.timeBasis)), when);
     // 기록 시각은 ISO 밀리초라 그대로 내면 길다 — 날짜까지만 자른다. 내용 시점은
     // 이미 `YYYY[-MM[-DD]]` 라 자를 것이 없다.
-    return cut ? cut.slice(0, 10) : COPY.ui.panel.whenAll;
+    return cut ? dayOf(cut) : COPY.ui.panel.whenAll;
   }
 
   function drawViewPanel() {
@@ -3171,7 +3171,7 @@ export async function renderView(el: HTMLElement, resume = false) {
         if (isAgentRoleId(nd.id)) void refreshLnb({ quiet: true });
       } catch (err: any) {
         acts.forEach((b) => { b.disabled = false; });
-        const why = String(err?.message || "").trim();
+        const why = messageOf(err, "").trim();
         status(`<span class="error-banner">${esc(V.propsFail)}${why ? ` ${esc(why)}` : ""}</span>`);
       }
     }
@@ -3952,7 +3952,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       // 날짜 선택의 점 — 기간을 걸기 **전**의 날별 수(기간 밖의 역사도 보여야 고른다).
       timelineDays = new Map();
       for (const n of allDated) {
-        const d = n.ts!.slice(0, 10);
+        const d = dayOf(n.ts!);
         if (d.length === 10) timelineDays.set(d, (timelineDays.get(d) || 0) + 1);
       }
       // 기간은 **상한보다 먼저** 거른다(2026-09-28). 여태 이 관점은 최근 1,200개만 남겨서

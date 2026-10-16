@@ -1,7 +1,7 @@
 import { api, cfg, teamsApi } from "./api";
 import { COPY } from "./copy";
 import { docTitle } from "./doc-title";
-import { sheetActions, sheetProgress, type SheetHandle } from "./components";
+import { esc, sheetActions, sheetProgress, type SheetHandle } from "./components";
 import { renderIntake } from "./surfaces/intake";
 import { viewHooks } from "./topbar";
 
@@ -24,9 +24,6 @@ import { viewHooks } from "./topbar";
  *  대표 개념 사이에 `relates_to` 를 긋고, 그 사실을 화면이 그대로 말한다. */
 
 type Tab = "create" | "import" | "share";
-
-const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 type DocRow = { doc_id: string; title: string; primary_concept_id?: string;
                 primary_concept_title?: string };

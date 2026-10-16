@@ -2,7 +2,9 @@ import type { GraphNode } from "./api";
 import type { RoutePoint } from "./view-route";
 
 const AXES = ["x", "y", "z"] as const;
-const STEP = .33;
+/** 공간 배치의 격자 한 칸. 배치(`view-layout-spatial.ts`)와 간격 판정(`cell`)이 같은
+ *  값을 써야 한다 — 어긋나면 간격 판정이 말없이 틀린다. */
+export const STEP = .33;
 
 /** 긴 경로의 빈 cell을 순회하지 않고 해당 축의 점유 cell만 조회한다.
  * 기존 반올림 범위와 정확한 간격 판정은 유지한다. */
