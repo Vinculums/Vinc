@@ -87,7 +87,7 @@ class LocalStack:
 
     def __enter__(self) -> "LocalStack":
         # 기동 도중 실패하면 `with` 는 `__exit__` 을 부르지 않는다. 그러면 먼저 띄운 인코딩 창구가
-        # 고아로 남아 포트와 메모리를 쥔다(사이드카가 exit 2 로 죽었을 때 실측). 여기서 거둔다.
+        # 고아로 남아 포트와 메모리를 쥔다. 여기서 거둔다.
         try:
             return self._start()
         except BaseException:
@@ -149,9 +149,9 @@ class LocalStack:
         if self._http is not None:
             self._http.shutdown()
             self._http.server_close()
-        # 사이드카는 **부탁해서** 닫는다(`/shutdown`, VIN-130). 그 길은 스토어를 닫아 체크포인트를
+        # 사이드카는 **부탁해서** 닫는다(`/shutdown`). 그 길은 스토어를 닫아 체크포인트를
         # 남긴다. 강제로 끊으면 사본에 찢어진 WAL 이 남아 다음 열기가 "Corrupted wal file" 로
-        # 실패한다(2026-10-17 실측).
+        # 실패한다.
         side, base = getattr(self, "_sidecar", (None, ""))
         if side is not None and side.poll() is None:
             try:
