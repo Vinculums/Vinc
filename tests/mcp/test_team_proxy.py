@@ -149,7 +149,7 @@ def test_role_tiers_cover_every_proxy_op():
     """새 op 를 추가하면서 역할을 안 정하면 조회로 조용히 분류된다 — 쓰기 op 가
     열람자에게 열리는 사고가 그렇게 난다. 이 테스트가 그 침묵을 깬다."""
     tiers = hs.team_role_tiers()
-    covered = tiers["viewer"] | tiers["editor"] | tiers["admin"]
+    covered = tiers["viewer"] | tiers["editor"] | tiers["admin"] | hs._TEAM_REFUSED_OPS
     assert covered == set(hs._PROXY_OPS), (
         "역할 미지정 op: " + ", ".join(sorted(set(hs._PROXY_OPS) - covered))
     )

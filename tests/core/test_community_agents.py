@@ -202,10 +202,14 @@ def test_preview_and_render_are_pure_and_invalid_input_does_not_write(engine):
     assert not query.node(snapshot["role"]["id"], owner=OWNER, store=store)["found"]
     bad = copy.deepcopy(snapshot)
     bad["role"]["props"]["owner"] = "foreign"
-    with pytest.raises(ValueError, match="invalid_agent_props"):
-        save(app, bad, source)
-    with pytest.raises(ValueError, match="requires_target_snapshot"):
-        save(app, snapshot, source, mode="replace")
+    # 검증 실패는 쓰기 전에 400 으로 돌아온다(500 으로 새지 않는다).
+    code, res = app.import_community_agent({"owner": OWNER, "snapshot": bad, "source": source,
+        "mutation_id": str(uuid4())})
+    assert code == 400 and "invalid_agent_props" in res["error"]
+    code, res = app.import_community_agent({"owner": OWNER, "snapshot": snapshot, "source": source,
+        "mutation_id": str(uuid4()), "mode": "replace"})
+    assert code == 400 and "requires_target_snapshot" in res["error"]
+    assert not query.node(snapshot["role"]["id"], owner=OWNER, store=store)["found"]
 
 
 @pytest.mark.parametrize("namespaced", [False, True])

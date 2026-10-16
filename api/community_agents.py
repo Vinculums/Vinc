@@ -27,7 +27,8 @@ ROLE_PROPS = frozenset(role_contract.REQUIRED) | frozenset({
 LICENSES = frozenset({"CC-BY-SA-4.0", "CC-BY-4.0", "CC0-1.0", "MIT", "Apache-2.0"})
 _HASH = re.compile(r"[0-9a-f]{64}")
 _ROLE = re.compile(r"concept:agent-[a-z0-9]+(?:-[a-z0-9]+)*")
-_OWNER = re.compile(r"(?:user|team):[0-9a-fA-F-]{36}")
+# 가져오기 목적지는 개인 그래프뿐이다. 팀 목적지는 검증 오류로 거절한다.
+_OWNER = re.compile(r"user:[0-9a-fA-F-]{36}")
 
 
 def canonical(value):

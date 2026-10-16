@@ -722,8 +722,12 @@ class VincApp:
 
     def preview_community_agent(self, body):
         from . import community_agents
-        return self._read(lambda r: community_agents.preview(r, owner=_req(body, "owner"),
-            snapshot=_req(body, "snapshot"), source=_req(body, "source"), target_id=body.get("target_id")))
+        try:
+            return self._read(lambda r: community_agents.preview(r, owner=_req(body, "owner"),
+                snapshot=_req(body, "snapshot"), source=_req(body, "source"), target_id=body.get("target_id")))
+        except ValueError as exc:
+            # 목적지·스냅샷 검증 실패는 요청 오류다(팀 목적지 포함). 500 으로 새지 않는다.
+            return 400, {"executed": False, "error": str(exc)}
 
     def import_community_agent(self, body):
         from . import community_agents, operation_receipts
@@ -733,8 +737,11 @@ class VincApp:
             raise ValueError("invalid_agent_import_arguments")
         owner, mutation_id = _req(body, "owner"), _req(body, "mutation_id")
         snapshot, source = _req(body, "snapshot"), _req(body, "source")
-        community_agents.validate_import(owner=owner, snapshot=snapshot, source=source,
-            mode=body.get("mode", "separate"), expected_target=body.get("expected_target"))
+        try:
+            community_agents.validate_import(owner=owner, snapshot=snapshot, source=source,
+                mode=body.get("mode", "separate"), expected_target=body.get("expected_target"))
+        except ValueError as exc:
+            return 400, {"executed": False, "error": str(exc)}
         arguments = {k: v for k, v in body.items() if k not in {"mutation_id", "owner"}}
         def apply():
             try:
@@ -752,8 +759,11 @@ class VincApp:
     def read_community_agent_result(self, p):
         from . import community_agents
         durable = self._durable or self._conversion_durable
-        return self._read(lambda r: community_agents.import_result(r, owner=_req(p, "owner"),
-            mutation_id=_req(p, "mutation_id"), durability_root=durable.root if durable else None))
+        try:
+            return self._read(lambda r: community_agents.import_result(r, owner=_req(p, "owner"),
+                mutation_id=_req(p, "mutation_id"), durability_root=durable.root if durable else None))
+        except ValueError as exc:
+            return 400, {"executed": False, "error": str(exc)}
 
     def _conversion_write_guard(self, job):
         if self.store is not None and getattr(self.store, "_topic_conversion_guard", False) \
