@@ -40,6 +40,8 @@ def audit(store, source, topic="vinc"):
                     labels_by_id.setdefault(key, set()).add(label)
                 for blocker in plan.blockers:
                     code, _, key = blocker.partition(":")
+                    if code == "external_attachments_not_supported":
+                        key = key.partition(":")[2]
                     if code in ("external_source_file_not_supported", "external_attachments_not_supported",
                                 "external_resource_reference_not_supported"):
                         for label in labels_by_id.get(key, ("unresolved",)):

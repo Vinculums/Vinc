@@ -260,3 +260,16 @@ def test_foreign_legacy_row_with_the_same_id_does_not_hide_a_selected_endpoint()
     chosen = plan(data)
     assert chosen.ready, chosen.blockers
     assert any(label == "_MergeRejection" for label, _ in chosen.selected)
+
+
+# 근거: [[decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16]]
+def test_composed_endpoint_wins_over_a_legacy_row_of_the_same_owner():
+    data = seed()
+    row = copy.deepcopy(data["nodes"]["Concept"][0])
+    row["concept_id"] = "concept:a"
+    row["domain"] = "elsewhere"
+    data["nodes"]["Concept"].append(row)
+    rejection(data, "concept:a", "concept:b")
+    chosen = plan(data)
+    assert chosen.ready, chosen.blockers
+    assert any(label == "_MergeRejection" for label, _ in chosen.selected)

@@ -52,9 +52,7 @@ def test_similar_regular_document_is_preserved():
     {"Attachments": [{"url": "blob:synthetic"}]},
     {"nested": [{"assets": ["file:synthetic.png"]}]},
     {"blob_uri": "blob:synthetic"},
-    {"filePath": "relative/synthetic.pdf"},
-    {"attachments": ["https://synthetic.invalid/a.pdf", "relative/b.pdf"]},
-    {"files": 3},
+    {"attachments": ["https://synthetic.invalid/a.pdf", "blob:synthetic/b.pdf"]},
 ])
 def test_external_attachment_forms_refused(properties):
     data = seed()
@@ -113,7 +111,7 @@ def test_concept_origin_does_not_hide_its_own_resource_or_reference():
     data = seed()
     node = data["nodes"]["Concept"][0]
     node["source_file"] = "/synthetic/source.md"
-    node["props"] = '{"attachment_url":"/synthetic/private.pdf"}'
+    node["props"] = '{"attachment_url":"blob:synthetic/private.pdf"}'
     assert_blocked(data, "external_attachments_not_supported")
     node["props"] = '{"resource":"blob:synthetic"}'
     assert_blocked(data, "external_resource_reference_not_supported")
@@ -155,7 +153,7 @@ def test_opaque_dependency_fields_cannot_bypass_preflight(properties, reason):
     assert_blocked(data, reason)
 
 
-@pytest.mark.parametrize("image", ["![synthetic](relative/synthetic.png)", '<img src="blob:synthetic">'])
+@pytest.mark.parametrize("image", ["![synthetic](blob:synthetic.png)", '<img src="blob:synthetic">'])
 def test_embedded_document_attachments_refused(image):
     import hashlib
 

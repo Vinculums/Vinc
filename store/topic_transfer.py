@@ -143,7 +143,6 @@ _EXTERNAL_RESOURCE = re.compile(r"^(?:[A-Za-z]:[\\/]|(?:file|blob|s3|azure|gs|az
 _MANAGED_RESOURCE = re.compile(r"^(?:blob|s3|azure|gs|az):", re.I)
 _IMAGE_REFERENCE = re.compile(r"!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>", re.I)
 _IMAGE_SOURCE = re.compile(r"!\[[^\]]*\]\(\s*<?([^)\s>]*)|<img\b[^>]*?\bsrc\s*=\s*[\"']?([^\"'\s>]*)", re.I)
-_WEB_URL = re.compile(r"^https?://[^\s/]+\S*$", re.I)
 _HISTORY = ("_Tombstone", "_EdgeTombstone", "_DocTombstone")
 
 
@@ -195,12 +194,14 @@ def tombstone_blocker(label, refs):
 
 
 def rejection_endpoint_state(snapshot, source, logical, ref):
-    # 합성 키 없는 레거시 행은 이 소유자 것일 때만 끝점 후보다. 같은 id 의 남의 행은 무관하다.
-    # 근거: [[decision:topic-transfer-edge-history-and-foreign-rejection-endpoints-2026-10-16]]
-    matches = [(label, row) for label in _KINDS + ("Bridge",)
-               for row in snapshot["nodes"][label]
-               if row[node_table_specs()[label]["pk"]] == source + pkns.SEP + ref
-               or (row[node_table_specs()[label]["pk"]] == ref and row.get("owner_id") == source)]
+    # 합성 키 행이 있으면 그것이 이 소유자의 끝점이다. 없을 때만 이 소유자의 레거시 행을 본다.
+    # 같은 id 의 남의 행이나 옮겨지지 않는 레거시 잔재는 판정에 끼지 않는다.
+    # 근거: [[decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16]]
+    rows = [(label, row, row[node_table_specs()[label]["pk"]] == source + pkns.SEP + ref)
+            for label in _KINDS + ("Bridge",) for row in snapshot["nodes"][label]
+            if row[node_table_specs()[label]["pk"]] in (ref, source + pkns.SEP + ref)]
+    matches = ([(label, row) for label, row, composed in rows if composed]
+               or [(label, row) for label, row, _ in rows if row.get("owner_id") == source])
     if not matches:
         return "missing"
     if (len(matches) != 1 or matches[0][0] != "Concept"
@@ -244,10 +245,11 @@ def retained_history_counts(snapshot, plan):
 
 
 def external_images(text):
-    """이미지 참조가 있으면 (전부 외부 http(s)인가, 개수)를, 없으면 None 을 돌려준다.
+    """이미지 참조가 있으면 (관리형 주소가 하나도 없는가, 개수)를, 없으면 None 을 돌려준다.
 
-    관리형·로컬·상대·data: 주소나 src 없는 태그가 하나라도 있으면 외부가 아니다.
-    근거: [[decision:topic-transfer-plain-references-and-external-images-2026-10-16]]
+    관리형 저장소(blob: 등)를 가리키는 src 만 막는다. 외부·로컬·상대·data: 주소와 src 없는
+    태그는 적힌 그대로 옮긴다(팀에서 열리지 않을 수 있다는 것을 건수로 알린다).
+    근거: [[decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16]]
     """
     found = _IMAGE_REFERENCE.findall(text)
     if not found:
@@ -256,35 +258,16 @@ def external_images(text):
     for ref in found:
         match = _IMAGE_SOURCE.match(ref)
         sources.append((match.group(1) or match.group(2) or "") if match else "")
-    return all(_WEB_URL.match(src) for src in sources), len(found)
+    return not any(_MANAGED_RESOURCE.match(src) for src in sources), len(found)
 
 
-def _web_only(value):
-    """첨부 키 아래 값이 전부 외부 http(s) 주소 문자열이면 참이다."""
+def _has_managed(value):
+    """첨부 키 아래 어딘가에 관리형 저장소 주소가 있으면 참이다."""
     if isinstance(value, dict):
-        return bool(value) and all(_web_only(v) for v in value.values())
+        return any(_has_managed(v) for v in value.values())
     if isinstance(value, list):
-        return bool(value) and all(_web_only(v) for v in value)
-    return isinstance(value, str) and bool(_WEB_URL.match(value))
-
-
-def attachment_kind(value):
-    """첨부 키 값의 진단 분류. 리허설은 이 종류만 세고 값은 내보내지 않는다."""
-    leaves = []
-    def walk(v):
-        if isinstance(v, dict):
-            for item in v.values():
-                walk(item)
-        elif isinstance(v, list):
-            for item in v:
-                walk(item)
-        else:
-            leaves.append(v)
-    walk(value)
-    if leaves and all(isinstance(v, str) and v and not _MANAGED_RESOURCE.match(v)
-                      and not v.lower().startswith("data:") for v in leaves):
-        return "attachment_key_path"
-    return "attachment_key_other"
+        return any(_has_managed(v) for v in value)
+    return isinstance(value, str) and bool(_MANAGED_RESOURCE.match(value))
 
 
 def preserved_reference_counts(plan):
@@ -573,11 +556,11 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
                         if (compact in _ATTACHMENTS or compact in (
                                 "attachmenturl", "attachmentpath", "asseturl", "bloburi",
                                 "filepath", "filepaths", "fileurl")) and val:
-                            # 외부 http(s) 주소만 텍스트로 옮긴다. 관리형·로컬 첨부는 막는다.
-                            if _web_only(val):
-                                preserved.add("external_attachment:" + nid)
+                            # 관리형 저장소 첨부만 막고 나머지 값은 텍스트로 옮긴다. 근거: [[decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16]]
+                            if _has_managed(val):
+                                blocks.add("external_attachments_not_supported:managed:" + nid)
                             else:
-                                blocks.add("external_attachments_not_supported:" + attachment_kind(val) + ":" + nid)
+                                preserved.add("external_attachment:" + nid)
                         if compact in ("vocabulary", "themeid") and val:
                             blocks.add("owner_vocabulary_not_supported:" + nid)
                         if compact in ("graphmd", "conventions") and val:
@@ -598,7 +581,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
                         if image[0]:
                             preserved.add("external_attachment:" + nid)
                         else:
-                            blocks.add("external_attachments_not_supported:props_image:" + nid)
+                            blocks.add("external_attachments_not_supported:managed_image:" + nid)
                     for ref in _REFERENCE.findall(value):
                         if ref not in logical and ref not in docs:
                             preserved.add("external_reference:" + ref)
@@ -609,7 +592,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
                 if image[0]:
                     preserved.add("external_attachment:" + nid)
                 else:
-                    blocks.add("external_attachments_not_supported:chunk_image:" + nid)
+                    blocks.add("external_attachments_not_supported:managed_image:" + nid)
             for ref in _REFERENCE.findall(row["text"] or ""):
                 if ref not in logical and ref not in docs:
                     preserved.add("external_reference:" + ref)

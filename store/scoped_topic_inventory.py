@@ -298,9 +298,11 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
             return "selected"
         if ref in rejection_endpoints:
             return rejection_endpoints[ref]
-        matches = [(label, row) for label in _KINDS + ("Bridge",)
-                   for key in (source + pkns.SEP + ref, ref)
-                   if (row := exact(label, key)) is not None and (key != ref or row["owner_id"] == source)]
+        # 합성 키 행이 있으면 그것만, 없으면 이 소유자의 레거시 행만 끝점 후보다. 근거: [[decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16]]
+        matches = ([(label, row) for label in _KINDS + ("Bridge",)
+                    if (row := exact(label, source + pkns.SEP + ref)) is not None]
+                   or [(label, row) for label in _KINDS + ("Bridge",)
+                       if (row := exact(label, ref)) is not None and row["owner_id"] == source])
         if not matches:
             state = "missing"
         elif len(matches) != 1 or matches[0][0] != "Concept" or matches[0][1]["owner_id"] != source:
