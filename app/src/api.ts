@@ -350,7 +350,11 @@ async function accountCall(path: string, params: Record<string, string | number 
     // 사이드카 자체에 못 닿았다. 계정 문제가 아니라 이 기기의 엔진 문제다.
     throw new Error(`engine unreachable: ${messageOf(e)}`);
   }
-  if (res.ok) { accountSuccess++; return res.json(); }
+  if (res.ok) {
+    accountSuccess++;
+    if (method === "POST") announceWrite(path, body);
+    return res.json();
+  }
   const b: any = await res.json().catch(() => ({}));
   // 계정의 오류 봉투는 `{error:{code,message}}`, 사이드카와 통과로는 `{error:"..."}`.
   const code = typeof b?.error === "object" ? String(b.error?.code || "") : String(b?.error || "");
@@ -477,11 +481,18 @@ async function localCall(path: string, params?: Record<string, string | number |
     } catch { /* JSON 오류 봉투가 아니면 상태만 남긴다. */ }
     throw err;
   }
-  // 자동 동기화 신호(§8) — 로컬 쓰기가 끝났다. 듣는 쪽이 없으면(웹·스케줄러 미마운트)
-  // 비용이 0이다. `/sync*`·`/connect/*` 는 뺀다 — 안 그러면 동기화가 자기를 다시 부른다.
-  if (isWrite && !WEB && !path.startsWith("/sync") && !path.startsWith("/connect/"))
-    dispatchEvent(new CustomEvent("vinc:write"));
+  if (isWrite) announceWrite(path, body);
   return res.json();
+}
+
+/** 쓰기가 끝났다는 신호(`vinc:write`). 듣는 쪽은 View 의 메모리 보관본이다
+ *  (`view-session-cache.ts`). 데이터 평면 셋(로컬 사이드카·셸 계정 모드·웹)이 같은 신호를
+ *  낸다: 여태 로컬 쓰기만 알려서 계정 모드의 쓰기 뒤에는 보관본이 남았다.
+ *  미리보기(`dry_run`)는 쓰기가 아니다. `/sync*`·`/connect/*` 는 기계 쪽 호출이라 뺀다. */
+function announceWrite(path: string, body: unknown): void {
+  if ((body as { dry_run?: unknown } | null)?.dry_run === true) return;
+  if (path.startsWith("/sync") || path.startsWith("/connect/")) return;
+  dispatchEvent(new CustomEvent("vinc:write"));
 }
 
 /** 로컬 모드가 **화면에 보여 줄** 데이터가 이 기기 스토어에 있는가. 모드를 정할 때 묻는다.
@@ -784,6 +795,44 @@ type GraphRootsAnswer = {
   answer?: LayoutAnswer;
 };
 
+/** 되돌릴 수 없는 삭제의 확인 묶음(0.9.8). `preview_digest` 는 확인 창이 열릴 때 본
+ *  상태의 지문이고, `operation_id` 는 같은 삭제를 다시 보내도 한 번만 일어나게 하는 열쇠다. */
+export type DeleteGuard = { operation_id: string; preview_digest?: string };
+
+/** 미리보기(`dry_run`)를 받아 묶음을 만든다. 미리보기를 못 받으면(큰 노드라 미리보기가
+ *  불완전함·종류 미지원·연결 실패) digest 없이 묶는다: 적용은 지금까지처럼 조건 없이 간다. */
+async function previewDelete(path: string, body: Record<string, unknown>,
+                             scope?: Scope): Promise<DeleteGuard> {
+  const guard: DeleteGuard = { operation_id: crypto.randomUUID() };
+  try {
+    const p = await call(path, undefined, { ...body, dry_run: true }, scope);
+    if (p?.executed && p.preview_complete && typeof p.preview_digest === "string")
+      guard.preview_digest = p.preview_digest;
+  } catch { /* 미리보기는 거들 뿐이다. 실패해도 삭제 자체는 막지 않는다. */ }
+  return guard;
+}
+
+/** 묶음을 실어 적용한다. 응답을 잃은 실패(연결 끊김·502·504)만 같은 묶음으로 한 번 더
+ *  보낸다: 같은 operation_id 라 서버가 첫 결과를 돌려줄 뿐 두 번 지우지 않는다. */
+async function applyDelete(path: string, body: Record<string, unknown>,
+                           guard?: DeleteGuard, scope?: Scope): Promise<any> {
+  const send = () => call(path, undefined, { ...body, ...(guard || {}) }, scope);
+  try { return await send(); }
+  catch (failure: any) {
+    const status = Number(failure?.status) || 0;
+    if (guard && (status === 0 || status === 502 || status === 504)) return send();
+    throw failure;
+  }
+}
+
+/** 조건부 쓰기가 상태 불일치로 멈췄나(0.9.8 `MutationConflict`·미리보기 불일치).
+ *  사이드카와 계정 통과로는 200 에 `status:"conflict"` 를 싣고, v1 꼴 오류면 409 로 온다. */
+export function isWriteConflict(r: any): boolean {
+  const code = r?.error ?? r?.code;
+  return r?.status === "conflict" || r?.status === 409
+    || code === "write_conflict" || code === "preview_conflict";
+}
+
 export const api = {
   /** 웹 계정 세션(`/api/me`). 쿠키 세션이라 웹·같은 출처에서만 뜻이 있다.
    *  응답을 그대로 돌려준다 — 상태 확인과 본문 해석은 부르는 쪽 몫이다. */
@@ -1027,18 +1076,38 @@ export const api = {
   // ── 삭제(S1) — 앱 UI 배선. 여태 백엔드·MCP 에만 있고 UI 가 없어 "추가는 원클릭,
   // 제거는 불가"였다. owner 는 웹모드에선 허브가 세션 sub 로 강제(바디 owner 무시),
   // 로컬 셸에선 여기서 넘긴 값이 스코프가 된다. 되돌릴 수 없으므로 호출부가 확인을 받는다.
-  deleteNode: (owner: string, node: string): Promise<{
+  //
+  // 0.9.8 계약: 확인 창을 열 때 `preview*` 로 미리보기를 받아 두고(digest 와 operation_id),
+  // 확인하면 그 묶음을 실어 적용한다. 그 사이 대상이 바뀌었으면 서버가 지우지 않고
+  // `preview_conflict` 로 답한다(`isWriteConflict`).
+  previewDeleteNode: (owner: string, node: string): Promise<DeleteGuard> =>
+    previewDelete("/delete", { owner, node }),
+  deleteNode: (owner: string, node: string, guard?: DeleteGuard): Promise<{
     executed: boolean; found?: boolean;
-    deleted?: { node: number; edges: number }; note?: string; error?: string;
-  }> => call("/delete", undefined, { owner, node }),
+    deleted?: { node: number; edges: number }; note?: string; error?: string; status?: string;
+  }> => applyDelete("/delete", { owner, node }, guard),
   // `deleted` 는 수가 아니라 `{edges: n}` 이다(`query.delete_edge`). 지울 수 없는 관계
   // 종류(부착 등)는 executed:true 에 `note` 만 싣고 `deleted` 가 없다.
-  deleteEdge: (owner: string, from: string, to: string, type: string): Promise<{
+  previewDeleteEdge: (owner: string, from: string, to: string, type: string): Promise<DeleteGuard> =>
+    previewDelete("/delete-edge", { owner, from, to, type }),
+  deleteEdge: (owner: string, from: string, to: string, type: string, guard?: DeleteGuard): Promise<{
     executed: boolean; found?: boolean; deleted?: { edges: number }; note?: string; error?: string;
-  }> => call("/delete-edge", undefined, { owner, from, to, type }),
-  docDelete: (owner: string, id: string, scope?: Scope): Promise<{
-    executed: boolean; deleted_meta?: number; deleted_chunks?: number; error?: string;
-  }> => call("/doc/delete", undefined, { owner, id }, scope),
+    status?: string;
+  }> => applyDelete("/delete-edge", { owner, from, to, type }, guard),
+  previewDocDelete: (owner: string, id: string, scope?: Scope): Promise<DeleteGuard> =>
+    previewDelete("/doc/delete", { owner, id }, scope),
+  docDelete: (owner: string, id: string, scope?: Scope, guard?: DeleteGuard): Promise<{
+    executed: boolean; deleted_meta?: number; deleted_chunks?: number; error?: string; status?: string;
+  }> => applyDelete("/doc/delete", { owner, id }, guard, scope),
+
+  // 0.9.8 조건부 노드 쓰기. 서버가 지금 판(rev)을 `rev` 와 대조하고 다르면 쓰지 않고
+  // `status:"conflict"` 로 답한다(`api/mutation_contract.py`). props 일부만 바꿀 때는
+  // `props_patch`(JSON Merge Patch)를 실어 서버가 저장된 props 에 합치게 한다.
+  // owner 를 싣는 이유: 판 확인은 owner 스코프로 읽는다. 빼면 로컬 기본 owner 로 읽어
+  // 견본 스페이스의 노드가 "없음"으로 거절된다. 계정·웹은 허브가 세션 owner 로 바꾼다.
+  // 근거: [[record:guarded-node-edits-carry-the-view-owner-2026-10-16]]
+  editNode: (node: { id: string; type: string } & Record<string, unknown>, rev: number) =>
+    call("/ingest/fragment", undefined, { owner: cfg.owner, nodes: [{ ...node, expected_rev: rev }] }),
 
   // 계정 연결(디바이스 플로우) — start 로 state 발급, 브라우저 승인 후 status 폴링으로
   // 키를 1회 수령한다(사이드카 메일박스). 셸 전용 UI(settings)에서만 쓴다.
