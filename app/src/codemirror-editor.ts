@@ -22,7 +22,7 @@ import { MentionMenu, SelectionBar, MENTION_RE,
 
 /** 슬래시 커맨드 항목 — 결정론 블록 삽입(오프라인·무LLM). insert = 삽입할 마크다운
  *  템플릿, cursorBack = 삽입 후 커서를 끝에서 몇 칸 되돌릴지(코드펜스 안쪽 등). */
-export type SlashItem = { label: string; insert: string; cursorBack?: number };
+type SlashItem = { label: string; insert: string; cursorBack?: number };
 
 export type CmHandle = {
   getValue: () => string;

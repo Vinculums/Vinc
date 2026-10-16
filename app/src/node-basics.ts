@@ -15,7 +15,7 @@ import { fillTopicList, forgetTopics, isWhen } from "./authoring";
 type Kind = "concept" | "record" | "decision" | "episode";
 type Basics = { title: string; oneLiner: string; topic: string; tags: string[]; when: string };
 /** node-context 가 준 것 — 제목·주제·한 줄·props·판. */
-export type BasicsSource = {
+type BasicsSource = {
   node_kind?: string; rev?: number; title?: string; domain?: string;
   one_liner?: string; props?: Record<string, unknown>;
 };

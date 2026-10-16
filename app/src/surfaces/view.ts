@@ -1,5 +1,3 @@
-import Graph from "graphology";
-import Sigma from "sigma";
 import { api, cfg, WEB, teamsApi, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
@@ -23,17 +21,17 @@ import { causalCone, spotOf, type Spot } from "../spotlight";
 import { openShareSheet } from "../sheets";
 import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
-import { blocksSurfaceShortcuts, isTypingTarget } from "../keys";
+import { blocksSurfaceShortcuts } from "../keys";
 import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
 
-import { layoutsFor, serverLayoutFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
+import { layoutsFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CONE_SCALE,
          WHEN_SCALE, timeCutoff, nodeTimeOn, visibleAt,
          EDGE_KINDS, BUNDLE_DEPTHS, BUNDLE_RELS, DIRECTED_RELS,
          edgeKindOf, edgeShowFor, edgeShowsFor, isPlanar,
          loadPrefs, savePrefs, periodRange, inPeriod, PERIODS,
          localStamp, localKeyToUtc, nextTimeKey,
-         type ViewPrefs, type PeriodKey, type Viewpoint, type BundleDepth,
+         type ViewPrefs, type Viewpoint, type BundleDepth,
          type EdgeKind } from "../view-prefs";
 import { changedViewPrefs, viewControlRows, viewPreferenceWork } from "../view-controls";
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
@@ -142,21 +140,10 @@ function bindCopyLink(btn: Element | null, make: () => string): void {
  *  넘기기 시작하면 그 줄이 본문보다 커진다(관계 카드의 `relsMore` 와 같은 태도). */
 const READER_CHIPS = 6;
 
-// Signal 팔레트 — theme.ts(허브 생성물)에서 런타임 모드에 따라 읽는다(하드코딩 금지).
-import { palette as signal, hexStr, type ThemeMode } from "../theme";
+// 런타임 테마 모드 — 주제 틴트(`tintMap`)가 모드에 따라 고른다.
+import { type ThemeMode } from "../theme";
 const curMode = (): ThemeMode =>
   document.documentElement.dataset.theme === "dark" ? "dark" : "light";
-function curPal() {
-  return signal[curMode()];
-}
-const THEME = {
-  get ink() { return hexStr(curPal().text); },
-  get inkMute() { return hexStr(curPal().textMute); },
-  get edge() { return hexStr(curPal().line); },
-  //: 초점색은 토큰 하나다(`semantic.*.focus`). 모드 분기를 손으로 쓰던 자리인데,
-  //  같은 식이 view2d·view3d 에도 각각 있었고 타임라인은 `--ring` 을 써서 갈렸다.
-  get point() { return hexStr(curPal().focus); },
-};
 
 /** 마운트 세대 — 라우터가 표면을 갈아끼워도 컨테이너는 남으므로, "내가 아직 살아
  *  있는가"는 이 카운터로만 판별한다(전역 리스너 누수 방지). */
@@ -234,7 +221,6 @@ export async function renderView(el: HTMLElement, resume = false) {
   document.getElementById("docpane-body")?.append(detail);
   if (docpane) docpane.append(railGrip);
   const msg = el.querySelector<HTMLElement>("#view-msg")!;
-  const tools = el.querySelector<HTMLElement>("#view-tools")!;
   const periodBox = el.querySelector<HTMLElement>("#view-period")!;
   // D71 — 렌즈·관점은 상단 바 슬롯에 그린다(내용의 주인은 여전히 이 표면이다).
   // 바가 없는 환경(임베드)에서는 표면 안에 자기 자리를 만들어 같은 코드로 그린다:
@@ -335,7 +321,6 @@ export async function renderView(el: HTMLElement, resume = false) {
   let lastNode: N3 | null = null;                   // Reader 뒤로가기용 마지막 상세 노드(D45-V2)
   /** 잇기(흐름 F)가 기다리는 대상 — 있으면 다음 초점이 카드 대신 여기로 간다(`focusOnMap`). */
   let pickTarget: ((id: string, title: string) => void) | null = null;
-  let extraSigmas: Sigma[] = [];      // Compare 2D 렌즈
   let curEdges: GraphEdge[] = [];     // 현재 레벨 엣지 — 상세 레일 in/out 표기용
   let topicGuides: GraphEdge[] = [];
   // 지금 그린 노드들 — focusNode 가 id 만 받고도 라벨·주제를 알아야 한다(D70).
@@ -977,9 +962,6 @@ export async function renderView(el: HTMLElement, resume = false) {
   /** 화면에 실제로 걸린 관점. 칩 라벨·크럼 꼬리·패널의 활성 표시·재클릭 가드가
    *  모두 이 하나만 읽는다 — UI 가 렌더러에 없는 상태를 주장하지 않게 하는 단일 진실. */
   const shownViewpoint = (_lv: Level): Viewpoint | null => curPrefs().view;
-  /** 평면 관점의 스코프는 오롯이 trail 에서 읽는다(관점은 스코프를 갖지 않는다). */
-  const scopeOf = (lv: Level): { domains?: string[] } =>
-    lv.kind === "l1" ? { domains: lv.domains } : {};
 
   /** D31 + D43 — 인캔버스 View 컨트롤. view 는 이제 관점 5지선다(맵 3D/2D + 평면 3종)라
    *  칩은 현재 관점 이름을 그대로 싣는다. Grid/Matrix 는 같은 패널의 두 번째 행으로
@@ -2314,16 +2296,6 @@ export async function renderView(el: HTMLElement, resume = false) {
     const step = parseFloat(getComputedStyle(document.documentElement)
       .getPropertyValue("--shell-gap")) * 16 || 8;
     return { x: Math.round(r.left + step * 2), y: Math.round(r.top + step * 2) };
-  }
-
-  function nodeScreenPos(id: string): { x: number; y: number } {
-    const r = canvas.getBoundingClientRect();
-    const n = g3 ? findNode3d(g3, id) : null;
-    const p = n && g3?.graph2ScreenCoords
-      ? g3.graph2ScreenCoords(n.x, n.y, n.z) : null;
-    if (p && Number.isFinite(p.x) && Number.isFinite(p.y))
-      return { x: r.left + p.x + 28, y: r.top + p.y - 20 };
-    return { x: r.right - 360, y: r.top + 72 };
   }
 
   /** 노드로 이동(D70) — 좌측 트리·검색 착지·카드 안 항목이 전부 이 문 하나로 들어온다.
@@ -3924,21 +3896,6 @@ export async function renderView(el: HTMLElement, resume = false) {
 
   const showL1 = (domains: string[]) => showGraphScope({ domains });
 
-  /** Compare — 좌우 2D 렌즈(Sigma) + 중앙 개념 결합 레일 (D22). 비교 뷰는
-   *  의도적으로 평면(나란히 대조가 목적 — 3D 회전은 좌우 대응을 깨뜨림). */
-  function addShapedGraph(g: Graph, nodes: GraphNode[], edges: GraphEdge[]) {
-    for (const nd of nodes) {
-      const label = nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label;
-      g.addNode(nd.id, { label, x: nd.x ?? 0, y: nd.y ?? 0,
-        size: 4 + Math.sqrt(nd.degree || 1) * 2, color: THEME.ink, domain: nd.domain });
-    }
-    for (const e of edges) {
-      if (g.hasNode(e.source) && g.hasNode(e.target) && !g.hasEdge(e.source, e.target))
-        g.addEdge(e.source, e.target, { size: e.cross_domain ? 0.8 : 1.6,
-          color: e.cross_domain ? THEME.inkMute : THEME.edge });
-    }
-  }
-
   /** 평면 관점(타임라인 · 번들). 스코프 상태는 하나도 갖지 않고
    *  trail 의 마지막 층을 읽어 필요한 것만 가져온다. 데이터가 없는 스코프에서도
    *  관점은 선택된 채로 두고(비활성·숨김 없음) 캔버스에 두 절짜리 빈 상태를 그린다. */
@@ -4170,8 +4127,6 @@ export async function renderView(el: HTMLElement, resume = false) {
     displayedScene = undefined;
     loader.removePreview();
     clearLayoutNote();
-    extraSigmas.forEach((s) => s.kill());
-    extraSigmas = [];
     killReplay();
     if (planar) { planar.dispose(); planar = null; }
     if (g2) { g2.dispose(); g2 = null; }

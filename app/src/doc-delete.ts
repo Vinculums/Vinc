@@ -1,6 +1,6 @@
 import { api, cfg, shellInvoke, type Scope } from "./api";
 
-export type DeleteOutcome = "deleted" | "present" | "unknown";
+type DeleteOutcome = "deleted" | "present" | "unknown";
 
 // 문서·키·서버 메시지는 로그에 싣지 않는다. 상태와 오류 코드만 남긴다.
 async function logFailure(operation: string, failure: any): Promise<void> {

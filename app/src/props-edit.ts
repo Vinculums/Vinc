@@ -17,8 +17,8 @@ export const PROP_KINDS: PropKind[] = ["text", "list", "number", "bool", "json"]
 
 export type PropRow = { key: string; kind: PropKind; text: string };
 
-export type RowErrorCode = "key-empty" | "key-dup" | "number" | "bool" | "json";
-export type RowError = { index: number; code: RowErrorCode };
+type RowErrorCode = "key-empty" | "key-dup" | "number" | "bool" | "json";
+type RowError = { index: number; code: RowErrorCode };
 
 /** 저장된 값의 형식. 글만 담은 배열은 목록이고, 그 밖의 배열·객체·null 은 JSON 이다. */
 export function kindOf(v: unknown): PropKind {
@@ -30,7 +30,7 @@ export function kindOf(v: unknown): PropKind {
 }
 
 /** 값을 그 형식의 편집 글자로. 형식이 값과 안 맞으면(사람이 형식을 바꾼 직후) JSON 으로 쓴다. */
-export function textOf(v: unknown, kind: PropKind): string {
+function textOf(v: unknown, kind: PropKind): string {
   if (v === undefined) return "";
   if (kind === "text" && typeof v === "string") return v;
   if (kind === "list" && Array.isArray(v)) return v.map(String).join("\n");

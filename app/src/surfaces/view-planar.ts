@@ -93,7 +93,7 @@ export type PlanarHandle = {
 };
 /** 타임라인이 받는 마크 — 원래 Flow 와 공유하던 모양이라 이름이 Flow* 였다.
  *  Flow 폐기(D53) 후에도 모양은 그대로라 이름만 중립화한다. */
-export type PlanarNode = { id: string; label: string; domain: string };
+type PlanarNode = { id: string; label: string; domain: string };
 
 /** 타임라인 버킷 알갱이(D72). 키는 전부 ts 의 접두라 사전식 정렬이 곧 시간순이다. */
 export type Grain = "day" | "month" | "year" | "decade";
@@ -113,7 +113,7 @@ export function pickGrain(list: string[]): Grain {
   return "decade";
 }
 
-export function bucketKey(ts: string, g: Grain): string {
+function bucketKey(ts: string, g: Grain): string {
   if (g === "day") return ts.slice(0, 10);
   if (g === "month") return ts.slice(0, 7);
   if (g === "year") return ts.slice(0, 4);
@@ -244,14 +244,6 @@ export function gateway3dSvg(px: number, cls = ""): string {
     + ` aria-hidden="true">${MARK3D_ART.gateway}</svg>`;
 }
 
-const hexPts = (cx: number, cy: number, r: number) => {
-  const p: string[] = [];
-  for (let i = 0; i < 6; i++) {
-    const a = (Math.PI / 180) * (60 * i - 30);
-    p.push(`${num(cx + r * Math.cos(a))},${num(cy + r * Math.sin(a))}`);
-  }
-  return p.join(" ");
-};
 const wrap = (svg: string) => `<div class="pl-wrap">${svg}</div>`;
 
 /** 컨테이너 실측 추적 — draw 는 (w,h) 의 순수 함수라 리사이즈는 "다시 그릴" 뿐이다.

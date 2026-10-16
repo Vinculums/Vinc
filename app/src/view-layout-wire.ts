@@ -4,7 +4,7 @@ import type { GraphEdge, GraphNode } from "./api";
  * Both the hub (which sends it) and the app (which merges the answer) build it the same way. */
 export type SlimNode = { id: string; kind: string; domain?: string; ts?: string; content_ts?: string };
 export type SlimEdge = { source: string; target: string; type: string };
-export type LayoutRoute = NonNullable<GraphEdge["route"]>;
+type LayoutRoute = NonNullable<GraphEdge["route"]>;
 /** A stored time-branches layout: coordinates per node id and a route per relation key. */
 export type LayoutAnswer = {
   /** [id, x, y, z, x2, y2] for every node that was sent. */

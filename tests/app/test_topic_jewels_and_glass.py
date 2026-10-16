@@ -88,7 +88,6 @@ class GlassTests(unittest.TestCase):
         self.assertIn("iridescence: .75, sheen: .25, ior: 1.6, env: 1.35, exposure: 1.06", src)
         self.assertIn("...glassParams(pal, themeMode())", src)       # 인스턴스
         self.assertIn("color: base, ...glassParams(pal, mode),", src)  # 개별 몸통
-        self.assertIn("const env = studioEnv(renderer, pal, themeMode());", src)  # 미니 그리드
         # 앰비언트가 크면 유리가 평판으로 죽는다.
         self.assertNotIn("new THREE.AmbientLight(", src)
 

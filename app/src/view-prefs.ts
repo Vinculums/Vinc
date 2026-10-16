@@ -17,7 +17,7 @@
 // 선택지는 둘이다(발주자 지시 2026-10-11): `중심에서`(서버 좌표)와 `시간순 가지`(워커).
 // `순서대로`·`관계순 가지`는 뺐고, 그 저장값은 아래 별칭이 `시간순 가지`로 접는다.
 // 근거: [[decision:view-offers-two-layouts-by-centre-and-time-branches-2026-10-11]]
-export type ViewLayout = "hub" | "temporalRoots";
+type ViewLayout = "hub" | "temporalRoots";
 export const LAYOUTS: ViewLayout[] = ["hub", "temporalRoots"];
 export const isRootsLayout = (layout: ViewLayout) => layout === "temporalRoots";
 export const layoutsFor = (_view: Viewpoint): ViewLayout[] => LAYOUTS;
@@ -181,7 +181,6 @@ export type ViewPrefs = {
   bundleOff: string[];
 };
 export type TimeBasis = "recorded" | "content";
-export const TIME_BASES: TimeBasis[] = ["recorded", "content"];
 
 export type PeriodKey = "all" | "7d" | "30d" | "90d" | "year" | "custom";
 export const PERIODS: PeriodKey[] = ["all", "7d", "30d", "90d", "year", "custom"];

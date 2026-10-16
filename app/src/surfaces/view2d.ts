@@ -351,7 +351,6 @@ export function mount2d(el: HTMLElement, nodes: Node2d[], edges: GraphEdge[],
     .sort((a, b) => (b.degree || 0) - (a.degree || 0) || (a.id < b.id ? -1 : 1))
     .slice(0, 8)
     .filter((n) => (n.degree || 0) > 0);
-  const hubSet = new Set(hubs.map((n) => n.id));
   // Small graphs need names even when the default .7 node scale puts every
   // mark below Sigma's 8px threshold. Larger graphs keep density thinning.
   const forceHubLabels = shown.length <= SMALL_GRAPH_LABEL_LIMIT;

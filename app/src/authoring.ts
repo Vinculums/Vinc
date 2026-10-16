@@ -29,7 +29,7 @@ export function slugOf(title: string): string {
 export const stampSlug = (): string => `note-${Date.now().toString(36)}`;
 
 /** id 접두로 종을 읽는다. 문서 미러(`concept:doc.<id>`)도 개념이다. 모르는 접두는 "other". */
-export function kindOfId(id: string): NodeKind | "other" {
+function kindOfId(id: string): NodeKind | "other" {
   const p = id.slice(0, id.indexOf(":"));
   return (NODE_KINDS as readonly string[]).includes(p) ? p as NodeKind : "other";
 }
@@ -78,7 +78,7 @@ export function edgeRefusal(warnings: unknown): string {
 }
 
 // ── 노드 찾기 — `[[` 목록 · 컴포저의 연결 대상 · 잇기 띠가 함께 쓴다 ──────────────
-export type NodeHit = { id: string; title: string; domain: string };
+type NodeHit = { id: string; title: string; domain: string };
 /** 이름으로 노드를 찾는다. 의미 팔이 빠진 검색이면 그 사실(`note`)을 함께 준다 — 반쪽
  *  결과를 온전한 것처럼 내밀지 않는다(검색 표면과 같은 규율, `components.armsNotice`). */
 export async function findNodes(q: string): Promise<{ hits: NodeHit[]; note: string }> {
@@ -101,7 +101,7 @@ export function nodeHitsHtml(hits: NodeHit[], note: string): string {
 // ── 주제 ───────────────────────────────────────────────────────────────────────
 let topicsCache: { at: number; list: string[] } | null = null;
 /** 이 소유자의 주제 목록(입력 제안용). 30초 동안 한 번만 묻는다 — 시트를 열 때마다 왕복하지 않게. */
-export async function topicOptions(): Promise<string[]> {
+async function topicOptions(): Promise<string[]> {
   if (topicsCache && Date.now() - topicsCache.at < 30_000) return topicsCache.list;
   const list: string[] = await api.domains(cfg.owner)
     .then((r: any) => (r?.rows || r?.domains || [])
@@ -120,7 +120,7 @@ export async function fillTopicList(dl: HTMLDataListElement): Promise<void> {
 }
 
 /** 지금 보고 있는 자리의 주제 — 새로 만드는 것에 미리 채운다. View 가 없으면 빈 값. */
-export function contextTopic(): string {
+function contextTopic(): string {
   return viewHooks()?.context?.().topic || "";
 }
 

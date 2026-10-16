@@ -103,6 +103,3 @@ export function installTooltip(): void {
     if (anchor && box && !box.hidden) place(box, anchor);
   });
 }
-
-/** 앵커가 DOM 에서 사라졌는데 툴팁만 남는 일을 막는다(뷰 전환·재렌더 시 호출). */
-export function closeTooltip(): void { hide(); }

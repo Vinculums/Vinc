@@ -24,7 +24,7 @@ import { renderSearchError } from "./search-error";
  *  대상이 없어 "눌렀는데 아무 데도 안 가는 줄"이 된다. 문서 전체를 훑는 일은
  *  `모든 문서` 시트가 맡는다(표면 이동 아님 — 닫으면 하던 자리로 돌아온다). */
 
-export type ViewHooks = {
+type ViewHooks = {
   /** 지금 스코프를 팩으로 묶는 시트를 연다(범위는 View 가 정한다). */
   share: () => void;
   /** 그 노드로 이동한다(D70) — 화면에 있으면 카메라만, 없으면 스코프를 넓혀

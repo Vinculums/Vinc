@@ -17,7 +17,7 @@ import { icon } from "./icons";
  *  한 번에 하나만 뜬다(싱글턴): 노드를 옮겨 다닐 때마다 카드가 쌓이면 그게 곧
  *  화면을 덮는 창 무더기다. */
 
-export type FloatHandle = {
+type FloatHandle = {
   el: HTMLElement;
   body: HTMLElement;
   /** 제목을 갈아 끼운다(같은 카드에서 다른 노드로 건너뛸 때). */

@@ -12,7 +12,7 @@
  */
 
 export type Vec3 = { x: number; y: number; z: number };
-export type Aim = { pos: Vec3; tgt: Vec3 };
+type Aim = { pos: Vec3; tgt: Vec3 };
 
 const EPS = 1e-6;
 
@@ -28,7 +28,7 @@ export function camRadius(v: Vec3 | null | undefined): number | null {
  *  `view3d` 의 첫 마운트는 카메라를 `(1.1S, 0.9S, 2.1S)` 에 둔다. 그 자리의 원점
  *  거리가 곧 "밖에서 전체를 보는" 기본 거리이고, 줌아웃이 돌아가야 할 곳이다.
  *  상수로 두는 이유: 값을 베껴 두면 한쪽만 바뀐다. */
-export const REST_K = Math.hypot(1.1, 0.9, 2.1);
+const REST_K = Math.hypot(1.1, 0.9, 2.1);
 
 /** 씬 크기 S 에 대한 기본 카메라 거리. */
 export function restRadius(S: number): number {

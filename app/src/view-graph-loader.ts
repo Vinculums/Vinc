@@ -19,20 +19,20 @@ import type { LayoutGraph } from "./view-layout";
  * 둘을 합치지 않은 것은 의도다. 앞의 것은 객체 동일성에 기대고, 뒤의 것은 복사본이어야
  * 렌더러의 변형이 다음 마운트에 번지지 않는다. */
 /** `marker` 는 서버가 읽기 전에 잡은 변경 표식이다(요청에 `marker=1` 을 실었을 때만 온다). */
-export type RawGraph = { executed: boolean; nodes?: GraphNode[]; edges?: GraphEdge[]; topicEdges?: GraphEdge[];
+type RawGraph = { executed: boolean; nodes?: GraphNode[]; edges?: GraphEdge[]; topicEdges?: GraphEdge[];
   marker?: string };
 /** `layout`: 시간순 가지를 요청했는데 그 배치가 아직 없을 때 무엇을 그렸는가.
  *  - `pending`: 배치가 오래 걸려 서버의 중심에서 좌표로 먼저 그렸다. 끝나면 `layoutReady` 가 불린다.
  *  - `failed`: 배치가 실패했거나 진척이 멈췄다. 중심에서 좌표를 그대로 쓴다.
  *  근거: [[vinc.plan.incremental-derived-view-results-2026-10-12]] §4 의 1 */
-export type FetchedGraph = RawGraph & { stale?: boolean; layout?: "pending" | "failed" };
+type FetchedGraph = RawGraph & { stale?: boolean; layout?: "pending" | "failed" };
 
 /** 시간순 가지 배치를 이만큼 기다린 뒤에는 중심에서 좌표로 먼저 그린다. */
-export const LAYOUT_PATIENCE_MS = 15_000;
+const LAYOUT_PATIENCE_MS = 15_000;
 /** 큰 저장 배치의 전송도 기다리되, 화면은 그 전에 patience 기준으로 넘긴다. */
-export const ROOTS_READ_TIMEOUT_MS = 30_000;
+const ROOTS_READ_TIMEOUT_MS = 30_000;
 
-export type GraphLoaderContext = {
+type GraphLoaderContext = {
   mountScope: ReturnType<typeof viewScope>;
   accessJob: AbortController;
   firstAccess: Promise<{ session: string; revision: string } | null>;
@@ -60,7 +60,7 @@ export type GraphLoaderContext = {
   rootsTimeoutMs?: number;
 };
 
-export type RetainedRef = { session: string; revision: string; key: string; prefs: string };
+type RetainedRef = { session: string; revision: string; key: string; prefs: string };
 
 export function createGraphLoader(ctx: GraphLoaderContext) {
   let rawGraph: RawGraph | undefined;
@@ -236,5 +236,3 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
   };
   return loader;
 }
-
-export type GraphLoader = ReturnType<typeof createGraphLoader>;

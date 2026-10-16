@@ -11,7 +11,7 @@
 
 /** 허브는 4MB 넘는 본문을 받지 않는다(`vinc_mcp/http_server.py` `MAX_BODY`). 매니페스트와
  *  감싸는 키, 계정 프록시를 지나며 붙는 몫을 남기고 3MB 에서 자른다. */
-export const CHUNK_BYTES = 3 * 1024 * 1024;
+const CHUNK_BYTES = 3 * 1024 * 1024;
 
 /** 문서 단계만 훨씬 작게 자른다. 여기서 상한을 정하는 것은 본문 크기가 아니라 **한 요청이
  *  머무는 시간**이다: 노드·엣지는 MERGE 한 번이지만 문서는 받는 쪽에서 재청킹과 색인까지
@@ -20,7 +20,7 @@ export const CHUNK_BYTES = 3 * 1024 * 1024;
  *  근거: [[record:the-document-stage-of-a-space-transfer-is-bounded-by-time-not-by-body-size-2026-09-20]] */
 export const DOC_CHUNK_BYTES = 768 * 1024;
 
-export type Stage = "nodes" | "edges" | "documents";
+type Stage = "nodes" | "edges" | "documents";
 export type StageCounts = Record<Stage, number>;
 export type Chunk = { stage: Stage; count: number; pack: Record<string, unknown> };
 

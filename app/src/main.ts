@@ -12,8 +12,7 @@ import { wireFileAssociations } from "./openfiles";
 import { installTooltip } from "./tooltip";
 import { mountTopbar, setViewHooks } from "./topbar";
 import { mountLnb, refreshLnb, setLnbNavigator, repaintLnb } from "./lnb";
-import { popIn, popOut, fadeIn, fadeOut } from "./motion";
-import { wireScrimDismiss, showNotice } from "./components";
+import { showNotice } from "./components";
 import { blocksSurfaceShortcuts } from "./keys";
 import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
 import { mountAuthoringKeys, startNewDoc, startNewNode } from "./authoring";
@@ -223,7 +222,6 @@ function openPalette() {
 }
 
 // ── Shortcut cheatsheet (`?`) ──────────────────────────────────────────────
-const cheatsheet = document.getElementById("cheatsheet")!;
 async function openCheatsheet() {
   // 단축키 표도 시트 규격을 쓴다(D63) — 화면 위에 뜨는 것은 전부 같은 구조·같은 닫힘.
   const { openSheet } = await import("./components");
