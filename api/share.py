@@ -122,7 +122,7 @@ def _share_edges_plan(*, owner: str, ids: list[str]) -> q.QueryPlan:
               for t in ("concept", "decision")]
     pairs += [("record", t, "ATTACHES_TO") for t in ("concept", "decision")]
     # 대체는 같은 종류끼리만 쓰인다(fragment `_SUPERSEDES_KINDS`). 빠지면 받는 쪽에서
-    # 옛 것과 새 것이 둘 다 현재로 남는다.
+    # 대체된 것과 대체한 것이 둘 다 현재로 남는다.
     pairs += [(kind, kind, "SUPERSEDES") for kind in frag._SUPERSEDES_KINDS]
     arms = []
     for source, target, relation in pairs:

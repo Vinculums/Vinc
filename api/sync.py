@@ -69,13 +69,13 @@ _SYNC_TYPES = {"concept": "Concept", "episode": "Episode", "decision": "Decision
 _SYNC_LABELS = tuple(_SYNC_TYPES.values())
 #: 라벨 → PK 열. fragment 의 타입 표에서 파생한다(중복 정의 회피).
 _SYNC_PK = {lbl: frag._NODE_MAP[t][1] for t, lbl in _SYNC_TYPES.items()}
-#: 나중에 SYNC_FIELDS 에 든 필드. 이 필드를 모르는 옛 클라이언트의 번들에는 **키가 없다**.
+#: 나중에 SYNC_FIELDS 에 든 필드. 이 필드를 모르는 구버전 클라이언트의 번들에는 **키가 없다**.
 #: 키가 없는 것을 "원격이 비웠다"로 읽으면 3-way 병합이 받는 쪽 값을 지우므로,
 #: apply 는 키가 없으면 그 필드를 말하지 않은 것으로 본다(`apply_delta`).
 _LATE_SYNC_FIELDS: dict[str, tuple[str, ...]] = {"Concept": ("one_liner",),
                                                  "Episode": ("props",)}
-#: 근거 열이 ALTER 기본값(''·0.0)으로 붙은 rel(v3 의 다섯, v16 의 ATTACHES_TO). 옛 행의
-#: 그 값은 "모름"이라 실어 보내면 받는 쪽의 실제 근거·신뢰도를 덮는다. 그래서 값이 있을
+#: 근거 열이 ALTER 기본값(''·0.0)으로 붙은 rel(v3 의 다섯, v16 의 ATTACHES_TO). 열이 붙기
+#: 전부터 있던 행의 그 값은 "모름"이라 실어 보내면 받는 쪽의 실제 근거·신뢰도를 덮는다. 그래서 값이 있을
 #: 때만 싣는다. RETURNS_TO·SUPERSEDES 는 열과 함께 만들어져 0.0 도 저작한 값이다.
 _DEFAULTED_EVIDENCE_RELS = frozenset((*_es._EVIDENCE_RELS, "ATTACHES_TO"))
 
@@ -910,7 +910,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
             continue
         pk = frag._NODE_MAP[ntype][1]
         remote_snap = _snapshot(label, n)
-        # 옛 클라이언트가 모르는 필드는 키가 없다. 비운 것이 아니라 말하지 않은 것이다.
+        # 구버전 클라이언트가 모르는 필드는 키가 없다. 비운 것이 아니라 말하지 않은 것이다.
         unstated = [f for f in _LATE_SYNC_FIELDS.get(label, ()) if f not in n]
         r_rev, r_ua = int(n.get("_rev") or 0), n.get("_updated_at") or ""
 
@@ -956,7 +956,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
             else:
                 remote_snap.pop(f, None)
         # base 가 늦게 든 필드의 키를 모르면(그 필드가 동기화되기 전의 조상) 빈 값은
-        # "비웠다"가 아니라 "아직 못 받았다"다. 옛 동기화가 안 날라 한쪽만 빈 채로 남은
+        # "비웠다"가 아니라 "아직 못 받았다"다. 그 필드를 나르지 않던 동기화 탓에 한쪽만 빈 채로 남은
         # 것이므로 찬 쪽을 남긴다. 저장할 base 는 원격 값 그대로 둔다(아래 base_updates).
         merge_base, merge_remote = base_fields, remote_snap
         for f in _LATE_SYNC_FIELDS.get(label, ()):
