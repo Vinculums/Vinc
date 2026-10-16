@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import re
 import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+try:
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT
 SURFACES = sorted((ROOT / "app" / "src" / "surfaces").glob("view*.ts"))
 
 #: 그래프에서 온 값. `.tags`·`.title` 처럼 **필드 접근**만 본다(지역 변수명은 안 본다).

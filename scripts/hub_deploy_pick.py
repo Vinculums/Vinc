@@ -46,10 +46,14 @@ import subprocess
 import sys
 import urllib.error
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Callable
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+try:
+    from scripts._gitutil import git, git_ok
+    from scripts._root import ROOT  # noqa: F401  리포 루트를 sys.path 에 올린다
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _gitutil import git, git_ok
+    from _root import ROOT  # noqa: F401
 from vinc_mcp import hubhttp  # noqa: E402
 
 #: 허브 이미지에 들어가거나 배포 절차를 바꾸는 경로. 옛 `on.push.paths` 를 옮겼다.
@@ -187,15 +191,11 @@ def pick(*, event: str, trigger_sha: str, trigger_conclusion: str, dispatch_sha:
 
 # ── 바깥 ────────────────────────────────────────────────────────────────────
 
-def _git(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], capture_output=True, text=True)
-
-
 def _git_out(*args: str) -> str:
-    r = _git(*args)
-    if r.returncode != 0:
-        raise Unanswered(f"git {' '.join(args)} 실패: {r.stderr.strip()}")
-    return r.stdout.strip()
+    try:
+        return git(args).strip()
+    except subprocess.CalledProcessError as e:
+        raise Unanswered(f"git {' '.join(args)} 실패: {e.stderr.strip()}") from None
 
 
 def _live_tag() -> str:
@@ -294,11 +294,11 @@ def main() -> int:
             ci_status=_ci_status_via_api(e.get("API", "https://api.github.com"),
                                          e.get("REPO", "Vinculums/Vinc"), e["GH_TOKEN"],
                                          e.get("TRIGGER_SHA", ""), e.get("TRIGGER_RUN_ID", "")),
-            is_commit=lambda s: _git("cat-file", "-e", f"{s}^{{commit}}").returncode == 0,
-            is_ancestor=lambda a, b: _git("merge-base", "--is-ancestor", a, b).returncode == 0,
+            is_commit=lambda s: git_ok(["cat-file", "-e", f"{s}^{{commit}}"]),
+            is_ancestor=lambda a, b: git_ok(["merge-base", "--is-ancestor", a, b]),
             changed=lambda a, b: _git_out("diff", "--name-only", a, b).splitlines(),
-            parent_of=lambda s: (_git("rev-parse", "--verify", "--quiet", f"{s}^").stdout
-                                 .strip()),
+            parent_of=lambda s: git(["rev-parse", "--verify", "--quiet", f"{s}^"],
+                                    check=False).strip(),
         )
     except Unanswered as x:
         print(f"::error::배포 대상을 고르지 못했다: {x}", file=sys.stderr)

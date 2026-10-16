@@ -65,11 +65,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
 # 스크립트로 직접 부르는 경로(`python -X utf8 scripts/agents_sync.py --gen`)에서도
-# `vinc_mcp` 를 찾을 수 있어야 한다 — 임포트보다 **먼저** 넣는다.
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# `vinc_mcp` 를 찾을 수 있어야 한다 — 임포트보다 **먼저** 루트를 올린다.
+try:
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT
 
 from vinc_mcp.roles import (TOPICS, ID_PREFIX, build_payload,  # noqa: E402
                             render_shell, works_with)

@@ -7,14 +7,16 @@ import json
 import os
 from pathlib import Path
 import resource
-import sys
 import tempfile
 import time
 import tracemalloc
 from types import SimpleNamespace
 from uuid import uuid4
 
-sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
+try:
+    from scripts._root import ROOT  # noqa: F401
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT  # noqa: F401
 from api import topic_conversion as legacy
 from api.topic_conversion_batches import Batches,row
 from store import topic_batch_manifest as manifest

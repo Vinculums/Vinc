@@ -7,10 +7,13 @@ import json
 import os
 from pathlib import Path
 import re
-import subprocess
-import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+try:
+    from scripts._azutil import AzError, az as _az
+    from scripts._root import ROOT  # noqa: F401  리포 루트를 sys.path 에 올린다
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _azutil import AzError, az as _az
+    from _root import ROOT  # noqa: F401
 from store import persistence  # noqa: E402
 
 
@@ -54,11 +57,11 @@ def download_snapshot(account: str, share: str, snapshot: str, source: str, raw:
     common = ["--account-name", account, "--snapshot", snapshot, "--only-show-errors"]
 
     def az(arguments: list[str]):
-        result = subprocess.run(["az", "storage", *arguments, *common], env=environment,
-                                capture_output=True, text=True, check=False)
-        if result.returncode:
-            raise RuntimeError(f"share snapshot {arguments[0]} {arguments[1]} failed")
-        return result.stdout
+        try:
+            return _az(["storage", *arguments, *common], timeout=None, output=None,
+                       env=environment)
+        except AzError:
+            raise RuntimeError(f"share snapshot {arguments[0]} {arguments[1]} failed") from None
 
     listing = json.loads(az(["file", "list", "--share-name", share, "--output", "json"]))
     if not isinstance(listing, list):

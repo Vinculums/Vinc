@@ -10,9 +10,12 @@ import json
 import os
 import re
 import secrets
-import shutil
-import subprocess
 from pathlib import Path
+
+try:
+    from scripts import _azutil
+except ImportError:  # 직접 실행: 리포 루트가 sys.path 에 없다
+    import _azutil
 
 RG, APP, ENVIRONMENT = "vincsRG", "vinc-layout", "vinc-cae"
 TOKEN_SECRET = "layout-token"
@@ -23,17 +26,15 @@ class DeploymentError(RuntimeError):
 
 
 def az(*args: str, missing_ok: bool = False):
-    executable = shutil.which("az")
-    if not executable:
-        raise DeploymentError("az CLI is unavailable")
-    result = subprocess.run([executable, *args, "-o", "json"], capture_output=True,
-                            text=True, encoding="utf-8")
-    if result.returncode:
-        if missing_ok and re.search(r"\bResourceNotFound\b|\bContainerAppNotFound\b", result.stderr, re.I):
+    try:
+        return _azutil.az(args, timeout=None)
+    except _azutil.AzError as e:
+        if e.returncode is None:
+            raise DeploymentError("az CLI is unavailable") from None
+        if missing_ok and re.search(r"\bResourceNotFound\b|\bContainerAppNotFound\b", e.stderr, re.I):
             return None
         # 시크릿을 실은 argv나 Azure의 응답을 예외에 넣지 않는다.
-        raise DeploymentError(f"az {' '.join(args[:2])} failed (exit {result.returncode})")
-    return json.loads(result.stdout or "null")
+        raise DeploymentError(f"az {' '.join(args[:2])} failed (exit {e.returncode})") from None
 
 
 def show(name: str, call=az):

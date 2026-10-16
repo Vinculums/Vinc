@@ -10,8 +10,6 @@ import argparse
 import copy
 import json
 import os
-import subprocess
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -19,7 +17,12 @@ from pathlib import Path
 
 from gate_app_config import BASELINE, project_app
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+try:
+    from scripts._azutil import AzError, az as _az
+    from scripts._root import ROOT  # noqa: F401  리포 루트를 sys.path 에 올린다
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _azutil import AzError, az as _az
+    from _root import ROOT  # noqa: F401
 from vinc_mcp import hubhttp  # noqa: E402
 
 APP = ["-n", "vinc-hub", "-g", "vincsRG"]
@@ -27,12 +30,13 @@ BASE = "https://mcp.vincs.io"
 
 
 def az(*args):
-    result = subprocess.run(["az", *args, "-o", "json"], capture_output=True,
-                            text=True, timeout=240)
-    if result.returncode:
+    try:
+        return _az(args, timeout=240)
+    except AzError as e:
+        if e.returncode is None:
+            raise
         # stderr 에 ARM 템플릿·env 값이 들어갈 수 있어 로그에 복제하지 않는다.
-        raise RuntimeError(f"Azure {args[0]} {args[1]} failed ({result.returncode})")
-    return json.loads(result.stdout or "null")
+        raise RuntimeError(f"Azure {args[0]} {args[1]} failed ({e.returncode})") from None
 
 
 def show():

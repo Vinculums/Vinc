@@ -22,7 +22,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-ROOT = Path(__file__).resolve().parents[2]
+try:
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT
 DATA = Path(os.environ.get("VINC_QA_DATA", "/tmp/vinc-qa-store"))
 OWNER = os.environ.get("VINC_QA_OWNER", "eval:tooluse")
 

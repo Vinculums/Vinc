@@ -26,11 +26,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import pathlib
 import sys
 from collections import Counter
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+try:
+    from scripts._root import ROOT  # noqa: F401
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT  # noqa: F401
 
 from engines import domain_hierarchy as dh    # noqa: E402
 from store import pkns                        # noqa: E402
