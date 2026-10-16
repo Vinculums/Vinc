@@ -767,43 +767,6 @@ def _apply_rehearsal(store, plan: Plan, *, run_id: str, stamp: str, fail_at=None
         raise
 
 
-def _restore_rehearsal(store, before: dict, plan: Plan, *, run_id: str, stamp: str, fail_at=None):
-    """Compensate an isolated synthetic commit before account activation.
-
-    A changed store is refused. This is not a live sync recovery protocol: live
-    recovery must publish new monotonic revisions under durable scope fences.
-    """
-    _require_synthetic(store)
-    if any(r["index_name"] != "_PK" for r in store.run("CALL show_indexes() RETURN *", raw=True)):
-        raise TransferRefused("indexed_store_not_supported_in_rehearsal")
-    expected = transformed_snapshot(before, plan, stamp=stamp)
-    key = "topic-transfer:run:" + run_id
-    args = _canonical([plan.source, plan.target, plan.topic, plan.before_hash])
-    store.run("BEGIN TRANSACTION", raw=True)
-    try:
-        current = read_snapshot(store)
-        journals = [r for r in current["meta"]["_SyncMeta"] if r["key"] == key]
-        if not journals or json.loads(journals[0]["value"])["args"] != args:
-            raise TransferRefused("run_not_committed")
-        without_journal = copy.deepcopy(current)
-        without_journal["meta"]["_SyncMeta"] = [r for r in without_journal["meta"]["_SyncMeta"] if r["key"] != key]
-        if json.loads(journals[0]["value"]).get("status") == "cancelled":
-            if fingerprint(without_journal) != fingerprint(before):
-                raise TransferRefused("restored_payload_changed")
-            store.run("COMMIT", raw=True)
-            return "already_restored"
-        if fingerprint(without_journal) != fingerprint(expected):
-            raise TransferRefused("compensation_source_changed")
-        _write_difference(store, current, before, fail_at=fail_at)
-        value = _canonical({"args": args, "status": "cancelled"})
-        store.run("CREATE (m:_SyncMeta {key:$key, value:$value})", {"key": key, "value": value}, raw=True)
-        store.run("COMMIT", raw=True)
-        return "restored"
-    except BaseException:
-        store.run("ROLLBACK", raw=True)
-        raise
-
-
 def _require_synthetic(store):
     # 실험용 표식이 없는 일반 저장소에는 쓰기 트랜잭션을 열지 않는다.
     marker = store.run("MATCH (m:_SyncMeta) WHERE m.key='topic-transfer:synthetic' RETURN m.value AS value",

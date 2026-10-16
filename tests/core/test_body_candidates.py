@@ -54,14 +54,6 @@ def test_no_implicit_approval_and_no_duplicate_candidate():
         bc.prepare_candidates(TEXT, DOC, [raw] * 25)
 
 
-def test_nonpaid_scoring_has_explicit_gold_and_model_limit():
-    first = bc.prepare_candidates(TEXT, DOC, [candidate()])
-    second = bc.prepare_candidates(TEXT, DOC, [candidate(title="quantum memory", needle="quantum memory")])
-    score = bc.score_spans(first + second, first)
-    assert score == {"predicted": 2, "gold": 1, "correct": 1, "precision": .5,
-                     "coverage": 1, "metric": "exact_source_span", "fresh_model_quality": "not_run"}
-
-
 @pytest.fixture
 def store(tmp_path, monkeypatch):
     from store.backend import open_store

@@ -42,7 +42,6 @@ import hashlib
 import re
 import sys
 import time
-import uuid
 from typing import Any, Callable
 
 from engines import domain_hierarchy
@@ -1605,12 +1604,6 @@ def stale_docs(store, *, owner: str | None = None, limit: int = 50) -> list[str]
         f"ORDER BY d.updated_at LIMIT {max(1, min(int(limit), 500))}",
         {"o": owner} if owner else None) or []
     return [r["id"] for r in rows]
-
-
-def new_doc_id() -> str:
-    """비결정론 doc_id 가 필요할 때(내용 무관 신규 정체성)의 대안 — 기본 경로는
-    make_doc_id(결정론)다."""
-    return "d" + uuid.uuid4().hex[:16]
 
 
 # ── 정본→노드 파생 (D45-V — 옵션1 결정론 + 옵션2 확인 흐름의 공용 백엔드) ────────

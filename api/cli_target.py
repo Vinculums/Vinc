@@ -15,7 +15,7 @@ TOOL_CMDS = frozenset({"whoami", "conventions", "node", "path", "ties", "diagnos
 DEVICE_CMDS = frozenset({"backup", "export", "share", "import", "activate", "pin",
                          "tag", "touch", "learner", "graph", "plan", "onboard",
                          "domain-backfill", "serve", "store-probe", "migrate-dim",
-                         "migrate-lex", "store-rebuild"})
+                         "migrate-lex", "migrate-body-mentions", "store-rebuild"})
 
 
 def local_only(args) -> bool:

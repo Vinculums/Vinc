@@ -133,7 +133,7 @@ def test_fresh_plan_requeries_after_ttl(monkeypatch):
     monkeypatch.setattr(entitlement, "lookup_plan", lambda sub: "team")
     assert app._fresh_plan("user:u1", "free") == "team"
     # 갱신분이 저장돼 다음 호출은 캐시에서 답한다(계정 부하 상한).
-    assert app.store.get_owner_plan("user:u1") == "team"
+    assert app.store.get_owner_plan_age("user:u1")[0] == "team"
 
 
 def test_fresh_plan_keeps_last_known_when_account_is_down(monkeypatch):
