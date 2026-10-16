@@ -89,7 +89,7 @@ def validate(node):
         raise InvalidBelief("belief grade must be model, rule, or user-confirmed")
     if props["grade"] == "model":
         # 승인되지 않은 보정의 모델 점수는 확률이 아니다. 읽기도 이 검사를 거치므로 그런 행은
-        # 판정으로 읽히지 않는다. 판정 모델과 술어까지 승인 항목과 같아야 한다.
+        # 확률 근거로 읽히지 않는다. 채점 모델과 술어까지 승인 항목과 같아야 한다.
         entry = ADMITTED.get(props["calibration_id"])
         if (not entry or entry["judged_by"] != props["judged_by"]
                 or entry["predicate"] != subject["predicate"]):
