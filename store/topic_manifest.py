@@ -229,32 +229,6 @@ class TopicManifest:
         return {"sha256": digest.hexdigest(), "rows": self.retained_rows,
                 "bytes": destination.stat().st_size}
 
-    @staticmethod
-    def verify_seal(path, expected, *, binding):
-        digest = hashlib.sha256()
-        count = 0
-        header = None
-        try:
-            with Path(path).open("rb") as source:
-                while line := source.readline(16 * 1024 + 1):
-                    if len(line) > 16 * 1024 or not line.endswith(b"\n"):
-                        raise ValueError("manifest line exceeds bound")
-                    digest.update(line)
-                    row = json.loads(line)
-                    if not isinstance(row, dict):
-                        raise ValueError("invalid manifest row")
-                    if count == 0:
-                        header = row
-                    count += 1
-        except (OSError, ValueError):
-            raise TransferRefused("conversion_manifest_invalid") from None
-        if (header is None or digest.hexdigest() != expected or header.get("binding") != binding
-                or header.get("protocol") != 3 or header.get("schema_version") != SCHEMA_VERSION
-                or type(header.get("rows")) is not int or header["rows"] < 0
-                or count != header["rows"] + 1):
-            raise TransferRefused("conversion_manifest_invalid")
-        return header
-
     def close(self):
         self.db.close()
 

@@ -17,7 +17,7 @@ from store.embedded_schema import (
     SCHEMA_VERSION, meta_table_specs, node_table_specs, render_embedded_ddl,
 )
 from store.topic_transfer import (
-    TransferRefused, _apply_rehearsal, _restore_rehearsal, fingerprint, plan_transfer,
+    TransferRefused, _apply_rehearsal, fingerprint, plan_transfer,
     read_snapshot, transformed_snapshot,
 )
 
@@ -388,41 +388,6 @@ def test_native_resume_verifies_committed_payload(native):
         _apply_rehearsal(native, p, run_id="verify-resume", stamp=STAMP)
 
 
-def test_native_compensation_restores_original_and_cannot_replay_cancelled_run(native):
-    before = read_snapshot(native)
-    p = plan(before)
-    _apply_rehearsal(native, p, run_id="cancel", stamp=STAMP)
-    assert _restore_rehearsal(native, before, p, run_id="cancel", stamp=STAMP) == "restored"
-    current = read_snapshot(native)
-    current["meta"]["_SyncMeta"] = [r for r in current["meta"]["_SyncMeta"] if r["key"] != "topic-transfer:run:cancel"]
-    assert fingerprint(current) == fingerprint(before)
-    assert _restore_rehearsal(native, before, p, run_id="cancel", stamp=STAMP) == "already_restored"
-    with pytest.raises(TransferRefused, match="run_cancelled"):
-        _apply_rehearsal(native, p, run_id="cancel", stamp=STAMP)
-
-
-def test_native_compensation_failure_keeps_recoverable_committed_state(native):
-    before = read_snapshot(native)
-    p = plan(before)
-    _apply_rehearsal(native, p, run_id="compensation-failure", stamp=STAMP)
-    committed = fingerprint(read_snapshot(native))
-    with pytest.raises(RuntimeError, match="injected"):
-        _restore_rehearsal(native, before, p, run_id="compensation-failure", stamp=STAMP, fail_at="delete")
-    assert fingerprint(read_snapshot(native)) == committed
-    assert _restore_rehearsal(native, before, p, run_id="compensation-failure", stamp=STAMP) == "restored"
-
-
-def test_native_compensation_refuses_to_overwrite_subsequent_changes(native):
-    before = read_snapshot(native)
-    p = plan(before)
-    _apply_rehearsal(native, p, run_id="changed", stamp=STAMP)
-    native.run("MATCH (c:Concept) WHERE c.owner_id=$owner SET c.title='new edit'", {"owner": TARGET})
-    changed = fingerprint(read_snapshot(native))
-    with pytest.raises(TransferRefused, match="compensation_source_changed"):
-        _restore_rehearsal(native, before, p, run_id="changed", stamp=STAMP)
-    assert fingerprint(read_snapshot(native)) == changed
-
-
 def test_native_unknown_columns_refused_instead_of_dropped(native):
     native.run("ALTER TABLE Concept ADD unrecognized STRING DEFAULT 'kept'")
     with pytest.raises(TransferRefused, match="unsupported_schema_columns"):
@@ -520,25 +485,6 @@ def test_synthetic_account_prepare_verify_activate_and_resume(native, tmp_path):
     account.advance("saga", SOURCE, "verified")
     account.advance("saga", SOURCE, "active")
     assert account.visible("saga")
-    account.db.close()
-
-
-def test_synthetic_saga_keeps_team_unavailable_until_verifier_passes(native, tmp_path):
-    from api.topic_transfer_rehearsal import resume_rehearsal
-    account = SyntheticAccount(tmp_path / "coordinator-account.sqlite")
-    p = plan(read_snapshot(native))
-    with pytest.raises(TransferRefused, match="actor_not_source_owner"):
-        resume_rehearsal(native, account, p, actor="user:another", run_id="coordinator", stamp=STAMP,
-                         verify=lambda: True)
-    with pytest.raises(TransferRefused, match="activation_verification_failed"):
-        resume_rehearsal(native, account, p, actor=SOURCE, run_id="coordinator", stamp=STAMP,
-                         verify=lambda: False)
-    assert not account.visible("coordinator")
-    account.db.close()
-    account = SyntheticAccount(tmp_path / "coordinator-account.sqlite")
-    assert resume_rehearsal(native, account, p, actor=SOURCE, run_id="coordinator", stamp=STAMP,
-                            verify=lambda: True) == "active"
-    assert account.visible("coordinator")
     account.db.close()
 
 

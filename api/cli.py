@@ -289,6 +289,12 @@ def _main(argv: list[str] | None = None) -> int:
     ml.add_argument("--data", required=True, help='database file path of an offline copy')
     ml.add_argument("--batch", type=int, default=200, help='text index backfill batch size')
 
+    mb = sub.add_parser("migrate-body-mentions",
+                        help='maintenance: add body span columns to mentions (opt-in schema change)')
+    mb.add_argument("--data", required=True, help='database file path')
+    mb.add_argument("--approve", action="store_true",
+                    help='confirm the schema change; without it nothing is written')
+
     # `python -m store.migrate rebuild` 가 여기로 옮겨졌다(VIN-242): 재구축의 재큐 정책은
     # api 층(`docstore.switch_embed_model`)의 것이라 store 가 그것을 import 할 수 없다.
     sr = sub.add_parser("store-rebuild",
@@ -753,6 +759,23 @@ def _main(argv: list[str] | None = None) -> int:
         print(json.dumps(out, ensure_ascii=False), flush=True)
         ok = out["lex_ready"] and out["vectors_before"] == out["vectors_after"]             and out["chunks_without_lex"] == 0
         return 0 if ok else 3
+    if args.cmd == "migrate-body-mentions":
+        # 본문 스팬 열은 자동 provision 에 넣지 않는 opt-in DDL 이다. 승인은 함수가
+        # 판정한다(`--approve` 없으면 ValueError → 쓰지 않고 사용 오류).
+        from store import embedded_schema
+        from store.backend import open_store
+        from store.config import load_config
+        store = open_store(load_config({"data_dir": args.data}))
+        if store is None:
+            return _emit({"kind": "migrate-body-mentions", "executed": False,
+                          "error": "no reachable store"})
+        try:
+            out = embedded_schema.migrate_body_mentions(store, approved=args.approve)
+        except ValueError as exc:
+            return cli_output.usage_error(str(exc))
+        finally:
+            store.close()
+        return _emit({"kind": "migrate-body-mentions", **out})
     if args.cmd == "store-rebuild":
         from store import migrate
         from store.backend import open_store

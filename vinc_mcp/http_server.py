@@ -1445,12 +1445,6 @@ class _Handler(BaseHTTPRequestHandler):
         # /v1 밖의 PUT 은 전과 같이 표준 라이브러리의 501 이다(CORS 헤더 없음).
         self.send_error(501, "Unsupported method ('PUT')")
 
-    def do_PATCH(self):  # noqa: N802
-        from . import rest_api
-        if rest_api.handle(self, "PATCH"):
-            return
-        self.send_error(501, "Unsupported method ('PATCH')")
-
     def do_DELETE(self):  # noqa: N802
         """`DELETE /mcp` — 클라이언트 세션 종료. 스펙상 선택이지만 종료를 보내는
         호스트(Codex·Cursor 등)가 501 을 오류로 취급하지 않도록 명시 처리한다.

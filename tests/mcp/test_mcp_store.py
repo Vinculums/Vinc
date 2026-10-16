@@ -46,23 +46,20 @@ def test_refresh_single_consume(store):
 
 def test_connect_request_consume(store):
     store.add_connect_request("req1", "c1", "https://a/cb", "chal", "st", exp=9e9)
-    assert store.get_connect_request("req1")["client_id"] == "c1"
     rec = store.consume_connect_request("req1")
-    assert rec and rec["redirect_uri"] == "https://a/cb"
+    assert rec and rec["client_id"] == "c1" and rec["redirect_uri"] == "https://a/cb"
     assert store.consume_connect_request("req1") is None   # 단일 소비
-    assert store.get_connect_request("req1") is None       # 소비 후 조회 불가
 
 
 def test_connect_request_expiry(store):
     store.add_connect_request("req2", "c1", "https://a/cb", "chal", None, exp=1000)
-    assert store.get_connect_request("req2", now=2000) is None
     assert store.consume_connect_request("req2", now=2000) is None
 
 
 def test_owner_plan(store):
-    assert store.get_owner_plan("user:u1") is None
+    assert store.get_owner_plan_age("user:u1") == (None, None)
     store.set_owner_plan("user:u1", "pro")
-    assert store.get_owner_plan("user:u1") == "pro"
+    assert store.get_owner_plan_age("user:u1")[0] == "pro"
 
 
 def test_quota_allows_then_locks(store):

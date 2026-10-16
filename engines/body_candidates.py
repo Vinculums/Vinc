@@ -79,16 +79,3 @@ def prepare_candidates(text: str, doc_id: str, candidates: list[dict], *,
                     "score": score, "provenance_verified": "source-span-only",
                     "approved": item.get("approved") is True})
     return out
-
-
-def score_spans(candidates: list[dict], gold: list[dict]) -> dict:
-    """동일 문서/hash의 원문 스팬 gold와 정확 일치 대조. 실제 모델 실행은 하지 않는다."""
-    def keys(rows):
-        return {(c["doc_id"], c["source_hash"], s["char_start"], s["char_end"])
-                for c in rows for s in c["spans"]}
-    predicted, expected = keys(candidates), keys(gold)
-    correct = len(predicted & expected)
-    return {"predicted": len(predicted), "gold": len(expected), "correct": correct,
-            "precision": correct / len(predicted) if predicted else None,
-            "coverage": correct / len(expected) if expected else None,
-            "metric": "exact_source_span", "fresh_model_quality": "not_run"}

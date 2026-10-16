@@ -61,10 +61,6 @@ def _hf(name: str) -> str:
     return MODELS.get(name, name)
 
 
-def dim_of(model: str) -> int:
-    return EMBEDDING_DIM_BY_MODEL[_hf(model)]
-
-
 def peak_rss_mb() -> float:
     """이 프로세스의 피크 워킹셋(MB). psutil 없으면 Windows API 로 직접 묻는다 —
     측정 도구 하나 때문에 의존성을 늘리지 않는다."""

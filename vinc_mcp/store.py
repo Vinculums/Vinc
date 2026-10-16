@@ -383,15 +383,6 @@ class Store:
             self._db.commit()
             self._save_snapshot()
 
-    def get_connect_request(self, req_id: str, now: float | None = None) -> dict | None:
-        t = time.time() if now is None else now
-        row = self._db.execute(
-            "SELECT client_id,redirect_uri,challenge,state,exp,consumed,resource "
-            "FROM connect_requests WHERE req_id=?", (req_id,)).fetchone()
-        if row is None or row["consumed"] or row["exp"] < t:
-            return None
-        return dict(row)
-
     def consume_connect_request(self, req_id: str, now: float | None = None) -> dict | None:
         """미소비·미만료면 consumed 표시하고 레코드 반환(원자적). 아니면 None."""
         t = time.time() if now is None else now
@@ -415,11 +406,6 @@ class Store:
                 (owner, plan, time.time() if now is None else now))
             self._db.commit()
             self._save_snapshot()
-
-    def get_owner_plan(self, owner: str) -> str | None:
-        row = self._db.execute(
-            "SELECT plan FROM owner_plan WHERE owner=?", (owner,)).fetchone()
-        return row["plan"] if row else None
 
     def get_owner_plan_age(self, owner: str,
                            now: float | None = None) -> tuple[str | None, float | None]:
