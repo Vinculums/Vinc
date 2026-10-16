@@ -78,13 +78,26 @@ def _fixture():
 
 class ExportTests(unittest.TestCase):
     def test_graph_detail_fills_one_liner_and_evidence(self):
+        # 옛 사이드카 번들처럼 one_liner·근거가 없으면 graph 읽기가 채운다.
         nodes, _, _ = _fixture()
+        nodes["edges"][0].pop("evidence")
         export._enrich(nodes, {"executed": True,
                                "nodes": [{"id": "concept:Alpha", "one_liner": "summary"}],
                                "edges": [{"source": "concept:Alpha", "target": "concept:alpha",
                                           "type": "RELATED_TO", "evidence": "original quote"}]})
         self.assertEqual(nodes["nodes"][0]["one_liner"], "summary")
         self.assertEqual(nodes["edges"][0]["evidence"], "original quote")
+
+    def test_bundle_values_win_over_graph_detail(self):
+        # 번들이 나른 값은 정본이다. graph 읽기는 기록 대체처럼 그것이 못 보는 관계가 있다.
+        nodes, _, _ = _fixture()
+        nodes["nodes"][0]["one_liner"] = "from the bundle"
+        export._enrich(nodes, {"executed": True,
+                               "nodes": [{"id": "concept:Alpha", "one_liner": "summary"}],
+                               "edges": [{"source": "concept:Alpha", "target": "concept:alpha",
+                                          "type": "RELATED_TO", "evidence": "original quote"}]})
+        self.assertEqual(nodes["nodes"][0]["one_liner"], "from the bundle")
+        self.assertEqual(nodes["edges"][0]["evidence"], "a source")
 
     def test_markdown_order_case_collision_and_text(self):
         files = export.build_files("user:local", "md", *_fixture(), domain="vinc")
@@ -93,8 +106,10 @@ class ExportTests(unittest.TestCase):
         self.assertNotIn("nodes/record/other.md", files)
         doc = files["documents/guide.md"].decode("utf-8")
         keys = [line.split(":", 1)[0] for line in doc.split("---\n", 2)[1].splitlines()]
+        # 기존 키와 순서는 그대로고, 시간 필드는 뒤에만 붙는다.
         self.assertEqual(keys, ["doc_id", "title", "topic", "origin",
-                                "updated_at", "content_hash"])
+                                "updated_at", "content_hash", "content_time", "created_at",
+                                "valid_from", "valid_until", "superseded_by"])
         self.assertTrue(doc.endswith("---\nLine 1\nLine 2\n"))
 
     def test_csv_quoting_and_excel_bom(self):

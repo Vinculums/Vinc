@@ -31,7 +31,9 @@ import time
 TRACKED: dict[str, tuple[str, ...]] = {
     "Concept": ("title", "domain", "tags", "props", "topic", "one_liner", "status", "stem",
                 "content_time"),
-    "Episode": ("title", "date", "domain", "summary", "tags", "pinned"),
+    # props 도 추적한다. 동기화가 Episode props 를 나르므로, 안 세면 props 만 고친
+    # 편집이 sync_seq 를 못 올려 이 기기를 못 떠난다.
+    "Episode": ("title", "date", "domain", "summary", "tags", "pinned", "props"),
     # v15(W13) — 유효구간 둘도 추적한다. content_time 과 같은 이유다: 구간만 고친
     # 편집(무효화가 정확히 그 모양이다)도 변경이고, 안 세면 그 무효화가 기기를 못 떠난다.
     "Record": ("title", "domain", "tags", "props", "content_time",
