@@ -1,3 +1,6 @@
+# 생성 파일이다. 손으로 고치지 말 것.
+# source: integrations/client/python/src/vinc_client/output_gate.py
+# regenerate: python -X utf8 scripts/sync_output_gate.py
 """Host-side role checks. No model calls, graph writes, or automatic approvals.
 
 Text rules retain the original agent-lab gate's node-ID, refusal and diff handling.
