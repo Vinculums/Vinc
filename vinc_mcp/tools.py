@@ -68,6 +68,15 @@ _PREVIEW_APPLY_HINT = (
     "first result with replayed:true. "
 )
 
+# 미리보기가 없는 쓰기(vinc_ingest·vinc_merge_reject·vinc_doc_extract·vinc_doc_put)의
+# operation_id 문구. 스키마에 operation_id 를 주입하는 도구는 설명도 이 필드를 말해야 한다
+# (tests/mcp/test_tool_contract.py 가 스키마에서 파생해 검사한다).
+_WRITE_RETRY_HINT = (
+    "operation_id (a fresh UUID) makes the write safe to repeat after a lost response: resend "
+    "identical arguments with the same id and read vinc_operation_status before deciding; a repeat "
+    "returns the first result with replayed:true."
+)
+
 _AS_OF_GRAPH_PROP = {"type": "string", "description": (
     "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD. Hides "
     "neighbours whose own interval did not overlap that period (a Record's valid_from/"
@@ -1305,7 +1314,8 @@ TOOLS: list[dict] = [
                        "genuine distinction; without it the same pair returns every time and the "
                        "list never converges. Order of a/b does not matter (the pair is stored "
                        "sorted). Returns {kind, executed, a_id, b_id, undo, pair_key, count} where "
-                       "`count` is how many rejections this owner now has. Writes.",
+                       "`count` is how many rejections this owner now has. Writes. "
+                       + _WRITE_RETRY_HINT,
         "inputSchema": {"type": "object", "properties": {
             "a": {"type": "string", "description": "Exact id of one concept."},
             "b": {"type": "string", "description": "Exact id of the other concept."},
@@ -1501,7 +1511,17 @@ TOOLS: list[dict] = [
                        "freshness. A stored fact is not necessarily an embedded fact. "
                        "Call vinc_conventions once before your first write "
                        "in a session: it carries this owner's node/relation conventions and "
-                       "their existing domains, so your writes match what is already there.",
+                       "their existing domains, so your writes match what is already there. "
+                       "Optional conditions stop a write from overwriting what you did not read. "
+                       "create_only:true (on the fragment, or on one node) refuses when that id "
+                       "already exists, so a create can never edit an existing node. "
+                       "expected_rev on a node takes the rev from vinc_node and refuses when the "
+                       "stored rev differs; props_patch on such a node merges into the stored "
+                       "props instead of replacing them. A failed condition refuses the whole "
+                       "fragment before anything changes, with {executed:false, "
+                       "error:write_conflict, status:conflict, node_id, current_rev}. Read the "
+                       "node again instead of resending. Omit them for the plain MERGE. "
+                       + _WRITE_RETRY_HINT,
         "inputSchema": _FRAGMENT_SCHEMA,
         "run": _t_ingest,
     },
@@ -1627,10 +1647,7 @@ TOOLS: list[dict] = [
                        "document must not exist yet. create_only:true refuses with "
                        "error:write_conflict when doc_id already exists, so a create can never "
                        "edit an existing document. Omit both for the plain upsert. "
-                       "operation_id (a fresh UUID) makes the write safe to repeat after a lost "
-                       "response: resend identical arguments with the same id and read "
-                       "vinc_operation_status before deciding; a repeat returns the first result "
-                       "with replayed:true.",
+                       + _WRITE_RETRY_HINT,
         "inputSchema": {"type": "object", "properties": {
             "valid_from": {"type": "string", "description": (
                 "When the document's content became true, YYYY[-MM[-DD]]. Omit to keep the "
@@ -1680,7 +1697,8 @@ TOOLS: list[dict] = [
                        "Pass `candidates` to apply a list you curated instead of the deterministic "
                        "heading-based extraction; only title and one_liner are trusted and the id "
                        "is always re-derived server-side. Returns {executed, doc_id, candidates, "
-                       "applied:{created, matched}, mentions}. Writes only when apply:true.",
+                       "applied:{created, matched}, mentions}. Writes only when apply:true. "
+                       + _WRITE_RETRY_HINT,
         "inputSchema": {"type": "object", "properties": {
             "doc_id": {"type": "string", "description": "Exact id of a document you own."},
             "apply": {"type": "boolean", "default": False,
