@@ -609,8 +609,8 @@ GATE_TOP = 20
 def _keyword_gate(query: str, arms: list[list[dict]]) -> bool:
     """키워드 목록을 융합에서 뺄 것인가. **의미 팔이 행을 냈을 때만** 판단한다 — 인코더가 없는
     데스크톱 사이드카나 의미 팔이 실패한 검색에서 키워드를 빼면 빈 페이지가 남는다.
-    행에 `lex` 가 없으면(색인이 아직 `text` 위) 판단하지 않는다: 관문은 두 글자 묶음 색인과
-    함께 잰 것이고, 이관 전 스토어는 오늘처럼 답해야 한다."""
+    행에 `lex` 가 없으면(`migrate_lex_index` 를 아직 안 돌려 색인이 `text` 위인 스토어) 판단하지
+    않는다: 관문은 두 글자 묶음 색인과 함께 잰 것이고, 이관 전 스토어는 관문 없이 답한다."""
     if len(arms) < 2 or not arms[1] or not arms[0]:
         return False
     head = arms[0][:GATE_TOP]

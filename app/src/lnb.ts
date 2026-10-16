@@ -571,12 +571,11 @@ function paintRail(): void {
   // 설정 버튼은 `#rail-kinds` **밖**(레일 바닥)에 산다. 종을 다시 그려도 그 자리는
   // 그대로다. 뱃지만 여기서 다시 묻는다 — 제안 적체가 레일 바닥에 남아 있어야 한다.
   void import("./conventions").then((m) => m.refreshBadge());
-  // ⚠ 레일에 접기 버튼을 두었다가 뺐다(2026-09-09). 접는 대상이 레일까지이므로
-  // 손잡이가 그 안에 있으면 함께 사라진다 — 상단 바 왼쪽 끝으로 갔다.
+  // ⚠ 레일에는 접기 버튼을 두지 않는다. 트리 접기 손잡이는 상단 바 왼쪽 끝 하나다
+  // (`tb-shell-toggle`, `setOpen`).
 }
 
-/* ⚠ `navRows()` 와 `surfaceHash()` 는 **사라졌다**(2026-09-09). 홈 한 줄이
-   레일로 갔으므로 이 열은 문서만 든다 — 내비를 그릴 것이 없다. */
+/* 이 열은 문서만 든다. 내비(홈 한 줄)는 레일에 있다. */
 
 function docRow(d: { doc_id: string; title: string; node_id?: string; depth?: number },
                 domain = ""): string {

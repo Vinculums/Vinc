@@ -963,10 +963,9 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  모두 이 하나만 읽는다 — UI 가 렌더러에 없는 상태를 주장하지 않게 하는 단일 진실. */
   const shownViewpoint = (_lv: Level): Viewpoint | null => curPrefs().view;
 
-  /** D31 + D43 — 인캔버스 View 컨트롤. view 는 이제 관점 5지선다(맵 3D/2D + 평면 3종)라
-   *  칩은 현재 관점 이름을 그대로 싣는다. Grid/Matrix 는 같은 패널의 두 번째 행으로
-   *  옮겨 스위처를 하나로 만든다(툴 행에 느슨한 칩을 남기지 않는다).
-   *  닫힌 층(형태=타입 · 포인트색=초점 · 모노크롬)은 여전히 노출하지 않는다. */
+  /** D31 + D43: 인캔버스 View 컨트롤. 관점은 넷(3D · 2D · 타임라인 · 번들, `VIEWPOINTS`)이고
+   *  칩은 현재 관점 이름을 그대로 싣는다. 닫힌 층(형태=타입 · 포인트색=초점 · 모노크롬)은
+   *  노출하지 않는다. */
   /** 칩 라벨 — 프레임 폐기 후로는 언제나 관점 이름이다(모든 층이 관점을 그린다). */
   const viewpointLabel = () => viewpointName(curPrefs().view);
   /** D56 — `보기`·`공유` 는 상단 바 버튼이다. 표면은 자기 동작만 등록하고, 버튼의

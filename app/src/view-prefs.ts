@@ -6,7 +6,7 @@
  *  and is deliberately not user-configurable. Persisted per machine via
  *  localStorage; no sidecar contract involved (coords stay D17 canonical). */
 
-// 배치는 둘이다(발주자 지시 2026-10-11).
+// 배치는 둘이다.
 //   hub           — `중심에서`. 서버가 준 좌표 그대로다: 연결이 많은 노드가 가운데,
 //                   적을수록 바깥으로 밀려나는 동심 배치. "무엇이 중심인가"를 말한다.
 //   temporalRoots — `시간순 가지`. 받은 그래프를 워커가 주제마다 날짜 순서의 가지로

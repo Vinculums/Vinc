@@ -1,7 +1,7 @@
-# Vinc Tauri shell — P4 packaging scaffold (DEC D1: shell = Tauri).
+# Vinc Tauri shell (DEC D1: shell = Tauri).
 # 제어 = Tauri IPC(사이드카 수명주기·파일 다이얼로그), 데이터 = localhost HTTP.
-# 빌드·서명·3플랫폼 설치본은 P4 마일스톤에서(클린 VM 게이트) — 본 스캐폴드는
-# 구성 형태를 고정할 뿐 CI/개발 환경에서 cargo 빌드를 요구하지 않는다.
+# CI(`ci.yml` rust 잡)가 PR 마다 `cargo check`·`cargo test` 를 돌리고, 릴리스
+# (`release.yml`)가 세 플랫폼 설치본을 빌드·서명해 싣는다.
 [package]
 name = "vinc-app"   # 엔진이 `vinc` 를 갖는다(VIN-72). Tauri 는 사이드카와
                     # 패키지 이름이 같으면 빌드를 거절한다.

@@ -251,7 +251,7 @@ class NavTreeE2E(unittest.TestCase):
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class NavTreeDomainScope(NavTreeE2E):
-    """`domain=` — 주제 **하위 트리**로 모집단을 좁힌다(VIN-89).
+    """`domain=`: 주제 **하위 트리**로 모집단을 좁힌다.
 
     이 인자가 없던 동안 좌측 레일의 Agent 갈래는 주제를 선언만 하고 실어 보낼 자리가
     없어 **모든 개념**을 세웠다(실측 2026-09-20).

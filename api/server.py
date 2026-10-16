@@ -2887,11 +2887,9 @@ class _Handler(BaseHTTPRequestHandler):
             "/ingest": app.write_ingest,
             "/delete": app.write_delete, "/delete-edge": app.write_delete_edge,
             "/merge-nodes": app.write_merge,
-            # F10-b 병합 후보 기각(가역) — 비가역 병합의 안전한 반대편.
-            # TODO(vinc_mcp/tools.py): 이 경로를 부르는 MCP 도구가 아직 없다.
-            #   `vinc_merge_reject {a, b, note?, undo?}` → POST /merge-reject 와
-            #   `vinc_merge_candidates` 에 `include_structural: boolean` 을 추가해야
-            #   호스트가 기각하고 되열 수 있다(스키마 변경이라 이 작업 범위 밖).
+            # F10-b 병합 후보 기각(가역): 비가역 병합의 안전한 반대편. MCP 에서는
+            # `vinc_merge_reject`(기각·undo)와 `vinc_merge_rejections`(목록)가 부르고,
+            # 구조적으로 뺀 쌍은 `vinc_merge_candidates` 의 `include_structural` 로 되열린다.
             "/merge-reject": app.write_merge_reject,
             # 문서 정본(D45 P4) — put(적재/편집) · delete. 단일 writer 직렬화.
             "/doc/put": app.write_doc_put, "/doc/delete": app.write_doc_delete,
