@@ -90,13 +90,13 @@ export type TopicPiece = {
   box: { id: string; width: number; height: number; left: number; top: number; ids: string[] };
   spatial: SpatialTopic;
 };
-export type PieceCache = { get(key: string): TopicPiece | undefined; set(key: string, piece: TopicPiece): void };
+type PieceCache = { get(key: string): TopicPiece | undefined; set(key: string, piece: TopicPiece): void };
 /** Where each topic box sat last time: its shift, depth and size. Passing the previous
  * placement keeps unchanged boxes where they were, so the corridors between them can be reused. */
 export type BoxPlacement = { x: number; y: number; z: number; width: number; height: number; left: number; top: number };
 /** Routes keyed by everything the router saw. A stored route is reused only if it still clears every box. */
-export type RouteCache = { get(key: string): RoutePoint[][] | undefined; set(key: string, routes: RoutePoint[][]): void };
-export type LayoutOptions = {
+type RouteCache = { get(key: string): RoutePoint[][] | undefined; set(key: string, routes: RoutePoint[][]): void };
+type LayoutOptions = {
   pieces?: PieceCache;
   routes?: RouteCache;
   /** In: the previous placement. Out: `next` receives this run's placement. */
@@ -160,10 +160,10 @@ const clears = (points: RoutePoint[], boxes: Rect[]) => {
 };
 
 /** Bump when layoutTopic changes what it produces for the same inputs, so stored pieces are not reused. */
-export const PIECE_VERSION = 1;
+const PIECE_VERSION = 1;
 /** Everything a piece depends on, in the order it is read. Member and relation order matter:
  * they are the order ELK receives its children and edges in. */
-export function pieceKey(topic: GraphNode, members: GraphNode[], inside: GraphEdge[], basis: "recorded" | "content",
+function pieceKey(topic: GraphNode, members: GraphNode[], inside: GraphEdge[], basis: "recorded" | "content",
   ordering: LayoutOrdering, thorough: string): string {
   return JSON.stringify([PIECE_VERSION, topic.id, basis, ordering, thorough,
     members.map(n => [n.id, timeOf(n, basis)]), inside.map(e => [e.source, e.target, e.type])]);

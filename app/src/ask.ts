@@ -97,8 +97,6 @@ export function askClose() {
   if (panel) panel.hidden = true;
 }
 
-export function askIsOpen(): boolean { return !!panel && !panel.hidden; }
-
 /** 한 턴 — 질문을 싣고, 답을 만들고, 다시 그린다. */
 export async function askSubmit(raw: string) {
   const q = raw.trim();

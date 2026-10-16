@@ -15,7 +15,7 @@ import { mountTopicConversion } from "../topic-conversion";
  *  를 한 상자에 담는다. 시트 머리의 ✕ 가 닫기이고, 여기 안에 닫기를 하나 더 두지 않는다.
  *  웹 Vinc 는 셸 전용 분류(AI 연결 · 고급)와 계정연결·동기화 섹션을 숨긴다. */
 
-export type SettingsCat =
+type SettingsCat =
   | "general" | "reading" | "account" | "ai"
   | "data" | "graphmd" | "advanced" | "about";
 export type DataTab = "create" | "import" | "share";
@@ -56,7 +56,7 @@ export function openSettings(start: SettingsCat = "general", dataTab?: DataTab, 
   });
 }
 
-export async function renderSettings(
+async function renderSettings(
   el: HTMLElement,
   sheet: SheetHandle,
   start: SettingsCat = "general",

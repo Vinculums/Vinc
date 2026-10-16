@@ -3,7 +3,7 @@ import { isPlanar, isRootsLayout, serverLayoutFor, type ViewPrefs } from "./view
 /** 한 번의 그래프 읽기가 무엇을 요청하는가. 서버가 받는 인자와 재사용 키가 같은 값에서
  * 나오므로 한 곳에서 계산한다: 둘이 갈리면 다른 요청이 같은 캐시 항목을 쓴다.
  * roots 배치는 hub 좌표의 같은 인구를 받아 워커에서 다시 배치하므로 원뿔 값은 1 이다. */
-export type GraphReadPlan = {
+type GraphReadPlan = {
   useRoots: boolean;
   serverLayout: ReturnType<typeof serverLayoutFor>;
   cone: number;

@@ -151,7 +151,7 @@ async function storeMcpKey(value: string): Promise<void> {
 }
 
 /** 진행 중인 폴링을 멈춘다(시트를 닫거나 화면을 다시 그릴 때). */
-export function abortConnect(): void { connectGeneration++; }
+function abortConnect(): void { connectGeneration++; }
 
 /** Open a trusted account or legal URL in the system browser. */
 export async function openBrowser(url: string): Promise<void> {
@@ -160,7 +160,7 @@ export async function openBrowser(url: string): Promise<void> {
   else window.open(url, "_blank", "noopener,noreferrer");
 }
 
-export type ConnectResult = "connected" | "expired" | "aborted" | "failed";
+type ConnectResult = "connected" | "expired" | "aborted" | "failed";
 
 /** 디바이스 플로우를 끝까지 돈다. `onState` 로 진행을 알린다(문구는 호출부가 정한다).
  *

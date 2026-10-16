@@ -79,9 +79,6 @@ const tintStyle = (domain: string): string => {
  *  `group` 은 같은 표식을 쓰는 종을 자리로 묶는다(구/정사면체). */
 /** 새 역할의 기본 주제와 기존 호환 주제. 목록 발견은 이 주제로 제한하지 않는다. */
 export const AGENT_TOPICS = ["agent", "vinc/agent"] as const;
-/** 주제가 역할 주제이거나 그 아래인가. `agents`·`vinc/agentic` 은 아니다. */
-export const inAgentTopic = (d: string): boolean =>
-  AGENT_TOPICS.some((t) => d === t || d.startsWith(t + "/"));
 
 type RailItem = {
   key: string; kind?: string; topics?: readonly string[]; mark: string;

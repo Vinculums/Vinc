@@ -23,7 +23,7 @@ const TEXT_EXT = /\.(md|markdown|txt|text|rst)$/i;
 /** 바이트로 넘겨 서버가 추출하는 확장자. */
 const BIN_EXT = /\.pdf$/i;
 /** 드롭존·picker 가 받는 전체 집합. 제목을 뽑을 때도 이 앵커를 쓴다. */
-export const DOC_EXT = /\.(md|markdown|txt|text|rst|pdf)$/i;
+const DOC_EXT = /\.(md|markdown|txt|text|rst|pdf)$/i;
 
 export const isDocFile = (f: File): boolean => DOC_EXT.test(f.name);
 
@@ -38,7 +38,7 @@ const WEB_BODY_LIMIT = 3_800_000;
 /** base64 는 4/3 로 부푼다 — 바이트 경로의 원본 상한은 그만큼 낮다. */
 const WEB_BINARY_LIMIT = Math.floor((WEB_BODY_LIMIT * 3) / 4);
 
-export type DocImport = {
+type DocImport = {
   docId: string;
   title: string;
   /** F5 — 내용이 그대로면 서버가 재청킹을 건너뛴다. 실패가 아니라 성공으로 센다. */

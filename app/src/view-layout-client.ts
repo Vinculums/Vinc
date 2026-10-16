@@ -3,9 +3,9 @@ import type { LayoutGraph, LayoutOrdering } from "./view-layout";
 
 /** 진척이 이만큼 없으면 멈춘 것으로 본다. 워커는 ELK 호출 사이에 5초마다 진척을 알리고,
  *  가장 긴 동기 라우팅 한 번은 큰 그래프에서 20초대였다. */
-export const LAYOUT_IDLE_MS = 60_000;
+const LAYOUT_IDLE_MS = 60_000;
 /** 진척이 있어도 이보다 길면 접는다. 화면은 그동안 중심에서 배치를 보여 주고 있다. */
-export const LAYOUT_CAP_MS = 300_000;
+const LAYOUT_CAP_MS = 300_000;
 
 /** A layout job owns its worker. All exits terminate it, including removal of
  * View, a newer scope, worker faults, a stalled worker and the overall cap.

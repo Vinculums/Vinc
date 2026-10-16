@@ -23,7 +23,7 @@ const GEN_START = /^<!--\s*vinc:generated start\b.*-->\s*$/;
 const GEN_END = /^<!--\s*vinc:generated end\s*-->\s*$/;
 
 /** 본문을 (앞산문, 생성구역, 뒷산문)으로 가른다. 마커가 정상 쌍이 아니면 null. */
-export function splitConventions(text: string): [string, string, string] | null {
+function splitConventions(text: string): [string, string, string] | null {
   const lines = (text || "").replace(/\r\n/g, "\n").split("\n");
   const s = lines.findIndex((l) => GEN_START.test(l));
   const e = lines.findIndex((l) => GEN_END.test(l));
@@ -43,7 +43,7 @@ const isPending = (t: any) => t?.provenance === "ingest_proposed";
 
 /** 상단 바 뱃지에 쓰는 제안 적체 수. 어휘를 못 읽는 환경(웹, 셸 계정 모드)에서는 0 이다.
  *  어휘 재가는 사이드카 전용이고 계정 프록시가 의도적으로 막는다. */
-export async function proposedCount(): Promise<number> {
+async function proposedCount(): Promise<number> {
   if (remote()) return 0;
   try {
     const th = await api.themes();

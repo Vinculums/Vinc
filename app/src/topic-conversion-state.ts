@@ -1,7 +1,7 @@
 import type { ConversionCheck, ConversionRun, ConventionsPolicy } from "./api";
 
 export type Checkpoint = { id: string; name: string; topic: string; fingerprint: string; conventions_policy?: ConventionsPolicy };
-export type ConversionClient = {
+type ConversionClient = {
   preflight(topic: string, policy: ConventionsPolicy): Promise<ConversionCheck>;
   reserve(body: Checkpoint): Promise<ConversionRun>;
   status(id: string): Promise<ConversionRun>;

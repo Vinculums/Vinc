@@ -76,8 +76,8 @@ class PlanarTests(unittest.TestCase):
         self.assertNotIn("--recede-node", css)
         self.assertIsNone(re.search(r"^\.pl-fade\s*\{", css, re.M),
                           "`.pl-fade` 가 노드 그룹 전체를 흐리면 마크가 틴트가 된다")
-        # 이름은 여전히 물러난다.
-        self.assertIn(".pl-fade .pl-lab", css)
+        # 글자는 여전히 물러난다(`.pl-lab` 은 붙는 요소가 없어 지웠고 남은 글자는 `.pl-cap`).
+        self.assertIn(".pl-fade .pl-cap", css)
 
     def test_recede_에_node_가_없다(self):
         self.assertNotIn('"node"', _read("recede.ts").split("export type RecedeKind")[1]

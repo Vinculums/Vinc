@@ -17,8 +17,8 @@ import {
   relRefusal, slugOf, stampSlug, type NodeKind, type Rel,
 } from "./authoring";
 
-export type Made = { id: string; title: string; domain: string };
-export type ComposerOpts = {
+type Made = { id: string; title: string; domain: string };
+type ComposerOpts = {
   kind?: NodeKind; title?: string; oneLiner?: string; topic?: string;
   /** 흐름 D — 이 노드가 나온 문서. props 에 남긴다(어디서 왔는지 되짚을 자리). */
   sourceDoc?: string;

@@ -44,7 +44,7 @@ async function pipe(data: Uint8Array, s: CompressionStream | DecompressionStream
 const deflateRaw = (d: Uint8Array) => pipe(d, new CompressionStream("deflate-raw"));
 const inflateRaw = (d: Uint8Array) => pipe(d, new DecompressionStream("deflate-raw"));
 
-export const isZip = (d: Uint8Array) => d[0] === 0x50 && d[1] === 0x4b;   // "PK"
+const isZip = (d: Uint8Array) => d[0] === 0x50 && d[1] === 0x4b;   // "PK"
 
 // ── 쓰기 ────────────────────────────────────────────────────────────────────
 type Entry = { name: Uint8Array; crc: number; raw: number; comp: Uint8Array; off: number };

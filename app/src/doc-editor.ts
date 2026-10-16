@@ -6,7 +6,6 @@
 import { api, cfg, docMidWrite, storeDownReason, shellInvoke } from "./api";
 import { COPY } from "./copy";
 import { docTitle } from "./doc-title";
-import { confirmDestructive } from "./components";
 import { hydrateRich } from "./rich-blocks";
 
 /** 결정론 미니 마크다운 렌더러(폴백 미리보기·Reader 공용). **표시 전용** — 소스는
@@ -163,7 +162,7 @@ export function docEditorOpen(): boolean {
   return !!pane && !pane.hidden && !!pane.querySelector(".cm-content");
 }
 
-export type DocEditorOpts = {
+type DocEditorOpts = {
   owner: string;
   docId?: string;         // 없으면 신규(첫 저장 시 생성 → 반환 id 로 이후 편집)
   title?: string;

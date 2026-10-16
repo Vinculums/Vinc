@@ -1,6 +1,6 @@
 /** Shared surface chrome — Figma first-draft visual grammar (nodes 5:2/5:71/
  *  6:57/7:2/7:78) carried over with approved deltas (D18 English copy). */
-import { icon, stateDot } from "./icons";
+import { stateDot } from "./icons";
 import { COPY } from "./copy";
 import { temporalEntries } from "./search-temporal";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
@@ -289,7 +289,7 @@ export function sheetActions(primary: { id: string; label: string; danger?: bool
  *
  *  시트도 패널도 아닌 **세 번째 층**이다: 딤 없음, 포인터 좌표에 붙음, 한 번 고르면
  *  사라짐. 화면 밖으로 나가지 않도록 좌표를 접어 넣는다. */
-export type MenuItem = { label: string; run: () => void; danger?: boolean };
+type MenuItem = { label: string; run: () => void; danger?: boolean };
 
 export function openContextMenu(x: number, y: number, items: MenuItem[]) {
   document.querySelectorAll(".ctx-menu").forEach((m) => m.remove());
@@ -444,11 +444,6 @@ export function promptText(title: string, initial: string, confirmLabel: string,
     input.focus();
     input.select();
   });
-}
-
-/** Top-right primary CTA (Figma: 포인트색 필 버튼, 화면당 1개). */
-export function headerCta(id: string, iconName: string, label: string): string {
-  return `<button class="btn btn-primary header-cta" id="${id}">${icon(iconName, 16)} ${label}</button>`;
 }
 
 /** 벡터(의미) 팔이 빠진 검색을 화면이 말할 말. **정상이면 null** 이다.

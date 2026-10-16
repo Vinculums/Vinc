@@ -636,7 +636,7 @@ export type GraphEdge = {
 };
 /** 상세 레일의 연결 요약 + 관계 목록(node-context ④). 세는 자리가 노드 자신이라
  *  어느 동선(그래프 클릭 · 드릴다운 · 기간 목록 · 검색 착지)으로 열어도 같은 값이다. */
-export type NodeLink = {
+type NodeLink = {
   id: string; title: string; domain: string; type: string;
   dir: "out" | "in" | "att";
   evidence: boolean;      // 근거 문장이 기록돼 있는가(문장 전문은 edge-context)
@@ -671,7 +671,7 @@ export type NodeContext = {
  *  (MENTIONS)에서 유도된다 — `모든 문서` 목록과 같은 원천이라 두 화면이 같은 문서를
  *  다른 주제에 걸지 않는다. `depth` 는 그 주제 안 개념 계층(선행·파생 BFS)이고,
  *  `node_id` 는 클릭 시 착지할 노드다. 언급 0 문서는 `unfiled`(착지 노드 없음). */
-export type NavDoc = {
+type NavDoc = {
   doc_id: string; title: string; updated_at: string;
   node_id: string; node_title: string; depth: number;
 };
@@ -765,7 +765,7 @@ export async function viewAccess(scope: ReturnType<typeof viewScope>, signal?: A
   return { session: JSON.stringify([scope.key, identity]), revision: marker };
 }
 
-export type GraphRootsAnswer = {
+type GraphRootsAnswer = {
   executed: boolean;
   state: "off" | "pending" | "stale" | "ready" | "failed";
   marker?: string;

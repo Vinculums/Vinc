@@ -8,7 +8,7 @@
 //   D — 글을 고르면 그 위에 작은 줄(개념 · 기록 · 결정). 누르면 부르는 쪽이 컴포저를 연다.
 import type { EditorView } from "@codemirror/view";
 
-export type MentionHit = { id: string; title: string; domain: string };
+type MentionHit = { id: string; title: string; domain: string };
 export type MentionOpts = {
   /** 찾은 노드와, 의미 팔이 빠진 검색이면 그 사실(`note`). */
   search: (q: string) => Promise<{ hits: MentionHit[]; note: string }>;

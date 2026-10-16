@@ -20,11 +20,11 @@ export const RUNGS = ["strongest", "strong", "fast", "cheapest"] as const;
 export const ROLE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** 직무명 → 역할 이름 후보. 영문 소문자·숫자만 남긴다(한국어 직무명이면 빈 값이라 사람이 적는다). */
-export const roleSlugOf = (title: string): string =>
+const roleSlugOf = (title: string): string =>
   title.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48)
     .replace(/-+$/, "");
 /** 여러 줄 칸 → 목록. 빈 줄은 버린다. */
-export const linesOf = (s: string): string[] => s.split("\n").map((x) => x.trim()).filter(Boolean);
+const linesOf = (s: string): string[] => s.split("\n").map((x) => x.trim()).filter(Boolean);
 
 export function openRoleComposer(): void {
   const R = COPY.author.role;

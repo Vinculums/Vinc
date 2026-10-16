@@ -22,8 +22,8 @@ import {
  *  주는 두 언어 모두 일요일에 시작한다.
  *  근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] §2.4 */
 
-export type RangeValue = { preset: PeriodKey; from: string; to: string };
-export type DateRangeOpts = {
+type RangeValue = { preset: PeriodKey; from: string; to: string };
+type DateRangeOpts = {
   /** 이 요소 아래(자리가 없으면 위)에 열린다. 닫히면 포커스가 여기로 돌아간다. */
   anchor: HTMLElement;
   /** 기준이 다시 그려져 떨어져 나간 뒤 닫힐 때 포커스를 돌려줄 곳을 다시 찾는다. */
@@ -78,7 +78,6 @@ function lastDay(k: string): string {
 
 let current: { close: () => void } | null = null;
 
-export function isDateRangeOpen(): boolean { return !!current; }
 export function closeDateRange(): void { current?.close(); }
 
 export function openDateRange(o: DateRangeOpts): void {
