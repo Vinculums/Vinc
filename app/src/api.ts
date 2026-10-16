@@ -1,7 +1,8 @@
 import { viewSessionCache } from "./view-session-cache";
 import type { LayoutAnswer } from "./view-layout-wire";
-/** Sidecar client — data plane is localhost HTTP + session token (control will
- *  be Tauri IPC when the shell lands, P4). Graph/query logic never lives here. */
+/** Sidecar client. Data plane is localhost HTTP + session token; in the shell the
+ *  control plane (port, token, sidecar lifecycle) goes over Tauri IPC (`shellInvoke`).
+ *  Graph/query logic never lives here. */
 import { chunkPack, type StageCounts } from "./packchunks";
 
 const BASE_KEY = "vinc.sidecar.base";
@@ -30,12 +31,13 @@ const DEFAULT_BASE = IN_SHELL ? "http://127.0.0.1:8787" : location.origin;
 export const WEB = !IN_SHELL
   && location.hostname !== "localhost" && location.hostname !== "127.0.0.1";
 
-// ── 데스크톱 데이터 모드(VIN-128) ──────────────────────────────────────────
+// ── 데스크톱 데이터 모드 ──────────────────────────────────────────────────
 // 셸은 두 모드 중 하나다. **계정 모드**면 화면이 읽고 쓰는 그래프가 계정 그래프이고
 // (웹과 같은 `/api/graph/*`), 사이드카는 그 호출을 계정으로 넘기는 통과로일 뿐이다
-// (`/space/proxy`, 키는 바디로만). **로컬 모드**면 종전대로 이 기기의 스토어다.
-// 계정 모드가 기본이지만, 로컬 스토어에 이미 데이터가 있는 설치는 이행 흐름(VIN-131)이
-// 생기기 전까지 로컬로 남는다: 빈 계정 화면이 기존 작업을 가리면 그게 곧 유실처럼 보인다.
+// (`/space/proxy`, 키는 바디로만). **로컬 모드**면 이 기기의 스토어다.
+// 계정 모드가 기본이다. 모드를 고른 적 없는 설치에 로컬 작업이 있으면 로컬로 계속 가며
+// 한 번 알리고, 옮기기는 설정에만 있다(`decideDataMode`): 빈 계정 화면이 기존 작업을
+// 가리면 그게 곧 유실처럼 보인다.
 // 근거: [[decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting]]
 const MODE_KEY = "vinc.mode";
 export type DataMode = "account" | "local";
@@ -95,9 +97,8 @@ export const cfg = {
   },
 };
 
-/** 연결 셋업 진단 문자열 — 실패 시 화면에 노출해 원인을 즉시 파악(v0.1.3).
- *  v0.1.7: 앱 버전 + 셸이 준 실제 포트(conn.port)를 박는다 — "base=8787 인데 어느
- *  버전인가/셸이 무슨 포트를 줬나"가 리포트만으로 판별되게(macOS 리포트 대응). */
+/** 연결 셋업 진단 문자열. 실패하면 화면에 노출해 원인을 바로 본다. 앱 버전과 셸이 준
+ *  실제 포트(conn.port)를 박아, 어느 빌드가 어느 포트를 받았는지 리포트만으로 판별된다. */
 declare const __APP_VERSION__: string;   // vite define 주입(빌드 상수)
 declare const __BUILD_SHA__: string;     // 〃 — 짧은 커밋 SHA(웹은 태그와 무관하게
                                          // 배포돼 버전만으로는 빌드를 특정 못 한다)

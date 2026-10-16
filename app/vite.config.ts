@@ -18,9 +18,10 @@ const buildSha = (() => {
   }
 })();
 
-// Dev proxy — the scaffold serves the app and forwards sidecar endpoints
-// same-origin, so no CORS surface is added to the sidecar. The Tauri shell
-// (P4) replaces this with its own origin policy.
+// Dev proxy (browser dev only): vite serves the app and forwards sidecar endpoints
+// same-origin, so no CORS surface is added to the sidecar. The Tauri shell does not
+// go through it: there the app calls the sidecar on 127.0.0.1 directly (port and token
+// over IPC, `api.ts` `connectSidecar`) under the shell's CSP (`src-tauri/tauri.conf.json`).
 const SIDECAR = process.env.VINC_SIDECAR || "http://127.0.0.1:8787";
 // ⚠ 이 목록은 **드리프트 원천**이다: 사이드카에 라우트를 더하고 여기 등재를 잊으면
 // 브라우저 dev 에서 그 요청만 index.html(200)을 받아, 앱은 "사이드카가 꺼졌다"고

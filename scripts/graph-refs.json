@@ -612,6 +612,7 @@
     "vinc.plan.incremental-derived-view-results-2026-10-12",
     "vinc.plan.korean-retrieval-p1-p2-2026-10-02",
     "vinc.plan.landing-hero-scroll-film-2026-10-04",
+    "vinc.plan.landing-redesign-2026-10-16",
     "vinc.plan.large-topic-ownership-conversion-2026-10-14",
     "vinc.plan.laya-ai-curation-registration-2026-10-15",
     "vinc.plan.laya-curated-comparison-execution-2026-10-15",
@@ -795,6 +796,7 @@
     "vinc.research.site-demo-loading-and-alternatives-2026-10-04",
     "vinc.research.site-mobile-2026-10-02",
     "vinc.research.startup-programs-autumn-2026",
+    "vinc.research.stripe-landing-teardown-2026-10-16",
     "vinc.research.team-dpa-legal-review-2026-09-26",
     "vinc.research.time-branches-layout-bottleneck-2026-10-12",
     "vinc.research.topic-conversion-legacy-executor-2026-10-16",
@@ -902,7 +904,6 @@
     "decision:the-top-bar-is-a-search-card-and-a-view-card-2026-09-26",
     "decision:the-windows-release-leg-goes-back-to-hosted-2026-09-07",
     "decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12",
-    "decision:topic-conversion-phase-deadlines-2026-10-16",
     "decision:topic-transfer-edge-history-and-foreign-rejection-endpoints-2026-10-16",
     "decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16",
     "decision:topic-transfer-plain-references-and-external-images-2026-10-16",
@@ -1268,9 +1269,6 @@
       "validity": "current"
     },
     "decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12": {
-      "validity": "unknown"
-    },
-    "decision:topic-conversion-phase-deadlines-2026-10-16": {
       "validity": "unknown"
     },
     "decision:topic-transfer-edge-history-and-foreign-rejection-endpoints-2026-10-16": {

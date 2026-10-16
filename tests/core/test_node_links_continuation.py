@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""VIN-89 — 관계 목록의 **이어 읽을 자리**(`links_offset` → `next_offset`).
+"""관계 목록의 **이어 읽을 자리**(`links_offset` → `next_offset`).
 
 상한(`_NODE_LINKS_CAP` = 24)은 전부터 있었고 `truncated` 로 잘렸다고 말하기도 했다.
 없던 것은 **그 뒤로 가는 길**이다: 25개짜리 이웃에서 24줄과 `total:25` 를 받고 나면

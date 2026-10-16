@@ -262,7 +262,7 @@ SCHEMA_VERSION = 22
 #: v21 — 전문 색인이 `Chunk.lex` 위에 섰다는 표지(`_SchemaMeta` 의 키, 값 `ready`).
 #: **스키마 버전과 분리한다.** 버전은 기동 때 ALTER 와 함께 기록되는데 색인 이관은 기동 뒤에
 #: 돌거나(데스크톱) 사본에서 돈다(허브). 버전을 표지로 쓰면 이관 전 스토어가 없는 색인으로
-#: 질의를 보낸다. 표지가 없으면 색인·질의 모두 오늘처럼 `text` 다.
+#: 질의를 보낸다. 표지가 없는 스토어(`migrate_lex_index` 를 아직 안 돌린 것)는 색인·질의 모두 `text` 다.
 #: 근거: [[vinc.plan.korean-retrieval-p1-p2-2026-10-02 §2.2]]
 LEX_INDEX_KEY = "lex_index"
 
@@ -397,7 +397,7 @@ def migration_statements(from_version: int) -> list[str]:
     if from_version < 20:  # v20 — 벡터별 인코더 지문. '' 는 구 행이라 판을 모른다.
         stmts.append("ALTER TABLE ChunkVec ADD encoder_runtime STRING DEFAULT ''")
         stmts.append("ALTER TABLE NodeVec ADD encoder_runtime STRING DEFAULT ''")
-    if from_version < 21:  # v21 — 한국어 색인 열. 열이 생길 뿐이고 색인은 아직 `text` 다.
+    if from_version < 21:  # v21: 한국어 색인 열. 이 단계는 열만 만든다(색인은 아래 데이터 단계 전까지 `text` 위).
         # 색인을 옮기는 것은 데이터 단계(`EmbeddedBackend.migrate_lex_index`)이고 그 끝에
         # `LEX_INDEX_KEY` 표지가 선다. 버전은 기동 때 기록되므로 표지가 될 수 없다.
         stmts.append("ALTER TABLE Chunk ADD lex STRING DEFAULT ''")

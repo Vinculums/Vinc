@@ -302,10 +302,11 @@ def normalize_domains(domain: str | None = None,
     return out
 
 
-#: 추적열 투영 한 자리(W3) — 읽기 표면이 `rev`·`updated_at` 을 함께 낸다. 쓰기가
-#: 버전을 손에 쥐려면 읽기가 먼저 그것을 줘야 하는데, 여태 어느 읽기 경로도 주지
-#: 않았다. **투영만이고 강제는 아니다**(expected_rev 는 첫 실측 충돌이 방아쇠).
-#: 근거: [[vinc.plan.mcp-agent-surface §6]] · 세 열의 의미는 [[vinc.spec.dataplane §6.1]].
+#: 추적열 투영 한 자리(W3): 읽기 표면이 `rev`·`updated_at` 을 함께 낸다. 쓰기가 버전을
+#: 손에 쥐려면 읽기가 먼저 그것을 줘야 한다. 쓰기 쪽 대조는 **선택**이다: `expected_rev` 를
+#: 실은 쓰기만 이 값과 맞춰 보고 어긋나면 바꾸지 않고 거절한다(`api/mutation_contract.py`).
+#: 근거: [[vinc.plan.mcp-agent-surface §6]] · 쓰기 쪽 조건은
+#: [[vinc.design.mutation-lifecycle-mcp-api-cli-2026-10-13]] · 세 열의 의미는 [[vinc.spec.dataplane §6.1]].
 #:
 #: ⚠ 이 두 열은 `store/embedded_schema.py` 의 `_TRACK_COLS` 가 붙는 라벨에만 있다
 #: (Concept·Episode·Record·Bridge·Entity·Decision). **Domain 에는 없다** — 도메인
@@ -424,8 +425,8 @@ def shape_graph(rows: list[dict]) -> dict:
                           # 열은 **Concept 에만** 있으므로 나머지 종류에서는 빈
                           # 문자열이고, 그건 결손이 아니라 사실이다.
                           "one_liner": one_liner or "",
-                          # W3 — 낙관적 동시성의 읽기 절반. 쓰기 쪽은 아직 이 값을
-                          # 요구하지 않는다(D4: 투영만).
+                          # W3: 낙관적 동시성의 읽기 절반. 쓰기는 이 값을
+                          # `expected_rev` 로 실을 때만 대조한다(선택).
                           "rev": rev or 0, "updated_at": updated_at or "",
                           # W13 — Record 만 값을 갖는다(축 플랜 중 record 팔 전용 열).
                           # 다른 종류의 빈 문자열은 결손이 아니라 사실이다(R2 동형).
@@ -2695,8 +2696,8 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
 
     ``props`` 는 개념의 자유 속성(dict). Episode 는 이 열이 없어 항상 {} 다.
 
-    ``rev``/``updated_at`` 은 그 노드의 현재 버전이다(W3, 투영만) — 고쳐 쓰기 전에
-    무엇을 읽었는지 붙들어 두라고 낸다. 쓰기 경로는 아직 이 값을 요구하지 않는다.
+    ``rev``/``updated_at`` 은 그 노드의 현재 버전이다(W3). 고쳐 쓰기 전에 무엇을 읽었는지
+    붙들어 두라고 낸다. 쓰기가 이 값을 ``expected_rev`` 로 실으면 어긋날 때 거절된다(선택).
     근거: [[vinc.plan.mcp-agent-surface §6]]."""
     cfg = cfg or load_config()
     base: dict = {"kind": "node-context", "executed": False, "node": node,

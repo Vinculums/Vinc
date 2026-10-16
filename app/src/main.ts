@@ -144,12 +144,9 @@ async function route() {
 window.addEventListener("hashchange", route);
 document.title = `Vinc · ${COPY.tagline}`;
 
-// Settings — **시트다**(2026-09-09). 여태 자기 팝오버 + 자기 스크림 + 자기 개폐
-// 배선을 따로 갖고 있었고, 그래서 도구·GRAPH.md 와 상자·자리·딤·모션이 갈렸다.
-// 같은 토큰을 읽게 맞춰 놓았어도 **구현이 둘이면 다음에 또 갈린다** — 그래서 합쳤다.
-// 딸려 사라진 것: `#settings-popover` · `#settings-scrim` 요소와 그 CSS,
-// 여기 있던 popIn/popOut/fadeIn/fadeOut/wireScrimDismiss/Esc 배선 여섯 벌
-// (시트가 전부 갖고 있다: 트리거에서 자라는 모션 · 스크림 클릭 · Esc · 중첩 처리).
+// Settings 는 **시트다**. 도구·GRAPH.md 와 같은 상자·자리·딤·모션을 쓰고, 개폐 배선
+// (트리거에서 자라는 모션 · 스크림 클릭 · Esc · 중첩 처리)은 시트가 전부 갖는다. 여기에
+// 자기 팝오버나 개폐 배선을 다시 두지 않는다: 구현이 둘이면 같은 토큰을 읽어도 다시 갈린다.
 const settingsBtn = document.getElementById("settings-btn")!;
 settingsBtn.addEventListener("click", () => openSettings("general", undefined, true));
 

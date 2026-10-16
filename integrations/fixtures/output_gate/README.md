@@ -8,10 +8,11 @@ porting the gate. The experiment scripts and model runners were not executed.
 tests. Package tests retain those cases with a test-only adapter selecting the
 corresponding structured role profile. Production does not parse legacy prose.
 
-`proposed-role-checks.json` is the concrete VIN-311 configuration adopted by the
-owner on 2026-10-04 (`decision:machine-role-gates-ratified-2026-10-04`), pending
-live application. It is not a live roster snapshot. Actual
-runtime callers obtain fresh role props from the role API instead.
+`proposed-role-checks.json` is the concrete configuration the owner ratified
+(`decision:machine-role-gates-ratified-2026-10-04`); the live role nodes carry the
+same gates (`agents/roles.json` snapshot). This file is a frozen test copy, not a
+live roster snapshot. Actual runtime callers obtain fresh role props from the
+role API instead.
 
 Original cache: `D:/Temp/vinc-agent-lab-03c7780c/vinc-agent-lab`. The folder suffix
 is not a verified Git revision. Hashes of the gate, synthetic tests, evaluation
