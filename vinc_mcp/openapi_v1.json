@@ -2544,9 +2544,16 @@
                 "returns_to",
                 "about",
                 "supersedes",
+                "RELATED_TO",
+                "PREREQUISITE_OF",
+                "DERIVES_FROM",
+                "INHERITS_FROM",
+                "RETURNS_TO",
+                "ABOUT",
+                "SUPERSEDES",
                 "ATTACHES_TO"
               ],
-              "description": "The relation type to delete. From a record, name its authored type or the physical ATTACHES_TO carrier."
+              "description": "The relation type to delete, as the authored name (relates_to) or the physical name vinc_edges returns (RELATED_TO). From a record, name its authored type or the physical ATTACHES_TO carrier."
             }
           },
           {

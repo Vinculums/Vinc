@@ -277,10 +277,14 @@ _OWNER_PROP = {"owner": {
                    "it defaults to this computer's owner."}}
 
 
-#: vinc_delete_edge 가 받는 관계 타입. 핸들러가 받는 목록과 같아야 한다(fragment 타입명
-#: 일곱 + 물리 부착 ATTACHES_TO). vinc_mcp 는 api 를 임포트하지 않으므로 여기 미러한다.
+#: vinc_delete_edge 가 받는 관계 타입. 핸들러가 받는 목록과 같아야 한다: fragment 타입명
+#: 일곱, vinc_edges 가 돌려주는 물리 관계명 일곱, 물리 부착 ATTACHES_TO. 물리명을 빼면
+#: vinc_edges 의 type 을 그대로 넘기는 호스트가 거절된다. vinc_mcp 는 api 를 임포트하지
+#: 않으므로 여기 미러한다.
 _DELETE_EDGE_TYPES = ("relates_to", "prerequisite_of", "derives_from", "inherits_from",
-                      "returns_to", "about", "supersedes", "ATTACHES_TO")
+                      "returns_to", "about", "supersedes",
+                      "RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM",
+                      "RETURNS_TO", "ABOUT", "SUPERSEDES", "ATTACHES_TO")
 
 
 def _owner(args: dict, bridge: Bridge) -> str:
@@ -1592,8 +1596,9 @@ TOOLS: list[dict] = [
             # 일곱(`_FRAGMENT_EDGE_TO_REL`)과 물리 부착 ATTACHES_TO. 대조는
             # tests/mcp/test_tool_contract.py 가 한다.
             "type": {"type": "string", "enum": list(_DELETE_EDGE_TYPES),
-                     "description": "The relation type to delete. From a record, name its authored "
-                                    "type or the physical ATTACHES_TO carrier."},
+                     "description": "The relation type to delete, as the authored name (relates_to) or the "
+                                    "physical name vinc_edges returns (RELATED_TO). From a record, name its "
+                                    "authored type or the physical ATTACHES_TO carrier."},
             **_OWNER_PROP,
         }, "required": ["from_id", "to_id", "type"]},
         "run": _t_delete_edge,

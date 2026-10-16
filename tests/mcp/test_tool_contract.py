@@ -485,7 +485,9 @@ def test_delete_edge_type_enum_is_the_handler_list():
     핸들러가 받는 값을 거절하거나 못 받는 값을 광고한다."""
     from api import query
     spec = SERVED["vinc_delete_edge"]["inputSchema"]["properties"]["type"]
-    assert set(spec["enum"]) == set(query._FRAGMENT_EDGE_TO_REL) | {"ATTACHES_TO"}
+    expected = (set(query._FRAGMENT_EDGE_TO_REL) | set(query._FRAGMENT_EDGE_TO_REL.values())
+                | {"ATTACHES_TO"})
+    assert set(spec["enum"]) == expected
     for value in spec["enum"]:
         rel = query._FRAGMENT_EDGE_TO_REL.get(value.lower(), value.upper())
         assert rel in query.SYNC_EDGE_RELS, f"{value} 는 핸들러가 지울 수 없는 타입이다"
@@ -504,6 +506,24 @@ def test_delete_edge_refuses_a_type_outside_the_enum_before_the_bridge():
         T.call("vinc_delete_edge", {"from_id": "concept:a", "to_id": "concept:b",
                                     "type": "connects_via"}, _Bridge())
     assert "ATTACHES_TO" in err.value.text
+
+
+def test_delete_edge_accepts_the_physical_name_vinc_edges_returns():
+    """vinc_edges 는 물리 관계명(RELATED_TO)을 돌려준다. 그 값을 그대로 넘기는 호스트가
+    MCP 단에서 거절되면 안 된다 — 핸들러는 원래 둘 다 받는다."""
+    from vinc_mcp import tools as T
+    seen = []
+
+    class _Bridge:
+        owner = "user:test"
+
+        def request(self, *a, **k):
+            seen.append((a, k))
+            return {"kind": "delete_edge", "executed": True, "found": False}
+
+    T.call("vinc_delete_edge", {"from_id": "concept:a", "to_id": "concept:b",
+                                "type": "RELATED_TO"}, _Bridge())
+    assert seen, "물리 관계명이 사이드카에 닿기 전에 거절됐다"
 
 
 def test_role_check_output_limit_matches_the_handler():
