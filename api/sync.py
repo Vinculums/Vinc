@@ -955,8 +955,19 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
                 remote_snap[f] = base_fields[f]
             else:
                 remote_snap.pop(f, None)
+        # base 가 늦게 든 필드의 키를 모르면(그 필드가 동기화되기 전의 조상) 빈 값은
+        # "비웠다"가 아니라 "아직 못 받았다"다. 옛 동기화가 안 날라 한쪽만 빈 채로 남은
+        # 것이므로 찬 쪽을 남긴다. 저장할 base 는 원격 값 그대로 둔다(아래 base_updates).
+        merge_base, merge_remote = base_fields, remote_snap
+        for f in _LATE_SYNC_FIELDS.get(label, ()):
+            if f in base_fields or f not in remote_snap:
+                continue
+            if not remote_snap[f]:
+                merge_remote = {**merge_remote, f: local.get(f)}
+            elif not local.get(f):
+                merge_base = {**merge_base, f: local.get(f)}
         remote_newer = syncmerge.node_remote_newer(l_rev, l_ua, r_rev, r_ua, nid)
-        merged, conflicts = syncmerge.three_way(base_fields, local, remote_snap,
+        merged, conflicts = syncmerge.three_way(merge_base, local, merge_remote,
                                                 remote_newer=remote_newer)
 
         if not syncmerge.maps_equal(merged, local):

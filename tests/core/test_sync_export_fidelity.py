@@ -234,6 +234,38 @@ def test_a_bundle_without_the_new_keys_does_not_erase_them(stores):
     assert _node(c, E1)["props"] in ({}, None)
 
 
+def test_an_empty_late_field_does_not_erase_a_value_the_base_never_saw(stores):
+    """필드가 동기화되기 전부터 갈라진 값. 옛 동기화가 사건 props 를 안 날라서 한 기기에는
+    빈 props 가 남아 있다. base 가 그 키를 모르면 빈 값은 지우기가 아니라 못 받은 것이다:
+    그 기기가 나중에 제목을 고쳐 보내도 찬 쪽의 props 가 남아야 하고, 거꾸로 찬 쪽이
+    보내면 빈 쪽이 받아야 한다."""
+    hub, device = stores("fid-gap-hub"), stores("fid-gap-device")
+    base_node = {"id": E1, "type": "episode", "title": "Gap episode", "domain": DOMAIN,
+                 "date": "2026-03-04"}
+    for st, node in ((hub, {**base_node, "props": EPISODE_PROPS}), (device, base_node)):
+        out = fragment.merge_fragment({"owner": OWNER, "nodes": [node]}, store=st)
+        assert out["executed"], out
+    out = fragment.merge_fragment({"owner": OWNER, "nodes": [
+        {"id": E1, "type": "episode", "title": "Retitled on the device"}]}, store=device)
+    assert out["executed"], out
+    delta = sync.export_delta(owner=OWNER, everything=True, store=device)
+    assert next(n for n in delta["nodes"] if n["id"] == E1)["props"] == {}
+    res = sync.apply_delta(owner=OWNER, bundle=delta, store=hub)
+    assert res["executed"], res
+    assert _node(hub, E1)["title"] == "Retitled on the device"
+    assert _node(hub, E1)["props"] == EPISODE_PROPS
+
+    # 같은 빈 번들이 다시 와도(base 가 이제 빈 props 를 안다) 찬 값은 그대로다.
+    res = sync.apply_delta(owner=OWNER, bundle=delta, store=hub)
+    assert res["executed"], res
+    assert _node(hub, E1)["props"] == EPISODE_PROPS
+
+    back = sync.export_delta(owner=OWNER, everything=True, store=hub)
+    res = sync.apply_delta(owner=OWNER, bundle=back, store=device)
+    assert res["executed"], res
+    assert _node(device, E1)["props"] == EPISODE_PROPS
+
+
 # ── 청크 상한: 근거 문장이 실려도 청크가 상한을 넘지 않는다 ─────────────────────
 def test_chunks_count_edge_bytes_and_stay_under_the_limit():
     nodes = [{"id": f"concept:{i}", "type": "concept", "title": "n" * 150, "_seq": i}
