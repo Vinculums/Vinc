@@ -39,17 +39,40 @@ def test_citation_properties_preserved_exactly(props):
 
 
 @pytest.mark.parametrize("props,reason", [
-    ({"attachments": ["https://example.invalid/a.pdf"]}, "external_attachments"),
     ({"source": {"blob": "blob:private"}}, "external_attachments"),
-    ({"unknown_payload": "https://example.invalid/a.pdf"}, "external_resource"),
     ({"url": "blob:private"}, "external_resource"),
-    ({"url": "<img src='https://example.invalid/a.png'>"}, "external_attachments"),
-    ({"ref": "concept:outside"}, "external_reference"),
+    ({"unknown_payload": "az:private/container"}, "external_resource"),
+    ({"attachments": ["C:\\private\\a.pdf"]}, "external_attachments"),
+    ({"note": "<img src='blob:private'>"}, "external_attachments"),
+    ({"note": "![local](./a.png) ![web](https://example.invalid/b.png)"}, "external_attachments"),
+    ({"note": "<img alt='no source'>"}, "external_attachments"),
+    ({"note": "![inline](data:image/png;base64,AAAA)"}, "external_attachments"),
 ])
-def test_resources_and_internal_references_remain_guarded(props, reason):
+def test_managed_and_local_resources_remain_guarded(props, reason):
     data = seed()
     data["nodes"]["Record"][0]["props"] = json.dumps(props)
     assert_blocked(data, reason)
+
+
+# 근거: [[decision:topic-transfer-plain-references-and-external-images-2026-10-16]]
+@pytest.mark.parametrize("props,expected", [
+    ({"unknown_payload": "https://example.invalid/a.pdf"}, {}),
+    ({"pr": "https://github.invalid/org/repo/pull/1", "path": "/api/sync.py",
+      "local": "D:\\notes\\a.md", "notes_link": "file:notes"}, {}),
+    ({"attachments": ["https://example.invalid/a.pdf"]}, {"external_attachments": 1}),
+    ({"note": "<img src='https://example.invalid/a.png'>"}, {"external_attachments": 1}),
+    ({"note": "![web](https://example.invalid/b.png)"}, {"external_attachments": 1}),
+    ({"ref": "concept:outside", "see": "[[" + "decision:elsewhere" + "]]"}, {"external_references": 2}),
+])
+def test_plain_strings_external_images_and_outside_ids_are_preserved(props, expected):
+    from store.topic_transfer import preserved_reference_counts
+    data = seed()
+    data["nodes"]["Record"][0]["props"] = json.dumps(props, ensure_ascii=False)
+    chosen = plan(data)
+    assert chosen.ready, chosen.blockers
+    assert preserved_reference_counts(chosen) == {"external_references": 0, "external_attachments": 0, **expected}
+    after = transformed_snapshot(data, chosen, stamp=STAMP)
+    assert after["nodes"]["Record"][0]["props"] == data["nodes"]["Record"][0]["props"]
 
 
 def test_native_personal_history_exact_full_scoped_after_and_retry(tmp_path, monkeypatch):

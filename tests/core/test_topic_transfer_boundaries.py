@@ -51,11 +51,10 @@ def test_similar_regular_document_is_preserved():
 @pytest.mark.parametrize("properties", [
     {"Attachments": [{"url": "blob:synthetic"}]},
     {"nested": [{"assets": ["file:synthetic.png"]}]},
-    {"attachment_url": "https://synthetic.invalid/private-file"},
     {"blob_uri": "blob:synthetic"},
-    {"attachmentUrl": "https://synthetic.invalid/private-file"},
     {"filePath": "relative/synthetic.pdf"},
-    {"nested": {"asset-url": "https://synthetic.invalid/private-file"}},
+    {"attachments": ["https://synthetic.invalid/a.pdf", "relative/b.pdf"]},
+    {"files": 3},
 ])
 def test_external_attachment_forms_refused(properties):
     data = seed()
@@ -86,7 +85,8 @@ def test_provenance_does_not_exempt_real_attachments_or_logical_references():
     data["nodes"]["Record"][0]["props"] = '{"attachments":["blob:synthetic"]}'
     assert_blocked(data, "external_attachments_not_supported")
     data["nodes"]["Record"][0]["props"] = '{"ref":"concept:other"}'
-    assert_blocked(data, "external_reference")
+    p = plan(data)
+    assert p.ready and "external_reference:concept:other" in p.preserved, p.blockers
 
 
 @pytest.mark.parametrize("origin", ["D:\\synthetic\\source.md", "/synthetic/source.md",
@@ -113,12 +113,13 @@ def test_concept_origin_does_not_hide_its_own_resource_or_reference():
     data = seed()
     node = data["nodes"]["Concept"][0]
     node["source_file"] = "/synthetic/source.md"
-    node["props"] = '{"attachment_url":"https://synthetic.invalid/private"}'
+    node["props"] = '{"attachment_url":"/synthetic/private.pdf"}'
     assert_blocked(data, "external_attachments_not_supported")
     node["props"] = '{"resource":"blob:synthetic"}'
     assert_blocked(data, "external_resource_reference_not_supported")
     node["props"] = '{"ref":"concept:other"}'
-    assert_blocked(data, "external_reference")
+    p = plan(data)
+    assert p.ready and "external_reference:concept:other" in p.preserved, p.blockers
 
 
 def test_native_move_preserves_document_provenance_and_canonical_payload(native):
@@ -143,7 +144,7 @@ def test_native_move_preserves_document_provenance_and_canonical_payload(native)
 
 @pytest.mark.parametrize("properties,reason", [
     ({"arbitrary_key": "blob:synthetic"}, "external_resource_reference_not_supported"),
-    ({"nested": ["file:synthetic"]}, "external_resource_reference_not_supported"),
+    ({"nested": ["s3:synthetic"]}, "external_resource_reference_not_supported"),
     ({"vocabulary": {"custom": "type"}}, "owner_vocabulary_not_supported"),
     ({"themeId": "owner-synthetic"}, "owner_vocabulary_not_supported"),
     ({"GRAPH.md": "synthetic conventions"}, "owner_conventions_require_separate_decision"),

@@ -21,7 +21,7 @@ from store.scoped_topic_inventory import read_scoped_inventory
 from store.topic_manifest import TopicManifest, ManifestLimit
 from store.topic_transfer import (TransferRefused, fingerprint, read_snapshot,
                                  plan_transfer, transformed_snapshot, _write_difference, check_inventory_budget,
-                                 _canonical, _REFERENCE, retained_history_counts)
+                                 _canonical, _REFERENCE, retained_history_counts, preserved_reference_counts)
 
 request_owner = ContextVar("conversion_request_owner", default=None)
 request_payload = ContextVar("conversion_request_payload", default=None)
@@ -229,6 +229,7 @@ def preflight(store, source, topic, *, conventions_policy="retain"):
             "conventions": _conventions_effect(snap, plan),
             "counts_known": True, "counts": counts, "documents": len(plan.documents),
             "retained_personal_history": retained_history_counts(snap, plan),
+            "preserved_references": preserved_reference_counts(plan),
             "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
             "inspected_rows": inventory.inspected_rows,
             "projected_rows": projected_rows, "projected_bytes": projected_bytes,
@@ -265,6 +266,7 @@ def inventory_diagnostics(store, source, topic, *, conventions_policy="retain"):
                 return {"ready": False, "scope": "topic", "topic": topic,
                         "counts_known": True, "counts": counts, "documents": len(plan.documents),
                         "retained_personal_history": retained_history_counts(inventory.snapshot, plan),
+                        "preserved_references": preserved_reference_counts(plan),
                         "conventions": _conventions_effect(inventory.snapshot, plan),
                         "document_ownership": _document_scope_summary(inventory.snapshot,plan,source),
                         "document_missing_evidence": _missing_document_evidence(inventory.snapshot,plan,source),

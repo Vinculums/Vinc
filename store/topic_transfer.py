@@ -128,6 +128,8 @@ class Plan:
     documents: tuple[str, ...]
     blockers: tuple[str, ...]
     conventions_policy: str = "retain"
+    # 막지 않고 원문 그대로 옮기며 건수만 공개하는 참조(토픽 밖 id·외부 http(s) 첨부).
+    preserved: tuple[str, ...] = ()
 
     @property
     def ready(self):
@@ -140,9 +142,8 @@ _ATTACHMENTS = {"attachment", "attachments", "file", "files", "blob", "blobs", "
 _EXTERNAL_RESOURCE = re.compile(r"^(?:[A-Za-z]:[\\/]|(?:file|blob|s3|azure|gs|az|https?):|[/\\])", re.I)
 _MANAGED_RESOURCE = re.compile(r"^(?:blob|s3|azure|gs|az):", re.I)
 _IMAGE_REFERENCE = re.compile(r"!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>", re.I)
-_CITATION_FIELDS = {"url", "urls", "href", "link", "links", "source", "sources",
-                    "sourceurl", "sourcepath", "provenance", "origin", "citation",
-                    "citations", "reference", "references", "subjectpath", "repository"}
+_IMAGE_SOURCE = re.compile(r"!\[[^\]]*\]\(\s*<?([^)\s>]*)|<img\b[^>]*?\bsrc\s*=\s*[\"']?([^\"'\s>]*)", re.I)
+_WEB_URL = re.compile(r"^https?://[^\s/]+\S*$", re.I)
 _HISTORY = ("_Tombstone", "_EdgeTombstone", "_DocTombstone")
 
 
@@ -211,6 +212,43 @@ def retained_history_counts(snapshot, plan):
         for row in snapshot["meta"]["_MergeRejection"])
     if retained:
         counts["_MergeRejection"] = retained
+    return counts
+
+
+def external_images(text):
+    """이미지 참조가 있으면 (전부 외부 http(s)인가, 개수)를, 없으면 None 을 돌려준다.
+
+    관리형·로컬·상대·data: 주소나 src 없는 태그가 하나라도 있으면 외부가 아니다.
+    근거: [[decision:topic-transfer-plain-references-and-external-images-2026-10-16]]
+    """
+    found = _IMAGE_REFERENCE.findall(text)
+    if not found:
+        return None
+    sources = []
+    for ref in found:
+        match = _IMAGE_SOURCE.match(ref)
+        sources.append((match.group(1) or match.group(2) or "") if match else "")
+    return all(_WEB_URL.match(src) for src in sources), len(found)
+
+
+def _web_only(value):
+    """첨부 키 아래 값이 전부 외부 http(s) 주소 문자열이면 참이다."""
+    if isinstance(value, dict):
+        return bool(value) and all(_web_only(v) for v in value.values())
+    if isinstance(value, list):
+        return bool(value) and all(_web_only(v) for v in value)
+    return isinstance(value, str) and bool(_WEB_URL.match(value))
+
+
+def preserved_reference_counts(plan):
+    """동의 화면에 보일 건수. 식별자는 내보내지 않는다(남의 id 일 수 있다)."""
+    counts = {"external_references": 0, "external_attachments": 0}
+    for item in plan.preserved:
+        code = item.split(":", 1)[0]
+        if code == "external_reference":
+            counts["external_references"] += 1
+        elif code == "external_attachment":
+            counts["external_attachments"] += 1
     return counts
 
 
@@ -323,6 +361,9 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
                   conventions_policy: str = "retain") -> Plan:
     """Select one authored topic tree. Dependencies outside it are blockers, not additions."""
     blocks = _validate_snapshot(snapshot)
+    # 토픽 밖 id 참조와 외부 이미지는 막지 않고 원문 그대로 옮긴 뒤 건수만 공개한다.
+    # 근거: [[decision:topic-transfer-plain-references-and-external-images-2026-10-16]]
+    preserved = set()
     if conventions_policy not in ("retain", "move_original"):
         raise TransferRefused("invalid_conventions_policy")
     if not source.startswith("user:") or pkns.SEP in source or not source[5:]:
@@ -436,7 +477,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
             refs = set(referenced_ids(fields))
             if (label, key) in selected:
                 for ref in refs - (logical | docs):
-                    blocks.add("external_reference:" + ref)
+                    preserved.add("external_reference:" + ref)
             elif refs & (logical | docs):
                 blocks.add("incoming_reference:" + key)
     for edge in snapshot["edges"]:
@@ -462,7 +503,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
         if sa or sb:
             for ref in _REFERENCE.findall(str(edge["props"].get("evidence") or "")):
                 if ref not in logical and ref not in docs:
-                    blocks.add("external_reference:" + ref)
+                    preserved.add("external_reference:" + ref)
     for label, nid in tuple(selected):
         row = _row_by_key(allrows[label], specs[label]["pk"], nid)
         if "theme_id" in row and row["theme_id"]:
@@ -478,40 +519,53 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
             except (TypeError, ValueError):
                 blocks.add("opaque_props:" + nid)
                 props = {}
-            def inspect(value, field=""):
+            def inspect(value):
                 if isinstance(value, dict):
                     for key, val in value.items():
                         compact = re.sub(r"[^a-z0-9]", "", key.lower())
                         if (compact in _ATTACHMENTS or compact in (
                                 "attachmenturl", "attachmentpath", "asseturl", "bloburi",
                                 "filepath", "filepaths", "fileurl")) and val:
-                            blocks.add("external_attachments_not_supported:" + nid)
+                            # 외부 http(s) 주소만 텍스트로 옮긴다. 관리형·로컬 첨부는 막는다.
+                            if _web_only(val):
+                                preserved.add("external_attachment:" + nid)
+                            else:
+                                blocks.add("external_attachments_not_supported:" + nid)
                         if compact in ("vocabulary", "themeid") and val:
                             blocks.add("owner_vocabulary_not_supported:" + nid)
                         if compact in ("graphmd", "conventions") and val:
                             blocks.add("owner_conventions_require_separate_decision:" + nid)
                         if compact in ("docid", "supersededby", "nodeid", "ref") and val and isinstance(val, str):
                             if val not in logical and val not in docs:
-                                blocks.add("external_reference:" + val)
-                        inspect(val, compact)
+                                preserved.add("external_reference:" + val)
+                        inspect(val)
                 elif isinstance(value, list):
                     for val in value:
-                        inspect(val, field)
+                        inspect(val)
                 elif isinstance(value, str):
-                    if _EXTERNAL_RESOURCE.match(value) and (field not in _CITATION_FIELDS or _MANAGED_RESOURCE.match(value)):
+                    # 일반 URL·경로 문자열은 키 이름과 무관하게 원문 보존한다. 관리형 자원만 막는다.
+                    if _MANAGED_RESOURCE.match(value):
                         blocks.add("external_resource_reference_not_supported:" + nid)
-                    if _IMAGE_REFERENCE.search(value):
-                        blocks.add("external_attachments_not_supported:" + nid)
+                    image = external_images(value)
+                    if image:
+                        if image[0]:
+                            preserved.add("external_attachment:" + nid)
+                        else:
+                            blocks.add("external_attachments_not_supported:" + nid)
                     for ref in _REFERENCE.findall(value):
                         if ref not in logical and ref not in docs:
-                            blocks.add("external_reference:" + ref)
+                            preserved.add("external_reference:" + ref)
             inspect(props)
         if label == "Chunk":
-            if _IMAGE_REFERENCE.search(row["text"] or ""):
-                blocks.add("external_attachments_not_supported:" + nid)
+            image = external_images(row["text"] or "")
+            if image:
+                if image[0]:
+                    preserved.add("external_attachment:" + nid)
+                else:
+                    blocks.add("external_attachments_not_supported:" + nid)
             for ref in _REFERENCE.findall(row["text"] or ""):
                 if ref not in logical and ref not in docs:
-                    blocks.add("external_reference:" + ref)
+                    preserved.add("external_reference:" + ref)
     for row in snapshot["meta"]["_SyncBase"]:
         if row["node_id"] == source + pkns.SEP + pkns.strip(row["node_id"]) and pkns.strip(row["node_id"]) in logical:
             selected.add(("_SyncBase", row["node_id"]))
@@ -524,7 +578,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
             if disposition == "move":
                 selected.add(("_MergeRejection", row["pair_key"]))
                 for ref in set(referenced_ids(row["note"])) - (logical | docs):
-                    blocks.add("external_reference:" + ref)
+                    preserved.add("external_reference:" + ref)
             elif disposition not in ("retain", "outside"):
                 blocks.add(disposition)
             if disposition != "move" and set(referenced_ids(row["note"])) & (logical | docs):
@@ -548,7 +602,8 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
     if conventions_policy == "move_original" and any(row["doc_id"] in docs for row in conventions):
         if len(conventions) != 1 or not is_conventions_doc_id(conventions[0]["doc_id"]):
             blocks.add("ambiguous_owner_conventions")
-    return Plan(source, target, topic, fingerprint(snapshot), tuple(sorted(selected)), tuple(sorted(docs)), tuple(sorted(blocks)), conventions_policy)
+    return Plan(source, target, topic, fingerprint(snapshot), tuple(sorted(selected)), tuple(sorted(docs)), tuple(sorted(blocks)), conventions_policy,
+                tuple(sorted(preserved)))
 
 
 def mapped_rejection_key(key: str, source: str, target: str) -> str:
