@@ -1,13 +1,12 @@
 /** 흐름 H — 노드의 기본 정보(제목 · 한 줄 설명 · 주제 · 태그 · 시점)를 문서 열에서 고친다.
  *
  *  여태 고칠 수 있는 것은 속성(props)뿐이었다. 쓰기는 속성 편집과 같은 두 규칙을 따른다:
- *   · **판 확인** — 저장 직전에 캐시 없이 다시 읽어 판(rev)이 편집을 시작할 때와 같을 때만
- *     쓴다. 그 사이 누가 고쳤으면 덮지 않고 멈춘다(필드 이력이 없어 덮으면 복구가 없다).
- *   · **바뀐 필드만** 싣는다. 싣지 않은 필드는 서버가 보존한다. 단 props 는 실으면 통째로
- *     교체되므로, 기록·결정의 한 줄 설명(props.note)을 고칠 때는 지금 props 전체에 합쳐서
- *     보낸다 — 안 실은 키가 경고 없이 사라지는 함정이 거기 있다.
+ *   · **판 확인** — 편집을 연 판(rev)을 `expected_rev` 로 싣는다. 서버가 쓰기 안에서 대조해
+ *     그 사이 누가 고쳤으면 덮지 않고 충돌로 답한다(필드 이력이 없어 덮으면 복구가 없다).
+ *   · **바뀐 필드만** 싣는다. 싣지 않은 필드는 서버가 보존한다. props 는 실으면 통째로
+ *     교체되므로 기록·결정의 한 줄 설명(props.note)은 `props_patch` 로 그 키만 싣는다.
  *  근거: [[decision:node-props-are-edited-in-the-document-pane-as-a-whole-and-checked-against-the-read-revision-2026-09-26]] */
-import { api, cfg, messageOf, type NodeContext } from "./api";
+import { api, cfg, isWriteConflict, messageOf, type NodeContext } from "./api";
 import { COPY } from "./copy";
 import { esc } from "./components";
 import { fillTopicList, forgetTopics, isWhen } from "./authoring";
@@ -116,7 +115,7 @@ export async function drawBasics(box: HTMLElement, id: string, src: BasicsSource
       const next = read();
       if (!next.title) { status(esc(A.needTitle)); q<HTMLInputElement>("#nb-title")!.focus(); return; }
       if (next.when && !isWhen(next.when)) { status(esc(A.dateBad)); q<HTMLInputElement>("#nb-when")?.focus(); return; }
-      const node: Record<string, unknown> = { id, type: k };
+      const node: { id: string; type: string } & Record<string, unknown> = { id, type: k };
       if (next.title !== cur.title) node.title = next.title;
       if (next.topic !== cur.topic) node.domain = next.topic;
       // 못 읽은 두 칸은 싣지 않는다(서버가 보존한다).
@@ -129,23 +128,19 @@ export async function drawBasics(box: HTMLElement, id: string, src: BasicsSource
       const btns = [...box.querySelectorAll<HTMLButtonElement>(".props-acts button")];
       btns.forEach((b) => { b.disabled = true; });
       status(esc(COPY.ui.viewx.propsSaving));
+      const conflict = () => {
+        status(`${esc(COPY.ui.viewx.propsConflict)} <button class="rail-x nb-reload" type="button">${
+          esc(COPY.ui.viewx.propsReload)}</button>`);
+        q(".nb-reload")?.addEventListener("click", () => onSaved(cur.topic));
+        q<HTMLButtonElement>('[data-nb="cancel"]')!.disabled = false;
+      };
       try {
-        // 판 확인 — 캐시 없이 지금 값을 읽는다. 다르면 덮지 않는다.
-        const fresh = await api.nodeContext(cfg.owner, id, 1);
-        if (!fresh.executed || (fresh.rev ?? 0) !== (src.rev ?? 0)) {
-          status(`${esc(COPY.ui.viewx.propsConflict)} <button class="rail-x nb-reload" type="button">${
-            esc(COPY.ui.viewx.propsReload)}</button>`);
-          q(".nb-reload")?.addEventListener("click", () => onSaved(cur.topic));
-          q<HTMLButtonElement>('[data-nb="cancel"]')!.disabled = false;
-          return;
-        }
-        // props 는 통째로 교체된다 — 지금 값 **전체**에 합쳐 보낸다.
-        if (lineChanged && lf === "note") {
-          const whole: Record<string, unknown> = { ...(fresh.props || {}) };
-          if (next.oneLiner) whole.note = next.oneLiner; else delete whole.note;
-          node.props = whole;
-        }
-        const res: any = await api.ingestFragment({ nodes: [node] });
+        // 기록·결정의 한 줄 설명은 props.note 다. 그 키 하나만 patch 로 싣고(null = 지움)
+        // 나머지 props 는 서버가 저장된 값을 그대로 둔다.
+        if (lineChanged && lf === "note") node.props_patch = { note: next.oneLiner || null };
+        // 판 확인은 서버가 한다(0.9.8 `expected_rev`): 열었을 때의 판이 아니면 쓰지 않는다.
+        const res: any = await api.editNode(node, src.rev ?? 0);
+        if (isWriteConflict(res)) { conflict(); return; }
         if (res?.executed === false) throw new Error(res.error || "");
         const merged = (res?.merged?.nodes?.created || 0) + (res?.merged?.nodes?.matched || 0);
         if (!merged) throw new Error((res?.warnings || []).join(" · "));
@@ -153,6 +148,7 @@ export async function drawBasics(box: HTMLElement, id: string, src: BasicsSource
         void import("./lnb").then((m) => m.refreshLnb({ quiet: true }));
         onSaved(next.topic);
       } catch (err: any) {
+        if (isWriteConflict(err)) { conflict(); return; }
         btns.forEach((b) => { b.disabled = false; });
         const why = messageOf(err, "").trim();
         status(`<span class="error-banner">${esc(A.basicsFail)}</span>${why ? ` <span class="hint">${esc(why)}</span>` : ""}`);

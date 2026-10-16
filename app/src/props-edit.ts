@@ -120,6 +120,34 @@ export function sameProps(a: Record<string, unknown>, b: Record<string, unknown>
   return JSON.stringify(canon(a)) === JSON.stringify(canon(b));
 }
 
+const isObj = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+/** 객체 안(배열 밖)에 null 이 있나. merge patch 에서 null 은 "지운다"라서 값으로 못 싣는다. */
+const holdsNull = (v: unknown): boolean =>
+  v === null || (isObj(v) && Object.values(v).some(holdsNull));
+
+/** 편집 전후 props 의 차이를 JSON Merge Patch(RFC 7386)로 만든다. 서버(0.9.8
+ *  `props_patch`)가 저장된 props 에 합친다: null 은 키 삭제, 객체는 안으로 합침, 그 밖의
+ *  값(배열 포함)은 통째로 교체. 바꾼 값에 null 이 들어 있으면 patch 로 표현할 수 없어서
+ *  null 을 돌려주고, 호출부는 편집 결과 전체(`props`)를 보낸다. */
+export function propsPatchOf(before: Record<string, unknown>,
+                             after: Record<string, unknown>): Record<string, unknown> | null {
+  const patch: Record<string, unknown> = {};
+  for (const k of Object.keys(before)) if (!(k in after)) patch[k] = null;
+  for (const [k, v] of Object.entries(after)) {
+    const b = before[k];
+    if (isObj(v) && isObj(b)) {
+      const sub = propsPatchOf(b, v);
+      if (sub === null) return null;
+      if (Object.keys(sub).length) patch[k] = sub;
+    } else if (!(k in before) || !sameProps({ v: b }, { v })) {
+      if (holdsNull(v)) return null;
+      patch[k] = v;
+    }
+  }
+  return patch;
+}
+
 /** props 를 싣는 종. 여섯 전용 테이블 가운데 상세 열이 여는 셋이다(Episode 는 node-context
  *  가 props 를 주지 않고, Bridge · Domain 은 상세 열로 열리지 않는다). 그 밖의 종은 Entity
  *  캐리어라 props 가 **조용히 사라진다** — 편집 단추를 아예 내지 않는다. */

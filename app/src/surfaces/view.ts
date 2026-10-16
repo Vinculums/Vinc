@@ -1,4 +1,4 @@
-import { api, cfg, WEB, teamsApi, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, messageOf, type GraphEdge, type GraphNode,
+import { api, cfg, WEB, teamsApi, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, messageOf, isWriteConflict, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
@@ -37,7 +37,7 @@ import { changedViewPrefs, viewControlRows, viewPreferenceWork } from "../view-c
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
 import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbKindLens, lnbKind,
          refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
-import { PROP_KINDS, propsEditable, rowsFrom, propsFrom, convertText, sameProps,
+import { PROP_KINDS, propsEditable, rowsFrom, propsFrom, convertText, sameProps, propsPatchOf,
          type PropRow, type PropKind } from "../props-edit";
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen,
          floatCeiling } from "../float-panel";
@@ -2220,10 +2220,12 @@ export async function renderView(el: HTMLElement, resume = false) {
       { label: COPY.ui.menu.open, run: () => openDetail(nd) },
       { label: COPY.ui.menu.shareHere, run: () => openShareSheet({ seed: nd.id, depth: SHARE_DEPTH }) },
       { label: COPY.ui.viewx.del, danger: true, run: async () => {
+        // 확인 창과 함께 미리본다(0.9.8). 확인한 뒤 바뀌었으면 서버가 지우지 않는다.
+        const guard = api.previewDeleteNode(cfg.owner, nd.id);
         if (!await confirmDestructive(COPY.ui.viewx.delNodeAsk(nd.label),
               COPY.ui.viewx.delConfirm, COPY.ui.viewx.delCancel)) return;
         try {
-          const res = await api.deleteNode(cfg.owner, nd.id);
+          const res = await api.deleteNode(cfg.owner, nd.id, await guard);
           if (!res.executed) throw new Error(res.note || res.error || "delete failed");
           closeRail();
           void show(trail[trail.length - 1]);
@@ -2639,9 +2641,10 @@ export async function renderView(el: HTMLElement, resume = false) {
     q("#c-connect")!.addEventListener("click", () => void import("../connect")
       .then((m) => m.startConnect({ id: nd.id, title: nd.label })));
     q("#c-del")!.addEventListener("click", async () => {
+      const guard = api.previewDeleteNode(cfg.owner, nd.id);   // 확인 창과 함께 미리본다
       if (!await confirmDestructive(V.delNodeAsk(nd.label), V.delConfirm, V.delCancel)) return;
       try {
-        const res = await api.deleteNode(cfg.owner, nd.id);
+        const res = await api.deleteNode(cfg.owner, nd.id, await guard);
         if (!res.executed) throw new Error(res.note || res.error || "delete failed");
         closeFloatPanel();
         closeRail();
@@ -2793,10 +2796,12 @@ export async function renderView(el: HTMLElement, resume = false) {
     // S1 — 노드 삭제(되돌릴 수 없음). 성공하면 상세를 닫고 현재 층을 다시 그려
     // 지도에서도 사라지게 한다(응답 후 재조회 — 엣지까지 지워지므로 부분 갱신 불가).
     detail.querySelector("#nd-del")!.addEventListener("click", async () => {
+      // 확인 창과 함께 미리본다. 확인한 뒤 바뀌었으면(`preview_conflict`) 지우지 않고 실패로 말한다.
+      const guard = api.previewDeleteNode(cfg.owner, nd.id);
       if (!await confirmDestructive(COPY.ui.viewx.delNodeAsk(nd.label),
             COPY.ui.viewx.delConfirm, COPY.ui.viewx.delCancel)) return;
       try {
-        const res = await api.deleteNode(cfg.owner, nd.id);
+        const res = await api.deleteNode(cfg.owner, nd.id, await guard);
         if (!res.executed) throw new Error(res.note || res.error || "delete failed");
         detail.hidden = true;
         show(trail[trail.length - 1]);
@@ -2873,10 +2878,11 @@ export async function renderView(el: HTMLElement, resume = false) {
       detail.querySelector("#edge-del")!.addEventListener("click", async () => {
         const A = COPY.author;
         const say = (t: string) => { const m = detail.querySelector("#edge-del-msg"); if (m) m.textContent = t; };
+        const guard = api.previewDeleteEdge(cfg.owner, e.source, e.target, e.type);
         if (!await confirmDestructive(esc(A.edgeDelAsk(a, b)), COPY.ui.viewx.delConfirm,
                                       COPY.ui.viewx.delCancel)) return;
         try {
-          const r = await api.deleteEdge(cfg.owner, e.source, e.target, e.type);
+          const r = await api.deleteEdge(cfg.owner, e.source, e.target, e.type, await guard);
           if (!r.executed) { say(A.edgeDelFail); return; }
           if (!r.deleted?.edges) { say(r.note ? A.edgeDelUnsupported : A.edgeDelFail); return; }
           closeRail();
@@ -3146,19 +3152,20 @@ export async function renderView(el: HTMLElement, resume = false) {
       const acts = [...box.querySelectorAll<HTMLButtonElement>("button")];
       acts.forEach((b) => { b.disabled = true; });
       status(esc(V.propsSaving));
+      const conflict = () => {
+        status(`${esc(V.propsConflict)} <button class="rail-x props-reload" type="button">${
+          esc(V.propsReload)}</button>`);
+        box.querySelector(".props-reload")?.addEventListener("click", reload);
+        box.querySelector<HTMLButtonElement>('[data-props="cancel"]')!.disabled = false;
+      };
       try {
-        // 판 확인 — 캐시(nodeContextOnce)를 거치지 않고 지금 값을 읽는다.
-        const fresh = await api.nodeContext(cfg.owner, nd.id, 1);
-        if (!fresh.executed || (fresh.rev ?? 0) !== (meta.rev ?? 0)) {
-          status(`${esc(V.propsConflict)} <button class="rail-x props-reload" type="button">${
-            esc(V.propsReload)}</button>`);
-          box.querySelector(".props-reload")?.addEventListener("click", reload);
-          box.querySelector<HTMLButtonElement>('[data-props="cancel"]')!.disabled = false;
-          return;
-        }
-        const res: any = await api.ingestFragment({
-          nodes: [{ id: nd.id, type: meta.kind, props: next }],
-        });
+        // 판 확인은 서버가 쓰기와 같은 writer 안에서 한다(0.9.8 `expected_rev`): 편집을
+        // 시작한 판이 아니면 쓰지 않고 충돌로 답한다. 바뀐 키만 `props_patch` 로 싣는다.
+        // patch 로 못 싣는 편집(값으로서의 null)은 같은 판 조건으로 전체를 싣는다.
+        const patch = propsPatchOf(props, next);
+        const res: any = await api.editNode({ id: nd.id, type: meta.kind!,
+          ...(patch ? { props_patch: patch } : { props: next }) }, meta.rev ?? 0);
+        if (isWriteConflict(res)) { conflict(); return; }
         if (res?.executed === false) throw new Error(res.error || "");
         // ⚠ `merged` 는 실제로 들어간 것만 센다 — warnings 를 안 읽으면 건너뛴 쓰기
         // (남이 소유한 id 등)를 성공으로 읽는다.
@@ -3170,6 +3177,7 @@ export async function renderView(el: HTMLElement, resume = false) {
         // 역할의 직함·팀은 Agent 목록이 props 에서 읽는다 — 목록도 새로 읽는다.
         if (isAgentRoleId(nd.id)) void refreshLnb({ quiet: true });
       } catch (err: any) {
+        if (isWriteConflict(err)) { conflict(); return; }
         acts.forEach((b) => { b.disabled = false; });
         const why = messageOf(err, "").trim();
         status(`<span class="error-banner">${esc(V.propsFail)}${why ? ` ${esc(why)}` : ""}</span>`);

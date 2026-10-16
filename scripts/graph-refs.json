@@ -969,6 +969,7 @@
     "record:fact-doc-concept-is-a-layer",
     "record:fact-merge-excludes-any-doc-pair",
     "record:graph-md-requires-evidence-that-ingest-refuses-to-store",
+    "record:guarded-node-edits-carry-the-view-owner-2026-10-16",
     "record:health-that-does-not-reach-its-dependency-answers-for-the-wrong-process",
     "record:hook-created-worktrees-are-not-removed-by-the-harness-2026-09-13",
     "record:hub-http-clients-refuse-redirects-2026-10-16",
@@ -1469,6 +1470,9 @@
     },
     "record:graph-md-requires-evidence-that-ingest-refuses-to-store": {
       "validity": "current"
+    },
+    "record:guarded-node-edits-carry-the-view-owner-2026-10-16": {
+      "validity": "unknown"
     },
     "record:health-that-does-not-reach-its-dependency-answers-for-the-wrong-process": {
       "validity": "current"

@@ -31,11 +31,15 @@ export async function checkDocumentDeletion(owner: string, id: string,
   return "unknown";
 }
 
-/** 응답을 잃었다고 삭제를 다시 보내지 않는다. 같은 스페이스에서 결과를 읽는다. */
+/** 미리보기를 받은 뒤 그 묶음(digest·operation_id)으로 지운다(0.9.8). 확인 창 뒤에
+ *  미리보는 이유: 편집기는 확인한 다음에야 자동 저장을 멈추므로, 그 전에 본 상태는 곧
+ *  낡는다. 응답을 잃은 실패는 `api` 가 같은 operation_id 로 한 번만 다시 보내고, 그래도
+ *  모르면 같은 스페이스에서 결과를 읽는다. */
 export async function deleteDocument(owner: string, id: string,
     scope: Scope = { team: cfg.team || null }): Promise<DeleteOutcome> {
   try {
-    const result = await api.docDelete(owner, id, scope);
+    const guard = await api.previewDocDelete(owner, id, scope);
+    const result = await api.docDelete(owner, id, scope, guard);
     if (result.executed) return "deleted";
     await logFailure("doc/delete", result);
   } catch (failure) {
