@@ -188,6 +188,23 @@ def _today() -> str:
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
 
 
+def now_iso() -> str:
+    """지금(UTC, 초 단위 `YYYY-MM-DDTHH:MM:SSZ`). 그래프 밖 메타의 시각 문자열은 이 한 벌이다.
+
+    ⚠ 형식을 바꾸지 말 것: `api.docstore._age_s` 가 이 형식 그대로 되읽는다.
+    동기화 스탬프(`updated_at`)는 이것이 아니라 밀리초 HLC(`api.revstamp.hlc_now`)다."""
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def split_csv(val) -> list[str] | None:
+    """쉼표 구분 값 → 목록(None·'' → None). 이미 목록이면 그대로 돌려준다(HTTP 본문)."""
+    if not val:
+        return None
+    if isinstance(val, list):
+        return val
+    return [s.strip() for s in val.split(",") if s.strip()]
+
+
 def validity_state(valid_from: str | None, valid_until: str | None,
                    *, now: str | None = None) -> str:
     """반개구간 `[valid_from, valid_until)` 에서 파생하는 상태.

@@ -21,13 +21,7 @@ from . import query as q
 from . import preference as pref
 from . import activate as act
 from . import cli_output
-
-
-def _csv(val: str | None) -> list[str] | None:
-    """Parse a comma-separated CLI value into a list (None/'' -> None)."""
-    if not val:
-        return None
-    return [s.strip() for s in val.split(",") if s.strip()]
+from store.querybase import split_csv as _csv
 
 
 #: `--owner` 가 무슨 값인지 아무것도 알려 주지 않아서, 사람 이름·계정 이름을 넣어

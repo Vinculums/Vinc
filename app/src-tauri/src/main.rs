@@ -467,7 +467,7 @@ fn kill_sidecar_tree(pid: u32) {
 ///
 /// 셸 PID 를 넘겨 heartbeat 감독을 건다(E6) — 셸이 크래시·강제종료로 죽어
 /// RunEvent::Exit 가 안 불려도 사이드카가 ~1s 내 자가종료(고아 근절).
-/// (Windows-안전 조회는 사이드카 server._pid_alive 참조.)
+/// (Windows-안전 조회는 `store/procutil.py` 의 `pid_alive` 참조.)
 ///
 /// 시작 시 이미지명 일괄 taskkill(/IM)로 "고아 회수"는 하지 않는다: 그러면
 /// Settings→MCP 로 Claude 클라이언트에 등록된 브리지(`vinc.exe mcp serve`)

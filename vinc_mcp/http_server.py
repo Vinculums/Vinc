@@ -39,6 +39,8 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from store import httpbody
+
 from . import community, edverify, entitlement, toolcall, tools, viewurl
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
@@ -1093,33 +1095,29 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _body(self) -> dict:
         self._raw_body = b""
-        n = int(self.headers.get("Content-Length") or 0)
-        if n <= 0 or n > MAX_BODY:
-            # 상한 초과는 본문을 **읽지 않고** 빈 dict 를 돌려준다(읽으면 그게 메모리 공격
-            # 통로다). 상태 코드는 이 함수가 정하지 않는다 — 초과를 오류로 알려야 하는
-            # 라우트는 부르기 전에 스스로 본다(`_internal_graph`). 미수신 바이트가 남지만 무해하다 — `protocol_version` 이
-            # HTTP/1.0(기본)이라 매 응답 뒤 커넥션이 닫히기 때문이다.
+        try:
+            rawb = httpbody.read_body(self.headers, self.rfile, MAX_BODY)
+        except httpbody.BodyTooLarge:
+            # 상한 초과는 본문을 **읽지 않고** 빈 dict 를 돌려준다. 상태 코드는 이 함수가 정하지
+            # 않는다 — 초과를 오류로 알려야 하는 라우트는 부르기 전에 스스로 본다(`_internal_graph`).
+            # 미수신 바이트가 남지만 무해하다 — `protocol_version` 이 HTTP/1.0(기본)이라 매 응답 뒤
+            # 커넥션이 닫히기 때문이다.
             # ⚠ `protocol_version = "HTTP/1.1"` 로 올리면 keep-alive 가 살아나 이 잔여물이
             # 다음 요청으로 파싱된다(요청 밀수). 그때는 여기서 `close_connection = True`.
             return {}
-        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
-        # UTF-8 이 아닌 본문은 **JSON 파싱 실패와 같은 자리로 강등**한다(아래 except 와 동일).
-        # 그냥 두면 do_POST 가 UnicodeDecodeError 로 죽어 커넥션이 리셋되고, 프록시 뒤에서는
-        # 클라이언트가 400 대신 **503** 을 본다(로그엔 매 요청 스택트레이스). 실제로 호스트가
-        # CP949 로 인코딩한 질의를 보내 라이브 허브가 이 경로를 밟았다(2026-08-04).
-        rawb = self.rfile.read(n)
         # 지문 대조는 **받은 바이트**로 한다(감사 M2). 파싱된 dict 를 다시 직렬화하면
         # 키 순서·공백이 달라져 보낸 쪽과 다른 값이 나온다.
         self._raw_body = rawb
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+        # UTF-8 이 아닌 본문은 **JSON 파싱 실패와 같은 자리로 강등**한다(둘 다 ValueError).
+        # 그냥 두면 do_POST 가 UnicodeDecodeError 로 죽어 커넥션이 리셋되고, 프록시 뒤에서는
+        # 클라이언트가 400 대신 **503** 을 본다(로그엔 매 요청 스택트레이스). 실제로 호스트가
+        # CP949 로 인코딩한 질의를 보내 라이브 허브가 이 경로를 밟았다(2026-08-04).
         try:
-            raw = rawb.decode("utf-8")
-        except UnicodeDecodeError:
-            return {}
-        if ctype == "application/x-www-form-urlencoded":
-            return {k: v[0] for k, v in urllib.parse.parse_qs(raw).items()}
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
+            if ctype == "application/x-www-form-urlencoded":
+                return {k: v[0] for k, v in urllib.parse.parse_qs(rawb.decode("utf-8")).items()}
+            return httpbody.parse_json(rawb)
+        except ValueError:
             return {}
 
     # ── 라우팅 ──────────────────────────────────────────────────────────────

@@ -21,6 +21,7 @@ stdlib 전용(`http.server`·`threading`·`signal`) — DEC D5(threaded stdlib +
 from __future__ import annotations
 
 from store.procutil import pid_alive
+from store.querybase import split_csv as _csv
 
 import base64
 import contextvars
@@ -89,6 +90,11 @@ _ENCODER_RESPONSE_RUNTIME = contextvars.ContextVar("encoder_response_runtime", d
 _ENCODER_RESPONSE_INSTANCE = contextvars.ContextVar("encoder_response_instance", default="")
 #: 창구가 답한 모델(`/encode` 의 `model`). 옛 창구는 안 실으므로 빈 값이 온다.
 _ENCODER_RESPONSE_MODEL = contextvars.ContextVar("encoder_response_model", default="")
+#: 요청 본문 상한(바이트). 넘으면 읽지 않고 413 이다(`store/httpbody.py`).
+#: 허브의 4MB(`vinc_mcp/http_server.py` `MAX_BODY`)보다 훨씬 크게 둔다: 로컬 모드 앱은 계정을
+#: 지나지 않아 파일·팩을 나누지 않고 한 본문으로 보낸다(`app/src/doc-import.ts` 의 상한 주석).
+#: 이 값은 그 경로를 막지 않으면서 본문 하나가 메모리를 무한히 쥐는 것만 막는다.
+MAX_BODY = 256 * 1024 * 1024
 
 
 def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
@@ -129,6 +135,7 @@ def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
 
 from store.config import load_config
 from store import config as store_config
+from store import httpbody
 from store import request_timing
 from store.backend import open_store
 from store.envflag import truthy
@@ -2575,14 +2582,6 @@ def _pop_max_domains(body) -> int | None:
     return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
 
 
-def _csv(val):
-    if not val:
-        return None
-    if isinstance(val, list):
-        return val
-    return [s.strip() for s in val.split(",") if s.strip()]
-
-
 # ── HTTP 핸들러 ──────────────────────────────────────────────────────────────
 
 class _Handler(BaseHTTPRequestHandler):
@@ -2607,17 +2606,20 @@ class _Handler(BaseHTTPRequestHandler):
         # 교차출처 → CORS 없으면 fetch 가 브라우저에 차단된다("Failed to fetch"). 루프백
         # 바인딩 + Bearer 토큰 인증이라 origin 은 * 로 허용해도 무단 접근은 토큰에서 막힌다.
         self.send_header("Access-Control-Allow-Origin", "*")
+        if self.close_connection:   # 본문을 다 읽지 못했다(상한 초과) — 닫는다고 알린다
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
     def _body(self) -> dict:
-        length = int(self.headers.get("Content-Length") or 0)
-        if not length:
-            return {}
-        raw = self.rfile.read(length)
-        if not raw:
-            return {}
-        return json.loads(raw.decode("utf-8"))
+        try:
+            raw = httpbody.read_body(self.headers, self.rfile, MAX_BODY)
+        except httpbody.BodyTooLarge:
+            # 읽지 않은 바이트가 소켓에 남는다. 이 서버는 HTTP/1.1 keep-alive 라 연결을
+            # 닫지 않으면 그 잔여물이 다음 요청으로 파싱된다(요청 밀수).
+            self.close_connection = True
+            raise
+        return httpbody.parse_json(raw)
 
     def do_GET(self):
         self._dispatch("GET")
@@ -2733,6 +2735,8 @@ class _Handler(BaseHTTPRequestHandler):
                 code, obj = self.app.connect_callback(self._body(), self.headers.get("Origin"))
             except json.JSONDecodeError as exc:
                 code, obj = 400, {"error": f"invalid JSON body: {exc}"}
+            except httpbody.BodyTooLarge as exc:
+                code, obj = 413, {"error": str(exc)}
             return self._send(code, obj)
 
         # 인증(F4): Bearer 세션 토큰 필수.
@@ -2765,6 +2769,8 @@ class _Handler(BaseHTTPRequestHandler):
             code, obj = 400, {"error": f"missing field: {exc.args[0]}"}
         except json.JSONDecodeError as exc:
             code, obj = 400, {"error": f"invalid JSON body: {exc}"}
+        except httpbody.BodyTooLarge as exc:
+            code, obj = 413, {"error": str(exc)}
         except JobError as exc:
             code, obj = 500, {"error": str(exc)}
             if exc.write_may_have_applied:
@@ -2942,20 +2948,10 @@ def make_server(app: VincApp, host: str = "127.0.0.1", port: int = 0) -> Threadi
     return httpd
 
 
-def _pid_alive(pid: int) -> bool:
-    """부모 PID 생존 확인 — **조회 전용, 대상을 죽이지 않는다.**
-
-    구현은 `store/procutil.py` 한 벌뿐이다. 여기 사본을 두지 않는 이유는 그 파일에
-    적어 뒀다 — 사본이 둘이던 시절 브리지 쪽만 `os.kill` 을 쓰다가 Windows 에서
-    앱을 죽였다(2026-08-18).
-    """
-    return pid_alive(pid)
-
-
 def _heartbeat(parent_pid: int, stop: threading.Event, interval: float = 1.0):
     """부모(셸) 프로세스 생존 감시. 사망 시 stop 을 세워 clean shutdown 유발(E6)."""
     while not stop.wait(interval):
-        if not _pid_alive(parent_pid):
+        if not pid_alive(parent_pid):
             stop.set()
             return
 
