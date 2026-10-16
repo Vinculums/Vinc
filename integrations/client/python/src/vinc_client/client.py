@@ -2,8 +2,8 @@
 
 Both read a member key (``vinc_sk_`` full, ``vinc_ro_`` read only) and act on
 one space: the personal graph, or a team by its id. Nothing here writes on its
-own; ``ingest``, ``record_episode`` and ``write_package`` are
-explicit calls.
+own; ``ingest``, ``record_episode``, ``write_package`` and the delete and merge
+wrappers are explicit calls.
 """
 from __future__ import annotations
 
@@ -228,6 +228,54 @@ class _Base:
     def _operation_status(operation_id, space) -> _Call:
         return _Call("GET", "/v1/operations/" + quote(operation_id, safe=""), space=space)
 
+    @staticmethod
+    def _edges(node, nodes, type, dir, limit, space) -> _Call:
+        # node 하나는 GET, 여러 개(nodes)는 POST. 둘 다 주거나 둘 다 빼면 보내기 전에 거절한다.
+        if (node is None) == (nodes is None):
+            raise VincInvalidArgument("invalid_argument", "Pass exactly one of node or nodes.")
+        if node is not None:
+            return _Call("GET", f"/v1/nodes/{_segment(node)}/edges",
+                         params={"type": type, "dir": dir, "limit": limit}, space=space)
+        return _Call("POST", "/v1/edges/query", body=_drop_none(
+            {"nodes": list(nodes), "type": type, "dir": dir, "limit": limit}), space=space)
+
+    @staticmethod
+    def _role_check(role_id, output, person_only_requests, self_authored, space) -> _Call:
+        return _Call("POST", f"/v1/roles/{_segment(role_id)}/check", body=_drop_none(
+            {"output": output, "self_authored": self_authored,
+             "person_only_requests": (list(person_only_requests)
+                                      if person_only_requests is not None else None)}),
+            space=space)
+
+    # 삭제·병합 4종: dry_run=True 는 미리보기(preview_digest 포함)를 돌려주고 아무것도 바꾸지 않는다.
+    # 적용 호출에 그 preview_digest 를 실으면 미리본 뒤 상태가 바뀐 경우 서버가 거절한다.
+    @staticmethod
+    def _preview_options(dry_run, preview_digest, operation_id) -> dict[str, Any]:
+        return {"dry_run": True if dry_run else None, "preview_digest": preview_digest,
+                "operation_id": operation_id}
+
+    @staticmethod
+    def _delete(node_id, dry_run, preview_digest, operation_id, space) -> _Call:
+        return _Call("DELETE", f"/v1/nodes/{_segment(node_id)}",
+                     params=_Base._preview_options(dry_run, preview_digest, operation_id), space=space)
+
+    @staticmethod
+    def _delete_edge(from_id, to_id, type, dry_run, preview_digest, operation_id, space) -> _Call:
+        return _Call("DELETE", "/v1/edges", params={
+            "from_id": from_id, "to_id": to_id, "type": type,
+            **_Base._preview_options(dry_run, preview_digest, operation_id)}, space=space)
+
+    @staticmethod
+    def _merge_nodes(keep_id, drop_id, dry_run, preview_digest, operation_id, space) -> _Call:
+        return _Call("POST", "/v1/nodes/merge", body=_drop_none({
+            "keep_id": keep_id, "drop_id": drop_id,
+            **_Base._preview_options(dry_run, preview_digest, operation_id)}), space=space)
+
+    @staticmethod
+    def _doc_delete(doc_id, dry_run, preview_digest, operation_id, space) -> _Call:
+        return _Call("DELETE", f"/v1/documents/{_segment(doc_id)}",
+                     params=_Base._preview_options(dry_run, preview_digest, operation_id), space=space)
+
 
 class VincClient(_Base):
     """Blocking client. Use as a context manager or call ``close()``."""
@@ -388,6 +436,58 @@ class VincClient(_Base):
         """Read a historical owner-scoped receipt. Unknown is not proof that no write happened."""
         return self._send(self._operation_status(operation_id, space))
 
+    def edges(self, node: str | None = None, *, nodes: Iterable[str] | None = None,
+              type: str | None = None, dir: str | None = None, limit: int | None = None,
+              space: str | None = None) -> dict[str, Any]:
+        """Stored edges with direction and evidence: ``GET /v1/nodes/{id}/edges`` for one
+        ``node``, ``POST /v1/edges/query`` for ``nodes``. Pass exactly one of the two."""
+        return self._send(self._edges(node, nodes, type, dir, limit, space))
+
+    def role_check(self, role_id: str, output: str, *,
+                   person_only_requests: Iterable[dict[str, Any]] | None = None,
+                   self_authored: bool | None = None, space: str | None = None) -> dict[str, Any]:
+        """``POST /v1/roles/{id}/check``: the hub applies the role's checks to ``output``.
+
+        Read-only; returns verdict pass, block or interrupt. pass grants no permission.
+        """
+        return self._send(self._role_check(role_id, output, person_only_requests,
+                                           self_authored, space))
+
+    def delete(self, node_id: str, *, dry_run: bool = False, preview_digest: str | None = None,
+               operation_id: str | None = None, space: str | None = None) -> dict[str, Any]:
+        """``DELETE /v1/nodes/{id}``: irreversibly delete one node and its edges.
+
+        ``dry_run=True`` changes nothing and returns the preview with ``preview_digest``;
+        pass that digest on the apply call so a changed graph refuses instead of deleting.
+        """
+        self._require_write_key()
+        return self._send(self._delete(node_id, dry_run, preview_digest, operation_id, space))
+
+    def delete_edge(self, from_id: str, to_id: str, type: str, *, dry_run: bool = False,
+                    preview_digest: str | None = None, operation_id: str | None = None,
+                    space: str | None = None) -> dict[str, Any]:
+        """``DELETE /v1/edges``: delete one relationship; ``dry_run`` and ``preview_digest``
+        work as in :meth:`delete`."""
+        self._require_write_key()
+        return self._send(self._delete_edge(from_id, to_id, type, dry_run, preview_digest,
+                                            operation_id, space))
+
+    def merge_nodes(self, keep_id: str, drop_id: str, *, dry_run: bool = False,
+                    preview_digest: str | None = None, operation_id: str | None = None,
+                    space: str | None = None) -> dict[str, Any]:
+        """``POST /v1/nodes/merge``: irreversibly fold ``drop_id`` into ``keep_id``;
+        ``dry_run`` and ``preview_digest`` work as in :meth:`delete`."""
+        self._require_write_key()
+        return self._send(self._merge_nodes(keep_id, drop_id, dry_run, preview_digest,
+                                            operation_id, space))
+
+    def doc_delete(self, doc_id: str, *, dry_run: bool = False, preview_digest: str | None = None,
+                   operation_id: str | None = None, space: str | None = None) -> dict[str, Any]:
+        """``DELETE /v1/documents/{id}``: delete one document; ``dry_run`` and
+        ``preview_digest`` work as in :meth:`delete`."""
+        self._require_write_key()
+        return self._send(self._doc_delete(doc_id, dry_run, preview_digest, operation_id, space))
+
     def get_context(self, query: str, *, search_fallback: bool = False,
                     max_chars: int = DEFAULT_MAX_CHARS, max_excerpts: int = 3,
                     min_query_chars: int = 3, space: str | None = None) -> str | None:
@@ -414,12 +514,14 @@ class VincClient(_Base):
     def record_episode(self, title: str, *, summary: str = "", about: Iterable[str] = (),
                        date: str | None = None, domain: str | None = None,
                        tags: Iterable[str] | None = None, episode_id: str | None = None,
-                       space: str | None = None) -> dict[str, Any]:
+                       space: str | None = None, create_only: bool | None = None,
+                       operation_id: str | None = None) -> dict[str, Any]:
         """Write one Episode, ``about`` existing concepts or decisions.
 
         Call it on purpose, after a person approved what happened; nothing in
         this package calls it for you. Every ``about`` id is read first, so a
         typo raises ``VincNotFound`` instead of creating an empty node.
+        ``create_only`` and ``operation_id`` reach :meth:`ingest` unchanged.
         """
         self._require_write_key()
         targets = check_about(about)
@@ -427,19 +529,25 @@ class VincClient(_Base):
             self.node(target, space=space)
         fragment = build_episode_fragment(title, summary=summary, about=targets, date=date,
                                           domain=domain, tags=tags, episode_id=episode_id)
-        return self.ingest(fragment["nodes"], fragment["edges"], space=space)
+        return self.ingest(fragment["nodes"], fragment["edges"], space=space,
+                           create_only=create_only, operation_id=operation_id)
 
     def write_package(self, question: str, conclusion: str, *,
                       claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
                       space: str, title: str | None = None,
-                      package_id: str | None = None) -> dict[str, Any]:
-        """Explicitly write one handoff Record into the selected space, requiring a write key."""
+                      package_id: str | None = None, create_only: bool | None = None,
+                      operation_id: str | None = None) -> dict[str, Any]:
+        """Explicitly write one handoff Record into the selected space, requiring a write key.
+
+        ``create_only`` and ``operation_id`` reach :meth:`ingest` unchanged.
+        """
         self._require_write_key()
         selected = package_space(space)
         fragment = build_package_fragment(question, conclusion, claims=claims,
                                           produced_by=produced_by, run_id=run_id,
                                           title=title, package_id=package_id)
-        result = self.ingest(fragment["nodes"], fragment["edges"], space=selected)
+        result = self.ingest(fragment["nodes"], fragment["edges"], space=selected,
+                             create_only=create_only, operation_id=operation_id)
         return {"package_id": fragment["nodes"][0]["id"], "space": selected, "write": result}
 
     def get_package_context(self, package_id: str, *, space: str,
@@ -605,6 +713,44 @@ class AsyncVincClient(_Base):
     async def operation_status(self, operation_id: str, *, space: str | None = None) -> dict[str, Any]:
         return await self._send(self._operation_status(operation_id, space))
 
+    async def edges(self, node: str | None = None, *, nodes: Iterable[str] | None = None,
+                    type: str | None = None, dir: str | None = None, limit: int | None = None,
+                    space: str | None = None) -> dict[str, Any]:
+        return await self._send(self._edges(node, nodes, type, dir, limit, space))
+
+    async def role_check(self, role_id: str, output: str, *,
+                         person_only_requests: Iterable[dict[str, Any]] | None = None,
+                         self_authored: bool | None = None,
+                         space: str | None = None) -> dict[str, Any]:
+        return await self._send(self._role_check(role_id, output, person_only_requests,
+                                                 self_authored, space))
+
+    async def delete(self, node_id: str, *, dry_run: bool = False,
+                     preview_digest: str | None = None, operation_id: str | None = None,
+                     space: str | None = None) -> dict[str, Any]:
+        self._require_write_key()
+        return await self._send(self._delete(node_id, dry_run, preview_digest, operation_id, space))
+
+    async def delete_edge(self, from_id: str, to_id: str, type: str, *, dry_run: bool = False,
+                          preview_digest: str | None = None, operation_id: str | None = None,
+                          space: str | None = None) -> dict[str, Any]:
+        self._require_write_key()
+        return await self._send(self._delete_edge(from_id, to_id, type, dry_run, preview_digest,
+                                                  operation_id, space))
+
+    async def merge_nodes(self, keep_id: str, drop_id: str, *, dry_run: bool = False,
+                          preview_digest: str | None = None, operation_id: str | None = None,
+                          space: str | None = None) -> dict[str, Any]:
+        self._require_write_key()
+        return await self._send(self._merge_nodes(keep_id, drop_id, dry_run, preview_digest,
+                                                  operation_id, space))
+
+    async def doc_delete(self, doc_id: str, *, dry_run: bool = False,
+                         preview_digest: str | None = None, operation_id: str | None = None,
+                         space: str | None = None) -> dict[str, Any]:
+        self._require_write_key()
+        return await self._send(self._doc_delete(doc_id, dry_run, preview_digest, operation_id, space))
+
     async def get_context(self, query: str, *, search_fallback: bool = False,
                           max_chars: int = DEFAULT_MAX_CHARS, max_excerpts: int = 3,
                           min_query_chars: int = 3, space: str | None = None) -> str | None:
@@ -624,26 +770,30 @@ class AsyncVincClient(_Base):
     async def record_episode(self, title: str, *, summary: str = "", about: Iterable[str] = (),
                              date: str | None = None, domain: str | None = None,
                              tags: Iterable[str] | None = None, episode_id: str | None = None,
-                             space: str | None = None) -> dict[str, Any]:
+                             space: str | None = None, create_only: bool | None = None,
+                             operation_id: str | None = None) -> dict[str, Any]:
         self._require_write_key()
         targets = check_about(about)
         for target in targets:
             await self.node(target, space=space)
         fragment = build_episode_fragment(title, summary=summary, about=targets, date=date,
                                           domain=domain, tags=tags, episode_id=episode_id)
-        return await self.ingest(fragment["nodes"], fragment["edges"], space=space)
+        return await self.ingest(fragment["nodes"], fragment["edges"], space=space,
+                                 create_only=create_only, operation_id=operation_id)
 
     async def write_package(self, question: str, conclusion: str, *,
                             claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
                             space: str, title: str | None = None,
-                            package_id: str | None = None) -> dict[str, Any]:
+                            package_id: str | None = None, create_only: bool | None = None,
+                            operation_id: str | None = None) -> dict[str, Any]:
         """Async explicit package write; no framework callback invokes this automatically."""
         self._require_write_key()
         selected = package_space(space)
         fragment = build_package_fragment(question, conclusion, claims=claims,
                                           produced_by=produced_by, run_id=run_id,
                                           title=title, package_id=package_id)
-        result = await self.ingest(fragment["nodes"], fragment["edges"], space=selected)
+        result = await self.ingest(fragment["nodes"], fragment["edges"], space=selected,
+                                   create_only=create_only, operation_id=operation_id)
         return {"package_id": fragment["nodes"][0]["id"], "space": selected, "write": result}
 
     async def get_package_context(self, package_id: str, *, space: str,

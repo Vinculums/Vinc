@@ -76,3 +76,26 @@ def test_host_checkpoint_rebuild_and_lost_ack_keep_one_episode_identity():
     assert len(drafts) == 1 and len(writes) == 2
     assert writes[0] == writes[1]
     assert writes[0]["nodes"][0]["id"] == saved_id
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
+def test_helpers_pass_create_only_and_operation_id_through(async_mode):
+    # VIN-601: 헬퍼가 ingest 와 같은 재시도·생성 전용 계약을 본문에 그대로 싣는다.
+    from vinc_langgraph import awrite_package, write_package
+    seen = []
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"warnings": []})
+    op = "00000000-0000-4000-8000-000000000601"
+    package = {"claims": [{"claim": "Holds.", "evidence_ids": ["decision:policy"]}],
+               "produced_by": "agent:writer", "run_id": "run-1", "package_id": "record:handoff",
+               "space": "01a0a0e0-3f91-7128-9876-6b543f28de0a", "create_only": True, "operation_id": op}
+    client = (AsyncVincClient if async_mode else VincClient)(SK, transport=httpx.MockTransport(handler))
+    if async_mode:
+        asyncio.run(arecord_episode(client, "Approved", episode_id="episode:run-one",
+                                    create_only=True, operation_id=op))
+        asyncio.run(awrite_package(client, "Which?", "This.", **package))
+    else:
+        record_episode(client, "Approved", episode_id="episode:run-one", create_only=True, operation_id=op)
+        write_package(client, "Which?", "This.", **package)
+    assert [(s["create_only"], s["operation_id"]) for s in seen] == [(True, op), (True, op)]

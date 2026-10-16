@@ -143,7 +143,9 @@ class VincContextProvider(ContextProvider):
 async def record_episode(client: AsyncVincClient, title: str, *, summary: str = "",
                          about: Iterable[str] = (), date: str | None = None,
                          domain: str | None = None, tags: Iterable[str] | None = None,
-                         space: str | None = None, episode_id: str | None = None) -> dict[str, Any]:
+                         space: str | None = None, episode_id: str | None = None,
+                         create_only: bool | None = None,
+                         operation_id: str | None = None) -> dict[str, Any]:
     """Write one Episode about existing concepts or decisions. Needs a ``vinc_sk_`` key.
 
     Call it after a person approved what the agent did; see
@@ -151,7 +153,8 @@ async def record_episode(client: AsyncVincClient, title: str, *, summary: str = 
     Save episode_id in host state before approval and reuse it only for this event's retries.
     """
     return await client.record_episode(title, summary=summary, about=about, date=date,
-                                       domain=domain, tags=tags, space=space, episode_id=episode_id)
+                                       domain=domain, tags=tags, space=space, episode_id=episode_id,
+                                       create_only=create_only, operation_id=operation_id)
 
 
 class PackageProvider(ContextProvider):
@@ -186,11 +189,14 @@ class PackageProvider(ContextProvider):
 
 async def write_package(client: AsyncVincClient, question: str, conclusion: str, *,
                         claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
-                        space: str, package_id: str | None = None) -> dict[str, Any]:
+                        space: str, package_id: str | None = None,
+                        create_only: bool | None = None,
+                        operation_id: str | None = None) -> dict[str, Any]:
     """Explicit producer write; invoke after reviewing its conclusion and claim evidence."""
     return await client.write_package(question, conclusion, claims=claims,
                                       produced_by=produced_by, run_id=run_id,
-                                      space=space, package_id=package_id)
+                                      space=space, package_id=package_id,
+                                      create_only=create_only, operation_id=operation_id)
 
 
 async def prefetch(client: AsyncVincClient, role_id: str, task: str, *, space: str | None = None,
