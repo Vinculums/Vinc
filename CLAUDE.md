@@ -55,12 +55,14 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
   (`decision` 은 v12 에서 늘었다. 이 목록이 다섯으로 적혀 있어서 "결정에 props 를
   실으면 사라진다"는 오해가 세션마다 재생산됐다.) 그 밖의
   타입은 Entity 캐리어로 가는데 열이 `type/title/tags` 뿐이라 **값이 조용히 사라진다**
-  (경고는 뜬다). 값을 실어야 하면 `concept` 이나 `record` 를 쓸 것.
-- **엣지는 같은 페이로드에서 실제로 MERGE 된 노드 사이에서만 해석된다.** 배치를
-  나누면 배치 간 엣지가 조용히 skip 되고, **같은 배치라도 노드가 스킵되면 그 노드로
-  향하는 엣지가 함께 떨어진다**(제목 없는 Entity · 남이 소유한 id 등). 양 끝 노드를
-  엣지와 같은 호출에 동봉하고, `warnings` 를 읽을 것 — `merged` 는 실제로 들어간
-  것만 센다.
+  (경고는 뜬다). 값을 실어야 하면 `concept` 이나 `record` 를 쓸 것. 전용 테이블에도
+  빈 열이 있다: Domain 에는 `props` 가, Bridge 에는 `tags` 가 없다(실으면 경고하고 버린다).
+- **엣지의 끝점은 같은 호출의 `nodes` 에 없으면 스토어에서 찾는다**(v0.8.4,
+  `api/fragment.py` `_resolve_endpoint_type`). 그래서 이미 있는 노드 사이의 엣지만 따로
+  보내도 들어간다(2026-10-16 재확인). **남은 함정은 하나다: 같은 호출에서 스킵된
+  노드로 향하는 엣지는 함께 떨어진다**(제목 없는 Entity · 남이 소유한 id 등). 스토어의
+  옛 행으로 되살리지 않는 것이 의도다. `warnings` 를 읽을 것 — `merged` 는 실제로
+  들어간 것만 센다.
 - ~~**`title` 에는 가드가 없다.**~~ **해소됨**(`api/fragment.py` `_merge_node`,
   커밋 85c75f2). 이제 `title` 도 `domain`·`tags`·`props` 와 같이 미지정 시 보존된다.
   지우지 않고 남기는 이유는 이 함정을 기억하는 세션이 아직 있어서다.
@@ -69,13 +71,14 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
   갈아치워지고, 안 실은 키는 **경고 없이 사라진다**. 즉석 실측: `{alpha, beta}` 를 가진
   레코드에 `{gamma}` 만 재전송했더니 남은 것은 `gamma` 하나였고 `warnings` 는 비었다.
   필드 이력이 없으므로 **복구는 없다.** 키 하나를 더하려면 **기존 props 를 먼저 읽어
-  합쳐서** 통째로 보낼 것(`vinc_ingest` 의 `stored` 가 현재 값을 그대로 준다).
+  합쳐서** 통째로 보낼 것(`vinc_ingest` 의 `stored` 가 현재 값을 그대로 준다). 아니면
+  `props_patch` 와 `expected_rev`(`vinc_node` 의 `rev`)를 함께 보낸다: JSON Merge Patch 라
+  보낸 키만 바뀌고, rev 가 다르면 쓰기 전에 거절된다.
   아래 Entity `tags` 함정과 같은 종인데 그쪽만 명시돼 있어서 이 줄을 더한다.
-- **그 후속: Entity 는 `tags`·`theme_id` 가 여전히 무가드다.** 개방 타입 노드의
-  Entity 분기는 두 필드를 **무조건 SET** 한다 — id 와 title 만 실은 부분 재전송이
-  `tags` 를 빈 배열로 지운다. 그리고 `themes=None` 으로 부르는 경로(sync·share·
-  테스트)는 `theme_id` 를 `""` 로 덮는다. 개방 타입 노드를 다시 보낼 때는 tags 를
-  함께 실을 것.
+- ~~**그 후속: Entity 는 `tags`·`theme_id` 가 여전히 무가드다.**~~ **해소됨**(VIN-587).
+  이제 Entity 의 `tags` 도 미지정 시 보존되고, `theme_id` 는 신규 노드이거나 fragment 가
+  `theme_id` 를 값으로 직접 실었을 때만 바뀐다(`themes=None` 경로가 `""` 로 덮지 않는다).
+  남은 함정은 위 줄의 `props` 통째 교체다.
 - **도메인은 `vinc/` 아래에 둔다 — 접두를 빼면 지도가 통째로 다시 뿌리내린다.**
   배치는 모든 노드 도메인의 **공통 접두**를 뿌리로 벗긴다(`api/query.py` `_build_tree`).
   2026-09-18 에 노드 **셋**이 `product`·`engineering` 으로 들어오자 공통 접두가

@@ -146,8 +146,11 @@ def import_docs(store, *, owner: str, payload: dict) -> dict:
                 continue
             if cur.get("content_hash") == d.get("content_hash"):
                 intact = ds.chunks_intact(store, doc_id)
+                # 본문이 같아도 메타(유효구간·내용 시점)만 바뀐 원격 편집은 적용해야 한다.
+                # content_time 을 빼면 그 편집이 이 기기에 영영 안 온다.
                 meta_only = intact and _newer(remote_ua, cur.get("updated_at") or "") and any(
-                    d.get(k) is not None for k in ("valid_from", "valid_until", "superseded_by"))
+                    d.get(k) is not None
+                    for k in ("valid_from", "valid_until", "superseded_by", "content_time"))
                 if intact and not meta_only:
                     skipped += 1
                     continue
@@ -155,8 +158,8 @@ def import_docs(store, *, owner: str, payload: dict) -> dict:
                     # 본문이 같은데 로컬 청크가 깨졌다(쓰기 창 표식·꼬리 청크) — LWW 와 무관하게
                     # 같은 본문으로 다시 쓴다. 제목·출처·시각은 로컬 것을 그대로 둔다(RV-12).
                     fields = {"updated_at": cur.get("updated_at") or None}
-                # meta_only: 본문이 같고 원격이 더 새다. put_doc 이 유효구간만 바꾼다
-                # (v22). 유효구간이 같으면 put_doc 이 스킵하므로 해가 없다.
+                # meta_only: 본문이 같고 원격이 더 새다. put_doc 이 유효구간·내용 시점만
+                # 바꾼다(v22). 둘 다 같으면 put_doc 이 스킵하므로 해가 없다.
             elif not _newer(remote_ua, cur.get("updated_at") or ""):
                 skipped += 1          # 로컬이 같거나 더 새다 → LWW 로 로컬 유지
                 continue
