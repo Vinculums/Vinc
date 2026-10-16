@@ -10,7 +10,7 @@
    네 역할을 그대로 내고, `prompts/get` 이 그 계약을 낸다.
 4. 기본 팩은 무료 주제 상한이 꽉 찬 그래프에도 들어간다(예약 주제 면제).
 5. 매니페스트(`official-packs.json`)가 다섯을 공식팩으로 들고 있다 — 계정 백엔드의 자동
-   적재는 그 갤러리 행을 읽는다.
+   적재는 그 공식 팩 행을 읽는다.
 """
 from __future__ import annotations
 
@@ -138,7 +138,7 @@ class PackContract(unittest.TestCase):
                 self.assertLessEqual(len(e["title"]), 120)
                 self.assertLessEqual(len(e["description"]), 500)
         default = by_file["agents/default-agents.json"]
-        # 계정 백엔드가 이 제목으로 갤러리 행을 찾는다(provisionDefaults.ts).
+        # 계정 백엔드가 이 제목으로 공식 팩 행을 찾는다(provisionDefaults.ts).
         self.assertEqual(default["title"], "Default Agents")
 
 
