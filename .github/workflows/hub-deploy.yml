@@ -490,36 +490,6 @@ jobs:
           echo "::error::허브가 tools/list 에 답하지 않는다" >&2
           exit 1
 
-      # writer 인계 확인. 헬스가 통과했다는 것은 새 리비전이 복원을 마치고 자격을 가져갔다는
-      # 뜻이다. 남은 질문은 "구 리비전이 넘긴 **뒤에** 복원했는가"이고, 영속 공유의 표식이
-      # 그것을 적는다: `.writer` 가 새 리비전, `.released` 가 구 리비전이어야 한다.
-      # `.released` 가 다르면 새 리비전이 대기 상한에서 그대로 진행한 것이다 — 구 리비전의
-      # 마지막 주기 스냅샷 이후 쓰기가 빠졌을 수 있으므로 빨강으로 남겨 사람이 본다.
-      - name: Verify writer handoff (markers on the persistent share)
-        if: env.HANDOFF_EXPECTED == '1'
-        run: |
-          set -euo pipefail
-          p=$(az containerapp show -n vinc-hub -g vincsRG \
-                --query "properties.template.containers[0].env[?name=='VINC_STORE_SNAPSHOT'].value | [0]" -o tsv)
-          [ -n "$p" ] || p=$(az containerapp show -n vinc-hub -g vincsRG \
-                --query "properties.template.containers[0].env[?name=='VINC_DATA_DIR'].value | [0]" -o tsv)
-          case "$p" in /data/*) ;; *) echo "::error::스냅샷 경로가 /data 밖이다: $p" >&2; exit 1 ;; esac
-          rel=${p#/data/}
-          for m in writer released; do
-            az storage file download --account-name vincstorage01 --share-name hub-data \
-              --path "$rel.$m" --dest "$RUNNER_TEMP/handoff.$m" --output none 2>/dev/null \
-              || : > "$RUNNER_TEMP/handoff.$m"
-          done
-          w=$(tr -d '[:space:]' < "$RUNNER_TEMP/handoff.writer")
-          r=$(tr -d '[:space:]' < "$RUNNER_TEMP/handoff.released")
-          echo "writer=$w released=$r (expected writer=$LATEST_REV released=$PREV_REV)"
-          [ "$w" = "$LATEST_REV" ] || { echo "::error::writer 가 새 리비전이 아니다" >&2; exit 1; }
-          [ "$r" = "$PREV_REV" ] || {
-            echo "::error::구 리비전($PREV_REV)이 넘기지 못했다 — 새 리비전이 대기 상한에서 진행했다." >&2
-            echo "새 리비전 로그의 'vinc: handoff' 줄과 구 리비전의 'final snapshot' 줄을 볼 것." >&2
-            exit 1; }
-          echo "writer 인계 확인"
-
       - name: Read probe through the switch (result)
         if: always()
         run: |
@@ -714,6 +684,39 @@ jobs:
           echo "지금 레지스트리: $(python3 -c "print(f'{$size/1e9:.2f}')") GB"
           echo "  ⚠ 이 용량은 방금 삭제분을 아직 안 담는다 — ACR 레이어 회수가 지연된다."
           echo "  실제 감소는 다음 배포의 이 줄에서 보인다."
+
+      # writer 인계 확인. 헬스가 통과했다는 것은 새 리비전이 복원을 마치고 자격을 가져갔다는
+      # 뜻이다. 남은 질문은 "구 리비전이 넘긴 **뒤에** 복원했는가"이고, 영속 공유의 표식이
+      # 그것을 적는다: `.writer` 가 새 리비전, `.released` 가 구 리비전이어야 한다.
+      # `.released` 가 다르면 새 리비전이 대기 상한에서 그대로 진행한 것이다 — 구 리비전의
+      # 마지막 주기 스냅샷 이후 쓰기가 빠졌을 수 있으므로 빨강으로 남겨 사람이 본다.
+      # 잡의 **맨 끝**에 두고 취소가 아니면 늘 돈다. 앞에 두면 이 빨강이 뒤의 검증(OAuth
+      # 표면·구조 기준선·인용 생존·레지스트리 정리)을 통째로 건너뛰게 한다 — 인계가 늦었을
+      # 뿐 서비스는 떠 있는데, 정작 서비스를 확인하는 스텝들이 안 돈다.
+      - name: Verify writer handoff (markers on the persistent share)
+        if: ${{ !cancelled() && env.HANDOFF_EXPECTED == '1' }}
+        run: |
+          set -euo pipefail
+          p=$(az containerapp show -n vinc-hub -g vincsRG \
+                --query "properties.template.containers[0].env[?name=='VINC_STORE_SNAPSHOT'].value | [0]" -o tsv)
+          [ -n "$p" ] || p=$(az containerapp show -n vinc-hub -g vincsRG \
+                --query "properties.template.containers[0].env[?name=='VINC_DATA_DIR'].value | [0]" -o tsv)
+          case "$p" in /data/*) ;; *) echo "::error::스냅샷 경로가 /data 밖이다: $p" >&2; exit 1 ;; esac
+          rel=${p#/data/}
+          for m in writer released; do
+            az storage file download --account-name vincstorage01 --share-name hub-data \
+              --path "$rel.$m" --dest "$RUNNER_TEMP/handoff.$m" --output none 2>/dev/null \
+              || : > "$RUNNER_TEMP/handoff.$m"
+          done
+          w=$(tr -d '[:space:]' < "$RUNNER_TEMP/handoff.writer")
+          r=$(tr -d '[:space:]' < "$RUNNER_TEMP/handoff.released")
+          echo "writer=$w released=$r (expected writer=$LATEST_REV released=$PREV_REV)"
+          [ "$w" = "$LATEST_REV" ] || { echo "::error::writer 가 새 리비전이 아니다" >&2; exit 1; }
+          [ "$r" = "$PREV_REV" ] || {
+            echo "::error::구 리비전($PREV_REV)이 넘기지 못했다 — 새 리비전이 대기 상한에서 진행했다." >&2
+            echo "새 리비전 로그의 'vinc: handoff' 줄과 구 리비전의 'final snapshot' 줄을 볼 것." >&2
+            exit 1; }
+          echo "writer 인계 확인"
 
   # ── 배포 실패를 조용히 두지 않는다 ─────────────────────────────────────────
   # 🔴 2026-09-18 이 잡의 이유다. `8c7e363` 의 배포가 모델 굽기에서 exit 137 로

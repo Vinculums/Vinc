@@ -40,8 +40,13 @@ def test_app_spec_boots_like_the_hub_with_an_empty_first_store():
     assert env["VINC_MCP_TOKEN"] == "mcp-token"          # 값이 아니라 시크릿 참조
     assert tpl["terminationGracePeriodSeconds"] >= 60
     assert tpl["volumes"] == [{"name": "data", "storageType": "AzureFile", "storageName": "rh1"}]
-    assert not any(e["name"] in ("VINC_EMBED_REMOTE", "VINC_MCP_ISSUER", "VINC_ACCOUNT_INTERNAL_URL")
+    assert not any(e["name"] in ("VINC_MCP_ISSUER", "VINC_ACCOUNT_INTERNAL_URL")
                    for e in tpl["containers"][0]["env"]), "운영 의존을 끌어오면 안 된다"
+    # 임베딩은 운영처럼 켠다(엔트리포인트의 워커 절과 종료 경로가 운영과 같아야 한다).
+    # 원격 인코더는 루프백이라 운영 인코더에 닿지 않는다.
+    assert env["VINC_EMBED"] == "on"
+    assert env["VINC_EMBED_REMOTE"].startswith("http://127.0.0.1:")
+    assert env["VINC_EMBED_APPLY_PAUSED"] == "on"
 
 
 def _row(n, ok=True, attempts=1, first=200):
