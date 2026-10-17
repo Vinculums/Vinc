@@ -3772,6 +3772,82 @@ def _brief_answerability_on() -> bool:
     return truthy(os.environ.get("VINC_BRIEF_ANSWERABILITY"))
 
 
+def _brief_section_on() -> bool:
+    """질문으로 문서 미러에 닿은 brief 에 `section` 을 실을 것인가(`VINC_BRIEF_SECTION`).
+    기본은 켜짐이고 ``off``·``0``·``false``·``no`` 가 끈다(끄면 이 키가 없던 때와 같다).
+    근거: [[vinc.research.answer-material-section-ai-corpus-2026-10-17]]"""
+    v = str(os.environ.get("VINC_BRIEF_SECTION", "")).strip().lower()
+    return v not in ("off", "0", "false", "no")
+
+
+def _brief_section(store, *, owner: str, query: str, rows: list[dict],
+                   query_embedding, nodes: list[str]) -> dict | None:
+    """질문 검색 1위 문서에서 **질문이 가리키는 절**. 그 문서의 미러가 ``nodes``(확정 노드나
+    노출 후보)에 있을 때만 낸다 — 아니면 답과 무관한 문서의 본문이 실린다.
+
+    노드 발췌는 노드를 뒷받침하는 창이라 문서 미러에서는 문서 제목이 나오는 자리를 보여 준다.
+    이 절은 질문에 답하는 자리다. 가리키는 청크는 그 문서 청크 가운데 질문 벡터와 가장 가까운
+    조각을 가진 것이고(`basis: vector`), 벡터가 없으면 검색 1위 청크(`rank`), 그것도 그 문서가
+    아니면 질문 토큰이 가장 여러 가지 든 청크다(`lexical`). 절의 범위는 `section_span`.
+    읽기 실패는 None 이다 — 이 키는 증강이라 답을 막지 않는다."""
+    top = next((r for r in rows if isinstance(r, dict) and r.get("doc_id")), None)
+    if top is None:
+        return None
+    doc_id = str(top["doc_id"])
+    mirror = _DOC_CONCEPT_PREFIX + doc_id
+    if mirror not in nodes:
+        return None
+    try:
+        chunks = store.run(
+            "MATCH (c:Chunk) WHERE c.doc_id = $d AND (c.owner_id = $o OR c.owner_id = '') "
+            "RETURN c.chunk_id AS cid, c.section_title AS sec, c.text AS text "
+            "ORDER BY c.chunk_index", {"d": doc_id, "o": owner}) or []
+        if not chunks:
+            return None
+        ids = [str(c["cid"]) for c in chunks]
+        at, basis = None, ""
+        if query_embedding is not None:
+            got = store.run(
+                "MATCH (p:Chunk) WHERE p.chunk_id IN $ids "
+                "MATCH (v:ChunkVec) WHERE v.chunk_id = p.chunk_id "
+                "RETURN p.chunk_id AS cid, min(1 - array_cosine_similarity(v.embedding, $emb)) AS d",
+                {"ids": ids, "emb": list(query_embedding)}) or []
+            dist = {str(r["cid"]): float(r["d"]) for r in got if r.get("d") is not None}
+            if dist:
+                at = min((i for i, cid in enumerate(ids) if cid in dist),
+                         key=lambda i: (dist[ids[i]], i))
+                basis = "vector"
+        if at is None and str(top.get("id") or "") in ids:
+            at, basis = ids.index(str(top["id"])), "rank"
+        if at is None:
+            from store.lexical import find_tokens, lex_tokens
+            toks = lex_tokens(query)
+            at = max(range(len(chunks)), key=lambda i: (
+                len({t for _, t in find_tokens(str(chunks[i].get("text") or ""), toks)}), -i))
+            basis = "lexical"
+        lo, hi, text, cut = _excerpt.section_span(chunks, at)
+    except Exception:
+        return None
+    return {"node_id": mirror, "cite_id": mirror, "doc_id": doc_id,
+            "section": str(chunks[at].get("sec") or ""), "chunk_ids": ids[lo:hi + 1],
+            "text": text, "truncated": cut, "basis": basis}
+
+
+def _brief_attach_section(base: dict, store, *, owner: str, query: str, res: dict,
+                          query_embedding, nodes: list[str]) -> None:
+    """`section` 을 싣고 그 미러를 `grounds` 에 더한다(플래그가 꺼져 있으면 아무것도 안 한다)."""
+    if not _brief_section_on():
+        return
+    sec = _brief_section(store, owner=owner, query=query, rows=res.get("rows") or [],
+                         query_embedding=query_embedding, nodes=nodes)
+    if sec is None:
+        return
+    base["section"] = sec
+    for key in ("grounds", "cite_grounds"):
+        if key in base and sec["node_id"] not in base[key]:
+            base[key] = sorted(set(base[key]) | {sec["node_id"]})
+
+
 def _brief_choose_material_on() -> bool:
     """choose 에서 첫 후보 둘레로 답변 재료를 모을 것인가. **기본은 꺼짐**
     (`VINC_BRIEF_CHOOSE_MATERIAL`). 꺼져 있으면 응답은 이 플래그가 없던 때와 같다.
@@ -4303,6 +4379,10 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                 [h for h in res.get("node_hits") or [] if isinstance(h, dict) and h.get("id")])
                 if h.get("id") not in _seen]
             base["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
+            if not _reask:
+                _brief_attach_section(base, store, owner=owner, query=query, res=res,
+                                      query_embedding=query_embedding,
+                                      nodes=[str(c.get("id") or "") for c in base["candidates"]])
             # 플래그가 켜져 있으면 첫 후보의 재료를 **따로 한 키에** 싣는다. status 는
             # choose, candidates 는 그대로다 — 후보의 재료가 확정 답으로 읽히면 안 된다.
             # `_reask` 는 되묻기 자신이 다시 되묻지 않게 막는다(같은 제목이 또 choose 면
@@ -4347,6 +4427,10 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         if unread:
             base["fell_through"] = unread
         out = _brief_answer(base, hit, ctx, store, **rule)
+        if not _reask:
+            _brief_attach_section(out, store, owner=owner, query=query, res=res,
+                                  query_embedding=query_embedding,
+                                  nodes=[str(hit.get("id") or "")])
         if _brief_list_resolved_on():
             # 확정은 그대로 두고 순위 목록을 곁에 싣는다. 첫 자리는 순위 1위다.
             out["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])

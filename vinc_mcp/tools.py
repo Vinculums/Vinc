@@ -1053,7 +1053,15 @@ TOOLS: list[dict] = [
                        "`body_src` says whether it came from the one_liner column, a props key or "
                        "a document excerpt, and `body_cite` names that document. `grounds` lists "
                        "every id the material rests on and stays complete even when the result was "
-                       "shrunk. Nodes, candidates, links and excerpts carry `cite_id` (null for an "
+                       "shrunk. Excerpts are windows on the node's own words; for a document they "
+                       "show where it names itself. When the question was searched (not an id) "
+                       "and the top document's mirror is the resolved node or a candidate, "
+                       "`section` carries {node_id, cite_id, doc_id, section, chunk_ids, text, "
+                       "truncated, basis}: the part of that document the question points at (the "
+                       "chunk nearest the question and its neighbours under the same section "
+                       "title, up to 6,000 characters). Quote it with its cite_id; on a 'choose' "
+                       "answer it belongs to the candidate named by node_id. Nodes, candidates, "
+                       "links and excerpts carry `cite_id` (null for an "
                        "excerpt whose document mirror is missing or unreadable), and "
                        "`cite_grounds` lists only canonical node citations. links.degree is not "
                        "the node's degree: it counts only concept and decision relations (out plus "
@@ -2131,15 +2139,28 @@ def _shrink_brief_result(out: dict, budget: int) -> dict | None:
         de, dl = _shrink_material_lists(cm, _over)
         dropped_ex += de
         dropped_ln += dl
+    # 확정 답에서는 발췌 → 질문이 가리키는 절(`section`) → 관계 순서다. 절은 발췌보다 답에
+    # 가깝고, 관계는 근거 지도라 마지막이다. 절의 미러는 `grounds` 에 남아 되찾을 수 있다.
+    ex = out.get("excerpts")
+    while isinstance(ex, list) and ex and _over():
+        ex.pop()
+        dropped_ex += 1
+    dropped_sec = 0
+    if _over() and isinstance(out.get("section"), dict):
+        out.pop("section")
+        dropped_sec = 1
     de, dl = _shrink_material_lists(out, _over)
     dropped_ex += de
     dropped_ln += dl
     if _size() > budget:
         return None
-    if dropped_ex or dropped_ln:
+    if dropped_ex or dropped_ln or dropped_sec:
         out["shrunk"] = {"excerpts_dropped": dropped_ex, "links_dropped": dropped_ln}
-        note = ("shrunk to fit the result size limit: dropped %d excerpt(s) then %d "
-                "link(s); `grounds` still lists every id" % (dropped_ex, dropped_ln))
+        if dropped_sec:
+            out["shrunk"]["section_dropped"] = True
+        note = ("shrunk to fit the result size limit: dropped %d excerpt(s)%s then %d "
+                "link(s); `grounds` still lists every id"
+                % (dropped_ex, ", the section" if dropped_sec else "", dropped_ln))
         out["note"] = ((str(out.get("note")) + "; ") if out.get("note") else "") + note
     return out
 

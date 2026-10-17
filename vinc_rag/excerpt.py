@@ -50,3 +50,27 @@ def by_rank(rows: list[dict], ranked_ids: list[str]) -> list[dict]:
     at = {cid: i for i, cid in enumerate(ranked_ids)}
     return [r for _, r in sorted(enumerate(rows),
                                  key=lambda x: at.get(str(x[1].get("cid") or ""), len(at) + x[0]))]
+
+
+#: 절 하나의 상한(자). 질문이 가리키는 청크는 늘 안에 남긴다.
+SECTION_CHARS = 6000
+
+
+def section_span(chunks: list[dict], at: int, cap: int = SECTION_CHARS) -> tuple[int, int, str, bool]:
+    """청크 ``at`` 이 속한 절. ``chunks`` 는 한 문서의 청크를 순서대로 {sec, text} 로 준 것이다.
+
+    절은 ``at`` 에서 앞뒤로 같은 절 제목(``sec``)이 이어지는 청크까지다. 제목이 비면 그 청크
+    하나다. 반환은 (첫 청크, 끝 청크, 본문, 잘렸는가). 본문이 ``cap`` 을 넘으면 ``at`` 청크가
+    앞 3분의 1쯤에 오도록 ``cap`` 자를 자른다."""
+    sec = str(chunks[at].get("sec") or "")
+    lo = hi = at
+    while sec and lo > 0 and str(chunks[lo - 1].get("sec") or "") == sec:
+        lo -= 1
+    while sec and hi + 1 < len(chunks) and str(chunks[hi + 1].get("sec") or "") == sec:
+        hi += 1
+    text = "".join(str(c.get("text") or "") for c in chunks[lo:hi + 1])
+    if len(text) <= cap:
+        return lo, hi, text, False
+    before = len("".join(str(c.get("text") or "") for c in chunks[lo:at]))
+    start = max(0, min(before - cap // 3, len(text) - cap))
+    return lo, hi, text[start:start + cap], True
