@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from api import fragment, query, sync
+from api import fragment, mutation_preview, query, sync
 from api.server import VincApp
 from store.backend import open_store
 from store.config import load_config
@@ -163,3 +163,63 @@ def test_preview_redacts_a_foreign_endpoint_even_on_a_forged_relation(store):
     assert secret not in json.dumps(preview)
     redacted = [e for e in preview['preview']['edges'] if e.get('endpoint_unavailable')]
     assert len(redacted) == 1 and redacted[0]['to'] is None
+
+
+# 접두사와 다른 타입으로 들어간 같은 id 의 사본 행.
+def plant_stray(store, label='Episode', pk='episode_id', ident='concept:target'):
+    store.run(f'CREATE (n:{label} {{{pk}: $id, owner_id: $o, title: "Stray copy"}})',
+              {'id': pkns.key(OWNER, ident), 'o': OWNER})
+
+
+def test_ingest_skips_a_type_that_disagrees_with_the_id_prefix(store):
+    seed(store)
+    result = fragment.merge_fragment({'owner': OWNER, 'nodes': [
+        {'id': 'concept:target', 'type': 'episode', 'title': 'Copy'},
+        {'id': 'record:source', 'type': 'person', 'title': 'Open copy'},
+        {'id': 'concept:fresh', 'type': 'concept', 'title': 'Fine'}]}, store=store)
+    assert sum('disagrees with its id prefix' in w for w in result['warnings']) == 2, result
+    assert count(store, 'MATCH (n:Episode) RETURN count(n) AS c') == 0
+    assert count(store, 'MATCH (n:Entity) RETURN count(n) AS c') == 0
+    assert count(store, 'MATCH (n:Concept) RETURN count(n) AS c') == 2
+
+
+def test_sync_apply_skips_a_stray_copy_before_tombstones_and_base(store):
+    seed(store)
+    result = sync.apply_delta(owner=OWNER, bundle={'nodes': [
+        {'id': 'concept:target', 'type': 'record', 'title': 'Copy', '_rev': 1,
+         '_updated_at': '2026-10-17T00:00:00Z'}], 'edges': []}, store=store)
+    assert any('disagrees with id prefix' in w for w in result['warnings']), result
+    assert count(store, 'MATCH (n:Record) RETURN count(n) AS c') == 1
+
+
+def test_stray_delete_previews_and_removes_only_the_copy(store):
+    seed(store)
+    plant_stray(store)
+    preview = query.delete_node('concept:target', owner=OWNER, store=store, dry_run=True,
+                                stray_type='episode')
+    assert preview['found'] and preview['preview']['edge_count'] == 0, preview
+    checked = mutation_preview.preview(store, owner=OWNER, operation='delete',
+                                       arguments={'node': 'concept:target', 'stray_type': 'episode'})
+    assert checked['executed'], checked
+    assert checked['preview']['deleted_nodes'][0]['episode_id'] == 'concept:target'
+    assert checked['preview']['deleted_nodes'][0]['title'] == 'Stray copy'
+    result = query.delete_node('concept:target', owner=OWNER, store=store, stray_type='episode')
+    assert result['deleted'] == {'node': 1, 'edges': 0} and result['stray_type'] == 'episode'
+    assert count(store, 'MATCH (n:Episode) RETURN count(n) AS c') == 0
+    assert count(store, 'MATCH (n:Concept) WHERE n.concept_id = $id RETURN count(n) AS c',
+                 {'id': pkns.key(OWNER, 'concept:target')}) == 1
+    assert count(store, 'MATCH (t:_Tombstone) RETURN count(t) AS c') == 0
+    assert count(store, 'MATCH (:Decision)-[r:ABOUT]->(:Concept) RETURN count(r) AS c') == 1
+
+
+def test_stray_delete_refuses_the_prefix_type_and_unknown_types(store):
+    seed(store)
+    for stray in ('concept', 'bogus'):
+        result = query.delete_node('concept:target', owner=OWNER, store=store, stray_type=stray)
+        assert 'refused' in result['note'] and 'deleted' not in result, result
+    refused = mutation_preview.preview(store, owner=OWNER, operation='delete',
+                                       arguments={'node': 'concept:target', 'stray_type': 'concept'})
+    assert refused['error'] == 'preview_kind_not_supported'
+    assert count(store, 'MATCH (n:Concept) RETURN count(n) AS c') == 1
+    with pytest.raises(ValueError):
+        object.__new__(VincApp).write_delete({'node': 'concept:target', 'stray_type': 1})

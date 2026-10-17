@@ -95,6 +95,24 @@ def _shadows(store, owner, ident):
     }
 
 
+def _stray(store, owner, ident, stray):
+    # 사본 행만 지운다. 묘비·벡터·동기화 base 는 살아 있는 행의 것이라 남는다.
+    table = query._SEED_TABLES.get(stray) if isinstance(stray, str) else None
+    if table is None or table == query._SEED_TABLES[ident.partition(":")[0]]:
+        raise PreviewRefused("preview_kind_not_supported")
+    label, pk = table
+    rows = _rows(store, label, f"n.{pk}=$id AND n.owner_id=$owner",
+                 {"id": pkns.key(owner, ident), "owner": owner})
+    if not rows:
+        raise PreviewRefused("preview_target_unavailable")
+    edges = _incident(store, owner, [ident], label_override=label)
+    return {"deleted_nodes": [{**row, pk: pkns.strip(row[pk])} for row in rows],
+            "deleted_edges": edges, "retained_documents": [], "deleted_shadows": {},
+            "stray_type": stray, "node": 1, "edge_count": len(edges), "complete": True,
+            "edges": [{"from": e["source"], "to": e["target"], "type": e["type"],
+                       "props": e["props"]} for e in edges]}
+
+
 def preview(store, *, owner, operation, arguments):
     base = {"kind": operation, "executed": False, "dry_run": True, "preview_complete": False}
     if not owner:
@@ -105,6 +123,13 @@ def preview(store, *, owner, operation, arguments):
             ident = arguments["node"]
             if ident.startswith("domain:") or ident.partition(":")[0] not in query._SEED_TABLES:
                 raise PreviewRefused("preview_kind_not_supported")
+            if arguments.get("stray_type") is not None:
+                details = _stray(store, owner, ident, arguments["stray_type"])
+                payload = _canonical({"owner": owner, "operation": operation, "preview": details})
+                if len(payload.encode("utf-8")) > MAX_BYTES:
+                    raise PreviewRefused("preview_incomplete")
+                return {**base, "executed": True, "preview_complete": True, "preview": details,
+                        "preview_digest": hashlib.sha256(payload.encode("utf-8")).hexdigest()}
             target = _node(store, owner, ident)
             details = {"deleted_nodes": [target], "deleted_edges": _incident(store, owner, [ident]),
                        "retained_documents": [], "deleted_shadows": _shadows(store, owner, ident)}
