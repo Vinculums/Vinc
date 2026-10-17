@@ -176,8 +176,10 @@ def test_corrupt_manifest_and_changed_original_refuse_before_business_batch(nati
     pk=topic_batch_manifest.SPECS[first["label"]]["pk"]
     native.run(f"MATCH (n:{first['label']}) WHERE n.{pk}=$id SET n.title='changed'",{"id":first["old"]},raw=True)
     # The first selected row is checked against its entire persisted digest.
-    with pytest.raises(TransferRefused,match="payload_changed"):
+    with pytest.raises(TransferRefused,match="payload_changed") as caught:
         flow.step()
+    assert str(caught.value)=="conversion_payload_changed:"+first["label"]
+    assert caught.value.detail=={"missing":False}
     assert legacy._get(native,RUN)["business_batches"]==0
     (flow.root/"topic-manifests"/(RUN+".jsonl")).write_text("corrupt")
     with pytest.raises(TransferRefused,match="manifest_invalid"):
@@ -414,3 +416,20 @@ def test_verification_uses_vector_coordinates_without_repeated_payload_scans(nat
     monkeypatch.setattr(Rows,'where',counted)
     assert flow.verify()['status']=='graph_committed'
     assert len(scans)<4, 'Each vector must not start another full disk-backed payload scan'
+
+
+def test_changed_sequence_counter_names_its_side_and_delta(native,tmp_path):
+    flow,_,_=fixture(native,tmp_path,max_rows=2)
+    key="seq:"+SOURCE
+    rows=native.run("MATCH (m:_SyncMeta) WHERE m.key=$k RETURN m.value AS value",{"k":key},raw=True)
+    if rows:
+        native.run("MATCH (m:_SyncMeta) WHERE m.key=$k SET m.value=$v",
+                   {"k":key,"v":str(int(rows[0]["value"])+1)},raw=True)
+    else:
+        native.run("CREATE (m:_SyncMeta {key:$k, value:'1'})",{"k":key},raw=True)
+    # 카운터 두 행은 매니페스트 끝에 있어 phase 1 마지막 배치에서 걸린다.
+    with pytest.raises(TransferRefused) as caught:
+        finish(flow)
+    assert str(caught.value)=="conversion_payload_changed:_SyncMeta"
+    assert caught.value.detail=={"counter":{"side":"source","delta":1}}
+    assert flow.status()["phase"]=="creating_target_keys"

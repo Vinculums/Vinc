@@ -215,6 +215,40 @@ def rehearse(original, root, source, *, topic="vinc", max_rows=128, progress=Non
     return report
 
 
+def failure_fields(exc):
+    """실패 보고에 실을 칸만 예외에서 고른다. 메시지 본문과 식별자는 싣지 않는다."""
+    report = {"exception": type(exc).__name__}
+    reason = getattr(exc, "reason", None)
+    if isinstance(reason, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,63}", reason):
+        report["error_reason"] = reason
+    code = str(exc).split(":", 1)[0]
+    if re.fullmatch(r"[a-z][a-z0-9_]{0,63}", code):
+        report["error_code"] = code
+    # 둘째 칸이 스키마 표 이름이면 싣는다(예: key_collision:_Tombstone). 식별자는 싣지 않는다.
+    table = (str(exc).split(":") + ["", ""])[1]
+    if re.fullmatch(r"_?[A-Z][A-Za-z]{0,39}", table):
+        report["error_table"] = table
+    # 키 충돌은 (대상 표:원본 표 쌍)별 건수만 싣는다. 모양이 다르면 통째로 버린다.
+    collisions = getattr(exc, "collisions", None)
+    if isinstance(collisions, dict) and collisions and all(
+            isinstance(k, str) and re.fullmatch(r"_?[A-Z][A-Za-z]{0,39}:[A-Za-z_+]{1,120}", k)
+            and isinstance(v, int) for k, v in collisions.items()):
+        report["collisions"] = collisions
+    # 바뀐 행은 사라졌는지만, 카운터는 쪽과 정수 차이만 싣는다. 모양이 다르면 버린다.
+    detail = getattr(exc, "detail", None)
+    if isinstance(detail, dict):
+        safe = {}
+        if type(detail.get("missing")) is bool:
+            safe["row_missing"] = detail["missing"]
+        counter = detail.get("counter")
+        if (isinstance(counter, dict) and counter.get("side") in ("source", "target", "unknown")
+                and type(counter.get("delta")) is int):
+            safe["counter"] = {"side": counter["side"], "delta": counter["delta"]}
+        if safe:
+            report["error_detail"] = safe
+    return report
+
+
 def main():
     # 경로·자격은 보호된 워크플로가 고정한다. 임의 DB 경로 인자는 없다.
     root = Path("/rehearsal")
@@ -235,23 +269,7 @@ def main():
         # 내용·식별자를 품을 수 있는 예외 메시지는 싣지 않는다. 단계, 예외 클래스,
         # 소문자 코드 형태의 앞머리만 남긴다.
         report.update(progress)
-        report["exception"] = type(exc).__name__
-        reason = getattr(exc, "reason", None)
-        if isinstance(reason, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,63}", reason):
-            report["error_reason"] = reason
-        code = str(exc).split(":", 1)[0]
-        if re.fullmatch(r"[a-z][a-z0-9_]{0,63}", code):
-            report["error_code"] = code
-        # 둘째 칸이 스키마 표 이름이면 싣는다(예: key_collision:_Tombstone). 식별자는 싣지 않는다.
-        table = (str(exc).split(":") + ["", ""])[1]
-        if re.fullmatch(r"_?[A-Z][A-Za-z]{0,39}", table):
-            report["error_table"] = table
-        # 키 충돌은 (대상 표:원본 표 쌍)별 건수만 싣는다. 모양이 다르면 통째로 버린다.
-        collisions = getattr(exc, "collisions", None)
-        if isinstance(collisions, dict) and collisions and all(
-                isinstance(k, str) and re.fullmatch(r"_?[A-Z][A-Za-z]{0,39}:[A-Za-z_+]{1,120}", k)
-                and isinstance(v, int) for k, v in collisions.items()):
-            report["collisions"] = collisions
+        report.update(failure_fields(exc))
     report["process_peak_rss_bytes"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
     for key in ("memory.max", "memory.swap.max", "memory.peak", "cpu.max"):
         path = Path("/sys/fs/cgroup") / key
