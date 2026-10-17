@@ -13,6 +13,11 @@
    `vinc_diagnose` 는 `member_limit` 을 받아 사이드카까지 전달해야 한다.
 3. **F12** 설명은 "무엇을 하나"로 끝나면 안 된다 — 언제 부르나, 무엇이 돌아오나,
    무엇이 아닌가(가까운 다른 도구와의 경계)까지 적힌다.
+
+설명은 세 층에 나뉜다: 내보내는 짧은 요약(고르는 데 필요한 것과 지우면 안 되는 약속),
+응답이 싣는 다음 할 일(`next_step`·`hint`·`answer_note`), 내보내지 않는 참조문(`reference`, 문서
+사이트가 그린다). 문구 검사는 그 문구가 실제로 실리는 층에 건다.
+근거: [[decision:mcp-tool-descriptions-are-short-summaries-with-a-docs-link]]
 """
 from __future__ import annotations
 
@@ -33,6 +38,9 @@ from vinc_mcp.tools import TOOLS                     # noqa: E402
 SERVED = {t['name']: t for t in _tool_specs()}
 #: 허브 프로파일. 계정 전용 커뮤니티 도구 둘은 여기서만 나간다(로컬 목록에는 없다).
 HUB = {t['name']: t for t in _tool_specs(hub=True)}
+#: 내보내지 않는 전체 계약(참조문). 문서 사이트가 도구별 자리에 그린다.
+from vinc_mcp.tools import HOST_TOOLS                # noqa: E402
+REF = {t["name"]: t["reference"] for t in TOOLS + HOST_TOOLS}
 
 NUMERIC = ("integer", "number")
 
@@ -84,8 +92,9 @@ def test_diagnose_exposes_member_limit():
 
 
 def test_diagnose_documents_the_truncation_contract():
-    """모델이 size ≠ len(members) 를 버그로 읽지 않으려면 설명에 적혀 있어야 한다."""
-    desc = SERVED["vinc_diagnose"]["description"]
+    """모델이 size ≠ len(members) 를 버그로 읽지 않으려면 계약에 적혀 있어야 한다. 응답은
+    잘렸을 때 members_truncated:true 를 싣고, 그 뜻은 참조문이 말한다."""
+    desc = REF["vinc_diagnose"]
     assert "members_truncated" in desc
     assert "member_limit" in desc
 
@@ -139,15 +148,17 @@ THIN_BEFORE = ("vinc_graph", "vinc_suggest_ties", "vinc_domains", "vinc_recall",
 
 @pytest.mark.parametrize("name", THIN_BEFORE)
 def test_previously_thin_descriptions_now_carry_guidance(name):
-    desc = SERVED[name]["description"]
-    assert len(desc) >= 250, f"{name}: 설명이 {len(desc)}자 — 선택 근거가 없다"
+    """요약은 짧아도 전체 계약(무엇이 돌아오나)은 참조문에 남아 문서 사이트로 간다."""
+    desc = REF[name]
+    assert len(desc) >= 250, f"{name}: 참조문이 {len(desc)}자 — 계약이 없다"
     assert "Returns" in desc, f"{name}: 무엇이 돌아오는지 안 적혀 있다"
 
 
 @pytest.mark.parametrize("name", THIN_BEFORE)
 def test_read_only_tools_say_so(name):
-    """쓰기 도구와 헷갈리면 모델이 조회에도 확인을 구하거나, 반대로 겁 없이 쓴다."""
-    assert "Read-only" in SERVED[name]["description"]
+    """쓰기 도구와 헷갈리면 모델이 조회에도 확인을 구하거나, 반대로 겁 없이 쓴다. 조회라는
+    사실은 호스트가 받는 주석(readOnlyHint)이 싣는다."""
+    assert SERVED[name]["annotations"].get("readOnlyHint") is True
 
 
 def test_every_tool_has_a_description():
@@ -159,11 +170,37 @@ def test_served_descriptions_are_exactly_the_canonical_ones():
     """tools.py 가 정본이라면, tools/list 가 내는 설명은 그것과 **글자 그대로** 같아야
     한다. rpc 의 override 계층이 recall·domains 를 조용히 갈아치우고 있었다 — 그래서
     tools.py 를 고쳐도 호스트는 옛 문구를 봤다."""
-    canon = {t["name"]: t["description"] for t in TOOLS}
-    assert set(canon) <= set(HUB), "허브 목록에 빠진 도구가 있다"
-    drift = [n for n, d in canon.items() if HUB[n]["description"] != d]
-    drift += [n for n, t in SERVED.items() if n in canon and t["description"] != canon[n]]
+    from vinc_mcp.tools import served_description
+    names = {t["name"] for t in TOOLS}
+    assert names <= set(HUB), "허브 목록에 빠진 도구가 있다"
+    drift = [n for n, t in {**HUB, **SERVED}.items() if t["description"] != served_description(n)]
     assert not drift, f"tools.py 와 tools/list 설명이 다른 도구: {drift}"
+
+
+def test_summaries_are_short_and_link_their_own_anchor():
+    """내보내는 설명은 요약 한 문단(SUMMARY_MAX 이하)과 그 도구의 Docs 링크다. 링크가 다른 도구의
+    자리를 가리키면 사람이 엉뚱한 계약을 읽는다."""
+    from vinc_mcp.tools import DOCS_BASE, SUMMARY_MAX, _SUMMARY
+    for name, spec in HUB.items():
+        summary, _, link = spec["description"].partition("\n\n")
+        assert summary == _SUMMARY[name]
+        assert len(summary) <= SUMMARY_MAX, f"{name}: 요약 {len(summary)}자"
+        assert link == "Docs: " + DOCS_BASE + "#" + name, f"{name}: {link!r}"
+
+
+def test_every_tool_keeps_its_full_contract_as_a_reference():
+    """요약으로 줄인 만큼의 계약이 사라지지 않았는가. 참조문은 요약보다 짧을 수 없다."""
+    from vinc_mcp.tools import _SUMMARY
+    for name in HUB:
+        assert REF[name].strip(), f"{name}: 참조문이 없다"
+        assert len(REF[name]) >= len(_SUMMARY[name]), f"{name}: 참조문이 요약보다 짧다"
+
+
+def test_long_parameter_text_is_not_served():
+    """공유 인자의 긴 설명(`x-reference`)은 참조문에만 남고 tools/list 에는 실리지 않는다."""
+    import json
+    assert "x-reference" not in json.dumps(list(HUB.values()))
+    assert "x-reference" not in json.dumps(list(SERVED.values()))
 
 
 # ── 4. 계약이 서버 **동작**과 일치하는가 (교차 계약) ─────────────────────────
@@ -190,11 +227,10 @@ def test_allowed_pairs_mirror_matches_the_server(monkeypatch=None):
 
 @pytest.mark.parametrize("name", ["vinc_ingest"])
 def test_edge_contract_reaches_the_host(name):
-    """미러를 만들어 두고 설명에 안 쓰면 아무것도 달라지지 않는다. 호스트가 실제로
-    받는 문자열(SERVED)에 그 문장이 들어 있는지 본다."""
+    """미러를 만들어 두고 계약에 안 쓰면 아무것도 달라지지 않는다. 허용 쌍 전문은 참조문에,
+    호스트가 받는 쪽에는 엣지 `type` 인자 설명(아래 검사)과 거절 때 warnings 의 같은 문장이 있다."""
     from vinc_mcp.tools import _ALLOWED_PAIRS_HINT
-    assert _ALLOWED_PAIRS_HINT in SERVED[name]["description"], \
-        f"{name}: 허용 쌍이 호스트가 받는 설명에 없다"
+    assert _ALLOWED_PAIRS_HINT in REF[name], f"{name}: 허용 쌍이 참조문에 없다"
 
 
 @pytest.mark.parametrize("name,field", [("vinc_ingest", "type")])
@@ -212,10 +248,10 @@ def test_node_type_routing_lists_every_dedicated_table():
     from vinc_mcp.tools import _FRAGMENT_SCHEMA
     node_type_desc = (_FRAGMENT_SCHEMA["properties"]["nodes"]["items"]
                       ["properties"]["type"]["description"])
-    ingest_desc = SERVED["vinc_ingest"]["description"]
+    ingest_desc = REF["vinc_ingest"]
     for t in ("record", "concept", "domain", "bridge", "episode", "decision"):
         assert t in node_type_desc, f"노드 type 설명에 {t} 가 없다"
-        assert t in ingest_desc, f"vinc_ingest 설명의 라우팅 목록에 {t} 가 없다"
+        assert t in ingest_desc, f"vinc_ingest 참조문의 라우팅 목록에 {t} 가 없다"
 
 
 def test_docstring_tool_count_matches_the_list():
@@ -300,15 +336,15 @@ def test_recall_row_shape_names_every_projected_field():
 
     fields = set(re.findall(r"AS (\w+)", recall_plan().cypher))
     assert fields, "recall_plan 투영에서 필드를 못 뽑았다 — 정규식이 어긋났다"
-    desc = SERVED["vinc_recall"]["description"]
+    desc = REF["vinc_recall"]
     missing = [f for f in fields if f not in desc]
-    assert not missing, f"vinc_recall 설명에 없는 투영 필드: {missing}"
+    assert not missing, f"vinc_recall 참조문에 없는 투영 필드: {missing}"
 
 
 def test_recall_reserved_columns_documented_as_not_vinc_ingest_settable():
     """tenant/workspace/access_count/last_access 가 vinc_ingest 로는 안 채워진다는
-    사실이 설명에 있어야 한다 — 없으면 호스트가 값이 비는 것을 버그로 신고한다."""
-    desc = SERVED["vinc_recall"]["description"]
+    사실이 계약에 있어야 한다 — 없으면 값이 비는 것을 버그로 신고한다."""
+    desc = REF["vinc_recall"]
     for field in ("tenant", "workspace", "access_count", "last_access"):
         assert field in desc, f"vinc_recall 설명에 예약 필드 '{field}' 가 없다"
     assert "vinc_ingest" in desc, "예약 필드가 vinc_ingest 로 안 채워진다는 설명이 없다"
@@ -357,23 +393,24 @@ def test_every_destructive_tool_names_a_cheaper_move_first():
     하라고 말하지 않는다."""
     others = {t["name"] for t in TOOLS}
     for name in _destructive():
-        desc = SERVED[name]["description"]
-        named = {o for o in others if o != name and o in desc}
+        # 호스트가 받는 요약에는 더 싼 앞단계(dry_run 미리보기)가 반드시 있다.
+        assert "dry_run" in SERVED[name]["description"], f"{name}: 요약이 미리보기를 안 말한다"
+        named = {o for o in others if o != name and o in REF[name]}
         assert named, f"{name}: 더 싼 앞단계도 되돌릴 수 있는 대안도 안 가리킨다"
 
 
 def test_the_irreversible_merge_points_at_the_reversible_half():
     """이 짝은 특히 못 박는다 — 병합 도구 넷 중 셋은 서로를 가리키는데 **되돌릴 수
-    없는 하나만** 고아였다. 가장 위험한 자리가 가장 안 연결돼 있었다."""
-    d = SERVED["vinc_merge_nodes"]["description"]
-    assert "vinc_merge_reject" in d
-    assert "reversible" in d.lower()
+    없는 하나만** 고아였다. 가장 위험한 자리가 가장 안 연결돼 있었다. 요약에서 지우면 안 된다."""
+    assert "vinc_merge_reject" in SERVED["vinc_merge_nodes"]["description"]
+    assert "reversible" in REF["vinc_merge_nodes"].lower()
 
 
 def test_delete_says_to_look_before_not_after():
     """`deleted.edges` 는 사후 집계다. 그 값만 있고 사전 확인 경로가 없으면, 무엇이
-    함께 사라지는지는 사라진 뒤에야 알 수 있다."""
-    d = SERVED["vinc_delete"]["description"]
+    함께 사라지는지는 사라진 뒤에야 알 수 있다. 사전 확인은 미리보기가 한다."""
+    assert "dry_run:true first" in SERVED["vinc_delete"]["description"]
+    d = REF["vinc_delete"]
     assert "vinc_neighbors" in d, "지우기 전에 볼 도구를 안 가리킨다"
     assert "after the fact" in d, "사후 집계라는 것을 안 말한다"
 # ── 실패를 이름으로 부르는가 (2026-08-31) ────────────────────────────────────
@@ -391,26 +428,56 @@ def test_delete_says_to_look_before_not_after():
 # 둘 다 **평소에는 조용하고 나빠졌을 때만 값이 생기는** 필드다. 그래서 "내부"로
 # 분류되기 쉽고, 분류되는 순간 사용자는 열화를 영영 못 본다.
 def test_degraded_states_are_named_not_just_listed():
-    search = SERVED["vinc_search"]["description"]
+    search = REF["vinc_search"]
     assert "vector_note" in search
     # 실패 원인을 예시로 들어야 "재빌드가 아닌 값"을 알아본다.
-    assert "timeout" in search.lower(), "vector_note 의 실패 갈래가 설명에 없다"
+    assert "timeout" in search.lower(), "vector_note 의 실패 갈래가 참조문에 없다"
     assert "text matching alone" in search, "열화 상태의 결과가 무엇인지 안 말한다"
 
-    doc_get = SERVED["vinc_doc_get"]["description"]
+    doc_get = REF["vinc_doc_get"]
     assert "verified" in doc_get
     assert "FALSE" in doc_get or "false" in doc_get, "verified 가 거짓일 때를 안 말한다"
     assert "incomplete" in doc_get, "무결성 실패의 결과(본문이 잘림)를 안 말한다"
 
 
+class _AnswerBridge:
+    owner = "user:local"
+
+    def __init__(self, out):
+        self.out = out
+
+    def request(self, *a, **k):
+        return dict(self.out)
+
+
 def test_the_silent_failure_tools_tell_the_reader_to_speak():
-    """상태가 나빠졌을 때만 값이 생기는 필드는 **말하라고** 적혀 있어야 한다.
+    """상태가 나빠졌을 때만 값이 생기는 필드는 **말하라고** 전해야 한다. 그 지시는 이제
+    설명이 아니라 그 상태를 담은 응답(`answer_note`)이 싣는다.
 
     ⚠ 이 검사를 "필드 이름이 있는가"로 쓰면 공허하다 — 여섯 필드 전부 이름은 이미
     있었고, 그래서 통과하면서도 둘이 실패를 안 말하고 있었다(실측 2026-08-31)."""
-    for name in ("vinc_search", "vinc_doc_get"):
-        d = SERVED[name]["description"].lower()
-        assert "say so" in d, f"{name}: 사용자에게 말하라는 지시가 없다"
+    from vinc_mcp import tools as T
+    failed = {"executed": True, "rows": [], "arms": "fts", "vector_note": "TimeoutError: timed out"}
+    for name in ("vinc_search", "vinc_brief"):
+        out = T.call(name, {"query": "q"}, _AnswerBridge(failed))
+        assert "say so" in out.get("answer_note", "").lower(), f"{name}: 말하라는 지시가 없다"
+    # 호스트 별칭 search 는 결과를 다시 짜므로 지시를 그대로 옮겨 실어야 한다(호스트가 가장 자주 부른다).
+    out = T.call("search", {"query": "q"}, _AnswerBridge(failed), hub=True)
+    assert "say so" in out.get("answer_note", "").lower(), "search: 말하라는 지시가 없다"
+    out = T.call("vinc_doc_get", {"doc_id": "d"}, _AnswerBridge({"executed": True, "verified": False,
+                                                               "text": "abc"}))
+    assert "say so" in out.get("answer_note", "").lower(), "vinc_doc_get: 말하라는 지시가 없다"
+
+
+def test_benign_and_clean_results_carry_no_answer_note():
+    """재빌드 창과 인코더 판 경고는 의미 팔이 돈 것이다. 정상 결과에 지시를 붙이면 잡음이 된다."""
+    from vinc_mcp import tools as T
+    for out in ({"executed": True, "rows": []},
+                {"executed": True, "rows": [], "vector_note": "rebuilding", "vector_rebuilding": True},
+                {"executed": True, "rows": [], "vector_note": "runtime", "encoder_runtime_warning": True}):
+        assert "answer_note" not in T.call("vinc_search", {"query": "q"}, _AnswerBridge(out))
+    ok = T.call("vinc_doc_get", {"doc_id": "d"}, _AnswerBridge({"executed": True, "verified": True}))
+    assert "answer_note" not in ok
 
 
 # ── 스키마가 받는 조건 필드를 설명이 이름으로 부르는가 (VIN-602) ──────────────
@@ -420,23 +487,31 @@ def test_the_silent_failure_tools_tell_the_reader_to_speak():
 # 주입 목록에 들어오면 설명도 함께 고쳐야 한다.
 
 def test_preview_tools_describe_the_preview_then_apply_flow():
+    """요약은 순서(dry_run 먼저, 그다음 preview_digest)를 말하고, 응답이 다음 할 일을 말하고,
+    참조문이 전체 계약을 싣는다."""
+    from api.mutation_preview import HINTS, NEXT_STEP
     tools = [n for n, t in SERVED.items() if "preview_digest" in _params(t)]
     assert set(tools) >= {"vinc_delete", "vinc_delete_edge", "vinc_merge_nodes", "vinc_doc_delete"}
     for name in tools:
-        d = SERVED[name]["description"]
+        for word in ("dry_run", "preview_digest"):
+            assert word in SERVED[name]["description"], f"{name}: 요약이 {word} 를 말하지 않는다"
         for word in ("dry_run", "preview_digest", "operation_id", "preview_conflict",
                      "preview:{", "Applied, returns"):
-            assert word in d, f"{name}: 설명이 {word} 를 말하지 않는다"
+            assert word in REF[name], f"{name}: 참조문이 {word} 를 말하지 않는다"
+    assert "preview_digest" in NEXT_STEP and "without dry_run" in NEXT_STEP
+    assert "dry_run:true" in HINTS["preview_conflict"]
 
 
 def test_conditional_document_write_names_its_conditions():
+    from api.mutation_contract import WRITE_CONFLICT_HINT
     tools = [n for n, t in SERVED.items() if "expected_content_hash" in _params(t)]
     assert "vinc_doc_put" in tools
     for name in tools:
-        d = SERVED[name]["description"]
+        assert "expected_content_hash" in SERVED[name]["description"], name
         for word in ("expected_content_hash", "create_only", "operation_id",
                      "write_conflict", "current_content_hash"):
-            assert word in d, f"{name}: 설명이 {word} 를 말하지 않는다"
+            assert word in REF[name], f"{name}: 참조문이 {word} 를 말하지 않는다"
+    assert "Read it again" in WRITE_CONFLICT_HINT
 
 
 # VIN-611: 주입 필드는 미리보기 넷과 vinc_doc_put 만이 아니다. operation_id 는 쓰기 여덟에,
@@ -447,10 +522,12 @@ _INJECTED_FIELDS = ("operation_id", "create_only", "preview_digest", "dry_run",
 
 @pytest.mark.parametrize("field", _INJECTED_FIELDS)
 def test_every_injected_field_is_named_in_the_description(field):
+    """주입된 필드는 호스트가 받는 스키마에 자기 설명을 갖고, 참조문이 그 이름을 부른다."""
     tools = [n for n, t in SERVED.items() if field in _params(t)]
     assert tools, f"{field} 를 받는 도구가 없다"
     for name in tools:
-        assert field in SERVED[name]["description"], f"{name}: 설명이 {field} 를 말하지 않는다"
+        assert _params(SERVED[name])[field].get("description"), f"{name}.{field}: 인자 설명이 없다"
+        assert field in REF[name], f"{name}: 참조문이 {field} 를 말하지 않는다"
 
 
 def test_operation_id_writes_say_how_to_retry():
@@ -459,23 +536,31 @@ def test_operation_id_writes_say_how_to_retry():
                           "vinc_merge_reject", "vinc_doc_put", "vinc_doc_delete",
                           "vinc_doc_extract", "vinc_operation_status"}
     for name in set(tools) - {"vinc_operation_status"}:
-        d = SERVED[name]["description"]
+        assert "vinc_operation_status" in _params(SERVED[name])["operation_id"]["description"], name
         for word in ("vinc_operation_status", "replayed:true"):
-            assert word in d, f"{name}: 설명이 {word} 를 말하지 않는다"
+            assert word in REF[name], f"{name}: 참조문이 {word} 를 말하지 않는다"
 
 
 def test_conditional_ingest_names_its_conditions():
-    d = SERVED["vinc_ingest"]["description"]
+    assert "props_patch" in SERVED["vinc_ingest"]["description"]
+    d = REF["vinc_ingest"]
     for word in ("create_only", "expected_rev", "props_patch", "write_conflict", "current_rev"):
-        assert word in d, f"vinc_ingest: 설명이 {word} 를 말하지 않는다"
+        assert word in d, f"vinc_ingest: 참조문이 {word} 를 말하지 않는다"
+
+
+def test_ingest_summary_keeps_the_read_before_write_covenant():
+    """계약 §3: 약한 호스트에게는 설명이 유일한 통로다. 요약에서 지우면 중복 노드가 쌓인다."""
+    d = SERVED["vinc_ingest"]["description"]
+    assert "vinc_search" in d and "vinc_conventions" in d and "warnings" in d
 
 
 def test_community_read_names_the_pack_version_not_a_release():
     """출하 번호로 적으면 다음 릴리스가 나가는 순간 거짓이 된다. 팩 판으로 적는다."""
     import re
-    d = HUB["vinc_community_read"]["description"]
+    d = REF["vinc_community_read"]
     assert "pack_version 2" in d
-    assert not re.search(r"\b0\.\d+\.\d+\b", d), "설명이 데스크톱 출하 번호를 단정한다"
+    for text in (d, HUB["vinc_community_read"]["description"]):
+        assert not re.search(r"\b0\.\d+\.\d+\b", text), "설명이 데스크톱 출하 번호를 단정한다"
 
 
 # ── VIN-589: 핸들러가 이미 지키는 한계를 스키마도 말한다 ─────────────────────────

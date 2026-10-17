@@ -113,7 +113,42 @@ def _stray(store, owner, ident, stray):
                        "props": e["props"]} for e in edges]}
 
 
+#: 응답이 다음 할 일을 말한다. 도구 설명은 짧은 요약이라 미리보기 → 적용 절차를 싣지 않는다.
+#: 해시(preview_digest)는 `preview` 내용으로만 계산하므로 이 문장들은 해시에 들지 않는다.
+#: 근거: [[decision:mcp-tool-descriptions-are-short-summaries-with-a-docs-link]]
+NEXT_STEP = ("Nothing was changed. Show this preview to the person; to apply it, repeat the same call "
+             "without dry_run and with this preview_digest.")
+HINTS = {
+    "preview_conflict": "Nothing was changed: the target changed after your preview. Run the call again "
+                        "with dry_run:true and show the new preview before applying.",
+    "preview_incomplete": "Nothing was changed: a complete preview would exceed 200 rows or the size "
+                          "budget, so it was refused rather than cut. Narrow the target.",
+    "preview_target_unavailable": "Nothing was changed: the target does not exist in this graph or "
+                                  "cannot be read here. Check the id.",
+    "preview_apply_not_supported": "Nothing was changed: drop_id has relations this merge cannot carry "
+                                   "over (unsupported_edges in the preview).",
+    "preview_kind_not_supported": "Nothing was changed: this kind of target cannot be changed with "
+                                  "this tool.",
+    "preview_read_unavailable": "Nothing was changed: the store could not be read completely. Try the "
+                                "preview again shortly.",
+    "preview_boundary_unavailable": "Nothing was changed: the store could not be read completely. Try "
+                                    "the preview again shortly.",
+    "preview_owner_required": "Nothing was changed: this call has no owner.",
+}
+
+
+def _guided(result):
+    if result.get("executed") and result.get("preview_complete"):
+        return {**result, "next_step": NEXT_STEP}
+    hint = HINTS.get(result.get("error"))
+    return {**result, "hint": hint} if hint else result
+
+
 def preview(store, *, owner, operation, arguments):
+    return _guided(_preview_body(store, owner=owner, operation=operation, arguments=arguments))
+
+
+def _preview_body(store, *, owner, operation, arguments):
     base = {"kind": operation, "executed": False, "dry_run": True, "preview_complete": False}
     if not owner:
         return {**base, "error": "preview_owner_required"}
@@ -230,7 +265,9 @@ def apply_checked(store, *, owner, operation, arguments, digest, apply):
     if not current.get("executed"):
         return {**current, "dry_run": False}
     if current["preview_digest"] != digest:
-        return {"executed": False, "error": "preview_conflict", "status": "conflict"}
+        return {"executed": False, "error": "preview_conflict", "status": "conflict",
+                "hint": HINTS["preview_conflict"]}
     if current["preview"].get("apply_supported") is False:
-        return {"executed": False, "error": "preview_apply_not_supported"}
+        return {"executed": False, "error": "preview_apply_not_supported",
+                "hint": HINTS["preview_apply_not_supported"]}
     return apply()

@@ -88,7 +88,7 @@ class PathWalksConceptsOnlyTests(unittest.TestCase):
         """화면·모델이 읽는 계약에도 적혀 있어야 한다(코드에만 있으면 안 읽힌다)."""
         from vinc_mcp import tools
         spec = next(t for t in tools.TOOLS if t["name"] == "vinc_path")
-        self.assertIn("Concept ids", spec["description"])
+        self.assertIn("Concept ids", tools.served_description("vinc_path"))
         props = spec["inputSchema"]["properties"]
         for k in ("a", "b"):
             self.assertIn("concept:", props[k]["description"])

@@ -54,9 +54,12 @@ def _where_am_i(forced_owner: str | None) -> str | None:
         return ("You are connected at a team address, so every call in this session "
                 "acts on that team's shared graph (" + forced_owner + ") and the "
                 "`space` argument is ignored. Call vinc_whoami to confirm.")
+    # 도구마다 붙던 `space` 긴 설명은 한 줄로 줄었다. 고르는 규칙의 전부는 이 문단이 싣는다.
     line = ("You are connected to your personal graph (" + forced_owner + "). "
             "Every call acts here unless you pass `space` with a team id, so a write "
-            "with no `space` lands in your personal graph even if you meant a team.")
+            "with no `space` lands in your personal graph even if you meant a team. "
+            "A public community is space='community:<uuid>' and can be read without joining. "
+            "vinc_whoami lists every id you can pass and your role in each.")
     try:
         from . import entitlement
         rows = entitlement.list_spaces(forced_owner.split(":", 1)[1])
