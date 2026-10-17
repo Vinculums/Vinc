@@ -57,9 +57,8 @@ jobs:
   # 채로 있다. 실제로 2026-08-30 에 #117 머지분이 그 상태로 남았다.
   #
   # 옮겨도 잃는 것이 없다는 근거: 인증은 OIDC(federated credential)이고 그 subject 는
-  # **리포와 ref** 지 실행 기계가 아니다. 이미지는 2026-10-17 부터 이 러너가 짓고 민다
-  # (아래 build 스텝, VIN-638). 그 전에는 `az acr build` 가 Azure 안에서 지었다. 호스티드
-  # 러너에는 도커가 있으므로 어느 호스티드 리눅스에서든 같다.
+  # **리포와 ref** 지 실행 기계가 아니다. 이미지는 이 러너가 짓고 민다(아래 build 스텝).
+  # 호스티드 러너에는 도커가 있으므로 어느 호스티드 리눅스에서든 같다.
   #
   # 대가는 정직하게 적는다: 여기서부터 **GitHub 분을 쓴다.** 배포 경로에만 붙는 비용이고
   # (경로 필터가 이미 있어 아무 push 나 오지 않는다), 그 대가로 배포가 사람의 기계에서
@@ -320,11 +319,9 @@ jobs:
           artifact_hash=$(sha256sum "models/$name" models/tokenizer.json | sha256sum | cut -d' ' -f1)
           echo "VINC_ENCODER_BUILD=$DEPLOY_SHA-$artifact_hash" >> "$GITHUB_ENV"
 
-      # 이미지는 이 러너에서 짓고 vincacr 로 민다(VIN-638). ACR Tasks 는 빌드 vCPU 초를 따로
-      # 청구했고(배포 횟수를 따라 하루 최대 약 900원), 이 잡은 그 원격 빌드를 기다리는 동안
-      # 어차피 러너 분을 쓰고 있었다. 구운 모델도 이미 이 디스크에 있다. 태그 둘과 빌드 인자는
-      # 예전과 같아서 아래 스텝들이 읽는 이미지 이름은 그대로다.
-      # 근거: [[vinc.plan.infra-cost-and-capacity-2026-10-17]]
+      # 이미지는 이 러너에서 짓고 vincacr 로 민다. ACR Tasks 는 빌드 vCPU 초를 따로 청구하는데
+      # 이 잡은 그 원격 빌드를 기다리는 동안에도 러너 분을 쓴다. 구운 모델도 이미 이 디스크에
+      # 있다. 태그 둘과 빌드 인자를 바꾸면 아래 스텝들이 읽는 이미지 이름이 어긋난다.
       - name: Build & push image (runner)
         run: |
           set -euo pipefail
