@@ -155,6 +155,18 @@ class PdfOutlineTests(unittest.TestCase):
             "#### Blank Lines", "## Owner Scope", p[2],
         ]))
 
+    def test_headings_count_toward_the_character_cap(self):
+        data = _outlined(_pdf(_PAGES), _OUTLINE)
+        plain = "\n\n".join(_page_texts(data)).strip()
+        old = tx.MAX_PDF_CHARS
+        tx.MAX_PDF_CHARS = len(plain) + 10       # 페이지는 들어가고 헤딩까지는 못 든다
+        try:
+            res = tx.extract_text("outlined.pdf", data)
+        finally:
+            tx.MAX_PDF_CHARS = old
+        self.assertTrue(res["executed"], res)
+        self.assertEqual(res["text"], plain)
+
     def test_heading_level_stops_at_six(self):
         chain = [(f"Level {k}", 0, k - 1 if k else None) for k in range(7)]
         res = tx.extract_text("deep.pdf", _outlined(_pdf(_PAGES[:1]), chain))

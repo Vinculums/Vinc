@@ -252,6 +252,9 @@ def _extract_pdf(data: bytes) -> dict:
         heads = _outline_headings(reader, page_ids, truncated)
     except Exception:
         heads = {}                               # 목차가 깨져도 적재는 막지 않는다
+    # 헤딩도 문자 상한 안에 든다. 넘기면 헤딩 없이 페이지만 이은 출력으로 낸다.
+    if total + sum(len(line) + 2 for lines in heads.values() for line in lines) > MAX_PDF_CHARS:
+        heads = {}
     if heads:
         for i, lines in heads.items():
             body = pages[i]
