@@ -931,6 +931,10 @@ READ_TIMEOUT = max(1, int(os.environ.get("VINC_MCP_READ_TIMEOUT") or 30))
 #: 하나로 공유 그래프 전체를 서비스하므로(단일 라이터), 스레드 무제한은 곧 메모리
 #: 무제한이고 그 끝은 OOM 이다 — 이 리포가 이미 네 번 겪은 고장의 형태다.
 MAX_CONNECTIONS = max(1, int(os.environ.get("VINC_MCP_MAX_CONNECTIONS") or 64))
+#: 붙잡기 모드에서 요청 하나가 준비를 기다리는 상한(초). 넘으면 503 과 Retry-After 로 답한다 —
+#: 실패를 숨기지 않고 재시도할 때를 알려 준다. 허브 writer 인계(구 리비전의 마지막 스냅샷 →
+#: 새 리비전의 복원·자격)가 이 안에 끝나야 배포가 지연으로만 보인다.
+HOLD_S = max(1.0, float(os.environ.get("VINC_MCP_HOLD_S") or 90))
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -948,6 +952,23 @@ class _Handler(BaseHTTPRequestHandler):
     @property
     def app(self) -> MCPHTTPApp:
         return self.server.app  # type: ignore[attr-defined]
+
+    def _held(self) -> bool:
+        """붙잡기 모드(`serve_http_held`)에서 앱이 서기 전 요청을 기다리게 한다.
+
+        True 면 이미 답했다는 뜻이다. `/health` 는 기다리지 않고 `starting` 을 답한다 —
+        살아 있음은 바로 알려야 하고, 준비됐는지는 본문으로 구분한다."""
+        ready = getattr(self.server, "ready", None)
+        if ready is None or ready.is_set():
+            return False
+        if urllib.parse.urlparse(self.path).path == "/health":
+            self._json(200, {"status": "starting", "hold": True})
+            return True
+        if ready.wait(getattr(self.server, "hold_s", HOLD_S)):
+            return False
+        self._json(503, {"error": "starting", "retryable": True, "retry_after_s": 5},
+                   {"Retry-After": "5"})
+        return True
 
     # ── CORS ────────────────────────────────────────────────────────────────
     # 브라우저 클라이언트 지원(원격 MCP 요건). 대상은 브라우저에서 도는 MCP 호스트
@@ -1006,6 +1027,8 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):  # noqa: N802
         """프리플라이트 — 허용 오리진에만 CORS 를 붙여 204."""
+        if self._held():
+            return
         from . import rest_api
         if rest_api.handle(self, "OPTIONS"):
             return
@@ -1122,6 +1145,8 @@ class _Handler(BaseHTTPRequestHandler):
 
     # ── 라우팅 ──────────────────────────────────────────────────────────────
     def do_GET(self):  # noqa: N802
+        if self._held():
+            return
         from . import rest_api
         if rest_api.handle(self, "GET"):
             return
@@ -1273,6 +1298,8 @@ class _Handler(BaseHTTPRequestHandler):
         return self._json(404, {"error": f"no such route: GET {url.path}"})
 
     def do_POST(self):  # noqa: N802
+        if self._held():
+            return
         from . import rest_api
         if rest_api.handle(self, "POST"):
             return
@@ -1446,6 +1473,8 @@ class _Handler(BaseHTTPRequestHandler):
         return self._json(404, {"error": f"no such route: POST {url.path}"})
 
     def do_PUT(self):  # noqa: N802
+        if self._held():
+            return
         from . import rest_api
         if rest_api.handle(self, "PUT"):
             return
@@ -1461,6 +1490,8 @@ class _Handler(BaseHTTPRequestHandler):
         **성공을 뜻하는 204 를 돌려주는 것 말고 하는 일이 없다.** 스펙상 정당하다:
         세션을 쓰지 않는 서버에게 종료는 no-op 이다. 라우트를 지우지 않는 이유는
         그대로다 — 종료를 보내는 호스트가 405/501 을 오류로 취급하지 않게."""
+        if self._held():
+            return
         from . import rest_api
         if rest_api.handle(self, "DELETE"):
             return
@@ -1754,6 +1785,80 @@ def make_server(app: MCPHTTPApp, host: str = "127.0.0.1", port: int = 8790,
     httpd = BoundedHTTPServer((host, port), _Handler, max_connections=max_connections)
     httpd.app = app  # type: ignore[attr-defined]
     return httpd
+
+
+class _HeldHTTPServer(BoundedHTTPServer):
+    """붙잡기 모드 서버. 내려가면(`shutdown`·`server_close`) 조립 재시도도 멈춘다."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.app = None
+        self.ready = threading.Event()
+        self.stopping = threading.Event()
+        self.hold_s = HOLD_S
+
+    def shutdown(self):
+        self.stopping.set()
+        super().shutdown()
+
+    def server_close(self):
+        self.stopping.set()
+        super().server_close()
+
+
+def make_held_server(bridge: Bridge, build, *, host: str = "127.0.0.1", port: int = 8790,
+                     hold_s: float | None = None, retry_s: float = 1.0) -> _HeldHTTPServer:
+    """포트를 **먼저** 열고, 사이드카가 준비되면 앱을 조립해 붙잡아 둔 요청을 푸는 서버.
+
+    허브 writer 인계용이다. 새 리비전은 구 리비전이 마지막 스냅샷을 올릴 때까지 스토어를
+    열지 않는데, 그동안 포트가 닫혀 있으면 플랫폼이 트래픽을 넘기지 않고 구 리비전도
+    내리지 않는다(교착). 그래서 포트는 열고 요청은 붙잡는다.
+
+    ``build()`` 는 사이드카가 아직이면 예외를 내고, 준비되면 `MCPHTTPApp` 인자 dict 를
+    돌려준다. OAuth 상태 복원도 그 안에서 한다 — 구 리비전의 MCP 가 멈춘 뒤라야 마지막
+    상태를 받는다. 조립은 배경 스레드에서 하므로 반환된 서버는 곧장 받을 수 있다."""
+    httpd = _HeldHTTPServer((host, port), _Handler, max_connections=MAX_CONNECTIONS)
+    if hold_s is not None:
+        httpd.hold_s = hold_s
+    started = time.monotonic()
+
+    def assemble() -> None:
+        last = None
+        while True:
+            try:
+                kwargs = build()
+                break
+            except Exception as exc:                          # noqa: BLE001 — 준비될 때까지 다시
+                # 같은 이유는 한 번만 적는다. 복원이 몇 분 걸리면 초마다 한 줄이 쌓인다.
+                why = f"{type(exc).__name__}: {exc}"
+                if why != last:
+                    print(f"[mcp] hold — not ready: {why}", file=sys.stderr, flush=True)
+                    last = why
+                if httpd.stopping.wait(retry_s):
+                    return
+        httpd.app = MCPHTTPApp(bridge, **kwargs)
+        httpd.ready.set()
+        print(json.dumps({"host": host, "port": httpd.server_address[1], "hold": True,
+                          "ready_after_s": round(time.monotonic() - started, 1)}), flush=True)
+
+    threading.Thread(target=assemble, name="vinc-mcp-hold", daemon=True).start()
+    return httpd
+
+
+def serve_http_held(bridge: Bridge, build, *, host: str = "127.0.0.1", port: int = 8790,
+                    hold_s: float | None = None) -> int:
+    """`make_held_server` 를 종료 신호까지 돌린다."""
+    httpd = make_held_server(bridge, build, host=host, port=port, hold_s=hold_s)
+    print(json.dumps({"host": host, "port": httpd.server_address[1], "hold": True,
+                      "hold_s": httpd.hold_s}), flush=True)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.shutdown()
+        bridge.close()
+    return 0
 
 
 def serve_http(bridge: Bridge, *, host: str = "127.0.0.1", port: int = 8790,

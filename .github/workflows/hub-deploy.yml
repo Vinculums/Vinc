@@ -517,14 +517,29 @@ jobs:
           }
           echo "인코더 공간 일치 확인"
 
+      # 리비전이 Running 이 되는 것은 MCP 가 붙잡기 모드로 포트를 연 순간이다 — 스토어는
+      # 그 뒤 writer 인계를 기다렸다가 복원된다. 그래서 첫 응답이 붙잡힌 끝의 503 일 수 있고,
+      # 앱이 설 때까지 되묻는다. 뒤의 검증 스텝들은 이 스텝이 통과한 뒤라 준비된 허브를 본다.
       - name: Verify health (MCP tools/list)
         run: |
           sleep 15
-          curl -sf https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
-            -X POST -H "Authorization: Bearer ${{ secrets.VINC_MCP_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-            | grep -q '"tools"'
+          deadline=$(( $(date +%s) + 360 ))
+          i=0
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            i=$((i + 1))
+            code=$(curl -s -o "$RUNNER_TEMP/tools.json" -w '%{http_code}' --max-time 100 \
+              https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
+              -X POST -H "Authorization: Bearer ${{ secrets.VINC_MCP_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' || true)
+            if [ "$code" = "200" ] && grep -q '"tools"' "$RUNNER_TEMP/tools.json"; then
+              echo "tools/list 200 (시도 $i)"; exit 0
+            fi
+            echo "  tools/list $code — 아직 준비 중, 다시 묻는다"
+            sleep 15
+          done
+          echo "::error::허브가 tools/list 에 답하지 않는다" >&2
+          exit 1
 
       # ⚠ tools/list 200 은 **OAuth 가 살아있다는 증거가 아니다.** 정적 bearer 로 붙기
       # 때문에 OAuth 가 통째로 꺼져도 통과한다 — 2026-07-30 사고가 정확히 그 상태였다

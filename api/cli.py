@@ -974,94 +974,23 @@ def _main(argv: list[str] | None = None) -> int:
                                     or keychain.read(keychain.MCP_KEY) or "")
         from vinc_mcp.bridge import Bridge
         bridge = Bridge(base=args.base, token=args.token, owner=args.owner)
-        bridge.ensure(spawn=not args.no_spawn)
+        # 붙잡기 모드(허브 인계): 사이드카보다 먼저 떠서 포트를 연다. 사이드카 확보는 조립 때 한다.
+        from store.envflag import truthy
+        held = args.mcpcmd == "serve-http" and truthy(os.environ.get("VINC_MCP_HOLD"))
+        if not held:
+            bridge.ensure(spawn=not args.no_spawn)
         if args.mcpcmd == "serve":
             from vinc_mcp.stdio import serve as serve_stdio
             return serve_stdio(bridge)
         if args.mcpcmd == "serve-http":
-            from vinc_mcp.http_server import serve_http
-            from vinc_mcp.oauth import OAuthGate
-            static = args.auth_token or os.environ.get("VINC_MCP_TOKEN") or None
-            gate = None
-            if args.oauth:
-                from vinc_mcp.store import Store, resolve_state_dir
-                issuer = args.issuer or f"http://{args.host}:{args.port}"
-                # 상태는 디스크 SQLite 로 영속(재기동에도 커넥터 유지). 작업본은
-                # **로컬이어야 하고**(SMB 위 SQLite 는 `database is locked`), 영속은
-                # VINC_MCP_STATE_SNAPSHOT 파일 복사다.
-                # ⚠ **fail-soft** — 못 열면 인메모리로 강등해 살아서 답한다(재시작 시
-                # 재인가). 죽이면 허브 전체가 404 다:
-                # [[record:mcp-state-store-is-fail-soft-and-must-be-local]].
-                try:
-                    store = Store(os.path.join(resolve_state_dir(), "oauth.db"))
-                except Exception as exc:   # noqa: BLE001 — 강등이 요점
-                    print(f"[mcp] 상태 저장소를 열지 못했다 — 인메모리로 강등한다: "
-                          f"{type(exc).__name__}: {exc}", file=sys.stderr)
-                    print("[mcp] 재시작하면 커넥터 재인가가 필요하다. "
-                          "경로가 네트워크 마운트가 아닌지 확인할 것.", file=sys.stderr)
-                    store = Store(":memory:", snapshot=None)
-                st = store.health()
-                print(f"[mcp] oauth state: {st['path']} · journal={st['journal_mode']} "
-                      f"· snapshot={st['snapshot'] or '(none)'} [{st['snapshot_state']}]"
-                      + (f" — {st['snapshot_error']}" if st.get("snapshot_error") else ""),
-                      file=sys.stderr)
-                # 관리 키는 서버 env 로만(D36 — 번들·레포 반입 금지).
-                gate = OAuthGate(issuer, os.environ.get("VINC_OAUTH_ADMIN_KEY"), store=store)
-            # 회원 API 키(vinc_sk_*) 검증(B-B1) — VINC_MCP_ED25519_SEED 설정 시 활성.
-            from vinc_mcp import entitlement
-            vk = entitlement.verify_key if entitlement.enabled() else None
-            # OAuth 커넥터의 팀 주소 접근(#120). 같은 어서션 시드를 쓰므로 활성 조건도
-            # 같다 — 키 검증이 되는 배포면 이것도 된다. 꺼지면 팀 주소의 OAuth 만
-            # 닫히고(404) 키 경로와 개인 OAuth 는 그대로다.
-            vm = entitlement.verify_member if entitlement.enabled() else None
-            from vinc_mcp import community
-            vc = community.resolve if entitlement.enabled() else None
-            cw = community.write if entitlement.enabled() else None
-            cr = community.read if entitlement.enabled() else None
-            # 티어 쿼터(B-D2) — 인증된 회원(owner) 의 tools/call 만 소비. 미설정 시
-            # 무제한(로컬·파일럿 프로파일 무영향). free 초과 → LOCK_HOURS 잠금.
-            quota_cfg = None
-            if os.environ.get("VINC_QUOTA") == "on":
-                quota_cfg = {
-                    # 등급이 Free·Team 둘뿐이 되면서(2026-09-19) 차별축이 다시
-                    # **호출 횟수**로 돌아왔다: Free 2,000 · Team 6,000. 주제 개수는
-                    # 더 이상 축이 아니다(아래 주석 참조). 기본값을 정책값으로 둬야
-                    # env 를 빠뜨렸을 때 구 정책이 조용히 살아나지 않는다.
-                    # 근거: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
-                    "free_limit": int(os.environ.get("VINC_FREE_DAILY_LIMIT", "2000")),
-                    "team_limit": int(os.environ.get("VINC_TEAM_DAILY_LIMIT", "6000")),
-                    "window_s": float(os.environ.get("VINC_QUOTA_WINDOW_HOURS", "24")) * 3600,
-                    "lock_s": float(os.environ.get("VINC_QUOTA_LOCK_HOURS", "12")) * 3600,
-                    # 면제 owner(쉼표 구분, `user:<public_id>`): 도그푸딩 계정처럼 그래프를
-                    # 대량으로 재는 계정이 하루 한도에 스스로 막히지 않게 한다. 면제는
-                    # quota_check 를 통째로 건너뛰므로 이미 걸린 잠금도 보지 않는다.
-                    # 값은 hub-deploy 가 리포 변수 VINC_QUOTA_EXEMPT_OWNERS 에서 싣는다.
-                    "exempt_owners": frozenset(
-                        o.strip() for o in
-                        os.environ.get("VINC_QUOTA_EXEMPT_OWNERS", "").split(",") if o.strip()),
-                }
-            # 무료 등급 주제 상한은 **없다**(2026-09-19). Pro 를 없애면서 개인이
-            # 주제를 더 쓸 길이 사라졌으므로 상한을 함께 걷었다 — 유일한 개인 유료
-            # 등급이 없는데 개인을 5개에 가두면 올라갈 자리가 없다.
-            # `free_max_domains` 배선과 `api/fragment.py` 의 `max_domains` 가드는
-            # 남겨 둔다(일반 장치이고 기본 None = 무제한이다). 정책이 여기서 끝난다:
-            # env 로 되살릴 수 없고, 되살리려면 이 줄을 고쳐야 한다.
-            # 근거: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
-            free_cap = None
-            # 회원 승인 흐름(B-B3) — 우리 서명키 + 계정 공개키 핀 + 공홈 동의 URL.
-            # 셋 다 있어야 활성(없으면 관리 키 경로만). 공개키만 교환 → B2 준수.
-            from vinc_mcp import edverify as _ev
-            seed_raw = os.environ.get("VINC_MCP_ED25519_SEED")
-            acct_raw = os.environ.get("VINC_ACCOUNT_PUBLIC_KEY")
-            return serve_http(
-                bridge, host=args.host, port=args.port,
-                static_token=static, oauth=gate, verify_key=vk, verify_member=vm,
-                verify_community=vc, community_write=cw, community_read=cr,
-                quota_config=quota_cfg,
-                mcp_seed=_ev.load_seed(seed_raw) if seed_raw else None,
-                account_public=_ev.load_public(acct_raw) if acct_raw else None,
-                connect_url=os.environ.get("VINC_CONNECT_URL") or "https://vincs.io/connect",
-                free_max_domains=free_cap)
+            from vinc_mcp.http_server import serve_http, serve_http_held
+            if held:
+                # 포트를 먼저 열고 요청을 붙잡는다. 앱은 사이드카가 뜬 뒤에 조립한다.
+                def _build():
+                    bridge.ensure(spawn=False, wait=5.0)
+                    return _serve_http_kwargs(args)
+                return serve_http_held(bridge, _build, host=args.host, port=args.port)
+            return serve_http(bridge, host=args.host, port=args.port, **_serve_http_kwargs(args))
         return 2
     if args.cmd == "onboard":
         from . import auth
@@ -1108,6 +1037,94 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         diagnostics.configure(False)
         emit_open_failure.reset(diagnostic_token)
+
+
+
+def _serve_http_kwargs(args) -> dict:
+    """`mcp serve-http` 의 앱 조립(OAuth 상태 복원·키 검증·할당량). 붙잡기 모드에서는
+    사이드카가 준비된 **뒤에** 부른다 — OAuth 상태를 이 시점에 복원해야 구 리비전이 마지막으로
+    쓴 상태를 받는다."""
+    from vinc_mcp.oauth import OAuthGate
+    static = args.auth_token or os.environ.get("VINC_MCP_TOKEN") or None
+    gate = None
+    if args.oauth:
+        from vinc_mcp.store import Store, resolve_state_dir
+        issuer = args.issuer or f"http://{args.host}:{args.port}"
+        # 상태는 디스크 SQLite 로 영속(재기동에도 커넥터 유지). 작업본은
+        # **로컬이어야 하고**(SMB 위 SQLite 는 `database is locked`), 영속은
+        # VINC_MCP_STATE_SNAPSHOT 파일 복사다.
+        # ⚠ **fail-soft** — 못 열면 인메모리로 강등해 살아서 답한다(재시작 시
+        # 재인가). 죽이면 허브 전체가 404 다:
+        # [[record:mcp-state-store-is-fail-soft-and-must-be-local]].
+        try:
+            store = Store(os.path.join(resolve_state_dir(), "oauth.db"))
+        except Exception as exc:   # noqa: BLE001 — 강등이 요점
+            print(f"[mcp] 상태 저장소를 열지 못했다 — 인메모리로 강등한다: "
+                  f"{type(exc).__name__}: {exc}", file=sys.stderr)
+            print("[mcp] 재시작하면 커넥터 재인가가 필요하다. "
+                  "경로가 네트워크 마운트가 아닌지 확인할 것.", file=sys.stderr)
+            store = Store(":memory:", snapshot=None)
+        st = store.health()
+        print(f"[mcp] oauth state: {st['path']} · journal={st['journal_mode']} "
+              f"· snapshot={st['snapshot'] or '(none)'} [{st['snapshot_state']}]"
+              + (f" — {st['snapshot_error']}" if st.get("snapshot_error") else ""),
+              file=sys.stderr)
+        # 관리 키는 서버 env 로만(D36 — 번들·레포 반입 금지).
+        gate = OAuthGate(issuer, os.environ.get("VINC_OAUTH_ADMIN_KEY"), store=store)
+    # 회원 API 키(vinc_sk_*) 검증(B-B1) — VINC_MCP_ED25519_SEED 설정 시 활성.
+    from vinc_mcp import entitlement
+    vk = entitlement.verify_key if entitlement.enabled() else None
+    # OAuth 커넥터의 팀 주소 접근(#120). 같은 어서션 시드를 쓰므로 활성 조건도
+    # 같다 — 키 검증이 되는 배포면 이것도 된다. 꺼지면 팀 주소의 OAuth 만
+    # 닫히고(404) 키 경로와 개인 OAuth 는 그대로다.
+    vm = entitlement.verify_member if entitlement.enabled() else None
+    from vinc_mcp import community
+    vc = community.resolve if entitlement.enabled() else None
+    cw = community.write if entitlement.enabled() else None
+    cr = community.read if entitlement.enabled() else None
+    # 티어 쿼터(B-D2) — 인증된 회원(owner) 의 tools/call 만 소비. 미설정 시
+    # 무제한(로컬·파일럿 프로파일 무영향). free 초과 → LOCK_HOURS 잠금.
+    quota_cfg = None
+    if os.environ.get("VINC_QUOTA") == "on":
+        quota_cfg = {
+            # 등급이 Free·Team 둘뿐이 되면서(2026-09-19) 차별축이 다시
+            # **호출 횟수**로 돌아왔다: Free 2,000 · Team 6,000. 주제 개수는
+            # 더 이상 축이 아니다(아래 주석 참조). 기본값을 정책값으로 둬야
+            # env 를 빠뜨렸을 때 구 정책이 조용히 살아나지 않는다.
+            # 근거: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
+            "free_limit": int(os.environ.get("VINC_FREE_DAILY_LIMIT", "2000")),
+            "team_limit": int(os.environ.get("VINC_TEAM_DAILY_LIMIT", "6000")),
+            "window_s": float(os.environ.get("VINC_QUOTA_WINDOW_HOURS", "24")) * 3600,
+            "lock_s": float(os.environ.get("VINC_QUOTA_LOCK_HOURS", "12")) * 3600,
+            # 면제 owner(쉼표 구분, `user:<public_id>`): 도그푸딩 계정처럼 그래프를
+            # 대량으로 재는 계정이 하루 한도에 스스로 막히지 않게 한다. 면제는
+            # quota_check 를 통째로 건너뛰므로 이미 걸린 잠금도 보지 않는다.
+            # 값은 hub-deploy 가 리포 변수 VINC_QUOTA_EXEMPT_OWNERS 에서 싣는다.
+            "exempt_owners": frozenset(
+                o.strip() for o in
+                os.environ.get("VINC_QUOTA_EXEMPT_OWNERS", "").split(",") if o.strip()),
+        }
+    # 무료 등급 주제 상한은 **없다**(2026-09-19). Pro 를 없애면서 개인이
+    # 주제를 더 쓸 길이 사라졌으므로 상한을 함께 걷었다 — 유일한 개인 유료
+    # 등급이 없는데 개인을 5개에 가두면 올라갈 자리가 없다.
+    # `free_max_domains` 배선과 `api/fragment.py` 의 `max_domains` 가드는
+    # 남겨 둔다(일반 장치이고 기본 None = 무제한이다). 정책이 여기서 끝난다:
+    # env 로 되살릴 수 없고, 되살리려면 이 줄을 고쳐야 한다.
+    # 근거: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
+    free_cap = None
+    # 회원 승인 흐름(B-B3) — 우리 서명키 + 계정 공개키 핀 + 공홈 동의 URL.
+    # 셋 다 있어야 활성(없으면 관리 키 경로만). 공개키만 교환 → B2 준수.
+    from vinc_mcp import edverify as _ev
+    seed_raw = os.environ.get("VINC_MCP_ED25519_SEED")
+    acct_raw = os.environ.get("VINC_ACCOUNT_PUBLIC_KEY")
+    return dict(
+        static_token=static, oauth=gate, verify_key=vk, verify_member=vm,
+        verify_community=vc, community_write=cw, community_read=cr,
+        quota_config=quota_cfg,
+        mcp_seed=_ev.load_seed(seed_raw) if seed_raw else None,
+        account_public=_ev.load_public(acct_raw) if acct_raw else None,
+        connect_url=os.environ.get("VINC_CONNECT_URL") or "https://vincs.io/connect",
+        free_max_domains=free_cap)
 
 
 if __name__ == "__main__":

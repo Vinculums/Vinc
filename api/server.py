@@ -947,6 +947,13 @@ class VincApp:
             state = self._maybe_snapshot(force=True)
             if state and state != "off":
                 print(f"vinc: final snapshot — {state}", file=sys.stderr, flush=True)
+            if state == "ok":
+                # 마지막 스냅샷이 영속본에 올라간 **뒤에만** 넘긴다. 새 리비전은 이 표식을 보고서야
+                # 복원한다 — 넘김이 스냅샷보다 먼저 서면 새 리비전이 낡은 사본을 연다.
+                from store.handoff import mark_released
+                released = mark_released()
+                if released != "off":
+                    print(f"vinc: writer handoff — {released}", file=sys.stderr, flush=True)
             self.store.close()
             self.store = None
 
@@ -3066,8 +3073,8 @@ def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int |
         threading.Thread(target=_heartbeat, args=(parent_pid, stop), daemon=True).start()
     threading.Thread(target=_gc_tombstones_loop, args=(app, stop), daemon=True).start()
 
-    # 쓰기 자격은 HTTP 를 열기 **직전에** 가져온다. 이보다 늦으면 ACA 가 이 리비전을
-    # 준비됐다고 보고 구 리비전을 내리는 쪽이 먼저 올 수 있다(persistence.claim_writer).
+    # 쓰기 자격은 HTTP 를 열기 **직전에** 가져온다. 이 리비전이 쓰기를 받기 전에 표식이
+    # 서 있어야, 인계가 어긋나 늦게 오는 구 리비전의 스냅샷이 막힌다(persistence.claim_writer).
     writer = claim_writer()
     if writer != "off":
         print(f"vinc: store writer — {writer}", file=sys.stderr, flush=True)
