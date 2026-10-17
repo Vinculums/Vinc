@@ -412,6 +412,82 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
             hold.set()
             t.join(5)
 
+    def test_토큰화_전에_글자_상한으로_자른다(self):
+        """VIN-634. 토크나이저는 512 로 자르기 **전에** 전체를 토큰화하므로 아주 긴 텍스트
+        하나가 순간 메모리를 튀긴다. 상한을 넘는 텍스트만 잘리고 짧은 것은 그대로 가는지 본다.
+        numpy 없이 돌도록 토크나이저에서 멈춘다."""
+
+        class Stop(Exception):
+            pass
+
+        seen: list[list[str]] = []
+
+        class Tok:
+            def encode_batch(self, texts):
+                seen.append(list(texts))
+                raise Stop
+
+        self.mod.MAX_CHARS = 10
+        emb = self.mod._Embedder()
+        emb._tok = Tok()
+        with self.assertRaises(Stop):
+            emb._run(["짧은 글", "x" * 25])
+        self.assertEqual(seen, [["짧은 글", "x" * 10]])
+
+    def test_잠금_밖_질의_추론은_상한만큼만_겹친다(self):
+        """VIN-634. 적재가 끝난 뒤의 질의는 배치 잠금을 건너뛴다. 그 대신 동시에 도는 수에
+        상한이 있어야 몰린 질의가 활성값을 그만큼 겹쳐 쌓지 않는다."""
+        import threading
+
+        self.mod.QUERY_CONCURRENCY = 2
+        emb = self.mod._Embedder()
+        emb._sess = object()                  # 적재는 끝났다
+        hold = threading.Event()
+        lock = threading.Lock()
+        state = {"now": 0, "peak": 0}
+
+        class Stop(Exception):
+            pass
+
+        def fake_run(texts):
+            with lock:
+                state["now"] += 1
+                state["peak"] = max(state["peak"], state["now"])
+            hold.wait(5)
+            with lock:
+                state["now"] -= 1
+            raise Stop
+
+        emb._run = fake_run
+
+        def one():
+            try:
+                emb._encode_batch(["query"], query=True)
+            except Stop:
+                pass
+
+        threads = [threading.Thread(target=one) for _ in range(5)]
+        for t in threads:
+            t.start()
+        try:
+            for _ in range(200):
+                if state["peak"] >= 2:
+                    break
+                threading.Event().wait(0.01)
+            threading.Event().wait(0.1)       # 상한이 없다면 나머지가 이 사이에 들어온다
+            self.assertEqual(state["peak"], 2, "동시 질의 추론이 상한을 넘었거나 하나도 안 돌았다")
+        finally:
+            hold.set()
+            for t in threads:
+                t.join(5)
+
+    def test_요청_크기_기록에는_본문이_없다(self):
+        """VIN-634 진단 줄은 크기만 싣는다. 본문은 계정 데이터라 로그에 남으면 안 된다."""
+        line = self.mod._text_stats(["비밀 문장 하나", "secret"])
+        self.assertEqual(line, "n=2 max_chars=8 total_chars=14")
+        self.assertNotIn("비밀", line)
+        self.assertNotIn("secret", line)
+
     def test_인코딩_창구가_쿼리에만_접두를_붙인다(self):
         """`serve_encode` 계약 — 사이드카가 이 창구로 쿼리 임베딩을 얻어 간다.
 
