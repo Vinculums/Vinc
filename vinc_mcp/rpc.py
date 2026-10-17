@@ -7,6 +7,7 @@ tools/list / tools/call / prompts/list / prompts/get. 그 밖의 메서드는 -3
 (호스트가 재시도·수정 가능하도록).
 
 `prompts/*` 는 W2 에서 열었다(역할 열여섯을 프롬프트로 낸다 — 구현은 `roles.py`).
+역할과 별개로 그래프와 상관없이 늘 나가는 내장 프롬프트는 `builtin_prompts.py` 가 낸다.
 **`resources/*` 는 계속 -32601 이다.** 그 비구현은 실수가 아니라 판정이라
 (`vinc_conventions`·`vinc_domains` 가 이미 같은 것을 도구로 낸다) 회귀 테스트가
 둘의 갈림을 그대로 못 박는다: prompts 열림, resources 닫힘.
@@ -19,7 +20,7 @@ from __future__ import annotations
 import json
 
 from . import __version__
-from . import community, roles
+from . import builtin_prompts, community, roles
 from . import tools
 from . import toolcall
 from .bridge import Bridge
@@ -147,7 +148,7 @@ class Dispatcher:
                 info["websiteUrl"] = "https://vincs.io"
             out = {
                 # `prompts` 는 로스터가 **비어 있어도** 광고한다. 그래프에 vinc/agent
-                # 도메인이 없는 것은 고장이 아니라 상태이고(빈 목록이 정답), 능력을
+                # 도메인이 없는 것은 고장이 아니라 상태이고(역할 없는 목록이 정답), 능력을
                 # 그래프 내용에 따라 켰다 껐다 하면 호스트가 캐시한 목록과 어긋난다.
                 # `listChanged` 는 안 싣는다 — 서버→클라이언트 알림 경로가 없다.
                 "protocolVersion": negotiated,
@@ -195,9 +196,15 @@ class Dispatcher:
                 denial = quota(forced_owner, plan)
                 if denial is not None:
                     raise _QuotaDenied(_denial_text(denial))
+            # 내장 프롬프트는 역할 앞에 놓고, 역할 목록과 역할 본문은 손대지 않는다.
+            # 로스터 조회가 실패하면 내장만 내지 않고 오류를 그대로 낸다(빈 로스터와 다르다).
             if method == "prompts/list":
-                return roles.list_prompts(self.bridge, forced_owner=forced_owner)
-            return roles.get_prompt(params.get("name") or "",
+                listed = roles.list_prompts(self.bridge, forced_owner=forced_owner)
+                return {"prompts": builtin_prompts.listed() + listed["prompts"]}
+            name = params.get("name") or ""
+            if builtin_prompts.is_builtin(name):
+                return builtin_prompts.get(name, params.get("arguments") or {})
+            return roles.get_prompt(name,
                                     params.get("arguments") or {},
                                     self.bridge, forced_owner=forced_owner)
         raise _MethodNotFound(method)
