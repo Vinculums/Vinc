@@ -119,3 +119,59 @@ class CapacitySafety(unittest.TestCase):
             trial.restore(state())
         az.assert_not_called()
         switch.assert_not_called()
+
+
+def local_state():
+    saved = state()
+    saved.update(local=True, encoder_env=[
+        "VINC_EMBED_REMOTE=https://encode.example", "VINC_EMBED_ENCODE_TOKEN=secretref:encode-token"])
+    return saved
+
+
+class LocalEncoderTrial(unittest.TestCase):
+    """로컬 인코더 시험: 2 CPU 구간에서만 원격 인코더 env 를 빼고, 원복 때 같은 정의로 되돌린다."""
+
+    def _update_args(self, saved, cpu, current):
+        events = []
+        with patch.object(trial, "show", side_effect=[current, app(cpu, "new")]), \
+                patch.object(trial, "stop_writer"), \
+                patch.object(trial, "az", side_effect=lambda *args: events.append(args)), \
+                patch.object(trial, "revisions", return_value=[revision(True, 1, "new")]), \
+                patch.object(trial, "wait_ready", return_value="new"), \
+                patch.object(trial, "verify_profile"):
+            trial.switch(saved, cpu)
+        return events[0]
+
+    def test_two_cpu_removes_the_remote_encoder_and_rollback_sets_it_back(self):
+        up = self._update_args(local_state(), 2, app())
+        i = up.index("--remove-env-vars")
+        self.assertEqual(up[i + 1:i + 3], trial.LOCAL_ENCODER_ENV)
+        down = self._update_args(local_state(), 1, app(2))
+        i = down.index("--set-env-vars")
+        self.assertEqual(list(down[i + 1:i + 3]), local_state()["encoder_env"])
+
+    def test_resource_only_trial_does_not_touch_env(self):
+        up = self._update_args(state(), 2, app())
+        self.assertNotIn("--remove-env-vars", up)
+        self.assertNotIn("--set-env-vars", up)
+
+    def test_expected_profile_drops_only_the_encoder_env_and_only_at_two_cpu(self):
+        base = state()["baseline"]
+        two = trial.expected_profile(base, 2, local=True)["vinc-hub"]["env_names"]
+        one = trial.expected_profile(base, 1, local=True)["vinc-hub"]["env_names"]
+        self.assertEqual(one, base["vinc-hub"]["env_names"])
+        self.assertEqual(set(base["vinc-hub"]["env_names"]) - set(two), set(trial.LOCAL_ENCODER_ENV))
+
+    def test_encoder_env_keeps_the_secret_name_not_a_value(self):
+        current = app()
+        current["properties"]["template"]["containers"][0]["env"] = [
+            {"name": "VINC_EMBED_REMOTE", "value": "https://encode.example"},
+            {"name": "VINC_EMBED_ENCODE_TOKEN", "secretRef": "encode-token"},
+            {"name": "OTHER", "value": "x"}]
+        self.assertEqual(trial.encoder_env(current), local_state()["encoder_env"])
+
+    def test_one_cpu_without_the_remote_env_is_not_yet_restored(self):
+        with patch.object(trial, "show", return_value=app()), \
+                patch.object(trial, "switch") as switch:
+            trial.restore(local_state())
+        switch.assert_called_once_with(local_state(), 1)
