@@ -128,11 +128,11 @@ MAX_CONTENT = int(os.environ.get("VINC_EMBED_CONTENT_TOKENS", "500"))
 # 중간 텐서(배치×헤드12×512²×fp32 ≈ 배치당 12.6MB)까지 더해도 100MB 대에 머문다.
 # 허브는 1024MiB 를 사이드카·MCP 와 나눠 쓰고 가중치만 이미 ~440MB 다.
 EMBED_BATCH = max(1, int(os.environ.get("VINC_EMBED_BATCH", "8")))
-# 토큰화 **전에** 글자 수로 자르는 상한(VIN-634). 토크나이저의 512 자르기는 전체를 토큰화한
+# 토큰화 **전에** 글자 수로 자르는 상한. 토크나이저의 512 자르기는 전체를 토큰화한
 # **뒤에** 일어나서, 아주 긴 텍스트 하나가 토큰 객체를 통째로 만들어 순간 메모리를 튀긴다.
 # 512 토큰이 32,768자를 넘을 수는 없으므로 이 자르기는 모델이 보는 토큰을 바꾸지 않는다.
 MAX_CHARS = max(1, int(os.environ.get("VINC_EMBED_MAX_CHARS", "32768")))
-# 잠금 밖에서 동시에 도는 질의 추론의 상한(VIN-634). 질의는 배치 잠금을 건너뛰므로
+# 잠금 밖에서 동시에 도는 질의 추론의 상한. 질의는 배치 잠금을 건너뛰므로
 # (`_encode_batch`) 상한이 없으면 몰린 질의 수만큼 활성값이 겹친다.
 QUERY_CONCURRENCY = max(1, int(os.environ.get("VINC_EMBED_QUERY_CONCURRENCY", "4")))
 # bge-*-v1.5 의 쿼리 지시 접두(저장 passage 에는 붙이지 않는다 — `_prefix` 주석).
@@ -200,7 +200,7 @@ _LOG_REQUESTS = False
 
 
 def _text_stats(texts: list[str]) -> str:
-    """요청의 크기만 적는다(VIN-634). 본문은 한 글자도 싣지 않는다 — 계정 데이터다."""
+    """요청의 크기만 적는다. 본문은 한 글자도 싣지 않는다 — 계정 데이터다."""
     lens = [len(t) for t in texts] or [0]
     return f"n={len(texts)} max_chars={max(lens)} total_chars={sum(lens)}"
 
@@ -795,7 +795,7 @@ def _start_encode(emb: "_Embedder", port: int) -> _EncodeService:
                 raw = bool(body.get("raw"))
                 texts = texts if raw else [_prefix(t, kind) for t in texts]
                 # cgroup OOM 은 SIGKILL 이라 파이썬이 한 줄도 못 남긴다. 그래서 **시작할 때**
-                # 찍는다 — 죽은 요청은 시작 줄만 남고 끝 줄이 없다(VIN-634).
+                # 찍는다 — 죽은 요청은 시작 줄만 남고 끝 줄이 없다.
                 t0, rss0 = time.monotonic(), _rss_mb()
                 if _LOG_REQUESTS:
                     print(f"[embed] req> kind={kind} {_text_stats(texts)} rss={rss0}MB", flush=True)
