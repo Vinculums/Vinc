@@ -944,9 +944,10 @@ _SUMMARY: dict[str, str] = {
         "Show which graph this connection acts on and the spaces you can reach, with each team's id to "
         "pass as space and your role there. Without space, calls act on your personal graph."),
     "vinc_ingest": (
-        "Write nodes and edges, merging by exact id. Search first (vinc_search) and reuse the ids you "
-        "find; call vinc_conventions before your first write. Sending props replaces all stored "
-        "props; use props_patch to change some. Skipped items are listed in warnings."),
+        "Write many nodes and edges in one call, merging by exact id. Search first (vinc_search) and "
+        "reuse the ids you find; call vinc_conventions before your first write. Sending props "
+        "replaces all stored props; use props_patch to change some. Skipped items are listed in "
+        "warnings."),
     "vinc_delete": (
         "Irreversibly delete one node and all its edges by exact id. " + _PREVIEW_FIRST),
     "vinc_delete_edge": (
@@ -959,7 +960,7 @@ _SUMMARY: dict[str, str] = {
         "content_hash you read as expected_content_hash so you never overwrite a newer edit."),
     "vinc_doc_extract": (
         "Propose concepts from a stored document's headings and link them to it. apply:false (the "
-        "default) only proposes; apply:true writes them."),
+        "default) only proposes; apply:true writes them, or your own candidates, in one call."),
     "vinc_doc_get": (
         "Read a document's full text by doc_id, with its content_hash and an integrity flag "
         "(verified)."),
@@ -1687,7 +1688,12 @@ TOOLS: list[dict] = [
         "name": "vinc_ingest",
         "reference": "Merge an authored graph fragment (nodes and edges) into this graph by "
                        "exact id. This is the main write tool; vinc_delete and vinc_merge_nodes "
-                       "clean up. Read before you write: reuse ids found with vinc_search or "
+                       "clean up. The daily limit counts calls, not nodes, so send everything one "
+                       "piece of work needs in one call. To build the graph from a stored "
+                       "document, write its concepts with one vinc_doc_extract (your own "
+                       "candidates, apply:true), then its relations and records with one "
+                       "vinc_ingest; the build-graph-from-documents prompt spells this out. "
+                       "Read before you write: reuse ids found with vinc_search or "
                        "vinc_recall, and call vinc_conventions once before your first write in a "
                        "session so your writes match this owner's conventions and existing "
                        "domains. Node types record|concept|domain|bridge|episode|decision go to "
@@ -1854,7 +1860,10 @@ TOOLS: list[dict] = [
                        "resending. An empty string means the document must not exist yet. "
                        "create_only:true refuses with error:write_conflict when doc_id already "
                        "exists, so a create never edits an existing document. Omit both for a "
-                       "plain upsert. " + _OPERATION_ID_HINT,
+                       "plain upsert. To build the graph from a stored document in two more calls, "
+                       "use one vinc_doc_extract with your own candidates and apply:true, then one "
+                       "vinc_ingest for its relations and records (the build-graph-from-documents "
+                       "prompt). " + _OPERATION_ID_HINT,
         "inputSchema": {"type": "object", "properties": {
             # 사이드카와 문서 저장소는 이미 받는데 계약이 침묵해서, 어시스턴트는 문서의
             # 내용 시점을 적을 자리가 없었다(노드의 content_time 과 같은 3값).
@@ -1894,7 +1903,8 @@ TOOLS: list[dict] = [
                        "half of the document workflow: vinc_doc_put stores the text, and this "
                        "links concepts to it with MENTIONS so the document joins search and the "
                        "graph instead of sitting as inert text. apply:false (the default) only "
-                       "proposes candidates and writes nothing; make that call first. apply:true "
+                       "proposes candidates and writes nothing; make that call first, unless you "
+                       "pass your own `candidates`, which apply:true writes in one call. apply:true "
                        "merges each candidate as concept:{slug} with status 'proposed' and the "
                        "document's own topic as its domain (the front-matter domain: line if "
                        "present, else the document's derived topic). A document with neither "
@@ -1910,7 +1920,11 @@ TOOLS: list[dict] = [
                        "heading with nothing readable under it gives no candidate, so every "
                        "candidate has a one_liner. Pass `candidates` to apply your own list "
                        "instead; only title and one_liner are read, and ids are always derived on "
-                       "the server. Returns {executed, doc_id, candidates, applied:{created, "
+                       "the server (each returned candidate carries its slug, so its id is "
+                       "concept:<slug>). Write each title as the document writes it, so MENTIONS "
+                       "links it to those passages. Send the whole list in one call, then the "
+                       "relations and records in one vinc_ingest, as the build-graph-from-documents "
+                       "prompt describes. Returns {executed, doc_id, candidates, applied:{created, "
                        "matched}, mentions}. Writes only when apply:true. "
                        + _OPERATION_ID_HINT,
         "inputSchema": {"type": "object", "properties": {
