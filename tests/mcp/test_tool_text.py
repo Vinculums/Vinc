@@ -71,6 +71,20 @@ def test_served_text_has_no_internal_codes_warning_sign_or_korean(profile):
     assert not bad, f"{profile}: 내부 표기가 호스트 문장에 남았다 {bad[:10]}"
 
 
+def test_reference_text_follows_the_same_rules():
+    """참조문(`reference`·인자의 `x-reference`)은 호스트에 안 나가지만 문서 사이트에 그대로
+    실린다. 같은 규칙을 지킨다."""
+    bad = []
+    for row in tools.reference_export():
+        texts = [("reference", row["reference"]), ("summary", row["summary"])]
+        texts += [(p["name"], p.get("reference") or "") for p in row["params"]]
+        for where, text in texts:
+            if any(ch in text for ch in DASHES) or "⚠" in text or re.search(r"[가-힣]", text):
+                bad.append((row["name"], where))
+            bad += [(row["name"], m.group(0)) for m in INTERNAL.finditer(text)]
+    assert not bad, f"참조문에 대시·내부 표기가 있다 {bad[:10]}"
+
+
 def test_the_walk_reaches_nested_parameter_text():
     """검사기가 중첩 스키마를 실제로 걷는가. 안 걸으면 위 두 검사는 빈 통과다."""
     ingest = next(s for s in tools.specs(hub=True) if s["name"] == "vinc_ingest")

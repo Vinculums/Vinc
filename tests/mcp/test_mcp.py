@@ -144,7 +144,7 @@ class ToolContractTests(unittest.TestCase):
         self.assertNotIn("enum", edge_props["type"])
         self.assertIn("role", edge_props)
         self.assertIn("theme_id", schema["properties"])
-        desc = next(t for t in tools.specs() if t["name"] == "vinc_ingest")["description"]
+        desc = next(t for t in tools.TOOLS if t["name"] == "vinc_ingest")["reference"]
         self.assertIn("proposed_types", desc)          # 개방층 계약 안내
         self.assertNotIn("unknown type values are skipped", desc)
 

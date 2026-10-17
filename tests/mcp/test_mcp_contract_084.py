@@ -35,6 +35,9 @@ from vinc_mcp.rpc import _tool_specs     # noqa: E402
 
 #: 호스트가 tools/list 로 **실제로 받는** 설명(test_tool_contract 와 같은 경로).
 SERVED = {t["name"]: t for t in _tool_specs()}
+#: 내보내지 않는 전체 계약. 세부 문구는 여기에 고정한다.
+from vinc_mcp.tools import HOST_TOOLS, TOOLS  # noqa: E402
+REF = {t["name"]: t["reference"] for t in TOOLS + HOST_TOOLS}
 
 OWNER = "user:w2"
 
@@ -142,7 +145,7 @@ class NeighborsBothEnds(unittest.TestCase):
                          "역방향 플랜이 owner 스코프를 안 걸었다(SEC-1)")
 
     def test_설명이_양방향을_말한다(self):
-        desc = SERVED["vinc_neighbors"]["description"]
+        desc = REF["vinc_neighbors"]
         self.assertIn("BOTH ends", desc)
         for word in ("record", "episode", "bridge"):
             self.assertIn(word, desc, f"{word} 시드가 된다는 말이 없다")
@@ -206,7 +209,7 @@ class ConventionsAreRecomputed(unittest.TestCase):
         self.assertIn("손으로 쓴 것", got["text"])
 
     def test_설명이_재계산을_말한다(self):
-        desc = SERVED["vinc_conventions"]["description"]
+        desc = REF["vinc_conventions"]
         self.assertIn("recomputed", desc)
         self.assertIn("every call", desc)
 
@@ -265,7 +268,7 @@ class ExtractCandidates(unittest.TestCase):
         self.assertEqual(ds.extract_concepts(text), ds.extract_concepts(text))
 
     def test_설명이_그_규칙을_말한다(self):
-        desc = SERVED["vinc_doc_extract"]["description"]
+        desc = REF["vinc_doc_extract"]
         self.assertIn("section number", desc)
         self.assertIn("first sentence", desc)
         self.assertIn("one_liner", desc)
@@ -356,7 +359,7 @@ class DecideConflicts(unittest.TestCase):
         self.assertTrue(cut)
 
     def test_설명이_세_상충과_크로스도메인_필드를_말한다(self):
-        desc = SERVED["vinc_decide"]["description"]
+        desc = REF["vinc_decide"]
         for token in ("decisions_on_same_subject", "opposite_direction",
                       "duplicate_decision_title", "cross_domain"):
             self.assertIn(token, desc)
@@ -552,7 +555,7 @@ class SearchFallsBackWithoutWaiting(unittest.TestCase):
         self.assertFalse(self.store.scheduled, "실패를 재빌드로 착각해 예약했다")
 
     def test_설명이_그_계약을_말한다(self):
-        desc = SERVED["vinc_search"]["description"]
+        desc = REF["vinc_search"]
         self.assertIn("vector_note", desc)
         self.assertIn("never waits", desc)
 

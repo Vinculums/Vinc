@@ -206,7 +206,7 @@ class DiagnoseContractTests(unittest.TestCase):
         from vinc_mcp.tools import TOOLS
         spec = next(t for t in TOOLS if t["name"] == "vinc_diagnose")
         self.assertIn("claims", spec["inputSchema"]["properties"]["kind"]["enum"])
-        self.assertIn("unanchored", spec["description"])
+        self.assertIn("unanchored", spec["reference"])
 
     def test_라우트가_claims_를_분기한다(self):
         import inspect

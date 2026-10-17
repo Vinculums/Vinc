@@ -109,7 +109,7 @@ class ConventionsContractTests(unittest.TestCase):
         설명에 owner 를 담은 문장은 둘 다 소유격('the owner's GRAPH.md')이라
         **응답이 그것을 알려 준다는 말이 0건**이었다(2026-08-25 실측)."""
         from vinc_mcp.tools import TOOLS
-        d = next(t for t in TOOLS if t["name"] == "vinc_conventions")["description"]
+        d = next(t for t in TOOLS if t["name"] == "vinc_conventions")["reference"]
         # `target` 은 허브가 내지 않던 약속이라 설명에서 뺐다(VIN-550). owner·scope 만 남는다.
         for field in ("`owner`", "`scope`"):
             self.assertIn(field, d, field)
@@ -122,7 +122,7 @@ class ConventionsContractTests(unittest.TestCase):
         설명이 틀린 말을 하게 됐다(커넥터가 팀에 붙어서도 "여기선 못 쓴다"를 읽는다).
         그래서 지금은 **주소를 말하는가**를 보고, 옛 주장이 되살아나면 실패시킨다."""
         from vinc_mcp.tools import TOOLS
-        d = next(t for t in TOOLS if t["name"] == "vinc_conventions")["description"]
+        d = next(t for t in TOOLS if t["name"] == "vinc_conventions")["reference"]
         self.assertIn("team", d)
         self.assertIn("/t/<team-uuid>/mcp", d)
         self.assertNotIn("web app", d)
@@ -143,7 +143,7 @@ class ConventionsContractTests(unittest.TestCase):
         from vinc_mcp.tools import TOOLS
         who = [t for t in TOOLS if t["name"] == "vinc_whoami"]
         self.assertEqual(len(who), 1, "스페이스 목록을 받을 자리가 있어야 한다")
-        conv = next(t for t in TOOLS if t["name"] == "vinc_conventions")["description"]
+        conv = next(t for t in TOOLS if t["name"] == "vinc_conventions")["reference"]
         for field in ("`owner`", "`scope`"):
             self.assertIn(field, conv, "첫 문이 신원을 계속 실어야 한다: " + field)
         # 수는 **의도한 추가**로만 움직인다(23 = W1 brief, 24 = whoami, 25 = node, 26 = edges, 27 = role, 28 = role_check, 29 = community_write).

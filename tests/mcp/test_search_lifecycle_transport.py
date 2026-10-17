@@ -46,7 +46,7 @@ def test_mcp_rest_account_cli_preserve_node_degradation_and_temporal_arguments()
 def test_repository_search_schema_exposes_all_temporal_options():
     spec = next(t for t in tools.TOOLS if t["name"] == "vinc_search")
     assert {"historical", "mode", "as_of", "known_at"} <= set(spec["inputSchema"]["properties"])
-    assert "node_semantic" in spec["description"] and "node_window" in spec["description"]
+    assert "node_semantic" in spec["reference"] and "node_window" in spec["reference"]
 
 
 def test_host_search_does_not_turn_backend_failure_into_successful_empty_results():

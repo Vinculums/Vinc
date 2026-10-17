@@ -410,8 +410,7 @@ class ToolContractTests(unittest.TestCase):
         """이 한 문장이 '아무도 안 읽는다' 실패 모드에 대한 유일한 구조적 방어다.
         도구 설명은 모델 제어라 항상 실린다 — 지우면 방어가 사라진다."""
         from vinc_mcp import tools
-        ingest = next(t for t in tools.TOOLS if t["name"] == "vinc_ingest")
-        self.assertIn("vinc_conventions", ingest["description"])
+        self.assertIn("vinc_conventions", tools.served_description("vinc_ingest"))
 
     def test_tool_routes_to_the_sidecar_route(self):
         from vinc_mcp import tools

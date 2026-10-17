@@ -635,6 +635,7 @@
     "vinc.plan.mcp-hardening",
     "vinc.plan.mcp-read-tool-fixes-2026-09-24",
     "vinc.plan.mcp-second-pass",
+    "vinc.plan.mcp-short-tool-descriptions-2026-10-17",
     "vinc.plan.merge-order-2026-10-04",
     "vinc.plan.n-wave-remaining-work-2026-09-11",
     "vinc.plan.node-pk-namespacing",
@@ -877,6 +878,7 @@
     "decision:keep-the-chunk-vector-index-behind-a-flag-and-run-each-vector-query-alone-2026-10-03",
     "decision:ladybug-extensions-ship-from-a-vinc-release-not-the-repo-2026-09-26",
     "decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24",
+    "decision:mcp-tool-descriptions-are-short-summaries-with-a-docs-link",
     "decision:mention-title-tokens-within-a-window",
     "decision:node-props-are-edited-in-the-document-pane-as-a-whole-and-checked-against-the-read-revision-2026-09-26",
     "decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13",
@@ -1179,6 +1181,9 @@
     },
     "decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24": {
       "validity": "current"
+    },
+    "decision:mcp-tool-descriptions-are-short-summaries-with-a-docs-link": {
+      "validity": "unknown"
     },
     "decision:mention-title-tokens-within-a-window": {
       "validity": "current"
