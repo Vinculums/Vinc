@@ -1,0 +1,38 @@
+# -*- coding: utf-8 -*-
+"""허브 배포는 구 리비전을 먼저 내리지 않는다 — 순서는 기동의 writer 인계가 지킨다.
+
+1. 배포 잡에 `revision deactivate` 가 없다. 있으면 새 리비전이 넘김 표식을 기다릴 상대가
+   이미 멈춰 있어서, 인계 대신 배포 중 단절이 돌아온다.
+2. 이미지 갱신이 종료 유예 60초를 함께 싣는다(구 리비전이 최종 스냅샷을 올릴 시간).
+3. 헬스 뒤에 영속 공유의 표식으로 인계를 대조한다: writer 는 새 리비전, 넘긴 쪽은 구 리비전.
+"""
+from __future__ import annotations
+
+import pathlib
+import re
+
+WORKFLOW = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows" / "hub-deploy.yml"
+
+
+def _text() -> str:
+    return WORKFLOW.read_text(encoding="utf-8")
+
+
+def test_the_deploy_does_not_stop_the_old_revision_first():
+    assert "revision deactivate" not in _text()
+
+
+def test_the_update_carries_the_termination_grace():
+    m = re.search(r"^ +if ! (az containerapp update .+); then$", _text(), re.M)
+    assert m, "이미지 갱신 줄이 없다"
+    assert "--termination-grace-period 60" in m.group(1)
+
+
+def test_the_handoff_is_checked_after_health_against_the_share_markers():
+    t = _text()
+    health = t.index("- name: Verify health (MCP tools/list)")
+    handoff = t.index("- name: Verify writer handoff (markers on the persistent share)")
+    assert health < handoff
+    body = t[handoff:t.index("- name:", handoff + 10)]
+    assert '"$w" = "$LATEST_REV"' in body and '"$r" = "$PREV_REV"' in body
+    assert "hub-data" in body

@@ -120,8 +120,11 @@ def test_workflow_always_cleans_up_what_it_created():
     assert len(cleanup) == 2
     body = cleanup[1]
     assert "if: always()" in body.split("run:", 1)[0]
-    for cmd in ("containerapp delete", "env storage remove", "share-rm delete"):
+    for cmd in ("containerapp delete", "env storage remove", "storage share delete"):
         assert cmd in body, cmd
+    # 저장 계정의 삭제 잠금이 ARM 경로를 막는다. 공유는 데이터 평면으로 지워야 실제로 지워진다.
+    commands = [ln for ln in body.splitlines() if not ln.lstrip().startswith("#")]
+    assert not any("share-rm delete" in ln for ln in commands)
 
 
 def test_workflow_does_not_stop_the_old_revision_first():
