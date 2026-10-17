@@ -559,8 +559,8 @@ class _Embedder:
         return (pooled / norm).astype(float).tolist()
 
     def _run(self, texts: list[str]):
-        import numpy as np
         enc = self._tok.encode_batch([t[:MAX_CHARS] for t in texts])
+        import numpy as np
         mask = np.array([e.attention_mask for e in enc], dtype=np.int64)
         feed = {
             "input_ids": np.array([e.ids for e in enc], dtype=np.int64),
