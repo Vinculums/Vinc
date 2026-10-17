@@ -51,6 +51,7 @@ case "$*" in
       while true; do sleep 0.2; done ;;
   *vinc_rag.embed.worker*)
       trap 'exit 0' TERM
+      echo started > "$OUT/embed-started"
       while true; do sleep 0.2; done ;;
   *) exit 0 ;;
 esac
@@ -160,6 +161,46 @@ class EntrypointShutdownTests(unittest.TestCase):
             "남아 다음 기동에서 최근 쓰기가 사라진다(2026-08-07 실측 66문서).\n"
             + (proc.stdout or "")[-1500:])
         self.assertTrue((self.out / "sidecar-closed").exists())
+
+    def test_임베딩_워커가_켜져_있어도_셸이_사이드카를_기다린다(self):
+        """운영 허브는 `VINC_EMBED=on` 이다. 워커 절이 자기 trap 을 다시 걸면 위의
+        `shutdown` 이 덮여서, SIGTERM 에 사이드카를 죽이기만 하고 기다리지 않는다 —
+        최종 스냅샷도 넘김 표식도 안 남는다. 위 검사는 워커를 끄고 돌아서 이것을 못 본다.
+        근거: [[vinc.plan.hub-writer-handoff-2026-10-17]]"""
+        env = dict(os.environ)
+        env.update({
+            "PATH": str(self.bin) + os.pathsep + env.get("PATH", ""),
+            "VINC_SIDECAR_TOKEN": "t",
+            "VINC_DATA_DIR": (self.out / "db").as_posix(),
+            "VINC_EMBED": "on",
+            "VINC_MCP_STATE_DIR": (self.out / "state").as_posix(),
+            "VINC_MCP_STATE_SNAPSHOT": (self.out / "snap" / "oauth.db").as_posix(),
+            "VINC_SIDECAR_PIDFILE": (self.out / "sidecar.pid").as_posix(),
+            "VINC_EMBED_PIDFILE": (self.out / "embed.pid").as_posix(),
+            "VINC_NODE_MIRROR_PIDFILE": (self.out / "mirror.pid").as_posix(),
+        })
+        env.pop("VINC_ROLE", None)
+        env.pop("VINC_EMBED_REMOTE", None)
+        driver = _DRIVER.format(entry=_ENTRY.as_posix(), out=self.out.as_posix(),
+                                boot=_BOOT_TICKS, wait=_WAIT_TICKS,
+                                ready="mcp-started sidecar-started embed-started")
+        proc = subprocess.run(["sh", "-c", driver], cwd=str(_ROOT), env=env,
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              text=True, timeout=240)
+        self.assertEqual(proc.returncode, 0,
+                         "임베딩 워커가 켜진 채로 종료하면 셸이 사이드카를 안 기다렸다.\n"
+                         + (proc.stdout or "")[-1500:])
+        self.assertTrue((self.out / "sidecar-closed").exists())
+
+    def test_종료_trap_은_한_번만_건다(self):
+        """`trap shutdown TERM INT` 뒤에 TERM 을 다시 거는 최상위 trap 이 있으면 종료 절차가
+        덮인다. 함수 안의 `trap ''`(두 번째 신호 무시)은 덮는 것이 아니라 대상이 아니다."""
+        # 줄 끝 `\` 로 이어진 명령은 한 줄로 합쳐서 본다(trap 이 두 줄에 걸쳐 있으면 TERM 이 뒷줄에 있다).
+        lines = _ENTRY.read_text(encoding="utf-8").replace("\\\n", " ").splitlines()
+        first = next(i for i, ln in enumerate(lines) if ln.strip() == "trap shutdown TERM INT")
+        later = [f"{i + 1}: {ln.strip()}" for i, ln in enumerate(lines[first + 1:], first + 1)
+                 if ln.lstrip().startswith("trap ") and "TERM" in ln and not ln.startswith("  trap ''")]
+        self.assertEqual(later, [], "종료 절차를 덮는 trap 이 뒤에 있다")
 
     def test_도는_미러_재구축이_종료를_붙들지_않는다(self):
         """재구축은 배포마다 배경으로 돌고 분 단위다. 그 요청이 닫으려는 사이드카를
