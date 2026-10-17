@@ -13,6 +13,16 @@ on:
         description: "기준 측정 직후 확인한 현재 허브 리비전"
         required: true
         type: string
+      local_encoder:
+        description: "2 CPU 구간에서 원격 인코더를 끊고 모델을 허브 컨테이너 안에 든다"
+        required: false
+        type: boolean
+        default: false
+      hold_seconds:
+        description: "측정 창(초). 자원만 바꾸면 60~900, 로컬 인코더면 60~7200"
+        required: false
+        type: string
+        default: "900"
 concurrency:
   group: hub-deploy
   cancel-in-progress: false
@@ -22,7 +32,7 @@ permissions:
 jobs:
   trial:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 150
     steps:
       - name: 운영 실행은 main 의 운영 담당만
         if: github.ref != 'refs/heads/main' || !contains(format(',{0},', vars.PROD_OPERATORS), format(',{0},', github.triggering_actor))
@@ -42,8 +52,13 @@ jobs:
         env:
           EXPECTED_IMAGE: ${{ inputs.expected_image }}
           EXPECTED_REVISION: ${{ inputs.expected_revision }}
+          HOLD_SECONDS: ${{ inputs.hold_seconds }}
+          LOCAL_ENCODER: ${{ inputs.local_encoder }}
           VINC_MCP_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
-        run: python scripts/hub_capacity_trial.py run --state "$RUNNER_TEMP/capacity-state.json"
+        run: |
+          local_flag=""
+          if [ "$LOCAL_ENCODER" = "true" ]; then local_flag="--local-encoder"; fi
+          python scripts/hub_capacity_trial.py run --state "$RUNNER_TEMP/capacity-state.json"             --hold-seconds "$HOLD_SECONDS" $local_flag
       - name: 중간 실패도 원복 확인
         if: always()
         env:
