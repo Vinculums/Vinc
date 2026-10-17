@@ -433,3 +433,31 @@ def test_changed_sequence_counter_names_its_side_and_delta(native,tmp_path):
     assert str(caught.value)=="conversion_payload_changed:_SyncMeta"
     assert caught.value.detail=={"counter":{"side":"source","delta":1}}
     assert flow.status()["phase"]=="creating_target_keys"
+
+
+def test_verification_reads_the_moved_closure_beyond_the_seal_budget(native,tmp_path,monkeypatch):
+    from api import topic_conversion_batches as tcb
+    from store import scoped_topic_inventory as scoped
+    from store.topic_manifest import ManifestLimit
+    flow,_,header=fixture(native,tmp_path,max_rows=2)
+    for _ in range(300):
+        if flow.status()["phase"]=="verifying":
+            break
+        flow.step()
+    after=scoped.read_scoped_inventory(native,source=SOURCE,target=TARGET,topic=TOPIC,after=True)
+    # 검증이 실제로 읽는 행 수보다 하나 적게 기본 한도를 둔다(상수와 함수 기본값 둘 다).
+    # 늘린 한도가 없으면 넘친다.
+    monkeypatch.setattr(scoped,"SCAN_ROWS",after.inspected_rows-1)
+    monkeypatch.setitem(scoped.read_scoped_inventory.__kwdefaults__,"scan_rows",after.inspected_rows-1)
+    with pytest.raises(ManifestLimit) as caught:
+        scoped.read_scoped_inventory(native,source=SOURCE,target=TARGET,topic=TOPIC,after=True)
+    assert caught.value.reason=="scan_rows"
+    budget=tcb.verify_budget(header)
+    assert budget["scan_rows"]==after.inspected_rows-1+3*header["selected_rows"]
+    assert flow.verify()["status"]=="graph_committed"
+
+
+def test_verify_budget_refuses_a_header_without_a_moved_row_count():
+    from api.topic_conversion_batches import verify_budget
+    with pytest.raises(TransferRefused,match="conversion_manifest_invalid"):
+        verify_budget({})

@@ -234,6 +234,12 @@ def failure_fields(exc):
             isinstance(k, str) and re.fullmatch(r"_?[A-Z][A-Za-z]{0,39}:[A-Za-z_+]{1,120}", k)
             and isinstance(v, int) for k, v in collisions.items()):
         report["collisions"] = collisions
+    # 한도 초과는 관측값과 한도 숫자만 싣는다. 숫자가 아닌 값이 하나라도 있으면 버린다.
+    details = getattr(exc, "details", None)
+    if isinstance(details, dict) and details and all(
+            isinstance(k, str) and re.fullmatch(r"[a-z_]{1,20}", k)
+            and type(v) in (int, float) for k, v in details.items()):
+        report["error_limit"] = {k: round(v, 1) if type(v) is float else v for k, v in details.items()}
     # 바뀐 행은 사라졌는지만, 카운터는 쪽과 정수 차이만 싣는다. 모양이 다르면 버린다.
     detail = getattr(exc, "detail", None)
     if isinstance(detail, dict):

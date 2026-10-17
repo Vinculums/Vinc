@@ -21,6 +21,9 @@ from store.topic_transfer import TransferRefused, _canonical
 from . import topic_conversion as legacy
 
 RELATIONS = {(r["label"], r["from"], r["to"]): r for r in rel_table_specs()}
+# 검증은 봉인 때 읽은 것에 더해, 옮긴 행마다 이동 표식 하나와 묘비(정확 조회·소스 이력
+# 스캔)를 더 읽는다. 봉인 한도를 그대로 쓰면 봉인을 통과한 닫힘을 검증하지 못한다.
+VERIFY_READS_PER_MOVED_ROW = 3
 PHASES = ("creating_target_keys", "rewiring", "retiring_source_keys", "verifying", "graph_committed")
 
 
@@ -81,6 +84,16 @@ def _put(store, label, value, *, existing=False):
     else:
         query = f"CREATE (n:{label} {{{pk}:${pk}}})"
     store.run(query + (" SET " + setters if setters else ""), value, raw=True)
+
+
+def verify_budget(header):
+    """검증 읽기 한도. 봉인 한도에 옮긴 행 수만큼 더하고, 시간은 같은 비율로 늘린다."""
+    from store import scoped_topic_inventory as scoped
+    moved = header.get("selected_rows")
+    if type(moved) is not int or moved < 0:
+        raise TransferRefused("conversion_manifest_invalid")
+    rows = scoped.SCAN_ROWS + VERIFY_READS_PER_MOVED_ROW * moved
+    return {"scan_rows": rows, "scan_seconds": scoped.SCAN_SECONDS * rows / scoped.SCAN_ROWS}
 
 
 class Batches:
@@ -447,10 +460,12 @@ class Batches:
     def _verify_payload(self, path, header):
         from store.topic_manifest import TopicManifest
         from store.scoped_topic_inventory import read_scoped_inventory
+        budget = verify_budget(header)
         with tempfile.TemporaryDirectory(prefix="vinc-conversion-verify-") as directory:
-            with TopicManifest(Path(directory) / "observed.sqlite", deadline=time.monotonic() + 180) as observed:
+            with TopicManifest(Path(directory) / "observed.sqlite",
+                               deadline=time.monotonic() + 180 + budget["scan_seconds"]) as observed:
                 with legacy._inventory_read_transaction(self.store):
-                    read_scoped_inventory(self.store, **self.identity, after=True, manifest=observed)
+                    read_scoped_inventory(self.store, **self.identity, after=True, manifest=observed, **budget)
                     db = observed.db
                     db.execute("CREATE TABLE expected_rows(label TEXT,key TEXT,digest TEXT,PRIMARY KEY(label,key))")
                     db.execute("CREATE TABLE expected_edges(digest TEXT)")

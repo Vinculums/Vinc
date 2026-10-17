@@ -94,3 +94,13 @@ def test_failure_fields_carry_the_table_and_only_shape_checked_detail():
     exc.detail = {"missing": SOURCE}
     assert "error_detail" not in failure_fields(exc)
     assert SOURCE not in json.dumps(failure_fields(exc))
+
+
+def test_failure_fields_carry_only_numeric_limit_details():
+    from scripts.qa.topic_copy_rehearsal import failure_fields
+    from store.topic_manifest import ManifestLimit
+    exc = ManifestLimit("scan_rows", observed=100001, limit=100000)
+    assert failure_fields(exc)["error_limit"] == {"observed": 100001, "limit": 100000}
+    assert failure_fields(ManifestLimit("scan_seconds", observed=120.04, limit=120))["error_limit"] == {
+        "observed": 120.0, "limit": 120}
+    assert "error_limit" not in failure_fields(ManifestLimit("page_rows", observed=SOURCE, limit=1))
