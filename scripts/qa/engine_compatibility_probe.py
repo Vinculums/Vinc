@@ -16,6 +16,11 @@ except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없�
     from _root import ROOT
 OWNER = "user:compatibility-probe"
 TEXT = "compatibilitysentinel original checkpoint document"
+# 꼬리(마지막 길이 % 8 바이트)에 한글이 걸리는 물리 키. 0.20.4 이하가 지은 PK 색인을 0.21 이
+# 열면 등호 조회가 이 키를 놓친다. 후보가 구판 스토어를 그대로 쓸 수 있는지는 이것으로 갈린다.
+HANGUL_KEY = OWNER + "\x1f" + "concept:재현-가능한-측정값"
+_RAW = HANGUL_KEY.encode()
+assert len(_RAW) % 8 and max(_RAW[-(len(_RAW) % 8):]) >= 0x80, "key must end in a non-ASCII tail"
 
 
 def exercise(path: Path, mode: str) -> dict:
@@ -33,6 +38,13 @@ def exercise(path: Path, mode: str) -> dict:
         if mode == "create":
             receipt = put_doc(store, owner=OWNER, doc_id="compatibility-sentinel", text=TEXT, link=False)
             assert receipt.get("executed") and not receipt.get("warnings"), receipt
+            store.run("MERGE (c:Concept {concept_id:$k}) SET c.owner_id=$o, c.title='hangul tail'",
+                      {"k": HANGUL_KEY, "o": OWNER}, raw=True)
+        non_ascii_pk = {
+            "pk": store.run("MATCH (c:Concept) WHERE c.concept_id = $k RETURN count(c) AS n",
+                            {"k": HANGUL_KEY}, raw=True)[0]["n"],
+            "scan": store.run("MATCH (c:Concept) WHERE c.owner_id = $o AND c.title = 'hangul tail' "
+                              "RETURN count(c) AS n", {"o": OWNER}, raw=True)[0]["n"]}
         doc = get_doc(store, "compatibility-sentinel", owner=OWNER)
         assert doc.get("verified") and doc.get("text") == TEXT, doc
         assert store.fulltext_search("compatibilitysentinel", 10, {"owner_id": OWNER})
@@ -45,7 +57,7 @@ def exercise(path: Path, mode: str) -> dict:
             assert not get_doc(store, "candidate-write", owner=OWNER).get("verified")
         store.run("CHECKPOINT")
         return {"engine": ladybug.__version__, "mode": mode, "canonical": True,
-                "fts": True, "passed": True}
+                "fts": True, "non_ascii_pk": non_ascii_pk, "passed": non_ascii_pk["scan"] == 1}
     finally:
         store.close()
 
@@ -69,10 +81,14 @@ def main() -> int:
     rollback = root / "rollback.db"
     records = []
 
-    def run(python, mode, database, extension_root):
+    def child_env(extension_root):
         env = {k: v for k, v in os.environ.items() if not k.startswith(("VINC_", "MEMORY_", "PYTHON"))}
         env.update(HOME=str(extension_root / "build-home"), USERPROFILE=str(extension_root / "build-home"),
                    VINC_LBUG_EXT_DIR=str(extension_root / "extensions"), VINC_PK_NAMESPACED="on")
+        return env
+
+    def run(python, mode, database, extension_root):
+        env = child_env(extension_root)
         try:
             completed = subprocess.run([str(python), str(Path(__file__).resolve()), "--child", mode,
                                        "--database", str(database), "--output", str(root)],
@@ -106,8 +122,24 @@ def main() -> int:
     shutil.copy2(original, rollback)
     run(baseline_python, "rollback", rollback, args.baseline_root.resolve())
     assert hashlib.sha256(original.read_bytes()).hexdigest() == digest
+    # 후보가 구판 PK 색인에서 비ASCII 키를 놓치면 그 스토어는 재구축해야 한다. 후보로 재구축한
+    # 사본이 그 키를 찾는 것까지가 합격이다.
+    shutil.copy2(original, root / "rebuild-source.db")
+    completed = subprocess.run([sys.executable, str(Path(ROOT) / "scripts" / "rebuild_store_native.py"),
+                                "--data", str(root / "rebuild-source.db"), "--out", str(root / "rebuilt.db"),
+                                "--json"], cwd=ROOT, env=child_env(args.candidate_root.resolve()),
+                               capture_output=True, text=True, encoding="utf-8", timeout=300)
+    (root / "rebuild.stdout").write_text(completed.stdout, encoding="utf-8")
+    (root / "rebuild.stderr").write_text(completed.stderr, encoding="utf-8")
+    rebuilt = json.loads(completed.stdout) if completed.stdout.strip() else {"ok": False}
+    rebuild = {"ok": bool(rebuilt.get("ok")), "src_pk_misses": rebuilt.get("src_pk_misses"),
+               "dst_pk_misses": rebuilt.get("dst_pk_misses")}
     receipt = {"source_sha": os.environ.get("GITHUB_SHA"), "original_sha256": digest,
-               "steps": records, "passed": len(records) == 3 and all(r["passed"] for r in records),
+               "steps": records,
+               "requires_rebuild": records[1]["non_ascii_pk"]["pk"] != 1,
+               "rebuild": rebuild,
+               "passed": (len(records) == 3 and all(r["passed"] for r in records) and rebuild["ok"]
+                          and rebuild["dst_pk_misses"] == {"Concept": {"keys": 1, "missed": 0}}),
                "rollback": "restore the unchanged pre-upgrade copy; no reverse-format compatibility claim",
                "limits": ["Synthetic checkpointed local store; not live migration or persistent-share acceptance."]}
     (root / "result.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
