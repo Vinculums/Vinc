@@ -17,6 +17,9 @@
   3. 쓰기 검사가 통과한다 — 대상의 **버릴 사본**에 문서 하나를 넣고 지운다.
      같은 검사를 원본의 버릴 사본에도 돌려 "전에는 어땠고 지금은 된다"를 나란히
      남긴다(원본 쪽 결과는 판정에 쓰지 않는다 — 손상이 그 문서의 키를 안 밟을 수 있다).
+  4. 비ASCII 키가 전부 PK 등호 조회로 찾힌다. 0.20.4 이하가 지은 PK 색인을 0.21 이
+     열면 꼬리(마지막 `길이 % 8` 바이트)에 0x80 이상 바이트가 있는 키를 놓친다. 스캔에는
+     보이고, 같은 키로 MERGE 하면 둘째 행이 생긴다. 원본 쪽 수로는 거절하지 않는다.
 
 허브와 같은 키 규약으로 돌 것: `VINC_PK_NAMESPACED=on` 이면 쓰기 검사가 물리 키로 쓴다.
 
@@ -118,6 +121,26 @@ def _size(path: str) -> int:
     return sum(os.path.getsize(p) for p in _files(path))
 
 
+def _pk_misses(s) -> dict[str, dict[str, int]]:
+    """노드 표마다 비ASCII PK 수와 그중 등호 조회가 놓친 수. 비ASCII 키가 없는 표는 뺀다."""
+    out = {}
+    for name, kind in sorted(_tables(s).items()):
+        if kind != "NODE":
+            continue
+        pk = next((r["name"] for r in s.run(f"CALL table_info('{name}') RETURN *")
+                   if r.get("primary key")), None)
+        if pk is None:
+            continue
+        keys = [r["k"] for r in s.run(f"MATCH (n:{name}) RETURN n.{pk} AS k", raw=True)
+                if isinstance(r.get("k"), str) and not r["k"].isascii()]
+        if not keys:
+            continue
+        missed = sum(1 for k in keys if not s.run(
+            f"MATCH (n:{name}) WHERE n.{pk} = $k RETURN count(n) AS c", {"k": k}, raw=True)[0]["c"])
+        out[name] = {"keys": len(keys), "missed": missed}
+    return out
+
+
 def _write_probe(path: str) -> dict:
     """``path`` 의 **버릴 사본**에 문서 하나를 넣고 지운다. 원본은 건드리지 않는다."""
     from api import docstore
@@ -172,6 +195,7 @@ def rebuild(src: str, dst: str) -> dict:
         try:
             report["src_counts"] = _counts(s)
             report["src_indexes"] = _indexes(s)
+            report["src_pk_misses"] = _pk_misses(s)
             shutil.rmtree(dump)                   # EXPORT 는 없는 디렉터리를 만든다
             try:
                 s._conn.execute(f"EXPORT DATABASE '{Path(dump).as_posix()}' (format='parquet')")
@@ -216,6 +240,7 @@ def rebuild(src: str, dst: str) -> dict:
             report["index_s"] = round(time.monotonic() - t, 1)
             report["dst_counts"] = _counts(d)
             report["dst_indexes"] = _indexes(d)
+            report["dst_pk_misses"] = _pk_misses(d)
             if logical is not None:
                 report["dst_payload_sha256"] = _payload_digest(export_store(d, raw=True))
         finally:
@@ -230,6 +255,8 @@ def rebuild(src: str, dst: str) -> dict:
                 if report["dst_counts"].get(name) != n]
     problems += [f"index missing: {i}" for i in report["src_indexes"]
                  if i not in report["dst_indexes"]]
+    problems += [f"{name}: {v['missed']} of {v['keys']} non-ASCII keys miss the primary key index"
+                 for name, v in report["dst_pk_misses"].items() if v["missed"]]
     if logical is not None and report["src_payload_sha256"] != report["dst_payload_sha256"]:
         problems.append("logical rebuild changed node, edge, vector, or metadata values")
     report["probe_before"] = _write_probe(src)
