@@ -334,77 +334,43 @@ jobs:
           docker push "vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA"
           docker push vincacr.azurecr.io/vinc-hub:latest
 
-      # ⚠ **순서가 데이터 무결성이다 — 구 리비전을 먼저 내리고 새 이미지를 올린다.**
+      # ── 리비전 전환: 구 리비전을 먼저 내리지 않는다 ──────────────────────────────
+      # 단일 writer 의 순서는 배포 층이 아니라 기동 순서가 지킨다. 새 리비전의 MCP 가 먼저
+      # 포트를 열고 요청을 붙잡는다 → 플랫폼이 트래픽을 넘기고 구 리비전에 SIGTERM →
+      # 구 리비전이 최종 스냅샷을 올리고 넘김 표식을 쓴다 → 새 리비전은 그 표식을 본 뒤에야
+      # 복원한다. 그래서 복원은 언제나 최종 스냅샷 뒤에 오고(인과), 그사이 요청은 실패하지
+      # 않고 기다린다. 아래 "writer 인계 확인" 스텝이 표식으로 그것을 대조한다.
+      # 근거: [[vinc.plan.hub-writer-handoff-2026-10-17]]
       #
-      # 두 번 이유가 바뀌었다. 처음에는 파일 락이었다: 둘이 같은 Azure Files 볼륨의
-      # DB 를 물어 새 리비전이 스토어를 못 열었다(`"driver": null` → 헬스 타임아웃).
-      # `VINC_STORE_LOCAL=on` 이 작업본을 컨테이너 로컬로 옮겨 그 락은 사라졌지만,
-      # **같은 자리에 더 조용한 고장이 들어섰다**(2026-08-19 실측, 3회 재현):
-      #
-      #   새 리비전 "store restore: restored"  ← 구 리비전 "final snapshot ok" 보다
-      #   22 · 24 · 43초 **앞선다**. 구 리비전의 마지막 주기 스냅샷 이후 쓰기는 그
-      #   최종 스냅샷에만 있는데, 새 리비전은 그것을 영영 읽지 않고 자기 스냅샷으로
-      #   덮는다. 배포마다 최대 `VINC_STORE_SNAPSHOT_EVERY` 초어치가 **무음으로**
-      #   사라진다(문서 1건과 노드·엣지를 실제로 잃었다 — [[vinc.ops.deployment]]).
-      #
-      # 롤링으로는 못 고친다. 플랫폼이 새 리비전의 헬스를 본 뒤에야 구 리비전에
-      # SIGTERM 을 보내므로, 새 리비전이 구 리비전을 기다리면 서로 막힌다(교착).
-      # 그래서 **배포 층에서 직렬화한다**: 내리고 → 최종 스냅샷을 기다리고 → 올린다.
-      # 단일 writer 라 배포당 1분 안팎의 다운타임은 원래 불가피하다.
-      - name: Stop old revision first (final snapshot must land before restore)
+      # 종료 유예는 60초로 둔다. 구 리비전이 사이드카를 닫고(최대 VINC_SIDECAR_STOP_WAIT_S)
+      # 최종 스냅샷을 올릴 시간이다. 유예는 리비전 단위 값이라 이번 배포의 새 리비전부터 걸린다.
+      - name: Read probe through the switch (start)
+        env:
+          PROBE_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
         run: |
           set -euo pipefail
-          APP="--name vinc-hub -g vincsRG"
-          actives=$(az containerapp revision list $APP --query "[?properties.active].name" -o tsv)
-          if [ -z "$actives" ]; then
-            echo "활성 리비전 없음 — 내릴 것이 없다"
-            exit 0
-          fi
-          for rev in $actives; do
-            echo "deactivating: $rev"
-            # 실패하면 **떨어진다**. 조용히 옛 순서로 되돌아가면 그 배포가 무엇을
-            # 삼켰는지 아무도 모른다 — 이 단계가 존재하는 이유가 그것이다.
-            az containerapp revision deactivate $APP --revision "$rev" --output none
-          done
-          # 내린 것의 이름을 다음 단계로 넘긴다. 재실행이면 되살릴 대상이 바로 이것이다.
-          echo "STOPPED_REVS=$(echo $actives)" >> "$GITHUB_ENV"
-          # ⚠ **활성 여부로 재면 안 된다.** `properties.active` 는 deactivate 즉시
-          # 뒤집히고 컨테이너 종료를 기다리지 않는다. 우리가 기다리는 것은 종료 훅이
-          # 최종 스냅샷을 볼륨에 쓰는 것이므로, 재야 하는 값은 **살아 있는 레플리카**다
-          # (entrypoint: SIGTERM → close(2s) → "final snapshot ok").
-          gone=0
-          for i in $(seq 1 20); do
-            act=$(az containerapp revision list $APP \
-                  --query "[?properties.active] | length(@)" -o tsv)
-            # 비활성 리비전의 replicas 는 null 로 오기도 한다 — 숫자만 더한다.
-            reps=$(az containerapp revision list $APP \
-                   --query "[].properties.replicas" -o tsv 2>/dev/null \
-                   | awk 'BEGIN{s=0} /^[0-9]+$/{s+=$1} END{print s}')
-            echo "  active=$act replicas=$reps"
-            if [ "$act" = "0" ] && [ "$reps" = "0" ]; then gone=1; break; fi
-            sleep 10
-          done
-          if [ "$gone" != "1" ]; then
-            echo "::error::구 리비전의 레플리카가 사라지지 않았다 — 최종 스냅샷을 기다릴 수 없다. 수동 확인 필요." >&2
-            exit 1
-          fi
-          # 레플리카가 사라진 것을 실제로 봤으므로 이 여유는 **볼륨 쓰기가 API 관측보다
-          # 늦을 경우**만 덮는다(Azure Files 는 로컬 파일시스템이 아니다).
-          sleep 10
-          echo "레플리카 0 확인 — 최종 스냅샷이 볼륨에 있다"
+          : > "$RUNNER_TEMP/read-probe.log"
+          nohup sh -c '
+            while [ ! -f "$RUNNER_TEMP/read-probe.stop" ]; do
+              code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 100 \
+                https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
+                -X POST -H "Authorization: Bearer $PROBE_TOKEN" -H "Content-Type: application/json" \
+                -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}" || true)
+              echo "$(date +%s) $code" >> "$RUNNER_TEMP/read-probe.log"
+              sleep 2
+            done' > /dev/null 2>&1 &
+          echo "read probe started"
 
       - name: Deploy to Container Apps
         run: |
           set -euo pipefail
           APP="--name vinc-hub -g vincsRG"
           IMAGE="vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA"
-          # ⚠ 여기서 실패하면 **허브가 내려간 채로 남는다** — 앞 단계가 구 리비전을
-          # 이미 내렸기 때문이다. `set -e` 로 그냥 죽으면 az 오류만 남고, 지금 서비스가
-          # 멈춰 있다는 사실도 되살리는 방법도 아무 데도 안 적힌다. 가장 위험한 창이라
-          # 라벨을 붙인다.
-          # 허브 env 는 **여기서만** 바꾼다. 앞 단계가 구 리비전을 내리고 레플리카 0 을
-          # 본 뒤라 새 리비전과 겹치지 않는다 — 콘솔이나 bare `az containerapp update
-          # --set-env-vars` 는 두 리비전을 겹쳐 돌려 09-04 유실과 같은 모양이 된다.
+          prev=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
+          echo "PREV_REV=$prev" >> "$GITHUB_ENV"
+          echo "serving revision: $prev"
+          # 허브 env 는 **여기서만** 바꾼다. 콘솔이나 bare `az containerapp update
+          # --set-env-vars` 는 이 워크플로의 직렬화(concurrency hub-deploy)를 비켜 간다.
           # 리포 변수 VINC_QUOTA_EXEMPT_OWNERS 가 비어 있으면 env 는 건드리지 않는다.
           ENVVARS=()
           if [ -n "${{ vars.VINC_QUOTA_EXEMPT_OWNERS }}" ]; then
@@ -419,55 +385,38 @@ jobs:
           fi
           # Azure keeps only the last occurrence of this option. Pass all values once.
           ENVARGS=(--set-env-vars "${ENVVARS[@]}")
-          # ⚠ 이 update 가 앞 단계에서 내린 구 리비전을 **한 번 더 띄운다.** 단일 리비전
-          # 모드의 롤링 전환은 새 리비전이 준비될 때까지 구 리비전에 트래픽 100% 를
-          # 되돌리고, 그것은 /data 에서 복원해 1분쯤 살다가 두 번째 최종 스냅샷을 쓰려
-          # 한다. 그 쓰기는 스토어의 쓰기 울타리가 막는다(store/persistence.py claim_writer).
-          # 근거: [[record:aca-reboots-the-stopped-hub-revision-during-every-deploy-and-it-writes-a-late-final-snapshot-2026-09-25]]
-          if ! az containerapp update $APP --image "$IMAGE" "${ENVARGS[@]}" --output none; then
-            echo "::error::이미지 갱신 실패 — **허브는 지금 내려가 있다**(앞 단계가 구 리비전을 내렸다)." >&2
-            echo "데이터는 최종 스냅샷까지 안전하다. 서비스만 멈춰 있으므로 마지막 정상 리비전을 되살릴 것:" >&2
-            echo "  az containerapp revision activate --name vinc-hub -g vincsRG --revision ${STOPPED_REVS:-<이름>}" >&2
+          if ! az containerapp update $APP --image "$IMAGE" --termination-grace-period 60 "${ENVARGS[@]}" --output none; then
+            echo "::error::이미지 갱신 실패 — 허브는 구 리비전($prev)으로 계속 서비스한다." >&2
             exit 1
           fi
           latest=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
           echo "latest revision: $latest"
+          echo "LATEST_REV=$latest" >> "$GITHUB_ENV"
 
-          # ⚠ **같은 SHA 로 다시 돌리면 새 리비전이 안 생긴다.** 이미지 태그가 커밋 SHA라
-          # 템플릿이 그대로여서 update 가 no-op 이고, 그러면 latest 는 위 단계가 방금
-          # 내린 바로 그 리비전이다. 아래 대기 루프는 영원히 Stopped 를 보다 8분 뒤 죽고,
-          # 그 사이 허브는 내려가 있다 — 2026-09-02 00:16 에 정확히 그렇게 죽었다
-          # (23:56 push 로 0000124 가 뜬 뒤, 같은 SHA 로 workflow_dispatch).
-          # 재실행이 자살 버튼이 되는 것은 "먼저 내린다"(#50)의 빠진 짝이었다.
-          # 그 경우 올바른 배포는 방금 내린 그것을 도로 올리는 것이다 — 이미지가 같으므로
-          # 이것은 롤백이 아니라 원래 하려던 배포 그 자체다.
-          case " ${STOPPED_REVS:-} " in
-            *" $latest "*)
-              echo "새 리비전이 생기지 않았다(이미지 동일) — 방금 내린 $latest 를 도로 올린다"
-              az containerapp revision activate $APP --revision "$latest" --output none
-              ;;
-          esac
+          # 같은 SHA 로 다시 돌리면 템플릿이 그대로라 새 리비전이 안 생긴다(no-op). 구
+          # 리비전이 그대로 서비스 중이므로 할 일이 없다 — 인계도 없다.
+          if [ "$latest" = "$prev" ]; then
+            echo "새 리비전이 생기지 않았다(이미지 동일) — $prev 가 계속 서비스한다"
+            echo "HANDOFF_EXPECTED=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "HANDOFF_EXPECTED=1" >> "$GITHUB_ENV"
 
-          for i in $(seq 1 30); do
+          for i in $(seq 1 40); do
             st=$(az containerapp revision show $APP --revision "$latest" --query "properties.runningState" -o tsv 2>/dev/null || echo "?")
-            echo "  state: $st"
-            case "$st" in Running|RunningAtMaxScale) exit 0 ;; esac
+            old=$(az containerapp revision show $APP --revision "$prev" --query "properties.replicas" -o tsv 2>/dev/null || echo "?")
+            echo "  new=$st old_replicas=${old:-0}"
+            case "$st" in Running|RunningAtMaxScale)
+              case "${old:-0}" in 0|None) exit 0 ;; esac ;;
+            esac
             sleep 15
           done
-          # ⚠ 여기의 처방은 **틀려 있었다**: "옛 리비전을 activate" 는 이 앱에서 서비스를
-          # 되살리지 못한다. activeRevisionsMode 가 Single 이라 인그레스는 언제나 latest
-          # 로만 보낸다(traffic: latestRevision=true, weight=100) — 옛 것을 올려도 트래픽이
-          # 안 간다. 새 리비전을 만들어 latest 를 바꿔야 하므로 처방은 update 다.
-          # 자동으로 하지 않는 이유: 못 뜬 리비전은 부팅 중 스토어를 반쯤 만졌을 수 있고,
-          # 그 상태에서 구 이미지를 자동으로 올리면 구 코드가 신 포맷을 읽는다(이 파일
-          # 머리말의 포맷 변경 경고와 같은 창). 사람이 보고 판단할 자리다.
-          prev=$(echo "${STOPPED_REVS:-}" | awk '{print $NF}')
-          echo "::error::새 리비전이 기동하지 못했다 — 허브는 지금 내려가 있다." >&2
-          echo "데이터는 최종 스냅샷까지 안전하다. 되살리려면 **구 이미지로 새 리비전을 만든다**:" >&2
-          if [ -n "$prev" ]; then
-            echo "  img=\$(az containerapp revision show -n vinc-hub -g vincsRG --revision $prev --query 'properties.template.containers[0].image' -o tsv)" >&2
-            echo "  az containerapp update -n vinc-hub -g vincsRG --image \"\$img\"" >&2
-          fi
+          # 단일 리비전 모드는 새 리비전이 준비되기 전까지 트래픽을 구 리비전에 둔다. 새 것이
+          # 끝내 못 뜨면 구 것이 계속 서비스하므로 허브는 내려가 있지 않다. 다만 반쯤 뜬 새
+          # 리비전이 스토어를 만졌을 수 있으니 구 이미지로 되돌리는 것은 사람이 보고 정한다.
+          echo "::error::새 리비전 $latest 이 10분 안에 서지 않았다(구 리비전 $prev 상태를 확인할 것)." >&2
+          echo "  img=\$(az containerapp revision show -n vinc-hub -g vincsRG --revision $prev --query 'properties.template.containers[0].image' -o tsv)" >&2
+          echo "  az containerapp update -n vinc-hub -g vincsRG --image \"\$img\"" >&2
           exit 1
 
       # 인코더는 같은 이미지를 쓴다 — 접두·풀링·양자화 규약이 한 파일에 있고, 허브와
@@ -540,6 +489,54 @@ jobs:
           done
           echo "::error::허브가 tools/list 에 답하지 않는다" >&2
           exit 1
+
+      # writer 인계 확인. 헬스가 통과했다는 것은 새 리비전이 복원을 마치고 자격을 가져갔다는
+      # 뜻이다. 남은 질문은 "구 리비전이 넘긴 **뒤에** 복원했는가"이고, 영속 공유의 표식이
+      # 그것을 적는다: `.writer` 가 새 리비전, `.released` 가 구 리비전이어야 한다.
+      # `.released` 가 다르면 새 리비전이 대기 상한에서 그대로 진행한 것이다 — 구 리비전의
+      # 마지막 주기 스냅샷 이후 쓰기가 빠졌을 수 있으므로 빨강으로 남겨 사람이 본다.
+      - name: Verify writer handoff (markers on the persistent share)
+        if: env.HANDOFF_EXPECTED == '1'
+        run: |
+          set -euo pipefail
+          p=$(az containerapp show -n vinc-hub -g vincsRG \
+                --query "properties.template.containers[0].env[?name=='VINC_STORE_SNAPSHOT'].value | [0]" -o tsv)
+          [ -n "$p" ] || p=$(az containerapp show -n vinc-hub -g vincsRG \
+                --query "properties.template.containers[0].env[?name=='VINC_DATA_DIR'].value | [0]" -o tsv)
+          case "$p" in /data/*) ;; *) echo "::error::스냅샷 경로가 /data 밖이다: $p" >&2; exit 1 ;; esac
+          rel=${p#/data/}
+          for m in writer released; do
+            az storage file download --account-name vincstorage01 --share-name hub-data \
+              --path "$rel.$m" --dest "$RUNNER_TEMP/handoff.$m" --output none 2>/dev/null \
+              || : > "$RUNNER_TEMP/handoff.$m"
+          done
+          w=$(tr -d '[:space:]' < "$RUNNER_TEMP/handoff.writer")
+          r=$(tr -d '[:space:]' < "$RUNNER_TEMP/handoff.released")
+          echo "writer=$w released=$r (expected writer=$LATEST_REV released=$PREV_REV)"
+          [ "$w" = "$LATEST_REV" ] || { echo "::error::writer 가 새 리비전이 아니다" >&2; exit 1; }
+          [ "$r" = "$PREV_REV" ] || {
+            echo "::error::구 리비전($PREV_REV)이 넘기지 못했다 — 새 리비전이 대기 상한에서 진행했다." >&2
+            echo "새 리비전 로그의 'vinc: handoff' 줄과 구 리비전의 'final snapshot' 줄을 볼 것." >&2
+            exit 1; }
+          echo "writer 인계 확인"
+
+      - name: Read probe through the switch (result)
+        if: always()
+        run: |
+          touch "$RUNNER_TEMP/read-probe.stop"
+          sleep 3
+          log="$RUNNER_TEMP/read-probe.log"
+          [ -s "$log" ] || { echo "read probe: no samples"; exit 0; }
+          total=$(wc -l < "$log")
+          bad=$(awk '$2 != "200"' "$log" | wc -l)
+          span=$(awk '$2 != "200" { if (!s) s=$1; e=$1; next } { if (s) { d=e-s; if (d>m) m=d; s=0 } } END { if (s) { d=e-s; if (d>m) m=d } print m+0 }' "$log")
+          echo "read probe: $bad of $total requests were not 200 (longest run of failures: ${span}s)"
+          {
+            echo "### Read probe through the switch"
+            echo
+            echo "- requests: $total, not 200: $bad, longest failing run: ${span}s"
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$bad" = "0" ] || echo "::warning::read probe saw $bad failed requests during the deploy"
 
       # ⚠ tools/list 200 은 **OAuth 가 살아있다는 증거가 아니다.** 정적 bearer 로 붙기
       # 때문에 OAuth 가 통째로 꺼져도 통과한다 — 2026-07-30 사고가 정확히 그 상태였다
