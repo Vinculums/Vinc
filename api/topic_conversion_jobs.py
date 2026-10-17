@@ -18,6 +18,14 @@ from types import SimpleNamespace
 from store.topic_transfer import TransferRefused
 
 
+class StepBlocked(Exception):
+    """저널을 쓰기 전에 거절된 새 예약. 상태는 재개가 아니라 차단이고 사유 코드만 싣는다."""
+
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
+
+
 def bounded_flow(store, durable, *, source, target, topic, run, qualified_indexes=False):
     from .topic_conversion_batches import Batches
     if durable is None:
@@ -92,6 +100,7 @@ class _Run:
     job: object = None
     result: dict = field(default_factory=dict)
     error: str | None = None
+    blocked: bool = False
     finished: bool = False
     thread: threading.Thread | None = None
 
@@ -113,7 +122,8 @@ class ConversionJobs:
 
     def _response(self, run, entry):
         if entry.error:
-            return {"status": "resume_required", "run": run, "error": entry.error}
+            status = "blocked" if entry.blocked else "resume_required"
+            return {"status": status, "run": run, "error": entry.error}
         if entry.finished:
             return dict(entry.result)
         return {"status": "pending", "run": run,
@@ -163,14 +173,17 @@ class ConversionJobs:
         deadline = self.clock() + self.work_seconds
         try:
             while True:
-                result = {}
+                result, blocked = {}, None
 
                 def work():
                     # The public generic job surface must never contain run IDs,
                     # topic paths, fingerprints or conversion results.
-                    nonlocal result
+                    nonlocal result, blocked
                     try:
                         result = advance()
+                    except StepBlocked as exc:
+                        blocked = exc.code
+                        raise RuntimeError("conversion_step_failed") from None
                     except Exception:
                         raise RuntimeError("conversion_step_failed") from None
                     return {"kind": "conversion-batch", "executed": True}
@@ -186,7 +199,7 @@ class ConversionJobs:
                 entry.job._done.wait()
                 with self._lock:
                     if entry.job.status != "done":
-                        entry.error = "conversion_step_uncertain"
+                        entry.error, entry.blocked = blocked or "conversion_step_uncertain", blocked is not None
                         return
                     if result.get("run") != run or result.get("status") not in (
                             "prepared", "active", "cancelled", *PHASES):
