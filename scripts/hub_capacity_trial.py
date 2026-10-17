@@ -123,21 +123,6 @@ def health():
         raise RuntimeError("Unauthenticated MCP request unexpectedly accepted")
 
 
-def stop_writer():
-    for rev in revisions():
-        if rev["properties"].get("active"):
-            az("containerapp", "revision", "deactivate", *APP, "--revision", rev["name"])
-    deadline = time.monotonic() + 210
-    while time.monotonic() < deadline:
-        values = [r["properties"] for r in revisions()]
-        # active=false 는 종료 완료가 아니다. 실제 레플리카 0 을 기다린다.
-        if not any(v.get("active") for v in values) and not any(v.get("replicas") for v in values):
-            time.sleep(10)
-            return
-        time.sleep(10)
-    raise RuntimeError("Writer replicas did not reach zero; update prohibited")
-
-
 def wait_ready():
     deadline = time.monotonic() + 420
     while time.monotonic() < deadline:
@@ -164,7 +149,9 @@ def switch(state, cpu):
     current = show()["properties"]["template"]["containers"]
     if len(current) != 1 or current[0]["image"] != image:
         raise RuntimeError("Refusing to resize an unexpected image")
-    stop_writer()
+    # 구 리비전을 먼저 내리지 않는다. 새 리비전이 요청을 붙잡은 채 구 리비전의 넘김을 보고
+    # 복원하므로 단일 writer 순서는 기동이 지킨다(hub-deploy 와 같다). 먼저 내리면 플랫폼이
+    # 그 리비전을 한 번 다시 띄워 인계가 꼬이고 전환마다 1분쯤 끊긴다.
     extra = []
     if state.get("local"):
         extra = (["--remove-env-vars", *LOCAL_ENCODER_ENV] if cpu != 1
