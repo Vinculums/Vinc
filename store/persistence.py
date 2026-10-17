@@ -71,6 +71,10 @@ WRITER_SUFFIX = ".writer"
 #: ACA 가 컨테이너에 넣어 주는 리비전 이름(`vinc-hub--0000235`). **없으면 울타리는
 #: 꺼진다** — 데스크탑·테스트·로컬 docker 는 리비전이 하나라 막을 상대가 없다.
 REVISION_ENV = "CONTAINER_APP_REVISION"
+#: 같은 리비전의 레플리카를 가르는 이름. 플랫폼이 넣는다. 없으면 리비전만으로 예전처럼 돈다.
+REPLICA_ENV = "CONTAINER_APP_REPLICA_NAME"
+#: writer 이름 = ``<리비전>@<레플리카>``. 레플리카를 모르면 리비전만 적는다(레플리카 이전의 표식과 같다).
+REPLICA_SEP = "@"
 
 _REVISION_NO = re.compile(r"--(\d+)$")
 
@@ -251,18 +255,57 @@ def restore_state_is_fatal(state: str) -> str | None:
 
 
 def _revision_no(name: str) -> int | None:
-    m = _REVISION_NO.search(name or "")
+    m = _REVISION_NO.search(split_identity(name)[0])
     return int(m.group(1)) if m else None
 
 
+def writer_identity() -> str:
+    """이 프로세스가 표식에 적는 이름. ``<리비전>@<레플리카>`` · 레플리카를 모르면 리비전만 ·
+    리비전이 없으면(데스크탑·테스트) ``""``.
+
+    같은 리비전의 재시작은 새 레플리카를 먼저 띄우고 이전 것을 나중에 내린다. 리비전 이름만
+    적으면 겹친 동안 둘 다 writer 로 보이고, 그 사이 앞 레플리카가 받은 쓰기를 잃는다."""
+    rev = (os.environ.get(REVISION_ENV) or "").strip()
+    if not rev:
+        return ""
+    rep = (os.environ.get(REPLICA_ENV) or "").strip()
+    return f"{rev}{REPLICA_SEP}{rep}" if rep else rev
+
+
+def split_identity(name: str) -> tuple[str, str]:
+    """``(리비전, 레플리카)``. 레플리카가 없는 이름은 ``(리비전, "")``."""
+    rev, _, rep = (name or "").strip().partition(REPLICA_SEP)
+    return rev, rep
+
+
+def _newer_revision(holder: str, mine: str) -> bool:
+    held, own = _revision_no(holder), _revision_no(mine)
+    return held is not None and own is not None and held > own
+
+
+def displaces(holder: str, mine: str) -> bool:
+    """표식의 주인 ``holder`` 가 나를 밀어낸 writer 인가 — 스냅샷과 ACK 의 울타리가 쓴다.
+
+    나보다 새 리비전이면 그렇다. 같은 리비전의 **다른 레플리카**여도 그렇다: 표식은 마지막에
+    자격을 가져간 쪽이 들고 있으므로, 표식에 없는 레플리카는 재시작으로 밀려난 앞 레플리카다.
+    어느 한쪽이라도 레플리카를 모르면 같은 리비전끼리는 가르지 않는다. 번호를 못
+    읽으면 False(울타리 없이 쓴다). 자격 주장(:func:`claim_writer`)은 이 함수를 쓰지 않는다 —
+    넘김을 본 새 레플리카는 같은 리비전의 표식을 덮어써야 한다."""
+    if _newer_revision(holder, mine):
+        return True
+    h_rev, h_rep = split_identity(holder)
+    m_rev, m_rep = split_identity(mine)
+    return bool(h_rev and h_rev == m_rev and h_rep and m_rep and h_rep != m_rep)
+
+
 def newer_writer(snapshot_path: str | None = None) -> str | None:
-    """나보다 **번호가 큰 리비전**이 쓰기 자격을 가져갔으면 그 이름, 아니면 None.
+    """나를 밀어낸 writer(:func:`displaces`)가 쓰기 자격을 가져갔으면 그 이름, 아니면 None.
 
     표식이 없거나 못 읽거나 이름에서 번호를 못 읽으면 None 이다 — 울타리 없이 예전처럼
     쓴다. 여기서 닫힌 쪽으로 넘어지면 SMB 딸꾹질 한 번에 살아 있는 writer 의 스냅샷이
     멈춘다. 이 울타리가 막는 것은 배포 중 1분짜리 경합 하나뿐이다."""
     snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
-    mine = (os.environ.get(REVISION_ENV) or "").strip()
+    mine = writer_identity()
     if not snapshot_path or not mine:
         return None
     try:
@@ -270,10 +313,7 @@ def newer_writer(snapshot_path: str | None = None) -> str | None:
             holder = f.read().strip()
     except OSError:
         return None
-    held, own = _revision_no(holder), _revision_no(mine)
-    if held is None or own is None or held <= own:
-        return None
-    return holder
+    return holder if displaces(holder, mine) else None
 
 
 def claim_writer(snapshot_path: str | None = None) -> str:
@@ -289,26 +329,28 @@ def claim_writer(snapshot_path: str | None = None) -> str:
     리비전이 그대로 진행했으면, 그 뒤에 오는 구 리비전의 스냅샷은 여기에 막혀 새 사본을
     덮지 못한다.
 
-    같은 번호면 쓰지 않는다. 구 리비전이 다시 떠도 표식은 제 이름 그대로라 쓸 일이
-    없고, 그래서 두 리비전이 동시에 표식을 쓰는 경합이 생기지 않는다.
+    표식이 이미 내 이름이면 다시 쓰지 않는다. 같은 리비전의 다른 레플리카 이름이면 덮어쓴다 —
+    기동 순서(`store/handoff.py`)가 그 레플리카의 넘김을 본 뒤에야 여기 온다. 막는 것은 나보다 새 리비전뿐이다.
 
     ⚠ 자격을 가져간 뒤 몇 초 안에 죽기를 되풀이하는 리비전이면 ACA 는 구 리비전으로
     계속 서빙하는데 그 스냅샷은 여기에 막힌다. 그때는 표식 파일을 지우면 풀린다."""
     snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
-    mine = (os.environ.get(REVISION_ENV) or "").strip()
+    mine = writer_identity()
     if not snapshot_path or not mine:
         return "off"
     marker = snapshot_path + WRITER_SUFFIX
     try:
-        holder = newer_writer(snapshot_path)
-        if holder:
-            return f"fenced: {holder}"
         try:
             with open(marker, encoding="utf-8") as f:
-                if f.read().strip() == mine:
-                    return "claimed"
+                holder = f.read().strip()
         except OSError:
-            pass
+            holder = ""
+        # 나보다 새 리비전만 막는다. 같은 리비전의 다른 레플리카 표식은 덮어쓴다 — 기동 순서
+        # (store/handoff.py)가 그 레플리카의 넘김을 본 뒤에야 여기 온다.
+        if holder and _newer_revision(holder, mine):
+            return f"fenced: {holder}"
+        if holder == mine:
+            return "claimed"
         os.makedirs(os.path.dirname(os.path.abspath(marker)) or ".", exist_ok=True)
         tmp = f"{marker}.{mine}.tmp"
         with open(tmp, "w", encoding="utf-8") as f:
@@ -520,7 +562,7 @@ def _fence_strict(snapshot_path: str) -> None:
 
     표식이 아예 없으면 막지 않는다: 아직 아무도 자격을 가져가지 않았고, 기동 잡은
     ``claim_writer`` 보다 먼저 돈다. 리비전 이름이 없는 곳(데스크탑·테스트)은 울타리가 없다."""
-    mine = (os.environ.get(REVISION_ENV) or "").strip()
+    mine = writer_identity()
     if not mine:
         return
     try:
@@ -530,10 +572,9 @@ def _fence_strict(snapshot_path: str) -> None:
         return
     except OSError as exc:
         raise DurableAckError(f"writer marker unreadable: {exc}") from exc
-    held, own = _revision_no(holder), _revision_no(mine)
-    if held is None or own is None:
+    if _revision_no(holder) is None or _revision_no(mine) is None:
         raise DurableAckError(f"writer marker unparsable: {holder!r} (mine {mine!r})")
-    if held > own:
+    if displaces(holder, mine):
         raise DurableAckError(f"fenced: {holder}")
 
 

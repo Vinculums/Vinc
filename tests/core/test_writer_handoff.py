@@ -154,6 +154,68 @@ class Decide(_Case):
         self.assertEqual(verdict, f"stale: {NEW}")
 
 
+class Replicas(_Case):
+    """같은 리비전의 재시작: 플랫폼이 새 레플리카를 먼저 띄우고 옛 것을 나중에 내린다."""
+    REV = "vinc-hub--0000452"
+    A, B = REV + "@vinc-hub--0000452-aaa", REV + "@vinc-hub--0000452-bbb"
+
+    def _decide_as(self, identity, clock=None, wait_s=10):
+        rev, _, rep = identity.partition("@")
+        env = {persistence.REVISION_ENV: rev}
+        if rep:
+            env[persistence.REPLICA_ENV] = rep
+        clock = clock or _Clock()
+        with mock.patch.dict(os.environ, env):
+            if not rep:
+                os.environ.pop(persistence.REPLICA_ENV, None)
+            return handoff.decide(self.snap, wait_s=wait_s, poll_s=1, clock=clock.now,
+                                  sleep=clock.sleep, log=self.logs.append), clock
+
+    def test_another_replica_of_my_revision_is_waited_for(self):
+        self._put(persistence.WRITER_SUFFIX, self.A)
+        clock = _Clock(on_sleep=lambda n: n == 2 and self._put(handoff.RELEASED_SUFFIX, self.A))
+        verdict, clock = self._decide_as(self.B, clock)
+        self.assertEqual(verdict, f"proceed: {self.A} released")
+        self.assertEqual(clock.slept, 2)
+
+    def test_a_replica_that_already_released_is_followed_at_once(self):
+        self._put(persistence.WRITER_SUFFIX, self.A)
+        self._put(handoff.RELEASED_SUFFIX, self.A)
+        verdict, clock = self._decide_as(self.B)
+        self.assertEqual(verdict, f"proceed: {self.A} released")
+        self.assertEqual(clock.slept, 0)
+
+    def test_the_same_replica_restarting_in_place_does_not_wait(self):
+        self._put(persistence.WRITER_SUFFIX, self.A)
+        verdict, clock = self._decide_as(self.A)
+        self.assertEqual(verdict, "proceed: own restart")
+        self.assertEqual(clock.slept, 0)
+
+    def test_an_old_marker_without_a_replica_reads_as_own_restart(self):
+        self._put(persistence.WRITER_SUFFIX, self.REV)
+        self._put(handoff.RELEASED_SUFFIX, self.REV)
+        verdict, clock = self._decide_as(self.B)
+        self.assertEqual(verdict, "proceed: own restart")
+        self.assertIsNone(self._get(handoff.RELEASED_SUFFIX))
+
+    def test_a_third_replica_claiming_during_the_wait_makes_me_stale(self):
+        third = self.REV + "@vinc-hub--0000452-ccc"
+        self._put(persistence.WRITER_SUFFIX, self.A)
+        clock = _Clock(on_sleep=lambda n: n == 2 and self._put(persistence.WRITER_SUFFIX, third))
+        verdict, _ = self._decide_as(self.B, clock)
+        self.assertEqual(verdict, f"stale: {third}")
+
+    def test_only_the_holding_replica_releases(self):
+        self._put(persistence.WRITER_SUFFIX, self.B)
+        with mock.patch.dict(os.environ, {persistence.REVISION_ENV: self.REV,
+                                          persistence.REPLICA_ENV: "vinc-hub--0000452-aaa"}):
+            self.assertTrue(handoff.mark_released(self.snap).startswith("skipped"))
+        with mock.patch.dict(os.environ, {persistence.REVISION_ENV: self.REV,
+                                          persistence.REPLICA_ENV: "vinc-hub--0000452-bbb"}):
+            self.assertEqual(handoff.mark_released(self.snap), "released")
+        self.assertEqual(self._get(handoff.RELEASED_SUFFIX), self.B)
+
+
 class Main(_Case):
     def test_exit_codes(self):
         self._put(persistence.WRITER_SUFFIX, NEWER)

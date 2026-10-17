@@ -8,8 +8,11 @@
 
 스냅샷 옆의 파일 둘:
 
-- ``<snap>.writer``   — 쓰기 자격을 가진 리비전(`store.persistence.claim_writer`)
-- ``<snap>.released`` — 마지막 스냅샷을 **성공적으로** 올리고 자격을 놓은 리비전
+- ``<snap>.writer``   — 쓰기 자격을 가진 writer(`store.persistence.claim_writer`)
+- ``<snap>.released`` — 마지막 스냅샷을 **성공적으로** 올리고 자격을 놓은 writer
+
+writer 이름은 ``<리비전>@<레플리카>`` 다(`store.persistence.writer_identity`). 같은 리비전의
+다른 레플리카도 앞 writer 로 보고 넘김을 기다린다 — 재시작이 레플리카를 겹쳐 띄우기 때문이다.
 
 리비전 이름(`CONTAINER_APP_REVISION`)이나 스냅샷 경로가 없으면 인계는 꺼진다 —
 데스크탑·테스트·로컬 docker 는 기다릴 상대가 없다.
@@ -25,7 +28,8 @@ import sys
 import time
 from typing import Callable
 
-from .persistence import REVISION_ENV, WRITER_SUFFIX, _revision_no, resolve_snapshot_path
+from .persistence import (WRITER_SUFFIX, _revision_no, resolve_snapshot_path, split_identity,
+                          writer_identity)
 
 RELEASED_SUFFIX = ".released"
 #: 이전 writer 의 넘김 표식을 기다리는 상한(초). 넘으면 이전 writer 가 넘기지 못하고 죽은
@@ -66,7 +70,7 @@ def mark_released(snapshot_path: str | None = None) -> str:
     가져갔거나 표식이 없으면) 쓰지 않는다. 넘김 표식이 거짓이면 새 리비전이 마지막
     스냅샷보다 먼저 복원한다 — 이 표식이 지키는 유일한 순서가 그것이다."""
     snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
-    mine = (os.environ.get(REVISION_ENV) or "").strip()
+    mine = writer_identity()
     if not snapshot_path or not mine:
         return "off"
     try:
@@ -89,7 +93,7 @@ def decide(snapshot_path: str | None = None, *, wait_s: float | None = None,
     이미 writer 다. 나머지는 전부 진행이고, 기다림은 이전 writer 가 넘김 표식을 남길
     시간을 주는 것뿐이다."""
     snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
-    mine = (os.environ.get(REVISION_ENV) or "").strip()
+    mine = writer_identity()
     if not snapshot_path or not mine:
         return "proceed: off"
     if wait_s is None:
@@ -103,11 +107,16 @@ def decide(snapshot_path: str | None = None, *, wait_s: float | None = None,
         return "proceed: no writer"
     if _newer(writer, mine):
         return f"stale: {writer}"
-    if writer == mine:
-        # 같은 리비전의 재시작은 기다리지 않는다(정상 종료로 넘김을 남겼어도). 새 리비전이 이미
+    w_rev, w_rep = split_identity(writer)
+    m_rev, m_rep = split_identity(mine)
+    # 같은 레플리카의 재시작(컨테이너만 다시 떴다)이거나, 같은 리비전인데 한쪽이 레플리카를
+    # 모르면 가를 수 없으니 제 재시작으로 본다. 같은 리비전의 **다른** 레플리카는 아래에서
+    # 앞 writer 로 기다린다 — 재시작이 레플리카를 겹쳐 띄운다.
+    if writer == mine or (w_rev == m_rev and not (w_rep and m_rep)):
+        # 같은 writer 의 재시작은 기다리지 않는다(정상 종료로 넘김을 남겼어도). 새 리비전이 이미
         # 자격을 가져갔다면 위에서 stale 로 갈렸다. 남은 내 넘김 표식은 지운다 — 그래야 다음
         # 새 리비전이 이번 기동 뒤의 마지막 스냅샷을 다시 기다린다.
-        if _read(released_path) == mine:
+        if _read(released_path) in (mine, writer):
             try:
                 os.remove(released_path)
             except OSError:
@@ -120,7 +129,8 @@ def decide(snapshot_path: str | None = None, *, wait_s: float | None = None,
     deadline = clock() + wait_s
     while True:
         current = _read(writer_path)
-        if current and _newer(current, mine):
+        if current and (_newer(current, mine) or (current != writer and split_identity(current)[0] == m_rev)):
+            # 나보다 새 리비전, 또는 내 리비전의 또 다른 레플리카가 먼저 자격을 가져갔다.
             return f"stale: {current}"
         if _read(released_path) == writer:
             return f"proceed: {writer} released"
