@@ -7540,7 +7540,7 @@ def _delete_preview_edges(store, node_id: str, label: str, pk: str,
 
 
 def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None,
-                dry_run: bool = False) -> dict:
+                dry_run: bool = False, stray_type: str | None = None) -> dict:
     """노드 1개를 부착 엣지와 함께 **비가역** 삭제(T3c). id 접두사로 테이블을 판별
     (:data:`_SEED_TABLES` 재사용) — 미지 접두사(Entity 등)는 표를 특정할 수 없어
     ``found:False`` 로 안전 거부한다. 존재 확인 → 부착 엣지 수(양방향) 카운트 →
@@ -7548,7 +7548,11 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None,
     라벨(Concept/Episode/Record)에 한해 소유 일치 시에만 삭제(스코프 1차 §1 가드).
 
     반환: 삭제 시 ``{executed:True, found:True, deleted:{node:1, edges:n}}``,
-    미존재·미지 접두사 시 ``{executed:True, found:False}``."""
+    미존재·미지 접두사 시 ``{executed:True, found:False}``.
+
+    ``stray_type`` 은 접두사와 **다른** 타입의 테이블에 같은 id 로 들어간 사본 행만
+    지운다. 접두사 테이블의 행은 살아 있는 노드라 이 경로로는 못 지운다. 묘비·벡터·
+    동기화 base 는 키가 id 하나라 살아 있는 행의 것이므로 쓰지도 지우지도 않는다."""
     cfg = cfg or load_config()
     owns = store is None
     if owns:
@@ -7579,6 +7583,17 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None,
         return base
     prefix = node_id.split(":", 1)[0] if ":" in node_id else ""
     label_pk = _SEED_TABLES.get(prefix)
+    stray = None
+    if stray_type is not None:
+        stray = _SEED_TABLES.get(stray_type) if isinstance(stray_type, str) else None
+        if stray is None or label_pk is None or stray == label_pk:
+            base["executed"] = True
+            base["note"] = (f"refused: stray_type must name a type other than the id prefix "
+                            f"({node_id}). Without it the prefix picks the table.")
+            if owns:
+                store.close()
+            return base
+        label_pk = stray
     try:
         if label_pk is None:
             base["executed"] = True
@@ -7621,9 +7636,13 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None,
             base["preview"] = {"node": 1, "edges": preview, "edge_count": edges,
                                "complete": True}
             return base
-        _write_tombstone(store, node_id, label, owner)   # 삭제 전파용 표식(S4)
+        if stray is None:
+            _write_tombstone(store, node_id, label, owner)   # 삭제 전파용 표식(S4)
         store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} DETACH DELETE n", params)
-        _drop_node_shadows(store, node_id, owner, params["id"])
+        if stray is None:
+            _drop_node_shadows(store, node_id, owner, params["id"])
+        else:
+            base["stray_type"] = stray_type
         base["deleted"] = {"node": 1, "edges": edges}
     except Exception as exc:
         base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"

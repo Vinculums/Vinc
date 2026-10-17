@@ -1508,10 +1508,15 @@ class VincApp:
         preview = body.get("dry_run", False)
         if type(preview) is not bool:
             raise ValueError("dry_run must be a boolean")
+        stray = body.get("stray_type")
+        if stray is not None and not isinstance(stray, str):
+            raise ValueError("stray_type must be a string")
         if preview and not owner:
-            return 200, q.delete_node(node, owner=owner, store=self.store, dry_run=True)
+            return 200, q.delete_node(node, owner=owner, store=self.store, dry_run=True,
+                                      stray_type=stray)
         res = self._run_mutation("delete", body,
-                                 lambda: q.delete_node(node, owner=owner, store=self.store))
+                                 lambda: q.delete_node(node, owner=owner, store=self.store,
+                                                       stray_type=stray))
         return 200, res
 
     def write_delete_edge(self, body):

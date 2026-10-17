@@ -908,6 +908,11 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         if not nid or not label:
             out["warnings"].append(f"unsupported node — skipped ({nid or '?'})")
             continue
+        if frag.prefix_mismatch(ntype, nid):
+            # 기기에 남은 사본이 push-all 로 허브에 되살아나지 않게 한다. 묘비·base 를
+            # 건드리기 전에 거른다(둘 다 키가 node_id 하나라 살아 있는 행의 것을 덮는다).
+            out["warnings"].append(f"type disagrees with id prefix: skipped ({nid})")
+            continue
         pk = frag._NODE_MAP[ntype][1]
         remote_snap = _snapshot(label, n)
         # 구버전 클라이언트가 모르는 필드는 키가 없다. 비운 것이 아니라 말하지 않은 것이다.

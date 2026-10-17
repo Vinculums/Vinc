@@ -85,6 +85,15 @@ def _is_open(ntype: str) -> bool:
     return bool(ntype) and ntype not in _NODE_MAP
 
 
+def prefix_mismatch(ntype: str, nid: str) -> str:
+    """id 접두사가 전용 테이블 타입을 가리키는데 타입이 다르면 그 접두사를 돌려준다.
+
+    접두사는 삭제·끝점 해석이 테이블을 고르는 기준이다. 타입이 다르면 같은 id 의 두 번째
+    행이 다른 테이블에 생기고, 묘비 키(`node_id` 하나)가 겹쳐 토픽 이동이 멈춘다."""
+    prefix = nid.split(":", 1)[0] if ":" in nid else ""
+    return prefix if prefix in _NODE_MAP and prefix != ntype else ""
+
+
 #: 스토어 바인딩용 물리 키(PK 네임스페이싱 design A). 정의는 `store/pkns.py` 한 벌 —
 #: 이 모듈만 쓰던 것을 PR-C 에서 query·sync·share·preference·docstore 가 같이 쓰게
 #: 옮겼다. 여기 별칭을 남기는 이유는 호출부 표기를 짧게 두려는 것뿐이다.
@@ -449,6 +458,13 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         # 근거: [[vinc.plan.node-pk-namespacing]] §7
         warnings.append(
             f"node contains U+001F (reserved for PK namespacing) — skipped (id={nid})")
+        return None
+    mismatch = prefix_mismatch(ntype, nid)
+    if mismatch:
+        warnings.append(
+            f"node type {ntype!r} disagrees with its id prefix {mismatch!r}: skipped "
+            f"(id={nid}). The prefix names the table, so this would store a second row "
+            f"under the same id. Send type {mismatch!r} or use an id without that prefix.")
         return None
     is_entity = _is_open(ntype)
     if is_entity and not (node.get("title") or "").strip():

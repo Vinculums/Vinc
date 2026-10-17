@@ -711,6 +711,23 @@
             }
           },
           {
+            "name": "stray_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "concept",
+                "episode",
+                "record",
+                "decision",
+                "bridge",
+                "entity"
+              ],
+              "description": "Delete only the copy of this id stored under another type. The row the prefix names stays, and no tombstone is written."
+            }
+          },
+          {
             "name": "preview_digest",
             "in": "query",
             "required": false,

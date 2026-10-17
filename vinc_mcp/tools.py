@@ -544,6 +544,8 @@ def _t_delete(args, bridge):
     body = {"node": args["node_id"], "owner": _owner(args, bridge), **_mutation_options(args)}
     if "dry_run" in args:
         body["dry_run"] = args["dry_run"]
+    if args.get("stray_type") is not None:
+        body["stray_type"] = args["stray_type"]
     return bridge.request("POST", "/delete", body=body)
 
 
@@ -1569,6 +1571,11 @@ TOOLS: list[dict] = [
         "inputSchema": {"type": "object", "properties": {
             "node_id": {"type": "string",
                         "description": "Exact type-prefixed node id to delete (e.g. concept:ipaas)."},
+            "stray_type": {"type": "string",
+                           "enum": ["concept", "episode", "record", "decision", "bridge", "entity"],
+                           "description": "Delete only the copy of this id stored under another "
+                                          "type. The row the prefix names stays, and no tombstone "
+                                          "is written."},
             "dry_run": {"type": "boolean", "default": False,
                         "description": "Return a complete, bounded preview without changing "
                                        "anything. Over-budget or inaccessible targets are refused; "
