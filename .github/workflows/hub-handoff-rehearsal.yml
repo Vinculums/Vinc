@@ -256,7 +256,9 @@ jobs:
             az containerapp env storage remove -n "$CAE" -g "$RG" --storage-name "$MOUNT" -y --output none \
               || echo "::warning::mount $MOUNT was not removed"
           fi
+          # 저장 계정에는 삭제 잠금이 걸려 있어 ARM 경로(share-rm delete)는 ScopeLocked 로 거절된다.
+          # 잠금은 운영 데이터를 지키는 것이라 풀지 않고, 데이터 평면(계정 키)으로 이 런의 공유만 지운다.
           if [ "${CREATED_SHARE:-}" = 1 ]; then
-            az storage share-rm delete --storage-account "$STORAGE" -g "$RG" --name "$SHARE" -y --output none \
+            az storage share delete --name "$SHARE" --output none \
               || echo "::warning::share $SHARE was not deleted"
           fi
