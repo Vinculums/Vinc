@@ -738,6 +738,7 @@
     "vinc.research.document-editing-2026-09-07",
     "vinc.research.document-reading-ux",
     "vinc.research.dots-and-grok-bot-2026-10-03",
+    "vinc.research.embedding-language-finetunes-survey-2026-10-17",
     "vinc.research.eval-chart-material-2026-09-12",
     "vinc.research.eval-chart-material-2026-09-29",
     "vinc.research.external-interop",
@@ -795,6 +796,7 @@
     "vinc.research.rag-eval-report-review-2026-09-28",
     "vinc.research.requested-attribute-check-fresh-2026-10-16",
     "vinc.research.requested-attribute-check-round2-2026-10-16",
+    "vinc.research.reranker-comparison-r1-2026-10-17",
     "vinc.research.reranking-after-fusion-2026-09-03",
     "vinc.research.robotics-world-models",
     "vinc.research.sankey-alluvial",
@@ -905,6 +907,7 @@
     "decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting",
     "decision:the-document-tree-opens-three-levels-and-a-row-click-only-folds-2026-09-26",
     "decision:the-eval-harness-lives-in-top-level-rag-eval-not-inside-vinc-rag-2026-10-01",
+    "decision:the-hub-hands-the-writer-over-at-boot-instead-of-stopping-the-old-revision-2026-10-17",
     "decision:the-hub-layout-gives-up-weight-proportional-spread-so-that-adding-a-node-moves-nothing",
     "decision:the-node-mirror-is-rebuilt-whole-or-not-at-all",
     "decision:the-node-mirror-keeps-unchanged-rows-and-rebuilds-its-index-whole-2026-10-02",
@@ -1253,6 +1256,9 @@
       "validity": "unknown"
     },
     "decision:the-eval-harness-lives-in-top-level-rag-eval-not-inside-vinc-rag-2026-10-01": {
+      "validity": "unknown"
+    },
+    "decision:the-hub-hands-the-writer-over-at-boot-instead-of-stopping-the-old-revision-2026-10-17": {
       "validity": "unknown"
     },
     "decision:the-hub-layout-gives-up-weight-proportional-spread-so-that-adding-a-node-moves-nothing": {

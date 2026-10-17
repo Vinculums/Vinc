@@ -31,43 +31,37 @@ def revision(active, replicas=0, name="old"):
 
 
 class CapacitySafety(unittest.TestCase):
-    def test_active_false_does_not_mean_writer_stopped(self):
-        calls = [[revision(True, 1)], [revision(False, 1)], [revision(False, 0)]]
-        with patch.object(trial, "revisions", side_effect=calls), \
-                patch.object(trial, "az") as az, patch.object(trial.time, "sleep") as sleep:
-            trial.stop_writer()
-        self.assertEqual(az.call_count, 1)
-        self.assertEqual(sleep.call_args_list[0].args, (10,))
-        self.assertEqual(sleep.call_count, 2)  # 살아 있는 레플리카 대기 + 스냅샷 여유.
-
-    def test_writer_timeout_forbids_update(self):
-        with patch.object(trial, "show", return_value=app()), \
-                patch.object(trial, "stop_writer", side_effect=RuntimeError("busy")), \
-                patch.object(trial, "az") as az:
-            with self.assertRaises(RuntimeError):
-                trial.switch(state(), 2)
-        az.assert_not_called()
+    def test_a_switch_never_stops_the_old_revision_first(self):
+        """단일 writer 순서는 기동의 인계가 지킨다. 시험이 구 리비전을 먼저 내리면 플랫폼이 그것을
+        다시 띄워 인계가 꼬인다."""
+        events = []
+        with patch.object(trial, "show", side_effect=[app(), app(2, "new")]), \
+                patch.object(trial, "az", side_effect=lambda *args: events.append(args)), \
+                patch.object(trial, "revisions", return_value=[revision(True, 1, "new")]), \
+                patch.object(trial, "wait_ready", return_value="new"), \
+                patch.object(trial, "verify_profile"):
+            trial.switch(state(), 2)
+        self.assertFalse(any("deactivate" in call for call in events), events)
+        self.assertFalse(hasattr(trial, "stop_writer"))
 
     def test_image_change_is_not_silently_overwritten(self):
         changed = app()
         changed["properties"]["template"]["containers"][0]["image"] = "other"
         with patch.object(trial, "show", return_value=changed), \
-                patch.object(trial, "stop_writer") as stop:
+                patch.object(trial, "az") as az:
             with self.assertRaises(RuntimeError):
                 trial.switch(state(), 2)
-        stop.assert_not_called()
+        az.assert_not_called()
 
     def test_rollback_updates_resources_to_new_latest(self):
         events = []
         with patch.object(trial, "show", side_effect=[app(2), app(1, "new")]), \
-                patch.object(trial, "stop_writer", side_effect=lambda: events.append("stopped")), \
                 patch.object(trial, "az", side_effect=lambda *args: events.append(args)), \
                 patch.object(trial, "revisions", return_value=[revision(True, 1, "new")]), \
                 patch.object(trial, "wait_ready", return_value="new"), \
                 patch.object(trial, "verify_profile"):
             trial.switch(state(), 1)
-        self.assertEqual(events[0], "stopped")
-        update = events[1]
+        update = events[0]
         self.assertEqual(update[:2], ("containerapp", "update"))
         self.assertIn("acr/image:fixed", update)
         self.assertEqual(update[-4:], ("--cpu", "1", "--memory", "2Gi"))
@@ -134,7 +128,6 @@ class LocalEncoderTrial(unittest.TestCase):
     def _update_args(self, saved, cpu, current):
         events = []
         with patch.object(trial, "show", side_effect=[current, app(cpu, "new")]), \
-                patch.object(trial, "stop_writer"), \
                 patch.object(trial, "az", side_effect=lambda *args: events.append(args)), \
                 patch.object(trial, "revisions", return_value=[revision(True, 1, "new")]), \
                 patch.object(trial, "wait_ready", return_value="new"), \
