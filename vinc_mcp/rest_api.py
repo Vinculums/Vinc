@@ -314,9 +314,11 @@ def _handle(handler, method: str) -> bool:
         return True
     resolved = gated.auth or auth
     authenticated = True
+    spent: dict = {}
     outcome = toolcall.execute(route.tool, args, handler.app.bridge,
                                forced_owner=resolved.get("owner"), plan=resolved.get("plan"),
-                               quota=handler.app.quota_for(resolved),
+                               quota=handler.app.quota_for(resolved, spent),
+                               quota_view=handler.app.quota_view,
                                entitlements=handler.app.entitlements_for(resolved.get("plan")),
                                hub=True,
                                community_write=(lambda args: handler.app.community_write(resolved, args))
@@ -326,14 +328,25 @@ def _handle(handler, method: str) -> bool:
     if outcome.kind == "invalid_argument":
         fail(400, "invalid_argument", _message(outcome.result))
         return True
+    if outcome.kind == "quota" and "vinc_rate" in (outcome.result or {}).get("_meta", {}):
+        rate = outcome.result["_meta"]["vinc_rate"]
+        fail(429, "rate_limited", _message(outcome.result), details=rate,
+             extra={"Retry-After": rate["retry_after_s"]})
+        return True
     if outcome.kind == "quota":
         quota = (outcome.result or {}).get("_meta", {}).get("vinc_quota", {})
         wait = int(quota.get("retry_after_s") or 0)
         fail(429, "quota_exceeded", _message(outcome.result),
-             details={"limit": quota.get("limit"), "retry_after_s": wait},
+             details={"limit": quota.get("limit"), "retry_after_s": wait,
+                      "resets_at": quota.get("resets_at")},
              extra={"Retry-After": wait, "Vinc-Quota-Limit": quota.get("limit") or "",
-                    "Vinc-Quota-Remaining": 0})
+                    "Vinc-Quota-Remaining": 0, "Vinc-Quota-Reset": quota.get("resets_at") or ""})
         return True
+    # 도구가 결과를 냈으면(성공이든 도구가 말한 오류든) 한도를 쓴 것이라 남은 수를 싣는다.
+    # 세지 않는 스페이스(Genius·면제)에는 헤더가 없다.
+    meta = handler.app.quota_meta(spent)
+    quota_headers = ({"Vinc-Quota-Limit": meta["limit"], "Vinc-Quota-Remaining": meta["remaining"],
+                      "Vinc-Quota-Reset": meta["resets_at"] or ""} if meta else {})
     if outcome.kind != "ok":
         error = outcome.error
         message = _message(outcome.result) if outcome.result else str(error)
@@ -358,7 +371,8 @@ def _handle(handler, method: str) -> bool:
     if failure:
         status, code, message, *rest = failure
         fail(status, code, message, details=rest[0] if rest else None,
-             extra={"Retry-After": "1"} if result.get("error") == "store_busy" else None)
+             extra={**quota_headers, **({"Retry-After": "1"}
+                                        if result.get("error") == "store_busy" else {})})
         return True
     from .roles import serialize_result
     size = len(serialize_result(result).encode("utf-8"))
@@ -371,5 +385,5 @@ def _handle(handler, method: str) -> bool:
         return True
     status = (201 if route.tool == "vinc_doc_put" and result.get("created")
               else route.success)
-    send(status, result)
+    send(status, result, quota_headers)
     return True

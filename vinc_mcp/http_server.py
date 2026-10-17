@@ -30,6 +30,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -41,7 +42,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from store import httpbody
 
-from . import community, edverify, entitlement, toolcall, tools, viewurl
+from . import burst, community, edverify, entitlement, toolcall, tools, viewurl
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
 from .rpc import PROTOCOL_VERSIONS, Dispatcher
@@ -183,14 +184,75 @@ _ADMIN_OPS = frozenset({
 })
 _TEAM_ROLES = ("viewer", "editor", "admin")
 
-#: 팀 그래프에서 일하면 등급은 **Team** 이다 — 사람이 아니라 **공간**이 등급을 정한다.
-#: 전에는 팀 주소로 들어와도 계정이 준 개인 등급이 그대로 쓰였고, 그래서 와이어 값
-#: `team` 을 실제로 내는 곳이 **한 군데도 없었다**. 두 등급의 한도가 같던 동안에는
-#: 아무 증상이 없었지만(Free·Pro 둘 다 2,000), Team 이 6,000 이 되는 순간 그것은
-#: "팀이 팀 한도를 못 받는다"가 된다. 소유자가 이미 `team:` 으로 확인된 자리라
-#: 여기서 단정해도 틀릴 수 없다. 카운터도 owner 단위라 6,000 은 **팀이 나눠 쓴다**.
-#: 근거: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
-_TEAM_PLAN = "team"
+#: 팀 그래프의 등급은 **그 팀 소유자의 등급**이다 — 사람이 아니라 공간이 등급을 정한다는
+#: 규칙을 넓힌 것이다. 멤버의 개인 등급(`plan`)을 쓰면 안 된다: Curious 멤버가 Genius 팀에서
+#: 일하면 Genius 한도를 받아야 한다. 카운터는 owner 단위라 팀 한도는 **팀이 나눠 쓴다**.
+#: 계정이 `team_plan` 을 싣지 않으면 Genius 로 읽는다: 지금 활성인 팀은 전부 체험
+#: (`TRIAL_UNTIL`) 중이고 Team 의 후속이 Genius 다.
+#: 근거: [[vinc.canon.account-policy §8]]
+_LEGACY_TEAM_PLAN = "genius"
+
+
+def _team_plan(resp: dict) -> str:
+    """팀 멤버십 응답(verify-key·verify-member) → 그 팀 스페이스의 등급."""
+    raw = resp.get("team_plan")
+    if raw is None:
+        return _LEGACY_TEAM_PLAN
+    return entitlement.normalize_plan(raw, source="team-plan")
+
+
+#: 하루 창은 00:00 UTC 에 리셋되고 한도 뒤에 잠그지 않는다(약관의 "다음 날까지"와 같은 규칙).
+_DAY_S = 86400.0
+
+
+def _current_plan(plan: str | None) -> str | None:
+    """폐기된 와이어 값(`team`·`pro`)을 지금 등급으로 접는다. 웹 프록시 어서션은 팀에 아직
+    `team` 을 싣고 정규화를 거치지 않으므로, 여기서 안 접으면 무료 쪽으로 떨어진다."""
+    return entitlement.RETIRED_PLANS.get(plan, plan) if plan is not None else None
+
+
+#: `/internal/quota` 한 번에 묻는 스페이스 수의 상한(개인 하나와 팀 몇 개면 충분하다).
+_QUOTA_VIEW_MAX = 32
+_QUOTA_OWNER_RE = re.compile(r"(user|team):[A-Za-z0-9_-]+")
+
+#: 하루 사용량이 이 비율에 닿으면 응답에 경고 한 줄과 플랜 주소를 싣는다.
+#: 근거: [[vinc.plan.plans-and-limits-redesign-2026-10-17 §10.6]]
+_WARN_RATIO = 0.8
+_PLANS_URL = "https://vincs.io/pricing"
+
+
+def _reset_phrase(resets_at: float, now: float) -> str:
+    """리셋 시각을 문장 조각으로. 시각은 상수로 쓰지 않는다: 00:00 UTC 정렬보다 먼저 열린
+    카운터는 그 창이 끝날 때까지(하루 안) 다른 시각에 리셋된다."""
+    secs = max(0, int(math.ceil(resets_at - now)))
+    hh, mm = secs // 3600, (secs % 3600) // 60
+    return f"at {time.strftime('%H:%M', time.gmtime(resets_at))} UTC, in {hh}h {mm:02d}m"
+
+
+def _burst_denial(limit: int, window_s: float, wait: float) -> dict:
+    """분당 상한 거절. 하루 한도 거절과 같은 tools/call 결과 봉투이고 `_meta` 키만 다르다
+    (`vinc_rate`): REST 가 이 키를 보고 `rate_limited` 로 낸다."""
+    secs = max(1, int(math.ceil(wait)))
+    text = (f"Too many calls in a short time: each space allows {limit} tool calls a minute "
+            f"on every plan. Try again in {secs}s.")
+    return {"content": [{"type": "text", "text": text}], "isError": True,
+            "_meta": {"vinc_rate": {"limit": limit, "window_s": int(window_s),
+                                    "retry_after_s": secs}}}
+
+
+def _with_quota_meta(reply: dict | None, meta: dict | None) -> dict | None:
+    """성공한 tools/call 응답에 남은 호출 수를 싣는다. 경고가 있으면 본문에도 한 줄을 더한다:
+    `_meta` 는 호스트가 모델에게 안 보여 주는 경우가 많아, 사람에게 전할 문장은 본문에 있어야
+    한다. 오류 결과·다른 메서드·세지 않은 스페이스는 그대로 둔다. 인용 쌍(`structuredContent`
+    를 싣는 search·fetch)은 본문 모양이 계약이라 `_meta` 에만 싣는다."""
+    result = reply.get("result") if isinstance(reply, dict) else None
+    if not meta or not isinstance(result, dict) or result.get("isError"):
+        return reply
+    result.setdefault("_meta", {})["vinc_quota"] = meta
+    if (meta.get("warning") and isinstance(result.get("content"), list)
+            and "structuredContent" not in result):
+        result["content"].append({"type": "text", "text": meta["warning"]})
+    return reply
 
 
 def _role_allows(role: str, op: str) -> bool:
@@ -295,6 +357,9 @@ class MCPHTTPApp:
         # (기존 테스트·로컬 프로파일 무영향) — cli 가 env 로 명시 활성화한다.
         self.store = store if store is not None else (oauth.store if oauth else None)
         self.quota_config = quota_config
+        # 분당 상한은 플랜과 무관하게 스페이스마다 같다. 0 이거나 없으면 끈다.
+        per_minute = (quota_config or {}).get("burst_per_minute") or 0
+        self.burst = burst.BurstLimiter(per_minute) if per_minute > 0 else None
         # 무료 등급 주제 상한(AP-1 §3.4). None = 기능 꺼짐. 등급→숫자 변환이 **여기**
         # 한 곳에서만 일어나고 사이드카는 숫자만 받는다(정책 무지 유지).
         self.free_max_domains = free_max_domains
@@ -317,61 +382,107 @@ class MCPHTTPApp:
         cfg = self.quota_config
         if owner in cfg.get("exempt_owners", ()):
             return {"count": 0, "remaining": None, "exempt": True}
-        limit = cfg["team_limit"] if plan in entitlement.PAID_PLANS else cfg["free_limit"]
-        return {**self.store.quota_snapshot(owner, limit=limit,
-                                           window_s=cfg["window_s"]),
+        if _current_plan(plan) in entitlement.PAID_PLANS:
+            # 유료는 세지 않는다. 남은 수를 지어내지 않고 "계량 안 함"이라고 말한다.
+            return {"count": 0, "remaining": None, "limit": None, "exempt": False,
+                    "unmetered": True}
+        limit = cfg["free_limit"]
+        return {**self.store.quota_snapshot(owner, limit=limit, window_s=_DAY_S, aligned=True),
                 "limit": limit, "exempt": False}
 
+    def quota_view(self, owner: str, plan: str | None) -> dict | None:
+        """한 스페이스의 한도 표시. `/v1/me`·MCP `_meta`·계정 화면이 같은 모양을 읽는다.
+
+        세지 않는 스페이스(Genius·면제)는 `metered: False` 로만 말하고 수를 지어내지 않는다.
+        팀 owner 의 plan 이 None 이면 계정이 팀 등급을 아직 안 실은 것이라 `_team_plan` 과
+        같이 읽는다. 쿼터가 꺼져 있으면(로컬·미설정) None.
+        """
+        if plan is None and owner.startswith("team:"):
+            plan = _LEGACY_TEAM_PLAN
+        snap = self.quota_snapshot(owner, plan)
+        if snap is None:
+            return None
+        if snap.get("limit") is None:
+            return {"metered": False}
+        limit, used, left, resets_at = (snap["limit"], snap["count"], snap["remaining"],
+                                        snap["resets_at"])
+        view = {"metered": True, "plan": "free", "limit": limit, "used": used,
+                "remaining": left, "resets_at": _utc_iso(resets_at) if resets_at else None}
+        if used >= limit * _WARN_RATIO:
+            when = f" They reset {_reset_phrase(resets_at, time.time())}." if resets_at else ""
+            view["warning"] = (f"You have used {used:,} of {limit:,} tool calls today on the "
+                               f"Curious (free) plan, {left:,} left.{when} Plans: {_PLANS_URL}")
+            view["upgrade_url"] = _PLANS_URL
+        return view
+
+    def quota_meta(self, spent: dict) -> dict | None:
+        """이번 메시지가 센 스페이스의 표시. 안 셌거나 세지 않는 스페이스면 None."""
+        if not spent:
+            return None
+        view = self.quota_view(spent["owner"], spent["plan"])
+        return view if view and view.get("metered") else None
+
     def quota_check(self, owner: str, plan: str | None) -> dict | None:
-        """소비 1회 시도. 허용이면 None, 초과·잠금이면 **tools/call 결과 dict**.
+        """소비 1회 시도. 허용이면 None, 초과면 **tools/call 결과 dict**.
 
         카운터는 owner(public_id) 단위 — 키를 여러 개 만들어도 합산된다(우회 불가).
-        `exempt_owners` 에 든 owner 는 세지 않는다(잠금도 보지 않는다).
+        `exempt_owners` 에 든 owner 와 유료(Genius) 스페이스는 세지 않는다.
+        Curious 는 하루 `free_limit` 회이고 00:00 UTC 에 리셋된다(잠금 없음).
+        면제가 아니면 플랜과 무관하게 먼저 분당 상한(`self.burst`)을 거친다.
         """
         if not self.quota_config or self.store is None or not owner:
             return None                              # 미설정/로컬 = 무제한
         cfg = self.quota_config
         if owner in cfg.get("exempt_owners", ()):
             return None                              # 면제 owner — 도그푸딩 계정
-        paid = plan in entitlement.PAID_PLANS
-        limit = cfg["team_limit"] if paid else cfg["free_limit"]
-        r = self.store.quota_check(owner, limit=limit, window_s=cfg["window_s"],
-                                   lock_s=cfg["lock_s"])
+        if self.burst is not None:                   # 모든 플랜에 같다. 하루 한도보다 먼저 본다
+            wait = self.burst.take(owner)
+            if wait:
+                return _burst_denial(self.burst.limit, self.burst.window_s, wait)
+        if _current_plan(plan) in entitlement.PAID_PLANS:
+            return None                              # Genius: 하루 상한 없음(공정 사용)
+        limit = cfg["free_limit"]
+        r = self.store.quota_check(owner, limit=limit, window_s=_DAY_S, lock_s=0,
+                                   aligned=True)
         if r["allowed"]:
             return None
         secs = r["retry_after_s"]
-        hh, mm = secs // 3600, (secs % 3600) // 60
-        tier = "Team" if plan == "team" else "Free"
-        # 업셀 문구는 **무료와 유료의 한도가 실제로 다를 때만** 쓴다. 2026-09-19 에
-        # 차별축이 다시 호출 횟수가 되어(Free 2,000 · Team 6,000) 대개 다르지만, 두
-        # 값을 같게 설정한 배포에서는 "더 높은 한도"가 거짓말이 되므로 입을 다문다.
-        # 그때 댈 다른 근거도 없다 — 주제 상한이 사라져 Free 와 Team 이 개인 기능에서
-        # 같아졌기 때문이다.
-        if paid or cfg["free_limit"] >= cfg["team_limit"]:
-            upsell = ""
-        else:
-            upsell = " A team raises the limit: https://vincs.io/pricing"
-        text = (f"{tier} tier limit reached ({limit} tool calls per "
-                f"{int(cfg['window_s'] // 3600)}h). Access resumes in ~{hh}h{mm:02d}m."
-                + upsell)
+        now = time.time()
+        resets_at = r.get("resets_at") or now + secs
+        # 업셀은 "Genius 는 상한이 없다"가 아니라 플랜 페이지만 가리킨다: 이 코드는 사이트가
+        # Genius 를 팔기 전에 배포되므로, 아직 살 수 없는 것을 약속하면 거짓 문구가 된다.
+        text = (f"Daily limit reached on the Curious (free) plan: {limit} tool calls a day "
+                f"across MCP, CLI and API. It resets {_reset_phrase(resets_at, now)}. "
+                f"Plans: {_PLANS_URL}")
         return {"content": [{"type": "text", "text": text}], "isError": True,
-                "_meta": {"vinc_quota": {"limit": limit, "retry_after_s": secs,
-                                         "upgrade_url": "https://vincs.io/account"}}}
+                "_meta": {"vinc_quota": {
+                    "limit": limit, "retry_after_s": secs,
+                    "resets_at": _utc_iso(resets_at) if resets_at else None,
+                    "upgrade_url": "https://vincs.io/account"}}}
 
     def entitlements_for(self, plan: str | None) -> dict:
         """등급 → 사이드카가 받을 **숫자**. 정책 해석은 여기서 끝난다(AP-1 §3.4).
 
         유료 등급이거나 상한이 미설정이면 빈 dict = 무제한이다.
         """
-        if self.free_max_domains is None or plan in entitlement.PAID_PLANS:
+        if self.free_max_domains is None or _current_plan(plan) in entitlement.PAID_PLANS:
             return {}
         return {"max_domains": self.free_max_domains}
 
-    def quota_for(self, auth: dict):
+    def quota_for(self, auth: dict, spent: dict | None = None):
+        """메시지 하나의 한도 소비 함수. 허용된 소비는 센 owner·plan 을 `spent` 에 남겨서
+        응답이 남은 수를 실을 수 있게 한다(`quota_meta`)."""
         # 공개 커뮤니티는 공동 쿼터를 소비하지 않는다. 인증된 사람의 기존 한도를 쓴다.
-        if community.is_space(auth.get("owner")):
-            return lambda _owner, _plan: self.quota_check(auth.get("member"), auth.get("plan"))
-        return self.quota_check
+        in_community = community.is_space(auth.get("owner"))
+
+        def spend(owner, plan):
+            if in_community:
+                owner, plan = auth.get("member"), auth.get("plan")
+            denial = self.quota_check(owner, plan)
+            if denial is None and spent is not None and owner:
+                spent.update(owner=owner, plan=plan)
+            return denial
+        return spend
 
     def dispatcher(self) -> Dispatcher:
         """공유 Dispatcher. 세션별 인스턴스가 없어졌으므로 인자도 없다(위 __init__ 참조)."""
@@ -441,7 +552,7 @@ class MCPHTTPApp:
                 ent = self.verify_key(tok, space)
                 if not ent or not str(ent.get("owner") or "").startswith("team:"):
                     return miss
-                return {"ok": True, "owner": ent["owner"], "plan": _TEAM_PLAN,
+                return {"ok": True, "owner": ent["owner"], "plan": _team_plan(ent),
                         "scope": ent.get("scope") or "read",
                         "source": "apikey", "role": ent.get("role"),
                         "member": ent.get("member")}
@@ -466,7 +577,7 @@ class MCPHTTPApp:
             # scope 가 'full' 인 것은 OAuth 가 스코프 개념 이전의 신원이라서다(개인
             # 경로와 같다). 팀에서 무엇을 할 수 있는지는 scope 가 아니라 **role** 이
             # 정한다 — 그 게이트는 do_POST 에 있다.
-            return {"ok": True, "owner": mem["owner"], "plan": _TEAM_PLAN,
+            return {"ok": True, "owner": mem["owner"], "plan": _team_plan(mem),
                     "scope": "full", "source": "oauth", "role": mem["role"],
                     "member": mem.get("member")}
         token = header[len("Bearer "):].strip()
@@ -659,6 +770,38 @@ class MCPHTTPApp:
         out = self.bridge.request("POST", "/sync/purge-owner", body={"owner": graph_owner})
         return self._purge_oauth_state(out, graph_owner)
 
+    # ── 계정 화면의 남은 호출 수 ──────────────────────────────────────────────────
+    def quota_request(self, assertion: str, raw_body: bytes | None = None) -> dict:
+        """계정 서명 어서션(typ=quota)을 검증하고 본문의 스페이스마다 `quota_view` 를 낸다.
+
+        본문은 `{"spaces": [{"owner": "user:<id>"|"team:<id>", "plan": ...}]}` 이다. 등급의
+        정본은 계정이라 계정이 싣는다. 검증은 계정 서명 · 만료 ≤2분 · 본문 지문까지이고
+        jti 는 소비하지 않는다: 읽기라 재생해도 바뀌는 것이 없고, 소비하면 화면을 열 때마다
+        스토어에 쓴다. 지문이 본문을 묶으므로 잡은 어서션으로 다른 owner 를 물을 수는 없다."""
+        if not self.account_public:
+            raise PermissionError("quota view is not configured")
+        payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
+        if not payload or payload.get("typ") != "quota" \
+                or payload.get("iss") != "account" or payload.get("aud") != "mcp":
+            raise PermissionError("invalid or expired quota request")
+        if not self._body_matches(payload, raw_body):
+            raise PermissionError("request body does not match the signed digest")
+        try:
+            spaces = json.loads(raw_body or b"{}").get("spaces")
+        except (ValueError, AttributeError):
+            raise ValueError("the body must be a JSON object") from None
+        if not isinstance(spaces, list) or len(spaces) > _QUOTA_VIEW_MAX:
+            raise ValueError(f"spaces must be a list of at most {_QUOTA_VIEW_MAX}")
+        out = []
+        for space in spaces:
+            owner = space.get("owner") if isinstance(space, dict) else None
+            if not isinstance(owner, str) or not _QUOTA_OWNER_RE.fullmatch(owner):
+                raise ValueError("each space needs an owner of the form user:<id> or team:<id>")
+            raw = space.get("plan")
+            plan = None if raw is None else entitlement.normalize_plan(raw, source="quota-view")
+            out.append({"owner": owner, "quota": self.quota_view(owner, plan)})
+        return {"kind": "quota.view", "executed": True, "spaces": out}
+
     # ── 운영자 사용량 덤프(W1c) ─────────────────────────────────────────────────
     def usage_request(self, assertion: str, raw_body: bytes | None = None,
                       *, now: float | None = None) -> dict:
@@ -694,7 +837,9 @@ class MCPHTTPApp:
                                or "owner stats unavailable")
         t = time.time() if now is None else now
         cfg = self.quota_config or {}
-        window_s = float(cfg.get("window_s") or 0)
+        # 창 길이는 설정이 아니라 정책 상수다. cfg 에서 읽으면 키가 없어 0 이 되고,
+        # 그러면 모든 owner 의 호출 수가 조용히 0 으로 찍힌다.
+        window_s = _DAY_S if self.quota_config else 0.0
         calls: dict[str, dict] = {}
         rows = self.store.usage_rows() if self.store is not None else []
         for row in rows:
@@ -714,7 +859,8 @@ class MCPHTTPApp:
                 "quota": {"enabled": bool(self.quota_config),
                           "window_s": window_s or None,
                           "free_limit": cfg.get("free_limit"),
-                          "team_limit": cfg.get("team_limit"),
+                          # 계정 백오피스가 읽는 키라 남긴다. 유료(Genius)는 세지 않으므로 null.
+                          "team_limit": None,
                           "exempt_owners": sorted(cfg.get("exempt_owners") or ())},
                 "owners": owners}
 
@@ -1440,13 +1586,18 @@ class _Handler(BaseHTTPRequestHandler):
                 # 멤버 신원은 권한 검증에만 쓰고 소비는 해석된 그래프 owner로 센다.
                 # 팀은 매번 계정 멤버십 검증을 거치며 등급도 TEAM으로 해석된다.
                 ents = (self.app.entitlements_for(a["plan"]) if a["owner"] else None)
-                return d.handle(m, forced_owner=a["owner"], plan=a["plan"],
-                                quota=self.app.quota_for(a),
-                                entitlements=ents,
-                                community_write=(lambda args: self.app.community_write(a, args))
-                                if self.app.community_write is not None else None,
-                                community_read=(lambda args: self.app.community_read(a, args))
-                                if self.app.community_read is not None else None)
+                spent: dict = {}
+                reply = d.handle(m, forced_owner=a["owner"], plan=a["plan"],
+                                 quota=self.app.quota_for(a, spent),
+                                 quota_view=self.app.quota_view,
+                                 entitlements=ents,
+                                 community_write=(lambda args: self.app.community_write(a, args))
+                                 if self.app.community_write is not None else None,
+                                 community_read=(lambda args: self.app.community_read(a, args))
+                                 if self.app.community_read is not None else None)
+                if m.get("method") != "tools/call":
+                    return reply
+                return _with_quota_meta(reply, self.app.quota_meta(spent))
 
             replies = [r for r in (_run(m, a) for m, a in pairs) if r is not None]
             # 전부 notification 이면 본문 없이 202 — 배치도 같다(스펙).
@@ -1470,6 +1621,8 @@ class _Handler(BaseHTTPRequestHandler):
             return self._internal_graph()
         if url.path == "/internal/usage":
             return self._internal_usage()
+        if url.path == "/internal/quota":
+            return self._internal_quota()
         return self._json(404, {"error": f"no such route: POST {url.path}"})
 
     def do_PUT(self):  # noqa: N802
@@ -1586,6 +1739,20 @@ class _Handler(BaseHTTPRequestHandler):
             sys.stdout.write(f"[graph-owner] sidecar unreachable: {type(e).__name__}: {e}\n")
             sys.stdout.flush()
             return self._json(502, {"error": f"sidecar unreachable: {type(e).__name__}"})
+        return self._json(200, out)
+
+    def _internal_quota(self):
+        """`POST /internal/quota` — 계정 서명 → 스페이스마다 남은 호출 수(`quota_request`)."""
+        if not self.app.account_public:
+            return self._json(503, {"error": "quota_view_disabled"})
+        assertion = self.headers.get("X-Vinc-Assertion") or ""
+        self._body()   # 지문 대조가 받은 바이트를 쓴다 — `_internal_purge` 와 같은 이유
+        try:
+            out = self.app.quota_request(assertion, raw_body=self._raw_body)
+        except PermissionError:
+            return self._json(401, {"error": "unauthorized"})
+        except ValueError as e:
+            return self._json(400, {"error": str(e)})
         return self._json(200, out)
 
     def _internal_usage(self):

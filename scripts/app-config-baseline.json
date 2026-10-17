@@ -132,6 +132,7 @@
     "env_names": [
       "VINC_ACCOUNT_INTERNAL_URL",
       "VINC_ACCOUNT_PUBLIC_KEY",
+      "VINC_BURST_PER_MINUTE",
       "VINC_CONNECT_URL",
       "VINC_DATA_DIR",
       "VINC_EMBED_APPLY_PAUSED",
