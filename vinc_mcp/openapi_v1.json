@@ -496,7 +496,8 @@
                 "type": "object",
                 "properties": {
                   "query": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Write it in the language of the documents you expect to find. A question in another language (a Korean question over English documents) finds less, so ask again with the question rewritten in the documents' language, keeping their terms as they are written."
                   },
                   "limit": {
                     "type": "integer",
@@ -594,7 +595,7 @@
                 "properties": {
                   "query": {
                     "type": "string",
-                    "description": "The question, in natural language."
+                    "description": "The question, in natural language. Write it in the language of the documents you expect to find; for a question in another language (a Korean question over English documents), ask again with it rewritten in the documents' language, keeping their terms."
                   },
                   "max_excerpts": {
                     "type": "integer",
