@@ -78,3 +78,19 @@ def test_failed_rehearsal_names_its_stage_without_content(tmp_path, monkeypatch)
     with pytest.raises(RuntimeError):
         rehearse(original, tmp_path / "execution", SOURCE, topic=TOPIC, max_rows=4, progress=progress)
     assert progress == {"failed_stage": "first_step"}
+
+
+def test_failure_fields_carry_the_table_and_only_shape_checked_detail():
+    from scripts.qa.topic_copy_rehearsal import failure_fields
+    from store.topic_transfer import TransferRefused
+    exc = TransferRefused("conversion_payload_changed:_SyncMeta")
+    exc.detail = {"counter": {"side": "source", "delta": 3}}
+    assert failure_fields(exc) == {"exception": "TransferRefused", "error_code": "conversion_payload_changed",
+                                   "error_table": "_SyncMeta",
+                                   "error_detail": {"counter": {"side": "source", "delta": 3}}}
+    exc = TransferRefused("conversion_payload_changed:Concept")
+    exc.detail = {"missing": False, "counter": {"side": SOURCE, "delta": "1"}}
+    assert failure_fields(exc)["error_detail"] == {"row_missing": False}
+    exc.detail = {"missing": SOURCE}
+    assert "error_detail" not in failure_fields(exc)
+    assert SOURCE not in json.dumps(failure_fields(exc))

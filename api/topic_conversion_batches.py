@@ -65,6 +65,13 @@ def row(store, label, key):
     return result[0] if result else None
 
 
+def _changed(label, **detail):
+    # 보고서는 둘째 칸의 표 이름과 이 세부(참거짓·쪽·정수 차이)만 싣는다. 식별자는 싣지 않는다.
+    refused = TransferRefused("conversion_payload_changed:" + label)
+    refused.detail = detail
+    return refused
+
+
 def _put(store, label, value, *, existing=False):
     spec = manifest.SPECS[label]
     pk = spec["pk"]
@@ -269,7 +276,7 @@ class Batches:
     def _node(self, item, header):
         before = row(self.store, item["label"], item["old"])
         if before is None or manifest.digest(before) != item["before"]:
-            raise TransferRefused("conversion_payload_changed")
+            raise _changed(item["label"], missing=before is None)
         after = manifest.transform_row(before, item, header["binding"])
         if manifest.digest(after) != item["after"]:
             raise TransferRefused("conversion_manifest_invalid")
@@ -286,8 +293,10 @@ class Batches:
         if counter:
             owner = value["key"][4:]
             side = "source" if owner == self.identity["source"] else "target" if owner == self.identity["target"] else ""
-            if not side or int(current["value"] if current else 0) != header["sequence_before"][side]:
-                raise TransferRefused("conversion_payload_changed")
+            value_now = int(current["value"] if current else 0)
+            if not side or value_now != header["sequence_before"][side]:
+                raise _changed(label, counter={"side": side or "unknown",
+                                               "delta": value_now - header["sequence_before"].get(side, 0)})
         elif current is not None:
             raise TransferRefused("key_collision:" + label)
         _put(self.store, label, value, existing=current is not None)
@@ -342,7 +351,7 @@ class Batches:
             return
         current = row(self.store, item["label"], item["old"])
         if current is None or manifest.digest(current) != item["before"]:
-            raise TransferRefused("conversion_payload_changed")
+            raise _changed(item["label"], missing=current is None)
         spec = manifest.SPECS[item["label"]]
         self.store.run(f"MATCH (n:{item['label']}) WHERE n.{spec['pk']}=$key DETACH DELETE n", {"key": item["old"]}, raw=True)
 
