@@ -385,10 +385,17 @@ if [ "${VINC_EMBED:-on}" = "on" ]; then
       else
         w_port="$EMBED_PORT"; w_where="127.0.0.1:$EMBED_PORT"
       fi
+      # 메모리가 모자라면 커널이 **워커를 먼저** 고르게 한다(oom_score_adj 1000). 모델을
+      # 컨테이너 안에 들면 워커가 가장 큰 프로세스라 대개 그렇게 되지만, 사이드카가 미러
+      # 재구축으로 커진 순간에는 사이드카가 골라진다 — 그건 단일 writer 를 잃는 것이다.
+      # 값을 올리는 것은 권한 없이 된다. 우선순위도 낮춘다(nice): 배경 임베딩이 전경
+      # 질의를 굶기지 않게. 둘 다 exec 로 이어지므로 pid 는 그대로 파이썬이다.
       VINC_SIDECAR="http://127.0.0.1:8787" \
-        python -m vinc_rag.embed.worker --interval "${VINC_EMBED_INTERVAL:-300}" \
-          --encode-port "$w_port" &
+        nice -n "${VINC_EMBED_NICE:-5}" sh -c \
+          '{ echo 1000 > /proc/self/oom_score_adj; } 2>/dev/null || true; exec python -m vinc_rag.embed.worker "$@"' \
+          embed-worker --interval "${VINC_EMBED_INTERVAL:-300}" --encode-port "$w_port" &
       cpid=$!
+      wstart=$(date +%s)
       echo "$cpid" > "$EMBED_PIDFILE"
       echo "[entrypoint] embed worker started (pid=$cpid, interval=${VINC_EMBED_INTERVAL:-300}s," \
            "encode=$w_where, attempt=$((attempt + 1)))"
@@ -397,6 +404,12 @@ if [ "${VINC_EMBED:-on}" = "on" ]; then
       # 받아 온다 — 0 이면 대입이 일어나지 않으므로 초기값 0 이 남는다.
       rc=0
       wait "$cpid" || rc=$?
+      # 오래 건강하게 돌다 죽은 것은 연쇄 실패가 아니다 — 상한을 처음부터 다시 센다.
+      # 상한은 뜨자마자 죽는 루프를 끊으려는 것이고, 하루 몇 번의 죽음으로 벡터 검색을
+      # 영영 끄려는 것이 아니다.
+      if [ $(( $(date +%s) - wstart )) -ge "${VINC_EMBED_STABLE_S:-600}" ]; then
+        attempt=0
+      fi
       attempt=$((attempt + 1))
       case "$rc" in
         0) why="종료코드 0(루프가 스스로 끝났다 — 상주 모드에서는 비정상)" ;;
