@@ -379,6 +379,13 @@ class ListSpacesShapeTests(unittest.TestCase):
         self.assertEqual(rows, [{"id": TEAM, "name": "Acme", "role": "editor"},
                                 {"id": OTHER, "name": "", "role": "viewer"}])
 
+    def test_팀_등급은_계정이_실었을_때만_정규화해_담는다(self):
+        rows = self._with_account({"spaces": [
+            {"id": TEAM, "name": "Acme", "role": "editor", "plan": "team"},
+            {"id": OTHER, "name": "B", "role": "viewer"}]})
+        self.assertEqual(rows, [{"id": TEAM, "name": "Acme", "role": "editor", "plan": "genius"},
+                                {"id": OTHER, "name": "B", "role": "viewer"}])
+
     def test_빈_목록과_못_물었다를_가른다(self):
         """뭉개면 호출자가 "팀이 없다"로 읽고 사람에게 그렇게 말한다."""
         self.assertEqual(self._with_account({"spaces": []}), [])

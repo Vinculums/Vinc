@@ -53,7 +53,8 @@ REQUIRED: dict[str, str] = {
 
 # 있어야 정책이 맞는 것들(없어도 기동은 한다) — 경고만.
 EXPECTED: dict[str, str] = {
-    "VINC_QUOTA": "on 이 아니면 툴 호출 무제한. 사이트는 Free 2,000 · Team 6,000 으로 안내 중",
+    "VINC_QUOTA": "on 이 아니면 툴 호출 무제한. Curious 는 스페이스당 하루 한도, Genius 는 세지 않음",
+    "VINC_BURST_PER_MINUTE": "스페이스당 분당 툴 호출 상한(모든 플랜 같음). 없으면 코드 기본 60",
     "VINC_OPENAI_APPS_CHALLENGE": "ChatGPT 디렉터리 도메인 검증 토큰. 없으면 "
                                  "/.well-known/openai-apps-challenge 가 404",
 }
@@ -62,7 +63,10 @@ EXPECTED: dict[str, str] = {
 RETIRED: dict[str, str] = {
     "VINC_FREE_MAX_DOMAINS": "무료 주제 상한은 2026-09-19 에 폐지됐다. 값이 남아 있어도 "
                              "코드가 안 읽으니 지울 것(api/cli.py 가 None 고정)",
-    "VINC_PRO_DAILY_LIMIT": "Pro 등급 폐지. 지금 키는 VINC_TEAM_DAILY_LIMIT(기본 6000)",
+    "VINC_PRO_DAILY_LIMIT": "Pro 등급 폐지. 남은 하루 한도 키는 VINC_FREE_DAILY_LIMIT 하나다",
+    "VINC_TEAM_DAILY_LIMIT": "Team 은 Genius 로 바뀌었고 Genius 는 세지 않는다. 코드가 안 읽는다",
+    "VINC_QUOTA_WINDOW_HOURS": "하루 창은 00:00 UTC 고정 리셋이다. 코드가 안 읽는다",
+    "VINC_QUOTA_LOCK_HOURS": "한도 뒤 잠금은 없앴다. 코드가 안 읽는다",
 }
 
 # 값까지 보는 항목(2026-08-03). 위 규율("존재만 본다")의 의도적 예외다 — 이건

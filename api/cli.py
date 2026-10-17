@@ -1083,19 +1083,21 @@ def _serve_http_kwargs(args) -> dict:
     cw = community.write if entitlement.enabled() else None
     cr = community.read if entitlement.enabled() else None
     # 티어 쿼터(B-D2) — 인증된 회원(owner) 의 tools/call 만 소비. 미설정 시
-    # 무제한(로컬·파일럿 프로파일 무영향). free 초과 → LOCK_HOURS 잠금.
+    # 무제한(로컬·파일럿 프로파일 무영향).
     quota_cfg = None
     if os.environ.get("VINC_QUOTA") == "on":
         quota_cfg = {
-            # 등급이 Free·Team 둘뿐이 되면서(2026-09-19) 차별축이 다시
-            # **호출 횟수**로 돌아왔다: Free 2,000 · Team 6,000. 주제 개수는
-            # 더 이상 축이 아니다(아래 주석 참조). 기본값을 정책값으로 둬야
-            # env 를 빠뜨렸을 때 구 정책이 조용히 살아나지 않는다.
-            # 근거: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
+            # Curious(free) 만 센다: 스페이스당 하루 이만큼, 00:00 UTC 리셋, 잠금 없음.
+            # Genius 는 세지 않는다. 창 길이와 잠금은 정책이라 env 로 열지 않는다.
+            # ⚠ 기본값 2000 은 이행 중의 값이다. 비준된 값은 300 이고, 사용자 공지
+            # 시행일에 이 기본값을 바꾼다(공지 전에 한도를 내리지 않는다).
+            # 근거: [[vinc.canon.account-policy §8]]
             "free_limit": int(os.environ.get("VINC_FREE_DAILY_LIMIT", "2000")),
-            "team_limit": int(os.environ.get("VINC_TEAM_DAILY_LIMIT", "6000")),
-            "window_s": float(os.environ.get("VINC_QUOTA_WINDOW_HOURS", "24")) * 3600,
-            "lock_s": float(os.environ.get("VINC_QUOTA_LOCK_HOURS", "12")) * 3600,
+            # 스페이스당 분당 상한. 모든 플랜에 같고(유료가 더 빠르다고 하지 않는다)
+            # 0 이면 끈다. 값은 hub-deploy 가 리포 변수 VINC_BURST_PER_MINUTE 에서
+            # 싣고, 비어 있으면 60 이다.
+            # 근거: [[vinc.plan.plans-and-limits-redesign-2026-10-17 §2.5]]
+            "burst_per_minute": int(os.environ.get("VINC_BURST_PER_MINUTE", "60")),
             # 면제 owner(쉼표 구분, `user:<public_id>`): 도그푸딩 계정처럼 그래프를
             # 대량으로 재는 계정이 하루 한도에 스스로 막히지 않게 한다. 면제는
             # quota_check 를 통째로 건너뛰므로 이미 걸린 잠금도 보지 않는다.
@@ -1104,13 +1106,12 @@ def _serve_http_kwargs(args) -> dict:
                 o.strip() for o in
                 os.environ.get("VINC_QUOTA_EXEMPT_OWNERS", "").split(",") if o.strip()),
         }
-    # 무료 등급 주제 상한은 **없다**(2026-09-19). Pro 를 없애면서 개인이
-    # 주제를 더 쓸 길이 사라졌으므로 상한을 함께 걷었다 — 유일한 개인 유료
-    # 등급이 없는데 개인을 5개에 가두면 올라갈 자리가 없다.
+    # 무료 등급 주제 상한은 **없다**. Curious 의 경계는 하루 호출 수와 스페이스
+    # 수이지 주제 수가 아니다.
     # `free_max_domains` 배선과 `api/fragment.py` 의 `max_domains` 가드는
     # 남겨 둔다(일반 장치이고 기본 None = 무제한이다). 정책이 여기서 끝난다:
     # env 로 되살릴 수 없고, 되살리려면 이 줄을 고쳐야 한다.
-    # 근거: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
+    # 근거: [[decision:the-plans-are-curious-genius-and-enterprise-2026-10-17]]
     free_cap = None
     # 회원 승인 흐름(B-B3) — 우리 서명키 + 계정 공개키 핀 + 공홈 동의 URL.
     # 셋 다 있어야 활성(없으면 관리 키 경로만). 공개키만 교환 → B2 준수.

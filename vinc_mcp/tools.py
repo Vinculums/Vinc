@@ -1672,6 +1672,11 @@ TOOLS: list[dict] = [
                        "reader or operator metadata), and communities_source tells an empty list "
                        "from an unavailable one. Any signed-in account can read a public community "
                        "by its id without joining; joining grants no write or import rights. "
+                       "On the hosted service `quota` (and each entry of `spaces`) gives that "
+                       "space's daily tool-call allowance, shared by everyone working in it: "
+                       "{metered: true, plan, limit, used, remaining, resets_at} with resets_at "
+                       "in UTC, plus `warning` and `upgrade_url` once 80% is used; a space that "
+                       "is not metered says {metered: false}. "
                        "Read-only; it never reads the graph, and the lists come from the account.",
         "inputSchema": {"type": "object", "properties": {
             "owner": {"type": "string"},

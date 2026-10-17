@@ -96,6 +96,22 @@ def test_quota_resets_after_window(store):
     assert r["allowed"] and r["count"] == 1
 
 
+def test_quota_aligned_day_resets_at_utc_midnight_without_a_lock(store):
+    """Curious 의 하루 창: 00:00 UTC 경계에서 시작하고, 한도 뒤에는 잠그지 않고 그날
+    끝까지만 거부한다. 23:00 에 처음 쓴 사람도 한 시간 뒤 자정에 다시 열린다."""
+    day = 86400 * 20_000                       # 어느 날의 00:00 UTC
+    o, kw = "user:u1", dict(limit=2, window_s=86400, lock_s=0, aligned=True)
+    for _ in range(2):
+        assert store.quota_check(o, now=day + 23 * 3600, **kw)["allowed"]
+    r = store.quota_check(o, now=day + 23 * 3600, **kw)
+    assert not r["allowed"] and r["reason"] == "exceeded"
+    assert r["retry_after_s"] == 3600 and r["locked_until"] is None
+    assert r["resets_at"] == day + 86400
+    assert store.usage_rows()[0]["locked_until"] == 0     # 잠금을 기록하지 않는다
+    r = store.quota_check(o, now=day + 86400 + 1, **kw)   # 다음 날 00:00:01
+    assert r["allowed"] and r["count"] == 1
+
+
 def test_purge_expired(store):
     store.add_code("c", "c1", "u", "ch", None, None, exp=100)
     # `now=50` 은 픽스처가 아니라 계약이다: add_token 이 발급 **전에** 만료 행을

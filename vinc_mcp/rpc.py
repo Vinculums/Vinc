@@ -89,7 +89,7 @@ class Dispatcher:
     # plan: 소유자 티어(B-D2 쿼터에서 사용) — 로컬 stdio 는 둘 다 None.
     # entitlements: 등급에서 해석된 숫자(주제 상한 등) — 사이드카로 그대로 실린다.
     def handle(self, msg: dict, forced_owner: str | None = None,
-               plan: str | None = None, quota=None,
+               plan: str | None = None, quota=None, quota_view=None,
                entitlements: dict | None = None, community_write=None, community_read=None) -> dict | None:
         method = msg.get("method")
         msg_id = msg.get("id")
@@ -102,7 +102,8 @@ class Dispatcher:
             return None
         try:
             result = self._dispatch(method, params, forced_owner=forced_owner,
-                                    plan=plan, quota=quota, entitlements=entitlements,
+                                    plan=plan, quota=quota, quota_view=quota_view,
+                                    entitlements=entitlements,
                                     community_write=community_write, community_read=community_read)
         except _MethodNotFound:
             return error_reply(msg_id, -32601, f"method not found: {method}")
@@ -120,7 +121,7 @@ class Dispatcher:
         return {"jsonrpc": "2.0", "id": msg_id, "result": result}
 
     def _dispatch(self, method: str, params: dict, *, forced_owner: str | None = None,
-                  plan: str | None = None, quota=None,
+                  plan: str | None = None, quota=None, quota_view=None,
                   entitlements: dict | None = None, community_write=None, community_read=None) -> dict:
         if method == "initialize":
             want = params.get("protocolVersion")
@@ -174,7 +175,7 @@ class Dispatcher:
             # 근거: [[decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24]]
             outcome = toolcall.execute(name, args, self.bridge,
                                        forced_owner=forced_owner, plan=plan, quota=quota,
-                                       entitlements=entitlements,
+                                       quota_view=quota_view, entitlements=entitlements,
                                        hub=self.hub, community_write=community_write, community_read=community_read)
             if outcome.kind == "protocol_error":
                 raise outcome.error

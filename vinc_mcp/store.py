@@ -421,14 +421,17 @@ class Store:
         age = (time.time() if now is None else now) - float(row["updated_at"])
         return row["plan"], max(0.0, age)
 
-    # ── 쿼터(owner 단위 롤링 창 + 초과 잠금) ───────────────────────────────────
+    # ── 쿼터(owner 단위 창 + 선택적 초과 잠금) ─────────────────────────────────
     def quota_check(self, owner: str, *, limit: int, window_s: float, lock_s: float,
-                    now: float | None = None) -> dict:
+                    aligned: bool = False, now: float | None = None) -> dict:
         """1회 소비를 시도한다. 허용되면 소비를 기록하고 allowed:True.
 
         - 잠금 중(now < locked_until): 소비 없이 거부.
         - 창 만료 또는 직전 잠금 해제: 카운터 리셋 후 새 창.
-        - 소비 후 한도 도달분의 **다음** 호출에서 잠금(now+lock_s)·거부.
+        - 소비 후 한도 도달분의 **다음** 호출에서 거부. `lock_s > 0` 이면 그 호출부터
+          now+lock_s 까지 잠그고, `lock_s == 0` 이면 잠그지 않고 창이 끝날 때까지 거부한다.
+        - `aligned=True` 면 창이 epoch 기준 `window_s` 경계에서 시작한다. 24시간이면
+          매일 00:00 UTC 에 리셋된다(Unix 시간에는 윤초가 없어 경계가 어긋나지 않는다).
         로컬 stdio(owner 없음)엔 호출되지 않는다 — 호출자가 remote 만 태운다.
         """
         t = time.time() if now is None else now
@@ -448,7 +451,14 @@ class Store:
             window_expired = (t - window_start) >= window_s
             lock_expired = bool(locked_until) and t >= locked_until
             if window_expired or lock_expired:
-                count, window_start, locked_until = 0, t, 0.0
+                start = math.floor(t / window_s) * window_s if aligned else t
+                count, window_start, locked_until = 0, start, 0.0
+
+            if count >= limit and lock_s <= 0:  # 잠금 없이 창 끝까지 거부(기록할 것 없음)
+                return {"allowed": False, "reason": "exceeded", "limit": limit,
+                        "count": count,
+                        "retry_after_s": int(math.ceil(window_start + window_s - t)),
+                        "locked_until": None, "resets_at": window_start + window_s}
 
             if count >= limit:  # 창 내 한도 소진 → 이번 호출에서 잠금
                 locked_until = t + lock_s
@@ -466,14 +476,16 @@ class Store:
                 "VALUES(?,?,?,?)", (owner, count, window_start, locked_until))
             self._db.commit()
             return {"allowed": True, "limit": limit, "count": count,
-                    "remaining": max(0, limit - count)}
+                    "remaining": max(0, limit - count), "resets_at": window_start + window_s}
 
     def quota_snapshot(self, owner: str, *, limit: int, window_s: float,
-                       now: float | None = None) -> dict:
+                       aligned: bool = False, now: float | None = None) -> dict:
         """소비·리셋·잠금 생성 없이 한 카운터만 읽는다. 신원과 면제는 호출자가 판정한다.
 
         만료된 창·풀린 잠금은 다음 quota_check의 리셋을 미리 읽되 저장하지 않는다.
-        활성 잠금은 창 만료·상한 변경보다 먼저다. 공개 whoami에는 아직 연결하지 않는다.
+        활성 잠금은 창 만료·상한 변경보다 먼저다. `resets_at` 은 카운터가 0 으로 돌아가는
+        시각이다: 잠금이면 잠금 끝, 창이 살아 있으면 창 끝, 창이 없으면 `aligned` 일 때만
+        다음 경계(아니면 다음 호출이 창을 열므로 None).
         """
         t = time.time() if now is None else now
         with self._lock:
@@ -487,8 +499,15 @@ class Store:
         expired = not row or (t - start) >= window_s or (bool(until) and t >= until)
         if expired and not locked:
             count, start, until = 0, None, None
+        if locked:
+            resets_at = until
+        elif start is not None:
+            resets_at = start + window_s
+        else:
+            resets_at = (math.floor(t / window_s) + 1) * window_s if aligned else None
         return {"count": count, "remaining": 0 if locked else max(0, limit - count),
-                "window_start": start, "locked_until": until if locked else None}
+                "window_start": start, "locked_until": until if locked else None,
+                "resets_at": resets_at}
 
     def usage_rows(self) -> list[dict]:
         """usage 표 전량을 **읽기만** 한다 — 운영자 사용량 덤프(`/internal/usage`)의 호출 수.

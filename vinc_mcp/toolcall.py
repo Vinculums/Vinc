@@ -63,9 +63,31 @@ def preflight(name: str, args: dict, *, base_auth: dict,
     return Outcome("ok", auth=auth)
 
 
+def _whoami_quota(result: dict, owner: str | None, plan: str | None,
+                  view: Callable[[str, str | None], dict | None]) -> dict:
+    """`vinc_whoami`(`/v1/me`)에 스페이스마다 남은 호출 수를 싣는다. 세는 단위는 그래프
+    owner 다: 개인은 이 연결의 등급, 팀은 계정이 실어 준 그 팀의 등급(없으면 허브가 정한
+    기본). 커뮤니티 주소는 멤버 개인 한도를 쓰므로 그 owner 로는 싣지 않는다."""
+    if not owner or community.is_space(owner):
+        return result
+    out = dict(result)
+    here = view(owner, plan)
+    if here is not None:
+        out["quota"] = here
+    if isinstance(out.get("spaces"), list):
+        rows = []
+        for row in out["spaces"]:
+            q = (here if row.get("id") == "personal"
+                 else view("team:" + str(row.get("id")), row.get("plan")))
+            rows.append({**row, "quota": q} if q is not None else row)
+        out["spaces"] = rows
+    return out
+
+
 def execute(name: str, args: dict | None, bridge: Any, *,
             forced_owner: str | None = None, plan: str | None = None,
             quota: Callable[[str, str | None], dict | None] | None = None,
+            quota_view: Callable[[str, str | None], dict | None] | None = None,
             entitlements: dict | None = None, hub: bool = False,
             community_write=None, community_read=None) -> Outcome:
     """인자 검증은 한도 소비보다 앞선다. 실행 결과 봉투는 호출 표면이 만든다."""
@@ -89,4 +111,6 @@ def execute(name: str, args: dict | None, bridge: Any, *,
     except Exception as exc:  # noqa: BLE001 — MCP의 도구 오류 봉투로 내린다.
         return Outcome("error", result={"content": [{"type": "text",
                 "text": f"{type(exc).__name__}: {exc}"}], "isError": True}, error=exc)
+    if name == "vinc_whoami" and quota_view is not None and isinstance(result, dict):
+        result = _whoami_quota(result, forced_owner, plan, quota_view)
     return Outcome("ok", result=result)
