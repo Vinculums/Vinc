@@ -858,12 +858,15 @@ class EmbeddedE2E(unittest.TestCase):
                         return text[i + 1:j]
             return None
 
-        by_name = {t["name"]: t for t in _tool_specs()}
+        # 반환 형식은 내보내는 요약이 아니라 참조문(전체 계약)이 말한다.
+        from vinc_mcp.tools import HOST_TOOLS, TOOLS
+        by_name = {t["name"]: t for t in TOOLS + HOST_TOOLS}
+        assert set(calls) <= {t["name"] for t in _tool_specs()}
         try:
             for name, call in calls.items():
-                desc = by_name[name]["description"]
+                desc = by_name[name]["reference"]
                 block = _returns_block(desc)
-                self.assertIsNotNone(block, f"{name}: 설명에 Returns 절이 없다")
+                self.assertIsNotNone(block, f"{name}: 참조문에 Returns 절이 없다")
                 # 중첩 {...} 를 걷어내고 남은 top-level 키 이름만 취한다.
                 flat = block
                 while "{" in flat:
