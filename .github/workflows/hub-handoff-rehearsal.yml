@@ -258,8 +258,9 @@ jobs:
           for m in writer released; do
             az storage file download --share-name "$SHARE" --path "db.$m" --dest "$RUNNER_TEMP/db.$m" --output none
           done
-          w=$(tr -d '[:space:]' < "$RUNNER_TEMP/db.writer")
-          r=$(tr -d '[:space:]' < "$RUNNER_TEMP/db.released")
+          # 표식 값은 `<리비전>@<레플리카>` 다. 대조는 리비전만 본다.
+          w=$(tr -d '[:space:]' < "$RUNNER_TEMP/db.writer"); w=${w%%@*}
+          r=$(tr -d '[:space:]' < "$RUNNER_TEMP/db.released"); r=${r%%@*}
           echo "writer=$w released=$r (expected writer=$latest released=$prev)"
           [ "$w" = "$latest" ] && [ "$r" = "$prev" ]
 

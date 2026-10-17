@@ -708,8 +708,9 @@ jobs:
               --path "$rel.$m" --dest "$RUNNER_TEMP/handoff.$m" --output none 2>/dev/null \
               || : > "$RUNNER_TEMP/handoff.$m"
           done
-          w=$(tr -d '[:space:]' < "$RUNNER_TEMP/handoff.writer")
-          r=$(tr -d '[:space:]' < "$RUNNER_TEMP/handoff.released")
+          # 표식 값은 `<리비전>@<레플리카>` 다. 대조는 리비전만 본다.
+          w=$(tr -d '[:space:]' < "$RUNNER_TEMP/handoff.writer"); w=${w%%@*}
+          r=$(tr -d '[:space:]' < "$RUNNER_TEMP/handoff.released"); r=${r%%@*}
           echo "writer=$w released=$r (expected writer=$LATEST_REV released=$PREV_REV)"
           [ "$w" = "$LATEST_REV" ] || { echo "::error::writer 가 새 리비전이 아니다" >&2; exit 1; }
           [ "$r" = "$PREV_REV" ] || {
