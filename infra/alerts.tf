@@ -22,7 +22,12 @@
 locals {
   insights_id     = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.Insights/components/vinc-uptime"
   action_group_id = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/microsoft.insights/actionGroups/vinc-alerts"
-  probe_locations = ["apac-jp-kaw-edge", "apac-sg-sin-azr", "us-ca-sjc-azr"]
+  # 기능 프로브는 한 지역·15분이다(2026-10-17). 세 지역·5분이던 다섯 개가 하루 1,440회·월 약 4만 원으로
+  # Azure Monitor 청구의 대부분이었고, 09-16 에 손으로 줄인 실제 상태가 이 선언과 어긋나 있었다. 경보는
+  # 15분 창의 가용률 평균이 100 미만이면 울리므로 한 지역의 실패 한 번으로도 울린다.
+  # 근거: [[vinc.plan.infra-cost-and-capacity-2026-10-17]]
+  probe_locations = ["apac-jp-kaw-edge"]
+  probe_every_s   = 900
 }
 
 # ── 1. OAuth discovery — 2026-07-30 형 사고 ─────────────────────────────────
@@ -38,7 +43,7 @@ resource "azurerm_application_insights_standard_web_test" "oauth_discovery" {
   location                = "koreacentral"
   application_insights_id = local.insights_id
   geo_locations           = local.probe_locations
-  frequency               = 300
+  frequency               = local.probe_every_s
   timeout                 = 30
   enabled                 = true
   retry_enabled           = true
@@ -86,7 +91,7 @@ resource "azurerm_application_insights_standard_web_test" "internal_path_reaches
   location                = "koreacentral"
   application_insights_id = local.insights_id
   geo_locations           = local.probe_locations
-  frequency               = 300
+  frequency               = local.probe_every_s
   timeout                 = 30
   enabled                 = true
   retry_enabled           = true
@@ -152,7 +157,7 @@ resource "azurerm_application_insights_standard_web_test" "hub_internal_path_rea
   location                = "koreacentral"
   application_insights_id = local.insights_id
   geo_locations           = local.probe_locations
-  frequency               = 300
+  frequency               = local.probe_every_s
   timeout                 = 30
   enabled                 = true
   retry_enabled           = true
@@ -200,7 +205,7 @@ resource "azurerm_application_insights_standard_web_test" "account_health" {
   location                = "koreacentral"
   application_insights_id = local.insights_id
   geo_locations           = local.probe_locations
-  frequency               = 300
+  frequency               = local.probe_every_s
   timeout                 = 30
   enabled                 = true
   retry_enabled           = true

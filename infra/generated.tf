@@ -50,7 +50,7 @@ resource "azurerm_mysql_flexible_server" "vinc_mysql01" {
   zone                              = jsonencode(3)
   storage {
     auto_grow_enabled   = true
-    io_scaling_enabled  = true
+    io_scaling_enabled  = false # 쓰는 IOPS 가 기본 360 의 4% 미만인데 Paid IO 가 매일 약 730원이었다(2026-10-17)
     iops                = 360
     log_on_disk_enabled = false
     size_gb             = 20
@@ -128,7 +128,7 @@ resource "azurerm_application_insights_standard_web_test" "vinc_hub_health" {
   description             = null
   enabled                 = true
   frequency               = 300
-  geo_locations           = ["apac-jp-kaw-edge", "apac-sg-sin-azr", "us-ca-sjc-azr"]
+  geo_locations           = ["apac-jp-kaw-edge", "apac-sg-sin-azr"] # 허브 헬스만 두 지역·5분(2026-10-17)
   location                = "koreacentral"
   name                    = "vinc-hub-health"
   resource_group_name     = "vincsRG"
