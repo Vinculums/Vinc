@@ -8,10 +8,13 @@ wrappers are explicit calls.
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import logging
 import os
+import random
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Iterable
@@ -38,6 +41,15 @@ _LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
 #: 브리프가 한 노드로 못 좁힌 두 경우. 자연어 질문은 동점(choose)이 흔하다(라이브 실측).
 _WIDEN = ("none", "choose")
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+#: 일시 오류를 다시 보내는 기본 상한(초). 허브 배포 중 요청을 붙잡는 상한과 같다.
+DEFAULT_RETRY_FOR_S = 90.0
+_TRANSIENT_STATUS = frozenset({502, 503, 504})
+#: 본문이 질의일 뿐인 POST. 다시 보내도 그래프가 바뀌지 않는다.
+_READ_POSTS = frozenset({"/v1/brief", "/v1/search", "/v1/edges/query"})
+_jitter = random.random
+_clock = time.monotonic
+_sleep = time.sleep
+_asleep = asyncio.sleep
 
 
 def resolve_key(api_key: str | None) -> str:
@@ -84,6 +96,21 @@ class _Call:
     params: dict[str, Any] = field(default_factory=dict)
     body: dict[str, Any] | None = None
     space: str | None = None
+
+
+def _replayable(call: _Call) -> bool:
+    """다시 보내도 결과가 한 번 보낸 것과 같은가.
+
+    읽기(GET·질의 POST·역할 출력 검사)와 미리보기(dry_run)는 늘 그렇다. 쓰기는
+    ``operation_id`` 가 있을 때만이다: 서버가 같은 작업을 한 번만 적용한다."""
+    if call.method == "GET" or call.path in _READ_POSTS:
+        return True
+    if call.method == "POST" and call.path.startswith("/v1/roles/") and call.path.endswith("/check"):
+        return True
+    body = call.body or {}
+    if body.get("dry_run") or call.params.get("dry_run"):
+        return True
+    return bool(body.get("operation_id") or call.params.get("operation_id"))
 
 
 def _retry_after(response: httpx.Response, details: dict[str, Any]) -> float | None:
@@ -134,7 +161,8 @@ def _raise_if_partial(result: dict[str, Any]) -> dict[str, Any]:
 class _Base:
     def __init__(self, api_key: str | None = None, *, base_url: str | None = None,
                  space: str | None = None, timeout: float = 30.0,
-                 prefetch_concurrency: int = PREFETCH_READ_CONCURRENCY) -> None:
+                 prefetch_concurrency: int = PREFETCH_READ_CONCURRENCY,
+                 retry_for: float = DEFAULT_RETRY_FOR_S) -> None:
         if (isinstance(prefetch_concurrency, bool) or not isinstance(prefetch_concurrency, int)
                 or not 1 <= prefetch_concurrency <= PREFETCH_READ_CONCURRENCY):
             raise VincInvalidArgument("invalid_argument", "prefetch_concurrency must be an integer from 1 to 8.")
@@ -143,6 +171,9 @@ class _Base:
         self.base_url = resolve_base_url(base_url)
         self.space = normalize_space(space)
         self.timeout = timeout
+        if isinstance(retry_for, bool) or not isinstance(retry_for, (int, float)) or retry_for < 0:
+            raise VincInvalidArgument("invalid_argument", "retry_for must be a number of seconds, 0 or more.")
+        self.retry_for = float(retry_for)
 
     @property
     def prefetch_concurrency(self) -> int:
@@ -176,6 +207,34 @@ class _Base:
         if call.body is not None:
             args["json"] = call.body
         return args
+
+    def _retry_delay(self, call: _Call, exc: VincError, attempt: int, elapsed: float) -> float | None:
+        """다시 보내기 전에 기다릴 초, 또는 None(오류를 그대로 올린다).
+
+        일시 오류만 다시 보낸다: 502·503·504, 연결 실패, 시간 초과. 서버가
+        ``retryable: false`` 라고 한 것, 할당량, 인증, 그 밖의 응답은 다시 보내도 같다.
+        ``Retry-After`` 가 있으면 그것을 따르고, 없으면 지수 백오프(최대 8초)에 흔들림을
+        섞는다. 첫 시도부터 ``retry_for`` 초를 넘기게 되면 멈춘다."""
+        if self.retry_for <= 0 or not isinstance(exc, VincUnavailable) or not _replayable(call):
+            return None
+        if exc.status is not None and exc.status not in _TRANSIENT_STATUS:
+            return None
+        if exc.details.get("retryable") is False:
+            return None
+        backoff = min(8.0, 0.5 * 2 ** (attempt - 1)) * (0.5 + _jitter() / 2)
+        delay = exc.retry_after if exc.retry_after is not None else backoff
+        return delay if elapsed + delay <= self.retry_for else None
+
+    def without_retries(self):
+        """The same client (same connection, key and space) with transient retries turned off.
+
+        For code that runs inside a model turn, where waiting for the hub would hold up the
+        conversation: ``get_context``, ``prefetch`` and the framework adapters' tools use it.
+        Close the original, not this view; they share one connection.
+        """
+        view = copy.copy(self)
+        view.retry_for = 0.0
+        return view
 
     def _require_write_key(self) -> None:
         if self.read_only:
@@ -283,9 +342,10 @@ class VincClient(_Base):
     def __init__(self, api_key: str | None = None, *, base_url: str | None = None,
                  space: str | None = None, timeout: float = 30.0,
                  transport: httpx.BaseTransport | None = None,
-                 prefetch_concurrency: int = PREFETCH_READ_CONCURRENCY) -> None:
+                 prefetch_concurrency: int = PREFETCH_READ_CONCURRENCY,
+                 retry_for: float = DEFAULT_RETRY_FOR_S) -> None:
         super().__init__(api_key, base_url=base_url, space=space, timeout=timeout,
-                         prefetch_concurrency=prefetch_concurrency)
+                         prefetch_concurrency=prefetch_concurrency, retry_for=retry_for)
         self._http = httpx.Client(base_url=self.base_url, headers=self._headers(),
                                   timeout=timeout, follow_redirects=False, transport=transport)
 
@@ -299,6 +359,20 @@ class VincClient(_Base):
         self._http.close()
 
     def _send(self, call: _Call) -> dict[str, Any]:
+        started, attempt = _clock(), 0
+        while True:
+            attempt += 1
+            try:
+                return self._send_once(call)
+            except VincError as exc:
+                delay = self._retry_delay(call, exc, attempt, _clock() - started)
+                if delay is None:
+                    raise
+                log.info("vinc %s %s was transient (%s); retry %d in %.1fs",
+                         call.method, call.path, exc.code, attempt, delay)
+                _sleep(delay)
+
+    def _send_once(self, call: _Call) -> dict[str, Any]:
         try:
             response = self._http.request(**self._request_args(call))
         except httpx.TimeoutException as exc:
@@ -366,7 +440,13 @@ class VincClient(_Base):
         Large roles require an explicit max_chars above the 24000 character default.
         Each verified document gets one same-space mirror lookup in its existing worker.
         Missing mirrors preserve the full document with no citable id; other errors raise.
+        Transient errors are not retried here (unlike the plain calls): this runs before
+        every model call, so a hub that is briefly unavailable raises at once.
         """
+        return self.without_retries()._prefetch(role_id, task, space=space, max_chars=max_chars)
+
+    def _prefetch(self, role_id: str, task: str, *, space: str | None = None,
+                  max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
         limit = self.prefetch_concurrency
         early = limit > 1
         with ThreadPoolExecutor(max_workers=limit, thread_name_prefix="vinc-prefetch") as pool:
@@ -495,15 +575,17 @@ class VincClient(_Base):
 
         One call per turn, two with ``search_fallback`` when the brief found
         nothing or several nodes tied (a natural question often ties). When Vinc is unavailable or the quota is spent this logs a
-        warning and returns ``None``: the caller's model call goes on without it.
+        warning and returns ``None``: the caller's model call goes on without it. It does not
+        retry transient errors, so a turn is never held up waiting for the hub.
         A key or space problem still raises, because it will not fix itself.
         """
         text = (query or "").strip()
         if len(text) < min_query_chars:
             return None
         try:
-            brief = self.brief(text, max_excerpts=max_excerpts, space=space)
-            search = (self.search(text, limit=5, space=space)
+            fast = self.without_retries()
+            brief = fast.brief(text, max_excerpts=max_excerpts, space=space)
+            search = (fast.search(text, limit=5, space=space)
                       if search_fallback and brief.get("status") in _WIDEN else None)
             return format_context(brief, search, max_chars=max_chars)
         except (VincUnavailable, VincQuotaExceeded) as exc:
@@ -580,9 +662,10 @@ class AsyncVincClient(_Base):
     def __init__(self, api_key: str | None = None, *, base_url: str | None = None,
                  space: str | None = None, timeout: float = 30.0,
                  transport: httpx.AsyncBaseTransport | None = None,
-                 prefetch_concurrency: int = PREFETCH_READ_CONCURRENCY) -> None:
+                 prefetch_concurrency: int = PREFETCH_READ_CONCURRENCY,
+                 retry_for: float = DEFAULT_RETRY_FOR_S) -> None:
         super().__init__(api_key, base_url=base_url, space=space, timeout=timeout,
-                         prefetch_concurrency=prefetch_concurrency)
+                         prefetch_concurrency=prefetch_concurrency, retry_for=retry_for)
         self._http = httpx.AsyncClient(base_url=self.base_url, headers=self._headers(),
                                        timeout=timeout, follow_redirects=False,
                                        transport=transport)
@@ -597,6 +680,20 @@ class AsyncVincClient(_Base):
         await self._http.aclose()
 
     async def _send(self, call: _Call) -> dict[str, Any]:
+        started, attempt = _clock(), 0
+        while True:
+            attempt += 1
+            try:
+                return await self._send_once(call)
+            except VincError as exc:
+                delay = self._retry_delay(call, exc, attempt, _clock() - started)
+                if delay is None:
+                    raise
+                log.info("vinc %s %s was transient (%s); retry %d in %.1fs",
+                         call.method, call.path, exc.code, attempt, delay)
+                await _asleep(delay)
+
+    async def _send_once(self, call: _Call) -> dict[str, Any]:
         try:
             response = await self._http.request(**self._request_args(call))
         except httpx.TimeoutException as exc:
@@ -643,6 +740,10 @@ class AsyncVincClient(_Base):
     async def prefetch(self, role_id: str, task: str, *, space: str | None = None,
                        max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
         """Async fresh role/spec/task evidence retrieval before the model runs."""
+        return await self.without_retries()._prefetch(role_id, task, space=space, max_chars=max_chars)
+
+    async def _prefetch(self, role_id: str, task: str, *, space: str | None = None,
+                        max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
         limit = self.prefetch_concurrency
         early = limit > 1
         gate = asyncio.Semaphore(limit)
@@ -758,8 +859,9 @@ class AsyncVincClient(_Base):
         if len(text) < min_query_chars:
             return None
         try:
-            brief = await self.brief(text, max_excerpts=max_excerpts, space=space)
-            search = (await self.search(text, limit=5, space=space)
+            fast = self.without_retries()
+            brief = await fast.brief(text, max_excerpts=max_excerpts, space=space)
+            search = (await fast.search(text, limit=5, space=space)
                       if search_fallback and brief.get("status") in _WIDEN else None)
             return format_context(brief, search, max_chars=max_chars)
         except (VincUnavailable, VincQuotaExceeded) as exc:

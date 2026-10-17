@@ -38,6 +38,8 @@ def create_vinc_tools(client: AsyncVincClient, *, max_chars: int = DEFAULT_MAX_C
     of failing the run. With ``cap`` the two tools share its call budget; the
     provider passes its own and resets it at every run.
     """
+    # 도구는 모델 턴 안에서 돈다. 허브를 기다리지 않고 곧장 문장으로 물러선다.
+    client = client.without_retries()
     # 없는 id(코드 not_found)는 프레임워크 기본 오류("Error: Function failed.") 대신 이유를 담은
     # 문장으로 돌린다. space_not_found 같은 설정 오류는 그대로 올린다. LangGraph 쪽과 같은 문장이다.
     # 근거: [[record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07]]

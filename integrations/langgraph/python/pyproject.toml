@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vinc-langgraph"
-version = "0.1.5"
+version = "0.1.6"
 description = "Vinc for LangGraph and LangChain agents: bring decisions and records from your knowledge graph into graph nodes and model calls, and record an episode only when you choose to."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,7 +17,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Typing :: Typed",
 ]
-dependencies = ["vinc-client>=0.1.9,<0.2", "langgraph>=1.0", "langchain-core>=1.0"]
+dependencies = ["vinc-client>=0.1.10,<0.2", "langgraph>=1.0", "langchain-core>=1.0"]
 
 [project.optional-dependencies]
 agents = ["langchain>=1.0"]

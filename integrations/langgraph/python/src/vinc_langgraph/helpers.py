@@ -111,6 +111,9 @@ def create_vinc_tools(client: VincClient | None = None,
     """
     if client is None and async_client is None:
         raise ValueError("pass a VincClient, an AsyncVincClient, or both")
+    # 도구는 모델 턴 안에서 돈다. 허브를 기다리지 않고 곧장 문장으로 물러선다.
+    client = client.without_retries() if client is not None else None
+    async_client = async_client.without_retries() if async_client is not None else None
 
     def brief(query: str, mode: str | None = None, historical: bool | None = None,
                      as_of: str | None = None, known_at: str | None = None) -> str:

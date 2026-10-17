@@ -209,6 +209,7 @@ Model citation quality must be evaluated separately.
 
 | Version | Change |
 |---|---|
+| 0.1.6 | `vinc_brief` and `vinc_search` answer with the unavailable sentence at once instead of waiting through the client's transient retries. Requires vinc-client 0.1.10. |
 | 0.1.5 | The write helpers take `create_only` and `operation_id`. Requires vinc-client 0.1.9; its version notes list `operation_status`, `edges`, `role_check` and the delete and merge previews. |
 | 0.1.4 | The read tools take `mode`, `as_of` and `known_at`. |
 | 0.1.3 | Vinc tool calls are capped at 4 per run, and both packages send the same tool schema. |
