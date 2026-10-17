@@ -398,3 +398,18 @@ def test_b3_b6_a_store_before_document_validity_keeps_mirrors_and_rows(st, monke
     assert [r["doc_id"] for r in res["rows"]] == [doc], res
     assert res["partial"]
     assert retrieval._mirror_validity(st, ["concept:doc." + doc], owner=who) == {}
+
+
+def test_b3_near_nodes_hint_skips_a_retired_mirror(st):
+    # VIN-614: 놓친 id 의 "혹시 이것" 힌트도 검색과 같이 은퇴한 문서의 미러를 뺀다.
+    who, n = owner(), next(CASES)
+    retired, live = f"vin614.retired.{n}", f"vin614.live.{n}"
+    docstore.put_doc(st, owner=who, doc_id=retired, title="Retired turbine spec",
+                     text="Retired turbine spec body text.", valid_from="2000",
+                     valid_until="2001", topic="vinc/synthetic")
+    docstore.put_doc(st, owner=who, doc_id=live, title="Current turbine spec",
+                     text="Current turbine spec body text.", valid_from="2000",
+                     topic="vinc/synthetic")
+    hints = [h["id"] for h in query.near_nodes(st, "concept:turbine", owner=who, limit=5)]
+    assert "concept:doc." + live in hints, hints
+    assert "concept:doc." + retired not in hints, hints

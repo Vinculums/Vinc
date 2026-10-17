@@ -6993,12 +6993,14 @@ def near_nodes(store, needle: str, *, owner: str | None = None,
 
     새 색인을 만들지 않는다. `_node_fallback_search` 가 제목·요약·props 를 토큰 OR 로
     훑고 점수로 좁히는 일을 이미 한다. 접두사(`concept:`)는 떼고 넣는다 — 사용자가
-    `concept:없는것` 을 줬을 때 접두사까지 검색어에 남으면 전부 똑같이 걸린다."""
+    `concept:없는것` 을 줬을 때 접두사까지 검색어에 남으면 전부 똑같이 걸린다.
+    은퇴한 문서의 미러는 검색과 같은 규칙(`doc_intervals`)으로 힌트에서도 뺀다."""
     probe = needle.split(":", 1)[1] if ":" in needle else needle
     if not probe.strip():
         return []
     try:
-        rows = _node_fallback_search(store, probe, limit=max(1, limit), owner=owner)
+        rows = _node_fallback_search(store, probe, limit=max(1, limit), owner=owner,
+                                     doc_intervals=True)
     except Exception:                                             # noqa: BLE001
         return []                      # 힌트를 만들다 본 응답을 죽이지 않는다
     return [{"id": r.get("id"), "title": r.get("title") or "",
