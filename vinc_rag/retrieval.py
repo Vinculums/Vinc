@@ -776,8 +776,8 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     찾는 표면: Concept 는 title·one_liner·props·id, Record·Decision 은 title·props·id,
     Episode 는 title·id 다(요약은 넣지 않는다, 아래 주석). props 는 **값만** 맞춘다
     (:data:`_PROPS_KEY_PATTERN`). ``doc_intervals`` 면 문서 미러의 유효구간을 그 문서의 구간으로
-    읽어 거른다(:func:`_mirror_validity`). 검색(:func:`_search`)이 켠다. 끈 호출부(`near_nodes`
-    의 힌트)는 `_DocMeta` 를 읽지 않는다.
+    읽어 거른다(:func:`_mirror_validity`). 검색(:func:`_search`)과 `near_nodes` 의 힌트가 켠다.
+    끈 호출부는 `_DocMeta` 를 읽지 않는다.
 
     반환 행: {id, title, kind('concept'|'record'|'decision'|'episode'), domain,
     matched_in('title'|'one_liner'|'props'|'id'), hit_tokens, title_tokens, token_total}
