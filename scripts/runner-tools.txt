@@ -18,7 +18,7 @@ git
 jq
 gh
 
-# 배포 잡 전용(hub-deploy 의 az acr build · env 조작). Windows 러너는 배포를 안 돈다.
+# 배포 잡 전용(hub-deploy 의 az acr login · env 조작). Windows 러너는 배포를 안 돈다.
 az @linux
 
 # 릴리스 리눅스 다리 전용. 그 다리는 `ubuntu:22.04` 컨테이너 안에서 짓는데(사용자
