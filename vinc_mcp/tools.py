@@ -1640,7 +1640,7 @@ TOOLS: list[dict] = [
                        "'community' for an account graph, or 'unscoped' for a local store without "
                        "an account owner. On a local connection `target` reads 'local'; the hosted "
                        "server does not return it. Check them before your first write. vinc_whoami "
-                       "gives the same answer on its own, with the spaces you can reach. On the "
+                       "gives the same answer by itself, with the spaces you can reach. On the "
                        "hosted server a write goes to your personal graph unless you pass `space`, "
                        "and a team address (/t/<team-uuid>/mcp) pins every call in the session to "
                        "that team, with API keys or OAuth.",
