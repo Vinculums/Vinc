@@ -64,6 +64,21 @@ def test_thin_instructions_match_every_approved_legacy_lifecycle_field(native, t
         manifest.close()
 
 
+def test_duplicate_destination_keys_are_refused_before_any_batch(native, tmp_path, monkeypatch):
+    # 두 원본이 같은 대상 키로 가면 배치를 돌리기 전에 prepare 가 표 이름을 달아 거절한다.
+    real = batches.mapped_key
+
+    def colliding(label, key, source, target, row=None):
+        new = real(label, key, source, target, row)
+        return target + "#collide" if label == "Concept" else new
+
+    monkeypatch.setattr(batches, "mapped_key", colliding)
+    with pytest.raises(TransferRefused, match=r"^key_collision:Concept$") as refused:
+        prepared(native, tmp_path)
+    # 끝까지 세어 (대상 표:원본 표 쌍)별 건수를 싣는다.
+    assert refused.value.collisions.get("Concept:Concept+Concept", 0) >= 1
+
+
 def test_missing_corrupt_foreign_and_truncated_artifacts_are_refused(native,tmp_path):
     manifest,_,_,header,path,sealed=prepared(native,tmp_path)
     try:

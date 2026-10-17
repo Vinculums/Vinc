@@ -274,7 +274,7 @@ class Batches:
         if manifest.digest(after) != item["after"]:
             raise TransferRefused("conversion_manifest_invalid")
         if item["new"] != item["old"] and row(self.store, item["label"], item["new"]) is not None:
-            raise TransferRefused("key_collision")
+            raise TransferRefused("key_collision:" + item["label"])
         _put(self.store, item["label"], after, existing=item["new"] == item["old"])
 
     def _generated(self, item, header):
@@ -289,7 +289,7 @@ class Batches:
             if not side or int(current["value"] if current else 0) != header["sequence_before"][side]:
                 raise TransferRefused("conversion_payload_changed")
         elif current is not None:
-            raise TransferRefused("key_collision")
+            raise TransferRefused("key_collision:" + label)
         _put(self.store, label, value, existing=current is not None)
 
     def _edge_value(self, item):

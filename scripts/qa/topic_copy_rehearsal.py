@@ -242,6 +242,16 @@ def main():
         code = str(exc).split(":", 1)[0]
         if re.fullmatch(r"[a-z][a-z0-9_]{0,63}", code):
             report["error_code"] = code
+        # 둘째 칸이 스키마 표 이름이면 싣는다(예: key_collision:_Tombstone). 식별자는 싣지 않는다.
+        table = (str(exc).split(":") + ["", ""])[1]
+        if re.fullmatch(r"_?[A-Z][A-Za-z]{0,39}", table):
+            report["error_table"] = table
+        # 키 충돌은 (대상 표:원본 표 쌍)별 건수만 싣는다. 모양이 다르면 통째로 버린다.
+        collisions = getattr(exc, "collisions", None)
+        if isinstance(collisions, dict) and collisions and all(
+                isinstance(k, str) and re.fullmatch(r"_?[A-Z][A-Za-z]{0,39}:[A-Za-z_+]{1,120}", k)
+                and isinstance(v, int) for k, v in collisions.items()):
+            report["collisions"] = collisions
     report["process_peak_rss_bytes"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
     for key in ("memory.max", "memory.swap.max", "memory.peak", "cpu.max"):
         path = Path("/sys/fs/cgroup") / key
