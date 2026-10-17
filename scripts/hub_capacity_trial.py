@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from gate_app_config import BASELINE, project_app
+from gate_app_config import APPS, BASELINE, project_app
 
 try:
     from scripts._azutil import AzError, az as _az
@@ -53,7 +53,9 @@ def revisions():
 def public_state():
     out = {}
     images = {}
-    for name in ("vinc-hub", "vinc-encode", "vinc-account"):
+    # 드리프트 게이트와 같은 앱 목록을 본다. 따로 적어 두면 기준선에 앱이 늘 때마다(레이아웃)
+    # 사전 확인이 늘 어긋나 시험이 아무것도 못 바꾸고 끝난다.
+    for name in APPS:
         data = az("containerapp", "show", "-n", name, "-g", "vincsRG")
         auth = az("containerapp", "auth", "show", "-n", name, "-g", "vincsRG")
         out[name] = project_app(data, auth)

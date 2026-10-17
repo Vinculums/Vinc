@@ -168,3 +168,23 @@ class LocalEncoderTrial(unittest.TestCase):
                 patch.object(trial, "switch") as switch:
             trial.restore(local_state())
         switch.assert_called_once_with(local_state(), 1)
+
+
+class SameAppsAsTheGate(unittest.TestCase):
+    def test_public_state_covers_every_app_in_the_baseline(self):
+        """기준선의 앱 목록과 시험이 보는 앱 목록이 같아야 사전 확인이 성립한다."""
+        import json as _json
+        baseline = _json.loads(trial.BASELINE.read_text(encoding="utf-8"))
+        seen = []
+
+        def fake_az(*args):
+            if args[:2] == ("containerapp", "show"):
+                seen.append(args[3])
+                return {"properties": {"template": {"containers": [{"image": "img"}]}}}
+            return {}
+
+        with patch.object(trial, "az", side_effect=fake_az), \
+                patch.object(trial, "project_app", side_effect=lambda data, auth: {}):
+            actual, _ = trial.public_state()
+        self.assertEqual(sorted(actual), sorted(baseline))
+        self.assertEqual(sorted(seen), sorted(baseline))
