@@ -128,6 +128,13 @@ MAX_CONTENT = int(os.environ.get("VINC_EMBED_CONTENT_TOKENS", "500"))
 # 중간 텐서(배치×헤드12×512²×fp32 ≈ 배치당 12.6MB)까지 더해도 100MB 대에 머문다.
 # 허브는 1024MiB 를 사이드카·MCP 와 나눠 쓰고 가중치만 이미 ~440MB 다.
 EMBED_BATCH = max(1, int(os.environ.get("VINC_EMBED_BATCH", "8")))
+# 토큰화 **전에** 글자 수로 자르는 상한(VIN-634). 토크나이저의 512 자르기는 전체를 토큰화한
+# **뒤에** 일어나서, 아주 긴 텍스트 하나가 토큰 객체를 통째로 만들어 순간 메모리를 튀긴다.
+# 512 토큰이 32,768자를 넘을 수는 없으므로 이 자르기는 모델이 보는 토큰을 바꾸지 않는다.
+MAX_CHARS = max(1, int(os.environ.get("VINC_EMBED_MAX_CHARS", "32768")))
+# 잠금 밖에서 동시에 도는 질의 추론의 상한(VIN-634). 질의는 배치 잠금을 건너뛰므로
+# (`_encode_batch`) 상한이 없으면 몰린 질의 수만큼 활성값이 겹친다.
+QUERY_CONCURRENCY = max(1, int(os.environ.get("VINC_EMBED_QUERY_CONCURRENCY", "4")))
 # bge-*-v1.5 의 쿼리 지시 접두(저장 passage 에는 붙이지 않는다 — `_prefix` 주석).
 QUERY_PREFIX = os.environ.get(
     "VINC_EMBED_QUERY_PREFIX",
@@ -185,6 +192,17 @@ def _mb(path: str) -> int:
         return os.path.getsize(path) >> 20
     except Exception:
         return 0
+
+
+#: 요청마다 시작·끝 한 줄씩 남기는가. 인코딩 전용 앱(`--serve-only`)에서만 켠다 — 허브 안의
+#: 루프백 창구까지 켜면 5분 루프 로그를 덮는다(`_start_encode` 의 `log_message`).
+_LOG_REQUESTS = False
+
+
+def _text_stats(texts: list[str]) -> str:
+    """요청의 크기만 적는다(VIN-634). 본문은 한 글자도 싣지 않는다 — 계정 데이터다."""
+    lens = [len(t) for t in texts] or [0]
+    return f"n={len(texts)} max_chars={max(lens)} total_chars={sum(lens)}"
 
 
 def _rss_mb() -> int:
@@ -407,6 +425,7 @@ class _Embedder:
         # 한 벌 더 올린다(OOM). 잡는 단위는 **배치**다(`_encode_batch`): 문서 전체를 잡으면
         # 큰 문서가 끝날 때까지 질의가 기다리다 질의 상한에 걸려 FTS 로 떨어진다.
         self._lock = threading.Lock()
+        self._query_slots = threading.BoundedSemaphore(QUERY_CONCURRENCY)
 
     def _load(self) -> None:
         if self._sess is not None:
@@ -527,7 +546,8 @@ class _Embedder:
         # 적재 전에는 잠금으로 간다 — 첫 적재 중 질의가 세션을 한 벌 더 올리면 OOM 이다.
         # 근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]
         if query and self._sess is not None:
-            hidden, mask = self._run(texts)
+            with self._query_slots:                            # 동시 질의 상한(QUERY_CONCURRENCY)
+                hidden, mask = self._run(texts)
         else:
             with self._lock:                                   # 배치 하나만 잡는다(__init__)
                 self._load()
@@ -540,7 +560,7 @@ class _Embedder:
 
     def _run(self, texts: list[str]):
         import numpy as np
-        enc = self._tok.encode_batch(texts)
+        enc = self._tok.encode_batch([t[:MAX_CHARS] for t in texts])
         mask = np.array([e.attention_mask for e in enc], dtype=np.int64)
         feed = {
             "input_ids": np.array([e.ids for e in enc], dtype=np.int64),
@@ -774,10 +794,18 @@ def _start_encode(emb: "_Embedder", port: int) -> _EncodeService:
                 # 틀린다 — 접두 유무의 코사인이 0.95~0.97 이라 눈에 안 띈다.
                 raw = bool(body.get("raw"))
                 texts = texts if raw else [_prefix(t, kind) for t in texts]
+                # cgroup OOM 은 SIGKILL 이라 파이썬이 한 줄도 못 남긴다. 그래서 **시작할 때**
+                # 찍는다 — 죽은 요청은 시작 줄만 남고 끝 줄이 없다(VIN-634).
+                t0, rss0 = time.monotonic(), _rss_mb()
+                if _LOG_REQUESTS:
+                    print(f"[embed] req> kind={kind} {_text_stats(texts)} rss={rss0}MB", flush=True)
                 # 요청 전체를 잠그지 않는다 — 직렬화는 `_Embedder` 가 **배치** 단위로 한다.
                 # 여기서 요청째 잠그면 미러 재구축의 32줄 요청(1코어에서 약 4초)이 끝날
                 # 때까지 질의가 서서 1.5초 상한을 넘긴다(2026-10-02 허브 실측).
                 vecs = emb.encode(texts, query=True) if kind == "query" else emb.encode(texts)
+                if _LOG_REQUESTS:
+                    print(f"[embed] req< kind={kind} n={len(texts)} rss={rss0}->{_rss_mb()}MB "
+                          f"{time.monotonic() - t0:.2f}s", flush=True)
                 # `model` 은 질의 경로가 저장 벡터의 모델과 대조한다 — 폭이 같은 다른
                 # 모델은 캐스팅 오류 없이 엉뚱한 이웃만 낸다(RV-06).
                 out = _json.dumps({"vectors": vecs, "model": MODEL,
@@ -822,6 +850,7 @@ def _start_encode(emb: "_Embedder", port: int) -> _EncodeService:
 def _serve_only(emb: "_Embedder", port: int) -> int:
     # PID 1은 기본 SIGTERM 동작에 기대면 안 된다. 신호 처리기에서는 잠금이나
     # 서버 종료를 실행하지 않고 메인 루프가 안전한 위치에서 처리하게 한다.
+    global _LOG_REQUESTS
     requested = False
 
     def request_stop(*_):
@@ -834,6 +863,7 @@ def _serve_only(emb: "_Embedder", port: int) -> int:
     try:
         for sig in (signal.SIGTERM, signal.SIGINT):
             previous[sig] = signal.signal(sig, request_stop)
+        _LOG_REQUESTS = True                       # 인코딩 전용 앱에서만 요청 줄을 남긴다
         service = _start_encode(emb, port)
         print("[embed] serve-only — 배치 작업 없이 인코딩 요청만 받는다", flush=True)
         try:
