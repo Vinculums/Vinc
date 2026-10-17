@@ -1264,11 +1264,10 @@ def pending_embed_chunks(store, *, limit: int = 16) -> list[dict]:
 
     행마다 그 문서의 ``content_hash`` 를 싣는다. 워커는 이 값을 apply 에 **그대로**
     돌려보내야 한다 — chunk_id 는 위치 기반이라, 인코딩하는 사이 re-put 된 문서에 옛 본문
-    벡터가 박히는 것을 apply 가 이 값으로만 가려낸다."""
-    docs = store.run(
-        "MATCH (d:_DocMeta) WHERE d.needs_embed = 1 "
-        "RETURN d.doc_id AS doc_id, d.content_hash AS content_hash "
-        "ORDER BY d.doc_id LIMIT $lim", {"lim": int(limit)}) or []
+    벡터가 박히는 것을 apply 가 이 값으로만 가려낸다.
+
+    고르는 순서는 :func:`_fair_pending_docs` 가 정한다(owner 마다 돌아가며)."""
+    docs = _fair_pending_docs(store, int(limit))
     out: list[dict] = []
     for d in docs:
         rows = store.run(
@@ -1279,6 +1278,36 @@ def pending_embed_chunks(store, *, limit: int = 16) -> list[dict]:
             out.append({"doc_id": d["doc_id"], "chunk_id": r["chunk_id"],
                         "text": r.get("text") or "",
                         "content_hash": d.get("content_hash") or ""})
+    return out
+
+
+def _fair_pending_docs(store, limit: int) -> list[dict]:
+    """임베딩을 기다리는 문서를 owner 마다 돌아가며 고른다.
+
+    한 owner 의 대량 적재가 대기열을 차지하면 다른 owner 의 새 문서가 그 뒤로 통째로 밀려
+    의미 검색에서 빠진다. 그래서 가장 오래 기다린 문서를 가진 owner 부터 한 문서씩 차례로
+    담고, owner 안에서는 오래 기다린 문서(`updated_at` 이 단조 HLC 라 사전순이 곧 시간순)
+    부터 낸다. 한 owner 뿐이면 그 owner 의 오래된 순서 그대로다. 묻는 owner 는 `limit`
+    명까지라 쿼리는 많아야 `limit + 1` 번이다."""
+    if limit <= 0:
+        return []
+    owners = store.run(
+        "MATCH (d:_DocMeta) WHERE d.needs_embed = 1 "
+        "WITH coalesce(d.owner_id, '') AS owner, min(coalesce(d.updated_at, '')) AS since "
+        "RETURN owner, since ORDER BY since, owner LIMIT $lim", {"lim": limit}) or []
+    queues = []
+    for row in owners:
+        # owner 마다 limit 개까지 받는다: 문서가 모자란 owner 의 빈자리를 남은 owner 가 채운다.
+        queues.append(list(store.run(
+            "MATCH (d:_DocMeta) WHERE d.needs_embed = 1 AND coalesce(d.owner_id, '') = $o "
+            "RETURN d.doc_id AS doc_id, d.content_hash AS content_hash "
+            "ORDER BY d.updated_at, d.doc_id LIMIT $lim",
+            {"o": row["owner"], "lim": limit}) or []))
+    out: list[dict] = []
+    for turn in range(limit):
+        for queue in queues:
+            if turn < len(queue) and len(out) < limit:
+                out.append(queue[turn])
     return out
 
 
