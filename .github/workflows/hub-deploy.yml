@@ -712,7 +712,7 @@ jobs:
           case "$p" in /data/*) ;; *) echo "::error::스냅샷 경로가 /data 밖이다: $p" >&2; exit 1 ;; esac
           rel=${p#/data/}
           for m in writer released; do
-            az storage file download --account-name vincstorage01 --share-name hub-data \
+            az storage file download --account-name vinchubssd01 --share-name hub-data \
               --path "$rel.$m" --dest "$RUNNER_TEMP/handoff.$m" --output none 2>/dev/null \
               || : > "$RUNNER_TEMP/handoff.$m"
           done

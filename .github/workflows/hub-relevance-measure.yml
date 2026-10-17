@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 45
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
-      ACCOUNT: vincstorage01
+      ACCOUNT: vinchubssd01
       SHARE: hub-data
       INPUTS_SHA: 4ae9c0381a72053dda9a619184654de0f16a41db16ef416583288721ef1cee42
       VALIDATION_SHA: ${{ inputs.validation_sha }}

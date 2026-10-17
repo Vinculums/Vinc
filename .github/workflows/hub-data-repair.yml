@@ -40,7 +40,7 @@ permissions:
   contents: read
 env:
   APP: "--name vinc-hub -g vincsRG"
-  ACCOUNT: vincstorage01
+  ACCOUNT: vinchubssd01
   SHARE: hub-data
 jobs:
   repair:
