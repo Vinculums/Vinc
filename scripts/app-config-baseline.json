@@ -116,7 +116,7 @@
     "scale": {
       "cooldownPeriod": 300,
       "maxReplicas": 1,
-      "minReplicas": 1
+      "minReplicas": 0
     },
     "secret_names": [
       "encode-token",
@@ -136,8 +136,6 @@
       "VINC_CONNECT_URL",
       "VINC_DATA_DIR",
       "VINC_EMBED_APPLY_PAUSED",
-      "VINC_EMBED_ENCODE_TOKEN",
-      "VINC_EMBED_REMOTE",
       "VINC_LAYOUT_REMOTE",
       "VINC_LAYOUT_TOKEN",
       "VINC_MCP_ED25519_SEED",
@@ -169,9 +167,9 @@
       }
     ],
     "resources": {
-      "cpu": 1.0,
-      "ephemeralStorage": "4Gi",
-      "memory": "2Gi"
+      "cpu": 2.0,
+      "ephemeralStorage": "8Gi",
+      "memory": "4Gi"
     },
     "scale": {
       "cooldownPeriod": 300,

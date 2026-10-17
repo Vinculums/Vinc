@@ -11,8 +11,38 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import hub_capacity_trial as trial
 
 
+_REAL_BASELINE = trial.BASELINE
+_SYNTH_DIR = None
+
+
+def setUpModule():
+    # trial.run() 은 기준선 파일을 직접 읽는다. 이 파일의 테스트 동안만 1 CPU 출발점으로 바꾼다.
+    global _SYNTH_DIR
+    _SYNTH_DIR = tempfile.TemporaryDirectory()
+    path = Path(_SYNTH_DIR.name) / "app-config-baseline.json"
+    path.write_text(json.dumps(_one_cpu_baseline()), encoding="utf-8")
+    trial.BASELINE = path
+
+
+def tearDownModule():
+    trial.BASELINE = _REAL_BASELINE
+    if _SYNTH_DIR is not None:
+        _SYNTH_DIR.cleanup()
+
+
+def _one_cpu_baseline():
+    """시험이 다루는 출발점: 1 CPU·2 GiB, 원격 인코더. 운영 기준선은 통합 뒤 2 CPU 라서
+    그대로 쓰면 시험의 1→2 모델과 맞지 않는다(그때 시험은 사전 확인에서 거절한다)."""
+    baseline = json.loads(_REAL_BASELINE.read_text(encoding="utf-8"))
+    hub = baseline["vinc-hub"]
+    hub["resources"] = {"cpu": 1.0, "ephemeralStorage": "4Gi", "memory": "2Gi"}
+    hub["env_names"] = sorted(set(hub["env_names"]) | set(trial.LOCAL_ENCODER_ENV))
+    baseline["vinc-encode"]["scale"]["minReplicas"] = 1
+    return baseline
+
+
 def state():
-    return {"baseline": json.loads(trial.BASELINE.read_text()), "images": {
+    return {"baseline": _one_cpu_baseline(), "images": {
         "vinc-hub": ["acr/image:fixed"], "vinc-encode": ["acr/image:fixed"],
         "vinc-account": ["acr/account:fixed"]}}
 
