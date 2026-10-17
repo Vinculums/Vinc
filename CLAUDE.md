@@ -63,6 +63,12 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
   노드로 향하는 엣지는 함께 떨어진다**(제목 없는 Entity · 남이 소유한 id 등). 스토어의
   옛 행으로 되살리지 않는 것이 의도다. `warnings` 를 읽을 것 — `merged` 는 실제로
   들어간 것만 센다.
+- **id 접두사가 테이블을 정한다. 타입이 접두사와 다르면 그 노드는 건너뛴다**(2026-10-17,
+  `api/fragment.py` `prefix_mismatch`). `concept:x` 를 `episode` 나 개방 타입으로 보내면
+  예전에는 같은 id 의 두 번째 행이 다른 테이블에 생겼고, 삭제와 끝점 해석은 접두사 쪽만
+  봐서 그 사본을 못 지웠다. 그 사본 하나가 토픽 이동 리허설을 두 번 멈췄다. 이제는 경고와
+  함께 빠지므로 `warnings` 를 읽을 것. 이미 생긴 사본은 `vinc_delete` 의 `stray_type` 으로
+  그 행만 지운다(묘비를 쓰지 않는다). 자세한 것은 [[vinc.manual.core]] §2.
 - ~~**`title` 에는 가드가 없다.**~~ **해소됨**(`api/fragment.py` `_merge_node`,
   커밋 85c75f2). 이제 `title` 도 `domain`·`tags`·`props` 와 같이 미지정 시 보존된다.
   지우지 않고 남기는 이유는 이 함정을 기억하는 세션이 아직 있어서다.
