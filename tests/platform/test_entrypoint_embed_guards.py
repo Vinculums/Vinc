@@ -31,7 +31,7 @@ def test_워커가_먼저_죽도록_oom_점수를_올리고_exec_로_넘긴다()
 
 def test_오래_돈_워커는_재기동_상한을_다시_센다():
     body = _supervisor()
-    reset = body.find("attempt=0\n      fi")
+    reset = re.search(r"VINC_EMBED_STABLE_S[^\n]*\]; then\s+attempt=0\s+fi", body)
     bump = body.find("attempt=$((attempt + 1))")
-    assert "VINC_EMBED_STABLE_S" in body, "건강했던 시간을 보지 않는다"
-    assert 0 <= reset < bump, "초기화가 증가보다 앞에 있어야 이번 죽음부터 새로 센다"
+    assert reset, "건강했던 시간을 보고 상한을 다시 세는 분기가 없다"
+    assert reset.start() < bump, "초기화가 증가보다 앞에 있어야 이번 죽음부터 새로 센다"
