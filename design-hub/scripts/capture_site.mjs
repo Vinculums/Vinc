@@ -129,10 +129,9 @@ const UA = {
 // landing
 add({ id: "landing__default", url: "/", trigger: "load, signed out", api: baseApi(null) });
 add({ id: "landing__signed-in", url: "/", trigger: "load with a session: GNB shows Account and My graph, hero CTA relabels", api: baseApi(ME), ls: { "vinc.site.signedin": "1" } });
-add({ id: "landing__light", url: "/", trigger: "theme segment: light", api: baseApi(null), ls: { "vinc.site.theme": "light" }, scheme: "light" });
+add({ id: "landing__light", url: "/", trigger: "theme segment: light", api: baseApi(null), scheme: "light" });
 add({ id: "landing__ko", url: "/", trigger: "globe button: Korean (reference only, boards stay English)", api: baseApi(null), ls: { "vinc.site.lang": "ko" } });
-add({ id: "landing__mobile-390", url: "/", trigger: "viewport 390: GNB wraps to two rows", api: baseApi(null), vp: MOBILE });
-const newsletter = async (p, email) => { await p.locator("#fin").locator("xpath=following-sibling::section[1]").scrollIntoViewIfNeeded().catch(() => {}); const f = p.locator("input[type=email]").last(); await f.scrollIntoViewIfNeeded(); await f.fill(email); await f.press("Enter"); await sleep(600); };
+add({ id: "landing__mobile-390", url: "/", trigger: "viewport 390: GNB folds into the menu button", api: baseApi(null), vp: MOBILE });const newsletter = async (p, email) => { await p.locator("#fin").locator("xpath=following-sibling::section[1]").scrollIntoViewIfNeeded().catch(() => {}); const f = p.locator("input[type=email]").last(); await f.scrollIntoViewIfNeeded(); await f.fill(email); await f.press("Enter"); await sleep(600); };
 add({ id: "landing__newsletter-busy", url: "/", trigger: "newsletter submit, response pending", api: [...baseApi(null), ["POST", /\/api\/subscribe/, "hang"]], full: false, before: (p) => newsletter(p, "ada@example.com") });
 add({ id: "landing__newsletter-success", url: "/", trigger: "newsletter submit 200: block swaps to Almost there", api: [...baseApi(null), ["POST", /\/api\/subscribe/, ok({ status: "ok" })]], full: false, before: (p) => newsletter(p, "ada@example.com") });
 add({ id: "landing__newsletter-invalid", url: "/", trigger: "newsletter submit with a bad address", api: [...baseApi(null), ["POST", /\/api\/subscribe/, ERR("invalid_email", "Invalid email", 400)]], full: false, before: (p) => newsletter(p, "not-an-email") });
@@ -357,7 +356,8 @@ for (const s of states) {
   const vp = s.vp ?? { width: 1440, height: 900 };
   const ctx = await browser.newContext({ viewport: vp, colorScheme: s.scheme ?? "dark", reducedMotion: "reduce", locale: "en-US", userAgent: s.ua, deviceScaleFactor: 1 });
   await ctx.addCookies([{ name: "__Host-csrf", value: "capture", url: BASE }]).catch(() => {});
-  const ls = { "vinc.site.theme": s.scheme ?? "dark", "vinc.site.lang": "en", ...s.ls };
+  // 사이트가 테마를 읽는 키는 `vinc.site.theme.v2` 다(페이지가 `vinc.site.theme` 을 지운다). 이 키가 없으면 라이트 상태도 다크로 찍힌다.
+  const ls = { "vinc.site.theme.v2": s.scheme ?? "dark", "vinc.site.lang": "en", ...s.ls };
   await ctx.addInitScript((kv) => { try { for (const [k, v] of Object.entries(kv)) localStorage.setItem(k, v); } catch (e) {} }, ls);
   const page = await ctx.newPage();
   const dialogs = [];
