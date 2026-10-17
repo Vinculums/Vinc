@@ -32,7 +32,7 @@ vinc = VincClient()                      # reads VINC_API_KEY
 team = VincClient(space="<team id>")     # a team's shared graph instead of your personal one
 ```
 
-`VincClient(api_key=None, *, base_url=None, space=None, timeout=30.0, transport=None, prefetch_concurrency=8)`. Every method also takes `space=` to override the client's default for one call.
+`VincClient(api_key=None, *, base_url=None, space=None, timeout=30.0, transport=None, prefetch_concurrency=8, retry_for=90.0)`. Every method also takes `space=` to override the client's default for one call.
 
 ## Methods
 
@@ -122,6 +122,17 @@ Every `about` id is read before the write, so a typo raises `VincNotFound` inste
 
 `props` sent with `ingest` replace a node's stored props whole. Read the node first and send the merged dict, or send the node's `expected_rev` (its `rev` from `node`) with `props_patch`, a JSON Merge Patch on the stored props. If someone wrote in between, the whole fragment is refused before any change and `details["current_rev"]` holds the newer revision.
 
+## Transient errors
+
+The hosted hub can be briefly unavailable, for example while a new version is deployed. The client retries those cases for you, so they read as a slower call instead of an error:
+
+- What is retried: HTTP 502, 503 and 504, a dropped connection and a timeout. Anything else (401, 404, 409, 429, 500 and every other answer) is raised at once, and so is an answer whose `details["retryable"]` is `false`.
+- Which calls: reads (every `GET`, `brief`, `search`, `edges` with several nodes, `role_check`), previews (`dry_run=True`), and writes that carry an `operation_id`. A write without `operation_id` is never retried, because the server could apply it twice.
+- How long: the client follows `Retry-After` when the hub sends it, and otherwise backs off exponentially up to 8 seconds between tries. It stops once the next try would start more than `retry_for` seconds (90 by default) after the first, and then raises the last error.
+- `retry_for=0` turns retries off.
+- `get_context` and `prefetch` never retry. They run before every model call, so a short outage makes them skip the turn or raise straight away rather than hold the conversation.
+- `without_retries()` returns the same client (one connection) with retries off, for your own code that runs inside a model turn. The LangGraph and Agent Framework tools use it.
+
 ## Retrying a write
 
 A write whose response was lost may or may not have landed. Generate a fresh lowercase UUID for each logical write and pass it as `operation_id`:
@@ -142,7 +153,7 @@ except VincUnavailable:
 - `operation_status(op)` reads the receipt. `accepted` and `unknown` do not prove the write did not happen; `committed` means the graph transaction committed. A replayed result is a historical summary, so read the targets to see their current state.
 - Receipts are owner scoped, kept until the owner is purged, and bounded to 5000 per owner.
 - `create_only=True` refuses identities that already exist, before any change. Without it a write keeps the usual upsert behaviour.
-- `record_episode` and `write_package` pass `create_only` and `operation_id` to `ingest` unchanged. The client never retries a write on its own.
+- `record_episode` and `write_package` pass `create_only` and `operation_id` to `ingest` unchanged. The client retries a write on its own only when it carries an `operation_id` and the error was transient (see above).
 
 ## Delete and merge with a preview
 
@@ -165,7 +176,7 @@ If the affected state changed after the preview, the apply call is refused inste
 | `VincNotFound` | the node, document or space does not exist for this key |
 | `VincInvalidArgument` | the request was malformed or refused: a topic limit, a `create_only` identity that exists, an `expected_rev` or `preview_digest` that no longer matches, an `operation_id` reused with different arguments |
 | `VincQuotaExceeded` | the daily limit is spent; `retry_after` is in seconds |
-| `VincUnavailable` | network or server failure; for a write, check `details["write_may_have_applied"]` and `operation_status` |
+| `VincUnavailable` | network or server failure, raised after transient retries ran out; for a write, check `details["write_may_have_applied"]` and `operation_status` |
 | `VincPartialWrite` | part of a write was skipped; `result` holds what the server said |
 
 
@@ -327,6 +338,7 @@ separate evaluation.
 
 | Version | Change |
 |---|---|
+| 0.1.10 | Transient hub errors (502, 503, 504, dropped connections, timeouts) are retried for up to `retry_for` seconds (90 by default), following `Retry-After`. Writes are retried only with an `operation_id`. `get_context` and `prefetch` do not retry. |
 | 0.1.9 | `record_episode` and `write_package` take `create_only` and `operation_id`. New `delete`, `delete_edge`, `merge_nodes` and `doc_delete` with `dry_run` and `preview_digest`. New `edges` and `role_check`. The adapters 0.1.5 pass the two write parameters through and require this client. |
 | 0.1.8 | `ingest` takes `create_only` and `operation_id`; `operation_status` reads a write's receipt; `expected_rev` and `props_patch` guard a node edit. |
 | 0.1.7 | `brief` and `search` take `mode`, `as_of` and `known_at`, and results carry a `temporal` object. Prefetch gives a `cite as` id only for a readable mirror. The adapters 0.1.4 expose the same read parameters. |

@@ -60,3 +60,33 @@ RESOLVED = {
 def env_clean(monkeypatch):
     monkeypatch.delenv("VINC_API_KEY", raising=False)
     monkeypatch.delenv("VINC_API_URL", raising=False)
+
+
+class FakeClock:
+    """재시도 대기를 실제로 자지 않고 시계만 민다. 대기한 초를 순서대로 남긴다."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.slept: list[float] = []
+
+    def clock(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        self.now += seconds
+
+    async def asleep(self, seconds: float) -> None:
+        self.sleep(seconds)
+
+
+@pytest.fixture(autouse=True)
+def fake_clock(monkeypatch):
+    """모든 테스트에서 재시도가 실제 시간을 쓰지 않게 한다(상한은 가짜 시계로 잰다)."""
+    from vinc_client import client as client_module
+    fake = FakeClock()
+    monkeypatch.setattr(client_module, "_clock", fake.clock)
+    monkeypatch.setattr(client_module, "_sleep", fake.sleep)
+    monkeypatch.setattr(client_module, "_asleep", fake.asleep)
+    monkeypatch.setattr(client_module, "_jitter", lambda: 1.0)
+    return fake
