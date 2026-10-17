@@ -265,7 +265,9 @@ resource "azurerm_monitor_metric_alert" "functional" {
   description         = each.value.description
   severity            = 1
   frequency           = "PT5M"
-  window_size         = "PT15M"
+  # 프로브가 15분마다라 15분 창에는 결과가 하나도 없는 순간이 생긴다. 창을 두 주기로 둔다
+  # (2026-09-16 에 손으로 넓힌 실제 값을 선언으로 옮긴 것이다).
+  window_size         = "PT30M"
   auto_mitigate       = false
 
   criteria {
