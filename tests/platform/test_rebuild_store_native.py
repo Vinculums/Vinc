@@ -110,6 +110,22 @@ class NativeRebuildTests(unittest.TestCase):
         self.assertFalse(report["ok"])
         self.assertIn("Concept: 1 of 1 non-ASCII keys miss the primary key index", report["problems"])
 
+    def test_a_row_changed_by_the_copy_rebuild_refuses_the_target(self):
+        import rebuild_store_native as rb
+        real = rb._rows_digest
+
+        def changed(s, plan):
+            out = real(s, plan)
+            return dict(out, Concept=[out["Concept"][0], "0" * 64])
+
+        calls = iter([real, changed])
+        with mock.patch.object(rb, "_rows_digest", side_effect=lambda s, plan: next(calls)(s, plan)):
+            report = rb.rebuild(self.src, self.dst)
+        if report.get("export_method") != "copy":
+            self.skipTest("this engine exports natively; the copy path is not taken")
+        self.assertFalse(report["ok"])
+        self.assertIn("Concept: rows changed in the copy rebuild", report["problems"])
+
     def test_an_existing_target_is_refused_and_left_alone(self):
         with open(self.dst, "wb") as f:
             f.write(b"KEEP")
