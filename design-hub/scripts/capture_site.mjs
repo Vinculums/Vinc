@@ -356,7 +356,7 @@ for (const s of states) {
   const vp = s.vp ?? { width: 1440, height: 900 };
   const ctx = await browser.newContext({ viewport: vp, colorScheme: s.scheme ?? "dark", reducedMotion: "reduce", locale: "en-US", userAgent: s.ua, deviceScaleFactor: 1 });
   await ctx.addCookies([{ name: "__Host-csrf", value: "capture", url: BASE }]).catch(() => {});
-  // 사이트는 테마를 `vinc.site.theme.v2` 에서 읽고 옛 키는 지운다. 옛 키만 두면 라이트 상태가 다크로 찍힌다.
+  // 사이트가 테마를 읽는 키는 `vinc.site.theme.v2` 다(페이지가 `vinc.site.theme` 을 지운다). 이 키가 없으면 라이트 상태도 다크로 찍힌다.
   const ls = { "vinc.site.theme.v2": s.scheme ?? "dark", "vinc.site.lang": "en", ...s.ls };
   await ctx.addInitScript((kv) => { try { for (const [k, v] of Object.entries(kv)) localStorage.setItem(k, v); } catch (e) {} }, ls);
   const page = await ctx.newPage();
