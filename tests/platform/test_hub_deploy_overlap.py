@@ -28,11 +28,17 @@ def test_the_update_carries_the_termination_grace():
     assert "--termination-grace-period 60" in m.group(1)
 
 
-def test_the_handoff_is_checked_after_health_against_the_share_markers():
+def test_the_handoff_is_checked_last_against_the_share_markers():
+    """인계 확인은 배포 잡의 맨 끝이다. 앞에 두면 그 빨강이 뒤의 검증(OAuth 표면, 구조 기준선,
+    인용 생존)을 건너뛰게 한다 — 인계가 늦었을 뿐 서비스는 떠 있는데 그것을 확인하는 스텝이
+    안 돈다."""
     t = _text()
     health = t.index("- name: Verify health (MCP tools/list)")
     handoff = t.index("- name: Verify writer handoff (markers on the persistent share)")
-    assert health < handoff
-    body = t[handoff:t.index("- name:", handoff + 10)]
+    report = t.index("\n  report:\n")
+    assert health < handoff < report
+    assert t.find("\n      - name:", handoff + 10, report) == -1, "인계 확인 뒤에 다른 스텝이 있다"
+    body = t[handoff:report]
+    assert "if: ${{ !cancelled() && env.HANDOFF_EXPECTED == '1' }}" in body
     assert '"$w" = "$LATEST_REV"' in body and '"$r" = "$PREV_REV"' in body
     assert "hub-data" in body

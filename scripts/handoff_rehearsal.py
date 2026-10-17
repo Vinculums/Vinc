@@ -36,16 +36,20 @@ def app_spec(*, name: str, env_id: str, image: str, storage: str, acr_password: 
              mcp_token: str, sidecar_token: str, grace_s: int = 60) -> dict:
     """운영 허브와 같은 기동 경로(로컬 작업본 + /data 스냅샷 + 단일 리비전)를 가진 임시 앱.
 
-    운영과 다른 것은 바깥 의존을 끊은 것뿐이다: 인코더·레이아웃·계정·OAuth 가 없고
-    임베딩 워커를 끈다. 첫 리비전만 빈 스토어로 시작할 수 있다(`VINC_STORE_ALLOW_EMPTY`) —
-    두 번째부터는 워크플로가 이 값을 지워서, 스냅샷이 없으면 기동이 막히게 한다."""
+    운영과 다른 것은 바깥 의존을 끊은 것뿐이다: 인코더·레이아웃·계정·OAuth 가 없다.
+    임베딩은 운영처럼 **켠다** — 엔트리포인트가 운영과 같은 절(워커·미러 대기)을 타야
+    종료 경로도 같아진다. 원격 인코더 주소는 아무도 듣지 않는 루프백이고, 적용은 멈춘다.
+    첫 리비전만 빈 스토어로 시작할 수 있다(`VINC_STORE_ALLOW_EMPTY`) — 두 번째부터는
+    워크플로가 이 값을 지워서, 스냅샷이 없으면 기동이 막히게 한다."""
     env = [
         {"name": "VINC_DATA_DIR", "value": "/data/db"},
         {"name": "VINC_STORE_LOCAL", "value": "on"},
         {"name": "VINC_STORE_SNAPSHOT_EVERY", "value": "60"},
         {"name": "VINC_PK_NAMESPACED", "value": "on"},
         {"name": "VINC_WAL_REPLAY_TOLERANT", "value": "1"},
-        {"name": "VINC_EMBED", "value": "off"},
+        {"name": "VINC_EMBED", "value": "on"},
+        {"name": "VINC_EMBED_REMOTE", "value": "http://127.0.0.1:9"},
+        {"name": "VINC_EMBED_APPLY_PAUSED", "value": "on"},
         {"name": "VINC_QUOTA", "value": "off"},
         {"name": "VINC_STORE_ALLOW_EMPTY", "value": "1"},
         {"name": "VINC_REHEARSAL_GEN", "value": "1"},
