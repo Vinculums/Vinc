@@ -947,7 +947,12 @@ TOOLS: list[dict] = [
                                     "claims, and as_of still selects overlapping intervals. Dates "
                                     "are metadata and never embedded. known_at is a creation "
                                     "cutoff, not a restore of earlier revisions."},
-            "query": {"type": "string"},
+            "query": {"type": "string",
+                      "description": "Write it in the language of the documents you expect to "
+                                     "find. A question in another language (a Korean question "
+                                     "over English documents) finds less, so ask again with the "
+                                     "question rewritten in the documents' language, keeping "
+                                     "their terms as they are written."},
             "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
             "cursor": {"type": "string",
                        "description": "Opaque next_cursor from a previous page."},
@@ -1082,7 +1087,10 @@ TOOLS: list[dict] = [
         "inputSchema": {"type": "object", "properties": {
             "known_at": _KNOWN_AT_PROP,
             "query": {"type": "string",
-                      "description": "The question, in natural language."},
+                      "description": "The question, in natural language. Write it in the language "
+                                     "of the documents you expect to find; for a question in another "
+                                     "language (a Korean question over English documents), ask again with "
+                                     "it rewritten in the documents' language, keeping their terms."},
             "mode": {"type": "string", "enum": ["general", "current", "historical"],
                      "description": "Temporal mode, with the same conflicts and filters as "
                                     "vinc_search. 'current' abstains when current claim evidence "
