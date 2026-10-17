@@ -199,7 +199,12 @@ class MirrorProvenance(unittest.TestCase):
                                                review_mirror=True, store=self.ro)
             self.assertFalse(result["found"])
             self.assertNotIn("mirror_review", result)
-            self.assertFalse(any("_DocMeta" in q for q in self.ro.queries))
+            # 원본(메타 한 행·청크)은 읽지 않는다. 못 찾은 시드의 힌트는 자기 소유자의
+            # 미러 구간만 묻는다(`near_nodes`).
+            self.assertFalse(any("d.doc_id = $doc" in q or "(c:Chunk)" in q
+                                 for q in self.ro.queries))
+            self.assertTrue(all("d.owner_id = $owner" in q
+                                for q in self.ro.queries if "_DocMeta" in q))
 
     def test_graph_wrong_seed_rejected_before_query(self):
         for seed in (None, "concept:ordinary", "concept:doc.", "user:a\x1fconcept:doc.sample"):
