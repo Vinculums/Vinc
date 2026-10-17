@@ -126,7 +126,8 @@
         "icon/app": 18,
         "icon/base": 24,
         "layout/lnb-w": 232,
-        "layout/gnb-h": 52
+        "layout/gnb-h": 52,
+        "radius/xs": 6
       }
     },
     "Motion": {
@@ -284,11 +285,16 @@
           "type": "DROP_SHADOW",
           "visible": true,
           "radius": 30,
-          "boundVariables": {},
+          "boundVariables": {
+            "color": {
+              "type": "VARIABLE_ALIAS",
+              "id": "VariableID:223:17"
+            }
+          },
           "color": {
-            "r": 1,
-            "g": 1,
-            "b": 1,
+            "r": 0.7254902124404907,
+            "g": 0.7450980544090271,
+            "b": 0.9411764740943909,
             "a": 0.8999999761581421
           },
           "offset": {
@@ -308,11 +314,16 @@
           "type": "DROP_SHADOW",
           "visible": true,
           "radius": 16,
-          "boundVariables": {},
+          "boundVariables": {
+            "color": {
+              "type": "VARIABLE_ALIAS",
+              "id": "VariableID:223:18"
+            }
+          },
           "color": {
-            "r": 0.7843137383460999,
-            "g": 0.7843137383460999,
-            "b": 0.7686274647712708,
+            "r": 0.5607843399047852,
+            "g": 0.5882353186607361,
+            "b": 0.8509804010391235,
             "a": 0.5
           },
           "offset": {
