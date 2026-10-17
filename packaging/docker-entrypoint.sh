@@ -504,8 +504,9 @@ if [ "${VINC_EMBED:-on}" = "on" ]; then
   EMBED_SUP_PID=$!
   # 워커는 **죽어도 컨테이너를 내리지 않는다** — 부가 기능이고, 여기서 컨테이너를
   # 재시작시키면 단일 writer 락 회수까지 얽혀 MCP 가용성이 배경 작업에 인질이 된다.
-  trap 'kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" "$(cat "$EMBED_PIDFILE" 2>/dev/null)" \
-        "$(cat "$MIRROR_PIDFILE" 2>/dev/null)" "$EMBED_SUP_PID" 2>/dev/null' TERM INT
+  # ⚠ 여기서 trap 을 다시 걸지 않는다. 종료는 MCP 를 띄울 때 건 `shutdown` 하나가 맡고
+  # (워커·감독·미러도 거기서 죽인다), 다시 걸면 그것이 덮여 사이드카를 기다리지 않는다 —
+  # 최종 스냅샷도 넘김 표식도 안 남는다. tests/platform/test_entrypoint_shutdown.py 가 막는다.
 fi
 
 # ── 사이드카 워치독 (2026-08-03 사고 대응) ───────────────────────────────────
