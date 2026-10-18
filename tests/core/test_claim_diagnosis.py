@@ -198,6 +198,90 @@ class ClaimDiagnosisE2E(unittest.TestCase):
         self.assertTrue(out["executed"], out)
         self.assertEqual(out["scanned"], 0)
 
+    # ── 현재 기록만 짝짓는다: 은퇴했거나 대체된 주장은 더 서 있지 않다 ──────────
+
+    def test_은퇴한_옛_주장은_어긋남이_아니다(self):
+        """valid_until 이 지난 옛 주장은 짝이 되지 않는다. 짝이 되면 그 주장이 지워지기
+        전까지 같은 어긋남이 영영 남는다."""
+        self._ingest([
+            {"id": "record:gone", "type": "record", "title": "은퇴한 측정",
+             "valid_until": "2026-02-01",
+             "props": {"subject_path": "api/r.py", "measured_at": "2026-01-01"}},
+            {"id": "record:now", "type": "record", "title": "현재 측정",
+             "props": {"subject_path": "api/r.py", "measured_at": "2026-02-01"}}])
+        out = self._run()
+        self.assertEqual(out["conflict_count"], 0, out["conflicts"])
+        self.assertEqual(out["anchored_count"], 2)      # 닻 수는 은퇴한 기록도 센다
+        self.assertEqual(out["scanned"], 2)
+
+    def test_오늘_끝난_주장도_은퇴했다(self):
+        """유효구간은 반개구간이다. valid_until 이 오늘이면 오늘은 이미 밖이다."""
+        import datetime as dt
+        today = dt.date.today().isoformat()
+        self._ingest([
+            {"id": "record:until-today", "type": "record", "title": "오늘까지",
+             "valid_until": today,
+             "props": {"subject_path": "api/t.py", "measured_at": "2026-01-01"}},
+            {"id": "record:fresh", "type": "record", "title": "새 측정",
+             "props": {"subject_path": "api/t.py", "measured_at": "2026-02-01"}}])
+        self.assertEqual(self._run()["conflict_count"], 0)
+
+    def test_끝날이_미래면_아직_현재다(self):
+        self._ingest([
+            {"id": "record:later", "type": "record", "title": "아직 유효",
+             "valid_until": "2999-01-01",
+             "props": {"subject_path": "api/f.py", "measured_at": "2026-01-01"}},
+            {"id": "record:latest", "type": "record", "title": "새 측정",
+             "props": {"subject_path": "api/f.py", "measured_at": "2026-02-01"}}])
+        out = self._run()
+        self.assertEqual(out["conflict_count"], 1, out["conflicts"])
+        self.assertEqual(out["conflicts"][0]["older"]["id"], "record:later")
+
+    def test_대체된_주장은_어긋남이_아니다(self):
+        """대체는 대체당한 기록의 valid_until 로 현재 읽기를 떠난다(대체 엣지가 그 값을
+        요구하는 경고를 낸다). 그 기록은 짝에도 낡은 목록에도 남지 않는다."""
+        out = frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "record:replaced", "type": "record", "title": "대체된 측정",
+             "valid_until": "2026-03-01",
+             "props": {"subject_path": "vinc:api/s2.py", "measured_at": "2026-01-01"}},
+            {"id": "record:replacement", "type": "record", "title": "대체한 측정",
+             "valid_from": "2026-03-01",
+             "props": {"subject_path": "vinc:api/s2.py", "measured_at": "2026-03-01"}}],
+            "edges": [{"from": "record:replacement", "to": "record:replaced",
+                       "type": "supersedes", "evidence": "다시 쟀다"}]},
+            store=self.store)
+        self.assertFalse(out.get("warnings"), out)
+        got = self._run()
+        self.assertEqual(got["conflict_count"], 0, got["conflicts"])
+
+    def test_은퇴한_최신_주장_대신_현재_것끼리_짝짓는다(self):
+        """가장 최근 측정이 은퇴했으면 남은 현재 측정 중 최신이 기준이 된다."""
+        self._ingest([
+            {"id": "record:c2", "type": "record", "title": "C2", "valid_until": "2026-04-01",
+             "props": {"subject_path": "api/c.py", "measured_at": "2026-03-01"}},
+            {"id": "record:c1", "type": "record", "title": "C1",
+             "props": {"subject_path": "api/c.py", "measured_at": "2026-02-01"}},
+            {"id": "record:c0", "type": "record", "title": "C0",
+             "props": {"subject_path": "api/c.py", "measured_at": "2026-01-01"}}])
+        out = self._run()
+        self.assertEqual(out["conflict_count"], 1, out["conflicts"])
+        c = out["conflicts"][0]
+        self.assertEqual((c["newer"]["id"], c["older"]["id"]), ("record:c1", "record:c0"))
+
+    def test_은퇴한_기록은_닻_없는_목록에_안_든다(self):
+        """은퇴한 주장에 닻을 달아도 짝에도 낡은 목록에도 오르지 않는다. 목록에 남기면
+        줄일 수 없는 수가 된다."""
+        self._ingest([
+            {"id": "record:retired-loose", "type": "record", "title": "은퇴한 느슨한 주장",
+             "valid_until": "2026-01-15",
+             "props": {"note": "api/sync.py 가 created 를 흘렸다"}},
+            {"id": "record:current-loose", "type": "record", "title": "현재 느슨한 주장",
+             "props": {"note": "api/server.py 가 응답을 늦춘다"}}])
+        out = self._run()
+        self.assertEqual([u["id"] for u in out["unanchored"]], ["record:current-loose"])
+        self.assertEqual(out["unanchored_count"], 1)
+        self.assertEqual(out["scanned"], 2)
+
 
 class DiagnoseContractTests(unittest.TestCase):
     """도구 계약에 kind 가 없으면 어시스턴트는 이 러너의 존재를 모른다."""

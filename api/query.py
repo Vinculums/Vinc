@@ -6383,6 +6383,23 @@ def _owner_concept_ids(store, owner: str | None) -> set[str] | None:
     return ids | {r["id"] for r in drows if r.get("id")}
 
 
+def _topic_description_mirrors(store, owner: str | None) -> set[str]:
+    """토픽 설명 문서의 미러 id(논리 id). 설명은 일부러 잇지 않고 미러의 domain 으로
+    토픽에 속하므로(`api/topic_description.py`) 성분 진단은 이것을 고아로 세지 않는다.
+
+    `_DocMeta.doc_id` 에는 소유자 접두가 없고 진단 행의 id 도 논리 id 라서, 접두 없이
+    `concept:doc.` 만 붙여 맞춘다. 네임스페이싱을 켜도 꺼도 같은 집합이 나온다."""
+    from api import topic_description
+    params: dict = {"origin": topic_description.ORIGIN}
+    where = ""
+    if owner:
+        where = "AND d.owner_id = $owner "
+        params["owner"] = owner
+    rows = store.run("MATCH (d:_DocMeta) WHERE d.origin = $origin " + where
+                     + "RETURN d.doc_id AS doc_id", params) or []
+    return {_DOC_CONCEPT_PREFIX + str(r["doc_id"]) for r in rows if r.get("doc_id")}
+
+
 #: 알고리즘 결과가 **두 스페이스의 노드를 같은 id 로** 물고 온 것들.
 #:
 #: 🔴 owner 스코프를 논리 id 문자열 집합과의 교차로 걸기 때문에 생긴다
@@ -6541,11 +6558,15 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
     "연결 안 된 섬 n개"(상태 화면)와 suggest_ties 후보 소스의 근거. 조회 전용.
 
     반환 {executed, components:[{group, size, members, members_truncated}],
-    orphans:[id…], component_count, orphan_count, ambiguous, ambiguous_count}.
-    스토어를 못 읽으면 executed=False + note.
+    orphans:[id…], component_count, orphan_count, ambiguous, ambiguous_count,
+    topic_descriptions_excluded}. 스토어를 못 읽으면 executed=False + note.
 
     ``ambiguous`` — **두 스페이스에 같은 슬러그로 존재해 어느 쪽이 내 것인지 못 가리는
     id**. 컴포넌트에도 고아에도 안 넣는다. 왜 생기는지는 아래 계산 자리의 주석에 있다.
+
+    ``topic_descriptions_excluded`` — 컴포넌트와 고아에서 뺀 토픽 설명 미러의 수. 설명
+    문서는 일부러 잇지 않고 미러의 domain 으로 토픽에 속하므로 이을 대상이 아니다. 그래서
+    고아 목록에는 실제로 이어야 할 것만 남는다(`_topic_description_mirrors`).
 
     ``member_limit`` — 컴포넌트당 실을 구성원 수(기본 50, 상한 1000). 여태 50 으로
     **말없이** 잘라서, `size:173` 인 컴포넌트도 50개만 보이고 그게 전부인 줄 알기
@@ -6570,10 +6591,15 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
         # 그 수가 그 슬러그를 가진 스페이스 수와 맞았다. 사유는 `_ambiguous_algo_ids`.
         ambiguous = _ambiguous_algo_ids(rows, scope)
         drop = set(ambiguous)
+        mirrors = _topic_description_mirrors(store, owner)
+        excluded: set[str] = set()
         groups: dict = {}
         for r in rows:
             cid, grp = r.get("id"), r.get("value")
             if not cid or cid in drop or (scope is not None and cid not in scope):
+                continue
+            if cid in mirrors:
+                excluded.add(cid)          # 토픽 설명은 빼고 수만 밝힌다
                 continue
             groups.setdefault(grp, []).append(cid)
         mlim = _clamp_limit(member_limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
@@ -6584,7 +6610,8 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
         orphans = sorted(m[0] for m in groups.values() if len(m) == 1)
         base.update(executed=True, components=comps, orphans=orphans,
                     component_count=len(comps), orphan_count=len(orphans),
-                    ambiguous=ambiguous, ambiguous_count=len(ambiguous))
+                    ambiguous=ambiguous, ambiguous_count=len(ambiguous),
+                    topic_descriptions_excluded=len(excluded))
         if ambiguous:
             base["ambiguous_note"] = (
                 "these ids exist in more than one space, so this diagnosis cannot tell "
@@ -6641,6 +6668,10 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
     짝짓기는 **가장 최근 것 대 나머지**다(n² 가 아니다). 물어야 할 질문이 "이 옛
     주장이 아직 서 있나"이지 "옛 주장 둘이 서로 맞나"가 아니기 때문이다.
 
+    짝과 닻 없는 목록은 **현재 기록**만 본다. `valid_until` 이 오늘이거나 그 전인 기록은
+    은퇴했거나 대체된 것이라 다시 잴 일도 닻을 달 일도 없다(`_retired_claim`, `stale` 과
+    같은 기준). `anchored_count` 와 `scanned` 는 은퇴한 기록도 센다.
+
     기존 세 kind 가 그래프 **구조**(연결성·군집)를 읽는 데 반해 이것은 props **내용**을
     읽는다. 같은 문이지만 이웃한 코드가 아니라서 `component_diagnosis` 를 넓히지 않고
     따로 둔다."""
@@ -6664,19 +6695,26 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
             {"owner": owner} if owner else {})
         lim = _clamp_limit(limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
         stale = _stale_claims(store, rows, owner=owner)
+        today = _dt.date.today().isoformat()
         by_path: dict[str, list[dict]] = {}
         unanchored: list[dict] = []
+        anchored = 0
         for r in rows:
             props = _props_to_obj(r.get("props"))
             rid = pkns.strip(r.get("id") or "")
             title = r.get("title") or rid
+            retired = _retired_claim(r, today)
             sp = str(props.get("subject_path") or "").strip()
             if sp:
-                by_path.setdefault(sp, []).append({
-                    "id": rid, "title": title,
-                    "measured_at": str(props.get("measured_at") or ""),
-                    "measured_ref": str(props.get("measured_ref") or "")})
+                anchored += 1
+                if not retired:            # 은퇴한 주장은 짝을 짓지 않는다
+                    by_path.setdefault(sp, []).append({
+                        "id": rid, "title": title,
+                        "measured_at": str(props.get("measured_at") or ""),
+                        "measured_ref": str(props.get("measured_ref") or "")})
                 continue
+            if retired:
+                continue                   # 은퇴한 주장에는 닻을 달 일이 없다
             hint = _path_hint(props, title)
             if hint:
                 unanchored.append({"id": rid, "title": title, "path_hint": hint})
@@ -6699,7 +6737,7 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
                     conflicts=conflicts[:lim], conflict_count=len(conflicts),
                     unanchored=unanchored[:lim], unanchored_count=len(unanchored),
                     unanchored_truncated=len(unanchored) > lim,
-                    anchored_count=sum(len(v) for v in by_path.values()),
+                    anchored_count=anchored,
                     stale=stale[:lim], stale_count=len(stale),
                     stale_truncated=len(stale) > lim,
                     scanned=len(rows))
@@ -6715,6 +6753,15 @@ _SHA = re.compile(r"[0-9a-f]{7,40}")
 def _path_covers(subject: str, changed: str) -> bool:
     """주장의 경로가 바뀐 파일을 덮는가. 같은 파일이거나 그 디렉터리 아래다."""
     return changed == subject or changed.startswith(subject.rstrip("/") + "/")
+
+
+def _retired_claim(row: dict, today: str) -> bool:
+    """유효구간이 오늘이나 그 전에 끝난 기록(은퇴한 주장). 대체된 주장도 대체당한
+    기록의 `valid_until` 로 여기 온다. 대체 엣지는 그 값이 없으면 경고하고
+    (`fragment._warn_supersede_interval`), 값이 없는 기록은 현재로 남는다.
+    주장 진단의 목록들이 이 기준 하나를 쓴다."""
+    until = str(row.get("valid_until") or "")
+    return bool(until) and until <= today
 
 
 def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[dict]:
@@ -6744,8 +6791,7 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
     today = _dt.date.today().isoformat()
     out = []
     for r in record_rows:
-        until = str(r.get("valid_until") or "")
-        if until and until <= today:
+        if _retired_claim(r, today):
             continue                       # 은퇴한 주장은 낡을 수 없다
         props = _props_to_obj(r.get("props"))
         sp = str(props.get("subject_path") or "").strip()

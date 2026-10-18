@@ -102,6 +102,73 @@ class SharedSlug(unittest.TestCase):
         self.assertNotIn("ambiguous_note", res)
 
 
+class TopicDescriptionsAreNotOrphans(unittest.TestCase):
+    """토픽 설명 문서는 일부러 잇지 않는다(`put_doc(link=False)`). 미러의 domain 으로 토픽에
+    속하므로 고아 목록에 들면 그 목록이 '이어야 할 것'이 아니게 된다. 실제 엔진으로 보고,
+    물리 키에 소유자 접두가 붙는 모드와 안 붙는 모드를 둘 다 돈다."""
+
+    def _run_in_mode(self, flag: str):
+        from unittest.mock import patch
+
+        from api import docstore, fragment, topic_description
+        from test_decision_type import _fresh_store, _restore
+
+        with patch.dict("os.environ", {"VINC_PK_NAMESPACED": flag}):
+            store, keep = _fresh_store()
+            try:
+                for owner, nodes, edges in (
+                        (MINE, [{"id": "concept:a", "type": "concept", "title": "A",
+                                 "domain": "project"},
+                                {"id": "concept:b", "type": "concept", "title": "B",
+                                 "domain": "project"},
+                                {"id": "concept:lone", "type": "concept", "title": "Lone",
+                                 "domain": "project"}],
+                         [{"from": "concept:a", "to": "concept:b", "type": "relates_to"}]),
+                        (THEIRS, [{"id": "concept:other", "type": "concept",
+                                   "title": "Other", "domain": "other"}], [])):
+                    res = fragment.merge_fragment(
+                        {"owner": owner, "nodes": nodes, "edges": edges}, store=store)
+                    self.assertFalse(res.get("warnings"), res)
+                mine = topic_description.put(store, owner=MINE, node="domain:project",
+                                             text="What this project covers.",
+                                             expected_content_hash="")
+                theirs = topic_description.put(store, owner=THEIRS, node="domain:other",
+                                               text="Their topic.", expected_content_hash="")
+                self.assertTrue(mine["executed"] and theirs["executed"], (mine, theirs))
+                # 같은 방식으로 잇지 않은 보통 문서는 여전히 고아다(빼는 것은 설명뿐이다).
+                plain = docstore.put_doc(store, owner=MINE, text="A loose note.",
+                                         title="Loose note", origin="notes/loose.md",
+                                         topic="project", link=False)
+                self.assertTrue(plain["executed"], plain)
+                return (q.component_diagnosis(owner=MINE, store=store),
+                        "concept:doc." + mine["doc_id"], "concept:doc." + plain["doc_id"])
+            finally:
+                store.close()
+                _restore(keep)
+
+    def _check(self, flag: str):
+        res, described, plain = self._run_in_mode(flag)
+        self.assertTrue(res["executed"], res)
+        self.assertEqual(res["topic_descriptions_excluded"], 1, res)
+        self.assertNotIn(described, res["orphans"])
+        self.assertFalse(any(described in c["members"] for c in res["components"]))
+        self.assertEqual(res["orphans"], sorted(["concept:lone", plain]))
+        self.assertEqual(res["component_count"], 3)    # a-b, lone, 보통 문서
+        self.assertEqual(res["ambiguous"], [])
+
+    def test_left_out_with_owner_prefixed_keys(self):
+        self._check("on")
+
+    def test_left_out_without_owner_prefixed_keys(self):
+        self._check("")
+
+    def test_a_graph_without_descriptions_reports_zero(self):
+        st = _store({"concept:a"}, set())
+        res = q.component_diagnosis(owner=MINE, store=st)
+        self.assertEqual(res["topic_descriptions_excluded"], 0)
+        self.assertEqual(res["orphans"], ["concept:a"])
+
+
 class Communities(unittest.TestCase):
     """같은 투영을 쓰는 나머지 둘. 컴포넌트만 맞으면 두 진단이 계속 틀린다."""
 
