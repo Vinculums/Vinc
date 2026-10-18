@@ -261,9 +261,11 @@ def inventory_diagnostics(store, source, topic, *, conventions_policy="retain"):
                 for label, _ in plan.selected:
                     counts[label] = counts.get(label, 0) + 1
                 blockers = {b.split(":", 1)[0] for b in plan.blockers}
-                # 큰 목록을 읽었다고 기존 단일 트랜잭션 실행까지 허용하지 않는다.
-                blockers.add("conversion_bounded_executor_required")
-                return {"ready": False, "scope": "topic", "topic": topic,
+                # 준비된 큰 토픽은 봉인 목록·유한 배치 실행기로만 옮긴다. 지문은 그 실행기가
+                # 예약 때 다시 대조하는 값이다. 기존 단일 트랜잭션 실행은 여전히 허용하지 않는다.
+                # 근거: [[decision:large-topic-conversion-admission-2026-10-16]]
+                fingerprint = authorized_hash(plan.before_hash, conventions_policy)
+                result = {"ready": not blockers, "scope": "topic", "topic": topic,
                         "counts_known": True, "counts": counts, "documents": len(plan.documents),
                         "retained_personal_history": retained_history_counts(inventory.snapshot, plan),
                         "preserved_references": preserved_reference_counts(plan),
@@ -271,9 +273,12 @@ def inventory_diagnostics(store, source, topic, *, conventions_policy="retain"):
                         "document_ownership": _document_scope_summary(inventory.snapshot,plan,source),
                         "document_missing_evidence": _missing_document_evidence(inventory.snapshot,plan,source),
                         "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
-                        "inspected_rows": inventory.inspected_rows, "inventory_hash": authorized_hash(plan.before_hash, conventions_policy),
-                        "inventory_version": 3, "diagnostic_only": True,
+                        "inspected_rows": inventory.inspected_rows, "inventory_hash": fingerprint,
+                        "inventory_version": 3, "diagnostic_only": bool(blockers),
                         "blockers": sorted(blockers)}
+                if not blockers:
+                    result["fingerprint"] = fingerprint
+                return result
     except (TransferRefused, OSError, sqlite3.Error) as exc:
         code = str(exc).split(":", 1)[0] if isinstance(exc, TransferRefused) else "conversion_scratch_unavailable"
         result = {"ready": False, "scope": "topic", "topic": topic, "counts_known": False,

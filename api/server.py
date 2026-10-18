@@ -860,6 +860,16 @@ class VincApp:
                 if journal is not None and journal.get("inventory_version") == 3:
                     conversion._identity(journal, source=source, target=body["target"], topic=body["topic"])
                     return self._resume_bounded_conversion(action, args, body.get("fingerprint"), conventions_policy)
+                if action == "status" and journal is None and hasattr(self, "_conversion_jobs"):
+                    # 저널을 쓰기 전에 거절된 새 예약은 작업 상태에만 남는다. 예전 경로는
+                    # 저널이 없으면 "prepared" 를 돌려주므로 먼저 작업을 본다.
+                    pending = self._conversion_jobs.status(source, args["run"])
+                    if pending is not None:
+                        return pending
+                if action == "stage" and journal is None and self._exceeds_single_transaction(args):
+                    # 큰 토픽의 새 예약은 봉인 목록과 유한 배치로만 시작한다.
+                    return self._resume_bounded_conversion(action, args, body.get("fingerprint"),
+                                                           conventions_policy, allow_new=True)
                 if action == "stage":
                     args.update(expected=body["fingerprint"], stamp=revstamp.hlc_now(self.store),
                                 conventions_policy=conventions_policy)
@@ -882,9 +892,23 @@ class VincApp:
         out = self.jobs.run_sync("topic-conversion." + action, work)
         return (409 if out.get("status") == "blocked" else 200), out
 
-    def _resume_bounded_conversion(self, action, args, expected, conventions_policy="retain"):
-        """Recover an already sealed v3 run; new large reservations stay blocked."""
-        from .topic_conversion_jobs import ConversionJobs, bounded_flow, bounded_step
+    def _exceeds_single_transaction(self, args):
+        """선택 범위가 기존 단일 트랜잭션 한도를 넘는가. 한도 안에서 읽기만 하고 쓰지 않는다."""
+        from . import topic_conversion as conversion
+        from store.topic_manifest import ManifestLimit
+        try:
+            conversion._inventory(self.store, args["source"], args["target"], args["topic"])
+        except ManifestLimit as exc:
+            return exc.reason in ("retained_payload", "retained_rows", "retained_bytes")
+        except Exception:
+            return False
+        return False
+
+    def _resume_bounded_conversion(self, action, args, expected, conventions_policy="retain",
+                                   allow_new=False):
+        """Start a new large run only when ``allow_new``; otherwise recover a sealed v3 run."""
+        from . import topic_conversion as conversion
+        from .topic_conversion_jobs import ConversionJobs, StepBlocked, bounded_flow, bounded_step
         from store.topic_transfer import TransferRefused
         from . import revstamp
         durable = self._durable or self._conversion_durable
@@ -912,7 +936,12 @@ class VincApp:
                 try:
                     return bounded_step(self.store, durable, **args, expected=expected,
                                         stamp=revstamp.hlc_now(self.store), qualified_indexes=True,
-                                        conventions_policy=conventions_policy)
+                                        allow_new=allow_new, conventions_policy=conventions_policy)
+                except TransferRefused as exc:
+                    # 저널이 없으면 아무것도 쓰지 않은 거절이다(낡은 지문·의존 차단·다른 이동 중).
+                    if conversion._get(self.store, args["run"]) is None:
+                        raise StepBlocked(str(exc).split(":", 1)[0]) from None
+                    raise
                 finally:
                     invalidate()
 
