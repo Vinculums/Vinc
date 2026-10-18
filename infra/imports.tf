@@ -80,8 +80,8 @@ import {
 }
 
 # ── 관측 ──────────────────────────────────────────────────────────────────────
-# 이 넷이 "허브가 죽었다"를 사람에게 알리는 유일한 경로다. 하드다운 넷을 겪고 세운
-# 것이라 조용히 사라지면 다음 하드다운을 아무도 모른다.
+# 장애 메일은 계정 앱의 감시 루프가 보내지만, 그 루프가 죽었다는 메일은 이 셋을 지나서만 온다
+# (alerts.tf 1번). 조용히 사라지면 감시 루프가 멈춘 것을 아무도 모른다.
 
 import {
   to = azurerm_log_analytics_workspace.vincs
@@ -98,21 +98,15 @@ import {
   id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/actionGroups/vinc-alerts"
 }
 
-import {
-  to = azurerm_monitor_metric_alert.hub_health_down
-  id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/metricAlerts/hub-health-down"
-}
-
 # ⚠ **Microsoft.Insights 아래 ID 는 대소문자가 계약이다.** `az resource list` 는
 # `webtests`·`actiongroups`·`metricalerts` 로 소문자를 주는데 azurerm 의 파서는
 # `webTests`·`actionGroups`·`metricAlerts` 를 요구하고, 어긋나면 "parsed Resource ID
 # was missing a value for the segment at position 6" 라는 **자리 번호로만 말하는**
-# 오류가 난다(실측 2026-08-30). az 출력을 그대로 붙여넣지 말 것.
+# 오류가 난다. az 출력을 그대로 붙여넣지 말 것.
 #
-# 웹테스트는 azurerm 에 두 벌이다 — 고전(`azurerm_application_insights_web_test`)과
-# 표준(`..._standard_web_test`). ARM 타입은 둘 다 같아서 구분이 안 되는데, 이 리소스는
-# `plan` 이 표준으로 갈랐다.
+# 이 경보는 실물에만 있고 선언에 없었다. 들여와야 plan 이 그 존재를 보고, 나중에 지울 때도
+# terraform 이 지운다.
 import {
-  to = azurerm_application_insights_standard_web_test.vinc_hub_health
-  id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/webTests/vinc-hub-health"
+  to = azurerm_monitor_metric_alert.hub_internal_path_blocked
+  id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/metricAlerts/hub-internal-path-blocked"
 }
