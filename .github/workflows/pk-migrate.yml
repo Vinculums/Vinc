@@ -37,7 +37,7 @@ permissions:
 
 env:
   APP: "--name vinc-hub -g vincsRG"
-  ACCOUNT: vincstorage01
+  ACCOUNT: vinchubssd01
   SHARE: hub-data
   SRC: db.recovered6      # 현 VINC_DATA_DIR 의 파일명
   DST: db.pkns            # 이관본. **원본을 덮지 않는다** — 롤백이 곧 원본이다
@@ -87,7 +87,7 @@ jobs:
           if ! key=$(az storage account keys list -n "$ACCOUNT" -g vincsRG \
                      --query "[0].value" -o tsv 2>/dev/null) || [ -z "$key" ]; then
             echo "::error::스토리지 계정 키를 못 읽는다 — 배포 주체에 listKeys 권한이 없다." >&2
-            echo "필요 역할: Storage Account Contributor (또는 Contributor) on vincstorage01" >&2
+            echo "필요 역할: Storage Account Contributor (또는 Contributor) on vinchubssd01" >&2
             exit 1
           fi
           echo "::add-mask::$key"

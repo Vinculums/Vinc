@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 90
     env:
       RG: vincsRG
-      STORAGE: vincstorage01
+      STORAGE: vinchubssd01
       SHARE: hub-data
       APP: vinc-hub
       REHEARSAL_OWNER_UUID: ${{ inputs.owner_uuid }}
