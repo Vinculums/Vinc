@@ -126,6 +126,14 @@ jobs:
           echo "VINC_PK_NAMESPACED=${pkns:-off}" >> "$GITHUB_ENV"
           echo "원본 /data/$src → 수리본 /data/$dst (VINC_PK_NAMESPACED=${pkns:-off})"
 
+      # 장애 감시에 허브 배포 창을 연다(apply 만 허브를 내린다). 창은 서버에서 최대 30분이다.
+      # 규칙과 근거는 scripts/incident_window.sh 머리말에 있다.
+      - name: Incident window open (a planned repair must not page)
+        if: inputs.mode == 'apply'
+        env:
+          INCIDENT_MAINTENANCE_TOKEN: ${{ secrets.INCIDENT_MAINTENANCE_TOKEN }}
+        run: bash scripts/incident_window.sh open hub "hub-data-repair-${{ github.run_id }}"
+
       # ── apply 전용: 허브를 먼저 내린다 ──────────────────────────────────────
       # 수리본은 스냅샷 시점의 사본이다. 허브가 떠 있으면 그 뒤의 쓰기가 갈아타는
       # 순간 사라진다. 내리면 사이드카가 마지막 스냅샷을 볼륨에 남긴다.
@@ -238,6 +246,13 @@ jobs:
           esac
           echo "⚠ 완료 판정은 이것이 아니다 — 의미 검색이 두 팔로 답하는지(arms fts+vector) 한 번 보고,"
           echo "  재큐했다면 워커가 pending 을 줄여 가는지(/health 의 embed) 볼 것."
+
+      # 배포 창을 닫는다. 앞이 실패해도 닫아야 허브가 안 살아났을 때 감시가 장애를 바로 연다.
+      - name: Incident window close
+        if: ${{ always() && inputs.mode == 'apply' }}
+        env:
+          INCIDENT_MAINTENANCE_TOKEN: ${{ secrets.INCIDENT_MAINTENANCE_TOKEN }}
+        run: bash scripts/incident_window.sh close hub
 
       - name: Remove the rehearsal snapshot
         if: ${{ always() && steps.snapshot.outputs.timestamp != '' }}

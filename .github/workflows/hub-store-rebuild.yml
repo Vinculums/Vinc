@@ -202,6 +202,14 @@ jobs:
           echo "VINC_PK_NAMESPACED=${pkns:-off}" >> "$GITHUB_ENV"
           echo "원본 /data/$src → 재구축본 /data/$dst (VINC_PK_NAMESPACED=${pkns:-off})"
 
+      # 장애 감시에 허브 배포 창을 연다(apply 만 허브를 내린다). 창은 서버에서 최대 30분이다.
+      # 규칙과 근거는 scripts/incident_window.sh 머리말에 있다.
+      - name: Incident window open (a planned rebuild must not page)
+        if: inputs.mode == 'apply'
+        env:
+          INCIDENT_MAINTENANCE_TOKEN: ${{ secrets.INCIDENT_MAINTENANCE_TOKEN }}
+        run: bash scripts/incident_window.sh open hub "hub-store-rebuild-${{ github.run_id }}"
+
       # ── apply 전용: 허브를 먼저 내린다 ──────────────────────────────────────
       # 재구축본은 스냅샷 시점의 사본이다. 허브가 떠 있으면 그 뒤의 쓰기가 갈아타는
       # 순간 사라진다. 내리면 사이드카가 마지막 스냅샷을 볼륨에 남긴다.
@@ -415,6 +423,13 @@ jobs:
             [ "$ready" = 1 ] || { echo '::error::original revision did not recover; operator intervention required'; exit 1; }
           done
           echo 'Original revision restored before any store switch; both store files retained.'
+
+      # 배포 창을 닫는다. 앞이 실패해도 닫아야 허브가 안 살아났을 때 감시가 장애를 바로 연다.
+      - name: Incident window close
+        if: ${{ always() && inputs.mode == 'apply' }}
+        env:
+          INCIDENT_MAINTENANCE_TOKEN: ${{ secrets.INCIDENT_MAINTENANCE_TOKEN }}
+        run: bash scripts/incident_window.sh close hub
 
       # 이 실행에서 만든 사본만 지운다. --snapshot 없는 삭제는 라이브 공유를 지운다.
       - name: Remove the rehearsal snapshot
