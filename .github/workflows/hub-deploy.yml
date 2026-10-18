@@ -603,6 +603,25 @@ jobs:
             *) echo "::error::WWW-Authenticate 가 https 가 아니다: $hdr" >&2; exit 1 ;;
           esac
 
+      # 허브 내부 경로가 앱까지 닿는가. 서명 없는 POST 는 앱이 401 과 JSON `unauthorized` 로 답해야 한다.
+      # 앞문이 가로채면 본문이 JSON 이 아니고, 인증을 건너뛰는 회귀면 401 이 아니다. 이 불변식은 허브
+      # 배포에서만 바뀌므로 상시 가용성 테스트 대신 배포 직후 한 번 본다. 읽기 경로만 찌른다:
+      # purge-* 는 파괴적이라 인증이 빠진 회귀에서 이 검사 자신이 사고가 된다.
+      - name: Verify the hub internal path is answered by the app
+        run: |
+          set -euo pipefail
+          code=$(curl -s -m 30 -D /tmp/internal.h -o /tmp/internal.b -w '%{http_code}' -X POST \
+                 https://mcp.vincs.io/internal/graph-owner -H 'Content-Type: application/json' -d '{}')
+          ctype=$(tr -d '\r' < /tmp/internal.h | grep -i '^content-type:' | head -1 || true)
+          echo "  HTTP $code  $ctype"
+          [ "$code" = "401" ] || { echo "::error::/internal/graph-owner 가 $code 다. 서명 없는 호출은 401 이어야 한다" >&2; exit 1; }
+          case "$ctype" in
+            *application/json*) ;;
+            *) echo "::error::401 을 앱이 아니라 앞문이 냈다(본문이 JSON 이 아니다)" >&2; exit 1 ;;
+          esac
+          grep -q unauthorized /tmp/internal.b || { echo "::error::401 본문에 unauthorized 가 없다" >&2; exit 1; }
+          echo "  internal path answered by the app"
+
       # ── 레지스트리 정리 ─────────────────────────────────────────────────────
       # 왜 여기 생겼나. 배포마다 `:latest` 와 `:<sha>` 두 태그를 밀고 **아무것도 안
       # 지웠다**. 2026-09-01 실측: vincacr 가 23.51GB / 포함분 11GB = **219%**,
