@@ -174,7 +174,8 @@ jobs:
     # 러너는 plan 과 같은 이유(그 잡 위의 문단들이 근거다).
     runs-on: ubuntu-latest
     # 실측 3분 52초. plan 위의 timeout 문단이 값의 근거와 이 설정의 한계를 함께 적는다.
-    timeout-minutes: 30
+    # 캐시가 빈 굽기(가중치에서 내보내기까지)는 그보다 훨씬 길어서 여유를 둔다.
+    timeout-minutes: 45
     # 이 잡이 내보내는 커밋. `github.sha` 가 아니다(파일 머리말).
     env:
       DEPLOY_SHA: ${{ needs.plan.outputs.sha }}
@@ -263,43 +264,71 @@ jobs:
       # ⚠ 세 값을 여기 하드코딩하지 않는다. 그러면 이 스텝이 Dockerfile ENV 의 **네
       # 번째 독자**가 되고, 두 CI 테스트(Dockerfile↔EMBEDDING_DIM_BY_MODEL, basename
       # 정확 일치)가 초록인 채로 갈릴 수 있다. Dockerfile 에서 읽어 쓴다.
-      # ⚠ **굽기는 캐시가 비었을 때만 한다.** 이 스텝이 배포마다 fp32 2.27GB 를 받아
-      # `quantize_dynamic` 을 돌렸고, 그 피크가 이 러너(WSL 몫 7.7GB)를 넘겼다. 죽는
-      # 것은 스텝만이 아니다 — 2026-09-18 과 2026-09-19 에 **러너 서비스 자체가
-      # oom-kill** 됐고, 유닛에 재시작 정책이 없어 하루 넘게 꺼진 채였다. 그동안 CI 와
-      # 배포 전부가 반쪽 풀에서 돌았다. 즉 이 스텝의 메모리 피크는 한 번의 실패가
-      # 아니라 **용량의 영구 손실**로 나타난다.
-      #
-      # 고치는 방향이 "메모리를 더 준다"가 아닌 이유: 호스트가 15.9GB 이고 WSL 은
-      # 기본으로 그 절반을 받는데, 나머지 절반은 윈도우와 Docker 가 쓴다. 늘려 봐야
-      # 스왑이다. 그래서 **같은 것을 두 번 굽지 않는** 쪽으로 간다.
+      # ⚠ **굽기는 캐시가 비었을 때만 한다.** 호스티드 러너는 빈 디스크로 뜨므로 캐시는
+      # 러너 로컬이 아니라 `actions/cache` 에 둔다(키당 한 벌, 약 0.6GB). 키는 모델·폭·굽는
+      # 스크립트다. 셋 중 하나라도 바뀌면 다시 굽는다.
       #
       # 장치는 이미 `packaging/bake_embed_model.py` 안에 있다: 산출물이 둘 다 있으면
       # `skip-bake` 로 빠지고 **검증만** 한다. 그러니 캐시가 할 일은 산출물을 제자리에
       # 갖다 놓는 것뿐이고, 검증(`verify_embedding_width`)은 캐시된 바이트에도 그대로
       # 돈다 — 잘린 파일이 조용히 통과하지 않는다는 성질을 잃지 않는다.
       #
-      # 키는 모델·폭·굽는 스크립트다. 셋 중 하나라도 바뀌면 다시 굽는다. 캐시는 러너
-      # 로컬 디스크에 둔다(업로드 없음) — 리눅스 러너 둘이 같은 WSL 의 같은 `runner`
-      # 계정이라 한 벌을 나눠 쓴다.
-      - name: 모델을 굽는다 (캐시가 비었을 때만 — 러너 로컬)
+      # 리포에 ONNX 가 없는 모델은 굽기가 가중치에서 내보내기부터 한다(`export_fp32`).
+      # 그 스택(torch·transformers)과 스왑은 캐시가 빌 때만 깐다. 판은 평가한 아티팩트를
+      # 만든 판 그대로이고, onnxruntime 은 Dockerfile.hub 의 런타임 판을 뽑아 쓴다.
+      # 근거: [[record:models-that-publish-no-onnx-are-exported-from-their-weights-before-the-hub-bake]]
+      - name: 굽기 키 (모델 · 폭 · 굽는 스크립트)
+        id: bake-key
+        run: |
+          set -euo pipefail
+          export $(grep -E '^ENV VINC_EMBED_(MODEL|MODEL_PATH|DIM)=' Dockerfile.hub | sed 's/^ENV //')
+          key="$(printf '%s|%s|%s' "$VINC_EMBED_MODEL" "$VINC_EMBED_DIM" \
+                   "$(sha256sum packaging/bake_embed_model.py | cut -d' ' -f1)" \
+                 | sha256sum | cut -c1-32)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "dir=${VINC_BAKE_CACHE:-$HOME/.cache/vinc-bake}/$key" >> "$GITHUB_OUTPUT"
+
+      - name: 구운 모델을 캐시에서 불러온다
+        id: bake-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.bake-key.outputs.dir }}
+          key: vinc-bake-${{ steps.bake-key.outputs.key }}
+
+      - name: 모델을 굽는다 (캐시가 비었을 때만)
+        env:
+          BAKE_CACHE_DIR: ${{ steps.bake-key.outputs.dir }}
         run: |
           set -euo pipefail
           export $(grep -E '^ENV VINC_EMBED_(MODEL|MODEL_PATH|DIM)=' Dockerfile.hub | sed 's/^ENV //')
           name="$(basename "$VINC_EMBED_MODEL_PATH")"
-          key="$(printf '%s|%s|%s' "$VINC_EMBED_MODEL" "$VINC_EMBED_DIM" \
-                   "$(sha256sum packaging/bake_embed_model.py | cut -d' ' -f1)" \
-                 | sha256sum | cut -c1-32)"
-          cache="${VINC_BAKE_CACHE:-$HOME/.cache/vinc-bake}/$key"
+          cache="$BAKE_CACHE_DIR"
+          ort_pin=$(grep -m1 -oE 'onnxruntime==[0-9][0-9.]*' Dockerfile.hub || true)
+          [ -n "$ort_pin" ] || { echo "::error::Dockerfile.hub 에서 onnxruntime 판을 못 찾았다"; exit 1; }
           mkdir -p models
           if [ -s "$cache/$name" ] && [ -s "$cache/tokenizer.json" ]; then
             echo "캐시 적중: $cache"
             cp "$cache/$name" "$cache/tokenizer.json" models/
+            python -m pip install --quiet --disable-pip-version-check \
+              "$ort_pin" tokenizers numpy huggingface_hub
           else
             echo "캐시 없음 → 굽는다: $VINC_EMBED_MODEL → $name (폭 $VINC_EMBED_DIM)"
+            # 내보내기와 양자화는 fp32 를 통째로 올린다. 스왑 파일이 가중치와 같은 루트
+            # 디스크를 쓰므로 미리 깔린 툴체인부터 비운다(뒤 스텝이 쓰는 az·docker 는 남는다).
+            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+            sudo swapoff -a
+            sudo rm -f /mnt/swapfile /swapfile
+            sudo fallocate -l 10G /swapfile
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile > /dev/null
+            sudo swapon /swapfile
+            df -h /
+            free -g
+            python -m pip install --quiet --disable-pip-version-check \
+              torch==2.12.0 --index-url https://download.pytorch.org/whl/cpu
+            python -m pip install --quiet --disable-pip-version-check \
+              transformers==5.10.2 onnx onnxscript huggingface_hub "$ort_pin" numpy
           fi
-          python -m pip install --quiet --disable-pip-version-check \
-            onnx onnxruntime tokenizers numpy huggingface_hub
           # 컨테이너 절대경로를 컨텍스트 상대경로로 옮긴다. basename 은 Dockerfile 이
           # 정한 그대로 쓴다 — 그래야 `artifact_name(모델)` 대조가 계속 성립한다.
           # 캐시가 적중했으면 이 호출은 굽지 않고 검증만 한다(skip-bake).
@@ -314,10 +343,19 @@ jobs:
             echo "캐시에 넣었다: $cache"
           fi
           ls -la models
+          sha256sum "models/$name" models/tokenizer.json
           # The same commit can be rebuilt with different cached model bytes.
           # Bind both deployed roles to the actual ONNX and tokenizer artifact.
           artifact_hash=$(sha256sum "models/$name" models/tokenizer.json | sha256sum | cut -d' ' -f1)
           echo "VINC_ENCODER_BUILD=$DEPLOY_SHA-$artifact_hash" >> "$GITHUB_ENV"
+
+      # 방금 구웠을 때만 남긴다. 위 스텝이 검증까지 통과한 뒤라 반쪽 파일은 여기 오지 않는다.
+      - name: 구운 모델을 캐시에 남긴다
+        if: steps.bake-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.bake-key.outputs.dir }}
+          key: vinc-bake-${{ steps.bake-key.outputs.key }}
 
       # 이미지는 이 러너에서 짓고 vincacr 로 민다. ACR Tasks 는 빌드 vCPU 초를 따로 청구하는데
       # 이 잡은 그 원격 빌드를 기다리는 동안에도 러너 분을 쓴다. 구운 모델도 이미 이 디스크에

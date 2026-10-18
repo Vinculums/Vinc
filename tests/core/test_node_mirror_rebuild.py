@@ -417,6 +417,7 @@ class RebuildReuse(unittest.TestCase):
         self.app = VincApp(store=self.store)
         self._saved = (sv._encode_post, sv._ENCODER_RUNTIME, sv._ENCODER_BUILD,
                        sv.docstore.embed_model_state, os.environ.get("VINC_EMBED_ENCODE"))
+        self._saved_model = os.environ.pop("VINC_EMBED_MODEL", None)
         os.environ["VINC_EMBED_ENCODE"] = "http://encoder.invalid"
         sv._ENCODER_RUNTIME, sv._ENCODER_BUILD = "rt", "b1"
         sv.docstore.embed_model_state = lambda _s: {"stored": "bge"}
@@ -435,6 +436,9 @@ class RebuildReuse(unittest.TestCase):
         os.environ.pop("VINC_EMBED_ENCODE", None)
         if prev is not None:
             os.environ["VINC_EMBED_ENCODE"] = prev
+        os.environ.pop("VINC_EMBED_MODEL", None)
+        if self._saved_model is not None:
+            os.environ["VINC_EMBED_MODEL"] = self._saved_model
 
     def rebuild(self):
         self.encoded.clear()
@@ -474,6 +478,16 @@ class RebuildReuse(unittest.TestCase):
         sv._ENCODER_RUNTIME = "rt2"
         self.assertEqual(self.rebuild()["encoded"], 3)
         self.assertEqual({m["runtime"] for m in self.store.mirror}, {"rt2"})
+
+    def test_the_encoders_model_labels_the_mirror_while_the_stored_key_is_still_the_previous_one(self):
+        """모델을 바꾼 배포에서 재구축은 워커의 첫 폴(스토어 키 교체)보다 먼저 돌 수 있다.
+        그때 스토어 키로 라벨을 달면 이전 모델의 벡터가 전부 "안 바뀜"으로 남는다."""
+        self.rebuild()
+        os.environ["VINC_EMBED_MODEL"] = "bge-ko"
+        res = self.rebuild()
+        self.assertEqual(res["encoded"], 3)
+        self.assertEqual({m["model"] for m in self.store.mirror}, {"bge-ko"})
+        self.assertTrue(self.rebuild()["unchanged"])
 
     def test_without_a_build_id_it_rebuilds_whole_as_before(self):
         self.rebuild()

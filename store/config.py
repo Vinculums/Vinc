@@ -36,9 +36,10 @@ EMBEDDING_DIM_BY_MODEL = {
     # ── HF id(VINC_EMBED_MODEL · 워커가 실제로 드는 이름) ────────────────────
     "BAAI/bge-base-en-v1.5": 768,
     "BAAI/bge-large-en-v1.5": 1024,
-    "intfloat/multilingual-e5-base": 768,    # 허브 현행(2026-08-01~)
+    "intfloat/multilingual-e5-base": 768,
     "intfloat/multilingual-e5-large": 1024,
-    "BAAI/bge-m3": 1024,                     # W10 채택 후보 — 차원이 바뀐다
+    "BAAI/bge-m3": 1024,
+    "dragonkue/BGE-m3-ko": 1024,             # 허브 현행. bge-m3 를 한국어로 더 학습한 판, 폭이 같다
 }
 DEFAULT_EMBEDDING_MODEL = "local-en"
 #: 사람이 고르는 별칭만. HF id 는 위 표에 차원 조회용으로만 실려 있다 —

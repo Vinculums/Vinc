@@ -1,4 +1,4 @@
-r"""빌드 타임 모델 굽기 — e5 fp32 를 받아 reduce_range int8 로 양자화해 이미지에 싣는다.
+r"""빌드 타임 모델 굽기 — fp32 ONNX 를 받아(리포에 없으면 가중치에서 내보내) reduce_range int8 로 양자화해 이미지에 싣는다.
 
 **왜 별도 파일인가**(이 파일이 존재하는 이유 — 인라인으로 되돌리지 말 것):
 전에는 이 내용이 `Dockerfile.hub` 안의 heredoc(`python - <<'PY'`)이었다. 두 가지가
@@ -21,9 +21,11 @@ r"""빌드 타임 모델 굽기 — e5 fp32 를 받아 reduce_range int8 로 양
 조용히 건너뛰는 실패는 다시는 만들지 않는다.
 """
 
+import gc
 import os
 import shutil
 import sys
+import tempfile
 
 # ⚠ **이 줄은 `huggingface_hub` import 보다 앞에 있어야 한다.** 그 패키지는 이 값을
 # `constants` 모듈이 **import 되는 시점에** 한 번 읽는다(`_is_true(os.environ.get(...))`).
@@ -102,6 +104,82 @@ def verify_embedding_width(model_path: str, tokenizer_path: str, expected: int) 
         )
     return got
 
+
+#: 내보낸 그래프를 torch 와 대조하는 문장들. 순서와 글자를 바꾸면 내보내기의 예시 입력이 바뀌어
+#: 같은 가중치에서도 다른 바이트가 나올 수 있다(평가한 아티팩트와 대조할 길이 끊긴다).
+_PROBES = ["dimension probe", "검색은 질문의 언어로 문서를 찾는다.", "The keyword arm reads the bigram index.",
+           "한국어 질문을 영어 문서에서 찾을 때 무엇이 달라지나요?"]
+
+
+def export_fp32(model_id: str, out_dir: str) -> str:
+    """리포에 `onnx/model.onnx` 가 없는 모델을 transformers 가중치에서 fp32 ONNX 로 내보낸다.
+
+    출력은 `last_hidden_state` 하나이고 입력은 `input_ids`·`attention_mask` 둘이다. 런타임은
+    세션이 요구하는 입력만 채우고 첫 출력을 풀링하므로(`vinc_rag/embed/worker.py`) 그대로 맞는다.
+
+    두 가지를 확인하고 아니면 죽는다. ① 모델의 `1_Pooling/config.json` 이 CLS 다 — 런타임은 e5
+    가 아닌 모델을 CLS 로 풀링하므로, 아니면 벡터가 오류 없이 틀린다. ② 내보낸 그래프의 CLS
+    벡터가 같은 문장에서 torch 와 최소 코사인 0.9999 이상이다.
+
+    torch·transformers 는 이 함수 안에서만 든다. 이미지 안의 검증 전용 실행에는 둘 다 없다.
+    근거: [[record:models-that-publish-no-onnx-are-exported-from-their-weights-before-the-hub-bake]]
+    """
+    import json
+
+    import huggingface_hub as hf
+    import numpy as np
+    import onnxruntime as ort
+    import torch
+    from tokenizers import Tokenizer
+    from transformers import AutoModel
+
+    with open(hf.hf_hub_download(model_id, "1_Pooling/config.json"), encoding="utf-8") as fh:
+        pooling = json.load(fh)
+    if pooling.get("pooling_mode_cls_token") is not True:
+        sys.exit(f"FATAL: {model_id} 는 CLS 풀링이 아니다({pooling}) — 런타임이 다른 벡터를 읽는다")
+
+    tok = Tokenizer.from_file(hf.hf_hub_download(model_id, "tokenizer.json"))
+    tok.enable_truncation(512)
+    tok.enable_padding(pad_id=tok.token_to_id("<pad>"), pad_token="<pad>")
+    enc = tok.encode_batch(_PROBES)
+    ids = np.array([e.ids for e in enc], dtype=np.int64)
+    mask = np.array([e.attention_mask for e in enc], dtype=np.int64)
+
+    def cls(hidden):
+        v = hidden[:, 0]
+        return v / np.linalg.norm(v, axis=1, keepdims=True)
+
+    class Hidden(torch.nn.Module):
+        def __init__(self, m):
+            super().__init__()
+            self.m = m
+
+        def forward(self, input_ids, attention_mask):
+            return self.m(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
+
+    path = os.path.join(out_dir, "model.onnx")
+    m = AutoModel.from_pretrained(model_id, dtype=torch.float32, attn_implementation="eager").eval()
+    args = (torch.from_numpy(ids), torch.from_numpy(mask))
+    with torch.no_grad():
+        ref = cls(Hidden(m)(*args).numpy())
+        torch.onnx.export(Hidden(m), args, path,
+                          input_names=["input_ids", "attention_mask"], output_names=["last_hidden_state"],
+                          dynamic_axes={"input_ids": {0: "b", 1: "t"}, "attention_mask": {0: "b", 1: "t"},
+                                        "last_hidden_state": {0: "b", 1: "t"}},
+                          opset_version=17, dynamo=False)
+    del m
+    gc.collect()   # 양자화가 fp32 를 다시 올린다. torch 사본을 쥔 채로 가면 피크가 두 벌이 된다.
+
+    sess = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+    cos = float((cls(sess.run(None, {"input_ids": ids, "attention_mask": mask})[0]) * ref).sum(1).min())
+    del sess
+    print(f"export: {model_id}@{hf.model_info(model_id).sha} fp32 ONNX 대 torch 최소 코사인 {cos:.6f}",
+          flush=True)
+    if cos < 0.9999:
+        sys.exit("FATAL: 내보낸 fp32 ONNX 가 torch 와 어긋난다")
+    return path
+
+
 # 공식 int8(`model_qint8_avx512_vnni.onnx`)은 U8S8+per_channel+reduce_range=False 라
 # non-VNNI CPU 에서 포화가 나 **에러 없이 품질만** 떨어진다(실측 한국어 nDCG
 # 0.670 → 0.472). reduce_range=True 는 가중치를 7비트로 낮춰 포화를 산술적으로
@@ -144,16 +222,25 @@ else:
     # non-VNNI CPU 에서 포화가 나 **에러 없이 품질만** 떨어진다(실측 한국어 nDCG
     # 0.670 → 0.472). reduce_range=True 는 가중치를 7비트로 낮춰 포화를 산술적으로
     # 불가능하게 만든다 — 그래서 공식본을 쓰지 않고 직접 굽는다.
-    fp32 = hf.hf_hub_download(MODEL, "onnx/model.onnx")
-    src_bytes = os.path.getsize(fp32)
-    # 2GB 를 넘는 fp32(e5-large·bge-m3)는 가중치가 `model.onnx_data` 등 **별도 파일**로
-    # 나온다. 그래프 파일만 받으면 quantize 가 로드에서 터진다 — 같은 스냅샷 디렉터리에
-    # 나란히 받아야 onnx 가 상대경로로 찾는다. 대안 .onnx(공식 int8·O4)과 설정류는 제외.
-    # (같은 규칙이 `scripts/quantize_e5.py` 에도 있다. 그쪽은 실험용 로컬 빌드다.)
-    for _f in hf.list_repo_files(MODEL):
-        if (_f.startswith("onnx/") and _f != "onnx/model.onnx"
-                and not _f.endswith((".onnx", ".json", ".model"))):
-            src_bytes += os.path.getsize(hf.hf_hub_download(MODEL, _f))
+    repo_files = hf.list_repo_files(MODEL)
+    export_dir = None
+    if "onnx/model.onnx" in repo_files:
+        fp32 = hf.hf_hub_download(MODEL, "onnx/model.onnx")
+        src_bytes = os.path.getsize(fp32)
+        # 2GB 를 넘는 fp32(e5-large·bge-m3)는 가중치가 `model.onnx_data` 등 **별도 파일**로
+        # 나온다. 그래프 파일만 받으면 quantize 가 로드에서 터진다 — 같은 스냅샷 디렉터리에
+        # 나란히 받아야 onnx 가 상대경로로 찾는다. 대안 .onnx(공식 int8·O4)과 설정류는 제외.
+        # (같은 규칙이 `scripts/quantize_e5.py` 에도 있다. 그쪽은 실험용 로컬 빌드다.)
+        for _f in repo_files:
+            if (_f.startswith("onnx/") and _f != "onnx/model.onnx"
+                    and not _f.endswith((".onnx", ".json", ".model"))):
+                src_bytes += os.path.getsize(hf.hf_hub_download(MODEL, _f))
+    else:
+        # 내보낸 fp32 는 `OUT` 옆에 두지 않는다. 러너에서 그 디렉터리가 곧 이미지 빌드
+        # 컨텍스트라, 거기 남은 2GB 가 그대로 이미지로 올라간다.
+        export_dir = tempfile.mkdtemp(prefix="vinc-export-")
+        fp32 = export_fp32(MODEL, export_dir)
+        src_bytes = sum(os.path.getsize(os.path.join(export_dir, f)) for f in os.listdir(export_dir))
     ortq.quantize_dynamic(
         fp32,
         OUT,
@@ -162,6 +249,8 @@ else:
         reduce_range=True,
         extra_options={"MatMulConstBOnly": True},
     )
+    if export_dir:
+        shutil.rmtree(export_dir, ignore_errors=True)
 
     # 토크나이저(17MB)도 함께 굽는다 — 런타임 네트워크 의존을 남기지 않는다.
     shutil.copy(hf.hf_hub_download(MODEL, "tokenizer.json"), TOK)

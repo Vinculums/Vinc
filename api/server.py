@@ -2055,10 +2055,15 @@ class VincApp:
             try:
                 owner = (body.get("owner") or "").strip() or None
                 rows, collisions = node_mirror.collect(r, owner)
-                try:
-                    model = str((docstore.embed_model_state(r) or {}).get("stored") or "")
-                except Exception:
-                    model = ""    # 라벨일 뿐이다 — 못 읽었다고 재구축을 접지 않는다
+                # 라벨은 이 이미지의 인코더가 내는 모델(`VINC_EMBED_MODEL`)이다. 스토어 키는
+                # 워커의 첫 폴이 바꾸는데 재구축이 그보다 먼저 읽을 수 있다. 그러면 새 벡터에
+                # 이전 모델 이름이 붙고, `plan` 은 이전 모델의 벡터를 전부 "안 바뀜"으로 둔다.
+                model = os.environ.get("VINC_EMBED_MODEL", "").strip()
+                if not model:
+                    try:
+                        model = str((docstore.embed_model_state(r) or {}).get("stored") or "")
+                    except Exception:
+                        model = ""    # 라벨일 뿐이다 — 못 읽었다고 재구축을 접지 않는다
                 # 🔴 **바뀐 노드만 인코딩한다**(2026-10-02). 전량을 매번 인코딩하던 동안
                 # 미러가 5천에서 그 몇 배로 자라자 재구축이 25분을 넘겼고, 그 내내 질의
                 # 임베딩이 같은 인코더 뒤에 줄을 서서 검색 대부분이 의미 팔 없이 나갔으며,
