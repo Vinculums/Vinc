@@ -6659,7 +6659,7 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
 
     반환 {executed, conflicts:[{subject_path, newer:{…}, older:{…}}], conflict_count,
     unanchored:[{id,title,path_hint}], unanchored_count, unanchored_truncated,
-    anchored_count, scanned}.
+    anchored_count, results_excluded, scanned}.
 
     **어느 쪽이 옳은지 판정하지 않는다.** 두 측정이 다른 날짜에 나왔다는 사실만
     내놓는다. 판정은 경로를 열어 보는 사람의 몫이고, 그 열어 보기가 이 도구가
@@ -6672,6 +6672,11 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
     은퇴했거나 대체된 것이라 다시 잴 일도 닻을 달 일도 없다(`_retired_claim`, `stale` 과
     같은 기준). `anchored_count` 와 `scanned` 는 은퇴한 기록도 센다.
 
+    `props.claim_kind` 가 ``"result"`` 인 기록은 한 시점의 실행 결과다. 같은 파일의 새
+    측정과 다투지 않으므로 짝에서 통째로 빠진다(최신 쪽으로도 나머지 쪽으로도). 그렇게
+    뺀 현재 기록의 수는 `results_excluded` 로 밝히고, `anchored_count` 와 `scanned` 는
+    그대로 센다. 다른 값은 모르는 값으로 보고 보통 주장처럼 다룬다.
+
     기존 세 kind 가 그래프 **구조**(연결성·군집)를 읽는 데 반해 이것은 props **내용**을
     읽는다. 같은 문이지만 이웃한 코드가 아니라서 `component_diagnosis` 를 넓히지 않고
     따로 둔다."""
@@ -6682,7 +6687,8 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
     base = {"kind": "claim_diagnosis", "executed": False, "conflicts": [],
             "stale": [], "stale_count": 0,
             "conflict_count": 0, "unanchored": [], "unanchored_count": 0,
-            "unanchored_truncated": False, "anchored_count": 0, "scanned": 0}
+            "unanchored_truncated": False, "anchored_count": 0,
+            "results_excluded": 0, "scanned": 0}
     if store is None:
         base["note"] = "no reachable store"
         return base
@@ -6699,6 +6705,7 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
         by_path: dict[str, list[dict]] = {}
         unanchored: list[dict] = []
         anchored = 0
+        results = 0
         for r in rows:
             props = _props_to_obj(r.get("props"))
             rid = pkns.strip(r.get("id") or "")
@@ -6707,11 +6714,15 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
             sp = str(props.get("subject_path") or "").strip()
             if sp:
                 anchored += 1
-                if not retired:            # 은퇴한 주장은 짝을 짓지 않는다
-                    by_path.setdefault(sp, []).append({
-                        "id": rid, "title": title,
-                        "measured_at": str(props.get("measured_at") or ""),
-                        "measured_ref": str(props.get("measured_ref") or "")})
+                if retired:
+                    continue               # 은퇴한 주장은 짝을 짓지 않는다
+                if props.get("claim_kind") == "result":
+                    results += 1           # 시점 결과는 새 측정과 짝을 짓지 않는다
+                    continue
+                by_path.setdefault(sp, []).append({
+                    "id": rid, "title": title,
+                    "measured_at": str(props.get("measured_at") or ""),
+                    "measured_ref": str(props.get("measured_ref") or "")})
                 continue
             if retired:
                 continue                   # 은퇴한 주장에는 닻을 달 일이 없다
@@ -6737,7 +6748,7 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
                     conflicts=conflicts[:lim], conflict_count=len(conflicts),
                     unanchored=unanchored[:lim], unanchored_count=len(unanchored),
                     unanchored_truncated=len(unanchored) > lim,
-                    anchored_count=anchored,
+                    anchored_count=anchored, results_excluded=results,
                     stale=stale[:lim], stale_count=len(stale),
                     stale_truncated=len(stale) > lim,
                     scanned=len(rows))
@@ -6770,8 +6781,15 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
     판정하지 않는다. "이 주장을 잰 뒤에 그 파일이 바뀌었다"는 사실만 낸다. 같은 커밋
     (`measured_ref` 와 `head_sha` 가 접두로 겹침)에서 잰 것은 낡지 않았다. 측정과 같은 날의 변경은 `same_day` 로 표시해 낸다. 날짜가 없는 쪽은 비교하지
     않는다(없는 시간을 지어내지 않는다). 주장마다 가장 최근 변경 하나만 붙인다.
+
+    `props.reviewed_at` 은 누군가 이 날짜까지의 변경을 살펴보고 주장이 아직 선다고 확인한
+    날이다. 어떤 기록이든 `measured_at` 과 이 날짜 중 늦은 쪽 뒤의 변경만 센다. 확인일 당일의
+    변경은 살펴본 것으로 친다. 날짜 검사는 `measured_at`·Episode `date` 와 같은
+    `docstore._norm_content_time` 이고, 그 검사를 못 지난 값은 없는 것으로 본다. 확인일이
+    `measured_at` 없는 기록을 대상으로 끌어들이지는 않는다.
     근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] 를 잇는
     그래프 문서 vinc.plan.spec-drift-graphiti-0-9-8-2026-10-11 §3."""
+    from .docstore import _norm_content_time
     from .fragment import _norm_subject_path
     where = "WHERE e.owner_id = $owner " if owner else ""
     changes = []
@@ -6799,6 +6817,7 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
         ref = str(props.get("measured_ref") or "")
         if not sp or not at:
             continue
+        reviewed = _norm_content_time(props.get("reviewed_at"))
         # 같은 커밋인지는 접두로 본다 — 측정 기록은 짧은 sha 를, 변경 기록은 긴 sha 를
         # 흔히 싣는다. 날짜가 같으면 하루 안의 순서를 알 수 없으므로 감추지 않고
         # `same_day` 로 표시해 낸다(조용히 빠지면 같은 날 머지가 주장을 영영 못 건드린다).
@@ -6810,15 +6829,20 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
             if _SHA.fullmatch(ref) and _SHA.fullmatch(sha):
                 return sha.startswith(ref) or ref.startswith(sha)
             return sha == ref
+        # 확인일까지의 변경은 이미 살펴본 것이라 세지 않는다(당일 포함).
         hits = [c for c in changes
-                if c["date"] >= at and not same_commit(c["head_sha"])
+                if c["date"] >= at and not (reviewed and c["date"] <= reviewed)
+                and not same_commit(c["head_sha"])
                 and any(_path_covers(sp, f) for f in c["files"])]
         if not hits:
             continue
         latest = max(hits, key=lambda c: (c["date"], c["id"]))
         rid = pkns.strip(r.get("id") or "")
-        out.append({"claim": {"id": rid, "title": r.get("title") or rid, "subject_path": sp,
-                              "measured_at": at, "measured_ref": ref},
+        claim = {"id": rid, "title": r.get("title") or rid, "subject_path": sp,
+                 "measured_at": at, "measured_ref": ref}
+        if reviewed:
+            claim["reviewed_at"] = reviewed
+        out.append({"claim": claim,
                     "change": {k: latest[k] for k in ("id", "title", "date", "head_sha")},
                     "changes_since": len(hits),
                     "same_day": latest["date"] == at})
