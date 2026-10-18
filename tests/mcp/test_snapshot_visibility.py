@@ -102,14 +102,14 @@ class HubSurfaceTest(unittest.TestCase):
     그 사이에 있었다 — 사이드카는 싣고 허브는 버렸다. 그래서 **허브 응답으로**
     검사한다."""
 
-    def _health(self, detail):
-        app = MCPHTTPApp(_Bridge(detail), static_token="t")
+    def _health(self, detail, path="/health", bridge=None):
+        app = MCPHTTPApp(bridge or _Bridge(detail), static_token="t")
         httpd = make_server(app, "127.0.0.1", 0)
         self.addCleanup(httpd.server_close)
         self.addCleanup(httpd.shutdown)
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
         with urllib.request.urlopen(
-                f"http://127.0.0.1:{httpd.server_address[1]}/health", timeout=5) as r:
+                f"http://127.0.0.1:{httpd.server_address[1]}{path}", timeout=5) as r:
             return json.loads(r.read().decode())
 
     def test_hub_surfaces_graph_snapshot(self):
@@ -148,6 +148,82 @@ class HubSurfaceTest(unittest.TestCase):
 
     def test_old_sidecar_does_not_invent_mirror_completion(self):
         self.assertNotIn("node_mirror", self._health({"status": "ok"}))
+
+
+class _LiveBridge(_Bridge):
+    """`live` 를 받는 사이드카 대역 — 진짜 사이드카처럼 live 면 `embed` 를 빼고 답한다."""
+
+    def __init__(self, detail):
+        super().__init__(detail)
+        self.calls = []
+
+    def health_detail(self, *, live=False):
+        self.calls.append(live)
+        if live:
+            return {k: v for k, v in self._detail.items() if k != "embed"}
+        return self._detail
+
+
+class HubLiveHealthTest(unittest.TestCase):
+    """허브 `/health?live=1` 이 사이드카에도 live 로 묻는가.
+
+    장애 감시가 1분마다 허브를 찌른다. 그때마다 사이드카가 스토어를 읽어 임베딩 백로그를
+    세면 허브가 active 요금 구간에 붙잡힌다. 그래서 허브가 live 를 **넘기는지**를 허브
+    응답과 사이드카 호출 양쪽으로 본다. 근거: [[vinc.plan.incident-mail-automation-2026-10-18]] §8.1"""
+
+    _DETAIL = {"status": "ok", "embed": {"pending": 5},
+               "snapshot": {"state": "ok", "age_s": 3, "every_s": 300.0, "pending_write": False}}
+
+    _health = HubSurfaceTest._health
+
+    def test_live_is_passed_to_the_sidecar(self):
+        bridge = _LiveBridge(self._DETAIL)
+        obj = self._health(None, "/health?live=1", bridge=bridge)
+        self.assertEqual(bridge.calls, [True], "허브가 live 를 사이드카에 넘기지 않았다")
+        self.assertNotIn("embed", obj, "live 응답에 스토어를 읽어야 나오는 embed 가 실렸다")
+        self.assertTrue(obj["sidecar"]["reachable"])
+        self.assertEqual(obj["graph_snapshot"]["state"], "ok", "메모리 값은 live 에서도 남아야 한다")
+
+    def test_plain_health_is_unchanged(self):
+        bridge = _LiveBridge(self._DETAIL)
+        obj = self._health(None, "/health", bridge=bridge)
+        self.assertEqual(bridge.calls, [False])
+        self.assertEqual(obj["embed"], {"pending": 5}, "live 없는 /health 는 예전처럼 embed 를 싣는다")
+
+    def test_live_zero_means_full_health(self):
+        bridge = _LiveBridge(self._DETAIL)
+        self._health(None, "/health?live=0", bridge=bridge)
+        self.assertEqual(bridge.calls, [False])
+
+
+class BridgeLivePathTest(unittest.TestCase):
+    """`Bridge.health_detail(live=True)` 가 실제로 `/health?live=1` 을 부르는가."""
+
+    def test_live_requests_the_live_path(self):
+        from unittest import mock
+        seen = []
+
+        class _Resp:
+            status = 200
+
+            def read(self):
+                return b'{"status": "ok"}'
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def fake_urlopen(url, timeout=None):
+            seen.append(url)
+            return _Resp()
+
+        b = Bridge(base="http://127.0.0.1:1", token="t", owner="user:test")
+        with mock.patch("vinc_mcp.bridge.urllib.request.urlopen", fake_urlopen):
+            self.assertEqual(b.health_detail(live=True), {"status": "ok"})
+            b.health_detail()
+        self.assertEqual(seen, ["http://127.0.0.1:1/health?live=1", "http://127.0.0.1:1/health"])
 
 
 if __name__ == "__main__":

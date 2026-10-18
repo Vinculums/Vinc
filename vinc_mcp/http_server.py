@@ -41,6 +41,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from store import httpbody
+from store.envflag import truthy
 
 from . import burst, community, edverify, entitlement, toolcall, tools, viewurl
 from .bridge import Bridge
@@ -1416,7 +1417,15 @@ class _Handler(BaseHTTPRequestHandler):
                 # 본문까지 받아 온다 — 도달성 bool 만 보면 사이드카가 싣는 진단이
                 # 통째로 버려진다. 그 진단 중 하나가 임베딩 백로그이고, 그게 안
                 # 보여서 워커의 죽음을 38시간 몰랐다(2026-08-05~07).
-                detail = bridge.health_detail() if hasattr(bridge, "health_detail") else None
+                # `?live=1` 은 사이드카에도 `live=1` 로 넘겨 스토어를 읽지 않게 한다. 1분마다
+                # 찌르는 장애 감시용이고, 빠지는 것은 `embed` 하나다. 없으면 예전 그대로다.
+                # 근거: [[vinc.plan.incident-mail-automation-2026-10-18]] §8.1
+                if not hasattr(bridge, "health_detail"):
+                    detail = None
+                elif truthy(urllib.parse.parse_qs(url.query).get("live", [""])[0]):
+                    detail = bridge.health_detail(live=True)
+                else:
+                    detail = bridge.health_detail()
                 body["sidecar"] = {"reachable": detail is not None,
                                    "check_ms": round((time.time() - t0) * 1000)}
                 if detail:
