@@ -167,3 +167,24 @@ class RefreshMode(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TeamSpace(unittest.TestCase):
+    """`VINC_GRAPH_SPACE` 가 팀 uuid 면 문서 목록과 노드 대조가 그 팀을 묻는다(vinc 토픽이 팀으로
+    옮겨 간 뒤). 비었거나 personal 이면 지금처럼 개인 그래프다."""
+
+    TEAM = "11111111-2222-3333-4444-555555555555"
+
+    def test_both_reads_carry_the_team_space(self):
+        with mock.patch.dict("os.environ", {"VINC_GRAPH_SPACE": self.TEAM}),                 mock.patch.object(R.remote, "call", return_value=PRESENT) as call:
+            R.verify_nodes(["record:x"])
+            self.assertEqual(call.call_args.args, ("vinc_node", {"node_id": "record:x", "space": self.TEAM}))
+        with mock.patch.dict("os.environ", {"VINC_GRAPH_SPACE": self.TEAM}),                 mock.patch.object(R.remote, "call", return_value={"docs": [], "has_more": False}) as call:
+            R.fetch_docs()
+            self.assertEqual(call.call_args.args, ("vinc_doc_list", {"limit": 200, "space": self.TEAM}))
+
+    def test_empty_or_personal_reads_the_personal_graph(self):
+        for value in ("", "personal"):
+            with self.subTest(value=value), mock.patch.dict("os.environ", {"VINC_GRAPH_SPACE": value}),                     mock.patch.object(R.remote, "call", return_value=PRESENT) as call:
+                R.verify_nodes(["record:x"])
+                self.assertEqual(call.call_args.args, ("vinc_node", {"node_id": "record:x"}))

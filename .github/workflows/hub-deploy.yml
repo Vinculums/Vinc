@@ -525,10 +525,13 @@ jobs:
       # (`/health` 200 · tools/list 200 · 그런데 커넥터는 전면 불가).
       # 그래서 커넥터가 실제로 밟는 discovery 경로를 공개 도메인으로 확인한다.
       # DEPLOYMENT.md §4.4.2 의 수기 점검을 CD 로 옮긴 것.
+      # VINC_GRAPH_SPACE(저장소 변수, 팀 uuid)가 있으면 검색 확인과 인용 대조가 그 팀을 읽는다.
+      # 비어 있으면 개인 그래프다. vinc 토픽이 팀으로 옮겨 가면 그 팀 id 를 넣는다.
       - name: Verify temporal search through the existing read only account key
         env:
           VINC_GRAPH_READONLY_KEY: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
           VINC_MCP_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
+          VINC_GRAPH_SPACE: ${{ vars.VINC_GRAPH_SPACE }}
         run: python scripts/verify_search_temporal_remote.py
 
       - name: Verify connector surface (OAuth discovery)
@@ -629,6 +632,7 @@ jobs:
       - name: Graph citation liveness (라이브 인용 대조)
         env:
           VINC_REMOTE_MCP_TOKEN: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
+          VINC_GRAPH_SPACE: ${{ vars.VINC_GRAPH_SPACE }}
         run: |
           if [ -z "$VINC_REMOTE_MCP_TOKEN" ]; then
             echo "::notice::VINC_GRAPH_READONLY_KEY 시크릿 미설정 — 라이브 인용 대조를 건너뛴다. vinc_ro_* 키를 발급해 시크릿에 넣으면 이 스텝이 작동한다."

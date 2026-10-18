@@ -215,12 +215,18 @@ def _citable(ident: str) -> bool:
     return not any(rule.pattern.search(ident) for rule in ALL_RULES)
 
 
+def _space() -> dict:
+    """대조할 팀 스페이스. `VINC_GRAPH_SPACE` 가 팀 uuid 면 그 팀, 비었거나 personal 이면 개인."""
+    space = (os.environ.get("VINC_GRAPH_SPACE") or "").strip()
+    return {} if space in ("", "personal") else {"space": space}
+
+
 def fetch_docs(*, call=None, sleep=time.sleep) -> list[str]:
     call = call or remote.call
     docs = []
     cursor = None
     while True:
-        args = {"limit": 200}
+        args = {"limit": 200, **_space()}
         if cursor:
             args["cursor"] = cursor
         for _ in range(TRIES):
@@ -269,7 +275,7 @@ def verify_nodes(ids: list[str], *, call=None, validity: dict | None = None,
     for node_id in sorted(set(ids)):
         complete = False
         for _ in range(TRIES):
-            res = call("vinc_node", {"node_id": node_id})
+            res = call("vinc_node", {"node_id": node_id, **_space()})
             complete = (isinstance(res, dict) and not res.get("isError")
                         and res.get("executed") is not False and isinstance(res.get("found"), bool))
             if complete and res["found"]:
