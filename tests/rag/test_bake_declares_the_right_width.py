@@ -57,8 +57,8 @@ def test_아티팩트_경로가_모델과_같은_계열이다():
     가장 흔한 실수를 잡는다."""
     model = _env("VINC_EMBED_MODEL")
     path = _env("VINC_EMBED_MODEL_PATH")
-    stem = Path(path).name
-    family = model.split("/")[-1].replace("multilingual-", "")
+    stem = Path(path).name.lower()                  # `artifact_name` 은 소문자로 짓는다
+    family = model.split("/")[-1].lower().replace("multilingual-", "")
     head = family.split("-")[0]                     # e5 / bge
     assert head in stem, (
         f"모델은 {model} 인데 아티팩트 경로는 {stem} 다 — 모델만 바꾸고 경로를 두면 "
