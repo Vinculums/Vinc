@@ -695,8 +695,9 @@ DDL_GUARD = _DdlGuard()
 #: 돌면 세그폴트한다. 그래서 드롭을 빼는 대신 벡터 질의를 문장마다 배타로 돌린다.
 #: 측정하지 않은 판에서는 플래그가 켜져 있어도 드롭으로 물러난다.
 #: 근거: [[record:ladybug-0-20-4-hnsw-insert-survives-alone-but-a-reader-during-a-checkpoint-segfaults-2026-09-30]] ·
-#: [[record:keep-index-mode-survived-104-hub-condition-trials-while-the-unguarded-control-crashed-3-of-20-2026-10-03]]
-_KEEP_VEC_INDEX_ENGINES = ("0.20.4",)
+#: [[record:keep-index-mode-survived-104-hub-condition-trials-while-the-unguarded-control-crashed-3-of-20-2026-10-03]] ·
+#: 0.21.2(허브 2 vCPU · 4GiB): [[record:keep-index-mode-survived-104-trials-on-ladybug-0-21-2-at-two-cores-while-the-unguarded-control-crashed-1-of-20-2026-10-18]]
+_KEEP_VEC_INDEX_ENGINES = ("0.20.4", "0.21.2")
 
 
 @functools.lru_cache(maxsize=None)

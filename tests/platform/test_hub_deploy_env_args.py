@@ -28,6 +28,7 @@ class HubDeployEnvironmentArgs(unittest.TestCase):
                 shell = assembly.replace("${{ vars.VINC_QUOTA_EXEMPT_OWNERS }}", quota)
                 shell = shell.replace("${{ vars.VINC_EMBED_APPLY_PAUSED || 'off' }}", paused)
                 shell = shell.replace("${{ vars.VINC_BURST_PER_MINUTE || '60' }}", "60")
+                shell = shell.replace("${{ vars.VINC_KEEP_VECTOR_INDEX || 'on' }}", "on")
                 script = ('set -euo pipefail\n'
                           'az() { printf "%s\\n" "$@"; }\n'
                           'APP="--name vinc-hub -g vincsRG"\nIMAGE=test-image\n'
@@ -40,7 +41,7 @@ class HubDeployEnvironmentArgs(unittest.TestCase):
                                  "Repeated Azure options silently discard earlier settings")
                 environment = args[args.index("--set-env-vars") + 1:args.index("--output")]
                 expected = [f"VINC_EMBED_APPLY_PAUSED={paused}", "VINC_BURST_PER_MINUTE=60",
-                            "VINC_TOPIC_CONVERSION=1"]
+                            "VINC_TOPIC_CONVERSION=1", "VINC_KEEP_VECTOR_INDEX=on"]
                 if quota:
                     expected.insert(0, f"VINC_QUOTA_EXEMPT_OWNERS={quota}")
                 if layout == "1":

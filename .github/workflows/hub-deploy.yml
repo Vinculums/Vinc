@@ -390,6 +390,10 @@ jobs:
           # 스페이스당 분당 툴 호출 상한(모든 플랜 같음). 매번 싣고, 변수가 비면 60 이다.
           ENVVARS+=("VINC_BURST_PER_MINUTE=${{ vars.VINC_BURST_PER_MINUTE || '60' }}")
           ENVVARS+=("VINC_TOPIC_CONVERSION=1")
+          # 임베딩 적용이 청크 벡터 색인을 버리지 않고 이어 넣는다(질의는 배타 가드 안). 매번 싣는다:
+          # 리포 변수를 off 로 두면 다음 배포부터 예전처럼 드롭한다(되돌리는 스위치).
+          # 근거: [[record:keep-index-mode-survived-104-trials-on-ladybug-0-21-2-at-two-cores-while-the-unguarded-control-crashed-1-of-20-2026-10-18]]
+          ENVVARS+=("VINC_KEEP_VECTOR_INDEX=${{ vars.VINC_KEEP_VECTOR_INDEX || 'on' }}")
           if [ "${LAYOUT_PRESENT:-0}" = '1' ]; then
             ENVVARS+=("VINC_LAYOUT_REMOTE=$LAYOUT_REMOTE" "VINC_LAYOUT_TOKEN=secretref:layout-token")
           fi
