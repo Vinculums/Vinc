@@ -52,6 +52,18 @@ def test_store_apply_opens_before_the_hub_stops_and_closes_always(name):
     assert "always() && inputs.mode == 'apply'" in _step(t, "Incident window close")
 
 
+@pytest.mark.parametrize("name", ["hub-deploy.yml", "hub-store-rebuild.yml", "hub-data-repair.yml"])
+@pytest.mark.parametrize("step", ["Incident window open", "Incident window close"])
+def test_a_window_step_never_stops_the_run(name, step):
+    """hub-deploy 는 워크플로 정의를 main 최신에서 읽고 체크아웃은 계획 잡이 고른 커밋으로 한다.
+    그 커밋이 스크립트보다 오래되면 `bash scripts/incident_window.sh` 가 127 로 죽어 배포가 멈췄다
+    (리비전 교체 전이라 허브는 그대로였다). 그래서 두 겹으로 막는다: 파일이 없으면 건너뛰고,
+    어떤 이유로든 실패해도 다음 스텝으로 간다."""
+    body = _step(_text(name), step)
+    assert "continue-on-error: true" in body
+    assert "if [ -f scripts/incident_window.sh ]" in body
+
+
 def _run(*args: str, **env: str) -> subprocess.CompletedProcess:
     bash = shutil.which("bash")
     if not bash:
