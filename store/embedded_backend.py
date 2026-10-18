@@ -696,7 +696,7 @@ DDL_GUARD = _DdlGuard()
 #: 측정하지 않은 판에서는 플래그가 켜져 있어도 드롭으로 물러난다.
 #: 근거: [[record:ladybug-0-20-4-hnsw-insert-survives-alone-but-a-reader-during-a-checkpoint-segfaults-2026-09-30]] ·
 #: [[record:keep-index-mode-survived-104-hub-condition-trials-while-the-unguarded-control-crashed-3-of-20-2026-10-03]]
-_KEEP_VEC_INDEX_ENGINES = ("0.20.4",)
+_KEEP_VEC_INDEX_ENGINES = ("0.20.4", "0.21.2")
 
 
 @functools.lru_cache(maxsize=None)
