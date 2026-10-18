@@ -382,6 +382,14 @@ jobs:
       #
       # 종료 유예는 60초로 둔다. 구 리비전이 사이드카를 닫고(최대 VINC_SIDECAR_STOP_WAIT_S)
       # 최종 스냅샷을 올릴 시간이다. 유예는 리비전 단위 값이라 이번 배포의 새 리비전부터 걸린다.
+      # 장애 감시에 허브 배포 창을 연다. 창이 열린 동안 허브 실패는 장애 메일을 열지 않는다.
+      # 토큰이 없거나 호출이 실패해도 배포는 계속한다. 닫기는 인계 확인 바로 앞의 always 스텝.
+      # 규칙과 근거는 scripts/incident_window.sh 머리말에 있다.
+      - name: Incident window open (a planned deploy must not page)
+        env:
+          INCIDENT_MAINTENANCE_TOKEN: ${{ secrets.INCIDENT_MAINTENANCE_TOKEN }}
+        run: bash scripts/incident_window.sh open hub "hub-deploy-${{ github.run_id }}"
+
       - name: Read probe through the switch (start)
         env:
           PROBE_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
@@ -738,6 +746,14 @@ jobs:
           echo "지금 레지스트리: $(python3 -c "print(f'{$size/1e9:.2f}')") GB"
           echo "  ⚠ 이 용량은 방금 삭제분을 아직 안 담는다 — ACR 레이어 회수가 지연된다."
           echo "  실제 감소는 다음 배포의 이 줄에서 보인다."
+
+      # 배포 창을 닫는다. 앞 스텝이 실패해도 닫아야 한다 — 배포가 허브를 망가뜨렸다면 감시가
+      # 그 장애를 바로 열어야 하기 때문이다. 인계 확인이 잡의 마지막이어야 해서 그 앞에 둔다.
+      - name: Incident window close
+        if: always()
+        env:
+          INCIDENT_MAINTENANCE_TOKEN: ${{ secrets.INCIDENT_MAINTENANCE_TOKEN }}
+        run: bash scripts/incident_window.sh close hub
 
       # writer 인계 확인. 헬스가 통과했다는 것은 새 리비전이 복원을 마치고 자격을 가져갔다는
       # 뜻이다. 남은 질문은 "구 리비전이 넘긴 **뒤에** 복원했는가"이고, 영속 공유의 표식이
