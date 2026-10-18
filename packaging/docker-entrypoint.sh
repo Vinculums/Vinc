@@ -380,7 +380,10 @@ if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
     # 0 이다. 그래서 2026-09-10 에 네 번 연속 실패한 재구축이 전부 `done` 으로 찍혔고,
     # 사유가 본문에 실려 있었는데도 성공으로 읽혔다. `-f` 는 못 쓴다 — 그러면 본문을
     # 버려서 사유가 사라진다. 본문은 파일로, 상태는 `-w` 로 받는다.
-    curl -sS -m "${VINC_NODE_MIRROR_MAX_S:-3600}" -X POST \
+    # 상한은 4시간이다. 모델을 바꾼 배포는 노드 전부를 다시 인코딩하고, 그 일이 같은
+    # 인코더에서 청크 전량 재임베딩과 나란히 돌아 한 시간을 넘긴다. 이 상한은 curl 만
+    # 끊는다(사이드카는 끝까지 돈다). 짧으면 진행 중인 재구축이 헬스에 failed 로 찍힌다.
+    curl -sS -m "${VINC_NODE_MIRROR_MAX_S:-14400}" -X POST \
       -H "Authorization: Bearer $VINC_SIDECAR_TOKEN" \
       -H "Content-Type: application/json" -d '{}' \
       -o "$MIRROR_PIDFILE.out" -w '%{http_code}' \
