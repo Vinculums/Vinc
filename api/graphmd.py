@@ -134,7 +134,7 @@ Write in English, titles and bodies alike, whatever language you are thinking in
 ## Node kinds [schema-fixed]
 - Concept: one reusable idea. If it will not be reused, do not create it.
 - Episode: something that happened (a session, an event). Supply date; title is keyword-searchable, summary is recall material.
-- Record: a note on a concept, or a measurement about code: then add props.subject_path as repo:path (vinc:api/sync.py), measured_at, measured_ref.
+- Record: a note on a concept, or a measurement about code: then add props.subject_path as repo:path (vinc:api/sync.py), measured_at, measured_ref. If it is a result of one run (that run's numbers) rather than a claim about how the code behaves now, also add props.claim_kind "result"; when you check later changes and it still stands, set props.reviewed_at to that date.
 - Decision: what you chose at a point in time, and why. Tie it with `about`.
 - Bridge: a junction that ties domains together.
 - Entity: anything else you author. Unknown types save here and enter the
@@ -202,7 +202,7 @@ concept:optimistic-locking, decision:drop-the-cache, record:pricing-note.
 ## 노드 종류 [스키마 고정]
 - Concept: 재사용되는 하나의 관념. 재사용되지 않을 것이면 만들지 마십시오.
 - Episode: 일어난 일(세션·사건). date 를 적으십시오. 제목은 키워드 검색 대상이고, 요약은 사건 조회의 내용입니다.
-- Record: 개념에 붙는 메모, 또는 코드에 대한 측정: 그때는 props.subject_path 를 repo:path 로(vinc:api/sync.py)·measured_at·measured_ref.
+- Record: 개념에 붙는 메모, 또는 코드에 대한 측정: 그때는 props.subject_path 를 repo:path 로(vinc:api/sync.py)·measured_at·measured_ref. 지금 코드의 동작에 대한 주장이 아니라 한 번 돌린 실행의 결과(그 실행의 수치)라면 props.claim_kind 를 "result" 로 다십시오. 뒤의 변경을 확인하고도 그대로 성립하면 props.reviewed_at 에 확인한 날짜를 적으십시오.
 - Decision: 그때 무엇을 골랐고 왜 그랬는지. `about` 으로 그 대상에 이으십시오.
 - Bridge: 도메인을 가로질러 묶는 매듭.
 - Entity: 그 밖의 것. 미지 타입도 여기 저장되어 어휘에 제안으로 편입됩니다.
