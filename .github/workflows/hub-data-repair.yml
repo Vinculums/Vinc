@@ -132,7 +132,10 @@ jobs:
         if: inputs.mode == 'apply'
         env:
           INCIDENT_MAINTENANCE_TOKEN: ${{ secrets.INCIDENT_MAINTENANCE_TOKEN }}
-        run: bash scripts/incident_window.sh open hub "hub-data-repair-${{ github.run_id }}"
+        # 체크아웃이 이 스크립트보다 오래된 커밋일 수 있다(계획 잡이 고른 커밋). 파일이 없으면 건너뛴다.
+        continue-on-error: true
+        run: |
+          if [ -f scripts/incident_window.sh ]; then bash scripts/incident_window.sh open hub "hub-data-repair-${{ github.run_id }}"; else echo "::notice::this checkout has no scripts/incident_window.sh, so no incident window"; fi
 
       # ── apply 전용: 허브를 먼저 내린다 ──────────────────────────────────────
       # 수리본은 스냅샷 시점의 사본이다. 허브가 떠 있으면 그 뒤의 쓰기가 갈아타는
@@ -252,7 +255,10 @@ jobs:
         if: ${{ always() && inputs.mode == 'apply' }}
         env:
           INCIDENT_MAINTENANCE_TOKEN: ${{ secrets.INCIDENT_MAINTENANCE_TOKEN }}
-        run: bash scripts/incident_window.sh close hub
+        # 체크아웃이 이 스크립트보다 오래된 커밋일 수 있다(계획 잡이 고른 커밋). 파일이 없으면 건너뛴다.
+        continue-on-error: true
+        run: |
+          if [ -f scripts/incident_window.sh ]; then bash scripts/incident_window.sh close hub; else echo "::notice::this checkout has no scripts/incident_window.sh, so no incident window"; fi
 
       - name: Remove the rehearsal snapshot
         if: ${{ always() && steps.snapshot.outputs.timestamp != '' }}
