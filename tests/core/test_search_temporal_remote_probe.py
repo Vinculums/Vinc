@@ -236,3 +236,34 @@ def test_unknown_mcp_tool_and_protocol_errors_still_fail_without_disclosing_mess
         with pytest.raises(VerificationError,match="MCP search read returned an error") as failure:
             probe.read_mcp({},"synthetic",30)
         assert "private" not in str(failure.value)
+
+
+TEAM = "11111111-2222-3333-4444-555555555555"
+
+
+def test_a_team_space_goes_to_both_transports_under_their_own_names():
+    """계정 REST 는 `team`, 허브 MCP 는 `space` 로 같은 팀을 받는다. vinc 토픽이 팀으로 옮겨 간
+    뒤의 배포 검증이 개인 그래프의 빈 검색에서 실패하지 않게 하는 자리다."""
+    from urllib.parse import parse_qs, urlsplit
+    teams, spaces = [], []
+    def get(path, key, timeout):
+        params = parse_qs(urlsplit(path).query)
+        teams.append(params.get("team"))
+        return response(mode=params.get("mode", [None])[0])
+    def mcp_get(options, key, timeout):
+        spaces.append(options.get("space"))
+        return response(mode=options.get("mode"))
+    verify("synthetic", get=get, mcp_key="synthetic", mcp_get=mcp_get, space=TEAM)
+    assert teams == [[TEAM]] * 5 and spaces == [TEAM] * 5
+    teams.clear(); spaces.clear()
+    verify("synthetic", get=get, mcp_key="synthetic", mcp_get=mcp_get)
+    assert teams == [None] * 5 and spaces == [None] * 5
+
+
+def test_the_space_variable_treats_empty_and_personal_as_the_personal_graph(monkeypatch):
+    from verify_search_temporal_remote import graph_space
+    for value, expected in (("", None), ("personal", None), (" " + TEAM + " ", TEAM)):
+        monkeypatch.setenv("VINC_GRAPH_SPACE", value)
+        assert graph_space() == expected
+    monkeypatch.delenv("VINC_GRAPH_SPACE")
+    assert graph_space() is None
