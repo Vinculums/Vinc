@@ -180,15 +180,19 @@ class Bridge:
         finally:
             diagnostics.trace("GET", "/health", status, started, transport="attached")
 
-    def health_detail(self) -> dict | None:
+    def health_detail(self, *, live: bool = False) -> dict | None:
         """사이드카 `/health` **본문**(도달 실패면 None).
 
         :meth:`health` 는 도달성만 bool 로 돌려주는데, 사이드카가 싣는 진단
         (스토어 상태·임베딩 백로그)이 그 bool 안에서 통째로 버려진다. 허브의 공개
         `/health` 가 그것을 그대로 실어 밖에서 한 번의 curl 로 볼 수 있게 한다 —
-        임베딩 정체를 38시간 몰랐던 이유가 정확히 "밖에서 보이는 수치가 없어서"였다."""
+        임베딩 정체를 38시간 몰랐던 이유가 정확히 "밖에서 보이는 수치가 없어서"였다.
+
+        ``live=True`` 는 사이드카의 `/health?live=1` 을 부른다. 스토어를 읽지 않아 임베딩
+        백로그(`embed`)가 빠지고, 상태 판정·스냅샷처럼 메모리에 있는 값만 온다."""
         try:
-            with urllib.request.urlopen(self.base + "/health", timeout=3) as r:
+            with urllib.request.urlopen(
+                    self.base + ("/health?live=1" if live else "/health"), timeout=3) as r:
                 if r.status != 200:
                     return None
                 return json.loads(r.read().decode("utf-8"))
