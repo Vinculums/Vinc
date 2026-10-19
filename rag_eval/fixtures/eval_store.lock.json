@@ -95,6 +95,41 @@
       },
       "schema_version": 16,
       "note": "chunk-level pin for rag_eval.chunk_search (document folding as rag_eval.search scores it). Opening it migrates the copy to the running code's schema; the runner records that."
+    },
+    "ko-ort130-2026-10-18": {
+      "path": "_eval-stores/ko-ort130-2026-10-18/hub.db",
+      "sha256": "c67c34d5f1f33ba0b8ba68ea484fd40fb9fe33c40c9e98207dd3e58d1525af84",
+      "owner": "tenant:local",
+      "gold": "rag_eval/fixtures/brief_gold.jsonl",
+      "derived_from": "m3-2026-09-13 (same rows; ChunkVec and NodeVec re-encoded with dragonkue/BGE-m3-ko int8 by the same recipe, tree and machine as m3-ort130-2026-09-28)",
+      "built_at_tree": "0233fdf",
+      "engine": "ladybug 0.20.3",
+      "encoder": "BAAI/bge-m3",
+      "encoder_sha256": "fb70eacc6a93c8645ccaa79c71d65e8ff2d3bcef89cbe6889224e7b647d43226",
+      "encoder_runtime": {
+        "onnxruntime": "1.30.0",
+        "tokenizers": "0.23.2",
+        "numpy": "2.5.3",
+        "note": "same runtime and machine as m3-ort130-2026-09-28, so the two pins differ only in the encoder (VIN-671)"
+      },
+      "rows": {
+        "Concept": 442,
+        "Record": 610,
+        "Decision": 153,
+        "Episode": 160,
+        "Bridge": 0,
+        "Entity": 0,
+        "Domain": 65,
+        "Chunk": 1157,
+        "ChunkVec": 1624,
+        "NodeVec": 1365
+      },
+      "settled": {
+        "mentions_rule": "3:title-before-source",
+        "note": "engines.mentions_link.ensure_rule applied once at the end of the build, as for m3-ort130-2026-09-28"
+      },
+      "encoder_model": "dragonkue/BGE-m3-ko int8 (hub bake recipe, reduce_range), run under the bge-m3 model key: same architecture, dimension, pooling and no prefix; its own tokenizer.json sits beside the ONNX",
+      "release": "vinc-rag-assets eval-2026-10-19 (TAG=eval-2026-10-19 bash fetch.sh): the store, and the encoder at _eval-stores/encoder-bge-m3-ko/bge-m3-ko-int8-rr.onnx with its tokenizer.json. The encoder bytes are the ones the hub runs since 2026-10-18"
     }
   }
 }
