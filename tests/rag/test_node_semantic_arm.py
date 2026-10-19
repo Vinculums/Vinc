@@ -144,6 +144,23 @@ class FusionShape(unittest.TestCase):
         self.assertIn("c", ids, "의미 팔만 아는 것이 빠졌다")
         self.assertEqual(ids[0], "b", "두 팔이 함께 올린 것이 1위여야 한다")
 
+    def test_on_a_tie_the_semantic_arm_goes_before_the_graph_arm(self):
+        """세 팔의 같은 순위는 점수가 같다. 다섯 칸에서 잘리는 것은 그래프 팔 2위여야 한다."""
+        out = q._fuse_node_hits(self.rows("a", "b"), self.rows("c", "d"), top_k=5,
+                                vec_hits=self.rows("e", "f"))
+        self.assertEqual([r["id"] for r in out], ["a", "e", "c", "b", "f"])
+
+    def test_the_kept_row_is_title_then_graph_then_semantic(self):
+        """순서만 바뀌고 남는 행은 그대로다. 제목 팔의 토큰 수는 제목 행에만 있다."""
+        title = [{"id": "t", "src": "title"}]
+        graph = [{"id": "t", "src": "graph"}, {"id": "x", "src": "graph"}]
+        sem = [{"id": "x", "src": "semantic"}, {"id": "t", "src": "semantic"}]
+        out = {r["id"]: r for r in q._fuse_node_hits(title, graph, top_k=5, vec_hits=sem)}
+        self.assertEqual(out["t"]["src"], "title")
+        self.assertEqual(out["x"]["src"], "graph")
+        self.assertEqual(out["x"]["arms"], ["graph", "semantic"])
+        self.assertGreater(out["x"]["rrf_score"], 0)
+
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class MirrorStore(unittest.TestCase):
