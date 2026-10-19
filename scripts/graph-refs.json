@@ -1001,6 +1001,7 @@
     "record:job-isolation-has-to-catch-baseexception",
     "record:korean-fts-analyser-2026-09-08",
     "record:korean-titled-nodes-answer-with-provenance-excerpts-2026-09-14",
+    "record:korean-to-korean-node-misses-are-the-semantic-second-candidate-lost-to-a-tie-at-the-top-five-cut-2026-10-19",
     "record:ladybug-0-20-4-hnsw-insert-survives-alone-but-a-reader-during-a-checkpoint-segfaults-2026-09-30",
     "record:log-analytics-attributes-hub-mcp-requests-by-owner-hash-since-2026-09-02",
     "record:louvain-projects-one-node-table",
@@ -1524,6 +1525,9 @@
       "validity": "current"
     },
     "record:korean-titled-nodes-answer-with-provenance-excerpts-2026-09-14": {
+      "validity": "current"
+    },
+    "record:korean-to-korean-node-misses-are-the-semantic-second-candidate-lost-to-a-tie-at-the-top-five-cut-2026-10-19": {
       "validity": "current"
     },
     "record:ladybug-0-20-4-hnsw-insert-survives-alone-but-a-reader-during-a-checkpoint-segfaults-2026-09-30": {

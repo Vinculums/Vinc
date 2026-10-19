@@ -1121,7 +1121,7 @@ def _fuse_node_hits(title_hits: list[dict], graph_hits: list[dict], *,
     각 행에 ``arms``(title/graph/semantic 멤버십)를 부여한다. 다른 팔이 다 비면
     **융합하지 않고** title 순서를 그대로 유지(하위호환 — 기존 Chunk 0 스토어 동작 불변).
 
-    의미 암은 **어휘가 하나도 안 겹쳐도 닿는 유일한 팔**이다. 실측(2026-09-09): 후보
+    의미 암은 **어휘가 하나도 안 겹쳐도 닿는 유일한 팔**이다. 후보
     진입을 21/60 에서 35/60 으로 올리고, 그 이득은 제목이 안 겹치는 축에 몰린다
     (제목 재사용 ≤0.34 인 한국어 질문 1/8 → 5/8). 팔만 켜면 답은 바뀌지 않는다. 팔 자신의
     1-2위 격차를 순서에 넣으면 답도 바뀌어서 지금은 기본으로 켜져 있다. 경위와 수치는
@@ -1142,7 +1142,15 @@ def _fuse_node_hits(title_hits: list[dict], graph_hits: list[dict], *,
         for r in out:
             r["arms"] = sorted(membership.get(r.get("id"), []))
         return out
-    fused = rrf_fuse(lists, top_k=top_k)   # title 우선(행 유지)
+    # 같은 RRF 점수는 넣은 목록 순서대로 선다(안정 정렬). 세 팔이 각자 찾은 n위끼리는
+    # 늘 비기고 후보 칸은 다섯이라, 그래프 팔을 의미 팔 앞에 넣으면 의미 팔 2위가 잘린다.
+    # 한→한 질문의 후보 누락이 그 자리에서 났으므로 의미 팔을 그래프 팔 **앞에** 넣는다.
+    # 남기는 행은 그대로 제목 → 그래프 → 의미 순이다: `rrf_fuse` 는 처음 본 행을 남기므로
+    # 의미 목록 안의 그래프 노드를 그래프 행으로 바꿔 넣는다.
+    # 근거: [[record:korean-to-korean-node-misses-are-the-semantic-second-candidate-lost-to-a-tie-at-the-top-five-cut-2026-10-19]]
+    by_graph = {r.get("id"): r for r in graph_hits}
+    sem = [by_graph.get(r.get("id"), r) for r in (vec_hits or [])]
+    fused = rrf_fuse([rows_ for rows_ in (title_hits, sem, graph_hits) if rows_], top_k=top_k)
     for r in fused:
         r["arms"] = sorted(membership.get(r.get("id"), []))
     return fused
