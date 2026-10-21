@@ -25,7 +25,11 @@ Decision: `decision:the-desktop-app-icon-keeps-a-black-plate-2026-09-26`.
 | `vinc-ring-mono.svg` | single colour, `currentColor`, for masks using the dedicated `--logo` token |
 | `vinc-ring-favicon.svg` | **favicon**, black, switching itself to white under `prefers-color-scheme: dark` |
 
-Every SVG uses `viewBox="42 38 436 604"`, tight to the art. There is no plate file any more
+Every mark SVG uses `viewBox="42 38 436 604"`, tight to the art. The favicon is the exception:
+it uses the square `viewBox="-42 38 604 604"` (the same art, centred, the box the rasters use),
+because whoever rasterises a favicon fills a square icon cell without keeping the ratio, and the
+tall box came out as a flattened ring with an oval sphere in Google results and connector cards
+(`record:a-tall-favicon-viewbox-is-stretched-into-a-square-2026-10-21`). There is no plate file any more
 (`vinc-ring.svg` and `vinc-ring-circle.svg` were deleted on 2026-09-24); the plated application
 icon is composed inside `build_logo.mjs` from `vinc-ring-white.svg`. Rasters are generated,
 never drawn: the favicon `.ico` (16, 32, 48), the 48px PNG and the MCP connector PNG are the

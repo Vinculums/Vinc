@@ -948,6 +948,7 @@
     "record:a-soft-requeue-keeps-semantic-search-off-because-every-apply-rebuilds-the-vector-index-2026-09-30",
     "record:a-space-transfer-over-4mb-surfaced-as-a-logout-2026-09-18",
     "record:a-stuck-write-window-is-finalized-only-when-its-chunks-rebuild-the-recorded-hash-2026-09-30",
+    "record:a-tall-favicon-viewbox-is-stretched-into-a-square-2026-10-21",
     "record:a-wal-that-crashes-the-engine-takes-the-desktop-sign-in-down-2026-09-27",
     "record:aca-reboots-the-stopped-hub-revision-during-every-deploy-and-it-writes-a-late-final-snapshot-2026-09-25",
     "record:adding-episode-to-the-title-arm-is-a-pure-gain-2026-09-09",
@@ -1366,6 +1367,9 @@
       "validity": "current"
     },
     "record:a-stuck-write-window-is-finalized-only-when-its-chunks-rebuild-the-recorded-hash-2026-09-30": {
+      "validity": "current"
+    },
+    "record:a-tall-favicon-viewbox-is-stretched-into-a-square-2026-10-21": {
       "validity": "current"
     },
     "record:a-wal-that-crashes-the-engine-takes-the-desktop-sign-in-down-2026-09-27": {
