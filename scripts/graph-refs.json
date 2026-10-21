@@ -997,6 +997,7 @@
     "record:hub-snapshots-the-whole-database-every-five-minutes-because-a-no-op-job-counts-as-a-write-2026-09-25",
     "record:in-a-container-a-swallowed-log-is-no-log",
     "record:inherits-from-now-reverses-with-derives-from",
+    "record:int8-batch-padding-moves-stored-vectors-and-costs-fused-ndcg-on-the-fixture-2026-10-21",
     "record:isolated-seed-read-back-reported-empty-fields",
     "record:job-count-checkpointing-was-removed",
     "record:job-isolation-has-to-catch-baseexception",
@@ -1791,6 +1792,9 @@
       "validity": "current"
     },
     "record:upstream-republished-the-ladybug-0-21-algo-extension-in-place-2026-10-20": {
+      "validity": "current"
+    },
+    "record:int8-batch-padding-moves-stored-vectors-and-costs-fused-ndcg-on-the-fixture-2026-10-21": {
       "validity": "current"
     }
   }

@@ -77,11 +77,12 @@ ENV VINC_EMBED_MODEL=dragonkue/BGE-m3-ko
 ENV VINC_EMBED_MODEL_PATH=/srv/vinc/models/bge-m3-ko-int8-rr.onnx
 ENV VINC_EMBED_DIM=1024
 #
-# 인코딩 배치 상한. 기본 8 은 e5-base(768) 시절 값이라 bge-m3(1024·24층)에서는
-# 2Gi 안에 안 들어간다 — `vinc-encode` 가 최대 1773MB/2048MB 까지 올라가 exit 137 로
-# 죽고, 그 사이 허브는 같은 문서에서 120초 타임아웃을 7분마다 반복한다.
-# 근거: [[record:the-encoder-is-oom-killed-on-the-largest-document-2026-09-12]]
-ENV VINC_EMBED_BATCH=2
+# 인코딩 배치 상한 = 1, 조각 하나씩이다(워커 기본값과 같다). int8 모델은 같이 실린 조각과
+# 패딩에 따라 벡터가 바뀌므로, 이 값을 올리면 저장 벡터가 배치 구성에 따라 달라진다.
+# 메모리도 배치에 선형이라 1이 가장 낮다(2였을 때도 8에서 인코더가 OOM 으로 죽어 내린 값이었다).
+# 근거: [[record:int8-batch-padding-moves-stored-vectors-and-costs-fused-ndcg-on-the-fixture-2026-10-21]]
+# · [[record:the-encoder-is-oom-killed-on-the-largest-document-2026-09-12]]
+ENV VINC_EMBED_BATCH=1
 #
 # glibc 는 스레드마다 malloc 아레나를 새로 열어 코어 수의 8배까지 늘린다. 인코딩 창구는
 # 요청마다 스레드를 띄우므로(ThreadingHTTPServer) 큰 텐서를 잡았다 놓을 때마다 아레나가
