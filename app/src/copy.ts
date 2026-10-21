@@ -889,9 +889,9 @@ const EN = {
       bindFail: "Couldn't link. Try again in a moment.",
       unavailable: "Link suggestions unavailable.",
       // D45-V — 노드 클릭 상세의 정본 근거(문서 발췌). 발췌는 증강 — 없어도 상세는 뜬다.
-      sourceHeader: "Documents that mention this",
+      sourceHeader: "Appears in these documents",
       sourceLoading: "Finding source passages…",
-      sourceNone: "No documents mention this yet. Add one about it.",
+      sourceNone: "This doesn't appear in any document yet. Add one about it.",
       sourceRelated: "Documents with a matching title",
       // D45-V2 2단계 — Reader 서브뷰(발췌→전문 승격, peek-definition 동선).
       readerBack: "Back",
