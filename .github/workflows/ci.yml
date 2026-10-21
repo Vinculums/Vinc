@@ -301,6 +301,22 @@ jobs:
           python -X utf8 scripts/gate_runner_move.py "$BASE" "$HEAD" --check-queues
           echo "── 판정"; cat "$GITHUB_OUTPUT"
 
+      # 홈페이지가 이 PR 의 MCP 도구 목록과 REST 레퍼런스를 따라왔는가. 홈페이지 CI 는
+      # Vinc main 의 tool_reference.json·openapi_v1.json 으로 문서 페이지를 대조하므로,
+      # 여기서 미리 말하지 않으면 뒤처진 것이 다음 홈페이지 PR 이 빨개질 때 드러난다.
+      # 대조 대상은 공개된 문서 페이지다(홈페이지 리포는 비공개이고 읽을 토큰이 없다).
+      # 알림이다: 홈페이지는 이 PR 이 머지돼야 따라올 수 있으므로 막지 않고, 차이는 경고
+      # 주석과 스텝 요약으로 남긴다. 막을지는 소유자가 정한다. 셀프테스트를 먼저 돌린다.
+      - name: Homepage drift notice (MCP tools and REST reference, advisory)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          python -X utf8 scripts/gate_homepage_drift.py --selftest
+          python -X utf8 scripts/gate_homepage_drift.py
+
   core:
     name: core (498 tests + forbidden-terms gate)
     # ⚠ **2026-08-31 에 셀프호스티드에서 호스티드로 옮겼다.** 아래가 그 이유이고,
