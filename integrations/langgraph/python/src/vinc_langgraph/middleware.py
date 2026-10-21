@@ -35,15 +35,41 @@ def vinc_tool_call_ids(messages: Any) -> list[str]:
     return ids
 
 
+def _run_marker(messages: Any) -> tuple[str, str]:
+    """Which run these messages belong to: the newest human message's id, else its text."""
+    for message in reversed(list(messages or ())):
+        if getattr(message, "type", "") == "human":
+            message_id = getattr(message, "id", None)
+            if message_id:
+                return ("id", str(message_id))
+            break
+    return ("text", last_user_text(messages))
+
+
+#: 두 캐시 각각의 상한. 넘치면 가장 먼저 담은 것부터 버린다.
+_CACHE_ENTRIES = 64
+
+
 class VincContextMiddleware(AgentMiddleware):
     """Adds Vinc context to the system message of each model call.
 
-    An agent that calls tools calls the model several times for one question.
-    The answer for a question is kept for ``cache_seconds`` so those calls do not
-    each spend a Vinc call. Nothing is written: this middleware only reads.
-    Entries belong to one client, effective credential, space and retrieval configuration.
-    Source changes remain cached until TTL expiry or ``clear_cache``. Use cache_seconds=0
-    for fresh reads on every model call; this does not bypass server authorization caches.
+    An agent that calls tools calls the model several times for one question, so the
+    block is not read again for each of those calls. The two modes keep it differently:
+
+    - Question lookup (no ``prefetch_role``) keeps the block for a question for
+      ``cache_seconds``. Use ``cache_seconds=0`` for a fresh read on every model call.
+    - Role prefetch (``prefetch_role`` set) reads the role contract, its required documents
+      and the task evidence once per run, on the run's first model call, and reuses that
+      block for the rest of the run. A run is everything after the newest human message
+      (its id, or its text when it has none), so a new human message reads again and a run
+      in progress finishes on the contract it started with. ``cache_seconds`` does not apply
+      to this mode. A failed read is never kept: its error propagates unchanged and the
+      next model call reads again.
+
+    Kept blocks belong to one client, effective credential, space and retrieval settings
+    (in prefetch mode also the role and ``prefetch_max_chars``), at most 64 per mode.
+    ``clear_cache`` drops both kinds after a known source or authorization change; neither
+    bypasses the server's authorization caches. Nothing is written: this middleware only reads.
 
     Calls to ``vinc_brief`` and ``vinc_search`` from :func:`create_vinc_tools` are
     capped at ``tool_calls_per_run`` per agent run (the model's calls after the newest
@@ -71,6 +97,7 @@ class VincContextMiddleware(AgentMiddleware):
         self.prefetch_max_chars = prefetch_max_chars
         self.tool_calls_per_run = tool_calls_per_run
         self._cache: dict[tuple, tuple[float, str | None]] = {}
+        self._prefetched: dict[tuple, str] = {}
         self._cache_generation = 0
 
     # 상한은 그래프 상태에서 센다(이 호출이 이번 런의 몇 번째 vinc 호출인가). 인스턴스 카운터가
@@ -120,16 +147,44 @@ class VincContextMiddleware(AgentMiddleware):
             return True, hit[1]
         return False, None
 
-    def _remember(self, key: tuple, block: str | None) -> None:
+    def _keep(self, cache: dict, key: tuple, value: Any) -> None:
+        # clear_cache 뒤에 끝난 읽기는 담지 않는다(키 첫 칸이 그때의 세대다).
         if key[0] != self._cache_generation:
             return
-        if len(self._cache) >= 64:
-            self._cache.pop(next(iter(self._cache)))
-        self._cache[key] = (time.monotonic(), block)
+        if key not in cache and len(cache) >= _CACHE_ENTRIES:
+            cache.pop(next(iter(cache)))
+        cache[key] = value
+
+    def _remember(self, key: tuple, block: str | None) -> None:
+        self._keep(self._cache, key, (time.monotonic(), block))
+
+    def _prefetch_key(self, client: VincClient | AsyncVincClient, messages: Any) -> tuple:
+        return (self._cache_generation, client, client.context_cache_identity,
+                self.prefetch_role, self.prefetch_max_chars, _run_marker(messages))
+
+    def _prefetch(self, messages: Any) -> str:
+        # 런마다 한 번 읽는다. 실패는 담지 않고 그대로 올린다(다음 모델 호출이 다시 읽는다).
+        key = self._prefetch_key(self.client, messages)
+        block = self._prefetched.get(key)
+        if block is None:
+            block = self.client.prefetch(self.prefetch_role, last_user_text(messages),
+                                         max_chars=self.prefetch_max_chars)
+            self._keep(self._prefetched, key, block)
+        return block
+
+    async def _aprefetch(self, messages: Any) -> str:
+        key = self._prefetch_key(self.async_client, messages)
+        block = self._prefetched.get(key)
+        if block is None:
+            block = await self.async_client.prefetch(self.prefetch_role, last_user_text(messages),
+                                                     max_chars=self.prefetch_max_chars)
+            self._keep(self._prefetched, key, block)
+        return block
 
     def clear_cache(self) -> None:
-        """Discard retained retrieval after a known source or authorization change."""
+        """Discard retained retrieval of both modes after a known source or authorization change."""
         self._cache.clear()
+        self._prefetched.clear()
         self._cache_generation += 1
 
     def _with_block(self, request: ModelRequest, block: str | None) -> ModelRequest:
@@ -143,11 +198,9 @@ class VincContextMiddleware(AgentMiddleware):
         return request.override(system_prompt=build_system_message(block, base).content)
 
     def wrap_model_call(self, request: ModelRequest, handler: Callable[[ModelRequest], Any]) -> Any:
-        query = last_user_text(request.messages)
         if self.prefetch_role:
-            block = self.client.prefetch(self.prefetch_role, query,
-                                         max_chars=self.prefetch_max_chars)
-            return handler(self._with_block(request, block))
+            return handler(self._with_block(request, self._prefetch(request.messages)))
+        query = last_user_text(request.messages)
         key = self._cache_key(self.client, query)
         found, block = self._cached(key)
         if not found:
@@ -159,11 +212,9 @@ class VincContextMiddleware(AgentMiddleware):
 
     async def awrap_model_call(self, request: ModelRequest,
                                handler: Callable[[ModelRequest], Awaitable[Any]]) -> Any:
-        query = last_user_text(request.messages)
         if self.prefetch_role:
-            block = await self.async_client.prefetch(self.prefetch_role, query,
-                                                     max_chars=self.prefetch_max_chars)
-            return await handler(self._with_block(request, block))
+            return await handler(self._with_block(request, await self._aprefetch(request.messages)))
+        query = last_user_text(request.messages)
         key = self._cache_key(self.async_client, query)
         found, block = self._cached(key)
         if not found:
