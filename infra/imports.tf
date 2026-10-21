@@ -88,6 +88,11 @@ import {
   id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.OperationalInsights/workspaces/workspace-vincssM9K"
 }
 
+# ⚠ **Microsoft.Insights 아래 ID 는 대소문자가 계약이다.** `az resource list` 는
+# `webtests`·`actiongroups`·`metricalerts` 로 소문자를 주는데 azurerm 의 파서는
+# `webTests`·`actionGroups`·`metricAlerts` 를 요구하고, 어긋나면 "parsed Resource ID
+# was missing a value for the segment at position 6" 라는 **자리 번호로만 말하는**
+# 오류가 난다. az 출력을 그대로 붙여넣지 말 것.
 import {
   to = azurerm_application_insights.vinc_uptime
   id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/components/vinc-uptime"
@@ -96,17 +101,4 @@ import {
 import {
   to = azurerm_monitor_action_group.vinc_alerts
   id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/actionGroups/vinc-alerts"
-}
-
-# ⚠ **Microsoft.Insights 아래 ID 는 대소문자가 계약이다.** `az resource list` 는
-# `webtests`·`actiongroups`·`metricalerts` 로 소문자를 주는데 azurerm 의 파서는
-# `webTests`·`actionGroups`·`metricAlerts` 를 요구하고, 어긋나면 "parsed Resource ID
-# was missing a value for the segment at position 6" 라는 **자리 번호로만 말하는**
-# 오류가 난다. az 출력을 그대로 붙여넣지 말 것.
-#
-# 이 경보는 실물에만 있고 선언에 없었다. 들여와야 plan 이 그 존재를 보고, 나중에 지울 때도
-# terraform 이 지운다.
-import {
-  to = azurerm_monitor_metric_alert.hub_internal_path_blocked
-  id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/metricAlerts/hub-internal-path-blocked"
 }

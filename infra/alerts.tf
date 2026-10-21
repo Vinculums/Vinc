@@ -7,8 +7,10 @@
 #
 # 남은 것:
 #   1. 감시자의 감시: 루프가 멈췄거나 계정 앱·SWA 가 죽으면 루프는 메일을 보낼 수 없다.
-#   2. 허브 내부 경로: hub-deploy 가 배포 뒤에 같은 검사를 하게 되면 지운다.
-#   3. 자원 경보 셋(DB 스토리지·계정 메모리·허브 레플리카 겹침): 루프가 보지 않는 신호다.
+#   2. 자원 경보 셋(DB 스토리지·계정 메모리·허브 레플리카 겹침): 루프가 보지 않는 신호다.
+#
+# 허브 내부 경로가 앞문이 아니라 앱까지 닿는지는 여기서 보지 않는다. 그 불변식은 허브 배포에서만
+# 바뀌므로 hub-deploy 의 배포 뒤 단계("Verify the hub internal path is answered by the app")가 본다.
 #
 # 남은 테스트도 상태 코드가 아니라 본문을 본다. 살아 있음만 보는 프로브는 기능 장애를 못 본다.
 # 근거: [[vinc.plan.incident-mail-automation-2026-10-18]] §4
@@ -17,7 +19,7 @@
 locals {
   insights_id     = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.Insights/components/vinc-uptime"
   action_group_id = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/microsoft.insights/actionGroups/vinc-alerts"
-  # 테스트는 실행 횟수 × 지역 수로 청구된다. 남은 둘은 고장 지점이 하나라 지역을 늘려도 얻는 것이 없다.
+  # 테스트는 실행 횟수 × 지역 수로 청구된다. 남은 테스트는 고장 지점이 하나라 지역을 늘려도 얻는 것이 없다.
   probe_locations = ["apac-jp-kaw-edge"]
 }
 
@@ -59,60 +61,8 @@ resource "azurerm_application_insights_standard_web_test" "incident_monitor" {
   }
 }
 
-# ── 2. 허브의 내부 경로가 앱까지 닿는가 ─────────────────────────────────────
-# 허브 내부 경로 셋(purge-owner · purge-team · graph-owner)을 서명 없이 부르면 앱이 401 과
-# `{"error": "unauthorized"}` 로 답해야 한다. 앞문이 가로채면 본문이 비고, 인증을 건너뛰는 회귀면
-# 401 이 아니다. 이 테스트는 둘 다 잡는다.
-#
-# 이 불변식은 허브 배포에서만 바뀐다. 계정 쪽 같은 검사는 account-deploy 가 배포 직후에 돌린다
-# (Vinc-homepage `scripts/probe_front_door.mjs`). hub-deploy 에 배포 뒤 단계로 같은 검사가 들어오면
-# 이 테스트와 아래 `hub_internal_path_blocked` 를 지운다.
-#
-# 읽기 경로를 찌른다. purge-* 는 파괴적이라, 인증을 건너뛰는 회귀가 났을 때 감시 프로브가 그 경로를
-# 찌르고 있으면 프로브 자신이 사고가 된다. graph-owner 는 읽기다.
-#
-# 막지 않고 지켜보는 이유: ACA 의 `ipSecurityRestrictions` 는 앱 단위라 경로만 막을 수 없고, 허브
-# 인그레스는 mcp.vincs.io 를 세상에 내야 한다. 그래서 앱 층의 서명 검증이 서 있는지를 본다.
-resource "azurerm_application_insights_standard_web_test" "hub_internal_path_reaches_app" {
-  name                    = "vinc-hub-internal-path-reaches-app"
-  resource_group_name     = var.resource_group_name
-  location                = "koreacentral"
-  application_insights_id = local.insights_id
-  geo_locations           = local.probe_locations
-  frequency               = 900
-  timeout                 = 30
-  enabled                 = true
-  retry_enabled           = true
-  description             = "허브 내부 경로가 앞문이 아니라 앱까지 닿는가 (401 의 모양으로 가른다)"
-
-  request {
-    url       = "https://mcp.vincs.io/internal/graph-owner"
-    http_verb = "POST"
-    # ⚠ 디코드된 값을 쓴다. provider 는 쓸 때 이 문자열을 그대로 넘기고 읽을 때 base64 를 디코드해
-    #   돌려주므로, base64 를 적으면 config 와 state 가 영영 안 맞고 매 plan 이 같은 변경을 제안한다.
-    body = "{}"
-
-    header {
-      name  = "Content-Type"
-      value = "application/json"
-    }
-  }
-
-  validation_rules {
-    # 401 이 정상이다. 서명 없이 찔렀으니 어서션 게이트가 거절하는 것이 맞다.
-    expected_status_code = 401
-    ssl_check_enabled    = true
-
-    content {
-      content_match      = "unauthorized"
-      pass_if_text_found = true
-      ignore_case        = false
-    }
-  }
-}
-
 # ── 경보 ────────────────────────────────────────────────────────────────────
-# 둘 다 기존 vinc-alerts 작업 그룹으로 간다.
+# 기존 vinc-alerts 작업 그룹으로 간다.
 #
 # ⚠ 차원 이름은 availabilityResult/name 으로 단수 Result 다(복수인 것은 메트릭 이름 쪽뿐이다). 틀리면
 #   필터가 아무것도 맞히지 못해 경보가 조용히 안 운다.
@@ -144,36 +94,6 @@ resource "azurerm_monitor_metric_alert" "incident_monitor_down" {
       name     = "availabilityResult/name"
       operator = "Include"
       values   = [azurerm_application_insights_standard_web_test.incident_monitor.name]
-    }
-  }
-
-  action {
-    action_group_id = local.action_group_id
-  }
-}
-
-# 이 규칙은 실물에만 있고 선언에 없었다. imports.tf 가 들여온다.
-resource "azurerm_monitor_metric_alert" "hub_internal_path_blocked" {
-  name                = "hub-internal-path-blocked"
-  resource_group_name = var.resource_group_name
-  scopes              = [local.insights_id]
-  description         = "허브 내부 경로가 앞문에서 끊겼거나 서명 없이 열렸다. 호스티드 키와 팀 주소가 여기를 지난다."
-  severity            = 1
-  frequency           = "PT5M"
-  window_size         = "PT30M" # 테스트가 15분 주기라 15분 창은 비는 순간이 있다
-  auto_mitigate       = true
-
-  criteria {
-    metric_namespace = "microsoft.insights/components"
-    metric_name      = "availabilityResults/availabilityPercentage"
-    aggregation      = "Average"
-    operator         = "LessThan"
-    threshold        = 100
-
-    dimension {
-      name     = "availabilityResult/name"
-      operator = "Include"
-      values   = [azurerm_application_insights_standard_web_test.hub_internal_path_reaches_app.name]
     }
   }
 
