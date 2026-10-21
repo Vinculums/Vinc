@@ -29,8 +29,8 @@ from .errors import (VincAuthError, VincError, VincInvalidArgument, VincPartialW
                      VincNotFound, VincQuotaExceeded, VincUnavailable, error_class)
 from .package import (DEFAULT_PACKAGE_MAX_CHARS, build_package_fragment, format_package,
                       package_space, validate_package)
-from .prefetch import (DEFAULT_PREFETCH_MAX_CHARS, PREFETCH_READ_CONCURRENCY, cite_id,
-                       document_key, reading_list, required_context, required_reading,
+from .prefetch import (DEFAULT_PREFETCH_MAX_CHARS, PREFETCH_READ_CONCURRENCY, RolePrefetch,
+                       cite_id, document_key, reading_list, required_context, required_reading,
                        with_citation, _with_task_evidence)
 
 log = logging.getLogger("vinc_client")
@@ -443,10 +443,19 @@ class VincClient(_Base):
         Transient errors are not retried here (unlike the plain calls): this runs before
         every model call, so a hub that is briefly unavailable raises at once.
         """
+        return self.prefetch_with_contract(role_id, task, space=space, max_chars=max_chars).block
+
+    def prefetch_with_contract(self, role_id: str, task: str, *, space: str | None = None,
+                               max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> RolePrefetch:
+        """:meth:`prefetch`, returning the block together with the role contract it read.
+
+        Same reads, checks and errors; the contract is the one the block was built from, so a
+        caller can apply its ``disallowed_tools`` without reading the role again.
+        """
         return self.without_retries()._prefetch(role_id, task, space=space, max_chars=max_chars)
 
     def _prefetch(self, role_id: str, task: str, *, space: str | None = None,
-                  max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+                  max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> RolePrefetch:
         limit = self.prefetch_concurrency
         early = limit > 1
         with ThreadPoolExecutor(max_workers=limit, thread_name_prefix="vinc-prefetch") as pool:
@@ -484,7 +493,8 @@ class VincClient(_Base):
             finally:
                 for future in optional:
                     future.cancel()
-        return _with_task_evidence(required, brief, search, max_chars=max_chars)
+        return RolePrefetch(_with_task_evidence(required, brief, search, max_chars=max_chars),
+                            contract)
 
     def search(self, query: str, *, limit: int | None = None, cursor: str | None = None,
                detail: str | None = None, historical: bool | None = None,
@@ -740,10 +750,16 @@ class AsyncVincClient(_Base):
     async def prefetch(self, role_id: str, task: str, *, space: str | None = None,
                        max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
         """Async fresh role/spec/task evidence retrieval before the model runs."""
+        return (await self.prefetch_with_contract(role_id, task, space=space,
+                                                  max_chars=max_chars)).block
+
+    async def prefetch_with_contract(self, role_id: str, task: str, *, space: str | None = None,
+                                     max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> RolePrefetch:
+        """Async :meth:`VincClient.prefetch_with_contract`."""
         return await self.without_retries()._prefetch(role_id, task, space=space, max_chars=max_chars)
 
     async def _prefetch(self, role_id: str, task: str, *, space: str | None = None,
-                        max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+                        max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> RolePrefetch:
         limit = self.prefetch_concurrency
         early = limit > 1
         gate = asyncio.Semaphore(limit)
@@ -791,7 +807,8 @@ class AsyncVincClient(_Base):
             for pending in optional:
                 pending.cancel()
             await asyncio.gather(*optional, return_exceptions=True)
-        return _with_task_evidence(required, brief, search, max_chars=max_chars)
+        return RolePrefetch(_with_task_evidence(required, brief, search, max_chars=max_chars),
+                            contract)
 
     async def search(self, query: str, *, limit: int | None = None, cursor: str | None = None,
                      detail: str | None = None, historical: bool | None = None,

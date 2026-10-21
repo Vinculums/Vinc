@@ -2,7 +2,7 @@
 
 Design and scope: [[vinc.plan.framework-integration-packages-2026-09-28]].
 """
-__version__ = "0.1.10"
+__version__ = "0.1.11"
 
 from .client import AsyncVincClient, VincClient  # noqa: E402
 from .context import (BOUNDARY, SOURCES_LINE, fence, format_answer, format_brief,  # noqa: E402
@@ -15,6 +15,8 @@ from .output_gate import (GateResult, OutputGate, OutputGateStopped, ToolProof, 
                           preserve_required_route, sources_line)
 from .package import build_package_fragment, format_package  # noqa: E402
 from .handoff import check_package_handoff  # noqa: E402
+from .prefetch import RolePrefetch  # noqa: E402
+from .tool_policy import RoleToolPolicy  # noqa: E402
 from .errors import (VincAuthError, VincError, VincInvalidArgument, VincNotFound,  # noqa: E402
                      VincPartialWrite, VincQuotaExceeded, VincUnavailable)
 
@@ -28,4 +30,5 @@ __all__ = [
     "prepare_person_only", "resolve_person_only",
     "GateResult", "OutputGate", "OutputGateStopped", "ToolProof", "preserve_required_route", "sources_line",
     "build_package_fragment", "format_package", "check_package_handoff",
+    "RolePrefetch", "RoleToolPolicy",
 ]

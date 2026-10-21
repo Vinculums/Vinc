@@ -5,10 +5,10 @@
 ## Install
 
 ```bash
-pip install "vinc-agent-framework>=0.1.5"
+pip install "vinc-agent-framework>=0.1.7"
 ```
 
-This README describes vinc-agent-framework 0.1.5, which requires vinc-client 0.1.9 or later.
+This README describes vinc-agent-framework 0.1.7, which requires vinc-client 0.1.11 or later.
 
 Set `VINC_API_KEY` to a member key. A `vinc_ro_` key is enough for the providers, the tools and `prefetch`. `record_episode` and `write_package` need a `vinc_sk_` key; with a read only key they raise `VincAuthError` (`read_only_key`) before anything is sent. Give the write key only to the step that writes.
 
@@ -152,6 +152,23 @@ optional task lookup. Unavailable roles and authentication/service errors stop
 this prefetch mode explicitly. Ordinary question-only lookup keeps its existing
 behavior.
 
+The role contract's `disallowed_tools` apply to the run, by exact tool name. A
+context provider cannot take the agent's own tools out of the run directly, so
+`before_run` adds two middleware for that run only: a chat middleware that
+removes those tools from the tool list of each model call, and a function
+middleware that answers a call to one of them with a result saying the role does
+not allow it (the tool does not run). The first model call logs one warning
+naming the entries that matched none of the agent's tools. The contract comes
+from the prefetch read, so this adds no hub call; a value that is not a list of
+names raises `invalid_role_contract` before the model runs.
+Hiding needs a chat client that runs chat middleware inside its tool loop
+(`FunctionInvocationLayer` outside `ChatMiddlewareLayer`, the documented order of
+the built-in clients). A client without `ChatMiddlewareLayer` still refuses the
+calls, but the model sees the tools, and each run logs a warning saying so.
+Roster contracts name Claude Code tools (`Bash`, `Edit`, `Write`,
+`NotebookEdit`, `Agent`); an Agent Framework tool is affected only when its name
+is the same.
+
 For a manual pipeline, `await prefetch(reader, role_id, task)` returns the same
 block. Both paths are read only and use no permission cache. `prefetch_max_chars`
 sets the combined provider budget (default 24,000 characters). Large roles need
@@ -178,6 +195,7 @@ text found in the graph.
 
 | Version | Change |
 |---|---|
+| 0.1.7 | With `prefetch_role`, the contract's `disallowed_tools` are removed from what the model sees (chat clients with `ChatMiddlewareLayer`) and a call to one gets a refusal result; entries that match no tool are warned once per run. Requires vinc-client 0.1.11. |
 | 0.1.6 | `vinc_brief` and `vinc_search` answer with the unavailable sentence at once instead of waiting through the client's transient retries. Requires vinc-client 0.1.10. |
 | 0.1.5 | The write helpers take `create_only` and `operation_id`. Requires vinc-client 0.1.9; its version notes list `operation_status`, `edges`, `role_check` and the delete and merge previews. |
 | 0.1.4 | The read tools take `mode`, `as_of` and `known_at`. |

@@ -419,3 +419,100 @@ def test_write_helpers_share_the_retry_contract_in_both_frameworks():
     asyncio.run(run())
     assert sync_seen == ma_seen == lg_seen and len(ma_seen) == 2
     assert all((row[3]["create_only"], row[3]["operation_id"]) == (True, op) for row in ma_seen)
+
+
+def test_same_disallowed_tools_are_hidden_and_refused_in_both_frameworks(caplog):
+    # 같은 계약이면 두 패키지가 같은 도구를 모델에서 빼고, 그래도 불린 호출에 같은 문장을 돌려주고,
+    # 어느 도구와도 맞지 않은 항목을 같은 경고로 한 번 알린다(정확한 이름 일치).
+    import logging
+    from agent_framework import ChatMiddlewareLayer, Content, tool as maf_tool
+    from langchain.agents import create_agent
+    from langchain_core.messages import HumanMessage, ToolMessage
+    from langchain_core.tools import tool as lg_tool
+    from vinc_agent_framework import VincContextProvider
+    from vinc_client import RoleToolPolicy
+    from vinc_langgraph import VincContextMiddleware
+
+    def role_with_denylist(request, seen):
+        if request.method == "GET" and request.url.path.startswith("/v1/roles/"):
+            seen.append(request.url.path)
+            return httpx.Response(200, json={"found": True, "id": ROLE, "props": {
+                "reads": [], "disallowed_tools": ["Bash", "Edit"]}})
+        return response(request, [])
+
+    @lg_tool("Bash")
+    def lg_bash(command: str) -> str:
+        """Run a shell command."""
+        raise AssertionError("a disallowed tool ran")
+
+    @lg_tool("lookup")
+    def lg_lookup(query: str) -> str:
+        """A local lookup."""
+        return "local answer"
+
+    @maf_tool(name="Bash")
+    def ma_bash(command: str) -> str:
+        """Run a shell command."""
+        raise AssertionError("a disallowed tool ran")
+
+    @maf_tool(name="lookup")
+    def ma_lookup(query: str) -> str:
+        """A local lookup."""
+        return "local answer"
+
+    class LgModel(BaseChatModel):
+        seen_tools: list = []
+
+        @property
+        def _llm_type(self):
+            return "calls-bash"
+
+        def bind_tools(self, tools, **kwargs):
+            self.seen_tools.append(sorted(t.name for t in tools))
+            return self
+
+        def _generate(self, messages, **kwargs):
+            if any(m.type == "tool" for m in messages):
+                return ChatResult(generations=[ChatGeneration(message=AIMessage("done"))])
+            return ChatResult(generations=[ChatGeneration(message=AIMessage("", tool_calls=[
+                {"name": "Bash", "args": {"command": "ls"}, "id": "c1"}]))])
+
+    class MaChat(FunctionInvocationLayer, ChatMiddlewareLayer, BaseChatClient):
+        def __init__(self):
+            super().__init__()
+            self.seen_tools = []
+
+        async def _inner_get_response(self, *, messages, stream, options, **kwargs):
+            self.seen_tools.append(sorted(t.name for t in options.get("tools") or []))
+            if any(c.type == "function_result" for m in messages for c in m.contents):
+                return ChatResponse(messages=Message("assistant", ["done"]))
+            return ChatResponse(messages=Message("assistant", [
+                Content.from_function_call("c1", "Bash", arguments={"command": "ls"})]))
+
+    lg_roles, ma_roles = [], []
+    with caplog.at_level(logging.WARNING):
+        with VincClient(KEY, transport=httpx.MockTransport(
+                lambda r: role_with_denylist(r, lg_roles))) as client:
+            model = LgModel()
+            agent = create_agent(model, tools=[lg_bash, lg_lookup], middleware=[
+                VincContextMiddleware(client=client, prefetch_role=ROLE)])
+            state = agent.invoke({"messages": [HumanMessage("Review.")]})
+            lg_refusal = [m.content for m in state["messages"] if isinstance(m, ToolMessage)]
+        lg_warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+        caplog.clear()
+
+        async def run():
+            async with AsyncVincClient(KEY, transport=httpx.MockTransport(
+                    lambda r: role_with_denylist(r, ma_roles))) as client:
+                chat = MaChat()
+                res = await Agent(chat, tools=[ma_bash, ma_lookup], context_providers=[
+                    VincContextProvider(client, prefetch_role=ROLE)]).run("Review.")
+                return chat.seen_tools, [str(c.result) for m in res.messages for c in m.contents
+                                         if c.type == "function_result"]
+        ma_seen_tools, ma_refusal = asyncio.run(run())
+        ma_warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+
+    assert model.seen_tools == ma_seen_tools == [["lookup"], ["lookup"]]
+    assert lg_refusal == ma_refusal == [RoleToolPolicy(ROLE, ["Bash"]).refusal("Bash")]
+    assert lg_warnings == ma_warnings and len(lg_warnings) == 1 and ": Edit." in lg_warnings[0]
+    assert len(lg_roles) == len(ma_roles) == 1
