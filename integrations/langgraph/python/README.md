@@ -5,11 +5,11 @@
 ## Install
 
 ```bash
-pip install "vinc-langgraph>=0.1.5"            # node helpers and tools
-pip install "vinc-langgraph[agents]>=0.1.5"    # plus the middleware for create_agent
+pip install "vinc-langgraph>=0.1.7"            # node helpers and tools
+pip install "vinc-langgraph[agents]>=0.1.7"    # plus the middleware for create_agent
 ```
 
-This README describes vinc-langgraph 0.1.5, which requires vinc-client 0.1.9 or later.
+This README describes vinc-langgraph 0.1.7, which requires vinc-client 0.1.10 or later.
 
 Set `VINC_API_KEY` to a member key. A `vinc_ro_` key is enough for every read helper, the middleware and the tools. `record_episode` and `write_package` need a `vinc_sk_` key; with a read only key they raise `VincAuthError` (`read_only_key`) before anything is sent. Give the write key only to the node that writes.
 
@@ -174,9 +174,14 @@ middleware = VincContextMiddleware(
 ```
 
 This reads the complete role contract, full required documents with verified
-content hashes, and task brief/search before
-each model call, including the returned node ids. Unlike ordinary question
-lookup, the role prefetch mode does not cache content or permission checks.
+content hashes, and task brief/search once per run, on the run's first model
+call, and adds that block to every model call of the run. A run is everything
+after the newest human message (its id, or its text when it has none), so a new
+human message reads again and a run in progress finishes on the contract it
+started with, as in `vinc-agent-framework`. `cache_seconds` does not apply to this
+mode; `clear_cache()` drops the kept blocks. A failed read is never kept: its error
+propagates and the next model call reads again. Kept blocks are separated by client,
+reader, endpoint, space, role and `prefetch_max_chars`, at most 64 at a time.
 Read tools may still be passed to `create_agent` as an additional lookup path.
 Missing, partial or unverified required documents raise `prefetch_spec_unresolved`
 and no optional task lookup result is used. Authentication/service failures raise; nothing
@@ -200,7 +205,7 @@ characters (characters are not tokens). With client 0.1.3, required reads
 run in bounded concurrent batches. With client 0.1.4, task brief/search may start
 before validation and are discarded if the integrity or budget checks fail. A failed batch stops further batches;
 already launched reads are cancelled when possible and drained before return.
-No prefetch cache or automatic reuse is added. To keep sequential reads, pass a
+Apart from the middleware's reuse within one run, nothing is cached. To keep sequential reads, pass a
 reader created with `prefetch_concurrency=1`; the client default is 8.
 Model citation quality must be evaluated separately.
 
@@ -209,6 +214,7 @@ Model citation quality must be evaluated separately.
 
 | Version | Change |
 |---|---|
+| 0.1.7 | With `prefetch_role`, the middleware reads the role once per run instead of before every model call; a new human message reads again. `clear_cache()` also drops these blocks. |
 | 0.1.6 | `vinc_brief` and `vinc_search` answer with the unavailable sentence at once instead of waiting through the client's transient retries. Requires vinc-client 0.1.10. |
 | 0.1.5 | The write helpers take `create_only` and `operation_id`. Requires vinc-client 0.1.9; its version notes list `operation_status`, `edges`, `role_check` and the delete and merge previews. |
 | 0.1.4 | The read tools take `mode`, `as_of` and `known_at`. |

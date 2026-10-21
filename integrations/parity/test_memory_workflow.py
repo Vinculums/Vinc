@@ -19,7 +19,8 @@ KEY = "vinc_ro_" + "a" * 32
 DOC_TEXT = "Every mandatory rule survives.\n" + "x" * 5000 + "\nMANDATORY TAIL"
 
 
-@pytest.mark.parametrize("mode,lg_reads,maf_reads", [("context", 1, 1), ("prefetch", 10, 5), ("package", 4, 2)])
+# prefetch 는 두 패키지 모두 런마다 한 번 읽는다. package 는 LangGraph 가 모델 호출마다 다시 읽는다.
+@pytest.mark.parametrize("mode,lg_reads,maf_reads", [("context", 1, 1), ("prefetch", 5, 5), ("package", 4, 2)])
 def test_repeated_model_tool_loop_has_explicit_retrieval_and_handoff_cost(mode, lg_reads, maf_reads):
     package = build_package_fragment("Which policy?", "Keep the exact recommendation.",
         claims=[{"claim": "Keep the source state.", "evidence_ids": ["decision:rule"]}],
