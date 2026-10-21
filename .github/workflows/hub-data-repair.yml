@@ -1,5 +1,5 @@
 # 허브 데이터 수리 — RAG 코드 리뷰 센서스가 허브에서 센 것(키 모양 · 벡터 도장 · 재큐 되돌리기 ·
-# 소프트 재큐 · 고아 벡터 · 멈춘 쓰기 창)을 스냅샷 사본에서 고치고(measure), 허브를 그 사본으로
+# 이행 표식 · 소프트 재큐 · 고아 벡터 · 멈춘 쓰기 창)을 스냅샷 사본에서 고치고(measure), 허브를 그 사본으로
 # 갈아탄다(apply).
 # 수리 판정과 불변식은 `scripts/repair_hub_store.py` 머리주석이 정본이다(여기 옮겨 적지 않는다).
 # 근거: [[vinc.plan.rag-code-review-fixes-2026-09-29]]
@@ -23,7 +23,7 @@ on:
         options: [measure, apply]
         default: measure
       repairs:
-        description: "쉼표로 고른다: keyform,stamp,unrequeue,requeue,orphans,stuck (도는 순서는 이 순서로 고정, requeue 와 unrequeue 는 함께 못 고른다). 기본 stamp,unrequeue"
+        description: "쉼표로 고른다: keyform,stamp,unrequeue,unmark,requeue,orphans,stuck (도는 순서는 이 순서로 고정, requeue 와 unrequeue 는 함께 못 고른다). 기본 stamp,unrequeue"
         type: string
         default: "stamp,unrequeue"
       confirm:
