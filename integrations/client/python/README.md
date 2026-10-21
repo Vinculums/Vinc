@@ -54,6 +54,7 @@ Reads (either key):
 | `operation_status` | `operation_id` | the receipt of an earlier write (see below) |
 | `get_context` | `query`, `search_fallback`, `max_chars`, `max_excerpts`, `min_query_chars` | a fenced context block, or `None` |
 | `prefetch` | `role_id`, `task`, `max_chars` | the role's required reading and task evidence before a model call |
+| `prefetch_with_contract` | `role_id`, `task`, `max_chars` | the same block as `prefetch`, with the role contract it read (`RolePrefetch(block, contract)`) |
 | `get_package_context` | `package_id`, `space` (required), `max_chars` | a handoff package, rechecked with this key |
 
 Writes (`vinc_sk_` key):
@@ -296,6 +297,17 @@ exactly but leaves no task evidence space. No automatic retry, budget increase,
 truncation or prefetch cache occurs. If the role or documents change between calls,
 the required size can change too.
 
+### A role's disallowed tools
+
+`prefetch_with_contract` returns the block and the role contract from the same
+reads, so a caller can apply the contract without reading the role again.
+`RoleToolPolicy.from_contract(contract)` reads `props.disallowed_tools` (absent
+means none; a value that is not a list of names raises `invalid_role_contract`).
+Names match exactly: `allowed(tools)` drops tools with a disallowed name,
+`refusal(name)` is the tool result a refused call gets, and `warn_unmatched(tools)`
+logs one warning naming the entries that matched none of `tools`. Both framework
+adapters use this one implementation in their role prefetch mode.
+
 On 2026-10-06, all 23 hosted roster roles exceeded the default. Their required
 text was 19,764 to 198,480 characters (median about 112,000); successful prefetch
 blocks at a larger budget were 34,640 to 217,070 characters including the role
@@ -338,6 +350,7 @@ separate evaluation.
 
 | Version | Change |
 |---|---|
+| 0.1.11 | `prefetch_with_contract` returns the prefetch block with the role contract it read, and `RoleToolPolicy` applies the contract's `disallowed_tools` by exact name. `prefetch` is unchanged. The adapters (vinc-langgraph 0.1.8, vinc-agent-framework 0.1.7) use both. |
 | 0.1.10 | Transient hub errors (502, 503, 504, dropped connections, timeouts) are retried for up to `retry_for` seconds (90 by default), following `Retry-After`. Writes are retried only with an `operation_id`. `get_context` and `prefetch` do not retry. |
 | 0.1.9 | `record_episode` and `write_package` take `create_only` and `operation_id`. New `delete`, `delete_edge`, `merge_nodes` and `doc_delete` with `dry_run` and `preview_digest`. New `edges` and `role_check`. The adapters 0.1.5 pass the two write parameters through and require this client. |
 | 0.1.8 | `ingest` takes `create_only` and `operation_id`; `operation_status` reads a write's receipt; `expected_rev` and `props_patch` guard a node edit. |

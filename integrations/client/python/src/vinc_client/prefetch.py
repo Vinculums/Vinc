@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
+from typing import Any, NamedTuple
 
 from .context import BOUNDARY, SOURCES_LINE, fence, format_answer
 from .errors import VincInvalidArgument, VincUnavailable
@@ -17,6 +17,13 @@ TASK_EVIDENCE_MAX_CHARS = 6000
 CITE_LINE = ("Required readings with a verified mirror name their citable id after \"cite as\"; "
              "cite that id, not the document key. Readings marked \"no citable id\" "
              "have no verified node citation; do not invent one. " + SOURCES_LINE)
+
+
+class RolePrefetch(NamedTuple):
+    """A prefetch block and the role contract it was built from, read in the same call."""
+
+    block: str
+    contract: dict[str, Any]
 
 
 def reading_list(contract: dict[str, Any]) -> list[str]:

@@ -5,11 +5,11 @@
 ## Install
 
 ```bash
-pip install "vinc-langgraph>=0.1.7"            # node helpers and tools
-pip install "vinc-langgraph[agents]>=0.1.7"    # plus the middleware for create_agent
+pip install "vinc-langgraph>=0.1.8"            # node helpers and tools
+pip install "vinc-langgraph[agents]>=0.1.8"    # plus the middleware for create_agent
 ```
 
-This README describes vinc-langgraph 0.1.7, which requires vinc-client 0.1.10 or later.
+This README describes vinc-langgraph 0.1.8, which requires vinc-client 0.1.11 or later.
 
 Set `VINC_API_KEY` to a member key. A `vinc_ro_` key is enough for every read helper, the middleware and the tools. `record_episode` and `write_package` need a `vinc_sk_` key; with a read only key they raise `VincAuthError` (`read_only_key`) before anything is sent. Give the write key only to the node that writes.
 
@@ -183,6 +183,17 @@ mode; `clear_cache()` drops the kept blocks. A failed read is never kept: its er
 propagates and the next model call reads again. Kept blocks are separated by client,
 reader, endpoint, space, role and `prefetch_max_chars`, at most 64 at a time.
 Read tools may still be passed to `create_agent` as an additional lookup path.
+
+The role contract's `disallowed_tools` apply to the run, by exact tool name. The
+middleware removes those tools from each model call's tool list, answers a call
+to one of them with a tool message saying the role does not allow it (the tool
+does not run), and logs one warning per run naming the entries that matched none
+of the agent's tools. The contract comes from the prefetch read, so this adds no
+hub call. A value that is not a list of names raises `invalid_role_contract`
+before the model runs. Roster contracts name Claude Code tools (`Bash`, `Edit`,
+`Write`, `NotebookEdit`, `Agent`); a LangGraph tool is affected only when its name
+is the same.
+
 Missing, partial or unverified required documents raise `prefetch_spec_unresolved`
 and no optional task lookup result is used. Authentication/service failures raise; nothing
 writes or delegates work.
@@ -214,6 +225,7 @@ Model citation quality must be evaluated separately.
 
 | Version | Change |
 |---|---|
+| 0.1.8 | With `prefetch_role`, the contract's `disallowed_tools` are removed from what the model sees and a call to one gets a refusal message; entries that match no tool are warned once per run. Requires vinc-client 0.1.11. |
 | 0.1.7 | With `prefetch_role`, the middleware reads the role once per run instead of before every model call; a new human message reads again. `clear_cache()` also drops these blocks. |
 | 0.1.6 | `vinc_brief` and `vinc_search` answer with the unavailable sentence at once instead of waiting through the client's transient retries. Requires vinc-client 0.1.10. |
 | 0.1.5 | The write helpers take `create_only` and `operation_id`. Requires vinc-client 0.1.9; its version notes list `operation_status`, `edges`, `role_check` and the delete and merge previews. |
