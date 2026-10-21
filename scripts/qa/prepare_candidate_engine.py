@@ -2,10 +2,11 @@
 
 `--vendor-dir` 를 주면 Vinc 릴리스 `ladybug-ext-<판>` 에서 받은 바이트를 해시 목록과 대조해 쓴다.
 출하하는 바이트가 그것이므로 검증도 그것으로 한다. 상류 서버는 같은 판 경로의 파일을 다시
-올리기도 한다(2026-10-20 algo 재빌드). 주지 않으면 상류 `INSTALL` 로 받고, 0.21.2 는 고정
-해시와 다르면 멈춘다(새 판을 처음 검증할 때의 경로).
+올리기도 한다. 주지 않으면 상류 `INSTALL` 로 받고, 0.21.2 는 고정 해시와 다르면 멈춘다(새 판을
+처음 검증할 때의 경로).
 
-출하 핀은 변경하지 않는다. 근거: [[vinc.ops.ladybug-upgrade-review-2026-09-24]].
+출하 핀은 변경하지 않는다.
+근거: [[vinc.ops.ladybug-upgrade-review-2026-09-24]] · [[record:upstream-republished-the-ladybug-0-21-algo-extension-in-place-2026-10-20]]
 """
 from __future__ import annotations
 

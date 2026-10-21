@@ -1075,6 +1075,7 @@
     "record:title-language-gap-survives-the-vector-arm-2026-08-30",
     "record:token-estimate-weights-came-from-a-real-corpus",
     "record:unguarded-title-overwrote-107-nodes-with-their-ids",
+    "record:upstream-republished-the-ladybug-0-21-algo-extension-in-place-2026-10-20",
     "record:validity-state-compares-a-local-dated-claim-against-a-utc-clock-2026-09-14",
     "record:view-3d-instancing-frame-cost-measured-2026-09-18",
     "record:vin314-live-exp01-rerun-prefetch-cites-a-node-in-1-of-6-2026-10-07",
@@ -1783,6 +1784,9 @@
       "validity": "current"
     },
     "record:writing-a-trap-down-does-not-stop-it-a-check-does": {
+      "validity": "current"
+    },
+    "record:upstream-republished-the-ladybug-0-21-algo-extension-in-place-2026-10-20": {
       "validity": "current"
     }
   }

@@ -69,8 +69,8 @@ jobs:
           "$oldpython" scripts/qa/prepare_candidate_engine.py --root baseline --engine "$BASELINE_ENGINE" --vendor-dir baseline-assets --no-export
           echo "BASELINE_PYTHON=$oldpython" >> "$GITHUB_ENV"
       # 후보의 확장은 상류 서버가 아니라 Vinc 릴리스 ladybug-ext-0.21.2 의 바이트로 검증한다.
-      # 데스크톱 릴리스와 허브가 싣는 것이 그 바이트이고, 상류는 같은 판 경로의 파일을 다시
-      # 올린다(2026-10-20 algo 재빌드로 이 잡이 체크섬 불일치로 멈췄다, VIN-698).
+      # 데스크톱 릴리스와 허브가 싣는 것이 그 바이트이고, 상류는 같은 판 경로의 파일을 다시 올린다.
+      # 근거: [[record:upstream-republished-the-ladybug-0-21-algo-extension-in-place-2026-10-20]]
       - name: Prepare the released candidate extensions
         shell: bash
         env:
