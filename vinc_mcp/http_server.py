@@ -323,7 +323,7 @@ _FAVICON_PNG = base64.b64decode(
 # (판 없는 링. 밝은 바탕엔 검정, 어두운 바탕엔 `prefers-color-scheme` 으로 흰색.
 # 판은 2026-09-24 에 폐기됐다. 근거: design-hub/assets/logo/README.md)
 # 임베드 이유와 드리프트 방지는 위 _FAVICON_PNG 주석과 같다.
-_FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="42 38 436 604"><style>@media (prefers-color-scheme: dark){path,circle{fill:#FFFFFF}}</style><path fill-rule="evenodd" fill="#000000" d="M328.4 155.7L420.5 284.7Q460.0 340.0 420.5 395.3L328.4 524.3Q260.0 620.0 191.6 524.3L99.5 395.3Q60.0 340.0 99.5 284.7L191.6 155.7Q260.0 60.0 328.4 155.7Z M312.2 203.4L383.9 297.8Q416.0 340.0 383.9 382.2L312.2 476.6Q260.0 545.2 207.8 476.6L136.1 382.2Q104.0 340.0 136.1 297.8L207.8 203.4Q260.0 134.8 312.2 203.4Z"></path><circle cx="260" cy="340" r="52" fill="#000000"></circle></svg>"""
+_FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="-42 38 604 604"><style>@media (prefers-color-scheme: dark){path,circle{fill:#FFFFFF}}</style><path fill-rule="evenodd" fill="#000000" d="M328.4 155.7L420.5 284.7Q460.0 340.0 420.5 395.3L328.4 524.3Q260.0 620.0 191.6 524.3L99.5 395.3Q60.0 340.0 99.5 284.7L191.6 155.7Q260.0 60.0 328.4 155.7Z M312.2 203.4L383.9 297.8Q416.0 340.0 383.9 382.2L312.2 476.6Q260.0 545.2 207.8 476.6L136.1 382.2Q104.0 340.0 136.1 297.8L207.8 203.4Q260.0 134.8 312.2 203.4Z"></path><circle cx="260" cy="340" r="52" fill="#000000"></circle></svg>"""
 
 
 class MCPHTTPApp:

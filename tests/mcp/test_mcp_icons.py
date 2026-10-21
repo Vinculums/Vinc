@@ -119,6 +119,14 @@ class FaviconAssetTest(unittest.TestCase):
     def test_SVG_상수는_그대로_있다(self):
         self.assertIn("<svg", http_server._FAVICON_SVG)
 
+    def test_SVG_viewBox_가_정사각이다(self):
+        """아이콘 칸은 정사각이고, 래스터화하는 쪽(구글 검색 결과·커넥터 카드)은 비율을
+        지키지 않고 그 칸에 늘린다. 마크 자체의 436x604 를 그대로 두면 링이 가로로
+        퍼지고 구체가 타원이 된다. 근거: [[record:a-tall-favicon-viewbox-is-stretched-into-a-square-2026-10-21]]"""
+        import re
+        box = re.search(r'viewBox="([^"]+)"', http_server._FAVICON_SVG).group(1).split()
+        self.assertEqual(box[2], box[3], f"파비콘 viewBox 가 정사각이 아니다: {box}")
+
 
 class RequestLoggingTest(unittest.TestCase):
     """실패만 남기고 정상 트래픽은 조용히 — 침묵을 성공으로 오독하지 않기 위해.
