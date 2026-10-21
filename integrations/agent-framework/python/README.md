@@ -2,6 +2,8 @@
 
 [Vinc](https://vincs.io) for [Microsoft Agent Framework](https://learn.microsoft.com/agent-framework/). Vinc is a knowledge graph you share with AI: the decisions, records and documents your team wrote, with the reasons attached. This package brings the relevant part of it into each agent run.
 
+**If the agent has to follow its role's contract (what it must never do, its gates, the tools it may not use), use role mode (`prefetch_role=`).** Role mode stops the run when Vinc cannot be read; context mode goes on without context. See [Role mode or context mode](#role-mode-or-context-mode).
+
 ## Install
 
 ```bash
@@ -11,6 +13,17 @@ pip install "vinc-agent-framework>=0.1.7"
 This README describes vinc-agent-framework 0.1.7, which requires vinc-client 0.1.11 or later.
 
 Set `VINC_API_KEY` to a member key. A `vinc_ro_` key is enough for the providers, the tools and `prefetch`. `record_episode` and `write_package` need a `vinc_sk_` key; with a read only key they raise `VincAuthError` (`read_only_key`) before anything is sent. Give the write key only to the step that writes.
+
+## Role mode or context mode
+
+`VincContextProvider` runs in role mode when you pass `prefetch_role`, and in context mode when you do not. Both read in `before_run`, once per run.
+
+| Mode | When Vinc is unreachable or over the daily limit | Reads per run (hub calls) | Tools the role disallows | Pinning |
+|---|---|---|---|---|
+| Role mode (`prefetch_role=`) | `before_run` raises with no retry, so the model is not called (fails closed). Any failed read stops the run the same way: the role, a required document or the task lookup. | 1 for the role, 2 per required document (its text and its mirror node), 1 brief and 1 search. | Removed from the tools each model call sees; a call to one gets a result saying the role does not allow it. Names match exactly, and entries that match none of the agent's tools give one warning per run. Hiding needs a chat client with `ChatMiddlewareLayer` inside `FunctionInvocationLayer`, as the built-in clients have; with any other client the model still sees the tools, calls are still refused, and each run logs a warning. | None yet: each run reads the role as it is when the run starts and keeps that contract to its end. |
+| Context mode (no role) | Logs a warning and the run goes on without context (fails open). A wrong key or space still raises. | One brief, plus a search when the brief ties or finds nothing. None for a message shorter than `min_query_chars`. | Not applied: there is no role. | Not applicable: each run reads the graph as it is. |
+
+The tool rule is new in 0.1.7; 0.1.6 did not apply `disallowed_tools`. With `expose_tools=True` the model's own lookups add up to `tool_calls_per_run` (4) calls per run in either mode.
 
 ## Helpers
 
@@ -47,7 +60,7 @@ await agent.run("Why are our colour tokens stored as OKLCH?")
 Before each run the provider looks up the newest user message in Vinc and, when something matches, adds a block to the instructions. The block is marked as data, not instructions, and it cites node ids the model can quote back.
 
 - One call per run; two when the lookup found nothing or several nodes tied, because it then widens with a search (`search_fallback=False` turns that off).
-- If Vinc is unreachable or the daily limit is spent, the run goes on without the block. A wrong key or space raises.
+- If Vinc is unreachable or the daily limit is spent, the run goes on without the block (role mode stops instead). A wrong key or space raises.
 - For a team's graph pass `space="<team id>"`.
 
 ## Let the model look things up
@@ -200,6 +213,8 @@ text found in the graph.
 | 0.1.5 | The write helpers take `create_only` and `operation_id`. Requires vinc-client 0.1.9; its version notes list `operation_status`, `edges`, `role_check` and the delete and merge previews. |
 | 0.1.4 | The read tools take `mode`, `as_of` and `known_at`. |
 | 0.1.3 | Vinc tool calls are capped at 4 per run, and both packages send the same tool schema. |
+
+0.1.5 was not published to PyPI; its changes first shipped in 0.1.6.
 
 ## License
 
