@@ -48,6 +48,16 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
 그리고 **read-before-write**: `vinc_search` 로 기존 id 를 찾아 재사용한다. 새 id 를
 지어내면 같은 것이 두 벌 생긴다.
 
+### 연구·측정·계획 문서에는 유효기간을 단다
+
+- `vinc_doc_put` 으로 연구·측정 문서를 쓸 때는 `valid_from` 을 잰 날로, 계획 문서는 정한 날로
+  단다. 비워 두면 시간 정책상 "지금도 맞음"으로 읽혀서, 몇 주 지난 측정이 오늘 사실과 같은
+  무게로 검색에 나온다. 근거: [[decision:temporal-model-operational-policy-2026-09-09]]
+- 새 측정이나 새 계획이 옛 문서를 대체하면 옛 문서에 `valid_until`(새 문서의 `valid_from`)과
+  `superseded_by`(새 doc_id)를 단다. 지우지 않는다. 그때는 맞았던 기록이다. 본문을 고치지 않는
+  메타만의 변경이라 본문은 그대로 보내면 된다.
+- 기존 문서를 일괄로 소급하지 않는다. 대체 관계가 분명한 것만 그때그때 닫는다.
+
 ### 급소 (실측으로 물린 것들)
 
 - **오픈 타입 노드는 `props`·`domain` 이 저장되지 않는다.** `record|concept|domain|
