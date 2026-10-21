@@ -1,56 +1,49 @@
-# 기능을 보는 경보 — 살아 있음을 보는 경보로는 이 프로젝트의 사고를 하나도 못 잡았다.
+# 장애 메일은 계정 앱의 감시 루프가 보낸다. Azure 에는 그 루프가 볼 수 없는 것만 남긴다.
 #
-# 2026-09-01 실측: 이 리소스 그룹의 경보 규칙은 **하나**였고(`hub-health-down`),
-# 그것이 보는 `https://mcp.vincs.io/health` 는 세 번의 기능 장애에서 **세 번 다 200**
-# 이었다:
+# 루프(Vinc-homepage `account/src/services/incidentMonitor.ts`)는 60초마다 허브 `/health?live=1`,
+# OAuth discovery, 계정 DB 와 스키마를 본다. 연속 두 번 실패하면 메일 한 통, 회복하면 한 통을 보내고,
+# 배포·재구축 동안은 그 워크플로가 연 창 안에서 메일을 막는다. 그래서 같은 것을 5~15분마다 보면서
+# 계획 작업에도 울리던 가용성 테스트와 Sev1 규칙은 여기서 걷었다.
 #
-#   2026-07-30  VINC_MCP_ISSUER 누락 → OAuth 전면 불가            /health 200
-#   2026-08-04  앞문이 verify-key 차단 → 모든 호스티드 키 401     /health 200
-#   2026-08-30  excludedPaths 누락 → 팀 OAuth 가 하루 넘게 사망   /health 200 · 배포도 초록
+# 남은 것:
+#   1. 감시자의 감시: 루프가 멈췄거나 계정 앱·SWA 가 죽으면 루프는 메일을 보낼 수 없다.
+#   2. 허브 내부 경로: hub-deploy 가 배포 뒤에 같은 검사를 하게 되면 지운다.
+#   3. 자원 경보 셋(DB 스토리지·계정 메모리·허브 레플리카 겹침): 루프가 보지 않는 신호다.
 #
-# 세 번째는 사람이 화면을 보고 알았다. 살아 있음 프로브는 기능 장애를 원리적으로 못 본다.
-# 근거: [[record:the-only-alert-watches-the-signal-that-was-green-in-all-three-outages]]
-#       [[vinc.ops.infrastructure-risk-2026-09-01]] §4
-#
-# 여기 셋은 각각 위 사고 하나씩에 대응한다. 전부 content match 를 쓴다 — 상태 코드만
-# 보면 앞문이 내는 401 과 앱이 내는 401 이 구분되지 않고, 그 구분이 정확히 08-04 와
-# 08-30 을 놓친 자리다.
-#
-# 왜 크론 워크플로가 아닌가: 5분 주기면 Actions 분을 월 1400분 넘게 태운다. 가용성
-# 테스트가 이 일에 맞는 도구다.
+# 남은 테스트도 상태 코드가 아니라 본문을 본다. 살아 있음만 보는 프로브는 기능 장애를 못 본다.
+# 근거: [[vinc.plan.incident-mail-automation-2026-10-18]] §4
+#       [[record:the-only-alert-watches-the-signal-that-was-green-in-all-three-outages]]
 
 locals {
   insights_id     = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.Insights/components/vinc-uptime"
   action_group_id = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/microsoft.insights/actionGroups/vinc-alerts"
-  # 기능 프로브는 한 지역·15분이다(2026-10-17). 세 지역·5분이던 다섯 개가 하루 1,440회·월 약 4만 원으로
-  # Azure Monitor 청구의 대부분이었고, 09-16 에 손으로 줄인 실제 상태가 이 선언과 어긋나 있었다. 경보는
-  # 15분 창의 가용률 평균이 100 미만이면 울리므로 한 지역의 실패 한 번으로도 울린다.
-  # 근거: [[vinc.plan.infra-cost-and-capacity-2026-10-17]]
+  # 테스트는 실행 횟수 × 지역 수로 청구된다. 남은 둘은 고장 지점이 하나라 지역을 늘려도 얻는 것이 없다.
   probe_locations = ["apac-jp-kaw-edge"]
-  probe_every_s   = 900
 }
 
-# ── 1. OAuth discovery — 2026-07-30 형 사고 ─────────────────────────────────
-# VINC_MCP_ISSUER 가 빠지면 이 경로가 404 가 되고 커넥터가 discovery 를 포기한다.
-# hub-deploy.yml 이 배포 직후 같은 것을 확인하지만 그건 배포 시점 한 번뿐이라, env 가
-# 나중에 사라지는 경우를 못 본다(앱을 재생성하면 조용히 빠진다 — 그 사고가 그것이었다).
+# ── 1. 감시자의 감시 ─────────────────────────────────────────────────────────
+# `/api/health/monitor` 는 루프의 마지막 틱이 세 주기(3분) 안일 때만 200 과 `"monitor":"ok"` 를 준다.
+# 루프가 멈추면 503 `stale`, 계정 앱이나 SWA 가 죽으면 답이 없다. 어느 쪽이든 장애 메일이 나갈 수 없는
+# 상태라 이 테스트의 메일이 유일한 신호다.
 #
-# 본문 실측 2026-09-01:
-#   {"resource": "https://mcp.vincs.io/mcp", "authorization_servers": [...]}
-resource "azurerm_application_insights_standard_web_test" "oauth_discovery" {
-  name                    = "vinc-oauth-discovery"
+# ⚠ 루프를 끄면(`INCIDENT_MONITOR_ENABLED`) 이 경로는 200 `off` 를 주고 본문 대조가 실패해 운다.
+# 의도다. 이 파일에 가용성 테스트가 없으니 루프가 꺼지면 장애를 알릴 것이 아무것도 없다.
+#
+# SWA 를 거친다(`vincs.io`). 계정 컨테이너 FQDN 을 직접 부르면 앞문이 401 을 준다.
+resource "azurerm_application_insights_standard_web_test" "incident_monitor" {
+  name                    = "vinc-incident-monitor"
   resource_group_name     = var.resource_group_name
   location                = "koreacentral"
   application_insights_id = local.insights_id
   geo_locations           = local.probe_locations
-  frequency               = local.probe_every_s
+  frequency               = 300
   timeout                 = 30
   enabled                 = true
   retry_enabled           = true
-  description             = "OAuth discovery 가 200 인가 — issuer 가 빠지면 404 다"
+  description             = "계정 앱의 장애 감시 루프가 돌고 있는가"
 
   request {
-    url       = "https://mcp.vincs.io/.well-known/oauth-protected-resource"
+    url       = "https://vincs.io/api/health/monitor"
     http_verb = "GET"
   }
 
@@ -58,106 +51,35 @@ resource "azurerm_application_insights_standard_web_test" "oauth_discovery" {
     expected_status_code = 200
     ssl_check_enabled    = true
 
-    # 200 만 봐서는 부족하다. issuer 가 비면 본문 모양이 달라지므로 실제 필드를 본다.
     content {
-      content_match      = "authorization_servers"
+      content_match      = "\"monitor\":\"ok\""
       pass_if_text_found = true
       ignore_case        = false
     }
   }
 }
 
-# ── 2. 내부 경로가 앱까지 닿는가 — 2026-08-04 · 2026-08-30 형 사고 ──────────
-# SWA Linked Backend 가 계정 앱에 EasyAuth 를 자동으로 켜므로, 허브에서 계정으로 가는
-# 호출은 excludedPaths 에 든 경로만 앱에 닿는다. 그 목록이 틀리면 앱은 멀쩡한데
-# 인그레스에서 끊긴다 — 배포도 초록이고 /health 도 200 이다.
+# ── 2. 허브의 내부 경로가 앱까지 닿는가 ─────────────────────────────────────
+# 허브 내부 경로 셋(purge-owner · purge-team · graph-owner)을 서명 없이 부르면 앱이 401 과
+# `{"error": "unauthorized"}` 로 답해야 한다. 앞문이 가로채면 본문이 비고, 인증을 건너뛰는 회귀면
+# 401 이 아니다. 이 테스트는 둘 다 잡는다.
 #
-# 판별자는 401 의 모양이다(Vinc-homepage#54 가 이걸 단위 검사로 박았다):
-#   앱   → {"error":"unauthorized"}   content-type application/json
-#   앞문 → 빈 본문 + www-authenticate: Bearer realm="api.vincs.io"
-# 그래서 401 을 기대하고 본문에 unauthorized 가 있는지 본다. 앞문이 가로채면 본문이
-# 비어 불일치가 되고 경보가 울린다.
+# 이 불변식은 허브 배포에서만 바뀐다. 계정 쪽 같은 검사는 account-deploy 가 배포 직후에 돌린다
+# (Vinc-homepage `scripts/probe_front_door.mjs`). hub-deploy 에 배포 뒤 단계로 같은 검사가 들어오면
+# 이 테스트와 아래 `hub_internal_path_blocked` 를 지운다.
 #
-# 프로브 대상이 team-membership 인 이유: verify-key 는 처음부터 목록에 있었고
-# team-membership 은 나중에 추가된 것이라, 새 목록이 실제로 적용됐는지를 보는 쪽이
-# 이것이다. 2026-08-31 에 한 경로만 찔러 보고 인그레스 전체를 판정했다가 반만 맞은
-# 전례가 있다.
+# 읽기 경로를 찌른다. purge-* 는 파괴적이라, 인증을 건너뛰는 회귀가 났을 때 감시 프로브가 그 경로를
+# 찌르고 있으면 프로브 자신이 사고가 된다. graph-owner 는 읽기다.
 #
-# 이 프로브가 못 보는 것: 라우트를 새로 늘리면서 목록에 안 넣는 경우. 그건
-# account/test/internal.test.ts 가 PR 단계에서 잡는다. 둘은 다른 고장을 잡는다.
-resource "azurerm_application_insights_standard_web_test" "internal_path_reaches_app" {
-  name                    = "vinc-internal-path-reaches-app"
-  resource_group_name     = var.resource_group_name
-  location                = "koreacentral"
-  application_insights_id = local.insights_id
-  geo_locations           = local.probe_locations
-  frequency               = local.probe_every_s
-  timeout                 = 30
-  enabled                 = true
-  retry_enabled           = true
-  description             = "내부 경로가 앞문이 아니라 앱까지 닿는가 (401 의 모양으로 가른다)"
-
-  request {
-    url       = "https://api.vincs.io/internal/mcp/team-membership"
-    http_verb = "POST"
-    # ⚠ 여기는 **디코드된 값**을 쓴다. provider 가 쓸 때는 이 문자열을 그대로 넘기고
-    #   읽을 때는 base64 로 디코드해서 돌려주므로, base64 를 적으면 config 와 state 가
-    #   영영 안 맞고 매 plan 이 같은 변경을 제안한다(2026-09-01 실측: apply 직후
-    #   `body = jsonencode({}) -> "e30="`). 기능은 멀쩡한데 "plan 이 비었나"가 신호로
-    #   못 쓰이게 되고, 그게 이 디렉터리에서 가장 비싼 손실이다.
-    #
-    #   Azure 에는 여전히 e30= 가 저장되고 프로브는 통과한다 — 서명이 없으므로 앱이
-    #   401 로 답하고 본문에 unauthorized 가 있어 판별자가 성립한다(4/4 Passed).
-    body = "{}"
-
-    header {
-      name  = "Content-Type"
-      value = "application/json"
-    }
-  }
-
-  validation_rules {
-    # 401 이 정상이다. 서명 없이 찔렀으니 앱이 어서션 게이트로 거절하는 것이 맞다.
-    expected_status_code = 401
-    ssl_check_enabled    = true
-
-    content {
-      content_match      = "unauthorized"
-      pass_if_text_found = true
-      ignore_case        = false
-    }
-  }
-}
-
-# ── 2b. 허브의 내부 경로도 앱까지 닿는가 ────────────────────────────────────
-# 위 프로브는 **계정 앱**의 `/internal` 만 본다. 허브에도 내부 경로가 셋 있고
-# (`vinc_mcp/http_server.py:1241-1245`: purge-owner · purge-team · graph-owner) 그쪽에는
-# 아무 감시가 없었다.
-#
-# **왜 인그레스에서 막지 않고 감시하는가.** 감사 M2 의 나머지 절반은 "이 경로들을
-# 인그레스에서 차단한다"였는데, 그 형태로는 불가능하다: ACA 의 `ipSecurityRestrictions`
-# 는 **앱 단위지 경로 단위가 아니고**, 허브 인그레스는 mcp.vincs.io 를 세상에 서비스해야
-# 하므로 공개로 남아야 한다. 게다가 계정 앱이 허브를 부르는 주소가 공개 FQDN 이다
-# (`VINC_MCP_INTERNAL_URL`, 2026-09-04 확인). 그래서 실제로 할 수 있는 것은 **앱 층을
-# 단단히 하고**(#174: 서명 + 본문 다이제스트 + 일회성 jti) **그것이 계속 서 있는지
-# 지켜보는 것**이다.
-#
-# 판별자는 위와 같다: 앱이 답하면 401 + 본문에 `unauthorized`, 앞문이 가로채면 본문이
-# 빈다. 실측 2026-09-04: `{"error": "unauthorized"}`.
-#
-# **읽기 경로를 찌르는 이유.** 셋 중 둘은 파괴적이다(purge-*). 감시 프로브는 어떤
-# 회귀에서도 해를 끼칠 수 없어야 하고, 인증을 건너뛰는 회귀가 실제로 났을 때 파괴
-# 경로를 5분마다 찌르고 있으면 그 프로브 자신이 사고가 된다. graph-owner 는 읽기다.
-#
-# 이 프로브가 못 보는 것: 서명 검증이 통과한 뒤의 권한 문제. 그건 어서션 단위 테스트가
-# 잡는다. 둘은 다른 고장을 잡는다.
+# 막지 않고 지켜보는 이유: ACA 의 `ipSecurityRestrictions` 는 앱 단위라 경로만 막을 수 없고, 허브
+# 인그레스는 mcp.vincs.io 를 세상에 내야 한다. 그래서 앱 층의 서명 검증이 서 있는지를 본다.
 resource "azurerm_application_insights_standard_web_test" "hub_internal_path_reaches_app" {
   name                    = "vinc-hub-internal-path-reaches-app"
   resource_group_name     = var.resource_group_name
   location                = "koreacentral"
   application_insights_id = local.insights_id
   geo_locations           = local.probe_locations
-  frequency               = local.probe_every_s
+  frequency               = 900
   timeout                 = 30
   enabled                 = true
   retry_enabled           = true
@@ -166,8 +88,8 @@ resource "azurerm_application_insights_standard_web_test" "hub_internal_path_rea
   request {
     url       = "https://mcp.vincs.io/internal/graph-owner"
     http_verb = "POST"
-    # ⚠ 디코드된 값을 쓴다 — 위 프로브의 주석과 같은 이유다(base64 를 적으면 config 와
-    #   state 가 영영 안 맞고 매 plan 이 같은 변경을 제안한다).
+    # ⚠ 디코드된 값을 쓴다. provider 는 쓸 때 이 문자열을 그대로 넘기고 읽을 때 base64 를 디코드해
+    #   돌려주므로, base64 를 적으면 config 와 state 가 영영 안 맞고 매 plan 이 같은 변경을 제안한다.
     body = "{}"
 
     header {
@@ -189,84 +111,57 @@ resource "azurerm_application_insights_standard_web_test" "hub_internal_path_rea
   }
 }
 
-# ── 3. 계정 앱이 살아 있고 스키마가 코드를 따라잡았는가 ─────────────────────
-# 계정 앱에는 지금 경보가 하나도 없는데, 로그인·결제·팀과 모든 호스티드 키의 검증이
-# 여기 있다. 허브가 키를 확인할 때마다 이 앱을 지난다.
-#
-# /api/health 는 연결만 보지 않고 마이그레이션 격차도 본다(2026-08-30 사고 이후).
-# 격차가 있으면 503 에 {"status":"schema_behind",...} 를 낸다.
-# 본문 실측 2026-09-01: {"status":"ok"}
-#
-# SWA 를 경유해서 찌른다. 컨테이너 앱 FQDN 을 직접 때리면 앞문이 401 을 낸다(설계대로다
-# — account-deploy.yml 의 헬스체크 주석 참조).
-resource "azurerm_application_insights_standard_web_test" "account_health" {
-  name                    = "vinc-account-health"
-  resource_group_name     = var.resource_group_name
-  location                = "koreacentral"
-  application_insights_id = local.insights_id
-  geo_locations           = local.probe_locations
-  frequency               = local.probe_every_s
-  timeout                 = 30
-  enabled                 = true
-  retry_enabled           = true
-  description             = "계정 앱이 살아 있고 스키마 격차가 없는가"
-
-  request {
-    url       = "https://vincs.io/api/health"
-    http_verb = "GET"
-  }
-
-  validation_rules {
-    expected_status_code = 200
-    ssl_check_enabled    = true
-
-    # 상태 코드만 보면 안 된다: schema_behind 는 503 이라 잡히지만, 앞으로 다른 저하
-    # 상태가 200 으로 나올 수 있다. 값 자체를 본다.
-    content {
-      content_match      = "\"status\":\"ok\""
-      pass_if_text_found = true
-      ignore_case        = false
-    }
-  }
-}
-
 # ── 경보 ────────────────────────────────────────────────────────────────────
-# 셋 다 기존 vinc-alerts 작업 그룹을 그대로 쓴다. 새 알림 경로를 만들지 않는다.
+# 둘 다 기존 vinc-alerts 작업 그룹으로 간다.
 #
-# dimension 이 이 블록의 급소다. 차원 이름은 availabilityResult/name 이고 단수 Result
-# 다(복수인 것은 메트릭 이름 쪽뿐이다). 2026-09-01 에 metrics list-definitions 로
-# 확인했다. 틀리면 필터가 아무것도 맞히지 못해 경보가 조용히 안 울린다 — 이 파일이
-# 고치려는 바로 그 고장이다.
+# ⚠ 차원 이름은 availabilityResult/name 으로 단수 Result 다(복수인 것은 메트릭 이름 쪽뿐이다). 틀리면
+#   필터가 아무것도 맞히지 못해 경보가 조용히 안 운다.
 #
-# 셋 다 severity 1 이다. 어느 하나가 죽어도 제품이 안 되는 것이지 느려지는 것이 아니다.
-locals {
-  functional_probes = {
-    "oauth-discovery-down" = {
-      probe       = azurerm_application_insights_standard_web_test.oauth_discovery.name
-      description = "OAuth discovery 가 실패 — issuer 가 빠지면 커넥터가 전면 불가다 (2026-07-30)"
-    }
-    "internal-path-blocked" = {
-      probe       = azurerm_application_insights_standard_web_test.internal_path_reaches_app.name
-      description = "내부 경로가 앞문에서 끊겼다 — 호스티드 키와 팀 주소가 죽는다 (2026-08-04, 08-30)"
-    }
-    "account-health-down" = {
-      probe       = azurerm_application_insights_standard_web_test.account_health.name
-      description = "계정 앱이 실패하거나 스키마가 뒤졌다 — 로그인·결제·키 검증이 여기 있다"
-    }
-  }
-}
+# ⚠ auto_mitigate 는 true 다. false 인 메트릭 경보는 상태 없이 평가마다 다시 울어서, 계획된 허브 정지
+#   한 번에 같은 "Activated" 메일이 평가 주기마다 쌓였다. true 면 울림 한 통과 해소 한 통이다.
 
-resource "azurerm_monitor_metric_alert" "functional" {
-  for_each = local.functional_probes
-
-  name                = each.key
+# 감시자의 감시는 15분 창에서 가용률 평균이 50 미만일 때 운다. 5분 주기 세 번 중 두 번이 실패해야
+# 한다는 뜻이라, 계정 배포의 리비전 전환 같은 한 번의 실패로는 안 운다. 테스트 자신도 실패를 짧은
+# 간격으로 두 번 더 재시도한 뒤에야 실패로 센다.
+resource "azurerm_monitor_metric_alert" "incident_monitor_down" {
+  name                = "incident-monitor-down"
   resource_group_name = var.resource_group_name
   scopes              = [local.insights_id]
-  description         = each.value.description
+  description         = "장애 감시 루프가 멈췄거나 계정 앱·SWA 가 답하지 않는다. 이 동안은 장애 메일이 나가지 않는다."
   severity            = 1
   frequency           = "PT5M"
-  window_size         = "PT30M" # 프로브가 15분 주기라 15분 창은 비는 순간이 있다(09-16 에 손으로 넓힌 실제 값)
-  auto_mitigate       = false
+  window_size         = "PT15M"
+  auto_mitigate       = true
+
+  criteria {
+    metric_namespace = "microsoft.insights/components"
+    metric_name      = "availabilityResults/availabilityPercentage"
+    aggregation      = "Average"
+    operator         = "LessThan"
+    threshold        = 50
+
+    dimension {
+      name     = "availabilityResult/name"
+      operator = "Include"
+      values   = [azurerm_application_insights_standard_web_test.incident_monitor.name]
+    }
+  }
+
+  action {
+    action_group_id = local.action_group_id
+  }
+}
+
+# 이 규칙은 실물에만 있고 선언에 없었다. imports.tf 가 들여온다.
+resource "azurerm_monitor_metric_alert" "hub_internal_path_blocked" {
+  name                = "hub-internal-path-blocked"
+  resource_group_name = var.resource_group_name
+  scopes              = [local.insights_id]
+  description         = "허브 내부 경로가 앞문에서 끊겼거나 서명 없이 열렸다. 호스티드 키와 팀 주소가 여기를 지난다."
+  severity            = 1
+  frequency           = "PT5M"
+  window_size         = "PT30M" # 테스트가 15분 주기라 15분 창은 비는 순간이 있다
+  auto_mitigate       = true
 
   criteria {
     metric_namespace = "microsoft.insights/components"
@@ -278,7 +173,7 @@ resource "azurerm_monitor_metric_alert" "functional" {
     dimension {
       name     = "availabilityResult/name"
       operator = "Include"
-      values   = [each.value.probe]
+      values   = [azurerm_application_insights_standard_web_test.hub_internal_path_reaches_app.name]
     }
   }
 
@@ -289,8 +184,8 @@ resource "azurerm_monitor_metric_alert" "functional" {
 
 # ── 되돌릴 수 없는 것 하나에만 감시가 없었다 ────────────────────────────────
 # 2026-09-02 실측: 이 리소스 그룹의 비용 벡터 중 **유일하게 되돌릴 수 없는 것**이
-# MySQL 스토리지 자동 증가인데, 그것만 경보가 없었다. 위 넷은 전부 가용성이고,
-# 가용성 사고는 고치면 원상복구된다. 이건 아니다:
+# MySQL 스토리지 자동 증가인데, 그것만 경보가 없었다. 가용성 사고는 고치면
+# 원상복구된다. 이건 아니다:
 #
 #   auto-grow 는 조용히 터진다        → 알림이 없다
 #   늘어난 스토리지는 못 줄인다        → 서버를 다시 만들지 않는 한
@@ -310,7 +205,7 @@ resource "azurerm_monitor_metric_alert" "functional" {
 # 멈췄을 때 그 사실이 드러나는 자리다.
 # 근거: [[record:the-unbounded-growers-are-already-reaped-what-is-missing-is-the-tripwire]]
 #
-# severity 2 인 이유: 1은 "제품이 안 된다"에 쓴다(위 넷). 이건 지금 아무것도 안
+# severity 2 인 이유: 1은 "제품이 안 된다"에 쓴다(가용성). 이건 지금 아무것도 안
 # 망가진 상태에서 몇 주 뒤를 경고하는 것이라 같은 급으로 울리면 안 된다 — 1이
 # 흔해지면 1이 무의미해진다.
 resource "azurerm_monitor_metric_alert" "db_storage_ratchet" {
@@ -353,7 +248,7 @@ resource "azurerm_monitor_metric_alert" "db_storage_ratchet" {
 # aggregation 이 Maximum 인 이유: 이 메트릭의 primary 는 Average 인데, 평균으로 재면
 # 하루 대부분이 낮아 스파이크를 못 본다. 우리가 사려는 것은 스파이크의 여유다.
 #
-# severity 3 인 이유: 1은 "제품이 안 된다"(가용성 넷), 2는 "되돌릴 수 없다"(DB 래칫).
+# severity 3 인 이유: 1은 "제품이 안 된다"(가용성), 2는 "되돌릴 수 없다"(DB 래칫).
 # 이건 아무것도 안 망가진 상태에서 "슬슬 올려라"라고 말하는 것이라 셋째 급이다.
 # 급을 아껴 쓰지 않으면 급이 정보를 잃는다.
 #
@@ -412,7 +307,7 @@ resource "azurerm_monitor_metric_alert" "account_memory_headroom" {
 # 때문에 관리 대상에서 뺐다). 그래서 리소스 참조가 아니라 id 문자열이다. 위
 # account_memory_headroom 이 같은 이유로 그렇게 한다.
 #
-# severity 2 인 이유: 1은 "제품이 안 된다"(가용성 넷). 이건 제품은 도는데 되돌리기
+# severity 2 인 이유: 1은 "제품이 안 된다"(가용성). 이건 제품은 도는데 되돌리기
 # 어려운 쓰기 유실이 났을 수 있다는 신호라, DB 래칫과 같은 급이다("되돌릴 수 없는
 # 사건을 사람이 볼 수 있는 창으로").
 locals {
