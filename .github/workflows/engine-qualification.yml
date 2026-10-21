@@ -68,8 +68,22 @@ jobs:
           gh release download ladybug-ext-0.20.4 --pattern "$platform-*.lbug_extension" --dir baseline-assets
           "$oldpython" scripts/qa/prepare_candidate_engine.py --root baseline --engine "$BASELINE_ENGINE" --vendor-dir baseline-assets --no-export
           echo "BASELINE_PYTHON=$oldpython" >> "$GITHUB_ENV"
-      - name: Prepare identified official extensions
-        run: python scripts/qa/prepare_candidate_engine.py --root candidate
+      # 후보의 확장은 상류 서버가 아니라 Vinc 릴리스 ladybug-ext-0.21.2 의 바이트로 검증한다.
+      # 데스크톱 릴리스와 허브가 싣는 것이 그 바이트이고, 상류는 같은 판 경로의 파일을 다시
+      # 올린다(2026-10-20 algo 재빌드로 이 잡이 체크섬 불일치로 멈췄다, VIN-698).
+      - name: Prepare the released candidate extensions
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case "$RUNNER_OS" in
+            Windows) platform=win_amd64;;
+            macOS) platform=osx_arm64;;
+            Linux) platform=linux_amd64;;
+          esac
+          gh release download ladybug-ext-0.21.2 --pattern "$platform-*.lbug_extension" --dir candidate-assets
+          python scripts/qa/prepare_candidate_engine.py --root candidate --vendor-dir candidate-assets
       - name: Guarded product tests
         run: >-
           python -m pytest -q tests/core/test_ladybug_guards.py
