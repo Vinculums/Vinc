@@ -227,27 +227,35 @@ def test_an_evidence_only_edge_edit_travels_in_the_next_delta(stores):
     """이미 있는 관계의 근거·신뢰도만 고치면 끝점이 다음 델타에 실려 받는 쪽 값이 바뀐다.
     같은 값을 다시 보내면 아무것도 실리지 않는다(재전송이 델타에 메아리치지 않는다)."""
     a, b = stores("fid-ev-src"), stores("fid-ev-peer")
-    _seed(a)
-    first = _ship(a, b)
+    try:
+        _seed(a)
+        first = _ship(a, b)
 
-    _send_edges(a, EVIDENCE_ONLY_EDITS)
-    delta = _ship(a, b, since=first["next_cursor"])
-    ends = {n for s, _t, d, _ev, _conf in EVIDENCE_ONLY_EDITS for n in (s, d)}
-    assert {n["id"] for n in delta["nodes"]} >= ends, delta["nodes"]
+        _send_edges(a, EVIDENCE_ONLY_EDITS)
+        delta = _ship(a, b, since=first["next_cursor"])
+        ends = {n for s, _t, d, _ev, _conf in EVIDENCE_ONLY_EDITS for n in (s, d)}
+        assert {n["id"] for n in delta["nodes"]} >= ends, delta["nodes"]
 
-    want = {(s, t, d): (ev, conf, born) for s, t, d, ev, conf, born in EDGES}
-    for s, t, d, ev, conf in EVIDENCE_ONLY_EDITS:
-        key = (s, t, d) if (s, t, d) in want else (d, t, s)    # relates_to 는 저장 방향으로
-        held_ev, held_conf, born = want[key]
-        want[key] = (held_ev if ev is None else ev, held_conf if conf is None else conf, born)
-    # 받는 쪽이 고친 값을 갖고, 고치지 않은 관계는 그대로다.
-    assert {k: v for k, v in _edge_values(b).items() if k in want} == want
+        want = {(s, t, d): (ev, conf, born) for s, t, d, ev, conf, born in EDGES}
+        for s, t, d, ev, conf in EVIDENCE_ONLY_EDITS:
+            key = (s, t, d) if (s, t, d) in want else (d, t, s)   # relates_to 는 저장 방향으로
+            held_ev, held_conf, born = want[key]
+            want[key] = (held_ev if ev is None else ev, held_conf if conf is None else conf, born)
+        # 받는 쪽이 고친 값을 갖고, 고치지 않은 관계는 그대로다.
+        assert {k: v for k, v in _edge_values(b).items() if k in want} == want
 
-    # 같은 값의 재전송은 끝점을 건드리지 않는다: 다음 델타가 비어 있다.
-    _send_edges(a, EVIDENCE_ONLY_EDITS)
-    echo = sync.export_delta(owner=OWNER, since=delta["next_cursor"], everything=True, store=a)
-    assert echo["executed"], echo
-    assert not echo["nodes"] and not echo["edges"], echo
+        # 같은 값의 재전송은 끝점을 건드리지 않는다: 다음 델타가 비어 있다.
+        _send_edges(a, EVIDENCE_ONLY_EDITS)
+        echo = sync.export_delta(owner=OWNER, since=delta["next_cursor"], everything=True,
+                                 store=a)
+        assert echo["executed"], echo
+        assert not echo["nodes"] and not echo["edges"], echo
+    finally:
+        # 모듈 공장은 스토어를 모듈 끝까지 열어 둔다. 스토어마다 버퍼 관리자가 큰 가상 주소
+        # 공간을 잡으므로, 이 테스트가 연 둘은 여기서 닫아 모듈의 동시 열림 수를 늘리지 않는다
+        # (닫기는 두 번 불려도 안전하다).
+        a.close()
+        b.close()
 
 
 def test_a_bundle_without_the_new_keys_does_not_erase_them(stores):
