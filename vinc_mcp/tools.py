@@ -790,7 +790,8 @@ def _t_host_search(args, bridge):
         results += docs[i:i + 1] + nodes[i:i + 1]
     out = {"results": results[:limit]}
     if failed or raw.get("node_error") or raw.get("vector_note") or raw.get("partial") or \
-            (raw.get("node_semantic") or {}).get("state") in ("partial", "empty_mirror"):
+            (raw.get("node_semantic") or {}).get("state") in ("partial", "empty_mirror",
+                                                              "model_mismatch"):
         out["diagnostics"] = {k: raw[k] for k in ("arms", "node_semantic", "node_window",
                               "vector_rebuilding", "encoder_runtime_warning") if k in raw}
         if failed:

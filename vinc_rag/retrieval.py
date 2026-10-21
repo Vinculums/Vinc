@@ -18,7 +18,7 @@ from store.config import load_config
 from store.backend import open_store
 from store import pkns
 from store import search_temporal as temporal
-from store.embedded_backend import vector_generation
+from store.embedded_backend import node_vector_generation, vector_generation
 from store.querybase import (
     QueryPlan,
     _VALIDITY_EMPTY,
@@ -1209,12 +1209,57 @@ def _encoder_runtime_warning(store, owner: str | None, runtime: str) -> str:
     return ""
 
 
+def _mirror_models(store, owner: str | None) -> frozenset[str]:
+    """요청 소유자의 노드 미러가 담은 모델 라벨(`NodeVec.model`) 집합.
+
+    라벨은 미러 재구축 때만 바뀐다. 그래서 :func:`node_vector_generation` 이 그대로면 미러를
+    다시 훑지 않는다(청크 임베딩 적용은 이 세대를 올리지 않는다). 캐시는 백엔드의
+    `mirror_models` 에 있고 리더 뷰는 `_b` 로 닿는다. 없는 스토어(테스트 더블)는 매번 훑는다.
+    세대를 훑기 **전에** 읽는 이유와 잠금이 없는 이유는 :func:`_stored_runtimes` 와 같다."""
+    gen = node_vector_generation()
+    cache = getattr(getattr(store, "_b", store), "mirror_models", None)
+    key = owner or ""
+    hit = cache.get(key) if isinstance(cache, dict) else None
+    if hit is not None and hit[0] == gen:
+        return hit[1]
+    where = " WHERE v.owner_id = $owner" if owner else ""
+    rows = store.run(f"MATCH (v:NodeVec){where} RETURN DISTINCT v.model AS model",
+                     {"owner": owner} if owner else {}) or []
+    models = frozenset(str(row.get("model") or "") for row in rows)
+    if isinstance(cache, dict):
+        if len(cache) >= _RUNTIME_STAMP_OWNERS:
+            cache.clear()
+        cache[key] = (gen, models)
+    return models
+
+
+def _node_model_mismatch(store, owner: str | None, query_model: str | None) -> dict | None:
+    """질의 벡터를 만든 모델과 다른 모델의 벡터가 미러에 있으면 그 사실을, 없으면 None.
+
+    폭이 같은 두 모델의 벡터는 엔진이 오류 없이 비교하고 순위만 틀린다. 그래서 다른 모델의
+    라벨이 **하나라도** 있으면 노드 의미 팔을 끈다(재구축이 끝나 미러가 새 모델로 갈리면
+    다음 검색부터 다시 켜진다). 한쪽이라도 모르면(질의 모델 미지정·빈 라벨) 막지 않는다 —
+    질의 쪽 모델 대조(`api/server.py` `_encode_query`)와 같은 규칙이다.
+    훑기에 실패하면 고정 코드로 던진다. 부르는 쪽은 팔을 `degraded` 로 내린다."""
+    if not query_model:
+        return None
+    try:
+        models = _mirror_models(store, owner)
+    except Exception:
+        raise RuntimeError("node_vector_model_unavailable") from None
+    other = sorted(models - {"", query_model})
+    if not other:
+        return None
+    return {"query_model": query_model, "mirror_models": other}
+
+
 def _search(query: str, *, query_embedding: list[float] | None = None,
            top_k: int = 5, filters: dict | None = None, owner: str | None = None,
            cursor: str | None = None, detail: str = "summary",
            historical: bool = False, as_of: str | None = None,
            mode: str | None = None, known_at: str | None = None,
            query_runtime: str | None = None,
+           query_model: str | None = None,
            relevance_profile: dict | None = None,
            relevance_corpus_revision: str | None = None,
            cfg=None, store=None) -> dict:
@@ -1585,17 +1630,27 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
             base["node_semantic"] = {"state": "complete", "freshness": "not_checked",
                                      "refresh": "release_boundary", "scope": "returned_candidates"}
             try:
+                # 미러가 질의와 다른 모델의 벡터를 담고 있으면 팔을 비우고 그 사실을 싣는다.
+                # 모델을 바꾼 배포에서 미러 재구축이 끝나기 전의 창이다(조용한 강등 금지).
+                _mismatch = _node_model_mismatch(store, owner, query_model)
+                if _mismatch:
+                    base["node_semantic"].update(
+                        state="model_mismatch",
+                        reason="node mirror holds vectors from another model; "
+                               "the node meaning arm is off until the mirror is rebuilt",
+                        **_mismatch)
                 # 라벨은 **제목**이다. 미러의 `text` 는 찾는 표면이라 한줄설명이 붙어
                 # 있고(1365 중 225 행), 그것을 title 자리에 넣으면 그대로 화면에 나간다.
-                _raw = store.node_vector_search(
+                _raw = [] if _mismatch else store.node_vector_search(
                     query_embedding, SEARCH_POOL_CAP if _wide else top_k, owner=owner) or []
                 validator = getattr(store, "validate_node_vector_hits", None)
-                if callable(validator):
+                if callable(validator) and not _mismatch:
                     _raw, state = validator(_raw, owner=owner)
                     base["node_semantic"].update(state)
                     if state.get("stale_candidates") or state.get("missing_candidates"):
                         base["node_semantic"]["state"] = "partial"
-                if not _raw and not any(base["node_semantic"].get(k) for k in ("stale_candidates", "missing_candidates")):
+                if not _mismatch and not _raw and not any(
+                        base["node_semantic"].get(k) for k in ("stale_candidates", "missing_candidates")):
                     counter = getattr(store, "node_vector_count", None)
                     if callable(counter):
                         count = counter(owner=owner)
@@ -1664,7 +1719,8 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                 base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
                 code = str(exc) if str(exc) in ("node_vector_extension_unavailable",
                     "node_vector_query_failed", "node_vector_validation_failed",
-                    "node_vector_status_unavailable") else "node_semantic_failed"
+                    "node_vector_status_unavailable",
+                    "node_vector_model_unavailable") else "node_semantic_failed"
                 base["node_semantic"].update(state="degraded", error=code)
         # 의미 팔이 더 걸러 냈으면 (3) 에서 적은 공개를 갱신한다 — 셈은 두 팔이 지운 id 의
         # 합집합이다(두 팔이 같은 노드를 지우면 한 번).

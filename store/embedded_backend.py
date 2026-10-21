@@ -186,7 +186,10 @@ _DDL_STMT = re.compile(
 #: 더 잡으면 도장 캐시가 한 번 더 훑을 뿐이고, 덜 잡으면 캐시가 옛 답을 준다.
 _VEC_TABLE = re.compile(r"\b(?:ChunkVec|NodeVec)\b", re.IGNORECASE)
 _VEC_WRITE = re.compile(r"\b(?:CREATE|MERGE|SET|DELETE|REMOVE|COPY|DROP|ALTER)\b", re.IGNORECASE)
+#: 노드 미러만 바꾼 문장. 청크 임베딩 적용은 이 세대를 올리지 않는다.
+_NODE_VEC_TABLE = re.compile(r"\bNodeVec\b", re.IGNORECASE)
 _vector_generation = 0
+_node_vector_generation = 0
 _vector_generation_lock = threading.Lock()
 
 
@@ -199,10 +202,19 @@ def vector_generation() -> int:
     return _vector_generation
 
 
-def _bump_vector_generation() -> None:
-    global _vector_generation
+def node_vector_generation() -> int:
+    """노드 미러(`NodeVec`) 쓰기 세대. :func:`vector_generation` 과 같은 규칙이되 `NodeVec` 을
+    바꾼 문장에서만 오른다. 미러 라벨은 재구축 때만 바뀌므로, 청크 재임베딩이 도는 동안에도
+    미러를 읽는 캐시가 빗나가지 않는다."""
+    return _node_vector_generation
+
+
+def _bump_vector_generation(node_mirror: bool = False) -> None:
+    global _vector_generation, _node_vector_generation
     with _vector_generation_lock:
         _vector_generation += 1
+        if node_mirror:
+            _node_vector_generation += 1
 
 
 def _forget_prepared(raw) -> None:
@@ -264,7 +276,7 @@ class _Conn:
                 for c in list(self._family or (self,)):
                     _forget_prepared(c._raw)
             if isinstance(query, str) and _VEC_TABLE.search(query) and _VEC_WRITE.search(query):
-                _bump_vector_generation()
+                _bump_vector_generation(node_mirror=bool(_NODE_VEC_TABLE.search(query)))
 
     def __getattr__(self, name):
         return getattr(self._raw, name)
@@ -1109,6 +1121,9 @@ class EmbeddedBackend:
         #: 소유자별 저장 벡터 도장 `{owner: (벡터 쓰기 세대, frozenset)}`. 채우고 읽는 것은
         #: `api.query._stored_runtimes` 이고, 요청마다 새로 뜨는 리더 뷰도 이 백엔드의 것을 쓴다.
         self.runtime_stamps: dict = {}
+        #: 소유자별 노드 미러 모델 라벨 `{owner: (노드 미러 쓰기 세대, frozenset)}`. 채우고 읽는 것은
+        #: `vinc_rag.retrieval._mirror_models` 이고, 리더 뷰도 이 백엔드의 것을 쓴다.
+        self.mirror_models: dict = {}
         #: 전문 색인이 `Chunk.lex` 위에 섰는가(`LEX_INDEX_KEY` 표지). None = 아직 안 읽었다.
         #: 참이 되면 내려가지 않는다(표지를 지우는 경로가 없다). 리더 뷰도 이 값을 쓴다.
         self._lex_ready: bool | None = None
