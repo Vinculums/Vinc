@@ -198,6 +198,58 @@ def test_late_field_edits_travel_as_a_delta(stores):
     assert _node(b, C1)["one_liner"] == "C1 said again"
 
 
+#: 이미 있는 관계에 근거·신뢰도만 고쳐 보내는 엣지들(노드는 싣지 않는다). 개념 관계·
+#: 결정 관계·about·대체, 그리고 역방향으로 보낸 relates_to(저장은 C1→C2)를 한 번씩.
+EVIDENCE_ONLY_EDITS = [
+    (C1, "derives_from", C2, "ev derives, reworded", None),
+    (D1, "inherits_from", D0, None, 0.31),
+    (E1, "about", C1, "ev episode about, reworded", 0.86),
+    (R1, "supersedes", R0, "ev record supersedes, reworded", None),
+    (C2, "relates_to", C1, "ev relates, sent the other way", None),
+]
+
+
+def _send_edges(st, rows) -> dict:
+    edges = []
+    for s, t, d, ev, conf in rows:
+        edge = {"from": s, "type": t, "to": d}
+        if ev is not None:
+            edge["evidence"] = ev
+        if conf is not None:
+            edge["confidence"] = conf
+        edges.append(edge)
+    out = fragment.merge_fragment({"owner": OWNER, "nodes": [], "edges": edges}, store=st)
+    assert out["executed"] and not out.get("partial"), out
+    return out
+
+
+def test_an_evidence_only_edge_edit_travels_in_the_next_delta(stores):
+    """이미 있는 관계의 근거·신뢰도만 고치면 끝점이 다음 델타에 실려 받는 쪽 값이 바뀐다.
+    같은 값을 다시 보내면 아무것도 실리지 않는다(재전송이 델타에 메아리치지 않는다)."""
+    a, b = stores("fid-ev-src"), stores("fid-ev-peer")
+    _seed(a)
+    first = _ship(a, b)
+
+    _send_edges(a, EVIDENCE_ONLY_EDITS)
+    delta = _ship(a, b, since=first["next_cursor"])
+    ends = {n for s, _t, d, _ev, _conf in EVIDENCE_ONLY_EDITS for n in (s, d)}
+    assert {n["id"] for n in delta["nodes"]} >= ends, delta["nodes"]
+
+    want = {(s, t, d): (ev, conf, born) for s, t, d, ev, conf, born in EDGES}
+    for s, t, d, ev, conf in EVIDENCE_ONLY_EDITS:
+        key = (s, t, d) if (s, t, d) in want else (d, t, s)    # relates_to 는 저장 방향으로
+        held_ev, held_conf, born = want[key]
+        want[key] = (held_ev if ev is None else ev, held_conf if conf is None else conf, born)
+    # 받는 쪽이 고친 값을 갖고, 고치지 않은 관계는 그대로다.
+    assert {k: v for k, v in _edge_values(b).items() if k in want} == want
+
+    # 같은 값의 재전송은 끝점을 건드리지 않는다: 다음 델타가 비어 있다.
+    _send_edges(a, EVIDENCE_ONLY_EDITS)
+    echo = sync.export_delta(owner=OWNER, since=delta["next_cursor"], everything=True, store=a)
+    assert echo["executed"], echo
+    assert not echo["nodes"] and not echo["edges"], echo
+
+
 def test_a_bundle_without_the_new_keys_does_not_erase_them(stores):
     """옛 클라이언트의 번들에는 one_liner·사건 props 키가 없다. 받는 쪽은 그것을 지우기로
     읽으면 안 된다(제목 같은 다른 필드는 그대로 반영한다)."""
