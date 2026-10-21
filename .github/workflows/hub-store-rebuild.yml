@@ -137,10 +137,16 @@ jobs:
           )
           pip install "$engine" argon2-cffi pyyaml pypdf
           echo "SELECTED_ENGINE=$engine" >> "$GITHUB_ENV"
+      # 확장은 Vinc 릴리스 ladybug-ext-0.21.2 의 바이트를 해시 대조해 쓴다(허브가 싣는 것과 같다).
+      # 상류 서버는 같은 판 경로의 파일을 다시 올리므로, 거기서 받으면 해시 대조에서 이 잡이 멈춘다.
       - name: Prepare matching candidate extensions
         if: env.SELECTED_ENGINE == 'ladybug==0.21.2'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python scripts/qa/prepare_candidate_engine.py --root verified-engine --no-export
+          set -euo pipefail
+          gh release download ladybug-ext-0.21.2 --pattern "linux_amd64-*.lbug_extension" --dir verified-assets
+          python scripts/qa/prepare_candidate_engine.py --root verified-engine --no-export --vendor-dir verified-assets
           echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/verified-engine/extensions" >> "$GITHUB_ENV"
       - name: Azure 프로필을 이 잡 전용으로
         run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"

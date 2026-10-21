@@ -1,6 +1,12 @@
-"""후보 엔진의 공식 확장 바이트를 식별하고 동결 빌드 입력을 준비한다.
+"""후보 엔진의 확장 바이트를 식별하고 동결 빌드 입력을 준비한다.
 
-출하 핀은 변경하지 않는다. 근거: [[vinc.ops.ladybug-upgrade-review-2026-09-24]].
+`--vendor-dir` 를 주면 Vinc 릴리스 `ladybug-ext-<판>` 에서 받은 바이트를 해시 목록과 대조해 쓴다.
+출하하는 바이트가 그것이므로 검증도 그것으로 한다. 상류 서버는 같은 판 경로의 파일을 다시
+올리기도 한다. 주지 않으면 상류 `INSTALL` 로 받고, 0.21.2 는 고정 해시와 다르면 멈춘다(새 판을
+처음 검증할 때의 경로).
+
+출하 핀은 변경하지 않는다.
+근거: [[vinc.ops.ladybug-upgrade-review-2026-09-24]] · [[record:upstream-republished-the-ladybug-0-21-algo-extension-in-place-2026-10-20]]
 """
 from __future__ import annotations
 
@@ -25,7 +31,8 @@ def main() -> None:
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--engine", choices=("0.20.3", "0.20.4", "0.21.2"), default="0.21.2")
     parser.add_argument("--no-export", action="store_true")
-    parser.add_argument("--vendor-dir", type=Path, help="Previous release assets checked against the tracked manifest")
+    parser.add_argument("--vendor-dir", type=Path,
+                        help="Vinc release assets (ladybug-ext-<version>) checked against the tracked manifest")
     args = parser.parse_args()
     args.root.mkdir(parents=True, exist_ok=False)
     root = args.root.resolve()
@@ -70,14 +77,15 @@ def main() -> None:
     db = connection = None
     try:
         if args.vendor_dir:
-            if args.engine not in ("0.20.3", "0.20.4"):
-                raise RuntimeError("vendored release assets only belong to the previous engine")
+            # 엔진 판 → (해시 목록·릴리스의 판, 확장 ABI 디렉터리). 0.20.3 은 0.20.4 의 확장을 쓴다.
+            pinned, abi = {"0.20.3": ("0.20.4", "0.20.0"), "0.20.4": ("0.20.4", "0.20.0"),
+                           "0.21.2": ("0.21.2", "0.21.0")}[args.engine]
             target_platform = {"win32": "win_amd64", "linux": "linux_amd64", "darwin": "osx_arm64"}[sys.platform]
             expected_machine = "arm64" if sys.platform == "darwin" else "amd64"
             machine = platform.machine().lower().replace("x86_64", "amd64").replace("aarch64", "arm64")
             if machine != expected_machine:
                 raise RuntimeError("release assets do not match the host architecture")
-            checksums = ROOT / "packaging/lbug-ext-0.20.4.sha256"
+            checksums = ROOT / f"packaging/lbug-ext-{pinned}.sha256"
             expected = dict(line.split()[::-1] for line in checksums.read_text().splitlines() if line.strip())
         else:
             db = ladybug.Database(str(root / "install.db"), buffer_pool_size=128 * 1024**2,
@@ -89,8 +97,8 @@ def main() -> None:
                 source = args.vendor_dir / asset
                 digest = hashlib.sha256(source.read_bytes()).hexdigest()
                 if digest != expected[asset]:
-                    raise RuntimeError(f"previous release {name} checksum mismatch")
-                target_cache = home / ".lbdb/extension/0.20.0" / target_platform / name / f"lib{name}.lbug_extension"
+                    raise RuntimeError(f"release {name} checksum mismatch")
+                target_cache = home / ".lbdb/extension" / abi / target_platform / name / f"lib{name}.lbug_extension"
                 target_cache.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target_cache)
                 source = target_cache
@@ -121,7 +129,7 @@ def main() -> None:
     receipt = {"candidate": ladybug.__version__, "source_sha": os.environ.get("GITHUB_SHA"),
                "platform": sys.platform, "python": sys.version,
                "extensions": manifest, "production_pins_changed": False,
-               "extension_source": "ladybug-ext-0.20.4" if args.vendor_dir else "official INSTALL"}
+               "extension_source": f"ladybug-ext-{pinned}" if args.vendor_dir else "official INSTALL"}
     (root / "manifest.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
     export = {"HOME": str(home), "USERPROFILE": str(home), "VINC_LBUG_EXT_DIR": str(bundle),
               "VINC_BUFFER_POOL_MB": "128", "VINC_MAX_DB_SIZE": str(1024**3)}
