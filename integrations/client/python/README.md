@@ -6,13 +6,15 @@ This package reads that graph for an agent and writes to it only when your code 
 
 Looking for the `vinc` command? See [the terminal CLI installation guide](https://vincs.io/docs/cli/#install). `vinc-client` is a Python library and does not install a `vinc` executable.
 
+**If the agent has to follow its role's contract (what it must never do, its gates, the tools it may not use), read it with `prefetch` (role mode).** `prefetch` raises when Vinc cannot be read; `get_context` (context mode) returns `None` and the model call goes on without context. See [Role mode or context mode](#role-mode-or-context-mode).
+
 ## Install
 
 ```bash
-pip install "vinc-client>=0.1.9"
+pip install "vinc-client>=0.1.11"
 ```
 
-This README describes vinc-client 0.1.9. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
+This README describes vinc-client 0.1.11. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
 
 ## Keys and spaces
 
@@ -96,6 +98,15 @@ if block:
 
 The block is fenced and introduced as data, not instructions: text in the graph can be written by anyone with access to it, so the model is told to treat it as reference material.
 
+## Role mode or context mode
+
+The framework adapters build their two modes on two calls here. The client keeps nothing between calls; how often a call runs is the adapter's choice (see the vinc-langgraph and vinc-agent-framework READMEs).
+
+| Mode | When Vinc is unreachable or over the daily limit | Hub calls per call | Tools the role disallows | Pinning |
+|---|---|---|---|---|
+| Role mode (`prefetch`, `prefetch_with_contract`) | Raises with no retry (fails closed). Any failed read raises the same way: the role, a required document or the task lookup. | 1 for the role, 2 per required document (its text and its mirror node), 1 brief and 1 search. | `prefetch_with_contract` returns the contract; `RoleToolPolicy` applies its `disallowed_tools` by exact name (see below). | None yet: each call reads the role as it is now. |
+| Context mode (`get_context`) | Logs a warning and returns `None`, so the model call goes on without context (fails open). A key or space problem still raises. | One brief, plus a search when `search_fallback=True` and the brief ties or finds nothing. None for a query shorter than `min_query_chars`. | Not applied: there is no role. | Not applicable: each call reads the graph as it is. |
+
 ## Reading
 
 ```python
@@ -131,7 +142,7 @@ The hosted hub can be briefly unavailable, for example while a new version is de
 - Which calls: reads (every `GET`, `brief`, `search`, `edges` with several nodes, `role_check`), previews (`dry_run=True`), and writes that carry an `operation_id`. A write without `operation_id` is never retried, because the server could apply it twice.
 - How long: the client follows `Retry-After` when the hub sends it, and otherwise backs off exponentially up to 8 seconds between tries. It stops once the next try would start more than `retry_for` seconds (90 by default) after the first, and then raises the last error.
 - `retry_for=0` turns retries off.
-- `get_context` and `prefetch` never retry. They run before every model call, so a short outage makes them skip the turn or raise straight away rather than hold the conversation.
+- `get_context` and `prefetch` never retry. They run inside a model turn, so a short outage makes them skip the turn or raise straight away rather than hold the conversation.
 - `without_retries()` returns the same client (one connection) with retries off, for your own code that runs inside a model turn. The LangGraph and Agent Framework tools use it.
 
 ## Retrying a write
@@ -281,8 +292,9 @@ Set `VincClient(..., prefetch_concurrency=1)` or
 The setting accepts integers from 1 to 8. In synchronous mode, 1 also keeps
 custom transport calls on the calling thread; concurrent custom transports must
 be thread safe. Pass that configured reader to either framework adapter to use
-the same policy. Every invocation still makes fresh requests; there is no implicit
-reuse across model calls. Concurrency changes elapsed time, not required input size.
+the same policy. Every invocation still makes fresh requests; the client keeps
+nothing between calls (the LangGraph middleware reuses one run's block, see its
+README). Concurrency changes elapsed time, not required input size.
 
 The combined budget defaults to 24,000 characters. Starting with client 0.1.3,
 `prefetch_budget_exceeded` reports the **complete** `required_size` in both its
@@ -312,9 +324,10 @@ On 2026-10-06, all 23 hosted roster roles exceeded the default. Their required
 text was 19,764 to 198,480 characters (median about 112,000); successful prefetch
 blocks at a larger budget were 34,640 to 217,070 characters including the role
 contract, formatting and task evidence. These are characters, not tokens or a
-model price estimate, from one hub and one task. LangGraph injects the block on
-every model call, including later tool-loop calls; the Microsoft Agent Framework
-provider injects it once per run. A smaller budget stops the model instead of
+model price estimate, from one hub and one task. Both adapters read the block once
+per run (vinc-langgraph from 0.1.8). LangGraph adds it to the system message of every
+model call in the run, including later tool-loop calls; the Microsoft Agent Framework
+provider adds it to the run's instructions. A smaller budget stops the model instead of
 silently reducing its required reading.
 
 CI replays all 23 role read lists with verified hosted document sizes and synthetic
@@ -359,6 +372,8 @@ separate evaluation.
 | 0.1.5 | The prefetch block names the citable id of each required reading and asks for a final `Sources:` line; `sources_line` reads it. Both adapters share one tool schema. The adapters 0.1.3 cap Vinc tool calls at 4 per run. |
 | 0.1.4 | Optional prefetch reads start before validation. |
 | 0.1.3 | Required prefetch reads run in concurrent batches; a budget error reports the complete required size. |
+
+0.1.9 was not published to PyPI; its changes first shipped in 0.1.10.
 
 ## License
 
