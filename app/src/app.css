@@ -1893,19 +1893,6 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   flex: 1 1 auto; min-height: 0; overflow: auto;
   padding: var(--space-4, 1rem);
 }
-/* 발췌는 문서의 **조각**이라 문서와 같은 여백을 쓰면 카드가 늘어진다. 모습(제목
-   굵기·목록 점·코드 배경)은 문서 그대로 두고 위아래 여백만 죽인다 — 같은 문단이
-   두 자리에서 다르게 보이지 않게 하는 것이 목적이지, 조각을 문서처럼 앉히는 것이
-   목적이 아니다. */
-.rdr-excerpt { margin: .15rem 0 0; }
-.rdr-excerpt > :first-child { margin-top: 0; }
-.rdr-excerpt > :last-child { margin-bottom: 0; }
-.rdr-excerpt h1, .rdr-excerpt h2, .rdr-excerpt h3,
-.rdr-excerpt h4, .rdr-excerpt h5, .rdr-excerpt h6 {
-  font-size: 1em; margin: .3rem 0 .1rem;
-}
-.rdr-excerpt p, .rdr-excerpt ul, .rdr-excerpt ol, .rdr-excerpt pre { margin: .15rem 0; }
-.rdr-excerpt ul, .rdr-excerpt ol { padding-left: 1.1rem; }
 
 /* 키 입력칸과 저장 버튼은 **한 줄**이다 — 버튼이 다음 줄로 내려가면 무엇을 저장하는
    버튼인지 자리로 말하지 못한다. */
@@ -2125,17 +2112,16 @@ textarea.props-val {
 /* 표는 렌더러가 둘이라 클래스도 둘이다(`cm-r-tbl` = 라이브 프리뷰, `md-tbl` =
    `renderMarkdown`). 규칙을 나누지 않는 이유는 그 둘이 **같게 보여야** 하기 때문이다 —
    같은 문서가 문서 열과 발췌에서 다르게 생기면 안 된다는 규율이 그 함수 머리에 있다. */
-.doc-render .cm-r-tbl, .doc-render .md-tbl, .rdr-excerpt .md-tbl {
+.doc-render .cm-r-tbl, .doc-render .md-tbl {
   border-collapse: collapse; width: 100%;
   font-size: .92em; line-height: 1.45;
 }
 .doc-render .cm-r-tbl th, .doc-render .cm-r-tbl td,
-.doc-render .md-tbl th, .doc-render .md-tbl td,
-.rdr-excerpt .md-tbl th, .rdr-excerpt .md-tbl td {
+.doc-render .md-tbl th, .doc-render .md-tbl td {
   border: 1px solid hsl(var(--border));
   padding: .25rem .45rem; text-align: left; vertical-align: top;
 }
-.doc-render .cm-r-tbl th, .doc-render .md-tbl th, .rdr-excerpt .md-tbl th {
+.doc-render .cm-r-tbl th, .doc-render .md-tbl th {
   font-weight: 600; background: hsl(var(--muted));
 }
 /* 문서 참조는 **누를 수 있는 것처럼 보이지 않게** 둔다 — 발췌·폴백에는 그 문을 여는
