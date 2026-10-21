@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""허브 스토어 **사본**의 데이터 수리 — 키 모양 · 도장 · 재큐 되돌리기 · 소프트 재큐 · 고아 벡터 ·
-멈춘 쓰기 창.
+"""허브 스토어 **사본**의 데이터 수리 — 키 모양 · 도장 · 재큐 되돌리기 · 이행 표식 · 소프트 재큐 ·
+고아 벡터 · 멈춘 쓰기 창.
 
 RAG 코드 리뷰 센서스(restore-rehearsal, `restore_rehearsal_check.rag_census`)가 허브에서
 센 것을 고친다. 그것을 만든 코드 결함은 이미 고쳐 배포됐고 이것은 **남은 데이터**만 만진다.
 근거: [[vinc.plan.rag-code-review-fixes-2026-09-29]]
 
-도는 순서는 keyform → stamp → unrequeue → requeue → orphans → stuck 으로 고정이다(고른 것만
+도는 순서는 keyform → stamp → unrequeue → unmark → requeue → orphans → stuck 으로 고정이다(고른 것만
 돈다. 키를 먼저 고쳐야 뒤 단계가 붙은 청크를 본다). 기본은 stamp,unrequeue 이고, requeue 와
 unrequeue 는 서로를 되돌리므로 함께 고르면 거절한다.
 
@@ -22,6 +22,10 @@ unrequeue 는 서로를 되돌리므로 함께 고르면 거절한다.
            논리 키가 Chunk 에 아직 없음(있으면 건너뛰고 센다). 나머지 모양은 세기만 한다.
            PK 는 SET 이 안 되므로 옛 행의 모든 열을 엔진 안에서 복사해 새 행을 만들고, 관계
            (MENTIONS)를 옮기고, 옛 행을 `_with_fts_repair` 로 지운다. `_DocMeta` 는 안 건드린다.
+  unmark   모델 이행 표식을 내린다 — 대기 문서가 **전부 청크 없는 문서**일 때만. 표식은 대기가 0 이
+           된 apply 에서만 내려가는데, 청크 없는 문서는 워커가 영영 못 보므로 그 하나가 끝난 이행의
+           표식을 붙잡는다. 일할 수 있는 대기(청크가 있는 문서)가 남았으면 이행이 진행 중이라 거절한다.
+           벡터·needs_embed·저장 모델 기록은 안 건드린다. requeue 앞에서 돈다.
   requeue  needs_embed=0 인 문서 전부를 1로. 저장 모델 기록·이행 표식·벡터는 안 건드린다
            — 옛 벡터가 새 벡터로 바뀔 때까지 계속 답하고, 벡터 팔 게이트
            (`docstore.embed_model_state` 의 migrating: 이행 표식이 있고 pending 이 문턱을
@@ -77,7 +81,7 @@ from store.embedded_schema import node_table_specs, rel_tables_on  # noqa: E402
 from rebuild_store_native import _files, _open            # noqa: E402
 from restore_rehearsal_check import rag_census            # noqa: E402
 
-REPAIRS = ("keyform", "stamp", "unrequeue", "requeue", "orphans", "stuck")
+REPAIRS = ("keyform", "stamp", "unrequeue", "unmark", "requeue", "orphans", "stuck")
 #: 워크플로 입력의 기본값과 같다(2026-09-30 재큐를 되돌리는 실행 모양).
 DEFAULT_REPAIRS = ("stamp", "unrequeue")
 _BATCH = 500
@@ -164,6 +168,37 @@ def measure(s) -> dict:
         "docs_with_a_chunk_lacking_a_vector": len(
             {c["doc"] for c in chunks if _key(c["o"], c["cid"]) not in has_vec}),
     }
+
+
+def unmark(s) -> tuple[dict, list[str]]:
+    before, st = measure(s), docstore.embed_model_state(s)
+    if st.get("error") or st.get("pending_without_chunks_error"):
+        return {"before": before, "refused": "embed_state_unreadable"}, [
+            "unmark refused: the embed model state is unreadable"]
+    out = {"before": before, "marker": st["migration_model"],
+           "pending": st["pending"], "pending_without_chunks": st["pending_without_chunks"]}
+    if not st["migration_model"]:
+        out.update(after=before, removed=False)
+        return out, []
+    workable = st["pending"] - st["pending_without_chunks"]
+    if workable:
+        out["refused"] = "pending_documents_with_chunks"
+        return out, [f"unmark refused: {workable} pending documents still have chunks, "
+                     "so the model migration is not finished"]
+    s.run("MATCH (m:_SchemaMeta) WHERE m.key = $k DELETE m",
+          {"k": docstore._EMBED_MIGRATING_KEY})
+    after, st2 = measure(s), docstore.embed_model_state(s)
+    out.update(after=after, removed=True)
+    problems = []
+    if st2["migration_model"]:
+        problems.append("unmark: the migration marker is still there")
+    if st2["stored"] != st["stored"]:
+        problems.append("unmark changed the stored model")
+    for k in ("docs", "docs_pending_embed", "chunks", "vectors",
+              "docs_with_a_chunk_lacking_a_vector"):
+        if after[k] != before[k]:
+            problems.append(f"unmark changed {k}: {before[k]} -> {after[k]}")
+    return out, problems
 
 
 def requeue(s) -> tuple[dict, list[str]]:
@@ -602,8 +637,8 @@ def unrequeue(s) -> tuple[dict, list[str]]:
     return out, problems
 
 
-_RUN = {"keyform": keyform, "stamp": stamp, "unrequeue": unrequeue, "requeue": requeue,
-        "orphans": orphans, "stuck": stuck}
+_RUN = {"keyform": keyform, "stamp": stamp, "unrequeue": unrequeue, "unmark": unmark,
+        "requeue": requeue, "orphans": orphans, "stuck": stuck}
 
 
 def repair(src: str, dst: str, repairs: list[str]) -> dict:
