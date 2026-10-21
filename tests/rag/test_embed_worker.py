@@ -322,6 +322,45 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
                              f"배치 상한을 넘겨 세션에 넣었다: {max(seen)} > {self.mod.EMBED_BATCH}")
         self.assertEqual(sum(seen), n_chunks, "일부 청크가 누락되거나 중복 처리됐다")
 
+    def test_같은_조각은_함께_실린_조각과_무관하게_같은_벡터를_낸다(self):
+        """VIN-696. 운영 int8 모델은 세션 실행에 실린 텐서 전체로 양자화 스케일을 잡는다.
+        그래서 조각을 묶어 넣으면 같은 글자라도 함께 실린 조각과 패딩에 따라 벡터가 바뀐다.
+        가짜 세션이 그 성질을 흉내 낸다: 출력이 그 실행의 입력 전체 합으로 나뉜다.
+        기본 설정의 `encode` 는 요청에 무엇이 함께 왔든 같은 벡터를 내야 한다."""
+        np = _np_or_skip(self)
+
+        class _Enc:
+            def __init__(self, ids, width):
+                self.ids = ids + [0] * (width - len(ids))
+                self.attention_mask = [1] * len(ids) + [0] * (width - len(ids))
+                self.type_ids = [0] * width
+
+        class _Tok:
+            def encode_batch(self, texts):
+                ids = [[ord(c) % 97 + 1 for c in t] for t in texts]
+                width = max(len(i) for i in ids)
+                return [_Enc(i, width) for i in ids]
+
+        class _ScaledByTheRun:
+            def run(self, _out, feed):
+                ids = feed["input_ids"].astype(np.float32)
+                return [np.stack([ids / ids.sum(), np.ones_like(ids)], axis=-1)]
+
+        emb = self.mod._Embedder()
+        emb._sess, emb._tok, emb._names = _ScaledByTheRun(), _Tok(), ["input_ids", "attention_mask"]
+        piece = "짧은 조각"
+        mates = ["같은 요청에 실려 온 훨씬 긴 조각 하나", "또 다른 조각"]
+
+        # 대조군: 이 가짜 세션은 정말 배치에 따라 다른 벡터를 낸다(아니면 아래 검사가 공허하다).
+        self.assertNotEqual(emb._encode_batch([piece])[0], emb._encode_batch([piece, *mates])[0])
+
+        alone = emb.encode([piece])[0]
+        self.assertEqual(emb.encode([piece, *mates])[0], alone,
+                         "함께 실린 조각이 이 조각의 벡터를 바꿨다 — 조각이 묶여 세션에 들어갔다")
+        self.assertEqual(emb.encode([*mates, piece])[-1], alone)
+        self.assertEqual(emb.encode([piece, *mates], query=True)[0],
+                         emb.encode([piece], query=True)[0])
+
     def test_첫_적재_중에_온_질의가_모델을_한_벌_더_올리지_않는다(self):
         """RV-32 (VIN-228). 로컬 모드는 배치 루프와 `serve_encode` 의 질의가 **같은
         `_Embedder`** 를 쓴다. 적재가 잠금 밖이면 첫 문서를 적재하는 동안 들어온 질의가
