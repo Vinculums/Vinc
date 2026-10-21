@@ -9,7 +9,7 @@
   4. 라벨은 캐시된다: 두 번째 검색은 미러를 다시 훑지 않고, 청크 벡터 쓰기도 캐시를 깨지
      않는다. 미러 재구축(새 모델로 교체)은 캐시를 깨고 다음 검색부터 팔이 다시 켜진다.
   5. 라벨을 못 읽으면 팔을 `degraded` 로 내린다(조용히 켜 두지 않는다).
-  6. brief 도 같은 사실을 나른다.
+  6. brief 와 호스티드 `search` 별칭도 같은 사실을 나른다.
 """
 from __future__ import annotations
 
@@ -79,6 +79,27 @@ class MismatchUnit(unittest.TestCase):
         retrieval._mirror_models(store, "user:hit")
         retrieval._mirror_models(store, "user:hit")
         self.assertEqual(store.calls, calls + 1, "같은 세대의 두 번째 읽기는 캐시가 답한다")
+
+
+class HostSearchDiagnostics(unittest.TestCase):
+    """호스티드 커넥터 별칭(`search`)도 이 상태를 진단으로 낸다."""
+
+    def test_the_connector_alias_reports_the_mismatch(self):
+        from vinc_mcp import tools
+        raw = {"kind": "search", "executed": True, "rows": [], "arms": "fts+vector",
+               "node_hits": [{"id": "concept:alpha", "title": "Alpha", "kind": "concept",
+                              "arms": ["title"]}],
+               "node_semantic": {"state": "model_mismatch", "query_model": "new-model",
+                                 "mirror_models": ["old-model"], "reason": "rebuild pending"}}
+
+        class _Bridge:
+            owner = "user:synthetic"
+
+            def request(self, *_a, **_k):
+                return raw
+        out = tools._t_host_search({"query": "alpha"}, _Bridge())
+        self.assertEqual([r["id"] for r in out["results"]], ["concept:alpha"])
+        self.assertEqual(out["diagnostics"]["node_semantic"]["state"], "model_mismatch")
 
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
