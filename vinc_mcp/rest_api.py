@@ -133,6 +133,10 @@ def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
     if result.get("status") == "conflict" or error in ("write_conflict", "preview_conflict", "operation_id_conflict"):
         return (409, error, "The saved state no longer matches this request.",
                 {k: result[k] for k in ("node_id", "current_rev", "current_content_hash", "operation_id") if k in result})
+    if error == "role_changed":
+        # 고정한 역할이 바뀌었다. 계약은 싣지 않고 지금의 rev·hash 만 준다.
+        return (409, "role_changed", "The role changed since it was pinned.",
+                {k: result[k] for k in ("id", "rev", "hash") if k in result})
     if error in ("write_target_unavailable", "document_unavailable", "preview_target_unavailable"):
         return 404, "not_found", "The requested graph item was not found."
     if error.startswith("preview_") and error not in ("preview_read_unavailable", "preview_boundary_unavailable"):

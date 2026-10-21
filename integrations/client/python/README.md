@@ -11,10 +11,10 @@ Looking for the `vinc` command? See [the terminal CLI installation guide](https:
 ## Install
 
 ```bash
-pip install "vinc-client>=0.1.11"
+pip install "vinc-client>=0.1.12"
 ```
 
-This README describes vinc-client 0.1.11. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
+This README describes vinc-client 0.1.12. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
 
 ## Keys and spaces
 
@@ -50,13 +50,13 @@ Reads (either key):
 | `recall` | `domain`, `tags`, `limit`, `cursor` | episode timeline, newest first |
 | `node` | `node_id` | one node by id; `VincNotFound` when absent |
 | `edges` | `node` or `nodes`, `type`, `dir`, `limit` | stored edges with direction and evidence; pass exactly one of `node` and `nodes` |
-| `role` | `role_id` | a role's complete contract and links |
+| `role` | `role_id`, `pin` | a role's complete contract and links, with its `rev` and `hash`; with `pin`, only while the role is unchanged (see [Pin a role](#pin-a-role)) |
 | `document` | `doc_id` | exact document text with its content hash |
 | `role_check` | `role_id`, `output`, `person_only_requests`, `self_authored` | the hub applies the role's checks; verdict `pass`, `block` or `interrupt`, and `pass` grants no permission |
 | `operation_status` | `operation_id` | the receipt of an earlier write (see below) |
 | `get_context` | `query`, `search_fallback`, `max_chars`, `max_excerpts`, `min_query_chars` | a fenced context block, or `None` |
-| `prefetch` | `role_id`, `task`, `max_chars` | the role's required reading and task evidence before a model call |
-| `prefetch_with_contract` | `role_id`, `task`, `max_chars` | the same block as `prefetch`, with the role contract it read (`RolePrefetch(block, contract)`) |
+| `prefetch` | `role_id`, `task`, `max_chars`, `pin` | the role's required reading and task evidence before a model call |
+| `prefetch_with_contract` | `role_id`, `task`, `max_chars`, `pin` | the same block as `prefetch`, with the role contract it read (`RolePrefetch(block, contract)`) |
 | `get_package_context` | `package_id`, `space` (required), `max_chars` | a handoff package, rechecked with this key |
 
 Writes (`vinc_sk_` key):
@@ -104,7 +104,7 @@ The framework adapters build their two modes on two calls here. The client keeps
 
 | Mode | When Vinc is unreachable or over the daily limit | Hub calls per call | Tools the role disallows | Pinning |
 |---|---|---|---|---|
-| Role mode (`prefetch`, `prefetch_with_contract`) | Raises with no retry (fails closed). Any failed read raises the same way: the role, a required document or the task lookup. | 1 for the role, 2 per required document (its text and its mirror node), 1 brief and 1 search. | `prefetch_with_contract` returns the contract; `RoleToolPolicy` applies its `disallowed_tools` by exact name (see below). | None yet: each call reads the role as it is now. |
+| Role mode (`prefetch`, `prefetch_with_contract`) | Raises with no retry (fails closed). Any failed read raises the same way: the role, a required document or the task lookup. | 1 for the role, 2 per required document (its text and its mirror node), 1 brief and 1 search. | `prefetch_with_contract` returns the contract; `RoleToolPolicy` applies its `disallowed_tools` by exact name (see below). | With `pin` (a hash from `role`), a role that changed raises `VincRoleChanged` before any document is read (fails closed). Without it, each call reads the role as it is now. |
 | Context mode (`get_context`) | Logs a warning and returns `None`, so the model call goes on without context (fails open). A key or space problem still raises. | One brief, plus a search when `search_fallback=True` and the brief ties or finds nothing. None for a query shorter than `min_query_chars`. | Not applied: there is no role. | Not applicable: each call reads the graph as it is. |
 
 ## Reading
@@ -187,6 +187,7 @@ If the affected state changed after the preview, the apply call is refused inste
 | `VincAuthError` | missing, malformed, refused or read only key; configuration is wrong |
 | `VincNotFound` | the node, document or space does not exist for this key |
 | `VincInvalidArgument` | the request was malformed or refused: a topic limit, a `create_only` identity that exists, an `expected_rev` or `preview_digest` that no longer matches, an `operation_id` reused with different arguments |
+| `VincRoleChanged` | a pinned role changed; no contract was returned and `details` holds its current `id`, `rev` and `hash`. A subclass of `VincInvalidArgument` |
 | `VincQuotaExceeded` | the daily limit is spent; `retry_after` is in seconds |
 | `VincUnavailable` | network or server failure, raised after transient retries ran out; for a write, check `details["write_may_have_applied"]` and `operation_status` |
 | `VincPartialWrite` | part of a write was skipped; `result` holds what the server said |
@@ -309,6 +310,37 @@ exactly but leaves no task evidence space. No automatic retry, budget increase,
 truncation or prefetch cache occurs. If the role or documents change between calls,
 the required size can change too.
 
+### Pin a role
+
+A role contract carries `rev`, the role node's stored revision, and `hash`: the
+sha256 of the canonical JSON (sorted keys, no whitespace, UTF-8) of its `id`,
+`title`, `domain`, `props` and `works_with`. Those are the fields the prefetch
+block gives the model. Read the role once, review it, and keep the hash with your
+agent's configuration:
+
+```python
+pin = reader.role("concept:agent-reviewer-judgement")["hash"]
+block = reader.prefetch(
+    "concept:agent-reviewer-judgement", "Review the proposed change.",
+    max_chars=120000, pin=pin,
+)
+```
+
+With `pin`, the hub returns the contract only while its hash is still the pinned
+one. When someone has changed the role (its props, title, topic or relations),
+`role` and `prefetch` raise `VincRoleChanged` before any document is read, with
+the role's current `id`, `rev` and `hash` in `details`; the run does not start.
+Moving the pin is your decision: read the role without a pin, review what changed,
+and pin the new hash. The client also refuses a contract whose `hash` is not the
+pin. A pin that is not 64 lowercase hex characters raises `VincInvalidArgument`
+before any request.
+
+The pin covers the role contract, not the documents listed in its `reads`: their
+text is read fresh on every call and checked against its own `content_hash`. Over
+REST the same check is `GET /v1/roles/{id}?expected_hash=<hash>` (optionally
+`expected_rev`), which answers 409 `role_changed`. A hub older than this feature
+answers 400 to the argument, so a pinned run stops there too.
+
 ### A role's disallowed tools
 
 `prefetch_with_contract` returns the block and the role contract from the same
@@ -363,6 +395,7 @@ separate evaluation.
 
 | Version | Change |
 |---|---|
+| 0.1.12 | `role`, `prefetch` and `prefetch_with_contract` take `pin`, a role contract `hash`; a role that changed raises the new `VincRoleChanged` before any document is read. Contracts carry `rev` and `hash`. The adapters (vinc-langgraph 0.1.9, vinc-agent-framework 0.1.8) pass it as `prefetch_pin`. |
 | 0.1.11 | `prefetch_with_contract` returns the prefetch block with the role contract it read, and `RoleToolPolicy` applies the contract's `disallowed_tools` by exact name. `prefetch` is unchanged. The adapters (vinc-langgraph 0.1.8, vinc-agent-framework 0.1.7) use both. |
 | 0.1.10 | Transient hub errors (502, 503, 504, dropped connections, timeouts) are retried for up to `retry_for` seconds (90 by default), following `Retry-After`. Writes are retried only with an `operation_id`. `get_context` and `prefetch` do not retry. |
 | 0.1.9 | `record_episode` and `write_package` take `create_only` and `operation_id`. New `delete`, `delete_edge`, `merge_nodes` and `doc_delete` with `dry_run` and `preview_digest`. New `edges` and `role_check`. The adapters 0.1.5 pass the two write parameters through and require this client. |

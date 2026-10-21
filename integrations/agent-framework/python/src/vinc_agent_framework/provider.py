@@ -151,6 +151,10 @@ class VincContextProvider(ContextProvider):
     Hiding needs a chat client that runs chat middleware (``ChatMiddlewareLayer``, as the
     built-in clients do); with any other client the tools stay visible, calls are still
     refused, and the run logs a warning saying so.
+
+    ``prefetch_pin`` (the ``hash`` from ``AsyncVincClient.role``) holds role prefetch to that
+    contract: when the role changed, ``before_run`` raises ``VincRoleChanged`` and the model is
+    not called. Moving the pin to the new hash is your decision; nothing moves it for you.
     """
 
     def __init__(self, client: AsyncVincClient | None = None, *, api_key: str | None = None,
@@ -160,7 +164,11 @@ class VincContextProvider(ContextProvider):
                  min_query_chars: int = 3, expose_tools: bool = False,
                  prefetch_role: str | None = None,
                  prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
-                 tool_calls_per_run: int | None = TOOL_CALLS_PER_RUN) -> None:
+                 tool_calls_per_run: int | None = TOOL_CALLS_PER_RUN,
+                 prefetch_pin: str | None = None) -> None:
+        if prefetch_pin is not None and not prefetch_role:
+            # 역할 없이 고정만 주면 맥락 모드로 조용히 돌게 된다. 시작 전에 멈춘다.
+            raise ValueError("prefetch_pin needs prefetch_role")
         super().__init__(source_id)
         self.client = client or AsyncVincClient(api_key, base_url=base_url, space=space)
         self._owns_client = client is None
@@ -170,6 +178,7 @@ class VincContextProvider(ContextProvider):
         self.min_query_chars = min_query_chars
         self.prefetch_role = prefetch_role
         self.prefetch_max_chars = prefetch_max_chars
+        self.prefetch_pin = prefetch_pin
         self.expose_tools = expose_tools
         self.tool_calls_per_run = tool_calls_per_run
 
@@ -178,7 +187,8 @@ class VincContextProvider(ContextProvider):
         task = _last_user_text(context.input_messages)
         if self.prefetch_role:
             fetched = await self.client.prefetch_with_contract(
-                self.prefetch_role, task, max_chars=self.prefetch_max_chars)
+                self.prefetch_role, task, max_chars=self.prefetch_max_chars,
+                pin=self.prefetch_pin)
             block = fetched.block
             # 계약의 도구 목록이 잘못됐으면 여기서 멈춘다(모델 호출 전).
             policy = RoleToolPolicy.from_contract(fetched.contract)
@@ -273,6 +283,9 @@ async def write_package(client: AsyncVincClient, question: str, conclusion: str,
 
 
 async def prefetch(client: AsyncVincClient, role_id: str, task: str, *, space: str | None = None,
-                   max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
-    """Read the selected role and its required/task evidence before a model call; never write."""
-    return await client.prefetch(role_id, task, space=space, max_chars=max_chars)
+                   max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None) -> str:
+    """Read the selected role and its required/task evidence before a model call; never write.
+
+    With ``pin`` a role that changed raises ``VincRoleChanged`` instead.
+    """
+    return await client.prefetch(role_id, task, space=space, max_chars=max_chars, pin=pin)

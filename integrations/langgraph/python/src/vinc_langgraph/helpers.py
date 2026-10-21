@@ -83,15 +83,18 @@ def build_system_message(block: str | None, base: SystemMessage | str | None = N
 
 
 def prefetch(client: VincClient, role_id: str, task: str, *, space: str | None = None,
-             max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
-    """Fetch a chosen role's reading list and task evidence before a graph model node."""
-    return client.prefetch(role_id, task, space=space, max_chars=max_chars)
+             max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None) -> str:
+    """Fetch a chosen role's reading list and task evidence before a graph model node.
+
+    With ``pin`` a role that changed raises ``VincRoleChanged`` instead.
+    """
+    return client.prefetch(role_id, task, space=space, max_chars=max_chars, pin=pin)
 
 
 async def aprefetch(client: AsyncVincClient, role_id: str, task: str, *, space: str | None = None,
-                    max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+                    max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None) -> str:
     """Async :func:`prefetch`."""
-    return await client.prefetch(role_id, task, space=space, max_chars=max_chars)
+    return await client.prefetch(role_id, task, space=space, max_chars=max_chars, pin=pin)
 
 
 _DOWN = "Vinc is not available right now ({code}); answer without it."

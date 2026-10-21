@@ -37,6 +37,7 @@ CALLS = [
     _Base._operation_status("op", None),
     _Base._edges("concept:x", None, "relates_to", "out", 5, None),
     _Base._edges(None, ["concept:x"], "relates_to", "out", 5, None),
+    _Base._role("agent-dev-core", None, "a" * 64),
     _Base._role_check("agent-dev-core", "text", [{"action": "a", "reason": "r"}], True, None),
     _Base._delete("concept:x", True, "d", "op", None),
     _Base._delete_edge("concept:x", "concept:y", "relates_to", True, "d", "op", None),

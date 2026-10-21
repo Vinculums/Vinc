@@ -26,7 +26,8 @@ from . import __version__
 from .context import DEFAULT_MAX_CHARS, format_context
 from .episode import build_episode_fragment, check_about
 from .errors import (VincAuthError, VincError, VincInvalidArgument, VincPartialWrite,
-                     VincNotFound, VincQuotaExceeded, VincUnavailable, error_class)
+                     VincNotFound, VincQuotaExceeded, VincRoleChanged, VincUnavailable,
+                     error_class)
 from .package import (DEFAULT_PACKAGE_MAX_CHARS, build_package_fragment, format_package,
                       package_space, validate_package)
 from .prefetch import (DEFAULT_PREFETCH_MAX_CHARS, PREFETCH_READ_CONCURRENCY, RolePrefetch,
@@ -41,6 +42,8 @@ _LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
 #: 브리프가 한 노드로 못 좁힌 두 경우. 자연어 질문은 동점(choose)이 흔하다(라이브 실측).
 _WIDEN = ("none", "choose")
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+#: 역할 고정은 role()['hash'] 그대로다: 소문자 16진수 64자.
+_PIN = re.compile(r"^[0-9a-f]{64}$")
 #: 일시 오류를 다시 보내는 기본 상한(초). 허브 배포 중 요청을 붙잡는 상한과 같다.
 DEFAULT_RETRY_FOR_S = 90.0
 _TRANSIENT_STATUS = frozenset({502, 503, 504})
@@ -144,11 +147,26 @@ def _parse(response: httpx.Response) -> dict[str, Any]:
         "message": f"HTTP {status}"}
     raw_details = error.get("details")
     details: dict[str, Any] = raw_details if isinstance(raw_details, dict) else {}
-    raise error_class(status)(
-        str(error.get("code") or "http_error"), str(error.get("message") or ""),
+    code = str(error.get("code") or "http_error")
+    raise error_class(status, code)(
+        code, str(error.get("message") or ""),
         status=status, request_id=str(error.get("request_id") or
                                       response.headers.get("Vinc-Request-Id") or ""),
         details=details, retry_after=_retry_after(response, details))
+
+
+def _check_pin(pin: str | None) -> None:
+    if pin is not None and (not isinstance(pin, str) or not _PIN.fullmatch(pin)):
+        raise VincInvalidArgument("invalid_argument",
+                                  "pin must be the 64 character hash from role()['hash'].")
+
+
+def _pinned(contract: dict[str, Any], pin: str | None) -> dict[str, Any]:
+    """서버가 고정을 확인한 계약만 넘긴다. 해시가 없거나 다르면(고정을 모르는 허브 포함) 멈춘다."""
+    if pin is not None and contract.get("hash") != pin:
+        raise VincRoleChanged("role_changed", "The role does not match the pinned hash.",
+                              details={k: contract.get(k) for k in ("id", "rev", "hash")})
+    return contract
 
 
 def _raise_if_partial(result: dict[str, Any]) -> dict[str, Any]:
@@ -261,8 +279,10 @@ class _Base:
         return _Call("GET", f"/v1/documents/{_segment(doc_id)}", space=space)
 
     @staticmethod
-    def _role(role_id, space) -> _Call:
-        return _Call("GET", f"/v1/roles/{_segment(role_id)}", space=space)
+    def _role(role_id, space, pin=None) -> _Call:
+        _check_pin(pin)
+        return _Call("GET", f"/v1/roles/{_segment(role_id)}", params={"expected_hash": pin},
+                     space=space)
 
     @staticmethod
     def _search(query, limit, cursor, detail, historical, space, mode=None, as_of=None, known_at=None) -> _Call:
@@ -396,9 +416,15 @@ class VincClient(_Base):
         """``GET /v1/nodes/{id}``: read one node by id. Raises ``VincNotFound`` if absent."""
         return self._send(self._node(node_id, space))
 
-    def role(self, role_id: str, *, space: str | None = None) -> dict[str, Any]:
-        """Read a genuine owner-visible role's complete contract and collaboration links."""
-        return self._send(self._role(role_id, space))
+    def role(self, role_id: str, *, space: str | None = None,
+             pin: str | None = None) -> dict[str, Any]:
+        """Read a genuine owner-visible role's complete contract and collaboration links.
+
+        The contract carries ``rev`` and ``hash``. Pass an earlier ``hash`` as ``pin`` to get
+        the contract only while the role is unchanged; otherwise ``VincRoleChanged`` is raised
+        and no contract is returned. Moving the pin to a new hash is the caller's decision.
+        """
+        return _pinned(self._send(self._role(role_id, space, pin)), pin)
 
     def document(self, doc_id: str, *, space: str | None = None) -> dict[str, Any]:
         """Read exact canonical text and its integrity metadata via GET /v1/documents/{id}."""
@@ -420,7 +446,7 @@ class VincClient(_Base):
         return with_citation(read, document, node)
 
     def prefetch(self, role_id: str, task: str, *, space: str | None = None,
-                 max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+                 max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None) -> str:
         """Before a model call, read the chosen role, every required spec and task evidence.
 
         No content or permission cache, write, delegation or automatic role adoption.
@@ -442,20 +468,28 @@ class VincClient(_Base):
         Missing mirrors preserve the full document with no citable id; other errors raise.
         Transient errors are not retried here (unlike the plain calls): this runs before
         every model call, so a hub that is briefly unavailable raises at once.
+        With ``pin`` (a hash from :meth:`role`) a role that changed raises
+        ``VincRoleChanged`` before any document is read. The pin covers the role contract,
+        not the text of the documents it lists.
         """
-        return self.prefetch_with_contract(role_id, task, space=space, max_chars=max_chars).block
+        return self.prefetch_with_contract(role_id, task, space=space, max_chars=max_chars,
+                                           pin=pin).block
 
     def prefetch_with_contract(self, role_id: str, task: str, *, space: str | None = None,
-                               max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> RolePrefetch:
+                               max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
+                               pin: str | None = None) -> RolePrefetch:
         """:meth:`prefetch`, returning the block together with the role contract it read.
 
         Same reads, checks and errors; the contract is the one the block was built from, so a
         caller can apply its ``disallowed_tools`` without reading the role again.
         """
-        return self.without_retries()._prefetch(role_id, task, space=space, max_chars=max_chars)
+        _check_pin(pin)
+        return self.without_retries()._prefetch(role_id, task, space=space, max_chars=max_chars,
+                                                pin=pin)
 
     def _prefetch(self, role_id: str, task: str, *, space: str | None = None,
-                  max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> RolePrefetch:
+                  max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
+                  pin: str | None = None) -> RolePrefetch:
         limit = self.prefetch_concurrency
         early = limit > 1
         with ThreadPoolExecutor(max_workers=limit, thread_name_prefix="vinc-prefetch") as pool:
@@ -463,7 +497,7 @@ class VincClient(_Base):
             # 근거: [[vinc.plan.vin397-prefetch-half-latency-2026-10-07]]
             optional = [pool.submit(self.brief, task, max_excerpts=3, space=space)] if early else []
             try:
-                contract = self.role(role_id, space=space)
+                contract = self.role(role_id, space=space, pin=pin)
                 specs = []
                 reads = reading_list(contract)
                 query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
@@ -724,9 +758,10 @@ class AsyncVincClient(_Base):
     async def node(self, node_id: str, *, space: str | None = None) -> dict[str, Any]:
         return await self._send(self._node(node_id, space))
 
-    async def role(self, role_id: str, *, space: str | None = None) -> dict[str, Any]:
-        """Async complete role contract read."""
-        return await self._send(self._role(role_id, space))
+    async def role(self, role_id: str, *, space: str | None = None,
+                   pin: str | None = None) -> dict[str, Any]:
+        """Async complete role contract read; ``pin`` works as in :meth:`VincClient.role`."""
+        return _pinned(await self._send(self._role(role_id, space, pin)), pin)
 
     async def document(self, doc_id: str, *, space: str | None = None) -> dict[str, Any]:
         """Async exact canonical document read; does not replace integrity validation."""
@@ -748,18 +783,22 @@ class AsyncVincClient(_Base):
         return with_citation(read, document, node)
 
     async def prefetch(self, role_id: str, task: str, *, space: str | None = None,
-                       max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+                       max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None) -> str:
         """Async fresh role/spec/task evidence retrieval before the model runs."""
         return (await self.prefetch_with_contract(role_id, task, space=space,
-                                                  max_chars=max_chars)).block
+                                                  max_chars=max_chars, pin=pin)).block
 
     async def prefetch_with_contract(self, role_id: str, task: str, *, space: str | None = None,
-                                     max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> RolePrefetch:
+                                     max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
+                                     pin: str | None = None) -> RolePrefetch:
         """Async :meth:`VincClient.prefetch_with_contract`."""
-        return await self.without_retries()._prefetch(role_id, task, space=space, max_chars=max_chars)
+        _check_pin(pin)
+        return await self.without_retries()._prefetch(role_id, task, space=space,
+                                                      max_chars=max_chars, pin=pin)
 
     async def _prefetch(self, role_id: str, task: str, *, space: str | None = None,
-                        max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> RolePrefetch:
+                        max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
+                        pin: str | None = None) -> RolePrefetch:
         limit = self.prefetch_concurrency
         early = limit > 1
         gate = asyncio.Semaphore(limit)
@@ -774,7 +813,7 @@ class AsyncVincClient(_Base):
         optional = ([asyncio.create_task(bounded(self.brief, task, max_excerpts=3, space=space))]
                     if early else [])
         try:
-            contract = await self.role(role_id, space=space)
+            contract = await self.role(role_id, space=space, pin=pin)
             specs = []
             reads = reading_list(contract)
             query = f"{task}\nRole topic: {contract['domain']}" if contract.get("domain") else task
