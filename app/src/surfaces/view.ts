@@ -2849,8 +2849,8 @@ export async function renderView(el: HTMLElement, resume = false) {
         || COPY.ui.viewx.relSentence.RELATED_TO)(a, b);
       const conf = res.confidence && res.confidence > 0
         ? ` <span class="hint">· ${COPY.ui.viewx.relConfidence(res.confidence)}</span>` : "";
-      // 양 끝은 한 줄 설명만 보인다. 문서 발췌로 메우지 않는다: 잘린 마크다운이 문장처럼
-      // 읽히지 않았다(VIN-709). 설명이 없으면 제목(위 h2)이 그 자리를 한다.
+      // 양 끝은 한 줄 설명만 보인다. 문서 발췌로 메우지 않는다: 잘린 마크다운은 문장으로
+      // 읽히지 않는다. 설명이 없으면 제목(위 h2)이 그 자리를 한다.
       const side = (t: string, s?: { one_liner?: string }) => {
         const body = s?.one_liner || "";
         return body ? `
@@ -3278,7 +3278,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     const { out, in: inn, attached: att, degree } = links;
     const row = (k: string, v: string) =>
       `<div class="stat-row"><span class="hint">${k}</span><b>${v}</b></div>`;
-    // 무엇인가(종류)를 먼저 말한다. 발췌 글을 걷어 낸 자리에서 노드를 설명하는 첫 줄이다(VIN-709).
+    // 무엇인가(종류)를 먼저 말한다. 근거 절이 발췌 글을 싣지 않으므로 노드를 설명하는 첫 줄이다.
     const kindName = kind ? COPY.author.kinds[kind] : "";
     box.innerHTML =
       (kindName ? row(COPY.ui.viewx.statKind, esc(kindName)) : "")
@@ -3520,8 +3520,8 @@ export async function renderView(el: HTMLElement, resume = false) {
         const header = res.arm === "fts"
           ? COPY.ui.viewx.sourceRelated : COPY.ui.viewx.sourceHeader;
         // 문서 줄 = 클릭 시 Reader 전문 승격(peek-definition 동선). 발췌 글은 싣지 않는다:
-        // 문서에서 잘라 낸 창이라 제목·목록·강조가 끊긴 채 보였다(VIN-709). 어느 문서의
-        // 어느 절인지만 보이고, 글은 Reader 가 전문으로 보여 준다. 같은 문서는 한 줄로 모은다.
+        // 문서에서 잘라 낸 창이라 제목·목록·강조가 끊긴다. 어느 문서의 어느 절인지만
+        // 보이고, 글은 Reader 가 전문으로 보여 준다. 같은 문서는 한 줄로 모은다.
         const seen = new Set<string>();
         const rows = ex.filter((e) => !seen.has(e.doc_id) && seen.add(e.doc_id));
         parts.push(`<p class="hint" style="margin-bottom:.3rem">${header}</p>` +
