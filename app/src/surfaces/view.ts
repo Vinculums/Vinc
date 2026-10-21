@@ -2849,9 +2849,10 @@ export async function renderView(el: HTMLElement, resume = false) {
         || COPY.ui.viewx.relSentence.RELATED_TO)(a, b);
       const conf = res.confidence && res.confidence > 0
         ? ` <span class="hint">· ${COPY.ui.viewx.relConfidence(res.confidence)}</span>` : "";
-      const side = (t: string, s?: { one_liner?: string;
-                                     excerpt?: { excerpt: string } | null }) => {
-        const body = s?.one_liner || s?.excerpt?.excerpt || "";
+      // 양 끝은 한 줄 설명만 보인다. 문서 발췌로 메우지 않는다: 잘린 마크다운이 문장처럼
+      // 읽히지 않았다(VIN-709). 설명이 없으면 제목(위 h2)이 그 자리를 한다.
+      const side = (t: string, s?: { one_liner?: string }) => {
+        const body = s?.one_liner || "";
         return body ? `
           <div class="list-row" style="display:block">
             <span class="title" style="font-size:.85em">${esc(t)}</span>
@@ -3270,15 +3271,18 @@ export async function renderView(el: HTMLElement, resume = false) {
     wireRels(box, nd, links);
   }
 
-  function drawNodeStats(nd: N3, links?: NodeLinks) {
+  function drawNodeStats(nd: N3, links?: NodeLinks, kind?: string) {
     const box = detail.querySelector<HTMLElement>("#node-stats");
     if (!box) return;
     if (!links?.executed) { box.innerHTML = detailErrorHTML("failed"); return; }
     const { out, in: inn, attached: att, degree } = links;
     const row = (k: string, v: string) =>
       `<div class="stat-row"><span class="hint">${k}</span><b>${v}</b></div>`;
+    // 무엇인가(종류)를 먼저 말한다. 발췌 글을 걷어 낸 자리에서 노드를 설명하는 첫 줄이다(VIN-709).
+    const kindName = kind ? COPY.author.kinds[kind] : "";
     box.innerHTML =
-      row(COPY.ui.viewx.statTopic, esc(nd.domain || COPY.ui.common.none))
+      (kindName ? row(COPY.ui.viewx.statKind, esc(kindName)) : "")
+      + row(COPY.ui.viewx.statTopic, esc(nd.domain || COPY.ui.common.none))
       + row(COPY.ui.viewx.statLinks, String(degree))
       + (out + inn > 0 ? row(COPY.ui.viewx.statDirection, COPY.ui.viewx.statDir(out, inn)) : "")
       + (att > 0 ? row(COPY.ui.viewx.statAttached, String(att)) : "")
@@ -3486,7 +3490,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       const state = detailState(res);
       if (state !== "ready") { fail(state); return; }
       // 수치는 조회 성공 값만 쓴다. 응답 실패를 화면의 선이나 0으로 대신하지 않는다.
-      drawNodeStats(nd, res.links);
+      drawNodeStats(nd, res.links, res.node_kind);
       detail.querySelector("#node-stats [data-detail-retry]")?.addEventListener("click", () => {
         ctxCache = null; void loadNodeSource(nd);
       });
@@ -3515,77 +3519,31 @@ export async function renderView(el: HTMLElement, resume = false) {
       if (ex.length > 0) {
         const header = res.arm === "fts"
           ? COPY.ui.viewx.sourceRelated : COPY.ui.viewx.sourceHeader;
-        // 발췌 카드 = 클릭 시 Reader 전문 승격(peek-definition 동선). doc_id 를
-        // data 로 실어 두고, 밑줄은 개념 제목 토큰을 발췌 문자열에 클라이언트 강조.
+        // 문서 줄 = 클릭 시 Reader 전문 승격(peek-definition 동선). 발췌 글은 싣지 않는다:
+        // 문서에서 잘라 낸 창이라 제목·목록·강조가 끊긴 채 보였다(VIN-709). 어느 문서의
+        // 어느 절인지만 보이고, 글은 Reader 가 전문으로 보여 준다. 같은 문서는 한 줄로 모은다.
+        const seen = new Set<string>();
+        const rows = ex.filter((e) => !seen.has(e.doc_id) && seen.add(e.doc_id));
         parts.push(`<p class="hint" style="margin-bottom:.3rem">${header}</p>` +
-          ex.map((e, i) => `
+          rows.map((e, i) => `
             <div class="list-row rdr-open" data-doc="${esc(e.doc_id)}" data-i="${i}"
                  style="display:block;cursor:pointer">
               <span class="title" style="font-size:.85em">${esc(e.doc_title)}${
                 // 문서 H1 아래 문단은 절 이름이 곧 문서 제목이라 같은 말을 두 번 적게 된다(VIN-258).
                 e.section && e.section.trim() !== (e.doc_title || "").trim()
                   ? `<span class="hint"> · ${esc(e.section)}</span>` : ""}</span>
-              <div class="hint doc-render rdr-excerpt">${renderExcerpt(e.excerpt, nd.label)}</div>
             </div>`).join(""));
       } else if (!res.one_liner) {
         parts.push(`<p class="hint">${COPY.ui.viewx.sourceNone}</p>`);
       }
       box.innerHTML = parts.join("");
-      hydrateRich(box);          // 발췌 안의 수식·다이어그램을 채운다(늦게 싣는다)
+      hydrateRich(box);          // 한 줄 설명 안의 수식·다이어그램을 채운다(늦게 싣는다)
       box.querySelectorAll<HTMLElement>(".rdr-open").forEach((row) =>
         row.addEventListener("click", () =>
           void openReader(row.dataset.doc!, nd.id)));
     } catch (error) {
       if (current()) fail(detailFailure(error));
     }
-  }
-
-  /** 발췌 문자열 안에서 개념 제목 토큰(길이≥2)을 밑줄 강조 — 색 없이(모노크롬),
-   *  <u> 만. 정본 char offset 이 아니라 발췌 로컬 매칭이라 근사지만, Reader 전문은
-   *  백엔드 계산 범위(정확)를 쓴다. */
-  function underlineTerms(text: string, label: string): string {
-    const terms = [...new Set((label.toLowerCase().match(/[0-9a-z가-힣]+/g) || [])
-      .filter((t) => t.length >= 2))].slice(0, 6);
-    if (terms.length === 0) return esc(text);
-    // 토큰 span 을 훑어 매치만 <u> — 낱말 단위(문장 전체 강조 금지, D45-V2 규율).
-    let out = "", last = 0;
-    const re = /[0-9A-Za-z가-힣]+/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text))) {
-      if (terms.includes(m[0].toLowerCase())) {
-        out += esc(text.slice(last, m.index)) + "<u>" + esc(m[0]) + "</u>";
-        last = m.index + m[0].length;
-      }
-    }
-    return out + esc(text.slice(last));
-  }
-
-  /** 발췌·한 줄 요약을 **문서와 같은 모습으로** 그린다(발주자 지적 2026-09-10:
-   *  "관련문서 보여주는 칸이나 노드 디테일 쪽에서는 마크다운 렌더링이 안 되어 보인다").
-   *
-   *  여태 이 두 자리만 원문을 그대로 냈다 — 같은 문단이 문서 열에서는 제목·굵기로
-   *  보이고 여기서는 `##`·`**` 로 보였다. 렌더러가 둘이라는 사실이 화면에 드러나면
-   *  안 된다는 규율은 이미 `renderMarkdown` 머리말에 있다(편집기와 폴백 사이).
-   *
-   *  ⚠ 순서가 중요하다: **마크다운을 먼저 그리고, 밑줄은 그 결과의 텍스트 노드에만**
-   *  건다. 원문에 밑줄을 먼저 치면 `<u>` 가 마크다운 문법 안에 끼어 렌더가 깨지고,
-   *  렌더된 HTML 에 문자열 치환을 하면 태그 속으로 `<u>` 가 들어간다. DOM 을 걸어
-   *  텍스트만 건드리는 것이 그 둘을 다 피하는 유일한 길이다. */
-  function renderExcerpt(text: string, label: string): string {
-    const host = document.createElement("div");
-    host.innerHTML = renderMarkdown(text);
-    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
-    const texts: Text[] = [];
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) texts.push(n as Text);
-    for (const t of texts) {
-      // `underlineTerms` 는 이스케이프까지 하므로 그 결과를 그대로 심는다.
-      const html = underlineTerms(t.data, label);
-      if (!html.includes("<u>")) continue;          // 바뀐 것이 없으면 손대지 않는다
-      const span = document.createElement("span");
-      span.innerHTML = html;
-      t.replaceWith(span);
-    }
-    return host.innerHTML;
   }
 
   /** Reader 서브뷰(D45-V2 2단계) — 상세 패널을 정본 전문으로 확장한다. 새 표면

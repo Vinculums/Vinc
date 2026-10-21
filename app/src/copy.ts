@@ -851,6 +851,7 @@ const EN = {
       askDocsSub: (n: number) => n === 1
         ? "1 document behind this node" : `${n} documents behind this node`,
       askDocsBody: "Show me the documents behind this and what each one says.",
+      statKind: "Kind",
       statTopic: "Topic",
       statLinks: "Links",
       statDirection: "Direction",
@@ -888,10 +889,10 @@ const EN = {
       bindFail: "Couldn't link. Try again in a moment.",
       unavailable: "Link suggestions unavailable.",
       // D45-V — 노드 클릭 상세의 정본 근거(문서 발췌). 발췌는 증강 — 없어도 상세는 뜬다.
-      sourceHeader: "From your documents",
+      sourceHeader: "Documents that mention this",
       sourceLoading: "Finding source passages…",
-      sourceNone: "No source passages for this yet. Add documents about it.",
-      sourceRelated: "Related passages (by title match)",
+      sourceNone: "No documents mention this yet. Add one about it.",
+      sourceRelated: "Documents with a matching title",
       // D45-V2 2단계 — Reader 서브뷰(발췌→전문 승격, peek-definition 동선).
       readerBack: "Back",
       readerLoading: "Opening the document…",
@@ -2034,6 +2035,7 @@ const KO: Deck = {
       askDocs: "관련 문서",
       askDocsSub: (n) => `이 노드 뒤의 문서 ${n}개`,
       askDocsBody: "이것 뒤에 있는 문서들과 각각이 무엇을 말하는지 보여 줘.",
+      statKind: "종류",
       statTopic: "주제",
       statLinks: "연결",
       statDirection: "방향",
@@ -2071,10 +2073,10 @@ const KO: Deck = {
       bindFail: "연결하지 못했어요. 잠시 후 다시 시도해 보세요. 바뀐 것은 없어요",
       unavailable: "지금은 연결 제안을 쓸 수 없어요",
       // D45-V — 노드 클릭 상세의 정본 근거(문서 발췌). 발췌는 증강 — 없어도 상세는 뜬다.
-      sourceHeader: "내 문서에서",
+      sourceHeader: "이 항목이 나오는 문서",
       sourceLoading: "근거 발췌를 찾는 중…",
-      sourceNone: "아직 이 항목을 다룬 문서가 없어요. 관련 문서를 추가하면 여기에 나타나요",
-      sourceRelated: "관련 발췌 (제목 일치)",
+      sourceNone: "아직 이 항목이 나오는 문서가 없어요. 관련 문서를 추가하면 여기에 나타나요",
+      sourceRelated: "제목이 맞는 문서",
       // D45-V2 2단계 — Reader 서브뷰(발췌→전문 승격, peek-definition 동선).
       readerBack: "뒤로",
       readerLoading: "문서를 여는 중…",
