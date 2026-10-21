@@ -72,6 +72,10 @@ class VincContextMiddleware(AgentMiddleware):
     ``clear_cache`` drops both kinds after a known source or authorization change; neither
     bypasses the server's authorization caches. Nothing is written: this middleware only reads.
 
+    ``prefetch_pin`` (the ``hash`` from ``VincClient.role``) holds role prefetch to that
+    contract: when the role changed, the read raises ``VincRoleChanged`` and the model is not
+    called. Moving the pin to the new hash is your decision; nothing moves it for you.
+
     In role prefetch mode the contract's ``disallowed_tools`` apply to the run, by exact
     tool name: those tools are removed from what the model sees, a call to one of them gets
     a tool result saying the role does not allow it, and the run's first model call logs one
@@ -91,8 +95,12 @@ class VincContextMiddleware(AgentMiddleware):
                  max_excerpts: int = 3, cache_seconds: float = 60.0,
                  prefetch_role: str | None = None,
                  prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
-                 tool_calls_per_run: int | None = TOOL_CALLS_PER_RUN) -> None:
+                 tool_calls_per_run: int | None = TOOL_CALLS_PER_RUN,
+                 prefetch_pin: str | None = None) -> None:
         super().__init__()
+        if prefetch_pin is not None and not prefetch_role:
+            # 역할 없이 고정만 주면 맥락 모드로 조용히 돌게 된다. 시작 전에 멈춘다.
+            raise ValueError("prefetch_pin needs prefetch_role")
         self._config = {"api_key": api_key, "base_url": base_url, "space": space}
         self._client = client
         self._async_client = async_client
@@ -102,6 +110,7 @@ class VincContextMiddleware(AgentMiddleware):
         self.cache_seconds = cache_seconds
         self.prefetch_role = prefetch_role
         self.prefetch_max_chars = prefetch_max_chars
+        self.prefetch_pin = prefetch_pin
         self.tool_calls_per_run = tool_calls_per_run
         self._cache: dict[tuple, tuple[float, str | None]] = {}
         self._prefetched: dict[tuple, tuple[str, RoleToolPolicy]] = {}
@@ -190,7 +199,8 @@ class VincContextMiddleware(AgentMiddleware):
 
     def _prefetch_key(self, client: VincClient | AsyncVincClient, messages: Any) -> tuple:
         return (self._cache_generation, client, client.context_cache_identity,
-                self.prefetch_role, self.prefetch_max_chars, _run_marker(messages))
+                self.prefetch_role, self.prefetch_max_chars, self.prefetch_pin,
+                _run_marker(messages))
 
     def _ran(self, key: tuple, fetched: Any, tools: Any) -> tuple[str, RoleToolPolicy]:
         # 계약의 도구 목록이 잘못됐으면 담기 전에 멈춘다. 경고는 새로 읽은 런의 첫 호출에서 한 번.
@@ -207,7 +217,8 @@ class VincContextMiddleware(AgentMiddleware):
         if kept is not None:
             return kept
         fetched = self.client.prefetch_with_contract(
-            self.prefetch_role, last_user_text(messages), max_chars=self.prefetch_max_chars)
+            self.prefetch_role, last_user_text(messages), max_chars=self.prefetch_max_chars,
+            pin=self.prefetch_pin)
         return self._ran(key, fetched, tools)
 
     async def _aprefetch(self, messages: Any, tools: Any = None) -> tuple[str, RoleToolPolicy]:
@@ -216,7 +227,8 @@ class VincContextMiddleware(AgentMiddleware):
         if kept is not None:
             return kept
         fetched = await self.async_client.prefetch_with_contract(
-            self.prefetch_role, last_user_text(messages), max_chars=self.prefetch_max_chars)
+            self.prefetch_role, last_user_text(messages), max_chars=self.prefetch_max_chars,
+            pin=self.prefetch_pin)
         return self._ran(key, fetched, tools)
 
     def _for_role(self, request: ModelRequest, kept: tuple[str, RoleToolPolicy]) -> ModelRequest:

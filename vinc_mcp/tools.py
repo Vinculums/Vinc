@@ -674,7 +674,8 @@ def _t_node(args, bridge):
 def _t_role(args, bridge):
     from .roles import contract
     return contract(args.get("role"), bridge, forced_owner=_owner(args, bridge),
-                    limit=args.get("limit"), offset=args.get("offset", 0))
+                    limit=args.get("limit"), offset=args.get("offset", 0),
+                    expected_hash=args.get("expected_hash"), expected_rev=args.get("expected_rev"))
 
 
 def _t_role_check(args, bridge):
@@ -886,8 +887,9 @@ _SUMMARY: dict[str, str] = {
         "X' and to find existing ids before vinc_ingest. Rows carry excerpts; read a whole document "
         "with vinc_doc_get."),
     "vinc_role": (
-        "Read one Agent role contract by slug or concept id, or omit role to list the roster. It does "
-        "not run the role."),
+        "Read one Agent role contract by slug or concept id, or omit role to list the roster. Pass "
+        "expected_hash to get the contract only if the role has not changed since you pinned it. It "
+        "does not run the role."),
     "vinc_role_check": (
         "Check a finished output against a role's gates before you deliver it: pass, block, or "
         "interrupt (a person decides). Deterministic, no model. A claim that something already ran "
@@ -1142,9 +1144,24 @@ TOOLS: list[dict] = [
                        "of 10000 UTF-8 bytes or more returns an explicit error instead of "
                        "truncated permissions. Role contracts can live in any topic; legacy agent "
                        "and vinc/agent roles stay readable. Inactive roles (props.active=false) "
-                       "are left out. This tool does not run or delegate the role. Read-only.",
+                       "are left out. A contract also returns rev (the role node's stored "
+                       "revision) and hash: sha256 of the canonical JSON (sorted keys, no "
+                       "whitespace, UTF-8) of its id, title, domain, props and works_with, the "
+                       "same encoding as the community import receipt. rendered is not hashed. "
+                       "Pin a role by passing that hash as expected_hash (and optionally "
+                       "expected_rev): when the role differs, the call returns error "
+                       "role_changed with the current rev and hash and no contract (REST answers "
+                       "409). Without these arguments the call is unchanged. The pin covers the "
+                       "contract, not the text of the documents its reads list. This tool does "
+                       "not run or delegate the role. Read-only.",
         "inputSchema": {"type": "object", "properties": {
             "role": {"type": "string", "description": "Role slug (agent-dev-core) or exact concept:agent- id; omit to list."},
+            "expected_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$",
+                              "description": "Optional pin: the hash from an earlier read. A "
+                                             "changed role returns role_changed and no contract."},
+            "expected_rev": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,
+                             "description": "Optional pin on the role node's rev. A different "
+                                            "rev returns role_changed and no contract."},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000,
                       "description": "Optional roster page size. Follow next_offset, even after an "
                                      "empty page."},

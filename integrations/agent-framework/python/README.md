@@ -7,10 +7,10 @@
 ## Install
 
 ```bash
-pip install "vinc-agent-framework>=0.1.7"
+pip install "vinc-agent-framework>=0.1.8"
 ```
 
-This README describes vinc-agent-framework 0.1.7, which requires vinc-client 0.1.11 or later.
+This README describes vinc-agent-framework 0.1.8, which requires vinc-client 0.1.12 or later.
 
 Set `VINC_API_KEY` to a member key. A `vinc_ro_` key is enough for the providers, the tools and `prefetch`. `record_episode` and `write_package` need a `vinc_sk_` key; with a read only key they raise `VincAuthError` (`read_only_key`) before anything is sent. Give the write key only to the step that writes.
 
@@ -20,7 +20,7 @@ Set `VINC_API_KEY` to a member key. A `vinc_ro_` key is enough for the providers
 
 | Mode | When Vinc is unreachable or over the daily limit | Reads per run (hub calls) | Tools the role disallows | Pinning |
 |---|---|---|---|---|
-| Role mode (`prefetch_role=`) | `before_run` raises with no retry, so the model is not called (fails closed). Any failed read stops the run the same way: the role, a required document or the task lookup. | 1 for the role, 2 per required document (its text and its mirror node), 1 brief and 1 search. | Removed from the tools each model call sees; a call to one gets a result saying the role does not allow it. Names match exactly, and entries that match none of the agent's tools give one warning per run. Hiding needs a chat client with `ChatMiddlewareLayer` inside `FunctionInvocationLayer`, as the built-in clients have; with any other client the model still sees the tools, calls are still refused, and each run logs a warning. | None yet: each run reads the role as it is when the run starts and keeps that contract to its end. |
+| Role mode (`prefetch_role=`) | `before_run` raises with no retry, so the model is not called (fails closed). Any failed read stops the run the same way: the role, a required document or the task lookup. | 1 for the role, 2 per required document (its text and its mirror node), 1 brief and 1 search. | Removed from the tools each model call sees; a call to one gets a result saying the role does not allow it. Names match exactly, and entries that match none of the agent's tools give one warning per run. Hiding needs a chat client with `ChatMiddlewareLayer` inside `FunctionInvocationLayer`, as the built-in clients have; with any other client the model still sees the tools, calls are still refused, and each run logs a warning. | With `prefetch_pin` (a hash from `AsyncVincClient.role`), a role that changed makes `before_run` raise `VincRoleChanged` and the model is not called (fails closed). Without it, each run reads the role as it is when the run starts. Either way a run keeps its contract to its end. |
 | Context mode (no role) | Logs a warning and the run goes on without context (fails open). A wrong key or space still raises. | One brief, plus a search when the brief ties or finds nothing. None for a message shorter than `min_query_chars`. | Not applied: there is no role. | Not applicable: each run reads the graph as it is. |
 
 The tool rule is new in 0.1.7; 0.1.6 did not apply `disallowed_tools`. With `expose_tools=True` the model's own lookups add up to `tool_calls_per_run` (4) calls per run in either mode.
@@ -31,10 +31,10 @@ The functions take an `AsyncVincClient` first and are awaited.
 
 | Helper | Parameters | What it does |
 |---|---|---|
-| `VincContextProvider` | `client`, `api_key`, `base_url`, `space`, `source_id`, `search_fallback=True`, `max_chars`, `max_excerpts=3`, `min_query_chars=3`, `expose_tools=False`, `prefetch_role`, `prefetch_max_chars`, `tool_calls_per_run=4` | context before each run, and optionally the read tools |
+| `VincContextProvider` | `client`, `api_key`, `base_url`, `space`, `source_id`, `search_fallback=True`, `max_chars`, `max_excerpts=3`, `min_query_chars=3`, `expose_tools=False`, `prefetch_role`, `prefetch_max_chars`, `tool_calls_per_run=4`, `prefetch_pin` | context before each run, and optionally the read tools |
 | `PackageProvider` | `client`, `package_id`, `space` (required), `source_id`, `max_chars` | a handoff package before each run |
 | `create_vinc_tools` | `client`, `max_chars`, `cap` | the read only tools `vinc_brief` and `vinc_search` |
-| `prefetch` | `client`, `role_id`, `task`, `space`, `max_chars` | the role's required reading and task evidence |
+| `prefetch` | `client`, `role_id`, `task`, `space`, `max_chars`, `pin` | the role's required reading and task evidence |
 | `record_episode` | `client`, `title`, `summary`, `about`, `date`, `domain`, `tags`, `space`, `episode_id`, `create_only`, `operation_id` | one Episode, `vinc_sk_` key |
 | `write_package` | `client`, `question`, `conclusion`, `claims`, `produced_by`, `run_id`, `space` (required), `package_id`, `create_only`, `operation_id` | one handoff Record, `vinc_sk_` key |
 | `run_review` | `agent`, `messages`, `native_structured=True`, `options` | a `ReviewOutput` with one parse retry |
@@ -182,8 +182,26 @@ Roster contracts name Claude Code tools (`Bash`, `Edit`, `Write`,
 `NotebookEdit`, `Agent`); an Agent Framework tool is affected only when its name
 is the same.
 
+To hold the agent to a contract you reviewed, pin it. Read the role once, keep
+its `hash`, and pass it as `prefetch_pin`:
+
+```python
+pin = (await reader.role("concept:agent-reviewer-judgement"))["hash"]
+provider = VincContextProvider(
+    reader, prefetch_role="concept:agent-reviewer-judgement",
+    prefetch_max_chars=120000, prefetch_pin=pin,
+)
+```
+
+When the role has changed since (its props, title, topic or relations),
+`before_run` raises `VincRoleChanged` with the current `rev` and `hash` in
+`details`, and the model is not called. Moving the pin is your decision: review
+the new contract and set `prefetch_pin` to its hash. The pin covers the role
+contract, not the text of the documents it lists. `prefetch_pin` without
+`prefetch_role` raises `ValueError`.
+
 For a manual pipeline, `await prefetch(reader, role_id, task)` returns the same
-block. Both paths are read only and use no permission cache. `prefetch_max_chars`
+block, and takes the same value as `pin`. Both paths are read only and use no permission cache. `prefetch_max_chars`
 sets the combined provider budget (default 24,000 characters). Large roles need
 an explicit larger budget, as above; `prefetch_budget_exceeded` stops instead of
 truncating the contract or a required document. The helper uses `max_chars` for
@@ -208,6 +226,7 @@ text found in the graph.
 
 | Version | Change |
 |---|---|
+| 0.1.8 | `prefetch_pin` on the provider and `pin` on `prefetch` hold role prefetch to a contract hash; a role that changed makes `before_run` raise `VincRoleChanged` before the model is called. Requires vinc-client 0.1.12. |
 | 0.1.7 | With `prefetch_role`, the contract's `disallowed_tools` are removed from what the model sees (chat clients with `ChatMiddlewareLayer`) and a call to one gets a refusal result; entries that match no tool are warned once per run. Requires vinc-client 0.1.11. |
 | 0.1.6 | `vinc_brief` and `vinc_search` answer with the unavailable sentence at once instead of waiting through the client's transient retries. Requires vinc-client 0.1.10. |
 | 0.1.5 | The write helpers take `create_only` and `operation_id`. Requires vinc-client 0.1.9; its version notes list `operation_status`, `edges`, `role_check` and the delete and merge previews. |
