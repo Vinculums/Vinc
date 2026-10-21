@@ -2,6 +2,8 @@
 
 [Vinc](https://vincs.io) for [LangGraph](https://langchain-ai.github.io/langgraph/) and LangChain agents. Vinc is a knowledge graph you share with AI: the decisions, records and documents your team wrote, with the reasons attached. This package brings the relevant part of it into your graph nodes and model calls.
 
+**If the agent has to follow its role's contract (what it must never do, its gates, the tools it may not use), use role mode (`prefetch_role=`).** Role mode stops the run when Vinc cannot be read; context mode goes on without context. See [Role mode or context mode](#role-mode-or-context-mode).
+
 ## Install
 
 ```bash
@@ -12,6 +14,17 @@ pip install "vinc-langgraph[agents]>=0.1.8"    # plus the middleware for create_
 This README describes vinc-langgraph 0.1.8, which requires vinc-client 0.1.11 or later.
 
 Set `VINC_API_KEY` to a member key. A `vinc_ro_` key is enough for every read helper, the middleware and the tools. `record_episode` and `write_package` need a `vinc_sk_` key; with a read only key they raise `VincAuthError` (`read_only_key`) before anything is sent. Give the write key only to the node that writes.
+
+## Role mode or context mode
+
+`VincContextMiddleware` runs in role mode when you pass `prefetch_role`, and in context mode when you do not. The node helpers fail the same way: `prefetch` raises like role mode (it applies no tool rule) and `get_vinc_context` returns `None` like context mode. Both read on every call.
+
+| Mode | When Vinc is unreachable or over the daily limit | Reads per run (hub calls) | Tools the role disallows | Pinning |
+|---|---|---|---|---|
+| Role mode (`prefetch_role=`) | Raises with no retry, so the model is not called (fails closed). Any failed read stops the run the same way: the role, a required document or the task lookup. | Once per run, on its first model call, reused by every later model call until a new human message: 1 for the role, 2 per required document (its text and its mirror node), 1 brief and 1 search. | Removed from the tools each model call sees; a call to one gets a tool message saying the role does not allow it. Names match exactly, and entries that match none of the agent's tools give one warning per run. | None yet: each run reads the role as it is when the run starts, and a run in progress keeps that contract. |
+| Context mode (no role) | Logs a warning and the model call goes on without context (fails open). A wrong key or space still raises. | One brief, plus a search when the brief ties or finds nothing, per question, kept for `cache_seconds` (60). An empty result from an outage is kept the same way. | Not applied: there is no role. | Not applicable: each lookup reads the graph as it is. |
+
+The per-run read and the tool rule arrived on PyPI in 0.1.8; 0.1.6 read the role before every model call and did not apply `disallowed_tools`. The read tools from `create_vinc_tools` add up to `tool_calls_per_run` (4) calls per run in either mode.
 
 ## Helpers
 
@@ -64,7 +77,7 @@ from vinc_langgraph import VincContextMiddleware
 agent = create_agent("openai:gpt-5", middleware=[VincContextMiddleware()])
 ```
 
-The middleware adds the block to the system message of each model call. An agent that uses tools calls the model several times per question, so the answer is kept for 60 seconds (`cache_seconds`) instead of spending a Vinc call each time.
+The middleware adds the block to the system message of each model call. In context mode (no `prefetch_role`), an agent that uses tools calls the model several times per question, so the answer is kept for 60 seconds (`cache_seconds`) instead of spending a Vinc call each time.
 
 ## Tools the model can call
 
@@ -231,6 +244,8 @@ Model citation quality must be evaluated separately.
 | 0.1.5 | The write helpers take `create_only` and `operation_id`. Requires vinc-client 0.1.9; its version notes list `operation_status`, `edges`, `role_check` and the delete and merge previews. |
 | 0.1.4 | The read tools take `mode`, `as_of` and `known_at`. |
 | 0.1.3 | Vinc tool calls are capped at 4 per run, and both packages send the same tool schema. |
+
+0.1.5 and 0.1.7 were not published to PyPI; their changes first shipped in 0.1.6 and 0.1.8.
 
 ## License
 
