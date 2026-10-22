@@ -3,6 +3,7 @@
    토큰 출처 = Vinc-design 허브(sync_out) — desktop이 :root 기본, web은 [data-skin="web"] 스코프. */
 @import "./tokens.desktop.css";
 @import "./tokens.web.css";
+@import "./vinc-loaders.css";   /* 로딩 모션 다섯 가지(design-hub/assets/motion 사본) */
 
 /* ── Pretendard @font-face ────────────────────────────────────────────────
    2026-08-26 추가. tokens.desktop.css·tokens.web.css 는 **둘 다** --font-ui 를
@@ -1491,59 +1492,13 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
 .dest-pick button:hover { border-color: hsl(var(--muted-foreground)); background: hsl(var(--muted-foreground) / .08); }
 .dest-pick .title { font-weight: 600; }
 .dest-pick .meta { color: hsl(var(--muted-foreground)); font-size: var(--fs-sm); line-height: 1.45; }
-/* 진행 표시 — 공유 시트의 기다림이 이 한 벌을 쓴다(팩 준비 · 파일로 받기 · 커뮤니티
-   공유로 넘기기). 전에는 자리마다 문구 한 줄이라 같은 일을 기다리는데 모양이 자리마다 달랐다.
-   스페이스로 보내기는 아래 확정 막대를 쓴다.
-   **불확정 막대다.** 네 자리가 기다리는 모양은 하나가 아니라 셋으로 갈리는데
-   (`call()` · 커뮤니티 목적지 조회 `fetch` · `toBytes`), 셋 다 보고할 단계가 없거나 셀 수 있어도
-   이 막대가 그릴 값이 못 된다. 판정과 그 근거는 `sheets.ts` 의 `sheetProgress`
-   주석에 있다.
-   기하(4px · radius 2px · --muted 트랙 위 --primary 채움)는 커뮤니티 페이지의 원본에서,
-   움직임은 지도의 `.view-busy` 에서 가져왔다. 앱 안에서 "바쁨"이 두 모양으로 읽히지
-   않게 하려는 것이고, 그래서 `busySweep` 키프레임을 새로 만들지 않고 그것을 그대로
-   쓴다(정의는 같은 파일 아래쪽 `.view-busy` 옆 — CSS 키프레임은 선언 순서와 무관하다). */
+/* 진행 표시 — 공유 시트의 기다림과 스페이스로 보내기의 노드·연결·문서 셋이 쓴다. 모양과
+   움직임은 로딩 모션의 track 이다(vinc-loaders.css, 근거 [[vinc.design.loading-motions]]).
+   개수를 모를 때는 머리가 왕복하고, 셀 단계가 있는 보내기만 수치를 싣는다(sheets.ts
+   `mountGauges`). 여기 남은 것은 시트 안의 간격뿐이다. */
 .sheet-progress { margin-bottom: var(--space-3, .75rem); }
 .sheet-progress > p { margin: 0 0 .55rem; }
-.sheet-progress-track {
-  height: 4px; border-radius: 2px; overflow: hidden;
-  background: hsl(var(--muted));
-}
-/* 40% 폭은 임의값이 아니다 — `busySweep` 이 -100% → 350% 로 미는 값이 그 폭을 전제로
-   오른쪽 끝 밖까지 나가도록 맞춰져 있다. 폭을 바꾸면 키프레임도 함께 바꿔야 한다. */
-.sheet-progress-track > span {
-  display: block; height: 100%; width: 40%; border-radius: 2px;
-  background: hsl(var(--primary));
-  animation: busySweep 1s linear infinite;
-}
-/* 다크에서만 채움을 --ring 으로 바꾼다. **취향이 아니라 실측이다** — 채움 대 트랙의
-   대비를 두 모드에서 재 보면 어느 한 토큰도 양쪽을 통과하지 못한다(WCAG 1.4.11 은
-   비텍스트 3:1):
-     라이트  --primary/--muted 9.58:1 통과 · --ring/--muted 2.24:1 미달
-     다크    --primary/--muted 1.87:1 미달 · --ring/--muted 6.74:1 통과
-   원본(공홈 커뮤니티)은 두 모드 다 --primary 라 다크에서 막대가 트랙에 잠긴다.
-   모양은 옮겨 오되 그 결함은 옮겨 오지 않는다. --ring 을 고른 것은 지도의
-   `.view-busy` 가 이미 쓰는 색이라 "바쁨"의 색이 앱 안에서 하나로 남기 때문이다. */
-[data-theme="dark"] .sheet-progress-track > span { background: hsl(var(--ring)); }
-/* 모션을 줄인 환경에서는 움직이지 않는다. 채운 막대만으로는 "얼마나"를 말할 수 없지만
-   애초에 말할 것이 없으므로 손해가 없다 — "무엇을 기다리는지"는 위의 문구가 진다. */
-@media (prefers-reduced-motion: reduce) {
-  .sheet-progress-track > span { animation: none; width: 100%; opacity: .5; }
-}
-/* 확정 막대 — 스페이스로 보내기의 노드·연결·문서 셋(sheets.ts `mountGauges`). 셀 단계가
-   실제로 있는 유일한 자리다. 폭은 스크립트가 인라인으로 주고, 위 불확정 규칙(움직임 ·
-   40% · 감소 모션의 반투명)을 선택자 우선순위로 덮는다. */
 .sheet-gauge { margin-top: var(--space-2, .5rem); }
-.sheet-gauge > p {
-  display: flex; justify-content: space-between; gap: .5rem;
-  margin: 0 0 .3rem; font-variant-numeric: tabular-nums;
-}
-.sheet-progress-track.is-determinate > span {
-  width: 0; opacity: 1; animation: none;
-  transition: width .2s ease-out;
-}
-@media (prefers-reduced-motion: reduce) {
-  .sheet-progress-track.is-determinate > span { transition: none; }
-}
 
 /* Command palette / cheatsheet overlay */
 #palette {

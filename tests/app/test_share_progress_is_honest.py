@@ -53,6 +53,8 @@ ROOT = Path(__file__).resolve().parents[2]
 SHEETS = ROOT / "app" / "src" / "sheets.ts"
 TOOLS = ROOT / "app" / "src" / "tools.ts"
 COMPONENTS = ROOT / "app" / "src" / "components.ts"
+#: 진행 막대의 마크업은 로딩 모션 모듈(디자인 허브 사본)이 그린다. `sheetProgress` 는 그것을 부른다.
+LOADERS = ROOT / "app" / "src" / "vinc-loaders.js"
 
 #: 기다림을 알리는 카피가 걸리는 모양. `.loading` 이 들어 있는 것은 `common.loading`
 #: 뿐 아니라 **수를 세는 척하던** `packs.loading(n)` 도 잡기 위해서다.
@@ -77,6 +79,23 @@ def _code_only(src: str) -> str:
     src = re.sub(r"/\*.*?\*/", " ", src, flags=re.S)
     out = [l for l in src.splitlines() if not l.lstrip().startswith("//")]
     return chr(10).join(out)
+
+
+def _progress_markup(components: str) -> str:
+    """`sheetProgress` 가 그리는 마크업의 원문. 로딩 모션의 `loaderTrack` 에 맡겼으면
+    **개수 없이**(label 하나만) 부르는지 보고 그 함수의 원문을 돌려준다. 개수 없이 부른
+    track 은 `aria-valuenow` 를 싣지 않는다(total 이 있을 때만 싣는 분기를 지운 원문)."""
+    body = components[components.index("export function sheetProgress"):]
+    body = body[: body.index(chr(10) + "}")]
+    if "loaderTrack(" not in body:
+        return body
+    call = body[body.index("loaderTrack("):]
+    call = call[: call.index(")") + 1]
+    assert call == "loaderTrack(label)", f"sheetProgress 가 개수를 실어 track 을 부른다: {call}"
+    src = LOADERS.read_text(encoding="utf-8")
+    fn = src[src.index("export function loaderTrack"):]
+    fn = fn[: fn.index(chr(10) + "}")]
+    return fn.replace('${total ? ` aria-valuenow="${done}"` : ""}', "")
 
 
 class ShareProgressTests(unittest.TestCase):
@@ -169,8 +188,7 @@ class ShareProgressTests(unittest.TestCase):
         self.assertNotIn("res.out", code, "응답에 없는 키를 읽고 있다")
 
     def test_게이지가_퍼센트를_지어내지_않는다(self):
-        body = self.components[self.components.index("export function sheetProgress"):]
-        body = body[: body.index(chr(10) + "}")]
+        body = _progress_markup(self.components)
         self.assertIn('role="progressbar"', body, "진행 표시가 progressbar 가 아니다")
         self.assertNotIn("aria-valuenow", body,
                          "단계가 없는데 퍼센트를 실었다 — 진행을 보여주는 척하는 것이다")
@@ -191,8 +209,7 @@ class ShareProgressTests(unittest.TestCase):
         라벨 중복도 같이 막는다. 보이는 `<p>` 와 `aria-label` 로 두 번 실으면 두 번
         읽힌다 — 가리키는 것(`aria-labelledby`)은 한 번이다.
         """
-        body = self.components[self.components.index("export function sheetProgress"):]
-        body = body[: body.index(chr(10) + "}")]
+        body = _progress_markup(self.components)
         self.assertNotIn(
             'role="status"', body,
             "삽입되는 마크업에 라이브 영역을 달았다 — 관찰 대상이 없어 알리지 못한다")
@@ -216,23 +233,19 @@ class ShareProgressTests(unittest.TestCase):
             "전체 백업의 상주 자리에 라이브 영역이 없다")
 
     def test_불확정_막대가_토큰과_모션_설정을_지킨다(self):
-        css = (ROOT / "app" / "src" / "app.css").read_text(encoding="utf-8")
-        self.assertIn(".sheet-progress-track", css, "진행 막대 규칙이 없다")
-        block = css[css.index(".sheet-progress {"):]
-        block = block[: block.index("\n/* Command palette")] if "\n/* Command palette" in block else block[:1200]
-        self.assertIn("hsl(var(--primary))", block, "채움이 토큰에서 오지 않는다")
-        self.assertIn("hsl(var(--muted))", block, "트랙이 토큰에서 오지 않는다")
-        self.assertIn("prefers-reduced-motion: reduce", block,
+        """막대는 로딩 모션의 track 이다(design-hub/assets/motion 사본). 색은 토큰에서만 오고,
+        모션을 줄인 환경에서는 왕복을 멈춘다. 채움은 --foreground, 트랙은 --border 라 두 모드
+        모두 비텍스트 대비 3:1 을 넉넉히 넘는다(예전 --primary/--muted 막대는 다크에서 1.87:1
+        이라 --ring 분기가 따로 있었다)."""
+        css = (ROOT / "app" / "src" / "vinc-loaders.css").read_text(encoding="utf-8")
+        app = (ROOT / "app" / "src" / "app.css").read_text(encoding="utf-8")
+        self.assertIn('@import "./vinc-loaders.css";', app, "앱이 로딩 모션 스타일을 읽지 않는다")
+        self.assertIn("hsl(var(--foreground", css, "채움이 토큰에서 오지 않는다")
+        self.assertIn("hsl(var(--border", css, "트랙이 토큰에서 오지 않는다")
+        self.assertIn(".vl-track.vl-indef .head", css, "개수를 모를 때의 움직임이 없다")
+        reduce = css[css.index("@media (prefers-reduced-motion: reduce)"):]
+        self.assertIn("animation: none", reduce,
                       "모션을 줄인 환경에서 무한 애니메이션이 그대로 돈다")
-        self.assertIn("busySweep", block,
-                      "지도의 바쁨 표시와 다른 움직임을 새로 만들었다")
-        self.assertIn("@keyframes busySweep", css, "쓰는 키프레임이 정의돼 있지 않다")
-        # 다크 채움. 실측(브라우저 계산색 → WCAG 대비): 라이트는 --primary 가 트랙 대비
-        # 9.58:1 로 통과하지만 다크에서는 1.87:1 로 미달이고, --ring 은 정확히 반대다
-        # (라이트 2.24 · 다크 6.74). 어느 한 토큰도 두 모드를 다 통과하지 못하므로
-        # 다크 분기가 없으면 막대가 트랙에 잠긴다 — 참조 원본이 그 상태다.
-        self.assertIn('[data-theme="dark"] .sheet-progress-track > span', css,
-                      "다크에서 채움이 트랙에 잠긴다(WCAG 1.4.11 3:1 미달)")
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import { stateDot } from "./icons";
 import { COPY } from "./copy";
 import { temporalEntries } from "./search-temporal";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
+import { loaderTrack } from "./vinc-loaders.js";
 
 /** ── 바깥 클릭으로 닫기 ────────────────────────────────────────────────────
  *
@@ -249,29 +250,13 @@ export function openSheet(opts: {
  * `aria-label` 에 같은 문구를 한 벌 더 실어 두 번 읽혔다. `aria-valuenow` 는 없다.
  * 그것이 불확정의 정의다.
  *
- * 옮겨 온 것은 **모양**이다(4px · radius 2px · `--muted` 트랙 위 `--primary` 채움).
- * 움직임은 지도의 `.view-busy` 에서 가져왔다 — 앱 안에서 "바쁨"이 두 가지 모양으로
- * 읽히지 않게. 색·간격은 토큰에서만 온다(하드코딩 색은 표면 게이트가 막는다).
- *
- * ⚠ **id 는 호출마다 새로 만든다.** 전에는 고정이었고 "두 벌이 동시에 설 수 없다"고
- * 적어 두었는데 거짓이었다 — `openSheet` 의 `close()` 는 퇴장 애니메이션을 **기다린
- * 뒤에** 시트를 지우므로(위 `close`), 닫히는 중인 시트가 아직 DOM 에 있는 채로 다음
- * 시트가 선다. 실제 경로가 있다: 전체 백업이 도는 동안 `공유 시작`을 누르면
- * `sheet.close()` 직후 `openShareSheet` 가 곧바로 자기 막대를 세운다. 그러면 id 가
- * 겹치고 `aria-labelledby` 는 **문서 순서상 앞의 것**, 즉 사라지는 중인 시트의 라벨을
- * 가리킨다. 겹침을 막는 것보다 이름을 안 겹치게 하는 쪽이 짧다. */
-let progressSeq = 0;
+ * 모양은 로딩 모션의 track 이다(design-hub/assets/motion, 근거 [[vinc.design.loading-motions]]).
+ * 개수를 모르니 머리가 선 위를 왕복한다. 라벨 id 는 그 모듈이 호출마다 새로 만든다 —
+ * 닫히는 중인 시트와 새 시트가 잠깐 함께 DOM 에 서므로 id 가 겹치면 안 된다. */
 
 export function sheetProgress(label: string): string {
-  const id = `sheet-progress-label-${++progressSeq}`;
-  return `
-    <div class="sheet-progress">
-      <p class="hint" id="${id}">${esc(label)}</p>
-      <div class="sheet-progress-track" role="progressbar"
-           aria-labelledby="${id}">
-        <span></span>
-      </div>
-    </div>`;
+  // 개수를 모르는 동안의 진행(로딩 모션 track, 머리가 왕복한다). 라벨은 track 이 같이 그린다.
+  return `<div class="sheet-progress">${loaderTrack(label)}</div>`;
 }
 
 /** 시트 발의 액션 행 — 주 액션은 언제나 오른쪽 끝. 순서가 시트마다 다르면

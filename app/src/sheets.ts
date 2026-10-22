@@ -9,6 +9,7 @@ import { COPY } from "./copy";
 import { docTitle } from "./doc-title";
 import { dayOf } from "./view-prefs";
 import { esc, openSheet, sheetActions, sheetProgress } from "./components";
+import { loaderTrack, setTrack } from "./vinc-loaders.js";
 
 /**
  * 팩 사양 표 — 나가는 것의 수치.
@@ -285,25 +286,17 @@ function mountGauges(host: HTMLElement, label: string): (p: PackProgress) => voi
   host.innerHTML = `
     <div class="sheet-progress">
       <p class="hint">${esc(label)}</p>
-      ${STAGES.map((k) => `
-        <div class="sheet-gauge" data-stage="${k}">
-          <p class="hint"><span>${esc(names[k])}</span><span data-n></span></p>
-          <div class="sheet-progress-track is-determinate" role="progressbar"
-               aria-label="${esc(names[k])}" aria-valuemin="0"><span></span></div>
-        </div>`).join("")}
+      ${STAGES.map((k) => `<div class="sheet-gauge" data-stage="${k}">${loaderTrack(names[k])}</div>`).join("")}
     </div>`;
   return (p) => {
     for (const k of STAGES) {
       const row = host.querySelector<HTMLElement>(`[data-stage="${k}"]`);
       if (!row) return;   // 담던 자리가 다른 내용으로 바뀌었다
       const total = p.total[k], done = p.done[k];
-      row.querySelector("[data-n]")!.textContent = U.gaugeCount(done, total);
-      const bar = row.querySelector<HTMLElement>("[role=progressbar]")!;
-      bar.setAttribute("aria-valuemax", String(total));
-      bar.setAttribute("aria-valuenow", String(done));
-      bar.querySelector("span")!.style.width = `${total ? Math.round((done / total) * 100) : 0}%`;
+      setTrack(row, done, total, U.gaugeCount(done, total));
     }
   };
+
 }
 
 /** 시트를 닫은 뒤의 자리 — 화면 아래 알림 한 줄. 끝나면 결과와 닫기 버튼을 단다. */

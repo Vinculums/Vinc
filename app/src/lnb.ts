@@ -7,6 +7,7 @@ import { applyDefaults, foldsOwnRows, ownKey } from "./lnb-tree";
 import type { ThemeMode } from "./theme";
 import { tintMap } from "./view-tint";
 import { esc } from "./components";
+import { loaderRows } from "./vinc-loaders.js";
 
 /** 좌측 문서 트리 (DEC D69) — 셸의 LNB 한 장.
  *
@@ -576,7 +577,7 @@ function paint() {
   if (!body) return;
   if (loading && !tree) {
     paintHead();
-    body.innerHTML = `<p class="lnb-none hint">${esc(COPY.ui.lnb.loading)}</p>`;
+    body.innerHTML = loaderRows(COPY.ui.lnb.loading, { count: 5, compact: true });
     return;
   }
   if (failed) {

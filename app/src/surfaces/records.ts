@@ -7,6 +7,7 @@ import { openDocSheet } from "../doc-editor";
 import { viewHooks } from "../topbar";
 import { esc } from "../components";
 import { dayOf } from "../view-prefs";
+import { loaderRows } from "../vinc-loaders.js";
 
 /** 모든 문서 — **주제 → 문서** 2단(D66).
  *
@@ -44,7 +45,7 @@ function docMeta(d: Doc): string {
 }
 
 export async function renderBrowse(body: HTMLElement, opts: BrowseOpts = {}) {
-  body.innerHTML = `<div class="hint">${COPY.ui.common.loading}</div>`;
+  body.innerHTML = loaderRows(COPY.ui.common.loading, { count: 6 });
   let docs: Doc[] = [];
   let topic: string | null = null;   // null = 주제 층, 문자열 = 그 주제의 문서 층
   let q = "";
