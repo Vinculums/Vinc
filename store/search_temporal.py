@@ -92,13 +92,31 @@ def metadata(row, *, now=None, scope=None):
     return out
 
 
+#: `stamp` 이 행에 평평하게 한 번 더 채우는 시간 칸. 같은 이름이 `temporal{}` 안에도 있다.
+FLAT = FIELDS + ("validity",)
+
+
 def stamp(row, source=None, **kw):
     row["temporal"] = metadata(source if source is not None else row, **kw)
     # Keep legacy detail strings and fill only absent search fields.
+    # 공개 검색의 요약 응답은 이 사본을 걷는다(:func:`drop_flat`).
     for key in FIELDS:
         row.setdefault(key, row["temporal"][key])
     row.setdefault("validity", row["temporal"]["validity"])
     return row
+
+
+def drop_flat(result):
+    """검색 응답의 `rows`·`node_hits` 에서 평평한 시간 칸(:data:`FLAT`)을 걷는다.
+
+    `temporal{}` 이 있는 행만 걷으므로 시간 메타의 하나뿐인 사본은 지우지 않는다. 행의 수와
+    순서, 다른 키는 그대로다. 결과 dict 를 제자리에서 고치고 돌려준다."""
+    for key in ("rows", "node_hits"):
+        for row in result.get(key) or []:
+            if isinstance(row, dict) and isinstance(row.get("temporal"), dict):
+                for field in FLAT:
+                    row.pop(field, None)
+    return result
 
 
 def mode_scope(mode, historical, as_of, query):
