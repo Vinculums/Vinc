@@ -19,7 +19,7 @@ READ_ACTIONS = ("agent_detail", "agent_export", "agent_take_preview", "agent_tak
 ACTIONS = (
     "page_save", "page_revert", "talk_create", "talk_comment", "lounge_create",
     "lounge_comment", "react", "report", "moderate", "appoint_operator", "resolve_report",
-    "social_edit", "community_join", "community_leave", "community_create",
+    "social_edit", "community_join", "community_leave", "community_create", "community_edit",
     "share_create", "share_version", "share_withdraw", "share_moderate", "pack_share", "agent_take",
 )
 
