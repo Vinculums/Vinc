@@ -8,7 +8,8 @@
   "note": "Machine dump. Never patch it by hand: re-run the dump. A hand-patched inventory makes the gate agree with a file instead of with Figma.",
   "site_screens_note": "11 · Site Screens boards are html-to-design captures named Site · <Route>[ · <state>] / dark; children are not recorded because the site axis compares board names with the capture manifest.",
   "app_boards_note": "04/05/06 boards are html-to-design captures of the running app named App · <Surface>[ · <state>] / <theme>; children are not recorded.",
-  "partial_note": "2026-09-10: pages 01/02/04/05/06 re-dumped after the shell-chrome batch; 08/10/11/12 carried over from 2026-09-07 (untouched, and the site repo was not checked out)."
+  "partial_note": "2026-09-10: pages 01/02/04/05/06 re-dumped after the shell-chrome batch; 08/10/11/12 carried over from 2026-09-07 (untouched, and the site repo was not checked out).",
+  "refreshed": "2026-10-22: 01 components, 04, 05 and 06 re-dumped with use_figma after the documents-first shell (Home boards added, 04 boards renamed to capture state ids). 02, 08, 10, 11 and 12 are still the 2026-09-10 export."
  },
  "pages": {
   "01 · Foundations": {
@@ -135,7 +136,13 @@
     "Icon / pack",
     "Icon / packin",
     "Icon / mcp",
-    "Icon / sidebar"
+    "Icon / sidebar",
+    "Icon / users",
+    "Icon / share",
+    "Icon / plus-circle",
+    "Icon / messages",
+    "Icon / doc",
+    "Icon / filter"
    ],
    "variants": {
     "Logo / Mark": [
@@ -310,20 +317,124 @@
    "name": "04 · Surfaces",
    "frames": [
     {
-     "name": "App · View · 3d / dark",
+     "name": "App · View",
      "children": []
+    },
+    {
+     "name": "App · Search",
+     "children": []
+    },
+    {
+     "name": "App · Home",
+     "children": []
+    },
+    {
+     "name": "App · Home · list / dark",
+     "children": [
+      "Body",
+      "Shell / LNB",
+      "Shell / Topbar"
+     ]
+    },
+    {
+     "name": "App · Home · doc / dark",
+     "children": [
+      "Body",
+      "Shell / Topbar"
+     ]
+    },
+    {
+     "name": "App · Home · new / dark",
+     "children": [
+      "Body",
+      "Shell / Topbar"
+     ]
+    },
+    {
+     "name": "App · Home · lnb-collapsed / dark",
+     "children": [
+      "Body",
+      "Shell / LNB",
+      "Shell / Topbar"
+     ]
+    },
+    {
+     "name": "App · Home · agent / dark",
+     "children": [
+      "Body",
+      "Shell / LNB",
+      "Shell / Topbar"
+     ]
+    },
+    {
+     "name": "App · View · 3d / dark",
+     "children": [
+      "Body",
+      "Shell / LNB",
+      "Shell / Topbar"
+     ]
+    },
+    {
+     "name": "App · View · time-branches · lens / dark",
+     "children": [
+      "Body",
+      "Main Content",
+      "Container",
+      "Container",
+      "Container",
+      "Shell / LNB",
+      "Shell / Topbar"
+     ]
+    },
+    {
+     "name": "App · Home · search-expanded / dark",
+     "children": [
+      "Body",
+      "Shell / LNB",
+      "Shell / Topbar"
+     ]
     },
     {
      "name": "App · View · 2d / dark",
-     "children": []
+     "children": [
+      "Body"
+     ]
     },
     {
      "name": "App · View · timeline / dark",
-     "children": []
+     "children": [
+      "Body"
+     ]
+    },
+    {
+     "name": "App · View · reader / dark",
+     "children": [
+      "Body"
+     ]
+    },
+    {
+     "name": "App · Search · results / dark",
+     "children": [
+      "Body"
+     ]
     },
     {
      "name": "App · View · weave / dark",
-     "children": []
+     "children": [
+      "Body"
+     ]
+    },
+    {
+     "name": "App · View · node-detail / dark",
+     "children": [
+      "Body"
+     ]
+    },
+    {
+     "name": "App · Search / dark",
+     "children": [
+      "Body"
+     ]
     },
     {
      "name": "App · View · topic-scope / dark",
@@ -334,47 +445,11 @@
      "children": []
     },
     {
-     "name": "App · View · reader / dark",
-     "children": []
-    },
-    {
-     "name": "App · View · node-detail / dark",
-     "children": []
-    },
-    {
      "name": "App · View · edge-detail / dark",
      "children": []
     },
     {
-     "name": "App · Search / dark",
-     "children": []
-    },
-    {
-     "name": "App · Search · results / dark",
-     "children": []
-    },
-    {
-     "name": "App · Packs / dark",
-     "children": [
-      "Shell / Titlebar",
-      "Container",
-      "Interaction map"
-     ]
-    },
-    {
-     "name": "App · View",
-     "children": []
-    },
-    {
-     "name": "App · Search",
-     "children": []
-    },
-    {
-     "name": "App · Packs",
-     "children": []
-    },
-    {
-     "name": "App · View · lnb-nodes / dark",
+     "name": "App · Home · topic / dark",
      "children": []
     }
    ],
@@ -582,7 +657,6 @@
       "Overlay / Sheet · Tools",
       "Overlay / Sheet · All documents",
       "Overlay / Command palette",
-      "Overlay / Sheet · Share as a pack",
       "Overlay / Sheet · Import a pack",
       "Overlay / Sheet · Import a document",
       "Overlay / Sheet · GRAPH.md",
@@ -591,8 +665,109 @@
       "Overlay / Sheet · Past questions",
       "Overlay / Sheet · Keyboard",
       "Overlay / Prompt · Text",
-      "Overlay / Confirm · Destructive"
+      "Overlay / Confirm · Destructive",
+      "Overlay / Sheet · Share as a pack"
      ]
+    },
+    {
+     "name": "Settings surface",
+     "children": [
+      "Settings header",
+      "Divider",
+      "Settings columns"
+     ]
+    },
+    {
+     "name": "Settings surface",
+     "children": [
+      "Settings header",
+      "Divider",
+      "Settings columns"
+     ]
+    },
+    {
+     "name": "Settings surface",
+     "children": [
+      "Settings header",
+      "Divider",
+      "Settings columns"
+     ]
+    },
+    {
+     "name": "Settings surface",
+     "children": [
+      "Settings header",
+      "Divider",
+      "Settings columns"
+     ]
+    },
+    {
+     "name": "Settings surface",
+     "children": [
+      "Settings header",
+      "Divider",
+      "Settings columns"
+     ]
+    },
+    {
+     "name": "Settings surface",
+     "children": [
+      "Settings header",
+      "Divider",
+      "Settings columns"
+     ]
+    },
+    {
+     "name": "Settings surface",
+     "children": [
+      "Settings header",
+      "Divider",
+      "Settings columns"
+     ]
+    },
+    {
+     "name": "Settings surface",
+     "children": [
+      "Settings header",
+      "Divider",
+      "Settings columns"
+     ]
+    },
+    {
+     "name": "Settings surface",
+     "children": [
+      "Settings header",
+      "Divider",
+      "Settings columns"
+     ]
+    },
+    {
+     "name": "Settings surface",
+     "children": [
+      "Settings header",
+      "Divider",
+      "Settings columns"
+     ]
+    },
+    {
+     "name": "Settings surface · Data",
+     "children": [
+      "Settings header",
+      "Divider",
+      "Settings columns"
+     ]
+    },
+    {
+     "name": "Settings surface · GRAPH.md",
+     "children": [
+      "Settings header",
+      "Divider",
+      "Settings columns"
+     ]
+    },
+    {
+     "name": "App · Topbar · find-open / dark",
+     "children": []
     }
    ],
    "components": [
@@ -608,7 +783,6 @@
     "Overlay / Sheet · Tools",
     "Overlay / Sheet · All documents",
     "Overlay / Command palette",
-    "Overlay / Sheet · Share as a pack",
     "Overlay / Sheet · Import a pack",
     "Overlay / Sheet · Import a document",
     "Overlay / Sheet · GRAPH.md",
@@ -617,60 +791,10 @@
     "Overlay / Sheet · Past questions",
     "Overlay / Sheet · Keyboard",
     "Overlay / Prompt · Text",
-    "Overlay / Confirm · Destructive"
+    "Overlay / Confirm · Destructive",
+    "Overlay / Sheet · Share as a pack"
    ],
-   "variants": {
-    "Overlay / Settings": [
-     "Tab=Account",
-     "Tab=Connections",
-     "Tab=Data",
-     "Tab=Advanced"
-    ],
-    "Overlay / Float card": [
-     "State=Default",
-     "State=Links open",
-     "State=Ask menu"
-    ],
-    "Overlay / Context menu": [
-     "Kind=Node",
-     "Kind=Topic"
-    ],
-    "Overlay / Lens panel": [
-     "Viewpoint=3D, Tab=Options, Help=Off",
-     "Viewpoint=2D, Tab=Options, Help=Off",
-     "Viewpoint=Timeline, Tab=Options, Help=Off",
-     "Viewpoint=Weave, Tab=Options, Help=Off",
-     "Viewpoint=3D, Tab=Legend, Help=Off",
-     "Viewpoint=3D, Tab=Options, Help=On"
-    ],
-    "Overlay / Tooltip": [
-     "Kind=Short",
-     "Kind=Long"
-    ],
-    "Overlay / Search results": [
-     "State=Results",
-     "State=Empty",
-     "State=Loading",
-     "State=Error"
-    ],
-    "Overlay / Ask panel": [
-     "State=Answer",
-     "State=None"
-    ],
-    "Overlay / Sheet · Tools": [
-     "Tab=Create",
-     "Tab=Import",
-     "Tab=Share"
-    ],
-    "Overlay / Sheet · All documents": [
-     "Layer=Topics",
-     "Layer=Docs"
-    ],
-    "Overlay / Command palette": [
-     "State=Default",
-     "State=Filtered"
-    ]
-   }
+   "variants": {}
   },
   "06 · States": {
    "name": "06 · States",
@@ -760,6 +884,22 @@
     },
     {
      "name": "App · Packs · states",
+     "children": []
+    },
+    {
+     "name": "App · Home · states",
+     "children": []
+    },
+    {
+     "name": "App · Home · filter-empty / dark",
+     "children": []
+    },
+    {
+     "name": "App · Home · agent-empty / dark",
+     "children": []
+    },
+    {
+     "name": "App · Home · empty / dark",
      "children": []
     }
    ],

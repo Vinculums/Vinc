@@ -187,6 +187,8 @@ DIALOGS = {
     # 캔버스 위 노드 우클릭 메뉴는 캔버스 좌표가 필요해 아직 캡처하지 않았다(매트릭스의 갭).
     "surfaces/view.ts:openContextMenu": None,
     "surfaces/view.ts:confirmDestructive": "App · View · node-delete-confirm / dark",
+    # 문서 홈의 문서 지우기는 같은 파괴 확인(confirmDestructive)이다. 따로 찍은 보드는 없고 노드 지우기 보드가 그 모양이다.
+    "surfaces/home.ts:confirmDestructive": "App · View · node-delete-confirm / dark",
     # 작업하는 자리에서 만들기(Part 3). 옛 `new-node-sheet` 폼은 컴포저로 바뀌었다 — 옛 보드는
     # 폼 하나를 찍은 것이라 컴포저(종류 넷 · id 확인 · 연결)를 대표하지 못한다. 디자인 라운드
     # (A1)를 건너뛰고 구현했으므로 셋 다 **선언된 결손**이다.
@@ -207,7 +209,7 @@ DIALOGS = {
 #: 아니라 **표면×상태**다. 앱 쪽은 상태가 프레임 이름 자체에 들어 있어서(예: `App ·
 #: Search · no results …`) 값이 최상위 프레임 이름이거나 상태 보드의 자식 이름이다.
 APP_MANIFEST = HUB / "reports" / "captures" / "app" / "manifest.json"
-APP_SURFACE_TITLES = {"view": "View", "topbar": "Topbar", "search": "Search", "packs": "Packs"}
+APP_SURFACE_TITLES = {"home": "Home", "view": "View", "topbar": "Topbar", "search": "Search", "packs": "Packs"}
 
 
 def app_board_name(state_id: str) -> str:
