@@ -86,15 +86,17 @@ export function spatialLayout(nodes: GraphNode[], edges: GraphEdge[], topics: Sp
   const centres: { y: number; z: number }[] = [{ y: 0, z: 0 }];
   let inner = 0, innerReach = reach[0] ?? 0;
   for (let i = 1; i < cells.length;) {
-    // 고리 반지름은 안쪽 고리와 이 고리의 가장 큰 칸이 닿지 않는 만큼. 둘레가 모자라면 칸을
-    // 더 받지 않는다(첫 칸은 늘 받는다). 6R 은 둘레 2πR 보다 작게 잡은 수용량이라 이웃 사이
-    // 현의 길이도 호만큼 남는다.
+    // 고리 반지름은 안쪽 고리와 이 고리의 가장 큰 칸이 닿지 않는 만큼이고, 둘레가 모자라면
+    // 그만큼 넓힌다. 넓힌 반지름이 바깥에 새 고리를 여는 자리를 넘으면 칸을 더 받지 않는다
+    // (첫 칸은 늘 받는다). 그래서 주제가 적으면 고리 하나에 다 서고, 칸 하나만 혼자 바깥으로
+    // 밀려나지 않는다.
     const ring: number[] = [];
     let widest = 0, used = 0, radius = 0;
     for (; i < cells.length; i++) {
       const w = Math.max(widest, reach[i]);
-      const r = inner + (innerReach + w) / 2 + gap;
-      if (ring.length && used + reach[i] + gap > 6 * r) break;
+      const least = inner + (innerReach + w) / 2 + gap;
+      const r = Math.max(least, (used + reach[i] + gap) / (2 * Math.PI));
+      if (ring.length && r > least + w + gap) break;
       ring.push(i); widest = w; used += reach[i] + gap; radius = r;
     }
     // 고리 안의 자리는 받은 순서가 아니라 황금비 보폭으로 섞는다. 순서대로 돌리면 x 가 순서마다
