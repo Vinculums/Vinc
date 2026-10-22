@@ -40,6 +40,7 @@ const SCALE = 140;   // sidecar unit-circle coords → scene units
  *   ② 입자는 source→target 으로만 흐른다. 그래서 **방향 3종에만** 단다 —
  *      무방향(RELATED_TO·CONNECTS)에 달면 없는 방향을 있다고 말하게 된다. */
 const ALPHA0 = "00";                      // #RRGGBB + 알파 → tinycolor 가 8자리 hex 로 읽는다
+const FAINT_ALPHA = "47";                  // `L3.faint` 선의 평소 농도(약 28%)
 const PARTICLES_PER_LINK = 2;
 const PARTICLE_SPEED = 0.006;             // 링크 길이 대비 프레임당 이동분
 const PARTICLE_WIDTH = 1.1;
@@ -91,7 +92,9 @@ export type N3 = {
 // `confidence`(E-G6, 0~1)는 백엔드가 이미 엣지에 싣고 GraphEdge 로 앱까지 온다.
 export type L3 = { source: string; target: string; type?: string; cross?: boolean;
   id?: string; confidence?: number; evidence?: string; role?: string;
-  route?: ViewRoute; presentation?: boolean };
+  route?: ViewRoute; presentation?: boolean;
+  /** 평소에 옅게 그린다(짚은 노드의 선이 되면 다른 선과 같이 밝아진다). 데스크톱은 싣지 않는다. */
+  faint?: boolean };
 
 // 재질의 이력: D77(2026-08-03)이 노드의 유리를 은퇴시켰고, 2026-08-15 에 반무광 MeshPhysical 로
 // 돌아왔고, 2026-09-26 에 히어로와 같은 유광 유리가 됐다(아래 GLASS). D37 Liquid Glass 는
@@ -1106,6 +1109,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     // 쓰지 않던 낭비의 정확한 지점이다. 임계는 3단 램프에 맞춘 균등 분할이다.
     // 미기입(0.0)은 램프를 타지 않고 기존 크로스/기본 잉크로 떨어진다(하위호환 —
     // 증거를 저작하지 않은 그래프의 화면은 예전과 똑같다).
+    if (l.faint) return (l.cross ? pal.link.cross : pal.link.base) + FAINT_ALPHA;
     const cf = l.confidence || 0;
     if (cf > 0) return cf >= 0.67 ? pal.link.heavy : cf >= 0.34 ? pal.link.mid : pal.link.base;
     return l.cross ? pal.link.cross : pal.link.base;
