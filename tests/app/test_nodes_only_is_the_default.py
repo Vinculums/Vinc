@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Bring & Go 는 걷혔고, 기본 연결 모드는 노드만(`none`)이다. 크기·밀도 기본 0.7.
+"""Bring & Go 는 걷혔다. 크기·밀도 기본 0.7.
 
 정본: [[decision:bring-and-go-is-retired-and-nodes-only-is-the-default]].
+⚠ 그 결정의 "기본 연결 모드는 노드만(`none`)"은 2026-10-22 지시가 덮었다: 첫 그림은
+3D · 시간순 가지 · 선 상시 · 범례는 관계 선만이다
+([[decision:the-graph-opens-as-3d-time-branches-with-related-lines]]).
+`none` 은 여전히 고를 수 있는 값이다.
 
 앱에는 JS 테스트 러너가 없어 소스를 대조한다(`test_view_url.py` 와 같은 자리).
 여기서 고정하는 것:
-  ① 선택지에 `bring` 이 없고 `none` 이 있으며 기본이다.
+  ① 선택지에 `bring` 이 없고 `none` 이 있다. 기본은 첫 그림(상시 · 관계 선만)이다.
   ② 기본 크기 배율과 밀도(`cone`)가 0.7 이다.
   ③ 옛 기본(1)을 값으로 든 저장값은 판(`pv`)이 없으면 새 기본으로 읽는다 —
      저장이 늘 객체 통째라 손대지 않은 사람도 옛 기본을 들고 있다.
@@ -39,7 +43,9 @@ class Prefs(unittest.TestCase):
     def test_기본값(self):
         d = self.src[self.src.index("const DEFAULTS: ViewPrefs = {"):]
         d = d[:d.index("};")]
-        self.assertRegex(d, r'edges: "none"')
+        self.assertRegex(d, r'edges: "always"')
+        self.assertRegex(d, r'layout: "temporalRoots"')
+        self.assertRegex(d, r'edgeOff: \["directed", "cross", "bridge"\]')
         self.assertRegex(d, r"nodeScale: 0\.7")
         self.assertRegex(d, r"cone: 0\.7")
 

@@ -3,14 +3,16 @@ import { COPY } from "./copy";
 import { partitionSearchResults } from "./search-relevance";
 import { docTitle } from "./doc-title";
 import { icon } from "./icons";
-import { esc, armsNotice, type ArmsNotice, searchTemporalText } from "./components";
+import { esc, armsNotice, type ArmsNotice } from "./components";
+import { dayOf } from "./view-prefs";
 import { renderSearchError } from "./search-error";
 
-/** 상단 바 (DEC D56·D57) — 셸의 주된 크롬.
+/** 상단 바 (DEC D56·D57) — 내용 칸 오른쪽 위에 뜬 손잡이 묶음.
  *
- *  자리에 뜻이 있다: **왼쪽은 앱**(설정·도구·규칙), **오른쪽은 지도**(보기와 범례 ·
- *  관점 세그), 가운데는 상시 검색이다. 예전엔 둘이 오른쪽에 함께 몰려 있어 앱을
- *  다루는 일과 지도를 보는 방식을 고르는 일이 한 무리로 읽혔다.
+ *  두 줄이다: 위는 검색, 아래는 그래프 전환 + 보기 카드(관점 · 옵션 · 범례).
+ *  검색은 평소 알약 하나로 접혀 있고, 누르거나 ⌘/Ctrl K 를 치면 길게 펴진다 — 문서를
+ *  읽고 쓰는 면 위에 긴 입력창이 늘 떠 있을 이유가 없다.
+ *  근거: [[decision:the-desktop-shell-is-documents-first]]
  *  여기 살지 않는 것: 로고(타이틀바가 든다 — 웹에선 공홈 GNB),
  *  표면 목록과 주제·문서 목록(좌측 트리가 가져갔다 — D69),
  *  크럼(폐지 — "지금 어디"는 트리가 상시로 말한다), 지표(하단 상태 표시줄에 남는다).
@@ -128,10 +130,32 @@ function trackChromeTop() {
   apply();
 }
 
+/** 그래프 전환 버튼을 지금 표면에 맞춰 칠한다. 그래프(`#view…`)에 있으면 눌림이고
+ *  누르면 문서 홈으로, 아니면 그래프로 간다. 상태의 정본은 주소다(따로 저장하지 않는다). */
+function paintGraphToggle() {
+  const b = $("tb-graph");
+  if (!b) return;
+  const on = /^#view(\/|$)/.test(location.hash);
+  const tip = on ? COPY.ui.topbar.graphOffTip : COPY.ui.topbar.graphTip;
+  b.setAttribute("aria-pressed", String(on));
+  b.setAttribute("aria-label", tip);
+  b.setAttribute("data-tip", tip);
+  b.classList.toggle("on", on);
+}
+
 export function mountTopbar() {
   if (wired) return;
   wired = true;
   trackChromeTop();
+  const graphBtn = $("tb-graph");
+  if (graphBtn) {
+    graphBtn.innerHTML = `${icon("graph", 16)}<span class="tb-graph-name">${COPY.ui.topbar.graph}</span>`;
+    graphBtn.addEventListener("click", () => {
+      location.hash = /^#view(\/|$)/.test(location.hash) ? "#home" : "#view";
+    });
+    paintGraphToggle();
+    window.addEventListener("hashchange", paintGraphToggle);
+  }
   const qEl = $<HTMLInputElement>("tb-q");
   const boxEl = $("tb-results");
   const sicon = document.querySelector<HTMLElement>(".tb-sicon");
@@ -144,6 +168,42 @@ export function mountTopbar() {
   const modeMenu = $("tb-modemenu");
   const caret = document.querySelector<HTMLElement>(".tb-caret");
   const chatEl = $("tb-chat");
+  const findCard = $("tb-find");
+  const findOpen = $("tb-find-open");
+
+  // ── 접힌 알약 ↔ 펼친 검색 ────────────────────────────────────────────────
+  // 펼침은 카드의 `data-expanded` 하나가 말한다(CSS 가 그 하나만 본다). 접는 것은 초점이
+  // 카드 밖으로 나가고 대화 패널이 닫혀 있을 때다. 친 글자는 남는다 — 다시 펴면 그대로다.
+  const findLine = $("tb-line-find");
+  const expand = (focus = true) => {
+    // 펼친 검색은 열 폭 계산에서 빠진다(CSS). 접힌 알약이 차지하던 폭을 줄에 남겨 두어야
+    // 아래 그래프 줄이 펼치는 순간 좁아졌다가 접을 때 다시 넓어지는 흔들림이 없다.
+    if (findLine && findCard && !findCard.hasAttribute("data-expanded"))
+      findLine.style.minWidth = `${Math.round(findCard.getBoundingClientRect().width)}px`;
+    findCard?.setAttribute("data-expanded", "true");
+    findOpen?.setAttribute("aria-expanded", "true");
+    if (focus) { qEl.focus(); qEl.select(); }
+  };
+  const collapse = () => {
+    if (chatEl && !chatEl.hidden) return;          // 묻기 답을 읽는 중이다
+    findCard?.removeAttribute("data-expanded");
+    findOpen?.setAttribute("aria-expanded", "false");
+    findLine?.style.removeProperty("min-width");
+  };
+  if (findOpen) {
+    const fi = findOpen.querySelector<HTMLElement>(".tb-find-icon");
+    if (fi) fi.innerHTML = icon("search", 15);
+    const fl = $("tb-find-label");
+    if (fl) fl.textContent = COPY.ui.topbar.findOpen;
+    const fk = $("tb-find-kbd");
+    if (fk) fk.textContent = /mac/i.test(navigator.platform) ? "⌘K" : "Ctrl K";
+    findOpen.setAttribute("aria-label", COPY.ui.topbar.searchPh);
+    findOpen.setAttribute("aria-expanded", "false");
+    findOpen.addEventListener("click", () => expand());
+  }
+  findCard?.addEventListener("focusout", () => window.setTimeout(() => {
+    if (!findCard.contains(document.activeElement)) collapse();
+  }, 140));
 
   q.setAttribute("aria-label", COPY.ui.topbar.searchPh);
   if (caret) caret.innerHTML = icon("chevron-left", 12);
@@ -374,7 +434,13 @@ export function mountTopbar() {
       ]);
       if (mine !== seq) return false;            // 지나간 질의 — 버린다
       notice = armsNotice(res);
-      const dates = searchTemporalText;
+      // 드롭다운은 훑는 자리라 시간 정보는 **수정한 날 하나**만 싣는다. 유효구간·대체 관계까지
+      // 펼친 전체 줄은 Search 화면의 몫이다(searchTemporalText) — 여기 그대로 두면 결과 한 줄이
+      // 네 줄로 불어나 제목이 묻혔다.
+      const dates = (row: any): string => {
+        const day = dayOf(String(row?.updated_at || row?.temporal?.updated_at || ""));
+        return day ? COPY.ui.home.updated(day) : "";
+      };
       const exact: Hit[] = (docs?.docs || []).map((d) => ({
         temporal: dates(d), id: d.doc_id, docId: d.doc_id, title: docTitle(d.title), domain: "", mark: "≡", snippet: "",
       }));
@@ -427,7 +493,7 @@ export function mountTopbar() {
     if (e.key === "Escape") {
       close(); closeModeMenu();
       if (mode === "ask") void closeChat();
-      q.blur(); return;
+      q.blur(); collapse(); return;
     }
     if (e.key !== "Enter") return;
     e.preventDefault();
@@ -462,7 +528,6 @@ export function mountTopbar() {
   document.addEventListener("keydown", (e) => {
     if (!(e.key === "k" && (e.metaKey || e.ctrlKey))) return;
     e.preventDefault();
-    q.focus();
-    q.select();
+    expand();
   }, true);
 }

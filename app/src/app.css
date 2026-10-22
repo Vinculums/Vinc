@@ -194,15 +194,8 @@ body {
    까지 늘려 캔버스를 화면 밖으로 민다. 예방 규칙(현재 폭에서는 발현되지 않는다). */
 :root {
   --lnb-w: 14.5rem;
-  /* 종 레일 폭. ⚠ **라벨이 있어야 한다**는 것이 실측으로 드러났다(2026-09-08):
-     마크 어휘가 개념과 결정에 **같은 도형**(구)을 주므로(D35, viewpoints 마크 표)
-     20px 아이콘만으로는 그 두 줄을 구별할 수 없다. 새 도형을 지어내면 형태=타입이
-     깨지므로, 대신 표식 아래에 아주 작은 이름을 둔다. 4.25rem 은 "결정"·"Agent" 가
-     한 줄에 들어가는 폭이다.
-     ⚠ 이름이 `--rail-w` 가 아닌 이유: 그 이름은 **이미 쓰이고 있다**(아래 `#surface`
-     가 읽는 면 폭만큼 인캔버스 크롬을 비켜서게 하는 변수다). 같은 이름을 두 뜻으로
-     쓰면 한쪽을 고칠 때 다른 쪽이 조용히 따라 움직인다. */
-  --kind-rail-w: 4rem;
+  /* 접힌 LNB 띠의 폭 — 손잡이 하나(`--ctl-h`)와 카드 여백이 들어가는 폭. */
+  --lnb-mini-w: 3.25rem;
   /* 모션 토큰(--ease-* · --dur-*)은 여기 없다 — 디자인 허브 SSoT(design-tokens.json 의
      motion 그룹)가 tokens.desktop.css / tokens.web.css 로 내려 준다(2026-09-05). 큰 면(셸 열·
      문서 패널·상단 바 폭)은 --ease-drawer, 작은 응답(캐럿·누름·알약)은 --ease-out, 메뉴·카드
@@ -222,7 +215,9 @@ body {
   /* 지도 카드 위에 떠 있는 상단 바가 먹는 높이(바 + 위아래 여백). 지도 안에서
      위쪽에 서는 것들(읽는 면 · 인캔버스 크롬)이 이 값만큼 비켜선다 — 바 높이를
      바꾸는 날 비켜서는 쪽을 따로 고칠 일이 없어야 한다. */
-  --chrome-top: calc(var(--topbar-h) + var(--shell-gap) * 2);
+  /* 손잡이 묶음은 두 줄이다(검색 · 그래프와 보기) — 실측 전 기본값도 두 줄로 잡는다.
+     실제 값은 topbar.ts `trackChromeTop` 이 바의 바닥에서 다시 잰다. */
+  --chrome-top: calc(var(--topbar-h) * 2 + var(--shell-gap) * 2);
   /* 상단 바 높이. 여태 3.25rem 리터럴이 네 곳에 흩어져 있었고 그중 둘은 렌즈 패널의
      top 이었다 — 바의 기하가 바뀌면 패널이 바 아래에 안 붙는다(부유로 바꾸는 이번이
      정확히 그 경우다). 리터럴을 남기는 곳은 공홈 GNB 하나뿐이다(다른 표면의 높이다). */
@@ -240,7 +235,6 @@ body {
   --ctl-h: 2.25rem;        /* 36px — 아이콘 버튼 · 입력. 손이 짚는 최소 44px 은
                               누르는 영역이고(패딩이 낸다) 이것은 그린 크기다 */
   --row-h: 1.75rem;        /* 28px — 목록 한 줄(내비 · 절 제목 · 주제 · 문서) */
-  --rail-btn-h: 3rem;      /* 48px — 표식 + 이름 + 개수, 세 줄이 들어가는 높이 */
   --pad-card: var(--space-2, .5rem);   /* 8px — 카드 안쪽 여백 */
   --pad-row: var(--space-2, .5rem);    /* 8px — 줄의 좌우 여백 */
   --indent: var(--space-3, .75rem);    /* 12px — 계층 한 단 */
@@ -283,7 +277,7 @@ body {
   --surface-0: var(--background);
   --surface-1: var(--muted);
 }
-/* 셸은 종 레일 | 문서 트리 | 표면(지도)의 세 열이다.
+/* 셸은 LNB | 내용(문서 홈 또는 그래프)의 두 열이다(2026-10-22, 종 레일을 걷었다).
    문서 패널은 **열이 아니라 표면 위에 겹치는 글라스**다(2026-08-05 복귀) —
    열이었을 때는 패널을 넓히면 지도가 그만큼 줄어 "읽으려면 지도를 잃는" 거래가 됐다.
    겹치면 그 거래가 사라지고, 끝까지 끌어 화면을 다 덮는 것도 정당한 상태가 된다. */
@@ -298,7 +292,7 @@ body {
   /* 좁은 창에서 트리가 **서랍으로 뜨는** 좌표계(아래 미디어쿼리). 넓은 창에서는
      절대배치 자식이 없어 아무 일도 하지 않는다. */
   position: relative;
-  grid-template-columns: var(--kind-rail-w) var(--lnb-w) minmax(0, 1fr);
+  grid-template-columns: var(--lnb-w) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   /* 높이는 **보이는** 높이다(`dvh`). `vh` 는 폰 브라우저에서 주소창·아래 도구막대가
      숨었을 때의 높이라 보이는 면보다 길다 — 셸 바닥에 선 설정 단추가 도구막대 뒤로
@@ -316,160 +310,62 @@ body {
               column-gap var(--dur-panel) var(--ease-drawer);
 }
 #shell > * { min-width: 0; min-height: 0; }
-/* 상단 바는 **지도 위에만** 얹힌다(3열 1행, 2026-09-09). 예전에는 전폭
-   (`1 / -1`)이었다. 사이드바 둘은 천장까지 서고, 바에는 검색 카드와 보기 카드가
-   선다. 관점 세그는 트리에 갔다가 2026-09-26 보기 카드로 돌아왔다(index.html).
-   오른쪽 끝은 **지도 카드의 오른쪽 끝**이다(발주자 지시 2026-09-09: "gnb 길이
-   오른쪽 끝까지 해야지 검색바 길이를 늘려서"). 위아래 두 카드의 세로선이 맞는 것이
-   이 배치의 규율이고, 바를 일찍 끊으면 그 선이 깨진 채 오른쪽 위가 빈 판으로 남는다.
-   ⚠ 한때 `--gnb-tail` 로 검색바가 끝나던 지점에서 끊었다 — 철회됐다.
-   그리고 바는 지도와 **열을 나누지 않는다**(발주자 지시 2026-09-09: "view 와 gnb 가
-   나눠져 있는데 나누지 않고 gnb 가 view 위에 떠 있도록"). 같은 칸에 겹쳐 놓고 z 로
-   위에 세운다 — 그래서 지도가 천장까지 올라오고 바는 그 위에 뜬 층이 된다.
-   여백 한 칸을 둘러 두는 것이 "떠 있음"의 조건이다: 카드 모서리에 딱 붙이면 두
-   모서리가 겹쳐 바가 카드의 **일부**로 읽힌다. */
+/* 상단 바는 내용 칸(2열 1행) **위에 떠 있는 층**이다. 같은 칸에 겹쳐 놓고 z 로 위에
+   세운다 — 내용이 천장까지 올라오고 바는 그 위에 뜬다. 손잡이 묶음은 오른쪽 위에 두 줄로
+   서고(topbar.ts 머리말), 바 자신은 면을 갖지 않으며 빈 자리는 클릭을 통과시킨다
+   (`pointer-events`) — 문서를 고르거나 지도를 끄는 손이 바의 빈 띠에 막히지 않는다. */
 #topbar {
-  grid-column: 3; grid-row: 1;
+  grid-column: 2; grid-row: 1;
   margin: var(--shell-gap);
 }
-/* 접히면 폭 0 **그리고 간격 0** — 간격을 남기면 창 왼쪽에 셸 padding + 열 간격이
-   겹쳐 캔버스만 1rem 안쪽으로 들어간다(다른 세 변은 .5rem 이다). */
-/* 접힘은 **트리만** 접는다. 레일은 남는다 - 그것이 층 둘로 나눈 이유다:
-   자리를 되찾고 싶은 것은 목록이고, 종을 고르는 손잡이는 늘 손에 있어야 한다.
-   그래서 여기서 간격을 0 으로 만들지 않는다(레일과 캔버스 사이 여백은 유지). */
-/* 접힘은 **왼쪽 전체**다(레일 + 트리, 발주자 지시 2026-09-09).
-   ⚠ **격자의 열만 접는다 — 변수는 그대로 둔다**(발주자 지적 2026-09-09:
-   "사이드바로 닫는다고 gnb까지 닫히면 안 되지"). 여기서 `--lnb-w`·`--kind-rail-w`
-   를 0 으로 덮었더니 상단 바가 **셸의 자손**이라 그 값을 함께 물려받아, 그 두
-   변수를 폭으로 읽는 손잡이(`#tb-shell-toggle`)와 관점 세그(`#tb-viewpoints`)가
-   같이 폭 0 이 됐다 — 즉 다시 펼 손잡이 자체가 사라졌다.
-   열 폭을 직접 0 으로 적으면 접히는 것은 격자의 두 열뿐이고, 변수는 상단 바가
-   자기 규격으로 계속 읽는다. 간격도 0 이어야 한다: 남기면 창 왼쪽에 셸 padding +
-   열 간격이 겹쳐 캔버스만 1rem 안쪽으로 들어간다(다른 세 변은 .5rem 이다). */
-/* ⚠ 접히는 것은 **층 2(문서 트리)뿐이다.** 한때 레일까지 함께 접었는데(2026-09-09
-   오전 지시), 그 뒤 앱 손잡이 넷과 홈이 레일로 내려왔다 — 이제 레일을 접으면
-   범례·설정·도구·GRAPH.md 가 화면에서 사라지고 다시 펼 손잡이도 함께 없어진다.
-   층을 둘로 나눈 원래 이유가 이것이다: 자리를 되찾고 싶은 것은 목록이고, 앱을
-   다루는 손잡이는 늘 손에 있어야 한다. 그래서 레일은 상주다.
-   ⚠ 폭 0 인 열에도 열 간격은 두 번 붙는다(레일↔트리, 트리↔지도) — 접힌 상태에서
-   왼쪽 여백이 8 대신 16 이 되는 것이 그 값이며, 간격을 0 으로 만들면 레일과 지도가
-   맞붙으므로 그대로 둔다. */
-#shell[data-lnb="closed"] { grid-template-columns: var(--kind-rail-w) 0 minmax(0, 1fr); }
+/* 접으면 LNB 는 폭 0 이 아니라 **좁은 띠**다. 띠에는 다시 펼 손잡이가 맨 위에 남는다. */
+#shell[data-lnb="closed"] { grid-template-columns: var(--lnb-mini-w) minmax(0, 1fr); }
 @media (prefers-reduced-motion: reduce) { #shell { transition: none; } }
 
-/* ── 좌측 문서 트리 ─────────────────────────────────────────────────────── */
-/* 층 1 - 종 레일. 칠이 **판 색**이라 틀의 일부로 읽힌다: 카드로 만들면 나란히
-   뜬 카드가 셋이 되고, 그러면 어느 것이 목록이고 어느 것이 손잡이인지 형태가
-   말하지 않는다. 테두리만으로 자기 영역을 표시한다. */
-#lnb-rail {
-  grid-column: 1; grid-row: 1 / -1;      /* 천장까지 — 첫 칸이 손잡이 자리다 */
-  display: flex; flex-direction: column; align-items: center;
-  gap: var(--space-1, .25rem); overflow: hidden;
-  /* 트리 본문과 **같은 여백**이다. 그래서 두 층의 첫 줄이 같은 높이에서 시작한다 —
-     여태는 트리 쪽에 머리가 있어 중심선을 계산으로 맞춰야 했는데, 머리가 없어진
-     뒤에는 같은 값을 쓰는 것이 곧 정렬이다(계산이 필요 없어졌다). */
-  /* ⚠ 세로만 `--pad-card` 다. 가로는 절반인데, 그 8px 이 라벨의 것이기 때문이다:
-     테두리를 걷어낸 뒤에도 `Decisions 212` 가 46.0px 버튼에 46.1px 로 **0.1px 넘쳤다**
-     (실측 2026-09-09). 여백을 4px 로 내리면 버튼이 54px 이 되고 여유가 7.9px 남는다.
-     레일 폭(`--kind-rail-w`)을 키우지 않는 이유는 그쪽이 지도에서 뺏어 오기 때문이다.
-     세로를 건드리지 않는 이유는 위 주석의 계약이다 — 트리 본문과 같은 값이라
-     두 층의 첫 줄이 같은 높이에서 시작한다. */
-  padding: var(--pad-card) var(--space-1, .25rem);
-  align-items: stretch;
-  /* 트리와 **같은 층**이다(둘 다 구조 크롬). 여태 판과 같은 칠이라 테두리만 있고
-     면이 없어, 옆의 트리 카드와 다른 종류의 것으로 읽혔다 — 층은 같은데. */
-  background: hsl(var(--surface-2));
-  box-shadow: var(--shadow-elev-3);   /* 트리와 같은 단 — 층 모형의 "크롬 카드" */
-  justify-content: flex-start;
-  border: 1px solid hsl(var(--border));
-  border-radius: var(--radius);
+/* ── 좌측 LNB ─────────────────────────────────────────────────────────── */
+/* LNB 는 **한 장**이다(2026-10-22). 위에서부터: 맨 위 줄(홈 · Agent · 접기) · 머리
+   (주제 N +) · 트리(스크롤) · 바닥(설정). 층이 둘이던 시절의 종 레일은 걷었다.
+   접으면 `--lnb-mini-w` 폭의 띠가 되고, 띠에는 손잡이(맨 위) · 홈 · Agent · 설정이
+   아이콘으로 남는다 — 접는 것이 다시 펼 손잡이를 지우지 않는다.
+   근거: [[decision:the-desktop-shell-is-documents-first]] */
+.lnb-top {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: var(--space-1, .25rem);
+  padding: var(--pad-card) var(--pad-card) var(--space-2, .5rem);
+  border-bottom: 1px solid hsl(var(--border));
 }
+.lnb-nav { display: flex; align-items: center; gap: var(--space-1, .25rem); flex: 1 1 auto; min-width: 0; }
+.lnb-foot {
+  flex: 0 0 auto; margin-top: auto;
+  padding: var(--space-2, .5rem) var(--pad-card) var(--pad-card);
+  border-top: 1px solid hsl(var(--border));
+}
+/* 맨 위 줄 · 바닥의 버튼 한 벌. 표식 + 이름이 **한 줄**이고, 접힌 띠에서는 이름이 숨는다. */
 .rail-btn {
   position: relative; flex: 0 0 auto;
-  /* 폭은 **카드가 정한다**: 레일 폭에서 좌우 여백과 테두리를 뺀 값. 상수를 적어
-     두면 레일 폭을 바꾸는 날 버튼이 가운데를 벗어난다. */
-  width: auto; height: var(--rail-btn-h); padding: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: var(--space-1, .25rem);
-  /* 테두리는 없다 — 선택도 호버도 테두리를 안 쓴다(위 `[aria-pressed]` 주석).
-     투명 테두리로 자리만 잡아 두면 라벨이 쓸 폭을 2px 먹는데, 그 폭이 빠듯하다. */
+  display: inline-flex; align-items: center; gap: var(--space-2, .5rem);
+  height: var(--ctl-h); padding: 0 var(--space-3, .75rem) 0 var(--space-2, .5rem);
   border: none; border-radius: var(--radius-sm);
-  background: none; color: hsl(var(--foreground)); cursor: pointer;
-  font: inherit;
+  background: none; color: hsl(var(--muted-foreground)); cursor: pointer;
+  font: inherit; font-size: .8125rem; white-space: nowrap;
 }
-/* 이름 - 표식 아래 한 줄. 잉크는 캡션 톤이라 표식이 먼저 읽히고 이름이 확인해 준다
-   (반대가 되면 아이콘 레일이 아니라 글자 목록이 된다). */
-/* 이름과 개수가 **두 줄**이다. 한 줄로 이어 붙였더니 한국어에서만 맞았다 — 레일 폭이
-   2글자(`개념`)에 맞춰져 있었고, 영어는 이름만으로 44.1px(`Decisions`)라 개수가 붙는
-   순간 46.4px 버튼을 넘었다(실측 2026-09-09: `Concepts 1400` 68.3px = 21.8px 초과).
-   `nowrap` 에 overflow 가드가 없어 가운데 정렬 그대로 **양쪽이 잘렸다**.
-   ⚠ 개수를 절대배치 배지로 되돌리지 말 것 — 표식과 이름 사이에 떠서 어느 쪽 것인지
-   안 읽힌다(실측 2026-09-08). 이름 **바로 아래**면 그 문제가 없다.
-   두 줄로 바꿔도 여유는 6.1px 뿐이다. 이름이 더 길어지는 로케일이 오면 손댈 곳은
-   여기가 아니라 `--kind-rail-w` 다. */
-.rail-name {
-  font-size: .625rem; line-height: 1; letter-spacing: .01em;
-  color: hsl(var(--caption-foreground)); white-space: nowrap;
-  display: flex; flex-direction: column; align-items: center; gap: 1px;
-}
-.rail-btn[aria-pressed="true"] .rail-name {
-  color: hsl(var(--foreground)); font-weight: 600;
-}
-/* 홈 — 종이 아니라 **가는 곳**이다. 같은 크기·같은 모양을 쓰되(레일의 한 줄이므로)
-   링크라서 밑줄과 색을 눌러 준다. 구분선 아래부터가 종이다. */
-.rail-home { text-decoration: none; color: hsl(var(--muted-foreground)); }
-.rail-home.on { color: hsl(var(--foreground)); }
-.rail-home.on .rail-name { color: hsl(var(--foreground)); font-weight: 600; }
-.rail-home svg, .rail-dest svg { width: 18px; height: 18px; }
-.rail-btn:hover, .rail-home:hover { background: hsl(var(--muted-foreground) / .12); }
-/* 고른 종은 **글자로만** 말한다(발주자 지시 2026-09-09) — 홈이 이미 그렇게 하고
-   있어서 둘이 같은 언어가 된다(`.rail-home.on`).
-   한때 여기서 "올라온 면"(card 채움 + 테두리 + elev-1)을 그렸는데, 레일 자체가
-   `--surface-2`(= `--card`)로 올라가면서 그 채움이 **레일과 같은 색이 됐고** 테두리만
-   남아 그것이 유일한 표시가 됐다. 채움이 죽은 자리에 테두리만 남기는 것은 표시가
-   아니라 잔해다.
-   호버와 안 겹친다: 호버는 **채움**, 선택은 **글자 굵기와 색**이라 채널이 다르다. */
-.rail-btn:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
 .rail-btn svg { display: block; }
-/* 개수 - 표식 오른쪽 아래에 붙는다. 0 이면 아예 안 그린다(빈 종을 세우지 않는다는
-   규율과 같은 태도: 없는 것을 0 으로 말하면 그 줄이 계속 자리를 차지한다). */
-/* 개수는 이름과 **한 줄**이다. 절대배치로 모서리에 띄웠더니 표식과 이름 사이에
-   떠서 어느 쪽 것인지 안 읽혔다(실측 2026-09-08). 붙여 두면 "개념 18" 한 마디가 된다. */
+.rail-btn:hover { background: hsl(var(--muted-foreground) / .12); color: hsl(var(--foreground)); }
+.rail-btn:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+/* 고른 것은 **채움과 글자 굵기**로 말한다. 홈과 Agent 는 둘 중 하나가 늘 켜져 있다. */
+.rail-btn[aria-pressed="true"] {
+  background: hsl(var(--foreground) / .08); color: hsl(var(--foreground)); font-weight: 600;
+}
+.rail-name { line-height: 1; }
 .rail-n {
   font-family: var(--font-mono); font-weight: 400;
-  color: hsl(var(--caption-foreground)); margin-left: 0;
+  color: hsl(var(--caption-foreground));
 }
-.rail-btn[aria-pressed="true"] .rail-n { color: hsl(var(--muted-foreground)); }
-.rail-btn { position: relative; }
-/* 구분선은 **하나뿐이다**: 위는 가는 곳(홈·Agent), 아래는 고르는 것(종).
-   2026-09-21 scope-back 이 Agent 를 선 위로 올렸다. 선이 둘이면(내비/종 · 종/주제)
-   46px 레일에 캡션이 더 필요해지고, 그 값이 정보값보다 크다.
-   폭은 레일 안쪽 전체다 — 32px 짜리 토막은 나누는 선이 아니라 떠 있는 대시로 읽힌다. */
-.rail-sep {
-  width: 100%; height: 0; margin: var(--space-1, .25rem) 0; flex: 0 0 auto;
-  border: none; border-top: 1px solid hsl(var(--border));
-}
-/* 같은 표식을 쓰는 종 묶음(구 = 개념·결정, 정사면체 = 기록·사건·엔티티).
-   채움은 토큰만 쓴다. Figma 의 흰 5% 는 다크 전제라 라이트에서 뒤집힌다. */
-.rail-group {
-  display: flex; flex-direction: column; align-items: stretch;
-  gap: var(--space-1, .25rem);
-  width: 100%;
-  padding: 2px 0;
-  border-radius: var(--radius-sm, .625rem);
-  background: hsl(var(--foreground) / .05);
-}
-/* 남는 자리 — 아래 손잡이를 레일 **맨 밑**으로 밀어 내린다. */
-.rail-fill { flex: 1 1 auto; }
-/* ⚠ 레일 안의 접기 버튼(`.rail-fold`)은 사라졌다(2026-09-09) — 접는 대상이
-   레일까지이므로 손잡이가 그 안에 있으면 함께 사라진다. 상단 바 왼쪽 끝의
-   `#tb-shell-toggle` 이 그 일을 한다. */
-
-
+#rail-settings { width: 100%; }
 #lnb {
-  grid-column: 2; grid-row: 1 / -1;      /* 천장까지 — 첫 칸이 관점 세그다 */
+  grid-column: 1; grid-row: 1 / -1;      /* 천장까지 — 첫 칸이 홈 · Agent · 접기 줄이다 */
   display: flex; flex-direction: column; overflow: hidden;
-  background: hsl(var(--surface-2));     /* 레일과 **같은 이름**을 읽는다 — 같은 층이므로 */
+  background: hsl(var(--surface-2));
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
   /* 구조 면이라 **불투명**이다. 유리로 만들지 않는 이유가 둘 있고 둘 다 실측이다:
@@ -481,35 +377,18 @@ body {
      떠 있으면 어느 쪽이 위인지 눈이 매 프레임 다시 판정한다. */
   box-shadow: var(--shadow-elev-3);
 }
-#shell[data-lnb="closed"] #lnb { border: none; box-shadow: none; }
-/* 접힐 때 **내용이 다시 흐르지 않는다**(발주자 지적 2026-09-09 — "안에 있는 것들이
-   찌그러지면서 닫혀서 좀 별로"). 열이 좁아지는 동안 자식이 같이 좁아져 매 프레임
-   레이아웃이 다시 잡혔다: 제목이 줄어들며 말줄임이 자랐고, 세그가 접혔고, 트리 줄이
-   흔들렸다(실측 2026-09-09: 자식 폭 230.4 → 172.4 → 114.4 → 56.4 → 16).
-   폭을 열이 아니라 **변수에 매어** 두면 자식은 그대로 있고 카드가 잘라 낸다 — 서랍이
-   밀려 나가는 모양이 되고, 계산이 한 번도 다시 안 돈다.
-   ⚠ `--lnb-w` 는 닫힘에서도 살아 있다(열 폭만 0 이 된다. 위 `#shell` 주석 참조) —
-   그래서 이 폭이 접히는 동안에도 232px 로 남는다. */
-/* ⚠ **폭만 고정한다.** 한때 `flex-shrink: 0` 을 함께 걸었는데, 이 상자는 세로 flex 라
-   shrink 가 막는 것은 폭이 아니라 **높이**다 — 본문이 카드보다 커져도 안 줄어 724px
-   카드 안에서 1615px 로 자랐고, 넘친 만큼이 `overflow: hidden` 에 잘려 **트리가 아예
-   안 굴렀다**(실측 2026-09-10). 가로 고정에 필요한 것은 `width` 하나뿐이다.
-   각 칸의 세로 몫은 자기 규칙이 정한다(머리·세그는 `0 0 auto`, 본문은 `1 1 auto`). */
-#lnb > * { width: calc(var(--lnb-w) - 2px); }
-/* 그리고 **흐려진다**. 닫을 때는 곧바로(잘리는 글자를 안 보여 준다), 열 때는 열이
-   자리를 만든 뒤에 들어온다(늦은 시작). 둘이 같은 타이밍이면 여는 동안 반쯤 나온
-   내용이 카드 밖에 걸쳐 보인다. */
-#lnb > * { transition: opacity calc(var(--dur-panel) * .5) var(--ease-out)
-                       calc(var(--dur-panel) * .5); }
-#shell[data-lnb="closed"] #lnb > * { opacity: 0; transition-delay: 0s; }
-@media (prefers-reduced-motion: reduce) { #lnb > * { transition: none; } }
-/* 사이드바 머리는 두 열이 같은 한 벌을 쓴다(문서 목록·문서 내용) — 나란히 선 두
-   열의 머리 높이·글자·여백이 어긋나면 그게 먼저 눈에 띈다. */
-/* ⚠ **패널 머리 규칙은 사라졌다**(2026-09-09). 두 패널(트리 · 문서)의 머리는
-   각각 셰브론 하나만 담은 52px 짜리 줄이었고, 그만큼 첫 내용을 아래로 밀었다.
-   문서 패널은 더해서 자기 제목 줄(`문서` + ✕)과 겹쳐 **머리가 두 줄**이었다.
-   손잡이는 상단 바의 손잡이 묶음으로 갔다(`#tb-lnb-toggle`·`#tb-doc-toggle`).
-   근거 이미지: 발주자 `수정항목/lnb.JPG` · `수정항목/문서 패널.JPG`. */
+/* 접힌 띠 — 손잡이(맨 위) · 홈 · Agent 가 세로로 서고 이름은 숨는다. 머리와 트리는
+   그리지 않는다(좁은 띠에 잘린 글자를 남기지 않는다). 설정은 바닥에 아이콘으로 남는다. */
+#shell[data-lnb="closed"] .lnb-top {
+  flex-direction: column-reverse; align-items: center; padding: var(--pad-card) 0 var(--space-2, .5rem);
+}
+#shell[data-lnb="closed"] .lnb-nav { flex-direction: column; flex: 0 0 auto; }
+#shell[data-lnb="closed"] .lnb-head,
+#shell[data-lnb="closed"] .lnb-body { display: none; }
+#shell[data-lnb="closed"] .rail-name { display: none; }
+#shell[data-lnb="closed"] .rail-btn { width: var(--ctl-h); padding: 0; justify-content: center; }
+#shell[data-lnb="closed"] .lnb-foot { padding: var(--space-2, .5rem) 0 var(--pad-card); display: flex; justify-content: center; }
+#shell[data-lnb="closed"] #rail-settings { width: var(--ctl-h); }
 
 /* 머리 — 스크롤 밖. 좌우 여백은 본문과 같고 위 여백만 본문의 것을 가져온다. */
 .lnb-head {
@@ -543,7 +422,7 @@ body {
 #docpane-slot {
   /* 지도와 같은 칸이므로 함께 천장까지 온다. 읽는 면이 바 아래에서 시작하는 것은
      `#docpane` 의 `top`(= `--chrome-top`)이 맡는다. */
-  grid-column: 3; grid-row: 1 / -1; position: relative; overflow: hidden;
+  grid-column: 2; grid-row: 1 / -1; position: relative; overflow: hidden;
   /* 캔버스 카드와 **같은 곡률**. 이 칸이 클리핑을 하고 있으므로(아래 주석) 반지름을
      주면 패널의 왼쪽 두 모서리가 카드의 모서리를 그대로 따라간다 — 패널에 반지름을
      직접 주면 폭을 끝까지 끌었을 때 오른쪽 모서리까지 둥글어져 카드 안에 카드가 생긴다. */
@@ -641,7 +520,7 @@ body {
    그 위에 떠 있다는 사실이 안 읽힌다. 내용은 바닥이고 크롬이 그 위에 뜬다. */
 #surface {
   /* **천장까지** — 상단 바와 같은 칸을 쓰고 바가 그 위에 뜬다(위 `#topbar` 주석). */
-  grid-column: 3; grid-row: 1 / -1;
+  grid-column: 2; grid-row: 1 / -1;
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
   /* 앰비언트 워시가 여기로 왔다(body → 내용 카드). 유리 패널은 전부 이 카드 **위**에
@@ -866,6 +745,8 @@ body {
   color: hsl(var(--caption-foreground));
 }
 .lnb-none { margin: .35rem .6rem; font-size: var(--fs-sm); }
+.lnb-agent-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2, .5rem); }
+.lnb-agent-empty .btn { margin: 0 .6rem; }
 .lnb-retry { margin: .25rem .5rem; }
 .lnb-navrow:focus-visible, .lnb-group:focus-visible, .lnb-doc:focus-visible {
   outline: 2px solid hsl(var(--ring)); outline-offset: -2px;
@@ -927,9 +808,13 @@ body {
    카드 사이도 같은 값이라야 둘이 따로 떠 있는 것으로 읽힌다.
    근거: [[decision:the-top-bar-is-a-search-card-and-a-view-card-2026-09-26]] */
 #topbar {
-  display: flex; align-items: stretch; gap: var(--shell-gap);
-  /* 줄이 갈릴 수 있다(아래 `@container topbar`). 높이는 카드가 정하고 바는 따른다. */
-  flex-wrap: wrap; height: auto; flex: 0 0 auto;
+  /* 두 줄(검색 · 그래프와 보기)이 **오른쪽 끝**에 붙어 선다. 열 하나짜리 격자라 두 줄의
+     폭이 늘 같다(더 넓은 줄의 폭) — 그래서 검색 알약의 왼쪽 끝과 그래프 버튼의 왼쪽 끝이
+     같은 세로선에 선다. 보기 카드가 패널 폭으로 자라면 검색도 같이 늘어난다.
+     바 자신은 내용 칸 폭 전부를 갖지만 빈 자리는 클릭을 통과시킨다. */
+  display: grid; grid-template-columns: minmax(0, max-content); justify-content: end;
+  align-content: start; gap: var(--shell-gap);
+  height: auto; flex: 0 0 auto; pointer-events: none;
   /* 바 자신의 폭이 줄바꿈 기준이다 — 창 폭이 아니다. 같은 창이라도 문서 트리가 열려
      있으면 바가 232px 좁다(창 1000 · 트리 열림에서 입력이 147px 까지 눌렸다). */
   container: topbar / inline-size;
@@ -938,10 +823,18 @@ body {
      읽는 면을 끝까지 넓히면 바 밑으로 들어간다). */
   position: relative; z-index: 41;
 }
-/* 상단 바의 카드 한 장 — 예전 바 전체가 갖던 면을 그대로 옮겼다. */
+/* 손잡이 한 줄. 오른쪽 끝에 붙고, 넘치면 자기 폭 안에서 줄어든다.
+   ⚠ `.tb-row` 가 아니다 — 그 이름은 검색 결과 한 줄(격자)이 이미 쓴다. */
+.tb-line {
+  display: flex; align-items: center; justify-content: flex-end; gap: var(--shell-gap);
+  min-width: 0; pointer-events: auto;
+}
+.tb-line:not(:has(> :not([hidden]):not(:empty))) { display: none; }
+/* 상단 바의 카드 한 장. 컨트롤 하나(`--ctl-h`)에 위아래 4px 씩 — 두 줄이 쌓이므로
+   한 줄일 때의 바 높이(`--topbar-h`)보다 낮게 잡는다. */
 .tb-card {
   display: flex; align-items: center; gap: var(--space-2, .5rem);
-  height: var(--topbar-h); min-width: 0; padding: 0 var(--space-3, .75rem);
+  height: calc(var(--ctl-h) + var(--space-2, .5rem)); min-width: 0; padding: 0 var(--space-1, .25rem);
   /* **올라온 면**: muted 반투명(뒤가 비치는 얕은 띠)에서 card 불투명으로. 아래 실선은
      지운다 — 카드의 모서리와 그림자가 같은 일을 더 잘 하고, 선까지 남기면 카드 위에
      경계가 한 겹 더 그려져 두 언어가 겹친다. */
@@ -953,8 +846,52 @@ body {
      뜨지만 같은 층에 같은 그림자를 주는 것이 층 언어를 지키는 쪽이다. */
   box-shadow: var(--shadow-elev-3);
 }
-/* 검색 카드가 남는 폭을 전부 갖는다. 보기 카드는 자기 내용 폭만. */
-#tb-find { flex: 1 1 0; min-width: min(100%, 18rem); }
+/* 검색 카드 — 접힌 알약(기본)과 펼친 입력(`data-expanded`) 두 모습이다. 펼치면 오른쪽 끝을
+   축으로 왼쪽으로 자란다. 폭 상한을 두는 이유: 문서를 읽는 면 위에서 입력이 화면 끝에서
+   끝까지 늘어나면 본문을 가린다. */
+/* 접힌 알약은 줄 폭을 다 채운다(아래 그래프 줄과 왼쪽 끝을 맞춘다). 펼치면 바 폭(`cqi`,
+   바가 자기 질의 상자다) 안에서 36rem 까지 자란다 — 퍼센트로 적으면 내용 폭으로 줄어든 열이
+   자기 자신을 가리킨다. */
+#tb-find { flex: 1 1 auto; min-width: 0; }
+/* 펼친 검색은 **열 폭 계산에서 빠진다**(절대 배치) — 그대로 두면 아래 그래프 버튼까지 검색 폭으로
+   늘어난다. 줄은 높이를 지켜 아래 줄이 올라오지 않게 하고, 검색은 오른쪽 끝을 축으로 왼쪽을 덮는다. */
+/* 검색 줄은 아래 그래프 줄보다 한 층 위다: 펼친 검색의 결과·Ask 판이 아래 줄로 내려오는데,
+   보기 카드(`#tb-viewctl`, z-index 1)가 그 판 머리를 덮었다(2026-10-22 캡처). */
+#tb-line-find { position: relative; z-index: 2; min-height: calc(var(--ctl-h) + var(--space-2, .5rem)); }
+#tb-find[data-expanded] { position: absolute; top: 0; right: 0; width: min(36rem, 100cqi); }
+#tb-find:not([data-expanded]) > #tb-search { display: none; }
+#tb-find[data-expanded] > .tb-find-open { display: none; }
+.tb-find-open {
+  display: inline-flex; align-items: center; gap: var(--space-2, .5rem);
+  height: var(--ctl-h); padding: 0 var(--space-3, .75rem) 0 var(--space-2, .5rem);
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--background)); color: hsl(var(--muted-foreground));
+  font: inherit; font-size: .8125rem; cursor: text;
+}
+.tb-find-open:hover { color: hsl(var(--foreground)); border-color: hsl(var(--muted-foreground)); }
+.tb-find-open:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.tb-find-icon { display: inline-flex; color: hsl(var(--caption-foreground)); }
+.tb-find-open { flex: 1 1 auto; }
+.tb-find-open .tb-kbd { margin-left: auto; padding-left: var(--space-2, .5rem); }
+/* 그래프 전환 — 보기 카드와 같은 높이의 알약. 눌리면(그래프에 있으면) 채움으로 말한다. */
+.tb-graph {
+  /* 줄의 남는 폭을 이 버튼이 갖는다 — 그래서 위 검색 알약과 왼쪽 끝이 맞는다. */
+  flex: 1 1 auto; justify-content: flex-start;
+  display: inline-flex; align-items: center; gap: var(--space-2, .5rem);
+  height: calc(var(--ctl-h) + var(--space-2, .5rem)); padding: 0 var(--space-3, .75rem);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  background: hsl(var(--card)); color: hsl(var(--muted-foreground));
+  box-shadow: var(--shadow-elev-3); font: inherit; font-size: .8125rem; font-weight: 500; cursor: pointer;
+}
+.tb-graph:hover { color: hsl(var(--foreground)); border-color: hsl(var(--muted-foreground)); }
+.tb-graph:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+/* 그래프가 켜져 있으면 **포인트 색 면**이다 — 팔레트의 하나뿐인 색이 "지금 이 모드"를 말한다.
+   글자는 판 색이라 두 테마에서 같은 방향으로 대비가 선다(라이트: 진한 면 위 밝은 글자,
+   다크: 밝은 면 위 어두운 글자). */
+.tb-graph.on {
+  background: hsl(var(--point)); border-color: hsl(var(--point)); color: hsl(var(--background));
+}
+.tb-graph.on:hover { background: hsl(var(--point) / .88); color: hsl(var(--background)); }
 /* 보기 카드 — 관점 세그 + 렌즈(옵션·범례). 문서 트리 첫 칸에 있던 동안에는 트리를
    접으면 관점 손잡이가 함께 사라졌다. 둘 다 View 가 채우고 떠날 때 비우므로(topbar.ts
    `refreshTopbar`), 둘 다 비면 카드째 숨는다 — 빈 카드가 검색 옆에 남으면 누를 것이
@@ -967,7 +904,7 @@ body {
     남은 폭 안에서 스크롤한다. 모션 중에도 두 카드 사이 간격을 유지한다. */
 #tb-viewctl {
   flex: 0 1 auto; position: relative; z-index: 1;
-  max-width: calc(100% - min(100%, 18rem) - var(--shell-gap));
+  max-width: 100%;
 }
 #tb-viewctl[data-open] {
   width: var(--lens-panel-w);
@@ -1232,37 +1169,18 @@ body {
    검색바에 같은 gap 을 왼쪽 여백으로 준다. 값이 한 변수라 둘이 어긋날 수 없다.
    아이콘 사이 간격은 space-between 이 균일하게 나눈다(셋 다 같은 크기의 아이콘 버튼).
    LNB 가 접히면(폭 0) 아이콘이 사라지면 안 되므로 최소 폭을 준다. */
-/* 손잡이 — **레일의 첫 칸**이다(발주자 지시 2026-09-09: 상단 바에서 레일 맨 위로).
-   `.tb-icon` 이 이미 36x36 정사각 · `--radius-sm` 을 주므로 폭도 곡률도 여기서
-   덮지 않는다: 앱 버튼 넷과 같은 상자라는 말은 상자가 같다는 말이다(두 번 어긋난
-   자리다 — 폭을 레일만큼 잡았더니 혼자 길었고, 그 넓은 상자에 곡률이 안 맞아
-   덮었더니 모서리도 혼자 달랐다).
-   레일이 `align-items: stretch` 라 가로로 늘어나므로 중앙에 세워 준다 — 그러면
-   아래 레일 버튼들과 같은 중심선(레일 폭의 절반)에 선다. */
+/* 접기 손잡이 — LNB 맨 위 줄의 오른쪽 끝(접힌 띠에서는 맨 위). `.tb-icon` 이 36x36
+   정사각 · `--radius-sm` 을 준다. */
 #tb-shell-toggle { flex: 0 0 auto; align-self: center; }
-#rail-settings {
-  flex: 0 0 auto;
-  position: relative;
-  margin-top: var(--space-1, .25rem);
-}
+#rail-settings { position: relative; }
 #rail-settings .rail-name { color: hsl(var(--caption-foreground)); }
 #rail-settings-badge {
-  position: absolute; top: .1rem; right: .1rem; min-width: .9rem; height: .9rem;
+  position: absolute; top: .1rem; left: 1.4rem; min-width: .9rem; height: .9rem;
   padding: 0 .18rem; border-radius: .5rem; background: hsl(var(--ring));
   color: hsl(var(--background)); font-size: .5625rem; line-height: .9rem;
   font-weight: 650; text-align: center;
 }
 #rail-settings-badge[hidden] { display: none; }
-/* 종 목록 — 손잡이 아래의 나머지 전부. 남는 자리를 이 칸이 먹는다(`.rail-fill` 이
-   그 안에서 같은 일을 한 번 더 한다 — 종 목록이 짧을 때 위로 붙게). */
-#rail-kinds {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
-  display: flex; flex-direction: column; align-items: stretch;
-  gap: var(--space-1, .25rem);
-  /* 손잡이와 사이를 벌린다 — 손잡이는 층 2 를 접는 것이고 아래는 종을 고르는
-     것이라, 붙여 두면 같은 묶음으로 읽힌다. */
-  margin-top: var(--pad-card);
-}
 /* **오른쪽 묶음 = 넷이 등간격**(발주자 지시 2026-09-09: "옆으로 옮겨진 버튼들에
    대해 같은 간격으로 범례 포함 4가지"). 여태 렌즈만 왼쪽 끝이고 셋이 오른쪽에 몰려
    있었다 — 남는 자리를 한 군데 모아 두면 그게 곧 쏠림이다.
@@ -2525,29 +2443,14 @@ textarea.props-val {
    그래서 열면 열을 뺏는 대신 **지도 위로 뜬다** — 좁은 화면에서 목록과 지도를
    나란히 두는 것은 둘 다 못 쓰게 만드는 일이다. */
 @media (max-width: 900px) {
-  #shell { grid-template-columns: var(--kind-rail-w) 0 minmax(0, 1fr); }
+  /* 좁은 창에서 LNB 는 늘 접힌 띠로 시작하고(lnb.ts `COMPACT`), 펴면 내용 위에 뜨는
+     **서랍**이다 — 열을 뺏으면 내용이 쓸 수 없을 만큼 좁아진다. 서랍은 띠와 같은 격자 칸에
+     서되 자기 폭(`--lnb-w`)만큼 오른쪽으로 넘쳐 내용을 덮는다(z 가 상단 바보다 위). */
+  #shell, #shell[data-lnb="closed"] { grid-template-columns: var(--lnb-mini-w) minmax(0, 1fr); }
   #shell[data-lnb="open"] #lnb {
-    /* 서랍은 **지도 칸(3열) 2행에 겹쳐 놓는 보통 격자 항목**이다. 절대배치가 아니다.
-       ⚠ 한때 절대배치(`grid-column: 2 / -1` + `left/top/bottom: 0`)였다. 그러면
-       격자 **마지막 선**이 트랙 끝이 아니라 셸의 패딩 모서리로 풀려(Chrome 실측) 서랍의
-       아래·오른쪽 끝이 지도 카드보다 8px 밖으로 나갔고, 왼쪽은 지도 카드보다 8px 앞
-       (2열 시작)에서 섰다 — 떠 있는 카드 둘의 모서리 선이 어디에도 안 맞아 흔들려
-       보였다(2026-09-26 지적, 창 390: 서랍 80~390 × 130~844, 지도 88~382 × 8~836).
-       보통 격자 항목이면 선은 실제 트랙 끝이라 엔진마다 다르게 풀 여지도 없다.
-       자리는 **상단 바와 같은 규칙**이다: 지도 카드 안쪽으로 한 칸(`--shell-gap`)
-       들여 뜨고, 위는 바 바로 아래 한 칸이다(음수 위 여백이 행 간격을 되돌린다).
-       ⚠ 행을 적는 것이 여전히 핵심이다. 1행까지 덮으면 서랍(z 45)이 상단 바(z 41)
-       위로 올라와 **검색을 못 쓴다**(실측 2026-09-13). 행으로 적어 두면 바가 두 줄이
-       되는 폭(아래 520)에서도 천장이 따라 내려온다. */
-    grid-column: 3; grid-row: 2;
-    position: relative; z-index: 45;
-    justify-self: start; align-self: stretch;
-    width: var(--lnb-w);
-    margin: calc(var(--shell-gap) * -1) var(--shell-gap) var(--shell-gap);
+    position: relative; z-index: 45; width: var(--lnb-w);
+    box-shadow: var(--shadow-elev-3), 0 0 0 100vmax hsl(var(--background) / .35);
   }
-  /* 서랍이 닫혀 있으면 그리지 않는다 — 폭 0 인 열에 남은 테두리가 레일 옆에
-     1px 띠로 보인다(넓은 창의 접힘이 같은 이유로 테두리를 지우는 것과 같다). */
-  #shell:not([data-lnb="open"]) #lnb { border: none; box-shadow: none; }
   /* 안내 카드는 왼쪽에 붙어 있는데, 그 자리가 이제 서랍 자리다 — 서랍이 열리면
      카드가 그 뒤로 들어가 **글자가 중간에서 잘린 것처럼** 보인다(실측 2026-09-13,
      창 768: 카드 16~320 · 서랍 80~312). 오른쪽으로 붙여 지도 위에 세운다.
@@ -2614,12 +2517,8 @@ textarea.props-val {
   /* 서랍이 폭을 다 쓴다. 14.5rem 에 묶어 두면 360 에서 레일 64 + 서랍 232 가
      296 을 먹어 지도에 64px 만 남는다(실측) — 트리도 지도도 못 쓰는 폭이다.
      천장은 위 900 블록이 행으로 정해 두었으므로 여기서 다시 적지 않는다. */
-  #shell[data-lnb="open"] #lnb { justify-self: stretch; width: auto; }
-  /* 서랍이 늘어나면 안의 칸들도 따라 늘어난다. 위 `#lnb > *` 가 자식 폭을 `--lnb-w` 에 매어 둔
-     것은 여닫는 동안 내용이 다시 흐르지 않게 하려는 것인데, 여기서는 서랍이 폭을 움직이지 않고
-     화면 폭을 따라 서므로 그 고정이 오른쪽에 빈 띠만 남겼다(390 에서 서랍 278 · 목록 230).
-     ⚠ 이 줄을 900 블록으로 올리지 말 것. 거기서는 서랍 폭이 `--lnb-w` 라 고정과 같은 값이다. */
-  #shell[data-lnb="open"] #lnb > * { width: auto; }
+  #shell[data-lnb="open"] #lnb { width: calc(100vw - var(--shell-gap) * 2); }
+
 }
 
 /* ── 좁은 바(≤420) — 보기 카드가 줄을 하나 더 쓴다 ─────────────────────
@@ -2632,19 +2531,8 @@ textarea.props-val {
    (문서 열 · 인캔버스 크롬)의 천장은 topbar.ts `trackChromeTop` 이 바의 실측 바닥에서
    다시 잰다 — 그래서 둘째 줄이 생겨도 그것들이 그 밑에 깔리지 않는다. */
 @container topbar (max-width: 420px) {
-  #tb-find { flex: 1 1 100%; }
-  #tb-viewctl { margin-left: auto; max-width: 100%; }
-}
-/* ── 낮은 창(높이 ≤560 · 폰 가로, 작은 노트북 창) — 레일이 이름을 접는다 ───────
-   레일에는 손잡이 · 홈 · Agent · 종 여섯 · 설정이 세로로 선다. 이름과 개수 두 줄을
-   단 48px 단추로는 높이 390 에서 종 셋(Episodes · Entity · Bridge)이 화면 밖으로
-   밀렸다(실측 2026-09-26). 종 칸이 스크롤은 되지만 64px 기둥에 스크롤 표시가 없어
-   **없는 것**으로 보였다. 이름은 단추마다 `aria-label` · 툴팁이 이미 말하고 있으므로
-   여기서 가장 싼 값이다(넓이 쪽 접는 순서와 같은 규율: 감추는 것은 잃는 것이라
-   싼 것부터). 그래도 넘치면 종 칸이 스크롤한다(`#rail-kinds`). */
-@media (max-height: 560px) {
-  :root { --rail-btn-h: 2.25rem; }
-  #lnb-rail .rail-name { display: none; }
+  #tb-find[data-expanded] { width: 100cqi; }
+  #tb-viewctl { max-width: 100%; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   #view-lens-panel::before { background: hsl(var(--card)); }
@@ -3711,3 +3599,86 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 }
 /* 폰 폭: 칩은 "기간" 머리말을 떼고 값만 싣는다 — 상태 줄의 지표와 한 줄을 나눠 쓴다. */
 @media (max-width: 600px) { .period-chip-k { display: none; } }
+
+/* ── 문서 홈(2026-10-22) ───────────────────────────────────────────────────
+   문서를 보고 쓰고 정리하는 첫 화면. 짜임은 웹 커뮤니티 홈을 따른다: 주제 칩 · 거르기 ·
+   정렬 · 목록, 문서 면은 본문(최대 720px) + 옆 칸. 위 여백은 오른쪽 위 손잡이 묶음
+   (`--chrome-top`)만큼이다 — 묶음이 머리 줄을 덮지 않게.
+   근거: [[decision:the-desktop-shell-is-documents-first]] */
+.home {
+  max-width: 64rem; margin: 0 auto;
+  padding: max(0px, calc(var(--chrome-top) - var(--space-6, 1.5rem))) var(--space-2, .5rem) var(--space-8, 2rem);
+}
+.home-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4, 1rem); flex-wrap: wrap; }
+.home-head h1 { margin: 0; font-size: 1.5rem; }
+.home-count { font-size: .875rem; font-weight: 400; color: hsl(var(--muted-foreground)); margin-left: var(--space-2, .5rem); }
+.home-acts { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; }
+.home-acts .btn, .home-aside-acts .btn { display: inline-flex; align-items: center; gap: var(--space-2, .5rem); }
+.home-topics { display: flex; flex-direction: column; gap: var(--space-2, .5rem); margin: var(--space-4, 1rem) 0 var(--space-3, .75rem); }
+.home-crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1, .25rem); font-size: .8125rem; }
+.home-crumb, .home-back {
+  border: none; background: none; padding: .15rem .35rem; border-radius: var(--radius-sm, .625rem);
+  font: inherit; color: hsl(var(--muted-foreground)); cursor: pointer; text-decoration: none;
+}
+.home-crumb:hover, .home-back:hover { background: hsl(var(--muted-foreground) / .12); color: hsl(var(--foreground)); }
+.home-crumb.on { color: hsl(var(--foreground)); font-weight: 600; }
+.home-sep { color: hsl(var(--caption-foreground)); }
+.home-chips { display: flex; flex-wrap: wrap; gap: var(--space-2, .5rem); }
+.home-chip {
+  display: inline-flex; align-items: center; gap: var(--space-2, .5rem);
+  height: 1.75rem; padding: 0 .65rem; border: 1px solid hsl(var(--border)); border-radius: 999px;
+  background: hsl(var(--card)); color: hsl(var(--foreground)); font: inherit; font-size: .8125rem; cursor: pointer;
+}
+.home-chip:hover { border-color: hsl(var(--muted-foreground)); }
+.home-chip-n { font-family: var(--font-mono); font-size: .75rem; color: hsl(var(--caption-foreground)); }
+.home-toolbar { display: flex; align-items: center; gap: var(--space-3, .75rem); margin-bottom: var(--space-2, .5rem); }
+.home-filter {
+  flex: 1 1 auto; min-width: 0; height: var(--ctl-h); padding: 0 var(--pad-row);
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--background)); color: hsl(var(--foreground)); font: inherit;
+}
+.home-filter:focus { outline: none; border-color: hsl(var(--ring)); box-shadow: 0 0 0 3px hsl(var(--ring) / .16); }
+.home-sort { display: inline-flex; align-items: center; gap: var(--space-2, .5rem); font-size: .8125rem; }
+.home-list { display: flex; flex-direction: column; border-top: 1px solid hsl(var(--border)); }
+.home-row {
+  display: grid; grid-template-columns: .6rem minmax(0, 1fr) auto; align-items: center; gap: var(--space-3, .75rem);
+  padding: .6rem var(--pad-row); border-bottom: 1px solid hsl(var(--border));
+  color: hsl(var(--foreground)); text-decoration: none;
+}
+.home-row:hover { background: hsl(var(--muted-foreground) / .08); }
+.home-row:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.home-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--tint, hsl(var(--muted-foreground))); }
+.home-rtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-rmeta { font-size: .75rem; color: hsl(var(--muted-foreground)); white-space: nowrap; max-width: 22rem; overflow: hidden; text-overflow: ellipsis; }
+.home-group { margin: var(--space-4, 1rem) 0 var(--space-1, .25rem); font-size: .75rem; font-weight: 600; color: hsl(var(--muted-foreground)); }
+.home-more { margin: var(--space-4, 1rem) auto 0; display: block; }
+.home-empty { padding: var(--space-8, 2rem) 0; text-align: center; color: hsl(var(--muted-foreground)); }
+.home-empty .home-acts { justify-content: center; }
+/* 문서 면 — 본문 칸 + 옆 칸. 좁으면(1000 아래) 옆 칸이 본문 아래로 간다. */
+.home-read { max-width: 72rem; }
+.home-read > .home-crumbs { margin-bottom: var(--space-3, .75rem); }
+.home-read-grid { display: grid; grid-template-columns: minmax(0, 720px) minmax(14rem, 1fr); gap: var(--space-6, 1.5rem); align-items: start; }
+.home-write { grid-template-columns: minmax(0, 720px); }
+.home-doc { min-width: 0; }
+.home-aside {
+  position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--space-4, 1rem);
+  padding: var(--space-4, 1rem); border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  background: hsl(var(--card));
+}
+.home-meta { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .4rem .75rem; font-size: .8125rem; }
+.home-meta dt { color: hsl(var(--muted-foreground)); }
+.home-meta dd { margin: 0; overflow-wrap: anywhere; }
+.home-aside-acts { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-2, .5rem); }
+.home-del { color: hsl(var(--destructive, 0 70% 50%)); }
+@media (max-width: 1000px) {
+  .home-read-grid { grid-template-columns: minmax(0, 1fr); }
+  .home-aside { position: static; }
+}
+/* 표면 칸의 기본 여백(1.5rem)은 그래프 밖 표면의 것이다. 문서 홈은 자기 여백을 쓴다. */
+#shell[data-surface="home"] #surface { padding-top: var(--space-6, 1.5rem); }
+/* 편집기 머리 줄(제목 · 내용 시점 · 저장 상태)은 좁은 문서 면에서 접힌다 — 한 줄로 두면
+   본문 칸을 가로로 밀어 표면에 가로 스크롤이 생겼다(창 420 실측). 제목은 한 줄을 다 쓴다. */
+.home-doc .doc-ed-bar { flex-wrap: wrap; }
+.home-doc .doc-ed-bar > #ed-title { min-width: min(100%, 14rem); }
+/* 문서 홈의 본문 칸은 쓰는 자리라 처음부터 넉넉하다(빈 새 문서가 한 줄짜리 상자로 뜨지 않게). */
+.home-doc .cm-editor { min-height: 40vh; }

@@ -166,8 +166,9 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
         self.assertNotRegex(tag.group(0), r"\bhidden\b", "레일 설정 버튼이 숨겨져 있다")
 
         lnb = (APP / "lnb.ts").read_text(encoding="utf-8")
-        self.assertRegex(lnb, r'id\s*===\s*"rail-settings"\)\s*\{[^}]*openSettings\(',
-                         "레일 설정 버튼이 설정 시트를 안 연다")
+        # 설정 버튼은 LNB 바닥에 산다(2026-10-22, 종 레일을 걷었다).
+        self.assertRegex(lnb, r'settingsBtn\?\.addEventListener\("click",[^;]*openSettings\(',
+                         "LNB 설정 버튼이 설정 시트를 안 연다")
 
         settings = (APP / "surfaces" / "settings.ts").read_text(encoding="utf-8")
         cats = settings[settings.index("const ALL_CATS"):settings.index("const CATS")]

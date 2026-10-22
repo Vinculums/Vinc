@@ -2,6 +2,7 @@ import "./app.css";
 import { COPY } from "./copy";
 import { icon } from "./icons";
 import { renderView, repaintView, leaveView } from "./surfaces/view";
+import { renderHome, leaveHome, homeEditorOpen } from "./surfaces/home";
 import { renderSearch } from "./surfaces/search";
 import { openSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL, decideDataMode,
@@ -17,20 +18,23 @@ import { blocksSurfaceShortcuts } from "./keys";
 import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
 import { mountAuthoringKeys, startNewDoc, startNewNode } from "./authoring";
 
-// 표면 2종: View / Search(+Records). Packs(+Intake)는 표면이 아니라 Tools 모달로
-// 갔다(P15) — 다섯 기능이 전부 거기 산다.
-type Surface = "view" | "search";
+// 표면 3종: Home(문서) / View(그래프) / Search(+Records). Packs(+Intake)는 표면이 아니라
+// Tools 모달로 갔다(P15) — 다섯 기능이 전부 거기 산다.
+// 첫 화면은 문서 홈이다. 그래프는 오른쪽 위의 전환 버튼이 연다. 그래프의
+// 코드명은 계속 `view`(해시·딥링크·모듈)이고 화면 이름도 View 다.
+// 근거: [[decision:the-desktop-shell-is-documents-first]]
+type Surface = "home" | "view" | "search";
 const SURFACES: Record<Surface, (el: HTMLElement) => void | Promise<void>> = {
+  home: renderHome,
   view: renderView,
   search: renderSearch,
 };
-const ORDER: Surface[] = ["view", "search"];
-// 화면 이름 ↔ 내부 코드명 분리. 첫 화면의 코드명은 계속 `view`(해시·딥링크·모듈)
-// 이고 화면 이름도 View 다(2026-09-22). D61 의 Home 노출은 이 지시가 덮는다.
+const ORDER: Surface[] = ["home", "view", "search"];
 const SURFACE_LABEL: Record<Surface, string> = {
-  view: COPY.ui.topbar.home, search: COPY.ui.topbar.search,
+  home: COPY.ui.home.nav, view: COPY.ui.topbar.home, search: COPY.ui.topbar.search,
 };
-// 구 표면 해시 → 통합 표면(딥링크·구 CTA 하위호환).
+// 구 표면 해시 → 통합 표면(딥링크·구 CTA 하위호환). 그래프를 가리키던 옛 주소는
+// 그래프로 간다 — 문서 홈이 첫 화면이 된 뒤에도 밖에 나간 지도 주소는 지도를 연다.
 // `atlas` 는 리네임 전 이 표면의 코드명이었다(F8, 2026-08-15).
 // 제거 조건: 없음. 밖에 나간 북마크와 CTA 주소를 받는 표라 무기한 둔다(gate_forbidden F8 이 이 항목을 예외로 둔다).
 const ALIAS: Record<string, Surface> = {
@@ -92,7 +96,7 @@ function current(): Surface {
   const h = location.hash.replace(/^#/, "").split("/")[0];
   if (h in SURFACES) return h as Surface;
   if (h in ALIAS) return ALIAS[h];
-  return "view";   // 기본 첫 화면 = View(최상단)
+  return "home";   // 기본 첫 화면 = 문서 홈
 }
 
 let activeSurface: Surface | undefined;
@@ -115,6 +119,9 @@ async function route() {
   const resumeView = s === "view" && activeSurface === "search" && location.hash === "#view";
   activeSurface = s;
   leaveView();
+  leaveHome();
+  // 문서 홈은 편집기를 표면 안에 세운다 — 비우기 전에 확정·해제한다(아래 문서 열과 같은 이유).
+  disposeEditorsIn(surfaceEl);
   surfaceEl.innerHTML = "";
   // 문서 열은 셸의 것이지만 내용은 표면이 심는다(View 가 자기 상세를 옮겨 온다).
   // 표면이 사라질 때 그 내용도 함께 사라져야 한다 — 표면 컨테이너를 비우는 것만으로는
@@ -137,6 +144,7 @@ async function route() {
   // 좌측 트리의 착지 훅도 같이 끈다 — View 가 없으면 "그 노드로 날아가기"가
   // 성립하지 않으므로 문서 클릭은 해시 착지로 강등된다(lnb.openDoc).
   setLnbNavigator(null);
+  shellEl.dataset.surface = s;
   if (s === "view") await renderView(surfaceEl, resumeView);
   else await SURFACES[s](surfaceEl);
 }
@@ -243,7 +251,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault(); openPalette(); return;
   }
   // 문서 열이 떠 있으면 표면 단축키는 쉰다 — 판정은 keys.ts, DOM 은 doc-editor.ts.
-  if (blocksSurfaceShortcuts(e.target, document.activeElement, docEditorOpen())) return;
+  if (blocksSurfaceShortcuts(e.target, document.activeElement, docEditorOpen() || homeEditorOpen())) return;
   // 표면 **수만큼만** 받는다. 여기 `"1"`~`"3"` 리터럴이 박혀 있었는데, 그것은 ORDER 가
   // 줄어드는 순간 조용히 틀리는 종류다 — 3 을 누르면 `#undefined` 로 간다. 타입은
   // 문자열 비교라 아무 말도 안 하고, 게이트도 이 자리를 안 본다.

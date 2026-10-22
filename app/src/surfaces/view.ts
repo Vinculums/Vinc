@@ -35,7 +35,7 @@ import { layoutsFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CON
          type EdgeKind } from "../view-prefs";
 import { changedViewPrefs, viewControlRows, viewPreferenceWork } from "../view-controls";
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
-import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbKindLens, lnbKind,
+import { setLnbActive, setLnbNavigator, setLnbTopicPicker,
          refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
 import { PROP_KINDS, propsEditable, rowsFrom, propsFrom, convertText, sameProps, propsPatchOf,
          type PropRow, type PropKind } from "../props-edit";
@@ -285,15 +285,8 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  (타임라인 · Weave)에는 걸지 않는다: 거기 선은 관계가 아니라 흐름이고, Weave 는
    *  선 하나가 여러 관계를 묶은 것이라 엣지 정체성이 남지 않는다. */
   let spot: Spot | null = null;
-  /** 레일에서 고른 종 — **서 있는** 점등이다(원뿔·범례 hover 는 일시적이다).
-   *  둘을 한 변수로 섞지 않는 이유: 노드를 눌러 원뿔이 서면 그것이 종 강조를 덮고,
-   *  원뿔이 끝나면 종 강조로 **돌아와야** 한다. hover 가 이미 같은 규칙으로 도는데
-   *  (`손을 떼면 점등이 있던 자리로 돌아간다`, view3d) 그 자리를 여기서도 만들어
-   *  준다 — 기구를 두 벌로 늘리지 않고 `null` 의 뜻만 "서 있는 것으로 복귀"로 정한다. */
-  let kindSpot: Spot | null = null;
   function setSpot(s: Spot | null) {
-    // `null` = 일시 점등이 끝났다 = 서 있는 종 렌즈로 돌아간다.
-    spot = s ?? kindSpot;
+    spot = s;
     const eff = spot;
     (g3 as { __spotlight?: (x: Spot | null) => void } | null)?.__spotlight?.(eff);
     g2?.spotlight?.(eff);
@@ -306,18 +299,6 @@ export async function renderView(el: HTMLElement, resume = false) {
     for (const id of ids) s.nodes.add(id);
     setSpot(s);
   }
-  /** 지금 그려진 노드 중 그 종만 밝힌다. 엣지는 비운다 — 종은 노드의 성질이고
-   *  "그 종에 닿는 선"은 종의 집합이 아니다(선을 함께 밝히면 두 뜻이 섞인다).
-   *  ⚠ 평면 관점(타임라인 · Weave)에는 점등이 걸리지 않는다(위 `spot` 주석) —
-   *  거기서 종 렌즈는 조용히 아무 일도 하지 않고, 그것이 기존 계약이다. */
-  function applyKindLens(kind: string | null): void {
-    kindSpot = kind
-      ? { nodes: new Set(curNodes.filter((x) => (x.kind || "concept") === kind)
-                                 .map((x) => x.id)), edges: new Set<string>() }
-      : null;
-    // 원뿔이 서 있는 동안에는 그것이 위다 — 그때는 종 렌즈를 예약만 해 둔다.
-    if (!lastNode || detail.hidden) setSpot(null);
-  }
   let lastNode: N3 | null = null;                   // Reader 뒤로가기용 마지막 상세 노드(D45-V2)
   /** 잇기(흐름 F)가 기다리는 대상 — 있으면 다음 초점이 카드 대신 여기로 간다(`focusOnMap`). */
   let pickTarget: ((id: string, title: string) => void) | null = null;
@@ -327,10 +308,8 @@ export async function renderView(el: HTMLElement, resume = false) {
   // 렌더러마다 노드를 꺼내는 법이 달라(3D 는 graphData, 2D 는 graphology, 평면은
   // DOM) 마운트 시점에 한 벌 챙겨 두는 편이 확실하다.
   let curNodes: GraphNode[] = [];
-  /** 지금 그려진 노드를 갈아 끼운다. **여기 한 곳으로 모은 이유**는 서 있는 종
-   *  렌즈가 이 집합 위에서 정의되기 때문이다 — 층을 옮기거나 스코프를 좁히면 강조할
-   *  대상이 통째로 바뀌는데, 대입만 세 곳에 흩어져 있으면 그중 하나에서 렌즈가 옛
-   *  집합을 들고 남는다(강조가 지도에 없는 id 를 가리켜 아무것도 안 밝는다). */
+  /** 지금 그려진 노드를 갈아 끼운다. 주제 색 표가 이 집합 위에서 정의되므로 대입을
+   *  한 곳으로 모은다(곳마다 대입하면 그중 하나에서 옛 표가 남는다). */
   function setCurNodes(next: GraphNode[]): void {
     curNodes = next;
     // 주제 색은 **여기서 한 벌**만 짓는다 — 모든 관점과 노드 카드가 같은 표를 읽는다.
@@ -338,11 +317,6 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 목록, 주제 하나짜리 목록) 같은 주제가 곳마다 다른 색이 된다.
     // 근거: [[decision:a-node-keeps-its-own-colour-in-every-state]]
     shownTints = tintMap(next.map((n) => n.domain), curMode());
-    // ⚠ **여기서 종 렌즈를 걸지 않는다.** 이 함수는 데이터가 도착한 시점이고
-    // 렌더러는 아직 안 세워졌다(`swapSurface` 가 그 뒤에 돈다). 여기서 걸면 교체
-    // 직전의 `spot = null` 이 곧바로 지워 버려 **계산은 맞는데 화면이 그대로**다
-    // (실측 2026-09-09: 레일을 눌러도 지도가 안 흐려졌다). 거는 자리는 `show` 의
-    // `finally` 다 — 마운트가 끝난 뒤이고 모든 관점이 그 길을 지난다.
   }
   /** 지금 렌더러들이 칠해진 모드. 새 마운트는 언제나 그때의 모드로 칠하므로, 이 값은
    *  테마가 뒤집힐 때만 바뀐다 — 같은 값을 다시 쓰는 applyTheme(설정에서 같은 칸을 다시
@@ -4121,7 +4095,6 @@ export async function renderView(el: HTMLElement, resume = false) {
     keepCam2 = opts?.keepCamera && g2 ? g2.camera() : null;
     ctxCache = null;                           // 층이 바뀌면 노드 맥락 메모도 버린다
     spot = null;   // 렌더러가 통째로 갈리므로 점등도 함께 버린다(핸들이 사라진다)
-    kindSpot = null;   // 〃 — 서 있는 것도 함께. 새 렌더러에 다시 걸리는 것은 아래 훅이다.
     dropPick();
     // `keepDetail` — 방금 만든 것을 지도에 세우는 재그리기(revealNode)는 문서 열을 닫지
     // 않는다. 거기서 쓰고 있던 글이 첫 저장과 함께 사라지면 안 된다.
@@ -4191,10 +4164,6 @@ export async function renderView(el: HTMLElement, resume = false) {
         setBusy(false); revealSurface();   // 새 세대가 돌고 있으면 그쪽이 끈다
         // 범례의 개수·갈래는 새로 실린 그래프에서 나온다 — 그린 뒤에 한 번 더.
         if (redrawPanel && !viewPanel.hidden) openPanel({ focus: false });
-        // 서 있는 종 렌즈를 **새 렌더러에** 다시 건다. 관점 넷이 전부 이 길을
-        // 지나므로 걸어 주는 자리도 하나다(2D·3D 는 점등을 받고 평면 둘은 조용히
-        // 무시한다 — 기존 계약).
-        applyKindLens(lnbKind());
       }
     }
   }
@@ -4309,9 +4278,6 @@ export async function renderView(el: HTMLElement, resume = false) {
     void show(trail[trail.length - 1]);
   });
 
-  // 종 렌즈 — 레일이 고른 종을 지도에서도 강조한다. 등록 즉시 현재 값으로 한 번
-  // 부르므로(setLnbKindLens 안에서) 마운트 직후에도 왼쪽과 오른쪽이 같은 것을 본다.
-  setLnbKindLens((kind) => applyKindLens(kind));
 
   // 저절로 새로워지는 갱신(VIN-129). 지금 층을 다시 받되 카메라와 렌즈 패널은 잇는다 —
   // 옵션 재마운트(`applyPrefs`)와 같은 길이라 "보던 곳을 잃는다"가 다시 생기지 않는다.

@@ -52,7 +52,14 @@ const SHELL_INIT = () => {
 };
 const sheet = (p) => p.locator(".sheet[role=dialog]").last();
 const foot = (p, re) => sheet(p).locator(".sheet-foot button").filter({ hasText: re });
-const viewpoint = async (p, name) => { await p.locator("#tb-viewpoints button", { hasText: new RegExp(`^${name}$`) }).click(); await sleep(1800); };
+// 관점 세그는 보기 카드가 열렸을 때만 보인다(렌즈 패널과 함께). 열고 고른 뒤 닫는다.
+const viewpoint = async (p, name) => {
+  const chip = p.locator("#tb-viewpoints button", { hasText: new RegExp(`^${name}$`) });
+  if (!(await chip.isVisible().catch(() => false))) { await p.locator("#tb-lens").click(); await chip.waitFor({ state: "visible" }); }
+  await chip.click(); await sleep(400);
+  if (await p.locator("#view-lens-panel").isVisible().catch(() => false)) await p.keyboard.press("Escape");
+  await sleep(1600);
+};
 const settled = async (p) => { await p.waitForSelector("#view-metrics", { state: "attached" }).catch(() => {}); await sleep(2200); };
 // 설정 · 쓰기/가져오기/공유 · GRAPH.md 는 2026-09-22 부터 레일 바닥 설정 단추가 여는 **시트 하나**다
 // (surfaces/settings.ts). 옛 상단 바 단추(#tb-tools · #settings-btn · #tb-conv)는 숨어서 눌리지 않는다.
@@ -63,13 +70,21 @@ const settingsSheet = async (p, cat, tab) => {
 };
 // 누른 뒤 커서를 타이틀바 빈 곳으로 옮긴다: 단추 위에 남으면 "View and legend" 툴팁이 창 제어 단추를 덮은 채 찍힌다.
 const openLens = async (p) => { await p.locator("#tb-lens").click(); await p.waitForSelector("#view-lens-panel", { state: "visible" }); await p.mouse.move(640, 14); await sleep(400); };
+// 검색은 접힌 알약으로 시작한다(문서 우선 셸). 입력 칸 · 모드 단추를 쓰기 전에 편다.
+const findOpen = async (p) => { const b = p.locator("#tb-find-open"); if (await b.isVisible().catch(() => false)) { await b.click(); await sleep(300); } };
 const firstTopic = (p) => p.locator(".lnb-group .lnb-gname").first();
 // 주제 줄을 펼친다 — 닫혀 있을 때만 누른다(줄 클릭은 여닫기라 열린 줄을 누르면 닫힌다, #436).
 const openGroup = async (p, name) => {
   const g = name ? p.locator(".lnb-group").filter({ has: p.locator(".lnb-gname", { hasText: new RegExp(`^${name}$`) }) }).first() : p.locator(".lnb-group").first();
   if ((await g.getAttribute("aria-expanded")) !== "true") { await g.click(); await sleep(400); }
 };
-const firstDoc = async (p) => { await openGroup(p); return p.locator(".lnb-doc:not(.lnb-node)").first(); };   // 개념 줄(.lnb-node) 아래 문서가 온다(lnb.ts groupRows) — 문서 줄만 고른다
+const firstDoc = async (p) => {
+  await openGroup(p);
+  const doc = p.locator(".lnb-doc:not(.lnb-node):visible").first();
+  // 주제 바로 밑에 문서가 없고 하위 주제(.lnb-fold)만 있으면 첫 하위 주제를 편다.
+  if (!(await doc.count())) { await p.locator(".lnb-fold:visible").first().click(); await sleep(400); }
+  return doc;
+};   // 개념 줄(.lnb-node) 아래 문서가 온다(lnb.ts groupRows) — 문서 줄만 고른다
 const openFloat = async (p) => {
   // 노드 하나를 주소로 지목한다(#view/trace/<id>): 캔버스 좌표 없이도 float card 가 뜬다.
   const id = await pickNodeId(); if (!id) throw new Error("no node id from the sidecar search");
@@ -96,13 +111,15 @@ async function seedEvidenceEdge() {
   // 스타터 팩의 관계에는 기록된 근거가 없다. 엣지 상세 화면(근거 있는 관계 태그 → docpane)을 찍으려면
   // 근거가 붙은 관계가 하나는 있어야 하므로, physics 뿌리 개념 둘 사이에 관계 하나를 근거와 함께 둔다.
   const r = await side("/nav-tree?owner=tenant:local");
-  const phys = (r?.domains || []).find((d) => d.domain === "physics");
-  const ids = (phys?.docs || []).filter((x) => x.node_id && x.depth === 0).map((x) => x.node_id);
-  if (ids.length < 2) { console.log("seed: no two physics roots for the evidence edge"); return; }
+  const roots = (d) => (d?.docs || []).filter((x) => x.node_id && x.depth === 0).map((x) => x.node_id);
+  const doms = r?.domains || [];
+  const ids = roots(doms.find((d) => d.domain === "physics")).length >= 2
+    ? roots(doms.find((d) => d.domain === "physics")) : roots(doms.find((d) => roots(d).length >= 2));
+  if (ids.length < 2) { console.log("seed: no topic with two roots for the evidence edge"); return; }
   const [a, b] = ids;
   const res = await fetch(`${SIDE}/ingest/fragment`, { method: "POST", headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
     body: JSON.stringify({ owner: "tenant:local", nodes: [{ id: a, type: "concept" }, { id: b, type: "concept" }],
-      edges: [{ from: a, to: b, type: "relates_to", confidence: 0.82, evidence: "Both appear in the same lecture notes on symmetry; the second is introduced as the tool the first needs." }] }) });
+      edges: [{ from: a, to: b, type: "relates_to", confidence: 0.82, evidence: "Both are read in the same design review; the second is introduced as the tool the first needs." }] }) });
   console.log("seed: evidence edge", a, "→", b, res.status);
   EV_NODES = [b, a];   // 카드는 관계를 몇 개만 펼쳐 보이므로, 관계가 적은 쪽(b)에서 먼저 찾는다
 }
@@ -144,11 +161,6 @@ V("weave", "viewpoint Weave", (p) => viewpoint(p, "Weave"));
 // 2026-09-26(#436): 주제 줄 클릭은 접기만 한다. View 를 그 주제로 좁히는 것은 줄 끝의 범위 단추다.
 V("topic-scope", "LNB: the topic's scope button narrows View, scope chip appears", async (p) => { const g = p.locator(".lnb-grow").first(); await g.hover(); await g.locator(".lnb-gscope").click(); await sleep(1800); });
 V("lnb-collapsed", "LNB: collapse", async (p) => { await p.locator("#tb-shell-toggle").click(); await sleep(600); });
-// #232: 주제 줄 아래 갈래가 문서 | 노드 둘이다. 노드 갈래는 localStorage 가 정하고(vinc.shell.lnb.mode) 첫 주제를
-// 펼쳐 둔 채 열면 개념 줄이 문서 줄 자리에 선다. 이 상태가 없으면 Figma 는 칩만 있고 칩이 여는 것은 없다.
-// 펼침은 2026-09-26(#436)부터 저장하지 않는다 — 기본 세 단에서 시작하므로 physics 를 눌러 편다.
-V("lnb-nodes", "LNB: Nodes chip, physics expanded: concept rows in place of document rows", async (p) => { await openGroup(p, "physics"); await p.waitForSelector(".lnb-node", { timeout: 15000 }); await sleep(600); },
-  { ls: { "vinc.shell.lnb.mode": "nodes" } });
 V("lens-options-3d", "lens button: Options tab (3D rows)", openLens);
 V("lens-options-2d", "lens: Options for 2D", async (p) => { await viewpoint(p, "2D"); await openLens(p); });
 V("lens-options-timeline", "lens: Options for Timeline", async (p) => { await viewpoint(p, "Timeline"); await openLens(p); });
@@ -185,20 +197,35 @@ V("error", "sidecar unreachable for the map: error box", undefined, { api: [["GE
 V("lnb-failed", "nav-tree 500: LNB failed state with Retry", undefined, { api: [["GET", /\/nav-tree/, { status: 500, json: { error: "boom" } }]] });
 V("lnb-loading", "nav-tree pending: LNB loading", undefined, { api: [["GET", /\/nav-tree/, "hang"]] });
 
+// 문서 홈(#home) — 2026-10-22 부터 셸의 첫 화면이다. 그래프는 오른쪽 위 Graph 버튼이 연다.
+const HM = (id, trigger, before, extra = {}) => add({ id: `home__${id}`, url: "#home", trigger, before: async (p) => { await sleep(1500); if (before) await before(p); }, ...extra });
+const rail = async (p, key) => { await p.locator(`.rail-btn[data-rail="${key}"]`).click(); await sleep(1500); };
+HM("list", "load: document home, all documents, recent first");
+HM("topic", "LNB: a topic's filter button narrows the list (breadcrumb and chips)", async (p) => { const g = p.locator(".lnb-grow").first(); await g.hover(); await g.locator(".lnb-gscope").click(); await sleep(800); });
+HM("filter-empty", "title filter with no match", async (p) => { await p.fill("#home-q", "zzqxv"); await sleep(500); });
+HM("doc", "open a document: reading face with the side panel", async (p) => { await p.locator(".home-row").first().click(); await p.waitForSelector(".home-doc", { state: "visible" }); await sleep(1200); });
+HM("new", "New document: the writer", async (p) => { await p.locator('[data-act="new"]').first().click(); await sleep(1200); });
+HM("agent", "rail Agent: role roster, list narrowed to the role topics", (p) => rail(p, "agent"));
+HM("agent-empty", "rail Agent with no roles: New Agent role in the list and the LNB", (p) => rail(p, "agent"),
+  { api: [["GET", /^\/roles(\?|$)/, { status: 200, json: { executed: true, roles: [], relations: [], next_offset: null } }]] });
+HM("lnb-collapsed", "LNB: collapse to the icon strip", async (p) => { await p.locator("#tb-shell-toggle").click(); await sleep(600); });
+HM("empty", "empty store: write or import", undefined, { ls: { "vinc.owner": "tenant:capture-empty" } });
+
 // topbar: search, ask, palette, cheatsheet, tools, GRAPH.md, settings
 const TB = (id, trigger, before, extra = {}) => add({ id: `topbar__${id}`, trigger, before: async (p) => { await settled(p); await before(p); }, ...extra });
-TB("mode-menu", "search mode dropdown", async (p) => { await p.locator("#tb-mode").click(); await sleep(300); });
-TB("find-results", "type: results listbox", async (p) => { await p.fill("#tb-q", "sym"); await sleep(1200); });
-TB("find-empty", "type a query with no hits", async (p) => { await p.fill("#tb-q", "zzqxv"); await sleep(1200); });
-TB("find-loading", "search pending", async (p) => { await p.fill("#tb-q", "sym"); await sleep(600); }, { api: [["GET", /^\/search(\?|$)/,"hang"]] });
-TB("find-error", "search 500", async (p) => { await p.fill("#tb-q", "sym"); await sleep(1200); }, { api: [["GET", /^\/search(\?|$)/,{ status: 500, json: { error: "boom" } }]] });
-TB("browse-sheet", "results footer: All documents sheet, topic layer", async (p) => { await p.fill("#tb-q", "sym"); await sleep(1000); await p.locator("#tb-results button", { hasText: /all documents/i }).click(); await sheet(p).waitFor({ state: "visible" }); await sleep(600); });
-TB("browse-sheet-docs", "All documents: inside a topic", async (p) => { await p.fill("#tb-q", "sym"); await sleep(1000); await p.locator("#tb-results button", { hasText: /all documents/i }).click(); await sheet(p).waitFor({ state: "visible" }); await sleep(500); await sheet(p).locator(".sheet-body [role=button], .sheet-body button, .sheet-body [role=treeitem], .sheet-body li, .sheet-body .row").first().click(); await sleep(600); });
-const askMode = async (p) => { await p.locator("#tb-mode").click(); await sleep(200); await p.locator("#tb-modemenu [role=menuitemradio], #tb-modemenu button").filter({ hasText: /ask/i }).first().click(); await sleep(300); };
+TB("find-open", "search pill: expanded to the left, Graph and view card stay put", async (p) => { await findOpen(p); await p.mouse.move(640, 400); await sleep(300); });
+TB("mode-menu", "search mode dropdown", async (p) => { await findOpen(p); await p.locator("#tb-mode").click(); await sleep(300); });
+TB("find-results", "type: results listbox", async (p) => { await findOpen(p); await p.fill("#tb-q", "rate"); await sleep(1200); });
+TB("find-empty", "type a query with no hits", async (p) => { await findOpen(p); await p.fill("#tb-q", "zzqxv"); await sleep(1200); });
+TB("find-loading", "search pending", async (p) => { await findOpen(p); await p.fill("#tb-q", "rate"); await sleep(600); }, { api: [["GET", /^\/search(\?|$)/,"hang"]] });
+TB("find-error", "search 500", async (p) => { await findOpen(p); await p.fill("#tb-q", "rate"); await sleep(1200); }, { api: [["GET", /^\/search(\?|$)/,{ status: 500, json: { error: "boom" } }]] });
+TB("browse-sheet", "results footer: All documents sheet, topic layer", async (p) => { await findOpen(p); await p.fill("#tb-q", "rate"); await sleep(1000); await p.locator("#tb-results button", { hasText: /all documents/i }).click(); await sheet(p).waitFor({ state: "visible" }); await sleep(600); });
+TB("browse-sheet-docs", "All documents: inside a topic", async (p) => { await findOpen(p); await p.fill("#tb-q", "rate"); await sleep(1000); await p.locator("#tb-results button", { hasText: /all documents/i }).click(); await sheet(p).waitFor({ state: "visible" }); await sleep(500); await sheet(p).locator(".sheet-body [role=button], .sheet-body button, .sheet-body [role=treeitem], .sheet-body li, .sheet-body .row").first().click(); await sleep(600); });
+const askMode = async (p) => { await findOpen(p); await p.locator("#tb-mode").click(); await sleep(200); await p.locator("#tb-modemenu [role=menuitemradio], #tb-modemenu button").filter({ hasText: /ask/i }).first().click(); await sleep(300); };
 TB("ask-intro", "mode Ask: chat panel intro", async (p) => { await askMode(p); await p.locator("#tb-q").click(); await sleep(400); });
-TB("ask-answer", "ask a question that resolves", async (p) => { await askMode(p); await p.fill("#tb-q", "What is gauge symmetry"); await p.press("#tb-q", "Enter"); await sleep(3500); });
+TB("ask-answer", "ask a question that resolves", async (p) => { await askMode(p); await p.fill("#tb-q", "How do we rate limit the public API"); await p.press("#tb-q", "Enter"); await sleep(3500); });
 TB("ask-none", "ask something the graph has nothing on", async (p) => { await askMode(p); await p.fill("#tb-q", "zzqxv plorf"); await p.press("#tb-q", "Enter"); await sleep(3000); });
-TB("ask-history", "chat head: History sheet", async (p) => { await askMode(p); await p.fill("#tb-q", "What is gauge symmetry"); await p.press("#tb-q", "Enter"); await sleep(2500); await p.locator("#tb-chat button", { hasText: /history/i }).click(); await sleep(500); });
+TB("ask-history", "chat head: History sheet", async (p) => { await askMode(p); await p.fill("#tb-q", "How do we rate limit the public API"); await p.press("#tb-q", "Enter"); await sleep(2500); await p.locator("#tb-chat button", { hasText: /history/i }).click(); await sleep(500); });
 TB("palette", "Ctrl+Shift+K: command palette", async (p) => { await p.keyboard.press("Control+Shift+K"); await sleep(400); });
 TB("palette-filtered", "palette with a filter typed", async (p) => { await p.keyboard.press("Control+Shift+K"); await sleep(300); await p.keyboard.type("sh"); await sleep(300); });
 TB("cheatsheet", "?: shortcuts sheet", async (p) => { await p.keyboard.press("Shift+Slash"); await sleep(500); });
@@ -218,7 +245,11 @@ TB("share-sheet", "Share › Continue: share as a pack, spec grid and node list"
 // 그래서 이 상태는 여태 시트가 닫힌 **뒤의 지도**를 찍고 "ok" 를 답했다. 보드는 도는 코드의
 // 캡처인데 그 보드는 아무 코드도 안 그리고 있었다. 목적지 고르기 화면은 스페이스가 둘 이상일
 // 때만 뜨므로 웹 세션이 필요하고, 그 픽스처는 이 스크립트에 없다.
-TB("import-pack-sheet", "Import › pick a .vincpack: import pack sheet before confirming", async (p) => { await settingsSheet(p, "data", "import"); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(path.join(REPO, "starter-packs", "vinc-pack-math.vincpack")); await sleep(1500); });
+// 팩도 고르는 즉시 가져온다(확인 시트 없음). 적재 호출을 붙잡아 '가져오는 중'을 찍고 아무것도 쓰지 않는다.
+// 파일은 실무 이름의 사본이다: 화면에 보이는 것은 이름뿐이고, 내용은 적재되지 않는다.
+const PACK_SHOWN = path.join(OUT, "api-design-notes.vincpack");
+TB("import-pack-sheet", "Import › pick a .vincpack: the pack is being added", async (p) => { fs.copyFileSync(path.join(REPO, "starter-packs", "vinc-pack-math.vincpack"), PACK_SHOWN); await settingsSheet(p, "data", "import"); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(PACK_SHOWN); await sleep(1500); },
+  { api: [["POST", /^\/ingest\/pack/, "hang"]], after: async () => fs.rmSync(PACK_SHOWN, { force: true }) });
 // 설정 시트는 .md 를 고르는 즉시 가져온다(확인 시트 없음). 찍고 나면 그 문서를 지운다: 남겨 두면 뒤의 상태들
 // LNB 에 "No topic yet" 이 끼고, 다음 실행은 "이미 있음" 화면을 찍는다.
 TB("import-doc-sheet", "Import › pick a .md: the document is added", async (p) => { await settingsSheet(p, "data", "import"); const [ch] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]); await ch.setFiles(path.join(REPO, "starter-packs", "README.md")); await sleep(1500); },
@@ -234,9 +265,9 @@ TB("settings-light", "Settings › General, light theme", (p) => settingsSheet(p
 // search surface
 const SS = (id, trigger, before, extra = {}) => add({ id: `search__${id}`, url: "#search", trigger, before: async (p) => { await sleep(1500); if (before) await before(p); }, ...extra });
 SS("default", "load: recent queries and the browse list");
-SS("results", "type: grouped results", async (p) => { await p.locator("#surface input").first().fill("symmetry"); await sleep(1500); });
+SS("results", "type: grouped results", async (p) => { await p.locator("#surface input").first().fill("pagination"); await sleep(1500); });
 SS("empty", "no hits", async (p) => { await p.locator("#surface input").first().fill("zzqxv"); await sleep(1500); });
-SS("error", "search 500: banner", async (p) => { await p.locator("#surface input").first().fill("symmetry"); await sleep(1500); }, { api: [["GET", /^\/search(\?|$)/,{ status: 500, json: { error: "boom" } }]] });
+SS("error", "search 500: banner", async (p) => { await p.locator("#surface input").first().fill("pagination"); await sleep(1500); }, { api: [["GET", /^\/search(\?|$)/,{ status: 500, json: { error: "boom" } }]] });
 
 
 // ── 다른 스크립트가 같은 상태 목록을 쓴다 ───────────────────────────────────
@@ -251,7 +282,7 @@ if (LIST) { for (const s of states) console.log(s.id.padEnd(34), s.trigger); con
 if (!(await side("/health"))) { console.error("sidecar not reachable at", SIDE); process.exit(2); }
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: "chromium" });
-if (!NOSEED) await seed(browser);
+if (!NOSEED) await seed(browser); else await seedEvidenceEdge();
 // 캡처가 어느 코드를 그렸는지 남긴다. figma_app_copy.py 가 이 리비전 뒤에 app/src 가 바뀌었는지로 보드의 신선도를 본다.
 let sourceRev = null; try { sourceRev = (await import("node:child_process")).execSync("git rev-parse HEAD", { cwd: REPO, encoding: "utf8" }).trim(); } catch {}
 // 신선도의 **판정 근거**. 커밋이 아니라 이 트리 지문을 게이트가 본다 — 스쿼시 머지는 커밋을
@@ -269,6 +300,13 @@ for (const s of states) {
   await ctx.addInitScript((kv) => { for (const [k, v] of Object.entries(kv)) { if (v === "") localStorage.removeItem(k); else localStorage.setItem(k, v); } }, { ...BASE_LS, ...s.ls, ...(s.scheme === "light" ? { "vinc.theme": "light" } : {}) });
   await ctx.addInitScript(SHELL_INIT);
   const page = await ctx.newPage();
+  // 저장 설정은 이 PC 공용 파일(~/.vinc/config.json)이라 스크립트가 쓰지 않는다. 대신 읽기 응답만
+  // '고른 로컬 모드'로 바꿔, 로그인 뒤 알림(device-graph)이 모든 상태를 가리지 않게 한다.
+  await page.route((u) => new URL(u).pathname === "/config", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const res = await route.fetch(); const j = await res.json().catch(() => ({}));
+    return route.fulfill({ response: res, json: { ...j, mode: "local", mode_chosen: true } });
+  });
   for (const [m, re, r] of s.api) {
     await page.route((u) => re.test(new URL(u).pathname + new URL(u).search), async (route) => {
       if (m !== "*" && route.request().method() !== m) return route.continue();

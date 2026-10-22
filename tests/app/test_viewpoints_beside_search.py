@@ -118,8 +118,9 @@ class NarrowBarWraps(unittest.TestCase):
         # 카드가 버튼 폭이 된 뒤로(2026-09-28) 줄은 훨씬 좁은 바에서야 갈린다.
         self.assertNotIn("@container topbar (max-width: 700px)", CSS)
         m = _at("@container topbar (max-width: 420px)")
-        self.assertRegex(m, r"#tb-find \{[^}]*flex: 1 1 100%")
-        self.assertRegex(m, r"#tb-viewctl \{[^}]*margin-left: auto;")
+        # 2026-10-22: 검색은 접힌 알약이고, 펼친 검색이 좁은 바에서 바 폭을 다 쓴다.
+        self.assertRegex(m, r"#tb-find\[data-expanded\] \{[^}]*width: 100cqi")
+        self.assertRegex(m, r"#tb-viewctl \{[^}]*max-width: 100%;")
 
     def test_no_viewport_wrap_left_behind(self):
         self.assertNotIn("@media (max-width: 520px)", CSS)
