@@ -20,7 +20,9 @@ SKIP_DIRS = {"node_modules", ".git", ".venv", "venv", "dist", "target", "build",
              "_migration", "__pycache__", ".claude", "_wt"}
 #: CHANGELOG 은 릴리스 이력이다. 고치지 않는 기록이라 대조하지 않는다(gate_forbidden 과 같은 예외).
 SKIP_FILES = {"scripts/gate_graph_refs.py", "scripts/refresh_graph_refs.py", "CHANGELOG.md"}
-WIKILINK = re.compile(r"\[\[([^\]\n]{1,120})\]\]")
+#: 괄호 안 길이에 상한을 두지 않는다. 그래프 id 에는 길이 제한이 없으니, 상한이 있으면
+#: 그보다 긴 인용은 스캔에서 빠지고 게이트는 대조 없이 초록이 된다. 한 줄은 넘지 않는다.
+WIKILINK = re.compile(r"\[\[([^\]\n]+)\]\]")
 DOC_ID = re.compile(r"^vinc\.[a-z0-9]+\.[a-z0-9.-]+$")
 NODE_ID = re.compile(r"^(record|concept|decision|episode|bridge|domain):[a-z0-9._-]+$")
 GEN_DOC_ID = re.compile(r"^[0-9a-f]{17}$")

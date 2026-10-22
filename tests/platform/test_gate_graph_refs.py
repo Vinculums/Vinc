@@ -149,3 +149,55 @@ class ValidityBlocks(unittest.TestCase):
     def test_worktrees_are_not_scanned(self):
         from api.refs import SKIP_DIRS
         self.assertIn("_wt", SKIP_DIRS)
+
+
+class LongCitations(unittest.TestCase):
+    """괄호 안 길이에 상한이 있으면 그보다 긴 id 는 스캔에서 빠지고, 게이트는 그 인용을
+    대조하지 않은 채 초록으로 지나간다. 120자를 넘는 id 도 모으고 대조하는지 못 박는다."""
+
+    LONG = "record:" + "-".join(["a-citation-longer-than-the-old-cap"] * 5)
+
+    def _run(self, manifest: dict):
+        import io as _io
+        import json
+        import os
+        import tempfile
+        from contextlib import redirect_stdout
+
+        from api import refs
+
+        with tempfile.TemporaryDirectory() as root:
+            source = os.path.join(root, "a.py")
+            with open(source, "w", encoding="utf-8") as fh:
+                fh.write("# 근거: [[" + self.LONG + " §2]]" + os.linesep)
+            path = os.path.join(root, "m.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(manifest, fh)
+            hits = refs.scan_file(source)
+            out = _io.StringIO()
+            with redirect_stdout(out):
+                rc = refs.offline_check(manifest=path, roots=[root, root])
+        return hits, rc, out.getvalue()
+
+    def test_the_fixture_is_longer_than_the_old_cap(self):
+        self.assertGreater(len(self.LONG), 120)
+        self.assertTrue(is_citation(self.LONG))
+
+    def test_a_long_id_is_collected(self):
+        hits, _, _ = self._run({"docs": [], "nodes": [self.LONG]})
+        self.assertEqual(hits, [(1, self.LONG)])
+
+    def test_a_long_id_missing_from_the_manifest_blocks(self):
+        _, rc, out = self._run({"docs": [], "nodes": []})
+        self.assertEqual(rc, 1)
+        self.assertIn(self.LONG, out)
+
+    def test_a_long_id_that_was_superseded_blocks(self):
+        _, rc, out = self._run({"docs": [], "nodes": [self.LONG], "validity": {
+            self.LONG: {"validity": "historical", "superseded_by": "record:new"}}})
+        self.assertEqual(rc, 1)
+        self.assertIn("record:new", out)
+
+    def test_a_long_id_in_the_manifest_passes(self):
+        _, rc, _ = self._run({"docs": [], "nodes": [self.LONG]})
+        self.assertEqual(rc, 0)

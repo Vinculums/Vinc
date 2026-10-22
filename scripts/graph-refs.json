@@ -432,6 +432,7 @@
     "vinc.design.community-blueprint-figma-round-2026-10-13",
     "vinc.design.community-copy-and-rules-2026-10-12",
     "vinc.design.community-first-screen-content-first-2026-10-21",
+    "vinc.design.community-front-door-2026-10-22",
     "vinc.design.community-key-idea-rounded-treatment-2026-10-13",
     "vinc.design.community-reference-application-2026-10-13",
     "vinc.design.community-screen-blueprint-2026-10-13",
@@ -733,6 +734,7 @@
     "vinc.research.community-collaboration-flow-review-2026-10-18",
     "vinc.research.community-design-ia-reassessment-2026-10-13",
     "vinc.research.community-entry-screen-references-2026-10-21",
+    "vinc.research.community-home-references-2026-10-22",
     "vinc.research.community-interface-principles",
     "vinc.research.community-need-evidence-2026-10-13",
     "vinc.research.community-prompt-injection-review-2026-10-18",
@@ -839,6 +841,7 @@
     "vinc.research.volume-rendering-for-view",
     "vinc.result.laya-evidence-low-mixture-2026-10-13",
     "vinc.run.community-content-cleanup-2026-10-14",
+    "vinc.run.community-content-cleanup-2026-10-22",
     "vinc.run.community-physics-pilot-candidates-2026-10-22",
     "vinc.spec.api-cli-0-9-6",
     "vinc.spec.architecture",
@@ -1011,6 +1014,7 @@
     "record:isolated-seed-read-back-reported-empty-fields",
     "record:job-count-checkpointing-was-removed",
     "record:job-isolation-has-to-catch-baseexception",
+    "record:keep-index-mode-survived-104-trials-on-ladybug-0-21-2-at-two-cores-while-the-unguarded-control-crashed-1-of-20-2026-10-18",
     "record:korean-titled-nodes-answer-with-provenance-excerpts-2026-09-14",
     "record:korean-to-korean-node-misses-are-the-semantic-second-candidate-lost-to-a-tie-at-the-top-five-cut-2026-10-19",
     "record:log-analytics-attributes-hub-mcp-requests-by-owner-hash-since-2026-09-02",
@@ -1527,6 +1531,9 @@
       "validity": "current"
     },
     "record:job-isolation-has-to-catch-baseexception": {
+      "validity": "current"
+    },
+    "record:keep-index-mode-survived-104-trials-on-ladybug-0-21-2-at-two-cores-while-the-unguarded-control-crashed-1-of-20-2026-10-18": {
       "validity": "current"
     },
     "record:korean-titled-nodes-answer-with-provenance-excerpts-2026-09-14": {
