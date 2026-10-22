@@ -35,9 +35,7 @@ on:
 # record:writing-a-trap-down-does-not-stop-it-a-check-does.
 #
 # 대가는 정직하게 적는다: main 런이 접히지 않으므로 연달아 머지하면 런이 그만큼 쌓인다.
-# ⚠ **그 대가의 모양이 2026-09-01 에 바뀌었다.** 그때까지는 셀프호스티드 러너가 하나라
-# 쌓인 런이 **한 줄로 기다렸고**, 그 줄에 24시간 만료 시계가 붙어 있었다(#130). 지금은
-# 이 워크플로의 잡이 전부 호스티드라 런끼리 서로를 기다리지 않는다 — 남은 대가는 줄이
+# 이 워크플로의 잡은 전부 호스티드라 런끼리 서로를 기다리지 않는다. 남는 대가는 줄이
 # 아니라 **분(minutes)** 이고, 그것은 rust 잡의 주석이 든다.
 #
 # ── ⚠ 위의 `cancel-in-progress` 하나로는 그것을 막지 못했다 (2026-08-30) ─────────
@@ -46,8 +44,8 @@ on:
 # 런은 `cancel-in-progress` 와 무관하게 취소된다. 그러니 앞의 처방은 런이 실제로 돌기
 # 시작한 경우에만 닿고, 줄에서 기다리는 동안의 유실은 그대로 열려 있었다.
 #
-# 러너가 하나라 그 조건은 예외가 아니라 상시다. 2026-08-30 에 러너가 내려간 채로 머지
-# 셋을 했더니 main 런이 이렇게 됐다:
+# 러너가 하나뿐이던 때는 그 조건이 예외가 아니라 상시였다. 2026-08-30 에 러너가 내려간
+# 채로 머지 셋을 했더니 main 런이 이렇게 됐다:
 #
 #   31992e2 (#118) cancelled · a7f0253 (#119) cancelled · adb7554 (#122) pending
 #
@@ -69,8 +67,6 @@ on:
 #
 # ⚠ 대가: main 런이 이제 **하나도 접히지 않는다.** 그것이 이 변경이 사는 대가고, 위
 # 주석이 이미 고른 쪽이다 — 재현 안 되는 실패의 표본은 분으로 다시 살 수 없다.
-# (2026-09-01 이전에는 여기 "러너가 하나인 동안 줄이 길어진다"고 적혀 있었다. 그
-# 줄서기는 셀프호스티드가 마지막으로 빠지면서 없어졌다 — #130 · rust 잡 주석.)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -102,15 +98,9 @@ jobs:
   # 이유는 그 스텝 위 주석.)
   changes:
     name: changes (path gate)
-    # ⚠ **이 잡이 셀프호스티드로 남으면 호스티드로 옮긴 잡들이 인질이 된다.**
-    # `app` 과 `rust` 가 `needs: changes` 다(`core-pkns` 는 2026-09-07 에 뗐다 — 그 잡의
-    # 주석이 이유다). 러너가 안 올라오면
-    # 이 19초짜리가 큐에 남고, 그 뒤 잡들은 호스티드든 아니든 **시작조차 못 한다**
-    # (#130 이 적은 24시간 만료가 여기서 전파된다). 그래서 #146 이 core 를 옮긴 것을
-    # 실제로 성립시키려면 이것도 같이 나와야 한다.
-    #
-    # 옮겨도 잃는 것이 없다: 하는 일이 `git diff --name-only` 와 러너 이동 게이트뿐이고
-    # 둘 다 기계를 안 가린다. 실측 19초(런 33412567123)라 분도 거의 안 쓴다.
+    # `app` 과 `rust` 가 `needs: changes` 라 이 잡이 늦으면 그 둘도 늦게 시작한다
+    # (`core-pkns` 는 기다리지 않는다, 그 잡의 주석이 이유다). 하는 일이 `git diff
+    # --name-only` 와 러너 이동 게이트뿐이라 호스티드에서 수십 초면 끝난다.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -727,17 +717,9 @@ jobs:
     # 변경 목록을 보고 `app/src-tauri/` 나 이 파일이 바뀐 머지에서만 켠다(목록을 못
     # 구하면 켠다).
     if: needs.changes.outputs.rust == 'true'
-    # ── ⚠ 2026-09-01 에 셀프호스티드에서 호스티드로 옮겼다 (#130) ────────────────
-    # `#146`(core·core-pkns)·`#148`(changes·app) 뒤에 이 워크플로에 남은 **마지막
-    # 셀프호스티드 자리**였다. 남아 있는 동안은 #130 이 말하는 만료가 여기로 그대로
-    # 통했다: GitHub 은 러너에 배정되지 않은 잡을 **24시간 뒤 취소**하고, 그러면
-    # 머지된 커밋의 검증이 **영영 안 돈 것**이 된다. 노트북이 하루 넘게 꺼져 있으면
-    # 그 일이 난다. main push 는 뒤 커밋이 대체하지 않으므로 잃은 것을 되살 수 없다.
-    #
-    # 왜 "이 하나쯤"이 안 되나: `#123` 이 이 잡을 만든 이유가 정확히 **"컴파일 오류가
-    # 처음 드러나는 자리가 태그 시점의 3-OS 매트릭스였고, 그 자리의 실패는 릴리스
-    # 하나를 통째로 되감는다"** 였다([[record:ci-never-builds-the-rust]]). 그 사고를
-    # 앞으로 당긴 것이 이 잡이니, 만료로 조용히 안 도는 것은 잡을 지운 것과 같다.
+    # 이 잡은 컴파일 오류를 태그 시점의 3-OS 매트릭스보다 먼저 잡는다. 그 자리의 실패는
+    # 릴리스 하나를 통째로 되감는다([[record:ci-never-builds-the-rust]]). 그래서 이 잡이
+    # 조용히 안 도는 것은 잡을 지운 것과 같다.
     #
     # ⚠ **대가는 분(minutes)이고 윈도우는 리눅스의 2배로 센다.** 호스티드 한도가
     # 2000분으로 풀린 것(발주자 확인, 2026-09-01)이 이 판정의 입력이다. 그 입력이
@@ -755,18 +737,6 @@ jobs:
     # 매달린 잡을 자르는 장치. 호스티드라 매달린 시간이 그대로 청구 분으로 나간다.
     timeout-minutes: 30
     steps:
-      # 노트북 러너는 System32 가 PATH 에서 Git 보다 앞이라 `shell: bash` 가 WSL 의
-      # bash 로 잡힌다. Git Bash 를 앞에 세운다(release.yml 동형). 지금 러너는 호스티드라
-      # 해가 없는 보험이고, 노트북 러너로 돌아가면 다시 필요하다.
-      - name: Prefer Git Bash on Windows (system32 bash is WSL)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $gitRoot = Split-Path (Split-Path (Get-Command git).Source)
-          $binDir  = Join-Path $gitRoot 'bin'
-          if (Test-Path (Join-Path $binDir 'bash.exe')) {
-            $binDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          }
       # 산출물을 체크아웃 **밖**에 둔다. `actions/checkout` 은 기본이 `clean: true` 라
       # `git clean -ffdx` 를 돌리고 `target/` 은 gitignore 대상이라 매 실행 지워진다.
       # 절대경로가 아니라 `$RUNNER_WORKSPACE` 인 이유 둘:
