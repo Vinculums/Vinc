@@ -3,13 +3,13 @@
     "what": "files -> history-marker comment lines, counted by scripts/gate_comment_history.py",
     "regenerate": "python -X utf8 scripts/gate_comment_history.py --write-baseline",
     "new_file_allowance": 3,
-    "total": 2478
+    "total": 2469
   },
   "files": {
     ".github/actions/runner-preflight/action.yml": 3,
     ".github/dependabot.yml": 2,
     ".github/workflows/bake-probe.yml": 6,
-    ".github/workflows/ci.yml": 89,
+    ".github/workflows/ci.yml": 80,
     ".github/workflows/container-latency-probe.yml": 15,
     ".github/workflows/encode-m3-probe.yml": 8,
     ".github/workflows/hub-capacity-trial.yml": 1,

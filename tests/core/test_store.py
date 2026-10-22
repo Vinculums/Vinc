@@ -139,7 +139,7 @@ class ProvisionTests(unittest.TestCase):
                       "FROM Concept TO Decision, FROM Decision TO Concept, "
                       "FROM Decision TO Decision, evidence STRING, confidence DOUBLE, "
                       "created STRING)", ddl)   # v14 — 엣지 출생
-        # …단 RELATED_TO 는 예외로 개념↔개념 — Louvain 이 단일 노드 테이블만 받는다.
+        # …단 RELATED_TO 는 예외로 개념↔개념에 남는다(커뮤니티 투영 rel, 아래 가드).
         self.assertIn("CREATE REL TABLE RELATED_TO(FROM Concept TO Concept, "
                       "evidence STRING, confidence DOUBLE, created STRING)", ddl)
         self.assertIn("CREATE REL TABLE CROSSES(FROM Bridge TO Domain)", ddl)
@@ -180,22 +180,20 @@ class ProvisionTests(unittest.TestCase):
         self.assertEqual(1, len([s for s in specs if s["label"] == "CROSSES"]))
 
     def test_louvain_projected_rel_stays_on_one_node_table(self):
-        """`communities()` 가 투영하는 rel 은 **노드 테이블 하나**에만 걸쳐야 한다.
+        """`api.query.communities` 가 투영하는 rel 은 **노드 테이블 하나**(Concept)에만 걸친다.
 
-        엔진이 그렇게 요구한다(실측 2026-08-09):
-            Runtime exception: Louvain only supports operations on one node table.
-        그리고 `project_graph` 는 투영한 rel 의 끝점 테이블을 전부 투영하라고 하므로,
-        이 rel 에 끝점 라벨을 하나만 더 붙여도 **커뮤니티 기능이 통째로 죽는다**.
-        v12 작업 중 실제로 그렇게 죽였다가 되돌렸다 — 그래서 여기 가드를 둔다.
-
-        우회로는 없다(전부 실측 기각): 필터 dict 형식도 끝점 요구를 그대로 받고,
-        `project_graph_cypher` 로 만든 그래프는 WCC 조차 Binder 로 거절한다."""
+        커뮤니티는 `api/graph_algo.py` 의 Leiden 이 이 rel 하나의 투영 위에서 계산한다.
+        투영(`api.query._algo_graph`)은 끝점 라벨을 스키마에서 파생하므로 끝점을 더 열어도
+        계산은 돈다. 대신 그 라벨의 노드가 군집에 섞여, 개념 사이의 느슨한 연관이라는
+        군집의 뜻이 바뀐다: 결정이 개념에 닿는 자리는 about 이고 결정끼리는 계보다.
+        그래서 이 rel 을 넓히는 변경은 여기서 멈추고 `communities` 의 투영과 함께 정한다.
+        근거: [[vinc.spec.dataplane §2.4]]"""
         rel = eschema._LOUVAIN_PROJECTED_REL
         labels = {lbl for s in eschema.rel_table_specs() if s["label"] == rel
                   for lbl in (s["from"], s["to"])}
         self.assertEqual(labels, {"Concept"},
-                         f"{rel} 이 노드 테이블 {sorted(labels)} 에 걸쳐 있다 — "
-                         "Louvain 이 죽으므로 communities 투영을 함께 고쳐야 한다")
+                         f"{rel} 이 노드 테이블 {sorted(labels)} 에 걸쳐 있다: "
+                         "군집에 다른 노드가 섞이므로 communities 투영과 함께 정할 것")
 
     def test_bridge_owner_column_and_v2_migration(self):
         # F5 — Bridge 소유 스탬프: 신규 설치는 base DDL, 구 설치는 v2 ALTER(백필 '').
