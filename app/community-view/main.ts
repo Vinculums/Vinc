@@ -161,6 +161,50 @@ async function main() {
     laid.nodes.map((n) => n.domain));
   // 읽기 전용이다. 노드를 끌어 옮기는 손짓도 끈다.
   graph.enableNodeDrag(false);
+  whenDrawn(graph, () => fit(graph!));
+  let resized = 0;
+  window.addEventListener("resize", () => { clearTimeout(resized); resized = window.setTimeout(() => graph && fit(graph), 200); });
+}
+
+/** 메시가 다 생기고 렌더러의 첫 맞춤(400ms 애니메이션)이 끝난 뒤에 부른다. */
+function whenDrawn(g: ReturnType<typeof mount3d>, then: () => void, tries = 0) {
+  const ns = g.graphData().nodes as { __threeObj?: unknown }[];
+  if (ns.some((n) => !n.__threeObj) && tries < 120) { requestAnimationFrame(() => whenDrawn(g, then, tries + 1)); return; }
+  setTimeout(then, 700);
+}
+
+/** 화면 비율까지 따져 그래프가 프레임을 채우게 한다. 렌더러의 `zoomToFit` 은 세로 시야각
+ *  하나로 재서, 가지가 옆으로 늘어선 시간순 배치는 넓은 화면 가운데 작게 남는다. 보던 방향은
+ *  그대로 두고 중심과 거리만 다시 잡는다. */
+function fit(g: ReturnType<typeof mount3d>, ms = 500) {
+  const cam = g.camera() as unknown as { fov: number; aspect: number; position: { x: number; y: number; z: number } };
+  const ns = (g.graphData().nodes as { x?: number; y?: number; z?: number }[]).filter((n) => Number.isFinite(n.x));
+  if (!ns.length) return;
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const n of ns) [n.x!, n.y || 0, n.z || 0].forEach((v, i) => { lo[i] = Math.min(lo[i], v); hi[i] = Math.max(hi[i], v); });
+  const c = lo.map((v, i) => (v + hi[i]) / 2);
+  const norm = (v: number[]) => { const l = Math.hypot(...v) || 1; return v.map((x) => x / l); };
+  const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const dir = norm([cam.position.x - c[0], cam.position.y - c[1], cam.position.z - c[2]]);
+  const right = norm(cross([0, 1, 0], dir)), up = cross(dir, right);
+  const tanV = Math.tan((cam.fov * Math.PI) / 360), tanH = tanV * cam.aspect;
+  // 화면 평면에서의 상자 가운데로 중심을 옮긴 뒤, 모든 점이 시야 안에 드는 가장 가까운 거리.
+  const rs = ns.map((n) => [n.x! - c[0], (n.y || 0) - c[1], (n.z || 0) - c[2]]);
+  const r0 = (Math.min(...rs.map((p) => dot(p, right))) + Math.max(...rs.map((p) => dot(p, right)))) / 2;
+  const u0 = (Math.min(...rs.map((p) => dot(p, up))) + Math.max(...rs.map((p) => dot(p, up)))) / 2;
+  const centre = [0, 1, 2].map((i) => c[i] + right[i] * r0 + up[i] * u0);
+  let d = 0;
+  for (const p of rs) {
+    const q = [0, 1, 2].map((i) => p[i] - right[i] * r0 - up[i] * u0);
+    const depth = dot(q, dir);
+    d = Math.max(d, depth + Math.abs(dot(q, right)) / tanH, depth + Math.abs(dot(q, up)) / tanV);
+  }
+  d *= 1.08;  // 가장자리 여백
+  const pos = { x: centre[0] + dir[0] * d, y: centre[1] + dir[1] * d, z: centre[2] + dir[2] * d };
+  g.cameraPosition(pos, { x: centre[0], y: centre[1], z: centre[2] }, ms);
+  // 렌더러의 안개는 컨트롤의 change 로 카메라 거리에 맞춘다. 코드로 옮긴 카메라도 알린다.
+  setTimeout(() => (g.controls() as { dispatchEvent?: (e: { type: string }) => void }).dispatchEvent?.({ type: "change" }), ms + 20);
 }
 
 void main();
