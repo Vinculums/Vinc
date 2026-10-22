@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import os
 import re
 from store.config import load_config
@@ -753,6 +754,38 @@ def _id_token(t: str) -> bool:
     return len(t) > 1 and t not in _ID_PREFIX_TOKENS
 
 
+def _node_token_idf_on() -> bool:
+    """제목 팔이 토큰을 희소도로 가중할 것인가. **기본은 꺼짐**(`VINC_NODE_TOKEN_IDF`).
+
+    켜면 한 글자 한글 토큰을 빼고, 행마다 `hit_weight`·`title_weight` 를 달아 그 순서로
+    세우며, brief 가 그 무게로 확정한다(`api.query._brief_resolve`). 끄면 글자 그대로 옛
+    동작이다. 켜는 것은 핀 위 G0 전후 측정 뒤 사람이 정한다.
+    근거: [[concept:rarity-weighted-node-tokens]]"""
+    return str(os.environ.get("VINC_NODE_TOKEN_IDF", "")).strip().lower() in (
+        "1", "on", "true", "yes")
+
+
+def _token_weights(rows: list[dict], toks: list[str]) -> dict[str, float]:
+    """질의 토큰마다 IDF 무게, 가장 드문 토큰이 1 이 되게 나눈다.
+
+    문서 빈도는 제목 팔이 이미 받아 온 OR 후보 행에서 센다. 토큰을 하나라도 담은 그
+    소유자의 노드는 전부 그 행에 있으므로 질의를 더 하지 않고도 빈도가 정확하다(점수 단계와
+    같은 필드·같은 id 규칙). N 은 행 수다: 모든 행에 든 토큰도 0 이 아니라 log 2 쯤을 받는다."""
+    n = len(rows)
+    df = dict.fromkeys(toks, 0)
+    for r in rows:
+        title = str(r.get("title") or "").lower()
+        one = str(r.get("one_liner") or "").lower()
+        props = _props_values_text(r.get("props_raw"))
+        nid = str(r.get("id") or "").lower()
+        for t in toks:
+            if t in title or t in one or t in props or (_id_token(t) and t in nid):
+                df[t] += 1
+    raw = {t: math.log(1 + n / d) for t, d in df.items() if d}
+    top = max(raw.values(), default=0.0)
+    return {t: w / top for t, w in raw.items()} if top else {}
+
+
 def _node_fallback_search(store, query: str, *, limit: int = 20,
                           owner: str | None = None, historical: bool = False,
                           stats: dict | None = None,
@@ -788,7 +821,8 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     OR 후보를 기존 어휘 순위로 좁힌 뒤 :data:`NODE_SCAN_CAP` 상한을 적용한다.
     잘린 후보가 있으면 통계에 남기며 저장소 반환 순서에 따라 강한 후보를 버리지 않는다.
     빈 쿼리·토큰 없음은 모든 노드를 삼키므로 스킵([])."""
-    toks = normalize_query_tokens(query)
+    idf_on = _node_token_idf_on()
+    toks = normalize_query_tokens(query, drop_single_hangul=idf_on)
     if not toks:
         return []
     params: dict = {f"q{i}": t for i, t in enumerate(toks)}
@@ -880,6 +914,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     # 문서 미러는 구간 열이 없다. 걸러야 할 때만 그 문서의 구간을 읽는다.
     mirror_iv = (_mirror_validity(store, [r.get("id") for r in rows], owner=owner)
                  if doc_intervals and (scope is not None or not historical) else {})
+    weight = _token_weights(rows, toks) if idf_on else {}
     scored: list[dict] = []
     dropped: set = set()       # 지운 id — 의미 팔이 같은 노드를 지워도 한 번만 센다
     best_dropped = (0, 0)      # 지운 행 중 가장 센 (hit_tokens, title_tokens)
@@ -925,10 +960,17 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
             continue
         where = ("title" if n_title else "one_liner" if n_one
                  else "props" if n_props else "id")
-        scored.append({"id": r.get("id"), "title": r.get("title"), "kind": r.get("kind"),
-                       "domain": r.get("domain") or "", "matched_in": where,
-                       "hit_tokens": hit, "title_tokens": n_title,
-                       "token_total": len(toks)})
+        row = {"id": r.get("id"), "title": r.get("title"), "kind": r.get("kind"),
+               "domain": r.get("domain") or "", "matched_in": where,
+               "hit_tokens": hit, "title_tokens": n_title,
+               "token_total": len(toks)}
+        if idf_on:
+            row["hit_weight"] = round(sum(
+                weight.get(t, 0.0) for t in toks
+                if t in title or t in one or t in props
+                or (_id_token(t) and t in nid)), 4)
+            row["title_weight"] = round(sum(weight.get(t, 0.0) for t in toks if t in title), 4)
+        scored.append(row)
     # 결정론 랭킹: 맞은 토큰 수 ↓ → 제목 토큰 수 ↓ → 필드 강도 ↑ → id ↑.
     if stats is not None:
         stats["candidate_count"] = len(scored)
@@ -937,6 +979,10 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
         stats["dropped_not_current"] = len(dropped)
         stats["best_dropped_score"] = best_dropped
     from heapq import nsmallest
+    if idf_on:
+        return nsmallest(min(NODE_SCAN_CAP, max(1, int(limit))), scored,
+                         key=lambda r: (-r["hit_weight"], -r["title_weight"],
+                                        _FIELD_RANK.get(r["matched_in"], 9), str(r["id"])))
     return nsmallest(min(NODE_SCAN_CAP, max(1, int(limit))), scored,
                      key=lambda r: (-r["hit_tokens"], -r["title_tokens"],
                                     _FIELD_RANK.get(r["matched_in"], 9), str(r["id"])))

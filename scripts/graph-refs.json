@@ -874,6 +874,7 @@
     "concept:agent-orchestration",
     "concept:app-narrow-window-contract",
     "concept:proxy-allowlist",
+    "concept:rarity-weighted-node-tokens",
     "concept:tool-response-disclosure",
     "decision:2d-marks-are-baked-at-256-px",
     "decision:2d-selection-outlines-the-kept-nodes",
@@ -1112,6 +1113,9 @@
       "validity": "unknown"
     },
     "concept:proxy-allowlist": {
+      "validity": "unknown"
+    },
+    "concept:rarity-weighted-node-tokens": {
       "validity": "unknown"
     },
     "concept:tool-response-disclosure": {

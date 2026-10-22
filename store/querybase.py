@@ -456,19 +456,29 @@ def _strip_ko_suffix(tok: str) -> str:
     return tok
 
 
-def normalize_query_tokens(query: str, *, cap: int = 8) -> list[str]:
+def _single_hangul(tok: str) -> bool:
+    return len(tok) == 1 and "가" <= tok <= "힣"
+
+
+def normalize_query_tokens(query: str, *, cap: int = 8,
+                           drop_single_hangul: bool = False) -> list[str]:
     """질문 → 검색 토큰(순수·결정론). 구두점 제거 → 소문자 → 조사 절단 → 불용어 제거.
 
     **불용어를 걷어낸 뒤 아무것도 안 남으면 걷어내기 전으로 되돌린다** — "뭐야" 한
     마디만 물었을 때 질의가 통째로 사라져 전 노드를 삼키는 것을 막는다(빈 토큰은
     호출부가 조기 반환한다). 조사 절단본과 원형을 **둘 다** 남기지는 않는다:
-    중복 토큰은 매치 수 집계를 왜곡한다."""
+    중복 토큰은 매치 수 집계를 왜곡한다.
+
+    ``drop_single_hangul`` 이면 한 글자 한글 토큰(`그`·`안`·`두`)을 상한 **전에** 뺀다.
+    `CONTAINS` 라 한 글자는 거의 모든 한국어 제목에 걸린다. 근거:
+    [[concept:rarity-weighted-node-tokens]]"""
     raw = [t for t in re.split(r"[\s,./?!;:()\[\]{}\"'`~]+", (query or "").lower()) if t]
     stemmed = [_strip_ko_suffix(t) for t in raw]
     # 불용어는 원형과 절단형 **둘 다** 본다 — 절단이 먼저면 '무엇인가'가 '무엇인'이 되어
     # 목록을 빠져나간다.
     kept = [s for t, s in zip(raw, stemmed)
-            if s and t not in _STOP_TOKENS and s not in _STOP_TOKENS]
+            if s and t not in _STOP_TOKENS and s not in _STOP_TOKENS
+            and not (drop_single_hangul and _single_hangul(s))]
     if not kept:                      # 전부 불용어였다 — 원형으로 되돌린다
         kept = [t for t in stemmed if t]
     out: list[str] = []

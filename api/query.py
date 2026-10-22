@@ -3664,13 +3664,37 @@ def _brief_rank(rows: list[dict]) -> list[dict]:
     안정 정렬이라 동점이면 사이드카가 준 순서(RRF)를 그대로 존중한다.
     `arms` 가 없는 호출부(직접 만든 행·구 테스트)는 전부 0 이라 순서가 안 바뀐다."""
     strict = _brief_strict_on()
+    hit, title = _brief_lex_keys(_brief_idf_rows(rows))
     return sorted(rows, key=lambda h: (
         # 의미 팔이 자기 기준으로 단호했던 노드를 먼저 놓는다(`_SEM_GAP` 주석).
         # **순서만** 바꾼다 — `_brief_resolve` 의 `decisive` 는 여전히 어휘 여유를 요구한다.
         -1 if (strict and h.get("sem_decisive")) else 0,
         -len(h.get("arms") or []) if strict else 0,
-        -_brief_int(h.get("hit_tokens")),
-        -_brief_int(h.get("title_tokens"))))
+        -hit(h),
+        -title(h)))
+
+
+#: 희소도 가중(`VINC_NODE_TOKEN_IDF`)에서 확정에 필요한 무게 차. 가장 드문 질의 토큰 하나가
+#: 1 이다. **측정 전 값이다** — 켜기 전에 핀 위 G0 로 정한다.
+_IDF_MARGIN = 1.0
+
+
+def _brief_idf_rows(rows: list[dict]) -> bool:
+    """희소도 가중으로 판정할 행들인가: 플래그가 켜져 있고, 어휘로 맞은 행이 **전부** 무게를
+    달고 있다. 하나라도 없으면 수와 무게가 한 비교에 섞이므로 토큰 수로 판정한다."""
+    return _retrieval._node_token_idf_on() and all(
+        "hit_weight" in h for h in rows if _brief_int(h.get("hit_tokens")) > 0)
+
+
+def _brief_lex_keys(idf: bool):
+    """어휘 증거를 읽는 두 함수(맞은 양, 제목에서 맞은 양). ``idf`` 면 제목 팔이 단 무게를,
+    아니면 토큰 수를 읽는다. 무게가 없는 행(그래프·의미 팔만 올린 노드)은 0 이다.
+    근거: [[concept:rarity-weighted-node-tokens]]"""
+    if idf:
+        return (lambda h: float(h.get("hit_weight") or 0.0),
+                lambda h: float(h.get("title_weight") or 0.0))
+    return (lambda h: _brief_int(h.get("hit_tokens")),
+            lambda h: _brief_int(h.get("title_tokens")))
 
 
 def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
@@ -3714,10 +3738,13 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     ranked = _brief_rank(rows)
     top, second = ranked[0], ranked[1]
     margin = _STRICT_MARGIN if _brief_strict_on() else 1   # 1 이면 현행과 글자 그대로 같다
+    idf = _brief_idf_rows(rows)
+    hit, title = _brief_lex_keys(idf)
+    if idf:
+        margin = _IDF_MARGIN
     decisive = _brief_int(top.get("hit_tokens")) > 0 and (
-        _brief_int(top.get("hit_tokens")) - _brief_int(second.get("hit_tokens")) >= margin
-        or _brief_int(top.get("title_tokens"))
-        - _brief_int(second.get("title_tokens")) >= margin)
+        hit(top) - hit(second) >= margin
+        or title(top) - title(second) >= margin)
     # 의미 우위 승격(플래그 뒤): 되묻기가 될 자리에서만 돈다. 1위가 의미 팔의 1위가
     # 아니면 `sem_lead` 가 없다(그 노드보다 가까운 것이 있으니 우위가 음수다).
     lead = top.get("sem_lead")
