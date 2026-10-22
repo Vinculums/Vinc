@@ -11,15 +11,22 @@
 """
 from __future__ import annotations
 
+import hashlib
 import os
+import platform
 import sys
+import tempfile
 import unittest
 import unittest.mock
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO))
 
 from store import embedded_backend as eb  # noqa: E402
+
+#: 번들에 싣는 확장. 해시 목록(`packaging/lbug-ext-<판>.sha256`)의 확장 이름과 같다.
+_NEED = ("vector", "fts", "algo")
 
 
 class BundledExtPathTests(unittest.TestCase):
@@ -149,15 +156,18 @@ class LadybugOfflineLoadTests(unittest.TestCase):
             raise unittest.SkipTest("ladybug 미설치 — 개발 환경 확인")
 
     def test_offline_bundled_load(self):
-        import ladybug, shutil, tempfile
+        import ladybug, shutil
         home = Path.home()
         cache = home / ".lbdb"
-        # 번들 준비: 확장이 캐시에 없으면 INSTALL(네트워크) 후 복사. 네트워크/설치 실패 시 skip.
+        # 번들 준비: 엔진 판의 핀과 해시가 같은 바이트만 쓴다(상류에서 받지 않는다).
+        # 리눅스에서 핀과 다르면 판 불일치로 실패하고, 그 밖의 기기에서 맞는 파일이 없으면 skip.
         bundle = Path(tempfile.mkdtemp(prefix="g0bundle_"))
         try:
-            _seed_bundle(ladybug, cache, bundle)
-        except Exception as e:
-            self.skipTest(f"확장 시드 실패(오프라인 CI 등) — {e}")
+            sources = _seed_bundle(ladybug, cache, bundle)
+        except EngineMismatch as e:
+            self.fail(str(e))
+        except BundleUnavailable as e:
+            self.skipTest(f"핀과 같은 확장이 이 기기에 없다: {e}")
 
         moved = home / ".lbdb__g0test"
         if moved.exists():
@@ -174,9 +184,14 @@ class LadybugOfflineLoadTests(unittest.TestCase):
                 data_dir = None
 
             be = eb.EmbeddedBackend(db, conn, "ladybug", _Cfg())
-            # 오프라인(캐시 이동됨)에서 실 코드 경로로 로드 — 예외 없어야 통과
-            be._load_ext("vector")
-            be._load_ext("fts")
+            # 오프라인(캐시 이동됨)에서 실 코드 경로로 로드 — 예외 없어야 통과.
+            # 실패하면 엔진 판과 번들 출처·해시를 함께 말한다(재실행으로 가려지지 않게).
+            for ext in ("vector", "fts"):
+                try:
+                    be._load_ext(ext)
+                except Exception as e:
+                    self.fail(f"{ext} 번들 로드 실패: 엔진 ladybug "
+                              f"{getattr(ladybug, '__version__', '?')} · 출처 {sources[ext]} · {e}")
             conn.execute("CREATE NODE TABLE Chunk(id INT64, embedding FLOAT[3], text STRING, PRIMARY KEY(id))")
             conn.execute("CREATE (:Chunk {id:1, embedding:[0.1,0.2,0.3], text:'hello world'})")
             conn.execute("CALL CREATE_VECTOR_INDEX('Chunk','chunk_vec','embedding')")
@@ -188,30 +203,167 @@ class LadybugOfflineLoadTests(unittest.TestCase):
                 os.environ["VINC_LBUG_EXT_DIR"] = old
             if cache.exists():
                 shutil.rmtree(cache)
-            shutil.move(str(moved), str(cache))
+            # 캐시가 처음부터 없던 기기(깨끗한 러너)에서는 되돌릴 것이 없다.
+            if moved.exists():
+                shutil.move(str(moved), str(cache))
 
 
-def _seed_bundle(ladybug, cache: Path, bundle: Path) -> None:
-    """확장 3개를 bundle 로 확보 — 캐시에 있으면 복사, 없으면 INSTALL(네트워크) 후 복사."""
+class EngineMismatch(Exception):
+    """확장 바이트가 설치된 엔진 판의 핀과 다르다. 심볼 오류로 떨어지기 전에 판 불일치로 말한다."""
+
+
+class BundleUnavailable(Exception):
+    """이 기기에 핀과 같은 확장 바이트가 없다(리눅스 밖의 개발 기기). 테스트는 skip 한다."""
+
+
+def _platform_tag() -> str:
+    """해시 목록이 쓰는 플랫폼 이름. 목록에 없는 조합이면 빈 문자열."""
+    machine = platform.machine().lower()
+    if sys.platform.startswith("linux") and machine in ("x86_64", "amd64"):
+        return "linux_amd64"
+    if sys.platform == "win32" and machine in ("x86_64", "amd64"):
+        return "win_amd64"
+    if sys.platform == "darwin" and machine in ("arm64", "aarch64"):
+        return "osx_arm64"
+    return ""
+
+
+def _pinned_hashes(version: str, plat: str, repo: Path = _REPO) -> dict[str, str]:
+    """`packaging/lbug-ext-<엔진 판>.sha256` 에서 이 플랫폼 확장의 해시를 읽는다. 없으면 {}."""
+    path = repo / "packaging" / f"lbug-ext-{version}.sha256"
+    if not plat or not path.is_file():
+        return {}
+    prefix, suffix = f"{plat}-lib", ".lbug_extension"
+    out: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1].startswith(prefix) and parts[1].endswith(suffix):
+            out[parts[1][len(prefix):-len(suffix)]] = parts[0]
+    return out
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _seed_bundle(ladybug, cache: Path, bundle: Path, *, plat: str | None = None,
+                 repo: Path = _REPO) -> dict[str, str]:
+    """확장 3개를 bundle 로 확보하고 {확장: "출처 경로 sha256=<앞 12자>"} 를 돌려준다.
+
+    상류 확장 서버에서는 받지 않는다. 상류는 같은 판 경로의 파일을 제자리에서 다시 빌드해
+    올리고, 엣지 캐시는 옛 빌드를 몇 주씩 내준다. 그래서 `INSTALL` 로 받은 바이트는 러너가
+    닿은 엣지에 따라 달라지고, 설치된 엔진과 맞는다는 보장도 없다. 출처는 엔진 판의 핀과
+    해시가 같은 파일뿐이다:
+
+      · linux_amd64: 리포의 `packaging/lbug_extensions` (허브 이미지와 CI 가 싣는 바이트).
+        핀이 없거나 해시가 다르면 `EngineMismatch` (테스트 실패).
+      · 그 밖: `~/.lbdb` 캐시에서 해시가 핀과 같은 파일. 없으면 `BundleUnavailable` (skip).
+
+    근거: [[record:upstream-rebuilt-the-ladybug-0-21-vector-and-fts-too-and-cache-edges-serve-either-build-2026-10-22]]
+    """
     import shutil
-    need = ("vector", "fts", "algo")
-    # 캐시는 **지금 엔진 판의 것만** 집는다. 셀프호스티드 러너의 캐시에는 옛 판(0.18.0) 확장이
-    # 남아 있어서, 판을 안 가리면 0.20.x 엔진에 0.18 확장을 로드해 함수가 없다고 떨어졌다
-    # (2026-09-27 PR 456 CI). 확장 판은 엔진의 major.minor 를 따른다(0.20.4 → 0.20.0).
-    mm = ".".join(str(getattr(ladybug, "__version__", "")).split(".")[:2]) or "*"
-    pat = f"extension/{mm}.*/*/{{e}}/lib{{e}}.lbug_extension"
-    found = {e: sorted(cache.glob(pat.format(e=e))) for e in need}
-    if not all(found[e] for e in need):
-        import tempfile
-        db = ladybug.Database(os.path.join(tempfile.mkdtemp(), "seed"))
-        conn = ladybug.Connection(db)
-        for e in need:
-            conn.execute(f"INSTALL {e}")
-        found = {e: sorted(cache.glob(pat.format(e=e))) for e in need}
-    for e in need:
-        if not found[e]:
-            raise RuntimeError(f"{e} 확장 확보 실패")
-        shutil.copy(found[e][-1], bundle / f"lib{e}.lbug_extension")
+    version = str(getattr(ladybug, "__version__", ""))
+    plat = _platform_tag() if plat is None else plat
+    pins = _pinned_hashes(version, plat, repo)
+    pin_name = f"packaging/lbug-ext-{version}.sha256"
+    sources: dict[str, str] = {}
+    for e in _NEED:
+        want = pins.get(e, "")
+        if plat == "linux_amd64":
+            src = repo / "packaging" / "lbug_extensions" / f"lib{e}.lbug_extension"
+            got = _sha256(src) if src.is_file() else "파일 없음"
+            if not want or got != want:
+                raise EngineMismatch(
+                    f"판 불일치: 엔진 ladybug {version} ({plat}) 의 핀 {pin_name} 에 "
+                    f"{e} 해시가 {want or '없다'}, 리포 번들 {src} 는 {got}. 엔진 핀과 "
+                    f"확장 핀·번들은 같은 판으로 함께 올린다.")
+        else:
+            if not want:
+                raise BundleUnavailable(
+                    f"엔진 ladybug {version} ({plat or sys.platform}) 의 핀({pin_name})이 없다")
+            cands = sorted(cache.glob(f"extension/*/{plat}/{e}/lib{e}.lbug_extension"))
+            src = next((c for c in cands if _sha256(c) == want), None)
+            if src is None:
+                raise BundleUnavailable(
+                    f"{e}: 핀 해시 {want[:12]} 와 같은 캐시 파일이 없다(후보 {len(cands)}개)")
+        shutil.copy(src, bundle / f"lib{e}.lbug_extension")
+        sources[e] = f"{src} sha256={want[:12]}"
+    return sources
+
+
+class SeedBundleTests(unittest.TestCase):
+    """`_seed_bundle` 은 핀과 같은 바이트만 번들에 싣는다(순수, 드라이버 무관)."""
+
+    class _Lb:
+        __version__ = "0.21.2"
+
+    def _repo(self, payload: bytes, pin: bytes | None) -> Path:
+        repo = Path(tempfile.mkdtemp(prefix="g0repo_"))
+        (repo / "packaging" / "lbug_extensions").mkdir(parents=True)
+        lines = []
+        for e in _NEED:
+            data = payload + e.encode()
+            (repo / "packaging" / "lbug_extensions" / f"lib{e}.lbug_extension").write_bytes(data)
+            digest = hashlib.sha256(pin + e.encode() if pin is not None else data).hexdigest()
+            lines.append(f"{digest}  linux_amd64-lib{e}.lbug_extension")
+        (repo / "packaging" / "lbug-ext-0.21.2.sha256").write_text("\n".join(lines) + "\n",
+                                                                     encoding="utf-8")
+        return repo
+
+    def test_linux_copies_the_pinned_repo_bundle(self):
+        repo = self._repo(b"pinned-", None)
+        bundle = Path(tempfile.mkdtemp())
+        got = _seed_bundle(self._Lb, Path(tempfile.mkdtemp()), bundle,
+                           plat="linux_amd64", repo=repo)
+        self.assertEqual(sorted(got), sorted(_NEED))
+        self.assertEqual((bundle / "libvector.lbug_extension").read_bytes(), b"pinned-vector")
+
+    def test_linux_names_a_version_mismatch_instead_of_loading(self):
+        """핀과 다른 바이트는 로드하기 전에 판 불일치로 멈춘다. 심볼 오류는 원인을 숨긴다."""
+        repo = self._repo(b"rebuilt-", b"pinned-")
+        with self.assertRaises(EngineMismatch) as ctx:
+            _seed_bundle(self._Lb, Path(tempfile.mkdtemp()), Path(tempfile.mkdtemp()),
+                         plat="linux_amd64", repo=repo)
+        msg = str(ctx.exception)
+        self.assertIn("판 불일치", msg)
+        self.assertIn("ladybug 0.21.2", msg)
+        self.assertIn("lbug-ext-0.21.2.sha256", msg)
+
+    def test_linux_without_a_pin_for_the_engine_is_a_mismatch(self):
+        repo = self._repo(b"pinned-", None)
+
+        class _Newer:
+            __version__ = "0.21.3"
+
+        with self.assertRaises(EngineMismatch):
+            _seed_bundle(_Newer, Path(tempfile.mkdtemp()), Path(tempfile.mkdtemp()),
+                         plat="linux_amd64", repo=repo)
+
+    def test_elsewhere_takes_only_cache_files_with_the_pinned_hash(self):
+        repo = Path(tempfile.mkdtemp(prefix="g0repo_"))
+        (repo / "packaging").mkdir()
+        cache = Path(tempfile.mkdtemp(prefix="g0cache_"))
+        lines = []
+        for e in _NEED:
+            good = cache / "extension" / "0.21.0" / "win_amd64" / e / f"lib{e}.lbug_extension"
+            good.parent.mkdir(parents=True)
+            good.write_bytes(b"pinned-" + e.encode())
+            lines.append(f"{_sha256(good)}  win_amd64-lib{e}.lbug_extension")
+        # 같은 자리 옆 판 디렉터리의 다시 빌드된 바이트는 집지 않는다.
+        stray = cache / "extension" / "0.21.2" / "win_amd64" / "vector" / "libvector.lbug_extension"
+        stray.parent.mkdir(parents=True)
+        stray.write_bytes(b"rebuilt-vector")
+        (repo / "packaging" / "lbug-ext-0.21.2.sha256").write_text("\n".join(lines) + "\n",
+                                                                     encoding="utf-8")
+        bundle = Path(tempfile.mkdtemp())
+        _seed_bundle(self._Lb, cache, bundle, plat="win_amd64", repo=repo)
+        self.assertEqual((bundle / "libvector.lbug_extension").read_bytes(), b"pinned-vector")
+
+    def test_elsewhere_without_a_matching_file_skips(self):
+        repo = self._repo(b"pinned-", None)
+        with self.assertRaises(BundleUnavailable):
+            _seed_bundle(self._Lb, Path(tempfile.mkdtemp()), Path(tempfile.mkdtemp()),
+                         plat="osx_arm64", repo=repo)
 
 
 if __name__ == "__main__":
