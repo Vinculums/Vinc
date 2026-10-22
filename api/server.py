@@ -2869,6 +2869,8 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(code, obj)
 
     # ── 라우트 표(CLI 1:1) ────────────────────────────────────────────────
+    # 라우트를 더하거나 빼면 `api/contract/sidecar.json` 도 같이 고친다(앱이 안 부르면
+    # `x-internal: true`). 두 쪽은 `tests/core/test_sidecar_contract.py` 가 대조한다.
     def _route_get(self, path: str, p: dict):
         app = self.app
         if app.store is not None and getattr(app.store, "_topic_conversion_guard", False):
