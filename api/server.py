@@ -137,6 +137,7 @@ from store.config import load_config
 from store import config as store_config
 from store import httpbody
 from store import request_timing
+from store import search_temporal
 from store.backend import open_store
 from store.envflag import truthy
 from store.embedded_backend import DdlGuardTimeout
@@ -1268,6 +1269,12 @@ class VincApp:
             # 파싱이 아니라 이 필드를 본다(vector_note 의 영문 문장은 카피가 아니다).
             if self._mig_pending:
                 res["embed_migration"] = {"pending": self._mig_pending}
+        # 요약(기본) 응답의 행과 노드 후보는 시간 칸을 `temporal{}` 에만 싣는다. 같은 값을 평평한
+        # 칸에 한 번 더 실으면 에이전트 입력만 는다. 공개 표면(MCP·REST·CLI·앱)이 모두 이 라우트를
+        # 지나므로 여기서 걷는다. brief 와 평가 하네스가 부르는 `q.search` 의 꼴은 그대로다.
+        # 제거 조건: 0.9.9 태그 뒤 detail=full 에서도 걷는다. 그 판까지 full 은 두 꼴을 함께 싣는다고 도구 참조문이 예고한다.
+        if isinstance(res, dict) and str(p.get("detail") or "").strip().lower() != "full":
+            search_temporal.drop_flat(res)
         return code, res
 
     def _embed_migrating(self) -> str:
