@@ -174,6 +174,10 @@ _CONTRACT_FIELDS = frozenset({"title", "domain", "tags", "props", "one_liner",
                               "valid_from", "valid_until"})   # v15(W13)
 #: 이미 자기 문장으로 경고하는 조합 — 두 번 말하지 않는다.
 _ALREADY_WARNED = {("Entity", "domain"), ("Entity", "props"), ("Bridge", "domain")}
+#: 열은 없지만 같은 값을 둘 자리가 따로 있는 조합 — 버렸다는 말 뒤에 그 자리를 덧붙인다.
+#: 결정의 유효구간은 props 에 산다(`_decision_interval`).
+_KEPT_ELSEWHERE = {("Decision", "valid_from"): "props.valid_from",
+                   ("Decision", "valid_until"): "props.valid_until"}
 
 
 #: 출생(`created`)으로 받는 형식: ISO 날짜 또는 날짜+시각. `known_at` 이 앞 10자를
@@ -243,9 +247,11 @@ def _warn_unkept_fields(node: dict, label: str, nid: str,
     for f in sorted(_CONTRACT_FIELDS - kept):
         if node.get(f) is None or (label, f) in _ALREADY_WARNED:
             continue
+        where = _KEPT_ELSEWHERE.get((label, f))
         warnings.append(
             f"node.{f} not persisted on {label} (id={nid}) — no such column; "
-            f"the value was dropped, not stored")
+            f"the value was dropped, not stored"
+            + (f"; a {label} keeps it in {where}" if where else ""))
 
 
 #: owner_id 열을 가진 라벨 — Bridge(v2)·Entity(F1) 편입으로 SEC-3 가드·스탬프 규칙
@@ -1305,18 +1311,29 @@ def _interval_of(store, kind: str, label_pk: tuple[str, str], key: str) -> tuple
     return None
 
 
+#: 대체 경고가 가리키는 구간 필드의 이름. 경고는 저작자가 **그대로 따를 수 있는** 자리를
+#: 말해야 한다: Decision 에는 `valid_until` 열이 없어 그 이름으로 보내면 버려지고,
+#: 구간은 props 에 둔다(`_interval_of` 가 읽는 자리, 읽기 게이트가 보는 자리와 같다).
+_INTERVAL_FIELDS = {"record": ("valid_from", "valid_until"),
+                    "decision": ("props.valid_from", "props.valid_until")}
+
+
 def _warn_supersede_interval(store, kind, ends, ksrc, kdst, src, dst, warnings) -> None:
     """대체 엣지의 구간 정합 경고. **값을 쓰지 않는다** — 판정은 저작자 몫이다."""
     new, old = (_interval_of(store, kind, ends[0], ksrc),
                 _interval_of(store, kind, ends[1], kdst))
     if new is None or old is None:
         return
+    vf, vu = _INTERVAL_FIELDS[kind]
     if not old[1]:
-        warnings.append(f"supersedes {src}→{dst}: the old node has no valid_until; "
-                        "set it to the date the new one starts so it leaves the current read")
+        how = (" (send props_patch with expected_rev so the other props stay)"
+               if kind == "decision" else "")
+        warnings.append(f"supersedes {src}→{dst}: the old {kind} has no {vu}; "
+                        f"set {vu} to the date the new one starts{how} so it leaves "
+                        "the current read")
     elif new[0] and old[1] != new[0]:
-        warnings.append(f"supersedes {src}→{dst}: old valid_until {old[1]} differs from "
-                        f"new valid_from {new[0]}")
+        warnings.append(f"supersedes {src}→{dst}: old {vu} {old[1]} differs from "
+                        f"new {vf} {new[0]}")
 
 
 def _warn_orphan_decisions(store, types: dict[str, str], warnings: list[str],
