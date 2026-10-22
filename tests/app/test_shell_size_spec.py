@@ -189,6 +189,19 @@ class ShellSizeSpecTests(unittest.TestCase):
         self.assertIn("--chrome-top", decl("#view-tools"),
                       "인캔버스 크롬이 떠 있는 바를 비켜서지 않는다")
 
+    def test_넓은_열은_맨_위부터_서고_머리가_바와_한_줄이다(self):
+        """LNB 에서 고른 것은 지도 칸 전체 폭으로 열린다. 그 열이 바 아래에서 시작하면 바
+        왼쪽이 빈 띠로 남았다(VIN-742). 넓은 열은 맨 위부터 서고, 바는 한 줄이 되며, 열 머리가
+        손잡이 묶음 폭(`--chrome-w`)만큼 오른쪽을 비운다. 셋 중 하나만 빠져도 머리가 바에
+        가리거나 띠가 돌아온다."""
+        full = '#shell[data-doc-size="full"] '
+        self.assertIn("var(--shell-gap)", decl(full + "#docpane"),
+                      "넓은 열이 아직 바 아래에서 시작한다")
+        self.assertIn("grid-row: 1", decl(full + "#tb-line-view"),
+                      "넓은 열이 열렸는데 바가 두 줄이다")
+        self.assertIn("--chrome-w", decl(full + "#view-detail > .rail-head"),
+                      "넓은 열의 머리가 바가 덮는 자리를 비우지 않는다")
+
 
 if __name__ == "__main__":
     unittest.main()
