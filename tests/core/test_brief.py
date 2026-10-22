@@ -344,7 +344,7 @@ class BriefE2E(unittest.TestCase):
         연결성 결론이 나갔다가 철회됐다. 그래서 `total` 을 직접 싣는다 — 받는 쪽이
         더해서 복원할 것을 남겨 두지 않는다. 두 표면이 같은 노드를 두고 다른 수를
         말하는 것이 이 결함의 실체이므로 여기서 **두 수를 직접 맞댄다**.
-        근거: [[record:brief-links-degree-counts-only-the-core-layer-and-understates-a-59-relation-node-as-9-2026-09-14]]"""
+        근거: [[episode:2026-09-14-brief-carries-the-connectivity-instead-of-leaving-it-to-be-summed]]"""
         links = self._brief("alpha core")["links"]
         # 부착이 실제로 있어야 검사가 공회전하지 않는다(record:note-card 한 건).
         self.assertEqual(links["attached"], 1, "부착이 안 심겼으면 이 비교는 무의미하다")

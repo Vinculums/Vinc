@@ -706,7 +706,7 @@ DDL_GUARD = _DdlGuard()
 #: 증분 삽입은 혼자서는 살지만, 삽입이 남긴 색인을 다른 커넥션이 읽는 동안 자동 체크포인트가
 #: 돌면 세그폴트한다. 그래서 드롭을 빼는 대신 벡터 질의를 문장마다 배타로 돌린다.
 #: 측정하지 않은 판에서는 플래그가 켜져 있어도 드롭으로 물러난다.
-#: 근거: [[record:ladybug-0-20-4-hnsw-insert-survives-alone-but-a-reader-during-a-checkpoint-segfaults-2026-09-30]] ·
+#: 근거: [[decision:keep-the-chunk-vector-index-behind-a-flag-and-run-each-vector-query-alone-2026-10-03]] ·
 #: [[record:keep-index-mode-survived-104-trials-on-ladybug-0-21-2-at-two-cores-while-the-unguarded-control-crashed-1-of-20-2026-10-18]]
 _KEEP_VEC_INDEX_ENGINES = ("0.20.4", "0.21.2")
 
@@ -2152,7 +2152,7 @@ class EmbeddedBackend:
         미러가 `_NODE_VEC_EXACT_MAX_ROWS` 밑이면 HNSW 를 부르지 않고 정확 코사인으로 훑는다
         (진단 구간 `node_vector_exact`). `use_index=True` 는 행 수와 무관하게 HNSW 경로를
         탄다 — 인덱스가 실제로 답하는지 재는 쪽(:func:`api.node_mirror.index_answers`)이 쓴다.
-        근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
+        근거: [[decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary]]"""
         c = conn or self._conn
         try:
             with request_timing.measure("node_vector_load"):

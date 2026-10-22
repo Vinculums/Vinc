@@ -357,7 +357,7 @@ def migrate_dim_if_needed(data_dir: str, *, model: str, target_dim: int,
     벡터는 재구축 뒤 비어 있다. 워커가 새 모델로 다시 채우는 동안 검색은 텍스트 팔로
     답하고 `arms`·`vector_note` 가 그 상태를 말한다 — 창의 길이는 코퍼스 × 인코더 속도다
     (2026-09-11 산정: 소유자 그래프 하나에 약 1시간 45분).
-    근거: [[decision:bge-m3-adoption]] · [[record:embed-vector-dim-fixed-at-768-2026-08-30]]
+    근거: [[decision:bge-m3-adoption]] · [[vinc.plan.m3-rebuild-rehearsal]]
     """
     import os
     import time

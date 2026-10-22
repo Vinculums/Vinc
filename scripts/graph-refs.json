@@ -431,6 +431,7 @@
     "vinc.design.community-agent-screens-and-take-flow-2026-10-13",
     "vinc.design.community-blueprint-figma-round-2026-10-13",
     "vinc.design.community-copy-and-rules-2026-10-12",
+    "vinc.design.community-first-screen-content-first-2026-10-21",
     "vinc.design.community-key-idea-rounded-treatment-2026-10-13",
     "vinc.design.community-reference-application-2026-10-13",
     "vinc.design.community-screen-blueprint-2026-10-13",
@@ -573,6 +574,7 @@
     "vinc.plan.book-storyboard-part4-2026-09-16",
     "vinc.plan.cag-context-compiler-2026-10-05",
     "vinc.plan.chatgpt-reviewer-login",
+    "vinc.plan.choose-cost-measurement-2026-10-19",
     "vinc.plan.cli-qa-followup-2026-10-03",
     "vinc.plan.code-cleanup-2026-10-16",
     "vinc.plan.code-signing",
@@ -585,7 +587,10 @@
     "vinc.plan.community-review-fixes-and-page-ia-2026-10-12",
     "vinc.plan.community-sets-cross-vendor-relabel-2026-10-10",
     "vinc.plan.community-terms-draft-2026-10-11",
+    "vinc.plan.community-topic-trees-2026-10-21",
     "vinc.plan.community-v2-sets-cross-vendor-relabel-2026-10-10",
+    "vinc.plan.community-wikidata-rebuild-2026-10-22",
+    "vinc.plan.community-wikidata-seed-2026-10-22",
     "vinc.plan.content-one-liner-and-option-c-2026-09-16",
     "vinc.plan.continuation-after-three-system-review-2026-10-04",
     "vinc.plan.cursor-host-and-person-gates-2026-09-12",
@@ -608,6 +613,7 @@
     "vinc.plan.graph-conventions",
     "vinc.plan.graph-restructure",
     "vinc.plan.grok-bot-roster-and-host-handoff-2026-09-11",
+    "vinc.plan.gte-reader-veto-sealed-2026-10-20",
     "vinc.plan.host-memory-layers-and-task-manifest-2026-09-28",
     "vinc.plan.hub-capacity-trial-2026-10-06",
     "vinc.plan.hub-writer-handoff-2026-10-17",
@@ -655,6 +661,7 @@
     "vinc.plan.rag-code-review-fixes-2026-09-29",
     "vinc.plan.rag-eval-v2-0-9-6",
     "vinc.plan.read-verification-contract-recovery-2026-10-14",
+    "vinc.plan.reader-resolution-sealed-2026-10-20",
     "vinc.plan.reinforcement-points",
     "vinc.plan.retrieval-research-2026-09-08",
     "vinc.plan.retrieval-research-next-2026-09-09",
@@ -723,9 +730,12 @@
     "vinc.research.cli-plan-vs-main-2026-09-27",
     "vinc.research.coding-agent-supervisor",
     "vinc.research.commitment-and-recall-evidence-2026-10-16",
+    "vinc.research.community-collaboration-flow-review-2026-10-18",
     "vinc.research.community-design-ia-reassessment-2026-10-13",
+    "vinc.research.community-entry-screen-references-2026-10-21",
     "vinc.research.community-interface-principles",
     "vinc.research.community-need-evidence-2026-10-13",
+    "vinc.research.community-prompt-injection-review-2026-10-18",
     "vinc.research.competitive-landscape",
     "vinc.research.competitive-landscape-2026-09-24",
     "vinc.research.concept-identity-evidence-sampling-2026-10-15",
@@ -748,6 +758,7 @@
     "vinc.research.external-interop-ai-training",
     "vinc.research.external-interop-by-role",
     "vinc.research.external-interop-market-review",
+    "vinc.research.external-quality-review-2026-10-19",
     "vinc.research.figma-code-sync-2026-09-05",
     "vinc.research.fourth-dimension",
     "vinc.research.fruitfly-core-reuse",
@@ -828,6 +839,7 @@
     "vinc.research.volume-rendering-for-view",
     "vinc.result.laya-evidence-low-mixture-2026-10-13",
     "vinc.run.community-content-cleanup-2026-10-14",
+    "vinc.run.community-physics-pilot-candidates-2026-10-22",
     "vinc.spec.api-cli-0-9-6",
     "vinc.spec.architecture",
     "vinc.spec.azure-infrastructure",
@@ -875,8 +887,10 @@
     "decision:bge-m3-adoption",
     "decision:brief-shows-five-candidates-when-it-asks-back-and-keeps-the-list-beside-resolved-off-2026-09-29",
     "decision:bring-and-go-is-retired-and-nodes-only-is-the-default",
+    "decision:ci-runs-each-suite-once-per-merge-and-hub-deploy-waits-for-ci-2026-09-26",
     "decision:code-is-canon-figma-follows",
     "decision:core-pkns-stays-because-the-hub-runs-the-flag-on",
+    "decision:created-is-earliest-known-recording",
     "decision:detect-the-replica-overlap-and-defer-the-single-writer-fence-2026-09-04",
     "decision:english-is-the-default-surface-language",
     "decision:escape-once-at-the-boundary",
@@ -913,6 +927,7 @@
     "decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting",
     "decision:the-document-tree-opens-three-levels-and-a-row-click-only-folds-2026-09-26",
     "decision:the-eval-harness-lives-in-top-level-rag-eval-not-inside-vinc-rag-2026-10-01",
+    "decision:the-hub-hands-the-writer-over-at-boot-instead-of-stopping-the-old-revision-2026-10-17",
     "decision:the-hub-layout-gives-up-weight-proportional-spread-so-that-adding-a-node-moves-nothing",
     "decision:the-node-mirror-is-rebuilt-whole-or-not-at-all",
     "decision:the-node-mirror-keeps-unchanged-rows-and-rebuilds-its-index-whole-2026-10-02",
@@ -934,23 +949,22 @@
     "decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07",
     "decision:vin88-agent-click-opens-roster-list-graph-scopes-agent-domains-2026-09-22",
     "decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24",
+    "episode:2026-09-14-brief-carries-the-connectivity-instead-of-leaving-it-to-be-summed",
+    "episode:2026-09-14-future-dated-nodes-leave-the-default-read",
     "episode:2026-09-24-hub-sidecar-segfault-loop",
     "record:2d-marks-were-remapped-onto-circles",
     "record:a-bounded-wait-must-not-manufacture-false-failure",
     "record:a-code-comment-is-not-evidence-for-a-documentation-claim-2026-09-18",
     "record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25",
-    "record:a-crashed-rustc-poisons-the-shared-cargo-target-and-every-later-run-dies-in-fifty-seconds-2026-09-07",
     "record:a-failed-fts-create-on-a-remnant-leaves-undroppable-internal-tables-2026-09-25",
     "record:a-failed-restore-must-stop-the-process",
     "record:a-failure-reason-nothing-reads-is-not-an-error-message",
     "record:a-logo-ssot-that-reaches-nobody",
     "record:a-remnant-segfaults-every-write-to-its-table-not-only-inserts-2026-09-25",
-    "record:a-soft-requeue-keeps-semantic-search-off-because-every-apply-rebuilds-the-vector-index-2026-09-30",
     "record:a-space-transfer-over-4mb-surfaced-as-a-logout-2026-09-18",
     "record:a-stuck-write-window-is-finalized-only-when-its-chunks-rebuild-the-recorded-hash-2026-09-30",
     "record:a-tall-favicon-viewbox-is-stretched-into-a-square-2026-10-21",
     "record:a-wal-that-crashes-the-engine-takes-the-desktop-sign-in-down-2026-09-27",
-    "record:aca-reboots-the-stopped-hub-revision-during-every-deploy-and-it-writes-a-late-final-snapshot-2026-09-25",
     "record:adding-episode-to-the-title-arm-is-a-pure-gain-2026-09-09",
     "record:agent-files-are-found-by-walking-up-from-cwd",
     "record:agent-steward-leaf-carried-the-column-without-in-domain-edges-2026-09-05",
@@ -959,27 +973,23 @@
     "record:an-fts-remnant-on-chunk-stops-every-document-write-and-the-heal-moves-chunk-with-its-edges-2026-09-25",
     "record:an-unlabelled-hop-binds-only-tables-that-share-the-projected-columns",
     "record:answerability-is-a-residual-coverage-question-2026-09-10",
-    "record:bridge-created-is-read-but-never-written",
+    "record:app-config-drift-gate-shipped-2026-09-02",
+    "record:attaches-to-carries-evidence-since-v16",
     "record:bridge-layout-clump-2026-08-22",
     "record:brief-direct-id-pattern-was-ascii-only-2026-09-12",
-    "record:brief-links-degree-counts-only-the-core-layer-and-understates-a-59-relation-node-as-9-2026-09-14",
+    "record:brief-promotes-on-the-semantic-lead-only-in-the-ranking-branch-and-reads-it-from-the-raw-list-2026-09-30",
     "record:brief-returns-none-when-its-winner-is-a-record-2026-08-30",
     "record:choosing-a-topic-in-the-share-picker-did-not-arm-its-own-radio-2026-09-20",
     "record:ci-never-builds-the-rust",
     "record:code-citations-rot-silently-without-a-gate",
     "record:concurrent-replica-overlap-clobbers-the-final-snapshot-2026-09-04",
     "record:content-time-writable-through-ingest",
-    "record:core-pkns-if-skips-app-and-agents-changes-2026-09-05",
     "record:ddl-in-one-manual-transaction-survives-a-crash-whole-or-not-at-all-2026-09-25",
     "record:decision-columns-measured-from-live-rows",
     "record:domain-hierarchy-was-a-string-until-v11",
     "record:edge-birth-v14",
-    "record:editing-the-conventions-document-restarts-the-hub-2026-09-09",
     "record:embed-dim-namespace-split-2026-08-30",
-    "record:embed-prefix-missing-m3-branch-2026-08-30",
-    "record:embed-vector-dim-fixed-at-768-2026-08-30",
     "record:embed-worker-split-and-lock-fixed-2026-09-30",
-    "record:embedding-apply-accepted-vectors-it-never-checked-2026-09-29",
     "record:encoder-resident-set-leaves-1-1-gib-for-a-reranker-2026-09-08",
     "record:endpoint-table-must-be-built-from-merged-nodes",
     "record:endpoint-types-resolve-only-within-one-payload",
@@ -988,7 +998,6 @@
     "record:fact-builtin-extraction-is-headings",
     "record:fact-doc-concept-is-a-layer",
     "record:fact-merge-excludes-any-doc-pair",
-    "record:graph-md-requires-evidence-that-ingest-refuses-to-store",
     "record:guarded-node-edits-carry-the-view-owner-2026-10-16",
     "record:health-that-does-not-reach-its-dependency-answers-for-the-wrong-process",
     "record:hook-created-worktrees-are-not-removed-by-the-harness-2026-09-13",
@@ -996,28 +1005,24 @@
     "record:hub-segfault-loop-on-embedding-apply-2026-09-24",
     "record:hub-snapshots-the-whole-database-every-five-minutes-because-a-no-op-job-counts-as-a-write-2026-09-25",
     "record:in-a-container-a-swallowed-log-is-no-log",
+    "record:in-container-bge-m3-encode-2026-09-09",
     "record:inherits-from-now-reverses-with-derives-from",
     "record:int8-batch-padding-moves-stored-vectors-and-costs-fused-ndcg-on-the-fixture-2026-10-21",
     "record:isolated-seed-read-back-reported-empty-fields",
     "record:job-count-checkpointing-was-removed",
     "record:job-isolation-has-to-catch-baseexception",
-    "record:korean-fts-analyser-2026-09-08",
     "record:korean-titled-nodes-answer-with-provenance-excerpts-2026-09-14",
     "record:korean-to-korean-node-misses-are-the-semantic-second-candidate-lost-to-a-tie-at-the-top-five-cut-2026-10-19",
-    "record:ladybug-0-20-4-hnsw-insert-survives-alone-but-a-reader-during-a-checkpoint-segfaults-2026-09-30",
     "record:log-analytics-attributes-hub-mcp-requests-by-owner-hash-since-2026-09-02",
-    "record:louvain-projects-one-node-table",
     "record:main-ci-red-before-the-roster-merge-2026-08-23",
     "record:mcp-state-store-is-fail-soft-and-must-be-local",
     "record:mention-targets-must-include-every-semantic-label",
     "record:models-that-publish-no-onnx-are-exported-from-their-weights-before-the-hub-bake",
-    "record:most-wrong-first-choose-lists-never-had-the-gold-as-a-candidate-2026-09-13",
     "record:n2-pilot-brief-material-beats-top-chunks-when-the-first-node-is-right-2026-09-12",
     "record:neighbors-unknown-node-for-edgeless-attachments-2026-08-28",
     "record:network-file-shares-break-embedded-databases-block-storage-does-not",
     "record:no-node-level-gold-set-exists-2026-09-09",
     "record:node-candidacy-tracks-title-token-reuse-not-language-2026-09-09",
-    "record:node-hits-lose-the-semantic-distance-when-the-title-arm-also-found-the-node-2026-09-29",
     "record:one-bad-node-used-to-take-the-whole-batch",
     "record:one-logical-id-in-two-spaces-reads-as-two-orphans-2026-09-10",
     "record:path-called-an-existing-concept-unknown-2026-09-08",
@@ -1025,6 +1030,7 @@
     "record:query-scope-ignored-the-topic-tree-it-was-standing-on",
     "record:rebuild-apply-verifies-upload-and-recovers-before-switch-2026-10-09",
     "record:rebuild-store-fails-on-a-store-whose-node-mirror-predates-v18-2026-09-13",
+    "record:reembed-only-requeues-and-apply-checks-what-a-vector-was-built-from-2026-09-30",
     "record:rel-tables-take-multiple-endpoint-pairs",
     "record:risk-doc-title-collides-with-topic",
     "record:risk-themes-global",
@@ -1034,32 +1040,28 @@
     "record:rrf-k-and-weight-sweep-on-full176-2026-09-08",
     "record:shrinker-marker-overshoots-the-budget-2026-09-05",
     "record:sidecar-health-wait-deadline-restored-2026-10-09",
-    "record:storage-transactions-are-the-snapshot-loop-and-they-tripled-in-three-weeks",
     "record:subject-path-carries-no-repository-so-two-repos-can-collide",
-    "record:sync-drops-node-created-pack-keeps-it",
     "record:sync-out-in-a-worktree-wrote-the-homepage-copies-into-a-stray-directory-2026-09-26",
     "record:the-candidate-union-not-the-ranking-is-what-caps-node-resolution-2026-09-09",
     "record:the-change-marker-is-counted-at-the-sidecar-write-gate-2026-09-24",
+    "record:the-confidence-bar-was-one-token-and-that-was-the-defect-2026-09-10",
     "record:the-document-stage-of-a-space-transfer-is-bounded-by-time-not-by-body-size-2026-09-20",
     "record:the-document-subject-relation-is-inferred-not-authored-2026-09-06",
     "record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09",
     "record:the-eval-drift-to-41-14-4-follows-the-query-encoder-runtime-not-the-engine-2026-09-28",
     "record:the-hub-census-orphan-vectors-are-chunks-left-on-physical-keys-not-orphans-2026-09-30",
     "record:the-hub-encodes-queries-and-vectors-with-onnxruntime-1-30-since-2026-09-10",
+    "record:the-hub-stamp-backfill-released-779-queued-documents-without-re-embedding-2026-09-30",
     "record:the-in-process-harness-skips-the-boot-relink-so-pins-must-be-settled-2026-09-28",
-    "record:the-infrastructure-inventory-is-missing-the-encoder-app",
     "record:the-layout-becomes-insertion-stable-when-sibling-bands-come-from-rank-and-branches-are-ordered-by-name-2026-09-19",
-    "record:the-m3-encode-figure-needs-an-image-not-an-env-triple-2026-09-08",
+    "record:the-live-store-is-mostly-content-and-a-rebuild-returns-only-a-third",
     "record:the-node-mirror-key-must-hold-one-id-per-space-2026-09-10",
-    "record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02",
     "record:the-node-mirror-rebuilds-at-the-deploy-boundary-2026-09-10",
-    "record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09",
     "record:the-one-liner-join-improves-no-item-and-costs-four-2026-09-16",
     "record:the-only-alert-watches-the-signal-that-was-green-in-all-three-outages",
     "record:the-probe-payload-outgrew-the-exec-command-limit-2026-09-08",
     "record:the-registry-passed-its-included-storage-and-nothing-prunes-it",
     "record:the-release-machine-idles-at-86-percent-of-its-commit-limit-2026-09-07",
-    "record:the-rust-cache-action-costs-nineteen-minutes-to-save-four",
     "record:the-search-chunk-arm-is-owner-scoped-and-fails-closed",
     "record:the-semantic-arm-decides-by-its-own-margin-not-its-distance-2026-09-10",
     "record:the-shutdown-test-sent-term-before-the-rebuild-it-guards-had-started-2026-09-17",
@@ -1079,7 +1081,6 @@
     "record:unguarded-title-overwrote-107-nodes-with-their-ids",
     "record:upstream-rebuilt-the-ladybug-0-21-vector-and-fts-too-and-cache-edges-serve-either-build-2026-10-22",
     "record:upstream-republished-the-ladybug-0-21-algo-extension-in-place-2026-10-20",
-    "record:validity-state-compares-a-local-dated-claim-against-a-utc-clock-2026-09-14",
     "record:view-3d-instancing-frame-cost-measured-2026-09-18",
     "record:vin314-live-exp01-rerun-prefetch-cites-a-node-in-1-of-6-2026-10-07",
     "record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07",
@@ -1156,11 +1157,17 @@
     "decision:bring-and-go-is-retired-and-nodes-only-is-the-default": {
       "validity": "unknown"
     },
+    "decision:ci-runs-each-suite-once-per-merge-and-hub-deploy-waits-for-ci-2026-09-26": {
+      "validity": "unknown"
+    },
     "decision:code-is-canon-figma-follows": {
       "validity": "current"
     },
     "decision:core-pkns-stays-because-the-hub-runs-the-flag-on": {
       "validity": "current"
+    },
+    "decision:created-is-earliest-known-recording": {
+      "validity": "unknown"
     },
     "decision:detect-the-replica-overlap-and-defer-the-single-writer-fence-2026-09-04": {
       "validity": "current"
@@ -1193,6 +1200,9 @@
       "validity": "unknown"
     },
     "decision:ladybug-extensions-ship-from-a-vinc-release-not-the-repo-2026-09-26": {
+      "validity": "unknown"
+    },
+    "decision:large-topic-conversion-admission-2026-10-16": {
       "validity": "unknown"
     },
     "decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24": {
@@ -1267,6 +1277,9 @@
     "decision:the-eval-harness-lives-in-top-level-rag-eval-not-inside-vinc-rag-2026-10-01": {
       "validity": "unknown"
     },
+    "decision:the-hub-hands-the-writer-over-at-boot-instead-of-stopping-the-old-revision-2026-10-17": {
+      "validity": "unknown"
+    },
     "decision:the-hub-layout-gives-up-weight-proportional-spread-so-that-adding-a-node-moves-nothing": {
       "validity": "unknown"
     },
@@ -1330,6 +1343,12 @@
     "decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24": {
       "validity": "current"
     },
+    "episode:2026-09-14-brief-carries-the-connectivity-instead-of-leaving-it-to-be-summed": {
+      "validity": "unknown"
+    },
+    "episode:2026-09-14-future-dated-nodes-leave-the-default-read": {
+      "validity": "unknown"
+    },
     "episode:2026-09-24-hub-sidecar-segfault-loop": {
       "validity": "unknown"
     },
@@ -1343,9 +1362,6 @@
       "validity": "current"
     },
     "record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25": {
-      "validity": "current"
-    },
-    "record:a-crashed-rustc-poisons-the-shared-cargo-target-and-every-later-run-dies-in-fifty-seconds-2026-09-07": {
       "validity": "current"
     },
     "record:a-failed-fts-create-on-a-remnant-leaves-undroppable-internal-tables-2026-09-25": {
@@ -1363,11 +1379,8 @@
     "record:a-remnant-segfaults-every-write-to-its-table-not-only-inserts-2026-09-25": {
       "validity": "current"
     },
-    "record:a-soft-requeue-keeps-semantic-search-off-because-every-apply-rebuilds-the-vector-index-2026-09-30": {
-      "validity": "current"
-    },
     "record:a-space-transfer-over-4mb-surfaced-as-a-logout-2026-09-18": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:a-stuck-write-window-is-finalized-only-when-its-chunks-rebuild-the-recorded-hash-2026-09-30": {
       "validity": "current"
@@ -1376,9 +1389,6 @@
       "validity": "current"
     },
     "record:a-wal-that-crashes-the-engine-takes-the-desktop-sign-in-down-2026-09-27": {
-      "validity": "current"
-    },
-    "record:aca-reboots-the-stopped-hub-revision-during-every-deploy-and-it-writes-a-late-final-snapshot-2026-09-25": {
       "validity": "current"
     },
     "record:adding-episode-to-the-title-arm-is-a-pure-gain-2026-09-09": {
@@ -1405,23 +1415,26 @@
     "record:answerability-is-a-residual-coverage-question-2026-09-10": {
       "validity": "current"
     },
-    "record:bridge-created-is-read-but-never-written": {
+    "record:app-config-drift-gate-shipped-2026-09-02": {
+      "validity": "current"
+    },
+    "record:attaches-to-carries-evidence-since-v16": {
       "validity": "current"
     },
     "record:bridge-layout-clump-2026-08-22": {
       "validity": "current"
     },
     "record:brief-direct-id-pattern-was-ascii-only-2026-09-12": {
-      "validity": "current"
-    },
-    "record:brief-links-degree-counts-only-the-core-layer-and-understates-a-59-relation-node-as-9-2026-09-14": {
       "validity": "unknown"
+    },
+    "record:brief-promotes-on-the-semantic-lead-only-in-the-ranking-branch-and-reads-it-from-the-raw-list-2026-09-30": {
+      "validity": "current"
     },
     "record:brief-returns-none-when-its-winner-is-a-record-2026-08-30": {
       "validity": "unknown"
     },
     "record:choosing-a-topic-in-the-share-picker-did-not-arm-its-own-radio-2026-09-20": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:ci-never-builds-the-rust": {
       "validity": "current"
@@ -1433,9 +1446,6 @@
       "validity": "current"
     },
     "record:content-time-writable-through-ingest": {
-      "validity": "current"
-    },
-    "record:core-pkns-if-skips-app-and-agents-changes-2026-09-05": {
       "validity": "current"
     },
     "record:ddl-in-one-manual-transaction-survives-a-crash-whole-or-not-at-all-2026-09-25": {
@@ -1450,22 +1460,10 @@
     "record:edge-birth-v14": {
       "validity": "current"
     },
-    "record:editing-the-conventions-document-restarts-the-hub-2026-09-09": {
-      "validity": "current"
-    },
     "record:embed-dim-namespace-split-2026-08-30": {
       "validity": "current"
     },
-    "record:embed-prefix-missing-m3-branch-2026-08-30": {
-      "validity": "current"
-    },
-    "record:embed-vector-dim-fixed-at-768-2026-08-30": {
-      "validity": "current"
-    },
     "record:embed-worker-split-and-lock-fixed-2026-09-30": {
-      "validity": "current"
-    },
-    "record:embedding-apply-accepted-vectors-it-never-checked-2026-09-29": {
       "validity": "current"
     },
     "record:encoder-resident-set-leaves-1-1-gib-for-a-reranker-2026-09-08": {
@@ -1492,9 +1490,6 @@
     "record:fact-merge-excludes-any-doc-pair": {
       "validity": "current"
     },
-    "record:graph-md-requires-evidence-that-ingest-refuses-to-store": {
-      "validity": "current"
-    },
     "record:guarded-node-edits-carry-the-view-owner-2026-10-16": {
       "validity": "unknown"
     },
@@ -1511,16 +1506,22 @@
       "validity": "current"
     },
     "record:hub-snapshots-the-whole-database-every-five-minutes-because-a-no-op-job-counts-as-a-write-2026-09-25": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:in-a-container-a-swallowed-log-is-no-log": {
+      "validity": "current"
+    },
+    "record:in-container-bge-m3-encode-2026-09-09": {
       "validity": "current"
     },
     "record:inherits-from-now-reverses-with-derives-from": {
       "validity": "current"
     },
-    "record:isolated-seed-read-back-reported-empty-fields": {
+    "record:int8-batch-padding-moves-stored-vectors-and-costs-fused-ndcg-on-the-fixture-2026-10-21": {
       "validity": "current"
+    },
+    "record:isolated-seed-read-back-reported-empty-fields": {
+      "validity": "unknown"
     },
     "record:job-count-checkpointing-was-removed": {
       "validity": "current"
@@ -1528,22 +1529,13 @@
     "record:job-isolation-has-to-catch-baseexception": {
       "validity": "current"
     },
-    "record:korean-fts-analyser-2026-09-08": {
-      "validity": "current"
-    },
     "record:korean-titled-nodes-answer-with-provenance-excerpts-2026-09-14": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:korean-to-korean-node-misses-are-the-semantic-second-candidate-lost-to-a-tie-at-the-top-five-cut-2026-10-19": {
       "validity": "current"
     },
-    "record:ladybug-0-20-4-hnsw-insert-survives-alone-but-a-reader-during-a-checkpoint-segfaults-2026-09-30": {
-      "validity": "current"
-    },
     "record:log-analytics-attributes-hub-mcp-requests-by-owner-hash-since-2026-09-02": {
-      "validity": "current"
-    },
-    "record:louvain-projects-one-node-table": {
       "validity": "current"
     },
     "record:main-ci-red-before-the-roster-merge-2026-08-23": {
@@ -1558,14 +1550,11 @@
     "record:models-that-publish-no-onnx-are-exported-from-their-weights-before-the-hub-bake": {
       "validity": "current"
     },
-    "record:most-wrong-first-choose-lists-never-had-the-gold-as-a-candidate-2026-09-13": {
-      "validity": "current"
-    },
     "record:n2-pilot-brief-material-beats-top-chunks-when-the-first-node-is-right-2026-09-12": {
       "validity": "current"
     },
     "record:neighbors-unknown-node-for-edgeless-attachments-2026-08-28": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:network-file-shares-break-embedded-databases-block-storage-does-not": {
       "validity": "current"
@@ -1576,17 +1565,14 @@
     "record:node-candidacy-tracks-title-token-reuse-not-language-2026-09-09": {
       "validity": "current"
     },
-    "record:node-hits-lose-the-semantic-distance-when-the-title-arm-also-found-the-node-2026-09-29": {
-      "validity": "current"
-    },
     "record:one-bad-node-used-to-take-the-whole-batch": {
       "validity": "current"
     },
     "record:one-logical-id-in-two-spaces-reads-as-two-orphans-2026-09-10": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:path-called-an-existing-concept-unknown-2026-09-08": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:planar-leaves-cluster-because-arms-read-as-a-vortex": {
       "validity": "current"
@@ -1598,6 +1584,9 @@
       "validity": "unknown"
     },
     "record:rebuild-store-fails-on-a-store-whose-node-mirror-predates-v18-2026-09-13": {
+      "validity": "unknown"
+    },
+    "record:reembed-only-requeues-and-apply-checks-what-a-vector-was-built-from-2026-09-30": {
       "validity": "current"
     },
     "record:rel-tables-take-multiple-endpoint-pairs": {
@@ -1619,7 +1608,7 @@
       "validity": "current"
     },
     "record:rrf-k-and-weight-sweep-on-full176-2026-09-08": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:shrinker-marker-overshoots-the-budget-2026-09-05": {
       "validity": "current"
@@ -1627,22 +1616,19 @@
     "record:sidecar-health-wait-deadline-restored-2026-10-09": {
       "validity": "unknown"
     },
-    "record:storage-transactions-are-the-snapshot-loop-and-they-tripled-in-three-weeks": {
-      "validity": "current"
-    },
     "record:subject-path-carries-no-repository-so-two-repos-can-collide": {
-      "validity": "current"
-    },
-    "record:sync-drops-node-created-pack-keeps-it": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:sync-out-in-a-worktree-wrote-the-homepage-copies-into-a-stray-directory-2026-09-26": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:the-candidate-union-not-the-ranking-is-what-caps-node-resolution-2026-09-09": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:the-change-marker-is-counted-at-the-sidecar-write-gate-2026-09-24": {
+      "validity": "current"
+    },
+    "record:the-confidence-bar-was-one-token-and-that-was-the-defect-2026-09-10": {
       "validity": "current"
     },
     "record:the-document-stage-of-a-space-transfer-is-bounded-by-time-not-by-body-size-2026-09-20": {
@@ -1652,7 +1638,7 @@
       "validity": "current"
     },
     "record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:the-eval-drift-to-41-14-4-follows-the-query-encoder-runtime-not-the-engine-2026-09-28": {
       "validity": "current"
@@ -1663,28 +1649,22 @@
     "record:the-hub-encodes-queries-and-vectors-with-onnxruntime-1-30-since-2026-09-10": {
       "validity": "current"
     },
-    "record:the-in-process-harness-skips-the-boot-relink-so-pins-must-be-settled-2026-09-28": {
+    "record:the-hub-stamp-backfill-released-779-queued-documents-without-re-embedding-2026-09-30": {
       "validity": "current"
     },
-    "record:the-infrastructure-inventory-is-missing-the-encoder-app": {
+    "record:the-in-process-harness-skips-the-boot-relink-so-pins-must-be-settled-2026-09-28": {
       "validity": "current"
     },
     "record:the-layout-becomes-insertion-stable-when-sibling-bands-come-from-rank-and-branches-are-ordered-by-name-2026-09-19": {
       "validity": "current"
     },
-    "record:the-m3-encode-figure-needs-an-image-not-an-env-triple-2026-09-08": {
+    "record:the-live-store-is-mostly-content-and-a-rebuild-returns-only-a-third": {
       "validity": "current"
     },
     "record:the-node-mirror-key-must-hold-one-id-per-space-2026-09-10": {
-      "validity": "current"
-    },
-    "record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:the-node-mirror-rebuilds-at-the-deploy-boundary-2026-09-10": {
-      "validity": "current"
-    },
-    "record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09": {
       "validity": "current"
     },
     "record:the-one-liner-join-improves-no-item-and-costs-four-2026-09-16": {
@@ -1700,10 +1680,7 @@
       "validity": "unknown"
     },
     "record:the-release-machine-idles-at-86-percent-of-its-commit-limit-2026-09-07": {
-      "validity": "current"
-    },
-    "record:the-rust-cache-action-costs-nineteen-minutes-to-save-four": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:the-search-chunk-arm-is-owner-scoped-and-fails-closed": {
       "validity": "current"
@@ -1727,7 +1704,7 @@
       "validity": "current"
     },
     "record:the-validity-filter-broke-a-tie-and-manufactured-confidence-2026-09-09": {
-      "validity": "current"
+      "validity": "unknown"
     },
     "record:the-watchdog-stub-must-outlive-three-poll-periods-not-one-2026-09-07": {
       "validity": "current"
@@ -1756,8 +1733,11 @@
     "record:unguarded-title-overwrote-107-nodes-with-their-ids": {
       "validity": "current"
     },
-    "record:validity-state-compares-a-local-dated-claim-against-a-utc-clock-2026-09-14": {
-      "validity": "unknown"
+    "record:upstream-rebuilt-the-ladybug-0-21-vector-and-fts-too-and-cache-edges-serve-either-build-2026-10-22": {
+      "validity": "current"
+    },
+    "record:upstream-republished-the-ladybug-0-21-algo-extension-in-place-2026-10-20": {
+      "validity": "current"
     },
     "record:view-3d-instancing-frame-cost-measured-2026-09-18": {
       "validity": "current"
@@ -1790,15 +1770,6 @@
       "validity": "current"
     },
     "record:writing-a-trap-down-does-not-stop-it-a-check-does": {
-      "validity": "current"
-    },
-    "record:upstream-republished-the-ladybug-0-21-algo-extension-in-place-2026-10-20": {
-      "validity": "current"
-    },
-    "record:int8-batch-padding-moves-stored-vectors-and-costs-fused-ndcg-on-the-fixture-2026-10-21": {
-      "validity": "current"
-    },
-    "record:upstream-rebuilt-the-ladybug-0-21-vector-and-fts-too-and-cache-edges-serve-either-build-2026-10-22": {
       "validity": "current"
     }
   }

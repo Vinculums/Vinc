@@ -7,7 +7,7 @@
 
 - 노드 6종(record|concept|domain|bridge|episode|decision) + 자유 props{} → JSON 열.
   **의미층 = concept | decision** 이라 엣지 규칙에서 서로 바꿔 쓸 수 있다. 예외 하나:
-  `relates_to` 는 개념↔개념에만 남는다([[record:louvain-projects-one-node-table]]).
+  `relates_to` 는 개념↔개념에만 남는다([[vinc.spec.dataplane]]).
 - 엣지: 의미층 4종 · connects_via(Bridge→) · about(Episode|Decision→) ·
   Record→의미층은 ATTACHES_TO{type} 로 원 타입을 보존해 수용.
 - **개방층**: 6종 밖 타입은 스킵되지 않고 `Entity` 캐리어로, 양 끝이 개방 타입인 엣지는
@@ -763,7 +763,7 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         #   기존 : **절대 안 덮는다**(팩 재적재가 남의 값으로 생일을 바꾸는 것을 막는다).
         # 동기화의 min 과 다른 이유는 신뢰다: 같은 계정의 두 기기는 한 공간이지만 팩은
         # 미신뢰 외부 입력이라 min 대신 쓰기 자체를 안 한다(동기화 쪽은
-        # api/sync._reconcile_birth · [[record:sync-drops-node-created-pack-keeps-it]]).
+        # api/sync._reconcile_birth · [[decision:created-is-earliest-known-recording]]).
         if label in ("Concept", "Record", "Decision", "Bridge") and not matched:
             # 상류 값은 ISO 날짜·시각일 때만 받는다. 아니면 버리고 지금을 찍는다.
             _born = _iso_instant(node.get("created"))
@@ -1098,7 +1098,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
     # GRAPH.md 는 record 엣지에 근거를 요구하는데 이 표면은 그것을 받지 않으므로,
     # 규율을 지킨 저작자가 아무 신호도 못 받고 문장을 잃었다. R1(미보관 필드는 버리지
     # 말고 경고)이 노드 경로에서만 닫혀 있었다:
-    # [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]
+    # [[record:attaches-to-carries-evidence-since-v16]]
     # (record 엣지는 v16 이 열을 줘서 경고 대상에서 저장 대상으로 옮겨 갔다 —
     # 남는 무열 rel 은 CONNECTS·TYPED 둘이다.)
     def _ev_set(rel_var: str, rel: str) -> tuple[str, dict]:

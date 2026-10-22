@@ -59,7 +59,7 @@ def _concepts_plan(*, owner: str, domain: str | None = None,
         "c.tags AS tags, c.topic AS topic, c.one_liner AS one_liner, c.props AS props, "
         # created 를 싣는다 — 안 실으면 받는 쪽에서 팩 개념이 전부 임포트 시각으로
         # 몰려 타임라인이 밴드 하나가 된다. 가산 필드라 구 임포터는 무시한다
-        # ([[record:sync-drops-node-created-pack-keeps-it]]).
+        # ([[decision:created-is-earliest-known-recording]]).
         "c.created AS created, "
         # content_time 은 **더 실려야 할 쪽**이다 — created 는 공간의 시계지만 이것은
         # 지시체에 속해(1905 는 어느 그래프에서든 1905다) 공간을 건너도 참이다

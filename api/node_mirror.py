@@ -119,7 +119,7 @@ def plan(rows: list[dict], have: dict, model: str,
 
     인덱스는 여전히 통째다: 넣을 것이 하나라도 있으면 :func:`replace` 가 드롭 → 삽입 →
     생성을 그대로 밟는다. 아끼는 것은 인코딩과 삭제·삽입의 **행 수**뿐이다.
-    근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]"""
+    근거: [[decision:the-node-mirror-keeps-unchanged-rows-and-rebuilds-its-index-whole-2026-10-02]]"""
     want: set[str] = set()
     todo: list[dict] = []
     for r in rows:

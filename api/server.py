@@ -2079,7 +2079,7 @@ class VincApp:
                 # 교체 단계에서 사이드카가 OOM 으로 죽었다. 같은 글자·모델·런타임이면 같은
                 # 벡터이므로 그 행은 제자리에 둔다. 판을 증명할 길(런타임 지문·빌드·모델
                 # 라벨)이 하나라도 없으면 예전처럼 전부 다시 만든다.
-                # 근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]
+                # 근거: [[decision:the-node-mirror-keeps-unchanged-rows-and-rebuilds-its-index-whole-2026-10-02]]
                 stale = None
                 todo = rows
                 if _ENCODER_RUNTIME and _ENCODER_BUILD and model:

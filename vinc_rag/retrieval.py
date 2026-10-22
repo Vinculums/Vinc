@@ -891,7 +891,7 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
         # 감출 수 있는 것은 명시된 `valid_until` 뿐이라는 것이 `validity_state` 의 정책이고
         # 도구 계약도 같은 말을 한다. UTC 시계가 KST 저작본을 매일 아침 아홉 시간 동안
         # `future` 로 떨어뜨려 이 모순이 날마다 발화했다:
-        # [[record:validity-state-compares-a-local-dated-claim-against-a-utc-clock-2026-09-14]].
+        # [[episode:2026-09-14-future-dated-nodes-leave-the-default-read]].
         # 지운 수는 세어서 호출부에 돌려준다: 조용히 줄어든 결과는 "그래프에 이것뿐"으로
         # 읽히고, 그건 이 정책이 막으려는 고장과 같은 종이다.
         # `scope`(as_of 기간)가 있으면 그 기간에 성립했는지로 가른다(`_visible`).
@@ -1122,11 +1122,10 @@ def _fuse_node_hits(title_hits: list[dict], graph_hits: list[dict], *,
     **융합하지 않고** title 순서를 그대로 유지(하위호환 — 기존 Chunk 0 스토어 동작 불변).
 
     의미 암은 **어휘가 하나도 안 겹쳐도 닿는 유일한 팔**이다. 후보
-    진입을 21/60 에서 35/60 으로 올리고, 그 이득은 제목이 안 겹치는 축에 몰린다
-    (제목 재사용 ≤0.34 인 한국어 질문 1/8 → 5/8). 팔만 켜면 답은 바뀌지 않는다. 팔 자신의
+    진입을 21/60 에서 35/60 으로 올린다. 팔만 켜면 답은 바뀌지 않는다. 팔 자신의
     1-2위 격차를 순서에 넣으면 답도 바뀌어서 지금은 기본으로 켜져 있다. 경위와 수치는
     :func:`_node_semantic_arm_on` 에 있다.
-    근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
+    근거: [[vinc.plan.retrieval-research-next-2026-09-09 §3.4]]"""
     membership: dict = {}
     arms_in = [("title", title_hits), ("graph", graph_hits),
                ("semantic", vec_hits or [])]
@@ -1776,7 +1775,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
             # 융합은 id 당 행 하나만 남기므로(제목 행이 이기면 의미 행의 표가 사라진다)
             # 융합 **뒤에** id 로 찾아 단다. 거리도 같다 — 안 달면 제목 팔도 찾은 노드는
             # 의미 거리를 잃는다. 다는 값은 순위에 쓰이지 않는다.
-            # 근거: [[record:node-hits-lose-the-semantic-distance-when-the-title-arm-also-found-the-node-2026-09-29]]
+            # 근거: [[record:brief-promotes-on-the-semantic-lead-only-in-the-ranking-branch-and-reads-it-from-the-raw-list-2026-09-30]]
             _dist = {h["id"]: h.get("distance") for h in vec_hits if h.get("id")}
             for _r in base["node_hits"]:
                 _rid = _r.get("id")

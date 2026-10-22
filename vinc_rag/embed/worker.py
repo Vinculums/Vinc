@@ -537,7 +537,7 @@ class _Embedder:
         # 120회 중 72·78회). 세션 실행은 스레드 안전하고, 질의 한 줄의 활성값은 배치의
         # 수십분의 일이라 잠금이 막으려던 고점(세션 두 벌 · 배치 두 개)이 아니다.
         # 적재 전에는 잠금으로 간다 — 첫 적재 중 질의가 세션을 한 벌 더 올리면 OOM 이다.
-        # 근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]
+        # 근거: [[vinc.ops.incident-2026-10-02-node-mirror-oom]]
         if query and self._sess is not None:
             with self._query_slots:                            # 동시 질의 상한(QUERY_CONCURRENCY)
                 hidden, mask = self._run(texts)
@@ -891,7 +891,7 @@ def prefix(text: str, kind: str, model: str) -> str:
     ⚠ `model` 을 인자로 받는 이유: `vinc_rag/embed/encoder.py` 가 이 함수를 그대로 가져다
     쓴다(같은 규약이 두 곳에 적히면 갈라진다 — 실제로 갈라졌다). 그쪽은 모델을
     바꿔 가며 비교해야 해서 모듈 전역 MODEL 로는 안 된다.
-    근거: [[record:embed-prefix-missing-m3-branch-2026-08-30]].
+    근거: [[vinc.plan.m3-rebuild-rehearsal]].
     """
     m = model.lower()
     if "bge-m3" in m:

@@ -4,7 +4,7 @@
 둘은 한 쌍이다. 드롭만 빼고 질의를 그대로 두면 2026-09-30 실측의 세그폴트 자리다
 (쓰는 동안 다른 커넥션의 벡터 질의 14/20 사망). 그래서 플래그 하나가 둘을 같이 바꾸고,
 측정하지 않은 엔진에서는 플래그가 켜져도 아무것도 바꾸지 않는다.
-근거: [[record:ladybug-0-20-4-hnsw-insert-survives-alone-but-a-reader-during-a-checkpoint-segfaults-2026-09-30]]
+근거: [[decision:keep-the-chunk-vector-index-behind-a-flag-and-run-each-vector-query-alone-2026-10-03]]
 """
 from __future__ import annotations
 
