@@ -25,6 +25,7 @@
 import { COPY } from "./copy";
 import { hasAccount, connectAccount, openBrowser } from "./account-connect";
 import { IN_SHELL, WEB, ensureSidecar } from "./api";
+import { loaderInline } from "./vinc-loaders.js";
 
 /** 이 기기에서 로그인이 필요한가. 셸만 해당한다(웹은 세션 게이트가 따로 있다).
  *
@@ -71,7 +72,7 @@ function openSignInScreen(reason: "first" | "expired") {
       <div class="si-or" aria-hidden="true"><span>${c.or}</span></div>
       <button class="btn si-google" id="fr-google" type="button">${GOOGLE_G}<span>${c.googleCta}</span></button>
       <p class="si-state" id="fr-state" role="status" aria-live="polite"></p>
-      <div class="si-progress sheet-progress-track" id="fr-progress" hidden aria-hidden="true"><span></span></div>
+      <div class="si-progress" id="fr-progress" hidden aria-hidden="true">${loaderInline()}</div>
       <div class="si-actions" id="fr-actions" hidden>
         <button class="btn" id="fr-reopen" type="button" disabled>${c.reopen}</button>
         <button class="btn" id="fr-copy" type="button" disabled>${c.copyLink}</button>

@@ -10,6 +10,7 @@ import type { DocEditorHandle } from "../doc-editor";
 import { setViewHooks } from "../topbar";
 import { agentRoleCount, setLnbActive, setLnbDocOpener, setLnbTopicPicker, refreshLnb } from "../lnb";
 import { setLiveRefresher } from "../live";
+import { loaderRows } from "../vinc-loaders.js";
 
 /** 문서 홈(2026-10-22) — 문서를 보고 쓰고 정리하는 첫 화면.
  *
@@ -127,7 +128,7 @@ function openWriter(topic = ""): void {
 async function paintList(el: HTMLElement, gen: number): Promise<void> {
   const H = COPY.ui.home;
   if (!el.querySelector(".home")) {
-    el.innerHTML = `<div class="home"><p class="hint">${esc(COPY.ui.common.loading)}</p></div>`;
+    el.innerHTML = `<div class="home"><div class="home-read">${loaderRows(COPY.ui.common.loading, { count: 6 })}</div></div>`;
   }
   let docs: Doc[];
   try { docs = await loadDocs(); } catch {

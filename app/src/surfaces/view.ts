@@ -142,6 +142,7 @@ const READER_CHIPS = 6;
 
 // 런타임 테마 모드 — 주제 틴트(`tintMap`)가 모드에 따라 고른다.
 import { type ThemeMode } from "../theme";
+import { loaderBlock, loaderInline } from "../vinc-loaders.js";
 const curMode = (): ThemeMode =>
   document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 
@@ -2125,7 +2126,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   async function showGraphScope(scope: { domains?: string[] }) {
     const domains = scope.domains || [];
     const p = curPrefs();
-    setMsg(`<p class="hint">${COPY.view.loading(domains.length ? 1 : 0)}</p>`);
+    setMsg(loaderBlock("branch", COPY.view.loading(domains.length ? 1 : 0)));
     const res = await loader.fetchGraph(p, scope);
     if (res.stale) return;                        // 더 새 show() 가 이미 화면을 가져갔다
     swapSurface();
@@ -2471,7 +2472,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       && viewScope().key === scopeKey && (!pane || (revision === railRevision && !detail.hidden));
     const scope = { team: cfg.team || null };
     const requestOwner = cfg.owner;
-    box.innerHTML = `<p class="card-note">${esc(COPY.ui.viewx.detailLoading)}</p>`;
+    box.innerHTML = `<p class="card-note">${loaderInline(COPY.ui.viewx.detailLoading)}</p>`;
     const fail = (state: DetailState) => {
       box.innerHTML = detailErrorHTML(state);
       box.querySelector("[data-detail-retry]")?.addEventListener("click", () => {
@@ -2573,7 +2574,7 @@ export async function renderView(el: HTMLElement, resume = false) {
             <span class="row-meta" id="c-linkmeta"></span>
             ${chev("down")}
           </button>
-          <div class="card-links" id="c-rels" hidden><p class="card-note">${V.sourceLoading}</p></div>
+          <div class="card-links" id="c-rels" hidden><p class="card-note">${loaderInline(V.sourceLoading)}</p></div>
         </div>
         ${askRowHTML()}
         <div class="card-row card-row--static"${canZoom() ? "" : " hidden"}>
@@ -2741,7 +2742,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       ${detailHistory.length ? `<button class="btn" type="button" data-detail-back>${esc(COPY.ui.viewx.readerBack)}</button>` : ""}
       ${askRowHTML()}
       <h2>${esc(isAgentRoleId(nd.id) ? stripRolePrefix(nd.label) : nd.label)}</h2>
-      <div id="node-stats"><p class="hint">${COPY.ui.viewx.sourceLoading}</p></div>
+      <div id="node-stats"><p class="hint">${loaderInline(COPY.ui.viewx.sourceLoading)}</p></div>
       <p class="rail-acts">
         <button class="btn btn-primary" id="nd-share">${COPY.ui.viewx.shareCta}</button>
         <button class="btn" id="nd-connect" data-tip="${esc(COPY.author.connectTip)}">${
@@ -2791,7 +2792,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     // D45-V 1단계 — 흐름 선 클릭: "왜 A 가 B 로 이어지는가". 클릭=고정(pin) —
     // 상세 패널 자리를 그대로 쓴다(노드 상세와 같은 표면, ESC/다른 클릭으로 이동).
     openRail();
-    detail.innerHTML = `<p class="hint">${COPY.ui.viewx.relLoading}</p>`;
+    detail.innerHTML = `<p class="hint">${loaderInline(COPY.ui.viewx.relLoading)}</p>`;
     const pending = detail.firstChild, graphAtOpen = curEdges;
     // Use only an exact authored relation from this already-authorized graph.
     // A parallel relation without an ID must never borrow another one's evidence.
@@ -2873,7 +2874,7 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  개념 클릭 → 그 개념 상세(node-context)로 한 홉 더(문서는 거기서). */
   async function openDrilldown(domain: string, mark: string, seed?: string) {
     openRail();
-    detail.innerHTML = `<p class="hint">${COPY.ui.viewx.drillLoading}</p>`;
+    detail.innerHTML = `<p class="hint">${loaderInline(COPY.ui.viewx.drillLoading)}</p>`;
     try {
       const res = await api.ledgerDrilldown(cfg.owner, domain, mark, seed);
       if (detail.hidden) return;
@@ -2937,7 +2938,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     detail.innerHTML = `${railHeadHTML(COPY.ui.viewx.timeline)}<div id="period-body"></div>`;
     wireRailHead();
     const body = detail.querySelector<HTMLElement>("#period-body")!;
-    body.innerHTML = `<p class="hint" role="status">${COPY.ui.viewx.periodLoading}</p>`;
+    body.innerHTML = `<p class="hint">${loaderInline(COPY.ui.viewx.periodLoading)}</p>`;
     if (trigger && document.activeElement === trigger)
       detail.querySelector<HTMLButtonElement>("#rail-close")?.focus();
     try {
@@ -3457,7 +3458,7 @@ export async function renderView(el: HTMLElement, resume = false) {
         ctxCache = null; void loadNodeSource(nd);
       });
     };
-    box.innerHTML = `<p class="hint">${COPY.ui.viewx.sourceLoading}</p>`;
+    box.innerHTML = `<p class="hint">${loaderInline(COPY.ui.viewx.sourceLoading)}</p>`;
     try {
       const res = await nodeContextOnce(nd.id);
       if (!current()) return;
@@ -3542,7 +3543,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   async function openReader(docId: string, conceptId?: string, chunkIndex?: number) {
     const revision = openRail();
     const current = () => revision === railRevision && myGen === liveGen && !detail.hidden;
-    detail.innerHTML = `<p class="hint">${COPY.ui.viewx.readerLoading}</p>`;
+    detail.innerHTML = `<p class="hint">${loaderInline(COPY.ui.viewx.readerLoading)}</p>`;
     try {
       // 셋을 나란히 부른다. 밑줄과 머리는 **증강**이라 실패해도 문서는 열려야 한다 —
       // Promise.all 은 하나만 거절돼도 전부를 버리므로 각자 강등본을 준비한다.
@@ -3798,7 +3799,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     // D69 — L0 도 그냥 전체 그래프다(구 주제 원 배치 폐지). 3D 경로와 같은 모집단을
     // 쓰므로 관점을 바꿔도 같은 것을 다르게 볼 뿐, 다른 것을 보게 되지 않는다.
     const domains = lvDomains(level);
-    setMsg(`<p class="hint">${COPY.view.loading(domains.length ? 1 : 0)}</p>`);
+    setMsg(loaderBlock("branch", COPY.view.loading(domains.length ? 1 : 0)));
     const res = await loader.fetchGraph(p, { domains });
     if (res.stale) return;
     swapSurface();
@@ -3850,7 +3851,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     // `domains` 가 없으면 사이드카는 owner 스코프 전량을 돌려준다
     // (query.py `graph()` "기본은 owner(±domain) 스코프 전체"). call() 이 undefined
     // 파라미터를 빼므로 요청은 그대로 `/graph?owner=…&layout=…` 이 된다.
-    setMsg(`<p class="hint">${COPY.view.loading(level.kind === "l0" ? 0 : 1)}</p>`);
+    setMsg(loaderBlock("branch", COPY.view.loading(level.kind === "l0" ? 0 : 1)));
     const res = await loader.fetchGraph(p, { domains });
     if (res.stale) return;
     swapSurface();

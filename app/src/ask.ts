@@ -2,6 +2,7 @@ import { api, cfg } from "./api";
 import { COPY } from "./copy";
 import { esc, openSheet, armsNotice } from "./components";
 import { viewHooks } from "./topbar";
+import { loaderInline } from "./vinc-loaders.js";
 
 /** 묻기 — 앱 안의 **무LLM 대화**(D73).
  *
@@ -249,7 +250,7 @@ function render(thinking = false) {
     </div>`;
   const body = turns.length
     ? turns.map(bubble).join("") + (thinking
-        ? `<div class="ask-turn vinc"><div class="ask-bubble"><span class="hint">${esc(c.thinking)}</span></div></div>`
+        ? `<div class="ask-turn vinc"><div class="ask-bubble">${loaderInline(c.thinking)}</div></div>`
         : "")
     : `<div class="ask-empty"><p>${esc(c.intro)}</p>
          <p class="hint">${esc(c.examplesHint)}: ${esc(c.forms)}</p></div>`;

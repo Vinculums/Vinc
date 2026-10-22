@@ -11,6 +11,7 @@ import { checkForUpdate } from "./update";
 import { mountLiveRefresh, setLiveRefresher } from "./live";
 import { wireFileAssociations } from "./openfiles";
 import { installTooltip } from "./tooltip";
+import { loaderBlock } from "./vinc-loaders.js";
 import { mountTopbar, setViewHooks } from "./topbar";
 import { mountLnb, refreshLnb, setLnbNavigator, repaintLnb } from "./lnb";
 import { showNotice } from "./components";
@@ -336,6 +337,11 @@ document.documentElement.lang = cfg.lang;
   // 자체 툴팁(D48-T)은 라우팅보다 먼저 건다 — 첫 화면의 마크도 곧바로 담당한다.
   // 위임 하나라 서피스가 다시 그려져도 재배선이 필요 없다.
   installTooltip();
+  // 사이드카·로그인·모드를 정하는 동안 첫 화면이 비지 않게 로고 모션을 둔다. 첫 route() 가
+  // 표면을 갈아 끼우면 사라진다(로그인 화면은 그 위를 덮는다).
+  const bootSurface = document.getElementById("surface");
+  if (bootSurface && !bootSurface.childElementCount)
+    bootSurface.innerHTML = loaderBlock("mark", COPY.ui.common.starting, { fill: true });
   // 셸이면 사이드카 접속(포트·토큰) 확보. 웹 Vinc(호스티드)는 로컬 사이드카가 없어
   // 스킵 — 데이터는 계정 프록시(/api/graph)로 간다. 브라우저 dev 는 connectSidecar 가
   // __TAURI__ 없음으로 즉시 반환(same-origin vite 프록시 유지).

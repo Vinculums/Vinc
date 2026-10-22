@@ -4,6 +4,7 @@ import { docTitle } from "./doc-title";
 import { esc, sheetActions, sheetProgress, type SheetHandle } from "./components";
 import { renderIntake } from "./surfaces/intake";
 import { viewHooks } from "./topbar";
+import { loaderRows } from "./vinc-loaders.js";
 
 /** Tools (DEC D71) — 만들기 · 가져오기 · 공유가 한 모달에 산다.
  *
@@ -269,7 +270,7 @@ async function renderCreate(pane: HTMLElement, sheet: SheetHandle,
     <p class="hint">${esc(T.linkHint)}</p>
     <input id="tl-q" class="rail-filter" type="search" autocomplete="off"
            placeholder="${esc(T.linkFilter)}" />
-    <div class="sheet-list" id="tl-docs"><p class="hint">${COPY.ui.common.loading}</p></div>
+    <div class="sheet-list" id="tl-docs">${loaderRows(COPY.ui.common.loading, { count: 4 })}</div>
     <div id="tl-result" role="status"></div>`;
 
   const { mountDocEditor } = await import("./doc-editor");

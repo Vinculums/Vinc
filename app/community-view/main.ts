@@ -15,6 +15,8 @@ import { mount3d, type N3, type L3 } from "../src/surfaces/view3d";
 import { defaultPrefs, type ViewPrefs } from "../src/view-prefs";
 import { palette, hexStr, type ThemeMode } from "../src/theme";
 import { tintMap } from "../src/view-tint";
+import "../src/vinc-loaders.css";
+import { loaderBlock } from "../src/vinc-loaders.js";
 
 /** 고정 설정. 노드는 데스크톱 기본(0.7)의 두 배라 종류별 모양이 읽힌다. */
 const PREFS: ViewPrefs = {
@@ -413,7 +415,7 @@ function paintChrome() {
 
 async function main() {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) { say(text.failed); return; }
-  say(text.loading);
+  msg.innerHTML = loaderBlock("branch", text.loading); msg.hidden = false;
   let pages: Page[];
   try {
     const res = await fetch(`/api/community/c/${encodeURIComponent(slug)}/pages`, { headers: { accept: "application/json" } });

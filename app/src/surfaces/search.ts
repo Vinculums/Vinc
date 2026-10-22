@@ -5,6 +5,7 @@ import { renderBrowse } from "./records";
 import { viewHooks } from "../topbar";
 import { renderSearchError } from "../search-error";
 import { partitionSearchResults } from "../search-relevance";
+import { loaderRows } from "../vinc-loaders.js";
 
 /** Surface 4 — Search (spec: [[vinc.spec.surface-search]], DEC D24).
  *  Single field + operators (domain:, tag:, "phrase"). Results grouped by
@@ -99,7 +100,7 @@ export function renderSearch(el: HTMLElement) {
       localStorage.setItem(RECENT_KEY, JSON.stringify(next));
     }
     const { text, domain, tag } = parseQuery(raw);
-    body.innerHTML = `<div class="hint">${COPY.search.searching}</div>`;
+    body.innerHTML = loaderRows(COPY.search.searching, { count: 5 });
     try {
       const mode = scope.value as SearchOptions["mode"];
       // Explicit scopes use one retrieval path so title matches cannot bypass its filters.

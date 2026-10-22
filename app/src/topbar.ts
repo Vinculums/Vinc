@@ -6,6 +6,7 @@ import { icon } from "./icons";
 import { esc, armsNotice, type ArmsNotice } from "./components";
 import { dayOf } from "./view-prefs";
 import { renderSearchError } from "./search-error";
+import { loaderInline } from "./vinc-loaders.js";
 
 /** 상단 바 (DEC D56·D57) — 내용 칸 오른쪽 위에 뜬 손잡이 묶음.
  *
@@ -339,7 +340,7 @@ export function mountTopbar() {
       // 필요하다 — 반쪽 검색의 0건을 진짜 0건으로 읽게 두면 안 된다.
       + (notice && !loading ? `<p class="hint tb-rnote">${notice.text}</p>` : "");
     if (loading) {
-      box.innerHTML = head + `<p class="hint tb-rnote">${COPY.search.searching}</p>`;
+      box.innerHTML = head + `<p class="hint tb-rnote">${loaderInline(COPY.search.searching)}</p>`;
       open(); return;
     }
     if (hits.length === 0 && weakHits.length === 0) {

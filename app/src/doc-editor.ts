@@ -8,6 +8,7 @@ import { COPY } from "./copy";
 import { docTitle } from "./doc-title";
 import { hydrateRich } from "./rich-blocks";
 import { esc } from "./components";
+import { loaderRows } from "./vinc-loaders.js";
 
 /** 결정론 미니 마크다운 렌더러(폴백 미리보기·Reader 공용). **표시 전용** — 소스는
  *  변형하지 않는다. 전부 이스케이프 후 최소 문법만. */
@@ -210,7 +211,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   let contentTime = opts.contentTime || "";   // D72 — 내용 시점(빈 값 = 안 적음)
 
   if (docId && opts.initial === undefined) {
-    host.innerHTML = `<p class="hint">${COPY.ui.viewx.readerLoading}</p>`;
+    host.innerHTML = loaderRows(COPY.ui.viewx.readerLoading, { count: 6, compact: true });
     // 이 await 는 오래 try 밖에 있었다. `call()` 은 비 2xx 를 전부 던지므로
     // (죽은 사이드카·500·그리고 2026-08-16 부터 스토어 미개방의 503) 예외가
     // mountDocEditor 밖으로 새어 나가고, 호출부는 "문서를 여는 중"에서 굳는다.

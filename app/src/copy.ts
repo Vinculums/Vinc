@@ -352,7 +352,7 @@ const EN = {
       unassign: "Remove from this topic",
       renameAsk: (d: string) => `Rename the topic "${d}". Everything in it moves along.`,
     },
-    common: { cancel: "Cancel", loading: "Loading…", none: "none" },
+    common: { cancel: "Cancel", loading: "Loading…", starting: "Opening Vinc…", none: "none" },
     update: {
       available: (v: string) => `Vinc ${v} is ready to install.`,
       install: "Install & restart", later: "Later",
@@ -1668,7 +1668,7 @@ const KO: Deck = {
       unassign: "주제에서 빼기",
       renameAsk: (d) => `'${d}' 주제의 이름을 바꿔요. 안에 있는 것도 함께 옮겨져요`,
     },
-    common: { cancel: "닫기", loading: "불러오는 중…", none: "없음" },
+    common: { cancel: "닫기", loading: "불러오는 중…", starting: "Vinc를 여는 중…", none: "없음" },
     update: {
       available: (v) => `Vinc ${v} 버전을 설치할 수 있어요`,
       install: "설치하고 다시 시작하기", later: "나중에",

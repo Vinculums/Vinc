@@ -72,6 +72,12 @@ MAP = [
     # .ico 는 16·32·48 PNG 를 담은 컨테이너다(scripts 주석 참조).
     ("assets/logo/vinc-ring-favicon.ico", "../../Vinc-homepage/site/favicon.ico"),
     ("assets/logo/vinc-ring-favicon-48.png", "../../Vinc-homepage/site/favicon-48.png"),
+    # 로딩 모션 다섯 가지(2026-10-23). 로고처럼 변환 없이 나른다. 앱은 모듈로 가져오고
+    # 사이트는 `<script type="module">` 과 `<link>` 로 읽는다. 근거: [[vinc.design.loading-motions]]
+    ("assets/motion/vinc-loaders.css", "../app/src/vinc-loaders.css"),
+    ("assets/motion/vinc-loaders.js", "../app/src/vinc-loaders.js"),
+    ("assets/motion/vinc-loaders.css", "../../Vinc-homepage/site/assets/vinc-loaders.css"),
+    ("assets/motion/vinc-loaders.js", "../../Vinc-homepage/site/assets/vinc-loaders.js"),
 ]
 
 #: 소비 리포에 박는 무결성 각인. 사본이 손으로 고쳐졌는지를 **그 리포 안에서만**
