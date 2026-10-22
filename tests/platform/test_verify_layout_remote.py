@@ -1,7 +1,9 @@
 import copy
+import json
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import verify_layout_remote as vr
@@ -88,6 +90,26 @@ class VerificationTests(unittest.TestCase):
                 raise vr.VerificationError(error)
             with self.assertRaisesRegex(vr.VerificationError, error):
                 vr.verify("synthetic", get=get, sleep=lambda _: self.fail("unexpected retry"))
+
+
+    def test_unexecuted_reply_names_the_read_and_the_hub_reason(self):
+        replies = [{"executed": False, "error": "store_busy"}, {"executed": False}, ["not", "a", "dict"]]
+        expected = ["/graph/roots: store_busy", "/graph/roots: no error field",
+                    "/graph/roots: no error field"]
+        for reply, text in zip(replies, expected):
+            class Response:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc):
+                    return False
+
+                def read(self, _limit, body=json.dumps(reply).encode()):
+                    return body
+            with mock.patch.object(vr, "urlopen", lambda *a, **k: Response()):
+                with self.assertRaisesRegex(vr.VerificationError, "account read was not executed") as caught:
+                    vr.read("/graph/roots?basis=recorded", "synthetic", 1)
+            self.assertIn(text, str(caught.exception))
 
 
 if __name__ == "__main__":

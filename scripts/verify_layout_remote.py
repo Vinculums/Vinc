@@ -38,7 +38,11 @@ def read(path: str, key: str, timeout: float) -> dict:
     except ValueError:
         raise VerificationError("account reply was not JSON") from None
     if not isinstance(result, dict) or result.get("executed") is not True:
-        raise VerificationError("account read was not executed")
+        # 허브가 준 사유 코드를 함께 낸다. 이 거절은 재시도하지 않으므로 사유가 없으면
+        # 배포 로그만으로는 일시 상태인지 계약 오류인지 가를 수 없다.
+        error = result.get("error") if isinstance(result, dict) else None
+        reason = error[:120] if isinstance(error, str) and error else "no error field"
+        raise VerificationError(f"account read was not executed ({path.split('?')[0]}: {reason})")
     return result
 
 
