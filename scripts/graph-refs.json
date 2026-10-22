@@ -957,6 +957,7 @@
     "decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07",
     "decision:vin88-agent-click-opens-roster-list-graph-scopes-agent-domains-2026-09-22",
     "decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24",
+    "decision:web-app-follows-main-desktop-ships-by-release-2026-10-23",
     "episode:2026-09-14-brief-carries-the-connectivity-instead-of-leaving-it-to-be-summed",
     "episode:2026-09-14-future-dated-nodes-leave-the-default-read",
     "episode:2026-09-24-hub-sidecar-segfault-loop",
@@ -1360,6 +1361,9 @@
       "validity": "unknown"
     },
     "decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24": {
+      "validity": "current"
+    },
+    "decision:web-app-follows-main-desktop-ships-by-release-2026-10-23": {
       "validity": "current"
     },
     "episode:2026-09-14-brief-carries-the-connectivity-instead-of-leaving-it-to-be-summed": {

@@ -1,14 +1,15 @@
-# 웹 Vinc 갱신 트리거 — `v*` 태그가 붙으면 Vinc-homepage 의 site-deploy 를 호출한다.
+# 웹 Vinc 갱신 트리거 — 앱이 main 에 머지되거나 `v*` 태그가 붙으면 Vinc-homepage 의
+# site-deploy 를 호출한다.
 #
 # 왜 별도 워크플로인가. 웹 Vinc(vincs.io/app/)의 소스는 이 레포의 `app/` 인데, 빌드·배포는
 # **Vinc-homepage** 의 `site-deploy.yml` 이 한다(SWA 배포 토큰과 site/ 콘텐츠가 그쪽에 있다).
 # 그 워크플로의 트리거는 `site/**` push 뿐이라, 이 레포에 앱 변경이 들어가도 저쪽에 site
-# 변경이 없으면 웹은 옛 코드로 남았다. 실측(2026-08-03): 0.7.3 앱 변경이 10시간 동안 웹에
-# 반영되지 않다가, 릴리스 노트를 고치려고 site/ 를 건드린 push 에 **우연히** 따라 올라왔다.
+# 변경이 없으면 웹이 갱신되지 않는다.
 #
-# site-deploy 는 이제 최신 `v*` 태그를 골라 빌드하므로(그쪽 머리주석), 갱신이 필요한
-# 시점은 정확히 **새 태그가 붙는 순간**이다. 그 순간을 이 워크플로가 저쪽에 알린다.
-# → 불변식: "웹 Vinc 에 있는 것은 항상 어느 릴리스와 정확히 같은 코드".
+# 웹은 main 을 따르고 데스크톱은 릴리스 태그로만 나간다. site-deploy 는 저장소 변수
+# `WEB_VINC_REF`(main)로 웹을 빌드하므로, 갱신이 필요한 순간은 앱이 main 에 들어올 때다.
+# 태그 push 도 그대로 부른다(변수를 지우면 최신 태그로 돌아가는 길). 근거:
+# [[decision:web-app-follows-main-desktop-ships-by-release-2026-10-23]]
 #
 # release.yml 에 합치지 않은 이유: 데스크탑 릴리스 빌드(3 OS · 수십 분)와 수명이 다르고,
 # 시크릿이 없을 때 이 잡이 붉게 실패하는 것이 **릴리스 자체를 붉게 만들면 안 된다**.
@@ -22,7 +23,11 @@ name: web-app-deploy-trigger
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
+    # 경로는 main push 에만 걸린다(태그 push 에는 경로 필터가 적용되지 않는다).
+    # 데스크톱 셸(src-tauri)만 바뀐 머지는 웹과 무관하다.
+    paths: ["app/**", "!app/src-tauri/**"]
   workflow_dispatch:
 
 permissions:
@@ -65,7 +70,7 @@ jobs:
           # 무엇이 이 실행을 일으켰는지 — 태그 push 면 그 태그, 수동이면 그렇게 적는다.
           # `github.ref_name` 을 그냥 쓰면 수동 실행에서 "최신 태그(main)" 처럼 **틀린
           # 문구**가 나온다(실측: run 30814822510). 로그가 거짓을 말하면 안 된다.
-          WHY: ${{ github.event_name == 'push' && format('태그 {0}', github.ref_name) || '수동 실행' }}
+          WHY: ${{ github.event_name != 'push' && '수동 실행' || (startsWith(github.ref, 'refs/tags/') && format('태그 {0}', github.ref_name) || format('main {0}', github.sha)) }}
         run: |
           set -euo pipefail
           if [ -z "${PAT:-}" ]; then
@@ -88,6 +93,6 @@ jobs:
             cat /tmp/dispatch.out >&2 || true
             exit 1
           fi
-          # 어느 릴리스로 빌드되는지는 **site-deploy 가** 최신 v* 태그를 골라 정한다
-          # (그쪽 Pin 스텝). 여기서 태그를 단정하지 않는다 — 그 판단은 저쪽 몫이다.
-          echo "site-deploy 를 트리거했다($WHY) — 웹 Vinc 가 최신 v* 태그로 재빌드된다."
+          # 어느 ref 로 빌드되는지는 **site-deploy 가** 정한다(그쪽 Pin 스텝: 수동 입력 →
+          # WEB_VINC_REF → 최신 v* 태그). 여기서 단정하지 않는다 — 그 판단은 저쪽 몫이다.
+          echo "site-deploy 를 트리거했다($WHY) — 웹 Vinc 가 저쪽 Pin 스텝의 ref 로 재빌드된다."
