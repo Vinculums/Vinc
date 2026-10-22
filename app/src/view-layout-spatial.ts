@@ -75,22 +75,41 @@ export function spatialLayout(nodes: GraphNode[], edges: GraphEdge[], topics: Sp
       Object.fromEntries(AXES.map(axis => [axis, round(pick(...ps.map(p => p[axis])) / STEP) * STEP + pad])) as RoutePoint;
     cells.push({ topic, points, min: bound(Math.min, Math.floor, -STEP), max: bound(Math.max, Math.ceil, STEP) });
   }
-  // 주제 칸의 자리(y·z). 첫 칸은 시간 축 위, 나머지는 둘레의 고리에 위에서부터 받은 순서대로
-  // 선다. 고리의 호는 칸의 대각선 길이만큼 나눠 가지므로 큰 칸이 이웃을 덮지 않는다. 시작 x 는
+  // 주제 칸의 자리(y·z). 첫 칸은 시간 축 위, 나머지는 그 둘레의 동심 고리에 받은 순서대로
+  // 안쪽 고리부터 채운다. 고리 하나가 차면 바깥에 새 고리를 연다. 고리 하나에 전부 세우면
+  // 주제가 많을 때 반지름이 주제 수에 비례해 커져서 가는 테 하나가 된다(주제 174개에서 실측).
+  // 고리마다 호는 칸의 대각선 길이만큼 나눠 가지므로 큰 칸이 이웃을 덮지 않는다. 시작 x 는
   // 순서마다 `lead` 만큼 늦고, 전체의 가운데가 원점이다. 중심은 모두 같은 격자에 남는다.
   const snap = (v: number) => Math.round(v / STEP) * STEP;
   const gap = STEP * 2;
   const reach = cells.map(c => Math.hypot(c.max.y - c.min.y, c.max.z - c.min.z));
-  const ring = reach.slice(1).reduce((sum, d) => sum + d + gap, 0);
-  const radius = cells.length > 1
-    ? Math.max((reach[0] + Math.max(...reach.slice(1))) / 2 + gap, ring / (2 * Math.PI)) : 0;
-  let arc = 0;
-  const centres = cells.map((_, i) => {
-    if (i === 0) return { y: 0, z: 0 };
-    const angle = 2 * Math.PI * (arc + (reach[i] + gap) / 2) / ring;
-    arc += reach[i] + gap;
-    return { y: radius * Math.cos(angle), z: radius * Math.sin(angle) };
-  });
+  const centres: { y: number; z: number }[] = [{ y: 0, z: 0 }];
+  let inner = 0, innerReach = reach[0] ?? 0;
+  for (let i = 1; i < cells.length;) {
+    // 고리 반지름은 안쪽 고리와 이 고리의 가장 큰 칸이 닿지 않는 만큼. 둘레가 모자라면 칸을
+    // 더 받지 않는다(첫 칸은 늘 받는다). 6R 은 둘레 2πR 보다 작게 잡은 수용량이라 이웃 사이
+    // 현의 길이도 호만큼 남는다.
+    const ring: number[] = [];
+    let widest = 0, used = 0, radius = 0;
+    for (; i < cells.length; i++) {
+      const w = Math.max(widest, reach[i]);
+      const r = inner + (innerReach + w) / 2 + gap;
+      if (ring.length && used + reach[i] + gap > 6 * r) break;
+      ring.push(i); widest = w; used += reach[i] + gap; radius = r;
+    }
+    // 고리 안의 자리는 받은 순서가 아니라 황금비 보폭으로 섞는다. 순서대로 돌리면 x 가 순서마다
+    // 늦어지므로 고리 하나가 용수철 한 바퀴처럼 보인다. 섞으면 이웃한 순서가 고리의 먼 쪽에 서서
+    // 단면 전체가 시간 축을 따라 고르게 찬다.
+    const golden = (Math.sqrt(5) - 1) / 2;
+    ring.sort((a, b) => (a * golden) % 1 - (b * golden) % 1);
+    let arc = 0;
+    for (const j of ring) {
+      const angle = 2 * Math.PI * (arc + (reach[j] + gap) / 2) / used;
+      arc += reach[j] + gap;
+      centres[j] = { y: radius * Math.cos(angle), z: radius * Math.sin(angle) };
+    }
+    inner = radius; innerReach = widest;
+  }
   const lead = STEP * 2;
   const length = Math.max(0, ...cells.map((c, i) => c.max.x - c.min.x + i * lead));
   cells.forEach((cell, i) => {
