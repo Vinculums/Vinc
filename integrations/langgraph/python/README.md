@@ -103,8 +103,6 @@ date before approval, and pass the same `episode_id` to `record_episode` on a
 retry. This merges the same Episode; it does not make other side effects run
 exactly once.
 
-
-
 ## Retrying a write and previewing a delete
 
 Since 0.1.5 the write helpers take `create_only` and `operation_id` and pass them to vinc-client unchanged.
@@ -175,7 +173,6 @@ Every model call rereads the package and distinct evidence ids. Missing carriers
 fail explicitly; unavailable evidence is marked uncitable. Nothing writes on
 read or completion. Write the producer's package with `client.write_package`
 explicitly, and put `record_episode` in the approved write-back node as before.
-
 
 ## Prefetch the selected role's evidence
 
@@ -252,25 +249,7 @@ Apart from the middleware's reuse within one run, nothing is cached. To keep seq
 reader created with `prefetch_concurrency=1`; the client default is 8.
 Model citation quality must be evaluated separately.
 
-
-## Version notes
-
-| Version | Change |
-|---|---|
-| 0.1.9 | `prefetch_pin` on the middleware and `pin` on the node helpers hold role prefetch to a contract hash; a role that changed raises `VincRoleChanged` before the model is called. Requires vinc-client 0.1.12. |
-| 0.1.8 | With `prefetch_role`, the contract's `disallowed_tools` are removed from what the model sees and a call to one gets a refusal message; entries that match no tool are warned once per run. Requires vinc-client 0.1.11. |
-| 0.1.7 | With `prefetch_role`, the middleware reads the role once per run instead of before every model call; a new human message reads again. `clear_cache()` also drops these blocks. |
-| 0.1.6 | `vinc_brief` and `vinc_search` answer with the unavailable sentence at once instead of waiting through the client's transient retries. Requires vinc-client 0.1.10. |
-| 0.1.5 | The write helpers take `create_only` and `operation_id`. Requires vinc-client 0.1.9; its version notes list `operation_status`, `edges`, `role_check` and the delete and merge previews. |
-| 0.1.4 | The read tools take `mode`, `as_of` and `known_at`. |
-| 0.1.3 | Vinc tool calls are capped at 4 per run, and both packages send the same tool schema. |
-
-0.1.5 and 0.1.7 were not published to PyPI; their changes first shipped in 0.1.6 and 0.1.8.
-
-## License
-
-MIT
-# Final output gate
+## Final output gate
 
 ```python
 from vinc_client import OutputGate
@@ -317,3 +296,21 @@ be overridden by approval. Keep side-effect tools separately authorized.
 
 Use a durable checkpointer in production and never expose unchecked model stream
 events. This follows the framework's [interrupt contract](https://docs.langchain.com/oss/python/langgraph/interrupts).
+
+## Version notes
+
+| Version | Change |
+|---|---|
+| 0.1.9 | `prefetch_pin` on the middleware and `pin` on the node helpers hold role prefetch to a contract hash; a role that changed raises `VincRoleChanged` before the model is called. Requires vinc-client 0.1.12. |
+| 0.1.8 | With `prefetch_role`, the contract's `disallowed_tools` are removed from what the model sees and a call to one gets a refusal message; entries that match no tool are warned once per run. Requires vinc-client 0.1.11. |
+| 0.1.7 | With `prefetch_role`, the middleware reads the role once per run instead of before every model call; a new human message reads again. `clear_cache()` also drops these blocks. |
+| 0.1.6 | `vinc_brief` and `vinc_search` answer with the unavailable sentence at once instead of waiting through the client's transient retries. Requires vinc-client 0.1.10. |
+| 0.1.5 | The write helpers take `create_only` and `operation_id`. Requires vinc-client 0.1.9; its version notes list `operation_status`, `edges`, `role_check` and the delete and merge previews. |
+| 0.1.4 | The read tools take `mode`, `as_of` and `known_at`. |
+| 0.1.3 | Vinc tool calls are capped at 4 per run, and both packages send the same tool schema. |
+
+0.1.5 and 0.1.7 were not published to PyPI; their changes first shipped in 0.1.6 and 0.1.8.
+
+## License
+
+MIT

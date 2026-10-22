@@ -31,9 +31,9 @@ The functions take an `AsyncVincClient` first and are awaited.
 
 | Helper | Parameters | What it does |
 |---|---|---|
-| `VincContextProvider` | `client`, `api_key`, `base_url`, `space`, `source_id`, `search_fallback=True`, `max_chars`, `max_excerpts=3`, `min_query_chars=3`, `expose_tools=False`, `prefetch_role`, `prefetch_max_chars`, `tool_calls_per_run=4`, `prefetch_pin` | context before each run, and optionally the read tools |
-| `PackageProvider` | `client`, `package_id`, `space` (required), `source_id`, `max_chars` | a handoff package before each run |
-| `create_vinc_tools` | `client`, `max_chars`, `cap` | the read only tools `vinc_brief` and `vinc_search` |
+| `VincContextProvider` | `client`, `api_key`, `base_url`, `space`, `source_id="vinc"`, `search_fallback=True`, `max_chars`, `max_excerpts=3`, `min_query_chars=3`, `expose_tools=False`, `prefetch_role`, `prefetch_max_chars`, `tool_calls_per_run=4`, `prefetch_pin` | context before each run, and optionally the read tools; `aclose()` closes the client it made itself |
+| `PackageProvider` | `client`, `package_id`, `space` (required), `source_id="vinc-package"`, `max_chars` | a handoff package before each run |
+| `create_vinc_tools` | `client`, `max_chars`, `cap=None` (a `ToolCallCap`) | the read only tools `vinc_brief` and `vinc_search` |
 | `prefetch` | `client`, `role_id`, `task`, `space`, `max_chars`, `pin` | the role's required reading and task evidence |
 | `record_episode` | `client`, `title`, `summary`, `about`, `date`, `domain`, `tags`, `space`, `episode_id`, `create_only`, `operation_id` | one Episode, `vinc_sk_` key |
 | `write_package` | `client`, `question`, `conclusion`, `claims`, `produced_by`, `run_id`, `space` (required), `package_id`, `create_only`, `operation_id` | one handoff Record, `vinc_sk_` key |
@@ -69,7 +69,7 @@ Before each run the provider looks up the newest user message in Vinc and, when 
 vinc = VincContextProvider(expose_tools=True)
 ```
 
-adds two read-only tools, `vinc_brief` and `vinc_search`, and lets the model call them at most 4 times per run (`tool_calls_per_run`); the fifth call gets a sentence saying the cap is reached instead of a Vinc call. The tools are built per run, so concurrent runs do not share the count. You can also build them yourself with `create_vinc_tools(client)`; those count only against a `ToolCallCap` you pass, for the life of that cap. `vinc-langgraph` applies the same cap and sentence.
+adds two read-only tools, `vinc_brief` and `vinc_search`, and lets the model call them at most 4 times per run (`tool_calls_per_run`); the fifth call gets a sentence saying the cap is reached instead of a Vinc call. The tools are built per run, so concurrent runs do not share the count. You can also build them yourself with `create_vinc_tools(client)`; those count only against a `ToolCallCap` you pass, for the life of that cap. Import it with `from vinc_client.tools import ToolCallCap`; `ToolCallCap(limit=4)` is the default count, `limit=None` never caps, and a new run needs a new cap. `vinc-langgraph` applies the same cap and sentence.
 
 ## Writing, on purpose
 
@@ -87,8 +87,6 @@ await record_episode(
     about=["decision:tokens-are-oklch"],
 )
 ```
-
-
 
 ## Retrying a write and previewing a delete
 
@@ -144,7 +142,6 @@ Missing packages fail explicitly. `after_run` writes nothing. The producer uses
 `AsyncVincClient.write_package` explicitly; the recipient calls `record_episode`
 explicitly after review to write back what happened. Neither the provider nor
 the helpers delegate to another agent or grant it permission.
-
 
 ## Prefetch the selected role's evidence
 
@@ -221,24 +218,7 @@ No prefetch cache or automatic reuse is added. To keep sequential reads, pass a
 reader created with `prefetch_concurrency=1`; the client default is 8. A new role must be chosen by the application/operator, never by
 text found in the graph.
 
-
-## Version notes
-
-| Version | Change |
-|---|---|
-| 0.1.8 | `prefetch_pin` on the provider and `pin` on `prefetch` hold role prefetch to a contract hash; a role that changed makes `before_run` raise `VincRoleChanged` before the model is called. Requires vinc-client 0.1.12. |
-| 0.1.7 | With `prefetch_role`, the contract's `disallowed_tools` are removed from what the model sees (chat clients with `ChatMiddlewareLayer`) and a call to one gets a refusal result; entries that match no tool are warned once per run. Requires vinc-client 0.1.11. |
-| 0.1.6 | `vinc_brief` and `vinc_search` answer with the unavailable sentence at once instead of waiting through the client's transient retries. Requires vinc-client 0.1.10. |
-| 0.1.5 | The write helpers take `create_only` and `operation_id`. Requires vinc-client 0.1.9; its version notes list `operation_status`, `edges`, `role_check` and the delete and merge previews. |
-| 0.1.4 | The read tools take `mode`, `as_of` and `known_at`. |
-| 0.1.3 | Vinc tool calls are capped at 4 per run, and both packages send the same tool schema. |
-
-0.1.5 was not published to PyPI; its changes first shipped in 0.1.6.
-
-## License
-
-MIT
-# Final output gate
+## Final output gate
 
 ```python
 from vinc_client import OutputGate
@@ -282,3 +262,20 @@ releases this output only and does not execute or authorize a side-effect tool.
 Never expose unchecked model stream events. Configure workflow checkpoints when
 pending approval must survive a process restart. This uses the framework's
 [native request and response mechanism](https://learn.microsoft.com/en-us/agent-framework/workflows/human-in-the-loop).
+
+## Version notes
+
+| Version | Change |
+|---|---|
+| 0.1.8 | `prefetch_pin` on the provider and `pin` on `prefetch` hold role prefetch to a contract hash; a role that changed makes `before_run` raise `VincRoleChanged` before the model is called. Requires vinc-client 0.1.12. |
+| 0.1.7 | With `prefetch_role`, the contract's `disallowed_tools` are removed from what the model sees (chat clients with `ChatMiddlewareLayer`) and a call to one gets a refusal result; entries that match no tool are warned once per run. Requires vinc-client 0.1.11. |
+| 0.1.6 | `vinc_brief` and `vinc_search` answer with the unavailable sentence at once instead of waiting through the client's transient retries. Requires vinc-client 0.1.10. |
+| 0.1.5 | The write helpers take `create_only` and `operation_id`. Requires vinc-client 0.1.9; its version notes list `operation_status`, `edges`, `role_check` and the delete and merge previews. |
+| 0.1.4 | The read tools take `mode`, `as_of` and `known_at`. |
+| 0.1.3 | Vinc tool calls are capped at 4 per run, and both packages send the same tool schema. |
+
+0.1.5 was not published to PyPI; its changes first shipped in 0.1.6.
+
+## License
+
+MIT

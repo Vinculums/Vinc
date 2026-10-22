@@ -36,6 +36,18 @@ team = VincClient(space="<team id>")     # a team's shared graph instead of your
 
 `VincClient(api_key=None, *, base_url=None, space=None, timeout=30.0, transport=None, prefetch_concurrency=8, retry_for=90.0)`. Every method also takes `space=` to override the client's default for one call.
 
+| Argument | Default | Meaning |
+|---|---|---|
+| `api_key` | `VINC_API_KEY` | a `vinc_ro_` or `vinc_sk_` member key |
+| `base_url` | `VINC_API_URL`, then `https://mcp.vincs.io` | https, or http on loopback only |
+| `space` | personal | `"personal"` or a team id |
+| `timeout` | `30.0` | seconds per request |
+| `transport` | `None` | an `httpx` transport (`httpx.AsyncBaseTransport` for `AsyncVincClient`), for tests or a proxy |
+| `prefetch_concurrency` | `8` | how many prefetch reads run at once, 1 to 8 (see [Prefetch](#prefetch-role-evidence-before-a-model-call)) |
+| `retry_for` | `90.0` | seconds to keep retrying a transient error; `0` turns retries off (see [Transient errors](#transient-errors)) |
+
+Use the client in a `with` block or call `close()` when you are done; `AsyncVincClient` takes `async with` or `aclose()`.
+
 ## Methods
 
 `AsyncVincClient` has the same methods, awaited. Optional parameters are keyword only.
@@ -75,16 +87,38 @@ Module exports, described in the sections below:
 
 | Export | Parameters |
 |---|---|
-| `OutputGate` | `props`, `extra_gates`, `self_authored`; methods `evaluate(answer, proofs, person_only_requests, phase, manifest, resolved_sources, repositories)` and `require_pass` |
-| `ToolProof` | a host observed tool result for `evaluate` |
+| `OutputGate` | `props`, `extra_gates`, `self_authored`; methods `evaluate(answer, proofs, person_only_requests, phase, manifest, resolved_sources, repositories)` and `require_pass(answer, **kwargs)`, which takes the same keywords and raises `OutputGateStopped` on block or interrupt |
+| `GateResult` | what `evaluate` returns: `verdict`, `failed_checks`, `person_only_actions`, `evidence_sentences`; `as_dict()` |
+| `OutputGateStopped` | raised by `require_pass`; `result` holds the `GateResult` |
+| `ToolProof` | `action`, `target`, `call_id`, `success`, `claim=""`: a host observed tool result for `evaluate` |
 | `sources_line` | `text`; the ids on the final `Sources:` line |
 | `preserve_required_route` | `base`, `override` |
+| `RoleOutput` | `text`, `person_only_requests` |
+| `ApprovalRequest` | `request_id`, `role_id`, `run_id`, `output`, `actions` |
+| `ApprovalDecision` | `request_id`, `approved` |
+| `ApprovalResult` | `status`, `output`, `actions`; `as_dict()` |
 | `prepare_person_only` | `output`, `gate`, `role_id`, `run_id`, `evidence` |
 | `resolve_person_only` | `request`, `decision` |
+| `ReviewOutput` | `verdict`, `findings`, `person_only_requests` |
+| `Finding` | `what`, `cite`, `quote`, `rule` |
+| `PersonOnlyRequest` | `action`, `reason` |
 | `parse_review` | `value` |
+| `UnparsedReview` | `reason`; `status` is `"UNPARSED"` |
 | `check_package_handoff` | `node`, `space`, `gate`, `readable_ids`, `repositories`, `evidence_nodes`, `proofs`, `max_chars` |
-| `format_context`, `format_brief`, `format_search`, `format_answer`, `fence` | render read results as a fenced block |
-| `build_episode_fragment`, `build_package_fragment`, `format_package` | the fragments the write helpers send, and the package block |
+| `RolePrefetch` | what `prefetch_with_contract` returns: `block`, `contract` |
+| `RoleToolPolicy` | `role_id`, `disallowed`; `from_contract(contract)`, `allows(name)`, `allowed(tools)`, `unmatched(tools)`, `warn_unmatched(tools)`, `refusal(name)` |
+| `format_context` | `brief`, `search=None`, `max_chars=4000`, `limit=5`: the block `get_context` returns, opening with the `Sources:` line instruction |
+| `format_answer` | `brief`, `search=None`, `max_chars=4000`, `limit=5`: the same block without that instruction |
+| `format_brief` | `brief`, `max_chars=4000` |
+| `format_search` | `result`, `max_chars=4000`, `limit=5` |
+| `fence` | `body`; wraps it in a backtick fence longer than any backtick run inside |
+| `BOUNDARY`, `SOURCES_LINE` | the sentence that marks a block as data, not instructions, and the final `Sources:` line instruction |
+| `build_episode_fragment` | `title`, `summary`, `about`, `date`, `domain`, `tags`, `episode_id`: the fragment `record_episode` sends |
+| `build_package_fragment` | `question`, `conclusion`, `claims`, `produced_by`, `run_id`, `title`, `package_id`: the fragment `write_package` sends |
+| `format_package` | `node`, `space`, `readable_ids`, `evidence_nodes`, `max_chars=16000`: the package block |
+| `VincError` and its subclasses | see [Errors](#errors) |
+
+`vinc.read_only` is `True` for a `vinc_ro_` key. `without_retries()` is described under [Transient errors](#transient-errors).
 
 ## Context for a model turn
 
@@ -184,6 +218,7 @@ If the affected state changed after the preview, the apply call is refused inste
 
 | Class | Meaning |
 |---|---|
+| `VincError` | the base class; every error below carries `code`, `message`, `status`, `request_id`, `details` and `retry_after` |
 | `VincAuthError` | missing, malformed, refused or read only key; configuration is wrong |
 | `VincNotFound` | the node, document or space does not exist for this key |
 | `VincInvalidArgument` | the request was malformed or refused: a topic limit, a `create_only` identity that exists, an `expected_rev` or `preview_digest` that no longer matches, an `operation_id` reused with different arguments |
@@ -191,8 +226,6 @@ If the affected state changed after the preview, the apply call is refused inste
 | `VincQuotaExceeded` | the daily limit is spent; `retry_after` is in seconds |
 | `VincUnavailable` | network or server failure, raised after transient retries ran out; for a write, check `details["write_may_have_applied"]` and `operation_status` |
 | `VincPartialWrite` | part of a write was skipped; `result` holds what the server said |
-
-
 
 ## Review output validation
 
@@ -241,7 +274,6 @@ package id for each handoff; choosing an existing id deliberately replaces that
 Record's props. The server validates sources when writing, so source Records
 must be persisted before the package rather than created alongside it.
 
-
 ## Prefetch role evidence before a model call
 
 ```python
@@ -251,7 +283,7 @@ block = reader.prefetch(
 )
 ```
 
-This uses the role API from VIN-303, reads each distinct required spec by its
+This reads the role contract with `role`, reads each distinct required spec by its
 declared document identifier through `document(doc_id)`, then briefs the task
 and searches with the role topic as
 context. Returned node ids remain in the fenced reference blocks. The topic is
@@ -390,28 +422,7 @@ The check prints only role ids and sizes, never keys or retrieved document bodie
 This provides evidence before the model runs; model citation quality needs a
 separate evaluation.
 
-
-## Version notes
-
-| Version | Change |
-|---|---|
-| 0.1.12 | `role`, `prefetch` and `prefetch_with_contract` take `pin`, a role contract `hash`; a role that changed raises the new `VincRoleChanged` before any document is read. Contracts carry `rev` and `hash`. The adapters (vinc-langgraph 0.1.9, vinc-agent-framework 0.1.8) pass it as `prefetch_pin`. |
-| 0.1.11 | `prefetch_with_contract` returns the prefetch block with the role contract it read, and `RoleToolPolicy` applies the contract's `disallowed_tools` by exact name. `prefetch` is unchanged. The adapters (vinc-langgraph 0.1.8, vinc-agent-framework 0.1.7) use both. |
-| 0.1.10 | Transient hub errors (502, 503, 504, dropped connections, timeouts) are retried for up to `retry_for` seconds (90 by default), following `Retry-After`. Writes are retried only with an `operation_id`. `get_context` and `prefetch` do not retry. |
-| 0.1.9 | `record_episode` and `write_package` take `create_only` and `operation_id`. New `delete`, `delete_edge`, `merge_nodes` and `doc_delete` with `dry_run` and `preview_digest`. New `edges` and `role_check`. The adapters 0.1.5 pass the two write parameters through and require this client. |
-| 0.1.8 | `ingest` takes `create_only` and `operation_id`; `operation_status` reads a write's receipt; `expected_rev` and `props_patch` guard a node edit. |
-| 0.1.7 | `brief` and `search` take `mode`, `as_of` and `known_at`, and results carry a `temporal` object. Prefetch gives a `cite as` id only for a readable mirror. The adapters 0.1.4 expose the same read parameters. |
-| 0.1.6 | `get_context` blocks end with the same `Sources:` line instruction as prefetch. |
-| 0.1.5 | The prefetch block names the citable id of each required reading and asks for a final `Sources:` line; `sources_line` reads it. Both adapters share one tool schema. The adapters 0.1.3 cap Vinc tool calls at 4 per run. |
-| 0.1.4 | Optional prefetch reads start before validation. |
-| 0.1.3 | Required prefetch reads run in concurrent batches; a budget error reports the complete required size. |
-
-0.1.9 was not published to PyPI; its changes first shipped in 0.1.10.
-
-## License
-
-MIT
-# Deterministic role output gate
+## Deterministic role output gate
 
 Fetch fresh structured role props, then freeze them for this invocation:
 
@@ -473,6 +484,7 @@ Approval releases this reviewed output only. It does not authorize or execute
 tools, merge, deploy or publish anything. Keep side-effect tools behind a separate
 host authorization step. The request hash binds data; it does not authenticate
 the responding person. Treat drafts and pending requests as private output.
+
 ## Quote a checked chain handoff
 
 Use `check_package_handoff(node, space=..., gate=producer_gate,
@@ -485,8 +497,7 @@ wording and attribution, and refuses empty or unresolved manifests. It neither
 routes nor executes a task. Orchestrators quote this incoming block and add their
 own selected role, bounded package, acceptance criteria and delivery order.
 
-
-### Time and validity
+## Time and validity
 
 `search` and `brief` accept optional `mode="general"`, `"current"`, or `"historical"`.
 Omitting the mode preserves existing behavior. Historical mode keeps expired evidence
@@ -503,3 +514,24 @@ time; it does not restore an earlier body revision. Search nodes and passages ca
 `temporal` object with nullable creation, update, occurrence and validity dates, successor
 metadata, explicit supersession evidence and conflicts. Update time is not occurrence time.
 The read tools in both framework adapters expose these optional parameters too.
+
+## Version notes
+
+| Version | Change |
+|---|---|
+| 0.1.12 | `role`, `prefetch` and `prefetch_with_contract` take `pin`, a role contract `hash`; a role that changed raises the new `VincRoleChanged` before any document is read. Contracts carry `rev` and `hash`. The adapters (vinc-langgraph 0.1.9, vinc-agent-framework 0.1.8) pass it as `prefetch_pin`. |
+| 0.1.11 | `prefetch_with_contract` returns the prefetch block with the role contract it read, and `RoleToolPolicy` applies the contract's `disallowed_tools` by exact name. `prefetch` is unchanged. The adapters (vinc-langgraph 0.1.8, vinc-agent-framework 0.1.7) use both. |
+| 0.1.10 | Transient hub errors (502, 503, 504, dropped connections, timeouts) are retried for up to `retry_for` seconds (90 by default), following `Retry-After`. Writes are retried only with an `operation_id`. `get_context` and `prefetch` do not retry. |
+| 0.1.9 | `record_episode` and `write_package` take `create_only` and `operation_id`. New `delete`, `delete_edge`, `merge_nodes` and `doc_delete` with `dry_run` and `preview_digest`. New `edges` and `role_check`. The adapters 0.1.5 pass the two write parameters through and require this client. |
+| 0.1.8 | `ingest` takes `create_only` and `operation_id`; `operation_status` reads a write's receipt; `expected_rev` and `props_patch` guard a node edit. |
+| 0.1.7 | `brief` and `search` take `mode`, `as_of` and `known_at`, and results carry a `temporal` object. Prefetch gives a `cite as` id only for a readable mirror. The adapters 0.1.4 expose the same read parameters. |
+| 0.1.6 | `get_context` blocks end with the same `Sources:` line instruction as prefetch. |
+| 0.1.5 | The prefetch block names the citable id of each required reading and asks for a final `Sources:` line; `sources_line` reads it. Both adapters share one tool schema. The adapters 0.1.3 cap Vinc tool calls at 4 per run. |
+| 0.1.4 | Optional prefetch reads start before validation. |
+| 0.1.3 | Required prefetch reads run in concurrent batches; a budget error reports the complete required size. |
+
+0.1.9 was not published to PyPI; its changes first shipped in 0.1.10.
+
+## License
+
+MIT
