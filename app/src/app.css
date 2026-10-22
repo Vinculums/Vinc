@@ -851,7 +851,10 @@ body {
    바가 자기 질의 상자다) 안에서 36rem 까지 자란다 — 퍼센트로 적으면 내용 폭으로 줄어든 열이
    자기 자신을 가리킨다. */
 #tb-find { flex: 1 1 auto; min-width: 0; }
-#tb-find[data-expanded] { min-width: min(36rem, 100cqi); }
+/* 펼친 검색은 **열 폭 계산에서 빠진다**(절대 배치) — 그대로 두면 아래 그래프 버튼까지 검색 폭으로
+   늘어난다. 줄은 높이를 지켜 아래 줄이 올라오지 않게 하고, 검색은 오른쪽 끝을 축으로 왼쪽을 덮는다. */
+#tb-line-find { position: relative; min-height: calc(var(--ctl-h) + var(--space-2, .5rem)); }
+#tb-find[data-expanded] { position: absolute; top: 0; right: 0; width: min(36rem, 100cqi); }
 #tb-find:not([data-expanded]) > #tb-search { display: none; }
 #tb-find[data-expanded] > .tb-find-open { display: none; }
 .tb-find-open {
@@ -2524,7 +2527,7 @@ textarea.props-val {
    (문서 열 · 인캔버스 크롬)의 천장은 topbar.ts `trackChromeTop` 이 바의 실측 바닥에서
    다시 잰다 — 그래서 둘째 줄이 생겨도 그것들이 그 밑에 깔리지 않는다. */
 @container topbar (max-width: 420px) {
-  #tb-find[data-expanded] { min-width: 100cqi; }
+  #tb-find[data-expanded] { width: 100cqi; }
   #tb-viewctl { max-width: 100%; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {

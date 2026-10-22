@@ -174,7 +174,12 @@ export function mountTopbar() {
   // ── 접힌 알약 ↔ 펼친 검색 ────────────────────────────────────────────────
   // 펼침은 카드의 `data-expanded` 하나가 말한다(CSS 가 그 하나만 본다). 접는 것은 초점이
   // 카드 밖으로 나가고 대화 패널이 닫혀 있을 때다. 친 글자는 남는다 — 다시 펴면 그대로다.
+  const findLine = $("tb-line-find");
   const expand = (focus = true) => {
+    // 펼친 검색은 열 폭 계산에서 빠진다(CSS). 접힌 알약이 차지하던 폭을 줄에 남겨 두어야
+    // 아래 그래프 줄이 펼치는 순간 좁아졌다가 접을 때 다시 넓어지는 흔들림이 없다.
+    if (findLine && findCard && !findCard.hasAttribute("data-expanded"))
+      findLine.style.minWidth = `${Math.round(findCard.getBoundingClientRect().width)}px`;
     findCard?.setAttribute("data-expanded", "true");
     findOpen?.setAttribute("aria-expanded", "true");
     if (focus) { qEl.focus(); qEl.select(); }
@@ -183,6 +188,7 @@ export function mountTopbar() {
     if (chatEl && !chatEl.hidden) return;          // 묻기 답을 읽는 중이다
     findCard?.removeAttribute("data-expanded");
     findOpen?.setAttribute("aria-expanded", "false");
+    findLine?.style.removeProperty("min-width");
   };
   if (findOpen) {
     const fi = findOpen.querySelector<HTMLElement>(".tb-find-icon");
