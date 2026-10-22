@@ -1046,7 +1046,9 @@ class VincApp:
 
     def read_graph_roots(self, p):
         """들고 있는 시간 가지 배치. 범위는 전체 그래프 하나다(주제를 고른 읽기는 화면이 직접 배치한다)."""
-        return self.roots.get(_req(p, "owner"), p.get("basis") or "recorded")
+        # `have`: 화면이 이미 그린 답의 digest. 같으면 본문 없이 상태만 간다(`api.layout_remote`).
+        return self.roots.get(_req(p, "owner"), p.get("basis") or "recorded",
+                              str(p.get("have") or "")[:64] or None)
 
     def _roots_graph(self, owner):
         # 화면의 시간 가지 읽기와 같은 인구다: hub 배치, 주제 선택 없음, 원뿔 1.

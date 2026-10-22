@@ -793,6 +793,10 @@ type GraphRootsAnswer = {
   state: "off" | "pending" | "stale" | "ready" | "failed";
   marker?: string;
   nodes?: number;
+  /** 답을 만든 배치 코드의 판(`api.layout_remote`). 옛 허브는 싣지 않는다. */
+  version?: string;
+  /** 답 본문의 해시. 요청에 같은 값을 `have` 로 실으면 허브가 본문을 뺀다. */
+  digest?: string;
   answer?: LayoutAnswer;
 };
 
@@ -892,10 +896,10 @@ export const api = {
       : localCall("/graph", params, undefined, scope, live);
   },
   graphRoots: (owner: string, basis: "recorded" | "content", signal: AbortSignal,
-      scope: Scope = { team: cfg.team || null }): Promise<GraphRootsAnswer> =>
+      scope: Scope = { team: cfg.team || null }, have?: string): Promise<GraphRootsAnswer> =>
     accountMode() && !sidecarOnly("/graph/roots")
-      ? accountCall("/graph/roots", { owner, basis }, undefined, scope, signal)
-      : localCall("/graph/roots", { owner, basis }, undefined, scope, signal),
+      ? accountCall("/graph/roots", { owner, basis, ...(have ? { have } : {}) }, undefined, scope, signal)
+      : localCall("/graph/roots", { owner, basis, ...(have ? { have } : {}) }, undefined, scope, signal),
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20, options: SearchOptions = {}) => searchCall(query, top_k, options),
   // 정확한 제목은 저장된 메타에서 찾는다. 본문 색인·그래프 노드 유무와 무관하다.

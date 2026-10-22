@@ -7,7 +7,9 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -41,18 +43,20 @@ class RootsUnitTests(unittest.TestCase):
     def setUp(self):
         self.marker = changes.ChangeMarker()
         self.posted = []
-        self.reads = 0
-
-        def read(owner):
-            self.reads += 1
-            return GRAPH
+        self.version = "v1"        # 배치 컨테이너가 답과 /health 에 싣는 코드 판
 
         def post(payload):
             self.posted.append(payload)
-            return _answer(payload)
-        self.roots = layout_remote.RootsLayouts(remote="http://layout", token="t", read_graph=read,
-                                                marker=self.marker.read, post=post, debounce=0)
-        self.addCleanup(self.roots.close)
+            return {**_answer(payload), "version": self.version}
+        self.post = post
+        self.roots = self.make()
+
+    def make(self, **kwargs):
+        roots = layout_remote.RootsLayouts(remote="http://layout", token="t", read_graph=lambda o: GRAPH,
+                                           marker=self.marker.read, post=self.post, debounce=0,
+                                           health=lambda: {"ok": True, "version": self.version}, **kwargs)
+        self.addCleanup(roots.close)
+        return roots
 
     def wait_runs(self, n):
         deadline = time.monotonic() + 5
@@ -133,6 +137,95 @@ class RootsUnitTests(unittest.TestCase):
         with mock.patch.dict("os.environ", {"VINC_LAYOUT_REMOTE": "http://layout", "VINC_LAYOUT_TOKEN": "x"}):
             self.assertTrue(layout_remote.from_env(read_graph=lambda o: None, marker=lambda o: "m").enabled)
 
+    # ── VIN-744: 배치 코드 판·따라 묻기·재시작 ────────────────────────────
+    def test_a_layout_deploy_makes_the_held_answer_stale_without_any_write(self):
+        self.roots.run_once("user:a", "recorded")
+        body = _body(self.roots.get("user:a", "recorded"))[1]
+        self.assertEqual((body["state"], body["version"]), ("ready", "v1"))
+        self.version = "v2"                       # layout-deploy: 쓰기는 없다
+        self.roots._probed = float("-inf")         # 다음 물음에서 판을 다시 본다
+        with mock.patch.object(self.roots, "_schedule") as schedule:
+            body = _body(self.roots.get("user:a", "recorded"))[1]
+        self.assertEqual(body["state"], "stale")
+        self.assertIn("answer", body)              # 낡은 답도 싣는다: 화면은 먼저 그리고 갈아 끼운다
+        schedule.assert_called_once()
+        self.assertEqual(self.roots.run_once("user:a", "recorded"), "ready")
+        body = _body(self.roots.get("user:a", "recorded"))[1]
+        self.assertEqual((body["state"], body["version"]), ("ready", "v2"))
+
+    def test_the_version_is_probed_at_most_once_per_interval_and_a_dead_probe_keeps_serving(self):
+        calls = []
+        roots = self.make(probe_s=60.0)
+        roots._health = lambda: calls.append(1) or {"version": "v1"}
+        roots.run_once("user:a", "recorded")
+        for _ in range(3):
+            roots.get("user:a", "recorded")
+        self.assertEqual(len(calls), 1)
+        roots._probed = float("-inf")
+        roots._health = mock.Mock(side_effect=OSError("down"))
+        self.assertEqual(_body(roots.get("user:a", "recorded"))[1]["state"], "ready")
+
+    def test_have_returns_the_state_without_the_body_when_nothing_changed(self):
+        self.roots.run_once("user:a", "recorded")
+        full = _body(self.roots.get("user:a", "recorded"))[1]
+        code, short = self.roots.get("user:a", "recorded", have=full["digest"])
+        self.assertEqual((code, short["state"], short["digest"]), (200, "ready", full["digest"]))
+        self.assertNotIn("answer", short)
+        self.assertIn("answer", _body(self.roots.get("user:a", "recorded", have="other"))[1])
+
+    def test_a_restart_serves_the_saved_answer_as_stale_and_redoes_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self.make(store_dir=tmp)
+            first.run_once("user:a", "recorded")
+            digest = _body(first.get("user:a", "recorded"))[1]["digest"]
+            files = os.listdir(tmp)
+            self.assertEqual(len(files), 1)
+            self.assertNotIn("user", files[0])     # 파일 이름에 소유자가 드러나지 않는다
+            first.close()
+            # 재시작: 표식 세대가 새로 뽑힌다(`api.changes`)
+            self.marker = changes.ChangeMarker()
+            second = self.make(store_dir=tmp)
+            second._marker = self.marker.read
+            with mock.patch.object(second, "_schedule") as schedule:
+                body = _body(second.get("user:a", "recorded"))[1]
+            self.assertEqual((body["state"], body["digest"]), ("stale", digest))
+            self.assertEqual(body["answer"]["nodes"][0][0], "concept:a")
+            schedule.assert_called_once()
+            self.assertEqual(second.run_once("user:a", "recorded"), "ready")
+            self.assertEqual(_body(second.get("user:a", "recorded"))[1]["state"], "ready")
+
+    def test_saves_are_throttled_and_the_rest_is_written_at_close(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            now = [1000.0]
+            roots = self.make(store_dir=tmp, save_every=300.0, clock=lambda: now[0])
+            roots.run_once("user:a", "recorded")
+            path = os.path.join(tmp, os.listdir(tmp)[0])
+            self.assertIn('"v1"', open(path, encoding="utf-8").readline())
+            self.version = "v2"
+            now[0] += 100                          # 판 확인 주기(60초)는 지났고 저장 주기는 아직이다
+            roots._check_version()
+            roots.run_once("user:a", "recorded")   # 판이 바뀌어 새 답. 주기 안이라 아직 안 쓴다
+            self.assertIn('"v1"', open(path, encoding="utf-8").readline())
+            roots.close()
+            self.assertIn('"v2"', open(path, encoding="utf-8").readline())
+            self.assertEqual(len(os.listdir(tmp)), 1)   # 임시 파일이 남지 않는다
+
+    def test_a_broken_saved_file_is_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            roots = self.make(store_dir=tmp)
+            with open(roots._file(("user:a", "recorded")), "w", encoding="utf-8") as fh:
+                fh.write('{"v":1,"basis":"recorded"}\n{"nodes": [')
+            with mock.patch.object(roots, "_schedule"):
+                self.assertEqual(_body(roots.get("user:a", "recorded"))[1]["state"], "pending")
+
+    def test_the_saved_answers_live_beside_the_persistent_snapshot(self):
+        with mock.patch.dict("os.environ", {"VINC_STORE_SNAPSHOT": "/data/db", "VINC_LAYOUT_STORE": ""}):
+            self.assertEqual(layout_remote.store_dir_from_env(), "/data/db.layouts")
+        with mock.patch.dict("os.environ", {"VINC_STORE_SNAPSHOT": "", "VINC_LAYOUT_STORE": ""}):
+            self.assertIsNone(layout_remote.store_dir_from_env())
+        with mock.patch.dict("os.environ", {"VINC_STORE_SNAPSHOT": "/data/db", "VINC_LAYOUT_STORE": "/x"}):
+            self.assertEqual(layout_remote.store_dir_from_env(), "/x")
+
 
 class _Store:
     driver_name = "fake"
@@ -161,6 +254,7 @@ class ServerTests(unittest.TestCase):
             posted = threading.Event()
             app.roots._post = lambda payload: (posted.set(), _answer(payload))[1]
             app.roots.debounce = 0
+            app.roots._health = lambda: {}
             self.assertEqual(_body(app.read_graph_roots({"owner": "user:a"}))[1]["state"], "pending")
             self.assertTrue(posted.wait(5))
             deadline = time.monotonic() + 5
