@@ -7847,6 +7847,9 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
 
         # ATTACHES_TO incoming: (rec:Record)-[a]->(drop) → (rec)-[a]->(keep), type 보존.
         # SEC-3: Record·drop·keep 모두 owner 스코프 — 남의 Record 를 내 keep 으로 못 옮긴다.
+        # 한 기록이 한 대상에 타입별로 따로 붙는다(쓰기 경로가 type 을 MERGE 패턴에 넣는다).
+        # 그래서 중복 검사와 MERGE 모두 (기록, type) 쌍으로 한다. type 을 빼면 keep 에 다른
+        # 타입 부착이 하나라도 있을 때 drop 의 부착이 버려지거나 그 엣지 위에 덮어써진다.
         for row in store.run(
                 "MATCH (r:Record)-[a:ATTACHES_TO]->(d:Concept) "
                 f"WHERE d.concept_id = $id{oscope('d')}{oscope('r')} "
@@ -7855,25 +7858,30 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
             other = row.get("other")
             if not other:
                 continue
+            etype = row.get("type")
+            same = "e.type = $t" if etype is not None else "e.type IS NULL"
+            tp = {"t": etype} if etype is not None else {}
             ex = store.run(
-                "MATCH (r:Record)-[:ATTACHES_TO]->(k:Concept) "
-                f"WHERE r.record_id = $r AND k.concept_id = $k{oscope('r')}{oscope('k')} "
-                "RETURN count(*) AS c",
-                {"r": _k(other), "k": _k(keep_id), **op})
+                "MATCH (r:Record)-[e:ATTACHES_TO]->(k:Concept) "
+                f"WHERE r.record_id = $r AND k.concept_id = $k AND {same}"
+                f"{oscope('r')}{oscope('k')} RETURN count(*) AS c",
+                {"r": _k(other), "k": _k(keep_id), **tp, **op})
             if ex and ex[0].get("c"):
                 skipped += 1
                 continue
-            if row.get("type") is not None:
+            if etype is not None:
                 store.run(
                     "MATCH (r:Record),(k:Concept) "
                     f"WHERE r.record_id = $r AND k.concept_id = $k{oscope('r')}{oscope('k')} "
-                    "MERGE (r)-[e:ATTACHES_TO]->(k) SET e.type = $t",
-                    {"r": _k(other), "k": _k(keep_id), "t": row["type"], **op})
+                    "MERGE (r)-[e:ATTACHES_TO {type: $t}]->(k)",
+                    {"r": _k(other), "k": _k(keep_id), "t": etype, **op})
             else:
+                # 타입 없는 부착은 MERGE 하면 같은 쌍의 타입 있는 부착에 맞물려 사라진다.
+                # 위 검사가 타입 없는 것이 keep 에 없음을 확인했으므로 새로 만든다.
                 store.run(
                     "MATCH (r:Record),(k:Concept) "
                     f"WHERE r.record_id = $r AND k.concept_id = $k{oscope('r')}{oscope('k')} "
-                    "MERGE (r)-[e:ATTACHES_TO]->(k)",
+                    "CREATE (r)-[e:ATTACHES_TO]->(k)",
                     {"r": _k(other), "k": _k(keep_id), **op})
             repointed += 1
 
