@@ -170,7 +170,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
            cursor: str | None = None, detail: str = "summary",
            historical: bool = False, as_of: str | None = None,
            mode: str | None = None, known_at: str | None = None,
-           query_runtime: str | None = None, cfg=None, store=None) -> dict:
+           query_runtime: str | None = None, query_model: str | None = None,
+           cfg=None, store=None) -> dict:
     """검색 순위와 페이지는 그대로 두고 공개 응답에 정확한 인용 id를 붙인다.
 
     as_of 기간이 있으면 그 기간이 끝난 뒤에 시작한 사건(Episode)을 node_hits 에서 뺀다
@@ -178,7 +179,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
     result = _retrieval.search(
         query, query_embedding=query_embedding, top_k=top_k, filters=filters,
         owner=owner, cursor=cursor, detail=detail, historical=historical,
-        as_of=as_of, mode=mode, known_at=known_at, query_runtime=query_runtime, cfg=cfg, store=store)
+        as_of=as_of, mode=mode, known_at=known_at, query_runtime=query_runtime,
+        query_model=query_model, cfg=cfg, store=store)
     result["node_hits"] = [{**hit, "cite_id": hit.get("id") or None}
                            for hit in result.get("node_hits") or []]
     _drop_unstarted_episodes(result, query, as_of=as_of, mode=mode, historical=historical)
@@ -4148,7 +4150,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
           max_excerpts: int = 3, historical: bool = False, as_of: str | None = None,
           mode: str | None = None, known_at: str | None = None,
           cfg=None, store=None, _reask: bool = False,
-          query_runtime: str | None = None) -> dict:
+          query_runtime: str | None = None, query_model: str | None = None) -> dict:
     """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
 
     질문에 노드 id 가 그대로 들어 있으면 그 노드를 **직참조**한다(검색·랭킹 생략,
@@ -4278,7 +4280,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
                      owner=owner, store=store, historical=historical,
                      as_of=as_of, mode=mode, known_at=known_at,
-                     query_runtime=query_runtime)
+                     query_runtime=query_runtime, query_model=query_model)
         # executed 는 노드 팔 기준이다 — 청크 팔만 죽어도 노드 팔은 owner 스코프 결과를 낸다.
         base["executed"] = bool(res.get("executed") or res.get("node_hits"))
         # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`
@@ -4293,6 +4295,9 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                   "temporal_error", "partial", "mode", "claim_assessment_scope"):
             if res.get(k):
                 base[k] = res[k]
+        # 노드 의미 팔이 모델 불일치로 꺼졌으면 해소가 그 팔 없이 돌았다. 그 사실도 나른다.
+        if (res.get("node_semantic") or {}).get("state") == "model_mismatch":
+            base["node_semantic"] = res["node_semantic"]
         if known_scope is not None:
             # B1 — 검색이 known_at 으로 감춘 수를 그대로 잇는다(0 도 값이다: 거르기가 돌았다).
             base["known_at_filtered"] = int(res.get("known_at_filtered") or 0)

@@ -1246,6 +1246,7 @@ class VincApp:
         code, res = self._read(lambda r: _timed("search", p, r, q.search(
             query, query_embedding=qvec,
             query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
+            query_model=(_ENCODER_RESPONSE_MODEL.get() if qvec is not None else None),
             top_k=_int(p.get("top_k"), 5), filters=filters or None,
             cursor=p.get("cursor") or None, detail=p.get("detail") or "summary",
             historical=truthy(p.get("historical")), as_of=p.get("as_of") or None,
@@ -1626,6 +1627,7 @@ class VincApp:
         code, res = self._read(lambda r: _timed("brief", p, r, q.brief(
             query, owner=_req(p, "owner"), query_embedding=qvec,
             query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
+            query_model=(_ENCODER_RESPONSE_MODEL.get() if qvec is not None else None),
             max_excerpts=_int(p.get("max_excerpts"), 3),
             historical=truthy(p.get("historical")), as_of=p.get("as_of") or None,
             mode=p.get("mode") or None, known_at=p.get("known_at") or None, store=r)))
