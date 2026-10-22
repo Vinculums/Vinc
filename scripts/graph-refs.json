@@ -1004,6 +1004,7 @@
     "record:guarded-node-edits-carry-the-view-owner-2026-10-16",
     "record:health-that-does-not-reach-its-dependency-answers-for-the-wrong-process",
     "record:hook-created-worktrees-are-not-removed-by-the-harness-2026-09-13",
+    "record:hosted-runners-run-the-test-suites-no-faster-with-the-temp-dir-on-tmpfs",
     "record:hub-http-clients-refuse-redirects-2026-10-16",
     "record:hub-segfault-loop-on-embedding-apply-2026-09-24",
     "record:hub-snapshots-the-whole-database-every-five-minutes-because-a-no-op-job-counts-as-a-write-2026-09-25",
@@ -1501,6 +1502,9 @@
       "validity": "current"
     },
     "record:hook-created-worktrees-are-not-removed-by-the-harness-2026-09-13": {
+      "validity": "current"
+    },
+    "record:hosted-runners-run-the-test-suites-no-faster-with-the-temp-dir-on-tmpfs": {
       "validity": "current"
     },
     "record:hub-http-clients-refuse-redirects-2026-10-16": {
