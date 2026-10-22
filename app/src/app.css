@@ -497,6 +497,23 @@ body {
 #shell[data-doc-size="full"] #topbar { grid-template-columns: max-content max-content; }
 #shell[data-doc-size="full"] #tb-line-find,
 #shell[data-doc-size="full"] #tb-line-view { grid-row: 1; }
+/* 넓은 열은 지도를 다 덮는다. 지도를 세는 하단 상태 줄이 그 위에 남으면 열 본문 아래 줄에
+   겹쳐 읽혔다(0.9.8 점검, 노드 수·연결률이 본문 글자 위에 섰다). 열이 닫히면 돌아온다. */
+#shell[data-doc-size="full"] #view-chrome { visibility: hidden; }
+/* 옆 카드로 열면 상태 줄은 카드 왼쪽에서 끝난다. 그대로 두면 오른쪽 끝의 수치가 카드 아래
+   줄을 가로질렀다(같은 점검). 카드 폭은 `#docpane` 의 `--rail-size` 와 같은 값을 읽는다. */
+#shell[data-doc="open"][data-doc-size="side"] #view-chrome {
+  right: calc(var(--rail-size, 20rem) + var(--shell-gap) * 2);
+}
+/* 줄이 짧아지면 좁은 창 규칙과 같이 넘침은 그 줄 안에서만 굴린다(창 920 에서 수치가 카드 밑으로 다시 나갔다). */
+#shell[data-doc="open"][data-doc-size="side"] #view-metrics {
+  min-width: 0; overflow-x: auto; scrollbar-width: none;
+}
+#shell[data-doc="open"][data-doc-size="side"] #view-metrics::-webkit-scrollbar { display: none; }
+/* 아래 가운데 알약(선택 안내 · 선택 바)도 카드가 남긴 지도 폭의 가운데로 옮긴다. */
+#shell[data-doc="open"][data-doc-size="side"] :is(#view-float, #view-hint) {
+  transform: translateX(calc(-50% - (var(--rail-size, 20rem) + var(--shell-gap) * 2) / 2));
+}
 /* 넓어져도 글줄은 읽는 폭에 둔다 — 머리만 끝까지 가고 나머지는 가운데 한 단이다. */
 #shell[data-doc-size="full"] #view-detail > :not(.rail-head) {
   max-width: 52rem; margin-inline: auto;

@@ -202,6 +202,14 @@ class ShellSizeSpecTests(unittest.TestCase):
         self.assertIn("--chrome-w", decl(full + "#view-detail > .rail-head"),
                       "넓은 열의 머리가 바가 덮는 자리를 비우지 않는다")
 
+    def test_지도_상태_줄이_열_밑으로_지나가지_않는다(self):
+        """하단 상태 줄(노드 수 · 연결률)은 지도를 센다. 넓은 열이 지도를 덮으면 숨고, 옆
+        카드가 열리면 카드 왼쪽에서 끝난다. 둘 다 없을 때 수치가 열 본문 위에 겹쳤다(0.9.8 점검)."""
+        self.assertIn("visibility: hidden", decl('#shell[data-doc-size="full"] #view-chrome'),
+                      "넓은 열 위에 지도 상태 줄이 남는다")
+        self.assertIn("--rail-size", decl('#shell[data-doc="open"][data-doc-size="side"] #view-chrome'),
+                      "옆 카드 아래로 상태 줄이 지나간다")
+
 
 if __name__ == "__main__":
     unittest.main()
