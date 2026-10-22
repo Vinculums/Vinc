@@ -96,9 +96,15 @@ def test_account_service_projects_authorized_committed_values(app, op, args):
 
 
 @pytest.mark.parametrize("op,args", [
-    ("delete", {"node": "concept:page"}),
     ("delete", {"node": "episode:talk-../../other"}),
-    ("delete", {"node": "episode:unrelated-" + SOCIAL}),
+    ("delete", {"node": "record:page-"}),
+    ("delete", {"node": "decision:a--b"}),
+    ("delete", {"node": "concept:" + "a" * 81}),
+    ("delete", {"node": "concept:doc.page.example"}),
+    ("delete", {"node": "domain:physics"}),
+    ("delete", {"node": "bridge:page"}),
+    ("delete", {"node": "theory:page"}),
+    ("delete", {"node": "episode:page", "stray_type": "concept"}),
     ("doc-delete", {"id": "page.example"}),
     ("doc-delete", {"id": "graph.md"}),
     ("doc-delete", {"id": "graph.md~1234567890abcdef"}),
@@ -112,6 +118,15 @@ def test_projector_cannot_delete_wiki_or_rules(app, op, args):
     with pytest.raises(PermissionError):
         project(app, op, args)
     assert app.bridge.calls == []
+
+
+@pytest.mark.parametrize("node", ["concept:page", "episode:physics-michelson-morley-experiment",
+                                  "record:null-result", "decision:adopt-relativity",
+                                  "episode:unrelated-" + SOCIAL])
+def test_projector_can_delete_a_wiki_page_node_whose_kind_changed(app, node):
+    # 종류가 바뀌면 접두가 달라진다. 옛 노드는 반영기가 지운다.
+    project(app, "delete", {"node": node})
+    assert app.bridge.calls == [("POST", "/delete", None, {"node": node, "owner": A})]
 
 
 @pytest.mark.parametrize("op", ["job", "delete-edge", "merge-nodes", "domain-rename", "ingest-pack", "pin"])
@@ -129,8 +144,20 @@ def test_projector_can_remove_only_obsolete_wiki_relations(app, rel):
     assert app.bridge.calls == [("POST", "/delete-edge", None, {**args, "owner": A})]
 
 
+@pytest.mark.parametrize("ends", [("episode:event", "record:result"), ("record:result", "decision:choice"),
+                                  ("decision:choice", "concept:page"), ("concept:page", "episode:event"),
+                                  ("concept:agentv-" + SOCIAL + "-1", "record:result")])
+def test_projector_can_remove_relations_between_typed_pages(app, ends):
+    args = {"from": ends[0], "to": ends[1], "type": "derives_from"}
+    project(app, "delete-edge", args)
+    assert app.bridge.calls == [("POST", "/delete-edge", None, {**args, "owner": A})]
+
+
 @pytest.mark.parametrize("over", [{"from": "concept:doc.graph.md"}, {"to": "episode:talk-"+SOCIAL},
+                                  {"from": "episode:lounge-"+SOCIAL},
                                   {"from": "concept:a--b"}, {"to": "concept:a-"},
+                                  {"from": "record:a--b"}, {"to": "decision:a-"},
+                                  {"from": "bridge:a"}, {"to": "domain:a"}, {"from": "theory:a"},
                                   {"from": "concept:"+"a"*81}, {"type": "about"}, {"type": "TYPED"}])
 def test_projector_relation_cleanup_refuses_other_surfaces(app, over):
     with pytest.raises(PermissionError):

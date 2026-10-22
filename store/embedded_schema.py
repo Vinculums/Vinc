@@ -258,7 +258,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
 # 그것이 v13 이 존재하는 이유와 같다(아래 `DOMAIN_HIERARCHY_VERSION` 주석). 백필은
 # 스토어가 **뒤처져 있을 때만** 도는데, 라이브가 이미 최신을 기록하고 있으면 상수만
 # 올려서는 안 돈다 — 목표 버전이 함께 움직여야 한다.
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 23
 
 #: v21 — 전문 색인이 `Chunk.lex` 위에 섰다는 표지(`_SchemaMeta` 의 키, 값 `ready`).
 #: **스키마 버전과 분리한다.** 버전은 기동 때 ALTER 와 함께 기록되는데 색인 이관은 기동 뒤에
@@ -360,13 +360,13 @@ def migration_statements(from_version: int) -> list[str]:
         # CREATE 는 구 설치에서 'already exists' 로 흡수돼 쌍을 안 열어 준다.
         # 목록은 _REL_TABLES 파생 — 손으로 적으면 다음 쌍에서 빠진다.
         # 근거: [[record:rel-tables-take-multiple-endpoint-pairs]].
+        # v23 이 넓힌 표는 v22 의 쌍까지만 연다. 나머지는 v23 스텝 몫이라 두 번 열지 않는다.
         for lbl, src, dst, _p in _REL_TABLES:
-            srcs = (src,) if isinstance(src, str) else tuple(src)
-            dsts = (dst,) if isinstance(dst, str) else tuple(dst)
-            for s in srcs:
-                for d in dsts:
-                    if "Decision" in (s, d):
-                        stmts.append(f"ALTER TABLE {lbl} ADD FROM {s} TO {d}")
+            for s, d in _rel_pairs(src, dst):
+                if lbl in _V22_PAIRS and (s, d) not in _V22_PAIRS[lbl]:
+                    continue
+                if "Decision" in (s, d):
+                    stmts.append(f"ALTER TABLE {lbl} ADD FROM {s} TO {d}")
     # v13 — 결정을 주제 계층에 넣는다. **DDL 스텝이 없다**: 하는 일은
     # DOMAIN_HIERARCHY_VERSION 을 넘겨 백필을 다시 돌리는 것뿐이다
     # ([[vinc.spec.dataplane §7]] — 데이터 스텝에 자기 버전 상수가 필요한 이유).
@@ -405,6 +405,13 @@ def migration_statements(from_version: int) -> list[str]:
     if from_version < 22:  # v22 — 문서 유효구간(`_DocMeta` 주석). 백필 없음: '' 는 미기재다.
         for col in ("valid_from", "valid_until", "superseded_by"):
             stmts.append(f"ALTER TABLE _DocMeta ADD {col} STRING DEFAULT ''")
+    if from_version < 23:  # v23 — 공개 위키 쪽 끝점 쌍(`_PAGE_LABELS` 주석). v12 와 같은 ALTER 다.
+        for lbl, src, dst, _p in _REL_TABLES:
+            if lbl not in _V22_PAIRS:
+                continue
+            for s, d in _rel_pairs(src, dst):
+                if (s, d) not in _V22_PAIRS[lbl]:
+                    stmts.append(f"ALTER TABLE {lbl} ADD FROM {s} TO {d}")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
@@ -433,21 +440,36 @@ EDGE_BIRTH_RELS: tuple[str, ...] = (
 # ([[vinc.spec.dataplane §2.4]]).
 _SEMANTIC_LABELS: tuple[str, ...] = ("Concept", "Decision")
 
-#: **RELATED_TO 만 예외로 개념↔개념에 남는다.** `api.query.communities` 가 이 rel 하나만
-#: 투영해 군집을 잡는다(계산은 `api/graph_algo.py` 의 Leiden). 엔진 알고리즘 확장이 노드
-#: 테이블 하나만 받던 제약에서 출발했고, 계산을 엔진 밖으로 옮긴 뒤에도 뜻 때문에 잇는다:
-#: 결정이 개념에 닿는 자리는 느슨한 연관이 아니라 about 이고, 결정끼리는 계보다.
-#: ⚠ 이 목록을 넓히려면 `communities` 의 투영도 같이 봐야 한다. 불변식은
-#: tests/core/test_store.py 의 단일 노드테이블 가드가 지킨다.
+#: **개인·팀 그래프에서 RELATED_TO 는 개념↔개념에만 선다.** `api.query.communities` 가 이
+#: rel 하나만 투영해 군집을 잡는다(계산은 `api/graph_algo.py` 의 Leiden). 결정이 개념에
+#: 닿는 자리는 느슨한 연관이 아니라 about 이고, 결정끼리는 계보다.
+#: v23 부터 표 자체는 공개 위키 쪽 끝점(`_PAGE_LABELS`)으로 넓다. 군집이 개념끼리로 남는
+#: 것은 투영이 `_LOUVAIN_PROJECTED_LABELS` 만 읽어서다. tests/core/test_store.py 가드가 지킨다.
 #: 근거: [[vinc.spec.dataplane]] · [[vinc.ops.ladybug-upgrade-review-2026-09-24 §2.3]]
 _LOUVAIN_PROJECTED_REL = "RELATED_TO"
+_LOUVAIN_PROJECTED_LABELS: tuple[str, ...] = ("Concept",)
+
+#: v23 — 공개 위키 쪽(개념·사건·기록·결정)이 서는 노드 표. 위키 관계 네 종과 ABOUT 의
+#: 대상이 이 넷 사이에서 열린다. 새 쌍을 쓰고 읽는 것은 `wiki_pairs_open` 인 소유자뿐이라
+#: 개인·팀 그래프의 어휘와 조회는 그대로다.
+_PAGE_LABELS: tuple[str, ...] = ("Concept", "Decision", "Record", "Episode")
+
+
+def wiki_pairs_open(owner) -> bool:
+    """v23 의 새 끝점 쌍을 쓰고 읽는 소유자인가. 공개 커뮤니티 그래프뿐이다."""
+    return isinstance(owner, str) and owner.lower().startswith("community:")
+
+
+def wiki_only_pair(rel: str, src: str, dst: str) -> bool:
+    """v23 이 연 쌍인가. 동기화·개인 조회 계약은 이 쌍을 모른다(`api.query.SYNC_EDGE_RELS`)."""
+    return rel in _V22_PAIRS and (src, dst) not in _V22_PAIRS[rel]
 
 _REL_TABLES: list[tuple] = [
-    ("PREREQUISITE_OF", _SEMANTIC_LABELS, _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
+    ("PREREQUISITE_OF", _PAGE_LABELS, _PAGE_LABELS, list(_EDGE_EVIDENCE_COLS)),
     # 반려 경로는 역할 Concept 사이에만 선다. 전달 순서 DAG와 별개다.
     ("RETURNS_TO", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),
-    ("DERIVES_FROM", _SEMANTIC_LABELS, _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
-    ("RELATED_TO", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),   # ↑ 예외 사유
+    ("DERIVES_FROM", _PAGE_LABELS, _PAGE_LABELS, list(_EDGE_EVIDENCE_COLS)),
+    ("RELATED_TO", _PAGE_LABELS, _PAGE_LABELS, list(_EDGE_EVIDENCE_COLS)),   # ↑ 군집 투영
     ("CROSSES", "Bridge", "Domain", []),
     ("CONNECTS", "Bridge", _SEMANTIC_LABELS, [("role", "STRING")]),
     # MCP fragment 엣지(D11 §5) 지원 —
@@ -456,7 +478,7 @@ _REL_TABLES: list[tuple] = [
     #   엣지 타입 보존). ⚠ 이 통합의 근거였던 "rel 테이블은 FROM/TO 고정"은 **이제
     #   틀리다** — 그래도 되돌리지 않는다(type 열이 이미 보존한다):
     #   [[record:rel-tables-take-multiple-endpoint-pairs]].
-    ("INHERITS_FROM", _SEMANTIC_LABELS, _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
+    ("INHERITS_FROM", _PAGE_LABELS, _PAGE_LABELS, list(_EDGE_EVIDENCE_COLS)),
     ("ATTACHES_TO", "Record", _SEMANTIC_LABELS,
      [("type", "STRING")] + list(_EDGE_EVIDENCE_COLS)),   # evidence 는 v16
     # F4 — episodic↔semantic 다리: "이 개념을 배운 에피소드". fragment 엣지 타입
@@ -465,7 +487,7 @@ _REL_TABLES: list[tuple] = [
     # v12 — 출발점에 Decision 이 붙는다. ABOUT 은 "X 는 Y 에 관한 것"이고, 결정이
     # 어떤 개념을 두고 내려졌다는 말이 정확히 그 형태다(라이브 51건이 여태 RELATED_TO
     # 로 그 뜻을 흉내내고 있었다 — 이관이 그것을 ABOUT 으로 옮긴다).
-    ("ABOUT", ("Episode", "Decision"), _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
+    ("ABOUT", ("Episode", "Decision"), _PAGE_LABELS, list(_EDGE_EVIDENCE_COLS)),
     # 범용 관계 캐리어 — 사용자 저작 엣지 타입의 집(Entity→Entity, D11-R2 §4).
     # exact (from, type, to) MERGE 로 rel-property `type` 이 매칭 키에 참여한다.
     ("TYPED", "Entity", "Entity", [("type", "STRING")]),
@@ -494,6 +516,14 @@ _REL_TABLES: list[tuple] = [
     # ([[record:rel-tables-take-multiple-endpoint-pairs]]).
     ("IN_DOMAIN", ("Concept", "Record", "Episode", "Decision"), "Domain", []),
 ]
+
+#: v23 이 넓힌 표의 v22 끝점 쌍. 마이그레이션은 이 밖의 쌍만 연다.
+_V22_PAIRS: dict[str, set[tuple[str, str]]] = {
+    **{rel: {(s, d) for s in ("Concept", "Decision") for d in ("Concept", "Decision")}
+       for rel in ("PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")},
+    "RELATED_TO": {("Concept", "Concept")},
+    "ABOUT": {(s, d) for s in ("Episode", "Decision") for d in ("Concept", "Decision")},
+}
 
 #: 근거 열을 갖는 관계 — `EDGE_BIRTH_RELS` 와 같은 신분이고, **쓰기 경로가 이 하나를
 #: 읽는다.** 여기 없는 rel 에 evidence/confidence 를 실어 보내면 보관할 열이 없으므로

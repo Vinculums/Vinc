@@ -36,7 +36,7 @@ from . import revstamp
 from . import role_contract
 from store import pkns
 # 근거 열을 가진 rel 의 정본 — 스키마가 표를 갖고 여기서는 읽기만 한다.
-from store.embedded_schema import EDGE_EVIDENCE_RELS
+from store.embedded_schema import EDGE_EVIDENCE_RELS, wiki_pairs_open
 
 _NODE_MAP = {   # fragment type → (label, pk column)
     "record": ("Record", "record_id"),
@@ -66,6 +66,10 @@ _CC_EDGES = {   # Concept→Concept fragment 엣지 → rel 테이블
 # Episode 참여 엣지 — _CC_EDGES 에 넣지 않는다: sync 의 _REL_TO_FRAGMENT 가
 # _CC_EDGES 를 역맵으로 파생하므로(Concept 엣지 export 전용) 섞이면 오염된다.
 _EC_EDGES = {"about": "ABOUT"}
+#: v23 — 공개 위키 쪽. 커뮤니티 소유자에서는 이 네 종이 페이지 노드 넷(`_PAGE_TYPES`)
+#: 어느 쌍에나 서고, ABOUT 은 사건·기록 페이지도 대상으로 받는다(`wiki_pairs_open`).
+_WIKI_EDGES = ("relates_to", "prerequisite_of", "derives_from", "inherits_from")
+_PAGE_TYPES = ("concept", "decision", "record", "episode")
 #: 대체 관계 — 새 것 → 옛 것. 같은 종류끼리만이고 근거가 필수다. 쓰기 경로는
 #: 유효구간을 **판정하지 않는다**: 옛 것의 `valid_until` 이 비었거나 새 것의 시작과
 #: 다르면 경고만 하고 어느 값도 대신 쓰지 않는다.
@@ -1232,7 +1236,8 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         #
         # v12 — 출발점에 decision 이 붙는다. `about` 은 "X 는 Y 에 관한 것"이고,
         # 결정이 어떤 개념을 두고 내려졌다는 말이 정확히 그 형태다.
-        if st not in ("episode", "decision") or dt not in _SEMANTIC_TYPES:
+        targets = _PAGE_TYPES if wiki_pairs_open(owner) else _SEMANTIC_TYPES
+        if st not in ("episode", "decision") or dt not in targets:
             warnings.append(
                 f"{_ERR_DISALLOWED_PAIR}: about expects episode|decision→concept|decision — "
                 f"skipped ({st or '?'}→{dt or '?'}); {_ALLOWED_PAIRS_HINT}")
@@ -1251,8 +1256,12 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             _stamp_edge_endpoints(store, rel, ends, ksrc, kdst, eowner,
                                   osc=osc, warnings=warnings)
         return "created"
-    if st in _SEMANTIC_TYPES and dt in _SEMANTIC_TYPES:
-        if etype == "relates_to" and "decision" in (st, dt):
+    # 커뮤니티 위키의 관계는 종류와 무관하게 이 표로 간다. 기록 출발도 ATTACHES_TO 가 아니다:
+    # 반영기가 그래프를 rel 이름으로 읽어 지난 관계를 지우기 때문이다.
+    wiki = (etype in _WIKI_EDGES and st in _PAGE_TYPES and dt in _PAGE_TYPES
+            and wiki_pairs_open(owner))
+    if wiki or (st in _SEMANTIC_TYPES and dt in _SEMANTIC_TYPES):
+        if etype == "relates_to" and "decision" in (st, dt) and not wiki:
             # relates_to 만 개념↔개념에 남는다(embedded_schema._LOUVAIN_PROJECTED_REL).
             # 엔진 제약이자 의미상 옳은 자리다 — 결정은 개념에 **관한** 것이고
             # (about), 결정끼리는 **계보**(derives_from · prerequisite_of)다.
@@ -1393,7 +1402,12 @@ def _warn_orphan_decisions(store, types: dict[str, str], warnings: list[str],
 
     ``owner``: 쓰기 경로에 있는 **조회**라 PK 네임스페이싱을 함께 태워야 한다 —
     안 태우면 플래그가 켜진 스토어에서 이 조회가 항상 0행이라 방금 정상으로 이은
-    결정에까지 고아 경고가 붙는다([[vinc.plan.node-pk-namespacing]] §7)."""
+    결정에까지 고아 경고가 붙는다([[vinc.plan.node-pk-namespacing]] §7).
+
+    커뮤니티 위키의 결정은 페이지라 위키 관계로 닿는다. 거기서는 묻지 않는다: 반영기는
+    경고 하나로도 반영을 실패로 본다."""
+    if wiki_pairs_open(owner):
+        return
     for nid, ntype in types.items():
         if ntype != "decision":
             continue

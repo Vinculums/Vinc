@@ -18,6 +18,7 @@ import re
 from store.config import StoreConfig, load_config
 from store.backend import open_store
 from store import pkns
+from store.embedded_schema import wiki_pairs_open
 from store.envflag import truthy
 from engines import domain_hierarchy
 
@@ -1216,6 +1217,10 @@ def decision_relation_rows_plan(*, owner: str, domain: str | None = None,
         selected = [rel for rel in rels if not (rel == "ABOUT" and dl == "Concept")]
         if selected:
             pairs[pair] = selected
+    if wiki_pairs_open(owner):
+        # 공개 위키는 사건·기록 쪽끼리도 잇는다(v23). 개인·팀 조회는 갈래가 늘지 않는다.
+        for pair, rels in _WIKI_READ_PAIRS.items():
+            pairs.setdefault(pair, []).extend(rels)
     if ids is not None:
         params["ids"] = pkns.keys(owner, ids)
 
@@ -6433,9 +6438,11 @@ def _ambiguous_algo_ids(rows, scope: set[str] | None) -> list[str]:
 #: 빼면 결정·사건·기록이 거짓 고아로 나온다(2026-08-09, 결정 67건 중 43건).
 ALGO_REL_TABLES = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM",
                    "INHERITS_FROM", "ABOUT", "ATTACHES_TO")
+from store.embedded_schema import _LOUVAIN_PROJECTED_LABELS as _LOUVAIN_LABELS  # noqa: E402
 
 
-def _algo_graph(store, owner: str | None, rel_tables: tuple) -> tuple[list[str], list[tuple]]:
+def _algo_graph(store, owner: str | None, rel_tables: tuple,
+                labels: tuple | None = None) -> tuple[list[str], list[tuple]]:
     """진단용 투영 — 관계 표의 끝점 라벨에 속한 노드 전부와 그 관계들. 소유자가 있으면
     **양 끝이 모두 그 소유자**인 것만 담는다. 라벨·PK·끝점 쌍은 스키마에서 파생한다
     (손으로 적은 목록이 낡아 진단을 통째로 죽인 일이 있다 — `_algo_projection` 주석).
@@ -6444,8 +6451,11 @@ def _algo_graph(store, owner: str | None, rel_tables: tuple) -> tuple[list[str],
     from store import embedded_schema as _es
     pks = {lbl: spec["pk"] for lbl, spec in _es.node_table_specs().items()}
     want = set(rel_tables)
+    # ``labels`` 를 주면 양 끝이 그 표인 쌍만 읽는다. 군집은 v23 에 넓어진 RELATED_TO 중
+    # 개념끼리만 본다(`_LOUVAIN_PROJECTED_LABELS`).
     pairs = [(sp["label"], sp["from"], sp["to"]) for sp in _es.rel_table_specs()
-             if sp["label"] in want and sp["from"] in pks and sp["to"] in pks]
+             if sp["label"] in want and sp["from"] in pks and sp["to"] in pks
+             and (labels is None or (sp["from"] in labels and sp["to"] in labels))]
     labels: list[str] = []
     for _rel, a, b in pairs:
         for lbl in (a, b):
@@ -6469,7 +6479,8 @@ def _algo_graph(store, owner: str | None, rel_tables: tuple) -> tuple[list[str],
 
 
 def _run_algo(store, algo: str, *, rel_tables: tuple | None = None,
-              owner: str | None = None, graph_out: dict | None = None):
+              owner: str | None = None, graph_out: dict | None = None,
+              labels: tuple | None = None):
     """진단 알고리즘을 돌린다 — (rows, None) 또는 (None, note). rows 는 엔진 시절과 같은
     `[{id, value}]` 모양이라 소비자 셋이 그대로 읽는다.
 
@@ -6484,7 +6495,7 @@ def _run_algo(store, algo: str, *, rel_tables: tuple | None = None,
     if fn is None:
         return None, f"algo_unsupported: {algo!r} (지원: {sorted(fns)})"
     try:
-        nodes, edges = _algo_graph(store, owner, tuple(rel_tables or ALGO_REL_TABLES))
+        nodes, edges = _algo_graph(store, owner, tuple(rel_tables or ALGO_REL_TABLES), labels)
         assign = fn(nodes, edges)
         if graph_out is not None:
             # 품질 지표가 같은 투영을 다시 읽지 않게 넘겨준다.
@@ -6881,6 +6892,7 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
         # 관계를 섞지 않는 '실측 군집'이라는 뜻이 있어 계산을 옮긴 뒤에도 잇는다.
         _g: dict = {}
         rows, note = _run_algo(store, "leiden", rel_tables=("RELATED_TO",), owner=owner,
+                               labels=_LOUVAIN_LABELS,
                                graph_out=_g)
         if rows is None:
             base["note"] = note
@@ -6976,6 +6988,7 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
     try:
         _g: dict = {}
         rows, note = _run_algo(store, "leiden", rel_tables=("RELATED_TO",), owner=owner,
+                               labels=_LOUVAIN_LABELS,
                                graph_out=_g)
         if rows is None:
             base["note"] = note
@@ -7410,7 +7423,7 @@ _CC_RELS = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM", "R
 # 되고, 표가 낡으면 엣지 삭제가 **오류 없이 0건 매치**로 끝난다(툼스톤은 남고 엣지는
 # 그대로 = 기기마다 다른 그래프). 스키마에서 파생한다
 # ([[record:rel-tables-take-multiple-endpoint-pairs]]).
-def _derive_sync_edge_rels() -> dict[str, tuple[tuple[str, str, str, str], ...]]:
+def _derive_sync_edge_rels(*, wiki: bool = False) -> dict[str, tuple[tuple[str, str, str, str], ...]]:
     from store import embedded_schema as _es
     pks = {lbl: spec["pk"] for lbl, spec in _es.node_table_specs().items()}
     out: dict[str, list[tuple[str, str, str, str]]] = {}
@@ -7418,12 +7431,17 @@ def _derive_sync_edge_rels() -> dict[str, tuple[tuple[str, str, str, str], ...]]
         rel, src, dst = spec["label"], spec["from"], spec["to"]
         if rel not in _SYNCED_EDGE_RELS or src not in pks or dst not in pks:
             continue
+        # v23 의 위키 쌍은 커뮤니티 그래프에만 선다. 동기화와 개인·팀 조회는 그 쌍을 훑지 않는다.
+        if not wiki and _es.wiki_only_pair(rel, src, dst):
+            continue
         out.setdefault(rel, []).append((src, pks[src], dst, pks[dst]))
     return {k: tuple(v) for k, v in out.items()}
 
 
 _SYNCED_EDGE_RELS = _CC_RELS + ("ABOUT", "ATTACHES_TO", "SUPERSEDES")
 SYNC_EDGE_RELS: dict[str, tuple[tuple[str, str, str, str], ...]] = _derive_sync_edge_rels()
+#: 커뮤니티 그래프가 읽고 지우는 쌍 — 위 표에 v23 위키 쌍을 더한 것.
+WIKI_EDGE_RELS: dict[str, tuple[tuple[str, str, str, str], ...]] = _derive_sync_edge_rels(wiki=True)
 
 
 def _graph_read_pairs() -> dict[tuple[str, str, str, str], tuple[str, ...]]:
@@ -7446,6 +7464,19 @@ def _graph_read_pairs() -> dict[tuple[str, str, str, str], tuple[str, ...]]:
 
 
 _GRAPH_READ_PAIRS = _graph_read_pairs()
+
+
+def _wiki_read_pairs() -> dict[tuple[str, str, str, str], tuple[str, ...]]:
+    """커뮤니티 그래프만 더 읽는 v23 쌍 — 위키 관계 네 종과 ABOUT 중 위 계약 밖의 것."""
+    groups: dict[tuple[str, str, str, str], list[str]] = {}
+    for rel in ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM", "ABOUT"):
+        for pair in WIKI_EDGE_RELS[rel]:
+            if pair not in SYNC_EDGE_RELS[rel]:
+                groups.setdefault(pair, []).append(rel)
+    return {pair: tuple(rels) for pair, rels in groups.items()}
+
+
+_WIKI_READ_PAIRS = _wiki_read_pairs()
 _CONCEPT_READ_PATTERN = "|".join(_GRAPH_READ_PAIRS[("Concept", "concept_id", "Concept", "concept_id")])
 _FRAGMENT_EDGE_TO_REL = {   # fragment 엣지 타입명 → rel (api/fragment 와 동형)
     "relates_to": "RELATED_TO", "prerequisite_of": "PREREQUISITE_OF",
@@ -7510,7 +7541,9 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
     rel = _FRAGMENT_EDGE_TO_REL.get((edge_type or "").strip().lower(),
                                     (edge_type or "").strip().upper())
     subtype = None
-    if src.startswith("record:") and (edge_type or "").strip().lower() in {
+    wiki = wiki_pairs_open(owner)
+    # 커뮤니티 위키는 기록 출발 관계도 rel 표에 쓴다(fragment `_merge_edge`).
+    if not wiki and src.startswith("record:") and (edge_type or "").strip().lower() in {
             "relates_to", "prerequisite_of", "derives_from", "inherits_from"}:
         subtype, rel = edge_type.strip().lower(), "ATTACHES_TO"
     base = {"kind": "delete_edge", "executed": False, "found": False,
@@ -7537,7 +7570,7 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
             pairs.append((dst, src))
         deleted = 0
         # 끝점 라벨 조합 전수 — 안 맞는 조합은 MATCH 가 비어 no-op 이다.
-        for sl, sp, dl, dp in SYNC_EDGE_RELS[rel]:
+        for sl, sp, dl, dp in (WIKI_EDGE_RELS if wiki else SYNC_EDGE_RELS)[rel]:
             for s_, d_ in pairs:
                 p = {**params, "s": pkns.key(owner, s_), "d": pkns.key(owner, d_)}
                 cnt = store.run(
