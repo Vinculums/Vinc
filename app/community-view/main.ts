@@ -124,11 +124,37 @@ if (askedTheme !== "dark" && askedTheme !== "light") {
 
 const say = (line: string) => { msg.textContent = line; msg.hidden = !line; };
 
-/** 노드를 누르면 맨 위 창이 그 페이지로 간다. 주제 마크는 페이지가 없으므로 아무 일도 없다. */
+const isPage = (n: { id: string | number; kind?: string }) => {
+  const id = String(n.id);
+  return n.kind !== "domain" && !id.startsWith("domain:") && !id.startsWith("@") && pageIds.has(id);
+};
+let pageIds = new Set<string>();
+let pressed: { x: number; y: number } | null = null;
+stage.addEventListener("pointerdown", (ev) => {
+  const r = stage.getBoundingClientRect();
+  pressed = { x: ev.clientX - r.left, y: ev.clientY - r.top };
+});
+/** 누른 자리에서 가장 가까운 문서 점. 주제 상자가 그 앞에 있어 클릭을 먼저 받으면 이것으로 넘긴다. */
+function nearestPage(g: ReturnType<typeof mount3d>, at: { x: number; y: number }, within = 18): N3 | null {
+  let best: N3 | null = null, bestD = within;
+  for (const n of g.graphData().nodes as N3[]) {
+    if (!isPage(n) || !Number.isFinite(n.x)) continue;
+    const s = g.graph2ScreenCoords(n.x!, n.y || 0, n.z || 0);
+    const d = Math.hypot(s.x - at.x, s.y - at.y);
+    if (d < bestD) { best = n; bestD = d; }
+  }
+  return best;
+}
+
+/** 노드를 누르면 맨 위 창이 그 페이지로 간다. 주제 마크를 눌렀으면 그 자리의 문서 점으로 간다. */
 const open = (n: N3) => {
-  if (n.kind === "domain" || n.id.startsWith("domain:")) return;
-  const url = `/community/${encodeURIComponent(slug)}/p/${encodeURIComponent(n.id)}`;
-  try { (window.top ?? window).location.assign(url); } catch { window.location.assign(url); }
+  const page = isPage(n) ? n : graph && pressed ? nearestPage(graph, pressed) : null;
+  if (!page) return;
+  const url = `/community/${encodeURIComponent(slug)}/p/${encodeURIComponent(page.id)}`;
+  // 프레임 안이면 주소를 부모(커뮤니티 화면)에 건네고 부모가 옮긴다. 프레임이 맨 위 창의 주소를
+  // 직접 바꾸면 Chrome 이 그 이동을 취소했다(ERR_ABORTED, 같은 출처에서도).
+  if (window.parent !== window) { window.parent.postMessage({ type: "vinc:community-open", url }, location.origin); return; }
+  window.location.assign(url);
 };
 
 async function main() {
@@ -146,6 +172,7 @@ async function main() {
   }
   const { nodes, edges } = graphOf(pages);
   if (!nodes.length) { say(text.empty); return; }
+  pageIds = new Set(nodes.map((n) => n.id));
   // 화면 비율은 데스크톱과 같이 소수 첫째 자리로 접는다(배치가 그 값으로 열 높이를 정한다).
   const aspect = Math.round((stage.clientWidth || 1200) / (stage.clientHeight || 750) * 10) / 10;
   let laid;
