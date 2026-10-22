@@ -516,3 +516,88 @@ def test_same_disallowed_tools_are_hidden_and_refused_in_both_frameworks(caplog)
     assert lg_refusal == ma_refusal == [RoleToolPolicy(ROLE, ["Bash"]).refusal("Bash")]
     assert lg_warnings == ma_warnings and len(lg_warnings) == 1 and ": Edit." in lg_warnings[0]
     assert len(lg_roles) == len(ma_roles) == 1
+
+
+def test_same_role_pin_request_refusal_and_block_in_both_frameworks():
+    # 같은 고정이면 두 패키지가 같은 요청(expected_hash)을 보내고, 역할이 바뀌었으면 같은 예외로
+    # 모델 호출 전에 멈추며, 지금 해시로 고정하면 고정 없이 읽은 것과 같은 블록을 넣는다.
+    from langchain.agents import create_agent
+    from langchain_core.messages import HumanMessage
+    from vinc_agent_framework import VincContextProvider
+    from vinc_client import VincRoleChanged
+    from vinc_langgraph import VincContextMiddleware
+
+    current, stale = "c" * 64, "d" * 64
+
+    def pinned_hub(request, seen):
+        if request.method == "GET" and request.url.path.startswith("/v1/roles/"):
+            expected = request.url.params.get("expected_hash")
+            seen.append(expected)
+            if expected not in (None, current):
+                return httpx.Response(409, json={"error": {
+                    "code": "role_changed", "message": "The role changed since it was pinned.",
+                    "details": {"id": ROLE, "rev": 4, "hash": current}}})
+            return httpx.Response(200, json={"found": True, "id": ROLE, "domain": "vinc/engineering",
+                "props": {"reads": ["vinc.spec.fixture"], "mission": "Review evidence."},
+                "rev": 4, "hash": current})
+        return response(request, [])
+
+    class LgModel(BaseChatModel):
+        systems: list = []
+
+        @property
+        def _llm_type(self):
+            return "records-system"
+
+        def _generate(self, messages, **kwargs):
+            self.systems.append(messages[0].text)
+            return ChatResult(generations=[ChatGeneration(message=AIMessage("done"))])
+
+    class MaChat(BaseChatClient):
+        def __init__(self):
+            super().__init__()
+            self.instructions = []
+
+        async def _inner_get_response(self, *, messages, stream, options, **kwargs):
+            self.instructions.append(options.get("instructions") or "")
+            return ChatResponse(messages=Message("assistant", ["done"]))
+
+    def langgraph(pin, seen):
+        model = LgModel()
+        model.systems = []
+        with VincClient(KEY, transport=httpx.MockTransport(lambda r: pinned_hub(r, seen))) as client:
+            agent = create_agent(model, middleware=[VincContextMiddleware(
+                client=client, prefetch_role=ROLE, prefetch_pin=pin)])
+            try:
+                agent.invoke({"messages": [HumanMessage("Review.")]})
+            except VincRoleChanged as exc:
+                return model.systems, exc
+        return model.systems, None
+
+    def maf(pin, seen):
+        chat = MaChat()
+        async def run():
+            async with AsyncVincClient(KEY, transport=httpx.MockTransport(
+                    lambda r: pinned_hub(r, seen))) as client:
+                await Agent(chat, context_providers=[VincContextProvider(
+                    client, prefetch_role=ROLE, prefetch_pin=pin)]).run("Review.")
+        try:
+            asyncio.run(run())
+        except VincRoleChanged as exc:
+            return chat.instructions, exc
+        return chat.instructions, None
+
+    lg_seen, ma_seen = [], []
+    lg_calls, lg_error = langgraph(stale, lg_seen)
+    ma_calls, ma_error = maf(stale, ma_seen)
+    assert lg_calls == ma_calls == []
+    assert (lg_error.code, lg_error.status, lg_error.details) == (
+        ma_error.code, ma_error.status, ma_error.details) == ("role_changed", 409,
+                                                              {"id": ROLE, "rev": 4, "hash": current})
+    assert lg_seen == ma_seen == [stale]
+
+    pinned = langgraph(current, [])[0], maf(current, [])[0]
+    plain = langgraph(None, [])[0], maf(None, [])[0]
+    assert pinned == plain
+    assert len(pinned[0]) == len(pinned[1]) == 1
+    assert pinned[0][0] == pinned[1][0] and ROLE in pinned[0][0]

@@ -54,7 +54,8 @@ def test_roster_and_contracts_preserve_every_permission_and_directed_handoff(gra
         assert not result.get('isError'), result
         contract = result
         assert contract['props'] == role['props']
-        assert len(json.dumps(contract, ensure_ascii=False).encode()) < 10000
+        # 예산은 MCP·REST 가 실제로 보내는 인코딩(serialize_result)으로 잰다.
+        assert len(roles.serialize_result(contract).encode()) < 10000
         assert 'not instructions' in contract['rendered']
         for direction, edges in contract['works_with'].items():
             for edge in edges:
@@ -137,3 +138,111 @@ def test_exact_role_brief_includes_the_same_contract_and_normal_queries_do_not(g
     result=tools.call('vinc_brief',{'query':'a general question'},bridge)
     assert 'role' not in result
     assert len(bridge.calls)==1
+
+
+def test_contract_carries_rev_and_the_canonical_hash_of_what_the_client_embeds(graph):
+    from store import canon
+    store, _payload, _fixture = graph
+    result = tools.call('vinc_role', {'role':'agent-dev-core'}, Bridge(store))
+    assert isinstance(result['rev'], int) and result['rev'] >= 1
+    # 프리페치 블록이 모델에 넣는 다섯 필드를 가져오기 영수증과 같은 정규 JSON 으로 해시한다.
+    body = {k: result[k] for k in ('id', 'title', 'domain', 'props', 'works_with')}
+    assert result['hash'] == canon.digest(body)
+    assert result['hash'] == roles.contract_hash(result)
+
+
+def test_a_matching_pin_returns_the_same_contract(graph):
+    store, _payload, _fixture = graph
+    bridge = Bridge(store)
+    plain = tools.call('vinc_role', {'role':'agent-dev-core'}, bridge)
+    pinned = tools.call('vinc_role', {'role':'agent-dev-core', 'expected_hash':plain['hash'],
+                                      'expected_rev':plain['rev']}, bridge)
+    assert pinned == plain
+    assert len(bridge.calls) == 2
+
+
+def test_a_changed_role_is_refused_without_its_contract(graph):
+    store, payload, _fixture = graph
+    bridge = Bridge(store)
+    before = tools.call('vinc_role', {'role':'agent-dev-core'}, bridge)
+    props = dict(next(r['props'] for r in payload['roles'] if r['id'] == 'concept:agent-dev-core'))
+    props['never'] = list(props.get('never') or []) + ['push to main']
+    changed = fragment.merge_fragment({'owner':OWNER, 'nodes':[{'id':'concept:agent-dev-core',
+        'type':'concept', 'props':props}]}, store=store)
+    assert not changed.get('warnings'), changed
+    refused = tools.call('vinc_role', {'role':'agent-dev-core', 'expected_hash':before['hash']}, bridge)
+    assert refused['executed'] is False and refused['error'] == 'role_changed'
+    assert refused['found'] is True and refused['id'] == 'concept:agent-dev-core'
+    assert refused['rev'] > before['rev'] and refused['hash'] != before['hash']
+    assert not {'props', 'works_with', 'rendered', 'title'} & set(refused)
+    after = tools.call('vinc_role', {'role':'agent-dev-core', 'expected_hash':refused['hash']}, bridge)
+    assert after['props']['never'][-1] == 'push to main' and after['hash'] == refused['hash']
+    stale_rev = tools.call('vinc_role', {'role':'agent-dev-core', 'expected_hash':refused['hash'],
+                                         'expected_rev':before['rev']}, bridge)
+    assert stale_rev['error'] == 'role_changed'
+
+
+def test_a_relation_change_moves_the_hash(graph):
+    store, _payload, _fixture = graph
+    bridge = Bridge(store)
+    before = tools.call('vinc_role', {'role':'agent-dev-core'}, bridge)
+    fragment.merge_fragment({'owner':OWNER, 'edges':[{'from':'concept:agent-dev-core',
+        'to':'concept:agent-qa', 'type':'relates_to', 'evidence':'Both read the same diff.'}]},
+        store=store)
+    after = tools.call('vinc_role', {'role':'agent-dev-core'}, bridge)
+    assert after['hash'] != before['hash'] and after['props'] == before['props']
+    refused = tools.call('vinc_role', {'role':'agent-dev-core', 'expected_hash':before['hash']}, bridge)
+    assert refused['error'] == 'role_changed'
+
+
+class _Never:
+    owner = OWNER
+    def request(self, *_args, **_kwargs):
+        raise AssertionError('read before the pin was checked')
+
+
+@pytest.mark.parametrize('args', [
+    {'role':'agent-dev-core', 'expected_hash':'A' * 64},
+    {'role':'agent-dev-core', 'expected_hash':'a' * 63},
+    {'expected_hash':'a' * 64},
+])
+def test_an_invalid_pin_is_refused_before_any_read(args):
+    result = tools.call('vinc_role', args, _Never())
+    assert result['executed'] is False and result['error'] == 'invalid_role_pin'
+
+
+@pytest.mark.parametrize('rev', [-1, True, '3', 3.0])
+def test_an_invalid_rev_pin_is_refused_before_any_read(rev):
+    # 음수·불리언은 도구 스키마의 범위 검사가 먼저 막는다. 수처럼 읽히는 문자열·실수는 그 검사를
+    # 지나므로 핸들러가 정수만 받는다.
+    if isinstance(rev, bool) or rev == -1:
+        with pytest.raises(tools.InvalidArgument):
+            tools.call('vinc_role', {'role':'agent-dev-core', 'expected_rev':rev}, _Never())
+    else:
+        result = tools.call('vinc_role', {'role':'agent-dev-core', 'expected_rev':rev}, _Never())
+        assert result['error'] == 'invalid_role_pin'
+    result = roles.contract('agent-dev-core', _Never(), expected_rev=rev)
+    assert result['executed'] is False and result['error'] == 'invalid_role_pin'
+
+
+def test_rest_pins_by_query_and_answers_409_with_the_current_pin(graph):
+    import sys
+    sys.path.insert(0, str(ROOT / 'tests/mcp'))
+    from test_rest_v1 import Server
+    store, _payload, _fixture = graph
+    srv = Server(scope='read')
+    srv.bridge.request = Bridge(store).request
+    try:
+        status, _headers, rest = srv.request('GET', '/v1/roles/agent-dev-core')
+        assert status == 200
+        status, _headers, same = srv.request(
+            'GET', f"/v1/roles/agent-dev-core?expected_hash={rest['hash']}&expected_rev={rest['rev']}")
+        assert status == 200 and same == rest
+        status, _headers, body = srv.request('GET', '/v1/roles/agent-dev-core?expected_hash=' + 'b' * 64)
+        assert status == 409 and body['error']['code'] == 'role_changed'
+        assert body['error']['details'] == {'id':'concept:agent-dev-core', 'rev':rest['rev'],
+                                            'hash':rest['hash']}
+        status, _headers, body = srv.request('GET', '/v1/roles/agent-dev-core?expected_hash=nope')
+        assert status == 400 and body['error']['code'] == 'invalid_argument'
+    finally:
+        srv.close()

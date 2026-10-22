@@ -390,10 +390,44 @@ def _fence(body: str) -> str:
     return f"{tick}\n{body}\n{tick}"
 
 
+#: 계약 해시가 덮는 필드. 프리페치 블록이 모델에 넣는 역할 계약과 같은 다섯이다
+#: (vinc_client.prefetch.role_context). 표시 사본 rendered 는 이 다섯에서 만든 것이고
+#: 서버 문구가 바뀔 수 있어 넣지 않는다. rev·시각도 넣지 않는다.
+CONTRACT_FIELDS = ("id", "title", "domain", "props", "works_with")
+_PIN_HASH = re.compile(r"[0-9a-f]{64}")
+
+
+def contract_hash(out: dict) -> str:
+    """역할 계약의 내용 해시. 커뮤니티 가져오기 영수증과 같은 정규 JSON(키 정렬·비ASCII 그대로·
+    공백 없음)의 UTF-8 sha256 16진수다."""
+    from store import canon
+    return canon.digest({key: out.get(key) for key in CONTRACT_FIELDS})
+
+
+def _pin_error(expected_hash, expected_rev, role) -> dict | None:
+    if expected_hash is None and expected_rev is None:
+        return None
+    if (not role or expected_hash is not None and (not isinstance(expected_hash, str)
+                                                   or not _PIN_HASH.fullmatch(expected_hash))
+            or expected_rev is not None and (isinstance(expected_rev, bool)
+                                             or not isinstance(expected_rev, int) or expected_rev < 0)):
+        return {"kind": "role", "executed": False, "error": "invalid_role_pin",
+                "note": "A pin names one role: expected_hash is 64 lowercase hex characters "
+                        "and expected_rev a whole number, 0 or more."}
+    return None
+
+
 def contract(role: str | None, bridge, *, forced_owner: str | None = None,
-             limit: int | None = None, offset: int = 0) -> dict:
-    """역할 계약을 한 브리지 호출로 얻는다. 전체 props와 방향·근거를 잃지 않는다."""
+             limit: int | None = None, offset: int = 0,
+             expected_hash: str | None = None, expected_rev: int | None = None) -> dict:
+    """역할 계약을 한 브리지 호출로 얻는다. 전체 props와 방향·근거를 잃지 않는다.
+
+    expected_hash·expected_rev 를 주면 지금 계약이 그 고정과 같을 때만 계약을 준다. 다르면
+    계약 없이 role_changed 와 현재 rev·hash 를 돌려준다(고정을 올리는 것은 호출자 몫이다)."""
     import json
+    invalid = _pin_error(expected_hash, expected_rev, role)
+    if invalid:
+        return invalid
     got = bridge.request("GET", "/roles", params={
         "owner": _owner_of(bridge, forced_owner), **({"role": role} if role else {}),
         **({"limit": limit, "offset": offset} if limit is not None or offset else {})})
@@ -422,8 +456,15 @@ def contract(role: str | None, bridge, *, forced_owner: str | None = None,
         [{**e, "source": e["from"], "target": e["to"]} for e in relations])}])["roles"][0]
     out = {"kind": "role", "executed": True, "found": True, "id": rid,
            "title": node.get("title") or "", "domain": node.get("domain") or "",
-           "props": entry["props"], "works_with": groups,
-           "rendered": _BOUNDARY + "\n\n" + _fence(render_shell(entry, compact=True))}
+           "props": entry["props"], "works_with": groups}
+    pin = {"rev": node.get("rev"), "hash": contract_hash(out)}
+    if (expected_hash is not None and expected_hash != pin["hash"]
+            or expected_rev is not None and expected_rev != pin["rev"]):
+        return {"kind": "role", "executed": False, "found": True, "error": "role_changed",
+                "id": rid, **pin,
+                "note": "This role changed since it was pinned, so no contract is returned. Read "
+                        "it without a pin, review it, then pin the new hash."}
+    out.update(pin, rendered=_BOUNDARY + "\n\n" + _fence(render_shell(entry, compact=True)))
     if len(serialize_result(out).encode("utf-8")) >= 10000:
         # 조건과 관계는 정형 필드에 전부 남긴다. 같은 원문을 두 번 싣는 표시 사본만 줄인다.
         reference = "Complete contract: accompanying structured fields props and works_with."
