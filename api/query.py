@@ -3680,8 +3680,8 @@ _IDF_MARGIN = 1.0
 
 
 def _brief_idf_rows(rows: list[dict]) -> bool:
-    """희소도 가중으로 판정할 행들인가: 플래그가 켜져 있고, 어휘로 맞은 행이 **전부** 무게를
-    달고 있다. 하나라도 없으면 수와 무게가 한 비교에 섞이므로 토큰 수로 판정한다."""
+    """무게로 비교할 행들인가: 플래그가 켜져 있고, 어휘로 맞은 행이 **전부** 무게를
+    달고 있다. 하나라도 없으면 수와 무게가 한 비교에 섞이므로 토큰 수로 비교한다."""
     return _retrieval._node_token_idf_on() and all(
         "hit_weight" in h for h in rows if _brief_int(h.get("hit_tokens")) > 0)
 
