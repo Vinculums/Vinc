@@ -300,6 +300,10 @@ const DEFAULTS: ViewPrefs = {
   bundleDepth: 3,
   bundleOff: [],
 };
+/** 저장값을 거치지 않은 기본값 한 벌(새 배열). 저장소를 읽지도 쓰지도 않는 화면이
+ *  데스크톱과 같은 기본에서 출발할 때 쓴다(`community-view.ts`). */
+export const defaultPrefs = (): ViewPrefs =>
+  ({ ...DEFAULTS, edgeOff: [...DEFAULTS.edgeOff], bundleOff: [...DEFAULTS.bundleOff] });
 // 주제 색 토글(`domainTint`)은 2026-09-26 에 없앴다 — 주제 색은 늘 켜져 있다(view-tint.ts).
 // 저장값에 남은 키는 loadPrefs 가 읽지 않으므로 무해하다(옮겨 읽기 불필요).
 // ⚠ `Number(v) || dflt` 였다(2026-08-17 수정). **0 을 없는 값으로 읽는다** — 시간
