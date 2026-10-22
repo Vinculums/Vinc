@@ -3,10 +3,14 @@
 Install the SDK and the `vinc` command together:
 
 ```sh
-pip install vincs
+pip install "vincs>=0.1.5"
 vinc --help
 vinc --version
 ```
+
+This README describes vincs 0.1.5. It carries vinc-client 0.1.12, vinc-langgraph 0.1.9
+and vinc-agent-framework 0.1.8, built from the same commit. The [versions](#versions)
+table lists what each release carries.
 
 Use the account graph from the terminal with a member key created in your Vinc
 account. Set `VINC_API_KEY` in your environment, then run:
@@ -64,6 +68,13 @@ from vinc.integrations.langgraph import get_vinc_context
 from vinc.integrations.agent_framework import VincContextProvider
 ```
 
+`vinc` exports every name `vinc_client` exports (they live in `vinc.sdk`), plus
+`Vinc` and `AsyncVinc` as short names for `VincClient` and `AsyncVincClient`.
+`vinc.integrations.langgraph` exports what `vinc_langgraph`
+exports and `vinc.integrations.agent_framework` what `vinc_agent_framework`
+exports, with the same parameters. The vinc-client, vinc-langgraph and
+vinc-agent-framework READMEs list every method and helper with its parameters.
+
 These modules are built from the same source as `vinc-client`, `vinc-langgraph`
 and `vinc-agent-framework`. Existing installations and imports keep working;
 the unified package does not overwrite their files. Framework imports require
@@ -73,3 +84,16 @@ start a local database. No conversation is automatically written to Vinc.
 The Python distribution version is independent of the product version reported
 by `vinc --version`. See the [SDK guide](https://vincs.io/docs/frameworks/) for
 key types, read-only use and explicit writes.
+
+## Versions
+
+| vincs | vinc-client | vinc-langgraph | vinc-agent-framework | What it adds |
+|---|---|---|---|---|
+| 0.1.5 | 0.1.12 | 0.1.9 | 0.1.8 | `pin` on `role` and `prefetch`, `prefetch_pin` on the adapters, and `VincRoleChanged` |
+| 0.1.4 | 0.1.11 | 0.1.8 | 0.1.7 | `prefetch_with_contract` and `RoleToolPolicy`, so the adapters keep a role's disallowed tools out; LangGraph reads the role once per run; transient retries; `edges`, `role_check`, delete and merge previews; `create_only` and `operation_id` on the write helpers |
+| 0.1.3 | 0.1.8 | 0.1.4 | 0.1.4 | `create_only` and `operation_id` on `ingest`, `operation_status`, `expected_rev` and `props_patch` |
+| 0.1.2 | 0.1.7 | 0.1.4 | 0.1.4 | `mode`, `as_of` and `known_at` on reads |
+| 0.1.1 | 0.1.6 | 0.1.3 | 0.1.3 | fixes to the citations prefetch gives after the required reading |
+| 0.1.0 | 0.1.6 | 0.1.3 | 0.1.3 | first release |
+
+Each package's README has its own version notes.
