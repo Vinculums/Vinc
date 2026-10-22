@@ -855,7 +855,9 @@ body {
 #tb-find { flex: 1 1 auto; min-width: 0; }
 /* 펼친 검색은 **열 폭 계산에서 빠진다**(절대 배치) — 그대로 두면 아래 그래프 버튼까지 검색 폭으로
    늘어난다. 줄은 높이를 지켜 아래 줄이 올라오지 않게 하고, 검색은 오른쪽 끝을 축으로 왼쪽을 덮는다. */
-#tb-line-find { position: relative; min-height: calc(var(--ctl-h) + var(--space-2, .5rem)); }
+/* 검색 줄은 아래 그래프 줄보다 한 층 위다: 펼친 검색의 결과·Ask 판이 아래 줄로 내려오는데,
+   보기 카드(`#tb-viewctl`, z-index 1)가 그 판 머리를 덮었다(2026-10-22 캡처). */
+#tb-line-find { position: relative; z-index: 2; min-height: calc(var(--ctl-h) + var(--space-2, .5rem)); }
 #tb-find[data-expanded] { position: absolute; top: 0; right: 0; width: min(36rem, 100cqi); }
 #tb-find:not([data-expanded]) > #tb-search { display: none; }
 #tb-find[data-expanded] > .tb-find-open { display: none; }
