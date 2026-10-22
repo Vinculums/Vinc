@@ -129,7 +129,7 @@ class NarrowBarWraps(unittest.TestCase):
     def test_ceiling_tracker_still_follows_the_measured_bar(self):
         # 두 줄이 된 바 아래로 문서 열·인캔버스 크롬이 비켜서는 것은 이 측정기 몫이다.
         self.assertIn("function trackChromeTop()", TOPBAR)
-        self.assertIn("new ResizeObserver(apply).observe(bar)", TOPBAR)
+        self.assertIn("ro.observe(bar)", TOPBAR)
 
 
 if __name__ == "__main__":
