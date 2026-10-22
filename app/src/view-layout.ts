@@ -446,7 +446,7 @@ export async function temporalLayout(inputNodes: GraphNode[], inputEdges: GraphE
     ...topicEdges.filter(e => e.route), ...routed.slice(cross.length),
   ];
   shortenPlanarRoutes(nodes, [...originalEdges, ...finalTopicEdges]);
-  spatialLayout(nodes, [...originalEdges, ...finalTopicEdges], spatialTopics, aspectRatio);
+  spatialLayout(nodes, [...originalEdges, ...finalTopicEdges], spatialTopics);
   return { nodes, edges: originalEdges, topicEdges: finalTopicEdges };
 }
 

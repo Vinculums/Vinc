@@ -31,16 +31,17 @@ export function flowColumns(sizes: { width: number; height: number }[], aspectRa
 
 /** ELK remains a planar engine. Compose its chronological branch sections into one
  * spatial arm per Topic that grows along +x, so later is further right as on the 2D map.
- * The arm's lanes sit side by side across y and step back in depth (z). Topic cells then
- * flow left to right in the order given, which is the planar layout's chronological order. */
-export function spatialLayout(nodes: GraphNode[], edges: GraphEdge[], topics: SpatialTopic[],
-  aspectRatio = 1.6): void {
+ * 3D 는 시간 축(x)을 뺀 두 축(y·z)도 모두 쓴다: 한 주제의 레인은 y·z 격자로 서고, 주제 칸은
+ * 첫 주제(메인)를 시간 축 위에 두고 나머지를 그 둘레에 받은 순서대로 감아 돌린다. 칸마다 시작이
+ * x 로 한 칸씩 늦어지므로(나선) 주제 사이에서도 이른 것이 왼쪽이다.
+ * 근거: [[decision:time-branches-read-left-to-right]] */
+export function spatialLayout(nodes: GraphNode[], edges: GraphEdge[], topics: SpatialTopic[]): void {
   const map = new Map(nodes.map(n => [n.id, n]));
   const placements = new Map<string, Placement>();
   const cells: { topic: SpatialTopic; points: Map<string, RoutePoint>; min: RoutePoint; max: RoutePoint }[] = [];
   for (const topic of topics) {
     const count = topic.branches.reduce((n, b) => n + b.ids.length, 0);
-    // 한 레인이 끝없이 길어지지 않게 자른다. 잘린 레인은 옆(y)이나 한 칸 뒤(z)에 선다.
+    // 한 레인이 끝없이 길어지지 않게 자른다. 잘린 레인은 옆(y)이나 뒤(z)에 선다.
     const limit = Math.max(1, Math.min(32, Math.ceil(count / 6)));
     const groups: { branch: SpatialBranch; ids: string[] }[] = [];
     for (const branch of topic.branches) {
@@ -62,7 +63,7 @@ export function spatialLayout(nodes: GraphNode[], edges: GraphEdge[], topics: Sp
       const lateral = Math.round((Math.min(...ids.map(id => branch.positions.get(id)!.y)) +
         Math.max(...ids.map(id => branch.positions.get(id)!.y))) / 2 / STEP) * STEP;
       const offset: RoutePoint = { x: 0, y: (i % columns - Math.floor((columns - 1) / 2)) * pitch,
-        z: (Math.floor(i / columns) - Math.floor((rows - 1) / 2)) * STEP };
+        z: (Math.floor(i / columns) - Math.floor((rows - 1) / 2)) * pitch };
       const placement: Placement = { branch, primary: "x", across: "y", sign: 1, start, lateral, offset };
       ids.forEach(id => {
         placements.set(id, placement);
@@ -74,14 +75,27 @@ export function spatialLayout(nodes: GraphNode[], edges: GraphEdge[], topics: Sp
       Object.fromEntries(AXES.map(axis => [axis, round(pick(...ps.map(p => p[axis])) / STEP) * STEP + pad])) as RoutePoint;
     cells.push({ topic, points, min: bound(Math.min, Math.floor, -STEP), max: bound(Math.max, Math.ceil, STEP) });
   }
-  // Topic 칸은 평면 지도와 같은 열 흐름으로 선다. 화면 좌표(아래로 +y)의 모서리를 3D(위로 +y)로
-  // 옮기고, 깊이는 칸마다 가운데에 맞춘다. 모든 중심은 같은 격자에 남는다.
-  const corners = flowColumns(cells.map(c => ({ width: c.max.x - c.min.x, height: c.max.y - c.min.y })),
-    aspectRatio, STEP * 2);
+  // 주제 칸의 자리(y·z). 첫 칸은 시간 축 위, 나머지는 둘레의 고리에 위에서부터 받은 순서대로
+  // 선다. 고리의 호는 칸의 대각선 길이만큼 나눠 가지므로 큰 칸이 이웃을 덮지 않는다. 시작 x 는
+  // 순서마다 `lead` 만큼 늦고, 전체의 가운데가 원점이다. 중심은 모두 같은 격자에 남는다.
   const snap = (v: number) => Math.round(v / STEP) * STEP;
+  const gap = STEP * 2;
+  const reach = cells.map(c => Math.hypot(c.max.y - c.min.y, c.max.z - c.min.z));
+  const ring = reach.slice(1).reduce((sum, d) => sum + d + gap, 0);
+  const radius = cells.length > 1
+    ? Math.max((reach[0] + Math.max(...reach.slice(1))) / 2 + gap, ring / (2 * Math.PI)) : 0;
+  let arc = 0;
+  const centres = cells.map((_, i) => {
+    if (i === 0) return { y: 0, z: 0 };
+    const angle = 2 * Math.PI * (arc + (reach[i] + gap) / 2) / ring;
+    arc += reach[i] + gap;
+    return { y: radius * Math.cos(angle), z: radius * Math.sin(angle) };
+  });
+  const lead = STEP * 2;
+  const length = Math.max(0, ...cells.map((c, i) => c.max.x - c.min.x + i * lead));
   cells.forEach((cell, i) => {
-    const shift = { x: snap(corners[i].x - cell.min.x), y: snap(-corners[i].y - cell.max.y),
-      z: -snap((cell.min.z + cell.max.z) / 2) };
+    const shift = { x: snap(-cell.min.x + i * lead - length / 2), y: snap(centres[i].y - (cell.min.y + cell.max.y) / 2),
+      z: snap(centres[i].z - (cell.min.z + cell.max.z) / 2) };
     for (const [id, point] of cell.points) {
       const node = map.get(id)!;
       node.x = point.x + shift.x; node.y = point.y + shift.y; node.z = point.z + shift.z;

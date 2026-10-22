@@ -125,8 +125,14 @@ function trackChromeTop() {
     const pad = parseFloat(getComputedStyle(shell).paddingTop) || 0;
     const gap = parseFloat(getComputedStyle(bar).marginBottom) || 0;
     shell.style.setProperty("--chrome-top", `${Math.round(b.bottom - s.top - pad + gap)}px`);
+    // 손잡이 묶음의 폭(바 오른쪽 끝에서 가장 왼쪽 줄까지). 문서 홈의 머리 줄이 그만큼 비운다.
+    const lefts = [...bar.querySelectorAll<HTMLElement>(".tb-line")]
+      .map(l => l.getBoundingClientRect()).filter(r => r.width).map(r => r.left);
+    if (lefts.length) shell.style.setProperty("--chrome-w", `${Math.round(b.right - Math.min(...lefts))}px`);
   };
-  new ResizeObserver(apply).observe(bar);
+  const ro = new ResizeObserver(apply);
+  ro.observe(bar);
+  bar.querySelectorAll(".tb-line").forEach(l => ro.observe(l));
   apply();
 }
 
