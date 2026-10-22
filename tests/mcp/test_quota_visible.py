@@ -57,8 +57,10 @@ def test_a_curious_space_shows_used_remaining_and_the_utc_reset():
     app = _app()
     _spend(app, "user:u1", 3)
     view = app.quota_view("user:u1", "free")
-    assert {k: view[k] for k in ("metered", "plan", "limit", "used", "remaining")} == {
-        "metered": True, "plan": "free", "limit": 10, "used": 3, "remaining": 7}
+    assert {k: view[k] for k in ("metered", "exempt", "plan", "window", "limit", "used",
+                                 "remaining")} == {
+        "metered": True, "exempt": False, "plan": "free", "window": "utc_day", "limit": 10,
+        "used": 3, "remaining": 7}
     assert view["resets_at"].endswith("T00:00:00Z")
     assert "warning" not in view
 
@@ -74,11 +76,15 @@ def test_the_warning_starts_at_eighty_percent():
     assert view["upgrade_url"] == "https://vincs.io/pricing"
 
 
+_GENIUS = {"metered": False, "exempt": False, "plan": "genius"}
+
+
 def test_unmetered_spaces_do_not_invent_numbers():
+    """세지 않는 이유가 면제인지 등급인지는 가르되, 어느 쪽도 한도·쓴 수를 지어내지 않는다."""
     app = _app()
-    assert app.quota_view("user:u1", "genius") == {"metered": False}
-    assert app.quota_view("user:me", "free") == {"metered": False}       # 면제
-    assert app.quota_view("team:t1", None) == {"metered": False}         # 팀 등급 미전송
+    assert app.quota_view("user:u1", "genius") == _GENIUS
+    assert app.quota_view("user:me", "free") == {"metered": False, "exempt": True}   # 면제
+    assert app.quota_view("team:t1", None) == _GENIUS                    # 팀 등급 미전송
     assert app.quota_view("team:t1", "free")["metered"] is True
     assert MCPHTTPApp(_StubBridge(), static_token="s").quota_view("user:u1", "free") is None
     assert app.store.usage_rows() == []                                  # 보기만 한다
@@ -161,7 +167,73 @@ def test_whoami_gives_each_space_its_own_allowance(monkeypatch):
     assert result["quota"]["remaining"] == 10
     assert spaces["personal"]["quota"] == result["quota"]
     assert spaces["t-free"]["quota"]["used"] == 4                 # 팀은 팀이 나눠 쓴다
-    assert spaces["t-legacy"]["quota"] == {"metered": False}
+    assert spaces["t-legacy"]["quota"] == _GENIUS
+
+
+#: 한도 표시가 실을 수 있는 키 전부. owner id·이메일 같은 신원은 여기 없어야 한다.
+_VIEW_KEYS = {"metered", "exempt", "plan", "window", "limit", "used", "remaining", "resets_at",
+              "warning", "upgrade_url"}
+
+
+def test_whoami_reports_only_the_callers_own_counts(monkeypatch):
+    """인자의 owner 는 숫자를 고르지 못한다. 숫자는 인증이 정한 owner 와 계정이 준 팀
+    목록에서만 나오고, 표시에는 owner id 도 이메일도 없다."""
+    monkeypatch.setattr(entitlement, "list_spaces", lambda sub: [
+        {"id": "t-mine", "name": "Mine", "role": "viewer", "plan": "free"}])
+    monkeypatch.setattr(entitlement, "list_communities", lambda sub: [])
+    app = _app()
+    _spend(app, "user:u1", 2)
+    _spend(app, "user:u2", 9)                      # 다른 계정
+    _spend(app, "team:t-other", 5)                 # 이 사람이 멤버가 아닌 팀
+    result = toolcall.execute("vinc_whoami", {"owner": "user:u2"}, app.bridge,
+                              forced_owner="user:u1", plan="free",
+                              quota_view=app.quota_view, hub=True).result
+    assert result["owner"] == "user:u1"
+    assert result["quota"]["used"] == 2 and result["quota"]["remaining"] == 8
+    assert [s["id"] for s in result["spaces"]] == ["personal", "t-mine"]
+    assert result["spaces"][1]["quota"]["used"] == 0
+    views = [result["quota"], *(s["quota"] for s in result["spaces"])]
+    assert all(set(v) <= _VIEW_KEYS for v in views)
+    flat = json.dumps(views)
+    assert "user:" not in flat and "team:" not in flat and "@" not in flat
+
+
+def test_whoami_reads_one_counter_per_metered_space(monkeypatch):
+    """싸야 한다: 세는 스페이스마다 카운터 한 줄(owner 기본키)이고, 전체 표는 읽지 않는다.
+    면제·Genius 는 카운터를 읽지도 않는다."""
+    monkeypatch.setattr(entitlement, "list_spaces", lambda sub: [
+        {"id": "t-free", "name": "A", "role": "admin", "plan": "free"},
+        {"id": "t-paid", "name": "B", "role": "admin", "plan": "genius"}])
+    monkeypatch.setattr(entitlement, "list_communities", lambda sub: [])
+    app = _app()
+    reads = []
+    real = app.store.quota_snapshot
+    monkeypatch.setattr(app.store, "quota_snapshot",
+                        lambda owner, **kw: reads.append(owner) or real(owner, **kw))
+    monkeypatch.setattr(app.store, "usage_rows", lambda: pytest.fail("전체 표를 읽었다"))
+
+    def whoami(owner):
+        return toolcall.execute("vinc_whoami", {}, app.bridge, forced_owner=owner, plan="free",
+                                quota_view=app.quota_view, hub=True).result
+    whoami("user:u1")
+    assert reads == ["user:u1", "team:t-free"]
+    reads.clear()
+    exempt = whoami("user:me")
+    assert exempt["quota"] == {"metered": False, "exempt": True}
+    assert reads == ["team:t-free"]
+
+
+def test_an_exempt_caller_is_told_so_and_is_not_counted(serve, monkeypatch):
+    monkeypatch.setattr(entitlement, "list_spaces", lambda sub: [])
+    monkeypatch.setattr(entitlement, "list_communities", lambda sub: [])
+    app = MCPHTTPApp(_StubBridge(), store=Store(":memory:"), quota_config=_QCFG,
+                     verify_key=lambda raw: {"owner": "user:me", "plan": "free", "scope": "full"})
+    post = serve(app)
+    reply = post(_call(1, "vinc_whoami"))["result"]
+    body = json.loads(reply["content"][0]["text"])
+    assert body["quota"] == {"metered": False, "exempt": True}
+    assert "vinc_quota" not in (reply.get("_meta") or {})
+    assert app.store.usage_rows() == []
 
 
 # ── REST ──────────────────────────────────────────────────────────────────────
@@ -170,6 +242,8 @@ def test_rest_success_and_denial_carry_the_quota_headers():
     try:
         status, headers, body = srv.request("GET", "/v1/me")
         assert status == 200 and body["quota"]["used"] == 1      # whoami 도 한 번이다
+        assert (body["quota"]["window"], body["quota"]["exempt"]) == ("utc_day", False)
+        assert body["quota"]["remaining"] == 1
         assert (headers["Vinc-Quota-Limit"], headers["Vinc-Quota-Remaining"]) == ("2", "1")
         assert headers["Vinc-Quota-Reset"].endswith("T00:00:00Z")
         srv.request("GET", "/v1/domains")
@@ -214,7 +288,7 @@ def test_the_account_reads_each_space_with_a_signed_request():
     assert out["kind"] == "quota.view"
     assert [s["owner"] for s in out["spaces"]] == ["user:u1", "team:t1"]
     assert out["spaces"][0]["quota"]["used"] == 2
-    assert out["spaces"][1]["quota"] == {"metered": False}
+    assert out["spaces"][1]["quota"] == _GENIUS
     assert app.quota_request(signed, raw_body=_RAW) == out    # 읽기라 같은 어서션을 다시 받는다
 
 

@@ -67,7 +67,9 @@ def _whoami_quota(result: dict, owner: str | None, plan: str | None,
                   view: Callable[[str, str | None], dict | None]) -> dict:
     """`vinc_whoami`(`/v1/me`)에 스페이스마다 남은 호출 수를 싣는다. 세는 단위는 그래프
     owner 다: 개인은 이 연결의 등급, 팀은 계정이 실어 준 그 팀의 등급(없으면 허브가 정한
-    기본). 커뮤니티 주소는 멤버 개인 한도를 쓰므로 그 owner 로는 싣지 않는다."""
+    기본). 커뮤니티 주소는 멤버 개인 한도를 쓰므로 그 owner 로는 싣지 않는다.
+    ⚠ owner 는 인증이 정한 값(`forced_owner`)만 쓰고 인자의 `owner` 는 보지 않는다. 팀 줄은
+    계정이 이 사람의 활성 멤버십으로 돌려준 목록뿐이라, 다른 계정의 숫자는 나갈 길이 없다."""
     if not owner or community.is_space(owner):
         return result
     out = dict(result)

@@ -147,7 +147,8 @@
       "api/packfile.py": ["core", "platform"],
       "vinc_mcp/oauth.py": ["core", "platform"],
       "app/src/copy.ts": ["app", "design-content"],
-      "agents/roles.json": ["platform", "core"]
+      "agents/roles.json": ["platform", "core"],
+      "api/contract/sidecar.json": ["core", "app"]
     }
   },
   "read_only_roles": [

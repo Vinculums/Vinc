@@ -945,7 +945,8 @@ _SUMMARY: dict[str, str] = {
         "to."),
     "vinc_whoami": (
         "Show which graph this connection acts on and the spaces you can reach, with each team's id to "
-        "pass as space and your role there. Without space, calls act on your personal graph."),
+        "pass as space and your role there. Without space, calls act on your personal graph. Hosted, "
+        "it also says how many tool calls each space has used and has left today."),
     "vinc_ingest": (
         "Write many nodes and edges in one call, merging by exact id. Search first (vinc_search) and "
         "reuse the ids you find; call vinc_conventions before your first write. Sending props "
@@ -1030,9 +1031,9 @@ TOOLS: list[dict] = [
             "and client_name. payload uses the website's fields. page_save: slug, title, body, "
             "summary, baseRevision (optional mutationId, originThread, sources, links, topic). "
             "topic is a lowercase path such as quantum/information that files the page under "
-            "<community>/wiki/<topic>; an empty string clears it. To change only the title or "
-            "the topic, send slug and baseRevision with title or topic and leave out body; the "
-            "stored body is kept. "
+            "<community>/wiki/<topic>; an empty string clears it. To change only the title, topic, "
+            "sources or links, send slug and baseRevision with those fields and leave out body; "
+            "the stored body is kept, and sources or links you send replace the whole list. "
             "page_revert: slug, revision, summary (optional baseRevision). talk_create: page, "
             "title, body. talk_comment: page, targetId, body. lounge_create: title, body. "
             "lounge_comment: targetId, body. social_edit: type, targetId, title or body. react: "
@@ -1040,6 +1041,8 @@ TOOLS: list[dict] = [
             "revision). moderate: action, targetType, targetId, reason (optional successor). "
             "appoint_operator: handle, reason. resolve_report: reportId, status, reason. "
             "community_join, community_leave: empty payload. community_create: slug, name, topic. "
+            "community_edit (operators): name and/or topic; the address and the Rules page do not "
+            "change. "
             "share_create and share_version publish complete immutable snapshots; share_withdraw "
             "and share_moderate withdraw a share under account policy. pack_share publishes a "
             "consented contextual pack, or withdraws one with operation='withdraw', packId, "
@@ -1714,9 +1717,15 @@ TOOLS: list[dict] = [
                        "by its id without joining; joining grants no write or import rights. "
                        "On the hosted service `quota` (and each entry of `spaces`) gives that "
                        "space's daily tool-call allowance, shared by everyone working in it: "
-                       "{metered: true, plan, limit, used, remaining, resets_at} with resets_at "
-                       "in UTC, plus `warning` and `upgrade_url` once 80% is used; a space that "
-                       "is not metered says {metered: false}. "
+                       "{metered: true, exempt: false, plan, window, limit, used, remaining, "
+                       "resets_at}. `window` is 'utc_day': calls count per UTC calendar day, not a "
+                       "rolling 24 hours, and the space this call ran in already counts it in "
+                       "`used`. resets_at is in UTC, and `warning` and `upgrade_url` are added once "
+                       "80% is used. A space that is not metered invents no numbers: "
+                       "{metered: false, exempt: true} means calls in that space are not counted "
+                       "at all, and {metered: false, exempt: false, plan} means that plan has no "
+                       "daily count. Only the spaces "
+                       "this credential can act in are reported, never another account's usage. "
                        "Read-only; it never reads the graph, and the lists come from the account.",
         "inputSchema": {"type": "object", "properties": {
             "owner": {"type": "string"},
