@@ -63,6 +63,7 @@
 /scripts/gate_escape.py                          @Vinculums/platform
 /scripts/gate_forbidden.py                       @Vinculums/platform
 /scripts/gate_graph_refs.py                      @Vinculums/platform
+/scripts/gate_homepage_drift.py                  @Vinculums/platform
 /scripts/gate_ownership.py                       @Vinculums/platform
 /scripts/gate_pr_title.py                        @Vinculums/platform
 /scripts/gate_runner_move.py                     @Vinculums/platform
