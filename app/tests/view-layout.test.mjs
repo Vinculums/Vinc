@@ -670,3 +670,17 @@ test("a previous placement keeps unchanged topic boxes and their corridors, and 
   }
   t.diagnostic(JSON.stringify({ corridorsRouted: corridorEdges, corridorsStored: firstCorridors }));
 });
+
+test("many topics fill the 3D cross section instead of standing on one ring", async () => {
+  // 주제가 많으면 고리 하나의 반지름이 주제 수에 비례해 시간 축보다 길어진다(계정 그래프 174개).
+  const nodes = [];
+  for (let t = 0; t < 120; t++) for (let i = 0; i < 2; i++)
+    nodes.push(n(`t${t}n${i}`, `2026-${String(i + 1).padStart(2, "0")}`, `vinc/a${t % 6}/t${t}`));
+  const graph = await spatialTemporalLayout(nodes, [], "content", elk, route);
+  const topics = graph.nodes.filter(n => n.kind === "domain");
+  const radii = topics.map(n => Math.hypot(n.y, n.z));
+  const xs = graph.nodes.map(n => n.x);
+  assert.ok(Math.max(...radii) <= Math.max(...xs) - Math.min(...xs), "the topics stand on one wide ring");
+  // 안쪽도 찬다: 가장 바깥 반지름의 절반 안에 선 주제가 있다.
+  assert.ok(radii.filter(r => r > 0 && r < Math.max(...radii) / 2).length >= 6, "the cross section is hollow");
+});
