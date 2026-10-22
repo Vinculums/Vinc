@@ -234,7 +234,7 @@ async function layoutTopic(topic: GraphNode, members: GraphNode[], inside: Graph
   }
   // 가지는 Topic **오른쪽 한 방향**으로만 자란다. Topic 이 왼쪽 끝에 서고 날짜가 흐를수록
   // 오른쪽으로 간다. 가지가 여럿이면 위아래로 쌓고 Topic 은 그 세로 가운데에 선다.
-  // 근거: [[decision:time-branches-read-left-to-right-2026-10-22]]
+  // 근거: [[decision:time-branches-read-left-to-right]]
   const paths: { edge: GraphEdge; points: RoutePoint[]; original?: GraphEdge }[] = [];
   positions.set(topic.id, { x: 0, y: 0, z: 0 });
   const branches: { ids: string[]; span: number; points: typeof paths; start: number }[] = [];

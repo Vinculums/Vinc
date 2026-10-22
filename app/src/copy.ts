@@ -457,6 +457,11 @@ const EN = {
       firstSlow: "The first search builds the index and takes a few seconds. After that it's instant.",
       share: "Share",
       settings: "Settings",
+      // 접힌 검색 알약의 이름 · 그래프 전환.
+      findOpen: "Search",
+      graph: "Graph",
+      graphTip: "Show as a graph",
+      graphOffTip: "Back to documents",
     },
     // 묻기(D73) — 무LLM 대화. 카피가 기대치를 정한다: 요약·추론을 약속하지 않고
     // "인용한다"고 말한다. 못 하는 것을 유도하지 않는 것이 이 표면 설계의 절반이다.
@@ -498,6 +503,39 @@ const EN = {
       failed: "Could not answer right now.",
       kept: (n: number) => `Keeping the last ${n} turns.`,
     },
+    // 문서 홈 — 문서를 보고 쓰고 정리하는 첫 화면. 그래프는 오른쪽 위의
+    // 전환 버튼이 연다. ⚠ 화면 문구라 em-dash 금지(D38).
+    home: {
+      nav: "Home",
+      navTip: "Documents in every topic",
+      title: "Documents",
+      count: (n: number) => (n === 1 ? "1 document" : `${n} documents`),
+      newDoc: "New document",
+      import: "Import files",
+      filterPh: "Filter by title",
+      sortLabel: "Sort",
+      sort: { recent: "Recently updated", name: "Name", topic: "By topic" } as Record<string, string>,
+      allTopics: "All topics",
+      topicEmpty: "No documents in this topic yet.",
+      more: (n: number) => `Show ${n} more`,
+      empty: "No documents yet. Write one, or import the files you already have.",
+      emptyFiltered: "No document matches. Clear the filter to see them all.",
+      clearFilter: "Clear filter",
+      noTopic: "No topic yet",
+      updated: (d: string) => `Updated ${d}`,
+      back: "All documents",
+      metaTopic: "Topic",
+      metaUpdated: "Updated",
+      metaConcept: "In the graph",
+      notInGraph: "Not in the graph yet. Link it to a concept to give it a place.",
+      showInGraph: "Show in graph",
+      copyText: "Copy text",
+      copied: "Copied",
+      del: "Delete",
+      loadFailed: "The documents could not be loaded right now. Nothing was lost.",
+      retry: "Try again",
+      scopeNote: (n: number) => (n === 1 ? "Filtered to 1 topic" : `Filtered to ${n} topics`),
+    },
     // 좌측 문서 트리(D69) — 주제 → 그 주제의 문서. 표면 전환도 여기서 한다.
     lnb: {
       // 이 절은 **주제 트리**다. 문서는 주제 아래에 매달릴 뿐이라, 제목이
@@ -505,8 +543,8 @@ const EN = {
       // 누르면 View 가 그 주제로 좁혀지는데도. 문서 총계는 View 아래 지표바가 이미
       // 말하므로 여기서 두 번 세지 않는다.
       documents: "Topics",
-      topicTip: "Show only this topic in View. Ctrl or Cmd click to add another.",
-      scopeBtn: (name: string) => `Show only ${name} in View`,
+      topicTip: "Show only this topic. Ctrl or Cmd click to add another.",
+      scopeBtn: (name: string) => `Show only ${name}`,
       ownItems: (n: number) => `${n} item${n === 1 ? "" : "s"} in this topic`,
       scoped: (n: number) => n === 1 ? "Showing 1 topic" : `Showing ${n} topics`,
       scopedClear: "Show all",
@@ -516,6 +554,7 @@ const EN = {
       empty: "No documents yet.",
       emptyCta: "Add one",
       agents: "Agents",
+      agentsEmpty: "No agent roles yet. Use + to add one.",
       agentLead: "lead",
       agentFrom: "from",
       agentThen: "then",
@@ -528,30 +567,13 @@ const EN = {
       loading: "Loading…",
       failed: "The list is unavailable right now.",
       retry: "Try again",
-      conceptCount: (n: number) => `${n} concept${n === 1 ? "" : "s"}`,
-      // 갈래 전환(D69 안에서). 주제 줄은 그대로이고 그 아래 무엇이 걸리는지만 바뀐다 —
-      // 이 열은 여전히 문서 탐색기이지 서피스 내비가 아니다(adr-design-069).
-      // 종 레일 — 이름은 툴팁이 든다(레일에 라벨을 두면 얇은 바가 아니게 된다).
-      // Agent 는 종이 아니라 예약된 주제라서 홈과 같은 줄, 구분선 **위**에 선다.
+      // 맨 위 줄의 Agent. 짧은 이름은 버튼에, 긴 이름은 툴팁과 aria 에 든다.
       kinds: {
-        concept: "Concepts", decision: "Decisions",
-        record: "Records", episode: "Episodes", agent: "Agent roles",
-        entity: "Entity", bridge: "Bridge",
-        // 레일에 그리는 짧은 이름. 긴 이름은 툴팁과 aria 가 그대로 든다 —
-        // 레일 폭에 안 들어가는 이름을 줄바꿈시키면 얇은 바가 아니게 된다.
+        agent: "Agent roles",
         "agent.short": "Agent",
       } as Record<string, string>,
-      kindTip: (name: string, n: number) =>
-        `${name} · ${n === 1 ? "1 node" : `${n} nodes`}`,
       nodeTip: "Show this in View",
-      noNodes: "Nothing of this kind in this topic yet.",
-      offTopicKind: {
-        entity: "Entities name people, places or things and appear in View rather than under topics. Use Find to open one, or ask your assistant to add one.",
-        bridge: "Bridges connect ideas across topics. Use Find to open one in View, or ask your assistant to add a bridge.",
-      },
-      docsElsewhere: "Documents that land on another kind",
       depthTip: (n: number) => n === 0 ? "Starting point" : `${n} step${n === 1 ? "" : "s"} in`,
-      editOnly: "No place in View yet. Opens in the editor.",
       // 문서 내용 열(셸 소유 머리). 열 이름은 그 안의 층 이름(`viewx.railTitle`)과
       // 다르다: 여기는 "이 열이 무엇인가", 그쪽은 "지금 어느 층이 떠 있나"다.
       paneTitle: "Document",
@@ -1726,6 +1748,10 @@ const KO: Deck = {
       firstSlow: "첫 검색은 색인을 만드느라 몇 초 걸려요. 그다음부터는 바로 나와요",
       share: "공유",
       settings: "설정",
+      findOpen: "검색",
+      graph: "그래프",
+      graphTip: "그래프로 보기",
+      graphOffTip: "문서로 돌아가기",
     },
     ask: {
       title: "묻기",
@@ -1759,10 +1785,41 @@ const KO: Deck = {
       failed: "지금은 답하지 못했어요. 잠시 후 다시 물어보세요. 기록은 그대로 있어요",
       kept: (n) => `최근 ${n}턴만 보관해요`,
     },
+    home: {
+      nav: "홈",
+      navTip: "모든 주제의 문서",
+      title: "문서",
+      count: (n) => `문서 ${n}개`,
+      newDoc: "새 문서",
+      import: "파일 가져오기",
+      filterPh: "제목으로 거르기",
+      sortLabel: "정렬",
+      sort: { recent: "최근 수정순", name: "이름순", topic: "주제별" } as Record<string, string>,
+      allTopics: "모든 주제",
+      topicEmpty: "이 주제에는 아직 문서가 없어요",
+      more: (n) => `${n}개 더 보기`,
+      empty: "아직 문서가 없어요. 새로 쓰거나 가지고 있는 파일을 가져와 보세요",
+      emptyFiltered: "맞는 문서가 없어요. 거르기를 풀면 전부 보여요",
+      clearFilter: "거르기 풀기",
+      noTopic: "주제 없음",
+      updated: (d) => `${d} 수정`,
+      back: "모든 문서",
+      metaTopic: "주제",
+      metaUpdated: "수정한 날",
+      metaConcept: "그래프에서",
+      notInGraph: "아직 그래프에 자리가 없어요. 개념과 이으면 자리가 생겨요",
+      showInGraph: "그래프에서 보기",
+      copyText: "본문 복사하기",
+      copied: "복사했어요",
+      del: "지우기",
+      loadFailed: "지금은 문서 목록을 불러오지 못했어요. 문서는 그대로 있어요",
+      retry: "다시 시도하기",
+      scopeNote: (n) => `주제 ${n}개로 거르는 중`,
+    },
     lnb: {
       documents: "주제",
-      topicTip: "View에서 이 주제만 보여요. Ctrl · Cmd 클릭으로 다른 주제를 더할 수 있어요",
-      scopeBtn: (name: string) => `View에서 ${name}만 보기`,
+      topicTip: "이 주제만 보여요. Ctrl · Cmd 클릭으로 다른 주제를 더할 수 있어요",
+      scopeBtn: (name: string) => `${name}만 보기`,
       ownItems: (n: number) => `이 주제의 항목 ${n}개`,
       scoped: (n: number) => `주제 ${n}개만 보는 중`,
       scopedClear: "전체 보기",
@@ -1772,6 +1829,7 @@ const KO: Deck = {
       empty: "아직 문서가 없어요",
       emptyCta: "문서 추가하기",
       agents: "Agent",
+      agentsEmpty: "아직 Agent 역할이 없어요. + 로 만들 수 있어요",
       agentLead: "리드",
       agentFrom: "받음",
       agentThen: "넘김",
@@ -1784,23 +1842,12 @@ const KO: Deck = {
       loading: "불러오는 중…",
       failed: "목록을 불러오지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
       retry: "다시 시도하기",
-      conceptCount: (n: number) => `개념 ${n}개`,
       kinds: {
-        concept: "개념", decision: "결정",
-        record: "기록", episode: "사건", agent: "Agent 역할",
-        entity: "엔티티", bridge: "다리",
+        agent: "Agent 역할",
         "agent.short": "Agent",
       } as Record<string, string>,
-      kindTip: (name: string, n: number) => `${name} · 노드 ${n}개`,
       nodeTip: "View에서 보기",
-      noNodes: "이 주제에는 아직 이 종이 없어요",
-      offTopicKind: {
-        entity: "Entity는 사람, 장소, 사물의 이름을 담고 주제 목록 대신 View에 보여요. 찾기로 열거나 어시스턴트에게 추가해 달라고 하세요.",
-        bridge: "Bridge는 서로 다른 주제의 개념을 이어요. 찾기로 View에서 열거나 어시스턴트에게 Bridge를 추가해 달라고 하세요.",
-      },
-      docsElsewhere: "다른 종에 붙은 문서",
       depthTip: (n: number) => n === 0 ? "출발점" : `${n}단계 안쪽`,
-      editOnly: "아직 View에 자리가 없어요. 편집기로 열려요",
       paneTitle: "문서 내용",
     },
     conv: {

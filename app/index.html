@@ -48,60 +48,70 @@
          열릴 때 표면이 좁아진다. 문서 내용 패널은 표면과 같은 칸 위에 떠서
          지도를 좁히지 않는다. 상단 바에는 검색 카드와 보기 카드가 선다. -->
     <div id="shell">
+      <!-- 셸은 두 열이다: 왼쪽 LNB 한 장, 오른쪽 내용 칸(문서 홈 또는 그래프).
+           LNB 는 층이 하나다(2026-10-22). 맨 위 줄에 홈 · Agent · 접기 손잡이가 서고,
+           그 아래가 주제와 문서 트리, 바닥이 설정이다. 접으면 폭이 좁은 띠가 되어
+           손잡이 셋과 설정만 남는다(다시 펼 손잡이가 사라지지 않는다).
+           종(개념·결정·기록…) 버튼 줄은 없앴다 — 문서를 다루는 자리에서 노드 종을
+           고르는 일은 그래프의 범례가 맡는다.
+           근거: [[decision:the-desktop-shell-is-documents-first]] -->
+      <aside id="lnb" aria-label="Documents">
+        <div class="lnb-top" id="lnb-top">
+          <nav class="lnb-nav" id="rail-kinds" aria-label="Kinds"></nav>
+          <button class="tb-icon" id="tb-shell-toggle" type="button" aria-controls="lnb"></button>
+        </div>
+        <!-- 머리(`#lnb-head`)와 트리(`#lnb-body`)는 lnb.ts 가 이 자리(바닥 앞)에 심는다. -->
+        <div class="lnb-foot" id="lnb-foot">
+          <button class="rail-btn rail-settings" id="rail-settings" type="button"
+                  aria-haspopup="dialog">
+            <span id="rail-settings-badge" class="rail-n" hidden></span>
+          </button>
+        </div>
+      </aside>
+      <!-- 오른쪽 위 손잡이 묶음. 두 줄이다: 위는 검색(눌러야 길게 펴진다), 아래는
+           그래프 전환과 보기 카드(관점 세그 + 옵션·범례). 바는 내용 칸 위에 뜨고
+           빈 자리는 클릭을 통과시킨다(내용을 가리지 않는다). -->
       <header id="topbar">
-
-
-        <!-- ⚠ **이 바는 카드 두 장이다**(2026-09-26): 검색 카드(`#tb-find`) 하나, 그 옆에
-             관점 세그와 렌즈(옵션·범례)를 함께 담은 보기 카드(`#tb-viewctl`) 하나. 바
-             자신은 자리만 잡는 줄이고 면을 갖지 않는다 — 둘은 하는 일이 다른 컴포넌트다
-             (이름을 대는 것 대 지도를 어떻게 보는가).
-             2026-09-09 에 손잡이 버튼은 1번째 LNB 로, 관점 세그는 2번째 LNB 첫 칸으로
-             내려갔고 바는 지도 위에만 얹혔다(그리드 3열 1행, 사이드바 둘이 천장까지 선다).
-             관점 세그는 2026-09-26 에 보기 카드로 돌아왔다.
-             손잡이 자리: 손잡이·앱 버튼 넷 → `#lnb-rail`(층 1). 되돌리려면 여기로 다시
-             옮기고 `#topbar` 의 `grid-column` 을 `1 / -1` 로 돌린다.
-             근거: [[decision:the-top-bar-is-a-search-card-and-a-view-card-2026-09-26]]
-             ⚠ D56·D57·D71 의 "왼쪽 = 앱, 오른쪽 = 지도"는 이 개편으로 소멸했다 —
-             앱과 지도가 좌우가 아니라 **층**으로 갈린다(레일 = 앱, 트리·바 = 지도). -->
-
-        <!-- 상시 검색(D57) — 조회는 그래프를 훑는 일이 아니라 이름을 대는 일이다.
-             Enter = 첫 결과로 착지, 클릭 = 그 노드로 착지(#view/trace/<id>).
-
-             모드 2종(D73). 왼쪽 끝 버튼이 모드를 고른다 — 아이콘 자리를 드롭다운
-             트리거가 겸한다(아이콘은 그대로 남고 라벨·캐럿이 붙는다).
-               찾기 = 기존 동작(드롭다운 결과 → 착지)
-               묻기 = 무LLM 대화(질문 우측 · 답변 좌측 · 이력 보존)
-             모드는 바의 `data-mode` 로 드러나고 CSS·JS 가 그 하나만 본다. -->
-        <div class="tb-card" id="tb-find">
-          <div id="tb-search" data-mode="find">
-            <button class="tb-mode" id="tb-mode" type="button"
-                    aria-haspopup="menu" aria-expanded="false" aria-controls="tb-modemenu">
-              <span class="tb-sicon" aria-hidden="true"></span>
-              <span class="tb-mode-label" id="tb-mode-label"></span>
-              <span class="tb-caret" aria-hidden="true"></span>
+        <div class="tb-line" id="tb-line-find">
+          <!-- 상시 검색(D57). 접힌 모습은 알약 하나(아이콘 · 이름 · 단축키)이고,
+               누르거나 ⌘/Ctrl K 를 치면 길게 펴진다. Enter = 첫 결과로 착지.
+               모드 2종(D73): 찾기 · 묻기. 모드는 바의 `data-mode` 로 드러난다. -->
+          <div class="tb-card" id="tb-find">
+            <button class="tb-find-open" id="tb-find-open" type="button" aria-controls="tb-search">
+              <span class="tb-find-icon" aria-hidden="true"></span>
+              <span class="tb-find-label" id="tb-find-label"></span>
+              <span class="tb-kbd" id="tb-find-kbd"></span>
             </button>
-            <input id="tb-q" type="search" autocomplete="off" spellcheck="false"
-                   role="combobox" aria-expanded="false" aria-controls="tb-results" />
-            <span class="tb-kbd" id="tb-kbd"></span>
-            <div class="tb-modemenu" id="tb-modemenu" role="menu" hidden></div>
-            <div id="tb-results" role="listbox" hidden></div>
-            <!-- 대화 패널 — 내용은 ask.ts 가 채운다. 첫 턴 전까지는 hidden 이라
-                 바가 평소 높이 그대로다(늘어남은 첫 질문 이후에만 일어난다). -->
-            <div id="tb-chat" hidden></div>
+            <div id="tb-search" data-mode="find">
+              <button class="tb-mode" id="tb-mode" type="button"
+                      aria-haspopup="menu" aria-expanded="false" aria-controls="tb-modemenu">
+                <span class="tb-sicon" aria-hidden="true"></span>
+                <span class="tb-mode-label" id="tb-mode-label"></span>
+                <span class="tb-caret" aria-hidden="true"></span>
+              </button>
+              <input id="tb-q" type="search" autocomplete="off" spellcheck="false"
+                     role="combobox" aria-expanded="false" aria-controls="tb-results" />
+              <span class="tb-kbd" id="tb-kbd"></span>
+              <div class="tb-modemenu" id="tb-modemenu" role="menu" hidden></div>
+              <div id="tb-results" role="listbox" hidden></div>
+              <!-- 대화 패널 — 내용은 ask.ts 가 채운다. 첫 턴 전까지는 hidden 이다. -->
+              <div id="tb-chat" hidden></div>
+            </div>
           </div>
         </div>
-
-        <!-- 보기 카드 — 관점 세그(3D·2D·타임라인·Weave) + 렌즈(옵션·범례) 버튼.
-             검색 카드 오른쪽에 따로 선다. 문서 트리 첫 칸에 있던 동안에는 트리를 접으면
-             관점 손잡이도 같이 사라졌다. 내용은 View 가 채우고 떠날 때 비운다 — 둘 다
-             비면 카드째 숨는다(app.css `#tb-viewctl`). -->
-        <div class="tb-card" id="tb-viewctl">
-          <div id="tb-viewpoints" role="group"></div>
-          <div id="tb-lens"></div>
+        <div class="tb-line" id="tb-line-view">
+          <!-- 그래프 전환. 문서 홈(#home)과 그래프(#view) 사이를 오간다. 상태는 표면이
+               말한다(topbar.ts `paintGraphToggle`). -->
+          <button class="tb-graph" id="tb-graph" type="button" aria-pressed="false"></button>
+          <!-- 보기 카드 — 관점 세그(3D·2D·타임라인·Weave) + 렌즈(옵션·범례). 그래프에서만
+               뜻이 있으므로 View 가 채우고 떠날 때 비운다. 둘 다 비면 카드째 숨는다. -->
+          <div class="tb-card" id="tb-viewctl">
+            <div id="tb-viewpoints" role="group"></div>
+            <div id="tb-lens"></div>
+          </div>
         </div>
-
-        <!-- 숨긴 버튼만 남는다. 설정·도구·GRAPH.md 는 종 레일 하단 설정 버튼이
-             흡수했고(2026-09-22), 팔레트·딥링크가 아직 id 로 찾을 수 있게 둔다. -->
+        <!-- 숨긴 버튼만 남는다. 설정·도구·GRAPH.md 는 LNB 바닥의 설정 버튼이 흡수했고,
+             팔레트·딥링크가 아직 id 로 찾을 수 있게 둔다. -->
         <div id="tb-right">
           <button class="tb-icon" id="settings-btn" data-icon="settings" hidden
                   aria-haspopup="dialog"></button>
@@ -110,31 +120,6 @@
                   aria-haspopup="dialog"><span id="tb-conv-badge" hidden></span></button>
         </div>
       </header>
-      <!-- 좌측 문서 트리(D69). 내용은 lnb.ts 가 채운다. 접히면 폭 0 이 되므로
-           다시 여는 손잡이는 사이드바 **밖**(셸 직속)에 둔다. -->
-      <!-- 층 1 - 종 레일. 트리 **안**이 아니라 그 형제다: 안에 두면 트리가
-           스크롤될 때 레일도 함께 밀려 올라간다(레일은 상주 크롬이다).
-           **천장까지 선다**(그리드 1행부터, 발주자 지시 2026-09-09) — 그래서 첫 칸이
-           손잡이 자리가 되고 상단 바는 지도 위에만 얹힌다.
-           두 칸이다: 손잡이 · 종(lnb.ts 가 `#rail-kinds` 를 채운다).
-           ⚠ 그래서 **레일은 접히지 않는다.** 다시 펼 손잡이가 이 층의 첫 칸에 있고,
-           홈도 여기 산다. 접히는 것은 층 2(문서 트리)뿐이다 — 층을 둘로 나눈 원래
-           이유가 그것이다: 자리를 되찾고 싶은 것은 목록이다. -->
-      <nav id="lnb-rail" aria-label="Kinds">
-        <!-- 층 2(문서 트리)를 접는다. 접는 대상 **옆**에 손잡이가 선다. -->
-        <button class="tb-icon" id="tb-shell-toggle" type="button"
-                aria-controls="lnb"></button>
-        <div id="rail-kinds"></div>
-        <!-- 종 목록 **아래**에 고정(2026-09-22). 설정 · GRAPH.md · 쓰기/가져오기/공유
-             를 한 버튼이 연다. 종 키(`data-rail`)가 아니라서 종을 고르지 않는다. -->
-        <button class="rail-btn rail-settings" id="rail-settings" type="button"
-                aria-haspopup="dialog">
-          <span id="rail-settings-badge" class="rail-n" hidden></span>
-        </button>
-      </nav>
-      <!-- 층 2 - 문서 트리. 관점 세그는 여기 첫 칸에 있다가 상단 바로 돌아갔다
-           (2026-09-26, 위 `#tb-viewpoints` 주석). -->
-      <aside id="lnb" aria-label="Documents"></aside>
       <!-- 문서 내용 패널은 LNB 같은 별도 열이었다가 다시 표면 위 카드로 돌아왔다.
            지도와 같은 그리드 칸을 차지하므로 문서를 열어도 지도 폭은 그대로다.
            내용은 표면이 채운다(View 가 자기 상세를 여기로 옮겨 심는다). -->

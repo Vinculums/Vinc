@@ -31,9 +31,9 @@ MAIN = (SRC / "main.ts").read_text(encoding="utf-8")
 
 class LnbTintTests(unittest.TestCase):
     def test_주제_색은_깊이_잉크_뒤에_붙는다(self):
-        """문서 줄과 노드 줄 **둘 다**. 한쪽만 고치면 갈래를 바꿀 때 색이 사라진다."""
+        """문서 줄. 노드 줄 갈래는 2026-10-22 에 걷혔다(트리는 주제와 문서만 든다)."""
         rows = re.findall(r'style="--lvl:\$\{depth\};--ink:\$\{ink\}([^"]*)"', LNB)
-        self.assertEqual(len(rows), 2, "줄 두 갈래(docRow · nodeRow)가 다 있어야 한다")
+        self.assertEqual(len(rows), 1, "문서 줄(docRow) 하나만 있어야 한다")
         for tail in rows:
             self.assertEqual(tail, "${tintStyle(domain)}", "잉크 리터럴 뒤에만 붙인다")
 
