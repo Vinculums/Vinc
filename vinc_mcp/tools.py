@@ -2218,8 +2218,8 @@ _ANNOTATIONS: dict[str, dict] = {
                          "destructiveHint": False, "idempotentHint": True},
     "vinc_doc_delete": {"title": "Delete a document (irreversible)", "readOnlyHint": False,
                         "destructiveHint": True, "idempotentHint": True},
-    "search": {"title": "Search (ChatGPT)", "readOnlyHint": True},
-    "fetch": {"title": "Fetch (ChatGPT)", "readOnlyHint": True},
+    "search": {"title": "Search with citable results", "readOnlyHint": True},
+    "fetch": {"title": "Fetch a search result", "readOnlyHint": True},
 }
 
 

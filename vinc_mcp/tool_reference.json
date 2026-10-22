@@ -1564,7 +1564,7 @@
    "docs_url": "https://vincs.io/docs/mcp/tools/#search",
    "reference": "Search the signed-in Vinc graph for documents and nodes. Returns {results:[{id, title, url}]}, at most `limit` in total across documents and nodes. Read a result's full text with fetch. Optional temporal arguments behave as in vinc_search. A backend failure is an explicit tool error; `diagnostics` reports incomplete semantic retrieval. Read-only.",
    "annotations": {
-    "title": "Search (ChatGPT)",
+    "title": "Search with citable results",
     "readOnlyHint": true,
     "openWorldHint": false,
     "destructiveHint": false
@@ -1623,7 +1623,7 @@
    "docs_url": "https://vincs.io/docs/mcp/tools/#fetch",
    "reference": "Fetch the full text of a search result by id. Document ids start with doc:; node ids keep their type prefix (concept:, record:, decision:, episode:). Returns {id, title, text, url, metadata}. An id that does not exist, or that another account owns, is a tool error, never an empty text. Read-only.",
    "annotations": {
-    "title": "Fetch (ChatGPT)",
+    "title": "Fetch a search result",
     "readOnlyHint": true,
     "openWorldHint": false,
     "destructiveHint": false
