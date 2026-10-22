@@ -142,7 +142,8 @@ _COMMUNITY_READ_OPS = frozenset({
 _COMMUNITY_PROJECT_OPS = frozenset({
     "ingest-fragment", "doc-put", "conventions-build", "delete", "doc-delete", "delete-edge",
 })
-_COMMUNITY_PAGE_NODE_RE = re.compile(r"concept:[a-z0-9][a-z0-9-]{0,79}")
+# 위키 페이지 노드. 종류가 접두를 정한다(사건 episode·결과 record·결정 decision, 나머지 concept).
+_COMMUNITY_PAGE_NODE_RE = re.compile(r"(?:concept|episode|record|decision):[a-z0-9][a-z0-9-]{0,79}")
 _COMMUNITY_WIKI_RELS = frozenset({
     "relates_to", "related_to", "prerequisite_of", "derives_from", "inherits_from",
 })
@@ -157,6 +158,14 @@ _COMMUNITY_AGENT_NODE_RE = re.compile(r"concept:agentv-" + _COMMUNITY_OBJECT_UUI
 _COMMUNITY_AGENT_DOC_RE = re.compile(r"agent\.(" + _COMMUNITY_OBJECT_UUID + r")\." + _COMMUNITY_OBJECT_UUID + r"\.[1-9][0-9]{0,15}")
 _COMMUNITY_PACK_NODE_RE = re.compile(r"concept:pack-" + _COMMUNITY_OBJECT_UUID)
 _COMMUNITY_PACK_DOC_RE = re.compile(r"pack\.(" + _COMMUNITY_OBJECT_UUID + r")\." + _COMMUNITY_OBJECT_UUID)
+
+
+def _community_page_node(node) -> bool:
+    """반영된 위키 페이지 노드 id 인가. 끝·이중 하이픈과 Talk/Lounge 노드는 아니다."""
+    return (isinstance(node, str) and bool(_COMMUNITY_PAGE_NODE_RE.fullmatch(node))
+            and not node.endswith("-") and "--" not in node
+            and not _COMMUNITY_SOCIAL_NODE_RE.fullmatch(node))
+
 
 # ── 팀 역할별 op 등급(AP-1 §4.4) ──────────────────────────────────────────────
 # 세밀한 주제별·노드별 권한은 전 질의 플랜 개작이 필요해 v1 범위 밖이다. 대신 **이미
@@ -1011,10 +1020,15 @@ class MCPHTTPApp:
             if role == "projector":
                 if sub != _COMMUNITY_PROJECTOR_SUB or op not in _COMMUNITY_PROJECT_OPS:
                     raise PermissionError("invalid community projection capability")
-                # 위키는 퇴역으로 남긴다. 삭제는 반영된 Talk/Lounge 항목만 허용한다.
-                if op == "delete" and not any(p.fullmatch(str(args.get("node") or ""))
-                        for p in (_COMMUNITY_SOCIAL_NODE_RE, _COMMUNITY_AGENT_NODE_RE, _COMMUNITY_PACK_NODE_RE)):
-                    raise PermissionError("only projected social or Agent metadata nodes may be deleted")
+                # 위키 페이지는 퇴역으로 남긴다. 페이지 노드를 지우는 것은 종류가 바뀌어 접두가
+                # 달라진 옛 노드를 걷을 때뿐이다(그 판단은 계정 반영기 몫이다).
+                if op == "delete":
+                    node = str(args.get("node") or "")
+                    if not any(p.fullmatch(node) for p in (
+                            _COMMUNITY_SOCIAL_NODE_RE, _COMMUNITY_AGENT_NODE_RE, _COMMUNITY_PACK_NODE_RE)):
+                        if not _community_page_node(node) or args.get("stray_type") is not None:
+                            raise PermissionError(
+                                "only projected social, Agent metadata or wiki page nodes may be deleted")
                 if op == "doc-delete":
                     ident = str(args.get("id") or "")
                     agent = _COMMUNITY_AGENT_DOC_RE.fullmatch(ident) or _COMMUNITY_PACK_DOC_RE.fullmatch(ident)
@@ -1023,8 +1037,7 @@ class MCPHTTPApp:
                         raise PermissionError("only projected social or owned Agent metadata documents may be deleted")
                 if op == "delete-edge":
                     ends = (args.get("from"), args.get("to"))
-                    if (any(not isinstance(n, str) or not _COMMUNITY_PAGE_NODE_RE.fullmatch(n)
-                            or n.endswith("-") or "--" in n for n in ends)
+                    if (any(not _community_page_node(n) for n in ends)
                             or str(args.get("type") or "").strip().lower() not in _COMMUNITY_WIKI_RELS):
                         raise PermissionError("only projected wiki page relations may be deleted")
             elif op not in _COMMUNITY_READ_OPS:

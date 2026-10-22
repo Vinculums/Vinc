@@ -135,13 +135,12 @@ class ProvisionTests(unittest.TestCase):
         # concepts(Concept↔Concept 3종) · bridges(CROSSES/CONNECTS)
         # E-G6 — CC 4종 + ABOUT 에 evidence/confidence 선택 열 부여(관계 출처 추적).
         # v12 — 의미층(Concept|Decision)이 서로 바꿔 설 수 있어 쌍이 4개로 편다.
-        self.assertIn("CREATE REL TABLE PREREQUISITE_OF(FROM Concept TO Concept, "
-                      "FROM Concept TO Decision, FROM Decision TO Concept, "
-                      "FROM Decision TO Decision, evidence STRING, confidence DOUBLE, "
-                      "created STRING)", ddl)   # v14 — 엣지 출생
-        # …단 RELATED_TO 는 예외로 개념↔개념에 남는다(커뮤니티 투영 rel, 아래 가드).
-        self.assertIn("CREATE REL TABLE RELATED_TO(FROM Concept TO Concept, "
-                      "evidence STRING, confidence DOUBLE, created STRING)", ddl)
+        # v23 — 공개 위키 쪽(Record·Episode 까지)으로 넓어 16쌍이다. 쓰기는 커뮤니티만 연다.
+        pairs = ", ".join(f"FROM {a} TO {b}" for a in eschema._PAGE_LABELS
+                          for b in eschema._PAGE_LABELS)
+        for rel in ("PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM", "RELATED_TO"):
+            self.assertIn(f"CREATE REL TABLE {rel}({pairs}, evidence STRING, "
+                          "confidence DOUBLE, created STRING)", ddl)   # v14 — 엣지 출생
         self.assertIn("CREATE REL TABLE CROSSES(FROM Bridge TO Domain)", ddl)
         # v14 — 출생은 **저작된 관계에만**. CROSSES(브릿지 정의의 구조적
         # 일부)·IN_DOMAIN(domain 열 파생)·MENTIONS(문서 재링크 파생)는 안 받는다:
@@ -153,10 +152,10 @@ class ProvisionTests(unittest.TestCase):
         self.assertIn("CONNECTS(FROM Bridge TO Concept, FROM Bridge TO Decision, "
                       "role STRING, created STRING)", ddl)
         # F4 — episodic↔semantic 다리(+ E-G6 증거·신뢰도). v12 로 출발점에 Decision 추가.
-        self.assertIn("CREATE REL TABLE ABOUT(FROM Episode TO Concept, "
-                      "FROM Episode TO Decision, FROM Decision TO Concept, "
-                      "FROM Decision TO Decision, evidence STRING, confidence DOUBLE, "
-                      "created STRING)", ddl)
+        # v23 — 대상에 기록·사건 페이지가 붙는다(커뮤니티 위키의 Talk 가 그 페이지에 관한 것).
+        self.assertIn("CREATE REL TABLE ABOUT(" + ", ".join(
+            f"FROM {a} TO {b}" for a in ("Episode", "Decision") for b in eschema._PAGE_LABELS)
+            + ", evidence STRING, confidence DOUBLE, created STRING)", ddl)
         self.assertIn("CREATE NODE TABLE Decision(decision_id STRING", ddl)
         # S4 확장 — 엣지 삭제 표식(메타, 부팅 시 멱등 생성)
         self.assertIn("CREATE NODE TABLE _EdgeTombstone(ekey STRING", ddl)
@@ -179,28 +178,35 @@ class ProvisionTests(unittest.TestCase):
         # 단일 쌍 라벨은 그대로 한 항목
         self.assertEqual(1, len([s for s in specs if s["label"] == "CROSSES"]))
 
-    def test_louvain_projected_rel_stays_on_one_node_table(self):
-        """`api.query.communities` 가 투영하는 rel 은 **노드 테이블 하나**(Concept)에만 걸친다.
+    def test_louvain_projection_stays_on_one_node_table(self):
+        """`api.query.communities` 가 투영하는 것은 **노드 테이블 하나**(Concept)다.
 
         커뮤니티는 `api/graph_algo.py` 의 Leiden 이 이 rel 하나의 투영 위에서 계산한다.
-        투영(`api.query._algo_graph`)은 끝점 라벨을 스키마에서 파생하므로 끝점을 더 열어도
-        계산은 돈다. 대신 그 라벨의 노드가 군집에 섞여, 개념 사이의 느슨한 연관이라는
-        군집의 뜻이 바뀐다: 결정이 개념에 닿는 자리는 about 이고 결정끼리는 계보다.
-        그래서 이 rel 을 넓히는 변경은 여기서 멈추고 `communities` 의 투영과 함께 정한다.
+        v23 에 RELATED_TO 표가 공개 위키 쪽 끝점으로 넓어졌으므로 투영이 라벨을 스키마에서
+        그대로 파생하면 기록·사건·결정이 군집에 섞인다. 그래서 투영은
+        `_LOUVAIN_PROJECTED_LABELS` 로 좁히고, 여기서 그 둘을 함께 묶어 둔다.
         근거: [[vinc.spec.dataplane §2.4]]"""
-        rel = eschema._LOUVAIN_PROJECTED_REL
-        labels = {lbl for s in eschema.rel_table_specs() if s["label"] == rel
-                  for lbl in (s["from"], s["to"])}
-        self.assertEqual(labels, {"Concept"},
-                         f"{rel} 이 노드 테이블 {sorted(labels)} 에 걸쳐 있다: "
-                         "군집에 다른 노드가 섞이므로 communities 투영과 함께 정할 것")
+        from api import query as q
+        self.assertEqual(eschema._LOUVAIN_PROJECTED_LABELS, ("Concept",))
+        self.assertEqual(q._LOUVAIN_LABELS, ("Concept",))
+        seen = []
+
+        class Rec:
+            def run(self, cypher, params=None):
+                seen.append(cypher)
+                return []
+        q._algo_graph(Rec(), "user:x", (eschema._LOUVAIN_PROJECTED_REL,), q._LOUVAIN_LABELS)
+        self.assertTrue(seen)
+        for cypher in seen:
+            for other in ("Decision", "Record", "Episode"):
+                self.assertNotIn(f":{other}", cypher, cypher)
 
     def test_bridge_owner_column_and_v2_migration(self):
         # F5 — Bridge 소유 스탬프: 신규 설치는 base DDL, 구 설치는 v2 ALTER(백필 '').
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 22)   # v22 — 문서 유효구간(_DocMeta)
+        self.assertEqual(eschema.SCHEMA_VERSION, 23)   # v23 — 공개 위키 쪽 끝점 쌍
         # v17 이 주장한 것을 여기서 증명한다: **신규 노드 테이블이라 ALTER 가 없다.**
         # 미러는 부팅 DDL 이 만들고(ChunkVec 전례), 임베딩은 DDL 이 아니라 모델을 부르는
         # 데이터 스텝이라 여기 못 쓴다.
@@ -248,6 +254,17 @@ class ProvisionTests(unittest.TestCase):
         self.assertIn("ALTER TABLE IN_DOMAIN ADD FROM Decision TO Domain", v12)
         self.assertTrue(all("Decision" in s for s in v12),
                         "v12 스텝에 결정과 무관한 문이 섞였다")
+        # v23 이 표를 넓혀도 v12 의 몫은 그때 쌍 그대로다(같은 쌍을 두 번 열지 않는다).
+        widened = ("PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM", "RELATED_TO")
+        self.assertFalse([s for s in v12 if s.split()[2] in widened
+                          and ("Record" in s or "Episode" in s or "RELATED_TO" in s)], v12)
+        v23 = only(23)
+        self.assertEqual(len(v23), 3 * 12 + 15 + 4, v23)
+        self.assertFalse(set(v23) & set(v12))
+        self.assertIn("ALTER TABLE DERIVES_FROM ADD FROM Record TO Episode", v23)
+        self.assertIn("ALTER TABLE RELATED_TO ADD FROM Concept TO Decision", v23)
+        self.assertIn("ALTER TABLE ABOUT ADD FROM Episode TO Episode", v23)
+        self.assertNotIn("ALTER TABLE RELATED_TO ADD FROM Concept TO Concept", v23)
         # v13 은 DDL 스텝이 없다 — 쌍은 v12 가 이미 열었고, 이 버전이 하는 일은
         # DOMAIN_HIERARCHY_VERSION 을 넘겨 **계층 백필을 다시 돌리는 것**이다.
         # 그래서 그 상수가 SCHEMA_VERSION 을 따라와야 의미가 있다(안 따라오면

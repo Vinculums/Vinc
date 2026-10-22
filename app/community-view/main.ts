@@ -16,14 +16,14 @@ import { defaultPrefs, edgeKindOf, EDGE_KINDS, type EdgeKind, type ViewPrefs } f
 import { palette, hexStr, type ThemeMode } from "../src/theme";
 import type { GraphEdge, GraphNode } from "../src/api";
 
-/** 그리는 선 갈래. 데스크톱 범례의 "Related (no direction)" 하나만 켠다. 방향·주제 교차·
- *  다리 갈래를 켜려면 이 목록에 더한다. */
-export const COMMUNITY_EDGE_KINDS: readonly EdgeKind[] = ["related"];
+/** 그리는 선 갈래. 무방향·주제 교차·방향 관계를 켜고 다리 갈래만 끈다. */
+export const COMMUNITY_EDGE_KINDS: readonly EdgeKind[] = ["related", "cross", "directed"];
 
-/** 고정 설정. 나머지(크기·유리·라벨·밀도)는 데스크톱 기본값 그대로다. */
+/** 고정 설정. 나머지(크기·유리·라벨·밀도)는 데스크톱 기본값 그대로다. 시간축은 그 일이
+ *  일어난 때(`when.start`)다. 페이지를 만든 때가 아니다. */
 const PREFS: ViewPrefs = {
   ...defaultPrefs(),
-  view: "3d", layout: "temporalRoots", timeBasis: "recorded", edges: "always", when: 1,
+  view: "3d", layout: "temporalRoots", timeBasis: "content", edges: "always", when: 1,
   unlinked: "show", labels: "hover",
   edgeOff: EDGE_KINDS.filter((k) => !COMMUNITY_EDGE_KINDS.includes(k)),
 };
@@ -32,6 +32,8 @@ type Page = {
   slug: string; title?: string; isRules?: boolean; status?: string; topic?: string | null;
   kind?: string | null; createdAt?: string; updatedAt?: string;
   links?: { slug: string; type: string }[];
+  /** 그 일이 일어난 때. 각 값은 `YYYY`·`YYYY-MM`·`YYYY-MM-DD` 이고 기원전은 `-0300` 이다. */
+  when?: { start?: string; end?: string } | null;
 };
 
 const COPY = {
@@ -39,10 +41,53 @@ const COPY = {
   ko: { loading: "그래프를 불러오는 중입니다…", failed: "커뮤니티를 불러오지 못했습니다.", empty: "아직 페이지가 없습니다." },
 };
 
-/** 렌더러가 아는 종류만 넘긴다. 사람·작품 같은 개체는 데스크톱이 개체 노드를 그리는
- *  모양(사면체)으로 간다. 종류가 없으면 개념이다. */
-const RENDER_KINDS = new Set(["concept", "decision", "episode", "record", "bridge"]);
-const kindOf = (k?: string | null): string => !k ? "concept" : RENDER_KINDS.has(k) ? k : "entity";
+/** 페이지 종류 → 렌더러 종류. 사건은 에피소드, 결과는 기록, 사람·작품은 개체로 그려
+ *  데스크톱과 같은 모양을 받는다. 모르는 종류와 빈 값은 개념이다. */
+const RENDER_KIND: Record<string, string> = {
+  concept: "concept", event: "episode", result: "record", decision: "decision",
+  person: "entity", work: "entity",
+};
+const kindOf = (k?: string | null): string => RENDER_KIND[k || ""] ?? "concept";
+
+/** 배치가 읽는 시간 열쇠. 배치는 날짜 문자열을 사전순으로 비교하고 `YYYY` 꼴만 받아서
+ *  기원전 연도를 그대로 넘기면 순서가 뒤집히거나 버려진다. 그래서 연도에 4000 을 더한
+ *  네 자리로 옮긴다(-0300 → 3700, 2015 → 6015). 400 의 배수라 윤일이 그대로 유효하다.
+ *  순서만 쓰이고 화면에는 나오지 않는다. */
+const YEAR_SHIFT = 4000;
+export function timeKey(value?: string | null): string {
+  const m = /^(-?)(\d{4})(-\d{2}(?:-\d{2})?)?$/.exec((value || "").trim());
+  if (!m) return "";
+  const year = (m[1] ? -1 : 1) * Number(m[2]) + YEAR_SHIFT;
+  if (year < 0 || year > 9999) return "";
+  return String(year).padStart(4, "0") + (m[3] || "");
+}
+
+/** 날짜가 없는 페이지의 자리. 관계를 따라 가장 가까운 날짜 있는 페이지들 중 가장 이른
+ *  날짜를 받고, 이어진 날짜가 없으면 같은 주제의 가장 이른 날짜에 선다. 주제에도 날짜가
+ *  없으면 비워 둔다(가지의 시작이다). 이 값은 배치용이고 페이지에 날짜를 지어 붙이지 않는다. */
+export function placeUndated(ids: string[], own: Map<string, string>, links: [string, string][],
+  topic: Map<string, string>): Map<string, string> {
+  const adj = new Map(ids.map((id) => [id, [] as string[]]));
+  for (const [a, b] of links) { adj.get(a)?.push(b); adj.get(b)?.push(a); }
+  const topicStart = new Map<string, string>();
+  for (const id of ids) {
+    const t = own.get(id), d = topic.get(id) || "";
+    if (t && (!topicStart.has(d) || t < topicStart.get(d)!)) topicStart.set(d, t);
+  }
+  const out = new Map(own);
+  for (const id of ids) {
+    if (own.get(id)) continue;
+    let ring = [id], seen = new Set(ring), found = "";
+    while (ring.length && !found) {
+      const next: string[] = [];
+      for (const at of ring) for (const n of adj.get(at) || []) if (!seen.has(n)) { seen.add(n); next.push(n); }
+      for (const n of next) { const t = own.get(n); if (t && (!found || t < found)) found = t; }
+      ring = next;
+    }
+    out.set(id, found || topicStart.get(topic.get(id) || "") || "");
+  }
+  return out;
+}
 
 /** 페이지 목록 → 데스크톱 `/graph` 와 같은 모양의 노드·관계. 시작 페이지와 규칙 페이지는
  *  지도에 없는 안내 문서라 뺀다. */
@@ -54,7 +99,9 @@ export function graphOf(pages: Page[]): { nodes: GraphNode[]; edges: GraphEdge[]
   const seen = new Set<string>();
   for (const p of shown) for (const l of p.links || []) {
     if (!topic.has(l.slug) || l.slug === p.slug) continue;
-    const type = String(l.type || "relates_to").toUpperCase();
+    // 위키 관계 이름 → 그래프 rel 이름. relates_to 만 이름이 다르다(RELATED_TO).
+    const raw = String(l.type || "relates_to").toLowerCase();
+    const type = raw === "relates_to" ? "RELATED_TO" : raw.toUpperCase();
     // 무방향 관계는 양쪽 페이지가 서로를 적어도 선 하나다. 방향 관계는 방향마다 따로다.
     const key = type === "RELATED_TO" ? [type, ...[p.slug, l.slug].sort()].join("\n")
       : [type, p.slug, l.slug].join("\n");
@@ -65,11 +112,14 @@ export function graphOf(pages: Page[]): { nodes: GraphNode[]; edges: GraphEdge[]
   }
   const degree = new Map<string, number>();
   for (const e of edges) for (const id of [e.source, e.target]) degree.set(id, (degree.get(id) || 0) + 1);
+  const when = placeUndated(shown.map((p) => p.slug),
+    new Map(shown.map((p) => [p.slug, timeKey(p.when?.start)])),
+    edges.map((e) => [e.source, e.target]), topic);
   const nodes = shown.map((p): GraphNode => ({
     id: p.slug, label: p.title || p.slug, domain: topic.get(p.slug) || "",
     degree: degree.get(p.slug) || 0, kind: kindOf(p.kind),
-    // 기록 시각 축. 만든 시각이 아직 안 실려 오면 고친 시각으로 대신한다.
     ts: p.createdAt || p.updatedAt || "",
+    content_ts: when.get(p.slug) || "",
   }));
   return { nodes, edges };
 }
