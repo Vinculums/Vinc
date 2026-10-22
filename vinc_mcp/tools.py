@@ -942,7 +942,8 @@ _SUMMARY: dict[str, str] = {
         "to."),
     "vinc_whoami": (
         "Show which graph this connection acts on and the spaces you can reach, with each team's id to "
-        "pass as space and your role there. Without space, calls act on your personal graph."),
+        "pass as space and your role there. Without space, calls act on your personal graph. Hosted, "
+        "it also says how many tool calls each space has used and has left today."),
     "vinc_ingest": (
         "Write many nodes and edges in one call, merging by exact id. Search first (vinc_search) and "
         "reuse the ids you find; call vinc_conventions before your first write. Sending props "
@@ -1696,9 +1697,15 @@ TOOLS: list[dict] = [
                        "by its id without joining; joining grants no write or import rights. "
                        "On the hosted service `quota` (and each entry of `spaces`) gives that "
                        "space's daily tool-call allowance, shared by everyone working in it: "
-                       "{metered: true, plan, limit, used, remaining, resets_at} with resets_at "
-                       "in UTC, plus `warning` and `upgrade_url` once 80% is used; a space that "
-                       "is not metered says {metered: false}. "
+                       "{metered: true, exempt: false, plan, window, limit, used, remaining, "
+                       "resets_at}. `window` is 'utc_day': calls count per UTC calendar day, not a "
+                       "rolling 24 hours, and the space this call ran in already counts it in "
+                       "`used`. resets_at is in UTC, and `warning` and `upgrade_url` are added once "
+                       "80% is used. A space that is not metered invents no numbers: "
+                       "{metered: false, exempt: true} means calls in that space are not counted "
+                       "at all, and {metered: false, exempt: false, plan} means that plan has no "
+                       "daily count. Only the spaces "
+                       "this credential can act in are reported, never another account's usage. "
                        "Read-only; it never reads the graph, and the lists come from the account.",
         "inputSchema": {"type": "object", "properties": {
             "owner": {"type": "string"},
