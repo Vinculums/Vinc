@@ -61,11 +61,11 @@ PREV_SUFFIX = ".prev"
 
 #: 쓰기 자격 표식의 접미. 스냅샷 옆에 **자격을 가진 리비전 이름 한 줄**을 둔다.
 #:
-#: 배포마다 구 리비전이 한 번 더 뜬다. ACA 는 단일 리비전 모드의 롤링 전환에서
-#: 방금 내린 구 리비전에 트래픽을 되돌려 다시 띄우고, 그것은 /data 에서 복원해 1분쯤
-#: 살다가 종료 훅의 최종 스냅샷을 **새 리비전 뒤에** 영속본 위에 쓴다. 표식은 그 쓰기를
-#: 막는다: 나보다 번호가 큰 리비전이 자격을 가져갔으면 나는 영속본을 건드리지 않는다.
-#: 근거: [[record:aca-reboots-the-stopped-hub-revision-during-every-deploy-and-it-writes-a-late-final-snapshot-2026-09-25]]
+#: 배포 중에는 구 리비전과 새 리비전이 겹쳐 산다. 정상 인계에서는 구 리비전의 최종
+#: 스냅샷이 새 리비전의 복원보다 먼저 끝나지만, 인계가 어긋나면 구 리비전의 스냅샷이
+#: **새 리비전 뒤에** 영속본 위에 쓸 수 있다. 표식은 그 쓰기를 막는다: 나보다 번호가
+#: 큰 리비전이 자격을 가져갔으면 나는 영속본을 건드리지 않는다(순서는 :func:`claim_writer`).
+#: 근거: [[decision:the-hub-hands-the-writer-over-at-boot-instead-of-stopping-the-old-revision-2026-10-17]]
 WRITER_SUFFIX = ".writer"
 
 #: ACA 가 컨테이너에 넣어 주는 리비전 이름(`vinc-hub--0000235`). **없으면 울타리는

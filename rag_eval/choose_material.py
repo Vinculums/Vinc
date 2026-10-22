@@ -6,8 +6,7 @@
 N2 팔 (b) 는 이미 같은 되묻기를 하네스 쪽에서 한다. 이 스크립트가 재는 것은
 **제품 표면**: 플래그를 켜면 choose 응답에 `candidate_material` 이 붙고 status 는
 choose 로 남는가, 그리고 그 재료가 정답 노드인가. 정답이 1위가 아닌 choose
-목록에서 landed 가 뜨는 횟수는 틀린 노드에 재료를 붙이는 횟수다
-([[record:most-wrong-first-choose-lists-never-had-the-gold-as-a-candidate-2026-09-13]]).
+목록에서 landed 가 뜨는 횟수는 틀린 노드에 재료를 붙이는 횟수다.
 기본값을 켜는 판정은 이 숫자가 나온 뒤에 한다
 ([[decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13]]).
 

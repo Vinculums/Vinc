@@ -612,7 +612,7 @@ def _pending_reasons(s, value: str) -> tuple[list[str], dict[str, int]]:
 def unrequeue(s) -> tuple[dict, list[str]]:
     """재큐를 되돌린다: 벡터를 이미 다 가진 문서만 needs_embed=0. 벡터가 하나라도 빠진 문서
     (재큐 뒤 새로 쓴 문서가 여기 든다)는 pending 으로 남긴다. `_DocMeta.needs_embed` 만 쓴다.
-    근거: [[record:a-soft-requeue-keeps-semantic-search-off-because-every-apply-rebuilds-the-vector-index-2026-09-30]]"""
+    근거: [[record:the-hub-stamp-backfill-released-779-queued-documents-without-re-embedding-2026-09-30]]"""
     value = hub_runtime()
     before = measure(s)
     ok, reasons = _pending_reasons(s, value)

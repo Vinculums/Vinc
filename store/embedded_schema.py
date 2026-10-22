@@ -122,9 +122,10 @@ _NODE_TABLES: dict[str, dict] = {
     # 검색 표면에 넣었다가 답 불가 질문을 확정하게 만든 적이 있다
     # ([[record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09]]).
     #
-    # ⚠ 채우기는 **드롭 → 벡터와 함께 전량 삽입 → 생성**이다. "없던 벡터가 생기는" 것이
-    # HNSW 삽입이고 그것만 세그폴트를 낸다(`drop_vector_index` 주석의 실측).
-    # 근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]
+    # ⚠ 채우기는 **드롭 → 벡터와 함께 삽입 → 생성**이다. "없던 벡터가 생기는" 것이
+    # HNSW 삽입이고 그것만 세그폴트를 낸다(`drop_vector_index` 주석의 실측). 바뀌지 않은
+    # 행은 제자리에 두지만 인덱스는 여전히 통째로 다시 만든다.
+    # 근거: [[decision:the-node-mirror-keeps-unchanged-rows-and-rebuilds-its-index-whole-2026-10-02]]
     #
     # 🔴 **키는 소유자와 함께 잡는다**(v18). 처음엔 `node_id` 를 pk 로 뒀는데, 이 스토어는
     # 멀티테넌트고 **같은 논리 id 가 스페이스마다 산다** — 새 스페이스는 전부 같은 네
@@ -382,7 +383,7 @@ def migration_statements(from_version: int) -> list[str]:
         # 엣지에 근거를 요구하는데 ATTACHES_TO 에 열이 없어, 저작된 문장이 "경고하고
         # 버림"(#117)까지만 갔다. 다중 끝점쌍 rel 의 ALTER 는 v14 의
         # `ATTACHES_TO ADD created` 전례 그대로다.
-        # 근거: [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]
+        # 근거: [[record:attaches-to-carries-evidence-since-v16]]
         stmts.append("ALTER TABLE ATTACHES_TO ADD evidence STRING DEFAULT ''")
         stmts.append("ALTER TABLE ATTACHES_TO ADD confidence DOUBLE DEFAULT 0.0")
     # v17 — 노드 미러(NodeVec). **ALTER 스텝이 없다**: 신규 노드 테이블은 매 부팅
@@ -432,12 +433,13 @@ EDGE_BIRTH_RELS: tuple[str, ...] = (
 # ([[vinc.spec.dataplane §2.4]]).
 _SEMANTIC_LABELS: tuple[str, ...] = ("Concept", "Decision")
 
-#: **RELATED_TO 만 예외로 개념↔개념에 남는다.** 엔진 제약이다 — `api.query.communities`
-#: 가 이 rel 단일 투영으로 Louvain 을 돌리는데, Decision 을 붙이면 투영 노드 테이블이
-#: 둘이 되어 **커뮤니티 기능이 통째로 죽는다**. 우회로는 없다(전부 실측으로 기각).
+#: **RELATED_TO 만 예외로 개념↔개념에 남는다.** `api.query.communities` 가 이 rel 하나만
+#: 투영해 군집을 잡는다(계산은 `api/graph_algo.py` 의 Leiden). 엔진 알고리즘 확장이 노드
+#: 테이블 하나만 받던 제약에서 출발했고, 계산을 엔진 밖으로 옮긴 뒤에도 뜻 때문에 잇는다:
+#: 결정이 개념에 닿는 자리는 느슨한 연관이 아니라 about 이고, 결정끼리는 계보다.
 #: ⚠ 이 목록을 넓히려면 `communities` 의 투영도 같이 봐야 한다. 불변식은
 #: tests/core/test_store.py 의 단일 노드테이블 가드가 지킨다.
-#: 오류 문면·기각한 우회로·의미상으로도 맞는 이유: [[record:louvain-projects-one-node-table]].
+#: 근거: [[vinc.spec.dataplane]] · [[vinc.ops.ladybug-upgrade-review-2026-09-24 §2.3]]
 _LOUVAIN_PROJECTED_REL = "RELATED_TO"
 
 _REL_TABLES: list[tuple] = [
@@ -496,7 +498,7 @@ _REL_TABLES: list[tuple] = [
 #: 근거 열을 갖는 관계 — `EDGE_BIRTH_RELS` 와 같은 신분이고, **쓰기 경로가 이 하나를
 #: 읽는다.** 여기 없는 rel 에 evidence/confidence 를 실어 보내면 보관할 열이 없으므로
 #: `api/fragment` 가 경고한다(그 전에는 조용히 사라졌다 —
-#: [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]).
+#: [[record:attaches-to-carries-evidence-since-v16]]).
 #: 손으로 적지 않고 위 표에서 파생시키는 이유: 손으로 적으면 표가 둘이 되고, 스키마가
 #: 열을 늘렸을 때 "저장 안 됨"과 "경고가 표를 못 따라감"이 구분 불가가 된다.
 EDGE_EVIDENCE_RELS: tuple[str, ...] = tuple(

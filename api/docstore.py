@@ -370,7 +370,7 @@ def _with_fts_repair(store, fn: Callable[[], Any]) -> Any:
         # 추정이 아니라 로그로 알아야 한다. 이 호출이 도는 동안 /health 가 굶을
         # 수 있다는 것이 이 재구축의 실제 위험이므로(entrypoint.sh 의
         # sidecar_healthy 주석 참고) 소요 시간이 그대로 진단이다.
-        # 근거: [[record:editing-the-conventions-document-restarts-the-hub-2026-09-09]]
+        # 근거: [[vinc.manual.core §3]] · [[vinc.plan.korean-retrieval-p1-p2-2026-10-02]]
         _t0 = time.monotonic()
         rebuild()
         print(f"[WARN] FTS 재빌드 완료 — {time.monotonic() - _t0:.1f}s", file=sys.stderr)
@@ -1355,7 +1355,7 @@ def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
     그대로 돌려주고, 자기 모델을 싣는다). 지금 문서·스토어와 다르면 아무것도 안 쓰고
     거절한다(`content_changed` · `model_changed`) — needs_embed 는 1 로 남아 다음 라운드가
     새 본문으로 다시 한다. None 이면 대조하지 않는다(직접 부르는 CLI·스크립트).
-    근거: [[record:embedding-apply-accepted-vectors-it-never-checked-2026-09-29]]"""
+    근거: [[record:reembed-only-requeues-and-apply-checks-what-a-vector-was-built-from-2026-09-30]]"""
     base: dict[str, Any] = {"kind": "doc.embed.apply", "executed": False, "doc_id": doc_id}
     if not embeddings:
         base["error"] = "no embeddings"
@@ -1547,7 +1547,7 @@ def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -
     # 전문 re-put 이나 삭제뿐이다. 이것까지 `stalled` 에 세면 워커가 멀쩡히 놀고 있어도 정체
     # 알람이 켜진다 — 2026-10-02 허브가 하루 종일 pending=2 · stalled 였는데, 그 둘은 put_doc
     # 가 청크를 지운 뒤 끊긴 쓰기 창 문서였다. `pending` 자체는 그대로 둔다(이행 게이트가 본다).
-    # 근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]
+    # 근거: [[vinc.ops.incident-2026-10-02-node-mirror-oom §4]]
     # 따로 감싼다: 이 부가 수치가 실패해도 위의 pending·이행 판정은 그대로 나가야 한다
     # (같은 try 에 두면 이행 게이트가 열린다 — test_server 가 잡았다). 실패하면 0 으로,
     # 즉 예전처럼 pending 전부를 정체 판정에 센다.

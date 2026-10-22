@@ -2,10 +2,9 @@
 
 Terraform(infra/)은 컨테이너 앱을 의도적으로 안 든다(시크릿이 state 에 평문으로
 남고, 이미지 태그는 배포마다 바뀌어 매 배포가 drift 가 된다 — infra/imports.tf).
-그런데 실측된 인벤토리 표류는 전부 이 층에서 났다: 인벤토리에 없던 넷째 앱
-([[record:the-infrastructure-inventory-is-missing-the-encoder-app]]), "라이브 확인
-불가"로 남아 있던 컨테이너 크기들, 그리고 excludedPaths 소실이 팀 OAuth 를 하루
-넘게 죽인 08-30 — 경보도 배포도 그동안 초록이었다.
+그런데 실측된 인벤토리 표류는 전부 이 층에서 났다([[record:app-config-drift-gate-shipped-2026-09-02]]):
+인벤토리에 없던 넷째 앱, "라이브 확인 불가"로 남아 있던 컨테이너 크기들, 그리고
+excludedPaths 소실이 팀 OAuth 를 하루 넘게 죽인 08-30 — 경보도 배포도 그동안 초록이었다.
 
 그래서 **값이 아니라 구조**를 잰다: env 는 이름만(값·시크릿 값 제외), 스케일·자원·
 ingress·볼륨·auth(excludedPaths 포함). 이미지·리비전은 안 본다 — 배포마다 바뀌는

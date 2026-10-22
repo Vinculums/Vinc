@@ -603,8 +603,8 @@ jobs:
     # 되돌리려는 사람에게: 반대 방향의 판정이 이미 둘 있다 —
     # [[decision:core-pkns-stays-because-the-hub-runs-the-flag-on]] 이 "이 잡은 은퇴일이
     # 없고 PR 에서 내려오지 않는다"고 정했고,
-    # [[record:core-pkns-if-skips-app-and-agents-changes-2026-09-05]] 이 "처방은 조건을
-    # 넓히거나 걷는 것"이라고 적었다. 조건을 되살리려면 그 둘을 먼저 뒤집을 것.
+    # [[decision:ci-runs-each-suite-once-per-merge-and-hub-deploy-waits-for-ci-2026-09-26]] 이
+    # "core-pkns 와 모든 게이트는 조건 없이 돈다"고 정했다. 조건을 되살리려면 그 둘을 먼저 뒤집을 것.
     # 이 형태를 지키는 것은 tests/platform/test_ci_suite_is_unconditional.py 다.
     #
     # 대가는 정직하게 적는다: 이 잡이 PR 마다 늘 돈다(호스티드 분이 아니라 아래
@@ -928,9 +928,9 @@ jobs:
         working-directory: app/src-tauri
         run: cargo test --locked
 
-      # 크래시한 rustc 는 이 디렉터리에 **다음 실행이 못 읽는 산출물**을 남긴다. 위
-      # `CARGO_TARGET_DIR` 는 일부러 `git clean` 사정권 밖이라 아무도 안 치우고, 그래서
-      # 한 번의 크래시가 그 뒤 모든 실행을 즉사시킨다 — 2026-09-07 실측: 윈도우에서
+      # 크래시한 rustc 는 이 디렉터리에 **다음 실행이 못 읽는 산출물**을 남긴다. 영속
+      # 러너에서는 위 `CARGO_TARGET_DIR` 가 일부러 `git clean` 사정권 밖이라 아무도 안
+      # 치우고, 그래서 한 번의 크래시가 그 뒤 모든 실행을 즉사시킨다 — 2026-09-07 실측: 윈도우에서
       # STATUS_STACK_BUFFER_OVERRUN 으로 죽은 뒤, 다음 런부터 53초 만에
       # `error[E0786]: failed to mmap rmeta metadata` 로 끝났다. 파일은 잘려 있지도
       # 잠겨 있지도 않았고 그저 rustc 가 못 읽었다. 그 잡은 러스트를 건드릴 때만 도니까
@@ -938,7 +938,9 @@ jobs:
       #
       # 실패했을 때만 지운다: 성공한 캐시는 이 잡의 가장 큰 비용 절감이다(찬 캐시 첫 런은
       # 훨씬 길다). 지우는 것은 이 러너의 디렉터리뿐이고, 다음 런이 다시 채운다.
-      # 근거: [[record:a-crashed-rustc-poisons-the-shared-cargo-target-and-every-later-run-dies-in-fifty-seconds-2026-09-07]]
+      # 지금 이 잡은 일회용 호스티드 러너에서 돌아 디렉터리가 잡과 함께 사라진다. 이 단계는
+      # 영속 러너로 돌아갈 때를 위한 보험이다.
+      # 근거: [[vinc.ops.ci-runner-diagnosis]]
       - name: 실패하면 산출물 캐시를 버린다 (크래시가 못 읽는 파일을 남긴다)
         if: failure()
         shell: bash

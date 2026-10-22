@@ -340,12 +340,12 @@ class IdleTick(_Enabled):
 
 
 class WriterFence(_Enabled):
-    """배포 중 되살아난 구 리비전이 **새 리비전 뒤에** 영속본을 덮지 못하는가.
+    """배포 중 구 리비전의 늦은 스냅샷이 **새 리비전 뒤에** 영속본을 덮지 못하는가.
 
-    ACA 는 단일 리비전 모드의 롤링 전환에서 방금 내린 구 리비전을 다시 띄우고, 그것은
-    1분쯤 뒤 종료 훅에서 최종 스냅샷을 쓴다. 번호가 큰 리비전이 자격을 가져갔으면
-    번호가 작은 쪽의 저장은 영속본을 건드리지 않아야 한다.
-    근거: [[record:aca-reboots-the-stopped-hub-revision-during-every-deploy-and-it-writes-a-late-final-snapshot-2026-09-25]]
+    배포 중에는 두 리비전이 겹쳐 살고, 인계가 어긋나면 구 리비전의 최종 스냅샷이 새
+    리비전이 자격을 가져간 뒤에 온다. 번호가 큰 리비전이 자격을 가져갔으면 번호가
+    작은 쪽의 저장은 영속본을 건드리지 않아야 한다.
+    근거: [[decision:the-hub-hands-the-writer-over-at-boot-instead-of-stopping-the-old-revision-2026-10-17]]
     """
     OLD, NEW = "vinc-hub--0000230", "vinc-hub--0000231"
 

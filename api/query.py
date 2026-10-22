@@ -668,8 +668,9 @@ def ppr_scores(nodes: list[dict], edges: list[dict], seeds: list[str], *,
 # 나이는 오늘이 아니라 **이 노드 집합에서 가장 새 `ts`** 부터 잰다. 그래서 값은 그래프만의
 # 순수 함수다(그래프가 그대로면 날이 바뀌어도 그대로다).
 # ⚠ "최근"의 뜻이 종류마다 다르다(`ts` 투영이 다르다): Concept·Record·Decision 은 생성
-# 시각(없으면 갱신), Episode 는 사건 날짜, Entity 는 갱신 시각, Bridge 는 생성 시각을 읽지만
-# 그 열은 쓰이지 않아 사실상 갱신 시각이다([[record:bridge-created-is-read-but-never-written]]).
+# 시각(없으면 갱신), Episode 는 사건 날짜, Entity 는 갱신 시각, Bridge 는 생성 시각(없으면
+# 갱신)을 읽는다. 쓰기 경로가 Bridge 의 생성 시각을 찍기 시작하기 전에 만든 Bridge 는 그
+# 열이 비어 갱신 시각으로 떨어진다.
 # 근거: [[vinc.research.graphrag-agent-memory-literature-2026-09-28]] §4 Generative Agents 행
 PPR_RECENCY_HALF_LIFE_DAYS = 90.0
 #: 최근성이 섞이는 몫. 0 이면 `ppr_recent == ppr`, 1 이면 최근성만큼 줄어든다.
@@ -3216,7 +3217,7 @@ def _record_links(store, node: str, *, owner: str,
 
     evidence/confidence 는 v16 부터 ATTACHES_TO 실열이다 — 그전에는 열이 없어
     항상 False 로 냈고 그것이 결측이 아니라 사실이었다
-    ([[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]).
+    ([[record:attaches-to-carries-evidence-since-v16]]).
     실패는 :func:`_node_links` 와 같은 태도로 빈 요약 강등."""
     empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "total": 0, "items": [],
              "truncated": False, "executed": False}
@@ -3428,7 +3429,7 @@ def _node_links(store, node: str, *, owner: str,
     # degree 9 · attached 50 으로 답하는 동안 vinc_neighbors 는 count 59 를 냈고(85%
     # 과소), 그 수를 합산한 연결성 결론이 나갔다가 철회됐다. 그래서 총수를 **직접
     # 싣는다** — 받는 쪽이 더해서 복원할 것을 남겨 두지 않는다.
-    # 근거: [[record:brief-links-degree-counts-only-the-core-layer-and-understates-a-59-relation-node-as-9-2026-09-14]]
+    # 근거: [[episode:2026-09-14-brief-carries-the-connectivity-instead-of-leaving-it-to-be-summed]]
     return {"degree": len(rows), "out": out_n, "in": in_n, "attached": len(attached),
             "total": len(rows) + len(attached), "executed": True,
             **_window(items, offset)}
@@ -3629,7 +3630,7 @@ def _brief_strict_on() -> bool:
     이고 노출 R@1 이 0.1667 에서 0.2833 으로 오른다 — 두 변경은 **따로 재면 둘 다 안
     오르고 함께여야 오른다**(팔은 후보 1위를 9건에서 17건으로 올려 놓는데, 옛 판정이
     그 위에 확신 오답을 얹고 목록을 감췄다).
-    근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
+    근거: [[record:the-confidence-bar-was-one-token-and-that-was-the-defect-2026-09-10]]"""
     return str(os.environ.get("VINC_BRIEF_STRICT", "")).strip().lower() not in (
         "0", "off", "false", "no")
 
@@ -3691,7 +3692,7 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     ⚠ **융합 점수(RRF)로 정렬하는 안은 기각됐다.** 팔을 켜면 좋아 보이지만 끄면 나빠진다
     (오답확정 37 → 44) — 팔이 둘뿐일 때 RRF 순위는 토큰 순서보다 못하다. 판정은 팔의
     기본값과 무관하게 모두에게 적용되므로 팔에 의존하는 규칙은 쓸 수 없다.
-    근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
+    근거: [[record:the-confidence-bar-was-one-token-and-that-was-the-defect-2026-09-10]]"""
     rows = [h for h in hits if isinstance(h, dict) and h.get("id")]
     if not rows:
         return "none", []
