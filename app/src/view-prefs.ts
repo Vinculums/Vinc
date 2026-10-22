@@ -273,14 +273,19 @@ export const RAIL_MAX = 120;   // rem — 사실상 화면 폭(CSS 가 100% 로 
 
 const KEY = "vinc.view.prefs";
 /** 저장값의 판. loadPrefs 의 옮겨 읽기가 판마다 하나씩이다.
- *  2 = 2026-09-26 기본값 개정 이후. 3 = 0.9.7 에서 뺀 배치 이름(`LAYOUT_ALIAS`)을 접은 뒤. */
-const PREFS_VERSION = 3;
+ *  2 = 2026-09-26 기본값 개정 이후. 3 = 0.9.7 에서 뺀 배치 이름(`LAYOUT_ALIAS`)을 접은 뒤.
+ *  4 = 첫 그림 개정(2026-10-22) 이후: 3D · 시간순 가지 · 선 상시 · 범례는 관계 선만. */
+const PREFS_VERSION = 4;
+/** 첫 그림을 이루는 넷. 판 4 이전 저장값은 이 넷만 한 번 새 기본으로 옮긴다(loadPrefs). */
+const FIRST_LOOK = ["view", "layout", "edges", "edgeOff"] as const;
 const DEFAULTS: ViewPrefs = {
-  //: 크기 배율·밀도(`cone`) 기본은 0.7, 선은 **노드만**(`none`)이다(사람 지시 2026-09-26).
-  //: 근거: [[decision:bring-and-go-is-retired-and-nodes-only-is-the-default]]
+  //: 크기 배율·밀도(`cone`) 기본은 0.7이다(사람 지시 2026-09-26).
+  //: 첫 그림은 3D 시간순 가지에 선을 상시로 그리고, 범례는 방향 없는 관계 선만 켠다
+  //: (사람 지시 2026-10-22). 선 기본이 `none` 이던 결정을 이 지시가 덮는다.
+  //: 근거: [[decision:the-graph-opens-as-3d-time-branches-with-related-lines-2026-10-22]]
   view: "3d", size: "links", nodeScale: 0.7, edgeScale: 1,
-  labels: "hover", arrows: true, edges: "none", spread: 1, cone: 0.7,
-  unlinked: "show", layout: "hub",
+  labels: "hover", arrows: true, edges: "always", spread: 1, cone: 0.7,
+  unlinked: "show", layout: "temporalRoots",
   timelineDocs: true,
   //: 읽는 면의 기본 폭(rem). `app.css` 의 `#docpane` 폴백과 같은 값이다.
   //: ⚠ 한때 21 이었다 — 왼쪽 끝을 범례 버튼의 시작점에 맞추려고 상단 바 손잡이의
@@ -288,7 +293,7 @@ const DEFAULTS: ViewPrefs = {
   railW: 20,
   timeBasis: "recorded",
   when: 1,
-  edgeOff: [],
+  edgeOff: ["directed", "cross", "bridge"],
   timelineLineage: false,
   // 기본은 전체다(Q2.2) — 여태와 같은 그림. 넘치면 캡션이 "기간 좁히기"를 권한다.
   period: "all", periodFrom: "", periodTo: "",
@@ -347,7 +352,7 @@ export const visibleAt = (t: string, cutoff: string): boolean => !cutoff || !t |
 export function loadPrefs(): ViewPrefs {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return { ...DEFAULTS };
+    if (!raw) return { ...DEFAULTS, edgeOff: [...DEFAULTS.edgeOff] };
     const p = JSON.parse(raw);
     // 기본값 개정(2026-09-26) 이전의 저장값: 저장은 늘 **객체 통째로** 하므로, 손대지 않은
     // 사람도 옛 기본(크기 1 · 밀도 1 · bring)을 값으로 들고 있다. 판(`pv`)이 없고 값이
@@ -362,6 +367,9 @@ export function loadPrefs(): ViewPrefs {
     // 판 3 이전에 저장된 `rank`·`rankedRoots` 는 `시간순 가지`로 접는다(`LAYOUT_ALIAS`).
     if (pv < 3 && typeof p.layout === "string" && Object.prototype.hasOwnProperty.call(LAYOUT_ALIAS, p.layout))
       p.layout = LAYOUT_ALIAS[p.layout];
+    // 판 4 이전 저장값은 첫 그림 넷을 한 번 새 기본으로 옮긴다. 판 4 로 한 번 저장되면 다시
+    // 옮기지 않으므로, 그 뒤에 사람이 고른 값은 그대로 남는다.
+    if (pv < 4) for (const k of FIRST_LOOK) p[k] = DEFAULTS[k];
     return {
       view: VIEWPOINTS.includes(p.view) ? p.view : "3d",
       size: p.size === "uniform" ? "uniform" : "links",
@@ -400,7 +408,7 @@ export function loadPrefs(): ViewPrefs {
         ? p.bundleOff.filter((k: unknown) => BUNDLE_RELS.includes(String(k))) : [],
     };
   } catch {
-    return { ...DEFAULTS };
+    return { ...DEFAULTS, edgeOff: [...DEFAULTS.edgeOff] };
   }
 }
 
