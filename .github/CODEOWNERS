@@ -94,4 +94,5 @@
 /api/packfile.py                                 @Vinculums/core @Vinculums/platform
 /api/sync.py                                     @Vinculums/core @Vinculums/platform
 /vinc_mcp/oauth.py                               @Vinculums/core @Vinculums/platform
+/api/contract/sidecar.json                       @Vinculums/core @Vinculums/app
 /app/src/copy.ts                                 @Vinculums/app @Vinculums/design-content
