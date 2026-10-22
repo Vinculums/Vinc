@@ -903,10 +903,44 @@ def _edge_exists(store, rel: str, ends: _Ends, src: str, dst: str,
     return bool(r and r[0].get("c"))
 
 
+def _edge_values(store, rel: str, ends: _Ends, src: str, dst: str,
+                 *, owner: str | None = None, osc: bool = False) -> dict | None:
+    """저장된 엣지의 근거·신뢰도. 엣지가 없으면 None — `_edge_exists` 와 같은 스코프다.
+
+    근거 열이 없는 rel 은 존재만 본다(빈 dict). 값 비교는 `_edge_values_change` 가 한다."""
+    if rel not in EDGE_EVIDENCE_RELS:
+        return {} if _edge_exists(store, rel, ends, src, dst, owner=owner, osc=osc) else None
+    (sl, sp), (dl, dp) = ends
+    own = f" AND a.owner_id = $owner AND b.owner_id = $owner" if osc else ""
+    rows = store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
+                     f"WHERE a.{sp} = $s AND b.{dp} = $d{own} "
+                     "RETURN r.evidence AS ev, r.confidence AS conf",
+                     {"s": src, "d": dst, **({"owner": owner} if osc else {})})
+    if not rows:
+        return None
+    return {"evid": rows[0].get("ev"), "conf": rows[0].get("conf")}
+
+
+def _edge_values_change(stored: dict | None, ev_p: dict) -> bool:
+    """이번 쓰기가 끝점 스탬프를 받아야 하나: 새 엣지이거나 근거·신뢰도가 **실제로** 바뀔 때.
+
+    같은 값의 재전송은 바꾸지 않는다 — 스탬프하면 재전송마다 다음 델타에 메아리가 실린다.
+    ``ev_p`` 는 `_ev_set` 이 SET 할 값(`evid`·`conf`)이고, 실리지 않은 키는 바뀌지 않는다.
+    근거의 빈 문자열과 없음(NULL)은 같은 값으로 본다."""
+    if stored is None:
+        return True
+    if "evid" in ev_p and (ev_p["evid"] or "") != (stored.get("evid") or ""):
+        return True
+    if "conf" in ev_p:
+        held = stored.get("conf")
+        return held is None or float(held) != ev_p["conf"]
+    return False
+
+
 def _stamp_edge_endpoints(store, rel: str, ends: _Ends, src: str, dst: str,
                           owner: str, *, osc: bool = False,
                           warnings: list[str] | None = None) -> None:
-    """엣지 **신규 생성** 시 양 끝 노드에 revstamp — 엣지 자체는 추적열이 없어,
+    """엣지 **신규 생성**(또는 근거·신뢰도 변경) 시 양 끝 노드에 revstamp — 엣지 자체는 추적열이 없어,
     끝점 스탬프가 없으면 '기존 노드 사이 신규/재생성 엣지'가 증분 동기화에 영영 안
     실린다(delta 번들의 엣지는 양끝 노드가 델타에 있을 때만 동봉). 엣지 활동 =
     끝점 활동으로 간주한다 — 부수 효과로 '편집이 삭제를 이긴다' 가드에서도 엣지
@@ -1179,7 +1213,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             return None
         ends = (_end(st), _end(dt))
         (sl, sp), (dl, dp) = ends
-        was = _edge_exists(store, _SUPERSEDES_REL, ends, ksrc, kdst, owner=owner, osc=osc)
+        was = _edge_values(store, _SUPERSEDES_REL, ends, ksrc, kdst, owner=owner, osc=osc)
         ev_set, ev_p = _ev_set("r", _SUPERSEDES_REL)
         b_set, b_p = _birth_set("r")
         store.run(
@@ -1187,7 +1221,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{_SUPERSEDES_REL}]->(b){b_set}{ev_set}",
             {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
-        if not was and stamp_edges:
+        if _edge_values_change(was, ev_p) and stamp_edges:
             _stamp_edge_endpoints(store, _SUPERSEDES_REL, ends, ksrc, kdst, eowner,
                                   osc=osc, warnings=warnings)
         _warn_supersede_interval(store, st, ends, ksrc, kdst, src, dst, warnings)
@@ -1205,7 +1239,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             return None
         rel = _EC_EDGES[etype]
         (sl, sp), (dl, dp) = ends = (_end(st), _end(dt))
-        was = _edge_exists(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
+        was = _edge_values(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
         ev_set, ev_p = _ev_set("r", rel)
         b_set, b_p = _birth_set("r")
         store.run(
@@ -1213,7 +1247,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{rel}]->(b){b_set}{ev_set}",
             {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
-        if not was and stamp_edges:
+        if _edge_values_change(was, ev_p) and stamp_edges:
             _stamp_edge_endpoints(store, rel, ends, ksrc, kdst, eowner,
                                   osc=osc, warnings=warnings)
         return "created"
@@ -1243,13 +1277,20 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 # 쓴다. 정방향 재전송과 같은 결과여야 한다(무방향 MATCH 로 SET 하지 않는다).
                 ev_set, ev_p = _ev_set("r", "RELATED_TO")
                 if ev_set:
+                    # 저장된 방향의 끝점 순서로 읽고 스탬프한다(값이 바뀔 때만).
+                    rends = ((dl, dp), (sl, sp))
+                    held = _edge_values(store, "RELATED_TO", rends, kdst, ksrc,
+                                        owner=owner, osc=osc)
                     store.run(
                         f"MATCH (b:{dl})-[r:RELATED_TO]->(a:{sl}) "
                         f"WHERE b.{dp} = $d AND a.{sp} = $s{_o('b')}{_o('a')}{ev_set}",
                         {"s": ksrc, "d": kdst, **op, **ev_p})
+                    if _edge_values_change(held, ev_p) and stamp_edges:
+                        _stamp_edge_endpoints(store, "RELATED_TO", rends, kdst, ksrc,
+                                              eowner, osc=osc, warnings=warnings)
                 return "skipped_duplicate"
         rel = _CC_EDGES[etype]
-        was = _edge_exists(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
+        was = _edge_values(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
         ev_set, ev_p = _ev_set("r", rel)
         b_set, b_p = _birth_set("r")
         store.run(
@@ -1257,7 +1298,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{rel}]->(b){b_set}{ev_set}",
             {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
-        if not was and stamp_edges:
+        if _edge_values_change(was, ev_p) and stamp_edges:
             _stamp_edge_endpoints(store, rel, ends, ksrc, kdst, eowner,
                                   osc=osc, warnings=warnings)
         return "created"
