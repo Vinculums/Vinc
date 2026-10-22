@@ -5,13 +5,16 @@
  *  (`layoutInWorker`) → `toN3`·`toL3` 와 같은 변환 → `mount3d`. 다른 점은 데이터가
  *  사이드카가 아니라 공개 커뮤니티 API 에서 온다는 것 하나다.
  *
+ *  `app/src` 밖에 두는 이유: 이 화면은 사이드카가 아니라 사이트의 공개 커뮤니티 API 를
+ *  부른다. `app/src` 의 호출은 사이드카 계약과 대조된다(`dev/sidecar-contract-check.ts`).
+ *
  *  ⚠ 데스크톱의 저장된 설정(localStorage)을 읽지도 쓰지도 않는다. `mount3d` 의 prefs
  *  기본 인자가 `loadPrefs()` 라서 아래 `PREFS` 를 반드시 명시로 넘긴다. */
-import { mount3d, type N3, type L3 } from "./surfaces/view3d";
-import { layoutInWorker } from "./view-layout-client";
-import { defaultPrefs, edgeKindOf, EDGE_KINDS, type EdgeKind, type ViewPrefs } from "./view-prefs";
-import { palette, hexStr, type ThemeMode } from "./theme";
-import type { GraphEdge, GraphNode } from "./api";
+import { mount3d, type N3, type L3 } from "../src/surfaces/view3d";
+import { layoutInWorker } from "../src/view-layout-client";
+import { defaultPrefs, edgeKindOf, EDGE_KINDS, type EdgeKind, type ViewPrefs } from "../src/view-prefs";
+import { palette, hexStr, type ThemeMode } from "../src/theme";
+import type { GraphEdge, GraphNode } from "../src/api";
 
 /** 그리는 선 갈래. 데스크톱 범례의 "Related (no direction)" 하나만 켠다. 방향·주제 교차·
  *  다리 갈래를 켜려면 이 목록에 더한다. */

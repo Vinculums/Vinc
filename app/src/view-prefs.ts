@@ -301,7 +301,7 @@ const DEFAULTS: ViewPrefs = {
   bundleOff: [],
 };
 /** 저장값을 거치지 않은 기본값 한 벌(새 배열). 저장소를 읽지도 쓰지도 않는 화면이
- *  데스크톱과 같은 기본에서 출발할 때 쓴다(`community-view.ts`). */
+ *  데스크톱과 같은 기본에서 출발할 때 쓴다(`app/community-view/main.ts`). */
 export const defaultPrefs = (): ViewPrefs =>
   ({ ...DEFAULTS, edgeOff: [...DEFAULTS.edgeOff], bundleOff: [...DEFAULTS.bundleOff] });
 // 주제 색 토글(`domainTint`)은 2026-09-26 에 없앴다 — 주제 색은 늘 켜져 있다(view-tint.ts).
