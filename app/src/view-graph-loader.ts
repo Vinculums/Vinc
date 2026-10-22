@@ -3,7 +3,7 @@ import { viewSessionCache } from "./view-session-cache";
 import { readGraphProgressively, type GraphRead } from "./view-graph-loading";
 import { graphReadPlan, wantsStagedRead } from "./view-graph-read";
 import { layoutInWorker } from "./view-layout-client";
-import { applyLayoutAnswer } from "./view-layout-wire";
+import { applyLayoutAnswer, placeOnAnswer, type LayoutAnswer } from "./view-layout-wire";
 import type { ViewPrefs } from "./view-prefs";
 import type { LayoutGraph } from "./view-layout";
 
@@ -31,6 +31,10 @@ type FetchedGraph = RawGraph & { stale?: boolean; layout?: "pending" | "failed" 
 const LAYOUT_PATIENCE_MS = 15_000;
 /** 큰 저장 배치의 전송도 기다리되, 화면은 그 전에 patience 기준으로 넘긴다. */
 const ROOTS_READ_TIMEOUT_MS = 30_000;
+/** 허브의 낡은 답으로 그린 뒤 새 답을 이 간격으로 묻는다. 답 본문은 바뀌었을 때만 온다(`have`). */
+const FOLLOW_EVERY_MS = 3_000;
+/** 그만 묻는 때. 허브가 배치 컨테이너를 기다리는 시간(300초)보다 길게 잡는다. */
+const FOLLOW_FOR_MS = 6 * 60_000;
 
 type GraphLoaderContext = {
   mountScope: ReturnType<typeof viewScope>;
@@ -58,6 +62,9 @@ type GraphLoaderContext = {
   patienceMs?: number;
   /** 시험용 저장 배치 읽기 제한. 화면 대기 시간은 patienceMs와 별개다. */
   rootsTimeoutMs?: number;
+  /** 시험용 따라 묻기 간격과 기한. 없으면 `FOLLOW_EVERY_MS`·`FOLLOW_FOR_MS`. */
+  followEveryMs?: number;
+  followForMs?: number;
 };
 
 type RetainedRef = { session: string; revision: string; key: string; prefs: string };
@@ -69,6 +76,8 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
     aspectRatio: number; graph: LayoutGraph } | undefined;
   let layoutJob: AbortController | undefined;
   let graphReadJob: AbortController | undefined;
+  /** 허브가 새 배치를 낼 때까지 따라 묻는 일. `abort()`(매 다시 그리기)는 이것을 접지 않는다. */
+  let followJob: AbortController | undefined;
   let clearPreview: (() => void) | undefined;
   let firstAccessUsed = false;
 
@@ -85,6 +94,7 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
     /** 쓰기·로그아웃 뒤: 이 마운트가 들고 있던 것을 전부 버린다. */
     reset() {
       viewSessionCache.clear(); rawGraph = undefined; layoutCache = undefined; loader.reuseGraph = false;
+      followJob?.abort();
     },
 
     async fetchGraph(p: ViewPrefs, scope: { domains?: string[] }): Promise<FetchedGraph> {
@@ -178,11 +188,13 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
             loader.retained = { session: before.session, revision: label, key: scopeKey, prefs: ctx.cameraPrefs(p) };
         });
       };
-      if (!useRoots || !res.executed) { remember(); return res; }
+      if (!useRoots || !res.executed) { followJob?.abort(); remember(); return res; }
       const aspectRatio = ctx.canvasRatio();
+      // 같은 배치를 다시 그리는 길만 허브 따라 묻기를 잇는다. 나머지 길은 다른 배치를 그린다.
       if (layoutCache && layoutCache.raw === res && layoutCache.basis === p.timeBasis
           && layoutCache.layout === p.layout && layoutCache.aspectRatio === aspectRatio)
         return { executed: true, ...layoutCache.graph };
+      followJob?.abort();
       const layoutKey = JSON.stringify([p.timeBasis, p.layout, aspectRatio]);
       const retainedLayout = grant && cached && viewSessionCache.getLayout(grant.session, scopeKey, grant.revision, layoutKey);
       if (retainedLayout) {
@@ -193,9 +205,53 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
       layoutJob?.abort();
       const job = layoutJob = new AbortController();
       const held = res;
-      const keep = (graph: LayoutGraph) => {
+      /** `retain`: 보관소에도 둔다. 허브의 낡은 답으로 그린 대역은 이 마운트에만 둔다. */
+      const keep = (graph: LayoutGraph, retain = true) => {
         layoutCache = { raw: held, basis: p.timeBasis, layout: p.layout, aspectRatio, graph };
-        return remember({ key: layoutKey, graph });
+        return retain ? remember({ key: layoutKey, graph }) : undefined;
+      };
+      /** 허브의 답을 이 읽기에 얹는다. 모르는 노드가 있으면 아는 자리 옆에 세운다(배치 엔진 없음). */
+      const onAnswer = (answer: LayoutAnswer): { graph: LayoutGraph; whole: boolean } | null => {
+        try {
+          const whole = applyLayoutAnswer(held.nodes || [], held.edges || [], answer);
+          if (whole) return { graph: whole, whole: true };
+          return { graph: placeOnAnswer(held.nodes || [], held.edges || [], answer), whole: false };
+        } catch { return null; }
+      };
+      // 허브가 쓴 답의 성격. `exact` 이면 예전처럼 그대로 쓰고 보관한다. 아니면 낡은 답으로 먼저
+      // 그리고, 허브가 새 답을 만들 때까지 따라 물어 갈아 끼운다(쓰기·재시작·배치 배포 뒤).
+      // 근거: [[vinc.reference.view-time-branches-layout]] §4
+      const fromHub: { exact?: boolean; follow?: boolean; digest?: string; used?: boolean } = {};
+      const follow = (applied: string | undefined) => {
+        followJob?.abort();
+        const fj = followJob = new AbortController();
+        const owner = ctx.mountScope.owner, scope = capturedScope;
+        // 화면 세대(`live`)는 보지 않는다: 갈아 끼우기 자체가 같은 그래프로 다시 그리기(세대 +1)이고,
+        // 옵션만 바꾼 다시 그리기도 이 배치를 그대로 쓴다. 다른 배치로 넘어가면 `followJob` 이 접힌다.
+        const followLive = () => !fj.signal.aborted && ctx.alive() && ctx.mountScope.key === viewScope().key;
+        void (async () => {
+          let have = applied, next: LayoutAnswer | undefined, nextMarker: string | undefined;
+          const until = performance.now() + (ctx.followForMs ?? FOLLOW_FOR_MS);
+          while (performance.now() < until) {
+            await new Promise(done => setTimeout(done, ctx.followEveryMs ?? FOLLOW_EVERY_MS));
+            if (!followLive()) return;
+            const r = await api.graphRoots(owner, p.timeBasis,
+              AbortSignal.any([fj.signal, AbortSignal.timeout(ctx.rootsTimeoutMs ?? ROOTS_READ_TIMEOUT_MS)]),
+              scope, have).catch(() => null);
+            if (!followLive()) return;
+            if (!r) continue;
+            if (!r.executed || r.state === "off") return;
+            if (r.answer && (!r.digest || r.digest !== have)) { next = r.answer; have = r.digest; nextMarker = r.marker; }
+            if (r.state === "ready" || r.state === "failed") break;
+          }
+          if (!next || !followLive()) return;
+          const swapped = onAnswer(next);
+          if (!swapped) return;
+          await keep(swapped.graph, swapped.whole && !!held.marker && nextMarker === held.marker);
+          if (!followLive()) return;
+          console.info("View layout swapped to the hub's fresh answer");
+          ctx.layoutReady();
+        })();
       };
       // 결과가 오기 전에 화면을 넘겨줄 수 있도록 배치 작업과 기다림을 나눈다. 큰 그래프에서
       // 배치가 기다림보다 길어도 작업은 계속 돌고, 끝나면 같은 화면에 갈아 끼운다.
@@ -204,11 +260,16 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
         const stored = await roots;
         if (readJob.signal.aborted || job.signal.aborted || !live())
           throw new DOMException("Layout read was canceled", "AbortError");
-        if (stored?.executed && stored.state === "ready" && typeof held.marker === "string"
-            && held.marker && stored.marker === held.marker && stored.answer) {
-          let graph: LayoutGraph | null = null;
-          try { graph = applyLayoutAnswer(held.nodes || [], held.edges || [], stored.answer); } catch {}
-          if (graph) { console.info("View layout loaded from hub"); return graph; }
+        // 허브가 답을 하나라도 들고 있으면 브라우저는 전체 배치를 하지 않는다. 답이 아예 없을
+        // 때(그 공간을 처음 열 때)만 워커로 간다.
+        const usable = stored?.executed && stored.state !== "off" && stored.answer ? onAnswer(stored.answer) : null;
+        if (stored && usable) {
+          const exact = usable.whole && stored.state === "ready" && typeof held.marker === "string"
+            && !!held.marker && stored.marker === held.marker;
+          // 허브가 배치에 실패한 상태면 10분 동안 다시 하지 않으므로 따라 묻지 않는다.
+          Object.assign(fromHub, { used: true, exact, follow: !exact && stored.state !== "failed", digest: stored.digest });
+          console.info(`View layout loaded from hub ${JSON.stringify({ state: stored.state, exact, whole: usable.whole })}`);
+          return usable.graph;
         }
         return layoutInWorker(held.nodes || [], held.edges || [], p.timeBasis, job.signal,
           undefined, aspectRatio);
@@ -220,16 +281,23 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
         new Promise<void>(done => { patience = setTimeout(done, ctx.patienceMs ?? LAYOUT_PATIENCE_MS); })]);
       clearTimeout(patience);
       if (job.signal.aborted || !live()) return { executed: false, stale: true };
-      if (outcome?.graph) { keep(outcome.graph); return { executed: true, ...outcome.graph }; }
+      // 허브의 낡은 답으로 그린 대역은 보관하지 않고, 허브의 새 답을 따라 묻는다.
+      const exactOrLocal = () => !fromHub.used || !!fromHub.exact;
+      const followHub = () => { if (fromHub.follow) follow(fromHub.digest); };
+      if (outcome?.graph) {
+        keep(outcome.graph, exactOrLocal()); followHub();
+        return { executed: true, ...outcome.graph };
+      }
       // 실패하면 오류 상자가 아니라 서버가 이미 준 중심에서 좌표로 그린다.
       if (outcome) return { ...held, executed: true, layout: "failed" };
       void work.then(async graph => {
         if (job.signal.aborted || !live()) return;
         // 보관이 끝난 뒤에 갈아 끼운다. 먼저 다시 그리면 재사용 검증이 보관 전 상태를 보고
         // 그래프를 다시 읽어 배치를 처음부터 시작한다.
-        await keep(graph);
+        await keep(graph, exactOrLocal());
         if (job.signal.aborted || !live()) return;
         ctx.layoutReady();
+        followHub();
       }, () => { if (!job.signal.aborted && live()) ctx.layoutFailed(); });
       return { ...held, executed: true, layout: "pending" };
     },
