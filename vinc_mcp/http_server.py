@@ -204,6 +204,9 @@ def _team_plan(resp: dict) -> str:
 
 #: 하루 창은 00:00 UTC 에 리셋되고 한도 뒤에 잠그지 않는다(약관의 "다음 날까지"와 같은 규칙).
 _DAY_S = 86400.0
+#: 한도 표시(`quota_view`)가 창을 부르는 이름. 굴러가는 24시간이 아니라 UTC 달력의 하루다.
+#: 창 길이나 정렬을 바꾸면 이 값과 도구 참조문(`vinc_whoami`)을 같이 바꾼다.
+_WINDOW = "utc_day"
 
 
 def _current_plan(plan: str | None) -> str | None:
@@ -373,7 +376,8 @@ class MCPHTTPApp:
         self._dispatcher = Dispatcher(self.bridge, hub=True)
 
     def quota_snapshot(self, owner: str, plan: str | None) -> dict | None:
-        """내부 사용량 읽기. 공개 whoami 연결·소비·잠금 생성은 하지 않는다.
+        """사용량 읽기(`quota_view` 를 거쳐 whoami·`_meta`·계정 화면이 쓴다). 소비·리셋·
+        잠금 생성은 하지 않고, 세는 스페이스면 카운터 한 줄(owner 기본키)만 읽는다.
 
         계정 정책의 그래프 owner 기준을 사용한다. 미설정·면제는 유한 잔여량으로
         꾸미지 않는다. 호출자는 인증으로 결정한 owner만 전달해야 한다.
@@ -394,7 +398,11 @@ class MCPHTTPApp:
     def quota_view(self, owner: str, plan: str | None) -> dict | None:
         """한 스페이스의 한도 표시. `/v1/me`·MCP `_meta`·계정 화면이 같은 모양을 읽는다.
 
-        세지 않는 스페이스(Genius·면제)는 `metered: False` 로만 말하고 수를 지어내지 않는다.
+        세지 않는 스페이스는 `metered: False` 로 말하고 수를 지어내지 않는다. 그 이유가
+        면제(`exempt: True`)인지 등급(`plan`)인지는 갈라 말한다. 세는 스페이스는 창 이름
+        (`window`)·한도·쓴 수·남은 수·리셋 시각을 싣는다.
+        ⚠ 싣는 것은 인자로 받은 owner 의 숫자뿐이고 owner id·이메일은 싣지 않는다. 호출자는
+        인증으로 정한 owner(또는 계정이 그 사람의 멤버십으로 준 팀)만 넘겨야 한다.
         팀 owner 의 plan 이 None 이면 계정이 팀 등급을 아직 안 실은 것이라 `_team_plan` 과
         같이 읽는다. 쿼터가 꺼져 있으면(로컬·미설정) None.
         """
@@ -403,12 +411,15 @@ class MCPHTTPApp:
         snap = self.quota_snapshot(owner, plan)
         if snap is None:
             return None
+        if snap.get("exempt"):
+            return {"metered": False, "exempt": True}
         if snap.get("limit") is None:
-            return {"metered": False}
+            return {"metered": False, "exempt": False, "plan": _current_plan(plan)}
         limit, used, left, resets_at = (snap["limit"], snap["count"], snap["remaining"],
                                         snap["resets_at"])
-        view = {"metered": True, "plan": "free", "limit": limit, "used": used,
-                "remaining": left, "resets_at": _utc_iso(resets_at) if resets_at else None}
+        view = {"metered": True, "exempt": False, "plan": "free", "window": _WINDOW,
+                "limit": limit, "used": used, "remaining": left,
+                "resets_at": _utc_iso(resets_at) if resets_at else None}
         if used >= limit * _WARN_RATIO:
             when = f" They reset {_reset_phrase(resets_at, time.time())}." if resets_at else ""
             view["warning"] = (f"You have used {used:,} of {limit:,} tool calls today on the "

@@ -264,8 +264,9 @@ jobs:
           # ⚠ **파이썬 경로 필터는 없다.** 여기 있었고, 그것이 전량 pytest 를 끄는
           # 스위치였다 — 경위와 실측은 `core-pkns` 잡의 주석에 있다. 다시 만들지 말 것:
           # `core`·`core-pkns` 는 둘 다 무조건이고 이 잡이 거르는 것은 `app`·`rust` 뿐이다.
-          # app 잡은 tsc 와 dev/*-check.ts 뿐 — app/ 밖을 읽지 않는다.
-          has '^app/' \
+          # app 잡은 tsc 와 dev/*-check.ts 뿐이다. app/ 밖에서 읽는 것은 사이드카 계약
+          # (api/contract/) 하나라 그것만 바뀌어도 돈다(dev/sidecar-contract-check.ts).
+          has '^app/|^api/contract/' \
             && echo "app=true" >> "$GITHUB_OUTPUT" || echo "app=false" >> "$GITHUB_OUTPUT"
           # 러스트 셸. `app/src-tauri/` 밖의 변경이 컴파일을 깨뜨릴 길은 없다.
           has '^app/src-tauri/' \
