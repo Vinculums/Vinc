@@ -136,6 +136,8 @@ export function setLnbTopicPicker(fn: TopicPicker | null) {
     if (atSurfaceRoot()) queueMicrotask(scopeAgentGraph);
   }
 }
+/** 읽어 온 Agent 역할 수. 아직 안 읽었으면 null. 홈의 빈 목록이 무엇으로 이을지 가른다. */
+export const agentRoleCount = (): number | null => agentRoster ? agentRoster.length : null;
 /** 첫 실행 스코프를 이미 걸었는가(세션에 한 번). */
 let launchScoped = false;
 
@@ -302,7 +304,9 @@ function paintAgentList(roles: AgentRole[]): string {
   const L = COPY.ui.lnb;
   const hint = agentHintHtml();
   if (!roles.length) {
-    return hint + `<p class="lnb-none hint">${esc(L.agentsEmpty)}</p>`;
+    // 빈 목록 대신 만들기로 바로 잇는다. 머리의 + 와 같은 시트를 연다.
+    return hint + `<div class="lnb-agent-empty"><p class="lnb-none hint">${esc(L.agentsEmpty)}</p>
+      <button class="btn btn-primary lnb-new-role" type="button">${esc(COPY.author.role.title)}</button></div>`;
   }
   const parts: string[] = [hint, `<div class="lnb-tree lnb-agent-list" role="tree">`];
   let team = "\0";
@@ -773,6 +777,10 @@ export function mountLnb(opts: { deferLoad?: boolean } = {}) {
       paint();
       // 좁은 창에서는 고른 것이 서랍 **뒤**에 열린다 — 닫아서 보여 준다.
       if (compact()) setOpen(false, false);
+      return;
+    }
+    if (t.closest(".lnb-new-role")) {
+      void import("./role-composer").then((m) => m.openRoleComposer());
       return;
     }
     const doc = t.closest<HTMLElement>(".lnb-doc");

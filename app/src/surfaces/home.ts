@@ -8,7 +8,7 @@ import { tintMap } from "../view-tint";
 import type { ThemeMode } from "../theme";
 import type { DocEditorHandle } from "../doc-editor";
 import { setViewHooks } from "../topbar";
-import { setLnbActive, setLnbDocOpener, setLnbTopicPicker, refreshLnb } from "../lnb";
+import { agentRoleCount, setLnbActive, setLnbDocOpener, setLnbTopicPicker, refreshLnb } from "../lnb";
 import { setLiveRefresher } from "../live";
 
 /** 문서 홈(2026-10-22) — 문서를 보고 쓰고 정리하는 첫 화면.
@@ -38,6 +38,8 @@ const SORT_KEY = "vinc.home.sort";
 let docsCache: Doc[] | null = null;
 /** 거르는 주제(접두). 비면 전체. 여럿이면 합집합이다(Agent: 역할 주제들). 세션 안에서 남는다. */
 let scope: string[] = [];
+/** 지금 거르기가 Agent 가 건 역할 주제들인가. 그때 빈 목록은 거르기 풀기가 아니라 역할 만들기로 잇는다. */
+let agentScope = false;
 let query = "";
 let shown = PAGE;
 let sort: Sort = (() => {
@@ -93,6 +95,7 @@ export async function renderHome(el: HTMLElement): Promise<void> {
   setLnbTopicPicker((path, add, set) => {
     const paths = Array.isArray(path) ? path : [path];
     const one = paths[0];
+    agentScope = !!set;
     scope = set ? paths
       : add ? (scope.includes(one) ? scope.filter((t) => t !== one) : [...scope, one])
       : (scope.length === 1 && scope[0] === one ? [] : [one]);
@@ -170,10 +173,16 @@ async function paintList(el: HTMLElement, gen: number): Promise<void> {
     }
   } else rows = page.map(row).join("");
 
-  const empty = !docs.length
-    ? `<div class="home-empty"><p>${esc(H.empty)}</p>
-        <div class="home-acts"><button class="btn btn-primary" type="button" data-act="new">${esc(H.newDoc)}</button>
-        <button class="btn" type="button" data-act="import">${esc(H.import)}</button></div></div>`
+  const roles = agentRoleCount() || 0;
+  // Agent 가 건 거르기에서 빈 목록은 문서 전체가 비었든 아니든 역할 만들기로 잇는다.
+  const empty = !picked.length && agentScope && !query
+    ? `<div class="home-empty"><p>${esc(roles ? H.agentNoDocs : H.agentNone)}</p>
+        <div class="home-acts"><button class="btn btn-primary" type="button" data-act="role">${esc(COPY.author.role.title)}</button>
+        ${roles ? `<button class="btn" type="button" data-act="new">${esc(H.newDoc)}</button>` : ""}</div></div>`
+    : !docs.length
+      ? `<div class="home-empty"><p>${esc(H.empty)}</p>
+          <div class="home-acts"><button class="btn btn-primary" type="button" data-act="new">${esc(H.newDoc)}</button>
+          <button class="btn" type="button" data-act="import">${esc(H.import)}</button></div></div>`
     : !picked.length
       ? `<div class="home-empty"><p>${esc(H.emptyFiltered)}</p>
           <button class="btn btn-quiet" type="button" data-act="clear">${esc(H.clearFilter)}</button></div>`
@@ -222,12 +231,14 @@ async function paintList(el: HTMLElement, gen: number): Promise<void> {
     const act = b.dataset.act;
     if (act === "new") openWriter(scope.length === 1 ? scope[0] : "");
     else if (act === "import") void import("./settings").then((m) => m.openSettings("data", "import"));
-    else if (act === "clear") { scope = []; query = ""; shown = PAGE; void paintList(el, gen); }
+    else if (act === "role") void import("../role-composer").then((m) => m.openRoleComposer());
+    else if (act === "clear") { scope = []; agentScope = false; query = ""; shown = PAGE; void paintList(el, gen); }
     else if (act === "more") { shown += PAGE; void paintList(el, gen); }
   }));
   el.querySelectorAll<HTMLElement>("[data-topic]").forEach((b) => b.addEventListener("click", () => {
     const t = b.dataset.topic || "";
     scope = t ? [t] : [];
+    agentScope = false;
     shown = PAGE;
     void paintList(el, gen);
   }));
