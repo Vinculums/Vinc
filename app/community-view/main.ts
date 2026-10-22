@@ -331,7 +331,9 @@ function overlay(g: ReturnType<typeof mount3d>, laid: Laid, scale: number, down:
   const lanes = laid.lanes.map(({ topic }) => {
     const label = svgEl("text", { class: "lane" });
     // 세로 화면의 띠 이름은 비스듬히 서서 길면 화면 위로 넘친다. 그때만 줄인다.
-    const name = topic || text.noTopic;
+    // 주제 경로는 주소 꼴이라(`relativity-and-cosmology`) 사이트 목록과 같이 띄우고 첫 글자만 올린다.
+    const words = String(topic || "").split("/").pop()!.replace(/-/g, " ");
+    const name = words ? words.charAt(0).toUpperCase() + words.slice(1) : text.noTopic;
     label.textContent = down && name.length > 16 ? name.slice(0, 15) + "…" : name;
     return label;
   });
