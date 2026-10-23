@@ -83,6 +83,29 @@ class VerificationTests(unittest.TestCase):
                       sleep=lambda seconds: now.__setitem__(0, now[0] + seconds), wait_s=25)
         self.assertEqual(now[0], 25)
 
+    def test_a_busy_store_is_waited_out_and_reported(self):
+        """새 리비전이 막 떴을 때의 `store_busy` 는 기한 안에서 다시 묻는다(run 39906310900)."""
+        for busy_call in (1, 2):
+            now, calls = [0], [0]
+            def get(path, *args):
+                calls[0] += 1
+                if calls[0] == busy_call:
+                    raise vr.StoreBusy("account read was not executed (/graph/roots: store_busy)")
+                return ROOTS if "roots" in path else GRAPH
+            result = vr.verify("synthetic", get=get, clock=lambda: now[0],
+                               sleep=lambda seconds: now.__setitem__(0, now[0] + seconds))
+            self.assertEqual(result, {"state": "ready", "marker_matches": True,
+                                      "nodes": 2, "edges": 2, "busy_retries": 1})
+
+    def test_a_store_that_stays_busy_is_bounded(self):
+        now = [0]
+        def get(*args):
+            raise vr.StoreBusy("account read was not executed (/graph/roots: store_busy)")
+        with self.assertRaisesRegex(vr.VerificationError, "deadline"):
+            vr.verify("synthetic", get=get, clock=lambda: now[0],
+                      sleep=lambda seconds: now.__setitem__(0, now[0] + seconds), wait_s=25)
+        self.assertEqual(now[0], 25)
+
     def test_auth_and_contract_errors_are_not_retried(self):
         for error in ("account read returned HTTP 401", "account read was not executed",
                       "account reply was not JSON"):
@@ -110,6 +133,8 @@ class VerificationTests(unittest.TestCase):
                 with self.assertRaisesRegex(vr.VerificationError, "account read was not executed") as caught:
                     vr.read("/graph/roots?basis=recorded", "synthetic", 1)
             self.assertIn(text, str(caught.exception))
+            # 다시 물어도 되는 것은 store_busy 하나다. 사유가 없거나 다른 거절은 그대로 멈춘다.
+            self.assertEqual(isinstance(caught.exception, vr.StoreBusy), text.endswith("store_busy"))
 
 
 if __name__ == "__main__":

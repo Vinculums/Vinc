@@ -21,6 +21,11 @@ class VerificationError(RuntimeError):
     pass
 
 
+class StoreBusy(VerificationError):
+    """허브가 `store_busy` 로 읽기를 미뤘다. 새 리비전이 막 떠서 스토어를 잡고 있을 때 잠깐 나오는
+    일시 상태라, :func:`verify` 가 기한 안에서 같은 읽기를 다시 한다. 다른 거절은 이 종류가 아니다."""
+
+
 def read(path: str, key: str, timeout: float) -> dict:
     request = urllib.request.Request(BASE + path, headers={"Authorization": "Bearer " + key,
                                      "Cache-Control": "no-store"})
@@ -38,11 +43,12 @@ def read(path: str, key: str, timeout: float) -> dict:
     except ValueError:
         raise VerificationError("account reply was not JSON") from None
     if not isinstance(result, dict) or result.get("executed") is not True:
-        # 허브가 준 사유 코드를 함께 낸다. 이 거절은 재시도하지 않으므로 사유가 없으면
+        # 허브가 준 사유 코드를 함께 낸다. store_busy 밖의 거절은 재시도하지 않으므로 사유가 없으면
         # 배포 로그만으로는 일시 상태인지 계약 오류인지 가를 수 없다.
         error = result.get("error") if isinstance(result, dict) else None
         reason = error[:120] if isinstance(error, str) and error else "no error field"
-        raise VerificationError(f"account read was not executed ({path.split('?')[0]}: {reason})")
+        kind = StoreBusy if error == "store_busy" else VerificationError
+        raise kind(f"account read was not executed ({path.split('?')[0]}: {reason})")
     return result
 
 
@@ -75,12 +81,18 @@ def verify(key: str, *, get=read, clock=time.monotonic, sleep=time.sleep, wait_s
         raise VerificationError("VINC_GRAPH_READONLY_KEY is absent")
     deadline = clock() + wait_s
     transport_retries = 0
+    busy_retries = 0
     while clock() < deadline:
         timeout = max(1, min(30, deadline - clock()))
         try:
             roots = get("/graph/roots?basis=recorded", key, timeout)
             graph = (get("/graph?layout=hub&marker=1", key, max(1, min(30, deadline - clock())))
                      if roots.get("state") == "ready" else None)
+        except StoreBusy:
+            # 검색 시간축 검증기와 같은 규칙이다: 이 코드 하나만 같은 기한 안에서 다시 묻는다.
+            busy_retries += 1
+            sleep(min(10, max(0, deadline - clock())))
+            continue
         except VerificationError as exc:
             if str(exc) not in ("account read returned HTTP 502", "account read could not complete"):
                 raise
@@ -93,6 +105,8 @@ def verify(key: str, *, get=read, clock=time.monotonic, sleep=time.sleep, wait_s
             if result:
                 if transport_retries:
                     result["transport_retries"] = transport_retries
+                if busy_retries:
+                    result["busy_retries"] = busy_retries
                 return result
         elif state not in ("pending", "stale"):
             raise VerificationError(f"stored layout state is {state if state in ('off', 'failed') else 'invalid'}")
