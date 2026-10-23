@@ -309,6 +309,24 @@ class HealthContractTests(unittest.TestCase):
             else:
                 os.environ["VINC_EMBED_APPLY_PAUSED"] = old
 
+    def test_health_names_retrieval_escape_hatches_that_are_open(self):
+        """엄격 판정·의미 순서·의미 팔 중 꺼진 것이 /health 에 이름으로 보인다. 다 켜져 있으면 키가 없다."""
+        keys = ("VINC_BRIEF_STRICT", "VINC_NODE_SEM_RANK", "VINC_NODE_SEMANTIC_ARM")
+        old = {k: os.environ.pop(k, None) for k in keys}
+        try:
+            with running_server(_app(store=None)) as base:
+                self.assertNotIn("retrieval_overrides", _req(base, "/health", token=None)[1])
+                os.environ["VINC_BRIEF_STRICT"] = "off"
+                os.environ["VINC_NODE_SEM_RANK"] = "0"
+                self.assertEqual(_req(base, "/health", token=None)[1].get("retrieval_overrides"),
+                                 ["VINC_BRIEF_STRICT", "VINC_NODE_SEM_RANK"])
+        finally:
+            for k, v in old.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
     def test_missing_token_401(self):
         with running_server(_app()) as base:
             code, obj = _req(base, "/recall", token=None)

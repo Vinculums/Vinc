@@ -2815,6 +2815,10 @@ class _Handler(BaseHTTPRequestHandler):
                     body["durable_ack"] = durable.detail()
             if embed_apply_paused():
                 body["embed_apply_paused"] = True
+            # 검색 품질을 크게 떨어뜨리는 비상구가 열려 있으면 이름을 싣는다. 정상이면 키가 없다.
+            overrides = q.retrieval_overrides()
+            if overrides:
+                body["retrieval_overrides"] = overrides
             # 색인이 잔해로 막혔다 — 그 팔이 꺼져 있고 그 표의 쓰기가 거절된다(fts_index 면
             # 문서 저장·삭제가 전부다). 재기동이 고친다(`_heal_search_indexes`). 정상이면 키가 없다.
             for key, attr in (("vector_index", "vector_index_remnant"),

@@ -3658,6 +3658,23 @@ def _brief_sem_promote_on() -> bool:
 _SEM_PROMOTE = 0.049
 
 
+def retrieval_overrides() -> list[str]:
+    """측정상 크게 나빠지는 비상구 가운데 지금 열린 것(환경변수 이름). 없으면 빈 목록.
+
+    `VINC_BRIEF_STRICT`·`VINC_NODE_SEM_RANK`·`VINC_NODE_SEMANTIC_ARM` 은 둘 다 켜야 오르는
+    한 쌍이 셋으로 묶인 것이라, 하나라도 끄면 1위 정답과 오답 확정이 함께 무너진다.
+    `/health` 가 이 목록을 실어 꺼진 채 배포된 것이 밖에서 보이게 한다.
+    근거: [[vinc.spec.retrieval-knobs]] §2"""
+    out = []
+    if not _brief_strict_on():
+        out.append("VINC_BRIEF_STRICT")
+    if not _retrieval._node_sem_rank_on():
+        out.append("VINC_NODE_SEM_RANK")
+    if not _retrieval._node_semantic_arm_on():
+        out.append("VINC_NODE_SEMANTIC_ARM")
+    return out
+
+
 def _brief_token_decisive(top: dict, second: dict) -> bool:
     """1위가 2위를 토큰으로 갈랐는가 — 엄격 규칙이면 `_STRICT_MARGIN`, 아니면 1."""
     margin = _STRICT_MARGIN if _brief_strict_on() else 1   # 1 이면 현행과 글자 그대로 같다
