@@ -3646,16 +3646,19 @@ _STRICT_MARGIN = 2
 
 
 def _brief_sem_promote_on() -> bool:
-    """되묻기 1위를 의미 우위로 확정할 것인가. **기본은 꺼짐**(`VINC_BRIEF_SEM_PROMOTE`).
-    켜는 것은 규칙과 시험지의 저자가 다른 골드(VIN-57)가 같은 이득을 낼 때 결정으로 한다."""
-    return truthy(os.environ.get("VINC_BRIEF_SEM_PROMOTE"))
+    """되묻기 1위를 의미 우위로 확정할 것인가. **기본은 켜짐**이고
+    `VINC_BRIEF_SEM_PROMOTE=off` 가 토큰 규칙만 쓰던 동작으로 되돌린다(측정용 비상구).
+    끄면 brief 의 맞는 확정이 절반 아래로 줄고, 틀린 노드 확정은 줄지 않는다.
+    근거: [[vinc.spec.retrieval-knobs]] §2"""
+    return str(os.environ.get("VINC_BRIEF_SEM_PROMOTE", "")).strip().lower() not in (
+        "0", "off", "false", "no")
 
 
 #: 승격에 필요한 의미 우위: 의미 팔 원시 목록에서 1위가 나머지보다 가까운 거리(`sem_lead`,
-#: search 가 단다). `_SEM_GAP`(0.010, 순서만 바꾼다)과 다른 값이다. 그 값을 확신 문턱으로
-#: 쓰면 답 불가를 대부분 확정한다. 옮기려면 다시 잴 것.
-#: 근거: [[decision:gate-d-reopens-on-the-semantic-arms-own-lead-behind-a-flag-left-off-2026-09-29]]
-_SEM_PROMOTE = 0.049
+#: search 가 단다). 유효구간 동점 가드가 지운 행과 견줄 때도 같은 값을 쓴다. `_SEM_GAP`
+#: (0.010, 순서만 바꾼다)과 다른 값이다. 내리면 틀린 노드 확정이 늘어난다. 옮기려면 다시 잴 것.
+#: 근거: [[vinc.spec.retrieval-knobs]] §2
+_SEM_PROMOTE = 0.12
 
 
 def retrieval_overrides() -> list[str]:
@@ -3663,11 +3666,14 @@ def retrieval_overrides() -> list[str]:
 
     `VINC_BRIEF_STRICT`·`VINC_NODE_SEM_RANK`·`VINC_NODE_SEMANTIC_ARM` 은 둘 다 켜야 오르는
     한 쌍이 셋으로 묶인 것이라, 하나라도 끄면 1위 정답과 오답 확정이 함께 무너진다.
+    `VINC_BRIEF_SEM_PROMOTE` 를 끄면 brief 의 맞는 확정이 절반 아래로 준다.
     `/health` 가 이 목록을 실어 꺼진 채 배포된 것이 밖에서 보이게 한다.
     근거: [[vinc.spec.retrieval-knobs]] §2"""
     out = []
     if not _brief_strict_on():
         out.append("VINC_BRIEF_STRICT")
+    if not _brief_sem_promote_on():
+        out.append("VINC_BRIEF_SEM_PROMOTE")
     if not _retrieval._node_sem_rank_on():
         out.append("VINC_NODE_SEM_RANK")
     if not _retrieval._node_semantic_arm_on():
@@ -3736,7 +3742,7 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     같은 제목이 둘 이상이면 어느 쪽을 물었는지 모르므로 되묻는다(doc 미러 제목 충돌).
     근거: [[vinc.plan.rag-code-review-fixes-2026-09-29 §7]]
 
-    **의미 우위 승격**(`VINC_BRIEF_SEM_PROMOTE`, 기본 꺼짐)은 위 ⚠ 의 유일한 예외다.
+    **의미 우위 승격**(`VINC_BRIEF_SEM_PROMOTE`, 기본 켜짐)은 위 ⚠ 의 유일한 예외다.
     랭킹 갈래에서 choose 가 될 1위가 의미 팔 원시 목록의 나머지보다 `_SEM_PROMOTE` 이상
     가까우면 토큰이 0 이어도 확정한다. 이름 댄 갈래(같은 제목 둘 포함)와 단독 후보 갈래는
     그 앞에서 돌아오므로 승격되지 않는다. 단독 후보에는 앞설 나머지가 없어 `sem_lead` 도
