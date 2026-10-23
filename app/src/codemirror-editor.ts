@@ -20,10 +20,8 @@ import { syntaxTree } from "@codemirror/language";
 import { MentionMenu, SelectionBar, MENTION_RE,
          type MentionOpts, type SelectionOpts } from "./cm-assist";
 import { esc } from "./components";
-
-/** 슬래시 커맨드 항목 — 결정론 블록 삽입(오프라인·무LLM). insert = 삽입할 마크다운
- *  템플릿, cursorBack = 삽입 후 커서를 끝에서 몇 칸 되돌릴지(코드펜스 안쪽 등). */
-type SlashItem = { label: string; insert: string; cursorBack?: number };
+import { InsertMenu, applyFormat, filterBlocks, insertBlock,
+         type InsertBlock, type InsertOpts } from "./cm-insert";
 
 export type CmHandle = {
   getValue: () => string;
@@ -35,7 +33,11 @@ export type CmHandle = {
   scrollToHighlight: () => void;
   /** 임의 오프셋으로 스크롤 — 목차 클릭과 검색의 청크 히트 착지가 쓴다.
    *  범위를 넘는 값은 문서 끝으로 잘린다(재청킹으로 오프셋이 어긋나도 튀지 않는다). */
-  scrollToOffset: (pos: number) => void;
+  scrollToOffset: (pos: number, align?: "center" | "start") => void;
+  /** 오프셋이 놓인 줄의 화면 y(뷰포트 기준). 옆 칸 목차가 지금 절을 고를 때 쓴다. */
+  lineTop: (pos: number) => number;
+  /** 삽입 메뉴를 화면 좌표에 연다(머리 줄의 + 버튼). 편집 불가면 아무것도 안 한다. */
+  openInsert: (at: { x: number; y: number }) => void;
 };
 
 // 인라인 문법 토큰 — 짝 기호를 숨기고(replace) 안쪽을 서식(mark). 순서 주의:
@@ -43,6 +45,7 @@ export type CmHandle = {
 type Tok = { re: RegExp; cls: string };
 const INLINE: Tok[] = [
   { re: /`([^`]+)`/g, cls: "cm-r-code" },
+  { re: /~~([^~\n]+)~~/g, cls: "cm-r-strike" },
   { re: /\*\*([^*\n]+)\*\*/g, cls: "cm-r-strong" },
   { re: /(?<![*])\*([^*\n]+)\*(?![*])/g, cls: "cm-r-em" },
   // 문서 상호참조. 코퍼스가 이미 이 글자로 서로를 가리키고 있었는데 밑줄만 그어진
@@ -58,6 +61,8 @@ const MDLINK_RE = /\[([^\]\n]+)\]\(([^)\n]+)\)/g;
 const HEADING = /^(#{1,6})\s+/;
 const QUOTE = /^>\s?/;
 const BULLET = /^(\s*)([-*])\s+/;
+// 체크리스트 `- [ ] ` · `- [x] `. 불릿보다 먼저 본다(같은 줄이 둘 다에 걸린다).
+const TASK = /^(\s*)([-*+])\s+\[([ xX])\]\s/;
 const HR = /^(-{3,}|\*{3,})\s*$/;
 
 // 표(GFM) — 줄 단위로 판별한다. 표는 다중행 블록이라 lineDecos 의 한 줄 계약으로는
@@ -360,6 +365,15 @@ function lineDecos(text: string, base: number,
     out.push({ from: base, to: base + text.length,
       deco: Decoration.replace({ widget: new HrWidget() }) });
     return;
+  } else if (TASK.test(text)) {
+    // 머리표와 상자 기호를 통째로 체크 상자 하나로 바꾼다. 누르면 원문의 칸 한 글자를
+    // 뒤집는다(편집기 mousedown 이 맡는다 — 위젯은 자기 자리를 모른다).
+    const t = TASK.exec(text)!;
+    const markFrom = base + t[1].length;
+    const done = t[3] !== " ";
+    out.push({ from: markFrom, to: base + t[0].length,
+      deco: Decoration.replace({ widget: new TaskWidget(done) }) });
+    if (done) out.push({ from: base, to: base, deco: Decoration.line({ class: "cm-r-done" }) });
   } else {
     const b = BULLET.exec(text);
     if (b) {
@@ -393,6 +407,18 @@ function lineDecos(text: string, base: number,
 
 class HrWidget extends WidgetType {
   toDOM() { const el = document.createElement("span"); el.className = "cm-r-hr"; return el; }
+}
+class TaskWidget extends WidgetType {
+  constructor(readonly done: boolean) { super(); }
+  eq(o: TaskWidget) { return o.done === this.done; }
+  toDOM() {
+    const el = document.createElement("span");
+    el.className = `cm-r-task${this.done ? " on" : ""}`;
+    el.setAttribute("role", "checkbox");
+    el.setAttribute("aria-checked", String(this.done));
+    return el;
+  }
+  ignoreEvent() { return false; }
 }
 class BulletWidget extends WidgetType {
   toDOM() { const el = document.createElement("span"); el.className = "cm-r-bullet"; el.textContent = "· "; return el; }
@@ -486,55 +512,53 @@ const livePreview = ViewPlugin.fromClass(class {
   }
 }, { decorations: (v) => v.decorations });
 
-// ── 슬래시 커맨드(D45-E 마감) — 빈 줄에서 "/" → 결정론 블록 메뉴 ──────────────
-// 커서가 "/" 하나뿐인 줄에 있으면 뜨는 작은 메뉴. 선택 = "/" 를 블록 템플릿으로
-// 교체(결정론·오프라인·무LLM). 상태는 View 옆의 DOM 하나로 관리한다.
+// ── 슬래시 커맨드(D45-E 마감) — 줄 머리의 "/" → 블록 메뉴 ──────────────────────
+// 줄이 "/" 로 시작하고 커서가 줄 끝이면 뜬다. "/" 뒤 글자로 거른다("/표" · "/tab").
+// 목록은 삽입 메뉴와 같은 블록이다(cm-insert) — 문이 셋이어도 넣는 것은 한 벌이다.
 class SlashMenu {
   dom: HTMLElement;
-  items: SlashItem[] = [];
+  items: InsertBlock[] = [];
   sel = 0;
   open = false;
-  from = 0;   // "/" 시작 오프셋(교체 범위)
-  constructor(private view: EditorView, private list: SlashItem[]) {
+  constructor(private view: EditorView, private list: InsertBlock[]) {
     this.dom = document.createElement("div");
-    this.dom.className = "cm-slash-menu palette-card";
-    this.dom.style.cssText = "position:absolute;z-index:70;min-width:11rem;padding:.25rem;"
-      + "display:none;font-size:.85em";
+    this.dom.className = "cm-slash-menu cm-insert";
+    this.dom.hidden = true;
     document.body.appendChild(this.dom);
   }
-  show(from: number) {
-    this.items = this.list; this.sel = 0; this.from = from; this.open = true;
-    const c = this.view.coordsAtPos(from);
+  show(lineFrom: number, query: string) {
+    const was = this.open;
+    this.items = filterBlocks(this.list, query);
+    if (!this.items.length) { this.hide(); return; }
+    this.sel = was ? Math.min(this.sel, this.items.length - 1) : 0;
+    const c = this.view.coordsAtPos(lineFrom);
     if (!c) { this.hide(); return; }
-    this.dom.style.left = `${Math.round(c.left)}px`;
-    this.dom.style.top = `${Math.round(c.bottom + 4)}px`;
+    this.open = true;
     this.render();
-    this.dom.style.display = "block";
+    this.dom.hidden = false;
+    const h = this.dom.offsetHeight;
+    const below = c.bottom + 4 + h < window.innerHeight;
+    this.dom.style.left = `${Math.round(c.left)}px`;
+    this.dom.style.top = `${Math.round(below ? c.bottom + 4 : c.top - h - 4)}px`;
   }
   render() {
-    this.dom.innerHTML = this.items.map((it, i) =>
-      `<div class="cm-slash-item list-row${i === this.sel ? " sel" : ""}" data-i="${i}"
-        style="padding:.2rem .4rem;cursor:pointer;${i === this.sel
-          ? "background:hsl(var(--muted))" : ""}">${it.label.replace(/[&<>"]/g, (c) =>
-            c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;")}</div>`)
-      .join("");
-    this.dom.querySelectorAll<HTMLElement>(".cm-slash-item").forEach((el) => {
+    this.dom.innerHTML = this.items.map((b, i) => `<div class="cm-ins-row${i === this.sel ? " on" : ""}" data-i="${i}">
+        <span class="cm-ins-glyph" aria-hidden="true">${esc(b.glyph)}</span>
+        <span class="cm-ins-label">${esc(b.label)}</span>
+        <span class="cm-ins-hint" aria-hidden="true">${esc(b.hint)}</span></div>`).join("");
+    this.dom.querySelectorAll<HTMLElement>(".cm-ins-row").forEach((el) => {
       el.addEventListener("mousedown", (e) => { e.preventDefault(); this.choose(Number(el.dataset.i)); });
     });
+    this.dom.querySelector(".cm-ins-row.on")?.scrollIntoView({ block: "nearest" });
   }
   move(d: number) { if (!this.open) return; this.sel = (this.sel + d + this.items.length) % this.items.length; this.render(); }
-  hide() { this.open = false; this.dom.style.display = "none"; }
+  hide() { this.open = false; this.dom.hidden = true; }
   choose(i = this.sel) {
     if (!this.open) return;
     const it = this.items[i]; if (!it) return;
-    const to = this.from + 1;   // "/" 한 글자
-    const insert = it.insert;
-    const cursor = this.from + insert.length - (it.cursorBack || 0);
-    this.view.dispatch({
-      changes: { from: this.from, to, insert },
-      selection: { anchor: cursor },
-    });
-    this.hide(); this.view.focus();
+    this.hide();
+    // "/질의" 줄을 빈 줄로 보고 그 자리를 블록으로 갈아 끼운다.
+    insertBlock(this.view, it, [3, 3], true);
   }
   destroy() { this.dom.remove(); }
 }
@@ -543,7 +567,8 @@ class SlashMenu {
  *  MVP textarea 로 폴백하게 한다(무손실은 어느 쪽이든 동일 — 소스가 정본). */
 export function mountEditor(el: HTMLElement, opts: {
   initial: string; onChange: (text: string) => void; onSave: () => void;
-  slash?: SlashItem[];
+  /** 삽입 목록(슬래시 · 우클릭 · + 버튼 공용). 카피는 호출부가 준다. */
+  insert?: InsertOpts;
   /** 시작 상태. Reader 진입은 읽기 전용이지만 **렌더는 완전히 같다** — 편집을 켜도
    *  화면이 다시 그려지지 않고 커서만 생긴다. */
   readOnly?: boolean;
@@ -561,6 +586,10 @@ export function mountEditor(el: HTMLElement, opts: {
   selection?: SelectionOpts;
 }): CmHandle {
   let slash: SlashMenu | null = null;
+  let inserter: InsertMenu | null = null;
+  /** 사람이 이 편집기에 한 번이라도 커서를 둔 적이 있는가. 없으면 + 버튼은 문서 끝에 넣는다
+   *  (첫 마운트의 선택은 0 이라 그대로 넣으면 문서 맨 앞, 프론트매터 위에 들어간다). */
+  let touched = false;
   let mention: MentionMenu | null = null;
   let selbar: SelectionBar | null = null;
   const view = new EditorView({
@@ -590,6 +619,12 @@ export function mountEditor(el: HTMLElement, opts: {
         ]),
         keymap.of([
           { key: "Mod-s", preventDefault: true, run: () => { opts.onSave(); return true; } },
+          // 서식 단축키 — 고른 글을 씌우고, 이미 씌워져 있으면 벗긴다.
+          { key: "Mod-b", preventDefault: true, run: (v) => { applyFormat(v, "bold"); return true; } },
+          { key: "Mod-i", preventDefault: true, run: (v) => { applyFormat(v, "italic"); return true; } },
+          { key: "Mod-k", preventDefault: true, run: (v) => {
+            applyFormat(v, "link", opts.insert?.labels.linkText); return true; } },
+          { key: "Mod-Shift-x", preventDefault: true, run: (v) => { applyFormat(v, "strike"); return true; } },
           ...defaultKeymap, ...historyKeymap,
         ]),
         // GFM 기반으로 파싱한다(표·취소선·태스크리스트·자동링크). 인자 없이 부르면
@@ -615,8 +650,35 @@ export function mountEditor(el: HTMLElement, opts: {
         //    소스를 보이는 자리이고(라이브 프리뷰의 규율), 거기서까지 클릭을 뺏으면
         //    그 링크는 **손으로 고칠 수 없는 글자**가 된다.
         EditorView.domEventHandlers({
+          // 우클릭 = 삽입 메뉴. 브라우저 메뉴는 Shift+우클릭으로 그대로 남는다.
+          contextmenu: (e, v) => {
+            if (!inserter || e.shiftKey) return false;
+            e.preventDefault();
+            // 고른 글 밖을 눌렀으면 커서를 그 자리로 옮긴다(넣을 자리가 누른 곳이 되게).
+            const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
+            const s = v.state.selection.main;
+            if (pos != null && (s.empty || pos < s.from || pos > s.to))
+              v.dispatch({ selection: { anchor: pos } });
+            touched = true;
+            inserter.show({ x: e.clientX, y: e.clientY }, { clipboard: true });
+            return true;
+          },
+          focus: () => { touched = true; return false; },
           mousedown: (e, v) => {
             if (e.button !== 0) return false;
+            // 체크 상자 — 원문의 칸 한 글자를 뒤집는다. 편집 불가면 건드리지 않는다.
+            const box = (e.target as HTMLElement).closest?.(".cm-r-task");
+            if (box) {
+              if (!v.state.facet(EditorView.editable)) return false;
+              e.preventDefault();
+              const line = v.state.doc.lineAt(v.posAtDOM(box));
+              const t = TASK.exec(line.text);
+              if (!t) return true;
+              const at = line.from + t[0].indexOf("[") + 1;
+              v.dispatch({ changes: { from: at, to: at + 1, insert: t[3] === " " ? "x" : " " },
+                           userEvent: "input" });
+              return true;
+            }
             const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
             if (pos == null) return false;
             const line = v.state.doc.lineAt(pos);
@@ -648,11 +710,12 @@ export function mountEditor(el: HTMLElement, opts: {
         EditorView.lineWrapping,
         EditorView.updateListener.of((u) => {
           if (u.docChanged) opts.onChange(view.state.doc.toString());
-          // 슬래시 트리거 — 커서가 "/" 하나뿐인 줄에 있으면 메뉴, 아니면 닫는다.
+          // 슬래시 트리거 — 줄이 "/낱말" 하나이고 커서가 그 끝이면 메뉴, 아니면 닫는다.
           if (slash && (u.docChanged || u.selectionSet)) {
             const sel = u.state.selection.main;
             const line = u.state.doc.lineAt(sel.head);
-            if (sel.empty && line.text === "/" && sel.head === line.to) slash.show(line.from);
+            const m = /^\/([^\s/]{0,24})$/.exec(line.text);
+            if (sel.empty && m && sel.head === line.to && (u.docChanged || slash.open)) slash.show(line.from, m[1]);
             else slash.hide();
           }
           // `[[질의` — 커서 바로 앞에 있을 때만. 선택 영역이 있거나 커서가 떠나면 닫는다.
@@ -684,6 +747,7 @@ export function mountEditor(el: HTMLElement, opts: {
           ".cm-r-h3": { fontSize: "1.15em" }, ".cm-r-h4": { fontSize: "1.05em" },
           ".cm-r-strong": { fontWeight: "700" },
           ".cm-r-em": { fontStyle: "italic" },
+          ".cm-r-strike": { textDecoration: "line-through" },
           ".cm-r-code": { fontFamily: "ui-monospace, monospace", opacity: "0.85" },
           ".cm-r-link": { textDecoration: "underline" },
           // 문서 상호참조 — 따라갈 수 있는 글자라는 것만 밑줄로 말한다(색은 안 쓴다:
@@ -700,7 +764,10 @@ export function mountEditor(el: HTMLElement, opts: {
       ],
     }),
   });
-  if (opts.slash && opts.slash.length) slash = new SlashMenu(view, opts.slash);
+  if (opts.insert?.blocks.length && !opts.readOnly) {
+    slash = new SlashMenu(view, opts.insert.blocks);
+    inserter = new InsertMenu(view, opts.insert);
+  }
   if (opts.mention && !opts.readOnly) mention = new MentionMenu(view, opts.mention);
   if (opts.selection) {
     const bar = selbar = new SelectionBar(opts.selection);
@@ -720,15 +787,15 @@ export function mountEditor(el: HTMLElement, opts: {
   let hl: { char_start: number; char_end: number }[] = [];
   /** 오프셋 하나로 스크롤. 문서 길이로 자르는 이유: 청크 오프셋은 저장 시점의
    *  것이라 그 뒤 편집으로 짧아졌을 수 있다 — 넘는 값을 그대로 넣으면 던진다. */
-  const scrollTo = (pos: number) => {
+  const scrollTo = (pos: number, align: "center" | "start" = "center") => {
     const at = Math.max(0, Math.min(pos, view.state.doc.length));
-    view.dispatch({ effects: EditorView.scrollIntoView(at, { y: "center" }) });
+    view.dispatch({ effects: EditorView.scrollIntoView(at, { y: align, yMargin: 72 }) });
   };
   return {
     getValue: () => view.state.doc.toString(),
     setValue: (text) => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }),
     focus: () => view.focus(),
-    destroy: () => { slash?.destroy(); mention?.destroy(); selbar?.destroy(); view.destroy(); },
+    destroy: () => { slash?.destroy(); inserter?.destroy(); mention?.destroy(); selbar?.destroy(); view.destroy(); },
     setHighlights: (ranges) => {
       hl = ranges;
       view.dispatch({ effects: setHl.of(ranges.map((r) => ({ from: r.char_start, to: r.char_end }))) });
@@ -738,5 +805,17 @@ export function mountEditor(el: HTMLElement, opts: {
       if (first) scrollTo(first.char_start);
     },
     scrollToOffset: scrollTo,
+    lineTop: (pos) => {
+      const at = Math.max(0, Math.min(pos, view.state.doc.length));
+      return view.lineBlockAt(at).top + view.documentTop;
+    },
+    openInsert: (at) => {
+      if (!inserter) return;
+      if (!touched) {
+        view.dispatch({ selection: { anchor: view.state.doc.length } });
+        touched = true;
+      }
+      inserter.show(at, { clipboard: false });
+    },
   };
 }

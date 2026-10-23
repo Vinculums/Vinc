@@ -9,6 +9,7 @@ import { docTitle } from "./doc-title";
 import { hydrateRich } from "./rich-blocks";
 import { esc } from "./components";
 import { loaderRows } from "./vinc-loaders.js";
+import { tableCaret, tableMarkdown, type InsertOpts } from "./cm-insert";
 
 /** 결정론 미니 마크다운 렌더러(폴백 미리보기·Reader 공용). **표시 전용** — 소스는
  *  변형하지 않는다. 전부 이스케이프 후 최소 문법만. */
@@ -118,7 +119,11 @@ export type DocEditorHandle = {
   pauseSaving: (pause: boolean) => Promise<void>;
   /** 목차 클릭·청크 히트 착지가 쓰는 스크롤. 폴백(textarea)에는 오프셋 개념이
    *  없어 무동작이다 — 그 경로는 렌더 자체가 강등본이라 착지도 함께 강등한다. */
-  scrollToOffset: (pos: number) => void;
+  scrollToOffset: (pos: number, align?: "center" | "start") => void;
+  /** 오프셋이 놓인 줄의 화면 y. 옆 칸 목차가 지금 절을 고른다(폴백·stub 에는 없다). */
+  lineTop?: (pos: number) => number;
+  /** 개념 언급 자리에 밑줄을 긋고 첫 자리로 간다(옆 칸의 개념 칩). */
+  highlight?: (ranges: { char_start: number; char_end: number }[]) => void;
   /** 지금 편집기가 들고 있는 원문. **복사 버튼이 쓴다**(발주자 지적 2026-09-10:
    *  "그냥 내용 드래그해서 복사하려는 사용자도 있을 것"). 화면에서 긁으면 렌더된
    *  모습이 딸려 오지만 문서의 정본은 마크다운이므로, 한 번 눌러 얻는 것은
@@ -199,7 +204,43 @@ type DocEditorOpts = {
   onUnsaved?: (draft: { title: string; text: string; contentTime: string }) => void;
   /** 만들기 폼은 완료를 눌렀을 때만 저장한다. 닫기·취소는 제출이 아니다. */
   manualSave?: boolean;
+  /** 본문이 바뀌었다(글자마다). 옆 칸 목차처럼 원문에서 다시 세는 자리가 받는다. */
+  onText?: (text: string) => void;
 };
+
+/** 삽입 목록 — 슬래시 · 우클릭 · 머리 줄의 + 버튼이 같은 것을 쓴다(cm-insert).
+ *  넣는 원문은 마크다운이고, 라벨만 카피에서 온다. */
+function insertOpts(): InsertOpts {
+  const S = COPY.ui.viewx.slash;
+  const I = COPY.ui.viewx.ins;
+  const head = (i: number) => I.column(i);
+  const mermaid = "```mermaid\ngraph TD\n  A --> B\n```";
+  return {
+    blocks: [
+      { key: "h1", label: S.h1, glyph: "H1", hint: "#", text: "# ", prefix: true, aliases: "heading title" },
+      { key: "h2", label: S.h2, glyph: "H2", hint: "##", text: "## ", prefix: true, aliases: "heading" },
+      { key: "h3", label: S.h3, glyph: "H3", hint: "###", text: "### ", prefix: true, aliases: "heading" },
+      { key: "bullet", label: S.bullet, glyph: "•", hint: "-", text: "- ", prefix: true, aliases: "list ul" },
+      { key: "number", label: S.number, glyph: "1.", hint: "1.", text: "1. ", prefix: true, aliases: "list ol" },
+      { key: "task", label: S.task, glyph: "☐", hint: "- [ ]", text: "- [ ] ", prefix: true, aliases: "todo check" },
+      { key: "quote", label: S.quote, glyph: "“", hint: ">", text: "> ", prefix: true, aliases: "blockquote" },
+      { key: "table", label: S.table, glyph: "▦", hint: "|", table: true, spaced: true, aliases: "grid",
+        text: (r, c) => tableMarkdown(r, c, head), caret: (r, c) => tableCaret(r, c, head) },
+      { key: "code", label: S.code, glyph: "</>", hint: "```", text: "```\n\n```", caret: 4, spaced: true },
+      { key: "math", label: S.math, glyph: "∑", hint: "$$", text: "$$\n\n$$", caret: 3, spaced: true,
+        aliases: "equation latex tex formula" },
+      { key: "diagram", label: S.diagram, glyph: "◇", hint: "mermaid", text: mermaid,
+        caret: mermaid.length - 4, spaced: true, aliases: "mermaid chart flow" },
+      { key: "hr", label: S.hr, glyph: "─", hint: "---", text: "---", spaced: true, aliases: "divider line" },
+    ],
+    labels: {
+      blocks: I.blocks, format: I.format,
+      cut: I.cut, copy: I.copy, paste: I.paste,
+      formats: { bold: I.bold, italic: I.italic, strike: I.strike, code: I.code, link: I.link },
+      tableSize: I.tableSize, linkText: I.linkText,
+    },
+  };
+}
 
 /** 편집기를 host 에 마운트. host 내부를 편집 UI 로 채운다(호출부가 컨테이너·닫기
  *  버튼 제공). 반환 = dispose. */
@@ -262,7 +303,9 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       const stub: DocEditorHandle = {
         dispose: async (discard) => { closed = true; LIVE.delete(host); await again?.dispose(discard); },
         pauseSaving: async (pause) => { await again?.pauseSaving(pause); },
-        scrollToOffset: (pos) => again?.scrollToOffset(pos),
+        scrollToOffset: (pos, align) => again?.scrollToOffset(pos, align),
+        lineTop: (pos) => again?.lineTop?.(pos) ?? 0,
+        highlight: (ranges) => again?.highlight?.(ranges),
         // 아직 못 읽은 문서다 — 빈 문자열이 곧 "복사할 것이 없다"이고,
         // 호출부(복사 버튼)는 그 경우 아무 일도 하지 않는다.
         getText: () => again?.getText() ?? "",
@@ -293,6 +336,9 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
         style="width:7.5rem;background:transparent;color:inherit;
         border:none;border-bottom:1px solid hsl(var(--border));font:inherit;
         font-size:.85em;padding:.2rem 0"/>
+      <button class="btn btn-quiet ed-insert" id="ed-insert" type="button" hidden
+        aria-label="${esc(COPY.ui.viewx.ins.open)}" data-tip="${esc(COPY.ui.viewx.ins.openTip)}">
+        <span aria-hidden="true">+</span><span>${esc(COPY.ui.viewx.ins.open)}</span></button>
       <span class="hint" id="ed-status">${COPY.ui.viewx.edSaved}</span>
     </div>
     <textarea id="ed-src" spellcheck="false" style="width:100%;min-height:12rem;resize:vertical;
@@ -340,36 +386,25 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   const onEdited = () => {
     setStatus(COPY.ui.viewx.edDirty);
     if (!cm) { prev.innerHTML = renderMarkdown(src.value); hydrateRich(prev); }
+    opts.onText?.(getText());
     schedule();
   };
-
-  // 슬래시 커맨드 항목 — 결정론 블록(오프라인·무LLM). cursorBack 은 코드펜스처럼
-  // 커서를 안쪽에 두어야 할 때 끝에서 되돌릴 칸수.
-  const s = COPY.ui.viewx.slash;
-  const slashItems = [
-    { label: s.h1, insert: "# " }, { label: s.h2, insert: "## " },
-    { label: s.bullet, insert: "- " }, { label: s.number, insert: "1. " },
-    { label: s.quote, insert: "> " },
-    { label: s.code, insert: "```\n\n```", cursorBack: 4 },
-    { label: s.hr, insert: "---\n" },
-  ];
 
   try {
     const mod = await import("./codemirror-editor");
     const cmHost = document.createElement("div");
-    cmHost.style.cssText = opts.hideTitle
-      // 레일 문서 = 상자 없음. 스크롤은 레일이 진다(중첩 스크롤 금지).
-      ? "margin-top:.2rem"
-      // 시트 문서도 같은 규율 — vh 상한을 걸면 문서가 패널이 아니라 창 기준으로
-      // 잘리고(52vh 사고), 스크롤이 .sheet-body 와 이중이 된다. 시트 높이는
-      // app.css `.sheet[data-size="write"]` 가 진다.
-      : "border:1px solid hsl(var(--border));border-radius:6px;"
-        + "padding:.25rem;margin-top:.4rem";
+    // 레일 문서 = 상자 없음. 스크롤은 레일이 진다(중첩 스크롤 금지).
+    // 시트 문서도 같은 규율 — vh 상한을 걸면 문서가 패널이 아니라 창 기준으로
+    // 잘리고(52vh 사고), 스크롤이 .sheet-body 와 이중이 된다. 시트 높이는
+    // app.css `.sheet[data-size="write"]` 가 진다. 상자는 클래스라 자리마다 걷을 수 있다
+    // (문서 홈은 걷는다 — app.css `.home-doc .doc-cm-box`).
+    if (opts.hideTitle) cmHost.style.marginTop = ".2rem";
+    else cmHost.className = "doc-cm-box";
     src.replaceWith(cmHost);
     prev.remove();
     const A = COPY.author;
     cm = mod.mountEditor(cmHost, { initial, onChange: onEdited, onSave: () => void save(false, true),
-      slash: slashItems, readOnly: opts.readOnly, fmLabel: COPY.ui.viewx.edFmLabel,
+      insert: insertOpts(), readOnly: opts.readOnly, fmLabel: COPY.ui.viewx.edFmLabel,
       onDocLink: opts.onDocLink,
       // 흐름 C — `[[` 로 기존 노드를 찾아 제목을 넣는다(멘션은 저장 때 링커가 잇는다).
       mention: {
@@ -391,6 +426,15 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
         if (invoke) await invoke("plugin:shell|open", { path: url });
         else window.open(url, "_blank", "noopener");
       })() });
+    // 머리 줄의 + 버튼 — 우클릭을 모르는 손을 위한 같은 메뉴의 문. 편집할 수 있을 때만.
+    const insBtn = host.querySelector<HTMLButtonElement>("#ed-insert");
+    if (insBtn && !opts.readOnly) {
+      insBtn.hidden = false;
+      insBtn.addEventListener("click", () => {
+        const r = insBtn.getBoundingClientRect();
+        cm?.openInsert({ x: r.left, y: r.bottom + 4 });
+      });
+    }
     if (opts.highlights?.length) {
       cm.setHighlights(opts.highlights);
       // 첫 언급으로 스크롤 — 레이아웃이 앉은 뒤라야 좌표가 맞는다.
@@ -652,7 +696,9 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       cm?.destroy();
       cm = null;
     },
-    scrollToOffset: (pos: number) => cm?.scrollToOffset(pos),
+    scrollToOffset: (pos: number, align?: "center" | "start") => cm?.scrollToOffset(pos, align),
+    lineTop: (pos: number) => cm?.lineTop(pos) ?? 0,
+    highlight: (ranges) => { if (!cm) return; cm.setHighlights(ranges); cm.scrollToHighlight(); },
     getText,
     saveTopic,
     saveNow: async () => {

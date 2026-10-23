@@ -2013,6 +2013,15 @@ textarea.props-val {
    가로 스크롤은 이 상자가 진다: 본문 스크롤러에 맡기면 좁은 레일에서 문서 전체가
    옆으로 밀린다. */
 .doc-render .cm-r-tablewrap { overflow-x: auto; margin: .5rem 0; }
+/* 열이 많은 표는 칸을 짓눌러 한 글자씩 꺾지 않고 가로로 굴린다. 칸마다 최소 폭을 두고,
+   그 합이 넘치면 상자가 굴린다. */
+.doc-render .cm-r-tablewrap > .cm-r-tbl { width: max-content; min-width: 100%; }
+/* 상자의 내재 폭이 표를 따라 커지면 편집기 본문 전체가 칸보다 넓어져 오른쪽이 잘리고
+   가운데 정렬(수식)이 밀린다. 폭은 칸이 정하고 넘침은 이 상자 안에서만 굴린다. */
+.doc-render .cm-r-tablewrap { contain: inline-size; }
+/* 빈 칸도 줄 높이를 갖는다 — 막 넣은 표의 빈 줄이 실처럼 납작해졌다. */
+.doc-render .cm-r-tbl td:empty::before, .doc-render .cm-r-tbl th:empty::before { content: "\00a0"; }
+.doc-render .cm-r-tbl th, .doc-render .cm-r-tbl td { min-width: 7rem; max-width: 28rem; }
 /* 표는 렌더러가 둘이라 클래스도 둘이다(`cm-r-tbl` = 라이브 프리뷰, `md-tbl` =
    `renderMarkdown`). 규칙을 나누지 않는 이유는 그 둘이 **같게 보여야** 하기 때문이다 —
    같은 문서가 문서 열과 발췌에서 다르게 생기면 안 된다는 규율이 그 함수 머리에 있다. */
@@ -3383,6 +3392,84 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   box-shadow: var(--shadow-elev-2, none);
 }
 .cm-selbar[hidden] { display: none; }
+
+/* 편집기 상자 — 시트·Tools 의 문서. 문서 홈은 걷는다(.home-doc .doc-cm-box). */
+.doc-cm-box {
+  border: 1px solid hsl(var(--border)); border-radius: 6px;
+  padding: .25rem; margin-top: .4rem;
+}
+/* 머리 줄의 넣기 버튼 — 우클릭을 모르는 손을 위한 같은 메뉴의 문. */
+.ed-insert {
+  flex: none; display: inline-flex; align-items: center; gap: .3rem;
+  height: 1.75rem; padding: 0 .55rem; font-size: .8rem;
+}
+.ed-insert > span:first-child { font-size: 1rem; line-height: 1; }
+
+/* 삽입 메뉴 — 우클릭 · 넣기 버튼 · 슬래시가 같은 생김새다. */
+.cm-insert {
+  position: fixed; z-index: 80; width: 15.5rem; max-height: min(70vh, 34rem); overflow-y: auto;
+  display: flex; flex-direction: column; gap: 1px; padding: 6px;
+  border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card));
+  box-shadow: var(--shadow-elev-2, 0 8px 24px hsl(0 0% 0% / .28)); font-size: .84rem;
+  scrollbar-width: thin;
+}
+.cm-insert[hidden] { display: none; }
+.cm-insert:focus { outline: none; }
+.cm-ins-sec {
+  padding: .4rem .5rem .2rem; font-size: .7rem; font-weight: 600; letter-spacing: .02em;
+  color: hsl(var(--caption-foreground));
+}
+.cm-ins-row {
+  display: grid; grid-template-columns: 1.75rem minmax(0, 1fr) auto; align-items: center; gap: .55rem;
+  width: 100%; padding: .3rem .4rem; border: none; border-radius: .5rem; background: none;
+  color: hsl(var(--foreground)); font: inherit; text-align: left; cursor: pointer;
+}
+.cm-ins-row.on, .cm-ins-row:focus-visible { background: hsl(var(--muted-foreground) / .14); outline: none; }
+.cm-ins-glyph {
+  display: grid; place-items: center; width: 1.75rem; height: 1.75rem;
+  border: 1px solid hsl(var(--border)); border-radius: .4rem; background: hsl(var(--background));
+  font-family: var(--font-mono); font-size: .72rem; font-weight: 600; color: hsl(var(--muted-foreground));
+}
+.cm-ins-glyph:empty { border-color: transparent; background: none; }
+.cm-ins-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-ins-hint { font-family: var(--font-mono); font-size: .7rem; color: hsl(var(--caption-foreground)); }
+.cm-ins-sep { height: 1px; margin: .3rem .25rem; background: hsl(var(--border) / .7); }
+.cm-ins-fmt { display: flex; gap: 2px; padding: 0 .25rem .2rem; }
+.cm-ins-fbtn {
+  flex: 1; height: 1.9rem; border: none; border-radius: .45rem; background: none; cursor: pointer;
+  color: hsl(var(--foreground)); font: inherit; font-size: .82rem;
+}
+.cm-ins-fbtn:hover { background: hsl(var(--muted-foreground) / .14); }
+.cm-ins-f-bold { font-weight: 700; }
+.cm-ins-f-italic { font-style: italic; font-family: Georgia, serif; }
+.cm-ins-f-strike { text-decoration: line-through; }
+.cm-ins-f-code { font-family: var(--font-mono); font-size: .72rem; }
+/* 표 크기 격자 — 표 줄 옆에 편다. 메뉴가 굴러도 따라가도록 메뉴 안의 절대 위치다. */
+.cm-ins-grid {
+  position: fixed; z-index: 81; padding: 8px;
+  border: 1px solid hsl(var(--border)); border-radius: 10px; background: hsl(var(--card));
+  box-shadow: var(--shadow-elev-2, 0 8px 24px hsl(0 0% 0% / .28));
+}
+.cm-ins-grid[hidden] { display: none; }
+.cm-ins-cells { display: grid; grid-template-columns: repeat(var(--gc, 8), 14px); gap: 3px; }
+.cm-ins-cell {
+  width: 14px; height: 14px; border: 1px solid hsl(var(--border)); border-radius: 3px; cursor: pointer;
+}
+.cm-ins-cell.on { background: hsl(var(--foreground) / .75); border-color: hsl(var(--foreground) / .75); }
+.cm-ins-gridlabel {
+  margin-top: 6px; text-align: center; font-size: .72rem; color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+/* 체크리스트 상자 — 원문 `- [ ]` 를 대신한다. 누르면 원문의 칸 한 글자가 뒤집힌다. */
+.cm-r-task {
+  display: inline-grid; place-items: center; width: 1em; height: 1em; margin-right: .45em;
+  vertical-align: -.14em; border: 1.5px solid hsl(var(--muted-foreground)); border-radius: .22em;
+  cursor: pointer; line-height: 1;
+}
+.cm-r-task.on { background: hsl(var(--foreground)); border-color: hsl(var(--foreground)); }
+.cm-r-task.on::after { content: "\2713"; font-size: .72em; font-weight: 700; color: hsl(var(--background)); }
+.cm-r-done { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
 .cm-selbar > button {
   border: 0; background: none; font: inherit; font-size: .8rem; cursor: pointer;
   padding: .25rem .55rem; border-radius: .45rem; color: hsl(var(--foreground));
@@ -3613,7 +3700,7 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .home-head h1 { margin: 0; font-size: 1.5rem; }
 .home-count { font-size: .875rem; font-weight: 400; color: hsl(var(--muted-foreground)); margin-left: var(--space-2, .5rem); }
 .home-acts { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; }
-.home-acts .btn, .home-aside-acts .btn { display: inline-flex; align-items: center; gap: var(--space-2, .5rem); }
+.home-acts .btn, .ha-acts .btn { display: inline-flex; align-items: center; gap: var(--space-2, .5rem); }
 .home-topics { display: flex; flex-direction: column; gap: var(--space-2, .5rem); margin: var(--space-4, 1rem) 0 var(--space-3, .75rem); }
 .home-crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1, .25rem); font-size: .8125rem; }
 .home-crumb, .home-back {
@@ -3654,25 +3741,72 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .home-more { margin: var(--space-4, 1rem) auto 0; display: block; }
 .home-empty { padding: var(--space-8, 2rem) 0; text-align: center; color: hsl(var(--muted-foreground)); }
 .home-empty .home-acts { justify-content: center; }
-/* 문서 면 — 본문 칸 + 옆 칸. 좁으면(1000 아래) 옆 칸이 본문 아래로 간다. */
-.home-read { max-width: 72rem; }
+/* 문서 면 — 본문 칸 + 옆 칸. 본문이 남는 폭을 다 쓰고 옆 칸은 16rem 으로 고정한다(옆 칸이
+   남는 폭을 가져가면 넓은 창에서도 본문의 표가 짓눌린다). 좁으면(1000 아래) 옆 칸이 본문
+   아래로 간다. */
+.home-read { max-width: 76rem; }
 .home-read > .home-crumbs { margin-bottom: var(--space-3, .75rem); }
-.home-read-grid { display: grid; grid-template-columns: minmax(0, 720px) minmax(14rem, 1fr); gap: var(--space-6, 1.5rem); align-items: start; }
-.home-write { grid-template-columns: minmax(0, 720px); }
+.home-read-grid { display: grid; grid-template-columns: minmax(0, 1fr) 16rem; gap: var(--space-8, 2rem); align-items: start; }
+.home-write { grid-template-columns: minmax(0, 52rem); }
 .home-doc { min-width: 0; }
+/* 옆 칸은 상자가 아니라 본문 옆의 조용한 열이다 — 동작 한 줄 · 목차 · 개념 · 메타 순.
+   읽는 동안 따라오고(sticky), 목차가 길면 자기 안에서 굴린다. */
 .home-aside {
-  position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--space-4, 1rem);
-  padding: var(--space-4, 1rem); border: 1px solid hsl(var(--border)); border-radius: var(--radius);
-  background: hsl(var(--card));
+  /* 바(검색 알약 · 그래프 버튼) 아래에 붙는다 — 표면 칸 위쪽 여백만큼 내려와야 굴린 뒤에도
+     동작 줄이 바에 덮이지 않는다. */
+  position: sticky; top: max(var(--space-2, .5rem), calc(var(--chrome-top, 4rem) - var(--shell-gap, .5rem)));
+  max-height: calc(100vh - var(--chrome-top, 4rem) - var(--space-4, 1rem)); overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--space-5, 1.25rem);
+  padding: var(--space-1, .25rem) 0 var(--space-4, 1rem) var(--space-4, 1rem);
+  border-left: 1px solid hsl(var(--border) / .7);
+  font-size: .8125rem; scrollbar-width: thin;
 }
-.home-meta { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .4rem .75rem; font-size: .8125rem; }
-.home-meta dt { color: hsl(var(--muted-foreground)); }
-.home-meta dd { margin: 0; overflow-wrap: anywhere; }
-.home-aside-acts { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-2, .5rem); }
-.home-del { color: hsl(var(--destructive, 0 70% 50%)); }
+.ha-acts { display: flex; flex-wrap: wrap; gap: var(--space-2, .5rem); }
+.ha-btn { height: 2rem; padding: 0 .7rem; font-size: .8125rem; }
+.ha-sec { display: flex; flex-direction: column; gap: var(--space-2, .5rem); min-width: 0; }
+.ha-sec[hidden] { display: none; }
+.ha-h {
+  margin: 0; font-size: .72rem; font-weight: 600; letter-spacing: .02em;
+  color: hsl(var(--caption-foreground));
+}
+.ha-toc { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ha-toc-i {
+  display: block; width: 100%; text-align: left; border: none; background: none; cursor: pointer;
+  font: inherit; color: hsl(var(--muted-foreground)); line-height: 1.35;
+  padding: .28rem .5rem .28rem calc(.6rem + var(--lv, 0) * .8rem);
+  border-left: 2px solid transparent; margin-left: -1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ha-toc-i:hover { color: hsl(var(--foreground)); background: hsl(var(--muted-foreground) / .08); }
+.ha-toc-i.on { color: hsl(var(--foreground)); font-weight: 600; border-left-color: hsl(var(--foreground)); }
+.ha-toc-i:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.ha-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.ha-chip {
+  display: inline-flex; align-items: center; gap: .35rem; max-width: 100%;
+  height: 1.6rem; padding: 0 .55rem; border: 1px solid hsl(var(--border)); border-radius: 999px;
+  background: none; color: hsl(var(--foreground)); font: inherit; font-size: .75rem; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ha-chip:hover { border-color: hsl(var(--muted-foreground)); }
+.ha-chip.on { background: hsl(var(--foreground)); color: hsl(var(--background)); border-color: hsl(var(--foreground)); }
+.ha-chip-n { font-family: var(--font-mono); font-size: .68rem; opacity: .65; }
+.ha-meta {
+  margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .35rem .75rem;
+  padding-top: var(--space-3, .75rem); border-top: 1px solid hsl(var(--border) / .7);
+}
+.ha-meta dt { color: hsl(var(--caption-foreground)); }
+.ha-meta dd { margin: 0; overflow-wrap: break-word; }
+/* 지우기는 맨 아래 글자 하나로 둔다 — 가장 덜 쓰고 가장 무거운 동작이 버튼 줄에 같은 무게로
+   서 있을 이유가 없다. 확인 대화는 그대로다. */
+.ha-del {
+  align-self: flex-start; border: none; background: none; padding: 0; cursor: pointer;
+  font: inherit; font-size: .75rem; color: hsl(var(--caption-foreground));
+}
+.ha-del:hover { color: hsl(var(--destructive, 0 70% 50%)); text-decoration: underline; }
 @media (max-width: 1000px) {
   .home-read-grid { grid-template-columns: minmax(0, 1fr); }
-  .home-aside { position: static; }
+  .home-aside { position: static; max-height: none; border-left: none; padding-left: 0;
+    border-top: 1px solid hsl(var(--border) / .7); padding-top: var(--space-4, 1rem); }
 }
 /* 표면 칸의 기본 여백(1.5rem)은 그래프 밖 표면의 것이다. 문서 홈은 자기 여백을 쓴다. */
 #shell[data-surface="home"] #surface { padding-top: var(--shell-gap); container-type: inline-size; }
@@ -3686,3 +3820,5 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .home-doc .doc-ed-bar > #ed-title { min-width: min(100%, 14rem); }
 /* 문서 홈의 본문 칸은 쓰는 자리라 처음부터 넉넉하다(빈 새 문서가 한 줄짜리 상자로 뜨지 않게). */
 .home-doc .cm-editor { min-height: 40vh; }
+/* 문서 홈은 한 면이 곧 문서라 본문을 상자에 가두지 않는다(시트·Tools 는 상자를 둔다). */
+.home-doc .doc-cm-box { border-color: transparent; padding: 0; }
