@@ -126,8 +126,9 @@ def _drop_unstarted_episodes(result: dict, query: str, *, as_of, mode, historica
         if (hit.get("kind") == "episode" or str(hit.get("id") or "").startswith("episode:")) \
                 and date and not holds_during(date, "", scope):
             hidden += 1
-            score = (int(hit.get("hit_tokens") or 0), int(hit.get("title_tokens") or 0))
-            best = max(best, score)
+            # 축별 최댓값으로 모은다(검색 코어의 제목 팔과 같은 규칙, 동점 가드가 읽는다).
+            best = (max(best[0], int(hit.get("hit_tokens") or 0)),
+                    max(best[1], int(hit.get("title_tokens") or 0)))
             continue
         kept.append(hit)
     if not hidden:
@@ -4396,11 +4397,15 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # 확정됐다(정직성 0.0 → 0.1667). 동점이던 Record 둘 중 하나가 걸러지면서 남은
         # 하나가 단독 승자가 된 모양이었다.
         # 근거: [[record:the-validity-filter-broke-a-tie-and-manufactured-confidence-2026-09-09]]
+        # 비교는 **확정에 쓴 규칙 그대로**다: 감춘 행이 남았어도 1위가 `_brief_token_decisive`
+        # 로 이기면 동점이 아니었다. `validity_best_dropped` 는 감춘 행들의 축별 최댓값이라,
+        # 거기에 이기면 감춘 모든 행에 이긴다. 튜플 하나로 사전순 비교하면 hit 가 하나 높은
+        # 행이 제목으로 크게 앞선 확정을 되돌리고, 제목이 높은 행은 놓친다.
         if status == "resolved" and picked and base.get("validity_filtered"):
             _bd = tuple(base.get("validity_best_dropped") or (0, 0))
-            _w = (_brief_int(picked[0].get("hit_tokens")),
-                  _brief_int(picked[0].get("title_tokens")))
-            if _bd >= _w and not _brief_semantic_tie_clear(picked, res):
+            _hidden = {"hit_tokens": _bd[0], "title_tokens": _bd[1] if len(_bd) > 1 else 0}
+            if (not _brief_token_decisive(picked[0], _hidden)
+                    and not _brief_semantic_tie_clear(picked, res)):
                 status = "choose"
                 # 시점 읽기(as_of)에서도 같은 가드다 — 그 기간 밖이라 감춘 것이 동점이었으면
                 # 확정하지 않는다(계획의 "tie guard applies unchanged"). 알림은 경우마다

@@ -902,13 +902,15 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
                 # 지운 행의 점수도 기억한다. 지우기가 **동점을 깨면** 남은 하나가
                 # 단독 승자가 되어, 원래 "모르겠다"였을 질문이 확신 있는 답이 된다.
                 # 부르는 쪽이 그것을 알아야 판단할 수 있다.
+                # 행 하나의 튜플이 아니라 **축별 최댓값**이다. 확정은 hit·title 중 어느 한
+                # 축에서 앞서면 되므로, 두 축을 따로 모아야 1위가 숨긴 모든 행에 이기는지 잴
+                # 수 있다(brief 동점 가드). 근거: [[vinc.spec.retrieval-knobs]] §2
                 _dt_ = sum(1 for t in toks if t in str(r.get("title") or "").lower())
                 _dh_ = sum(1 for t in toks
                            if t in str(r.get("title") or "").lower()
                            or t in str(r.get("one_liner") or "").lower()
                            or t in _props_values_text(r.get("props_raw")))
-                if (_dh_, _dt_) > best_dropped:
-                    best_dropped = (_dh_, _dt_)
+                best_dropped = (max(best_dropped[0], _dh_), max(best_dropped[1], _dt_))
                 continue
         title = str(r.get("title") or "").lower()
         one = str(r.get("one_liner") or "").lower()
