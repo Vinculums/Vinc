@@ -175,32 +175,24 @@ class ShellSizeSpecTests(unittest.TestCase):
             "var(--lnb-mini-w) minmax(0, 1fr)", closed,
             "접힘이 LNB 를 폭 0 으로 접는다 — 다시 펼 손잡이와 홈이 함께 사라진다")
 
-    def test_바가_지도와_같은_칸에_겹친다(self):
-        """상단 바는 지도 위에 **떠 있다**(발주자 지시 2026-09-09: "나누지 않고 gnb 가
-        view 위에 떠 있도록"). 열을 나누면 지도가 그만큼 짧아지고 바는 카드가 된다.
+    def test_머리는_내용_카드의_윗줄이다(self):
+        """뷰 머리는 떠 있지 않다(2026-10-23). 머리가 2열 1행, 내용 카드가 2열 2행에 서고 행
+        사이가 0 이라 둘이 한 장의 카드가 된다. 그래서 아래 것들은 머리를 비켜설 값을 재지
+        않는다(`--chrome-top` 은 0 이다). 하나만 되돌리면 본문이 머리 밑으로 지나가거나,
+        머리와 카드 사이에 틈이 생긴다.
+        근거: [[decision:the-desktop-shell-docks-search-and-the-view-switch-in-a-view-header-2026-10-23]]"""
+        self.assertIn("row-gap: 0", decl("#shell"), "머리와 내용 카드 사이에 틈이 있다")
+        self.assertIn("grid-row: 2", decl("#surface"), "내용 카드가 머리 칸까지 올라온다")
+        self.assertIn("grid-row: 2", decl("#docpane-slot"), "문서 열이 머리 칸까지 올라온다")
+        self.assertIn("var(--shell-gap)", decl("#docpane"), "문서 열이 아직 머리를 비켜서는 값을 쓴다")
 
-        셋이 한 몸이다: 지도가 두 행을 걸치고 · 바가 그 첫 행에 겹치고 · 지도 안에서
-        위쪽에 서는 것들이 `--chrome-top` 만큼 비켜선다. 하나만 되돌리면 바가 지도를
-        가리거나 지도가 다시 잘린다."""
-        self.assertIn("grid-row: 1 / -1", decl("#surface"),
-                      "지도가 두 행을 걸치지 않는다 — 바와 열을 나눠 쓰고 있다")
-        self.assertIn("--chrome-top", decl("#docpane"),
-                      "읽는 면이 떠 있는 바를 비켜서지 않는다 — 바 밑에 깔린다")
-        self.assertIn("--chrome-top", decl("#view-tools"),
-                      "인캔버스 크롬이 떠 있는 바를 비켜서지 않는다")
-
-    def test_넓은_열은_맨_위부터_서고_머리가_바와_한_줄이다(self):
-        """LNB 에서 고른 것은 지도 칸 전체 폭으로 열린다. 그 열이 바 아래에서 시작하면 바
-        왼쪽이 빈 띠로 남았다(VIN-742). 넓은 열은 맨 위부터 서고, 바는 한 줄이 되며, 열 머리가
-        손잡이 묶음 폭(`--chrome-w`)만큼 오른쪽을 비운다. 셋 중 하나만 빠져도 머리가 바에
-        가리거나 띠가 돌아온다."""
+    def test_넓은_열은_머리_아래에서_선다(self):
+        """LNB 에서 고른 것은 지도 칸 전체 폭으로 열린다. 머리가 붙박이가 된 뒤로 넓은 열은
+        머리 아래 행에서 시작하고, 머리를 나눠 쓰거나 비울 일이 없다."""
         full = '#shell[data-doc-size="full"] '
-        self.assertIn("var(--shell-gap)", decl(full + "#docpane"),
-                      "넓은 열이 아직 바 아래에서 시작한다")
-        self.assertIn("grid-row: 1", decl(full + "#tb-line-view"),
-                      "넓은 열이 열렸는데 바가 두 줄이다")
-        self.assertIn("--chrome-w", decl(full + "#view-detail > .rail-head"),
-                      "넓은 열의 머리가 바가 덮는 자리를 비우지 않는다")
+        self.assertIn("calc(100% - var(--shell-gap) * 2)", decl(full + "#docpane"),
+                      "넓은 열이 지도 칸을 다 쓰지 않는다")
+        self.assertNotIn("tb-line", CSS, "두 줄짜리 떠 있는 바의 규칙이 남았다")
 
     def test_지도_상태_줄이_열_밑으로_지나가지_않는다(self):
         """하단 상태 줄(노드 수 · 연결률)은 지도를 센다. 넓은 열이 지도를 덮으면 숨고, 옆

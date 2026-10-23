@@ -1,0 +1,170 @@
+"""뷰 머리: 내용 카드의 윗줄에 경로 · 문서 | 그래프 · 검색, 보기 카드는 캔버스 안(2026-10-23).
+
+소스 잠금이다. 배치 자체는 헤드리스 브라우저 실측으로 확인했고(창 1280 · 960, LNB 펼침 ·
+접힘, 문서 · 목록 · 그래프 · 노드 문서 · 라이트), 여기서는 그 배치가 조용히 옛 자리로 돌아가지
+않게 구조만 붙잡는다:
+
+- 머리가 다시 떠 있으면 본문이 그 밑으로 지나가고, 아래 것들이 또 비켜설 값을 재야 한다.
+- 머리와 본문이 칼럼을 따로 가지면 경로와 제목, 검색과 읽기 칸의 세로선이 갈라진다.
+- 전환이 표면마다 다른 자리에 서면 누른 자리에서 손이 빗나간다.
+- 보기 카드가 머리로 돌아오면 머리가 표면마다 달라진다.
+
+근거: [[decision:the-desktop-shell-docks-search-and-the-view-switch-in-a-view-header-2026-10-23]]
+"""
+from __future__ import annotations
+
+import re
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+HTML = (ROOT / "app" / "index.html").read_text(encoding="utf-8")
+CSS = (ROOT / "app" / "src" / "app.css").read_text(encoding="utf-8")
+VIEW = (ROOT / "app" / "src" / "surfaces" / "view.ts").read_text(encoding="utf-8")
+TOPBAR = (ROOT / "app" / "src" / "topbar.ts").read_text(encoding="utf-8")
+HOME = (ROOT / "app" / "src" / "surfaces" / "home.ts").read_text(encoding="utf-8")
+
+
+def _block(src: str, start: str, end: str) -> str:
+    a = src.index(start)
+    return src[a:src.index(end, a)]
+
+
+def _rule(selector: str) -> str:
+    m = re.search(r"(?m)^" + re.escape(selector) + r" \{[^}]*\}", CSS)
+    assert m, f"{selector} 규칙이 없다"
+    return m.group(0)
+
+
+def _at(prelude: str) -> str:
+    """`@media …` / `@container …` 블록의 본문(중괄호 짝을 센다)."""
+    a = CSS.index(prelude)
+    i = CSS.index("{", a)
+    depth = 0
+    for j in range(i, len(CSS)):
+        if CSS[j] == "{":
+            depth += 1
+        elif CSS[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return CSS[i + 1:j]
+    raise AssertionError(f"{prelude} 가 닫히지 않는다")
+
+
+HEADER = _block(HTML, '<header id="topbar">', "</header>")
+
+
+class HeaderOrder(unittest.TestCase):
+    def test_lead_then_switch_then_search(self):
+        lead = HEADER.index('id="tb-lead"')
+        switch = HEADER.index('id="tb-switch"')
+        find = HEADER.index('id="tb-find"')
+        self.assertLess(lead, switch)
+        self.assertLess(switch, find)
+
+    def test_the_switch_has_two_segments(self):
+        sw = _block(HEADER, 'id="tb-switch"', "</div>")
+        self.assertIn('id="tb-to-docs"', sw)
+        self.assertIn('id="tb-to-graph"', sw)
+
+    def test_the_view_card_is_not_in_the_header(self):
+        self.assertNotIn('id="tb-viewctl"', HEADER)
+        card = HTML[HTML.index('id="tb-viewctl"'):]
+        self.assertLess(card.index('id="tb-viewpoints"'), card.index('id="tb-lens"'))
+
+    def test_document_tree_does_not_hold_the_segment(self):
+        lnb = _block(HTML, '<aside id="lnb"', "</aside>")
+        self.assertNotIn("tb-viewpoints", lnb)
+
+
+class HeaderIsTheTopOfTheCard(unittest.TestCase):
+    def test_header_and_surface_are_two_rows_of_one_card(self):
+        self.assertIn("row-gap: 0", _rule("#shell"))
+        self.assertIn("grid-row: 1", _rule("#topbar"))
+        self.assertIn("grid-row: 2", _rule("#surface"))
+        self.assertIn("grid-row: 2", _rule("#docpane-slot"))
+        self.assertIn("border-top: 0", _rule("#surface"))
+
+    def test_header_height_is_the_lnb_top_row_formula(self):
+        # 테두리 1 + 8 + 컨트롤 36 + 8 + 아래 선 1 — LNB 맨 위 줄과 같은 식.
+        self.assertIn("--head-h: calc(var(--ctl-h) + var(--space-2, .5rem) * 2 + 2px)", CSS)
+        bars = re.findall(r"(?m)^#topbar \{[^}]*\}", CSS)
+        self.assertTrue(any("height: var(--head-h)" in b for b in bars))
+        self.assertTrue(any("background: hsl(var(--card))" in b for b in bars))
+        self.assertTrue(all("box-shadow" not in b for b in bars), "머리가 다시 떠 있다")
+
+    def test_nothing_steps_around_the_header_any_more(self):
+        self.assertIn("--chrome-top: 0px;", CSS)
+        self.assertNotIn("function trackChromeTop()", TOPBAR)
+        self.assertIn("top: var(--shell-gap); bottom: var(--shell-gap); right: var(--shell-gap);", _rule("#docpane"))
+
+
+class OneColumn(unittest.TestCase):
+    def test_header_and_page_share_the_column(self):
+        col = "max-width: calc(var(--page-col) + var(--page-inset) * 2)"
+        self.assertIn(col, _rule(".tb-col"))
+        self.assertIn(col, _rule(".home"))
+
+    def test_the_header_leaves_room_for_the_body_scrollbar(self):
+        bars = re.findall(r"(?m)^#topbar \{[^}]*\}", CSS)
+        self.assertTrue(any("var(--sb-w, 0px)" in b for b in bars))
+        self.assertIn("function trackGutter()", TOPBAR)
+
+    def test_search_is_as_wide_as_the_reading_panel(self):
+        self.assertIn("width: var(--aside-w)", _rule(".tb-find-open"))
+        self.assertIn("var(--aside-w)", _rule(".home-read-grid"))
+
+    def test_the_breadcrumb_lives_in_the_header(self):
+        self.assertIn("setTopbarLead(", HOME)
+        self.assertIn("export function setTopbarLead(", TOPBAR)
+
+
+class CanvasCard(unittest.TestCase):
+    def test_view_card_floats_inside_the_canvas(self):
+        card = _rule("#tb-viewctl")
+        self.assertIn("grid-row: 2", card)
+        self.assertIn("justify-self: end", card)
+
+    def test_view_card_steps_aside_for_the_document_pane(self):
+        self.assertIn("--rail-size", _rule('#shell[data-doc="open"][data-doc-size="side"] #tb-viewctl'))
+
+    def test_empty_view_card_hides(self):
+        self.assertIn("#tb-viewctl:has(> #tb-viewpoints:empty):has(> #tb-lens:empty)", CSS)
+
+    def test_lens_renders_into_the_view_card_slot(self):
+        self.assertIn('lensSlot() ?? fallbackSlot("view-legend")', VIEW)
+        self.assertIn('return $("tb-lens")', TOPBAR)
+
+    def test_open_view_card_is_exactly_as_wide_as_the_lens_panel(self):
+        m = re.search(r"(?m)^#tb-viewctl\[data-open\] \{[^}]*\}", CSS)
+        self.assertTrue(m, "열린 보기 카드 규칙이 없다")
+        self.assertIn("width: var(--lens-panel-w)", m.group(0))
+        self.assertIn("width: var(--lens-panel-w)", CSS[CSS.index("#view-lens-panel {"):])
+
+    def test_panel_anchors_to_the_view_card(self):
+        body = _block(VIEW, "function positionPanel()", "function openPanel(")
+        self.assertIn('lensBtn?.closest<HTMLElement>(".tb-card")', body)
+        self.assertIn("const left = Math.min(r.right - w, rightEdge - w - m);", body)
+
+    def test_view_tools_corner_is_untouched(self):
+        self.assertIn("right: calc(var(--rail-w, 0px) + var(--space-6, 1.5rem));", _rule("#view-tools"))
+
+
+class NarrowHeaderFolds(unittest.TestCase):
+    def test_the_header_is_its_own_query_container(self):
+        self.assertIn("container: topbar / inline-size", CSS)
+
+    def test_switch_names_fold_before_search_does(self):
+        mid = _at("@container topbar (max-width: 760px)")
+        self.assertIn(".tb-seg-name { display: none; }", mid)
+        self.assertRegex(mid, r"\.tb-find-open \{[^}]*width: auto")
+        narrow = _at("@container topbar (max-width: 480px)")
+        self.assertIn(".tb-find-label { display: none; }", narrow)
+
+    def test_no_viewport_wrap_left_behind(self):
+        self.assertNotIn("@media (max-width: 520px)", CSS)
+        self.assertNotIn("@media (max-width: 720px)", CSS)
+
+
+if __name__ == "__main__":
+    unittest.main()
