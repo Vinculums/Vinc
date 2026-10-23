@@ -153,6 +153,20 @@ def test_projector_can_remove_relations_between_typed_pages(app, ends):
     assert app.bridge.calls == [("POST", "/delete-edge", None, {**args, "owner": A})]
 
 
+@pytest.mark.parametrize("rel", ["attaches_to", "ATTACHES_TO"])
+def test_projector_can_remove_a_stale_attachment_from_a_result_page(app, rel):
+    args = {"from": "record:result", "to": "concept:page", "type": rel}
+    project(app, "delete-edge", args)
+    assert app.bridge.calls == [("POST", "/delete-edge", None, {**args, "owner": A})]
+
+
+@pytest.mark.parametrize("src", ["concept:page", "episode:event", "decision:choice"])
+def test_projector_attachment_cleanup_starts_only_at_a_result_page(app, src):
+    with pytest.raises(PermissionError):
+        project(app, "delete-edge", {"from": src, "to": "concept:other", "type": "attaches_to"})
+    assert app.bridge.calls == []
+
+
 @pytest.mark.parametrize("over", [{"from": "concept:doc.graph.md"}, {"to": "episode:talk-"+SOCIAL},
                                   {"from": "episode:lounge-"+SOCIAL},
                                   {"from": "concept:a--b"}, {"to": "concept:a-"},
