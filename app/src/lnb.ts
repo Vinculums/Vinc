@@ -1,4 +1,4 @@
-import { api, cfg, WEB } from "./api";
+import { api, cfg, WEB, isCommunitySpace } from "./api";
 import type { GraphEdge, GraphNode, NavGroup, NavTreeRes } from "./api";
 import { COPY } from "./copy";
 import { docTitle } from "./doc-title";
@@ -559,8 +559,9 @@ function paintHead(n?: number, label?: string): void {
   h.innerHTML = n === undefined ? ""
     : `<div class="lnb-sec"><span class="lnb-sec-label">${esc(label || COPY.ui.lnb.documents)}</span>`
       + `<span class="lnb-sec-end"><span class="hint">${n || "·"}</span>`
-      + `<button class="rail-x lnb-add" type="button" aria-haspopup="${railKey === "agent" ? "dialog" : "menu"}"
-           aria-label="${esc(addTip())}" data-tip="${esc(addTip())}">+</button></span></div>`;
+      // 커뮤니티 스페이스는 읽기 전용이라 만들기 `+` 를 두지 않는다.
+      + (isCommunitySpace(cfg.team) ? "" : `<button class="rail-x lnb-add" type="button" aria-haspopup="${railKey === "agent" ? "dialog" : "menu"}"
+           aria-label="${esc(addTip())}" data-tip="${esc(addTip())}">+</button>`) + `</span></div>`;
 }
 
 /** 주제 스코프 칩 — 고른 주제가 없으면 빈 문자열. */

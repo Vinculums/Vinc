@@ -1,4 +1,4 @@
-import { api, cfg, WEB, teamsApi, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, messageOf, isWriteConflict, type GraphEdge, type GraphNode,
+import { api, cfg, WEB, teamsApi, isCommunitySpace, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, messageOf, isWriteConflict, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
@@ -3627,10 +3627,10 @@ export async function renderView(el: HTMLElement, resume = false) {
           <button class="btn" id="rdr-back">${COPY.ui.viewx.readerBack}</button>
           <button class="btn" id="rdr-expand">${COPY.ui.viewx.edExpand}</button>
           <button class="btn" id="rdr-copy">${COPY.ui.viewx.edCopy}</button>
-          <button class="btn" id="rdr-mode">${
+          ${isCommunitySpace(cfg.team) ? "" : `<button class="btn" id="rdr-mode">${
             docWriting ? COPY.ui.viewx.edToRead : COPY.ui.viewx.edToWrite}</button>
           <span class="hint" id="rdr-mode-state">${
-            docWriting ? COPY.ui.viewx.edWrite : COPY.ui.viewx.edRead}</span>
+            docWriting ? COPY.ui.viewx.edWrite : COPY.ui.viewx.edRead}</span>`}
         </p>
         <!-- 문서도 프롬프트를 나눠 준다(발주자 지시 2026-09-10). 노드 카드·노드 상세와
              같은 줄·같은 메뉴를 쓴다 — 세 자리가 같은 일을 다른 모양으로 하면 어느
