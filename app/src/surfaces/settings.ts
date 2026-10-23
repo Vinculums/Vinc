@@ -1,4 +1,4 @@
-import { accountMode, api, buildId, cfg, forgetMemberKey, messageOf, remote, teamsApi, WEB, shellInvoke } from "../api";
+import { accountMode, api, buildId, cfg, communitiesApi, forgetMemberKey, isCommunitySpace, messageOf, remote, teamsApi, WEB, shellInvoke } from "../api";
 import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyIsOnDisk,
          mcpKeyPresent,
          setAccountKey } from "../account-connect";
@@ -336,6 +336,20 @@ async function renderSettings(
           if (note) note.textContent = visible.some(t => t.status !== "active") ? U.spaceActivationHint
             : visible.length ? "" : U.spaceNone;
         }).catch(() => { if (note) note.textContent = U.spaceListFailed; });
+        // 가입한 커뮤니티는 읽기 전용 스페이스로 고른다. 목록을 못 받으면 칸 없이 간다.
+        void communitiesApi.list().then((rows) => {
+          if (!rows.length) return;
+          const group = document.createElement("optgroup");
+          group.label = U.spaceCommunities;
+          for (const x of rows) {
+            const o = document.createElement("option");
+            o.value = x.id; o.textContent = x.name;
+            if (x.id === cfg.team) o.selected = true;
+            group.appendChild(o);
+          }
+          pick.appendChild(group);
+          if (isCommunitySpace(cfg.team) && note) note.textContent = U.spaceCommunityReadOnly;
+        });
         pick.addEventListener("change", async () => {
           if (pick.selectedOptions[0]?.disabled) return;
           const next = pick.value;

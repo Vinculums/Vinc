@@ -1146,6 +1146,24 @@ export const teamsApi = {
   },
 };
 
+/** 가입한 커뮤니티(`/api/graph/spaces` 의 `communities`). id 는 `community:<uuid>` 이고 그대로 스페이스로 쓴다.
+ *  커뮤니티 스페이스는 읽기 전용이다: 계정이 읽기만 공개 커뮤니티 그래프로 넘기고 쓰기는 거절한다(VIN-458). */
+export const communitiesApi = {
+  list: async (): Promise<Array<{ id: string; name: string; role: string }>> => {
+    try {
+      let data: { communities?: unknown };
+      if (accountMode()) data = await call("/spaces") as { communities?: unknown };
+      else if (WEB) {
+        const res = await fetch(new URL("/api/graph/spaces", location.origin), { credentials: "include" });
+        if (!res.ok) return [];
+        data = await res.json() as { communities?: unknown };
+      } else return [];
+      return Array.isArray(data.communities) ? data.communities : [];
+    } catch { return []; }
+  },
+};
+export const isCommunitySpace = (team: string | null | undefined): boolean => Boolean(team && team.startsWith("community:"));
+
 export type ConventionsPolicy = "retain" | "move_original";
 export type ConversionCheck = { ready: boolean; topic: string; fingerprint?: string;
   conventions?: { policy: ConventionsPolicy; documents: number; personal_defaults_after_move: boolean };
@@ -1220,7 +1238,11 @@ export async function adoptSpaceFromAddress(): Promise<"" | "member" | "local"> 
   if (raw && raw !== mark && remote() && raw !== spaceName().toLowerCase()) {
     if (raw === "personal") cfg.team = "";
     else if (raw === "local") refused = "local";
-    else {
+    else if (isCommunitySpace(raw)) {
+      const hit = (await communitiesApi.list()).find((x) => x.id.toLowerCase() === raw);
+      if (hit) cfg.team = hit.id;
+      else refused = "member";
+    } else {
       const rows = await teamsApi.list();
       const hit = rows.find((t) => t.status === "active" && t.id.toLowerCase() === raw);
       if (hit) cfg.team = hit.id;
