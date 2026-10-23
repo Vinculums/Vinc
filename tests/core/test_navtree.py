@@ -303,6 +303,16 @@ class NavTreeDomainScope(NavTreeE2E):
         self.assertEqual(len(self._ids(res)), 5)
         self.assertNotIn("scope", res["counts"])
 
+    def test_a_closed_document_carries_its_end_date_and_stays_in_the_tree(self):
+        # 트리는 닫힌 문서를 거르지 않는다. 화면이 숨길 수 있게 그 날만 싣는다.
+        self._concept("concept:energy", "phys")
+        ds.put_doc(self.store, owner=self.OWNER, text="energy 를 다룬 옛 글.", title="Old",
+                   valid_until="2026-10-01")
+        ds.put_doc(self.store, owner=self.OWNER, text="energy 를 다룬 글.", title="Now")
+        docs = {d["title"]: d for d in self._group(self._tree(), "phys")["docs"]}
+        self.assertEqual(docs["Old"]["valid_until"], "2026-10-01")
+        self.assertNotIn("valid_until", docs["Now"])
+
 
 if __name__ == "__main__":
     unittest.main()

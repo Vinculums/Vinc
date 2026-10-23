@@ -4736,6 +4736,10 @@ def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
             node = d.get("primary_concept_id") or ""
             row = {"doc_id": d.get("doc_id") or "", "title": d.get("title") or "",
                    "updated_at": d.get("updated_at") or ""}
+            # 유효기간이 닫힌 문서는 행에 그 날을 싣는다(없으면 키도 없다). 트리는 거르지 않는다:
+            # 숨길지는 화면이 정한다(커뮤니티 스페이스는 내린 페이지를 숨긴다).
+            if d.get("valid_until"):
+                row["valid_until"] = d["valid_until"]
             if not topic or not node:
                 # 스코프가 걸렸으면 주제 없는 문서는 그 스코프에 들지 않는다.
                 if not scope:
