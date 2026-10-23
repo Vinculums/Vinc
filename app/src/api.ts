@@ -697,7 +697,18 @@ export type NodeContext = {
 type NavDoc = {
   doc_id: string; title: string; updated_at: string;
   node_id: string; node_title: string; depth: number;
+  /** 유효기간이 닫힌 문서만 갖는다(YYYY[-MM[-DD]]). */
+  valid_until?: string;
 };
+/** 커뮤니티 스페이스의 트리에서 내린 페이지를 뺀다. 커뮤니티는 내린 페이지 문서에 유효기간 끝을 단다.
+ *  개인·팀 트리는 거르지 않는다: 닫은 문서도 그 사람이 찾아 열 수 있어야 한다. */
+export function withoutClosedDocs(res: NavTreeRes, today = new Date().toISOString().slice(0, 10)): NavTreeRes {
+  const open = (d: { valid_until?: string }) => !d.valid_until || d.valid_until > today;
+  const domains = res.domains?.map(g => ({ ...g, docs: g.docs.filter(open) }));
+  const unfiled = res.unfiled?.filter(open);
+  const docs = (domains ?? []).reduce((n, g) => n + g.docs.length, 0) + (unfiled?.length ?? 0);
+  return { ...res, domains, unfiled, ...(res.counts ? { counts: { ...res.counts, docs } } : {}) };
+}
 /** 좌측 트리의 노드 갈래 한 줄. `concepts` 가 세는 것과 **같은 집합**이다
  *  (Concept + Decision) — 머리가 말하는 수와 줄 수가 갈리면 안 된다. */
 export type NavNode = { id: string; title: string; kind: string; depth: number };
@@ -711,7 +722,7 @@ export type NavGroup = { domain: string; concepts: number; count?: number;
 export type NavTreeRes = {
   executed: boolean; note?: string;
   domains?: NavGroup[];
-  unfiled?: { doc_id: string; title: string; updated_at: string }[];
+  unfiled?: { doc_id: string; title: string; updated_at: string; valid_until?: string }[];
   //: `kinds` 는 종별 수 - 레일이 읽는 유일한 집계. `kind` 는 이 응답이 어느 종으로
   //: 좁혀졌는지(안 좁혔으면 없다).
   counts?: { domains: number; docs: number; unfiled: number;
@@ -1026,8 +1037,14 @@ export const api = {
     executed: boolean; count?: number;
     docs?: { doc_id: string; title: string; origin: string; chunks: number;
              updated_at: string; topic?: string; topics?: string[];
-             primary_concept_id?: string; primary_concept_title?: string }[];
-  }> => call("/docs", { owner }),
+             primary_concept_id?: string; primary_concept_title?: string; valid_until?: string }[];
+  }> => call("/docs", { owner }).then(res => {
+    // 커뮤니티 스페이스에서는 내린 페이지를 목록에서 뺀다(`withoutClosedDocs` 와 같은 규칙).
+    if (!isCommunitySpace(cfg.team) || !res.docs) return res;
+    const today = new Date().toISOString().slice(0, 10);
+    const docs = res.docs.filter((d: { valid_until?: string }) => !d.valid_until || d.valid_until > today);
+    return { ...res, docs, count: docs.length };
+  }),
   // D69 — 좌측 문서 트리: 주제 → 그 주제의 문서(개념 계층 깊이순) + 미분류.
   //: `kind` 는 모집단을 그 종 **하나**로 좁힌다(종 레일). 목록을 종별로 가져가는
   //: 것이 계약이다 - 전부를 한 번에 싣는 값은 없고, 레일의 개수는 응답의
@@ -1041,7 +1058,8 @@ export const api = {
                         ...(opts?.kind ? { kind: opts.kind } : {}),
                         ...(opts?.domain ? { domain: opts.domain } : {}),
                         // 하위 트리 여럿의 합(Agent 레일: 역할 주제 둘). `/graph` 와 같은 쉼표 꼴.
-                        ...(opts?.domains?.length ? { domains: opts.domains.join(",") } : {}) }),
+                        ...(opts?.domains?.length ? { domains: opts.domains.join(",") } : {}) })
+      .then((res: NavTreeRes) => isCommunitySpace(cfg.team) ? withoutClosedDocs(res) : res),
   // D45-V2 4단계 — 타임라인 기간(월-밴드) 클릭: [start, end) 의 날짜 있는 항목.
   // ⚠ basis 는 차트가 그리는 축과 **글자 그대로 같아야** 한다(D72) — 밴드를 눌러
   // 여는 목록이 다른 시간 열로 세면 화면이 스스로를 반박한다.
