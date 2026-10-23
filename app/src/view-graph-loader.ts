@@ -69,6 +69,22 @@ type GraphLoaderContext = {
 
 type RetainedRef = { session: string; revision: string; key: string; prefs: string };
 
+/** 커뮤니티 스페이스의 그래프에서 내린 페이지를 뺀다. 페이지 노드는 `props.status` 가 `retired` 이고,
+ *  그 문서의 미러 노드(`concept:doc.<props.doc_id>`)도 함께 뺀다. 둘 다 관계가 없어 떠 있는 점으로만 남는다.
+ *  개인·팀 그래프에는 쓰지 않는다: 그쪽에는 이 표식이 없고, 있어도 그 사람이 찾아볼 수 있어야 한다. */
+export function withoutRetiredPages<T extends { nodes?: GraphNode[]; edges?: GraphEdge[] }>(graph: T): T {
+  const gone = new Set<string>();
+  for (const n of graph.nodes || []) {
+    const props = (n as { props?: { status?: unknown; doc_id?: unknown } }).props;
+    if (props?.status !== "retired") continue;
+    gone.add(n.id);
+    if (typeof props.doc_id === "string" && props.doc_id) gone.add(`concept:doc.${props.doc_id}`);
+  }
+  if (!gone.size) return graph;
+  return { ...graph, nodes: graph.nodes?.filter(n => !gone.has(n.id)),
+    edges: graph.edges?.filter(e => !gone.has(e.source) && !gone.has(e.target)) };
+}
+
 export function createGraphLoader(ctx: GraphLoaderContext) {
   let rawGraph: RawGraph | undefined;
   let rawGraphScope: string | undefined;
@@ -168,6 +184,8 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
       console.info(`View graph read ${JSON.stringify({ elapsedMs: Math.round(performance.now() - start), cached: !!cached,
         executed: !!res?.executed, nodes: res?.nodes?.length || 0, edges: res?.edges?.length || 0 })}`);
       if (!live()) return { executed: false, stale: true };
+      // 커뮤니티 스페이스(`community:<uuid>`)는 내린 페이지를 그리지 않는다. 걸러진 것을 보관하므로 두 번 걸러도 같다.
+      if (res?.executed && String(ctx.mountScope.team || "").startsWith("community:")) res = withoutRetiredPages(res);
       rawGraph = res;
       rawGraphScope = scopeKey;
       if (!res) return { executed: false };
