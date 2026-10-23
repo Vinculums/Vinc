@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """의미 우위 승격(VIN-232) — 되묻기 1위가 의미 팔에서 나머지보다 `_SEM_PROMOTE` 이상
-가까우면 확정한다. 플래그(`VINC_BRIEF_SEM_PROMOTE`) 뒤에 두고 기본은 꺼 둔다.
+가까우면 확정한다. 플래그(`VINC_BRIEF_SEM_PROMOTE`)는 기본 켜짐이고 `off` 가 비상구다.
 
-이 파일이 지키는 것: 꺼져 있으면 brief 가 한 바이트도 안 바뀐다 · 켜면 문턱에서 정확히
+이 파일이 지키는 것: 끄면 brief 가 토큰 규칙만 쓰던 때와 한 바이트도 안 바뀐다 · 켜면 문턱에서 정확히
 갈린다 · 이름 댄 갈래·단독 후보·유효구간 동점 가드·답변 가능성 게이트를 못 넘는다.
 근거: [[decision:gate-d-reopens-on-the-semantic-arms-own-lead-behind-a-flag-left-off-2026-09-29]]
 """
@@ -47,35 +47,36 @@ class PromoteRule(unittest.TestCase):
         if self._prev is not None:
             os.environ[FLAG] = self._prev
 
-    def test_the_flag_is_off_unless_switched_on(self):
-        self.assertFalse(q._brief_sem_promote_on())
-        for v in ("on", "1", "true", "yes", " ON "):
+    def test_the_flag_is_on_unless_switched_off(self):
+        self.assertTrue(q._brief_sem_promote_on())
+        for v in ("on", "1", "true", "yes", " ON ", ""):
             os.environ[FLAG] = v
             self.assertTrue(q._brief_sem_promote_on(), v)
-        for v in ("off", "0", "false", ""):
+        for v in ("off", "0", "false", "no", " OFF "):
             os.environ[FLAG] = v
             self.assertFalse(q._brief_sem_promote_on(), v)
 
     def test_the_bar_is_where_it_was_decided(self):
-        """옮기려면 다시 잴 것 — 0.025 에서는 답 불가 확정이 21 중 7 로 는다."""
-        self.assertEqual(q._SEM_PROMOTE, 0.049)
+        """옮기려면 다시 잴 것 — 내리면 틀린 노드 확정이 는다([[vinc.spec.retrieval-knobs]] §2)."""
+        self.assertEqual(q._SEM_PROMOTE, 0.12)
 
     def test_off_a_lead_changes_nothing(self):
+        os.environ[FLAG] = "off"
         self.assertEqual(q._brief_resolve("cache policy", _tie(0.5))[0], "choose")
 
     def test_on_it_promotes_at_the_bar_and_not_below(self):
         os.environ[FLAG] = "on"
-        status, picked = q._brief_resolve("cache policy", _tie(0.049))
+        status, picked = q._brief_resolve("cache policy", _tie(q._SEM_PROMOTE))
         # 폴스루를 위해 순위 전체를 넘긴다 — 엄격 확정과 같은 꼴이다.
         self.assertEqual((status, [h["id"] for h in picked]),
                          ("resolved", ["concept:a", "concept:b"]))
-        self.assertEqual(q._brief_resolve("cache policy", _tie(0.048999))[0], "choose")
+        self.assertEqual(q._brief_resolve("cache policy", _tie(q._SEM_PROMOTE - 1e-6))[0], "choose")
         self.assertEqual(q._brief_resolve("cache policy", _tie())[0], "choose")
 
     def test_a_token_less_first_can_be_promoted_in_the_ranking_branch(self):
         """결정은 choose 1위 전부를 대상으로 쟀다(X3 모의). 토큰이 0 인 의미 1위도 든다."""
         os.environ[FLAG] = "on"
-        hits = _tie(0.08, hit_tokens=0, title_tokens=0, arms=["semantic"])
+        hits = _tie(0.2, hit_tokens=0, title_tokens=0, arms=["semantic"])
         hits[1].update(hit_tokens=0, title_tokens=0, arms=["graph"])
         self.assertEqual(q._brief_resolve("무엇이든", hits)[0], "resolved")
 
@@ -184,9 +185,9 @@ class PromoteOnTheEngine(unittest.TestCase):
         self.assertNotIn("sem_lead", rows["concept:cache-policy-notes"])
 
     def test_off_the_brief_is_what_it_was_without_the_new_fields(self):
-        """플래그가 꺼져 있으면 search 가 새로 다는 값(`distance`·`sem_lead`)을 brief 가
-        읽지 않는다. 승격이 일어날 스토어에서 두 값을 걷어 낸 답과 글자 그대로 같다."""
-        self._mirror(0.06)
+        """플래그를 끄면 search 가 새로 다는 값(`distance`·`sem_lead`)을 brief 가 읽지
+        않는다. 승격이 일어날 스토어에서 두 값을 걷어 낸 답과 글자 그대로 같다."""
+        self._mirror(0.15)
         real = q.search
 
         def without_new_fields(*a, **kw):
@@ -196,25 +197,25 @@ class PromoteOnTheEngine(unittest.TestCase):
                 h.pop("distance", None)
             return res
 
-        unset = self._brief()
         off = self._brief(**{FLAG: "off"})
         with mock.patch.object(q, "search", without_new_fields):
-            stripped = self._brief()
-        self.assertEqual(unset["status"], "choose")
-        self.assertEqual(unset, off)
-        self.assertEqual(unset, stripped)
-        # 같은 스토어에서 켜면 승격된다 — 위 동일성이 빈 단언이 아니라는 확인이다.
-        self.assertEqual(self._brief(**{FLAG: "on"})["status"], "resolved")
+            stripped = self._brief(**{FLAG: "off"})
+        self.assertEqual(off["status"], "choose")
+        self.assertEqual(off, stripped)
+        # 같은 스토어에서 기본값(켜짐)이면 승격된다 — 위 동일성이 빈 단언이 아니라는 확인이다.
+        unset = self._brief()
+        self.assertEqual(unset["status"], "resolved")
+        self.assertEqual(unset, self._brief(**{FLAG: "on"}))
 
     def test_on_it_promotes_when_the_lead_clears_the_bar(self):
-        self._mirror(0.06)
+        self._mirror(0.15)
         out = self._brief(**{FLAG: "on"})
         self.assertEqual(out["status"], "resolved")
         self.assertEqual(out["node"]["id"], "concept:cache-policy-live")
 
     def test_on_it_asks_back_below_the_bar(self):
-        """0.04 는 `_SEM_GAP` 을 넘어 순서는 바꾸지만 확정 문턱에는 못 미친다."""
-        self._mirror(0.04)
+        """0.08 은 `_SEM_GAP` 을 넘어 순서는 바꾸지만 확정 문턱(`_SEM_PROMOTE`)에는 못 미친다."""
+        self._mirror(0.08)
         out = self._brief(**{FLAG: "on"})
         self.assertEqual(out["status"], "choose")
         self.assertEqual(out["candidates"][0]["id"], "concept:cache-policy-live")
@@ -229,20 +230,20 @@ class PromoteOnTheEngine(unittest.TestCase):
         """폐기된 기록이 의미 1위였다면 남은 1위의 우위는 필터가 만든 것이다. 승격은 의미
         거리로 견주는 가드를 지나며, 거기서 되돌려진다."""
         self._retired_record()
-        self._mirror(0.06, extra=[("record:cache-policy-old", "cache policy old", 0.03)])
+        self._mirror(0.15, extra=[("record:cache-policy-old", "cache policy old", 0.03)])
         out = self._brief(**{FLAG: "on"})
         self.assertEqual(out["status"], "choose", out.get("node"))
         # 이 문구는 가드가 **확정을** 강등할 때만 붙는다. 꺼 두면 원래 choose 라 안 붙으므로
         # 승격이 일어났고 가드가 되돌렸다는 뜻이다(검색의 필터 공개 문구와 다르다).
         self.assertIn("tied with the leading candidate", out.get("validity_note") or "")
-        self.assertNotIn("tied with", self._brief().get("validity_note") or "")
+        self.assertNotIn("tied with", self._brief(**{FLAG: "off"}).get("validity_note") or "")
         self.assertEqual(out["candidates"][0]["id"], "concept:cache-policy-live")
 
     def test_a_retired_row_far_on_the_semantic_arm_does_not_undo_a_promotion(self):
         """토큰으로 비긴 폐기 행이라도 의미로 멀면 우위를 만들지 않았다. 옛 가드는 토큰만 견줘
         이런 승격을 전부 되돌렸다(토큰 없는 승격은 (0,0) 이라 항상 비긴다)."""
         self._retired_record()
-        self._mirror(0.06, extra=[("record:cache-policy-old", "cache policy old", 0.40)])
+        self._mirror(0.15, extra=[("record:cache-policy-old", "cache policy old", 0.40)])
         out = self._brief(**{FLAG: "on"})
         self.assertEqual(out["status"], "resolved", out.get("candidates"))
         self.assertEqual(out["node"]["id"], "concept:cache-policy-live")
@@ -250,7 +251,7 @@ class PromoteOnTheEngine(unittest.TestCase):
 
     def test_a_retired_row_absent_from_the_semantic_arm_does_not_undo_a_promotion(self):
         self._retired_record()
-        self._mirror(0.06)
+        self._mirror(0.15)
         self.assertEqual(self._brief(**{FLAG: "on"})["status"], "resolved")
 
     def test_a_token_decided_resolution_keeps_the_token_tie_guard(self):
@@ -272,7 +273,7 @@ class PromoteOnTheEngine(unittest.TestCase):
     def test_the_answerability_gate_still_demotes_a_promotion(self):
         """주제는 맞는데 질문의 나머지가 아무 데도 없으면 확정하지 않는다. 같은 플래그로
         그 나머지가 없는 질문은 승격되므로, 강등은 게이트가 한 것이다."""
-        self._mirror(0.06)
+        self._mirror(0.15)
         both = {FLAG: "on", "VINC_BRIEF_ANSWERABILITY": "on"}
         self.assertEqual(self._brief(**both)["status"], "resolved")
         out = self._brief("cache policy zebra walrus quantum", **both)
