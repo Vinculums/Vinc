@@ -1037,8 +1037,12 @@ class MCPHTTPApp:
                         raise PermissionError("only projected social or owned Agent metadata documents may be deleted")
                 if op == "delete-edge":
                     ends = (args.get("from"), args.get("to"))
+                    rel = str(args.get("type") or "").strip().lower()
+                    # 결과(record) 페이지에서 나가는 ATTACHES_TO 도 위키 관계다. 위키 소유자의 기록 출발
+                    # 관계는 rel 표에 쓰므로, 남은 ATTACHES_TO 는 같은 쌍 RELATED_TO 의 사본이다.
+                    attach = rel == "attaches_to" and str(ends[0] or "").startswith("record:")
                     if (any(not _community_page_node(n) for n in ends)
-                            or str(args.get("type") or "").strip().lower() not in _COMMUNITY_WIKI_RELS):
+                            or (rel not in _COMMUNITY_WIKI_RELS and not attach)):
                         raise PermissionError("only projected wiki page relations may be deleted")
             elif op not in _COMMUNITY_READ_OPS:
                 raise PermissionError("community mutations must go through account revisions")
