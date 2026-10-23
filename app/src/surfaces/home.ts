@@ -1,4 +1,4 @@
-import { api, cfg } from "../api";
+import { api, cfg, isCommunitySpace } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
 import { esc, confirmDestructive } from "../components";
@@ -175,6 +175,8 @@ async function paintList(el: HTMLElement, gen: number): Promise<void> {
   } else rows = page.map(row).join("");
 
   const roles = agentRoleCount() || 0;
+  // 커뮤니티 스페이스는 읽기 전용이다. 쓰기 진입점을 그리지 않는다. 계정도 쓰기를 거절한다.
+  const readOnly = isCommunitySpace(cfg.team);
   // Agent 가 건 거르기에서 빈 목록은 문서 전체가 비었든 아니든 역할 만들기로 잇는다.
   const empty = !picked.length && agentScope && !query
     ? `<div class="home-empty"><p>${esc(roles ? H.agentNoDocs : H.agentNone)}</p>
@@ -182,8 +184,8 @@ async function paintList(el: HTMLElement, gen: number): Promise<void> {
         ${roles ? `<button class="btn" type="button" data-act="new">${esc(H.newDoc)}</button>` : ""}</div></div>`
     : !docs.length
       ? `<div class="home-empty"><p>${esc(H.empty)}</p>
-          <div class="home-acts"><button class="btn btn-primary" type="button" data-act="new">${esc(H.newDoc)}</button>
-          <button class="btn" type="button" data-act="import">${esc(H.import)}</button></div></div>`
+          ${readOnly ? "" : `<div class="home-acts"><button class="btn btn-primary" type="button" data-act="new">${esc(H.newDoc)}</button>
+          <button class="btn" type="button" data-act="import">${esc(H.import)}</button></div>`}</div>`
     : !picked.length
       ? `<div class="home-empty"><p>${esc(H.emptyFiltered)}</p>
           <button class="btn btn-quiet" type="button" data-act="clear">${esc(H.clearFilter)}</button></div>`
@@ -196,8 +198,8 @@ async function paintList(el: HTMLElement, gen: number): Promise<void> {
     <header class="home-head">
       <h1>${esc(H.title)} <span class="home-count">${esc(H.count(picked.length))}</span></h1>
       <div class="home-acts">
-        <button class="btn btn-primary" type="button" data-act="new">${icon("doc", 15)}<span>${esc(H.newDoc)}</span></button>
-        <button class="btn" type="button" data-act="import">${icon("pack-in", 15)}<span>${esc(H.import)}</span></button>
+        ${readOnly ? "" : `<button class="btn btn-primary" type="button" data-act="new">${icon("doc", 15)}<span>${esc(H.newDoc)}</span></button>
+        <button class="btn" type="button" data-act="import">${icon("pack-in", 15)}<span>${esc(H.import)}</span></button>`}
       </div>
     </header>
     ${topicPanel(docs)}
@@ -320,7 +322,7 @@ async function paintDoc(el: HTMLElement, gen: number, docId: string): Promise<vo
         <div class="home-aside-acts">
           ${node ? `<button class="btn" type="button" data-act="graph">${icon("graph", 15)}<span>${esc(H.showInGraph)}</span></button>` : ""}
           <button class="btn" type="button" data-act="copy">${esc(H.copyText)}</button>
-          <button class="btn btn-quiet home-del" type="button" data-act="del">${esc(H.del)}</button>
+          ${isCommunitySpace(cfg.team) ? "" : `<button class="btn btn-quiet home-del" type="button" data-act="del">${esc(H.del)}</button>`}
         </div>
       </aside>
     </div>
@@ -333,7 +335,7 @@ async function paintDoc(el: HTMLElement, gen: number, docId: string): Promise<vo
   const { mountDocEditor } = await import("../doc-editor");
   if (gen !== liveGen) return;
   const handle = await mountDocEditor(el.querySelector<HTMLElement>("#home-ed")!, {
-    owner: cfg.owner, docId, autoFocus: false,
+    owner: cfg.owner, docId, autoFocus: false, readOnly: isCommunitySpace(cfg.team),
     onSaved: () => { docsCache = null; void refreshLnb({ quiet: true }); },
     onDocLink: (id) => { location.hash = `#home/doc/${encodeURIComponent(id)}`; },
   });
@@ -379,6 +381,7 @@ async function paintWriter(el: HTMLElement, gen: number, fallbackTopic: string):
   const H = COPY.ui.home;
   const topic = pendingTopic || fallbackTopic;
   pendingTopic = "";
+  if (isCommunitySpace(cfg.team)) { location.hash = "#home"; return; }
   el.innerHTML = `<div class="home home-read">
     <nav class="home-crumbs"><a class="home-back" href="#home">‹ ${esc(H.back)}</a></nav>
     <div class="home-read-grid home-write"><article class="home-doc" id="home-wr"></article></div>
