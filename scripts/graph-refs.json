@@ -859,6 +859,7 @@
     "vinc.spec.mcp-server",
     "vinc.spec.product-overview",
     "vinc.spec.remote-profile",
+    "vinc.spec.retrieval-knobs",
     "vinc.spec.settings",
     "vinc.spec.surface-intake",
     "vinc.spec.surface-packs",

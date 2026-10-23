@@ -151,18 +151,19 @@ class PromoteOnTheEngine(unittest.TestCase):
             else:
                 os.environ[k] = v
 
-    def _mirror(self, gap):
-        """live 는 0.05, notes 는 0.05+gap 거리에 둔다."""
+    def _mirror(self, gap, extra=()):
+        """live 는 0.05, notes 는 0.05+gap 거리에 둔다. ``extra`` 는 (id, 제목, 거리)."""
         self.store.drop_node_vector_index()
         self.store.run(
             "UNWIND $rows AS r CREATE (:NodeVec {vec_id: r.v, node_id: r.id, "
-            "kind: 'concept', owner_id: $o, title: r.t, text: r.t, model: 'test', "
+            "kind: r.k, owner_id: $o, title: r.t, text: r.t, model: 'test', "
             "embedding: r.emb})",
             {"o": self.OWNER, "rows": [
-                {"v": node_mirror.vec_id(self.OWNER, nid), "id": nid, "t": t, "emb": _at(d)}
+                {"v": node_mirror.vec_id(self.OWNER, nid), "id": nid, "t": t, "emb": _at(d),
+                 "k": nid.split(":", 1)[0]}
                 for nid, t, d in (("concept:cache-policy-live", "cache policy live", 0.05),
                                   ("concept:cache-policy-notes", "cache policy notes",
-                                   0.05 + gap))]})
+                                   0.05 + gap)) + tuple(extra)]})
         self.store.create_node_vector_index()
 
     def _brief(self, query="cache policy", **env):
@@ -218,13 +219,17 @@ class PromoteOnTheEngine(unittest.TestCase):
         self.assertEqual(out["status"], "choose")
         self.assertEqual(out["candidates"][0]["id"], "concept:cache-policy-live")
 
-    def test_the_validity_tie_guard_still_demotes_a_promotion(self):
-        """폐기된 기록이 1위와 토큰으로 비겼다면 원래 '모르겠다'였다. 승격도 그 가드를 지난다."""
+    def _retired_record(self):
         frag.merge_fragment({"owner": self.OWNER, "nodes": [
             {"id": "record:cache-policy-old", "type": "record", "title": "cache policy old",
              "domain": "eng", "valid_from": "2025-01-01", "valid_until": "2026-01-01"},
         ]}, store=self.store)
-        self._mirror(0.06)
+
+    def test_the_validity_tie_guard_still_demotes_a_promotion(self):
+        """폐기된 기록이 의미 1위였다면 남은 1위의 우위는 필터가 만든 것이다. 승격은 의미
+        거리로 견주는 가드를 지나며, 거기서 되돌려진다."""
+        self._retired_record()
+        self._mirror(0.06, extra=[("record:cache-policy-old", "cache policy old", 0.03)])
         out = self._brief(**{FLAG: "on"})
         self.assertEqual(out["status"], "choose", out.get("node"))
         # 이 문구는 가드가 **확정을** 강등할 때만 붙는다. 꺼 두면 원래 choose 라 안 붙으므로
@@ -232,6 +237,37 @@ class PromoteOnTheEngine(unittest.TestCase):
         self.assertIn("tied with the leading candidate", out.get("validity_note") or "")
         self.assertNotIn("tied with", self._brief().get("validity_note") or "")
         self.assertEqual(out["candidates"][0]["id"], "concept:cache-policy-live")
+
+    def test_a_retired_row_far_on_the_semantic_arm_does_not_undo_a_promotion(self):
+        """토큰으로 비긴 폐기 행이라도 의미로 멀면 우위를 만들지 않았다. 옛 가드는 토큰만 견줘
+        이런 승격을 전부 되돌렸다(토큰 없는 승격은 (0,0) 이라 항상 비긴다)."""
+        self._retired_record()
+        self._mirror(0.06, extra=[("record:cache-policy-old", "cache policy old", 0.40)])
+        out = self._brief(**{FLAG: "on"})
+        self.assertEqual(out["status"], "resolved", out.get("candidates"))
+        self.assertEqual(out["node"]["id"], "concept:cache-policy-live")
+        self.assertNotIn("tied with", out.get("validity_note") or "")
+
+    def test_a_retired_row_absent_from_the_semantic_arm_does_not_undo_a_promotion(self):
+        self._retired_record()
+        self._mirror(0.06)
+        self.assertEqual(self._brief(**{FLAG: "on"})["status"], "resolved")
+
+    def test_a_token_decided_resolution_keeps_the_token_tie_guard(self):
+        """토큰으로 가른 확정은 그대로 토큰 점수로 견준다(승격이 아니므로)."""
+        rows = [{"id": "a", "hit_tokens": 4, "title_tokens": 3, "distance": 0.1},
+                {"id": "b", "hit_tokens": 1, "title_tokens": 1, "distance": 0.5}]
+        self.assertFalse(q._brief_semantic_tie_clear(rows, {"validity_best_dropped_distance": 0.9}))
+
+    def test_the_semantic_tie_check_reads_the_distance_gap(self):
+        rows = [{"id": "a", "hit_tokens": 2, "title_tokens": 2, "distance": 0.10},
+                {"id": "b", "hit_tokens": 2, "title_tokens": 2, "distance": 0.30}]
+        clear = q._brief_semantic_tie_clear
+        self.assertTrue(clear(rows, {}))                                        # 의미 팔이 지운 것 없음
+        self.assertTrue(clear(rows, {"validity_best_dropped_distance": 0.10 + q._SEM_PROMOTE}))
+        self.assertFalse(clear(rows, {"validity_best_dropped_distance": 0.12}))   # 우위 안쪽
+        self.assertFalse(clear(rows[:1], {}))                                   # 단독·이름 확정
+        self.assertFalse(clear([dict(rows[0], distance=None), rows[1]], {}))    # 거리를 모르면 옛 비교
 
     def test_the_answerability_gate_still_demotes_a_promotion(self):
         """주제는 맞는데 질문의 나머지가 아무 데도 없으면 확정하지 않는다. 같은 플래그로
