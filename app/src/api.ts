@@ -1150,14 +1150,10 @@ export const teamsApi = {
  *  커뮤니티 스페이스는 읽기 전용이다: 계정이 읽기만 공개 커뮤니티 그래프로 넘기고 쓰기는 거절한다(VIN-458). */
 export const communitiesApi = {
   list: async (): Promise<Array<{ id: string; name: string; role: string }>> => {
+    // 로컬 모드에는 계정이 없다. 웹과 셸 계정 모드는 같은 계정 평면(`/api/graph/spaces`)을 읽는다.
+    if (!WEB && !accountMode()) return [];
     try {
-      let data: { communities?: unknown };
-      if (accountMode()) data = await call("/spaces") as { communities?: unknown };
-      else if (WEB) {
-        const res = await fetch(new URL("/api/graph/spaces", location.origin), { credentials: "include" });
-        if (!res.ok) return [];
-        data = await res.json() as { communities?: unknown };
-      } else return [];
+      const data = await call("/spaces", undefined, undefined, { team: null }) as { communities?: unknown };
       return Array.isArray(data.communities) ? data.communities : [];
     } catch { return []; }
   },
