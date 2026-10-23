@@ -25,7 +25,7 @@ modules['./view-graph-read'] = url((await js('view-graph-read.ts')).replace('"./
 modules['./view-graph-loading'] = url(await js('view-graph-loading.ts'));
 let code = await js('view-graph-loader.ts');
 for (const [name, replacement] of Object.entries(modules)) code = code.replace(JSON.stringify(name), JSON.stringify(replacement));
-const {createGraphLoader} = await import(url(code));
+const {createGraphLoader, withoutRetiredPages} = await import(url(code));
 const {viewSessionCache} = await import(modules['./view-session-cache']);
 const {edgeKeys} = await import(modules['./view-layout-wire']);
 const raw = {executed:true, marker:'epoch.1', nodes:[{id:'a',kind:'concept',x:1},{id:'b',kind:'record',x:2}],
@@ -182,4 +182,20 @@ test('a failed fallback worker keeps by-centre with its failure note',async()=>{
   h.worker=async()=>{throw new Error('worker failed');};
   const result=await make().fetchGraph(prefs,{});
   assert.equal(result.layout,'failed');assert.equal(result.nodes[0].x,1);
+});
+// 커뮤니티 스페이스는 내린 페이지와 그 문서 미러를 그리지 않는다. 개인·팀 그래프는 그대로다.
+test('a community space drops retired pages and their document mirrors, other spaces keep them',async()=>{
+  const withRetired = {...raw, nodes:[...raw.nodes,
+    {id:'concept:old',kind:'concept',props:{status:'retired',doc_id:'page.c.old'}},
+    {id:'concept:doc.page.c.old',kind:'concept',props:{}}],
+    edges:[...raw.edges,{source:'concept:old',target:'a',type:'relates_to'}]};
+  assert.deepEqual(withoutRetiredPages(withRetired).nodes.map(n=>n.id),['a','b']);
+  assert.deepEqual(withoutRetiredPages(withRetired).edges,raw.edges);
+  assert.equal(withoutRetiredPages(raw),raw,'nothing retired leaves the same object');
+  h.read=async()=>structuredClone(withRetired);
+  const team=await make().fetchGraph({...prefs,layout:'cone'},{});
+  assert.equal(team.nodes.length,4,'a team space keeps every node');
+  h.scope={...h.scope,team:'community:01a1367b-e924-72a0-9b24-3e299e2c70a7',key:'scope-c'};
+  const community=await make().fetchGraph({...prefs,layout:'cone'},{});
+  assert.deepEqual(community.nodes.map(n=>n.id),['a','b']);
 });
