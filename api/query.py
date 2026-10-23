@@ -3658,6 +3658,40 @@ def _brief_sem_promote_on() -> bool:
 _SEM_PROMOTE = 0.049
 
 
+def _brief_token_decisive(top: dict, second: dict) -> bool:
+    """1위가 2위를 토큰으로 갈랐는가 — 엄격 규칙이면 `_STRICT_MARGIN`, 아니면 1."""
+    margin = _STRICT_MARGIN if _brief_strict_on() else 1   # 1 이면 현행과 글자 그대로 같다
+    return _brief_int(top.get("hit_tokens")) > 0 and (
+        _brief_int(top.get("hit_tokens")) - _brief_int(second.get("hit_tokens")) >= margin
+        or _brief_int(top.get("title_tokens"))
+        - _brief_int(second.get("title_tokens")) >= margin)
+
+
+def _brief_semantic_tie_clear(picked: list[dict], res: dict) -> bool:
+    """의미 우위 승격으로 확정된 1위가 유효구간 동점 가드를 통과하는가.
+
+    가드는 지운 행과 1위를 **확정에 쓴 잣대로** 견준다. 토큰으로 가른 확정은 토큰 점수로
+    견주고(이 함수는 False), 승격(토큰으로는 못 가르고 의미 우위로 확정)은 의미 거리로
+    견준다: 의미 팔이 지운 행 중 가장 가까운 것이 1위보다 `_SEM_PROMOTE` 안쪽이면, 그 행이
+    남았을 때 우위가 없었으므로 확정하지 않는다. 의미 팔이 아무것도 지우지 않았으면 우위는
+    필터가 만든 것이 아니다. 엄격 규칙이 꺼져 있으면 순서가 토큰으로 정해지므로 토큰 비교를 쓴다.
+    근거: [[vinc.spec.retrieval-knobs]] §2"""
+    if len(picked) < 2 or not _brief_strict_on() or _brief_token_decisive(picked[0], picked[1]):
+        return False
+    top = picked[0]
+    try:
+        top_d = float(top.get("distance"))
+    except (TypeError, ValueError):
+        return False
+    dropped = res.get("validity_best_dropped_distance")
+    if dropped is None:
+        return True
+    try:
+        return float(dropped) - top_d >= _SEM_PROMOTE
+    except (TypeError, ValueError):
+        return False
+
+
 def _brief_rank(rows: list[dict]) -> list[dict]:
     """해소 순위. 확정 판정과 되묻기 목록이 같은 순서를 쓰도록 한 자리에 둔다.
 
@@ -3713,11 +3747,7 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
                 else "choose"), rows
     ranked = _brief_rank(rows)
     top, second = ranked[0], ranked[1]
-    margin = _STRICT_MARGIN if _brief_strict_on() else 1   # 1 이면 현행과 글자 그대로 같다
-    decisive = _brief_int(top.get("hit_tokens")) > 0 and (
-        _brief_int(top.get("hit_tokens")) - _brief_int(second.get("hit_tokens")) >= margin
-        or _brief_int(top.get("title_tokens"))
-        - _brief_int(second.get("title_tokens")) >= margin)
+    decisive = _brief_token_decisive(top, second)
     # 의미 우위 승격(플래그 뒤): 되묻기가 될 자리에서만 돈다. 1위가 의미 팔의 1위가
     # 아니면 `sem_lead` 가 없다(그 노드보다 가까운 것이 있으니 우위가 음수다).
     lead = top.get("sem_lead")
@@ -4347,7 +4377,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             _bd = tuple(base.get("validity_best_dropped") or (0, 0))
             _w = (_brief_int(picked[0].get("hit_tokens")),
                   _brief_int(picked[0].get("title_tokens")))
-            if _bd >= _w:
+            if _bd >= _w and not _brief_semantic_tie_clear(picked, res):
                 status = "choose"
                 # 시점 읽기(as_of)에서도 같은 가드다 — 그 기간 밖이라 감춘 것이 동점이었으면
                 # 확정하지 않는다(계획의 "tie guard applies unchanged"). 알림은 경우마다

@@ -1678,6 +1678,15 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                             _gone = _vstats.setdefault("dropped_ids", set())
                             _gone.add(h.get("id"))
                             _vstats["dropped_not_current"] = len(_gone)
+                            # 지운 행 중 가장 가까운 의미 거리. 의미 우위는 지운 **뒤** 목록에서
+                            # 재므로, 지운 행이 1위였다면 우위는 필터가 만든 것이다. brief 의
+                            # 동점 가드가 토큰 없는 확정을 이 거리로 잰다(`api.query`).
+                            try:
+                                _d = float(h.get("distance"))
+                            except (TypeError, ValueError):
+                                _d = None
+                            if _d is not None and _d < _vstats.get("best_dropped_distance", float("inf")):
+                                _vstats["best_dropped_distance"] = _d
                     _raw = _keep
                 if known_at and mode != "current":
                     _raw = _known_at_nodes(store, _raw, owner=owner, until=_until,
@@ -1730,6 +1739,8 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
             base.setdefault("validity_best_dropped",
                             list(_vstats.get("best_dropped_score") or (0, 0)))
             base.setdefault("validity_note", _vnote)
+        if "best_dropped_distance" in _vstats:
+            base["validity_best_dropped_distance"] = round(_vstats["best_dropped_distance"], 6)
 
         # 이어 읽기에서도 벡터 팔은 다시 돈다. 첫 페이지와 같은 런타임 경고를
         # 반환하기 전에 계산해 두어야 한다.
