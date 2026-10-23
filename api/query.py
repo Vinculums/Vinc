@@ -3691,6 +3691,24 @@ def _brief_token_decisive(top: dict, second: dict) -> bool:
         - _brief_int(second.get("title_tokens")) >= margin)
 
 
+def _brief_hidden_ties(query: str, top: dict, hidden) -> bool:
+    """유효구간 필터가 감춘 행이 남았다면 1위의 토큰 확정이 서지 않았는가.
+
+    비교는 **확정에 쓴 규칙 그대로**다. `hidden` 은 감춘 행들의 축별 최댓값
+    `(hit_tokens, title_tokens)` 이라, 거기에 이기면 감춘 모든 행에 이긴다.
+    - 이름을 댄 확정(제목이 질문과 같음)은 같은 제목이 둘이면 되묻는다. 감춘 행이 두 축
+      모두 1위 이상이면 같은 제목일 수 있으므로 비긴 것으로 본다.
+    - 그 밖의 확정은 `_brief_token_decisive` 다. 튜플 하나로 사전순 비교하면 hit 가 하나 높은
+      행이 제목으로 크게 앞선 확정을 되돌리고, 제목이 높은 행은 놓친다.
+    근거: [[vinc.spec.retrieval-knobs]] §2"""
+    h_hit = _brief_int(hidden[0]) if len(hidden) > 0 else 0
+    h_title = _brief_int(hidden[1]) if len(hidden) > 1 else 0
+    if _brief_norm(top.get("title")) == _brief_norm(query):
+        return (h_hit >= _brief_int(top.get("hit_tokens"))
+                and h_title >= _brief_int(top.get("title_tokens")))
+    return not _brief_token_decisive(top, {"hit_tokens": h_hit, "title_tokens": h_title})
+
+
 def _brief_semantic_tie_clear(picked: list[dict], res: dict) -> bool:
     """의미 우위 승격으로 확정된 1위가 유효구간 동점 가드를 통과하는가.
 
@@ -4397,14 +4415,9 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # 확정됐다(정직성 0.0 → 0.1667). 동점이던 Record 둘 중 하나가 걸러지면서 남은
         # 하나가 단독 승자가 된 모양이었다.
         # 근거: [[record:the-validity-filter-broke-a-tie-and-manufactured-confidence-2026-09-09]]
-        # 비교는 **확정에 쓴 규칙 그대로**다: 감춘 행이 남았어도 1위가 `_brief_token_decisive`
-        # 로 이기면 동점이 아니었다. `validity_best_dropped` 는 감춘 행들의 축별 최댓값이라,
-        # 거기에 이기면 감춘 모든 행에 이긴다. 튜플 하나로 사전순 비교하면 hit 가 하나 높은
-        # 행이 제목으로 크게 앞선 확정을 되돌리고, 제목이 높은 행은 놓친다.
         if status == "resolved" and picked and base.get("validity_filtered"):
             _bd = tuple(base.get("validity_best_dropped") or (0, 0))
-            _hidden = {"hit_tokens": _bd[0], "title_tokens": _bd[1] if len(_bd) > 1 else 0}
-            if (not _brief_token_decisive(picked[0], _hidden)
+            if (_brief_hidden_ties(query, picked[0], _bd)
                     and not _brief_semantic_tie_clear(picked, res)):
                 status = "choose"
                 # 시점 읽기(as_of)에서도 같은 가드다 — 그 기간 밖이라 감춘 것이 동점이었으면
