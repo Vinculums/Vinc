@@ -985,7 +985,8 @@ export const api = {
   // 미러가 생겨 트리와 지도에 곧바로 선다(`docstore.put_doc`). 빈 값은 싣지 않는다 —
   // 서버는 빈 주제를 "지운다"가 아니라 "안 건드린다"로 읽는다.
   docPut: (owner: string, text: string, id?: string, title?: string,
-           contentTime?: string, origin?: string, topic?: string): Promise<{
+           contentTime?: string, origin?: string, topic?: string,
+           expectedContentHash?: string): Promise<{
     executed: boolean; skipped?: boolean; doc_id?: string; content_hash?: string;
     chunks?: number; needs_embed?: boolean; content_time?: string; error?: string;
     created?: boolean; topic?: string;
@@ -993,7 +994,9 @@ export const api = {
                                       ...(title === undefined ? {} : { title: title.trim() }),
                                       ...(contentTime === undefined ? {} : { content_time: contentTime }),
                                       ...(origin ? { origin } : {}),
-                                      ...(topic ? { topic } : {}) }),
+                                      ...(topic ? { topic } : {}),
+                                      // 읽은 판의 해시. 다르면 서버가 쓰지 않고 `write_conflict` 를 준다.
+                                      ...(expectedContentHash ? { expected_content_hash: expectedContentHash } : {}) }),
   // 파일 바이트 입구(D45) — 텍스트로 못 읽는 것(PDF)과 브라우저 UTF-8 디코드가
   // 망친 것(cp949 등)을 원본 바이트로 넘겨 서버 추출기에 맡긴다. multipart 가
   // 아니라 base64-in-JSON 인 이유는 계정 프록시가 JSON 만 통과시키기 때문.
@@ -1140,6 +1143,23 @@ export const api = {
   connectStatus: (state: string) => call("/connect/status", { state }),
   jobStatus: (jobId: string) => call(`/jobs/${jobId}`),
 };
+
+/** 지금 스페이스에서 편집 단추를 보일지. 화면 힌트일 뿐이고 최종 판정은 서버다(팀 역할 검사).
+ *  개인 그래프는 쓸 수 있고, 커뮤니티는 읽기 전용이며, 팀은 editor·admin 만 쓴다. 팀 목록을 못
+ *  읽으면 숨기지 않는다(서버가 거절하면 그 자리에서 말한다). 스페이스마다 한 번만 묻는다. */
+const writableCache = new Map<string, Promise<boolean>>();
+export function canWriteHere(team: string = cfg.team): Promise<boolean> {
+  if (!team) return Promise.resolve(true);
+  if (isCommunitySpace(team)) return Promise.resolve(false);
+  let p = writableCache.get(team);
+  if (!p) {
+    p = teamsApi.list({ throwOnError: true })
+      .then((rows) => rows.some((t) => t.id === team && ["editor", "admin"].includes(t.role)))
+      .catch(() => { writableCache.delete(team); return true; });
+    writableCache.set(team, p);
+  }
+  return p;
+}
 
 /** 팀 목록 — 그래프 프록시가 아니라 계정 라우트(/api/teams). 세션 쿠키만 필요하다.
  *  웹모드가 아니면 팀 자체가 없으므로 빈 배열로 끝낸다(호출부 분기 제거). */

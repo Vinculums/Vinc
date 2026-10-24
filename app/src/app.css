@@ -3896,6 +3896,19 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 }
 .ha-meta dt { color: hsl(var(--caption-foreground)); }
 .ha-meta dd { margin: 0; overflow-wrap: break-word; }
+/* 옆 칸의 주제 바꾸기 — 값 옆의 글자 단추, 누르면 그 자리가 입력줄이 된다. */
+.ha-link {
+  border: none; background: none; padding: 0; margin-left: .25rem; cursor: pointer;
+  font: inherit; font-size: .75rem; color: hsl(var(--muted-foreground)); text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ha-link:hover { color: hsl(var(--foreground)); }
+.ha-topic-form { display: grid; gap: var(--space-2, .5rem); }
+.ha-topic-in { height: 2rem; font-size: .8125rem; }
+.ha-topic-acts { display: flex; justify-content: flex-end; gap: var(--space-1, .25rem); }
+.ha-topic-acts .btn { height: 1.875rem; padding: 0 .65rem; font-size: .75rem; }
+.ha-topic-msg { margin: 0; font-size: .75rem; }
+.ha-topic-msg:empty { display: none; }
 /* 지우기는 맨 아래 글자 하나로 둔다 — 가장 덜 쓰고 가장 무거운 동작이 버튼 줄에 같은 무게로
    서 있을 이유가 없다. 확인 대화는 그대로다. */
 .ha-del {

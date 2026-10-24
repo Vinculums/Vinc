@@ -1,4 +1,4 @@
-import { api, cfg, WEB, teamsApi, isCommunitySpace, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, messageOf, isWriteConflict, type GraphEdge, type GraphNode,
+import { api, cfg, WEB, teamsApi, isCommunitySpace, canWriteHere, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, messageOf, isWriteConflict, type GraphEdge, type GraphNode,
          type NodeLinks } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
@@ -2998,7 +2998,7 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  비어 있으면 절을 그리지 않는다 — 빈 제목만 남기지 않는다.
    *  근거: [[decision:side-navigation-picks-open-the-document-pane-full-width-2026-09-25]] */
   /** 속성 절이 읽은 것 — 무슨 종인가(props 를 싣는가), 어느 판(rev)을 읽었는가. */
-  type PropsMeta = { kind?: string; rev?: number };
+  type PropsMeta = { kind?: string; rev?: number; canEdit?: boolean };
 
   function drawNodeProps(nd: N3, props?: Record<string, unknown>, meta: PropsMeta = {}) {
     const box = detail.querySelector<HTMLElement>("#node-props");
@@ -3006,7 +3006,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     const P = props || {};
     const keys = Object.keys(P);
     // 편집할 수 있는 종이면 비어 있어도 절을 그린다 — 첫 속성을 더할 자리가 있어야 한다.
-    const editable = propsEditable(meta.kind);
+    const editable = propsEditable(meta.kind) && meta.canEdit !== false;
     if (keys.length === 0 && !editable) { box.innerHTML = ""; return; }
     const role = isAgentRoleId(nd.id);
     const order = role
@@ -3486,9 +3486,11 @@ export async function renderView(el: HTMLElement, resume = false) {
       // 경로가 degree 0 을 박아 33연결 허브에도 제안이 떴다.
       if (res.links?.executed && res.links.degree + res.links.attached === 0)
         void suggestTiesInto(nd);
+      // 이 스페이스에 쓸 수 없으면(커뮤니티 · 팀 열람자) 편집 단추를 내지 않는다.
+      const canEdit = await canWriteHere();
       // 패널이 그 사이 다른 노드로 갱신됐으면 버린다(늦은 응답이 남의 상세를 덮지 않게).
       if (!detail.contains(box) || detail.hidden) return;
-      drawNodeProps(nd, res.props, { kind: res.node_kind, rev: res.rev });
+      drawNodeProps(nd, res.props, { kind: res.node_kind, rev: res.rev, canEdit });
       // 지도에 자리가 없는 노드(연결 없는 기록·결정)는 id 조각을 이름으로 달고 열린다 —
       // 노드가 답한 제목이 오면 그것으로 바꾼다(역할의 직함은 위에서 이미 골랐다).
       const h2 = detail.querySelector("h2");
@@ -3496,7 +3498,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       // 기본 정보(흐름 H) — 저장되면 지도와 이 열을 새 값으로 다시 그린다.
       const basics = detail.querySelector<HTMLElement>("#node-basics");
       if (basics) void import("../node-basics").then((m) => m.drawBasics(basics, nd.id, res,
-        (domain) => void openNodePane(nd.id, domain || undefined)));
+        (domain) => void openNodePane(nd.id, domain || undefined), canEdit));
       if (railFull && res.links?.executed) drawPaneLinks(nd, res.links);
       const parts: string[] = [];
       if (res.one_liner) parts.push(`<div class="doc-render">${renderMarkdown(res.one_liner)}</div>`);
@@ -3647,7 +3649,7 @@ export async function renderView(el: HTMLElement, resume = false) {
              쪽이 맞는지 매번 다시 정해야 한다(askRowHTML 머리말과 같은 이유).
              ⚠ 이 주석은 템플릿 리터럴 **안**이다 — 백틱을 쓰면 문자열이 거기서 끊긴다. -->
         ${askRowHTML()}
-        ${dupTitle ? "" : `<h2 style="margin-top:.4rem">${esc(docTitle(doc.title))}</h2>`}
+        ${dupTitle ? "" : `<h2 id="rdr-title" style="margin-top:.4rem"${docWriting ? " hidden" : ""}>${esc(docTitle(doc.title))}</h2>`}
         <p>${badge} <span class="hint" id="rdr-state"></span></p>
         ${mentionsHTML}
         ${tocHTML}
@@ -3678,9 +3680,19 @@ export async function renderView(el: HTMLElement, resume = false) {
       if (!current()) return;
       const state = detail.querySelector<HTMLElement>("#rdr-state")!;
       const rdrHost = detail.querySelector<HTMLElement>("#rdr-host")!;
+      // 편집 모드에서는 편집기의 제목 줄(제목 · 내용 시점)을 연다. 그때 위의 제목 글자는 숨기고,
+      // 저장되면 새 제목으로 다시 쓴다.
+      const titleEl = detail.querySelector<HTMLElement>("#rdr-title");
+      // 편집 모드의 제목 줄은 자기 저장 상태 글자를 갖는다. 위 상태 줄과 두 번 말하지 않게 숨긴다.
+      state.hidden = docWriting;
+      let savedHash = doc.content_hash;
+      const onSaved = (_id: string, t: string, h: string) => {
+        if (h) savedHash = h;
+        if (titleEl && t) titleEl.textContent = docTitle(t);
+      };
       let handle = await mountDocEditor(rdrHost, {
         owner: cfg.owner, docId, initial: doc.text, title: doc.title,
-        contentHash: doc.content_hash, hideTitle: true,
+        contentHash: doc.content_hash, hideTitle: !docWriting, onSaved,
         // 모드가 정한다(위 `docWriting`). 커서는 켜지 않는다 — 문서 열은 지도와
         // 나란히 서므로, 열자마자 키보드를 가져가면 `f`(맞춤)·Esc 같은 지도 조작이
         // 글자로 들어간다.
@@ -3721,9 +3733,12 @@ export async function renderView(el: HTMLElement, resume = false) {
         docWriting = !docWriting;
         if (btn) btn.textContent = docWriting ? COPY.ui.viewx.edToRead : COPY.ui.viewx.edToWrite;
         if (tag) tag.textContent = docWriting ? COPY.ui.viewx.edWrite : COPY.ui.viewx.edRead;
+        if (titleEl) titleEl.hidden = docWriting;
+        state.hidden = docWriting;
         handle = await mountDocEditor(rdrHost, {
-          owner: cfg.owner, docId, initial: text || doc.text, title: doc.title,
-          contentHash: doc.content_hash, hideTitle: true,
+          owner: cfg.owner, docId, initial: text || doc.text,
+          title: titleEl?.textContent || doc.title,
+          contentHash: savedHash, hideTitle: !docWriting, onSaved,
           readOnly: !docWriting,
           // 편집으로 들어갈 때만 커서를 준다 — 그것이 이 버튼을 누른 이유다.
           autoFocus: docWriting,

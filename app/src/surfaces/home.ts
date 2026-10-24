@@ -1,4 +1,4 @@
-import { api, cfg, isCommunitySpace } from "../api";
+import { api, canWriteHere, cfg, isCommunitySpace } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
 import { esc, confirmDestructive } from "../components";
@@ -336,20 +336,24 @@ async function paintDoc(el: HTMLElement, gen: number, docId: string): Promise<vo
   if (gen !== liveGen) return;
   const topic = meta?.topic || "";
   setLnbActive({ domains: scope, docId, reveal: topic });
-  const segs = topic ? topic.split("/") : [];
   const day = dayOf(meta?.updated_at || "");
   const node = meta?.primary_concept_id || "";
   // 경로는 뷰 머리 앞자리에 선다 — 본문 첫 글자와 같은 세로선이다(머리와 본문이 한 칼럼).
-  const lead = setTopbarLead(`<nav class="home-crumbs" aria-label="${esc(H.metaTopic)}">
-      <a class="home-back" href="#home">‹ ${esc(H.back)}</a>
-      ${segs.map((s, i) => `<span class="home-sep" aria-hidden="true">›</span><button class="home-crumb" type="button"
-        data-topic="${esc(segs.slice(0, i + 1).join("/"))}">${esc(s)}</button>`).join("")}
-    </nav>`);
-  lead?.querySelectorAll<HTMLElement>("[data-topic]").forEach((b) => b.addEventListener("click", () => {
-    scope = b.dataset.topic ? [b.dataset.topic] : [];
-    shown = PAGE;
-    location.hash = "#home";
-  }));
+  // 옆 칸에서 주제를 바꾸면 다시 그린다.
+  const paintCrumbs = (tp: string) => {
+    const parts = tp ? tp.split("/") : [];
+    const lead = setTopbarLead(`<nav class="home-crumbs" aria-label="${esc(H.metaTopic)}">
+        <a class="home-back" href="#home">‹ ${esc(H.back)}</a>
+        ${parts.map((s, i) => `<span class="home-sep" aria-hidden="true">›</span><button class="home-crumb" type="button"
+          data-topic="${esc(parts.slice(0, i + 1).join("/"))}">${esc(s)}</button>`).join("")}
+      </nav>`);
+    lead?.querySelectorAll<HTMLElement>("[data-topic]").forEach((b) => b.addEventListener("click", () => {
+      scope = b.dataset.topic ? [b.dataset.topic] : [];
+      shown = PAGE;
+      location.hash = "#home";
+    }));
+  };
+  paintCrumbs(topic);
   el.innerHTML = `<div class="home home-read">
     <div class="home-read-grid">
       <article class="home-doc" id="home-ed"></article>
@@ -367,9 +371,7 @@ async function paintDoc(el: HTMLElement, gen: number, docId: string): Promise<vo
           <div class="ha-chips"></div>
         </section>
         <dl class="ha-meta">
-          <dt>${esc(H.metaTopic)}</dt><dd>${topic
-            // 좁은 칸에서 경로가 낱말 한가운데서 꺾이지 않게, 꺾을 자리를 `/` 뒤에 준다.
-            ? esc(topic).replace(/\//g, "/<wbr>") : esc(H.noTopic)}</dd>
+          <dt>${esc(H.metaTopic)}</dt><dd id="ha-topic"></dd>
           ${day ? `<dt>${esc(H.metaUpdated)}</dt><dd>${esc(day)}</dd>` : ""}
           <dt>${esc(H.metaConcept)}</dt><dd>${node
             ? esc(meta?.primary_concept_title || node) : `<span class="hint">${esc(H.notInGraph)}</span>`}</dd>
@@ -466,6 +468,67 @@ async function paintDoc(el: HTMLElement, gen: number, docId: string): Promise<vo
   el.querySelector('[data-act="graph"]')?.addEventListener("click", () => {
     location.hash = `#view/read/${encodeURIComponent(node)}/${encodeURIComponent(docId)}`;
   });
+  void wireTopic();
+
+  // ── 옆 칸: 주제 — 바꾸기는 편집기의 저장과 같은 길이다(원격 판 확인 · 같은 충돌 상자).
+  // 본문이 그대로면 서버는 청크를 건드리지 않고 미러 노드의 주제만 적는다. 주제는 비울 수 없다
+  // (서버가 빈 값을 "안 건드림"으로 읽는다). 쓸 수 없는 스페이스에서는 바꾸기 단추를 내지 않는다.
+  async function wireTopic(): Promise<void> {
+    let curTopic = topic;
+    const dd = el.querySelector<HTMLElement>("#ha-topic");
+    if (!dd) return;
+    const paint = (writable: boolean) => {
+      dd.innerHTML = `<span>${curTopic
+        // 좁은 칸에서 경로가 낱말 한가운데서 꺾이지 않게, 꺾을 자리를 `/` 뒤에 준다.
+        ? esc(curTopic).replace(/\//g, "/<wbr>") : esc(H.noTopic)}</span>${writable
+        ? ` <button class="ha-link" type="button" data-topic-edit>${esc(H.topicChange)}</button>` : ""}`;
+      dd.querySelector("[data-topic-edit]")?.addEventListener("click", () => edit());
+    };
+    paint(false);
+    const writable = !isCommunitySpace(cfg.team) && await canWriteHere();
+    if (gen !== liveGen) return;
+    paint(writable);
+    function edit(): void {
+      dd!.innerHTML = `<form class="ha-topic-form">
+          <input class="home-filter ha-topic-in" list="ha-topics" value="${esc(curTopic)}"
+            aria-label="${esc(H.metaTopic)}" autocomplete="off" spellcheck="false"/>
+          <datalist id="ha-topics"></datalist>
+          <div class="ha-topic-acts">
+            <button class="btn btn-quiet" type="button" data-topic-cancel>${esc(COPY.ui.common.cancel)}</button>
+            <button class="btn btn-primary" type="submit">${esc(H.topicSave)}</button>
+          </div>
+          <p class="hint ha-topic-msg" role="status"></p>
+        </form>`;
+      const form = dd!.querySelector<HTMLFormElement>("form")!;
+      const input = form.querySelector<HTMLInputElement>("input")!;
+      const msg = form.querySelector<HTMLElement>(".ha-topic-msg")!;
+      const busy = (on: boolean) => form.querySelectorAll<HTMLInputElement | HTMLButtonElement>("input, button")
+        .forEach((x) => { x.disabled = on; });
+      void import("../authoring").then((m) => m.fillTopicList(form.querySelector<HTMLDataListElement>("datalist")!));
+      input.focus();
+      input.select();
+      form.querySelector("[data-topic-cancel]")!.addEventListener("click", () => paint(true));
+      form.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); paint(true); } });
+      form.addEventListener("submit", (e) => void (async () => {
+        e.preventDefault();
+        const next = input.value.trim().replace(/^\/+|\/+$/g, "");
+        if (!next) { msg.textContent = H.topicNeed; input.focus(); return; }
+        if (next === curTopic) { paint(true); return; }
+        busy(true);
+        msg.textContent = H.topicSaving;
+        const ok = await (handle.saveTopic?.(next) ?? Promise.resolve(false)).catch(() => false);
+        if (gen !== liveGen) return;
+        if (!ok) { busy(false); msg.textContent = H.topicFail; return; }
+        curTopic = next;
+        docsCache = null;
+        void import("../authoring").then((m) => m.forgetTopics());
+        void refreshLnb({ quiet: true });
+        setLnbActive({ domains: scope, docId, reveal: curTopic });
+        paintCrumbs(curTopic);
+        paint(true);
+      })());
+    }
+  }
   el.querySelector<HTMLButtonElement>('[data-act="copy"]')?.addEventListener("click", async (e) => {
     const b = e.currentTarget as HTMLButtonElement;
     try {
