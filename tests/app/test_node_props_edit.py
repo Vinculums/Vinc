@@ -106,7 +106,7 @@ class Editor(unittest.TestCase):
         self.assertIn("box.replaceWith(fresh)", EDITOR)
 
     def test_detail_passes_kind_and_revision(self):
-        self.assertIn("drawNodeProps(nd, res.props, { kind: res.node_kind, rev: res.rev })", VIEW)
+        self.assertIn("drawNodeProps(nd, res.props, { kind: res.node_kind, rev: res.rev, canEdit })", VIEW)
         self.assertIn("node_kind?: string; rev?: number;", API)
 
 

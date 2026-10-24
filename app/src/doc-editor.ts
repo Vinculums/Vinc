@@ -172,7 +172,8 @@ type DocEditorOpts = {
   title?: string;
   initial?: string;       // 신규/이미 로드된 텍스트. docId 있고 미지정이면 fetch.
   contentHash?: string;   // 로드 시점 해시(충돌 감지 기준)
-  onSaved?: (docId: string, title: string) => void;
+  /** 저장이 들어갔다. `contentHash` 는 저장된 판의 해시다(다시 마운트할 때 충돌 기준으로 넘긴다). */
+  onSaved?: (docId: string, title: string, contentHash: string) => void;
   onClose?: () => void;
   /** 읽기 전용으로 마운트(커서를 켜지 않는다). 마운트 뒤 전환하는 문은 없다 —
    *  문서 열은 상시 편집이라 쓸 곳이 없었고, 있던 토글은 사문이었다(2026-09-07 제거). */
@@ -511,47 +512,46 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       if (!text.trim()) { setStatus(COPY.author.docNeedBody); return false; }
       if (!explicit && !leaving && document.activeElement === titleInput) return false;
     }
+    // 원격본이 읽은 판이 아니다 — 덮어쓸지 다시 읽을지 사람이 고른다.
+    const showConflict = (cur: Awaited<ReturnType<typeof api.docGet>>): boolean => {
+      setStatus(COPY.ui.viewx.edDirty);
+      conflictBox.innerHTML = `
+        <div class="error-banner" style="margin:.4rem 0">${COPY.ui.viewx.edConflict}
+          <div style="margin-top:.3rem">
+            <button class="btn" id="ed-ow">${COPY.ui.viewx.edOverwrite}</button>
+            <button class="btn" id="ed-rl">${COPY.ui.viewx.edReload}</button>
+          </div></div>`;
+      conflictBox.querySelector("#ed-ow")!.addEventListener("click", async () => {
+        conflictBox.innerHTML = "";
+        // 덮어쓰기 전 원격본을 "충돌본" 문서로 먼저 보존(작업 소실 0 — 순수
+        // LWW 의 유일한 위험을 없앤다). 신규 doc 이라 id 없이 put.
+        if (cur.text !== undefined && cur.text !== "") {
+          try {
+            await api.docPut(opts.owner, cur.text, undefined,
+                             COPY.ui.viewx.edConflictCopy(cur.title || t));
+          } catch { /* 스냅샷 실패해도 덮어쓰기는 진행 — 최선 노력 보존 */ }
+        }
+        void save(true, false, topicOnce);
+      });
+      conflictBox.querySelector("#ed-rl")!.addEventListener("click", () => {
+        conflictBox.innerHTML = "";
+        if (cur.text !== undefined) {
+          setText(cur.text); lastSaved = cur.text; hash = cur.content_hash || "";
+          titleInput.value = (cur.title || "").trim(); lastTitle = titleInput.value;
+          setStatus(COPY.ui.viewx.edSaved);
+        }
+      });
+      return false;
+    };
     setStatus(COPY.ui.viewx.edSaving);
     try {
       // 무음 LWW 금지 — 기존 문서면 저장 직전 원격 해시 비교.
       if (!force && docId) {
         const cur = await api.docGet(opts.owner, docId);
-        // ⚠ P18 이 여기다(P17b 범위 밖 — 일부러 안 고쳤다). 아래 조건은 `cur.executed`
-        // 를 앞세우므로, 원격이 **쓰기 창(P17 의 `executed:false`)** 이면 비교가 통째로
-        // 건너뛰어지고 저장이 그냥 진행된다: 충돌 배너도, 아래 "덮어쓰기 전 원격본을
-        // 충돌본으로 보존"도 돌지 않는다. 즉 무음 LWW 금지 규율이 바로 그 상태에서만
-        // 풀린다. 마운트는 이 상태를 막지만(위 stub), 이 경로는 **마운트 뒤에 원격이
-        // 그 상태가 된 경우**라 stub 이 못 막는다.
-        if (cur.executed && cur.content_hash && cur.content_hash !== hash) {
-          setStatus(COPY.ui.viewx.edDirty);
-          conflictBox.innerHTML = `
-            <div class="error-banner" style="margin:.4rem 0">${COPY.ui.viewx.edConflict}
-              <div style="margin-top:.3rem">
-                <button class="btn" id="ed-ow">${COPY.ui.viewx.edOverwrite}</button>
-                <button class="btn" id="ed-rl">${COPY.ui.viewx.edReload}</button>
-              </div></div>`;
-          conflictBox.querySelector("#ed-ow")!.addEventListener("click", async () => {
-            conflictBox.innerHTML = "";
-            // 덮어쓰기 전 원격본을 "충돌본" 문서로 먼저 보존(작업 소실 0 — 순수
-            // LWW 의 유일한 위험을 없앤다). 신규 doc 이라 id 없이 put.
-            if (cur.text !== undefined && cur.text !== "") {
-              try {
-                await api.docPut(opts.owner, cur.text, undefined,
-                                 COPY.ui.viewx.edConflictCopy(cur.title || t));
-              } catch { /* 스냅샷 실패해도 덮어쓰기는 진행 — 최선 노력 보존 */ }
-            }
-            void save(true, false, topicOnce);
-          });
-          conflictBox.querySelector("#ed-rl")!.addEventListener("click", () => {
-            conflictBox.innerHTML = "";
-            if (cur.text !== undefined) {
-              setText(cur.text); lastSaved = cur.text; hash = cur.content_hash || "";
-              titleInput.value = (cur.title || "").trim(); lastTitle = titleInput.value;
-              setStatus(COPY.ui.viewx.edSaved);
-            }
-          });
-          return false;
-        }
+        // 여기 비교는 원격이 쓰기 창(`executed:false`)이면 건너뛰고, 비교와 쓰기 사이에도 틈이
+        // 있다. 그래서 쓰기 자체도 읽은 해시(`expected_content_hash`)를 들고 가고, 서버가 그
+        // 해시가 아니라고 거절하면 아래 쓰기 뒤에서 같은 충돌 상자를 연다.
+        if (cur.executed && cur.content_hash && cur.content_hash !== hash) return showConflict(cur);
       }
       let res: Awaited<ReturnType<typeof api.docPut>>;
       if (creating) {
@@ -573,7 +573,10 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
         if (res.created === false) throw new Error("doc id already in use");
         docId = res.doc_id || id;
       } else {
-        res = await api.docPut(opts.owner, text, docId, t, ct, undefined, topicOnce || undefined);
+        // 덮어쓰기(force)가 아니면 읽은 해시를 들고 간다. 서버가 그 판이 아니라고 하면 충돌 상자.
+        res = await api.docPut(opts.owner, text, docId, t, ct, undefined, topicOnce || undefined,
+                               force ? undefined : hash || undefined);
+        if (!res.executed && res.error === "write_conflict") return showConflict(await api.docGet(opts.owner, docId!));
         if (!res.executed) throw new Error(res.error || "put failed");
       }
       if (res.doc_id) docId = res.doc_id;              // 신규 → 생성된 id 확보
@@ -588,7 +591,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       // 저장하는 동안 더 친 것이 있으면 "저장됨"이라고 말하지 않고 한 번 더 저장한다.
       if (dirty()) { setStatus(COPY.ui.viewx.edDirty); if (!timer) schedule(); }
       else setStatus(COPY.ui.viewx.edSaved);
-      opts.onSaved?.(docId || "", t);
+      opts.onSaved?.(docId || "", t, hash);
       if (creating && docId) opts.onCreated?.(docId, res.topic || topic);
       if (!res.skipped && docId) { void offerExtract(); void reindex(res.needs_embed); }
       return true;

@@ -41,7 +41,7 @@ async function readExtras(id: string, k: Kind): Promise<{ ok: boolean; tags: str
 
 /** 기본 정보 절을 그린다(읽기 모습 + 편집 단추). `onSaved` 는 View 가 지도와 열을 새로 그린다. */
 export async function drawBasics(box: HTMLElement, id: string, src: BasicsSource,
-                                 onSaved: (domain: string) => void): Promise<void> {
+                                 onSaved: (domain: string) => void, canEdit = true): Promise<void> {
   const k = src.node_kind as Kind;
   if (!["concept", "record", "decision", "episode"].includes(k)) { box.innerHTML = ""; return; }
   const A = COPY.author;
@@ -63,8 +63,8 @@ export async function drawBasics(box: HTMLElement, id: string, src: BasicsSource
       <section class="node-basics">
         <div class="props-head">
           <h3 class="hint rail-sec">${esc(A.basicsTitle)}</h3>
-          <button class="rail-x basics-edit-btn" type="button" aria-label="${esc(A.basicsEditTip)}"
-                  data-tip="${esc(A.basicsEditTip)}">${esc(A.basicsEdit)}</button>
+          ${canEdit ? `<button class="rail-x basics-edit-btn" type="button" aria-label="${esc(A.basicsEditTip)}"
+                  data-tip="${esc(A.basicsEditTip)}">${esc(A.basicsEdit)}</button>` : ""}
         </div>
         <dl class="props-dl">
           <div class="props-row"><dt>${esc(A.fOneLiner)}</dt><dd>${cur.oneLiner ? esc(cur.oneLiner) : none}</dd></div>
@@ -75,7 +75,7 @@ export async function drawBasics(box: HTMLElement, id: string, src: BasicsSource
             : cur.when ? esc(cur.when) : none}</dd></div>` : ""}
         </dl>
       </section>`;
-    box.querySelector(".basics-edit-btn")!.addEventListener("click", edit);
+    box.querySelector(".basics-edit-btn")?.addEventListener("click", edit);
   };
 
   function edit() {
