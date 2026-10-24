@@ -294,6 +294,26 @@ function topicPanel(docs: Doc[]): string {
 }
 
 // ── 문서 면 ────────────────────────────────────────────────────────────────────
+/** 원문의 절(제목 1~3). 코드펜스 안과 프론트매터는 건너뛴다 — 거기 든 `#` 는 제목이 아니다.
+ *  서버 목차(`/doc/context` sections)를 쓰지 않는 이유: 그것은 저장 시점의 것이라 쓰는 동안
+ *  어긋난다. 이 칸은 지금 화면의 원문에서 다시 센다. */
+type Sec = { title: string; level: number; at: number };
+function sectionsOf(text: string): Sec[] {
+  const out: Sec[] = [];
+  const lines = text.split("\n");
+  let pos = 0, fence = false, fm = lines[0]?.trim() === "---";
+  lines.forEach((l, i) => {
+    if (fm) { if (i > 0 && l.trim() === "---") fm = false; }
+    else if (/^\s*(```|~~~)/.test(l)) fence = !fence;
+    else if (!fence) {
+      const m = /^(#{1,3})\s+(.+?)\s*#*\s*$/.exec(l);
+      if (m) out.push({ level: m[1].length, title: m[2].replace(/[*_`]|\[\[|\]\]/g, ""), at: pos });
+    }
+    pos += l.length + 1;
+  });
+  return out;
+}
+
 async function paintDoc(el: HTMLElement, gen: number, docId: string): Promise<void> {
   const H = COPY.ui.home;
   // 목록을 못 읽어도 문서는 연다 — 옆 칸이 비어 있을 뿐이다.
@@ -313,17 +333,27 @@ async function paintDoc(el: HTMLElement, gen: number, docId: string): Promise<vo
     <div class="home-read-grid">
       <article class="home-doc" id="home-ed"></article>
       <aside class="home-aside">
-        <dl class="home-meta">
-          <dt>${esc(H.metaTopic)}</dt><dd>${esc(topic || H.noTopic)}</dd>
+        <div class="ha-acts">
+          ${node ? `<button class="btn ha-btn" type="button" data-act="graph">${icon("graph", 15)}<span>${esc(H.showInGraph)}</span></button>` : ""}
+          <button class="btn btn-quiet ha-btn" type="button" data-act="copy">${esc(H.copyText)}</button>
+        </div>
+        <section class="ha-sec" id="ha-toc" hidden>
+          <h2 class="ha-h" id="ha-toc-h"></h2>
+          <ol class="ha-toc"></ol>
+        </section>
+        <section class="ha-sec" id="ha-concepts" hidden>
+          <h2 class="ha-h">${esc(COPY.ui.viewx.readerConcepts)}</h2>
+          <div class="ha-chips"></div>
+        </section>
+        <dl class="ha-meta">
+          <dt>${esc(H.metaTopic)}</dt><dd>${topic
+            // 좁은 칸에서 경로가 낱말 한가운데서 꺾이지 않게, 꺾을 자리를 `/` 뒤에 준다.
+            ? esc(topic).replace(/\//g, "/<wbr>") : esc(H.noTopic)}</dd>
           ${day ? `<dt>${esc(H.metaUpdated)}</dt><dd>${esc(day)}</dd>` : ""}
           <dt>${esc(H.metaConcept)}</dt><dd>${node
             ? esc(meta?.primary_concept_title || node) : `<span class="hint">${esc(H.notInGraph)}</span>`}</dd>
         </dl>
-        <div class="home-aside-acts">
-          ${node ? `<button class="btn" type="button" data-act="graph">${icon("graph", 15)}<span>${esc(H.showInGraph)}</span></button>` : ""}
-          <button class="btn" type="button" data-act="copy">${esc(H.copyText)}</button>
-          ${isCommunitySpace(cfg.team) ? "" : `<button class="btn btn-quiet home-del" type="button" data-act="del">${esc(H.del)}</button>`}
-        </div>
+        ${isCommunitySpace(cfg.team) ? "" : `<button class="ha-del" type="button" data-act="del">${esc(H.delDoc)}</button>`}
       </aside>
     </div>
   </div>`;
@@ -334,13 +364,89 @@ async function paintDoc(el: HTMLElement, gen: number, docId: string): Promise<vo
   }));
   const { mountDocEditor } = await import("../doc-editor");
   if (gen !== liveGen) return;
+  let tocTimer = 0;
   const handle = await mountDocEditor(el.querySelector<HTMLElement>("#home-ed")!, {
     owner: cfg.owner, docId, autoFocus: false, readOnly: isCommunitySpace(cfg.team),
     onSaved: () => { docsCache = null; void refreshLnb({ quiet: true }); },
     onDocLink: (id) => { location.hash = `#home/doc/${encodeURIComponent(id)}`; },
+    onText: (text) => {
+      window.clearTimeout(tocTimer);
+      tocTimer = window.setTimeout(() => { if (gen === liveGen) drawToc(text); }, 400);
+    },
   });
   if (gen !== liveGen) { void handle.dispose(); return; }
   editor = handle;
+
+  // ── 옆 칸: 목차 — 지금 원문에서 세고, 지금 읽는 절을 표시한다 ──────────────────
+  let secs: Sec[] = [];
+  const tocBox = el.querySelector<HTMLElement>("#ha-toc")!;
+  const tocList = tocBox.querySelector<HTMLElement>(".ha-toc")!;
+  function drawToc(text: string) {
+    secs = sectionsOf(text);
+    // 절이 하나면 목차가 길잡이 노릇을 못 한다.
+    tocBox.hidden = secs.length < 2;
+    if (tocBox.hidden) return;
+    const top = Math.min(...secs.map((x) => x.level));
+    tocBox.querySelector("#ha-toc-h")!.textContent = COPY.ui.viewx.readerOutline(secs.length);
+    tocList.innerHTML = secs.map((x, i) => `<li><button type="button" class="ha-toc-i" data-i="${i}"
+      style="--lv:${x.level - top}">${esc(x.title)}</button></li>`).join("");
+    tocList.querySelectorAll<HTMLElement>(".ha-toc-i").forEach((b) => b.addEventListener("click", () => {
+      const x = secs[Number(b.dataset.i)];
+      if (x) handle.scrollToOffset(x.at, "start");
+    }));
+    markActive();
+  }
+  // 지금 읽는 절 = 화면 위쪽 띠(바 아래)를 이미 지난 마지막 제목. 끝까지 굴려 더 내려갈 수
+  // 없으면 화면에 보이는 마지막 제목이다 — 짧은 끝 절은 위 띠에 닿지 못해 영영 안 켜졌다.
+  let raf = 0;
+  const scroller = (() => {
+    for (let n: HTMLElement | null = el; n; n = n.parentElement) {
+      const o = getComputedStyle(n).overflowY;
+      if (o === "auto" || o === "scroll") return n;
+    }
+    return document.scrollingElement as HTMLElement | null;
+  })();
+  function markActive() {
+    raf = 0;
+    if (!secs.length || !handle.lineTop) return;
+    const line = 150;
+    const atEnd = !!scroller && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 4;
+    let on = 0;
+    secs.forEach((x, i) => {
+      const top = handle.lineTop!(x.at);
+      if (top <= line || (atEnd && top < window.innerHeight - 40)) on = i;
+    });
+    tocList.querySelectorAll<HTMLElement>(".ha-toc-i").forEach((b, i) => {
+      b.classList.toggle("on", i === on);
+      if (i === on) b.setAttribute("aria-current", "location"); else b.removeAttribute("aria-current");
+    });
+  }
+  const onScroll = () => {
+    if (gen !== liveGen) { document.removeEventListener("scroll", onScroll, true); return; }
+    if (!raf) raf = requestAnimationFrame(markActive);
+  };
+  document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+  drawToc(handle.getText());
+
+  // ── 옆 칸: 이 문서의 개념 — 누르면 본문에서 나오는 자리에 밑줄을 긋는다 ─────────────
+  void api.docContext(cfg.owner, docId).then((ctx) => {
+    if (gen !== liveGen || !ctx?.executed || !ctx.concepts?.length) return;
+    const box = el.querySelector<HTMLElement>("#ha-concepts")!;
+    const chips = box.querySelector<HTMLElement>(".ha-chips")!;
+    const list = ctx.concepts.slice().sort((a, b) => b.count - a.count).slice(0, 16);
+    chips.innerHTML = list.map((c) => `<button type="button" class="ha-chip" data-cid="${esc(c.id)}"
+      data-tip="${esc(H.conceptMark)}">${esc(c.title)}<span class="ha-chip-n">${c.count}</span></button>`).join("");
+    box.hidden = false;
+    chips.querySelectorAll<HTMLElement>(".ha-chip").forEach((b) => b.addEventListener("click", async () => {
+      const on = !b.classList.contains("on");
+      chips.querySelectorAll(".ha-chip.on").forEach((x) => x.classList.remove("on"));
+      if (!on) { handle.highlight?.([]); return; }
+      b.classList.add("on");
+      const r = await api.docHighlights(cfg.owner, docId, b.dataset.cid!).catch(() => null);
+      if (gen !== liveGen || !b.classList.contains("on")) return;
+      handle.highlight?.(r?.executed ? r.ranges ?? [] : []);
+    }));
+  }).catch(() => { /* 옆 칸 한 줄이 빠질 뿐이다 — 문서는 그대로 열려 있다 */ });
   el.querySelector('[data-act="graph"]')?.addEventListener("click", () => {
     location.hash = `#view/read/${encodeURIComponent(node)}/${encodeURIComponent(docId)}`;
   });
