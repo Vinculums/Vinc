@@ -929,6 +929,14 @@ body {
   margin: var(--space-4, 1rem) var(--space-4, 1rem) 0 0;
   position: relative; z-index: 6;
   max-width: calc(100% - var(--space-4, 1rem) * 2);
+  /* 카드 한 장: 관점 세그와 렌즈 버튼이 **한 줄**에 선다. 상단 바의 `.tb-card` 규칙이 걷힐 때
+     이 카드의 줄 배치도 함께 사라져 열면 세그와 버튼이 두 줄로 쌓였다. */
+  display: flex; align-items: center; gap: var(--space-2, .5rem);
+  height: calc(var(--ctl-h) + var(--space-2, .5rem)); min-width: 0; padding: 0 var(--space-1, .25rem);
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-elev-3);
 }
 /* 문서 열이 옆으로 열리면 그 폭만큼 비켜서고, 넓게 열리면(지도를 다 덮으면) 숨는다. */
 #shell[data-doc="open"][data-doc-size="side"] #tb-viewctl {
