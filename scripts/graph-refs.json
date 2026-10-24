@@ -859,6 +859,7 @@
     "decision:site-boards-are-captures-of-the-running-code",
     "decision:space-transfer-sends-size-bounded-chunks-nodes-then-edges-then-documents",
     "decision:temporal-model-operational-policy-2026-09-09",
+    "decision:the-agent-rail-opens-an-agents-board-and-roles-edit-in-place-2026-10-24",
     "decision:the-ambient-azure-identity-is-read-only",
     "decision:the-app-reads-its-own-view-addresses-through-the-shared-parser",
     "decision:the-desktop-app-icon-keeps-a-black-plate-2026-09-26",
@@ -890,7 +891,6 @@
     "decision:view-offers-two-layouts-by-centre-and-time-branches-2026-10-11",
     "decision:vin314-every-agent-answer-ends-with-a-sources-line-2026-10-07",
     "decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07",
-    "decision:vin88-agent-click-opens-roster-list-graph-scopes-agent-domains-2026-09-22",
     "decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24",
     "decision:web-app-follows-main-desktop-ships-by-release-2026-10-23",
     "episode:2026-09-14-brief-carries-the-connectivity-instead-of-leaving-it-to-be-summed",
@@ -1202,6 +1202,9 @@
     "decision:temporal-model-operational-policy-2026-09-09": {
       "validity": "current"
     },
+    "decision:the-agent-rail-opens-an-agents-board-and-roles-edit-in-place-2026-10-24": {
+      "validity": "current"
+    },
     "decision:the-ambient-azure-identity-is-read-only": {
       "validity": "current"
     },
@@ -1293,9 +1296,6 @@
       "validity": "unknown"
     },
     "decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07": {
-      "validity": "unknown"
-    },
-    "decision:vin88-agent-click-opens-roster-list-graph-scopes-agent-domains-2026-09-22": {
       "validity": "unknown"
     },
     "decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24": {

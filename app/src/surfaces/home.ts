@@ -23,7 +23,8 @@ import { loaderRows } from "../vinc-loaders.js";
  *  (주제 · 수정한 날 · 그래프 자리 · 복사 · 지우기)이다.
  *  근거: [[decision:the-desktop-shell-is-documents-first]]
  *
- *  주소: `#home` = 목록 · `#home/doc/<id>` = 문서 면 · `#home/new` = 새 문서. 거르기 상태는
+ *  주소: `#home` = 목록 · `#home/doc/<id>` = 문서 면 · `#home/new` = 새 문서 ·
+ *  `#home/agents` = Agents 보드(surfaces/agents-board.ts, Agent 레일이 연다). 거르기 상태는
  *  주소에 싣지 않는다(세션 안에서만 남는다) — 공유할 주소는 문서 하나의 주소다. */
 
 type Doc = {
@@ -57,6 +58,7 @@ let editor: DocEditorHandle | null = null;
 /** 라우터가 표면을 떠날 때 부른다. 편집기는 라우터가 먼저 확정·해제한다(disposeEditorsIn). */
 export function leaveHome(): void {
   ++liveGen;
+  void import("./agents-board").then((m) => m.leaveAgentsBoard());
   editor = null;
   setLnbDocOpener(null);
   setLnbTopicPicker(null);
@@ -80,7 +82,8 @@ export async function renderHome(el: HTMLElement): Promise<void> {
   const gen = ++liveGen;
   const live = () => gen === liveGen && el.isConnected;
   const parts = location.hash.replace(/^#/, "").split("/").map(decodeURIComponent);
-  const mode = parts[1] === "doc" && parts[2] ? "doc" : parts[1] === "new" ? "new" : "list";
+  const mode = parts[1] === "doc" && parts[2] ? "doc" : parts[1] === "new" ? "new"
+    : parts[1] === "agents" ? "agents" : "list";
 
   // 다른 화면(검색 결과 · 새 문서 단축키 · 묻기의 착지)이 이 면으로 오는 길. 그래프가 없는
   // 동안 View 훅을 이 면이 대신 든다 — 문서는 여기서 열고, 노드는 그래프로 보낸다.
@@ -102,7 +105,9 @@ export async function renderHome(el: HTMLElement): Promise<void> {
       : (scope.length === 1 && scope[0] === one ? [] : [one]);
     shown = PAGE;
     if (mode === "list") paintList(el, gen);
-    else location.hash = "#home";
+    // 보드에서 주제를 고르면 그 주제의 문서 목록으로 간다. Agent 가 거는 역할 주제 묶음(set)은
+    // 보드가 이미 그 역할들을 보여 주므로 따르지 않는다.
+    else if (!(mode === "agents" && set)) location.hash = "#home";
   });
   // 저절로 새로워지는 갱신(VIN-129). 쓰는 중에는 다시 그리지 않는다 — 목록만 새로 읽는다.
   setLiveRefresher(async () => {
@@ -111,7 +116,10 @@ export async function renderHome(el: HTMLElement): Promise<void> {
     if (mode === "list") await paintList(el, gen);
   });
 
-  if (mode === "doc") await paintDoc(el, gen, parts[2]);
+  if (mode === "agents") {
+    const { renderAgentsBoard } = await import("./agents-board");
+    await renderAgentsBoard(el, live);
+  } else if (mode === "doc") await paintDoc(el, gen, parts[2]);
   else if (mode === "new") await paintWriter(el, gen, scope.length === 1 ? scope[0] : "");
   else await paintList(el, gen);
 }
