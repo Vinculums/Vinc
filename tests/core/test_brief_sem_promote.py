@@ -58,7 +58,7 @@ class PromoteRule(unittest.TestCase):
 
     def test_the_bar_is_where_it_was_decided(self):
         """옮기려면 다시 잴 것 — 내리면 틀린 노드 확정이 는다([[vinc.spec.retrieval-knobs]] §2)."""
-        self.assertEqual(q._SEM_PROMOTE, 0.12)
+        self.assertEqual(q._SEM_PROMOTE, 0.10)
 
     def test_off_a_lead_changes_nothing(self):
         os.environ[FLAG] = "off"

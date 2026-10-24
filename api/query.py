@@ -3658,8 +3658,9 @@ def _brief_sem_promote_on() -> bool:
 #: 승격에 필요한 의미 우위: 의미 팔 원시 목록에서 1위가 나머지보다 가까운 거리(`sem_lead`,
 #: search 가 단다). 유효구간 동점 가드가 지운 행과 견줄 때도 같은 값을 쓴다. `_SEM_GAP`
 #: (0.010, 순서만 바꾼다)과 다른 값이다. 내리면 틀린 노드 확정이 늘어난다. 옮기려면 다시 잴 것.
+#: 0.12 에서 0.10 으로 옮긴 것은 봉인 셋 7을 운영 search 출력 재현으로 채점한 결과다(2026-10-24).
 #: 근거: [[vinc.spec.retrieval-knobs]] §2
-_SEM_PROMOTE = 0.12
+_SEM_PROMOTE = 0.10
 
 
 def retrieval_overrides() -> list[str]:
