@@ -27,7 +27,7 @@
 | `--border` | {hairline} (#DEDEDA) | _Describe usage_ |
 | `--input` | {hairline} (#DEDEDA) | _Describe usage_ |
 | `--ring` | {indigo_600} (#4A4F8C) | Focus ring and selection; aliases `--point` (dark {peri_400} #8F96D9) |
-| `--point` | {indigo_600} (#4A4F8C) | The one point colour: focus, selection, active item, graph focus node and its edges. Never a surface or a button (dark {peri_400} #8F96D9) |
+| `--point` | {indigo_600} (#4A4F8C) | The one point colour: focus, selection, active item, graph focus node and its edges, and the fill of a primary button (one per screen). Never a large surface or decoration (dark {peri_400} #8F96D9) |
 | `--point-text` | {indigo_600} (#4A4F8C) | Links and at most one emphasised phrase per heading or card, class `.pt` (dark {peri_200} #B9BEF0, Lc 69) |
 | `--primary` | {ink_900} (#17171A) | _Describe usage_ |
 | `--primary-foreground` | {grain_100} (#F2F2F0) | _Describe usage_ |

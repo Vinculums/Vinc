@@ -107,7 +107,11 @@ async function pickNodeIds(n = 10) {
 }
 
 // ── 시드 ───────────────────────────────────────────────────────────────────
+// 셸은 모드를 localStorage 가 아니라 사이드카 설정(`mode_chosen`)에서 정한다(api.ts decideDataMode). 고른 적이
+// 없는 빈 스토어면 계정 모드로 가고, 키 없는 계정 호출이 로그인 화면을 띄워 모든 클릭을 막는다. 그래서 먼저 고정한다.
+async function pinLocalMode() { await sidePost("/config", { mode: "local", mode_chosen: true }).catch((e) => console.log("config:", e.message)); }
 async function seedEvidenceEdge() {
+  await pinLocalMode();
   // 스타터 팩의 관계에는 기록된 근거가 없다. 엣지 상세 화면(근거 있는 관계 태그 → docpane)을 찍으려면
   // 근거가 붙은 관계가 하나는 있어야 하므로, physics 뿌리 개념 둘 사이에 관계 하나를 근거와 함께 둔다.
   const r = await side("/nav-tree?owner=tenant:local");
@@ -125,6 +129,7 @@ async function seedEvidenceEdge() {
 }
 let EV_NODES = [];
 async function seed(browser) {
+  await pinLocalMode();
   const d = await side("/domains");
   const have = (d?.rows || []).some((r) => /physics|math|economics|art/.test(r.domain));
   if (have) { console.log("seed: starter packs already present"); await seedEvidenceEdge(); return; }
