@@ -121,14 +121,14 @@ function draw(el: HTMLElement, roles: AgentRole[]): void {
     ${body}
   </div>`;
 
-  const openSheet = (o: { id?: string; team?: string }) =>
+  const openRole = (o: { id?: string; team?: string }) =>
     void import("../role-composer").then((m) => m.openRoleComposer({ ...o, teams: named }));
   el.querySelectorAll<HTMLElement>("[data-act]").forEach((b) => b.addEventListener("click", (e) => {
     const act = b.dataset.act;
     const id = b.closest<HTMLElement>("[data-role]")?.dataset.role || "";
-    if (act === "new") openSheet({});
-    else if (act === "add") openSheet({ team: b.dataset.team || "" });
-    else if (act === "edit" && id) openSheet({ id });
+    if (act === "new") openRole({});
+    else if (act === "add") openRole({ team: b.dataset.team || "" });
+    else if (act === "edit" && id) openRole({ id });
     else if (act === "graph" && id) location.hash = `#view/read/${encodeURIComponent(id)}`;
     else if (act === "copy" && id) {
       e.stopPropagation();
@@ -145,6 +145,6 @@ function draw(el: HTMLElement, roles: AgentRole[]): void {
   // 카드 본문을 누르면 고치기와 같다(할 일 단추 위의 누름은 위에서 처리한다).
   if (!readOnly) el.querySelectorAll<HTMLElement>(".agent-card").forEach((c) => c.addEventListener("click", (e) => {
     if ((e.target as HTMLElement).closest("button")) return;
-    openSheet({ id: c.dataset.role || "" });
+    openRole({ id: c.dataset.role || "" });
   }));
 }

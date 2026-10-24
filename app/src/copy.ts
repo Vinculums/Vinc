@@ -604,7 +604,6 @@ const EN = {
         agent: "Agent roles",
         "agent.short": "Agent",
       } as Record<string, string>,
-      nodeTip: "Show this in View",
       depthTip: (n: number) => n === 0 ? "Starting point" : `${n} step${n === 1 ? "" : "s"} in`,
       // 문서 내용 열(셸 소유 머리). 열 이름은 그 안의 층 이름(`viewx.railTitle`)과
       // 다르다: 여기는 "이 열이 무엇인가", 그쪽은 "지금 어느 층이 떠 있나"다.
@@ -1925,7 +1924,6 @@ const KO: Deck = {
         agent: "Agent 역할",
         "agent.short": "Agent",
       } as Record<string, string>,
-      nodeTip: "View에서 보기",
       depthTip: (n: number) => n === 0 ? "출발점" : `${n}단계 안쪽`,
       paneTitle: "문서 내용",
     },

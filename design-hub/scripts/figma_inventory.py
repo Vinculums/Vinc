@@ -168,7 +168,7 @@ DIALOGS = {
     # (A1)를 건너뛰고 구현했으므로 셋 다 **선언된 결손**이다.
     "node-composer.ts:COPY.author.composerTitle": None,
     # Agent 레일 + 의 새 역할 양식(2026-10-02). 디자인 라운드 없이 컴포저의 부품으로 지었다.
-    "role-composer.ts:R.title": None,
+    "role-composer.ts:editing ? R.editTitle : R.title": None,
     "connect.ts:A.connectTitle": None,
     "authoring.ts:openContextMenu": None,
     # 빈 화면에 파일 여럿을 끌어다 놓으면 뜨는 일괄 가져오기(여태 없는 라우트로 가 사라졌다).
