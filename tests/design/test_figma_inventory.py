@@ -149,7 +149,7 @@ class WithoutTheSiteRepoTheGateSkipsRatherThanLies(unittest.TestCase):
     def test_the_absent_repo_does_not_produce_stale_map_failures(self):
         # 이 조합이 바로 CI 에서 게이트를 38건 실패로 만들 뻔한 것이다.
         r = fi._check("routes", fi.site_routes(), fi.ROUTES, set())
-        self.assertGreater(len(r["stale_map"]), 30, "빈 코드 목록은 맵 전체를 잔여로 만든다")
+        self.assertGreater(len(r["stale_map"]), 20, "빈 코드 목록은 맵 전체를 잔여로 만든다")
 
     def test_the_gate_passes_and_says_it_skipped(self):
         import io as _io
@@ -166,7 +166,7 @@ class WithoutTheSiteRepoTheGateSkipsRatherThanLies(unittest.TestCase):
 class ComponentsAreCheckedAgainstCodeMarks(unittest.TestCase):
     """세는 축이 전부 초록인 채로 이름만 코드와 어긋난 적이 있다(2026-09-06). 그 축이다."""
 
-    LIVE = {"pages": {"02 · App Components": {
+    LIVE = {"pages": {"02 · Components": {
         "components": ["App / Chip"], "variants": {"App / Chip": ["State=Default", "State=Static"]}}}}
 
     def test_a_variant_whose_code_mark_is_gone_fails(self):

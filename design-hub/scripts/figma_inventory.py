@@ -30,8 +30,7 @@ Figma 에 아예 없었다. 그때까지 이 칸은 계획서에 "대조 안 됨
 라이브 덤프는 `imports/figma-inventory.json` 이고 에이전트가 `use_figma` 로 뜬다:
 
 ```js
-const want = ["01 · Foundations", "02 · App Components", "04 · Surfaces", "05 · Overlays", "06 · States",
-              "08 · Reference", "10 · Site Components", "11 · Site Screens", "12 · Docs Screens"];   // 2026-09-06 구조
+const want = ["01 · Foundations", "02 · Components", "03 · App", "04 · Site"];   // 여덟 쪽 구조에서 게이트가 세는 넷
 const pages = {};
 for (const p of figma.root.children) {            // ⚠ 페이지 전환은 호출당 한 번뿐이라
   if (!want.includes(p.name)) continue;           //    이 루프는 페이지별로 나눠 돌린다
@@ -39,11 +38,13 @@ for (const p of figma.root.children) {            // ⚠ 페이지 전환은 호
 // 페이지 하나당 한 번:
 const page = await figma.getNodeByIdAsync(PAGE_ID);
 await figma.setCurrentPageAsync(page);
-const frames = page.children.filter(n => n.type !== "COMPONENT" && n.type !== "COMPONENT_SET")
+// 보드는 섹션 안에 산다(03 · App 의 Surfaces · Overlays …). 섹션은 투명하게 펼친다.
+const tops = page.children.flatMap(n => n.type === "SECTION" ? n.children : [n]);
+const frames = tops.filter(n => n.type !== "COMPONENT" && n.type !== "COMPONENT_SET" && n.type !== "SECTION")
   .map(n => ({ name: n.name, children: (n.children || []).map(c => c.name) }));
 const sets = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] })
   .filter(n => !(n.parent && n.parent.type === "COMPONENT_SET"));
-const variants = {};                              // 02 · App Components 만 쓴다
+const variants = {};                              // 02 · Components 만 쓴다(App / * 세트를 대조한다)
 for (const n of sets)
   if (n.type === "COMPONENT_SET") variants[n.name] = n.children.map(c => c.name);
 return { name: page.name, frames, components: sets.map(n => n.name), variants };
@@ -60,11 +61,12 @@ import re
 import sys
 
 HUB = pathlib.Path(__file__).resolve().parent.parent
-#: 앱 컴포넌트 세트가 사는 페이지. 2026-09-06 에 파일을 제품 구조대로 재편하면서
-#: `Design System(App)` 이 이 이름이 됐다(vinc.plan.figma-product-structure §2). 화면 보드는
-#: 04 · Surfaces / 05 · Overlays / 06 · States 세 페이지에 나뉘어 살지만 프레임 축은 페이지를
-#: 가리지 않고 전부 합쳐 세므로 여기 적을 것은 이 하나다.
-APP_COMPONENTS_PAGE = "02 · App Components"
+#: 컴포넌트가 사는 페이지. App · Shell · Overlay · Site · Community 컴포넌트가 한 페이지에
+#: 모여 있다. 이 축이 대조하는 것은 그중 `App / *` 세트뿐이다(Shell · Overlay 는 캡처 승격이라 캡처가 표식이다).
+#: 화면 보드는 03 · App(앱) · 04 · Site(사이트)의 섹션 안에 살고, 프레임 축은 페이지를 가리지 않고 합쳐 센다.
+#: 근거: [[vinc.canon.design-system-operations]]
+APP_COMPONENTS_PAGE = "02 · Components"
+APP_COMPONENT_PREFIX = "App / "
 VINC = HUB.parent
 SITE = VINC.parent / "Vinc-homepage" / "site"
 APP = VINC / "app" / "src"
@@ -73,8 +75,8 @@ APP = VINC / "app" / "src"
 # 사이트 보드는 2026-09-06 부터 **코드 캡처**다(scripts/capture_site_figma.mjs): 라우트×상태 하나가
 # 보드 하나고, 이름은 `Site · <Route>[ · <state>] / dark` 로 캡처 매니페스트의 상태 id 에서 나온다.
 # 그래서 이 축의 기대 집합은 손으로 적지 않고 매니페스트에서 만든다 — 매니페스트에 있는데 보드가
-# 없으면 FAIL, 코드에 라우트가 생겼는데 매니페스트에 없으면 미선언 FAIL. 문서 페이지만 예외다:
-# 그 보드들은 `12 · Docs Screens` 에 따로 살아서 아래 DOCS_ROUTES 가 그대로 답한다.
+# 없으면 FAIL, 코드에 라우트가 생겼는데 매니페스트에 없으면 미선언 FAIL. 문서는 셸 하나를 공유해서
+# 매니페스트가 고른 대표 경로만 보드를 두고, 나머지 문서 경로는 라우트 축에서 뺀다(site_routes).
 # 근거: [[decision:site-boards-are-captures-of-the-running-code]].
 SITE_MANIFEST = HUB / "reports" / "captures" / "site" / "manifest.json"
 SITE_ROUTE_TITLES = {
@@ -87,7 +89,7 @@ SITE_ROUTE_TITLES = {
 #: 매니페스트에는 있지만 보드로는 두지 않는 상태. 값은 이유다.
 REFERENCE_ONLY = {
     "landing__light": "라이트는 변수 모드로 본다(§8 D3), 보드를 두 벌 두지 않는다",
-    "landing__ko": "보드는 영어다(§8 D2); 한국어 렌더는 08 · Reference 의 PNG 로 남는다",
+    "landing__ko": "보드는 영어다(§8 D2); 한국어 렌더는 캡처 PNG(reports/captures/site)로 남는다",
     "pricing__ko": "보드는 영어다(§8 D2)",
     "team__invite-accepted": "수락 직후 700ms 에 페이지가 새로 고쳐져 DOM 직렬화가 끝나기 전에 사라진다; PNG 참조만",
 }
@@ -117,8 +119,6 @@ def _site_axis_from_manifest() -> tuple[dict, dict]:
         if sid in REFERENCE_ONLY:
             continue
         route = MANIFEST_ROUTE_ALIAS.get(row["route"], row["route"])
-        if route.startswith("/docs/"):
-            continue                          # 문서 보드는 12 · Docs Screens 의 DOCS_ROUTES 가 답한다
         board = None if sid in BOARD_PENDING else site_board_name(sid)
         routes.setdefault(route, board)
         states.setdefault(route, {})[sid.split("__", 1)[1]] = board
@@ -126,35 +126,9 @@ def _site_axis_from_manifest() -> tuple[dict, dict]:
 
 
 _MANIFEST_ROUTES, _MANIFEST_STATES = _site_axis_from_manifest()
-DOCS_ROUTES = {
-    "/docs/": "Docs · Overview / dark",
-    "/docs/quickstart/": "Docs · Quickstart / dark",
-    "/docs/use-cases/": "Docs · What to add / dark",
-    "/docs/import/": "Docs · Import / dark",
-    "/docs/view/": "Docs · View / dark",
-    "/docs/search/": "Docs · Search / dark",
-    "/docs/packs/": "Docs · Packs & community / dark",
-    "/docs/shortcuts/": "Docs · Shortcuts / dark",
-    "/docs/mcp/": "Docs · MCP Setup / dark",
-    "/docs/mcp/tools/": "Docs · MCP Tools / dark",
-    "/docs/cli/": "Docs · CLI Reference / dark",
-    "/docs/graph-md/": "Docs · GRAPH.md What / dark",
-    "/docs/graph-md/build/": "Docs · GRAPH.md Generate / dark",
-    "/docs/graph-md/spec/": "Docs · GRAPH.md Spec / dark",
-    "/docs/graph-md/check/": "Docs · GRAPH.md Validate / dark",
-    # 아래 일곱은 2026-09-05 에 결손으로 잡혔다가 같은 날 신설했다. 마지막 둘은 게이트가
-    # **처음으로 잡아낸 회귀**다 — 로컬 사이트 체크아웃이 origin 보다 6커밋 뒤처져 있었고,
-    # 최신화하자마자 미선언으로 빨개졌다.
-    # ⚠ 셸과 제목만 실물이고 본문은 아직 도너(Overview)의 것이다. 프레임이 있다는 것과
-    # 그려졌다는 것은 다른 말이라, 프레임 주석에 그 사실을 적어 두었다.
-    "/docs/mcp/sign-in/": "Docs · MCP Sign-in / dark",
-    "/docs/agents/": "Docs · Agents / dark",
-    "/docs/agents/hosts/": "Docs · Agents · Hosts / dark",
-    "/docs/agents/openclaw/": "Docs · Agents · OpenClaw / dark",
-    "/docs/agents/roles/": "Docs · Agents · Roles / dark",
-    "/docs/agents/packs/": "Docs · Agents · Packs / dark",
-    "/docs/one-graph/": "Docs · One graph / dark",
-}
+#: 문서 경로 중 보드를 두는 것은 캡처 매니페스트가 고른 대표 경로뿐이다(위 _MANIFEST_ROUTES 에 들어 있다).
+#: 손으로 그린 문서 보드는 90 · Archive 에 있다.
+DOCS_ROUTES: dict[str, str | None] = {}
 ROUTES = {**_MANIFEST_ROUTES, **DOCS_ROUTES}
 #: 라우트로 세지 않는 것. 내부 점검용이라 시안이 있을 이유가 없다.
 ROUTE_IGNORE = {"/vt-check/", "/vt-check/b"}
@@ -167,7 +141,7 @@ ROUTE_STATES = _MANIFEST_STATES
 # ── 앱 모달 ↔ Figma 오버레이 상태 ───────────────────────────────────────────
 # 키는 `모듈:제목식`. 줄 번호가 아니라 식이라 코드가 위아래로 움직여도 안 깨진다.
 DIALOGS = {
-    # 값은 05 · Overlays 의 캡처 보드다(App · Topbar|View · <state> / dark). None 은 선언된 결손.
+    # 값은 03 · App 의 Overlays 섹션 캡처 보드다(App · Topbar|View · <state> / dark). None 은 선언된 결손.
     "ask.ts:c.historyTitle": "App · Topbar · ask-history / dark",
     # 문서 편집기 시트의 충돌 배너는 다른 기기의 쓰기가 있어야 뜬다 — 단일 스토어 캡처로는 못 만든다.
     "doc-editor.ts:opts.docId ? COPY.ui.viewx.readerTitle : COPY.ui.viewx.edNew": None,
@@ -249,13 +223,11 @@ APP_STATES = {
     **_app_states_from_manifest(),
     # 계정 연결(기기 흐름)은 계정과 브라우저 승인이 있어야 그 상태에 닿는다 — 선언된 결손.
     "account-connect.ts": {"not-connected": None, "waiting": None, "connected": None, "expired": None, "failed": None},
-    # 렌더러 참조 보드는 08 · Reference 에 그대로 있다(캡처가 아니라 재현 스터디).
-    "surfaces/view3d.ts": {"dark": "Graph · 3D · dark (constellation glow, view3d.ts 재현)",
-                           "light": "Graph · 3D · light (matte ink, D77)"},
-    "surfaces/view2d.ts": {"default": "Graph · 2D · dark (sigma 팬 레이아웃, view2d.ts 재현)"},
-    "surfaces/view-planar.ts": {
-        "timeline": "Graph · Timeline · dark (수직 시간축 + 루트/브랜치, view-planar.ts 재현)"},
-    "surfaces/view-bundle.ts": {"weave": "Graph · Weave · dark (방사형 계층 번들, view-bundle.ts 재현)"},
+    # 렌더러는 재현 스터디가 아니라 캡처 보드가 답한다(재현 보드는 90 · Archive 에 있다).
+    "surfaces/view3d.ts": {"dark": "App · View · 3d / dark", "light": "App · View · light / light"},
+    "surfaces/view2d.ts": {"default": "App · View · 2d / dark"},
+    "surfaces/view-planar.ts": {"timeline": "App · View · timeline / dark"},
+    "surfaces/view-bundle.ts": {"weave": "App · View · weave / dark"},
 }
 
 # ── 앱 컴포넌트 (변형×코드 표식) ──────────────────────────────────────────────
@@ -312,8 +284,8 @@ APP_COMPONENTS: dict[str, dict[str, str | None]] = {
     "App / SwitchRow":   {"State=On": 'aria-checked="true"', "State=Off": None},
     "App / SliderRow":   {"": "slider-row"},
     "App / TreeMode":    {"Mode=Documents": '"docs"', "Mode=Nodes": '"nodes"'},
-    # App / FloatCard · Sheet · Titlebar · Topbar 는 2026-09-07 에 Archive 로 갔다. 그 자리는 03 · App Shell 의
-    # `Shell / *` 과 05 · Overlays 의 `Overlay / *` 가 맡는데, 둘은 캡처 승격이라 이 표식 축이 아직 세지 않는다.
+    # App / FloatCard · Sheet · Titlebar · Topbar 는 2026-09-07 에 Archive 로 갔다. 그 자리는 02 · Components 의
+    # `Shell / *` · `Overlay / *` 가 맡는데, 둘은 캡처 승격이라 이 표식 축이 아직 세지 않는다.
 }
 
 #: 헬퍼가 **정의된** 파일. 호출부가 아니므로 세지 않는다.
@@ -356,7 +328,9 @@ def site_routes() -> set[str]:
     for p in SITE.glob("*.html"):
         if p.name != "index.html":
             out.add("/" + p.stem)
-    return {r for r in out if r not in ROUTE_IGNORE}
+    # 문서는 셸 하나를 공유한다. 매니페스트에 없는 문서 경로는 대표 보드가 답하므로 라우트로 세지 않는다.
+    return {r for r in out if r not in ROUTE_IGNORE
+            and not (r.startswith("/docs/") and r not in _MANIFEST_ROUTES)}
 
 
 def app_dialogs() -> set[str]:
@@ -454,7 +428,7 @@ def check_components(live: dict, mapping: dict, source: str) -> dict:
       - 기본값  : 코드에 고유 표식이 없는 변형(None). 결손이 아니라 정보다
     """
     dsapp = live.get("pages", {}).get(APP_COMPONENTS_PAGE, {})
-    comps = set(dsapp.get("components", []))
+    comps = {c for c in dsapp.get("components", []) if c.startswith(APP_COMPONENT_PREFIX)}
     variants = dsapp.get("variants", {})
     undeclared, stale, rotten, plain, counted = [], [], [], [], 0
 

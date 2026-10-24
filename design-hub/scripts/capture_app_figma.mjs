@@ -22,9 +22,12 @@ const STEP_TIMEOUT_MS = 6 * 60 * 1000;
 const submitted = new Set();   // 제출 단계에 들어간 captureId (실패해도 재사용 불가)
 
 const raw = await (await fetch("https://mcp.figma.com/mcp/html-to-design/capture.js")).text();
-const HOOK = "startMultiCaptureSelectionFlow:dk}));})();";
-if (!raw.includes(HOOK)) { console.error("capture.js changed shape: cannot expose ar/Tm"); process.exit(3); }
-const captureJs = raw.replace(HOOK, "startMultiCaptureSelectionFlow:dk}));window.__vincCap={ar:ar,Tm:Tm};})();");
+// 내부 함수 이름은 capture.js 를 다시 빌드할 때마다 바뀐다. 이름을 박지 않고 파일 모양에서 찾는다(capture_site_figma.mjs 와 같다).
+const hookM = /startMultiCaptureSelectionFlow:(\w+)\}\)\);\}\)\(\);/.exec(raw);
+const serM = /let m=yield (\w+)\(p,i\)/.exec(raw);
+const subM = /let w=yield (\w+)\(m,a,t,b\)/.exec(raw);
+if (!hookM || !serM || !subM) { console.error("capture.js changed shape: cannot find the serialize and submit functions"); process.exit(3); }
+const captureJs = raw.replace(hookM[0], `startMultiCaptureSelectionFlow:${hookM[1]}}));window.__vincCap={ar:${serM[1]},Tm:${subM[1]}};})();`);
 
 if (!(await side("/health"))) { console.error("sidecar not reachable"); process.exit(2); }
 const browser = await chromium.launch({ channel: "chromium" });

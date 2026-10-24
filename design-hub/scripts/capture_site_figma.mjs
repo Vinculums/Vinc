@@ -26,9 +26,13 @@ const save = () => fs.writeFileSync(resultPath, JSON.stringify(results, null, 1)
 const STEP_TIMEOUT_MS = 6 * 60 * 1000;
 
 const raw = await (await fetch("https://mcp.figma.com/mcp/html-to-design/capture.js")).text();
-const HOOK = "startMultiCaptureSelectionFlow:dk}));})();";
-if (!raw.includes(HOOK)) { console.error("capture.js changed shape: cannot expose ar/Tm"); process.exit(3); }
-const captureJs = raw.replace(HOOK, "startMultiCaptureSelectionFlow:dk}));window.__vincCap={ar:ar,Tm:Tm};})();");
+// 내부 함수 이름은 capture.js 를 다시 빌드할 때마다 바뀐다(제출 함수와 끝 표식의 이름이 바뀐 적이 있다).
+// 그래서 이름을 박지 않고 파일 모양에서 찾는다: 다중 캡처 흐름 안의 `yield <직렬화>(p,i)` 와 `yield <제출>(m,a,t,b)`.
+const hookM = /startMultiCaptureSelectionFlow:(\w+)\}\)\);\}\)\(\);/.exec(raw);
+const serM = /let m=yield (\w+)\(p,i\)/.exec(raw);
+const subM = /let w=yield (\w+)\(m,a,t,b\)/.exec(raw);
+if (!hookM || !serM || !subM) { console.error("capture.js changed shape: cannot find the serialize and submit functions"); process.exit(3); }
+const captureJs = raw.replace(hookM[0], `startMultiCaptureSelectionFlow:${hookM[1]}}));window.__vincCap={ar:${serM[1]},Tm:${subM[1]}};})();`);
 
 const browser = await chromium.launch({ channel: "chromium" });
 const queue = job.states.filter((id) => !results[id]?.ok);
@@ -42,7 +46,7 @@ async function captureOne(id, captureId) {
   const ctx = await browser.newContext({ viewport: vp, colorScheme: s.scheme ?? "dark", reducedMotion: "reduce", locale: "en-US", userAgent: s.ua, deviceScaleFactor: 1 });
   try {
     await ctx.addCookies([{ name: "__Host-csrf", value: "capture", url: BASE }]).catch(() => {});
-    const ls = { "vinc.site.theme": s.scheme ?? "dark", "vinc.site.lang": "en", ...s.ls };
+    const ls = { "vinc.site.theme": s.scheme ?? "dark", "vinc.site.theme.v2": s.scheme ?? "dark", "vinc.site.lang": "en", ...s.ls };
     await ctx.addInitScript((kv) => { try { for (const [k, v] of Object.entries(kv)) localStorage.setItem(k, v); } catch (e) {} }, ls);
     const page = await ctx.newPage();
     page.on("dialog", async (d) => { await (page.acceptDialogs ? d.accept() : d.dismiss()).catch(() => {}); });
