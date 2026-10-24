@@ -1031,6 +1031,7 @@
     "record:vin314-live-exp01-rerun-prefetch-cites-a-node-in-1-of-6-2026-10-07",
     "record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07",
     "record:vinc-tests-need-a-clean-interpreter-on-windows",
+    "record:web-app-shifted-and-flashed-before-the-shell-ran",
     "record:weighted-path-is-computed-in-python-not-by-the-engine",
     "record:what-the-spec-permits-is-not-what-the-peer-accepts",
     "record:which-identity-reaches-what-on-this-subscription",
@@ -1716,6 +1717,9 @@
       "validity": "unknown"
     },
     "record:vinc-tests-need-a-clean-interpreter-on-windows": {
+      "validity": "current"
+    },
+    "record:web-app-shifted-and-flashed-before-the-shell-ran": {
       "validity": "current"
     },
     "record:weighted-path-is-computed-in-python-not-by-the-engine": {

@@ -309,11 +309,21 @@ if (document.documentElement.dataset.skin === "web") {
 
 // ── Dark mode (D — desktop-shell §3-9): OS 추종 + Settings 수동 토글 ──────
 const THEME_KEY = "vinc.theme";   // "auto" | "light" | "dark"
+// 웹에서는 공홈과 같은 오리진이라 사이트의 테마 키도 함께 본다. 둘이 어긋나면 사이트와
+// 앱을 오갈 때마다 밝기가 뒤집혀 번쩍인다. 앱 값이 없으면 사이트 값을 따르고, 정한 밝기는
+// 사이트 키에도 적어 둔다(사이트 GNB 의 토글도 두 키를 함께 쓴다).
+const SITE_THEME_KEY = "vinc.site.theme.v2";
 export function applyTheme() {
-  const pref = localStorage.getItem(THEME_KEY) || "dark";   // D38 — 기본 = 다크
+  const web = document.documentElement.dataset.skin === "web";
+  let pref = "dark";   // D38 — 기본 = 다크
+  try {
+    pref = localStorage.getItem(THEME_KEY)
+      || (web ? localStorage.getItem(SITE_THEME_KEY) : "") || "dark";
+  } catch { /* 저장소가 막힌 창은 기본값으로 */ }
   const dark = pref === "dark" || (pref === "auto" &&
     window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
+  if (web) try { localStorage.setItem(SITE_THEME_KEY, dark ? "dark" : "light"); } catch {}
   // 좌측 트리의 주제 색은 paint 때 굳은 HEX 다(CSS 변수가 아니라 스스로 안 뒤집힌다).
   // 여기서 다시 그리지 않으면 뒤집힌 화면에 반대 모드의 색이 남아 도트가 배경에 묻는다.
   // ⚠ 설정 화면의 클릭 핸들러가 아니라 **여기**여야 한다: pref 가 "auto" 면 아래
@@ -326,6 +336,8 @@ export function applyTheme() {
   repaintView();
 }
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+// 웹 GNB 의 테마 토글(공홈 gnb.js)은 키만 쓰고 이 이벤트를 쏜다. 받아서 같은 길로 다시 칠한다.
+window.addEventListener("vinc:theme", applyTheme);
 applyTheme();
 // 화면 언어를 문서에도 적는다. index.html 은 lang="en" 으로 박혀 있어 한국어 화면을 화면
 // 읽기와 번역이 영어로 읽었다(VIN-294). 언어를 바꾸면 페이지를 다시 불러오므로 한 번이면 된다.
