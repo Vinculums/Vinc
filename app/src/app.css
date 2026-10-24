@@ -3796,6 +3796,39 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 /* 역할 시트의 팀 줄 — 팀 이름과 팀에서 맡는 자리를 한 줄에 둔다. */
 .rc-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3, .75rem); align-items: start; }
 @media (max-width: 640px) { .rc-row { grid-template-columns: minmax(0, 1fr); } }
+/* 보드의 팀 꾸리기 — 단 머리 끝의 할 일 묶음, 카드 끌기, 놓을 자리. 팀 없는 단은 비어 있으면
+   끌 때만 보인다(카드를 놓아 팀에서 빼는 자리). 놓을 자리는 포인트 색 테두리 하나로만 말한다. */
+.agents-team-acts { margin-left: auto; display: flex; align-items: center; gap: var(--space-1, .25rem); }
+.agents-team-acts .agent-act-icon { margin-left: 0; }
+.agent-act-more { margin-left: auto; }
+.agent-act-more + .agent-act-icon { margin-left: 0; }
+.agents-status { margin: 0 0 var(--space-2, .5rem); min-height: 1.25rem; font-size: .8125rem; color: hsl(var(--muted-foreground)); }
+.agents-status:empty { min-height: 0; margin: 0; }
+.agents-busy .agents-team { opacity: .6; pointer-events: none; }
+.agents-team { border-radius: var(--radius); transition: box-shadow .15s; }
+.agents-drop-on { box-shadow: 0 0 0 1px hsl(var(--point) / .7); }
+.agents-drop-hint { margin: 0; padding: var(--space-4, 1rem); border: 1px dashed hsl(var(--border)); border-radius: var(--radius); text-align: center; }
+.agents-no-loose .agents-team[data-team=""] { display: none; }
+.agents-dragging.agents-no-loose .agents-team[data-team=""] { display: block; }
+.agent-card[draggable="true"] { cursor: grab; }
+.agent-dragging { opacity: .45; }
+/* 역할 편집 면(role-composer.ts) — 폼 칼럼 + 옆 칸(보드에서 보일 카드 · 함께 일하는 역할 · 할 일). */
+.role-form { min-width: 0; }
+.role-sec { padding: var(--space-4, 1rem) 0; border-top: 1px solid hsl(var(--border)); }
+.role-sec:first-child { border-top: 0; padding-top: 0; }
+.role-sec h2 { margin: 0 0 var(--space-3, .75rem); font-size: .875rem; font-weight: 600; }
+.role-foot {
+  display: flex; align-items: center; gap: var(--space-2, .5rem);
+  padding-top: var(--space-4, 1rem); border-top: 1px solid hsl(var(--border));
+}
+.role-aside { position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--space-3, .75rem); min-width: 0; }
+.role-aside-k { margin: 0; font-size: .75rem; font-weight: 600; color: hsl(var(--muted-foreground)); }
+.role-aside-acts { display: flex; flex-wrap: wrap; gap: var(--space-1, .25rem); }
+.agent-card-preview { cursor: default; }
+.agent-card-preview:hover { border-color: hsl(var(--border)); }
+.agent-pv-team { margin: 0; font-size: .75rem; }
+.agent-pv-empty { color: hsl(var(--caption-foreground)); font-weight: 400; }
+@media (max-width: 1000px) { .role-aside { position: static; } }
 /* 문서 면 — 본문 칸 + 옆 칸. 본문이 남는 폭을 다 쓰고 옆 칸은 16rem 으로 고정한다(옆 칸이
    남는 폭을 가져가면 넓은 창에서도 본문의 표가 짓눌린다). 좁으면(1000 아래) 옆 칸이 본문
    아래로 간다. */

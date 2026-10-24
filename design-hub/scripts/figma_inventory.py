@@ -167,8 +167,12 @@ DIALOGS = {
     # 폼 하나를 찍은 것이라 컴포저(종류 넷 · id 확인 · 연결)를 대표하지 못한다. 디자인 라운드
     # (A1)를 건너뛰고 구현했으므로 셋 다 **선언된 결손**이다.
     "node-composer.ts:COPY.author.composerTitle": None,
-    # Agent 레일 + 의 새 역할 양식(2026-10-02). 디자인 라운드 없이 컴포저의 부품으로 지었다.
-    "role-composer.ts:editing ? R.editTitle : R.title": None,
+    # 역할 편집은 시트가 아니라 Agents 보드 안의 면이다(`#home/agents/<id>`). 보드의 팀 꾸리기는
+    # 이미 있는 대화창 셋을 빌린다: 팀 이름은 주제 이름 바꾸기와 같은 입력창, 해체는 노드 지우기와
+    # 같은 파괴 확인. 카드 · 팀 메뉴는 캔버스 메뉴와 같이 아직 찍지 않았다(선언된 결손).
+    "surfaces/agents-board.ts:promptText": "App · View · topic-rename-prompt / dark",
+    "surfaces/agents-board.ts:confirmDestructive": "App · View · node-delete-confirm / dark",
+    "surfaces/agents-board.ts:openContextMenu": None,
     "connect.ts:A.connectTitle": None,
     "authoring.ts:openContextMenu": None,
     # 빈 화면에 파일 여럿을 끌어다 놓으면 뜨는 일괄 가져오기(여태 없는 라우트로 가 사라졌다).
@@ -303,7 +307,8 @@ ICON_IGNORE = {"view"}
 #: 여기 없는 새 아이콘이 코드에 생기면 그때는 FAIL 이다. 그것이 이 목록의 쓸모다.
 #: 2026-09-05: 17개를 사이트 모듈의 실제 도형으로 Figma 에 만들어 넣었고, 유령 셋
 #: (display·width·email)은 추출기를 고쳐 사라졌다. 남은 둘은 원본이 이 경로에 없다.
-ICON_GAPS: set[str] = set()   # 2026-09-05: 전부 채웠다. 새 아이콘이 코드에 생기면 FAIL 이다.
+#: `more`(가로 점 셋)는 Agents 보드의 카드·팀 메뉴 손잡이로 생겼고 아이콘 시트에는 아직 없다.
+ICON_GAPS: set[str] = {"more"}
 
 
 def site_present() -> bool:
