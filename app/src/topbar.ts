@@ -8,15 +8,15 @@ import { dayOf } from "./view-prefs";
 import { renderSearchError } from "./search-error";
 import { loaderInline } from "./vinc-loaders.js";
 
-/** 상단 바 (DEC D56·D57) — 내용 칸 오른쪽 위에 뜬 손잡이 묶음.
+/** 뷰 머리 (DEC D56·D57) — 내용 카드의 윗줄. 떠 있지 않다.
  *
- *  두 줄이다: 위는 검색, 아래는 그래프 전환 + 보기 카드(관점 · 옵션 · 범례).
- *  검색은 평소 알약 하나로 접혀 있고, 누르거나 ⌘/Ctrl K 를 치면 길게 펴진다 — 문서를
- *  읽고 쓰는 면 위에 긴 입력창이 늘 떠 있을 이유가 없다.
- *  근거: [[decision:the-desktop-shell-is-documents-first]]
+ *  앞(`#tb-lead`)은 지금 자리다: 문서 면은 경로를 표면이 채우고(`setTopbarLead`), 그래프는
+ *  범위를 여기서 칠한다. 뒤는 문서 | 그래프 전환, 그다음 검색. 검색은 평소 칸 하나로 접혀
+ *  있고 누르거나 ⌘/Ctrl K 를 치면 왼쪽으로 길게 펴진다. 보기 카드(관점 · 옵션 · 범례)는
+ *  머리에 없다 — 캔버스 안에 뜬다(index.html `#tb-viewctl`).
+ *  근거: [[decision:the-desktop-shell-docks-search-and-the-view-switch-in-a-view-header-2026-10-23]]
  *  여기 살지 않는 것: 로고(타이틀바가 든다 — 웹에선 공홈 GNB),
- *  표면 목록과 주제·문서 목록(좌측 트리가 가져갔다 — D69),
- *  크럼(폐지 — "지금 어디"는 트리가 상시로 말한다), 지표(하단 상태 표시줄에 남는다).
+ *  표면 목록과 주제·문서 목록(좌측 트리가 가져갔다 — D69), 지표(하단 상태 표시줄에 남는다).
  *
  *  **표면과의 계약은 훅 하나뿐이다.** 공유·보기 버튼은 View 만 뜻이 있으므로
  *  View 가 마운트될 때 자기 동작을 등록하고(setViewHooks), 떠날 때 지운다.
@@ -107,62 +107,87 @@ function storedMode(): Mode {
   return localStorage.getItem(MODE_KEY) === "ask" ? "ask" : "find";
 }
 
-/** 바 아래 크롬의 천장(`--chrome-top`)을 **바의 실측 바닥**에서 뗀다.
- *
- *  CSS 기본값은 "바 한 줄 높이 + 여백 두 칸"이다. 좁은 창(≤720, 예전엔 ≤520)에서는 바가 두 줄이 돼
- *  그 값이 모자라다 — 그 천장을 쓰는 문서 열 머리(크기 전환 · ✕)가 바 둘째 줄 뒤에
- *  가려졌다(실측 2026-09-26, 창 390: 바 16~114, 문서 열 천장 76). 두 줄 높이를 상수로
- *  다시 적으면 바의 구성이 바뀌는 날 조용히 어긋나므로 바의 크기를 지켜보고 잰다.
- *  값의 뜻은 CSS 와 같다: 지도 칸 윗변에서 바 바닥까지 + 바 아래 여백.
- *  근거: [[concept:app-narrow-window-contract]] */
-function trackChromeTop() {
-  const bar = $("topbar");
+/** 본문 스크롤바 폭을 머리 오른쪽에 같이 비운다(`--sb-w`). 머리와 본문이 한 칼럼을 나눠
+ *  쓰는데 본문만 스크롤바만큼 좁아지면, 가운데 정렬된 두 칼럼이 그 절반만큼 어긋난다
+ *  (경로와 제목, 검색과 읽기 칸의 세로선이 갈라진다). 스크롤바는 문서 길이에 따라 생기고
+ *  사라지므로 표면의 안쪽 폭을 지켜보고 잰다. */
+function trackGutter() {
+  const surface = $("surface");
   const shell = $("shell");
-  if (!bar || !shell || typeof ResizeObserver === "undefined") return;
+  if (!surface || !shell || typeof ResizeObserver === "undefined") return;
   const apply = () => {
-    const b = bar.getBoundingClientRect();
-    if (!b.height) return;                 // 숨은 바(임베드)는 CSS 값 그대로
-    const s = shell.getBoundingClientRect();
-    const pad = parseFloat(getComputedStyle(shell).paddingTop) || 0;
-    const gap = parseFloat(getComputedStyle(bar).marginBottom) || 0;
-    shell.style.setProperty("--chrome-top", `${Math.round(b.bottom - s.top - pad + gap)}px`);
-    // 손잡이 묶음의 폭(바 오른쪽 끝에서 가장 왼쪽 줄까지). 문서 홈의 머리 줄이 그만큼 비운다.
-    const lefts = [...bar.querySelectorAll<HTMLElement>(".tb-line")]
-      .map(l => l.getBoundingClientRect()).filter(r => r.width).map(r => r.left);
-    if (lefts.length) shell.style.setProperty("--chrome-w", `${Math.round(b.right - Math.min(...lefts))}px`);
+    const cs = getComputedStyle(surface);
+    const borders = (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.borderRightWidth) || 0);
+    const sb = Math.max(0, surface.offsetWidth - surface.clientWidth - borders);
+    shell.style.setProperty("--sb-w", `${sb}px`);
   };
-  const ro = new ResizeObserver(apply);
-  ro.observe(bar);
-  bar.querySelectorAll(".tb-line").forEach(l => ro.observe(l));
+  new ResizeObserver(apply).observe(surface);
   apply();
 }
 
-/** 그래프 전환 버튼을 지금 표면에 맞춰 칠한다. 그래프(`#view…`)에 있으면 눌림이고
- *  누르면 문서 홈으로, 아니면 그래프로 간다. 상태의 정본은 주소다(따로 저장하지 않는다). */
-function paintGraphToggle() {
-  const b = $("tb-graph");
-  if (!b) return;
-  const on = /^#view(\/|$)/.test(location.hash);
-  const tip = on ? COPY.ui.topbar.graphOffTip : COPY.ui.topbar.graphTip;
-  b.setAttribute("aria-pressed", String(on));
-  b.setAttribute("aria-label", tip);
-  b.setAttribute("data-tip", tip);
-  b.classList.toggle("on", on);
+const onGraph = () => /^#view(\/|$)/.test(location.hash);
+const onDocs = () => /^#home(\/|$)/.test(location.hash) || location.hash === "" || location.hash === "#";
+
+/** 문서 | 그래프 전환을 지금 주소에 맞춰 칠한다. 상태의 정본은 주소다(따로 저장하지
+ *  않는다). 둘 다 아닌 표면(검색 · 설정 …)에서는 어느 쪽도 눌려 있지 않다. */
+function paintSwitch() {
+  const docs = $("tb-to-docs"), graph = $("tb-to-graph");
+  if (!docs || !graph) return;
+  docs.setAttribute("aria-pressed", String(onDocs()));
+  graph.setAttribute("aria-pressed", String(onGraph()));
+}
+
+/** 머리 앞자리. 표면이 자기 자리(경로)를 준다 — 문자열은 이미 이스케이프된 마크업이다.
+ *  null 이면 비운다. 표면이 바뀌면 topbar 가 먼저 비우고, 새 표면이 다시 채운다. */
+export function setTopbarLead(html: string | null): HTMLElement | null {
+  const lead = $("tb-lead");
+  if (!lead) return null;
+  lead.innerHTML = html ?? "";
+  return lead;
+}
+
+/** 그래프의 앞자리 — 지금 범위(LNB 가 고른 주제). 고른 것이 없으면 "그래프" 한 낱말. */
+let graphScope = "";
+function paintGraphLead() {
+  if (!onGraph()) return;
+  const segs = graphScope.split("/").filter(Boolean);
+  setTopbarLead(`<span class="tb-lead-name">${esc(COPY.ui.topbar.graph)}</span>${
+    segs.length ? `<span class="tb-lead-sep" aria-hidden="true">·</span><span class="tb-lead-scope">${
+      esc(segs.join(" / "))}</span>` : ""}`);
 }
 
 export function mountTopbar() {
   if (wired) return;
   wired = true;
-  trackChromeTop();
-  const graphBtn = $("tb-graph");
-  if (graphBtn) {
-    graphBtn.innerHTML = `${icon("graph", 16)}<span class="tb-graph-name">${COPY.ui.topbar.graph}</span>`;
-    graphBtn.addEventListener("click", () => {
-      location.hash = /^#view(\/|$)/.test(location.hash) ? "#home" : "#view";
-    });
-    paintGraphToggle();
-    window.addEventListener("hashchange", paintGraphToggle);
+  trackGutter();
+  const T = COPY.ui.topbar;
+  const docsBtn = $("tb-to-docs"), graphBtn = $("tb-to-graph");
+  if (docsBtn && graphBtn) {
+    docsBtn.innerHTML = `${icon("doc", 16)}<span class="tb-seg-name">${esc(T.docs)}</span>`;
+    graphBtn.innerHTML = `${icon("graph", 16)}<span class="tb-seg-name">${esc(T.graph)}</span>`;
+    docsBtn.setAttribute("data-tip", T.graphOffTip);
+    graphBtn.setAttribute("data-tip", T.graphTip);
+    docsBtn.setAttribute("aria-label", T.docs);
+    graphBtn.setAttribute("aria-label", T.graph);
+    $("tb-switch")?.setAttribute("aria-label", T.switchLabel);
+    docsBtn.addEventListener("click", () => { if (!onDocs()) location.hash = "#home"; });
+    graphBtn.addEventListener("click", () => { if (!onGraph()) location.hash = "#view"; });
+    paintSwitch();
   }
+  // 표면이 바뀌면 앞자리를 먼저 비운다 — 새 표면이 다시 채운다(문서 면은 home.ts, 그래프는 여기).
+  // 이 듣기가 라우터보다 먼저 걸리므로 비우기가 채우기보다 앞선다.
+  let lastSurface = location.hash.split("/")[0];
+  window.addEventListener("hashchange", () => {
+    paintSwitch();
+    const s = location.hash.split("/")[0];
+    if (s !== lastSurface) { lastSurface = s; setTopbarLead(null); }
+    paintGraphLead();
+  });
+  addEventListener("vinc:lnb-active", (e) => {
+    graphScope = String((e as CustomEvent<{ domain?: string }>).detail?.domain || "");
+    paintGraphLead();
+  });
+  paintGraphLead();
   const qEl = $<HTMLInputElement>("tb-q");
   const boxEl = $("tb-results");
   const sicon = document.querySelector<HTMLElement>(".tb-sicon");
@@ -178,15 +203,11 @@ export function mountTopbar() {
   const findCard = $("tb-find");
   const findOpen = $("tb-find-open");
 
-  // ── 접힌 알약 ↔ 펼친 검색 ────────────────────────────────────────────────
-  // 펼침은 카드의 `data-expanded` 하나가 말한다(CSS 가 그 하나만 본다). 접는 것은 초점이
-  // 카드 밖으로 나가고 대화 패널이 닫혀 있을 때다. 친 글자는 남는다 — 다시 펴면 그대로다.
-  const findLine = $("tb-line-find");
+  // ── 접힌 칸 ↔ 펼친 검색 ────────────────────────────────────────────────
+  // 펼침은 칸의 `data-expanded` 하나가 말한다(CSS 가 그 하나만 본다). 펼친 검색은 오른쪽
+  // 끝을 축으로 왼쪽으로 자라 전환과 경로를 덮는다(절대 배치라 줄의 폭은 그대로다). 접는
+  // 것은 초점이 칸 밖으로 나가고 대화 패널이 닫혀 있을 때다. 친 글자는 남는다.
   const expand = (focus = true) => {
-    // 펼친 검색은 열 폭 계산에서 빠진다(CSS). 접힌 알약이 차지하던 폭을 줄에 남겨 두어야
-    // 아래 그래프 줄이 펼치는 순간 좁아졌다가 접을 때 다시 넓어지는 흔들림이 없다.
-    if (findLine && findCard && !findCard.hasAttribute("data-expanded"))
-      findLine.style.minWidth = `${Math.round(findCard.getBoundingClientRect().width)}px`;
     findCard?.setAttribute("data-expanded", "true");
     findOpen?.setAttribute("aria-expanded", "true");
     if (focus) { qEl.focus(); qEl.select(); }
@@ -195,11 +216,10 @@ export function mountTopbar() {
     if (chatEl && !chatEl.hidden) return;          // 묻기 답을 읽는 중이다
     findCard?.removeAttribute("data-expanded");
     findOpen?.setAttribute("aria-expanded", "false");
-    findLine?.style.removeProperty("min-width");
   };
   if (findOpen) {
     const fi = findOpen.querySelector<HTMLElement>(".tb-find-icon");
-    if (fi) fi.innerHTML = icon("search", 15);
+    if (fi) fi.innerHTML = icon("search", 16);
     const fl = $("tb-find-label");
     if (fl) fl.textContent = COPY.ui.topbar.findOpen;
     const fk = $("tb-find-kbd");
@@ -225,7 +245,7 @@ export function mountTopbar() {
     mode = m;
     if (persist) localStorage.setItem(MODE_KEY, m);
     bar?.setAttribute("data-mode", m);
-    if (sicon) sicon.innerHTML = icon(MODE_ICON[m], 15);
+    if (sicon) sicon.innerHTML = icon(MODE_ICON[m], 16);
     if (modeLabel)
       modeLabel.textContent = m === "ask" ? COPY.ui.topbar.modeAsk : COPY.ui.topbar.modeFind;
     modeBtn?.setAttribute("aria-label",

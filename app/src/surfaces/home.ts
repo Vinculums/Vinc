@@ -7,7 +7,7 @@ import { dayOf } from "../view-prefs";
 import { tintMap } from "../view-tint";
 import type { ThemeMode } from "../theme";
 import type { DocEditorHandle } from "../doc-editor";
-import { setViewHooks } from "../topbar";
+import { setTopbarLead, setViewHooks } from "../topbar";
 import { agentRoleCount, setLnbActive, setLnbDocOpener, setLnbTopicPicker, refreshLnb } from "../lnb";
 import { setLiveRefresher } from "../live";
 import { loaderRows } from "../vinc-loaders.js";
@@ -140,6 +140,8 @@ async function paintList(el: HTMLElement, gen: number): Promise<void> {
   }
   if (gen !== liveGen) return;
   setLnbActive({ domains: scope });
+  // 뷰 머리 앞자리 — 목록에서는 자리 이름 하나다(주제 경로는 아래 주제 줄이 갖는다).
+  setTopbarLead(`<span class="tb-lead-name">${esc(H.back)}</span>`);
   const tints = tintMap(docs.map((d) => d.topic || ""), themeMode());
   const q = query.trim().toLowerCase();
   const picked = docs.filter((d) => inScope(d, scope)
@@ -324,12 +326,18 @@ async function paintDoc(el: HTMLElement, gen: number, docId: string): Promise<vo
   const segs = topic ? topic.split("/") : [];
   const day = dayOf(meta?.updated_at || "");
   const node = meta?.primary_concept_id || "";
-  el.innerHTML = `<div class="home home-read">
-    <nav class="home-crumbs" aria-label="${esc(H.metaTopic)}">
+  // 경로는 뷰 머리 앞자리에 선다 — 본문 첫 글자와 같은 세로선이다(머리와 본문이 한 칼럼).
+  const lead = setTopbarLead(`<nav class="home-crumbs" aria-label="${esc(H.metaTopic)}">
       <a class="home-back" href="#home">‹ ${esc(H.back)}</a>
       ${segs.map((s, i) => `<span class="home-sep" aria-hidden="true">›</span><button class="home-crumb" type="button"
         data-topic="${esc(segs.slice(0, i + 1).join("/"))}">${esc(s)}</button>`).join("")}
-    </nav>
+    </nav>`);
+  lead?.querySelectorAll<HTMLElement>("[data-topic]").forEach((b) => b.addEventListener("click", () => {
+    scope = b.dataset.topic ? [b.dataset.topic] : [];
+    shown = PAGE;
+    location.hash = "#home";
+  }));
+  el.innerHTML = `<div class="home home-read">
     <div class="home-read-grid">
       <article class="home-doc" id="home-ed"></article>
       <aside class="home-aside">
@@ -357,11 +365,6 @@ async function paintDoc(el: HTMLElement, gen: number, docId: string): Promise<vo
       </aside>
     </div>
   </div>`;
-  el.querySelectorAll<HTMLElement>("[data-topic]").forEach((b) => b.addEventListener("click", () => {
-    scope = b.dataset.topic ? [b.dataset.topic] : [];
-    shown = PAGE;
-    location.hash = "#home";
-  }));
   const { mountDocEditor } = await import("../doc-editor");
   if (gen !== liveGen) return;
   let tocTimer = 0;
@@ -488,8 +491,8 @@ async function paintWriter(el: HTMLElement, gen: number, fallbackTopic: string):
   const topic = pendingTopic || fallbackTopic;
   pendingTopic = "";
   if (isCommunitySpace(cfg.team)) { location.hash = "#home"; return; }
+  setTopbarLead(`<nav class="home-crumbs"><a class="home-back" href="#home">‹ ${esc(H.back)}</a></nav>`);
   el.innerHTML = `<div class="home home-read">
-    <nav class="home-crumbs"><a class="home-back" href="#home">‹ ${esc(H.back)}</a></nav>
     <div class="home-read-grid home-write"><article class="home-doc" id="home-wr"></article></div>
   </div>`;
   const { mountDocWriter } = await import("../authoring");

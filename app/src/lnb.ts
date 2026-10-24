@@ -166,6 +166,8 @@ export function setLnbActive(sel: { domain?: string; domains?: string[]; nodeId?
   const doms = sel.domains?.length ? sel.domains : sel.domain ? [sel.domain] : [];
   active = { ...sel, domain: doms[0] };
   picked = new Set(doms);
+  // 뷰 머리가 그래프의 범위를 이 한 자리에서 받는다(topbar.ts `paintGraphLead`).
+  dispatchEvent(new CustomEvent("vinc:lnb-active", { detail: { domain: doms[0] || "" } }));
   const open = sel.reveal || doms[0];
   if (open) {
     // 지금 있는 주제는 접혀 있으면 안 된다 — 그리고 중첩이 생겼으므로 **조상까지**

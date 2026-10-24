@@ -460,6 +460,8 @@ const EN = {
       // 접힌 검색 알약의 이름 · 그래프 전환.
       findOpen: "Search",
       graph: "Graph",
+      docs: "Documents",
+      switchLabel: "Documents or graph",
       graphTip: "Show as a graph",
       graphOffTip: "Back to documents",
     },
@@ -1769,6 +1771,8 @@ const KO: Deck = {
       settings: "설정",
       findOpen: "검색",
       graph: "그래프",
+      docs: "문서",
+      switchLabel: "문서와 그래프 전환",
       graphTip: "그래프로 보기",
       graphOffTip: "문서로 돌아가기",
     },
