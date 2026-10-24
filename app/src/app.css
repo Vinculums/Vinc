@@ -783,6 +783,16 @@ body {
    GNB 마크업·스타일은 공유 /assets/gnb.js(단일 소스)가 web skin에서 런타임 주입한다.
    여기선 셸 높이만 GNB(3.25rem)만큼 줄인다 — 데스크탑은 GNB 미주입이라 영향 없음. */
 [data-skin="web"] #shell { height: calc(100vh - 3.25rem); height: calc(100dvh - 3.25rem); }
+/* GNB 의 안쪽 여백을 셸에 맞춘다: 로고는 사이드바 카드 안쪽 시작선(Home 단추)에, 끝 묶음은
+   본문 카드 끝선에 선다(셸 틈 + 카드 테두리 1px + 카드 안쪽 여백). gnb.js 의 폴백 20px 이면
+   로고가 사이드바 내용보다 3px 안쪽에 서서 두 줄이 어긋나 보였다. */
+[data-skin="web"] #site-gnb { --site-gutter: calc(var(--shell-gap) + 1px + .5rem); }
+/* 웹 빌드는 index.html 에 빈 `#site-gnb` 를 미리 둔다(vite.config.ts `webShell`). gnb.js 가 갈아
+   끼우기 전까지 그 자리를 같은 높이(52 + 테두리 1)로 잡아, 주입 순간 셸이 밀리지 않게 한다. */
+[data-skin="web"] #site-gnb:empty {
+  display: block; position: sticky; top: 0; z-index: 30; height: 53px; margin: 0;
+  background: hsl(var(--background)); border-bottom: 1px solid hsl(var(--border) / .7);
+}
 
 /* ── 커스텀 타이틀바 (데스크탑 셸 전용 · tauri decorations:false 프레임리스).
    웹 빌드·브라우저 dev 는 [data-shell] 미부여로 숨김 → OS/브라우저 크롬 그대로. ── */

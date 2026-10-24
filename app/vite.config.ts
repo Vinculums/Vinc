@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import { version } from "./package.json";
 
 // 빌드 식별자 — **버전 문자열만으로는 부족하다.** 웹 Vinc 는 태그와 무관하게
@@ -52,7 +52,34 @@ const API_RE = new RegExp("^/(health|view|graph|recall|search|domains"
   + "|config|shutdown"
   + "|domain|evidence)(/|$|\\?)");
 
+// 웹 빌드(/app/)의 첫 그림을 셸 JS 보다 먼저 맞춘다. 스킨·테마는 main.ts 가 정하는데 그건
+// 모듈이 돈 뒤라, 첫 페인트가 데스크톱 스킨·기본 테마로 그려졌다가 바뀔 수 있고, 공홈 GNB 를
+// main.ts 가 주입하는 순간 셸 전체가 GNB 높이만큼 밀린다. 그래서 html 에 스킨을 박고, 테마를
+// 미리 칠하고, GNB 자리를 빈 머리로 잡아 둔다(gnb.js 는 `#site-gnb` 가 있으면 그것을 갈아
+// 끼운다). 셸 빌드("/")는 건드리지 않는다.
+// 근거: [[record:web-app-shifted-and-flashed-before-the-shell-ran]]
+const WEB_BASE = "/app/";
+const PREPAINT = "try{var l=localStorage,p=l.getItem('vinc.theme')||l.getItem('vinc.site.theme.v2')||'dark';"
+  + "document.documentElement.dataset.theme=p==='light'||(p==='auto'&&!matchMedia('(prefers-color-scheme: dark)').matches)?'light':'dark'"
+  + "}catch(e){}";
+function webShell(): Plugin {
+  let base = "/";
+  return {
+    name: "vinc-web-shell",
+    configResolved(config) { base = config.base; },
+    transformIndexHtml(html) {
+      if (base !== WEB_BASE) return html;
+      return html
+        .replace("<html lang=\"en\">", "<html lang=\"en\" data-skin=\"web\">")
+        .replace("</head>", `<script>${PREPAINT}</script>`
+          + "<link rel=\"preload\" href=\"/assets/gnb.js\" as=\"script\" />\n  </head>")
+        .replace("<body>", "<body>\n    <header id=\"site-gnb\" aria-hidden=\"true\"></header>");
+    },
+  };
+}
+
 export default defineConfig({
+  plugins: [webShell()],
   // base: 셸/브라우저 dev 는 루트("/"). 웹 Vinc 는 vincs.app/app/ 로 서빙하므로
   // 웹 빌드만 VITE_BASE=/app/ 로 뽑는다 — 셸 빌드(release.yml)는 env 미설정 → "/"
   // 불변(방금 릴리스된 자동업데이트 앱의 asset 경로를 절대 건드리지 않는다). 앱은

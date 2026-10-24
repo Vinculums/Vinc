@@ -1038,7 +1038,7 @@ export const api = {
     docs?: { doc_id: string; title: string; origin: string; chunks: number;
              updated_at: string; topic?: string; topics?: string[];
              primary_concept_id?: string; primary_concept_title?: string; valid_until?: string }[];
-  }> => call("/docs", { owner }).then(res => {
+  }> => bootRead(`docs|${owner}`, () => call("/docs", { owner })).then(res => {
     // 커뮤니티 스페이스에서는 내린 페이지를 목록에서 뺀다(`withoutClosedDocs` 와 같은 규칙).
     if (!isCommunitySpace(cfg.team) || !res.docs) return res;
     const today = new Date().toISOString().slice(0, 10);
@@ -1054,11 +1054,13 @@ export const api = {
   navTree: (owner: string, opts?: { nodes?: boolean; kind?: string; domain?: string;
                                      domains?: string[] },
            ): Promise<NavTreeRes> =>
-    call("/nav-tree", { owner, ...(opts?.nodes ? { nodes: 1 } : {}),
+    // 옵션 없는 기본 트리만 부팅 때 미리 읽어 둔 것을 꺼내 쓴다(`bootRead`).
+    (opts ? (run: () => Promise<any>) => run() : (run: () => Promise<any>) => bootRead(`nav|${owner}`, run))(
+    () => call("/nav-tree", { owner, ...(opts?.nodes ? { nodes: 1 } : {}),
                         ...(opts?.kind ? { kind: opts.kind } : {}),
                         ...(opts?.domain ? { domain: opts.domain } : {}),
                         // 하위 트리 여럿의 합(Agent 레일: 역할 주제 둘). `/graph` 와 같은 쉼표 꼴.
-                        ...(opts?.domains?.length ? { domains: opts.domains.join(",") } : {}) })
+                        ...(opts?.domains?.length ? { domains: opts.domains.join(",") } : {}) }))
       .then((res: NavTreeRes) => isCommunitySpace(cfg.team) ? withoutClosedDocs(res) : res),
   // D45-V2 4단계 — 타임라인 기간(월-밴드) 클릭: [start, end) 의 날짜 있는 항목.
   // ⚠ basis 는 차트가 그리는 축과 **글자 그대로 같아야** 한다(D72) — 밴드를 눌러
@@ -1267,6 +1269,32 @@ export async function adoptSpaceFromAddress(): Promise<"" | "member" | "local"> 
   return refused;
 }
 
+// 웹 첫 화면의 두 읽기(사이드바 트리·문서 목록)를 세션 확인과 **나란히** 띄운다. 차례로
+// 기다리면 /api/me 왕복 뒤에야 첫 데이터 요청이 나가서 빈 화면이 그만큼 길어진다.
+// 한 번만 쓰이고 몇 초 뒤에는 버린다: 늦게 꺼내 쓰면 그 사이의 쓰기가 안 보인다.
+// 스페이스는 키에 들어간다. 주소가 다른 스페이스를 들고 오면 아예 미리 읽지 않는다.
+const BOOT_READ_MS = 10_000;
+const bootReads = new Map<string, { at: number; p: Promise<any> }>();
+function bootRead<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const k = `${key}|${cfg.team}`;
+  const hit = bootReads.get(k);
+  if (!hit) return run();
+  bootReads.delete(k);
+  if (Date.now() - hit.at > BOOT_READ_MS) return run();
+  return hit.p.catch(() => run());
+}
+function primeBootReads(): void {
+  if (new URLSearchParams(location.search).get("space")) return;
+  const owner = cfg.owner;
+  const at = Date.now();
+  const docs = api.docList(owner);
+  const nav = api.navTree(owner);
+  // 아무도 안 꺼내 가도 거절이 처리되지 않은 채 남지 않게 한다.
+  docs.catch(() => {}); nav.catch(() => {});
+  bootReads.set(`docs|${owner}|${cfg.team}`, { at, p: docs });
+  bootReads.set(`nav|${owner}|${cfg.team}`, { at, p: nav });
+}
+
 /** 웹모드 부팅 인증 게이트 — /api/me 로 세션을 **먼저** 확인한다. 미인증이면 서피스를
  *  렌더하기 전에 /login 으로 보내고 false 를 돌려준다(main.ts 가 렌더를 중단). 이게 없으면
  *  앱이 화면을 먼저 그린 뒤 데이터 호출이 401 을 받고서야 리다이렉트돼 "화면 깜빡임 → 로그인"
@@ -1280,6 +1308,7 @@ export async function ensureWebAuth(): Promise<boolean> {
     location.assign("/login");
     return false;
   }
+  primeBootReads();
   try {
     const res = await api.me();
     if (res.ok) return true;
