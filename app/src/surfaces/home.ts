@@ -58,7 +58,8 @@ let editor: DocEditorHandle | null = null;
 /** 라우터가 표면을 떠날 때 부른다. 편집기는 라우터가 먼저 확정·해제한다(disposeEditorsIn). */
 export function leaveHome(): void {
   ++liveGen;
-  void import("./agents-board").then((m) => m.leaveAgentsBoard());
+  // Agents 보드의 갱신 구독은 여기서 풀지 않는다. 비동기로 풀면 곧이어 그린 새 보드의 구독이
+  // 풀린다. 떠난 보드의 구독은 다음 신호 때 스스로 풀린다(agents-board.ts).
   editor = null;
   setLnbDocOpener(null);
   setLnbTopicPicker(null);
@@ -116,7 +117,11 @@ export async function renderHome(el: HTMLElement): Promise<void> {
     if (mode === "list") await paintList(el, gen);
   });
 
-  if (mode === "agents") {
+  if (mode === "agents" && parts[2]) {
+    // 역할 편집 면(`#home/agents/<id>` · `#home/agents/new[/<팀>]`). 보드 안의 한 면이다.
+    const { renderRoleEditor } = await import("../role-composer");
+    await renderRoleEditor(el, live, parts.slice(2));
+  } else if (mode === "agents") {
     const { renderAgentsBoard } = await import("./agents-board");
     await renderAgentsBoard(el, live);
   } else if (mode === "doc") await paintDoc(el, gen, parts[2]);

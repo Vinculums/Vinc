@@ -799,10 +799,9 @@ export function mountLnb(opts: { deferLoad?: boolean } = {}) {
       const id = nd.dataset.nodeid || "";
       if (!id) return;
       if (nd.classList.contains("lnb-agent-role")) {
-        // 역할은 그래프의 노드 상세가 아니라 역할 시트(설정)로 연다. 보드에 있으면 그 카드도 짚는다.
+        // 역할은 그래프의 노드 상세가 아니라 Agents 보드 안의 역할 편집 면으로 연다.
         active = { domain: nd.dataset.dom || "", nodeId: id };
         paint();
-        if (!location.hash.startsWith(AGENTS_BOARD)) location.hash = AGENTS_BOARD;
         void import("./role-composer").then((m) => m.openRoleComposer({ id }));
         if (compact()) setOpen(false, false);
         return;

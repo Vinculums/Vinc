@@ -1,4 +1,4 @@
-/** Agent 역할 시트 — 새로 만들기와 고치기를 한 시트가 한다.
+/** Agent 역할 편집 면 — 새로 만들기와 고치기를 한 면이 한다(`#home/agents/<id>` · `#home/agents/new`).
  *
  *  역할은 개념 노드 하나다: id `concept:agent-<이름>`, 주제 `agent`, 계약은 props
  *  (`mission`·`tier`·`rung`·`never`·`person_only`), 팀은 `team`·`team_role`. 일반 노드 컴포저로도
@@ -7,14 +7,23 @@
  *  계약을 한 화면에서 채운다. 서버의 역할 계약 경고(`api/role_contract.py`)는 저장 뒤 그대로
  *  보여 준다 — 거절이 아니라 알림이라 저장은 된다.
  *
- *  고치기는 있는 props 위에 이 시트의 칸만 덮어 **통째로** 보낸다(props 는 부분 전송이 아니라
- *  교체다). 이 시트가 모르는 키는 그대로 남고, 연 뒤 다른 곳에서 바뀌었으면 rev 가 막는다.
- *  저장한 뒤에는 Agents 보드에 머문다 — 그래프로 보내지 않는다.
+ *  시트가 아니라 Agents 보드 안의 한 면이다. 옆 칸은 보드 카드가 어떻게 보일지(입력을 따라
+ *  바뀐다)와 앞뒤 역할, 그리고 고치는 역할의 할 일(프롬프트 복사 · 그래프에서 보기)을 둔다.
+ *
+ *  고치기는 있는 props 위에 이 면의 칸만 덮어 **통째로** 보낸다(props 는 부분 전송이 아니라
+ *  교체다). 이 면이 모르는 키는 그대로 남고, 연 뒤 다른 곳에서 바뀌었으면 rev 가 막는다.
+ *  저장한 뒤에는 Agents 보드로 돌아간다 — 그래프로 보내지 않는다.
  *  근거: [[vinc.canon.agent-roles]] · [[decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02]] */
-import { api, cfg, messageOf } from "./api";
+import { api, cfg, isCommunitySpace, messageOf, spaceName } from "./api";
 import { COPY } from "./copy";
-import { esc, openSheet, sheetActions } from "./components";
-import { AGENT_TOPICS, AGENTS_BOARD } from "./lnb";
+import { esc } from "./components";
+import { icon } from "./icons";
+import { setTopbarLead } from "./topbar";
+import { AGENT_TOPICS, AGENTS_BOARD, buildAgentRoster, setLnbActive, showAgentRail,
+         type AgentRole } from "./lnb";
+import { absoluteViewUrl } from "./view-url";
+import { loadPrefs } from "./view-prefs";
+import { loaderRows } from "./vinc-loaders.js";
 
 /** `api/role_contract.py` 의 TIERS · RUNGS 와 같은 순서. */
 export const TIERS = ["orchestrate", "execute", "verify", "deliver", "knowledge"] as const;
@@ -38,89 +47,186 @@ export type RoleSheetOpts = {
   id?: string;
   /** 새 역할의 팀을 미리 채운다(보드의 "역할 추가"). */
   team?: string;
-  /** 팀 칸의 후보(지금 있는 팀 이름들). */
-  teams?: string[];
 };
 
-/** 역할이 바뀌었다고 알린다 — 레일 목록을 다시 읽고(보드는 그 뒤의 신호로 다시 그린다), 보드가 아니면 보드로 간다. */
-function afterSave(): void {
-  void import("./lnb").then((m) => m.refreshLnb({ quiet: true }));
-  if (!location.hash.startsWith(AGENTS_BOARD)) location.hash = AGENTS_BOARD;
+/** 역할 편집 면의 주소. 새 역할은 `new`(팀을 미리 채우면 `new/<팀>`), 고치기는 역할 id 다. */
+export function roleHash(opts: RoleSheetOpts = {}): string {
+  if (opts.id) return `${AGENTS_BOARD}/${encodeURIComponent(opts.id)}`;
+  return `${AGENTS_BOARD}/new${opts.team ? `/${encodeURIComponent(opts.team)}` : ""}`;
 }
 
+/** 역할 편집 면으로 간다(예전 시트를 열던 호출부가 그대로 쓴다). */
 export function openRoleComposer(opts: RoleSheetOpts = {}): void {
+  location.hash = roleHash(opts);
+}
+
+/** 그래프 카드의 "이 역할로 일해 줘"와 같은 문장 · 같은 주소를 클립보드에 싣는다
+ *  (surfaces/view.ts nodeAskItems). */
+export function copyRolePrompt(id: string): Promise<void> {
+  const url = absoluteViewUrl({ kind: "node", id }, { depth: 1, viewpoint: loadPrefs().view }, spaceName());
+  return navigator.clipboard.writeText(`${COPY.ui.viewx.askRoleBody} ${url}`);
+}
+
+/** 역할이 바뀌었다고 알린다 — 레일 목록을 다시 읽는다(보드는 그 뒤의 신호로 다시 그린다). */
+export function announceRolesChanged(): void {
+  void import("./lnb").then((m) => m.refreshLnb({ quiet: true }));
+}
+
+/** `rest` 는 `#home/agents/` 뒤의 조각들이다: `["new"]` · `["new", 팀]` · `[역할 id]`. */
+export async function renderRoleEditor(el: HTMLElement, live: () => boolean, rest: string[]): Promise<void> {
   const R = COPY.author.role;
   const A = COPY.author;
-  const editing = !!opts.id;
+  const H = COPY.ui.home;
+  const editing = rest[0] !== "new";
+  const editId = editing ? rest[0] : "";
   const topic = AGENT_TOPICS[0];
-  const sheet = openSheet({ title: editing ? R.editTitle : R.title, subtitle: editing ? R.editSub : R.sub });
-  let tier = "";
-  let rung = "";
-  let teamRole = "";
-  let slugTouched = editing;
-  let busy = false;
-  // 고칠 때 읽어 온 것: 이 시트가 모르는 props 키와 rev.
+  const readOnly = isCommunitySpace(cfg.team);
+  setLnbActive({ domains: [] });
+  showAgentRail();
+  setTopbarLead(`<nav class="home-crumbs"><a class="home-back" href="${AGENTS_BOARD}">‹ ${esc(H.agentsTitle)}</a></nav>`);
+  el.innerHTML = `<div class="home agents role-page">${loaderRows(COPY.ui.common.loading, { count: 6 })}</div>`;
+
+  // 팀 칸의 후보와 앞뒤 역할은 보드와 같은 로스터에서 온다. 못 읽어도 편집은 된다.
+  const rosterP = api.roleRoster(cfg.owner).then(buildAgentRoster).catch(() => [] as AgentRole[]);
   let baseProps: Record<string, unknown> = {};
   let baseRev: number | undefined;
   let baseDomain: string = topic;
+  let baseTitle = "";
+  if (editing) {
+    try {
+      const r = await api.nodeContext(cfg.owner, editId, 1) as {
+        executed: boolean; title?: string; domain?: string; props?: Record<string, unknown>; rev?: number;
+      };
+      if (!r.executed) throw new Error("not found");
+      baseProps = { ...(r.props || {}) };
+      baseRev = typeof r.rev === "number" ? r.rev : undefined;
+      baseDomain = r.domain || topic;
+      baseTitle = r.title || "";
+    } catch {
+      if (!live()) return;
+      el.innerHTML = `<div class="home agents role-page"><p class="error-banner">${esc(R.loadFail)}</p>
+        <div class="home-acts"><a class="btn btn-quiet" href="${AGENTS_BOARD}">${esc(R.backToBoard)}</a></div></div>`;
+      return;
+    }
+  }
+  const roster = await rosterP;
+  if (!live()) return;
+  const self = roster.find((r) => r.id === editId);
+  const teamList = [...new Set(roster.map((r) => r.team).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
   const chips = (name: string, keys: readonly string[], labels: Record<string, string>) =>
     `<div class="seg rc-${name}" role="radiogroup" aria-labelledby="rc-${name}-l">${keys.map((k) =>
       `<button type="button" class="chip" role="radio" aria-checked="false" data-${name}="${k}">${
         esc(labels[k])}</button>`).join("")}</div>`;
-  const teamList = [...new Set((opts.teams || []).filter(Boolean))];
-  sheet.body.innerHTML = `
-    <div class="nc rc">
-      <label class="ei-field"><span>${esc(R.fJob)}</span>
-        <input id="rc-job" type="text" autocomplete="off" placeholder="${esc(R.jobPh)}"/></label>
-      <label class="ei-field"><span>${esc(R.fSlug)}</span>
-        <input id="rc-slug" type="text" autocomplete="off" spellcheck="false" placeholder="release-notes"${editing ? " readonly" : ""}/></label>
-      <p class="hint nc-id"><span id="rc-id"></span> · ${esc(R.topicNote(topic))}</p>
-      <label class="ei-field"><span>${esc(R.fMission)}</span>
-        <textarea id="rc-mission" rows="2" placeholder="${esc(R.missionPh)}"></textarea></label>
-      <div class="rc-row">
-        <label class="ei-field"><span>${esc(R.fTeam)}</span>
-          <input id="rc-team" type="text" autocomplete="off" list="rc-teams" placeholder="${esc(R.teamPh)}"/>
-          <datalist id="rc-teams">${teamList.map((t) => `<option value="${esc(t)}"></option>`).join("")}</datalist></label>
-        <div class="ei-field"><span id="rc-trole-l">${esc(R.fTeamRole)}</span>${chips("trole", TEAM_ROLES, R.teamRoles)}</div>
-      </div>
-      <div class="ei-field"><span id="rc-tier-l">${esc(R.fTier)}</span>${chips("tier", TIERS, R.tiers)}
-        <p class="hint" id="rc-tier-hint">${esc(R.tierHint)}</p></div>
-      <div class="ei-field"><span id="rc-rung-l">${esc(R.fRung)}</span>${chips("rung", RUNGS, R.rungs)}
-        <p class="hint">${esc(R.rungHint)}</p></div>
-      <label class="ei-field"><span>${esc(R.fNever)}</span>
-        <textarea id="rc-never" rows="2" placeholder="${esc(R.neverPh)}"></textarea></label>
-      <label class="ei-field"><span>${esc(R.fPersonOnly)}</span>
-        <textarea id="rc-person" rows="2" placeholder="${esc(R.personPh)}"></textarea></label>
-      <p class="hint">${esc(R.linesHint)}</p>
-    </div>`;
-  sheet.foot.innerHTML = `<div id="rc-msg" class="nc-msg" role="status"></div>`
-    + sheetActions({ id: "rc-create", label: editing ? R.save : A.create });
-  const $ = <T extends HTMLElement>(s: string) => sheet.el.querySelector<T>(s)!;
+  const rel = (label: string, names: string[]) => names.length
+    ? `<p class="agent-rel"><span class="agent-rel-k">${esc(label)}</span> ${esc(names.join(" · "))}</p>` : "";
+  const L = COPY.ui.lnb;
+  const rels = self && (self.rel.from.length || self.rel.then.length || self.rel.beside.length)
+    ? `<div class="agent-rels">${rel(L.agentFrom, self.rel.from)}${rel(L.agentThen, self.rel.then)}${
+      rel(L.agentBeside, self.rel.beside)}</div>` : `<p class="hint">${esc(R.noRels)}</p>`;
+
+  el.innerHTML = `<div class="home agents role-page">
+    <header class="home-head">
+      <h1>${esc(editing ? (baseTitle || R.editTitle) : R.title)}</h1>
+    </header>
+    <p class="hint agents-lead">${esc(editing ? R.editSub : R.sub)}</p>
+    <div class="home-read-grid role-grid">
+      <form class="nc rc role-form" novalidate>
+        <section class="role-sec">
+          <h2>${esc(R.secRole)}</h2>
+          <label class="ei-field"><span>${esc(R.fJob)}</span>
+            <input id="rc-job" type="text" autocomplete="off" placeholder="${esc(R.jobPh)}"/></label>
+          <label class="ei-field"><span>${esc(R.fSlug)}</span>
+            <input id="rc-slug" type="text" autocomplete="off" spellcheck="false" placeholder="release-notes"${editing ? " readonly" : ""}/></label>
+          <p class="hint nc-id"><span id="rc-id"></span>${esc(R.topicNote(topic))}</p>
+          <label class="ei-field"><span>${esc(R.fMission)}</span>
+            <textarea id="rc-mission" rows="3" placeholder="${esc(R.missionPh)}"></textarea></label>
+        </section>
+        <section class="role-sec">
+          <h2>${esc(R.secTeam)}</h2>
+          <div class="rc-row">
+            <label class="ei-field"><span>${esc(R.fTeam)}</span>
+              <input id="rc-team" type="text" autocomplete="off" list="rc-teams" placeholder="${esc(R.teamPh)}"/>
+              <datalist id="rc-teams">${teamList.map((t) => `<option value="${esc(t)}"></option>`).join("")}</datalist></label>
+            <div class="ei-field"><span id="rc-trole-l">${esc(R.fTeamRole)}</span>${chips("trole", TEAM_ROLES, R.teamRoles)}</div>
+          </div>
+        </section>
+        <section class="role-sec">
+          <h2>${esc(R.secWork)}</h2>
+          <div class="ei-field"><span id="rc-tier-l">${esc(R.fTier)}</span>${chips("tier", TIERS, R.tiers)}
+            <p class="hint" id="rc-tier-hint">${esc(R.tierHint)}</p></div>
+          <div class="ei-field"><span id="rc-rung-l">${esc(R.fRung)}</span>${chips("rung", RUNGS, R.rungs)}
+            <p class="hint">${esc(R.rungHint)}</p></div>
+        </section>
+        <section class="role-sec">
+          <h2>${esc(R.secLimits)}</h2>
+          <label class="ei-field"><span>${esc(R.fNever)}</span>
+            <textarea id="rc-never" rows="3" placeholder="${esc(R.neverPh)}"></textarea></label>
+          <label class="ei-field"><span>${esc(R.fPersonOnly)}</span>
+            <textarea id="rc-person" rows="3" placeholder="${esc(R.personPh)}"></textarea></label>
+          <p class="hint">${esc(R.linesHint)}</p>
+        </section>
+        <footer class="role-foot">
+          <div id="rc-msg" class="nc-msg" role="status"></div>
+          <a class="btn" href="${AGENTS_BOARD}" id="rc-cancel">${esc(COPY.ui.common.cancel)}</a>
+          ${readOnly ? "" : `<button class="btn btn-primary" type="submit" id="rc-save">${esc(editing ? R.save : A.create)}</button>`}
+        </footer>
+      </form>
+      <aside class="role-aside">
+        <p class="role-aside-k">${esc(R.preview)}</p>
+        <article class="agent-card agent-card-preview" aria-live="polite">
+          <header class="agent-card-top">
+            <h3 class="agent-name" id="rc-pv-name"></h3>
+            <span class="agent-seat" id="rc-pv-seat" hidden></span>
+          </header>
+          <p class="agent-pv-team hint" id="rc-pv-team"></p>
+          <p class="agent-mission" id="rc-pv-mission"></p>
+        </article>
+        ${editing ? `<p class="role-aside-k">${esc(R.relsTitle)}</p>${rels}
+        <div class="role-aside-acts">
+          <button class="btn btn-quiet agent-act" type="button" data-act="copy"><span>${esc(H.agentsCopy)}</span></button>
+          <button class="btn btn-quiet agent-act" type="button" data-act="graph">${icon("graph", 14)}<span>${esc(H.agentsGraph)}</span></button>
+        </div>` : ""}
+      </aside>
+    </div>
+  </div>`;
+
+  const $ = <T extends HTMLElement>(s: string) => el.querySelector<T>(s)!;
+  const form = $<HTMLFormElement>(".role-form");
   const jobEl = $<HTMLInputElement>("#rc-job");
   const slugEl = $<HTMLInputElement>("#rc-slug");
   const teamEl = $<HTMLInputElement>("#rc-team");
-  const btn = sheet.foot.querySelector<HTMLButtonElement>("#rc-create")!;
+  const missionEl = $<HTMLTextAreaElement>("#rc-mission");
+  const btn = el.querySelector<HTMLButtonElement>("#rc-save");
   const msg = (html: string) => { $("#rc-msg").innerHTML = html; };
-  const idOf = () => editing ? opts.id! : `concept:agent-${slugEl.value.trim()}`;
+  const idOf = () => editing ? editId : `concept:agent-${slugEl.value.trim()}`;
+  let tier = "";
+  let rung = "";
+  let teamRole = "";
+  let slugTouched = editing;
+  let busy = false;
+  let done = false;
+
   const paintId = () => {
     const s = slugEl.value.trim();
-    $("#rc-id").textContent = s ? A.idPreview(idOf()) + (ROLE_SLUG.test(s) ? "" : ` · ${R.slugBad}`) : "";
+    $("#rc-id").textContent = s ? A.idPreview(idOf()) + (ROLE_SLUG.test(s) ? "" : ` · ${R.slugBad}`) + " · " : "";
   };
-  if (opts.team) teamEl.value = opts.team;
-
-  jobEl.addEventListener("input", () => {
-    // 이름을 손으로 고치기 전까지는 직무명을 따라간다(고치기에서는 id 가 고정이다).
-    if (!slugTouched) slugEl.value = roleSlugOf(jobEl.value);
-    paintId();
-  });
-  slugEl.addEventListener("input", () => { slugTouched = true; paintId(); });
-
-  // 앞서 낸 "이것을 채워 주세요" 는 사람이 무엇이든 고치면 지운다 — 고친 뒤에도 남아 있으면 아직 틀린 줄 안다.
-  sheet.body.addEventListener("input", () => msg(""));
+  // 옆 칸의 카드는 보드 카드와 같은 생김새로 입력을 따라간다.
+  const paintPreview = () => {
+    const team = teamEl.value.trim();
+    const name = $("#rc-pv-name");
+    name.textContent = jobEl.value.trim() || R.jobPh;
+    name.classList.toggle("agent-pv-empty", !jobEl.value.trim());
+    $("#rc-pv-mission").textContent = missionEl.value.trim() || H.agentsNoMission;
+    $("#rc-pv-team").textContent = team || H.agentsNoTeam;
+    const seat = $("#rc-pv-seat");
+    seat.hidden = !(team && teamRole);
+    seat.className = `agent-seat agent-seat-${teamRole}`;
+    seat.textContent = teamRole ? R.teamRoles[teamRole] || teamRole : "";
+  };
   const pick = (name: "tier" | "rung" | "trole", value: string) => {
     msg("");
-    sheet.el.querySelectorAll<HTMLElement>(`.rc-${name} .chip`).forEach((b) => {
+    el.querySelectorAll<HTMLElement>(`.rc-${name} .chip`).forEach((b) => {
       const on = b.dataset[name] === value;
       b.classList.toggle("active", on);
       b.setAttribute("aria-checked", String(on));
@@ -128,56 +234,65 @@ export function openRoleComposer(opts: RoleSheetOpts = {}): void {
     if (name === "tier") { tier = value; $("#rc-tier-hint").textContent = R.tierHints[value] || R.tierHint; }
     else if (name === "rung") rung = value;
     else teamRole = value;
+    paintPreview();
   };
   for (const name of ["tier", "rung", "trole"] as const) {
-    sheet.el.querySelector(`.rc-${name}`)!.addEventListener("click", (e) => {
+    el.querySelector(`.rc-${name}`)!.addEventListener("click", (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>(`[data-${name}]`);
       if (b) pick(name, b.dataset[name]!);
     });
   }
 
-  async function load(): Promise<boolean> {
-    btn.disabled = true;
-    msg(esc(COPY.ui.common.loading));
-    try {
-      const r = await api.nodeContext(cfg.owner, opts.id!, 1) as {
-        executed: boolean; title?: string; domain?: string; props?: Record<string, unknown>; rev?: number;
-      };
-      if (!r.executed) throw new Error("not found");
-      baseProps = { ...(r.props || {}) };
-      baseRev = typeof r.rev === "number" ? r.rev : undefined;
-      baseDomain = r.domain || topic;
-      jobEl.value = r.title || "";
-      slugEl.value = opts.id!.replace(/^concept:agent-/, "");
-      paintId();
-      $<HTMLTextAreaElement>("#rc-mission").value = strOf(baseProps.mission);
-      teamEl.value = strOf(baseProps.team);
-      $<HTMLTextAreaElement>("#rc-never").value = listOf(baseProps.never).join("\n");
-      $<HTMLTextAreaElement>("#rc-person").value = listOf(baseProps.person_only).join("\n");
-      if (TIERS.includes(strOf(baseProps.tier) as never)) pick("tier", strOf(baseProps.tier));
-      if (RUNGS.includes(strOf(baseProps.rung) as never)) pick("rung", strOf(baseProps.rung));
-      if (TEAM_ROLES.includes(strOf(baseProps.team_role) as never)) pick("trole", strOf(baseProps.team_role));
-      msg("");
-      btn.disabled = false;
-      return true;
-    } catch {
-      msg(`<span class="error-banner">${esc(R.loadFail)}</span>`);
-      return false;
-    }
-  }
+  if (editing) {
+    jobEl.value = baseTitle;
+    slugEl.value = editId.replace(/^concept:agent-/, "");
+    missionEl.value = strOf(baseProps.mission);
+    teamEl.value = strOf(baseProps.team);
+    $<HTMLTextAreaElement>("#rc-never").value = listOf(baseProps.never).join("\n");
+    $<HTMLTextAreaElement>("#rc-person").value = listOf(baseProps.person_only).join("\n");
+    if (TIERS.includes(strOf(baseProps.tier) as never)) pick("tier", strOf(baseProps.tier));
+    if (RUNGS.includes(strOf(baseProps.rung) as never)) pick("rung", strOf(baseProps.rung));
+    if (TEAM_ROLES.includes(strOf(baseProps.team_role) as never)) pick("trole", strOf(baseProps.team_role));
+  } else if (rest[1]) teamEl.value = rest[1];
+  paintId();
+  paintPreview();
+  if (readOnly) form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement>(
+    "input, textarea, .chip").forEach((x) => { x.disabled = true; });
+
+  jobEl.addEventListener("input", () => {
+    // 이름을 손으로 고치기 전까지는 직무명을 따라간다(고치기에서는 id 가 고정이다).
+    if (!slugTouched) slugEl.value = roleSlugOf(jobEl.value);
+    paintId();
+  });
+  slugEl.addEventListener("input", () => { slugTouched = true; paintId(); });
+  // 앞서 낸 "이것을 채워 주세요" 는 사람이 무엇이든 고치면 지운다 — 고친 뒤에도 남아 있으면 아직 틀린 줄 안다.
+  form.addEventListener("input", () => { if (!done) msg(""); paintPreview(); });
+  el.querySelector<HTMLElement>('[data-act="graph"]')?.addEventListener("click", () => {
+    location.hash = `#view/read/${encodeURIComponent(editId)}`;
+  });
+  el.querySelector<HTMLElement>('[data-act="copy"]')?.addEventListener("click", (e) => {
+    const b = e.currentTarget as HTMLElement;
+    void copyRolePrompt(editId).then(() => {
+      const label = b.querySelector("span");
+      if (!label) return;
+      label.textContent = H.agentsCopied;
+      setTimeout(() => { if (label.isConnected) label.textContent = H.agentsCopy; }, 1600);
+    }).catch(() => {});
+  });
 
   async function save() {
-    if (busy) return;
+    if (busy || done || readOnly || !btn) return;
     const title = jobEl.value.trim();
     const slug = slugEl.value.trim();
-    const mission = $<HTMLTextAreaElement>("#rc-mission").value.trim().replace(/\s+/g, " ");
+    const mission = missionEl.value.trim().replace(/\s+/g, " ");
     if (!title) { msg(esc(R.needJob)); jobEl.focus(); return; }
     if (!ROLE_SLUG.test(slug)) { msg(esc(R.slugBad)); slugEl.focus(); return; }
-    if (!mission) { msg(esc(R.needMission)); $("#rc-mission").focus(); return; }
+    if (!mission) { msg(esc(R.needMission)); missionEl.focus(); return; }
     if (!tier) { msg(esc(R.needTier)); return; }
     if (!rung) { msg(esc(R.needRung)); return; }
     const id = idOf();
     busy = true;
+    btn.disabled = true;
     if (!editing) {
       msg(esc(A.idChecking));
       // 쓰기 직전에 그 id 를 묻는다. 확실히 없을 때만 쓴다 — 있는 역할에 쓰면 props 가 통째로
@@ -189,12 +304,13 @@ export function openRoleComposer(opts: RoleSheetOpts = {}): void {
       } catch { /* 못 물었다 = 멈춘다 */ }
       if (state !== "new") {
         busy = false;
+        btn.disabled = false;
         msg(state === "exists" ? esc(R.nameTaken(id)) : `<span class="error-banner">${esc(A.idCheckFail)}</span>`);
         return;
       }
     }
     const team = teamEl.value.trim();
-    // 이 시트가 다루는 키만 덮는다. 비운 팀은 키째 뺀다(빈 문자열을 팀 이름으로 남기지 않는다).
+    // 이 면이 다루는 키만 덮는다. 비운 팀은 키째 뺀다(빈 문자열을 팀 이름으로 남기지 않는다).
     const props: Record<string, unknown> = {
       ...baseProps,
       mission, tier, rung,
@@ -206,13 +322,13 @@ export function openRoleComposer(opts: RoleSheetOpts = {}): void {
     const node: Record<string, unknown> = { id, type: "concept", title, domain: editing ? baseDomain : topic,
                                             tags: ["agent", tier, "role"], one_liner: mission, props };
     if (editing && baseRev !== undefined) node.expected_rev = baseRev;
-    btn.disabled = true;
     msg(esc(editing ? R.saving : A.creating));
     let res: any;
     try { res = await api.ingestFragment({ nodes: [node], edges: [] }); }
     catch (e: any) { res = { executed: false, error: messageOf(e, "") }; }
     busy = false;
     btn.disabled = false;
+    if (!live()) return;
     if (res?.executed === false) {
       const stale = /rev|revision|conflict/i.test(String(res.error || ""));
       msg(`<span class="error-banner">${esc(stale ? R.changedElsewhere : editing ? R.saveFail : A.createFail)}</span>`
@@ -225,27 +341,30 @@ export function openRoleComposer(opts: RoleSheetOpts = {}): void {
       msg(`<span class="error-banner">${esc(editing ? R.saveFail : A.createFail)}</span>`);
       return;
     }
-    afterSave();
+    announceRolesChanged();
     // 역할 계약 경고는 숨기지 않는다 — 저장은 됐지만 호스트가 받을 프롬프트가 비거나
-    // 목록에서 빠질 수 있다는 뜻이다. 경고가 있으면 시트를 열어 둔 채 보여 준다.
+    // 목록에서 빠질 수 있다는 뜻이다. 경고가 있으면 이 면에 머문 채 보여 준다.
     const warns: string[] = (res?.warnings || []).map(String).filter((w: string) => w.includes(id));
     if (warns.length) {
+      done = true;
+      btn.disabled = true;
       msg(`${esc(editing ? R.saved(title) : R.created(title))}<br><span class="hint">${esc(R.warned)}</span><br>`
-        + warns.map((w) => `<span class="hint">· ${esc(w)}</span>`).join("<br>"));
-      if (editing) baseRev = undefined;   // 다음 저장은 rev 를 다시 읽기 전까지 검사하지 않는다
+        + warns.map((w) => `<span class="hint">· ${esc(w)}</span>`).join("<br>")
+        + `<br><a class="home-back" href="${roleHash({ id })}">${esc(R.editAgain)}</a>`);
+      $("#rc-cancel").textContent = R.backToBoard;
       return;
     }
-    sheet.close();
+    location.hash = AGENTS_BOARD;
   }
-  btn.addEventListener("click", () => void save());
-  sheet.el.addEventListener("keydown", (e) => {
+  form.addEventListener("submit", (e) => { e.preventDefault(); void save(); });
+  form.addEventListener("keydown", (e) => {
+    // 여러 줄 칸에서는 Enter 가 줄바꿈이다. Ctrl/⌘+Enter 로 저장한다.
     if (e.key !== "Enter" || e.isComposing || e.shiftKey) return;
     const t = e.target as HTMLElement;
     if (t instanceof HTMLTextAreaElement && !(e.ctrlKey || e.metaKey)) return;
-    if (t.closest("button, summary, select")) return;
+    if (t.closest("button, a, summary, select")) return;
     e.preventDefault();
     void save();
   });
-  if (editing) void load().then((ok) => { if (ok) jobEl.focus(); });
-  else jobEl.focus();
+  (editing ? missionEl : jobEl).focus({ preventScroll: true });
 }
