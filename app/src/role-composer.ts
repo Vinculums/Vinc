@@ -12,6 +12,8 @@
  *
  *  고치기는 있는 props 위에 이 면의 칸만 덮어 **통째로** 보낸다(props 는 부분 전송이 아니라
  *  교체다). 이 면이 모르는 키는 그대로 남고, 연 뒤 다른 곳에서 바뀌었으면 rev 가 막는다.
+ *  고치지 않은 목록 칸은 읽은 값 그대로 보내고(`role-fields.ts`), 태그는 고치기에서 보내지 않는다 —
+ *  이 면은 노드의 태그를 읽지 않으므로 보내면 다른 태그를 지운다(안 보내면 서버가 보존한다).
  *  저장한 뒤에는 Agents 보드로 돌아간다 — 그래프로 보내지 않는다.
  *  근거: [[vinc.canon.agent-roles]] · [[decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02]] */
 import { api, cfg, isCommunitySpace, messageOf, spaceName } from "./api";
@@ -24,6 +26,7 @@ import { AGENT_TOPICS, AGENTS_BOARD, buildAgentRoster, setLnbActive, showAgentRa
 import { absoluteViewUrl } from "./view-url";
 import { loadPrefs } from "./view-prefs";
 import { loaderRows } from "./vinc-loaders.js";
+import { fieldChanged, foldPersonOnly, linesOf, listLines } from "./role-fields";
 
 /** `api/role_contract.py` 의 TIERS · RUNGS 와 같은 순서. */
 export const TIERS = ["orchestrate", "execute", "verify", "deliver", "knowledge"] as const;
@@ -37,9 +40,6 @@ export const ROLE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const roleSlugOf = (title: string): string =>
   title.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48)
     .replace(/-+$/, "");
-/** 여러 줄 칸 → 목록. 빈 줄은 버린다. */
-const linesOf = (s: string): string[] => s.split("\n").map((x) => x.trim()).filter(Boolean);
-const listOf = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
 const strOf = (v: unknown): string => (typeof v === "string" ? v : "");
 
 export type RoleSheetOpts = {
@@ -248,8 +248,8 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
     slugEl.value = editId.replace(/^concept:agent-/, "");
     missionEl.value = strOf(baseProps.mission);
     teamEl.value = strOf(baseProps.team);
-    $<HTMLTextAreaElement>("#rc-never").value = listOf(baseProps.never).join("\n");
-    $<HTMLTextAreaElement>("#rc-person").value = listOf(baseProps.person_only).join("\n");
+    $<HTMLTextAreaElement>("#rc-never").value = listLines(baseProps.never).join("\n");
+    $<HTMLTextAreaElement>("#rc-person").value = listLines(baseProps.person_only).join("\n");
     if (TIERS.includes(strOf(baseProps.tier) as never)) pick("tier", strOf(baseProps.tier));
     if (RUNGS.includes(strOf(baseProps.rung) as never)) pick("rung", strOf(baseProps.rung));
     if (TEAM_ROLES.includes(strOf(baseProps.team_role) as never)) pick("trole", strOf(baseProps.team_role));
@@ -290,6 +290,15 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
     if (!mission) { msg(esc(R.needMission)); missionEl.focus(); return; }
     if (!tier) { msg(esc(R.needTier)); return; }
     if (!rung) { msg(esc(R.needRung)); return; }
+    const neverText = $<HTMLTextAreaElement>("#rc-never").value;
+    const personText = $<HTMLTextAreaElement>("#rc-person").value;
+    const neverList = editing && !fieldChanged(neverText, baseProps.never) ? baseProps.never : linesOf(neverText);
+    let personOnly: unknown = baseProps.person_only;
+    if (!editing || fieldChanged(personText, baseProps.person_only)) {
+      const folded = foldPersonOnly(linesOf(personText), baseProps.person_only);
+      if (!folded.ok) { msg(esc(R.personBad)); $<HTMLTextAreaElement>("#rc-person").focus(); return; }
+      personOnly = folded.value;
+    }
     const id = idOf();
     busy = true;
     btn.disabled = true;
@@ -313,14 +322,13 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
     // 이 면이 다루는 키만 덮는다. 비운 팀은 키째 뺀다(빈 문자열을 팀 이름으로 남기지 않는다).
     const props: Record<string, unknown> = {
       ...baseProps,
-      mission, tier, rung,
-      never: linesOf($<HTMLTextAreaElement>("#rc-never").value),
-      person_only: linesOf($<HTMLTextAreaElement>("#rc-person").value),
+      mission, tier, rung, never: neverList, person_only: personOnly,
     };
     delete props.team; delete props.team_role;
     if (team) { props.team = team; if (teamRole) props.team_role = teamRole; }
     const node: Record<string, unknown> = { id, type: "concept", title, domain: editing ? baseDomain : topic,
-                                            tags: ["agent", tier, "role"], one_liner: mission, props };
+                                            one_liner: mission, props };
+    if (!editing) node.tags = ["agent", tier, "role"];
     if (editing && baseRev !== undefined) node.expected_rev = baseRev;
     msg(esc(editing ? R.saving : A.creating));
     let res: any;
