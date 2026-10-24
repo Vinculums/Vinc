@@ -17,8 +17,8 @@ MAX_VALUE_CHARS = 4096
 FIELD_COVERAGE = {
     "concept": {"keyword": ["title", "one_liner", "props", "id"],
                 "semantic": ["title", "one_liner"]},
-    "record": {"keyword": ["title", "props", "id"], "semantic": ["title"]},
-    "decision": {"keyword": ["title", "props", "id"], "semantic": ["title"]},
+    "record": {"keyword": ["title", "props", "id"], "semantic": ["title", "props body[:300]"]},
+    "decision": {"keyword": ["title", "props", "id"], "semantic": ["title", "props body[:300]"]},
     "episode": {"keyword": ["title", "id"], "semantic": ["title", "summary[:300]"]},
 }
 
