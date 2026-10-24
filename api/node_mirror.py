@@ -17,8 +17,10 @@
 [[decision:the-node-mirror-keeps-unchanged-rows-and-rebuilds-its-index-whole-2026-10-02]]
 
 **찾는 표면은 좁게 담는다.** 제목이 기본이고 Concept 은 one_liner, Episode 는 summary
-앞부분을 붙인다. Record·Decision 은 제목만이다. 넓히는 것은 측정 없이 하지 않는다
-([[record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09]]).
+앞부분을, Record·Decision 은 props 본문(brief 의 답 본문 규칙, 기술 필드 제외)을 붙인다.
+넓히는 것은 측정 없이 하지 않는다. Record·Decision 본문은 봉인 셋 8에서 재고 넣었다
+([[vinc.spec.retrieval-knobs]] §2). 에피소드 요약을 통째로 넣지 않는 근거는
+[[record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09]].
 
 ⚠ **Record·Decision 에 연결된 Concept 의 one_liner 를 조인하는 것은 이미 재 봤고 졌다**
 (Vinc#338, 2026-09-15 적재 → 2026-09-16 되돌림). 개인 골드 81행 페어 A/B 에서 **좋아진
@@ -31,13 +33,13 @@ concept 의 산문을 그대로 물려받아 둘이 같은 낱말로 묶인다) 
 직접 든다. 인코딩이 여기 들어오면 두 경로가 서로의 의존성을 물게 된다.
 """
 from __future__ import annotations
-from store.node_mirror_state import EXTRA_CHARS, mirror_text as _mirror_text
+from store.node_mirror_state import EXTRA_CHARS, extra_text, mirror_text as _mirror_text
 
 #: 미러에 담을 라벨과 그 텍스트. (라벨, PK, kind, 부가 텍스트 열 또는 None)
 SPEC = [
     ("Concept", "concept_id", "concept", "one_liner"),
-    ("Record", "record_id", "record", None),
-    ("Decision", "decision_id", "decision", None),
+    ("Record", "record_id", "record", "props"),
+    ("Decision", "decision_id", "decision", "props"),
     ("Episode", "episode_id", "episode", "summary"),
 ]
 #: 부가 텍스트를 이만큼만 쓴다. 문단 전체를 넣으면 제목이 묻힌다.
@@ -88,7 +90,7 @@ def collect(store, owner: str | None = None) -> tuple[list[dict], list[dict]]:
             {"o": owner} if owner else None) or []
         for r in rows:
             title = " ".join(str(r.get("title") or "").split())
-            text = mirror_text(title, r.get("extra"))
+            text = mirror_text(title, extra_text(kind, r.get("extra")))
             if not text:
                 continue
             key = (r.get("owner") or "", r["id"])
