@@ -134,13 +134,20 @@ export function setLnbTopicPicker(fn: TopicPicker | null) {
   // View 의 첫 show 뒤에 도는 것은 안전하다 — show 는 세대 번호로 옛 것을 버린다.
   if (fn && !launchScoped && isAgent() && agentRoster !== null) {
     launchScoped = true;
-    if (atSurfaceRoot()) queueMicrotask(scopeAgentGraph);
+    // 문서 홈의 첫 자리에서 Agent 로 다시 열렸으면 보드로, 그래프면 역할 주제로 좁힌다.
+    if (atSurfaceRoot()) queueMicrotask(() => {
+      if (onGraph()) scopeAgentGraph();
+      else location.hash = AGENTS_BOARD;
+    });
   }
 }
 /** 읽어 온 Agent 역할 수. 아직 안 읽었으면 null. 홈의 빈 목록이 무엇으로 이을지 가른다. */
 export const agentRoleCount = (): number | null => agentRoster ? agentRoster.length : null;
 /** 첫 실행 스코프를 이미 걸었는가(세션에 한 번). */
 let launchScoped = false;
+
+/** Agents 보드의 주소. 문서 홈 표면 안의 한 면이다(surfaces/home.ts). */
+export const AGENTS_BOARD = "#home/agents";
 
 /** 지금 표면이 자기 첫 자리에 있는가(`#` · `#home` · `#view`) — 딥링크 착지를 덮지 않으려는 검사. */
 const atSurfaceRoot = (): boolean => ["", "home", "view"].includes(location.hash.replace(/^#/, ""));
@@ -195,7 +202,7 @@ export const stripRolePrefix = (s: string): string => s.replace(/^Agent role:\s*
 /** 여섯 팀의 화면 순서. 이름은 `props.team` 정본이고, 순서는 로스터 v2 가
  *  비준한 그대로다. 여기 일곱 번째 팀을 만들지 않는다.
  *  근거: [[decision:roster-v2-ratified-2026-09-16]]
- *  [[decision:vin88-agent-click-opens-roster-list-graph-scopes-agent-domains-2026-09-22]] */
+ *  [[decision:the-agent-rail-opens-an-agents-board-and-roles-edit-in-place-2026-10-24]] */
 const AGENT_TEAM_ORDER = [
   "Program Office",
   "Product Engineering",
@@ -205,10 +212,10 @@ const AGENT_TEAM_ORDER = [
   "Platform and Release",
 ] as const;
 
-type AgentRel = { from: string[]; then: string[]; beside: string[] };
-type AgentRole = {
+export type AgentRel = { from: string[]; then: string[]; beside: string[] };
+export type AgentRole = {
   id: string; domain: string; title: string; team: string;
-  teamRole: string; rel: AgentRel;
+  teamRole: string; mission: string; rel: AgentRel;
 };
 
 /** `/graph` 가 노드에 싣는 props 까지 읽는 노드. 클라 GraphNode 타입은 이 열을 아직 안 적는다. */
@@ -256,7 +263,7 @@ function roleRels(rid: string, byId: Map<string, GraphRoleNode>,
   return { from: sort(from), then: sort(then), beside: sort(beside) };
 }
 
-function teamRank(team: string): number {
+export function teamRank(team: string): number {
   const i = (AGENT_TEAM_ORDER as readonly string[]).indexOf(team);
   return i < 0 ? AGENT_TEAM_ORDER.length : i;
 }
@@ -266,7 +273,7 @@ function teamRoleRank(role: string): number {
   return 2;
 }
 
-function buildAgentRoster(g: { nodes?: GraphRoleNode[]; edges?: GraphEdge[] } | null
+export function buildAgentRoster(g: { nodes?: GraphRoleNode[]; edges?: GraphEdge[] } | null
                           | undefined): AgentRole[] {
   const nodes = [...new Map((g?.nodes || []).filter((n) => isRoleId(n.id))
     .map((n) => [n.id, n])).values()];
@@ -278,6 +285,8 @@ function buildAgentRoster(g: { nodes?: GraphRoleNode[]; edges?: GraphEdge[] } | 
     title: roleTitle(n),
     team: strProp(n.props, "team"),
     teamRole: strProp(n.props, "team_role"),
+    mission: (typeof (n as { mission?: unknown }).mission === "string"
+      ? String((n as { mission?: string }).mission) : strProp(n.props, "mission")).trim(),
     rel: roleRels(n.id, byId, edges),
   }));
   rows.sort((a, b) => {
@@ -324,7 +333,7 @@ function paintAgentList(roles: AgentRole[]): string {
     parts.push(`<button class="lnb-doc lnb-node lnb-agent-role${on ? " on" : ""}"
       role="treeitem" aria-level="2"${on ? ' aria-selected="true"' : ""}
       data-nodeid="${esc(r.id)}" data-dom="${esc(r.domain)}"
-      data-tip="${esc(L.nodeTip)}">
+      data-tip="${esc(L.agentRoleTip)}">
       <span class="lnb-dtitle">${esc(r.title)}${lead}</span>
       ${relLine(L.agentFrom, r.rel.from)}
       ${relLine(L.agentThen, r.rel.then)}
@@ -359,6 +368,7 @@ export async function refreshLnb(opts: { quiet?: boolean } = {}): Promise<void> 
       tree = { executed: true, domains: [], unfiled: [] };
       agentRoster = buildAgentRoster(roster);
       failed = false;
+      window.dispatchEvent(new CustomEvent("vinc:agents-changed"));
     } else {
       // 주제 → 문서만 받는다(노드 목록은 싣지 않는다). 노드는 그래프가 그리고, 이 열은
       // 문서를 다룬다. 응답은 지역에 받고 세대가 그대로일 때만 상태에 쓴다.
@@ -416,12 +426,25 @@ function setRailKey(next: string): void {
   // 초점이 그대로 남으면 다른 것이 선택된 것처럼 보인다.
   if (next === "agent") active = { domain: AGENT_TOPICS[0] };
   paintRail();
+  // Agent 는 그래프로 가지 않고 Agents 보드(팀 · 역할 카드)를 연다. 그래프는 머리의 전환 버튼이
+  // 열고, 그때 레일이 Agent 면 그래프가 역할 주제로 좁혀진다(setLnbTopicPicker).
+  if (next === "agent") location.hash = AGENTS_BOARD;
+  else if (prev === "agent" && location.hash.startsWith(AGENTS_BOARD)) location.hash = "#home";
   void refreshLnb().then(() => {
     // 그 사이 다른 쪽을 골랐으면 이 전환의 뒷일은 없다.
     if (railKey !== next) return;
-    if (next === "agent") scopeAgentGraph();
-    else if (prev === "agent") unscopeAgentGraph();
+    if (next === "" && prev === "agent") unscopeAgentGraph();
   });
+}
+
+/** 보드 주소로 바로 들어오면(주소창 · 새로고침) 레일도 Agent 로 맞춘다. 주소는 바꾸지 않는다. */
+export function showAgentRail(): void {
+  if (railKey === "agent") return;
+  railKey = "agent";
+  localStorage.setItem(KEY_KIND, "agent");
+  active = { domain: AGENT_TOPICS[0] };
+  paintRail();
+  void refreshLnb();
 }
 
 /** 맨 위 줄 — 홈 · Agent. 트리와 **다른 요소**라 트리를 다시 그려도 여기는 그대로다
@@ -775,6 +798,15 @@ export function mountLnb(opts: { deferLoad?: boolean } = {}) {
     if (nd) {
       const id = nd.dataset.nodeid || "";
       if (!id) return;
+      if (nd.classList.contains("lnb-agent-role")) {
+        // 역할은 그래프의 노드 상세가 아니라 역할 시트(설정)로 연다. 보드에 있으면 그 카드도 짚는다.
+        active = { domain: nd.dataset.dom || "", nodeId: id };
+        paint();
+        if (!location.hash.startsWith(AGENTS_BOARD)) location.hash = AGENTS_BOARD;
+        void import("./role-composer").then((m) => m.openRoleComposer({ id }));
+        if (compact()) setOpen(false, false);
+        return;
+      }
       if (navigate) navigate(id, nd.dataset.dom || "");
       else location.hash = `#view/read/${encodeURIComponent(id)}`;
       active = { domain: nd.dataset.dom || "", nodeId: id };

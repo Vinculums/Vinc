@@ -929,14 +929,10 @@ body {
   margin: var(--space-4, 1rem) var(--space-4, 1rem) 0 0;
   position: relative; z-index: 6;
   max-width: calc(100% - var(--space-4, 1rem) * 2);
-  /* 카드 한 장: 관점 세그와 렌즈 버튼이 **한 줄**에 선다. 상단 바의 `.tb-card` 규칙이 걷힐 때
-     이 카드의 줄 배치도 함께 사라져 열면 세그와 버튼이 두 줄로 쌓였다. */
-  display: flex; align-items: center; gap: var(--space-2, .5rem);
-  height: calc(var(--ctl-h) + var(--space-2, .5rem)); min-width: 0; padding: 0 var(--space-1, .25rem);
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-elev-3);
+  /* 면은 안에 든 컨트롤 하나가 갖는다 — 카드 자신은 줄 배치만 한다. 카드에도 테두리를 주면
+     닫힌 렌즈 버튼 · 열린 관점 세그의 테두리와 겹쳐 상자 안에 상자가 그려진다.
+     닫힘 = 렌즈 버튼 하나, 열림 = 패널 폭의 관점 세그 하나(닫기는 패널의 ×). */
+  display: flex; align-items: center; min-width: 0;
 }
 /* 문서 열이 옆으로 열리면 그 폭만큼 비켜서고, 넓게 열리면(지도를 다 덮으면) 숨는다. */
 #shell[data-doc="open"][data-doc-size="side"] #tb-viewctl {
@@ -954,8 +950,11 @@ body {
 }
 #tb-viewpoints::-webkit-scrollbar { display: none; }
 #tb-viewctl:not([data-open]) > #tb-viewpoints { display: none; }
-#tb-viewpoints .seg { width: max-content; min-width: 100%; flex: 0 0 auto; }
-#tb-viewpoints .seg .chip { flex: 1 1 auto; }
+/* 열린 세그는 카드(= 패널) 폭을 넷이 똑같이 나눈다. 글자 폭대로 두면 칸 폭이 들쭉날쭉하다. */
+#tb-viewpoints .seg { width: 100%; flex: 0 0 auto; }
+#tb-viewpoints .seg .chip { flex: 1 1 0; min-width: 0; }
+/* 좁은 창(≤900)은 세그가 패널 머리로 가므로 렌즈 버튼이 카드에 남는다. */
+@media not (max-width: 900px) { #tb-viewctl[data-open] > #tb-lens { display: none; } }
 #tb-lens { display: flex; align-items: center; flex: 0 0 auto; min-width: 0; }
 #tb-viewctl:not([data-open]) > #tb-lens { flex-shrink: 1; }
 #tb-viewpoints:empty, #tb-lens:empty { display: none; }
@@ -3092,7 +3091,9 @@ textarea.props-val {
        ⚠ 조상 블러는 그 안의 스크롤을 끊는다(`#view-lens-panel` 주석) — 바 안에서
        스크롤하는 것은 검색 결과 목록(`#tb-results`)이고 그것은 바 **밖으로** 뻗는
        absolute 층이라 여기서는 안전하다. 바 안에 스크롤 면을 새로 넣지 말 것. */
-    .tb-card, .palette-card, #view-detail, .tip, .float-card {
+    /* 보기 카드(`.tb-card`)는 뺀다 — 면은 안의 컨트롤이 갖는다(`#tb-viewctl` 주석). 넣어 두면 유리의
+       위 모서리 빛(--glass-edge)이 버튼 위에 흰 선 한 줄로 떴다. */
+    .palette-card, #view-detail, .tip, .float-card {
       background: var(--glass-bg);
       backdrop-filter: var(--glass-blur);
       -webkit-backdrop-filter: var(--glass-blur);
@@ -3751,6 +3752,50 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .home-more { margin: var(--space-4, 1rem) auto 0; display: block; }
 .home-empty { padding: var(--space-8, 2rem) 0; text-align: center; color: hsl(var(--muted-foreground)); }
 .home-empty .home-acts { justify-content: center; }
+/* Agents 보드(surfaces/agents-board.ts) — 팀마다 한 단, 단 안은 역할 카드 격자. 카드는 문서 목록의
+   줄과 같은 면(card · border)이고, 할 일은 카드 바닥 한 줄에 조용한 단추로 선다. */
+.agents-lead { margin: var(--space-2, .5rem) 0 var(--space-6, 1.5rem); max-width: 44rem; }
+.agents-team { margin-top: var(--space-6, 1.5rem); }
+.agents-team-head {
+  display: flex; align-items: center; gap: var(--space-2, .5rem);
+  padding-bottom: var(--space-2, .5rem); margin-bottom: var(--space-3, .75rem);
+  border-bottom: 1px solid hsl(var(--border));
+}
+.agents-team-head h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+.agents-team-head .home-count { margin-left: 0; }
+.agents-add { margin-left: auto; }
+.agents-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: var(--space-3, .75rem); }
+.agent-card {
+  display: flex; flex-direction: column; gap: var(--space-2, .5rem); min-width: 0;
+  padding: var(--space-4, 1rem); border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  background: hsl(var(--card)); cursor: pointer;
+}
+.agent-card:hover { border-color: hsl(var(--muted-foreground) / .6); }
+.agent-card-top { display: flex; align-items: center; gap: var(--space-2, .5rem); min-width: 0; }
+.agent-name { margin: 0; font-size: .9375rem; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-seat {
+  flex: none; height: 1.25rem; padding: 0 .45rem; display: inline-flex; align-items: center;
+  border-radius: 999px; font-size: .6875rem; font-weight: 600;
+  border: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground));
+}
+/* 포인트 색은 채움이 아니라 테두리다(지도 · 기간 고르기와 같은 규칙). */
+.agent-seat-lead { border-color: hsl(var(--point) / .7); color: hsl(var(--point-text)); }
+.agent-mission {
+  margin: 0; font-size: .8125rem; line-height: 1.45; color: hsl(var(--muted-foreground));
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.agent-rels { display: flex; flex-direction: column; gap: .15rem; }
+.agent-rel { margin: 0; font-size: .75rem; color: hsl(var(--caption-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-rel-k { color: hsl(var(--muted-foreground)); font-weight: 600; }
+.agent-card-acts {
+  display: flex; align-items: center; gap: var(--space-1, .25rem);
+  margin-top: auto; padding-top: var(--space-2, .5rem); border-top: 1px solid hsl(var(--border));
+}
+.agent-act { display: inline-flex; align-items: center; gap: .35rem; height: 1.875rem; padding: 0 .55rem; font-size: .75rem; }
+.agent-act-icon { margin-left: auto; width: 1.875rem; padding: 0; justify-content: center; }
+/* 역할 시트의 팀 줄 — 팀 이름과 팀에서 맡는 자리를 한 줄에 둔다. */
+.rc-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3, .75rem); align-items: start; }
+@media (max-width: 640px) { .rc-row { grid-template-columns: minmax(0, 1fr); } }
 /* 문서 면 — 본문 칸 + 옆 칸. 본문이 남는 폭을 다 쓰고 옆 칸은 16rem 으로 고정한다(옆 칸이
    남는 폭을 가져가면 넓은 창에서도 본문의 표가 짓눌린다). 좁으면(1000 아래) 옆 칸이 본문
    아래로 간다. */
