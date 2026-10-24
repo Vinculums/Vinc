@@ -786,10 +786,11 @@ body {
    1px 넘쳐 창에 세로 스크롤바(10px)가 생기고 한 칸 굴러간다. */
 [data-skin="web"] { --site-gnb-h: 53px; }
 [data-skin="web"] #shell { height: calc(100vh - var(--site-gnb-h)); height: calc(100dvh - var(--site-gnb-h)); }
-/* GNB 의 안쪽 여백을 셸에 맞춘다: 로고는 사이드바 카드 안쪽 시작선(Home 단추)에, 끝 묶음은
-   본문 카드 끝선에 선다(셸 틈 + 카드 테두리 1px + 카드 안쪽 여백). gnb.js 의 폴백 20px 이면
-   로고가 사이드바 내용보다 3px 안쪽에 서서 두 줄이 어긋나 보였다. */
-[data-skin="web"] #site-gnb { --site-gutter: calc(var(--shell-gap) + 1px + .5rem); }
+/* GNB 는 공홈 어느 페이지에서나 같은 자리에 선다 — 앱 안에서도 사이트 프레임(1540 + 거터)이다.
+   셸에 맞추면 앱으로 넘어올 때마다 로고가 옆으로 튄다. 값은 Vinc-homepage site.css 의
+   `--site-frame`·`--site-gutter`·`--gnb-max` 와 같아야 한다(앱은 site.css 를 부르지 않는다). */
+[data-skin="web"] #site-gnb { --site-gutter: 20px; --gnb-max: calc(1540px + var(--site-gutter) * 2); }
+@media (max-width: 640px) { [data-skin="web"] #site-gnb { --site-gutter: 16px; } }
 /* 웹 빌드는 index.html 에 빈 `#site-gnb` 를 미리 둔다(vite.config.ts `webShell`). gnb.js 가 갈아
    끼우기 전까지 그 자리를 같은 높이(52 + 테두리 1)로 잡아, 주입 순간 셸이 밀리지 않게 한다. */
 [data-skin="web"] #site-gnb:empty {
