@@ -1013,6 +1013,8 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  좌표를 **JS 가 지우는 것**이 핵심이다: 넓은 창에서 인라인으로 얹은 top/left 는
    *  미디어쿼리(CSS)를 이기므로, 지우지 않으면 승격 규칙이 먹지 않는다. */
   const NARROW = "(max-width: 900px)";
+  /** 패널을 줄여 아래에 두는 최소 높이(px). 이보다 작아지면 위로 연다. */
+  const PANEL_MIN_H = 240;
   function positionPanel() {
     if (window.matchMedia(NARROW).matches) {
       // 좁은 창의 전폭 판은 상단 바 **바로 아래**에서 시작한다. 천장을 CSS 상수
@@ -1026,6 +1028,7 @@ export async function renderView(el: HTMLElement, resume = false) {
         : "";
       viewPanel.style.left = "";
       viewPanel.style.width = "";   // 좁은 창은 전폭 승격 — 인라인 폭이 남으면 그것을 이긴다
+      viewPanel.style.maxHeight = "";
       return;
     }
     // 렌즈 버튼이 상단 바로 올라가면서(D71) 패널은 표면 밖의 버튼에 붙어야 한다 —
@@ -1078,8 +1081,15 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 내려간 뒤(발주자 지시) 버튼 아래에 남는 자리가 40px 뿐이라, 아래로만 여는 코드는
     // 패널을 화면 밖으로 밀어냈다. 트리거에서 자라는 것은 지키고 방향만 뒤집는다 —
     // 그것이 팝오버의 규칙이다(`float-panel.ts`·`components.ts` 도 같은 처분).
-    const h = viewPanel.offsetHeight;
+    // ⚠ 아래 자리가 모자라면 위로 올리기 **전에** 높이를 줄인다. 보기 카드가 캔버스 안 오른쪽
+    //    위에 뜨면 카드 아래 자리가 패널 최대 높이보다 조금 작고, 그때 아래 '위로 연다' 분기가
+    //    패널을 카드 위로 끌어올려 열린 카드의 관점 세그를 덮는다. 패널 안은 스크롤 면이라
+    //    줄어도 내용은 다 닿는다. 위로 여는 것은 줄여도 PANEL_MIN_H 보다 작을 때뿐이다.
+    viewPanel.style.maxHeight = "";
     const below = Math.max(r.bottom + 6, floatCeiling());
+    const room = window.innerHeight - below - m;
+    if (viewPanel.offsetHeight > room && room >= PANEL_MIN_H) viewPanel.style.maxHeight = `${Math.floor(room)}px`;
+    const h = viewPanel.offsetHeight;
     const above = r.top - 6 - h;
     const fitsBelow = below + h + m <= window.innerHeight;
     const top = fitsBelow ? below
