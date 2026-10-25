@@ -90,6 +90,10 @@ def test_sources_line_parsing_and_doc_mirror_equivalence():
     assert checkers.split_product("No line.") == ("No line.", False, [])
     assert checkers.split_product("Hm.\nSources: none")[1:] == (True, [])
     assert checkers.canon_id("concept:doc.vinc.x") == checkers.canon_id("vinc.x") == "doc:vinc.x"
+    # 한국어 제목에서 만든 id 도 통째로 읽는다(앞부분 `concept:vinc` 에서 끊지 않는다).
+    assert checkers.node_ids("- Vinc는 무엇인가 (concept:vinc는-무엇인가)") == ["concept:vinc는-무엇인가"]
+    assert checkers.split_product("x\nSources: concept:vinc는-무엇인가, decision:b")[2] == [
+        "concept:vinc는-무엇인가", "decision:b"]
 
 
 def test_sources_check_needs_existing_ids_and_one_supported():

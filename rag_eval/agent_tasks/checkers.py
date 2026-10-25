@@ -22,12 +22,13 @@ import re
 from dataclasses import dataclass
 from typing import Callable
 
-#: 노드 id 의 모양. 접두가 테이블을 정한다.
+#: 노드 id 의 모양. 접두가 테이블을 정한다. 본문 글자는 유니코드 낱말 글자다: 한국어 제목에서
+#: 만든 id 가 그래프에 남아 있어서, ASCII 만 받으면 그 id 가 접두 앞부분에서 잘린다.
 NODE_ID = re.compile(r"(?<![\w.:\-])((?:concept|decision|record|episode|domain|bridge):"
-                     r"[A-Za-z0-9](?:[A-Za-z0-9._\-]*[A-Za-z0-9])?)")
+                     r"\w(?:[\w.\-]*\w)?)")
 _SOURCES = re.compile(r"^\s*\**\s*sources\s*\**\s*:\s*(.*)$", re.I)
 _BRACKETED = re.compile(r"\[([^\[\]]+)\]")
-_BARE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:\-]*[A-Za-z0-9]")
+_BARE = re.compile(r"\w[\w.:\-]*\w")
 DOC_MIRROR = "concept:doc."
 #: 모른다고 말하는 문장. 영어와 한국어. 지어낸 답과 기권을 가르는 데만 쓴다.
 ABSTAIN = re.compile(

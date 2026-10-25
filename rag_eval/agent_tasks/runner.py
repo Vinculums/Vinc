@@ -91,6 +91,13 @@ def verify_store(entry: dict, onnx: str, fp: dict) -> dict:
     onnx_sha = runtime.file_sha256(pathlib.Path(onnx))
     if entry.get("encoder_sha256") and onnx_sha != entry["encoder_sha256"]:
         raise Refused(f"인코더 해시가 핀 정보와 다르다: {onnx_sha[:12]}")
+    # 스택의 인코딩 창구는 파일 이름이 모델 키의 아티팩트 이름이 아니면 요청마다 실패한다.
+    # 그러면 기동 대기가 끝날 때까지 원인 없이 멈추므로 여기서 먼저 거부한다.
+    from vinc_rag.embed.worker import artifact_name   # noqa: PLC0415
+    want = artifact_name(entry["encoder"])
+    if pathlib.Path(onnx).name != want:
+        raise Refused(f"인코더 파일 이름이 {want} 여야 한다(모델 키 {entry['encoder']}): "
+                      f"{pathlib.Path(onnx).name} — 같은 바이트를 그 이름으로 두고 tokenizer.json 을 옆에 둘 것")
     mism = runtime.runtime_mismatch(entry, fp)
     if mism:
         raise Refused("질의 인코더 런타임이 저장 벡터와 다르다:\n  " + "\n  ".join(mism))
