@@ -7,11 +7,11 @@
 ## Install
 
 ```bash
-pip install "vinc-langgraph>=0.1.11"           # node helpers and tools
-pip install "vinc-langgraph[agents]>=0.1.11"   # plus the middleware for create_agent
+pip install "vinc-langgraph>=0.1.12"           # node helpers and tools
+pip install "vinc-langgraph[agents]>=0.1.12"   # plus the middleware for create_agent
 ```
 
-This README describes vinc-langgraph 0.1.11, which requires vinc-client 0.1.14 or later.
+This README describes vinc-langgraph 0.1.12, which requires vinc-client 0.1.15 or later.
 
 For a new install, prefer `pip install "vincs[langgraph]"`: it has this package as `vinc.integrations.langgraph`, with the same names, and includes LangChain for the middleware. `vinc-langgraph` keeps publishing under this name for existing installs.
 
@@ -206,6 +206,17 @@ before the model runs. Roster contracts name Claude Code tools (`Bash`, `Edit`,
 `Write`, `NotebookEdit`, `Agent`); a LangGraph tool is affected only when its name
 is the same.
 
+The contract's run policy applies too (see the vinc-client README, A role's run
+policy). Capability ids are not tool names, so pass `capability_map`, a mapping
+from your tool names to capability ids (`{"merge_pr": "github.pr.merge"}`): a
+tool whose capability the role denies is removed like a disallowed one, a call to
+one it holds for approval gets a result asking for a person (the tool does not
+run), and when the role has an `allow` list a mapped tool that matches none of it
+is removed. Tools you leave out of the map are untouched. Without a map, a role
+that sets capabilities logs one warning per run saying they are not enforced.
+`budget.tool_calls` caps all tool calls of a run; later calls get a result saying
+so. A malformed policy raises `invalid_role_contract` before the model runs.
+
 To hold the agent to a contract you reviewed, pin it. Read the role once, keep
 its `hash`, and pass it as `prefetch_pin`:
 
@@ -303,6 +314,7 @@ events. This follows the framework's [interrupt contract](https://docs.langchain
 
 | Version | Change |
 |---|---|
+| 0.1.12 | With `prefetch_role`, the contract's run policy applies: `capability_map` binds tools to capability ids so denied ones are removed and approval ones refused with a request for a person, and `budget.tool_calls` caps a run's tool calls. Requires vinc-client 0.1.15. |
 | 0.1.11 | A role over the hub's read limit loads: the middleware and `prefetch` read it without relation evidence sentences instead of failing (see the vinc-client README, Large roles). Requires vinc-client 0.1.14. |
 | 0.1.10 | `record_run` and `arecord_run` write one agent run as an Episode about its role, with its raw trace by hash (see the vinc-client README, Record a run). Requires vinc-client 0.1.13. |
 | 0.1.9 | `prefetch_pin` on the middleware and `pin` on the node helpers hold role prefetch to a contract hash; a role that changed raises `VincRoleChanged` before the model is called. Requires vinc-client 0.1.12. |

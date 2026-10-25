@@ -7,10 +7,10 @@
 ## Install
 
 ```bash
-pip install "vinc-agent-framework>=0.1.10"
+pip install "vinc-agent-framework>=0.1.11"
 ```
 
-This README describes vinc-agent-framework 0.1.10, which requires vinc-client 0.1.14 or later.
+This README describes vinc-agent-framework 0.1.11, which requires vinc-client 0.1.15 or later.
 
 For a new install, prefer `pip install "vincs[agent-framework]"`: it has this package as `vinc.integrations.agent_framework`, with the same names. `vinc-agent-framework` keeps publishing under this name for existing installs.
 
@@ -181,6 +181,17 @@ Roster contracts name Claude Code tools (`Bash`, `Edit`, `Write`,
 `NotebookEdit`, `Agent`); an Agent Framework tool is affected only when its name
 is the same.
 
+The contract's run policy applies too (see the vinc-client README, A role's run
+policy). Capability ids are not tool names, so pass `capability_map`, a mapping
+from your tool names to capability ids (`{"merge_pr": "github.pr.merge"}`): a
+tool whose capability the role denies is removed like a disallowed one, a call to
+one it holds for approval gets a result asking for a person (the tool does not
+run), and when the role has an `allow` list a mapped tool that matches none of it
+is removed. Tools you leave out of the map are untouched. Without a map, a role
+that sets capabilities logs one warning per run saying they are not enforced.
+`budget.tool_calls` caps all tool calls of a run; later calls get a result saying
+so. A malformed policy raises `invalid_role_contract` before the model runs.
+
 To hold the agent to a contract you reviewed, pin it. Read the role once, keep
 its `hash`, and pass it as `prefetch_pin`:
 
@@ -269,6 +280,7 @@ pending approval must survive a process restart. This uses the framework's
 
 | Version | Change |
 |---|---|
+| 0.1.11 | With `prefetch_role`, the contract's run policy applies: `capability_map` binds tools to capability ids so denied ones are removed and approval ones refused with a request for a person, and `budget.tool_calls` caps a run's tool calls. Requires vinc-client 0.1.15. |
 | 0.1.10 | A role over the hub's read limit loads: the context provider and `prefetch` read it without relation evidence sentences instead of failing (see the vinc-client README, Large roles). Requires vinc-client 0.1.14. |
 | 0.1.9 | `record_run` writes one agent run as an Episode about its role, with its raw trace by hash (see the vinc-client README, Record a run). Requires vinc-client 0.1.13. |
 | 0.1.8 | `prefetch_pin` on the provider and `pin` on `prefetch` hold role prefetch to a contract hash; a role that changed makes `before_run` raise `VincRoleChanged` before the model is called. Requires vinc-client 0.1.12. |
