@@ -122,7 +122,7 @@ MAX_CLIENTS = max(1, int(os.environ.get("VINC_MCP_MAX_CLIENTS") or 500))
 
 #: 회전된 갱신 토큰이 같은 답을 한 번 더 주는 창(초). 이 안에 같은 토큰이 다시 오면
 #: 새 쌍을 만들지 않고 **방금 회전해 준 쌍**을 돌려준다. 창이 지나면 그 행은 청소된다.
-#: 근거: [[record:a-rotated-refresh-token-answers-again-within-sixty-seconds-2026-10-25]]
+#: 근거: [[concept:refresh-token-reuse-window]]
 REFRESH_REUSE_GRACE_S = 60
 
 
@@ -182,7 +182,7 @@ class Store:
             # ChatGPT 가 인가·토큰 요청에 붙이는 audience 라, 없으면 에코할 자리가 없다.
             for table in ("codes", "tokens", "refresh", "connect_requests"):
                 self._ensure_column(table, "resource", "TEXT NOT NULL DEFAULT ''")
-            # 갱신 토큰 회전 기록(VIN-796). 0 이면 아직 안 돌린 토큰이다 — 옛 스냅샷의 행이
+            # 갱신 토큰 회전 기록. 0 이면 아직 안 돌린 토큰이다. 이 열이 없던 스냅샷의 행도
             # 전부 그 값으로 열리므로, 이미 연결된 커넥터는 그대로 한 번 더 갱신된다.
             self._ensure_column("refresh", "rotated_at", "REAL NOT NULL DEFAULT 0")
             self._ensure_column("refresh", "next_access", "TEXT NOT NULL DEFAULT ''")
@@ -373,11 +373,11 @@ class Store:
 
         소비하지 않는다 — 요청 검증(`resource` 대조)이 실패해도 토큰이 살아 있어야 해서,
         검증은 이것으로 하고 회전은 :meth:`rotate_refresh` 가 한다. 회전된 행도 창 안이면
-        돌려준다(그 판정은 회전 쪽 몫이다).
+        돌려준다(창 안인지는 회전 쪽이 본다).
 
         ⚠ 락을 쥐고 읽는다. 동시 갱신은 정의상 같은 순간에 몰리고, 락 없이 같은 커넥션을
         여러 스레드가 읽으면 `sqlite3.InterfaceError: bad parameter or other API misuse` 가
-        난다(VIN-796 테스트에서 8 스레드로 재현)."""
+        난다(8 스레드 테스트가 재현한다)."""
         with self._lock:
             row = self._db.execute(
                 "SELECT client_id,owner,plan,resource FROM refresh WHERE token=?",
@@ -389,9 +389,9 @@ class Store:
                        now: float | None = None) -> dict | None:
         """갱신 토큰 하나를 새 쌍으로 돌린다 — **트랜잭션 하나, 스냅샷 한 번**.
 
-        - 안 돌린 토큰: 새 액세스·갱신 토큰을 쓰고, 옛 행에 회전 시각과 후계를 적는다.
-          셋 중 하나라도 실패하면 전부 되돌린다(옛 토큰이 그대로 산다). 전에는 삭제를 먼저
-          커밋해서, 그 뒤 쓰기가 실패하면 커넥터가 갱신 수단을 잃었다.
+        - 안 돌린 토큰: 새 액세스·갱신 토큰을 쓰고, 내민 토큰의 행에 회전 시각과 후계를
+          적는다. 셋 중 하나라도 실패하면 전부 되돌려서 내민 토큰이 그대로 산다. 삭제를
+          먼저 커밋하면 그 뒤 쓰기가 실패할 때 커넥터가 갱신 수단을 잃는다.
         - 돌린 토큰이 `grace` 초 안에 다시 오면: 후계 갱신 토큰이 아직 안 쓰였고 후계
           액세스 토큰이 살아 있을 때만 **그 쌍을 그대로** 돌려준다(`replayed`). 새 쌍을
           만들지 않으므로 같은 토큰에서 갈래가 생기지 않는다.

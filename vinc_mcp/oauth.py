@@ -51,7 +51,7 @@ _CIMD_UA = f"Vinc-MCP/{__version__} (+https://vincs.io)"
 def _check_cimd_url(url: str) -> None:
     """CIMD `client_id` 의 모양만 본다(가져오기 전). https · 경로 있음 · 조각·userinfo 없음.
 
-    MCP 2026-07-28 이 클라이언트에게 요구하는 모양이다. 경로 없는 주소(`https://host`)나
+    MCP 인가 스펙이 클라이언트에게 요구하는 모양이다. 경로 없는 주소(`https://host`)나
     조각이 붙은 주소는 문서의 `client_id` 와 글자 그대로 같을 수 없으므로 여기서 먼저 막는다.
     """
     if not isinstance(url, str) or not url.startswith("https://"):
@@ -165,7 +165,6 @@ class OAuthGate:
             "client_id_metadata_document_supported": True,
             # RFC 9207. 이것을 참으로 적으면 클라이언트는 `iss` 없는 인가 응답을 **거절한다**.
             # 그래서 인가 응답을 만드는 자리는 `_redirect_with` 하나여야 한다.
-            # 근거: [[record:hosted-mcp-oauth-support-before-vin-796-2026-10-25]]
             "authorization_response_iss_parameter_supported": True,
         }
 
@@ -200,7 +199,7 @@ class OAuthGate:
         CIMD 클라이언트는 표에 안 남긴다 — 인가 때 문서를 다시 읽으면 되고,
         남기면 무인증 DCR 과 같은 표 증가가 다시 열린다.
 
-        문서의 `client_id` 는 그 문서의 주소와 **글자 그대로** 같아야 한다(MCP 2026-07-28 의
+        문서의 `client_id` 는 그 문서의 주소와 **글자 그대로** 같아야 한다(MCP 인가 스펙의
         MUST). 다르면 남의 문서를 제 이름으로 내미는 것이라 거절한다. 정규화(끝 슬래시·대소문자)
         는 하지 않는다 — 스펙이 단순 문자열 비교를 요구한다.
         """
@@ -324,7 +323,7 @@ class OAuthGate:
         같은 갱신 토큰이 `REFRESH_REUSE_GRACE_S` 안에 다시 오면 방금 발급한 쌍을 그대로
         돌려준다(새 쌍을 만들지 않으므로 갈래가 생기지 않는다). 여러 작업자가 토큰 만료 뒤
         동시에 갱신하는 호스트가 둘째 요청의 `invalid_grant` 를 보고 자격을 버리던 자리다.
-        근거: [[record:a-rotated-refresh-token-answers-again-within-sixty-seconds-2026-10-25]]
+        근거: [[concept:refresh-token-reuse-window]]
         """
         presented = form.get("refresh_token") or ""
         rec = self.store.get_refresh(presented)
