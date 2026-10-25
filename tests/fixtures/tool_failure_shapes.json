@@ -38,6 +38,7 @@
     "vinc_doc_get": [{"shape": "executed:false unknown doc_id", "code": "not_found"}, {"shape": "verified:false or chunk_count mismatch", "code": "upstream_unavailable"}],
     "vinc_doc_list": [{"shape": "executed:false error invalid_cursor", "code": "invalid_argument"}, {"shape": "executed:true docs:[]", "code": "success"}],
     "vinc_doc_delete": [{"shape": "executed:false unknown doc_id", "code": "not_found"}],
-    "vinc_events": [{"shape": "executed:true events:[] with a cursor (nothing changed, or since omitted)", "code": "success"}, {"shape": "malformed since or an unknown kind, before quota or from the sidecar as invalid_cursor/invalid_kind", "code": "invalid_argument"}, {"shape": "executed:false no reachable store", "code": "upstream_unavailable"}]
+    "vinc_events": [{"shape": "executed:true events:[] with a cursor (nothing changed, or since omitted)", "code": "success"}, {"shape": "malformed since or an unknown kind, before quota or from the sidecar as invalid_cursor/invalid_kind", "code": "invalid_argument"}, {"shape": "executed:false no reachable store", "code": "upstream_unavailable"}],
+    "vinc_runs": [{"shape": "executed:true runs:[] (no run cited the claim, or none recorded)", "code": "success"}, {"shape": "cited without a type prefix, before quota", "code": "invalid_argument"}, {"shape": "executed:false no reachable store", "code": "upstream_unavailable"}]
   }
 }

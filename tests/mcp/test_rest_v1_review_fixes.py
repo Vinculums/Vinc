@@ -113,6 +113,10 @@ FAILURE_CASES = [
      False, 400, "invalid_argument"),
     ("vinc_events", {"executed": False, "note": "no reachable store"}, False, 503,
      "upstream_unavailable"),
+    ("vinc_runs", {"kind": "runs", "executed": True, "runs": [], "total": 0,
+                   "truncated": False}, False, None, None),
+    ("vinc_runs", {"executed": False, "note": "no reachable store"}, False, 503,
+     "upstream_unavailable"),
 ]
 
 
@@ -172,6 +176,8 @@ _READ_SAMPLES = {
     ("GET", "/v1/merge-rejections"): (None, {}),
     ("GET", "/v1/documents"): (None, {}),
     ("GET", "/v1/documents/{doc_id}"): ("", {"doc_id": "d1"}),
+    ("GET", "/v1/runs"): ("?cited=record:x&role=agent-x&limit=5",
+                          {"cited": "record:x", "role": "agent-x", "limit": 5}),
     ("GET", "/v1/events"): ("?since=0&role=agent-x&kinds=role.lesson_added&limit=5",
                             {"since": "0", "role": "agent-x", "kinds": ["role.lesson_added"],
                              "limit": 5}),

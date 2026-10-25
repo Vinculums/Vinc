@@ -62,7 +62,9 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              # 2026-08-31). `space` 에 실을 id 를 받을 곳이 없으면 그 인자는 못 쓴다.
              "vinc_whoami", "vinc_operation_status", "vinc_community_write", "vinc_community_read",
              # 변경 기록에서 계산한 이벤트 피드(조회 전용). 근거: [[vinc.plan.mcp-events-and-webhooks]]
-             "vinc_events"}
+             "vinc_events",
+             # 실행 기록 목록(조회 전용), 인용한 주장으로 거른다. 근거: [[vinc.plan.mcp-events-and-webhooks]]
+             "vinc_runs"}
 
 
 class _StubBridge(Bridge):

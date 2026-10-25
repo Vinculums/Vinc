@@ -774,6 +774,19 @@
         }
       }
     },
+    "/runs": {
+      "get": {
+        "operationId": "read_runs",
+        "summary": "Run records, optionally only those that cited one claim.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
     "/evidence/backfill": {
       "post": {
         "operationId": "write_evidence_backfill",

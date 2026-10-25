@@ -72,7 +72,7 @@ class ToolVerbTests(unittest.TestCase):
 
     def test_call_registry_covers_all_registered_tools(self):
         names = {item["name"] for item in tools.TOOLS}
-        self.assertEqual(len(names), 34)
+        self.assertEqual(len(names), 35)
         guarded = {"vinc_delete", "vinc_delete_edge", "vinc_merge_nodes",
                    "vinc_doc_delete"}
         for name in sorted(names):

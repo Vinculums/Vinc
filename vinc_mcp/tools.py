@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**34종** — 읽기 25(search·node·role·role_export·role_check·edges·brief·recall·graph·decide·decide_paths·domains·suggest_ties·
-neighbors·path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami·operation_status·community_read·events) + 쓰기 9
+**35종** — 읽기 26(search·node·role·role_export·role_check·edges·brief·recall·graph·decide·decide_paths·domains·suggest_ties·
+neighbors·path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami·operation_status·community_read·events·runs) + 쓰기 9
 (ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete·community_write).
 "단일 write 표면(ingest 하나)"은
 SEC-3(삭제·병합)과 D45(문서 정본 doc_*)를 거치며 깨진 낡은 서술이었다 —
@@ -530,6 +530,13 @@ def _t_events(args, bridge):
     return events.public(out)
 
 
+def _t_runs(args, bridge):
+    # 실행 기록 목록(사이드카 `/runs`). `cited` 를 주면 그 주장을 인용한 실행만 돌려준다.
+    return bridge.request("GET", "/runs", params={
+        "owner": _owner(args, bridge), "cited": args.get("cited"), "role": args.get("role"),
+        "limit": args.get("limit")})
+
+
 def _t_merge_reject(args, bridge):
     # F10-b 기각 기억 — 병합(비가역)과 짝을 이루는 가역 쓰기. undo 로 취소된다.
     return bridge.request("POST", "/merge-reject", body={
@@ -1031,6 +1038,9 @@ _SUMMARY: dict[str, str] = {
     "vinc_events": (
         "Read what changed for your Agent roles since a cursor: required reading changed, a cited "
         "claim retired, a lesson added. Pass back the returned cursor to continue."),
+    "vinc_runs": (
+        "List recorded agent runs, newest first. Pass cited to see only the runs that cited one "
+        "claim, with whether that claim has been retired."),
     "search": (
         "Search the signed-in Vinc graph for documents and nodes. Read a result's full text with "
         "fetch."),
@@ -2244,6 +2254,24 @@ TOOLS.append({"name": "vinc_events", "reference":
                   "description": "Changed rows read per source in this page."},
         "owner": {"type": "string"}}, "required": []},
     "run": _t_events})
+TOOLS.append({"name": "vinc_runs", "reference":
+    "List the agent run records of this space, newest first: {runs:[{id, run_id, role, outcome, "
+    "title, date, host, cited_ids}], total, truncated}. Pass cited with a graph id (record:..., "
+    "decision:... or doc:...) to keep only the runs whose cited_ids hold it; each run then also "
+    "lists matched, and the result carries claim:{id, found, retired, valid_until, "
+    "superseded_by}. A retired claim means every run it lists should be re-checked: the same "
+    "runs arrive one by one as run.citation_superseded events. Filter by role with its slug or "
+    "concept:agent- id. Read-only.",
+    "inputSchema": {"type": "object", "properties": {
+        "cited": {"type": "string",
+                  "description": "A claim id with its type prefix: record:..., decision:... or "
+                                 "doc:...; omit to list runs without filtering."},
+        "role": {"type": "string",
+                 "description": "Only runs of this role (agent slug or concept:agent- id)."},
+        "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 200,
+                  "description": "Most runs to return."},
+        "owner": {"type": "string"}}, "required": []},
+    "run": _t_runs})
 
 HOST_TOOLS: list[dict] = [
     {
@@ -2303,6 +2331,7 @@ _ANNOTATIONS: dict[str, dict] = {
     community.READ_TOOL: {"title": "Read a community Agent", "readOnlyHint": True},
     "vinc_operation_status": {"title": "Check a mutation result", "readOnlyHint": True},
     "vinc_events": {"title": "Read change events for roles", "readOnlyHint": True},
+    "vinc_runs": {"title": "List agent run records", "readOnlyHint": True},
     community.WRITE_TOOL: {"title": "Edit a community", "readOnlyHint": False,
                            "destructiveHint": False, "idempotentHint": False},
     "vinc_search": {"title": "Search knowledge", "readOnlyHint": True},
@@ -2868,6 +2897,16 @@ def _check_events_args(args: dict) -> None:
                                     f"({allowed}). Nothing was returned."))
 
 
+def _check_runs_args(args: dict) -> None:
+    """`cited` 는 타입 접두가 붙은 그래프 id 다. 접두가 없으면 어느 테이블을 볼지 모른다."""
+    cited = args.get("cited")
+    if cited not in (None, "") and (not isinstance(cited, str) or ":" not in cited.strip()):
+        raise InvalidArgument("vinc_runs", "cited", reason="needs a type prefix",
+                              text=("Invalid argument: cited must be a graph id with its type "
+                                    "prefix, such as record:x, decision:x or doc:x. Nothing was "
+                                    "returned."))
+
+
 def validate_args(name: str, args: dict | None) -> None:
     """스키마 대조. 모르는 도구는 KeyError(프로토콜 오류로 남긴다), 인자 위반은
     InvalidArgument. rpc 가 **쿼터를 세기 전에** 부르고, `call` 도 한 번 더 부른다
@@ -2911,6 +2950,8 @@ def validate_args(name: str, args: dict | None) -> None:
                       "nonempty repo:path strings. Nothing was run. Split a longer list."))
     if name == "vinc_events":
         _check_events_args(args)
+    if name == "vinc_runs":
+        _check_runs_args(args)
     sch = tool["inputSchema"]
     props = sch.get("properties") or {}
     for req in sch.get("required", []):

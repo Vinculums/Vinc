@@ -451,6 +451,15 @@ def _main(argv: list[str] | None = None) -> int:
     evt.add_argument("--cursor-file", default=None, metavar="FILE",
                      help="start from the cursor in this file and write each new cursor to it")
     evt.add_argument("--owner", default=None)
+    rn = sub.add_parser("run", help="list recorded agent runs")
+    rns = rn.add_subparsers(dest="runcmd", required=True)
+    rnl = rns.add_parser("ls", help="list runs, newest first; --cited keeps the ones that cited a claim")
+    rnl.add_argument("--cited", default=None, metavar="ID",
+                     help="graph id with its type prefix (record:, decision: or doc:); the result "
+                          "says whether that claim was retired")
+    rnl.add_argument("--role", default=None, help="only runs of this role (slug or concept:agent- id)")
+    rnl.add_argument("--limit", type=int, default=None, help="most runs to list (1..200)")
+    rnl.add_argument("--owner", default=None)
     sh = sub.add_parser("shim", help="list harness shims or draft the retirement of ones that stopped firing")
     shs = sh.add_subparsers(dest="shimcmd", required=True)
     shl = shs.add_parser("ls", help="list current shims with their mechanism and reason")

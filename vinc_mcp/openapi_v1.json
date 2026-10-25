@@ -2455,6 +2455,75 @@
         }
       }
     },
+    "/v1/runs": {
+      "get": {
+        "operationId": "vinc_runs_get__v1_runs",
+        "summary": "List recorded agent runs, newest first. Pass cited to see only the runs that cited one claim, with whether that claim has been retired.",
+        "description": "List the agent run records of this space, newest first: {runs:[{id, run_id, role, outcome, title, date, host, cited_ids}], total, truncated}. Pass cited with a graph id (record:..., decision:... or doc:...) to keep only the runs whose cited_ids hold it; each run then also lists matched, and the result carries claim:{id, found, retired, valid_until, superseded_by}. A retired claim means every run it lists should be re-checked: the same runs arrive one by one as run.citation_superseded events. Filter by role with its slug or concept:agent- id. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cited",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "A claim id with its type prefix: record:..., decision:... or doc:...; omit to list runs without filtering."
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Only runs of this role (agent slug or concept:agent- id)."
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 200,
+              "description": "Most runs to return."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/community": {
       "post": {
         "operationId": "vinc_community_write_post__v1_community",
