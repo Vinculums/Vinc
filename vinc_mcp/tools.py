@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**32종** — 읽기 23(search·node·role·role_export·role_check·edges·brief·recall·graph·decide·domains·suggest_ties·
+**33종** — 읽기 24(search·node·role·role_export·role_check·edges·brief·recall·graph·decide·decide_paths·domains·suggest_ties·
 neighbors·path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami·operation_status·community_read) + 쓰기 9
 (ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete·community_write).
 "단일 write 표면(ingest 하나)"은
@@ -11,7 +11,7 @@ SEC-3(삭제·병합)과 D45(문서 정본 doc_*)를 거치며 깨진 낡은 서
 들어갔다("TOOLS 가 정본"이라는 방어 문장을 단 채로 틀렸다). 그래서 이제
 tests/mcp/test_tool_contract.py 가 이 독스트링의 수와 len(TOOLS) 를 대조한다.
 이 수는 **레지스트리**의 수다. 로컬 프로파일은 계정 전용 커뮤니티 도구 둘을
-빼고 29종을 내보낸다(`specs()`, `_ACCOUNT_ONLY_TOOLS`).
+빼고 31종을 내보낸다(`specs()`, `_ACCOUNT_ONLY_TOOLS`).
 
 주제·어휘(themes·types)의 **뮤테이션**(재가·거부·개명)은 HTTP 전용이며 MCP 에 노출하지
 않는다 — 어시스턴트는 제안만 하고 자기 제안을 스스로 재가할 수 없다(의도된 비대칭).
@@ -233,7 +233,8 @@ _FRAGMENT_SCHEMA = {
                         "be compared across repositories; normalized on write), `measured_at` "
                         "(YYYY[-MM[-DD]], when you looked) and `measured_ref` (the branch or "
                         "commit you looked at). They let two claims about the same file be "
-                        "compared.")},
+                        "compared. A decision may carry `subject_path` too (one repo:path or a "
+                        "list) to say which code it governs; vinc_decide_paths reads it.")},
                 },
                 "required": ["id", "type"],
             },
@@ -550,6 +551,21 @@ def _t_diagnose(args, bridge):
     if args.get("node"):   # community_context 전용 — 다른 kind 는 무시(핸들러가 안 읽는다)
         params["node"] = args["node"]
     return bridge.request("GET", "/diagnose", params=params)
+
+
+#: 결정 문이 한 번에 받는 경로 수 — `api.query.DECIDE_PATHS_MAX` 의 미러(vinc_mcp 는 api 를
+#: 임포트하지 않는다). 둘이 같은지는 tests/core/test_decide_paths.py 가 본다.
+DECIDE_PATHS_MAX = 200
+
+
+def _t_decide_paths(args, bridge):
+    # 결정 문(조회 전용) — 바뀐 경로를 다스리는 현재 기록·결정. 경로 목록은
+    # vinc_edges 의 nodes 처럼 JSON 하나로 싣는다. 가부는 가리지 않는다(사이드카가 목록만 낸다).
+    params = {"owner": _owner(args, bridge),
+              "paths": json.dumps(args["paths"], ensure_ascii=False)}
+    if args.get("member_limit") is not None:
+        params["member_limit"] = args["member_limit"]
+    return bridge.request("GET", "/decide-paths", params=params)
 
 
 def _t_ingest(args, bridge):
@@ -934,6 +950,10 @@ _SUMMARY: dict[str, str] = {
         "Gather the evidence for a decision on one topic (an exact node id or title): related nodes, "
         "edges and the conflicts between them. It never picks a side. Use it before recording a "
         "decision."),
+    "vinc_decide_paths": (
+        "List the current records and decisions that govern the files a change touches, given "
+        "repo:path strings (vinc:api/sync.py). Deterministic, no model, read-only: it says what to "
+        "read before merging, not whether the change breaks it."),
     "vinc_domains": (
         "List the topics (domains) in this graph with node counts per kind. Reuse an existing domain "
         "string when you write; case matters."),
@@ -2157,6 +2177,36 @@ TOOLS.append({"name": "vinc_operation_status", "reference":
     "historical summaries, so read the targets to verify. Read-only.",
     "inputSchema": {"type": "object", "properties": {"operation_id": _OPERATION_ID_PROP},
                     "required": ["operation_id"]}, "run": _t_operation_status})
+# 결정 문(`api.query.decide_paths`). 목록 끝에 붙인다(순서를 바꾸는 작업과 겹치지 않게).
+TOOLS.append({"name": "vinc_decide_paths", "reference":
+    "The decision gate: for each touched path, list the current records and decisions that govern "
+    "it, so a reviewer reads them before merging. Deterministic and model-free; it never decides "
+    "whether the change contradicts them. Send `paths` as repo:path strings (vinc:api/sync.py, "
+    "normalized like props.subject_path: backslashes, ./ and a leading / are folded and the "
+    "repository is lowercased), at most 200 per call. A node governs a path when its "
+    "props.subject_path is that path (match:'exact') or a parent directory of it "
+    "(match:'directory'). Records carry one subject_path; a decision may carry one or a list. "
+    "Decisions one hop from a matched node (a record's attachment to a decision, or a relation "
+    "between decisions) come too as match:'related' with `via` (the matched id) and `relation`; "
+    "concepts are not crossed. Retired claims (valid_until today or earlier; a decision's in "
+    "props) are left out and counted in retired_excluded, and records with "
+    "props.claim_kind:'result' (point-in-time results) in results_excluded. A path with no "
+    "repository matches only claims with none, and is echoed in unqualified_paths. Returns "
+    "{verdict ('flag' when any path is governed, else 'pass'), paths:[{path, governed_by:[{id, "
+    "kind, title, match, subject_path | via and relation, valid_from, valid_until, validity, "
+    "measured_at, measured_ref}], count, truncated}], path_count, flagged_paths, "
+    "governing_count, retired_excluded, results_excluded, unqualified_paths, scanned}. Items "
+    "are ordered exact, directory, related, decisions first, newest measurement first; "
+    "`member_limit` caps each list and `count` keeps the true total. Read-only.",
+    "inputSchema": {"type": "object", "properties": {
+        "paths": {"type": "array", "minItems": 1, "maxItems": DECIDE_PATHS_MAX,
+                  "items": {"type": "string", "minLength": 1, "maxLength": 1024},
+                  "description": "Touched files as repo:path, for example vinc:api/sync.py."},
+        "member_limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 1000,
+                         "description": "Most items listed per path; count stays the true "
+                                        "total."},
+        "owner": {"type": "string"},
+    }, "required": ["paths"]}, "run": _t_decide_paths})
 
 HOST_TOOLS: list[dict] = [
     {
@@ -2221,6 +2271,8 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_recall": {"title": "Recall episodes", "readOnlyHint": True},
     "vinc_graph": {"title": "Explore the graph", "readOnlyHint": True},
     "vinc_decide": {"title": "Decision support", "readOnlyHint": True},
+    # 결정 문 — 목록만 내고 쓰지 않는다. 조회 전용이라 읽기 전용 키도 부른다.
+    "vinc_decide_paths": {"title": "Decisions that govern touched paths", "readOnlyHint": True},
     "vinc_domains": {"title": "List domains", "readOnlyHint": True},
     # 관례(GRAPH.md) — 조회 전용. 쓰기 전에 읽는 것이 이 도구의 존재 이유다.
     "vinc_conventions": {"title": "Read the graph conventions", "readOnlyHint": True},
@@ -2794,6 +2846,14 @@ def validate_args(name: str, args: dict | None) -> None:
                 or any(not isinstance(n, str) or not n.strip() or "\x1f" in n for n in ids)):
             raise InvalidArgument(name, "node/nodes", reason="provide exactly one node or 1..100 ids",
                                   text="Invalid argument: provide either node or a nodes array of 1..100 exact ids.")
+    if name == "vinc_decide_paths":
+        paths = args.get("paths")
+        if (not isinstance(paths, list) or not 1 <= len(paths) <= DECIDE_PATHS_MAX
+                or any(not isinstance(p, str) or not p.strip() or len(p) > 1024 for p in paths)):
+            raise InvalidArgument(
+                name, "paths", reason=f"provide 1..{DECIDE_PATHS_MAX} repo:path strings",
+                text=(f"Invalid argument: paths must be an array of 1..{DECIDE_PATHS_MAX} "
+                      "nonempty repo:path strings. Nothing was run. Split a longer list."))
     sch = tool["inputSchema"]
     props = sch.get("properties") or {}
     for req in sch.get("required", []):
