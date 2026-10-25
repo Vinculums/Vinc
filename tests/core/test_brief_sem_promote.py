@@ -107,7 +107,7 @@ class PromoteRule(unittest.TestCase):
 
 
 class XlangPromoteRule(unittest.TestCase):
-    """한글 없는 질문이 한국어 노드를 가리킬 때의 낮은 문턱(VIN-806). 스토어 없이 도는 판정.
+    """질문과 1위 노드의 언어가 다를 때의 낮은 문턱(VIN-806, 반대 방향은 VIN-809). 스토어 없이 도는 판정.
     근거: [[vinc.plan.brief-xlang-promotion-sealed9-2026-10-25 §5]]"""
 
     def setUp(self):
@@ -131,14 +131,24 @@ class XlangPromoteRule(unittest.TestCase):
         self.assertEqual(self._status("cache policy", q._SEM_PROMOTE - 1e-6), "resolved")
         self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG - 1e-6), "choose")
 
-    def test_a_question_with_hangul_keeps_the_shipped_bar(self):
+    def test_a_korean_question_on_a_korean_first_keeps_the_shipped_bar(self):
         self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG), "choose")
         self.assertEqual(self._status("캐시 policy", q._SEM_PROMOTE - 1e-6), "choose")
         self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE), "resolved")
 
-    def test_an_english_first_keeps_the_shipped_bar(self):
+    def test_an_english_first_keeps_the_shipped_bar_for_an_english_question(self):
         self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG,
                                       title="cache policy live"), "choose")
+
+    def test_a_korean_question_on_an_english_first_promotes_at_the_lower_bar(self):
+        """반대 방향(VIN-809): 한글로 물었는데 승격될 1위에 한글이 없다.
+        근거: [[vinc.plan.brief-xlang-ko2en-sealed10-2026-10-26 §5]]"""
+        en = "cache policy live"
+        self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG, title=en), "resolved")
+        self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE - 1e-6, title=en), "resolved")
+        self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG - 1e-6, title=en), "choose")
+        # 한글 한 글자만 섞여도 한글로 물은 것이다.
+        self.assertEqual(self._status("캐시 policy", q._SEM_PROMOTE_XLANG, title=en), "resolved")
 
     def test_the_mirror_text_decides_the_language_of_the_first(self):
         """제목이 영어여도 미러 텍스트(제목 + 본문)에 한글이 있으면 한국어 노드다."""
@@ -148,6 +158,11 @@ class XlangPromoteRule(unittest.TestCase):
         en = lambda h: "cache policy live. how the cache is kept"
         self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG,
                                       title="캐시 정책 문서", mirror_text=en), "choose")
+        # 한글 질문은 거꾸로다: 제목이 한국어여도 미러 텍스트가 영어뿐이면 영어 노드다.
+        self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG,
+                                      title="캐시 정책 문서", mirror_text=en), "resolved")
+        self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG,
+                                      title="cache policy live", mirror_text=ko), "choose")
 
     def test_a_missing_or_failing_mirror_falls_back_to_the_title(self):
         def boom(h):
@@ -170,6 +185,8 @@ class XlangPromoteRule(unittest.TestCase):
         self.assertEqual(seen, [])
         self._status("cache policy", q._SEM_PROMOTE_XLANG, mirror_text=spy)
         self.assertEqual(seen, ["concept:a"])
+        self._status("캐시 정책", q._SEM_PROMOTE_XLANG, mirror_text=spy)
+        self.assertEqual(seen, ["concept:a", "concept:a"])
 
     def test_off_the_lower_bar_goes_with_the_flag(self):
         os.environ[FLAG] = "off"
@@ -314,6 +331,24 @@ class PromoteOnTheEngine(unittest.TestCase):
         self.setUp()
         self._mirror(0.07)
         self.assertEqual(self._brief()["status"], "choose")
+
+    def test_a_korean_question_on_an_english_mirror_text_lowers_the_bar(self):
+        """VIN-809: 한글로 물었고 1위의 미러 텍스트에 한글이 없으면 우위 0.07 로 확정한다.
+        1위의 미러 텍스트에 한글이 있으면(같은 언어) 지금 그대로 되묻는다. 질문은 한 줄 설명과 낱말을
+        하나도 나누지 않아야 토큰이 승부를 가르지 않는다."""
+        self._mirror(0.07)
+        out = self._brief("알림 설정")
+        self.assertEqual(out["status"], "resolved")
+        self.assertEqual(out["node"]["id"], "concept:cache-policy-live")
+        self.tearDown()
+        self.setUp()
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:cache-policy-live", "type": "concept",
+             "title": "cache policy live", "domain": "eng", "one_liner": "캐시 정책을 정한다"},
+        ]}, store=self.store)
+        self._mirror(0.07, live_text=node_mirror.mirror_text("cache policy live",
+                                                             "캐시 정책을 정한다"))
+        self.assertEqual(self._brief("알림 설정")["status"], "choose")
 
     def test_the_mirror_text_reader_returns_the_stored_text(self):
         self._mirror(0.07, live_text="cache policy live. 캐시")
