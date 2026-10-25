@@ -291,8 +291,10 @@ class Store:
             self._save_snapshot()
 
     def get_client(self, client_id: str) -> dict | None:
-        row = self._db.execute(
-            "SELECT redirect_uris,name FROM clients WHERE client_id=?", (client_id,)).fetchone()
+        # 커넥션 하나를 여러 스레드가 나눠 쓰므로 읽기도 락 안에서 한다(get_refresh 와 같은 이유).
+        with self._lock:
+            row = self._db.execute(
+                "SELECT redirect_uris,name FROM clients WHERE client_id=?", (client_id,)).fetchone()
         if row is None:
             return None
         return {"redirect_uris": json.loads(row["redirect_uris"]), "name": row["name"]}
@@ -345,17 +347,18 @@ class Store:
     def get_token(self, token: str, now: float | None = None) -> dict | None:
         """유효 토큰이면 {client_id,owner,plan,exp}, 만료면 삭제 후 None."""
         t = time.time() if now is None else now
-        row = self._db.execute(
-            "SELECT client_id,owner,plan,exp,resource FROM tokens WHERE token=?",
-            (token,)).fetchone()
-        if row is None:
-            return None
-        if row["exp"] < t:
-            with self._lock:
+        # 인증된 호출마다 지나는 자리다. 읽기와 만료 삭제를 한 락 구간에서 한다.
+        with self._lock:
+            row = self._db.execute(
+                "SELECT client_id,owner,plan,exp,resource FROM tokens WHERE token=?",
+                (token,)).fetchone()
+            if row is None:
+                return None
+            if row["exp"] < t:
                 self._db.execute("DELETE FROM tokens WHERE token=?", (token,))
                 self._db.commit()
-            return None
-        return dict(row)
+                return None
+            return dict(row)
 
     # ── refresh(회전, 짧은 재응답 창) ─────────────────────────────────────────
     def add_refresh(self, token: str, client_id: str, owner: str | None,
@@ -487,8 +490,9 @@ class Store:
         나이가 필요한 이유: OAuth 토큰의 등급은 승인 시점에 동결되므로 이 표가
         유일한 갱신 지점이고, 갱신 여부는 **얼마나 오래됐는가**로만 판단할 수 있다.
         """
-        row = self._db.execute(
-            "SELECT plan, updated_at FROM owner_plan WHERE owner=?", (owner,)).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                "SELECT plan, updated_at FROM owner_plan WHERE owner=?", (owner,)).fetchone()
         if not row:
             return None, None
         age = (time.time() if now is None else now) - float(row["updated_at"])
