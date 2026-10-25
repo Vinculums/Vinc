@@ -26,7 +26,9 @@ import { AGENT_TOPICS, AGENTS_BOARD, buildAgentRoster, setLnbActive, showAgentRa
 import { absoluteViewUrl } from "./view-url";
 import { loadPrefs } from "./view-prefs";
 import { loaderRows } from "./vinc-loaders.js";
-import { fieldChanged, foldPersonOnly, linesOf, listLines } from "./role-fields";
+import { BUDGET_KEYS, CAPABILITY_LISTS, OUTPUT_KINDS, actLines, budgetFields, capabilityFields,
+         fieldChanged, foldActPolicy, foldBudget, foldCapabilities, foldPersonOnly, isPersonAction,
+         linesOf, listLines } from "./role-fields";
 
 /** `api/role_contract.py` 의 TIERS · RUNGS 와 같은 순서. */
 export const TIERS = ["orchestrate", "execute", "verify", "deliver", "knowledge"] as const;
@@ -166,6 +168,20 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
             <textarea id="rc-person" rows="3" placeholder="${esc(R.personPh)}"></textarea></label>
           <p class="hint">${esc(R.linesHint)}</p>
         </section>
+        <section class="role-sec">
+          <h2>${esc(R.secRun)}</h2>
+          <div class="ei-field"><span id="rc-okind-l">${esc(R.fOutput)}</span>${chips("okind", ["unset", ...OUTPUT_KINDS], R.outputKinds)}</div>
+          <label class="ei-field"><span>${esc(R.fAct)}</span>
+            <textarea id="rc-act" rows="3" spellcheck="false" placeholder="${esc(R.actPh)}"></textarea></label>
+          <p class="hint">${esc(R.actHint)}</p>
+          <fieldset class="ei-field rc-set"><legend>${esc(R.fBudget)}</legend>
+            <div class="rc-grid">${BUDGET_KEYS.map((k) => `<label class="ei-field"><span>${esc(R.budgetKeys[k])}</span>
+              <input id="rc-b-${k}" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"/></label>`).join("")}</div></fieldset>
+          <fieldset class="ei-field rc-set"><legend>${esc(R.fCaps)}</legend>
+            ${CAPABILITY_LISTS.map((k) => `<label class="ei-field"><span>${esc(R.capLists[k])}</span>
+              <input id="rc-c-${k}" type="text" autocomplete="off" spellcheck="false" placeholder="${esc(R.capsPh)}"/></label>`).join("")}</fieldset>
+          <p class="hint">${esc(R.capsHint)}</p>
+        </section>
         <footer class="role-foot">
           <div id="rc-msg" class="nc-msg" role="status"></div>
           <a class="btn" href="${AGENTS_BOARD}" id="rc-cancel">${esc(COPY.ui.common.cancel)}</a>
@@ -203,6 +219,9 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
   let tier = "";
   let rung = "";
   let teamRole = "";
+  // 돌려주는 것은 사람이 고를 때만 보낸다. 읽은 값이 어휘 밖이어도 손대지 않으면 그대로 남는다.
+  let outputKind = "";
+  let outputTouched = false;
   let slugTouched = editing;
   let busy = false;
   let done = false;
@@ -224,7 +243,7 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
     seat.className = `agent-seat agent-seat-${teamRole}`;
     seat.textContent = teamRole ? R.teamRoles[teamRole] || teamRole : "";
   };
-  const pick = (name: "tier" | "rung" | "trole", value: string) => {
+  const pick = (name: "tier" | "rung" | "trole" | "okind", value: string) => {
     msg("");
     el.querySelectorAll<HTMLElement>(`.rc-${name} .chip`).forEach((b) => {
       const on = b.dataset[name] === value;
@@ -233,15 +252,27 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
     });
     if (name === "tier") { tier = value; $("#rc-tier-hint").textContent = R.tierHints[value] || R.tierHint; }
     else if (name === "rung") rung = value;
+    else if (name === "okind") outputKind = value === "unset" ? "" : value;
     else teamRole = value;
     paintPreview();
   };
-  for (const name of ["tier", "rung", "trole"] as const) {
+  for (const name of ["tier", "rung", "trole", "okind"] as const) {
     el.querySelector(`.rc-${name}`)!.addEventListener("click", (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>(`[data-${name}]`);
-      if (b) pick(name, b.dataset[name]!);
+      if (!b) return;
+      if (name === "okind") outputTouched = true;
+      pick(name, b.dataset[name]!);
     });
   }
+  const fieldsOf = (prefix: string, keys: readonly string[]) =>
+    Object.fromEntries(keys.map((k) => [k, $<HTMLInputElement>(`#rc-${prefix}-${k}`).value]));
+  const fillFields = (prefix: string, values: Record<string, string>) => {
+    for (const [k, v] of Object.entries(values)) $<HTMLInputElement>(`#rc-${prefix}-${k}`).value = v;
+  };
+  // 칸마다 읽은 값의 모양을 기억해 두고, 같으면 저장 때 읽은 값을 그대로 보낸다.
+  const sameFields = (a: Record<string, string>, b: Record<string, string>) =>
+    Object.keys(b).every((k) => (a[k] || "").split(",").map((x) => x.trim()).filter(Boolean).join(",")
+      === (b[k] || "").split(",").map((x) => x.trim()).filter(Boolean).join(","));
 
   if (editing) {
     jobEl.value = baseTitle;
@@ -253,7 +284,11 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
     if (TIERS.includes(strOf(baseProps.tier) as never)) pick("tier", strOf(baseProps.tier));
     if (RUNGS.includes(strOf(baseProps.rung) as never)) pick("rung", strOf(baseProps.rung));
     if (TEAM_ROLES.includes(strOf(baseProps.team_role) as never)) pick("trole", strOf(baseProps.team_role));
+    $<HTMLTextAreaElement>("#rc-act").value = actLines(baseProps.act_policy).join("\n");
+    fillFields("b", budgetFields(baseProps.budget));
+    fillFields("c", capabilityFields(baseProps.capabilities));
   } else if (rest[1]) teamEl.value = rest[1];
+  pick("okind", OUTPUT_KINDS.includes(strOf(baseProps.output_kind) as never) ? strOf(baseProps.output_kind) : "unset");
   paintId();
   paintPreview();
   if (readOnly) form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement>(
@@ -299,6 +334,28 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
       if (!folded.ok) { msg(esc(R.personBad)); $<HTMLTextAreaElement>("#rc-person").focus(); return; }
       personOnly = folded.value;
     }
+    // 실행 정책 칸 넷. 고친 칸만 접어서 확인하고, 비운 칸은 키째 뺀다.
+    const policy: Record<string, unknown> = {};
+    const actText = $<HTMLTextAreaElement>("#rc-act").value;
+    if (!editing || fieldChanged(actText, actLines(baseProps.act_policy))) {
+      const persons = Array.isArray(personOnly) ? personOnly.filter(isPersonAction).map((p) => p.action) : [];
+      const act = foldActPolicy(linesOf(actText), persons);
+      if (!act.ok) { msg(esc(R.actBad)); $<HTMLTextAreaElement>("#rc-act").focus(); return; }
+      policy.act_policy = act.value;
+    }
+    const budgetNow = fieldsOf("b", BUDGET_KEYS);
+    if (!editing || !sameFields(budgetNow, budgetFields(baseProps.budget))) {
+      const budget = foldBudget(budgetNow);
+      if (!budget.ok) { msg(esc(R.budgetBad)); $<HTMLInputElement>(`#rc-b-${budget.bad[0]}`).focus(); return; }
+      policy.budget = budget.value;
+    }
+    const capsNow = fieldsOf("c", CAPABILITY_LISTS);
+    if (!editing || !sameFields(capsNow, capabilityFields(baseProps.capabilities))) {
+      const caps = foldCapabilities(capsNow);
+      if (!caps.ok) { msg(esc(R.capsBad)); return; }
+      policy.capabilities = caps.value;
+    }
+    if (!editing || outputTouched) policy.output_kind = outputKind || undefined;
     const id = idOf();
     busy = true;
     btn.disabled = true;
@@ -326,6 +383,10 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
     };
     delete props.team; delete props.team_role;
     if (team) { props.team = team; if (teamRole) props.team_role = teamRole; }
+    for (const [key, value] of Object.entries(policy)) {
+      if (value === undefined) delete props[key];
+      else props[key] = value;
+    }
     const node: Record<string, unknown> = { id, type: "concept", title, domain: editing ? baseDomain : topic,
                                             one_liner: mission, props };
     if (!editing) node.tags = ["agent", tier, "role"];
