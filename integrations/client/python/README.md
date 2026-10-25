@@ -11,10 +11,10 @@ Looking for the `vinc` command? See [the terminal CLI installation guide](https:
 ## Install
 
 ```bash
-pip install "vinc-client>=0.1.14"
+pip install "vinc-client>=0.1.15"
 ```
 
-This README describes vinc-client 0.1.14. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
+This README describes vinc-client 0.1.15. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
 
 For a new install, prefer `pip install vincs`: it has the same client as `vinc.sdk`, the framework adapters as extras and the `vinc` command. `vinc-client` keeps publishing under this name for existing installs.
 
@@ -425,6 +425,27 @@ Names match exactly: `allowed(tools)` drops tools with a disallowed name,
 logs one warning naming the entries that matched none of `tools`. Both framework
 adapters use this one implementation in their role prefetch mode.
 
+### A role's run policy
+
+A role contract can also say what the role outputs, how it may act, how much one run
+may spend and which capabilities it holds. All four keys are optional:
+
+| Key | Values |
+|---|---|
+| `output_kind` | `prose`, `code`, `verdict`, `write_proposal` or `none` |
+| `act_policy` | action id (lowercase snake_case, as in `person_only`) to `act`, `act_and_report`, `ask_first` or `never` |
+| `budget` | `tool_calls`, `model_calls`, `tokens` (whole numbers) and `cost_usd`, `wall_seconds` (numbers), all 0 or more |
+| `capabilities` | `allow`, `deny` and `approve` lists of dotted capability ids such as `vinc.read` or `github.pr.merge`; a final `.*` matches a family |
+
+`RolePolicy.from_contract(contract)` reads them and raises `invalid_role_contract`
+when one is malformed, before the model is called (the hub only warns when the role is
+written). `act(action)` answers the contract's mode for an action; a `person_only`
+action without its own entry is `ask_first`, and a contract that lets the role act
+alone on a `person_only` action is refused. `capability(id)` answers `deny`, `approve`
+or `allow` in that order of precedence, and `limit(key)` one budget value. Hosts and
+adapters enforce the policy; the client only reads it and grants nothing. Capability
+ids are not tool names: an adapter maps its tools to them.
+
 On 2026-10-06, all 23 hosted roster roles exceeded the default. Their required
 text was 19,764 to 198,480 characters (median about 112,000); successful prefetch
 blocks at a larger budget were 34,640 to 217,070 characters including the role
@@ -560,6 +581,7 @@ The read tools in both framework adapters expose these optional parameters too.
 
 | Version | Change |
 |---|---|
+| 0.1.15 | `RolePolicy` reads a role's `output_kind`, `act_policy`, `budget` and `capabilities` (see [A role's run policy](#a-roles-run-policy)); a malformed key raises `invalid_role_contract`. |
 | 0.1.14 | `role` takes `compact`. A role over the hub's read limit is no longer an error by default: `role`, `prefetch` and both adapters read it again without relation evidence sentences, and the result says `compact: True` (see [Large roles](#large-roles)). The adapters (vinc-langgraph 0.1.11, vinc-agent-framework 0.1.10) require it. |
 | 0.1.13 | `record_run` writes one agent run as an Episode about its role, with run props and a `trace_ref` built by `trace_ref()` (sha256, size and file name of the raw trace file); the episode id comes from the run id, so retries merge. The adapters (vinc-langgraph 0.1.10, vinc-agent-framework 0.1.9) add `record_run`. |
 | 0.1.12 | `role`, `prefetch` and `prefetch_with_contract` take `pin`, a role contract `hash`; a role that changed raises the new `VincRoleChanged` before any document is read. Contracts carry `rev` and `hash`. The adapters (vinc-langgraph 0.1.9, vinc-agent-framework 0.1.8) pass it as `prefetch_pin`. |

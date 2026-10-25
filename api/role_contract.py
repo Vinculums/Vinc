@@ -21,6 +21,7 @@ import re
 
 from engines.domain_hierarchy import normalize
 from api.role_gate_contract import check as check_gates
+from api.role_policy_contract import check as check_policy
 
 #: 새 역할의 기본 주제와 기존 호환 주제. 역할 식별은 주제 분류와 별개다.
 TOPICS = ("agent", "vinc/agent")
@@ -120,6 +121,7 @@ def check(node: dict, *, created: bool, stored_domain: str | None = None) -> lis
         out.append(f"role {nid}: {', '.join(bad)} must be a list; a single string is "
                    f"rendered one character per bullet ({why})")
     out.extend(f"role {nid}: {warning} ({why})" for warning in check_gates(props))
+    out.extend(f"role {nid}: {warning} ({why})" for warning in check_policy(props))
     person = props.get("person_only")
     if isinstance(person, list):
         # 기존 팩의 문자열 목록은 그대로 읽는다. 새 구조는 설명을 파싱하지 않고
