@@ -58,7 +58,9 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              "vinc_brief", "vinc_node",
              # 스페이스가 주소에서 **인자**로 내려오면서 생긴 자리(발주자 지시
              # 2026-08-31). `space` 에 실을 id 를 받을 곳이 없으면 그 인자는 못 쓴다.
-             "vinc_whoami", "vinc_operation_status", "vinc_community_write", "vinc_community_read"}
+             "vinc_whoami", "vinc_operation_status", "vinc_community_write", "vinc_community_read",
+             # 변경 기록에서 계산한 이벤트 피드(조회 전용). 근거: [[vinc.plan.mcp-events-and-webhooks]]
+             "vinc_events"}
 
 
 class _StubBridge(Bridge):

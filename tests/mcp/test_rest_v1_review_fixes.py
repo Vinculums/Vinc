@@ -99,6 +99,13 @@ FAILURE_CASES = [
     ("vinc_conventions", {"executed": True, "text": "defaults"}, False, None, None),
     ("vinc_whoami", {"executed": True, "spaces_source": "unavailable"}, False, None, None),
     ("vinc_domains", {"error": "sidecar HTTP 502"}, False, 503, "upstream_unavailable"),
+    ("vinc_events", {"kind": "events", "executed": True, "events": [], "cursor": "0.0",
+                     "has_more": False}, False, None, None),
+    ("vinc_events", {"kind": "events", "executed": False,
+                     "error": "invalid_cursor: expected the cursor a previous call returned"},
+     False, 400, "invalid_argument"),
+    ("vinc_events", {"executed": False, "note": "no reachable store"}, False, 503,
+     "upstream_unavailable"),
 ]
 
 
@@ -157,6 +164,9 @@ _READ_SAMPLES = {
     ("GET", "/v1/merge-rejections"): (None, {}),
     ("GET", "/v1/documents"): (None, {}),
     ("GET", "/v1/documents/{doc_id}"): ("", {"doc_id": "d1"}),
+    ("GET", "/v1/events"): ("?since=0&role=agent-x&kinds=role.lesson_added&limit=5",
+                            {"since": "0", "role": "agent-x", "kinds": ["role.lesson_added"],
+                             "limit": 5}),
 }
 
 #: 모든 도구가 성공으로 읽을 만한 브리지 답.

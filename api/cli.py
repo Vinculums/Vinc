@@ -412,6 +412,23 @@ def _main(argv: list[str] | None = None) -> int:
     rlc.add_argument("--self-authored", action="store_true", default=None,
                      help="the output is a diff this role wrote; removed lines are not proposals")
     rlc.add_argument("--owner", default=None)
+    ev = sub.add_parser("events", help="read change events for roles, for hosts without MCP events")
+    evs = ev.add_subparsers(dest="eventscmd", required=True)
+    evt = evs.add_parser("tail", help="print one JSON line per event as changes arrive")
+    evt.add_argument("--since", default=None, metavar="CURSOR",
+                     help="cursor to resume from, or 0 for the beginning (default: from now)")
+    evt.add_argument("--role", default=None, help="only events for this role (slug or concept:agent- id)")
+    evt.add_argument("--kind", action="append", default=None, dest="kind",
+                     choices=("role.reading_changed", "run.citation_superseded", "role.lesson_added"),
+                     help="only this event name; repeat for more")
+    evt.add_argument("--limit", type=int, default=None, help="changed rows read per page (1..500)")
+    evt.add_argument("--interval", type=float, default=30.0,
+                     help="seconds between polls when nothing is pending (default 30, at least 5)")
+    evt.add_argument("--once", action="store_true",
+                     help="read one page, print it as one result and exit")
+    evt.add_argument("--cursor-file", default=None, metavar="FILE",
+                     help="start from the cursor in this file and write each new cursor to it")
+    evt.add_argument("--owner", default=None)
     pa = sub.add_parser("path", help="find a graph path")
     pa.add_argument("a")
     pa.add_argument("b")
@@ -639,6 +656,16 @@ def _main(argv: list[str] | None = None) -> int:
         if target == "local" and args.space and args.space.strip().lower() != "personal":
             return cli_output.usage_error("--space requires --target account")
         space = cli_target.resolve_space(args.space) if target == "account" else "personal"
+        if args.cmd == "events":
+            from .cli_events import tail
+
+            def _call():
+                if target == "account":
+                    from .cli_account import run as run_account
+                    return run_account(args, space=space)
+                from .cli_tools import run as run_local
+                return run_local(args)
+            return tail(args, _call, _emit)
         if target == "account":
             from .cli_account import run as run_tool
             result, exit_code = run_tool(args, space=space)

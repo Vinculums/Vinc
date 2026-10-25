@@ -43,6 +43,8 @@ _NAME_FIELD = {"tools/call": "name", "prompts/get": "name", "resources/read": "u
 CACHE_HINTS = {
     "tools/list": (3_600_000, "public"),
     "prompts/list": (60_000, "private"),
+    # 이벤트 종류도 배포(와 웹훅 스위치)로만 바뀌고 호출자 모두에게 같다.
+    "events/list": (3_600_000, "public"),
 }
 #: `server/discover` 의 `instructions` 는 소유자와 팀 목록을 담으므로 허브에서는 private.
 DISCOVER_TTL_MS = 300_000

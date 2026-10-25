@@ -383,6 +383,11 @@ class MCPHTTPApp:
         # 레플리카를 넘나든다([[vinc.plan.mcp-second-pass]]).
         # 허브는 **이미 원격 그래프 자신**이라 `target` 을 내보내지도 받지도 않는다.
         self._dispatcher = Dispatcher(self.bridge, hub=True)
+        # 웹훅 전달은 스위치가 켜진 프로세스에서만 만든다. 배경 스레드는 첫 구독에서 뜬다.
+        # 근거: [[vinc.plan.mcp-events-and-webhooks]]
+        from . import events
+        if events.webhook_enabled():
+            self._dispatcher.events = events.Runtime(self.bridge)
 
     def quota_snapshot(self, owner: str, plan: str | None) -> dict | None:
         """사용량 읽기(`quota_view` 를 거쳐 whoami·`_meta`·계정 화면이 쓴다). 소비·리셋·
@@ -1586,6 +1591,16 @@ class _Handler(BaseHTTPRequestHandler):
             # 근거: [[decision:a-node-address-names-its-space]]
             def _gate_for(m):
                 method = m.get("method")
+                if str(method or "").startswith("events/"):
+                    # Events 의 스페이스는 구독 인자(`arguments.space`)가 고른다. 스페이스 확인은
+                    # 조회 도구 vinc_events 와 같은 줄을 탄다.
+                    params = m.get("params") or {}
+                    args = params.get("arguments") if isinstance(params, dict) else None
+                    return toolcall.preflight(
+                        "vinc_events", args if isinstance(args, dict) else {}, base_auth=auth,
+                        address_space=space,
+                        authenticate=lambda want: self._auth(want, presented_at="/mcp"),
+                        valid_space=lambda want: bool(_UUID_RE.fullmatch(want)) or community.is_space(want))
                 if method != "tools/call" and not str(method or "").startswith("prompts/"):
                     return toolcall.Outcome("ok", auth=auth)
                 params = m.get("params") or {}
@@ -1605,6 +1620,9 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._verification_unavailable()
 
             def _tool_error(m, message):
+                if str(m.get("method") or "").startswith("events/"):
+                    return self._json(200, {"jsonrpc": "2.0", "id": m.get("id"), "error": {
+                        "code": -32024, "message": message}})
                 result = {"isError": True, "content": [{"type": "text", "text": message}]}
                 if modern.classify(m, PROTOCOL_VERSIONS)[0]:
                     result = modern.complete(result)
@@ -1644,7 +1662,8 @@ class _Handler(BaseHTTPRequestHandler):
                                  community_write=(lambda args: self.app.community_write(a, args))
                                  if self.app.community_write is not None else None,
                                  community_read=(lambda args: self.app.community_read(a, args))
-                                 if self.app.community_read is not None else None)
+                                 if self.app.community_read is not None else None,
+                                 events_auth=_events_auth(a))
                 if m.get("method") != "tools/call":
                     return reply
                 return _with_quota_meta(reply, self.app.quota_meta(spent))
@@ -1935,6 +1954,16 @@ class _Handler(BaseHTTPRequestHandler):
         line = (self.requestline or "").split("?")[0]
         self.log_message('"%s" %s %s%s', line, code, size,
                          f" owner={tag}" if tag else "")
+
+
+def _events_auth(a: dict) -> dict:
+    """웹훅 구독의 주체와 구독 기록을 쓸 수 있는가. 주체는 팀이면 멤버, 개인이면 그 사람."""
+    owner = a.get("owner") or ""
+    team = owner.startswith("team:")
+    principal = a.get("member") if team else (owner or None)
+    can_write = a.get("scope") == "full" and (
+        not team or tools.role_allows(a.get("role") or "", "vinc_ingest"))
+    return {"principal": principal, "can_write": bool(principal and can_write)}
 
 
 def _utc_iso(ts: float) -> str:

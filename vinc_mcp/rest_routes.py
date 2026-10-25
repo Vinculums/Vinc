@@ -79,6 +79,7 @@ READ_ROUTES = (
           query=("limit", "cursor", "detail")),
     Route("GET", "/v1/documents/{doc_id}", "vinc_doc_get",
           path_args=(("doc_id", "doc_id"),)),
+    Route("GET", "/v1/events", "vinc_events", query=("since", "role", "kinds", "limit")),
 )
 
 # A2 adds editor/admin routes here. Search/fetch belong to a host directory,

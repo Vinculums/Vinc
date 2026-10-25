@@ -732,6 +732,18 @@ class VincApp:
             result.setdefault("durability", "graph_commit_only")
         return result
 
+    def read_events(self, p):
+        """Vinc 이벤트 피드 한 페이지(조회 전용). 계약: `api/events.py`."""
+        from . import events
+        try:
+            since = events.parse_cursor(p.get("since"))
+            kinds = events.parse_kinds(p.get("kinds"))
+            limit = events.clamp_limit(p.get("limit"))
+        except ValueError as exc:
+            return 400, {"kind": "events", "executed": False, "error": str(exc)}
+        return self._read(lambda r: events.scan(r, owner=_req(p, "owner"), since=since,
+                                                limit=limit, role=p.get("role"), kinds=kinds))
+
     def read_operation_status(self, p):
         from . import operation_receipts
         return self._read(lambda r: operation_receipts.status(r, owner=_req(p, "owner"),
@@ -2933,6 +2945,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/node": app.read_node,
             "/node-context": app.read_node_context,
             "/operation-status": app.read_operation_status,
+            "/events": app.read_events,   # 변경 기록에서 계산한 이벤트 피드
             "/community-agent/import-result": app.read_community_agent_result,
             "/brief": app.read_brief,   # W1 — 질문 하나로 답변 재료 조인
             "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)

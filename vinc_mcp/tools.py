@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**32종** — 읽기 23(search·node·role·role_export·role_check·edges·brief·recall·graph·decide·domains·suggest_ties·
-neighbors·path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami·operation_status·community_read) + 쓰기 9
+**33종** — 읽기 24(search·node·role·role_export·role_check·edges·brief·recall·graph·decide·domains·suggest_ties·
+neighbors·path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami·operation_status·community_read·events) + 쓰기 9
 (ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete·community_write).
 "단일 write 표면(ingest 하나)"은
 SEC-3(삭제·병합)과 D45(문서 정본 doc_*)를 거치며 깨진 낡은 서술이었다 —
@@ -28,7 +28,7 @@ import os
 from typing import Any, Callable
 
 from .bridge import Bridge
-from . import community
+from . import community, events
 
 # vinc_mcp 는 api 를 임포트하지 않으므로(독립 브리지 계약) 허용 쌍 문장을 여기
 # 미러한다. 정본은 `api/fragment.py` 의 `_ALLOWED_PAIRS_HINT` 이고, 서버가 거부할 때
@@ -519,6 +519,16 @@ def _t_operation_status(args, bridge):
         "owner": _owner(args, bridge), "operation_id": args["operation_id"]})
 
 
+def _t_events(args, bridge):
+    # 변경 기록에서 계산한 이벤트 피드(사이드카 `/events`). 내부 위치는 걷어 낸다.
+    kinds = args.get("kinds")
+    out = bridge.request("GET", "/events", params={
+        "owner": _owner(args, bridge), "since": args.get("since"), "role": args.get("role"),
+        "kinds": ",".join(kinds) if isinstance(kinds, list) and kinds else None,
+        "limit": args.get("limit")})
+    return events.public(out)
+
+
 def _t_merge_reject(args, bridge):
     # F10-b 기각 기억 — 병합(비가역)과 짝을 이루는 가역 쓰기. undo 로 취소된다.
     return bridge.request("POST", "/merge-reject", body={
@@ -998,6 +1008,9 @@ _SUMMARY: dict[str, str] = {
     "vinc_operation_status": (
         "Read the receipt of a write by its operation_id, to see what happened after a lost response "
         "before you retry."),
+    "vinc_events": (
+        "Read what changed for your Agent roles since a cursor: required reading changed, a cited "
+        "claim retired, a lesson added. Pass back the returned cursor to continue."),
     "search": (
         "Search the signed-in Vinc graph for documents and nodes. Read a result's full text with "
         "fetch."),
@@ -2157,6 +2170,30 @@ TOOLS.append({"name": "vinc_operation_status", "reference":
     "historical summaries, so read the targets to verify. Read-only.",
     "inputSchema": {"type": "object", "properties": {"operation_id": _OPERATION_ID_PROP},
                     "required": ["operation_id"]}, "run": _t_operation_status})
+TOOLS.append({"name": "vinc_events", "reference":
+    "Read events computed from this space's change log, after a cursor: role.reading_changed (a "
+    "document in a role's reads was edited, retired or deleted), run.citation_superseded (a claim "
+    "a run record cited got valid_until or a successor) and role.lesson_added (a Record or "
+    "Decision was attached to or about a role). Returns {events:[{eventId, name, timestamp, "
+    "data}], cursor, has_more, truncated, head}. Omit since to get the current cursor and no "
+    "events; pass since:'0' to read from the beginning. Pass the returned cursor as the next "
+    "since and call again while has_more is true. eventId is stable: the same change gives the "
+    "same id here, in MCP events/poll and in webhook deliveries, and an edit to an existing "
+    "lesson repeats its id, so drop ids you have seen. Changes between two calls coalesce to the "
+    "latest state. truncated:true means the cursor was ahead of this space and was reset to now. "
+    "Read-only.",
+    "inputSchema": {"type": "object", "properties": {
+        "since": {"type": "string", "pattern": r"^(0|[0-9]{1,18}\.[0-9]{1,18})$",
+                  "description": "The cursor a previous call returned, or 0 for the beginning; "
+                                 "omit to start from now."},
+        "role": {"type": "string",
+                 "description": "Only events for this role (agent slug or concept:agent- id)."},
+        "kinds": {"type": "array", "items": {"type": "string", "enum": list(events.KINDS)},
+                  "description": "Only these event names; omit for all three."},
+        "limit": {"type": "integer", "default": 100, "minimum": 1, "maximum": 500,
+                  "description": "Changed rows read per source in this page."},
+        "owner": {"type": "string"}}, "required": []},
+    "run": _t_events})
 
 HOST_TOOLS: list[dict] = [
     {
@@ -2215,6 +2252,7 @@ _BY_NAME = {t["name"]: t for t in TOOLS + HOST_TOOLS}
 _ANNOTATIONS: dict[str, dict] = {
     community.READ_TOOL: {"title": "Read a community Agent", "readOnlyHint": True},
     "vinc_operation_status": {"title": "Check a mutation result", "readOnlyHint": True},
+    "vinc_events": {"title": "Read change events for roles", "readOnlyHint": True},
     community.WRITE_TOOL: {"title": "Edit a community", "readOnlyHint": False,
                            "destructiveHint": False, "idempotentHint": False},
     "vinc_search": {"title": "Search knowledge", "readOnlyHint": True},
@@ -2761,6 +2799,23 @@ def _invalid_cursor(tool: str, reason: str) -> InvalidArgument:
               "or pass the next_cursor returned by the same call with the same arguments."))
 
 
+def _check_events_args(args: dict) -> None:
+    """`since` 의 모양과 `kinds` 의 원소. 스키마 대조기가 pattern·배열 원소를 안 본다."""
+    since = args.get("since")
+    if since not in (None, "") and (not isinstance(since, str) or not events._CURSOR_RE.fullmatch(since)):
+        raise InvalidArgument("vinc_events", "since", reason="malformed cursor",
+                              text=("Invalid argument: since must be a cursor returned by "
+                                    "vinc_events, or 0. Nothing was returned. Omit it to start "
+                                    "from now."))
+    kinds = args.get("kinds")
+    if kinds is not None and (not isinstance(kinds, list)
+                              or any(k not in events.KINDS for k in kinds)):
+        allowed = ", ".join(events.KINDS)
+        raise InvalidArgument("vinc_events", "kinds", reason=f"must be a list of: {allowed}",
+                              text=(f"Invalid argument: kinds must be a list of event names "
+                                    f"({allowed}). Nothing was returned."))
+
+
 def validate_args(name: str, args: dict | None) -> None:
     """스키마 대조. 모르는 도구는 KeyError(프로토콜 오류로 남긴다), 인자 위반은
     InvalidArgument. rpc 가 **쿼터를 세기 전에** 부르고, `call` 도 한 번 더 부른다
@@ -2794,6 +2849,8 @@ def validate_args(name: str, args: dict | None) -> None:
                 or any(not isinstance(n, str) or not n.strip() or "\x1f" in n for n in ids)):
             raise InvalidArgument(name, "node/nodes", reason="provide exactly one node or 1..100 ids",
                                   text="Invalid argument: provide either node or a nodes array of 1..100 exact ids.")
+    if name == "vinc_events":
+        _check_events_args(args)
     sch = tool["inputSchema"]
     props = sch.get("properties") or {}
     for req in sch.get("required", []):
