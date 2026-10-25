@@ -60,6 +60,7 @@ Choose integrations using one package name:
 ```sh
 pip install "vincs[langgraph]"
 pip install "vincs[agent-framework]"
+pip install "vincs[hermes]"
 pip install "vincs[all]"
 ```
 
@@ -85,6 +86,41 @@ The Python distribution version is independent of the product version reported
 by `vinc --version`. See the [SDK guide](https://vincs.io/docs/frameworks/) for
 key types, read-only use and explicit writes.
 
+## Hermes Agent
+
+`vincs[hermes]` makes Vinc the memory provider of
+[Hermes Agent](https://hermes-agent.nousresearch.com). Hermes finds it through the
+`hermes_agent.memory_providers` entry point, which Hermes reads from v2026.8.13 on
+(v0.22.5 was tested; the `hermes-agent` 0.19.0 on PyPI does not read it). Install it
+into the Python environment Hermes runs in, then choose `vinc`:
+
+```sh
+pip install "vincs[hermes]"
+hermes memory setup
+hermes memory status
+```
+
+Setup asks for a member key, which Hermes keeps in `$HERMES_HOME/.env` as
+`VINC_API_KEY`; the provider never writes it anywhere. It also asks for the space to
+read (`personal` or a team id) and for `auto_record_space`. Those two go to
+`$HERMES_HOME/vinc.json`.
+
+What it reads. Before every turn it adds the block `get_context` builds: a brief,
+widened by a search when the brief ties or finds nothing. When Vinc is unreachable or
+the key is refused, that turn goes on without it. The model can also call
+`vinc_search` and `vinc_brief`, which takes a node id too.
+
+What it writes. The model gets `vinc_record`, which writes one Episode, only in the
+person's own conversation and only with a `vinc_sk_` key; its description tells the
+model to call it only when the person asks. If you name one space as
+`auto_record_space`, each completed turn is recorded there as an Episode tagged
+`hermes-turn`. Nothing else is written: nothing without that setting, nothing from
+cron jobs, subagents or any other agent Hermes runs on its own, nothing before
+compaction, and nothing when Hermes's built-in memory changes.
+
+The `hermes` extra installs nothing beyond `vincs`: the provider runs inside Hermes,
+which brings its own interface.
+
 ## Adding an adapter
 
 A new framework or host adapter joins `vincs` as one module and one extra. It
@@ -96,14 +132,17 @@ needs no distribution, trusted publisher or release tag of its own.
 2. Add an extra named after the module, with `-` for `_` (module
    `agent_framework`, extra `agent-framework`), that lists the framework's
    requirements, and add the same name to `all`. Add the extra together with
-   its adapter, never ahead of it.
+   its adapter, never ahead of it. An adapter that a host loads into its own
+   environment through an entry point (step 3) may leave its extra empty, because
+   the host is its framework; `hermes` is one.
 3. If the host finds plugins through an entry point, declare it under
    `[project.entry-points."<group>"]` and point it at a name in that package.
    Entry points are installed by every `vincs` install, extra or not, so the
    target has to import with only the host and the SDK present.
 
 `tests/test_install.py` fails when a module under `vinc.integrations` has no
-extra of its name, when an extra installs nothing, or when `all` leaves one out.
+extra of its name, when an extra installs nothing and no entry point names its
+module, or when `all` leaves one out.
 CI builds the wheel, installs it once per extra in a clean environment, imports
 the adapters that extra enables and runs `vinc --version`; it reads the extras
 from the wheel, so a new one is covered without editing the workflow.

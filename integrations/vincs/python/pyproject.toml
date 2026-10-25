@@ -14,15 +14,21 @@ dependencies = ["httpx>=0.27,<1", "pydantic>=2.7,<3"]
 
 [project.optional-dependencies]
 # 어댑터 엑스트라는 vinc.integrations 아래 모듈과 이름이 같고(- 는 _), all 이 그것을 모두 담는다.
-# 어댑터 없는 빈 엑스트라는 두지 않는다. tests/test_install.py 가 지키고, 새 어댑터를 들이는
-# 순서는 README 의 "Adding an adapter" 에 있다.
+# 어댑터 없는 빈 엑스트라는 두지 않는다. 비어도 되는 것은 호스트가 진입점으로 자기 환경에 싣는
+# 어댑터(hermes)뿐이다: 그 호스트가 곧 프레임워크다. tests/test_install.py 가 지키고, 새 어댑터를
+# 들이는 순서는 README 의 "Adding an adapter" 에 있다.
+# 근거: [[record:the-hermes-extra-of-vincs-depends-on-no-hermes-package-2026-10-25]]
 langgraph = ["langgraph>=1.0", "langchain-core>=1.0", "langchain>=1.0"]
 agent-framework = ["agent-framework-core>=1.8.1"]
-all = ["vincs[langgraph,agent-framework]"]
+hermes = []
+all = ["vincs[langgraph,agent-framework,hermes]"]
 test = ["pytest>=8", "anyio>=4"]
 
 [project.scripts]
 vinc = "vinc.cli:main"
+
+[project.entry-points."hermes_agent.memory_providers"]
+vinc = "vinc.integrations.hermes:register"
 
 [project.urls]
 Homepage = "https://vincs.io"
