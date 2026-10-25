@@ -1,9 +1,17 @@
 """vinc.integrations.crewai through real CrewAI crews with a scripted model; no model service."""
 import os
 
-# CrewAI 의 원격 수집과 첫 실행 질문을 끈다. crewai 를 가져오기 전에 둬야 한다.
+from importlib.metadata import PackageNotFoundError, version
+
+# CrewAI 의 원격 수집과 첫 실행 질문을 끄고, 그 로컬 저장소를 시험 전용 자리에 둔다(판마다 따로:
+# 판이 다른 CrewAI 가 남긴 행을 읽지 않게). crewai 를 가져오기 전에 둬야 한다.
+try:
+    _store = "vinc-crewai-tests-" + version("crewai")
+except PackageNotFoundError:
+    _store = "vinc-crewai-tests"
 for _name, _value in {"CREWAI_TESTING": "true", "CREWAI_DISABLE_TELEMETRY": "true",
-                      "OTEL_SDK_DISABLED": "true", "CREWAI_TRACING_ENABLED": "false"}.items():
+                      "OTEL_SDK_DISABLED": "true", "CREWAI_TRACING_ENABLED": "false",
+                      "CREWAI_STORAGE_DIR": _store}.items():
     os.environ.setdefault(_name, _value)
 
 import asyncio  # noqa: E402
@@ -303,13 +311,15 @@ def test_a_malformed_policy_stops_the_run_before_the_model():
 
 
 def test_exposed_read_tools_share_a_fresh_cap_per_run():
+    # CrewAI 는 한 턴의 호출 여덟 개를 함께 돌린다. 어느 넷이 상한에 걸리는지는 정해지지 않지만 수는 넷이다.
     llm = ScriptedLLM(model="scripted", script=[
-        calls("vinc_brief", *[f"q{i}" for i in range(5)]), "First.\nSources: none",
+        calls("vinc_brief", *[f"q{i}" for i in range(8)]), "First.\nSources: none",
         calls("vinc_brief", "again"), "Second.\nSources: none"])
     agent = create_agent(client([]), ROLE, llm=llm, expose_tools=True)
     assert llm.seen == [] and run_crew(agent)[0].raw == "First.\nSources: none"
     first = tool_results(llm.seen[1])
-    assert all("concept:rule" in r for r in first[:4]) and first[4] == cap_message(4)
+    assert len(first) == 8 and first.count(cap_message(4)) == 4
+    assert sum("concept:rule" in r for r in first) == 4
     assert llm.seen[0]["tools"] == ["vinc_brief", "vinc_search"]
     run_crew(agent)
     assert "concept:rule" in tool_results(llm.seen[3])[0]

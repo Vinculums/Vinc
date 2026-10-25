@@ -91,7 +91,7 @@ key types, read-only use and explicit writes.
 
 ## CrewAI
 
-`pip install "vincs[crewai]"` installs CrewAI 1.15 or later with the adapter, on
+`pip install "vincs[crewai]"` installs CrewAI 1.15.3 or later with the adapter, on
 Python 3.11 to 3.13 (CrewAI does not support 3.14, where the extra installs
 nothing). It needs a vincs release after 0.1.5.
 
@@ -119,7 +119,9 @@ result = Crew(agents=[reviewer], tasks=[review]).kickoff()
 
 With `expose_tools=True` each run adds `vinc_brief` and `vinc_search` and allows 4
 calls between them; `create_vinc_tools(client)` builds the same two tools for
-any agent. `prefetch_pin` holds both reads to one contract; a changed role raises
+any agent. CrewAI runs the tool calls of one model turn at the same time, so the
+cap and `budget.tool_calls` count calls as they start: when one turn goes over,
+which of its calls gets the sentence is not fixed, but how many do is. `prefetch_pin` holds both reads to one contract; a changed role raises
 `VincRoleChanged` before the model is called. `package_id` with `package_space`
 adds one handoff package to every run. Run the agent on a `Task` in a `Crew`:
 `Agent.kickoff` outside a crew is refused, because it would skip the role. Pass
@@ -151,8 +153,8 @@ rejection raises `VincApprovalRejected`, and a blocked draft raises
 `OutputGateStopped`. None of these calls the model again. `step.result(task)`
 returns what released the draft. Tasks you do not bind keep CrewAI's own prompt.
 
-Nothing is written on its own. Record the crew run when it ends, with a
-`vinc_sk_` key:
+Nothing is written unless you call a write helper. Record the crew run when it
+ends, with a `vinc_sk_` key:
 
 ```python
 from vinc import trace_ref

@@ -5,9 +5,17 @@ called. The other parity files test the older single-framework distributions.
 """
 import os
 
-# CrewAI 의 원격 수집과 첫 실행 질문을 끈다. crewai 를 가져오기 전에 둬야 한다.
+from importlib.metadata import PackageNotFoundError, version
+
+# CrewAI 의 원격 수집과 첫 실행 질문을 끄고, 그 로컬 저장소를 시험 전용 자리에 둔다(판마다 따로:
+# 판이 다른 CrewAI 가 남긴 행을 읽지 않게). crewai 를 가져오기 전에 둬야 한다.
+try:
+    _store = "vinc-crewai-tests-" + version("crewai")
+except PackageNotFoundError:
+    _store = "vinc-crewai-tests"
 for _name, _value in {"CREWAI_TESTING": "true", "CREWAI_DISABLE_TELEMETRY": "true",
-                      "OTEL_SDK_DISABLED": "true", "CREWAI_TRACING_ENABLED": "false"}.items():
+                      "OTEL_SDK_DISABLED": "true", "CREWAI_TRACING_ENABLED": "false",
+                      "CREWAI_STORAGE_DIR": _store}.items():
     os.environ.setdefault(_name, _value)
 
 import asyncio  # noqa: E402
@@ -256,8 +264,15 @@ def test_same_tool_call_cap_and_sentence_in_three_adapters():
         for i in range(5)]])
     crew_run(cr.create_agent(Vinc(KEY, transport=mock([])), ROLE, llm=llm, expose_tools=True))
     cr_results = crew_tool_results(llm.seen[1])
-    assert lg_results[:4] == ma_results[:4] == cr_results[:4]
-    assert lg_results[4] == ma_results[4] == cr_results[4] == cap_message(4)
+    assert lg_results[:4] == ma_results[:4]
+    assert lg_results[4] == ma_results[4] == cap_message(4)
+    # CrewAI 는 한 턴의 호출을 함께 돌려서 어느 호출이 상한에 걸리는지는 정해지지 않는다. 수와 문장은 같다.
+    answered = [r for r in cr_results if r != cap_message(4)]
+    with Vinc(KEY, transport=mock([])) as client:
+        brief = lg.create_vinc_tools(client=client)[0]
+        expected = {brief.invoke({"query": f"q{i}"}) for i in range(5)}
+    assert len(cr_results) == 5 and len(answered) == 4
+    assert len(set(answered)) == 4 and set(answered) <= expected and set(lg_results[:4]) <= expected
 
 
 def test_same_disallowed_tools_are_hidden_and_warned_in_three_adapters(caplog):

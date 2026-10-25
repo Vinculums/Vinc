@@ -95,7 +95,8 @@ class _Run:
 
     def held(self, name: str) -> str | None:
         """The result a call to ``name`` gets instead of running, or ``None`` to run it."""
-        # 다른 두 어댑터와 같은 순서: 예산이 먼저, 그다음 승인 보류.
+        # 다른 두 어댑터와 같은 순서: 예산이 먼저, 그다음 승인 보류. CrewAI 가 한 턴의 호출을 함께
+        # 돌리므로 시작하는 순서로 센다.
         with self.lock:
             position, self.used = self.used, self.used + 1
         if self.policy.over_budget(position):

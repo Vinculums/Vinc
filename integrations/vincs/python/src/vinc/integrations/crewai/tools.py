@@ -7,6 +7,7 @@ Agent Framework adapters build from. Nothing here can write.
 from __future__ import annotations
 
 import asyncio
+import threading
 
 from crewai.tools import BaseTool
 from pydantic import BaseModel, PrivateAttr
@@ -22,6 +23,8 @@ from vinc.sdk.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, SEARCH_DESCRIPTION,
 # 근거: [[record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07]]
 _DOWN = "Vinc is not available right now ({code}); answer without it."
 _MISSING = "Vinc found nothing for that ({code}); try a different query."
+# CrewAI 는 한 턴의 도구 호출을 여러 스레드로 함께 돌린다. 상한을 세는 일만 한 줄로 세운다.
+_CAP_LOCK = threading.Lock()
 
 
 class _VincTool(BaseTool):
@@ -37,9 +40,11 @@ class _VincTool(BaseTool):
 
     def _over_cap(self) -> str | None:
         # 상한은 인자 검증 뒤에 센다(CrewAI 가 스키마로 먼저 거른다). Agent Framework 와 같다.
-        if self._cap is not None and not self._cap.spend():
-            return self._cap.message
-        return None
+        if self._cap is None:
+            return None
+        with _CAP_LOCK:
+            spent = self._cap.spend()
+        return None if spent else self._cap.message
 
 
 class VincBriefTool(_VincTool):
