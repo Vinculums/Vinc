@@ -439,6 +439,10 @@ jobs:
           # 스페이스당 분당 툴 호출 상한(모든 플랜 같음). 매번 싣고, 변수가 비면 60 이다.
           ENVVARS+=("VINC_BURST_PER_MINUTE=${{ vars.VINC_BURST_PER_MINUTE || '60' }}")
           ENVVARS+=("VINC_TOPIC_CONVERSION=1")
+          # 이벤트 웹훅 전달 스위치. 매번 싣는다: 변수를 비우면 off 가 들어가 꺼진다. 켜면 허브가
+          # 구독자가 알린 주소로 서명한 요청을 내보낸다(바깥 연결). 켜는 것은 사람이 정한다.
+          # 근거: [[vinc.plan.mcp-events-and-webhooks]]
+          ENVVARS+=("VINC_EVENTS_WEBHOOK=${{ vars.VINC_EVENTS_WEBHOOK || 'off' }}")
           # 임베딩 적용이 청크 벡터 색인을 버리지 않고 이어 넣는다(질의는 배타 가드 안). 매번 싣는다:
           # 리포 변수를 off 로 두면 다음 배포부터 예전처럼 드롭한다(되돌리는 스위치).
           # 근거: [[record:keep-index-mode-survived-104-trials-on-ladybug-0-21-2-at-two-cores-while-the-unguarded-control-crashed-1-of-20-2026-10-18]]
