@@ -80,3 +80,30 @@ def test_a_role_too_large_even_in_compact_form_raises_after_one_retry(async_mode
         _role(async_mode, _hub(seen, compact_fits=False))
     assert caught.value.details["compact"] is True
     assert len(seen) == 2
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
+def test_prefetch_loads_an_over_limit_role_through_the_compact_form(async_mode):
+    seen = []
+
+    def handle(request):
+        seen.append(request)
+        path = request.url.path
+        if path.startswith("/v1/roles/"):
+            return _hub([])(request)
+        if path.endswith("brief"):
+            return httpx.Response(200, json={"status": "none"})
+        return httpx.Response(200, json={"node_hits": [], "rows": []})
+
+    if not async_mode:
+        with VincClient(RO_KEY, transport=httpx.MockTransport(handle)) as client:
+            got = client.prefetch_with_contract(ROLE, "Check the release.", max_chars=60000)
+    else:
+        async def go():
+            async with AsyncVincClient(RO_KEY, transport=httpx.MockTransport(handle)) as client:
+                return await client.prefetch_with_contract(ROLE, "Check the release.",
+                                                           max_chars=60000)
+        got = asyncio.run(go())
+    assert got.contract == COMPACT
+    roles = [r.url.params.get("compact") for r in seen if r.url.path.startswith("/v1/roles/")]
+    assert roles == [None, "true"]
