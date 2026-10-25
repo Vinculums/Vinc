@@ -48,3 +48,94 @@ export function foldPersonOnly(lines: string[], stored: unknown): FoldedPersonOn
   if (structured) return { ok: false, bad: lines.filter((_, i) => parsed[i] === null) };
   return { ok: true, value: lines };
 }
+
+/* ── 실행 정책 칸 넷(output_kind · act_policy · budget · capabilities) ─────────────
+ *  어휘는 `api/role_policy_contract.py` 와 같다. 칸을 고치지 않았으면 읽은 값을 그대로 보내고,
+ *  비우면 키째 뺀다(빈 객체를 정책으로 남기지 않는다). */
+
+export const OUTPUT_KINDS = ["prose", "code", "verdict", "write_proposal", "none"] as const;
+export const ACT_MODES = ["act", "act_and_report", "ask_first", "never"] as const;
+export const BUDGET_INTS = ["tool_calls", "model_calls", "tokens"] as const;
+export const BUDGET_NUMBERS = ["cost_usd", "wall_seconds"] as const;
+export const BUDGET_KEYS = [...BUDGET_INTS, ...BUDGET_NUMBERS] as const;
+export const CAPABILITY_LISTS = ["allow", "approve", "deny"] as const;
+export const CAPABILITY_ID = /^[a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+)*(?:\.\*)?$/;
+
+/** 키를 지운다는 뜻의 값. 저장할 때 props 에서 그 키를 뺀다. */
+export const ABSENT = undefined;
+export type Folded<T> = { ok: true; value: T | undefined } | { ok: false; bad: string[] };
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === "object" && !Array.isArray(v);
+
+/** 저장된 act_policy → 칸의 줄(`action: mode`). 객체가 아니면 빈 칸이다. */
+export const actLines = (v: unknown): string[] =>
+  isRecord(v) ? Object.entries(v).map(([k, m]) => `${k}: ${m}`) : [];
+
+/** 칸의 줄 → act_policy. 사람만 하는 행동은 ask_first 나 never 만 받는다(허브가 경고하고 런이 거절한다). */
+export function foldActPolicy(lines: string[], personActions: string[]): Folded<Record<string, string>> {
+  const value: Record<string, string> = {};
+  const bad: string[] = [];
+  for (const line of lines) {
+    const m = /^([^\s:]+)\s*:\s*(\S+)$/.exec(line);
+    const ok = m && ACTION_KEY.test(m[1]) && !(m[1] in value)
+      && (ACT_MODES as readonly string[]).includes(m[2])
+      && !(personActions.includes(m[1]) && (m[2] === "act" || m[2] === "act_and_report"));
+    if (!ok) bad.push(line);
+    else value[m![1]] = m![2];
+  }
+  if (bad.length) return { ok: false, bad };
+  return { ok: true, value: lines.length ? value : ABSENT };
+}
+
+/** 저장된 budget → 칸마다의 글자. 없는 칸은 빈 글자다. */
+export const budgetFields = (v: unknown): Record<string, string> =>
+  Object.fromEntries(BUDGET_KEYS.map((k) => [k, isRecord(v) && typeof v[k] === "number" ? String(v[k]) : ""]));
+
+/** 칸의 글자 → budget. 앞의 셋은 0 이상 정수, 뒤의 둘은 0 이상 수. 전부 비면 키를 뺀다. */
+export function foldBudget(fields: Record<string, string>): Folded<Record<string, number>> {
+  const value: Record<string, number> = {};
+  const bad: string[] = [];
+  for (const key of BUDGET_KEYS) {
+    const text = (fields[key] || "").trim();
+    if (!text) continue;
+    const n = Number(text);
+    const whole = (BUDGET_INTS as readonly string[]).includes(key);
+    if (!/^\d+(\.\d+)?$/.test(text) || !Number.isFinite(n) || n < 0 || (whole && !Number.isInteger(n))) bad.push(key);
+    else value[key] = n;
+  }
+  if (bad.length) return { ok: false, bad };
+  return { ok: true, value: Object.keys(value).length ? value : ABSENT };
+}
+
+/** 저장된 capabilities → 목록마다 쉼표로 이은 글자. */
+export const capabilityFields = (v: unknown): Record<string, string> =>
+  Object.fromEntries(CAPABILITY_LISTS.map((k) => [k, isRecord(v) && Array.isArray(v[k])
+    ? (v[k] as unknown[]).map(String).join(", ") : ""]));
+
+/** 칸의 글자 → capabilities. 같은 id 가 두 목록에 있으면 막는다. 전부 비면 키를 뺀다. */
+export function foldCapabilities(fields: Record<string, string>): Folded<Record<string, string[]>> {
+  const value: Record<string, string[]> = {};
+  const bad: string[] = [];
+  const seen = new Map<string, string>();
+  for (const key of CAPABILITY_LISTS) {
+    const ids = (fields[key] || "").split(",").map((x) => x.trim()).filter(Boolean);
+    for (const id of ids) {
+      if (!CAPABILITY_ID.test(id) || (seen.has(id) && seen.get(id) !== key)) bad.push(id);
+      seen.set(id, key);
+    }
+    if (ids.length) value[key] = [...new Set(ids)];
+  }
+  if (bad.length) return { ok: false, bad };
+  return { ok: true, value: Object.keys(value).length ? value : ABSENT };
+}
+
+/** 두 정책 값이 같은가(키 순서 무관). 고치지 않은 칸을 가려 읽은 값을 그대로 보내는 데 쓴다. */
+export function samePolicy(a: unknown, b: unknown): boolean {
+  if (isRecord(a) && isRecord(b)) {
+    const ka = Object.keys(a), kb = Object.keys(b);
+    return ka.length === kb.length && ka.every((k) => samePolicy(a[k], b[k]));
+  }
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => samePolicy(x, b[i]));
+  return a === b;
+}
