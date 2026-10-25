@@ -12,6 +12,8 @@ pip install "vinc-agent-framework>=0.1.9"
 
 This README describes vinc-agent-framework 0.1.9, which requires vinc-client 0.1.13 or later.
 
+For a new install, prefer `pip install "vincs[agent-framework]"`: it has this package as `vinc.integrations.agent_framework`, with the same names. `vinc-agent-framework` keeps publishing under this name for existing installs.
+
 Set `VINC_API_KEY` to a member key. A `vinc_ro_` key is enough for the providers, the tools and `prefetch`. `record_episode` and `write_package` need a `vinc_sk_` key; with a read only key they raise `VincAuthError` (`read_only_key`) before anything is sent. Give the write key only to the step that writes.
 
 ## Role mode or context mode

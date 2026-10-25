@@ -13,6 +13,8 @@ pip install "vinc-langgraph[agents]>=0.1.10"   # plus the middleware for create_
 
 This README describes vinc-langgraph 0.1.10, which requires vinc-client 0.1.13 or later.
 
+For a new install, prefer `pip install "vincs[langgraph]"`: it has this package as `vinc.integrations.langgraph`, with the same names, and includes LangChain for the middleware. `vinc-langgraph` keeps publishing under this name for existing installs.
+
 Set `VINC_API_KEY` to a member key. A `vinc_ro_` key is enough for every read helper, the middleware and the tools. `record_episode` and `write_package` need a `vinc_sk_` key; with a read only key they raise `VincAuthError` (`read_only_key`) before anything is sent. Give the write key only to the node that writes.
 
 ## Role mode or context mode

@@ -16,6 +16,8 @@ pip install "vinc-client>=0.1.13"
 
 This README describes vinc-client 0.1.13. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
 
+For a new install, prefer `pip install vincs`: it has the same client as `vinc.sdk`, the framework adapters as extras and the `vinc` command. `vinc-client` keeps publishing under this name for existing installs.
+
 ## Keys and spaces
 
 Create a member key in your Vinc account. `VincClient()` reads it from `VINC_API_KEY`; `VINC_API_URL` overrides the hub address (https, or http on loopback only).
