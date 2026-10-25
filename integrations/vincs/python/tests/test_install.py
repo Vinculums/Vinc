@@ -79,9 +79,18 @@ def _requirements_by_extra():
     return groups
 
 
+def _host_plugins():
+    # 호스트가 진입점으로 자기 환경에 싣는 어댑터 모듈. 콘솔 스크립트는 빼고 센다.
+    from importlib.metadata import distribution
+    return {entry.value.split(":")[0].split(".")[2]
+            for entry in distribution("vincs").entry_points
+            if entry.group != "console_scripts" and entry.value.startswith("vinc.integrations.")}
+
+
 def test_every_integration_has_its_extra_and_all_installs_it():
     # 어댑터 하나는 vinc.integrations 아래 패키지 하나와 같은 이름의 엑스트라 하나다(- 는 _).
     # 엑스트라는 무언가를 깔아야 하고, all 은 모든 어댑터 엑스트라의 요구를 담아야 한다.
+    # 호스트 플러그인만 비어도 된다: 호스트가 곧 프레임워크다.
     import pkgutil
     import vinc.integrations
     modules = {info.name for info in pkgutil.iter_modules(vinc.integrations.__path__)
@@ -89,8 +98,10 @@ def test_every_integration_has_its_extra_and_all_installs_it():
     groups = _requirements_by_extra()
     adapters = {extra for extra in groups if extra not in {"all", "test"}}
     assert {extra.replace("-", "_") for extra in adapters} == modules
+    hosted = _host_plugins()
+    assert hosted <= modules, f"entry points name no adapter: {hosted - modules}"
     for extra in adapters:
-        assert groups[extra], f"extra {extra} installs nothing"
+        assert groups[extra] or extra.replace("-", "_") in hosted, f"extra {extra} installs nothing"
         assert groups[extra] <= groups["all"], f"all leaves out {extra}: {groups[extra] - groups['all']}"
 
 
