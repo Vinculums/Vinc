@@ -43,7 +43,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from store import httpbody
 from store.envflag import truthy
 
-from . import burst, community, edverify, entitlement, toolcall, tools, viewurl
+from . import burst, community, edverify, entitlement, modern, toolcall, tools, viewurl
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
 from .rpc import PROTOCOL_VERSIONS, Dispatcher
@@ -1165,7 +1165,8 @@ class _Handler(BaseHTTPRequestHandler):
                 "Vary": "Origin",
                 "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
                 "Access-Control-Allow-Headers":
-                    "Authorization, Content-Type, Mcp-Session-Id, Mcp-Protocol-Version",
+                    "Authorization, Content-Type, Mcp-Session-Id, Mcp-Protocol-Version, "
+                    "Mcp-Method, Mcp-Name",
                 "Access-Control-Expose-Headers": "Mcp-Session-Id, WWW-Authenticate",
                 "Access-Control-Max-Age": "86400"}
 
@@ -1183,8 +1184,12 @@ class _Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         return bool(origin) and origin not in self._CORS_ORIGINS
 
-    def _protocol_version_rejected(self) -> str | None:
-        """`MCP-Protocol-Version` 검증. 문제 없으면 None, 있으면 오류 문자열.
+    def _protocol_version_rejected(self) -> dict | None:
+        """`MCP-Protocol-Version` 검증. 문제 없으면 None, 있으면 400 에 실을 JSON-RPC 오류.
+
+        모던 리비전도 받는다. 거절 본문은 UnsupportedProtocolVersion(-32022)이다: 두 세대를
+        다 아는 클라이언트는 400 본문을 읽고, 이 오류면 `supported` 로 다시 보내고 아니면
+        `initialize` 로 물러난다. 본문을 아직 안 읽은 자리라 `id` 는 null 이다.
 
         2025-06-18 스펙: 초기화 뒤 클라이언트는 이 헤더를 실어야 하고, 서버는 지원
         하지 않는 값에 400 을 준다. 헤더가 없으면 2025-03-26 으로 가정한다(하위호환).
@@ -1195,10 +1200,9 @@ class _Handler(BaseHTTPRequestHandler):
         참조). 제대로 동작하는 클라이언트는 협상 결과를 그대로 실으므로 정의상 이
         목록 안이다."""
         want = self.headers.get("MCP-Protocol-Version")
-        if want is None or want in PROTOCOL_VERSIONS:
+        if want is None or want in PROTOCOL_VERSIONS or want in modern.MODERN_VERSIONS:
             return None
-        return (f"unsupported MCP-Protocol-Version: {want!r} "
-                f"(supported: {', '.join(PROTOCOL_VERSIONS)})")
+        return modern.unsupported(want, PROTOCOL_VERSIONS).reply(None)
 
     def do_OPTIONS(self):  # noqa: N802
         """프리플라이트 — 허용 오리진에만 CORS 를 붙여 204."""
@@ -1522,7 +1526,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(403, {"error": "origin not allowed"})
             bad = self._protocol_version_rejected()
             if bad:
-                return self._json(400, {"error": bad})
+                return self._json(400, bad)
             # 주소로 온 팀이다. 토큰은 **이 주소**에 묶여 있어야 한다.
             try:
                 auth = self._auth(space, presented_at=f"/t/{space}/mcp" if space else "/mcp")
@@ -1546,6 +1550,15 @@ class _Handler(BaseHTTPRequestHandler):
             msgs = msg if batch else [msg]
             if not msgs or any(not isinstance(m, dict) or not m for m in msgs):
                 return self._json(400, {"error": "expected a JSON-RPC message"})
+            # 모던 요청은 버전·능력이 본문 `_meta` 에 있고 헤더가 그것을 비춘다. 어긋나거나
+            # 모자라면 스펙대로 400 과 JSON-RPC 오류다. `_meta` 가 없는 요청(핸드셰이크
+            # 세대)은 여기를 그냥 지난다. 배치는 모던 세대에 없으므로 메시지마다 디스패처가 본다.
+            modern_version = None
+            if not batch:
+                modern_version, rej = modern.classify(msg, PROTOCOL_VERSIONS)
+                rej = rej or modern.check_headers(self.headers, msg, modern_version)
+                if rej is not None:
+                    return self._json(rej.status, rej.reply(msg.get("id")))
             session = self.headers.get("Mcp-Session-Id") or "default"
             # forced_owner: 원격 인증경로가 해석한 소유자 → tools 가 args.owner 를
             # 무시하고 강제 스탬핑(멀티테넌트 봉쇄, B-B2). static/None 이면 하위호환.
@@ -1592,10 +1605,10 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._verification_unavailable()
 
             def _tool_error(m, message):
-                return self._json(200, {
-                    "jsonrpc": "2.0", "id": m.get("id"),
-                    "result": {"isError": True,
-                               "content": [{"type": "text", "text": message}]}})
+                result = {"isError": True, "content": [{"type": "text", "text": message}]}
+                if modern.classify(m, PROTOCOL_VERSIONS)[0]:
+                    result = modern.complete(result)
+                return self._json(200, {"jsonrpc": "2.0", "id": m.get("id"), "result": result})
 
             for kind in ("on_device", "space_not_found", "role_denied"):
                 denied = next(((m, g) for m, g in gated if g.kind == kind), None)
@@ -1646,6 +1659,11 @@ class _Handler(BaseHTTPRequestHandler):
             # `Mcp-Session-Id` 는 **클라이언트가 준 값을 되돌려 줄 뿐**이다. 우리는
             # 세션을 발급하지도 추적하지도 않는다. 그래도 되돌리는 이유는 지금 붙어
             # 있는 호스트의 관측 동작을 바꾸지 않기 위해서다 — 없앨 이득이 없다.
+            # 모던 요청은 세션 id 를 되돌리지 않고(스펙: 발급도 반사도 하지 않는다), 모르는
+            # 메서드는 404 다. 핸드셰이크 세대는 지금처럼 200 과 반사.
+            if modern_version:
+                code = (replies[0].get("error") or {}).get("code")
+                return self._json(404 if code == -32601 else 200, replies[0])
             return self._json(200, replies if batch else replies[0],
                               {"Mcp-Session-Id": session})
         if url.path in ("/sync/push", "/sync/pull", "/sync/docs-push", "/sync/docs-pull"):

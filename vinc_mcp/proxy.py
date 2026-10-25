@@ -24,7 +24,7 @@ import sys
 from collections.abc import Mapping
 from typing import IO, Any
 
-from . import __version__, hubhttp
+from . import __version__, hubhttp, modern
 from .remote import _endpoint
 from .rpc import LATEST_PROTOCOL_VERSION, PROTOCOL_VERSIONS, error_reply
 
@@ -108,11 +108,14 @@ class Proxy:
         if not self.token:
             return self._signed_out(msg)
         body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
-        extra = {}
-        if self.session_id:
-            extra["Mcp-Session-Id"] = self.session_id
-        if self.protocol:
-            extra["MCP-Protocol-Version"] = self.protocol
+        # 모던 요청은 자기 `_meta` 버전과 메서드·이름을 헤더로 비춘다(호스티드가 대조한다).
+        # 세션도 협상도 없는 세대라 아래 두 헤더는 싣지 않는다.
+        extra = modern.request_headers(msg) if isinstance(msg, dict) else {}
+        if not extra:
+            if self.session_id:
+                extra["Mcp-Session-Id"] = self.session_id
+            if self.protocol:
+                extra["MCP-Protocol-Version"] = self.protocol
         msg_id = msg.get("id") if isinstance(msg, dict) else None
         try:
             resp = hubhttp.request(self.url, token=self.token, data=body, timeout=self.timeout,
