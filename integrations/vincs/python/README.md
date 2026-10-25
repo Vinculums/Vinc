@@ -85,6 +85,35 @@ The Python distribution version is independent of the product version reported
 by `vinc --version`. See the [SDK guide](https://vincs.io/docs/frameworks/) for
 key types, read-only use and explicit writes.
 
+## Adding an adapter
+
+A new framework or host adapter joins `vincs` as one module and one extra. It
+needs no distribution, trusted publisher or release tag of its own.
+
+1. Put its source in `src/vinc/integrations/<name>/`. Import the SDK from
+   `vinc.sdk` and the framework only inside that package, so `import vinc`
+   never loads it.
+2. Add an extra named after the module, with `-` for `_` (module
+   `agent_framework`, extra `agent-framework`), that lists the framework's
+   requirements, and add the same name to `all`. Add the extra together with
+   its adapter, never ahead of it.
+3. If the host finds plugins through an entry point, declare it under
+   `[project.entry-points."<group>"]` and point it at a name in that package.
+   Entry points are installed by every `vincs` install, extra or not, so the
+   target has to import with only the host and the SDK present.
+
+`tests/test_install.py` fails when a module under `vinc.integrations` has no
+extra of its name, when an extra installs nothing, or when `all` leaves one out.
+CI builds the wheel, installs it once per extra in a clean environment, imports
+the adapters that extra enables and runs `vinc --version`; it reads the extras
+from the wheel, so a new one is covered without editing the workflow.
+
+The LangGraph and Agent Framework adapters are the exception to step 1. Their
+source stays in `integrations/langgraph/python` and
+`integrations/agent-framework/python`, because `vinc-langgraph` and
+`vinc-agent-framework` still publish from it, and `hatch_build.py` copies it in
+at build time with its `vinc_client` imports pointed at `vinc.sdk`.
+
 ## Versions
 
 | vincs | vinc-client | vinc-langgraph | vinc-agent-framework | What it adds |

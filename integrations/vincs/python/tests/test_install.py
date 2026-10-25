@@ -1,6 +1,7 @@
 """Installed-wheel acceptance: no repository imports or native engine needed."""
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -32,6 +33,8 @@ def test_cli_help_and_version_without_native_engine():
         result = run_cli(*args)
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip()
+    # 자식 프로세스의 argv[0] 이 아니라 명령 이름으로 사용법을 말한다.
+    assert run_cli("--help").stdout.startswith("usage: vinc ")
 
 
 def test_installed_cli_exposes_guards_and_preview():
@@ -62,6 +65,33 @@ def test_optional_integration_modules_use_the_unified_sdk():
         spec = importlib.util.find_spec(f"vinc.integrations.{name}")
         assert spec is not None
         assert Path(spec.origin).is_relative_to(Path(vinc.__file__).parent)
+
+
+def _requirements_by_extra():
+    from importlib.metadata import metadata
+    meta = metadata("vincs")
+    groups = {extra: set() for extra in meta.get_all("Provides-Extra") or []}
+    for requirement in meta.get_all("Requires-Dist") or []:
+        spec, _, marker = requirement.partition(";")
+        found = re.search(r"""extra\s*==\s*["']([^"']+)["']""", marker)
+        if found:
+            groups.setdefault(found.group(1), set()).add(spec.strip())
+    return groups
+
+
+def test_every_integration_has_its_extra_and_all_installs_it():
+    # 어댑터 하나는 vinc.integrations 아래 패키지 하나와 같은 이름의 엑스트라 하나다(- 는 _).
+    # 엑스트라는 무언가를 깔아야 하고, all 은 모든 어댑터 엑스트라의 요구를 담아야 한다.
+    import pkgutil
+    import vinc.integrations
+    modules = {info.name for info in pkgutil.iter_modules(vinc.integrations.__path__)
+               if not info.name.startswith("_")}
+    groups = _requirements_by_extra()
+    adapters = {extra for extra in groups if extra not in {"all", "test"}}
+    assert {extra.replace("-", "_") for extra in adapters} == modules
+    for extra in adapters:
+        assert groups[extra], f"extra {extra} installs nothing"
+        assert groups[extra] <= groups["all"], f"all leaves out {extra}: {groups[extra] - groups['all']}"
 
 
 def test_account_cli_reaches_rest_and_preserves_result():
