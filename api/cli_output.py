@@ -17,6 +17,7 @@ LIST_FIELDS = {
     "doc ls": "docs", "graph": "nodes", "decide": "nodes",
     "node neighbors": "neighbors", "merge candidates": "candidates",
     "merge rejections": "rejections", "diagnose": "components", "edges": "edges",
+    "gate check": "paths",
     "shim ls": "shims", "shim watch": "drafts",
 }
 
@@ -125,6 +126,10 @@ def _human(result: Any, command: str) -> str:
         if result.get("note"):
             lines.append("note: " + str(result["note"]))
         return "\n".join(lines)
+    if command == "gate check":
+        # 결정 문은 사람용 출력이 곧 잡 요약(Markdown)이다. 같은 글을 두 벌 두지 않는다.
+        from .cli_gate import markdown
+        return markdown(result)
     if command == "path":
         lines = [f"{result.get('a', '')} -> {result.get('b', '')}; "
                  f"found: {result.get('found', False)}; length: {result.get('length')}"]

@@ -301,6 +301,57 @@ jobs:
           python -X utf8 scripts/gate_homepage_drift.py --selftest
           python -X utf8 scripts/gate_homepage_drift.py
 
+      # 결정 문(모델 없음): 이 PR 이 건드린 파일을 다스리는 기록·결정을 호스티드 그래프에서
+      # 찾아 스텝 요약에 적는다. 알림이다: 막지 않고, 실패해도 잡을 빨갛게 하지 않는다.
+      # 잡을 따로 세우지 않은 이유는 위 PR 제목 게이트와 같다(청구가 1분부터, 이 잡은 이미
+      # base..head 를 갖는다). 키는 저장소 시크릿 VINC_GATE_READ_KEY(읽기 전용 vinc_ro_ 키)이고
+      # 사람이 넣는다. 없으면(포크 PR 은 늘 없다) 알리고 건너뛴다. 스페이스는 저장소 변수
+      # VINC_GATE_SPACE(없으면 개인 그래프). 쓰기 키가 들어 있으면 실행 하나가 실행 기록
+      # 하나가 되고, 원본 결과는 아래 아티팩트로 남는다.
+      # 근거: [[vinc.plan.agent-harness-work-order-2026-10-25 §2]]
+      - name: Decision gate notice (recorded decisions on touched paths, advisory)
+        id: gate
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          VINC_API_KEY: ${{ secrets.VINC_GATE_READ_KEY }}
+          VINC_SPACE: ${{ vars.VINC_GATE_SPACE }}
+          BASE_REF: ${{ github.base_ref }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -uo pipefail
+          if [ -z "${VINC_API_KEY:-}" ]; then
+            msg="Decision gate skipped: the repository secret VINC_GATE_READ_KEY is not set. A person adds a read-only Vinc key (vinc_ro_) there; fork pull requests never receive it."
+            echo "::notice title=Decision gate::$msg"
+            printf '### Decision gate\n\n%s\n' "$msg" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          case "$VINC_API_KEY" in
+            vinc_ro_*) ;;   # 읽기 전용: 실행 기록을 쓰지 않으므로 SDK 가 필요 없다
+            *) pip install --quiet --disable-pip-version-check ./integrations/client/python || true ;;
+          esac
+          trace="$RUNNER_TEMP/decision-gate.json"
+          python -X utf8 -m api.cli --target account --format json gate check \
+            --diff "origin/$BASE_REF" --summary "$GITHUB_STEP_SUMMARY" --trace "$trace" \
+            --run-id "$RUN_ID" --task-ref "$PR_URL" --host github-actions > "$RUNNER_TEMP/gate.out"
+          code=$?
+          if [ "$code" -ne 0 ]; then
+            echo "::warning title=Decision gate::the gate did not run (exit $code); the step log has the error"
+            printf '### Decision gate\n\nThe gate did not run (exit %s); the step log has the error.\n' "$code" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f "$trace" ]; then echo "trace=$trace" >> "$GITHUB_OUTPUT"; fi
+          exit 0
+      - name: Keep the decision gate result
+        if: github.event_name == 'pull_request' && steps.gate.outputs.trace != ''
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: decision-gate
+          path: ${{ steps.gate.outputs.trace }}
+          retention-days: 30
+
   core:
     name: core (498 tests + forbidden-terms gate)
     # 호스티드 러너에서 돈다. 잡마다 새 VM 을 받으므로 `core-pkns` 와 디스크·임시

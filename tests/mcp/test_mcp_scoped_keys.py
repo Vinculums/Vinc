@@ -69,6 +69,8 @@ def _min_args(name: str) -> dict:
                 "action": "agent_detail", "payload": {"shareId": "0198c0de-2222-7222-8333-444455556666"}}
     if name == "vinc_edges":
         out["node"] = "concept:x"
+    if name == "vinc_decide_paths":
+        return {"paths": ["vinc:api/sync.py"]}   # 빈 배열은 인자 오류다(1..200 경로)
     for req in sch.get("required", []):
         p = (sch.get("properties") or {}).get(req) or {}
         typ = p.get("type")
