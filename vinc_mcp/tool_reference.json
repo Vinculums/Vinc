@@ -1676,6 +1676,45 @@
    ]
   },
   {
+   "name": "vinc_runs",
+   "summary": "List recorded agent runs, newest first. Pass cited to see only the runs that cited one claim, with whether that claim has been retired.",
+   "docs_url": "https://vincs.io/docs/mcp/tools/#vinc_runs",
+   "reference": "List the agent run records of this space, newest first: {runs:[{id, run_id, role, outcome, title, date, host, cited_ids}], total, truncated}. Pass cited with a graph id (record:..., decision:... or doc:...) to keep only the runs whose cited_ids hold it; each run then also lists matched, and the result carries claim:{id, found, retired, valid_until, superseded_by}. A retired claim means every run it lists should be re-checked: the same runs arrive one by one as run.citation_superseded events. Filter by role with its slug or concept:agent- id. Read-only.",
+   "annotations": {
+    "title": "List agent run records",
+    "readOnlyHint": true,
+    "openWorldHint": false,
+    "destructiveHint": false
+   },
+   "params": [
+    {
+     "name": "cited",
+     "type": "string",
+     "required": false,
+     "description": "A claim id with its type prefix: record:..., decision:... or doc:...; omit to list runs without filtering."
+    },
+    {
+     "name": "role",
+     "type": "string",
+     "required": false,
+     "description": "Only runs of this role (agent slug or concept:agent- id)."
+    },
+    {
+     "name": "limit",
+     "type": "integer",
+     "required": false,
+     "description": "Most runs to return."
+    },
+    {
+     "name": "space",
+     "type": "string",
+     "required": false,
+     "description": "Omit for your personal graph; pass a team id or 'community:<uuid>' to act there (vinc_whoami lists them).",
+     "reference": "Space to act in: omit (or 'personal') for your personal graph, a team id for that team's graph, or 'community:<uuid>' for a public community (readable without joining; edit it with vinc_community_write). vinc_whoami lists your ids and roles; a team you are not an active member of answers as if it did not exist. Ignored at a team address (/t/<team-uuid>/mcp)."
+    }
+   ]
+  },
+  {
    "name": "search",
    "summary": "Search the signed-in Vinc graph for documents and nodes. Read a result's full text with fetch.",
    "docs_url": "https://vincs.io/docs/mcp/tools/#search",

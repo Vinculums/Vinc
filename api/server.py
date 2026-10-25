@@ -744,6 +744,17 @@ class VincApp:
         return self._read(lambda r: events.scan(r, owner=_req(p, "owner"), since=since,
                                                 limit=limit, role=p.get("role"), kinds=kinds))
 
+    def read_runs(self, p):
+        """실행 기록 목록(조회 전용), `cited` 로 그 주장을 인용한 실행만. 계약: `api/runs.py`."""
+        from . import runs
+        try:
+            cited = runs.parse_cited(p.get("cited"))
+            limit = runs.clamp_limit(p.get("limit"))
+        except ValueError as exc:
+            return 400, {"kind": "runs", "executed": False, "error": str(exc)}
+        return self._read(lambda r: runs.list_runs(r, owner=_req(p, "owner"), cited=cited,
+                                                   role=p.get("role"), limit=limit))
+
     def read_operation_status(self, p):
         from . import operation_receipts
         return self._read(lambda r: operation_receipts.status(r, owner=_req(p, "owner"),
@@ -2961,6 +2972,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/node-context": app.read_node_context,
             "/operation-status": app.read_operation_status,
             "/events": app.read_events,   # 변경 기록에서 계산한 이벤트 피드
+            "/runs": app.read_runs,   # 실행 기록 목록, 인용한 주장으로 거른다
             "/community-agent/import-result": app.read_community_agent_result,
             "/brief": app.read_brief,   # W1 — 질문 하나로 답변 재료 조인
             "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)
