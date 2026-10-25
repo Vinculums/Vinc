@@ -906,6 +906,7 @@
     "record:a-failure-reason-nothing-reads-is-not-an-error-message",
     "record:a-logo-ssot-that-reaches-nobody",
     "record:a-remnant-segfaults-every-write-to-its-table-not-only-inserts-2026-09-25",
+    "record:a-rotated-refresh-token-answers-again-within-sixty-seconds-2026-10-25",
     "record:a-space-transfer-over-4mb-surfaced-as-a-logout-2026-09-18",
     "record:a-stuck-write-window-is-finalized-only-when-its-chunks-rebuild-the-recorded-hash-2026-09-30",
     "record:a-tall-favicon-viewbox-is-stretched-into-a-square-2026-10-21",
@@ -946,6 +947,7 @@
     "record:guarded-node-edits-carry-the-view-owner-2026-10-16",
     "record:health-that-does-not-reach-its-dependency-answers-for-the-wrong-process",
     "record:hook-created-worktrees-are-not-removed-by-the-harness-2026-09-13",
+    "record:hosted-mcp-oauth-support-before-vin-796-2026-10-25",
     "record:hosted-runners-run-the-test-suites-no-faster-with-the-temp-dir-on-tmpfs",
     "record:hub-http-clients-refuse-redirects-2026-10-16",
     "record:hub-segfault-loop-on-embedding-apply-2026-09-24",
@@ -1342,6 +1344,9 @@
     "record:a-remnant-segfaults-every-write-to-its-table-not-only-inserts-2026-09-25": {
       "validity": "current"
     },
+    "record:a-rotated-refresh-token-answers-again-within-sixty-seconds-2026-10-25": {
+      "validity": "current"
+    },
     "record:a-space-transfer-over-4mb-surfaced-as-a-logout-2026-09-18": {
       "validity": "unknown"
     },
@@ -1460,6 +1465,9 @@
       "validity": "current"
     },
     "record:hook-created-worktrees-are-not-removed-by-the-harness-2026-09-13": {
+      "validity": "current"
+    },
+    "record:hosted-mcp-oauth-support-before-vin-796-2026-10-25": {
       "validity": "current"
     },
     "record:hosted-runners-run-the-test-suites-no-faster-with-the-temp-dir-on-tmpfs": {

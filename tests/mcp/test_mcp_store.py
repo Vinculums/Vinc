@@ -38,10 +38,18 @@ def test_tokens_expiry(store):
     assert store.get_token("t1", now=500) is None         # 만료 시 삭제됨
 
 
-def test_refresh_single_consume(store):
+def test_refresh_rotates_once_and_answers_again_only_inside_the_window(store):
+    """회전은 한 번만 새 쌍을 만든다. 창 안의 재요청은 **같은 쌍**, 창 밖은 None(VIN-796)."""
     store.add_refresh("r1", "c1", "user:u1", "pro")
-    assert store.pop_refresh("r1")["owner"] == "user:u1"
-    assert store.pop_refresh("r1") is None
+    assert store.get_refresh("r1")["owner"] == "user:u1"
+    first = store.rotate_refresh("r1", access="a2", refresh="r2", exp=5000, now=1000)
+    assert first["replayed"] is False and first["owner"] == "user:u1" and first["plan"] == "pro"
+    again = store.rotate_refresh("r1", access="a3", refresh="r3", exp=5000, now=1030)
+    assert again["replayed"] is True
+    assert (again["access_token"], again["refresh_token"]) == ("a2", "r2")
+    assert store.get_refresh("r3") is None                       # 새 쌍을 만들지 않았다
+    assert store.rotate_refresh("r1", access="a4", refresh="r4", exp=9e9, now=1061) is None
+    assert store.rotate_refresh("nope", access="a5", refresh="r5", exp=9e9, now=1000) is None
 
 
 def test_connect_request_consume(store):
