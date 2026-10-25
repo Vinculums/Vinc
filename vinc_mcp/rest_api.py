@@ -137,6 +137,8 @@ def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
         # 고정한 역할이 바뀌었다. 계약은 싣지 않고 지금의 rev·hash 만 준다.
         return (409, "role_changed", "The role changed since it was pinned.",
                 {k: result[k] for k in ("id", "rev", "hash") if k in result})
+    if error == "invalid_export_format":
+        return 400, "invalid_argument", note or error
     if error == "role_contract_too_large":
         # 계약이 읽기 예산을 넘었다. 서버 고장이 아니라 요청을 바꾸면(compact) 읽히는 일이다.
         return (400, "role_contract_too_large", note or "The role contract exceeds the read limit.",

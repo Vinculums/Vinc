@@ -204,6 +204,39 @@
    ]
   },
   {
+   "name": "vinc_role_export",
+   "summary": "Export one of your Agent roles as a file a host installs: a SKILL.md, a Claude Code agent, GPT instructions, an AGENTS.md section, a .vincpack, or the MCP settings for each host. It does not run the role.",
+   "docs_url": "https://vincs.io/docs/mcp/tools/#vinc_role_export",
+   "reference": "Export one role you can read as a file for an agent host. format skill returns SKILL.md (front matter name and description, then the complete contract fenced as graph data, its reading list and tools), the shape OpenClaw, Hermes, Cursor and Grok Bot load; claude returns the Claude Code subagent file; gpt returns instructions for a custom GPT or project; agents-md returns one AGENTS.md section; vincpack returns a share pack (base64) that merges by id when imported; mcp returns the MCP server settings for each host, with no key in them. Every format but mcp carries the role's rev and contract hash, so a host can pin the version it installed. Nothing is cut for size. Returns kind role_export, filename, path (skill only), mime, encoding (utf8 or base64), content, content_hash, rev and hash. An unknown, foreign or non-role id returns found:false. This tool does not run or install the role. Read-only.",
+   "annotations": {
+    "title": "Export a role for a host",
+    "readOnlyHint": true,
+    "openWorldHint": false,
+    "destructiveHint": false
+   },
+   "params": [
+    {
+     "name": "role",
+     "type": "string",
+     "required": true,
+     "description": "Role slug (agent-dev-core) or exact concept:agent- id."
+    },
+    {
+     "name": "format",
+     "type": "string",
+     "required": false,
+     "description": "The file to make; default skill."
+    },
+    {
+     "name": "space",
+     "type": "string",
+     "required": false,
+     "description": "Omit for your personal graph; pass a team id or 'community:<uuid>' to act there (vinc_whoami lists them).",
+     "reference": "Space to act in: omit (or 'personal') for your personal graph, a team id for that team's graph, or 'community:<uuid>' for a public community (readable without joining; edit it with vinc_community_write). vinc_whoami lists your ids and roles; a team you are not an active member of answers as if it did not exist. Ignored at a team address (/t/<team-uuid>/mcp)."
+    }
+   ]
+  },
+  {
    "name": "vinc_role_check",
    "summary": "Check a finished output against a role's gates before you deliver it: pass, block, or interrupt (a person decides). Deterministic, no model. A claim that something already ran always blocks.",
    "docs_url": "https://vincs.io/docs/mcp/tools/#vinc_role_check",

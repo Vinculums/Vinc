@@ -108,6 +108,13 @@ def _human(result: Any, command: str) -> str:
     if command == "role get":
         header = _rows([{key: result.get(key) for key in ("id", "title", "domain")}])
         return "\n".join([*header, str(result.get("rendered") or "")])
+    if command == "role export":
+        # 사람용 출력은 파일 내용 그대로다(`vinc role export x > SKILL.md`). 팩은 바이너리라 경로만 말한다.
+        if result.get("written"):
+            return f"wrote {result['written']} ({result.get('bytes', 0)} bytes, contract hash {result.get('hash', '')})"
+        if result.get("encoding") == "base64":
+            return "This format is binary; pass --out DIR to write the file."
+        return str(result.get("content") or "")
     if command == "role check":
         lines = [f"verdict: {result.get('verdict', '')}"]
         for key, label in (("failed_checks", "failed"), ("person_only_actions", "person only")):

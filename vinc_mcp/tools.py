@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**31종** — 읽기 22(search·node·role·role_check·edges·brief·recall·graph·decide·domains·suggest_ties·
+**32종** — 읽기 23(search·node·role·role_export·role_check·edges·brief·recall·graph·decide·domains·suggest_ties·
 neighbors·path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami·operation_status·community_read) + 쓰기 9
 (ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete·community_write).
 "단일 write 표면(ingest 하나)"은
@@ -679,6 +679,21 @@ def _t_role(args, bridge):
                     compact=args.get("compact") is True)
 
 
+def _t_role_export(args, bridge):
+    # 렌더링은 사이드카가 한다: vincpack 은 api 의 팩 인코더가 필요하고 vinc_mcp 는 api 를 부르지 않는다.
+    role, fmt = args.get("role"), args.get("format") or "skill"
+    if not isinstance(role, str) or not role.strip():
+        return {"kind": "role_export", "executed": False, "error": "role_required",
+                "note": "Name the role to export."}
+    from .roles import ROLE_EXPORT_FORMATS
+    if fmt not in ROLE_EXPORT_FORMATS:
+        return {"kind": "role_export", "executed": False, "error": "invalid_export_format",
+                "note": "format must be one of " + ", ".join(ROLE_EXPORT_FORMATS)}
+    # 역할인지·남의 것인지는 사이드카가 vinc_role 과 같은 규칙으로 가린다.
+    return bridge.request("GET", "/roles/export", params={
+        "owner": _owner(args, bridge), "role": role.strip(), "format": fmt})
+
+
 def _t_role_check(args, bridge):
     # 패키지(vinc_client.output_gate)와 같은 결정론 게이트를 허브에서 돌린다. MCP 로 붙는
     # 호스트도 같은 판정을 받게 하려는 것이다. 모델이 보낸 증거는 받지 않는다: 이 도구의
@@ -893,6 +908,10 @@ _SUMMARY: dict[str, str] = {
     "vinc_role": (
         "Read one Agent role contract by slug or concept id, or omit role to list the roster. Pass "
         "expected_hash to get the contract only if the role has not changed since you pinned it. It "
+        "does not run the role."),
+    "vinc_role_export": (
+        "Export one of your Agent roles as a file a host installs: a SKILL.md, a Claude Code agent, "
+        "GPT instructions, an AGENTS.md section, a .vincpack, or the MCP settings for each host. It "
         "does not run the role."),
     "vinc_role_check": (
         "Check a finished output against a role's gates before you deliver it: pass, block, or "
@@ -1188,6 +1207,28 @@ TOOLS: list[dict] = [
                        "description": "Roster candidate offset, from next_offset; default 0."},
             "owner": {"type": "string"}}, "required": []},
         "run": _t_role,
+    },
+    {
+        "name": "vinc_role_export",
+        "reference": "Export one role you can read as a file for an agent host. format skill "
+                       "returns SKILL.md (front matter name and description, then the complete "
+                       "contract fenced as graph data, its reading list and tools), the shape "
+                       "OpenClaw, Hermes, Cursor and Grok Bot load; claude returns the Claude Code "
+                       "subagent file; gpt returns instructions for a custom GPT or project; "
+                       "agents-md returns one AGENTS.md section; vincpack returns a share pack "
+                       "(base64) that merges by id when imported; mcp returns the MCP server "
+                       "settings for each host, with no key in them. Every format but mcp carries "
+                       "the role's rev and contract hash, so a host can pin the version it "
+                       "installed. Nothing is cut for size. Returns kind role_export, filename, "
+                       "path (skill only), mime, encoding (utf8 or base64), content, "
+                       "content_hash, rev and hash. An unknown, foreign or non-role id returns "
+                       "found:false. This tool does not run or install the role. Read-only.",
+        "inputSchema": {"type": "object", "properties": {
+            "role": {"type": "string", "description": "Role slug (agent-dev-core) or exact concept:agent- id."},
+            "format": {"type": "string", "enum": ["skill", "claude", "gpt", "agents-md", "vincpack", "mcp"],
+                       "description": "The file to make; default skill."},
+            "owner": {"type": "string"}}, "required": ["role"]},
+        "run": _t_role_export,
     },
     {
         "name": "vinc_role_check",
@@ -2201,6 +2242,7 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_neighbors": {"title": "Observe a node's neighbors", "readOnlyHint": True},
     "vinc_edges": {"title": "Read directed incident edges", "readOnlyHint": True},
     "vinc_role": {"title": "Read a role contract or roster", "readOnlyHint": True},
+    "vinc_role_export": {"title": "Export a role for a host", "readOnlyHint": True},
     # 판정만 돌려주고 아무것도 쓰지 않는다. 조회 전용이라 열람자도 부를 수 있다.
     "vinc_role_check": {"title": "Check an output against a role", "readOnlyHint": True},
     "vinc_path": {"title": "Shortest path between concepts", "readOnlyHint": True},

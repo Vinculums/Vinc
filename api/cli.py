@@ -57,6 +57,23 @@ class _Parser(argparse.ArgumentParser):
         raise _UsageError(message)
 
 
+def _write_role_export(result: dict, out_dir: str) -> dict:
+    """내보낸 파일을 DIR 아래에 쓴다. skill 은 `<이름>/SKILL.md` 로 써서 호스트의 스킬 폴더에 그대로 놓인다."""
+    import base64
+    from pathlib import Path
+    rel = Path(result.get("path") or result["filename"])
+    if rel.is_absolute() or ".." in rel.parts:
+        return {"kind": "role_export", "executed": False, "error": "invalid export path"}
+    target = Path(out_dir) / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    data = (base64.b64decode(result["content"]) if result.get("encoding") == "base64"
+            else str(result["content"]).encode("utf-8"))
+    target.write_bytes(data)
+    return {"kind": "role_export", "executed": True, "id": result.get("id"), "format": result.get("format"),
+            "written": str(target), "bytes": len(data), "content_hash": result.get("content_hash"),
+            "rev": result.get("rev"), "hash": result.get("hash")}
+
+
 def _error_format(argv: list[str]) -> str | None:
     # 파서가 실패한 경우에도 루트·동사 뒤 출력 옵션을 읽는다.
     fmt = None
@@ -378,6 +395,14 @@ def _main(argv: list[str] | None = None) -> int:
     rlg.add_argument("--compact", action="store_true", default=None,
                      help="leave relation evidence sentences out (for a role over the read limit)")
     rlg.add_argument("--owner", default=None)
+    rle = rls.add_parser("export", help="export one role as a file for an agent host")
+    rle.add_argument("id", help="role slug (agent-dev-core) or exact concept:agent- id")
+    rle.add_argument("--format", default="skill",
+                     choices=("skill", "claude", "gpt", "agents-md", "vincpack", "mcp"),
+                     help="skill (SKILL.md), claude, gpt, agents-md, vincpack or mcp (default skill)")
+    rle.add_argument("--out", default=None, metavar="DIR",
+                     help="write the file into DIR instead of printing the result")
+    rle.add_argument("--owner", default=None)
     rlc = rls.add_parser("check", help="check one final output against the role's structured checks")
     rlc.add_argument("id", help="role slug (agent-dev-core) or exact concept:agent- id")
     rlc.add_argument("--output", required=True, metavar="FILE",
@@ -622,6 +647,9 @@ def _main(argv: list[str] | None = None) -> int:
             result, exit_code = run_tool(args)
         if result is None:
             return exit_code or 2
+        if (args.cmd == "role" and args.rolecmd == "export" and getattr(args, "out", None)
+                and isinstance(result, dict) and result.get("executed") and result.get("content") is not None):
+            result = _write_role_export(result, args.out)
         exact = ("Node" if args.cmd == "node" and args.nodecmd == "get" else
                  "Node" if args.cmd == "edges" and args.id is not None else
                  "Role" if args.cmd == "role" else None)
