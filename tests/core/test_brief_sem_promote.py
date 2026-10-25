@@ -106,6 +106,81 @@ class PromoteRule(unittest.TestCase):
         self.assertEqual(q._brief_resolve("alpha", hits)[0], "choose")
 
 
+class XlangPromoteRule(unittest.TestCase):
+    """한글 없는 질문이 한국어 노드를 가리킬 때의 낮은 문턱(VIN-806). 스토어 없이 도는 판정.
+    근거: [[vinc.plan.brief-xlang-promotion-sealed9-2026-10-25 §5]]"""
+
+    def setUp(self):
+        self._prev = os.environ.pop(FLAG, None)
+
+    def tearDown(self):
+        os.environ.pop(FLAG, None)
+        if self._prev is not None:
+            os.environ[FLAG] = self._prev
+
+    def _status(self, query, lead, title="캐시 정책 문서", mirror_text=None, **top):
+        hits = _tie(lead, title=title, **top)
+        return q._brief_resolve(query, hits, mirror_text=mirror_text)[0]
+
+    def test_the_bar_is_where_it_was_decided(self):
+        self.assertEqual(q._SEM_PROMOTE_XLANG, 0.06)
+        self.assertLess(q._SEM_PROMOTE_XLANG, q._SEM_PROMOTE)
+
+    def test_an_english_question_on_a_korean_first_promotes_at_the_lower_bar(self):
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG), "resolved")
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE - 1e-6), "resolved")
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG - 1e-6), "choose")
+
+    def test_a_question_with_hangul_keeps_the_shipped_bar(self):
+        self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG), "choose")
+        self.assertEqual(self._status("캐시 policy", q._SEM_PROMOTE - 1e-6), "choose")
+        self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE), "resolved")
+
+    def test_an_english_first_keeps_the_shipped_bar(self):
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG,
+                                      title="cache policy live"), "choose")
+
+    def test_the_mirror_text_decides_the_language_of_the_first(self):
+        """제목이 영어여도 미러 텍스트(제목 + 본문)에 한글이 있으면 한국어 노드다."""
+        ko = lambda h: "cache policy live. 캐시 정책을 정한다"
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG,
+                                      title="cache policy live", mirror_text=ko), "resolved")
+        en = lambda h: "cache policy live. how the cache is kept"
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG,
+                                      title="캐시 정책 문서", mirror_text=en), "choose")
+
+    def test_a_missing_or_failing_mirror_falls_back_to_the_title(self):
+        def boom(h):
+            raise RuntimeError("store gone")
+        for lookup in (None, boom, lambda h: None):
+            self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG,
+                                          mirror_text=lookup), "resolved")
+            self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG,
+                                          title="cache policy live", mirror_text=lookup), "choose")
+
+    def test_the_mirror_is_read_only_inside_the_band(self):
+        """미러 조회는 두 문턱 사이에서만 한다. 그 밖에서는 스토어를 건드리지 않는다."""
+        seen = []
+
+        def spy(h):
+            seen.append(h["id"])
+            return h["title"]
+        for lead in (q._SEM_PROMOTE_XLANG - 1e-6, q._SEM_PROMOTE):
+            self._status("cache policy", lead, mirror_text=spy)
+        self.assertEqual(seen, [])
+        self._status("cache policy", q._SEM_PROMOTE_XLANG, mirror_text=spy)
+        self.assertEqual(seen, ["concept:a"])
+
+    def test_off_the_lower_bar_goes_with_the_flag(self):
+        os.environ[FLAG] = "off"
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG), "choose")
+
+    def test_a_lone_candidate_still_asks_back(self):
+        hits = [{"id": "concept:a", "title": "캐시 정책 문서", "hit_tokens": 0, "title_tokens": 0,
+                 "arms": ["semantic"], "sem_lead": q._SEM_PROMOTE_XLANG}]
+        self.assertEqual(q._brief_resolve("cache policy", hits)[0], "choose")
+
+
 DIM = 4
 Q = [1.0, 0.0, 0.0, 0.0]
 
@@ -152,15 +227,17 @@ class PromoteOnTheEngine(unittest.TestCase):
             else:
                 os.environ[k] = v
 
-    def _mirror(self, gap, extra=()):
-        """live 는 0.05, notes 는 0.05+gap 거리에 둔다. ``extra`` 는 (id, 제목, 거리)."""
+    def _mirror(self, gap, extra=(), live_text=None):
+        """live 는 0.05, notes 는 0.05+gap 거리에 둔다. ``extra`` 는 (id, 제목, 거리).
+        ``live_text`` 가 있으면 live 의 미러 텍스트(제목은 그대로)를 그것으로 둔다."""
         self.store.drop_node_vector_index()
         self.store.run(
             "UNWIND $rows AS r CREATE (:NodeVec {vec_id: r.v, node_id: r.id, "
-            "kind: r.k, owner_id: $o, title: r.t, text: r.t, model: 'test', "
+            "kind: r.k, owner_id: $o, title: r.t, text: r.x, model: 'test', "
             "embedding: r.emb})",
             {"o": self.OWNER, "rows": [
                 {"v": node_mirror.vec_id(self.OWNER, nid), "id": nid, "t": t, "emb": _at(d),
+                 "x": live_text if (live_text and nid == "concept:cache-policy-live") else t,
                  "k": nid.split(":", 1)[0]}
                 for nid, t, d in (("concept:cache-policy-live", "cache policy live", 0.05),
                                   ("concept:cache-policy-notes", "cache policy notes",
@@ -219,6 +296,30 @@ class PromoteOnTheEngine(unittest.TestCase):
         out = self._brief(**{FLAG: "on"})
         self.assertEqual(out["status"], "choose")
         self.assertEqual(out["candidates"][0]["id"], "concept:cache-policy-live")
+
+    def test_a_korean_mirror_text_lowers_the_bar_for_an_english_question(self):
+        """우위 0.07 은 `_SEM_PROMOTE` 밑이다. 1위의 미러 텍스트에 한글이 있을 때만 확정한다."""
+        # 검색은 미러 텍스트가 원본과 다르면 그 행을 낡았다고 버린다. 원본에 한 줄 설명을 달아 맞춘다.
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:cache-policy-live", "type": "concept",
+             "title": "cache policy live", "domain": "eng", "one_liner": "캐시 정책을 정한다"},
+        ]}, store=self.store)
+        self._mirror(0.07, live_text=node_mirror.mirror_text("cache policy live",
+                                                             "캐시 정책을 정한다"))
+        out = self._brief()
+        self.assertEqual(out["status"], "resolved")
+        self.assertEqual(out["node"]["id"], "concept:cache-policy-live")
+        # 같은 거리에서 미러 텍스트가 영어뿐이면 지금 그대로 되묻는다.
+        self.tearDown()
+        self.setUp()
+        self._mirror(0.07)
+        self.assertEqual(self._brief()["status"], "choose")
+
+    def test_the_mirror_text_reader_returns_the_stored_text(self):
+        self._mirror(0.07, live_text="cache policy live. 캐시")
+        got = q._brief_mirror_text(self.store, self.OWNER, {"id": "concept:cache-policy-live"})
+        self.assertEqual(got, "cache policy live. 캐시")
+        self.assertIsNone(q._brief_mirror_text(self.store, self.OWNER, {"id": "concept:nope"}))
 
     def _retired_record(self):
         frag.merge_fragment({"owner": self.OWNER, "nodes": [
