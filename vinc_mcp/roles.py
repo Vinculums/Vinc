@@ -23,6 +23,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import json
 from . import agent_export_contract
@@ -482,6 +483,103 @@ def render_role_export(got: dict, format: str, *, owner: str, pack_encoder=None)
             "filename": filename, **({"path": path} if path else {}),
             "mime": "text/markdown; charset=utf-8", "encoding": "utf8", "content": text,
             "content_hash": hashlib.sha256(content).hexdigest(), "rev": out["rev"], "hash": out["hash"]}
+
+
+# ── MCP Skills 확장(io.modelcontextprotocol/skills) ───────────────────────────
+#
+# 역할 하나가 스킬 하나다. 파일은 SKILL.md 하나뿐이고 내용은 /roles/export 의 skill 형식이다(그 형식과
+# 같은 바이트라 내보낸 파일과 서빙한 파일의 digest 가 같다). 모던 세대에서만 연다: 핸드셰이크 세대의
+# resources/* 는 계속 -32601 이다.
+SKILLS_EXTENSION = "io.modelcontextprotocol/skills"
+SKILL_PAGE = 25
+_SKILL_URI = re.compile(r"skill://(agent-[a-z0-9]+(?:-[a-z0-9]+)*)/SKILL\.md")
+
+
+def skill_uri(slug: str) -> str:
+    return f"skill://{slug}/SKILL.md"
+
+
+def _skill_slug(uri) -> str:
+    m = _SKILL_URI.fullmatch(uri) if isinstance(uri, str) else None
+    if not m:
+        raise ValueError(f"unknown skill: {uri}")
+    return m.group(1)
+
+
+def _frontmatter(text: str) -> dict:
+    """우리가 쓴 SKILL.md 의 front matter(name·description)를 그대로 읽는다. description 은 JSON 문자열이다."""
+    head = text.split("\n---\n", 1)[0]
+    out: dict = {}
+    for line in head.splitlines()[1:]:
+        key, _, value = line.partition(": ")
+        if key in ("name", "description"):
+            out[key] = json.loads(value) if value.startswith('"') else value
+    return out
+
+
+def _skill_file(bridge, owner: str, slug: str) -> str:
+    got = bridge.request("GET", "/roles/export", params={
+        "owner": owner, "role": "concept:" + slug, "format": "skill"})
+    if not got.get("executed") or not got.get("found", True) or not isinstance(got.get("content"), str):
+        raise ValueError(f"unknown skill: {skill_uri(slug)}")
+    return got["content"]
+
+
+def _skill_entry(slug: str, text: str) -> dict:
+    data = text.encode("utf-8")
+    uri = skill_uri(slug)
+    return {"uri": uri, "frontmatter": _frontmatter(text),
+            "resources": [{"uri": uri, "digest": "sha256:" + hashlib.sha256(data).hexdigest(),
+                           "size": len(data)}]}
+
+
+def _skill_page(bridge, owner: str, cursor) -> tuple[list[dict], str | None]:
+    try:
+        offset = int(cursor or 0)
+    except (TypeError, ValueError):
+        raise ValueError("invalid cursor") from None
+    if offset < 0:
+        raise ValueError("invalid cursor")
+    roster = discover_roles(bridge, owner)
+    page = roster[offset:offset + SKILL_PAGE]
+    more = str(offset + SKILL_PAGE) if offset + SKILL_PAGE < len(roster) else None
+    return page, more
+
+
+def list_skills(bridge, forced_owner: str | None = None, cursor=None) -> dict:
+    """`skills/list`. 항목마다 파일 목록이 완전하다(SKILL.md 의 digest·size). 한 쪽에 SKILL_PAGE 개."""
+    owner = _owner_of(bridge, forced_owner)
+    page, more = _skill_page(bridge, owner, cursor)
+    skills = []
+    for row in page:
+        slug = str(row["id"]).split(":", 1)[1]
+        skills.append(_skill_entry(slug, _skill_file(bridge, owner, slug)))
+    return {"skills": skills, **({"nextCursor": more} if more else {})}
+
+
+def get_skill(bridge, uri, forced_owner: str | None = None) -> dict:
+    """`skills/get`. 목록에 없던 스킬도 주소로 답한다. 모르는 주소는 ValueError(-32602)."""
+    slug = _skill_slug(uri)
+    return {"skill": _skill_entry(slug, _skill_file(bridge, _owner_of(bridge, forced_owner), slug))}
+
+
+def list_skill_resources(bridge, forced_owner: str | None = None, cursor=None) -> dict:
+    """`resources/list`. 스킬 파일만 낸다. 크기는 읽어야 알므로 싣지 않는다(skills/list 가 싣는다)."""
+    owner = _owner_of(bridge, forced_owner)
+    page, more = _skill_page(bridge, owner, cursor)
+    resources = []
+    for row in page:
+        slug = str(row["id"]).split(":", 1)[1]
+        resources.append({"uri": skill_uri(slug), "name": slug + "/SKILL.md",
+                          "title": row.get("title") or slug, "mimeType": "text/markdown"})
+    return {"resources": resources, **({"nextCursor": more} if more else {})}
+
+
+def read_skill_resource(bridge, uri, forced_owner: str | None = None) -> dict:
+    """`resources/read`. 스킬 주소만 읽는다. 그 밖의 주소는 ValueError(-32602)."""
+    slug = _skill_slug(uri)
+    text = _skill_file(bridge, _owner_of(bridge, forced_owner), slug)
+    return {"contents": [{"uri": skill_uri(slug), "mimeType": "text/markdown", "text": text}]}
 
 
 # ── MCP prompts (W2) ─────────────────────────────────────────────────────────

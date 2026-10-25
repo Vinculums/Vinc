@@ -43,6 +43,11 @@ _NAME_FIELD = {"tools/call": "name", "prompts/get": "name", "resources/read": "u
 CACHE_HINTS = {
     "tools/list": (3_600_000, "public"),
     "prompts/list": (60_000, "private"),
+    # 스킬은 역할에서 오므로 프롬프트와 같은 값이다(소유자마다 다르고 역할이 바뀌면 바뀐다).
+    "skills/list": (60_000, "private"),
+    "skills/get": (60_000, "private"),
+    "resources/list": (60_000, "private"),
+    "resources/read": (60_000, "private"),
 }
 #: `server/discover` 의 `instructions` 는 소유자와 팀 목록을 담으므로 허브에서는 private.
 DISCOVER_TTL_MS = 300_000

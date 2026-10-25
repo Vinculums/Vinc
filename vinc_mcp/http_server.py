@@ -44,9 +44,13 @@ from store import httpbody
 from store.envflag import truthy
 
 from . import burst, community, edverify, entitlement, modern, toolcall, tools, viewurl
+
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
 from .rpc import PROTOCOL_VERSIONS, Dispatcher
+
+#: 역할 계약을 읽는 비도구 메서드. 스페이스·역할·읽기 키 게이트를 tools/call 과 같이 탄다.
+_ROLE_READS = ("prompts/", "skills/", "resources/")
 
 MAX_BODY = 4 * 1024 * 1024
 
@@ -1586,7 +1590,7 @@ class _Handler(BaseHTTPRequestHandler):
             # 근거: [[decision:a-node-address-names-its-space]]
             def _gate_for(m):
                 method = m.get("method")
-                if method != "tools/call" and not str(method or "").startswith("prompts/"):
+                if method != "tools/call" and not str(method or "").startswith(_ROLE_READS):
                     return toolcall.Outcome("ok", auth=auth)
                 params = m.get("params") or {}
                 args = params.get("arguments") or (params if method != "tools/call" else {})
@@ -1617,10 +1621,10 @@ class _Handler(BaseHTTPRequestHandler):
             if space:
                 # prompts 는 도구 봉투가 아니라 프로토콜 오류로 거절한다.
                 role = auth.get("role") or ""
-                if any(str(m.get("method") or "").startswith("prompts/") for m in msgs) \
+                if any(str(m.get("method") or "").startswith(_ROLE_READS) for m in msgs) \
                         and not tools.role_allows(role, "vinc_neighbors"):
                     first = next(m for m in msgs
-                                 if str(m.get("method") or "").startswith("prompts/"))
+                                 if str(m.get("method") or "").startswith(_ROLE_READS))
                     return self._json(200, {
                         "jsonrpc": "2.0", "id": first.get("id"),
                         "error": {"code": -32603,
