@@ -1621,6 +1621,79 @@
         }
       }
     },
+    "/v1/decide/paths": {
+      "post": {
+        "operationId": "vinc_decide_paths_post__v1_decide_paths",
+        "summary": "List the current records and decisions that govern the files a change touches, given repo:path strings (vinc:api/sync.py). Deterministic, no model, read-only: it says what to read before merging, not whether the change breaks it.",
+        "description": "The decision gate: for each touched path, list the current records and decisions that govern it, so a reviewer reads them before merging. Deterministic and model-free; it never decides whether the change contradicts them. Send `paths` as repo:path strings (vinc:api/sync.py, normalized like props.subject_path: backslashes, ./ and a leading / are folded and the repository is lowercased), at most 200 per call. A node governs a path when its props.subject_path is that path (match:'exact') or a parent directory of it (match:'directory'). Records carry one subject_path; a decision may carry one or a list. Decisions one hop from a matched node (a record's attachment to a decision, or a relation between decisions) come too as match:'related' with `via` (the matched id) and `relation`; concepts are not crossed. Retired claims (valid_until today or earlier; a decision's in props) are left out and counted in retired_excluded, and records with props.claim_kind:'result' (point-in-time results) in results_excluded. A path with no repository matches only claims with none, and is echoed in unqualified_paths. Returns {verdict ('flag' when any path is governed, else 'pass'), paths:[{path, governed_by:[{id, kind, title, match, subject_path | via and relation, valid_from, valid_until, validity, measured_at, measured_ref}], count, truncated}], path_count, flagged_paths, governing_count, retired_excluded, results_excluded, unqualified_paths, scanned}. Items are ordered exact, directory, related, decisions first, newest measurement first; `member_limit` caps each list and `count` keeps the true total. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "paths": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024
+                    },
+                    "description": "Touched files as repo:path, for example vinc:api/sync.py."
+                  },
+                  "member_limit": {
+                    "type": "integer",
+                    "default": 50,
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "description": "Most items listed per path; count stays the true total."
+                  }
+                },
+                "required": [
+                  "paths"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/diagnose": {
       "get": {
         "operationId": "vinc_diagnose_get__v1_diagnose",
@@ -2574,7 +2647,7 @@
                         },
                         "props": {
                           "type": "object",
-                          "description": "Free-form properties for dedicated types (not stored on open-type nodes). Sending props replaces the whole stored object. Three keys are reserved on a record that states something about code: `subject_path` (repo and file as repo:path, for example vinc:api/sync.py, since a bare path cannot be compared across repositories; normalized on write), `measured_at` (YYYY[-MM[-DD]], when you looked) and `measured_ref` (the branch or commit you looked at). They let two claims about the same file be compared."
+                          "description": "Free-form properties for dedicated types (not stored on open-type nodes). Sending props replaces the whole stored object. Three keys are reserved on a record that states something about code: `subject_path` (repo and file as repo:path, for example vinc:api/sync.py, since a bare path cannot be compared across repositories; normalized on write), `measured_at` (YYYY[-MM[-DD]], when you looked) and `measured_ref` (the branch or commit you looked at). They let two claims about the same file be compared. A decision may carry `subject_path` too (one repo:path or a list) to say which code it governs; vinc_decide_paths reads it."
                         },
                         "expected_rev": {
                           "type": "integer",

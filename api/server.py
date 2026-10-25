@@ -1248,6 +1248,20 @@ class VincApp:
         return self._read(lambda r: q.component_diagnosis(
             owner=owner, store=r, member_limit=_int(p.get("member_limit"), 0) or None))
 
+    def read_decide_paths(self, p):
+        # 결정 문(조회 전용) — 바뀐 경로마다 그 경로를 다스리는 현재 기록·결정.
+        # 경로 목록은 JSON 배열 하나로 온다(`/node-edges` 의 nodes 와 같은 모양).
+        paths = p.get("paths")
+        if isinstance(paths, str):
+            try:
+                paths = json.loads(paths)
+            except ValueError:
+                return 400, {"kind": "decide_paths", "executed": False,
+                             "error": "invalid paths: expected a JSON array of repo:path strings"}
+        return self._read(lambda r: q.decide_paths(
+            paths, owner=_req(p, "owner"), store=r,
+            limit=_int(p.get("member_limit"), 0) or None))
+
     def read_share(self, p):
         # share pack(D19) — 조회 경로로 팩 본문을 반환(파일 저장은 호출자 몫).
         return self._read(lambda r: share.build_share_pack(
@@ -2932,6 +2946,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/learner": app.read_learner, "/graph": lambda p: app.read_graph(p, wire=True),
             "/graph/roots": app.read_graph_roots,   # 들고 있는 시간 가지 배치(`api.layout_remote`)
             "/search": app.read_search, "/decide": app.read_decide,
+            "/decide-paths": app.read_decide_paths,   # 결정 문
             "/themes": app.read_themes, "/types": app.read_types,
             # 문서 정본(D45 P4) — get(복원+검증) · list. + 노드 클릭 상세(D45-V).
             "/doc": app.read_doc, "/docs": app.read_docs,

@@ -70,6 +70,8 @@ READ_ROUTES = (
     Route("GET", "/v1/episodes", "vinc_recall",
           query=("domain", "tags", "limit", "cursor", "as_of", "known_at")),
     Route("GET", "/v1/decide", "vinc_decide", query=("topic", "depth")),
+    # 결정 문. 경로 목록이 길어 질의 문자열 대신 본문으로 받는다(조회 전용).
+    Route("POST", "/v1/decide/paths", "vinc_decide_paths", body=("paths", "member_limit")),
     Route("GET", "/v1/diagnose", "vinc_diagnose",
           query=("kind", "node", "member_limit")),
     Route("GET", "/v1/merge-candidates", "vinc_merge_candidates",

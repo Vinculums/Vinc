@@ -315,6 +315,20 @@ def _norm_subject_path(v) -> str:
     return f"{repo}:{path}" if repo and path else path
 
 
+def _subject_repo_warnings(norm: str, nid: str, warnings: list[str]) -> None:
+    """접은 `subject_path` 가 리포를 안 담았거나 모르는 리포면 경고한다(지우지 않는다)."""
+    repo, path = _split_subject(norm)
+    if path and not repo:
+        warnings.append(
+            f"props.subject_path '{norm}' names no repository (id={nid}) — stored, "
+            f"but a bare path cannot be compared across repositories; "
+            f"use one of {', '.join(sorted(_KNOWN_REPOS))}")
+    elif repo and repo not in _KNOWN_REPOS:
+        warnings.append(
+            f"props.subject_path repository '{repo}' is not one this graph knows "
+            f"(id={nid}) — stored, but a typo here makes a namespace of its own")
+
+
 def _claim_props(props, label: str, nid: str, warnings: list[str]):
     """예약 주장 필드를 정규화한다. props 원본은 건드리지 않는다(부분 재전송 함정).
 
@@ -327,6 +341,14 @@ def _claim_props(props, label: str, nid: str, warnings: list[str]):
     if label != "Record":
         for k in _CLAIM_PROPS:
             if k in props:
+                # 결정의 subject_path 는 결정 문(`query.decide_paths`)이 읽는다(읽을 때 접는다,
+                # 저장값은 보낸 그대로). 그래서 그 하나는 리포 경고만 받는다. 진단(claims)은
+                # 여전히 기록만 본다.
+                if label == "Decision" and k == "subject_path":
+                    for raw in (props[k] if isinstance(props[k], list) else [props[k]]):
+                        if isinstance(raw, str):
+                            _subject_repo_warnings(_norm_subject_path(raw), nid, warnings)
+                    continue
                 warnings.append(
                     f"props.{k} is a claim field carried by Record only (id={nid}) — "
                     f"stored on {label}, but the claim review will not read it there")
@@ -336,16 +358,7 @@ def _claim_props(props, label: str, nid: str, warnings: list[str]):
         norm = _norm_subject_path(raw)
         if norm != raw:
             out = {**props, "subject_path": norm}
-        repo, path = _split_subject(norm)
-        if path and not repo:
-            warnings.append(
-                f"props.subject_path '{norm}' names no repository (id={nid}) — stored, "
-                f"but a bare path cannot be compared across repositories; "
-                f"use one of {', '.join(sorted(_KNOWN_REPOS))}")
-        elif repo and repo not in _KNOWN_REPOS:
-            warnings.append(
-                f"props.subject_path repository '{repo}' is not one this graph knows "
-                f"(id={nid}) — stored, but a typo here makes a namespace of its own")
+        _subject_repo_warnings(norm, nid, warnings)
     at = props.get("measured_at")
     if at is not None:
         from . import docstore as _ds      # 지연 import — 날짜 검증기 1벌 유지

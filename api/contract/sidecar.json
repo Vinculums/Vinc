@@ -514,6 +514,19 @@
         }
       }
     },
+    "/decide-paths": {
+      "get": {
+        "operationId": "read_decide_paths",
+        "summary": "Decision gate: current records and decisions that govern touched paths.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
     "/delete": {
       "post": {
         "operationId": "write_delete",

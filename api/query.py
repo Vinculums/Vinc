@@ -6958,6 +6958,227 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
     return out
 
 
+#: 결정 문이 한 번에 받는 경로 수. 경로 목록은 사이드카 GET 질의 문자열에 JSON 으로
+#: 실리므로 요청 줄 상한(64KB) 안에 머물 만큼만 받는다. 더 큰 diff 는 부르는 쪽이 나눠 보낸다
+#: (`vinc gate check` 가 그렇게 한다).
+DECIDE_PATHS_MAX = 200
+#: 같은 경로를 덮는 항목의 순서. 직접 닻이 먼저, 그 닻에서 한 홉 닿은 결정이 나중이다.
+_GATE_MATCH_ORDER = {"exact": 0, "directory": 1, "related": 2}
+
+
+def _gate_subjects(props: dict) -> list[str]:
+    """노드가 가리키는 경로들(정규화). Record 는 쓰기 시점에 이미 접혀 있지만, Decision 은
+    쓰기 경로가 접지 않으므로(`fragment._claim_props`) 여기서 같은 함수로 접는다. 결정은
+    여러 경로를 다스릴 수 있어 목록도 받는다."""
+    from .fragment import _norm_subject_path
+    raw = props.get("subject_path")
+    values = raw if isinstance(raw, list) else [raw]
+    return [s for s in dict.fromkeys(_norm_subject_path(v) for v in values
+                                     if isinstance(v, str)) if s]
+
+
+def _gate_validity(valid_from: str, today: str) -> str:
+    return "not_yet" if valid_from and valid_from[:10] > today else "current"
+
+
+def decide_paths(paths, *, owner: str | None = None, cfg=None, store=None,
+                 limit: int | None = None) -> dict:
+    """결정 문(decision gate): 바뀐 경로마다 그 경로를 다스리는 **현재** 기록과 결정.
+
+    모델 없이 결정론으로 돈다. 가부를 가리지 않는다: "이 경로에는 이 주장이 걸려 있다"만 내고,
+    diff 가 그것을 어기는지는 읽는 사람이 연다(`claim_diagnosis` 와 같은 태도).
+    근거: [[vinc.plan.agent-harness-work-order-2026-10-25 §2]] · [[vinc.ops.graph-claim-decay]] §7.3.
+
+    맞춤은 `claim_diagnosis`·`_stale_claims` 와 같은 부품을 쓴다. 두 번째 맞춤기를 두지 않는다:
+    - 경로는 `fragment._norm_subject_path` 로 접고(`repo:path`), 덮음은 `_path_covers` 다.
+      같은 경로면 ``exact``, 노드의 경로가 바뀐 경로의 상위 디렉터리면 ``directory``.
+    - 은퇴는 `_retired_claim` 이다. Record 는 열, Decision 은 `props.valid_until` 로 본다.
+    - `props.claim_kind == "result"` 인 기록은 한 시점의 실행 결과라 다스리지 않는다(센다).
+
+    직접 닿은 기록·결정에서 **한 홉** 닿은 현재 결정도 싣는다(``related``, `via` 는 그 닻).
+    길은 Record→Decision `ATTACHES_TO` 와 결정↔결정 관계(`_GRAPH_READ_PAIRS`)다. 개념을
+    건너는 두 홉은 따르지 않는다: 한 개념에 걸린 결정이 모두 딸려 와 목록이 소음이 된다.
+
+    리포가 없는 경로는 리포가 있는 주장과 맞지 않는다(동명 파일 충돌을 막는 R4 의 이유 그대로).
+    그런 입력은 `unqualified_paths` 로 밝힌다.
+
+    반환 {executed, verdict: flag|pass, paths:[{path, governed_by:[...], count, truncated}],
+    path_count, flagged_paths, governing_count, retired_excluded, results_excluded,
+    unqualified_paths, scanned:{records, decisions}}."""
+    from .fragment import _norm_subject_path, _split_subject
+    base = {"kind": "decide_paths", "executed": False, "verdict": "pass", "paths": [],
+            "path_count": 0, "flagged_paths": 0, "governing_count": 0,
+            "retired_excluded": 0, "results_excluded": 0, "unqualified_paths": []}
+    if (not isinstance(paths, list) or not paths
+            or any(not isinstance(p, str) or not p.strip() for p in paths)):
+        base["error"] = "invalid paths: send a nonempty list of repo:path strings"
+        return base
+    touched = list(dict.fromkeys(_norm_subject_path(p) for p in paths))
+    if len(touched) > DECIDE_PATHS_MAX:
+        base["error"] = (f"invalid paths: at most {DECIDE_PATHS_MAX} paths per call; "
+                         "split the list")
+        return base
+    cfg = cfg or load_config()
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    if store is None:
+        base["note"] = "no reachable store"
+        return base
+    try:
+        today = _dt.date.today().isoformat()
+        params = {"owner": owner} if owner else {}
+        anchors: list[dict] = []
+        retired = results = 0
+        record_rows = store.run(
+            "MATCH (r:Record) " + ("WHERE r.owner_id = $owner " if owner else "") +
+            "RETURN r.record_id AS id, r.title AS title, r.props AS props, "
+            "r.valid_from AS valid_from, r.valid_until AS valid_until", params) or []
+        for r in record_rows:
+            props = _props_to_obj(r.get("props"))
+            subjects = _gate_subjects(props)
+            if not subjects:
+                continue
+            if _retired_claim(r, today):
+                retired += 1
+                continue
+            if props.get("claim_kind") == "result":
+                results += 1
+                continue
+            rid = pkns.strip(r.get("id") or "")
+            anchors.append({"id": rid, "kind": "record", "title": r.get("title") or rid,
+                            "subjects": subjects,
+                            "valid_from": str(r.get("valid_from") or ""),
+                            "valid_until": str(r.get("valid_until") or ""),
+                            "measured_at": str(props.get("measured_at") or ""),
+                            "measured_ref": str(props.get("measured_ref") or "")})
+        decision_rows = store.run(
+            "MATCH (d:Decision) " + ("WHERE d.owner_id = $owner " if owner else "") +
+            "RETURN d.decision_id AS id, d.title AS title, d.props AS props", params) or []
+        for d in decision_rows:
+            props = _props_to_obj(d.get("props"))
+            subjects = _gate_subjects(props)
+            if not subjects:
+                continue
+            if _retired_claim({"valid_until": props.get("valid_until")}, today):
+                retired += 1
+                continue
+            did = pkns.strip(d.get("id") or "")
+            anchors.append({"id": did, "kind": "decision", "title": d.get("title") or did,
+                            "subjects": subjects,
+                            "valid_from": str(props.get("valid_from") or ""),
+                            "valid_until": str(props.get("valid_until") or "")})
+
+        def item(node: dict, match: str, **extra) -> dict:
+            out = {"id": node["id"], "kind": node["kind"], "title": node["title"],
+                   "match": match, **extra,
+                   "valid_from": node["valid_from"], "valid_until": node["valid_until"],
+                   "validity": _gate_validity(node["valid_from"], today)}
+            for k in ("measured_at", "measured_ref"):
+                if node.get(k):
+                    out[k] = node[k]
+            return out
+
+        hits: dict[str, dict[str, dict]] = {p: {} for p in touched}
+        for p in touched:
+            for a in anchors:
+                subject = next((s for s in a["subjects"] if _path_covers(s, p)), None)
+                if subject is not None:
+                    hits[p][a["id"]] = item(a, "exact" if subject == p else "directory",
+                                            subject_path=subject)
+        related, related_note = _gate_related_decisions(
+            store, sorted({i for h in hits.values() for i in h}), owner=owner, today=today)
+        for p in touched:
+            # 직접 닻을 가까운 순(exact → directory, 같으면 id)으로 훑어 via 를 정한다.
+            # 목록을 먼저 굳히므로 여기서 더한 related 는 다시 닻이 되지 않는다(한 홉).
+            for via in sorted(hits[p], key=lambda i: (_GATE_MATCH_ORDER[hits[p][i]["match"]], i)):
+                for dec in related.get(via, []):
+                    if dec["id"] not in hits[p]:
+                        hits[p][dec["id"]] = item(dec, "related", via=via,
+                                                  relation=dec["relation"])
+        lim = _clamp_limit(limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
+        out_paths, governing = [], set()
+        for p in touched:
+            # 순서: 맞춤의 가까움 → 결정 먼저 → 최근 측정 먼저 → id. 정렬 세 번(안정 정렬).
+            rows = sorted(hits[p].values(), key=lambda x: x["id"])
+            rows.sort(key=lambda x: x.get("measured_at", ""), reverse=True)
+            rows.sort(key=lambda x: (_GATE_MATCH_ORDER[x["match"]], x["kind"] != "decision"))
+            governing.update(x["id"] for x in rows)
+            out_paths.append({"path": p, "governed_by": rows[:lim], "count": len(rows),
+                              "truncated": len(rows) > lim})
+        flagged = sum(1 for x in out_paths if x["count"])
+        base.update(executed=True, verdict="flag" if flagged else "pass", paths=out_paths,
+                    path_count=len(touched), flagged_paths=flagged,
+                    governing_count=len(governing), retired_excluded=retired,
+                    results_excluded=results,
+                    unqualified_paths=[p for p in touched if not _split_subject(p)[0]],
+                    scanned={"records": len(record_rows), "decisions": len(decision_rows)})
+        if related_note:
+            base["related_note"] = related_note
+        if base["unqualified_paths"]:
+            base["unqualified_note"] = ("these paths name no repository, so they only match "
+                                        "claims that name none either; send repo:path")
+    finally:
+        if owns:
+            store.close()
+    return base
+
+
+def _gate_related_decisions(store, ids: list[str], *, owner: str | None,
+                            today: str) -> tuple[dict[str, list[dict]], str]:
+    """닻 id → 한 홉 닿은 현재 결정들. 결과는 (표, 실패 문장). 한 팔이 실패해도 직접 닻은
+    그대로 낸다: 이웃 결정은 증강이고, 잃은 것은 문장으로 말한다."""
+    out: dict[str, list[dict]] = {}
+    if not ids:
+        return out, ""
+    rels = "|".join(_GRAPH_READ_PAIRS.get(
+        ("Decision", "decision_id", "Decision", "decision_id"), ()))
+    own = " AND s.owner_id = $owner AND d.owner_id = $owner" if owner else ""
+    ret = ("RETURN s.{spk} AS via, d.decision_id AS id, d.title AS title, d.props AS props, "
+           "{rel} AS relation")
+    arms = [("MATCH (s:Record)-[e:ATTACHES_TO]->(d:Decision) "
+             f"WHERE s.record_id IN $ids{own} "
+             + ret.format(spk="record_id", rel="e.type"))]
+    if rels:
+        arms.append(f"MATCH (s:Decision)-[e:{rels}]->(d:Decision) "
+                    f"WHERE s.decision_id IN $ids{own} "
+                    + ret.format(spk="decision_id", rel="label(e)"))
+        arms.append(f"MATCH (d:Decision)-[e:{rels}]->(s:Decision) "
+                    f"WHERE s.decision_id IN $ids{own} "
+                    + ret.format(spk="decision_id", rel="label(e)"))
+    params: dict = {"ids": pkns.keys(owner, ids)}
+    if owner:
+        params["owner"] = owner
+    failed = 0
+    for cypher in arms:
+        try:
+            rows = store.run(cypher, params) or []
+        except Exception:      # noqa: BLE001 — 증강 팔 하나의 실패가 문 전체를 죽이지 않는다
+            failed += 1
+            continue
+        for row in rows:
+            props = _props_to_obj(row.get("props"))
+            if _retired_claim({"valid_until": props.get("valid_until")}, today):
+                continue
+            did = pkns.strip(row.get("id") or "")
+            via = pkns.strip(row.get("via") or "")
+            if not did or did == via:
+                continue
+            out.setdefault(via, []).append({
+                "id": did, "kind": "decision", "title": row.get("title") or did,
+                "relation": str(row.get("relation") or "").lower(),
+                "valid_from": str(props.get("valid_from") or ""),
+                "valid_until": str(props.get("valid_until") or "")})
+    for via, decs in out.items():
+        seen: dict[str, dict] = {}
+        for dec in sorted(decs, key=lambda x: (x["id"], x["relation"])):
+            seen.setdefault(dec["id"], dec)
+        out[via] = list(seen.values())
+    note = (f"{failed} of {len(arms)} relation lookups failed; decisions one hop from the "
+            "matched claims may be missing" if failed else "")
+    return out, note
+
+
 def communities(*, owner: str | None = None, cfg=None, store=None,
                 member_limit: int | None = None) -> dict:
     """E-G3 Leiden 커뮤니티 검출 — 개념 군집(도메인 축과 별개의 '실측 군집' 렌즈).
