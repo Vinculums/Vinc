@@ -166,15 +166,17 @@ class Dispatcher:
             # [[record:what-the-spec-permits-is-not-what-the-peer-accepts]].
             # PROTOCOL_VERSIONS 에 그 리비전이 없으므로 지금 이 필드는 아무에게도 안
             # 나가고, 나중에 목록에 넣으면 게이트가 저절로 열린다.
+            # `sizes` 는 문자열 배열이다(두 스키마의 Icon 정의). 문자열 하나를 보내면 스키마를
+            # 검사하는 클라이언트가 serverInfo 를 통째로 거절한다.
             # PNG 를 먼저 놓는 이유: 클라이언트는 PNG·JPEG 지원이 **필수**이고 SVG 는
             # 선택이다(SVG 는 스크립트를 품을 수 있다). 아이콘 자체는 /favicon.* 로
             # 계속 서빙한다 — 프로토콜 밖이라 무해하다.
             if negotiated >= "2025-11-25":   # ISO 날짜라 사전식 비교가 곧 시간순
                 info["icons"] = [
                     {"src": "https://mcp.vincs.io/favicon.png",
-                     "mimeType": "image/png", "sizes": "128x128"},
+                     "mimeType": "image/png", "sizes": ["128x128"]},
                     {"src": "https://mcp.vincs.io/favicon.svg",
-                     "mimeType": "image/svg+xml", "sizes": "any"},
+                     "mimeType": "image/svg+xml", "sizes": ["any"]},
                 ]
                 info["websiteUrl"] = "https://vincs.io"
             out = {
