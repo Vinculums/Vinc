@@ -44,6 +44,8 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              "vinc_role_check",
              # 내 역할을 호스트 파일(SKILL.md · 에이전트 · AGENTS.md · 팩)로 내보낸다(조회 전용).
              "vinc_role_export",
+             # VIN-784 — 결정 문: 바뀐 경로를 다스리는 현재 기록·결정(조회 전용, 모델 없음).
+             "vinc_decide_paths",
              # D45 P4 — 문서 정본(Chunk=SSoT) 직접 CRUD: get/list(조회) · put/delete(쓰기).
              "vinc_doc_get", "vinc_doc_list", "vinc_doc_put", "vinc_doc_delete",
              # D45-V — 정본에서 개념을 파생한다. 이게 없으면 어시스턴트는 문서를
@@ -105,6 +107,7 @@ class ToolContractTests(unittest.TestCase):
                     "a": "concept:x", "b": "concept:y",   # E-G7 vinc_path 필수 인자
                     "text": "x", "doc_id": "d0",          # D45 P4 문서 정본 필수 인자
                     "role": "concept:agent-x", "output": "x",
+                    "paths": ["vinc:api/sync.py"],   # vinc_decide_paths 필수 인자
                     "operation_id": "00000000-0000-4000-8000-000000000488"}   # 필수 조회 인자
             if t["name"] == "vinc_edges":
                 args.pop("nodes")

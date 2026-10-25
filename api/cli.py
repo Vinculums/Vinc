@@ -412,6 +412,28 @@ def _main(argv: list[str] | None = None) -> int:
     rlc.add_argument("--self-authored", action="store_true", default=None,
                      help="the output is a diff this role wrote; removed lines are not proposals")
     rlc.add_argument("--owner", default=None)
+    gt = sub.add_parser("gate", help="list recorded decisions that govern the files a change touches")
+    gts = gt.add_subparsers(dest="gatecmd", required=True)
+    gtc = gts.add_parser("check", help="decision gate over a diff or a list of paths (no model)")
+    gtc.add_argument("--diff", default=None, metavar="REF",
+                     help="read touched files with git diff --name-only REF...HEAD")
+    gtc.add_argument("--paths", nargs="+", default=None, metavar="PATH",
+                     help="touched files as repo:path or path, instead of --diff")
+    gtc.add_argument("--repo", default=None,
+                     help="repository for paths without one (default: the origin remote's name)")
+    gtc.add_argument("--member-limit", type=int, default=None, dest="member_limit",
+                     help="most items listed per path (default 50)")
+    gtc.add_argument("--summary", default=None, metavar="FILE",
+                     help="append a Markdown summary to FILE (for example $GITHUB_STEP_SUMMARY)")
+    gtc.add_argument("--trace", default=None, metavar="FILE",
+                     help="write the full result to FILE; a run record cites it by hash")
+    gtc.add_argument("--run-id", default=None, dest="run_id",
+                     help="record this verdict as one run of concept:agent-decision-gate "
+                          "(account target with a write key only)")
+    gtc.add_argument("--task-ref", default=None, dest="task_ref",
+                     help="what the run checked, for the run record (for example a PR URL)")
+    gtc.add_argument("--host", default=None, help="where the run ran, for the run record")
+    gtc.add_argument("--owner", default=None)
     pa = sub.add_parser("path", help="find a graph path")
     pa.add_argument("a")
     pa.add_argument("b")
@@ -557,7 +579,8 @@ def _main(argv: list[str] | None = None) -> int:
     _add_output_options(ap, root=True)
     args = ap.parse_args(argv)
     command = args.cmd
-    for name in ("doccmd", "gmcmd", "mcpcmd", "nodecmd", "edgecmd", "mergecmd", "refscmd", "rolecmd"):
+    for name in ("doccmd", "gmcmd", "mcpcmd", "nodecmd", "edgecmd", "mergecmd", "refscmd", "rolecmd",
+                 "gatecmd"):
         if getattr(args, name, None):
             command += " " + getattr(args, name)
     cli_output.configure(args.console_format, command)
@@ -639,7 +662,11 @@ def _main(argv: list[str] | None = None) -> int:
         if target == "local" and args.space and args.space.strip().lower() != "personal":
             return cli_output.usage_error("--space requires --target account")
         space = cli_target.resolve_space(args.space) if target == "account" else "personal"
-        if target == "account":
+        if args.cmd == "gate":
+            # 결정 문은 경로를 나눠 보내고 합친다. 한 도구 호출로 끝나는 동사와 길이 다르다.
+            from .cli_gate import run as run_gate
+            result, exit_code = run_gate(args, target=target, space=space)
+        elif target == "account":
             from .cli_account import run as run_tool
             result, exit_code = run_tool(args, space=space)
         else:
