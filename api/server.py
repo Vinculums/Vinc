@@ -753,7 +753,8 @@ class VincApp:
         except ValueError as exc:
             return 400, {"kind": "runs", "executed": False, "error": str(exc)}
         return self._read(lambda r: runs.list_runs(r, owner=_req(p, "owner"), cited=cited,
-                                                   role=p.get("role"), limit=limit))
+                                                   role=p.get("role"), run=p.get("run") or None,
+                                                   limit=limit))
 
     def read_operation_status(self, p):
         from . import operation_receipts

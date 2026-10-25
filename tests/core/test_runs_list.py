@@ -138,3 +138,14 @@ def test_other_owner_runs_and_claims_stay_invisible(store):
 
 def test_owner_is_required(store):
     assert runs.list_runs(store, owner="")["executed"] is False
+
+
+def test_one_run_by_episode_id_or_run_id_carries_its_props(store):
+    ingest(store, [run_node("solo", ROLE, ["record:claim-x"], "2026-10-20"),
+                   run_node("other", ROLE, [], "2026-10-21")])
+    by_episode = listing(store, run="episode:run-solo-12345678")
+    by_run_id = listing(store, run="solo")
+    assert [r["run_id"] for r in by_episode["runs"]] == [r["run_id"] for r in by_run_id["runs"]] == ["solo"]
+    assert by_run_id["runs"][0]["props"]["outcome"] == "success"
+    assert "props" not in listing(store)["runs"][0]
+    assert listing(store, run="never")["runs"] == []

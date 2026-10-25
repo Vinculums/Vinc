@@ -2522,6 +2522,250 @@
             "$ref": "#/components/responses/Error"
           }
         }
+      },
+      "post": {
+        "operationId": "vinc_run_start_post__v1_runs",
+        "summary": "Open a run of one Agent role. Vinc returns the first step: what to read, the role's policy and the budget left. Submit each step's output with vinc_run_submit.",
+        "description": "Open a run of one Agent role so Vinc can hold its state, gates and the ask-or-act boundary while your model does the work. Returns {run, run_id, state, step, task, policy:{reads, gates, output_kind, act_policy, capabilities, person_only, never}, budget_left, next}. Read the documents in policy.reads, do the task, then call vinc_run_submit with the output. run_id is optional: pass your own to make a retry return the same run instead of opening a second one (it resumes the open run when the role matches). The run is saved as a run record (an Episode about the role) whose outcome stays waiting until it ends. Vinc calls no model.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "description": "Agent slug or concept:agent- id."
+                  },
+                  "task": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "description": "What this run is for, in your own words."
+                  },
+                  "subject": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "description": "What the run works on, such as a pull request URL."
+                  },
+                  "run_id": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "description": "Your own id for the run; omit to get one."
+                  }
+                },
+                "required": [
+                  "role",
+                  "task"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{run}": {
+      "get": {
+        "operationId": "vinc_runs_get__v1_runs_run",
+        "summary": "List recorded agent runs, newest first. Pass cited to see only the runs that cited one claim, with whether that claim has been retired.",
+        "description": "List the agent run records of this space, newest first: {runs:[{id, run_id, role, outcome, title, date, host, cited_ids}], total, truncated}. Pass cited with a graph id (record:..., decision:... or doc:...) to keep only the runs whose cited_ids hold it; each run then also lists matched, and the result carries claim:{id, found, retired, valid_until, superseded_by}. A retired claim means every run it lists should be re-checked: the same runs arrive one by one as run.citation_superseded events. Filter by role with its slug or concept:agent- id. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "One run by its episode id or the run id you started it with; the result then carries its full props, including a waiting run's question."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/runs/{run}/steps": {
+      "post": {
+        "operationId": "vinc_run_submit_post__v1_runs_run_steps",
+        "summary": "Submit one step of a run. Vinc runs the role's gates on the output, stops at a person-only action with a question, resumes on an answer, and ends the run with its record.",
+        "description": "Submit one step of a run and receive the next instruction. Pass exactly one of: output (the step's result, at most 131072 characters), answer (approve or decline, only while the run waits for a person) or abandon (true, ends the run as abandoned). With output, Vinc runs the role's gates: a block returns status blocked with failed_checks and the run stays open for another try; a person-only or ask-first action named in person_only_requests, or a gate that interrupts, puts the run in state waiting with a question; a pass with nothing pending ends the run as success. person_only_requests is a list of {action, reason} for actions you are about to take; name them before acting, never after. A claim in the output that something ran is blocked, because evidence must come from the host. cited_ids adds the graph ids the output rests on (type-prefixed) to the run record; usage adds your tool_calls, tokens_in, tokens_out and cost_usd against the role's budget. The output text itself is not stored, only its sha256 and length. A finished run returns its record state again if submitted twice.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The run id vinc_run_start returned."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "output": {
+                    "type": "string",
+                    "maxLength": 131072
+                  },
+                  "answer": {
+                    "type": "string",
+                    "enum": [
+                      "approve",
+                      "decline"
+                    ]
+                  },
+                  "abandon": {
+                    "type": "boolean"
+                  },
+                  "person_only_requests": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "action": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "action",
+                        "reason"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "cited_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "usage": {
+                    "type": "object",
+                    "properties": {
+                      "tool_calls": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "tokens_in": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "tokens_out": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "cost_usd": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     },
     "/v1/community": {

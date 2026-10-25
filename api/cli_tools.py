@@ -227,6 +227,28 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
         return "vinc_events", {**common, **{k: v for k, v in data.items()
                                              if v not in (None, "", [])}}, None
     if cmd == "run":
+        if args.runcmd == "start":
+            data = {"role": args.role, "task": args.task, "subject": args.subject,
+                    "run_id": args.run_id}
+            return "vinc_run_start", {**common, **{k: v for k, v in data.items()
+                                                    if v not in (None, "")}}, None
+        if args.runcmd == "submit":
+            data = {"run": args.run, "answer": args.answer, "cited_ids": args.cited}
+            if args.abandon:
+                data["abandon"] = True
+            if args.output is not None:
+                data["output"] = _text_file(args.output)
+            for flag, key in (("person_only_requests", "person_only_requests"), ("usage", "usage")):
+                raw = getattr(args, flag)
+                if raw is not None:
+                    try:
+                        data[key] = json.loads(raw)
+                    except json.JSONDecodeError as exc:
+                        raise ValueError(f"--{flag.replace('_', '-')}: {exc}") from None
+            return "vinc_run_submit", {**common, **{k: v for k, v in data.items()
+                                                     if v not in (None, "", [])}}, None
+        if args.runcmd == "show":
+            return "vinc_runs", {**common, "run": args.run}, None
         data = {"cited": args.cited, "role": args.role, "limit": args.limit}
         return "vinc_runs", {**common, **{k: v for k, v in data.items()
                                            if v not in (None, "")}}, None

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**35종** — 읽기 26(search·node·role·role_export·role_check·edges·brief·recall·graph·decide·decide_paths·domains·suggest_ties·
-neighbors·path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami·operation_status·community_read·events·runs) + 쓰기 9
-(ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete·community_write).
+**37종** — 읽기 26(search·node·role·role_export·role_check·edges·brief·recall·graph·decide·decide_paths·domains·suggest_ties·
+neighbors·path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami·operation_status·community_read·events·runs) + 쓰기 11
+(ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete·community_write·run_start·run_submit).
 "단일 write 표면(ingest 하나)"은
 SEC-3(삭제·병합)과 D45(문서 정본 doc_*)를 거치며 깨진 낡은 서술이었다 —
 아래 TOOLS 리스트가 정본이고 이 독스트링은 그 요약일 뿐이다.
@@ -534,7 +534,18 @@ def _t_runs(args, bridge):
     # 실행 기록 목록(사이드카 `/runs`). `cited` 를 주면 그 주장을 인용한 실행만 돌려준다.
     return bridge.request("GET", "/runs", params={
         "owner": _owner(args, bridge), "cited": args.get("cited"), "role": args.get("role"),
-        "limit": args.get("limit")})
+        "run": args.get("run"), "limit": args.get("limit")})
+
+
+def _t_run_start(args, bridge):
+    # 실행 프로토콜: 역할 하나의 실행을 연다. 상태는 실행 기록 Episode 가 든다.
+    from . import run_protocol
+    return run_protocol.start(args, bridge, _owner(args, bridge))
+
+
+def _t_run_submit(args, bridge):
+    from . import run_protocol
+    return run_protocol.submit(args, bridge, _owner(args, bridge))
 
 
 def _t_merge_reject(args, bridge):
@@ -1038,6 +1049,12 @@ _SUMMARY: dict[str, str] = {
     "vinc_events": (
         "Read what changed for your Agent roles since a cursor: required reading changed, a cited "
         "claim retired, a lesson added. Pass back the returned cursor to continue."),
+    "vinc_run_start": (
+        "Open a run of one Agent role. Vinc returns the first step: what to read, the role's "
+        "policy and the budget left. Submit each step's output with vinc_run_submit."),
+    "vinc_run_submit": (
+        "Submit one step of a run. Vinc runs the role's gates on the output, stops at a person-only "
+        "action with a question, resumes on an answer, and ends the run with its record."),
     "vinc_runs": (
         "List recorded agent runs, newest first. Pass cited to see only the runs that cited one "
         "claim, with whether that claim has been retired."),
@@ -2268,10 +2285,63 @@ TOOLS.append({"name": "vinc_runs", "reference":
                                  "doc:...; omit to list runs without filtering."},
         "role": {"type": "string",
                  "description": "Only runs of this role (agent slug or concept:agent- id)."},
+        "run": {"type": "string",
+                "description": "One run by its episode id or the run id you started it with; "
+                               "the result then carries its full props, including a waiting "
+                               "run's question."},
         "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 200,
                   "description": "Most runs to return."},
         "owner": {"type": "string"}}, "required": []},
     "run": _t_runs})
+TOOLS.append({"name": "vinc_run_start", "reference":
+    "Open a run of one Agent role so Vinc can hold its state, gates and the ask-or-act boundary "
+    "while your model does the work. Returns {run, run_id, state, step, task, policy:{reads, "
+    "gates, output_kind, act_policy, capabilities, person_only, never}, budget_left, next}. "
+    "Read the documents in policy.reads, do the task, then call vinc_run_submit with the "
+    "output. run_id is optional: pass your own to make a retry return the same run instead of "
+    "opening a second one (it resumes the open run when the role matches). The run is saved as a "
+    "run record (an Episode about the role) whose outcome stays waiting until it ends. Vinc "
+    "calls no model.",
+    "inputSchema": {"type": "object", "properties": {
+        "role": {"type": "string", "description": "Agent slug or concept:agent- id."},
+        "task": {"type": "string", "maxLength": 4000,
+                 "description": "What this run is for, in your own words."},
+        "subject": {"type": "string", "maxLength": 500,
+                    "description": "What the run works on, such as a pull request URL."},
+        "run_id": {"type": "string", "maxLength": 128,
+                   "description": "Your own id for the run; omit to get one."},
+        "owner": {"type": "string"}}, "required": ["role", "task"]},
+    "run": _t_run_start})
+TOOLS.append({"name": "vinc_run_submit", "reference":
+    "Submit one step of a run and receive the next instruction. Pass exactly one of: output (the "
+    "step's result, at most 131072 characters), answer (approve or decline, only while the run "
+    "waits for a person) or abandon (true, ends the run as abandoned). With output, Vinc runs "
+    "the role's gates: a block returns status blocked with failed_checks and the run stays open "
+    "for another try; a person-only or ask-first action named in person_only_requests, or a "
+    "gate that interrupts, puts the run in state waiting with a question; a pass with nothing "
+    "pending ends the run as success. person_only_requests is a list of {action, reason} for "
+    "actions you are about to take; name them before acting, never after. A claim in the output "
+    "that something ran is blocked, because evidence must come from the host. cited_ids adds the "
+    "graph ids the output rests on (type-prefixed) to the run record; usage adds your "
+    "tool_calls, tokens_in, tokens_out and cost_usd against the role's budget. The output text "
+    "itself is not stored, only its sha256 and length. A finished run returns its record state "
+    "again if submitted twice.",
+    "inputSchema": {"type": "object", "properties": {
+        "run": {"type": "string", "description": "The run id vinc_run_start returned."},
+        "output": {"type": "string", "maxLength": 131072},
+        "answer": {"type": "string", "enum": ["approve", "decline"]},
+        "abandon": {"type": "boolean"},
+        "person_only_requests": {"type": "array", "items": {"type": "object", "properties": {
+            "action": {"type": "string"}, "reason": {"type": "string"}},
+            "required": ["action", "reason"], "additionalProperties": False}},
+        "cited_ids": {"type": "array", "items": {"type": "string"}},
+        "usage": {"type": "object", "properties": {
+            "tool_calls": {"type": "integer", "minimum": 0},
+            "tokens_in": {"type": "integer", "minimum": 0},
+            "tokens_out": {"type": "integer", "minimum": 0},
+            "cost_usd": {"type": "number", "minimum": 0}}, "additionalProperties": False},
+        "owner": {"type": "string"}}, "required": ["run"]},
+    "run": _t_run_submit})
 
 HOST_TOOLS: list[dict] = [
     {
@@ -2332,6 +2402,10 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_operation_status": {"title": "Check a mutation result", "readOnlyHint": True},
     "vinc_events": {"title": "Read change events for roles", "readOnlyHint": True},
     "vinc_runs": {"title": "List agent run records", "readOnlyHint": True},
+    "vinc_run_start": {"title": "Open a run of an Agent role", "readOnlyHint": False,
+                       "destructiveHint": False, "idempotentHint": True},
+    "vinc_run_submit": {"title": "Submit a step of a run", "readOnlyHint": False,
+                        "destructiveHint": False, "idempotentHint": False},
     community.WRITE_TOOL: {"title": "Edit a community", "readOnlyHint": False,
                            "destructiveHint": False, "idempotentHint": False},
     "vinc_search": {"title": "Search knowledge", "readOnlyHint": True},
