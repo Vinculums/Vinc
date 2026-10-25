@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vinc-agent-framework"
-version = "0.1.8"
+version = "0.1.9"
 description = "Vinc for Microsoft Agent Framework: bring decisions and records from your knowledge graph into each agent run, without writing anything on its own."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,7 +17,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Typing :: Typed",
 ]
-dependencies = ["vinc-client>=0.1.12,<0.2", "agent-framework-core>=1.8.1"]
+dependencies = ["vinc-client>=0.1.13,<0.2", "agent-framework-core>=1.8.1"]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]

@@ -7,11 +7,11 @@
 ## Install
 
 ```bash
-pip install "vinc-langgraph>=0.1.9"            # node helpers and tools
-pip install "vinc-langgraph[agents]>=0.1.9"    # plus the middleware for create_agent
+pip install "vinc-langgraph>=0.1.10"           # node helpers and tools
+pip install "vinc-langgraph[agents]>=0.1.10"   # plus the middleware for create_agent
 ```
 
-This README describes vinc-langgraph 0.1.9, which requires vinc-client 0.1.12 or later.
+This README describes vinc-langgraph 0.1.10, which requires vinc-client 0.1.13 or later.
 
 Set `VINC_API_KEY` to a member key. A `vinc_ro_` key is enough for every read helper, the middleware and the tools. `record_episode` and `write_package` need a `vinc_sk_` key; with a read only key they raise `VincAuthError` (`read_only_key`) before anything is sent. Give the write key only to the node that writes.
 
@@ -301,6 +301,7 @@ events. This follows the framework's [interrupt contract](https://docs.langchain
 
 | Version | Change |
 |---|---|
+| 0.1.10 | `record_run` and `arecord_run` write one agent run as an Episode about its role, with its raw trace by hash (see the vinc-client README, Record a run). Requires vinc-client 0.1.13. |
 | 0.1.9 | `prefetch_pin` on the middleware and `pin` on the node helpers hold role prefetch to a contract hash; a role that changed raises `VincRoleChanged` before the model is called. Requires vinc-client 0.1.12. |
 | 0.1.8 | With `prefetch_role`, the contract's `disallowed_tools` are removed from what the model sees and a call to one gets a refusal message; entries that match no tool are warned once per run. Requires vinc-client 0.1.11. |
 | 0.1.7 | With `prefetch_role`, the middleware reads the role once per run instead of before every model call; a new human message reads again. `clear_cache()` also drops these blocks. |

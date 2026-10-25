@@ -601,3 +601,27 @@ def test_same_role_pin_request_refusal_and_block_in_both_frameworks():
     assert pinned == plain
     assert len(pinned[0]) == len(pinned[1]) == 1
     assert pinned[0][0] == pinned[1][0] and ROLE in pinned[0][0]
+
+
+def test_run_record_helpers_send_the_same_body_in_both_frameworks():
+    # VIN-778: 실행 기록 헬퍼 셋(LangGraph 동기·비동기, Agent Framework)이 같은 본문을 보낸다.
+    from vinc_agent_framework import record_run as maf_run
+    from vinc_langgraph import arecord_run as lg_arun, record_run as lg_run
+    fields = {"role": ROLE, "outcome": "success", "steps": 2, "tool_calls": 3,
+              "cited_ids": ["record:rule"], "date": "2026-10-25"}
+    sk = "vinc_sk_" + "b" * 32
+    sync_seen, ma_seen, lg_seen = [], [], []
+    with VincClient(sk, transport=httpx.MockTransport(lambda r: response(r, sync_seen))) as client:
+        lg_run(client, "run-778", **fields)
+
+    async def run():
+        async with AsyncVincClient(sk, transport=httpx.MockTransport(
+                lambda r: response(r, ma_seen))) as client:
+            await maf_run(client, "run-778", **fields)
+        async with AsyncVincClient(sk, transport=httpx.MockTransport(
+                lambda r: response(r, lg_seen))) as client:
+            await lg_arun(client, "run-778", **fields)
+    asyncio.run(run())
+    assert sync_seen == ma_seen == lg_seen
+    posts = [seen for seen in sync_seen if seen[0] == "POST"]
+    assert len(posts) == 1 and posts[0][3]["nodes"][0]["props"]["run_id"] == "run-778"

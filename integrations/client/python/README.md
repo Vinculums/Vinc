@@ -11,10 +11,10 @@ Looking for the `vinc` command? See [the terminal CLI installation guide](https:
 ## Install
 
 ```bash
-pip install "vinc-client>=0.1.12"
+pip install "vinc-client>=0.1.13"
 ```
 
-This README describes vinc-client 0.1.12. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
+This README describes vinc-client 0.1.13. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
 
 ## Keys and spaces
 
@@ -23,7 +23,7 @@ Create a member key in your Vinc account. `VincClient()` reads it from `VINC_API
 | Key | What it can call |
 |---|---|
 | `vinc_ro_` (read only) | every read in the tables below, including `operation_status` and `role_check` |
-| `vinc_sk_` (full) | the reads, plus `ingest`, `record_episode`, `write_package`, `delete`, `delete_edge`, `merge_nodes`, `doc_delete` |
+| `vinc_sk_` (full) | the reads, plus `ingest`, `record_episode`, `record_run`, `write_package`, `delete`, `delete_edge`, `merge_nodes`, `doc_delete` |
 
 With a read only key every write method raises `VincAuthError` with code `read_only_key` before anything is sent. A `dry_run` preview of a delete or merge counts as a write, because the server ranks it with the change it previews. `vinc.read_only` says which kind you hold. Use a read only key wherever the agent only needs context.
 
@@ -77,6 +77,7 @@ Writes (`vinc_sk_` key):
 |---|---|---|
 | `ingest` | `nodes`, `edges`, `create_only`, `operation_id`, `review_claims` | merge nodes and edges by id |
 | `record_episode` | `title`, `summary`, `about`, `date`, `domain`, `tags`, `episode_id`, `create_only`, `operation_id` | one Episode about existing nodes |
+| `record_run` | `run_id`, `role`, `outcome`, run fields (`task_ref`, `host`, `model_family`, `steps`, `tool_calls`, `tokens_in`, `tokens_out`, `cost_usd`, `gate_results`, `cited_ids`, `shims_fired`, `trace`), `about`, `date`, `domain`, `tags`, `create_only`, `operation_id` | one agent run as an Episode about its role |
 | `write_package` | `question`, `conclusion`, `claims`, `produced_by`, `run_id`, `space` (required), `title`, `package_id`, `create_only`, `operation_id` | one handoff Record |
 | `delete` | `node_id`, `dry_run`, `preview_digest`, `operation_id` | delete a node and its edges |
 | `delete_edge` | `from_id`, `to_id`, `type`, `dry_run`, `preview_digest`, `operation_id` | delete one relationship |
@@ -114,6 +115,7 @@ Module exports, described in the sections below:
 | `fence` | `body`; wraps it in a backtick fence longer than any backtick run inside |
 | `BOUNDARY`, `SOURCES_LINE` | the sentence that marks a block as data, not instructions, and the final `Sources:` line instruction |
 | `build_episode_fragment` | `title`, `summary`, `about`, `date`, `domain`, `tags`, `episode_id`: the fragment `record_episode` sends |
+| `build_run_fragment`, `run_episode_id`, `trace_ref` | the fragment `record_run` sends, the episode id of a run id, and a raw trace file's address |
 | `build_package_fragment` | `question`, `conclusion`, `claims`, `produced_by`, `run_id`, `title`, `package_id`: the fragment `write_package` sends |
 | `format_package` | `node`, `space`, `readable_ids`, `evidence_nodes`, `max_chars=16000`: the package block |
 | `VincError` and its subclasses | see [Errors](#errors) |
@@ -167,6 +169,25 @@ vinc.record_episode(
 Every `about` id is read before the write, so a typo raises `VincNotFound` instead of creating an empty node.
 
 `props` sent with `ingest` replace a node's stored props whole. Read the node first and send the merged dict, or send the node's `expected_rev` (its `rev` from `node`) with `props_patch`, a JSON Merge Patch on the stored props. If someone wrote in between, the whole fragment is refused before any change and `details["current_rev"]` holds the newer revision.
+
+## Record a run
+
+When an agent run ends, write it once as an Episode about its role. Keep the raw trace (every prompt, tool call, tool result and output) as a file of your own, and pass its address, never a summary of it:
+
+```python
+from vinc_client import trace_ref
+
+vinc.record_run(
+    "run-2026-10-25-7",                      # the host's run id
+    role="concept:agent-reviewer", outcome="success",   # success, failure, blocked, waiting, abandoned, error
+    host="langgraph", model_family="claude", steps=4, tool_calls=6,
+    tokens_in=18_200, tokens_out=950, cost_usd=0.021,
+    cited_ids=["decision:tokens-are-oklch"],
+    trace=trace_ref("traces/run-2026-10-25-7.jsonl"),   # sha256, bytes and the file name only
+)
+```
+
+The episode id comes from the run id, so a retry of the same run merges into the same node; send all of the run's values again, because stored `props` are replaced whole. `trace_ref` reads the file to hash it and stores only its name, never the local path; pass `uri=` when the trace has a location you can share. Values you leave out are not stored. The role and every `about` id are read before the write.
 
 ## Transient errors
 
@@ -519,6 +540,7 @@ The read tools in both framework adapters expose these optional parameters too.
 
 | Version | Change |
 |---|---|
+| 0.1.13 | `record_run` writes one agent run as an Episode about its role, with run props and a `trace_ref` built by `trace_ref()` (sha256, size and file name of the raw trace file); the episode id comes from the run id, so retries merge. The adapters (vinc-langgraph 0.1.10, vinc-agent-framework 0.1.9) add `record_run`. |
 | 0.1.12 | `role`, `prefetch` and `prefetch_with_contract` take `pin`, a role contract `hash`; a role that changed raises the new `VincRoleChanged` before any document is read. Contracts carry `rev` and `hash`. The adapters (vinc-langgraph 0.1.9, vinc-agent-framework 0.1.8) pass it as `prefetch_pin`. |
 | 0.1.11 | `prefetch_with_contract` returns the prefetch block with the role contract it read, and `RoleToolPolicy` applies the contract's `disallowed_tools` by exact name. `prefetch` is unchanged. The adapters (vinc-langgraph 0.1.8, vinc-agent-framework 0.1.7) use both. |
 | 0.1.10 | Transient hub errors (502, 503, 504, dropped connections, timeouts) are retried for up to `retry_for` seconds (90 by default), following `Retry-After`. Writes are retried only with an `operation_id`. `get_context` and `prefetch` do not retry. |

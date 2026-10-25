@@ -240,6 +240,16 @@ async def record_episode(client: AsyncVincClient, title: str, *, summary: str = 
                                        create_only=create_only, operation_id=operation_id)
 
 
+async def record_run(client: AsyncVincClient, run_id: str, *, role: str, outcome: str,
+                     **fields: Any) -> dict[str, Any]:
+    """Write one agent run as an Episode about its role. Needs a ``vinc_sk_`` key.
+
+    ``fields`` are :meth:`vinc_client.AsyncVincClient.record_run`'s keyword
+    arguments. Call it after the run ends; a retry of the same ``run_id`` merges.
+    """
+    return await client.record_run(run_id, role=role, outcome=outcome, **fields)
+
+
 class PackageProvider(ContextProvider):
     """Read one explicit same-space handoff before each run, with no permission cache.
 

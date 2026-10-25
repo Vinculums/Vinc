@@ -822,6 +822,7 @@
     "decision:agent-model-ladder",
     "decision:agent-role-contract-is-warned-at-write-not-refused-2026-09-25",
     "decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02",
+    "decision:agent-run-record-keeps-the-raw-trace-as-a-hashed-file-2026-10-25",
     "decision:app-nodes-wear-the-hero-glass-2026-09-26",
     "decision:backoffice-metric-roles-added-2026-09-26",
     "decision:bge-m3-adoption",
@@ -1742,6 +1743,9 @@
       "validity": "current"
     },
     "record:writing-a-trap-down-does-not-stop-it-a-check-does": {
+      "validity": "current"
+    },
+    "decision:agent-run-record-keeps-the-raw-trace-as-a-hashed-file-2026-10-25": {
       "validity": "current"
     }
   }
