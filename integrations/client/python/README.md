@@ -11,10 +11,10 @@ Looking for the `vinc` command? See [the terminal CLI installation guide](https:
 ## Install
 
 ```bash
-pip install "vinc-client>=0.1.15"
+pip install "vinc-client>=0.1.16"
 ```
 
-This README describes vinc-client 0.1.15. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
+This README describes vinc-client 0.1.16. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
 
 For a new install, prefer `pip install vincs`: it has the same client as `vinc.sdk`, the framework adapters as extras and the `vinc` command. `vinc-client` keeps publishing under this name for existing installs.
 
@@ -118,6 +118,11 @@ Module exports, described in the sections below:
 | `BOUNDARY`, `SOURCES_LINE` | the sentence that marks a block as data, not instructions, and the final `Sources:` line instruction |
 | `build_episode_fragment` | `title`, `summary`, `about`, `date`, `domain`, `tags`, `episode_id`: the fragment `record_episode` sends |
 | `build_run_fragment`, `run_episode_id`, `trace_ref` | the fragment `record_run` sends, the episode id of a run id, and a raw trace file's address |
+| `build_shim_fragment` | `slug`, `target`, `patches`, `mechanism`, `applies_to`, `installed_because`, `measured_by`, `text`, `valid_from`, `title`, `domain`: one shim Record (see [Shims](#shims)) |
+| `current_shims`, `attached_shims` | `client`, `role_id` (or `targets`), `model_family`, `rung`, `today`, `harness`, `space`: the current shims as `Shim` values |
+| `shim_lines` | `shims`, `mechanisms`: the texts of prompt line and nudge shims |
+| `read_runs`, `retirement_drafts` | the run episodes of a window, and draft Decisions for shims that stopped firing |
+| `Shim`, `HARNESS_CONCEPT`, `MECHANISMS` | a stored shim, the concept all-role shims attach to, and the four mechanisms |
 | `build_package_fragment` | `question`, `conclusion`, `claims`, `produced_by`, `run_id`, `title`, `package_id`: the fragment `write_package` sends |
 | `format_package` | `node`, `space`, `readable_ids`, `evidence_nodes`, `max_chars=16000`: the package block |
 | `VincError` and its subclasses | see [Errors](#errors) |
@@ -190,6 +195,53 @@ vinc.record_run(
 ```
 
 The episode id comes from the run id, so a retry of the same run merges into the same node; send all of the run's values again, because stored `props` are replaced whole. `trace_ref` reads the file to hash it and stores only its name, never the local path; pass `uri=` when the trace has a location you can share. Values you leave out are not stored. The role and every `about` id are read before the write.
+
+## Shims
+
+A shim is a deterministic patch a harness adds because a model needs it today: a prompt line, a nudge, a tool filter or a gate. Keep each one as a Record attached to the role it patches, or to the harness concept `concept:vinc-agent-harness` when it applies to every role, so it carries the day it was installed, the incident that justified it and, later, the day it was retired:
+
+```python
+from vinc_client import build_shim_fragment
+
+fragment = build_shim_fragment(
+    "say-when-tests-were-not-run",
+    target="concept:agent-reviewer",           # or HARNESS_CONCEPT for every role
+    patches="claims tests passed without running them",
+    mechanism="prompt_line",                    # prompt_line, nudge, tool_filter or gate
+    applies_to=["claude"],                      # model families or rungs; empty means all
+    installed_because="record:review-claimed-green-tests-without-a-run",
+    text="Say which tests you ran; if you ran none, say so.",
+)
+vinc.ingest(fragment["nodes"], fragment["edges"])
+```
+
+The id is `record:shim-<slug>`, `valid_from` defaults to today and the edge is `relates_to` with an evidence sentence. A `prompt_line` or `nudge` shim needs its `text`. The target must already exist.
+
+Before a run, read the shims that apply and add their lines:
+
+```python
+from vinc_client import current_shims, shim_lines
+
+shims = current_shims(vinc, "concept:agent-reviewer", model_family="claude")
+system_prompt += "\n".join(shim_lines(shims, mechanisms=["prompt_line"]))
+```
+
+`current_shims` makes one edge read for the role and the harness concept and one node read per shim. It keeps a shim while `valid_from <= today < valid_until` and its `applies_to` is empty or names the family (or the `rung` you pass); with neither it keeps every current shim. A missing role raises `LookupError`, a harness concept that does not exist yet is fine, and an edge read that was cut short raises `RuntimeError` instead of returning a partial list. `shim_lines` returns the texts in id order without repeats; put them in the stable part of a prompt. Tool filters and gates are yours to apply; `Shim.mechanism` says which is which.
+
+When the run ends, report what fired with `record_run(..., model_family=..., shims_fired={"record:shim-say-when-tests-were-not-run": 1})`. No node is written per firing.
+
+To find shims that stopped firing, read the run episodes of a window and draft retirements:
+
+```python
+from vinc_client import HARNESS_CONCEPT, attached_shims, read_runs, retirement_drafts
+
+runs = read_runs(vinc, since="2026-09-25")    # run episodes tagged agent-run, with props
+shims = attached_shims(vinc, ["concept:agent-reviewer", HARNESS_CONCEPT])
+drafts = retirement_drafts(shims, runs, window_start="2026-09-25", min_runs=30,
+                           families_in_use=["claude", "gpt"])
+```
+
+`retirement_drafts` reads nothing. A shim is proposed when, on every family in use that it applies to, the runs that load it (its role's runs, or every run for a harness shim) since the window start or its install day number at least `min_runs` and fired it zero times. Each draft is a fragment with one Decision `decision:retire-shim-<slug>`, `props.state` `"draft"`, the per-family `counts` and the shim id in `props.shim`, `about` the role or the harness concept. Not firing does not prove a shim is unneeded, since a prompt line can prevent what it patches without visibly firing: a person ratifies only after the leave-one-out ablation row without that shim passes, then sets the shim's `valid_until`. `read_runs` pages the episode timeline and reads each `episode:run-...` by id, because the timeline returns no props. From the command line the same steps are `vinc shim ls` and `vinc shim watch`.
 
 ## Transient errors
 
@@ -581,6 +633,7 @@ The read tools in both framework adapters expose these optional parameters too.
 
 | Version | Change |
 |---|---|
+| 0.1.16 | Shims as Records: `build_shim_fragment`, `current_shims` and `shim_lines` for a host, and `read_runs` with `retirement_drafts` for a watcher that drafts the retirement of shims that stopped firing (see [Shims](#shims)). |
 | 0.1.15 | `RolePolicy` reads a role's `output_kind`, `act_policy`, `budget` and `capabilities` (see [A role's run policy](#a-roles-run-policy)); a malformed key raises `invalid_role_contract`. |
 | 0.1.14 | `role` takes `compact`. A role over the hub's read limit is no longer an error by default: `role`, `prefetch` and both adapters read it again without relation evidence sentences, and the result says `compact: True` (see [Large roles](#large-roles)). The adapters (vinc-langgraph 0.1.11, vinc-agent-framework 0.1.10) require it. |
 | 0.1.13 | `record_run` writes one agent run as an Episode about its role, with run props and a `trace_ref` built by `trace_ref()` (sha256, size and file name of the raw trace file); the episode id comes from the run id, so retries merge. The adapters (vinc-langgraph 0.1.10, vinc-agent-framework 0.1.9) add `record_run`. |

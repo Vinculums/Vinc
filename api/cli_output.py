@@ -17,6 +17,7 @@ LIST_FIELDS = {
     "doc ls": "docs", "graph": "nodes", "decide": "nodes",
     "node neighbors": "neighbors", "merge candidates": "candidates",
     "merge rejections": "rejections", "diagnose": "components", "edges": "edges",
+    "shim ls": "shims", "shim watch": "drafts",
 }
 
 
@@ -161,6 +162,29 @@ def _human(result: Any, command: str) -> str:
         return "\n".join(line for line in lines if line)
     if command == "search":
         return "\n".join(_rows(result.get("rows")) + _rows(result.get("node_hits")))
+    if command == "shim ls":
+        lines = [f"shims: {result.get('count', 0)}; today: {result.get('today', '')}"]
+        for row in result.get("shims") or []:
+            lines.append("\t".join([str(row.get("id", "")), str(row.get("mechanism", "")),
+                                    ",".join(row.get("applies_to") or []) or "all families",
+                                    "because " + str(row.get("installed_because", "")),
+                                    "since " + str(row.get("valid_from", "")),
+                                    ",".join(row.get("attached_to") or [])]))
+        return "\n".join(lines)
+    if command == "shim watch":
+        lines = [f"runs: {result.get('runs', 0)} since {result.get('window_start', '')}; "
+                 f"families in use: {', '.join(result.get('families_in_use') or []) or 'none'}; "
+                 f"shims: {len(result.get('shims') or [])}; drafts: {len(result.get('drafts') or [])}"]
+        for draft in result.get("drafts") or []:
+            node = (draft.get("nodes") or [{}])[0]
+            lines.append(f"{node.get('id', '')}\t{node.get('title', '')}")
+        if "written" in result:
+            lines.append(f"written: {len(result['written'])}; kept as decided: "
+                         + (", ".join(k["id"] for k in result.get("kept") or []) or "none"))
+            lines.extend("warning: " + str(w) for w in result.get("warnings") or [])
+        else:
+            lines.append("nothing written; pass --write to write the drafts")
+        return "\n".join(lines)
     field = LIST_FIELDS.get(command)
     rows = result.get(field) if field else None
     if isinstance(rows, list):

@@ -2,13 +2,16 @@
 
 Design and scope: [[vinc.plan.framework-integration-packages-2026-09-28]].
 """
-__version__ = "0.1.15"
+__version__ = "0.1.16"
 
 from .client import AsyncVincClient, VincClient  # noqa: E402
 from .context import (BOUNDARY, SOURCES_LINE, fence, format_answer, format_brief,  # noqa: E402
                       format_context, format_search)
 from .episode import build_episode_fragment  # noqa: E402
 from .run import OUTCOMES, build_run_fragment, run_episode_id, trace_ref  # noqa: E402
+from .shims import (HARNESS_CONCEPT, MECHANISMS, Shim, attached_shims,  # noqa: E402
+                    build_shim_fragment, current_shims, read_runs, retirement_drafts,
+                    shim_lines)
 from .review import Finding, PersonOnlyRequest, ReviewOutput, UnparsedReview, parse_review  # noqa: E402
 from .approval import (ApprovalDecision, ApprovalRequest, ApprovalResult, RoleOutput,  # noqa: E402
                        prepare_person_only, resolve_person_only)
@@ -26,6 +29,8 @@ __all__ = [
     "__version__", "VincClient", "AsyncVincClient",
     "BOUNDARY", "SOURCES_LINE", "fence", "format_answer", "format_brief", "format_context", "format_search", "build_episode_fragment",
     "OUTCOMES", "build_run_fragment", "run_episode_id", "trace_ref",
+    "HARNESS_CONCEPT", "MECHANISMS", "Shim", "attached_shims", "build_shim_fragment",
+    "current_shims", "read_runs", "retirement_drafts", "shim_lines",
     "VincError", "VincAuthError", "VincNotFound", "VincInvalidArgument",
     "VincQuotaExceeded", "VincUnavailable", "VincPartialWrite", "VincRoleChanged",
     "Finding", "PersonOnlyRequest", "ReviewOutput", "UnparsedReview", "parse_review",

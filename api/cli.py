@@ -412,6 +412,24 @@ def _main(argv: list[str] | None = None) -> int:
     rlc.add_argument("--self-authored", action="store_true", default=None,
                      help="the output is a diff this role wrote; removed lines are not proposals")
     rlc.add_argument("--owner", default=None)
+    sh = sub.add_parser("shim", help="list harness shims or draft the retirement of ones that stopped firing")
+    shs = sh.add_subparsers(dest="shimcmd", required=True)
+    shl = shs.add_parser("ls", help="list current shims with their mechanism and reason")
+    shl.add_argument("--role", default=None, help="one role slug or concept:agent- id (default every role)")
+    shl.add_argument("--model-family", dest="model_family", default=None,
+                     help="keep only shims that apply to this model family")
+    shw = shs.add_parser("watch", help="draft retirement decisions for shims with no firings in a window")
+    shw.add_argument("--window-days", dest="window_days", type=int, required=True,
+                     help="read runs from this many days back")
+    shw.add_argument("--min-runs", dest="min_runs", type=int, required=True,
+                     help="runs needed on every model family before a shim is proposed")
+    shw.add_argument("--families", default=None,
+                     help="comma separated model families in use (default the families in the window)")
+    shw.add_argument("--write", action="store_true",
+                     help="write the drafts (needs a full-access key); without it nothing is written")
+    for child in (shl, shw):
+        child.add_argument("--today", default=None, help="evaluate on this day, YYYY-MM-DD (default today, UTC)")
+        child.add_argument("--owner", default=None)
     pa = sub.add_parser("path", help="find a graph path")
     pa.add_argument("a")
     pa.add_argument("b")
@@ -557,7 +575,8 @@ def _main(argv: list[str] | None = None) -> int:
     _add_output_options(ap, root=True)
     args = ap.parse_args(argv)
     command = args.cmd
-    for name in ("doccmd", "gmcmd", "mcpcmd", "nodecmd", "edgecmd", "mergecmd", "refscmd", "rolecmd"):
+    for name in ("doccmd", "gmcmd", "mcpcmd", "nodecmd", "edgecmd", "mergecmd", "refscmd", "rolecmd",
+                 "shimcmd"):
         if getattr(args, name, None):
             command += " " + getattr(args, name)
     cli_output.configure(args.console_format, command)
@@ -639,7 +658,11 @@ def _main(argv: list[str] | None = None) -> int:
         if target == "local" and args.space and args.space.strip().lower() != "personal":
             return cli_output.usage_error("--space requires --target account")
         space = cli_target.resolve_space(args.space) if target == "account" else "personal"
-        if target == "account":
+        if args.cmd == "shim":
+            # 도구 하나로 끝나지 않는 동사라 여러 도구를 같은 대상에 잇는다.
+            from .cli_shims import run as run_shim
+            result, exit_code = run_shim(args, target=target, space=space)
+        elif target == "account":
             from .cli_account import run as run_tool
             result, exit_code = run_tool(args, space=space)
         else:

@@ -860,6 +860,7 @@
     "decision:scoped-key-tier",
     "decision:sec-1",
     "decision:share-documents-follow-the-nodes-that-carry-them",
+    "decision:shims-are-records-retired-by-a-person-after-an-ablation-row-2026-10-25",
     "decision:side-navigation-picks-open-the-document-pane-full-width-2026-09-25",
     "decision:site-boards-are-captures-of-the-running-code",
     "decision:space-transfer-sends-size-bounded-chunks-nodes-then-edges-then-documents",
@@ -1755,6 +1756,9 @@
       "validity": "current"
     },
     "decision:agent-run-record-keeps-the-raw-trace-as-a-hashed-file-2026-10-25": {
+      "validity": "current"
+    },
+    "decision:shims-are-records-retired-by-a-person-after-an-ablation-row-2026-10-25": {
       "validity": "current"
     }
   }
