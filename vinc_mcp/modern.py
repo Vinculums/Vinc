@@ -45,6 +45,11 @@ CACHE_HINTS = {
     "prompts/list": (60_000, "private"),
     # 이벤트 종류도 배포(와 웹훅 스위치)로만 바뀌고 호출자 모두에게 같다.
     "events/list": (3_600_000, "public"),
+    # 스킬은 역할에서 오므로 프롬프트와 같은 값이다(소유자마다 다르고 역할이 바뀌면 바뀐다).
+    "skills/list": (60_000, "private"),
+    "skills/get": (60_000, "private"),
+    "resources/list": (60_000, "private"),
+    "resources/read": (60_000, "private"),
 }
 #: `server/discover` 의 `instructions` 는 소유자와 팀 목록을 담으므로 허브에서는 private.
 DISCOVER_TTL_MS = 300_000

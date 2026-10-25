@@ -13,9 +13,10 @@ result.isError=True 로 돌려준다(호스트가 재시도·수정 가능하도
 
 `prompts/*` 는 W2 에서 열었다(역할 열여섯을 프롬프트로 낸다 — 구현은 `roles.py`).
 역할과 별개로 그래프와 상관없이 늘 나가는 내장 프롬프트는 `builtin_prompts.py` 가 낸다.
-**`resources/*` 는 계속 -32601 이다.** 그 비구현은 실수가 아니라 판정이라
-(`vinc_conventions`·`vinc_domains` 가 이미 같은 것을 도구로 낸다) 회귀 테스트가
-둘의 갈림을 그대로 못 박는다: prompts 열림, resources 닫힘.
+**핸드셰이크 세대의 `resources/*` 는 계속 -32601 이다**(`vinc_conventions`·
+`vinc_domains` 가 이미 같은 것을 도구로 내고, 회귀 테스트가 그 갈림을 못 박는다). 모던
+세대에서만 Skills 확장을 위해 `skills/list`·`skills/get` 과 스킬 파일의 `resources/list`·
+`resources/read` 를 연다. 근거: [[decision:mcp-skills-extension-opens-skill-files-in-the-modern-era-only]]
 
 디스패처가 전송 중립이라 stdio 와 허브가 한 구현을 같이 쓴다 — 호스티드 노출(D3)이
 따로 배선할 것 없이 여기서 성립한다.
@@ -50,9 +51,20 @@ def _tool_specs(hub: bool = False) -> list[dict]:
     return tools.specs(hub=hub)
 
 
-def _capabilities() -> dict:
-    """initialize 와 server/discover 가 같이 광고하는 능력. 호출마다 새 dict 다."""
-    return {"tools": {}, "prompts": {}}
+def _capabilities(modern_era: bool = False) -> dict:
+    """initialize 와 server/discover 가 광고하는 능력. 호출마다 새 dict 다. 모던 세대에만 스킬 파일의
+    resources 와 Skills 확장이 더해진다(핸드셰이크 세대 응답은 그대로다)."""
+    caps: dict = {"tools": {}, "prompts": {}}
+    if modern_era:
+        caps["resources"] = {}
+        # Events 확장(`events.py`)도 모던 세대에서만 광고한다.
+        caps["events"] = {}
+        caps["extensions"] = {roles.SKILLS_EXTENSION: {}, events.EXTENSION: {}}
+    return caps
+
+
+#: 모던 세대에서만 여는 스킬 메서드.
+_SKILL_METHODS = ("skills/list", "skills/get", "resources/list", "resources/read")
 
 
 def _where_am_i(forced_owner: str | None) -> str | None:
@@ -158,8 +170,7 @@ class Dispatcher:
             # `instructions` 는 initialize 와 같은 문단이고, 소유자와 팀 이름을 담으므로
             # 허브에서는 private 다.
             out = {"supportedVersions": modern.supported_versions(PROTOCOL_VERSIONS),
-                   "capabilities": {**_capabilities(), "events": {},
-                                    "extensions": {events.EXTENSION: {}}},
+                   "capabilities": _capabilities(modern_era=True),
                    "ttlMs": modern.DISCOVER_TTL_MS,
                    "cacheScope": "private" if forced_owner else "public"}
             txt = _where_am_i(forced_owner)
@@ -233,6 +244,23 @@ class Dispatcher:
             if name == community.WRITE_TOOL and outcome.result.get("isError"):
                 return _tool_result(roles.serialize_result(outcome.result), name, is_error=True)
             return _result_text(roles.serialize_result(outcome.result), name, args)
+        if method in _SKILL_METHODS and modern_version is not None:
+            # 스킬은 역할 계약을 읽는다. 프롬프트와 같은 규칙(커뮤니티 거절·쿼터)을 탄다.
+            if community.is_space(forced_owner):
+                raise PermissionError("Community roles are data. Add a role to your own graph before using it as a skill.")
+            if quota is not None and forced_owner:
+                denial = quota(forced_owner, plan)
+                if denial is not None:
+                    raise _QuotaDenied(_denial_text(denial))
+            if method == "skills/list":
+                out = roles.list_skills(self.bridge, forced_owner, params.get("cursor"))
+            elif method == "skills/get":
+                out = roles.get_skill(self.bridge, params.get("uri"), forced_owner)
+            elif method == "resources/list":
+                out = roles.list_skill_resources(self.bridge, forced_owner, params.get("cursor"))
+            else:
+                out = roles.read_skill_resource(self.bridge, params.get("uri"), forced_owner)
+            return modern.with_cache_hints(out, method)
         if method in ("prompts/list", "prompts/get"):
             if community.is_space(forced_owner):
                 raise PermissionError("Community roles are data. Add a role to your own graph before using it as a prompt.")

@@ -129,8 +129,9 @@ class ModernEra(unittest.TestCase):
         self.assertEqual(result["supportedVersions"],
                          [MODERN] + list(rpc.PROTOCOL_VERSIONS))
         self.assertEqual(result["capabilities"], {
-            "tools": {}, "prompts": {}, "events": {},
-            "extensions": {"io.modelcontextprotocol/events": {}}})
+            "tools": {}, "prompts": {}, "resources": {}, "events": {},
+            "extensions": {"io.modelcontextprotocol/skills": {},
+                           "io.modelcontextprotocol/events": {}}})
         self.assertEqual((result["ttlMs"], result["cacheScope"]),
                          (modern.DISCOVER_TTL_MS, "public"))
         self.assertNotIn("instructions", result)        # 로컬: 고를 스페이스가 없다
