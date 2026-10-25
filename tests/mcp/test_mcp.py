@@ -64,7 +64,9 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              # 변경 기록에서 계산한 이벤트 피드(조회 전용). 근거: [[vinc.plan.mcp-events-and-webhooks]]
              "vinc_events",
              # 실행 기록 목록(조회 전용), 인용한 주장으로 거른다. 근거: [[vinc.plan.mcp-events-and-webhooks]]
-             "vinc_runs"}
+             "vinc_runs",
+             # 실행 프로토콜: 역할 하나를 단계마다 붙잡고 돌린다. 근거: [[vinc.research.agent-harness-and-eval-without-a-model-api-2026-10-25]]
+             "vinc_run_start", "vinc_run_submit"}
 
 
 class _StubBridge(Bridge):
@@ -110,7 +112,7 @@ class ToolContractTests(unittest.TestCase):
                     "from_id": "concept:x", "to_id": "concept:y", "type": "relates_to",
                     "a": "concept:x", "b": "concept:y",   # E-G7 vinc_path 필수 인자
                     "text": "x", "doc_id": "d0",          # D45 P4 문서 정본 필수 인자
-                    "role": "concept:agent-x", "output": "x",
+                    "role": "concept:agent-x", "output": "x", "task": "x", "run": "r0",
                     "paths": ["vinc:api/sync.py"],   # vinc_decide_paths 필수 인자
                     "operation_id": "00000000-0000-4000-8000-000000000488"}   # 필수 조회 인자
             if t["name"] == "vinc_edges":

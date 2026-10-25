@@ -498,9 +498,11 @@
     "vinc.plan.book-storyboard-part2-2026-09-16",
     "vinc.plan.book-storyboard-part3-2026-09-16",
     "vinc.plan.book-storyboard-part4-2026-09-16",
+    "vinc.plan.brief-choose-list-semantic-order-sealed78-2026-10-25",
     "vinc.plan.brief-promotion-0-10-sealed7-2026-10-24",
     "vinc.plan.brief-promotion-production-reproduction-2026-10-23",
     "vinc.plan.brief-promotion-threshold-sealed6-2026-10-23",
+    "vinc.plan.brief-xlang-promotion-sealed9-2026-10-25",
     "vinc.plan.cag-context-compiler-2026-10-05",
     "vinc.plan.chatgpt-reviewer-login",
     "vinc.plan.choose-cost-measurement-2026-10-19",
@@ -578,6 +580,7 @@
     "vinc.plan.mcp-short-tool-descriptions-2026-10-17",
     "vinc.plan.merge-order-2026-10-04",
     "vinc.plan.n-wave-remaining-work-2026-09-11",
+    "vinc.plan.node-mirror-body-text-sealed8-2026-10-24",
     "vinc.plan.node-pk-namespacing",
     "vinc.plan.p3-execution",
     "vinc.plan.p5-remote-rollout",
@@ -642,6 +645,8 @@
     "vinc.research.0-9-2-closeout-measure-2026-09-11",
     "vinc.research.abstention-paired-gold-and-fruitfly-circuits-2026-10-18",
     "vinc.research.agent-frameworks-mcp-cli-api-2026-09-28",
+    "vinc.research.agent-harness-and-eval-without-a-model-api-2026-10-25",
+    "vinc.research.agent-hosts-and-subscription-runs-2026-10-25",
     "vinc.research.agent-lab-integration-packages-findings-2026-10-03",
     "vinc.research.agent-lab-role-composition-findings-2026-10-03",
     "vinc.research.agent-lab-vinc-api-findings-2026-10-03",
@@ -700,8 +705,11 @@
     "vinc.research.gaussian-layout",
     "vinc.research.google-sign-in-2026-09-26",
     "vinc.research.graph-defined-agents-usage-2026-09-28",
+    "vinc.research.graph-pages-and-marks-2026-10-25",
     "vinc.research.graph-storage-and-search-audit-2026-10-16",
     "vinc.research.graph-structure",
+    "vinc.research.graph-view-user-pain-2026-10-24",
+    "vinc.research.graph-visual-directions-2026-10-24",
     "vinc.research.graph-write-method-2026-10-14",
     "vinc.research.graphrag-agent-memory-literature-2026-09-28",
     "vinc.research.hero-motion-premium-vs-cheap-2026-10-17",
@@ -729,6 +737,7 @@
     "vinc.research.methodology",
     "vinc.research.minkowski-causal-order",
     "vinc.research.missing-attribute-advisory-generated-answers-2026-10-16",
+    "vinc.research.model-free-chat",
     "vinc.research.motion",
     "vinc.research.motion-audit-2026-09-05",
     "vinc.research.no-llm-chat",
@@ -758,6 +767,7 @@
     "vinc.research.search-abstention-2026-10-04",
     "vinc.research.search-field-coverage-and-freshness-2026-10-13",
     "vinc.research.sibling-material-answer-harm-2026-10-16",
+    "vinc.research.single-graph-viewer-2026-10-24",
     "vinc.research.site-demo-loading-and-alternatives-2026-10-04",
     "vinc.research.site-layout-lines-audit-2026-10-24",
     "vinc.research.site-mobile-2026-10-02",
@@ -1004,7 +1014,6 @@
     "record:the-document-subject-relation-is-inferred-not-authored-2026-09-06",
     "record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09",
     "record:the-eval-drift-to-41-14-4-follows-the-query-encoder-runtime-not-the-engine-2026-09-28",
-    "record:the-hermes-extra-of-vincs-depends-on-no-hermes-package-2026-10-25",
     "record:the-hub-census-orphan-vectors-are-chunks-left-on-physical-keys-not-orphans-2026-09-30",
     "record:the-hub-encodes-queries-and-vectors-with-onnxruntime-1-30-since-2026-09-10",
     "record:the-hub-stamp-backfill-released-779-queued-documents-without-re-embedding-2026-09-30",
@@ -1102,6 +1111,9 @@
     "decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02": {
       "validity": "unknown"
     },
+    "decision:agent-run-record-keeps-the-raw-trace-as-a-hashed-file-2026-10-25": {
+      "validity": "current"
+    },
     "decision:app-nodes-wear-the-hero-glass-2026-09-26": {
       "validity": "unknown"
     },
@@ -1171,6 +1183,9 @@
     "decision:mcp-modern-era-is-served-per-request-beside-the-initialize-era": {
       "validity": "current"
     },
+    "decision:mcp-skills-extension-opens-skill-files-in-the-modern-era-only": {
+      "validity": "current"
+    },
     "decision:mcp-tool-descriptions-are-short-summaries-with-a-docs-link": {
       "validity": "unknown"
     },
@@ -1206,6 +1221,9 @@
     },
     "decision:share-documents-follow-the-nodes-that-carry-them": {
       "validity": "unknown"
+    },
+    "decision:shims-are-records-retired-by-a-person-after-an-ablation-row-2026-10-25": {
+      "validity": "current"
     },
     "decision:side-navigation-picks-open-the-document-pane-full-width-2026-09-25": {
       "validity": "unknown"
@@ -1316,6 +1334,9 @@
       "validity": "unknown"
     },
     "decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24": {
+      "validity": "current"
+    },
+    "decision:vinc-memory-providers-write-only-through-explicit-tools-2026-10-25": {
       "validity": "current"
     },
     "decision:web-app-follows-main-desktop-ships-by-release-2026-10-23": {
@@ -1757,18 +1778,6 @@
       "validity": "current"
     },
     "record:writing-a-trap-down-does-not-stop-it-a-check-does": {
-      "validity": "current"
-    },
-    "decision:agent-run-record-keeps-the-raw-trace-as-a-hashed-file-2026-10-25": {
-      "validity": "current"
-    },
-    "decision:shims-are-records-retired-by-a-person-after-an-ablation-row-2026-10-25": {
-      "validity": "current"
-    },
-    "decision:vinc-memory-providers-write-only-through-explicit-tools-2026-10-25": {
-      "validity": "current"
-    },
-    "record:the-hermes-extra-of-vincs-depends-on-no-hermes-package-2026-10-25": {
       "validity": "current"
     }
   }

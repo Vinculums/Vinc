@@ -451,7 +451,7 @@ def _main(argv: list[str] | None = None) -> int:
     evt.add_argument("--cursor-file", default=None, metavar="FILE",
                      help="start from the cursor in this file and write each new cursor to it")
     evt.add_argument("--owner", default=None)
-    rn = sub.add_parser("run", help="list recorded agent runs")
+    rn = sub.add_parser("run", help="run an Agent role step by step, or list recorded runs")
     rns = rn.add_subparsers(dest="runcmd", required=True)
     rnl = rns.add_parser("ls", help="list runs, newest first; --cited keeps the ones that cited a claim")
     rnl.add_argument("--cited", default=None, metavar="ID",
@@ -460,6 +460,31 @@ def _main(argv: list[str] | None = None) -> int:
     rnl.add_argument("--role", default=None, help="only runs of this role (slug or concept:agent- id)")
     rnl.add_argument("--limit", type=int, default=None, help="most runs to list (1..200)")
     rnl.add_argument("--owner", default=None)
+    rns_start = rns.add_parser("start", help="open a run of a role; prints the first step")
+    rns_start.add_argument("role", help="agent slug or concept:agent- id")
+    rns_start.add_argument("--task", required=True, help="what this run is for")
+    rns_start.add_argument("--subject", default=None, help="what it works on, such as a PR URL")
+    rns_start.add_argument("--run-id", default=None, dest="run_id",
+                           help="your own id; a retry with the same id returns the same run")
+    rns_start.add_argument("--owner", default=None)
+    rns_sub = rns.add_parser("submit", help="submit one step: output, an answer, or abandon")
+    rns_sub.add_argument("run", help="the run id `vinc run start` printed")
+    rns_sub.add_argument("--output", default=None, metavar="FILE",
+                         help="the step's output; - reads stdin")
+    rns_sub.add_argument("--answer", default=None, choices=("approve", "decline"),
+                         help="answer the question of a waiting run")
+    rns_sub.add_argument("--abandon", action="store_true", help="end the run as abandoned")
+    rns_sub.add_argument("--person-only-requests", default=None, metavar="JSON",
+                         dest="person_only_requests",
+                         help='JSON array of {"action","reason"} you are about to take')
+    rns_sub.add_argument("--cited", action="append", default=None, dest="cited",
+                         metavar="ID", help="a graph id the output rests on; repeat for more")
+    rns_sub.add_argument("--usage", default=None, metavar="JSON",
+                         help='JSON like {"tool_calls":3,"tokens_in":900,"cost_usd":0.02}')
+    rns_sub.add_argument("--owner", default=None)
+    rns_show = rns.add_parser("show", help="print one run with its state and question")
+    rns_show.add_argument("run", help="episode id or the run id")
+    rns_show.add_argument("--owner", default=None)
     sh = sub.add_parser("shim", help="list harness shims or draft the retirement of ones that stopped firing")
     shs = sh.add_subparsers(dest="shimcmd", required=True)
     shl = shs.add_parser("ls", help="list current shims with their mechanism and reason")

@@ -117,6 +117,21 @@ FAILURE_CASES = [
                    "truncated": False}, False, None, None),
     ("vinc_runs", {"executed": False, "note": "no reachable store"}, False, 503,
      "upstream_unavailable"),
+    ("vinc_run_start", {"kind": "run", "executed": True, "state": "working"}, False, None, None),
+    ("vinc_run_start", {"kind": "run", "executed": False, "error": "task_required",
+                        "note": "Invalid: pass the task as a non-empty string."}, False, 400,
+     "invalid_argument"),
+    ("vinc_run_start", {"kind": "run", "executed": False, "found": False}, False, 404, "not_found"),
+    ("vinc_run_start", {"kind": "run", "executed": False, "error": "run_not_saved",
+                        "note": "The run state could not be saved, so nothing advanced. unavailable"},
+     False, 503, "upstream_unavailable"),
+    ("vinc_run_submit", {"kind": "run", "executed": True, "state": "waiting"}, False, None, None),
+    ("vinc_run_submit", {"kind": "run", "executed": False, "error": "invalid_run_state",
+                         "note": "Invalid: the run waits for an answer, not output."}, False, 400,
+     "invalid_argument"),
+    ("vinc_run_submit", {"kind": "run", "executed": False, "found": False, "error": "run_not_found",
+                         "note": "Unknown run: start one with vinc_run_start."}, False, 404,
+     "not_found"),
 ]
 
 
@@ -176,6 +191,7 @@ _READ_SAMPLES = {
     ("GET", "/v1/merge-rejections"): (None, {}),
     ("GET", "/v1/documents"): (None, {}),
     ("GET", "/v1/documents/{doc_id}"): ("", {"doc_id": "d1"}),
+    ("GET", "/v1/runs/{run}"): ("", {"run": "r1"}),
     ("GET", "/v1/runs"): ("?cited=record:x&role=agent-x&limit=5",
                           {"cited": "record:x", "role": "agent-x", "limit": 5}),
     ("GET", "/v1/events"): ("?since=0&role=agent-x&kinds=role.lesson_added&limit=5",
@@ -229,7 +245,7 @@ def test_read_only_key_can_call_every_read_route(monkeypatch):
         for route in rest_routes.READ_ROUTES:
             sample, _args = _READ_SAMPLES[(route.method, route.path)]
             path = route.path.replace("{id}", "concept%3Ax").replace("{doc_id}", "d1").replace(
-                "{operation_id}", "00000000-0000-4000-8000-000000000488")
+                "{operation_id}", "00000000-0000-4000-8000-000000000488").replace("{run}", "r1")
             if route.tool in ("vinc_role", "vinc_role_check"):
                 path = route.path.replace("{id}", "concept%3Aagent-x")
             body = dict(sample) if isinstance(sample, dict) else None

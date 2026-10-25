@@ -96,8 +96,11 @@ def _episodes(store, owner: str) -> list[dict]:
 
 
 def list_runs(store, *, owner: str, cited: str | None = None, role: str | None = None,
-              limit: int = DEFAULT_LIMIT) -> dict:
-    """실행 기록 목록, 최근 것부터. `cited` 는 그 주장을 인용한 실행만 남긴다."""
+              run: str | None = None, limit: int = DEFAULT_LIMIT) -> dict:
+    """실행 기록 목록, 최근 것부터. `cited` 는 그 주장을 인용한 실행만 남긴다.
+
+    `run`(episode id 또는 호스트의 run id)을 주면 그 실행 하나를 `props` 통째로 돌려준다.
+    열려 있는 실행의 상태(`state`·`pending`·`step`)를 프로토콜이 읽는 문이다."""
     base = {"kind": "runs", "executed": False}
     if not owner:
         return {**base, "error": "owner is required"}
@@ -118,10 +121,14 @@ def list_runs(store, *, owner: str, cited: str | None = None, role: str | None =
         matched = [c for c in dict.fromkeys(ids) if c in wanted]
         if cited and not matched:
             continue
+        if run and run not in (pkns.strip(row["id"]), str(props.get("run_id") or "")):
+            continue
         item = {"id": pkns.strip(row["id"]), "run_id": str(props.get("run_id") or ""),
                 "role": run_role, "outcome": str(props.get("outcome") or ""),
                 "title": events._title(row.get("title")), "date": str(row.get("date") or ""),
                 "host": str(props.get("host") or ""), "cited_ids": ids}
+        if run:
+            item["props"] = props
         if cited:
             item["matched"] = matched
         runs.append(item)

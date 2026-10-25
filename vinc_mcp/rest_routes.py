@@ -83,11 +83,17 @@ READ_ROUTES = (
           path_args=(("doc_id", "doc_id"),)),
     Route("GET", "/v1/events", "vinc_events", query=("since", "role", "kinds", "limit")),
     Route("GET", "/v1/runs", "vinc_runs", query=("cited", "role", "limit")),
+    Route("GET", "/v1/runs/{run}", "vinc_runs", path_args=(("run", "run"),)),
 )
 
 # A2 adds editor/admin routes here. Search/fetch belong to a host directory,
 # while every other public MCP tool must have a route.
 WRITE_ROUTES = (
+    Route("POST", "/v1/runs", "vinc_run_start", body=("role", "task", "subject", "run_id"),
+          success=201),
+    Route("POST", "/v1/runs/{run}/steps", "vinc_run_submit",
+          body=("output", "answer", "abandon", "person_only_requests", "cited_ids", "usage"),
+          path_args=(("run", "run"),)),
     Route("POST", "/v1/community", "vinc_community_write", body=("action", "payload", "client_name")),
     Route("POST", "/v1/merge-rejections", "vinc_merge_reject",
           body=("a", "b", "note", "undo", "operation_id")),
