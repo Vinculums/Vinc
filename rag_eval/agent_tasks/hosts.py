@@ -217,7 +217,7 @@ def _lc_model(stepper: Stepper):
                               "parameters": fn.get("parameters") or {}})
             return self.bind(harness_tools=specs, **kwargs)
 
-        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        def _generate(self, messages, stop=None, **kwargs):
             turn = stepper.step(_lc_neutral(messages), kwargs.get("harness_tools") or [])
             msg = AIMessage(content=turn.text, tool_calls=[
                 {"name": c.name, "args": c.args, "id": c.id, "type": "tool_call"}
