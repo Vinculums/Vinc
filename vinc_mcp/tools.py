@@ -693,7 +693,7 @@ def _t_role_check(args, bridge):
     if not isinstance(output, str) or not output.strip() or len(output) > 131072:
         return {"kind": "role_check", "executed": False, "error": "output_required",
                 "note": "Pass the final output as one non-empty string of at most 131072 characters."}
-    # 판정만 돌려주고 계약은 싣지 않으므로 읽기 예산(roles.CONTRACT_CAP)에 걸리지 않는다.
+    # 결과만 돌려주고 계약은 싣지 않으므로 읽기 예산(roles.CONTRACT_CAP)에 걸리지 않는다.
     got = contract(role.strip(), bridge, forced_owner=_owner(args, bridge), capped=False)
     if not got.get("executed") or not got.get("found"):
         return {**got, "kind": "role_check"}

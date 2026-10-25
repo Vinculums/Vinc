@@ -431,8 +431,7 @@ def contract(role: str | None, bridge, *, forced_owner: str | None = None,
 
     compact 는 works_with 의 관계 근거 문장(evidence)만 뺀다. props·끝점·타입·신뢰도는 그대로고,
     hash 는 두 모양 모두 전체 계약의 해시라 한쪽에서 딴 고정이 다른 쪽에도 맞는다.
-    capped=False 는 계약을 돌려주지 않는 호출자(role_check)용이다: 예산 검사를 건너뛴다.
-    근거: [[vinc.plan.agent-harness-work-order-2026-10-25]] (D10)"""
+    capped=False 는 계약을 돌려주지 않는 호출자(role_check)용이다: 예산 검사를 건너뛴다."""
     import json
     invalid = _pin_error(expected_hash, expected_rev, role)
     if invalid:
