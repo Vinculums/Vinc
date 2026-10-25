@@ -625,3 +625,81 @@ def test_run_record_helpers_send_the_same_body_in_both_frameworks():
     assert sync_seen == ma_seen == lg_seen
     posts = [seen for seen in sync_seen if seen[0] == "POST"]
     assert len(posts) == 1 and posts[0][3]["nodes"][0]["props"]["run_id"] == "run-778"
+
+
+_PROFILE = next(p for p in json.loads((__import__("pathlib").Path(__file__).resolve().parents[1]
+                / "fixtures" / "output_gate" / "proposed-role-checks.json").read_text(
+                    encoding="utf-8"))["profiles"] if p["id"] == "concept:agent-dev-core")
+
+
+def _build_hub(seen):
+    def handler(request):
+        seen.append((request.method, request.url.path,
+                     json.loads(request.content) if request.content else None))
+        path = request.url.path
+        if path.startswith("/v1/roles/"):
+            body = {"found": True, "id": "concept:agent-dev-core", "title": "Core developer",
+                    "rev": 2, "hash": "a" * 64,
+                    "props": {**_PROFILE, "mission": "m", "tier": "execute", "rung": "strong",
+                              "never": ["merge"], "reads": []},
+                    "works_with": {"hands_to": [{"from": "concept:agent-dev-core",
+                                                 "to": "concept:agent-gate-runner"}],
+                                   "receives_from": []}}
+        elif path.startswith("/v1/nodes/"):
+            body = {"executed": True, "found": True, "node": {"id": path.rsplit("/", 1)[-1]}}
+        elif path == "/v1/fragments":
+            body = {"merged": {"nodes": {"created": 1}}, "stored": [], "warnings": []}
+        elif path.endswith("/brief"):
+            body = {"status": "resolved", "node": {"id": "decision:fixture",
+                    "cite_id": "decision:fixture"}, "one_liner": "Keep it."}
+        else:
+            body = {"node_hits": []}
+        return httpx.Response(200, json=body)
+    return handler
+
+
+@pytest.mark.parametrize("reply,status", [
+    ("The change reads correctly.\nSources: decision:fixture", "done"),
+    ("I merged the pull request and deployed it.", "blocked")])
+def test_build_agent_runs_the_same_in_both_frameworks(reply, status):
+    # VIN-785: 역할 주소 하나로 만든 에이전트가 두 프레임워크에서 같은 판정·같은 실행 기록을 낸다.
+    from vinc_agent_framework import build_agent as maf_build
+    from vinc_langgraph import build_agent as lg_build
+    sk = "vinc_sk_" + "b" * 32
+
+    class Model(BaseChatModel):
+        @property
+        def _llm_type(self):
+            return "offline-parity"
+
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=reply))])
+
+    class Chat(BaseChatClient):
+        async def _inner_get_response(self, *, messages, stream, options, **kwargs):
+            return ChatResponse(messages=Message("assistant", [reply]))
+
+    lg_seen, ma_seen = [], []
+    with VincClient(sk, transport=httpx.MockTransport(_build_hub(lg_seen))) as client:
+        lg_run = lg_build("dev-core", Model(), client=client).invoke("Review.", run_id="run-785")
+
+    async def go():
+        async with AsyncVincClient(sk, transport=httpx.MockTransport(_build_hub(ma_seen))) as client:
+            agent = await maf_build("dev-core", Chat(), client=client)
+            return await agent.run("Review.", run_id="run-785")
+    ma_run = asyncio.run(go())
+
+    assert lg_run.status == ma_run.status == status
+    assert lg_run.output == ma_run.output and lg_run.cited_ids == ma_run.cited_ids
+    assert (lg_run.gate and lg_run.gate.verdict) == (ma_run.gate and ma_run.gate.verdict)
+
+    def record(seen):
+        post = next(s for s in seen if s[0] == "POST" and s[1] == "/v1/fragments")
+        props = dict(post[2]["nodes"][0]["props"])
+        return props.pop("host"), props
+    (lg_host, lg_props), (ma_host, ma_props) = record(lg_seen), record(ma_seen)
+    assert (lg_host, ma_host) == ("langgraph", "agent-framework")
+    assert lg_props == ma_props and lg_props["run_id"] == "run-785"

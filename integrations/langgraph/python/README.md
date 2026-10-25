@@ -7,11 +7,11 @@
 ## Install
 
 ```bash
-pip install "vinc-langgraph>=0.1.12"           # node helpers and tools
-pip install "vinc-langgraph[agents]>=0.1.12"   # plus the middleware for create_agent
+pip install "vinc-langgraph>=0.1.13"           # node helpers and tools
+pip install "vinc-langgraph[agents]>=0.1.13"   # plus the middleware for create_agent
 ```
 
-This README describes vinc-langgraph 0.1.12, which requires vinc-client 0.1.15 or later.
+This README describes vinc-langgraph 0.1.13, which requires vinc-client 0.1.17 or later.
 
 For a new install, prefer `pip install "vincs[langgraph]"`: it has this package as `vinc.integrations.langgraph`, with the same names, and includes LangChain for the middleware. `vinc-langgraph` keeps publishing under this name for existing installs.
 
@@ -310,10 +310,27 @@ be overridden by approval. Keep side-effect tools separately authorized.
 Use a durable checkpointer in production and never expose unchecked model stream
 events. This follows the framework's [interrupt contract](https://docs.langchain.com/oss/python/langgraph/interrupts).
 
+## Build an agent from a role
+
+Needs the `agents` extra. One call reads the role, pins its contract by hash and returns a running agent:
+
+```python
+from vinc_langgraph import build_agent
+
+agent = build_agent("reviewer", model, tools=[my_tool])      # a sync VincClient is made from the key
+run = agent.invoke("Review the policy change.")
+run.status      # "done", "blocked" or "waiting" (a person decides)
+run.output      # the checked answer, or None when the gate stopped it
+run.record      # the run record written at the end
+```
+
+The agent reads the role's required documents before each run, hides the tools the role disallows, refuses calls it holds for a person, caps tool calls at its budget and checks the final answer with the role's gates. `agent.plan` lists the person-only actions and the roles that follow this one (`hands_to`); chaining roles is yours. A person-only action ends the run as `waiting`; approving it is a separate step (`create_person_only_node`) and never executes a tool. `abuild_agent` is the async form. A failed run record write is kept as `run.record_error` and never raised. If the role changed since it was read, the next run raises `VincRoleChanged`.
+
 ## Version notes
 
 | Version | Change |
 |---|---|
+| 0.1.13 | `build_agent`, `abuild_agent` and `VincAgent`: a running agent from a role address, with the role's prefetch, tool policy, budget, gates and run record. Requires vinc-client 0.1.17. |
 | 0.1.12 | With `prefetch_role`, the contract's run policy applies: `capability_map` binds tools to capability ids so denied ones are removed and approval ones refused with a request for a person, and `budget.tool_calls` caps a run's tool calls. Requires vinc-client 0.1.15. |
 | 0.1.11 | A role over the hub's read limit loads: the middleware and `prefetch` read it without relation evidence sentences instead of failing (see the vinc-client README, Large roles). Requires vinc-client 0.1.14. |
 | 0.1.10 | `record_run` and `arecord_run` write one agent run as an Episode about its role, with its raw trace by hash (see the vinc-client README, Record a run). Requires vinc-client 0.1.13. |
