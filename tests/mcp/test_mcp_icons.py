@@ -100,7 +100,18 @@ class IconPayloadTest(unittest.TestCase):
         """어긋나면 클라이언트가 잘못 스케일한다."""
         import struct
         w, h = struct.unpack(">II", http_server._FAVICON_PNG[16:24])
-        self.assertEqual(self._icons_info()["icons"][0]["sizes"], f"{w}x{h}")
+        self.assertEqual(self._icons_info()["icons"][0]["sizes"], [f"{w}x{h}"])
+
+    def test_아이콘이_스키마의_Icon_모양이다(self):
+        """2025-11-25·2026-07-28 스키마의 Icon: src 는 필수 문자열, mimeType 은 문자열,
+        sizes 는 문자열 배열, theme 은 dark·light 중 하나. 이 밖의 키는 없다."""
+        for ic in self._icons_info()["icons"]:
+            self.assertLessEqual(set(ic), {"src", "mimeType", "sizes", "theme"})
+            self.assertIsInstance(ic["src"], str)
+            self.assertIsInstance(ic.get("mimeType", ""), str)
+            self.assertIsInstance(ic.get("sizes", []), list)
+            self.assertTrue(all(isinstance(s, str) for s in ic.get("sizes", [])))
+            self.assertIn(ic.get("theme", "dark"), ("dark", "light"))
 
 
 class FaviconAssetTest(unittest.TestCase):
