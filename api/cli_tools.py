@@ -222,6 +222,10 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
         if args.self_authored:
             data["self_authored"] = True
         return "vinc_role_check", data, None
+    if cmd == "events":
+        data = {"since": args.since, "role": args.role, "kinds": args.kind, "limit": args.limit}
+        return "vinc_events", {**common, **{k: v for k, v in data.items()
+                                             if v not in (None, "", [])}}, None
     if cmd == "path":
         return "vinc_path", {**common, "a": args.a, "b": args.b,
                              "max_depth": args.max_depth}, None

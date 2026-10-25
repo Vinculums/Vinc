@@ -434,6 +434,23 @@ def _main(argv: list[str] | None = None) -> int:
                      help="what the run checked, for the run record (for example a PR URL)")
     gtc.add_argument("--host", default=None, help="where the run ran, for the run record")
     gtc.add_argument("--owner", default=None)
+    ev = sub.add_parser("events", help="read change events for roles, for hosts without MCP events")
+    evs = ev.add_subparsers(dest="eventscmd", required=True)
+    evt = evs.add_parser("tail", help="print one JSON line per event as changes arrive")
+    evt.add_argument("--since", default=None, metavar="CURSOR",
+                     help="cursor to resume from, or 0 for the beginning (default: from now)")
+    evt.add_argument("--role", default=None, help="only events for this role (slug or concept:agent- id)")
+    evt.add_argument("--kind", action="append", default=None, dest="kind",
+                     choices=("role.reading_changed", "run.citation_superseded", "role.lesson_added"),
+                     help="only this event name; repeat for more")
+    evt.add_argument("--limit", type=int, default=None, help="changed rows read per page (1..500)")
+    evt.add_argument("--interval", type=float, default=30.0,
+                     help="seconds between polls when nothing is pending (default 30, at least 5)")
+    evt.add_argument("--once", action="store_true",
+                     help="read one page, print it as one result and exit")
+    evt.add_argument("--cursor-file", default=None, metavar="FILE",
+                     help="start from the cursor in this file and write each new cursor to it")
+    evt.add_argument("--owner", default=None)
     sh = sub.add_parser("shim", help="list harness shims or draft the retirement of ones that stopped firing")
     shs = sh.add_subparsers(dest="shimcmd", required=True)
     shl = shs.add_parser("ls", help="list current shims with their mechanism and reason")
@@ -680,6 +697,16 @@ def _main(argv: list[str] | None = None) -> int:
         if target == "local" and args.space and args.space.strip().lower() != "personal":
             return cli_output.usage_error("--space requires --target account")
         space = cli_target.resolve_space(args.space) if target == "account" else "personal"
+        if args.cmd == "events":
+            from .cli_events import tail
+
+            def _call():
+                if target == "account":
+                    from .cli_account import run as run_account
+                    return run_account(args, space=space)
+                from .cli_tools import run as run_local
+                return run_local(args)
+            return tail(args, _call, _emit)
         if args.cmd == "gate":
             # 결정 문은 경로를 나눠 보내고 합친다. 한 도구 호출로 끝나는 동사와 길이 다르다.
             from .cli_gate import run as run_gate

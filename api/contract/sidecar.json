@@ -761,6 +761,19 @@
         }
       }
     },
+    "/events": {
+      "get": {
+        "operationId": "read_events",
+        "summary": "One page of events computed from the change log, after a cursor.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
     "/evidence/backfill": {
       "post": {
         "operationId": "write_evidence_backfill",

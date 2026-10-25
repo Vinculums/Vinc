@@ -2,7 +2,8 @@
 """MCP JSON-RPC 디스패처 — 전송 중립(stdio·Streamable HTTP 가 공유).
 
 MCP 스펙의 서버 최소면만 구현한다: initialize / initialized / ping /
-tools/list / tools/call / prompts/list / prompts/get, 그리고 모던 리비전의 server/discover.
+tools/list / tools/call / prompts/list / prompts/get, 그리고 모던 리비전의 server/discover 와
+Events 확장(`events/list` · `events/poll` · `events/subscribe` · `events/unsubscribe`, `events.py`).
 그 밖의 메서드는 -32601. 도구 실행 오류는 스펙대로 프로토콜 오류가 아니라
 result.isError=True 로 돌려준다(호스트가 재시도·수정 가능하도록).
 
@@ -25,7 +26,7 @@ from __future__ import annotations
 import json
 
 from . import __version__
-from . import builtin_prompts, community, modern, roles
+from . import builtin_prompts, community, events, modern, roles
 from . import tools
 from . import toolcall
 from .bridge import Bridge
@@ -56,7 +57,9 @@ def _capabilities(modern_era: bool = False) -> dict:
     caps: dict = {"tools": {}, "prompts": {}}
     if modern_era:
         caps["resources"] = {}
-        caps["extensions"] = {roles.SKILLS_EXTENSION: {}}
+        # Events 확장(`events.py`)도 모던 세대에서만 광고한다.
+        caps["events"] = {}
+        caps["extensions"] = {roles.SKILLS_EXTENSION: {}, events.EXTENSION: {}}
     return caps
 
 
@@ -105,6 +108,8 @@ class Dispatcher:
         # 프로파일은 둘이다: 로컬(stdio, 기본)과 허브. 허브는 이미 계정 그래프 자신이라
         # `target` 을 받지 않고 `space` 로 스페이스를 고른다(tools.specs).
         self.hub = hub
+        #: 웹훅 구독과 전달(`events.Runtime`). 켜진 허브만 채운다. 없으면 poll 만 연다.
+        self.events = None
 
     # 반환 None = 응답 없음(notification 또는 id 없는 요청).
     # forced_owner: 원격 인증경로가 해석한 소유자(멀티테넌트 강제 스탬핑, B-B2).
@@ -112,7 +117,8 @@ class Dispatcher:
     # entitlements: 등급에서 해석된 숫자(주제 상한 등) — 사이드카로 그대로 실린다.
     def handle(self, msg: dict, forced_owner: str | None = None,
                plan: str | None = None, quota=None, quota_view=None,
-               entitlements: dict | None = None, community_write=None, community_read=None) -> dict | None:
+               entitlements: dict | None = None, community_write=None, community_read=None,
+               events_auth: dict | None = None) -> dict | None:
         method = msg.get("method")
         msg_id = msg.get("id")
         params = msg.get("params") or {}
@@ -131,7 +137,9 @@ class Dispatcher:
                                     plan=plan, quota=quota, quota_view=quota_view,
                                     entitlements=entitlements,
                                     community_write=community_write, community_read=community_read,
-                                    modern_version=version)
+                                    modern_version=version, events_auth=events_auth)
+        except events.EventsError as e:
+            return None if msg_id is None else e.reply(msg_id)
         except _MethodNotFound:
             return error_reply(msg_id, -32601, f"method not found: {method}")
         except _QuotaDenied as e:
@@ -152,7 +160,11 @@ class Dispatcher:
     def _dispatch(self, method: str, params: dict, *, forced_owner: str | None = None,
                   plan: str | None = None, quota=None, quota_view=None,
                   entitlements: dict | None = None, community_write=None, community_read=None,
-                  modern_version: str | None = None) -> dict:
+                  modern_version: str | None = None, events_auth: dict | None = None) -> dict:
+        if method.startswith("events/") and modern_version is not None:
+            # Events 확장은 모던 세대에서만 연다. 핸드셰이크 세대에는 -32601 그대로다.
+            return self._events(method, params, forced_owner=forced_owner, plan=plan,
+                                quota=quota, events_auth=events_auth)
         if method == "server/discover" and modern_version is not None:
             # 모던 세대의 `initialize` 자리. 핸드셰이크 세대에서는 모르는 메서드다(-32601).
             # `instructions` 는 initialize 와 같은 문단이고, 소유자와 팀 이름을 담으므로
@@ -274,6 +286,47 @@ class Dispatcher:
                                     self.bridge, forced_owner=forced_owner)
         raise _MethodNotFound(method)
 
+    def _events(self, method: str, params: dict, *, forced_owner: str | None, plan,
+                quota, events_auth: dict | None) -> dict:
+        """Events 확장. 피드 계산은 사이드카, 구독과 전달은 `self.events`(Runtime)."""
+        if method == "events/list":
+            return modern.with_cache_hints(
+                {"events": events.definitions(webhook=self.events is not None)}, method)
+        if method not in ("events/poll", "events/subscribe", "events/unsubscribe"):
+            raise _MethodNotFound(method)
+        owner = forced_owner or self.bridge.owner
+        if community.is_space(owner):
+            raise events.EventsError(events.FORBIDDEN, "events are not served in community spaces")
+        if method == "events/poll":
+            self._spend(quota, forced_owner, plan)
+            return events.poll(self.bridge, params, owner=owner)
+        principal = (events_auth or {}).get("principal")
+        if method == "events/unsubscribe":
+            if self.events is None:
+                return {}
+            if not forced_owner or not principal:
+                raise events.EventsError(events.FORBIDDEN,
+                                         "webhook subscriptions need an authenticated account")
+            return self.events.unsubscribe(params, principal=principal)
+        if self.events is None:
+            raise events.EventsError(events.UNSUPPORTED,
+                                     "webhook delivery is not enabled on this server",
+                                     {"feature": "deliveryMode", "value": "webhook"})
+        if not forced_owner or not principal:
+            raise events.EventsError(events.FORBIDDEN,
+                                     "webhook subscriptions need an authenticated account")
+        self._spend(quota, forced_owner, plan)
+        return self.events.subscribe(params, principal=principal, owner=forced_owner,
+                                     can_write=bool((events_auth or {}).get("can_write")))
+
+    @staticmethod
+    def _spend(quota, owner: str | None, plan) -> None:
+        """스토어를 읽는 Events 메서드는 tools/call 과 같이 센다(prompts 와 같은 이유)."""
+        if quota is not None and owner:
+            denial = quota(owner, plan)
+            if denial is not None:
+                raise _QuotaDenied(_denial_text(denial))
+
 
 # 도구 결과 크기 상한 — Anthropic 원격 MCP 요건은 "도구 결과당 최대 25,000 토큰".
 # 토큰 대신 **문자수**로 잰다(토크나이저 의존 없이 결정론적). 보수적으로 1토큰≈3자로
@@ -304,6 +357,7 @@ _NARROW_HINT = {
     "vinc_brief": "lower `max_excerpts`, or ask a narrower question",
     "vinc_domains": "this owner has an unusually large domain set",
     "vinc_suggest_ties": "lower `limit`",
+    "vinc_events": "lower `limit` and continue from the returned `cursor`",
 }
 
 

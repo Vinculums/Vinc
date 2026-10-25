@@ -2368,6 +2368,93 @@
         }
       }
     },
+    "/v1/events": {
+      "get": {
+        "operationId": "vinc_events_get__v1_events",
+        "summary": "Read what changed for your Agent roles since a cursor: required reading changed, a cited claim retired, a lesson added. Pass back the returned cursor to continue.",
+        "description": "Read events computed from this space's change log, after a cursor: role.reading_changed (a document in a role's reads was edited, retired or deleted), run.citation_superseded (a claim a run record cited got valid_until or a successor) and role.lesson_added (a Record or Decision was attached to or about a role). Returns {events:[{eventId, name, timestamp, data}], cursor, has_more, truncated, head}. Omit since to get the current cursor and no events; pass since:'0' to read from the beginning. Pass the returned cursor as the next since and call again while has_more is true. eventId is stable: the same change gives the same id here, in MCP events/poll and in webhook deliveries, and an edit to an existing lesson repeats its id, so drop ids you have seen. Changes between two calls coalesce to the latest state. truncated:true means the cursor was ahead of this space and was reset to now. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(0|[0-9]{1,18}\\.[0-9]{1,18})$",
+              "description": "The cursor a previous call returned, or 0 for the beginning; omit to start from now."
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Only events for this role (agent slug or concept:agent- id)."
+            }
+          },
+          {
+            "name": "kinds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "role.reading_changed",
+                  "run.citation_superseded",
+                  "role.lesson_added"
+                ]
+              },
+              "description": "Only these event names; omit for all three."
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "minimum": 1,
+              "maximum": 500,
+              "description": "Changed rows read per source in this page."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/community": {
       "post": {
         "operationId": "vinc_community_write_post__v1_community",

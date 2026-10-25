@@ -43,6 +43,8 @@ _NAME_FIELD = {"tools/call": "name", "prompts/get": "name", "resources/read": "u
 CACHE_HINTS = {
     "tools/list": (3_600_000, "public"),
     "prompts/list": (60_000, "private"),
+    # 이벤트 종류도 배포(와 웹훅 스위치)로만 바뀌고 호출자 모두에게 같다.
+    "events/list": (3_600_000, "public"),
     # 스킬은 역할에서 오므로 프롬프트와 같은 값이다(소유자마다 다르고 역할이 바뀌면 바뀐다).
     "skills/list": (60_000, "private"),
     "skills/get": (60_000, "private"),
