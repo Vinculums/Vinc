@@ -848,6 +848,7 @@
     "decision:large-topic-conversion-admission-2026-10-16",
     "decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24",
     "decision:mcp-modern-era-is-served-per-request-beside-the-initialize-era",
+    "decision:mcp-skills-extension-opens-skill-files-in-the-modern-era-only",
     "decision:mcp-tool-descriptions-are-short-summaries-with-a-docs-link",
     "decision:mention-title-tokens-within-a-window",
     "decision:node-props-are-edited-in-the-document-pane-as-a-whole-and-checked-against-the-read-revision-2026-09-26",
@@ -898,6 +899,7 @@
     "decision:vin314-every-agent-answer-ends-with-a-sources-line-2026-10-07",
     "decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07",
     "decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24",
+    "decision:vinc-memory-providers-write-only-through-explicit-tools-2026-10-25",
     "decision:web-app-follows-main-desktop-ships-by-release-2026-10-23",
     "episode:2026-09-14-brief-carries-the-connectivity-instead-of-leaving-it-to-be-summed",
     "episode:2026-09-14-future-dated-nodes-leave-the-default-read",
@@ -1001,6 +1003,7 @@
     "record:the-document-subject-relation-is-inferred-not-authored-2026-09-06",
     "record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09",
     "record:the-eval-drift-to-41-14-4-follows-the-query-encoder-runtime-not-the-engine-2026-09-28",
+    "record:the-hermes-extra-of-vincs-depends-on-no-hermes-package-2026-10-25",
     "record:the-hub-census-orphan-vectors-are-chunks-left-on-physical-keys-not-orphans-2026-09-30",
     "record:the-hub-encodes-queries-and-vectors-with-onnxruntime-1-30-since-2026-09-10",
     "record:the-hub-stamp-backfill-released-779-queued-documents-without-re-embedding-2026-09-30",
@@ -1759,6 +1762,12 @@
       "validity": "current"
     },
     "decision:shims-are-records-retired-by-a-person-after-an-ablation-row-2026-10-25": {
+      "validity": "current"
+    },
+    "decision:vinc-memory-providers-write-only-through-explicit-tools-2026-10-25": {
+      "validity": "current"
+    },
+    "record:the-hermes-extra-of-vincs-depends-on-no-hermes-package-2026-10-25": {
       "validity": "current"
     }
   }

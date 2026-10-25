@@ -697,7 +697,7 @@ jobs:
       # 사용자가 까는 그대로 본다: 엑스트라마다(없음 포함) 빈 venv 에 휠 하나만 깔고, 그
       # 엑스트라가 여는 어댑터의 import 와 `vinc --help`·`vinc --version` 을 확인한다.
       # 엑스트라 목록은 휠 메타데이터에서 읽으므로 새 어댑터의 엑스트라도 이 단계를 고치지
-      # 않고 돈다. 설치본 시험(test_install.py)은 all 환경에서 돈다.
+      # 않고 돈다. 설치본 시험(tests/ 의 test_*.py 전부)은 all 환경에서 돈다.
       # 근거: [[vinc.plan.agent-harness-work-order-2026-10-25 §3]]
       - name: Install the wheel once per extra in a clean venv, smoke it, then run the installed tests
         shell: bash
@@ -729,9 +729,9 @@ jobs:
           "$RUNNER_TEMP/vincs-all/$bin/python" -m pip install -q "$wheel[all,test]"
           test_dir="$RUNNER_TEMP/vincs-installed-tests"
           mkdir -p "$test_dir"
-          cp integrations/vincs/python/tests/test_install.py "$test_dir/"
+          cp integrations/vincs/python/tests/test_*.py "$test_dir/"
           cd "$test_dir"
-          "$RUNNER_TEMP/vincs-all/$bin/python" -I -m pytest -q test_install.py
+          "$RUNNER_TEMP/vincs-all/$bin/python" -I -m pytest -q
 
   app:
     name: app (typecheck)
