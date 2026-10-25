@@ -338,12 +338,43 @@ def test_d11_current_brief_resolves_to_the_survivor_of_a_retired_tie(st):
     assert "as_of" not in str(current.get("validity_note") or ""), current
 
 
-def test_d12_expose_above_five_is_capped_by_the_search_top_k(st, monkeypatch):
+def test_d12_expose_above_the_pool_is_capped_by_the_search_top_k(st, monkeypatch):
     t = tag()
-    ingest(st, [record(f"record:{t}-{i}", f"Kappa{t} widget {i}") for i in range(8)])
-    monkeypatch.setenv("VINC_BRIEF_EXPOSE", "8")
+    n = query._BRIEF_TOP_K + 3
+    ingest(st, [record(f"record:{t}-{i}", f"Kappa{t} widget {i}") for i in range(n)])
+    monkeypatch.setenv("VINC_BRIEF_EXPOSE", str(n))
     out = query.brief(f"Kappa{t} widget", owner=OWNER, store=st)
     assert out["status"] == "choose" and len(out["candidates"]) == query._BRIEF_TOP_K, out
+
+
+def _hit(nid, hit=2, title=2, arms=("title",), distance=None, **kw):
+    h = {"id": nid, "title": nid, "kind": "record", "hit_tokens": hit, "title_tokens": title,
+         "arms": list(arms), **kw}
+    if distance is not None:
+        h["distance"] = distance
+    return h
+
+
+def test_resolution_reads_only_the_first_five_of_the_pool():
+    """6번째부터는 되묻기 목록용이다. 그 자리에 토큰이 더 많은 행이 있어도 확정은 그대로다."""
+    hits = [_hit("record:top", hit=4, title=4), _hit("record:b", hit=1, title=1)] \
+        + [_hit(f"record:f{i}", hit=1, title=1) for i in range(3)] \
+        + [_hit("record:late", hit=4, title=4)]
+    status, picked = query._brief_resolve("q", hits[:query._BRIEF_RESOLVE_N])
+    assert status == "resolved" and picked[0]["id"] == "record:top"
+    # 넓은 풀 전체로 확정했다면 record:late 와 비겨 되묻기였다.
+    assert query._brief_resolve("q", hits)[0] == "choose"
+
+
+def test_the_choose_list_is_in_semantic_order_over_the_whole_pool():
+    """확정용 순위는 의미 팔에만 걸린 후보를 맨 뒤로 민다. 목록은 의미 거리 순이다."""
+    rows = [_hit("record:t1", hit=2, title=2, arms=("title", "graph")),
+            _hit("record:t2", hit=2, title=2, arms=("title",), distance=0.50),
+            _hit("record:s1", hit=0, title=0, arms=("semantic",), distance=0.31),
+            _hit("record:s2", hit=0, title=0, arms=("semantic",), distance=0.40, sem_decisive=False),
+            _hit("record:d", hit=0, title=0, arms=("semantic",), distance=0.45, sem_decisive=True)]
+    order = [h["id"] for h in query._brief_list_rank(rows)]
+    assert order == ["record:d", "record:s1", "record:s2", "record:t2", "record:t1"]
 
 
 def test_d14_plan_search_reports_the_fusion_that_runs():

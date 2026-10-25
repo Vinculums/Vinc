@@ -3449,10 +3449,12 @@ def _node_links(store, node: str, *, owner: str,
 # 비기면 후보를 돌려주며 되묻는다. 근거: [[vinc.plan.mcp-agent-surface §4]]
 
 #: brief 가 내부 search 에 넘기는 top_k. 청크 페이지만이 아니라 **node_hits 도 이 수로
-#: 잘린다**(노드 팔의 top_k 가 같은 값이다). 그래서 `VINC_BRIEF_EXPOSE` 를 5 보다 크게
-#: 줘도 되묻기 후보는 5 를 넘지 않는다. 값은 그대로 둔다 — 넓히면 brief 계약이 바뀐다
-#: (감사 D12).
-_BRIEF_TOP_K = 5
+#: 잘린다**(노드 팔의 top_k 가 같은 값이다). 이 풀은 되묻기 목록에만 쓴다. 확정은 그 앞
+#: `_BRIEF_RESOLVE_N` 개(융합 순서)로 해서, 풀을 넓혀도 어느 노드로 확정하는지는 5 일 때의
+#: 규칙 그대로다. 풀을 넓히고 확정까지 넓은 풀로 하면 맞는 확정과 보이는 정답이 함께 줄었다.
+#: 근거: [[vinc.spec.retrieval-knobs]] §2
+_BRIEF_TOP_K = 10
+_BRIEF_RESOLVE_N = 5
 #: 되묻을 때 실을 후보 수. 3 에서 5 로 늘렸다 — 같은 풀의 앞자리를 더 보여 줄 뿐이라
 #: 보이던 정답이 가려지지 않고, 풀 안의 정답이 전부 보인다(G0 43 → 47/60). 앱의 ask.ts 는
 #: brief 를 부르지 않고 따로 3 개를 보여 준다. `VINC_BRIEF_EXPOSE` 로 프로세스마다 바꾼다.
@@ -3748,6 +3750,19 @@ def _brief_rank(rows: list[dict]) -> list[dict]:
         -len(h.get("arms") or []) if strict else 0,
         -_brief_int(h.get("hit_tokens")),
         -_brief_int(h.get("title_tokens"))))
+
+
+def _brief_list_rank(rows: list[dict]) -> list[dict]:
+    """되묻기 목록의 순서. 의미 팔이 단호했던 노드가 먼저고, 그다음은 의미 거리가 가까운 순이며,
+    거리가 없는 후보(제목·그래프 팔만)는 뒤에 융합 순서대로 둔다. 확정에는 쓰지 않는다.
+    근거: [[vinc.spec.retrieval-knobs]] §2"""
+    strict = _brief_strict_on()
+
+    def dist(h):
+        d = h.get("distance")
+        return d if isinstance(d, (int, float)) and not isinstance(d, bool) else float("inf")
+
+    return sorted(rows, key=lambda h: (-1 if (strict and h.get("sem_decisive")) else 0, dist(h)))
 
 
 def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
@@ -4394,6 +4409,9 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             base["search_error"] = res["error"]
             if not res.get("node_hits"):
                 return base
+        # 넓은 풀은 되묻기 목록용으로 따로 두고, 확정·기권·가드는 앞 `_BRIEF_RESOLVE_N` 개로 본다.
+        pool = [h for h in res.get("node_hits") or [] if isinstance(h, dict) and h.get("id")]
+        res = {**res, "node_hits": (res.get("node_hits") or [])[:_BRIEF_RESOLVE_N]}
         if _brief_semantic_none(res):
             base["note"] = "no sufficiently close semantic candidate"
             return base
@@ -4454,13 +4472,10 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                     "does not hold, so this was not resolved")
         base["status"] = status
         if status == "choose":
-            # 되묻기 목록은 고른 것을 앞에 두고 나머지 풀을 순위대로 채워 노출 수에서
-            # **한 번** 자른다. 강등(유효구간 동점·답변 가능성)은 확정용 목록을 그대로
-            # 넘기므로 여기서 안 자르면 노출보다 길고, 제목 완전일치가 강등되면 한 줄뿐이다.
-            _seen = {h.get("id") for h in picked}
-            picked = picked + [h for h in _brief_rank(
-                [h for h in res.get("node_hits") or [] if isinstance(h, dict) and h.get("id")])
-                if h.get("id") not in _seen]
+            # 되묻기 목록은 넓은 풀 전체를 의미 순서(`_brief_list_rank`)로 세워 노출 수에서
+            # **한 번** 자른다. 확정용 순위(팔 개수 → 토큰)는 의미 팔에만 걸린 후보를 맨 뒤로
+            # 미는데, 넓은 풀에 새로 들어오는 정답은 대부분 그런 후보다.
+            picked = _brief_list_rank(pool)
             base["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
             if not _reask:
                 _brief_attach_section(base, store, owner=owner, query=query, res=res,
