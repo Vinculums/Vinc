@@ -2,9 +2,13 @@
 """MCP JSON-RPC 디스패처 — 전송 중립(stdio·Streamable HTTP 가 공유).
 
 MCP 스펙의 서버 최소면만 구현한다: initialize / initialized / ping /
-tools/list / tools/call / prompts/list / prompts/get. 그 밖의 메서드는 -32601.
-도구 실행 오류는 스펙대로 프로토콜 오류가 아니라 result.isError=True 로 돌려준다
-(호스트가 재시도·수정 가능하도록).
+tools/list / tools/call / prompts/list / prompts/get, 그리고 모던 리비전의 server/discover.
+그 밖의 메서드는 -32601. 도구 실행 오류는 스펙대로 프로토콜 오류가 아니라
+result.isError=True 로 돌려준다(호스트가 재시도·수정 가능하도록).
+
+두 세대를 한 디스패처가 함께 받는다. `initialize` 로 여는 클라이언트는 지금 그대로이고,
+요청마다 `_meta` 로 버전을 싣는 클라이언트는 `modern.py` 가 가린 뒤 같은 처리를 타고
+결과에만 `resultType`·서버 신원·캐시 힌트가 붙는다.
 
 `prompts/*` 는 W2 에서 열었다(역할 열여섯을 프롬프트로 낸다 — 구현은 `roles.py`).
 역할과 별개로 그래프와 상관없이 늘 나가는 내장 프롬프트는 `builtin_prompts.py` 가 낸다.
@@ -20,14 +24,16 @@ from __future__ import annotations
 import json
 
 from . import __version__
-from . import builtin_prompts, community, roles
+from . import builtin_prompts, community, modern, roles
 from . import tools
 from . import toolcall
 from .bridge import Bridge
 
-# 최신이 앞. 클라이언트가 목록 밖 버전을 요청하면 **최신**으로 응답한다(스펙:
-# "SHOULD respond with the latest version it supports") — 구버전으로 떨어뜨리면
-# 최신 리비전으로 협상하는 비-Anthropic 호스트가 기능을 잃는다.
+# `initialize` 로 협상하는 리비전. 최신이 앞. 클라이언트가 목록 밖 버전을 요청하면
+# **최신**으로 응답한다(스펙: "SHOULD respond with the latest version it supports") —
+# 구버전으로 떨어뜨리면 최신 리비전으로 협상하는 비-Anthropic 호스트가 기능을 잃는다.
+# 모던 리비전은 이 목록에 넣지 않는다: 그 세대에는 `initialize` 가 없고, 넣으면 목록 밖
+# 버전을 요청한 핸드셰이크 클라이언트가 모르는 리비전을 답으로 받는다(`modern.MODERN_VERSIONS`).
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 LATEST_PROTOCOL_VERSION = PROTOCOL_VERSIONS[0]
 
@@ -41,6 +47,11 @@ LATEST_PROTOCOL_VERSION = PROTOCOL_VERSIONS[0]
 
 def _tool_specs(hub: bool = False) -> list[dict]:
     return tools.specs(hub=hub)
+
+
+def _capabilities() -> dict:
+    """initialize 와 server/discover 가 같이 광고하는 능력. 호출마다 새 dict 다."""
+    return {"tools": {}, "prompts": {}}
 
 
 def _where_am_i(forced_owner: str | None) -> str | None:
@@ -101,11 +112,16 @@ class Dispatcher:
             if method == "notifications/initialized":
                 self.initialized = True
             return None
+        # 세대 판별. 모던 `_meta` 가 없으면 version=None 이고 아래는 지금과 한 글자도 같다.
+        version, bad = modern.classify(msg, PROTOCOL_VERSIONS)
+        if bad is not None:
+            return None if msg_id is None else bad.reply(msg_id)
         try:
             result = self._dispatch(method, params, forced_owner=forced_owner,
                                     plan=plan, quota=quota, quota_view=quota_view,
                                     entitlements=entitlements,
-                                    community_write=community_write, community_read=community_read)
+                                    community_write=community_write, community_read=community_read,
+                                    modern_version=version)
         except _MethodNotFound:
             return error_reply(msg_id, -32601, f"method not found: {method}")
         except _QuotaDenied as e:
@@ -119,11 +135,26 @@ class Dispatcher:
             return error_reply(msg_id, -32603, f"{type(e).__name__}: {e}")
         if msg_id is None:
             return None
+        if version is not None:
+            result = modern.complete(result)
         return {"jsonrpc": "2.0", "id": msg_id, "result": result}
 
     def _dispatch(self, method: str, params: dict, *, forced_owner: str | None = None,
                   plan: str | None = None, quota=None, quota_view=None,
-                  entitlements: dict | None = None, community_write=None, community_read=None) -> dict:
+                  entitlements: dict | None = None, community_write=None, community_read=None,
+                  modern_version: str | None = None) -> dict:
+        if method == "server/discover" and modern_version is not None:
+            # 모던 세대의 `initialize` 자리. 핸드셰이크 세대에서는 모르는 메서드다(-32601).
+            # `instructions` 는 initialize 와 같은 문단이고, 소유자와 팀 이름을 담으므로
+            # 허브에서는 private 다.
+            out = {"supportedVersions": modern.supported_versions(PROTOCOL_VERSIONS),
+                   "capabilities": _capabilities(),
+                   "ttlMs": modern.DISCOVER_TTL_MS,
+                   "cacheScope": "private" if forced_owner else "public"}
+            txt = _where_am_i(forced_owner)
+            if txt:
+                out["instructions"] = txt
+            return out
         if method == "initialize":
             want = params.get("protocolVersion")
             negotiated = want if want in PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION
@@ -152,7 +183,7 @@ class Dispatcher:
                 # 그래프 내용에 따라 켰다 껐다 하면 호스트가 캐시한 목록과 어긋난다.
                 # `listChanged` 는 안 싣는다 — 서버→클라이언트 알림 경로가 없다.
                 "protocolVersion": negotiated,
-                "capabilities": {"tools": {}, "prompts": {}},
+                "capabilities": _capabilities(),
                 "serverInfo": info,
             }
             # 스페이스를 **묻기 전에** 알려 준다. `space` 인자가 생기면서 "안 실으면
@@ -168,7 +199,11 @@ class Dispatcher:
         if method == "ping":
             return {}
         if method == "tools/list":
-            return {"tools": _tool_specs(self.hub)}
+            # 순서는 레지스트리(`tools.TOOLS` + `HOST_TOOLS`)의 소스 순서이고 계약이다.
+            # 재시작이나 해시 시드가 바뀌어도 바이트까지 같아야 호스트의 프롬프트 캐시가
+            # 산다(tests/mcp/test_mcp_modern.py 가 다른 해시 시드의 두 프로세스로 대조한다).
+            out = {"tools": _tool_specs(self.hub)}
+            return modern.with_cache_hints(out, method) if modern_version else out
         if method == "tools/call":
             name = params.get("name") or ""
             args = params.get("arguments") or {}
@@ -200,7 +235,8 @@ class Dispatcher:
             # 로스터 조회가 실패하면 내장만 내지 않고 오류를 그대로 낸다(빈 로스터와 다르다).
             if method == "prompts/list":
                 listed = roles.list_prompts(self.bridge, forced_owner=forced_owner)
-                return {"prompts": builtin_prompts.listed() + listed["prompts"]}
+                out = {"prompts": builtin_prompts.listed() + listed["prompts"]}
+                return modern.with_cache_hints(out, method) if modern_version else out
             name = params.get("name") or ""
             if builtin_prompts.is_builtin(name):
                 return builtin_prompts.get(name, params.get("arguments") or {})
