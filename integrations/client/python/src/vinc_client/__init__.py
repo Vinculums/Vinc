@@ -2,9 +2,13 @@
 
 Design and scope: [[vinc.plan.framework-integration-packages-2026-09-28]].
 """
-__version__ = "0.1.16"
+__version__ = "0.1.17"
 
 from .client import AsyncVincClient, VincClient  # noqa: E402
+from .agent_plan import (AgentPlan, AgentRun, afinish_run, aplan_agent, finish_run,  # noqa: E402
+                         plan_agent, role_address)
+from .agent_plan import (AgentPlan, AgentRun, afinish_run, aplan_agent, finish_run,  # noqa: E402
+                         plan_agent, role_address)
 from .context import (BOUNDARY, SOURCES_LINE, fence, format_answer, format_brief,  # noqa: E402
                       format_context, format_search)
 from .episode import build_episode_fragment  # noqa: E402
@@ -39,4 +43,5 @@ __all__ = [
     "GateResult", "OutputGate", "OutputGateStopped", "ToolProof", "preserve_required_route", "sources_line",
     "build_package_fragment", "format_package", "check_package_handoff",
     "RolePrefetch", "RoleToolPolicy", "RolePolicy",
+    "AgentPlan", "AgentRun", "plan_agent", "aplan_agent", "finish_run", "afinish_run", "role_address",
 ]

@@ -11,10 +11,10 @@ Looking for the `vinc` command? See [the terminal CLI installation guide](https:
 ## Install
 
 ```bash
-pip install "vinc-client>=0.1.16"
+pip install "vinc-client>=0.1.17"
 ```
 
-This README describes vinc-client 0.1.16. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
+This README describes vinc-client 0.1.17. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
 
 For a new install, prefer `pip install vincs`: it has the same client as `vinc.sdk`, the framework adapters as extras and the `vinc` command. `vinc-client` keeps publishing under this name for existing installs.
 
@@ -629,10 +629,15 @@ time; it does not restore an earlier body revision. Search nodes and passages ca
 metadata, explicit supersession evidence and conflicts. Update time is not occurrence time.
 The read tools in both framework adapters expose these optional parameters too.
 
+## One role into an agent plan
+
+`plan_agent(client, "reviewer")` reads a role once and pins its contract by hash. The returned `AgentPlan` carries what any framework needs to run the role: the `RoleToolPolicy`, the `OutputGate`, the actions only a person may take (`person_only`), the roles that follow it by live edges (`hands_to`, `receives_from`) and the budget. `aplan_agent` does the same with an `AsyncVincClient`. `finish_run` writes the run record on purpose and keeps a failed write on the result as `record_error` instead of raising. The two adapters call these for you in `build_agent`.
+
 ## Version notes
 
 | Version | Change |
 |---|---|
+| 0.1.17 | `plan_agent`, `aplan_agent`, `AgentPlan`, `AgentRun` and `finish_run`: one role read into the policy, gate, person-only actions, next roles and budget a framework agent needs. The adapters' `build_agent` (vinc-langgraph 0.1.13, vinc-agent-framework 0.1.12) require it. |
 | 0.1.16 | Shims as Records: `build_shim_fragment`, `current_shims` and `shim_lines` for a host, and `read_runs` with `retirement_drafts` for a watcher that drafts the retirement of shims that stopped firing (see [Shims](#shims)). |
 | 0.1.15 | `RolePolicy` reads a role's `output_kind`, `act_policy`, `budget` and `capabilities` (see [A role's run policy](#a-roles-run-policy)); a malformed key raises `invalid_role_contract`. |
 | 0.1.14 | `role` takes `compact`. A role over the hub's read limit is no longer an error by default: `role`, `prefetch` and both adapters read it again without relation evidence sentences, and the result says `compact: True` (see [Large roles](#large-roles)). The adapters (vinc-langgraph 0.1.11, vinc-agent-framework 0.1.10) require it. |

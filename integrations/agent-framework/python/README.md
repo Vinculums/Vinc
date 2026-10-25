@@ -7,10 +7,10 @@
 ## Install
 
 ```bash
-pip install "vinc-agent-framework>=0.1.11"
+pip install "vinc-agent-framework>=0.1.12"
 ```
 
-This README describes vinc-agent-framework 0.1.11, which requires vinc-client 0.1.15 or later.
+This README describes vinc-agent-framework 0.1.12, which requires vinc-client 0.1.17 or later.
 
 For a new install, prefer `pip install "vincs[agent-framework]"`: it has this package as `vinc.integrations.agent_framework`, with the same names. `vinc-agent-framework` keeps publishing under this name for existing installs.
 
@@ -276,10 +276,28 @@ Never expose unchecked model stream events. Configure workflow checkpoints when
 pending approval must survive a process restart. This uses the framework's
 [native request and response mechanism](https://learn.microsoft.com/en-us/agent-framework/workflows/human-in-the-loop).
 
+## Build an agent from a role
+
+One call reads the role, pins its contract by hash and returns a running agent:
+
+```python
+from vinc_agent_framework import build_agent
+
+agent = await build_agent("reviewer", chat_client, tools=[my_tool])
+run = await agent.run("Review the policy change.")
+run.status      # "done", "blocked" or "waiting" (a person decides)
+run.output      # the checked answer, or None when the gate stopped it
+run.record      # the run record written at the end
+await agent.aclose()
+```
+
+The agent reads the role's required documents before each run, hides the tools the role disallows, refuses calls it holds for a person, caps tool calls at its budget and checks the final answer with the role's gates (non-streaming runs). `agent.plan` lists the person-only actions and the roles that follow this one (`hands_to`); chaining roles is yours. A person-only action ends the run as `waiting`; approving it is a separate step (`VincPersonOnlyExecutor`) and never executes a tool. A failed run record write is kept as `run.record_error` and never raised. If the role changed since it was read, the next run raises `VincRoleChanged`.
+
 ## Version notes
 
 | Version | Change |
 |---|---|
+| 0.1.12 | `build_agent` and `VincAgent`: a running agent from a role address, with the role's prefetch, tool policy, budget, gates and run record. Requires vinc-client 0.1.17. |
 | 0.1.11 | With `prefetch_role`, the contract's run policy applies: `capability_map` binds tools to capability ids so denied ones are removed and approval ones refused with a request for a person, and `budget.tool_calls` caps a run's tool calls. Requires vinc-client 0.1.15. |
 | 0.1.10 | A role over the hub's read limit loads: the context provider and `prefetch` read it without relation evidence sentences instead of failing (see the vinc-client README, Large roles). Requires vinc-client 0.1.14. |
 | 0.1.9 | `record_run` writes one agent run as an Episode about its role, with its raw trace by hash (see the vinc-client README, Record a run). Requires vinc-client 0.1.13. |
