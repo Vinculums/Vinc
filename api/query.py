@@ -3664,6 +3664,15 @@ def _brief_sem_promote_on() -> bool:
 #: 근거: [[vinc.spec.retrieval-knobs]] §2
 _SEM_PROMOTE = 0.10
 
+#: 한글 없이 물은 질문이 한국어 노드를 가리킬 때의 승격 문턱. 언어를 건너면 거리가 넓어져(정답 거리
+#: 중앙값 en2ko 0.419, ko 0.328) 같은 1위인데도 우위가 `_SEM_PROMOTE` 밑에 머문다. `_brief_xlang_lead`
+#: 가 쓰는 조건에서만 `_SEM_PROMOTE` 자리에 들어가고, 유효구간 동점 가드의 거리는 그대로 `_SEM_PROMOTE`
+#: 다. 내리면 틀린 노드 확정이 는다. 옮기려면 다시 잴 것.
+#: 근거: [[vinc.spec.retrieval-knobs-brief]]
+_SEM_PROMOTE_XLANG = 0.06
+
+_HANGUL = re.compile("[가-힣]")
+
 
 def retrieval_overrides() -> list[str]:
     """측정상 크게 나빠지는 비상구 가운데 지금 열린 것(환경변수 이름). 없으면 빈 목록.
@@ -3765,7 +3774,32 @@ def _brief_list_rank(rows: list[dict]) -> list[dict]:
     return sorted(rows, key=lambda h: (-1 if (strict and h.get("sem_decisive")) else 0, dist(h)))
 
 
-def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
+def _brief_mirror_text(store, owner, hit: dict) -> str | None:
+    """후보 한 노드의 검색 미러 텍스트(`NodeVec.text`). 행이 없으면 None."""
+    from . import node_mirror
+    rows = store.run("MATCH (n:NodeVec) WHERE n.vec_id = $v RETURN n.text AS t LIMIT 1",
+                     {"v": node_mirror.vec_id(owner or "", str(hit.get("id") or ""))}) or []
+    return (rows[0].get("t") or None) if rows else None
+
+
+def _brief_xlang_lead(query: str, top: dict, mirror_text=None) -> bool:
+    """`_SEM_PROMOTE_XLANG` 을 쓸 자리인가: 질문에 한글 음절이 없고, 승격될 1위의 미러 텍스트에는 있다.
+
+    `mirror_text(h)` 는 노드의 미러 텍스트(제목 + 부가 본문 앞 300자)를 주거나 None 이다. 없거나
+    읽기가 실패하면 제목으로 갈음한다(미러 행이 없는 후보도 같은 길이다)."""
+    if _HANGUL.search(query or ""):
+        return False
+    text = None
+    if mirror_text is not None:
+        try:
+            text = mirror_text(top)
+        except Exception:
+            text = None
+    return bool(_HANGUL.search(text or str(top.get("title") or "")))
+
+
+def _brief_resolve(query: str, hits: list[dict],
+                   mirror_text=None) -> tuple[str, list[dict]]:
     """node_hits → (상태, 고른 것). resolved 면 1건, choose 면 후보 여럿.
 
     ⚠ 그래프·의미 팔만 올라온 경우(hit_tokens 가 전부 0)는 확정하지 않는다 — 후보가
@@ -3782,6 +3816,7 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     가까우면 토큰이 0 이어도 확정한다. 이름 댄 갈래(같은 제목 둘 포함)와 단독 후보 갈래는
     그 앞에서 돌아오므로 승격되지 않는다. 단독 후보에는 앞설 나머지가 없어 `sem_lead` 도
     안 붙는다. 유효구간 동점 가드와 답변 가능성 게이트는 brief 에서 이 뒤에 그대로 돈다.
+    한글 없는 질문이 한국어 노드(미러 텍스트에 한글)를 가리키면 문턱은 `_SEM_PROMOTE_XLANG` 이다.
 
     **엄격 판정**(`VINC_BRIEF_STRICT`, 기본 켜짐)은 순서에 `arms` 를 먼저 넣고 문턱을
     `_STRICT_MARGIN` 으로 올린다. 여러 팔이 같은 노드를 올렸다는 것은 어휘와 의미가
@@ -3811,6 +3846,12 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     lead = top.get("sem_lead")
     promoted = (not decisive and _brief_sem_promote_on()
                 and isinstance(lead, (int, float)) and lead >= _SEM_PROMOTE)
+    # 한글 없는 질문이 한국어 노드를 가리키면 더 낮은 문턱을 쓴다. 미러 텍스트는 이 문턱에 걸릴
+    # 때만 읽는다(`mirror_text` 는 호출부가 스토어를 쥐고 있을 때만 주는 지연 조회다).
+    if (not decisive and not promoted and _brief_sem_promote_on()
+            and isinstance(lead, (int, float)) and lead >= _SEM_PROMOTE_XLANG
+            and _brief_xlang_lead(query, top, mirror_text)):
+        promoted = True
     # 확정이어도 **순위 전체**를 돌려준다. 1위가 상세에서 안 열릴 때 호출부가 다음
     # 후보로 넘어갈 수 있어야 하기 때문이고, 그 폴스루는 밝혀서 한다(brief 참조).
     return (("resolved", ranked) if decisive or promoted
@@ -4415,7 +4456,9 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         if _brief_semantic_none(res):
             base["note"] = "no sufficiently close semantic candidate"
             return base
-        status, picked = _brief_resolve(query, res.get("node_hits") or [])
+        status, picked = _brief_resolve(
+            query, res.get("node_hits") or [],
+            mirror_text=lambda h: _brief_mirror_text(store, owner, h))
         # B5 — current 의 기권은 답(1위)과 그 주장 키를 공유하는 후보만 본다. 후보 아무나
         # 보면 구간이 없어 늘 unknown 인 개념 후보 하나가 다른 주장의 답을 막는다.
         if mode == "current" and picked and _brief_current_uncertain(
