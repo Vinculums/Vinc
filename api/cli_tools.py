@@ -206,7 +206,8 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
         return "vinc_edges", {**common, **{k: v for k, v in data.items() if v is not None}}, None
     if cmd == "role":
         if args.rolecmd == "get":
-            return "vinc_role", {**common, "role": args.id}, None
+            return "vinc_role", {**common, "role": args.id,
+                                 **({"compact": True} if getattr(args, "compact", None) else {})}, None
         data = {**common, "role": args.id, "output": _text_file(args.output)}
         if args.person_only_requests is not None:
             try:

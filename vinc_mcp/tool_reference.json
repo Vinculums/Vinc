@@ -150,7 +150,7 @@
    "name": "vinc_role",
    "summary": "Read one Agent role contract by slug or concept id, or omit role to list the roster. Pass expected_hash to get the contract only if the role has not changed since you pinned it. It does not run the role.",
    "docs_url": "https://vincs.io/docs/mcp/tools/#vinc_role",
-   "reference": "Read one role contract by agent slug or concept id, or omit `role` to list the role roster without full contracts. A contract returns id, props unchanged, directed works_with groups (exact edge endpoints, type, evidence and confidence) and a compact rendered contract fenced as graph data. An unknown, foreign or non-role node returns found:false. A contract of 10000 UTF-8 bytes or more returns an explicit error instead of truncated permissions. Role contracts can live in any topic; legacy agent and vinc/agent roles stay readable. Inactive roles (props.active=false) are left out. A contract also returns rev (the role node's stored revision) and hash: sha256 of the canonical JSON (sorted keys, no whitespace, UTF-8) of its id, title, domain, props and works_with, the same encoding as the community import receipt. rendered is not hashed. Pin a role by passing that hash as expected_hash (and optionally expected_rev): when the role differs, the call returns error role_changed with the current rev and hash and no contract (REST answers 409). Without these arguments the call is unchanged. The pin covers the contract, not the text of the documents its reads list. This tool does not run or delegate the role. Read-only.",
+   "reference": "Read one role contract by agent slug or concept id, or omit `role` to list the role roster without full contracts. A contract returns id, props unchanged, directed works_with groups (exact edge endpoints, type, evidence and confidence) and a compact rendered contract fenced as graph data. An unknown, foreign or non-role node returns found:false. A contract of 10000 UTF-8 bytes or more returns error role_contract_too_large with its bytes and limit instead of truncated permissions (REST answers 400). compact=true leaves the evidence sentence of each works_with edge out and keeps props, endpoints, types and confidence; it returns compact:true and the same hash as the full contract, so one pin covers both forms. Role contracts can live in any topic; legacy agent and vinc/agent roles stay readable. Inactive roles (props.active=false) are left out. A contract also returns rev (the role node's stored revision) and hash: sha256 of the canonical JSON (sorted keys, no whitespace, UTF-8) of its id, title, domain, props and works_with, the same encoding as the community import receipt. rendered is not hashed. Pin a role by passing that hash as expected_hash (and optionally expected_rev): when the role differs, the call returns error role_changed with the current rev and hash and no contract (REST answers 409). Without these arguments the call is unchanged. The pin covers the contract, not the text of the documents its reads list. This tool does not run or delegate the role. Read-only.",
    "annotations": {
     "title": "Read a role contract or roster",
     "readOnlyHint": true,
@@ -175,6 +175,12 @@
      "type": "integer",
      "required": false,
      "description": "Optional pin on the role node's rev. A different rev returns role_changed and no contract."
+    },
+    {
+     "name": "compact",
+     "type": "boolean",
+     "required": false,
+     "description": "Leave relation evidence sentences out, for a role over the read limit. Permissions are never cut."
     },
     {
      "name": "limit",

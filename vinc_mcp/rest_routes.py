@@ -40,7 +40,7 @@ READ_ROUTES = (
     Route("GET", "/v1/operations/{operation_id}", "vinc_operation_status",
           path_args=(("operation_id", "operation_id"),)),
     Route("GET", "/v1/roles", "vinc_role", query=("limit", "offset")),
-    Route("GET", "/v1/roles/{id}", "vinc_role", query=("expected_hash", "expected_rev"),
+    Route("GET", "/v1/roles/{id}", "vinc_role", query=("expected_hash", "expected_rev", "compact"),
           path_args=(("id", "role"),)),
     Route("POST", "/v1/roles/{id}/check", "vinc_role_check",
           body=("output", "person_only_requests", "self_authored"), path_args=(("id", "role"),)),

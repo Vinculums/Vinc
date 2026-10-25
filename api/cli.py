@@ -375,6 +375,8 @@ def _main(argv: list[str] | None = None) -> int:
     rls = rl.add_subparsers(dest="rolecmd", required=True)
     rlg = rls.add_parser("get", help="read one role contract")
     rlg.add_argument("id", help="role slug (agent-dev-core) or exact concept:agent- id")
+    rlg.add_argument("--compact", action="store_true", default=None,
+                     help="leave relation evidence sentences out (for a role over the read limit)")
     rlg.add_argument("--owner", default=None)
     rlc = rls.add_parser("check", help="check one final output against the role's structured checks")
     rlc.add_argument("id", help="role slug (agent-dev-core) or exact concept:agent- id")

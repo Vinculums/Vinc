@@ -62,7 +62,7 @@ Reads (either key):
 | `recall` | `domain`, `tags`, `limit`, `cursor` | episode timeline, newest first |
 | `node` | `node_id` | one node by id; `VincNotFound` when absent |
 | `edges` | `node` or `nodes`, `type`, `dir`, `limit` | stored edges with direction and evidence; pass exactly one of `node` and `nodes` |
-| `role` | `role_id`, `pin` | a role's complete contract and links, with its `rev` and `hash`; with `pin`, only while the role is unchanged (see [Pin a role](#pin-a-role)) |
+| `role` | `role_id`, `pin`, `compact` | a role's complete contract and links, with its `rev` and `hash`; with `pin`, only while the role is unchanged (see [Pin a role](#pin-a-role)); a role over the read limit comes back without relation evidence (see [Large roles](#large-roles)) |
 | `document` | `doc_id` | exact document text with its content hash |
 | `role_check` | `role_id`, `output`, `person_only_requests`, `self_authored` | the hub applies the role's checks; verdict `pass`, `block` or `interrupt`, and `pass` grants no permission |
 | `operation_status` | `operation_id` | the receipt of an earlier write (see below) |
@@ -393,6 +393,24 @@ text is read fresh on every call and checked against its own `content_hash`. Ove
 REST the same check is `GET /v1/roles/{id}?expected_hash=<hash>` (optionally
 `expected_rev`), which answers 409 `role_changed`. A hub older than this feature
 answers 400 to the argument, so a pinned run stops there too.
+
+### Large roles
+
+The hub never cuts a role contract. One that serializes to 10,000 bytes or more is
+refused with `role_contract_too_large` (HTTP 400, `details` holding `bytes`,
+`limit` and `compact`), because a cut contract could lose a permission. Most of a
+large contract is usually the evidence sentence on each `works_with` edge, so a
+compact form leaves only those sentences out: props, endpoints, edge types and
+confidence stay, and `hash` is still the complete contract's hash, so one pin
+covers both forms.
+
+`role` (and so `prefetch` and both adapters) reads the compact form on its own when
+the hub refuses the complete one, and the result says `compact: True`. Pass
+`compact=True` to ask for it at once, or `compact=False` to get the error instead.
+A role that is over the limit even in compact form raises the same error with
+`details["compact"]` set to `True`; shorten its props. Over REST the compact read
+is `GET /v1/roles/{id}?compact=1`, and from the command line `vinc role get <id>
+--compact`.
 
 ### A role's disallowed tools
 

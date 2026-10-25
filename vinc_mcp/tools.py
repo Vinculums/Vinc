@@ -675,7 +675,8 @@ def _t_role(args, bridge):
     from .roles import contract
     return contract(args.get("role"), bridge, forced_owner=_owner(args, bridge),
                     limit=args.get("limit"), offset=args.get("offset", 0),
-                    expected_hash=args.get("expected_hash"), expected_rev=args.get("expected_rev"))
+                    expected_hash=args.get("expected_hash"), expected_rev=args.get("expected_rev"),
+                    compact=args.get("compact") is True)
 
 
 def _t_role_check(args, bridge):
@@ -692,7 +693,8 @@ def _t_role_check(args, bridge):
     if not isinstance(output, str) or not output.strip() or len(output) > 131072:
         return {"kind": "role_check", "executed": False, "error": "output_required",
                 "note": "Pass the final output as one non-empty string of at most 131072 characters."}
-    got = contract(role.strip(), bridge, forced_owner=_owner(args, bridge))
+    # 판정만 돌려주고 계약은 싣지 않으므로 읽기 예산(roles.CONTRACT_CAP)에 걸리지 않는다.
+    got = contract(role.strip(), bridge, forced_owner=_owner(args, bridge), capped=False)
     if not got.get("executed") or not got.get("found"):
         return {**got, "kind": "role_check"}
     requests = args.get("person_only_requests") or []
@@ -716,6 +718,8 @@ def _t_brief(args, bridge):
     from .roles import is_role_id
     if is_role_id(args["query"].strip()) and out.get("executed"):
         role = _t_role({**args, "role": args["query"].strip()}, bridge)
+        if role.get("error") == "role_contract_too_large" and role.get("compact") is False:
+            role = _t_role({**args, "role": args["query"].strip(), "compact": True}, bridge)
         if role.get("found") or not role.get("executed"):
             out = {**out, "role": role}
     return _with_search_note(out)
@@ -1149,8 +1153,12 @@ TOOLS: list[dict] = [
                        "unchanged, directed works_with groups (exact edge endpoints, type, "
                        "evidence and confidence) and a compact rendered contract fenced as graph "
                        "data. An unknown, foreign or non-role node returns found:false. A contract "
-                       "of 10000 UTF-8 bytes or more returns an explicit error instead of "
-                       "truncated permissions. Role contracts can live in any topic; legacy agent "
+                       "of 10000 UTF-8 bytes or more returns error role_contract_too_large with its "
+                       "bytes and limit instead of truncated permissions (REST answers 400). "
+                       "compact=true leaves the evidence sentence of each works_with edge out and "
+                       "keeps props, endpoints, types and confidence; it returns compact:true and "
+                       "the same hash as the full contract, so one pin covers both forms. Role "
+                       "contracts can live in any topic; legacy agent "
                        "and vinc/agent roles stay readable. Inactive roles (props.active=false) "
                        "are left out. A contract also returns rev (the role node's stored "
                        "revision) and hash: sha256 of the canonical JSON (sorted keys, no "
@@ -1170,6 +1178,9 @@ TOOLS: list[dict] = [
             "expected_rev": {"type": "integer", "minimum": 0, "maximum": 9007199254740991,
                              "description": "Optional pin on the role node's rev. A different "
                                             "rev returns role_changed and no contract."},
+            "compact": {"type": "boolean",
+                        "description": "Leave relation evidence sentences out, for a role over "
+                                       "the read limit. Permissions are never cut."},
             "limit": {"type": "integer", "minimum": 1, "maximum": 1000,
                       "description": "Optional roster page size. Follow next_offset, even after an "
                                      "empty page."},
