@@ -205,6 +205,8 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
                 "dir": args.dir, "limit": args.limit}
         return "vinc_edges", {**common, **{k: v for k, v in data.items() if v is not None}}, None
     if cmd == "role":
+        if args.rolecmd == "export":
+            return "vinc_role_export", {**common, "role": args.id, "format": args.format}, None
         if args.rolecmd == "get":
             return "vinc_role", {**common, "role": args.id,
                                  **({"compact": True} if getattr(args, "compact", None) else {})}, None

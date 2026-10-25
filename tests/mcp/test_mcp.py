@@ -42,6 +42,8 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              "vinc_neighbors", "vinc_edges", "vinc_role", "vinc_path",
              # VIN-386 — 역할의 결정론 출력 게이트를 허브에서 돌린다(조회 전용, 쓰지 않음).
              "vinc_role_check",
+             # 내 역할을 호스트 파일(SKILL.md · 에이전트 · AGENTS.md · 팩)로 내보낸다(조회 전용).
+             "vinc_role_export",
              # D45 P4 — 문서 정본(Chunk=SSoT) 직접 CRUD: get/list(조회) · put/delete(쓰기).
              "vinc_doc_get", "vinc_doc_list", "vinc_doc_put", "vinc_doc_delete",
              # D45-V — 정본에서 개념을 파생한다. 이게 없으면 어시스턴트는 문서를

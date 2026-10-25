@@ -1172,6 +1172,19 @@
         }
       }
     },
+    "/roles/export": {
+      "get": {
+        "operationId": "read_role_export",
+        "summary": "One owned role as a host file: skill, claude, gpt, agents-md, vincpack or mcp.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
     "/search": {
       "get": {
         "operationId": "read_search",

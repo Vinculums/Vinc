@@ -364,6 +364,126 @@ def render_community_export(snapshot: dict, source: dict, format: str, *, pack_e
                 "legacy_import_compatible": False} if format == "vincpack" else {})}
 
 
+# ── 내 역할 내보내기 ──────────────────────────────────────────────────────────
+
+#: 내 역할을 호스트 파일로 내보내는 형식. 공유 버전 내보내기(render_community_export)와 따로 둔다:
+#: 고정 버전·작성자·라이선스 대신 계약의 rev·hash 가 출처를 말한다.
+ROLE_EXPORT_FORMATS = ("skill", "claude", "gpt", "agents-md", "vincpack", "mcp")
+MCP_URL = "https://mcp.vincs.io/mcp"
+#: 일반 공유 팩 판(api/share.PACK_VERSION). vinc_mcp 는 api 를 import 하지 않으므로 값을 옮겨 두고
+#: tests/core/test_role_export.py 가 둘이 같음을 고정한다.
+SHARE_PACK_VERSION = 1
+
+
+class _Fixed:
+    """이미 읽은 `/roles` 응답을 그대로 돌려주는 브리지. 계약 조립(contract)을 한 벌로 쓰려는 것."""
+
+    def __init__(self, got: dict, owner: str) -> None:
+        self.got, self.owner = got, owner
+
+    def request(self, *_args, **_kwargs) -> dict:
+        return self.got
+
+
+def _export_body(out: dict, entry: dict) -> str:
+    """계약 전문을 데이터 울타리에 넣은 본문. 읽을 문서와 도구 목록까지 싣는다(줄이지 않는다)."""
+    props = out["props"]
+    body = render_shell(entry, compact=True)
+    if props.get("reads"):
+        body += "\n## Read before the first edit\n" + "\n".join(
+            f"{i}. {d}" for i, d in enumerate(props["reads"], 1)) + "\n"
+    if props.get("tools"):
+        body += "\n## Tools\n" + _bullets(props["tools"]) + "\n"
+    head = (f"Role `{out['id']}` from Vinc, rev {out['rev']}, contract hash {out['hash']}.\n"
+            "Read the live contract with the vinc_role tool or GET /v1/roles/{id}, and pass the hash "
+            "as expected_hash to work only on this version. This file does not run the role or "
+            "grant tools.")
+    return head + "\n\n" + _BOUNDARY + "\n\n" + _fence(body)
+
+
+def _mcp_entries() -> str:
+    """호스트마다 Vinc MCP 서버를 더하는 설정. 키는 넣지 않는다(OAuth 가 되는 곳은 OAuth)."""
+    return "\n".join([
+        "# Connect Vinc to your agent host", "",
+        f"Every host uses the same address: {MCP_URL}. Where the host can sign in with OAuth, "
+        "it needs no key. Otherwise make a key on your vincs.io account page and put it where "
+        "<key> stands; never commit it.", "",
+        "## Claude Code", "", "```", f"claude mcp add --scope user --transport http vinc {MCP_URL}", "```", "",
+        "## Codex", "", "```", f"codex mcp add vinc --url {MCP_URL}", "codex mcp login vinc", "```", "",
+        "## Cursor and Grok Bot", "",
+        "Cursor reads `~/.cursor/mcp.json`. Grok Bot takes the same MCP servers, plugins and skills "
+        "as Cursor, or a custom connector at grok.com/connectors with this address and OAuth.", "",
+        "```json", '{ "mcpServers": { "vinc": { "url": "' + MCP_URL + '" } } }', "```", "",
+        "## OpenClaw", "", "Under `mcp.servers` in `~/.openclaw/openclaw.json`; keep the transport line.", "",
+        "```json", '{ "mcp": { "servers": { "vinc": { "url": "' + MCP_URL
+        + '", "transport": "streamable-http", "headers": { "Authorization": "Bearer <key>" } } } } }', "```", "",
+        "## Hermes", "", "Under `mcp_servers` in `~/.hermes/config.yaml`.", "",
+        "```yaml", "mcp_servers:", "  vinc:", f'    url: "{MCP_URL}"', "    auth: oauth", "```", "",
+        "## Claude.ai and ChatGPT", "",
+        f"Add a custom connector with the address {MCP_URL} and sign in on vincs.io.", ""])
+
+
+def render_role_export(got: dict, format: str, *, owner: str, pack_encoder=None) -> dict:
+    """`/roles` 로 읽은 역할 하나 → 호스트 파일 하나. 권한은 자르지 않는다(크기 상한을 두지 않는다).
+
+    skill 은 SKILL.md(OpenClaw·Hermes·Cursor·Grok Bot 이 읽는 꼴), claude 는 Claude Code 서브에이전트
+    껍데기(agents/shells 와 같은 바이트), gpt 는 지시문, agents-md 는 AGENTS.md 의 한 절, vincpack 은
+    일반 공유 팩(가져오면 id 로 합쳐진다), mcp 는 호스트별 연결 설정이다."""
+    import base64
+    import hashlib
+    from store.canon import canonical_json as canonical
+    if format not in ROLE_EXPORT_FORMATS:
+        return {"kind": "role_export", "executed": False, "error": "invalid_export_format",
+                "note": "format must be one of " + ", ".join(ROLE_EXPORT_FORMATS)}
+    if not got.get("executed") or not got.get("found"):
+        return {**got, "kind": "role_export"}
+    node = got["node"]
+    rid = node["id"]
+    out = contract(rid, _Fixed(got, owner), forced_owner=owner, capped=False)
+    if not out.get("executed"):
+        return {**out, "kind": "role_export"}
+    entry = build_payload([{**node, "works_with": works_with(rid, got.get("peers") or [], [
+        {**e, "source": e["from"], "target": e["to"]} for e in got.get("relations") or []])}])["roles"][0]
+    name, label, props = entry["name"], entry.get("label") or out["title"] or entry["name"], out["props"]
+    path = None
+    if format == "claude":
+        text, filename = render_shell(entry), name + ".md"
+    elif format == "skill":
+        text = (f"---\nname: {name}\ndescription: {json.dumps(props.get('mission') or label, ensure_ascii=False)}\n"
+                f"---\n\n# {label}\n\n" + _export_body(out, entry) + "\n")
+        filename, path = "SKILL.md", name + "/SKILL.md"
+    elif format == "gpt":
+        text, filename = f"# {label}\n\n" + _export_body(out, entry) + "\n", name + ".gpt.md"
+    elif format == "agents-md":
+        text, filename = f"## {label} (`{name}`)\n\n" + _export_body(out, entry) + "\n", "AGENTS.md"
+    elif format == "mcp":
+        text, filename = _mcp_entries(), "vinc-mcp.md"
+    else:
+        if not callable(pack_encoder):
+            return {"kind": "role_export", "executed": False, "error": "agent_pack_encoder_required"}
+        pack = {"vinc_pack": SHARE_PACK_VERSION, "kind": "share", "manifest": {
+                    "created": str(node.get("updated_at") or node.get("created") or ""),
+                    "scope": {"domain": out["domain"], "tags": node.get("tags") or [], "seed": rid, "depth": 0},
+                    "counts": {"concepts": 1, "records": 0, "edges": 0, "documents": 0},
+                    "note": (f"{label} exported from Vinc at rev {out['rev']}, contract hash {out['hash']}. "
+                             "Importing merges by id: a role with the same id in the target graph takes "
+                             "these props.")},
+                "fragment": {"nodes": [{"id": rid, "type": "concept", "title": out["title"],
+                                        "one_liner": props.get("mission") or "", "domain": out["domain"],
+                                        "tags": node.get("tags") or [], "props": props}], "edges": []},
+                "documents": []}
+        content = pack_encoder(json.loads(canonical(pack)))
+        return {"kind": "role_export", "executed": True, "id": rid, "format": format,
+                "filename": name + ".vincpack", "mime": "application/octet-stream", "encoding": "base64",
+                "content": base64.b64encode(content).decode("ascii"),
+                "content_hash": hashlib.sha256(content).hexdigest(), "rev": out["rev"], "hash": out["hash"]}
+    content = text.encode("utf-8")
+    return {"kind": "role_export", "executed": True, "id": rid, "format": format,
+            "filename": filename, **({"path": path} if path else {}),
+            "mime": "text/markdown; charset=utf-8", "encoding": "utf8", "content": text,
+            "content_hash": hashlib.sha256(content).hexdigest(), "rev": out["rev"], "hash": out["hash"]}
+
+
 # ── MCP prompts (W2) ─────────────────────────────────────────────────────────
 
 #: 프롬프트 하나가 받는 인자. 선택 하나뿐이다 — 역할 계약 자체는 인자가 필요 없고,

@@ -1170,6 +1170,18 @@ class VincApp:
             limit=limit, offset=offset,
             roster=p.get("roster") == "1"))
 
+    def read_role_export(self, p):
+        """내 역할 하나를 호스트 파일로 낸다(skill·claude·gpt·agents-md·vincpack·mcp). 조회 전용."""
+        from . import packfile
+        from .roles import read
+        from vinc_mcp.roles import render_role_export
+        owner = _req(p, "owner")
+        code, got = self._read(lambda r: read(_req(p, "role"), owner=owner, store=r))
+        if code != 200:
+            return code, got
+        return 200, render_role_export(got, p.get("format") or "skill", owner=owner,
+                                       pack_encoder=packfile.to_bytes)
+
     def read_path(self, p):
         # E-G7/E-G8 최단 경로 증거 체인 — 두 개념 사이 경로(조회 전용).
         # weight=confidence 면 가중 갈래(E-G8 다익스트라), 그 외는 홉 최단(기본).
@@ -2904,6 +2916,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/neighbors": app.read_neighbors, "/path": app.read_path,
             "/node-edges": app.read_node_edges,
             "/roles": app.read_roles,
+            "/roles/export": app.read_role_export,
             "/learner": app.read_learner, "/graph": lambda p: app.read_graph(p, wire=True),
             "/graph/roots": app.read_graph_roots,   # 들고 있는 시간 가지 배치(`api.layout_remote`)
             "/search": app.read_search, "/decide": app.read_decide,
