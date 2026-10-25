@@ -643,16 +643,44 @@ jobs:
         run: |
           python -m pip install build
           python -m build --outdir dist/vincs integrations/vincs/python
-      - name: Install unified wheel and run tests outside the repository
+      # 사용자가 까는 그대로 본다: 엑스트라마다(없음 포함) 빈 venv 에 휠 하나만 깔고, 그
+      # 엑스트라가 여는 어댑터의 import 와 `vinc --help`·`vinc --version` 을 확인한다.
+      # 엑스트라 목록은 휠 메타데이터에서 읽으므로 새 어댑터의 엑스트라도 이 단계를 고치지
+      # 않고 돈다. 설치본 시험(test_install.py)은 all 환경에서 돈다.
+      # 근거: [[vinc.plan.agent-harness-work-order-2026-10-25 §3]]
+      - name: Install the wheel once per extra in a clean venv, smoke it, then run the installed tests
         shell: bash
         run: |
+          set -euo pipefail
           wheel=$(find dist/vincs -name '*.whl' -print -quit)
-          python -m pip install "$wheel[all,test]"
+          version=$(basename "$wheel" | cut -d- -f2)
+          bin=bin
+          [ "$RUNNER_OS" != Windows ] || bin=Scripts
+          python -m venv "$RUNNER_TEMP/vincs-base"
+          "$RUNNER_TEMP/vincs-base/$bin/python" -m pip install -q "$wheel"
+          extras=$("$RUNNER_TEMP/vincs-base/$bin/python" -I -c 'import importlib.metadata as m; print(" ".join(e for e in m.metadata("vincs").get_all("Provides-Extra") if e != "test"))')
+          [ -n "$extras" ] || { echo "::error::the wheel declares no extras"; exit 1; }
+          for extra in base $extras; do
+            venv="$RUNNER_TEMP/vincs-$extra"
+            if [ "$extra" != base ]; then
+              python -m venv "$venv"
+              "$venv/$bin/python" -m pip install -q "$wheel[$extra]"
+            fi
+            echo "::group::vincs[$extra]"
+            # macOS 의 bash 3.2 는 set -u 에서 빈 배열 전개를 실패로 친다. 그래서 갈래로 둔다.
+            if [ "$extra" = base ]; then
+              "$venv/$bin/python" -I scripts/integrations_import_check.py --package vincs --version "$version"
+            else
+              "$venv/$bin/python" -I scripts/integrations_import_check.py --package vincs --version "$version" --extra "$extra"
+            fi
+            echo "::endgroup::"
+          done
+          "$RUNNER_TEMP/vincs-all/$bin/python" -m pip install -q "$wheel[all,test]"
           test_dir="$RUNNER_TEMP/vincs-installed-tests"
           mkdir -p "$test_dir"
           cp integrations/vincs/python/tests/test_install.py "$test_dir/"
           cd "$test_dir"
-          python -I -m pytest -q test_install.py
+          "$RUNNER_TEMP/vincs-all/$bin/python" -I -m pytest -q test_install.py
 
   app:
     name: app (typecheck)

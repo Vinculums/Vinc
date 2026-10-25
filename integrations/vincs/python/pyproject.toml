@@ -13,6 +13,9 @@ authors = [{ name = "Vinculums" }]
 dependencies = ["httpx>=0.27,<1", "pydantic>=2.7,<3"]
 
 [project.optional-dependencies]
+# 어댑터 엑스트라는 vinc.integrations 아래 모듈과 이름이 같고(- 는 _), all 이 그것을 모두 담는다.
+# 어댑터 없는 빈 엑스트라는 두지 않는다. tests/test_install.py 가 지키고, 새 어댑터를 들이는
+# 순서는 README 의 "Adding an adapter" 에 있다.
 langgraph = ["langgraph>=1.0", "langchain-core>=1.0", "langchain>=1.0"]
 agent-framework = ["agent-framework-core>=1.8.1"]
 all = ["vincs[langgraph,agent-framework]"]
