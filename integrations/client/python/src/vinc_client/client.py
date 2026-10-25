@@ -17,7 +17,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 from urllib.parse import quote, urlparse
 
 import httpx
@@ -25,6 +25,7 @@ import httpx
 from . import __version__
 from .context import DEFAULT_MAX_CHARS, format_context
 from .episode import build_episode_fragment, check_about
+from .run import build_run_fragment
 from .errors import (VincAuthError, VincError, VincInvalidArgument, VincPartialWrite,
                      VincNotFound, VincQuotaExceeded, VincRoleChanged, VincUnavailable,
                      error_class)
@@ -658,6 +659,38 @@ class VincClient(_Base):
         return self.ingest(fragment["nodes"], fragment["edges"], space=space,
                            create_only=create_only, operation_id=operation_id)
 
+    def record_run(self, run_id: str, *, role: str, outcome: str, title: str | None = None,
+                   summary: str = "", task_ref: str | None = None, host: str | None = None,
+                   model_family: str | None = None, steps: int | None = None,
+                   tool_calls: int | None = None, tokens_in: int | None = None,
+                   tokens_out: int | None = None, cost_usd: float | None = None,
+                   gate_results: Mapping[str, str] | None = None,
+                   cited_ids: Iterable[str] = (), shims_fired: Mapping[str, int] | None = None,
+                   trace: Mapping[str, Any] | None = None, about: Iterable[str] = (),
+                   date: str | None = None, domain: str | None = None,
+                   tags: Iterable[str] | None = None, space: str | None = None,
+                   create_only: bool | None = None,
+                   operation_id: str | None = None) -> dict[str, Any]:
+        """Write one agent run as an Episode ``about`` its role (D4 run record).
+
+        Call it on purpose when the run ends; nothing in this package calls it
+        for you. The episode id comes from ``run_id``, so a retry of the same run
+        merges into the same node. Keep the raw trace as a file and pass
+        :func:`vinc_client.run.trace_ref` of it, never a summary. Every ``about``
+        target, the role included, is read first.
+        """
+        self._require_write_key()
+        fragment = build_run_fragment(
+            run_id, role=role, outcome=outcome, title=title, summary=summary, task_ref=task_ref,
+            host=host, model_family=model_family, steps=steps, tool_calls=tool_calls,
+            tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=cost_usd,
+            gate_results=gate_results, cited_ids=cited_ids, shims_fired=shims_fired,
+            trace=trace, about=about, date=date, domain=domain, tags=tags)
+        for target in fragment["edges"]:
+            self.node(target["to"], space=space)
+        return self.ingest(fragment["nodes"], fragment["edges"], space=space,
+                           create_only=create_only, operation_id=operation_id)
+
     def write_package(self, question: str, conclusion: str, *,
                       claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
                       space: str, title: str | None = None,
@@ -936,6 +969,31 @@ class AsyncVincClient(_Base):
             await self.node(target, space=space)
         fragment = build_episode_fragment(title, summary=summary, about=targets, date=date,
                                           domain=domain, tags=tags, episode_id=episode_id)
+        return await self.ingest(fragment["nodes"], fragment["edges"], space=space,
+                                 create_only=create_only, operation_id=operation_id)
+
+    async def record_run(self, run_id: str, *, role: str, outcome: str, title: str | None = None,
+                         summary: str = "", task_ref: str | None = None, host: str | None = None,
+                         model_family: str | None = None, steps: int | None = None,
+                         tool_calls: int | None = None, tokens_in: int | None = None,
+                         tokens_out: int | None = None, cost_usd: float | None = None,
+                         gate_results: Mapping[str, str] | None = None,
+                         cited_ids: Iterable[str] = (), shims_fired: Mapping[str, int] | None = None,
+                         trace: Mapping[str, Any] | None = None, about: Iterable[str] = (),
+                         date: str | None = None, domain: str | None = None,
+                         tags: Iterable[str] | None = None, space: str | None = None,
+                         create_only: bool | None = None,
+                         operation_id: str | None = None) -> dict[str, Any]:
+        """Async :meth:`VincClient.record_run`."""
+        self._require_write_key()
+        fragment = build_run_fragment(
+            run_id, role=role, outcome=outcome, title=title, summary=summary, task_ref=task_ref,
+            host=host, model_family=model_family, steps=steps, tool_calls=tool_calls,
+            tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=cost_usd,
+            gate_results=gate_results, cited_ids=cited_ids, shims_fired=shims_fired,
+            trace=trace, about=about, date=date, domain=domain, tags=tags)
+        for target in fragment["edges"]:
+            await self.node(target["to"], space=space)
         return await self.ingest(fragment["nodes"], fragment["edges"], space=space,
                                  create_only=create_only, operation_id=operation_id)
 

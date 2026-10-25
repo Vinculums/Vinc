@@ -198,6 +198,23 @@ async def arecord_episode(client: AsyncVincClient, title: str, *, summary: str =
                                        create_only=create_only, operation_id=operation_id)
 
 
+def record_run(client: VincClient, run_id: str, *, role: str, outcome: str,
+               **fields: Any) -> dict[str, Any]:
+    """Write one agent run as an Episode about its role (needs a ``vinc_sk_`` key).
+
+    ``fields`` are :meth:`vinc_client.VincClient.record_run`'s keyword arguments
+    (``trace`` from :func:`vinc_client.trace_ref`, counts, ``cited_ids``, ``space`` ...).
+    Put it in the last node of the graph; a retry of the same ``run_id`` merges.
+    """
+    return client.record_run(run_id, role=role, outcome=outcome, **fields)
+
+
+async def arecord_run(client: AsyncVincClient, run_id: str, *, role: str, outcome: str,
+                      **fields: Any) -> dict[str, Any]:
+    """Async :func:`record_run`."""
+    return await client.record_run(run_id, role=role, outcome=outcome, **fields)
+
+
 __all__ = ["last_user_text", "get_vinc_context", "aget_vinc_context",
            "build_system_message", "create_vinc_tools", "record_episode", "arecord_episode",
            "get_vinc_package_context", "aget_vinc_package_context", "write_package", "awrite_package",
