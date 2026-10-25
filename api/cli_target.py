@@ -8,7 +8,8 @@ from store.config import read_local_config
 #: MCP 도구로 답하는 그래프 동사. 기기 작업은 DEVICE_CMDS가 별도로 제한한다.
 TOOL_CMDS = frozenset({"whoami", "conventions", "node", "edges", "role", "path", "ties",
                        "diagnose", "operation", "ingest", "delete", "edge", "merge", "call",
-                       "search", "recall", "brief", "decide", "domains", "doc", "gate"})
+                       "search", "recall", "brief", "decide", "domains", "doc", "gate",
+                       "shim"})
 
 # 기기 스토어·파일을 바꾸거나 로컬 서비스를 시작하는 명령만 제한한다.
 # MCP stdio 프록시와 파일 전용 검사는 각각 자신의 계약을 따른다.
