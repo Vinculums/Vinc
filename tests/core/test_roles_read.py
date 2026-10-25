@@ -86,9 +86,81 @@ def test_oversized_contract_is_explicit_and_never_drops_permissions():
         def request(self,*_args,**_kwargs):
             return {'executed':True,'found':True,'node':{
                 'id':'concept:agent-huge','props':{'person_only':['x'*11000]}},'relations':[]}
-    result = roles.contract('agent-huge',Huge())
-    assert result['executed'] is False and result['error'] == 'role_contract_too_large'
-    assert 'props' not in result and 'rendered' not in result
+    for compact in (False, True):
+        result = roles.contract('agent-huge',Huge(),compact=compact)
+        assert result['executed'] is False and result['error'] == 'role_contract_too_large'
+        assert 'props' not in result and 'rendered' not in result
+        assert result['compact'] is compact and result['limit'] == roles.CONTRACT_CAP
+        assert result['bytes'] >= roles.CONTRACT_CAP and result['id'] == 'concept:agent-huge'
+
+
+class Talkative:
+    """관계 근거 문장 때문에만 예산을 넘는 역할. 라이브 agent-qa 의 모양이다."""
+    owner=OWNER
+    def request(self,*_args,**_kwargs):
+        rid = 'concept:agent-talk'
+        relations = [{'from':rid,'to':f'concept:agent-peer-{i}','type':'RELATED_TO',
+                      'evidence':'e'*900,'confidence':0.5,'created':'2026-10-25T00:00:00Z'}
+                     for i in range(12)]
+        return {'executed':True,'found':True,'relations':relations,
+                'node':{'id':rid,'title':'Talk','domain':'vinc/agent/roles','rev':7,
+                        'props':{'mission':'Talk.','never':['merge'],
+                                 'person_only':[{'action':'merge','reason':'a person merges'}]}}}
+
+
+def test_compact_read_drops_only_relation_evidence_and_keeps_the_full_hash():
+    full = roles.contract('agent-talk', Talkative(), capped=False)
+    assert full['executed'] is True and 'compact' not in full
+    assert len(roles.serialize_result(full).encode()) >= roles.CONTRACT_CAP
+    assert roles.contract('agent-talk', Talkative())['error'] == 'role_contract_too_large'
+
+    small = roles.contract('agent-talk', Talkative(), compact=True)
+    assert small['executed'] is True and small['compact'] is True
+    assert len(roles.serialize_result(small).encode()) < roles.CONTRACT_CAP
+    assert small['props'] == full['props']
+    assert small['hash'] == full['hash'] and small['rev'] == 7
+    beside = small['works_with']['works_beside']
+    assert [e['to'] for e in beside] == [e['to'] for e in full['works_with']['works_beside']]
+    assert all('evidence' not in e and e['confidence'] == 0.5 for e in beside)
+    # 한 고정이 두 모양에 다 맞는다.
+    assert roles.contract('agent-talk', Talkative(), compact=True,
+                          expected_hash=full['hash'])['executed'] is True
+
+
+def test_mcp_tool_and_brief_reach_the_compact_form():
+    result = tools.call('vinc_role', {'role': 'agent-talk', 'compact': True}, Talkative())
+    assert not result.get('isError') and result['compact'] is True
+
+    class Brief(Talkative):
+        def request(self, method, path, params=None, **kwargs):
+            if path == '/brief':
+                return {'kind':'brief','executed':True,'status':'resolved','node':{'id':params['query']}}
+            return super().request(method, path, params, **kwargs)
+    brief = tools.call('vinc_brief', {'query': 'concept:agent-talk'}, Brief())
+    assert brief['role']['compact'] is True and brief['role']['props']['never'] == ['merge']
+
+
+def test_rest_answers_a_client_error_and_reads_the_compact_form():
+    import sys
+    sys.path.insert(0, str(ROOT / 'tests/mcp'))
+    from test_rest_v1 import Server
+    srv = Server(scope='read')
+    srv.bridge.request = Talkative().request
+    try:
+        status, _headers, body = srv.request('GET', '/v1/roles/agent-talk')
+        assert status == 400 and body['error']['code'] == 'role_contract_too_large'
+        assert body['error']['details'] == {'id': 'concept:agent-talk', 'bytes': body['error']['details']['bytes'],
+                                            'limit': 10000, 'compact': False}
+        status, _headers, body = srv.request('GET', '/v1/roles/agent-talk?compact=1')
+        assert status == 200 and body['compact'] is True and body['props']['never'] == ['merge']
+    finally:
+        srv.close()
+
+
+def test_role_check_is_not_bound_by_the_read_limit():
+    result = tools.call('vinc_role_check', {'role': 'agent-talk', 'output': 'Done.'}, Talkative())
+    assert result['executed'] is True and result['found'] is True
+    assert result['verdict'] in ('pass', 'block', 'interrupt')
 
 
 def test_data_fence_cannot_be_closed_by_graph_content():

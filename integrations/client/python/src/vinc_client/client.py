@@ -162,6 +162,13 @@ def _check_pin(pin: str | None) -> None:
                                   "pin must be the 64 character hash from role()['hash'].")
 
 
+def _read_compact_after(exc: VincInvalidArgument, compact: bool | None) -> bool:
+    """전체 계약이 읽기 예산을 넘었다는 답이면 근거 문장을 뺀 모양으로 한 번 더 읽는다.
+    compact 를 명시한 호출(True·False)은 그대로 둔다. 권한(props)은 두 모양에서 같다."""
+    return (compact is None and exc.code == "role_contract_too_large"
+            and exc.details.get("compact") is False)
+
+
 def _pinned(contract: dict[str, Any], pin: str | None) -> dict[str, Any]:
     """서버가 고정을 확인한 계약만 넘긴다. 해시가 없거나 다르면(고정을 모르는 허브 포함) 멈춘다."""
     if pin is not None and contract.get("hash") != pin:
@@ -280,9 +287,10 @@ class _Base:
         return _Call("GET", f"/v1/documents/{_segment(doc_id)}", space=space)
 
     @staticmethod
-    def _role(role_id, space, pin=None) -> _Call:
+    def _role(role_id, space, pin=None, compact=None) -> _Call:
         _check_pin(pin)
-        return _Call("GET", f"/v1/roles/{_segment(role_id)}", params={"expected_hash": pin},
+        return _Call("GET", f"/v1/roles/{_segment(role_id)}",
+                     params={"expected_hash": pin, "compact": True if compact else None},
                      space=space)
 
     @staticmethod
@@ -418,14 +426,25 @@ class VincClient(_Base):
         return self._send(self._node(node_id, space))
 
     def role(self, role_id: str, *, space: str | None = None,
-             pin: str | None = None) -> dict[str, Any]:
+             pin: str | None = None, compact: bool | None = None) -> dict[str, Any]:
         """Read a genuine owner-visible role's complete contract and collaboration links.
 
         The contract carries ``rev`` and ``hash``. Pass an earlier ``hash`` as ``pin`` to get
         the contract only while the role is unchanged; otherwise ``VincRoleChanged`` is raised
         and no contract is returned. Moving the pin to a new hash is the caller's decision.
+
+        A contract over the hub's read limit is never cut. By default (``compact=None``) such a
+        role is read again without the evidence sentence of each ``works_with`` edge, and the
+        result says ``compact: True``; props, endpoints and the ``hash`` are the same as the
+        complete contract's. ``compact=True`` asks for that form at once, and ``compact=False``
+        raises ``VincInvalidArgument`` with code ``role_contract_too_large`` instead.
         """
-        return _pinned(self._send(self._role(role_id, space, pin)), pin)
+        try:
+            return _pinned(self._send(self._role(role_id, space, pin, compact)), pin)
+        except VincInvalidArgument as exc:
+            if not _read_compact_after(exc, compact):
+                raise
+        return _pinned(self._send(self._role(role_id, space, pin, True)), pin)
 
     def document(self, doc_id: str, *, space: str | None = None) -> dict[str, Any]:
         """Read exact canonical text and its integrity metadata via GET /v1/documents/{id}."""
@@ -792,9 +811,15 @@ class AsyncVincClient(_Base):
         return await self._send(self._node(node_id, space))
 
     async def role(self, role_id: str, *, space: str | None = None,
-                   pin: str | None = None) -> dict[str, Any]:
-        """Async complete role contract read; ``pin`` works as in :meth:`VincClient.role`."""
-        return _pinned(await self._send(self._role(role_id, space, pin)), pin)
+                   pin: str | None = None, compact: bool | None = None) -> dict[str, Any]:
+        """Async complete role contract read; ``pin`` and ``compact`` work as in
+        :meth:`VincClient.role`."""
+        try:
+            return _pinned(await self._send(self._role(role_id, space, pin, compact)), pin)
+        except VincInvalidArgument as exc:
+            if not _read_compact_after(exc, compact):
+                raise
+        return _pinned(await self._send(self._role(role_id, space, pin, True)), pin)
 
     async def document(self, doc_id: str, *, space: str | None = None) -> dict[str, Any]:
         """Async exact canonical document read; does not replace integrity validation."""

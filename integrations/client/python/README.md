@@ -11,10 +11,10 @@ Looking for the `vinc` command? See [the terminal CLI installation guide](https:
 ## Install
 
 ```bash
-pip install "vinc-client>=0.1.13"
+pip install "vinc-client>=0.1.14"
 ```
 
-This README describes vinc-client 0.1.13. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
+This README describes vinc-client 0.1.14. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
 
 ## Keys and spaces
 
@@ -62,7 +62,7 @@ Reads (either key):
 | `recall` | `domain`, `tags`, `limit`, `cursor` | episode timeline, newest first |
 | `node` | `node_id` | one node by id; `VincNotFound` when absent |
 | `edges` | `node` or `nodes`, `type`, `dir`, `limit` | stored edges with direction and evidence; pass exactly one of `node` and `nodes` |
-| `role` | `role_id`, `pin` | a role's complete contract and links, with its `rev` and `hash`; with `pin`, only while the role is unchanged (see [Pin a role](#pin-a-role)) |
+| `role` | `role_id`, `pin`, `compact` | a role's complete contract and links, with its `rev` and `hash`; with `pin`, only while the role is unchanged (see [Pin a role](#pin-a-role)); a role over the read limit comes back without relation evidence (see [Large roles](#large-roles)) |
 | `document` | `doc_id` | exact document text with its content hash |
 | `role_check` | `role_id`, `output`, `person_only_requests`, `self_authored` | the hub applies the role's checks; verdict `pass`, `block` or `interrupt`, and `pass` grants no permission |
 | `operation_status` | `operation_id` | the receipt of an earlier write (see below) |
@@ -394,6 +394,24 @@ REST the same check is `GET /v1/roles/{id}?expected_hash=<hash>` (optionally
 `expected_rev`), which answers 409 `role_changed`. A hub older than this feature
 answers 400 to the argument, so a pinned run stops there too.
 
+### Large roles
+
+The hub never cuts a role contract. One that serializes to 10,000 bytes or more is
+refused with `role_contract_too_large` (HTTP 400, `details` holding `bytes`,
+`limit` and `compact`), because a cut contract could lose a permission. Most of a
+large contract is usually the evidence sentence on each `works_with` edge, so a
+compact form leaves only those sentences out: props, endpoints, edge types and
+confidence stay, and `hash` is still the complete contract's hash, so one pin
+covers both forms.
+
+`role` (and so `prefetch` and both adapters) reads the compact form on its own when
+the hub refuses the complete one, and the result says `compact: True`. Pass
+`compact=True` to ask for it at once, or `compact=False` to get the error instead.
+A role that is over the limit even in compact form raises the same error with
+`details["compact"]` set to `True`; shorten its props. Over REST the compact read
+is `GET /v1/roles/{id}?compact=1`, and from the command line `vinc role get <id>
+--compact`.
+
 ### A role's disallowed tools
 
 `prefetch_with_contract` returns the block and the role contract from the same
@@ -540,6 +558,7 @@ The read tools in both framework adapters expose these optional parameters too.
 
 | Version | Change |
 |---|---|
+| 0.1.14 | `role` takes `compact`. A role over the hub's read limit is no longer an error by default: `role`, `prefetch` and both adapters read it again without relation evidence sentences, and the result says `compact: True` (see [Large roles](#large-roles)). The adapters (vinc-langgraph 0.1.11, vinc-agent-framework 0.1.10) require it. |
 | 0.1.13 | `record_run` writes one agent run as an Episode about its role, with run props and a `trace_ref` built by `trace_ref()` (sha256, size and file name of the raw trace file); the episode id comes from the run id, so retries merge. The adapters (vinc-langgraph 0.1.10, vinc-agent-framework 0.1.9) add `record_run`. |
 | 0.1.12 | `role`, `prefetch` and `prefetch_with_contract` take `pin`, a role contract `hash`; a role that changed raises the new `VincRoleChanged` before any document is read. Contracts carry `rev` and `hash`. The adapters (vinc-langgraph 0.1.9, vinc-agent-framework 0.1.8) pass it as `prefetch_pin`. |
 | 0.1.11 | `prefetch_with_contract` returns the prefetch block with the role contract it read, and `RoleToolPolicy` applies the contract's `disallowed_tools` by exact name. `prefetch` is unchanged. The adapters (vinc-langgraph 0.1.8, vinc-agent-framework 0.1.7) use both. |

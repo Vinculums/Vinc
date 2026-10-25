@@ -7,10 +7,10 @@
 ## Install
 
 ```bash
-pip install "vinc-agent-framework>=0.1.9"
+pip install "vinc-agent-framework>=0.1.10"
 ```
 
-This README describes vinc-agent-framework 0.1.9, which requires vinc-client 0.1.13 or later.
+This README describes vinc-agent-framework 0.1.10, which requires vinc-client 0.1.14 or later.
 
 Set `VINC_API_KEY` to a member key. A `vinc_ro_` key is enough for the providers, the tools and `prefetch`. `record_episode` and `write_package` need a `vinc_sk_` key; with a read only key they raise `VincAuthError` (`read_only_key`) before anything is sent. Give the write key only to the step that writes.
 
@@ -267,6 +267,7 @@ pending approval must survive a process restart. This uses the framework's
 
 | Version | Change |
 |---|---|
+| 0.1.10 | A role over the hub's read limit loads: the context provider and `prefetch` read it without relation evidence sentences instead of failing (see the vinc-client README, Large roles). Requires vinc-client 0.1.14. |
 | 0.1.9 | `record_run` writes one agent run as an Episode about its role, with its raw trace by hash (see the vinc-client README, Record a run). Requires vinc-client 0.1.13. |
 | 0.1.8 | `prefetch_pin` on the provider and `pin` on `prefetch` hold role prefetch to a contract hash; a role that changed makes `before_run` raise `VincRoleChanged` before the model is called. Requires vinc-client 0.1.12. |
 | 0.1.7 | With `prefetch_role`, the contract's `disallowed_tools` are removed from what the model sees (chat clients with `ChatMiddlewareLayer`) and a call to one gets a refusal result; entries that match no tool are warned once per run. Requires vinc-client 0.1.11. |
