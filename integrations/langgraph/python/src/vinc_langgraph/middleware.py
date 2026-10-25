@@ -5,7 +5,7 @@ Needs the ``agents`` extra: ``pip install "vinc-langgraph[agents]"``.
 from __future__ import annotations
 
 import time
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Mapping
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest
 from langchain_core.messages import ToolMessage
@@ -19,8 +19,9 @@ from vinc_client.tools import TOOL_CALLS_PER_RUN, VINC_TOOL_NAMES, cap_message
 from .helpers import build_system_message, last_user_text
 
 
-def vinc_tool_call_ids(messages: Any) -> list[str]:
-    """Ids of the vinc tool calls the model made in this run, in model order.
+def run_tool_call_ids(messages: Any, names: Any = None) -> list[str]:
+    """Ids of the tool calls the model made in this run, in model order; with ``names``,
+    only calls to those tools.
 
     A run is everything after the newest human message, so a resumed interrupt keeps
     counting and a new question starts at zero.
@@ -32,8 +33,13 @@ def vinc_tool_call_ids(messages: Any) -> list[str]:
             ids = []
         elif kind == "ai":
             ids.extend(call["id"] for call in (getattr(message, "tool_calls", None) or [])
-                       if call.get("name") in VINC_TOOL_NAMES and call.get("id"))
+                       if (names is None or call.get("name") in names) and call.get("id"))
     return ids
+
+
+def vinc_tool_call_ids(messages: Any) -> list[str]:
+    """Ids of the vinc tool calls the model made in this run, in model order."""
+    return run_tool_call_ids(messages, VINC_TOOL_NAMES)
 
 
 def _run_marker(messages: Any) -> tuple[str, str]:
@@ -82,6 +88,12 @@ class VincContextMiddleware(AgentMiddleware):
     warning listing the entries that matched none of the agent's tools. The contract comes
     from the same prefetch read, so this costs no hub call.
 
+    The contract's run policy applies too (``RoleToolPolicy.from_contract``). With
+    ``capability_map`` (tool name to capability id) a tool the role denies is removed the
+    same way, and a call to one it holds for approval gets a sentence asking for a person
+    instead of running. ``budget.tool_calls`` caps all tool calls of a run, in model order.
+    A malformed policy stops the run before the model is called.
+
     Calls to ``vinc_brief`` and ``vinc_search`` from :func:`create_vinc_tools` are
     capped at ``tool_calls_per_run`` per agent run (the model's calls after the newest
     human message, in order); past that the tool result is a sentence saying so.
@@ -96,7 +108,8 @@ class VincContextMiddleware(AgentMiddleware):
                  prefetch_role: str | None = None,
                  prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
                  tool_calls_per_run: int | None = TOOL_CALLS_PER_RUN,
-                 prefetch_pin: str | None = None) -> None:
+                 prefetch_pin: str | None = None,
+                 capability_map: Mapping[str, str] | None = None) -> None:
         super().__init__()
         if prefetch_pin is not None and not prefetch_role:
             # 역할 없이 고정만 주면 맥락 모드로 조용히 돌게 된다. 시작 전에 멈춘다.
@@ -112,6 +125,7 @@ class VincContextMiddleware(AgentMiddleware):
         self.prefetch_max_chars = prefetch_max_chars
         self.prefetch_pin = prefetch_pin
         self.tool_calls_per_run = tool_calls_per_run
+        self.capability_map = capability_map
         self._cache: dict[tuple, tuple[float, str | None]] = {}
         self._prefetched: dict[tuple, tuple[str, RoleToolPolicy]] = {}
         self._cache_generation = 0
@@ -132,9 +146,15 @@ class VincContextMiddleware(AgentMiddleware):
         return None
 
     @staticmethod
-    def _refusal(request: Any, policy: RoleToolPolicy) -> ToolMessage | None:
+    def _refusal(request: Any, policy: RoleToolPolicy, messages: Any) -> ToolMessage | None:
         call = request.tool_call
         name = call.get("name")
+        # 예산은 이 런에서 모델이 적은 순서로 센다(상태에서 세므로 동시 런끼리 나눠 쓰지 않는다).
+        if policy.tool_calls is not None and call.get("id"):
+            ids = run_tool_call_ids(messages)
+            if call["id"] in ids and policy.over_budget(ids.index(call["id"])):
+                return ToolMessage(content=policy.budget_message(), name=name,
+                                   tool_call_id=call["id"])
         if policy.allows(name):
             return None
         return ToolMessage(content=policy.refusal(name), name=name,
@@ -145,13 +165,13 @@ class VincContextMiddleware(AgentMiddleware):
         if not self.prefetch_role:
             return None
         messages = (getattr(request, "state", None) or {}).get("messages")
-        return self._refusal(request, self._prefetch(messages)[1])
+        return self._refusal(request, self._prefetch(messages)[1], messages)
 
     async def _arefused(self, request: Any) -> ToolMessage | None:
         if not self.prefetch_role:
             return None
         messages = (getattr(request, "state", None) or {}).get("messages")
-        return self._refusal(request, (await self._aprefetch(messages))[1])
+        return self._refusal(request, (await self._aprefetch(messages))[1], messages)
 
     def wrap_tool_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
         return self._refused(request) or self._capped(request) or handler(request)
@@ -204,7 +224,7 @@ class VincContextMiddleware(AgentMiddleware):
 
     def _ran(self, key: tuple, fetched: Any, tools: Any) -> tuple[str, RoleToolPolicy]:
         # 계약의 도구 목록이 잘못됐으면 담기 전에 멈춘다. 경고는 새로 읽은 런의 첫 호출에서 한 번.
-        policy = RoleToolPolicy.from_contract(fetched.contract)
+        policy = RoleToolPolicy.from_contract(fetched.contract, self.capability_map)
         if tools is not None:
             policy.warn_unmatched(tools)
         self._keep(self._prefetched, key, (fetched.block, policy))

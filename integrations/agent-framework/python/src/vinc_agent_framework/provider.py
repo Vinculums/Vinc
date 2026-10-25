@@ -7,7 +7,7 @@ conversation.
 from __future__ import annotations
 
 import logging
-from typing import Any, Awaitable, Callable, Iterable, Sequence
+from typing import Any, Awaitable, Callable, Iterable, Mapping, Sequence
 
 from agent_framework import (AgentSession, ChatContext, ChatMiddleware, ChatMiddlewareLayer,
                              ContextProvider, FunctionInvocationContext, FunctionMiddleware,
@@ -115,14 +115,21 @@ class _HideDisallowedTools(ChatMiddleware):
 
 
 class _RefuseDisallowedTools(FunctionMiddleware):
-    """Function middleware for one run: a call to a disallowed tool gets a refusal result."""
+    """Function middleware for one run: a call to a disallowed tool, or one held for
+    approval, gets a refusal result, and calls past ``budget.tool_calls`` get the budget
+    sentence. Calls are counted in the order they run."""
 
     def __init__(self, policy: RoleToolPolicy) -> None:
         self.policy = policy
+        self.used = 0
 
     async def process(self, context: FunctionInvocationContext,
                       call_next: Callable[[], Awaitable[None]]) -> None:
         name = context.function.name
+        position, self.used = self.used, self.used + 1
+        if self.policy.over_budget(position):
+            context.result = self.policy.budget_message()
+            return
         if self.policy.allows(name):
             await call_next()
             return
@@ -152,6 +159,12 @@ class VincContextProvider(ContextProvider):
     built-in clients do); with any other client the tools stay visible, calls are still
     refused, and the run logs a warning saying so.
 
+    The contract's run policy applies too (``RoleToolPolicy.from_contract``). With
+    ``capability_map`` (tool name to capability id) a tool the role denies is removed the
+    same way, and a call to one it holds for approval gets a sentence asking for a person
+    instead of running. ``budget.tool_calls`` caps all tool calls of a run, in the order they
+    run. A malformed policy stops the run before the model is called.
+
     ``prefetch_pin`` (the ``hash`` from ``AsyncVincClient.role``) holds role prefetch to that
     contract: when the role changed, ``before_run`` raises ``VincRoleChanged`` and the model is
     not called. Moving the pin to the new hash is your decision; nothing moves it for you.
@@ -165,7 +178,8 @@ class VincContextProvider(ContextProvider):
                  prefetch_role: str | None = None,
                  prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
                  tool_calls_per_run: int | None = TOOL_CALLS_PER_RUN,
-                 prefetch_pin: str | None = None) -> None:
+                 prefetch_pin: str | None = None,
+                 capability_map: Mapping[str, str] | None = None) -> None:
         if prefetch_pin is not None and not prefetch_role:
             # 역할 없이 고정만 주면 맥락 모드로 조용히 돌게 된다. 시작 전에 멈춘다.
             raise ValueError("prefetch_pin needs prefetch_role")
@@ -181,6 +195,7 @@ class VincContextProvider(ContextProvider):
         self.prefetch_pin = prefetch_pin
         self.expose_tools = expose_tools
         self.tool_calls_per_run = tool_calls_per_run
+        self.capability_map = capability_map
 
     async def before_run(self, *, agent: Any, session: AgentSession, context: SessionContext,
                          state: dict[str, Any]) -> None:
@@ -191,9 +206,10 @@ class VincContextProvider(ContextProvider):
                 pin=self.prefetch_pin)
             block = fetched.block
             # 계약의 도구 목록이 잘못됐으면 여기서 멈춘다(모델 호출 전).
-            policy = RoleToolPolicy.from_contract(fetched.contract)
+            policy = RoleToolPolicy.from_contract(fetched.contract, self.capability_map)
             if policy:
-                if not isinstance(getattr(agent, "client", None), ChatMiddlewareLayer):
+                if policy.disallowed and not isinstance(getattr(agent, "client", None),
+                                                        ChatMiddlewareLayer):
                     log.warning(NO_CHAT_MIDDLEWARE, policy.role_id)
                 # 미들웨어는 이 런의 것이다. 동시에 도는 런끼리 나눠 쓰지 않는다.
                 context.extend_middleware(self.source_id, [_HideDisallowedTools(policy),

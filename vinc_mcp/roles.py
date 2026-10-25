@@ -150,6 +150,23 @@ def _gate_bullets(items) -> str:
                        for item in items)
 
 
+#: 실행 정책 칸 넷(api/role_policy_contract.py). 있는 칸만 그린다 — 없는 역할의 출력은 그대로다.
+POLICY_KEYS = ("output_kind", "act_policy", "budget", "capabilities")
+
+
+def _policy_sections(props: dict) -> list[tuple[str, list[str]]]:
+    """정책 칸 → (제목, 불릿 줄들). 형식 검사는 쓰기 경로가 하므로 여기서는 보이는 대로 옮긴다."""
+    def pairs(value) -> list[str]:
+        if isinstance(value, dict) and value:
+            return [f"- {k}: {', '.join(map(str, v)) if isinstance(v, list) else v}"
+                    for k, v in value.items()]
+        return [f"- {value}"]
+    heads = {"output_kind": "Output kind", "act_policy": "Act policy", "budget": "Budget",
+             "capabilities": "Capabilities"}
+    return [(heads[key], [f"- {props[key]}"] if key == "output_kind" else pairs(props[key]))
+            for key in POLICY_KEYS if key in props]
+
+
 def render_shell(role: dict, *, compact: bool = False) -> str:
     """스냅샷 항목 → 역할 껍데기(`agents/shells/<name>.md`) 본문. 결정론이다 — 같은 입력이면 같은
     바이트가 나와야 `--check` 가 성립하고, `prompts/get` 이 껍데기와 같은 계약을
@@ -165,6 +182,8 @@ def render_shell(role: dict, *, compact: bool = False) -> str:
             lines += ["", "## " + key.replace("_", " ").capitalize(), renderer(props.get(key))]
         if "never_checks" in props:
             lines += ["", "## Machine checks for Never", _gate_bullets(props["never_checks"])]
+        for head, bullets in _policy_sections(props):
+            lines += ["", f"## {head}", *bullets]
         if role.get("works_with"):
             lines += ["", "## Works with"]
             for direction, peers in role["works_with"].items():
@@ -270,6 +289,8 @@ def render_shell(role: dict, *, compact: bool = False) -> str:
     ]
     if "never_checks" in props:
         body += ["", "## Machine checks for never", "", _gate_bullets(props["never_checks"])]
+    for head, bullets in _policy_sections(props):
+        body += ["", f"## {head}", "", *bullets]
     # `pre_merge_check` 가 맨 앞인 이유: 이것만 서술이 아니라 **행위 직전에 돌릴
     # 명령**이다. 적어 두는 것은 함정을 막지 못하고 그 자리의 검사가 막는다
     # ([[record:writing-a-trap-down-does-not-stop-it-a-check-does]]).
