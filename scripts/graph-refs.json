@@ -809,6 +809,7 @@
     "concept:agent-orchestration",
     "concept:app-narrow-window-contract",
     "concept:proxy-allowlist",
+    "concept:refresh-token-reuse-window",
     "concept:tool-response-disclosure",
     "decision:2d-marks-are-baked-at-256-px",
     "decision:2d-selection-outlines-the-kept-nodes",
@@ -1051,6 +1052,9 @@
       "validity": "unknown"
     },
     "concept:proxy-allowlist": {
+      "validity": "unknown"
+    },
+    "concept:refresh-token-reuse-window": {
       "validity": "unknown"
     },
     "concept:tool-response-disclosure": {
