@@ -1,0 +1,58 @@
+{
+ "kind": "vinc.agent-tasks.v1",
+ "split": "smoke",
+ "author": "agent-research session (Claude), drafted for the harness smoke test",
+ "authored_on": "2026-10-25",
+ "store": "live-2026-10-23-m1039",
+ "note": "SMOKE FIXTURE. Five tasks that exercise the harness plumbing, the checkers and the determinism check on the live-graph pin. They are not part of the held-out forty (VIN-667) or the search set (VIN-782), were drafted by an agent that knew the gold, and are never used for a verdict.",
+ "tasks": [
+  {
+   "id": "smoke-keep-decision-eval-home",
+   "family": "keep-decision",
+   "prompt": "I am adding a new evaluation harness for agent tasks to the Vinc repository. Which top-level directory should the new module go in? Reply with one line in the form DIRECTORY: <path>/ and then one sentence of reason.",
+   "checks": [
+    {"type": "regex", "pattern": "DIRECTORY:\\s*`?rag_eval/"},
+    {"type": "not_regex", "pattern": "DIRECTORY:\\s*`?vinc_rag/"},
+    {"type": "sources", "support": ["decision:the-eval-harness-lives-in-top-level-rag-eval-not-inside-vinc-rag-2026-10-01", "concept:doc.vinc.manual.rag"]}
+   ]
+  },
+  {
+   "id": "smoke-give-reason-eval-home",
+   "family": "give-reason",
+   "prompt": "Why does the RAG evaluation harness live in a top-level rag_eval/ directory instead of inside vinc_rag/? Answer in two sentences and cite where that was decided.",
+   "checks": [
+    {"type": "sources", "support": ["decision:the-eval-harness-lives-in-top-level-rag-eval-not-inside-vinc-rag-2026-10-01", "concept:doc.vinc.manual.rag"]},
+    {"type": "judge", "rubric": "The answer says that the harness drives the whole product surface (api, the MCP server, the CLI and REST) end to end, and that vinc_rag must not import api.", "key_terms": ["api"]}
+   ]
+  },
+  {
+   "id": "smoke-use-current-self-description",
+   "family": "use-current",
+   "prompt": "Write the one-sentence description of what Vinc is for the top of a README. Use the wording the project currently uses to describe itself.",
+   "checks": [
+    {"type": "regex", "pattern": "knowledge graph"},
+    {"type": "not_regex", "pattern": "operating system"},
+    {"type": "sources", "support": ["decision:vinc-describes-itself-as-a-knowledge-graph-people-and-ai-share-2026-09-27"]}
+   ]
+  },
+  {
+   "id": "smoke-avoid-incident-windows-tests",
+   "family": "avoid-incident",
+   "prompt": "Write the exact command that runs the Vinc Python test suite from Git Bash on the Windows workstation with the repository's .venv. Reply with the command on one line.",
+   "checks": [
+    {"type": "regex", "pattern": "-u\\s+PYTHONHOME"},
+    {"type": "regex", "pattern": "-u\\s+PYTHONPATH"},
+    {"type": "regex", "pattern": "pytest"},
+    {"type": "sources", "support": ["record:vinc-tests-need-a-clean-interpreter-on-windows"]}
+   ]
+  },
+  {
+   "id": "smoke-absent-office-rent",
+   "family": "knowledge-absent",
+   "prompt": "What is the monthly rent, in won, of the Vinc office in Seoul?",
+   "checks": [
+    {"type": "abstain"}
+   ]
+  }
+ ]
+}
