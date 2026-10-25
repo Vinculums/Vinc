@@ -20,8 +20,10 @@ dependencies = ["httpx>=0.27,<1", "pydantic>=2.7,<3"]
 # 근거: [[record:the-hermes-extra-of-vincs-depends-on-no-hermes-package-2026-10-25]]
 langgraph = ["langgraph>=1.0", "langchain-core>=1.0", "langchain>=1.0"]
 agent-framework = ["agent-framework-core>=1.8.1"]
+# crewai 는 3.14 를 지원하지 않는다. 표지를 달아 3.14 에서도 all 이 나머지를 깔게 한다.
+crewai = ["crewai>=1.15.3; python_version < '3.14'"]
 hermes = []
-all = ["vincs[langgraph,agent-framework,hermes]"]
+all = ["vincs[langgraph,agent-framework,crewai,hermes]"]
 test = ["pytest>=8", "anyio>=4"]
 
 [project.scripts]

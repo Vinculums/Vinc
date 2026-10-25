@@ -60,6 +60,7 @@ Choose integrations using one package name:
 ```sh
 pip install "vincs[langgraph]"
 pip install "vincs[agent-framework]"
+pip install "vincs[crewai]"
 pip install "vincs[hermes]"
 pip install "vincs[all]"
 ```
@@ -67,6 +68,7 @@ pip install "vincs[all]"
 ```python
 from vinc.integrations.langgraph import get_vinc_context
 from vinc.integrations.agent_framework import VincContextProvider
+from vinc.integrations.crewai import create_agent
 ```
 
 `vinc` exports every name `vinc_client` exports (they live in `vinc.sdk`), plus
@@ -75,6 +77,8 @@ from vinc.integrations.agent_framework import VincContextProvider
 exports and `vinc.integrations.agent_framework` what `vinc_agent_framework`
 exports, with the same parameters. The vinc-client, vinc-langgraph and
 vinc-agent-framework READMEs list every method and helper with its parameters.
+`vinc.integrations.crewai` has no separate distribution; [CrewAI](#crewai) below
+lists its names.
 
 These modules are built from the same source as `vinc-client`, `vinc-langgraph`
 and `vinc-agent-framework`. Existing installations and imports keep working;
@@ -85,6 +89,100 @@ start a local database. No conversation is automatically written to Vinc.
 The Python distribution version is independent of the product version reported
 by `vinc --version`. See the [SDK guide](https://vincs.io/docs/frameworks/) for
 key types, read-only use and explicit writes.
+
+## CrewAI
+
+`pip install "vincs[crewai]"` installs CrewAI 1.15.3 or later with the adapter, on
+Python 3.11 to 3.13 (CrewAI does not support 3.14, where the extra installs
+nothing). It needs a vincs release after 0.1.5.
+
+```python
+from crewai import Crew, Task
+from vinc import OutputGate, Vinc
+from vinc.integrations.crewai import create_agent, create_output_guardrail
+
+reader = Vinc()  # a vinc_ro_ key is enough to read
+role = reader.role("concept:agent-reviewer-judgement")
+reviewer = create_agent(reader, role["id"], llm="gpt-4o", prefetch_pin=role["hash"])
+review = Task(description="Review the diff in PR 12.", expected_output="Findings with sources",
+              agent=reviewer, guardrail=create_output_guardrail(OutputGate(role["props"])))
+result = Crew(agents=[reviewer], tasks=[review]).kickoff()
+```
+
+| Role contract | In CrewAI |
+|---|---|
+| `job_title`, `mission` | the agent's `role` and `goal` |
+| `never`, `person_only` | the agent's `backstory`, read when `create_agent` builds it |
+| the complete contract, every required document in full, task evidence | read again before every task the agent runs (`prefetch_with_contract`, the call the other adapters make) and given to the task as its context; over `prefetch_max_chars` (24,000) it raises `prefetch_budget_exceeded` and the model is not called |
+| `disallowed_tools` | removed, by exact tool name, from the tools the task runs with, so the model does not see them and CrewAI cannot run them; entries that match no tool give one warning per run |
+| `gates`, `never_checks` | `create_output_guardrail(gate)` on the task: a blocked output, or one that needs a person, raises `OutputGateStopped` instead of being sent back to the model to retry |
+| person-only actions | `VincPersonOnlyInput` answers CrewAI's human input step (below) |
+
+With `expose_tools=True` each run adds `vinc_brief` and `vinc_search` and allows 4
+calls between them; `create_vinc_tools(client)` builds the same two tools for
+any agent. CrewAI runs the tool calls of one model turn at the same time, so the
+cap and `budget.tool_calls` count calls as they start: when one turn goes over,
+which of its calls gets the sentence is not fixed, but how many do is. `prefetch_pin` holds both reads to one contract; a changed role raises
+`VincRoleChanged` before the model is called. `package_id` with `package_space`
+adds one handoff package to every run. Run the agent on a `Task` in a `Crew`:
+`Agent.kickoff` outside a crew is refused, because it would skip the role. Pass
+`async_client` for `crew.akickoff()`.
+
+Person-only actions go to CrewAI's human input step. Give the task
+`human_input=True` and the role output schema, bind it, and run the crew inside
+`installed()`:
+
+```python
+from vinc import ApprovalDecision, RoleOutput
+from vinc.integrations.crewai import VincApprovalRejected, VincPersonOnlyInput
+
+release = Task(description="Prepare the merge of PR 12.", expected_output="The review",
+               agent=reviewer, human_input=True, output_pydantic=RoleOutput)
+
+def decide(request):  # your own human channel, never a model
+    return ApprovalDecision(request_id=request.request_id, approved=ask_a_person(request))
+
+step = VincPersonOnlyInput(OutputGate(role["props"]), role_id=role["id"], run_id=run_id,
+                           decide=decide, tasks=[release])
+with step.installed():
+    Crew(agents=[reviewer], tasks=[release]).kickoff()
+```
+
+A passing draft is released without asking anyone. A draft that needs a person
+calls `decide` once; approval releases the saved draft unchanged and runs no tool,
+rejection raises `VincApprovalRejected`, and a blocked draft raises
+`OutputGateStopped`. None of these calls the model again. `step.result(task)`
+returns what released the draft. Tasks you do not bind keep CrewAI's own prompt.
+
+Nothing is written unless you call a write helper. Record the crew run when it
+ends, with a `vinc_sk_` key:
+
+```python
+from vinc import trace_ref
+from vinc.integrations.crewai import record_run
+
+record_run(Vinc(api_key=WRITE_KEY), run_id, role=role["id"], outcome="success",
+           host="crewai", steps=len(result.tasks_output),
+           tokens_in=result.token_usage.prompt_tokens,
+           tokens_out=result.token_usage.completion_tokens, trace=trace_ref("run.jsonl"))
+```
+
+`record_episode`, `write_package` and the `a` prefixed async forms take the
+LangGraph adapter's parameters and send the same bodies; so do `prefetch` and
+`get_vinc_package_context`.
+
+Where CrewAI behaves differently from the other two adapters:
+
+- The prefetch block reaches the model in the task message, CrewAI's place for
+  task context, not in the system message.
+- A model that calls a removed tool anyway gets CrewAI's `Tool not found`
+  result instead of the role's refusal sentence.
+- CrewAI sends tool schemas in strict mode, so every argument is listed as
+  required. Names, descriptions, defaults and bounds are the shared ones.
+- Inside a crew a tool error, such as a wrong key or space, reaches the model as
+  CrewAI's tool error and the run goes on; with `tool_failure_policy="raise"` on
+  the agent the crew stops with CrewAI's `ToolExecutionFailedError` instead.
+  Called directly, the tool raises the Vinc error.
 
 ## Hermes Agent
 
