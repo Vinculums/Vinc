@@ -362,6 +362,136 @@ def test_same_disallowed_tools_are_hidden_and_warned_in_three_adapters(caplog):
     assert crew_tool_results(llm.seen[1]) == ["Tool not found"]
 
 
+@pytest.mark.parametrize("policy", [
+    {"capabilities": {"deny": ["shell.*"], "approve": ["github.pr.merge"]}},
+    {"budget": {"tool_calls": 1}},
+])
+def test_same_run_policy_sentences_and_visible_tools_in_three_adapters(policy):
+    props = {"reads": [], "mission": "Release.", **policy}
+    capability_map = {"merge_pr": "github.pr.merge", "run_shell": "shell.exec", "lookup": "vinc.read"}
+    script = [("merge_pr", {"number": 7}), ("lookup", {"query": "a"})]
+    ran = []
+
+    @lg_tool("merge_pr")
+    def lg_merge(number: int) -> str:
+        """Merge a pull request."""
+        ran.append("lg merge")
+        return "merged"
+
+    @lg_tool("run_shell")
+    def lg_shell(command: str) -> str:
+        """Run a shell command."""
+        return "ran"
+
+    @lg_tool("lookup")
+    def lg_lookup(query: str) -> str:
+        """A local lookup."""
+        return "local answer"
+
+    @maf_tool(name="merge_pr")
+    def ma_merge(number: int) -> str:
+        """Merge a pull request."""
+        ran.append("maf merge")
+        return "merged"
+
+    @maf_tool(name="run_shell")
+    def ma_shell(command: str) -> str:
+        """Run a shell command."""
+        return "ran"
+
+    @maf_tool(name="lookup")
+    def ma_lookup(query: str) -> str:
+        """A local lookup."""
+        return "local answer"
+
+    class CrMerge(BaseTool):
+        name: str = "merge_pr"
+        description: str = "Merge a pull request."
+
+        def _run(self, number: int) -> str:
+            ran.append("crewai merge")
+            return "merged"
+
+    class CrShell(BaseTool):
+        name: str = "run_shell"
+        description: str = "Run a shell command."
+
+        def _run(self, command: str) -> str:
+            return "ran"
+
+    class CrLookup(BaseTool):
+        name: str = "lookup"
+        description: str = "A local lookup."
+
+        def _run(self, query: str) -> str:
+            return "local answer"
+
+    class LgScript(BaseChatModel):
+        seen_tools: list = []
+
+        @property
+        def _llm_type(self):
+            return "script"
+
+        def bind_tools(self, tools, **kwargs):
+            self.seen_tools.append(sorted(t.name for t in tools))
+            return self
+
+        def _generate(self, messages, **kwargs):
+            done = sum(1 for m in messages if m.type == "tool")
+            if done < len(script):
+                name, args = script[done]
+                return ChatResult(generations=[ChatGeneration(message=AIMessage("", tool_calls=[
+                    {"name": name, "args": args, "id": f"c{done}"}]))])
+            return ChatResult(generations=[ChatGeneration(message=AIMessage("done"))])
+
+    class MaScript(FunctionInvocationLayer, ChatMiddlewareLayer, BaseChatClient):
+        def __init__(self):
+            super().__init__()
+            self.seen_tools = []
+
+        async def _inner_get_response(self, *, messages, stream, options, **kwargs):
+            self.seen_tools.append(sorted(t.name for t in options.get("tools") or []))
+            done = sum(1 for m in messages for c in m.contents if c.type == "function_result")
+            if done < len(script):
+                name, args = script[done]
+                return ChatResponse(messages=Message("assistant", [
+                    Content.from_function_call(f"c{done}", name, arguments=args)]))
+            return ChatResponse(messages=Message("assistant", ["done"]))
+
+    with Vinc(KEY, transport=mock([], role_props=props)) as client:
+        model = LgScript()
+        state = lg_create_agent(model, tools=[lg_merge, lg_shell, lg_lookup], middleware=[
+            lg.VincContextMiddleware(client=client, prefetch_role=ROLE,
+                                     capability_map=capability_map)]).invoke(
+                {"messages": [HumanMessage("Ship it.")]})
+        lg_results = [m.content for m in state["messages"] if isinstance(m, ToolMessage)]
+
+    async def run():
+        async with AsyncVinc(KEY, transport=mock([], role_props=props)) as client:
+            chat = MaScript()
+            res = await MafAgent(chat, tools=[ma_merge, ma_shell, ma_lookup], context_providers=[
+                maf.VincContextProvider(client, prefetch_role=ROLE,
+                                        capability_map=capability_map)]).run("Ship it.")
+            return chat.seen_tools, [str(c.result) for m in res.messages for c in m.contents
+                                     if c.type == "function_result"]
+    ma_seen_tools, ma_results = asyncio.run(run())
+
+    llm = ScriptedLLM(model="scripted", script=[
+        [{"id": f"c{i}", "function": {"name": name, "arguments": json.dumps(args)}}]
+        for i, (name, args) in enumerate(script)])
+    crew_run(cr.create_agent(Vinc(KEY, transport=mock([], role_props=props)), ROLE, llm=llm,
+                             tools=[CrMerge(), CrShell(), CrLookup()], capability_map=capability_map))
+    cr_results = [crew_tool_results(call)[-1] for call in llm.seen[1:]]
+
+    assert lg_results == ma_results == cr_results
+    assert [sorted(c["tools"]) for c in llm.seen][0] == model.seen_tools[0] == ma_seen_tools[0]
+    if "budget" in policy:
+        assert ran == ["lg merge", "maf merge", "crewai merge"]
+    else:
+        assert ran == [] and "needs a person's approval" in cr_results[0]
+
+
 def test_same_role_pin_refusal_in_three_adapters():
     current, stale = "c" * 64, "d" * 64
 

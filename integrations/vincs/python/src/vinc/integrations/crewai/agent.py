@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
 from crewai import Agent
+from crewai.tools import BaseTool
 from pydantic import PrivateAttr
 
 from vinc.sdk import AsyncVincClient, VincClient
@@ -73,6 +75,7 @@ class _Binding:
     package_id: str | None
     package_space: str | None
     package_max_chars: int
+    capability_map: Mapping[str, str] | None
 
 
 @dataclass(eq=False)
@@ -86,6 +89,52 @@ class _Run:
     warned: bool = False
     #: 사람 전용 단계나 게이트가 멈춘 이유. CrewAI 의 재시도가 같은 런에 다시 들어오면 이걸 올린다.
     stopped: BaseException | None = None
+    #: 이 런에서 실행기가 부른 도구 호출 수. budget.tool_calls 를 센다.
+    used: int = 0
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def held(self, name: str) -> str | None:
+        """The result a call to ``name`` gets instead of running, or ``None`` to run it."""
+        # 다른 두 어댑터와 같은 순서: 예산이 먼저, 그다음 승인 보류.
+        with self.lock:
+            position, self.used = self.used, self.used + 1
+        if self.policy.over_budget(position):
+            return self.policy.budget_message()
+        if not self.policy.allows(name):
+            return self.policy.refusal(name)
+        return None
+
+
+class _RunTool(BaseTool):
+    """One tool of one run under the role's approval holds and call budget.
+
+    The model sees the original's name, description and arguments. A call the policy holds
+    gets its sentence and the original never runs; any other call runs the original.
+    """
+    _original: Any = PrivateAttr(default=None)
+    _vinc_run: Any = PrivateAttr(default=None)
+
+    @classmethod
+    def wrap(cls, original: Any, run: _Run) -> "_RunTool":
+        fields = {"name": original.name, "description": original.description,
+                  "args_schema": original.args_schema}
+        for key in ("result_as_answer", "cache_function"):
+            if hasattr(original, key):
+                fields[key] = getattr(original, key)
+        tool = cls(**fields)
+        tool._original, tool._vinc_run = original, run
+        return tool
+
+    def _run(self, **kwargs: Any) -> Any:
+        return self._vinc_run.held(self.name) or self._original.run(**kwargs)
+
+    async def _arun(self, **kwargs: Any) -> Any:
+        held = self._vinc_run.held(self.name)
+        if held:
+            return held
+        if type(self._original)._arun is BaseTool._arun:
+            return await asyncio.to_thread(self._original.run, **kwargs)
+        return await self._original.arun(**kwargs)
 
 
 _RUN: contextvars.ContextVar[_Run | None] = contextvars.ContextVar("vinc_crewai_run", default=None)
@@ -116,8 +165,12 @@ class VincAgent(Agent):
 
     The contract's ``disallowed_tools`` are removed, by exact tool name, from the tools the
     task's executor is built with, so the model does not see them and CrewAI cannot run
-    them; entries that match none of the agent's tools give one warning per run. With
-    ``expose_tools`` the run adds ``vinc_brief`` and ``vinc_search`` with a fresh call cap.
+    them; entries that match none of the agent's tools give one warning per run. The run
+    policy applies too (``RoleToolPolicy.from_contract``): with ``capability_map`` a tool
+    the role denies is removed the same way and a call to one it holds for approval gets
+    a sentence asking for a person, and ``budget.tool_calls`` caps all tool calls of the
+    run, in the order they run. With ``expose_tools`` the run adds ``vinc_brief`` and
+    ``vinc_search`` with a fresh call cap.
 
     ``kickoff`` (an agent outside a crew) is refused: it would skip the role. Run the agent
     on a ``Task`` in a ``Crew``.
@@ -152,8 +205,8 @@ class VincAgent(Agent):
 
     def _start(self, task: Any, fetched: RolePrefetch, package: str | None) -> _Run:
         binding = self._binding()
-        # 계약의 도구 목록이 잘못됐으면 모델 호출 전에 여기서 멈춘다.
-        policy = RoleToolPolicy.from_contract(fetched.contract)
+        # 계약의 도구 목록이나 실행 정책이 잘못됐으면 모델 호출 전에 여기서 멈춘다.
+        policy = RoleToolPolicy.from_contract(fetched.contract, binding.capability_map)
         tools = (create_vinc_tools(binding.client, binding.async_client, max_chars=binding.max_chars,
                                    cap=ToolCallCap(binding.tool_calls_per_run))
                  if binding.expose_tools else [])
@@ -218,7 +271,11 @@ class VincAgent(Agent):
         if not run.warned:
             run.warned = True
             run.policy.warn_unmatched(given)
-        return super().create_agent_executor(tools=run.policy.allowed(given), task=task)
+        allowed = run.policy.allowed(given)
+        if run.policy.approve or run.policy.tool_calls is not None:
+            # 승인 보류 도구는 모델에 보이되 부르면 문장으로 답하고, 예산은 이 런의 모든 호출을 센다.
+            allowed = [_RunTool.wrap(tool, run) for tool in allowed]
+        return super().create_agent_executor(tools=allowed, task=task)
 
     def kickoff(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
         raise NotImplementedError(_NO_KICKOFF)
@@ -242,6 +299,7 @@ def create_agent(client: VincClient, role_id: str, *, llm: Any = None, tools: Se
                  max_chars: int = DEFAULT_MAX_CHARS, package_id: str | None = None,
                  package_space: str | None = None,
                  package_max_chars: int = DEFAULT_PACKAGE_MAX_CHARS,
+                 capability_map: Mapping[str, str] | None = None,
                  **agent_kwargs: Any) -> VincAgent:
     """Build a :class:`VincAgent` for ``role_id`` (``concept:agent-...``).
 
@@ -252,7 +310,9 @@ def create_agent(client: VincClient, role_id: str, *, llm: Any = None, tools: Se
 
     ``async_client`` serves ``Crew.akickoff``; without it the async path runs the sync
     reads in a thread. ``package_id`` with ``package_space`` adds one handoff package to
-    every run, read with the current key. Other keyword arguments go to ``Agent``.
+    every run, read with the current key. ``capability_map`` (tool name to capability id)
+    binds the role's capability policy to this agent's tools. Other keyword arguments go to
+    ``Agent``.
     """
     taken = sorted(set(agent_kwargs) & set(_OWN_FIELDS))
     if taken:
@@ -267,5 +327,5 @@ def create_agent(client: VincClient, role_id: str, *, llm: Any = None, tools: Se
         expose_tools=expose_tools, tool_calls_per_run=tool_calls_per_run, max_chars=max_chars,
         package_id=package_id,
         package_space=None if package_space is None else _checked_space(package_space),
-        package_max_chars=package_max_chars)
+        package_max_chars=package_max_chars, capability_map=capability_map)
     return agent

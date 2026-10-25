@@ -219,6 +219,89 @@ def test_disallowed_tools_never_reach_the_model_or_the_executor(caplog):
         "Edit. Names match exactly; check the role contract against the agent's tool names.")
 
 
+RAN: list[str] = []
+CAPABILITIES = {"merge_pr": "github.pr.merge", "run_shell": "shell.exec", "lookup": "vinc.read"}
+
+
+class MergePr(BaseTool):
+    name: str = "merge_pr"
+    description: str = "Merge a pull request."
+
+    def _run(self, number: int) -> str:
+        RAN.append(f"merge {number}")
+        return "merged"
+
+
+class RunShell(BaseTool):
+    name: str = "run_shell"
+    description: str = "Run a shell command."
+
+    def _run(self, command: str) -> str:
+        RAN.append(command)
+        return "ran"
+
+
+class Recorded(BaseTool):
+    name: str = "lookup"
+    description: str = "A local lookup."
+
+    def _run(self, query: str) -> str:
+        RAN.append(query)
+        return "local answer"
+
+
+def policy_run(calls_made, **props):
+    RAN.clear()
+    llm = ScriptedLLM(model="scripted", script=[
+        [{"id": f"c{i}", "function": {"name": name, "arguments": json.dumps(args)}}]
+        for i, (name, args) in enumerate(calls_made)])
+    agent = create_agent(client([], props={**PROPS, "disallowed_tools": [], **props}), ROLE, llm=llm,
+                         tools=[MergePr(), RunShell(), Recorded()],
+                         capability_map=CAPABILITIES if "capabilities" in props else None)
+    run_crew(agent)
+    return llm, [tool_results(call)[-1] for call in llm.seen[1:]]
+
+
+def test_denied_capabilities_are_removed_and_approval_ones_ask_for_a_person():
+    llm, results = policy_run([("merge_pr", {"number": 7}), ("run_shell", {"command": "ls"})],
+                              capabilities={"deny": ["shell.*"], "approve": ["github.pr.merge"]})
+    assert all(call["tools"] == ["merge_pr", "lookup"] for call in llm.seen)
+    assert results == [f"The role {ROLE} needs a person's approval before the merge_pr tool runs; "
+                       "ask for it instead of calling the tool.", "Tool not found"]
+    assert RAN == []
+
+
+def test_the_budget_caps_all_tool_calls_of_the_run():
+    _, results = policy_run([("lookup", {"query": "a"}), ("lookup", {"query": "b"})],
+                            budget={"tool_calls": 1})
+    assert results == ["local answer",
+                       f"The role {ROLE} allows 1 tool calls per run; answer from what you already have."]
+    assert RAN == ["a"]
+
+
+def test_capabilities_without_a_map_warn_and_change_nothing(caplog):
+    RAN.clear()
+    llm = ScriptedLLM(model="scripted", script=[
+        [{"id": "c0", "function": {"name": "run_shell", "arguments": json.dumps({"command": "ls"})}}]])
+    agent = create_agent(client([], props={**PROPS, "disallowed_tools": [],
+                                           "capabilities": {"deny": ["shell.*"]}}),
+                         ROLE, llm=llm, tools=[RunShell()])
+    with caplog.at_level(logging.WARNING, logger="vinc_client"):
+        run_crew(agent)
+    assert tool_results(llm.seen[1]) == ["ran"] and RAN == ["ls"]
+    assert [r.getMessage() for r in caplog.records if r.name == "vinc_client"] == [
+        f"Role {ROLE} sets capabilities, but no capability_map binds this agent's tools to "
+        "capability ids, so they are not enforced."]
+
+
+def test_a_malformed_policy_stops_the_run_before_the_model():
+    llm = ScriptedLLM(model="scripted")
+    agent = create_agent(client([], props={**PROPS, "output_kind": "essay"}), ROLE, llm=llm)
+    with pytest.raises(VincInvalidArgument) as caught:
+        run_crew(agent)
+    assert caught.value.code == "invalid_role_contract" and not llm.seen
+
+
 def test_exposed_read_tools_share_a_fresh_cap_per_run():
     llm = ScriptedLLM(model="scripted", script=[
         calls("vinc_brief", *[f"q{i}" for i in range(5)]), "First.\nSources: none",
