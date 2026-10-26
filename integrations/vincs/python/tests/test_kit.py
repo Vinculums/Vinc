@@ -27,10 +27,15 @@ from vinc.sdk.output_gate import GateResult  # noqa: E402
 ROLE = "concept:agent-dev-core"
 SK = "vinc_sk_" + "b" * 32
 RO = "vinc_ro_" + "a" * 32
-FIXTURES = Path(__file__).resolve().parents[3] / "fixtures" / "output_gate"
-PROFILE = next(p for p in json.loads(
-    (FIXTURES / "proposed-role-checks.json").read_text(encoding="utf-8"))["profiles"]
-    if p["id"] == ROLE)
+# 설치된 휠에서 도는 시험은 저장소의 fixtures 를 볼 수 없다: 역할 계약을 여기에 적는다.
+PROFILE = {
+    "job_title": "Core developer", "never": ["merge"],
+    "person_only": [{"action": "merge", "reason": "merge"}], "disallowed_tools": [],
+    "gates": [{"id": "person_only", "check": {"type": "person_only"}, "on_fail": "interrupt"},
+              {"id": "side_effect_evidence", "check": {"type": "side_effect_evidence"}, "on_fail": "block"},
+              {"id": "handoff_manifest", "check": {"type": "handoff_manifest"}, "on_fail": "block"}],
+    "never_checks": [{"type": "forbidden_actions", "actions": ["merge"]}],
+}
 PLAIN = "The change reads correctly; two findings follow.\nSources: decision:fixture"
 ASK = AIMessage(content="", tool_calls=[{"name": "vinc_brief", "args": {"query": "the rule"},
                                          "id": "c1", "type": "tool_call"}])
