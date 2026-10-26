@@ -3301,6 +3301,26 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 }
 /* 경고는 문장이다. 색은 쓰지 않는다(화면의 포인트는 하나다), 굵기로만 선다. */
 .settings-body .st-warn { font-weight: 600; }
+
+/* ── 그래프 선택(설정 > 계정, `space-picker.ts`) ─────────────────────────────
+   위에 종류 탭(`.seg .chip` 그대로), 아래에 그 종류 안의 줄. 줄은 라디오처럼 하나만 켜지고
+   켜진 줄의 알약은 탭·트리와 같은 값이다(`--ring` 14%). 고를 수 없는 팀은 흐리게 두고 이유를 옆에 쓴다. */
+.settings-body .space-pick { display: flex; flex-direction: column; gap: var(--space-3, .75rem); margin-top: .5rem; }
+.settings-body .space-list { display: flex; flex-direction: column; gap: var(--space-1, .25rem); }
+.settings-body .space-row {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3, .75rem);
+  width: 100%; min-height: calc(var(--row-h) * 1.5); padding: 0 var(--pad-row);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--card)); color: hsl(var(--foreground)); font: inherit; text-align: left; cursor: pointer;
+}
+.settings-body .space-row:hover:not(:disabled) { background: hsl(var(--muted-foreground) / .1); }
+.settings-body .space-row[aria-checked="true"] { background: hsl(var(--ring) / .14); font-weight: 600; }
+.settings-body .space-row:disabled { color: hsl(var(--muted-foreground)); cursor: default; }
+.settings-body .space-row-text { display: flex; flex-direction: column; min-width: 0; }
+.settings-body .space-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-body .space-row-sub { font-size: .75rem; font-weight: 400; color: hsl(var(--muted-foreground)); }
+.settings-body .space-row-tag { flex: 0 0 auto; font-size: .75rem; font-weight: 400; color: hsl(var(--muted-foreground)); }
+.settings-body .space-note { margin: 0; font-size: .8rem; }
 .settings-body .st-acts { display: flex; gap: .5rem; margin-top: .75rem; }
 
 /* 강조 구절 — 제목·카드마다 **하나만**, 눈이 그 하나를 찾게 하는 자리에만.
