@@ -34,7 +34,8 @@ from vinc import AsyncVinc, Vinc  # noqa: E402
 from vinc.sdk import (ApprovalDecision, OutputGate, OutputGateStopped, RoleOutput,  # noqa: E402
                       VincInvalidArgument, VincNotFound, VincRoleChanged, build_package_fragment)
 from vinc.sdk.tools import BriefArgs, SearchArgs, cap_message  # noqa: E402
-from vinc.integrations.crewai import (VincApprovalRejected, VincPersonOnlyInput,  # noqa: E402
+from vinc.integrations.crewai import (VincAgent, VincApprovalRejected, VincPersonOnlyInput,  # noqa: E402
+                                      abuild_agent, build_agent,
                                       create_agent, create_output_guardrail, create_vinc_tools,
                                       record_run, role_fields)
 
@@ -521,3 +522,90 @@ def test_record_run_is_the_only_write_and_happens_when_called():
     assert props == {"run_id": "crew-run-1", "role": ROLE, "outcome": "success", "host": "crewai",
                      "steps": 1, "cited_ids": ["concept:rule"]}
     assert posts[0]["edges"] == [{"from": posts[0]["nodes"][0]["id"], "to": ROLE, "type": "about"}]
+
+
+# ── build_agent: a role address to a running agent in one call ──────────────────────────
+
+def _fragment_posts(seen):
+    return [body for method, path, body in seen if method == "POST" and path == "/v1/fragments"]
+
+
+def test_build_agent_runs_checks_and_records_in_one_call():
+    seen = []
+    llm = ScriptedLLM(model="scripted", script=["Reviewed the policy; two findings.\nSources: concept:rule"])
+    built = build_agent("reviewer-judgement", llm, client=client(seen, key=WRITE_KEY))
+    assert isinstance(built.agent, VincAgent) and built.plan.role_id == ROLE
+    assert built.plan.person_only[0] == "merge"
+    assert [p for m, p, _ in seen].count(f"/v1/roles/{ROLE}") == 1
+    result = built.run(TASK, run_id="run-1")
+    assert (result.status, result.outcome) == ("done", "success")
+    assert result.output.startswith("Reviewed the policy") and result.cited_ids == ("concept:rule",)
+    assert result.record is not None and result.record_error is None
+    props = _fragment_posts(seen)[0]["nodes"][0]["props"]
+    assert (props["run_id"], props["role"], props["outcome"], props["host"]) == (
+        "run-1", ROLE, "success", "crewai")
+    assert props["gate_results"]["verdict"] == "pass"
+    assert "Preserve this evidence." in user_text(llm.seen[0])
+    assert {"vinc_brief", "vinc_search"} <= set(llm.seen[0]["tools"])
+
+
+def test_build_agent_blocks_a_failing_answer_and_records_it_blocked():
+    seen = []
+    llm = ScriptedLLM(model="scripted", script=["I merged the pull request and deployed it."])
+    result = build_agent("reviewer-judgement", llm, client=client(seen, key=WRITE_KEY)).run(
+        TASK, run_id="run-2")
+    assert (result.status, result.output) == ("blocked", None)
+    assert result.gate is not None and result.gate.verdict == "block" and result.gate.failed_checks
+    assert len(llm.seen) == 1
+    assert _fragment_posts(seen)[0]["nodes"][0]["props"]["outcome"] == "blocked"
+
+
+def test_build_agent_stops_the_next_run_when_the_role_changed_after_it_was_read():
+    seen, flag = [], {"changed": False}
+    inner = hub(seen)
+
+    def handle(request):
+        if (flag["changed"] and request.url.path.startswith("/v1/roles/")
+                and request.url.params.get("expected_hash")):
+            return httpx.Response(409, json={"error": {"code": "role_changed", "message": "changed",
+                                  "details": {"id": ROLE, "rev": 2, "hash": "d" * 64}}})
+        return inner(request)
+
+    llm = ScriptedLLM(model="scripted")
+    built = build_agent("reviewer-judgement", llm,
+                        client=Vinc(WRITE_KEY, transport=httpx.MockTransport(handle)))
+    flag["changed"] = True
+    with pytest.raises(VincRoleChanged):
+        built.run(TASK, run_id="run-3")
+    assert not llm.seen
+    assert _fragment_posts(seen)[0]["nodes"][0]["props"]["outcome"] == "error"
+
+
+def test_build_agent_record_false_writes_nothing_and_a_read_only_key_keeps_the_answer():
+    quiet = []
+    result = build_agent("reviewer-judgement", ScriptedLLM(model="scripted"),
+                         client=client(quiet, key=WRITE_KEY), record=False).run(TASK)
+    assert result.status == "done" and result.record is None and not _fragment_posts(quiet)
+    readonly = []
+    result = build_agent("reviewer-judgement", ScriptedLLM(model="scripted"),
+                         client=client(readonly)).run(TASK)
+    assert result.output and result.record is None and result.record_error
+    assert not _fragment_posts(readonly)
+
+
+def test_build_agent_refuses_a_bad_task_and_the_async_form_builds_runs_and_records():
+    built = build_agent("reviewer-judgement", ScriptedLLM(model="scripted"), client=client([]))
+    for bad in (42, "  ", None):
+        with pytest.raises(TypeError, match="task"):
+            built.run(bad)
+    seen = []
+
+    async def go():
+        async with AsyncVinc(WRITE_KEY, transport=httpx.MockTransport(hub(seen))) as aclient:
+            agent = await abuild_agent("reviewer-judgement", ScriptedLLM(
+                model="scripted", script=["Reviewed.\nSources: none"]), async_client=aclient)
+            return await agent.arun(TASK, run_id="run-5")
+
+    result = asyncio.run(go())
+    assert (result.status, result.output) == ("done", "Reviewed.\nSources: none")
+    assert _fragment_posts(seen)[0]["nodes"][0]["props"]["run_id"] == "run-5"

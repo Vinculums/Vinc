@@ -109,6 +109,25 @@ review = Task(description="Review the diff in PR 12.", expected_output="Findings
 result = Crew(agents=[reviewer], tasks=[review]).kickoff()
 ```
 
+To get a running agent from a role address in one call, use `build_agent`. It reads the role once,
+pins it by hash, adds the guardrail and the two read tools, and runs one task per call. `run`
+returns an `AgentRun` and writes the run record at the end (a `vinc_sk_` key; a failed write is
+kept as `record_error`, never raised; `record=False` writes nothing):
+
+```python
+from vinc.integrations.crewai import build_agent
+
+agent = build_agent("reviewer-judgement", llm="gpt-4o")  # VINC_API_KEY from the environment
+run = agent.run("Review the diff in PR 12.")
+run.status   # done, blocked (a gate failed) or waiting (a person-only action)
+run.output   # the answer, or None when it was blocked or is waiting
+```
+
+A person-only action stops the run in `waiting`; approving it is the separate step below, and
+approval never executes a tool. If the role changes after it was read, the next run raises
+`VincRoleChanged` instead of running on a contract nobody reviewed. For async code use
+`abuild_agent` and `arun`.
+
 | Role contract | In CrewAI |
 |---|---|
 | `job_title`, `mission` | the agent's `role` and `goal` |
