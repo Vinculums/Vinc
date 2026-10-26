@@ -7,10 +7,10 @@
 ## Install
 
 ```bash
-pip install "vinc-agent-framework>=0.1.12"
+pip install "vinc-agent-framework>=0.1.13"
 ```
 
-This README describes vinc-agent-framework 0.1.12, which requires vinc-client 0.1.17 or later.
+This README describes vinc-agent-framework 0.1.13, which requires vinc-client 0.1.17 or later.
 
 For a new install, prefer `pip install "vincs[agent-framework]"`: it has this package as `vinc.integrations.agent_framework`, with the same names. `vinc-agent-framework` keeps publishing under this name for existing installs.
 
@@ -297,6 +297,7 @@ The agent reads the role's required documents before each run, hides the tools t
 
 | Version | Change |
 |---|---|
+| 0.1.13 | `prefetch_max_chars` on `build_agent`, for a role whose required reading is longer than the 24,000 characters each call has room for. Requires vinc-client 0.1.17. |
 | 0.1.12 | `build_agent` and `VincAgent`: a running agent from a role address, with the role's prefetch, tool policy, budget, gates and run record. Requires vinc-client 0.1.17. |
 | 0.1.11 | With `prefetch_role`, the contract's run policy applies: `capability_map` binds tools to capability ids so denied ones are removed and approval ones refused with a request for a person, and `budget.tool_calls` caps a run's tool calls. Requires vinc-client 0.1.15. |
 | 0.1.10 | A role over the hub's read limit loads: the context provider and `prefetch` read it without relation evidence sentences instead of failing (see the vinc-client README, Large roles). Requires vinc-client 0.1.14. |
