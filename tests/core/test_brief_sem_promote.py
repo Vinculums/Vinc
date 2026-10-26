@@ -66,12 +66,14 @@ class PromoteRule(unittest.TestCase):
 
     def test_on_it_promotes_at_the_bar_and_not_below(self):
         os.environ[FLAG] = "on"
-        status, picked = q._brief_resolve("cache policy", _tie(q._SEM_PROMOTE))
+        # 확정 문턱 `_SEM_PROMOTE` 는 한글 질문 + 한국어 1위에 남아 있다(영어 질문은 VIN-811 부터 더 낮다).
+        ko = {"title": "캐시 정책 문서"}
+        status, picked = q._brief_resolve("캐시 정책", _tie(q._SEM_PROMOTE, **ko))
         # 폴스루를 위해 순위 전체를 넘긴다 — 엄격 확정과 같은 꼴이다.
         self.assertEqual((status, [h["id"] for h in picked]),
                          ("resolved", ["concept:a", "concept:b"]))
-        self.assertEqual(q._brief_resolve("cache policy", _tie(q._SEM_PROMOTE - 1e-6))[0], "choose")
-        self.assertEqual(q._brief_resolve("cache policy", _tie())[0], "choose")
+        self.assertEqual(q._brief_resolve("캐시 정책", _tie(q._SEM_PROMOTE - 1e-6, **ko))[0], "choose")
+        self.assertEqual(q._brief_resolve("캐시 정책", _tie(**ko))[0], "choose")
 
     def test_a_token_less_first_can_be_promoted_in_the_ranking_branch(self):
         """결정은 choose 1위 전부를 대상으로 쟀다(X3 모의). 토큰이 0 인 의미 1위도 든다."""
@@ -136,9 +138,13 @@ class XlangPromoteRule(unittest.TestCase):
         self.assertEqual(self._status("캐시 policy", q._SEM_PROMOTE - 1e-6), "choose")
         self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE), "resolved")
 
-    def test_an_english_first_keeps_the_shipped_bar_for_an_english_question(self):
-        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG,
-                                      title="cache policy live"), "choose")
+    def test_an_english_question_on_an_english_first_promotes_at_the_lower_bar(self):
+        """VIN-811: 한글 없는 질문은 노드의 언어와 상관없이 낮은 문턱을 쓴다.
+        근거: [[vinc.plan.brief-english-promotion-0-06-sealed12-2026-10-26 §5]]"""
+        en = "cache policy live"
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG, title=en), "resolved")
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE - 1e-6, title=en), "resolved")
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG - 1e-6, title=en), "choose")
 
     def test_a_korean_question_on_an_english_first_promotes_at_the_lower_bar(self):
         """반대 방향(VIN-809): 한글로 물었는데 승격될 1위에 한글이 없다.
@@ -150,43 +156,44 @@ class XlangPromoteRule(unittest.TestCase):
         # 한글 한 글자만 섞여도 한글로 물은 것이다.
         self.assertEqual(self._status("캐시 policy", q._SEM_PROMOTE_XLANG, title=en), "resolved")
 
-    def test_the_mirror_text_decides_the_language_of_the_first(self):
-        """제목이 영어여도 미러 텍스트(제목 + 본문)에 한글이 있으면 한국어 노드다."""
+    def test_the_mirror_text_decides_the_language_of_the_first_for_a_korean_question(self):
+        """한글 질문에서는 미러 텍스트(제목 + 본문)가 노드의 언어를 정한다. 제목이 한국어여도 미러
+        텍스트가 영어뿐이면 영어 노드다. 한글 없는 질문은 미러 텍스트를 보지 않는다(VIN-811)."""
         ko = lambda h: "cache policy live. 캐시 정책을 정한다"
-        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG,
-                                      title="cache policy live", mirror_text=ko), "resolved")
         en = lambda h: "cache policy live. how the cache is kept"
-        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG,
-                                      title="캐시 정책 문서", mirror_text=en), "choose")
-        # 한글 질문은 거꾸로다: 제목이 한국어여도 미러 텍스트가 영어뿐이면 영어 노드다.
         self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG,
                                       title="캐시 정책 문서", mirror_text=en), "resolved")
         self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG,
                                       title="cache policy live", mirror_text=ko), "choose")
+        for lookup in (ko, en):
+            self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG,
+                                          title="cache policy live", mirror_text=lookup), "resolved")
 
     def test_a_missing_or_failing_mirror_falls_back_to_the_title(self):
         def boom(h):
             raise RuntimeError("store gone")
         for lookup in (None, boom, lambda h: None):
-            self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG,
-                                          mirror_text=lookup), "resolved")
-            self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG,
-                                          title="cache policy live", mirror_text=lookup), "choose")
+            # 한글 질문: 제목이 영어면 건넌 것이고, 한국어면 같은 언어다.
+            self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG,
+                                          title="cache policy live", mirror_text=lookup), "resolved")
+            self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG,
+                                          mirror_text=lookup), "choose")
 
-    def test_the_mirror_is_read_only_inside_the_band(self):
-        """미러 조회는 두 문턱 사이에서만 한다. 그 밖에서는 스토어를 건드리지 않는다."""
+    def test_the_mirror_is_read_only_for_a_korean_question_inside_the_band(self):
+        """미러 조회는 한글 질문이 두 문턱 사이에 있을 때만 한다. 한글 없는 질문과 문턱 밖에서는
+        스토어를 건드리지 않는다."""
         seen = []
 
         def spy(h):
             seen.append(h["id"])
             return h["title"]
         for lead in (q._SEM_PROMOTE_XLANG - 1e-6, q._SEM_PROMOTE):
-            self._status("cache policy", lead, mirror_text=spy)
+            self._status("캐시 정책", lead, mirror_text=spy)
         self.assertEqual(seen, [])
+        self._status("캐시 정책", q._SEM_PROMOTE_XLANG, mirror_text=spy)
+        self.assertEqual(seen, ["concept:a"])
         self._status("cache policy", q._SEM_PROMOTE_XLANG, mirror_text=spy)
         self.assertEqual(seen, ["concept:a"])
-        self._status("캐시 정책", q._SEM_PROMOTE_XLANG, mirror_text=spy)
-        self.assertEqual(seen, ["concept:a", "concept:a"])
 
     def test_off_the_lower_bar_goes_with_the_flag(self):
         os.environ[FLAG] = "off"
@@ -308,14 +315,19 @@ class PromoteOnTheEngine(unittest.TestCase):
         self.assertEqual(out["node"]["id"], "concept:cache-policy-live")
 
     def test_on_it_asks_back_below_the_bar(self):
-        """0.08 은 `_SEM_GAP` 을 넘어 순서는 바꾸지만 확정 문턱(`_SEM_PROMOTE`)에는 못 미친다."""
-        self._mirror(0.08)
+        """0.05 는 `_SEM_GAP` 을 넘어 순서는 바꾸지만 영어 질문의 확정 문턱(`_SEM_PROMOTE_XLANG`)에는
+        못 미친다. 0.07 은 넘는다(VIN-811)."""
+        self._mirror(0.05)
         out = self._brief(**{FLAG: "on"})
         self.assertEqual(out["status"], "choose")
         self.assertEqual(out["candidates"][0]["id"], "concept:cache-policy-live")
+        self.tearDown()
+        self.setUp()
+        self._mirror(0.07)
+        self.assertEqual(self._brief(**{FLAG: "on"})["status"], "resolved")
 
     def test_a_korean_mirror_text_lowers_the_bar_for_an_english_question(self):
-        """우위 0.07 은 `_SEM_PROMOTE` 밑이다. 1위의 미러 텍스트에 한글이 있을 때만 확정한다."""
+        """우위 0.07 은 `_SEM_PROMOTE` 밑이다. 영어 질문은 1위의 미러 텍스트에 한글이 있든 없든 확정한다."""
         # 검색은 미러 텍스트가 원본과 다르면 그 행을 낡았다고 버린다. 원본에 한 줄 설명을 달아 맞춘다.
         frag.merge_fragment({"owner": self.OWNER, "nodes": [
             {"id": "concept:cache-policy-live", "type": "concept",
@@ -326,11 +338,11 @@ class PromoteOnTheEngine(unittest.TestCase):
         out = self._brief()
         self.assertEqual(out["status"], "resolved")
         self.assertEqual(out["node"]["id"], "concept:cache-policy-live")
-        # 같은 거리에서 미러 텍스트가 영어뿐이면 지금 그대로 되묻는다.
+        # 같은 거리에서 미러 텍스트가 영어뿐이어도 영어 질문은 확정한다(VIN-811).
         self.tearDown()
         self.setUp()
         self._mirror(0.07)
-        self.assertEqual(self._brief()["status"], "choose")
+        self.assertEqual(self._brief()["status"], "resolved")
 
     def test_a_korean_question_on_an_english_mirror_text_lowers_the_bar(self):
         """VIN-809: 한글로 물었고 1위의 미러 텍스트에 한글이 없으면 우위 0.07 로 확정한다.
