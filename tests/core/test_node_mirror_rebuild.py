@@ -49,6 +49,22 @@ class Text(unittest.TestCase):
         out = node_mirror.mirror_text("A", "x" * (node_mirror.EXTRA_CHARS + 50))
         self.assertEqual(len(out), node_mirror.EXTRA_CHARS + 3)   # "A. " + 잘린 부가
 
+    def test_an_episode_keeps_a_longer_extra_than_other_kinds(self):
+        long = "x" * 900
+        self.assertEqual(len(node_mirror.mirror_text("A", long, "episode")), 600 + 3)
+        for kind in ("concept", "record", "decision", ""):
+            self.assertEqual(len(node_mirror.mirror_text("A", long, kind)),
+                             node_mirror.EXTRA_CHARS + 3)
+
+    def test_freshness_check_uses_the_episode_length(self):
+        from store import node_mirror_state as st
+        summary = "w " * 400
+        text = st.mirror_text("T", st.extra_text("episode", summary), "episode")
+        hit = {"id": "e1", "kind": "episode", "text": text}
+        row = {"id": "e1", "title": "T", "extra": summary}
+        kept, state = st.validate(lambda *_a, **_k: [row], [hit], owner="o")
+        self.assertEqual((len(kept), state["stale_candidates"]), (1, 0))
+
 
 class _FakeStore:
     """미러 연산만 받아 적는 스토어. 드라이버 없이 핸들러 흐름을 그대로 태운다."""
