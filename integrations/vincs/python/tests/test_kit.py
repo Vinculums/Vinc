@@ -74,6 +74,11 @@ class Hub:
             return httpx.Response(200, json={"found": True, "id": ROLE, "title": "Core developer",
                                              "rev": 2, "hash": "a" * 64, "props": self.props,
                                              "works_with": {"hands_to": [], "receives_from": []}})
+        if path.startswith("/v1/documents/"):
+            text = getattr(self, "doc_text", "Required reading.")
+            return httpx.Response(200, json={
+                "executed": True, "verified": True, "doc_id": path.rsplit("/", 1)[-1], "text": text,
+                "content_hash": hashlib.sha256(text.encode()).hexdigest()})
         if path.startswith("/v1/nodes/"):
             return httpx.Response(200, json={"executed": True, "found": True,
                                              "node": {"id": path.rsplit("/", 1)[-1]}})
@@ -312,3 +317,37 @@ def test_agent_framework_runs_through_the_kit_and_records_without_a_trace():
     assert "trace_ref" not in props and "steps" not in props
     with pytest.raises(KitError, match="object"):
         run_role("dev-core", "x", model="openai:gpt-4o", adapter="agent-framework")
+
+
+def test_a_role_with_a_large_reading_needs_room_and_the_error_says_how_much(tmp_path):
+    big = "x" * 30_000
+    hub = Hub(reads=["vinc.spec.fixture"])
+    hub.doc_text = big
+    model = ScriptedModel()
+    with pytest.raises(KitError, match="--prefetch-max-chars"):
+        run_role("dev-core", "Review.", model=model, client=client(hub), record=False, trace_dir=None)
+    assert not model.calls
+    done = run_role("dev-core", "Review.", model=model, client=client(hub), record=False,
+                    trace_dir=None, prefetch_max_chars=80_000)
+    assert done.run.status == "done" and big in json.dumps(
+        [m.content for m in model.calls[0]], ensure_ascii=False)
+
+
+def test_agent_framework_takes_the_same_reading_room():
+    pytest.importorskip("agent_framework")
+    from agent_framework import BaseChatClient, ChatResponse, Message
+    from vinc import AsyncVinc
+
+    class ScriptedChat(BaseChatClient):
+        async def _inner_get_response(self, *, messages, stream, options, **kwargs):  # type: ignore[override]
+            return ChatResponse(messages=Message("assistant", [PLAIN]))
+
+    hub = Hub(reads=["vinc.spec.fixture"])
+    hub.doc_text = "y" * 30_000
+    with pytest.raises(KitError, match="--prefetch-max-chars"):
+        run_role("dev-core", "Review.", model=ScriptedChat(), adapter="agent-framework", record=False,
+                 async_client=AsyncVinc(SK, transport=httpx.MockTransport(hub)))
+    done = run_role("dev-core", "Review.", model=ScriptedChat(), adapter="agent-framework", record=False,
+                    prefetch_max_chars=80_000,
+                    async_client=AsyncVinc(SK, transport=httpx.MockTransport(hub)))
+    assert done.run.status == "done"

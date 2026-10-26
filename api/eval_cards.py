@@ -18,6 +18,18 @@ DEFAULT_LIMIT = 20
 MAX_LIMIT = 100
 
 
+def role_address(value) -> str | None:
+    """`dev-core`, `agent-dev-core` 와 `concept:agent-dev-core` 를 같은 역할 id 로. 빈 값은 None.
+
+    사람이 치는 짧은 이름이 조용히 빈 목록이 되지 않게 한다(SDK 의 `role_address` 와 같은 규칙)."""
+    text = str(value or "").strip()
+    if text.startswith("concept:"):
+        text = text[len("concept:"):]
+    if not text:
+        return None
+    return "concept:" + (text if text.startswith("agent-") else "agent-" + text)
+
+
 def clamp_limit(value) -> int:
     if value in (None, ""):
         return DEFAULT_LIMIT
@@ -33,7 +45,7 @@ def clamp_limit(value) -> int:
 def list_cards(store, *, owner: str, role: str | None, limit: int = DEFAULT_LIMIT) -> dict:
     """역할의 카드를 `date` 가 새로운 것부터. `current` 는 대체되지 않은 카드다."""
     base = {"kind": "eval_cards", "executed": False}
-    rid = events.role_id(role)
+    rid = role_address(role)
     if not owner:
         return {**base, "error": "owner is required"}
     if not rid:

@@ -217,7 +217,7 @@ def test_a_suite_that_cannot_run_is_exit_two_and_the_launcher_routes_eval_run(mo
     seen = {}
     monkeypatch.setattr(kit_cli, "eval_main", lambda argv: seen.setdefault("eval", argv) and 5)
     assert launcher.main(["eval", "run", "dev-core", "--suite", "s.json", "--model", "a:b"]) == 5
-    assert seen["eval"] == ["dev-core", "--suite", "s.json", "--model", "a:b"]
+    assert seen["eval"] == ["run", "dev-core", "--suite", "s.json", "--model", "a:b"]
     called = {}
     monkeypatch.setattr(launcher.subprocess, "call", lambda command: called.setdefault("c", command) and 0)
     assert launcher.main(["eval", "cards", "dev-core"]) == 0

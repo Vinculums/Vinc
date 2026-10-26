@@ -10,7 +10,7 @@ def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if args[:2] == ["eval", "run"]:
         from .kit.cli import eval_main
-        return eval_main(args[2:])
+        return eval_main(args[1:])
     if args[:1] == ["agent"]:
         # 에이전트 실행기는 사용자의 인터프리터에서 돈다: 프레임워크와 모델 패키지는 거기에 있다.
         from .kit.cli import main as agent_main

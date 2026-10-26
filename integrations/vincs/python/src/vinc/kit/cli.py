@@ -34,8 +34,15 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--no-trace", action="store_true", dest="no_trace", help="write no trace file")
     run.add_argument("--no-record", action="store_true", dest="no_record",
                      help="do not write the run record")
+    run.add_argument("--prefetch-max-chars", type=int, default=None, dest="prefetch_max_chars",
+                     metavar="N", help="room for the role's required reading in each model call "
+                                       "(default 24000); a large role needs more")
     run.add_argument("--json", action="store_true", help="print the result as JSON")
     return parser
+
+
+def _budget_kwargs(args: argparse.Namespace) -> dict:
+    return {} if args.prefetch_max_chars is None else {"prefetch_max_chars": args.prefetch_max_chars}
 
 
 def _task(args: argparse.Namespace) -> str:
@@ -104,6 +111,9 @@ def _eval_parser() -> argparse.ArgumentParser:
                      help="print the result and write nothing to Vinc")
     run.add_argument("--yes", action="store_true",
                      help="allow more than %d model runs in one go" % evalrun.MAX_RUNS)
+    run.add_argument("--prefetch-max-chars", type=int, default=None, dest="prefetch_max_chars",
+                     metavar="N", help="room for the role's required reading in each model call "
+                                       "(default 24000); a large role needs more")
     run.add_argument("--json", action="store_true", help="print the result as JSON")
     return parser
 
@@ -122,7 +132,8 @@ def eval_main(argv: Sequence[str] | None = None) -> int:
             args.role, args.suite, model=args.model, adapter=args.adapter, runs=args.runs,
             space=args.space, suite_id=args.suite_id, store_fingerprint=args.store_fingerprint,
             limit=args.limit, write_card=not args.no_card, record_runs=args.record_runs,
-            trace_dir=None if args.no_trace else args.trace_dir, confirm=args.yes)
+            trace_dir=None if args.no_trace else args.trace_dir, confirm=args.yes,
+            **_budget_kwargs(args))
     except (kit_run.KitError, evalrun.SuiteError) as exc:
         print(f"vinc eval: {exc}", file=sys.stderr)
         return 2
@@ -153,7 +164,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         done = kit_run.run_role(
             args.role, _task(args), model=args.model, adapter=args.adapter, space=args.space,
             run_id=args.run_id, record=not args.no_record,
-            trace_dir=None if args.no_trace else args.trace_dir)
+            trace_dir=None if args.no_trace else args.trace_dir, **_budget_kwargs(args))
     except kit_run.KitError as exc:
         print(f"vinc agent: {exc}", file=sys.stderr)
         return 2

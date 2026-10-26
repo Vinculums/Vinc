@@ -128,6 +128,27 @@ tool policy, and `cost_usd` is not guarded because Vinc does not know your model
 and Agent Framework runs are recorded without a trace file or counts for now. `--no-record` writes
 nothing to Vinc.
 
+### Run on your Claude subscription
+
+With Claude Code installed and logged in on this machine, `--model claude-code:<model id>` runs the
+role on your Claude subscription instead of an API key (LangGraph adapter only):
+
+```sh
+vinc agent run dev-core --task "Review the diff in PR 12." --model claude-code:claude-haiku-5-5
+```
+
+Each model call is one headless `claude -p` run with no tools, no settings and no MCP servers. The
+conversation goes in on stdin, and `ANTHROPIC_API_KEY` is removed from the child's environment, because
+with a key set Claude Code bills the API and not your subscription (the call is refused if Claude Code
+reports an API key as its login). The run record keeps the list-price cost Claude Code reports, which is
+an equivalent, not a charge. Before every call the kit reads your five-hour and seven-day use, and at
+0.80 and 0.90 it stops with the time the window resets, so a long suite cannot spend the week. Use it
+for your own account on your own machine; a subscription is not a service to share.
+
+A large role's required reading can be longer than the 24,000 characters each call has room for. The
+run then stops before the model is called and says how many characters it needs; pass
+`--prefetch-max-chars` with that many (or more).
+
 ### Measure a role: `vinc eval run`
 
 `vinc eval run` runs a task suite as a role with your own model and key, grades every answer by
