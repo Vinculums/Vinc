@@ -3,12 +3,12 @@
 Install the SDK and the `vinc` command together:
 
 ```sh
-pip install "vincs>=0.1.6"
+pip install "vincs>=0.1.7"
 vinc --help
 vinc --version
 ```
 
-This README describes vincs 0.1.6. It carries vinc-client 0.1.17, vinc-langgraph 0.1.13
+This README describes vincs 0.1.7. It carries vinc-client 0.1.18, vinc-langgraph 0.1.13
 and vinc-agent-framework 0.1.12, built from the same commit. The [versions](#versions)
 table lists what each release carries.
 
@@ -132,7 +132,7 @@ nothing to Vinc.
 
 `pip install "vincs[crewai]"` installs CrewAI 1.15.3 or later with the adapter, on
 Python 3.11 to 3.13 (CrewAI does not support 3.14, where the extra installs
-nothing). It needs vincs 0.1.6 or later.
+nothing). It needs vincs 0.1.7 or later.
 
 ```python
 from crewai import Crew, Task
@@ -312,6 +312,7 @@ at build time with its `vinc_client` imports pointed at `vinc.sdk`.
 
 | vincs | vinc-client | vinc-langgraph | vinc-agent-framework | What it adds |
 |---|---|---|---|---|
+| 0.1.7 | 0.1.18 | 0.1.13 | 0.1.12 | `vinc agent run` and `vinc.kit.run_role` (run a role with your own model and keep the raw trace and the run record), `build_agent` in the CrewAI adapter, evaluation cards in the SDK (`record_eval_card`, `eval_cards`) |
 | 0.1.6 | 0.1.17 | 0.1.13 | 0.1.12 | `build_agent` in the LangGraph and Agent Framework adapters (a running agent from a role address), `plan_agent` in the SDK; the run record helpers, a role's run policy and budget, shims as Records; the `crewai` and `hermes` extras |
 | 0.1.5 | 0.1.12 | 0.1.9 | 0.1.8 | `pin` on `role` and `prefetch`, `prefetch_pin` on the adapters, and `VincRoleChanged` |
 | 0.1.4 | 0.1.11 | 0.1.8 | 0.1.7 | `prefetch_with_contract` and `RoleToolPolicy`, so the adapters keep a role's disallowed tools out; LangGraph reads the role once per run; transient retries; `edges`, `role_check`, delete and merge previews; `create_only` and `operation_id` on the write helpers |
