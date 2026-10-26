@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """MCP tool 계약(D11 §4) — 이름·스키마·사이드카 매핑의 단일 출처.
 
-**37종** — 읽기 26(search·node·role·role_export·role_check·edges·brief·recall·graph·decide·decide_paths·domains·suggest_ties·
-neighbors·path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami·operation_status·community_read·events·runs) + 쓰기 11
+**38종** — 읽기 27(search·node·role·role_export·role_check·edges·brief·recall·graph·decide·decide_paths·domains·suggest_ties·
+neighbors·path·merge_candidates·merge_rejections·diagnose·doc_get·doc_list·conventions·whoami·operation_status·community_read·events·runs·eval_cards) + 쓰기 11
 (ingest·delete·delete_edge·merge_nodes·merge_reject·doc_put·doc_extract·doc_delete·community_write·run_start·run_submit).
 "단일 write 표면(ingest 하나)"은
 SEC-3(삭제·병합)과 D45(문서 정본 doc_*)를 거치며 깨진 낡은 서술이었다 —
@@ -537,6 +537,12 @@ def _t_runs(args, bridge):
         "run": args.get("run"), "limit": args.get("limit")})
 
 
+def _t_eval_cards(args, bridge):
+    # 역할에 붙은 평가 카드(사이드카 `/eval-cards`). 카드는 SDK 가 쓰고 여기는 읽기만 한다.
+    return bridge.request("GET", "/eval-cards", params={
+        "owner": _owner(args, bridge), "role": args.get("role"), "limit": args.get("limit")})
+
+
 def _t_run_start(args, bridge):
     # 실행 프로토콜: 역할 하나의 실행을 연다. 상태는 실행 기록 Episode 가 든다.
     from . import run_protocol
@@ -1058,6 +1064,9 @@ _SUMMARY: dict[str, str] = {
     "vinc_runs": (
         "List recorded agent runs, newest first. Pass cited to see only the runs that cited one "
         "claim, with whether that claim has been retired."),
+    "vinc_eval_cards": (
+        "Read the evaluation cards of one Agent role: what suite it was measured on, with which "
+        "model families and adapters, and the pass rates, cost per success and violation rates."),
     "search": (
         "Search the signed-in Vinc graph for documents and nodes. Read a result's full text with "
         "fetch."),
@@ -2349,6 +2358,23 @@ TOOLS.append({"name": "vinc_run_submit", "reference":
             "cost_usd": {"type": "number", "minimum": 0}}, "additionalProperties": False},
         "owner": {"type": "string"}}, "required": ["run"]},
     "run": _t_run_submit})
+TOOLS.append({"name": "vinc_eval_cards", "reference":
+    "Read the evaluation cards of one Agent role, newest first: {cards:[{id, date, current, "
+    "valid_until, suite:{id, hash, tasks}, harness_version, store_fingerprint, results:[{adapter, "
+    "model_family, tasks, runs_per_task, pass_1, pass_k, violation, fabrication, "
+    "cost_per_success_usd}], frontier}], total, truncated}. A card is a measured result of the "
+    "role on one task suite; pass_1 is the success rate over all runs, pass_k the share of tasks "
+    "where every one of the runs_per_task runs succeeded, and each rate is {k, n, rate} with "
+    "rate null when n is 0. current is false for a card a newer one superseded; it stays listed. "
+    "The task files are never in the graph: a card names its suite by id and sha256. Compare two "
+    "cards only when suite.hash, store_fingerprint and harness_version match. A card is written "
+    "by whoever ran the suite, with their own model and key, into their own graph. Read-only.",
+    "inputSchema": {"type": "object", "properties": {
+        "role": {"type": "string", "description": "Agent slug or concept:agent- id."},
+        "limit": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100,
+                  "description": "Most cards to return."},
+        "owner": {"type": "string"}}, "required": ["role"]},
+    "run": _t_eval_cards})
 
 HOST_TOOLS: list[dict] = [
     {
@@ -2409,6 +2435,7 @@ _ANNOTATIONS: dict[str, dict] = {
     "vinc_operation_status": {"title": "Check a mutation result", "readOnlyHint": True},
     "vinc_events": {"title": "Read change events for roles", "readOnlyHint": True},
     "vinc_runs": {"title": "List agent run records", "readOnlyHint": True},
+    "vinc_eval_cards": {"title": "Read the evaluation cards of a role", "readOnlyHint": True},
     "vinc_run_start": {"title": "Open a run of an Agent role", "readOnlyHint": False,
                        "destructiveHint": False, "idempotentHint": True},
     "vinc_run_submit": {"title": "Submit a step of a run", "readOnlyHint": False,

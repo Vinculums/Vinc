@@ -756,6 +756,16 @@ class VincApp:
                                                    role=p.get("role"), run=p.get("run") or None,
                                                    limit=limit))
 
+    def read_eval_cards(self, p):
+        """역할에 붙은 평가 카드(조회 전용). 계약: `api/eval_cards.py`."""
+        from . import eval_cards
+        try:
+            limit = eval_cards.clamp_limit(p.get("limit"))
+        except ValueError as exc:
+            return 400, {"kind": "eval_cards", "executed": False, "error": str(exc)}
+        return self._read(lambda r: eval_cards.list_cards(r, owner=_req(p, "owner"),
+                                                          role=p.get("role"), limit=limit))
+
     def read_operation_status(self, p):
         from . import operation_receipts
         return self._read(lambda r: operation_receipts.status(r, owner=_req(p, "owner"),
@@ -2974,6 +2984,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/operation-status": app.read_operation_status,
             "/events": app.read_events,   # 변경 기록에서 계산한 이벤트 피드
             "/runs": app.read_runs,   # 실행 기록 목록, 인용한 주장으로 거른다
+            "/eval-cards": app.read_eval_cards,   # 역할에 붙은 평가 카드
             "/community-agent/import-result": app.read_community_agent_result,
             "/brief": app.read_brief,   # W1 — 질문 하나로 답변 재료 조인
             "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)
