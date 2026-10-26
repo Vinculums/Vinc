@@ -64,7 +64,7 @@ def role_fields(contract: Mapping[str, Any]) -> dict[str, str]:
 
 @dataclass(eq=False)
 class _Binding:
-    client: VincClient
+    client: VincClient | None
     async_client: AsyncVincClient | None
     role_id: str
     prefetch_max_chars: int
@@ -216,6 +216,8 @@ class VincAgent(Agent):
 
     def _prefetch(self, task: Any) -> tuple[RolePrefetch, str | None]:
         binding = self._binding()
+        if binding.client is None:
+            raise RuntimeError("this agent was built with an async client only; use the async run")
         fetched = binding.client.prefetch_with_contract(
             binding.role_id, _task_text(task), max_chars=binding.prefetch_max_chars,
             pin=binding.prefetch_pin)
@@ -321,6 +323,21 @@ def create_agent(client: VincClient, role_id: str, *, llm: Any = None, tools: Se
     if (package_id is None) != (package_space is None):
         raise ValueError("package_id and package_space go together")
     contract = client.role(role_id, pin=prefetch_pin)
+    return _bind(contract, client, async_client, llm=llm, tools=tools,
+                 prefetch_max_chars=prefetch_max_chars, prefetch_pin=prefetch_pin,
+                 expose_tools=expose_tools, tool_calls_per_run=tool_calls_per_run,
+                 max_chars=max_chars, package_id=package_id, package_space=package_space,
+                 package_max_chars=package_max_chars, capability_map=capability_map,
+                 agent_kwargs=agent_kwargs)
+
+
+def _bind(contract: Mapping[str, Any], client: VincClient | None,
+          async_client: AsyncVincClient | None, *, llm: Any, tools: Sequence[Any],
+          prefetch_max_chars: int, prefetch_pin: str | None, expose_tools: bool,
+          tool_calls_per_run: int | None, max_chars: int, package_id: str | None,
+          package_space: str | None, package_max_chars: int,
+          capability_map: Mapping[str, str] | None, agent_kwargs: Mapping[str, Any]) -> VincAgent:
+    """A :class:`VincAgent` for an already read contract (``create_agent`` and ``build_agent``)."""
     agent = VincAgent(**role_fields(contract), llm=llm, tools=list(tools), **agent_kwargs)
     agent._vinc = _Binding(
         client=client, async_client=async_client, role_id=str(contract["id"]),

@@ -7,13 +7,15 @@ Design: [[vinc.plan.agent-harness-work-order-2026-10-25 §3]].
 """
 from .agent import VincAgent, create_agent, role_fields
 from .approval import VincApprovalRejected, VincPersonOnlyInput
+from .build import VincCrewAgent, abuild_agent, build_agent
 from .helpers import (aget_vinc_package_context, aprefetch, arecord_episode, arecord_run,
                       awrite_package, get_vinc_package_context, prefetch, record_episode,
                       record_run, write_package)
 from .output_gate import create_output_guardrail
 from .tools import create_vinc_tools
 
-__all__ = ["VincAgent", "create_agent", "role_fields", "create_vinc_tools",
+__all__ = ["VincAgent", "create_agent", "role_fields", "build_agent", "abuild_agent",
+           "VincCrewAgent", "create_vinc_tools",
            "create_output_guardrail", "VincPersonOnlyInput", "VincApprovalRejected",
            "prefetch", "aprefetch", "get_vinc_package_context", "aget_vinc_package_context",
            "record_episode", "arecord_episode", "record_run", "arecord_run",
