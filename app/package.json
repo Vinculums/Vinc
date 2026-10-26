@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "test:search-temporal": "node --test tests/search-temporal.test.mjs",
-    "build": "npm run typecheck && npm run test:search-temporal && npm run test:view-controls && npm run test:view-links && npm run test:view-idle && npm run test:view-layout && npm run test:view-loading && npm run test:view-session && npm run test:view-graph-read && npm run test:view-retained && npm run test:layout-service && npm run test:topic-conversion && npm run test:topic-detail && npm run test:role-fields && vite build",
+    "build": "npm run typecheck && npm run test:search-temporal && npm run test:view-controls && npm run test:view-links && npm run test:view-idle && npm run test:view-layout && npm run test:view-loading && npm run test:view-session && npm run test:view-graph-read && npm run test:view-retained && npm run test:layout-service && npm run test:topic-conversion && npm run test:topic-detail && npm run test:role-fields && npm run test:role-eval && vite build",
     "test:view-idle": "node --test tests/view-idle-frames.test.mjs",
     "test:view-links": "node --test tests/view-link-performance.test.mjs",
     "test:view-controls": "node --test tests/view-controls.test.mjs",
@@ -25,7 +25,8 @@
     "build:community-view": "npm run typecheck && vite build --config vite.community-view.config.ts",
     "test:topic-conversion": "node --test tests/topic-conversion.test.mjs tests/conversion-inventory.test.mjs",
     "test:topic-detail": "node --test tests/topic-detail.test.mjs",
-    "test:role-fields": "node --test tests/role-fields.test.mjs"
+    "test:role-fields": "node --test tests/role-fields.test.mjs",
+    "test:role-eval": "node --test tests/role-eval.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
