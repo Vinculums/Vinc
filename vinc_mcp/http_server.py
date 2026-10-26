@@ -80,6 +80,7 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "operation-status": ("GET", "/operation-status"),
     "node-edges": ("GET", "/node-edges"),
     "roles": ("GET", "/roles"),
+    "eval-cards": ("GET", "/eval-cards"),   # 역할 편집 면의 평가 카드(조회 전용, owner 는 프록시가 강제)
     "community-agent-export": ("POST", "/community-agent/export"),
     "community-pack-inspect": ("POST", "/community-pack/inspect"),
     "community-agent-import-preview": ("POST", "/community-agent/import-preview"),

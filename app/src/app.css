@@ -3844,6 +3844,19 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .role-aside { position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--space-3, .75rem); min-width: 0; }
 .role-aside-k { margin: 0; font-size: .75rem; font-weight: 600; color: hsl(var(--muted-foreground)); }
 .role-aside-acts { display: flex; flex-wrap: wrap; gap: var(--space-1, .25rem); }
+.role-eval { display: flex; flex-direction: column; gap: var(--space-3, .75rem); min-width: 0; }
+.eval-card { display: flex; flex-direction: column; gap: var(--space-2, .5rem); padding: var(--space-3, .75rem);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius, .5rem); min-width: 0; }
+.eval-card-suite { margin: 0; font-size: .75rem; color: hsl(var(--muted-foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eval-cell { display: flex; flex-direction: column; gap: var(--space-1, .25rem); }
+.eval-cell-name { margin: 0; font-size: .8125rem; font-weight: 600; }
+.eval-metrics { display: grid; grid-template-columns: 1fr auto; gap: 2px var(--space-3, .75rem); margin: 0; font-size: .8125rem; }
+.eval-metrics dt { color: hsl(var(--caption-foreground)); }
+.eval-metrics dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.eval-note { margin: 0; font-size: .75rem; line-height: 1.5; color: hsl(var(--muted-foreground)); }
+.eval-run { display: flex; flex-direction: column; gap: var(--space-1, .25rem); }
+.eval-run code { display: block; padding: var(--space-2, .5rem); border-radius: var(--radius, .5rem);
+  background: hsl(var(--muted)); white-space: pre-wrap; overflow-wrap: anywhere; }
 .agent-card-preview { cursor: default; }
 .agent-card-preview:hover { border-color: hsl(var(--border)); }
 .agent-pv-team { margin: 0; font-size: .75rem; }

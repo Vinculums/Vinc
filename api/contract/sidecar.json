@@ -791,7 +791,7 @@
       "get": {
         "operationId": "read_eval_cards",
         "summary": "Evaluation cards attached to one Agent role, newest first.",
-        "x-internal": true,
+        "x-internal": false,
         "x-served-by": "sidecar",
         "responses": {
           "default": {

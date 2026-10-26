@@ -23,6 +23,7 @@ import { icon } from "./icons";
 import { setTopbarLead } from "./topbar";
 import { AGENT_TOPICS, AGENTS_BOARD, buildAgentRoster, setLnbActive, showAgentRail,
          type AgentRole } from "./lnb";
+import { evalCardsHtml } from "./role-eval";
 import { absoluteViewUrl } from "./view-url";
 import { loadPrefs } from "./view-prefs";
 import { loaderRows } from "./vinc-loaders.js";
@@ -202,12 +203,24 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
         <div class="role-aside-acts">
           <button class="btn btn-quiet agent-act" type="button" data-act="copy"><span>${esc(H.agentsCopy)}</span></button>
           <button class="btn btn-quiet agent-act" type="button" data-act="graph">${icon("graph", 14)}<span>${esc(H.agentsGraph)}</span></button>
-        </div>` : ""}
+        </div>
+        <p class="role-aside-k">${esc(R.evalTitle)}</p>
+        <div class="role-eval" id="rc-eval">${loaderRows(COPY.ui.common.loading, { count: 2 })}</div>` : ""}
       </aside>
     </div>
   </div>`;
 
   const $ = <T extends HTMLElement>(s: string) => el.querySelector<T>(s)!;
+  // 평가 카드는 읽기 전용이고 편집과 무관하다. 늦거나 실패해도 편집은 막지 않는다.
+  if (editing) {
+    void api.evalCards(cfg.owner, editId).then((r: any) => {
+      if (!live()) return;
+      if (!r?.executed || !Array.isArray(r.cards)) throw new Error(r?.error || "eval cards unavailable");
+      $("#rc-eval").innerHTML = evalCardsHtml(r.cards, editId);
+    }).catch(() => {
+      if (live()) $("#rc-eval").innerHTML = `<p class="eval-note">${esc(R.evalFail)}</p>`;
+    });
+  }
   const form = $<HTMLFormElement>(".role-form");
   const jobEl = $<HTMLInputElement>("#rc-job");
   const slugEl = $<HTMLInputElement>("#rc-slug");

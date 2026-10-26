@@ -875,6 +875,9 @@ export const api = {
     }
     return { nodes: [...nodes.values()], edges };
   },
+  /** 역할에 붙은 평가 카드(조회 전용, 최신순). `role` 은 짧은 이름도 받는다. */
+  evalCards: (owner: string, role: string, limit = 20) =>
+    call("/eval-cards", { owner, role, limit }, undefined, { team: cfg.team || null }),
   health: () => call("/health"),
   /** 변경 표식(VIN-129). 값은 비교만 한다: 같으면 그대로, 다르면 다시 읽는다(`live.ts`). */
   changes: (owner: string): Promise<{ marker?: string }> => call("/changes", { owner }),
