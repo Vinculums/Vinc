@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import os
+import re
 
 from store.lexical import lex_tokens
 from vinc_rag.retrieval import SNIPPET_CHARS, _snippet_start
@@ -74,3 +75,94 @@ def section_span(chunks: list[dict], at: int, cap: int = SECTION_CHARS) -> tuple
     before = len("".join(str(c.get("text") or "") for c in chunks[lo:at]))
     start = max(0, min(before - cap // 3, len(text) - cap))
     return lo, hi, text[start:start + cap], True
+
+
+# ── 인용 단위 ────────────────────────────────────────────────────────────────
+# 답을 쓰는 쪽이 그대로 따올 수 있는 글자 그대로의 한두 문장. 발췌(240자 창)와 다른 계약이다:
+# 창은 문장 경계와 상관없이 잘리고 앞 문장이 빠져, 가리키는 말("this", "the three")이 무엇을
+# 가리키는지 인용문 안에서 안 보인다. 단위는 가리키는 말로 열리면 앞 문장을 함께 싣는다.
+# 근거: [[vinc.manual.rag]]
+
+#: 단위 하나의 상한(자). 넘으면 낱말 경계에서 잘라 앞부분만 싣는다(그래도 글자 그대로다).
+QUOTE_CHARS = 520
+#: 앞 문장을 붙이는 횟수의 상한 — 가리키는 말이 줄줄이 이어져도 단위가 문단이 되지 않게 한다.
+_WIDEN_MAX = 2
+
+_SENT_BREAK = re.compile(r"(?<=[.!?])[\"')\]]*\s+(?=[\"'(\[]?[A-Z0-9가-힣])|(?<=[다요죠함음]\.)\s+")
+_HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
+_BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+# 첫 낱말들이 앞 문장을 가리키는 문장. 영어는 지시어·정관사 + 수/비교어, 한국어는 이·그 계열.
+_POINTS_BACK = re.compile(
+    r"^[\W_]*(?:this|these|that|those|it|its|they|their|them|such|there|here|both|"
+    r"the\s+(?:former|latter|two|three|four|five|same|above|following|other|first|second|third|last)|"
+    r"all\s+(?:two|three|four|five)|(?:but|and|so|thus|hence|then|however|also|which|whereas|while|because)\b|"
+    r"이|그|이러한|그러나|또한|따라서|이때|이는|이것|그것)",
+    re.I)
+
+
+def _sentences(text: str) -> list[list[str]]:
+    """본문을 블록(줄 단위, 제목 줄은 뺀다)마다 문장으로 나눈다. 공백은 한 칸으로 접는다."""
+    blocks: list[list[str]] = []
+    for line in str(text or "").splitlines():
+        if not line.strip() or _HEADING.match(line):
+            continue
+        flat = " ".join(line.split())
+        parts = [p.strip() for p in _SENT_BREAK.split(flat) if p and p.strip()]
+        if parts:
+            blocks.append(parts)
+    return blocks
+
+
+def _points_back(sentence: str, is_first_in_block: bool) -> bool:
+    """이 문장이 앞 문장 없이는 무엇을 말하는지 안 보이는가."""
+    s = sentence.strip()
+    if _POINTS_BACK.match(s):
+        return True
+    if s[:1].islower():
+        return True
+    return is_first_in_block and bool(_BULLET.match(sentence)) and len(s) < 60
+
+
+def _cut(text: str, cap: int) -> str:
+    if len(text) <= cap:
+        return text
+    head = text[:cap]
+    sp = head.rfind(" ")
+    return (head[:sp] if sp > cap // 2 else head).rstrip()
+
+
+def quote_units(text: str, query: str, *, n: int = 2, cap: int = QUOTE_CHARS) -> list[dict]:
+    """`text`(한 청크 또는 한 절)에서 질문 토큰이 가장 여러 가지 든 문장 `n` 개를 단위로 낸다.
+
+    단위 = {"text", "widened"}. text 는 본문의 이어진 글자 그대로다(공백만 접는다).
+    가리키는 말로 열리거나 토막인 문장은 앞 문장을 함께 실어(최대 두 번) `widened` 를 세운다.
+    질문 토큰이 하나도 안 걸리면 맨 앞 문장 하나를 낸다. 겹치는 단위는 점수가 낮은 쪽을 버린다."""
+    from store.lexical import find_tokens, lex_tokens
+    blocks = _sentences(text)
+    if not blocks:
+        return []
+    toks = lex_tokens(query)
+    scored = []
+    for bi, parts in enumerate(blocks):
+        for si, sent in enumerate(parts):
+            hit = len({t for _, t in find_tokens(sent, toks)}) if toks else 0
+            scored.append((hit, bi, si))
+    top = [s for s in sorted(scored, key=lambda s: (-s[0], s[1], s[2])) if s[0] > 0][:max(1, n) * 2]
+    if not top:
+        top = [(0, 0, 0)]
+    units: list[dict] = []
+    used: set[tuple[int, int]] = set()
+    for _, bi, si in top:
+        if len(units) >= n:
+            break
+        lo = si
+        widened = 0
+        while lo > 0 and widened < _WIDEN_MAX and _points_back(blocks[bi][lo], lo == 0):
+            lo -= 1
+            widened += 1
+        span = {(bi, k) for k in range(lo, si + 1)}
+        if span & used:
+            continue
+        used |= span
+        units.append({"text": _cut(" ".join(blocks[bi][lo:si + 1]), cap), "widened": widened > 0})
+    return units
