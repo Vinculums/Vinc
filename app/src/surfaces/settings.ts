@@ -9,6 +9,7 @@ import { loadPrefs, savePrefs, RAIL_MIN, RAIL_MAX } from "../view-prefs";
 import { disposeEditorsIn } from "../doc-editor";
 import { mountStorage } from "../storage-mode";
 import { mountTopicConversion } from "../topic-conversion";
+import { mountSpacePicker } from "../space-picker";
 
 /** Settings — 왼쪽 분류 레일 + 본문(2026-09-22).
  *  종 레일 바닥의 설정 버튼이 예전 Settings · GRAPH.md · Tools(쓰기/가져오기/공유)
@@ -280,8 +281,7 @@ async function renderSettings(
       <div id="web-acct" class="hint" style="font-size:.85rem">…</div>
       <label>${U.space}</label>
       <p class="hint">${U.spaceHint}</p>
-      <p><select id="space-pick"><option value="">${U.spacePersonal}</option></select></p>
-      <div id="space-note" class="hint" style="font-size:.8rem"></div>
+      <div id="space-pick" class="space-pick"></div>
       ${!cfg.team ? '<div id="topic-conversion"></div>' : ""}` : ""}
       ${!remote() ? `
       <label>${U.account}</label>
@@ -320,49 +320,10 @@ async function renderSettings(
       // 스페이스 전환 — 개인 그래프와 팀 그래프는 별개 네임스페이스다. 여기서 고른
       // 것이 View·Search·Records 전부에 걸리므로, 표면 하나가 아니라 계정 설정에 둔다.
       // 활성화 대기·중지 팀은 상태만 보이고 선택하지 못한다.
-      const pick = body.querySelector<HTMLSelectElement>("#space-pick");
-      const note = body.querySelector<HTMLElement>("#space-note");
-      if (pick) {
-        void teamsApi.list({ throwOnError: true }).then((rows) => {
-          const visible = rows.filter((t) => ["active", "pending", "suspended"].includes(t.status));
-          for (const t of visible) {
-            const o = document.createElement("option");
-            const active = t.status === "active";
-            o.value = t.id; o.disabled = !active;
-            o.textContent = active ? t.name : `${t.name} (${t.status === "pending" ? U.spacePending : U.spaceSuspended})`;
-            if (active && t.id === cfg.team) o.selected = true;
-            pick.appendChild(o);
-          }
-          if (note) note.textContent = visible.some(t => t.status !== "active") ? U.spaceActivationHint
-            : visible.length ? "" : U.spaceNone;
-        }).catch(() => { if (note) note.textContent = U.spaceListFailed; });
-        // 가입한 커뮤니티는 읽기 전용 스페이스로 고른다. 목록을 못 받으면 칸 없이 간다.
-        void communitiesApi.list().then((rows) => {
-          if (!rows.length) return;
-          const group = document.createElement("optgroup");
-          group.label = U.spaceCommunities;
-          for (const x of rows) {
-            const o = document.createElement("option");
-            o.value = x.id; o.textContent = x.name;
-            if (x.id === cfg.team) o.selected = true;
-            group.appendChild(o);
-          }
-          pick.appendChild(group);
-          if (isCommunitySpace(cfg.team) && note) note.textContent = U.spaceCommunityReadOnly;
-        });
-        pick.addEventListener("change", async () => {
-          if (pick.selectedOptions[0]?.disabled) return;
-          const next = pick.value;
-          pick.disabled = true;   // 보관하는 동안 두 번째 선택이 끼어 다른 스페이스로 열리지 않게
-          // 떠나는 스페이스의 완료 항목을 잠깐 보관한다: 돌아왔을 때 다시 읽지 않도록.
-          // 최선 노력이고 오래 걸리면 기다리지 않는다. 쓰는 때는 이 한 번뿐이다.
-          await retainBeforeSwitch().catch(() => false);
-          cfg.team = next;
-          // 스페이스는 전역이라 부분 갱신하지 않는다 — 어떤 표면이 옛 스코프의
-          // 데이터를 들고 남으면 지금 어느 그래프를 보는지 알 수 없게 된다.
-          location.reload();
-        });
-      }
+      // 종류(개인 · 팀 · 커뮤니티)를 탭으로 보고, 그 안의 하나를 줄로 고른다(`space-picker.ts`).
+      const pick = body.querySelector<HTMLElement>("#space-pick");
+      if (pick) mountSpacePicker(pick, { cfg, teamsApi, communitiesApi, isCommunitySpace, retainBeforeSwitch,
+        reload: () => location.reload(), copy: U, esc });
       return;
     }
     if (WEB) return;
