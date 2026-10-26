@@ -609,3 +609,16 @@ def test_build_agent_refuses_a_bad_task_and_the_async_form_builds_runs_and_recor
     result = asyncio.run(go())
     assert (result.status, result.output) == ("done", "Reviewed.\nSources: none")
     assert _fragment_posts(seen)[0]["nodes"][0]["props"]["run_id"] == "run-5"
+
+
+def test_the_run_kit_runs_a_crewai_agent_and_records_the_model_family():
+    from vinc.kit import run_role
+    seen = []
+    llm = ScriptedLLM(model="scripted", script=["Reviewed.\nSources: concept:rule"])
+    done = run_role("reviewer-judgement", TASK, model=llm, adapter="crewai",
+                    client=client(seen, key=WRITE_KEY), run_id="kit-1")
+    assert (done.run.status, done.run.output, done.adapter) == ("done", "Reviewed.\nSources: concept:rule", "crewai")
+    assert done.trace is None and done.steps is None and len(llm.seen) == 1
+    props = _fragment_posts(seen)[0]["nodes"][0]["props"]
+    assert (props["run_id"], props["host"], props["model_family"]) == ("kit-1", "crewai", "scriptedllm")
+    assert "trace_ref" not in props

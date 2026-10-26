@@ -90,6 +90,44 @@ The Python distribution version is independent of the product version reported
 by `vinc --version`. See the [SDK guide](https://vincs.io/docs/frameworks/) for
 key types, read-only use and explicit writes.
 
+## Run a role on your machine
+
+`vinc agent run` runs one task as a role, on this machine, with your own model and key. Vinc calls
+no model: the model is yours and only the run record goes to Vinc.
+
+```sh
+pip install "vincs[langgraph]"
+export VINC_API_KEY=vinc_sk_...        # a full-access key, to write the run record
+export ANTHROPIC_API_KEY=...            # your model provider's key, read by that provider
+vinc agent run dev-core --task "Review the diff in PR 12." --model anthropic:claude-sonnet-5-5
+vinc run show <the run id it printed>
+```
+
+The role is read once and pinned, its required documents are read before the model is called, the
+tools it disallows are hidden, and the final answer goes through its gates. A failing gate ends the
+run `blocked` (exit code 3); a person-only action ends it `waiting` (exit code 4), and neither
+executes anything. A run that cannot start exits 2 with one sentence.
+
+`--adapter` chooses the framework: `langgraph` (the default), `crewai` or `agent-framework`. A
+`provider:name` model works for LangGraph (any provider package LangChain can load) and CrewAI.
+Agent Framework chat clients come from provider packages, so for that adapter call it from Python:
+
+```python
+from vinc.kit import run_role
+
+done = run_role("dev-core", "Review the diff in PR 12.", model=my_model, adapter="langgraph")
+done.run.status, done.run.output, done.trace
+```
+
+On LangGraph the run also leaves a raw trace: the model's input and output and each tool call with
+its result, one JSON object per line, in `./vinc-traces/<sha256>.jsonl` (change the place with
+`--trace-dir`, skip it with `--no-trace`). The record keeps only the hash, size and name, never the
+text or your path, and the same input leaves the same bytes. LangGraph runs also stop when they use
+up the role's budget for `model_calls`, `tokens` or `wall_seconds`; `tool_calls` is held by the role's
+tool policy, and `cost_usd` is not guarded because Vinc does not know your model's price. CrewAI
+and Agent Framework runs are recorded without a trace file or counts for now. `--no-record` writes
+nothing to Vinc.
+
 ## CrewAI
 
 `pip install "vincs[crewai]"` installs CrewAI 1.15.3 or later with the adapter, on

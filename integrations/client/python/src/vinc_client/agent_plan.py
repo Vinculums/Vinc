@@ -134,34 +134,44 @@ def run_result(plan: AgentPlan, run_id: str, output: str | None,
                     gate, cited_ids=cited)
 
 
-def _record_fields(result: AgentRun, host: str) -> dict[str, Any]:
+def _record_fields(result: AgentRun, host: str,
+                   extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
     fields: dict[str, Any] = {"host": host}
     if result.gate is not None:
         fields["gate_results"] = {"verdict": result.gate.verdict,
                                   "failed_checks": ",".join(result.gate.failed_checks)}
     if result.cited_ids:
         fields["cited_ids"] = list(result.cited_ids)
+    # 호출자가 아는 것(모델 계열, 단계 수, 원본 기록 주소 등). 위에서 정한 칸은 덮지 않는다.
+    for key, value in (extra or {}).items():
+        fields.setdefault(key, value)
     return fields
 
 
-def finish_run(client: Any, result: AgentRun, *, host: str, space: str | None = None) -> AgentRun:
-    """Write the run record. A failed write is kept on the result, never raised."""
+def finish_run(client: Any, result: AgentRun, *, host: str, space: str | None = None,
+               extra: Mapping[str, Any] | None = None) -> AgentRun:
+    """Write the run record. A failed write is kept on the result, never raised.
+
+    ``extra`` adds ``record_run`` fields the caller knows, such as ``model_family``, ``steps``,
+    ``tool_calls`` and ``trace`` (from ``trace_ref``); it never overrides ``host``,
+    ``gate_results`` or ``cited_ids``.
+    """
     try:
         result.record = client.record_run(result.run_id, role=result.role_id,
                                           outcome=result.outcome, space=space,
-                                          **_record_fields(result, host))
+                                          **_record_fields(result, host, extra))
     except VincError as exc:
         result.record_error = f"{exc.code}: {str(exc)[:_ERROR_CAP]}"
     return result
 
 
-async def afinish_run(client: Any, result: AgentRun, *, host: str,
-                      space: str | None = None) -> AgentRun:
+async def afinish_run(client: Any, result: AgentRun, *, host: str, space: str | None = None,
+                      extra: Mapping[str, Any] | None = None) -> AgentRun:
     """:func:`finish_run` for an :class:`AsyncVincClient`."""
     try:
         result.record = await client.record_run(result.run_id, role=result.role_id,
                                                 outcome=result.outcome, space=space,
-                                                **_record_fields(result, host))
+                                                **_record_fields(result, host, extra))
     except VincError as exc:
         result.record_error = f"{exc.code}: {str(exc)[:_ERROR_CAP]}"
     return result

@@ -7,6 +7,11 @@ from pathlib import Path
 
 
 def main(argv: list[str] | None = None) -> int:
+    args = sys.argv[1:] if argv is None else argv
+    if args[:1] == ["agent"]:
+        # 에이전트 실행기는 사용자의 인터프리터에서 돈다: 프레임워크와 모델 패키지는 거기에 있다.
+        from .kit.cli import main as agent_main
+        return agent_main(args[1:])
     # CLI 내부의 api/store 이름을 SDK 사용자의 인터프리터에 등록하지 않는다.
     # 자식은 부모의 stdin/stdout/stderr와 종료 코드를 그대로 사용한다.
     # argv[0] 을 "vinc" 로 두어야 도움말과 사용법 오류가 `-c` 가 아니라 명령 이름을 말한다.
