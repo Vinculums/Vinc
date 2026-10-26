@@ -36,7 +36,8 @@ UNSUPPORTED_PROTOCOL_VERSION = -32022
 INVALID_PARAMS = -32602
 
 #: `Mcp-Name` 헤더가 본문의 무엇을 비추는가.
-_NAME_FIELD = {"tools/call": "name", "prompts/get": "name", "resources/read": "uri"}
+_NAME_FIELD = {"tools/call": "name", "prompts/get": "name", "resources/read": "uri",
+               "tasks/get": "taskId", "tasks/update": "taskId", "tasks/cancel": "taskId"}
 
 #: 캐시 힌트 `(ttlMs, cacheScope)`. 도구 목록은 배포 때만 바뀌고 호출자 모두에게 같다.
 #: 프롬프트 목록은 그래프의 역할에서 오므로 소유자마다 다르다.

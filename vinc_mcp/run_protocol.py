@@ -118,6 +118,9 @@ def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
         pending = props.get("pending") or {}
         out["question"] = pending.get("question", "")
         out["pending_actions"] = list(pending.get("actions") or [])
+        #: 몇 번째 질문인가. MCP Tasks 의 작업 id 가 이 번호를 쓴다(`run_tasks.py`).
+        out["ask"] = int(props.get("asks") or 0)
+        out["asked_at"] = pending.get("asked_at", "")
         out["next"] = ("A person decides first. Show the question, then call vinc_run_submit with "
                        "answer approve or decline. No output is accepted while it waits.")
     elif props["state"] == "working":
@@ -351,9 +354,12 @@ def _output(args, bridge, owner, eid, props, policy) -> dict:
     actions = list(dict.fromkeys(list(result.person_only_actions) + asks))
     if result.verdict == "interrupt" or actions:
         props["state"] = "waiting"
+        asked_at = _stamp(_now())
+        props["asks"] = int(props.get("asks") or 0) + 1
+        props["last_asked_at"] = asked_at
         props["pending"] = {"actions": actions, "checks": list(result.failed_checks),
                             "question": _question(actions, policy, list(result.failed_checks)),
-                            "asked_at": _stamp(_now())}
+                            "asked_at": asked_at}
         failed = _saved(bridge, owner, eid, props)
         return failed or _view(props, eid, policy)
     _end(props, "success", "gates passed")
