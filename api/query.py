@@ -3665,12 +3665,12 @@ def _brief_sem_promote_on() -> bool:
 _SEM_PROMOTE = 0.10
 
 #: 한글 없는 질문(어느 노드든), 또는 한글 있는 질문 + 한글 없는 노드의 승격 문턱. 언어를 건너면 거리가
-#: 넓어져(정답 거리 중앙값 en2ko 0.419, ko 0.328) 같은 1위인데도 우위가 `_SEM_PROMOTE` 밑에 머문다
-#: (VIN-806·809). 영어 질문은 영어 노드에도 이 문턱을 쓴다(VIN-811): 1위가 정답인데 우위가 0.06~0.10 에
-#: 머문 행이 많았다. 한글 질문 + 한국어 노드는 시험할 봉인 셋이 없어 `_SEM_PROMOTE` 그대로다.
+#: 넓어져(정답 거리 중앙값 en2ko 0.419, ko 0.328) 같은 1위인데도 우위가 `_SEM_PROMOTE` 밑에 머문다.
+#: 영어 질문은 영어 노드에도 이 문턱을 쓴다: 1위가 정답인데 우위가 0.06~0.10 에 머문 행이 많았다.
+#: 한글 질문 + 한국어 노드는 시험할 봉인 셋이 없어 `_SEM_PROMOTE` 그대로다.
 #: `_brief_xlang_lead` 가 쓰는 조건에서만 `_SEM_PROMOTE` 자리에 들어가고, 유효구간 동점 가드의 거리는
 #: 그대로 `_SEM_PROMOTE` 다. 내리면 틀린 노드 확정이 는다. 옮기려면 다시 잴 것.
-#: 근거: [[vinc.spec.retrieval-knobs-brief]] · [[vinc.plan.brief-english-promotion-0-06-sealed12-2026-10-26]]
+#: 근거: [[vinc.spec.retrieval-knobs-brief]]
 _SEM_PROMOTE_XLANG = 0.06
 
 _HANGUL = re.compile("[가-힣]")
@@ -3785,8 +3785,8 @@ def _brief_mirror_text(store, owner, hit: dict) -> str | None:
 
 
 def _brief_xlang_lead(query: str, top: dict, mirror_text=None) -> bool:
-    """`_SEM_PROMOTE_XLANG` 을 쓸 자리인가: 한글 없는 질문이거나(노드 언어와 상관없이, VIN-811),
-    한글 있는 질문인데 승격될 1위의 미러 텍스트에 한글이 없다(VIN-809).
+    """`_SEM_PROMOTE_XLANG` 을 쓸 자리인가: 한글 없는 질문이거나(노드 언어와 상관없이),
+    한글 있는 질문인데 승격될 1위의 미러 텍스트에 한글이 없다.
 
     `mirror_text(h)` 는 노드의 미러 텍스트(제목 + 부가 본문 앞 300자, 에피소드는 600자)를 주거나 None 이다. 없거나
     읽기가 실패하면 제목으로 갈음한다(미러 행이 없는 후보도 같은 길이다). 한글 없는 질문은 미러를 읽지 않는다."""
