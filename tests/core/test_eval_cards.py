@@ -138,6 +138,16 @@ def test_the_limit_truncates_and_owners_do_not_see_each_other(store):
     assert read(store, owner=OTHER)["cards"] == []
 
 
+def test_a_short_role_name_reads_the_same_cards_as_the_full_id(store):
+    with_role(store)
+    cid = "record:eval-card-cards-watcher-2026-10-26-bbbbbbbb"
+    ingest(store, [card(cid, "2026-10-26")], [attach(cid)])
+    for name in ("cards-watcher", "agent-cards-watcher", ROLE, " cards-watcher "):
+        assert [c["id"] for c in read(store, role=name)["cards"]] == [cid]
+        assert read(store, role=name)["role"] == ROLE
+    assert eval_cards.role_address("") is None and eval_cards.role_address("concept:") is None
+
+
 def test_bad_input_is_refused(store):
     assert eval_cards.list_cards(store, owner="", role=ROLE)["executed"] is False
     assert eval_cards.list_cards(store, owner=OWNER, role="")["executed"] is False

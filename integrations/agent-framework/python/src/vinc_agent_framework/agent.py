@@ -17,6 +17,7 @@ from vinc_client import AsyncVincClient
 from vinc_client.agent_plan import (AgentPlan, AgentRun, afinish_run, aplan_agent, failed_run,
                                     run_result)
 from vinc_client.output_gate import GateResult, OutputGateStopped
+from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
 from vinc_client.tools import TOOL_CALLS_PER_RUN
 
 from .output_gate import VincOutputGateMiddleware
@@ -69,7 +70,9 @@ async def build_agent(address: str, chat_client: Any, *, tools: Sequence[Any] = 
                       instructions: str | None = None,
                       capability_map: Mapping[str, str] | None = None, record: bool = True,
                       tool_calls_per_run: int | None = TOOL_CALLS_PER_RUN,
-                      name: str | None = None, **agent_kwargs: Any) -> VincAgent:
+                      name: str | None = None,
+                      prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
+                      **agent_kwargs: Any) -> VincAgent:
     """Read ``address``, pin its contract and return a running agent for it.
 
     ``address`` is ``reviewer``, ``agent-reviewer`` or ``concept:agent-reviewer``.
@@ -78,7 +81,9 @@ async def build_agent(address: str, chat_client: Any, *, tools: Sequence[Any] = 
     record, which needs a ``vinc_sk_`` key; a failed write is kept on the result as
     ``record_error`` and never raised. If the role changes later, the next run raises
     ``VincRoleChanged`` instead of running on a contract nobody reviewed. The final answer is
-    checked in a non-streaming run only.
+    checked in a non-streaming run only. The role's required reading goes into every run in full;
+    a role whose reading is longer than ``prefetch_max_chars`` (24,000 characters by default) stops
+    before the model is called with ``prefetch_budget_exceeded``.
     """
     owns = client is None
     client = client or AsyncVincClient(api_key, base_url=base_url, space=space)
@@ -91,7 +96,8 @@ async def build_agent(address: str, chat_client: Any, *, tools: Sequence[Any] = 
     provider = VincContextProvider(client, prefetch_role=plan.role_id,
                                    prefetch_pin=plan.pin or None, expose_tools=True,
                                    capability_map=capability_map,
-                                   tool_calls_per_run=tool_calls_per_run)
+                                   tool_calls_per_run=tool_calls_per_run,
+                                   prefetch_max_chars=prefetch_max_chars)
     agent = Agent(chat_client, instructions=instructions, tools=list(tools),
                   name=name or plan.role_id.split(":", 1)[1], context_providers=[provider],
                   middleware=[VincOutputGateMiddleware(plan.gate),

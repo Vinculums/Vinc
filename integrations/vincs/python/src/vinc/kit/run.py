@@ -23,6 +23,7 @@ from typing import Any, Mapping, Sequence
 
 from vinc.sdk import AsyncVincClient, VincClient
 from vinc.sdk.agent_plan import AgentRun, afinish_run, finish_run
+from vinc.sdk.errors import VincInvalidArgument
 from vinc.sdk.output_gate import GateResult
 from vinc.sdk.run import trace_ref
 
@@ -46,6 +47,8 @@ class KitRun:
     trace: Path | None = None
     steps: int | None = None
     tool_calls: int | None = None
+    #: What the run cost at list price, when the model reports it (a subscription run does).
+    cost_usd: float | None = None
 
 
 def model_family(model: Any) -> str:
@@ -64,6 +67,11 @@ def resolve_model(adapter: str, model: Any) -> Any:
     provider, sep, name = model.partition(":")
     if not sep or not provider or not name:
         raise KitError("write the model as provider:name, for example anthropic:claude-sonnet-5-5")
+    if provider == "claude-code":
+        if adapter != "langgraph":
+            raise KitError("claude-code:<model id> runs through the langgraph adapter only")
+        from .claude_code import ClaudeCodeChat
+        return ClaudeCodeChat(model=name)
     if adapter == "langgraph":
         try:
             from langchain.chat_models import init_chat_model
@@ -79,12 +87,23 @@ def resolve_model(adapter: str, model: Any) -> Any:
                    "object to run_role in Python; a provider:name string is not enough")
 
 
+def _explain(exc: Exception) -> Exception:
+    """A role whose required reading is longer than the prefetch budget gets one actionable sentence."""
+    if isinstance(exc, VincInvalidArgument) and getattr(exc, "code", "") == "prefetch_budget_exceeded":
+        return KitError(f"{exc} Pass --prefetch-max-chars (prefetch_max_chars=) with at least that "
+                        "many characters to let the role's required reading in.")
+    return exc
+
+
 def _blocked_by_budget(plan_role: str, run_id: str, exc: BudgetExceeded) -> AgentRun:
     return AgentRun(run_id, plan_role, "blocked", None, GateResult("block", (f"budget_{exc.key}",)))
 
 
-def _extra(family: str, trace_path: Path | None, meter: Meter | None) -> dict[str, Any]:
+def _extra(family: str, trace_path: Path | None, meter: Meter | None,
+           cost_usd: float | None = None) -> dict[str, Any]:
     fields: dict[str, Any] = {"model_family": family}
+    if cost_usd is not None:
+        fields["cost_usd"] = cost_usd
     if trace_path is not None:
         fields["trace"] = trace_ref(trace_path)
     if meter is not None:
@@ -121,7 +140,11 @@ def run_role(address: str, task: str, *, model: Any, adapter: str = "langgraph",
         from vinc.integrations.crewai import build_agent
         built = build_agent(address, llm, tools=tools, client=sync, async_client=async_client,
                             space=space, record=False, **build_kwargs)
-        result, meter, path = built.run(task, run_id=rid), None, None
+        try:
+            result = built.run(task, run_id=rid)
+        except VincInvalidArgument as exc:
+            raise _explain(exc) from None
+        meter, path, cost = None, None, None
         plan = built.plan
     else:
         from vinc.integrations.langgraph import build_agent
@@ -129,17 +152,24 @@ def run_role(address: str, task: str, *, model: Any, adapter: str = "langgraph",
         from .langgraph_trace import LangGraphTrace
         built = build_agent(address, llm, tools=tools, client=sync, async_client=async_client,
                             space=space, record=False, **build_kwargs)
-        plan = built.plan
+        plan, cost = built.plan, None
         meter, trace = Meter(plan.budget), Trace()
+        price_before = getattr(llm, "list_price_usd", None)
         try:
             result = built.invoke(task, {"callbacks": [LangGraphTrace(trace, meter)]}, run_id=rid)
         except BudgetExceeded as exc:
             result = _blocked_by_budget(plan.role_id, rid, exc)
+        except VincInvalidArgument as exc:
+            raise _explain(exc) from None
         path = trace.write(trace_dir) if trace_dir is not None and trace.events else None
+        price_after = getattr(llm, "list_price_usd", None)
+        if price_before is not None and price_after is not None:
+            cost = round(price_after - price_before, 8)
     if record:
-        finish_run(sync, result, host=adapter, space=space, extra=_extra(family, path, meter))
-    return KitRun(result, adapter, family, path,
-                  meter.model_calls if meter else None, meter.tool_calls if meter else None)
+        finish_run(sync, result, host=adapter, space=space,
+                   extra=_extra(family, path, meter, cost))
+    return KitRun(result, adapter, family, path, meter.model_calls if meter else None,
+                  meter.tool_calls if meter else None, cost)
 
 
 async def _run_agent_framework(address, task, chat_client, family, rid, tools, async_client, api_key,
@@ -148,7 +178,10 @@ async def _run_agent_framework(address, task, chat_client, family, rid, tools, a
     aclient = async_client or AsyncVincClient(api_key, base_url=base_url, space=space)
     built = await build_agent(address, chat_client, tools=tools, client=aclient, space=space,
                               record=False, **build_kwargs)
-    result = await built.run(task, run_id=rid)
+    try:
+        result = await built.run(task, run_id=rid)
+    except VincInvalidArgument as exc:
+        raise _explain(exc) from None
     if record:
         await afinish_run(aclient, result, host="agent-framework", space=space,
                           extra=_extra(family, None, None))

@@ -14,7 +14,9 @@ What the numbers mean:
   gates blocked or held for a person is graded and failed.
 - ``violation`` is among decision tasks, ``fabrication`` among tasks whose answer is not in the graph.
 - Tasks that need a grading model (``judge``) or several roles (``handoff``) are skipped and counted.
-- ``cost_per_success_usd`` is left empty: the kit does not know a model's price.
+- ``cost_per_success_usd`` is the model's own list-price cost over the successes, and only when every
+  graded run reported its cost (a subscription run does). Otherwise it is left empty: the kit does not
+  know a model's price.
 """
 from __future__ import annotations
 
@@ -28,7 +30,7 @@ from vinc.sdk.errors import VincNotFound
 from vinc.sdk.eval_card import record_eval_card
 
 from . import grade as graders
-from .run import DEFAULT_TRACE_DIR, KitError, model_family, run_role
+from .run import DEFAULT_TRACE_DIR, KitError, model_family, resolve_model, run_role
 from .suite import NEEDS_OTHER_ROLES, Suite, SuiteError, load_suite
 
 #: The families whose "violation" counts, as in the repository's harness.
@@ -74,6 +76,14 @@ def make_resolver(client: VincClient) -> Callable[[str], bool]:
     return resolve
 
 
+def _cost_per_success(graded: Sequence[dict[str, Any]], wins: int) -> float | None:
+    """Total list-price cost over successes, only when every graded run reported its cost."""
+    costs = [r.get("cost_usd") for r in graded]
+    if not wins or not costs or any(c is None for c in costs):
+        return None
+    return round(sum(costs) / wins, 6)
+
+
 def summarize(rows: Sequence[dict[str, Any]], tasks: int, runs: int) -> dict[str, Any]:
     """The card cell's rates from per-run rows (``outcome``, ``task``, ``family``, ``grade``)."""
     graded = [r for r in rows if r["outcome"] != "error"]
@@ -91,7 +101,7 @@ def summarize(rows: Sequence[dict[str, Any]], tasks: int, runs: int) -> dict[str
             "violation": _rate(sum(1 for r in keep if r["grade"]["violation"]), len(keep)) if keep else None,
             "fabrication": (_rate(sum(1 for r in absent if r["grade"]["fabricated"]), len(absent))
                             if absent else None),
-            "cost_per_success_usd": None,
+            "cost_per_success_usd": _cost_per_success(graded, wins),
             "ungraded": len(rows) - len(graded)}
 
 
@@ -123,6 +133,8 @@ def run_suite(role: str, suite: Suite | str | Path, *, model: Any, adapter: str 
                        f"pass --yes to run more than {MAX_RUNS}, or --limit to run fewer tasks")
     sync = client or VincClient(api_key, base_url=base_url, space=space)
     resolve = make_resolver(sync)
+    # 모델은 한 번만 만든다: 구독 모델은 사용률 계기를 들고 있어서, 런마다 새로 만들면 멈출 때를 잊는다.
+    llm = resolve_model(adapter, model)
     sid = suite_id or suite.stem
     say = progress or (lambda line: print(line, file=sys.stderr, flush=True))
     rows: list[dict[str, Any]] = []
@@ -131,9 +143,9 @@ def run_suite(role: str, suite: Suite | str | Path, *, model: Any, adapter: str 
         for i in range(runs):
             rid = f"eval-{sid}-{task.id}-{i + 1}"[:128]
             row: dict[str, Any] = {"task": task.id, "family": task.family, "run": i + 1,
-                                   "outcome": "error", "grade": None}
+                                   "outcome": "error", "grade": None, "cost_usd": None}
             try:
-                done = run_role(role, task.prompt, model=model, adapter=adapter, client=sync,
+                done = run_role(role, task.prompt, model=llm, adapter=adapter, client=sync,
                                 space=space, run_id=rid, record=record_runs, trace_dir=trace_dir,
                                 **build_kwargs)
             except KitError:
@@ -142,6 +154,7 @@ def run_suite(role: str, suite: Suite | str | Path, *, model: Any, adapter: str 
                 row["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
             else:
                 role_id = done.run.role_id
+                row["cost_usd"] = done.cost_usd
                 if done.run.status == "done":
                     row["grade"] = graders.grade(task, done.run.output, resolve)
                     row["outcome"] = "success" if row["grade"]["success"] else "failure"
