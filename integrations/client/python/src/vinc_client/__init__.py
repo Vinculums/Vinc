@@ -2,7 +2,7 @@
 
 Design and scope: [[vinc.plan.framework-integration-packages-2026-09-28]].
 """
-__version__ = "0.1.17"
+__version__ = "0.1.18"
 
 from .client import AsyncVincClient, VincClient  # noqa: E402
 from .agent_plan import (AgentPlan, AgentRun, afinish_run, aplan_agent, finish_run,  # noqa: E402
