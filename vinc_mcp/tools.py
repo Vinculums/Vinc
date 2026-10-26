@@ -973,7 +973,8 @@ _SUMMARY: dict[str, str] = {
     "vinc_brief": (
         "Turn one question into answer material in one call: the best matching node, its relations "
         "and the passages behind them. Read status first: 'choose' means candidates tied, so ask "
-        "again with one id."),
+        "again with one id. Quote a `quotes` sentence as it stands: a claim may say no more "
+        "than its quote."),
     "vinc_recall": (
         "Read the episode timeline (what happened), newest first. Use it to resume context or to check "
         "whether an event is already recorded. For 'anything about X' use vinc_search."),
@@ -1381,7 +1382,15 @@ TOOLS: list[dict] = [
                        "truncated, basis}: the part of that document the question points at (the "
                        "chunk nearest the question and its neighbours under the same section "
                        "title, up to 6,000 characters). Quote it with its cite_id; on a 'choose' "
-                       "answer it belongs to the candidate named by node_id. Nodes, candidates, "
+                       "answer it belongs to the candidate named by node_id. A resolved answer "
+                       "and each candidate of a 'choose' answer may carry `quotes`: up to two "
+                       "units {doc_id, source, section, text, widened}, each a verbatim run of "
+                       "the document's sentences chosen by the question (`source` is the document "
+                       "title). A unit that opens on a pointing word (this, the three, both) is "
+                       "widened backwards by the previous sentence (`widened`), so it names what "
+                       "it points at. Quote a unit as it stands, and let a claim say no more than "
+                       "its quote says: a name, source, condition or scope the unit does not "
+                       "carry is not supported by it. Nodes, candidates, "
                        "links and excerpts carry `cite_id` (null for an "
                        "excerpt whose document mirror is missing or unreadable), and "
                        "`cite_grounds` lists only canonical node citations. links.degree is not "
@@ -2734,15 +2743,29 @@ def _shrink_brief_result(out: dict, budget: int) -> dict | None:
     if _over() and isinstance(out.get("section"), dict):
         out.pop("section")
         dropped_sec = 1
+    # 인용 단위(`quotes`)는 절 다음이다: 문서 id 가 `grounds` 와 후보에 남아 vinc_doc_get 으로
+    # 되찾을 수 있다. 확정 답의 것을 먼저, 후보의 것은 뒤 후보부터 덜어낸다.
+    dropped_q = 0
+    if _over() and out.get("quotes"):
+        out.pop("quotes")
+        dropped_q += 1
+    cands = out.get("candidates")
+    if isinstance(cands, list):
+        for c in reversed(cands):
+            if _over() and isinstance(c, dict) and c.get("quotes"):
+                c.pop("quotes")
+                dropped_q += 1
     de, dl = _shrink_material_lists(out, _over)
     dropped_ex += de
     dropped_ln += dl
     if _size() > budget:
         return None
-    if dropped_ex or dropped_ln or dropped_sec:
+    if dropped_ex or dropped_ln or dropped_sec or dropped_q:
         out["shrunk"] = {"excerpts_dropped": dropped_ex, "links_dropped": dropped_ln}
         if dropped_sec:
             out["shrunk"]["section_dropped"] = True
+        if dropped_q:
+            out["shrunk"]["quotes_dropped"] = dropped_q
         note = ("shrunk to fit the result size limit: dropped %d excerpt(s)%s then %d "
                 "link(s); `grounds` still lists every id"
                 % (dropped_ex, ", the section" if dropped_sec else "", dropped_ln))

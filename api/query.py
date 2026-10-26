@@ -3922,6 +3922,32 @@ def _brief_section_on() -> bool:
     return v not in ("off", "0", "false", "no")
 
 
+def _brief_pick_chunk(store, chunks: list[dict], *, query: str, query_embedding,
+                      top_id: str = "") -> tuple[int, str]:
+    """한 문서(또는 한 노드)의 청크 가운데 질문이 가리키는 것의 자리와 근거.
+
+    질문 벡터에 가장 가까운 조각을 가진 청크(`vector`), 벡터가 없으면 검색 1위 청크(`rank`),
+    그것도 아니면 질문 토큰이 가장 여러 가지 든 청크(`lexical`)다. `chunks` 는 {cid, text} 를
+    순서대로 준 것이고 비어 있으면 안 된다."""
+    ids = [str(c["cid"]) for c in chunks]
+    if query_embedding is not None:
+        got = store.run(
+            "MATCH (p:Chunk) WHERE p.chunk_id IN $ids "
+            "MATCH (v:ChunkVec) WHERE v.chunk_id = p.chunk_id "
+            "RETURN p.chunk_id AS cid, min(1 - array_cosine_similarity(v.embedding, $emb)) AS d",
+            {"ids": ids, "emb": list(query_embedding)}) or []
+        dist = {str(r["cid"]): float(r["d"]) for r in got if r.get("d") is not None}
+        if dist:
+            return (min((i for i, cid in enumerate(ids) if cid in dist),
+                        key=lambda i: (dist[ids[i]], i)), "vector")
+    if top_id and top_id in ids:
+        return ids.index(top_id), "rank"
+    from store.lexical import find_tokens, lex_tokens
+    toks = lex_tokens(query)
+    return (max(range(len(chunks)), key=lambda i: (
+        len({t for _, t in find_tokens(str(chunks[i].get("text") or ""), toks)}), -i)), "lexical")
+
+
 def _brief_section(store, *, owner: str, query: str, rows: list[dict],
                    query_embedding, nodes: list[str]) -> dict | None:
     """질문 검색 1위 문서에서 **질문이 가리키는 절**. 그 문서의 미러가 ``nodes``(확정 노드나
@@ -3947,26 +3973,8 @@ def _brief_section(store, *, owner: str, query: str, rows: list[dict],
         if not chunks:
             return None
         ids = [str(c["cid"]) for c in chunks]
-        at, basis = None, ""
-        if query_embedding is not None:
-            got = store.run(
-                "MATCH (p:Chunk) WHERE p.chunk_id IN $ids "
-                "MATCH (v:ChunkVec) WHERE v.chunk_id = p.chunk_id "
-                "RETURN p.chunk_id AS cid, min(1 - array_cosine_similarity(v.embedding, $emb)) AS d",
-                {"ids": ids, "emb": list(query_embedding)}) or []
-            dist = {str(r["cid"]): float(r["d"]) for r in got if r.get("d") is not None}
-            if dist:
-                at = min((i for i, cid in enumerate(ids) if cid in dist),
-                         key=lambda i: (dist[ids[i]], i))
-                basis = "vector"
-        if at is None and str(top.get("id") or "") in ids:
-            at, basis = ids.index(str(top["id"])), "rank"
-        if at is None:
-            from store.lexical import find_tokens, lex_tokens
-            toks = lex_tokens(query)
-            at = max(range(len(chunks)), key=lambda i: (
-                len({t for _, t in find_tokens(str(chunks[i].get("text") or ""), toks)}), -i))
-            basis = "lexical"
+        at, basis = _brief_pick_chunk(store, chunks, query=query, query_embedding=query_embedding,
+                                      top_id=str(top.get("id") or ""))
         lo, hi, text, cut = _excerpt.section_span(chunks, at)
     except Exception:
         return None
@@ -3988,6 +3996,70 @@ def _brief_attach_section(base: dict, store, *, owner: str, query: str, res: dic
     for key in ("grounds", "cite_grounds"):
         if key in base and sec["node_id"] not in base[key]:
             base[key] = sorted(set(base[key]) | {sec["node_id"]})
+
+
+def _brief_quotes_on() -> bool:
+    """후보와 확정 노드에 `quotes`(글자 그대로의 인용 단위)를 실을 것인가(`VINC_BRIEF_QUOTES`).
+    기본은 켜짐이고 ``off``·``0``·``false``·``no`` 가 끈다(끄면 이 키가 없던 때와 같다).
+    근거: [[vinc.manual.rag]]"""
+    v = str(os.environ.get("VINC_BRIEF_QUOTES", "")).strip().lower()
+    return v not in ("off", "0", "false", "no")
+
+
+#: 노드마다 싣는 인용 단위 수와, 개념의 MENTIONS 청크에서 고를 후보 수.
+_BRIEF_QUOTES_N = 2
+_BRIEF_QUOTE_POOL = 6
+
+
+def _brief_node_quotes(store, *, owner: str, node_id: str, query: str,
+                       query_embedding) -> list[dict]:
+    """노드를 받치는 정본 문서에서 질문이 가리키는 인용 단위. 문서 미러는 그 문서의 청크에서,
+    개념은 MENTIONS 로 닿는 청크(링크 방법이 강한 순)에서 질문 벡터에 가장 가까운 청크 하나를
+    골라 그 안에서 단위를 낸다(`vinc_rag.excerpt.quote_units`).
+
+    단위마다 `doc_id`·`source`(문서 제목)·`section`(절 제목)을 함께 싣는다 — 인용문이 어느
+    문서의 어느 절에서 왔는지를 주장이 인용문 밖에서 끌어오지 않게 하려는 것이다. 다른 종류의
+    노드나 읽기 실패는 빈 목록이다. 이 키는 증강이라 답을 막지 않는다."""
+    try:
+        if node_id.startswith(_DOC_CONCEPT_PREFIX):
+            chunks = store.run(
+                "MATCH (c:Chunk) WHERE c.doc_id = $d AND (c.owner_id = $o OR c.owner_id = '') "
+                "RETURN c.chunk_id AS cid, c.doc_id AS doc_id, c.section_title AS sec, "
+                "c.text AS text ORDER BY c.chunk_index",
+                {"d": node_id[len(_DOC_CONCEPT_PREFIX):], "o": owner}) or []
+        elif node_id.startswith("concept:"):
+            label, pk = _seed_table(node_id)
+            if label != "Concept":
+                return []
+            chunks = store.run(
+                f"MATCH (ch:Chunk)-[m:MENTIONS]->(c:{label}) "
+                f"WHERE c.{pk} = $id AND c.owner_id = $o "
+                "AND (ch.owner_id = $o OR ch.owner_id = '') "
+                "RETURN ch.chunk_id AS cid, ch.doc_id AS doc_id, ch.section_title AS sec, "
+                "ch.text AS text "
+                "ORDER BY CASE m.method WHEN 'title' THEN 0 WHEN 'stem' THEN 1 ELSE 2 END, "
+                f"ch.doc_id, ch.chunk_index LIMIT {_BRIEF_QUOTE_POOL}",
+                {"id": pkns.key(owner, node_id), "o": owner}) or []
+        else:
+            return []
+        if not chunks:
+            return []
+        at, _ = _brief_pick_chunk(store, chunks, query=query, query_embedding=query_embedding)
+        pick = chunks[at]
+        units = _excerpt.quote_units(str(pick.get("text") or ""), query, n=_BRIEF_QUOTES_N)
+        if not units:
+            return []
+        doc_id = str(pick.get("doc_id") or "")
+        title = ""
+        for r in store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $d "
+                           "AND (d.owner_id = $o OR d.owner_id = '') RETURN d.title AS t",
+                           {"d": doc_id, "o": owner}) or []:
+            title = str(r.get("t") or "")
+            break
+        return [{"doc_id": doc_id, "source": title or doc_id,
+                 "section": str(pick.get("sec") or ""), **u} for u in units]
+    except Exception:
+        return []
 
 
 def _brief_choose_material_on() -> bool:
@@ -4525,6 +4597,12 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             # 미는데, 넓은 풀에 새로 들어오는 정답은 대부분 그런 후보다.
             picked = _brief_list_rank(pool)
             base["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
+            if not _reask and _brief_quotes_on():
+                for _c in base["candidates"]:
+                    _q = _brief_node_quotes(store, owner=owner, node_id=str(_c.get("id") or ""),
+                                            query=query, query_embedding=query_embedding)
+                    if _q:
+                        _c["quotes"] = _q
             if not _reask:
                 _brief_attach_section(base, store, owner=owner, query=query, res=res,
                                       query_embedding=query_embedding,
@@ -4573,6 +4651,11 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         if unread:
             base["fell_through"] = unread
         out = _brief_answer(base, hit, ctx, store, **rule)
+        if not _reask and _brief_quotes_on():
+            _q = _brief_node_quotes(store, owner=owner, node_id=str(hit.get("id") or ""),
+                                    query=query, query_embedding=query_embedding)
+            if _q:
+                out["quotes"] = _q
         if not _reask:
             _brief_attach_section(out, store, owner=owner, query=query, res=res,
                                   query_embedding=query_embedding,
