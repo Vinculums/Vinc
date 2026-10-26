@@ -96,6 +96,15 @@ def test_bad_input_is_refused_before_anything_is_built(patch, message):
         build_eval_card_fragment(ROLE, supersedes=["record:other"], **BASE)
 
 
+def test_counts_the_runner_could_not_grade_are_kept_and_checked():
+    cell = {**CELL, "ungraded": 2, "skipped": 5}
+    built = build_eval_card_fragment(ROLE, **{**BASE, "results": [cell]})["nodes"][0]["props"]["results"][0]
+    assert (built["ungraded"], built["skipped"]) == (2, 5)
+    assert "ungraded" not in build_eval_card_fragment(ROLE, **BASE)["nodes"][0]["props"]["results"][0]
+    with pytest.raises(ValueError, match="skipped"):
+        build_eval_card_fragment(ROLE, **{**BASE, "results": [{**CELL, "skipped": -1}]})
+
+
 def test_unmeasured_numbers_stay_unknown_instead_of_zero():
     cell = {**CELL, "violation": None, "fabrication": {"k": 0, "n": 0}, "cost_per_success_usd": None}
     built = build_eval_card_fragment(ROLE, **{**BASE, "results": [cell]})["nodes"][0]["props"]["results"][0]

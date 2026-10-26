@@ -128,6 +128,30 @@ tool policy, and `cost_usd` is not guarded because Vinc does not know your model
 and Agent Framework runs are recorded without a trace file or counts for now. `--no-record` writes
 nothing to Vinc.
 
+### Measure a role: `vinc eval run`
+
+`vinc eval run` runs a task suite as a role with your own model and key, grades every answer by
+machine, and writes the result as an evaluation card in your own graph. Nothing is sent to Vinc's model
+accounts, and the suite file is read where it is and never uploaded or copied into the graph.
+
+```sh
+vinc eval run dev-core --suite agent-tasks.json --model anthropic:claude-sonnet-5-5 \
+    --store-fingerprint m3-ort130-2026-09-28
+vinc eval cards concept:agent-dev-core
+```
+
+Each task runs three times (`--runs`), so the card holds pass^1 (successful runs out of graded runs)
+and pass^3 (tasks where all three runs succeeded), the decision-violation rate, the rate of made-up
+answers for questions the graph cannot answer, and how many runs were left ungraded or tasks
+skipped. A suite is billed to your model account, so more than 60 runs need `--yes`; `--limit N` runs
+only the first tasks. A newer card for the same suite supersedes the older one and keeps it.
+
+What it cannot do yet: tasks that need a grading model (`judge`) or several roles (`handoff`) are
+skipped and counted, and the cost per success is left empty because Vinc does not know your model's
+price. A run record is written for every run only with `--record-runs`. Compare two cards only when
+the suite hash and the `--store-fingerprint` match: the default `unpinned` is not comparable with
+anything.
+
 ## CrewAI
 
 `pip install "vincs[crewai]"` installs CrewAI 1.15.3 or later with the adapter, on
