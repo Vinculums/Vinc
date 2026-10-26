@@ -3787,7 +3787,7 @@ def _brief_xlang_lead(query: str, top: dict, mirror_text=None) -> bool:
     """`_SEM_PROMOTE_XLANG` 을 쓸 자리인가: 질문과 승격될 1위의 미러 텍스트가 한글 유무에서 갈린다
     (한글 없는 질문 + 한국어 노드, 또는 한글 있는 질문 + 한글 없는 노드).
 
-    `mirror_text(h)` 는 노드의 미러 텍스트(제목 + 부가 본문 앞 300자)를 주거나 None 이다. 없거나
+    `mirror_text(h)` 는 노드의 미러 텍스트(제목 + 부가 본문 앞 300자, 에피소드는 600자)를 주거나 None 이다. 없거나
     읽기가 실패하면 제목으로 갈음한다(미러 행이 없는 후보도 같은 길이다)."""
     asked_korean = bool(_HANGUL.search(query or ""))
     text = None

@@ -4,6 +4,9 @@ import json
 from store import pkns
 
 EXTRA_CHARS = 300
+#: 종류별 부가 길이. 에피소드 요약은 질문이 묻는 세부가 300자 뒤에 있는 일이 잦아 600자까지 싣는다.
+#: 근거: [[vinc.plan.episode-mirror-600-sealed11-2026-10-26]]
+EXTRA_CHARS_BY_KIND = {"episode": 600}
 #: (라벨, PK, 부가 텍스트 열). Record·Decision 은 본문 전용 열이 없어 `props` 에서 고른다
 #: (:func:`extra_text`). 근거: [[vinc.spec.retrieval-knobs]] §2
 SPEC = {
@@ -51,9 +54,9 @@ def extra_text(kind: str, raw) -> str:
     return str(raw or "")
 
 
-def mirror_text(title: str, extra: str) -> str:
+def mirror_text(title: str, extra: str, kind: str = "") -> str:
     title = " ".join(str(title or "").split())
-    extra = " ".join(str(extra or "").split())[:EXTRA_CHARS]
+    extra = " ".join(str(extra or "").split())[:EXTRA_CHARS_BY_KIND.get(kind, EXTRA_CHARS)]
     return f"{title}. {extra}".strip(". ") if extra else title
 
 
@@ -79,7 +82,8 @@ def validate(run, hits: list[dict], *, owner: str | None) -> tuple[list[dict], d
         if source is None:
             state["missing_candidates"] += 1
         elif hit.get("text") != mirror_text(source.get("title"),
-                                                extra_text(hit.get("kind"), source.get("extra"))):
+                                                extra_text(hit.get("kind"), source.get("extra")),
+                                                hit.get("kind") or ""):
             state["stale_candidates"] += 1
         else:
             kept.append({**hit, "title": source.get("title") or ""})

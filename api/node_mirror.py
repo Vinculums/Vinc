@@ -54,9 +54,9 @@ def vec_id(owner: str, node_id: str) -> str:
     return f"{owner}#{node_id}"
 
 
-def mirror_text(title: str, extra: str) -> str:
+def mirror_text(title: str, extra: str, kind: str = "") -> str:
     """미러 한 행의 텍스트. 제목이 먼저다 — 그것이 이 노드의 이름이다."""
-    return _mirror_text(title, extra)
+    return _mirror_text(title, extra, kind)
 
 
 def collect(store, owner: str | None = None) -> tuple[list[dict], list[dict]]:
@@ -90,7 +90,7 @@ def collect(store, owner: str | None = None) -> tuple[list[dict], list[dict]]:
             {"o": owner} if owner else None) or []
         for r in rows:
             title = " ".join(str(r.get("title") or "").split())
-            text = mirror_text(title, extra_text(kind, r.get("extra")))
+            text = mirror_text(title, extra_text(kind, r.get("extra")), kind)
             if not text:
                 continue
             key = (r.get("owner") or "", r["id"])
