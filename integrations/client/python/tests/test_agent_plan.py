@@ -130,3 +130,20 @@ def test_finish_run_writes_the_record_and_keeps_a_failure_instead_of_raising(env
             return third
 
     assert asyncio.run(go()).record == WRITTEN
+
+
+def test_finish_run_adds_what_the_caller_knows_without_overriding_the_fixed_fields(env_clean):
+    plan_rec = Recorder({("GET", f"/v1/roles/{ROLE}"): ok(contract())})
+    plan = plan_agent(client(plan_rec), "dev-core")
+    result = run_result(plan, "run-50", "Fine.\nSources: decision:x", GateResult("pass"))
+    rec = Recorder({("GET", f"/v1/nodes/{ROLE}"): ok(RESOLVED),
+                    ("GET", "/v1/nodes/decision:x"): ok(RESOLVED),
+                    ("POST", "/v1/fragments"): ok(WRITTEN)})
+    finish_run(client(rec), result, host="test", extra={
+        "model_family": "anthropic", "steps": 3, "tool_calls": 1, "host": "other",
+        "cited_ids": ["record:other"],
+        "trace": {"sha256": "a" * 64, "bytes": 10, "name": "a.jsonl"}})
+    props = rec.body()["nodes"][0]["props"]
+    assert props["host"] == "test" and props["cited_ids"] == ["decision:x"]
+    assert (props["model_family"], props["steps"], props["tool_calls"]) == ("anthropic", 3, 1)
+    assert props["trace_ref"] == {"sha256": "a" * 64, "bytes": 10, "name": "a.jsonl"}
