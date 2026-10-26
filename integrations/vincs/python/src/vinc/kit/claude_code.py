@@ -123,6 +123,7 @@ class ClaudeCodeChat(BaseChatModel):
 
     def _generate(self, messages: list[BaseMessage], stop: list[str] | None = None,
                   run_manager: Any = None, **kwargs: Any) -> ChatResult:
+        del run_manager  # LangChain 이 넘기는 인자다. 헤드리스 호출에는 쓸 곳이 없다.
         reason = self._pause_reason()
         if reason:
             raise SubscriptionPaused(f"paused to keep the subscription from running out: {reason}")
