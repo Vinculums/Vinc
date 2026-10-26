@@ -11,10 +11,10 @@ Looking for the `vinc` command? See [the terminal CLI installation guide](https:
 ## Install
 
 ```bash
-pip install "vinc-client>=0.1.18"
+pip install "vinc-client>=0.1.19"
 ```
 
-This README describes vinc-client 0.1.18. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
+This README describes vinc-client 0.1.19. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
 
 For a new install, prefer `pip install vincs`: it has the same client as `vinc.sdk`, the framework adapters as extras and the `vinc` command. `vinc-client` keeps publishing under this name for existing installs.
 
@@ -637,6 +637,7 @@ The read tools in both framework adapters expose these optional parameters too.
 
 | Version | Change |
 |---|---|
+| 0.1.19 | `build_eval_card_fragment` keeps `ungraded` (runs the runner could not grade) and `skipped` (tasks it left out) on a result cell, and rejects a negative count. |
 | 0.1.18 | Evaluation cards: `build_eval_card_fragment` and `record_eval_card` write a role's measured result as a Record that supersedes the older card for the same suite, `current_cards` keeps the live ones, and `eval_cards` reads `GET /v1/roles/{id}/eval-cards`. `finish_run` and `afinish_run` take `extra` (model family, step counts, `trace`) for the run record. |
 | 0.1.17 | `plan_agent`, `aplan_agent`, `AgentPlan`, `AgentRun` and `finish_run`: one role read into the policy, gate, person-only actions, next roles and budget a framework agent needs. The adapters' `build_agent` (vinc-langgraph 0.1.13, vinc-agent-framework 0.1.12) require it. |
 | 0.1.16 | Shims as Records: `build_shim_fragment`, `current_shims` and `shim_lines` for a host, and `read_runs` with `retirement_drafts` for a watcher that drafts the retirement of shims that stopped firing (see [Shims](#shims)). |
