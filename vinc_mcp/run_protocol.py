@@ -308,6 +308,9 @@ def _answer(args, bridge, owner, eid, props, policy) -> dict:
         return _failure("invalid_answer", "Invalid: answer is approve or decline.")
     pending = props.pop("pending", {}) or {}
     props["answered_at"] = _stamp(_now())
+    #: `run.answered` 이벤트(api/events.py)가 읽는다. 다음 답이 오면 덮여 새 이벤트가 된다.
+    props["answer"] = answer
+    props["answered_actions"] = list(pending.get("actions") or [])
     if answer == "decline":
         _end(props, "blocked", "declined by a person")
         return _finish(bridge, owner, eid, props)

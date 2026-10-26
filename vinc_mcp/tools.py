@@ -2251,7 +2251,8 @@ TOOLS.append({"name": "vinc_events", "reference":
     "Read events computed from this space's change log, after a cursor: role.reading_changed (a "
     "document in a role's reads was edited, retired or deleted), run.citation_superseded (a claim "
     "a run record cited got valid_until or a successor) and role.lesson_added (a Record or "
-    "Decision was attached to or about a role). Returns {events:[{eventId, name, timestamp, "
+    "Decision was attached to or about a role) and run.answered (a person answered a waiting "
+    "run). Returns {events:[{eventId, name, timestamp, "
     "data}], cursor, has_more, truncated, head}. Omit since to get the current cursor and no "
     "events; pass since:'0' to read from the beginning. Pass the returned cursor as the next "
     "since and call again while has_more is true. eventId is stable: the same change gives the "
@@ -2266,7 +2267,7 @@ TOOLS.append({"name": "vinc_events", "reference":
         "role": {"type": "string",
                  "description": "Only events for this role (agent slug or concept:agent- id)."},
         "kinds": {"type": "array", "items": {"type": "string", "enum": list(events.KINDS)},
-                  "description": "Only these event names; omit for all three."},
+                  "description": "Only these event names; omit for all four."},
         "limit": {"type": "integer", "default": 100, "minimum": 1, "maximum": 500,
                   "description": "Changed rows read per source in this page."},
         "owner": {"type": "string"}}, "required": []},

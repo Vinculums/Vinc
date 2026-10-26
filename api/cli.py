@@ -441,7 +441,8 @@ def _main(argv: list[str] | None = None) -> int:
                      help="cursor to resume from, or 0 for the beginning (default: from now)")
     evt.add_argument("--role", default=None, help="only events for this role (slug or concept:agent- id)")
     evt.add_argument("--kind", action="append", default=None, dest="kind",
-                     choices=("role.reading_changed", "run.citation_superseded", "role.lesson_added"),
+                     choices=("role.reading_changed", "run.citation_superseded", "role.lesson_added",
+                              "run.answered"),
                      help="only this event name; repeat for more")
     evt.add_argument("--limit", type=int, default=None, help="changed rows read per page (1..500)")
     evt.add_argument("--interval", type=float, default=30.0,

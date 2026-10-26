@@ -20,9 +20,10 @@ from store import pkns
 from . import query as q, role_contract
 
 #: 내는 이벤트. 순서가 `events/list` 의 순서다.
-KINDS = ("role.reading_changed", "run.citation_superseded", "role.lesson_added")
-#: 이름만 잡아 둔 이벤트. 실행 프로토콜의 대기 상태가 생기면 낸다.
-RESERVED = ("run.answered",)
+KINDS = ("role.reading_changed", "run.citation_superseded", "role.lesson_added",
+         "run.answered")
+#: 이름만 잡아 둔 이벤트. 지금은 없다(`run.answered` 는 실행 프로토콜이 생기며 KINDS 로 올랐다).
+RESERVED: tuple[str, ...] = ()
 #: 구독 기록은 역할에 붙지만 교훈이 아니다. 세면 구독이 제 구독자를 깨운다.
 SUBSCRIPTION_PREFIX = "record:event-subscription-"
 #: 실행 기록 Episode 의 id 접두(GRAPH.md "Agent runs").
@@ -33,7 +34,7 @@ TITLE_CAP = 200
 
 _CURSOR = re.compile(r"(\d{1,18})\.(\d{1,18})")
 _NEEDS = {"role.reading_changed": {"docs"}, "run.citation_superseded": {"nodes", "docs"},
-          "role.lesson_added": {"nodes"}}
+          "role.lesson_added": {"nodes"}, "run.answered": {"nodes"}}
 #: Decision 에서 Concept 로 가는 관계 중 역할에 "붙었다"고 읽는 것. 스키마에서 파생한다.
 _DECISION_TO_ROLE = tuple(sorted(
     rel for rel, pairs in q.SYNC_EDGE_RELS.items()
@@ -142,13 +143,14 @@ def head(store, owner: str) -> tuple[int, int]:
     return pos[0], pos[1]
 
 
-def _changed(store, label: str, columns: str, owner: str, since: int, limit: int) -> list[dict]:
+def _changed(store, label: str, columns: str, owner: str, since: int, limit: int,
+             where: str = "", params: dict | None = None) -> list[dict]:
     var = "x"
     return _run(q.QueryPlan(
         f"events_{label}",
-        f"MATCH ({var}:{label}) WHERE {var}.owner_id = $owner AND {var}.sync_seq > $since "
+        f"MATCH ({var}:{label}) WHERE {var}.owner_id = $owner AND {var}.sync_seq > $since{where} "
         f"RETURN {columns}, {var}.sync_seq AS seq ORDER BY {var}.sync_seq LIMIT $n",
-        {"owner": owner, "since": since, "n": limit + 1}), store)
+        {"owner": owner, "since": since, "n": limit + 1, **(params or {})}), store)
 
 
 def _page_end(sources: list[list[dict]], top: int, limit: int) -> tuple[int, bool]:
@@ -239,8 +241,14 @@ def _scan(store, *, owner, since, limit, role, kinds) -> dict:
         # 스토어가 되감겼거나 다른 스페이스의 커서다. 지금으로 다시 맞추고 그 사실을 말한다.
         return {**out, "cursor": format_cursor(top), "truncated": True}
     need = set().union(*(_NEEDS[k] for k in kinds))
-    recs = decs = docs = tombs = []
-    if "nodes" in need:
+    recs = decs = docs = tombs = runs = []
+    if "run.answered" in kinds:
+        # 실행 기록 Episode 만 본다: 다른 Episode 가 페이지를 먹지 않게 접두를 질의에 건다.
+        runs = _changed(store, "Episode", "x.episode_id AS id, x.props AS props, "
+                        "x.updated_at AS ts", owner, since[0], limit,
+                        " AND starts_with(x.episode_id, $run_prefix)",
+                        {"run_prefix": pkns.key(owner, RUN_PREFIX)})
+    if {"role.lesson_added", "run.citation_superseded"} & set(kinds):
         recs = _changed(store, "Record", "x.record_id AS id, x.title AS title, x.props AS props, "
                         "x.valid_until AS valid_until, x.updated_at AS ts", owner, since[0], limit)
         decs = _changed(store, "Decision", "x.decision_id AS id, x.title AS title, "
@@ -252,10 +260,12 @@ def _scan(store, *, owner, since, limit, role, kinds) -> dict:
                         owner, since[1], limit)
         tombs = _changed(store, "_DocTombstone", "x.doc_id AS id, x.deleted_at AS ts",
                          owner, since[1], limit)
-    n_end, n_more = _page_end([recs, decs], top[0], limit) if "nodes" in need else (top[0], False)
+    n_end, n_more = _page_end([recs, decs, runs], top[0], limit) if "nodes" in need else (
+        top[0], False)
     d_end, d_more = _page_end([docs, tombs], top[1], limit) if "docs" in need else (top[1], False)
     recs = [r for r in recs if int(r["seq"]) <= n_end]
     decs = [r for r in decs if int(r["seq"]) <= n_end]
+    runs = [r for r in runs if int(r["seq"]) <= n_end]
     docs = [r for r in docs if int(r["seq"]) <= d_end]
     tombs = [r for r in tombs if int(r["seq"]) <= d_end]
     for rows in (recs, decs):
@@ -307,6 +317,8 @@ def _scan(store, *, owner, since, limit, role, kinds) -> dict:
                   "title": _title(by_id[lid].get("title"))}, by_id[lid], "n")
     if "run.citation_superseded" in kinds:
         _citations(store, owner, recs, decs, docs, emit)
+    if "run.answered" in kinds:
+        _answered(runs, emit)
     events = sorted(found.values(), key=lambda e: (e["timestamp"], e["_pos"][0], e["_pos"][1],
                                                    e["eventId"]))
     return {**out, "events": events, "cursor": format_cursor((n_end, d_end)),
@@ -350,6 +362,22 @@ def _citations(store, owner, recs, decs, docs, emit) -> None:
             emit("run.citation_superseded", (run_id, claim, vu, sb),
                  {"run": run_id, "role": run_role, "claim": claim,
                   "valid_until": vu, "superseded_by": sb}, row, counter)
+
+
+def _answered(runs: list[dict], emit) -> None:
+    """사람이 대기 중인 실행에 답한 순간. 답은 실행 기록 props 의 `answer`·`answered_at` 에 남는다.
+    같은 실행의 이후 단계가 기록을 고쳐도 id 는 (실행, 답한 때, 답)에 묶여 그대로다."""
+    for row in runs:
+        props = _props(row.get("props"))
+        answer, at = props.get("answer"), str(props.get("answered_at") or "")
+        role = role_id(props.get("role"))
+        if answer not in ("approve", "decline") or not at or not role:
+            continue
+        run_id = pkns.strip(row["id"])
+        actions = [a for a in props.get("answered_actions") or [] if isinstance(a, str)]
+        emit("run.answered", (run_id, at, answer),
+             {"run": run_id, "role": role, "answer": answer, "answered_at": at,
+              "actions": actions}, {**row, "ts": at}, "n")
 
 
 def public(result: dict) -> dict:

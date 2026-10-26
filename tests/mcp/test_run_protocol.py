@@ -130,6 +130,9 @@ def test_a_person_only_action_waits_for_an_answer_and_approval_resumes_the_run()
     resumed = call(bridge, "vinc_run_submit", run=run, answer="approve")
     assert resumed["state"] == "working" and resumed["approved"] == ["merge"]
     assert "pending" not in bridge.runs[run]
+    # run.answered 이벤트(api/events.py)가 읽는 자리.
+    assert bridge.runs[run]["answer"] == "approve" and bridge.runs[run]["answered_actions"] == ["merge"]
+    assert bridge.runs[run]["answered_at"]
     # 승인된 행동을 다시 요청해도 되묻지 않는다.
     final = call(bridge, "vinc_run_submit", run=run, output=PLAIN,
                  person_only_requests=[{"action": "merge", "reason": "approved above"}])
@@ -144,6 +147,7 @@ def test_declining_ends_the_run_blocked_and_abandon_ends_it_abandoned():
     declined = call(bridge, "vinc_run_submit", run=run, answer="decline")
     assert declined["state"] == "done" and declined["outcome"] == "blocked"
     assert declined["end_reason"] == "declined by a person"
+    assert bridge.runs[run]["answer"] == "decline" and bridge.runs[run]["answered_actions"] == ["migration"]
     second = start(bridge, run_id="r-7")["run"]
     assert call(bridge, "vinc_run_submit", run=second, abandon=True)["outcome"] == "abandoned"
 

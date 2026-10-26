@@ -198,6 +198,38 @@ def test_owner_isolation_and_cursor_ahead_of_head(store):
     assert ahead["truncated"] is True and ahead["cursor"] == ahead["head"]
 
 
+def test_run_answered_follows_the_answer_and_ignores_other_episodes(store):
+    with_role(store)
+    start = events.parse_cursor(scan(store, None)["cursor"])
+    run = {"id": "episode:run-ask-1", "type": "episode", "title": "Run ask-1", "date": "2026-10-26",
+           "domain": "vinc/agent/harness",
+           "props": {"run_id": "ask-1", "role": ROLE, "state": "waiting", "outcome": "waiting",
+                     "pending": {"actions": ["merge"], "question": "Merge?"}}}
+    other = {"id": "episode:2026-10-26-unrelated", "type": "episode", "title": "Unrelated",
+             "date": "2026-10-26", "domain": "vinc/agent/harness",
+             "props": {"role": ROLE, "answer": "approve", "answered_at": "2026-10-26T01:00:00Z"}}
+    ingest(store, [run, other])
+    assert scan(store, start, kinds=("run.answered",))["events"] == []
+    after = events.parse_cursor(scan(store, start, kinds=("run.answered",))["cursor"])
+    run["props"] = {"run_id": "ask-1", "role": ROLE, "state": "working", "outcome": "waiting",
+                    "answer": "approve", "answered_actions": ["merge"],
+                    "answered_at": "2026-10-26T02:00:00Z"}
+    ingest(store, [run])
+    got = scan(store, after, kinds=("run.answered",))
+    assert [e["name"] for e in got["events"]] == ["run.answered"]
+    ev = got["events"][0]
+    assert ev["data"] == {"run": "episode:run-ask-1", "role": ROLE, "answer": "approve",
+                          "answered_at": "2026-10-26T02:00:00Z", "actions": ["merge"]}
+    assert ev["timestamp"] == "2026-10-26T02:00:00Z"
+    after = events.parse_cursor(got["cursor"])
+    # 이후 단계가 같은 기록을 고쳐도 같은 id 가 다시 나온다(받는 쪽이 id 로 거른다).
+    run["props"] = {**run["props"], "state": "done", "outcome": "success"}
+    ingest(store, [run])
+    again = scan(store, after, kinds=("run.answered",))
+    assert [e["eventId"] for e in again["events"]] == [ev["eventId"]]
+    assert scan(store, after, kinds=("run.answered",), role="agent-someone-else")["events"] == []
+
+
 def test_public_shape_drops_positions_and_bad_input_is_refused(store):
     with_role(store)
     start = events.parse_cursor(scan(store, None)["cursor"])
@@ -206,7 +238,7 @@ def test_public_shape_drops_positions_and_bad_input_is_refused(store):
     assert out["events"][0]["_pos"][0] == "d"
     assert "_pos" not in events.public(out)["events"][0]
     with pytest.raises(ValueError):
-        events.parse_kinds("run.answered")
+        events.parse_kinds("run.nope")
     with pytest.raises(ValueError):
         events.clamp_limit(501)
     assert events.scan(store, owner="", since=None)["executed"] is False
