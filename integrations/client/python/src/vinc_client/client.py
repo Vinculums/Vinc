@@ -294,6 +294,11 @@ class _Base:
                      space=space)
 
     @staticmethod
+    def _eval_cards(role_id, limit, space) -> _Call:
+        return _Call("GET", f"/v1/roles/{_segment(role_id)}/eval-cards",
+                     params={"limit": limit}, space=space)
+
+    @staticmethod
     def _search(query, limit, cursor, detail, historical, space, mode=None, as_of=None, known_at=None) -> _Call:
         return _Call("POST", "/v1/search", body=_drop_none(
             {"query": query, "limit": limit, "cursor": cursor, "detail": detail,
@@ -445,6 +450,16 @@ class VincClient(_Base):
             if not _read_compact_after(exc, compact):
                 raise
         return _pinned(self._send(self._role(role_id, space, pin, True)), pin)
+
+    def eval_cards(self, role_id: str, *, limit: int | None = None,
+                   space: str | None = None) -> dict[str, Any]:
+        """``GET /v1/roles/{id}/eval-cards``: the role's evaluation cards, newest first.
+
+        Each card says what suite and store it was measured on, per adapter and model family;
+        ``current`` is false for a card a newer one superseded. Compare cards only when their
+        suite hash, store fingerprint and harness version match.
+        """
+        return self._send(self._eval_cards(role_id, limit, space))
 
     def document(self, doc_id: str, *, space: str | None = None) -> dict[str, Any]:
         """Read exact canonical text and its integrity metadata via GET /v1/documents/{id}."""
@@ -820,6 +835,11 @@ class AsyncVincClient(_Base):
             if not _read_compact_after(exc, compact):
                 raise
         return _pinned(await self._send(self._role(role_id, space, pin, True)), pin)
+
+    async def eval_cards(self, role_id: str, *, limit: int | None = None,
+                         space: str | None = None) -> dict[str, Any]:
+        """Async :meth:`VincClient.eval_cards`."""
+        return await self._send(self._eval_cards(role_id, limit, space))
 
     async def document(self, doc_id: str, *, space: str | None = None) -> dict[str, Any]:
         """Async exact canonical document read; does not replace integrity validation."""

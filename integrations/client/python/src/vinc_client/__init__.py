@@ -12,6 +12,8 @@ from .agent_plan import (AgentPlan, AgentRun, afinish_run, aplan_agent, finish_r
 from .context import (BOUNDARY, SOURCES_LINE, fence, format_answer, format_brief,  # noqa: E402
                       format_context, format_search)
 from .episode import build_episode_fragment  # noqa: E402
+from .eval_card import (CARD_TAG, build_eval_card_fragment, current_cards,  # noqa: E402
+                        record_eval_card)
 from .run import OUTCOMES, build_run_fragment, run_episode_id, trace_ref  # noqa: E402
 from .shims import (HARNESS_CONCEPT, MECHANISMS, Shim, attached_shims,  # noqa: E402
                     build_shim_fragment, current_shims, read_runs, retirement_drafts,
@@ -33,6 +35,7 @@ __all__ = [
     "__version__", "VincClient", "AsyncVincClient",
     "BOUNDARY", "SOURCES_LINE", "fence", "format_answer", "format_brief", "format_context", "format_search", "build_episode_fragment",
     "OUTCOMES", "build_run_fragment", "run_episode_id", "trace_ref",
+    "CARD_TAG", "build_eval_card_fragment", "current_cards", "record_eval_card",
     "HARNESS_CONCEPT", "MECHANISMS", "Shim", "attached_shims", "build_shim_fragment",
     "current_shims", "read_runs", "retirement_drafts", "shim_lines",
     "VincError", "VincAuthError", "VincNotFound", "VincInvalidArgument",

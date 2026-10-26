@@ -66,7 +66,9 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              # 실행 기록 목록(조회 전용), 인용한 주장으로 거른다. 근거: [[vinc.plan.mcp-events-and-webhooks]]
              "vinc_runs",
              # 실행 프로토콜: 역할 하나를 단계마다 붙잡고 돌린다. 근거: [[vinc.research.agent-harness-and-eval-without-a-model-api-2026-10-25]]
-             "vinc_run_start", "vinc_run_submit"}
+             "vinc_run_start", "vinc_run_submit",
+             # 역할에 붙은 평가 카드(조회 전용). 근거: [[vinc.research.agent-harness-and-eval-without-a-model-api-2026-10-25]]
+             "vinc_eval_cards"}
 
 
 class _StubBridge(Bridge):

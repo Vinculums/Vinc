@@ -252,6 +252,10 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
         data = {"cited": args.cited, "role": args.role, "limit": args.limit}
         return "vinc_runs", {**common, **{k: v for k, v in data.items()
                                            if v not in (None, "")}}, None
+    if cmd == "eval":
+        data = {"role": args.role, "limit": args.limit}
+        return "vinc_eval_cards", {**common, **{k: v for k, v in data.items()
+                                                 if v not in (None, "")}}, None
     if cmd == "path":
         return "vinc_path", {**common, "a": args.a, "b": args.b,
                              "max_depth": args.max_depth}, None

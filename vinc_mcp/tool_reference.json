@@ -1867,6 +1867,39 @@
    ]
   },
   {
+   "name": "vinc_eval_cards",
+   "summary": "Read the evaluation cards of one Agent role: what suite it was measured on, with which model families and adapters, and the pass rates, cost per success and violation rates.",
+   "docs_url": "https://vincs.io/docs/mcp/tools/#vinc_eval_cards",
+   "reference": "Read the evaluation cards of one Agent role, newest first: {cards:[{id, date, current, valid_until, suite:{id, hash, tasks}, harness_version, store_fingerprint, results:[{adapter, model_family, tasks, runs_per_task, pass_1, pass_k, violation, fabrication, cost_per_success_usd}], frontier}], total, truncated}. A card is a measured result of the role on one task suite; pass_1 is the success rate over all runs, pass_k the share of tasks where every one of the runs_per_task runs succeeded, and each rate is {k, n, rate} with rate null when n is 0. current is false for a card a newer one superseded; it stays listed. The task files are never in the graph: a card names its suite by id and sha256. Compare two cards only when suite.hash, store_fingerprint and harness_version match. A card is written by whoever ran the suite, with their own model and key, into their own graph. Read-only.",
+   "annotations": {
+    "title": "Read the evaluation cards of a role",
+    "readOnlyHint": true,
+    "openWorldHint": false,
+    "destructiveHint": false
+   },
+   "params": [
+    {
+     "name": "role",
+     "type": "string",
+     "required": true,
+     "description": "Agent slug or concept:agent- id."
+    },
+    {
+     "name": "limit",
+     "type": "integer",
+     "required": false,
+     "description": "Most cards to return."
+    },
+    {
+     "name": "space",
+     "type": "string",
+     "required": false,
+     "description": "Omit for your personal graph; pass a team id or 'community:<uuid>' to act there (vinc_whoami lists them).",
+     "reference": "Space to act in: omit (or 'personal') for your personal graph, a team id for that team's graph, or 'community:<uuid>' for a public community (readable without joining; edit it with vinc_community_write). vinc_whoami lists your ids and roles; a team you are not an active member of answers as if it did not exist. Ignored at a team address (/t/<team-uuid>/mcp)."
+    }
+   ]
+  },
+  {
    "name": "search",
    "summary": "Search the signed-in Vinc graph for documents and nodes. Read a result's full text with fetch.",
    "docs_url": "https://vincs.io/docs/mcp/tools/#search",

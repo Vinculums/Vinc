@@ -26,6 +26,8 @@ KINDS = ("role.reading_changed", "run.citation_superseded", "role.lesson_added",
 RESERVED: tuple[str, ...] = ()
 #: 구독 기록은 역할에 붙지만 교훈이 아니다. 세면 구독이 제 구독자를 깨운다.
 SUBSCRIPTION_PREFIX = "record:event-subscription-"
+#: 평가 카드도 역할에 붙는 Record 지만 교훈이 아니라 측정 결과다(`api/eval_cards.py`).
+EVAL_CARD_PREFIX = "record:eval-card-"
 #: 실행 기록 Episode 의 id 접두(GRAPH.md "Agent runs").
 RUN_PREFIX = "episode:run-"
 DEFAULT_LIMIT = 100
@@ -302,7 +304,8 @@ def _scan(store, *, owner, since, limit, role, kinds) -> dict:
                      {"role": rid, "doc_id": r["id"], "title": "", "change": "deleted",
                       "content_hash": "", "valid_until": "", "superseded_by": ""}, r, "d")
     if "role.lesson_added" in kinds and roles:
-        lessons = [r for r in recs if not r["id"].startswith(SUBSCRIPTION_PREFIX)]
+        lessons = [r for r in recs
+                   if not r["id"].startswith((SUBSCRIPTION_PREFIX, EVAL_CARD_PREFIX))]
         by_id = {r["id"]: r for r in lessons} | {r["id"]: r for r in decs}
         pairs = (_attached(store, owner, "Record", "record_id", "ATTACHES_TO",
                            [r["id"] for r in lessons])

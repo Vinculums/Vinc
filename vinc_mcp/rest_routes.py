@@ -44,6 +44,8 @@ READ_ROUTES = (
           path_args=(("id", "role"),)),
     Route("GET", "/v1/roles/{id}/export", "vinc_role_export", query=("format",),
           path_args=(("id", "role"),)),
+    Route("GET", "/v1/roles/{id}/eval-cards", "vinc_eval_cards", query=("limit",),
+          path_args=(("id", "role"),)),
     Route("POST", "/v1/roles/{id}/check", "vinc_role_check",
           body=("output", "person_only_requests", "self_authored"), path_args=(("id", "role"),)),
     Route("GET", "/v1/me", "vinc_whoami"),

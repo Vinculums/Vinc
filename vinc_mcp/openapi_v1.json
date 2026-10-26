@@ -333,6 +333,66 @@
         }
       }
     },
+    "/v1/roles/{id}/eval-cards": {
+      "get": {
+        "operationId": "vinc_eval_cards_get__v1_roles_id_eval-cards",
+        "summary": "Read the evaluation cards of one Agent role: what suite it was measured on, with which model families and adapters, and the pass rates, cost per success and violation rates.",
+        "description": "Read the evaluation cards of one Agent role, newest first: {cards:[{id, date, current, valid_until, suite:{id, hash, tasks}, harness_version, store_fingerprint, results:[{adapter, model_family, tasks, runs_per_task, pass_1, pass_k, violation, fabrication, cost_per_success_usd}], frontier}], total, truncated}. A card is a measured result of the role on one task suite; pass_1 is the success rate over all runs, pass_k the share of tasks where every one of the runs_per_task runs succeeded, and each rate is {k, n, rate} with rate null when n is 0. current is false for a card a newer one superseded; it stays listed. The task files are never in the graph: a card names its suite by id and sha256. Compare two cards only when suite.hash, store_fingerprint and harness_version match. A card is written by whoever ran the suite, with their own model and key, into their own graph. Read-only.",
+        "security": [
+          {
+            "MemberKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Agent slug or concept:agent- id."
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Most cards to return."
+            }
+          },
+          {
+            "name": "space",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "personal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/roles/{id}/check": {
       "post": {
         "operationId": "vinc_role_check_post__v1_roles_id_check",
