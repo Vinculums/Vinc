@@ -26,7 +26,7 @@ from __future__ import annotations
 import json
 
 from . import __version__
-from . import builtin_prompts, community, events, modern, roles
+from . import builtin_prompts, community, events, modern, roles, run_tasks
 from . import tools
 from . import toolcall
 from .bridge import Bridge
@@ -59,7 +59,8 @@ def _capabilities(modern_era: bool = False) -> dict:
         caps["resources"] = {}
         # Events 확장(`events.py`)도 모던 세대에서만 광고한다.
         caps["events"] = {}
-        caps["extensions"] = {roles.SKILLS_EXTENSION: {}, events.EXTENSION: {}}
+        caps["extensions"] = {roles.SKILLS_EXTENSION: {}, events.EXTENSION: {},
+                              run_tasks.EXTENSION: {}}
     return caps
 
 
@@ -140,6 +141,8 @@ class Dispatcher:
                                     modern_version=version, events_auth=events_auth)
         except events.EventsError as e:
             return None if msg_id is None else e.reply(msg_id)
+        except modern.MissingClientCapability as e:
+            return None if msg_id is None else e.rejection().reply(msg_id)
         except _MethodNotFound:
             return error_reply(msg_id, -32601, f"method not found: {method}")
         except _QuotaDenied as e:
@@ -161,6 +164,9 @@ class Dispatcher:
                   plan: str | None = None, quota=None, quota_view=None,
                   entitlements: dict | None = None, community_write=None, community_read=None,
                   modern_version: str | None = None, events_auth: dict | None = None) -> dict:
+        if method in run_tasks.METHODS and modern_version is not None:
+            return self._tasks(method, params, forced_owner=forced_owner, plan=plan, quota=quota,
+                               events_auth=events_auth)
         if method.startswith("events/") and modern_version is not None:
             # Events 확장은 모던 세대에서만 연다. 핸드셰이크 세대에는 -32601 그대로다.
             return self._events(method, params, forced_owner=forced_owner, plan=plan,
@@ -231,6 +237,14 @@ class Dispatcher:
         if method == "tools/call":
             name = params.get("name") or ""
             args = params.get("arguments") or {}
+            if (modern_version is not None and name == run_tasks.SUBMIT_TOOL
+                    and isinstance(args, dict) and "inputResponses" in params):
+                # MRTR 재시도: 같은 호출에 사람의 답이 실려 왔다. 답이면 이어 가고, 입력창을
+                # 거절하거나 닫았으면 실행은 대기 그대로이므로 실행 보기만 돌려준다.
+                answer = run_tasks.answer_of(params.get("inputResponses"))
+                keep = {k: args[k] for k in ("space", "owner") if k in args}
+                args = {**keep, "run": args.get("run"), **({"answer": answer} if answer else {})}
+                name = run_tasks.SUBMIT_TOOL if answer else "vinc_runs"
             # REST도 같은 검증→한도→도구 호출을 탄다. MCP 봉투만 여기서 만든다.
             # 근거: [[decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24]]
             outcome = toolcall.execute(name, args, self.bridge,
@@ -243,6 +257,10 @@ class Dispatcher:
                 return outcome.result
             if name == community.WRITE_TOOL and outcome.result.get("isError"):
                 return _tool_result(roles.serialize_result(outcome.result), name, is_error=True)
+            if modern_version is not None and name == run_tasks.SUBMIT_TOOL:
+                carried = run_tasks.carry(outcome.result, params, args)
+                if carried is not None:
+                    return carried
             return _result_text(roles.serialize_result(outcome.result), name, args)
         if method in _SKILL_METHODS and modern_version is not None:
             # 스킬은 역할 계약을 읽는다. 프롬프트와 같은 규칙(커뮤니티 거절·쿼터)을 탄다.
@@ -318,6 +336,25 @@ class Dispatcher:
         self._spend(quota, forced_owner, plan)
         return self.events.subscribe(params, principal=principal, owner=forced_owner,
                                      can_write=bool((events_auth or {}).get("can_write")))
+
+    def _tasks(self, method: str, params: dict, *, forced_owner: str | None, plan, quota,
+               events_auth: dict | None) -> dict:
+        """Tasks 확장. 작업은 실행 기록에서 매번 계산하므로 이 프로세스는 상태를 들지 않는다."""
+        if not run_tasks.tasks_declared(run_tasks.client_capabilities(params)):
+            raise modern.MissingClientCapability({"extensions": {run_tasks.EXTENSION: {}}})
+        owner = forced_owner or self.bridge.owner
+        if community.is_space(owner):
+            raise ValueError("tasks are not served in community spaces")
+        if method != "tasks/get" and forced_owner and not (events_auth or {}).get("can_write"):
+            raise ValueError("this key is read-only: answering or closing a task writes to the run")
+        self._spend(quota, forced_owner, plan)
+        if method == "tasks/get":
+            return run_tasks.get(self.bridge, owner, params,
+                                 lambda view: _tool_result(roles.serialize_result(view),
+                                                           run_tasks.SUBMIT_TOOL, is_error=False))
+        if method == "tasks/update":
+            return run_tasks.update(self.bridge, owner, params)
+        return run_tasks.cancel(self.bridge, owner, params)
 
     @staticmethod
     def _spend(quota, owner: str | None, plan) -> None:

@@ -2326,7 +2326,13 @@ TOOLS.append({"name": "vinc_run_submit", "reference":
     "graph ids the output rests on (type-prefixed) to the run record; usage adds your "
     "tool_calls, tokens_in, tokens_out and cost_usd against the role's budget. The output text "
     "itself is not stored, only its sha256 and length. A finished run returns its record state "
-    "again if submitted twice.",
+    "again if submitted twice. A host on protocol 2026-07-28 that declares the Tasks extension "
+    "gets a task handle instead of the waiting view (taskId is the run id plus .q and the "
+    "question number): tasks/get returns the question as an elicitation in inputRequests, "
+    "tasks/update with accept and answer approve or decline answers it, tasks/cancel closes only "
+    "the task. A host that declares elicitation gets an input_required result instead and "
+    "retries this call with inputResponses. A refused or closed form is not an answer and the "
+    "run keeps waiting.",
     "inputSchema": {"type": "object", "properties": {
         "run": {"type": "string", "description": "The run id vinc_run_start returned."},
         "output": {"type": "string", "maxLength": 131072},
