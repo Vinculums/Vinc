@@ -88,6 +88,10 @@ def check_result(result: Mapping[str, Any]) -> dict[str, Any]:
     if cost is not None and (isinstance(cost, bool) or not isinstance(cost, (int, float)) or cost < 0):
         raise ValueError("cost_per_success_usd must be a non-negative number or None")
     out["cost_per_success_usd"] = None if cost is None else float(cost)
+    # 센 것만 싣는다: 채점하지 못한 실행 수와 이 묶음에서 건너뛴 과제 수.
+    for key in ("ungraded", "skipped"):
+        if result.get(key) is not None:
+            out[key] = _count(result[key], key)
     return out
 
 
