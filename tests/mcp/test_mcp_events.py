@@ -314,7 +314,6 @@ def test_refusals_store_nothing(rig):
     assert not rt.subs and not bridge.writes
     rx.echo = True
     for params, code in (
-            ({"name": "run.answered"}, events.UNSUPPORTED),
             ({"name": "nope"}, events.NOT_FOUND),
             ({"arguments": {"role": "x"}}, events.INVALID_PARAMS),
             ({"arguments": {"role": "agent-a", "extra": 1}}, events.INVALID_PARAMS),
@@ -398,7 +397,7 @@ def test_events_tool_strips_positions_and_validates_since():
     bridge.page = {"executed": True, "events": [event()], "cursor": "1.2", "has_more": False}
     out = tools.call("vinc_events", {"since": "1.1"}, bridge)
     assert out["events"] and "_pos" not in out["events"][0]
-    for bad in ({"since": "1"}, {"since": "x.y"}, {"kinds": ["run.answered"]}, {"kinds": "x"}):
+    for bad in ({"since": "1"}, {"since": "x.y"}, {"kinds": ["run.nope"]}, {"kinds": "x"}):
         with pytest.raises(tools.InvalidArgument):
             tools.validate_args("vinc_events", bad)
 

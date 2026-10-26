@@ -41,8 +41,9 @@ EVENTS_SPEC = ("modelcontextprotocol/experimental-ext-triggers-events "
                "+ developers.openai.com/plugins/build/mcp-events")
 EXTENSION = "io.modelcontextprotocol/events"
 #: api/events.py 의 KINDS 와 같아야 한다(테스트가 대조한다). vinc_mcp 는 api 를 못 들인다.
-KINDS = ("role.reading_changed", "run.citation_superseded", "role.lesson_added")
-RESERVED = ("run.answered",)
+KINDS = ("role.reading_changed", "run.citation_superseded", "role.lesson_added",
+         "run.answered")
+RESERVED: tuple[str, ...] = ()
 
 INVALID_PARAMS = -32602
 NOT_FOUND = -32023
@@ -134,6 +135,12 @@ _DESCRIPTIONS = {
         "An edit to the same lesson repeats its eventId; drop repeats by eventId.",
         {"role": _STR, "lesson": _STR,
          "lesson_kind": {"type": "string", "enum": ["record", "decision"]}, "title": _STR}),
+    "run.answered": (
+        "A person answered a run that was waiting for them (vinc_run_submit with answer approve "
+        "or decline). Call vinc_run_submit or vinc_run_start with the run id to continue it, or "
+        "read the ended run with vinc_runs.",
+        {"run": _STR, "role": _STR, "answer": {"type": "string", "enum": ["approve", "decline"]},
+         "answered_at": _STR, "actions": {"type": "array", "items": _STR}}),
 }
 
 
