@@ -93,7 +93,7 @@ Vinc 계정 그래프를 OpenClaw 에이전트의 메모리로 붙이는 세 경
 {
   "plugins": {
     "slots": { "memory": "vinc" },
-    "entries": { "vinc": { "config": { "apiKey": "<VINC_RO_KEY>" } } }
+    "entries": { "vinc": { "config": { "apiKey": "<VINC_RO_KEY>", "agents": ["<나만 쓰는 에이전트 id>"] } } }
   }
 }
 ```
@@ -108,8 +108,9 @@ Vinc 계정 그래프를 OpenClaw 에이전트의 메모리로 붙이는 세 경
   근거: `decision:vinc-memory-providers-write-only-through-explicit-tools-2026-10-25`
 - ⚠ 슬롯을 넘기면 memory-core 의 워크스페이스 메모리 파일 회수와 dreaming 이 멈춘다. 그것을
   계속 쓰려면 슬롯은 memory-core 에 두고 2 의 supplement 로 쓴다.
-- 에이전트 도구 `memory_search`·`memory_get` 은 그 도구를 가진 에이전트의 모든 세션에서 답한다.
-  다른 사람이 말을 거는 채널의 에이전트에는 도구 정책으로 빼 둘 것.
+- 에이전트 도구 `memory_search`·`memory_get` 은 `agents` 에 적은 에이전트에게만 간다. 도구는 부른
+  세션의 청중을 알 수 없어서, 그 에이전트의 어느 세션(그룹 대화 포함)이 불러도 그래프 전체가 읽힌다.
+  그러니 나만 말을 거는 에이전트만 적는다. 비우면 어느 에이전트도 도구를 받지 않고 경고가 남는다.
 
 설치: `openclaw plugins install <이 디렉터리 또는 패키지>`. 매니페스트는 `openclaw.plugin.json`
 (`kind: "memory"`), 엔트리는 `package.json` 의 `openclaw.extensions` 다.

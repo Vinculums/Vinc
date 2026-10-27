@@ -199,19 +199,21 @@ test("the prompt section appears only with the tools and says nothing is saved o
   assert.ok(lines.some((l) => /Nothing from this conversation is saved/.test(l)));
 });
 
-function fakeApi(config: unknown) {
-  const got = { supplements: 0, capabilities: [] as unknown[], tools: [] as Array<string[] | undefined> };
+function fakeApi(config: unknown, agents?: string[]) {
+  const got = { supplements: 0, capabilities: [] as unknown[], tools: [] as Array<string[] | undefined>,
+    factories: [] as Array<(ctx: unknown) => unknown> };
   const api: VincPluginApi = {
     config,
-    pluginConfig: { apiKey: "vinc_ro_test" },
+    pluginConfig: { apiKey: "vinc_ro_test", ...(agents ? { agents } : {}) },
     registerMemoryCorpusSupplement: () => {
       got.supplements += 1;
     },
     registerMemoryCapability: (c) => {
       got.capabilities.push(c);
     },
-    registerTool: (_factory, opts) => {
+    registerTool: (factory, opts) => {
       got.tools.push(opts?.names);
+      got.factories.push(factory);
     },
   };
   return { api, got };
@@ -220,7 +222,7 @@ function fakeApi(config: unknown) {
 test("the slot registers only when the gateway gives Vinc the memory slot", () => {
   const unselected = fakeApi({ plugins: { slots: { memory: "memory-core" } } });
   register(unselected.api);
-  assert.deepEqual(unselected.got, { supplements: 1, capabilities: [], tools: [] });
+  assert.deepEqual(unselected.got, { supplements: 1, capabilities: [], tools: [], factories: [] });
 
   const selected = fakeApi({ plugins: { slots: { memory: "vinc" } } });
   register(selected.api);
@@ -242,9 +244,27 @@ test("the manifest declares the memory kind, the tools and the config the code r
   assert.equal(manifest.id, "vinc");
   assert.equal(manifest.kind, "memory");
   assert.deepEqual(manifest.contracts.tools, [...TOOL_NAMES]);
-  assert.deepEqual(Object.keys(manifest.configSchema.properties).sort(), ["apiKey", "maxResults", "timeoutMs", "url"]);
+  assert.deepEqual(Object.keys(manifest.configSchema.properties).sort(), ["agents", "apiKey", "maxResults", "timeoutMs", "url"]);
   assert.deepEqual(manifest.configContracts.secretInputs.paths, [{ path: "apiKey", expected: "string" }]);
   const pkg = JSON.parse(readFileSync(new URL("package.json", root), "utf8"));
   for (const entry of pkg.openclaw.extensions) assert.ok(existsSync(new URL(entry, root)), entry);
   for (const file of pkg.files) assert.ok(existsSync(new URL(file, root)), file);
+});
+
+test("the agent tools go only to the agents the config names", () => {
+  const listed = fakeApi({ plugins: { slots: { memory: "vinc" } } }, ["me"]);
+  register(listed.api);
+  const factory = listed.got.factories[0];
+  const tools = factory({ agentId: "me", sessionKey: "s" }) as Array<{ name: string }>;
+  assert.deepEqual(tools.map((t) => t.name), ["memory_search", "memory_get"]);
+  assert.equal(factory({ agentId: "group-helper", sessionKey: "g" }), null);
+  assert.equal(factory({}), null);
+  assert.equal(factory(undefined), null);
+
+  const warned: string[] = [];
+  const unlisted = fakeApi({ plugins: { slots: { memory: "vinc" } } });
+  unlisted.api.logger = { warn: (m) => warned.push(m) };
+  register(unlisted.api);
+  assert.equal(unlisted.got.factories[0]({ agentId: "me" }), null);
+  assert.ok(warned.some((m) => /config\.agents/.test(m)));
 });

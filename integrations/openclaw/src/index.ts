@@ -46,6 +46,8 @@ type VincPluginConfig = {
   apiKey?: string;
   maxResults?: number;
   timeoutMs?: number;
+  /** 에이전트 도구 memory_search / memory_get 을 받는 에이전트 id. 비우면 아무 에이전트도 받지 않는다. */
+  agents?: string[];
 };
 
 export const DEFAULT_HUB_URL = "https://mcp.vincs.io/mcp";
@@ -55,6 +57,12 @@ export const PLUGIN_ID = "vinc";
 export function ownsMemorySlot(config: unknown): boolean {
   const slots = (config as { plugins?: { slots?: { memory?: unknown } } } | undefined)?.plugins?.slots;
   return slots?.memory === PLUGIN_ID;
+}
+
+/** 도구 팩토리가 받는 실행 문맥에서 에이전트 id 만 읽는다. */
+function agentOf(ctx: unknown): string | undefined {
+  const id = (ctx as { agentId?: unknown } | null | undefined)?.agentId;
+  return typeof id === "string" ? id : undefined;
 }
 
 export function register(api: VincPluginApi): void {
@@ -81,7 +89,19 @@ export function register(api: VincPluginApi): void {
   if (!ownsMemorySlot(api.config)) return;
   const hub = hubConnection(options);
   api.registerMemoryCapability?.(createVincMemoryCapability(hub, options));
-  api.registerTool?.(() => createVincMemoryTools(hub, options), { names: [...TOOL_NAMES] });
+  // 에이전트 도구는 호출한 세션의 청중을 알 수 없다(그룹 대화의 다른 사람도 부를 수 있다).
+  // 그래서 그 사람만 쓰는 에이전트로 명시한 것에만 내준다. 비우면 내주지 않는다.
+  const agents = Array.isArray(cfg.agents) ? cfg.agents.filter((a) => typeof a === "string") : [];
+  if (!agents.length) {
+    api.logger?.warn("vinc: config.agents 가 비어 memory_search / memory_get 도구를 어느 에이전트에도 내주지 않는다");
+  }
+  api.registerTool?.(
+    (ctx) => {
+      const agent = agentOf(ctx);
+      return agent && agents.includes(agent) ? createVincMemoryTools(hub, options) : null;
+    },
+    { names: [...TOOL_NAMES] },
+  );
 }
 
 export default {

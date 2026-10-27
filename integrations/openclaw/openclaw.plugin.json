@@ -29,6 +29,12 @@
         "description": "Most results a recall returns.",
         "default": 8
       },
+      "agents": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Agent ids that get the memory_search and memory_get tools. List only agents that serve you alone; empty gives the tools to no agent.",
+        "default": []
+      },
       "timeoutMs": {
         "type": "number",
         "description": "HTTP timeout for one hub call, in milliseconds.",
