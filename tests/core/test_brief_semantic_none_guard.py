@@ -88,7 +88,6 @@ class SemanticNoneGuardTests(unittest.TestCase):
     def synthetic_brief(self, *hits):
         with patch.object(q, "search", return_value=result(*hits)) as search, \
              patch.object(q, "node_context", side_effect=AssertionError("no synthetic node read")), \
-             patch.object(q, "_brief_choose_material_on", return_value=False), \
              patch.object(q, "_brief_strict_on", return_value=False), \
              patch.object(q, "_brief_expose_n", return_value=10):
             got = q.brief("amber orbit", owner="user:synthetic", cfg=object(), store=NoIOStore())

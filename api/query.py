@@ -4062,13 +4062,6 @@ def _brief_node_quotes(store, *, owner: str, node_id: str, query: str,
         return []
 
 
-def _brief_choose_material_on() -> bool:
-    """choose 에서 첫 후보 둘레로 답변 재료를 모을 것인가. **기본은 꺼짐**
-    (`VINC_BRIEF_CHOOSE_MATERIAL`). 꺼져 있으면 응답은 이 플래그가 없던 때와 같다.
-    근거: [[decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13]]"""
-    return truthy(os.environ.get("VINC_BRIEF_CHOOSE_MATERIAL"))
-
-
 def _brief_expose_n() -> int:
     """되묻기(choose)에 싣는 후보 수. 기본은 `_BRIEF_CANDIDATES`.
 
@@ -4103,34 +4096,6 @@ def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
         **{k: h[k] for k in ("temporal", "created_at", "updated_at", "content_time",
                              "valid_from", "valid_until", "validity", "superseded_by") if k in h},
     } for h in picked]
-
-
-#: 후보 재료로 옮겨 싣는 키 — 확정 답의 재료 꼴(:func:`_brief_material`)과 같다.
-_BRIEF_MATERIAL_KEYS = ("node", "one_liner", "body_src", "body_cite", "excerpts",
-                        "links", "grounds", "cite_grounds", "citation_error",
-                        "validity_note", "partial", "partial_note")
-
-
-def _brief_candidate_material(cand: dict, **kw) -> dict:
-    """choose 의 첫 후보 둘레 재료. 그 후보의 **정확한 제목으로 다시 묻는다** — 계약이
-    호출부에 시키는 되묻기 그대로다. 다시 물은 답이 **그 후보로** 확정될 때만 재료를
-    싣고(landed), 아니면 못 실었다고 밝힌다. 다른 노드의 재료를 이 후보의 것으로 내면
-    안 된다.
-
-    ⚠ 제목 임베딩은 넘기지 않는다 — 이 층에는 인코더가 없다. 제목 완전일치는 팔과
-    무관하게 확정하므로(:func:`_brief_resolve`) 갈릴 수 있는 곳은 같은 제목이 둘인
-    경우이고, 그것은 landed=False 로 드러난다."""
-    cid = str(cand.get("id") or "")
-    again = brief(str(cand.get("title") or cid), _reask=True, **kw)
-    out: dict = {"candidate": cid}
-    if again.get("status") == "resolved" and (again.get("node") or {}).get("id") == cid:
-        out["landed"] = True
-        out.update({k: again[k] for k in _BRIEF_MATERIAL_KEYS if k in again})
-    else:
-        out["landed"] = False
-        out["status"] = again.get("status") or "none"
-        out["note"] = "asking again by this candidate's exact title did not resolve to it"
-    return out
 
 
 #: 제목이 안 먹은 부분 중 **검색이 가져온 어디에도 없는** 토큰의 비율이 이 값을 넘으면
@@ -4378,8 +4343,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
            resolved_via("id" — 직참조로 확정된 경우에만),
            fell_through/unreadable(안 열린 후보·질문 속 id 의 공개),
            search_error(청크 팔이 실패한 사유 — 해소는 노드 팔로 계속한다),
-           partial/partial_note(노드는 읽었는데 발췌·관계를 못 읽었을 때),
-           candidate_material(`VINC_BRIEF_CHOOSE_MATERIAL` 을 켠 choose 에서만)}.
+           partial/partial_note(노드는 읽었는데 발췌·관계를 못 읽었을 때)}.
+    확정 노드와 되묻기 후보는 `quotes`(글자 그대로의 인용 단위)를 달고 올 수 있다.
 
     시간 인자(`as_of`·`mode`·`historical`·`known_at`)는 여기서 전부 적용한다 —
     해소(검색), 직참조 노드, 발췌, 관계 모두에. 사이드카가 뒤에서 다시 거르지 않는다
@@ -4607,16 +4572,6 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                 _brief_attach_section(base, store, owner=owner, query=query, res=res,
                                       query_embedding=query_embedding,
                                       nodes=[str(c.get("id") or "") for c in base["candidates"]])
-            # 플래그가 켜져 있으면 첫 후보의 재료를 **따로 한 키에** 싣는다. status 는
-            # choose, candidates 는 그대로다 — 후보의 재료가 확정 답으로 읽히면 안 된다.
-            # `_reask` 는 되묻기 자신이 다시 되묻지 않게 막는다(같은 제목이 또 choose 면
-            # 끝이 없다). 축소기는 이 키 안의 발췌·관계를 확정 답과 같은 순서로 던다.
-            # 근거: [[decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13]]
-            if base["candidates"] and not _reask and _brief_choose_material_on():
-                base["candidate_material"] = _brief_candidate_material(
-                    base["candidates"][0], owner=owner, max_excerpts=max_excerpts,
-                    historical=historical, mode=mode, as_of=as_of, known_at=known_at,
-                    cfg=cfg, store=store)
             return base
         if status == "none":
             return base

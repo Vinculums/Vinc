@@ -185,7 +185,6 @@
     "rag_eval/answer_material.py": 8,
     "rag_eval/belief_pack/review.py": 1,
     "rag_eval/brief_resolution.py": 5,
-    "rag_eval/choose_material.py": 3,
     "rag_eval/chunk_search.py": 3,
     "rag_eval/evalkit/funnel.py": 7,
     "rag_eval/evalkit/grading.py": 6,
