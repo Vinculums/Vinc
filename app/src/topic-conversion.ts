@@ -3,6 +3,7 @@ import { COPY } from "./copy";
 import { esc } from "./components";
 import { TopicConversion, type Checkpoint } from "./topic-conversion-state";
 import { retainBeforeSwitch } from "./view-retained";
+import { loaderInline } from "./vinc-loaders.js";
 
 const namedBlockers = new Set([
   "boundary_relation", "bridge_crosses_topic", "external_reference", "incoming_reference",
@@ -84,7 +85,7 @@ export function mountTopicConversion(el: HTMLElement): () => void {
         ${outsideLinks ? `<p class="hint">${esc(U.conversionPreservedReferences(outsideLinks))}</p>` : ""}
         ${externalAttachments ? `<p class="hint">${esc(U.conversionPreservedAttachments(externalAttachments))}</p>` : ""}
         ${evidence.length ? `<details><summary>${esc(U.conversionDocumentChecks)}</summary><ul>${evidence.map(line => `<li>${esc(line)}</li>`).join("")}</ul></details>` : ""}
-        ${!reserved && flow.busy ? `<p role="status" aria-live="polite">${esc(U.conversionInspecting)}</p>` : ""}
+        ${!reserved && flow.busy ? `<p>${loaderInline(U.conversionInspecting)}</p><p class="hint">${esc(U.conversionInspectingNote)}</p>` : ""}
         ${check ? `${countsKnown ? `<p>${esc(U.conversionCounts(check.documents!, Object.entries(check.counts!).filter(([kind]) => ["Concept","Record","Decision","Episode","LearnerPattern","Bridge"].includes(kind)).reduce((n,[,count]) => n+count,0)))}</p>` : ""}
           ${check.blockers.length ? `<p role="alert">${esc(U.conversionBlocked)}: ${check.blockers.map(code => esc(U.conversionDependencyMessage(namedBlockers.has(code) ? code : "") || U.conversionInventoryMessage(code) || U.conversionBlocker(namedBlockers.has(code) ? code : ""))).join("; ")}</p>` : ""}` : ""}
         ${reserved ? `<p role="status" aria-live="polite">${esc(flow.busy ? U.conversionWorking : done ? U.conversionDone : state === "graph_committed" ? U.conversionVerifying : state === "committing" ? U.conversionPending : U.conversionPrepared)}</p>` : ""}
