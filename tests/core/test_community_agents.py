@@ -140,6 +140,7 @@ def test_eval_cards_travel_in_the_snapshot_and_its_exports():
     (lambda c: c.update(rate=75), "eval_card"),
     (lambda c: c.update(id="record:other-1"), "eval_card"),
     (lambda c: c.update(date="27 Oct"), "eval_card"),
+    (lambda c: c.update(date="\u0662\u0660\u0662\u0666-\u0661\u0660-\u0662\u0667"), "eval_card"),
     (lambda c: c["suite"].update(hash="nothex"), "eval_suite"),
     (lambda c: c.update(results=[]), "eval_results"),
     (lambda c: c["results"][0].update(cost_per_success_usd=12), "eval_cell"),

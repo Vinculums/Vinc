@@ -77,12 +77,14 @@ export function sharedEvalCardsHtml(props: Record<string, unknown>): string {
   const R = COPY.author.role;
   const snapshot = props.shared_snapshot as { evalCards?: SharedCard[] } | undefined;
   const source = props.community_source as { version?: number; author?: { handle?: string | null } } | undefined;
-  const cards = Array.isArray(snapshot?.evalCards) ? snapshot!.evalCards : [];
+  // 가져가기를 거치지 않고 쓰인 props 도 있을 수 있다. 꼴이 다른 카드는 건너뛰어 역할 면을 깨지 않는다.
+  const cards = (Array.isArray(snapshot?.evalCards) ? snapshot!.evalCards : []).filter(
+    (c): c is SharedCard => !!c && typeof c === "object" && typeof c.id === "string" && Array.isArray(c.results));
   if (!cards.length) return "";
   const body = cards.slice(0, SHOWN).map((c) => `<article class="eval-card">
-      <p class="eval-card-suite">${esc(R.evalSuite(c.suite?.id || c.id, c.suite?.tasks ?? 0))}${
-        c.date ? ` · ${esc(c.date.slice(0, 10))}` : ""}</p>
-      ${(c.results || []).map((cell) => cellHtml(sharedCell(cell))).join("")}
+      <p class="eval-card-suite">${esc(R.evalSuite(String(c.suite?.id || c.id), Number(c.suite?.tasks) || 0))}${
+        typeof c.date === "string" ? ` · ${esc(c.date.slice(0, 10))}` : ""}</p>
+      ${c.results!.filter((cell) => cell && typeof cell === "object").map((cell) => cellHtml(sharedCell(cell))).join("")}
     </article>`).join("");
   return `<p class="eval-note">${esc(R.evalShared(source?.version ?? 0, source?.author?.handle || ""))}</p>${body}`;
 }

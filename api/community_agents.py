@@ -33,7 +33,7 @@ _OWNER = re.compile(r"user:[0-9a-fA-F-]{36}")
 MAX_EVAL_CARDS = 5
 MAX_EVAL_CELLS = 20
 _CARD_ID = re.compile(r"record:eval-card-[a-z0-9]+(?:-[a-z0-9]+)*")
-_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+_DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _CARD_KEYS = frozenset({"id", "date", "suite", "results", "harness_version", "store_fingerprint"})
 _CELL_KEYS = frozenset({"adapter", "model_family", "tasks", "runs_per_task", "pass_1", "pass_k",
                         "violation", "fabrication", "cost_per_success_microusd", "ungraded", "skipped"})
