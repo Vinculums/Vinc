@@ -40,11 +40,10 @@ Repositories: Vinc
 ## Read before the first edit, in this order
 
 1. vinc.manual.design
-2. vinc.canon.book-motion-grammar
-3. vinc.spec.glass-language
-4. vinc.design.figma-rebuild-2026-08
-5. vinc.design.system
-6. vinc.canon.terminology
+2. vinc.spec.glass-language
+3. vinc.design.figma-rebuild-2026-08
+4. vinc.design.system
+5. vinc.canon.terminology
 
 ## Gates that must pass before the pull request
 
@@ -76,7 +75,7 @@ the missing server instead of substituting another tool. Reasoning:
 ## Never
 
 - change a token value in design-hub (the Design Systems Engineer)
-- touch the prose column of the book
+- touch the prose of the docs or book pages (the Technical Writer's)
 - reuse an asset from a discarded round
 - put a decision note inside Figma
 - build motion before the keyframe round is signed off
