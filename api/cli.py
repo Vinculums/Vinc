@@ -451,6 +451,9 @@ def _main(argv: list[str] | None = None) -> int:
                      help="read one page, print it as one result and exit")
     evt.add_argument("--cursor-file", default=None, metavar="FILE",
                      help="start from the cursor in this file and write each new cursor to it")
+    evt.add_argument("--forward", default=None, metavar="URL",
+                     help="POST each event as JSON to this https URL (a Grok Bot routine webhook, "
+                          "for example); the bearer token is read from VINC_FORWARD_TOKEN")
     evt.add_argument("--owner", default=None)
     rn = sub.add_parser("run", help="run an Agent role step by step, or list recorded runs")
     rns = rn.add_subparsers(dest="runcmd", required=True)
