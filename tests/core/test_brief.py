@@ -239,25 +239,6 @@ class ShrinkTests(unittest.TestCase):
         self.assertIs(mcp_tools.SHRINKERS["vinc_brief"],
                       mcp_tools._shrink_brief_result)
 
-    def test_choose_후보_재료의_발췌도_던다(self):
-        """플래그 켠 choose 는 재료가 candidate_material 안에만 있다. 그 키를
-        건너뛰면 예산 초과가 거부가 되고 기본값을 못 켠다."""
-        fat = {"kind": "brief", "status": "choose", "candidates": [{"id": "c"}],
-               "grounds": ["c"] + [f"d{i}" for i in range(20)],
-               "candidate_material": {
-                   "candidate": "c", "landed": True,
-                   "excerpts": [{"doc_id": f"d{i}", "excerpt": "가" * 400}
-                                for i in range(20)],
-                   "links": {"items": [{"id": f"concept:{i}", "title": "나" * 100}
-                                       for i in range(20)]},
-                   "grounds": [f"d{i}" for i in range(20)]}}
-        out = mcp_tools._shrink_brief_result(fat, 6000)
-        self.assertIsNotNone(out)
-        self.assertLess(len(out["candidate_material"]["excerpts"]), 20)
-        self.assertEqual(len(out["candidate_material"]["links"]["items"]), 20)
-        self.assertEqual(len(out["candidate_material"]["grounds"]), 20)
-        self.assertIn("shrunk to fit", out["note"])
-
 
 # ── 2. 실엔진 층 ──────────────────────────────────────────────────────────────
 
@@ -665,81 +646,6 @@ class BriefRecordE2E(unittest.TestCase):
         self.assertEqual(out["status"], "none")
         self.assertTrue(out["unreadable"])
         self.assertIn("unknown node", out["note"])
-
-
-# ── 4. choose 에서 첫 후보의 재료 — 플래그 뒤, 기본 꺼짐 ─────────────────────
-
-_FLAG = "VINC_BRIEF_CHOOSE_MATERIAL"
-
-
-@unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
-class BriefChooseMaterialE2E(unittest.TestCase):
-    """꺼져 있으면 응답이 바이트까지 그대로이고, 켜면 choose 에 키 **하나**만 더한다.
-    status 는 choose 로 남는다 — 후보의 재료를 확정 답으로 읽게 두면 안 된다.
-    근거: [[decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13]]"""
-
-    OWNER = BriefE2E.OWNER
-    setUp, tearDown = BriefE2E.setUp, BriefE2E.tearDown
-    #: 상태마다 하나 — 랭킹 확정 · id 직참조 확정 · 되묻기 · 없음.
-    QUERIES = {"alpha core": "resolved", "concept:alpha-core": "resolved",
-               "alpha": "choose", "존재하지않는질문어휘": "none"}
-
-    def _brief(self, query, flag=None):
-        with mock.patch.dict(os.environ):
-            os.environ.pop(_FLAG, None)
-            if flag is not None:
-                os.environ[_FLAG] = flag
-            return q.brief(query, owner=self.OWNER, store=self.store)
-
-    @staticmethod
-    def _bytes(out):
-        return json.dumps(out, ensure_ascii=False)
-
-    def test_꺼져_있으면_어느_상태든_응답이_그대로다(self):
-        for query, status in self.QUERIES.items():
-            self._brief(query)                       # 지연 색인 빌드를 먼저 치른다
-            base = self._brief(query)
-            self.assertEqual(base["status"], status, query)
-            self.assertNotIn("candidate_material", base)
-            for off in ("", "off", "0", "false", "no"):
-                self.assertEqual(self._bytes(self._brief(query, off)), self._bytes(base),
-                                 (query, off))
-            # 켜도 choose 가 아니면 한 바이트도 안 바뀌고, choose 는 키 하나만 는다.
-            on = self._brief(query, "on")
-            if status == "choose":
-                del on["candidate_material"]
-            self.assertEqual(self._bytes(on), self._bytes(base), query)
-
-    def test_켜면_choose_는_그대로이고_첫_후보의_재료가_따로_실린다(self):
-        off = self._brief("alpha")
-        out = self._brief("alpha", "on")
-        self.assertEqual(out["status"], "choose")
-        self.assertEqual(out["candidates"], off["candidates"])
-        self.assertNotIn("node", out)                # 확정 답의 자리는 비어 있다
-        first = out["candidates"][0]["id"]
-        mat = out["candidate_material"]
-        self.assertEqual((mat["candidate"], mat["landed"]), (first, True))
-        self.assertEqual(mat["node"]["id"], first)
-        self.assertIn(first, mat["grounds"])
-        self.assertIn("concept:alpha-edge" if first == "concept:alpha-core"
-                      else "concept:alpha-core", {i["id"] for i in mat["links"]["items"]})
-
-    def test_되물은_답이_그_후보가_아니면_재료_없이_밝힌다(self):
-        real = q.node_context
-
-        def unreadable(*, node, **kw):               # 되묻기만 상세를 연다
-            return {"executed": False, "note": "unknown node: " + node}
-
-        q.node_context = unreadable
-        try:
-            out = self._brief("alpha", "on")
-        finally:
-            q.node_context = real
-        mat = out["candidate_material"]
-        self.assertEqual(out["status"], "choose")
-        self.assertEqual((mat["candidate"], mat["landed"], mat["status"]),
-                         (out["candidates"][0]["id"], False, "none"))
-        self.assertNotIn("node", mat)
 
 
 #: 아래 파생 클래스가 달고 다니는 설명.

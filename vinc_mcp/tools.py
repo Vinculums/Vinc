@@ -2712,11 +2712,8 @@ def _shrink_brief_result(out: dict, budget: int) -> dict | None:
 
     관계는 그 노드의 근거 지도라 마지막까지 남긴다. 발췌는 `grounds` 에 doc_id 가
     남으므로 vinc_doc_get 으로 되찾을 수 있다 — 덜어내도 길이 끊기지 않는다는 뜻이다.
-    choose 에서 플래그로 붙는 `candidate_material` 도 같은 순서로 덜어낸다. 그 키를
-    건너뛰면 켠 채 예산을 넘길 때 거부가 나고, 기본값을 못 켠다.
     줄일 수 없으면 None 을 돌려 기존 거부 경로로 보낸다(조용한 절단보다 거부가 정직하다).
-    근거: [[vinc.plan.mcp-agent-surface §4]]
-    근거: [[decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13]]"""
+    근거: [[vinc.plan.mcp-agent-surface §4]]"""
     if not isinstance(out, dict):
         return None
 
@@ -2727,12 +2724,6 @@ def _shrink_brief_result(out: dict, budget: int) -> dict | None:
         return _size() > budget
 
     dropped_ex = dropped_ln = 0
-    # 부가 키부터. 확정 답의 재료보다 choose 후보 재료가 먼저 빠져야 한다.
-    cm = out.get("candidate_material")
-    if isinstance(cm, dict):
-        de, dl = _shrink_material_lists(cm, _over)
-        dropped_ex += de
-        dropped_ln += dl
     # 확정 답에서는 발췌 → 질문이 가리키는 절(`section`) → 관계 순서다. 절은 발췌보다 답에
     # 가깝고, 관계는 근거 지도라 마지막이다. 절의 미러는 `grounds` 에 남아 되찾을 수 있다.
     ex = out.get("excerpts")
