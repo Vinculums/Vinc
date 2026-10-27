@@ -79,7 +79,7 @@ export class TopicConversion {
     catch (e: any) {
       // These replies occur before any reservation is attempted. An uncertain
       // transport or DB outcome must keep the same recovery identity.
-      if (["preflight_changed", "invalid_conversion_request", "topic_conversion_unavailable"].includes(e?.code)) this.clear();
+      if (["preflight_changed", "invalid_conversion_request", "topic_conversion_unavailable", "team_space_limit"].includes(e?.code)) this.clear();
       throw e;
     }
   }
