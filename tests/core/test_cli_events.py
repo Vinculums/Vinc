@@ -181,6 +181,27 @@ def test_post_event_sends_json_with_the_token_and_does_not_follow_redirects(monk
     assert [g[0] for g in got] == ["/hook", "/moved"]          # /elsewhere 로 가지 않았다
     assert "Authorization" not in got[1][1]
     assert cli_events.post_event("http://127.0.0.1:1/none", event, None) == 0
+    assert cli_events.post_event("http://127.0.0.1:1/none", event, "bad\r\ntoken") == 0
+
+
+def test_post_event_to_loopback_ignores_the_environment_proxy(monkeypatch):
+    """루프백으로 보낼 때 HTTP_PROXY 를 타면 토큰이 평문으로 프록시 호스트에 간다."""
+    import urllib.request
+    seen = []
+
+    real = urllib.request.build_opener
+
+    def build(*handlers):
+        seen.append([type(h) for h in handlers])
+        return real(*handlers)
+
+    monkeypatch.setenv("HTTP_PROXY", "http://proxy.invalid:3128")
+    monkeypatch.setenv("NO_PROXY", "")
+    monkeypatch.setattr(urllib.request, "build_opener", build)
+    assert cli_events.post_event("http://127.0.0.1:1/none", {"eventId": "e"}, "crsr_x") == 0
+    assert urllib.request.ProxyHandler in seen[0]
+    cli_events.post_event("https://hooks.invalid/r", {"eventId": "e"}, None)
+    assert urllib.request.ProxyHandler not in seen[1]
 
 
 def test_main_routes_forward_to_the_poster(monkeypatch, capsys):

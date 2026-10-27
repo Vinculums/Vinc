@@ -54,11 +54,7 @@ def check_forward_url(url: str) -> str | None:
     if parts.scheme == "https":
         return None
     if parts.scheme == "http":
-        try:
-            loopback = ipaddress.ip_address(host).is_loopback
-        except ValueError:
-            loopback = host in _LOOPBACK_NAMES
-        if loopback:
+        if _is_loopback(url):
             return None
     return "--forward must be an https URL (plain http only to this machine)"
 
@@ -70,21 +66,34 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _is_loopback(url: str) -> bool:
+    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host in _LOOPBACK_NAMES
+
+
 def post_event(url: str, event: dict, token: str | None) -> int:
-    """이벤트 하나를 JSON 본문으로 POST 하고 상태 코드를 돌려준다. 연결 실패는 0 이다."""
+    """이벤트 하나를 JSON 본문으로 POST 하고 상태 코드를 돌려준다. 연결 실패는 0 이다.
+
+    이 기기 안으로 보낼 때는 환경의 HTTP 프록시를 타지 않는다. 평문 http 를 루프백에만 허락한 것이
+    프록시를 거치면 토큰이 평문으로 기기 밖에 나가기 때문이다."""
     body = json.dumps(event, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     headers = {"Content-Type": "application/json", "User-Agent": "vinc-events-forward",
                "Idempotency-Key": str(event.get("eventId") or "")}
     if token:
         headers["Authorization"] = "Bearer " + token
     request = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    opener = urllib.request.build_opener(_NoRedirect)
+    handlers = [_NoRedirect()] + ([urllib.request.ProxyHandler({})] if _is_loopback(url) else [])
+    opener = urllib.request.build_opener(*handlers)
     try:
         with opener.open(request, timeout=FORWARD_TIMEOUT_S) as response:
             return int(response.status)
     except urllib.error.HTTPError as exc:
         return int(exc.code)
-    except (urllib.error.URLError, OSError):
+    except (urllib.error.URLError, OSError, ValueError):
+        # ValueError: 헤더에 실을 수 없는 토큰(줄바꿈 등). 보낸 것이 없으므로 실패로 센다.
         return 0
 
 
