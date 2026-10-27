@@ -23,7 +23,7 @@ import { icon } from "./icons";
 import { setTopbarLead } from "./topbar";
 import { AGENT_TOPICS, AGENTS_BOARD, buildAgentRoster, setLnbActive, showAgentRail,
          type AgentRole } from "./lnb";
-import { evalCardsHtml } from "./role-eval";
+import { evalCardsHtml, sharedEvalCardsHtml } from "./role-eval";
 import { absoluteViewUrl } from "./view-url";
 import { loadPrefs } from "./view-prefs";
 import { loaderRows } from "./vinc-loaders.js";
@@ -128,6 +128,8 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
     ? `<div class="agent-rels">${rel(L.agentFrom, self.rel.from)}${rel(L.agentThen, self.rel.then)}${
       rel(L.agentBeside, self.rel.beside)}</div>` : `<p class="hint">${esc(R.noRels)}</p>`;
 
+  // 커뮤니티에서 가져간 역할은 공유 버전에 실려 온 카드를 켜기 전부터 보인다.
+  const shared = editing ? sharedEvalCardsHtml(baseProps) : "";
   el.innerHTML = `<div class="home agents role-page">
     <header class="home-head">
       <h1>${esc(editing ? (baseTitle || R.editTitle) : R.title)}</h1>
@@ -205,6 +207,7 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
           <button class="btn btn-quiet agent-act" type="button" data-act="graph">${icon("graph", 14)}<span>${esc(H.agentsGraph)}</span></button>
         </div>
         <p class="role-aside-k">${esc(R.evalTitle)}</p>
+        ${shared ? `<div class="role-eval">${shared}</div>` : ""}
         <div class="role-eval" id="rc-eval">${loaderRows(COPY.ui.common.loading, { count: 2 })}</div>` : ""}
       </aside>
     </div>

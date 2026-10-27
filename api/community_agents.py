@@ -28,6 +28,16 @@ _HASH = re.compile(r"[0-9a-f]{64}")
 _ROLE = re.compile(r"concept:agent-[a-z0-9]+(?:-[a-z0-9]+)*")
 # 가져오기 목적지는 개인 그래프뿐이다. 팀 목적지는 검증 오류로 거절한다.
 _OWNER = re.compile(r"user:[0-9a-fA-F-]{36}")
+#: 공유 버전에 실린 평가 카드. 계정 서버(lib/communityAgent.ts `evalCards`)가 정규화한 꼴만 받는다:
+#: 해시가 두 언어에서 같아야 하므로 수는 안전 정수뿐이다(비율은 k/n, 비용은 마이크로달러).
+MAX_EVAL_CARDS = 5
+MAX_EVAL_CELLS = 20
+_CARD_ID = re.compile(r"record:eval-card-[a-z0-9]+(?:-[a-z0-9]+)*")
+_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+_CARD_KEYS = frozenset({"id", "date", "suite", "results", "harness_version", "store_fingerprint"})
+_CELL_KEYS = frozenset({"adapter", "model_family", "tasks", "runs_per_task", "pass_1", "pass_k",
+                        "violation", "fabrication", "cost_per_success_microusd", "ungraded", "skipped"})
+_CELL_RATES = ("pass_1", "pass_k", "violation", "fabrication")
 
 
 def canonical(value):
@@ -77,10 +87,48 @@ def _string(value, *, empty=False, limit=65536):
     return isinstance(value, str) and (empty or bool(value.strip())) and len(value) <= limit
 
 
+def _count(value, *, low=0):
+    return type(value) is int and low <= value <= MAX_SAFE_INTEGER
+
+
+def _eval_cards(cards):
+    """공유 버전의 평가 카드. 작성자가 잰 값이라 다시 계산하지 않고 꼴만 본다."""
+    if not isinstance(cards, list) or not 1 <= len(cards) <= MAX_EVAL_CARDS:
+        raise ValueError("invalid_agent_eval_cards")
+    seen = set()
+    for card in cards:
+        if not isinstance(card, dict) or set(card) - _CARD_KEYS or not {"id", "date", "suite", "results"} <= set(card) \
+                or not isinstance(card["id"], str) or len(card["id"]) > 200 or not _CARD_ID.fullmatch(card["id"]) \
+                or card["id"] in seen or not isinstance(card["date"], str) or not _DAY.fullmatch(card["date"]) \
+                or any(k in card and not _string(card[k], limit=200) for k in ("harness_version", "store_fingerprint")):
+            raise ValueError("invalid_agent_eval_card")
+        seen.add(card["id"])
+        suite = card["suite"]
+        if not isinstance(suite, dict) or set(suite) != {"id", "hash", "tasks"} or not _string(suite["id"], limit=200) \
+                or not isinstance(suite["hash"], str) or not _HASH.fullmatch(suite["hash"]) or not _count(suite["tasks"]):
+            raise ValueError("invalid_agent_eval_suite")
+        cells = card["results"]
+        if not isinstance(cells, list) or not 1 <= len(cells) <= MAX_EVAL_CELLS:
+            raise ValueError("invalid_agent_eval_results")
+        for cell in cells:
+            if not isinstance(cell, dict) or set(cell) - _CELL_KEYS or not {"adapter", "model_family"} <= set(cell) \
+                    or not _string(cell["adapter"], limit=200) or not _string(cell["model_family"], limit=200) \
+                    or any(k in cell and not _count(cell[k]) for k in ("tasks", "ungraded", "skipped")) \
+                    or ("runs_per_task" in cell and not _count(cell["runs_per_task"], low=1)) \
+                    or ("cost_per_success_microusd" in cell and cell["cost_per_success_microusd"] is not None
+                        and not _count(cell["cost_per_success_microusd"])):
+                raise ValueError("invalid_agent_eval_cell")
+            for key in _CELL_RATES:
+                rate = cell.get(key)
+                if rate is not None and (not isinstance(rate, dict) or set(rate) != {"k", "n"} or not _count(rate["k"])
+                                         or not _count(rate["n"]) or rate["k"] > rate["n"]):
+                    raise ValueError("invalid_agent_eval_rate")
+
+
 def validate(snapshot, source):
     """알 수 없는 필드나 불완전한 계약은 거절한다. 부분 렌더링으로 성공하지 않는다."""
     if not isinstance(snapshot, dict) or not {"role", "prompt", "tools", "references", "license"} <= set(snapshot) \
-            or set(snapshot) - {"role", "prompt", "tools", "references", "license", "parent"}:
+            or set(snapshot) - {"role", "prompt", "tools", "references", "license", "parent", "evalCards"}:
         raise ValueError("invalid_agent_snapshot")
     if len(canonical(snapshot).encode("utf-8")) > MAX_SNAPSHOT_BYTES:
         raise ValueError("agent_snapshot_too_large")
@@ -150,6 +198,8 @@ def validate(snapshot, source):
             or not _uuid(parent["shareId"]) or type(parent["version"]) is not int or not 1 <= parent["version"] <= MAX_SAFE_INTEGER
             or not isinstance(parent["hash"], str) or not _HASH.fullmatch(parent["hash"])):
         raise ValueError("invalid_agent_parent")
+    if "evalCards" in snapshot:
+        _eval_cards(snapshot["evalCards"])
     if not isinstance(source, dict) or set(source) != {"url", "share_id", "version", "hash", "author"}:
         raise ValueError("invalid_agent_source")
     canonical(source)
