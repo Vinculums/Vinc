@@ -66,6 +66,12 @@ test('a known stale preflight rejection permits checking the scope again',async(
   flow.edit('other','Team');assert.equal(flow.topic,'other');
 });
 
+test('the owned team space cap leaves the topic personal and the sheet ready to check again',async()=>{
+  const {flow,saved}=setup({reserve:async()=>{throw {code:'team_space_limit'};}});
+  await flow.preflight();await flow.reserve(true);
+  assert.equal(flow.checkpoint,null);assert.equal(saved.at(-1),null);assert.equal(flow.error,'team_space_limit');
+});
+
 test('a lost reservation response followed by a known stale rejection does not strand the sheet',async()=>{
   let count=0;const {flow}=setup({reserve:async()=>{throw {code:++count===1?'timeout':'preflight_changed'};}});
   await flow.preflight();await flow.reserve(true);assert.ok(flow.checkpoint);
