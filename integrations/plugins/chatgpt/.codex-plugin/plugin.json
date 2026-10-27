@@ -1,0 +1,32 @@
+{
+  "name": "vinc",
+  "version": "0.1.0",
+  "description": "Your Vinc graph in ChatGPT and dots: search and read it, run your Agent roles, and watch them for changes.",
+  "author": {
+    "name": "Vinc",
+    "email": "support@vincs.io",
+    "url": "https://vincs.io"
+  },
+  "homepage": "https://vincs.io/docs/mcp/",
+  "repository": "https://github.com/Vinculums/Vinc",
+  "license": "MIT",
+  "keywords": ["vinc", "knowledge-graph", "memory", "agents", "mcp"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Vinc",
+    "shortDescription": "Your knowledge graph and Agent roles",
+    "longDescription": "Search and read your Vinc graph with its sources, run your Vinc Agent roles with their required reading, gates and person-only stops, and subscribe to changes that affect a role.",
+    "developerName": "Vinc",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://vincs.io",
+    "privacyPolicyURL": "https://vincs.io/privacy/",
+    "termsOfServiceURL": "https://vincs.io/terms/",
+    "defaultPrompt": [
+      "What does my Vinc graph say about this?",
+      "Review this as my Vinc reviewer role.",
+      "Tell me when my reviewer's reading changes."
+    ]
+  }
+}
