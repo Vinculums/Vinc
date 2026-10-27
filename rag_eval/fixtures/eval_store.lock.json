@@ -130,6 +130,41 @@
       },
       "encoder_model": "dragonkue/BGE-m3-ko int8 (hub bake recipe, reduce_range), run under the bge-m3 model key: same architecture, dimension, pooling and no prefix; its own tokenizer.json sits beside the ONNX",
       "release": "vinc-rag-assets eval-2026-10-19 (TAG=eval-2026-10-19 bash fetch.sh): the store, and the encoder at _eval-stores/encoder-bge-m3-ko/bge-m3-ko-int8-rr.onnx with its tokenizer.json. The encoder bytes are the ones the hub runs since 2026-10-18"
+    },
+    "ko-main-2026-10-27": {
+      "path": "_eval-stores/ko-main-2026-10-27/hub.db",
+      "sha256": "b2c4173c3d481ff8c3a41d3b0b5a3276cd56bd593ac0997ef27c3d3614ad2e7c",
+      "owner": "tenant:local",
+      "gold": "rag_eval/fixtures/brief_gold.jsonl",
+      "derived_from": "ko-ort130-2026-10-18 (same rows, chunks and chunk vectors; schema provisioned to the current version and every node mirror row whose text differs re-encoded with the same encoder under the mirror rules of main 1c7cfdd7: a record's and a decision's own body after the title, an episode's summary to 600 characters)",
+      "built_at_tree": "1c7cfdd7",
+      "engine": "ladybug 0.20.3",
+      "encoder": "BAAI/bge-m3",
+      "encoder_sha256": "fb70eacc6a93c8645ccaa79c71d65e8ff2d3bcef89cbe6889224e7b647d43226",
+      "encoder_runtime": {
+        "onnxruntime": "1.30.0",
+        "tokenizers": "0.23.2",
+        "numpy": "2.5.3",
+        "note": "same runtime and machine as m3-ort130-2026-09-28, so the two pins differ only in the encoder (VIN-671)"
+      },
+      "rows": {
+        "Concept": 442,
+        "Record": 610,
+        "Decision": 153,
+        "Episode": 160,
+        "Bridge": 0,
+        "Entity": 0,
+        "Domain": 65,
+        "Chunk": 1157,
+        "ChunkVec": 1624,
+        "NodeVec": 1365
+      },
+      "settled": {
+        "mentions_rule": "3:title-before-source",
+        "note": "inherited from ko-ort130-2026-10-18; no relink was run"
+      },
+      "encoder_model": "dragonkue/BGE-m3-ko int8 (hub bake recipe, reduce_range), run under the bge-m3 model key: same architecture, dimension, pooling and no prefix; its own tokenizer.json sits beside the ONNX",
+      "note": "Why it exists: the mirror text rules changed after ko-ort130-2026-10-18 was built, so the current code on that pin sees stale mirror rows and drops them from the meaning arm (union 46 of 60 against 51). This store is the pin the current code is measured on; ko-ort130-2026-10-18 stays for the code of its day."
     }
   }
 }
