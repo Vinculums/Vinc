@@ -26,44 +26,30 @@ const temporalLayout = async (...args) => {
 };
 const { routeAcrossTopics } = await source("../src/view-layout-avoid.ts");
 const { layoutInWorker } = await source("../src/view-layout-client.ts");
-const { LAYOUTS, normalizeLayout, layoutsFor, serverLayoutFor, isRootsLayout, loadPrefs, savePrefs } = await source("../src/view-prefs.ts");
+const { LAYOUTS, normalizeLayout, serverLayoutFor, isRootsLayout, loadPrefs, savePrefs } = await source("../src/view-prefs.ts");
 
-test("two layouts remain and retired saved values fold into time branches", () => {
+test("one layout remains and every saved layout folds into time branches", () => {
   const saved = new Map();
   globalThis.localStorage = { getItem: k => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, v) };
   try {
     // 첫 그림(판 4): 3D · 시간순 가지 · 선 상시 · 범례는 관계 선만.
     assert.deepEqual([loadPrefs().view, loadPrefs().layout, loadPrefs().edges, loadPrefs().edgeOff],
       ["3d", "temporalRoots", "always", ["directed", "cross", "bridge"]]);
-    assert.deepEqual(LAYOUTS, ["hub", "temporalRoots"]);
-    for (const layout of LAYOUTS) {
-      savePrefs({ ...loadPrefs(), layout });
-      assert.equal(loadPrefs().layout, layout);
-      assert.equal(normalizeLayout(layout), layout);
-      assert.equal(serverLayoutFor(layout), "hub");
-      assert.equal(isRootsLayout(layout), layout === "temporalRoots");
-    }
-    assert.deepEqual(layoutsFor("3d"), LAYOUTS);
+    assert.deepEqual(LAYOUTS, ["temporalRoots"]);
+    assert.equal(serverLayoutFor("temporalRoots"), "hub");
+    assert.equal(isRootsLayout(loadPrefs().layout), true);
     // 보기는 3D 하나다 — 저장된 옛 관점은 3D 로 접힌다. 2D 전용이던 선 `focus` 는 `none` 이다.
     for (const view of ["2d", "timeline", "bundle"]) {
       saved.set("vinc.view.prefs", JSON.stringify({ view, edges: "focus", pv: 4 }));
       assert.deepEqual([loadPrefs().view, loadPrefs().edges], ["3d", "none"]);
     }
-    // 0.9.7 에서 뺀 두 이름은 판 3 이전 저장값에서만 `시간순 가지`로 접힌다.
-    for (const retired of ["rank", "rankedRoots"]) {
-      assert.equal(normalizeLayout(retired), "hub");
-      for (const pv of [undefined, 1, 2]) {
+    // 저장된 배치는 무엇이든(걷은 `hub`, 0.9.7 의 `rank`·`rankedRoots`, 그 전 이름, 모르는 값) 시간순 가지다.
+    for (const retired of ["hub", "rank", "rankedRoots", "radial", "dendro", "toString", "unknown"]) {
+      assert.equal(normalizeLayout(retired), "temporalRoots");
+      for (const pv of [undefined, 2, 4]) {
         saved.set("vinc.view.prefs", JSON.stringify({ layout: retired, pv }));
         assert.equal(loadPrefs().layout, "temporalRoots");
       }
-      saved.set("vinc.view.prefs", JSON.stringify({ layout: retired, pv: 4 }));
-      assert.equal(loadPrefs().layout, "hub");
-    }
-    // 그 전의 이름(D50 이전)은 별칭 없이 모르는 값과 같이 hub 로 떨어진다.
-    for (const retired of ["radial", "circle", "tree", "organic", "dendro", "shell", "toString", "unknown"]) {
-      assert.equal(normalizeLayout(retired), "hub");
-      saved.set("vinc.view.prefs", JSON.stringify({ layout: retired, pv: 4 }));
-      assert.equal(loadPrefs().layout, "hub");
     }
     // 판을 올려도 판 2 사용자가 고른 크기 1 은 기본값으로 되돌아가지 않는다.
     saved.set("vinc.view.prefs", JSON.stringify({ nodeScale: 1, cone: 1, pv: 2 }));
@@ -737,6 +723,31 @@ test("3D topic cells group by area and still start left to right in time across 
     shells.push({ cx: (x0 + x1) / 2, cy, cz, hx: Math.max((x1 - x0) / 2 * 1.1, rc), rc: rc * 1.18 });
   }
   assert.equal(areasApart(shells), true, "grouped areas must keep their volumes");
+});
+
+test("3D topic cells group by area when topic nodes carry their parent path, as the hub sends them", async () => {
+  // 허브의 주제 노드는 `domain` 열에 **부모** 경로를 싣는다(api/query.py 의 주제 마크:
+  // `domain:vinc/design/t0` 는 domain "vinc/design", `domain:vinc` 는 domain ""). 영역 열쇠를 그 열에서
+  // 읽으면 공통 접두가 비어 모든 주제가 "vinc" 한 영역이 되고, 칸이 영역별로 묶이지 않았다.
+  const areas = ["design", "engineering", "ai"];
+  const topicMark = (path) => ({ id: `domain:${path}`, label: path.split("/").at(-1), kind: "domain",
+    domain: path.split("/").slice(0, -1).join("/"), degree: 1 });
+  const nodes = [topicMark("vinc"), ...areas.map(a => topicMark(`vinc/${a}`))];
+  for (let t = 0; t < 24; t++) {
+    nodes.push(topicMark(`vinc/${areas[t % 3]}/t${t}`));
+    for (let i = 0; i < 3; i++) nodes.push(n(`t${t}n${i}`, `20${String(10 + t).padStart(2, "0")}-0${i + 1}`, `vinc/${areas[t % 3]}/t${t}`));
+  }
+  const graph = await spatialTemporalLayout(nodes, [], "content", elk, route);
+  const leaves = graph.nodes.filter(x => x.kind === "domain" && /\/t\d+$/.test(x.id));
+  const areaOf = t => t.id.split("/")[1];
+  const centres = new Map(areas.map(a => {
+    const list = leaves.filter(t => areaOf(t) === a);
+    return [a, { y: list.reduce((s, t) => s + t.y, 0) / list.length, z: list.reduce((s, t) => s + t.z, 0) / list.length }];
+  }));
+  for (const t of leaves) {
+    const d = c => Math.hypot(t.y - c.y, t.z - c.z), own = d(centres.get(areaOf(t)));
+    for (const [a, c] of centres) if (a !== areaOf(t)) assert.ok(own < d(c), `${t.id} sits nearer ${a} than its own area`);
+  }
 });
 
 test("area keys strip the common domain prefix and take the next step", async () => {
