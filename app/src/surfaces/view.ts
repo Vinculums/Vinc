@@ -20,7 +20,7 @@ import { recede } from "../recede";
 import { causalCone, spotOf, type Spot } from "../spotlight";
 import { openShareSheet } from "../sheets";
 import { sayings, statedStart, decisionSteps, type ItemLink, type Step } from "../item-page";
-import { isHistorical } from "../node-validity";
+import { isHistorical, conflictIds } from "../node-validity";
 import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
 import { blocksSurfaceShortcuts } from "../keys";
@@ -1872,6 +1872,9 @@ export async function renderView(el: HTMLElement, resume = false) {
     lens.length > 0 && !inLens(nd.domain, lens) && (nd.kind || "concept") !== "bridge";
 
   function toN3(nodes: GraphNode[], lens: string[] = [], markId?: string): N3[] {
+    const today = new Date().toISOString().slice(0, 10);
+    // 충돌은 짝으로만 잰다 — 노드 하나를 넘기는 호출(카드·레일)에서는 비어 있다.
+    const conflicts = nodes.length > 1 ? conflictIds(nodes, today) : new Set<string>();
     return nodes.map((nd) => ({
       id: nd.id,
       label: nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label,
@@ -1880,7 +1883,8 @@ export async function renderView(el: HTMLElement, resume = false) {
       gateway: isGateway(nd, lens),
       focus: markId !== undefined && nd.id === markId,
       x: nd.x, y: nd.y, z: nd.z, ts: nd.ts,
-      historical: isHistorical(nd, new Date().toISOString().slice(0, 10)),
+      historical: isHistorical(nd, today),
+      conflict: conflicts.has(nd.id),
     }));
   }
   /** D74 — 범례 스위치로 끈 갈래를 뺀다. **그리기 필터일 뿐** 데이터 필터가 아니다:

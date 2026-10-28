@@ -571,6 +571,27 @@ const EN = {
     },
     // 문서 홈 — 문서를 보고 쓰고 정리하는 첫 화면. 그래프는 오른쪽 위의
     // 전환 버튼이 연다. ⚠ 화면 문구라 em-dash 금지(D38).
+    // A5: recent writes grouped by the source the store records; only what needs a person stays open.
+    agentWrites: {
+      title: (days: number) => `Agent writes · last ${days} days`,
+      count: (n: number) => n === 1 ? "1 write" : `${n} writes`,
+      truncated: "showing the newest 500",
+      loading: "Reading recent writes…",
+      failed: "Recent writes could not be read right now.",
+      none: "Nothing waits for you. Every recent write passed its checks or was kept.",
+      sourceRun: (key: string) => `Run ${key}`,
+      sourceNone: "No recorded source",
+      groupCount: (n: number, open: number) => open ? `${n} writes · ${open} need you` : `${n} writes · all pass`,
+      keepAll: "Keep all",
+      passing: (n: number) => n === 1 ? "1 more passes its checks" : `${n} more pass their checks`,
+      relation: (type: string) => type.toLowerCase().replace(/_/g, " "),
+      checks: {
+        evidence_is_an_id: "evidence is an id, not a sentence",
+        evidence_missing: "no evidence",
+        decision_without_start: "no start date",
+        props_shredded: "a property was saved letter by letter",
+      } as Record<string, string>,
+    },
     home: {
       nav: "Home",
       navTip: "Documents in every topic",
@@ -2005,6 +2026,26 @@ const KO: Deck = {
       close: "닫기",
       failed: "지금은 답하지 못했어요. 잠시 후 다시 물어보세요. 기록은 그대로 있어요",
       kept: (n) => `최근 ${n}턴만 보관해요`,
+    },
+    agentWrites: {
+      title: (days) => `에이전트가 쓴 것 · 최근 ${days}일`,
+      count: (n) => `${n}건`,
+      truncated: "최근 500건만 보여요",
+      loading: "최근 쓰기를 읽는 중…",
+      failed: "지금은 최근 쓰기를 읽을 수 없어요",
+      none: "확인할 것이 없어요. 최근 쓰기는 모두 검사를 통과했거나 이미 유지했어요",
+      sourceRun: (key) => `실행 ${key}`,
+      sourceNone: "출처 기록 없음",
+      groupCount: (n, open) => open ? `${n}건 · ${open}건은 확인이 필요해요` : `${n}건 · 모두 통과`,
+      keepAll: "모두 유지",
+      passing: (n) => `${n}건은 검사를 통과했어요`,
+      relation: (type) => type.toLowerCase().replace(/_/g, " "),
+      checks: {
+        evidence_is_an_id: "근거가 문장이 아니라 id예요",
+        evidence_missing: "근거가 없어요",
+        decision_without_start: "효력 시작일이 없어요",
+        props_shredded: "속성이 글자 하나씩 쪼개져 저장됐어요",
+      },
     },
     home: {
       nav: "홈",

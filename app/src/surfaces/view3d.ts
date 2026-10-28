@@ -88,6 +88,7 @@ export type N3 = {
   pinned?: boolean;           // D32 — pin 은 허브 승격(크기 가중; 레이아웃은 사이드카)
   ts?: string;                // 기록 시각 — 몸통의 active 상태(최근 7일)가 읽는다
   historical?: boolean;       // 구간이 닫혔거나 후속이 있다 — 몸통의 historical 상태
+  conflict?: boolean;         // 같은 열쇠의 다른 값과 구간이 겹친다 — 몸통의 conflict 상태
   x?: number; y?: number; z?: number;
   fx?: number; fy?: number; fz?: number;
 };
@@ -457,12 +458,13 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   /** 상태 — 초점은 selected, 가장 새 노드로부터 7일 안에 생긴 것은 active, 나머지는 idle.
    *  "오늘"이 아니라 그래프의 가장 새 날을 기준으로 잡는다: 한동안 안 쓴 그래프를 열면
    *  전부 idle 이 되어 무엇이 최근이었는지가 사라진다. historical 은 닫힌 유효구간이나 후속
-   *  (`toN3` 가 node-validity 로 판정). conflict 는 셰이더에 있지만 그래프 읽기가 충돌 표시를
-   *  아직 싣지 않는다. */
+   *  (`toN3` 가 node-validity 로 판정). conflict 는 같은 열쇠의 다른 값과 구간이 겹치는 주장이다
+   *  (같은 곳, 서버의 주장 비교와 같은 규칙). */
   const newest = nodes.reduce((m, n) => n.ts && n.ts > m ? n.ts : m, "");
   const newestAt = Date.parse(newest);          // 형식이 깨진 ts 면 NaN — 그때는 active 를 안 단다
   const activeFrom = Number.isFinite(newestAt) ? new Date(newestAt - 7 * 86400000).toISOString() : "";
   const stateOf = (n: N3): number => n.focus ? ORB_STATE.selected
+    : n.conflict ? ORB_STATE.conflict
     : n.historical ? ORB_STATE.historical
     : activeFrom && n.ts && n.ts >= activeFrom ? ORB_STATE.active : ORB_STATE.idle;
   // 몸통 층 — scene 은 ForceGraph3D 생성 뒤에야 얻는다(아래), 그래서 최초 빌드에서는

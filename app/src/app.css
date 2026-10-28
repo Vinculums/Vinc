@@ -4009,3 +4009,15 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .home-doc .cm-editor { min-height: 40vh; }
 /* 문서 홈은 한 면이 곧 문서라 본문을 상자에 가두지 않는다(시트·Tools 는 상자를 둔다). */
 .home-doc .doc-cm-box { border-color: transparent; padding: 0; }
+
+/* A5 에이전트 쓰기 검토 — Agent 보드 맨 위(agent-writes.ts). */
+.agent-writes { margin: 1rem 0 1.5rem; display: flex; flex-direction: column; gap: .6rem; }
+.aw-head { display: flex; align-items: baseline; gap: .6rem; }
+.aw-head h2 { font-size: var(--fs-md, 1rem); margin: 0; }
+.aw-group { border: 1px solid hsl(var(--border)); border-radius: .6rem; padding: .6rem .75rem; }
+.aw-group-head { display: flex; align-items: center; gap: .6rem; }
+.aw-group-head .btn { margin-left: auto; }
+.aw-list { list-style: none; margin: .4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .2rem; }
+.aw-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; }
+.aw-go { border: none; background: none; padding: 0; font: inherit; color: hsl(var(--link)); cursor: pointer; text-align: left; }
+.aw-go:hover { text-decoration: underline; }

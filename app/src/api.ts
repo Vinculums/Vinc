@@ -649,7 +649,7 @@ export type GraphNode = {
   x2?: number; y2?: number;
   // 유효구간 — 기록은 열로(`valid_until`), 결정은 속성으로(`props.valid_until`·`superseded_by`)
   // 실려 온다. 3D 몸통의 historical 상태가 읽는다(node-validity.ts).
-  valid_until?: string;
+  valid_from?: string; valid_until?: string;
   props?: Record<string, unknown> | null;
 };
 export type GraphEdge = {
@@ -1095,6 +1095,9 @@ export const api = {
     executed: boolean; total?: number;
     items?: { concept_id: string; title: string; one_liner: string }[];
   }> => call("/ledger-drilldown", { owner, domain, mark, ...(seed ? { seed } : {}) }),
+  // 에이전트 쓰기 검토(A5) — 최근 쓰기를 출처별로 묶고 사람이 볼 검사를 단다(조회 전용).
+  agentWrites: (owner: string, days = 14): Promise<import("./agent-writes").AgentWrites> =>
+    call("/agent-writes", { owner, days }),
   // D45-V 1단계 — 흐름 선 클릭: 관계의 evidence·confidence + 양끝 노드 메타/발췌.
   edgeContext: (owner: string, src: string, dst: string, type: string): Promise<{
     executed: boolean; evidence?: string; confidence?: number;

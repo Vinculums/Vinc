@@ -88,3 +88,19 @@ test("a document names decisions by id, once each, with the line it stands on", 
   ]);
   assert.equal(docMirrorId("vinc.audit.x"), "concept:doc.vinc.audit.x");
 });
+
+const { conflictIds } = await source("../src/node-validity.ts");
+
+test("two current claims with one key and different values conflict while their spans overlap", () => {
+  const key = { entity: "hub", predicate: "replicas", scope: "prod" };
+  const today = "2026-10-28";
+  const got = conflictIds([
+    { id: "record:a", props: { ...key, value: 1 }, valid_from: "2026-10-01" },
+    { id: "record:b", props: { ...key, value: 2 }, valid_from: "2026-10-10" },
+    { id: "record:c", props: { ...key, value: 2 }, valid_from: "2026-10-12" },
+    { id: "record:old", props: { ...key, value: 3 }, valid_from: "2026-01-01", valid_until: "2026-02-01" },
+    { id: "record:other", props: { entity: "hub", predicate: "region", scope: "prod", value: "x" } },
+    { id: "record:unkeyed", props: { value: 9 } },
+  ], today);
+  assert.deepEqual([...got].sort(), ["record:a", "record:b", "record:c"]);
+});
