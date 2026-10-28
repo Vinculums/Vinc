@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "vinc": {
+      "type": "http",
+      "url": "https://mcp.vincs.io/mcp",
+      "note": "Hosted Vinc MCP server. Sign in with OAuth on vincs.io; refresh tokens keep the connection."
+    }
+  }
+}
