@@ -26,6 +26,7 @@ import { nonOverlappingLabels, type LabelBox } from "../view-labels";
 import type { ViewRoute } from "../view-route";
 import { RoutedLinkObject } from "./view-routes3d";
 import { CurvedLinkObject } from "./view-curves3d";
+import { topicOf } from "../node-topic";
 import { OrbLayer, ORB_STATE, orbKindOf, orbSeed, areaBox, type AreaBox, areaVolume, retintVolume } from "./view-orbs3d";
 import { areasApart } from "../area-key";
 
@@ -417,7 +418,9 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     areaTints = plan.areas;
     areaById.clear();
     for (const n of nodes) {
-      const d = (n.domain || "").trim();
+      // 주제 마크는 자기 경로로 칠한다(`topicOf`) — `domain` 열은 부모 경로라 그대로 읽으면 한 단계 위
+      // 주제의 색을 입고, 영역 단계 주제(`domain:vinc/design`)는 영역을 잃어 부피 밖에 선다.
+      const d = topicOf(n).trim();
       (n as { __tint?: string }).__tint = plan.topics.get(d);
       const area = plan.areaOf.get(d);
       if (area) areaById.set(n.id, area);

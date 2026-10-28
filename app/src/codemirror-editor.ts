@@ -13,7 +13,7 @@ import {
   EditorView, keymap, Decoration, ViewPlugin, WidgetType,
   type DecorationSet, type ViewUpdate,
 } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, isolateHistory, redo, undo } from "@codemirror/commands";
 import { fillMath, fillMermaid } from "./rich-blocks";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
@@ -22,6 +22,7 @@ import { MentionMenu, SelectionBar, MENTION_RE,
 import { esc } from "./components";
 import { InsertMenu, applyFormat, filterBlocks, insertBlock,
          type InsertBlock, type InsertOpts } from "./cm-insert";
+import { addRow, isDelimLine, setCell, splitCells, tableRows } from "./cm-table";
 
 export type CmHandle = {
   getValue: () => string;
@@ -153,15 +154,9 @@ class FmWidget extends WidgetType {
 // 만들어 두므로 그 범위를 통째로 블록 위젯으로 바꾼다. 셀 단위로 렌더하니 셀
 // 경계를 넘는 인라인 오매칭(lineDecos 의 표 early return 이 존재하는 이유)이
 // 구조적으로 불가능해지고, 그래서 셀 안 **강조**·`코드` 가 비로소 산다.
-// 커서가 표 안에 있으면 위젯을 걷고 원문을 보인다(활성 줄 = 소스 규율 그대로).
-
-/** `|` 로 셀을 가른다. 이스케이프된 `\|` 는 셀 내용이지 경계가 아니다. */
-function splitCells(line: string): string[] {
-  let s = line.trim();
-  if (s.startsWith("|")) s = s.slice(1);
-  if (s.endsWith("|")) s = s.slice(0, -1);
-  return s.split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, "|").trim());
-}
+// 편집 중에는 **칸 안에서 고친다**: 칸을 누르면 그 칸만 원문(`**굵게**` 같은 기호째)으로
+// 바뀌고, 입력은 그 칸이 든 줄 하나로 되돌아간다(cm-table.ts). 표 전체를 원문으로 보려면
+// 칸에서 Esc 를 누르거나 키보드로 표 안에 들어온다(이 경우 위젯이 걷히고 원문이 보인다).
 
 /** 셀 안 인라인. **이스케이프가 먼저**다 — 아래 치환이 innerHTML 로 들어간다. */
 function cellHtml(raw: string): string {
@@ -176,54 +171,193 @@ const cellAlign = (spec: string): string =>
   /^:-+:$/.test(spec) ? "center" : /^-+:$/.test(spec) ? "right"
     : /^:-+$/.test(spec) ? "left" : "";
 
-function tableHtml(src: string): string {
-  const rows = src.split("\n").filter((l) => l.trim());
+function tableHtml(src: string, edit: boolean): string {
+  const rows = tableRows(src);
   if (!rows.length) return "";
-  let align: string[] = [];
-  let bodyFrom = 1;
-  if (rows[1] && TABLE_DELIM.test(rows[1]) && rows[1].includes("--")) {
-    align = splitCells(rows[1]).map((c) => cellAlign(c.replace(/\s/g, "")));
-    bodyFrom = 2;
-  }
-  const cell = (t: string, i: number, tag: "th" | "td") =>
-    `<${tag}${align[i] ? ` style="text-align:${align[i]}"` : ""}>${cellHtml(t)}</${tag}>`;
-  const head = splitCells(rows[0]).map((c, i) => cell(c, i, "th")).join("");
-  const body = rows.slice(bodyFrom)
-    .map((r) => `<tr>${splitCells(r).map((c, i) => cell(c, i, "td")).join("")}</tr>`)
-    .join("");
+  const lines = src.split("\n");
+  const delim = lines.find((l, i) => i > rows[0].line && l.trim() && isDelimLine(l));
+  const align = delim ? splitCells(delim).map((c) => cellAlign(c.replace(/\s/g, ""))) : [];
+  const cols = rows[0].cells.length;
+  const cell = (t: string, r: number, i: number, tag: "th" | "td") =>
+    `<${tag} data-r="${r}" data-c="${i}"${edit ? ' contenteditable="plaintext-only" spellcheck="false"' : ""}`
+    + `${align[i] ? ` style="text-align:${align[i]}"` : ""}>${cellHtml(t)}</${tag}>`;
+  const row = (cells: string[], r: number, tag: "th" | "td") =>
+    Array.from({ length: Math.max(cols, cells.length) }, (_, i) => cell(cells[i] ?? "", r, i, tag)).join("");
+  const head = row(rows[0].cells, 0, "th");
+  const body = rows.slice(1).map((x, k) => `<tr>${row(x.cells, k + 1, "td")}</tr>`).join("");
   return `<table class="cm-r-tbl"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
-class TableWidget extends WidgetType {
-  constructor(readonly src: string) { super(); }
-  eq(o: TableWidget) { return o.src === this.src; }
-  toDOM() {
-    const wrap = document.createElement("div");
-    wrap.className = "cm-r-tablewrap";
-    wrap.innerHTML = tableHtml(this.src);
-    return wrap;
-  }
-  // 이벤트를 삼키지 않는다 — 편집 중에 표를 클릭하면 커서가 그 범위에 들어가고,
-  // 그 순간 위젯이 걷히며 원문이 나온다(클릭 = 고치기). 읽기 모드에서는 활성 줄이
-  // 없으므로 클릭해도 표인 채로 남는다.
-  ignoreEvent() { return false; }
+/** 위젯 DOM 이 지금 그리고 있는 원문. 위젯 객체는 데코레이션이 바뀔 때마다 새로 생기지만
+ *  DOM 은 `updateDOM` 으로 살아남으므로, 칸의 입력이 기준으로 삼을 원문은 DOM 에 붙인다. */
+const tableSrc = new WeakMap<HTMLElement, string>();
+/** 행을 더한 뒤 다시 그려진 표에서 초점을 받을 칸. 모양이 바뀌면 DOM 을 새로 짓기 때문이다. */
+const pendingCell = new WeakMap<EditorView, { r: number; c: number }>();
+
+const cellOf = (el: EventTarget | null): HTMLElement | null =>
+  el instanceof Element ? el.closest<HTMLElement>("[data-r][data-c]") : null;
+
+/** 칸의 원문(이스케이프를 푼 글자). */
+const rawCell = (src: string, r: number, c: number): string => tableRows(src)[r]?.cells[c] ?? "";
+
+function focusCell(wrap: HTMLElement, r: number, c: number): void {
+  // 되돌리기로 그 행이 사라졌으면 남은 마지막 행의 같은 열로 간다.
+  const rows = wrap.querySelectorAll("tr").length;
+  const el = wrap.querySelector<HTMLElement>(`[data-r="${Math.min(r, rows - 1)}"][data-c="${c}"]`);
+  if (!el) return;
+  el.focus();
+  const sel = el.ownerDocument.getSelection();
+  if (sel) { sel.selectAllChildren(el); sel.collapseToEnd(); }
 }
 
-/** 수식·다이어그램 블록. 표 위젯과 **같은 규율**이다: 커서가 그 범위에 들어오면
- *  위젯을 걷고 원문을 보인다(편집 가능일 때만) — 고칠 것은 그림이 아니라 소스다.
+class TableWidget extends WidgetType {
+  constructor(readonly src: string, readonly edit: boolean) { super(); }
+  eq(o: TableWidget) { return o.src === this.src && o.edit === this.edit; }
+  toDOM(view: EditorView) {
+    const wrap = document.createElement("div");
+    wrap.className = "cm-r-tablewrap";
+    wrap.innerHTML = tableHtml(this.src, this.edit);
+    tableSrc.set(wrap, this.src);
+    if (this.edit) {
+      wireTable(wrap, view);
+      const want = pendingCell.get(view);
+      if (want) {
+        pendingCell.delete(view);
+        requestAnimationFrame(() => focusCell(wrap, want.r, want.c));
+      }
+    }
+    return wrap;
+  }
+  /** 칸에 글자를 칠 때마다 원문이 바뀌어 새 위젯이 온다. 모양(행·열 수)이 같으면 DOM 을
+   *  그대로 두고 칸 글자만 갈아 끼운다 — 다시 지으면 입력 중인 칸이 초점을 잃는다.
+   *  입력 중인 칸은 건드리지 않는다(되돌리기로 원문이 달라졌을 때만 고친다). */
+  updateDOM(dom: HTMLElement, view: EditorView) {
+    if (!this.edit || !dom.querySelector("[contenteditable]")) return false;
+    const rows = tableRows(this.src);
+    const trs = dom.querySelectorAll("tr");
+    if (trs.length !== rows.length) return false;
+    for (let r = 0; r < rows.length; r++) {
+      if (trs[r].children.length !== Math.max(rows[0].cells.length, rows[r].cells.length)) return false;
+    }
+    tableSrc.set(dom, this.src);
+    pendingCell.delete(view);
+    const active = dom.ownerDocument.activeElement;
+    dom.querySelectorAll<HTMLElement>("[data-r][data-c]").forEach((el) => {
+      const raw = rawCell(this.src, +el.dataset.r!, +el.dataset.c!);
+      if (el === active) { if (el.textContent !== raw) el.textContent = raw; }
+      else el.innerHTML = cellHtml(raw);
+    });
+    return true;
+  }
+  // 칸 안의 이벤트는 위젯 것이다 — 편집기가 받으면 클릭이 커서를 표 안으로 옮겨 위젯이
+  // 걷히고, 키는 편집기 단축키로 간다. 칸 밖(테두리 · 여백)을 누르면 예전처럼 원문이 나온다.
+  // 읽기 모드에서는 칸이 편집 가능이 아니라서 클릭해도 표인 채로 남는다.
+  ignoreEvent(e: Event) { return this.edit && !!cellOf(e.target); }
+}
+
+/** 칸 하나의 입력을 원문으로 되돌리는 배선. 위젯의 위치는 매번 DOM 에서 다시 잰다
+ *  (앞쪽 글이 바뀌면 오프셋이 밀린다). */
+function wireTable(wrap: HTMLElement, view: EditorView): void {
+  const write = (next: string, userEvent: string) => {
+    const cur = tableSrc.get(wrap) ?? "";
+    if (next === cur) return;
+    const from = view.posAtDOM(wrap);
+    // 행 더하기는 따로 되돌린다 — 앞뒤 타이핑과 한 묶음이면 되돌릴 때 행과 글자가 함께 사라진다.
+    view.dispatch({ changes: { from, to: from + cur.length, insert: next }, userEvent,
+                    annotations: userEvent === "input" ? isolateHistory.of("full") : undefined });
+  };
+  wrap.addEventListener("focusin", (e) => {
+    const el = cellOf(e.target);
+    if (el) el.textContent = rawCell(tableSrc.get(wrap) ?? "", +el.dataset.r!, +el.dataset.c!);
+  });
+  wrap.addEventListener("focusout", (e) => {
+    const el = cellOf(e.target);
+    if (el) el.innerHTML = cellHtml(rawCell(tableSrc.get(wrap) ?? "", +el.dataset.r!, +el.dataset.c!));
+  });
+  wrap.addEventListener("input", (e) => {
+    const el = cellOf(e.target);
+    if (!el) return;
+    write(setCell(tableSrc.get(wrap) ?? "", +el.dataset.r!, +el.dataset.c!, el.textContent ?? ""), "input.type");
+  });
+  wrap.addEventListener("keydown", (e) => {
+    const el = cellOf(e.target);
+    if (!el || e.isComposing) return;
+    const r = +el.dataset.r!, c = +el.dataset.c!;
+    const src = tableSrc.get(wrap) ?? "";
+    const rows = tableRows(src).length, cols = tableRows(src)[0]?.cells.length ?? 0;
+    const mod = e.metaKey || e.ctrlKey;
+    // 되돌리기는 편집기의 기록으로 — 칸의 자체 되돌리기는 원문과 어긋난다. 되돌린 결과가
+    // 행 수를 바꿔 표가 다시 지어지면 같은 칸으로 초점을 돌려준다.
+    const hist = (cmd: typeof undo) => { e.preventDefault(); pendingCell.set(view, { r, c }); cmd(view); };
+    if (mod && e.key.toLowerCase() === "z") { hist(e.shiftKey ? redo : undo); return; }
+    if (mod && e.key.toLowerCase() === "y") { hist(redo); return; }
+    // Tab · Shift+Tab 은 옆 칸, Enter 는 아래 칸. 마지막 칸에서 넘어가면 행을 하나 더한다.
+    const go = (nr: number, nc: number) => {
+      e.preventDefault();
+      if (nr >= rows) {
+        pendingCell.set(view, { r: nr, c: nc });
+        write(addRow(src), "input");
+        return;
+      }
+      if (nr >= 0) focusCell(wrap, nr, nc);
+    };
+    if (e.key === "Tab") {
+      const i = r * cols + c + (e.shiftKey ? -1 : 1);
+      go(Math.floor(i / cols), ((i % cols) + cols) % cols);
+    } else if (e.key === "Enter") go(r + 1, c);
+    else if (e.key === "Escape") {
+      // 표 전체를 원문으로 — 커서를 표 앞에 두면 위젯이 걷힌다.
+      e.preventDefault();
+      view.focus();
+      view.dispatch({ selection: { anchor: view.posAtDOM(wrap) } });
+    }
+  });
+  // 서식째 붙여 넣지 않는다 — 칸은 한 줄 글자다(plaintext-only 를 모르는 엔진 대비).
+  wrap.addEventListener("paste", (e) => {
+    if (!cellOf(e.target)) return;
+    e.preventDefault();
+    const text = (e.clipboardData?.getData("text/plain") ?? "").replace(/\r?\n/g, " ");
+    if (e.target instanceof Node) e.target.ownerDocument?.execCommand("insertText", false, text);
+  });
+}
+
+/** 수식·다이어그램 블록. 커서가 그 범위에 들어오면 원문을 보이되(편집 가능일 때만,
+ *  고칠 것은 그림이 아니라 소스다) 그림은 걷지 않고 원문 **바로 아래**에 남긴다 —
+ *  치는 대로 다시 그려지므로 원문과 결과를 한 자리에서 본다(`preview`).
  *  그리는 일은 `rich-blocks` 가 늦게 실어 와서 한다. 위젯이 만들어질 때 DOM 만
  *  돌려주고 내용은 프라미스가 도착하면 채워진다 — CM 은 그 사이에도 자리를 잡는다. */
 class RichWidget extends WidgetType {
-  constructor(readonly kind: "math" | "mermaid", readonly src: string) { super(); }
-  eq(o: RichWidget) { return o.kind === this.kind && o.src === this.src; }
-  toDOM() {
+  constructor(readonly kind: "math" | "mermaid", readonly src: string,
+              readonly preview = false) { super(); }
+  eq(o: RichWidget) { return o.kind === this.kind && o.src === this.src && o.preview === this.preview; }
+  toDOM(view: EditorView) {
     const el = document.createElement("div");
-    el.className = this.kind === "math" ? "md-math" : "md-mermaid";
-    if (this.kind === "math") void fillMath(el, this.src, true);
-    else void fillMermaid(el, this.src);
+    el.className = (this.kind === "math" ? "md-math" : "md-mermaid") + (this.preview ? " cm-r-preview" : "");
+    // 그림은 늦게 채워져 위젯 높이가 그 뒤에 바뀐다. 편집기는 위젯 안의 변화를 보지 않으므로
+    // 다 채워지면 다시 재게 한다 — 안 그러면 줄 높이 지도가 어긋나 Home · End · 화살표가
+    // 엉뚱한 줄로 간다(원문 아래 미리보기에서 한두 줄씩 밀렸다).
+    const filled = this.kind === "math" ? fillMath(el, this.src, true) : fillMermaid(el, this.src);
+    void filled.then(() => view.requestMeasure());
+    // 누르면 원문으로 — 커서를 블록 **안쪽** 첫 줄에 둔다. 편집기에 맡기면 블록 위젯의
+    // 클릭이 블록 앞 줄 끝에 떨어져 원문이 열리지 않았다(화살표도 블록을 건너뛴다).
+    if (!this.preview && view.state.facet(EditorView.editable)) {
+      el.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        // 위젯의 DOM 위치는 블록 안 어딘가를 가리킬 수 있어서, 블록 층이 그린 구간에서 찾는다.
+        const at = view.posAtDOM(el), st = view.state;
+        const blk = st.field(blockLayer, false)?.ranges.find((r) => r.from <= at && at <= r.to);
+        if (!blk) return;
+        const line = st.doc.lineAt(blk.from);
+        const one = line.to >= blk.to;               // `$$x$$` 한 줄짜리
+        const anchor = one ? blk.from + line.text.indexOf("$$") + 2 : Math.min(line.to + 1, blk.to);
+        view.focus();
+        view.dispatch({ selection: { anchor }, scrollIntoView: true });
+      });
+    }
     return el;
   }
-  ignoreEvent() { return false; }
+  ignoreEvent(e: Event) { return e.type === "mousedown" && !this.preview; }
 }
 
 /** `$$…$$` 블록의 구간. 마크다운 문법이 아니라 관례라 파서가 모르고, 그래서 줄을
@@ -288,7 +422,7 @@ function buildBlocks(state: EditorState): Blocks {
     if (editable && sel.ranges.some((r) => r.from <= t.to && t.from <= r.to)) return false;
     ranges.push(t);
     parts.push({ from: t.from, to: t.to, deco: Decoration.replace({
-      widget: new TableWidget(state.doc.sliceString(t.from, t.to)), block: true }) });
+      widget: new TableWidget(state.doc.sliceString(t.from, t.to), editable), block: true }) });
     return false;
   } });
 
@@ -297,9 +431,13 @@ function buildBlocks(state: EditorState): Blocks {
     if (n.name !== "FencedCode") return undefined;
     const head = state.doc.lineAt(n.from).text.trim();
     if (!/^```+\s*mermaid\s*$/i.test(head)) return false;
-    if (editable && sel.ranges.some((r) => r.from <= n.to && n.from <= r.to)) return false;
     const body = state.doc.sliceString(state.doc.lineAt(n.from).to + 1,
                                        state.doc.lineAt(n.to).from).replace(/\n$/, "");
+    if (editable && sel.ranges.some((r) => r.from <= n.to && n.from <= r.to)) {
+      parts.push({ from: n.to, to: n.to, deco: Decoration.widget({
+        widget: new RichWidget("mermaid", body, true), block: true, side: 1 }) });
+      return false;
+    }
     ranges.push({ from: n.from, to: n.to });
     parts.push({ from: n.from, to: n.to, deco: Decoration.replace({
       widget: new RichWidget("mermaid", body), block: true }) });
@@ -307,11 +445,15 @@ function buildBlocks(state: EditorState): Blocks {
   } });
   // 수식
   for (const m of mathRanges(state)) {
-    if (editable && sel.ranges.some((r) => r.from <= m.to && m.from <= r.to)) continue;
     if (ranges.some((r) => r.from <= m.from && m.to <= r.to)) continue;   // 표·프론트매터 안이면 건너뛴다
-    ranges.push(m);
     const tex = state.doc.sliceString(m.from, m.to)
       .replace(/^\s*[$][$]/, "").replace(/[$][$]\s*$/, "").trim();
+    if (editable && sel.ranges.some((r) => r.from <= m.to && m.from <= r.to)) {
+      parts.push({ from: m.to, to: m.to, deco: Decoration.widget({
+        widget: new RichWidget("math", tex, true), block: true, side: 1 }) });
+      continue;
+    }
+    ranges.push(m);
     parts.push({ from: m.from, to: m.to, deco: Decoration.replace({
       widget: new RichWidget("math", tex), block: true }) });
   }

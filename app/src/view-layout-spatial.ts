@@ -2,6 +2,7 @@ import type { GraphNode, GraphEdge } from "./api";
 import { simplifyRoute, routeLength, type RoutePoint } from "./view-route";
 import { spatialClearance, STEP } from "./view-layout-obstacles";
 import { areaKeys } from "./area-key";
+import { topicOf } from "./node-topic";
 
 type Axis = keyof RoutePoint;
 const AXES: Axis[] = ["x", "y", "z"];
@@ -85,7 +86,9 @@ export function spatialLayout(nodes: GraphNode[], edges: GraphEdge[], topics: Sp
   const snap = (v: number) => Math.round(v / STEP) * STEP;
   const gap = STEP * 2;
   const reach = cells.map(c => Math.hypot(c.max.y - c.min.y, c.max.z - c.min.z));
-  const areaKey = areaKeys(cells.map(c => map.get(c.topic.id)?.domain ?? ""));
+  // 주제의 경로는 id 에서 읽는다(`topicOf`). 허브가 싣는 주제 노드의 `domain` 열은 **부모** 경로라
+  // (`domain:vinc/ai/eval` 의 domain 은 "vinc/ai"), 그 열로 가르면 공통 접두가 비어 모두 한 영역이 된다.
+  const areaKey = areaKeys(cells.map(c => topicOf({ id: c.topic.id, kind: "domain" })));
   const areas: number[][] = [];
   const areaIndex = new Map<string, number>();
   cells.forEach((_, i) => {

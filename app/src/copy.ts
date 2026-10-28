@@ -771,13 +771,10 @@ const EN = {
         none: "nodes only", always: "always", particles: "particles",
       } as Record<string, string>,
       unlinkedNodes: "Unlinked nodes", show: "show", hide: "hide",
-      layout: "Layout", spread: "Spread",
+      spread: "Spread",
       // 옵션 묶음 이름(2026-08-05). 여덟 개가 한 줄로 늘어서 있던 것을 세 갈래로
       // 나눈다 — "무엇에 대한 손잡이인가"가 먼저 읽혀야 고를 수 있다.
       groupNodes: "Nodes", groupLines: "Lines", groupOther: "Other",
-      // 프리셋 2종(2026-08-02). 이름은 무엇을 보여주는지로 짓는다 — 알고리즘 이름
-      // (radial·dendro)은 사용자에게 아무 것도 말해 주지 않았다.
-      layoutName: { hub: "by centre", temporalRoots: "time branches" } as Record<string, string>,
       // v2 — **값마다 한 줄 설명 한 벌**. 옛 per-row Help 키들(edgeShowHelp·layoutHelp
       // …)을 이 표로 모았다: 설명은 패널 바닥의 고정 줄이 받고,
       // 가리키거나 포커스가 닿은 값의 줄로 바뀐다(뜨는 툴팁 아님 — WCAG 1.4.13 을
@@ -797,14 +794,11 @@ const EN = {
         edgesNone: "Only the marks, no lines. A click outlines what belongs together, and the card lists the links.",
         showU: "Unlinked marks are drawn, so you can see what is not tied in yet.",
         hideU: "Unlinked marks are hidden. Only what connects remains.",
-        hub: "Everything spreads from the centre. Inside a topic, the best connected sits nearest.",
-        temporalRoots: "Branches spread from each topic in date order, using the selected time basis.",
         recorded: "Stood up by when you wrote it, so one import clusters in one place.",
         content: "Stood up by when it happened, regardless of when it was written down.",
         spread: "Multiplies the coordinates you were given. It follows your hand as you drag.",
         nodeScale: "Keeps the size encoding and scales the whole View.",
         edgeWidth: "A weight multiplier. Density still carries the relation's weight.",
-        cone: "How wide a topic's branch fans from the centre. Applied when you let go.",
         when: "Only what existed at that point. Concepts with no date of their own stay visible.",
       } as Record<string, string>,
       nodeScale: "Node scale", edgeWidth: "Line weight",
@@ -813,7 +807,6 @@ const EN = {
       when: "Time cursor",
       whenAll: "All",
       groupTime: "Time",
-      cone: "Density",
       // 주제 틴트 — 이름에 "색"이 아니라 "주제"가 먼저 오는 이유: 고르는 것은 색이
       // 아니라 "주제를 색으로 볼까"다.
       timeBasis: "Time",
@@ -2090,9 +2083,8 @@ const KO: Deck = {
         none: "노드만", always: "항상", particles: "흐름",
       } as Record<string, string>,
       unlinkedNodes: "연결 안 된 노드", show: "표시", hide: "숨김",
-      layout: "배치", spread: "간격",
+      spread: "간격",
       groupNodes: "노드", groupLines: "선", groupOther: "기타",
-      layoutName: { hub: "중심에서", temporalRoots: "시간순 가지" } as Record<string, string>,
       // v2 — 값마다 한 줄 설명 한 벌(EN 쪽 주석 참조). 바닥 고정 줄이 받는다.
       helpTip: "설명 펼치기",
       close: "닫기",
@@ -2109,21 +2101,17 @@ const KO: Deck = {
         edgesNone: "선 없이 마디만 그려요. 누르면 함께 묶인 것에 테두리가 둘리고, 연결은 카드에서 볼 수 있어요",
         showU: "연결 없는 마디도 그려요. 아직 이어지지 않은 것이 보여요",
         hideU: "연결 없는 마디를 숨겨요. 이어진 것만 남아 View가 조용해져요",
-        hub: "가운데에서 사방으로 퍼져요. 한 주제 안에서는 연결이 많은 것이 가운데에 가까워요",
-        temporalRoots: "주제를 중심으로, 선택한 날짜 기준에 따라 가지가 시간순으로 퍼져요",
         recorded: "언제 적었는지로 세워요. 한 번에 적재한 것들이 같은 자리에 몰려요",
         content: "언제 있었던 일인지로 세워요. 적은 날과 무관하게 퍼져요",
         spread: "받은 좌표를 그 배수로 벌려요. 끄는 동안 바로 따라와요",
         nodeScale: "크기 인코딩은 그대로 두고 전체를 키워요",
         edgeWidth: "선 굵기 배율이에요. 가중치는 여전히 농도가 말해요",
-        cone: "주제의 가지가 중심에서 얼마나 벌어질지예요. 손을 놓을 때 적용돼요",
         when: "그 시점에 있던 것만 보여요. 자기 날짜가 없는 개념은 계속 보여요",
       } as Record<string, string>,
       nodeScale: "크기 배율", edgeWidth: "선 굵기",
       when: "시점",
       whenAll: "전체",
       groupTime: "시간",
-      cone: "밀도",
       timeBasis: "기준",
       replay: "흐름 보기", replayPlay: "재생", replayStop: "멈춤",
       basisRecorded: "기록한 때", basisContent: "일어난 때",

@@ -13,23 +13,16 @@
 //                   재배치한다(view-layout.ts). "무엇이 먼저인가"를 말한다.
 // `순서대로`·`관계순 가지`는 뺐고, 그 저장값은 loadPrefs 의 옮겨 읽기가 `시간순 가지`로 접는다.
 // 근거: [[decision:view-offers-two-layouts-by-centre-and-time-branches-2026-10-11]]
-type ViewLayout = "hub" | "temporalRoots";
-export const LAYOUTS: ViewLayout[] = ["hub", "temporalRoots"];
+/** 배치는 시간순 가지 하나다. 3D 전체 보기를 인프라 배치 하나로 정하면서 `중심에서`(hub) 선택지를
+ *  걷었다. 서버가 주는 중심에서 좌표는 가지 배치가 오기 전의 자리 잡기로만 쓴다(`serverLayoutFor`).
+ *  근거: [[decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28]] */
+type ViewLayout = "temporalRoots";
+export const LAYOUTS: ViewLayout[] = ["temporalRoots"];
 export const isRootsLayout = (layout: ViewLayout) => layout === "temporalRoots";
-export const layoutsFor = (_view: Viewpoint): ViewLayout[] => LAYOUTS;
 /** 서버는 `hub` 좌표만 받는다. 가지 배치는 받은 그래프를 워커에서 재배치한다. */
 export const serverLayoutFor = (_layout: ViewLayout): "hub" => "hub";
-/** 0.9.7 에서 뺀 배치 이름(`rank`=순서대로, `rankedRoots`=관계순 가지) → 대체.
- *  판 3(`PREFS_VERSION`) 이전에 저장된 값에만 쓰는 옮겨 읽기다(loadPrefs). 판 3 으로
- *  한 번 저장되면 다시 읽히지 않는다. 그 전의 radial·circle·tree·organic·dendro·shell 은
- *  별칭 없이 모르는 값과 같이 `hub` 로 떨어진다(결과가 같아서 표를 뺐다).
- *  제거 조건: 0.9.9 태그 뒤(판 3 을 쓰는 0.9.8 이 한 판 나간 뒤). 빼면 남은 두 이름도 `hub` 로 떨어질 뿐이다. */
-const LAYOUT_ALIAS: Record<string, ViewLayout> = {
-  rank: "temporalRoots", rankedRoots: "temporalRoots",
-};
-/** 지금 있는 배치 이름만 받는다. 모르는 값은 기본(`hub`)이다. */
-export const normalizeLayout = (v: unknown): ViewLayout =>
-  LAYOUTS.includes(v as ViewLayout) ? v as ViewLayout : "hub";
+/** 배치 이름은 하나뿐이라 저장된 무엇이든(`hub` 포함) 시간순 가지로 읽는다. */
+export const normalizeLayout = (_v: unknown): ViewLayout => "temporalRoots";
 
 /** 그래프 탭의 보기는 3D 전체 보기 하나다. 저장값이나 주소(`/as/<관점>`)에 남은 옛 관점
  *  (`2d`·`timeline`·`bundle`)은 `VIEWPOINTS.includes` 가 걸러 3D 로 접힌다. 주소 문법의
@@ -234,9 +227,6 @@ export function loadPrefs(): ViewPrefs {
       if (p.nodeScale === 1) p.nodeScale = DEFAULTS.nodeScale;
       if (p.cone === 1) p.cone = DEFAULTS.cone;
     }
-    // 판 3 이전에 저장된 `rank`·`rankedRoots` 는 `시간순 가지`로 접는다(`LAYOUT_ALIAS`).
-    if (pv < 3 && typeof p.layout === "string" && Object.prototype.hasOwnProperty.call(LAYOUT_ALIAS, p.layout))
-      p.layout = LAYOUT_ALIAS[p.layout];
     // 판 4 이전 저장값은 첫 그림 넷을 한 번 새 기본으로 옮긴다. 판 4 로 한 번 저장되면 다시
     // 옮기지 않으므로, 그 뒤에 사람이 고른 값은 그대로 남는다.
     if (pv < 4) for (const k of FIRST_LOOK) p[k] = DEFAULTS[k];

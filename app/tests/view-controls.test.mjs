@@ -7,7 +7,7 @@ const result = await build({ entryPoints: [fileURLToPath(new URL("../src/view-co
   bundle: true, platform: "node", format: "esm", write: false });
 const { changedViewPrefs, changedRendererPrefs, canUpdateViewStyle, viewControlRows, viewPreferenceWork } =
   await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
-const prefs = (overrides = {}) => ({ view: "3d", layout: "hub", when: 1, timeBasis: "recorded",
+const prefs = (overrides = {}) => ({ view: "3d", layout: "temporalRoots", when: 1, timeBasis: "recorded",
   edgeOff: [], nodeScale: .7, labels: "hover", ...overrides });
 const available = { map: true };
 
@@ -26,13 +26,14 @@ test("time visibility followed by style changes remains a live update", () => {
   assert.equal(viewPreferenceWork(next, ["nodeScale"], available).mode, "style");
   assert.equal(viewPreferenceWork(next, ["edges"], available).mode, "style");
   assert.equal(viewPreferenceWork(next, ["when"], available).mode, "time");
-  assert.equal(viewPreferenceWork(next, ["timeBasis"], available).mode, "time");
+  // 시간 기준은 가지 배치를 다시 짓는다(아래 시험).
+  assert.equal(viewPreferenceWork(next, ["timeBasis"], available).mode, "remount");
 });
 
 test("structural renderer changes still require a remount", () => {
   const previous = prefs();
   for (const change of [{ edges: "always" }, { edgeOff: ["directed"] },
-    { unlinked: "hide" }, { layout: "temporalRoots" }, { cone: .9 }]) {
+    { unlinked: "hide" }]) {
     const next = { ...previous, ...change };
     assert.equal(canUpdateViewStyle(changedRendererPrefs(previous, next)), false);
   }
@@ -46,16 +47,11 @@ test("time branches recompute for their time basis and preserve the current came
   assert.equal(work.serverLayout, false);
   assert.equal(work.reuseGraph, true);
   assert.equal(work.keepCamera, true);
-  const centre = viewPreferenceWork(prefs({ layout: "hub" }), ["layout"], available);
-  assert.equal(centre.serverLayout, true);
-  assert.equal(centre.keepCamera, false);
 });
 
-test("the one view keeps cone for the centre layout and replay always", () => {
-  assert.equal(viewControlRows(prefs()).includes("cone"), true);
-  assert.equal(viewControlRows(prefs({ layout: "temporalRoots" })).includes("cone"), false);
+test("the one view has no layout choice, ends with replay and keeps no retired rows", () => {
   assert.equal(viewControlRows(prefs()).at(-1), "replay");
-  for (const gone of ["period", "docs", "lineage", "bundleDepth", "bundleRels"])
+  for (const gone of ["layout", "cone", "period", "docs", "lineage", "bundleDepth", "bundleRels"])
     assert.equal(viewControlRows(prefs()).includes(gone), false);
 });
 
