@@ -684,3 +684,36 @@ test("many topics fill the 3D cross section instead of standing on one ring", as
   // 안쪽도 찬다: 가장 바깥 반지름의 절반 안에 선 주제가 있다.
   assert.ok(radii.filter(r => r > 0 && r < Math.max(...radii) / 2).length >= 6, "the cross section is hollow");
 });
+
+test("3D topic cells group by area and still start left to right in time across areas", async () => {
+  // 영역 셋, 영역마다 주제 여덟. 날짜는 영역을 가로질러 엇갈리게 준다(영역 순서와 시간 순서가 다르다).
+  const nodes = [];
+  const areas = ["design", "engineering", "ai"];
+  for (let t = 0; t < 24; t++) for (let i = 0; i < 3; i++)
+    nodes.push(n(`t${t}n${i}`, `20${String(10 + t).padStart(2, "0")}-0${i + 1}`, `vinc/${areas[t % 3]}/t${t}`));
+  const graph = await spatialTemporalLayout(nodes, [], "content", elk, route);
+  const topics = graph.nodes.filter(n => n.kind === "domain");
+  const areaOf = t => t.domain.split("/")[1];
+  const groups = new Map();
+  for (const t of topics) { if (!groups.has(areaOf(t))) groups.set(areaOf(t), []); groups.get(areaOf(t)).push(t); }
+  assert.equal(groups.size, 3);
+  const centre = list => ({ y: list.reduce((s, t) => s + t.y, 0) / list.length, z: list.reduce((s, t) => s + t.z, 0) / list.length });
+  const centres = new Map([...groups].map(([a, list]) => [a, centre(list)]));
+  // 모든 주제는 다른 영역의 중심보다 제 영역의 중심에 더 가깝다(영역마다 한 덩어리).
+  for (const t of topics) {
+    const d = c => Math.hypot(t.y - c.y, t.z - c.z), own = d(centres.get(areaOf(t)));
+    for (const [a, c] of centres) if (a !== areaOf(t)) assert.ok(own < d(c), `${t.id} sits nearer ${a} than its own area`);
+  }
+  // x 는 영역과 무관하게 시간 순서다: 가장 이른 주제(t0)가 가장 늦은 주제(t23)보다 왼쪽이다.
+  const at = id => topics.find(t => t.id.endsWith(`/${id}`)).x;
+  assert.ok(at("t0") < at("t23"), "time no longer runs left to right across areas");
+  assert.equal(new Set(graph.nodes.map(n => [n.x, n.y, n.z].join(":"))).size, graph.nodes.length);
+});
+
+test("area keys strip the common domain prefix and take the next step", async () => {
+  const { areaKeys } = await source("../src/view-layout-spatial.ts");
+  assert.deepEqual(areaKeys(["vinc/design/tokens", "vinc/ai", "vinc", "vinc/design"]), ["design", "ai", "", "design"]);
+  assert.deepEqual(areaKeys(["vinc/design/a", "vinc/design/b/c"]), ["a", "b"]);
+  assert.deepEqual(areaKeys(["", "notes"]), ["", "notes"]);
+  assert.deepEqual(areaKeys([]), []);
+});
