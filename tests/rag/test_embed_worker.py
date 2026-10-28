@@ -170,6 +170,12 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         self.assertEqual(sidecar.applied[0]["content_hash"], "h1")
         self.assertEqual(sidecar.applied[0]["model"], "BAAI/bge-base-en-v1.5")
 
+    def test_조각_상한은_기본_500토큰이다(self):
+        """다른 테스트는 조각을 `MAX_CONTENT` 와만 대조해서 그 값이 바뀌어도 통과한다.
+        env 가 없을 때의 기본값을 여기서 못 박는다(`vinc_rag/rerank.py` 의 PIECE_TOKENS 도 같은 기본)."""
+        with _env(VINC_EMBED_CONTENT_TOKENS=None):
+            self.assertEqual(_load_module().MAX_CONTENT, 500)
+
     def test_긴_청크는_조각_여럿으로_임베딩된다(self):
         """v8 부모-자식 — 청크는 정본이라 안 자르고, **벡터만** 쪼갠다.
 

@@ -51,6 +51,13 @@ def test_선언한_폭이_정본_표와_같다():
     )
 
 
+def test_허브_모델은_BGE_m3_ko_다():
+    """폭 대조는 어느 모델로 바꿔도 통과한다. 허브의 모델은 소유자 결정이라 값을 못 박는다:
+    바꾸려면 결정과 이 줄을 함께 바꾼다.
+    근거: [[vinc.research.embedding-language-finetunes-survey-2026-10-17]]"""
+    assert _env("VINC_EMBED_MODEL") == "dragonkue/BGE-m3-ko"
+
+
 def test_아티팩트_경로가_모델과_같은_계열이다():
     """세 줄이 함께 움직이는지 본다. 경로 규약의 정본 대조는
     `tests/rag/test_embed_worker.py` 가 하고, 여기서는 **모델을 바꾸며 경로만 두고 간**

@@ -176,6 +176,14 @@ class BodyTests(unittest.TestCase):
         b = q._brief_body({"props": {"zz": "짧다", "aa": "이것이 충분히 긴 문장이다."}})
         self.assertEqual((b["text"], b["src"]), ("이것이 충분히 긴 문장이다.", "props"))
 
+    def test_이름없는_props_는_12자를_넘어야_본문이다(self):
+        """12자 이하 값은 문장이 아니라 꼬리표로 보고 발췌로 내려간다(ask.ts 와 같은 값)."""
+        ex = [{"excerpt": "발췌 문장.", "doc_title": "문서"}]
+        b = q._brief_body({"props": {"zz": "가" * 12}, "excerpts": ex})
+        self.assertEqual(b["src"], "doc")
+        b = q._brief_body({"props": {"zz": "가" * 13}, "excerpts": ex})
+        self.assertEqual((b["text"], b["src"]), ("가" * 13, "props"))
+
     def test_같은_길이면_키_이름으로_갈라_결정론이다(self):
         """ask.ts 는 객체 순서에 기댄다. 같은 질문이 늘 같은 답을 내야 하므로
         여기서는 키 이름으로 가른다 — 이 갈래가 이식의 유일한 의도적 차이다."""

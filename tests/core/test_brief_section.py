@@ -46,6 +46,16 @@ class SectionSpan(unittest.TestCase):
         self.assertEqual((lo, hi, cut, len(text)), (1, 3, True, 12))
         self.assertIn("d", text)
 
+    def test_기본_상한은_6000자다(self):
+        """위 테스트는 cap 을 직접 넘긴다. brief 는 기본값으로 부르므로 그 값을 여기서 본다."""
+        self.assertEqual(x.SECTION_CHARS, 6000)
+        ch = [{"sec": "S", "text": "a" * 3000}, {"sec": "S", "text": "b" * 3000}]
+        self.assertEqual(x.section_span(ch, 1)[2:], ("a" * 3000 + "b" * 3000, False))
+        ch[1]["text"] += "c"
+        lo, hi, text, cut = x.section_span(ch, 1)
+        self.assertEqual((lo, hi, cut, len(text)), (0, 1, True, 6000))
+        self.assertIn("b", text)
+
 
 class _FakeStore:
     """`_brief_section` 이 부르는 두 질의만 답한다."""
