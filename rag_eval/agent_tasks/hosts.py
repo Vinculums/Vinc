@@ -41,6 +41,8 @@ class RunOutput:
     model_error: str = ""
     model_versions: list[str] = field(default_factory=list)
     host_error: str = ""
+    #: 구독 실행의 목록가 환산 합(청구액이 아니다). 모르는 실행기는 None.
+    list_cost_usd: float | None = None
 
 
 class Host(Protocol):
@@ -79,6 +81,8 @@ class Stepper:
             forced = True
         self.out.tokens_in += turn.tokens_in
         self.out.tokens_out += turn.tokens_out
+        if turn.list_cost_usd is not None:
+            self.out.list_cost_usd = round((self.out.list_cost_usd or 0.0) + turn.list_cost_usd, 8)
         if turn.model_version and turn.model_version not in self.out.model_versions:
             self.out.model_versions.append(turn.model_version)
         if turn.error:
@@ -89,7 +93,8 @@ class Stepper:
                             {"id": c.id, "name": c.name, "args": c.args} for c in turn.tool_calls]},
                         "tokens_in": turn.tokens_in, "tokens_out": turn.tokens_out,
                         "model_version": turn.model_version, "error": turn.error,
-                        "forced_final": forced})
+                        "list_cost_usd": turn.list_cost_usd, "forced_final": forced,
+                        **({"raw": turn.raw} if getattr(turn, "raw", "") else {})})
         return turn
 
 

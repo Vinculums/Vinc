@@ -6,8 +6,9 @@
   ``not_regex`` 가 맞으면 기본으로 결정 위반으로 센다(``"violation": false`` 로 끈다).
 - ``sources``: 마지막 ``Sources:`` 줄의 id 가 스토어에 실재하고, 그중 하나 이상이 과제가
   받아 주는 근거(``support``)인가. 문서 미러 ``concept:doc.X`` 와 문서 ``X`` 는 같은 근거다.
-- ``abstain``: 지식 없음 과제. 근거를 하나도 대지 않고 모른다고 말하거나 되물었으면 기권이다.
-  그렇지 않으면 지어낸 답이다.
+- ``abstain``: 지식 없음 과제. 모른다고 말하거나 되물었으면 기권이다. 근거 id 를 함께 댔으면
+  (찾아본 문서를 Sources 줄에 적으라는 규칙을 따른 것이다) 채점 모델이 "물은 것을 단정하지 않았다"고
+  볼 때만 기권이다. 그렇지 않으면 지어낸 답이다.
 - ``set_f1``: 모음 과제. 산출물의 노드 id 집합과 정답 집합의 F1.
 - ``path``: 경로 과제. 산출물에 나온 차례대로 이은 엣지와 정답 엣지의 정밀도·재현율.
   순서 있는 id 목록을 한 줄 일치로 보면 표기·순서 차이가 전부 오답이 된다.
@@ -24,11 +25,14 @@ from typing import Callable
 
 #: 노드 id 의 모양. 접두가 테이블을 정한다. 본문 글자는 유니코드 낱말 글자다: 한국어 제목에서
 #: 만든 id 가 그래프에 남아 있어서, ASCII 만 받으면 그 id 가 접두 앞부분에서 잘린다.
+#: 도메인 id 는 경로다(``domain:vinc/engineering/mcp-server``). ``/`` 도 본문 글자로 받는다.
 NODE_ID = re.compile(r"(?<![\w.:\-])((?:concept|decision|record|episode|domain|bridge):"
-                     r"\w(?:[\w.\-]*\w)?)")
+                     r"\w(?:[\w.\-/]*\w)?)")
 _SOURCES = re.compile(r"^\s*\**\s*sources\s*\**\s*:\s*(.*)$", re.I)
 _BRACKETED = re.compile(r"\[([^\[\]]+)\]")
-_BARE = re.compile(r"\w[\w.:\-]*\w")
+_BARE = re.compile(r"\w[\w.:/\-]*\w(?:#\d+)?")
+#: 청크 id 꼬리(`api/docstore.py` 규약 ``{doc_id}#{index:05d}``). 청크를 대면 그 문서를 댄 것이다.
+_CHUNK = re.compile(r"#\d+$")
 DOC_MIRROR = "concept:doc."
 #: 모른다고 말하는 문장. 영어와 한국어. 지어낸 답과 기권을 가르는 데만 쓴다.
 ABSTAIN = re.compile(
@@ -36,8 +40,18 @@ ABSTAIN = re.compile(
     r"|not\s+(?:recorded|documented|available|found|in\s+the\s+(?:graph|knowledge|material|sources?))"
     r"|no\s+(?:record|information|data|source|mention)s?\b"
     r"|(?:unable|not\s+able)\s+to\s+(?:find|answer|determine|confirm)"
-    r"|(?:does|do)\s+not\s+(?:contain|hold|include|say|mention|record))"
-    r"|모르|알 수 없|찾지 못|기록(?:되어|돼)?\s*있지\s*않|기록이\s*없|나와\s*있지\s*않|확인할 수 없",
+    r"|(?:does|do)\s+not\s+(?:contain|hold|include|say|mention|record)"
+    # 실제 모델 답에서 본 꼴(2026-10-28 구독 실행): "I don't have any record of", "Nothing in the
+    # materials available to me covers it", "can't say what".
+    r"|i\s+(?:do\s+not|don't)\s+have\s+(?:any\s+|the\s+)?(?:record|information|data|details)"
+    r"|i\s+(?:do\s+not|don't)\s+have\s+(?:a|an|that|this)\s+(?:\w+\s+){0,3}(?:number|figure|date|value|size)"
+    r"|nothing\s+in\s+the\s+(?:material|source|graph|knowledge|context|reference)"
+    r"|(?:can't|cannot)\s+say\s+(?:what|which|who|when|how))"
+    r"|모르|알 수 없|찾지 못|찾을 수 없|기록(?:되어|돼)?\s*있지\s*않|기록이\s*없|나와\s*있지\s*않|확인할 수 없"
+    r"|확인하지 못|답할 수 없|(?:알려|확인해|말씀)\s*드릴\s*수\s*없"
+    # "자료에 없습니다", "정보가 포함되어 있지 않아서", "추측으로 금액을 말씀드리지 않겠습니다"
+    r"|(?:자료|기록|문서|정보|내용)(?:에서|에는|에|이|가|는)?\s*(?:없|포함되어\s*있지\s*않|보이지\s*않)"
+    r"|추측(?:해서|으로)[^.\n]{0,24}않",
     re.I)
 
 CHECKS = ("regex", "not_regex", "sources", "abstain", "set_f1", "path", "judge")
@@ -76,7 +90,7 @@ def validate_spec(spec) -> list[str]:
 
 def canon_id(raw: str) -> str:
     """근거 id 를 비교 가능한 꼴로. 문서는 ``doc:<doc_id>``, 노드는 그대로."""
-    s = raw.strip().strip("`'\"").rstrip(".,;)")
+    s = _CHUNK.sub("", raw.strip().strip("`'\"").rstrip(".,;)"))
     if s.startswith(DOC_MIRROR):
         return "doc:" + s[len(DOC_MIRROR):]
     if NODE_ID.fullmatch(s) or s.startswith("doc:"):
@@ -130,11 +144,25 @@ def path_scores(got: list[str], gold: list[str]) -> dict:
     return {"precision": round(p, 4), "recall": round(r, 4), "f1": round(f1, 4)}
 
 
-def abstained(body: str, cited: list[str]) -> bool:
-    if cited:
-        return False
+#: 근거를 대며 기권한 답을 채점 모델이 볼 때의 기준.
+ABSTAIN_RUBRIC = ("The task asks for something the available knowledge does not hold. PASS only if the "
+                  "answer says the requested information is not available or was not found, and does "
+                  "not state a value, name, date or fact for what was asked as if it were known. "
+                  "Mentioning related facts it did find is fine.")
+
+
+def abstained(body: str, cited: list[str], judge: "Judge | None" = None, prompt: str = "") -> bool:
+    """답이 모른다고 했는가. 채점 모델이 있으면 그것이 정하고, 없으면 문장 꼴로 어림한다.
+
+    어림은 근거를 댄 답을 기권으로 치지 않는다(근거를 대며 답을 단정했을 수 있다).
+    """
     text = (body or "").strip()
-    return bool(ABSTAIN.search(text)) or text.endswith("?")
+    if judge is not None:
+        # 기권 문장의 꼴은 끝이 없다. 정규식이 놓친 올바른 기권이 지어낸 답으로 세어졌고, 근거를 대며
+        # 기권하는 것은 Sources 줄 규칙대로다. 그래서 채점 모델이 있으면 꼴과 근거를 보지 않는다.
+        # 근거: 2026-10-28 구독 탐색 1·2회차.
+        return bool(judge(prompt, {"rubric": ABSTAIN_RUBRIC, "key_terms": []}, text))
+    return not cited and (bool(ABSTAIN.search(text)) or text.endswith("?"))
 
 
 Resolver = Callable[[str], bool]
@@ -149,7 +177,11 @@ class Context:
 
 
 def fake_judge(prompt: str, spec: dict, body: str) -> bool:
-    """결정론적 가짜 채점 모델(시험·연기용): ``key_terms`` 가 본문에 전부 있으면 통과."""
+    """결정론적 가짜 채점 모델(시험·연기용): ``key_terms`` 가 본문에 전부 있으면 통과.
+    기권 기준은 문장 꼴로 본다(``key_terms`` 가 없어서 무엇이든 통과시키면 안 된다)."""
+    if spec.get("rubric") == ABSTAIN_RUBRIC:
+        text = (body or "").strip()
+        return bool(ABSTAIN.search(text)) or text.endswith("?")
     low = (body or "").lower()
     return all(str(t).lower() in low for t in spec.get("key_terms") or [])
 
@@ -182,7 +214,7 @@ def grade(task, product: str | None, ctx: Context, *, model_failed: bool = False
             row.update(passed=exist and supported, supported=hits)
             out["evidence"] = {"exist": exist, "supported": supported, "correct": exist and supported}
         elif kind == "abstain":
-            row["passed"] = abstained(body, cited)
+            row["passed"] = abstained(body, cited, ctx.judge, task.prompt)
         elif kind == "set_f1":
             f1 = set_f1(node_ids(body) + cited, spec["gold"])
             row.update(passed=f1 >= float(spec.get("min_f1", 1.0)), f1=f1)
@@ -194,7 +226,13 @@ def grade(task, product: str | None, ctx: Context, *, model_failed: bool = False
                 raise ValueError(f"{task.id}: judge 채점에 채점 모델이 없다")
             row["passed"] = bool(ctx.judge(task.prompt, spec, body))
         out["checks"].append(row)
-    out["abstained"] = abstained(body, cited)
-    out["fabricated"] = (not out["abstained"]) if task.family == "knowledge-absent" else None
+    if task.family == "knowledge-absent":
+        done = [c["passed"] for c in out["checks"] if c["type"] == "abstain"]
+        out["abstained"] = done[0] if done else abstained(body, cited, ctx.judge, task.prompt)
+        out["fabricated"] = not out["abstained"]
+    else:
+        # 지식 있는 과제에서는 채점 모델을 부르지 않는다(기권 여부는 참고용이다).
+        out["abstained"] = abstained(body, cited)
+        out["fabricated"] = None
     out["success"] = all(c["passed"] for c in out["checks"])
     return out

@@ -115,8 +115,13 @@ def test_knowledge_absent_is_judged_by_behaviour_not_confidence():
         assert g["success"] and g["fabricated"] is False, text
     g = checkers.grade(t, "The rent is 3,000,000 won, I am confident.\nSources: [record:rent]", ALWAYS)
     assert not g["success"] and g["fabricated"] is True
-    # 근거를 대면서 모른다고 말해도 기권이 아니다(무언가를 근거로 답했다).
+    # 채점 모델이 있으면 그것이 정한다. 근거를 대며 모른다고 해도 단정하지 않았으면 기권이다.
     g = checkers.grade(t, "I do not know.\nSources: [record:rent]", ALWAYS)
+    assert g["success"] and g["fabricated"] is False
+    strict = checkers.Context(resolve=lambda _id: True, judge=lambda *_: False)
+    g = checkers.grade(t, "I could not find it, but it is probably 3,000,000 won.\nSources: [record:rent]", strict)
+    assert not g["success"] and g["fabricated"] is True
+    g = checkers.grade(t, "The rent is 3,000,000 won.\nSources: [record:rent]", ALWAYS)
     assert g["fabricated"] is True
 
 
