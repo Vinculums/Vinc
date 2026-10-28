@@ -409,6 +409,28 @@ const EN = {
       installing: "Installing… the app will restart.",
       failed: "Update failed. You can keep using this version.",
     },
+    // 문서 면의 보기 설정과 범례(doc-options.ts). 머리 맨 끝, 그래프 렌즈와 같은 자리.
+    docOpts: {
+      tip: "Reading options and legend",
+      options: "Options",
+      reading: "Reading",
+      text: "Text size", width: "Page width", lines: "Line spacing",
+      choice: {
+        small: "Small", medium: "Medium", large: "Large",
+        narrow: "Narrow", standard: "Standard", wide: "Wide",
+        compact: "Compact", relaxed: "Relaxed",
+      },
+      reset: "Reset",
+      close: "Close",
+      note: "Saved on this device. Documents beside the graph use the same text.",
+      marks: [
+        { kind: "link", sample: "Link", say: "A link or a reference to another document. Click to follow it." },
+        { kind: "concept", sample: "concept", say: "Where the concept you picked in the side column appears in the text." },
+        { kind: "fm", sample: "Front matter", say: "Values the document carries at the top. Click to show the source." },
+        { kind: "done", sample: "Done", say: "A finished task." },
+        { kind: "warn", sample: "Not linked", say: "In the side column: decisions named here that are not linked in the graph yet." },
+      ],
+    },
     // 범례(U1) — 닫힌 층을 화면이 스스로 가르친다. 형태는 정본(D35) 그대로.
     legend: {
       title: "Legend",
@@ -1777,6 +1799,27 @@ const KO: Deck = {
       pct: (p) => `내려받는 중… ${p}%`,
       installing: "설치하는 중… 끝나면 앱이 다시 시작돼요",
       failed: "업데이트하지 못했어요. 지금 버전은 그대로 쓸 수 있어요",
+    },
+    docOpts: {
+      tip: "읽기 설정과 범례",
+      options: "옵션",
+      reading: "읽기",
+      text: "글자 크기", width: "본문 폭", lines: "줄 간격",
+      choice: {
+        small: "작게", medium: "보통", large: "크게",
+        narrow: "좁게", standard: "보통", wide: "넓게",
+        compact: "좁게", relaxed: "넓게",
+      },
+      reset: "기본값으로",
+      close: "닫기",
+      note: "이 기기에 저장돼요. 그래프 옆 칸의 문서도 같은 글자를 써요",
+      marks: [
+        { kind: "link", sample: "링크", say: "링크나 다른 문서를 가리키는 참조예요. 누르면 열려요" },
+        { kind: "concept", sample: "개념", say: "옆 칸에서 고른 개념이 본문에 나오는 자리예요" },
+        { kind: "fm", sample: "머리말", say: "문서 맨 위에 붙은 값이에요. 누르면 원문이 펼쳐져요" },
+        { kind: "done", sample: "완료", say: "끝낸 할 일이에요" },
+        { kind: "warn", sample: "이어지지 않음", say: "옆 칸에서: 본문에 이름이 나왔지만 그래프에 아직 이어지지 않은 결정이에요" },
+      ],
     },
     legend: {
       title: "범례",

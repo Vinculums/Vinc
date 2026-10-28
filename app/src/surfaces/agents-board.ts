@@ -164,8 +164,8 @@ function draw(el: HTMLElement, roles: AgentRole[], repaint: () => void): void {
     </header>
     <p class="hint agents-lead">${esc(readOnly ? H.agentsLeadRead : H.agentsLead)}</p>
     <p class="agents-status" role="status">${esc(notice)}</p>
-    <section class="agent-writes" id="agent-writes"></section>
     ${body}
+    <section class="agent-writes" id="agent-writes"></section>
   </div>`;
   notice = "";
   void mountAgentWrites(el.querySelector<HTMLElement>("#agent-writes")!,

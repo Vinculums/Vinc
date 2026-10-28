@@ -130,22 +130,18 @@ function setOpen(open: boolean, persist = true) {
 /** View 가 마운트/언마운트하며 착지 동작을 넘긴다. null 이면 해시 착지로 강등. */
 export function setLnbTopicPicker(fn: TopicPicker | null) {
   pickTopic = fn;
-  // 저장된 선택이 Agent 인 채로 새로 열면 setRailKey 를 안 거치므로 스코프가 안 걸린다.
-  // 표면이 피커를 처음 걸 때 한 번만 건다(딥링크로 들어왔으면 그 착지를 덮지 않는다).
-  // View 의 첫 show 뒤에 도는 것은 안전하다 — show 는 세대 번호로 옛 것을 버린다.
-  if (fn && !launchScoped && isAgent() && agentRoster !== null) {
-    launchScoped = true;
-    // 문서 홈의 첫 자리에서 Agent 로 다시 열렸으면 보드로, 그래프면 역할 주제로 좁힌다.
-    if (atSurfaceRoot()) queueMicrotask(() => {
-      if (onGraph()) scopeAgentGraph();
-      else location.hash = AGENTS_BOARD;
-    });
-  }
+  // 맨 위 줄(홈 · Agent)은 **무엇을** 볼지, 머리의 문서 | 그래프는 **어떻게** 볼지다. 그래서 Agent 가
+  // 골라져 있으면 표면이 첫 자리로 뜰 때마다 Agent 의 첫 자리로 맞춘다: 그래프는 역할 주제로 좁히고,
+  // 문서 홈은 Agents 보드로 간다. 앱을 켤 때만이 아니라 문서 | 그래프를 오갈 때마다다. 딥링크(첫 자리가
+  // 아닌 주소)는 덮지 않는다. View 의 첫 show 뒤에 도는 것은 안전하다 — show 는 세대 번호로 옛 것을 버린다.
+  if (fn && isAgent() && atSurfaceRoot()) queueMicrotask(() => {
+    if (pickTopic !== fn || !isAgent() || !atSurfaceRoot()) return;
+    if (onGraph()) scopeAgentGraph();
+    else location.hash = AGENTS_BOARD;
+  });
 }
 /** 읽어 온 Agent 역할 수. 아직 안 읽었으면 null. 홈의 빈 목록이 무엇으로 이을지 가른다. */
 export const agentRoleCount = (): number | null => agentRoster ? agentRoster.length : null;
-/** 첫 실행 스코프를 이미 걸었는가(세션에 한 번). */
-let launchScoped = false;
 
 /** Agents 보드의 주소. 문서 홈 표면 안의 한 면이다(surfaces/home.ts). */
 export const AGENTS_BOARD = "#home/agents";
@@ -154,6 +150,8 @@ export const AGENTS_BOARD = "#home/agents";
 const atSurfaceRoot = (): boolean => ["", "home", "view"].includes(location.hash.replace(/^#/, ""));
 /** 지금 표면이 그래프인가. 아니면 문서 홈이다(검색 표면은 둘 다 아니지만 홈의 동선을 따른다). */
 const onGraph = (): boolean => /^#view(\/|$)/.test(location.hash);
+/** 문서 쪽의 첫 자리 — Agent 가 골라져 있으면 Agents 보드, 아니면 문서 홈. 머리의 `문서` 전환이 쓴다. */
+export const documentsHome = (): string => isAgent() ? AGENTS_BOARD : "#home";
 
 /** 그래프가 캔버스에서 고른 주제를 풀어 준다(주소는 그대로 `#view` 라 해시로는 못 푼다).
  *  풀었으면 true. 없거나 풀 것이 없으면 해시 착지로 간다. */
@@ -423,8 +421,11 @@ function goSurfaceRoot(): void {
 function setRailKey(next: string): void {
   if (next !== "" && next !== "agent") return;
   if (railKey === next) {
-    // 홈을 다시 누르면 지금 표면의 첫 자리(전체)로 돌아간다. 좁혀 둔 것을 푸는 길이다.
+    // 다시 누르면 지금 표면에서 그 줄의 첫 자리로 돌아간다. 홈은 전체(좁혀 둔 것을 푸는 길),
+    // Agent 는 그래프면 역할 주제로 좁힌 지도, 문서면 Agents 보드다.
     if (next === "") goSurfaceRoot();
+    else if (onGraph()) scopeAgentGraph();
+    else location.hash = AGENTS_BOARD;
     return;
   }
   const prev = railKey;
@@ -434,14 +435,15 @@ function setRailKey(next: string): void {
   // 초점이 그대로 남으면 다른 것이 선택된 것처럼 보인다.
   if (next === "agent") active = { domain: AGENT_TOPICS[0] };
   paintRail();
-  // Agent 는 그래프로 가지 않고 Agents 보드(팀 · 역할 카드)를 연다. 그래프는 머리의 전환 버튼이
-  // 열고, 그때 레일이 Agent 면 그래프가 역할 주제로 좁혀진다(setLnbTopicPicker).
-  if (next === "agent") location.hash = AGENTS_BOARD;
+  // 표면은 그대로 둔다. 문서에서 Agent 를 고르면 Agents 보드(팀 · 역할 카드)로, 그래프에서 고르면
+  // 그래프인 채로 역할 주제로 좁힌다(로스터를 읽은 뒤 — 역할의 실제 주제로 좁힌다).
+  if (next === "agent" && !onGraph()) location.hash = AGENTS_BOARD;
   else if (prev === "agent" && location.hash.startsWith(AGENTS_BOARD)) location.hash = "#home";
   void refreshLnb().then(() => {
     // 그 사이 다른 쪽을 골랐으면 이 전환의 뒷일은 없다.
     if (railKey !== next) return;
     if (next === "" && prev === "agent") unscopeAgentGraph();
+    if (next === "agent" && onGraph()) scopeAgentGraph();
   });
 }
 
@@ -806,8 +808,9 @@ export function mountLnb(opts: { deferLoad?: boolean } = {}) {
     if (nd) {
       const id = nd.dataset.nodeid || "";
       if (!id) return;
-      if (nd.classList.contains("lnb-agent-role")) {
-        // 역할은 그래프의 노드 상세가 아니라 Agents 보드 안의 역할 편집 면으로 연다.
+      if (nd.classList.contains("lnb-agent-role") && !(onGraph() && navigate)) {
+        // 문서 쪽에서는 역할을 Agents 보드 안의 역할 편집 면으로 연다. 그래프에서는 다른 노드처럼
+        // 지도 위에서 연다(아래 `navigate`) — 고른다고 그래프를 떠나지 않는다.
         active = { domain: nd.dataset.dom || "", nodeId: id };
         paint();
         void import("./role-composer").then((m) => m.openRoleComposer({ id }));

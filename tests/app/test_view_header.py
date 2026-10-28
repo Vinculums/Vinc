@@ -1,15 +1,15 @@
-"""뷰 머리: 내용 카드의 윗줄에 경로 · 문서 | 그래프 · 검색, 보기 카드는 캔버스 안(2026-10-23).
+"""뷰 머리: 내용 카드의 윗줄에 경로 · 검색 · 문서 | 그래프, 맨 끝에 보기 설정과 범례.
 
-소스 잠금이다. 배치 자체는 헤드리스 브라우저 실측으로 확인했고(창 1280 · 960, LNB 펼침 ·
-접힘, 문서 · 목록 · 그래프 · 노드 문서 · 라이트), 여기서는 그 배치가 조용히 옛 자리로 돌아가지
-않게 구조만 붙잡는다:
+소스 잠금이다. 배치 자체는 헤드리스 브라우저 실측으로 확인했고(창 1440 · 1024 · 800 · 600 ·
+390, 문서 · 문서 면 · 그래프), 여기서는 그 배치가 조용히 옛 자리로 돌아가지 않게 구조만 붙잡는다:
 
 - 머리가 다시 떠 있으면 본문이 그 밑으로 지나가고, 아래 것들이 또 비켜설 값을 재야 한다.
-- 머리와 본문이 칼럼을 따로 가지면 경로와 제목, 검색과 읽기 칸의 세로선이 갈라진다.
+- 머리와 본문이 칼럼을 따로 가지면 경로와 제목의 세로선이 갈라진다.
 - 전환이 표면마다 다른 자리에 서면 누른 자리에서 손이 빗나간다.
-- 보기 카드가 머리로 돌아오면 머리가 표면마다 달라진다.
+- 보기 설정과 범례는 캔버스 안이 아니라 머리 맨 끝 한 자리다. 그래프는 렌즈, 문서 면은 읽기 설정.
 
 근거: [[decision:the-desktop-shell-docks-search-and-the-view-switch-in-a-view-header-2026-10-23]]
+근거: [[decision:the-view-header-ends-with-the-options-and-legend-of-the-current-surface-2026-10-28]]
 """
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ CSS = (ROOT / "app" / "src" / "app.css").read_text(encoding="utf-8")
 VIEW = (ROOT / "app" / "src" / "surfaces" / "view.ts").read_text(encoding="utf-8")
 TOPBAR = (ROOT / "app" / "src" / "topbar.ts").read_text(encoding="utf-8")
 HOME = (ROOT / "app" / "src" / "surfaces" / "home.ts").read_text(encoding="utf-8")
+DOCOPTS = (ROOT / "app" / "src" / "doc-options.ts").read_text(encoding="utf-8")
 
 
 def _block(src: str, start: str, end: str) -> str:
@@ -55,23 +56,29 @@ HEADER = _block(HTML, '<header id="topbar">', "</header>")
 
 
 class HeaderOrder(unittest.TestCase):
-    def test_lead_then_switch_then_search(self):
+    def test_lead_then_search_then_switch_then_options(self):
         lead = HEADER.index('id="tb-lead"')
-        switch = HEADER.index('id="tb-switch"')
         find = HEADER.index('id="tb-find"')
-        self.assertLess(lead, switch)
-        self.assertLess(switch, find)
+        switch = HEADER.index('id="tb-switch"')
+        lens = HEADER.index('<div id="tb-lens"></div>')
+        docopts = HEADER.index('<div id="tb-docopts"></div>')
+        self.assertLess(lead, find)
+        self.assertLess(find, switch)
+        self.assertLess(switch, lens)
+        self.assertLess(lens, docopts)
+        trail = _block(HEADER, '<div class="tb-trail">', '<div id="tb-right">')
+        self.assertIn('id="tb-lens"', trail)
+        self.assertIn('id="tb-docopts"', trail)
 
     def test_the_switch_has_two_segments(self):
         sw = _block(HEADER, 'id="tb-switch"', "</div>")
         self.assertIn('id="tb-to-docs"', sw)
         self.assertIn('id="tb-to-graph"', sw)
 
-    def test_the_view_card_is_not_in_the_header(self):
-        self.assertNotIn('id="tb-viewctl"', HEADER)
-        card = HTML[HTML.index('id="tb-viewctl"'):]
-        # 카드 안에는 렌즈 자리 하나뿐이다(관점 세그는 없다).
-        self.assertIn('<div id="tb-lens"></div>', card[:120])
+    def test_no_view_card_floats_in_the_canvas(self):
+        self.assertNotIn("tb-viewctl", HTML)
+        self.assertNotIn("tb-viewctl", CSS)
+        self.assertNotIn(".tb-card", VIEW)
         self.assertNotIn("tb-viewpoints", HTML)
 
     def test_document_tree_does_not_hold_the_segment(self):
@@ -121,31 +128,33 @@ class OneColumn(unittest.TestCase):
         self.assertIn("export function setTopbarLead(", TOPBAR)
 
 
-class CanvasCard(unittest.TestCase):
-    def test_view_card_floats_inside_the_canvas(self):
-        card = _rule("#tb-viewctl")
-        self.assertIn("grid-row: 2", card)
-        self.assertIn("justify-self: end", card)
+class HeaderEnd(unittest.TestCase):
+    def test_empty_slots_take_no_room(self):
+        self.assertIn("#tb-lens:empty, #tb-docopts:empty, #tb-docopts[hidden] { display: none; }", CSS)
 
-    def test_view_card_steps_aside_for_the_document_pane(self):
-        self.assertIn("--rail-size", _rule('#shell[data-doc="open"][data-doc-size="side"] #tb-viewctl'))
-
-    def test_empty_view_card_hides(self):
-        self.assertIn("#tb-viewctl:has(> #tb-lens:empty) { display: none; }", CSS)
-
-    def test_lens_renders_into_the_view_card_slot(self):
+    def test_lens_renders_into_the_header_slot(self):
         self.assertIn('lensSlot() ?? fallbackSlot("view-legend")', VIEW)
         self.assertIn('return $("tb-lens")', TOPBAR)
 
     def test_the_lens_panel_keeps_its_own_width(self):
-        # 카드는 렌즈 버튼 하나라 자라지 않는다. 폭은 패널 자기 것이다.
-        self.assertNotIn("#tb-viewctl[data-open]", CSS)
-        self.assertIn("width: var(--lens-panel-w)", CSS[CSS.index("#view-lens-panel {"):])
+        self.assertIn("width: var(--lens-panel-w)", CSS[CSS.index("#view-lens-panel, #doc-opts-panel {"):])
 
-    def test_panel_anchors_to_the_view_card(self):
+    def test_panel_anchors_to_the_lens_button(self):
         body = _block(VIEW, "function positionPanel()", "function openPanel(")
-        self.assertIn('lensBtn?.closest<HTMLElement>(".tb-card")', body)
+        self.assertIn("const r = lensBtn?.getBoundingClientRect();", body)
         self.assertIn("const left = Math.min(r.right - w, rightEdge - w - m);", body)
+
+    def test_documents_get_their_own_options(self):
+        self.assertIn("mountDocOptions();", TOPBAR)
+        self.assertIn('document.getElementById("tb-docopts")', DOCOPTS)
+        # 그래프에서는 숨는다: 한 자리에 버튼이 둘 서지 않는다.
+        self.assertIn("slot.hidden = !onDocs();", DOCOPTS)
+        for k in ("text", "width", "lines"):
+            self.assertIn(f'data-doc-{k}', CSS)
+
+    def test_document_text_reads_the_reading_options(self):
+        self.assertIn("font-size: var(--doc-fs, 1rem); line-height: var(--doc-lh, 1.65);", CSS)
+        self.assertIn(".doc-render .cm-r-h1 { font-size: 1.5em; }", CSS)
 
     def test_view_tools_corner_is_untouched(self):
         self.assertIn("right: calc(var(--rail-w, 0px) + var(--space-6, 1.5rem));", _rule("#view-tools"))
