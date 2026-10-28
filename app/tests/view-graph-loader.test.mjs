@@ -47,7 +47,7 @@ beforeEach(()=>{
 });
 const make = (overrides={}) => createGraphLoader({mountScope:{...h.scope},accessJob:new AbortController(),
   firstAccess:Promise.resolve(null),restoreEntryCamera:false,seq:()=>h.seq,alive:()=>h.alive,
-  canvasRatio:()=>1.8,mounted:()=>true,planar:()=>false,cameraPrefs:()=>'',showPreview:()=>()=>{},
+  canvasRatio:()=>1.8,mounted:()=>true,cameraPrefs:()=>'',showPreview:()=>()=>{},
   restoreCameras(){},layoutReady(){h.calls.push(['layoutReady']);},layoutFailed(){h.calls.push(['layoutFailed']);},
   ...overrides});
 const workers = () => h.calls.filter(c=>c[0]==='worker');

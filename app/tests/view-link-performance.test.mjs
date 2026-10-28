@@ -136,11 +136,9 @@ test("long sparse routes query the occupied range and duplicate centres still fa
   assert.equal(clear([{...a,y:.165},{x:2000000*.33,y:.165,z:0}],"source","target"),true);
   assert.throws(()=>spatialClearance([{id:"a",...a},{id:"b",x:.01,y:0,z:0}]),/centres overlap/);
 });
-test("link modes are live only for 3D and pending snapshots still restart",()=>{
+test("link modes are live and pending snapshots still restart",()=>{
   assert.equal(canUpdateViewStyle(["edges"]),false);assert.equal(canUpdateViewStyle(["edges"],true),true);
-  for(const view of ["2d","3d"]){
-    const p={view,layout:"hub"};
-    assert.equal(viewPreferenceWork(p,["edges"],{map:true,bundle:false}).mode,view==="3d"?"style":"remount");
-    assert.equal(viewPreferenceWork(p,["edges"],{map:true,bundle:false,current:false}).mode,"remount");
-  }
+  const p={view:"3d",layout:"hub"};
+  assert.equal(viewPreferenceWork(p,["edges"],{map:true}).mode,"style");
+  assert.equal(viewPreferenceWork(p,["edges"],{map:true,current:false}).mode,"remount");
 });

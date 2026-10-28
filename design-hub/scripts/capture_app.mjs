@@ -52,14 +52,6 @@ const SHELL_INIT = () => {
 };
 const sheet = (p) => p.locator(".sheet[role=dialog]").last();
 const foot = (p, re) => sheet(p).locator(".sheet-foot button").filter({ hasText: re });
-// 관점 세그는 보기 카드가 열렸을 때만 보인다(렌즈 패널과 함께). 열고 고른 뒤 닫는다.
-const viewpoint = async (p, name) => {
-  const chip = p.locator("#tb-viewpoints button", { hasText: new RegExp(`^${name}$`) });
-  if (!(await chip.isVisible().catch(() => false))) { await p.locator("#tb-lens").click(); await chip.waitFor({ state: "visible" }); }
-  await chip.click(); await sleep(400);
-  if (await p.locator("#view-lens-panel").isVisible().catch(() => false)) await p.keyboard.press("Escape");
-  await sleep(1600);
-};
 const settled = async (p) => { await p.waitForSelector("#view-metrics", { state: "attached" }).catch(() => {}); await sleep(2200); };
 // 설정 · 쓰기/가져오기/공유 · GRAPH.md 는 2026-09-22 부터 레일 바닥 설정 단추가 여는 **시트 하나**다
 // (surfaces/settings.ts). 옛 상단 바 단추(#tb-tools · #settings-btn · #tb-conv)는 숨어서 눌리지 않는다.
@@ -160,16 +152,10 @@ const add = (o) => S.push({ url: "#view", ls: {}, api: [], full: false, ...o });
 const V = (id, trigger, before, extra = {}) => add({ id: `view__${id}`, trigger, before: async (p) => { await settled(p); if (before) await before(p); }, ...extra });
 
 V("3d", "load: 3D viewpoint, all topics");
-V("2d", "viewpoint 2D", (p) => viewpoint(p, "2D"));
-V("timeline", "viewpoint Timeline", (p) => viewpoint(p, "Timeline"));
-V("weave", "viewpoint Weave", (p) => viewpoint(p, "Weave"));
 // 2026-09-26(#436): 주제 줄 클릭은 접기만 한다. View 를 그 주제로 좁히는 것은 줄 끝의 범위 단추다.
 V("topic-scope", "LNB: the topic's scope button narrows View, scope chip appears", async (p) => { const g = p.locator(".lnb-grow").first(); await g.hover(); await g.locator(".lnb-gscope").click(); await sleep(1800); });
 V("lnb-collapsed", "LNB: collapse", async (p) => { await p.locator("#tb-shell-toggle").click(); await sleep(600); });
 V("lens-options-3d", "lens button: Options tab (3D rows)", openLens);
-V("lens-options-2d", "lens: Options for 2D", async (p) => { await viewpoint(p, "2D"); await openLens(p); });
-V("lens-options-timeline", "lens: Options for Timeline", async (p) => { await viewpoint(p, "Timeline"); await openLens(p); });
-V("lens-options-weave", "lens: Options for Weave", async (p) => { await viewpoint(p, "Weave"); await openLens(p); });
 V("lens-legend", "lens: Legend tab", async (p) => { await openLens(p); await p.locator("#view-lens-panel button", { hasText: /legend/i }).first().click(); await sleep(400); });
 V("lens-help-open", "lens: '?' explanations expanded", async (p) => { await openLens(p); await p.locator("#view-lens-panel button[aria-label], #view-lens-panel button", { hasText: /\?/ }).first().click().catch(() => {}); await sleep(300); });
 V("node-float", "node addressed: float card with causal cone", openFloat);

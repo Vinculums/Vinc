@@ -47,13 +47,12 @@ type GraphLoaderContext = {
   alive(): boolean;
   canvasRatio(): number;
   mounted(): boolean;
-  planar(): boolean;
   /** 카메라 복원에 쓰는 키: 설정과 캔버스 비율. */
   cameraPrefs(p: ViewPrefs): string;
   /** 부분 개요를 그리고 그것을 지우는 함수를 돌려준다. */
   showPreview(graph: GraphRead): () => void;
   /** 되돌린 카메라를 마운트에 넘긴다(다음 마운트에만 쓰인다). */
-  restoreCameras(camera3: unknown, camera2: unknown): void;
+  restoreCameras(camera3: unknown): void;
   /** 먼저 그려 둔 중심에서 화면 뒤에서 시간순 가지 배치가 끝났다(같은 화면일 때만 불린다). */
   layoutReady(): void;
   /** 그 배치가 실패했다(같은 화면일 때만 불린다). */
@@ -123,7 +122,7 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
       layoutJob?.abort();
       const start = performance.now();
       let res: RawGraph | undefined;
-      const canRetain = WEB && ["2d", "3d"].includes(p.view);
+      const canRetain = WEB;
       const access = canRetain
         ? (firstAccessUsed ? viewAccess(ctx.mountScope, ctx.accessJob.signal).catch(() => null) : ctx.firstAccess)
         : Promise.resolve(null);
@@ -144,7 +143,7 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
         if (cached) {
           loader.retained = { ...grant, key: scopeKey, prefs: ctx.cameraPrefs(p) };
           const state = viewSessionCache.getState(grant.session, scopeKey, grant.revision, ctx.cameraPrefs(p));
-          if (ctx.restoreEntryCamera && !ctx.mounted() && state) ctx.restoreCameras(state.camera3, state.camera2);
+          if (ctx.restoreEntryCamera && !ctx.mounted() && state) ctx.restoreCameras(state.camera3);
         }
       } else if (canRetain && !early && viewSessionCache.count) viewSessionCache.clear();
       const generation = viewSessionCache.generation;
@@ -159,7 +158,7 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
           capturedScope).catch(() => null)
         : Promise.resolve(null);
       try {
-        if (wantsStagedRead(p, { cached: !!cached, mounted: ctx.mounted(), planar: ctx.planar() })) {
+        if (wantsStagedRead(p, { cached: !!cached, mounted: ctx.mounted() })) {
           const job = readJob;
           const owner = ctx.mountScope.owner;
           res = await readGraphProgressively((stage, token) =>

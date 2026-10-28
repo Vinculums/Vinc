@@ -64,7 +64,7 @@ async function setup(view='3d',layout='hub',hash='#view') {
   const page=await context.newPage();page.on('pageerror',e=>allErrors.push(e.message));
   await page.goto(origin+hash,{waitUntil:'domcontentloaded'});
   const cache=()=>page.evaluate(async()=>{const c=(await import('/src/view-session-cache.ts')).viewSessionCache;return {count:c.count,bytes:c.bytes,generation:c.generation};});
-  const complete=()=>page.waitForFunction(v=>window.__checks.logs.some(t=>t.startsWith(v==='2d'?'View scene ready':'View scene complete')),view,{timeout:60000});
+  const complete=()=>page.waitForFunction(v=>window.__checks.logs.some(t=>t.startsWith('View scene complete')),view,{timeout:60000});
   const cached=()=>page.waitForFunction(async()=> (await import('/src/view-session-cache.ts')).viewSessionCache.count>0,{timeout:15000});
   const search=async()=>{await page.evaluate(()=>location.hash='#search');await page.locator('#search-form').waitFor();await page.waitForFunction(()=>!document.querySelector('#view-canvas'));};
   const enter=async(target='#view')=>{
@@ -73,19 +73,19 @@ async function setup(view='3d',layout='hub',hash='#view') {
     await complete();
   };
   const graphCount=()=>state.requests.filter(r=>r.path==='/api/graph/graph'&&!r.query.includes('stage=cancel')).length;
-  const scene=()=>page.evaluate(v=>v==='3d'?{
+  const scene=()=>page.evaluate(()=>({
     camera:window.__g3.cameraPosition(),target:{...window.__g3.controls().target},
     positions:window.__g3.graphData().nodes.map(n=>[n.id,n.x,n.y,n.z]),
     visibleNodes:window.__g3.graphData().nodes.filter(n=>{const f=window.__g3.nodeVisibility();return typeof f==='function'?f(n):f!==false;}).length,
-  }:{camera:window.__s2.getCamera().getState(),positions:window.__s2.getGraph().nodes().map(id=>{const n=window.__s2.getGraph().getNodeAttributes(id);return [id,n.x,n.y];}),visibleNodes:window.__s2.getGraph().nodes().filter(id=>!window.__s2.getNodeDisplayData(id)?.hidden).length},view);
+  }));
   return {context,page,state,cache,complete,cached,search,enter,graphCount,scene};
 }
 async function waitHeld(a,key){for(let i=0;i<200&&!a.state[key].length;i++)await a.page.waitForTimeout(10);assert.ok(a.state[key].length,`${key} reached`);}
 try {
-  for(const view of ['2d','3d']) {
+  for(const view of ['3d']) {
     const a=await setup(view);await a.complete();await a.cached();
     // Change camera and time filter through the real renderer and UI.
-    await a.page.evaluate(v=>{if(v==='2d')window.__s2.getCamera().setState({x:.35,y:.6,ratio:.65,angle:.1});else window.__g3.cameraPosition({x:600,y:450,z:1300},{x:40,y:20,z:0},0);},view);
+    await a.page.evaluate(()=>window.__g3.cameraPosition({x:600,y:450,z:1300},{x:40,y:20,z:0},0));
     await a.page.locator('#view-lens').click();await a.page.locator('[data-tab="opts"]').click();
     await a.page.locator('#pref-when').evaluate(el=>{el.value='0.3';el.dispatchEvent(new Event('input',{bubbles:true}));});
     await a.page.waitForTimeout(80);const before=await a.scene();
@@ -135,7 +135,7 @@ try {
     rows.push({test:'revoked Space permission shows no retained canvas'});
     await a.context.close();
   }
-  for(const view of ['2d','3d']) {
+  for(const view of ['3d']) {
     const a=await setup(view,'temporalRoots');await a.complete();await a.cached();const before=await a.scene();
     const workers=await a.page.evaluate(()=>window.__checks.workers);await a.search();await a.enter();assert.equal(a.graphCount(),0);
     assert.equal(await a.page.evaluate(()=>window.__checks.workers),workers);assert.equal(JSON.stringify((await a.scene()).positions),JSON.stringify(before.positions));
@@ -159,7 +159,7 @@ try {
     await a.context.close();
   }
   {
-    const a=await setup('2d');await a.complete();await a.cached();await a.search();
+    const a=await setup('3d');await a.complete();await a.cached();await a.search();
     a.state.holdChanges=true;await a.page.evaluate(()=>location.hash='#view');await waitHeld(a,'heldChanges');
     await a.page.evaluate(()=>location.hash='#search');await a.page.locator('#search-form').waitFor();
     a.state.holdChanges=false;for(const r of a.state.heldChanges.splice(0))await r.fulfill({json:{marker:a.state.revision}}).catch(()=>{});
@@ -201,8 +201,8 @@ try {
     await a.context.close();
   }
   {
-    const a=await setup('2d');await a.complete();await a.cached();
-    await a.page.evaluate(()=>window.__s2.getCamera().setState({x:.3,y:.4,ratio:.6,angle:.1}));
+    const a=await setup('3d');await a.complete();await a.cached();
+    await a.page.evaluate(()=>window.__g3.cameraPosition({x:500,y:380,z:1200},{x:30,y:10,z:0},0));
     await a.page.locator('#view-lens').click();await a.page.locator('[data-tab="opts"]').click();
     await a.page.evaluate(()=>window.__checks.holdWorker=true);
     await a.page.locator('[data-pref="layout"][data-val="temporalRoots"]').click();

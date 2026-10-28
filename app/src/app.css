@@ -200,7 +200,7 @@ body {
   /* 모션 토큰(--ease-* · --dur-*)은 여기 없다 — 디자인 허브 SSoT(design-tokens.json 의
      motion 그룹)가 tokens.desktop.css / tokens.web.css 로 내려 준다(2026-09-05). 큰 면(셸 열·
      문서 패널·상단 바 폭)은 --ease-drawer, 작은 응답(캐럿·누름·알약)은 --ease-out, 메뉴·카드
-     등장과 모달 성장은 --ease-settle. motion.ts 와 view-bundle.ts 가 같은 토큰을 읽는다. */
+     등장과 모달 성장은 --ease-settle. motion.ts 가 같은 토큰을 읽는다. */
   /* 상단 바에서 LNB 경계 양쪽으로 남기는 여백. 손잡이 묶음과 검색바가 **같은 값을**
      쓴다(아래 #tb-actions·#tb-search).
      ⚠ 이 값이 지키는 것이 **바뀌었다.** 평면일 때는 "LNB 경계선이 그 여백의 정중앙에
@@ -732,7 +732,7 @@ body {
 /* 도트도 깊이를 거든다: 0단은 채워진 점(가지의 시작), 그 아래는 빈 점이 점점 작아진다.
    주제 색(`--tint`)은 **여기에만** 앉는다 — 글자에 얹으면 잉크 3단과 정면으로 다투고,
    도트는 이미 장식이라(aria-hidden) 색을 꺼도 잃는 정보가 없다. 토글이 꺼져 있으면
-   줄에 --tint 가 안 실려 아래 대체값이 그대로 쓰인다(합계 뷰 `.pl-bd-dot` 과 같은 관용구).
+   줄에 --tint 가 안 실려 아래 대체값이 그대로 쓰인다.
    활성 줄(.lnb-doc.on)은 **뒤에서** --ring 으로 덮으므로 주제 색이 선택 표시를 안 가린다.
    ⚠ 대비를 이유로 틴트를 **묽게 하지 말 것**: 재 보면 틴트가 도트의 대비를 오히려
    올린다(황금각 9색 실측, 배경 대비 light 4.29~9.96:1 · dark 7.46~12.01:1, 틴트 이전
@@ -925,16 +925,8 @@ body {
   margin-left: auto; display: inline-flex; align-items: center;
   height: 20px; box-sizing: border-box; padding: 0 .375rem; border-radius: 4px;
 }
-/* 보기 카드 — 관점 세그 + 렌즈(옵션·범례). 문서 트리 첫 칸에 있던 동안에는 트리를
-   접으면 관점 손잡이가 함께 사라졌다. 둘 다 View 가 채우고 떠날 때 비우므로(topbar.ts
-   `refreshTopbar`), 둘 다 비면 카드째 숨는다 — 빈 카드가 검색 옆에 남으면 누를 것이
-   없는 면이 된다. */
-/* 두 상태(2026-09-28 발주자 지시). **닫힘**(기본): 렌즈 버튼 하나(+ 지금 관점 이름)만
-   보이고 폭은 그 내용 폭이다. **열림**(`data-open`, 렌즈 패널이 열린 동안): 관점 세그가
-   왼쪽으로 미끄러져 나오고 폭이 **렌즈 패널과 같아진다**(`--lens-panel-w`) — 패널이 이
-   카드 바로 아래에서 열리고 양 끝이 같은 세로선에 서야 한다(2026-09-26 지시, 그대로).
-    카드가 자라는 폭은 상단 바가 배분한다. 검색은 최소 폭을 남기고 줄어들며, 관점은
-    남은 폭 안에서 스크롤한다. 모션 중에도 두 카드 사이 간격을 유지한다. */
+/* 보기 카드 — 렌즈(옵션·범례) 버튼 하나. View 가 채우고 떠날 때 비우므로(topbar.ts
+   `refreshTopbar`), 비면 카드째 숨는다 — 빈 카드가 남으면 누를 것이 없는 면이 된다. */
 #tb-viewctl {
   /* 캔버스 안 오른쪽 위에 뜬다 — 떠 있는 것은 캔버스 도구뿐이다(머리는 붙박이).
      아래 가운데는 선택 띠 · 안내가, 바닥은 상태 줄이 이미 쓴다. 옵션 패널은 이 카드
@@ -943,9 +935,8 @@ body {
   margin: var(--space-4, 1rem) var(--space-4, 1rem) 0 0;
   position: relative; z-index: 6;
   max-width: calc(100% - var(--space-4, 1rem) * 2);
-  /* 면은 안에 든 컨트롤 하나가 갖는다 — 카드 자신은 줄 배치만 한다. 카드에도 테두리를 주면
-     닫힌 렌즈 버튼 · 열린 관점 세그의 테두리와 겹쳐 상자 안에 상자가 그려진다.
-     닫힘 = 렌즈 버튼 하나, 열림 = 패널 폭의 관점 세그 하나(닫기는 패널의 ×). */
+  /* 면은 안에 든 렌즈 버튼이 갖는다 — 카드 자신은 줄 배치만 한다. 카드에도 테두리를 주면
+     버튼의 테두리와 겹쳐 상자 안에 상자가 그려진다. */
   display: flex; align-items: center; min-width: 0;
 }
 /* 문서 열이 옆으로 열리면 그 폭만큼 비켜서고, 넓게 열리면(지도를 다 덮으면) 숨는다. */
@@ -953,35 +944,9 @@ body {
   margin-right: calc(var(--rail-size, 20rem) + var(--shell-gap) * 2 + var(--space-4, 1rem));
 }
 #shell[data-doc-size="full"] #tb-viewctl { visibility: hidden; }
-#tb-viewctl[data-open] {
-  width: var(--lens-panel-w);
-}
-#tb-viewctl:has(> #tb-viewpoints:empty):has(> #tb-lens:empty) { display: none; }
-/* 세그는 자라는 카드 안에서 잘리며 드러난다 — 넘침을 자기 상자가 받는다. */
-#tb-viewpoints {
-  display: flex; align-items: center; flex: 1 1 auto; min-width: 0;
-  overflow-x: auto; scrollbar-width: none;
-}
-#tb-viewpoints::-webkit-scrollbar { display: none; }
-#tb-viewctl:not([data-open]) > #tb-viewpoints { display: none; }
-/* 열린 세그는 카드(= 패널) 폭을 넷이 똑같이 나눈다. 글자 폭대로 두면 칸 폭이 들쭉날쭉하다. */
-#tb-viewpoints .seg { width: 100%; flex: 0 0 auto; }
-#tb-viewpoints .seg .chip { flex: 1 1 0; min-width: 0; }
-/* 좁은 창(≤900)은 세그가 패널 머리로 가므로 렌즈 버튼이 카드에 남는다. */
-@media not (max-width: 900px) { #tb-viewctl[data-open] > #tb-lens { display: none; } }
-#tb-lens { display: flex; align-items: center; flex: 0 0 auto; min-width: 0; }
-#tb-viewctl:not([data-open]) > #tb-lens { flex-shrink: 1; }
-#tb-viewpoints:empty, #tb-lens:empty { display: none; }
-/* 여는 순간에만 칩이 12px 왼쪽으로 미끄러지며 20ms 씩 차례로 들어온다. 관점을 바꿀 때
-   세그가 다시 그려져도 되풀이되지 않게 여는 동안만 붙는 클래스(`vc-enter`)에 건다. */
-#tb-viewctl.vc-enter #tb-viewpoints .chip {
-  animation: vcChipIn .2s var(--ease-out, ease-out) both;
-  animation-delay: calc(var(--i, 0) * 20ms);
-}
-@keyframes vcChipIn { from { opacity: 0; transform: translateX(12px); } }
-@media (prefers-reduced-motion: reduce) {
-  #tb-viewctl.vc-enter #tb-viewpoints .chip { animation: none; }
-}
+#tb-viewctl:has(> #tb-lens:empty) { display: none; }
+#tb-lens { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; }
+#tb-lens:empty { display: none; }
 /* 숨긴 버튼만 담은 묶음은 자리를 먹지 않는다 — 폭 0 이어도 바의 gap 이 한 칸 붙는다. */
 #tb-right:not(:has(> :not([hidden]))) { display: none; }
 
@@ -1274,25 +1239,6 @@ body {
    만든 바로 그 지시를 반대편에서 다시 깨는 꼴이다(실측 2026-09-09: 쉬는 상태에서
    테두리가 ring 색). 문 모양 아이콘은 방향으로 말하지 않으므로 채움이 그 일을 한다. */
 #tb-shell-toggle.on { color: hsl(var(--foreground)); }
-/* 보기 카드 안의 세그는 검색 카드 안의 입력과 **같은 문법**이다: 같은 높이(`--ctl-h`),
-   같은 눌린 면(배경 · 테두리 · 안쪽 그림자), 같은 모서리 — 카드는 올라오고 컨트롤은
-   눌린다. 칩은 그 홈 안에 선다 — 동심 모서리 규칙으로 안쪽 곡률 = 바깥 곡률 −
-   (테두리 + 틈). 렌즈 버튼(`.lens-btn`)도 같은 높이라 세그 옆에 한 줄로 선다.
-   관점 세그는 **접히지 않는다**(`nowrap` 둘 다). `.seg` 의 `flex-wrap: wrap` 은
-   5지선다(Layout)를 위한 것이고, 칩에도 걸어야 글자가 칩 안에서 접히지 않는다
-   (실측 2026-09-09: 묶음만 막으면 칸 높이가 37 → 107px 로 뛰었다). */
-#tb-viewpoints .seg, .lens-vprow .seg {
-  flex-wrap: nowrap; align-items: center; gap: 2px;
-  height: var(--ctl-h); padding: 0 3px; box-sizing: border-box;
-  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm, .625rem);
-  background: hsl(var(--background));
-  box-shadow: inset 0 1px 2px hsl(var(--foreground) / .06);
-}
-#tb-viewpoints .seg .chip, .lens-vprow .seg .chip {
-  min-height: calc(var(--ctl-h) - 8px); padding: 0 var(--space-3, .75rem);
-  border-radius: calc(var(--radius-sm, .625rem) - 4px);
-  white-space: nowrap;
-}
 /* 앱 손잡이(설정·도구·GRAPH.md)와 **패널 손잡이**(트리·문서 접기)를 가른다.
    같은 묶음에 두는 이유는 둘 다 크롬이기 때문이고, 가르는 이유는 하는 일이
    다르기 때문이다(무엇을 여는가 대 무엇을 접는가). */
@@ -1861,12 +1807,6 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 #surface { --rail-w: 0px; }
 #rail-grip:hover, #rail-grip:active { background: hsl(var(--muted-foreground) / .35); }
 #rail-grip:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
-.pl-band-hit:focus-visible { stroke: hsl(var(--ring)); stroke-width: 2; outline: none; }
-#period-body h2 { word-break: keep-all; }
-.period-i {
-  display: block; width: 100%; text-align: left; font: inherit; color: inherit;
-  background: none; border: 0; border-bottom: 1px solid hsl(var(--border)); cursor: pointer;
-}
 
 /* 인캔버스 크롬 — 레일이 열리면 그 폭만큼 비켜선다(자리 다툼 방지: 같은 우상단을
    두 층이 쓰면 레일의 닫기(✕)가 칩 밑에 깔린다). 예전엔 JS 가 인라인 style 로
@@ -2330,7 +2270,6 @@ textarea.props-val {
   margin-left: auto; display: flex; gap: 1.1rem; white-space: nowrap;
   font-size: .7rem; color: hsl(var(--caption-foreground));
 }
-#view-viewpoints .seg, #tb-viewpoints .seg, .lens-vprow .seg { display: inline-flex; }
 /* 연결 없음 = 누를 수 있는 수치(세어만 놓고 해소할 길을 안 주지 않는다). */
 .metric-act { cursor: pointer; border-bottom: 1px dashed hsl(var(--border)); }
 .metric-act:hover { color: hsl(var(--foreground)); }
@@ -2349,20 +2288,6 @@ textarea.props-val {
   background: hsl(var(--card)); color: hsl(var(--foreground)); border-color: hsl(var(--muted-foreground));
 }
 .lens-btn svg { width: 17px; height: 17px; }
-/* 닫힌 보기 카드의 버튼은 지금 관점의 이름을 함께 싣는다(Q1.3) — 세그가 숨어도 무엇으로
-   보고 있는지는 보여야 한다. 열리면 세그가 그 일을 하므로 이름을 거둬 정사각 버튼으로
-   돌아간다. 카드 밖(임베드의 지도 모서리)에서는 이름을 싣지 않는다. */
-.lens-vp { display: none; }
-#tb-viewctl:not([data-open]) .lens-btn {
-  width: auto; grid-auto-flow: column; gap: .4rem;
-  max-width: 100%; grid-template-columns: max-content minmax(0, 1fr);
-  padding: 0 var(--space-3, .75rem) 0 var(--space-2, .5rem);
-}
-#tb-viewctl:not([data-open]) .lens-vp {
-  display: inline; font-size: .8125rem; font-weight: 500; white-space: nowrap;
-  min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  color: hsl(var(--foreground));
-}
 /* 패널 머리의 닫기 — 탭줄 오른쪽 끝. 모양은 `?` 토글과 같은 급(작은 아이콘 버튼)이다. */
 .lens-close {
   display: grid; place-items: center; flex: 0 0 auto;
@@ -2373,9 +2298,6 @@ textarea.props-val {
 .lens-close:hover { color: hsl(var(--foreground)); background: hsl(var(--muted-foreground) / .1); }
 .lens-close:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
 .lg-tabrow-title { flex: 1 1 auto; font-size: .8125rem; font-weight: 600; }
-/* 판 머리의 관점 세그 — 좁은 창(≤900, 패널이 전폭 판)에서만 보인다. 넓은 창에서는
-   상단 바 카드의 세그가 같은 일을 한다(`#tb-viewctl[data-open]`). */
-.lens-vprow { display: none; }
 .lg-body { display: flex; flex-direction: column; gap: .18rem; }
 .lg-cap {
   margin: .45rem 0 .15rem; font-size: .62rem; letter-spacing: .075em;
@@ -2526,25 +2448,6 @@ textarea.props-val {
      웹은 공홈 GNB(둘 다 상단 바 3.25rem 위에 얹힌다). */
   [data-shell] #view-lens-panel { top: calc(var(--topbar-h) + var(--shell-gap) * 2 + var(--titlebar-h)); }
   [data-skin="web"] #view-lens-panel { top: 6.5rem; }
-  /* 보기 카드는 이 폭에서 **자라지 않는다** — 패널이 전폭 판이라 맞출 폭이 없다. 카드는
-     열려도 닫힌 모양(버튼 + 관점 이름) 그대로이고, 관점 세그는 판 머리(`.lens-vprow`)로
-     간다. 판 머리 세그는 네 칩이 같은 몫을 갖는다(손가락으로 누르는 폭). */
-  #tb-viewctl[data-open] { width: auto; margin-left: 0; }
-  #tb-viewctl > #tb-lens { flex-shrink: 1; }
-  #tb-viewctl > #tb-viewpoints { display: none; }
-  #tb-viewctl .lens-btn {
-    width: auto; grid-auto-flow: column; gap: .4rem;
-    max-width: 100%; grid-template-columns: max-content minmax(0, 1fr);
-    padding: 0 var(--space-3, .75rem) 0 var(--space-2, .5rem);
-  }
-  #tb-viewctl .lens-vp {
-    display: inline; font-size: .8125rem; font-weight: 500; white-space: nowrap;
-    min-width: 0; overflow: hidden; text-overflow: ellipsis;
-    color: hsl(var(--foreground));
-  }
-  .lens-vprow { display: block; position: relative; z-index: 1; padding: var(--space-3, .75rem) var(--space-4, 1rem) 0; }
-  .lens-vprow .seg { display: flex; width: 100%; }
-  .lens-vprow .seg .chip { flex: 1 1 0; min-width: 0; padding: 0 var(--space-2, .5rem); }
 }
 
 /* ── 좁은 창(≤600) — 검색이 자리를 되찾는다 ────────────────────────────
@@ -2730,14 +2633,12 @@ textarea.props-val {
 }
 .lens-help span { min-width: 0; }
 .lens-help b:empty { display: none; }
-/* 범례 v2 — 마크는 크게(24px), 실루엣 그대로. 파선 링은 stroke 를 여기서 준다
-   (markSvg 의 .pl-gate 는 평면 스타일시트가 채우던 속성이라 범례에서도 채운다). */
+/* 범례 v2 — 마크는 크게(24px), 실루엣 그대로. */
 .lg-shape {
   display: grid; grid-template-columns: 1.6rem 1fr; gap: .1rem .55rem;
   align-items: center; font-size: var(--fs-sm);
 }
 .lg-mark2 { width: 24px; height: 24px; color: hsl(var(--foreground)); fill: currentColor; }
-.lg-mark2 .pl-gate { stroke: currentColor; stroke-width: 1.9; fill: none; }
 .lg-shape-t { min-width: 0; }
 .lg-note {
   display: block; font-size: .68rem; line-height: 1.45;
@@ -2780,241 +2681,11 @@ textarea.props-val {
   flex: 0 0 auto; padding: 0; border: 0; background: none; font: inherit;
   font-size: .7rem; color: hsl(var(--link)); cursor: pointer; text-decoration: underline;
 }
-.rel-mute {
-  display: block; font-size: .65rem; line-height: 1.3;
-  color: hsl(var(--caption-foreground));
-}
-.rel-drop { flex: 0 0 auto; font-size: .65rem; color: hsl(var(--caption-foreground)); }
 
-/* View 평면 뷰(D43) — Flow · Timeline · Totals 의 인라인 SVG 규칙.
-   렌더러는 surfaces/view-planar.ts 지만 스타일시트는 이 파일 하나뿐이다
-   (템플릿 문자열 안에 숨은 두 번째 스타일시트를 만들지 않는다 — 디자인 시스템·
-   모노크롬 게이트가 훑는 자리가 곧 규칙이 사는 자리다).
-   전부 모노크롬: 의미는 형태 · 농도 · 굵기가 나르고 색은 초점(--ring)뿐(D41).
-   .pl-wrap 패딩은 view-planar.ts 의 PAD_TOP/PAD_X/PAD_BOT 과 같은 값이어야 한다. */
-.pl-wrap { height: 100%; overflow: auto; padding: 56px 16px 16px; }
-.pl-svg { display: block; }
-.pl-svg text { font-family: inherit; }
+/* 상태 줄의 수치 — 숫자는 고정폭으로 세운다(줄이 다시 그려져도 칸이 흔들리지 않게). */
 .pl-num { font-variant-numeric: tabular-nums; }
-.pl-ax { fill: none; stroke: hsl(var(--border)); stroke-width: 1; }
-.pl-band { fill: hsl(var(--muted)); opacity: .5; }
-.pl-cap { fill: hsl(var(--caption-foreground)); font-size: 10px; }
-/* 연도는 날짜 위에 한 단 더 선다. 같은 캡션 색을 쓰되 굵기로만 갈라 놓는다 —
-   색을 하나 더 쓰면 그 색이 무엇을 뜻하는지 설명할 곳이 필요해진다. */
-.pl-yr { font-size: 11px; font-weight: 600; }
-.pl-yr-rule { opacity: .55; }
-.pl-mark { fill: hsl(var(--card)); stroke: hsl(var(--foreground)); stroke-width: 1.4; }
-/* 기둥 타임라인(pl-cols) — 점이 작아 1.4px 테두리가 속을 다 먹는다. 채운 점은 잉크,
-   **속 빈 점은 연결이 없는 것**(고아)이라 그 대비가 곧 정보다. */
-/* 초점 선 — 짚은 점에서 이어진 곳으로만 긋는다(상시 아님). 마크보다 옅고 가늘게:
-   이건 배경 구조가 아니라 "지금 이것과 이어져 있다"만 말하는 한 겹이다. */
-.pl-hovline {
-  fill: none; stroke: hsl(var(--muted-foreground)); stroke-width: 1.1;
-  opacity: .5; stroke-linecap: round; pointer-events: none;
-}
-.pl-cols .pl-mark { stroke-width: 1; }
-.pl-cols .pl-mark.pl-solid { fill: hsl(var(--foreground)); }
-/* 고정 고리 — 클릭으로 잡아 둔 마크를 둘러싼다(짚은 것과 잡아 둔 것의 구분).
-   마크에서 떨어져 있어 형태=종을 안 건드리고, 초점색이라 "지금 초점"이라는 뜻도
-   그대로다. 얇게 두는 이유: 이건 상태 표시지 마크가 아니다. */
-.pl-pinring { fill: none; stroke: hsl(var(--focus)); stroke-width: 1.1; opacity: .85; }
-@media (prefers-reduced-motion: no-preference) {
-  /* 조여드는 인상 — 고리가 밖에서 마크 쪽으로 붙는다. `r` 대신 transform 을 쓰는
-     이유는 스케일이 합성 단계라 경로를 다시 만들지 않아서다(`transform-box: fill-box`
-     가 없으면 원점이 SVG 좌표계 0,0 이라 고리가 화면 밖으로 날아간다). */
-  .pl-pinring { transform-box: fill-box; transform-origin: center;
-                animation: pl-pin-in .2s ease-out; }
-}
-@keyframes pl-pin-in { from { opacity: 0; transform: scale(1.5); } }
-/* 노드종 마크(디자인 시안 `Vinc Node Kit 3D` §4). 3D 조형의 축약이라 색은 기존
-   잉크 그대로이고 **채움과 파선만** 종을 말한다.
-     · shell = Domain 외피(옅은 채움) + core(크기를 읽히게 하는 속)
-     · gate  = Gateway 윤곽선(채움 없음). 면이 없다 = 실체가 없다 */
-.pl-mark.pl-shell { fill: hsl(var(--foreground)); }
-/* 코어는 **잉크**다. 초점색을 쓰던 자리인데, 초점색은 "지금 초점" 하나만 뜻하고
-   타입에는 안 쓴다(정본 §2.5) — Domain 이라는 종을 초점색으로 말하고 있었다. */
-.pl-mark.pl-core { fill: hsl(var(--foreground)); stroke: none; }
-.pl-mark.pl-gate { fill: none; }
-/* 주제 틴트(열린 층) — 켜져 있을 때만 `--ink` 가 실린다(view-tint.ts). 채도·명도는
-   토큰이라 잉크와 같은 무게로 읽히고, 갈리는 것은 색조뿐이다. 초점(.pl-focus)은
-   아래 우선순위로 덮으므로 틴트가 초점색을 가리지 않는다. */
-.pl-tint .pl-mark { stroke: var(--ink); }
-.pl-tint .pl-mark.pl-solid,
-.pl-tint .pl-mark.pl-shell,
-.pl-tint .pl-mark.pl-core { fill: var(--ink); }
-.pl-bd-dot.pl-shell { fill-opacity: .18; }
-.pl-bd-dot.pl-gate { fill: none; }
-/* 타임라인 원인·결과 선(D74). 가지(줄기)보다 **가늘고 옅게** — 이건 배경 구조가
-   아니라 겹쳐 읽는 층이라, 항상 켜 두는 가지보다 뒤로 물러나 있어야 마디가 보인다.
-   초점이 걸리면 초점색으로 올라온다(색은 여전히 한 곳뿐 — D41).
-   시간을 거스르는 기록(원인이 결과보다 나중)은 파선으로 가른다: 지우면 데이터가
-   그렇게 적혀 있다는 사실 자체가 안 보인다. */
-.pl-lin {
-  fill: none; stroke: hsl(var(--muted-foreground));
-  stroke-width: .9; opacity: .38; stroke-linecap: round;
-}
-.pl-lin-back { stroke-dasharray: 3 3; }
-.pl-lin.pl-hl { stroke: hsl(var(--focus)); stroke-width: 1.6; opacity: 1; }
-.pl-lin.pl-fade { opacity: var(--recede-line); }
-/* 불투명도 전이는 감소 모션에서도 남긴다 — 움직임이 아니다. */
-.pl-lin { transition: opacity .22s ease, stroke-width .22s ease; }
-
-.pl-node { cursor: pointer; }
-.pl-hl .pl-mark { stroke: hsl(var(--focus)); }
-.pl-hl .pl-mark { stroke-width: 2; }
-
-/* 물러남(recede) — DEC D32-a 확정값(vinc.d.view-visual-language §1.6 표).
-   선 .12 / 텍스트 .35, 전 관점·전 표면 공통. 뷰 코드에 숫자 리터럴을 두지 않기
-   위해 여기 한 곳에서만 정의한다(모션 토큰 계층의 선행 자리).
-   초점 자신과 그 이웃은 감쇠 없음(1.0) — .pl-fade 가 안 붙는다.
-   노드 마크는 **물러나지 않는다**(노드 .40 을 걷었다). 물러나는 노드는 배경 쪽으로
-   섞여 같은 노드가 상태에 따라 진한 색과 옅은 틴트를 오갔다. 이제 `.pl-fade` 가 붙은
-   노드에서 옅어지는 것은 이름뿐이다.
-   근거: [[decision:a-node-keeps-its-own-colour-in-every-state]] */
-:root {
-  --recede-line: .12;
-  --recede-text: .35;
-}
-.pl-lane.pl-fade { opacity: var(--recede-line); }
-.pl-fade .pl-cap { opacity: var(--recede-text); }
-.pl-node, .pl-lane { transition: opacity .22s ease; }
-
-/* 방사형 계층 번들(Sankey 대체) — surfaces/view-bundle.ts.
-   선은 계층을 타고 다발이 되므로 굵기가 아니라 **겹침**이 밀도를 말한다. 그래서
-   한 가닥은 얇고 투명하게 두고(겹치면 저절로 진해진다), 집약 단에서만 `--n`(합쳐진
-   개수)으로 살짝 굵힌다. */
-.pl-bd { display: block; margin: 0 auto; overflow: visible; }
-.pl-bd-link {
-  fill: none;
-  stroke: hsl(var(--foreground));
-  stroke-width: clamp(.5px, calc(.5px * var(--n, 1)), 3px);
-  stroke-opacity: .38;
-  stroke-linecap: round;
-  /* `pathLength="1"` 로 정규화돼 있어 대시 하나가 곧 경로 전체다 — 즉 평소에는
-     실선이고, 아래 모션이 offset 을 1 에서 0 으로 줄이며 **그려 나간다**. */
-  stroke-dasharray: 1;
-}
-/* 선이 이어지는 모션 — 단·관계를 바꿀 때만 붙는다(리사이즈에는 안 붙인다).
-   물성은 motion.ts 와 같다: 강한 감속 `cubic-bezier(.16,1,.3,1)`.
-   스태거는 굵은 다발(먼저 그려짐)에서 가는 선 순으로 퍼져 "무엇이 중심인가"가
-   시간축에도 실린다. `backwards` 가 있어야 지연 중인 선이 완성된 모습으로
-   한 프레임 번쩍이지 않는다. */
-@media (prefers-reduced-motion: no-preference) {
-  .pl-bd-anim .pl-bd-link {
-    animation: pl-bd-draw 520ms var(--ease-settle) backwards;
-    animation-delay: calc(var(--i, 0) * 2.2ms);
-  }
-}
-@keyframes pl-bd-draw {
-  from { stroke-dashoffset: 1; stroke-opacity: 0; }
-  to   { stroke-dashoffset: 0; }
-}
-/* 선이 많을 때의 강등본 — 그려 나가는 대신 밝아지기만 한다(view-bundle.ts 의
-   LINE_DRAW_MAX). 같은 타이밍·같은 스태거라 리듬은 그대로고 비용만 내려간다. */
-.pl-bd-anim.pl-bd-lite .pl-bd-link { animation-name: pl-bd-fade; }
-@keyframes pl-bd-fade { from { stroke-opacity: 0; } }
-/* 회전 겹 — 클릭한 노드를 3시로 보낸다. transform-origin 은 뷰박스가 원점 중심이라
-   0 0 이 곧 링의 중심이다. 인라인 transition 은 spinTo 가 건다(회전할 때만). */
-.pl-bd-spin { transform-origin: 0 0; }
-/* 주제 틴트가 켜져 있으면 그 색, 아니면 한 잉크. 관점 공통 규칙이다. */
-.pl-bd-dot { fill: var(--tint, hsl(var(--muted-foreground))); }
-/* 라벨도 클릭 대상이다 — pointer-events 를 끄면 잎의 히트 영역이 반지름 2 의 점 하나로
-   줄어든다(실측 2026-08-17: 5px). 읽는 곳이 곧 누르는 곳이어야 한다. */
-.pl-bd-label {
-  font-size: 8.5px; fill: hsl(var(--muted-foreground));
-  dominant-baseline: middle;
-}
-/* 그룹(큰 도메인) 구분 — ⚠ **잠정**이다. 허브 토큰에 카테고리 팔레트가 없어
-   (primitive 는 indigo/peri 모노크롬 + 기능색뿐) 링크 토큰의 색상환을 돌려 가른다.
-   하드코딩 색이 아니므로 게이트는 통과하고, 팔레트가 생기면 이 블록만 바뀐다. */
-/* 초점 — 선택된 잎만 진해지고 글자가 커진다. 나머지를 흐리는 일은 hover 문법
-   (.pl-fade)이 이미 하므로 여기서 되풀이하지 않는다. */
-.pl-bd-leaf.on .pl-bd-dot { fill: hsl(var(--foreground)); r: 3.5; }
-.pl-bd-leaf.on .pl-bd-label { fill: hsl(var(--foreground)); font-size: 10px; font-weight: 600; }
-/* 그려지지 않지만 눌린다 — Weave 의 잎은 반지름 2 라 그대로는 손이 못 짚는다.
-   `fill:none` 이면 히트가 안 잡히므로 투명 채움 + pointer-events 로 둔다. */
-.pl-bd-hit { fill: transparent; pointer-events: all; }
-.pl-bd-leaf { cursor: pointer; }
-/* 짚었다는 것이 보여야 과녁이 넓어진 값을 한다(라벨이 없는 잎도 있다). */
-@media (hover: hover) and (pointer: fine) { .pl-bd-leaf:hover .pl-bd-dot { r: 3.5; } }
-.pl-bd-leaf:hover .pl-bd-label { fill: hsl(var(--foreground)); }
-
-/* 2D 관점(D46) — sigma 캔버스 + 그 위 DOM 오버레이(배지·지표바).
-   오버레이는 포인터를 받지 않는다(캔버스의 hover·클릭을 가로채면 안 된다).
-   배지만 예외로 포인터를 받아 자체 툴팁을 띄운다. */
-.a2-stage { position: absolute; inset: 0; }
-.a2-badges { position: absolute; inset: 0; pointer-events: none; }
-.a2-badge {
-  position: absolute; top: 0; left: 0; pointer-events: auto;
-  min-width: 1.1rem; padding: 0 .28rem; border-radius: 999px;
-  border: 1px solid hsl(var(--border)); background: hsl(var(--card) / .88);
-  color: hsl(var(--caption-foreground));
-  font-size: .62rem; line-height: 1.05rem; text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-/* 고정 앵커 — 끌어서 옮긴 노드에 붙는다(더블클릭으로 해제, view2d.ts).
-   배지와 같은 층·같은 모양 언어를 쓰되 자리가 갈린다(배지는 오른쪽 위, 앵커는 왼쪽
-   아래). 초점색을 쓰는 이유: 잡아 둔 것은 지금 관심사이고, 그것이 초점색의 뜻이다. */
-.a2-anchor {
-  position: absolute; top: 0; left: 0; pointer-events: auto;
-  display: grid; place-items: center; width: 1.05rem; height: 1.05rem; padding: 0;
-  border-radius: 999px; cursor: pointer;
-  border: 1px solid hsl(var(--focus) / .5); background: hsl(var(--card) / .92);
-  color: hsl(var(--focus));
-}
-.a2-anchor:hover { border-color: hsl(var(--focus)); background: hsl(var(--card)); }
-.a2-anchor:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
-@media (prefers-reduced-motion: no-preference) {
-  .a2-anchor { animation: a2-anchor-in .18s ease-out; }
-}
-/* ⚠ 불투명도만 건드린다. 자리는 JS 가 인라인 `transform: translate(...)` 로 잡으므로
-   키프레임이 transform 을 만지면 앵커가 좌상단으로 튄다(같은 속성을 둘이 쓴다). */
-@keyframes a2-anchor-in { from { opacity: 0; } }
-
-/* 미니맵 — 줌인했을 때만 뜬다(전체가 보이면 답할 질문이 없다). 크롬 바 위. */
-.a2-minimap {
-  position: absolute; right: var(--space-4, 1rem); bottom: 2.9rem; z-index: 3;
-  width: 180px; height: 120px; cursor: pointer;
-  background: hsl(var(--card) / .78); border: 1px solid hsl(var(--border));
-  border-radius: var(--radius-sm, .625rem);
-}
 .a2-metric { display: inline-flex; gap: .3rem; align-items: baseline; }
 .a2-metric b { color: hsl(var(--foreground)); font-weight: 600; }
-
-@keyframes pl-node-in { from { opacity: 0 } to { opacity: 1 } }
-/* 계보 선 그리기 — pathLength=100 이라 100→0 이 곧 0%→100% 다(view-planar.ts). 이 키프레임이
-   없던 동안(2026-09-05 감사에서 발견) 선은 애니메이션 없이 완성 상태로 그냥 나타났다. */
-@keyframes pl-root-grow { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
-
-/* 타임라인 진입 안무 — **뿌리가 내린다**(발주자 지시 2026-08-02).
-   위(시작 시점)에서 아래(현재)로 선이 자라고, 지나간 자리에 마디가 켜진다.
-   선의 성장은 stroke-dashoffset — 모든 path 가 pathLength="100" 을 선언하므로
-   곡선 길이를 재지 않고도 100→0 이 곧 0%→100% 다(계산도 측정도 없다).
-   지연(--d)은 렌더러가 y 에 비례해 실어 보낸다 — 여기서는 읽기만 한다.
-   최초 1회만: 리사이즈 재그리기에는 .pl-grow 가 붙지 않는다.
-   ⚠ fill-mode 는 forwards 가 아니라 **backwards** 다. forwards 는 끝난 뒤에도
-   그 속성을 애니메이션이 붙들어 .pl-fade(hover 물러남)의 opacity 를 이긴다 —
-   최초 화면에서 hover 문법이 통째로 죽는다. backwards 는 지연 구간만 시작값을
-   쥐고 끝난 뒤엔 선언값으로 돌려주므로, 선언값 자체를 최종 상태로 둔다. */
-@media (prefers-reduced-motion: no-preference) {
-  .pl-timeline .pl-node.pl-grow {
-    animation: pl-node-in .34s ease-out backwards;
-    animation-delay: var(--d, 0s);
-  }
-  /* 계보 선은 **뿌리가 다 자란 뒤에** 그어진다(--d 가 0.5s 부터 시작한다) —
-     구조가 먼저 서고 그 위에 원인이 얹히는 순서라야 둘이 안 뒤엉킨다. */
-  .pl-timeline .pl-lin.pl-grow {
-    stroke-dasharray: 100;
-    animation: pl-root-grow .5s ease-out backwards;
-    animation-delay: var(--d, 0s);
-  }
-  /* 시간을 거스르는 선은 파선이 정본이라 성장 애니메이션을 주지 않는다(dasharray 가
-     충돌한다). 대신 페이드로만 들어온다. */
-  .pl-timeline .pl-lin-back.pl-grow {
-    stroke-dasharray: 3 3;
-    animation: pl-node-in .4s ease-out backwards;
-  }
-}
 
 /* Settings — 왼쪽 분류 레일 + 본문(2026-09-22). 딤·머리·✕ 는 시트의 것이다.
    분류는 일반·화면 · 읽기·View · 계정·동기화 · AI 연결 · 데이터 · GRAPH.md ·
@@ -3630,126 +3301,6 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 /* 흐름 H — 기본 정보. 읽기 모습은 속성 절(`.props-dl`)과 같고, 편집은 초대 폼의 필드다. */
 .node-basics { margin-top: var(--space-3, .75rem); }
 .node-basics .ei-field small { font-size: .72rem; }
-/* ── 타임라인 기간(2026-09-28) ─────────────────────────────────────────────
-   한 상태, 두 입구: 옵션 탭의 "기간" 묶음과 하단 상태 표시줄 왼쪽의 칩. 칩은 패널이
-   닫혀도 걸린 기간을 보여 준다 — 숨은 필터는 데이터가 없는 것으로 읽힌다. 차트 위
-   왼쪽에 두었더니 축의 해·달 이름을 덮었다(실측 2026-09-28) — 그 자리는 차트 것이다.
-   근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] §2.3 */
-.period-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin: .4rem 0 .15rem; }
-.period-chips .chip { min-height: 1.75rem; font-size: .75rem; }
-#view-period { flex: 0 0 auto; }
-.period-chip {
-  display: inline-flex; align-items: center; gap: .45rem;
-  height: 1.6rem; padding: 0 .65rem;
-  border: 1px solid hsl(var(--border)); border-radius: var(--radius-pill, 999px);
-  background: hsl(var(--card) / .86); color: hsl(var(--foreground));
-  font: inherit; font-size: .72rem; cursor: pointer; white-space: nowrap;
-}
-.period-chip:hover { background: hsl(var(--card)); border-color: hsl(var(--muted-foreground)); }
-.period-chip-k { color: hsl(var(--caption-foreground)); }
-/* 기간이 걸려 있으면 칩이 **잉크로** 말한다(테두리가 전경색). 포인트 색은 면에 쓰지 않는다. */
-.period-chip.on { border-color: hsl(var(--foreground) / .7); font-weight: 600; }
-.period-chip:focus-visible, .hint-act:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
-/* 캡션 안의 동작("기간 좁히기"). 캡션 줄은 지도를 가리지 않게 포인터를 흘리므로 이것만 받는다. */
-.hint-act {
-  pointer-events: auto; background: none; border: none; padding: 0; cursor: pointer;
-  font: inherit; color: hsl(var(--foreground)); text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-/* ── 날짜 범위 선택(date-range.ts) ─────────────────────────────────────────
-   면은 다른 오버레이 카드와 같다. 시작·끝 = 전경색으로 채운 원(글자는 배경색), 사이 =
-   옅은 띠, 오늘 = 테두리 고리, 키보드 초점 = 포인트 색 고리. 포인트 색은 **초점 고리에만**
-   쓴다(팔레트 규칙: 포인트는 점이지 면이 아니다). 기록 있는 날 = 날짜 아래 작은 점. */
-.drp {
-  position: fixed; z-index: 65; display: flex; gap: var(--space-3, .75rem);
-  padding: var(--space-3, .75rem); max-width: calc(100vw - 16px);
-  background: hsl(var(--card)); color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
-  box-shadow: var(--shadow-elev-3); font-size: .8125rem;
-}
-.drp-presets {
-  display: flex; flex-direction: column; gap: .15rem; min-width: 7.5rem;
-  padding-right: var(--space-3, .75rem); border-right: 1px solid hsl(var(--border));
-}
-.drp-preset {
-  text-align: left; padding: .35rem .55rem; border: none; border-radius: var(--radius-sm, .625rem);
-  background: none; color: hsl(var(--muted-foreground)); font: inherit; cursor: pointer;
-}
-.drp-preset:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
-.drp-preset.active { color: hsl(var(--foreground)); font-weight: 600; background: hsl(var(--muted)); }
-.drp-main { display: flex; flex-direction: column; gap: var(--space-2, .5rem); min-width: 0; }
-.drp-head { display: flex; align-items: center; gap: .25rem; }
-.drp-title {
-  flex: 1 1 auto; padding: .3rem .5rem; border: none; border-radius: var(--radius-sm, .625rem);
-  background: none; color: hsl(var(--foreground)); font: inherit; font-weight: 600; cursor: pointer;
-}
-.drp-title:hover, .drp-nav:hover { background: hsl(var(--muted)); }
-.drp-nav {
-  display: grid; place-items: center; width: 1.9rem; height: 1.9rem; padding: 0;
-  border: none; border-radius: var(--radius-sm, .625rem); background: none;
-  color: hsl(var(--muted-foreground)); cursor: pointer;
-}
-.drp-next .icon { transform: scaleX(-1); }
-.drp-months { display: flex; gap: var(--space-4, 1rem); }
-.drp-mtitle { display: none; }
-.drp-grid { display: grid; gap: 2px; }
-.drp-row { display: grid; grid-template-columns: repeat(7, 2.1rem); }
-.drp-wd { text-align: center; font-size: .68rem; color: hsl(var(--muted-foreground)); padding: .15rem 0; }
-.drp-cell { display: grid; place-items: center; height: 2.1rem; }
-.drp-day, .drp-tile {
-  position: relative; display: grid; place-items: center;
-  border: none; background: none; color: hsl(var(--foreground)); font: inherit; cursor: pointer;
-  font-variant-numeric: tabular-nums;
-}
-.drp-day { width: 2.1rem; height: 2.1rem; border-radius: 50%; }
-.drp-day.in, .drp-tile.in { background: hsl(var(--muted)); border-radius: 0; }
-.drp-day.lo, .drp-day.hi, .drp-tile.lo, .drp-tile.hi {
-  background: hsl(var(--foreground)); color: hsl(var(--background)); border-radius: 50%;
-}
-.drp-tile.lo, .drp-tile.hi { border-radius: var(--radius-sm, .625rem); }
-.drp-day.today:not(.lo):not(.hi) { box-shadow: inset 0 0 0 1px hsl(var(--foreground) / .55); }
-.drp-tile.today:not(.lo):not(.hi) { box-shadow: inset 0 0 0 1px hsl(var(--foreground) / .55); }
-.drp-day:hover:not(.lo):not(.hi), .drp-tile:hover:not(.lo):not(.hi) { background: hsl(var(--muted-foreground) / .16); }
-.drp-day:focus-visible, .drp-tile:focus-visible, .drp-preset:focus-visible, .drp-title:focus-visible,
-.drp-nav:focus-visible, .drp-reset:focus-visible {
-  outline: 2px solid hsl(var(--ring)); outline-offset: 1px; position: relative; z-index: 1;
-}
-.drp-dot {
-  position: absolute; left: 50%; bottom: 3px; width: 4px; height: 4px; margin-left: -2px;
-  border-radius: 50%; background: currentColor;
-}
-.drp-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; min-width: 15rem; }
-.drp-tile { height: 2.6rem; border-radius: var(--radius-sm, .625rem); }
-.drp-inputs { display: flex; gap: var(--space-2, .5rem); }
-.drp-field { display: flex; flex-direction: column; gap: .2rem; flex: 1 1 0; min-width: 0; }
-.drp-field span { font-size: .7rem; color: hsl(var(--muted-foreground)); }
-.drp-field input {
-  height: 2rem; padding: 0 .55rem; min-width: 0; font: inherit; font-variant-numeric: tabular-nums;
-  color: hsl(var(--foreground)); background: hsl(var(--background));
-  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm, .625rem);
-}
-.drp-field input:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 0; }
-.drp-field input[aria-invalid="true"] { border-color: hsl(var(--danger)); }
-.drp-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2, .5rem); }
-.drp-msg { margin: 0; min-height: 1.1em; font-size: .72rem; color: hsl(var(--muted-foreground)); }
-.drp-reset {
-  flex: 0 0 auto; padding: .3rem .6rem; border: 1px solid hsl(var(--border));
-  border-radius: var(--radius-sm, .625rem); background: none; color: hsl(var(--foreground));
-  font: inherit; cursor: pointer;
-}
-.drp-reset:hover { background: hsl(var(--muted)); }
-/* 좁은 창: 한 달만 보이고(JS), 프리셋은 위의 가로줄로 올라간다. */
-@media (max-width: 600px) {
-  .drp { flex-direction: column; left: 8px !important; right: 8px; }
-  .drp-presets {
-    flex-direction: row; flex-wrap: wrap; min-width: 0; padding: 0 0 var(--space-2, .5rem);
-    border-right: none; border-bottom: 1px solid hsl(var(--border));
-  }
-  .drp-row { grid-template-columns: repeat(7, minmax(2rem, 1fr)); }
-}
-/* 폰 폭: 칩은 "기간" 머리말을 떼고 값만 싣는다 — 상태 줄의 지표와 한 줄을 나눠 쓴다. */
-@media (max-width: 600px) { .period-chip-k { display: none; } }
 
 /* ── 문서 홈(2026-10-22) ───────────────────────────────────────────────────
    문서를 보고 쓰고 정리하는 첫 화면. 짜임은 웹 커뮤니티 홈을 따른다: 주제 칩 · 거르기 ·

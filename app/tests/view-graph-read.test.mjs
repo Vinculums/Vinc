@@ -21,18 +21,14 @@ test('hub plans carry the cone and the sorted scope key; roots ignore it',()=>{
   assert.deepEqual(roots.options,{domains:['a'],layout:'hub'});
 });
 test('the same request in any domain order shares one key and no scope sends no domains',()=>{
-  const a=graphReadPlan({view:'2d',layout:'hub',cone:1},['x','y']),b=graphReadPlan({view:'2d',layout:'hub',cone:1},['y','x']);
+  const a=graphReadPlan({layout:'hub',cone:1},['x','y']),b=graphReadPlan({layout:'hub',cone:1},['y','x']);
   assert.equal(a.scopeKey,b.scopeKey);
-  assert.deepEqual(graphReadPlan({view:'2d',layout:'hub',cone:1},[]).options,{layout:'hub'});
+  assert.deepEqual(graphReadPlan({layout:'hub',cone:1},[]).options,{layout:'hub'});
 });
-test('planar viewpoints never use roots',()=>{
-  for(const view of ['timeline','bundle'])assert.equal(graphReadPlan({view,layout:'temporalRoots',cone:1},[]).useRoots,false);
-});
-const base={view:'3d',when:1,unlinked:'show',edgeOff:[]},fresh={cached:false,mounted:false,planar:false};
+const base={view:'3d',when:1,unlinked:'show',edgeOff:[]},fresh={cached:false,mounted:false};
 test('only a fresh, unfiltered map read is staged',()=>{
   assert.equal(wantsStagedRead(base,fresh),true);
-  assert.equal(wantsStagedRead({...base,view:'2d'},fresh),true);
-  for(const state of [{cached:true},{mounted:true},{planar:true}])assert.equal(wantsStagedRead(base,{...fresh,...state}),false);
-  for(const change of [{view:'timeline'},{view:'bundle'},{when:.5},{unlinked:'hide'},{edgeOff:['directed']}])
+  for(const state of [{cached:true},{mounted:true}])assert.equal(wantsStagedRead(base,{...fresh,...state}),false);
+  for(const change of [{when:.5},{unlinked:'hide'},{edgeOff:['directed']}])
     assert.equal(wantsStagedRead({...base,...change},fresh),false);
 });

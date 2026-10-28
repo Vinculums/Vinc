@@ -29,10 +29,10 @@ def _body(src: str, head: str) -> str:
 
 class ScopedEmptyViewTests(unittest.TestCase):
     def test_View_의_빈_자리는_범위를_보고_고른다(self):
-        """3D·2D·평면 세 자리 모두 `emptyFor(domains)` 를 거친다. 하나라도 옛 식으로
-        남으면 그 관점에서만 같은 거짓말이 되살아난다."""
+        """지도의 빈 자리는 `emptyFor(domains)` 를 거친다. 옛 식으로 남으면 같은 거짓말이
+        되살아난다."""
         view = _read("surfaces/view.ts")
-        self.assertEqual(len(re.findall(r"setMsg\(emptyFor\(domains\)\)", view)), 3)
+        self.assertEqual(len(re.findall(r"setMsg\(emptyFor\(domains\)\)", view)), 1)
         self.assertNotIn("emptyInviteHtml(COPY.view.idle));", view.replace(
             "      : emptyInviteHtml(COPY.view.idle);", ""))
         helper = _body(view, "  function emptyFor(")

@@ -55,7 +55,7 @@ const browser=await chromium.launch({channel:'msedge',headless:true,args:['--ena
   '--disable-background-networking','--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.2']});
 const results=[];
 try {
-  for(size of (process.env.REENTRY_LAYOUT?[200]:[200,3000])) for(const view of ['2d','3d']) {
+  for(size of (process.env.REENTRY_LAYOUT?[200]:[200,3000])) for(const view of ['3d']) {
     const context=await browser.newContext({viewport:{width:1440,height:900}});
     await context.addInitScript(({view,layout})=>{
       Object.defineProperty(document,'cookie',{get:()=> '__Host-csrf=synthetic'});
@@ -72,11 +72,10 @@ try {
         window.__phase={start:performance.now(),first:0,complete:0,preview:0,frames:0};
         const tick=()=>{
           const x=window.__phase;
-          const canvas=document.querySelector(view==='2d'?'.a2-stage canvas':'.scene-container canvas');
+          const canvas=document.querySelector('.scene-container canvas');
           if(canvas&&canvas.getBoundingClientRect().width>0&&getComputedStyle(canvas.closest('#view-canvas')||canvas).opacity!=='0'){
             if(++x.frames>=3&&!x.first)x.first=performance.now();
           }else x.frames=0;
-          if(view==='2d'&&x.first)x.complete=x.first;
           const completion=window.__reentry.logs.find(r=>r.at>=x.start&&r.text.startsWith('View scene complete'));
           if(completion)x.complete=completion.at;
           const preview=window.__reentry.logs.find(r=>r.at>=x.start&&r.text.startsWith('View preview visible'));

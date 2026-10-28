@@ -53,7 +53,7 @@ try {
   });
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
   const layoutRequests=()=>requests.filter(r=>r.path==='/api/graph/graph').map(r=>new URLSearchParams(r.query).get('layout'));
-  for (const view of ['3d','2d']) {
+  for (const view of ['3d']) {
     held=null;requests.length=0;
     await page.goto(`${origin}/?checkview=${view}`);
     await page.locator('[data-graph-preview]').waitFor({timeout:30000});
@@ -65,7 +65,7 @@ try {
     rows.push({test:`${view} time branches show the partial overview before the full response`});
     await held.fulfill({json:fixture});held=null;
     // The overview stays until the worker layout is drawn, then disappears for the final scene.
-    await page.waitForFunction(v=>!document.querySelector('[data-graph-preview]')&&(v==='3d'?!!window.__g3?.graphData()?.nodes.length:!!document.querySelector('.a2-stage canvas')),view,{timeout:60000});
+    await page.waitForFunction(v=>!document.querySelector('[data-graph-preview]')&&!!window.__g3?.graphData()?.nodes.length,view,{timeout:60000});
     assert.ok(await page.evaluate(()=>window.__checks.logs.some(t=>t.startsWith('View layout stages'))),`${view}: worker layout ran`);
     rows.push({test:`${view} final time-branch scene replaces the overview`});
   }
