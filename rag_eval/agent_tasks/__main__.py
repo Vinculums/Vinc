@@ -29,7 +29,9 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--skip-handoff", action="store_true", help="handoff 과제를 빼고 그 수를 헤더에 남긴다")
     r.add_argument("--arms", default=",".join(arms.ARMS))
     r.add_argument("--hosts", default=",".join(hosts.HOSTS))
-    r.add_argument("--model", default="fake", help="fake | azure:<배포> | openai:<모델>")
+    r.add_argument("--model", default="fake",
+                   help="fake | azure:<배포> | openai:<모델> | claude-code:<모델 id>(구독, 키 없음)")
+    r.add_argument("--judge-model", help="서술형 채점(judge·기권) 모델. 기본은 --model 과 같다")
     r.add_argument("--price", help="입력,출력 USD/백만 토큰(성공당 비용용; 없으면 비용을 모른다고 적는다)")
     r.add_argument("--runs", type=int, default=3, help="과제당 실행 수(계획: 3)")
     r.add_argument("--cap", type=int, default=hosts.TOOL_CALLS_PER_RUN, help="런당 도구 호출 상한")

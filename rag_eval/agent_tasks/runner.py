@@ -22,6 +22,7 @@ import importlib.metadata as md
 import json
 import os
 import pathlib
+import re
 import shutil
 import stat
 import subprocess
@@ -117,19 +118,31 @@ def fingerprint(header: dict) -> str:
     """비교 가능성을 정하는 것만 담은 해시. 시각·경로·커밋은 담지 않는다(헤더에는 있다)."""
     keep = {k: header[k] for k in ("store", "runtime", "packages", "hosts", "model", "tasks",
                                    "arms", "limits")}
+    if "judge" in header:
+        keep["judge"] = header["judge"]
     keep["runtime"] = {k: v for k, v in header["runtime"].items() if k != "executable"}
     return hashlib.sha256(json.dumps(keep, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+#: 판정 줄. 꾸밈(``**PASS**``, ``# FAIL``)과 앞 공백을 건너뛴다. 근거: 2026-10-28 탐색 3회차에서
+#: 다시 물으면 세 번 다 PASS 인 기권이 실행 중에는 떨어졌다.
+_VERDICT = re.compile(r"\s*[*_#>`\s]*(PASS|FAIL)\b", re.I)
 
 
 def model_judge(runner: models.ModelRunner):
     """서술형 채점 모델. 과제·채점 기준·산출물만 받는다. 검색 재료는 받지 않는다."""
     def judge(prompt: str, spec: dict, body: str) -> bool:
-        turn = runner.step([
-            {"role": "system", "content": "You grade a work product against a rubric. Reply PASS "
-                                          "or FAIL on the first line, then one sentence."},
-            {"role": "user", "content": f"TASK:\n{prompt}\n\nRUBRIC:\n{spec['rubric']}\n\n"
-                                        f"WORK PRODUCT:\n{body}"}], [])
-        return turn.text.strip().upper().startswith("PASS")
+        for _ in range(2):
+            turn = runner.step([
+                {"role": "system", "content": "You grade a work product against a rubric. Reply PASS "
+                                              "or FAIL on the first line, then one sentence."},
+                {"role": "user", "content": f"TASK:\n{prompt}\n\nRUBRIC:\n{spec['rubric']}\n\n"
+                                            f"WORK PRODUCT:\n{body}"}], [])
+            verdict = _VERDICT.match(turn.text or "")
+            if verdict:
+                return verdict.group(1).upper() == "PASS"
+        # 두 번 다 판정이 없으면 통과로 치지 않는다.
+        return False
     return judge
 
 
@@ -168,6 +181,10 @@ def run(a) -> int:
     host_objs = [hosts_mod.make(h) for h in want_hosts]
     prices = tuple(float(x) for x in a.price.split(",")) if a.price else None
     model = models.make(a.model, prices=prices)
+    # 채점 모델은 따로 고를 수 있다. 시험받는 모델이 자기 답을 채점하면 같은 답에 판정이 흔들렸다
+    # (탐색 4회차, 하이쿠가 같은 기권을 네 번에 한 번 FAIL).
+    judge_spec = getattr(a, "judge_model", None) or a.model
+    judge_model = model if judge_spec == a.model else models.make(judge_spec)
 
     fp = runtime.fingerprint()
     entry = store_entry(a)
@@ -199,6 +216,7 @@ def run(a) -> int:
         "runtime": fp, "packages": _versions(),
         "hosts": {h.name: h.describe() for h in host_objs},
         "model": model.describe(),
+        "judge": "fake" if a.model == "fake" else judge_model.describe(),
         "tasks": {"sha256": ts.sha256, "split": ts.split, "author": ts.author,
                   "authored_on": ts.authored_on, "written_on_store": ts.store,
                   "n": len(todo), "handoff_skipped": handoff},
@@ -231,22 +249,25 @@ def run(a) -> int:
                 header["arms"]["a1"] = a1.settings()
                 a1_blocks = a1.blocks([t.prompt for t in todo])
             vinc = arms_mod.VincEndpoint(st.v1_base, st.api_key)
-            judge = checkers.fake_judge if a.model == "fake" else model_judge(model)
+            judge = checkers.fake_judge if a.model == "fake" else model_judge(judge_model)
             ctx = checkers.Context(resolve=mcp.exists, judge=judge)
-            for r in range(1, a.runs + 1):
-                for task in todo:
-                    for host in host_objs:
-                        for arm in want_arms:
-                            surface = arms_mod.Surface(
-                                arm=arm, mcp=mcp, vinc=vinc,
-                                context=a1_blocks[task.prompt]["block"] if arm == "A1" else None,
-                                tools=a2_tools if arm == "A2" else [])
-                            rows.append(_one(a, header, ts, task, host, arm, r, surface, model,
-                                             ctx, traces))
-                            if not a.quiet:
-                                x = rows[-1]
-                                print(json.dumps({"run": x["run_id"], "success": x["grade"]["success"],
-                                                  "class": x["failure_class"]}), flush=True)
+            plan = [(r, task, host, arm) for r in range(1, a.runs + 1) for task in todo
+                    for host in host_objs for arm in want_arms]
+            for r, task, host, arm in plan:
+                # 구독 실행이 사용률 한도에 닿았으면 남은 실행을 보내지 않고 여기까지로 끝낸다.
+                if getattr(model, "paused", ""):
+                    header["stopped"] = {"reason": model.paused, "done": len(rows),
+                                         "planned": len(plan)}
+                    break
+                surface = arms_mod.Surface(
+                    arm=arm, mcp=mcp, vinc=vinc,
+                    context=a1_blocks[task.prompt]["block"] if arm == "A1" else None,
+                    tools=a2_tools if arm == "A2" else [])
+                rows.append(_one(a, header, ts, task, host, arm, r, surface, model, ctx, traces))
+                if not a.quiet:
+                    x = rows[-1]
+                    print(json.dumps({"run": x["run_id"], "success": x["grade"]["success"],
+                                      "class": x["failure_class"]}), flush=True)
     finally:
         for f in work.glob("*.db*"):
             f.unlink(missing_ok=True)
@@ -279,7 +300,8 @@ def _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces) -> dict
            "model": header["model"]["model"], "run": r, "trace_sha256": path.stem,
            "trace_bytes": path.stat().st_size, "grade": grade, "failure_class": cls,
            "steps": res.steps, "tool_calls": res.tool_calls, "tokens_in": res.tokens_in,
-           "tokens_out": res.tokens_out, "cost_usd": cost, "latency_s": latency,
+           "tokens_out": res.tokens_out, "cost_usd": cost, "list_cost_usd": res.list_cost_usd,
+           "latency_s": latency,
            "model_versions": res.model_versions, "host_error": host_error,
            "tool_events": [{"name": e["name"], "kind": e["kind"]} for e in trace.events
                            if e["t"] == "tool"]}

@@ -9,10 +9,11 @@ made to the other fails there.
   ``not_regex`` that matches counts as a decision violation unless the check says ``"violation":
   false``.
 - ``sources``: every id on the last ``Sources:`` line exists in the graph, and enough of them are
-  ones the task accepts (``support``). A document mirror ``concept:doc.X`` and the document ``X``
-  are the same evidence.
+  ones the task accepts (``support``). A document mirror ``concept:doc.X``, the document ``X`` and
+  any of its chunks ``X#00003`` are the same evidence.
 - ``abstain``: a task whose answer is not in the graph. Citing nothing and saying so, or asking back,
-  is an abstention; anything else is a made-up answer.
+  is an abstention; anything else is a made-up answer. The repository harness asks its grading model
+  instead when it has one; without one it reads the answer the same way as here.
 - ``set_f1`` and ``path``: node ids in the answer against a gold set, or edges between ids in the
   order they appear against the gold edges.
 - ``judge``: needs a grading model, which the kit does not call. Such a task is left ungraded.
@@ -24,18 +25,27 @@ from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
 NODE_ID = re.compile(r"(?<![\w.:\-])((?:concept|decision|record|episode|domain|bridge):"
-                     r"\w(?:[\w.\-]*\w)?)")
+                     r"\w(?:[\w.\-/]*\w)?)")
 _SOURCES = re.compile(r"^\s*\**\s*sources\s*\**\s*:\s*(.*)$", re.I)
 _BRACKETED = re.compile(r"\[([^\[\]]+)\]")
-_BARE = re.compile(r"\w[\w.:\-]*\w")
+_BARE = re.compile(r"\w[\w.:/\-]*\w(?:#\d+)?")
+#: A chunk id is ``{doc_id}#{index:05d}``; citing a chunk cites its document.
+_CHUNK = re.compile(r"#\d+$")
 DOC_MIRROR = "concept:doc."
 ABSTAIN = re.compile(
     r"\b(?:i\s+(?:do\s+not|don't|cannot|can't|could\s+not|couldn't)\s+(?:know|find|tell|answer|determine|confirm)"
     r"|not\s+(?:recorded|documented|available|found|in\s+the\s+(?:graph|knowledge|material|sources?))"
     r"|no\s+(?:record|information|data|source|mention)s?\b"
     r"|(?:unable|not\s+able)\s+to\s+(?:find|answer|determine|confirm)"
-    r"|(?:does|do)\s+not\s+(?:contain|hold|include|say|mention|record))"
-    r"|모르|알 수 없|찾지 못|기록(?:되어|돼)?\s*있지\s*않|기록이\s*없|나와\s*있지\s*않|확인할 수 없",
+    r"|(?:does|do)\s+not\s+(?:contain|hold|include|say|mention|record)"
+    r"|i\s+(?:do\s+not|don't)\s+have\s+(?:any\s+|the\s+)?(?:record|information|data|details)"
+    r"|i\s+(?:do\s+not|don't)\s+have\s+(?:a|an|that|this)\s+(?:\w+\s+){0,3}(?:number|figure|date|value|size)"
+    r"|nothing\s+in\s+the\s+(?:material|source|graph|knowledge|context|reference)"
+    r"|(?:can't|cannot)\s+say\s+(?:what|which|who|when|how))"
+    r"|모르|알 수 없|찾지 못|찾을 수 없|기록(?:되어|돼)?\s*있지\s*않|기록이\s*없|나와\s*있지\s*않|확인할 수 없"
+    r"|확인하지 못|답할 수 없|(?:알려|확인해|말씀)\s*드릴\s*수\s*없"
+    r"|(?:자료|기록|문서|정보|내용)(?:에서|에는|에|이|가|는)?\s*(?:없|포함되어\s*있지\s*않|보이지\s*않)"
+    r"|추측(?:해서|으로)[^.\n]{0,24}않",
     re.I)
 
 #: The checks this grader can run. ``judge`` is not among them.
@@ -43,7 +53,7 @@ GRADED = ("regex", "not_regex", "sources", "abstain", "set_f1", "path")
 
 
 def canon_id(raw: str) -> str:
-    s = raw.strip().strip("`'\"").rstrip(".,;)")
+    s = _CHUNK.sub("", raw.strip().strip("`'\"").rstrip(".,;)"))
     if s.startswith(DOC_MIRROR):
         return "doc:" + s[len(DOC_MIRROR):]
     if NODE_ID.fullmatch(s) or s.startswith("doc:"):
