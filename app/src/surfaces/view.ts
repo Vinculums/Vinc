@@ -491,11 +491,22 @@ export async function renderView(el: HTMLElement, resume = false) {
     const shapeRow = (art: string, label: string, noteTxt: string) =>
       `<span class="lg-shape">${art}<span class="lg-shape-t">${esc(label)}`
       + `<span class="lg-note">${esc(noteTxt)}</span></span></span>`;
+    // 3D 는 몸통 키트가 여섯 종을 가르므로 여섯 줄과 영역 부피를 가르친다. 평면은 넷이다.
     const shapes = [
-      shapeRow(is3d ? m3("concept") : flatMark("concept"), L.concept, note.concept),
-      shapeRow(is3d ? m3("record") : flatMark("record"), L.document, note.document),
-      shapeRow(is3d ? m3("bridge") : flatMark("bridge"), L.bridge, note.bridge),
-      shapeRow(is3d ? m3("domain") : flatMark("domain"), L.topic, note.topic),
+      ...(is3d ? [
+        shapeRow(m3("concept"), L.concept, note.concept),
+        shapeRow(m3("decision"), L.decision, note.decision),
+        shapeRow(m3("record"), L.record, note.record),
+        shapeRow(m3("episode"), L.episode, note.episode),
+        shapeRow(m3("bridge"), L.bridge, note.bridge),
+        shapeRow(m3("domain"), L.topic, note.topic),
+        shapeRow(m3("area"), L.area, note.area),
+      ] : [
+        shapeRow(flatMark("concept"), L.concept, note.concept),
+        shapeRow(flatMark("record"), L.document, note.document),
+        shapeRow(flatMark("bridge"), L.bridge, note.bridge),
+        shapeRow(flatMark("domain"), L.topic, note.topic),
+      ]),
       // Weave 는 관문 윤곽을 안 그린다(view-bundle markSvg(gateway=false)) — 그리지
       // 않는 것은 가르치지 않는다.
       ...(p.view === "bundle" ? [] :
@@ -1866,7 +1877,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       kind: nd.kind || "concept",
       gateway: isGateway(nd, lens),
       focus: markId !== undefined && nd.id === markId,
-      x: nd.x, y: nd.y, z: nd.z,
+      x: nd.x, y: nd.y, z: nd.z, ts: nd.ts,
     }));
   }
   /** D74 — 범례 스위치로 끈 갈래를 뺀다. **그리기 필터일 뿐** 데이터 필터가 아니다:

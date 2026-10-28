@@ -6,10 +6,12 @@ import { changedRendererPrefs, canUpdateViewStyle } from "../view-controls";
  *  materials (ink/ink_soft/ink_mute), paper background + fog, one neutral
  *  directional light. The single point color marks "the current focus" only.
  *
- *  Node primitives = type (D35): sphere (Concept) · small regular hex prism
- *  (Episode/Record — all edges equal) · octahedron (Bridge) · sphere + ring
- *  (L0 Domain). Gateways are translucent. Sidecar supplies deterministic
- *  x/y/z (D17) — positions are pinned (fx/fy/fz), no client force simulation. */
+ *  Node bodies = the Vinc orb kit: one glass and inner light for every kind,
+ *  the shell's shape says the kind — sphere (Concept, Decision with a crystal inside) ·
+ *  tetrahedron (Record) · octahedron (Episode) · shard (Bridge) · hollow dotted shell
+ *  (Topic). Drawn by one instanced ray-marched layer (`view-orbs3d.ts`); areas are glowing
+ *  glass volumes. Gateways stay outlines. Sidecar supplies deterministic x/y/z (D17) —
+ *  positions are pinned (fx/fy/fz), no client force simulation. */
 import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
 import { ViewIdleFrames } from "./view-idle-frames";
 import * as THREE from "three";
@@ -24,6 +26,8 @@ import { nonOverlappingLabels, type LabelBox } from "../view-labels";
 import type { ViewRoute } from "../view-route";
 import { RoutedLinkObject } from "./view-routes3d";
 import { CurvedLinkObject } from "./view-curves3d";
+import { OrbLayer, ORB_STATE, orbKindOf, orbSeed, areaBox, areaVolume, retintVolume } from "./view-orbs3d";
+import { areaKeys } from "../view-layout-spatial";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -51,7 +55,7 @@ const isDirectedLink = (l: { type?: string }) => DIRECTED_RELS.includes(l.type |
  *  themePalette()가 유일한 런타임 seam — 하드코딩 hex 금지. */
 type Palette = {
   ink: number; inkMute: number; point: number; fog: number; primary: number;
-  /** 유리 스튜디오(studioEnv)의 회색 판들 — 전부 토큰이다(히어로의 무채색 램프와 같은 단). */
+  /** 무채색 단 — `soft` 는 영역 부피의 색이다(영역 색은 아직 정하지 않았다, 몸통이 주제 보석을 입는다). */
   soft: number; line: number; card: number;
   link: { heavy: string; mid: string; base: string; cross: string; fade: string };
   label: string;
@@ -83,6 +87,7 @@ export type N3 = {
   kind?: string;              // concept | decision | episode | record | bridge | domain
   gateway?: boolean; focus?: boolean; records?: number;
   pinned?: boolean;           // D32 — pin 은 허브 승격(크기 가중; 레이아웃은 사이드카)
+  ts?: string;                // 기록 시각 — 몸통의 active 상태(최근 7일)가 읽는다
   x?: number; y?: number; z?: number;
   fx?: number; fy?: number; fz?: number;
 };
@@ -96,78 +101,21 @@ export type L3 = { source: string; target: string; type?: string; cross?: boolea
   /** 평소에 옅게 그린다(짚은 노드의 선이 되면 다른 선과 같이 밝아진다). 데스크톱은 싣지 않는다. */
   faint?: boolean };
 
-// 재질의 이력: D77(2026-08-03)이 노드의 유리를 은퇴시켰고, 2026-08-15 에 반무광 MeshPhysical 로
-// 돌아왔고, 2026-09-26 에 히어로와 같은 유광 유리가 됐다(아래 GLASS). D37 Liquid Glass 는
-// 크롬 층의 것이라 이 흐름과 무관하다.
-//: 정사면체의 고정 자세. 앱 노드는 자전하지 않으므로 이 각도가 곧 실루엣이다 —
-//: face·view dot 0.76 / 0.21 로 두 면의 음영이 갈려 입체로 읽힌다(시안 §2).
+//: 정사면체의 고정 자세 — 관문 윤곽선(gatewayWire)만 쓴다. 몸통은 view-orbs3d 의 다면체가
+//: 카메라에 고정된 자세로 그린다.
 const DOC_ROT: [number, number, number] = [-0.5, 0.6, 0.2];
 
-// ── 대량 노드 인스턴싱 ──────────────────────────────────────────────────────
-// 노드마다 개별 지오메트리 + MeshPhysicalMaterial 로 그리면 드로우콜과 셰이딩 비용이
-// 노드 수에 비례한다. 입자 모드를 고르면 F6 유휴 정지를 못 받아 그 비용을 매 프레임
-// 낸다(기본은 아니다 — edgeShowFor). 그래서 몸통이 종류(구·팔면체·사면체)만 다른 노드는 종류당
-// InstancedMesh 하나로 묶는다. gateway·domain·focus 는 형태가 특수하고 수가 적어
-// 개별 메시로 남긴다. 재질 파라미터(색 제외)는 skinFor("body")와 같다 — 2026-08-15 의
-// MeshPhysical 결정은 그대로 두고 그리는 방식만 바꾼다.
-// 근거·기각안: [[decision:view-3d-nodes-are-instanced-and-recede-by-blending-to-the-background]]
-// 실측: [[record:view-3d-instancing-frame-cost-measured-2026-09-18]]
-type InstKind = "sphere" | "bridge" | "doc";
-const instKindOf = (n: N3): InstKind =>
-  n.kind === "concept" || n.kind === "decision" ? "sphere"
-  : n.kind === "bridge" ? "bridge" : "doc";
-//: 인스턴싱 대상에서 뺀다 — gateway(윤곽선, 이미 저가) · domain(겹껍질 특수형) ·
-//: focus(초점색 특례, 뷰당 보통 0~1개).
-const canInstance = (n: N3): boolean => !n.gateway && n.kind !== "domain" && !n.focus;
-const UNIT_GEOM: Record<InstKind, THREE.BufferGeometry> = {
-  sphere: new THREE.SphereGeometry(1, 32, 22),   // 유리 하이라이트가 각지지 않을 해상도(히어로와 같다)
-  bridge: new THREE.OctahedronGeometry(1.06),
-  doc: new THREE.TetrahedronGeometry(1.22),
-};
-const INST_ROT: Record<InstKind, THREE.Quaternion> = {
-  sphere: new THREE.Quaternion(),
-  bridge: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0.5, 0)),
-  doc: new THREE.Quaternion().setFromEuler(new THREE.Euler(...DOC_ROT)),
-};
-/** 유리 한 벌 — 공홈 히어로(Vinc-homepage `site/assets/hero-orbit.js` 의 MAT·ENV_I)와 같은
- *  값이다. 광택(거칠기 .1~.14), 클리어코트 가득, 박막 무지갯빛, 환경 반사가 조형을 만든다.
- *  **색은 없다**: 몸통은 잉크, 초점만 포인트(흑백 + 포인트 하나). 히어로의 보석색은 사이트
- *  조형 안만의 예외라 가져오지 않는다. 라이트는 반사를 줄인다 — 밝은 바탕에서 반사가 세면
- *  조형이 배경에 녹는다(히어로 2026-09-13 실측).
- *  근거: [[decision:app-nodes-wear-the-hero-glass-2026-09-26]] */
-const GLASS: Record<ThemeMode, { roughness: number; metalness: number; clearcoat: number;
-  clearcoatRoughness: number; iridescence: number; sheen: number; ior: number;
-  env: number; exposure: number }> = {
-  dark: { roughness: .14, metalness: .08, clearcoat: 1, clearcoatRoughness: .05,
-          iridescence: .75, sheen: .25, ior: 1.6, env: 1.35, exposure: 1.06 },
-  light: { roughness: .1, metalness: .04, clearcoat: 1, clearcoatRoughness: .04,
-           iridescence: .55, sheen: .08, ior: 1.55, env: .8, exposure: 1.02 },
-};
-function glassParams(pal: Palette, mode: ThemeMode): THREE.MeshPhysicalMaterialParameters {
-  const g = GLASS[mode];
-  return {
-    roughness: g.roughness, metalness: g.metalness,
-    clearcoat: g.clearcoat, clearcoatRoughness: g.clearcoatRoughness, ior: g.ior,
-    iridescence: g.iridescence, iridescenceIOR: 1.45, iridescenceThicknessRange: [180, 820],
-    sheen: g.sheen, sheenColor: new THREE.Color(pal.soft), sheenRoughness: .4,
-    specularIntensity: 1, envMapIntensity: g.env,
-  };
-}
-/** 테마 전환 — 지은 재질에 그 모드의 유리 값을 다시 쓴다(오브젝트는 그대로). */
-function reglaze(m: THREE.MeshPhysicalMaterial, pal: Palette, mode: ThemeMode): void {
-  m.setValues(glassParams(pal, mode));
-  m.needsUpdate = true;
-}
-/** 인스턴스 재질. 색은 흰색 기준(인스턴스 색이 곱해진다) — 나머지는 skinFor("body")와
- *  같은 유리다. 단 **불투명**으로 둔다: 투명으로 바꾸면 수백 인스턴스가 투명 패스로 가서
- *  조기 깊이 기각을 잃고, 한 InstancedMesh 안은 깊이 정렬도 안 된다.
- *
- *  노드 몸통은 **제 색 그대로다** — hover·점등에 배경색으로 섞이지 않고(`applyFade`
- *  는 라벨만 물린다) 거리 안개도 안 받는다(`fog: false`). 깊이 단서는 엣지의 안개가 진다.
- *  근거: [[decision:a-node-keeps-its-own-colour-in-every-state]] */
-function instMaterial(pal: Palette): THREE.MeshPhysicalMaterial {
-  return new THREE.MeshPhysicalMaterial({ color: WHITE, fog: false, ...glassParams(pal, themeMode()) });
-}
+// ── 노드 몸통 = Vinc orb 한 층 ──────────────────────────────────────────────
+// 히어로 유리(MeshPhysical + 스튜디오 환경맵)를 발주자가 확정한 키트로 갈았다. 몸통은 셰이더가 직접 칠하므로 PBR 재질·환경맵·조명이 몸통에 닿지 않는다. 인스턴싱의
+// 이유(드로우콜이 노드 수에 비례하지 않게)는 그대로라 한 층에 전부 담는다.
+// 근거: [[vinc.research.graph-vinc-orb-2026-10-28]]
+// 이전 인스턴싱의 근거·실측: [[decision:view-3d-nodes-are-instanced-and-recede-by-blending-to-the-background]]
+//: 관문만 개별 오브젝트로 남긴다(윤곽선, 실체가 없다는 뜻이라 몸통 유리를 입히지 않는다).
+//: 초점은 이제 상태(selected)이고 주제는 점 껍질 종이라 둘 다 한 층에 든다.
+const canInstance = (n: N3): boolean => !n.gateway;
+/** 톤 매핑 노출 — 선·라벨 스프라이트가 받는다(몸통 셰이더는 톤 매핑을 안 탄다). 값은
+ *  히어로 유리 시절과 같아 선과 라벨의 밝기가 그대로다. */
+const EXPOSURE: Record<ThemeMode, number> = { dark: 1.06, light: 1.02 };
 /** 레이캐스트 전용 유령 메시 — 실제로 그리지 않는다(`visible=false`, 렌더러가
  *  순회에서 건너뛴다). three-forcegraph 가 노드마다 요구하는 오브젝트 계약(위치
  *  추적·hover·클릭)만 채운다. 지오메트리는 노드 형태와 무관한 저폴리 구 하나로
@@ -177,73 +125,8 @@ function ghostNode(r: number): THREE.Mesh {
   m.visible = false;
   return m;
 }
-/** 인스턴스 하나의 장부 — nodeScale 슬라이더(아래 __update)가 이 레퍼런스로
- *  인스턴스 행렬을 다시 쓴다. */
-type InstRef = {
-  kind: InstKind; idx: number; mesh: THREE.InstancedMesh; baseR: number;
-};
 
-/** 발광 패널 + PMREM — 이미지 없이 굽는 스튜디오 환경(외부 요청 0). 배치와 세기는 히어로의
- *  `bakeEnv` 와 같고, 색은 전부 무채색 토큰이다(히어로의 장미창 보석색은 뺐다). 유리의
- *  광택 면이 비출 것이 있어야 조형이 선다 — 환경이 없으면 유리는 검게 죽는다.
- *
- *  ⚠ 캐시는 **렌더러마다, 모드마다** 따로다. 패널 색이 팔레트라 모드가 바뀌면 다른
- *  그림이고, PMREM 결과는 렌더 타깃 텍스처라 그것을 구운 WebGL 컨텍스트 안에서만 산다.
- *  근거: [[decision:a-theme-switch-repaints-the-open-view-in-place]] */
-const envCache = new WeakMap<THREE.WebGLRenderer, Map<ThemeMode, THREE.Texture>>();
-function studioEnv(renderer: THREE.WebGLRenderer, pal: Palette, mode: ThemeMode): THREE.Texture {
-  let byMode = envCache.get(renderer);
-  if (!byMode) envCache.set(renderer, byMode = new Map());
-  const hit = byMode.get(mode);
-  if (hit) return hit;
-  const light = mode === "light";
-  const sc = new THREE.Scene();
-  //: 스튜디오 벽. 라이트를 어둡게 켜는 이유: 재질이 PBR 이라 환경이 색을 밀어 올리는데,
-  //: 밝은 바탕에서 그러면 조형이 배경에 녹는다.
-  sc.background = new THREE.Color(light ? pal.inkMute : pal.fog);
-  const panel = (w: number, h: number, d: number, color: number, k: number,
-                 pos: [number, number, number], rot?: [number, number, number]) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d),
-      new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k) }));
-    m.position.set(...pos); if (rot) m.rotation.set(...rot); sc.add(m);
-  };
-  //: 키 — 라이트는 작고 세게(넓게 밝히면 뿌옇고, 좁고 센 빛이 날카로운 하이라이트가 된다).
-  panel(light ? 7 : 12, light ? 7 : 12, .1, light ? WHITE : pal.soft, light ? 2.6 : 3.2,
-        [0, 6.5, -3], [Math.PI / 2.6, 0, 0]);
-  panel(9, 9, .1, WHITE, light ? .72 : 1.5, [-6, 2, 4], [0, Math.PI / 2.4, 0]);        // 보조
-  panel(9, 9, .1, pal.inkMute, 1.1, [6.5, 1, 3], [0, -Math.PI / 2.4, 0]);              // 가장자리
-  panel(14, .1, 14, light ? pal.line : pal.card, light ? .55 : 1, [0, -4, 0]);         // 바닥
-  const pm = new THREE.PMREMGenerator(renderer);
-  pm.compileEquirectangularShader();
-  const tex = pm.fromScene(sc, .04).texture;
-  pm.dispose();
-  byMode.set(mode, tex);
-  return tex;
-}
-
-/** 앱 재질 = **히어로와 같은 유리 한 벌**(위 GLASS). 2026-08-15 에 돌아온 MeshPhysical 을
- *  반무광에서 유광으로 올렸다(2026-09-26 발주자 지시: 공홈 노드와 같은 품질).
- *  몸통 색은 **주제의 보석색**이고(`tint`, view-tint.ts), 주제가 없으면 잉크다. 초점만
- *  포인트다 — 초점색은 "지금 초점" 하나만 뜻하므로 주제가 덮으면 안 된다(정본 §2.5).
- *  ⚠ 잉크가 `primary`(인디고)이던 동안 다크의 알베도 대비가 APCA Lc 9.6 으로 불가시 하한
- *  (Lc 16) 아래였다 — 주제 없는 몸통은 계속 `ink` 다. */
-function skinFor(pal: Palette, kind: "body" | "core" | "shell", focus: boolean,
-                 tint?: string | null): THREE.Material {
-  const mode = themeMode();
-  const base = focus ? pal.point : tint ? parseInt(tint.slice(1), 16) : pal.ink;
-  const m = new THREE.MeshPhysicalMaterial({
-    color: base, ...glassParams(pal, mode),
-    transparent: true, opacity: 1,
-    fog: false,          // 몸통은 거리로 옅어지지 않는다(instMaterial 주석)
-  });
-  if (kind === "core") { m.emissive = new THREE.Color(base); m.emissiveIntensity = .3; }
-  //: 겉껍질은 밝은 바탕에서 조금 더 진해야 읽힌다(히어로와 같은 .28 / .26).
-  if (kind === "shell") { m.opacity = mode === "light" ? .28 : .26; m.depthWrite = false; }
-  m.userData.base = m.opacity;
-  return m;
-}
-
-/** 테마 전환 때 개별 몸통(Gateway·Domain·초점)의 재질을 갈아 끼운다(`__retheme`).
+/** 테마 전환 때 개별 몸통(관문 윤곽선)의 재질을 갈아 끼운다(`__retheme`).
  *  `fresh` 는 같은 공장(nodeObject)이 같은 노드로 방금 지은 것이라 순회 순서가 `obj` 와
  *  같다. 색 규칙을 여기서 다시 쓰지 않는 이유가 그것이다: 규칙이 두 벌이면 새로 연
  *  화면과 전환한 화면이 조용히 갈린다. 라벨 스프라이트는 공장 밖에서 붙으므로 셈에서
@@ -369,13 +252,10 @@ function nodeRadius(n: N3, prefs: ViewPrefs): number {
   return r * (prefs.nodeScale ?? 1);
 }
 
-/** 조형 = 노드종. 형태가 뜻을 나른다 — 문서류는 정사면체(구보다 작게 읽히고 Bridge
- *  의 정팔면체와 실루엣이 삼각:마름모로 갈린다), Domain 은 겹껍질(담는 그릇), Gateway
- *  는 윤곽선(면이 없다 = 실체가 없다. 배후를 안 가리는 것이 이 형태를 고른 이유다).
- *  as-built: [[vinc.reference.view-controls]].
- *
- *  ⚠ 시안의 재질표(반무광 + 발광패널 환경)는 **적용하지 않았다** — 실측으로 은퇴시킨
- *  것을 되살리는 결정이라 조형 변경과 같은 무게가 아니다. */
+/** 관문 윤곽선의 원형 — 관문은 종의 몸통 대신 그 종의 **모서리만** 그린다(면이 없다 =
+ *  실체가 없다. 배후를 안 가리는 것이 이 형태를 고른 이유다). 몸통 키트(view-orbs3d)가
+ *  바뀐 뒤에도 윤곽은 예전 기하를 쓴다: 윤곽선에서 다면체 셋은 이미 갈리고, 셰이더 조각을
+ *  선으로 다시 짓는 비용에 비해 얻는 것이 없다. */
 function kindGeometry(kind: string | undefined, r: number): THREE.BufferGeometry {
   switch (kind) {
     case "concept": case "decision": case "domain":
@@ -402,34 +282,9 @@ function gatewayWire(kind: string | undefined, r: number, pal: Palette): THREE.L
   return seg;
 }
 
-/** Domain 겹껍질 — 외피(반투명, depthWrite 끔)와 코어. `skin` 이 두 재질을 만든다.
- *  외피가 depthWrite 를 쓰면 그 안의 코어와 뒤 노드가 함께 지워진다. */
-function domainShell(r: number, skin: (o: number) => THREE.Material): THREE.Group {
-  const g = new THREE.Group();
-  const shellMat = skin(0.28);
-  (shellMat as any).depthWrite = false;
-  g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(r * 1.18, 3), shellMat));
-  g.add(new THREE.Mesh(new THREE.SphereGeometry(r * 0.52, 32, 22), skin(1)));
-  return g;
-}
-
-function nodeObject(n: N3, prefs: ViewPrefs, pal: Palette = themePalette(),
-                    _glow = false): THREE.Object3D {
-  const r = nodeRadius(n, prefs);
-  //: 주제 틴트 — 꺼져 있으면(기본) undefined 라 잉크 그대로다. 표는 마운트가 만들어
-  //: 노드에 실어 준다(`__tint`): 노드마다 전체 주제 목록을 다시 훑을 수 없기 때문이다.
-  const tint = (n as { __tint?: string }).__tint;
-  //: 강조는 **보색 하나**로 한다(발주자 지시 2026-08-15). 빛나는 형태 — 글로우
-  //: 스프라이트와 가시성 링 — 은 전부 폐기됐다. D75·D76 이 링에 지웠던 짐(먼
-  //: 거리에서의 가시성)은 이제 재질과 환경맵이 진다. 계층(__tier)은 조형에
-  //: 관여하지 않는다. 갈래가 하나로 줄어든 것이 이 변경의 부수 이득이다.
-  if (n.gateway) return gatewayWire(n.kind, r, pal);
-  if (n.kind === "domain")
-    return domainShell(r, (o) => skinFor(pal, o < 1 ? "shell" : "core", !!n.focus, tint));
-  const mesh = new THREE.Mesh(kindGeometry(n.kind, r), skinFor(pal, "body", !!n.focus, tint));
-  if (n.kind === "bridge") mesh.rotation.y = 0.5;
-  else if (n.kind !== "concept" && n.kind !== "decision") mesh.rotation.set(...DOC_ROT);
-  return mesh;
+/** 한 층(OrbLayer)에 들지 않는 노드의 오브젝트 — 지금은 관문 하나뿐이다(`canInstance`). */
+function nodeObject(n: N3, prefs: ViewPrefs, pal: Palette = themePalette()): THREE.Object3D {
+  return gatewayWire(n.kind, nodeRadius(n, prefs), pal);
 }
 
 /** 카메라 **회전만** — 노드를 화면 중심에 놓되 거리는 건드리지 않는다.
@@ -561,64 +416,77 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     for (const n of nodes) (n as { __tint?: string }).__tint = tints?.get((n.domain || "").trim());
   };
   applyTints();
-  /** 인스턴스 몸통의 색 — 주제 틴트가 있으면 그것, 없으면 잉크. 빌드와 테마 전환이
-   *  같은 규칙을 읽는다. */
+  /** 몸통의 색 — 초점은 초점색, 주제 틴트가 있으면 그것, 없으면 잉크. 빌드와 테마 전환이
+   *  같은 규칙을 읽는다. 초점색은 "지금 초점" 하나만 뜻하므로 주제가 덮지 않는다(정본 §2.5). */
   const instColor = (n: N3) => {
     const tint = (n as { __tint?: string }).__tint;
-    return new THREE.Color(tint ? parseInt(tint.slice(1), 16) : pal.ink);
+    return new THREE.Color(n.focus ? pal.point : tint ? parseInt(tint.slice(1), 16) : pal.ink);
   };
-  // 인스턴싱 상태 — scene 은 ForceGraph3D 생성 뒤에야 얻는다(아래), 그래서 최초
-  // 빌드에서는 scene?.add 가 아무 일도 안 하고, 생성 직후 명시적으로 한 번 더 붙인다.
+  /** 상태 — 초점은 selected, 가장 새 노드로부터 7일 안에 생긴 것은 active, 나머지는 idle.
+   *  "오늘"이 아니라 그래프의 가장 새 날을 기준으로 잡는다: 한동안 안 쓴 그래프를 열면
+   *  전부 idle 이 되어 무엇이 최근이었는지가 사라진다. historical·conflict 는 셰이더에
+   *  있지만 실을 값(유효구간·충돌 표시)이 GraphNode 에 아직 없다. */
+  const newest = nodes.reduce((m, n) => n.ts && n.ts > m ? n.ts : m, "");
+  const newestAt = Date.parse(newest);          // 형식이 깨진 ts 면 NaN — 그때는 active 를 안 단다
+  const activeFrom = Number.isFinite(newestAt) ? new Date(newestAt - 7 * 86400000).toISOString() : "";
+  const stateOf = (n: N3): number => n.focus ? ORB_STATE.selected
+    : activeFrom && n.ts && n.ts >= activeFrom ? ORB_STATE.active : ORB_STATE.idle;
+  // 몸통 층 — scene 은 ForceGraph3D 생성 뒤에야 얻는다(아래), 그래서 최초 빌드에서는
+  // scene?.add 가 아무 일도 안 하고, 생성 직후 명시적으로 한 번 더 붙인다.
   let scene: THREE.Scene | undefined;
-  let instMeshes: THREE.InstancedMesh[] = [];
-  const instRefs = new Map<string, InstRef>();
+  let orbs: OrbLayer | null = null;
+  const orbIndex = new Map<string, number>();
   const instState = new Map<string, string>();
-  // 지오메트리는 빌드마다 복제본이고 재질도 빌드마다 새로 만든다 — 둘 다 여기서 함께
-  // 버린다(InstancedMesh.dispose 는 인스턴스 버퍼만 놓는다).
-  const disposeInstMeshes = () => {
-    for (const im of instMeshes) {
-      scene?.remove(im);
-      im.geometry.dispose();
-      (im.material as THREE.Material).dispose();
-      im.dispose();
-    }
-    instMeshes = [];
-    instRefs.clear();
+  const disposeOrbs = () => {
+    if (orbs) { scene?.remove(orbs.body, orbs.halo); orbs.dispose(); }
+    orbs = null;
+    orbIndex.clear();
   };
   const buildInstancedNodes = () => {
     instState.clear();
-    disposeInstMeshes();
-    const counts: Record<InstKind, number> = { sphere: 0, bridge: 0, doc: 0 };
-    for (const n of nodes) if (canInstance(n)) counts[instKindOf(n)]++;
-    const built: Partial<Record<InstKind, THREE.InstancedMesh>> = {};
-    (Object.keys(counts) as InstKind[]).forEach((k) => {
-      if (!counts[k]) return;
-      const geom = UNIT_GEOM[k].clone();
-      const mesh = new THREE.InstancedMesh(geom, instMaterial(pal), counts[k]);
-      // 인스턴스가 씬 전체에 흩어져 있어 컬링용 바운딩구는 전체를 감싸야 정확한데,
-      // nodeScale 슬라이더로 개별 행렬을 나중에 또 고친 뒤에도 그
-      // 값이 조용히 갱신 안 될 수 있다(재계산은 null 일 때만 지연 실행). 드로우콜이
-      // 이제 종류당 하나뿐이라 컬링 이득보다 "각도에 따라 조용히 사라짐" 위험이 크다.
-      mesh.frustumCulled = false;
-      built[k] = mesh; instMeshes.push(mesh);
+    disposeOrbs();
+    const members = nodes.filter(canInstance);
+    if (!members.length) return;
+    const layer = new OrbLayer(members.length, themeMode() === "light");
+    members.forEach((n, i) => {
+      layer.set(i, n.x || 0, n.y || 0, n.z || 0, nodeRadius(n, prefs), orbKindOf(n.kind),
+                stateOf(n), orbSeed(n.id), instColor(n));
+      orbIndex.set(n.id, i);
     });
-    const cursor: Record<InstKind, number> = { sphere: 0, bridge: 0, doc: 0 };
-    const m4 = new THREE.Matrix4();
-    for (const n of nodes) {
-      if (!canInstance(n)) continue;
-      const kind = instKindOf(n);
-      const mesh = built[kind]!;
-      const idx = cursor[kind]++;
-      const r = nodeRadius(n, prefs);
-      m4.compose(new THREE.Vector3(n.x || 0, n.y || 0, n.z || 0), INST_ROT[kind],
-                 new THREE.Vector3(r, r, r));
-      mesh.setMatrixAt(idx, m4);
-      mesh.setColorAt(idx, instColor(n));
-      instRefs.set(n.id, { kind, idx, mesh, baseR: r / (prefs.nodeScale ?? 1) });
-    }
-    scene?.add(...instMeshes);
+    layer.body.userData.orbLayer = layer;          // QA 가 씬에서 층을 찾는 손잡이
+    orbs = layer;
+    scene?.add(layer.body, layer.halo);
   };
   buildInstancedNodes();
+  // 영역 부피 — 주제 칸이 영역별로 모이므로(view-layout-spatial) 영역마다 x 로 늘인 타원체
+  // 하나. 2D 는 z 를 접어 부피가 뜻을 잃으므로 그리지 않는다. 간격 슬라이더가 자리를 옮기면
+  // 다시 짓는다(`__update`).
+  let volumes: THREE.Mesh[] = [];
+  const volumeColor = () => new THREE.Color(pal.soft);
+  const disposeVolumes = () => {
+    for (const v of volumes) { scene?.remove(v); (v.material as THREE.Material).dispose(); }
+    volumes = [];
+  };
+  const buildVolumes = () => {
+    disposeVolumes();
+    if (flat) return;
+    const placed = nodes.filter((n) => n.kind !== "bridge" && !n.gateway && n.domain
+      && Number.isFinite(n.x));
+    const keys = areaKeys(placed.map((n) => n.domain || ""));
+    const groups = new Map<string, { x: number; y: number; z: number; r: number }[]>();
+    placed.forEach((n, i) => {
+      if (!keys[i]) return;
+      let g = groups.get(keys[i]);
+      if (!g) groups.set(keys[i], g = []);
+      g.push({ x: n.x || 0, y: n.y || 0, z: n.z || 0, r: nodeRadius(n, prefs) });
+    });
+    const light = themeMode() === "light";
+    for (const pts of groups.values()) {
+      const box = areaBox(pts);
+      if (box) volumes.push(areaVolume(box, volumeColor(), light));
+    }
+    if (volumes.length) scene?.add(...volumes);
+  };
   const renderedRadii = new Map<string, number>();
   /** 노드 메시 공장. **새 함수 객체**를 넘기면 3d-force-graph 가 노드 오브젝트를 전부
    *  다시 만든다 — 크기 인코딩·틴트·라벨을 제자리에서 갈아 끼우는 값싼 길이다
@@ -648,7 +516,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
         group.add(ghost); group.userData.mark = ghost;
         return group;
       }
-      const mesh = nodeObject(n, prefs, pal, true);
+      const mesh = nodeObject(n, prefs, pal);
       mesh.userData.baseRadius = nodeRadius(n, prefs);
       const group = new THREE.Group();
       group.add(mesh); group.userData.mark = mesh;
@@ -732,7 +600,9 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // follows camera movement, resize and dragging without a second animation loop.
   const labelWorld = new THREE.Vector3(), labelScale = new THREE.Vector3();
   const labelCamera = new THREE.Vector3(), labelNdc = new THREE.Vector3();
-  const instMatrix = new THREE.Matrix4();
+  // 몸통 안의 빛이 떠도는 시계. 유휴 정지(F6) 뒤 깨어날 때 한 번에 몇 초를 건너뛰지 않게
+  // 프레임 간격을 자른다. 모션을 줄여 달라는 설정에서는 멈춘다.
+  let orbTime = 0, orbLast = performance.now();
   scene.onBeforeRender = (_renderer, _scene, camera) => {
     const nodeVisibility: any = g.nodeVisibility(), linkVisibility: any = g.linkVisibility();
     const isVisible = (rule: any, value: any) => typeof rule === "function" ? !!rule(value)
@@ -754,15 +624,18 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       originalPixels.set(n.id, base * pixelsPerUnit);
       const mark = (n as any).__threeObj?.userData.mark as THREE.Object3D | undefined;
       if (mark) mark.scale.setScalar(radius / mark.userData.baseRadius);
-      const ref = instRefs.get(n.id);
-      if (!ref) continue;
+      const idx = orbIndex.get(n.id);
+      if (idx === undefined || !orbs) continue;
       const r = isVisible(nodeVisibility, n) ? radius : 0;
-      const key = `${n.x},${n.y},${n.z},${r},${ref.idx}`;
+      const key = `${n.x},${n.y},${n.z},${r}`;
       if (instState.get(n.id) === key) continue;
       instState.set(n.id, key);
-      instMatrix.compose(new THREE.Vector3(n.x || 0, n.y || 0, n.z || 0), INST_ROT[ref.kind], new THREE.Vector3(r, r, r));
-      ref.mesh.setMatrixAt(ref.idx, instMatrix); ref.mesh.instanceMatrix.needsUpdate = true;
+      orbs.move(idx, n.x || 0, n.y || 0, n.z || 0, r);
     }
+    const now = performance.now();
+    if (!reduceMotion) orbTime += Math.min(now - orbLast, 50) / 1000;
+    orbLast = now;
+    orbs?.flush(orbTime, pixelsAtUnitDepth);
     for (const link of links as any[]) {
       const object = link.__lineObj;
       const source = typeof link.source === "object" ? link.source : nodes.find(n => n.id === link.source);
@@ -807,12 +680,14 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     const visible = nonOverlappingLabels(boxes);
     hubLabels.forEach((sprite, id) => { sprite.visible = visible.has(id); });
   };
-  scene.add(...instMeshes);   // buildInstancedNodes() 최초 호출분 — scene 이 이제 있다
-  // 환경맵이 돌아왔다(발주자 결정 2026-08-15). D77 이 유리와 함께 은퇴시켰던 것인데,
-  // 반무광 재질의 clearcoat·sheen 이 반사할 것이 없으면 조형이 평면으로 죽는다.
-  scene.environment = studioEnv(g.renderer(), pal, themeMode());
+  // buildInstancedNodes() 최초 호출분 — scene 이 이제 있다(TS 는 클로저의 대입을 못 보고 null 로 좁힌다)
+  const firstOrbs = orbs as OrbLayer | null;
+  if (firstOrbs) scene.add(firstOrbs.body, firstOrbs.halo);
+  buildVolumes();
+  // 환경맵은 몸통이 PBR 유리이던 동안의 것이라 몸통 셰이더와 함께 뺐다.
+  // 톤 매핑은 남는다: 선과 라벨이 그 밝기로 맞춰져 있다.
   g.renderer().toneMapping = THREE.ACESFilmicToneMapping;
-  g.renderer().toneMappingExposure = GLASS[themeMode()].exposure;
+  g.renderer().toneMappingExposure = EXPOSURE[themeMode()];
   // 원경이 배경으로 "서서히" 잦아듦. near/far 는 아래에서 **카메라 거리에 연동**한다
   // (고정값이면 축소가 곧 소멸이다 — syncCamera 주석 참조).
   const fog = flat ? null : new THREE.Fog(pal.fog, S * 2.6, S * 9);
@@ -985,7 +860,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     controls?.removeEventListener?.("change", onWakeEvent);
     for (const ev of ["pointermove", "pointerdown", "wheel", "keydown"] as const)
       el.removeEventListener(ev, onWakeEvent);
-    disposeInstMeshes();
+    disposeOrbs();
+    disposeVolumes();
     if (raf) cancelAnimationFrame(raf);
     baseDestructor?.();
     // dispose() 만으로는 WebGL 컨텍스트가 GC 때까지 살아 있다 — 옵션 클릭 16번에
@@ -1009,11 +885,13 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     if (changed.includes("spread")) {
       S = SCALE * np.spread;
       place();                                   // 핀 좌표를 새 배율로 다시 놓고
+      buildVolumes();                            // 영역 부피도 새 자리를 감싸게
       (g as any).d3ReheatSimulation?.();        // 위치 동기화 프레임을 1회 강제(settle 과 같은 길)
     }
     if (changed.some((k) => k === "labels" || k === "size")) {
       applyTints();
       buildInstancedNodes();                     // 인스턴스 배치도 새 인코딩으로 다시 굽는다
+      buildVolumes();
       g.nodeThreeObject(nodeFactory());          // 새 함수 = 노드 오브젝트 전부 다시 굽기
     } else if (changed.includes("nodeScale")) {
       instState.clear();
@@ -1181,25 +1059,22 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     pal = themePalette();
     applyTints();
     for (const n of nodes) {
-      const ref = instRefs.get(n.id);
-      if (ref) ref.mesh.setColorAt(ref.idx, instColor(n));
+      const idx = orbIndex.get(n.id);
+      if (idx !== undefined) orbs?.tint(idx, instColor(n));
     }
-    for (const im of instMeshes) {
-      if (im.instanceColor) im.instanceColor.needsUpdate = true;
-      reglaze(im.material as THREE.MeshPhysicalMaterial, pal, mode);
-    }
+    orbs?.setLight(mode === "light");
+    for (const v of volumes) retintVolume(v, volumeColor(), mode === "light");
     // 라벨은 몸통의 자식으로만 달린다.
     const labels = new Set<THREE.Sprite>();
     for (const m of g.graphData().nodes as any[]) {
       const obj = m.__threeObj as THREE.Object3D | undefined;
       if (!obj) continue;
       obj.traverse((c) => { if (c instanceof THREE.Sprite) labels.add(c); });
-      if (!canInstance(m)) takeSkins(obj, nodeObject(m, prefs, pal, true));
+      if (!canInstance(m)) takeSkins(obj, nodeObject(m, prefs, pal));
     }
     for (const sp of labels) repaintLabel(sp, pal);
     fog?.color.setHex(pal.fog);
-    if (scene) scene.environment = studioEnv(g.renderer(), pal, mode);
-    g.renderer().toneMappingExposure = GLASS[mode].exposure;
+    g.renderer().toneMappingExposure = EXPOSURE[mode];
     g.lights(lightsFor(mode === "dark"));
     // 선·화살촉·입자는 링크 digest 가 접근자를 다시 읽을 때 새 팔레트로 칠해진다.
     g.linkColor(linkColorFn);

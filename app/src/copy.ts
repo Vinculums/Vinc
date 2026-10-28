@@ -420,8 +420,12 @@ const EN = {
       shapes: "Shape = type",
       concept: "Concept",
       document: "Document",
+      decision: "Decision",
+      record: "Record",
+      episode: "Episode",
       bridge: "Bridge",
       topic: "Topic",
+      area: "Area",
       // 관문은 화면에 그려지는 다섯째 마크인데 범례에 없었다. 범례가 가르치지 않는
       // 형태가 화면에 서면, 읽는 사람은 그것을 고장이나 다른 종으로 읽는다.
       gateway: "Elsewhere (not in this topic)",
@@ -437,11 +441,15 @@ const EN = {
       // v2 — 마크는 렌더러가 실제로 그리는 것 그대로다. 캡션이 어느 셋인지 밝힌다.
       drawnAs3d: "the 3D geometry itself",
       drawnAsFlat: "shared by 2D · Timeline · Weave",
+      // 몸통 키트: 모든 종이 같은 유리와 안의 빛을 쓰고 껍질 모양만 다르다.
       markNote3d: {
-        concept: "Sphere",
-        document: "Tetrahedron · it never spins, so this angle is the silhouette",
-        bridge: "Octahedron · a diamond stood upright",
-        topic: "Nested shell · a core inside a faint skin",
+        concept: "Glass sphere · a cloud of light drifts inside",
+        decision: "Glass sphere · a cut crystal held still inside",
+        record: "Glass tetrahedron · it never turns, so this outline holds from every side",
+        episode: "Glass octahedron · the same glass with eight faces",
+        bridge: "Glass shard · the piece that spans a gap",
+        topic: "Hollow dotted shell",
+        area: "A glowing glass volume, stretched along time",
         gateway: "Its own kind in outline · no faces, so nothing behind it is hidden",
       } as Record<string, string>,
       markNoteFlat: {
@@ -1849,8 +1857,12 @@ const KO: Deck = {
       shapes: "모양 = 종류",
       concept: "개념",
       document: "문서",
+      decision: "결정",
+      record: "기록",
+      episode: "사건",
       bridge: "다리",
       topic: "주제",
+      area: "영역",
       gateway: "다른 주제에 있는 마디",
       lines: "선 = 관계",
       linesToggle: "누르면 숨겨요",
@@ -1862,10 +1874,13 @@ const KO: Deck = {
       drawnAs3d: "3D 지오메트리 그대로",
       drawnAsFlat: "2D · Timeline · Weave 공용",
       markNote3d: {
-        concept: "구",
-        document: "정사면체 · 자전하지 않으니 이 각도가 곧 실루엣이에요",
-        bridge: "정팔면체 · 세로로 세운 마름모",
-        topic: "겹껍질 · 옅은 외피 안에 코어",
+        concept: "유리구 · 안에 빛 구름이 떠다녀요",
+        decision: "유리구 · 안에 깎인 결정이 멈춰 있어요",
+        record: "유리 정사면체 · 돌지 않아서 어느 쪽에서 봐도 이 모양이에요",
+        episode: "유리 정팔면체 · 같은 유리에 면이 여덟 개예요",
+        bridge: "유리 조각 · 틈을 잇는 면이에요",
+        topic: "속이 빈 점 껍질",
+        area: "시간을 따라 길게 늘어난, 빛나는 유리 부피",
         gateway: "자기 종의 윤곽선 · 면이 없어서 뒤를 안 가려요",
       } as Record<string, string>,
       markNoteFlat: {
