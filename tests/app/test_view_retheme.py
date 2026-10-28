@@ -77,9 +77,9 @@ class ThreeDTests(unittest.TestCase):
         self.assertNotIn("buildInstancedNodes(", self.body)
 
     def test_팔레트에서_온_값을_전부_갈아_끼운다(self):
-        for need in ("pal = themePalette()", "applyTints()", "setColorAt(", "reglaze(", "toneMappingExposure",
-                     "takeSkins(", "repaintLabel(", "fog?.color", "studioEnv(", "g.lights(",
-                     "g.linkColor(linkColorFn)"):
+        for need in ("pal = themePalette()", "applyTints()", "orbs?.tint(", "orbs?.setLight(",
+                     "retintVolume(", "toneMappingExposure", "takeSkins(", "repaintLabel(", "fog?.color",
+                     "g.lights(", "g.linkColor(linkColorFn)"):
             self.assertIn(need, self.body, need)
 
     def test_팔레트는_부를_때_읽는다(self):
@@ -87,11 +87,13 @@ class ThreeDTests(unittest.TestCase):
         self.assertIn("let pal = themePalette();", self.src)
         self.assertNotIn("const darkTheme", self.src)
 
-    def test_환경맵은_렌더러와_모드마다_따로다(self):
-        """PMREM 결과는 구운 컨텍스트 안에서만 산다. 전역 한 장이던 동안 두 번째
-        마운트부터 반사가 비어 있었고 모드도 첫 마운트의 것으로 굳어 있었다."""
+    def test_환경맵을_굽지_않는다(self):
+        """환경맵은 몸통이 PBR 유리이던 동안의 것이다. 몸통 셰이더는 그것을 읽지 않으므로
+        굽기만 하고 안 보이는 사문이 되지 않게 남기지 않는다(전역 캐시가 컨텍스트를 넘어
+        반사를 비우던 고장도 함께 사라진다)."""
         self.assertNotIn("_envTex", self.src)
-        self.assertIn("new WeakMap<THREE.WebGLRenderer, Map<ThemeMode, THREE.Texture>>()", self.src)
+        self.assertNotIn("scene.environment =", self.src)
+        self.assertNotIn("PMREMGenerator", self.src)
 
 
 class TwoDTests(unittest.TestCase):
