@@ -8,7 +8,8 @@ import { partitionSearchResults } from "../search-relevance";
 import { loaderRows } from "../vinc-loaders.js";
 
 /** Surface 4 — Search (spec: [[vinc.spec.surface-search]], DEC D24).
- *  Single field + operators (domain:, tag:, "phrase"). Results grouped by
+ *  Single field + operators (domain:, tag:). 따옴표 구절 검색은 없다(인용부호는 낱말을 가른다,
+ *  `store/lexical.py` `_SPLIT`). Results grouped by
  *  domain; match notation ≡ (keyword arm) / ≈ (semantic arm) shows *why* a row
  *  matched — scores stay in the tooltip. */
 
@@ -29,7 +30,7 @@ export function renderSearch(el: HTMLElement) {
   el.innerHTML = `
     ${header("search", COPY.ui.topbar.search, COPY.ui.meta.search)}
     <form id="search-form" role="search">
-      <input id="q" type="search" placeholder="${COPY.search.idle}  ·  domain:math tag:core &quot;phrase&quot;"
+      <input id="q" type="search" placeholder="${COPY.search.idle}  ·  domain:math tag:core"
              style="width:100%;font:inherit;padding:var(--space-3,.75rem);
                     border:1px solid hsl(var(--input));border-radius:var(--radius);
                     background:hsl(var(--card));color:hsl(var(--foreground))" />

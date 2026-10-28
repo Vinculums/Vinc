@@ -210,8 +210,8 @@ type DocEditorOpts = {
 };
 
 /** 삽입 목록 — 슬래시 · 우클릭 · 머리 줄의 + 버튼이 같은 것을 쓴다(cm-insert).
- *  넣는 원문은 마크다운이고, 라벨만 카피에서 온다. */
-function insertOpts(): InsertOpts {
+ *  넣는 원문은 마크다운이고, 라벨만 카피에서 온다. 테스트가 목록을 읽으려고 내보낸다. */
+export function insertOpts(): InsertOpts {
   const S = COPY.ui.viewx.slash;
   const I = COPY.ui.viewx.ins;
   const head = (i: number) => I.column(i);
