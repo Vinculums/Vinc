@@ -110,6 +110,69 @@ def test_public_reference_exact_targets_and_no_private_url(kind):
         ca.validate(snapshot, source)
 
 
+def card():
+    """계정 서버가 정규화해 스냅샷에 싣는 꼴(정수만)."""
+    return {"id": "record:eval-card-fixture-2026-10-27-0a1b2c3d", "date": "2026-10-27",
+            "suite": {"id": "fixture-suite", "hash": "a" * 64, "tasks": 40},
+            "harness_version": "0.1.19", "store_fingerprint": "fixture-store",
+            "results": [{"adapter": "langgraph", "model_family": "claude", "tasks": 40, "runs_per_task": 3,
+                         "pass_1": {"k": 30, "n": 40}, "pass_k": {"k": 25, "n": 40}, "violation": None,
+                         "fabrication": {"k": 0, "n": 40}, "cost_per_success_microusd": 12300, "skipped": 0}]}
+
+
+def with_cards(*cards):
+    snapshot, source = authored()
+    snapshot["evalCards"] = list(cards)
+    source["hash"] = ca.digest(snapshot)
+    return snapshot, source
+
+
+def test_eval_cards_travel_in_the_snapshot_and_its_exports():
+    snapshot, source = with_cards(card())
+    ca.validate(snapshot, source)
+    out = render(snapshot, source, "claude")
+    assert ca.canonical(snapshot["evalCards"]) in out["content"]
+    plain, plain_source = authored()
+    assert ca.digest(plain) == plain_source["hash"] != source["hash"]     # 카드 없는 버전의 해시는 그대로다
+
+
+@pytest.mark.parametrize("mutate,code", [
+    (lambda c: c.update(rate=75), "eval_card"),
+    (lambda c: c.update(id="record:other-1"), "eval_card"),
+    (lambda c: c.update(date="27 Oct"), "eval_card"),
+    (lambda c: c.update(date="\u0662\u0660\u0662\u0666-\u0661\u0660-\u0662\u0667"), "eval_card"),
+    (lambda c: c["suite"].update(hash="nothex"), "eval_suite"),
+    (lambda c: c.update(results=[]), "eval_results"),
+    (lambda c: c["results"][0].update(cost_per_success_usd=12), "eval_cell"),
+    (lambda c: c["results"][0].update(runs_per_task=0), "eval_cell"),
+    (lambda c: c["results"][0].update(pass_1={"k": 41, "n": 40}), "eval_rate"),
+    (lambda c: c["results"][0].update(pass_k={"k": 1, "n": 2, "rate": 0}), "eval_rate"),
+])
+def test_eval_cards_outside_the_shape_are_refused(mutate, code):
+    bad = card()
+    mutate(bad)
+    snapshot, source = with_cards(bad)
+    with pytest.raises(ValueError, match=code):
+        ca.validate(snapshot, source)
+
+
+def test_eval_card_list_bounds():
+    for cards in ([], [card()] * 2, [dict(card(), id=f"record:eval-card-fixture-{i}") for i in range(6)]):
+        snapshot, source = with_cards(*cards)
+        with pytest.raises(ValueError, match="eval_card"):
+            ca.validate(snapshot, source)
+
+
+def test_a_taken_role_keeps_its_cards_before_activation(engine):
+    store, app = engine
+    snapshot, source = with_cards(card())
+    result = save(app, snapshot, source)
+    assert result["executed"], result
+    props = query.node(result["node_id"], owner=OWNER, store=store)["node"]["props"]
+    assert props["status"] == "proposed" and props["active"] is False
+    assert props["shared_snapshot"]["evalCards"] == [card()]
+
+
 def test_import_receipt_provenance_and_all_role_entrypoints_exclude_proposed(engine):
     store, app = engine
     snapshot, source = authored()
