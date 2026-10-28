@@ -590,7 +590,7 @@ const EN = {
         evidence_missing: "no evidence",
         decision_without_start: "no start date",
         props_shredded: "a property was saved letter by letter",
-      } as Record<string, string>,
+      },
     },
     home: {
       nav: "Home",

@@ -45,7 +45,11 @@ export async function mountAgentWrites(box: HTMLElement, live: () => boolean): P
       return !(g.open === 0 && k && k >= latest(g));
     });
     const label = (g: Group) => g.source.kind === "run" ? A.sourceRun(g.source.key) : A.sourceNone;
-    const why = (c: string) => (A.checks as Record<string, string>)[c] || c;
+    // 키를 글자로 부른다 — 덱 키 대조(tests/design/test_copy_parity.py)가 호출부를 찾을 수 있게.
+    const why = (c: string) => c === "evidence_is_an_id" ? A.checks.evidence_is_an_id
+      : c === "evidence_missing" ? A.checks.evidence_missing
+      : c === "decision_without_start" ? A.checks.decision_without_start
+      : c === "props_shredded" ? A.checks.props_shredded : c;
     const go = (i: Item) => i.kind === "relation" ? i.from! : i.id;
     const row = (i: Item) => `<li class="aw-item">
         <button type="button" class="aw-go" data-go="${esc(go(i))}">${esc(i.kind === "relation"
