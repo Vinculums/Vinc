@@ -203,7 +203,11 @@ void main(){
           vec4 e = inner(q, kind, hue, t, vSeed, energy);
           float k = clamp(e.a * dt / r * 1.2, 0.0, 1.0);
           acc += (1.0 - a) * e.rgb * k; a += (1.0 - a) * k; }
-        if (steps < 0.5) { acc = mix(hue, vec3(1.0), 0.55) * (kind < 0.5 ? 0.6 : 0.45) * (0.4 + 0.6 * ndv); a = 0.45; }
+        if (steps < 0.5) {
+          acc = mix(hue, vec3(1.0), 0.55) * (kind < 0.5 ? 0.6 : 0.45) * (0.4 + 0.6 * ndv); a = 0.45;
+          // 결정은 작아도 개념과 갈려야 한다: 안의 결정 대신 가운데 흰 점 하나
+          if (kind > 0.5) { float cd = closest / r; acc += vec3(1.0, 0.97, 0.9) * (1.0 - smoothstep(0.22, 0.40, cd)); a = 0.6; }
+        }
         vec3 L = normalize(vec3(-0.45, 0.75, 0.55)), H = normalize(L + V);
         float spec = pow(max(dot(N, H), 0.0), 90.0) * 0.9 + pow(max(dot(N, H), 0.0), 10.0) * 0.06;
         float under = pow(max(dot(N, normalize(vec3(0.3, -0.8, 0.4))), 0.0), 3.0) * 0.18;   // 안에서 튀어 오르는 빛

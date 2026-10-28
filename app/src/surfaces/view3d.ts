@@ -17,7 +17,7 @@ import { ViewIdleFrames } from "./view-idle-frames";
 import * as THREE from "three";
 import { loadPrefs, DIRECTED_RELS, type ViewPrefs } from "../view-prefs";
 import { palette as signal, hexStr, type ThemeMode } from "../theme";
-import { tintMap } from "../view-tint";
+import { tintPlan } from "../view-tint";
 import { recede } from "../recede";
 import { edgeKey, type Spot } from "../spotlight";
 import { aimAt, restRadius, zoomStep } from "../camera-aim";
@@ -27,7 +27,6 @@ import type { ViewRoute } from "../view-route";
 import { RoutedLinkObject } from "./view-routes3d";
 import { CurvedLinkObject } from "./view-curves3d";
 import { OrbLayer, ORB_STATE, orbKindOf, orbSeed, areaBox, areaVolume, retintVolume } from "./view-orbs3d";
-import { areaKeys } from "../view-layout-spatial";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -88,6 +87,7 @@ export type N3 = {
   gateway?: boolean; focus?: boolean; records?: number;
   pinned?: boolean;           // D32 — pin 은 허브 승격(크기 가중; 레이아웃은 사이드카)
   ts?: string;                // 기록 시각 — 몸통의 active 상태(최근 7일)가 읽는다
+  historical?: boolean;       // 구간이 닫혔거나 후속이 있다 — 몸통의 historical 상태
   x?: number; y?: number; z?: number;
   fx?: number; fy?: number; fz?: number;
 };
@@ -411,11 +411,30 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // 순위를 매길 주제 목록은 호출부가 주면 그것을 쓴다(`tintDomains`). 받은 `nodes` 는
   // 고아 숨김으로 걸러진 것이라, 거기서 지으면 주제 하나가 빠질 때 나머지의 색이
   // 밀려 노드 카드·다른 관점과 같은 주제가 다른 색이 된다.
+  // 영역도 같은 표에서 읽는다(`tintPlan`) — 부피·영역 사이 선·색이 한 판정을 쓴다.
+  let areaTints = new Map<string, string>();
+  const areaById = new Map<string, string>();
   const applyTints = () => {
-    const tints = tintMap(tintDomains ?? nodes.map((n) => n.domain), themeMode());
-    for (const n of nodes) (n as { __tint?: string }).__tint = tints?.get((n.domain || "").trim());
+    const plan = tintPlan(tintDomains ?? nodes.map((n) => n.domain), themeMode());
+    areaTints = plan.areas;
+    areaById.clear();
+    for (const n of nodes) {
+      const d = (n.domain || "").trim();
+      (n as { __tint?: string }).__tint = plan.topics.get(d);
+      const area = plan.areaOf.get(d);
+      if (area) areaById.set(n.id, area);
+    }
   };
   applyTints();
+  /** 영역 사이 선 — 두 끝이 다른 영역이다. 전체 보기에서는 숨기고, 짚거나(hover) 점등하거나
+   *  초점인 노드에 닿을 때만 보인다. 영역을 잇는다는 사실은 다리 노드가 늘 말하고, 영역 사이
+   *  선이 겹치는 것이 털뭉치의 대부분이었다. 영역을 모르는 끝(다리 등)은 가르지 않는다.
+   *  근거: [[decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28]] */
+  const focusIds = new Set(nodes.filter((n) => n.focus).map((n) => n.id));
+  const crossArea = (s: string, t: string) => {
+    const a = areaById.get(s), b = areaById.get(t);
+    return !!a && !!b && a !== b;
+  };
   /** 몸통의 색 — 초점은 초점색, 주제 틴트가 있으면 그것, 없으면 잉크. 빌드와 테마 전환이
    *  같은 규칙을 읽는다. 초점색은 "지금 초점" 하나만 뜻하므로 주제가 덮지 않는다(정본 §2.5). */
   const instColor = (n: N3) => {
@@ -424,12 +443,14 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   };
   /** 상태 — 초점은 selected, 가장 새 노드로부터 7일 안에 생긴 것은 active, 나머지는 idle.
    *  "오늘"이 아니라 그래프의 가장 새 날을 기준으로 잡는다: 한동안 안 쓴 그래프를 열면
-   *  전부 idle 이 되어 무엇이 최근이었는지가 사라진다. historical·conflict 는 셰이더에
-   *  있지만 실을 값(유효구간·충돌 표시)이 GraphNode 에 아직 없다. */
+   *  전부 idle 이 되어 무엇이 최근이었는지가 사라진다. historical 은 닫힌 유효구간이나 후속
+   *  (`toN3` 가 node-validity 로 판정). conflict 는 셰이더에 있지만 그래프 읽기가 충돌 표시를
+   *  아직 싣지 않는다. */
   const newest = nodes.reduce((m, n) => n.ts && n.ts > m ? n.ts : m, "");
   const newestAt = Date.parse(newest);          // 형식이 깨진 ts 면 NaN — 그때는 active 를 안 단다
   const activeFrom = Number.isFinite(newestAt) ? new Date(newestAt - 7 * 86400000).toISOString() : "";
   const stateOf = (n: N3): number => n.focus ? ORB_STATE.selected
+    : n.historical ? ORB_STATE.historical
     : activeFrom && n.ts && n.ts >= activeFrom ? ORB_STATE.active : ORB_STATE.idle;
   // 몸통 층 — scene 은 ForceGraph3D 생성 뒤에야 얻는다(아래), 그래서 최초 빌드에서는
   // scene?.add 가 아무 일도 안 하고, 생성 직후 명시적으로 한 번 더 붙인다.
@@ -461,10 +482,14 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // 영역 부피 — 주제 칸이 영역별로 모이므로(view-layout-spatial) 영역마다 x 로 늘인 타원체
   // 하나. 2D 는 z 를 접어 부피가 뜻을 잃으므로 그리지 않는다. 간격 슬라이더가 자리를 옮기면
   // 다시 짓는다(`__update`).
-  let volumes: THREE.Mesh[] = [];
-  const volumeColor = () => new THREE.Color(pal.soft);
+  // 부피는 그 영역의 보석을 입는다(영역 색이 없으면 무채색 단).
+  let volumes: { mesh: THREE.Mesh; area: string }[] = [];
+  const volumeColor = (area: string) => {
+    const hex = areaTints.get(area);
+    return new THREE.Color(hex ? parseInt(hex.slice(1), 16) : pal.soft);
+  };
   const disposeVolumes = () => {
-    for (const v of volumes) { scene?.remove(v); (v.material as THREE.Material).dispose(); }
+    for (const v of volumes) { scene?.remove(v.mesh); (v.mesh.material as THREE.Material).dispose(); }
     volumes = [];
   };
   const buildVolumes = () => {
@@ -472,20 +497,20 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     if (flat) return;
     const placed = nodes.filter((n) => n.kind !== "bridge" && !n.gateway && n.domain
       && Number.isFinite(n.x));
-    const keys = areaKeys(placed.map((n) => n.domain || ""));
     const groups = new Map<string, { x: number; y: number; z: number; r: number }[]>();
-    placed.forEach((n, i) => {
-      if (!keys[i]) return;
-      let g = groups.get(keys[i]);
-      if (!g) groups.set(keys[i], g = []);
+    for (const n of placed) {
+      const area = areaById.get(n.id);
+      if (!area) continue;
+      let g = groups.get(area);
+      if (!g) groups.set(area, g = []);
       g.push({ x: n.x || 0, y: n.y || 0, z: n.z || 0, r: nodeRadius(n, prefs) });
-    });
-    const light = themeMode() === "light";
-    for (const pts of groups.values()) {
-      const box = areaBox(pts);
-      if (box) volumes.push(areaVolume(box, volumeColor(), light));
     }
-    if (volumes.length) scene?.add(...volumes);
+    const light = themeMode() === "light";
+    for (const [area, pts] of groups) {
+      const box = areaBox(pts);
+      if (box) volumes.push({ mesh: areaVolume(box, volumeColor(area), light), area });
+    }
+    if (volumes.length) scene?.add(...volumes.map((v) => v.mesh));
   };
   const renderedRadii = new Map<string, number>();
   /** 노드 메시 공장. **새 함수 객체**를 넘기면 3d-force-graph 가 노드 오브젝트를 전부
@@ -536,8 +561,13 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     return s <= 1 ? 0 : (s - 1) * 0.8;
   };
   // 방향 화살촉 — prerequisite/derives/inherits 만 (spec §1.2); 표시 여부는 D31 열린 층
-  const arrowLenFn = () => (l: any) =>
-    prefs.arrows && !particlesOn && !nodesOnly && isDirectedLink(l) ? 2.6 : 0;
+  const arrowLenFn = () => (l: any) => {
+    const s = typeof l.source === "object" ? l.source.id : l.source;
+    const t = typeof l.target === "object" ? l.target.id : l.target;
+    //: 영역 사이 곡선은 평소 알파 0 이라 화살촉만 떠 보인다 — 화살촉은 초점에 닿을 때만 단다.
+    if (crossArea(s, t) && !focusIds.has(s) && !focusIds.has(t)) return 0;
+    return prefs.arrows && !particlesOn && !nodesOnly && isDirectedLink(l) ? 2.6 : 0;
+  };
   assignTiers(nodes, links);   // 성좌 글로우 깊이 계층(92:211) — nodeObject 가 __tier 를 읽는다
   // 세터 체인은 설정 → graphData 마지막: digest 1회에 메시 생성과 카운트다운 리셋이
   // 같은 update 에서 처리되게 해 재생성 경합을 없앤다. 크기는 컨테이너 실측으로 명시
@@ -657,7 +687,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       object.update(source, target, S, { color: linkColorFn(link), width: linkWidthFn()(),
         arrow: !!prefs.arrows && !particlesOn && !nodesOnly && isDirectedLink(link),
         particles: particlesOn && isDirectedLink(link), particleColor: pal.link.heavy,
-        visible: isVisible(linkVisibility, link) && isVisible(nodeVisibility, source) && isVisible(nodeVisibility, target),
+        visible: isVisible(linkVisibility, link) && isVisible(nodeVisibility, source) && isVisible(nodeVisibility, target)
+          && (!crossArea(source.id, target.id) || emphasized || focusIds.has(source.id) || focusIds.has(target.id)),
         targetRadius: renderedRadii.get(target.id) ?? nodeRadius(target, prefs), detail }, performance.now());
     }
     const width = el.clientWidth, height = el.clientHeight;
@@ -961,6 +992,11 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     const t = typeof l.target === "object" ? l.target.id : l.target;
     // 노드만 — 선이 없다. hover 로도 돌아오지 않는다(그것이 이 모드의 뜻이다).
     if (nodesOnly) return pal.link.base + ALPHA0;
+    // 영역 사이 선은 짚었을 때만(위 `crossArea` 주석). 점등이 걸려 있으면 그 집합을 따른다.
+    if (crossArea(s, t) && !focusIds.has(s) && !focusIds.has(t)
+        && !(hoverId ? s === hoverId || t === hoverId
+             : spot?.edges.has(edgeKey({ source: s, target: t, type: l.type || "" }))))
+      return pal.link.base + ALPHA0;
     const near = spot && !hoverId
       ? spot.edges.has(edgeKey({ source: s, target: t, type: l.type || "" }))
       : !hoverId || s === hoverId || t === hoverId;
@@ -1063,7 +1099,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       if (idx !== undefined) orbs?.tint(idx, instColor(n));
     }
     orbs?.setLight(mode === "light");
-    for (const v of volumes) retintVolume(v, volumeColor(), mode === "light");
+    for (const v of volumes) retintVolume(v.mesh, volumeColor(v.area), mode === "light");
     // 라벨은 몸통의 자식으로만 달린다.
     const labels = new Set<THREE.Sprite>();
     for (const m of g.graphData().nodes as any[]) {

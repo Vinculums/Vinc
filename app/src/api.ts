@@ -647,6 +647,10 @@ export type GraphNode = {
   // 원리적으로 생기지 않는다. 구 사이드카에는 이 키가 없다 → x/y 로 우아 강등.
   x?: number; y?: number; z?: number;
   x2?: number; y2?: number;
+  // 유효구간 — 기록은 열로(`valid_until`), 결정은 속성으로(`props.valid_until`·`superseded_by`)
+  // 실려 온다. 3D 몸통의 historical 상태가 읽는다(node-validity.ts).
+  valid_until?: string;
+  props?: Record<string, unknown> | null;
 };
 export type GraphEdge = {
   id?: string;        // Preserve an upstream relation identity when supplied.

@@ -894,6 +894,7 @@
     "decision:the-document-tree-opens-three-levels-and-a-row-click-only-folds-2026-09-26",
     "decision:the-eval-harness-lives-in-top-level-rag-eval-not-inside-vinc-rag-2026-10-01",
     "decision:the-graph-opens-as-3d-time-branches-with-related-lines",
+    "decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28",
     "decision:the-hub-hands-the-writer-over-at-boot-instead-of-stopping-the-old-revision-2026-10-17",
     "decision:the-hub-layout-gives-up-weight-proportional-spread-so-that-adding-a-node-moves-nothing",
     "decision:the-node-mirror-is-rebuilt-whole-or-not-at-all",
@@ -911,6 +912,7 @@
     "decision:topic-transfer-plain-references-and-external-images-2026-10-16",
     "decision:topic-transfer-rejection-endpoint-is-the-owners-concept-2026-10-16",
     "decision:topics-wear-the-homepage-jewels-2026-09-26",
+    "decision:topics-wear-their-area-jewel-2026-10-28",
     "decision:view-3d-nodes-are-instanced-and-recede-by-blending-to-the-background",
     "decision:view-offers-two-layouts-by-centre-and-time-branches-2026-10-11",
     "decision:vin314-every-agent-answer-ends-with-a-sources-line-2026-10-07",
@@ -1276,6 +1278,9 @@
     "decision:the-graph-opens-as-3d-time-branches-with-related-lines": {
       "validity": "current"
     },
+    "decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28": {
+      "validity": "current"
+    },
     "decision:the-hub-hands-the-writer-over-at-boot-instead-of-stopping-the-old-revision-2026-10-17": {
       "validity": "unknown"
     },
@@ -1325,6 +1330,9 @@
       "validity": "unknown"
     },
     "decision:topics-wear-the-homepage-jewels-2026-09-26": {
+      "validity": "current"
+    },
+    "decision:topics-wear-their-area-jewel-2026-10-28": {
       "validity": "current"
     },
     "decision:view-3d-nodes-are-instanced-and-recede-by-blending-to-the-background": {

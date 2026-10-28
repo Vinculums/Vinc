@@ -123,6 +123,16 @@ test("temporal partitions preserve backwards edges, cycles, parallels, self loop
   assert.equal(result.nodes.filter(n => n.kind === "domain").length, 1);
 });
 
+test("undated items stand in their own column left of the first date", async () => {
+  const nodes = [n("early", "2020"), n("late", "2021"), n("nodate", "")];
+  const edges = [edge("early", "late"), edge("nodate", "late", "RELATED_TO")];
+  const result = await temporalLayout(nodes, edges, "content", elk, route);
+  check(result, edges);
+  const at = id => result.nodes.find(r => r.id === id).x;
+  assert.ok(at("nodate") < at("early"), "an undated item shared the first date's column");
+  assert.ok(at("early") < at("late"));
+});
+
 test("chronological backwards relations use facing ports without a gratuitous loop", async () => {
   for (const type of ["DERIVES_FROM", "INHERITS_FROM", "PREREQUISITE_OF", "RELATED_TO"]) {
     const nodes = [n("a", "2020"), n("b", "2021")];

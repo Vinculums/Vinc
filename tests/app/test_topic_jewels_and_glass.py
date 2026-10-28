@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""주제 색은 공홈 조형의 보석색이고 늘 켜져 있다(2026-09-26). 2D 노드는 히어로와 같은 유리다.
+"""주제 색은 공홈 조형의 보석색이고 늘 켜져 있으며 영역이 보석 하나를 입는다. 2D 노드는 히어로와 같은 유리다.
 
-근거: [[decision:topics-wear-the-homepage-jewels-2026-09-26]] ·
+근거: [[decision:topics-wear-their-area-jewel-2026-10-28]] ·
 [[decision:app-nodes-wear-the-hero-glass-2026-09-26]]
 
 지키는 것:
@@ -80,6 +80,15 @@ class AlwaysOnTests(unittest.TestCase):
         self.assertIn("const list = topicJewels[mode];", tint)
         self.assertIn("rotateHue(base, turn)", tint)
         self.assertNotIn("GOLDEN", tint)
+
+    def test_영역이_보석_하나를_입고_주제는_그것을_조금_돌린다(self):
+        tint = _read("view-tint.ts")
+        # 영역 판정은 레이아웃과 한 벌이다(갈리면 같은 영역의 주제가 다른 색으로 부피 밖에 선다).
+        self.assertIn('import { areaKeys } from "./area-key";', tint)
+        self.assertIn('export { areaKeys };', _read("view-layout-spatial.ts"))
+        self.assertIn("const TOPIC_TURN = [0, 4, -4, 8, -8, 12, -12];", tint)
+        self.assertIn("export function tintMap(", tint)
+        self.assertIn("return tintPlan(domains, mode).topics;", tint)
 
 
 class GlassTests(unittest.TestCase):

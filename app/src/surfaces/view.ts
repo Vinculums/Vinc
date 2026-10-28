@@ -19,6 +19,7 @@ import { bundleStatsByType, mountBundle, type BundleEdge,
 import { recede } from "../recede";
 import { causalCone, spotOf, type Spot } from "../spotlight";
 import { openShareSheet } from "../sheets";
+import { isHistorical } from "../node-validity";
 import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
 import { blocksSurfaceShortcuts } from "../keys";
@@ -1878,6 +1879,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       gateway: isGateway(nd, lens),
       focus: markId !== undefined && nd.id === markId,
       x: nd.x, y: nd.y, z: nd.z, ts: nd.ts,
+      historical: isHistorical(nd, new Date().toISOString().slice(0, 10)),
     }));
   }
   /** D74 — 범례 스위치로 끈 갈래를 뺀다. **그리기 필터일 뿐** 데이터 필터가 아니다:

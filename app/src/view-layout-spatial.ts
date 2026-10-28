@@ -1,6 +1,7 @@
 import type { GraphNode, GraphEdge } from "./api";
 import { simplifyRoute, routeLength, type RoutePoint } from "./view-route";
 import { spatialClearance, STEP } from "./view-layout-obstacles";
+import { areaKeys } from "./area-key";
 
 type Axis = keyof RoutePoint;
 const AXES: Axis[] = ["x", "y", "z"];
@@ -147,14 +148,8 @@ export function spatialLayout(nodes: GraphNode[], edges: GraphEdge[], topics: Sp
   }
 }
 
-/** 칸마다 영역 열쇠. 모든 칸 domain 의 공통 접두(경로 단위)를 벗기고 남은 첫 단계다. 허브 지도가
- * 뿌리를 정하는 방식(공통 접두를 벗긴다)과 같다. 접두와 같은 domain(뿌리 주제)은 빈 열쇠다. */
-export function areaKeys(domains: string[]): string[] {
-  const parts = domains.map(d => d ? d.split("/") : []);
-  let common = parts.length ? Math.min(...parts.map(p => p.length)) : 0;
-  for (let i = 0; i < common; i++) if (parts.some(p => p[i] !== parts[0][i])) { common = i; break; }
-  return parts.map(p => p.slice(common, common + 1).join("/"));
-}
+/** 칸마다 영역 열쇠 — 규칙은 색과 한 벌이라 `area-key.ts` 에 있다. */
+export { areaKeys };
 
 /** 첫 자리는 원점, 나머지는 그 둘레의 동심 고리에 받은 순서대로 안쪽 고리부터 채운다. 고리 하나가
  * 차면 바깥에 새 고리를 연다. 고리 하나에 전부 세우면 수가 많을 때 반지름이 수에 비례해 커져서 가는

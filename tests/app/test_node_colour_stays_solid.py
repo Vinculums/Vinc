@@ -101,7 +101,7 @@ class CardTests(unittest.TestCase):
         """3D 가 받는 노드는 고아 숨김으로 걸러진 것이다. 거기서 순위를 매기면 주제
         하나가 빠질 때 나머지 색이 밀린다."""
         self.assertIn("keepCam, curNodes.map((n) => n.domain))", _read("surfaces/view.ts"))
-        self.assertIn("tintMap(tintDomains ?? nodes.map((n) => n.domain), themeMode())",
+        self.assertIn("tintPlan(tintDomains ?? nodes.map((n) => n.domain), themeMode())",
                       _read("surfaces/view3d.ts"))
 
     def test_범례가_노드_물러남을_가르치지_않는다(self):
