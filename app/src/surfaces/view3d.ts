@@ -26,7 +26,8 @@ import { nonOverlappingLabels, type LabelBox } from "../view-labels";
 import type { ViewRoute } from "../view-route";
 import { RoutedLinkObject } from "./view-routes3d";
 import { CurvedLinkObject } from "./view-curves3d";
-import { OrbLayer, ORB_STATE, orbKindOf, orbSeed, areaBox, areaVolume, retintVolume } from "./view-orbs3d";
+import { OrbLayer, ORB_STATE, orbKindOf, orbSeed, areaBox, type AreaBox, areaVolume, retintVolume } from "./view-orbs3d";
+import { areasApart } from "../area-key";
 
 const SCALE = 140;   // sidecar unit-circle coords → scene units
 
@@ -521,10 +522,15 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       g.push({ x: n.x || 0, y: n.y || 0, z: n.z || 0, r: nodeRadius(n, prefs) });
     }
     const light = themeMode() === "light";
+    const boxes: [string, AreaBox][] = [];
     for (const [area, pts] of groups) {
       const box = areaBox(pts);
-      if (box) volumes.push({ mesh: areaVolume(box, volumeColor(area), light), area });
+      if (box) boxes.push([area, box]);
     }
+    // 영역이 실제로 갈라져 있을 때만 그린다(areasApart) — 갈라지지 않은 배치에서는 부피마다
+    // 지도 전체를 감싸 한가운데서 겹친다.
+    if (!areasApart(boxes.map(([, box]) => box))) return;
+    for (const [area, box] of boxes) volumes.push({ mesh: areaVolume(box, volumeColor(area), light), area });
     if (volumes.length) scene?.add(...volumes.map((v) => v.mesh));
   };
   const renderedRadii = new Map<string, number>();

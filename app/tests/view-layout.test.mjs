@@ -718,6 +718,20 @@ test("3D topic cells group by area and still start left to right in time across 
   const at = id => topics.find(t => t.id.endsWith(`/${id}`)).x;
   assert.ok(at("t0") < at("t23"), "time no longer runs left to right across areas");
   assert.equal(new Set(graph.nodes.map(n => [n.x, n.y, n.z].join(":"))).size, graph.nodes.length);
+  // 그래서 영역 부피를 그린다: view3d 의 areaBox 와 같은 셈으로 상자를 지으면 서로 떨어져 있다.
+  // 반지름은 렌더 배율(140) 아래 가장 큰 노드(12)다.
+  const { areasApart } = await source("../src/area-key.ts");
+  const r = 12 / 140, shells = [];
+  for (const area of areas) {
+    const pts = graph.nodes.filter(n => (n.domain || "").split("/")[1] === area);
+    let x0 = Infinity, x1 = -Infinity, cy = 0, cz = 0;
+    for (const p of pts) { x0 = Math.min(x0, p.x - r); x1 = Math.max(x1, p.x + r); cy += p.y; cz += p.z; }
+    cy /= pts.length; cz /= pts.length;
+    let rc = 0;
+    for (const p of pts) rc = Math.max(rc, Math.hypot(p.y - cy, p.z - cz) + r);
+    shells.push({ cx: (x0 + x1) / 2, cy, cz, hx: Math.max((x1 - x0) / 2 * 1.1, rc), rc: rc * 1.18 });
+  }
+  assert.equal(areasApart(shells), true, "grouped areas must keep their volumes");
 });
 
 test("area keys strip the common domain prefix and take the next step", async () => {
