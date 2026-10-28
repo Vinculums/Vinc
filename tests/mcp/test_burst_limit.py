@@ -96,3 +96,19 @@ def test_rest_answers_rate_limited_with_retry_after():
         assert body["error"]["details"]["limit"] == 2
     finally:
         srv.close()
+
+
+# ── 허브가 실제로 쓰는 기본값 ──────────────────────────────────────────────────
+def test_the_hub_defaults_are_300_a_day_and_60_a_minute(monkeypatch):
+    """허브는 VINC_FREE_DAILY_LIMIT 를 싣지 않아서 코드 기본값이 곧 운영 한도다.
+    사이트가 말하는 300 · 60 과 어긋나면 여기서 걸린다.
+    근거: [[vinc.canon.account-policy §8]]"""
+    import argparse
+    from api import cli
+    monkeypatch.setenv("VINC_QUOTA", "on")
+    for k in ("VINC_FREE_DAILY_LIMIT", "VINC_BURST_PER_MINUTE", "VINC_MCP_ED25519_SEED",
+              "VINC_ACCOUNT_PUBLIC_KEY", "VINC_MCP_TOKEN"):
+        monkeypatch.delenv(k, raising=False)
+    args = argparse.Namespace(auth_token=None, oauth=False, issuer=None, host="127.0.0.1", port=0)
+    q = cli._serve_http_kwargs(args)["quota_config"]
+    assert (q["free_limit"], q["burst_per_minute"]) == (300, 60)

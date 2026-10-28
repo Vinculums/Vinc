@@ -1239,10 +1239,10 @@ def _serve_http_kwargs(args) -> dict:
         quota_cfg = {
             # Curious(free) 만 센다: 스페이스당 하루 이만큼, 00:00 UTC 리셋, 잠금 없음.
             # Genius 는 세지 않는다. 창 길이와 잠금은 정책이라 env 로 열지 않는다.
-            # ⚠ 기본값 2000 은 이행 중의 값이다. 비준된 값은 300 이고, 사용자 공지
-            # 시행일에 이 기본값을 바꾼다(공지 전에 한도를 내리지 않는다).
+            # 비준된 값 300 이다. 허브는 이 env 를 싣지 않으므로 이 기본값이 곧 운영
+            # 한도다. 사이트(요금·약관·계정 화면)가 300 을 말하고 있어 같은 값으로 맞췄다.
             # 근거: [[vinc.canon.account-policy §8]]
-            "free_limit": int(os.environ.get("VINC_FREE_DAILY_LIMIT", "2000")),
+            "free_limit": int(os.environ.get("VINC_FREE_DAILY_LIMIT", "300")),
             # 스페이스당 분당 상한. 모든 플랜에 같고(유료가 더 빠르다고 하지 않는다)
             # 0 이면 끈다. 값은 hub-deploy 가 리포 변수 VINC_BURST_PER_MINUTE 에서
             # 싣고, 비어 있으면 60 이다.
