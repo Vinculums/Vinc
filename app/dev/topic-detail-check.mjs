@@ -38,8 +38,8 @@ const ordinary=id=>({executed:true,title:id==='concept:member'?'Member':'Empty n
   excerpts:[],links:{executed:true,total:0,degree:0,out:0,in:0,attached:0,items:[],truncated:false}});
 try{
   await mkdir(output,{recursive:true});
-  for(const [mode,edges,view] of [['local','none','2d'],['local','always','2d'],
-    ['web','none','2d'],['web','always','2d'],['local','none','3d']]){
+  for(const [mode,edges,view] of [['local','none','3d'],['local','always','3d'],
+    ['web','none','3d'],['web','always','3d']]){
     const origin=`http://${mode==='web'?'127.0.0.2':'127.0.0.1'}:${port}`;
     console.log(`Checking ${mode} ${edges} ${view}`);
     const context=await browser.newContext({viewport:{width:1440,height:1000}});
@@ -97,9 +97,8 @@ try{
     const card=page.locator('.float-card'),pane=page.locator('#view-detail');
     await card.getByText('Full path',{exact:true}).waitFor();
     const pick=async id=>{
-      await page.evaluate(({id,view})=>{
-        if(view==='2d')window.__s2.emit('clickNode',{node:id});
-        else {const g=window.__g3;g.onNodeClick()(g.graphData().nodes.find(n=>n.id===id));}
+      await page.evaluate(({id})=>{
+        const g=window.__g3;g.onNodeClick()(g.graphData().nodes.find(n=>n.id===id));
       },{id,view});
     };
     await card.getByText('No description yet.',{exact:true}).waitFor();

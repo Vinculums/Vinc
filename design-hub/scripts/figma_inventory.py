@@ -229,9 +229,6 @@ APP_STATES = {
     "account-connect.ts": {"not-connected": None, "waiting": None, "connected": None, "expired": None, "failed": None},
     # 렌더러는 재현 스터디가 아니라 캡처 보드가 답한다(재현 보드는 90 · Archive 에 있다).
     "surfaces/view3d.ts": {"dark": "App · View · 3d / dark", "light": "App · View · light / light"},
-    "surfaces/view2d.ts": {"default": "App · View · 2d / dark"},
-    "surfaces/view-planar.ts": {"timeline": "App · View · timeline / dark"},
-    "surfaces/view-bundle.ts": {"weave": "App · View · weave / dark"},
 }
 
 # ── 앱 컴포넌트 (변형×코드 표식) ──────────────────────────────────────────────
@@ -261,9 +258,6 @@ APP_COMPONENTS: dict[str, dict[str, str | None]] = {
     "App / ListRow":     {"State=Default": "list-row", "State=Hover": "list-row:hover"},
     "App / StateMark":   {"State=Filled": '"filled"', "State=Half": '"half"',
                           "State=Empty": '"empty"'},
-    # 네 번째의 코드 키는 `bundle` 이고 Weave 는 화면 라벨이다. 표식은 코드 쪽을 건다.
-    "App / ViewSeg":     {"Active=3D": '"3d"', "Active=2D": '"2d"',
-                          "Active=Timeline": '"timeline"', "Active=Weave": '"bundle"'},
     "App / MenuItem":    {"Tone=Default": "menu-item", "Tone=Hover": "menu-item:hover",
                           "Tone=Danger": "danger"},
     "App / GraphNode":   {"Tier=Focus": '"focus"', "Tier=Near": '"near"',
@@ -287,7 +281,9 @@ APP_COMPONENTS: dict[str, dict[str, str | None]] = {
     # 2026-09-10: 켬·끔 세그를 토글(`.switch`)로 바꿨다. 끔은 aria-checked 가 템플릿 값이라 고정 표식이 없다.
     "App / SwitchRow":   {"State=On": 'aria-checked="true"', "State=Off": None},
     "App / SliderRow":   {"": "slider-row"},
-    "App / TreeMode":    {"Mode=Documents": '"docs"', "Mode=Nodes": '"nodes"'},
+    # 문서 | 그래프 전환(머리의 `#tb-switch`). 옛 트리 모드 표식(`"docs"`·`"nodes"`)은 다른 코드의
+    # 같은 글자에 우연히 걸려 있었다.
+    "App / TreeMode":    {"Mode=Documents": "tb-to-docs", "Mode=Nodes": "tb-to-graph"},
     # App / FloatCard · Sheet · Titlebar · Topbar 는 2026-09-07 에 Archive 로 갔다. 그 자리는 02 · Components 의
     # `Shell / *` · `Overlay / *` 가 맡는데, 둘은 캡처 승격이라 이 표식 축이 아직 세지 않는다.
 }

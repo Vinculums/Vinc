@@ -5,7 +5,7 @@
 
 같은 노드가 어떤 때는 진한 색, 어떤 때는 옅은 틴트로 보였다. 틴트 팔레트가 따로
 있던 것이 아니라 한 가지 색이 상태에 따라 배경 쪽으로 섞였다 — hover·점등의
-물러남(3D 는 배경색 혼합, 2D 는 mixFloor, 타임라인·번들은 opacity), 3D 거리 안개,
+물러남(배경색 혼합), 거리 안개,
 그리고 주제 하나로 새로 지은 색상표(노드 카드). 이제 물러나는 것은 엣지와 라벨뿐이다.
 
 앱에는 JS 테스트 러너가 없어(`app/package.json` 에 `test` 없음) 이 리포의 관례대로
@@ -57,31 +57,7 @@ class ThreeDTests(unittest.TestCase):
         self.assertNotIn("<fog_", orbs)
 
 
-class TwoDTests(unittest.TestCase):
-    def setUp(self):
-        self.src = _read("surfaces/view2d.ts")
-
-    def test_물러난_노드는_색을_바꾸지_않는다(self):
-        reducer = self.src[self.src.index('sigma.setSetting("nodeReducer"'):]
-        reducer = reducer[:reducer.index("\n  });")]
-        self.assertNotIn("mixFloor", reducer)
-        self.assertIn('label: ""', reducer)
-
-    def test_색상표는_받은_노드_전부로_짓는다(self):
-        """고아 숨김으로 주제 하나가 빠지면 나머지 주제의 색이 한 칸씩 밀린다."""
-        self.assertNotIn("tintMap(shown.", self.src)
-        self.assertIn("tintMap(nodes.map((n) => n.domain), mode())", self.src)
-
-
-class PlanarTests(unittest.TestCase):
-    def test_노드_마크는_opacity_로_물러나지_않는다(self):
-        css = _read("app.css")
-        self.assertNotIn("--recede-node", css)
-        self.assertIsNone(re.search(r"^\.pl-fade\s*\{", css, re.M),
-                          "`.pl-fade` 가 노드 그룹 전체를 흐리면 마크가 틴트가 된다")
-        # 글자는 여전히 물러난다(`.pl-lab` 은 붙는 요소가 없어 지웠고 남은 글자는 `.pl-cap`).
-        self.assertIn(".pl-fade .pl-cap", css)
-
+class RecedeTests(unittest.TestCase):
     def test_recede_에_node_가_없다(self):
         self.assertNotIn('"node"', _read("recede.ts").split("export type RecedeKind")[1]
                          .split(";")[0])
@@ -92,10 +68,9 @@ class CardTests(unittest.TestCase):
         src = _read("surfaces/view.ts")
         self.assertNotIn("tintMap([nd.domain]", src)
         self.assertIn("shownTints?.get(nd.domain.trim())", src)
-        # 표는 setCurNodes 한 곳에서 전량으로 짓는다 — 모든 관점이 그 뒤에 마운트된다.
+        # 표는 setCurNodes 한 곳에서 전량으로 짓는다 — 지도가 그 뒤에 마운트된다.
         body = _fn(src, "function setCurNodes(")
         self.assertIn("tintMap(next.map((n) => n.domain), curMode())", body)
-        self.assertIn("const planarTints = shownTints;", src)
 
     def test_3D_는_전량_주제로_순위를_매긴다(self):
         """3D 가 받는 노드는 고아 숨김으로 걸러진 것이다. 거기서 순위를 매기면 주제

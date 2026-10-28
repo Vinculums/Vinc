@@ -71,7 +71,7 @@ class JewelTokenTests(unittest.TestCase):
 
 class AlwaysOnTests(unittest.TestCase):
     def test_토글이_없다(self):
-        for rel in ("copy.ts", "surfaces/view.ts", "surfaces/view2d.ts", "surfaces/view3d.ts", "lnb.ts"):
+        for rel in ("copy.ts", "surfaces/view.ts", "surfaces/view3d.ts", "lnb.ts"):
             self.assertNotIn("domainTint", _read(rel), rel)
         self.assertNotIn("domainTint: boolean", _read("view-prefs.ts"))
 
@@ -101,13 +101,6 @@ class GlassTests(unittest.TestCase):
         # 색 규칙 한 벌: 초점색 > 주제 보석 > 잉크.
         self.assertIn("n.focus ? pal.point : tint ? parseInt(tint.slice(1), 16) : pal.ink", src)
         self.assertNotIn("new THREE.AmbientLight(", src)
-
-    def test_2D_는_몸통_있는_종을_구운_유리로_그린다(self):
-        src = _read("surfaces/view2d.ts")
-        self.assertIn('drawingMode: "background"', src)
-        self.assertIn('return { type: "glass", glass: shape, color: CLEAR,', src)
-        sprite = _read("glass-sprite.ts")
-        self.assertIn('if (gateway || kind === "domain") return null;', sprite)
 
 
 if __name__ == "__main__":

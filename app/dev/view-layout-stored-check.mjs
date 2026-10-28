@@ -32,7 +32,7 @@ const browser=await chromium.launch({channel:'msedge',headless:true,args:['--ena
 const rows=[],errors=[];
 await mkdir(dirname(output),{recursive:true});
 try{
-  for(const [mode,view] of [['ready','3d'],['ready','2d'],['mismatch','3d'],['off','3d']]){
+  for(const [mode,view] of [['ready','3d'],['mismatch','3d'],['off','3d']]){
     const context=await browser.newContext({viewport:{width:1440,height:900}});
     await context.addInitScript(({view})=>{
       Object.defineProperty(document,'cookie',{get:()=> '__Host-csrf=synthetic'});

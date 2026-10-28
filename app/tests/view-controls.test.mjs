@@ -8,27 +8,25 @@ const result = await build({ entryPoints: [fileURLToPath(new URL("../src/view-co
 const { changedViewPrefs, changedRendererPrefs, canUpdateViewStyle, viewControlRows, viewPreferenceWork } =
   await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 const prefs = (overrides = {}) => ({ view: "3d", layout: "hub", when: 1, timeBasis: "recorded",
-  edgeOff: [], bundleOff: [], nodeScale: .7, labels: "hover", ...overrides });
-const available = { map: true, bundle: false };
+  edgeOff: [], nodeScale: .7, labels: "hover", ...overrides });
+const available = { map: true };
 
 test("repeated and reordered legend filters do not trigger work", () => {
-  const p = prefs({ edgeOff: ["directed", "loose"], bundleOff: ["ABOUT", "RELATED_TO"] });
+  const p = prefs({ edgeOff: ["directed", "loose"] });
   assert.deepEqual(changedViewPrefs(p, { edgeOff: ["loose", "directed"] }), []);
-  assert.deepEqual(changedViewPrefs(p, { bundleOff: ["RELATED_TO", "ABOUT"] }), []);
-  assert.deepEqual(changedViewPrefs(prefs(), { edgeOff: [], bundleOff: [] }), []);
+  assert.deepEqual(changedViewPrefs(prefs(), { edgeOff: [] }), []);
   assert.deepEqual(changedViewPrefs(p, { edgeOff: ["directed"] }), ["edgeOff"]);
 });
 
-test("time visibility followed by style changes remains a live update in both maps", () => {
-  for (const view of ["2d", "3d"]) {
-    const previous = prefs({ view });
-    const next = { ...previous, when: .5, timeBasis: "content", nodeScale: .9 };
-    assert.deepEqual(changedRendererPrefs(previous, next), ["nodeScale"]);
-    assert.equal(canUpdateViewStyle(changedRendererPrefs(previous, next)), true);
-    assert.equal(viewPreferenceWork(next, ["nodeScale"], available).mode, "style");
-    assert.equal(viewPreferenceWork(next, ["when"], available).mode, "time");
-    assert.equal(viewPreferenceWork(next, ["timeBasis"], available).mode, "time");
-  }
+test("time visibility followed by style changes remains a live update", () => {
+  const previous = prefs();
+  const next = { ...previous, when: .5, timeBasis: "content", nodeScale: .9 };
+  assert.deepEqual(changedRendererPrefs(previous, next), ["nodeScale"]);
+  assert.equal(canUpdateViewStyle(changedRendererPrefs(previous, next)), true);
+  assert.equal(viewPreferenceWork(next, ["nodeScale"], available).mode, "style");
+  assert.equal(viewPreferenceWork(next, ["edges"], available).mode, "style");
+  assert.equal(viewPreferenceWork(next, ["when"], available).mode, "time");
+  assert.equal(viewPreferenceWork(next, ["timeBasis"], available).mode, "time");
 });
 
 test("structural renderer changes still require a remount", () => {
@@ -53,27 +51,12 @@ test("time branches recompute for their time basis and preserve the current came
   assert.equal(centre.keepCamera, false);
 });
 
-test("Timeline and Weave keep separate filter semantics and update routes", () => {
-  const timeline = prefs({ view: "timeline" });
-  const weave = prefs({ view: "bundle" });
-  for (const key of ["period", "timelineDocs", "timelineLineage", "timeBasis"]) {
-    const work = viewPreferenceWork(timeline, [key], { map: false, bundle: false });
-    assert.equal(work.mode, "remount");
-    assert.equal(work.reuseGraph, true);
-  }
-  for (const key of ["bundleDepth", "bundleOff", "labels"]) {
-    assert.equal(viewPreferenceWork(weave, [key], { map: false, bundle: true }).mode, "bundle");
-  }
-  assert.equal(viewPreferenceWork(weave, ["when"], { map: false, bundle: true }).mode, "time");
-});
-
-test("shared panel inventory preserves viewpoint-specific controls", () => {
-  assert.deepEqual(viewControlRows(prefs({ view: "timeline" })), ["period", "basis", "docs", "lineage"]);
-  assert.deepEqual(viewControlRows(prefs({ view: "bundle" })), ["bundleDepth", "bundleRels", "labels", "basis", "when", "replay"]);
+test("the one view keeps cone for the centre layout and replay always", () => {
   assert.equal(viewControlRows(prefs()).includes("cone"), true);
   assert.equal(viewControlRows(prefs({ layout: "temporalRoots" })).includes("cone"), false);
-  assert.equal(viewControlRows(prefs({ view: "2d" })).includes("cone"), false);
-  assert.equal(viewControlRows(prefs({ view: "2d" })).includes("replay"), false);
+  assert.equal(viewControlRows(prefs()).at(-1), "replay");
+  for (const gone of ["period", "docs", "lineage", "bundleDepth", "bundleRels"])
+    assert.equal(viewControlRows(prefs()).includes(gone), false);
 });
 
 test("slider work retains the panel DOM while label chips refresh it", () => {
@@ -85,13 +68,11 @@ test("slider work retains the panel DOM while label chips refresh it", () => {
 });
 
 test("an option changed during a pending show restarts its captured snapshot", () => {
-  for (const view of ["2d", "3d", "timeline", "bundle"]) {
-    const p = prefs({ view, layout: "temporalRoots", timeBasis: "content" });
-    for (const key of ["labels", "nodeScale", "when"]) {
-      const work = viewPreferenceWork(p, [key], { map: true, bundle: true, current: false });
-      assert.equal(work.mode, "remount");
-      assert.equal(work.reuseGraph, true);
-      assert.equal(work.keepCamera, true);
-    }
+  const p = prefs({ layout: "temporalRoots", timeBasis: "content" });
+  for (const key of ["labels", "nodeScale", "when"]) {
+    const work = viewPreferenceWork(p, [key], { map: true, current: false });
+    assert.equal(work.mode, "remount");
+    assert.equal(work.reuseGraph, true);
+    assert.equal(work.keepCamera, true);
   }
 });

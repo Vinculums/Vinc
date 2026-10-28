@@ -82,15 +82,8 @@ class RendererWiringTests(unittest.TestCase):
         self.assertIn("unwireConnect?.();", s)
         self.assertIn("controls.enabled = !on", s)
 
-    def test_2D_는_걸고_해체에서_푼다(self):
-        s = _read("surfaces/view2d.ts")
-        self.assertIn("wireDragConnect(el, {", s)
-        dispose = s[s.index("    dispose() {"):s.index("sigma.kill();")]
-        self.assertIn("unwireConnect?.();", dispose)
-        self.assertIn("sigma.getCamera().disable()", s)
-
     def test_렌더러는_쓰기를_모른다(self):
-        for rel in ("surfaces/view3d.ts", "surfaces/view2d.ts"):
+        for rel in ("surfaces/view3d.ts",):
             s = _read(rel)
             self.assertNotIn("ingestFragment", s, rel)
             self.assertNotIn("openRelationPicker", s, rel)
@@ -99,8 +92,8 @@ class RendererWiringTests(unittest.TestCase):
 class ViewWiringTests(unittest.TestCase):
     view = _read("surfaces/view.ts")
 
-    def test_두_마운트가_같은_손잡이를_넘긴다(self):
-        self.assertEqual(self.view.count("onConnect: connectByDrag, canConnect: canLinkPair,"), 2)
+    def test_마운트가_손잡이를_넘긴다(self):
+        self.assertEqual(self.view.count("onConnect: connectByDrag, canConnect: canLinkPair,"), 1)
 
     def test_같은_관계_고르기를_연다(self):
         body = _fn(self.view, "function connectByDrag(")

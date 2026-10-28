@@ -12,7 +12,7 @@ import { loaderInline } from "./vinc-loaders.js";
  *
  *  앞(`#tb-lead`)은 지금 자리다: 문서 면은 경로를 표면이 채우고(`setTopbarLead`), 그래프는
  *  범위를 여기서 칠한다. 뒤는 문서 | 그래프 전환, 그다음 검색. 검색은 평소 칸 하나로 접혀
- *  있고 누르거나 ⌘/Ctrl K 를 치면 왼쪽으로 길게 펴진다. 보기 카드(관점 · 옵션 · 범례)는
+ *  있고 누르거나 ⌘/Ctrl K 를 치면 왼쪽으로 길게 펴진다. 보기 카드(옵션 · 범례)는
  *  머리에 없다 — 캔버스 안에 뜬다(index.html `#tb-viewctl`).
  *  근거: [[decision:the-desktop-shell-docks-search-and-the-view-switch-in-a-view-header-2026-10-23]]
  *  여기 살지 않는 것: 로고(타이틀바가 든다 — 웹에선 공홈 GNB),
@@ -77,21 +77,14 @@ export function viewHooks(): ViewHooks | null {
 export function refreshTopbar() {
   // 지도 손잡이는 View 소유다 — 훅이 없으면 슬롯을 비운다. 남겨 두면 검색·팩
   // 화면에서 눌리는데 아무 지도도 안 바뀌는 칩이 된다.
-  // 열린 보기 카드도 함께 접는다 — 패널은 표면과 함께 사라졌는데 카드만 펼친 폭으로
-  // 남으면, 돌아왔을 때 닫힌 패널 위에 관점 세그가 떠 있다.
   if (!hooks) {
-    const l = lensSlot(), v = viewpointsSlot();
+    const l = lensSlot();
     if (l) l.innerHTML = "";
-    if (v) v.innerHTML = "";
-    $("tb-viewctl")?.removeAttribute("data-open");
   }
 }
 
 /** 렌즈 버튼 자리(D71) — 하단 바에서 상단 바 좌측으로 올라왔다. */
 export function lensSlot(): HTMLElement | null { return $("tb-lens"); }
-
-/** 관점 세그 자리(D71). 내용은 View 가 채운다(주인은 표면이다). */
-export function viewpointsSlot(): HTMLElement | null { return $("tb-viewpoints"); }
 
 /** 검색바 모드(D73). 바의 `data-mode` 가 화면·동작의 단일 원천이다.
  *    find = 기존 동작(드롭다운 결과 → 착지)

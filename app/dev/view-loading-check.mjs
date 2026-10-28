@@ -102,16 +102,6 @@ try {
     if(mode==='none'){assert.equal(now.arrowObjects,0);assert.equal(now.particleObjects,0);}
     rows.push({test:`edge mode ${mode}`,nodes:now.nodes,links:now.links,lineObjects:now.lineObjects,inside:now.inside});
   }
-  // A response from an older View cannot overwrite the newer 2D surface.
-  holdNext=true;
-  await page.locator('#pref-cone').evaluate(el=>{el.value='0.8';el.dispatchEvent(new Event('change',{bubbles:true}));});
-  await page.waitForFunction(()=>document.querySelector('#view-canvas')!==null);
-  for(let i=0;i<50&&!held;i++)await page.waitForTimeout(20);
-  assert.ok(held);
-  await page.locator('[data-view="2d"]').first().click();await page.locator('.a2-stage canvas').first().waitFor();
-  await held.fulfill({json:fixture});held=null;await page.waitForTimeout(350);
-  assert.ok(await page.locator('.a2-stage canvas').count());assert.equal(await page.locator('#view-canvas .scene-container').count(),0);
-  rows.push({test:'late graph response did not replace newer 2D View'});
   // Space switch reloads; the fixture's node IDs distinguish account scopes.
   await page.goto(`${origin}/?space=synthetic-team`);await complete();
   assert.ok(await page.evaluate(()=>window.__g3.graphData().nodes.every(n=>n.id.startsWith('team-'))));

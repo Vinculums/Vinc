@@ -36,9 +36,9 @@ class Prefs(unittest.TestCase):
         t = re.search(r"export type EdgeShow = ([^;]+);", self.src).group(1)
         self.assertIn('"none"', t)
         self.assertNotIn('"bring"', t)
-        shows = self.src[self.src.index("export const edgeShowsFor"):]
+        shows = self.src[self.src.index("export const EDGE_SHOWS"):]
         shows = shows[:shows.index(";")]
-        self.assertEqual(shows.count('"none"'), 2, "3D 와 평면 양쪽에서 고를 수 있어야 한다")
+        self.assertIn('"none"', shows, "패널에서 고를 수 있어야 한다")
 
     def test_기본값(self):
         d = self.src[self.src.index("const DEFAULTS: ViewPrefs = {"):]
@@ -65,14 +65,12 @@ class Prefs(unittest.TestCase):
 
 class Renderers(unittest.TestCase):
     def test_고리_비행_기계가_없다(self):
-        for rel in ("surfaces/view2d.ts", "surfaces/view3d.ts"):
+        for rel in ("surfaces/view3d.ts",):
             src = _read(rel)
             for word in ("bringOn", "gathered", "planFly", "ringSlots", "flyRaf"):
                 self.assertNotIn(word, src, f"{rel}: {word}")
 
     def test_노드만이면_선을_그리지_않는다(self):
-        self.assertIn('if (prefs.edges === "none") return { ...data, hidden: true };',
-                      _read("surfaces/view2d.ts"))
         v3 = _read("surfaces/view3d.ts")
         self.assertIn('let nodesOnly = prefs.edges === "none";', v3)
         live_update = v3[v3.index('(g as any).__update ='):]

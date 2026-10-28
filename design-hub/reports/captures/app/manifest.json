@@ -22,45 +22,6 @@
    "sha1": "0393bb9e03e6c11e4e069c91657f6cbb2b5f4c28"
   },
   {
-   "id": "view__2d",
-   "surface": "#view",
-   "state": "2d",
-   "trigger": "viewpoint 2D",
-   "viewport": {
-    "width": 1280,
-    "height": 800
-   },
-   "scheme": "dark",
-   "file": "view__2d.png",
-   "sha1": "1f3116b7b189aa9d01e384651991e3a83bc5c9c0"
-  },
-  {
-   "id": "view__timeline",
-   "surface": "#view",
-   "state": "timeline",
-   "trigger": "viewpoint Timeline",
-   "viewport": {
-    "width": 1280,
-    "height": 800
-   },
-   "scheme": "dark",
-   "file": "view__timeline.png",
-   "sha1": "d95551ae0f3db0c720715e183b62e34b0c4be3c6"
-  },
-  {
-   "id": "view__weave",
-   "surface": "#view",
-   "state": "weave",
-   "trigger": "viewpoint Weave",
-   "viewport": {
-    "width": 1280,
-    "height": 800
-   },
-   "scheme": "dark",
-   "file": "view__weave.png",
-   "sha1": "46578975738e41a552b841d5dda66d0394c1334b"
-  },
-  {
    "id": "view__topic-scope",
    "surface": "#view",
    "state": "topic-scope",
@@ -98,45 +59,6 @@
    "scheme": "dark",
    "file": "view__lens-options-3d.png",
    "sha1": "ae6d875db36f8955add1181bb5353318aff78373"
-  },
-  {
-   "id": "view__lens-options-2d",
-   "surface": "#view",
-   "state": "lens-options-2d",
-   "trigger": "lens: Options for 2D",
-   "viewport": {
-    "width": 1280,
-    "height": 800
-   },
-   "scheme": "dark",
-   "file": "view__lens-options-2d.png",
-   "sha1": "0a7d3758e25a7fbe6baa03eaa88f7339d4af9c30"
-  },
-  {
-   "id": "view__lens-options-timeline",
-   "surface": "#view",
-   "state": "lens-options-timeline",
-   "trigger": "lens: Options for Timeline",
-   "viewport": {
-    "width": 1280,
-    "height": 800
-   },
-   "scheme": "dark",
-   "file": "view__lens-options-timeline.png",
-   "sha1": "42d9aa87cbdf7cd08bb65c8c5b65d697db30726e"
-  },
-  {
-   "id": "view__lens-options-weave",
-   "surface": "#view",
-   "state": "lens-options-weave",
-   "trigger": "lens: Options for Weave",
-   "viewport": {
-    "width": 1280,
-    "height": 800
-   },
-   "scheme": "dark",
-   "file": "view__lens-options-weave.png",
-   "sha1": "03695e0e35991716ffa3e087b10b29f6c8fcc7d6"
   },
   {
    "id": "view__lens-legend",

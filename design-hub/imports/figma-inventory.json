@@ -2,7 +2,7 @@
  "$meta": {
   "source": "figma",
   "file": "WUXLeDDNBqih2KTZOz9wCX",
-  "exported": "2026-10-24",
+  "exported": "2026-10-28",
   "how": "use_figma, the per-page JS in scripts/figma_inventory.py's docstring. One call per page: the Plugin API allows one page switch per call.",
   "scope": "Frame and component NAMES, plus variant values for the App / * sets. Four pages of the 2026-10-24 structure (vinc.canon.design-system-operations §2): 01 · Foundations, 02 · Components, 03 · App, 04 · Site. Boards inside sections are listed as page frames. 00 · Cover, 05 · Email, 06 · Storyboards and 90 · Archive carry nothing the gate counts.",
   "note": "Machine dump. Never patch it by hand: re-run the dump. A hand-patched inventory makes the gate agree with a file instead of with Figma.",
@@ -161,7 +161,6 @@
     "App / Chip",
     "App / IconButton",
     "App / Slider",
-    "App / ViewSeg",
     "App / SearchModeButton",
     "App / SearchField",
     "App / Kbd",
@@ -249,12 +248,6 @@
      "State=Active",
      "State=Static"
     ],
-    "App / ViewSeg": [
-     "Active=3D",
-     "Active=2D",
-     "Active=Timeline",
-     "Active=Weave"
-    ],
     "App / SearchModeButton": [
      "Mode=Find",
      "Mode=Ask"
@@ -319,23 +312,11 @@
      "children": []
     },
     {
-     "name": "App · View · timeline / dark",
-     "children": []
-    },
-    {
-     "name": "App · View · 2d / dark",
-     "children": []
-    },
-    {
      "name": "App · View · topic-scope / dark",
      "children": []
     },
     {
      "name": "App · View · lnb-collapsed / dark",
-     "children": []
-    },
-    {
-     "name": "App · View · weave / dark",
      "children": []
     },
     {
@@ -384,18 +365,6 @@
     },
     {
      "name": "App · View · lens-options-3d / dark",
-     "children": []
-    },
-    {
-     "name": "App · View · lens-options-timeline / dark",
-     "children": []
-    },
-    {
-     "name": "App · View · lens-options-2d / dark",
-     "children": []
-    },
-    {
-     "name": "App · View · lens-options-weave / dark",
      "children": []
     },
     {

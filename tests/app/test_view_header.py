@@ -70,7 +70,9 @@ class HeaderOrder(unittest.TestCase):
     def test_the_view_card_is_not_in_the_header(self):
         self.assertNotIn('id="tb-viewctl"', HEADER)
         card = HTML[HTML.index('id="tb-viewctl"'):]
-        self.assertLess(card.index('id="tb-viewpoints"'), card.index('id="tb-lens"'))
+        # 카드 안에는 렌즈 자리 하나뿐이다(관점 세그는 없다).
+        self.assertIn('<div id="tb-lens"></div>', card[:120])
+        self.assertNotIn("tb-viewpoints", HTML)
 
     def test_document_tree_does_not_hold_the_segment(self):
         lnb = _block(HTML, '<aside id="lnb"', "</aside>")
@@ -129,16 +131,15 @@ class CanvasCard(unittest.TestCase):
         self.assertIn("--rail-size", _rule('#shell[data-doc="open"][data-doc-size="side"] #tb-viewctl'))
 
     def test_empty_view_card_hides(self):
-        self.assertIn("#tb-viewctl:has(> #tb-viewpoints:empty):has(> #tb-lens:empty)", CSS)
+        self.assertIn("#tb-viewctl:has(> #tb-lens:empty) { display: none; }", CSS)
 
     def test_lens_renders_into_the_view_card_slot(self):
         self.assertIn('lensSlot() ?? fallbackSlot("view-legend")', VIEW)
         self.assertIn('return $("tb-lens")', TOPBAR)
 
-    def test_open_view_card_is_exactly_as_wide_as_the_lens_panel(self):
-        m = re.search(r"(?m)^#tb-viewctl\[data-open\] \{[^}]*\}", CSS)
-        self.assertTrue(m, "열린 보기 카드 규칙이 없다")
-        self.assertIn("width: var(--lens-panel-w)", m.group(0))
+    def test_the_lens_panel_keeps_its_own_width(self):
+        # 카드는 렌즈 버튼 하나라 자라지 않는다. 폭은 패널 자기 것이다.
+        self.assertNotIn("#tb-viewctl[data-open]", CSS)
         self.assertIn("width: var(--lens-panel-w)", CSS[CSS.index("#view-lens-panel {"):])
 
     def test_panel_anchors_to_the_view_card(self):

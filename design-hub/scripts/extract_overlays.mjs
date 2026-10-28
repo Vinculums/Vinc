@@ -17,8 +17,7 @@ const EXPAND_LENS = "#view-lens-panel{max-height:none!important;height:auto!impo
 const EXPAND_POP = "#tb-results,#tb-chat{max-height:none!important;overflow:visible!important}";
 const EXPAND_SHEET = ".sheet{max-height:none!important} .sheet-body{max-height:none!important;overflow:visible!important}";
 const T = [
-  ["view__lens-options-3d", "#view-lens-panel", EXPAND_LENS], ["view__lens-options-2d", "#view-lens-panel", EXPAND_LENS],
-  ["view__lens-options-timeline", "#view-lens-panel", EXPAND_LENS], ["view__lens-options-weave", "#view-lens-panel", EXPAND_LENS],
+  ["view__lens-options-3d", "#view-lens-panel", EXPAND_LENS],
   ["view__lens-legend", "#view-lens-panel", EXPAND_LENS], ["view__lens-help-open", "#view-lens-panel", EXPAND_LENS],
   ["topbar__settings-account", ".sheet[role=dialog]", EXPAND_SHEET], ["topbar__settings-connections", ".sheet[role=dialog]", EXPAND_SHEET],
   ["topbar__settings-advanced", ".sheet[role=dialog]", EXPAND_SHEET], ["topbar__graphmd", ".sheet[role=dialog]", EXPAND_SHEET],

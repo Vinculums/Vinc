@@ -43,7 +43,12 @@ test("two layouts remain and retired saved values fold into time branches", () =
       assert.equal(serverLayoutFor(layout), "hub");
       assert.equal(isRootsLayout(layout), layout === "temporalRoots");
     }
-    for (const view of ["2d", "3d", "timeline", "bundle"]) assert.deepEqual(layoutsFor(view), LAYOUTS);
+    assert.deepEqual(layoutsFor("3d"), LAYOUTS);
+    // 보기는 3D 하나다 — 저장된 옛 관점은 3D 로 접힌다. 2D 전용이던 선 `focus` 는 `none` 이다.
+    for (const view of ["2d", "timeline", "bundle"]) {
+      saved.set("vinc.view.prefs", JSON.stringify({ view, edges: "focus", pv: 4 }));
+      assert.deepEqual([loadPrefs().view, loadPrefs().edges], ["3d", "none"]);
+    }
     // 0.9.7 에서 뺀 두 이름은 판 3 이전 저장값에서만 `시간순 가지`로 접힌다.
     for (const retired of ["rank", "rankedRoots"]) {
       assert.equal(normalizeLayout(retired), "hub");
@@ -70,9 +75,9 @@ test("two layouts remain and retired saved values fold into time branches", () =
       nodeScale: 1.4, pv: 3 }));
     assert.deepEqual([loadPrefs().view, loadPrefs().layout, loadPrefs().edges, loadPrefs().edgeOff, loadPrefs().nodeScale],
       ["3d", "temporalRoots", "always", ["directed", "cross", "bridge"], 1.4]);
-    savePrefs({ ...loadPrefs(), view: "2d", edgeOff: [] });
+    savePrefs({ ...loadPrefs(), edges: "particles", edgeOff: [] });
     assert.equal(JSON.parse(saved.get("vinc.view.prefs")).pv, 4);
-    assert.deepEqual([loadPrefs().view, loadPrefs().edgeOff], ["2d", []], "a choice made after the move stays");
+    assert.deepEqual([loadPrefs().edges, loadPrefs().edgeOff], ["particles", []], "a choice made after the move stays");
   } finally { delete globalThis.localStorage; }
 });
 

@@ -247,8 +247,6 @@ function nodeRadius(n: N3, prefs: ViewPrefs): number {
     : prefs.size === "uniform" ? 5
     : Math.min(3 + 1.4 * Math.sqrt(n.degree || 1), 12);
   if (n.pinned) r *= 1.25;   // pin = 허브 승격(D32) — 확정된 노드는 한 급 크게
-  // 2D 는 깊이 겹침 여지가 없어 조밀 — 반경을 줄여 겹침 비율 자체를 낮춘다
-  if (prefs.view === "2d" && n.kind !== "domain") r *= 0.7;
   // 사용자 배율(D31 열린 층) — **맨 마지막에** 곱한다. 위의 인코딩(무엇이 크고
   // 작은가)을 건드리지 않고 전체 크기만 옮긴다.
   return r * (prefs.nodeScale ?? 1);
@@ -307,7 +305,7 @@ export function centerOn3d(g: any, n: any, prefs: ViewPrefs, ms = 700, atRest = 
   if (!n) return;
   const node = { x: n.fx ?? n.x ?? 0, y: n.fy ?? n.y ?? 0, z: n.fz ?? n.z ?? 0 };
   const rest = atRest ? restRadius(SCALE * prefs.spread) : undefined;
-  const aim = aimAt(node, g.cameraPosition?.(), prefs.view === "2d", rest);
+  const aim = aimAt(node, g.cameraPosition?.(), false, rest);
   if (!aim) return;                              // 뿌리 — 이미 중심이라 옮길 것이 없다
   g.__wake?.(ms + 200);                          // 트윈은 렌더 루프 안 — 깨워야 움직인다
   g.cameraPosition(aim.pos, aim.tgt, ms);
@@ -355,7 +353,6 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
 }, prefs: ViewPrefs = loadPrefs(), keepCam: Cam3 | null = null,
    tintDomains: (string | undefined)[] | null = null): ForceGraph3DInstance {
   const mountedAt = performance.now();
-  const flat = prefs.view === "2d";        // D31 — 동일 렌더러의 z 평면화
   let S = SCALE * prefs.spread;
   /** 사이드카 원좌표(단위원)를 노드에 남겨 둔다 — 아래 `place` 가 배율만 바꿔 다시
    *  놓을 수 있게(간격 슬라이더를 제자리에서 반영, 2026-08-17). n.x 는 렌더 좌표로
@@ -369,16 +366,13 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
         r.__x0 = n.x; r.__y0 = n.y || 0; r.__z0 = n.z || 0;
       }
       const px = r.__x0 * S;
-      const py = (flat ? r.__y0! + r.__z0! * 0.55 : r.__y0!) * S;
-      const pz = flat ? 0 : r.__z0! * S;
+      const py = r.__y0! * S;
+      const pz = r.__z0! * S;
       n.x = px; n.y = py; n.z = pz;
       n.fx = px; n.fy = py; n.fz = pz;
     }
   };
   // pin deterministic sidecar coords (D17).
-  // 2D 는 직교 투영이 아닌 경사 사영으로 접는다: z 분리를 y 에 보존해
-  // z 로만 갈라져 있던(같은 클러스터) 노드들이 평면에서도 겹치지 않는다.
-  // 좌표는 동일 사이드카 정본 — 사영 계수만 상수(결정론 유지).
   // 렌더 좌표(x/y/z)에 직접 기록한다 — fx 핀만 두고 엔진 틱의 핀→좌표 복사에
   // 의존하면, digest(비동기)가 메시를 원점에 재생성한 뒤 cooldown 0 으로 틱 없이
   // 멈추는 타이밍에 전 노드가 (0,0,0)에 뭉친다(세부 뷰 2D 미적용의 실측 원인).
@@ -397,7 +391,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   //: 노드만 — 선을 그리지 않는다(기본). 관계는 점등과 카드가 말한다.
   //: 근거: [[decision:bring-and-go-is-retired-and-nodes-only-is-the-default]]
   let nodesOnly = prefs.edges === "none";
-  // 상시 라벨 대상 — 2D 와 같은 규칙(연결수 상위 8, 고아 제외).
+  // 상시 라벨 대상 — 연결수 상위 8, 고아 제외.
   const hubIds = new Set(nodes.slice()
     .sort((a, b) => (b.degree || 0) - (a.degree || 0) || (a.id < b.id ? -1 : 1))
     .slice(0, 8).filter((n) => (n.degree || 0) > 0).map((n) => n.id));
@@ -496,7 +490,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   };
   buildInstancedNodes();
   // 영역 부피 — 주제 칸이 영역별로 모이므로(view-layout-spatial) 영역마다 x 로 늘인 타원체
-  // 하나. 2D 는 z 를 접어 부피가 뜻을 잃으므로 그리지 않는다. 간격 슬라이더가 자리를 옮기면
+  // 하나. 간격 슬라이더가 자리를 옮기면
   // 다시 짓는다(`__update`).
   // 부피는 그 영역의 보석을 입는다(영역 색이 없으면 무채색 단).
   let volumes: { mesh: THREE.Mesh; area: string }[] = [];
@@ -510,7 +504,6 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   };
   const buildVolumes = () => {
     disposeVolumes();
-    if (flat) return;
     const placed = nodes.filter((n) => n.kind !== "bridge" && !n.gateway && n.domain
       && Number.isFinite(n.x));
     const groups = new Map<string, { x: number; y: number; z: number; r: number }[]>();
@@ -567,9 +560,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       mesh.userData.baseRadius = nodeRadius(n, prefs);
       const group = new THREE.Group();
       group.add(mesh); group.userData.mark = mesh;
-      // V7 — 허브(연결수 상위)는 **상시 라벨**을 단다. 2D 가 이미 쓰는 문법인데
-      // 3D 만 hover 를 기다려, 42노드 렌즈가 "이름 없는 별자리"였다(실측: 한 번에
-      // 하나씩 짚어야만 이름을 알 수 있었다). 나머지는 그대로 hover 로 뜬다.
+      // V7 — 허브(연결수 상위)는 **상시 라벨**을 단다. hover 만 기다리면 렌즈가 "이름
+      // 없는 별자리"가 된다. 나머지는 그대로 hover 로 뜬다.
       if (prefs.labels !== "none" && hubIds.has(n.id)) group.add(hubLabel(n));
       return group;
     };
@@ -646,7 +638,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   };
   sizeTo();
 
-  // 대기(fog = paper) + 무채 조명 보정 — fog 는 3D 깊이 단서라 2D 에선 끈다
+  // 대기(fog = paper) + 무채 조명 보정 — fog 는 깊이 단서다
   scene = g.scene();
   // Cull billboards before the renderer builds its visible-object list. This
   // follows camera movement, resize and dragging without a second animation loop.
@@ -669,7 +661,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       // Enlarge the existing body, never a halo or replacement glyph. A shared
       // reference radius preserves degree/pin/type size ratios at the same depth.
       // The user's size slider still scales both the close and distant marks.
-      const boost = !flat && pixelsPerUnit > 0
+      const boost = pixelsPerUnit > 0
         ? Math.max(1, 2.5 / (4.4 * pixelsPerUnit)) : 1;
       const radius = base * boost;
       renderedRadii.set(n.id, radius);
@@ -705,7 +697,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       // Far overview lines must not form an opaque fence over subpixel bodies.
       // Restore the original ink on approach and for explicitly traced relations.
       const pixels = Math.min(originalPixels.get(source.id) || 0, originalPixels.get(target.id) || 0);
-      const detail = flat || emphasized ? 1 : .08 + .92 * Math.min(1, pixels / 2.5) ** 2;
+      const detail = emphasized ? 1 : .08 + .92 * Math.min(1, pixels / 2.5) ** 2;
       object.update(source, target, S, { color: linkColorFn(link), width: linkWidthFn()(),
         arrow: !!prefs.arrows && !particlesOn && !nodesOnly && isDirectedLink(link),
         particles: particlesOn && isDirectedLink(link), particleColor: pal.link.heavy,
@@ -744,7 +736,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   g.renderer().toneMappingExposure = EXPOSURE[themeMode()];
   // 원경이 배경으로 "서서히" 잦아듦. near/far 는 아래에서 **카메라 거리에 연동**한다
   // (고정값이면 축소가 곧 소멸이다 — syncCamera 주석 참조).
-  const fog = flat ? null : new THREE.Fog(pal.fog, S * 2.6, S * 9);
+  const fog = new THREE.Fog(pal.fog, S * 2.6, S * 9);
   scene.fog = fog;
   /** 조명 한 벌 — 히어로 무대(three-d-stage.js)와 같은 짜임: 반구광 + 키 + 보조, 앰비언트
    *  없음. 앰비언트가 크면 모든 면이 같은 밝기로 떠서 유리가 평판으로 죽는다(예전 .9~1.1).
@@ -758,8 +750,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   const controls: any = g.controls();
   // 컨트롤은 3d-force-graph 기본 **TrackballControls** 다 — enableDamping·autoRotate·
   // enableRotate 는 OrbitControls 의 이름이라 여기선 아무것도 안 했다(2026-08-17 실측:
-  // 세 줄 다 무효, 평면 잠금도 안 걸렸다). 트랙볼의 이름은 `noRotate`.
-  if (controls) controls.noRotate = flat;   // 2D: 팬/줌만 — 회전 잠금
+  // 세 줄 다 무효였다). 트랙볼의 이름은 `noRotate`.
   // ── fog 카메라 적응 (가시성 연구 C1·R1) ──────────────────────────────────
   // 여태 near/far 가 씬 크기(S)에만 묶인 상수라, 기본 프레이밍의 카메라 거리(≈S·2.53)가
   // 이미 near(S·2.6) 코앞이었다. 휠로 축소하면 전 노드가 near~far 구간에 들어가 배경색으로
@@ -782,7 +773,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     cam.far = Math.max(2000, dist + extent * 2);
     cam.updateProjectionMatrix();
     if (controls && "maxDistance" in controls) controls.maxDistance = Math.max(5000, extent * 8);
-    if (fog) { fog.near = dist * FOG_NEAR_K; fog.far = dist * FOG_FAR_K; }
+    fog.near = dist * FOG_NEAR_K; fog.far = dist * FOG_FAR_K;
   };
   syncCamera();
   // 매 프레임이 아니라 **카메라가 실제로 움직일 때만** 갱신한다(비용 무시 가능).
@@ -790,9 +781,6 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   if (keepCam) {
     // 옵션 재마운트 — 보던 자리 그대로. 전체 맞춤은 첫 마운트만 한다(아래 settle).
     g.cameraPosition(keepCam.pos, keepCam.tgt, 0);
-  } else if (flat) {
-    // 정면 카메라 — 화면 x/y 가 곧 레이아웃 x/y
-    g.cameraPosition({ x: 0, y: 0, z: S * 2.2 }, { x: 0, y: 0, z: 0 }, 0);
   } else {
     // 초기 프레이밍: 오블리크 각도에서 전체를 담는다(정면 뷰는 육각기둥이 사각으로 보임)
     g.cameraPosition({ x: S * 1.1, y: S * 0.9, z: S * 2.1 }, { x: 0, y: 0, z: 0 }, 0);
@@ -1054,7 +1042,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   }
   let hoverId: string | null = null;
   /** 밖에서 건 점등 집합(범례 갈래 hover · 인과 원뿔). **hover 가 이긴다** — 손이
-   *  가리키는 것이 언제나 지금 관심사라, 2D 와 같은 규칙이고 우선순위 코드가 없다. */
+   *  가리키는 것이 언제나 지금 관심사라 우선순위 코드가 없다. */
   let spot: Spot | null = null;
   const linkColorFn = (l: any) => {
     const s = typeof l.source === "object" ? l.source.id : l.source;
@@ -1083,7 +1071,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     }
     if (spot && !hoverId && !near) return pal.link.fade;
     if (hoverId && !near) return pal.link.fade;   // 배경으로 후퇴
-    // 짚은 노드에 닿은 선은 포인트색 — 2D 와 같은 규칙(view2d 도 짚은 노드의 선을 point() 로 칠한다).
+    // 짚은 노드에 닿은 선은 포인트색.
     if (hoverId && near) return hexStr(pal.point);
     // D33 — 농도 = 관계의 세기(굵기 개정). 다크는 반전(D39).
     // B1(2026-08-03): 그 "세기"를 **기록된 증거의 신뢰도**(E-G6 confidence)가 말한다.
@@ -1178,7 +1166,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       if (!canInstance(m)) takeSkins(obj, nodeObject(m, prefs, pal));
     }
     for (const sp of labels) repaintLabel(sp, pal);
-    fog?.color.setHex(pal.fog);
+    fog.color.setHex(pal.fog);
     g.renderer().toneMappingExposure = EXPOSURE[mode];
     g.lights(lightsFor(mode === "dark"));
     // 선·화살촉·입자는 링크 digest 가 접근자를 다시 읽을 때 새 팔레트로 칠해진다.

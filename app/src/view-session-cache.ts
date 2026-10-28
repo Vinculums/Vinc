@@ -4,7 +4,7 @@ import type { LayoutGraph } from "./view-layout";
 type CachedGraph = { executed: boolean; nodes?: GraphNode[]; edges?: GraphEdge[];
   topicEdges?: GraphEdge[]; partial?: boolean; snapshot?: unknown; graphSnapshotPending?: boolean };
 type ViewBookmark = { domains: string[] };
-type ViewCameraState = { prefs: string; camera2?: unknown; camera3?: unknown };
+type ViewCameraState = { prefs: string; camera3?: unknown };
 export type Entry = { revision: string; raw: string; layoutKey?: string; layout?: string;
   state?: string; size: number; expires: number };
 /** 한 세션이 들고 있는 완료 DTO 묶음. 스페이스를 떠날 때 잠깐 보관하려고 내보낸다. */

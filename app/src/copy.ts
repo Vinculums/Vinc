@@ -8,9 +8,6 @@
 import { cfg } from "./api";
 import { j } from "./josa";
 
-// 달 이름 — 날짜 선택의 머리(`monthTitle`)가 쓴다.
-const MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July",
-  "August", "September", "October", "November", "December"];
 
 const EN = {
   tagline: "Discover the core of your knowledge.",
@@ -419,7 +416,6 @@ const EN = {
       summary: "shape = type · line = relation · one focus color",
       shapes: "Shape = type",
       concept: "Concept",
-      document: "Document",
       decision: "Decision",
       record: "Record",
       episode: "Episode",
@@ -440,7 +436,6 @@ const EN = {
       focus: "The focus color marks one thing at a time.",
       // v2 — 마크는 렌더러가 실제로 그리는 것 그대로다. 캡션이 어느 셋인지 밝힌다.
       drawnAs3d: "the 3D geometry itself",
-      drawnAsFlat: "shared by 2D · Timeline · Weave",
       // 몸통 키트: 모든 종이 같은 유리와 안의 빛을 쓰고 껍질 모양만 다르다.
       markNote3d: {
         concept: "Glass sphere · a cloud of light drifts inside",
@@ -451,13 +446,6 @@ const EN = {
         topic: "Hollow dotted shell",
         area: "A glowing glass volume, stretched along time",
         gateway: "Its own kind in outline · no faces, so nothing behind it is hidden",
-      } as Record<string, string>,
-      markNoteFlat: {
-        concept: "Filled circle",
-        document: "Filled triangle · circumradius 1.08, so it weighs the same as the circle",
-        bridge: "Filled diamond",
-        topic: "Skin at 18% + core at 0.42",
-        gateway: "Dashed ring · here it does not separate kinds",
       } as Record<string, string>,
       // v2 — 물러남(recede) 단계. 값은 recede.ts 가 토큰에서 읽어 채운다.
       tiersCap: "Recede = dimming",
@@ -474,7 +462,6 @@ const EN = {
         `${shown} of ${all} kinds shown · ${links} links`,
       statusHover: (n: number, label: string) =>
         `While you point, only the ${n} ${label} lines stay lit. Click to hide them.`,
-      statusPlanar: "Lines here are flow, not relations, so there is nothing to switch off.",
     },
     // 상단 바(D56·D57) — 셸의 유일한 크롬. 검색이 조회 동선의 제1 진입점이다.
     coach: {
@@ -781,7 +768,7 @@ const EN = {
       arrows: "Direction arrows", on: "on",
       edgeShow: "Links",
       edgeShowName: {
-        none: "nodes only", always: "always", focus: "on focus", particles: "particles",
+        none: "nodes only", always: "always", particles: "particles",
       } as Record<string, string>,
       unlinkedNodes: "Unlinked nodes", show: "show", hide: "hide",
       layout: "Layout", spread: "Spread",
@@ -792,7 +779,7 @@ const EN = {
       // (radial·dendro)은 사용자에게 아무 것도 말해 주지 않았다.
       layoutName: { hub: "by centre", temporalRoots: "time branches" } as Record<string, string>,
       // v2 — **값마다 한 줄 설명 한 벌**. 옛 per-row Help 키들(edgeShowHelp·layoutHelp
-      // ·bundleDepthHelp…)을 이 표로 모았다: 설명은 패널 바닥의 고정 줄이 받고,
+      // …)을 이 표로 모았다: 설명은 패널 바닥의 고정 줄이 받고,
       // 가리키거나 포커스가 닿은 값의 줄로 바뀐다(뜨는 툴팁 아님 — WCAG 1.4.13 을
       // 구조로 만족). `?` 를 켜면 행마다 상시로 펼쳐진다.
       helpTip: "Show explanations",
@@ -802,12 +789,10 @@ const EN = {
         links: "The better connected a mark, the bigger it is. Size is centrality.",
         uniform: "Every mark the same size. Size then means nothing at all.",
         hover: "Only the name you point at appears, so the View is never covered in type.",
-        fit: "As many as the ring has room for, best-connected first. The rest answer on hover.",
         none: "No names drawn. Shape and place carry everything.",
         arrowsOn: "Directed relations get an arrowhead.",
         arrowsOff: "Lines without arrowheads. Less ink on a dense View.",
         always: "Every line, always. The whole relation set at once, at the cost of density.",
-        focus: "Lines stay hidden and the View stays clear. Point at a mark and its lines appear.",
         particles: "Particles flow instead of lines. Flow is direction, so arrowheads switch off.",
         edgesNone: "Only the marks, no lines. A click outlines what belongs together, and the card lists the links.",
         showU: "Unlinked marks are drawn, so you can see what is not tied in yet.",
@@ -816,45 +801,12 @@ const EN = {
         temporalRoots: "Branches spread from each topic in date order, using the selected time basis.",
         recorded: "Stood up by when you wrote it, so one import clusters in one place.",
         content: "Stood up by when it happened, regardless of when it was written down.",
-        docsOn: "Documents are drawn as marks, hung off their concepts.",
-        docsOff: "Concepts only. A shorter axis and a clearer lineage.",
-        lineageOn: "Curves overlay what led to what. A long leap right names a late effect.",
-        lineageOff: "No overlay, so marks are never buried under curves.",
-        d1: "Lines join topic to topic. Links inside one topic have nowhere to go and are dropped.",
-        d2: "Lines join kind to kind inside a topic. Links inside one kind are dropped.",
-        d3: "Lines join item to item. Nothing is dropped.",
         spread: "Multiplies the coordinates you were given. It follows your hand as you drag.",
         nodeScale: "Keeps the size encoding and scales the whole View.",
         edgeWidth: "A weight multiplier. Density still carries the relation's weight.",
         cone: "How wide a topic's branch fans from the centre. Applied when you let go.",
         when: "Only what existed at that point. Concepts with no date of their own stay visible.",
       } as Record<string, string>,
-      // 번들 — 손잡이 이름은 **무엇이 바뀌는지**로 짓는다. 여기서 바뀌는 것은
-      // 목록이 아니라 선이므로, 도움말이 그 사실을 먼저 말한다(모든 항목은 늘 있다).
-      bundleDepth: "Bundling",
-      bundleDepthName: { 1: "Topic", 2: "Kind", 3: "Item" } as Record<string, string>,
-      // Weave 의 라벨은 다른 관점과 뜻이 다르다. 그쪽은 짚어야 뜨지만 여기서는 **둘레에
-      // 들어갈 만큼** 상시로 뜬다(2026-08-16). 같은 이름에 같은 값을 쓰면 화면이
-      // 하지 않는 약속을 하게 된다.
-      labelsFit: "shown",
-      bundleRels: "Relations",
-      // v2 — 관계 행이 **묶인 뒤의 수**를 직접 말한다(view-bundle.bundleEdges 와 동일
-      // 집계). 그림이 타입을 못 가르는 관점이라(화살촉·타입별 굵기 없음) 수가 가른다.
-      relDropped: (n: number) => `${n} dropped`,
-      relNothing: "draws nothing here",
-      relEmpty: "Drop them all and there is nothing left to bundle.",
-      relStats: (drawn: number, dropped: number) =>
-        `${drawn} lines drawn · ${dropped} self-links dropped`,
-      relHover: (label: string, drawn: number, dropped: number) => dropped
-        ? `${label} · draws ${drawn} at this level, drops ${dropped}`
-        : `${label} · draws ${drawn} at this level`,
-      relName: {
-        PREREQUISITE_OF: "Prerequisite", DERIVES_FROM: "Derives", INHERITS_FROM: "Inherits",
-        RELATED_TO: "Related", CONNECTS: "Bridge", ABOUT: "About", ATTACHES_TO: "Attached",
-      } as Record<string, string>,
-      /** 집약 단에서 그릴 수 없는 자기연결(같은 도메인 안끼리)을 밝힌다.
-       *  조용히 버리면 화면이 "연결이 없다"고 거짓말한다. */
-      bundleSelf: (n: number) => `${n} inside a group, not drawn at this level`,
       nodeScale: "Node scale", edgeWidth: "Line weight",
       // 이름은 "무엇이 보이게 되는가"로 짓는다. `cone`·`반각`은 구현의 말이라
       // 화면에 내지 않는다 — 사용자가 고르는 것은 가지가 얼마나 벌어지느냐다.
@@ -862,60 +814,15 @@ const EN = {
       whenAll: "All",
       groupTime: "Time",
       cone: "Density",
-      docLinks: "Document links",
-      // D74 — 원인·결과 겹치기. 이름은 "무엇을 보게 되는가"로 짓는다(관계 타입
-      // 이름을 그대로 쓰면 PREREQUISITE_OF 가 화면에 나온다).
-      lineage: "Cause and effect",
       // 주제 틴트 — 이름에 "색"이 아니라 "주제"가 먼저 오는 이유: 고르는 것은 색이
       // 아니라 "주제를 색으로 볼까"다.
       timeBasis: "Time",
       replay: "Flow", replayPlay: "Play", replayStop: "Stop",
       basisRecorded: "when recorded", basisContent: "when it happened",
-      noContentTime: "Nothing has a content date yet. Add one while writing a document.",
       fixedNote: "Shapes and the point color stay fixed. They carry meaning, so a shared pack reads the same everywhere.",
-      // 타임라인 기간(2026-09-28). 프리셋 이름은 옵션 탭 · 차트 위 칩 · 날짜 선택이 함께 쓴다.
-      period: "Period",
-      periodAll: "All",
-      period7d: "Last 7 days",
-      period30d: "Last 30 days",
-      period90d: "Last 90 days",
-      periodYear: "This year",
-      periodCustom: "Custom",
-      periodCustomTip: "Choose any range of days, months or years",
-    },
-    // 기간 선택(날짜 범위) — app/src/date-range.ts. 주는 일요일에 시작한다(두 언어 같음).
-    dateRange: {
-      title: "Choose a period",
-      close: "Close",
-      start: "Start",
-      end: "End",
-      format: "YYYY, YYYY-MM or YYYY-MM-DD",
-      invalid: "Use YYYY, YYYY-MM or YYYY-MM-DD.",
-      reset: "Show all",
-      prevMonth: "Previous month",
-      nextMonth: "Next month",
-      prevYears: "Earlier years",
-      nextYears: "Later years",
-      pickMonth: "Choose a month",
-      pickYear: "Choose a year",
-      today: "Today",
-      pickEnd: "Now choose the end.",
-      monthsShort: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-      weekdays: ["S", "M", "T", "W", "T", "F", "S"],
-      weekdaysLong: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-      monthTitle: (y: number, m: number) => `${MONTHS_EN[m]} ${y}`,
-      dayCount: (n: number) => n === 0 ? "" : `${n} record${n === 1 ? "" : "s"}`,
     },
     viewx: {
       shareCta: "Share",
-      timeline: "Timeline",
-      // 화면 이름은 **Weave**, 내부 식별자는 `bundle` 그대로다(정본 §4 — 내부 이름은
-      // 얼고 화면 뜻만 다시 정한다). "Bundle" 은 edge bundling 이라는 **그리는 기법**
-      // 이름이라 독자가 보는 것을 말하지 않았고, 차트 장르 이름은 화면에서 배제한다.
-      // 한국어 "번들" 은 사실상 묶음 상품이라 더 멀었다. 둘레에 모든 항목, 가운데로
-      // 이어진 것만 선 — 그 엮임이 이름이 됐다.
-      bundle: "Weave",
-      bundleUnfiled: "(unfiled)",
       domain: (d: string) => `topic: ${d}`,
       gateway: " · gateway",
       shareSlice: (n: number) => `Share as a pack (${n})`,
@@ -1141,11 +1048,6 @@ const EN = {
       drillHeader: (topic: string, seg: string, n: number) => `${topic} · ${seg} · ${n}`,
       drillEmpty: "No concepts in this segment.",
       drillFilter: "Filter this list",
-      // D45-V2 4단계 — 타임라인 월-밴드 클릭 기간 항목 목록.
-      periodLoading: "Loading this period…",
-      periodFail: "Couldn't load this period. Try again in a moment.",
-      periodHeader: (month: string, n: number) => `${month} · ${n}`,
-      periodEmpty: "Nothing dated in this period.",
       // D45-V 1단계 — 흐름 선 클릭 관계 패널: "왜 A 가 B 로 이어지는가".
       relLoading: "Loading link details…",
       relFail: "Couldn't load this link. Try again in a moment.",
@@ -1159,34 +1061,13 @@ const EN = {
         RELATED_TO: (a: string, b: string) => `${a} and ${b} are related.`,
         ABOUT: (a: string, b: string) => `${a} is about ${b}.`,
       } as Record<string, (a: string, b: string) => string>,
-      // D43 — 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동). 관점 발견 힌트는
-      // 세그먼트가 상단 바로 간 뒤 띄우는 코드가 없어 2026-08-17 에 지웠다.
-      noDates: "No dates on these documents yet. Open a topic to see its timeline.",
-      undated: (n: number) => `${n} document${n === 1 ? "" : "s"} without a date.`,
-      // D74 — 켠 손잡이가 아무 일도 안 했을 때 그 사실을 말한다(조용한 무동작 금지).
-      noLineage: "Nothing here says what led to what yet.",
-      // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
-      capped: (n: number) => `${n} older document${n === 1 ? "" : "s"} not drawn.`,
-      // 기간(2026-09-28). 상한이 여전히 자르면 캡션이 기간을 좁히라고 권한다.
-      narrowPeriod: "Narrow the period",
-      periodNone: "No records in this period.",
-      periodChipTip: "Change the period",
-      // Totals 스코프 캡션(l2) — 신 사이드카는 씨앗 주변(ego) 집계, 구버전은 seed 를
-      // 무시하고 주제 집계로 온다(scope 에코 부재). 차트가 무엇을 세는지 알약이 밝힌다.
-      // D43 평면 뷰가 그리는 문구 — 차트 이름(스크린리더가 읽는 것)과 Totals 구간 이름.
-      // 원장 키(episodic·record·unsourced·connected·gateway·orphan)는 코드 식별자일
-      // 뿐이라 화면에는 이 사전만 나간다(세 농도 단계를 풀어 주는 유일한 자리).
-      timelineChart: (n: number, m: number) => `Timeline: ${n} documents across ${m} topics`,
+      // 구간 이름 — 원장 키(episodic·record·unsourced·connected·gateway·orphan)는 코드
+      // 식별자일 뿐이라 화면에는 이 사전만 나간다.
       seg: {
         episodic: "from a conversation", record: "from a file", unsourced: "no origin yet",
         connected: "linked", gateway: "links other topics", orphan: "not linked yet",
       },
-      // D46 2D 관점 — 허브 배지(마크에 붙는 수치)와 하단 지표바. 지표는 추가 조회
-      // 없이 지금 그린 그래프에서 바로 센다.
-      badgeTip: (label: string, n: number) => `${label}: ${n} link${n === 1 ? "" : "s"}`,
-      //: 앵커 — 끌어서 옮긴 노드에 붙는다. 푸는 법을 툴팁이 말해야 한다:
-      //: 더블클릭은 발견되는 제스처가 아니라 알려 줘야 하는 제스처다.
-      anchorTip: "Held in place. Double-click to let it go back.",
+      // 하단 지표바. 지표는 추가 조회 없이 지금 그린 그래프에서 바로 센다.
       mDocs: "nodes",
       mLinked: "linked",
       mOrphan: "not linked",
@@ -1910,7 +1791,6 @@ const KO: Deck = {
       summary: "모양=종류 · 선=관계 · 초점색 하나",
       shapes: "모양 = 종류",
       concept: "개념",
-      document: "문서",
       decision: "결정",
       record: "기록",
       episode: "사건",
@@ -1926,7 +1806,6 @@ const KO: Deck = {
       bridgeLine: "다리로 이어진 연결",
       focus: "초점색은 한 번에 한 곳에만 써요",
       drawnAs3d: "3D 지오메트리 그대로",
-      drawnAsFlat: "2D · Timeline · Weave 공용",
       markNote3d: {
         concept: "유리구 · 안에 빛 구름이 떠다녀요",
         decision: "유리구 · 안에 깎인 결정이 멈춰 있어요",
@@ -1937,13 +1816,6 @@ const KO: Deck = {
         area: "시간을 따라 길게 늘어난, 빛나는 유리 부피",
         gateway: "자기 종의 윤곽선 · 면이 없어서 뒤를 안 가려요",
       } as Record<string, string>,
-      markNoteFlat: {
-        concept: "채운 원",
-        document: "채운 삼각 · 외접원이 1.08배라 원과 무게가 같아요",
-        bridge: "채운 마름모",
-        topic: "외피 18% + 코어 0.42배",
-        gateway: "파선 링 · 여기서는 종을 안 가려요",
-      } as Record<string, string>,
       tiersCap: "물러남 = 흐림",
       tierFocus: "초점",
       tierLine: (p) => `선 ${p}%`,
@@ -1953,7 +1825,6 @@ const KO: Deck = {
       reset: "전체 보기",
       status: (shown, all, links) => `${all}개 갈래 중 ${shown}개 보임 · 연결 ${links}개`,
       statusHover: (n, label) => `가리키는 동안 ${label} ${n}개만 밝아요. 누르면 숨겨요`,
-      statusPlanar: "이 관점은 선이 관계가 아니라 흐름이라 켜고 끄지 않아요",
     },
     coach: {
       lensTitle: "오른쪽 위에서",
@@ -2216,7 +2087,7 @@ const KO: Deck = {
       arrows: "방향 화살표", on: "켬",
       edgeShow: "연결",
       edgeShowName: {
-        none: "노드만", always: "항상", focus: "가리킬 때만", particles: "흐름",
+        none: "노드만", always: "항상", particles: "흐름",
       } as Record<string, string>,
       unlinkedNodes: "연결 안 된 노드", show: "표시", hide: "숨김",
       layout: "배치", spread: "간격",
@@ -2230,12 +2101,10 @@ const KO: Deck = {
         links: "연결이 많은 마디가 큽니다. 크기가 곧 중심성이에요",
         uniform: "모두 같은 크기입니다. 크기가 아무 뜻도 갖지 않아요",
         hover: "가리킨 마디의 이름만 떠요. View가 글자로 덮이지 않아요",
-        fit: "둘레에 들어갈 만큼만, 연결이 많은 것부터 보여요. 나머지는 가리키면 떠요",
         none: "이름을 그리지 않아요. 형태와 자리만 남아요",
         arrowsOn: "앞뒤가 있는 연결에 화살촉을 붙여요",
         arrowsOff: "화살촉 없이 선만 그려요. 촘촘한 View에서 잉크가 줄어요",
         always: "모든 선을 늘 그려요. 관계 전체를 한눈에 보는 대신 촘촘해져요",
-        focus: "평소에는 선을 감춰서 View가 깨끗해요. 가리킨 마디의 선만 화살표까지 떠요",
         particles: "선 대신 입자가 흘러요. 흐르는 방향이 곧 관계의 방향이라 화살촉은 꺼져요",
         edgesNone: "선 없이 마디만 그려요. 누르면 함께 묶인 것에 테두리가 둘리고, 연결은 카드에서 볼 수 있어요",
         showU: "연결 없는 마디도 그려요. 아직 이어지지 않은 것이 보여요",
@@ -2244,83 +2113,24 @@ const KO: Deck = {
         temporalRoots: "주제를 중심으로, 선택한 날짜 기준에 따라 가지가 시간순으로 퍼져요",
         recorded: "언제 적었는지로 세워요. 한 번에 적재한 것들이 같은 자리에 몰려요",
         content: "언제 있었던 일인지로 세워요. 적은 날과 무관하게 퍼져요",
-        docsOn: "문서도 마디로 그려 개념에 매달아요",
-        docsOff: "개념만 남겨요. 축이 짧아지고 계보가 또렷해져요",
-        lineageOn: "무엇이 무엇으로 이어졌는지 곡선으로 겹쳐요. 오른쪽으로 멀리 뻗을수록 한참 뒤의 결과예요",
-        lineageOff: "겹치지 않아요. 마디가 선에 덮이지 않아요",
-        d1: "선이 주제끼리 이어져요. 주제 안쪽 연결은 갈 곳이 없어 버려져요",
-        d2: "선이 주제 안의 종류끼리 이어져요. 종류 안쪽 연결은 버려져요",
-        d3: "선이 항목끼리 하나하나 이어져요. 버리는 것이 없어요",
         spread: "받은 좌표를 그 배수로 벌려요. 끄는 동안 바로 따라와요",
         nodeScale: "크기 인코딩은 그대로 두고 전체를 키워요",
         edgeWidth: "선 굵기 배율이에요. 가중치는 여전히 농도가 말해요",
         cone: "주제의 가지가 중심에서 얼마나 벌어질지예요. 손을 놓을 때 적용돼요",
         when: "그 시점에 있던 것만 보여요. 자기 날짜가 없는 개념은 계속 보여요",
       } as Record<string, string>,
-      bundleDepth: "선 묶기",
-      bundleDepthName: { 1: "주제", 2: "종류", 3: "개별" } as Record<string, string>,
-      labelsFit: "보임",
-      bundleRels: "관계",
-      relDropped: (n) => `${n} 버림`,
-      relNothing: "이 단에서 안 그려요",
-      relEmpty: "다 버리면 묶을 것이 없어요",
-      relStats: (drawn, dropped) => `그린 선 ${drawn} · 버린 자기연결 ${dropped}`,
-      relHover: (label, drawn, dropped) => dropped
-        ? `${label} · 이 단에서 ${drawn}선을 그리고 ${dropped}개를 버려요`
-        : `${label} · 이 단에서 ${drawn}선을 그려요`,
-      relName: {
-        PREREQUISITE_OF: "선행", DERIVES_FROM: "파생", INHERITS_FROM: "상속",
-        RELATED_TO: "연관", CONNECTS: "다리", ABOUT: "관하여", ATTACHES_TO: "부착",
-      } as Record<string, string>,
-      bundleSelf: (n) => `같은 묶음 안의 연결 ${n}개는 이 단계에서 그리지 않아요`,
       nodeScale: "크기 배율", edgeWidth: "선 굵기",
       when: "시점",
       whenAll: "전체",
       groupTime: "시간",
       cone: "밀도",
-      docLinks: "문서 연결",
-      lineage: "원인과 결과",
       timeBasis: "기준",
       replay: "흐름 보기", replayPlay: "재생", replayStop: "멈춤",
       basisRecorded: "기록한 때", basisContent: "일어난 때",
-      noContentTime: "아직 '일어난 때'가 적힌 문서가 없어요. 문서를 쓸 때 함께 적어 보세요",
       fixedNote: "모양과 초점색은 바꿀 수 없어요. 뜻을 담고 있어서, 공유한 팩이 어디서 열어도 같게 보여요",
-      period: "기간",
-      periodAll: "전체",
-      period7d: "최근 7일",
-      period30d: "최근 30일",
-      period90d: "최근 90일",
-      periodYear: "올해",
-      periodCustom: "직접 설정",
-      periodCustomTip: "날짜, 달, 해 단위로 범위를 골라요",
-    },
-    dateRange: {
-      title: "기간 고르기",
-      close: "닫기",
-      start: "시작",
-      end: "끝",
-      format: "YYYY, YYYY-MM, YYYY-MM-DD",
-      invalid: "YYYY, YYYY-MM, YYYY-MM-DD 중 하나로 적어 주세요",
-      reset: "전체 보기",
-      prevMonth: "이전 달",
-      nextMonth: "다음 달",
-      prevYears: "이전 해들",
-      nextYears: "다음 해들",
-      pickMonth: "달 고르기",
-      pickYear: "해 고르기",
-      today: "오늘",
-      pickEnd: "이제 끝나는 날을 골라요",
-      monthsShort: ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"],
-      weekdays: ["일", "월", "화", "수", "목", "금", "토"],
-      weekdaysLong: ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"],
-      monthTitle: (y, m) => `${y}년 ${m + 1}월`,
-      dayCount: (n) => n === 0 ? "" : `기록 ${n}개`,
     },
     viewx: {
       shareCta: "공유하기",
-      timeline: "Timeline",
-      bundle: "Weave",
-      bundleUnfiled: "(미분류)",
       domain: (d) => `주제: ${d}`,
       gateway: " · 게이트웨이",
       shareSlice: (n) => `팩으로 공유하기 (${n}개)`,
@@ -2515,11 +2325,6 @@ const KO: Deck = {
       drillHeader: (topic, seg, n) => `${topic} · ${seg} · ${n}개`,
       drillEmpty: "이 부분에는 개념이 없어요",
       drillFilter: "목록 좁히기",
-      // D45-V2 4단계 — 타임라인 월-밴드 클릭 기간 항목 목록.
-      periodLoading: "이 기간의 문서를 불러오는 중…",
-      periodFail: "이 기간을 불러오지 못했어요. 잠시 후 다시 시도해 보세요. 문서는 그대로 있어요",
-      periodHeader: (month, n) => `${month} · ${n}개`,
-      periodEmpty: "이 기간에는 날짜가 적힌 문서가 없어요",
       // D45-V 1단계 — 흐름 선 클릭 관계 패널: "왜 A 가 B 로 이어지는가".
       relLoading: "연결 정보를 불러오는 중…",
       relFail: "연결 정보를 불러오지 못했어요. 잠시 후 다시 시도해 보세요. 연결은 그대로 있어요",
@@ -2533,29 +2338,12 @@ const KO: Deck = {
         RELATED_TO: (a, b) => `${a}${j(a, "과")} ${b}${j(b, "은")} 서로 관련이 있어요`,
         ABOUT: (a, b) => `${a}${j(a, "은")} ${b}${j(b, "을")} 다뤄요`,
       },
-      // D43 — 관점별 빈 상태(모두 두 절: 무슨 일 + 다음 행동).
-      noDates: "이 문서들에는 아직 날짜가 없어요. 주제를 열면 Timeline 이 보여요",
-      undated: (n) => `날짜가 없는 문서 ${n}개`,
-      noLineage: "아직 무엇이 무엇으로 이어졌는지 적힌 것이 없어요",
-      // 상한에 잘린 수 — 조용한 축소를 만들지 않는다(무엇이 안 그려졌는지 밝힌다).
-      capped: (n) => `오래된 문서 ${n}개는 그리지 않았어요`,
-      narrowPeriod: "기간 좁히기",
-      periodNone: "이 기간에는 기록이 없어요",
-      periodChipTip: "기간 바꾸기",
-      // Totals 스코프 캡션(l2) — 신 사이드카는 씨앗 주변(ego) 집계, 구버전은 seed 를
-      // 무시하고 주제 집계로 온다(scope 에코 부재). 차트가 무엇을 세는지 알약이 밝힌다.
-      // D43 평면 뷰가 그리는 문구 — 차트 이름(스크린리더가 읽는 것)과 Totals 구간 이름.
-      // 원장 키(episodic·record·unsourced·connected·gateway·orphan)는 코드 식별자일
-      // 뿐이라 화면에는 이 사전만 나간다(세 농도 단계를 풀어 주는 유일한 자리).
-      timelineChart: (n, m) => `Timeline: 주제 ${m}개에 걸친 문서 ${n}개`,
+      // 구간 이름(EN 쪽 주석 참조).
       seg: {
         episodic: "대화에서", record: "파일에서", unsourced: "출처 없음",
         connected: "연결됨", gateway: "다른 주제로 이어짐", orphan: "아직 연결 안 됨",
       },
-      // D46 2D 관점 — 허브 배지(마크에 붙는 수치)와 하단 지표바. 지표는 추가 조회
-      // 없이 지금 그린 그래프에서 바로 센다.
-      badgeTip: (label, n) => `${label}: 연결 ${n}개`,
-      anchorTip: "여기에 잡아 뒀어요. 두 번 누르면 원래 자리로 돌아가요",
+      // 하단 지표바(EN 쪽 주석 참조).
       mDocs: "노드",
       mLinked: "연결됨",
       mOrphan: "연결 없음",
