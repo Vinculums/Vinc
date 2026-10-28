@@ -14,8 +14,10 @@ from vinc_client import (AsyncVincClient, VincClient, VincNotFound, VincQuotaExc
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
-from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, SEARCH_DESCRIPTION,
-                               SEARCH_LIMIT_DEFAULT, SEARCH_NAME, BriefArgs, SearchArgs, temporal_options)
+from vinc_client.doc_tool import aread_document, read_document
+from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, DOC_DESCRIPTION, DOC_NAME,
+                               SEARCH_DESCRIPTION, SEARCH_LIMIT_DEFAULT, SEARCH_NAME, BriefArgs,
+                               DocArgs, SearchArgs, temporal_options)
 
 
 def last_user_text(messages: str | Sequence[Any]) -> str:
@@ -106,11 +108,17 @@ _MISSING = "Vinc found nothing for that ({code}); try a different query."
 
 def create_vinc_tools(client: VincClient | None = None,
                       async_client: AsyncVincClient | None = None, *,
-                      max_chars: int = DEFAULT_MAX_CHARS) -> list[StructuredTool]:
+                      max_chars: int = DEFAULT_MAX_CHARS,
+                      documents: bool = False) -> list[StructuredTool]:
     """Two read-only tools, ``vinc_brief`` and ``vinc_search``.
 
     Pass a sync client, an async client, or both; each tool gets the paths it
     has a client for. Nothing here can write.
+
+    With ``documents`` a third, ``vinc_doc_get``, reads a canonical document by id, whole,
+    by character range or under one heading. Give it to an agent whose
+    ``VincContextMiddleware`` runs a ``context_policy``: the middleware sees the tool and
+    then lets the policy shorten required readings, since the model can read the rest.
     """
     if client is None and async_client is None:
         raise ValueError("pass a VincClient, an AsyncVincClient, or both")
@@ -160,7 +168,15 @@ def create_vinc_tools(client: VincClient | None = None,
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return _DOWN.format(code=exc.code)
 
-    return [
+    def doc_get(doc_id: str, start: int | None = None, end: int | None = None,
+                section: str | None = None) -> str:
+        return read_document(client, doc_id, start=start, end=end, section=section)
+
+    async def adoc_get(doc_id: str, start: int | None = None, end: int | None = None,
+                       section: str | None = None) -> str:
+        return await aread_document(async_client, doc_id, start=start, end=end, section=section)
+
+    tools = [
         StructuredTool.from_function(
             func=brief if client else None, coroutine=abrief if async_client else None,
             name=BRIEF_NAME, args_schema=BriefArgs, description=BRIEF_DESCRIPTION),
@@ -168,6 +184,11 @@ def create_vinc_tools(client: VincClient | None = None,
             func=search if client else None, coroutine=asearch if async_client else None,
             name=SEARCH_NAME, args_schema=SearchArgs, description=SEARCH_DESCRIPTION),
     ]
+    if documents:
+        tools.append(StructuredTool.from_function(
+            func=doc_get if client else None, coroutine=adoc_get if async_client else None,
+            name=DOC_NAME, args_schema=DocArgs, description=DOC_DESCRIPTION))
+    return tools
 
 
 def record_episode(client: VincClient, title: str, *, summary: str = "",

@@ -35,7 +35,7 @@ import inspect
 import json
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol, runtime_checkable
+from typing import Any, Callable, Protocol, Union, runtime_checkable
 
 from . import __version__
 from . import errors as _errors
@@ -44,7 +44,9 @@ from .context import BOUNDARY, evidence_metadata, fence
 from .errors import VincError, VincInvalidArgument, VincNotFound
 from .prefetch import (DEFAULT_PREFETCH_MAX_CHARS, RolePrefetch, _with_task_evidence,
                        check_budget, citation_policy, cite_id, document_key, reading_list,
-                       required_context, required_reading, role_context, with_citation)
+                       required_context, required_reading, role_context, verified_document,
+                       with_citation)
+from .tools import DOC_NAME
 
 #: 렌더러나 검사가 바뀌면 올린다. 같은 판이면 같은 읽기에서 같은 블록이 나와야 한다.
 COMPILER_VERSION = "1"
@@ -281,14 +283,6 @@ def _read_required(reader: PolicyReader, read: str) -> dict[str, Any]:
     return with_citation(read, document, node)
 
 
-def _verified(result: dict[str, Any], doc_id: str) -> bool:
-    text = result.get("text")
-    return (result.get("doc_id") == doc_id and result.get("executed") is True
-            and result.get("verified") is True and not result.get("partial")
-            and not result.get("error") and isinstance(text, str) and bool(text.strip())
-            and hashlib.sha256(text.encode("utf-8")).hexdigest() == result.get("content_hash"))
-
-
 def _read_anchors(reader: PolicyReader, anchors: tuple[str, ...]) -> None:
     for anchor in dict.fromkeys(anchors):
         try:
@@ -297,7 +291,7 @@ def _read_anchors(reader: PolicyReader, anchors: tuple[str, ...]) -> None:
                 ok = got.get("found") is not False and (got.get("node") or {}).get("id") == anchor
             else:
                 got = reader.document(document_key(anchor))
-                ok = _verified(got, document_key(anchor))
+                ok = verified_document(got, document_key(anchor))
         except VincError as exc:
             # 앵커는 호출자가 고른 선택 읽기다. 못 읽으면 manifest 에 남기고 컴파일은 계속한다.
             reader._anchors[anchor] = {"status": exc.code or "error"}
@@ -326,14 +320,14 @@ def _spans_block(read: str, result: dict[str, Any], spans: tuple[tuple[int, int]
                  label: str, read_tool: bool) -> str:
     data = _doc_data(result)
     data["spans"] = [{"start": s, "end": e, "text": result["text"][s:e]} for s, e in spans]
-    rest = "; read the rest with the document tool" if read_tool else ""
+    rest = f"; read the rest with {DOC_NAME}" if read_tool else ""
     return (f"{label} (selected character ranges of the canonical document{rest}): "
             f"{read} ({_citation(result, read)})\n{BOUNDARY}\n\n"
             + fence(json.dumps(data, ensure_ascii=False, indent=2)))
 
 
 def _pointer_block(read: str, result: dict[str, Any]) -> str:
-    return (f"Required reading (not included; read it with the document tool before relying "
+    return (f"Required reading (not included; read it with {DOC_NAME} before relying "
             f"on it): {read} ({_citation(result, read)})\n{BOUNDARY}\n\n"
             + fence(json.dumps(_doc_data(result), ensure_ascii=False, indent=2)))
 
@@ -422,7 +416,7 @@ def _optional_source(reader: PolicyReader, source: str) -> tuple[str, dict[str, 
             raise _reject("I7", f"{source!r} was not read through the reader in this space")
         answer = entry["response"]
         if doc:
-            if not _verified(answer, document_key(source)):
+            if not verified_document(answer, document_key(source)):
                 raise _reject("I5", f"{source!r} was not read as a verified document")
             return "document", answer
         else:
@@ -583,8 +577,13 @@ def _mirror(reader: PolicyReader, read: str, document: dict[str, Any]) -> dict[s
     return with_citation(read, document, node)
 
 
+#: ``read_tool`` 자리에 줄 수 있는 것: 값, 또는 이 호출에서 읽은 역할 계약을 받아 값을 내는 함수.
+ReadTool = Union[bool, Callable[[dict], bool]]
+
+
 def _compile(request: ContextRequest, policy: ContextPolicy,
-             send: Callable[[str, dict[str, Any]], dict[str, Any]]) -> CompiledContext:
+             send: Callable[[str, dict[str, Any]], dict[str, Any]],
+             read_tool_for: Callable[[dict], bool] | None = None) -> CompiledContext:
     if not isinstance(request, ContextRequest):
         raise VincInvalidArgument("invalid_argument", "request must be a ContextRequest.")
     if isinstance(request.max_chars, bool) or not isinstance(request.max_chars, int) \
@@ -601,6 +600,11 @@ def _compile(request: ContextRequest, policy: ContextPolicy,
     reader = PolicyReader(request, send)
     contract = reader._role()
     reads = reading_list(contract)
+    if read_tool_for is not None:
+        # 문서 읽기 도구가 있어도 역할이 그 도구를 막거나 승인으로 묶으면 모델은 못 쓴다.
+        # 그래서 이 판단은 계약을 읽은 뒤에 한다(I4).
+        request = dataclasses.replace(request, read_tool=bool(read_tool_for(contract)))
+        reader._request = request
     reader._contract = contract
     reader._required = tuple((read, _read_required(reader, read)) for read in reads)
     _read_anchors(reader, tuple(request.anchors))
@@ -627,19 +631,23 @@ def _sender(client: Any) -> Callable[[str, dict[str, Any]], dict[str, Any]]:
     return send
 
 
-def compile_context(client: Any, request: ContextRequest,
-                    policy: ContextPolicy = FULL_TEXT) -> CompiledContext:
+def compile_context(client: Any, request: ContextRequest, policy: ContextPolicy = FULL_TEXT, *,
+                    read_tool_for: Callable[[dict], bool] | None = None) -> CompiledContext:
     """Read and compile ``request`` with ``client`` (a :class:`VincClient`) under ``policy``.
 
     Reads run one at a time without retries, like prefetch's sequential mode. Nothing is
     cached across calls and nothing is written. Raises prefetch's error codes for the
     role and its readings, and ``context_plan_rejected`` for a plan that breaks an invariant.
+
+    ``read_tool_for`` decides ``request.read_tool`` from the role contract this call read,
+    for a host whose document tool the role itself may disallow.
     """
-    return _compile(request, policy, _sender(client))
+    return _compile(request, policy, _sender(client), read_tool_for)
 
 
 async def acompile_context(client: Any, request: ContextRequest,
-                           policy: ContextPolicy = FULL_TEXT) -> CompiledContext:
+                           policy: ContextPolicy = FULL_TEXT, *,
+                           read_tool_for: Callable[[dict], bool] | None = None) -> CompiledContext:
     """:func:`compile_context` for an :class:`AsyncVincClient`.
 
     The policy stays synchronous: it runs in a worker thread and each read is awaited on
@@ -668,7 +676,7 @@ async def acompile_context(client: Any, request: ContextRequest,
             running.discard(future)
 
     try:
-        return await asyncio.to_thread(_compile, request, policy, send)
+        return await asyncio.to_thread(_compile, request, policy, send, read_tool_for)
     except asyncio.CancelledError:
         # 작업 스레드는 취소할 수 없다. 남은 읽기를 막고 진행 중인 읽기를 취소해 곧 끝나게 한다.
         stop.set()
@@ -683,20 +691,26 @@ class _Cancelled(Exception):
 
 def role_prefetch(client: Any, role: str, task: str, *, policy: ContextPolicy,
                   max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None,
-                  read_tool: bool = False) -> RolePrefetch:
-    """What the adapters call instead of ``prefetch_with_contract`` when given a policy."""
+                  read_tool: ReadTool = False) -> RolePrefetch:
+    """What the adapters call instead of ``prefetch_with_contract`` when given a policy.
+
+    ``read_tool`` may be a function of the role contract (see :func:`compile_context`).
+    """
+    fixed = False if callable(read_tool) else read_tool
     return compile_context(client, ContextRequest(role=role, task=task, pin=pin,
-                                                  max_chars=max_chars, read_tool=read_tool),
-                           policy).as_prefetch()
+                                                  max_chars=max_chars, read_tool=fixed),
+                           policy, read_tool_for=read_tool if callable(read_tool) else None
+                           ).as_prefetch()
 
 
 async def arole_prefetch(client: Any, role: str, task: str, *, policy: ContextPolicy,
                          max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None,
-                         read_tool: bool = False) -> RolePrefetch:
+                         read_tool: ReadTool = False) -> RolePrefetch:
     """:func:`role_prefetch` for an :class:`AsyncVincClient`."""
+    fixed = False if callable(read_tool) else read_tool
     return (await acompile_context(client, ContextRequest(
-        role=role, task=task, pin=pin, max_chars=max_chars, read_tool=read_tool),
-        policy)).as_prefetch()
+        role=role, task=task, pin=pin, max_chars=max_chars, read_tool=fixed), policy,
+        read_tool_for=read_tool if callable(read_tool) else None)).as_prefetch()
 
 
 def replay_context(compiled: CompiledContext, request: ContextRequest,

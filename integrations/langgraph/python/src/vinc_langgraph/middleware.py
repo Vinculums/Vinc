@@ -11,11 +11,12 @@ from langchain.agents.middleware import AgentMiddleware, ModelRequest
 from langchain_core.messages import ToolMessage
 from vinc_client import AsyncVincClient, VincClient
 from vinc_client.compiler import ContextPolicy, arole_prefetch, role_prefetch
+from vinc_client.doc_tool import doc_tool_allowed
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS, package_space
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
-from vinc_client.tool_policy import RoleToolPolicy
-from vinc_client.tools import TOOL_CALLS_PER_RUN, VINC_TOOL_NAMES, cap_message
+from vinc_client.tool_policy import RoleToolPolicy, tool_name
+from vinc_client.tools import DOC_NAME, TOOL_CALLS_PER_RUN, VINC_TOOL_NAMES, cap_message
 
 from .helpers import build_system_message, last_user_text
 
@@ -54,6 +55,11 @@ def _run_marker(messages: Any) -> tuple[str, str]:
     return ("text", last_user_text(messages))
 
 
+def _has_doc_tool(tools: Any) -> bool:
+    # 도구 목록을 모르는 경로(도구 호출 거절)는 문서 도구가 없는 것으로 본다. 전문으로 싣는 쪽이 안전하다.
+    return any(tool_name(tool) == DOC_NAME for tool in tools or ())
+
+
 #: 두 캐시 각각의 상한. 넘치면 가장 먼저 담은 것부터 버린다.
 _CACHE_ENTRIES = 64
 
@@ -86,6 +92,8 @@ class VincContextMiddleware(AgentMiddleware):
     ``context_policy`` (with ``prefetch_role``) builds the role's block with
     ``vinc_client.compile_context`` under that policy instead of ``prefetch``. The block is
     kept for the run in the same way. ``vinc_client.FULL_TEXT`` gives prefetch's block.
+    When the agent's tools include ``vinc_doc_get`` (``create_vinc_tools(documents=True)``),
+    the policy may shorten required readings, because the model can read the rest.
 
     In role prefetch mode the contract's ``disallowed_tools`` apply to the run, by exact
     tool name: those tools are removed from what the model sees, a call to one of them gets
@@ -171,16 +179,31 @@ class VincContextMiddleware(AgentMiddleware):
 
     def _refused(self, request: Any) -> ToolMessage | None:
         # 이 런의 계약은 앞선 모델 호출이 담아 두었다. 비었으면(clear_cache 등) 다시 읽는다.
+        # 정책으로 짓는 블록은 도구 경로에서 다시 컴파일하지 않는다(그 자리에는 도구 목록이 없다).
+        # 계약만 읽어 도구 정책을 얻는다.
         if not self.prefetch_role:
             return None
         messages = (getattr(request, "state", None) or {}).get("messages")
-        return self._refusal(request, self._prefetch(messages)[1], messages)
+        policy = self._kept_policy(self.client, messages)
+        if policy is None and self.context_policy is not None:
+            policy = RoleToolPolicy.from_contract(self.client.without_retries().role(
+                self.prefetch_role, pin=self.prefetch_pin), self.capability_map)
+        # RoleToolPolicy 는 규칙이 없으면 거짓이다. None 만 "아직 없음"이다.
+        if policy is None:
+            policy = self._prefetch(messages)[1]
+        return self._refusal(request, policy, messages)
 
     async def _arefused(self, request: Any) -> ToolMessage | None:
         if not self.prefetch_role:
             return None
         messages = (getattr(request, "state", None) or {}).get("messages")
-        return self._refusal(request, (await self._aprefetch(messages))[1], messages)
+        policy = self._kept_policy(self.async_client, messages)
+        if policy is None and self.context_policy is not None:
+            policy = RoleToolPolicy.from_contract(await self.async_client.without_retries().role(
+                self.prefetch_role, pin=self.prefetch_pin), self.capability_map)
+        if policy is None:
+            policy = (await self._aprefetch(messages))[1]
+        return self._refusal(request, policy, messages)
 
     def wrap_tool_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
         return self._refused(request) or self._capped(request) or handler(request)
@@ -226,10 +249,26 @@ class VincContextMiddleware(AgentMiddleware):
     def _remember(self, key: tuple, block: str | None) -> None:
         self._keep(self._cache, key, (time.monotonic(), block))
 
-    def _prefetch_key(self, client: VincClient | AsyncVincClient, messages: Any) -> tuple:
+    def _prefetch_key(self, client: VincClient | AsyncVincClient, messages: Any,
+                      docs: bool = False) -> tuple:
+        # docs: 에이전트 도구에 vinc_doc_get 이 있는가. 같은 미들웨어를 도구가 다른 에이전트 둘이
+        # 나눠 써도 서로의 블록을 받지 않는다.
         return (self._cache_generation, client, client.context_cache_identity,
                 self.prefetch_role, self.prefetch_max_chars, self.prefetch_pin,
-                id(self.context_policy), _run_marker(messages))
+                id(self.context_policy), docs, _run_marker(messages))
+
+    def _read_tool(self, tools: Any) -> Any:
+        if not _has_doc_tool(tools):
+            return False
+        return lambda contract: doc_tool_allowed(contract, self.capability_map)
+
+    def _kept_policy(self, client: VincClient | AsyncVincClient,
+                     messages: Any) -> RoleToolPolicy | None:
+        for docs in (True, False):
+            kept = self._prefetched.get(self._prefetch_key(client, messages, docs))
+            if kept is not None:
+                return kept[1]
+        return None
 
     def _ran(self, key: tuple, fetched: Any, tools: Any) -> tuple[str, RoleToolPolicy]:
         # 계약의 도구 목록이 잘못됐으면 담기 전에 멈춘다. 경고는 새로 읽은 런의 첫 호출에서 한 번.
@@ -241,14 +280,15 @@ class VincContextMiddleware(AgentMiddleware):
 
     def _prefetch(self, messages: Any, tools: Any = None) -> tuple[str, RoleToolPolicy]:
         # 런마다 한 번 읽는다. 실패는 담지 않고 그대로 올린다(다음 모델 호출이 다시 읽는다).
-        key = self._prefetch_key(self.client, messages)
+        key = self._prefetch_key(self.client, messages, _has_doc_tool(tools))
         kept = self._prefetched.get(key)
         if kept is not None:
             return kept
         if self.context_policy is not None:
             fetched = role_prefetch(self.client, self.prefetch_role, last_user_text(messages),
                                     policy=self.context_policy,
-                                    max_chars=self.prefetch_max_chars, pin=self.prefetch_pin)
+                                    max_chars=self.prefetch_max_chars, pin=self.prefetch_pin,
+                                    read_tool=self._read_tool(tools))
         else:
             fetched = self.client.prefetch_with_contract(
                 self.prefetch_role, last_user_text(messages), max_chars=self.prefetch_max_chars,
@@ -256,7 +296,7 @@ class VincContextMiddleware(AgentMiddleware):
         return self._ran(key, fetched, tools)
 
     async def _aprefetch(self, messages: Any, tools: Any = None) -> tuple[str, RoleToolPolicy]:
-        key = self._prefetch_key(self.async_client, messages)
+        key = self._prefetch_key(self.async_client, messages, _has_doc_tool(tools))
         kept = self._prefetched.get(key)
         if kept is not None:
             return kept
@@ -264,7 +304,7 @@ class VincContextMiddleware(AgentMiddleware):
             fetched = await arole_prefetch(self.async_client, self.prefetch_role,
                                            last_user_text(messages), policy=self.context_policy,
                                            max_chars=self.prefetch_max_chars,
-                                           pin=self.prefetch_pin)
+                                           pin=self.prefetch_pin, read_tool=self._read_tool(tools))
         else:
             fetched = await self.async_client.prefetch_with_contract(
                 self.prefetch_role, last_user_text(messages), max_chars=self.prefetch_max_chars,
