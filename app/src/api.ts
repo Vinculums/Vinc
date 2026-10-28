@@ -668,6 +668,11 @@ type NodeLink = {
   dir: "out" | "in" | "att";
   evidence: boolean;      // 근거 문장이 기록돼 있는가(문장 전문은 edge-context)
   confidence: number;
+  // `evidence=1` 로 읽으면 저장된 문장 자체(항목 페이지가 인용한다)와 상대의 유효구간.
+  evidence_text?: string;
+  valid_from?: string; valid_until?: string;
+  temporal?: { created_at?: string | null; valid_from?: string | null; valid_until?: string | null;
+               superseded_by?: string | null } | null;
 };
 export type NodeLinks = {
   degree: number; out: number; in: number; attached: number;
@@ -693,6 +698,9 @@ export type NodeContext = {
   found?: boolean; props?: Record<string, unknown>; node_kind?: string; rev?: number;
   excerpts?: { doc_id: string; doc_title: string; section: string; excerpt: string; method: string }[];
   links?: NodeLinks; topic?: TopicDetail;
+  /** 시간 메타(search_temporal) — 효력 시작·끝·후속. 결정은 속성에서, 기록은 열에서 온다. */
+  temporal?: { created_at?: string | null; valid_from?: string | null; valid_until?: string | null;
+               superseded_by?: string | null; validity?: string } | null;
 };
 /** D69 좌측 문서 트리. 문서는 주제 열을 갖지 않으므로 주제도 착지 노드도 언급
  *  (MENTIONS)에서 유도된다 — `모든 문서` 목록과 같은 원천이라 두 화면이 같은 문서를
@@ -956,8 +964,9 @@ export const api = {
   // 전량 빈 값이고 사람이 쓴 요약은 실제로 props 에 들어 있다 — 호출부는
   // one_liner → props 순으로 본문을 고른다. 구 사이드카엔 키가 없다(undefined).
   nodeContext: (owner: string, node: string, limit = 4, scope?: Scope,
-                linksOffset = 0): Promise<NodeContext> =>
-    call("/node-context", { owner, node, limit, links_offset: linksOffset }, undefined, scope),
+                linksOffset = 0, evidence = false): Promise<NodeContext> =>
+    call("/node-context", { owner, node, limit, links_offset: linksOffset,
+      ...(evidence ? { evidence: 1 } : {}) }, undefined, scope),
   topicDescription: (owner: string, node: string, text: string, expected_content_hash: string,
                      scope?: Scope): Promise<TopicDescription> =>
     call("/topic-description", undefined, { owner, node, text, expected_content_hash }, scope),

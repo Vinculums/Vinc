@@ -1,5 +1,5 @@
 import { api, cfg, WEB, teamsApi, isCommunitySpace, canWriteHere, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, messageOf, isWriteConflict, type GraphEdge, type GraphNode,
-         type NodeLinks } from "../api";
+         type NodeLinks, type NodeContext } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
 import { absoluteViewUrl, formatViewUrl, parseViewUrl } from "../view-url";
@@ -19,6 +19,7 @@ import { bundleStatsByType, mountBundle, type BundleEdge,
 import { recede } from "../recede";
 import { causalCone, spotOf, type Spot } from "../spotlight";
 import { openShareSheet } from "../sheets";
+import { sayings, statedStart, decisionSteps, type ItemLink, type Step } from "../item-page";
 import { isHistorical } from "../node-validity";
 import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
@@ -2466,7 +2467,8 @@ export async function renderView(el: HTMLElement, resume = false) {
   const nodeContextOnce = (id: string) => {
     const scope = viewScope().key;
     if (ctxCache?.id !== id || ctxCache.scope !== scope)
-      ctxCache = { id, scope, p: api.nodeContext(cfg.owner, id, 4, { team: cfg.team || null }) };
+      // 근거 문장까지 싣는다 — 넓은 열의 항목 페이지가 그것을 인용한다(카드는 불리언만 읽는다).
+      ctxCache = { id, scope, p: api.nodeContext(cfg.owner, id, 4, { team: cfg.team || null }, 0, true) };
     return ctxCache.p;
   };
 
@@ -2807,6 +2809,7 @@ export async function renderView(el: HTMLElement, resume = false) {
           esc(COPY.author.connect)}</button>
         <button class="btn btn-quiet" id="nd-del">${COPY.ui.viewx.del}</button>
       </p>
+      <div id="node-item"></div>
       <div id="node-basics"></div>
       <div id="node-props"></div>
       <div id="node-links"></div>
@@ -3292,6 +3295,87 @@ export async function renderView(el: HTMLElement, resume = false) {
   }
 
   /** 넓은 열의 연결 절 — 카드가 없는 자리라 관계를 여기 싣는다. 모양은 카드와 같다. */
+  /** 항목 페이지(A2) — 넓은 열에서만. 효력 시작일(비었으면 노드가 말한 날로 한 번에 채우기),
+   *  대체 관계, 그래프가 말하는 것(저장된 문장 인용), 어떻게 정해졌나(목록 · 지도).
+   *  문장을 만들지 않는다: 근거는 `item-page.ts` 머리 주석. */
+  function drawItemPage(nd: N3, res: NodeContext, canEdit: boolean) {
+    const box = detail.querySelector<HTMLElement>("#node-item");
+    if (!box) return;
+    const V = COPY.ui.viewx;
+    const kind = res.node_kind || "";
+    const links = (res.links?.items || []) as ItemLink[];
+    const t = res.temporal || {};
+    const validFrom = t.valid_from || "";
+    const fix = canEdit && (kind === "decision" || kind === "record") ? statedStart(validFrom, res.props) : "";
+    const steps = decisionSteps({ id: nd.id, title: res.title || nd.label, validFrom,
+      validUntil: t.valid_until, createdAt: t.created_at }, links);
+    const replacedBy = steps.filter((s) => s.rel === "replaced_by");
+    const replaces = steps.filter((s) => s.rel === "replaces");
+    const row = (k: string, v: string) => `<div class="stat-row"><span class="hint">${esc(k)}</span>${v}</div>`;
+    const names = (ss: Step[]) => `<b>${ss.map((s) => esc(s.title)).join(", ")}</b>`;
+    const facts = (kind === "decision" || kind === "record" ? row(V.itemInForce, validFrom
+        ? `<b>${esc(validFrom)}</b>`
+        : `<span class="item-fix"><span class="hint">${esc(V.itemNotSet)}</span>${fix
+          ? `<button class="btn" type="button" data-item-fix="${esc(fix)}">${esc(V.itemSetOn(fix))}</button>` : ""}</span>`) : "")
+      + (t.valid_until ? row(V.itemEnded, `<b>${esc(String(t.valid_until))}</b>`) : "")
+      + (replacedBy.length ? row(V.itemReplacedBy, names(replacedBy)) : "")
+      + (replaces.length ? row(V.itemReplaces, names(replaces)) : "");
+    const says = sayings(res.props, links);
+    const relName = (type: string, dir: string) => COPY.ui.ask.relTag[`${type}:${dir}`] || type.toLowerCase();
+    const sayHTML = says.length ? says.map((s) => `<blockquote class="item-say">
+        <p>${esc(s.text)}</p>
+        <p class="hint">${s.from === "prop" ? esc(V.itemSayProp(COPY.author.kinds[kind] || kind, s.key))
+          : `${esc(V.itemSayRel(relName(s.type, s.dir)))} <button type="button" class="link-btn" data-item-go="${
+            esc(s.id)}">${esc(s.title)}</button>`}</p></blockquote>`).join("")
+      : `<p class="hint">${esc(V.itemSaysNone)}</p>`;
+    const status = (s: Step) => s.rel === "self" ? V.itemStepSelf : s.ended ? V.itemStepEnded(s.ended)
+      : s.rel === "replaced_by" ? V.itemReplacedBy : s.rel === "replaces" ? V.itemReplaces : V.itemStepRelated;
+    const list = steps.map((s) => `<div class="item-step${s.rel === "self" ? " is-self" : ""}">
+        <span class="hint">${esc(s.date || V.itemNoDate)}</span>
+        ${s.rel === "self" ? `<b>${esc(s.title)}</b>` : `<button type="button" class="link-btn" data-item-go="${
+          esc(s.id)}">${esc(s.title)}</button>`}
+        <span class="hint">${esc(status(s))}</span></div>`).join("");
+    // 지도 = 같은 걸음을 시간 순서대로 왼쪽에서 오른쪽으로(time-branches 와 같은 읽기 방향).
+    const map = `<div class="item-map">${steps.map((s, i) => `${i ? `<span class="item-arrow" aria-hidden="true">→</span>` : ""}
+        <div class="item-cell${s.rel === "self" ? " is-self" : ""}"><span class="hint">${esc(status(s))}</span>
+        <b>${esc(s.title)}</b><span class="hint">${esc(s.date || V.itemNoDate)}</span></div>`).join("")}</div>`;
+    const decided = steps.length > 1;
+    box.innerHTML = `${facts ? `<div class="item-facts">${facts}</div>` : ""}
+      <section class="item-sec"><h3 class="hint rail-sec">${esc(V.itemSays)}</h3>${sayHTML}</section>
+      ${decided ? `<section class="item-sec"><div class="item-sec-head"><h3 class="hint rail-sec">${esc(V.itemDecided)}</h3>
+        <span class="seg" role="radiogroup" aria-label="${esc(V.itemDecided)}">
+          <button type="button" role="radio" aria-checked="true" data-item-view="list">${esc(V.itemList)}</button>
+          <button type="button" role="radio" aria-checked="false" data-item-view="map">${esc(V.itemMap)}</button>
+        </span></div>
+        <div data-item-pane="list">${list}</div><div data-item-pane="map" hidden>${map}</div></section>` : ""}`;
+    box.querySelectorAll<HTMLButtonElement>("[data-item-view]").forEach((b) => b.addEventListener("click", () => {
+      box.querySelectorAll<HTMLButtonElement>("[data-item-view]").forEach((o) =>
+        o.setAttribute("aria-checked", String(o === b)));
+      box.querySelectorAll<HTMLElement>("[data-item-pane]").forEach((p) => {
+        p.hidden = p.dataset.itemPane !== b.dataset.itemView; });
+    }));
+    box.querySelectorAll<HTMLElement>("[data-item-go]").forEach((b) => b.addEventListener("click", () =>
+      void followDetail(nd, b.dataset.itemGo!, undefined, true)));
+    box.querySelector<HTMLButtonElement>("[data-item-fix]")?.addEventListener("click", async (ev) => {
+      const btn = ev.currentTarget as HTMLButtonElement;
+      const day = btn.dataset.itemFix!;
+      btn.disabled = true;
+      try {
+        // 결정의 구간은 속성에, 기록의 구간은 열에 있다(GRAPH.md). 판 확인은 서버가 한다.
+        const node = kind === "decision"
+          ? { id: nd.id, type: kind, props_patch: { valid_from: day } }
+          : { id: nd.id, type: kind, valid_from: day };
+        const out: any = await api.editNode(node, res.rev ?? 0);
+        if (isWriteConflict(out) || out?.executed === false) throw new Error(out?.error || "conflict");
+        ctxCache = null;
+        await loadNodeSource(nd);
+      } catch {
+        btn.disabled = false;
+        btn.insertAdjacentHTML("afterend", `<span class="hint">${esc(V.itemFixFailed)}</span>`);
+      }
+    });
+  }
+
   function drawPaneLinks(nd: N3, links: NodeLinks) {
     const box = detail.querySelector<HTMLElement>("#node-links");
     if (!box) return;
@@ -3548,6 +3632,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       if (basics) void import("../node-basics").then((m) => m.drawBasics(basics, nd.id, res,
         (domain) => void openNodePane(nd.id, domain || undefined), canEdit));
       if (railFull && res.links?.executed) drawPaneLinks(nd, res.links);
+      if (railFull) drawItemPage(nd, res, canEdit);
       const parts: string[] = [];
       if (res.one_liner) parts.push(`<div class="doc-render">${renderMarkdown(res.one_liner)}</div>`);
       const ex = res.excerpts || [];

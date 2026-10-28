@@ -43,3 +43,48 @@ test("a claim is historical once its interval closes or it has a successor", () 
   assert.equal(isHistorical({ props: { superseded_by: "decision:next" } }, today), true);
   assert.equal(isHistorical({ props: { superseded_by: "" } }, today), false);
 });
+
+const { sayings, statedStart, decisionSteps } = await source("../src/item-page.ts");
+
+test("the item page quotes stored sentences only, ruling first, and skips run-id evidence", () => {
+  const props = { why: "Because the owner said so on the day.", ruling: "Use the infra layout as it comes down.",
+    code: "vinc:app/src/view3d.ts, vinc:app/src/x.ts", status: "adopted", date: "2026-10-28", tag: "x" };
+  const links = [
+    { id: "decision:a", title: "A", type: "SUPERSEDES", dir: "out", evidence_text: "The owner replaced A with this on 28 Oct." },
+    { id: "record:b", title: "B", type: "ABOUT", dir: "in", evidence_text: "run:7f3a" },
+  ];
+  const got = sayings(props, links);
+  assert.deepEqual(got.map((s) => s.from === "prop" ? s.key : s.id), ["ruling", "why", "decision:a"]);
+});
+
+test("a missing start date is filled only from a date the item itself states", () => {
+  assert.equal(statedStart("", { date: "2026-10-11" }), "2026-10-11");
+  assert.equal(statedStart("2026-10-01", { date: "2026-10-11" }), "", "already set");
+  assert.equal(statedStart("", { decided_at: "2026-10" }), "2026-10");
+  assert.equal(statedStart("", { date: "last week" }), "", "not a date");
+  assert.equal(statedStart("", {}), "");
+});
+
+test("how it was decided lists the item, what it replaced and what replaced it, by date", () => {
+  const steps = decisionSteps({ id: "decision:now", title: "Now", validFrom: "2026-10-11" }, [
+    { id: "decision:old", title: "Old", type: "SUPERSEDES", dir: "out", valid_from: "2026-08-01", valid_until: "2026-10-11" },
+    { id: "decision:next", title: "Next", type: "SUPERSEDES", dir: "in", temporal: { valid_from: "2026-10-22" } },
+    { id: "concept:c", title: "C", type: "ABOUT", dir: "out" },
+    { id: "decision:side", title: "Side", type: "RELATED_TO", dir: "out" },
+  ]);
+  assert.deepEqual(steps.map((s) => [s.id, s.rel]), [["decision:old", "replaces"], ["decision:now", "self"],
+    ["decision:next", "replaced_by"], ["decision:side", "related"]]);
+  assert.equal(steps[0].ended, "2026-10-11");
+});
+
+const { namedDecisions, docMirrorId } = await source("../src/doc-graph.ts");
+
+test("a document names decisions by id, once each, with the line it stands on", () => {
+  const text = "# Audit\nSee [[decision:view-offers-two-layouts-2026-10-11]] and decision:x-1.\n"
+    + "Again decision:x-1 here.\nNot decision: a label.";
+  assert.deepEqual(namedDecisions(text), [
+    { id: "decision:view-offers-two-layouts-2026-10-11", line: "See [[decision:view-offers-two-layouts-2026-10-11]] and decision:x-1." },
+    { id: "decision:x-1", line: "See [[decision:view-offers-two-layouts-2026-10-11]] and decision:x-1." },
+  ]);
+  assert.equal(docMirrorId("vinc.audit.x"), "concept:doc.vinc.audit.x");
+});

@@ -1982,6 +1982,28 @@ textarea.props-val {
   border-bottom: 1px solid hsl(var(--border) / .55);
 }
 .stat-row b { font-variant-numeric: tabular-nums; font-weight: 600; }
+/* A2 항목 페이지 — 넓은 열에서만 선다(view.ts drawItemPage). */
+.item-facts { margin: .6rem 0; }
+.item-fix { display: inline-flex; align-items: center; gap: .4rem; }
+.item-sec { margin: 1rem 0; }
+.item-sec-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.item-say { margin: .45rem 0; padding: .1rem 0 .1rem .75rem; border-left: 2px solid hsl(var(--border)); }
+.item-say p { margin: .1rem 0; }
+.item-step { display: grid; grid-template-columns: 6.5rem 1fr auto; gap: .6rem; align-items: baseline;
+  padding: .3rem 0; border-bottom: 1px solid hsl(var(--border) / .5); }
+.item-step.is-self b { color: hsl(var(--foreground)); }
+.item-map { display: flex; align-items: stretch; gap: .4rem; overflow-x: auto; padding: .4rem 0; }
+.item-cell { display: flex; flex-direction: column; gap: .15rem; min-width: 9rem; max-width: 14rem;
+  padding: .5rem .6rem; border: 1px solid hsl(var(--border)); border-radius: .5rem; }
+.item-cell.is-self { border-color: hsl(var(--ring)); }
+.item-arrow { align-self: center; color: hsl(var(--caption-foreground)); }
+.item-sec .link-btn, .item-say .link-btn { border: none; background: none; padding: 0; font: inherit;
+  color: hsl(var(--link)); cursor: pointer; text-align: left; }
+.item-sec .link-btn:hover { text-decoration: underline; }
+.item-sec-head .seg { display: inline-flex; border: 1px solid hsl(var(--border)); border-radius: .45rem; padding: .1rem; }
+.item-sec-head .seg button { border: none; background: none; font: inherit; font-size: var(--fs-sm);
+  color: hsl(var(--caption-foreground)); padding: .15rem .5rem; border-radius: .35rem; cursor: pointer; }
+.item-sec-head .seg button[aria-checked="true"] { background: hsl(var(--muted-foreground) / .14); color: hsl(var(--foreground)); }
 .stat-note { margin: var(--space-2, .5rem) 0 0; }
 .rail-acts { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; }
 /* ── 리더 머리 — 본문 **앞에** 서는 두 줄: 이 문서가 무엇에 걸려 있고(칩) 어떤
@@ -3909,6 +3931,16 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .ha-btn { height: 2rem; padding: 0 .7rem; font-size: .8125rem; }
 .ha-sec { display: flex; flex-direction: column; gap: var(--space-2, .5rem); min-width: 0; }
 .ha-sec[hidden] { display: none; }
+/* A1 그래프에서 — 결정 한 줄씩, 잇지 않은 것은 경고 띠와 함께. */
+.ha-graph { display: flex; flex-direction: column; gap: .15rem; }
+.ha-graph-i { display: flex; flex-direction: column; align-items: flex-start; gap: .05rem; border: none;
+  background: none; font: inherit; text-align: left; padding: .3rem .25rem; border-radius: .4rem; cursor: pointer; min-width: 0; }
+.ha-graph-i:hover { background: hsl(var(--muted-foreground) / .08); }
+.ha-graph-i > span:first-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ha-graph-i.is-loose > span:first-child { color: hsl(var(--caption-foreground)); }
+.ha-graph-warn { display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  margin-top: .35rem; padding: .5rem .6rem; border-radius: .5rem; background: hsl(var(--warning) / .16);
+  font-size: var(--fs-sm); }
 .ha-h {
   margin: 0; font-size: .72rem; font-weight: 600; letter-spacing: .02em;
   color: hsl(var(--caption-foreground));
