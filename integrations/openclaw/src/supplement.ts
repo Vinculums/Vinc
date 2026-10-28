@@ -89,9 +89,9 @@ export type VincSupplementOptions = {
 };
 
 const CORPUS = "vinc";
-const DOC_PREFIX = "vinc://doc/";
-const NODE_PREFIX = "vinc://node/";
-const HUB_SEARCH_LIMIT_MAX = 50;
+export const DOC_PREFIX = "vinc://doc/";
+export const NODE_PREFIX = "vinc://node/";
+export const HUB_SEARCH_LIMIT_MAX = 50;
 
 // ── 허브 JSON-RPC 클라이언트 ─────────────────────────────────────────────────
 // MCP tools/call 을 단발 HTTP POST 로 부른다. 주의 둘:
@@ -126,8 +126,20 @@ function parseSse(raw: string): RpcBody {
   throw new Error("vinc hub: no JSON-RPC response in event stream");
 }
 
-async function callTool(
-  o: Required<Pick<VincSupplementOptions, "url" | "apiKey" | "timeoutMs" | "fetchImpl">>,
+/** 허브 호출에 필요한 것만 묶은 연결. supplement 와 메모리 슬롯(memory.ts)이 같이 쓴다. */
+export type HubConnection = Required<Pick<VincSupplementOptions, "url" | "apiKey" | "timeoutMs" | "fetchImpl">>;
+
+export function hubConnection(options: VincSupplementOptions): HubConnection {
+  return {
+    url: options.url,
+    apiKey: options.apiKey,
+    timeoutMs: options.timeoutMs ?? 10_000,
+    fetchImpl: options.fetchImpl ?? fetch,
+  };
+}
+
+export async function callTool(
+  o: HubConnection,
   name: string,
   args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
@@ -170,7 +182,7 @@ async function callTool(
 // search 가 내보낸 path(vinc://doc/… · vinc://node/…)를 그대로 받는 것이 정상 경로.
 // 맨몸 id 도 받는다: `kind:slug` 꼴이면 노드, 그 밖(해시형)은 문서로 본다.
 
-function parseLookup(lookup: string): { doc?: string; node?: string } {
+export function parseLookup(lookup: string): { doc?: string; node?: string } {
   if (lookup.startsWith(DOC_PREFIX)) return { doc: lookup.slice(DOC_PREFIX.length) };
   if (lookup.startsWith(NODE_PREFIX)) return { node: lookup.slice(NODE_PREFIX.length) };
   if (/^[a-z][a-z0-9_-]*:/.test(lookup)) return { node: lookup };
@@ -245,73 +257,127 @@ export function renderNode(
   return lines.join("\n");
 }
 
+// ── 검색·읽기 본체 ───────────────────────────────────────────────────────────
+// 실패는 던진다. 빈 결과로 바꾸는 것은 부르는 쪽의 몫이다: supplement 는 내장 검색을 살리려고
+// 빈 결과로 바꾸고, 메모리 슬롯은 실패를 빈 성공으로 보이지 않으려고 그대로 올린다.
+
+export type CorpusSearchInput = Parameters<MemoryCorpusSupplement["search"]>[0];
+export type CorpusGetInput = Parameters<MemoryCorpusSupplement["get"]>[0];
+
+export async function searchCorpus(
+  o: HubConnection,
+  input: CorpusSearchInput,
+  defaultLimit: number,
+): Promise<MemoryCorpusSearchResult[]> {
+  const limit = Math.min(input.maxResults ?? defaultLimit, HUB_SEARCH_LIMIT_MAX);
+  const temporalArgs = Object.fromEntries(
+    ["mode", "historical", "as_of", "known_at"].flatMap((key) => {
+      const value = input[key as keyof typeof input];
+      return value === undefined ? [] : [[key, value]];
+    }),
+  );
+  const r = (await callTool(o, "vinc_search", { query: input.query, limit, ...temporalArgs })) as {
+    rows?: Array<{ id?: string; doc_id?: string; score?: number; snippet?: string; temporal?: Record<string, unknown> }>;
+    node_hits?: Array<{
+      id?: string;
+      title?: string;
+      kind?: string;
+      domain?: string;
+      rrf_score?: number;
+      temporal?: Record<string, unknown>;
+    }>;
+  };
+  const out: MemoryCorpusSearchResult[] = [];
+  for (const row of r.rows ?? []) {
+    if (!row?.doc_id) continue;
+    out.push({
+      corpus: CORPUS,
+      path: DOC_PREFIX + row.doc_id,
+      kind: "document",
+      score: row.score ?? 0,
+      snippet: row.snippet ?? "",
+      id: row.id,
+      citation: row.doc_id,
+      provenanceLabel: "vinc:doc",
+      sourceType: "vinc-doc",
+      ...(row.temporal ? { temporal: row.temporal } : {}),
+    });
+  }
+  for (const hit of r.node_hits ?? []) {
+    if (!hit?.id) continue;
+    const meta = [hit.kind ?? "node", hit.domain].filter(Boolean).join(", ");
+    out.push({
+      corpus: CORPUS,
+      path: NODE_PREFIX + hit.id,
+      title: hit.title,
+      kind: hit.kind,
+      score: hit.rrf_score ?? 0,
+      snippet: `${hit.title ?? hit.id} (${meta})`,
+      id: hit.id,
+      citation: hit.id,
+      provenanceLabel: "vinc:node",
+      sourceType: "vinc-node",
+      ...(hit.temporal ? { temporal: hit.temporal } : {}),
+    });
+  }
+  return out.slice(0, limit);
+}
+
+export async function getCorpus(o: HubConnection, input: CorpusGetInput): Promise<MemoryCorpusGetResult | null> {
+  const { doc, node } = parseLookup(input.lookup);
+  if (doc) {
+    const r = (await callTool(o, "vinc_doc_get", { doc_id: doc })) as {
+      text?: string;
+      title?: string;
+      updated_at?: string;
+      temporal?: Record<string, unknown>;
+    };
+    if (typeof r.text !== "string") return null;
+    return {
+      corpus: CORPUS,
+      path: DOC_PREFIX + doc,
+      title: r.title,
+      kind: "document",
+      id: doc,
+      updatedAt: r.updated_at,
+      provenanceLabel: "vinc:doc",
+      sourceType: "vinc-doc",
+      ...sliceLines(r.text, input.fromLine, input.lineCount),
+      ...(r.temporal ? { temporal: r.temporal } : {}),
+    };
+  }
+  const seedId = node as string;
+  const r = (await callTool(o, "vinc_graph", { seed_id: seedId, depth: 1 })) as {
+    found?: boolean;
+    nodes?: GraphNode[];
+    edges?: GraphEdge[];
+  };
+  if (!r.found) return null;
+  const seed = (r.nodes ?? []).find((n) => n.id === seedId);
+  return {
+    corpus: CORPUS,
+    path: NODE_PREFIX + seedId,
+    title: seed?.label,
+    kind: seed?.kind,
+    id: seedId,
+    updatedAt: seed?.ts,
+    provenanceLabel: "vinc:node",
+    sourceType: "vinc-node",
+    ...sliceLines(renderNode(seedId, r), input.fromLine, input.lineCount),
+  };
+}
+
 // ── supplement 본체 ──────────────────────────────────────────────────────────
 
 export function createVincCorpusSupplement(options: VincSupplementOptions): MemoryCorpusSupplement {
-  const o = {
-    url: options.url,
-    apiKey: options.apiKey,
-    timeoutMs: options.timeoutMs ?? 10_000,
-    fetchImpl: options.fetchImpl ?? fetch,
-  };
+  const o = hubConnection(options);
   const defaultLimit = options.maxResults ?? 8;
   const log = options.log;
 
   return {
     async search(input) {
       try {
-        const limit = Math.min(input.maxResults ?? defaultLimit, HUB_SEARCH_LIMIT_MAX);
-        const temporalArgs = Object.fromEntries(
-          ["mode", "historical", "as_of", "known_at"].flatMap((key) => {
-            const value = input[key as keyof typeof input];
-            return value === undefined ? [] : [[key, value]];
-          }),
-        );
-        const r = (await callTool(o, "vinc_search", { query: input.query, limit, ...temporalArgs })) as {
-          rows?: Array<{ id?: string; doc_id?: string; score?: number; snippet?: string; temporal?: Record<string, unknown> }>;
-          node_hits?: Array<{
-            id?: string;
-            title?: string;
-            kind?: string;
-            domain?: string;
-            rrf_score?: number;
-            temporal?: Record<string, unknown>;
-          }>;
-        };
-        const out: MemoryCorpusSearchResult[] = [];
-        for (const row of r.rows ?? []) {
-          if (!row?.doc_id) continue;
-          out.push({
-            corpus: CORPUS,
-            path: DOC_PREFIX + row.doc_id,
-            kind: "document",
-            score: row.score ?? 0,
-            snippet: row.snippet ?? "",
-            id: row.id,
-            citation: row.doc_id,
-            provenanceLabel: "vinc:doc",
-            sourceType: "vinc-doc",
-            ...(row.temporal ? { temporal: row.temporal } : {}),
-          });
-        }
-        for (const hit of r.node_hits ?? []) {
-          if (!hit?.id) continue;
-          const meta = [hit.kind ?? "node", hit.domain].filter(Boolean).join(", ");
-          out.push({
-            corpus: CORPUS,
-            path: NODE_PREFIX + hit.id,
-            title: hit.title,
-            kind: hit.kind,
-            score: hit.rrf_score ?? 0,
-            snippet: `${hit.title ?? hit.id} (${meta})`,
-            id: hit.id,
-            citation: hit.id,
-            provenanceLabel: "vinc:node",
-            sourceType: "vinc-node",
-            ...(hit.temporal ? { temporal: hit.temporal } : {}),
-          });
-        }
-        return out.slice(0, limit);
+        return await searchCorpus(o, input, defaultLimit);
       } catch (err) {
         // supplement 하나가 죽어도 내장 memory_search 는 살아야 한다 — 빈 결과 + 경고.
         log?.warn(`vinc corpus search failed: ${String(err)}`);
@@ -321,47 +387,7 @@ export function createVincCorpusSupplement(options: VincSupplementOptions): Memo
 
     async get(input) {
       try {
-        const { doc, node } = parseLookup(input.lookup);
-        if (doc) {
-          const r = (await callTool(o, "vinc_doc_get", { doc_id: doc })) as {
-            text?: string;
-            title?: string;
-            updated_at?: string;
-            temporal?: Record<string, unknown>;
-          };
-          if (typeof r.text !== "string") return null;
-          return {
-            corpus: CORPUS,
-            path: DOC_PREFIX + doc,
-            title: r.title,
-            kind: "document",
-            id: doc,
-            updatedAt: r.updated_at,
-            provenanceLabel: "vinc:doc",
-            sourceType: "vinc-doc",
-            ...sliceLines(r.text, input.fromLine, input.lineCount),
-            ...(r.temporal ? { temporal: r.temporal } : {}),
-          };
-        }
-        const seedId = node as string;
-        const r = (await callTool(o, "vinc_graph", { seed_id: seedId, depth: 1 })) as {
-          found?: boolean;
-          nodes?: GraphNode[];
-          edges?: GraphEdge[];
-        };
-        if (!r.found) return null;
-        const seed = (r.nodes ?? []).find((n) => n.id === seedId);
-        return {
-          corpus: CORPUS,
-          path: NODE_PREFIX + seedId,
-          title: seed?.label,
-          kind: seed?.kind,
-          id: seedId,
-          updatedAt: seed?.ts,
-          provenanceLabel: "vinc:node",
-          sourceType: "vinc-node",
-          ...sliceLines(renderNode(seedId, r), input.fromLine, input.lineCount),
-        };
+        return await getCorpus(o, input);
       } catch (err) {
         log?.warn(`vinc corpus get failed: ${String(err)}`);
         return null;
