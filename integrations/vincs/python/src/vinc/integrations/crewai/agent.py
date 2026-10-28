@@ -25,7 +25,7 @@ from vinc.sdk.package import DEFAULT_PACKAGE_MAX_CHARS
 from vinc.sdk.package import package_space as _checked_space
 from vinc.sdk.prefetch import DEFAULT_PREFETCH_MAX_CHARS, RolePrefetch
 from vinc.sdk.tool_policy import RoleToolPolicy
-from vinc.sdk.tools import TOOL_CALLS_PER_RUN, VINC_TOOL_NAMES, ToolCallCap
+from vinc.sdk.tools import TOOL_CALLS_PER_RUN, ToolCallCap
 
 from .tools import create_vinc_tools
 
@@ -269,7 +269,8 @@ class VincAgent(Agent):
             return super().create_agent_executor(tools=tools, task=task)
         given = list(tools if tools is not None else self.tools or [])
         if run.vinc_tools:
-            given = [t for t in given if getattr(t, "name", None) not in VINC_TOOL_NAMES]
+            added = {getattr(t, "name", None) for t in run.vinc_tools}
+            given = [t for t in given if getattr(t, "name", None) not in added]
             given += run.vinc_tools
         if not run.warned:
             run.warned = True

@@ -703,3 +703,18 @@ def test_build_agent_runs_the_same_in_both_frameworks(reply, status):
     (lg_host, lg_props), (ma_host, ma_props) = record(lg_seen), record(ma_seen)
     assert (lg_host, ma_host) == ("langgraph", "agent-framework")
     assert lg_props == ma_props and lg_props["run_id"] == "run-785"
+
+
+def test_same_document_read_tool_in_both_frameworks():
+    """vinc_doc_get: 같은 스키마, 같은 답(전문·범위·제목·잘못된 범위)."""
+    async def go():
+        seen = []
+        transport = httpx.MockTransport(lambda r: response(r, seen))
+        async with AsyncVincClient(KEY, transport=transport) as client:
+            ma, lg = maf_tools(client, documents=True)[2], lg_tools(async_client=client, documents=True)[2]
+            assert ma.name == lg.name == "vinc_doc_get"
+            assert convert_to_openai_tool(lg)["function"]["parameters"] == ma.parameters()
+            for args in ({"doc_id": "vinc.spec.fixture"}, {"doc_id": "vinc.spec.fixture", "start": 0, "end": 8},
+                         {"doc_id": "concept:doc.vinc.spec.fixture", "section": "Missing"}):
+                assert text(await ma.invoke(**args)) == await lg.ainvoke(args)
+    asyncio.run(go())

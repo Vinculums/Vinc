@@ -222,7 +222,7 @@ def test_i4_a_shortened_reading_needs_a_document_read_tool(form):
     got = compile_(make_handler(), request(read_tool=True), Policy(plan))
     assert got.manifest["omitted"] == [{"source": "vinc.spec.alpha", "reason": f"form:{form}"}]
     assert "ALPHA TAIL" not in got.block and "BETA TAIL" in got.block
-    assert "read" in got.block and "with the document tool" in got.block
+    assert "with vinc_doc_get" in got.block
     # 짧게 실어도 인용 가능한 id 와 해시는 그대로 남는다.
     assert "[concept:doc.vinc.spec.alpha]" in got.block
     assert hashlib.sha256(TEXTS["vinc.spec.alpha"].encode()).hexdigest() in got.block

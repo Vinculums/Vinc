@@ -62,6 +62,15 @@ def with_citation(read: str, document: dict[str, Any], node_result: dict[str, An
     return {**document, "cite_id": node["id"]}
 
 
+def verified_document(result: dict[str, Any], doc_id: str) -> bool:
+    """A complete, verified canonical document under exactly ``doc_id``, its text matching its hash."""
+    text = result.get("text")
+    return (result.get("doc_id") == doc_id and result.get("executed") is True
+            and result.get("verified") is True and not result.get("partial")
+            and not result.get("error") and isinstance(text, str) and bool(text.strip())
+            and hashlib.sha256(text.encode("utf-8")).hexdigest() == result.get("content_hash"))
+
+
 def required_reading(doc_id: str, result: dict[str, Any]) -> str:
     """Require a complete, verified canonical document; excerpts cannot satisfy a read."""
     text = result.get("text")

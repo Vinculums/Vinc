@@ -16,6 +16,12 @@ SEARCH_NAME = "vinc_search"
 SEARCH_DESCRIPTION = ("Search the user's Vinc knowledge graph by text and meaning; returns "
                       "matching nodes and document passages with their ids.")
 SEARCH_LIMIT_DEFAULT = 5
+DOC_NAME = "vinc_doc_get"
+DOC_DESCRIPTION = ("Read a canonical document from the user's Vinc graph by its document id, such "
+                   "as a required reading your context names but does not include in full. Give "
+                   "start and end to read a character range, or section to read under one heading.")
+#: 문서 도구 한 번이 돌려주는 본문 글자 수의 상한. 넘으면 next_start 로 이어 읽게 한다.
+DOC_MAX_CHARS = 12000
 
 
 def _no_titles(schema: dict[str, Any]) -> None:
@@ -52,10 +58,18 @@ class SearchArgs(TemporalArgs):
                        description="How many matches of each kind.")
 
 
-# 한 런에서 두 읽기 도구를 합쳐 부를 수 있는 횟수. 두 패키지가 같은 수와 같은 문장을 쓴다.
+class DocArgs(BaseModel):
+    model_config = ConfigDict(json_schema_extra=_no_titles)
+    doc_id: str = Field(description="The document id, for example vinc.spec.example; a concept:doc. prefix is accepted.")
+    start: int | None = Field(default=None, ge=0, description="First character to read.")
+    end: int | None = Field(default=None, ge=1, description="Character to stop before.")
+    section: str | None = Field(default=None, description="A heading of the document; reads from it to the next heading of the same or a higher level.")
+
+
+# 한 런에서 읽기 도구(brief·search·문서)를 합쳐 부를 수 있는 횟수. 두 패키지가 같은 수와 같은 문장을 쓴다.
 # 근거: [[decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07]]
 TOOL_CALLS_PER_RUN = 4
-VINC_TOOL_NAMES = (BRIEF_NAME, SEARCH_NAME)
+VINC_TOOL_NAMES = (BRIEF_NAME, SEARCH_NAME, DOC_NAME)
 CAP_MESSAGE = "Vinc tool call cap reached ({limit} per run); answer from what you already have."
 
 
@@ -64,7 +78,7 @@ def cap_message(limit: int | None) -> str:
 
 
 class ToolCallCap:
-    """Counts ``vinc_brief``/``vinc_search`` calls for ONE run; past ``limit`` the tool
+    """Counts ``vinc_brief``/``vinc_search``/``vinc_doc_get`` calls for ONE run; past ``limit`` the tool
     answers with :attr:`message` instead of calling Vinc. ``limit=None`` never caps.
 
     Make a new one per run. Agent Framework builds its tools around a fresh cap in
