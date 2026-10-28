@@ -28,7 +28,7 @@
     "test:role-fields": "node --test tests/role-fields.test.mjs",
     "test:space-picker": "node --test tests/space-picker.test.mjs",
     "test:role-eval": "node --test tests/role-eval.test.mjs",
-    "test:acceptance": "node --test tests/home-list.test.mjs tests/editor-insert.test.mjs tests/cm-table.test.mjs tests/authoring-ids.test.mjs tests/extract-candidates.test.mjs tests/ask-resolve.test.mjs tests/conventions.test.mjs tests/app-update.test.mjs tests/privacy-and-web.test.mjs"
+    "test:acceptance": "node --test tests/home-list.test.mjs tests/editor-insert.test.mjs tests/cm-table.test.mjs tests/doc-options.test.mjs tests/authoring-ids.test.mjs tests/extract-candidates.test.mjs tests/ask-resolve.test.mjs tests/conventions.test.mjs tests/app-update.test.mjs tests/privacy-and-web.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

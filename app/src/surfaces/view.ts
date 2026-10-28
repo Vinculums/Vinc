@@ -563,12 +563,10 @@ export async function renderView(el: HTMLElement, resume = false) {
   }
   /** 문서 패널의 크기 — 옆 카드(false)냐, 지도 칸 전체(true)냐.
    *
-   *  **어디서 왔는지가 크기를 정한다**(발주자 지시 2026-09-25): 지도에서 노드를
-   *  누르면 떠 있는 카드만 뜨고, LNB 에서 노드·문서·역할을 고르면 이 패널이
-   *  지도 칸 전체로 열려 내용 전부를 보여 준다. 패널 안에서 옮겨 다니는 것(뒤로·언급
-   *  칩·연결 줄)은 지금 크기를 그대로 둔다. 닫으면 옆 카드로 돌아간다 — 다음에 카드의
-   *  "Details" 로 열 때 넓게 열리면 지도를 보던 손이 끊긴다.
-   *  근거: [[decision:side-navigation-picks-open-the-document-pane-full-width-2026-09-25]] */
+   *  열 때는 늘 옆 카드다(지도에서 고른 것도 LNB 에서 고른 것도). 넓게 여는 것은 패널 머리의
+   *  크기 전환 버튼뿐이다. 패널 안에서 옮겨 다니는 것(뒤로·언급 칩·연결 줄)은 지금 크기를
+   *  그대로 두고, 닫으면 옆 카드로 돌아간다.
+   *  근거: [[decision:lnb-picks-in-the-graph-open-the-floating-card-and-the-side-pane-2026-10-28]] */
   let railFull = false;
   let railRevision = 0;
   function setRailFull(full: boolean) {
@@ -823,14 +821,11 @@ export async function renderView(el: HTMLElement, resume = false) {
       viewPanel.style.maxHeight = "";
       return;
     }
-    // 렌즈 버튼이 상단 바로 올라가면서(D71) 패널은 표면 밖의 버튼에 붙어야 한다 —
-    // 표면 기준 absolute 로는 사이드바 폭·타이틀바·웹 GNB 만큼 어긋난다. 좌표를
-    // 실측 rect 에서 뽑아 fixed 로 놓으면 세 스킨이 전부 자동으로 맞는다.
-    // 기준은 버튼이 아니라 **버튼이 든 보기 카드**다(발주자 지시 2026-09-26): 카드 폭이
-    // 패널 폭(`--lens-panel-w`)과 같아서, 카드 왼쪽 끝에 붙이면 양 끝이 같은 세로선에
-    // 선다. 카드가 없는 배치(임베드)는 버튼 자신이 기준이다.
-    // 근거: [[decision:the-top-bar-is-a-search-card-and-a-view-card-2026-09-26]]
-    const r = (lensBtn?.closest<HTMLElement>(".tb-card") ?? lensBtn)?.getBoundingClientRect();
+    // 렌즈 버튼은 머리 맨 끝에 있어서 패널은 표면 밖의 버튼에 붙어야 한다. 표면 기준
+    // absolute 로는 사이드바 폭 · 타이틀바 · 웹 GNB 만큼 어긋나므로, 좌표를 버튼의 실측
+    // rect 에서 뽑아 fixed 로 놓는다. 그러면 세 스킨이 전부 저절로 맞는다.
+    // 근거: [[decision:the-view-header-ends-with-the-options-and-legend-of-the-current-surface-2026-10-28]]
+    const r = lensBtn?.getBoundingClientRect();
     if (!r) return;
     // 오른쪽 끝은 **패널 실측 폭**으로 잡는다 — 상수를 박으면 폭을 넓힐 때마다 다시
     // 잘린다. 상수가 300 이던 동안 20.5rem(328px) 짜리 패널이 뷰포트 밖으로 28px
@@ -873,9 +868,9 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 내려간 뒤(발주자 지시) 버튼 아래에 남는 자리가 40px 뿐이라, 아래로만 여는 코드는
     // 패널을 화면 밖으로 밀어냈다. 트리거에서 자라는 것은 지키고 방향만 뒤집는다 —
     // 그것이 팝오버의 규칙이다(`float-panel.ts`·`components.ts` 도 같은 처분).
-    // ⚠ 아래 자리가 모자라면 위로 올리기 **전에** 높이를 줄인다. 보기 카드가 캔버스 안 오른쪽
-    //    위에 뜨면 카드 아래 자리가 패널 최대 높이보다 조금 작고, 그때 아래 '위로 연다' 분기가
-    //    패널을 카드 위로 끌어올려 렌즈 버튼을 덮는다. 패널 안은 스크롤 면이라
+    // ⚠ 아래 자리가 모자라면 위로 올리기 **전에** 높이를 줄인다. 버튼 아래 자리가 패널 최대
+    //    높이보다 조금 작으면 아래 '위로 연다' 분기가 패널을 버튼 위로 끌어올려 렌즈 버튼을
+    //    덮는다. 패널 안은 스크롤 면이라
     //    줄어도 내용은 다 닿는다. 위로 여는 것은 줄여도 PANEL_MIN_H 보다 작을 때뿐이다.
     viewPanel.style.maxHeight = "";
     const below = Math.max(r.bottom + 6, floatCeiling());
@@ -888,8 +883,8 @@ export async function renderView(el: HTMLElement, resume = false) {
       : (above >= cardTop + m ? above
          : Math.max(cardTop + m, window.innerHeight - h - m));
     viewPanel.style.top = `${Math.round(Math.max(cardTop + m, top))}px`;
-    // 자리는 기준(보기 카드)의 **오른쪽 끝**에 맞춘다 — 패널이 렌즈 버튼 바로 아래에서
-    // 오른쪽 끝을 맞춰 열린다.
+    // 자리는 렌즈 버튼의 **오른쪽 끝**에 맞춘다. 패널이 버튼 바로 아래에서 오른쪽 끝을
+    // 맞춰 열린다. 문서 열이 옆에 열려 있으면 그 왼쪽으로 비켜선다(위 `rightEdge`).
     const left = Math.min(r.right - w, rightEdge - w - m);
     viewPanel.style.left = `${Math.round(Math.max(m, left))}px`;
   }
@@ -1703,6 +1698,8 @@ export async function renderView(el: HTMLElement, resume = false) {
           camera3: g3 ? camera3d(g3) : undefined }, displayedScene.domains);
     }
     accessJob.abort(); loader.abort(); loader.removePreview();
+    // 떠 있는 카드는 표면 밖(`body`)에 붙어 있어서 그래프를 떠나도 혼자 남았다. 그래프의 것이니 함께 걷는다.
+    closeFloatPanel();
     removalObserver.disconnect(); swapSurface();
   };
   disposeView = dispose;
@@ -1856,8 +1853,7 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  주제로 넓힐 때 trail 을 바닥까지 되감는다: 주제 전환은 쌓기가 아니라 **바꾸기**다.
    *  안 그러면 노드를 옮겨 다닐 때마다 Esc 로 되짚을 층이 끝없이 쌓인다.
    *
-   *  끝에는 떠 있는 카드가 열린다. `card=false` 는 LNB 가 쓴다 — 거기서 고른 것은
-   *  카드 대신 넓게 열린 문서 열로 보여 준다(`openFromNav`). 착지한 노드를 돌려준다
+   *  끝에는 떠 있는 카드가 열린다(`card=false` 면 열지 않는다). 착지한 노드를 돌려준다
    *  (없는 노드면 null). */
   let focusRevision = 0;
   const detailHistory: N3[] = [];
@@ -1897,24 +1893,23 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 레일은 열지 않는다 — 관계 줄·트리·검색이 전부 여기로 오는데, 그때마다 문서
     // 원문까지 딸려 열리면 지도를 보는 일이 계속 끊긴다. 레일을 여는 것은 카드의
     // "Details and source" 와 컨텍스트 메뉴의 "열기" 둘뿐이다(발주자 지시 2026-08-27).
-    // (LNB 는 예외다 — `openFromNav` 가 이 뒤에 넓은 열을 연다.)
+    // (LNB 는 예외다 — `openFromNav` 가 이 뒤에 옆 칸을 연다.)
     focusOnMap(nd, card, keepHistory);
     lnbFocus = { domain: nd.domain, nodeId: id };
     setLnbActive(lnbFocus);
     return nd;
   }
 
-  /** LNB 에서 고른 것 — 노드·문서·Agent 역할. **카드 없이** 문서 열을 지도 칸
-   *  전체로 열고 내용 전부를 싣는다(발주자 지시 2026-09-25). 지도 초점(주소·원뿔·
-   *  카메라)은 그대로 옮겨 두므로, 열을 닫으면 그 노드에 초점이 선 지도가 남는다.
-   *  근거: [[decision:side-navigation-picks-open-the-document-pane-full-width-2026-09-25]] */
+  /** LNB 에서 고른 것 — 노드·문서·Agent 역할. 지도에서 고른 것과 같이 그 노드에 초점을 걸고
+   *  떠 있는 카드를 열며, 옆 칸(문서 열의 좁은 크기)에 문서나 노드 상세를 연다. 지도를 덮는
+   *  넓은 열로 열지 않는다: 그래프에서 고른 것은 그래프 위에서 보여야 한다.
+   *  근거: [[decision:lnb-picks-in-the-graph-open-the-floating-card-and-the-side-pane-2026-10-28]] */
   async function openFromNav(id: string, domain?: string, docId?: string) {
-    railFull = true;
-    const nd = id ? await focusNode(id, domain, false) : null;
+    railFull = false;
+    const nd = id ? await focusNode(id, domain, true) : null;
     if (myGen !== liveGen) return;
     if (docId) await openReader(docId, id || undefined);
     else if (nd) railFor(nd);
-    else if (detail.hidden) railFull = false;   // 연 것이 없으면 크기도 되돌린다
   }
 
   /** 방금 만든(또는 고친) 노드를 지도에 세우고 그 자리로 간다(authoring 의 `reveal`).
@@ -2274,8 +2269,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       setSpot(spotOf([...causalCone(dir, nd.id, "past"),
                       ...causalCone(dir, nd.id, "future")], nd.id));
     }
-    // 카드는 지도에서 고른 것에만 뜬다. LNB 에서 온 것은 넓은 열이 받으므로, 앞서
-    // 떠 있던 카드가 있으면 거둔다(다른 노드의 카드가 열 뒤에 남지 않게).
+    // 카드를 띄우지 않는 초점이면 앞서 떠 있던 카드를 거둔다(다른 노드의 카드가 남지 않게).
     if (card) void openRelsCard(nd);
     else closeFloatPanel();
   }
@@ -2535,7 +2529,7 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  화면이 없었다: 서버는 props 를 실어 보냈는데 앱은 Ask 본문 한 줄과 Agent 목록의
    *  직함·팀만 골라 썼다(발주자 지적 2026-09-25). 값은 생긴 대로 그린다(글·목록·객체).
    *  비어 있으면 절을 그리지 않는다 — 빈 제목만 남기지 않는다.
-   *  근거: [[decision:side-navigation-picks-open-the-document-pane-full-width-2026-09-25]] */
+   *  근거: [[decision:lnb-picks-in-the-graph-open-the-floating-card-and-the-side-pane-2026-10-28]] */
   /** 속성 절이 읽은 것 — 무슨 종인가(props 를 싣는가), 어느 판(rev)을 읽었는가. */
   type PropsMeta = { kind?: string; rev?: number; canEdit?: boolean };
 
@@ -3586,8 +3580,8 @@ export async function renderView(el: HTMLElement, resume = false) {
   // 층은 전량으로 두고 마운트가 끝난 뒤 그 노드로 간다 — 전량은 반드시 그 노드를
   // 담으므로 딥링크가 빈 화면으로 끝나지 않는다. 철자는 영구 유지한다(별칭 규율).
   const sel = addr?.sel;
-  // `#view/read/<id>[/<doc>]` 는 LNB 가 View 밖에서 쓰는 착지다 — trace 와 같되 카드
-  // 대신 넓은 문서 열로 연다(openFromNav). 착지한 뒤 주소는 syncHash 가 trace 로 쓴다.
+  // `#view/read/<id>[/<doc>]` 는 LNB 가 View 밖에서 쓰는 착지다 — trace 와 같되 옆 칸에
+  // 문서나 노드 상세까지 연다(openFromNav). 착지한 뒤 주소는 syncHash 가 trace 로 쓴다.
   const landWide = readRoute;
   const landOn = readRoute ? (rawParts[2] || "") : sel?.kind === "node" ? sel.id : "";
   const landDoc = readRoute && rawParts[3] && rawParts[3] !== "as" ? rawParts[3] : "";
@@ -3642,7 +3636,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   }, true);
   // 좌측 트리의 문서 클릭이 여기로 온다(D69·D70). 훅이 없으면 트리는 해시 착지로
   // 강등되므로, View 가 살아 있는 동안만 "리마운트 없는 이동"이 성립한다.
-  // LNB 에서 고른 것은 카드 대신 넓은 문서 열로 연다(openFromNav).
+  // LNB 에서 고른 것은 카드와 옆 칸으로 연다(openFromNav).
   setLnbNavigator((id, dom, docId) => void openFromNav(id, dom, docId));
   // 주제 고르기 — **즉시 반영**이다(발주자 결정 2026-08-15). 고른 것과 보는 것이
   // 어긋나는 중간 상태를 두지 않는 대신, 고를 때마다 서버를 한 번 왕복한다.
@@ -3664,8 +3658,13 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 그 안쪽(`agent/release`)으로 좁혀져 있으면 그대로 둔다. 넓히면 좁힌 것이 풀린다.
     const paths = Array.isArray(path) ? path : [path];
     const one = paths[0];
+    // 이미 그 주제면 다시 읽지 않고 그 주제의 첫 자리로 돌아간다(Agent 를 다시 누른 손): 고른 노드의
+    // 카드와 옆 칸을 닫는다.
     if (set && cur.length
-        && cur.every((d) => paths.some((p) => d === p || d.startsWith(p + "/")))) return;
+        && cur.every((d) => paths.some((p) => d === p || d.startsWith(p + "/")))) {
+      if (focusId || !detail.hidden || isFloatPanelOpen()) closeRail();
+      return;
+    }
     // 이미 고른 것을 다시 누르면 **뺀다** — 더하는 길만 있고 빼는 길이 없으면
     // 되돌리려고 홈까지 갔다 와야 한다.
     const next = set ? paths : add

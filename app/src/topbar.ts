@@ -7,13 +7,16 @@ import { esc, armsNotice, type ArmsNotice } from "./components";
 import { dayOf } from "./view-prefs";
 import { renderSearchError } from "./search-error";
 import { loaderInline } from "./vinc-loaders.js";
+import { documentsHome } from "./lnb";
+import { mountDocOptions } from "./doc-options";
 
 /** 뷰 머리 (DEC D56·D57) — 내용 카드의 윗줄. 떠 있지 않다.
  *
  *  앞(`#tb-lead`)은 지금 자리다: 문서 면은 경로를 표면이 채우고(`setTopbarLead`), 그래프는
- *  범위를 여기서 칠한다. 뒤는 문서 | 그래프 전환, 그다음 검색. 검색은 평소 칸 하나로 접혀
- *  있고 누르거나 ⌘/Ctrl K 를 치면 왼쪽으로 길게 펴진다. 보기 카드(옵션 · 범례)는
- *  머리에 없다 — 캔버스 안에 뜬다(index.html `#tb-viewctl`).
+ *  범위를 여기서 칠한다. 뒤는 검색, 문서 | 그래프 전환, 맨 끝에 보기 설정과 범례. 검색은 평소
+ *  칸 하나로 접혀 있고 누르거나 ⌘/Ctrl K 를 치면 왼쪽으로 길게 펴진다. 맨 끝 버튼은 면마다
+ *  내용이 다르다: 그래프는 View 의 렌즈(`#tb-lens`), 문서 면은 읽기 설정(doc-options.ts).
+ *  근거: [[decision:the-view-header-ends-with-the-options-and-legend-of-the-current-surface-2026-10-28]]
  *  근거: [[decision:the-desktop-shell-docks-search-and-the-view-switch-in-a-view-header-2026-10-23]]
  *  여기 살지 않는 것: 로고(타이틀바가 든다 — 웹에선 공홈 GNB),
  *  표면 목록과 주제·문서 목록(좌측 트리가 가져갔다 — D69), 지표(하단 상태 표시줄에 남는다).
@@ -83,7 +86,7 @@ export function refreshTopbar() {
   }
 }
 
-/** 렌즈 버튼 자리(D71) — 하단 바에서 상단 바 좌측으로 올라왔다. */
+/** 렌즈 버튼 자리 — 머리 맨 끝. 그래프에서만 View 가 채운다. */
 export function lensSlot(): HTMLElement | null { return $("tb-lens"); }
 
 /** 검색바 모드(D73). 바의 `data-mode` 가 화면·동작의 단일 원천이다.
@@ -153,6 +156,7 @@ export function mountTopbar() {
   if (wired) return;
   wired = true;
   trackGutter();
+  mountDocOptions();
   const T = COPY.ui.topbar;
   const docsBtn = $("tb-to-docs"), graphBtn = $("tb-to-graph");
   if (docsBtn && graphBtn) {
@@ -163,7 +167,8 @@ export function mountTopbar() {
     docsBtn.setAttribute("aria-label", T.docs);
     graphBtn.setAttribute("aria-label", T.graph);
     $("tb-switch")?.setAttribute("aria-label", T.switchLabel);
-    docsBtn.addEventListener("click", () => { if (!onDocs()) location.hash = "#home"; });
+    // 문서 쪽 첫 자리는 맨 위 줄이 정한다: Agent 면 Agents 보드, 아니면 문서 홈(lnb `documentsHome`).
+    docsBtn.addEventListener("click", () => { if (!onDocs()) location.hash = documentsHome(); });
     graphBtn.addEventListener("click", () => { if (!onGraph()) location.hash = "#view"; });
     paintSwitch();
   }

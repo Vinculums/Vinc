@@ -17,9 +17,16 @@ def read(rel: str) -> str:
 
 class AgentRailOpensTheBoard(unittest.TestCase):
     def test_rail_goes_to_the_board(self):
+        # 문서 쪽에서는 보드로 간다. 그래프가 보이는 동안에는 그래프에 남아 Agent 로 범위를 좁힌다:
+        # 레일은 무엇을 볼지, 문서 | 그래프 전환은 어떻게 볼지를 고른다.
+        # 근거: [[decision:lnb-picks-in-the-graph-open-the-floating-card-and-the-side-pane-2026-10-28]]
         lnb = read("lnb.ts")
         self.assertIn('export const AGENTS_BOARD = "#home/agents";', lnb)
-        self.assertIn('if (next === "agent") location.hash = AGENTS_BOARD;', lnb)
+        self.assertIn('if (next === "agent" && !onGraph()) location.hash = AGENTS_BOARD;', lnb)
+        self.assertIn('if (next === "agent" && onGraph()) scopeAgentGraph();', lnb)
+        # 문서 버튼은 Agent 가 골라져 있으면 보드로 돌아간다(topbar.ts).
+        self.assertIn('export const documentsHome = (): string => isAgent() ? AGENTS_BOARD : "#home";', lnb)
+        self.assertIn("location.hash = documentsHome();", read("topbar.ts"))
 
     def test_role_row_opens_the_sheet_not_the_graph(self):
         lnb = read("lnb.ts")
