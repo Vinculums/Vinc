@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Sequence
 
 from .context import BOUNDARY, SOURCES_LINE, fence, format_answer
 from .errors import VincInvalidArgument, VincUnavailable
@@ -99,17 +99,30 @@ def role_context(contract: dict[str, Any]) -> str:
     return f"{CITE_LINE}\n{BOUNDARY}\n\n{fence(json.dumps(role, ensure_ascii=False, indent=2))}"
 
 
-def citation_policy(contract: dict[str, Any], specs: list[tuple[str, dict]]) -> str:
-    """Repeat the citation contract after long readings with exact verified source ids."""
+def citation_policy(contract: dict[str, Any], specs: list[tuple[str, dict]], *,
+                    extra_ids: Sequence[str] = (), extra_uncitable: Sequence[str] = ()) -> str:
+    """Repeat the citation contract after long readings with exact verified source ids.
+
+    ``extra_ids`` and ``extra_uncitable`` add what a context compiler verified beyond the
+    required readings; left empty, the text is prefetch's, byte for byte.
+    """
     ids = [contract["id"]]
     ids.extend(result["cite_id"] for read, result in specs
                if result.get("cite_id") == cite_id(read))
     sources = " ".join(f"[{node_id}]" for node_id in dict.fromkeys(ids))
     uncitable = [document_key(read) for read, result in specs
                  if result.get("cite_id") != cite_id(read)]
+    extra = ""
+    if extra_ids:
+        extra += ("Other verified source IDs in this context: "
+                  + " ".join(f"[{node_id}]" for node_id in dict.fromkeys(extra_ids)) + "\n")
+    if extra_uncitable:
+        extra += ("Other document keys with NO citable node in this space: "
+                  f"{json.dumps(list(dict.fromkeys(extra_uncitable)), ensure_ascii=False)}\n")
     return ("Citation contract for this run:\n"
             f"Verified role and required-reading source IDs: {sources}\n"
             f"Required document keys with NO citable node in this space: {json.dumps(uncitable, ensure_ascii=False)}\n"
+            + extra +
             "These uncitable documents are available as reference text, but must not appear "
             "in Sources. Adding concept:doc. to one of their keys creates an unverified ID. "
             "For the supplied role/readings, select Sources IDs only from the verified list above. "
