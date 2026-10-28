@@ -26,6 +26,10 @@ from .output_gate import (GateResult, OutputGate, OutputGateStopped, ToolProof, 
 from .package import build_package_fragment, format_package  # noqa: E402
 from .handoff import check_package_handoff  # noqa: E402
 from .prefetch import RolePrefetch  # noqa: E402
+from .compiler import (FULL_TEXT, CompiledContext, ContextItem, ContextPlan,  # noqa: E402
+                       ContextPolicy, ContextRequest, EvidenceRef, FullTextPolicy, PolicyReader,
+                       acompile_context, arole_prefetch, check_replay, compile_context,
+                       replay_context, role_prefetch)
 from .tool_policy import RoleToolPolicy  # noqa: E402
 from .role_policy import RolePolicy  # noqa: E402
 from .errors import (VincAuthError, VincError, VincInvalidArgument, VincNotFound,  # noqa: E402
@@ -46,5 +50,8 @@ __all__ = [
     "GateResult", "OutputGate", "OutputGateStopped", "ToolProof", "preserve_required_route", "sources_line",
     "build_package_fragment", "format_package", "check_package_handoff",
     "RolePrefetch", "RoleToolPolicy", "RolePolicy",
+    "compile_context", "acompile_context", "replay_context", "check_replay", "ContextRequest",
+    "ContextPlan", "ContextItem", "EvidenceRef", "ContextPolicy", "PolicyReader",
+    "CompiledContext", "FullTextPolicy", "FULL_TEXT", "role_prefetch", "arole_prefetch",
     "AgentPlan", "AgentRun", "plan_agent", "aplan_agent", "finish_run", "afinish_run", "role_address",
 ]

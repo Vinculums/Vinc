@@ -14,6 +14,7 @@ from agent_framework import (AgentSession, ChatContext, ChatMiddleware, ChatMidd
                              FunctionTool, SessionContext, tool)
 from vinc_client import (AsyncVincClient, VincNotFound, VincQuotaExceeded, VincUnavailable,
                          format_brief, format_search)
+from vinc_client.compiler import ContextPolicy, arole_prefetch
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS, package_space
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
@@ -168,6 +169,10 @@ class VincContextProvider(ContextProvider):
     ``prefetch_pin`` (the ``hash`` from ``AsyncVincClient.role``) holds role prefetch to that
     contract: when the role changed, ``before_run`` raises ``VincRoleChanged`` and the model is
     not called. Moving the pin to the new hash is your decision; nothing moves it for you.
+
+    ``context_policy`` (with ``prefetch_role``) builds the role's block with
+    ``vinc_client.acompile_context`` under that policy instead of ``prefetch``.
+    ``vinc_client.FULL_TEXT`` gives prefetch's block.
     """
 
     def __init__(self, client: AsyncVincClient | None = None, *, api_key: str | None = None,
@@ -179,10 +184,14 @@ class VincContextProvider(ContextProvider):
                  prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
                  tool_calls_per_run: int | None = TOOL_CALLS_PER_RUN,
                  prefetch_pin: str | None = None,
-                 capability_map: Mapping[str, str] | None = None) -> None:
+                 capability_map: Mapping[str, str] | None = None,
+                 context_policy: ContextPolicy | None = None) -> None:
         if prefetch_pin is not None and not prefetch_role:
             # 역할 없이 고정만 주면 맥락 모드로 조용히 돌게 된다. 시작 전에 멈춘다.
             raise ValueError("prefetch_pin needs prefetch_role")
+        if context_policy is not None and not prefetch_role:
+            raise ValueError("context_policy needs prefetch_role")
+        self.context_policy = context_policy
         super().__init__(source_id)
         self.client = client or AsyncVincClient(api_key, base_url=base_url, space=space)
         self._owns_client = client is None
@@ -201,9 +210,15 @@ class VincContextProvider(ContextProvider):
                          state: dict[str, Any]) -> None:
         task = _last_user_text(context.input_messages)
         if self.prefetch_role:
-            fetched = await self.client.prefetch_with_contract(
-                self.prefetch_role, task, max_chars=self.prefetch_max_chars,
-                pin=self.prefetch_pin)
+            if self.context_policy is not None:
+                fetched = await arole_prefetch(self.client, self.prefetch_role, task,
+                                               policy=self.context_policy,
+                                               max_chars=self.prefetch_max_chars,
+                                               pin=self.prefetch_pin)
+            else:
+                fetched = await self.client.prefetch_with_contract(
+                    self.prefetch_role, task, max_chars=self.prefetch_max_chars,
+                    pin=self.prefetch_pin)
             block = fetched.block
             # 계약의 도구 목록이 잘못됐으면 여기서 멈춘다(모델 호출 전).
             policy = RoleToolPolicy.from_contract(fetched.contract, self.capability_map)
