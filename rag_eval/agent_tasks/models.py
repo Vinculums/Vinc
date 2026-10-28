@@ -358,8 +358,11 @@ def parse_tool_calls(text: str, n_messages: int) -> tuple[str, list[ToolCall]]:
         if text[kept[-1][0][1]:start].strip():
             break
         kept.append(((start, end), call))
-    calls = [ToolCall(id=f"tc{n_messages}-{i}", name=name, args=args)
-             for i, (_, (name, args)) in enumerate(kept)]
+    # 한 답 안의 똑같은 호출은 하나다. 같은 CALL 줄을 999번 되풀이한 답이 있었다(Sonnet 탐색 회차).
+    unique = list(dict.fromkeys((name, json.dumps(args, sort_keys=True, ensure_ascii=False))
+                                for _, (name, args) in kept))
+    calls = [ToolCall(id=f"tc{n_messages}-{i}", name=name, args=json.loads(args))
+             for i, (name, args) in enumerate(unique)]
     return text[:pairs[0][0][0]].strip(), calls
 
 
@@ -415,7 +418,7 @@ class ClaudeCodeModel:
     def describe(self) -> dict:
         return {"kind": "claude-code", "family": "anthropic", "model": self.name, "prices": None,
                 "transport": "headless claude -p on the logged-in subscription; tools off, "
-                             "harness tools as <tool_call> text",
+                             "harness tools as CALL lines",
                 "stops": {"five_hour": self.five_hour_stop, "seven_day": self.seven_day_stop}}
 
     def cost(self, tokens_in: int, tokens_out: int) -> float | None:

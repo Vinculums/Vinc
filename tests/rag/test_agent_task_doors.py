@@ -67,13 +67,21 @@ def test_the_rest_door_stays_inside_v1_and_its_one_tool(v1):
     assert down["isError"] and down.get("_transport_error") and record.classify(down)
 
 
-def test_the_route_table_names_every_route_with_its_tool_description():
+def test_the_route_table_carries_what_the_mcp_door_gets_for_each_route():
     from vinc_mcp import rest_routes
-    tools = [{"name": "vinc_search", "description": "Search this graph. Longer text here."}]
+    tools = [{"name": "vinc_search", "description": "Search this graph.\nLonger text here.",
+              "parameters": {"properties": {"query": {"type": "string", "description": "What to find. More."},
+                                            "mode": {"enum": ["general", "current"]}}}},
+             {"name": "vinc_node", "description": "Read one node.",
+              "parameters": {"properties": {"node_id": {"type": "string", "description": "Exact id."}}}}]
     manual = doors.RestDoor("http://x", "k").manual(tools)
-    assert "- POST /v1/search; body: query, limit" in manual and ": Search this graph." in manual
-    assert "Longer text" not in manual and "—" not in manual
-    assert len([line for line in manual.splitlines() if line.startswith("- ")]) == len(rest_routes.ROUTES)
+    assert "## vinc_search: Search this graph. Longer text here." in manual
+    assert "- POST /v1/search\n  - body query (string): What to find." in manual
+    assert "  - body mode (one of general, current)" in manual
+    assert "- GET /v1/nodes/{id}\n  - path id (string): Exact id." in manual
+    assert "\u2014" not in manual
+    assert manual.count("\n- ") == len(rest_routes.ROUTES)
+    assert manual.count("\n## ") == len({r.tool for r in rest_routes.ROUTES})
 
 
 class FakeRun:

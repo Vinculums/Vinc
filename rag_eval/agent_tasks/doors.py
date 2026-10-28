@@ -65,6 +65,12 @@ def _query_value(value) -> str:
     return json.dumps(value) if isinstance(value, (dict, list)) else str(value)
 
 
+def _param_line(where: str, name: str, schema: dict) -> str:
+    kind = schema.get("type") or ("one of " + ", ".join(map(str, schema["enum"])) if schema.get("enum") else "")
+    about = _first_sentence(schema.get("description") or "")
+    return f"{where} {name}" + (f" ({kind})" if kind else "") + (f": {about}" if about else "")
+
+
 def _first_sentence(text: str) -> str:
     head = (text or "").strip().split("\n", 1)[0]
     return re.split(r"(?<=[.!?])\s", head, maxsplit=1)[0]
@@ -82,20 +88,31 @@ class RestDoor:
         return [HTTP_TOOL]
 
     def manual(self, mcp_tools: list[dict]) -> str:
-        """라우트 표. 각 줄의 설명은 그 라우트가 부르는 MCP 도구 설명의 첫 문장이다."""
+        """라우트 표. MCP 문이 받는 것과 같은 정보를 싣는다: 라우트가 부르는 도구의 설명 전부와
+        인자마다 타입·설명 첫 문장. REST 의 몫은 인자가 어디로 가는지와 응답 꼴뿐이다.
+
+        근거: 첫 문장만 실은 첫 판에서 REST 가 MCP 보다 유의하게 낮았다(Sonnet 탐색 회차, 2026-10-28).
+        """
         from vinc_mcp import rest_routes   # noqa: PLC0415
-        about = {t["name"]: _first_sentence(t.get("description") or "") for t in mcp_tools}
-        lines = ["Vinc REST API v1. Call it with the vinc_http tool. Arguments of a route go in "
-                 "`query` (GET, DELETE) or `body` (POST, PUT, PATCH), with the names listed; "
-                 "values in {braces} go in the path."]
+        by_name = {t["name"]: t for t in mcp_tools}
+        lines = ["Vinc REST API v1. Call it with the vinc_http tool. Each route runs the Vinc tool "
+                 "named in its heading and answers with that tool's JSON. Arguments go in `query` "
+                 "(GET, DELETE) or `body` (POST, PUT, PATCH); values in {braces} go in the path."]
+        groups: dict[str, list] = {}
         for r in rest_routes.ROUTES:
-            parts = [f"{r.method} {r.path}"]
-            if r.query:
-                parts.append("query: " + ", ".join(r.query))
-            if r.body:
-                parts.append("body: " + ", ".join(r.body))
-            text = about.get(r.tool, "")
-            lines.append("- " + "; ".join(parts) + (f": {text}" if text else ""))
+            groups.setdefault(r.tool, []).append(r)
+        for tool, routes in groups.items():
+            spec = by_name.get(tool) or {}
+            text = " ".join((spec.get("description") or "").split())
+            lines.append(f"\n## {tool}" + (f": {text}" if text else ""))
+            props = (spec.get("parameters") or {}).get("properties") or {}
+            for r in routes:
+                lines.append(f"- {r.method} {r.path}")
+                for where, names in (("path", tuple(arg for arg, _ in r.path_args)),
+                                     ("query", r.query), ("body", r.body)):
+                    for name in names:
+                        lines.append("  - " + _param_line(where, name, props.get(
+                            dict(r.path_args).get(name, name), {})))
         return "\n".join(lines)
 
     def call(self, name: str, args: dict) -> dict:

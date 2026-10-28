@@ -255,3 +255,12 @@ def test_the_trace_keeps_the_raw_reply_only_when_reading_changed_it():
     again = models.ClaudeCodeModel("claude-code:m", run=broken).step(
         [{"role": "user", "content": "q"}], [{"name": "vinc_search"}])
     assert again.raw.startswith("<invoke%20{}") and again.raw.endswith("done")
+
+
+def test_identical_calls_in_one_reply_are_one_call():
+    text = "\n".join(['CALL vinc_search {"query": "on-call", "limit": 5}'] * 999 +
+                     ['CALL vinc_search {"limit": 5, "query": "on-call"}', 'CALL vinc_brief {"query": "x"}'])
+    calls = models.parse_tool_calls(text, 2)[1]
+    assert [(c.id, c.name, c.args) for c in calls] == [
+        ("tc2-0", "vinc_search", {"query": "on-call", "limit": 5}), ("tc2-1", "vinc_brief", {"query": "x"})]
+    assert "CALL lines" in models.ClaudeCodeModel("claude-code:m").describe()["transport"]
