@@ -466,6 +466,27 @@ A role that is over the limit even in compact form raises the same error with
 is `GET /v1/roles/{id}?compact=1`, and from the command line `vinc role get <id>
 --compact`.
 
+### Compile a role's context under a policy
+
+`compile_context(client, ContextRequest(role=..., task=..., read_tool=...))` builds the
+same kind of block as `prefetch`, with a policy choosing what goes in. With no policy the
+choice follows `read_tool`, the flag that says the model can read documents itself
+(`vinc_doc_get`):
+
+| `read_tool` | Default policy | Block |
+|---|---|---|
+| `False` | `FULL_TEXT` (`p0-full`) | `prefetch`'s block, byte for byte: every required reading in full |
+| `True` | `TASK_EVIDENCE` (`task-evidence-1`) | the role contract, each required reading as a pointer, and the task's evidence: the nodes its briefs and searches agree on, one document's matched sections, a resolved brief and the top search rows |
+
+`role_prefetch` and `arole_prefetch` take the same default, and `read_tool` may be a
+function of the role contract (`doc_tool_allowed`), so a role that disallows the
+document tool keeps `FULL_TEXT`. Pass `policy=FULL_TEXT` to keep the full readings even
+when the model has the tool. `manifest["policy"]["id"]` records which policy ran.
+
+`TASK_EVIDENCE` was chosen by a policy search over agent tasks on a pinned store, where it
+answered more tasks than `FULL_TEXT` at about a third of the input tokens. The runs and
+the comparison are recorded in the Vinc graph (VIN-790).
+
 ### A role's disallowed tools
 
 `prefetch_with_contract` returns the block and the role contract from the same

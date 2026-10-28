@@ -262,8 +262,19 @@ class FullTextPolicy:
                            task_evidence=(EvidenceRef(brief), EvidenceRef(search)))
 
 
-#: 지금의 기본값. VIN-790 이 바꾸기 전까지 이것이 prefetch 와 같은 블록을 낸다.
+#: 문서 읽기 도구가 없을 때의 기본값. prefetch 와 같은 블록을 낸다. 도구가 있으면
+#: :data:`vinc_client.task_evidence.TASK_EVIDENCE` 가 기본값이다(VIN-790).
 FULL_TEXT = FullTextPolicy()
+
+
+def default_policy(read_tool: bool) -> ContextPolicy:
+    """The policy :func:`compile_context` uses when none is given.
+
+    With a document-read tool the required readings can be pointers, so the task evidence
+    policy takes the room; without one only full readings are allowed and P0 stays.
+    """
+    from .task_evidence import TASK_EVIDENCE   # noqa: PLC0415  (그 모듈이 이 모듈을 읽는다)
+    return TASK_EVIDENCE if read_tool else FULL_TEXT
 
 
 def _read_required(reader: PolicyReader, read: str) -> dict[str, Any]:
@@ -581,7 +592,7 @@ def _mirror(reader: PolicyReader, read: str, document: dict[str, Any]) -> dict[s
 ReadTool = Union[bool, Callable[[dict], bool]]
 
 
-def _compile(request: ContextRequest, policy: ContextPolicy,
+def _compile(request: ContextRequest, policy: ContextPolicy | None,
              send: Callable[[str, dict[str, Any]], dict[str, Any]],
              read_tool_for: Callable[[dict], bool] | None = None) -> CompiledContext:
     if not isinstance(request, ContextRequest):
@@ -589,7 +600,7 @@ def _compile(request: ContextRequest, policy: ContextPolicy,
     if isinstance(request.max_chars, bool) or not isinstance(request.max_chars, int) \
             or request.max_chars <= 0:
         raise VincInvalidArgument("invalid_argument", "max_chars must be a positive integer.")
-    if not isinstance(policy, ContextPolicy):
+    if policy is not None and not isinstance(policy, ContextPolicy):
         raise VincInvalidArgument("invalid_argument", "policy needs an id and a plan method.")
     _check_pin(request.pin)
     if isinstance(request.anchors, str) or not all(isinstance(a, str) and a.strip()
@@ -605,6 +616,9 @@ def _compile(request: ContextRequest, policy: ContextPolicy,
         # 그래서 이 판단은 계약을 읽은 뒤에 한다(I4).
         request = dataclasses.replace(request, read_tool=bool(read_tool_for(contract)))
         reader._request = request
+    if policy is None:
+        # 기본값은 도구 판단이 끝난 뒤에 고른다. 역할이 문서 도구를 막으면 P0 이다.
+        policy = default_policy(request.read_tool)
     reader._contract = contract
     reader._required = tuple((read, _read_required(reader, read)) for read in reads)
     _read_anchors(reader, tuple(request.anchors))
@@ -631,7 +645,7 @@ def _sender(client: Any) -> Callable[[str, dict[str, Any]], dict[str, Any]]:
     return send
 
 
-def compile_context(client: Any, request: ContextRequest, policy: ContextPolicy = FULL_TEXT, *,
+def compile_context(client: Any, request: ContextRequest, policy: ContextPolicy | None = None, *,
                     read_tool_for: Callable[[dict], bool] | None = None) -> CompiledContext:
     """Read and compile ``request`` with ``client`` (a :class:`VincClient`) under ``policy``.
 
@@ -641,12 +655,17 @@ def compile_context(client: Any, request: ContextRequest, policy: ContextPolicy 
 
     ``read_tool_for`` decides ``request.read_tool`` from the role contract this call read,
     for a host whose document tool the role itself may disallow.
+
+    With no ``policy`` the choice follows the read tool (:func:`default_policy`):
+    :data:`~vinc_client.task_evidence.TASK_EVIDENCE` when the model can read documents,
+    :data:`FULL_TEXT` (prefetch's block) when it cannot. ``manifest["policy"]["id"]`` says
+    which one ran.
     """
     return _compile(request, policy, _sender(client), read_tool_for)
 
 
 async def acompile_context(client: Any, request: ContextRequest,
-                           policy: ContextPolicy = FULL_TEXT, *,
+                           policy: ContextPolicy | None = None, *,
                            read_tool_for: Callable[[dict], bool] | None = None) -> CompiledContext:
     """:func:`compile_context` for an :class:`AsyncVincClient`.
 
@@ -689,7 +708,7 @@ class _Cancelled(Exception):
     """The caller cancelled :func:`acompile_context`; the worker thread stops at its next read."""
 
 
-def role_prefetch(client: Any, role: str, task: str, *, policy: ContextPolicy,
+def role_prefetch(client: Any, role: str, task: str, *, policy: ContextPolicy | None = None,
                   max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None,
                   read_tool: ReadTool = False) -> RolePrefetch:
     """What the adapters call instead of ``prefetch_with_contract`` when given a policy.
@@ -703,7 +722,7 @@ def role_prefetch(client: Any, role: str, task: str, *, policy: ContextPolicy,
                            ).as_prefetch()
 
 
-async def arole_prefetch(client: Any, role: str, task: str, *, policy: ContextPolicy,
+async def arole_prefetch(client: Any, role: str, task: str, *, policy: ContextPolicy | None = None,
                          max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None,
                          read_tool: ReadTool = False) -> RolePrefetch:
     """:func:`role_prefetch` for an :class:`AsyncVincClient`."""
@@ -714,7 +733,7 @@ async def arole_prefetch(client: Any, role: str, task: str, *, policy: ContextPo
 
 
 def replay_context(compiled: CompiledContext, request: ContextRequest,
-                   policy: ContextPolicy) -> CompiledContext:
+                   policy: ContextPolicy | None = None) -> CompiledContext:
     """Compile again from ``compiled.trace`` alone, with no network.
 
     A read the trace does not hold is refused as I7. Comparing the two ``sha256`` values
@@ -736,7 +755,7 @@ def replay_context(compiled: CompiledContext, request: ContextRequest,
 
 
 def check_replay(compiled: CompiledContext, request: ContextRequest,
-                 policy: ContextPolicy) -> None:
+                 policy: ContextPolicy | None = None) -> None:
     """Raise I7 when replaying ``compiled`` does not give the same block bytes."""
     again = replay_context(compiled, request, policy)
     if again.sha256 != compiled.sha256:
