@@ -171,8 +171,9 @@ export function mountAuthoringKeys(): void {
 
 // ── 흐름 B — 문서 열의 새 문서 ─────────────────────────────────────────────────
 /** 제목 조각에서 **아직 안 쓰인** 문서 id 를 고른다. `skip` 은 이미 거절당한 후보다
- *  (남의 스페이스가 가진 id 는 읽기로는 안 보이고 쓰기에서 거절돼 여기로 돌아온다). */
-async function freeDocId(title: string, stamp: string, skip: string[]): Promise<string> {
+ *  (남의 스페이스가 가진 id 는 읽기로는 안 보이고 쓰기에서 거절돼 여기로 돌아온다).
+ *  테스트가 고르는 규칙을 직접 대조하려고 내보낸다. */
+export async function freeDocId(title: string, stamp: string, skip: string[]): Promise<string> {
   const base = slugOf(title) || stamp;
   for (let i = 1; i <= 20; i++) {
     const cand = i === 1 ? base : `${base}-${i}`;

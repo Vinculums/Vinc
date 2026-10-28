@@ -14,13 +14,16 @@ from agent_framework import (AgentSession, ChatContext, ChatMiddleware, ChatMidd
                              FunctionTool, SessionContext, tool)
 from vinc_client import (AsyncVincClient, VincNotFound, VincQuotaExceeded, VincUnavailable,
                          format_brief, format_search)
+from vinc_client.compiler import ContextPolicy, arole_prefetch
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS, package_space
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
 from vinc_client.tool_policy import RoleToolPolicy
-from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, SEARCH_DESCRIPTION,
-                               SEARCH_LIMIT_DEFAULT, SEARCH_NAME, TOOL_CALLS_PER_RUN, BriefArgs,
-                               SearchArgs, ToolCallCap, temporal_options)
+from vinc_client.doc_tool import aread_document, doc_tool_allowed
+from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, DOC_DESCRIPTION, DOC_NAME,
+                               SEARCH_DESCRIPTION, SEARCH_LIMIT_DEFAULT, SEARCH_NAME,
+                               TOOL_CALLS_PER_RUN, BriefArgs, DocArgs, SearchArgs, ToolCallCap,
+                               temporal_options)
 
 DEFAULT_SOURCE_ID = "vinc"
 log = logging.getLogger("vinc_agent_framework")
@@ -38,13 +41,17 @@ def _last_user_text(messages: Sequence[Any]) -> str:
 
 
 def create_vinc_tools(client: AsyncVincClient, *, max_chars: int = DEFAULT_MAX_CHARS,
-                      cap: ToolCallCap | None = None) -> list[FunctionTool]:
+                      cap: ToolCallCap | None = None,
+                      documents: bool = False) -> list[FunctionTool]:
     """Two read-only tools the model may call: ``vinc_brief`` and ``vinc_search``.
 
     Nothing here can write. When Vinc is unavailable, the quota is spent or
     the id does not exist, the tool answers with a sentence saying so instead
-    of failing the run. With ``cap`` the two tools share its call budget; the
+    of failing the run. With ``cap`` the tools share its call budget; the
     provider passes its own and resets it at every run.
+
+    With ``documents`` a third, ``vinc_doc_get``, reads a canonical document by id, whole,
+    by character range or under one heading, under the same cap.
     """
     # 도구는 모델 턴 안에서 돈다. 허브를 기다리지 않고 곧장 문장으로 물러선다.
     client = client.without_retries()
@@ -81,7 +88,14 @@ def create_vinc_tools(client: AsyncVincClient, *, max_chars: int = DEFAULT_MAX_C
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return f"Vinc is not available right now ({exc.code}); answer without it."
 
-    return [vinc_brief, vinc_search]
+    @tool(name=DOC_NAME, description=DOC_DESCRIPTION, schema=DocArgs)
+    async def vinc_doc_get(doc_id: str, start: int | None = None, end: int | None = None,
+                           section: str | None = None) -> str:
+        if cap is not None and not cap.spend():
+            return cap.message
+        return await aread_document(client, doc_id, start=start, end=end, section=section)
+
+    return [vinc_brief, vinc_search, vinc_doc_get] if documents else [vinc_brief, vinc_search]
 
 
 class _HideDisallowedTools(ChatMiddleware):
@@ -168,6 +182,12 @@ class VincContextProvider(ContextProvider):
     ``prefetch_pin`` (the ``hash`` from ``AsyncVincClient.role``) holds role prefetch to that
     contract: when the role changed, ``before_run`` raises ``VincRoleChanged`` and the model is
     not called. Moving the pin to the new hash is your decision; nothing moves it for you.
+
+    ``context_policy`` (with ``prefetch_role``) builds the role's block with
+    ``vinc_client.acompile_context`` under that policy instead of ``prefetch``.
+    ``vinc_client.FULL_TEXT`` gives prefetch's block. With ``expose_documents`` (and
+    ``expose_tools``) the model also gets ``vinc_doc_get``, and the policy may then shorten
+    required readings, because the model can read the rest.
     """
 
     def __init__(self, client: AsyncVincClient | None = None, *, api_key: str | None = None,
@@ -179,10 +199,18 @@ class VincContextProvider(ContextProvider):
                  prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
                  tool_calls_per_run: int | None = TOOL_CALLS_PER_RUN,
                  prefetch_pin: str | None = None,
-                 capability_map: Mapping[str, str] | None = None) -> None:
+                 capability_map: Mapping[str, str] | None = None,
+                 context_policy: ContextPolicy | None = None,
+                 expose_documents: bool = False) -> None:
         if prefetch_pin is not None and not prefetch_role:
             # 역할 없이 고정만 주면 맥락 모드로 조용히 돌게 된다. 시작 전에 멈춘다.
             raise ValueError("prefetch_pin needs prefetch_role")
+        if context_policy is not None and not prefetch_role:
+            raise ValueError("context_policy needs prefetch_role")
+        if expose_documents and not expose_tools:
+            raise ValueError("expose_documents needs expose_tools")
+        self.context_policy = context_policy
+        self.expose_documents = expose_documents
         super().__init__(source_id)
         self.client = client or AsyncVincClient(api_key, base_url=base_url, space=space)
         self._owns_client = client is None
@@ -197,13 +225,26 @@ class VincContextProvider(ContextProvider):
         self.tool_calls_per_run = tool_calls_per_run
         self.capability_map = capability_map
 
+    def _read_tool(self) -> Any:
+        # 도구를 내주더라도 역할이 그것을 막거나 승인으로 묶으면 모델은 못 쓴다. 계약을 읽은 뒤에 정한다.
+        if not self.expose_documents:
+            return False
+        return lambda contract: doc_tool_allowed(contract, self.capability_map)
+
     async def before_run(self, *, agent: Any, session: AgentSession, context: SessionContext,
                          state: dict[str, Any]) -> None:
         task = _last_user_text(context.input_messages)
         if self.prefetch_role:
-            fetched = await self.client.prefetch_with_contract(
-                self.prefetch_role, task, max_chars=self.prefetch_max_chars,
-                pin=self.prefetch_pin)
+            if self.context_policy is not None:
+                fetched = await arole_prefetch(self.client, self.prefetch_role, task,
+                                               policy=self.context_policy,
+                                               max_chars=self.prefetch_max_chars,
+                                               pin=self.prefetch_pin,
+                                               read_tool=self._read_tool())
+            else:
+                fetched = await self.client.prefetch_with_contract(
+                    self.prefetch_role, task, max_chars=self.prefetch_max_chars,
+                    pin=self.prefetch_pin)
             block = fetched.block
             # 계약의 도구 목록이 잘못됐으면 여기서 멈춘다(모델 호출 전).
             policy = RoleToolPolicy.from_contract(fetched.contract, self.capability_map)
@@ -225,7 +266,8 @@ class VincContextProvider(ContextProvider):
             # 도구는 런마다 새로 만든다: 상한(ToolCallCap)이 그 런의 것이라 동시에 도는 런끼리
             # 나눠 쓰지 않는다. LangGraph 쪽은 그래프 상태에서 같은 수를 센다.
             context.extend_tools(self.source_id, create_vinc_tools(
-                self.client, max_chars=self.max_chars, cap=ToolCallCap(self.tool_calls_per_run)))
+                self.client, max_chars=self.max_chars, cap=ToolCallCap(self.tool_calls_per_run),
+                documents=self.expose_documents))
 
     async def after_run(self, *, agent: Any, session: AgentSession, context: SessionContext,
                         state: dict[str, Any]) -> None:

@@ -1,0 +1,114 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { readFile, readdir } from 'node:fs/promises';
+import ts from 'typescript';
+
+// 앱이 기기 밖으로 무엇을 보내는가(FR-APP-43)와 웹 빌드가 데스크톱과 무엇이 다른가(FR-APP-46).
+// 두 모듈(api.ts · settings.ts · sheets.ts)은 DOM 과 부팅 상태를 통째로 끌고 와서 싣지 않는다.
+// 대신 판정이 들어 있는 조각을 소스에서 잘라 그대로 돌리고, 나머지는 소스를 읽어 대조한다.
+// 근거: [[vinc.frd.app]] FR-APP-43 · FR-APP-46
+const read = (p) => readFile(new URL(`../${p}`, import.meta.url), 'utf8');
+const url = (js) => `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`;
+const run = async (code) => (await import(url(ts.transpileModule(code,
+  { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText))).default;
+/** `start` 로 시작해 `end` 앞에서 끝나는 소스 조각. 못 찾으면 테스트가 깨진다(조용히 빈 조각이 되지 않게). */
+function slice(src, start, end) {
+  const a = src.indexOf(start);
+  assert.ok(a >= 0, `missing: ${start}`);
+  const b = src.indexOf(end, a + start.length);
+  assert.ok(b > a, `missing: ${end}`);
+  return src.slice(a, b);
+}
+async function sources(dir = 'src') {
+  const out = [];
+  for (const e of await readdir(new URL(`../${dir}`, import.meta.url), { withFileTypes: true })) {
+    const p = `${dir}/${e.name}`;
+    if (e.isDirectory()) out.push(...await sources(p));
+    else if (/\.(ts|js)$/.test(e.name)) out.push([p, await read(p)]);
+  }
+  return out;
+}
+
+const api = await read('src/api.ts');
+
+test('a failed search is logged with status and duration only', async () => {
+  const fn = slice(api, 'async function logSearchFailure', '\n}\n') + '\n}\n';
+  const logSearchFailure = await run(`const sent = []; const warned = [];
+    const console = { warn: (m) => warned.push(m) };
+    async function shellInvoke() { return async (cmd, args) => { sent.push([cmd, args]); }; }
+    ${fn}
+    export default async (s, d) => { await logSearchFailure(s, d); return { sent, warned }; };`);
+  const { sent, warned } = await logSearchFailure(503, 12.4);
+  assert.deepEqual(sent, [['plugin:log|log', { level: 4, message: 'GET /api/graph/search failed status=503 duration_ms=12', location: 'search' }]]);
+  assert.deepEqual(warned, ['[search] GET /api/graph/search failed status=503 duration_ms=12']);
+  // 부르는 자리마다 넘기는 것은 상태와 걸린 시간뿐이다(질의 문자열이 인자로 들어갈 자리가 없다).
+  const args = [...api.matchAll(/await logSearchFailure\(([^;]*)\);/g)].map((m) => m[1]);
+  assert.ok(args.length >= 3);
+  for (const a of args) assert.match(a, /^(0|200|response\.status), performance\.now\(\) - started$/);
+});
+
+test('the app sends no usage, crash or analytics data', async () => {
+  const files = await sources();
+  const offenders = [];
+  for (const [p, s] of files) {
+    if (/sendBeacon|new WebSocket|XMLHttpRequest|new EventSource|sentry|posthog|gtag\(|mixpanel|amplitude|telemetry/i.test(s.replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, '')))
+      offenders.push(p);
+  }
+  assert.deepEqual(offenders, []);
+  const pkg = JSON.parse(await read('package.json'));
+  for (const dep of Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }))
+    assert.doesNotMatch(dep, /sentry|posthog|analytics|mixpanel|amplitude|segment|datadog|bugsnag|rollbar/i);
+  const cargo = await read('src-tauri/Cargo.toml');
+  assert.doesNotMatch(cargo, /sentry|analytics|telemetry|bugsnag|rollbar/i);
+});
+
+test('outbound addresses are the graph and the site pages only', async () => {
+  const allowed = [/^https:\/\/vincs\.io\/(terms|privacy|connect-app)\//, /^https:\/\/mcp\.vincs\.io\/mcp$/,
+    /^http:\/\/127\.0\.0\.1:/, /^http:\/\/tauri\.localhost$/, /^http:\/\/www\.w3\.org\/2000\/svg$/,
+    /^https:\/\/modelcontextprotocol\.io\/favicon\.svg$/];
+  const found = [];
+  for (const [p, s] of await sources()) {
+    for (const m of s.matchAll(/https?:\/\/[-\w.:/${}?=&%#]+/g)) {
+      const u = m[0].replace(/\$\{.*$/, '').replace(/[`'"]$/, '');
+      if (!allowed.some((re) => re.test(u))) found.push(`${p}: ${u}`);
+    }
+  }
+  assert.deepEqual(found, []);
+  // fetch 는 사이드카(`cfg.base`) · 같은 오리진 · 같은 오리진 상대 경로로만 간다.
+  let fetches = 0;
+  for (const [p, s] of await sources()) {
+    for (const m of s.matchAll(/\bfetch\((new URL\([^)]*\)|"[^"]*"|[\w.]+)/g)) {
+      assert.match(m[1], /^(new URL\("[^"]+", (cfg\.base|location\.origin)\)|"\/api\/[^"]+"|url)$/, `${p}: fetch(${m[1]})`);
+      fetches++;
+    }
+  }
+  assert.ok(fetches >= 5);
+  assert.match(api, /const url = new URL\(WEB \? "\/api\/graph" \+ path : path, cfg\.base\);/);
+});
+
+test('the web build has no AI connections or Advanced in Settings', async () => {
+  const settings = await read('src/surfaces/settings.ts');
+  const cats = slice(settings, 'const ALL_CATS', '\n  let active');
+  const ids = await run(`export default (WEB) => { const U = new Proxy({}, { get: (o, k) => k }); ${cats} return CATS.map((c) => c.id); };`);
+  assert.deepEqual(ids(true), ['general', 'reading', 'account', 'data', 'graphmd', 'about']);
+  assert.deepEqual(ids(false), ['general', 'reading', 'account', 'ai', 'data', 'graphmd', 'advanced', 'about']);
+});
+
+test('Share offers Community on the web only', async () => {
+  const sheets = await read('src/sheets.ts');
+  const dests = slice(sheets, 'const dests: Dest[] = [];', '  dests.push({\n    key: "file"');
+  const keys = await run(`export default (WEB, cfg) => { const U = new Proxy({}, { get: (o, k) => k }); ${dests} return dests.map((d) => d.key); };`);
+  assert.deepEqual(keys(true, { team: '' }), ['community']);
+  assert.deepEqual(keys(true, { team: 't' }), ['personal', 'community']);
+  assert.deepEqual(keys(false, { team: '' }), []);
+  assert.deepEqual(keys(false, { team: 't' }), ['personal']);
+});
+
+test('the web is the hosted origin, not the shell or local dev', async () => {
+  const flags = slice(api, 'export const IN_SHELL', '\n\n// ──');
+  const decide = await run(`export default (location) => { ${flags.replace(/export /g, '').replace(/const DEFAULT_BASE[^\n]*\n/, '')} return { IN_SHELL, WEB }; };`);
+  assert.deepEqual(decide({ protocol: 'https:', hostname: 'vincs.io' }), { IN_SHELL: false, WEB: true });
+  assert.deepEqual(decide({ protocol: 'tauri:', hostname: 'tauri.localhost' }), { IN_SHELL: true, WEB: false });
+  assert.deepEqual(decide({ protocol: 'http:', hostname: 'localhost' }), { IN_SHELL: false, WEB: false });
+  assert.deepEqual(decide({ protocol: 'http:', hostname: '127.0.0.1' }), { IN_SHELL: false, WEB: false });
+});
