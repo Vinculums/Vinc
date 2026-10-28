@@ -1975,14 +1975,19 @@ textarea.props-val {
   font-size: 1rem; line-height: 1.65;
 }
 .doc-render .cm-line { padding: 0; }
-/* 블록 사이 숨 — 마크다운의 빈 줄이 실제 문단 간격으로 읽히게. */
-.doc-render .cm-line:not(:empty) { margin: .12rem 0; }
-.doc-render .cm-r-h { margin: 1.15rem 0 .3rem; line-height: 1.25; letter-spacing: -.01em; }
+/* 블록 사이 숨 — 마크다운의 빈 줄이 실제 문단 간격으로 읽히게.
+   ⚠ 줄(`.cm-line`)에는 **세로 margin 을 주지 않는다.** CodeMirror 는 줄 높이를 상자 높이로
+   재고 margin 은 세지 않아서, 줄마다 그만큼 높이 지도가 어긋난다. 그러면 화살표 · Home · End
+   가 몇 줄 위나 아래로 떨어진다(긴 문서 끝에서 위 화살표 한 번이 다섯 줄을 건너뛰었다).
+   그래서 간격은 padding 으로 준다. 값은 예전 margin 이 접히던 간격과 같게 맞췄다
+   (이웃 줄의 .06 과 더해 .12 · 1.15 · .3). */
+.doc-render .cm-line:not(:empty) { padding-block: .06rem; }
+.doc-render .cm-r-h { padding-block: 1.09rem .24rem; line-height: 1.25; letter-spacing: -.01em; }
 .doc-render .cm-r-h1 { font-size: 1.5rem; }
 .doc-render .cm-r-h2 { font-size: 1.22rem; }
 .doc-render .cm-r-h3 { font-size: 1.06rem; }
 .doc-render .cm-r-h4, .doc-render .cm-r-h5, .doc-render .cm-r-h6 { font-size: 1rem; }
-.doc-render .cm-r-quote { margin: .3rem 0; }
+.doc-render .cm-r-quote { padding-block: .24rem; }
 .doc-render .cm-r-code { background: hsl(var(--muted)); border-radius: 4px; padding: 0 .2em; }
 /* 표(GFM) — 격자를 그리지 않고 **소스의 공백 정렬을 그대로 살린다**.
    등폭 + 줄바꿈 금지가 핵심이다: 비례폰트면 열이 어긋나고, lineWrapping 이 걸려
@@ -2029,6 +2034,17 @@ textarea.props-val {
 .doc-render .cm-r-tbl th, .doc-render .md-tbl th {
   font-weight: 600; background: hsl(var(--muted));
 }
+/* 편집 중인 칸 — 칸 경계를 넘지 않는 안쪽 고리로 짚는다(테두리를 굵히면 열 폭이 흔들린다).
+   그 칸만 원문 기호가 보이므로 등폭 글꼴은 쓰지 않는다: 글자가 튀지 않아야 이어서 읽힌다. */
+.doc-render .cm-r-tbl [contenteditable] { cursor: text; outline: none; }
+.doc-render .cm-r-tbl [contenteditable]:focus {
+  box-shadow: inset 0 0 0 2px hsl(var(--ring)); background: hsl(var(--card));
+}
+/* 수식 · 다이어그램을 고치는 동안 원문 아래에 남는 그림. 원문에 붙어 있다는 것을 왼쪽 선으로 말한다. */
+.cm-r-preview { padding-left: .75rem; border-left: 2px solid hsl(var(--border)); }
+/* 편집기 안의 블록 위젯(표 · 수식 · 다이어그램)도 세로 margin 대신 padding 으로 띄운다 —
+   줄과 같은 이유로, 위젯의 margin 도 높이 지도에 안 잡힌다(위 `.cm-line` 주석). */
+.doc-render .cm-content > :is(.cm-r-tablewrap, .md-math, .md-mermaid) { margin-block: 0; padding-block: .5rem; }
 /* 문서 참조는 **누를 수 있는 것처럼 보이지 않게** 둔다 — 발췌·폴백에는 그 문을 여는
    배선이 없다(CM 쪽만 `onDocLink` 를 갖는다). 원문 대괄호를 감추는 것이 목적이고,
    없는 동작을 약속하는 것이 목적이 아니다. */
