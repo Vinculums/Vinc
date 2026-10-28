@@ -129,7 +129,7 @@ class ToolRunner:
         if capped:
             text, kind, env = CAP_MESSAGE.format(limit=self.cap), "cap", None
         else:
-            env = self.surface.mcp.call(name, args)
+            env = (self.surface.door or self.surface.mcp).call(name, args)
             text, kind = record.envelope_text(env), record.classify(env)
         with self._lock:
             self.trace.add({"t": "tool", "step": step, "id": call_id, "name": name,

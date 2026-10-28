@@ -30,13 +30,14 @@ import time
 import uuid
 
 from rag_eval.agent_tasks import arms as arms_mod
+from rag_eval.agent_tasks import doors as doors_mod
 from rag_eval.agent_tasks import checkers, hosts as hosts_mod, metrics, models, record, tasks as tasks_mod
 from rag_eval.evalkit import runtime
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKSPACE = ROOT.parent if ROOT.parent.name != "_wt" else ROOT.parent.parent
 SOURCE_FILES = ("__init__.py", "__main__.py", "tasks.py", "checkers.py", "models.py", "arms.py",
-                "hosts.py", "record.py", "metrics.py", "runner.py")
+                "doors.py", "hosts.py", "record.py", "metrics.py", "runner.py")
 #: 실행 기록 조각의 주제. 이 갈래의 하네스 실행은 여기 모인다.
 RUN_DOMAIN = "vinc/agent/harness"
 DEFAULT_ROLE = "concept:agent-research"
@@ -176,7 +177,7 @@ def run(a) -> int:
     want_arms = [x.strip() for x in a.arms.split(",") if x.strip()]
     want_hosts = [x.strip() for x in a.hosts.split(",") if x.strip()]
     for x in want_arms:
-        if x not in arms_mod.ARMS:
+        if x not in arms_mod.ARMS + doors_mod.DOOR_ARMS:
             raise Refused(f"모르는 비교군 {x!r}")
     host_objs = [hosts_mod.make(h) for h in want_hosts]
     prices = tuple(float(x) for x in a.price.split(",")) if a.price else None
@@ -240,9 +241,17 @@ def run(a) -> int:
                            for s in c["support"] if not mcp.exists(checkers.canon_id(s))})
             if gone:
                 raise Refused(f"과제의 근거 id {len(gone)}개가 이 스토어에 없다: {gone[:5]}")
-            a2_tools = mcp.list_tools() if "A2" in want_arms else []
+            # 문 비교군의 라우트 표도 MCP 도구 설명을 쓰므로, A2 계열이 하나라도 있으면 목록을 받는다.
+            a2_tools = mcp.list_tools() if any(x.startswith("A2") for x in want_arms) else []
             header["arms"]["a2"] = {"tools": len(a2_tools), "tools_sha256": hashlib.sha256(
                 json.dumps(a2_tools, sort_keys=True, ensure_ascii=False).encode()).hexdigest()}
+            door_surfaces = {}
+            for arm in want_arms:
+                if arm in doors_mod.DOOR_ARMS:
+                    door = doors_mod.build(arm, st.v1_base, st.api_key)
+                    manual = door.manual(a2_tools)
+                    door_surfaces[arm] = (door, manual)
+                    header["arms"].setdefault("doors", {})[arm] = doors_mod.describe(door, manual)
             if "A1" in want_arms:
                 a1 = arms_mod.A1Retriever(_copy(pinned, work / "a1.db"), owner, st.encode_url,
                                           st.encode_token, k=a.a1_k, chunk_chars=a.a1_chars)
@@ -259,10 +268,11 @@ def run(a) -> int:
                     header["stopped"] = {"reason": model.paused, "done": len(rows),
                                          "planned": len(plan)}
                     break
+                door, manual = door_surfaces.get(arm, (None, None))
                 surface = arms_mod.Surface(
-                    arm=arm, mcp=mcp, vinc=vinc,
-                    context=a1_blocks[task.prompt]["block"] if arm == "A1" else None,
-                    tools=a2_tools if arm == "A2" else [])
+                    arm=arm, mcp=mcp, vinc=vinc, door=door,
+                    context=a1_blocks[task.prompt]["block"] if arm == "A1" else manual,
+                    tools=a2_tools if arm == "A2" else (door.tools() if door else []))
                 rows.append(_one(a, header, ts, task, host, arm, r, surface, model, ctx, traces))
                 if not a.quiet:
                     x = rows[-1]
