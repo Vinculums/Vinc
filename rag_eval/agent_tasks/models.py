@@ -26,6 +26,7 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -85,7 +86,7 @@ class FakeModel:
     모른다고 답한다. 품질이 아니라 하네스의 배관과 재현성을 보는 모델이다.
     """
 
-    PREFERRED_TOOLS = ("vinc_search", "search", "vinc_brief")
+    PREFERRED_TOOLS = ("vinc_search", "search", "vinc_brief", "vinc_http", "vinc")
 
     def describe(self) -> dict:
         return {"kind": "fake", "family": "fake", "model": "fake-deterministic-1",
@@ -105,6 +106,11 @@ class FakeModel:
             args = {"query": user[:300]}
             if "limit" in (schema.get("properties") or {}):
                 args["limit"] = 5
+            # A2 의 다른 문(REST·CLI)도 같은 검색 한 번으로 부른다.
+            if pick == "vinc_http":
+                args = {"method": "POST", "path": "/v1/search", "body": {"query": user[:300], "limit": 5}}
+            elif pick == "vinc":
+                args = {"command": f"search --query {shlex.quote(user[:300])} --top-k 5"}
             return Turn(text="", tool_calls=[ToolCall(id="fake-call-1", name=pick, args=args)],
                         tokens_in=tin, tokens_out=_tokens(json.dumps(args)),
                         model_version="fake-deterministic-1")

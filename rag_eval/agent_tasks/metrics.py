@@ -18,7 +18,8 @@ from collections import Counter, defaultdict
 from rag_eval.evalkit.funnel import mcnemar_p
 
 BOOT_B, BOOT_SEED = 2000, 7
-HEADLINE = (("A2", "A0"), ("A3", "A0"), ("A2", "A1"), ("A3", "A1"))
+HEADLINE = (("A2", "A0"), ("A3", "A0"), ("A2", "A1"), ("A3", "A1"),
+            ("A2-rest", "A2"), ("A2-cli", "A2"))
 
 
 def wilson(k: int, n: int, z: float = 1.959964) -> list[float] | None:

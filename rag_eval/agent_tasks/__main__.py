@@ -27,7 +27,8 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--heldout", action="store_true", help="test 세트를 돌린다는 명시")
     r.add_argument("--disjoint-from", help="이 세트와 겹치는 과제가 있으면 거부한다")
     r.add_argument("--skip-handoff", action="store_true", help="handoff 과제를 빼고 그 수를 헤더에 남긴다")
-    r.add_argument("--arms", default=",".join(arms.ARMS))
+    r.add_argument("--arms", default=",".join(arms.ARMS),
+                   help="쉼표로 잇는다. A0 A1 A2 A3, 그리고 A2 의 다른 문 A2-rest A2-cli")
     r.add_argument("--hosts", default=",".join(hosts.HOSTS))
     r.add_argument("--model", default="fake",
                    help="fake | azure:<배포> | openai:<모델> | claude-code:<모델 id>(구독, 키 없음)")

@@ -6,6 +6,7 @@
 | A1 | 단순 벡터 RAG: 과제 지시를 운영 인코더로 임베딩해 스토어의 청크 벡터에서 가장 가까운 k 개를 프롬프트에 붙인다 |
 | A2 | 배포된 Vinc MCP 도구: 로컬 MCP 앱의 ``tools/list`` 를 이름·설명·스키마 그대로, 고르지 않고 |
 | A3 | vinc-client 맥락 모드: 어댑터가 모델 호출마다 붙이는 brief(+search) 블록과 ``Sources:`` 지시 |
+| A2-rest · A2-cli | A2 와 같은 스택에 REST v1 이나 CLI 로 붙는 문(:mod:`doors`) |
 
 A1 의 청크는 제품이 저장한 청크(문서 절 단위, 500 토큰 조각마다 벡터)이고, 검색은 조각
 거리의 최소로 청크를 접는 :meth:`store.vector_search` 하나다. 어휘·그래프 팔과 리랭커는 없다.
@@ -54,6 +55,8 @@ class Surface:
     tools: list[dict] = field(default_factory=list)
     mcp: "McpClient | None" = None
     vinc: VincEndpoint | None = None
+    #: A2 의 다른 문(:mod:`doors`). 있으면 도구 호출이 MCP 대신 여기로 간다.
+    door: object | None = None
 
 
 class McpClient:
