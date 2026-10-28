@@ -31,13 +31,14 @@ import uuid
 
 from rag_eval.agent_tasks import arms as arms_mod
 from rag_eval.agent_tasks import doors as doors_mod
+from rag_eval.agent_tasks import role_context as role_mod
 from rag_eval.agent_tasks import checkers, hosts as hosts_mod, metrics, models, record, tasks as tasks_mod
 from rag_eval.evalkit import runtime
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKSPACE = ROOT.parent if ROOT.parent.name != "_wt" else ROOT.parent.parent
 SOURCE_FILES = ("__init__.py", "__main__.py", "tasks.py", "checkers.py", "models.py", "arms.py",
-                "doors.py", "hosts.py", "record.py", "metrics.py", "runner.py")
+                "doors.py", "role_context.py", "hosts.py", "record.py", "metrics.py", "runner.py")
 #: 실행 기록 조각의 주제. 이 갈래의 하네스 실행은 여기 모인다.
 RUN_DOMAIN = "vinc/agent/harness"
 DEFAULT_ROLE = "concept:agent-research"
@@ -177,7 +178,7 @@ def run(a) -> int:
     want_arms = [x.strip() for x in a.arms.split(",") if x.strip()]
     want_hosts = [x.strip() for x in a.hosts.split(",") if x.strip()]
     for x in want_arms:
-        if x not in arms_mod.ARMS + doors_mod.DOOR_ARMS:
+        if x not in arms_mod.ARMS + doors_mod.DOOR_ARMS + (role_mod.ROLE_ARM,):
             raise Refused(f"모르는 비교군 {x!r}")
     host_objs = [hosts_mod.make(h) for h in want_hosts]
     prices = tuple(float(x) for x in a.price.split(",")) if a.price else None
@@ -242,7 +243,8 @@ def run(a) -> int:
             if gone:
                 raise Refused(f"과제의 근거 id {len(gone)}개가 이 스토어에 없다: {gone[:5]}")
             # 문 비교군의 라우트 표도 MCP 도구 설명을 쓰므로, A2 계열이 하나라도 있으면 목록을 받는다.
-            a2_tools = mcp.list_tools() if any(x.startswith("A2") for x in want_arms) else []
+            a2_tools = (mcp.list_tools() if any(x.startswith("A2") or x == role_mod.ROLE_ARM
+                                                for x in want_arms) else [])
             header["arms"]["a2"] = {"tools": len(a2_tools), "tools_sha256": hashlib.sha256(
                 json.dumps(a2_tools, sort_keys=True, ensure_ascii=False).encode()).hexdigest()}
             door_surfaces = {}
@@ -258,6 +260,18 @@ def run(a) -> int:
                 header["arms"]["a1"] = a1.settings()
                 a1_blocks = a1.blocks([t.prompt for t in todo])
             vinc = arms_mod.VincEndpoint(st.v1_base, st.api_key)
+            role_ctx, read_tools = None, []
+            if role_mod.ROLE_ARM in want_arms:
+                policy, policy_source = role_mod.load_policy(a.policy)
+                if policy_source is not None:
+                    (layout / "source").mkdir(parents=True, exist_ok=True)
+                    (layout / "source" / "policy.py").write_bytes(policy_source)
+                role_ctx = role_mod.RoleContext(vinc, a.role_context, policy, a.context_limit,
+                                                layout / "reads")
+                read_tools = [t for t in a2_tools if t["name"] in role_mod.READ_TOOLS]
+                header["arms"]["r"] = {**role_ctx.settings(), "policy_sha256": (
+                    hashlib.sha256(policy_source).hexdigest() if policy_source else None),
+                    "read_tools_offered": [t["name"] for t in read_tools]}
             judge = checkers.fake_judge if a.model == "fake" else model_judge(judge_model)
             ctx = checkers.Context(resolve=mcp.exists, judge=judge)
             plan = [(r, task, host, arm) for r in range(1, a.runs + 1) for task in todo
@@ -269,11 +283,15 @@ def run(a) -> int:
                                          "planned": len(plan)}
                     break
                 door, manual = door_surfaces.get(arm, (None, None))
-                surface = arms_mod.Surface(
-                    arm=arm, mcp=mcp, vinc=vinc, door=door,
-                    context=a1_blocks[task.prompt]["block"] if arm == "A1" else manual,
-                    tools=a2_tools if arm == "A2" else (door.tools() if door else []))
-                rows.append(_one(a, header, ts, task, host, arm, r, surface, model, ctx, traces))
+                compiled = role_ctx.compile(task.prompt) if arm == role_mod.ROLE_ARM else None
+                context = (a1_blocks[task.prompt]["block"] if arm == "A1" else
+                           compiled.block if compiled else manual)
+                tools = (a2_tools if arm == "A2" else read_tools if compiled else
+                         door.tools() if door else [])
+                surface = arms_mod.Surface(arm=arm, mcp=mcp, vinc=vinc, door=door,
+                                           context=context, tools=tools)
+                rows.append(_one(a, header, ts, task, host, arm, r, surface, model, ctx, traces,
+                                 compiled))
                 if not a.quiet:
                     x = rows[-1]
                     print(json.dumps({"run": x["run_id"], "success": x["grade"]["success"],
@@ -284,25 +302,33 @@ def run(a) -> int:
     return _finish(a, out, layout, header, rows, ts)
 
 
-def _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces) -> dict:
+def _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces, compiled=None) -> dict:
     trace = record.Trace()
     trace.add({"t": "start", "task": task.id, "family": task.family, "arm": arm, "host": host.name,
                "model": header["model"]["model"], "run": r, "prompt": task.prompt})
+    if compiled is not None:
+        trace.add(compiled.event())
     t0 = time.perf_counter()
     host_error = ""
-    try:
-        res = host.run(prompt=task.prompt, system=arms_mod.BASE_SYSTEM, surface=surface,
-                       model=model, trace=trace, max_steps=a.max_steps, cap=a.cap)
-    except Exception as exc:   # noqa: BLE001 — 실행 하나의 고장은 그 행에 적고 다음으로 간다
-        host_error = f"{type(exc).__name__}: {str(exc)[:300]}"
-        res = hosts_mod.RunOutput(final_text="", host_error=host_error)
+    if compiled is not None and compiled.error:
+        # 맥락이 컴파일되지 않았으면 모델을 부르지 않는다. 그 과제는 후보의 실패로 센다.
+        res = hosts_mod.RunOutput(final_text="")
+    else:
+        try:
+            res = host.run(prompt=task.prompt, system=arms_mod.BASE_SYSTEM, surface=surface,
+                           model=model, trace=trace, max_steps=a.max_steps, cap=a.cap)
+        except Exception as exc:   # noqa: BLE001 — 실행 하나의 고장은 그 행에 적고 다음으로 간다
+            host_error = f"{type(exc).__name__}: {str(exc)[:300]}"
+            res = hosts_mod.RunOutput(final_text="", host_error=host_error)
     latency = round(time.perf_counter() - t0, 3)
     trace.add({"t": "final", "text": res.final_text, "model_error": res.model_error,
                "host_error": host_error})
     path = trace.write(traces)
+    blocked = compiled is not None and bool(compiled.error)
     grade = checkers.grade(task, res.final_text, ctx,
-                           model_failed=bool(res.model_error or host_error))
-    cls = "host_error" if host_error else record.failure_class(grade, trace.events, res.model_error)
+                           model_failed=bool(res.model_error or host_error or blocked))
+    cls = ("host_error" if host_error else role_mod.failure_class(compiled) if blocked
+           else record.failure_class(grade, trace.events, res.model_error))
     cost = model.cost(res.tokens_in, res.tokens_out)
     rid = record.run_id(header["round"], a.candidate, task.id, arm, host.name,
                         header["model"]["model"], f"r{r}")
@@ -315,6 +341,9 @@ def _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces) -> dict
            "model_versions": res.model_versions, "host_error": host_error,
            "tool_events": [{"name": e["name"], "kind": e["kind"]} for e in trace.events
                            if e["t"] == "tool"]}
+    if compiled is not None:
+        row["context"] = {"chars": len(compiled.block), "sha256": compiled.sha256,
+                          "error": compiled.error, "invariant": compiled.invariant}
     outcome = ("error" if cls in ("host_error", "model_error")
                else "success" if grade["success"] else "failure")
     gates = {f"{i}:{c['type']}": ("pass" if c["passed"] else "fail")
