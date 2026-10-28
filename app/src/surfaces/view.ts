@@ -36,7 +36,7 @@ import { layoutsFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CON
          type EdgeKind } from "../view-prefs";
 import { changedViewPrefs, viewControlRows, viewPreferenceWork } from "../view-controls";
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
-import { setLnbActive, setLnbNavigator, setLnbTopicPicker,
+import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbScopeClearer,
          refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
 import { PROP_KINDS, propsEditable, rowsFrom, propsFrom, convertText, sameProps, propsPatchOf,
          type PropRow, type PropKind } from "../props-edit";
@@ -465,9 +465,9 @@ export async function renderView(el: HTMLElement, resume = false) {
   /** 선 갈래 견본(18×12) — 실제 변별 채널(굵기·화살촉·농도) 그대로. */
   const LINE_ART: Record<EdgeKind, string> = {
     directed: `<path d="M1 6h11" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 3.4 17 6l-6 2.6Z" fill="currentColor"/>`,
-    related: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width="1"/>`,
+    related: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 2"/>`,
     cross: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width=".8" opacity=".5"/>`,
-    bridge: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width=".8" opacity=".35"/>`,
+    bridge: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width=".8" opacity=".35" stroke-dasharray="3 2"/>`,
   };
   /** 물러남 견본(24×24) — 전후를 나란히. 수치 라벨은 recede.ts(토큰)가 채운다.
    *  노드 견본은 없다: 노드는 물러나지 않는다(그리지 않는 것은 가르치지 않는다).
@@ -2191,7 +2191,8 @@ export async function renderView(el: HTMLElement, resume = false) {
       // 전체 화면에는 렌즈가 없으므로 toN3 가 애초에 표식을 달지 않는다.
       onClick: (nd) => {
         if (nd.gateway) { trail.push({ kind: "l1", domains: [nd.domain!] }); show(trail[trail.length - 1]); }
-        else focusOnMap(nd);       // 레일은 카드의 버튼이 연다
+        // 지도에서 고른 항목은 전체 화면을 둔 채 **상세 패널**로 연다(떠 있는 카드를 거치지 않는다).
+        else openFromMap(nd);
       },
       onRightClick: (nd, ev) => nodeMenu(nd, ev),
       onConnect: connectByDrag, canConnect: canLinkPair,
@@ -2732,6 +2733,40 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 떠 있던 카드가 있으면 거둔다(다른 노드의 카드가 열 뒤에 남지 않게).
     if (card) void openRelsCard(nd);
     else closeFloatPanel();
+  }
+
+  /** 캔버스에서 고른 주제들(전체 3D 화면에서만). 다시 그리면 풀린다(`show`). */
+  let canvasTopics: string[] = [];
+  /** 주제를 캔버스에서 고른다. 고른 주제의 항목이 지금 읽기에 하나도 없으면 false — 호출측이
+   *  그 주제로 다시 읽는다. 빈 목록이면 고르기를 푼다. */
+  function pickOnCanvas(next: string[]): boolean {
+    const g = g3 as unknown as { __frame?: (ids: string[] | null, ms?: number) => void;
+      __labelIds?: (ids: string[]) => void } | null;
+    if (!g?.__frame) return false;
+    if (!next.length) {
+      canvasTopics = [];
+      setSpot(null); g.__labelIds?.([]); g.__frame(null);
+      setLnbActive({});
+      return true;
+    }
+    const members = curNodes.filter((n) => inLens(n.domain, next));
+    if (!members.length) return false;
+    const ids = new Set(members.map((n) => n.id));
+    const s = spotOf(curEdges.filter((e) => ids.has(e.source) || ids.has(e.target)));
+    for (const id of ids) s.nodes.add(id);
+    canvasTopics = next;
+    closeFloatPanel();
+    setSpot(s);
+    g.__labelIds?.(members.filter((n) => n.kind === "decision").map((n) => n.id));
+    g.__frame([...ids]);
+    setLnbActive({ domains: next });
+    return true;
+  }
+
+  /** 지도에서 고른 것 — 초점(원뿔·주소)을 걸고 카드 없이 상세 패널(옆 칸)을 연다. */
+  function openFromMap(nd: N3) {
+    focusOnMap(nd, false);
+    railFor(nd);
   }
 
   /** 지도 밖 진입점이 쓰는 것 — 고르고(카드·원뿔·주소) **레일까지 연다**. */
@@ -3859,7 +3894,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     const mountedAt = performance.now();
     g2 = mount2d(canvas, shown2, pruneEdges([...visibleEdges(), ...topicGuides], shown2), {
       markId: lnbFocus.nodeId,
-      onClick: (nd) => focusOnMap(toN3([nd])[0]),   // 3D 와 같은 약속
+      onClick: (nd) => openFromMap(toN3([nd])[0]),   // 3D 와 같은 약속
       onRightClick: (nd, ev) => nodeMenu(toN3([nd])[0], ev),
       // D53 — 흐름 폐기로 갈 곳을 잃은 관계 근거 패널(D45-V)의 새 진입점.
       onEdge: (e) => void openEdgeDetail(e),
@@ -4126,6 +4161,7 @@ export async function renderView(el: HTMLElement, resume = false) {
                       opts?: { keepPanel?: boolean; keepCamera?: boolean; keepDetail?: boolean }) {
     const seq = ++showSeq;
     pendingShowSeq = seq;
+    canvasTopics = [];                         // 다시 그리면 캔버스 고르기는 풀린다
     loader.abort(); loader.removePreview();
     setBusy(true, opts?.keepPanel ? 120 : 400);
     // 옵션만 바뀐 재마운트는 카메라를 잇는다 — 전체 맞춤으로 되감기는 것이 "옵션을
@@ -4232,7 +4268,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   // 404 로 떨구지 않고 L0 로 받는다 — 북마크가 조용히 깨지는 것보다 낫다.
   // 제거 조건: 없음. 밖에 나간 북마크를 받는 갈래라 main.ts `ALIAS` 와 같이 무기한 둔다.
   //
-  // `#view/trace/<id>` 는 **스코프가 아니라 포커스**다(2026-08-17, 씨앗 층 폐지).
+  // `#view/trace/<id>` 는 **스코프가 아니라 포커스**다(씨앗 층은 폐지됐다).
   // 층은 전량으로 두고 마운트가 끝난 뒤 그 노드로 간다 — 전량은 반드시 그 노드를
   // 담으므로 딥링크가 빈 화면으로 끝나지 않는다. 철자는 영구 유지한다(별칭 규율).
   const sel = addr?.sel;
@@ -4296,8 +4332,19 @@ export async function renderView(el: HTMLElement, resume = false) {
   setLnbNavigator((id, dom, docId) => void openFromNav(id, dom, docId));
   // 주제 고르기 — **즉시 반영**이다(발주자 결정 2026-08-15). 고른 것과 보는 것이
   // 어긋나는 중간 상태를 두지 않는 대신, 고를 때마다 서버를 한 번 왕복한다.
+  setLnbScopeClearer(() => canvasTopics.length ? pickOnCanvas([]) : false);
   setLnbTopicPicker((path, add, set) => {
     const lv = trail[trail.length - 1];
+    // 전체 3D 화면에서는 **다시 읽지 않고 캔버스에서 고른다**: 카메라가 그 주제로 가고 그 항목과
+    // 관계가 남고 나머지는 물러나며 결정에 라벨이 선다. 집합은 그대로다(파고들기가 아니다).
+    // Agent 레일의 `set`(역할 주제로 좁히기)과, 고른 주제가 지금 읽기에 없을 때는 예전 길이다.
+    // 근거: [[decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28]]
+    if (!set && lv.kind === "l0" && g3 && !Array.isArray(path)) {
+      const one = path;
+      const next = add ? (canvasTopics.includes(one) ? canvasTopics.filter((d) => d !== one) : [...canvasTopics, one])
+        : (canvasTopics.length === 1 && canvasTopics[0] === one ? [] : [one]);
+      if (pickOnCanvas(next)) return;
+    }
     const cur = lv.kind === "l1" ? lv.domains : [];
     // `set` 은 토글이 아니라 "이 주제(들)로" 다(Agent 레일: 역할 주제 둘). 이미 그 주제거나
     // 그 안쪽(`agent/release`)으로 좁혀져 있으면 그대로 둔다. 넓히면 좁힌 것이 풀린다.

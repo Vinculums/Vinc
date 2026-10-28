@@ -15,7 +15,7 @@ import { changedRendererPrefs, canUpdateViewStyle } from "../view-controls";
 import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
 import { ViewIdleFrames } from "./view-idle-frames";
 import * as THREE from "three";
-import { loadPrefs, DIRECTED_RELS, type ViewPrefs } from "../view-prefs";
+import { loadPrefs, DIRECTED_RELS, edgeKindOf, type ViewPrefs } from "../view-prefs";
 import { palette as signal, hexStr, type ThemeMode } from "../theme";
 import { tintPlan } from "../view-tint";
 import { recede } from "../recede";
@@ -400,6 +400,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     .sort((a, b) => (b.degree || 0) - (a.degree || 0) || (a.id < b.id ? -1 : 1))
     .slice(0, 8).filter((n) => (n.degree || 0) > 0).map((n) => n.id));
   const hubLabels = new Map<string, THREE.Sprite>();
+  /** 상시 라벨 밖에서 잠깐 단 라벨(주제를 고르면 그 주제의 결정) — `__labelIds` 가 관리한다. */
+  const pickLabels = new Set<string>();
   const hubLabel = (n: N3) => {
     const sprite = labelSprite(n.label, pal);
     hubLabels.set(n.id, sprite);
@@ -434,6 +436,17 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   const crossArea = (s: string, t: string) => {
     const a = areaById.get(s), b = areaById.get(t);
     return !!a && !!b && a !== b;
+  };
+  /** 문서가 개념·결정에 매달리는 끈(About·Attached) — 관계의 67% 라 전체 보기에서는 영역 사이
+   *  선과 같은 규칙으로 숨긴다. 짚은 노드의 것은 보인다. */
+  const TETHERS = new Set(["ABOUT", "ATTACHES_TO"]);
+  const quietAtWhole = (s: string, t: string, type: string | undefined) =>
+    (crossArea(s, t) || TETHERS.has(type || "")) && !focusIds.has(s) && !focusIds.has(t);
+  /** 선 모양은 범례의 갈래 어휘 하나를 따른다(D74): 방향은 실선과 화살촉, 방향 없는 관계와
+   *  다리는 파선. 스키마 타입마다 따로 그리면 범례와 선이 두 어휘가 된다. */
+  const dashedLink = (type: string | undefined, cross?: boolean) => {
+    const kind = edgeKindOf({ type: type || "", cross_domain: cross });
+    return kind === "related" || kind === "bridge";
   };
   /** 몸통의 색 — 초점은 초점색, 주제 틴트가 있으면 그것, 없으면 잉크. 빌드와 테마 전환이
    *  같은 규칙을 읽는다. 초점색은 "지금 초점" 하나만 뜻하므로 주제가 덮지 않는다(정본 §2.5). */
@@ -524,6 +537,7 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
    *  위치 추적과 hover 페이드(아래 applyFade 의 traverse)는 그대로 얻는다. */
   const nodeFactory = () => {
     hubLabels.clear();
+    pickLabels.clear();                          // 오브젝트를 다시 지으면 붙여 둔 라벨도 함께 사라진다
     return (n: any) => {
       if (canInstance(n)) {
         const ghost = ghostNode(nodeRadius(n, prefs));
@@ -564,8 +578,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   const arrowLenFn = () => (l: any) => {
     const s = typeof l.source === "object" ? l.source.id : l.source;
     const t = typeof l.target === "object" ? l.target.id : l.target;
-    //: 영역 사이 곡선은 평소 알파 0 이라 화살촉만 떠 보인다 — 화살촉은 초점에 닿을 때만 단다.
-    if (crossArea(s, t) && !focusIds.has(s) && !focusIds.has(t)) return 0;
+    //: 영역 사이 선·끈은 평소 알파 0 이라 화살촉만 떠 보인다 — 화살촉은 초점에 닿을 때만 단다.
+    if (quietAtWhole(s, t, l.type)) return 0;
     return prefs.arrows && !particlesOn && !nodesOnly && isDirectedLink(l) ? 2.6 : 0;
   };
   assignTiers(nodes, links);   // 성좌 글로우 깊이 계층(92:211) — nodeObject 가 __tier 를 읽는다
@@ -688,12 +702,13 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
         arrow: !!prefs.arrows && !particlesOn && !nodesOnly && isDirectedLink(link),
         particles: particlesOn && isDirectedLink(link), particleColor: pal.link.heavy,
         visible: isVisible(linkVisibility, link) && isVisible(nodeVisibility, source) && isVisible(nodeVisibility, target)
-          && (!crossArea(source.id, target.id) || emphasized || focusIds.has(source.id) || focusIds.has(target.id)),
+          && (!quietAtWhole(source.id, target.id, link.type) || emphasized),
+        dashed: dashedLink(link.type, link.cross),
         targetRadius: renderedRadii.get(target.id) ?? nodeRadius(target, prefs), detail }, performance.now());
     }
     const width = el.clientWidth, height = el.clientHeight;
     const boxes: LabelBox[] = [];
-    for (const id of hubIds) {
+    for (const id of hubLabels.keys()) {
       const sprite = hubLabels.get(id);
       if (!sprite?.parent?.visible) continue;
       sprite.getWorldPosition(labelWorld);
@@ -951,6 +966,52 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
    *  ~300ms 뒤 스스로 틱을 멈춘다(F6). 점등을 거는 손은 렌즈 패널 안에 있어 캔버스에
    *  포인터 이벤트가 하나도 안 가므로, 깨우지 않으면 **계산은 맞는데 화면이 그대로**
    *  다. 이 기능이 조용히 안 되는 가장 그럴듯한 경로가 여기다. */
+  /** 이 노드들이 화면에 들도록 카메라를 맞춘다(주제 고르기). 집합은 그대로고 카메라만 움직인다 —
+   *  파고들기가 아니다: [[decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28]] */
+  (g as any).__frame = (ids: string[] | null, ms = 700): void => {
+    // `zoomToFit` 은 거리만 줄이고 시선 대상을 옮기지 않아(실측) 직접 잰다: 고른 노드들의 중심과
+    // 반경, 지금 보는 방향 그대로 그 구가 화면에 들어오는 거리.
+    const want = ids ? new Set(ids) : null;
+    const picked = nodes.filter((n) => (!want || want.has(n.id)) && Number.isFinite(n.x));
+    if (!picked.length) return;
+    const c = new THREE.Vector3();
+    for (const n of picked) c.add(new THREE.Vector3(n.x || 0, n.y || 0, n.z || 0));
+    c.divideScalar(picked.length);
+    let r = 0;
+    for (const n of picked) r = Math.max(r, c.distanceTo(new THREE.Vector3(n.x || 0, n.y || 0, n.z || 0))
+      + nodeRadius(n, prefs));
+    const cam = g.camera() as THREE.PerspectiveCamera;
+    const tgt = (controls?.target as THREE.Vector3 | undefined) ?? new THREE.Vector3();
+    const dir = cam.position.clone().sub(tgt);
+    if (dir.lengthSq() < 1e-9) dir.set(0, 0, 1);
+    const half = THREE.MathUtils.degToRad(cam.fov / 2) * Math.min(1, cam.aspect);
+    const dist = Math.max(r, 40) / Math.sin(half) * 1.15;
+    const pos = c.clone().add(dir.normalize().multiplyScalar(dist));
+    wake(ms + 500);
+    g.cameraPosition({ x: pos.x, y: pos.y, z: pos.z }, { x: c.x, y: c.y, z: c.z }, ms);
+    setTimeout(() => { if (!dead) syncCamera(); }, ms + 60);
+  };
+  /** 상시 라벨(허브) 밖의 노드에 라벨을 잠깐 단다. 새 목록이 오면 앞의 것은 거둔다. 겹침
+   *  솎기(nonOverlappingLabels)는 상시 라벨과 같이 받는다. */
+  (g as any).__labelIds = (ids: string[]): void => {
+    for (const id of pickLabels) {
+      const sp = hubLabels.get(id);
+      sp?.parent?.remove(sp);
+      sp?.material.map?.dispose(); sp?.material.dispose();
+      hubLabels.delete(id);
+    }
+    pickLabels.clear();
+    if (prefs.labels === "none") return;
+    for (const id of ids) {
+      if (hubLabels.has(id)) continue;
+      const n = nodes.find((m) => m.id === id) as (N3 & { __threeObj?: THREE.Object3D }) | undefined;
+      const group = n?.__threeObj;
+      if (!n || !group) continue;
+      group.add(hubLabel(n));
+      pickLabels.add(id);
+    }
+    wake(400);
+  };
   (g as any).__spotlight = (s: Spot | null): void => {
     spot = s;
     if (!hoverId) applyFade(s ? s.nodes : null);
@@ -992,8 +1053,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     const t = typeof l.target === "object" ? l.target.id : l.target;
     // 노드만 — 선이 없다. hover 로도 돌아오지 않는다(그것이 이 모드의 뜻이다).
     if (nodesOnly) return pal.link.base + ALPHA0;
-    // 영역 사이 선은 짚었을 때만(위 `crossArea` 주석). 점등이 걸려 있으면 그 집합을 따른다.
-    if (crossArea(s, t) && !focusIds.has(s) && !focusIds.has(t)
+    // 영역 사이 선과 끈은 짚었을 때만(위 `quietAtWhole` 주석). 점등이 걸려 있으면 그 집합을 따른다.
+    if (quietAtWhole(s, t, l.type)
         && !(hoverId ? s === hoverId || t === hoverId
              : spot?.edges.has(edgeKey({ source: s, target: t, type: l.type || "" }))))
       return pal.link.base + ALPHA0;

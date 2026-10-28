@@ -8,7 +8,7 @@ import { tintMap } from "../view-tint";
 import type { ThemeMode } from "../theme";
 import type { DocEditorHandle } from "../doc-editor";
 import { setTopbarLead, setViewHooks } from "../topbar";
-import { agentRoleCount, setLnbActive, setLnbDocOpener, setLnbTopicPicker, refreshLnb } from "../lnb";
+import { agentRoleCount, setLnbActive, setLnbDocOpener, setLnbTopicPicker, setLnbScopeClearer, refreshLnb } from "../lnb";
 import { setLiveRefresher } from "../live";
 import { loaderRows } from "../vinc-loaders.js";
 
@@ -63,6 +63,7 @@ export function leaveHome(): void {
   editor = null;
   setLnbDocOpener(null);
   setLnbTopicPicker(null);
+  setLnbScopeClearer(null);
 }
 
 const themeMode = (): ThemeMode =>

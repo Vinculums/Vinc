@@ -537,6 +537,11 @@ const EN = {
       thinking: "Looking…",
       notFound: (q: string) => `Nothing in your knowledge matched "${q}".`,
       notFoundHint: "Try a name that appears in your notes, or switch to Find.",
+      // A4: ask again as of a past date; the answer is what was in force then.
+      asOf: "As of",
+      asOfToday: "Today",
+      asOfNote: (d: string) => `As of ${d}`,
+      endedOn: (d: string) => `Ended ${d}`,
       ambiguous: "Which one did you mean?",
       noBody: "No description recorded for this one yet.",
       // D73-R — the answer body may be quoted from a document; say which one.
@@ -1945,6 +1950,10 @@ const KO: Deck = {
       thinking: "찾는 중…",
       notFound: (q) => `'${q}'에 맞는 기록을 찾지 못했어요`,
       notFoundHint: "기록에 나오는 이름으로 물어보거나, 찾기 모드로 바꿔 보세요",
+      asOf: "기준일",
+      asOfToday: "오늘로",
+      asOfNote: (d) => `${d} 기준 답이에요`,
+      endedOn: (d) => `${d}에 효력이 끝났어요`,
       ambiguous: "이 중 어느 것인가요?",
       noBody: "아직 적어 둔 설명이 없어요",
       bodyFromDoc: (t) => `「${t}」에서 인용`,

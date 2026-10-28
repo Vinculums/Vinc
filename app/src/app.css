@@ -1152,6 +1152,11 @@ body {
 }
 .ask-hbtn:hover { background: hsl(var(--muted-foreground) / .1); }
 .ask-hbtn[disabled] { color: hsl(var(--caption-foreground)); cursor: default; background: none; }
+/* A4 기준일 — 제목 옆 작은 날짜 칸. 비어 있으면 오늘이다. */
+.ask-asof { display: inline-flex; align-items: center; gap: .3rem;
+  font-size: var(--fs-sm); color: hsl(var(--caption-foreground)); }
+.ask-asof input { font: inherit; font-size: var(--fs-sm); color: hsl(var(--foreground));
+  background: none; border: 1px solid hsl(var(--border)); border-radius: .4rem; padding: .1rem .3rem; }
 
 /* 로그 — 자라는 자리. 상한을 넘으면 스크롤(패널이 화면을 삼키지 않게). */
 .ask-log {

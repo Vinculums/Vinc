@@ -155,6 +155,13 @@ const atSurfaceRoot = (): boolean => ["", "home", "view"].includes(location.hash
 /** 지금 표면이 그래프인가. 아니면 문서 홈이다(검색 표면은 둘 다 아니지만 홈의 동선을 따른다). */
 const onGraph = (): boolean => /^#view(\/|$)/.test(location.hash);
 
+/** 그래프가 캔버스에서 고른 주제를 풀어 준다(주소는 그대로 `#view` 라 해시로는 못 푼다).
+ *  풀었으면 true. 없거나 풀 것이 없으면 해시 착지로 간다. */
+let clearScope: (() => boolean) | null = null;
+export function setLnbScopeClearer(fn: (() => boolean) | null) {
+  clearScope = fn;
+}
+
 export function setLnbNavigator(fn: Navigator | null) {
   navigate = fn;
 }
@@ -841,6 +848,7 @@ export function mountLnb(opts: { deferLoad?: boolean } = {}) {
       // 고른 것을 전부 뺀다 = 전체(L0). `pickTopic` 에 같은 경로를 다시 넘기면
       // 토글이라 하나씩 꺼야 하므로, 첫 번째를 비-add 로 두 번 눌러 비우는 대신
       // 홈 해시로 간다 — 그것이 이 앱에서 "전체"의 정본 주소다.
+      if (clearScope?.()) return;
       location.hash = "#view";
       return;
     }
