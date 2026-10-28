@@ -27,13 +27,10 @@ export function changedRendererPrefs(previous: ViewPrefs, next: ViewPrefs): Pref
 export const canUpdateViewStyle = (keys: PrefKey[], liveLinks = false) =>
   keys.every(key => STYLE_KEYS.has(key) || liveLinks && key === "edges");
 
-/** The panel inventory of the one 3D view. Only hub consumes cone geometry. */
-export function viewControlRows(p: ViewPrefs): string[] {
-  const rows = ["size", "layout", "nodeScale", "labels", "arrows", "unlinked",
-    "spread", "edgeWidth", "edgeShow", "basis", "when"];
-  if (p.layout === "hub") rows.splice(2, 0, "cone");
-  rows.push("replay");
-  return rows;
+/** The panel inventory of the one 3D view. The layout is fixed (time branches), so it has no row. */
+export function viewControlRows(_p: ViewPrefs): string[] {
+  return ["size", "nodeScale", "labels", "arrows", "unlinked",
+    "spread", "edgeWidth", "edgeShow", "basis", "when", "replay"];
 }
 
 export function viewPreferenceWork(p: ViewPrefs, keys: PrefKey[],
