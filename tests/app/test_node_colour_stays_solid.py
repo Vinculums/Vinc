@@ -49,9 +49,12 @@ class ThreeDTests(unittest.TestCase):
         self.assertNotIn("uFadeColor", self.src)
 
     def test_몸통은_안개를_받지_않는다(self):
-        """깊이 단서는 엣지의 안개가 진다. 몸통이 안개를 받으면 뒤쪽 노드가 옅어진다."""
-        for head in ("function instMaterial(", "function skinFor(", "function gatewayWire("):
-            self.assertIn("fog: false", _fn(self.src, head), head)
+        """깊이 단서는 엣지의 안개가 진다. 몸통이 안개를 받으면 뒤쪽 노드가 옅어진다.
+        몸통 한 층(view-orbs3d)은 ShaderMaterial 이라 안개 청크를 넣지 않는 한 안개를 안 받는다."""
+        self.assertIn("fog: false", _fn(self.src, "function gatewayWire("))
+        orbs = _read("surfaces/view-orbs3d.ts")
+        self.assertNotIn("fog: true", orbs)
+        self.assertNotIn("<fog_", orbs)
 
 
 class TwoDTests(unittest.TestCase):
@@ -98,7 +101,7 @@ class CardTests(unittest.TestCase):
         """3D 가 받는 노드는 고아 숨김으로 걸러진 것이다. 거기서 순위를 매기면 주제
         하나가 빠질 때 나머지 색이 밀린다."""
         self.assertIn("keepCam, curNodes.map((n) => n.domain))", _read("surfaces/view.ts"))
-        self.assertIn("tintMap(tintDomains ?? nodes.map((n) => n.domain), themeMode())",
+        self.assertIn("tintPlan(tintDomains ?? nodes.map((n) => n.domain), themeMode())",
                       _read("surfaces/view3d.ts"))
 
     def test_범례가_노드_물러남을_가르치지_않는다(self):

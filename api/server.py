@@ -756,6 +756,15 @@ class VincApp:
                                                    role=p.get("role"), run=p.get("run") or None,
                                                    limit=limit))
 
+    def read_agent_writes(self, p):
+        """최근 쓰기를 출처별로 묶은 검토 목록(조회 전용). 계약: `api/agent_writes.py`."""
+        from . import agent_writes
+        try:
+            days = agent_writes.clamp_days(p.get("days"))
+        except ValueError as exc:
+            return 400, {"kind": "agent_writes", "executed": False, "error": str(exc)}
+        return self._read(lambda r: agent_writes.scan(r, owner=_req(p, "owner"), days=days))
+
     def read_eval_cards(self, p):
         """역할에 붙은 평가 카드(조회 전용). 계약: `api/eval_cards.py`."""
         from . import eval_cards
@@ -2984,6 +2993,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/operation-status": app.read_operation_status,
             "/events": app.read_events,   # 변경 기록에서 계산한 이벤트 피드
             "/runs": app.read_runs,   # 실행 기록 목록, 인용한 주장으로 거른다
+            "/agent-writes": app.read_agent_writes,   # 최근 쓰기를 출처별로 묶은 검토(A5)
             "/eval-cards": app.read_eval_cards,   # 역할에 붙은 평가 카드
             "/community-agent/import-result": app.read_community_agent_result,
             "/brief": app.read_brief,   # W1 — 질문 하나로 답변 재료 조인

@@ -20,6 +20,7 @@ import { setTopbarLead } from "../topbar";
 import { buildAgentRoster, teamRank, setLnbActive, showAgentRail, type AgentRole } from "../lnb";
 import { announceRolesChanged, copyRolePrompt, openRoleComposer, TEAM_ROLES } from "../role-composer";
 import { loaderRows } from "../vinc-loaders.js";
+import { mountAgentWrites } from "../agent-writes";
 
 /** 팀 안의 자리 순서 — 리드 · 조율 · 구성원(레일 목록과 같다). */
 const SEAT_RANK: Record<string, number> = { lead: 0, coordinator: 1 };
@@ -163,9 +164,12 @@ function draw(el: HTMLElement, roles: AgentRole[], repaint: () => void): void {
     </header>
     <p class="hint agents-lead">${esc(readOnly ? H.agentsLeadRead : H.agentsLead)}</p>
     <p class="agents-status" role="status">${esc(notice)}</p>
+    <section class="agent-writes" id="agent-writes"></section>
     ${body}
   </div>`;
   notice = "";
+  void mountAgentWrites(el.querySelector<HTMLElement>("#agent-writes")!,
+    () => el.isConnected && !!el.querySelector("#agent-writes"));
 
   const board = el.querySelector<HTMLElement>(".agents-board")!;
   const status = (s: string) => { board.querySelector(".agents-status")!.textContent = s; };

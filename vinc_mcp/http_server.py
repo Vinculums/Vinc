@@ -81,6 +81,8 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "node-edges": ("GET", "/node-edges"),
     "roles": ("GET", "/roles"),
     "eval-cards": ("GET", "/eval-cards"),   # 역할 편집 면의 평가 카드(조회 전용, owner 는 프록시가 강제)
+    # 에이전트 쓰기 검토(A5) — 최근 쓰기를 출처별로 묶은 조회. owner 는 프록시가 강제한다.
+    "agent-writes": ("GET", "/agent-writes"),
     "community-agent-export": ("POST", "/community-agent/export"),
     "community-pack-inspect": ("POST", "/community-pack/inspect"),
     "community-agent-import-preview": ("POST", "/community-agent/import-preview"),

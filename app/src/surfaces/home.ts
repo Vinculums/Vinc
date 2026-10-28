@@ -8,9 +8,10 @@ import { tintMap } from "../view-tint";
 import type { ThemeMode } from "../theme";
 import type { DocEditorHandle } from "../doc-editor";
 import { setTopbarLead, setViewHooks } from "../topbar";
-import { agentRoleCount, setLnbActive, setLnbDocOpener, setLnbTopicPicker, refreshLnb } from "../lnb";
+import { agentRoleCount, setLnbActive, setLnbDocOpener, setLnbTopicPicker, setLnbScopeClearer, refreshLnb } from "../lnb";
 import { setLiveRefresher } from "../live";
 import { loaderRows } from "../vinc-loaders.js";
+import { namedDecisions, docMirrorId } from "../doc-graph";
 
 /** 문서 홈(2026-10-22) — 문서를 보고 쓰고 정리하는 첫 화면.
  *
@@ -63,6 +64,7 @@ export function leaveHome(): void {
   editor = null;
   setLnbDocOpener(null);
   setLnbTopicPicker(null);
+  setLnbScopeClearer(null);
 }
 
 const themeMode = (): ThemeMode =>
@@ -362,6 +364,10 @@ async function paintDoc(el: HTMLElement, gen: number, docId: string): Promise<vo
           ${node ? `<button class="btn ha-btn" type="button" data-act="graph">${icon("graph", 15)}<span>${esc(H.showInGraph)}</span></button>` : ""}
           <button class="btn btn-quiet ha-btn" type="button" data-act="copy">${esc(H.copyText)}</button>
         </div>
+        <section class="ha-sec" id="ha-graph" hidden>
+          <h2 class="ha-h" id="ha-graph-h"></h2>
+          <div class="ha-graph"></div>
+        </section>
         <section class="ha-sec" id="ha-toc" hidden>
           <h2 class="ha-h" id="ha-toc-h"></h2>
           <ol class="ha-toc"></ol>
@@ -389,11 +395,70 @@ async function paintDoc(el: HTMLElement, gen: number, docId: string): Promise<vo
     onDocLink: (id) => { location.hash = `#home/doc/${encodeURIComponent(id)}`; },
     onText: (text) => {
       window.clearTimeout(tocTimer);
-      tocTimer = window.setTimeout(() => { if (gen === liveGen) drawToc(text); }, 400);
+      tocTimer = window.setTimeout(() => { if (gen === liveGen) { drawToc(text); void drawGraph(text); } }, 400);
     },
   });
   if (gen !== liveGen) { void handle.dispose(); return; }
   editor = handle;
+
+  // ── 옆 칸: 그래프에서(A1) — 이 문서에 관한 결정과, 본문이 부르는데 잇지 않은 결정 ──────
+  // 관계는 문서의 미러 개념에 매달린다. 이을 때 근거는 그 이름이 선 본문의 줄이다(doc-graph.ts).
+  const graphBox = el.querySelector<HTMLElement>("#ha-graph")!;
+  const mirror = docMirrorId(docId);
+  let linked: { id: string; title: string; until: string }[] | null = null;
+  const named = new Map<string, { title: string; until: string } | null>();
+  const canLink = !isCommunitySpace(cfg.team) && await canWriteHere().catch(() => false);
+  async function loadLinked(): Promise<void> {
+    const ctx = await api.nodeContext(cfg.owner, mirror, 1, { team: cfg.team || null }).catch(() => null);
+    linked = ((ctx?.links?.items || []) as any[]).filter((l) => String(l.id).startsWith("decision:"))
+      .map((l) => ({ id: String(l.id), title: String(l.title || l.id),
+        until: String(l.valid_until || l.temporal?.valid_until || "") }));
+  }
+  async function drawGraph(text: string): Promise<void> {
+    if (linked === null) await loadLinked();
+    if (gen !== liveGen || !linked) return;
+    const have = new Set(linked.map((l) => l.id));
+    const loose = namedDecisions(text).filter((n) => !have.has(n.id)).slice(0, 5);
+    // 부른 결정의 제목과 끝난 날 — 한 번만 읽는다(문장을 쓰는 동안 다시 묻지 않는다).
+    await Promise.all(loose.filter((n) => !named.has(n.id)).map(async (n) => {
+      const c = await api.nodeContext(cfg.owner, n.id, 1, { team: cfg.team || null }).catch(() => null);
+      named.set(n.id, c?.executed && c.found !== false
+        ? { title: String(c.title || n.id), until: String(c.temporal?.valid_until || "") } : null);
+    }));
+    if (gen !== liveGen) return;
+    const real = loose.filter((n) => named.get(n.id));
+    graphBox.hidden = !linked.length && !real.length;
+    if (graphBox.hidden) return;
+    const kind = COPY.author.kinds.decision;
+    const state = (until: string) => until ? H.graphEnded(until) : H.graphInForce;
+    graphBox.querySelector("#ha-graph-h")!.textContent = H.graphTitle(linked.length + real.length);
+    graphBox.querySelector(".ha-graph")!.innerHTML = linked.map((l) => `<button type="button" class="ha-graph-i" data-node="${
+        esc(l.id)}"><span>${esc(l.title)}</span><span class="hint">${esc(`${kind} · ${state(l.until)} · ${H.graphAbout}`)}</span></button>`).join("")
+      + real.map((n) => { const m = named.get(n.id)!; return `<button type="button" class="ha-graph-i is-loose" data-node="${
+        esc(n.id)}"><span>${esc(m.title)}</span><span class="hint">${esc(`${H.graphNamed} · ${state(m.until)}`)}</span></button>`; }).join("")
+      + (real.length && canLink ? `<div class="ha-graph-warn"><span>${esc(H.graphUnlinked(real.length))}</span>
+          <button class="btn" type="button" data-act="link-named">${esc(H.graphLink)}</button></div>` : "");
+    graphBox.querySelectorAll<HTMLElement>("[data-node]").forEach((b) => b.addEventListener("click", () => {
+      location.hash = `#view/trace/${encodeURIComponent(b.dataset.node!)}`;
+    }));
+    graphBox.querySelector<HTMLButtonElement>("[data-act=link-named]")?.addEventListener("click", async (ev) => {
+      const btn = ev.currentTarget as HTMLButtonElement;
+      btn.disabled = true;
+      const lines = new Map(namedDecisions(text).map((n) => [n.id, n.line]));
+      try {
+        // 결정 → 문서 미러의 about. 근거는 본문의 그 줄이다(about 은 근거를 요구한다).
+        const res: any = await api.ingestFragment({ nodes: [], edges: real.map((n) => ({
+          type: "about", from: n.id, to: mirror, evidence: lines.get(n.id) || "" })) });
+        if (res?.executed === false || !(res?.merged?.edges?.created || res?.merged?.edges?.matched))
+          throw new Error(res?.error || (res?.warnings || []).join(" · "));
+        linked = null;
+        await drawGraph(text);
+      } catch {
+        btn.disabled = false;
+        btn.insertAdjacentHTML("afterend", `<span class="hint">${esc(H.graphLinkFail)}</span>`);
+      }
+    });
+  }
 
   // ── 옆 칸: 목차 — 지금 원문에서 세고, 지금 읽는 절을 표시한다 ──────────────────
   let secs: Sec[] = [];
@@ -445,6 +510,7 @@ async function paintDoc(el: HTMLElement, gen: number, docId: string): Promise<vo
   };
   document.addEventListener("scroll", onScroll, { capture: true, passive: true });
   drawToc(handle.getText());
+  void drawGraph(handle.getText());
 
   // ── 옆 칸: 이 문서의 개념 — 누르면 본문에서 나오는 자리에 밑줄을 긋는다 ─────────────
   void api.docContext(cfg.owner, docId).then((ctx) => {

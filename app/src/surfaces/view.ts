@@ -1,5 +1,5 @@
 import { api, cfg, WEB, teamsApi, isCommunitySpace, canWriteHere, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, messageOf, isWriteConflict, type GraphEdge, type GraphNode,
-         type NodeLinks } from "../api";
+         type NodeLinks, type NodeContext } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
 import { absoluteViewUrl, formatViewUrl, parseViewUrl } from "../view-url";
@@ -19,6 +19,8 @@ import { bundleStatsByType, mountBundle, type BundleEdge,
 import { recede } from "../recede";
 import { causalCone, spotOf, type Spot } from "../spotlight";
 import { openShareSheet } from "../sheets";
+import { sayings, statedStart, decisionSteps, type ItemLink, type Step } from "../item-page";
+import { isHistorical, conflictIds } from "../node-validity";
 import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
 import { blocksSurfaceShortcuts } from "../keys";
@@ -35,7 +37,7 @@ import { layoutsFor, VIEWPOINTS, RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE, CON
          type EdgeKind } from "../view-prefs";
 import { changedViewPrefs, viewControlRows, viewPreferenceWork } from "../view-controls";
 import { lensSlot, viewpointsSlot, setViewHooks, refreshTopbar } from "../topbar";
-import { setLnbActive, setLnbNavigator, setLnbTopicPicker,
+import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbScopeClearer,
          refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
 import { PROP_KINDS, propsEditable, rowsFrom, propsFrom, convertText, sameProps, propsPatchOf,
          type PropRow, type PropKind } from "../props-edit";
@@ -464,9 +466,9 @@ export async function renderView(el: HTMLElement, resume = false) {
   /** 선 갈래 견본(18×12) — 실제 변별 채널(굵기·화살촉·농도) 그대로. */
   const LINE_ART: Record<EdgeKind, string> = {
     directed: `<path d="M1 6h11" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 3.4 17 6l-6 2.6Z" fill="currentColor"/>`,
-    related: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width="1"/>`,
+    related: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 2"/>`,
     cross: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width=".8" opacity=".5"/>`,
-    bridge: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width=".8" opacity=".35"/>`,
+    bridge: `<path d="M1 6h16" fill="none" stroke="currentColor" stroke-width=".8" opacity=".35" stroke-dasharray="3 2"/>`,
   };
   /** 물러남 견본(24×24) — 전후를 나란히. 수치 라벨은 recede.ts(토큰)가 채운다.
    *  노드 견본은 없다: 노드는 물러나지 않는다(그리지 않는 것은 가르치지 않는다).
@@ -491,11 +493,22 @@ export async function renderView(el: HTMLElement, resume = false) {
     const shapeRow = (art: string, label: string, noteTxt: string) =>
       `<span class="lg-shape">${art}<span class="lg-shape-t">${esc(label)}`
       + `<span class="lg-note">${esc(noteTxt)}</span></span></span>`;
+    // 3D 는 몸통 키트가 여섯 종을 가르므로 여섯 줄과 영역 부피를 가르친다. 평면은 넷이다.
     const shapes = [
-      shapeRow(is3d ? m3("concept") : flatMark("concept"), L.concept, note.concept),
-      shapeRow(is3d ? m3("record") : flatMark("record"), L.document, note.document),
-      shapeRow(is3d ? m3("bridge") : flatMark("bridge"), L.bridge, note.bridge),
-      shapeRow(is3d ? m3("domain") : flatMark("domain"), L.topic, note.topic),
+      ...(is3d ? [
+        shapeRow(m3("concept"), L.concept, note.concept),
+        shapeRow(m3("decision"), L.decision, note.decision),
+        shapeRow(m3("record"), L.record, note.record),
+        shapeRow(m3("episode"), L.episode, note.episode),
+        shapeRow(m3("bridge"), L.bridge, note.bridge),
+        shapeRow(m3("domain"), L.topic, note.topic),
+        shapeRow(m3("area"), L.area, note.area),
+      ] : [
+        shapeRow(flatMark("concept"), L.concept, note.concept),
+        shapeRow(flatMark("record"), L.document, note.document),
+        shapeRow(flatMark("bridge"), L.bridge, note.bridge),
+        shapeRow(flatMark("domain"), L.topic, note.topic),
+      ]),
       // Weave 는 관문 윤곽을 안 그린다(view-bundle markSvg(gateway=false)) — 그리지
       // 않는 것은 가르치지 않는다.
       ...(p.view === "bundle" ? [] :
@@ -1859,6 +1872,9 @@ export async function renderView(el: HTMLElement, resume = false) {
     lens.length > 0 && !inLens(nd.domain, lens) && (nd.kind || "concept") !== "bridge";
 
   function toN3(nodes: GraphNode[], lens: string[] = [], markId?: string): N3[] {
+    const today = new Date().toISOString().slice(0, 10);
+    // 충돌은 짝으로만 잰다 — 노드 하나를 넘기는 호출(카드·레일)에서는 비어 있다.
+    const conflicts = nodes.length > 1 ? conflictIds(nodes, today) : new Set<string>();
     return nodes.map((nd) => ({
       id: nd.id,
       label: nd.label === nd.id ? nd.id.replace(/^[a-z]+:/, "") : nd.label,
@@ -1866,7 +1882,9 @@ export async function renderView(el: HTMLElement, resume = false) {
       kind: nd.kind || "concept",
       gateway: isGateway(nd, lens),
       focus: markId !== undefined && nd.id === markId,
-      x: nd.x, y: nd.y, z: nd.z,
+      x: nd.x, y: nd.y, z: nd.z, ts: nd.ts,
+      historical: isHistorical(nd, today),
+      conflict: conflicts.has(nd.id),
     }));
   }
   /** D74 — 범례 스위치로 끈 갈래를 뺀다. **그리기 필터일 뿐** 데이터 필터가 아니다:
@@ -2178,7 +2196,8 @@ export async function renderView(el: HTMLElement, resume = false) {
       // 전체 화면에는 렌즈가 없으므로 toN3 가 애초에 표식을 달지 않는다.
       onClick: (nd) => {
         if (nd.gateway) { trail.push({ kind: "l1", domains: [nd.domain!] }); show(trail[trail.length - 1]); }
-        else focusOnMap(nd);       // 레일은 카드의 버튼이 연다
+        // 지도에서 고른 항목은 전체 화면을 둔 채 **상세 패널**로 연다(떠 있는 카드를 거치지 않는다).
+        else openFromMap(nd);
       },
       onRightClick: (nd, ev) => nodeMenu(nd, ev),
       onConnect: connectByDrag, canConnect: canLinkPair,
@@ -2452,7 +2471,8 @@ export async function renderView(el: HTMLElement, resume = false) {
   const nodeContextOnce = (id: string) => {
     const scope = viewScope().key;
     if (ctxCache?.id !== id || ctxCache.scope !== scope)
-      ctxCache = { id, scope, p: api.nodeContext(cfg.owner, id, 4, { team: cfg.team || null }) };
+      // 근거 문장까지 싣는다 — 넓은 열의 항목 페이지가 그것을 인용한다(카드는 불리언만 읽는다).
+      ctxCache = { id, scope, p: api.nodeContext(cfg.owner, id, 4, { team: cfg.team || null }, 0, true) };
     return ctxCache.p;
   };
 
@@ -2721,6 +2741,40 @@ export async function renderView(el: HTMLElement, resume = false) {
     else closeFloatPanel();
   }
 
+  /** 캔버스에서 고른 주제들(전체 3D 화면에서만). 다시 그리면 풀린다(`show`). */
+  let canvasTopics: string[] = [];
+  /** 주제를 캔버스에서 고른다. 고른 주제의 항목이 지금 읽기에 하나도 없으면 false — 호출측이
+   *  그 주제로 다시 읽는다. 빈 목록이면 고르기를 푼다. */
+  function pickOnCanvas(next: string[]): boolean {
+    const g = g3 as unknown as { __frame?: (ids: string[] | null, ms?: number) => void;
+      __labelIds?: (ids: string[]) => void } | null;
+    if (!g?.__frame) return false;
+    if (!next.length) {
+      canvasTopics = [];
+      setSpot(null); g.__labelIds?.([]); g.__frame(null);
+      setLnbActive({});
+      return true;
+    }
+    const members = curNodes.filter((n) => inLens(n.domain, next));
+    if (!members.length) return false;
+    const ids = new Set(members.map((n) => n.id));
+    const s = spotOf(curEdges.filter((e) => ids.has(e.source) || ids.has(e.target)));
+    for (const id of ids) s.nodes.add(id);
+    canvasTopics = next;
+    closeFloatPanel();
+    setSpot(s);
+    g.__labelIds?.(members.filter((n) => n.kind === "decision").map((n) => n.id));
+    g.__frame([...ids]);
+    setLnbActive({ domains: next });
+    return true;
+  }
+
+  /** 지도에서 고른 것 — 초점(원뿔·주소)을 걸고 카드 없이 상세 패널(옆 칸)을 연다. */
+  function openFromMap(nd: N3) {
+    focusOnMap(nd, false);
+    railFor(nd);
+  }
+
   /** 지도 밖 진입점이 쓰는 것 — 고르고(카드·원뿔·주소) **레일까지 연다**. */
   function openDetail(nd: N3) {
     focusOnMap(nd);
@@ -2759,6 +2813,7 @@ export async function renderView(el: HTMLElement, resume = false) {
           esc(COPY.author.connect)}</button>
         <button class="btn btn-quiet" id="nd-del">${COPY.ui.viewx.del}</button>
       </p>
+      <div id="node-item"></div>
       <div id="node-basics"></div>
       <div id="node-props"></div>
       <div id="node-links"></div>
@@ -3244,6 +3299,87 @@ export async function renderView(el: HTMLElement, resume = false) {
   }
 
   /** 넓은 열의 연결 절 — 카드가 없는 자리라 관계를 여기 싣는다. 모양은 카드와 같다. */
+  /** 항목 페이지(A2) — 넓은 열에서만. 효력 시작일(비었으면 노드가 말한 날로 한 번에 채우기),
+   *  대체 관계, 그래프가 말하는 것(저장된 문장 인용), 어떻게 정해졌나(목록 · 지도).
+   *  문장을 만들지 않는다: 근거는 `item-page.ts` 머리 주석. */
+  function drawItemPage(nd: N3, res: NodeContext, canEdit: boolean) {
+    const box = detail.querySelector<HTMLElement>("#node-item");
+    if (!box) return;
+    const V = COPY.ui.viewx;
+    const kind = res.node_kind || "";
+    const links = (res.links?.items || []) as ItemLink[];
+    const t = res.temporal || {};
+    const validFrom = t.valid_from || "";
+    const fix = canEdit && (kind === "decision" || kind === "record") ? statedStart(validFrom, res.props) : "";
+    const steps = decisionSteps({ id: nd.id, title: res.title || nd.label, validFrom,
+      validUntil: t.valid_until, createdAt: t.created_at }, links);
+    const replacedBy = steps.filter((s) => s.rel === "replaced_by");
+    const replaces = steps.filter((s) => s.rel === "replaces");
+    const row = (k: string, v: string) => `<div class="stat-row"><span class="hint">${esc(k)}</span>${v}</div>`;
+    const names = (ss: Step[]) => `<b>${ss.map((s) => esc(s.title)).join(", ")}</b>`;
+    const facts = (kind === "decision" || kind === "record" ? row(V.itemInForce, validFrom
+        ? `<b>${esc(validFrom)}</b>`
+        : `<span class="item-fix"><span class="hint">${esc(V.itemNotSet)}</span>${fix
+          ? `<button class="btn" type="button" data-item-fix="${esc(fix)}">${esc(V.itemSetOn(fix))}</button>` : ""}</span>`) : "")
+      + (t.valid_until ? row(V.itemEnded, `<b>${esc(String(t.valid_until))}</b>`) : "")
+      + (replacedBy.length ? row(V.itemReplacedBy, names(replacedBy)) : "")
+      + (replaces.length ? row(V.itemReplaces, names(replaces)) : "");
+    const says = sayings(res.props, links);
+    const relName = (type: string, dir: string) => COPY.ui.ask.relTag[`${type}:${dir}`] || type.toLowerCase();
+    const sayHTML = says.length ? says.map((s) => `<blockquote class="item-say">
+        <p>${esc(s.text)}</p>
+        <p class="hint">${s.from === "prop" ? esc(V.itemSayProp(COPY.author.kinds[kind] || kind, s.key))
+          : `${esc(V.itemSayRel(relName(s.type, s.dir)))} <button type="button" class="link-btn" data-item-go="${
+            esc(s.id)}">${esc(s.title)}</button>`}</p></blockquote>`).join("")
+      : `<p class="hint">${esc(V.itemSaysNone)}</p>`;
+    const status = (s: Step) => s.rel === "self" ? V.itemStepSelf : s.ended ? V.itemStepEnded(s.ended)
+      : s.rel === "replaced_by" ? V.itemReplacedBy : s.rel === "replaces" ? V.itemReplaces : V.itemStepRelated;
+    const list = steps.map((s) => `<div class="item-step${s.rel === "self" ? " is-self" : ""}">
+        <span class="hint">${esc(s.date || V.itemNoDate)}</span>
+        ${s.rel === "self" ? `<b>${esc(s.title)}</b>` : `<button type="button" class="link-btn" data-item-go="${
+          esc(s.id)}">${esc(s.title)}</button>`}
+        <span class="hint">${esc(status(s))}</span></div>`).join("");
+    // 지도 = 같은 걸음을 시간 순서대로 왼쪽에서 오른쪽으로(time-branches 와 같은 읽기 방향).
+    const map = `<div class="item-map">${steps.map((s, i) => `${i ? `<span class="item-arrow" aria-hidden="true">→</span>` : ""}
+        <div class="item-cell${s.rel === "self" ? " is-self" : ""}"><span class="hint">${esc(status(s))}</span>
+        <b>${esc(s.title)}</b><span class="hint">${esc(s.date || V.itemNoDate)}</span></div>`).join("")}</div>`;
+    const decided = steps.length > 1;
+    box.innerHTML = `${facts ? `<div class="item-facts">${facts}</div>` : ""}
+      <section class="item-sec"><h3 class="hint rail-sec">${esc(V.itemSays)}</h3>${sayHTML}</section>
+      ${decided ? `<section class="item-sec"><div class="item-sec-head"><h3 class="hint rail-sec">${esc(V.itemDecided)}</h3>
+        <span class="seg" role="radiogroup" aria-label="${esc(V.itemDecided)}">
+          <button type="button" role="radio" aria-checked="true" data-item-view="list">${esc(V.itemList)}</button>
+          <button type="button" role="radio" aria-checked="false" data-item-view="map">${esc(V.itemMap)}</button>
+        </span></div>
+        <div data-item-pane="list">${list}</div><div data-item-pane="map" hidden>${map}</div></section>` : ""}`;
+    box.querySelectorAll<HTMLButtonElement>("[data-item-view]").forEach((b) => b.addEventListener("click", () => {
+      box.querySelectorAll<HTMLButtonElement>("[data-item-view]").forEach((o) =>
+        o.setAttribute("aria-checked", String(o === b)));
+      box.querySelectorAll<HTMLElement>("[data-item-pane]").forEach((p) => {
+        p.hidden = p.dataset.itemPane !== b.dataset.itemView; });
+    }));
+    box.querySelectorAll<HTMLElement>("[data-item-go]").forEach((b) => b.addEventListener("click", () =>
+      void followDetail(nd, b.dataset.itemGo!, undefined, true)));
+    box.querySelector<HTMLButtonElement>("[data-item-fix]")?.addEventListener("click", async (ev) => {
+      const btn = ev.currentTarget as HTMLButtonElement;
+      const day = btn.dataset.itemFix!;
+      btn.disabled = true;
+      try {
+        // 결정의 구간은 속성에, 기록의 구간은 열에 있다(GRAPH.md). 판 확인은 서버가 한다.
+        const node = kind === "decision"
+          ? { id: nd.id, type: kind, props_patch: { valid_from: day } }
+          : { id: nd.id, type: kind, valid_from: day };
+        const out: any = await api.editNode(node, res.rev ?? 0);
+        if (isWriteConflict(out) || out?.executed === false) throw new Error(out?.error || "conflict");
+        ctxCache = null;
+        await loadNodeSource(nd);
+      } catch {
+        btn.disabled = false;
+        btn.insertAdjacentHTML("afterend", `<span class="hint">${esc(V.itemFixFailed)}</span>`);
+      }
+    });
+  }
+
   function drawPaneLinks(nd: N3, links: NodeLinks) {
     const box = detail.querySelector<HTMLElement>("#node-links");
     if (!box) return;
@@ -3500,6 +3636,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       if (basics) void import("../node-basics").then((m) => m.drawBasics(basics, nd.id, res,
         (domain) => void openNodePane(nd.id, domain || undefined), canEdit));
       if (railFull && res.links?.executed) drawPaneLinks(nd, res.links);
+      if (railFull) drawItemPage(nd, res, canEdit);
       const parts: string[] = [];
       if (res.one_liner) parts.push(`<div class="doc-render">${renderMarkdown(res.one_liner)}</div>`);
       const ex = res.excerpts || [];
@@ -3846,7 +3983,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     const mountedAt = performance.now();
     g2 = mount2d(canvas, shown2, pruneEdges([...visibleEdges(), ...topicGuides], shown2), {
       markId: lnbFocus.nodeId,
-      onClick: (nd) => focusOnMap(toN3([nd])[0]),   // 3D 와 같은 약속
+      onClick: (nd) => openFromMap(toN3([nd])[0]),   // 3D 와 같은 약속
       onRightClick: (nd, ev) => nodeMenu(toN3([nd])[0], ev),
       // D53 — 흐름 폐기로 갈 곳을 잃은 관계 근거 패널(D45-V)의 새 진입점.
       onEdge: (e) => void openEdgeDetail(e),
@@ -4113,6 +4250,7 @@ export async function renderView(el: HTMLElement, resume = false) {
                       opts?: { keepPanel?: boolean; keepCamera?: boolean; keepDetail?: boolean }) {
     const seq = ++showSeq;
     pendingShowSeq = seq;
+    canvasTopics = [];                         // 다시 그리면 캔버스 고르기는 풀린다
     loader.abort(); loader.removePreview();
     setBusy(true, opts?.keepPanel ? 120 : 400);
     // 옵션만 바뀐 재마운트는 카메라를 잇는다 — 전체 맞춤으로 되감기는 것이 "옵션을
@@ -4219,7 +4357,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   // 404 로 떨구지 않고 L0 로 받는다 — 북마크가 조용히 깨지는 것보다 낫다.
   // 제거 조건: 없음. 밖에 나간 북마크를 받는 갈래라 main.ts `ALIAS` 와 같이 무기한 둔다.
   //
-  // `#view/trace/<id>` 는 **스코프가 아니라 포커스**다(2026-08-17, 씨앗 층 폐지).
+  // `#view/trace/<id>` 는 **스코프가 아니라 포커스**다(씨앗 층은 폐지됐다).
   // 층은 전량으로 두고 마운트가 끝난 뒤 그 노드로 간다 — 전량은 반드시 그 노드를
   // 담으므로 딥링크가 빈 화면으로 끝나지 않는다. 철자는 영구 유지한다(별칭 규율).
   const sel = addr?.sel;
@@ -4283,8 +4421,19 @@ export async function renderView(el: HTMLElement, resume = false) {
   setLnbNavigator((id, dom, docId) => void openFromNav(id, dom, docId));
   // 주제 고르기 — **즉시 반영**이다(발주자 결정 2026-08-15). 고른 것과 보는 것이
   // 어긋나는 중간 상태를 두지 않는 대신, 고를 때마다 서버를 한 번 왕복한다.
+  setLnbScopeClearer(() => canvasTopics.length ? pickOnCanvas([]) : false);
   setLnbTopicPicker((path, add, set) => {
     const lv = trail[trail.length - 1];
+    // 전체 3D 화면에서는 **다시 읽지 않고 캔버스에서 고른다**: 카메라가 그 주제로 가고 그 항목과
+    // 관계가 남고 나머지는 물러나며 결정에 라벨이 선다. 집합은 그대로다(파고들기가 아니다).
+    // Agent 레일의 `set`(역할 주제로 좁히기)과, 고른 주제가 지금 읽기에 없을 때는 예전 길이다.
+    // 근거: [[decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28]]
+    if (!set && lv.kind === "l0" && g3 && !Array.isArray(path)) {
+      const one = path;
+      const next = add ? (canvasTopics.includes(one) ? canvasTopics.filter((d) => d !== one) : [...canvasTopics, one])
+        : (canvasTopics.length === 1 && canvasTopics[0] === one ? [] : [one]);
+      if (pickOnCanvas(next)) return;
+    }
     const cur = lv.kind === "l1" ? lv.domains : [];
     // `set` 은 토글이 아니라 "이 주제(들)로" 다(Agent 레일: 역할 주제 둘). 이미 그 주제거나
     // 그 안쪽(`agent/release`)으로 좁혀져 있으면 그대로 둔다. 넓히면 좁힌 것이 풀린다.

@@ -173,7 +173,7 @@ const clears = (points: RoutePoint[], boxes: Rect[]) => {
 };
 
 /** Bump when layoutTopic changes what it produces for the same inputs, so stored pieces are not reused. */
-const PIECE_VERSION = 2;
+const PIECE_VERSION = 3;
 /** Everything a piece depends on, in the order it is read. Member and relation order matter:
  * they are the order ELK receives its children and edges in. */
 function pieceKey(topic: GraphNode, members: GraphNode[], inside: GraphEdge[], basis: "recorded" | "content",
@@ -242,7 +242,10 @@ async function layoutTopic(topic: GraphNode, members: GraphNode[], inside: Graph
     const group = groups[bi], branchIds = new Set(group);
     if (!branchIds.size) continue;
     const dates = [...new Set(group.map(id => timeOf(map.get(id)!, basis)).filter(Boolean))].sort();
-    const partitions = new Map(dates.map((d, i) => [d, i + 1]));
+    // 날짜 없는 항목은 첫 날짜 **왼쪽의 제 칸**(1)에 선다. 첫 날짜 칸에 섞이면 가장 이른 항목처럼
+    // 읽히고, 오늘로 찍으면 최근 항목처럼 읽힌다(3D 전체 보기 결정의 한 갈래).
+    const undated = group.some(id => !timeOf(map.get(id)!, basis));
+    const partitions = new Map(dates.map((d, i) => [d, i + (undated ? 2 : 1)]));
     const anchor = `@topic-anchor:${topic.id}:0:${bi}`;
     const edges = inside.filter(e => branchIds.has(e.source) && branchIds.has(e.target));
     const guides: GraphEdge[] = [];

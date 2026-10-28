@@ -1,6 +1,7 @@
 import type { GraphNode, GraphEdge } from "./api";
 import { simplifyRoute, routeLength, type RoutePoint } from "./view-route";
 import { spatialClearance, STEP } from "./view-layout-obstacles";
+import { areaKeys } from "./area-key";
 
 type Axis = keyof RoutePoint;
 const AXES: Axis[] = ["x", "y", "z"];
@@ -75,43 +76,31 @@ export function spatialLayout(nodes: GraphNode[], edges: GraphEdge[], topics: Sp
       Object.fromEntries(AXES.map(axis => [axis, round(pick(...ps.map(p => p[axis])) / STEP) * STEP + pad])) as RoutePoint;
     cells.push({ topic, points, min: bound(Math.min, Math.floor, -STEP), max: bound(Math.max, Math.ceil, STEP) });
   }
-  // 주제 칸의 자리(y·z). 첫 칸은 시간 축 위, 나머지는 그 둘레의 동심 고리에 받은 순서대로
-  // 안쪽 고리부터 채운다. 고리 하나가 차면 바깥에 새 고리를 연다. 고리 하나에 전부 세우면
-  // 주제가 많을 때 반지름이 주제 수에 비례해 커져서 가는 테 하나가 된다(주제 174개에서 실측).
-  // 고리마다 호는 칸의 대각선 길이만큼 나눠 가지므로 큰 칸이 이웃을 덮지 않는다. 시작 x 는
-  // 순서마다 `lead` 만큼 늦고, 전체의 가운데가 원점이다. 중심은 모두 같은 격자에 남는다.
+  // 주제 칸의 자리(y·z). 칸을 영역(지도 뿌리 아래 첫 단계)별로 묶어 영역마다 한 덩어리로 세운다.
+  // 영역 안에서는 그 영역의 첫 칸을 영역 중심에 두고 나머지를 동심 고리에 채우고(`ringCentres`),
+  // 영역 덩어리들도 같은 규칙으로 첫 영역(메인 토픽의 영역)을 시간 축 위에 두고 둘레에 세운다.
+  // x 는 건드리지 않는다: 시작 x 는 여전히 전체 순서마다 `lead` 만큼 늦어서 영역이 달라도 이른
+  // 주제가 왼쪽이다. 영역이 하나뿐이면 예전과 같은 자리가 나온다.
+  // 근거: [[vinc.research.graph-layout-direction-rules-2026-10-28]] §6
   const snap = (v: number) => Math.round(v / STEP) * STEP;
   const gap = STEP * 2;
   const reach = cells.map(c => Math.hypot(c.max.y - c.min.y, c.max.z - c.min.z));
-  const centres: { y: number; z: number }[] = [{ y: 0, z: 0 }];
-  let inner = 0, innerReach = reach[0] ?? 0;
-  for (let i = 1; i < cells.length;) {
-    // 고리 반지름은 안쪽 고리와 이 고리의 가장 큰 칸이 닿지 않는 만큼이고, 둘레가 모자라면
-    // 그만큼 넓힌다. 넓힌 반지름이 바깥에 새 고리를 여는 자리를 넘으면 칸을 더 받지 않는다
-    // (첫 칸은 늘 받는다). 그래서 주제가 적으면 고리 하나에 다 서고, 칸 하나만 혼자 바깥으로
-    // 밀려나지 않는다.
-    const ring: number[] = [];
-    let widest = 0, used = 0, radius = 0;
-    for (; i < cells.length; i++) {
-      const w = Math.max(widest, reach[i]);
-      const least = inner + (innerReach + w) / 2 + gap;
-      const r = Math.max(least, (used + reach[i] + gap) / (2 * Math.PI));
-      if (ring.length && r > least + w + gap) break;
-      ring.push(i); widest = w; used += reach[i] + gap; radius = r;
-    }
-    // 고리 안의 자리는 받은 순서가 아니라 황금비 보폭으로 섞는다. 순서대로 돌리면 x 가 순서마다
-    // 늦어지므로 고리 하나가 용수철 한 바퀴처럼 보인다. 섞으면 이웃한 순서가 고리의 먼 쪽에 서서
-    // 단면 전체가 시간 축을 따라 고르게 찬다.
-    const golden = (Math.sqrt(5) - 1) / 2;
-    ring.sort((a, b) => (a * golden) % 1 - (b * golden) % 1);
-    let arc = 0;
-    for (const j of ring) {
-      const angle = 2 * Math.PI * (arc + (reach[j] + gap) / 2) / used;
-      arc += reach[j] + gap;
-      centres[j] = { y: radius * Math.cos(angle), z: radius * Math.sin(angle) };
-    }
-    inner = radius; innerReach = widest;
-  }
+  const areaKey = areaKeys(cells.map(c => map.get(c.topic.id)?.domain ?? ""));
+  const areas: number[][] = [];
+  const areaIndex = new Map<string, number>();
+  cells.forEach((_, i) => {
+    const key = areaKey[i];
+    if (!areaIndex.has(key)) { areaIndex.set(key, areas.length); areas.push([]); }
+    areas[areaIndex.get(key)!].push(i);
+  });
+  const local = areas.map(members => ringCentres(members.map(i => reach[i]), gap));
+  const areaReach = areas.map((members, a) => 2 * Math.max(...members.map((i, k) =>
+    Math.hypot(local[a][k].y, local[a][k].z) + reach[i] / 2)));
+  const areaCentres = ringCentres(areaReach, gap);
+  const centres: { y: number; z: number }[] = new Array(cells.length);
+  areas.forEach((members, a) => members.forEach((i, k) => {
+    centres[i] = { y: areaCentres[a].y + local[a][k].y, z: areaCentres[a].z + local[a][k].z };
+  }));
   const lead = STEP * 2;
   const length = Math.max(0, ...cells.map((c, i) => c.max.x - c.min.x + i * lead));
   cells.forEach((cell, i) => {
@@ -157,6 +146,44 @@ export function spatialLayout(nodes: GraphNode[], edges: GraphEdge[], topics: Sp
     edge.route = { ...edge.route, points2d: planar, points: retainElk ? points! : spatial,
       engine2d: planarEngine, engine: retainElk ? "elk" : "spatial" };
   }
+}
+
+/** 칸마다 영역 열쇠 — 규칙은 색과 한 벌이라 `area-key.ts` 에 있다. */
+export { areaKeys };
+
+/** 첫 자리는 원점, 나머지는 그 둘레의 동심 고리에 받은 순서대로 안쪽 고리부터 채운다. 고리 하나가
+ * 차면 바깥에 새 고리를 연다. 고리 하나에 전부 세우면 수가 많을 때 반지름이 수에 비례해 커져서 가는
+ * 테 하나가 된다(주제 174개에서 실측). 고리마다 호는 지름(`reach`)만큼 나눠 가지므로 큰 것이 이웃을
+ * 덮지 않는다. */
+export function ringCentres(reach: number[], gap: number): { y: number; z: number }[] {
+  const centres: { y: number; z: number }[] = reach.length ? [{ y: 0, z: 0 }] : [];
+  let inner = 0, innerReach = reach[0] ?? 0;
+  for (let i = 1; i < reach.length;) {
+    // 고리 반지름은 안쪽 고리와 이 고리의 가장 큰 것이 닿지 않는 만큼이고, 둘레가 모자라면 그만큼
+    // 넓힌다. 넓힌 반지름이 바깥에 새 고리를 여는 자리를 넘으면 더 받지 않는다(첫 것은 늘 받는다).
+    // 그래서 수가 적으면 고리 하나에 다 서고, 하나만 혼자 바깥으로 밀려나지 않는다.
+    const ring: number[] = [];
+    let widest = 0, used = 0, radius = 0;
+    for (; i < reach.length; i++) {
+      const w = Math.max(widest, reach[i]);
+      const least = inner + (innerReach + w) / 2 + gap;
+      const r = Math.max(least, (used + reach[i] + gap) / (2 * Math.PI));
+      if (ring.length && r > least + w + gap) break;
+      ring.push(i); widest = w; used += reach[i] + gap; radius = r;
+    }
+    // 고리 안의 자리는 받은 순서가 아니라 황금비 보폭으로 섞는다. 순서대로 돌리면 x 가 순서마다
+    // 늦어지므로 고리 하나가 용수철 한 바퀴처럼 보인다. 섞으면 이웃한 순서가 고리의 먼 쪽에 선다.
+    const golden = (Math.sqrt(5) - 1) / 2;
+    ring.sort((a, b) => (a * golden) % 1 - (b * golden) % 1);
+    let arc = 0;
+    for (const j of ring) {
+      const angle = 2 * Math.PI * (arc + (reach[j] + gap) / 2) / used;
+      arc += reach[j] + gap;
+      centres[j] = { y: radius * Math.cos(angle), z: radius * Math.sin(angle) };
+    }
+    inner = radius; innerReach = widest;
+  }
+  return centres;
 }
 
 const xyz = (p: GraphNode): RoutePoint => ({ x: p.x!, y: p.y!, z: p.z! });

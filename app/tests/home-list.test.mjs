@@ -24,7 +24,8 @@ globalThis.__home = {
 
 const stubs = {
   '../api': `export const api = { docList: (...a) => globalThis.__home.docList(...a),
-      docContext: async () => ({ executed: false }) };
+      docContext: async () => ({ executed: false }), nodeContext: async () => ({ executed: false }),
+      ingestFragment: async () => ({ executed: false }) };
     export const cfg = { owner: 'u', team: '' };
     export const canWriteHere = async () => true;
     export const isCommunitySpace = (t) => !!t && t.startsWith('community:');`,
@@ -37,7 +38,8 @@ const stubs = {
   '../topbar': `export const setTopbarLead = () => null; export const setViewHooks = () => {};`,
   '../lnb': `export const agentRoleCount = () => 0; export const setLnbActive = () => {};
     export const setLnbDocOpener = () => {}; export const setLnbTopicPicker = () => {};
-    export const refreshLnb = async () => {};`,
+    export const setLnbScopeClearer = () => {}; export const refreshLnb = async () => {};`,
+  '../doc-graph': `export const namedDecisions = () => []; export const docMirrorId = (id) => 'concept:doc.' + id;`,
   '../live': `export const setLiveRefresher = () => {};`,
   '../vinc-loaders.js': `export const loaderRows = () => '';`,
   '../doc-editor': `export const mountDocEditor = (...a) => globalThis.__home.mount(...a);`,

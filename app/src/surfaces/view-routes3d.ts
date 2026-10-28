@@ -2,13 +2,18 @@ import * as THREE from "three";
 import { movedRoute, pointOnRoute, routeLength, type ViewRoute, type RoutePoint } from "../view-route";
 
 type Paint = { color: string; width: number; arrow: boolean; particles: boolean;
-  particleColor: string; visible: boolean; targetRadius: number; detail?: number };
+  particleColor: string; visible: boolean; targetRadius: number; detail?: number;
+  /** 파선 — 범례의 갈래가 고른다(방향 없는 관계·다리). 굵기 튜브에는 없다. */
+  dashed?: boolean };
+/** 파선 간격(월드 단위). 노드 간격(격자 한 칸 ≈ 46)보다 훨씬 짧아 한 구간 안에 여러 번 끊긴다. */
+const DASH = 5, GAP = 3.5;
 const UP = new THREE.Vector3(0, 1, 0);
 
 /** A link remains one pickable ForceGraph object. Its geometry, arrow and
  * particles all use the same routed sections, including live endpoint drags. */
 export class RoutedLinkObject extends THREE.Group {
-  private line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ transparent: true, opacity: .85 }));
+  private line = new THREE.Line(new THREE.BufferGeometry(),
+    new THREE.LineDashedMaterial({ transparent: true, opacity: .85, dashSize: DASH, gapSize: 0 }));
   private arrow = new THREE.Mesh(new THREE.ConeGeometry(.8, 2.6, 8), new THREE.MeshBasicMaterial({ transparent: true, opacity: .85 }));
   private photons = Array.from({ length: 2 }, () => new THREE.Mesh(new THREE.SphereGeometry(.55, 8, 6), new THREE.MeshBasicMaterial({ transparent: true })));
   private cylinders: THREE.Mesh[] = [];
@@ -33,6 +38,7 @@ export class RoutedLinkObject extends THREE.Group {
       this.length = routeLength(this.points);
       this.line.geometry.dispose();
       this.line.geometry = new THREE.BufferGeometry().setFromPoints(this.points.map(p => new THREE.Vector3(p.x, p.y, p.z)));
+      this.line.computeLineDistances();   // 파선 재질은 꼭짓점마다 누적 거리가 있어야 끊는다
       for (const cylinder of this.cylinders) { this.remove(cylinder); cylinder.geometry.dispose(); (cylinder.material as THREE.Material).dispose(); }
       this.cylinders = [];
     }
@@ -51,6 +57,7 @@ export class RoutedLinkObject extends THREE.Group {
     const detail = paint.detail ?? 1;
     const alpha = (paint.color.length === 9 ? parseInt(paint.color.slice(7), 16) / 255 : 1) * detail;
     this.line.material.color.set(paint.color.slice(0, 7));
+    this.line.material.gapSize = paint.dashed ? GAP : 0;
     const lineVisible = alpha > 0 && !paint.width;
     if (this.line.visible && !lineVisible) this.line.geometry.dispose();
     this.line.visible = lineVisible;

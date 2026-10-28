@@ -249,17 +249,15 @@ async (page) => {
   await page.waitForFunction(() => window.__g3 !== window.__qaGraph3 && window.__g3.graphData().links.length > 0);
   evidence.push({ check: "3d ranked and temporal selection keeps camera without refetch", pass: true });
   await page.getByRole("slider", { name: "Time cursor" }).evaluate(el => { el.value = ".25"; el.dispatchEvent(new Event("input", { bubbles: true })); });
-  await page.waitForFunction(() => { let found = false; window.__g3.scene().traverse(obj => {
-    if (obj.isInstancedMesh) for (let i = 0; i < obj.count; i++) {
-      const a = obj.instanceMatrix.array; if (a[i*16] === 0 && a[i*16+5] === 0 && a[i*16+10] === 0) found = true;
-    }
-  }); return found; });
-  const hidden3 = await page.evaluate(() => { let hidden = 0; window.__g3.scene().traverse(obj => {
-    if (!obj.isInstancedMesh) return;
-    for (let i = 0; i < obj.count; i++) { const a = obj.instanceMatrix.array; if (a[i*16] === 0 && a[i*16+5] === 0 && a[i*16+10] === 0) hidden++; }
-  }); return hidden; });
+  // 몸통은 한 층(view-orbs3d OrbLayer)이다. 시간 커서가 숨긴 노드는 그 층에서 반경 0 이 된다.
+  const hiddenOrbs = () => { let hidden = 0; window.__g3.scene().traverse(obj => {
+    const layer = obj.userData?.orbLayer; if (!layer) return;
+    for (let i = 0; i < layer.count; i++) if (layer.radiusAt(i) === 0) hidden++;
+  }); return hidden; };
+  await page.waitForFunction(`(${hiddenOrbs})() > 0`);
+  const hidden3 = await page.evaluate(`(${hiddenOrbs})()`);
   assert(hidden3 > 0, "time visibility does not reach instanced node bodies");
-  evidence.push({ check: "3d time filter reaches actual instance matrices", hidden: hidden3 });
+  evidence.push({ check: "3d time filter reaches the orb layer radii", hidden: hidden3 });
   await page.getByRole("slider", { name: "Time cursor" }).evaluate(el => { el.value = "1"; el.dispatchEvent(new Event("input", { bubbles: true })); });
   const cdp = await page.context().newCDPSession(page);
   const targets = await cdp.send("Target.getTargets");

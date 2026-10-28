@@ -69,9 +69,10 @@ const seenDefault = new Set<string>();
  *  (1) 스코프를 옮길 때마다 왼쪽 트리의 색이 함께 흔들리고 (2) 지금 지도에 없는
  *  주제의 줄은 색을 잃으며 (3) 지도가 없는 표면에서는 색이 통째로 사라진다. 트리는
  *  자기 주제 전량을 늘 갖고 있어 집합이 안정적이라 이쪽을 정본으로 뒀다.
- *  대가는 **같은 주제가 지도와 다른 색으로 보일 수 있다**는 것이고, 받아들이는
- *  근거는 이 색이 뜻을 나르지 않는다는 성질이다(꺼도 아무 정보가 사라지지 않는다:
- *  [[decision:topics-wear-the-homepage-jewels-2026-09-26]]). */
+ *  대가는 **같은 주제가 지도와 다른 색으로 보일 수 있다**는 것이다. 전체 화면의 지도도
+ *  전량으로 색을 매기므로(view3d `tintDomains`) 거기서는 같은 영역·같은 색이 나오고, 영역
+ *  하나로 좁힌 렌즈에서만 갈린다(색은 영역을 말한다:
+ *  [[decision:topics-wear-their-area-jewel-2026-10-28]]). */
 let tints: Map<string, string> | null = null;
 const themeMode = (): ThemeMode =>
   document.documentElement.dataset.theme === "dark" ? "dark" : "light";
@@ -153,6 +154,13 @@ export const AGENTS_BOARD = "#home/agents";
 const atSurfaceRoot = (): boolean => ["", "home", "view"].includes(location.hash.replace(/^#/, ""));
 /** 지금 표면이 그래프인가. 아니면 문서 홈이다(검색 표면은 둘 다 아니지만 홈의 동선을 따른다). */
 const onGraph = (): boolean => /^#view(\/|$)/.test(location.hash);
+
+/** 그래프가 캔버스에서 고른 주제를 풀어 준다(주소는 그대로 `#view` 라 해시로는 못 푼다).
+ *  풀었으면 true. 없거나 풀 것이 없으면 해시 착지로 간다. */
+let clearScope: (() => boolean) | null = null;
+export function setLnbScopeClearer(fn: (() => boolean) | null) {
+  clearScope = fn;
+}
 
 export function setLnbNavigator(fn: Navigator | null) {
   navigate = fn;
@@ -840,6 +848,7 @@ export function mountLnb(opts: { deferLoad?: boolean } = {}) {
       // 고른 것을 전부 뺀다 = 전체(L0). `pickTopic` 에 같은 경로를 다시 넘기면
       // 토글이라 하나씩 꺼야 하므로, 첫 번째를 비-add 로 두 번 눌러 비우는 대신
       // 홈 해시로 간다 — 그것이 이 앱에서 "전체"의 정본 주소다.
+      if (clearScope?.()) return;
       location.hash = "#view";
       return;
     }
