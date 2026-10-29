@@ -34,6 +34,7 @@
           ],
           "writes_graph": [],
           "disallowed_tools": ["Edit", "Write", "NotebookEdit", "Bash", "Agent"],
+          "capabilities": { "deny": ["fs.write", "shell.exec", "github.repo.write"] },
           "tool_note": "Output is a list of lines keyed to the surface, returned to the copy owner. The terminology canon in the graph names what a product calls things and what it never says; read it first."
         }
       },

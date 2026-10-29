@@ -64,6 +64,7 @@
           ],
           "writes_graph": ["episode", "record"],
           "disallowed_tools": ["Edit", "Write", "NotebookEdit"],
+          "capabilities": { "deny": ["fs.write"] },
           "tool_note": "An incident is an episode in the domain of the failing part; each cause found is a record with the log line or command output that shows it. A rejected hypothesis is written down too."
         }
       },

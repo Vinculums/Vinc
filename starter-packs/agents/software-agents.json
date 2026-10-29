@@ -25,6 +25,7 @@
           "paths": [],
           "reads": [],
           "gates": [],
+          "capabilities": { "deny": ["github.pr.merge"] },
           "never": [
             "widen the scope of the package you were given",
             "merge",
@@ -61,6 +62,7 @@
           "person_only": [],
           "writes_graph": [],
           "disallowed_tools": ["Edit", "Write", "NotebookEdit", "Agent"],
+          "capabilities": { "deny": ["fs.write", "vinc.write"] },
           "tool_note": "Gates are repository commands listed in props.gates. Report each one's exit code and the first failing name; a gate you could not run is reported as not run, never as passed."
         }
       },
@@ -87,6 +89,7 @@
           "person_only": [],
           "writes_graph": [],
           "disallowed_tools": ["Edit", "Write", "NotebookEdit", "Agent"],
+          "capabilities": { "deny": ["fs.write", "vinc.write"] },
           "tool_note": "Input is the pull request diff and the plan's table. Output is the table with one of three marks per row: present, absent, or partial with the missing part named."
         }
       },
@@ -113,6 +116,7 @@
           "person_only": [],
           "writes_graph": ["record"],
           "disallowed_tools": ["Edit", "Write", "NotebookEdit", "Agent"],
+          "capabilities": { "deny": ["fs.write", "github.pr.merge"] },
           "tool_note": "A trap you find becomes a record attached to the concept it was found on, with evidence. A second copy of an existing guard is how a known trap comes back: search for the first copy before naming a new one."
         }
       },
@@ -141,6 +145,7 @@
           ],
           "writes_graph": ["episode", "record"],
           "disallowed_tools": ["Edit", "Write", "NotebookEdit"],
+          "capabilities": { "deny": ["fs.write"] },
           "tool_note": "An audit finding is a record with evidence. The fix is a package for the developer role, named by the finding's record id, so the trail from finding to change stays in the graph."
         }
       }
