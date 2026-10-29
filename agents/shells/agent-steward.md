@@ -88,6 +88,10 @@ the missing server instead of substituting another tool. Reasoning:
 
 - {"actions":["graph_delete","graph_merge"],"type":"forbidden_actions"}
 
+## Capabilities
+
+- deny: vinc.delete
+
 ## Session close
 
 Three passes at the end of a session, before the episode is written.

@@ -152,6 +152,13 @@
         "role"
       ],
       "props": {
+        "capabilities": {
+          "deny": [
+            "fs.write",
+            "shell.exec",
+            "github.repo.write"
+          ]
+        },
         "disallowed_tools": [
           "Edit",
           "Write",
@@ -264,6 +271,12 @@
         "role"
       ],
       "props": {
+        "capabilities": {
+          "deny": [
+            "fs.write",
+            "github.repo.write"
+          ]
+        },
         "disallowed_tools": [
           "Edit",
           "Write",
@@ -527,6 +540,11 @@
         "role"
       ],
       "props": {
+        "capabilities": {
+          "deny": [
+            "github.pr.merge"
+          ]
+        },
         "gates": [
           {
             "check": {
@@ -643,6 +661,11 @@
         "role"
       ],
       "props": {
+        "capabilities": {
+          "deny": [
+            "github.pr.merge"
+          ]
+        },
         "gates": [
           {
             "check": {
@@ -791,6 +814,12 @@
         "role"
       ],
       "props": {
+        "capabilities": {
+          "deny": [
+            "github.pr.merge",
+            "vinc.delete"
+          ]
+        },
         "delegate_rung": "fast",
         "gates": [
           {
@@ -1437,6 +1466,11 @@
       ],
       "props": {
         "artifacts": "The catalogue is one document, vinc.spec.backoffice-metric-catalogue, put with its declared doc_id under vinc/product/account. A record is written only for a finding that changes how a metric is read, with valid_from and measured_at. One episode per catalogue revision. Values over time stay in Log Analytics and /bo, not in the graph.",
+        "capabilities": {
+          "deny": [
+            "fs.write"
+          ]
+        },
         "delegate_rung": "strong",
         "disallowed_tools": [
           "Edit",
@@ -1547,6 +1581,14 @@
         "verify"
       ],
       "props": {
+        "capabilities": {
+          "deny": [
+            "fs.write",
+            "linear.issue.write",
+            "linear.comment.write",
+            "linear.project.write"
+          ]
+        },
         "disallowed_tools": [
           "Edit",
           "Write",
@@ -1638,6 +1680,12 @@
         "role"
       ],
       "props": {
+        "capabilities": {
+          "deny": [
+            "fs.write",
+            "github.pr.merge"
+          ]
+        },
         "delegate_rung": "strongest",
         "disallowed_tools": [
           "Edit",
@@ -1749,6 +1797,12 @@
         "role"
       ],
       "props": {
+        "capabilities": {
+          "deny": [
+            "fs.write",
+            "github.pr.merge"
+          ]
+        },
         "disallowed_tools": [
           "Edit",
           "Write",
@@ -1997,6 +2051,12 @@
         "role"
       ],
       "props": {
+        "capabilities": {
+          "deny": [
+            "fs.write",
+            "github.pr.merge"
+          ]
+        },
         "delegate_rung": "strongest",
         "disallowed_tools": [
           "Edit",
@@ -2139,6 +2199,12 @@
         "verify"
       ],
       "props": {
+        "capabilities": {
+          "deny": [
+            "fs.write",
+            "github.pr.merge"
+          ]
+        },
         "disallowed_tools": [
           "Edit",
           "Write",
@@ -2370,6 +2436,11 @@
         "role"
       ],
       "props": {
+        "capabilities": {
+          "deny": [
+            "fs.write"
+          ]
+        },
         "disallowed_tools": [
           "Edit",
           "Write",
@@ -2471,6 +2542,12 @@
         "verify"
       ],
       "props": {
+        "capabilities": {
+          "deny": [
+            "fs.write",
+            "github.pr.merge"
+          ]
+        },
         "disallowed_tools": [
           "Edit",
           "Write",
@@ -2576,6 +2653,11 @@
         "verify"
       ],
       "props": {
+        "capabilities": {
+          "deny": [
+            "fs.write"
+          ]
+        },
         "disallowed_tools": [
           "Edit",
           "Write",
@@ -2682,6 +2764,11 @@
         "role"
       ],
       "props": {
+        "capabilities": {
+          "deny": [
+            "vinc.delete"
+          ]
+        },
         "delegate_rung": "fast",
         "gates": [
           {
