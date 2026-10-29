@@ -228,6 +228,38 @@ function labelSprite(text: string, pal: Palette): THREE.Sprite {
   return sp;
 }
 
+/** 영역 이름표 — 영역 부피마다 하나, 그 영역의 보석색으로 크게 굽는다. 크기는 부피에 비례해서
+ *  (`height` 월드 단위) 확대 · 축소해도 영역과 같은 비율로 보인다. 노드 라벨과 달리 겹침 골라내기에
+ *  들지 않는다: 영역마다 하나뿐이고, 영역이 갈라져 있을 때만 그린다(`areasApart`).
+ *  근거: [[decision:each-area-volume-carries-its-name-at-its-area-topic-2026-10-29]] */
+function areaLabelSprite(text: string, color: THREE.Color, height: number, pal: Palette): THREE.Sprite {
+  const pad = 18, fs = 96;
+  const cv = document.createElement("canvas");
+  const font = `700 ${fs}px system-ui, sans-serif`;
+  const probe = cv.getContext("2d")!;
+  probe.font = font;
+  cv.width = Math.ceil(probe.measureText(text).width) + pad * 2;
+  cv.height = fs + pad * 2;
+  const c2 = cv.getContext("2d")!;
+  c2.font = font;
+  c2.textBaseline = "middle";
+  // 배경색 테두리를 둘러 부피 · 선 위에서도 글자가 끊기지 않게 한다.
+  c2.lineJoin = "round"; c2.lineWidth = 14;
+  c2.strokeStyle = `#${pal.fog.toString(16).padStart(6, "0")}`;
+  c2.strokeText(text, pad, cv.height / 2);
+  c2.fillStyle = `#${color.getHexString()}`;
+  c2.fillText(text, pad, cv.height / 2);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.minFilter = THREE.LinearFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;           // 구운 글자는 sRGB 다. 빼면 한 번 더 밝혀져 보석색이 바랜다
+  // 안개 · 톤 보정 · 깊이에서 뺀다: 멀리 있는 영역의 이름도 같은 세기로 읽혀야 한다.
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false,
+    depthTest: false, fog: false, toneMapped: false }));
+  sp.scale.set(height * cv.width / cv.height, height, 1);
+  sp.renderOrder = 2;                              // 부피(-1)와 노드 위에 선다
+  return sp;
+}
+
 /** 라벨의 글자를 새 잉크로 다시 굽는다. 스프라이트(자리·크기·물러남 불투명도)는
  *  그대로 두고 텍스처만 바꾼다 — 글자 폭은 잉크와 무관해 크기가 안 변한다. */
 function repaintLabel(sp: THREE.Sprite, pal: Palette): void {
@@ -496,13 +528,16 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   // 하나. 간격 슬라이더가 자리를 옮기면
   // 다시 짓는다(`__update`).
   // 부피는 그 영역의 보석을 입는다(영역 색이 없으면 무채색 단).
-  let volumes: { mesh: THREE.Mesh; area: string }[] = [];
+  let volumes: { mesh: THREE.Mesh; area: string; label?: THREE.Sprite; box: AreaBox; text: string }[] = [];
   const volumeColor = (area: string) => {
     const hex = areaTints.get(area);
     return new THREE.Color(hex ? parseInt(hex.slice(1), 16) : pal.soft);
   };
   const disposeVolumes = () => {
-    for (const v of volumes) { scene?.remove(v.mesh); (v.mesh.material as THREE.Material).dispose(); }
+    for (const v of volumes) {
+      scene?.remove(v.mesh); (v.mesh.material as THREE.Material).dispose();
+      if (v.label) { scene?.remove(v.label); v.label.material.map?.dispose(); v.label.material.dispose(); }
+    }
     volumes = [];
   };
   const buildVolumes = () => {
@@ -526,8 +561,27 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
     // 영역이 실제로 갈라져 있을 때만 그린다(areasApart) — 갈라지지 않은 배치에서는 부피마다
     // 지도 전체를 감싸 한가운데서 겹친다.
     if (!areasApart(boxes.map(([, box]) => box))) return;
-    for (const [area, box] of boxes) volumes.push({ mesh: areaVolume(box, volumeColor(area), light), area });
-    if (volumes.length) scene?.add(...volumes.map((v) => v.mesh));
+    // 이름표는 그 영역의 대표 주제 노드(경로가 가장 짧은 주제 마크, 예: `domain:vinc/design`) 바로 위에 선다.
+    // 대표 주제가 화면에 없으면 부피의 윗부분에 선다.
+    const anchors = new Map<string, N3>();
+    for (const n of nodes) {
+      if (n.kind !== "domain" || !Number.isFinite(n.x)) continue;
+      const area = areaById.get(n.id);
+      const best = area ? anchors.get(area) : undefined;
+      if (area && (!best || topicOf(n).split("/").length < topicOf(best).split("/").length)) anchors.set(area, n);
+    }
+    for (const [area, box] of boxes) {
+      const at = anchors.get(area);
+      const text = at?.label || area.split("/").at(-1) || area;
+      const v: (typeof volumes)[number] = { mesh: areaVolume(box, volumeColor(area), light), area, box, text };
+      if (prefs.labels !== "none") {
+        v.label = areaLabelSprite(text, volumeColor(area), box.rc * .2, pal);
+        if (at) v.label.position.set(at.x || 0, (at.y || 0) + box.rc * .2, at.z || 0);
+        else v.label.position.set(box.cx, box.cy + box.rc * .7, box.cz);
+      }
+      volumes.push(v);
+    }
+    if (volumes.length) scene?.add(...volumes.flatMap((v) => v.label ? [v.mesh, v.label] : [v.mesh]));
   };
   const renderedRadii = new Map<string, number>();
   /** 노드 메시 공장. **새 함수 객체**를 넘기면 3d-force-graph 가 노드 오브젝트를 전부
@@ -1159,7 +1213,16 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
       if (idx !== undefined) orbs?.tint(idx, instColor(n));
     }
     orbs?.setLight(mode === "light");
-    for (const v of volumes) retintVolume(v.mesh, volumeColor(v.area), mode === "light");
+    for (const v of volumes) {
+      retintVolume(v.mesh, volumeColor(v.area), mode === "light");
+      if (v.label) {                               // 이름표도 새 보석으로 다시 굽는다(자리 · 크기는 그대로)
+        const fresh = areaLabelSprite(v.text, volumeColor(v.area), v.box.rc * .2, pal);
+        v.label.material.map?.dispose();
+        v.label.material.map = fresh.material.map;
+        v.label.material.needsUpdate = true;
+        fresh.material.dispose();
+      }
+    }
     // 라벨은 몸통의 자식으로만 달린다.
     const labels = new Set<THREE.Sprite>();
     for (const m of g.graphData().nodes as any[]) {
