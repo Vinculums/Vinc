@@ -240,13 +240,16 @@ SEVEN_DAY_STOP = 0.90
 _KEY_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 # 도구 호출 약속은 평범한 한 줄이다. XML 꼴로 적으면 모델이 자기 함수 호출 형식(<invoke>)을 흘리고
 # 그것이 깨져 호출이 사라졌다(2026-10-28 보정 실행의 A2). 흘린 꼴도 받아 준다.
-#: ``CALL CALL 도구`` 처럼 접두를 겹쳐 쓴 줄도 한 호출이다(탐색 3회차).
-_CALL_LINE = re.compile(r"^[ \t>*`-]*(?:CALL[ \t]+)+([A-Za-z0-9_.\-]+)[ \t]*", re.M)
+#: ``CALL CALL 도구`` 처럼 접두를 겹쳐 쓴 줄도 한 호출이다(탐색 3회차). 줄 머리의 따옴표·``=``·``|`` 도
+#: 건너뛴다: 답 전체가 ``="CALL 도구 {..}"`` 나 ``|CALL 도구 {..}`` 인 일이 있었고, 그것을 답으로 읽으면
+#: 기권 과제에서 지어낸 답으로 셌다.
+_CALL_LINE = re.compile(r"^[ \t>*`\-=|\"']*(?:CALL[ \t]+)+([A-Za-z0-9_.\-]+)[ \t]*", re.M)
 _TOOL_CALL = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.S)
 _INVOKE = re.compile(r"<invoke\s+name=\"([^\"]+)\"\s*>(.*?)</invoke>", re.S)
 _INVOKE_COLON = re.compile(r"<invoke:([A-Za-z0-9_.\-]+)>\s*(.*?)\s*(?:</invoke>|$)", re.S)
 #: 호출하려 한 흔적. 이것이 있는데 읽힌 호출이 없으면 약속대로 다시 쓰라고 한 번 묻는다.
-_CALL_ATTEMPT = re.compile(r"<invoke|<parameter|<tool_call|<function_calls", re.I)
+_CALL_ATTEMPT = re.compile(r"<invoke|<parameter|<tool_call|<function_calls|\bCALL[ \t]+[A-Za-z0-9_.\-]+[ \t]*\{",
+                           re.I)
 _REPAIR = ("Your last reply tried to call a tool in a format this harness cannot read. Reply again with "
            "only CALL lines (CALL <tool name> <JSON object>), or with the final answer if you need no tool.")
 _PARAM = re.compile(r"<parameter\s+name=\"([^\"]+)\"\s*>(.*?)</parameter>", re.S)
