@@ -32,6 +32,7 @@ import uuid
 from rag_eval.agent_tasks import arms as arms_mod
 from rag_eval.agent_tasks import doors as doors_mod
 from rag_eval.agent_tasks import full_arm as full_mod
+from rag_eval.agent_tasks import reuse as reuse_mod
 from rag_eval.agent_tasks import role_context as role_mod
 from rag_eval.agent_tasks import checkers, hosts as hosts_mod, metrics, models, record, tasks as tasks_mod
 from rag_eval.evalkit import runtime
@@ -173,6 +174,7 @@ def run(a) -> int:
             raise Refused(f"다른 세트와 과제가 겹친다: {shared[:5]}")
     todo = [t for t in ts.tasks if t.family != "handoff"]
     handoff = len(ts.tasks) - len(todo)
+    reuse = reuse_mod.TraceReuse(a.reuse_traces) if a.reuse_traces else None
     if handoff and not a.skip_handoff:
         raise Refused(f"handoff 과제 {handoff}개는 이 실행기가 아직 돌리지 못한다(세션 둘과 쓰기 경로가 "
                       "필요하다) — --skip-handoff 로 빼고 그 수를 헤더에 남길 것")
@@ -291,6 +293,8 @@ def run(a) -> int:
             ctx = checkers.Context(resolve=mcp.exists, judge=judge)
             plan = [(r, task, host, arm) for r in range(1, a.runs + 1) for task in todo
                     for host in host_objs for arm in want_arms]
+            if reuse is not None:
+                header["reuse"] = reuse.describe()
             for r, task, host, arm in plan:
                 # 구독 실행이 사용률 한도에 닿았으면 남은 실행을 보내지 않고 여기까지로 끝낸다.
                 if getattr(model, "paused", ""):
@@ -300,7 +304,7 @@ def run(a) -> int:
                 door, manual = door_surfaces.get(arm, (None, None))
                 if arm in full_mod.FULL_ARMS:
                     rows.append(_one_full(a, header, ts, task, host, arm, r, mcp, vinc, a2_tools,
-                                          full, model, ctx, traces))
+                                          full, model, ctx, traces, reuse=reuse))
                     if not a.quiet:
                         x = rows[-1]
                         print(json.dumps({"run": x["run_id"], "success": x["grade"]["success"],
@@ -318,11 +322,13 @@ def run(a) -> int:
                                            context=context, tools=tools,
                                            stage=task.stage_results())
                 rows.append(_one(a, header, ts, task, host, arm, r, surface, model, ctx, traces,
-                                 compiled))
+                                 compiled, reuse=reuse))
                 if not a.quiet:
                     x = rows[-1]
                     print(json.dumps({"run": x["run_id"], "success": x["grade"]["success"],
                                       "class": x["failure_class"]}), flush=True)
+            if reuse is not None:
+                header["reuse"] = reuse.describe()
     finally:
         for f in work.glob("*.db*"):
             f.unlink(missing_ok=True)
@@ -330,7 +336,7 @@ def run(a) -> int:
 
 
 def _one_full(a, header, ts, task, host, arm, r, mcp, vinc, a2_tools, full, model, ctx,
-              traces) -> dict:
+              traces, *, reuse=None) -> dict:
     """F 비교군 실행 하나. 빠진 부품만 다르고 나머지는 F 와 같다(:mod:`full_arm`)."""
     part = full_mod.removed(arm)
     role = full.role_of(task)
@@ -351,11 +357,11 @@ def _one_full(a, header, ts, task, host, arm, r, mcp, vinc, a2_tools, full, mode
                                stage=task.stage_results(), tool_policy=policy)
     gate = None if part == "outgate" else full.gate(role)
     return _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces, compiled,
-                system=system, gate=gate, role=role)
+                system=system, gate=gate, role=role, reuse=reuse)
 
 
 def _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces, compiled=None, *,
-         system: str | None = None, gate=None, role: str | None = None) -> dict:
+         system: str | None = None, gate=None, role: str | None = None, reuse=None) -> dict:
     trace = record.Trace()
     trace.add({"t": "start", "task": task.id, "family": task.family, "arm": arm, "host": host.name,
                "model": header["model"]["model"], "run": r, "prompt": task.prompt})
@@ -363,7 +369,12 @@ def _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces, compile
         trace.add(compiled.event())
     t0 = time.perf_counter()
     host_error = ""
-    if compiled is not None and compiled.error:
+    # 끊긴 회차의 같은 실행이 기록으로 남아 있으면 모델을 다시 부르지 않고 그 기록을 쓴다(:mod:`reuse`).
+    prior = reuse.take(list(trace.events)) if reuse is not None else None
+    if prior is not None:
+        trace.events.extend(prior[0])
+        res = prior[1]
+    elif compiled is not None and compiled.error:
         # 맥락이 컴파일되지 않았으면 모델을 부르지 않는다. 그 과제는 후보의 실패로 센다.
         res = hosts_mod.RunOutput(final_text="")
     else:
@@ -374,7 +385,7 @@ def _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces, compile
         except Exception as exc:   # noqa: BLE001 — 실행 하나의 고장은 그 행에 적고 다음으로 간다
             host_error = f"{type(exc).__name__}: {str(exc)[:300]}"
             res = hosts_mod.RunOutput(final_text="", host_error=host_error)
-    latency = round(time.perf_counter() - t0, 3)
+    latency = None if prior is not None else round(time.perf_counter() - t0, 3)
     trace.add({"t": "final", "text": res.final_text, "model_error": res.model_error,
                "host_error": host_error})
     # 출력 게이트(F 비교군)는 사용자에게 나갈 글을 바꾼다. 채점은 나간 글을 본다.
@@ -401,6 +412,8 @@ def _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces, compile
            "latency_s": latency,
            "model_versions": res.model_versions, "host_error": host_error,
            "tool_events": tool_events}
+    if prior is not None:
+        row["reused"] = True
     if gate is not None:
         row["gate"] = {k: gate_event.get(k) for k in ("verdict", "failed_checks", "person_only_actions")}
     if compiled is not None:

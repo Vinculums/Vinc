@@ -51,6 +51,8 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--record", choices=("file", "dry-run", "hosted"), default="file")
     r.add_argument("--write-hosted", action="store_true", help="--record hosted 의 확인 스위치")
     r.add_argument("--store-note", help="이 핀을 고른 이유(핀 정보에 choice 가 없을 때)")
+    r.add_argument("--reuse-traces", action="append", default=[], metavar="DIR",
+                   help="끊긴 회차의 traces 디렉터리(여러 번 줄 수 있다). 같은 실행은 모델을 다시 부르지 않는다")
     r.add_argument("--out", required=True)
     r.add_argument("--quiet", action="store_true")
     c = sub.add_parser("compare", help="두 회차의 지문과 채점을 대조한다")

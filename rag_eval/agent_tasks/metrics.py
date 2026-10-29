@@ -71,7 +71,8 @@ def summarize_cell(rows: list[dict]) -> dict:
                  "tool_calls_mean": _mean([r["tool_calls"] for r in rows]),
                  "tokens_in_mean": _mean([r["tokens_in"] for r in rows]),
                  "tokens_out_mean": _mean([r["tokens_out"] for r in rows]),
-                 "latency_s_mean": _mean([r["latency_s"] for r in rows])},
+                 "latency_s_mean": _mean([r["latency_s"] for r in rows
+                                          if r.get("latency_s") is not None])},
         "stability": {"tasks": len(by_task), "all_runs_agree": agree,
                       "majority_success": sum(1 for v in by_task.values() if majority(v)),
                       "runs_per_task": sorted({len(v) for v in by_task.values()})},
