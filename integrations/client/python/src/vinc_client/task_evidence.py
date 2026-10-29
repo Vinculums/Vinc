@@ -103,7 +103,7 @@ def _fuse_nodes(lists: list, role_id: str, own_domain: str) -> list[tuple[str, d
     for nid, s in score.items():
         row = info[nid]
         if own_domain and row.get("domain") == own_domain:
-            continue   # 역할 자신의 토픽에 있는 역할 카드는 과제 근거가 아니다
+            continue   # 역할 자신의 토픽에 있는 노드는 뺀다(대개 역할 카드라 과제 근거가 아니다)
         out.append((s * KIND_BOOST.get(row.get("kind") or _prefix(nid), 1.0), nid))
     out.sort(key=lambda p: (-p[0], p[1]))
     return [(nid, info[nid]) for _, nid in out]
@@ -256,7 +256,8 @@ class TaskEvidencePolicy:
     """Required readings as pointers; the room goes to what the task's reads agree on.
 
     Needs ``read_tool=True`` (I4): with no document-read tool the compiler refuses a
-    pointer, and :func:`compile_context` falls back to :data:`FULL_TEXT` by default.
+    pointer. As the default, :func:`compile_context` uses :data:`FULL_TEXT` instead when
+    there is no such tool or when this block does not fit ``max_chars``.
     """
 
     id = "task-evidence-1"

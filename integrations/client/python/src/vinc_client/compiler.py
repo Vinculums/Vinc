@@ -263,7 +263,7 @@ class FullTextPolicy:
 
 
 #: 문서 읽기 도구가 없을 때의 기본값. prefetch 와 같은 블록을 낸다. 도구가 있으면
-#: :data:`vinc_client.task_evidence.TASK_EVIDENCE` 가 기본값이다(VIN-790).
+#: :data:`vinc_client.task_evidence.TASK_EVIDENCE` 가 기본값이다.
 FULL_TEXT = FullTextPolicy()
 
 
@@ -616,14 +616,24 @@ def _compile(request: ContextRequest, policy: ContextPolicy | None,
         # 그래서 이 판단은 계약을 읽은 뒤에 한다(I4).
         request = dataclasses.replace(request, read_tool=bool(read_tool_for(contract)))
         reader._request = request
-    if policy is None:
+    defaulted = policy is None
+    if defaulted:
         # 기본값은 도구 판단이 끝난 뒤에 고른다. 역할이 문서 도구를 막으면 P0 이다.
         policy = default_policy(request.read_tool)
     reader._contract = contract
     reader._required = tuple((read, _read_required(reader, read)) for read in reads)
     _read_anchors(reader, tuple(request.anchors))
-    plan = policy.plan(dataclasses.replace(request), reader)
-    block, manifest = _render(request, policy, reader, plan)
+    try:
+        plan = policy.plan(dataclasses.replace(request), reader)
+        block, manifest = _render(request, policy, reader, plan)
+    except VincInvalidArgument as exc:
+        # 기본값은 P0 가 들어가는 예산에서 실패하지 않는다. 과제 근거 정책의 노드 항목은 필수
+        # 크기에 들어가므로 작은 예산에서 넘칠 수 있다. 그때는 같은 읽기로 P0 블록을 짓는다.
+        if not (defaulted and policy is not FULL_TEXT and exc.code == "prefetch_budget_exceeded"):
+            raise
+        policy = FULL_TEXT
+        plan = policy.plan(dataclasses.replace(request), reader)
+        block, manifest = _render(request, policy, reader, plan)
     return CompiledContext(block=block, sha256=hashlib.sha256(block.encode("utf-8")).hexdigest(),
                            contract=contract, manifest=manifest, trace=tuple(reader._calls))
 
@@ -658,8 +668,9 @@ def compile_context(client: Any, request: ContextRequest, policy: ContextPolicy 
 
     With no ``policy`` the choice follows the read tool (:func:`default_policy`):
     :data:`~vinc_client.task_evidence.TASK_EVIDENCE` when the model can read documents,
-    :data:`FULL_TEXT` (prefetch's block) when it cannot. ``manifest["policy"]["id"]`` says
-    which one ran.
+    :data:`FULL_TEXT` (prefetch's block) when it cannot, or when the task evidence block
+    does not fit ``max_chars`` (the default never fails where P0 fits).
+    ``manifest["policy"]["id"]`` says which one ran.
     """
     return _compile(request, policy, _sender(client), read_tool_for)
 

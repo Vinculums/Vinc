@@ -8,8 +8,8 @@ from urllib.parse import unquote_plus
 import httpx
 import pytest
 from vinc_client import (FULL_TEXT, TASK_EVIDENCE, AsyncVincClient, ContextRequest, VincClient,
-                         acompile_context, check_replay, compile_context, default_policy,
-                         role_prefetch)
+                         VincInvalidArgument, acompile_context, check_replay, compile_context,
+                         default_policy, role_prefetch)
 from vinc_client.doc_tool import doc_tool_allowed
 
 KEY = "vinc_ro_" + "a" * 32
@@ -132,3 +132,17 @@ def test_a_task_in_another_script_also_asks_with_its_latin_terms():
     seen.clear()
     compile_context(client(make_handler(seen)), request(read_tool=True, task="When does the health check run?"))
     assert " ".join(_queries(seen)).count("health check") == 2
+
+
+def test_the_default_falls_back_to_p0_when_the_task_evidence_block_does_not_fit():
+    # P0 의 블록이 꼭 들어가는 예산. 과제 근거 정책은 노드 항목과 문서 단락이 필수 크기에 들어가 넘친다.
+    budget = len(compile_context(client(make_handler()), request(read_tool=True), FULL_TEXT).block)
+    with pytest.raises(VincInvalidArgument, match="prefetch_budget_exceeded"):
+        compile_context(client(make_handler()), request(read_tool=True, max_chars=budget), TASK_EVIDENCE)
+    got = compile_context(client(make_handler()), request(read_tool=True, max_chars=budget))
+    assert got.manifest["policy"]["id"] == "p0-full"
+    assert got.block == compile_context(client(make_handler()), request(max_chars=budget)).block
+    check_replay(got, request(read_tool=True, max_chars=budget))
+    # P0 도 안 들어가면 오늘과 같은 오류다
+    with pytest.raises(VincInvalidArgument, match="prefetch_budget_exceeded"):
+        compile_context(client(make_handler()), request(read_tool=True, max_chars=500))
