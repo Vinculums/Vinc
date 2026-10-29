@@ -25,6 +25,7 @@
           "paths": [],
           "reads": [],
           "gates": [],
+          "capabilities": { "deny": ["vinc.delete"] },
           "never": [
             "call vinc_delete, vinc_merge_nodes or vinc_doc_delete",
             "ratify a proposed type or a topic name",
@@ -117,6 +118,7 @@
           "person_only": [],
           "writes_graph": [],
           "disallowed_tools": ["Edit", "Write", "NotebookEdit"],
+          "capabilities": { "deny": ["fs.write", "vinc.write"] },
           "tool_note": "A relation without evidence is labelled [unsourced], not refused. vinc_brief returns the excerpts and the evidence a claim rests on; a claim with neither is reported as assumed."
         }
       }
