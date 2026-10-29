@@ -15,12 +15,12 @@ Vinc 는 그 산출물에 역할의 게이트(`OutputGate`)를 돌리고, 사람
 from __future__ import annotations
 
 import datetime
-import fnmatch
 import hashlib
 import re
 import uuid
 
 from . import role_output_gate
+from .capability_maps import capability_verdict
 from .roles import contract
 
 ROLE_PREFIX = "concept:agent-"
@@ -229,22 +229,6 @@ def _add_cited(props: dict, cited) -> None:
             merged.append(item.strip())
     if merged:
         props["cited_ids"] = merged[:CITED_MAX]
-
-
-def capability_verdict(capabilities, capability_id: str) -> str | None:
-    """역할의 ``capabilities`` 에서 id 하나의 판정: ``deny``·``approve``·``allow`` 순으로 앞선 것, 없으면 None.
-
-    `vinc_client.role_policy.RolePolicy.capability` 와 같은 규칙이다(integrations/parity 가 고정한다).
-    """
-    caps = capabilities if isinstance(capabilities, dict) else {}
-    for verdict in ("deny", "approve", "allow"):
-        for pattern in caps.get(verdict) or []:
-            if not isinstance(pattern, str):
-                continue
-            if capability_id == pattern or (pattern.endswith(".*") and fnmatch.fnmatchcase(
-                    capability_id, pattern[:-2] + ".*")):
-                return verdict
-    return None
 
 
 def _used_capabilities(args: dict):

@@ -26,7 +26,7 @@ from __future__ import annotations
 import hashlib
 import re
 import json
-from . import agent_export_contract
+from . import agent_export_contract, capability_maps
 
 #: 역할이 사는 주제, 읽는 순서대로. 앞의 것이 새 역할의 자리다(기본 팩 · GRAPH.md 안내).
 #: 뒤의 것은 Vinc 자기 그래프(모든 주제가 `vinc/` 아래)와 그 전에 시드된 스페이스의
@@ -211,8 +211,10 @@ def render_shell(role: dict, *, compact: bool = False) -> str:
     # 정본: [[record:worktree-isolation-makes-one-branch-per-package-physical]]
     if props.get("isolation"):
         front.append(f"isolation: {props['isolation']}")
-    if props.get("disallowed_tools"):
-        front.append("disallowedTools: " + ", ".join(props["disallowed_tools"]))
+    # 능력이 막는 도구(기본 지도가 아는 것)를 역할의 disallowed_tools 뒤에 더한다. 하네스가 직접 막는 칸이다.
+    disallowed = capability_maps.claude_code_disallowed(props)
+    if disallowed:
+        front.append("disallowedTools: " + ", ".join(disallowed))
     body = front + [
         "---",
         "",
@@ -402,6 +404,60 @@ def _export_body(out: dict, entry: dict) -> str:
     return head + "\n\n" + _BOUNDARY + "\n\n" + _fence(body)
 
 
+_REASONS = {"deny": "denied", "approve": "held for a person", "outside_allow": "outside the allow list"}
+
+
+def _host_enforcement(props: dict, format: str) -> str:
+    """역할의 능력 → 호스트가 직접 막는 설정. 능력이 없으면 빈 문자열(기존 내보내기의 바이트가 같다).
+
+    설정 칸이 있는 호스트(OpenClaw `tools.deny`, Hermes 서버별 `tools.exclude`)는 설정 조각을, 없는 호스트는
+    정책이 권고일 뿐이라는 문장을 싣는다. 도구 이름은 기본 지도에서만 오므로 그래프 글이 섞이지 않는다."""
+    caps = props.get("capabilities")
+    if not isinstance(caps, dict) or not caps:
+        return ""
+    got = capability_maps.blocked_tools(caps)
+    level = "###" if format == "agents-md" else "##"
+    lines = [f"{level} Enforcing this role's capabilities in the host", ""]
+    if got["capabilities"]:
+        lines += ["The role closes these capabilities for the tools Vinc's default maps know. A "
+                  "capability held for a person is closed too: a person does that step.", ""]
+        lines += [f"- {cap}: {_REASONS[why]}" for cap, why in got["capabilities"].items()]
+    else:
+        lines += ["None of the role's capabilities closes a tool Vinc's default maps know."]
+    loose = capability_maps.unenforced(caps)
+    if loose:
+        own = " Vinc's own tools follow the role's disallowed tools instead." if any(
+            cap.startswith("vinc.") for cap in loose) else ""
+        lines += ["", "No host setting closes these, because no mapped tool carries them; "
+                  "the role's text is all there is: " + ", ".join(loose) + "." + own]
+    closed = [f"{server}__{name}" for server, names in got["servers"].items() for name in names]
+    if format == "skill" and (closed or got["openclaw_builtins"]):
+        lines += ["", "Server names are the ones the maps assume (github, linear, slack, filesystem). "
+                  "Use the name your host gave the server.", "",
+                  f"{level}# Claude Code", "",
+                  "Export this role with format claude: its front matter carries these tools in "
+                  "disallowedTools.", "",
+                  f"{level}# OpenClaw", "",
+                  "Merge into `~/.openclaw/openclaw.json`. A deny wins over an allow.", "",
+                  "```json", json.dumps({"tools": {"deny": got["openclaw_builtins"] + closed}},
+                                        indent=2), "```"]
+        if got["servers"]:
+            yaml = ["mcp_servers:"]
+            for server, names in got["servers"].items():
+                yaml += [f"  {server}:", "    tools:", "      exclude:"] + [f"        - {n}" for n in names]
+            lines += ["", f"{level}# Hermes", "",
+                      "Under each server in `mcp_servers` in `~/.hermes/config.yaml`. Hermes's own "
+                      "file and shell tools are not in the maps, so for those the role's text is all "
+                      "there is.", "", "```yaml", *yaml, "```"]
+    if format == "skill":
+        lines += ["", f"{level}# Hosts without a tool setting"]
+    lines += ["", "Cursor, Grok Bot, ChatGPT, Claude.ai and hosts that read AGENTS.md have no field this "
+              "file can set to close a tool. There the policy is advisory: the agent reads it and "
+              "the host does not enforce it. Decline a closed tool and ask a person instead."]
+    return "\n".join(line for i, line in enumerate(lines)
+                     if not (line == "" and i > 0 and lines[i - 1] == "")) + "\n"
+
+
 def _mcp_entries() -> str:
     """호스트마다 Vinc MCP 서버를 더하는 설정. 키는 넣지 않는다(OAuth 가 되는 곳은 OAuth)."""
     return "\n".join([
@@ -422,6 +478,11 @@ def _mcp_entries() -> str:
         "```yaml", "mcp_servers:", "  vinc:", f'    url: "{MCP_URL}"', "    auth: oauth", "```", "",
         "## Claude.ai and ChatGPT", "",
         f"Add a custom connector with the address {MCP_URL} and sign in on vincs.io.", ""])
+
+
+def _tail(props: dict, format: str) -> str:
+    enforcement = _host_enforcement(props, format)
+    return "\n" + enforcement if enforcement else ""
 
 
 def render_role_export(got: dict, format: str, *, owner: str, pack_encoder=None) -> dict:
@@ -451,12 +512,13 @@ def render_role_export(got: dict, format: str, *, owner: str, pack_encoder=None)
         text, filename = render_shell(entry), name + ".md"
     elif format == "skill":
         text = (f"---\nname: {name}\ndescription: {json.dumps(props.get('mission') or label, ensure_ascii=False)}\n"
-                f"---\n\n# {label}\n\n" + _export_body(out, entry) + "\n")
+                f"---\n\n# {label}\n\n" + _export_body(out, entry) + "\n" + _tail(props, format))
         filename, path = "SKILL.md", name + "/SKILL.md"
     elif format == "gpt":
-        text, filename = f"# {label}\n\n" + _export_body(out, entry) + "\n", name + ".gpt.md"
+        text, filename = f"# {label}\n\n" + _export_body(out, entry) + "\n" + _tail(props, format), name + ".gpt.md"
     elif format == "agents-md":
-        text, filename = f"## {label} (`{name}`)\n\n" + _export_body(out, entry) + "\n", "AGENTS.md"
+        text, filename = (f"## {label} (`{name}`)\n\n" + _export_body(out, entry) + "\n"
+                          + _tail(props, format), "AGENTS.md")
     elif format == "mcp":
         text, filename = _mcp_entries(), "vinc-mcp.md"
     else:

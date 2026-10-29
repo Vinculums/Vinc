@@ -71,3 +71,26 @@ def test_the_run_protocol_judges_a_capability_as_the_client_does():
     for cap in ("shell.exec", "github.repo.write", "github.pr.merge", "github.pr.read",
                 "vinc.read", "slack.read", "shell"):
         assert protocol.capability_verdict(caps, cap) == policy.capability(cap), cap
+
+
+def test_the_hub_maps_are_the_client_maps():
+    maps = _mcp("capability_maps")
+    assert {s: dict(t) for s, t in maps.SERVER_MAPS.items()} == \
+        {s: dict(t) for s, t in capabilities.SERVER_MAPS.items()}
+    assert dict(maps.BUILTIN_MAP) == dict(capabilities.BUILTIN_MAP)
+    assert maps.CAPABILITY_PATTERN.pattern == _hub().CAPABILITY.pattern
+
+
+def test_an_export_closes_the_tools_the_client_hides():
+    from vinc_client.tool_policy import RoleToolPolicy
+    maps = _mcp("capability_maps")
+    for caps in ({"deny": ["github.pr.merge", "shell.*"], "approve": ["github.repo.write"]},
+                 {"allow": ["vinc.read", "github.pr.read", "fs.read"], "approve": ["github.pr.write"]}):
+        policy = RoleToolPolicy.from_contract({"id": "concept:agent-x", "props": {"capabilities": caps}})
+        got = maps.blocked_tools(caps)
+        for server, table in maps.SERVER_MAPS.items():
+            for name in table:
+                hidden = not policy.allows(f"mcp__{server}__{name}")
+                assert hidden == (name in got["servers"].get(server, [])), (server, name)
+        for name in maps.CLAUDE_CODE_BUILTINS:
+            assert (not policy.allows(name)) == (name in got["builtins"]), name
