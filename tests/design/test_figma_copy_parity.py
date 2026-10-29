@@ -11,8 +11,8 @@ import json
 import pathlib
 import unittest
 
-HUB = pathlib.Path(__file__).resolve().parent.parent.parent / "design-hub"
-_spec = importlib.util.spec_from_file_location("figma_copy", HUB / "scripts" / "figma_copy.py")
+HUB = pathlib.Path(__file__).resolve().parent.parent.parent / "scripts" / "design"
+_spec = importlib.util.spec_from_file_location("figma_copy", HUB / "figma_copy.py")
 fc = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(fc)
 
@@ -62,7 +62,7 @@ class TheSnapshotIsRealAndCurrent(unittest.TestCase):
         os.environ["VINC_SITE_DIR"] = str(pathlib.Path(__file__).parent)
         try:
             spec = importlib.util.spec_from_file_location(
-                "figma_copy_env", HUB / "scripts" / "figma_copy.py")
+                "figma_copy_env", HUB / "figma_copy.py")
             m = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(m)
             self.assertEqual(m.SITE, pathlib.Path(__file__).parent.resolve())

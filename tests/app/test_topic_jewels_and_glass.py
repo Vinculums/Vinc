@@ -22,7 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "app" / "src"
-TOKENS = json.loads((ROOT / "design-hub/DESIGN/design-tokens.json").read_text(encoding="utf-8"))
+TOKENS = json.loads((ROOT / "scripts/design/tokens.json").read_text(encoding="utf-8"))
 
 
 def _read(rel: str) -> str:

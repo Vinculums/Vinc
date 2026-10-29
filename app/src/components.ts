@@ -250,7 +250,7 @@ export function openSheet(opts: {
  * `aria-label` 에 같은 문구를 한 벌 더 실어 두 번 읽혔다. `aria-valuenow` 는 없다.
  * 그것이 불확정의 정의다.
  *
- * 모양은 로딩 모션의 track 이다(design-hub/assets/motion, 근거 [[vinc.design.loading-motions]]).
+ * 모양은 로딩 모션의 track 이다(scripts/design/assets/motion, 근거 [[vinc.design.loading-motions]]).
  * 개수를 모르니 머리가 선 위를 왕복한다. 라벨 id 는 그 모듈이 호출마다 새로 만든다 —
  * 닫히는 중인 시트와 새 시트가 잠깐 함께 DOM 에 서므로 id 가 겹치면 안 된다. */
 

@@ -50,7 +50,7 @@ Repositories: Vinc
 - {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
 - {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
 - {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
-- {"check":{"command":"design-hub/scripts/gate_surface.py","repos":["Vinc"],"type":"command_success"},"id":"command_1","on_fail":"block"}
+- {"check":{"command":"scripts/design/gate_surface.py","repos":["Vinc"],"type":"command_success"},"id":"command_1","on_fail":"block"}
 - {"check":{"command":"scripts/gate_forbidden.py","repos":["Vinc"],"type":"command_success"},"id":"command_2","on_fail":"block"}
 
 ## Works with
@@ -74,7 +74,7 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Never
 
-- change a token value in design-hub (the Design Systems Engineer)
+- change a token value in the graph (the Design Systems Engineer)
 - touch the prose of the docs or book pages (the Technical Writer's)
 - reuse an asset from a discarded round
 - put a decision note inside Figma

@@ -91,7 +91,7 @@ jobs:
   # 나온다. PR 은 다르다: 최신 커밋만 참이면 되고, 안 건드린 층은 잴 것이 없다.
   #
   # ⚠ `core` 는 **거르지 않는다.** 파이썬 스위트뿐 아니라 금지어·이스케이프·대비·디자인
-  # 동기화·로스터 게이트가 전부 여기 살고, 그것들은 `app/src` 와 `design-hub/` 와
+  # 동기화·로스터 게이트가 전부 여기 살고, 그것들은 `app/src` 와 `scripts/design/` 와
   # `agents/shells/` 를 읽는다. 입력이 리포 거의 전체라 조건을 달면 그 조건이 곧
   # 다음 구멍이다. 이 잡은 안전망이고 안전망은 조건부가 아니다.
   # (2026-09-26: 잡 안의 **꺼진 모드 스위트 스텝만** PR 에서 빠진다. 게이트는 그대로다 —
@@ -472,37 +472,37 @@ jobs:
       - name: View contrast gate
         run: python scripts/gate_contrast.py
 
-      # 디자인 허브(design-hub/)가 내보낸 생성물이 이 리포에서 손으로 고쳐졌는지.
+      # 토큰 생성물(scripts/design/build_tokens.py 가 만든 사본)이 손으로 고쳐졌는지.
       # 헤더의 "Do not hand-edit" 은 강제력이 없어서, 여기서 고친 색이 다음 재생성
-      # 때 조용히 되돌아가고 그 사이 배포분만 SSoT 와 달랐다. 허브를 체크아웃하지
-      # 않고 각인 해시만 보므로 교차 리포 PAT 이 필요 없다. 허브가 앞서간 경우
-      # (동기화 누락)는 여기서 안 보이며 허브의 sync_out.py --check 가 잡는다.
+      # 때 조용히 되돌아가고 그 사이 배포분만 토큰과 달랐다. 각인 해시만 보므로 교차
+      # 리포 PAT 이 필요 없다. 스냅샷이 앞서간 경우(동기화 누락)는 아래 스텝이 잡는다.
       - name: Design sync gate
         run: python scripts/gate_design_sync.py
 
-      # 허브가 같은 리포로 들어왔으므로(2026-08-08) 소비 사본이 허브 산출물과 같은지
-      # 여기서 직접 볼 수 있다 — 교차 리포 체크아웃이 필요 없어졌다. 위의 각인 게이트가
-      # "사본을 손댔나"를 보고, 이쪽이 "허브가 앞서갔나"를 본다.
-      - name: Design hub drift gate
-        run: python -X utf8 design-hub/scripts/sync_out.py --check
+      # 소비 사본이 토큰 스냅샷(scripts/design/tokens.json)에서 다시 만든 것과 같은지.
+      # 위의 각인 게이트가 "사본을 손댔나"를 보고, 이쪽이 "스냅샷만 바꾸고 --apply 를
+      # 안 했나"를 본다. 값의 정본은 그래프지만 CI 는 그래프를 읽지 않는다(키가 없다):
+      # 스냅샷은 사람이 pull_tokens.py 로 내려받아 사본과 같은 커밋에 넣는다.
+      - name: Design token drift gate
+        run: python -X utf8 scripts/design/sync_out.py --check
 
-      # 하드코딩 색(D-S01). 허브 생성물은 AUTO-GENERATED 헤더로 제외하고, 정당한
+      # 하드코딩 색(D-S01). 토큰 생성물은 AUTO-GENERATED 헤더로 제외하고, 정당한
       # 비-디자인 색(스프라이트 틴트 베이스 등)은 `ds-allow: <이유>` 주석으로 면제하되
       # **건수와 이유가 항상 출력된다** — 조용한 예외를 만들지 않기 위해서다.
       - name: Design surface gate (app)
-        run: python -X utf8 design-hub/scripts/gate_surface.py app/src
+        run: python -X utf8 scripts/design/gate_surface.py app/src
 
-      # Figma 가 토큰 SSoT 를 따라오고 있는가(정본=코드, decision:code-is-canon-figma-follows).
+      # Figma 가 토큰을 따라오고 있는가(Figma 는 따라갈 뿐, decision:code-is-canon-figma-follows).
       # CI 에는 Figma 자격증명이 없으므로 라이브를 못 본다 — 커밋된 덤프
-      # design-hub/imports/figma-live.json 과 SSoT 를 대조한다. 그래서 이 게이트가 잡는 것은
+      # scripts/design/figma/figma-live.json 과 토큰 스냅샷을 대조한다. 그래서 이 게이트가 잡는 것은
       # **"토큰을 고치고 Figma 를 갱신하지 않은 커밋"** 이다: 덤프를 초록으로 되돌리는
       # 유일한 정상 경로가 라이브를 다시 뜨는 것이라, 초록이면 Figma 도 갱신됐다는 뜻이 된다.
       # ⚠ 덤프를 손으로 고치면 이 추론이 깨진다(각인 게이트와 같은 종류의 한계다). 그래서
       # 그 파일 $meta 에 "패치 금지, 다시 뜰 것"을 적어 두었다.
-      # 갱신법: 에이전트가 design-hub/scripts/figma_diff.py docstring 의 JS 를 use_figma 로
+      # 갱신법: 에이전트가 scripts/design/figma_diff.py docstring 의 JS 를 use_figma 로
       # 돌려 덤프를 새로 쓰고, 차이가 있으면 --plan 대로 **Figma 를** 고친다(반대 아님).
       - name: Figma token drift gate
-        run: python -X utf8 design-hub/scripts/figma_diff.py
+        run: python -X utf8 scripts/design/figma_diff.py
 
       # 위 게이트가 토큰 **값**을 본다면 이쪽은 화면·모달·아이콘의 **목록**을 본다.
       # 잡는 것은 "코드에 화면이나 모달을 늘리면서 Figma 대응을 선언하지 않은 커밋"이다.
@@ -510,7 +510,7 @@ jobs:
       # 세지 않고 매 실행 목록으로만 나온다 — 그리지 않았다고 빨갛게 만들면 게이트가
       # 곧 꺼지기 때문이다. 그린 뒤 `None` 을 프레임 이름으로 바꾸면 그때부터 실재를 본다.
       - name: Figma inventory gate (screens · modals · icons)
-        run: python -X utf8 design-hub/scripts/figma_inventory.py
+        run: python -X utf8 scripts/design/figma_inventory.py
 
       # ⚠ 사이트 문구 대조(`figma_copy.py --check`)는 **여기 없다**. 이 잡은 Vinc 만
       # 체크아웃하므로 그 게이트는 영원히 SKIP 했고, 초록 스텝이 검사한 것처럼 읽혔다
@@ -533,7 +533,7 @@ jobs:
       # 근거: [[decision:figma-app-boards-no-longer-gate-a-release-2026-09-26]]
       - name: Figma app board copy gate (advisory)
         continue-on-error: true
-        run: python -X utf8 design-hub/scripts/figma_app_copy.py
+        run: python -X utf8 scripts/design/figma_app_copy.py
 
       # 역할 껍데기(agents/shells/*.md)가 손으로 고쳐졌는가. 정의의 정본은 그래프의
       # vinc/agent 도메인이고, 하네스는 실행 시점에 파일을 읽으므로 둘 다 있어야 한다.

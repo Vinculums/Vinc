@@ -14,7 +14,7 @@ import importlib.util
 import pathlib
 import unittest
 
-_PATH = pathlib.Path(__file__).resolve().parent.parent.parent / "design-hub" / "scripts" / "figma_diff.py"
+_PATH = pathlib.Path(__file__).resolve().parent.parent.parent / "scripts" / "design" / "figma_diff.py"
 _spec = importlib.util.spec_from_file_location("figma_diff", _PATH)
 fd = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(fd)

@@ -3,7 +3,7 @@
    토큰 출처 = Vinc-design 허브(sync_out) — desktop이 :root 기본, web은 [data-skin="web"] 스코프. */
 @import "./tokens.desktop.css";
 @import "./tokens.web.css";
-@import "./vinc-loaders.css";   /* 로딩 모션 다섯 가지(design-hub/assets/motion 사본) */
+@import "./vinc-loaders.css";   /* 로딩 모션 다섯 가지(scripts/design/assets/motion 사본) */
 
 /* ── Pretendard @font-face ────────────────────────────────────────────────
    2026-08-26 추가. tokens.desktop.css·tokens.web.css 는 **둘 다** --font-ui 를
@@ -833,7 +833,7 @@ body {
 .tb-btn svg { width: 11px; height: 11px; }
 .tb-btn:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
 /* 닫기 버튼 호버는 OS 창 제어 관례라 브랜드 danger 와 다른 축이다(모드 불변).
-   토큰 정본은 design-hub 의 primitive.win_close — Figma Window 컬렉션과 짝이다. */
+   토큰 정본은 그래프의 primitive win_close(concept:token.primitive.win-close) — Figma Window 컬렉션과 짝이다. */
 .tb-close:hover { background: hsl(var(--titlebar-close)); color: hsl(var(--titlebar-close-foreground)); }
 .tb-btn:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
 /* ── 상단 바 (D56·D57) ─────────────────────────────────────────────────
@@ -2795,7 +2795,7 @@ textarea.props-val {
 }
 /* 앱 정보의 첫 줄 = 마크 + 빌드. 마크는 크기 단계(128·96·64·40) 중 64 이고 상자를
    그림의 비율(viewBox 436×604)에 딱 맞춘다. 사이 여백 1.25rem 은 마크 폭(약 46px)의
-   25% 보다 넓다(design-hub/assets/logo/README.md 의 여백 규칙). */
+   25% 보다 넓다([[vinc.design.logo]] 의 여백 규칙). */
 .settings-about-id {
   display: flex; align-items: center; gap: 1.25rem; margin: .5rem 0 1.25rem;
 }

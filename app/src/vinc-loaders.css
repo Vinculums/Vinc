@@ -1,12 +1,12 @@
-/* Vinc 로딩 모션 다섯 가지 (design-hub/assets/motion) */
+/* Vinc 로딩 모션 다섯 가지 (scripts/design/assets/motion) */
 /*
- * 정본은 design-hub/assets/motion/ 이고 앱·사이트 사본은 sync_out.py 가 복사한다(손으로 고치지 않는다).
+ * 정본은 scripts/design/assets/motion/ 이고 앱·사이트 사본은 sync_out.py 가 복사한다(손으로 고치지 않는다).
  * 머리 주석의 줄은 모두 `*` 로 시작한다 — 사본 각인이 머리 끝에 들어가므로 중간에서 끊기면 주석이 깨진다.
  * 토큰(--foreground · --border · --point · --caption-foreground · --ease-out · --ease-settle)은
  * 앱과 사이트가 같은 이름으로 갖는다. 종류와 자리는 vinc-loaders.js 머리 주석에 있다.
  * 모두 흑백 + 포인트 색 하나이고, 모션을 줄인 사람에게는 "진행 중"을 말하는 정지 화면을 보인다.
  */
-/* sync-sha256: 3c7407a514f09eab5d9fdcca8582484d15e4651b2dca738ffe5293adea4f07c7 */
+/* sync-sha256: 149343faed361463b4a7fcca84b5c050676fa57ba6c05205c4117048d58be910 */
 
 .vl {
   --vl-fg: hsl(var(--foreground, 240 6% 10%));

@@ -7,7 +7,7 @@
          실체는 public/favicon.svg 이고 Vite 가 dist 루트로 복사하면서 이 절대경로에
          base 를 접두한다: 웹 빌드(VITE_BASE=/app/) → /app/favicon.svg,
          셸 빌드(base "/") → /favicon.svg. 두 빌드가 각자 자기 자산을 가리킨다.
-         정본은 design-hub/assets/logo/vinc-ring-favicon.svg(판 없는 링, 다크 탭에선 흰색) 이고
+         정본은 scripts/design/assets/logo/vinc-ring-favicon.svg(판 없는 링, 다크 탭에선 흰색) 이고
          sync_out.py 가 여기로 나른다(각인 대조는 --check). **손으로 고치지 말 것** —
          예전엔 "수기 동기, 로고가 바뀌면 두 곳을 함께 갱신할 것"이라고 적혀 있었고,
          그 방식이 로고 교체를 44곳짜리 일로 만들었다. -->
@@ -28,7 +28,7 @@
              남고 색은 CSS 가 준다. 구 마크가 하던 것과 같은 동작이다.
              ⚠ **다시 인라인하지 말 것.** 인라인 사본이 정본에 닿지 않는 것이
              로고 교체를 44곳짜리 일로 만들었다. 이 자리가 가리키는 파일은
-             design-hub 가 sync_out.py 로 내보낸 public/vinc-mark-mono.svg 다.
+             scripts/design/sync_out.py 가 내보낸 public/vinc-mark-mono.svg 다.
              근거: [[record:a-logo-ssot-that-reaches-nobody]] -->
         <span class="brand-logo" role="img" aria-label="Vinc"></span>
         <span>Vinc</span>

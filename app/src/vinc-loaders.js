@@ -1,4 +1,4 @@
-// Vinc 로딩 모션 — 정본은 design-hub/assets/motion/ 이고 앱·사이트 사본은 sync_out.py 가
+// Vinc 로딩 모션 — 정본은 scripts/design/assets/motion/ 이고 앱·사이트 사본은 sync_out.py 가
 // 복사한다(손으로 고치지 않는다). 스타일은 같은 자리의 vinc-loaders.css.
 //
 // 다섯 가지와 자리(근거: 그래프 `vinc.design.loading-motions`):
@@ -6,7 +6,7 @@
 //   branch — 그래프 읽기·배치 · 패널 · 커뮤니티 그래프(가운데, 글 한 줄)
 //   link   — 글자 옆 · 단추 안 · 검색·Ask 대기 · 저장 중(인라인)
 //   rows   — 곧 올 목록 자리(문서 홈 · 주제 트리 · 검색 결과 · 커뮤니티 목록)
-// sync-sha256: cfee0445eb76aef265ec4a90916eee0e61290d63212c9bc7cb62c7ccbf1d14df
+// sync-sha256: 60913c515139da802664a95e71cf701d3f6e96a710ff60a0c4ce373830623aee
 //   track  — 개수가 있는 일(가져오기 · 재임베딩 · 이전 · 업데이트), total 0 이면 왕복
 //
 // 모두 문자열을 돌려준다(앱과 사이트가 innerHTML 로 그린다). 읽는 글은 role=status 로 말하고

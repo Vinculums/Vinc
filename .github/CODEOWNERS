@@ -18,7 +18,6 @@
 /app/                                            @Vinculums/app
 /LICENSE                                         @Vinculums/design-content
 /README.md                                       @Vinculums/design-content
-/design-hub/                                     @Vinculums/design-content
 /emails/                                         @Vinculums/design-content
 /starter-packs/                                  @Vinculums/design-content
 /.dockerignore                                   @Vinculums/platform
@@ -47,6 +46,7 @@
 /scripts/tooluse_shell.py                        @Vinculums/rag
 /tests/rag/                                      @Vinculums/rag
 /tests/app/                                      @Vinculums/app
+/scripts/design/                                 @Vinculums/design-content
 /tests/design/                                   @Vinculums/design-content
 /scripts/_azutil.py                              @Vinculums/platform
 /scripts/_gitutil.py                             @Vinculums/platform

@@ -59,7 +59,7 @@
     },
     "design-content": {
       "github": "@Vinculums/design-content",
-      "label": "Design and content (design hub, packs, copy, emails)",
+      "label": "Design and content (design tokens and tools, packs, copy, emails)",
       "roles": [
         "agent-design",
         "agent-product-designer",
@@ -69,7 +69,7 @@
         "agent-tech-writer"
       ],
       "paths": [
-        "design-hub/",
+        "scripts/design/",
         "starter-packs/",
         "emails/",
         "tests/design/",

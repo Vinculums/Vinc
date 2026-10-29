@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""`design-hub/scripts/sync_out.py` 가 소비 리포를 **git 체크아웃으로만** 찾고,
+"""`scripts/design/sync_out.py` 가 소비 리포를 **git 체크아웃으로만** 찾고,
 내용이 같은 사본은 다시 쓰지 않는가.
 
 두 고장을 막는다(2026-09-26 실측):
 
-- worktree(`_wt/<이름>`) 에서 `--apply` 를 돌리면 `../../Vinc-homepage` 가
+- worktree(`_wt/<이름>`) 에서 `--apply` 를 돌리면 `../Vinc-homepage` 가
   `_wt/Vinc-homepage` 로 풀린다. 리포가 아닌 그 자리를 조용히 만들고 사본을 쏟았다.
 - 내용이 같아도 매번 LF 로 다시 써서, autocrlf 체크아웃(CRLF)의 앱 쪽 사본이
   줄끝만 바뀐 채 git 에 수정으로 떴다.
@@ -27,15 +27,15 @@ import unittest
 from unittest import mock
 
 SCRIPT = (pathlib.Path(__file__).resolve().parent.parent.parent
-          / "design-hub" / "scripts" / "sync_out.py")
+          / "scripts" / "design" / "sync_out.py")
 
 CSS = "/* AUTO-GENERATED */\n:root { --a: 1; }\n"
 PNG = bytes([137, 80, 78, 71, 13, 10, 26, 10]) + b"fake"
 
 MAP = [
-    ("dist/site/site-tokens.css", "../../Vinc-homepage/site/assets/tokens.css"),
-    ("dist/app/tokens.desktop.css", "../app/src/tokens.desktop.css"),
-    ("assets/logo/mark.png", "../app/public/mark.png"),
+    ("gen:site-tokens.css", "../Vinc-homepage/site/assets/tokens.css"),
+    ("gen:tokens.desktop.css", "app/src/tokens.desktop.css"),
+    ("assets/logo/mark.png", "app/public/mark.png"),
 ]
 
 
@@ -80,16 +80,12 @@ class _Workspace(unittest.TestCase):
         self.stray = self.ws / "_wt" / "Vinc-homepage"   # 옛 판이 만들던 자리
 
     def hub(self, checkout: pathlib.Path) -> pathlib.Path:
-        hub = checkout / "design-hub"
-        for rel, data in (("dist/site/site-tokens.css", CSS),
-                          ("dist/app/tokens.desktop.css", CSS),
-                          ("assets/logo/mark.png", PNG)):
-            p = hub / rel
-            p.parent.mkdir(parents=True, exist_ok=True)
-            if isinstance(data, bytes):
-                p.write_bytes(data)
-            else:
-                p.write_text(data, encoding="utf-8", newline="")
+        """`scripts/design` 자리. 토큰 생성물은 파일이 아니라 `_GENERATED` 로 주입한다."""
+        hub = checkout / "scripts" / "design"
+        p = hub / "assets" / "logo" / "mark.png"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(PNG)
+        self.gen = {"site-tokens.css": CSS, "tokens.desktop.css": CSS}
         return hub
 
     def homepage(self) -> None:
@@ -98,7 +94,8 @@ class _Workspace(unittest.TestCase):
 
     def run_sync(self, hub: pathlib.Path, *argv: str):
         mod = _load()
-        mod.HUB, mod.MAP = hub, list(MAP)
+        mod.HUB, mod.REPO, mod.MAP = hub, hub.parent.parent, list(MAP)
+        mod._GENERATED = self.gen
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             rc = mod.main(list(argv))
@@ -180,7 +177,7 @@ class SameContentIsNotRewritten(_Workspace):
         self.assertEqual(rc, 0, out + err)
         self.assertEqual(self.css.read_bytes(), crlf, "줄끝만 바꿔 다시 썼다")
         self.assertEqual(self.css.stat().st_mtime_ns, mtime)
-        self.assertIn("[SAME] ../app/src/tokens.desktop.css", out)
+        self.assertIn("[SAME] app/src/tokens.desktop.css", out)
 
     def test_identical_binary_is_left_alone(self):
         mtime = self._age(self.png)
@@ -189,8 +186,7 @@ class SameContentIsNotRewritten(_Workspace):
 
     def test_a_real_change_is_still_written(self):
         # 위 두 건이 "아무것도 안 쓴다"로 공허하게 통과하지 않는다는 대조.
-        (self.hub_dir / "dist" / "app" / "tokens.desktop.css").write_text(
-            CSS.replace("1", "2"), encoding="utf-8", newline="")
+        self.gen["tokens.desktop.css"] = CSS.replace("1", "2")
         (self.hub_dir / "assets" / "logo" / "mark.png").write_bytes(PNG + b"!")
         self.run_sync(self.hub_dir, "--apply")
         self.assertIn("--a: 2", self.css.read_text(encoding="utf-8"))

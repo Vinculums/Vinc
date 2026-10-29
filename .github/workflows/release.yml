@@ -84,12 +84,12 @@ jobs:
       # 부터 여기서 태그를 막았지만, 막는 값은 디자이너가 옛 화면을 보는 것뿐이었고 치르는
       # 값은 릴리스마다 사이드카·실데이터로 60장을 다시 찍는 일이었다. PR 과 같은 경고다.
       # 보드를 새로 하고 싶을 때의 길은 그대로 있다:
-      #   cd design-hub && npm install
-      #   node scripts/capture_app.mjs --app <vite> --sidecar <sidecar> --token <token>
+      #   cd scripts/design && npm install
+      #   node capture_app.mjs --app <vite> --sidecar <sidecar> --token <token>
       # 근거: [[decision:figma-app-boards-no-longer-gate-a-release-2026-09-26]]
       - name: Figma app board copy gate (advisory)
         continue-on-error: true
-        run: python -X utf8 design-hub/scripts/figma_app_copy.py
+        run: python -X utf8 scripts/design/figma_app_copy.py
 
   # Linux는 ubuntu-22.04에서 직접 빌드해 glibc 2.35 실행 바닥을 지킨다.
   # 근거: [[vinc.ops.ci-runner-diagnosis]]

@@ -1,6 +1,6 @@
 {
   "measured_at": "2026-10-06",
-  "source": "Hosted MCP verified document reads; role read lists from agents/roles.json at 9072057. Size replay only, not an SDK read-only-key or latency measurement.",
+  "source": "Hosted MCP verified document reads; role read lists from agents/roles.json at 9072057. Size replay only, not an SDK read-only-key or latency measurement. vinc.canon.design-system-operations was measured on 2026-10-29, when agent-design began reading it.",
   "documents": [
     {
       "doc_id": "d77f47c7465264b6f",
@@ -41,6 +41,11 @@
       "doc_id": "vinc.canon.decisions",
       "chars": 12592,
       "content_hash": "edb0c8ca37e3fda8de2688e49aa6a8b6284b8c507273499968f83f4ab41d1027"
+    },
+    {
+      "doc_id": "vinc.canon.design-system-operations",
+      "chars": 9177,
+      "content_hash": "1fce9e03726bc574fa479a630a0fe8f7e1a23eea0f1fa0ac0fd7aaa45ab8a8c0"
     },
     {
       "doc_id": "vinc.canon.graph-conventions",

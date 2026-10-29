@@ -75,7 +75,7 @@ class TestSyntax(unittest.TestCase):
         self.assertEqual([2], _lines("lib.rs", src))
 
     def test_skipped_paths(self):
-        for rel in ("tests/core/a.py", "_migration/x.py", "design-hub/imports/a.js",
+        for rel in ("tests/core/a.py", "_migration/x.py", "scripts/design/figma/a.js",
                     "CHANGELOG.md", "x.json", "app/src/a.test.ts", "pkg/tests/a.py"):
             self.assertFalse(g.wanted(rel), rel)
         self.assertTrue(g.wanted("api/query.py"))
