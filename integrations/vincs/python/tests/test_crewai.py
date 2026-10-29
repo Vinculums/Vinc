@@ -300,7 +300,8 @@ def test_capabilities_without_a_map_warn_and_change_nothing(caplog):
     assert tool_results(llm.seen[1]) == ["ran"] and RAN == ["ls"]
     assert [r.getMessage() for r in caplog.records if r.name == "vinc_client"] == [
         f"Role {ROLE} sets capabilities, but none of this agent's tools is in the default "
-        "capability maps, so they are not enforced; pass a capability_map."]
+        "capability maps, so they are not enforced; pass a capability_map, or name the host's "
+        "servers in tool_servers (gh=github)."]
 
 
 def test_a_malformed_policy_stops_the_run_before_the_model():
