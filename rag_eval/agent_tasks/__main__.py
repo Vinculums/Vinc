@@ -11,7 +11,7 @@ import argparse
 import json
 import sys
 
-from rag_eval.agent_tasks import arms, hosts, runner, tasks
+from rag_eval.agent_tasks import arms, hosts, role_context, runner, tasks
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -28,10 +28,15 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--disjoint-from", help="이 세트와 겹치는 과제가 있으면 거부한다")
     r.add_argument("--skip-handoff", action="store_true", help="handoff 과제를 빼고 그 수를 헤더에 남긴다")
     r.add_argument("--arms", default=",".join(arms.ARMS),
-                   help="쉼표로 잇는다. A0 A1 A2 A3, 그리고 A2 의 다른 문 A2-rest A2-cli")
+                   help="쉼표로 잇는다. A0 A1 A2 A3, A2 의 다른 문 A2-rest A2-cli, 역할 맥락 R")
     r.add_argument("--hosts", default=",".join(hosts.HOSTS))
     r.add_argument("--model", default="fake",
                    help="fake | azure:<배포> | openai:<모델> | claude-code:<모델 id>(구독, 키 없음)")
+    r.add_argument("--policy", default="p0",
+                   help="비교군 R 의 맥락 정책: p0(오늘의 prefetch) 또는 POLICY 를 내보내는 파이썬 파일")
+    r.add_argument("--role-context", default=role_context.DEFAULT_ROLE, help="비교군 R 이 쓰는 역할")
+    r.add_argument("--context-limit", type=int, default=role_context.DEFAULT_LIMIT,
+                   help="비교군 R 의 맥락 글자 한도")
     r.add_argument("--judge-model", help="서술형 채점(judge·기권) 모델. 기본은 --model 과 같다")
     r.add_argument("--price", help="입력,출력 USD/백만 토큰(성공당 비용용; 없으면 비용을 모른다고 적는다)")
     r.add_argument("--runs", type=int, default=3, help="과제당 실행 수(계획: 3)")
