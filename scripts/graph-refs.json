@@ -834,6 +834,7 @@
     "decision:a-gate-whose-rule-and-exam-share-an-author-ships-off",
     "decision:a-node-address-names-its-space",
     "decision:a-node-keeps-its-own-colour-in-every-state",
+    "decision:a-node-picked-in-the-graph-opens-its-card-and-the-side-pane-2026-10-29",
     "decision:a-selection-becomes-an-address-you-paste",
     "decision:a-theme-switch-repaints-the-open-view-in-place",
     "decision:after-sign-in-a-device-with-a-graph-stays-local-and-moving-is-only-in-settings-2026-09-29",
@@ -852,6 +853,7 @@
     "decision:core-pkns-stays-because-the-hub-runs-the-flag-on",
     "decision:created-is-earliest-known-recording",
     "decision:detect-the-replica-overlap-and-defer-the-single-writer-fence-2026-09-04",
+    "decision:each-area-volume-carries-its-name-at-its-area-topic-2026-10-29",
     "decision:english-is-the-default-surface-language",
     "decision:escape-once-at-the-boundary",
     "decision:every-written-field-has-a-read-path",
@@ -1100,6 +1102,9 @@
     "decision:a-node-keeps-its-own-colour-in-every-state": {
       "validity": "unknown"
     },
+    "decision:a-node-picked-in-the-graph-opens-its-card-and-the-side-pane-2026-10-29": {
+      "validity": "current"
+    },
     "decision:a-selection-becomes-an-address-you-paste": {
       "validity": "unknown"
     },
@@ -1152,6 +1157,9 @@
       "validity": "unknown"
     },
     "decision:detect-the-replica-overlap-and-defer-the-single-writer-fence-2026-09-04": {
+      "validity": "current"
+    },
+    "decision:each-area-volume-carries-its-name-at-its-area-topic-2026-10-29": {
       "validity": "current"
     },
     "decision:english-is-the-default-surface-language": {

@@ -1753,7 +1753,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       // 전체 화면에는 렌즈가 없으므로 toN3 가 애초에 표식을 달지 않는다.
       onClick: (nd) => {
         if (nd.gateway) { trail.push({ kind: "l1", domains: [nd.domain!] }); show(trail[trail.length - 1]); }
-        // 지도에서 고른 항목은 전체 화면을 둔 채 **상세 패널**로 연다(떠 있는 카드를 거치지 않는다).
+        // 지도에서 고른 항목은 전체 화면을 둔 채 떠 있는 카드와 옆 칸의 상세를 함께 연다.
         else openFromMap(nd);
       },
       onRightClick: (nd, ev) => nodeMenu(nd, ev),
@@ -2302,9 +2302,11 @@ export async function renderView(el: HTMLElement, resume = false) {
     return true;
   }
 
-  /** 지도에서 고른 것 — 초점(원뿔·주소)을 걸고 카드 없이 상세 패널(옆 칸)을 연다. */
+  /** 지도에서 고른 것 — 초점(원뿔·주소)을 걸고 떠 있는 카드와 상세 패널(옆 칸)을 함께 연다.
+   *  사이드바에서 고른 것(`openFromNav`)과 같은 모습이다.
+   *  근거: [[decision:a-node-picked-in-the-graph-opens-its-card-and-the-side-pane-2026-10-29]] */
   function openFromMap(nd: N3) {
-    focusOnMap(nd, false);
+    focusOnMap(nd, true);
     railFor(nd);
   }
 
