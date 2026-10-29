@@ -59,6 +59,9 @@ class Surface:
     door: object | None = None
     #: 신뢰 과제의 무대 도구: 이름 → 부르면 돌려줄 글. 아무것도 실행하지 않고 Vinc 도구 상한에 세지 않는다.
     stage: dict = field(default_factory=dict)
+    #: F 비교군의 역할 도구 정책(`vinc_client.RoleToolPolicy`). 막힌 도구는 이미 목록에서 빠졌고,
+    #: 승인 도구를 부르면 사람을 찾는 문장으로 답한다(도구는 실행하지 않는다).
+    tool_policy: object | None = None
 
 
 class McpClient:

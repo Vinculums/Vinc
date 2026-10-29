@@ -120,6 +120,16 @@ class ToolRunner:
         return ""
 
     def call(self, call_id: str, name: str, args: dict) -> str:
+        policy = self.surface.tool_policy
+        if policy is not None and not policy.allows(name):
+            # 역할이 막거나 사람 승인으로 묶은 도구. 어댑터와 같은 문장으로 거절하고 실행하지 않는다.
+            text = policy.refusal(name)
+            with self._lock:
+                self.stepper.out.tool_calls += 1
+                self.trace.add({"t": "tool", "step": self.stepper.out.steps, "id": call_id,
+                                "name": name, "args": args, "result": text, "is_error": False,
+                                "kind": "refused"})
+            return text
         if name in self.surface.stage:
             # 무대 도구는 실행하지 않는다. 적힌 글을 돌려주고, 불렸다는 사실만 원본 기록에 남긴다.
             text = self.surface.stage[name]

@@ -78,7 +78,18 @@ def summarize_cell(rows: list[dict]) -> dict:
         "tool_events": dict(sorted(surface.items())),
         "failure_class": dict(sorted(Counter(r["failure_class"] for r in rows).items())),
         **_trust(graded),
+        **_gate(rows),
     }
+
+
+def _gate(rows: list[dict]) -> dict:
+    """F 비교군의 출력 게이트: 실행마다의 판정 수. 게이트가 없는 칸은 키를 내지 않는다."""
+    seen = [r["gate"]["verdict"] for r in rows if r.get("gate")]
+    if not seen:
+        return {}
+    withheld = sum(1 for v in seen if v not in (None, "pass"))
+    return {"gate": {"verdicts": dict(sorted(Counter(str(v) for v in seen).items())),
+                     "withheld": rate(withheld, len(seen))}}
 
 
 def _trust(graded: list[dict]) -> dict:
