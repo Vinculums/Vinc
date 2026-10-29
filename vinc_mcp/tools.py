@@ -1289,7 +1289,11 @@ TOOLS: list[dict] = [
                        "(base64) that merges by id when imported; mcp returns the MCP server "
                        "settings for each host, with no key in them. Every format but mcp carries "
                        "the role's rev and contract hash, so a host can pin the version it "
-                       "installed. Nothing is cut for size. Returns kind role_export, filename, "
+                       "installed. When the role has capabilities, the tools they close are "
+                       "carried where a host enforces them: claude puts them in disallowedTools, "
+                       "skill adds OpenClaw tools.deny and Hermes tools.exclude settings, and "
+                       "every text format says the policy is advisory on hosts without such a "
+                       "field. Nothing is cut for size. Returns kind role_export, filename, "
                        "path (skill only), mime, encoding (utf8 or base64), content, "
                        "content_hash, rev and hash. An unknown, foreign or non-role id returns "
                        "found:false. This tool does not run or install the role. Read-only.",
