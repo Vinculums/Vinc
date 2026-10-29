@@ -144,6 +144,18 @@ def test_leaked_native_call_forms_are_still_read():
     assert [c.id for c in calls] == ["tc4-0", "tc4-1"]
     prose, none = models.parse_tool_calls("Answer: we CALL it done.\nSources: none", 2)
     assert none == [] and prose.startswith("Answer")
+    assert not models._CALL_ATTEMPT.search("Answer: we CALL it done.\nSources: none")
+
+
+def test_a_call_line_behind_a_stray_mark_is_still_a_call():
+    # 두 답 모두 기권 과제에서 지어낸 답으로 세어졌던 실제 답이다(VIN-790 탐색, c01·c09)
+    for text in ('="CALL vinc_search {\"query\": \"trademark registration number\"}"',
+                 '|CALL vinc_search {"query": "Paddle Pro monthly price id pri_"}'):
+        body, calls = models.parse_tool_calls(text, 2)
+        assert [c.name for c in calls] == ["vinc_search"] and body == "", text
+        assert calls[0].args.get("query"), text
+    # 읽지 못한 CALL 줄 하나뿐인 답은 답이 아니라 다시 물을 호출 시도다
+    assert models._CALL_ATTEMPT.search('see: CALL vinc_search {"query": "x"')
 
 
 def test_a_broken_call_is_asked_again_once_in_the_same_step():
