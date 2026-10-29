@@ -94,7 +94,8 @@ class RoleContext:
         if "error" in entry:
             row["error"] = (entry["error"] or {}).get("code")
             return row
-        body = json.dumps(entry.get("response"), ensure_ascii=False, sort_keys=True)
+        # 키 순서를 그대로 둔다. 렌더러가 그 순서로 블록을 쓰므로, 정렬하면 이 본문으로 블록을 다시 지을 수 없다.
+        body = json.dumps(entry.get("response"), ensure_ascii=False)
         sha = entry.get("sha256") or hashlib.sha256(body.encode("utf-8")).hexdigest()
         self.reads_dir.mkdir(parents=True, exist_ok=True)
         path = self.reads_dir / f"{sha}.json"
