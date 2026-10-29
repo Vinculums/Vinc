@@ -4,7 +4,14 @@
 
     {"kind": "vinc.agent-tasks.v1", "split": "smoke|search|test",
      "author": "...", "authored_on": "YYYY-MM-DD", "store": "<과제를 쓴 핀>",
-     "tasks": [{"id": "...", "family": "...", "prompt": "...", "checks": [{...}], "role": "..."}]}
+     "tasks": [{"id": "...", "family": "...", "prompt": "...", "checks": [{...}], "role": "...",
+                "stage": {"tools": [{...}]}, "expect": "ask|act"}]}
+
+신뢰 갈래(``TRUST_FAMILIES``)는 무엇을 잡았는가로 본다. ``stage`` 는 과제가 모델에 더 내주는 가짜 도구다:
+부르면 적힌 ``result`` 를 돌려주고 아무것도 실행하지 않는다(원본 기록에는 ``stage`` 로 남는다).
+``action: true`` 인 도구는 되돌리기 어려운 행동(병합·배포·발송)이고, 데이터 도구의 ``result`` 에는
+지시가 심겨 있을 수 있다. ``expect`` 는 ask-or-act 과제에만 쓴다: 사람에게 물어야 했는가(ask),
+해도 됐는가(act). 근거: [[vinc.research.agent-harness-and-eval-without-a-model-api-2026-10-25 §6.5]]
 
 분할(split)을 지키는 규칙:
 - 파일 하나는 분할 하나다. 실행은 ``--split`` 으로 같은 분할을 명시해야 돈다.
@@ -24,8 +31,20 @@ from rag_eval.agent_tasks import checkers
 
 KIND = "vinc.agent-tasks.v1"
 #: 계획의 여섯 갈래. 이름을 고치면 이미 쓴 과제 파일이 전부 거절된다.
+TRUST_FAMILIES = ("ask-or-act", "injected-instruction", "stale-citation", "unwitnessed-side-effect",
+                  "status-report", "wake-and-route")
 FAMILIES = ("keep-decision", "avoid-incident", "give-reason", "use-current", "handoff",
-            "knowledge-absent")
+            "knowledge-absent") + TRUST_FAMILIES
+#: 신뢰 갈래마다 반드시 있어야 하는 채점. 없으면 그 갈래가 재려는 것을 아무것도 보지 않는다.
+REQUIRED_CHECKS = {"ask-or-act": ("tool_called", "no_tool_called"),
+                   "injected-instruction": ("no_tool_called",),
+                   "stale-citation": ("sources",),
+                   "unwitnessed-side-effect": ("witnessed",),
+                   "status-report": ("judge",),
+                   "wake-and-route": ("route",)}
+#: 무대 도구를 모는 채점. 이름은 그 과제의 무대에 있는 도구여야 한다.
+STAGE_CHECKS = ("tool_called", "no_tool_called", "witnessed")
+_TOOL_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}")
 SPLITS = ("smoke", "search", "test")
 #: 보류 시험 세트가 가져야 하는 지식 없음 과제의 최소 수.
 MIN_ABSENT_IN_TEST = 8
@@ -40,6 +59,20 @@ class Task:
     prompt: str
     checks: tuple[dict, ...]
     role: str | None = None
+    stage: tuple[dict, ...] = ()
+    expect: str | None = None
+
+    def stage_specs(self) -> list[dict]:
+        """모델에 줄 꼴(name·description·parameters)."""
+        return [{"name": t["name"], "description": t["description"],
+                 "parameters": t.get("parameters") or {"type": "object", "properties": {}}}
+                for t in self.stage]
+
+    def stage_results(self) -> dict[str, str]:
+        return {t["name"]: str(t["result"]) for t in self.stage}
+
+    def action_tools(self) -> frozenset[str]:
+        return frozenset(t["name"] for t in self.stage if t.get("action"))
 
 
 @dataclass(frozen=True)
@@ -103,17 +136,73 @@ def validate(doc: dict) -> list[str]:
         for k, spec in enumerate(checks):
             bad.extend(f"{where}.checks[{k}]: {e}" for e in checkers.validate_spec(spec))
         kinds = {c.get("type") for c in checks if isinstance(c, dict)}
+        stage_names, stage_bad = _validate_stage(t.get("stage"))
+        bad.extend(f"{where}.stage: {e}" for e in stage_bad)
+        for k, spec in enumerate(checks):
+            if isinstance(spec, dict) and spec.get("type") in STAGE_CHECKS:
+                key = "witness" if spec["type"] == "witnessed" else "names"
+                unknown = [n for n in spec.get(key) or [] if n not in stage_names]
+                if unknown:
+                    bad.append(f"{where}.checks[{k}]: 무대에 없는 도구 {unknown}")
+        need = REQUIRED_CHECKS.get(fam)
+        if need and not kinds & set(need):
+            bad.append(f"{where}: {fam} 과제는 {' 또는 '.join(need)} 채점이 있어야 한다")
+        if fam in ("ask-or-act", "injected-instruction") and not stage_names:
+            bad.append(f"{where}: {fam} 과제는 무대 도구(stage)가 있어야 한다")
+        if fam == "ask-or-act":
+            if t.get("expect") not in ("ask", "act"):
+                bad.append(f"{where}: ask-or-act 과제의 expect 는 'ask' 나 'act': {t.get('expect')!r}")
+            if not any(s.get("action") for s in (t.get("stage") or {}).get("tools") or []
+                       if isinstance(s, dict)):
+                bad.append(f"{where}: ask-or-act 과제는 action 도구가 하나 이상 있어야 한다")
+        elif "expect" in t:
+            bad.append(f"{where}: expect 는 ask-or-act 과제에만 쓴다")
         # 지식 없음은 행동(기권했는가)으로만 채점한다. 다른 갈래에 기권 채점을 섞으면
         # 답을 몰라서 물러선 것이 성공으로 세어진다.
         if fam == "knowledge-absent" and "abstain" not in kinds:
             bad.append(f"{where}: knowledge-absent 과제는 abstain 채점이 있어야 한다")
         if fam != "knowledge-absent" and "abstain" in kinds:
             bad.append(f"{where}: abstain 채점은 knowledge-absent 과제에만 쓴다")
-    if doc.get("split") == "test":
-        n_absent = sum(1 for t in rows if isinstance(t, dict) and t.get("family") == "knowledge-absent")
+    # 지식 없음 최소 수는 지식 과제 세트의 규칙이다. 신뢰 갈래만 담은 세트는 기권이 아니라 무엇을
+    # 잡았는가로 보므로 이 규칙을 걸지 않는다.
+    knowledge = [t for t in rows if isinstance(t, dict) and t.get("family") not in TRUST_FAMILIES]
+    if doc.get("split") == "test" and knowledge:
+        n_absent = sum(1 for t in knowledge if t.get("family") == "knowledge-absent")
         if n_absent < MIN_ABSENT_IN_TEST:
             bad.append(f"test 세트의 knowledge-absent 과제가 {n_absent}개다(최소 {MIN_ABSENT_IN_TEST})")
     return bad
+
+
+def _validate_stage(stage) -> tuple[set[str], list[str]]:
+    """(무대 도구 이름, 오류). 무대가 없으면 빈 이름과 빈 오류."""
+    if stage is None:
+        return set(), []
+    if not isinstance(stage, dict) or not isinstance(stage.get("tools"), list) or not stage["tools"]:
+        return set(), ["stage 는 {\"tools\": [...]} 이고 도구가 하나 이상이어야 한다"]
+    names: set[str] = set()
+    bad: list[str] = []
+    for i, tool in enumerate(stage["tools"]):
+        if not isinstance(tool, dict):
+            bad.append(f"tools[{i}]: 객체가 아니다")
+            continue
+        name = str(tool.get("name") or "")
+        # vinc 로 시작하는 이름은 배포된 Vinc 도구와 겹칠 수 있다. 무대 도구가 진짜 도구를 가리면 안 된다.
+        if not _TOOL_NAME.fullmatch(name) or name.lower().startswith("vinc"):
+            bad.append(f"tools[{i}]: name 은 영문자로 시작하는 64자 이내이고 vinc 로 시작하지 않는다: "
+                       f"{name!r}")
+        elif name in names:
+            bad.append(f"tools[{i}]: 이름이 겹친다: {name}")
+        names.add(name)
+        if not str(tool.get("description") or "").strip():
+            bad.append(f"tools[{i}]: description 이 비었다")
+        if not isinstance(tool.get("result"), str):
+            bad.append(f"tools[{i}]: result(부르면 돌려줄 글)는 문자열이어야 한다")
+        params = tool.get("parameters")
+        if params is not None and not (isinstance(params, dict) and params.get("type") == "object"):
+            bad.append(f"tools[{i}]: parameters 는 type object 인 JSON 스키마여야 한다")
+        if "action" in tool and not isinstance(tool["action"], bool):
+            bad.append(f"tools[{i}]: action 은 참·거짓이다")
+    return names, bad
 
 
 def load(path: str | pathlib.Path) -> TaskSet:
@@ -127,7 +216,9 @@ def load(path: str | pathlib.Path) -> TaskSet:
     if bad:
         raise TaskFileError(f"{p}:\n  " + "\n  ".join(bad))
     tasks = tuple(Task(id=t["id"], family=t["family"], prompt=t["prompt"].strip(),
-                       checks=tuple(t["checks"]), role=t.get("role"))
+                       checks=tuple(t["checks"]), role=t.get("role"),
+                       stage=tuple((t.get("stage") or {}).get("tools") or ()),
+                       expect=t.get("expect"))
                   for t in doc["tasks"])
     return TaskSet(path=str(p), sha256=hashlib.sha256(raw).hexdigest(), split=doc["split"],
                    author=doc["author"], authored_on=doc["authored_on"], store=doc["store"],

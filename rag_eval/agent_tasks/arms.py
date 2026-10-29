@@ -57,6 +57,8 @@ class Surface:
     vinc: VincEndpoint | None = None
     #: A2 의 다른 문(:mod:`doors`). 있으면 도구 호출이 MCP 대신 여기로 간다.
     door: object | None = None
+    #: 신뢰 과제의 무대 도구: 이름 → 부르면 돌려줄 글. 아무것도 실행하지 않고 Vinc 도구 상한에 세지 않는다.
+    stage: dict = field(default_factory=dict)
 
 
 class McpClient:

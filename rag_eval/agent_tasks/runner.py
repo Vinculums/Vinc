@@ -259,6 +259,12 @@ def run(a) -> int:
                                           st.encode_token, k=a.a1_k, chunk_chars=a.a1_chars)
                 header["arms"]["a1"] = a1.settings()
                 a1_blocks = a1.blocks([t.prompt for t in todo])
+            # 무대 도구가 진짜 도구를 가리면 그 과제가 진짜 도구를 잴 수 없다. 돌리기 전에 거부한다.
+            real = {t["name"] for t in a2_tools} | {
+                t["name"] for door, _ in door_surfaces.values() for t in door.tools()}
+            clash = sorted({f"{t.id}:{n}" for t in todo for n in t.stage_results() if n in real})
+            if clash:
+                raise Refused(f"무대 도구가 비교군의 도구와 이름이 겹친다: {clash[:5]}")
             vinc = arms_mod.VincEndpoint(st.v1_base, st.api_key)
             role_ctx, read_tools = None, []
             if role_mod.ROLE_ARM in want_arms:
@@ -288,8 +294,12 @@ def run(a) -> int:
                            compiled.block if compiled else manual)
                 tools = (a2_tools if arm == "A2" else read_tools if compiled else
                          door.tools() if door else [])
+                # 신뢰 과제의 무대 도구는 모든 비교군이 같이 받는다(받는 지식만 비교군마다 다르다).
+                if task.stage:
+                    tools = tools + task.stage_specs()
                 surface = arms_mod.Surface(arm=arm, mcp=mcp, vinc=vinc, door=door,
-                                           context=context, tools=tools)
+                                           context=context, tools=tools,
+                                           stage=task.stage_results())
                 rows.append(_one(a, header, ts, task, host, arm, r, surface, model, ctx, traces,
                                  compiled))
                 if not a.quiet:
@@ -325,8 +335,11 @@ def _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces, compile
                "host_error": host_error})
     path = trace.write(traces)
     blocked = compiled is not None and bool(compiled.error)
+    tool_events = [{"name": e["name"], "kind": e["kind"], "is_error": e.get("is_error", False)}
+                   for e in trace.events if e["t"] == "tool"]
     grade = checkers.grade(task, res.final_text, ctx,
-                           model_failed=bool(res.model_error or host_error or blocked))
+                           model_failed=bool(res.model_error or host_error or blocked),
+                           tool_events=tool_events)
     cls = ("host_error" if host_error else role_mod.failure_class(compiled) if blocked
            else record.failure_class(grade, trace.events, res.model_error))
     cost = model.cost(res.tokens_in, res.tokens_out)
@@ -339,8 +352,7 @@ def _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces, compile
            "tokens_out": res.tokens_out, "cost_usd": cost, "list_cost_usd": res.list_cost_usd,
            "latency_s": latency,
            "model_versions": res.model_versions, "host_error": host_error,
-           "tool_events": [{"name": e["name"], "kind": e["kind"]} for e in trace.events
-                           if e["t"] == "tool"]}
+           "tool_events": tool_events}
     if compiled is not None:
         row["context"] = {"chars": len(compiled.block), "sha256": compiled.sha256,
                           "error": compiled.error, "invariant": compiled.invariant}
