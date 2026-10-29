@@ -93,7 +93,9 @@ class VincContextMiddleware(AgentMiddleware):
     ``vinc_client.compile_context`` under that policy instead of ``prefetch``. The block is
     kept for the run in the same way. ``vinc_client.FULL_TEXT`` gives prefetch's block.
     When the agent's tools include ``vinc_doc_get`` (``create_vinc_tools(documents=True)``),
-    the policy may shorten required readings, because the model can read the rest.
+    the policy may shorten required readings, because the model can read the rest. With that
+    tool and no ``context_policy`` the block comes from the compiler's default: the task
+    evidence policy when the role allows the tool, prefetch's block when it does not.
 
     In role prefetch mode the contract's ``disallowed_tools`` apply to the run, by exact
     tool name: those tools are removed from what the model sees, a call to one of them gets
@@ -257,6 +259,11 @@ class VincContextMiddleware(AgentMiddleware):
                 self.prefetch_role, self.prefetch_max_chars, self.prefetch_pin,
                 id(self.context_policy), docs, _run_marker(messages))
 
+    def _compiles(self, tools: Any) -> bool:
+        # 정책을 주었거나, 정책 없이도 에이전트에 vinc_doc_get 이 있으면 컴파일러로 짓는다. 정책이 없으면
+        # 컴파일러의 기본값이 고른다: 역할이 도구를 허락하면 과제 근거 정책, 아니면 prefetch 와 같은 P0.
+        return self.context_policy is not None or _has_doc_tool(tools)
+
     def _read_tool(self, tools: Any) -> Any:
         if not _has_doc_tool(tools):
             return False
@@ -284,7 +291,7 @@ class VincContextMiddleware(AgentMiddleware):
         kept = self._prefetched.get(key)
         if kept is not None:
             return kept
-        if self.context_policy is not None:
+        if self._compiles(tools):
             fetched = role_prefetch(self.client, self.prefetch_role, last_user_text(messages),
                                     policy=self.context_policy,
                                     max_chars=self.prefetch_max_chars, pin=self.prefetch_pin,
@@ -300,7 +307,7 @@ class VincContextMiddleware(AgentMiddleware):
         kept = self._prefetched.get(key)
         if kept is not None:
             return kept
-        if self.context_policy is not None:
+        if self._compiles(tools):
             fetched = await arole_prefetch(self.async_client, self.prefetch_role,
                                            last_user_text(messages), policy=self.context_policy,
                                            max_chars=self.prefetch_max_chars,

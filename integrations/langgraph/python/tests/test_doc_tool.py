@@ -142,3 +142,25 @@ def test_the_tool_call_path_does_not_compile():
     result = middleware.wrap_tool_call(Request(), lambda r: "ran")
     assert result == "ran"
     assert seen == ["/v1/roles/concept:agent-reviewer"]
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
+def test_with_the_tool_and_no_policy_the_block_is_the_compiler_default(async_mode):
+    # 정책을 주지 않아도 vinc_doc_get 이 있으면 과제 근거 정책(필수 문서는 포인터), 없으면 prefetch 그대로다.
+    async def go(documents, props=None):
+        client = (AsyncVincClient if async_mode else VincClient)(
+            "vinc_ro_" + "a" * 32, transport=httpx.MockTransport(_role_handler(props or {})))
+        model = ToolModel()
+        kw = {"async_client" if async_mode else "client": client}
+        agent = create_agent(model, tools=create_vinc_tools(**kw, documents=documents),
+                             middleware=[VincContextMiddleware(**kw, prefetch_role="concept:agent-reviewer")])
+        message = {"messages": [HumanMessage(content="Review the policy.")]}
+        if async_mode:
+            await agent.ainvoke(message)
+        else:
+            agent.invoke(message)
+        return model.system_text()
+    with_tool = asyncio.run(go(True))
+    assert "TAIL RULE" not in with_tool and "Required reading (not included; read it with vinc_doc_get" in with_tool
+    assert "TAIL RULE" in asyncio.run(go(False))
+    assert "TAIL RULE" in asyncio.run(go(True, {"disallowed_tools": ["vinc_doc_get"]}))

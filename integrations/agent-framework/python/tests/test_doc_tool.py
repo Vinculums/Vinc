@@ -96,3 +96,27 @@ def test_a_role_that_disallows_the_tool_keeps_its_readings_in_full():
             await agent.run("Review the policy.")
     with pytest.raises(VincInvalidArgument, match="I4"):
         asyncio.run(go())
+
+
+def test_expose_documents_with_no_policy_uses_the_compiler_default():
+    # 정책을 주지 않아도 vinc_doc_get 을 내주면 과제 근거 정책(필수 문서는 포인터), 아니면 prefetch 그대로다.
+    def handler2(props):
+        def inner(request):
+            if request.url.path.startswith("/v1/roles/"):
+                return httpx.Response(200, json={"found": True, "id": "concept:agent-reviewer",
+                                                 "props": {"reads": ["vinc.spec.fixture"], **props}})
+            return handler(request)
+        return inner
+
+    async def go(props=None, **kw):
+        async with AsyncVincClient("vinc_ro_" + "a" * 32,
+                                   transport=httpx.MockTransport(handler2(props or {}))) as client:
+            chat = RecordingChatClient()
+            agent = Agent(chat, context_providers=[VincContextProvider(
+                client, prefetch_role="concept:agent-reviewer", expose_tools=True, **kw)])
+            await agent.run("Review the policy.")
+            return chat.sent_text()
+    with_tool = asyncio.run(go(expose_documents=True))
+    assert "TAIL RULE" not in with_tool and "Required reading (not included; read it with vinc_doc_get" in with_tool
+    assert "TAIL RULE" in asyncio.run(go())
+    assert "TAIL RULE" in asyncio.run(go({"disallowed_tools": ["vinc_doc_get"]}, expose_documents=True))

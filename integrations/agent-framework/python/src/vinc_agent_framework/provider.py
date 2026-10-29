@@ -187,7 +187,9 @@ class VincContextProvider(ContextProvider):
     ``vinc_client.acompile_context`` under that policy instead of ``prefetch``.
     ``vinc_client.FULL_TEXT`` gives prefetch's block. With ``expose_documents`` (and
     ``expose_tools``) the model also gets ``vinc_doc_get``, and the policy may then shorten
-    required readings, because the model can read the rest.
+    required readings, because the model can read the rest. With ``expose_documents`` and no
+    ``context_policy`` the block comes from the compiler's default: the task evidence policy
+    when the role allows the tool, prefetch's block when it does not.
     """
 
     def __init__(self, client: AsyncVincClient | None = None, *, api_key: str | None = None,
@@ -235,7 +237,9 @@ class VincContextProvider(ContextProvider):
                          state: dict[str, Any]) -> None:
         task = _last_user_text(context.input_messages)
         if self.prefetch_role:
-            if self.context_policy is not None:
+            if self.context_policy is not None or self.expose_documents:
+                # 정책 없이 vinc_doc_get 을 내주면 컴파일러의 기본값이 고른다: 역할이 도구를 허락하면
+                # 과제 근거 정책, 아니면 prefetch 와 같은 P0.
                 fetched = await arole_prefetch(self.client, self.prefetch_role, task,
                                                policy=self.context_policy,
                                                max_chars=self.prefetch_max_chars,
