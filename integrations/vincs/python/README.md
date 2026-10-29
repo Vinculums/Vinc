@@ -3,13 +3,13 @@
 Install the SDK and the `vinc` command together:
 
 ```sh
-pip install "vincs>=0.1.8"
+pip install "vincs>=0.1.9"
 vinc --help
 vinc --version
 ```
 
-This README describes vincs 0.1.8. It carries vinc-client 0.1.19, vinc-langgraph 0.1.14
-and vinc-agent-framework 0.1.13, built from the same commit. The [versions](#versions)
+This README describes vincs 0.1.9. It carries vinc-client 0.1.20, vinc-langgraph 0.1.15
+and vinc-agent-framework 0.1.14, built from the same commit. The [versions](#versions)
 table lists what each release carries.
 
 Use the account graph from the terminal with a member key created in your Vinc
@@ -357,6 +357,7 @@ at build time with its `vinc_client` imports pointed at `vinc.sdk`.
 
 | vincs | vinc-client | vinc-langgraph | vinc-agent-framework | What it adds |
 |---|---|---|---|---|
+| 0.1.9 | 0.1.20 | 0.1.15 | 0.1.14 | The SDK's context compiler with a replaceable policy and the task evidence default when the model can read documents, the `vinc_doc_get` document tool in both adapters, the CrewAI adapter leaving a user's own tool of the same name in place, and `vinc.kit` grading the same way as the agent task harness. |
 | 0.1.8 | 0.1.19 | 0.1.14 | 0.1.13 | `vinc eval run` (run a task suite as a role and write an evaluation card), `--model claude-code:<model id>` (run on your Claude subscription), `--prefetch-max-chars` for roles with a large required reading, and short role names (`dev-core`) when reading evaluation cards. |
 | 0.1.7 | 0.1.18 | 0.1.13 | 0.1.12 | `vinc agent run` and `vinc.kit.run_role` (run a role with your own model and keep the raw trace and the run record), `build_agent` in the CrewAI adapter, evaluation cards in the SDK (`record_eval_card`, `eval_cards`) |
 | 0.1.6 | 0.1.17 | 0.1.13 | 0.1.12 | `build_agent` in the LangGraph and Agent Framework adapters (a running agent from a role address), `plan_agent` in the SDK; the run record helpers, a role's run policy and budget, shims as Records; the `crewai` and `hermes` extras |
