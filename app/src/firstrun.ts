@@ -34,7 +34,7 @@ import { loaderInline } from "./vinc-loaders.js";
  *  `vinc:signin-required` 를 내고, 그때 같은 화면이 다시 뜬다. */
 export function needsSignIn(): boolean {
   // 브라우저 dev(셸 아님)는 개발자의 자리라 막지 않는다. 다만 이 화면을 화면 보드로
-  // 캡처해야 하므로(`design-hub/scripts/capture_app.mjs` 의 first-run 상태) dev 에서
+  // 캡처해야 하므로(`scripts/design/capture_app.mjs` 의 first-run 상태) dev 에서
   // 이 표식이 있으면 셸처럼 띄운다. 웹 Vinc 는 세션 게이트가 따로 있어 해당 없다.
   const devShow = !IN_SHELL && !WEB && localStorage.getItem("vinc.dev.signin") === "1";
   return (IN_SHELL || devShow) && !hasAccount();

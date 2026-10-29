@@ -1,0 +1,6 @@
+.claude/
+node_modules/
+# Claude Design 으로 보내기 전에 push_ssot.py 가 만드는 것(커밋하지 않는다)
+out/
+# 캡처 PNG 는 Figma 로 가고 리포에는 manifest 만 남는다
+captures/**/*.png

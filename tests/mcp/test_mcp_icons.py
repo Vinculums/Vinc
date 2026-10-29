@@ -22,7 +22,7 @@ from pathlib import Path
 from vinc_mcp import http_server, rpc
 
 ROOT = Path(__file__).resolve().parents[2]
-HUB_SVG = ROOT / "design-hub/assets/logo/vinc-ring-favicon.svg"
+HUB_SVG = ROOT / "scripts/design/assets/logo/vinc-ring-favicon.svg"
 
 ICON_FIELDS = ("icons", "websiteUrl")
 
@@ -200,7 +200,7 @@ class EmbeddedIconMatchesCanon(unittest.TestCase):
     def test_SVG_는_허브의_파비콘_링이다(self):
         self.assertEqual(
             http_server._FAVICON_SVG, _hub_svg(),
-            "커넥터 SVG 가 design-hub 의 파비콘 링과 다르다 — 정본이 바뀌었는데 "
+            "커넥터 SVG 가 scripts/design/assets 의 파비콘 링과 다르다 — 정본이 바뀌었는데 "
             "_FAVICON_SVG 를 안 고쳤다.")
 
     # PNG 는 앱 아이콘과 바이트가 같지 않다: 앱 아이콘은 검정 판 위의 흰 링이고(2026-09-26)

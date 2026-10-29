@@ -328,19 +328,19 @@ def team_role_tiers() -> dict[str, frozenset[str]]:
 
 
 # 커넥터 아이콘 래스터 — 정본: app/src-tauri/icons/128x128.png(앱 아이콘과 동일 파일,
-# design-hub 의 링 플레이트에서 `tauri icon` 이 뽑는다).
+# scripts/design/assets/logo 의 링 플레이트에서 `tauri icon` 이 뽑는다).
 # base64 로 심는 이유는 SVG 와 같다: 사이드카/MCP 는 단일 바이너리라 외부 자산 경로가
 # 없다. **이 리포에서 로고를 인라인해도 되는 유일한 자리다.**
 # ⚠ 그래서 사본이 조용히 낡는 것을 주석이 아니라 테스트가 막는다 —
 # tests/mcp/test_mcp_icons.py 의 EmbeddedIconMatchesCanon 이 이 둘을 정본과 바이트로 대조한다.
-# 다시 뽑는 법: design-hub에서 npm run logo:build → python -X utf8 scripts/sync_out.py --apply
+# 다시 뽑는 법: scripts/design 에서 npm run logo:build → python -X utf8 scripts/design/sync_out.py --apply
 _FAVICON_PNG = base64.b64decode(
     "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"
 )
 
-# 커넥터/브라우저 아이콘 — 정본: design-hub/assets/logo/vinc-ring-favicon.svg
+# 커넥터/브라우저 아이콘 — 정본: scripts/design/assets/logo/vinc-ring-favicon.svg
 # (판 없는 링. 밝은 바탕엔 검정, 어두운 바탕엔 `prefers-color-scheme` 으로 흰색.
-# 판은 2026-09-24 에 폐기됐다. 근거: design-hub/assets/logo/README.md)
+# 판은 2026-09-24 에 폐기됐다. 근거: [[vinc.design.logo]])
 # 임베드 이유와 드리프트 방지는 위 _FAVICON_PNG 주석과 같다.
 _FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="-42 38 604 604"><style>@media (prefers-color-scheme: dark){path,circle{fill:#FFFFFF}}</style><path fill-rule="evenodd" fill="#000000" d="M328.4 155.7L420.5 284.7Q460.0 340.0 420.5 395.3L328.4 524.3Q260.0 620.0 191.6 524.3L99.5 395.3Q60.0 340.0 99.5 284.7L191.6 155.7Q260.0 60.0 328.4 155.7Z M312.2 203.4L383.9 297.8Q416.0 340.0 383.9 382.2L312.2 476.6Q260.0 545.2 207.8 476.6L136.1 382.2Q104.0 340.0 136.1 297.8L207.8 203.4Q260.0 134.8 312.2 203.4Z"></path><circle cx="260" cy="340" r="52" fill="#000000"></circle></svg>"""
 

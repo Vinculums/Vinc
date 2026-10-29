@@ -15,7 +15,7 @@ import json
 import pathlib
 import unittest
 
-_PATH = pathlib.Path(__file__).resolve().parent.parent.parent / "design-hub" / "scripts" / "figma_inventory.py"
+_PATH = pathlib.Path(__file__).resolve().parent.parent.parent / "scripts" / "design" / "figma_inventory.py"
 _spec = importlib.util.spec_from_file_location("figma_inventory", _PATH)
 fi = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(fi)
@@ -118,7 +118,7 @@ class TheUnitIsScreenTimesState(unittest.TestCase):
         self.assertEqual((m["rotten"], m["declared"]), ([], 0))
 
     def test_the_real_matrix_only_names_states_that_exist(self):
-        live = json.loads((fi.HUB / "imports" / "figma-inventory.json").read_text(encoding="utf-8"))
+        live = json.loads((fi.HUB / "figma" / "figma-inventory.json").read_text(encoding="utf-8"))
         frames, _, _, kids = fi.figma_names(live)
         # ⚠ 자식만 보면 단일 상태 라우트가 전부 부패로 잡힌다 — 그 상태는 곧 최상위
         # 프레임이기 때문이다. main() 과 같은 집합을 봐야 테스트가 실물을 검사한다.
@@ -193,7 +193,7 @@ class ComponentsAreCheckedAgainstCodeMarks(unittest.TestCase):
         self.assertEqual((r["plain"], r["rotten"]), (["App / Chip · State=Default"], []))
 
     def test_the_real_map_matches_the_real_dump_and_the_real_source(self):
-        live = json.loads((fi.HUB / "imports" / "figma-inventory.json").read_text(encoding="utf-8"))
+        live = json.loads((fi.HUB / "figma" / "figma-inventory.json").read_text(encoding="utf-8"))
         r = fi.check_components(live, fi.APP_COMPONENTS, fi.app_source())
         self.assertEqual((r["undeclared"], r["stale"], r["rotten"]), ([], [], []))
         self.assertGreater(r["declared"], 40)

@@ -5,7 +5,7 @@
 판을 쓰고, 파비콘·메일·MCP 커넥터 아이콘은 투명 링 그대로다.
 근거: [[decision:the-desktop-app-icon-keeps-a-black-plate-2026-09-26]]
 
-생성기(`design-hub/scripts/build_logo.mjs`)와 그것이 뽑은 **실제 PNG** 를 함께 본다.
+생성기(`scripts/design/build_logo.mjs`)와 그것이 뽑은 **실제 PNG** 를 함께 본다.
 CI 는 `npm run logo:check` 를 돌리지 않으므로, 옛 생성기로 아이콘을 다시 뽑아 커밋하면
 여기서만 드러난다.
 """
@@ -62,7 +62,7 @@ def _px(rows: list[bytes], x: int, y: int) -> tuple[int, ...]:
 
 class AppIconPlateTests(unittest.TestCase):
     def test_생성기가_앱_아이콘에만_판을_씌운다(self):
-        src = (ROOT / "design-hub" / "scripts" / "build_logo.mjs").read_text(encoding="utf-8")
+        src = (ROOT / "scripts" / "design" / "build_logo.mjs").read_text(encoding="utf-8")
         self.assertIn('<rect width="180" height="180" rx="40" fill="#000000"/>', src)
         self.assertIn("writeFileSync(source, plated)", src, "Tauri 아이콘의 원본이 판 SVG 가 아니다")
         # 파비콘과 MCP 래스터는 여전히 투명 링(tight)에서 뽑는다.

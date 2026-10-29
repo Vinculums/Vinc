@@ -25,7 +25,7 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[2]
 
 #: `…scripts/<이름>.py` 꼴의 인용. 코드의 import 가 아니라 산문 안의 경로를 찾는다.
-#: 앞자리(`design-hub/` 등)를 함께 잡는 이유는, 리포에 `scripts/` 가 둘이라
+#: 앞자리(`scripts/design/` 등)를 함께 잡는 이유는, 리포에 `scripts/` 가 둘이라
 #: 꼬리만 보면 허브의 파일을 루트에 없다고 오판하기 때문이다.
 _REF = re.compile(r"([A-Za-z0-9_./-]*?scripts/[A-Za-z0-9_]+\.py)")
 

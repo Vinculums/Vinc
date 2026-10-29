@@ -36,7 +36,7 @@ export function openSettings(start: SettingsCat = "general", dataTab?: DataTab, 
   }
   // 시트 이름은 설정 버튼과 같은 말이다(`설정`). `settingsUi.title` 은 한국어 덱에서도
   // "Settings" 라 머리만 영어가 된다.
-  // ⚠ `title:` 을 여는 괄호 바로 다음 줄에 둔다 — design-hub `figma_inventory.py` 가
+  // ⚠ `title:` 을 여는 괄호 바로 다음 줄에 둔다 — `scripts/design/figma_inventory.py` 가
   // 이 자리의 제목식으로 모달을 센다(사이에 주석이 끼면 제목 없는 호출로 읽는다).
   const sheet: SheetHandle = openSheet({
     title: COPY.ui.topbar.settings,

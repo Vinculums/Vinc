@@ -122,11 +122,11 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
 |---|---|---|
 | `Vinc` | 제품 코드 (앱·허브·MCP·사이드카) | 코드는 여기. 설계 산문은 그래프 |
 | `Vinc-homepage` | 사이트 + 계정 백엔드 | 코드는 여기 |
-| ~~`Vinc-design`~~ | **폐기(2026-08-08)** — `Vinc/design-hub/` 로 이전 | [[vinc.manual.design]] 참조 |
+| ~~`Vinc-design`~~ | **폐기(2026-08-08)** — `Vinc/design-hub/` 로 이전, 그 디렉터리도 2026-10-29 해체(값은 그래프, 도구는 `scripts/design/`) | [[vinc.manual.design]] 참조 |
 | ~~`Vinc-docs`~~ | **폐기(2026-08-11)** — 아카이브. 지식은 그래프, 이력은 `Vinc/_migration/` | §4 참조 |
 
 ⚠ GitHub 상태와 이 표가 한 곳에서 어긋난다: `Vinc-design` 은 여기 폐기로 적혀 있지만
-리포는 아직 **아카이브되지 않았다**(2026-08-11 확인). 내용은 `design-hub/` 로 옮겨졌으니
+리포는 아직 **아카이브되지 않았다**(2026-08-11 확인). 내용은 Vinc 로 옮겨졌으니
 읽을 이유는 없다. 조직에 `Vincs-app` 이라는 리포도 있는데 이 표에 없다 — 둘 다 미판정.
 
 ## 3. 팀별 매뉴얼 — 그 경로를 만지기 전에 읽는다
@@ -141,15 +141,15 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
 | core | `store/` · `api/` · `vinc_mcp/` · `engines/` · 허브 스토어 | [[vinc.manual.core]] |
 | rag | `vinc_rag/`(검색 코어·리랭커·임베딩 워커) · `rag_eval/`(평가 하네스·평가셋·고정 스토어 락) | [[vinc.manual.rag]] |
 | app | `app/` (데스크톱·웹 프론트엔드), 사이드카 라우트 | [[vinc.manual.app]] |
-| design-content | `design-hub/` · `starter-packs/` · `emails/` · `Vinc-homepage/site/` · `app/src/copy.ts`(app 과 공동) | [[vinc.manual.design]] |
+| design-content | 그래프의 토큰 노드(`vinc/design/tokens`) · `scripts/design/` · `starter-packs/` · `emails/` · `Vinc-homepage/site/` · `app/src/copy.ts`(app 과 공동) | [[vinc.manual.design]] |
 | platform | `infra/` · `packaging/` · `.github/` · `scripts/gate_*` · `agents/` · 허브 운영(배포·`az`·파일 공유) | [[vinc.manual.platform]] |
 
 - 두 팀에 걸친 변경이면 둘 다 읽는다(예: 새 사이드카 라우트는 core 와 app, 토큰 값은
   design 과 소비 리포).
 - 매뉴얼에 없는 함정을 새로 물렸으면 **그 매뉴얼에 쓴다**(읽기 → 합쳐서 `vinc_doc_put` →
   읽어서 확인). 이 파일로 되돌려 쓰지 않는다. 모든 세션에 해당하는 것만 여기로 온다.
-- design-hub 절(값의 정본과 이유의 정본, 디자인 게이트)은 2026-10-01 에 여기서
-  [[vinc.manual.design]] §1 로 옮겼다.
+- 디자인 토큰 절(값의 정본, 바꾸는 순서, 디자인 게이트)은 [[vinc.manual.design]] §1 에 있다.
+  토큰 값은 그래프의 `concept:token.*` 노드가 정본이고 파일(`scripts/design/tokens.json`)은 그 스냅샷이다.
 
 ## 4. Vinc-docs — 폐기 완료 (2026-08-11)
 

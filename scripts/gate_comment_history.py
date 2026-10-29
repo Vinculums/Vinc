@@ -60,7 +60,7 @@ _CSS = {".css"}
 _YAML = {".yml", ".yaml"}
 EXTS = _PY | _SLASH | _CSS | _YAML
 
-_SKIP_PREFIX = ("tests/", "_migration/", "design-hub/imports/")
+_SKIP_PREFIX = ("tests/", "_migration/", "scripts/design/figma/")
 _SKIP_NAMES = {"CHANGELOG.md"}
 
 

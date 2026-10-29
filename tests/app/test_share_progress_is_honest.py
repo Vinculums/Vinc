@@ -233,7 +233,7 @@ class ShareProgressTests(unittest.TestCase):
             "전체 백업의 상주 자리에 라이브 영역이 없다")
 
     def test_불확정_막대가_토큰과_모션_설정을_지킨다(self):
-        """막대는 로딩 모션의 track 이다(design-hub/assets/motion 사본). 색은 토큰에서만 오고,
+        """막대는 로딩 모션의 track 이다(scripts/design/assets/motion 사본). 색은 토큰에서만 오고,
         모션을 줄인 환경에서는 왕복을 멈춘다. 채움은 --foreground, 트랙은 --border 라 두 모드
         모두 비텍스트 대비 3:1 을 넉넉히 넘는다(예전 --primary/--muted 막대는 다크에서 1.87:1
         이라 --ring 분기가 따로 있었다)."""

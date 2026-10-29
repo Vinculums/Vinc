@@ -852,6 +852,7 @@
     "decision:code-is-canon-figma-follows",
     "decision:core-pkns-stays-because-the-hub-runs-the-flag-on",
     "decision:created-is-earliest-known-recording",
+    "decision:design-token-values-live-in-the-graph-and-the-hub-directory-is-gone-2026-10-29",
     "decision:detect-the-replica-overlap-and-defer-the-single-writer-fence-2026-09-04",
     "decision:each-area-volume-carries-its-name-at-its-area-topic-2026-10-29",
     "decision:english-is-the-default-surface-language",
@@ -956,6 +957,7 @@
     "record:brief-returns-none-when-its-winner-is-a-record-2026-08-30",
     "record:choosing-a-topic-in-the-share-picker-did-not-arm-its-own-radio-2026-09-20",
     "record:ci-never-builds-the-rust",
+    "record:claude-design-tokens-frozen-at-2026-08-08",
     "record:code-citations-rot-silently-without-a-gate",
     "record:concurrent-replica-overlap-clobbers-the-final-snapshot-2026-09-04",
     "record:content-time-writable-through-ingest",
@@ -1155,6 +1157,9 @@
     },
     "decision:created-is-earliest-known-recording": {
       "validity": "unknown"
+    },
+    "decision:design-token-values-live-in-the-graph-and-the-hub-directory-is-gone-2026-10-29": {
+      "validity": "current"
     },
     "decision:detect-the-replica-overlap-and-defer-the-single-writer-fence-2026-09-04": {
       "validity": "current"
@@ -1466,6 +1471,9 @@
       "validity": "unknown"
     },
     "record:ci-never-builds-the-rust": {
+      "validity": "current"
+    },
+    "record:claude-design-tokens-frozen-at-2026-08-08": {
       "validity": "current"
     },
     "record:code-citations-rot-silently-without-a-gate": {

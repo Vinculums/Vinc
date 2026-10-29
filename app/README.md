@@ -89,9 +89,10 @@ npm run tauri dev    # 셸까지 띄운다(beforeDevCommand 가 npm run dev)
 
 ## 디자인 토큰
 
-`src/tokens.desktop.css`, `src/tokens.web.css`, `src/theme.ts` 는 `design-hub` 의 생성물이다.
-손으로 고치지 않는다. 값은 `design-hub/DESIGN/design-tokens.json` 에서 바꾸고
-`design-hub/scripts/sync_out.py --apply` 로 내보낸다(`theme.ts` 는 `gen_theme_ts.py` 가 만든다).
+`src/tokens.desktop.css`, `src/tokens.web.css`, `src/theme.ts` 는 생성물이다. 손으로 고치지 않는다.
+값의 정본은 그래프의 토큰 노드(`concept:token.*`, `vinc/design/tokens`)다. 노드에서 바꾸고
+`scripts/design/pull_tokens.py` 로 스냅샷을 내려받은 뒤 `scripts/design/sync_out.py --apply` 로 쓴다
+(넷 다 `scripts/design/build_tokens.py` 가 만든다). 순서는 `vinc.manual.design` §1.
 런타임에는 `main.ts` 가 `data-skin`(`web` 또는 `desktop`)을 정해 토큰 세트를 고르고,
 dev 에서는 `?skin=web` 으로 바꿔 볼 수 있다. 화면 문구는 `src/copy.ts` 에 영어와 한국어가 함께 있다.
 

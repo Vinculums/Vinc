@@ -112,14 +112,14 @@ jobs:
         run: python scripts/gate_contrast.py
       - name: Design sync gate
         run: python scripts/gate_design_sync.py
-      - name: Design hub drift gate
-        run: python -X utf8 design-hub/scripts/sync_out.py --check
+      - name: Design token drift gate
+        run: python -X utf8 scripts/design/sync_out.py --check
       - name: Design surface gate (app)
-        run: python -X utf8 design-hub/scripts/gate_surface.py app/src
+        run: python -X utf8 scripts/design/gate_surface.py app/src
       - name: Figma token drift gate
-        run: python -X utf8 design-hub/scripts/figma_diff.py
+        run: python -X utf8 scripts/design/figma_diff.py
       - name: Figma inventory gate (screens · modals · icons)
-        run: python -X utf8 design-hub/scripts/figma_inventory.py
+        run: python -X utf8 scripts/design/figma_inventory.py
       - name: Agent roster gate
         run: python -X utf8 scripts/agents_sync.py --check
 

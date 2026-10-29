@@ -392,7 +392,7 @@
         "role"
       ],
       "props": {
-        "engine_note": "the generator is offline and resolves relative to the hub directory; run python -X utf8 from design-hub. Generation succeeding is the real schema gate, because validation passes shapes the generator cannot consume.",
+        "engine_note": "Token values are concept:token.* nodes in vinc/design/tokens. Change one with props_patch and expected_rev on that node, then run scripts/design/pull_tokens.py (needs VINC_REMOTE_MCP_TOKEN) and scripts/design/sync_out.py --apply in the same session, and commit the snapshot with the copies. All of scripts/design runs offline from the repository root with python -X utf8.",
         "gates": [
           {
             "check": {
@@ -417,7 +417,7 @@
           },
           {
             "check": {
-              "command": "design-hub/scripts/sync_out.py",
+              "command": "scripts/design/sync_out.py",
               "repos": [
                 "Vinc"
               ],
@@ -428,7 +428,7 @@
           },
           {
             "check": {
-              "command": "design-hub/scripts/gate_surface.py",
+              "command": "scripts/design/gate_surface.py",
               "repos": [
                 "Vinc"
               ],
@@ -461,7 +461,7 @@
           }
         ],
         "job_title": "Design Systems Engineer",
-        "mission": "Changes token values in the hub and finishes the gate and the sync in the same session, then writes the reason for the value into the graph. The file holds the value, the graph holds the why.",
+        "mission": "Changes token values on their graph nodes and finishes the pull, the sync and the gates in the same session, then writes the reason for the value into the graph. The token node holds the value, a decision holds the why.",
         "never": [
           "hand edit generated output",
           "author in Figma (the Product Designer's surface)",
@@ -469,7 +469,7 @@
         ],
         "never_checks": [],
         "paths": [
-          "design-hub/",
+          "scripts/design/",
           "site/assets (consuming copy)"
         ],
         "person_only": [
@@ -484,9 +484,8 @@
         ],
         "reads": [
           "vinc.manual.design",
-          "vinc.design.tokens",
+          "vinc.canon.design-system-operations",
           "vinc.design.system",
-          "vinc.design.hub-notes",
           "vinc.design.figma-rebuild-2026-08",
           "vinc.design.logo",
           "vinc.spec.glass-language",
@@ -503,7 +502,7 @@
         "tools": [
           "vinc (graph MCP): read this role's node first; write what the role may author",
           "Figma (read variables only): diff tokens against the file's variables",
-          "lime-design engine: offline, run from design-hub with python -X utf8"
+          "scripts/design: pull_tokens.py, build_tokens.py and sync_out.py, offline from the repository root with python -X utf8"
         ],
         "writes_graph": [
           "episode",
@@ -701,7 +700,7 @@
           },
           {
             "check": {
-              "command": "design-hub/scripts/gate_surface.py",
+              "command": "scripts/design/gate_surface.py",
               "repos": [
                 "Vinc"
               ],
@@ -1058,7 +1057,7 @@
           },
           {
             "check": {
-              "command": "design-hub/scripts/sync_out.py",
+              "command": "scripts/design/sync_out.py",
               "repos": [
                 "Vinc"
               ],
@@ -1069,7 +1068,7 @@
           },
           {
             "check": {
-              "command": "design-hub/scripts/gate_surface.py",
+              "command": "scripts/design/gate_surface.py",
               "repos": [
                 "Vinc"
               ],
@@ -1944,7 +1943,7 @@
           },
           {
             "check": {
-              "command": "design-hub/scripts/gate_surface.py",
+              "command": "scripts/design/gate_surface.py",
               "repos": [
                 "Vinc"
               ],
@@ -1969,7 +1968,7 @@
         "job_title": "Product Designer",
         "mission": "Authors keyframes and screens in Figma and prototypes motion against the running engine, stops for review before any motion is built, and writes the reason for every visual decision into the graph.",
         "never": [
-          "change a token value in design-hub (the Design Systems Engineer)",
+          "change a token value in the graph (the Design Systems Engineer)",
           "touch the prose of the docs or book pages (the Technical Writer's)",
           "reuse an asset from a discarded round",
           "put a decision note inside Figma",

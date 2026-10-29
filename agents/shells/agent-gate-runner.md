@@ -51,8 +51,8 @@ Repositories: Vinc, Vinc-homepage
 - {"check":{"command":"scripts/gate_escape.py","repos":["Vinc"],"type":"command_success"},"id":"command_3","on_fail":"block"}
 - {"check":{"command":"scripts/gate_contrast.py","repos":["Vinc"],"type":"command_success"},"id":"command_4","on_fail":"block"}
 - {"check":{"command":"scripts/gate_design_sync.py","repos":["Vinc"],"type":"command_success"},"id":"command_5","on_fail":"block"}
-- {"check":{"command":"design-hub/scripts/sync_out.py","repos":["Vinc"],"type":"command_success"},"id":"command_6","on_fail":"block"}
-- {"check":{"command":"design-hub/scripts/gate_surface.py","repos":["Vinc"],"type":"command_success"},"id":"command_7","on_fail":"block"}
+- {"check":{"command":"scripts/design/sync_out.py","repos":["Vinc"],"type":"command_success"},"id":"command_6","on_fail":"block"}
+- {"check":{"command":"scripts/design/gate_surface.py","repos":["Vinc"],"type":"command_success"},"id":"command_7","on_fail":"block"}
 - {"check":{"command":"scripts/version_sync.py","repos":["Vinc"],"type":"command_success"},"id":"command_8","on_fail":"block"}
 - {"check":{"command":"scripts/gate_copy.mjs","repos":["Vinc-homepage"],"type":"command_success"},"id":"command_9","on_fail":"block"}
 - {"check":{"command":"scripts/gate-graph-refs.mjs","repos":["Vinc-homepage"],"type":"command_success"},"id":"command_10","on_fail":"block"}

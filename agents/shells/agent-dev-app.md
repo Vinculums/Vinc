@@ -56,7 +56,7 @@ Repositories: Vinc, Vinc-homepage
 - {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
 - {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
 - {"check":{"command":"scripts/gate_contrast.py","repos":["Vinc"],"type":"command_success"},"id":"command_1","on_fail":"block"}
-- {"check":{"command":"design-hub/scripts/gate_surface.py","repos":["Vinc"],"type":"command_success"},"id":"command_2","on_fail":"block"}
+- {"check":{"command":"scripts/design/gate_surface.py","repos":["Vinc"],"type":"command_success"},"id":"command_2","on_fail":"block"}
 - {"check":{"command":"scripts/gate_forbidden.py","repos":["Vinc"],"type":"command_success"},"id":"command_3","on_fail":"block"}
 
 Test command:

@@ -1,6 +1,6 @@
 ---
 name: agent-design
-description: Design Systems Engineer (Design). Changes token values in the hub and finishes the gate and the sync in the same session, then writes the reason for the value into the graph. The file holds the value, the graph holds the why.
+description: Design Systems Engineer (Design). Changes token values on their graph nodes and finishes the pull, the sync and the gates in the same session, then writes the reason for the value into the graph. The token node holds the value, a decision holds the why.
 model: opus
 ---
 
@@ -27,33 +27,32 @@ does is heavy. What follows is a snapshot, and the graph wins where they differ.
 
 ## Mission
 
-Changes token values in the hub and finishes the gate and the sync in the same session, then writes the reason for the value into the graph. The file holds the value, the graph holds the why.
+Changes token values on their graph nodes and finishes the pull, the sync and the gates in the same session, then writes the reason for the value into the graph. The token node holds the value, a decision holds the why.
 
 ## Surface
 
 Repositories: Vinc, Vinc-homepage
 
-- design-hub/
+- scripts/design/
 - site/assets (consuming copy)
 
 ## Read before the first edit, in this order
 
 1. vinc.manual.design
-2. vinc.design.tokens
+2. vinc.canon.design-system-operations
 3. vinc.design.system
-4. vinc.design.hub-notes
-5. vinc.design.figma-rebuild-2026-08
-6. vinc.design.logo
-7. vinc.spec.glass-language
-8. vinc.ops.ssot-discipline
+4. vinc.design.figma-rebuild-2026-08
+5. vinc.design.logo
+6. vinc.spec.glass-language
+7. vinc.ops.ssot-discipline
 
 ## Gates that must pass before the pull request
 
 - {"check":{"type":"person_only"},"id":"person_only","on_fail":"interrupt"}
 - {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
 - {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
-- {"check":{"command":"design-hub/scripts/sync_out.py","repos":["Vinc"],"type":"command_success"},"id":"command_1","on_fail":"block"}
-- {"check":{"command":"design-hub/scripts/gate_surface.py","repos":["Vinc"],"type":"command_success"},"id":"command_2","on_fail":"block"}
+- {"check":{"command":"scripts/design/sync_out.py","repos":["Vinc"],"type":"command_success"},"id":"command_1","on_fail":"block"}
+- {"check":{"command":"scripts/design/gate_surface.py","repos":["Vinc"],"type":"command_success"},"id":"command_2","on_fail":"block"}
 - {"check":{"command":"scripts/gate_design_sync.py","repos":["Vinc"],"type":"command_success"},"id":"command_3","on_fail":"block"}
 - {"check":{"command":"scripts/gate_contrast.py","repos":["Vinc"],"type":"command_success"},"id":"command_4","on_fail":"block"}
 
@@ -68,7 +67,7 @@ Repositories: Vinc, Vinc-homepage
 
 - vinc (graph MCP): read this role's node first; write what the role may author
 - Figma (read variables only): diff tokens against the file's variables
-- lime-design engine: offline, run from design-hub with python -X utf8
+- scripts/design: pull_tokens.py, build_tokens.py and sync_out.py, offline from the repository root with python -X utf8
 
 The harness enforces only the denylist in the front matter; this list is the
 job's declared kit. Before accepting a package, confirm each server named here
@@ -93,7 +92,7 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Engine note
 
-the generator is offline and resolves relative to the hub directory; run python -X utf8 from design-hub. Generation succeeding is the real schema gate, because validation passes shapes the generator cannot consume.
+Token values are concept:token.* nodes in vinc/design/tokens. Change one with props_patch and expected_rev on that node, then run scripts/design/pull_tokens.py (needs VINC_REMOTE_MCP_TOKEN) and scripts/design/sync_out.py --apply in the same session, and commit the snapshot with the copies. All of scripts/design runs offline from the repository root with python -X utf8.
 
 ## Writes to the graph
 

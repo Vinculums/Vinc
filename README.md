@@ -15,7 +15,7 @@ Vinc의 데스크톱·웹 앱, 그래프 스토어, API, MCP 서버(허브), 검
 
 | 리포 | 무엇 | 공개 |
 |---|---|---|
-| `Vinculums/Vinc` (여기) | 앱(`app/`), 그래프 스토어(`store/`), API(`api/`), MCP 서버(`vinc_mcp/`), 검색 코어(`vinc_rag/`), 평가(`rag_eval/`), 디자인 허브(`design-hub/`), 배포·CI | 비공개 |
+| `Vinculums/Vinc` (여기) | 앱(`app/`), 그래프 스토어(`store/`), API(`api/`), MCP 서버(`vinc_mcp/`), 검색 코어(`vinc_rag/`), 평가(`rag_eval/`), 디자인 토큰 도구(`scripts/design/`), 배포·CI | 비공개 |
 | `Vinculums/Vinc-homepage` | vincs.io 사이트(`site/`)와 계정 백엔드(`account/`) | 비공개 |
 | `Vinculums/Vincs-app` | 데스크톱 설치 파일과 자동 업데이트 정보를 내보내는 곳. 릴리스 워크플로가 올립니다 | 공개 |
 | `Vinculums/vinc-rag-assets` | RAG 평가용 큰 파일(평가 스토어, 인코더 모델) | 비공개, `rag` 팀 |
@@ -27,7 +27,7 @@ Vinc의 데스크톱·웹 앱, 그래프 스토어, API, MCP 서버(허브), 검
 | RAG `@Vinculums/rag` | `vinc_rag/`, `rag_eval/`, 인코더·리랭커·임베딩 워커 | 온보딩 `vinc.rag.onboarding-2026-09-20`(한국어) → 매뉴얼 `vinc.rag.manual` | `tests/rag` |
 | Core `@Vinculums/core` | `store/`, `engines/`, `api/`, `vinc_mcp/`, `scripts/`, 그리고 Vinc-homepage의 `account/` | `vinc.manual.core` | `tests/core`, `tests/mcp` |
 | App `@Vinculums/app` | `app/` (Vite + Tauri, 데스크톱과 웹 프론트엔드) | `vinc.manual.app` | `tests/app`, `npm run typecheck` |
-| Design·Content `@Vinculums/design-content` | `design-hub/`, `starter-packs/`, `emails/`, 이 README, 그리고 Vinc-homepage의 `site/` | `vinc.manual.design` | `tests/design` |
+| Design·Content `@Vinculums/design-content` | `scripts/design/`(토큰 값은 그래프), `starter-packs/`, `emails/`, 이 README, 그리고 Vinc-homepage의 `site/` | `vinc.manual.design` | `tests/design` |
 | Platform `@Vinculums/platform` | `.github/`, `infra/`, `packaging/`, `scripts/gate_*`, `agents/` | `vinc.manual.platform` | `tests/platform` |
 
 - 정확한 경로 목록은 `agents/teams.json`입니다. `.github/CODEOWNERS`는 거기서 만들어지므로 손으로 고치지 않습니다(`scripts/agents_sync.py --gen`).
