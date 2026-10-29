@@ -11,10 +11,10 @@ Looking for the `vinc` command? See [the terminal CLI installation guide](https:
 ## Install
 
 ```bash
-pip install "vinc-client>=0.1.19"
+pip install "vinc-client>=0.1.20"
 ```
 
-This README describes vinc-client 0.1.19. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
+This README describes vinc-client 0.1.20. The unified `vincs` distribution carries the same source as `vinc.sdk`; a `vincs` release contains the client of the commit it was built from, so check its notes for the client version it includes.
 
 For a new install, prefer `pip install vincs`: it has the same client as `vinc.sdk`, the framework adapters as extras and the `vinc` command. `vinc-client` keeps publishing under this name for existing installs.
 
@@ -658,6 +658,7 @@ The read tools in both framework adapters expose these optional parameters too.
 
 | Version | Change |
 |---|---|
+| 0.1.20 | The context compiler: `compile_context` and `acompile_context` build a role's block under a replaceable `ContextPolicy` and refuse a plan that breaks one of nine invariants (`context_plan_rejected`); `FULL_TEXT` gives `prefetch`'s block byte for byte; `replay_context` and `check_replay` rebuild a block from its recorded reads. The document read tool `vinc_doc_get`: `read_document`, `aread_document` and `doc_tool_allowed` in `vinc_client.doc_tool`. With no policy and a document read tool, the default is `TASK_EVIDENCE` (see [Compile a role's context under a policy](#compile-a-roles-context-under-a-policy)); without one, or when its block does not fit `max_chars`, it is `FULL_TEXT`. `prefetch` is unchanged. |
 | 0.1.19 | `build_eval_card_fragment` keeps `ungraded` (runs the runner could not grade) and `skipped` (tasks it left out) on a result cell, and rejects a negative count. |
 | 0.1.18 | Evaluation cards: `build_eval_card_fragment` and `record_eval_card` write a role's measured result as a Record that supersedes the older card for the same suite, `current_cards` keeps the live ones, and `eval_cards` reads `GET /v1/roles/{id}/eval-cards`. `finish_run` and `afinish_run` take `extra` (model family, step counts, `trace`) for the run record. |
 | 0.1.17 | `plan_agent`, `aplan_agent`, `AgentPlan`, `AgentRun` and `finish_run`: one role read into the policy, gate, person-only actions, next roles and budget a framework agent needs. The adapters' `build_agent` (vinc-langgraph 0.1.13, vinc-agent-framework 0.1.12) require it. |

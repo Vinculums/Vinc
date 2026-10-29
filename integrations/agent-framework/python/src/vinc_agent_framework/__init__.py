@@ -2,7 +2,7 @@
 
 Design and scope: [[vinc.plan.framework-integration-packages-2026-09-28]].
 """
-__version__ = "0.1.13"
+__version__ = "0.1.14"
 
 from .provider import (PackageProvider, VincContextProvider, create_vinc_tools,  # noqa: E402
                        record_episode, record_run, write_package, prefetch)
