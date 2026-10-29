@@ -163,3 +163,31 @@ def test_github_mcp_tools_are_enforced_with_no_capability_map(async_mode):
     assert all(tools == ["lookup", "mcp__github__pull_request_read"] for tools in model.seen_tools)
     assert "does not allow the mcp__github__merge_pull_request tool" in results[0].content
     assert results[1].content == "pr body" and ran == ["gh read 7"]
+
+
+@tool("mcp__gh__merge_pull_request")
+def gh_alias_merge(number: int) -> str:
+    """Merge a pull request through a GitHub server the host named gh."""
+    ran.append(f"gh alias merge {number}")
+    return "merged"
+
+
+@pytest.mark.parametrize("where", ["role", "device"])
+def test_a_github_server_the_host_named_gh_is_enforced_through_tool_servers(where, monkeypatch):
+    # 역할의 tool_servers 나 이 기기의 VINC_TOOL_SERVERS 가 gh 를 GitHub 으로 읽게 한다
+    ran.clear()
+    props = {"capabilities": {"deny": ["github.pr.merge"]}}
+    if where == "role":
+        props["tool_servers"] = {"gh": "github"}
+        monkeypatch.delenv("VINC_TOOL_SERVERS", raising=False)
+    else:
+        monkeypatch.setenv("VINC_TOOL_SERVERS", "gh=github")
+    client = VincClient(KEY, transport=httpx.MockTransport(Hub(**props)))
+    model = Script(calls=[("mcp__gh__merge_pull_request", {"number": 7})], seen_tools=[])
+    agent = create_agent(model, tools=[gh_alias_merge, lookup], middleware=[
+        VincContextMiddleware(client=client, prefetch_role=ROLE)])
+    state = agent.invoke({"messages": [HumanMessage("Ship it.")]})
+    results = [m for m in state["messages"] if isinstance(m, ToolMessage)]
+    assert all(tools == ["lookup"] for tools in model.seen_tools)
+    assert "does not allow the mcp__gh__merge_pull_request tool" in results[0].content
+    assert ran == []

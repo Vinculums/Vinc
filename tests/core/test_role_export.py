@@ -201,3 +201,20 @@ def test_hosts_without_a_tool_setting_get_the_policy_as_advisory_text(fmt):
     tail = text.split(head + "Enforcing this role's capabilities in the host", 1)[1]
     assert "- shell.exec: denied" in tail and "the policy is advisory" in tail
     assert "```json" not in tail and "openclaw.json" not in tail
+
+
+def test_the_role_s_tool_servers_name_the_host_s_servers_in_every_setting():
+    source = with_caps({"deny": ["github.pr.merge"]}, tool_servers={"gh": "github"})
+    claude = export("claude", source)["content"]
+    line = next(l for l in claude.splitlines() if l.startswith("disallowedTools: "))
+    assert "mcp__github__merge_pull_request" in line and "mcp__gh__merge_pull_request" in line
+    skill = export("skill", source)["content"]
+    deny = json.loads(skill.split("```json\n", 1)[1].split("```", 1)[0])["tools"]["deny"]
+    assert {"github__merge_pull_request", "gh__merge_pull_request"} <= set(deny)
+    assert "  gh:\n    tools:\n      exclude:\n        - enable_pr_auto_merge" in skill
+    assert "tool_servers: gh for github." in skill
+    # 꼴이 틀린 tool_servers 는 통째로 쓰지 않는다(쓰기 검사가 경고한다)
+    bad = export("skill", with_caps({"deny": ["github.pr.merge"]},
+                                    tool_servers={"gh": "github", "bad name": "github"}))["content"]
+    tail = bad.split("## Enforcing", 1)[1]
+    assert "bad name" not in tail and "gh__merge_pull_request" not in tail

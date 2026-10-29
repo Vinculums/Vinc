@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import logging
 
+import pytest
+
 from vinc_client import capabilities
+from vinc_client.errors import VincInvalidArgument
 from vinc_client.tool_policy import RoleToolPolicy
 
 
@@ -82,3 +85,43 @@ def test_a_role_without_capabilities_is_untouched_by_the_defaults(caplog):
 def test_known_ids_and_family_patterns():
     assert capabilities.is_known("github.pr.merge") and capabilities.is_known("github.*")
     assert not capabilities.is_known("github.pr.merg") and not capabilities.is_known("acme.deploy")
+
+
+GH = ["mcp__gh__pull_request_read", "mcp__gh__merge_pull_request"]
+DENY_MERGE = {"deny": ["github.pr.merge"]}
+
+
+def test_a_server_the_host_named_otherwise_binds_through_tool_servers(monkeypatch):
+    monkeypatch.delenv(capabilities.TOOL_SERVERS_ENV, raising=False)
+    # 별칭이 없으면 모르는 서버라 손대지 않는다
+    plain = RoleToolPolicy.from_contract(contract(capabilities=DENY_MERGE))
+    assert [t.name for t in plain.allowed([Tool(n) for n in GH])] == GH
+    # 역할의 tool_servers 가 gh 를 GitHub 으로 읽게 한다(대소문자는 가리지 않는다)
+    named = RoleToolPolicy.from_contract(contract(capabilities=DENY_MERGE, tool_servers={"GH": "github"}))
+    assert [t.name for t in named.allowed([Tool(n) for n in GH])] == ["mcp__gh__pull_request_read"]
+    assert not named.allows("mcp__gh__merge_pull_request")
+    assert not named.allows("mcp__github__merge_pull_request")   # 원래 이름도 그대로 묶인다
+
+
+def test_the_device_setting_wins_over_the_role(monkeypatch):
+    role = contract(capabilities=DENY_MERGE, tool_servers={"gh": "linear"})
+    monkeypatch.setenv(capabilities.TOOL_SERVERS_ENV, "gh=github, lin = linear")
+    assert not RoleToolPolicy.from_contract(role).allows("mcp__gh__merge_pull_request")
+    # 인자가 환경변수보다 앞선다
+    assert RoleToolPolicy.from_contract(role, tool_servers={"gh": "slack"}).allows(
+        "mcp__gh__merge_pull_request")
+
+
+@pytest.mark.parametrize("raw", ["gh", "gh=gitlab", "=github", "g h=github"])
+def test_a_malformed_device_setting_stops_the_run(monkeypatch, raw):
+    monkeypatch.setenv(capabilities.TOOL_SERVERS_ENV, raw)
+    with pytest.raises(VincInvalidArgument, match="VINC_TOOL_SERVERS"):
+        RoleToolPolicy.from_contract(contract(capabilities=DENY_MERGE))
+
+
+def test_a_malformed_role_or_argument_is_refused(monkeypatch):
+    monkeypatch.delenv(capabilities.TOOL_SERVERS_ENV, raising=False)
+    with pytest.raises(VincInvalidArgument, match="tool_servers"):
+        RoleToolPolicy.from_contract(contract(capabilities=DENY_MERGE, tool_servers={"gh": "gitlab"}))
+    with pytest.raises(VincInvalidArgument, match="tool_servers"):
+        RoleToolPolicy.from_contract(contract(capabilities=DENY_MERGE), tool_servers=["gh"])

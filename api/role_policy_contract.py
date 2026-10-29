@@ -1,4 +1,4 @@
-"""역할의 실행 정책 칸 넷의 형식 검사: output_kind · act_policy · budget · capabilities.
+"""역할의 실행 정책 칸의 형식 검사: output_kind · act_policy · budget · capabilities · tool_servers.
 
 모두 선택이다. 쓰기는 거절하지 않고 경고만 한다(role_contract 와 같은 태도). 집행은 호스트와
 어댑터가 한다 — 여기는 값의 모양만 본다. 어휘는 `vinc_client/role_policy.py` 에도 있고
@@ -12,7 +12,7 @@ import re
 from . import capabilities
 
 #: 칸 이름. `vinc_mcp/roles.POLICY_KEYS` 와 같아야 한다(tests/core/test_role_policy_contract.py).
-KEYS = ("output_kind", "act_policy", "budget", "capabilities")
+KEYS = ("output_kind", "act_policy", "budget", "capabilities", "tool_servers")
 #: 이 역할이 내놓는 것. verdict 는 통과·막음 같은 결론 하나, write_proposal 은 쓰기 제안(미리보기)이다.
 OUTPUT_KINDS = ("prose", "code", "verdict", "write_proposal", "none")
 #: 행동 하나에 대한 태도. ask_first 는 사람이 먼저 정하고, never 는 하지 않는다.
@@ -102,4 +102,10 @@ def check(props: dict) -> list[str]:
                 out.append("capabilities names ids that are not in the capability vocabulary "
                            f"(version {capabilities.VOCABULARY_VERSION}): " + ", ".join(unknown)
                            + "; check the spelling, or use your own family for your own tools")
+
+    if "tool_servers" in props and not capabilities.tool_servers_ok(props["tool_servers"]):
+        out.append("tool_servers must map the host's server names (letters, digits, dot, dash, "
+                   "underscore) to one of " + ", ".join(capabilities.TOOL_SERVERS)
+                   + f", at most {capabilities.TOOL_SERVERS_MAX} of them, such as "
+                   '{"gh": "github"}')
     return out

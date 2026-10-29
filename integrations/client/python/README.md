@@ -531,6 +531,21 @@ your own tool names instead, or an empty map to turn the defaults off. The hub w
 a role names an id inside a known family that the vocabulary does not have (a typo such
 as `github.pr.merg`); ids in your own families are not checked.
 
+The maps assume the host registered the servers as `github`, `linear`, `slack` and
+`filesystem`. When yours uses another name, say so, and `mcp__gh__merge_pull_request` is
+read as GitHub's tool:
+
+| Where | How | Reaches |
+|---|---|---|
+| The role's `tool_servers` prop | `{"gh": "github"}` | every adapter, and the role export and roster shells (Claude `mcp__gh__…`, OpenClaw `gh__…`, Hermes `gh:`) |
+| `VINC_TOOL_SERVERS` | `gh=github,lin=linear` | this machine's adapters |
+| `RoleToolPolicy.from_contract(..., tool_servers=...)` | `{"gh": "github"}` | that policy only |
+
+Server names are a device setting, so the environment variable wins over the role and the
+argument wins over both. The value on the right is one of the four map names; a malformed
+role value raises `invalid_role_contract` before the run (the hub warns when it is
+written), and a malformed setting raises `invalid_argument`.
+
 A run started with `vinc_run_start` can report the capability ids its tools used:
 `vinc_run_submit` takes `capabilities_used`, flags any id the role denies, leaves outside
 its `allow` list, or holds for approval without one, blocks that step, and keeps the flags

@@ -94,3 +94,28 @@ def test_an_export_closes_the_tools_the_client_hides():
                 assert hidden == (name in got["servers"].get(server, [])), (server, name)
         for name in maps.CLAUDE_CODE_BUILTINS:
             assert (not policy.allows(name)) == (name in got["builtins"]), name
+
+
+def test_the_hub_and_the_client_read_tool_servers_alike():
+    hub, maps = _hub("capabilities"), _mcp("capability_maps")
+    assert hub.TOOL_SERVERS == tuple(sorted(capabilities.SERVER_MAPS)) == tuple(sorted(maps.SERVER_MAPS))
+    assert hub.SERVER_NAME.pattern == capabilities.SERVER_NAME.pattern == maps.SERVER_NAME.pattern
+    assert hub.TOOL_SERVERS_MAX == capabilities.TOOL_SERVERS_MAX == maps.TOOL_SERVERS_MAX
+    for value in ({"gh": "github"}, {"GH.x-1": "linear"}, {"gh": "gitlab"}, {"": "github"},
+                  ["gh"], {f"s{i}": "slack" for i in range(33)}):
+        assert hub.tool_servers_ok(value) == (capabilities.parse_tool_servers(value) is not None), value
+
+
+def test_an_export_closes_the_aliased_tools_the_client_hides(monkeypatch):
+    from vinc_client.tool_policy import RoleToolPolicy
+    monkeypatch.delenv(capabilities.TOOL_SERVERS_ENV, raising=False)
+    maps = _mcp("capability_maps")
+    props = {"capabilities": {"deny": ["github.pr.merge", "fs.write"]},
+             "tool_servers": {"gh": "github", "files": "filesystem"}}
+    policy = RoleToolPolicy.from_contract({"id": "concept:agent-x", "props": props})
+    closed = set(maps.claude_code_disallowed(props))
+    for known, hosts in maps.host_servers(props).items():
+        for host in hosts:
+            for name in maps.SERVER_MAPS[known]:
+                tool = f"mcp__{host}__{name}"
+                assert (not policy.allows(tool)) == (tool in closed), tool
