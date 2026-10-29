@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
+from .capabilities import parse_tool_servers
 from .errors import VincInvalidArgument
 
 # 어휘는 허브의 쓰기 검사(api/role_policy_contract.py)와 같다. integrations/parity 가 고정한다.
@@ -48,10 +49,13 @@ class RolePolicy:
     budget: Mapping[str, float] = field(default_factory=dict)
     capabilities: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     person_only: frozenset[str] = frozenset()
+    #: 호스트 서버 이름 → 기본 지도 이름(``{"gh": "github"}``). 키는 소문자다.
+    tool_servers: Mapping[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_contract(cls, contract: Mapping[str, Any]) -> "RolePolicy":
-        """Read the four keys from ``contract["props"]``; a malformed one raises."""
+        """Read the four keys and ``tool_servers`` from ``contract["props"]``; a malformed one
+        raises."""
         props = contract.get("props")
         props = props if isinstance(props, Mapping) else {}
         kind = props.get("output_kind")
@@ -76,6 +80,10 @@ class RolePolicy:
                        or any(not isinstance(c, str) or not CAPABILITY.fullmatch(c) for c in v)
                        for v in caps.values())):
             raise _bad("capabilities")
+        servers = props.get("tool_servers")
+        servers = {} if servers is None else parse_tool_servers(servers)
+        if servers is None:
+            raise _bad("tool_servers")
         person = props.get("person_only")
         person_ids = frozenset(item["action"] for item in person
                                if isinstance(item, Mapping) and isinstance(item.get("action"), str)
@@ -84,7 +92,7 @@ class RolePolicy:
         if any(acts.get(a) in ("act", "act_and_report") for a in person_ids):
             raise _bad("act_policy for a person_only action")
         return cls(str(contract.get("id") or ""), kind, dict(acts), dict(budget),
-                   {k: tuple(v) for k, v in caps.items()}, person_ids)
+                   {k: tuple(v) for k, v in caps.items()}, person_ids, servers)
 
     def __bool__(self) -> bool:
         return bool(self.output_kind or self.act_policy or self.budget or self.capabilities)

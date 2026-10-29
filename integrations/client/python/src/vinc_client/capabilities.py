@@ -6,12 +6,19 @@ id. :data:`CAPABILITIES` is the vocabulary for the common servers, and
 :func:`default_capability` binds those servers' tool names to it, so a role that sets
 capabilities is enforced even when the developer passes no ``capability_map``.
 
+A host may register a server under another name (``gh`` for GitHub). A role's
+``tool_servers`` prop, the ``VINC_TOOL_SERVERS`` environment variable (``gh=github,lin=linear``)
+or the ``tool_servers`` argument of ``RoleToolPolicy.from_contract`` names it, and
+:func:`default_capability` then reads ``mcp__gh__merge_pull_request`` as GitHub's tool.
+
 Vinc's own tools are not in the default maps. They follow the role's ``disallowed_tools``
 and ``budget``; binding them here would let an ``allow`` list for another server hide the
 graph from the role.
 """
 from __future__ import annotations
 
+import os
+import re
 from typing import Mapping
 
 #: 어휘가 바뀌면 올린다. 허브의 쓰기 검사(api/capabilities.py)도 같은 판이어야 한다(parity 시험).
@@ -125,18 +132,57 @@ def _unambiguous() -> dict[str, str]:
 BARE_MAP: Mapping[str, str] = _unambiguous()
 
 
-def default_capability(tool_name: str | None) -> str | None:
+#: 호스트가 정한 서버 이름의 문법(역할의 tool_servers 키, VINC_TOOL_SERVERS 의 왼쪽). 허브와 같다.
+SERVER_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
+TOOL_SERVERS_MAX = 32
+TOOL_SERVERS_ENV = "VINC_TOOL_SERVERS"
+
+
+def parse_tool_servers(value) -> dict[str, str] | None:
+    """``{호스트 서버 이름: 지도 이름}`` → 키를 소문자로 한 dict. 꼴이 틀리면 None."""
+    if not isinstance(value, Mapping) or len(value) > TOOL_SERVERS_MAX:
+        return None
+    out: dict[str, str] = {}
+    for name, known in value.items():
+        if (not isinstance(name, str) or not SERVER_NAME.fullmatch(name)
+                or not isinstance(known, str) or known not in SERVER_MAPS):
+            return None
+        out[name.lower()] = known
+    return out
+
+
+def env_tool_servers() -> dict[str, str]:
+    """``VINC_TOOL_SERVERS`` (``gh=github,lin=linear``). 없으면 빈 dict, 꼴이 틀리면 ValueError."""
+    raw = os.environ.get(TOOL_SERVERS_ENV, "").strip()
+    if not raw:
+        return {}
+    pairs = {}
+    for item in raw.split(","):
+        name, sep, known = item.strip().partition("=")
+        if not sep:
+            raise ValueError(item)
+        pairs[name.strip()] = known.strip()
+    got = parse_tool_servers(pairs)
+    if got is None:
+        raise ValueError(raw)
+    return got
+
+
+def default_capability(tool_name: str | None,
+                       servers: Mapping[str, str] | None = None) -> str | None:
     """The capability id the default maps give ``tool_name``, or ``None``.
 
     ``mcp__github__merge_pull_request`` (a host's server prefix) is looked up in that server's
-    map; a bare name only when exactly one server uses it, or when it is a built-in tool.
+    map, and ``servers`` (host server name to map name, keys in lower case) names the others;
+    a bare name only when exactly one server uses it, or when it is a built-in tool.
     """
     if not isinstance(tool_name, str) or not tool_name:
         return None
     if tool_name.startswith("mcp__"):
         server, sep, name = tool_name[len("mcp__"):].partition("__")
         if sep:
-            return SERVER_MAPS.get(server.lower(), {}).get(name)
+            server = server.lower()
+            return SERVER_MAPS.get((servers or {}).get(server, server), {}).get(name)
     return BARE_MAP.get(tool_name)
 
 

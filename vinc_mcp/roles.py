@@ -151,8 +151,8 @@ def _gate_bullets(items) -> str:
                        for item in items)
 
 
-#: 실행 정책 칸 넷(api/role_policy_contract.py). 있는 칸만 그린다 — 없는 역할의 출력은 그대로다.
-POLICY_KEYS = ("output_kind", "act_policy", "budget", "capabilities")
+#: 실행 정책 칸(api/role_policy_contract.py). 있는 칸만 그린다 — 없는 역할의 출력은 그대로다.
+POLICY_KEYS = ("output_kind", "act_policy", "budget", "capabilities", "tool_servers")
 
 
 def _policy_sections(props: dict) -> list[tuple[str, list[str]]]:
@@ -163,7 +163,7 @@ def _policy_sections(props: dict) -> list[tuple[str, list[str]]]:
                     for k, v in value.items()]
         return [f"- {value}"]
     heads = {"output_kind": "Output kind", "act_policy": "Act policy", "budget": "Budget",
-             "capabilities": "Capabilities"}
+             "capabilities": "Capabilities", "tool_servers": "Tool servers"}
     return [(heads[key], [f"- {props[key]}"] if key == "output_kind" else pairs(props[key]))
             for key in POLICY_KEYS if key in props]
 
@@ -430,10 +430,15 @@ def _host_enforcement(props: dict, format: str) -> str:
             cap.startswith("vinc.") for cap in loose) else ""
         lines += ["", "No host setting closes these, because no mapped tool carries them; "
                   "the role's text is all there is: " + ", ".join(loose) + "." + own]
-    closed = [f"{server}__{name}" for server, names in got["servers"].items() for name in names]
+    hosts = capability_maps.host_servers(props)
+    closed = [f"{host}__{name}" for server, names in got["servers"].items()
+              for host in hosts[server] for name in names]
     if format == "skill" and (closed or got["openclaw_builtins"]):
-        lines += ["", "Server names are the ones the maps assume (github, linear, slack, filesystem). "
-                  "Use the name your host gave the server.", "",
+        named = sorted(f"{a} for {k}" for k, names in hosts.items() for a in names[1:])
+        lines += ["", "Server names are the ones the maps assume (github, linear, slack, filesystem)"
+                  + (", and the role's tool_servers: " + ", ".join(named) if named else "")
+                  + ". Use the name your host gave the server, or add it to the role's "
+                  "tool_servers.", "",
                   f"{level}# Claude Code", "",
                   "Export this role with format claude: its front matter carries these tools in "
                   "disallowedTools.", "",
@@ -444,7 +449,8 @@ def _host_enforcement(props: dict, format: str) -> str:
         if got["servers"]:
             yaml = ["mcp_servers:"]
             for server, names in got["servers"].items():
-                yaml += [f"  {server}:", "    tools:", "      exclude:"] + [f"        - {n}" for n in names]
+                for host in hosts[server]:
+                    yaml += [f"  {host}:", "    tools:", "      exclude:"] + [f"        - {n}" for n in names]
             lines += ["", f"{level}# Hermes", "",
                       "Under each server in `mcp_servers` in `~/.hermes/config.yaml`. Hermes's own "
                       "file and shell tools are not in the maps, so for those the role's text is all "

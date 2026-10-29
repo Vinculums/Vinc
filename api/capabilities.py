@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+import re
+
 #: 클라이언트의 `VOCABULARY_VERSION` 과 같아야 한다.
 VOCABULARY_VERSION = "1"
 
@@ -22,6 +24,19 @@ CAPABILITIES = frozenset({
 })
 
 FAMILIES = tuple(sorted({cap.split(".", 1)[0] for cap in CAPABILITIES}))
+
+#: 기본 지도가 있는 서버 이름. 역할의 tool_servers 는 호스트 서버 이름을 이것들 중 하나에 잇는다.
+#: 클라이언트 `SERVER_MAPS` 의 키, `vinc_mcp/capability_maps.SERVER_MAPS` 의 키와 같다(parity).
+TOOL_SERVERS = ("filesystem", "github", "linear", "slack")
+SERVER_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
+TOOL_SERVERS_MAX = 32
+
+
+def tool_servers_ok(value: object) -> bool:
+    """``{호스트 서버 이름: 기본 지도 이름}`` 꼴인가."""
+    return (isinstance(value, dict) and len(value) <= TOOL_SERVERS_MAX
+            and all(isinstance(k, str) and SERVER_NAME.fullmatch(k) and v in TOOL_SERVERS
+                    for k, v in value.items()))
 
 
 def is_known(capability_id: str) -> bool:

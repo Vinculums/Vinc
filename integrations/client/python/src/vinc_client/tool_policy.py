@@ -7,14 +7,17 @@ and warns once per run about entries that matched none of the agent's tools. Nam
 exactly. Capability ids reach tools through a ``capability_map`` the developer gives (tool
 name to capability id). Without one, the default maps of :mod:`vinc_client.capabilities`
 bind the common servers' tools (GitHub, Linear, Slack, file system, shell); a tool those
-maps do not know is left alone.
+maps do not know is left alone. A host that named a server differently (``gh`` for GitHub)
+says so in the role's ``tool_servers``, ``VINC_TOOL_SERVERS`` or the ``tool_servers`` argument;
+the device setting wins over the role.
 """
 from __future__ import annotations
 
 import logging
 from typing import Any, Iterable, Mapping, Sequence, TypeVar
 
-from .capabilities import default_capability
+from .capabilities import (TOOL_SERVERS_ENV, default_capability, env_tool_servers,
+                           parse_tool_servers)
 from .errors import VincInvalidArgument
 from .role_policy import CAPABILITY, RolePolicy
 
@@ -33,7 +36,8 @@ BUDGET = "The role {role} allows {limit} tool calls per run; answer from what yo
 UNBOUND = ("Role %s sets capabilities, but no capability_map binds this agent's tools to "
            "capability ids, so they are not enforced.")
 UNKNOWN_TOOLS = ("Role %s sets capabilities, but none of this agent's tools is in the default "
-                 "capability maps, so they are not enforced; pass a capability_map.")
+                 "capability maps, so they are not enforced; pass a capability_map, or name the "
+                 "host's servers in tool_servers (gh=github).")
 
 
 def tool_name(tool: Any) -> str | None:
@@ -53,7 +57,8 @@ class RoleToolPolicy:
 
     def __init__(self, role_id: str, disallowed: Iterable[str] = (), *,
                  approve: Iterable[str] = (), tool_calls: int | None = None,
-                 unbound: bool = False, run: RolePolicy | None = None) -> None:
+                 unbound: bool = False, run: RolePolicy | None = None,
+                 servers: Mapping[str, str] | None = None) -> None:
         self.role_id = role_id
         self.disallowed = frozenset(disallowed)
         self.approve = frozenset(approve) - self.disallowed
@@ -61,12 +66,13 @@ class RoleToolPolicy:
         self.unbound = unbound
         # 지도 없이 능력을 정한 역할: 도구 이름마다 기본 지도로 능력 id 를 찾아 판정한다.
         self._run = run if run is not None and run.capabilities else None
+        self._servers = dict(servers or {})
 
     def _verdict(self, name: str | None) -> str | None:
         """기본 지도로 묶인 도구의 판정: ``deny``, ``approve`` 또는 None(손대지 않는다)."""
         if self._run is None:
             return None
-        cap = default_capability(name)
+        cap = default_capability(name, self._servers)
         if cap is None:
             return None
         verdict = self._run.capability(cap)
@@ -86,7 +92,8 @@ class RoleToolPolicy:
 
     @classmethod
     def from_contract(cls, contract: Mapping[str, Any],
-                      capability_map: Mapping[str, str] | None = None) -> "RoleToolPolicy":
+                      capability_map: Mapping[str, str] | None = None, *,
+                      tool_servers: Mapping[str, str] | None = None) -> "RoleToolPolicy":
         """Read ``props.disallowed_tools`` and the run policy (:class:`RolePolicy`).
 
         Absent keys mean no rule. A malformed list, run policy or ``capability_map`` stops
@@ -95,7 +102,8 @@ class RoleToolPolicy:
         has an ``allow`` list a mapped tool that matches none of it is disallowed. Tools left
         out of the map are not touched. With no map (``None``) the default maps decide the
         same way for the tools they know; an empty map turns them off. ``budget.tool_calls``
-        caps all tool calls of a run.
+        caps all tool calls of a run. ``tool_servers`` (host server name to map name) adds to
+        the role's own and to ``VINC_TOOL_SERVERS``, and wins over both.
         """
         props = contract.get("props")
         raw = props.get(DISALLOWED_KEY) if isinstance(props, Mapping) else None
@@ -118,12 +126,23 @@ class RoleToolPolicy:
                 deny.add(tool)
             elif verdict == "approve":
                 approve.add(tool)
+        given = {} if tool_servers is None else parse_tool_servers(tool_servers)
+        if given is None:
+            raise VincInvalidArgument("invalid_argument", "tool_servers maps a host's server "
+                                      "names to github, linear, slack or filesystem.")
+        try:
+            device = env_tool_servers()
+        except ValueError:
+            raise VincInvalidArgument("invalid_argument", f"{TOOL_SERVERS_ENV} reads like "
+                                      "gh=github,lin=linear (github, linear, slack or "
+                                      "filesystem).") from None
         limit = run.limit("tool_calls")
         return cls(str(contract.get("id") or ""), deny, approve=approve,
                    tool_calls=None if limit is None else int(limit),
                    unbound=bool(run.capabilities) and capability_map is not None
                    and not capability_map,
-                   run=run if capability_map is None else None)
+                   run=run if capability_map is None else None,
+                   servers={**run.tool_servers, **device, **given})
 
     def __bool__(self) -> bool:
         # unbound 도 참이다: 어댑터가 첫 모델 호출에서 경고를 한 번 내야 한다.
@@ -154,7 +173,8 @@ class RoleToolPolicy:
             log.warning(UNMATCHED, self.role_id, ", ".join(missing))
         if self.unbound:
             log.warning(UNBOUND, self.role_id)
-        elif self._run is not None and not any(default_capability(tool_name(t)) for t in tools):
+        elif self._run is not None and not any(default_capability(tool_name(t), self._servers)
+                                               for t in tools):
             log.warning(UNKNOWN_TOOLS, self.role_id)
         return missing
 

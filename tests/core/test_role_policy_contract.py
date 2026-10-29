@@ -13,6 +13,7 @@ GOOD = {
     "budget": {"tool_calls": 40, "tokens": 200000, "cost_usd": 1.5, "wall_seconds": 900},
     "capabilities": {"allow": ["vinc.read", "github.pr.read"], "approve": ["github.pr.merge"],
                      "deny": ["shell.*"]},
+    "tool_servers": {"gh": "github"},
 }
 
 
@@ -106,3 +107,10 @@ def test_the_contract_read_carries_the_keys():
     assert got["executed"] is True
     assert {k: got["props"][k] for k in roles.POLICY_KEYS} == GOOD
     assert "## Act policy" in got["rendered"]
+
+
+@pytest.mark.parametrize("value", [{"gh": "gitlab"}, ["gh"], {"": "github"}, {"g h": "github"},
+                                   {f"s{i}": "github" for i in range(33)}])
+def test_tool_servers_must_name_a_known_map(value):
+    warned = policy.check({"tool_servers": value})
+    assert len(warned) == 1 and "tool_servers must map" in warned[0]

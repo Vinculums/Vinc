@@ -93,6 +93,23 @@ OPENCLAW_BUILTINS: Mapping[str, tuple[str, ...]] = {
 CAPABILITY_PATTERN = re.compile(r"[a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+)*(?:\.\*)?")
 
 
+#: 호스트 서버 이름의 문법과 개수(api/capabilities.SERVER_NAME · 클라이언트와 같다).
+SERVER_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
+TOOL_SERVERS_MAX = 32
+
+
+def host_servers(props: dict) -> dict[str, list[str]]:
+    """지도 이름마다 호스트가 쓰는 서버 이름들: 지도 이름 자신, 그 뒤에 역할의 ``tool_servers`` 가
+    그 지도에 잇는 이름(정렬). 꼴이 틀린 ``tool_servers`` 는 쓰지 않는다(쓰기 검사가 경고했다)."""
+    raw = props.get("tool_servers") if isinstance(props, dict) else None
+    ok = (isinstance(raw, dict) and len(raw) <= TOOL_SERVERS_MAX
+          and all(isinstance(k, str) and SERVER_NAME.fullmatch(k) and v in SERVER_MAPS
+                  for k, v in raw.items()))
+    aliases = {k.lower(): v for k, v in raw.items()} if ok else {}
+    return {known: [known] + sorted(a for a, v in aliases.items() if v == known and a != known)
+            for known in SERVER_MAPS}
+
+
 def capability_verdict(capabilities, capability_id: str) -> str | None:
     """역할의 ``capabilities`` 에서 id 하나의 판정: ``deny``·``approve``·``allow`` 순으로 앞선 것, 없으면 None.
 
@@ -158,8 +175,9 @@ def claude_code_disallowed(props: dict) -> list[str]:
     if not isinstance(props.get("capabilities"), dict):
         return own
     got = blocked_tools(props["capabilities"])
-    extra = got["builtins"] + [f"mcp__{server}__{name}" for server, names in got["servers"].items()
-                               for name in names]
+    hosts = host_servers(props)
+    extra = got["builtins"] + [f"mcp__{host}__{name}" for server, names in got["servers"].items()
+                               for host in hosts[server] for name in names]
     return own + [t for t in extra if t not in own]
 
 
