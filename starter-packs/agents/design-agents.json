@@ -59,6 +59,7 @@
           "person_only": [],
           "writes_graph": ["record"],
           "disallowed_tools": ["Edit", "Write", "NotebookEdit", "Agent"],
+          "capabilities": { "deny": ["fs.write"] },
           "tool_note": "Each verdict is a record with the measured value and the threshold it was held to. A generated file that differs from its source is drift, and drift is reported by file name."
         }
       },
