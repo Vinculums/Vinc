@@ -29,7 +29,8 @@ from .prefetch import RolePrefetch  # noqa: E402
 from .compiler import (FULL_TEXT, CompiledContext, ContextItem, ContextPlan,  # noqa: E402
                        ContextPolicy, ContextRequest, EvidenceRef, FullTextPolicy, PolicyReader,
                        acompile_context, arole_prefetch, check_replay, compile_context,
-                       replay_context, role_prefetch)
+                       default_policy, replay_context, role_prefetch)
+from .task_evidence import TASK_EVIDENCE, TaskEvidencePolicy  # noqa: E402
 from .tool_policy import RoleToolPolicy  # noqa: E402
 from .role_policy import RolePolicy  # noqa: E402
 from .errors import (VincAuthError, VincError, VincInvalidArgument, VincNotFound,  # noqa: E402
@@ -52,6 +53,7 @@ __all__ = [
     "RolePrefetch", "RoleToolPolicy", "RolePolicy",
     "compile_context", "acompile_context", "replay_context", "check_replay", "ContextRequest",
     "ContextPlan", "ContextItem", "EvidenceRef", "ContextPolicy", "PolicyReader",
-    "CompiledContext", "FullTextPolicy", "FULL_TEXT", "role_prefetch", "arole_prefetch",
+    "CompiledContext", "FullTextPolicy", "FULL_TEXT", "TaskEvidencePolicy", "TASK_EVIDENCE",
+    "default_policy", "role_prefetch", "arole_prefetch",
     "AgentPlan", "AgentRun", "plan_agent", "aplan_agent", "finish_run", "afinish_run", "role_address",
 ]
