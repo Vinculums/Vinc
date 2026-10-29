@@ -182,13 +182,19 @@ Roster contracts name Claude Code tools (`Bash`, `Edit`, `Write`,
 is the same.
 
 The contract's run policy applies too (see the vinc-client README, A role's run
-policy). Capability ids are not tool names, so pass `capability_map`, a mapping
-from your tool names to capability ids (`{"merge_pr": "github.pr.merge"}`): a
-tool whose capability the role denies is removed like a disallowed one, a call to
-one it holds for approval gets a result asking for a person (the tool does not
-run), and when the role has an `allow` list a mapped tool that matches none of it
-is removed. Tools you leave out of the map are untouched. Without a map, a role
-that sets capabilities logs one warning per run saying they are not enforced.
+policy). Capability ids are not tool names. With no `capability_map`, the
+vinc-client default maps bind the tools of common servers (GitHub, Linear, Slack,
+the filesystem MCP server, and shell and file tools) to capability ids. For your
+own tool names, pass `capability_map`, a mapping from tool names to capability ids
+(`{"merge_pr": "github.pr.merge"}`), or `{}` to turn the defaults off. A tool
+whose capability the role denies is removed like a disallowed one, a call to one
+it holds for approval gets a result asking for a person (the tool does not run),
+and when the role has an `allow` list a mapped tool that matches none of it is
+removed. Tools the map does not know are untouched. When none of the agent's tools
+is mapped, a role that sets capabilities logs one warning per run saying they are
+not enforced. If your host registered a server under another name (`gh` for
+GitHub), name it in the role's `tool_servers` or in `VINC_TOOL_SERVERS` (see the
+vinc-client README, A role's run policy).
 `budget.tool_calls` caps all tool calls of a run; later calls get a result saying
 so. A malformed policy raises `invalid_role_contract` before the model runs.
 
@@ -297,7 +303,7 @@ The agent reads the role's required documents before each run, hides the tools t
 
 | Version | Change |
 |---|---|
-| 0.1.14 | `context_policy` on the context provider builds the role's block with the vinc-client context compiler instead of `prefetch`; `create_vinc_tools(documents=True)` and the provider's `expose_documents` add `vinc_doc_get`, and with it (when the role allows it) a policy may show required readings as pointers. Requires vinc-client 0.1.20. |
+| 0.1.14 | `context_policy` on the context provider builds the role's block with the vinc-client context compiler instead of `prefetch`; `create_vinc_tools(documents=True)` and the provider's `expose_documents` add `vinc_doc_get`, and with it (when the role allows it) a policy may show required readings as pointers. With no `context_policy`, a provider with `expose_documents` gets its block from the compiler's default (the task evidence policy when the role allows the tool). With no `capability_map`, the role's capabilities apply through the vinc-client default maps, and `tool_servers` names the host's servers. Requires vinc-client 0.1.20. |
 | 0.1.13 | `prefetch_max_chars` on `build_agent`, for a role whose required reading is longer than the 24,000 characters each call has room for. Requires vinc-client 0.1.17. |
 | 0.1.12 | `build_agent` and `VincAgent`: a running agent from a role address, with the role's prefetch, tool policy, budget, gates and run record. Requires vinc-client 0.1.17. |
 | 0.1.11 | With `prefetch_role`, the contract's run policy applies: `capability_map` binds tools to capability ids so denied ones are removed and approval ones refused with a request for a person, and `budget.tool_calls` caps a run's tool calls. Requires vinc-client 0.1.15. |
