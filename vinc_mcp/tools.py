@@ -534,7 +534,7 @@ def _t_runs(args, bridge):
     # 실행 기록 목록(사이드카 `/runs`). `cited` 를 주면 그 주장을 인용한 실행만 돌려준다.
     return bridge.request("GET", "/runs", params={
         "owner": _owner(args, bridge), "cited": args.get("cited"), "role": args.get("role"),
-        "run": args.get("run"), "limit": args.get("limit")})
+        "run": args.get("run"), "flagged": args.get("flagged"), "limit": args.get("limit")})
 
 
 def _t_eval_cards(args, bridge):
@@ -2292,7 +2292,9 @@ TOOLS.append({"name": "vinc_events", "reference":
     "run": _t_events})
 TOOLS.append({"name": "vinc_runs", "reference":
     "List the agent run records of this space, newest first: {runs:[{id, run_id, role, outcome, "
-    "title, date, host, cited_ids}], total, truncated}. Pass cited with a graph id (record:..., "
+    "title, date, host, cited_ids, capability_flags}], total, truncated}. capability_flags lists "
+    "the capability ids a run used that its role denies, leaves outside its allow list, or holds "
+    "for approval it did not get; pass flagged true to keep only those runs. Pass cited with a graph id (record:..., "
     "decision:... or doc:...) to keep only the runs whose cited_ids hold it; each run then also "
     "lists matched, and the result carries claim:{id, found, retired, valid_until, "
     "superseded_by}. A retired claim means every run it lists should be re-checked: the same "
@@ -2308,6 +2310,8 @@ TOOLS.append({"name": "vinc_runs", "reference":
                 "description": "One run by its episode id or the run id you started it with; "
                                "the result then carries its full props, including a waiting "
                                "run's question."},
+        "flagged": {"type": "boolean",
+                    "description": "Keep only runs with capability_flags."},
         "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 200,
                   "description": "Most runs to return."},
         "owner": {"type": "string"}}, "required": []},
@@ -2342,7 +2346,12 @@ TOOLS.append({"name": "vinc_run_submit", "reference":
     "actions you are about to take; name them before acting, never after. A claim in the output "
     "that something ran is blocked, because evidence must come from the host. cited_ids adds the "
     "graph ids the output rests on (type-prefixed) to the run record; usage adds your "
-    "tool_calls, tokens_in, tokens_out and cost_usd against the role's budget. The output text "
+    "tool_calls, tokens_in, tokens_out and cost_usd against the role's budget. "
+    "capabilities_used lists the capability ids of the tools you called in this step (such as "
+    "github.pr.merge); Vinc checks each against the role's capabilities and records any it "
+    "denies, leaves outside its allow list, or holds for approval without one, and an output "
+    "step that used one is blocked with capability_<flag>:<id> in failed_checks. To use a "
+    "capability held for approval, name its id in person_only_requests first. The output text "
     "itself is not stored, only its sha256 and length. A finished run returns its record state "
     "again if submitted twice. A host on protocol 2026-07-28 that declares the Tasks extension "
     "gets a task handle instead of the waiting view (taskId is the run id plus .q and the "
@@ -2360,6 +2369,8 @@ TOOLS.append({"name": "vinc_run_submit", "reference":
             "action": {"type": "string"}, "reason": {"type": "string"}},
             "required": ["action", "reason"], "additionalProperties": False}},
         "cited_ids": {"type": "array", "items": {"type": "string"}},
+        "capabilities_used": {"type": "array", "maxItems": 64, "items": {"type": "string"},
+                              "description": "Capability ids of the tools called in this step."},
         "usage": {"type": "object", "properties": {
             "tool_calls": {"type": "integer", "minimum": 0},
             "tokens_in": {"type": "integer", "minimum": 0},

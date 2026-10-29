@@ -749,12 +749,13 @@ class VincApp:
         from . import runs
         try:
             cited = runs.parse_cited(p.get("cited"))
+            flagged = runs.parse_flagged(p.get("flagged"))
             limit = runs.clamp_limit(p.get("limit"))
         except ValueError as exc:
             return 400, {"kind": "runs", "executed": False, "error": str(exc)}
         return self._read(lambda r: runs.list_runs(r, owner=_req(p, "owner"), cited=cited,
                                                    role=p.get("role"), run=p.get("run") or None,
-                                                   limit=limit))
+                                                   flagged=flagged, limit=limit))
 
     def read_agent_writes(self, p):
         """최근 쓰기를 출처별로 묶은 검토 목록(조회 전용). 계약: `api/agent_writes.py`."""

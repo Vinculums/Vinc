@@ -276,7 +276,7 @@ class VincAgent(Agent):
             run.warned = True
             run.policy.warn_unmatched(given)
         allowed = run.policy.allowed(given)
-        if run.policy.approve or run.policy.tool_calls is not None:
+        if run.policy.holds_tools or run.policy.tool_calls is not None:
             # 승인 보류 도구는 모델에 보이되 부르면 문장으로 답하고, 예산은 이 런의 모든 호출을 센다.
             allowed = [_RunTool.wrap(tool, run) for tool in allowed]
         return super().create_agent_executor(tools=allowed, task=task)

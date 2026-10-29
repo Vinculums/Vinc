@@ -15,6 +15,7 @@ Vinc 는 그 산출물에 역할의 게이트(`OutputGate`)를 돌리고, 사람
 from __future__ import annotations
 
 import datetime
+import fnmatch
 import hashlib
 import re
 import uuid
@@ -36,6 +37,12 @@ OUTPUT_MAX = 131072
 CITED_MAX = 200
 #: 호스트가 보고하는 사용량. 합산해 역할의 budget 과 견준다.
 USAGE_KEYS = ("tool_calls", "tokens_in", "tokens_out", "cost_usd")
+#: 호스트가 관측한 능력 id 의 문법(역할 정책과 같다, 와일드카드는 없다). 한 번에·실행 전체에 담는 상한.
+_CAPABILITY_ID = re.compile(r"[a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+)*")
+CAPABILITIES_PER_STEP = 64
+CAPABILITIES_MAX = 200
+#: 능력 감사의 표지. denied 는 역할이 막은 것, outside_allow 는 허용 목록 밖, unapproved 는 승인 없이 쓴 것.
+CAPABILITY_FLAGS = ("denied", "outside_allow", "unapproved")
 _RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 
 
@@ -114,6 +121,8 @@ def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
     out = {"kind": "run", "executed": True, "run": eid, "run_id": props["run_id"],
            "role": props["role"], "state": props["state"], "outcome": props["outcome"],
            "step": props["step"], **extra}
+    if props.get("capability_flags"):
+        out["capability_flags"] = list(props["capability_flags"])
     if props["state"] == "waiting":
         pending = props.get("pending") or {}
         out["question"] = pending.get("question", "")
@@ -222,6 +231,61 @@ def _add_cited(props: dict, cited) -> None:
         props["cited_ids"] = merged[:CITED_MAX]
 
 
+def capability_verdict(capabilities, capability_id: str) -> str | None:
+    """역할의 ``capabilities`` 에서 id 하나의 판정: ``deny``·``approve``·``allow`` 순으로 앞선 것, 없으면 None.
+
+    `vinc_client.role_policy.RolePolicy.capability` 와 같은 규칙이다(integrations/parity 가 고정한다).
+    """
+    caps = capabilities if isinstance(capabilities, dict) else {}
+    for verdict in ("deny", "approve", "allow"):
+        for pattern in caps.get(verdict) or []:
+            if not isinstance(pattern, str):
+                continue
+            if capability_id == pattern or (pattern.endswith(".*") and fnmatch.fnmatchcase(
+                    capability_id, pattern[:-2] + ".*")):
+                return verdict
+    return None
+
+
+def _used_capabilities(args: dict):
+    """(이번 단계에 호스트가 쓴 능력 id 들, 오류 문장). 없으면 빈 목록."""
+    raw = args.get("capabilities_used")
+    if raw is None:
+        return [], None
+    if (not isinstance(raw, list) or len(raw) > CAPABILITIES_PER_STEP
+            or any(not isinstance(c, str) or not _CAPABILITY_ID.fullmatch(c) for c in raw)):
+        return [], (f"Invalid: capabilities_used is a list of at most {CAPABILITIES_PER_STEP} "
+                    "capability ids such as github.pr.merge (no wildcards).")
+    return list(dict.fromkeys(raw)), None
+
+
+def _audit(policy: dict, used: list[str], approved: list[str]) -> list[dict]:
+    """쓴 능력마다 역할과 견준 표지. 문제없는 id 는 빠진다."""
+    caps = policy.get("capabilities") if isinstance(policy.get("capabilities"), dict) else {}
+    allow_list = bool(caps.get("allow"))
+    flags = []
+    for cap in used:
+        verdict = capability_verdict(caps, cap)
+        if verdict == "deny":
+            flags.append({"id": cap, "flag": "denied"})
+        elif verdict == "approve" and cap not in approved:
+            flags.append({"id": cap, "flag": "unapproved"})
+        elif verdict is None and allow_list:
+            flags.append({"id": cap, "flag": "outside_allow"})
+    return flags
+
+
+def _record_capabilities(props: dict, used: list[str], flags: list[dict], step: int) -> None:
+    if used:
+        merged = list(dict.fromkeys(list(props.get("capabilities_used") or []) + used))
+        props["capabilities_used"] = merged[:CAPABILITIES_MAX]
+    if flags:
+        kept = list(props.get("capability_flags") or [])
+        seen = {(f.get("id"), f.get("flag")) for f in kept}
+        kept += [{**f, "step": step} for f in flags if (f["id"], f["flag"]) not in seen]
+        props["capability_flags"] = kept[:CAPABILITIES_MAX]
+
+
 def _question(actions: list[str], policy: dict, checks: list[str]) -> str:
     reasons = {p.get("action"): p.get("reason") for p in policy.get("person_only") or []
                if isinstance(p, dict)}
@@ -254,6 +318,9 @@ def _requests(args: dict, policy: dict, approved: list[str]):
             gate.append(item)
         elif act.get(action) == "ask_first":
             asks.append(action)
+        elif "." in action and capability_verdict(policy.get("capabilities"), action) == "approve":
+            # 승인으로 묶인 능력 id 도 미리 묻는다. 승인되면 capabilities_used 에 그 id 가 와도 표지가 없다.
+            asks.append(action)
         else:
             return [], [], [], (f"Invalid: {action} is neither person only nor ask first for this "
                                 "role, so it needs no request. Take it, or drop the request.")
@@ -281,8 +348,14 @@ def submit(args: dict, bridge, owner: str) -> dict:
         return {**got, "kind": "run"}
     policy = got["props"]
     mode = modes[0]
+    used, bad = _used_capabilities(args)
+    if bad:
+        return _failure("invalid_capabilities_used", bad)
     _add_usage(props, args.get("usage"))
     _add_cited(props, args.get("cited_ids"))
+    flags = _audit(policy, used, list(props.get("approved") or []))
+    # 표지는 이 호출이 낸 단계에 단다(output 이면 _output 이 올릴 다음 단계 번호).
+    _record_capabilities(props, used, flags, int(props.get("step", 0)) + (mode == "output"))
     if mode == "abandon":
         _end(props, "abandoned", "abandoned by the host")
         return _finish(bridge, owner, eid, props)
@@ -297,7 +370,7 @@ def submit(args: dict, bridge, owner: str) -> dict:
     if over:
         _end(props, "blocked", over)
         return _finish(bridge, owner, eid, props)
-    return _output(args, bridge, owner, eid, props, policy)
+    return _output(args, bridge, owner, eid, props, policy, flags)
 
 
 def _finish(bridge, owner, eid, props, **extra) -> dict:
@@ -328,7 +401,7 @@ def _resume(bridge, owner, eid, props, policy) -> dict:
     return failed or _view(props, eid, policy, approved=props["approved"])
 
 
-def _output(args, bridge, owner, eid, props, policy) -> dict:
+def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
     output = args.get("output")
     if not isinstance(output, str) or not output.strip() or len(output) > OUTPUT_MAX:
         return _failure("output_required", f"Invalid: pass the output as one non-empty string of at "
@@ -339,8 +412,11 @@ def _output(args, bridge, owner, eid, props, policy) -> dict:
     props["step"] = int(props.get("step", 0)) + 1
     props["output_ref"] = {"sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
                            "chars": len(output)}
-    if never:
-        props["gate_results"] = {"verdict": "block", "failed_checks": [f"action_never:{a}" for a in never]}
+    if never or flags:
+        # 금지된 행동과, 역할이 허락하지 않은 능력을 이미 쓴 단계는 막는다. 실행은 열린 채 다음 시도를 받는다.
+        props["gate_results"] = {"verdict": "block", "failed_checks": (
+            [f"action_never:{a}" for a in never]
+            + [f"capability_{f['flag']}:{f['id']}" for f in flags])}
         failed = _saved(bridge, owner, eid, props)
         return failed or _view(props, eid, policy, status="blocked",
                                failed_checks=props["gate_results"]["failed_checks"])

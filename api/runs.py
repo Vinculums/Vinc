@@ -95,8 +95,17 @@ def _episodes(store, owner: str) -> list[dict]:
         {"owner": owner, "prefix": pkns.key(owner, events.RUN_PREFIX)}), store)
 
 
+def parse_flagged(value) -> bool:
+    """`flagged` 는 참·거짓만 받는다. 비면 거짓."""
+    if value in (None, "", False, "false", "0"):
+        return False
+    if value in (True, "true", "1"):
+        return True
+    raise ValueError("invalid_flagged: expected true or false")
+
+
 def list_runs(store, *, owner: str, cited: str | None = None, role: str | None = None,
-              run: str | None = None, limit: int = DEFAULT_LIMIT) -> dict:
+              run: str | None = None, flagged: bool = False, limit: int = DEFAULT_LIMIT) -> dict:
     """실행 기록 목록, 최근 것부터. `cited` 는 그 주장을 인용한 실행만 남긴다.
 
     `run`(episode id 또는 호스트의 run id)을 주면 그 실행 하나를 `props` 통째로 돌려준다.
@@ -123,10 +132,14 @@ def list_runs(store, *, owner: str, cited: str | None = None, role: str | None =
             continue
         if run and run not in (pkns.strip(row["id"]), str(props.get("run_id") or "")):
             continue
+        # 능력 감사 표지(vinc_mcp/run_protocol.py). 역할이 허락하지 않은 능력을 쓴 실행이다.
+        flags = [f for f in props.get("capability_flags") or [] if isinstance(f, dict)]
+        if flagged and not flags:
+            continue
         item = {"id": pkns.strip(row["id"]), "run_id": str(props.get("run_id") or ""),
                 "role": run_role, "outcome": str(props.get("outcome") or ""),
                 "title": events._title(row.get("title")), "date": str(row.get("date") or ""),
-                "host": str(props.get("host") or ""), "cited_ids": ids}
+                "host": str(props.get("host") or ""), "cited_ids": ids, "capability_flags": flags}
         if run:
             item["props"] = props
         if cited:

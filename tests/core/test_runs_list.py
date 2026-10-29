@@ -149,3 +149,18 @@ def test_one_run_by_episode_id_or_run_id_carries_its_props(store):
     assert by_run_id["runs"][0]["props"]["outcome"] == "success"
     assert "props" not in listing(store)["runs"][0]
     assert listing(store, run="never")["runs"] == []
+
+
+def test_flagged_keeps_the_runs_that_used_a_capability_their_role_did_not_allow(store):
+    flag = {"id": "github.pr.merge", "flag": "unapproved", "step": 1}
+    clean = run_node("clean", ROLE, [], "2026-10-29")
+    flagged = run_node("flagged", ROLE, [], "2026-10-29")
+    flagged["props"]["capability_flags"] = [flag]
+    ingest(store, [clean, flagged])
+    every = listing(store)
+    assert {r["run_id"]: r["capability_flags"] for r in every["runs"]} == {"clean": [], "flagged": [flag]}
+    only = listing(store, flagged=True)
+    assert [r["run_id"] for r in only["runs"]] == ["flagged"] and only["total"] == 1
+    assert runs.parse_flagged("true") is True and runs.parse_flagged(None) is False
+    with pytest.raises(ValueError, match="invalid_flagged"):
+        runs.parse_flagged("yes")

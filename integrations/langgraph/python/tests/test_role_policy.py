@@ -127,3 +127,39 @@ def test_a_malformed_policy_stops_the_run_before_the_model(async_mode):
     with pytest.raises(VincInvalidArgument) as caught:
         run(async_mode, Hub(act_policy={"merge": "whenever"}), [])
     assert caught.value.code == "invalid_role_contract"
+
+
+@tool("mcp__github__merge_pull_request")
+def gh_merge(number: int) -> str:
+    """Merge a pull request (GitHub MCP)."""
+    ran.append(f"gh merge {number}")
+    return "merged"
+
+
+@tool("mcp__github__pull_request_read")
+def gh_read(number: int) -> str:
+    """Read a pull request (GitHub MCP)."""
+    ran.append(f"gh read {number}")
+    return "pr body"
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
+def test_github_mcp_tools_are_enforced_with_no_capability_map(async_mode):
+    # 지도를 주지 않아도 기본 지도가 GitHub MCP 의 도구 이름을 능력 id 에 묶는다
+    ran.clear()
+    hub = Hub(capabilities={"deny": ["github.pr.merge"], "allow": ["github.pr.read"]})
+
+    async def go():
+        client = (AsyncVincClient if async_mode else VincClient)(KEY, transport=httpx.MockTransport(hub))
+        model = Script(calls=[("mcp__github__merge_pull_request", {"number": 7}),
+                              ("mcp__github__pull_request_read", {"number": 7})], seen_tools=[])
+        agent = create_agent(model, tools=[gh_merge, gh_read, lookup], middleware=[
+            VincContextMiddleware(**{"async_client" if async_mode else "client": client},
+                                  prefetch_role=ROLE)])
+        value = {"messages": [HumanMessage("Ship it.")]}
+        state = await agent.ainvoke(value) if async_mode else agent.invoke(value)
+        return model, [m for m in state["messages"] if isinstance(m, ToolMessage)]
+    model, results = asyncio.run(go())
+    assert all(tools == ["lookup", "mcp__github__pull_request_read"] for tools in model.seen_tools)
+    assert "does not allow the mcp__github__merge_pull_request tool" in results[0].content
+    assert results[1].content == "pr body" and ran == ["gh read 7"]

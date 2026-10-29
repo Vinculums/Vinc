@@ -194,3 +194,67 @@ def test_submit_needs_exactly_one_input_and_a_known_run():
 def test_both_tools_are_write_tools(name):
     ann = tools._ANNOTATIONS[name]
     assert ann["readOnlyHint"] is False and ann["destructiveHint"] is False
+
+
+CAPS = {"deny": ["github.repo.write"], "approve": ["github.pr.merge"],
+        "allow": ["github.pr.read", "github.pr.write", "vinc.read"]}
+
+
+def test_capabilities_the_role_allows_are_recorded_and_pass():
+    bridge = _Bridge(role_props(capabilities=CAPS))
+    run = start(bridge, run_id="cap-1")["run"]
+    done = call(bridge, "vinc_run_submit", run=run, output=PLAIN,
+                capabilities_used=["github.pr.read", "vinc.read", "github.pr.read"])
+    assert done["outcome"] == "success" and "capability_flags" not in done
+    saved = bridge.runs[run]
+    assert saved["capabilities_used"] == ["github.pr.read", "vinc.read"]
+    assert "capability_flags" not in saved
+
+
+@pytest.mark.parametrize("cap,flag", [("github.repo.write", "denied"),
+                                      ("github.pr.merge", "unapproved"),
+                                      ("slack.message.send", "outside_allow")])
+def test_a_capability_the_role_does_not_allow_blocks_the_step_and_flags_the_run(cap, flag):
+    bridge = _Bridge(role_props(capabilities=CAPS))
+    run = start(bridge, run_id="cap-2")["run"]
+    blocked = call(bridge, "vinc_run_submit", run=run, output=PLAIN, capabilities_used=[cap])
+    assert blocked["status"] == "blocked" and blocked["state"] == "working"
+    assert blocked["failed_checks"] == [f"capability_{flag}:{cap}"]
+    assert blocked["capability_flags"] == [{"id": cap, "flag": flag, "step": 1}]
+    saved = bridge.runs[run]
+    assert saved["capability_flags"] == [{"id": cap, "flag": flag, "step": 1}]
+    # 표지는 실행에 남고, 다음 단계는 다시 시도할 수 있다
+    ok = call(bridge, "vinc_run_submit", run=run, output=PLAIN)
+    assert ok["outcome"] == "success" and bridge.runs[run]["capability_flags"][0]["id"] == cap
+
+
+def test_a_capability_held_for_approval_is_asked_first_and_then_passes():
+    bridge = _Bridge(role_props(capabilities=CAPS))
+    run = start(bridge, run_id="cap-3")["run"]
+    ask = call(bridge, "vinc_run_submit", run=run, output="The review is done; the next step waits.",
+               person_only_requests=[{"action": "github.pr.merge", "reason": "checks are green"}])
+    assert ask["state"] == "waiting" and ask["pending_actions"] == ["github.pr.merge"]
+    call(bridge, "vinc_run_submit", run=run, answer="approve")
+    done = call(bridge, "vinc_run_submit", run=run, output=PLAIN, capabilities_used=["github.pr.merge"])
+    assert done["outcome"] == "success" and "capability_flags" not in bridge.runs[run]
+    # 승인으로 묶이지 않은 능력은 요청할 수 없다
+    other = start(bridge, run_id="cap-4")["run"]
+    refused = call(bridge, "vinc_run_submit", run=other, output=PLAIN,
+                   person_only_requests=[{"action": "github.pr.read", "reason": "just reading"}])
+    assert refused["error"] == "invalid_person_only_requests"
+
+
+def test_capabilities_used_must_be_plain_ids():
+    bridge = _Bridge(role_props(capabilities=CAPS))
+    run = start(bridge, run_id="cap-5")["run"]
+    for bad in (["github.*"], ["GitHub.PR"], "github.pr.read", ["x"] * 65):
+        out = call(bridge, "vinc_run_submit", run=run, output=PLAIN, capabilities_used=bad)
+        assert out["error"] == "invalid_capabilities_used", bad
+    assert bridge.runs[run]["step"] == 0
+
+
+def test_a_role_without_capabilities_records_but_never_flags():
+    bridge = _Bridge(role_props())
+    run = start(bridge, run_id="cap-6")["run"]
+    done = call(bridge, "vinc_run_submit", run=run, output=PLAIN, capabilities_used=["shell.exec"])
+    assert done["outcome"] == "success" and bridge.runs[run]["capabilities_used"] == ["shell.exec"]
