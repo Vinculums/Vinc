@@ -92,4 +92,5 @@ def test_a_model_failure_grades_the_same_and_the_helpers_agree():
 
 
 def test_the_kit_grades_exactly_the_checks_the_harness_can_grade_without_a_model():
-    assert set(KIT.GRADED) == set(HARNESS.CHECKS) - {"judge"}
+    # 신뢰 갈래의 채점은 하네스의 무대 도구 기록을 본다. 키트는 그 기록을 받지 않으므로 싣지 않는다.
+    assert set(KIT.GRADED) == set(HARNESS.CHECKS) - {"judge"} - set(HARNESS.TRUST_CHECKS)

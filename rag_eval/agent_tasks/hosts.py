@@ -120,6 +120,15 @@ class ToolRunner:
         return ""
 
     def call(self, call_id: str, name: str, args: dict) -> str:
+        if name in self.surface.stage:
+            # 무대 도구는 실행하지 않는다. 적힌 글을 돌려주고, 불렸다는 사실만 원본 기록에 남긴다.
+            text = self.surface.stage[name]
+            with self._lock:
+                self.stepper.out.tool_calls += 1
+                self.trace.add({"t": "tool", "step": self.stepper.out.steps, "id": call_id,
+                                "name": name, "args": args, "result": text, "is_error": False,
+                                "kind": "stage"})
+            return text
         with self._lock:
             self.stepper.out.tool_calls += 1
             capped = self.used >= self.cap

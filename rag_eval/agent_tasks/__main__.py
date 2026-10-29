@@ -3,6 +3,7 @@
 run: 0 끝까지 돌았다 · 1 거부(핀·런타임·분할·덮어쓰기)
 compare: 0 같은 지문에 채점 차이 0 · 1 지문이 다르다(비교하지 않는다) · 3 채점 차이가 있다
 check: 0 과제 파일이 유효하고 겹침이 없다 · 1 겹침이 있다(파일 오류는 예외로 멈춘다)
+replay: 0 게이트 판정이 스냅샷과 같다 · 3 다르다(모델 없이 도는 신뢰 갈래, :mod:`trust_replay`)
 env: 실제 모델 키가 있는지만 말한다(값은 보지 않는다)
 """
 from __future__ import annotations
@@ -58,6 +59,10 @@ def _parser() -> argparse.ArgumentParser:
     k = sub.add_parser("check", help="과제 파일을 검사한다")
     k.add_argument("tasks")
     k.add_argument("--disjoint-from")
+    rp = sub.add_parser("replay", help="꾸민 답을 출력 게이트에 넣어 신뢰 갈래 둘을 모델 없이 본다")
+    rp.add_argument("cases", help="vinc.trust-replay.v1 파일")
+    rp.add_argument("--snapshot", help="결과 스냅샷(JSON). 주면 판정을 대조한다")
+    rp.add_argument("--write", action="store_true", help="대조하지 않고 스냅샷을 새로 쓴다")
     sub.add_parser("env", help="실제 모델 키가 있는지만 말한다")
     return ap
 
@@ -68,6 +73,9 @@ def main(argv: list[str] | None = None) -> int:
         return runner.compare(a.a, a.b)
     if a.cmd == "check":
         return runner.check(a.tasks, a.disjoint_from)
+    if a.cmd == "replay":
+        from rag_eval.agent_tasks import trust_replay   # noqa: PLC0415
+        return trust_replay.main(a.cases, a.snapshot, a.write)
     if a.cmd == "env":
         print(json.dumps(runner.env_report()))
         return 0
