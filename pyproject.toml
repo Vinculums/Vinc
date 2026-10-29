@@ -8,7 +8,7 @@ version = "0.0.1"
 description = "Vinc — 독립 설치형 데이터 마이닝 데스크톱 앱 (임베디드 그래프 스토어)"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "FSL-1.1-ALv2" }
 authors = [{ name = "weg-9000" }]
 dependencies = []
 

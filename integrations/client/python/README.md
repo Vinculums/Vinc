@@ -714,4 +714,4 @@ The read tools in both framework adapters expose these optional parameters too.
 
 ## License
 
-MIT
+Apache-2.0 (see `LICENSE`). Releases published earlier under the MIT License stay under it.

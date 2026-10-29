@@ -3,54 +3,63 @@
     "file": "vinc-pack-physics.vincpack",
     "title": "Physics: Foundations to Frontiers",
     "description": "A curated physics knowledge graph: Newtonian, Lagrangian, and Hamiltonian mechanics through quantum field theory, AdS/CFT, the black-hole information problem, and today's quantum-gravity frontiers. Includes condensed matter and nonequilibrium statistical physics, plus cross-domain bridges into economics (econophysics) and music (symmetry and counterpoint). Full English notes on every concept.",
-    "dominantDomain": "physics"
+    "dominantDomain": "physics",
+    "license": "CC-BY-4.0"
   },
   {
     "file": "vinc-pack-math.vincpack",
     "title": "Mathematics: Foundations to Langlands",
     "description": "A curated mathematics knowledge graph: set theory, analysis, algebra, geometry, probability, and complexity, extended to algebraic geometry, the Langlands program, number theory, and combinatorics. Rich bridge notes connect functional analysis to quantum mechanics, modular forms to string theory, and mathematics to economics and art. Full English notes on every concept.",
-    "dominantDomain": "math"
+    "dominantDomain": "math",
+    "license": "CC-BY-4.0"
   },
   {
     "file": "vinc-pack-economics.vincpack",
     "title": "Economics: Micro to Econometrics",
     "description": "A curated economics knowledge graph: micro and macro foundations, game theory, behavioral and neuroeconomics, economic history, crises, financial engineering, and modern econometrics (causal inference, IV/DID/RDD). Bridged to statistical mechanics and probability for a genuinely cross-domain view. Full English notes on every concept.",
-    "dominantDomain": "economics"
+    "dominantDomain": "economics",
+    "license": "CC-BY-4.0"
   },
   {
     "file": "vinc-pack-art.vincpack",
     "title": "Art: Aesthetics, Traditions, and Artists",
     "description": "A curated art knowledge graph: aesthetics and philosophy of art, neuroaesthetics, music, visual art and literature foundations, non-western total-art traditions (Natya Shastra, noh, jingju), and 13 artist profiles from Bach and Hokusai to Frida Kahlo and Zaha Hadid, linked by influence ties. Full English notes on every concept.",
-    "dominantDomain": "art"
+    "dominantDomain": "art",
+    "license": "CC-BY-4.0"
   },
   {
     "file": "agents/default-agents.json",
     "title": "Default Agents",
     "description": "The four roles every space starts with: a steward who keeps conventions, duplicates and topics honest and never deletes; a researcher whose work ends in a document, its concepts and an episode and who never takes the decision; a curator who takes documents in and proposes one topic each; and a reviewer who labels every claim cited, assumed or unsourced and never edits. Roles only: fill reads, gates and paths with your own.",
-    "dominantDomain": "agent"
+    "dominantDomain": "agent",
+    "license": "CC-BY-4.0"
   },
   {
     "file": "agents/software-agents.json",
     "title": "Software Agents",
     "description": "Five roles for a code repository, with the handoffs between them as edges: a developer (one change, one branch, one pull request, one episode), a gate runner (runs the gates, never edits), a checklist reviewer (ticks the plan against the diff), a judgement reviewer (adversarial read for correctness and over-engineering) and a security auditor (findings become packages, never fixes in place). Roles only: add your own reads, gates and paths.",
-    "dominantDomain": "agent"
+    "dominantDomain": "agent",
+    "license": "CC-BY-4.0"
   },
   {
     "file": "agents/design-agents.json",
     "title": "Design Agents",
     "description": "Three roles for a design system: a designer who keeps token values in the token file and the reasons in the graph, syncing consumers in the same session; a design reviewer who measures contrast and drift and never edits; and a design researcher who turns interviews into records attached to the concepts they are about. Roles only: add your own reads, gates and paths.",
-    "dominantDomain": "agent"
+    "dominantDomain": "agent",
+    "license": "CC-BY-4.0"
   },
   {
     "file": "agents/infra-ops-agents.json",
     "title": "Infra and Ops Agents",
     "description": "Three roles for the deploy plane: an infrastructure role that writes the declaration and stops at plan (a person applies), an operations role that diagnoses deploys and incidents from the logs and never changes state, and a release role that prepares the bump, changelog and tag readiness a person publishes. Roles only: add your own reads, gates and paths.",
-    "dominantDomain": "agent"
+    "dominantDomain": "agent",
+    "license": "CC-BY-4.0"
   },
   {
     "file": "agents/copy-marketing-agents.json",
     "title": "Copy and Marketing Agents",
     "description": "Three roles for product copy and claims: a copy writer who drafts lines for review and never commits, a copy owner who keeps inventory and parity between languages and ships only lines read aloud, and a marketing role that ties every capability claim to the build it is true on and never prices or sends. Roles only: add your own reads, gates and paths.",
-    "dominantDomain": "agent"
+    "dominantDomain": "agent",
+    "license": "CC-BY-4.0"
   }
 ]

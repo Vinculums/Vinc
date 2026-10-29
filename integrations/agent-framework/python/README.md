@@ -320,4 +320,4 @@ The agent reads the role's required documents before each run, hides the tools t
 
 ## License
 
-MIT
+Apache-2.0 (see `LICENSE`). Releases published earlier under the MIT License stay under it.

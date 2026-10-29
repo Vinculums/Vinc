@@ -9,7 +9,7 @@
 ```
 work/{art,economics,math,physics}/   원고(마크다운) — 팩의 실제 내용
 tools/                                생성·검증 파이프라인
-official-packs.json                   시딩 매니페스트(제목·설명·파일명)
+official-packs.json                   시딩 매니페스트(제목·설명·파일명·라이선스). 공식팩은 CC BY 4.0(LICENSING.md)
 vinc-pack-{도메인}.vincpack            산출물(zip 컨테이너, D55)
 ```
 
