@@ -74,7 +74,9 @@
         "emails/",
         "tests/design/",
         "README.md",
-        "LICENSE"
+        "LICENSE",
+        "LICENSING.md",
+        "NOTICE"
       ]
     },
     "platform": {
@@ -123,6 +125,7 @@
         "scripts/setup_runner.sh",
         "scripts/hub_deploy_pick.py",
         "scripts/integrations_publish_select.py",
+        "scripts/third_party_notices.py",
         "scripts/repair_hub_store.py",
         "scripts/rebuild_store_native.py",
         "scripts/rehearse_rebuild.py",

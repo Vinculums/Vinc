@@ -8,7 +8,7 @@ version = "0.1.14"
 description = "Vinc for Microsoft Agent Framework: bring decisions and records from your knowledge graph into each agent run, without writing anything on its own."
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
+license = "Apache-2.0"
 authors = [{ name = "Vinculums" }]
 keywords = ["vinc", "agent-framework", "context-provider", "knowledge-graph", "memory"]
 classifiers = [

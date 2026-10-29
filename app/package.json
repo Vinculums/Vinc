@@ -2,6 +2,7 @@
   "name": "vinc-app",
   "private": true,
   "version": "0.9.8",
+  "license": "FSL-1.1-ALv2",
   "description": "Vinc desktop and web UI: two surfaces (View, Search) and sheets (Settings, Tools, Share, Import). Runs inside the Tauri shell against the local sidecar and as web Vinc against the account graph.",
   "type": "module",
   "scripts": {

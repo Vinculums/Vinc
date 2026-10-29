@@ -17,6 +17,8 @@
 /vinc_rag/                                       @Vinculums/rag
 /app/                                            @Vinculums/app
 /LICENSE                                         @Vinculums/design-content
+/LICENSING.md                                    @Vinculums/design-content
+/NOTICE                                          @Vinculums/design-content
 /README.md                                       @Vinculums/design-content
 /emails/                                         @Vinculums/design-content
 /starter-packs/                                  @Vinculums/design-content
@@ -79,6 +81,7 @@
 /scripts/roster_probe.py                         @Vinculums/platform
 /scripts/runner-tools.txt                        @Vinculums/platform
 /scripts/setup_runner.sh                         @Vinculums/platform
+/scripts/third_party_notices.py                  @Vinculums/platform
 /scripts/version_sync.py                         @Vinculums/platform
 /scripts/worktree_hook.py                        @Vinculums/platform
 /tests/platform/                                 @Vinculums/platform

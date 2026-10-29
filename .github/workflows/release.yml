@@ -455,6 +455,12 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: app/src-tauri
+      # 서드파티 고지를 이 레그가 실제로 싣는 판으로 다시 만든다: npm(node_modules) · 크레이트
+      # (cargo metadata) · 위에서 깐 사이드카 파이썬 패키지와 이 인터프리터. 파일은 app/public 에
+      # 있어서 tauri-action 의 프런트 빌드가 설치본에 함께 싣는다(scripts/third_party_notices.py 머리 주석).
+      - name: Third-party notices for this build
+        shell: bash
+        run: python -X utf8 scripts/third_party_notices.py
       # 릴리스 생성 없이 번들만 빌드(tagName/releaseId 미지정 → build-only).
       # 서명 키가 env 에 있으면 tauri-action 이 업데이터 번들에 .sig 를 붙인다.
       - name: Build Tauri bundles

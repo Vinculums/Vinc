@@ -9,7 +9,7 @@
   },
   "homepage": "https://vincs.io/docs/mcp/",
   "repository": "https://github.com/Vinculums/Vinc",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "keywords": ["vinc", "knowledge-graph", "memory", "agents", "mcp"],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
