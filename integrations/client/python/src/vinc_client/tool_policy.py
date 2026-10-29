@@ -4,14 +4,17 @@ The role contract that prefetch reads names tools the role must not use
 (``disallowed_tools``), and may set a capability policy and a per-run ``budget``. An
 adapter removes disallowed tools from what the model sees, refuses a call to one of them,
 and warns once per run about entries that matched none of the agent's tools. Names match
-exactly. Capability ids reach tools only through a ``capability_map`` the developer gives
-(tool name to capability id); nothing here guesses one vocabulary from the other.
+exactly. Capability ids reach tools through a ``capability_map`` the developer gives (tool
+name to capability id). Without one, the default maps of :mod:`vinc_client.capabilities`
+bind the common servers' tools (GitHub, Linear, Slack, file system, shell); a tool those
+maps do not know is left alone.
 """
 from __future__ import annotations
 
 import logging
 from typing import Any, Iterable, Mapping, Sequence, TypeVar
 
+from .capabilities import default_capability
 from .errors import VincInvalidArgument
 from .role_policy import CAPABILITY, RolePolicy
 
@@ -29,6 +32,8 @@ APPROVAL = ("The role {role} needs a person's approval before the {tool} tool ru
 BUDGET = "The role {role} allows {limit} tool calls per run; answer from what you already have."
 UNBOUND = ("Role %s sets capabilities, but no capability_map binds this agent's tools to "
            "capability ids, so they are not enforced.")
+UNKNOWN_TOOLS = ("Role %s sets capabilities, but none of this agent's tools is in the default "
+                 "capability maps, so they are not enforced; pass a capability_map.")
 
 
 def tool_name(tool: Any) -> str | None:
@@ -48,12 +53,36 @@ class RoleToolPolicy:
 
     def __init__(self, role_id: str, disallowed: Iterable[str] = (), *,
                  approve: Iterable[str] = (), tool_calls: int | None = None,
-                 unbound: bool = False) -> None:
+                 unbound: bool = False, run: RolePolicy | None = None) -> None:
         self.role_id = role_id
         self.disallowed = frozenset(disallowed)
         self.approve = frozenset(approve) - self.disallowed
         self.tool_calls = tool_calls
         self.unbound = unbound
+        # 지도 없이 능력을 정한 역할: 도구 이름마다 기본 지도로 능력 id 를 찾아 판정한다.
+        self._run = run if run is not None and run.capabilities else None
+
+    def _verdict(self, name: str | None) -> str | None:
+        """기본 지도로 묶인 도구의 판정: ``deny``, ``approve`` 또는 None(손대지 않는다)."""
+        if self._run is None:
+            return None
+        cap = default_capability(name)
+        if cap is None:
+            return None
+        verdict = self._run.capability(cap)
+        if verdict == "deny" or (verdict is None and self._run.capabilities.get("allow")):
+            return "deny"
+        return "approve" if verdict == "approve" else None
+
+    @property
+    def restricts_tools(self) -> bool:
+        """Whether some tools may be hidden: a disallowed name or capabilities on the defaults."""
+        return bool(self.disallowed) or self._run is not None
+
+    @property
+    def holds_tools(self) -> bool:
+        """Whether a call may be refused for approval: an approve name or the defaults."""
+        return bool(self.approve) or self._run is not None
 
     @classmethod
     def from_contract(cls, contract: Mapping[str, Any],
@@ -64,7 +93,9 @@ class RoleToolPolicy:
         the run. With a map, a tool whose capability the role denies is disallowed, one it
         holds for approval is refused with a sentence asking for a person, and when the role
         has an ``allow`` list a mapped tool that matches none of it is disallowed. Tools left
-        out of the map are not touched. ``budget.tool_calls`` caps all tool calls of a run.
+        out of the map are not touched. With no map (``None``) the default maps decide the
+        same way for the tools they know; an empty map turns them off. ``budget.tool_calls``
+        caps all tool calls of a run.
         """
         props = contract.get("props")
         raw = props.get(DISALLOWED_KEY) if isinstance(props, Mapping) else None
@@ -90,19 +121,24 @@ class RoleToolPolicy:
         limit = run.limit("tool_calls")
         return cls(str(contract.get("id") or ""), deny, approve=approve,
                    tool_calls=None if limit is None else int(limit),
-                   unbound=bool(run.capabilities) and not capability_map)
+                   unbound=bool(run.capabilities) and capability_map is not None
+                   and not capability_map,
+                   run=run if capability_map is None else None)
 
     def __bool__(self) -> bool:
         # unbound 도 참이다: 어댑터가 첫 모델 호출에서 경고를 한 번 내야 한다.
-        return bool(self.disallowed or self.approve or self.tool_calls is not None or self.unbound)
+        return bool(self.disallowed or self.approve or self.tool_calls is not None or self.unbound
+                    or self._run is not None)
 
     def allows(self, name: str | None) -> bool:
-        return name not in self.disallowed and name not in self.approve
+        return (name not in self.disallowed and name not in self.approve
+                and self._verdict(name) is None)
 
     def allowed(self, tools: Sequence[T]) -> list[T]:
         """``tools`` without the disallowed ones, in their order. Tools held for approval
         stay visible so the model can ask for one; a call to one is refused."""
-        return [tool for tool in tools if tool_name(tool) not in self.disallowed]
+        return [tool for tool in tools if tool_name(tool) not in self.disallowed
+                and self._verdict(tool_name(tool)) != "deny"]
 
     def unmatched(self, tools: Iterable[Any]) -> list[str]:
         """Disallowed names that match none of ``tools``, sorted."""
@@ -112,16 +148,19 @@ class RoleToolPolicy:
     def warn_unmatched(self, tools: Iterable[Any]) -> list[str]:
         """Log one warning naming the entries that matched no tool, and one when capabilities
         are set but unbound; returns the unmatched entries."""
+        tools = list(tools)
         missing = self.unmatched(tools)
         if missing:
             log.warning(UNMATCHED, self.role_id, ", ".join(missing))
         if self.unbound:
             log.warning(UNBOUND, self.role_id)
+        elif self._run is not None and not any(default_capability(tool_name(t)) for t in tools):
+            log.warning(UNKNOWN_TOOLS, self.role_id)
         return missing
 
     def refusal(self, name: str) -> str:
         """The tool result a refused call gets instead of running."""
-        template = APPROVAL if name in self.approve else REFUSAL
+        template = APPROVAL if name in self.approve or self._verdict(name) == "approve" else REFUSAL
         return template.format(role=self.role_id, tool=name)
 
     def over_budget(self, position: int) -> bool:

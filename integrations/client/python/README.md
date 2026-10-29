@@ -519,6 +519,24 @@ or `allow` in that order of precedence, and `limit(key)` one budget value. Hosts
 adapters enforce the policy; the client only reads it and grants nothing. Capability
 ids are not tool names: an adapter maps its tools to them.
 
+`vinc_client.capabilities` holds the vocabulary (`CAPABILITIES`, version
+`VOCABULARY_VERSION`) for GitHub, Linear, Slack, the file system, the shell and Vinc
+itself, and default maps from those servers' tool names. With no `capability_map`, an
+adapter enforces a role's capabilities through the default maps: a host-prefixed name
+such as `mcp__github__merge_pull_request` is looked up in its server's map, and a bare
+name only when one server uses it (`list_issues` is in both GitHub and Linear, so it is
+left alone). Tools the maps do not know are left alone, and Vinc's own tools are never
+in them, so an `allow` list for another server cannot hide the graph. Pass a map to bind
+your own tool names instead, or an empty map to turn the defaults off. The hub warns when
+a role names an id inside a known family that the vocabulary does not have (a typo such
+as `github.pr.merg`); ids in your own families are not checked.
+
+A run started with `vinc_run_start` can report the capability ids its tools used:
+`vinc_run_submit` takes `capabilities_used`, flags any id the role denies, leaves outside
+its `allow` list, or holds for approval without one, blocks that step, and keeps the flags
+on the run record (`vinc_runs` with `flagged: true` lists those runs). To use an id held
+for approval, name it in `person_only_requests` first.
+
 On 2026-10-06, all 23 hosted roster roles exceeded the default. Their required
 text was 19,764 to 198,480 characters (median about 112,000); successful prefetch
 blocks at a larger budget were 34,640 to 217,070 characters including the role

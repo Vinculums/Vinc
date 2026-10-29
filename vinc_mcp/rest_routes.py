@@ -84,7 +84,7 @@ READ_ROUTES = (
     Route("GET", "/v1/documents/{doc_id}", "vinc_doc_get",
           path_args=(("doc_id", "doc_id"),)),
     Route("GET", "/v1/events", "vinc_events", query=("since", "role", "kinds", "limit")),
-    Route("GET", "/v1/runs", "vinc_runs", query=("cited", "role", "limit")),
+    Route("GET", "/v1/runs", "vinc_runs", query=("cited", "role", "flagged", "limit")),
     Route("GET", "/v1/runs/{run}", "vinc_runs", path_args=(("run", "run"),)),
 )
 
@@ -94,7 +94,8 @@ WRITE_ROUTES = (
     Route("POST", "/v1/runs", "vinc_run_start", body=("role", "task", "subject", "run_id"),
           success=201),
     Route("POST", "/v1/runs/{run}/steps", "vinc_run_submit",
-          body=("output", "answer", "abandon", "person_only_requests", "cited_ids", "usage"),
+          body=("output", "answer", "abandon", "person_only_requests", "cited_ids", "usage",
+                "capabilities_used"),
           path_args=(("run", "run"),)),
     Route("POST", "/v1/community", "vinc_community_write", body=("action", "payload", "client_name")),
     Route("POST", "/v1/merge-rejections", "vinc_merge_reject",

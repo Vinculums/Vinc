@@ -93,12 +93,21 @@ def test_an_allow_list_closes_mapped_tools_it_does_not_name():
     assert policy.allows("a_tool_left_out_of_the_map")
 
 
-def test_capabilities_without_a_map_are_reported_not_guessed(caplog):
+def test_capabilities_without_a_map_leave_tools_the_default_maps_do_not_know(caplog):
+    # 지도가 없으면 기본 지도가 묶는다(test_capabilities.py). 그 지도가 모르는 이름은 건드리지 않고 경고한다.
     policy = RoleToolPolicy.from_contract(contract(capabilities={"deny": ["shell.*"]}))
-    assert policy and policy.unbound and policy.allows("run_shell")
+    assert policy and not policy.unbound and policy.allows("run_shell")
     with caplog.at_level("WARNING", logger="vinc_client"):
         policy.warn_unmatched([Tool("run_shell")])
     assert "not enforced" in caplog.text
+
+
+def test_an_empty_map_turns_the_defaults_off(caplog):
+    policy = RoleToolPolicy.from_contract(contract(capabilities={"deny": ["shell.*"]}), {})
+    assert policy.unbound and policy.allows("Bash")
+    with caplog.at_level("WARNING", logger="vinc_client"):
+        policy.warn_unmatched([Tool("Bash")])
+    assert "no capability_map binds" in caplog.text
 
 
 def test_the_budget_caps_every_tool_call_of_a_run():

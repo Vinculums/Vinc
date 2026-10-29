@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import re
 
+from . import capabilities
+
 #: 칸 이름. `vinc_mcp/roles.POLICY_KEYS` 와 같아야 한다(tests/core/test_role_policy_contract.py).
 KEYS = ("output_kind", "act_policy", "budget", "capabilities")
 #: 이 역할이 내놓는 것. verdict 는 통과·막음 같은 결론 하나, write_proposal 은 쓰기 제안(미리보기)이다.
@@ -95,4 +97,9 @@ def check(props: dict) -> list[str]:
             if twice:
                 out.append("capabilities lists the same id in more than one list: "
                            + ", ".join(sorted(twice)))
+            unknown = capabilities.unknown_in_families(seen)
+            if unknown:
+                out.append("capabilities names ids that are not in the capability vocabulary "
+                           f"(version {capabilities.VOCABULARY_VERSION}): " + ", ".join(unknown)
+                           + "; check the spelling, or use your own family for your own tools")
     return out

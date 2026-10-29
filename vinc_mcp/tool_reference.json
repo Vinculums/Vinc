@@ -1679,7 +1679,7 @@
    "name": "vinc_runs",
    "summary": "List recorded agent runs, newest first. Pass cited to see only the runs that cited one claim, with whether that claim has been retired.",
    "docs_url": "https://vincs.io/docs/mcp/tools/#vinc_runs",
-   "reference": "List the agent run records of this space, newest first: {runs:[{id, run_id, role, outcome, title, date, host, cited_ids}], total, truncated}. Pass cited with a graph id (record:..., decision:... or doc:...) to keep only the runs whose cited_ids hold it; each run then also lists matched, and the result carries claim:{id, found, retired, valid_until, superseded_by}. A retired claim means every run it lists should be re-checked: the same runs arrive one by one as run.citation_superseded events. Filter by role with its slug or concept:agent- id. Read-only.",
+   "reference": "List the agent run records of this space, newest first: {runs:[{id, run_id, role, outcome, title, date, host, cited_ids, capability_flags}], total, truncated}. capability_flags lists the capability ids a run used that its role denies, leaves outside its allow list, or holds for approval it did not get; pass flagged true to keep only those runs. Pass cited with a graph id (record:..., decision:... or doc:...) to keep only the runs whose cited_ids hold it; each run then also lists matched, and the result carries claim:{id, found, retired, valid_until, superseded_by}. A retired claim means every run it lists should be re-checked: the same runs arrive one by one as run.citation_superseded events. Filter by role with its slug or concept:agent- id. Read-only.",
    "annotations": {
     "title": "List agent run records",
     "readOnlyHint": true,
@@ -1704,6 +1704,12 @@
      "type": "string",
      "required": false,
      "description": "One run by its episode id or the run id you started it with; the result then carries its full props, including a waiting run's question."
+    },
+    {
+     "name": "flagged",
+     "type": "boolean",
+     "required": false,
+     "description": "Keep only runs with capability_flags."
     },
     {
      "name": "limit",
@@ -1770,7 +1776,7 @@
    "name": "vinc_run_submit",
    "summary": "Submit one step of a run. Vinc runs the role's gates on the output, stops at a person-only action with a question, resumes on an answer, and ends the run with its record.",
    "docs_url": "https://vincs.io/docs/mcp/tools/#vinc_run_submit",
-   "reference": "Submit one step of a run and receive the next instruction. Pass exactly one of: output (the step's result, at most 131072 characters), answer (approve or decline, only while the run waits for a person) or abandon (true, ends the run as abandoned). With output, Vinc runs the role's gates: a block returns status blocked with failed_checks and the run stays open for another try; a person-only or ask-first action named in person_only_requests, or a gate that interrupts, puts the run in state waiting with a question; a pass with nothing pending ends the run as success. person_only_requests is a list of {action, reason} for actions you are about to take; name them before acting, never after. A claim in the output that something ran is blocked, because evidence must come from the host. cited_ids adds the graph ids the output rests on (type-prefixed) to the run record; usage adds your tool_calls, tokens_in, tokens_out and cost_usd against the role's budget. The output text itself is not stored, only its sha256 and length. A finished run returns its record state again if submitted twice. A host on protocol 2026-07-28 that declares the Tasks extension gets a task handle instead of the waiting view (taskId is the run id plus .q and the question number): tasks/get returns the question as an elicitation in inputRequests, tasks/update with accept and answer approve or decline answers it, tasks/cancel closes only the task. A host that declares elicitation gets an input_required result instead and retries this call with inputResponses. A refused or closed form is not an answer and the run keeps waiting.",
+   "reference": "Submit one step of a run and receive the next instruction. Pass exactly one of: output (the step's result, at most 131072 characters), answer (approve or decline, only while the run waits for a person) or abandon (true, ends the run as abandoned). With output, Vinc runs the role's gates: a block returns status blocked with failed_checks and the run stays open for another try; a person-only or ask-first action named in person_only_requests, or a gate that interrupts, puts the run in state waiting with a question; a pass with nothing pending ends the run as success. person_only_requests is a list of {action, reason} for actions you are about to take; name them before acting, never after. A claim in the output that something ran is blocked, because evidence must come from the host. cited_ids adds the graph ids the output rests on (type-prefixed) to the run record; usage adds your tool_calls, tokens_in, tokens_out and cost_usd against the role's budget. capabilities_used lists the capability ids of the tools you called in this step (such as github.pr.merge); Vinc checks each against the role's capabilities and records any it denies, leaves outside its allow list, or holds for approval without one, and an output step that used one is blocked with capability_<flag>:<id> in failed_checks. To use a capability held for approval, name its id in person_only_requests first. The output text itself is not stored, only its sha256 and length. A finished run returns its record state again if submitted twice. A host on protocol 2026-07-28 that declares the Tasks extension gets a task handle instead of the waiting view (taskId is the run id plus .q and the question number): tasks/get returns the question as an elicitation in inputRequests, tasks/update with accept and answer approve or decline answers it, tasks/cancel closes only the task. A host that declares elicitation gets an input_required result instead and retries this call with inputResponses. A refused or closed form is not an answer and the run keeps waiting.",
    "annotations": {
     "title": "Submit a step of a run",
     "readOnlyHint": false,
@@ -1826,6 +1832,12 @@
      "type": "array",
      "required": false,
      "description": ""
+    },
+    {
+     "name": "capabilities_used",
+     "type": "array",
+     "required": false,
+     "description": "Capability ids of the tools called in this step."
     },
     {
      "name": "usage",

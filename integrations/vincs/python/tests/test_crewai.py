@@ -299,8 +299,8 @@ def test_capabilities_without_a_map_warn_and_change_nothing(caplog):
         run_crew(agent)
     assert tool_results(llm.seen[1]) == ["ran"] and RAN == ["ls"]
     assert [r.getMessage() for r in caplog.records if r.name == "vinc_client"] == [
-        f"Role {ROLE} sets capabilities, but no capability_map binds this agent's tools to "
-        "capability ids, so they are not enforced."]
+        f"Role {ROLE} sets capabilities, but none of this agent's tools is in the default "
+        "capability maps, so they are not enforced; pass a capability_map."]
 
 
 def test_a_malformed_policy_stops_the_run_before_the_model():
