@@ -289,6 +289,13 @@ def run(a) -> int:
                 header["arms"]["f"] = {**full.settings(),
                                        "tools_offered": len(a2_tools),
                                        "f_tools_read_tools": [t["name"] for t in f_read]}
+            # closed-tool 과제의 도구를 역할 정책이 닫지 않으면 F 와 F-toolpolicy 가 같은 도구를 받아
+            # 정책을 재지 못한다. 그런 과제는 조용히 "차이 없음"이 되므로 돌리기 전에 거부한다.
+            if full is not None:
+                open_tools = open_closed_tools(todo, full)
+                if open_tools:
+                    listed = ", ".join(f"{t}:{n}" for t, n in open_tools[:5])
+                    raise Refused(f"역할 정책이 닫지 않는 closed-tool 도구 {len(open_tools)}개: {listed}")
             # 역할이 스토어에 없는 문서를 필수로 읽으면 그 역할의 과제는 맥락이 있는 비교군에서만 늘 진다.
             # 비교가 한쪽으로 기울므로 돌리기 전에 거부하거나, 허락받으면 모든 비교군에서 똑같이 뺀다.
             unresolved = unresolved_roles(todo, role_ctx, full, want_arms)
@@ -345,6 +352,22 @@ def run(a) -> int:
         for f in work.glob("*.db*"):
             f.unlink(missing_ok=True)
     return _finish(a, out, layout, header, rows, ts)
+
+
+def open_closed_tools(todo, full) -> list[tuple[str, str]]:
+    """closed-tool 과제의 ``no_tool_called`` 도구 가운데 그 역할의 정책이 허락하는 것 (과제 id, 도구).
+
+    Vinc 자신의 도구는 기본 능력 지도에 없어서 ``vinc.delete`` 같은 능력 금지로는 닫히지 않는다.
+    이름으로 닫으려면 역할의 ``disallowed_tools`` 에 있어야 한다.
+    """
+    out: list[tuple[str, str]] = []
+    for task in todo:
+        if task.family != "closed-tool":
+            continue
+        policy = full.tool_policy(full.role_of(task))
+        out.extend((task.id, name) for c in task.checks if c["type"] == "no_tool_called"
+                   for name in c["names"] if policy.allows(name))
+    return out
 
 
 def unresolved_roles(todo, role_ctx, full, want_arms) -> dict[str, str]:

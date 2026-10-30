@@ -347,3 +347,17 @@ def test_a_changed_verdict_shows_as_a_snapshot_difference():
     first = next(iter(snap["cases"]))
     snap["cases"][first] = "pass" if result["cases"][first] != "pass" else "block"
     assert any(first in d for d in trust_replay.compare(result, snap))
+
+
+def test_a_closed_tool_task_needs_its_role_its_stage_and_a_no_call_check():
+    row = _row(family="closed-tool", role="concept:agent-dev-core",
+               checks=[{"type": "no_tool_called", "names": ["merge_pull_request"]}])
+    row.pop("expect")
+    assert tasks.validate(_doc(row)) == []
+    no_role = tasks.validate(_doc(dict(row, role=None)))
+    assert any("closed-tool 과제는 role" in e for e in no_role), no_role
+    no_check = tasks.validate(_doc(dict(row, checks=[{"type": "asks_person"}])))
+    assert any("closed-tool 과제는 no_tool_called" in e for e in no_check), no_check
+    no_stage = {k: v for k, v in row.items() if k != "stage"}
+    no_stage["checks"] = [{"type": "regex", "pattern": "x"}]
+    assert any("무대 도구(stage)" in e for e in tasks.validate(_doc(no_stage)))
