@@ -18,6 +18,7 @@ import base64
 import hashlib
 import os
 import pickle
+import threading
 import zipfile
 
 import numpy as np
@@ -199,3 +200,29 @@ def from_env() -> Colbert | None:
     if not lp or not bp:
         return None
     return Colbert(lp, bp)
+
+
+class _Cache:
+    lock = threading.Lock()
+    tried = False
+    value: "Colbert | None" = None
+
+
+def cached() -> Colbert | None:
+    """:func:`from_env` 를 프로세스당 한 번만 올린다(가중치 4MB·코드북 1MB). 실패하면 None 을 기억하고
+    사유를 한 줄 남긴다 — 재채점과 토큰 채우기가 함께 꺼진다."""
+    with _Cache.lock:
+        if not _Cache.tried:
+            _Cache.tried = True
+            try:
+                _Cache.value = from_env()
+            except Exception as exc:
+                import sys
+                print(f"vinc: colbert 적재 실패 — {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+    return _Cache.value
+
+
+def rescore_on() -> bool:
+    """`VINC_NODE_COLBERT` — 노드 후보 재채점 스위치. 기본 꺼짐: 토큰이 미러 전체에 찰 때까지 켜지 않는다."""
+    from store.envflag import truthy
+    return truthy(os.environ.get("VINC_NODE_COLBERT"))

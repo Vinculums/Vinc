@@ -173,6 +173,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
            historical: bool = False, as_of: str | None = None,
            mode: str | None = None, known_at: str | None = None,
            query_runtime: str | None = None, query_model: str | None = None,
+           query_colbert: str | None = None,
            cfg=None, store=None) -> dict:
     """검색 순위와 페이지는 그대로 두고 공개 응답에 정확한 인용 id를 붙인다.
 
@@ -182,7 +183,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         query, query_embedding=query_embedding, top_k=top_k, filters=filters,
         owner=owner, cursor=cursor, detail=detail, historical=historical,
         as_of=as_of, mode=mode, known_at=known_at, query_runtime=query_runtime,
-        query_model=query_model, cfg=cfg, store=store)
+        query_model=query_model, query_colbert=query_colbert, cfg=cfg, store=store)
     result["node_hits"] = [{**hit, "cite_id": hit.get("id") or None}
                            for hit in result.get("node_hits") or []]
     _drop_unstarted_episodes(result, query, as_of=as_of, mode=mode, historical=historical)

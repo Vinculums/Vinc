@@ -90,25 +90,20 @@ _MIRROR_REPLACE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_REPLACE_TIMEOUT
 _COLBERT_BATCH = int(os.environ.get("VINC_NODE_COLBERT_BATCH", "8"))
 
 
-class _ColbertHolder:
-    """`vinc_rag.colbert.from_env()` 를 한 번만 올린다. 설정이 없거나 틀리면 None 을 기억한다."""
-    lock = threading.Lock()
-    tried = False
-    value = None
+def _colbert_rescore_on() -> bool:
+    from vinc_rag.colbert import rescore_on
+    return rescore_on()
 
 
 def _colbert():
     """사이드카의 투영·코드북(재채점과 토큰 채우기가 같이 쓴다). 없으면 None — 그때는 둘 다 꺼진다."""
-    with _ColbertHolder.lock:
-        if not _ColbertHolder.tried:
-            _ColbertHolder.tried = True
-            try:
-                from vinc_rag.colbert import from_env
-                _ColbertHolder.value = from_env()
-            except Exception as exc:
-                print(f"vinc: colbert 적재 실패 — {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
-    return _ColbertHolder.value
+    from vinc_rag.colbert import cached
+    return cached()
+
+
 _ENCODER_RESPONSE_RUNTIME = contextvars.ContextVar("encoder_response_runtime", default="")
+#: 마지막 질의 인코딩이 함께 받은 ColBERT 토큰(packed f32). 재채점이 꺼졌거나 못 받았으면 "".
+_ENCODER_RESPONSE_COLBERT = contextvars.ContextVar("encoder_response_colbert", default="")
 _ENCODER_RESPONSE_INSTANCE = contextvars.ContextVar("encoder_response_instance", default="")
 #: 창구가 답한 모델(`/encode` 의 `model`). 옛 창구는 안 실으므로 빈 값이 온다.
 _ENCODER_RESPONSE_MODEL = contextvars.ContextVar("encoder_response_model", default="")
@@ -1347,8 +1342,9 @@ class VincApp:
         # --top-k`)는 5, MCP vinc_search 와 REST /v1/search 는 도구 핸들러가 20 을 실어
         # 보낸다(`vinc_mcp.tools._t_search`). top_k 를 안 보내면 5 다. 바꾸면 화면과
         # 스크립트의 페이지가 함께 바뀌므로 기본값은 그대로 둔다.
+        qcol = _ENCODER_RESPONSE_COLBERT.get() if qvec is not None else ""
         code, res = self._read(lambda r: _timed("search", p, r, q.search(
-            query, query_embedding=qvec,
+            query, query_embedding=qvec, query_colbert=qcol or None,
             query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
             query_model=(_ENCODER_RESPONSE_MODEL.get() if qvec is not None else None),
             top_k=_int(p.get("top_k"), 5), filters=filters or None,
@@ -1429,6 +1425,7 @@ class VincApp:
         기다려 깨우는 게 맞다(`_QVEC_COLD_TIMEOUT`) — 깨고 나면 그 뒤가 전부 싸다.
         어느 쪽인지는 `_claim_cold_retry` 가 최근 성공 시각으로 가른다. 강등은 응답
         메타(`vector_note`)에 남으므로 조용하지 않다."""
+        _ENCODER_RESPONSE_COLBERT.set("")   # 앞 요청의 토큰이 이 스레드에 남지 않게
         _ENCODER_RESPONSE_RUNTIME.set("")
         _ENCODER_RESPONSE_MODEL.set("")
         url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
@@ -1473,7 +1470,18 @@ class VincApp:
         모델을 `vinc-encode` 로 분리하면서 인증이 붙었다. 배치 워커만 고치고 이 경로를
         빠뜨려 **질의 임베딩이 전부 401** 이었다 — 배경 적재는 정상이라 겉으로는 다
         되는 것처럼 보였다. `vector_note` 에 사유가 남아 그나마 드러났다."""
-        vecs = _encode_post(url, [text], "query", timeout)
+        _ENCODER_RESPONSE_COLBERT.set("")
+        cb = _colbert() if _colbert_rescore_on() else None
+        if cb is not None:
+            # 재채점이 켜졌으면 같은 실행에서 토큰도 받는다(인코딩 한 번). 코드북이 다른 창구의
+            # 토큰은 쓰지 않는다 — 그 질의는 재채점 없이 간다.
+            out = _encode_call(url, [text], "query", timeout, colbert=True)
+            vecs = out.get("vectors") or []
+            toks = out.get("colbert") or []
+            if out.get("colbert_books") == cb.id and len(toks) == 1:
+                _ENCODER_RESPONSE_COLBERT.set(toks[0])
+        else:
+            vecs = _encode_post(url, [text], "query", timeout)
         self._qvec_ok = time.monotonic()  # 살아 있다 — 다음 초과는 '바쁨'으로 읽는다
         # 창구의 모델이 저장 벡터의 모델과 다르면 벡터 팔을 뺀다. 폭이 같으면 엔진은
         # 아무 오류 없이 다른 공간의 이웃을 낸다. 한쪽이라도 모르면(옛 창구·기록 없음)

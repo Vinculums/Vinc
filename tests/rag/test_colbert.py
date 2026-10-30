@@ -152,3 +152,42 @@ def test_encode_service_colbert_payload(tmp_path, monkeypatch):
     _, d = w._encode_colbert(Emb(), ["a", "b"], query=False)
     assert d["colbert_format"] == "pq64" and d["colbert_books"] == c.id
     assert [cb.unpack_codes(x).shape for x in d["colbert"]] == [(4, cb.SUBSPACES)] * 2
+
+
+class _Rows:
+    def __init__(self, rows):
+        self.rows, self.calls = rows, []
+
+    def run(self, q, params=None):
+        self.calls.append(params)
+        return [r for r in self.rows if r["v"] in (params or {}).get("v", [])]
+
+
+def test_rescore_reorders_the_head_and_skips_when_any_token_is_missing(tmp_path, monkeypatch):
+    from vinc_rag import retrieval as R
+    c, books = _colbert(tmp_path, monkeypatch)
+    monkeypatch.setattr(cb, "cached", lambda: c)
+    codes = {i: np.random.default_rng(10 + i).integers(0, cb.CENTROIDS, (6, cb.SUBSPACES)).astype(np.uint8)
+             for i in range(3)}
+    q = c.decode(codes[2])[:3]                              # 질의는 2번 노드의 토큰 일부 → 2번이 1위
+    rows = [{"v": f"o#n{i}", "c": cb.pack_codes(codes[i]), "b": c.id} for i in range(3)]
+    hits = [{"id": f"n{i}"} for i in range(3)] + [{"id": "tail"}]
+    out, st = R._colbert_rescore(_Rows(rows), [dict(h) for h in hits], cb.pack_query(q), "o")
+    # tail 은 토큰이 없으니 상위 20 안에 든 이상 통째로 건너뛴다
+    assert st == {"state": "skipped", "reason": "tokens missing", "missing": 1}
+    assert [h["id"] for h in out] == ["n0", "n1", "n2", "tail"]
+    out, st = R._colbert_rescore(_Rows(rows), [dict(h) for h in hits[:3]], cb.pack_query(q), "o")
+    assert st == {"state": "applied", "n": 3} and out[0]["id"] == "n2" and out[0]["colbert"] == pytest.approx(1.0, abs=1e-5)
+    other = [{**r, "b": "other"} for r in rows]
+    _, st = R._colbert_rescore(_Rows(other), [dict(h) for h in hits[:3]], cb.pack_query(q), "o")
+    assert st["state"] == "skipped"
+
+
+def test_rescore_keeps_production_order_on_ties(tmp_path, monkeypatch):
+    from vinc_rag import retrieval as R
+    c, _ = _colbert(tmp_path, monkeypatch)
+    monkeypatch.setattr(cb, "cached", lambda: c)
+    k = np.random.default_rng(5).integers(0, cb.CENTROIDS, (4, cb.SUBSPACES)).astype(np.uint8)
+    rows = [{"v": f"o#n{i}", "c": cb.pack_codes(k), "b": c.id} for i in range(3)]
+    out, st = R._colbert_rescore(_Rows(rows), [{"id": f"n{i}"} for i in range(3)], cb.pack_query(c.decode(k)[:2]), "o")
+    assert st["state"] == "applied" and [h["id"] for h in out] == ["n0", "n1", "n2"]
