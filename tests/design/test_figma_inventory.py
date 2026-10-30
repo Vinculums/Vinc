@@ -199,5 +199,41 @@ class ComponentsAreCheckedAgainstCodeMarks(unittest.TestCase):
         self.assertGreater(r["declared"], 40)
 
 
+class StoryboardStepsPointAtLiveScreens(unittest.TestCase):
+    """여정 단계가 사라진 화면을 가리키면 실패다. #1101 이 2D·Timeline·Weave 를 걷어 낸 뒤에도 그 셋을
+    밟는 여정 줄이 06 · Storyboards 에 남아 있었다. 그 페이지를 세는 게이트가 없어서였다."""
+
+    def live(self, journeys, boards=("App · View · 3d / dark",)):
+        return {"pages": {"03 · App": {"frames": [{"name": b} for b in boards]},
+                          "06 · Storyboards": {"journeys": journeys}}}
+
+    def test_a_step_on_a_live_captured_board_is_clean(self):
+        r = fi.check_storyboards(self.live({"J": ["1 · App · View · 3d / dark"]}), {"App · View · 3d / dark"})
+        self.assertEqual((r["rotten"], r["retired"], r["malformed"], r["steps"]), ([], [], [], 1))
+
+    def test_a_step_whose_board_is_gone_fails(self):
+        r = fi.check_storyboards(self.live({"J": ["1 · App · View · 2d / dark"]}), {"App · View · 3d / dark"})
+        self.assertEqual(r["rotten"], [("J › 1 · App · View · 2d / dark", "App · View · 2d / dark")])
+
+    def test_a_board_that_outlived_its_capture_state_fails(self):
+        # 화면을 걷어 내면서 보드 보관을 빠뜨린 경우. 보드만 보면 통과한다.
+        r = fi.check_storyboards(self.live({"J": ["1 · App · View · 3d / dark"]}), set())
+        self.assertEqual(r["retired"], [("J › 1 · App · View · 3d / dark", "App · View · 3d / dark")])
+
+    def test_a_step_without_a_number_fails(self):
+        r = fi.check_storyboards(self.live({"J": ["App · View · 3d / dark"]}), {"App · View · 3d / dark"})
+        self.assertEqual(r["malformed"], ["J › App · View · 3d / dark"])
+
+    def test_a_dump_without_the_page_fails(self):
+        # 덤프를 다시 뜨면서 이 축을 빼먹으면 조용히 초록이 되면 안 된다.
+        self.assertTrue(fi.check_storyboards({"pages": {}}, set())["missing_page"])
+
+    def test_the_real_dump_is_clean(self):
+        live = json.loads((fi.HUB / "figma" / "figma-inventory.json").read_text(encoding="utf-8"))
+        r = fi.check_storyboards(live, fi.captured_boards())
+        self.assertEqual((r["missing_page"], r["rotten"], r["retired"], r["malformed"]), (False, [], [], []))
+        self.assertGreater(r["steps"], 40)
+
+
 if __name__ == "__main__":
     unittest.main()

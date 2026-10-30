@@ -22,6 +22,8 @@ Figma 에 아예 없었다. 그때까지 이 칸은 계획서에 "대조 안 됨
   축들과 달리 이쪽은 **대응**을 본다 — 개수가 맞아도 이름이 어긋나면 여기서 걸린다.
 - **INFO · Figma 에만**: 맵이 참조하지 않는 Figma 프레임. 시안이거나 폐기 대기라 판정이
   필요한 것들이므로 세어서 보여만 준다.
+- **FAIL · 스토리보드 부패**: `06 · Storyboards` 의 단계가 가리키는 보드가 03 · App · 04 · Site 에
+  없거나, 그 캡처 상태가 매니페스트에서 빠졌다. 화면을 걷어 내면서 여정 줄을 잊는 일이 여기서 막힌다.
 
 ## 쓰는 법
 
@@ -48,6 +50,20 @@ const variants = {};                              // 02 · Components 만 쓴다
 for (const n of sets)
   if (n.type === "COMPONENT_SET") variants[n.name] = n.children.map(c => c.name);
 return { name: page.name, frames, components: sets.map(n => n.name), variants };
+```
+
+`06 · Storyboards` 는 따로 한 번 뜬다. 보드가 아니라 여정 줄이라 모양이 다르다:
+
+```js
+const page = figma.root.children.find(p => p.name === "06 · Storyboards");
+await figma.setCurrentPageAsync(page);
+// 줄 = 이름 아래 `steps` 프레임을 가진 프레임. 단계 = `steps` 의 프레임 자식(화살표 텍스트는 뺀다).
+const journeys = {};
+for (const row of page.findAll(n => n.type === "FRAME" && n.children?.some(c => c.type === "FRAME" && c.name === "steps"))) {
+  const steps = row.children.find(c => c.type === "FRAME" && c.name === "steps");
+  journeys[row.name] = steps.children.filter(c => c.type === "FRAME").map(c => c.name);
+}
+return { name: page.name, journeys };
 ```
 
 ⚠ 덤프는 손으로 고치지 않는다. 고치면 게이트가 Figma 가 아니라 그 파일과 합의한다.
@@ -453,6 +469,54 @@ def check_components(live: dict, mapping: dict, source: str) -> dict:
             "plain": plain, "declared": counted}
 
 
+#: 여정 줄이 사는 페이지와, 단계가 가리키는 보드가 사는 페이지.
+STORYBOARD_PAGE = "06 · Storyboards"
+SCREEN_PAGES = ("03 · App", "04 · Site")
+_STEP_RX = re.compile(r"^\d+ · (.+)$")
+
+
+def captured_boards() -> set[str]:
+    """지금 캡처 매니페스트가 만드는 보드 이름 전부(앱·사이트). 보드 두기를 미룬 상태도 포함한다
+    — 스토리보드가 묻는 것은 "그 상태가 아직 제품에 있는가"이지 "보드가 다 그려졌는가"가 아니다."""
+    out: set[str] = set()
+    for path, name in ((APP_MANIFEST, app_board_name), (SITE_MANIFEST, site_board_name)):
+        if path.exists():
+            out |= {name(r["id"]) for r in json.loads(path.read_text(encoding="utf-8"))["states"]}
+    return out
+
+
+def check_storyboards(live: dict, captured: set[str]) -> dict:
+    """여정 줄의 단계 하나하나가 실재하는 화면을 가리키는지 본다.
+
+    단계 프레임 이름은 `<순번> · <보드 이름>` 이다. 두 가지로 썩는다:
+      - 보드 없음  : 03 · App · 04 · Site 에 그 이름의 보드가 없다(개명·보관됐다)
+      - 상태 퇴역  : 보드는 남아 있어도 그 캡처 상태가 매니페스트에서 빠졌다. 화면을 걷어 낸
+                     변경이 보드 보관을 빠뜨리면 앞의 검사만으로는 통과한다.
+    덤프에 이 페이지가 없으면 실패다 — 덤프를 다시 뜨면서 이 축을 빼먹은 것이다.
+    근거: [[vinc.canon.design-system-operations]]
+    """
+    pages = live.get("pages", {})
+    page = pages.get(STORYBOARD_PAGE)
+    if page is None:
+        return {"missing_page": True, "rotten": [], "retired": [], "malformed": [], "journeys": 0, "steps": 0}
+    boards = {f["name"] for p in SCREEN_PAGES for f in pages.get(p, {}).get("frames", [])}
+    rotten, retired, malformed, steps = [], [], [], 0
+    for journey, names in page.get("journeys", {}).items():
+        for step in names:
+            steps += 1
+            m = _STEP_RX.match(step)
+            if not m:
+                malformed.append(f"{journey} › {step}")
+                continue
+            board = m.group(1)
+            if board not in boards:
+                rotten.append((f"{journey} › {step}", board))
+            elif board not in captured:
+                retired.append((f"{journey} › {step}", board))
+    return {"missing_page": False, "rotten": rotten, "retired": retired, "malformed": malformed,
+            "journeys": len(page.get("journeys", {})), "steps": steps}
+
+
 def _check(kind: str, code: set[str], mapping: dict, live: set[str],
            gaps_set: frozenset = frozenset()) -> dict:
     """코드 항목을 맵에 비추고, 맵이 가리키는 이름이 Figma 에 실재하는지 본다.
@@ -554,6 +618,23 @@ def main(argv: list[str] | None = None) -> int:
               + ", ".join(comp["plain"]))
     print(f"  대조된 변형 {comp['declared']}건 · 실패 "
           f"{len(comp['undeclared']) + len(comp['stale']) + len(comp['rotten'])}건")
+
+    sb = check_storyboards(live, captured_boards())
+    print("── 스토리보드 (여정 단계×보드)")
+    if sb["missing_page"]:
+        print(f"  [FAIL·덤프 결손] 덤프에 '{STORYBOARD_PAGE}' 가 없다. docstring 의 두 번째 JS 로 떠서 넣어라")
+        fail += 1
+    for k, v in sb["rotten"]:
+        print(f"  [FAIL·스토리보드 부패] {k} → '{v}' 보드가 03 · App · 04 · Site 에 없다")
+        fail += 1
+    for k, v in sb["retired"]:
+        print(f"  [FAIL·스토리보드 부패] {k} → '{v}' 의 캡처 상태가 매니페스트에서 빠졌다(화면이 퇴역했다)")
+        fail += 1
+    for k in sb["malformed"]:
+        print(f"  [FAIL·이름 규칙] {k} — 단계 이름은 '<순번> · <보드 이름>' 이어야 한다")
+        fail += 1
+    print(f"  여정 {sb['journeys']}줄 · 단계 {sb['steps']}건 · 실패 "
+          f"{int(sb['missing_page']) + len(sb['rotten']) + len(sb['retired']) + len(sb['malformed'])}건")
 
     total_gap = sum(len(r["gaps"]) for r in results) + total_gap_app
     if matrix is not None:
