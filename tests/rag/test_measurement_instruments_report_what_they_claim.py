@@ -277,16 +277,42 @@ class EvalSearchContract(unittest.TestCase):
 
 
 class _FakeEncoder:
-    """첫 호출만 느린 인코더 — 모델 적재의 형상이다."""
+    """첫 호출만 느린 인코더 — 모델 적재의 형상이다.
 
-    def __init__(self, dim, first_call_s=0.45):
-        self.dim, self.first_call_s, self.calls = dim, first_call_s, 0
+    ``clock`` 을 주면 자지 않고 그 가상 시계를 첫 호출 시간만큼 민다.
+    """
+
+    def __init__(self, dim, first_call_s=0.45, clock=None):
+        self.dim, self.first_call_s, self.calls, self.clock = dim, first_call_s, 0, clock
 
     def encode(self, texts, kind="passage"):
         self.calls += 1
         if self.calls == 1:
-            time.sleep(self.first_call_s)
+            if self.clock is not None:
+                self.clock.now += self.first_call_s
+            else:
+                time.sleep(self.first_call_s)
         return [[0.01] * self.dim for _ in texts]
+
+
+class _VirtualClock:
+    """인코더가 민 만큼만 가는 시계. 스토어 쓰기처럼 기계 속도에 매인 시간은 0 으로 센다."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def perf_counter(self):
+        return self.now
+
+
+class _TimeWithClock:
+    """`time` 모듈 대신 끼운다. `perf_counter` 만 가상 시계이고 나머지는 진짜 `time` 이다."""
+
+    def __init__(self, clock):
+        self._clock = clock
+
+    def __getattr__(self, name):
+        return self._clock.perf_counter if name == "perf_counter" else getattr(time, name)
 
 
 class ReindexTimerContract(unittest.TestCase):
@@ -328,8 +354,12 @@ class ReindexTimerContract(unittest.TestCase):
         import rehearse_rebuild as rr
 
         data, dim = self._seeded()
-        fake = _FakeEncoder(dim, first_call_s=0.45)
+        # 벽시계로 재면 느린 러너에서는 스토어 쓰기만으로 아래 상한을 넘는다.
+        # 그래서 인코더가 민 시간만 가는 시계로 잰다.
+        clock = _VirtualClock()
+        fake = _FakeEncoder(dim, first_call_s=0.45, clock=clock)
         self._patch(rr, "encoder_for", lambda model, onnx=None: fake)
+        self._patch(rr, "time", _TimeWithClock(clock))
 
         out = rr.reindex(data, "e5")
 
