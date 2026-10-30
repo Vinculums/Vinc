@@ -382,7 +382,7 @@ def unresolved_roles(todo, role_ctx, full, want_arms) -> dict[str, str]:
     checks = []
     if role_ctx is not None:
         checks.append(lambda t: (role_ctx.role, role_ctx.compile(t.prompt)))
-    if full is not None and any(full_mod.removed(x) != "context"
+    if full is not None and any("context" not in full_mod.parts(x)
                                 for x in want_arms if x in full_mod.FULL_ARMS):
         checks.append(lambda t: (full.role_of(t), full.compile(full.role_of(t), t.prompt)))
     out: dict[str, str] = {}
@@ -397,24 +397,24 @@ def unresolved_roles(todo, role_ctx, full, want_arms) -> dict[str, str]:
 def _one_full(a, header, ts, task, host, arm, r, mcp, vinc, a2_tools, full, model, ctx,
               traces, *, reuse=None) -> dict:
     """F 비교군 실행 하나. 빠진 부품만 다르고 나머지는 F 와 같다(:mod:`full_arm`)."""
-    part = full_mod.removed(arm)
+    gone = full_mod.parts(arm)
     role = full.role_of(task)
-    compiled = None if part == "context" else full.compile(role, task.prompt)
+    compiled = None if "context" in gone else full.compile(role, task.prompt)
     context = compiled.block if compiled else None
     system = arms_mod.BASE_SYSTEM
-    if part == "sources":
+    if "sources" in gone:
         system = full_mod.system_without_sources(system)
         context = full_mod.strip_sources(context) if context else context
-    tools = ([t for t in a2_tools if t["name"] in role_mod.READ_TOOLS] if part == "tools"
+    tools = ([t for t in a2_tools if t["name"] in role_mod.READ_TOOLS] if "tools" in gone
              else list(a2_tools))
     if task.stage:
         tools = tools + task.stage_specs()
-    policy = None if part == "toolpolicy" else full.tool_policy(role)
+    policy = None if "toolpolicy" in gone else full.tool_policy(role)
     if policy is not None:
         tools = policy.allowed(tools)
     surface = arms_mod.Surface(arm=arm, mcp=mcp, vinc=vinc, context=context, tools=tools,
                                stage=task.stage_results(), tool_policy=policy)
-    gate = None if part == "outgate" else full.gate(role)
+    gate = None if "outgate" in gone else full.gate(role)
     return _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces, compiled,
                 system=system, gate=gate, role=role, reuse=reuse)
 
