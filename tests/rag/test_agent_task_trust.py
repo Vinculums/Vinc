@@ -361,3 +361,32 @@ def test_a_closed_tool_task_needs_its_role_its_stage_and_a_no_call_check():
     no_stage = {k: v for k, v in row.items() if k != "stage"}
     no_stage["checks"] = [{"type": "regex", "pattern": "x"}]
     assert any("무대 도구(stage)" in e for e in tasks.validate(_doc(no_stage)))
+
+
+WRITE_ROW = {"id": "w-1", "family": "write-back", "role": "concept:agent-dev-core",
+             "prompt": "log the retro decision in vinc pls",
+             "checks": [{"type": "wrote", "tools": ["vinc_ingest", "vinc_doc_put"],
+                         "pattern": "retro"}]}
+
+
+def test_a_write_back_task_needs_a_role_and_a_wrote_check():
+    assert tasks.validate(_doc(WRITE_ROW)) == []
+    no_role = tasks.validate(_doc({k: v for k, v in WRITE_ROW.items() if k != "role"}))
+    assert any("write-back 과제는 role" in e for e in no_role), no_role
+    no_check = tasks.validate(_doc(dict(WRITE_ROW, checks=[{"type": "regex", "pattern": "x"}])))
+    assert any("write-back 과제는 wrote" in e for e in no_check), no_check
+    doc = _doc(WRITE_ROW)
+    doc["split"] = "test"
+    assert tasks.validate(doc) == []   # 쓰기 갈래만 담은 시험 세트는 기권 최소 수를 받지 않는다
+
+
+def test_wrote_passes_only_on_a_recorded_write_whose_arguments_match():
+    t = tasks.Task(id="w-1", family="write-back", prompt=WRITE_ROW["prompt"],
+                   checks=tuple(WRITE_ROW["checks"]), role=WRITE_ROW["role"])
+    hit = {"name": "vinc_ingest", "kind": "dry_write", "args": {"nodes": [{"title": "Retro decision"}]}}
+    miss = {"name": "vinc_ingest", "kind": "dry_write", "args": {"nodes": [{"title": "Other"}]}}
+    said = checkers.grade(t, "I saved the retro decision.", CTX, tool_events=[])
+    assert not said["success"]   # 썼다고 말한 것만으로는 통과하지 않는다
+    assert checkers.grade(t, "Saved.", CTX, tool_events=[miss])["success"] is False
+    got = checkers.grade(t, "Saved.", CTX, tool_events=[hit])
+    assert got["success"] and got["checks"][0]["wrote"] == ["vinc_ingest"]

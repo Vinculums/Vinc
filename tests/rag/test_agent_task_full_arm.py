@@ -11,7 +11,7 @@ from rag_eval.agent_tasks import arms, full_arm, hosts, metrics, models, record
 
 def test_the_arm_names_say_which_part_is_removed():
     assert full_arm.FULL_ARMS == ("F", "F-context", "F-tools", "F-toolpolicy", "F-outgate",
-                                  "F-sources", "F-context-toolpolicy")
+                                  "F-sources", "F-roletools", "F-context-toolpolicy")
     assert full_arm.removed("F") is None and full_arm.removed("F-outgate") == "outgate"
     assert full_arm.parts("F") == frozenset() and full_arm.parts("F-tools") == {"tools"}
     assert full_arm.parts("F-context-toolpolicy") == {"context", "toolpolicy"}
@@ -88,3 +88,39 @@ def test_gate_metrics_count_withheld_and_waiting_answers():
     assert got["withheld"]["k"] == 1 and got["withheld"]["n"] == 4
     assert got["waiting"]["k"] == 1
     assert metrics._gate([{"grade": {}}]) == {}
+
+
+class Writer(Merger):
+    def step(self, messages, tools):
+        if not any(m["role"] == "tool" for m in messages):
+            return models.Turn(text="", tool_calls=[models.ToolCall(
+                id="c0", name="vinc_ingest", args={"nodes": [{"id": "record:retro-1", "type": "record"}]})])
+        return models.Turn(text="Saved the retro note.")
+
+
+class NoMcp:
+    def call(self, name, args):
+        raise AssertionError(f"dry write reached the store: {name}")
+
+
+def test_a_dry_write_runs_nothing_and_keeps_its_arguments():
+    surface = arms.Surface(arm="F", mcp=NoMcp(), tools=[{"name": "vinc_ingest", "description": "",
+                                                         "parameters": {}}],
+                           dry_writes=frozenset({"vinc_ingest"}))
+    trace = record.Trace()
+    hosts.McpHost().run(prompt="log it", system=arms.BASE_SYSTEM, surface=surface, model=Writer(),
+                        trace=trace, max_steps=4, cap=4)
+    tool = [e for e in trace.events if e["t"] == "tool"]
+    assert tool[0]["kind"] == "dry_write" and tool[0]["args"]["nodes"][0]["id"] == "record:retro-1"
+
+
+@pytest.mark.parametrize("props, expected", [
+    ({"writes_graph": ["record"]}, True),
+    ({"writes_graph": []}, False),
+    ({"writes_graph": ["record"], "capabilities": {"deny": ["vinc.write"]}}, False),
+    ({"writes_graph": ["record"], "capabilities": {"allow": ["github.*"]}}, False),
+    ({"writes_graph": ["record"], "capabilities": {"allow": ["vinc.*"]}}, True),
+])
+def test_a_role_may_write_only_when_it_writes_the_graph_and_no_capability_closes_it(props, expected):
+    pytest.importorskip("vinc_client")
+    assert full_arm.may_write({"id": "concept:agent-x", "props": props}) is expected

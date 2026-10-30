@@ -10,6 +10,9 @@ F 는 어댑터가 실제로 하는 일을 한 자리에 모은다.
 | 출력 게이트 | 마지막 답을 역할의 출력 게이트에 넣는다. block 이면 내보내지 않고, interrupt 면 기다리는 결정을 붙여 내보낸다 | ``F-outgate`` |
 | 근거 계약 | 시스템 지시와 블록의 ``Sources:`` 계약 | ``F-sources`` |
 
+``F-roletools`` 는 도구 전체 대신 읽기 도구 셋에 역할이 쓸 수 있을 때만 쓰기 도구 둘을 더한다(VIN-855:
+"읽기는 늘, 쓰기는 역할이 허락할 때만" 기본 표면). 역할이 쓸 수 있는가는 :func:`may_write` 가 정한다.
+
 두 부품을 함께 뺀 비교군도 있다. ``F-context-toolpolicy`` 는 역할 맥락이 없을 때 도구 정책이 유일한
 방어선인지를 ``F-context`` 와 견준다. 맥락이 닫힌 도구를 이미 막는 모델에서는 ``F`` 와 ``F-toolpolicy``
 가 갈리지 않기 때문이다(VIN-854).
@@ -31,7 +34,9 @@ from rag_eval.agent_tasks import checkers
 from rag_eval.agent_tasks import role_context as role_mod
 
 FULL_ARM = "F"
-ABLATIONS = ("context", "tools", "toolpolicy", "outgate", "sources")
+ABLATIONS = ("context", "tools", "toolpolicy", "outgate", "sources", "roletools")
+#: ``F-roletools`` 가 쓸 수 있는 역할에게 더하는 쓰기 도구. 지우기·병합은 넣지 않는다.
+WRITE_TOOLS = ("vinc_ingest", "vinc_doc_put")
 #: 두 부품을 함께 뺀 비교군. 부품 이름을 하이픈으로 잇는다.
 PAIRED = ("context-toolpolicy",)
 FULL_ARMS = (FULL_ARM,) + tuple(f"{FULL_ARM}-{a}" for a in ABLATIONS + PAIRED)
@@ -55,6 +60,17 @@ def parts(arm: str) -> frozenset[str]:
     """F 비교군이 뺀 부품 전부. ``F`` 는 빈 집합."""
     part = removed(arm)
     return frozenset(part.split("-")) if part else frozenset()
+
+
+def may_write(contract: dict) -> bool:
+    """역할이 그래프에 쓸 수 있는가: ``writes_graph`` 가 비지 않았고 능력이 ``vinc.write`` 를 막지 않는다."""
+    from vinc_client.role_policy import RolePolicy   # noqa: PLC0415
+    props = contract.get("props") or {}
+    if not props.get("writes_graph"):
+        return False
+    run = RolePolicy.from_contract(contract)
+    verdict = run.capability("vinc.write")
+    return verdict != "deny" and not (run.capabilities.get("allow") and verdict != "allow")
 
 
 def strip_sources(text: str) -> str:

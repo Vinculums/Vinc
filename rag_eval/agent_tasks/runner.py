@@ -339,7 +339,8 @@ def run(a) -> int:
                     tools = tools + task.stage_specs()
                 surface = arms_mod.Surface(arm=arm, mcp=mcp, vinc=vinc, door=door,
                                            context=context, tools=tools,
-                                           stage=task.stage_results())
+                                           stage=task.stage_results(),
+                                           dry_writes=_dry_writes(task, mcp))
                 rows.append(_one(a, header, ts, task, host, arm, r, surface, model, ctx, traces,
                                  compiled, reuse=reuse))
                 if not a.quiet:
@@ -368,6 +369,11 @@ def open_closed_tools(todo, full) -> list[tuple[str, str]]:
         out.extend((task.id, name) for c in task.checks if c["type"] == "no_tool_called"
                    for name in c["names"] if policy.allows(name))
     return out
+
+
+def _dry_writes(task, mcp) -> frozenset:
+    """쓰기 과제에서 실행하지 않고 기록만 할 도구: MCP 가 읽기 전용이라 하지 않은 도구 전부."""
+    return mcp.mutating if task.family in tasks_mod.WRITE_FAMILIES else frozenset()
 
 
 #: 역할 맥락이 스토어 때문에 컴파일되지 않는 오류: 필수 읽기가 없다, 역할 노드 자체가 없다.
@@ -405,15 +411,23 @@ def _one_full(a, header, ts, task, host, arm, r, mcp, vinc, a2_tools, full, mode
     if "sources" in gone:
         system = full_mod.system_without_sources(system)
         context = full_mod.strip_sources(context) if context else context
-    tools = ([t for t in a2_tools if t["name"] in role_mod.READ_TOOLS] if "tools" in gone
-             else list(a2_tools))
+    if "tools" in gone:
+        tools = [t for t in a2_tools if t["name"] in role_mod.READ_TOOLS]
+    elif "roletools" in gone:
+        keep = set(role_mod.READ_TOOLS)
+        if full_mod.may_write(full.contract(role)):
+            keep |= set(full_mod.WRITE_TOOLS)
+        tools = [t for t in a2_tools if t["name"] in keep]
+    else:
+        tools = list(a2_tools)
     if task.stage:
         tools = tools + task.stage_specs()
     policy = None if "toolpolicy" in gone else full.tool_policy(role)
     if policy is not None:
         tools = policy.allowed(tools)
     surface = arms_mod.Surface(arm=arm, mcp=mcp, vinc=vinc, context=context, tools=tools,
-                               stage=task.stage_results(), tool_policy=policy)
+                               stage=task.stage_results(), tool_policy=policy,
+                               dry_writes=_dry_writes(task, mcp))
     gate = None if "outgate" in gone else full.gate(role)
     return _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces, compiled,
                 system=system, gate=gate, role=role, reuse=reuse)
@@ -453,7 +467,8 @@ def _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces, compile
         trace.add({**gate_event, "delivered": delivered})
     path = trace.write(traces)
     blocked = compiled is not None and bool(compiled.error)
-    tool_events = [{"name": e["name"], "kind": e["kind"], "is_error": e.get("is_error", False)}
+    tool_events = [{"name": e["name"], "kind": e["kind"], "is_error": e.get("is_error", False),
+                    **({"args": e.get("args")} if e["kind"] == "dry_write" else {})}
                    for e in trace.events if e["t"] == "tool"]
     grade = checkers.grade(task, delivered, ctx,
                            model_failed=bool(res.model_error or host_error or blocked),
