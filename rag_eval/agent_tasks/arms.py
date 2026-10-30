@@ -62,6 +62,9 @@ class Surface:
     #: F 비교군의 역할 도구 정책(`vinc_client.RoleToolPolicy`). 막힌 도구는 이미 목록에서 빠졌고,
     #: 승인 도구를 부르면 사람을 찾는 문장으로 답한다(도구는 실행하지 않는다).
     tool_policy: object | None = None
+    #: 쓰기 과제(``write-back``)에서 실행하지 않고 인자만 기록할 도구. 쓰기가 고정 스토어 사본에 닿으면
+    #: 앞 실행이 쓴 노드를 다음 비교군이 보게 되어 실행끼리 섞인다.
+    dry_writes: frozenset = frozenset()
 
 
 class McpClient:
@@ -72,6 +75,8 @@ class McpClient:
         self.key, self.timeout = key, timeout
         self._id = 0
         self._exists: dict[str, bool] = {}
+        #: ``tools/list`` 의 주석이 읽기 전용이 아니라고 한 도구. :meth:`list_tools` 가 채운다.
+        self.mutating: frozenset[str] = frozenset()
 
     def _rpc(self, method: str, params: dict | None = None) -> dict:
         self._id += 1
@@ -92,6 +97,8 @@ class McpClient:
         out = self._rpc("tools/list")
         if "error" in out:
             raise RuntimeError(f"tools/list failed: {out['error']}")
+        self.mutating = frozenset(t["name"] for t in out["result"]["tools"]
+                                  if (t.get("annotations") or {}).get("readOnlyHint") is not True)
         return [{"name": t["name"], "description": t.get("description") or "",
                  "parameters": t.get("inputSchema") or {"type": "object", "properties": {}}}
                 for t in out["result"]["tools"]]

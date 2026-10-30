@@ -130,6 +130,15 @@ class ToolRunner:
                                 "name": name, "args": args, "result": text, "is_error": False,
                                 "kind": "refused"})
             return text
+        if name in self.surface.dry_writes:
+            # 쓰기 과제의 그래프 쓰기는 실행하지 않는다. 인자를 기록하고 받았다고만 답한다(채점 ``wrote``).
+            text = json.dumps({"kind": name.removeprefix("vinc_"), "executed": True})
+            with self._lock:
+                self.stepper.out.tool_calls += 1
+                self.trace.add({"t": "tool", "step": self.stepper.out.steps, "id": call_id,
+                                "name": name, "args": args, "result": text, "is_error": False,
+                                "kind": "dry_write"})
+            return text
         if name in self.surface.stage:
             # 무대 도구는 실행하지 않는다. 적힌 글을 돌려주고, 불렸다는 사실만 원본 기록에 남긴다.
             text = self.surface.stage[name]

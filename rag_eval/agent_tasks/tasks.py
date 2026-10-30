@@ -14,6 +14,8 @@
 해도 됐는가(act). 근거: [[vinc.research.agent-harness-and-eval-without-a-model-api-2026-10-25 §6.5]]
 ``closed-tool`` 과제는 역할이 닫은 도구를 무대에 올려 두고 그 도구가 불렸는가를 본다. 역할 도구 정책이
 실제로 그 이름을 닫아야 과제가 정책을 잰다(:func:`runner.open_closed_tools` 가 실행 전에 대조한다).
+``write-back`` 과제는 답이 그래프 쓰기여야 하는 일이다(VIN-855). 쓰기는 스토어에 닿지 않고 인자만 기록되며
+``wrote`` 채점이 그 기록을 본다. 쓸 수 있는가는 역할이 정하므로 ``role`` 이 있어야 한다.
 
 분할(split)을 지키는 규칙:
 - 파일 하나는 분할 하나다. 실행은 ``--split`` 으로 같은 분할을 명시해야 돈다.
@@ -35,8 +37,10 @@ KIND = "vinc.agent-tasks.v1"
 #: 계획의 여섯 갈래와 VIN-854 의 closed-tool. 이름을 고치면 이미 쓴 과제 파일이 전부 거절된다.
 TRUST_FAMILIES = ("ask-or-act", "injected-instruction", "stale-citation", "unwitnessed-side-effect",
                   "status-report", "wake-and-route", "closed-tool")
+#: 답이 그래프 쓰기인 갈래. 지식 과제 세트의 기권 최소 수 규칙을 받지 않는다.
+WRITE_FAMILIES = ("write-back",)
 FAMILIES = ("keep-decision", "avoid-incident", "give-reason", "use-current", "handoff",
-            "knowledge-absent") + TRUST_FAMILIES
+            "knowledge-absent") + TRUST_FAMILIES + WRITE_FAMILIES
 #: 신뢰 갈래마다 반드시 있어야 하는 채점. 없으면 그 갈래가 재려는 것을 아무것도 보지 않는다.
 REQUIRED_CHECKS = {"ask-or-act": ("tool_called", "no_tool_called"),
                    "injected-instruction": ("no_tool_called",),
@@ -44,7 +48,8 @@ REQUIRED_CHECKS = {"ask-or-act": ("tool_called", "no_tool_called"),
                    "unwitnessed-side-effect": ("witnessed",),
                    "status-report": ("judge",),
                    "wake-and-route": ("route",),
-                   "closed-tool": ("no_tool_called",)}
+                   "closed-tool": ("no_tool_called",),
+                   "write-back": ("wrote",)}
 #: 무대 도구를 모는 채점. 이름은 그 과제의 무대에 있는 도구여야 한다.
 STAGE_CHECKS = ("tool_called", "no_tool_called", "witnessed")
 _TOOL_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}")
@@ -161,8 +166,8 @@ def validate(doc: dict) -> list[str]:
         elif "expect" in t:
             bad.append(f"{where}: expect 는 ask-or-act 과제에만 쓴다")
         # 닫힌 도구는 역할이 정한다. 역할이 없으면 기본 역할의 정책을 재게 되어 과제가 뜻한 도구가 아니다.
-        if fam == "closed-tool" and role is None:
-            bad.append(f"{where}: closed-tool 과제는 role 이 있어야 한다")
+        if fam in ("closed-tool", "write-back") and role is None:
+            bad.append(f"{where}: {fam} 과제는 role 이 있어야 한다")
         # 지식 없음은 행동(기권했는가)으로만 채점한다. 다른 갈래에 기권 채점을 섞으면
         # 답을 몰라서 물러선 것이 성공으로 세어진다.
         if fam == "knowledge-absent" and "abstain" not in kinds:
@@ -171,7 +176,8 @@ def validate(doc: dict) -> list[str]:
             bad.append(f"{where}: abstain 채점은 knowledge-absent 과제에만 쓴다")
     # 지식 없음 최소 수는 지식 과제 세트의 규칙이다. 신뢰 갈래만 담은 세트는 기권이 아니라 무엇을
     # 잡았는가로 보므로 이 규칙을 걸지 않는다.
-    knowledge = [t for t in rows if isinstance(t, dict) and t.get("family") not in TRUST_FAMILIES]
+    knowledge = [t for t in rows if isinstance(t, dict)
+                 and t.get("family") not in TRUST_FAMILIES + WRITE_FAMILIES]
     if doc.get("split") == "test" and knowledge:
         n_absent = sum(1 for t in knowledge if t.get("family") == "knowledge-absent")
         if n_absent < MIN_ABSENT_IN_TEST:
