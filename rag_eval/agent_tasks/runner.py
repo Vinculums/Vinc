@@ -289,6 +289,18 @@ def run(a) -> int:
                 header["arms"]["f"] = {**full.settings(),
                                        "tools_offered": len(a2_tools),
                                        "f_tools_read_tools": [t["name"] for t in f_read]}
+            # 역할이 스토어에 없는 문서를 필수로 읽으면 그 역할의 과제는 맥락이 있는 비교군에서만 늘 진다.
+            # 비교가 한쪽으로 기울므로 돌리기 전에 거부하거나, 허락받으면 모든 비교군에서 똑같이 뺀다.
+            unresolved = unresolved_roles(todo, role_ctx, full, want_arms)
+            if unresolved:
+                listed = ", ".join(f"{t} ({r})" for t, r in sorted(unresolved.items())[:5])
+                if not a.exclude_unresolved_roles:
+                    raise Refused(f"역할 맥락을 만들 수 없는 과제 {len(unresolved)}개: {listed}. "
+                                  "--exclude-unresolved-roles 로 모든 비교군에서 뺄 수 있다")
+                todo = [t for t in todo if t.id not in unresolved]
+                header["excluded"] = {"reason": "prefetch_spec_unresolved: the role's required "
+                                                "reading is not in this store",
+                                      "tasks": dict(sorted(unresolved.items()))}
             judge = checkers.fake_judge if a.model == "fake" else model_judge(judge_model)
             ctx = checkers.Context(resolve=mcp.exists, judge=judge)
             plan = [(r, task, host, arm) for r in range(1, a.runs + 1) for task in todo
@@ -333,6 +345,26 @@ def run(a) -> int:
         for f in work.glob("*.db*"):
             f.unlink(missing_ok=True)
     return _finish(a, out, layout, header, rows, ts)
+
+
+def unresolved_roles(todo, role_ctx, full, want_arms) -> dict[str, str]:
+    """맥락이 있는 비교군에서 역할의 필수 읽기를 스토어가 갖지 않아 컴파일되지 않는 과제 → 그 역할.
+
+    컴파일은 과제마다 캐시되므로 여기서 먼저 해 두어도 실행 중에 다시 하지 않는다.
+    """
+    checks = []
+    if role_ctx is not None:
+        checks.append(lambda t: (role_ctx.role, role_ctx.compile(t.prompt)))
+    if full is not None and any(full_mod.removed(x) != "context"
+                                for x in want_arms if x in full_mod.FULL_ARMS):
+        checks.append(lambda t: (full.role_of(t), full.compile(full.role_of(t), t.prompt)))
+    out: dict[str, str] = {}
+    for task in todo:
+        for check in checks:
+            role, compiled = check(task)
+            if compiled.error == "prefetch_spec_unresolved":
+                out[task.id] = role
+    return out
 
 
 def _one_full(a, header, ts, task, host, arm, r, mcp, vinc, a2_tools, full, model, ctx,
