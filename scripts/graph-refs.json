@@ -1019,6 +1019,7 @@
     "record:roster-probe-test-fails-inside-a-nested-dev-worktree-2026-09-13",
     "record:rrf-k-20-reproduces-on-the-human-control-2026-09-08",
     "record:rrf-k-and-weight-sweep-on-full176-2026-09-08",
+    "record:seventy-four-documents-had-no-mirror-because-a-doc-put-without-a-topic-creates-none-2026-10-31",
     "record:shrinker-marker-overshoots-the-budget-2026-09-05",
     "record:sidecar-health-wait-deadline-restored-2026-10-09",
     "record:subject-path-carries-no-repository-so-two-repos-can-collide",
