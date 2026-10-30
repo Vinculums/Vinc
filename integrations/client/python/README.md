@@ -90,7 +90,8 @@ Module exports, described in the sections below:
 
 | Export | Parameters |
 |---|---|
-| `OutputGate` | `props`, `extra_gates`, `self_authored`; methods `evaluate(answer, proofs, person_only_requests, phase, manifest, resolved_sources, repositories)` and `require_pass(answer, **kwargs)`, which takes the same keywords and raises `OutputGateStopped` on block or interrupt |
+| `OutputGate` | `props`, `extra_gates`, `self_authored`; methods `evaluate(answer, proofs, person_only_requests, phase, manifest, resolved_sources, repositories)`, `deliver(answer, **kwargs)` and `require_pass(answer, **kwargs)`, which take the same keywords. `deliver` returns a `Delivery(text, result)`: the answer unchanged on pass, the answer with its pending person-only decisions listed under `PENDING_HEADER` on an interrupt in the `output` phase, and it raises `OutputGateStopped` on block or on an interrupt in the `handoff` phase. `require_pass` raises on block or interrupt |
+| `with_pending`, `delivered_result` | `with_pending(answer, result, person_only)` adds the pending decisions above the final `Sources:` line; `delivered_result(text)` reads them back as an `interrupt` `GateResult` (or `pass`) for a host that records the run |
 | `GateResult` | what `evaluate` returns: `verdict`, `failed_checks`, `person_only_actions`, `evidence_sentences`; `as_dict()` |
 | `OutputGateStopped` | raised by `require_pass`; `result` holds the `GateResult` |
 | `ToolProof` | `action`, `target`, `call_id`, `success`, `claim=""`: a host observed tool result for `evaluate` |
@@ -630,7 +631,10 @@ sources/results block; ordinary text answers do not require a handoff manifest.
 Results include check IDs, pending action IDs and bounded matching evidence
 sentences. Treat those excerpts as private model output; do not log or copy them
 across spaces automatically. `require_pass` raises `OutputGateStopped` on block
-or interrupt, with no model output in its exception message.
+or interrupt, with no model output in its exception message. `deliver` is the
+rule the adapters use for an answer to a person: an interrupt means the reader is
+the one who decides, so the answer goes out with the decision named; a block, or
+an interrupt in the `handoff` phase, still raises.
 
 These checks implement an enumerated subset of `never`; its preserved prose
 continues to bind the operator. There are no model calls or graph writes.

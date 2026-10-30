@@ -249,7 +249,9 @@ middleware = VincOutputGateMiddleware(gate, evidence=host_evidence_for_this_run)
 ```
 
 The middleware checks the final response outside the model and raises
-`OutputGateStopped` on block or pending person approval. Configure it outermost
+`OutputGateStopped` on block. A response that needs a person's decision is
+returned with that decision listed under `PENDING_HEADER`; pass
+`on_interrupt="stop"` to raise instead. Configure it outermost
 if other middleware changes responses. Streaming is rejected before the agent
 runs, so unchecked tokens cannot leave through this middleware. A host callback
 supplies actual execution evidence; structured response person-only requests are

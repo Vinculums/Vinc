@@ -31,7 +31,7 @@ from crewai.tools import BaseTool  # noqa: E402
 from pydantic import Field  # noqa: E402
 
 from vinc import AsyncVinc, Vinc  # noqa: E402
-from vinc.sdk import (ApprovalDecision, OutputGate, OutputGateStopped, RoleOutput,  # noqa: E402
+from vinc.sdk import (PENDING_HEADER, ApprovalDecision, OutputGate, OutputGateStopped, RoleOutput,  # noqa: E402
                       VincInvalidArgument, VincNotFound, VincRoleChanged, build_package_fragment)
 from vinc.sdk.tools import BriefArgs, SearchArgs, cap_message  # noqa: E402
 from vinc.integrations.crewai import (VincAgent, VincApprovalRejected, VincPersonOnlyInput,  # noqa: E402
@@ -357,12 +357,19 @@ def test_read_tools_use_the_shared_schemas_and_sentences():
     (RoleOutput(text="Ready.", person_only_requests=[{"action": "merge", "reason": "r"}]).model_dump_json(),
      "interrupt"),
 ])
-def test_the_guardrail_releases_only_a_passing_output_and_never_retries(answer, verdict):
+@pytest.mark.parametrize("on_interrupt", ["deliver", "stop"])
+def test_the_guardrail_releases_only_a_passing_output_and_never_retries(answer, verdict, on_interrupt):
     llm = ScriptedLLM(model="scripted", script=[answer, answer])
     agent = create_agent(client([]), ROLE, llm=llm)
-    guardrail = create_output_guardrail(OutputGate(PROPS))
+    guardrail = create_output_guardrail(OutputGate(PROPS), on_interrupt=on_interrupt)
+    structured = answer.lstrip().startswith("{")
     if verdict == "pass":
         assert run_crew(agent, guardrail=guardrail)[0].raw == answer
+    elif verdict == "interrupt" and on_interrupt == "deliver" and not structured:
+        # 글로 된 답은 나가고 기다리는 결정이 Sources 줄 위에 붙는다.
+        raw = run_crew(agent, guardrail=guardrail)[0].raw
+        assert raw.startswith(answer.split("\nSources:")[0]) and PENDING_HEADER in raw
+        assert raw.rstrip().endswith("Sources: none")
     else:
         with pytest.raises(OutputGateStopped) as exc:
             run_crew(agent, guardrail=guardrail)

@@ -54,7 +54,7 @@ import vinc.integrations.agent_framework as maf  # noqa: E402
 import vinc.integrations.crewai as cr  # noqa: E402
 import vinc.integrations.langgraph as lg  # noqa: E402
 from vinc import AsyncVinc, Vinc  # noqa: E402
-from vinc.sdk import (ApprovalDecision, OutputGate, OutputGateStopped, RoleOutput,  # noqa: E402
+from vinc.sdk import (PENDING_HEADER, ApprovalDecision, OutputGate, OutputGateStopped, RoleOutput,  # noqa: E402
                       VincNotFound, VincRoleChanged)
 from vinc.sdk.tools import cap_message  # noqa: E402
 
@@ -573,28 +573,43 @@ def test_write_helpers_send_the_same_bodies_in_three_adapters():
     assert len([row for row in cr_seen if row[0] == "POST"]) == 3
 
 
+@pytest.mark.parametrize("on_interrupt", ["deliver", "stop"])
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c["id"])
-def test_same_output_gate_verdict_in_three_adapters(case):
+def test_same_output_gate_verdict_in_three_adapters(case, on_interrupt):
     gate = OutputGate(PROFILES[case["role_id"]], self_authored=case["self_authored"])
     answer = case["answer"]
 
     def outcome(call):
+        """(판정, 사람에게 나간 글). 멈추면 글은 None."""
         try:
-            call()
-            return "pass"
+            text = call()
         except OutputGateStopped as exc:
-            return exc.result.verdict
+            return exc.result.verdict, None
+        return ("interrupt" if PENDING_HEADER in text else "pass"), text
 
-    middleware = lg.create_output_gate_middleware(gate)
-    lg_verdict = outcome(lambda: middleware.after_model({"messages": [AIMessage(answer)]}, None))
+    def lg_run():
+        update = lg.create_output_gate_middleware(gate, on_interrupt=on_interrupt).after_model(
+            {"messages": [AIMessage(answer, id="m1")]}, None)
+        return update["messages"][0].content if update else answer
     context = AgentContext(agent=None, messages=[])
 
     async def produce():
         context.result = AgentResponse(messages=[Message("assistant", [answer])])
-    ma_verdict = outcome(lambda: asyncio.run(maf.VincOutputGateMiddleware(gate).process(context, produce)))
-    guardrail = cr.create_output_guardrail(gate)
-    cr_verdict = outcome(lambda: guardrail(TaskOutput(description=TASK, raw=answer, agent="x")))
-    assert lg_verdict == ma_verdict == cr_verdict == case["expected"]
+
+    def ma_run():
+        asyncio.run(maf.VincOutputGateMiddleware(gate, on_interrupt=on_interrupt).process(context, produce))
+        return context.result.text
+
+    def cr_run():
+        _, result = cr.create_output_guardrail(gate, on_interrupt=on_interrupt)(
+            TaskOutput(description=TASK, raw=answer, agent="x"))
+        return result if isinstance(result, str) else result.raw
+    got = [outcome(lg_run), outcome(ma_run), outcome(cr_run)]
+    assert got[0] == got[1] == got[2]
+    assert got[0][0] == case["expected"]
+    # 사람에게 가는 답은 막히지 않고 결정이 붙어 나간다. 멈춤 방식에서는 예전처럼 멈춘다.
+    assert (got[0][1] is not None) == (case["expected"] == "pass" or (
+        case["expected"] == "interrupt" and on_interrupt == "deliver"))
 
 
 class ApprovalState(TypedDict, total=False):

@@ -280,7 +280,10 @@ middleware = create_output_gate_middleware(gate, evidence=host_evidence_for_this
 ```
 
 Intermediate AI tool-call messages continue to the tool loop. The final response
-is checked outside the model; block and interrupt raise `OutputGateStopped`.
+is checked outside the model. A block raises `OutputGateStopped`. An interrupt
+replaces the final message with the same answer plus the pending person-only
+decisions under `PENDING_HEADER`, because the person reading it decides; pass
+`on_interrupt="stop"` to raise instead.
 This does not authorize or undo tool execution. Do not expose unchecked model
 stream events to an end user.
 

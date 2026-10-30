@@ -114,6 +114,16 @@ def test_a_failing_gate_blocks_the_answer_and_the_run_is_recorded_blocked():
     assert hub.posts()[0]["nodes"][0]["props"]["outcome"] == "blocked"
 
 
+def test_a_hand_off_reaches_the_person_with_the_decision_named_and_the_run_waits():
+    hub = Hub()
+    agent = build_agent("dev-core", ScriptedModel(reply="PR #9 is green. Please merge it."),
+                        client=sync_client(hub))
+    run = agent.invoke("Ship it.", run_id="run-3")
+    assert run.status == "waiting" and run.gate.person_only_actions == ("merge",)
+    assert run.output.startswith("PR #9 is green. Please merge it.") and "- merge:" in run.output
+    assert hub.posts()[0]["nodes"][0]["props"]["outcome"] == "waiting"
+
+
 def test_a_person_only_stop_ends_the_run_waiting_and_is_recorded():
     hub = Hub()
     agent = build_agent("dev-core", ScriptedModel(), client=sync_client(hub))

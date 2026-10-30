@@ -17,8 +17,8 @@ from .helpers import (aget_vinc_context, arecord_episode, build_system_message, 
 from .review import arun_review, run_review  # noqa: E402
 from .approval import create_person_only_node  # noqa: E402
 from vinc_client import ReviewOutput, UnparsedReview  # noqa: E402
-from .output_gate import (create_output_gate_middleware, evaluate_output_node,  # noqa: E402
-                          require_output_pass)
+from .output_gate import (create_output_gate_middleware, deliver_output,  # noqa: E402
+                          evaluate_output_node, require_output_pass)
 
 
 def __getattr__(name: str) -> Any:
@@ -42,6 +42,6 @@ __all__ = ["__version__", "get_vinc_context", "aget_vinc_context", "build_system
            "run_review", "arun_review", "ReviewOutput", "UnparsedReview",
            "create_person_only_node",
            "VincContextMiddleware", "create_output_gate_middleware", "evaluate_output_node",
-           "require_output_pass", "PackageProvider", "get_vinc_package_context",
+           "require_output_pass", "deliver_output", "PackageProvider", "get_vinc_package_context",
            "aget_vinc_package_context", "write_package", "awrite_package", "prefetch", "aprefetch",
            "build_agent", "abuild_agent", "VincAgent"]

@@ -391,8 +391,78 @@ class OutputGate:
         return GateResult(verdict, tuple(sorted(failed | interrupts)), tuple(sorted(pending)),
                           tuple(sorted(evidence)[:20]))
 
+    @property
+    def person_only(self) -> list[dict[str, Any]]:
+        """A copy of the contract's person-only actions and their reasons."""
+        person = self._props.get("person_only")
+        return copy.deepcopy(person) if isinstance(person, list) else []
+
     def require_pass(self, answer: str, **kwargs: Any) -> GateResult:
+        """Strict: anything but ``pass`` raises, an interrupt included."""
         result = self.evaluate(answer, **kwargs)
         if result.verdict != "pass":
             raise OutputGateStopped(result)
         return result
+
+    def deliver(self, answer: str, **kwargs: Any) -> "Delivery":
+        """What reaches the person: the answer, with any pending person-only decision named.
+
+        ``pass`` returns the answer unchanged. An ``interrupt`` in the ``output`` phase returns
+        the answer with :func:`with_pending` added, because the person reading it is the one
+        who decides. ``block``, and an interrupt in the ``handoff`` phase (the reader is another
+        agent, which must not act on it), raise :class:`OutputGateStopped` as before.
+        """
+        result = self.evaluate(answer, **kwargs)
+        if result.verdict == "pass":
+            return Delivery(answer, result)
+        if result.verdict == "interrupt" and kwargs.get("phase", "output") == "output":
+            return Delivery(with_pending(answer, result, self.person_only), result)
+        raise OutputGateStopped(result)
+
+
+#: 사람의 결정을 기다리는 일 목록의 머리줄. :func:`delivered_result` 가 이 줄로 알아본다.
+PENDING_HEADER = "Waiting on your decision before anyone acts on this:"
+
+
+@dataclass(frozen=True)
+class Delivery:
+    """An answer cleared for the person, and the gate result it carries."""
+    text: str
+    result: GateResult
+
+
+def with_pending(answer: str, result: GateResult, person_only: Iterable[Mapping[str, Any]]) -> str:
+    """The answer with its pending person-only decisions listed above the final ``Sources:`` line.
+
+    Each action is named with the reason from the role contract. ``Sources:`` stays the last line
+    so the citation contract still holds.
+    """
+    reasons = {p.get("action"): p.get("reason") for p in person_only if isinstance(p, Mapping)}
+    actions = result.person_only_actions or ("person_only",)
+    note = "\n".join([PENDING_HEADER] + [
+        f"- {a}: {reasons[a]}" if reasons.get(a) else f"- {a}" for a in actions])
+    lines = answer.rstrip("\n").split("\n")
+    last = next((i for i in range(len(lines) - 1, -1, -1) if lines[i].strip()), None)
+    if last is not None and _SOURCES.match(lines[last]):
+        return "\n".join(lines[:last]).rstrip("\n") + "\n\n" + note + "\n" + "\n".join(lines[last:])
+    return answer.rstrip("\n") + "\n\n" + note
+
+
+def delivered_result(text: str | None) -> GateResult:
+    """The verdict a delivered answer carries: ``interrupt`` with its actions when it lists
+    pending decisions under :data:`PENDING_HEADER`, else ``pass``.
+
+    For hosts that record runs after a graph returned normally. A model that writes the header
+    itself only makes its run wait for a person, never pass a check.
+    """
+    lines = (text or "").split("\n")
+    if PENDING_HEADER not in lines:
+        return GateResult("pass")
+    start = lines.index(PENDING_HEADER) + 1
+    actions = []
+    for line in lines[start:]:
+        match = re.match(r"^- ([a-z_]+)(?::|$)", line)
+        if not match:
+            break
+        actions.append(match.group(1))
+    return GateResult("interrupt", ("person_only",), tuple(a for a in actions if a != "person_only"))

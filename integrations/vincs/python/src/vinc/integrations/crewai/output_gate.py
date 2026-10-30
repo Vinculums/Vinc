@@ -27,13 +27,18 @@ def _requests(output: TaskOutput) -> Any:
 
 
 def create_output_guardrail(gate: OutputGate, *,
-                            evidence: Callable[[TaskOutput], Mapping[str, Any]] | None = None
+                            evidence: Callable[[TaskOutput], Mapping[str, Any]] | None = None,
+                            on_interrupt: str = "deliver"
                             ) -> Callable[[TaskOutput], tuple[bool, Any]]:
     """A ``Task(guardrail=...)`` that lets a task's output out only when ``gate`` passes it.
 
-    A blocked output, or one that needs a person's decision, raises ``OutputGateStopped``
-    instead of returning ``(False, reason)``: CrewAI would send the reason back to the model
-    and retry, and the gate is a barrier, not feedback. The guardrail runs after the agent
+    A blocked output raises ``OutputGateStopped`` instead of returning ``(False, reason)``:
+    CrewAI would send the reason back to the model and retry, and the gate is a barrier, not
+    feedback. A text output that needs a person's decision (interrupt) is delivered with that
+    decision named under ``PENDING_HEADER`` (``OutputGate.deliver``), because the person
+    reading it is the one who decides; ``on_interrupt="stop"`` raises instead, as before. A
+    structured output that carries ``person_only_requests`` still raises, because a note
+    cannot be added to its JSON; it goes through :class:`VincPersonOnlyInput`. The guardrail runs after the agent
     has finished, outside its retry loop, so the exception reaches the caller of
     ``crew.kickoff()``. A passing output is returned unchanged.
 
@@ -44,12 +49,18 @@ def create_output_guardrail(gate: OutputGate, *,
     """
     # 안쪽 함수에는 반환 주석을 달지 않는다. CrewAI 가 서명을 검사하는데 이 모듈의 주석은 문자열이라
     # tuple[bool, Any] 로 읽히지 않고 거절된다.
+    if on_interrupt not in {"deliver", "stop"}:
+        raise ValueError("on_interrupt is 'deliver' or 'stop'")
+
     def guardrail(output):  # type: ignore[no-untyped-def]
         facts = dict(evidence(output)) if evidence else {}
         requests = _requests(output)
         if requests is not None:
             facts["person_only_requests"] = requests
-        gate.require_pass(output.raw, **facts)
-        return True, output
+        if on_interrupt == "stop" or requests is not None:
+            gate.require_pass(output.raw, **facts)
+            return True, output
+        delivery = gate.deliver(output.raw, **facts)
+        return True, (delivery.text if delivery.text != output.raw else output)
 
     return guardrail
