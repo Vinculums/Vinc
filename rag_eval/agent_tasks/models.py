@@ -30,6 +30,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -129,6 +130,29 @@ class FakeModel:
                     model_version="fake-deterministic-1")
 
 
+#: OpenAI 호환 함수 호출은 도구 스키마의 최상위에 이 키들이 있으면 400(invalid_function_parameters)으로 거절한다.
+#: 허브의 ``vinc_edges`` 가 최상위 ``anyOf`` 를 쓰므로 그대로 보내면 도구 40개를 쓰는 비교군이 모두 죽는다.
+_TOP_LEVEL_COMBINATORS = ("anyOf", "oneOf", "allOf", "enum", "const", "not")
+#: 이 상태로 끝난 걸음은 잠시 뒤 다시 보낸다. ``Retry-After`` 가 있으면 따르되 이 초를 넘기지 않는다.
+_RETRY_STATUS = (429, 500, 502, 503, 504)
+_RETRY_TRIES = 6
+_RETRY_CAP_SECONDS = 60.0
+
+
+def _wire_parameters(schema: dict | None) -> dict:
+    """도구 인자 스키마를 OpenAI 가 받는 꼴로 줄인다. 최상위 조합자만 떼고 ``properties`` 는 그대로 둔다.
+
+    모든 비교군이 같은 변환을 거치므로 어느 쪽도 유리하지 않다. "둘 중 하나는 있어야 한다" 같은 제약은
+    스키마에서 사라지고, 도구 설명과 서버의 검증이 대신 맡는다.
+    """
+    if not schema:
+        return {"type": "object", "properties": {}}
+    out = {k: v for k, v in schema.items() if k not in _TOP_LEVEL_COMBINATORS}
+    out["type"] = "object"
+    out.setdefault("properties", {})
+    return out
+
+
 class OpenAIChatModel:
     """OpenAI 호환 chat completions(도구 호출 포함). ``azure:<배포>`` 또는 ``openai:<모델>``.
 
@@ -174,6 +198,17 @@ class OpenAIChatModel:
             return None
         return round(tokens_in / 1e6 * self.prices[0] + tokens_out / 1e6 * self.prices[1], 8)
 
+    _sleep = staticmethod(time.sleep)
+
+    @staticmethod
+    def _backoff(exc: urllib.error.HTTPError, attempt: int) -> float:
+        """다음 시도까지 기다릴 초. 서버가 ``Retry-After`` 를 주면 그것을, 아니면 2의 거듭제곱을 쓴다."""
+        try:
+            wait = float((exc.headers or {}).get("Retry-After") or "")
+        except (TypeError, ValueError):
+            wait = 2.0 ** (attempt + 1)
+        return max(0.0, min(wait, _RETRY_CAP_SECONDS))
+
     def _post(self, url: str, headers: dict, body: dict) -> dict:
         req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"),
                                      headers=headers, method="POST")
@@ -208,15 +243,21 @@ class OpenAIChatModel:
         if tools:
             body["tools"] = [{"type": "function", "function": {
                 "name": t["name"], "description": t.get("description") or "",
-                "parameters": t.get("parameters") or {"type": "object", "properties": {}}}}
+                "parameters": _wire_parameters(t.get("parameters"))}}
                 for t in tools]
-        try:
-            data = self._transport(self.url, headers, body)
-        except urllib.error.HTTPError as exc:
-            # 응답 본문과 헤더는 싣지 않는다(키가 비칠 수 있다). 상태 숫자만.
-            return Turn(text="", error=f"http {exc.code}")
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
-            return Turn(text="", error=type(exc).__name__)
+        data = None
+        for attempt in range(_RETRY_TRIES):
+            try:
+                data = self._transport(self.url, headers, body)
+                break
+            except urllib.error.HTTPError as exc:
+                if exc.code in _RETRY_STATUS and attempt + 1 < _RETRY_TRIES:
+                    self._sleep(self._backoff(exc, attempt))
+                    continue
+                # 응답 본문과 헤더는 싣지 않는다(키가 비칠 수 있다). 상태 숫자만.
+                return Turn(text="", error=f"http {exc.code}")
+            except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+                return Turn(text="", error=type(exc).__name__)
         choice = (data.get("choices") or [{}])[0].get("message") or {}
         calls = []
         for c in choice.get("tool_calls") or []:
