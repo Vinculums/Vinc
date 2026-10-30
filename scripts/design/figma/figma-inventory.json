@@ -3,12 +3,12 @@
   "source": "figma",
   "file": "WUXLeDDNBqih2KTZOz9wCX",
   "exported": "2026-10-28",
-  "how": "use_figma, the per-page JS in scripts/figma_inventory.py's docstring. One call per page: the Plugin API allows one page switch per call.",
-  "scope": "Frame and component NAMES, plus variant values for the App / * sets. Four pages of the 2026-10-24 structure (vinc.canon.design-system-operations §2): 01 · Foundations, 02 · Components, 03 · App, 04 · Site. Boards inside sections are listed as page frames. 00 · Cover, 05 · Email, 06 · Storyboards and 90 · Archive carry nothing the gate counts.",
+  "how": "use_figma, the per-page JS in scripts/design/figma_inventory.py's docstring (the second block for 06 · Storyboards). One call per page: the Plugin API allows one page switch per call.",
+  "scope": "Frame and component NAMES, plus variant values for the App / * sets, for 01 · Foundations, 02 · Components, 03 · App and 04 · Site (vinc.canon.design-system-operations §2). For 06 · Storyboards, each journey row with its step frame names. Boards inside sections are listed as page frames. 00 · Cover, 05 · Email and 90 · Archive carry nothing the gate counts.",
   "note": "Machine dump. Never patch it by hand: re-run the dump. A hand-patched inventory makes the gate agree with a file instead of with Figma.",
   "site_screens_note": "04 · Site boards are html-to-design captures (capture_site_figma.mjs) named Site · <Route>[ · <state>] / dark; children are not recorded.",
   "app_boards_note": "03 · App boards are html-to-design captures (capture_app_figma.mjs) named App · <Surface>[ · <state>] / <theme>; children are not recorded.",
-  "refreshed": "2026-10-24: whole file restructured to eight pages; 03 and 04 recaptured from the running app and the live site."
+  "refreshed": "2026-10-24: whole file restructured to eight pages; 03 and 04 recaptured from the running app and the live site. 2026-10-30: 06 · Storyboards added (journeys); the other four pages were not re-dumped."
  },
  "pages": {
   "01 · Foundations": {
@@ -1145,6 +1145,81 @@
    ],
    "components": [],
    "variants": {}
+  },
+  "06 · Storyboards": {
+   "name": "06 · Storyboards",
+   "journeys": {
+    "Site · From the landing to an account": [
+     "1 · Site · Landing / dark",
+     "2 · Site · Pricing · monthly / dark",
+     "3 · Site · Auth · Login / dark",
+     "4 · Site · Auth · Login · sent / dark",
+     "5 · Site · Auth · Verify · confirm / dark",
+     "6 · Site · Auth · Welcome · form / dark",
+     "7 · Site · Account / dark"
+    ],
+    "Site · Connect an AI host": [
+     "1 · Site · Docs · mcp / dark",
+     "2 · Site · Connect · login / dark",
+     "3 · Site · Connect · ask / dark",
+     "4 · Site · Connect · done / dark",
+     "5 · Site · Account · keys-fresh / dark"
+    ],
+    "Site · Download the desktop app": [
+     "1 · Site · Landing / dark",
+     "2 · Site · Download · win / dark",
+     "3 · Site · Release / dark"
+    ],
+    "Site · Read and improve a community page": [
+     "1 · Site · Community · home / dark",
+     "2 · Site · Community · page-read / dark",
+     "3 · Site · Community · talk / dark",
+     "4 · Site · Community · agent-take / dark"
+    ],
+    "Site · Run a team": [
+     "1 · Site · Account · Team · no-teams / dark",
+     "2 · Site · Account · Team · create-modal / dark",
+     "3 · Site · Account · Team · default-admin / dark",
+     "4 · Site · Account · Team · invite-typeahead / dark",
+     "5 · Site · Account · Team · invite-sent / dark",
+     "6 · Site · Account · Team · graph / dark"
+    ],
+    "App · First run to the first document": [
+     "1 · App · View · first-run / dark",
+     "2 · App · Home · empty / dark",
+     "3 · App · Topbar · import-pack-sheet / dark",
+     "4 · App · Home · list / dark",
+     "5 · App · Home · doc / dark"
+    ],
+    "App · Read and follow links": [
+     "1 · App · Home · topic / dark",
+     "2 · App · Home · doc / dark",
+     "3 · App · View · 3d / dark",
+     "4 · App · View · node-float / dark",
+     "5 · App · View · node-detail / dark",
+     "6 · App · View · edge-detail / dark"
+    ],
+    "App · Find and ask": [
+     "1 · App · Topbar · find-open / dark",
+     "2 · App · Topbar · find-results / dark",
+     "3 · App · Topbar · ask-intro / dark",
+     "4 · App · Topbar · ask-answer / dark",
+     "5 · App · Topbar · ask-history / dark"
+    ],
+    "App · Change how the graph is seen": [
+     "1 · App · View · 3d / dark",
+     "2 · App · View · lens-options-3d / dark",
+     "3 · App · View · lens-legend / dark",
+     "4 · App · View · lens-help-open / dark",
+     "5 · App · View · topic-scope / dark",
+     "6 · App · View · light-lens / light"
+    ],
+    "App · Share part of the graph": [
+     "1 · App · View · node-float / dark",
+     "2 · App · Topbar · share-sheet / dark",
+     "3 · App · Topbar · tools-share / dark"
+    ]
+   }
   }
  }
 }
