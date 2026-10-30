@@ -1200,6 +1200,9 @@
     "decision:the-app-reads-its-own-view-addresses-through-the-shared-parser": {
       "validity": "unknown"
     },
+    "decision:the-default-agent-tool-surface-is-reads-plus-role-gated-writes-2026-10-31": {
+      "validity": "current"
+    },
     "decision:the-desktop-app-icon-keeps-a-black-plate-2026-09-26": {
       "validity": "unknown"
     },
