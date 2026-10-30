@@ -943,6 +943,12 @@
         "writes_graph": [
           "episode",
           "record"
+        ],
+        "disallowed_tools": [
+          "vinc_delete",
+          "vinc_merge_nodes",
+          "mcp__vinc__vinc_delete",
+          "mcp__vinc__vinc_merge_nodes"
         ]
       },
       "works_with": {
@@ -970,14 +976,14 @@
         "verify"
       ],
       "props": {
-        "baseline_note": "measure the baseline on origin/main in the same worktree; a suite reporting 135 skips instead of 4 was run by the wrong interpreter and every comparison from it is void.",
+        "baseline_note": "Use the package repository's checks; test_command is for Vinc Python. Compare with origin/main on the same interpreter; unexpected skips void the comparison.",
         "disallowed_tools": [
           "Edit",
           "Write",
           "NotebookEdit",
           "Agent"
         ],
-        "enforcement_note": "the denylist removes the edit tools but Bash stays, because the gates are shell commands. So no-edit is a bar here, not a wall.",
+        "enforcement_note": "Edit tools are denied; shell commands stay open for checks and must not edit either.",
         "gates": [
           {
             "check": {
@@ -1147,7 +1153,12 @@
           "vinc (graph MCP): read this role's node first; write what the role may author (read only)",
           "Bash: the gates are shell commands"
         ],
-        "writes_graph": []
+        "writes_graph": [],
+        "capabilities": {
+          "deny": [
+            "github.pr.merge"
+          ]
+        }
       },
       "works_with": {
         "hands_to": [
@@ -1432,6 +1443,16 @@
           "episode",
           "record",
           "decision"
+        ],
+        "capabilities": {
+          "deny": [
+            "slack.message.send"
+          ]
+        },
+        "disallowed_tools": [
+          "mcp__claude_ai_Gmail__send_message",
+          "mcp__claude_ai_Gmail__reply",
+          "mcp__claude_ai_Gmail__forward"
         ]
       },
       "works_with": {
@@ -2875,6 +2896,14 @@
         "writes_graph": [
           "record",
           "episode"
+        ],
+        "disallowed_tools": [
+          "vinc_delete",
+          "vinc_merge_nodes",
+          "vinc_doc_delete",
+          "mcp__vinc__vinc_delete",
+          "mcp__vinc__vinc_merge_nodes",
+          "mcp__vinc__vinc_doc_delete"
         ]
       },
       "works_with": {
