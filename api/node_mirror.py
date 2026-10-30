@@ -33,6 +33,9 @@ concept 의 산문을 그대로 물려받아 둘이 같은 낱말로 묶인다) 
 직접 든다. 인코딩이 여기 들어오면 두 경로가 서로의 의존성을 물게 된다.
 """
 from __future__ import annotations
+import hashlib
+import json
+
 from store.node_mirror_state import EXTRA_CHARS, extra_text, mirror_text as _mirror_text
 
 #: 미러에 담을 라벨과 그 텍스트. (라벨, PK, kind, 부가 텍스트 열 또는 None)
@@ -42,6 +45,15 @@ SPEC = [
     ("Decision", "decision_id", "decision", "props"),
     ("Episode", "episode_id", "episode", "summary"),
 ]
+#: ColBERT 토큰 텍스트에 넣을 열 (한 줄 설명, 요약, props). 없는 열은 ''.
+#: 근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]
+TOKEN_COLS = {
+    "Concept": ("c.one_liner", "''", "c.props"),
+    "Record": ("''", "''", "c.props"),
+    "Decision": ("''", "''", "c.props"),
+    "Episode": ("''", "c.summary", "''"),
+}
+
 #: 부가 텍스트를 이만큼만 쓴다. 문단 전체를 넣으면 제목이 묻힌다.
 #: CREATE 한 문장에 실을 행 수. 파라미터 목록이 너무 길면 엔진이 준비 단계에서 샌다.
 INSERT_BATCH = 256
@@ -59,7 +71,8 @@ def mirror_text(title: str, extra: str, kind: str = "") -> str:
     return _mirror_text(title, extra, kind)
 
 
-def collect(store, owner: str | None = None) -> tuple[list[dict], list[dict]]:
+def collect(store, owner: str | None = None, *,
+            with_tokens: bool = False) -> tuple[list[dict], list[dict]]:
     """미러에 담을 행과, **id 가 겹친 것들**. `owner=None` 이면 모든 소유자다.
 
     ⚠ owner 를 거는 쪽(CLI)과 안 거는 쪽(허브 배포 경계)이 같은 함수를 쓴다. 걸 때는
@@ -83,10 +96,14 @@ def collect(store, owner: str | None = None) -> tuple[list[dict], list[dict]]:
     collisions: list[dict] = []
     for label, pk, kind, extra_col in SPEC:
         proj = f"c.{extra_col} AS extra" if extra_col else "'' AS extra"
+        # 토큰 텍스트 열은 ColBERT 가 켜졌을 때만 읽는다 — 넓은 텍스트 2만 행을 들면 그것만으로
+        # 수십 MB 다(이 컨테이너는 1GiB 를 셋이 나눠 쓴다).
+        tok = (", {} AS t_one, {} AS t_summ, {} AS t_props".format(*TOKEN_COLS[label])
+               if with_tokens else "")
         where = "WHERE c.owner_id = $o " if owner else ""
         rows = store.run(
             f"MATCH (c:{label}) {where}"
-            f"RETURN c.{pk} AS id, c.title AS title, c.owner_id AS owner, {proj}",
+            f"RETURN c.{pk} AS id, c.title AS title, c.owner_id AS owner, {proj}{tok}",
             {"o": owner} if owner else None) or []
         for r in rows:
             title = " ".join(str(r.get("title") or "").split())
@@ -99,9 +116,55 @@ def collect(store, owner: str | None = None) -> tuple[list[dict], list[dict]]:
                                    "kept": seen[key], "dropped": kind})
                 continue
             seen[key] = kind
-            out.append({"id": r["id"], "kind": kind, "owner": key[0],
-                        "title": title, "text": text})
+            row = {"id": r["id"], "kind": kind, "owner": key[0], "title": title, "text": text}
+            if with_tokens:
+                row["ctext"] = token_text(title, r.get("t_summ"), r.get("t_one"), r.get("t_props"))
+            out.append(row)
     return out, collisions
+
+
+def token_text(title: str, summary, one_liner, props_json) -> str:
+    """ColBERT 입력(`vinc_rag.colbert.token_text`). dense 미러 텍스트보다 넓다 — 재채점 근거를
+    이 텍스트로 쟀다. props 는 열에 JSON 문자열로 산다."""
+    from vinc_rag.colbert import token_text as _tt
+    try:
+        props = json.loads(props_json) if isinstance(props_json, str) and props_json else (props_json or {})
+    except ValueError:
+        props = {}
+    return _tt(title, str(summary or ""), str(one_liner or ""), props if isinstance(props, dict) else {})
+
+
+def colbert_state(store, owner: str | None = None) -> dict[str, tuple[str, str]]:
+    """미러 행마다 지금 실린 토큰의 `(colbert_hash, colbert_books)`. 코드는 안 읽는다(행당 수십 KB)."""
+    where = "WHERE n.owner_id = $o " if owner else ""
+    got = store.run(f"MATCH (n:NodeVec) {where}RETURN n.vec_id AS v, n.colbert_hash AS h, "
+                    "n.colbert_books AS b", {"o": owner} if owner else None) or []
+    return {g["v"]: (g.get("h") or "", g.get("b") or "") for g in got}
+
+
+def colbert_hash(ctext: str) -> str:
+    return hashlib.sha256(ctext.encode("utf-8")).hexdigest()
+
+
+def colbert_todo(rows: list[dict], state: dict[str, tuple[str, str]], books: str) -> list[dict]:
+    """토큰을 (다시) 만들 행 — 토큰 텍스트나 코드북이 바뀌었거나 아직 없는 것. 미러에 없는 행
+    (방금 dense 단계가 실패한 행)은 건드리지 않는다: SET 할 자리가 없다."""
+    out = []
+    for r in rows:
+        vid = vec_id(r.get("owner") or "", r["id"])
+        if vid in state and state[vid] != (colbert_hash(r.get("ctext") or ""), books):
+            out.append(r)
+    return out
+
+
+def set_colbert(store, updates: list[dict], books: str) -> int:
+    """`updates` = [{vid, codes, hash}] 를 행에 싣는다. 벡터 열은 안 건드리는 값 교체라 색인을
+    내리지 않는다(색인이 문제 삼는 것은 없던 벡터가 생기는 삽입뿐이다, 위 모듈 주석)."""
+    for i in range(0, len(updates), INSERT_BATCH):
+        store.run("UNWIND $rows AS r MATCH (n:NodeVec) WHERE n.vec_id = r.vid "
+                  "SET n.colbert = r.codes, n.colbert_books = $b, n.colbert_hash = r.hash",
+                  {"rows": updates[i:i + INSERT_BATCH], "b": books})
+    return len(updates)
 
 
 def existing(store, owner: str | None = None) -> dict[str, tuple[str, str, str]]:

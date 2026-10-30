@@ -145,7 +145,14 @@ _NODE_TABLES: dict[str, dict] = {
                                          # 이 그대로 사용자에게 나간다(1365 중 225 행).
         ("text", "STRING"),              # 임베딩한 그 문자열 — 재현과 FTS 용
         ("model", "STRING"),             # 어느 모델로 만든 벡터인가(혼재 방지)
-        ("embedding", "FLOAT[{dim}]"), ("encoder_runtime", "STRING")]},
+        ("embedding", "FLOAT[{dim}]"), ("encoder_runtime", "STRING"),
+        # v24 — ColBERT 토큰(노드 후보 재채점). 표를 따로 두지 않고 이 행에 싣는다: 노드
+        # 삭제·토픽 이동·소유자 접기가 이 행을 이미 다루므로 토큰도 함께 간다. 색인은 없다 —
+        # 재채점은 상위 20개를 `vec_id` 로 읽는다. 비어 있으면 그 노드는 토큰이 없다.
+        # 근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]
+        ("colbert", "STRING"),           # pq64 코드(n × 64바이트)의 base64
+        ("colbert_books", "STRING"),     # 그 코드를 만든 코드북 id(`vinc_rag.colbert.books_id`)
+        ("colbert_hash", "STRING")]},    # 토큰 텍스트의 sha256 — 글이 바뀌면 다시 만든다
 }
 
 # ── vinc_sync 추적열 (S0) ─────────────────────────────────────────────────────
@@ -258,7 +265,7 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
 # 그것이 v13 이 존재하는 이유와 같다(아래 `DOMAIN_HIERARCHY_VERSION` 주석). 백필은
 # 스토어가 **뒤처져 있을 때만** 도는데, 라이브가 이미 최신을 기록하고 있으면 상수만
 # 올려서는 안 돈다 — 목표 버전이 함께 움직여야 한다.
-SCHEMA_VERSION = 23
+SCHEMA_VERSION = 24
 
 #: v21 — 전문 색인이 `Chunk.lex` 위에 섰다는 표지(`_SchemaMeta` 의 키, 값 `ready`).
 #: **스키마 버전과 분리한다.** 버전은 기동 때 ALTER 와 함께 기록되는데 색인 이관은 기동 뒤에
@@ -412,6 +419,9 @@ def migration_statements(from_version: int) -> list[str]:
             for s, d in _rel_pairs(src, dst):
                 if (s, d) not in _V22_PAIRS[lbl]:
                     stmts.append(f"ALTER TABLE {lbl} ADD FROM {s} TO {d}")
+    if from_version < 24:  # v24 — 노드 미러 행의 ColBERT 토큰 열(위 NodeVec 주석). 백필 없음: 다음 재구축이 채운다.
+        for col in ("colbert", "colbert_books", "colbert_hash"):
+            stmts.append(f"ALTER TABLE NodeVec ADD {col} STRING DEFAULT ''")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:

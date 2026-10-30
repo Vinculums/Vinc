@@ -206,7 +206,7 @@ class ProvisionTests(unittest.TestCase):
         ddl = "\n".join(eschema.render_embedded_ddl(dim=768))
         bridge_ddl = next(s for s in ddl.splitlines() if s.startswith("CREATE NODE TABLE Bridge"))
         self.assertIn("owner_id STRING", bridge_ddl)
-        self.assertEqual(eschema.SCHEMA_VERSION, 23)   # v23 — 공개 위키 쪽 끝점 쌍
+        self.assertEqual(eschema.SCHEMA_VERSION, 24)   # v24 — 노드 미러 행의 ColBERT 토큰 열
         # v17 이 주장한 것을 여기서 증명한다: **신규 노드 테이블이라 ALTER 가 없다.**
         # 미러는 부팅 DDL 이 만들고(ChunkVec 전례), 임베딩은 DDL 이 아니라 모델을 부르는
         # 데이터 스텝이라 여기 못 쓴다.
@@ -265,6 +265,10 @@ class ProvisionTests(unittest.TestCase):
         self.assertIn("ALTER TABLE RELATED_TO ADD FROM Concept TO Decision", v23)
         self.assertIn("ALTER TABLE ABOUT ADD FROM Episode TO Episode", v23)
         self.assertNotIn("ALTER TABLE RELATED_TO ADD FROM Concept TO Concept", v23)
+        # v24 는 NodeVec 의 열 셋뿐이다. 신규 설치는 부팅 DDL 에 이미 있으니 둘 다 같은 모양이 된다.
+        self.assertEqual(only(24), [f"ALTER TABLE NodeVec ADD {c} STRING DEFAULT ''"
+                                    for c in ("colbert", "colbert_books", "colbert_hash")])
+        self.assertIn("colbert STRING", nodevec_ddl)
         # v13 은 DDL 스텝이 없다 — 쌍은 v12 가 이미 열었고, 이 버전이 하는 일은
         # DOMAIN_HIERARCHY_VERSION 을 넘겨 **계층 백필을 다시 돌리는 것**이다.
         # 그래서 그 상수가 SCHEMA_VERSION 을 따라와야 의미가 있다(안 따라오면
