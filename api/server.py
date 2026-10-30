@@ -131,7 +131,7 @@ def _encode_call(url: str, texts: list[str], kind: str, timeout: float, *,
     실패는 **던진다** — 부르는 쪽이 시간 초과 여부를 보고 다시 갈지 정한다."""
     payload = {"texts": list(texts), "kind": kind}
     if colbert:
-        payload["colbert"] = True             # ColBERT 토큰을 같은 실행에서 함께(VIN-845)
+        payload["colbert"] = True             # ColBERT 토큰을 같은 실행에서 함께
     body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     tok = os.environ.get("VINC_EMBED_ENCODE_TOKEN", "").strip()

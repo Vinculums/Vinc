@@ -218,7 +218,7 @@ jobs:
             echo '내려받은 뒤 `sha256sum` 으로 이 값과 대조할 것 — 다르면 거기서 멈춘다.'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # 이미지 빌드가 ColBERT 투영을 `--check` 로 올려 보므로(VIN-845) hub-deploy 와 같은 자리에 둔다.
+      # 이미지 빌드가 ColBERT 투영을 `--check` 로 올려 보므로 hub-deploy 와 같은 자리에 둔다.
       - name: ColBERT 투영을 받는다
         run: |
           set -euo pipefail

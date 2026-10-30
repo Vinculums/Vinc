@@ -84,7 +84,7 @@ ENV VINC_EMBED_DIM=1024
 # · [[record:the-encoder-is-oom-killed-on-the-largest-document-2026-09-12]]
 ENV VINC_EMBED_BATCH=1
 #
-# ColBERT 노드 재채점(VIN-845)의 투영과 pq64 코드북. 투영은 러너의 굽기가 고정 판으로 받아
+# ColBERT 노드 재채점의 투영과 pq64 코드북. 투영은 러너의 굽기가 고정 판으로 받아
 # models/ 에 두고, 코드북은 리포(`vinc_rag/data/`)에 있다. 둘 다 아래 `--check` 가 이미지 안에서
 # 실제로 올려 본다. 재채점·학습 규칙 스위치(`VINC_NODE_COLBERT`·`VINC_BRIEF_RULE`)는 여기서 켜지 않는다.
 # 근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]

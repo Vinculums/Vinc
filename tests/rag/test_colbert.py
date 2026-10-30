@@ -5,8 +5,9 @@ import sys
 import types
 import zipfile
 
-import numpy as np
 import pytest
+
+np = pytest.importorskip("numpy")  # 네임스페이스 잡에는 numpy 가 없다
 
 from vinc_rag import colbert as cb
 

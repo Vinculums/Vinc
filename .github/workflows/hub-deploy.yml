@@ -357,7 +357,7 @@ jobs:
           path: ${{ steps.bake-key.outputs.dir }}
           key: vinc-bake-${{ steps.bake-key.outputs.key }}
 
-      # ColBERT 투영(VIN-845). 굽기 스크립트를 건드리면 굽기 캐시 키가 바뀌어 모델을 다시 굽게 되므로
+      # ColBERT 투영. 굽기 스크립트를 건드리면 굽기 캐시 키가 바뀌어 모델을 다시 굽게 되므로
       # 따로 받는다. 판과 해시는 `vinc_rag/colbert.py` 가 정본이고, 이미지 빌드의
       # `python -m vinc_rag.colbert --check` 가 실은 바이트를 그 해시로 다시 대조한다.
       - name: ColBERT 투영을 받는다

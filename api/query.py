@@ -3457,7 +3457,7 @@ def _node_links(store, node: str, *, owner: str,
 _BRIEF_TOP_K = 10
 _BRIEF_RESOLVE_N = 5
 
-#: VIN-845 학습 해소 규칙 — ColBERT 1위를 확정할지 정하는 로지스틱 모형. 상수는 VIN-863 v2 가 개발 풀
+#: 학습 해소 규칙 — ColBERT 1위를 확정할지 정하는 로지스틱 모형. 상수는 v2 가 개발 풀
 #: 3,140행으로 맞춰 고정한 그대로다(`frozen_v2.json`, sha256 bb417ece…). 특징 순서·정의를 바꾸면
 #: 상수가 뜻을 잃는다(:func:`_brief_learned_features`). 문턱 아래는 되묻는다.
 #: 근거: [[decision:vin-845-ships-the-brief-rule-v2-constants-over-its-failed-pre-registered-criteria-2026-10-31]]
@@ -3780,7 +3780,7 @@ def _brief_rank(rows: list[dict]) -> list[dict]:
 
 
 def _brief_rule_learned() -> bool:
-    """`VINC_BRIEF_RULE=learned` — ColBERT 순서 위의 학습 규칙(VIN-845). 기본은 production(기존 규칙)."""
+    """`VINC_BRIEF_RULE=learned` — ColBERT 순서 위의 학습 규칙. 기본은 production(기존 규칙)."""
     return (os.environ.get("VINC_BRIEF_RULE") or "production").strip().lower() == "learned"
 
 
@@ -4563,7 +4563,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         learned = (_brief_rule_learned()
                    and (res.get("node_rescore") or {}).get("state") == "applied")
         if learned:
-            # VIN-845 — ColBERT 로 다시 선 후보 위의 학습 규칙. 재채점이 안 된 질의는 기존 규칙으로 간다.
+            # ColBERT 로 다시 선 후보 위의 학습 규칙. 재채점이 안 된 질의는 기존 규칙으로 간다.
             status, picked, _p = _brief_resolve_learned(query, res.get("node_hits") or [])
             base["resolution"] = {"rule": "learned", "p": None if _p is None else round(_p, 4)}
         else:

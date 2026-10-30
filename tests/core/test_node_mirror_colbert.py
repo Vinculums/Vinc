@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""노드 미러 행의 ColBERT 토큰 열(VIN-845). 이 파일이 지키는 것: 토큰 텍스트는 dense 미러보다
+"""노드 미러 행의 ColBERT 토큰 열. 이 파일이 지키는 것: 토큰 텍스트는 dense 미러보다
 넓다 · 바뀐 것만 다시 만든다 · 값만 바꾸고 dense 벡터와 색인은 건드리지 않는다 · 코드북이 다른
 인코더의 코드는 싣지 않는다.
 근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]"""

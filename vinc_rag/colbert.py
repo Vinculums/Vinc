@@ -1,4 +1,4 @@
-"""ColBERT 토큰 벡터 — 노드 후보 재채점(VIN-845)의 계산 전부. numpy 만 쓴다.
+"""ColBERT 토큰 벡터 — 노드 후보 재채점의 계산 전부. numpy 만 쓴다.
 
 한 곳에 모은 이유: 인코더(`vinc_rag/embed/worker.py`, 토큰을 만들어 pq64 로 줄인다)와
 사이드카(`vinc_rag/retrieval.py`, 코드를 풀어 MaxSim 을 잰다)가 **같은 투영과 같은

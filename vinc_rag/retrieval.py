@@ -1386,7 +1386,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
         # current·known_at 은 자르기 **전에** 거른다. 넓게 가져와 거른 뒤 top_k 로 자른다.
         # 자른 뒤에 거르면 거른 만큼 목록이 모자란다.
         _wide = mode == "current" or bool(known_at)
-        # 노드 팔만 넓게 본다(VIN-845 재채점이 상위 20을 다시 줄 세운다). 청크 행·커서는 top_k 그대로다.
+        # 노드 팔만 넓게 본다(재채점이 상위 20을 다시 줄 세운다). 청크 행·커서는 top_k 그대로다.
         _nk = max(top_k, node_k or 0)
         _until = temporal.instant(temporal.time_scope(known_at)[1]) if known_at else None
         try:
@@ -1897,7 +1897,7 @@ COLBERT_RESCORE_N = 20
 
 
 def _colbert_rescore(store, hits: list[dict], query_colbert: str, owner: str | None):
-    """노드 후보 상위 `COLBERT_RESCORE_N` 개를 ColBERT MaxSim 순으로 다시 세운다(VIN-845).
+    """노드 후보 상위 `COLBERT_RESCORE_N` 개를 ColBERT MaxSim 순으로 다시 세운다.
 
     상위 중 **하나라도** 토큰이 없거나 다른 코드북이면 통째로 건너뛴다 — 섞어 세우면 토큰 없는
     노드가 바닥으로 가라앉는다. 동점은 원래 순서를 지킨다(안정 정렬, 연구와 같다). 점수는
@@ -1938,7 +1938,7 @@ def search(query: str, *, mode: str | None = None, known_at: str | None = None, 
         return {"kind": "search", "executed": False, "rows": [], "node_hits": [], "arms": "none", "total_count": 0, "has_more": False, "next_cursor": None, "error": f"{prefix}: {exc}"}
     # 0 이하는 rrf_fuse 에서 "상한 없음"이 된다. 입구에서 1 이상으로 맞춘다.
     kwargs["top_k"] = max(1, int(kwargs.get("top_k", 5)))
-    # ColBERT 재채점(VIN-845)은 스위치가 켜지고 질의 토큰이 왔을 때만. 그때만 노드 팔을 상위 20까지 넓힌다.
+    # ColBERT 재채점은 스위치가 켜지고 질의 토큰이 왔을 때만. 그때만 노드 팔을 상위 20까지 넓힌다.
     query_colbert = kwargs.pop("query_colbert", None)
     rescore = bool(query_colbert) and _colbert_rescore_on()
     if rescore:
