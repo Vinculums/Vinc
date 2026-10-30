@@ -215,6 +215,43 @@ def _doc_id_warnings(text: str, doc_id: str) -> list[str]:
     return []
 
 
+# 프런트매터의 관계 줄. 본문 텍스트일 뿐이라 저장이 엣지로 바꾸지 않는다.
+_FM_RELATION_KEYS = ("inherits_from", "derives_from", "related", "supersedes")
+
+
+def _no_mirror_warnings(store, text: str, doc_id: str, *, owner: str) -> list[str]:
+    """쓰기가 끝났는데 `concept:doc.<id>` 미러가 없고, 프런트매터가 주제나 관계를
+    적어 뒀으면 말한다. 그 둘은 미러가 있어야 붙는데 아무것도 적용되지 않았다.
+
+    미러는 `topic` 을 받을 때만 생긴다(`_set_authored_topic`). 이 경고가 없으면 topic 없는
+    쓰기가 성공만 답하고, 그 문서는 토픽도 관계도 없이 남는다. 근거 기록의 id 는
+    `tests/core/test_doc_put_warns_without_mirror.py` 머리에 있다.
+
+    프런트매터가 아무것도 적지 않은 문서는 조용하다. 동기화·팩 가져오기·주제 설명이
+    같은 깔때기로 topic 없이 쓰고, 그 경우까지 말하면 경고가 소음이 된다."""
+    m = _FM_DOC_ID_RE.match(text or "")
+    if not m:
+        return []
+    block = m.group(1)
+    dm = _FM_DOMAIN_RE.search(block)
+    declared = dm.group(1).strip() if dm else ""
+    rels = [k for k in _FM_RELATION_KEYS if re.search(rf"^{k}\s*:", block, re.M)]
+    if not declared and not rels:
+        return []
+    mid = pkns.key(owner, _DOC_MIRROR_PREFIX + doc_id)
+    if store.run("MATCH (n:Concept) WHERE n.concept_id = $id RETURN n.concept_id AS id",
+                 {"id": mid}):
+        return []
+    parts = [f"concept:doc.{doc_id} does not exist, so this document has no topic and "
+             f"no relations: pass topic to create it"]
+    if declared:
+        parts.append(f"the front matter's domain: {declared} is text and was not applied")
+    if rels:
+        parts.append(f"the front matter's {', '.join(rels)} lines are text, not edges; "
+                     f"send them with vinc_ingest from concept:doc.{doc_id}")
+    return ["; ".join(parts)]
+
+
 def _stamp_updated_at(store) -> str:
     """정본 갱신 시각 — 스토어 내 단조 HLC(revstamp). 벽시계 스큐에도 동기화
     LWW 비교가 성립하도록. revstamp 미가용(경량 스토어)이면 벽시계로 강등."""
@@ -552,6 +589,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                 if topic:
                     base["topic"] = _set_authored_topic(
                         store, doc_id, topic, owner=owner, title=kept_title)
+                base["warnings"] += _no_mirror_warnings(store, text, doc_id, owner=owner)
                 base["needs_embed"] = None if prev.get("needs_embed") is None else bool(prev["needs_embed"])
                 base["retrieval"] = document_retrieval(prev.get("needs_embed"))
                 return base
@@ -566,6 +604,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             if topic:
                 base["topic"] = _set_authored_topic(store, doc_id, topic, owner=owner,
                                                     title=kept_title)
+            base["warnings"] += _no_mirror_warnings(store, text, doc_id, owner=owner)
             base.update(**validity, needs_embed=None if prev.get("needs_embed") is None else bool(prev["needs_embed"]))
             base["retrieval"] = document_retrieval(prev.get("needs_embed"))
             return base
@@ -676,6 +715,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                 note="search indexes dropped — 검색 경로가 지연 재빌드(T3b)")
     if topic:
         base["topic"] = authored
+    base["warnings"] += _no_mirror_warnings(store, text, doc_id, owner=owner)
     base.update(**validity)
     base["retrieval"] = document_retrieval(bool(needs_embed))
     return base
