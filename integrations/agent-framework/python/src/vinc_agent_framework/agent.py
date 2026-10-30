@@ -77,7 +77,8 @@ async def build_agent(address: str, chat_client: Any, *, tools: Sequence[Any] = 
 
     ``address`` is ``reviewer``, ``agent-reviewer`` or ``concept:agent-reviewer``.
     ``chat_client`` is any Agent Framework chat client. ``tools`` are yours; ``vinc_brief`` and
-    ``vinc_search`` are added. With ``record=True`` (the default) each run writes its run
+    ``vinc_search`` are added, and ``vinc_ingest`` and ``vinc_doc_put`` too when the role may
+    write and the key can write. With ``record=True`` (the default) each run writes its run
     record, which needs a ``vinc_sk_`` key; a failed write is kept on the result as
     ``record_error`` and never raised. If the role changes later, the next run raises
     ``VincRoleChanged`` instead of running on a contract nobody reviewed. The final answer is
@@ -93,8 +94,11 @@ async def build_agent(address: str, chat_client: Any, *, tools: Sequence[Any] = 
         if owns:
             await client.aclose()
         raise
+    # 쓰기 도구는 쓸 수 있는 역할에게, 쓰기 키일 때만 준다.
+    # 근거: [[decision:the-default-agent-tool-surface-is-reads-plus-role-gated-writes-2026-10-31]]
     provider = VincContextProvider(client, prefetch_role=plan.role_id,
                                    prefetch_pin=plan.pin or None, expose_tools=True,
+                                   expose_writes=plan.may_write and not client.read_only,
                                    capability_map=capability_map,
                                    tool_calls_per_run=tool_calls_per_run,
                                    prefetch_max_chars=prefetch_max_chars)

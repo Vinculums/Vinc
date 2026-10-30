@@ -1,4 +1,8 @@
-"""Names, wording and argument schemas of the read tools, shared by every framework package.
+"""Names, wording and argument schemas of the Vinc tools, shared by every framework package.
+
+The three read tools are always offered. The two write tools (``vinc_ingest``,
+``vinc_doc_put``) are offered only to a role that may write (:func:`vinc_client.may_write`)
+and only with a write key.
 
 Declarations only: each package builds its tools from these, so the model sees
 the same tool schema whichever framework runs it.
@@ -64,6 +68,38 @@ class DocArgs(BaseModel):
     start: int | None = Field(default=None, ge=0, description="First character to read.")
     end: int | None = Field(default=None, ge=1, description="Character to stop before.")
     section: str | None = Field(default=None, description="A heading of the document; reads from it to the next heading of the same or a higher level.")
+
+
+INGEST_NAME = "vinc_ingest"
+INGEST_DESCRIPTION = ("Save to the user's Vinc graph: merge nodes (a record, decision, episode or "
+                      "concept) and edges by exact id. Search first and reuse ids you find; "
+                      "props you send replace the stored props whole.")
+DOC_PUT_NAME = "vinc_doc_put"
+DOC_PUT_DESCRIPTION = ("Save a canonical document to the user's Vinc graph, or edit one by its "
+                       "document id. When editing, pass the content_hash you read with "
+                       "vinc_doc_get as expected_content_hash so a newer edit is not overwritten.")
+#: 역할이 쓸 수 있을 때만 붙는 쓰기 도구. 지우기·병합은 기본 표면에 넣지 않는다.
+WRITE_TOOL_NAMES = (INGEST_NAME, DOC_PUT_NAME)
+
+
+class IngestArgs(BaseModel):
+    model_config = ConfigDict(json_schema_extra=_no_titles)
+    nodes: list[dict[str, Any]] = Field(
+        description="Nodes to merge by exact id, each with id (type-prefixed, such as "
+                    "record:some-slug) and type, plus title and props as needed.")
+    edges: list[dict[str, Any]] | None = Field(
+        default=None, description="Edges between existing or sent nodes: from, to, type, "
+                                  "and evidence where the relation needs it.")
+
+
+class DocPutArgs(BaseModel):
+    model_config = ConfigDict(json_schema_extra=_no_titles)
+    text: str = Field(description="The full document text; it replaces the stored text.")
+    doc_id: str | None = Field(default=None, description="The document to edit; omit to create one.")
+    title: str | None = Field(default=None, description="The document title.")
+    valid_from: str | None = Field(default=None, description="When the content became true, YYYY-MM-DD.")
+    expected_content_hash: str | None = Field(
+        default=None, description="The content_hash you read; a newer edit makes the write refuse.")
 
 
 # 한 런에서 읽기 도구(brief·search·문서)를 합쳐 부를 수 있는 횟수. 두 패키지가 같은 수와 같은 문장을 쓴다.

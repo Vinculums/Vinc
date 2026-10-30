@@ -24,6 +24,9 @@ from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, DOC_DESCRIPTION, D
                                SEARCH_DESCRIPTION, SEARCH_LIMIT_DEFAULT, SEARCH_NAME,
                                TOOL_CALLS_PER_RUN, BriefArgs, DocArgs, SearchArgs, ToolCallCap,
                                temporal_options)
+from vinc_client.tools import (DOC_PUT_DESCRIPTION, DOC_PUT_NAME, INGEST_DESCRIPTION, INGEST_NAME,
+                               DocPutArgs, IngestArgs)
+from vinc_client.write_tools import arun_doc_put, arun_ingest
 
 DEFAULT_SOURCE_ID = "vinc"
 log = logging.getLogger("vinc_agent_framework")
@@ -42,10 +45,12 @@ def _last_user_text(messages: Sequence[Any]) -> str:
 
 def create_vinc_tools(client: AsyncVincClient, *, max_chars: int = DEFAULT_MAX_CHARS,
                       cap: ToolCallCap | None = None,
-                      documents: bool = False) -> list[FunctionTool]:
+                      documents: bool = False, writes: bool = False) -> list[FunctionTool]:
     """Two read-only tools the model may call: ``vinc_brief`` and ``vinc_search``.
 
-    Nothing here can write. When Vinc is unavailable, the quota is spent or
+    Without ``writes`` nothing here can write. With ``writes`` two more, ``vinc_ingest`` and
+    ``vinc_doc_put``, save to the graph; give them only to a role that may write
+    (``plan.may_write``) and with a ``vinc_sk_`` key. They do not spend the read cap. When Vinc is unavailable, the quota is spent or
     the id does not exist, the tool answers with a sentence saying so instead
     of failing the run. With ``cap`` the tools share its call budget; the
     provider passes its own and resets it at every run.
@@ -95,7 +100,22 @@ def create_vinc_tools(client: AsyncVincClient, *, max_chars: int = DEFAULT_MAX_C
             return cap.message
         return await aread_document(client, doc_id, start=start, end=end, section=section)
 
-    return [vinc_brief, vinc_search, vinc_doc_get] if documents else [vinc_brief, vinc_search]
+    tools = [vinc_brief, vinc_search, vinc_doc_get] if documents else [vinc_brief, vinc_search]
+    if not writes:
+        return tools
+
+    @tool(name=INGEST_NAME, description=INGEST_DESCRIPTION, schema=IngestArgs)
+    async def vinc_ingest(nodes: list[dict[str, Any]],
+                          edges: list[dict[str, Any]] | None = None) -> str:
+        return await arun_ingest(client, nodes, edges)
+
+    @tool(name=DOC_PUT_NAME, description=DOC_PUT_DESCRIPTION, schema=DocPutArgs)
+    async def vinc_doc_put(text: str, doc_id: str | None = None, title: str | None = None,
+                           valid_from: str | None = None,
+                           expected_content_hash: str | None = None) -> str:
+        return await arun_doc_put(client, text, doc_id, title, valid_from, expected_content_hash)
+
+    return tools + [vinc_ingest, vinc_doc_put]
 
 
 class _HideDisallowedTools(ChatMiddleware):
@@ -203,7 +223,7 @@ class VincContextProvider(ContextProvider):
                  prefetch_pin: str | None = None,
                  capability_map: Mapping[str, str] | None = None,
                  context_policy: ContextPolicy | None = None,
-                 expose_documents: bool = False) -> None:
+                 expose_documents: bool = False, expose_writes: bool = False) -> None:
         if prefetch_pin is not None and not prefetch_role:
             # 역할 없이 고정만 주면 맥락 모드로 조용히 돌게 된다. 시작 전에 멈춘다.
             raise ValueError("prefetch_pin needs prefetch_role")
@@ -211,8 +231,11 @@ class VincContextProvider(ContextProvider):
             raise ValueError("context_policy needs prefetch_role")
         if expose_documents and not expose_tools:
             raise ValueError("expose_documents needs expose_tools")
+        if expose_writes and not expose_tools:
+            raise ValueError("expose_writes needs expose_tools")
         self.context_policy = context_policy
         self.expose_documents = expose_documents
+        self.expose_writes = expose_writes
         super().__init__(source_id)
         self.client = client or AsyncVincClient(api_key, base_url=base_url, space=space)
         self._owns_client = client is None
@@ -271,7 +294,7 @@ class VincContextProvider(ContextProvider):
             # 나눠 쓰지 않는다. LangGraph 쪽은 그래프 상태에서 같은 수를 센다.
             context.extend_tools(self.source_id, create_vinc_tools(
                 self.client, max_chars=self.max_chars, cap=ToolCallCap(self.tool_calls_per_run),
-                documents=self.expose_documents))
+                documents=self.expose_documents, writes=self.expose_writes))
 
     async def after_run(self, *, agent: Any, session: AgentSession, context: SessionContext,
                         state: dict[str, Any]) -> None:

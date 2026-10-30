@@ -318,6 +318,14 @@ class _Base:
                          "review_claims": review_claims}), space=space)
 
     @staticmethod
+    def _doc_put(text, doc_id, title, valid_from, expected_content_hash, space) -> _Call:
+        body = _drop_none({"text": text, "title": title, "valid_from": valid_from,
+                           "expected_content_hash": expected_content_hash})
+        if doc_id:
+            return _Call("PUT", f"/v1/documents/{_segment(doc_id)}", body=body, space=space)
+        return _Call("POST", "/v1/documents", body=body, space=space)
+
+    @staticmethod
     def _operation_status(operation_id, space) -> _Call:
         return _Call("GET", "/v1/operations/" + quote(operation_id, safe=""), space=space)
 
@@ -590,6 +598,17 @@ class VincClient(_Base):
         """
         self._require_write_key()
         return _raise_if_partial(self._send(self._ingest(nodes, edges, space, create_only, operation_id, review_claims)))
+
+    def doc_put(self, text: str, *, doc_id: str | None = None, title: str | None = None,
+                valid_from: str | None = None, expected_content_hash: str | None = None,
+                space: str | None = None) -> dict[str, Any]:
+        """``PUT /v1/documents/{id}`` to edit a document, ``POST /v1/documents`` to create one.
+
+        The text replaces the stored text. Pass the ``content_hash`` you read as
+        ``expected_content_hash`` so a newer edit makes the write refuse.
+        """
+        self._require_write_key()
+        return self._send(self._doc_put(text, doc_id, title, valid_from, expected_content_hash, space))
 
     def operation_status(self, operation_id: str, *, space: str | None = None) -> dict[str, Any]:
         """Read a historical owner-scoped receipt. Unknown is not proof that no write happened."""
@@ -944,6 +963,13 @@ class AsyncVincClient(_Base):
                      operation_id: str | None = None, review_claims: bool | None = None) -> dict[str, Any]:
         self._require_write_key()
         return _raise_if_partial(await self._send(self._ingest(nodes, edges, space, create_only, operation_id, review_claims)))
+
+    async def doc_put(self, text: str, *, doc_id: str | None = None, title: str | None = None,
+                      valid_from: str | None = None, expected_content_hash: str | None = None,
+                      space: str | None = None) -> dict[str, Any]:
+        self._require_write_key()
+        return await self._send(self._doc_put(text, doc_id, title, valid_from,
+                                              expected_content_hash, space))
 
     async def operation_status(self, operation_id: str, *, space: str | None = None) -> dict[str, Any]:
         return await self._send(self._operation_status(operation_id, space))

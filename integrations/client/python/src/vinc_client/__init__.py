@@ -2,11 +2,11 @@
 
 Design and scope: [[vinc.plan.framework-integration-packages-2026-09-28]].
 """
-__version__ = "0.1.20"
+__version__ = "0.1.21"
 
 from .client import AsyncVincClient, VincClient  # noqa: E402
 from .agent_plan import (AgentPlan, AgentRun, afinish_run, aplan_agent, finish_run,  # noqa: E402
-                         plan_agent, role_address)
+                         may_write, plan_agent, role_address)
 from .agent_plan import (AgentPlan, AgentRun, afinish_run, aplan_agent, finish_run,  # noqa: E402
                          plan_agent, role_address)
 from .context import (BOUNDARY, SOURCES_LINE, fence, format_answer, format_brief,  # noqa: E402
@@ -58,4 +58,5 @@ __all__ = [
     "CompiledContext", "FullTextPolicy", "FULL_TEXT", "TaskEvidencePolicy", "TASK_EVIDENCE",
     "default_policy", "role_prefetch", "arole_prefetch",
     "AgentPlan", "AgentRun", "plan_agent", "aplan_agent", "finish_run", "afinish_run", "role_address",
+    "may_write",
 ]

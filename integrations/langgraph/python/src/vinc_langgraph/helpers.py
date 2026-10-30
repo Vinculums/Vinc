@@ -18,6 +18,9 @@ from vinc_client.doc_tool import aread_document, read_document
 from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, DOC_DESCRIPTION, DOC_NAME,
                                SEARCH_DESCRIPTION, SEARCH_LIMIT_DEFAULT, SEARCH_NAME, BriefArgs,
                                DocArgs, SearchArgs, temporal_options)
+from vinc_client.tools import (DOC_PUT_DESCRIPTION, DOC_PUT_NAME, INGEST_DESCRIPTION, INGEST_NAME,
+                               DocPutArgs, IngestArgs)
+from vinc_client.write_tools import arun_doc_put, arun_ingest, run_doc_put, run_ingest
 
 
 def last_user_text(messages: str | Sequence[Any]) -> str:
@@ -109,11 +112,15 @@ _MISSING = "Vinc found nothing for that ({code}); try a different query."
 def create_vinc_tools(client: VincClient | None = None,
                       async_client: AsyncVincClient | None = None, *,
                       max_chars: int = DEFAULT_MAX_CHARS,
-                      documents: bool = False) -> list[StructuredTool]:
+                      documents: bool = False, writes: bool = False) -> list[StructuredTool]:
     """Two read-only tools, ``vinc_brief`` and ``vinc_search``.
 
     Pass a sync client, an async client, or both; each tool gets the paths it
-    has a client for. Nothing here can write.
+    has a client for. Without ``writes`` nothing here can write.
+
+    With ``writes`` two more, ``vinc_ingest`` and ``vinc_doc_put``, save to the graph. Give them
+    only to a role that may write (``plan.may_write``) and with a ``vinc_sk_`` key;
+    :func:`build_agent` does that. They are not counted against the read tool-call cap.
 
     With ``documents`` a third, ``vinc_doc_get``, reads a canonical document by id, whole,
     by character range or under one heading. Give it to an agent whose
@@ -188,7 +195,36 @@ def create_vinc_tools(client: VincClient | None = None,
         tools.append(StructuredTool.from_function(
             func=doc_get if client else None, coroutine=adoc_get if async_client else None,
             name=DOC_NAME, args_schema=DocArgs, description=DOC_DESCRIPTION))
+    if writes:
+        tools += _write_tools(client, async_client)
     return tools
+
+
+def _write_tools(client: VincClient | None, async_client: AsyncVincClient | None) -> list[StructuredTool]:
+    def ingest(nodes: list[dict[str, Any]], edges: list[dict[str, Any]] | None = None) -> str:
+        return run_ingest(client, nodes, edges)
+
+    async def aingest(nodes: list[dict[str, Any]], edges: list[dict[str, Any]] | None = None) -> str:
+        return await arun_ingest(async_client, nodes, edges)
+
+    def doc_put(text: str, doc_id: str | None = None, title: str | None = None,
+                valid_from: str | None = None, expected_content_hash: str | None = None) -> str:
+        return run_doc_put(client, text, doc_id, title, valid_from, expected_content_hash)
+
+    async def adoc_put(text: str, doc_id: str | None = None, title: str | None = None,
+                       valid_from: str | None = None,
+                       expected_content_hash: str | None = None) -> str:
+        return await arun_doc_put(async_client, text, doc_id, title, valid_from,
+                                  expected_content_hash)
+
+    return [
+        StructuredTool.from_function(
+            func=ingest if client else None, coroutine=aingest if async_client else None,
+            name=INGEST_NAME, args_schema=IngestArgs, description=INGEST_DESCRIPTION),
+        StructuredTool.from_function(
+            func=doc_put if client else None, coroutine=adoc_put if async_client else None,
+            name=DOC_PUT_NAME, args_schema=DocPutArgs, description=DOC_PUT_DESCRIPTION),
+    ]
 
 
 def record_episode(client: VincClient, title: str, *, summary: str = "",

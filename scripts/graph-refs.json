@@ -891,6 +891,7 @@
     "decision:the-agent-rail-opens-an-agents-board-and-roles-edit-in-place-2026-10-24",
     "decision:the-ambient-azure-identity-is-read-only",
     "decision:the-app-reads-its-own-view-addresses-through-the-shared-parser",
+    "decision:the-default-agent-tool-surface-is-reads-plus-role-gated-writes-2026-10-31",
     "decision:the-desktop-app-icon-keeps-a-black-plate-2026-09-26",
     "decision:the-desktop-shell-docks-search-and-the-view-switch-in-a-view-header-2026-10-23",
     "decision:the-desktop-shell-is-documents-first",

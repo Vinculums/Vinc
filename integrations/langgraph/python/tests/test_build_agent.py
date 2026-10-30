@@ -180,3 +180,41 @@ def test_a_malformed_task_is_refused_before_any_hub_call():
     with pytest.raises(TypeError):
         agent.invoke(42)
     assert len(hub.requests) == before
+
+
+class ToolSeeingModel(ScriptedModel):
+    """Keeps the tool names the agent binds."""
+
+    seen: list = Field(default_factory=list)
+
+    def bind_tools(self, tools: Any, **kwargs: Any) -> "ToolSeeingModel":
+        self.seen.append({getattr(t, "name", None) or t.get("name") for t in tools})
+        return self
+
+
+WRITES = {"vinc_ingest", "vinc_doc_put"}
+
+
+@pytest.mark.parametrize("props, key, gets_writes", [
+    ({"writes_graph": ["episode", "record"]}, SK, True),
+    ({"writes_graph": []}, SK, False),
+    ({"writes_graph": ["record"], "capabilities": {"deny": ["vinc.write"]}}, SK, False),
+    ({"writes_graph": ["episode", "record"]}, RO, False),
+])
+def test_write_tools_reach_only_a_role_that_may_write_with_a_write_key(props, key, gets_writes):
+    model = ToolSeeingModel()
+    agent = build_agent("dev-core", model, client=sync_client(Hub(**props), key), record=False)
+    agent.invoke("Log the retro.", run_id="run-w")
+    assert (WRITES <= model.seen[-1]) is gets_writes
+    assert {"vinc_brief", "vinc_search"} <= model.seen[-1]
+
+
+def test_the_write_tools_call_the_fragment_and_document_routes():
+    from vinc_langgraph import create_vinc_tools
+    hub = Hub()
+    tools = {t.name: t for t in create_vinc_tools(sync_client(hub), writes=True)}
+    assert "1 nodes created" in tools["vinc_ingest"].invoke(
+        {"nodes": [{"id": "record:retro", "type": "record", "title": "Retro"}]})
+    tools["vinc_doc_put"].invoke({"text": "body", "doc_id": "vinc.notes"})
+    assert hub.posts()[0]["nodes"][0]["id"] == "record:retro"
+    assert any((r.method, r.url.path) == ("PUT", "/v1/documents/vinc.notes") for r in hub.requests)

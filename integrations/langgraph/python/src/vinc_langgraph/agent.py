@@ -113,7 +113,11 @@ def _assemble(plan: AgentPlan, model: Any, tools: Sequence[Any], *, client: Vinc
         *create_agent_kwargs.get("middleware", ()),
     ]
     extra = {k: v for k, v in create_agent_kwargs.items() if k != "middleware"}
-    return create_agent(model, tools=[*create_vinc_tools(client, async_client), *tools],
+    # 쓰기 도구는 쓸 수 있는 역할에게, 쓰기 키일 때만 준다.
+    # 근거: [[decision:the-default-agent-tool-surface-is-reads-plus-role-gated-writes-2026-10-31]]
+    key_client = client or async_client
+    writes = plan.may_write and key_client is not None and not key_client.read_only
+    return create_agent(model, tools=[*create_vinc_tools(client, async_client, writes=writes), *tools],
                         system_prompt=system_prompt, middleware=middleware,
                         checkpointer=checkpointer, name=name or plan.role_id.split(":", 1)[1],
                         **extra)
@@ -130,7 +134,8 @@ def build_agent(address: str, model: Any, *, tools: Sequence[Any] = (),
     """Read ``address``, pin its contract and return a running agent for it.
 
     ``address`` is ``reviewer``, ``agent-reviewer`` or ``concept:agent-reviewer``. ``model`` is
-    any LangChain chat model. ``tools`` are yours; ``vinc_brief`` and ``vinc_search`` are added.
+    any LangChain chat model. ``tools`` are yours; ``vinc_brief`` and ``vinc_search`` are added,
+    and ``vinc_ingest`` and ``vinc_doc_put`` too when the role may write and the key can write.
     The role is read with a sync client, so ``invoke`` works; for ``ainvoke`` also pass
     ``async_client``, or use :func:`abuild_agent`. With ``record=True`` (the default) each run
     writes its run record, which needs a ``vinc_sk_`` key; a failed write is kept on the result

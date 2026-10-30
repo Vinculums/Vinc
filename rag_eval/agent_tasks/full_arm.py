@@ -63,14 +63,9 @@ def parts(arm: str) -> frozenset[str]:
 
 
 def may_write(contract: dict) -> bool:
-    """역할이 그래프에 쓸 수 있는가: ``writes_graph`` 가 비지 않았고 능력이 ``vinc.write`` 를 막지 않는다."""
-    from vinc_client.role_policy import RolePolicy   # noqa: PLC0415
-    props = contract.get("props") or {}
-    if not props.get("writes_graph"):
-        return False
-    run = RolePolicy.from_contract(contract)
-    verdict = run.capability("vinc.write")
-    return verdict != "deny" and not (run.capabilities.get("allow") and verdict != "allow")
+    """역할이 그래프에 쓸 수 있는가. 어댑터와 같은 함수(`vinc_client.may_write`)를 그대로 쓴다."""
+    from vinc_client import may_write as client_may_write   # noqa: PLC0415
+    return client_may_write(contract)
 
 
 def strip_sources(text: str) -> str:

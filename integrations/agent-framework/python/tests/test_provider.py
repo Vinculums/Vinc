@@ -210,3 +210,19 @@ def test_tools_forward_optional_temporal_scope(tool_name, path):
     body = json.loads(seen[0].content)
     assert {key: body[key] for key in ("mode", "historical", "as_of", "known_at")} == {
         "mode": "historical", "historical": True, "as_of": "2020", "known_at": "2021"}
+
+
+def test_write_tools_are_added_only_when_asked_and_call_the_write_routes():
+    client, seen = vinc({("POST", "/v1/fragments"): {"merged": {"nodes": {"created": 1}}},
+                         ("PUT", "/v1/documents/vinc.notes"): {"doc_id": "vinc.notes",
+                                                               "content_hash": "h"}}, key=SK_KEY)
+    assert {t.name for t in create_vinc_tools(client)} == {"vinc_brief", "vinc_search"}
+    tools = {t.name: t for t in create_vinc_tools(client, writes=True)}
+    assert {"vinc_ingest", "vinc_doc_put"} <= set(tools)
+    assert "1 nodes created" in tool_text(run(tools["vinc_ingest"].invoke(
+        nodes=[{"id": "record:retro", "type": "record"}])))
+    assert "vinc.notes" in tool_text(run(tools["vinc_doc_put"].invoke(text="b", doc_id="vinc.notes")))
+    assert [(r.method, r.url.path) for r in seen] == [("POST", "/v1/fragments"),
+                                                      ("PUT", "/v1/documents/vinc.notes")]
+    with pytest.raises(ValueError):
+        VincContextProvider(client, expose_writes=True)
