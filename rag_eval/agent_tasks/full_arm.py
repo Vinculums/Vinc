@@ -10,6 +10,10 @@ F 는 어댑터가 실제로 하는 일을 한 자리에 모은다.
 | 출력 게이트 | 마지막 답을 역할의 출력 게이트에 넣는다. block 이면 내보내지 않고, interrupt 면 기다리는 결정을 붙여 내보낸다 | ``F-outgate`` |
 | 근거 계약 | 시스템 지시와 블록의 ``Sources:`` 계약 | ``F-sources`` |
 
+두 부품을 함께 뺀 비교군도 있다. ``F-context-toolpolicy`` 는 역할 맥락이 없을 때 도구 정책이 유일한
+방어선인지를 ``F-context`` 와 견준다. 맥락이 닫힌 도구를 이미 막는 모델에서는 ``F`` 와 ``F-toolpolicy``
+가 갈리지 않기 때문이다(VIN-854).
+
 도구 정책과 출력 게이트는 역할 계약을 리포의 로스터 스냅샷(`agents/roles.json`)에서 읽는다. 핀
 스토어의 역할은 핀을 만든 날의 계약이라 그 뒤에 더한 능력 id 가 없기 때문이다. 로스터에 없는 역할은
 핀의 계약을 쓴다. 역할 맥락(필수 문서와 과제 근거)은 핀에서 컴파일한다.
@@ -28,7 +32,9 @@ from rag_eval.agent_tasks import role_context as role_mod
 
 FULL_ARM = "F"
 ABLATIONS = ("context", "tools", "toolpolicy", "outgate", "sources")
-FULL_ARMS = (FULL_ARM,) + tuple(f"{FULL_ARM}-{a}" for a in ABLATIONS)
+#: 두 부품을 함께 뺀 비교군. 부품 이름을 하이픈으로 잇는다.
+PAIRED = ("context-toolpolicy",)
+FULL_ARMS = (FULL_ARM,) + tuple(f"{FULL_ARM}-{a}" for a in ABLATIONS + PAIRED)
 ROSTER = pathlib.Path(__file__).resolve().parents[2] / "agents" / "roles.json"
 #: 게이트가 답을 막았을 때(block) 사용자에게 나가는 글. 채점은 이 글을 본다.
 WITHHELD = ("[The role's output gate withheld this answer: {verdict} ({checks}). "
@@ -40,9 +46,15 @@ def removed(arm: str) -> str | None:
     if arm == FULL_ARM:
         return None
     part = arm.split("-", 1)[1] if arm.startswith(FULL_ARM + "-") else ""
-    if part not in ABLATIONS:
+    if part not in ABLATIONS + PAIRED:
         raise ValueError(f"모르는 F 비교군 {arm!r}")
     return part
+
+
+def parts(arm: str) -> frozenset[str]:
+    """F 비교군이 뺀 부품 전부. ``F`` 는 빈 집합."""
+    part = removed(arm)
+    return frozenset(part.split("-")) if part else frozenset()
 
 
 def strip_sources(text: str) -> str:

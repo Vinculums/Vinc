@@ -289,7 +289,14 @@ def run(a) -> int:
                 header["arms"]["f"] = {**full.settings(),
                                        "tools_offered": len(a2_tools),
                                        "f_tools_read_tools": [t["name"] for t in f_read]}
-            # 역할이 스토어에 없는 문서를 필수로 읽으면 그 역할의 과제는 맥락이 있는 비교군에서만 늘 진다.
+            # closed-tool 과제의 도구를 역할 정책이 닫지 않으면 F 와 F-toolpolicy 가 같은 도구를 받아
+            # 정책을 재지 못한다. 그런 과제는 조용히 "차이 없음"이 되므로 돌리기 전에 거부한다.
+            if full is not None:
+                open_tools = open_closed_tools(todo, full)
+                if open_tools:
+                    listed = ", ".join(f"{t}:{n}" for t, n in open_tools[:5])
+                    raise Refused(f"역할 정책이 닫지 않는 closed-tool 도구 {len(open_tools)}개: {listed}")
+            # 역할이 스토어에 없거나 없는 문서를 필수로 읽으면 그 역할의 과제는 맥락이 있는 비교군에서만 늘 진다.
             # 비교가 한쪽으로 기울므로 돌리기 전에 거부하거나, 허락받으면 모든 비교군에서 똑같이 뺀다.
             unresolved = unresolved_roles(todo, role_ctx, full, want_arms)
             if unresolved:
@@ -298,8 +305,8 @@ def run(a) -> int:
                     raise Refused(f"역할 맥락을 만들 수 없는 과제 {len(unresolved)}개: {listed}. "
                                   "--exclude-unresolved-roles 로 모든 비교군에서 뺄 수 있다")
                 todo = [t for t in todo if t.id not in unresolved]
-                header["excluded"] = {"reason": "prefetch_spec_unresolved: the role's required "
-                                                "reading is not in this store",
+                header["excluded"] = {"reason": "prefetch_spec_unresolved or not_found: the role, "
+                                                "or its required reading, is not in this store",
                                       "tasks": dict(sorted(unresolved.items()))}
             judge = checkers.fake_judge if a.model == "fake" else model_judge(judge_model)
             ctx = checkers.Context(resolve=mcp.exists, judge=judge)
@@ -347,22 +354,42 @@ def run(a) -> int:
     return _finish(a, out, layout, header, rows, ts)
 
 
+def open_closed_tools(todo, full) -> list[tuple[str, str]]:
+    """closed-tool 과제의 ``no_tool_called`` 도구 가운데 그 역할의 정책이 허락하는 것 (과제 id, 도구).
+
+    Vinc 자신의 도구는 기본 능력 지도에 없어서 ``vinc.delete`` 같은 능력 금지로는 닫히지 않는다.
+    이름으로 닫으려면 역할의 ``disallowed_tools`` 에 있어야 한다.
+    """
+    out: list[tuple[str, str]] = []
+    for task in todo:
+        if task.family != "closed-tool":
+            continue
+        policy = full.tool_policy(full.role_of(task))
+        out.extend((task.id, name) for c in task.checks if c["type"] == "no_tool_called"
+                   for name in c["names"] if policy.allows(name))
+    return out
+
+
+#: 역할 맥락이 스토어 때문에 컴파일되지 않는 오류: 필수 읽기가 없다, 역할 노드 자체가 없다.
+UNRESOLVED_ERRORS = ("prefetch_spec_unresolved", "not_found")
+
+
 def unresolved_roles(todo, role_ctx, full, want_arms) -> dict[str, str]:
-    """맥락이 있는 비교군에서 역할의 필수 읽기를 스토어가 갖지 않아 컴파일되지 않는 과제 → 그 역할.
+    """맥락이 있는 비교군에서 역할이나 그 필수 읽기를 스토어가 갖지 않아 컴파일되지 않는 과제 → 그 역할.
 
     컴파일은 과제마다 캐시되므로 여기서 먼저 해 두어도 실행 중에 다시 하지 않는다.
     """
     checks = []
     if role_ctx is not None:
         checks.append(lambda t: (role_ctx.role, role_ctx.compile(t.prompt)))
-    if full is not None and any(full_mod.removed(x) != "context"
+    if full is not None and any("context" not in full_mod.parts(x)
                                 for x in want_arms if x in full_mod.FULL_ARMS):
         checks.append(lambda t: (full.role_of(t), full.compile(full.role_of(t), t.prompt)))
     out: dict[str, str] = {}
     for task in todo:
         for check in checks:
             role, compiled = check(task)
-            if compiled.error == "prefetch_spec_unresolved":
+            if compiled.error in UNRESOLVED_ERRORS:
                 out[task.id] = role
     return out
 
@@ -370,24 +397,24 @@ def unresolved_roles(todo, role_ctx, full, want_arms) -> dict[str, str]:
 def _one_full(a, header, ts, task, host, arm, r, mcp, vinc, a2_tools, full, model, ctx,
               traces, *, reuse=None) -> dict:
     """F 비교군 실행 하나. 빠진 부품만 다르고 나머지는 F 와 같다(:mod:`full_arm`)."""
-    part = full_mod.removed(arm)
+    gone = full_mod.parts(arm)
     role = full.role_of(task)
-    compiled = None if part == "context" else full.compile(role, task.prompt)
+    compiled = None if "context" in gone else full.compile(role, task.prompt)
     context = compiled.block if compiled else None
     system = arms_mod.BASE_SYSTEM
-    if part == "sources":
+    if "sources" in gone:
         system = full_mod.system_without_sources(system)
         context = full_mod.strip_sources(context) if context else context
-    tools = ([t for t in a2_tools if t["name"] in role_mod.READ_TOOLS] if part == "tools"
+    tools = ([t for t in a2_tools if t["name"] in role_mod.READ_TOOLS] if "tools" in gone
              else list(a2_tools))
     if task.stage:
         tools = tools + task.stage_specs()
-    policy = None if part == "toolpolicy" else full.tool_policy(role)
+    policy = None if "toolpolicy" in gone else full.tool_policy(role)
     if policy is not None:
         tools = policy.allowed(tools)
     surface = arms_mod.Surface(arm=arm, mcp=mcp, vinc=vinc, context=context, tools=tools,
                                stage=task.stage_results(), tool_policy=policy)
-    gate = None if part == "outgate" else full.gate(role)
+    gate = None if "outgate" in gone else full.gate(role)
     return _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces, compiled,
                 system=system, gate=gate, role=role, reuse=reuse)
 

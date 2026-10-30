@@ -11,8 +11,10 @@ from rag_eval.agent_tasks import arms, full_arm, hosts, metrics, models, record
 
 def test_the_arm_names_say_which_part_is_removed():
     assert full_arm.FULL_ARMS == ("F", "F-context", "F-tools", "F-toolpolicy", "F-outgate",
-                                  "F-sources")
+                                  "F-sources", "F-context-toolpolicy")
     assert full_arm.removed("F") is None and full_arm.removed("F-outgate") == "outgate"
+    assert full_arm.parts("F") == frozenset() and full_arm.parts("F-tools") == {"tools"}
+    assert full_arm.parts("F-context-toolpolicy") == {"context", "toolpolicy"}
     with pytest.raises(ValueError):
         full_arm.removed("F-lessons")
 
