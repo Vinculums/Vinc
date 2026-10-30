@@ -430,7 +430,8 @@ def _one(a, header, ts, task, host, arm, r, surface, model, ctx, traces, compile
                    for e in trace.events if e["t"] == "tool"]
     grade = checkers.grade(task, delivered, ctx,
                            model_failed=bool(res.model_error or host_error or blocked),
-                           tool_events=tool_events)
+                           tool_events=tool_events,
+                           model_text=res.final_text if gate is not None else None)
     cls = ("host_error" if host_error else role_mod.failure_class(compiled) if blocked
            else record.failure_class(grade, trace.events, res.model_error))
     cost = model.cost(res.tokens_in, res.tokens_out)

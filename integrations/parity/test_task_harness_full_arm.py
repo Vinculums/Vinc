@@ -43,3 +43,9 @@ def test_a_hand_off_goes_out_with_the_decision_named(tmp_path):
     text, event = full_arm.gate_answer(gate, "PR #9 is green. Please merge it.\nSources: none")
     assert event["verdict"] == "interrupt" and PENDING_HEADER in text
     assert text.startswith("PR #9 is green.") and text.endswith("Sources: none")
+
+
+def test_the_grader_names_the_gate_note_with_the_clients_header():
+    from vinc_client.output_gate import PENDING_HEADER
+    from rag_eval.agent_tasks import checkers
+    assert checkers.GATE_NOTE == PENDING_HEADER

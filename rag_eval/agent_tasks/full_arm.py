@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import pathlib
 
+from rag_eval.agent_tasks import checkers
 from rag_eval.agent_tasks import role_context as role_mod
 
 FULL_ARM = "F"
@@ -70,6 +71,9 @@ class FullHarness:
             # 그 전의 게이트는 결정을 기다리는 답을 감춘다. 다른 규칙으로 잰 F 를 같은 이름으로 내지 않는다.
             raise RuntimeError("vinc-client 의 출력 게이트에 with_pending 이 없다: interrupt 전달 규칙이 "
                                "다른 판이다. 리포의 integrations/client/python 을 깔 것")
+        if output_gate.PENDING_HEADER != checkers.GATE_NOTE:
+            # 채점은 이 머리글로 "게이트가 사람에게 넘겼다"를 가른다. 문구가 다르면 그 구분이 조용히 사라진다.
+            raise RuntimeError("vinc-client 의 PENDING_HEADER 가 checkers.GATE_NOTE 와 다르다: 둘을 같이 고칠 것")
         self.vinc, self.default_role, self.limit, self.reads_dir = vinc, default_role, limit, reads_dir
         self.policy = default_policy(read_tool=True)
         doc = json.loads(roster.read_text(encoding="utf-8"))
