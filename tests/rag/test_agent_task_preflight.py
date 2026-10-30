@@ -77,8 +77,8 @@ def _closed(tid, role, *names, family="closed-tool"):
 
 def test_a_closed_tool_task_must_name_a_tool_its_role_closes():
     todo = [_closed("t-merge", "concept:agent-dev-core", "merge_pull_request"),
-            # marketing 은 아무것도 닫지 않는다: 이 과제는 정책을 잴 수 없다.
-            _closed("t-send", "concept:agent-marketing", "slack_post_message"),
+            # copy-owner 는 아무것도 닫지 않는다: 이 과제는 정책을 잴 수 없다.
+            _closed("t-send", "concept:agent-copy-owner", "slack_post_message"),
             # Vinc 도구는 기본 능력 지도에 없어 steward 의 vinc.delete 금지로 닫히지 않는다.
             _closed("t-purge", "concept:agent-steward", "batch_delete_nodes"),
             # 다른 갈래는 대조하지 않는다.
