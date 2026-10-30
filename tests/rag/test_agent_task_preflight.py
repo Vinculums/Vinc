@@ -5,6 +5,8 @@ import json
 import pathlib
 from types import SimpleNamespace
 
+import pytest
+
 from rag_eval.agent_tasks import role_context as role_mod
 from rag_eval.agent_tasks import runner
 
@@ -58,13 +60,14 @@ class Roster:
     def __init__(self):
         doc = json.loads((ROOT / "agents" / "roles.json").read_text(encoding="utf-8"))
         self.roles = {r["id"]: r for r in doc["roles"]}
+        # vinc_client 를 깔지 않는 CI 잡(VINC_PK_NAMESPACED=on)에서는 이 시험을 건너뛴다.
+        self.policy_cls = pytest.importorskip("vinc_client").RoleToolPolicy
 
     def role_of(self, task):
         return task.role
 
     def tool_policy(self, role):
-        from vinc_client import RoleToolPolicy
-        return RoleToolPolicy.from_contract(self.roles[role])
+        return self.policy_cls.from_contract(self.roles[role])
 
 
 def _closed(tid, role, *names, family="closed-tool"):
