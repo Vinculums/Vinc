@@ -84,6 +84,13 @@ ENV VINC_EMBED_DIM=1024
 # · [[record:the-encoder-is-oom-killed-on-the-largest-document-2026-09-12]]
 ENV VINC_EMBED_BATCH=1
 #
+# ColBERT 노드 재채점(VIN-845)의 투영과 pq64 코드북. 투영은 러너의 굽기가 고정 판으로 받아
+# models/ 에 두고, 코드북은 리포(`vinc_rag/data/`)에 있다. 둘 다 아래 `--check` 가 이미지 안에서
+# 실제로 올려 본다. 재채점·학습 규칙 스위치(`VINC_NODE_COLBERT`·`VINC_BRIEF_RULE`)는 여기서 켜지 않는다.
+# 근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]
+ENV VINC_COLBERT_LINEAR=/srv/vinc/models/colbert_linear.pt
+ENV VINC_COLBERT_BOOKS=/srv/vinc/vinc_rag/data/colbert-pq64-books.npy
+#
 # glibc 는 스레드마다 malloc 아레나를 새로 열어 코어 수의 8배까지 늘린다. 인코딩 창구는
 # 요청마다 스레드를 띄우므로(ThreadingHTTPServer) 큰 텐서를 잡았다 놓을 때마다 아레나가
 # 갈라져 RSS 가 순간적으로 부푼다. 둘로 묶는다 — 계산 결과는 바뀌지 않는다.
@@ -118,6 +125,7 @@ COPY api ./api
 COPY store ./store
 COPY engines ./engines
 COPY vinc_rag ./vinc_rag
+RUN python -m vinc_rag.colbert --check
 COPY vinc_mcp ./vinc_mcp
 # 검색 품질 게이트(E2)를 **허브 안에서** 돌리기 위해 싣는다. 이 게이트는 3팔(FTS·
 # 벡터·RRF)을 갈라 재려고 스토어를 in-process 로 열어야 하는데, 사이드카가 물고 있는

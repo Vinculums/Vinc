@@ -226,3 +226,14 @@ def rescore_on() -> bool:
     """`VINC_NODE_COLBERT` — 노드 후보 재채점 스위치. 기본 꺼짐: 토큰이 미러 전체에 찰 때까지 켜지 않는다."""
     from store.envflag import truthy
     return truthy(os.environ.get("VINC_NODE_COLBERT"))
+
+
+if __name__ == "__main__":
+    # 이미지 빌드의 검증(`Dockerfile.hub`): 설정된 두 파일을 실제로 올려 본다. 해시·모양이 틀리면
+    # 빌드가 선다 — 런타임에서 None 으로 조용히 꺼지는 것보다 낫다.
+    import sys
+    if "--check" in sys.argv:
+        c = from_env()
+        if c is None:
+            sys.exit("FATAL: VINC_COLBERT_LINEAR / VINC_COLBERT_BOOKS 가 비어 있다")
+        print(f"colbert: linear ok, books {c.id}", flush=True)

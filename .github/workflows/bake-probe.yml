@@ -218,6 +218,24 @@ jobs:
             echo '내려받은 뒤 `sha256sum` 으로 이 값과 대조할 것 — 다르면 거기서 멈춘다.'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # 이미지 빌드가 ColBERT 투영을 `--check` 로 올려 보므로(VIN-845) hub-deploy 와 같은 자리에 둔다.
+      - name: ColBERT 투영을 받는다
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet --disable-pip-version-check huggingface_hub numpy
+          export $(grep -E '^ENV VINC_COLBERT_LINEAR=' Dockerfile.hub | sed 's/^ENV //')
+          python - "models/$(basename "$VINC_COLBERT_LINEAR")" <<'PY'
+          import hashlib, shutil, sys
+          sys.path.insert(0, ".")
+          import huggingface_hub as hf
+          from vinc_rag.colbert import LINEAR_REVISION, LINEAR_SHA256
+          src = hf.hf_hub_download("BAAI/bge-m3", "colbert_linear.pt", revision=LINEAR_REVISION)
+          got = hashlib.sha256(open(src, "rb").read()).hexdigest()
+          if got != LINEAR_SHA256:
+              sys.exit(f"colbert_linear sha256 {got} != {LINEAR_SHA256}")
+          shutil.copy(src, sys.argv[1])
+          PY
+
       - name: 이미지에서 검증한다 (밀지 않는다)
         # `--image` 없음 = 태그 없음 = 배포가 가리킬 것이 없음. `--no-push` 는 그것을
         # 한 번 더 못박는다. hub-deploy 의 같은 명령과 다른 점은 이 두 가지뿐이다.
