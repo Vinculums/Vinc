@@ -56,6 +56,22 @@ class AgentPlan:
     def props(self) -> Mapping[str, Any]:
         return self.contract.get("props") or {}
 
+    @property
+    def may_write(self) -> bool:
+        """Whether the role may write the graph (:func:`may_write`)."""
+        return may_write(self.contract)
+
+
+def may_write(contract: Mapping[str, Any]) -> bool:
+    """A role may write the graph when its ``writes_graph`` is not empty and its capabilities
+    do not close ``vinc.write`` (a deny, or an allow list that leaves it out)."""
+    props = contract.get("props") if isinstance(contract, Mapping) else None
+    if not isinstance(props, Mapping) or not props.get("writes_graph"):
+        return False
+    run = RolePolicy.from_contract(contract)
+    verdict = run.capability("vinc.write")
+    return verdict != "deny" and not (run.capabilities.get("allow") and verdict != "allow")
+
 
 def _others(edges: Any, side: str) -> tuple[str, ...]:
     """Role ids at the other end of the edges, in the order the hub returned them."""
