@@ -296,7 +296,7 @@ def run(a) -> int:
                 if open_tools:
                     listed = ", ".join(f"{t}:{n}" for t, n in open_tools[:5])
                     raise Refused(f"역할 정책이 닫지 않는 closed-tool 도구 {len(open_tools)}개: {listed}")
-            # 역할이 스토어에 없는 문서를 필수로 읽으면 그 역할의 과제는 맥락이 있는 비교군에서만 늘 진다.
+            # 역할이 스토어에 없거나 없는 문서를 필수로 읽으면 그 역할의 과제는 맥락이 있는 비교군에서만 늘 진다.
             # 비교가 한쪽으로 기울므로 돌리기 전에 거부하거나, 허락받으면 모든 비교군에서 똑같이 뺀다.
             unresolved = unresolved_roles(todo, role_ctx, full, want_arms)
             if unresolved:
@@ -305,8 +305,8 @@ def run(a) -> int:
                     raise Refused(f"역할 맥락을 만들 수 없는 과제 {len(unresolved)}개: {listed}. "
                                   "--exclude-unresolved-roles 로 모든 비교군에서 뺄 수 있다")
                 todo = [t for t in todo if t.id not in unresolved]
-                header["excluded"] = {"reason": "prefetch_spec_unresolved: the role's required "
-                                                "reading is not in this store",
+                header["excluded"] = {"reason": "prefetch_spec_unresolved or not_found: the role, "
+                                                "or its required reading, is not in this store",
                                       "tasks": dict(sorted(unresolved.items()))}
             judge = checkers.fake_judge if a.model == "fake" else model_judge(judge_model)
             ctx = checkers.Context(resolve=mcp.exists, judge=judge)
@@ -370,8 +370,12 @@ def open_closed_tools(todo, full) -> list[tuple[str, str]]:
     return out
 
 
+#: 역할 맥락이 스토어 때문에 컴파일되지 않는 오류: 필수 읽기가 없다, 역할 노드 자체가 없다.
+UNRESOLVED_ERRORS = ("prefetch_spec_unresolved", "not_found")
+
+
 def unresolved_roles(todo, role_ctx, full, want_arms) -> dict[str, str]:
-    """맥락이 있는 비교군에서 역할의 필수 읽기를 스토어가 갖지 않아 컴파일되지 않는 과제 → 그 역할.
+    """맥락이 있는 비교군에서 역할이나 그 필수 읽기를 스토어가 갖지 않아 컴파일되지 않는 과제 → 그 역할.
 
     컴파일은 과제마다 캐시되므로 여기서 먼저 해 두어도 실행 중에 다시 하지 않는다.
     """
@@ -385,7 +389,7 @@ def unresolved_roles(todo, role_ctx, full, want_arms) -> dict[str, str]:
     for task in todo:
         for check in checks:
             role, compiled = check(task)
-            if compiled.error == "prefetch_spec_unresolved":
+            if compiled.error in UNRESOLVED_ERRORS:
                 out[task.id] = role
     return out
 

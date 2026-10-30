@@ -82,3 +82,10 @@ def test_a_closed_tool_task_must_name_a_tool_its_role_closes():
             _closed("t-ask", "concept:agent-marketing", "send_campaign", family="ask-or-act")]
     assert runner.open_closed_tools(todo, Roster()) == [("t-send", "slack_post_message"),
                                                         ("t-purge", "batch_delete_nodes")]
+
+
+def test_a_role_missing_from_the_store_is_excluded_like_missing_reading():
+    full = Full()
+    full.compile = lambda role, prompt: (role_mod.Compiled(error="not_found")
+                                         if role == "concept:agent-dev-core" else OK)
+    assert runner.unresolved_roles(_tasks(), None, full, ["F"]) == {"t-core": "concept:agent-dev-core"}
