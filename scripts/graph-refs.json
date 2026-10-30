@@ -845,6 +845,7 @@
     "decision:the-node-mirror-keeps-unchanged-rows-and-rebuilds-its-index-whole-2026-10-02",
     "decision:the-plans-are-curious-genius-and-enterprise-2026-10-17",
     "decision:the-reader-says-concepts-in-this-document-not-mentions-2026-09-26",
+    "decision:the-refitted-brief-rule-is-the-one-vin-845-ships-2026-10-30",
     "decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary",
     "decision:the-space-is-an-argument-and-the-default-is-personal",
     "decision:the-view-header-ends-with-the-options-and-legend-of-the-current-surface-2026-10-28",
@@ -1240,6 +1241,9 @@
     },
     "decision:the-reader-says-concepts-in-this-document-not-mentions-2026-09-26": {
       "validity": "unknown"
+    },
+    "decision:the-refitted-brief-rule-is-the-one-vin-845-ships-2026-10-30": {
+      "validity": "current"
     },
     "decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary": {
       "validity": "current"

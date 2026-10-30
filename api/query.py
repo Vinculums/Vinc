@@ -3456,6 +3456,15 @@ def _node_links(store, node: str, *, owner: str,
 #: 근거: [[vinc.spec.retrieval-knobs]] §2
 _BRIEF_TOP_K = 10
 _BRIEF_RESOLVE_N = 5
+
+#: VIN-845 학습 해소 규칙 — ColBERT 1위를 확정할지 정하는 로지스틱 모형. 상수는 연구가 dev 120행으로
+#: 맞춘 그대로다(`vinc-rag-assets` `results/cross-language-2026-10-28/node-set/bundle-fix/frozen.json`).
+#: 특징 순서·정의를 바꾸면 상수가 뜻을 잃는다(:func:`_brief_learned_features`). 문턱 아래는 되묻는다.
+#: 근거: [[decision:the-refitted-brief-rule-is-the-one-vin-845-ships-2026-10-30]]
+_LEARNED_MU = [0.5015075326, 0.0252309302, 0.3833333333, 4.6, 0.245, 0.9333333333, 1.15, 0.04959215, 0.4649015889, 0.5]
+_LEARNED_SD = [0.046826256, 0.020552719, 0.4861984059, 4.9672259203, 0.3131759366, 1.4476033844, 2.5743931334, 0.0555813595, 0.1469151194, 0.500000001]
+_LEARNED_W = [0.209475532, 1.0435454277, 0.3200110803, -0.3121817076, -0.1274389725, 0.5486355404, -0.6523491822, 1.1982182073, -0.4365118798, 0.1272793057, 1.3261752473]
+_LEARNED_T = 0.6542
 #: 되묻을 때 실을 후보 수. 3 에서 5 로 늘렸다 — 같은 풀의 앞자리를 더 보여 줄 뿐이라
 #: 보이던 정답이 가려지지 않고, 풀 안의 정답이 전부 보인다(G0 43 → 47/60). 앱의 ask.ts 는
 #: brief 를 부르지 않고 따로 3 개를 보여 준다. `VINC_BRIEF_EXPOSE` 로 프로세스마다 바꾼다.
@@ -3764,6 +3773,49 @@ def _brief_rank(rows: list[dict]) -> list[dict]:
         -len(h.get("arms") or []) if strict else 0,
         -_brief_int(h.get("hit_tokens")),
         -_brief_int(h.get("title_tokens"))))
+
+
+def _brief_rule_learned() -> bool:
+    """`VINC_BRIEF_RULE=learned` — ColBERT 순서 위의 학습 규칙(VIN-845). 기본은 production(기존 규칙)."""
+    return (os.environ.get("VINC_BRIEF_RULE") or "production").strip().lower() == "learned"
+
+
+_HANGUL = re.compile(r"[가-힣]")
+
+
+def _brief_learned_features(query: str, hits: list[dict]) -> list[float] | None:
+    """연구 `stage3.py` `feats` 와 같은 열 개. hits 는 ColBERT 순서이고 행마다 `colbert`·`prod_rank` 가 있다."""
+    if not hits or "colbert" not in hits[0]:
+        return None
+    num = lambda v: float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0  # noqa: E731
+    h1, h2 = hits[0], (hits[1] if len(hits) > 1 else {})
+    s1, s2 = num(h1.get("colbert")), (num(h2.get("colbert")) if h2 else 0.0)
+    rank = int(h1.get("prod_rank") or 21)
+    return [s1, s1 - s2, float(rank == 1), float(rank),
+            num(h1.get("hit_tokens")) / max(num(h1.get("token_total")), 1.0),
+            num(h1.get("title_tokens")), num(h1.get("hit_tokens")) - num(h2.get("hit_tokens")),
+            num(h1.get("sem_lead")), num(h1.get("distance")) if h1.get("distance") is not None else 1.0,
+            float(bool(_HANGUL.search(query or "")))]
+
+
+def _brief_learned_p(x: list[float]) -> float:
+    z = sum(((xi - m) / sd) * w for xi, m, sd, w in zip(x, _LEARNED_MU, _LEARNED_SD, _LEARNED_W)) + _LEARNED_W[-1]
+    return 1.0 / (1.0 + math.exp(-z))
+
+
+def _brief_resolve_learned(query: str, hits: list[dict]) -> tuple[str, list[dict], float | None]:
+    """학습 규칙으로 해소한다. 제목이 질문과 글자 그대로 같은 후보가 **하나**면 그것으로 확정하고(이름을
+    댄 경우), 아니면 ColBERT 1위의 확률이 문턱 이상일 때만 확정한다. 나머지는 되묻는다.
+    연구의 `decide` 와 같다(기존 규칙의 다른 갈래는 여기 없다 — 그 뒤의 가드는 brief 가 그대로 돈다)."""
+    norm = lambda t: re.sub(r"\s+", " ", (t or "").strip().lower())  # noqa: E731
+    named = [h for h in hits if norm(h.get("title")) == norm(query)]
+    if len(named) == 1:
+        return "resolved", named, None
+    x = _brief_learned_features(query, hits)
+    if x is None:
+        return "choose", list(hits), None
+    p = _brief_learned_p(x)
+    return ("resolved", [hits[0]], p) if p >= _LEARNED_T else ("choose", list(hits), p)
 
 
 def _brief_list_rank(rows: list[dict]) -> list[dict]:
@@ -4330,7 +4382,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
           max_excerpts: int = 3, historical: bool = False, as_of: str | None = None,
           mode: str | None = None, known_at: str | None = None,
           cfg=None, store=None, _reask: bool = False,
-          query_runtime: str | None = None, query_model: str | None = None) -> dict:
+          query_runtime: str | None = None, query_model: str | None = None,
+          query_colbert: str | None = None) -> dict:
     """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
 
     질문에 노드 id 가 그대로 들어 있으면 그 노드를 **직참조**한다(검색·랭킹 생략,
@@ -4460,7 +4513,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
                      owner=owner, store=store, historical=historical,
                      as_of=as_of, mode=mode, known_at=known_at,
-                     query_runtime=query_runtime, query_model=query_model)
+                     query_runtime=query_runtime, query_model=query_model,
+                     query_colbert=query_colbert)
         # executed 는 노드 팔 기준이다 — 청크 팔만 죽어도 노드 팔은 owner 스코프 결과를 낸다.
         base["executed"] = bool(res.get("executed") or res.get("node_hits"))
         # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`
@@ -4501,9 +4555,16 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         if _brief_semantic_none(res):
             base["note"] = "no sufficiently close semantic candidate"
             return base
-        status, picked = _brief_resolve(
-            query, res.get("node_hits") or [],
-            mirror_text=lambda h: _brief_mirror_text(store, owner, h))
+        learned = (_brief_rule_learned()
+                   and (res.get("node_rescore") or {}).get("state") == "applied")
+        if learned:
+            # VIN-845 — ColBERT 로 다시 선 후보 위의 학습 규칙. 재채점이 안 된 질의는 기존 규칙으로 간다.
+            status, picked, _p = _brief_resolve_learned(query, res.get("node_hits") or [])
+            base["resolution"] = {"rule": "learned", "p": None if _p is None else round(_p, 4)}
+        else:
+            status, picked = _brief_resolve(
+                query, res.get("node_hits") or [],
+                mirror_text=lambda h: _brief_mirror_text(store, owner, h))
         # B5 — current 의 기권은 답(1위)과 그 주장 키를 공유하는 후보만 본다. 후보 아무나
         # 보면 구간이 없어 늘 unknown 인 개념 후보 하나가 다른 주장의 답을 막는다.
         if mode == "current" and picked and _brief_current_uncertain(
@@ -4563,7 +4624,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             # 되묻기 목록은 넓은 풀 전체를 의미 순서(`_brief_list_rank`)로 세워 노출 수에서
             # **한 번** 자른다. 확정용 순위(팔 개수 → 토큰)는 의미 팔에만 걸린 후보를 맨 뒤로
             # 미는데, 넓은 풀에 새로 들어오는 정답은 대부분 그런 후보다.
-            picked = _brief_list_rank(pool)
+            # 학습 규칙은 ColBERT 순서를 그대로 보인다 — 의미 순서로 다시 세우면 재채점을 되돌린다.
+            picked = list(pool) if learned else _brief_list_rank(pool)
             base["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
             if not _reask and _brief_quotes_on():
                 for _c in base["candidates"]:

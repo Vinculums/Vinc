@@ -1742,8 +1742,9 @@ class VincApp:
         # 명시적 요청 경로이고, 기본으로 켜 두면 정책이 막으려는 것을 그대로 낸다.
         # 시간 인자는 넷 다 q.brief 가 적용한다(B1). `known_at` 을 여기서 빠뜨리면 brief 가
         # 그것을 모른 채 해소한다.
+        qcol = _ENCODER_RESPONSE_COLBERT.get() if qvec is not None else ""
         code, res = self._read(lambda r: _timed("brief", p, r, q.brief(
-            query, owner=_req(p, "owner"), query_embedding=qvec,
+            query, owner=_req(p, "owner"), query_embedding=qvec, query_colbert=qcol or None,
             query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
             query_model=(_ENCODER_RESPONSE_MODEL.get() if qvec is not None else None),
             max_excerpts=_int(p.get("max_excerpts"), 3),

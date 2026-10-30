@@ -1918,8 +1918,9 @@ def _colbert_rescore(store, hits: list[dict], query_colbert: str, owner: str | N
     if missing:
         return hits, {"state": "skipped", "reason": "tokens missing", "missing": len(missing)}
     q = cb_mod.unpack_query(query_colbert)
-    for h, v in zip(head, vids):
-        h["colbert"] = round(cb_mod.maxsim(q, cb.decode(cb_mod.unpack_codes(got[v]["c"]))), 6)
+    for rank, (h, v) in enumerate(zip(head, vids), start=1):
+        h["prod_rank"] = rank                       # 재채점 전 자리 — brief 규칙의 특징이다
+        h["colbert"] = cb_mod.maxsim(q, cb.decode(cb_mod.unpack_codes(got[v]["c"])))
     order = sorted(range(len(head)), key=lambda i: -head[i]["colbert"])
     return [head[i] for i in order] + hits[COLBERT_RESCORE_N:], {"state": "applied", "n": len(head)}
 
