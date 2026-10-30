@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """VIN-845 학습 해소 규칙. 이 파일이 지키는 것: 특징 열 개의 순서와 정의 · 이름을 댄 후보가 하나면
 그것으로 확정 · 문턱에서 정확히 갈린다 · 스위치가 꺼져 있으면 기존 규칙이다.
-근거: [[decision:the-refitted-brief-rule-is-the-one-vin-845-ships-2026-10-30]]"""
+근거: [[decision:vin-845-ships-the-brief-rule-v2-constants-over-its-failed-pre-registered-criteria-2026-10-31]]"""
 from __future__ import annotations
 
 import math

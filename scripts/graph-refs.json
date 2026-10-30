@@ -223,6 +223,7 @@
     "vinc.adr.app",
     "vinc.adr.core",
     "vinc.adr.rag",
+    "vinc.arch.search-pipeline-current-2026-10-31",
     "vinc.audit.0-9-4-handoff-da7318ea-2026-09-20",
     "vinc.audit.agent-framework-memory-2026-10-06",
     "vinc.audit.code-cleanup-app-2026-10-16",
@@ -424,6 +425,7 @@
     "vinc.plan.brief-promotion-production-reproduction-2026-10-23",
     "vinc.plan.brief-promotion-threshold-sealed6-2026-10-23",
     "vinc.plan.brief-quote-units-citation-gate-2026-10-26",
+    "vinc.plan.brief-rule-v2-refit-2026-10-31",
     "vinc.plan.brief-xlang-ko2en-sealed10-2026-10-26",
     "vinc.plan.brief-xlang-promotion-sealed9-2026-10-25",
     "vinc.plan.cag-context-compiler-2026-10-05",
@@ -677,6 +679,7 @@
     "vinc.research.linear-workspace-structure-2026-10-03",
     "vinc.research.link-expression",
     "vinc.research.market-viability-assessment-2026-09-28",
+    "vinc.research.masked-erosion-paper-review-2026-10-31",
     "vinc.research.mcp-companion-tools",
     "vinc.research.mcp-npx-distribution",
     "vinc.research.memory-hierarchy-service-brief",
@@ -845,7 +848,6 @@
     "decision:the-node-mirror-keeps-unchanged-rows-and-rebuilds-its-index-whole-2026-10-02",
     "decision:the-plans-are-curious-genius-and-enterprise-2026-10-17",
     "decision:the-reader-says-concepts-in-this-document-not-mentions-2026-09-26",
-    "decision:the-refitted-brief-rule-is-the-one-vin-845-ships-2026-10-30",
     "decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary",
     "decision:the-space-is-an-argument-and-the-default-is-personal",
     "decision:the-view-header-ends-with-the-options-and-legend-of-the-current-surface-2026-10-28",
@@ -859,6 +861,7 @@
     "decision:topics-wear-their-area-jewel-2026-10-28",
     "decision:view-3d-nodes-are-instanced-and-recede-by-blending-to-the-background",
     "decision:view-offers-two-layouts-by-centre-and-time-branches-2026-10-11",
+    "decision:vin-845-ships-the-brief-rule-v2-constants-over-its-failed-pre-registered-criteria-2026-10-31",
     "decision:vin314-every-agent-answer-ends-with-a-sources-line-2026-10-07",
     "decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07",
     "decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24",
@@ -1242,9 +1245,6 @@
     "decision:the-reader-says-concepts-in-this-document-not-mentions-2026-09-26": {
       "validity": "unknown"
     },
-    "decision:the-refitted-brief-rule-is-the-one-vin-845-ships-2026-10-30": {
-      "validity": "current"
-    },
     "decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary": {
       "validity": "current"
     },
@@ -1283,6 +1283,9 @@
     },
     "decision:view-offers-two-layouts-by-centre-and-time-branches-2026-10-11": {
       "validity": "unknown"
+    },
+    "decision:vin-845-ships-the-brief-rule-v2-constants-over-its-failed-pre-registered-criteria-2026-10-31": {
+      "validity": "current"
     },
     "decision:vin314-every-agent-answer-ends-with-a-sources-line-2026-10-07": {
       "validity": "unknown"
