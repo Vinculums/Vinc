@@ -4,7 +4,7 @@
 
 이 파일이 지키는 것: 끄면 brief 가 토큰 규칙만 쓰던 때와 한 바이트도 안 바뀐다 · 켜면 문턱에서 정확히
 갈린다 · 이름 댄 갈래·단독 후보·유효구간 동점 가드·답변 가능성 게이트를 못 넘는다.
-근거: [[decision:gate-d-reopens-on-the-semantic-arms-own-lead-behind-a-flag-left-off-2026-09-29]]
+근거: [[decision:brief-semantic-promotion-is-0-10-and-0-06-without-hangul-on-either-side-2026-10-26]]
 """
 from __future__ import annotations
 

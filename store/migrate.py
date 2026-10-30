@@ -272,7 +272,7 @@ def rebuild_store(src, dst, *, model: str, dim: int,
     # 🔴 물리 키로 읽는다. 플래그가 켜진 런타임에서 기본 읽기는 owner U+001F id 를 논리 id 로
     # 벗기고, 그 덤프를 적재하면 새 스토어의 키가 논리로 남아 정확 id 조회가 전부 죽고
     # 같은 논리 id 를 가진 소유자 둘이 한 행으로 접힌다. 2026-09-11 라이브 재구축이 정확히
-    # 그렇게 됐다. 근거: [[decision:bge-m3-adoption]]
+    # 그렇게 됐다. 근거: [[decision:swap-the-production-encoder-to-bge-m3-ko-int8-after-the-hub-encoder-work-2026-10-18]]
     #
     # 버릴 벡터 표 둘은 **읽지도 않는다.** 원본 스키마가 코드보다 낮으면 읽기 자체가 깨진다
     # (v17 미러는 pk 가 `node_id` 라 `vec_id` 투영이 export 를 멈췄다). 원본을 마이그레이션해
@@ -357,7 +357,7 @@ def migrate_dim_if_needed(data_dir: str, *, model: str, target_dim: int,
     벡터는 재구축 뒤 비어 있다. 워커가 새 모델로 다시 채우는 동안 검색은 텍스트 팔로
     답하고 `arms`·`vector_note` 가 그 상태를 말한다 — 창의 길이는 코퍼스 × 인코더 속도다
     (2026-09-11 산정: 소유자 그래프 하나에 약 1시간 45분).
-    근거: [[decision:bge-m3-adoption]] · [[vinc.plan.m3-rebuild-rehearsal]]
+    근거: [[decision:swap-the-production-encoder-to-bge-m3-ko-int8-after-the-hub-encoder-work-2026-10-18]] · [[vinc.plan.m3-rebuild-rehearsal]]
     """
     import os
     import time
