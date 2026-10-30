@@ -35,3 +35,11 @@ def test_stripping_sources_removes_the_rule_and_the_citation_contract():
              f"run:\nVerified ... \n{SOURCES_LINE}")
     out = full_arm.strip_sources(block)
     assert SOURCES_LINE not in out and "Citation contract" not in out and "reading text" in out
+
+
+def test_a_hand_off_goes_out_with_the_decision_named(tmp_path):
+    from vinc_client.output_gate import PENDING_HEADER
+    gate = _full(tmp_path).gate("concept:agent-dev-core")
+    text, event = full_arm.gate_answer(gate, "PR #9 is green. Please merge it.\nSources: none")
+    assert event["verdict"] == "interrupt" and PENDING_HEADER in text
+    assert text.startswith("PR #9 is green.") and text.endswith("Sources: none")

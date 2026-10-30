@@ -18,7 +18,7 @@ from vinc.sdk import AsyncVincClient, VincClient
 from vinc.sdk.agent_plan import (AgentPlan, AgentRun, afinish_run, aplan_agent, failed_run,
                                  finish_run, plan_agent, run_result)
 from vinc.sdk.context import DEFAULT_MAX_CHARS
-from vinc.sdk.output_gate import GateResult, OutputGateStopped
+from vinc.sdk.output_gate import OutputGateStopped, delivered_result
 from vinc.sdk.package import DEFAULT_PACKAGE_MAX_CHARS
 from vinc.sdk.prefetch import DEFAULT_PREFETCH_MAX_CHARS
 from vinc.sdk.tools import TOOL_CALLS_PER_RUN
@@ -68,7 +68,7 @@ class VincCrewAgent:
                 finish_run(self._client, failed_run(self.plan, rid), host=HOST, space=self._space)
             raise
         else:
-            result = run_result(self.plan, rid, output.raw, GateResult("pass"))
+            result = run_result(self.plan, rid, output.raw, delivered_result(output.raw))
         if self._record and self._client is not None:
             finish_run(self._client, result, host=HOST, space=self._space)
         return result
@@ -87,7 +87,7 @@ class VincCrewAgent:
                                   space=self._space)
             raise
         else:
-            result = run_result(self.plan, rid, output.raw, GateResult("pass"))
+            result = run_result(self.plan, rid, output.raw, delivered_result(output.raw))
         if self._record and self._async_client is not None:
             await afinish_run(self._async_client, result, host=HOST, space=self._space)
         return result

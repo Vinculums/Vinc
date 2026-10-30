@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from agent_framework import AgentContext, AgentResponse, Message
 from agent_framework import Agent, BaseChatClient, ChatResponse
-from vinc_client.output_gate import OutputGate, OutputGateStopped
+from vinc_client.output_gate import PENDING_HEADER, OutputGate, OutputGateStopped
 from vinc_agent_framework import VincOutputGateMiddleware
 
 FIXTURES = Path(__file__).resolve().parents[3] / 'fixtures' / 'output_gate'
@@ -15,9 +15,11 @@ PROFILES = {p['id']: p for p in json.loads((FIXTURES / 'proposed-role-checks.jso
 
 
 @pytest.mark.parametrize('case', CASES, ids=lambda c: c['id'])
-def test_original_hand_labels_through_real_framework_context(case):
+@pytest.mark.parametrize('on_interrupt', ['deliver', 'stop'])
+def test_original_hand_labels_through_real_framework_context(case, on_interrupt):
     context = AgentContext(agent=SimpleNamespace(), messages=[])
-    middleware = VincOutputGateMiddleware(OutputGate(PROFILES[case['role_id']], self_authored=case['self_authored']))
+    middleware = VincOutputGateMiddleware(OutputGate(PROFILES[case['role_id']], self_authored=case['self_authored']),
+                                          on_interrupt=on_interrupt)
     calls = []
     async def next_step():
         calls.append(1)
@@ -25,6 +27,10 @@ def test_original_hand_labels_through_real_framework_context(case):
     if case['expected'] == 'pass':
         asyncio.run(middleware.process(context, next_step))
         assert context.metadata['vinc_output_gate']['verdict'] == 'pass'
+    elif case['expected'] == 'interrupt' and on_interrupt == 'deliver':
+        asyncio.run(middleware.process(context, next_step))
+        assert context.metadata['vinc_output_gate']['verdict'] == 'interrupt'
+        assert context.result.text.startswith(case['answer'].rstrip()) and PENDING_HEADER in context.result.text
     else:
         with pytest.raises(OutputGateStopped) as exc:
             asyncio.run(middleware.process(context, next_step))
@@ -57,6 +63,8 @@ def test_real_agent_pipeline_never_retries_a_gate_failure(text, expected):
     agent = Agent(client=client, name='reviewer', middleware=[middleware])
     if expected == 'pass':
         assert asyncio.run(agent.run('Review')).text == text
+    elif expected == 'interrupt':
+        assert asyncio.run(agent.run('Review')).text == text + '\n\n' + PENDING_HEADER + '\n- merge: merge'
     else:
         with pytest.raises(OutputGateStopped) as exc:
             asyncio.run(agent.run('Review'))

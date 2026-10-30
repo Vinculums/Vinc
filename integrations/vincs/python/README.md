@@ -217,7 +217,7 @@ approval never executes a tool. If the role changes after it was read, the next 
 | `never`, `person_only` | the agent's `backstory`, read when `create_agent` builds it |
 | the complete contract, every required document in full, task evidence | read again before every task the agent runs (`prefetch_with_contract`, the call the other adapters make) and given to the task as its context; over `prefetch_max_chars` (24,000) it raises `prefetch_budget_exceeded` and the model is not called |
 | `disallowed_tools` | removed, by exact tool name, from the tools the task runs with, so the model does not see them and CrewAI cannot run them; entries that match no tool give one warning per run |
-| `gates`, `never_checks` | `create_output_guardrail(gate)` on the task: a blocked output, or one that needs a person, raises `OutputGateStopped` instead of being sent back to the model to retry |
+| `gates`, `never_checks` | `create_output_guardrail(gate)` on the task: a blocked output raises `OutputGateStopped` instead of being sent back to the model to retry; a text output that needs a person goes out with the pending decision listed under `PENDING_HEADER` (`on_interrupt="stop"` raises instead), and a structured one with `person_only_requests` still raises and goes through `VincPersonOnlyInput` |
 | person-only actions | `VincPersonOnlyInput` answers CrewAI's human input step (below) |
 
 With `expose_tools=True` each run adds `vinc_brief` and `vinc_search` and allows 4

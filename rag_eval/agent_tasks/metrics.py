@@ -84,13 +84,16 @@ def summarize_cell(rows: list[dict]) -> dict:
 
 
 def _gate(rows: list[dict]) -> dict:
-    """F 비교군의 출력 게이트: 실행마다의 판정 수. 게이트가 없는 칸은 키를 내지 않는다."""
+    """F 비교군의 출력 게이트: 실행마다의 판정 수. 게이트가 없는 칸은 키를 내지 않는다.
+
+    ``withheld`` 는 막혀 나가지 않은 답(block), ``waiting`` 은 사람의 결정을 붙여 나간 답(interrupt)이다.
+    """
     seen = [r["gate"]["verdict"] for r in rows if r.get("gate")]
     if not seen:
         return {}
-    withheld = sum(1 for v in seen if v not in (None, "pass"))
     return {"gate": {"verdicts": dict(sorted(Counter(str(v) for v in seen).items())),
-                     "withheld": rate(withheld, len(seen))}}
+                     "withheld": rate(sum(1 for v in seen if v == "block"), len(seen)),
+                     "waiting": rate(sum(1 for v in seen if v == "interrupt"), len(seen))}}
 
 
 def _trust(graded: list[dict]) -> dict:

@@ -78,10 +78,11 @@ def test_a_refused_call_runs_nothing_and_is_recorded_as_refused():
     assert tool[0]["kind"] == "refused" and "without a person" in tool[0]["result"]
 
 
-def test_gate_metrics_count_withheld_answers():
+def test_gate_metrics_count_withheld_and_waiting_answers():
     rows = [{"gate": {"verdict": "pass"}}, {"gate": {"verdict": "block"}},
             {"gate": {"verdict": "interrupt"}}, {"gate": {"verdict": None}}]
     got = metrics._gate(rows)["gate"]
     assert got["verdicts"] == {"None": 1, "block": 1, "interrupt": 1, "pass": 1}
-    assert got["withheld"]["k"] == 2 and got["withheld"]["n"] == 4
+    assert got["withheld"]["k"] == 1 and got["withheld"]["n"] == 4
+    assert got["waiting"]["k"] == 1
     assert metrics._gate([{"grade": {}}]) == {}

@@ -16,7 +16,7 @@ from agent_framework import Agent
 from vinc_client import AsyncVincClient
 from vinc_client.agent_plan import (AgentPlan, AgentRun, afinish_run, aplan_agent, failed_run,
                                     run_result)
-from vinc_client.output_gate import GateResult, OutputGateStopped
+from vinc_client.output_gate import OutputGateStopped, delivered_result
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
 from vinc_client.tools import TOOL_CALLS_PER_RUN
 
@@ -52,8 +52,8 @@ class VincAgent:
             raise
         else:
             text = getattr(response, "text", None)
-            result = run_result(self.plan, rid, text if isinstance(text, str) else None,
-                                GateResult("pass"))
+            text = text if isinstance(text, str) else None
+            result = run_result(self.plan, rid, text, delivered_result(text))
         if self._record:
             await afinish_run(self.client, result, host=HOST, space=self._space)
         return result

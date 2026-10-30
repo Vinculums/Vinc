@@ -7,15 +7,15 @@ F 는 어댑터가 실제로 하는 일을 한 자리에 모은다.
 | 역할 맥락 | 과제의 역할을 기본 정책(TASK_EVIDENCE)으로 컴파일한 블록 | ``F-context`` |
 | 도구 전체 | 배포된 Vinc MCP 도구 전부(A2 와 같다) | ``F-tools``: 읽기 도구 셋만 |
 | 도구 정책 | 능력 id·``disallowed_tools`` 로 도구를 숨기고 승인 도구 호출을 거절 | ``F-toolpolicy`` |
-| 출력 게이트 | 마지막 답을 역할의 출력 게이트에 넣고, pass 가 아니면 답을 내보내지 않는다 | ``F-outgate`` |
+| 출력 게이트 | 마지막 답을 역할의 출력 게이트에 넣는다. block 이면 내보내지 않고, interrupt 면 기다리는 결정을 붙여 내보낸다 | ``F-outgate`` |
 | 근거 계약 | 시스템 지시와 블록의 ``Sources:`` 계약 | ``F-sources`` |
 
 도구 정책과 출력 게이트는 역할 계약을 리포의 로스터 스냅샷(`agents/roles.json`)에서 읽는다. 핀
 스토어의 역할은 핀을 만든 날의 계약이라 그 뒤에 더한 능력 id 가 없기 때문이다. 로스터에 없는 역할은
 핀의 계약을 쓴다. 역할 맥락(필수 문서와 과제 근거)은 핀에서 컴파일한다.
 
-게이트가 답을 막으면 :data:`WITHHELD` 문장이 산출물이 된다. 그래서 채점은 사용자에게 실제로 나간
-글을 본다. 도구 호출은 게이트 앞에서 이미 일어났으므로 무대 도구 채점은 그대로 원본 기록을 본다.
+게이트가 답을 막으면(block) :data:`WITHHELD` 문장이 산출물이 된다. 사람의 결정을 기다리는 답(interrupt)은
+``OutputGate.deliver`` 와 같이 그 결정을 붙여 나간다. 그래서 채점은 사용자에게 실제로 나간 글을 본다. 도구 호출은 게이트 앞에서 이미 일어났으므로 무대 도구 채점은 그대로 원본 기록을 본다.
 근거: [[vinc.research.agent-harness-and-eval-without-a-model-api-2026-10-25 §6.4]]
 """
 from __future__ import annotations
@@ -29,7 +29,7 @@ FULL_ARM = "F"
 ABLATIONS = ("context", "tools", "toolpolicy", "outgate", "sources")
 FULL_ARMS = (FULL_ARM,) + tuple(f"{FULL_ARM}-{a}" for a in ABLATIONS)
 ROSTER = pathlib.Path(__file__).resolve().parents[2] / "agents" / "roles.json"
-#: 게이트가 답을 막았을 때 사용자에게 나가는 글. 채점은 이 글을 본다.
+#: 게이트가 답을 막았을 때(block) 사용자에게 나가는 글. 채점은 이 글을 본다.
 WITHHELD = ("[The role's output gate withheld this answer: {verdict} ({checks}). "
             "A person has to review it before it goes out.]")
 
@@ -64,7 +64,12 @@ class FullHarness:
 
     def __init__(self, vinc, default_role: str, limit: int, reads_dir: pathlib.Path,
                  roster: pathlib.Path = ROSTER) -> None:
+        from vinc_client import output_gate   # noqa: PLC0415
         from vinc_client.compiler import default_policy   # noqa: PLC0415
+        if not hasattr(output_gate, "with_pending"):
+            # 그 전의 게이트는 결정을 기다리는 답을 감춘다. 다른 규칙으로 잰 F 를 같은 이름으로 내지 않는다.
+            raise RuntimeError("vinc-client 의 출력 게이트에 with_pending 이 없다: interrupt 전달 규칙이 "
+                               "다른 판이다. 리포의 integrations/client/python 을 깔 것")
         self.vinc, self.default_role, self.limit, self.reads_dir = vinc, default_role, limit, reads_dir
         self.policy = default_policy(read_tool=True)
         doc = json.loads(roster.read_text(encoding="utf-8"))
@@ -107,7 +112,11 @@ class FullHarness:
 
 
 def gate_answer(gate, text: str) -> tuple[str, dict]:
-    """(사용자에게 나갈 글, 원본 기록 사건). 빈 답은 게이트에 넣지 않는다(채점에서 빠진다)."""
+    """(사용자에게 나갈 글, 원본 기록 사건). 빈 답은 게이트에 넣지 않는다(채점에서 빠진다).
+
+    ``OutputGate.deliver`` 의 output 단계와 같다: pass 는 그대로, interrupt 는 기다리는 결정을 붙여,
+    block 은 :data:`WITHHELD` 로.
+    """
     if gate is None or not (text or "").strip():
         return text, {"t": "gate", "verdict": None}
     got = gate.evaluate(text)
@@ -115,4 +124,7 @@ def gate_answer(gate, text: str) -> tuple[str, dict]:
              "person_only_actions": list(got.person_only_actions)}
     if got.verdict == "pass":
         return text, event
+    if got.verdict == "interrupt":
+        from vinc_client.output_gate import with_pending   # noqa: PLC0415
+        return with_pending(text, got, gate.person_only), event
     return WITHHELD.format(verdict=got.verdict, checks=", ".join(got.failed_checks) or "none"), event

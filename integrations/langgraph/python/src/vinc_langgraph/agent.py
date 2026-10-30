@@ -18,7 +18,7 @@ from langchain_core.messages import HumanMessage
 from vinc_client import AsyncVincClient, VincClient
 from vinc_client.agent_plan import (AgentPlan, AgentRun, afinish_run, aplan_agent, failed_run,
                                     finish_run, plan_agent, run_result)
-from vinc_client.output_gate import GateResult, OutputGateStopped
+from vinc_client.output_gate import OutputGateStopped, delivered_result
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
 from vinc_client.tools import TOOL_CALLS_PER_RUN
 
@@ -70,7 +70,8 @@ class VincAgent:
                 finish_run(self._client, failed_run(self.plan, rid), host=HOST, space=self._space)
             raise
         else:
-            result = run_result(self.plan, rid, _final_text(state), GateResult("pass"))
+            text = _final_text(state)
+            result = run_result(self.plan, rid, text, delivered_result(text))
         if self._record and self._client is not None:
             finish_run(self._client, result, host=HOST, space=self._space)
         return result
@@ -89,7 +90,8 @@ class VincAgent:
                                   space=self._space)
             raise
         else:
-            result = run_result(self.plan, rid, _final_text(state), GateResult("pass"))
+            text = _final_text(state)
+            result = run_result(self.plan, rid, text, delivered_result(text))
         if self._record and self._async_client is not None:
             await afinish_run(self._async_client, result, host=HOST, space=self._space)
         return result

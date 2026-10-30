@@ -21,8 +21,9 @@ from .shims import (HARNESS_CONCEPT, MECHANISMS, Shim, attached_shims,  # noqa: 
 from .review import Finding, PersonOnlyRequest, ReviewOutput, UnparsedReview, parse_review  # noqa: E402
 from .approval import (ApprovalDecision, ApprovalRequest, ApprovalResult, RoleOutput,  # noqa: E402
                        prepare_person_only, resolve_person_only)
-from .output_gate import (GateResult, OutputGate, OutputGateStopped, ToolProof,  # noqa: E402
-                          preserve_required_route, sources_line)
+from .output_gate import (PENDING_HEADER, Delivery, GateResult, OutputGate,  # noqa: E402
+                          OutputGateStopped, ToolProof, delivered_result,
+                          preserve_required_route, sources_line, with_pending)
 from .package import build_package_fragment, format_package  # noqa: E402
 from .handoff import check_package_handoff  # noqa: E402
 from .prefetch import RolePrefetch  # noqa: E402
@@ -49,6 +50,7 @@ __all__ = [
     "RoleOutput", "ApprovalRequest", "ApprovalDecision", "ApprovalResult",
     "prepare_person_only", "resolve_person_only",
     "GateResult", "OutputGate", "OutputGateStopped", "ToolProof", "preserve_required_route", "sources_line",
+    "Delivery", "PENDING_HEADER", "delivered_result", "with_pending",
     "build_package_fragment", "format_package", "check_package_handoff",
     "RolePrefetch", "RoleToolPolicy", "RolePolicy",
     "compile_context", "acompile_context", "replay_context", "check_replay", "ContextRequest",
