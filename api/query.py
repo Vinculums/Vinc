@@ -4514,7 +4514,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                      owner=owner, store=store, historical=historical,
                      as_of=as_of, mode=mode, known_at=known_at,
                      query_runtime=query_runtime, query_model=query_model,
-                     query_colbert=query_colbert)
+                     # 기존 규칙은 ColBERT 순서 위에서 잰 적이 없다 — 학습 규칙일 때만 재채점된 후보로 해소한다.
+                     query_colbert=query_colbert if _brief_rule_learned() else None)
         # executed 는 노드 팔 기준이다 — 청크 팔만 죽어도 노드 팔은 owner 스코프 결과를 낸다.
         base["executed"] = bool(res.get("executed") or res.get("node_hits"))
         # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`

@@ -46,3 +46,19 @@ def test_switch_defaults_to_production(monkeypatch):
     assert q._brief_rule_learned() is False
     monkeypatch.setenv("VINC_BRIEF_RULE", "learned")
     assert q._brief_rule_learned() is True
+
+
+def test_production_rule_never_sees_the_colbert_order(monkeypatch):
+    seen = {}
+
+    def fake_search(query, **kw):
+        seen["qc"] = kw.get("query_colbert")
+        return {"executed": True, "node_hits": [], "rows": []}
+
+    monkeypatch.setattr(q, "search", fake_search)
+    monkeypatch.delenv("VINC_BRIEF_RULE", raising=False)
+    q.brief("what is it", owner="o", query_colbert="TOKENS", store=object())
+    assert seen["qc"] is None
+    monkeypatch.setenv("VINC_BRIEF_RULE", "learned")
+    q.brief("what is it", owner="o", query_colbert="TOKENS", store=object())
+    assert seen["qc"] == "TOKENS"
