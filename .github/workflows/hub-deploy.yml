@@ -363,6 +363,8 @@ jobs:
       - name: ColBERT 투영을 받는다
         run: |
           set -euo pipefail
+          # 굽기 캐시가 맞으면 굽는 스텝이 건너뛰어져 huggingface_hub 가 없다. 여기서 직접 깐다.
+          python -m pip install --quiet --disable-pip-version-check huggingface_hub
           export $(grep -E '^ENV VINC_COLBERT_LINEAR=' Dockerfile.hub | sed 's/^ENV //')
           python - "models/$(basename "$VINC_COLBERT_LINEAR")" <<'PY'
           import hashlib, shutil, sys
