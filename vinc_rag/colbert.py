@@ -21,7 +21,10 @@ import pickle
 import threading
 import zipfile
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:  # numpy 없는 설치에서는 ColBERT 전체가 꺼진다(토큰 텍스트만 쓸 수 있다)
+    np = None
 
 DIM = 1024
 SUBSPACES = 64
@@ -40,7 +43,7 @@ class _TorchState(pickle.Unpickler):
     받는 것은 `OrderedDict` 와 `_rebuild_tensor_v2` 와 저장소 타입 둘뿐이다. 그 밖의
     전역은 거절한다 — 피클은 임의 코드를 부를 수 있으니 열린 목록으로 두지 않는다."""
 
-    _STORAGE = {"HalfStorage": np.float16, "FloatStorage": np.float32}
+    _STORAGE = {"HalfStorage": "float16", "FloatStorage": "float32"}
 
     def __init__(self, fh, zf: zipfile.ZipFile, root: str):
         super().__init__(fh)
@@ -53,7 +56,7 @@ class _TorchState(pickle.Unpickler):
         if (module, name) == ("torch._utils", "_rebuild_tensor_v2"):
             return self._rebuild
         if module == "torch" and name in self._STORAGE:
-            return self._STORAGE[name]
+            return np.dtype(self._STORAGE[name])
         raise pickle.UnpicklingError(f"허용하지 않은 전역: {module}.{name}")
 
     def persistent_load(self, pid):
@@ -197,7 +200,7 @@ def from_env() -> Colbert | None:
     부르는 쪽은 재채점 없이 기존 순서를 쓴다(데스크탑에는 인코더도 이 파일도 없다)."""
     lp = os.environ.get("VINC_COLBERT_LINEAR", "").strip()
     bp = os.environ.get("VINC_COLBERT_BOOKS", "").strip()
-    if not lp or not bp:
+    if not lp or not bp or np is None:
         return None
     return Colbert(lp, bp)
 
@@ -225,7 +228,7 @@ def cached() -> Colbert | None:
 def rescore_on() -> bool:
     """`VINC_NODE_COLBERT` — 노드 후보 재채점 스위치. 기본 꺼짐: 토큰이 미러 전체에 찰 때까지 켜지 않는다."""
     from store.envflag import truthy
-    return truthy(os.environ.get("VINC_NODE_COLBERT"))
+    return np is not None and truthy(os.environ.get("VINC_NODE_COLBERT"))
 
 
 if __name__ == "__main__":
