@@ -103,6 +103,10 @@ def _where_am_i(forced_owner: str | None) -> str | None:
 
 
 class Dispatcher:
+    # 클래스 기본값: `__new__` 로 만들어 `_dispatch` 만 보는 테스트도 initialize 를 탄다.
+    hub = False
+    client = ""
+
     def __init__(self, bridge: Bridge, *, hub: bool = False):
         self.bridge = bridge
         self.initialized = False
