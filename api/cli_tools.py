@@ -229,7 +229,7 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
     if cmd == "run":
         if args.runcmd == "start":
             data = {"role": args.role, "task": args.task, "subject": args.subject,
-                    "run_id": args.run_id}
+                    "run_id": args.run_id, "host": args.host}
             return "vinc_run_start", {**common, **{k: v for k, v in data.items()
                                                     if v not in (None, "")}}, None
         if args.runcmd == "submit":

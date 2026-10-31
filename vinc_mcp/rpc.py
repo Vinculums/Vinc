@@ -109,6 +109,8 @@ class Dispatcher:
         # 프로파일은 둘이다: 로컬(stdio, 기본)과 허브. 허브는 이미 계정 그래프 자신이라
         # `target` 을 받지 않고 `space` 로 스페이스를 고른다(tools.specs).
         self.hub = hub
+        #: initialize 의 clientInfo(stdio 만). run_start 의 host 기본값이 된다.
+        self.client = ""
         #: 웹훅 구독과 전달(`events.Runtime`). 켜진 허브만 채운다. 없으면 poll 만 연다.
         self.events = None
 
@@ -184,6 +186,9 @@ class Dispatcher:
                 out["instructions"] = txt
             return out
         if method == "initialize":
+            if not self.hub:
+                from . import run_protocol
+                self.client = run_protocol.client_label(params.get("clientInfo"))
             want = params.get("protocolVersion")
             negotiated = want if want in PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION
             info: dict = {"name": "vinc", "version": __version__}
@@ -245,6 +250,9 @@ class Dispatcher:
                 keep = {k: args[k] for k in ("space", "owner") if k in args}
                 args = {**keep, "run": args.get("run"), **({"answer": answer} if answer else {})}
                 name = run_tasks.SUBMIT_TOOL if answer else "vinc_runs"
+            if not self.hub and self.client:
+                from . import run_protocol
+                args = run_protocol.with_host(name, args, self.client)
             # REST도 같은 검증→한도→도구 호출을 탄다. MCP 봉투만 여기서 만든다.
             # 근거: [[decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24]]
             outcome = toolcall.execute(name, args, self.bridge,

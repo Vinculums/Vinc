@@ -2328,9 +2328,10 @@ TOOLS.append({"name": "vinc_run_start", "reference":
     "gates, output_kind, act_policy, capabilities, person_only, never}, budget_left, next}. "
     "Read the documents in policy.reads, do the task, then call vinc_run_submit with the "
     "output. run_id is optional: pass your own to make a retry return the same run instead of "
-    "opening a second one (it resumes the open run when the role matches). The run is saved as a "
-    "run record (an Episode about the role) whose outcome stays waiting until it ends. Vinc "
-    "calls no model.",
+    "opening a second one (it resumes the open run when the role matches). Pass host with your "
+    "client's name and version so the run record says where the role ran; a local stdio "
+    "connection fills it from the client's initialize. The run is saved as a run record (an "
+    "Episode about the role) whose outcome stays waiting until it ends. Vinc calls no model.",
     "inputSchema": {"type": "object", "properties": {
         "role": {"type": "string", "description": "Agent slug or concept:agent- id."},
         "task": {"type": "string", "maxLength": 4000,
@@ -2339,6 +2340,8 @@ TOOLS.append({"name": "vinc_run_start", "reference":
                     "description": "What the run works on, such as a pull request URL."},
         "run_id": {"type": "string", "maxLength": 128,
                    "description": "Your own id for the run; omit to get one."},
+        "host": {"type": "string", "maxLength": 120,
+                 "description": "The client that runs the role, with its version."},
         "owner": {"type": "string"}}, "required": ["role", "task"]},
     "run": _t_run_start})
 TOOLS.append({"name": "vinc_run_submit", "reference":

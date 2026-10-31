@@ -24,7 +24,7 @@ import sys
 from collections.abc import Mapping
 from typing import IO, Any
 
-from . import __version__, hubhttp, modern
+from . import __version__, hubhttp, modern, run_protocol
 from .remote import _endpoint
 from .rpc import LATEST_PROTOCOL_VERSION, PROTOCOL_VERSIONS, error_reply
 
@@ -84,6 +84,9 @@ class Proxy:
         self.timeout = timeout
         self.session_id: str | None = None
         self.protocol: str | None = None
+        #: 이 프로세스에 붙은 클라이언트(initialize 의 clientInfo). 허브는 세션을 추적하지 않아
+        #: 모르므로 run_start 의 host 를 여기서 채워 넘긴다.
+        self.client = ""
 
     # ── 키가 없을 때 ────────────────────────────────────────────────────────
     def _signed_out(self, msg: Any) -> list[dict]:
@@ -107,6 +110,7 @@ class Proxy:
     def handle(self, msg: Any) -> list[dict]:
         if not self.token:
             return self._signed_out(msg)
+        msg = self._stamp_host(msg)
         body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
         # 모던 요청은 자기 `_meta` 버전과 메서드·이름을 헤더로 비춘다(호스티드가 대조한다).
         # 세션도 협상도 없는 세대라 아래 두 헤더는 싣지 않는다.
@@ -140,6 +144,22 @@ class Proxy:
                 if pv:
                     self.protocol = pv
         return replies
+
+    def _stamp_host(self, msg: Any) -> Any:
+        if not isinstance(msg, dict):
+            return msg
+        params = msg.get("params")
+        if not isinstance(params, dict):
+            return msg
+        if msg.get("method") == "initialize":
+            self.client = run_protocol.client_label(params.get("clientInfo"))
+            return msg
+        if msg.get("method") != "tools/call" or not self.client:
+            return msg
+        args = run_protocol.with_host(params.get("name") or "", params.get("arguments"), self.client)
+        if args is params.get("arguments"):
+            return msg
+        return {**msg, "params": {**params, "arguments": args}}
 
     def _http_error(self, msg: Any, msg_id: Any, e: hubhttp.HubHTTPError) -> list[dict]:
         raw = e.body

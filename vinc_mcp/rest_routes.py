@@ -91,7 +91,7 @@ READ_ROUTES = (
 # A2 adds editor/admin routes here. Search/fetch belong to a host directory,
 # while every other public MCP tool must have a route.
 WRITE_ROUTES = (
-    Route("POST", "/v1/runs", "vinc_run_start", body=("role", "task", "subject", "run_id"),
+    Route("POST", "/v1/runs", "vinc_run_start", body=("role", "task", "subject", "run_id", "host"),
           success=201),
     Route("POST", "/v1/runs/{run}/steps", "vinc_run_submit",
           body=("output", "answer", "abandon", "person_only_requests", "cited_ids", "usage",

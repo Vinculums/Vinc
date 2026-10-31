@@ -258,3 +258,48 @@ def test_a_role_without_capabilities_records_but_never_flags():
     run = start(bridge, run_id="cap-6")["run"]
     done = call(bridge, "vinc_run_submit", run=run, output=PLAIN, capabilities_used=["shell.exec"])
     assert done["outcome"] == "success" and bridge.runs[run]["capabilities_used"] == ["shell.exec"]
+
+
+def test_the_host_the_caller_names_is_saved_on_the_run_record():
+    # VIN-867: 실행 기록만 보고도 어느 호스트에서 돌았는지 알 수 있어야 한다.
+    bridge = _Bridge(role_props())
+    out = start(bridge, run_id="r-host", host="  codex-cli\n0.162.1 ")
+    assert bridge.runs[out["run"]]["host"] == "codex-cli 0.162.1"
+    long = start(bridge, run_id="r-host-long", host="h" * 500)
+    assert len(bridge.runs[long["run"]]["host"]) == run_protocol.HOST_MAX
+    none = start(bridge, run_id="r-host-none")
+    assert "host" not in bridge.runs[none["run"]]
+
+
+def test_client_info_becomes_the_default_host_and_a_named_host_wins():
+    label = run_protocol.client_label({"name": "hermes-agent", "version": "0.22.5"})
+    assert label == "hermes-agent 0.22.5"
+    assert run_protocol.client_label(None) == "" and run_protocol.client_label({}) == ""
+    assert run_protocol.with_host("vinc_run_start", {"role": "r"}, label)["host"] == label
+    assert run_protocol.with_host("vinc_run_start", {"host": "mine"}, label)["host"] == "mine"
+    assert run_protocol.with_host("vinc_search", {"q": "x"}, label) == {"q": "x"}
+
+
+def _init(client):
+    return {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": client}}
+
+
+def _call_start(run_id):
+    return {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": {"name": "vinc_run_start",
+                       "arguments": {"role": ROLE, "task": "Review the change.", "run_id": run_id}}}
+
+
+def test_a_stdio_connection_records_its_client_and_the_hub_does_not():
+    from vinc_mcp.rpc import Dispatcher
+    bridge = _Bridge(role_props())
+    local = Dispatcher(bridge)
+    local.handle(_init({"name": "claude-code", "version": "2.1"}))
+    local.handle(_call_start("r-stdio"))
+    assert bridge.runs[run_protocol.episode_id("r-stdio")]["host"] == "claude-code 2.1"
+    # 허브의 디스패처는 모든 테넌트가 같이 쓴다. 거기서 기억하면 남의 클라이언트가 섞인다.
+    hub = Dispatcher(bridge, hub=True)
+    hub.handle(_init({"name": "someone-else", "version": "1"}))
+    hub.handle(_call_start("r-hub"))
+    assert "host" not in bridge.runs[run_protocol.episode_id("r-hub")]
