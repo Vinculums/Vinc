@@ -95,6 +95,14 @@ class ToolContractTests(unittest.TestCase):
             self.assertTrue(t["description"], t["name"])
             self.assertEqual(t["inputSchema"]["type"], "object", t["name"])
 
+    def test_top_level_schemas_are_plain_objects_for_openai_hosts(self):
+        # OpenAI·Azure 함수 호출은 최상위에 이 키워드가 하나라도 있으면 도구 목록 전체를 400 으로
+        # 거절한다(VIN-866). 규칙은 핸들러와 설명에 둔다.
+        banned = {"oneOf", "anyOf", "allOf", "enum", "const", "not"}
+        for profile in (tools.specs(), tools.specs(hub=True)):
+            for t in profile:
+                self.assertFalse(banned & set(t["inputSchema"]), t["name"])
+
     def test_write_surfaces_are_explicit(self):
         # 쓰기 표면은 **명시된 것만**(ingest + 오염 정리 delete/merge + D45 P4 문서
         # 정본 put/delete + F10-b 기각 기억)이어야 한다 — 조회 도구가 몰래 쓰지 않는다.

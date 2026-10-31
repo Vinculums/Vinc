@@ -1643,8 +1643,9 @@ TOOLS: list[dict] = [
             "dir": {"type": "string", "enum": ["out", "in", "both"], "default": "both"},
             "limit": {"type": "integer", "minimum": 1, "maximum": 5000, "default": 500},
             "owner": {"type": "string"},
-        }, "oneOf": [{"required": ["node"], "not": {"required": ["nodes"]}},
-                     {"required": ["nodes"], "not": {"required": ["node"]}}]}, "run": _t_edges,
+        # node 와 nodes 중 하나만이라는 규칙은 스키마에 싣지 않는다(최상위 oneOf 는 OpenAI 함수
+        # 호출이 도구 목록째 거절한다). 강제는 api/query.py node_edges 가 한다.
+        }}, "run": _t_edges,
     },
     {
         "name": "vinc_path",
