@@ -110,3 +110,24 @@ class RealStore(unittest.TestCase):
             sv._colbert, sv._encode_call = real_cb, real_call
             os.environ.pop("VINC_EMBED_ENCODE", None)
             app.jobs.stop() if hasattr(app.jobs, "stop") else None
+
+    def test_one_rebuild_fills_at_most_the_cap_and_the_next_one_continues(self):
+        from api.server import VincApp
+        app = VincApp(store=self.store)
+        cb = type("CB", (), {"id": "B1"})()
+        real = sv._colbert, sv._encode_call, sv._COLBERT_FILL_MAX
+        os.environ["VINC_EMBED_ENCODE"] = "http://encoder.invalid"
+        try:
+            sv._colbert = lambda: cb
+            sv._encode_call = lambda url, texts, kind, timeout, colbert=False: {
+                "colbert": ["AAAA"] * len(texts), "colbert_books": "B1"}
+            sv._COLBERT_FILL_MAX = 1
+            first = app._node_mirror_colbert({"owner": self.OWNER})
+            self.assertEqual((first["done"], first["left"]), (1, 1))
+            second = app._node_mirror_colbert({"owner": self.OWNER})
+            self.assertEqual((second["done"], second["left"]), (1, 0))
+            self.assertEqual(app._node_mirror_colbert({"owner": self.OWNER})["rows"], 0)
+        finally:
+            sv._colbert, sv._encode_call, sv._COLBERT_FILL_MAX = real
+            os.environ.pop("VINC_EMBED_ENCODE", None)
+            app.jobs.stop() if hasattr(app.jobs, "stop") else None
