@@ -258,3 +258,77 @@ def test_a_role_without_capabilities_records_but_never_flags():
     run = start(bridge, run_id="cap-6")["run"]
     done = call(bridge, "vinc_run_submit", run=run, output=PLAIN, capabilities_used=["shell.exec"])
     assert done["outcome"] == "success" and bridge.runs[run]["capabilities_used"] == ["shell.exec"]
+
+
+class _GraphBridge(_Bridge):
+    """`/node-edges` 에 그래프에 있는 id 만 있다고 답한다(근거 검사, VIN-868).
+
+    근거: [[decision:vin314-every-agent-answer-ends-with-a-sources-line-2026-10-07]]
+    """
+
+    def __init__(self, props, present=()):
+        super().__init__(props)
+        self.present, self.asked = set(present), []
+
+    def request(self, method, path, params=None, body=None, timeout=60):
+        if path == "/node-edges":
+            ids = json.loads(params["nodes"])
+            self.asked.append(ids)
+            return {"kind": "edges", "executed": True, "edges": [],
+                    "missing_nodes": [i for i in ids if i not in self.present]}
+        return super().request(method, path, params, body, timeout)
+
+
+CITING = role_props(cites="required")
+
+
+def test_a_role_that_requires_citations_blocks_a_step_that_cites_nothing():
+    bridge = _GraphBridge(CITING)
+    out = start(bridge, run_id="c-1")
+    step = call(bridge, "vinc_run_submit", run=out["run"], output=PLAIN)
+    assert step["status"] == "blocked" and step["failed_checks"] == ["citations_required"]
+    assert step["state"] == "working" and bridge.runs[out["run"]]["outcome"] == "waiting"
+    assert out["policy"]["cites"] == "required"
+
+
+def test_a_missing_cited_id_blocks_the_step_and_is_not_kept():
+    bridge = _GraphBridge(CITING, present={"record:real"})
+    out = start(bridge, run_id="c-2")
+    step = call(bridge, "vinc_run_submit", run=out["run"], output=PLAIN,
+                cited_ids=["record:real", "record:made-up"])
+    assert step["failed_checks"] == ["citations_missing"] and step["missing_ids"] == ["record:made-up"]
+    saved = bridge.runs[out["run"]]
+    assert saved["cited_ids"] == ["record:real"]
+    # 빠진 id 는 기록에서 지워졌으므로 다음 시도는 남은 근거로 통과한다.
+    again = call(bridge, "vinc_run_submit", run=out["run"], output=PLAIN)
+    assert again["status"] == "passed" and "citations_missing" not in bridge.runs[out["run"]]
+
+
+def test_a_sources_line_naming_an_existing_id_passes():
+    bridge = _GraphBridge(CITING, present={"concept:doc.plan.a"})
+    out = start(bridge, run_id="c-3")
+    step = call(bridge, "vinc_run_submit", run=out["run"],
+                output=PLAIN + "\n\nSources: concept:doc.plan.a")
+    assert step["status"] == "passed"
+    assert bridge.runs[out["run"]]["cited_ids"] == ["concept:doc.plan.a"]
+    assert bridge.asked == [["concept:doc.plan.a"]]
+
+
+def test_citations_that_cannot_be_checked_block_instead_of_passing():
+    class _Down(_GraphBridge):
+        def request(self, method, path, params=None, body=None, timeout=60):
+            if path == "/node-edges":
+                return {"executed": False, "error": "no reachable store"}
+            return super().request(method, path, params, body, timeout)
+    bridge = _Down(CITING)
+    out = start(bridge, run_id="c-4")
+    step = call(bridge, "vinc_run_submit", run=out["run"], output=PLAIN, cited_ids=["record:x"])
+    assert step["failed_checks"] == ["citations_unverified"]
+
+
+def test_a_role_without_cites_never_asks_the_graph():
+    bridge = _GraphBridge(role_props())
+    out = start(bridge, run_id="c-5")
+    step = call(bridge, "vinc_run_submit", run=out["run"], output=PLAIN)
+    assert step["status"] == "passed" and bridge.asked == []
+    assert "cites" not in out["policy"]

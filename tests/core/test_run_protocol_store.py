@@ -49,15 +49,21 @@ def store(tmp_path):
 
 
 class _StoreBridge(Bridge):
-    def __init__(self, store):
+    def __init__(self, store, props=PROPS):
         super().__init__(base="http://127.0.0.1:1", token="t", owner=OWNER)
-        self.store = store
+        self.store, self.props = store, props
 
     def request(self, method, path, params=None, body=None, timeout=60):
         if path == "/roles":
             return {"executed": True, "found": True, "relations": [], "peers": [],
                     "node": {"id": params["role"], "title": "Core dev",
-                             "domain": "vinc/agent/roles", "props": PROPS}}
+                             "domain": "vinc/agent/roles", "props": self.props}}
+        if path == "/node-edges":
+            # 사이드카 read_node_edges 와 같은 변환(nodes 는 JSON 배열, limit 은 정수)이다.
+            from api import query
+            return query.node_edges(None, nodes=json.loads(params["nodes"]),
+                                    owner=params["owner"], limit=int(params["limit"]),
+                                    store=self.store)
         if path == "/runs":
             return runs.list_runs(self.store, owner=params["owner"], run=params.get("run"),
                                   cited=params.get("cited"), role=params.get("role"),
@@ -91,3 +97,19 @@ def test_a_run_survives_the_store_and_lands_in_the_runs_list(store):
                        bridge)
     assert again["resumed"] is True and again["state"] == "done"
     assert runs.list_runs(store, owner=OWNER)["total"] == 1
+
+
+def test_a_citing_role_checks_its_ids_against_the_real_store(store):
+    # VIN-868: 근거 id 의 실재를 실엔진의 /node-edges 로 본다. 있는 id 는 남고 없는 id 는 막는다.
+    bridge = _StoreBridge(store, {**PROPS, "cites": "required"})
+    tools.call("vinc_run_start", {"role": ROLE, "task": "Review it.", "run_id": "cite-1"}, bridge)
+    blocked = tools.call("vinc_run_submit", {
+        "run": "cite-1", "output": "The change reads correctly.",
+        "cited_ids": [ROLE, "record:never-written"]}, bridge)
+    assert blocked["failed_checks"] == ["citations_missing"]
+    assert blocked["missing_ids"] == ["record:never-written"]
+    passed = tools.call("vinc_run_submit", {
+        "run": "cite-1", "output": "The change reads correctly."}, bridge)
+    assert passed["status"] == "passed"
+    shown = runs.list_runs(store, owner=OWNER, run="cite-1")["runs"][0]
+    assert shown["cited_ids"] == [ROLE]
