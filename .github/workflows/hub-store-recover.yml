@@ -13,7 +13,7 @@
 # 유지보수자의 로컬 az 는 Reader 다. pk-migrate.yml 과 같은 이유, 같은 모양.
 #
 # ⚠ 자동으로 돌지 않는다. switch 는 확인 문자열을 요구하고 허브를 잠깐 내린다.
-# 근거: [[decision:bge-m3-adoption]]
+# 근거: [[decision:swap-the-production-encoder-to-bge-m3-ko-int8-after-the-hub-encoder-work-2026-10-18]]
 name: hub-store-recover
 
 on:

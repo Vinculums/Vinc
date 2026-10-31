@@ -160,6 +160,22 @@ class Encoder:
                                     for t in texts[i:i + self.batch]]))
         return out
 
+    def hidden(self, texts: list[str], kind: str = "passage") -> list:
+        """텍스트마다 패딩을 뺀 `last_hidden_state`[n, dim] — ColBERT 토큰의 재료.
+        워커 `_Embedder.encode_with_hidden` 과 같게 한 줄씩 돈다(int8 은 배치가 값을 바꾼다)."""
+        self._load()
+        import numpy as np
+
+        out = []
+        for t in texts:
+            e = self._tok.encode_batch([prefix(t, kind, self.model)])[0]
+            ids = np.array([e.ids], dtype=np.int64)
+            feed = {"input_ids": ids, "attention_mask": np.array([e.attention_mask], dtype=np.int64),
+                    "token_type_ids": np.array([e.type_ids], dtype=np.int64)}
+            feed = {k: v for k, v in feed.items() if k in self._names}
+            out.append(self._sess.run(None, feed)[0][0][:int(sum(e.attention_mask))])
+        return out
+
     def _batch(self, texts: list[str]) -> list[list[float]]:
         self._load()
         import numpy as np

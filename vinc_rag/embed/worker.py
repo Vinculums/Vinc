@@ -530,7 +530,24 @@ class _Embedder:
             out.extend(self._encode_batch(texts[i:i + EMBED_BATCH], query=query))
         return out
 
+    def encode_with_hidden(self, texts: list[str], *, query: bool = False):
+        """`encode` 와 같은 벡터에 더해, 텍스트마다 패딩을 뺀 `last_hidden_state`[n, dim] 를
+        준다(ColBERT 토큰의 재료). **한 번의 실행에서 둘 다 나온다** — 토큰 때문에 인코딩을
+        두 번 돌리지 않는다. 텍스트 하나씩 돈다: int8 은 배치가 벡터를 바꾸므로 연구가 잰
+        조건(한 줄씩)과 같아야 한다.
+        근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]"""
+        vecs: list[list[float]] = []
+        hiddens: list = []
+        for t in texts:
+            hidden, mask = self._forward([t], query=query)
+            vecs.extend(self._pooled(hidden, mask))
+            hiddens.append(hidden[0, :int(mask[0].sum())])
+        return vecs, hiddens
+
     def _encode_batch(self, texts: list[str], *, query: bool = False) -> list[list[float]]:
+        return self._pooled(*self._forward(texts, query=query))
+
+    def _forward(self, texts: list[str], *, query: bool = False):
         # 🔴 **질의는 줄을 서지 않는다**(적재가 끝난 뒤에만). 질의 경로의 상한은 1.5초인데
         # 배치 하나(최대 512토큰 조각)가 1코어에서 그보다 길 수 있다 — 잠금 뒤에 서면
         # 미러 재구축·워커 적재가 도는 내내 검색이 의미 팔 없이 나간다(2026-10-02 허브:
@@ -545,6 +562,10 @@ class _Embedder:
             with self._lock:                                   # 배치 하나만 잡는다(__init__)
                 self._load()
                 hidden, mask = self._run(texts)
+        return hidden, mask
+
+    @staticmethod
+    def _pooled(hidden, mask) -> list[list[float]]:
         import numpy as np
         pooled = _pool(hidden, mask, np)
         norm = np.linalg.norm(pooled, axis=1, keepdims=True)
@@ -704,6 +725,45 @@ class _EncodeService:
         return stopped and pending == 0
 
 
+class _ColbertSlot:
+    """투영·코드북은 처음 요청에서 한 번 올린다. 설정이 없으면 None 으로 기억한다."""
+    lock = threading.Lock()
+    tried = False
+    value = None
+
+
+_COLBERT = _ColbertSlot()
+
+
+def _encode_colbert(emb: "_Embedder", texts: list[str], *, query: bool):
+    """`colbert:true` 요청 — dense 벡터와 같은 실행에서 ColBERT 토큰을 함께 낸다.
+
+    질의는 압축 없는 float32(base64), 문서는 pq64 코드(base64)다. 문서 토큰을 float 으로
+    보내면 512토큰 노드 하나가 JSON 으로 수 MB 가 된다. 투영·코드북이 설정되지 않았으면
+    dense 벡터만 주고 `colbert_error` 로 사유를 남긴다 — 부가 출력 때문에 질의 벡터까지
+    잃으면 검색이 FTS 로 강등된다.
+    근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]"""
+    with _COLBERT.lock:
+        if not _COLBERT.tried:
+            _COLBERT.tried = True
+            try:
+                from vinc_rag.colbert import from_env
+                _COLBERT.value = from_env()
+            except Exception as exc:                 # 파일·해시가 틀리면 그 사유로 남긴다
+                print(f"[embed] colbert 적재 실패: {type(exc).__name__}: {exc}", flush=True)
+    cb = _COLBERT.value
+    if cb is None:
+        vecs = emb.encode(texts, query=True) if query else emb.encode(texts)
+        return vecs, {"colbert_error": "colbert not configured"}
+    from vinc_rag.colbert import pack_codes, pack_query
+    vecs, hiddens = emb.encode_with_hidden(texts, query=query)
+    toks = [cb.project(h) for h in hiddens]
+    packed = ([pack_query(t) for t in toks] if query
+              else [pack_codes(cb.encode_codes(t)) for t in toks])
+    return vecs, {"colbert": packed, "colbert_format": "f32" if query else "pq64",
+                  "colbert_books": cb.id}
+
+
 def serve_encode(emb: "_Embedder", port: int) -> int:
     """배치 워커와 기존 호출자의 포트 반환 계약을 유지한다."""
     return _start_encode(emb, port).port
@@ -795,7 +855,11 @@ def _start_encode(emb: "_Embedder", port: int) -> _EncodeService:
                 # 요청 전체를 잠그지 않는다 — 직렬화는 `_Embedder` 가 **배치** 단위로 한다.
                 # 여기서 요청째 잠그면 미러 재구축의 32줄 요청(1코어에서 약 4초)이 끝날
                 # 때까지 질의가 서서 1.5초 상한을 넘긴다(2026-10-02 허브 실측).
-                vecs = emb.encode(texts, query=True) if kind == "query" else emb.encode(texts)
+                extra: dict = {}
+                if body.get("colbert"):
+                    vecs, extra = _encode_colbert(emb, texts, query=kind == "query")
+                else:
+                    vecs = emb.encode(texts, query=True) if kind == "query" else emb.encode(texts)
                 if _LOG_REQUESTS:
                     print(f"[embed] req< kind={kind} n={len(texts)} rss={rss0}->{_rss_mb()}MB "
                           f"{time.monotonic() - t0:.2f}s", flush=True)
@@ -804,7 +868,7 @@ def _start_encode(emb: "_Embedder", port: int) -> _EncodeService:
                 out = _json.dumps({"vectors": vecs, "model": MODEL,
                                    "encoder_runtime": ENCODER_RUNTIME,
                                    "encoder_build": ENCODER_BUILD,
-                                   "encoder_instance": instance_id}).encode("utf-8")
+                                   "encoder_instance": instance_id, **extra}).encode("utf-8")
             except Exception as exc:
                 # 사유를 삼키지 않는다 — 호출부가 로그에 남길 수 있게 본문으로 준다.
                 out = _json.dumps({"error": f"{type(exc).__name__}: {exc}"}).encode("utf-8")

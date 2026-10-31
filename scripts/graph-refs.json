@@ -23,12 +23,9 @@
     "d1732b1e8e1f75922",
     "d178bb584ea1b9f5e",
     "d188950225225ec94",
-    "d194ee32f04869946",
     "d1b1e6248d49a5d26",
     "d1c1639930c0d8296",
     "d1d1ad04022d12c16",
-    "d1e7407511837697e",
-    "d1ed2b30f1f2feeeb",
     "d1fc4c3607b312e5f",
     "d2008fed2cbae7ca0",
     "d22b8731481d0ab0c",
@@ -68,7 +65,6 @@
     "d4f356ac04415b617",
     "d5277e9777828e7c7",
     "d53950e64fc3fc94d",
-    "d53cb35258f30fa98",
     "d546054c635b4ef9a",
     "d54e9e8f6b86cf945",
     "d56746b88a199ce4a",
@@ -87,7 +83,6 @@
     "d65aa920f158b10c2",
     "d66030e451d3e66e7",
     "d6970c72e9dfbcc92",
-    "d69a5533a8d6eb9a6",
     "d69de70ac649ed49a",
     "d6ce6f26d0f4bdd1a",
     "d6d02642261bebe5b",
@@ -128,13 +123,11 @@
     "d94cf5c1f010564f3",
     "d9567ffe4bced2517",
     "d965ff82021a4c3f1",
-    "d96704b27344f6f40",
     "d96a12a9e5e77ae16",
     "d986cfe18adc5a867",
     "d9b37180fdd4ccef3",
     "d9bb6ada3f76ce718",
     "d9ce1cad47a7a8e21",
-    "d9db0a7f591dbaf91",
     "d9ea6c03135525aea",
     "da059e03130764ff1",
     "da2394502e0a656b7",
@@ -167,7 +160,6 @@
     "dd41ccab7d35b8d60",
     "dd5e6f03ee4396a17",
     "dd79e78e8e2d431df",
-    "dd7e67f3c471c8126",
     "dda3ad52036c9b04e",
     "ddd998ff18e0e24a3",
     "de0798da031f62a89",
@@ -177,6 +169,7 @@
     "de419c83d481b5e25",
     "de52b74e8a6f2a1d2",
     "de7a50e9eb9e46181",
+    "de7e11a1199b30c92",
     "de8a9d41ad878a0f1",
     "deaa2c66fbef6dab5",
     "dec26842a7b790cda",
@@ -227,6 +220,10 @@
     "qa-flow-F-VIEW",
     "qa-flow-F-VINCPACK",
     "qa-flow-T-DOCS-TOUR",
+    "vinc.adr.app",
+    "vinc.adr.core",
+    "vinc.adr.rag",
+    "vinc.arch.search-pipeline-current-2026-10-31",
     "vinc.audit.0-9-4-handoff-da7318ea-2026-09-20",
     "vinc.audit.agent-framework-memory-2026-10-06",
     "vinc.audit.code-cleanup-app-2026-10-16",
@@ -248,83 +245,12 @@
     "vinc.audit.work-inventory-2026-09-29-issues-1",
     "vinc.audit.work-inventory-2026-09-29-issues-2",
     "vinc.audit.work-inventory-2026-09-29-plan-index",
-    "vinc.book.01-human-memory",
-    "vinc.book.01-human-memory.en",
-    "vinc.book.01-information",
-    "vinc.book.02-working-with-ai",
-    "vinc.book.02-working-with-ai.en",
-    "vinc.book.03-distribution",
-    "vinc.book.03-distribution.en",
-    "vinc.book.04-sharing",
-    "vinc.book.04-sharing.en",
-    "vinc.book.05-graph-md",
-    "vinc.book.05-graph-md.en",
-    "vinc.book.06-space",
-    "vinc.book.06-space.en",
-    "vinc.book.07-agents",
-    "vinc.book.07-agents.en",
-    "vinc.book.08-trust",
-    "vinc.book.08-trust.en",
-    "vinc.book.08-union",
-    "vinc.book.09-boundaries",
-    "vinc.book.09-boundaries.en",
-    "vinc.book.10-architecture",
-    "vinc.book.10-architecture.en",
-    "vinc.book.11-memory-model",
-    "vinc.book.11-memory-model.en",
-    "vinc.book.12-canonical-graph",
-    "vinc.book.12-canonical-graph.en",
-    "vinc.book.13-ontology",
-    "vinc.book.13-ontology.en",
-    "vinc.book.14-graph-md",
-    "vinc.book.14-graph-md.en",
-    "vinc.book.15-document-pipeline",
-    "vinc.book.15-document-pipeline.en",
-    "vinc.book.16-search",
-    "vinc.book.16-search.en",
-    "vinc.book.17-embedding",
-    "vinc.book.17-embedding.en",
-    "vinc.book.18-retrieval",
-    "vinc.book.18-retrieval.en",
-    "vinc.book.19-brief",
-    "vinc.book.19-brief.en",
-    "vinc.book.20-mcp",
-    "vinc.book.20-mcp.en",
-    "vinc.book.21-agents",
-    "vinc.book.21-agents.en",
-    "vinc.book.21b-role-contract",
-    "vinc.book.21b-role-contract.en",
-    "vinc.book.22-provenance",
-    "vinc.book.22-provenance.en",
-    "vinc.book.23-temporal",
-    "vinc.book.23-temporal.en",
-    "vinc.book.24-view",
-    "vinc.book.24-view.en",
-    "vinc.book.25-space",
-    "vinc.book.25-space.en",
-    "vinc.book.26-sync",
-    "vinc.book.26-sync.en",
-    "vinc.book.27-infrastructure",
-    "vinc.book.27-infrastructure.en",
-    "vinc.book.28-performance",
-    "vinc.book.28-performance.en",
-    "vinc.book.29-call-efficiency",
-    "vinc.book.29-call-efficiency.en",
-    "vinc.book.30-embedding-eval",
-    "vinc.book.30-embedding-eval.en",
-    "vinc.book.31-migration",
-    "vinc.book.31-migration.en",
-    "vinc.book.32-failure-cases",
-    "vinc.book.32-failure-cases.en",
-    "vinc.book.33-measurement-before-decision",
-    "vinc.book.33-measurement-before-decision.en",
-    "vinc.book.35-cycle",
-    "vinc.book.35-cycle.en",
-    "vinc.book.index",
+    "vinc.bdd.app",
+    "vinc.bdd.core",
+    "vinc.bdd.rag",
     "vinc.canon.account-policy",
     "vinc.canon.agent-packs",
     "vinc.canon.agent-roles",
-    "vinc.canon.book-motion-grammar",
     "vinc.canon.chunk-ssot",
     "vinc.canon.code-annotation",
     "vinc.canon.decisions",
@@ -366,6 +292,9 @@
     "vinc.design.concept-home-signal",
     "vinc.design.figma-rebuild-2026-08",
     "vinc.design.hub-notes",
+    "vinc.design.import-figma-variables-2026-07-19",
+    "vinc.design.import-figma-variables-2026-08-08",
+    "vinc.design.import-legacy-ink-paper-tokens",
     "vinc.design.loading-motions",
     "vinc.design.logo",
     "vinc.design.mutation-lifecycle-mcp-api-cli-2026-10-13",
@@ -375,6 +304,9 @@
     "vinc.design.tenant-desktop",
     "vinc.design.tokens",
     "vinc.engineering.search-temporal-2026-10-13",
+    "vinc.frd.app",
+    "vinc.frd.core",
+    "vinc.frd.rag",
     "vinc.guide.agents-page",
     "vinc.guide.code-and-design-one-graph",
     "vinc.guide.docs-agents-and-mcp-restructure",
@@ -441,7 +373,6 @@
     "vinc.ops.orchestration-session-boot",
     "vinc.ops.package-slip-w-agents-sync-2026-09-11",
     "vinc.ops.package-slip-w-agents-sync-ci-fix-2026-09-11",
-    "vinc.ops.package-slip-w-book-refs-only-2026-09-12",
     "vinc.ops.package-slip-w-choose-ratio-material-2026-09-12",
     "vinc.ops.package-slip-w-figma-sync-gates-2026-09-11",
     "vinc.ops.package-slip-w-n2-harness-pr-2026-09-12",
@@ -487,26 +418,18 @@
     "vinc.plan.backoffice-authenticator-otp-2026-10-06",
     "vinc.plan.backoffice-information-architecture-2026-10-05",
     "vinc.plan.backoffice-snapshot-activation-2026-10-04",
-    "vinc.plan.book-content-review-2026-09-10",
-    "vinc.plan.book-figurative-motion-v2",
-    "vinc.plan.book-motion-v3",
-    "vinc.plan.book-reading-from-zero-2026-09-12",
-    "vinc.plan.book-scroll-surface",
-    "vinc.plan.book-storyboard-closing-2026-09-16",
-    "vinc.plan.book-storyboard-part0-2026-09-16",
-    "vinc.plan.book-storyboard-part1-2026-09-16",
-    "vinc.plan.book-storyboard-part2-2026-09-16",
-    "vinc.plan.book-storyboard-part3-2026-09-16",
-    "vinc.plan.book-storyboard-part4-2026-09-16",
     "vinc.plan.brief-choose-list-semantic-order-sealed78-2026-10-25",
     "vinc.plan.brief-english-promotion-0-06-sealed12-2026-10-26",
     "vinc.plan.brief-korean-on-korean-bar-sealed13-2026-10-26",
     "vinc.plan.brief-promotion-0-10-sealed7-2026-10-24",
     "vinc.plan.brief-promotion-production-reproduction-2026-10-23",
     "vinc.plan.brief-promotion-threshold-sealed6-2026-10-23",
+    "vinc.plan.brief-quote-units-citation-gate-2026-10-26",
+    "vinc.plan.brief-rule-v2-refit-2026-10-31",
     "vinc.plan.brief-xlang-ko2en-sealed10-2026-10-26",
     "vinc.plan.brief-xlang-promotion-sealed9-2026-10-25",
     "vinc.plan.cag-context-compiler-2026-10-05",
+    "vinc.plan.call-volume-add-on-2026-10-27",
     "vinc.plan.chatgpt-reviewer-login",
     "vinc.plan.choose-cost-measurement-2026-10-19",
     "vinc.plan.cli-qa-followup-2026-10-03",
@@ -527,7 +450,9 @@
     "vinc.plan.community-wikidata-seed-2026-10-22",
     "vinc.plan.content-one-liner-and-option-c-2026-09-16",
     "vinc.plan.continuation-after-three-system-review-2026-10-04",
+    "vinc.plan.cross-language-question-alignment-2026-10-28",
     "vinc.plan.cursor-host-and-person-gates-2026-09-12",
+    "vinc.plan.d1-omni-listwise-screen-2026-10-28",
     "vinc.plan.decision-api-1-0-0-execution-2026-10-07",
     "vinc.plan.decision-api-probabilistic-memory-1-0-0-2026-10-06",
     "vinc.plan.deployment-agent-harness-2026-10-15",
@@ -545,6 +470,7 @@
     "vinc.plan.figma-build",
     "vinc.plan.figma-product-structure",
     "vinc.plan.framework-integration-packages-2026-09-28",
+    "vinc.plan.fusion-policy-per-store-2026-10-30",
     "vinc.plan.graph-conventions",
     "vinc.plan.graph-restructure",
     "vinc.plan.grok-bot-roster-and-host-handoff-2026-09-11",
@@ -584,6 +510,7 @@
     "vinc.plan.mcp-second-pass",
     "vinc.plan.mcp-short-tool-descriptions-2026-10-17",
     "vinc.plan.merge-order-2026-10-04",
+    "vinc.plan.miracl-dev-evaluation-2026-10-29",
     "vinc.plan.n-wave-remaining-work-2026-09-11",
     "vinc.plan.node-mirror-body-text-sealed8-2026-10-24",
     "vinc.plan.node-pk-namespacing",
@@ -596,6 +523,7 @@
     "vinc.plan.probabilistic-knowledge-graph-2026-10-07",
     "vinc.plan.qa-followup-priority-2026-10-04",
     "vinc.plan.qa-two-session-execution-2026-10-04",
+    "vinc.plan.query-type-strata-2026-10-30",
     "vinc.plan.rag-code-review-fixes-2026-09-29",
     "vinc.plan.rag-eval-v2-0-9-6",
     "vinc.plan.read-verification-contract-recovery-2026-10-14",
@@ -607,6 +535,7 @@
     "vinc.plan.roster-v2-teams-and-job-titles-2026-09-16",
     "vinc.plan.self-hosted-system1-judge-followup-2026-10-10",
     "vinc.plan.semantic-lead-resolve-sealed4-2026-10-22",
+    "vinc.plan.semif-and-fp32-reranker-screen-2026-10-27",
     "vinc.plan.shell-chrome-2026-09-09",
     "vinc.plan.shell-layer-lnb",
     "vinc.plan.site-fullbleed-redesign-2026-09-11",
@@ -620,19 +549,22 @@
     "vinc.plan.vin397-prefetch-half-latency-2026-10-07",
     "vinc.plan.vin409-belief-pack-evaluation-2026-10-09",
     "vinc.plan.vin82-durable-ack-2026-09-29",
+    "vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30",
     "vinc.plan.vinc-command-on-path",
     "vinc.plan.watchdog-test-timers",
     "vinc.plan.work-closeout-2026-09-29",
     "vinc.plan.work-order-2026-09-24",
     "vinc.plan.work-order-2026-09-27",
     "vinc.prd.community-renewal-2026-10-13",
+    "vinc.prd.desktop",
+    "vinc.prd.mcp",
+    "vinc.prd.site",
     "vinc.progress.qa-session-a-2026-10-04",
     "vinc.progress.qa-session-b-2026-10-04",
     "vinc.progress.unified-execution-2026-10-04",
     "vinc.proposal.topic-transfer-reference-history-policy-2026-10-15",
     "vinc.qa.cli-cloud-followup-2026-10-03",
     "vinc.qa.cli-cloud-followup-2026-10-03-180459",
-    "vinc.reference.book-pages-2026-09",
     "vinc.reference.desktop-surface-inventory-2026-09",
     "vinc.reference.view-controls",
     "vinc.reference.view-time-branches-layout",
@@ -657,19 +589,20 @@
     "vinc.research.agent-lab-vinc-api-findings-2026-10-03",
     "vinc.research.agent-layer-laya-fruitfly-hosts",
     "vinc.research.agent-system-flow-design",
+    "vinc.research.agent-tool-connections-scope-2026-10-28",
     "vinc.research.agent-wiki-comparison",
     "vinc.research.answer-material-section-ai-corpus-2026-10-17",
     "vinc.research.api-cli-benchmark-mem0-zep-2026-09-27",
     "vinc.research.architecture-laya-fruitfly-vinc",
+    "vinc.research.arxiv-delta-agent-memory-retrieval-2026-10-30",
     "vinc.research.backoffice-operator-stats-inventory-2026-09-12",
     "vinc.research.backoffice-w1-handoff-2026-09-12",
-    "vinc.research.book-landed-unreviewed-audit-2026-09-12",
-    "vinc.research.book-layout-refs-candidates-2026-09-12",
     "vinc.research.brief-grounding-sentence-generated-answers-2026-10-16",
     "vinc.research.cag-code-behavior-baseline-2026-10-05",
     "vinc.research.choose-ratio-ruling-material-2026-09-12",
     "vinc.research.cli-brief-threshold-2026-10-03",
     "vinc.research.cli-plan-vs-main-2026-09-27",
+    "vinc.research.code-signing-costs-2026-10-29",
     "vinc.research.coding-agent-supervisor",
     "vinc.research.commitment-and-recall-evidence-2026-10-16",
     "vinc.research.community-collaboration-flow-review-2026-10-18",
@@ -683,6 +616,8 @@
     "vinc.research.competitive-landscape-2026-09-24",
     "vinc.research.concept-identity-evidence-sampling-2026-10-15",
     "vinc.research.concept-identity-preparation-2026-10-15",
+    "vinc.research.cross-language-and-korean-retrieval-literature-2026-10-28",
+    "vinc.research.cross-language-and-korean-retrieval-literature-verified-2026-10-28",
     "vinc.research.decision-api-predicate-loss-ledger-2026-10-09",
     "vinc.research.deepwiki-comparison",
     "vinc.research.deploy-pipeline",
@@ -709,14 +644,18 @@
     "vinc.research.fruitfly-for-vinc-search-2026-10-18",
     "vinc.research.gaussian-layout",
     "vinc.research.google-sign-in-2026-09-26",
+    "vinc.research.graph-area-spheres-2026-10-28",
     "vinc.research.graph-defined-agents-usage-2026-09-28",
+    "vinc.research.graph-dotted-orbs-2026-10-28",
     "vinc.research.graph-layout-direction-rules-2026-10-28",
+    "vinc.research.graph-node-forms-2026-10-28",
     "vinc.research.graph-pages-and-marks-2026-10-25",
     "vinc.research.graph-storage-and-search-audit-2026-10-16",
     "vinc.research.graph-structure",
     "vinc.research.graph-view-user-pain-2026-10-24",
     "vinc.research.graph-vinc-orb-2026-10-28",
     "vinc.research.graph-visual-directions-2026-10-24",
+    "vinc.research.graph-volumetric-areas-2026-10-28",
     "vinc.research.graph-write-method-2026-10-14",
     "vinc.research.graphrag-agent-memory-literature-2026-09-28",
     "vinc.research.hero-motion-premium-vs-cheap-2026-10-17",
@@ -735,9 +674,12 @@
     "vinc.research.laya-rag-evidence-check-sealed-2026-10-16",
     "vinc.research.laya-recall-failure-analysis-2026-10-15",
     "vinc.research.laya-tuning-analysis",
+    "vinc.research.learnharness-agent-harness-for-learning-2026-10-28",
+    "vinc.research.licensing-for-saas-2026-10-29",
     "vinc.research.linear-workspace-structure-2026-10-03",
     "vinc.research.link-expression",
     "vinc.research.market-viability-assessment-2026-09-28",
+    "vinc.research.masked-erosion-paper-review-2026-10-31",
     "vinc.research.mcp-companion-tools",
     "vinc.research.mcp-npx-distribution",
     "vinc.research.memory-hierarchy-service-brief",
@@ -774,12 +716,14 @@
     "vinc.research.search-abstention-2026-10-04",
     "vinc.research.search-field-coverage-and-freshness-2026-10-13",
     "vinc.research.sibling-material-answer-harm-2026-10-16",
+    "vinc.research.signin-media-panel-2026-10-29",
     "vinc.research.single-graph-viewer-2026-10-24",
     "vinc.research.site-demo-loading-and-alternatives-2026-10-04",
     "vinc.research.site-layout-lines-audit-2026-10-24",
     "vinc.research.site-mobile-2026-10-02",
     "vinc.research.startup-programs-autumn-2026",
     "vinc.research.stripe-landing-teardown-2026-10-16",
+    "vinc.research.system-one-and-listwise-rerankers-survey-2026-10-27",
     "vinc.research.team-dpa-legal-review-2026-09-26",
     "vinc.research.time-branches-layout-bottleneck-2026-10-12",
     "vinc.research.topic-conversion-legacy-executor-2026-10-16",
@@ -800,6 +744,7 @@
     "vinc.spec.architecture",
     "vinc.spec.azure-infrastructure",
     "vinc.spec.backoffice-metric-catalogue",
+    "vinc.spec.context-compiler-interface",
     "vinc.spec.dataplane",
     "vinc.spec.desktop-content-first-ia-0-9-4",
     "vinc.spec.docs-information-architecture-2026-09",
@@ -830,8 +775,6 @@
     "concept:proxy-allowlist",
     "concept:refresh-token-reuse-window",
     "concept:tool-response-disclosure",
-    "decision:2d-marks-are-baked-at-256-px",
-    "decision:2d-selection-outlines-the-kept-nodes",
     "decision:a-gate-whose-rule-and-exam-share-an-author-ships-off",
     "decision:a-node-address-names-its-space",
     "decision:a-node-keeps-its-own-colour-in-every-state",
@@ -846,7 +789,7 @@
     "decision:agent-run-record-keeps-the-raw-trace-as-a-hashed-file-2026-10-25",
     "decision:app-nodes-wear-the-hero-glass-2026-09-26",
     "decision:backoffice-metric-roles-added-2026-09-26",
-    "decision:bge-m3-adoption",
+    "decision:brief-semantic-promotion-is-0-10-and-0-06-without-hangul-on-either-side-2026-10-26",
     "decision:brief-shows-five-candidates-when-it-asks-back-and-keeps-the-list-beside-resolved-off-2026-09-29",
     "decision:bring-and-go-is-retired-and-nodes-only-is-the-default",
     "decision:ci-runs-each-suite-once-per-merge-and-hub-deploy-waits-for-ci-2026-09-26",
@@ -861,7 +804,6 @@
     "decision:every-written-field-has-a-read-path",
     "decision:figma-app-boards-no-longer-gate-a-release-2026-09-26",
     "decision:framework-integrations-ship-zep-shaped-knowledge-packages-first-2026-09-28",
-    "decision:gate-d-reopens-on-the-semantic-arms-own-lead-behind-a-flag-left-off-2026-09-29",
     "decision:hide-implementation-preserve-evidence-surface-failure",
     "decision:identity-rides-on-the-first-door-not-a-whoami",
     "decision:keep-the-chunk-vector-index-behind-a-flag-and-run-each-vector-query-alone-2026-10-03",
@@ -874,7 +816,6 @@
     "decision:mcp-tool-descriptions-are-short-summaries-with-a-docs-link",
     "decision:mention-title-tokens-within-a-window",
     "decision:node-props-are-edited-in-the-document-pane-as-a-whole-and-checked-against-the-read-revision-2026-09-26",
-    "decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13",
     "decision:rag-code-review-fixes-run-in-full-in-the-local-rag-session-2026-09-29",
     "decision:relax-the-evidence-producer-rule",
     "decision:retain-the-left-space-view-for-a-short-handoff-2026-10-12",
@@ -884,9 +825,9 @@
     "decision:sec-1",
     "decision:share-documents-follow-the-nodes-that-carry-them",
     "decision:shims-are-records-retired-by-a-person-after-an-ablation-row-2026-10-25",
-    "decision:side-navigation-picks-open-the-document-pane-full-width-2026-09-25",
     "decision:site-boards-are-captures-of-the-running-code",
     "decision:space-transfer-sends-size-bounded-chunks-nodes-then-edges-then-documents",
+    "decision:swap-the-production-encoder-to-bge-m3-ko-int8-after-the-hub-encoder-work-2026-10-18",
     "decision:temporal-model-operational-policy-2026-09-09",
     "decision:the-agent-rail-opens-an-agents-board-and-roles-edit-in-place-2026-10-24",
     "decision:the-ambient-azure-identity-is-read-only",
@@ -909,7 +850,6 @@
     "decision:the-reader-says-concepts-in-this-document-not-mentions-2026-09-26",
     "decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary",
     "decision:the-space-is-an-argument-and-the-default-is-personal",
-    "decision:the-top-bar-is-a-search-card-and-a-view-card-2026-09-26",
     "decision:the-view-header-ends-with-the-options-and-legend-of-the-current-surface-2026-10-28",
     "decision:the-windows-release-leg-goes-back-to-hosted-2026-09-07",
     "decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12",
@@ -918,10 +858,10 @@
     "decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16",
     "decision:topic-transfer-plain-references-and-external-images-2026-10-16",
     "decision:topic-transfer-rejection-endpoint-is-the-owners-concept-2026-10-16",
-    "decision:topics-wear-the-homepage-jewels-2026-09-26",
     "decision:topics-wear-their-area-jewel-2026-10-28",
     "decision:view-3d-nodes-are-instanced-and-recede-by-blending-to-the-background",
     "decision:view-offers-two-layouts-by-centre-and-time-branches-2026-10-11",
+    "decision:vin-845-ships-the-brief-rule-v2-constants-over-its-failed-pre-registered-criteria-2026-10-31",
     "decision:vin314-every-agent-answer-ends-with-a-sources-line-2026-10-07",
     "decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07",
     "decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24",
@@ -930,7 +870,6 @@
     "episode:2026-09-14-brief-carries-the-connectivity-instead-of-leaving-it-to-be-summed",
     "episode:2026-09-14-future-dated-nodes-leave-the-default-read",
     "episode:2026-09-24-hub-sidecar-segfault-loop",
-    "record:2d-marks-were-remapped-onto-circles",
     "record:a-bounded-wait-must-not-manufacture-false-failure",
     "record:a-code-comment-is-not-evidence-for-a-documentation-claim-2026-09-18",
     "record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25",
@@ -1063,7 +1002,6 @@
     "record:unguarded-title-overwrote-107-nodes-with-their-ids",
     "record:upstream-rebuilt-the-ladybug-0-21-vector-and-fts-too-and-cache-edges-serve-either-build-2026-10-22",
     "record:upstream-republished-the-ladybug-0-21-algo-extension-in-place-2026-10-20",
-    "record:view-3d-instancing-frame-cost-measured-2026-09-18",
     "record:vin314-live-exp01-rerun-prefetch-cites-a-node-in-1-of-6-2026-10-07",
     "record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07",
     "record:vinc-tests-need-a-clean-interpreter-on-windows",
@@ -1090,12 +1028,6 @@
       "validity": "unknown"
     },
     "concept:tool-response-disclosure": {
-      "validity": "unknown"
-    },
-    "decision:2d-marks-are-baked-at-256-px": {
-      "validity": "unknown"
-    },
-    "decision:2d-selection-outlines-the-kept-nodes": {
       "validity": "unknown"
     },
     "decision:a-gate-whose-rule-and-exam-share-an-author-ships-off": {
@@ -1126,7 +1058,7 @@
       "validity": "current"
     },
     "decision:agent-role-contract-is-warned-at-write-not-refused-2026-09-25": {
-      "validity": "unknown"
+      "validity": "current"
     },
     "decision:agent-roles-live-under-a-top-level-agent-topic-2026-10-02": {
       "validity": "unknown"
@@ -1140,7 +1072,7 @@
     "decision:backoffice-metric-roles-added-2026-09-26": {
       "validity": "current"
     },
-    "decision:bge-m3-adoption": {
+    "decision:brief-semantic-promotion-is-0-10-and-0-06-without-hangul-on-either-side-2026-10-26": {
       "validity": "current"
     },
     "decision:brief-shows-five-candidates-when-it-asks-back-and-keeps-the-list-beside-resolved-off-2026-09-29": {
@@ -1185,17 +1117,14 @@
     "decision:framework-integrations-ship-zep-shaped-knowledge-packages-first-2026-09-28": {
       "validity": "current"
     },
-    "decision:gate-d-reopens-on-the-semantic-arms-own-lead-behind-a-flag-left-off-2026-09-29": {
-      "validity": "current"
-    },
     "decision:hide-implementation-preserve-evidence-surface-failure": {
       "validity": "current"
     },
     "decision:identity-rides-on-the-first-door-not-a-whoami": {
-      "validity": "unknown"
+      "validity": "current"
     },
     "decision:keep-the-chunk-vector-index-behind-a-flag-and-run-each-vector-query-alone-2026-10-03": {
-      "validity": "unknown"
+      "validity": "current"
     },
     "decision:ladybug-extensions-ship-from-a-vinc-release-not-the-repo-2026-09-26": {
       "validity": "unknown"
@@ -1222,9 +1151,6 @@
       "validity": "current"
     },
     "decision:node-props-are-edited-in-the-document-pane-as-a-whole-and-checked-against-the-read-revision-2026-09-26": {
-      "validity": "unknown"
-    },
-    "decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13": {
       "validity": "unknown"
     },
     "decision:rag-code-review-fixes-run-in-full-in-the-local-rag-session-2026-09-29": {
@@ -1254,13 +1180,13 @@
     "decision:shims-are-records-retired-by-a-person-after-an-ablation-row-2026-10-25": {
       "validity": "current"
     },
-    "decision:side-navigation-picks-open-the-document-pane-full-width-2026-09-25": {
-      "validity": "unknown"
-    },
     "decision:site-boards-are-captures-of-the-running-code": {
       "validity": "current"
     },
     "decision:space-transfer-sends-size-bounded-chunks-nodes-then-edges-then-documents": {
+      "validity": "current"
+    },
+    "decision:swap-the-production-encoder-to-bge-m3-ko-int8-after-the-hub-encoder-work-2026-10-18": {
       "validity": "current"
     },
     "decision:temporal-model-operational-policy-2026-09-09": {
@@ -1274,6 +1200,9 @@
     },
     "decision:the-app-reads-its-own-view-addresses-through-the-shared-parser": {
       "validity": "unknown"
+    },
+    "decision:the-default-agent-tool-surface-is-reads-plus-role-gated-writes-2026-10-31": {
+      "validity": "current"
     },
     "decision:the-desktop-app-icon-keeps-a-black-plate-2026-09-26": {
       "validity": "unknown"
@@ -1303,7 +1232,7 @@
       "validity": "current"
     },
     "decision:the-hub-hands-the-writer-over-at-boot-instead-of-stopping-the-old-revision-2026-10-17": {
-      "validity": "unknown"
+      "validity": "current"
     },
     "decision:the-hub-layout-gives-up-weight-proportional-spread-so-that-adding-a-node-moves-nothing": {
       "validity": "unknown"
@@ -1326,9 +1255,6 @@
     "decision:the-space-is-an-argument-and-the-default-is-personal": {
       "validity": "current"
     },
-    "decision:the-top-bar-is-a-search-card-and-a-view-card-2026-09-26": {
-      "validity": "unknown"
-    },
     "decision:the-view-header-ends-with-the-options-and-legend-of-the-current-surface-2026-10-28": {
       "validity": "current"
     },
@@ -1348,13 +1274,10 @@
       "validity": "unknown"
     },
     "decision:topic-transfer-plain-references-and-external-images-2026-10-16": {
-      "validity": "unknown"
+      "validity": "current"
     },
     "decision:topic-transfer-rejection-endpoint-is-the-owners-concept-2026-10-16": {
       "validity": "unknown"
-    },
-    "decision:topics-wear-the-homepage-jewels-2026-09-26": {
-      "validity": "current"
     },
     "decision:topics-wear-their-area-jewel-2026-10-28": {
       "validity": "current"
@@ -1364,6 +1287,9 @@
     },
     "decision:view-offers-two-layouts-by-centre-and-time-branches-2026-10-11": {
       "validity": "unknown"
+    },
+    "decision:vin-845-ships-the-brief-rule-v2-constants-over-its-failed-pre-registered-criteria-2026-10-31": {
+      "validity": "current"
     },
     "decision:vin314-every-agent-answer-ends-with-a-sources-line-2026-10-07": {
       "validity": "unknown"
@@ -1388,9 +1314,6 @@
     },
     "episode:2026-09-24-hub-sidecar-segfault-loop": {
       "validity": "unknown"
-    },
-    "record:2d-marks-were-remapped-onto-circles": {
-      "validity": "current"
     },
     "record:a-bounded-wait-must-not-manufacture-false-failure": {
       "validity": "current"
@@ -1783,9 +1706,6 @@
       "validity": "current"
     },
     "record:upstream-republished-the-ladybug-0-21-algo-extension-in-place-2026-10-20": {
-      "validity": "current"
-    },
-    "record:view-3d-instancing-frame-cost-measured-2026-09-18": {
       "validity": "current"
     },
     "record:vin314-live-exp01-rerun-prefetch-cites-a-node-in-1-of-6-2026-10-07": {

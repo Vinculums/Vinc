@@ -1263,6 +1263,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
            query_model: str | None = None,
            relevance_profile: dict | None = None,
            relevance_corpus_revision: str | None = None,
+           node_k: int | None = None,
            cfg=None, store=None) -> dict:
     """하이브리드 검색 **재설계**(T3b) — BM25(FTS)+(선택)벡터 RRF(§4-2) 위에 3개
     실사용 사고 대응을 얹는다:
@@ -1385,10 +1386,12 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
         # current·known_at 은 자르기 **전에** 거른다. 넓게 가져와 거른 뒤 top_k 로 자른다.
         # 자른 뒤에 거르면 거른 만큼 목록이 모자란다.
         _wide = mode == "current" or bool(known_at)
+        # 노드 팔만 넓게 본다(재채점이 상위 20을 다시 줄 세운다). 청크 행·커서는 top_k 그대로다.
+        _nk = max(top_k, node_k or 0)
         _until = temporal.instant(temporal.time_scope(known_at)[1]) if known_at else None
         try:
             if not continuation:
-                title_hits = _node_fallback_search(store, query, limit=NODE_SCAN_CAP if _wide else top_k, owner=owner,
+                title_hits = _node_fallback_search(store, query, limit=NODE_SCAN_CAP if _wide else _nk, owner=owner,
                                                    historical=True if mode == "current" else historical, stats=_vstats,
                                                    scope=None if mode == "current" else _scope,
                                                    doc_intervals=True)
@@ -1401,7 +1404,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                         base["known_at_unknown"] = len(_vstats.get("known_unknown", ()))
                 elif known_at:
                     title_hits = _known_at_nodes(store, title_hits, owner=owner, until=_until,
-                                                 stats=_vstats)[:top_k]
+                                                 stats=_vstats)[:_nk]
         except Exception as exc:
             # 거르지 못한 후보는 내지 않는다(fail closed). current 의 시간 메타 읽기가 실패하면 여기에는
             # 은퇴한 노드까지 든 후보 전량이 남아 있다.
@@ -1643,7 +1646,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                 # 라벨은 **제목**이다. 미러의 `text` 는 찾는 표면이라 한줄설명이 붙어
                 # 있고(1365 중 225 행), 그것을 title 자리에 넣으면 그대로 화면에 나간다.
                 _raw = [] if _mismatch else store.node_vector_search(
-                    query_embedding, SEARCH_POOL_CAP if _wide else top_k, owner=owner) or []
+                    query_embedding, SEARCH_POOL_CAP if _wide else _nk, owner=owner) or []
                 validator = getattr(store, "validate_node_vector_hits", None)
                 if callable(validator) and not _mismatch:
                     _raw, state = validator(_raw, owner=owner)
@@ -1692,7 +1695,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                     _raw = _keep
                 if known_at and mode != "current":
                     _raw = _known_at_nodes(store, _raw, owner=owner, until=_until,
-                                           stats=_vstats)[:top_k]
+                                           stats=_vstats)[:_nk]
                 vec_hits = [{"id": h.get("id"),
                              "title": h.get("title") or h.get("text") or "",
                              "kind": h.get("kind") or "",
@@ -1779,11 +1782,11 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
             if known_at and mode != "current":
                 graph_hits = _known_at_nodes(
                     store, _graph_arm_search(store, chunk_ids, owner=owner, limit=NODE_SCAN_CAP),
-                    owner=owner, until=_until, stats=_vstats)[:top_k]
+                    owner=owner, until=_until, stats=_vstats)[:_nk]
                 base["known_at_filtered"] = _chunk_known_hidden + len(_vstats.get("known_hidden", ()))
             else:
-                graph_hits = _graph_arm_search(store, chunk_ids, owner=owner, limit=top_k)
-            base["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=NODE_SCAN_CAP if mode == "current" else top_k,
+                graph_hits = _graph_arm_search(store, chunk_ids, owner=owner, limit=_nk)
+            base["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=NODE_SCAN_CAP if mode == "current" else _nk,
                                                 vec_hits=vec_hits)
             # 융합은 id 당 행 하나만 남기므로(제목 행이 이기면 의미 행의 표가 사라진다)
             # 융합 **뒤에** id 로 찾아 단다. 거리도 같다 — 안 달면 제목 팔도 찾은 노드는
@@ -1800,7 +1803,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                     _r["sem_decisive"] = True
         except Exception as exc:
             base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
-            base["node_hits"] = _fuse_node_hits(title_hits, [], top_k=NODE_SCAN_CAP if mode == "current" else top_k,
+            base["node_hits"] = _fuse_node_hits(title_hits, [], top_k=NODE_SCAN_CAP if mode == "current" else _nk,
                                                 vec_hits=vec_hits)
     finally:
         if owns:
@@ -1884,6 +1887,44 @@ def _finish_search_temporal(res: dict, store, query: str, *, mode, known_at, kwa
         res.setdefault("validity_note", "some claims are outside the selected time scope; use historical mode to include them")
 
 
+def _colbert_rescore_on() -> bool:
+    from vinc_rag.colbert import rescore_on
+    return rescore_on()
+
+
+#: ColBERT 재채점이 다시 줄 세우는 노드 수. 근거를 이 폭으로 쟀다(연구의 상위 20).
+COLBERT_RESCORE_N = 20
+
+
+def _colbert_rescore(store, hits: list[dict], query_colbert: str, owner: str | None):
+    """노드 후보 상위 `COLBERT_RESCORE_N` 개를 ColBERT MaxSim 순으로 다시 세운다.
+
+    상위 중 **하나라도** 토큰이 없거나 다른 코드북이면 통째로 건너뛴다 — 섞어 세우면 토큰 없는
+    노드가 바닥으로 가라앉는다. 동점은 원래 순서를 지킨다(안정 정렬, 연구와 같다). 점수는
+    행의 `colbert` 에 실어 brief 규칙이 읽는다. 돌려주는 상태는 응답의 `node_rescore` 다.
+    근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]"""
+    from vinc_rag import colbert as cb_mod
+    cb = cb_mod.cached()
+    head = hits[:COLBERT_RESCORE_N]
+    if cb is None:
+        return hits, {"state": "skipped", "reason": "colbert not configured"}
+    if not head or not owner:
+        return hits, {"state": "skipped", "reason": "no candidates" if not head else "no owner scope"}
+    vids = [f"{owner}#{h.get('id')}" for h in head]
+    got = {r["v"]: r for r in (store.run(
+        "MATCH (n:NodeVec) WHERE n.vec_id IN $v RETURN n.vec_id AS v, n.colbert AS c, "
+        "n.colbert_books AS b", {"v": vids}) or [])}
+    missing = [v for v in vids if not (got.get(v) or {}).get("c") or got[v].get("b") != cb.id]
+    if missing:
+        return hits, {"state": "skipped", "reason": "tokens missing", "missing": len(missing)}
+    q = cb_mod.unpack_query(query_colbert)
+    for rank, (h, v) in enumerate(zip(head, vids), start=1):
+        h["prod_rank"] = rank                       # 재채점 전 자리 — brief 규칙의 특징이다
+        h["colbert"] = cb_mod.maxsim(q, cb.decode(cb_mod.unpack_codes(got[v]["c"])))
+    order = sorted(range(len(head)), key=lambda i: -head[i]["colbert"])
+    return [head[i] for i in order] + hits[COLBERT_RESCORE_N:], {"state": "applied", "n": len(head)}
+
+
 def search(query: str, *, mode: str | None = None, known_at: str | None = None, **kwargs) -> dict:
     """모든 결과 경로에 시간 메타를 붙인다. 기본 순위와 저장 데이터는 보존한다.
 
@@ -1897,6 +1938,11 @@ def search(query: str, *, mode: str | None = None, known_at: str | None = None, 
         return {"kind": "search", "executed": False, "rows": [], "node_hits": [], "arms": "none", "total_count": 0, "has_more": False, "next_cursor": None, "error": f"{prefix}: {exc}"}
     # 0 이하는 rrf_fuse 에서 "상한 없음"이 된다. 입구에서 1 이상으로 맞춘다.
     kwargs["top_k"] = max(1, int(kwargs.get("top_k", 5)))
+    # ColBERT 재채점은 스위치가 켜지고 질의 토큰이 왔을 때만. 그때만 노드 팔을 상위 20까지 넓힌다.
+    query_colbert = kwargs.pop("query_colbert", None)
+    rescore = bool(query_colbert) and _colbert_rescore_on()
+    if rescore:
+        kwargs["node_k"] = COLBERT_RESCORE_N
     store = kwargs.get("store")
     owns = store is None
     if owns:
@@ -1918,7 +1964,13 @@ def search(query: str, *, mode: str | None = None, known_at: str | None = None, 
                 for row in (res.get("node_hits") or []) + (res.get("rows") or []):
                     if "temporal" not in row:
                         temporal.stamp(row, {})
-        if mode == "current":
+        if rescore and not res.get("error"):
+            try:
+                res["node_hits"], res["node_rescore"] = _colbert_rescore(
+                    store, res.get("node_hits") or [], query_colbert, kwargs.get("owner"))
+            except Exception as exc:          # 재채점이 검색을 죽이지 않는다 — 원래 순서로 간다
+                res["node_rescore"] = {"state": "error", "reason": f"{type(exc).__name__}: {exc}"}
+        if mode == "current" or rescore:
             res["node_hits"] = (res.get("node_hits") or [])[:kwargs["top_k"]]
         if "node_window" in res:
             res["node_window"]["returned"] = len(res.get("node_hits") or [])

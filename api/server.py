@@ -86,7 +86,24 @@ _MIRROR_BATCH = int(os.environ.get("VINC_NODE_MIRROR_BATCH", "32"))
 _MIRROR_ENCODE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_ENCODE_TIMEOUT", "120"))
 #: 교체(드롭·삭제·삽입·인덱스 빌드)의 상한. 인코딩이 빠져 있어 짧다.
 _MIRROR_REPLACE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_REPLACE_TIMEOUT", "600"))
+#: ColBERT 토큰을 한 요청에 몇 노드씩 묻는가. 노드 텍스트는 512토큰까지라 dense 미러의 32보다 작게 잡는다.
+_COLBERT_BATCH = int(os.environ.get("VINC_NODE_COLBERT_BATCH", "8"))
+
+
+def _colbert_rescore_on() -> bool:
+    from vinc_rag.colbert import rescore_on
+    return rescore_on()
+
+
+def _colbert():
+    """사이드카의 투영·코드북(재채점과 토큰 채우기가 같이 쓴다). 없으면 None — 그때는 둘 다 꺼진다."""
+    from vinc_rag.colbert import cached
+    return cached()
+
+
 _ENCODER_RESPONSE_RUNTIME = contextvars.ContextVar("encoder_response_runtime", default="")
+#: 마지막 질의 인코딩이 함께 받은 ColBERT 토큰(packed f32). 재채점이 꺼졌거나 못 받았으면 "".
+_ENCODER_RESPONSE_COLBERT = contextvars.ContextVar("encoder_response_colbert", default="")
 _ENCODER_RESPONSE_INSTANCE = contextvars.ContextVar("encoder_response_instance", default="")
 #: 창구가 답한 모델(`/encode` 의 `model`). 옛 창구는 안 실으므로 빈 값이 온다.
 _ENCODER_RESPONSE_MODEL = contextvars.ContextVar("encoder_response_model", default="")
@@ -98,6 +115,12 @@ MAX_BODY = 256 * 1024 * 1024
 
 
 def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
+    """`_encode_call` 의 벡터만. 질의·미러 경로가 쓰는 원래 계약이다."""
+    return _encode_call(url, texts, kind, timeout).get("vectors") or []
+
+
+def _encode_call(url: str, texts: list[str], kind: str, timeout: float, *,
+                 colbert: bool = False) -> dict:
     """인코딩 창구에 한 번 묻는다(`vinc_rag/embed/worker.py` `serve_encode`).
 
     ⚠ **토큰을 실어야 한다**(2026-08-07). 창구가 루프백일 때는 인증이 없었는데, 모델을
@@ -106,7 +129,10 @@ def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
     보였다. 그래서 창구를 부르는 자리를 여기 한 벌로 모았다.
 
     실패는 **던진다** — 부르는 쪽이 시간 초과 여부를 보고 다시 갈지 정한다."""
-    body = json.dumps({"texts": list(texts), "kind": kind}).encode("utf-8")
+    payload = {"texts": list(texts), "kind": kind}
+    if colbert:
+        payload["colbert"] = True             # ColBERT 토큰을 같은 실행에서 함께
+    body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     tok = os.environ.get("VINC_EMBED_ENCODE_TOKEN", "").strip()
     if tok:
@@ -131,7 +157,7 @@ def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
     _ENCODER_RESPONSE_RUNTIME.set(actual_runtime)
     _ENCODER_RESPONSE_INSTANCE.set(str(out.get("encoder_instance") or ""))
     _ENCODER_RESPONSE_MODEL.set(str(out.get("model") or ""))
-    return out.get("vectors") or []
+    return out
 
 from store.config import load_config
 from store import config as store_config
@@ -1316,8 +1342,9 @@ class VincApp:
         # --top-k`)는 5, MCP vinc_search 와 REST /v1/search 는 도구 핸들러가 20 을 실어
         # 보낸다(`vinc_mcp.tools._t_search`). top_k 를 안 보내면 5 다. 바꾸면 화면과
         # 스크립트의 페이지가 함께 바뀌므로 기본값은 그대로 둔다.
+        qcol = _ENCODER_RESPONSE_COLBERT.get() if qvec is not None else ""
         code, res = self._read(lambda r: _timed("search", p, r, q.search(
-            query, query_embedding=qvec,
+            query, query_embedding=qvec, query_colbert=qcol or None,
             query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
             query_model=(_ENCODER_RESPONSE_MODEL.get() if qvec is not None else None),
             top_k=_int(p.get("top_k"), 5), filters=filters or None,
@@ -1398,6 +1425,7 @@ class VincApp:
         기다려 깨우는 게 맞다(`_QVEC_COLD_TIMEOUT`) — 깨고 나면 그 뒤가 전부 싸다.
         어느 쪽인지는 `_claim_cold_retry` 가 최근 성공 시각으로 가른다. 강등은 응답
         메타(`vector_note`)에 남으므로 조용하지 않다."""
+        _ENCODER_RESPONSE_COLBERT.set("")   # 앞 요청의 토큰이 이 스레드에 남지 않게
         _ENCODER_RESPONSE_RUNTIME.set("")
         _ENCODER_RESPONSE_MODEL.set("")
         url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
@@ -1442,7 +1470,18 @@ class VincApp:
         모델을 `vinc-encode` 로 분리하면서 인증이 붙었다. 배치 워커만 고치고 이 경로를
         빠뜨려 **질의 임베딩이 전부 401** 이었다 — 배경 적재는 정상이라 겉으로는 다
         되는 것처럼 보였다. `vector_note` 에 사유가 남아 그나마 드러났다."""
-        vecs = _encode_post(url, [text], "query", timeout)
+        _ENCODER_RESPONSE_COLBERT.set("")
+        cb = _colbert() if _colbert_rescore_on() else None
+        if cb is not None:
+            # 재채점이 켜졌으면 같은 실행에서 토큰도 받는다(인코딩 한 번). 코드북이 다른 창구의
+            # 토큰은 쓰지 않는다 — 그 질의는 재채점 없이 간다.
+            out = _encode_call(url, [text], "query", timeout, colbert=True)
+            vecs = out.get("vectors") or []
+            toks = out.get("colbert") or []
+            if out.get("colbert_books") == cb.id and len(toks) == 1:
+                _ENCODER_RESPONSE_COLBERT.set(toks[0])
+        else:
+            vecs = _encode_post(url, [text], "query", timeout)
         self._qvec_ok = time.monotonic()  # 살아 있다 — 다음 초과는 '바쁨'으로 읽는다
         # 창구의 모델이 저장 벡터의 모델과 다르면 벡터 팔을 뺀다. 폭이 같으면 엔진은
         # 아무 오류 없이 다른 공간의 이웃을 낸다. 한쪽이라도 모르면(옛 창구·기록 없음)
@@ -1703,8 +1742,9 @@ class VincApp:
         # 명시적 요청 경로이고, 기본으로 켜 두면 정책이 막으려는 것을 그대로 낸다.
         # 시간 인자는 넷 다 q.brief 가 적용한다(B1). `known_at` 을 여기서 빠뜨리면 brief 가
         # 그것을 모른 채 해소한다.
+        qcol = _ENCODER_RESPONSE_COLBERT.get() if qvec is not None else ""
         code, res = self._read(lambda r: _timed("brief", p, r, q.brief(
-            query, owner=_req(p, "owner"), query_embedding=qvec,
+            query, owner=_req(p, "owner"), query_embedding=qvec, query_colbert=qcol or None,
             query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
             query_model=(_ENCODER_RESPONSE_MODEL.get() if qvec is not None else None),
             max_excerpts=_int(p.get("max_excerpts"), 3),
@@ -2097,7 +2137,61 @@ class VincApp:
         return docstore.embed_model_state(r)
 
     def write_node_mirror_rebuild(self, body):
-        """POST /node-mirror/rebuild — 노드 미러의 색인을 통째로 다시 만든다(바뀐 행만
+        """POST /node-mirror/rebuild — dense 미러(:meth:`_node_mirror_dense`) 다음에 ColBERT
+        토큰 열을 채운다(:meth:`_node_mirror_colbert`). 토큰은 dense 가 성공했을 때만 간다 —
+        토큰은 미러 행에 실리므로 행이 먼저 있어야 한다. 토큰 단계의 실패는 dense 결과를
+        되돌리지 않고 `colbert` 칸에 사유로 남는다(재채점은 토큰이 다 있을 때만 켜진다)."""
+        code, res = self._node_mirror_dense(body)
+        if code == 200 and _colbert() is not None:
+            res = {**res, "colbert": self._node_mirror_colbert(body)}
+        return code, res
+
+    def _node_mirror_colbert(self, body) -> dict:
+        """미러 행 중 토큰 텍스트나 코드북이 바뀐 것만 인코더에 묻고(`colbert:true`), 배치마다
+        바로 싣는다. 2만 행의 코드를 한꺼번에 들면 수백 MB 라 이 컨테이너에서 OOM 이다.
+        중간에 죽어도 다음 재구축이 해시로 남은 것만 이어 한다.
+        근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]"""
+        url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
+        cb = _colbert()
+        if not url or cb is None:
+            return {"executed": False, "error": "colbert not configured"}
+        if not self._mirror_lock.acquire(blocking=False):
+            return {"executed": False, "error": "미러 재구축이 이미 돌고 있다"}
+        try:
+            r = self._reader()
+            if r is None:
+                return {"executed": False, **store_unavailable()}
+            try:
+                owner = (body.get("owner") or "").strip() or None
+                rows, _ = node_mirror.collect(r, owner, with_tokens=True)
+                todo = node_mirror.colbert_todo(rows, node_mirror.colbert_state(r, owner), cb.id)
+            finally:
+                r.close()
+            del rows
+            t0, done = time.monotonic(), 0
+            for i in range(0, len(todo), _COLBERT_BATCH):
+                batch = todo[i:i + _COLBERT_BATCH]
+                out = _encode_call(url, [b["ctext"] for b in batch], "passage",
+                                   _MIRROR_ENCODE_TIMEOUT, colbert=True)
+                codes = out.get("colbert")
+                if out.get("colbert_books") != cb.id or not isinstance(codes, list)                         or len(codes) != len(batch):
+                    # 코드북이 다르면 사이드카가 풀 수 없는 코드다. 싣지 않고 멈춘다.
+                    return {"executed": done > 0, "rows": len(todo), "done": done,
+                            "error": out.get("colbert_error")
+                            or f"encoder books {out.get('colbert_books')} != sidecar {cb.id}"}
+                updates = [{"vid": node_mirror.vec_id(b.get("owner") or "", b["id"]), "codes": c,
+                            "hash": node_mirror.colbert_hash(b["ctext"])} for b, c in zip(batch, codes)]
+                self.jobs.run_sync("node-mirror.colbert",
+                                   lambda u=updates: {"set": node_mirror.set_colbert(self.store, u, cb.id)},
+                                   timeout=_MIRROR_REPLACE_TIMEOUT)
+                done += len(batch)
+            return {"executed": True, "rows": len(todo), "done": done, "books": cb.id,
+                    "encode_s": round(time.monotonic() - t0, 1)}
+        finally:
+            self._mirror_lock.release()
+
+    def _node_mirror_dense(self, body):
+        """노드 미러의 색인을 통째로 다시 만든다(바뀐 행만
         인코딩하고, 바뀐 것도 색인도 멀쩡하면 아무것도 안 한다).
 
         **배포 경계에서만 부른다**(`packaging/docker-entrypoint.sh`). 증분 삽입은
