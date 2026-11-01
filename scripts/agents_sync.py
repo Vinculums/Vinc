@@ -77,6 +77,8 @@ from vinc_mcp.roles import (TOPICS, ID_PREFIX, build_payload,  # noqa: E402
 
 SNAPSHOT = ROOT / "agents" / "roles.json"
 SHELL_DIR = ROOT / "agents" / "shells"
+#: 이 태그가 달린 역할은 모델 없이 CI 에서 도는 스크립트라 로스터에 넣지 않는다.
+MODEL_FREE_TAG = "model-free"
 HOOK_SRC = ROOT / "scripts" / "worktree_hook.py"
 #: `--install` 이 settings.json 에 거는 (하네스 사건, 훅 동사). 동사는 `worktree_hook.py` 의 인자다.
 HOOK_EVENTS = (("WorktreeCreate", "create"), ("WorktreeRemove", "remove"),
@@ -206,13 +208,8 @@ def cmd_pull() -> int:
         if isinstance(next_offset, bool) or not isinstance(next_offset, int) or next_offset <= offset:
             raise SystemExit("[agents] invalid role roster pagination")
         offset = next_offset
-    ids = sorted(found)
-    if not ids:
-        raise SystemExit("[agents] no active roles in this space")
-    print(f"[agents] 역할 {len(ids)}개")
-
-    roles = []
-    for rid in ids:
+    fetched = {}
+    for rid in sorted(found):
         got = remote.call("vinc_graph", {"seed_id": rid, "depth": 1})
         if got.get("isError") or not got.get("found"):
             # 상한 초과 같은 도구 오류는 `text` 에 온다 — `error` 만 보면 None 이 찍혀
@@ -225,6 +222,22 @@ def cmd_pull() -> int:
             # ([[record:isolated-seed-read-back-reported-empty-fields]]). 조용히 빈
             # 역할을 쓰느니 여기서 죽는 편이 낫다.
             raise SystemExit(f"[agents] {rid} 가 자기 응답의 nodes 에 없다")
+        fetched[rid] = (got, node)
+
+    # 모델 없는 역할(태그 model-free, CI 에서 도는 스크립트)은 하위 에이전트가 아니므로
+    # 껍데기를 만들지 않는다. 협업 상대에서도 빠진다.
+    for rid, (_, node) in list(fetched.items()):
+        if MODEL_FREE_TAG in (node.get("tags") or []):
+            del fetched[rid], found[rid]
+            print(f"[agents] {rid}: model-free, 껍데기 없음")
+    ids = sorted(fetched)
+    if not ids:
+        raise SystemExit("[agents] no active roles in this space")
+    print(f"[agents] 역할 {len(ids)}개")
+
+    roles = []
+    for rid in ids:
+        got, node = fetched[rid]
         # 계약 전문은 기존 그래프 응답에서 보존한다. 협업 상대는 발견된 활성 역할만 쓴다.
         peers = [n for n in got.get("nodes") or [] if n.get("id") in found]
         edges = [e for e in got.get("edges") or []

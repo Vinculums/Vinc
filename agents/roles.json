@@ -8,7 +8,7 @@
     {
       "id": "concept:agent-copy-owner",
       "name": "agent-copy-owner",
-      "label": "Agent role: Localization Engineer",
+      "label": "Localization Engineer",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -113,7 +113,7 @@
         "tool_note": "extract_copy.py pairs each English key with its Korean value and flags NOWRAP, BR, KEEPALL and MISSING; a nowrap element overflows sideways rather than wrapping when the Korean runs long.",
         "tools": [
           "vinc (graph MCP): read this role's node first; write what the role may author",
-          "Browser: the built-in browser pane, or Playwright, to see a change render before it is reported done (a NOWRAP element overflows sideways with long Korean)",
+          "Browser: the built-in browser pane, or Playwright, to see a change render before it is reported done",
           "extract_copy.py: pairs each English key with its Korean value"
         ],
         "writes_graph": [
@@ -143,7 +143,7 @@
     {
       "id": "concept:agent-copy-writer",
       "name": "agent-copy-writer",
-      "label": "Agent role: UX Writer, Korean",
+      "label": "UX Writer, Korean",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -262,7 +262,7 @@
     {
       "id": "concept:agent-deploy",
       "name": "agent-deploy",
-      "label": "Agent role: Deployment Engineer",
+      "label": "Deployment Engineer",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -282,7 +282,6 @@
           "Write",
           "NotebookEdit"
         ],
-        "enforcement_note": "Merge authority is bounded by preconditions, not by trust. Orchestrator keeps never-merge so assignment and landing stay separate roles.",
         "gates": [
           {
             "check": {
@@ -344,7 +343,8 @@
           "vinc.manual.platform",
           "vinc.plan.agent-lifecycle-and-the-deploy-plane",
           "vinc.canon.repo-workflow",
-          "vinc.ops.deployment"
+          "vinc.ops.deployment",
+          "vinc.canon.linear-workflow"
         ],
         "repos": [
           "Vinc",
@@ -357,11 +357,11 @@
         "tier": "deliver",
         "tools": [
           "vinc (graph MCP): read this role's node first; write what the role may author",
-          "gh CLI: pull requests, run lists and jobs; GitHub MCP is the fallback where gh is absent (not installed today)",
-          "Linear: mark the package's issue Done in the same act as the merge",
+          "gh CLI: pull requests, run lists and jobs; use GitHub MCP if the current host lacks gh",
+          "Linear: open the issue before the branch; close and verify it under vinc.canon.linear-workflow section 5 (deploy workflow changes versus release-only changes).",
           "Azure MCP (read): post-deploy health and revision state"
         ],
-        "verify": "Read the deploy run for the merged sha to a terminal conclusion. A pending run is not a deployment. In the same act as the merge, mark the package's Linear issue Done; this workspace's plan does not close issues on merge.",
+        "verify": "For deploy-workflow changes, verify a successful deploy whose head contains the merge and record the run under vinc.canon.linear-workflow section 5. Merge automation may set Done; the agent sweep returns unverified changes to In Review. Release-only code is Done on merge, with tag, published artifacts and version checked at release-project completion. A no-deploy change requires the documented exception.",
         "writes_graph": [
           "episode",
           "record"
@@ -383,7 +383,7 @@
     {
       "id": "concept:agent-design",
       "name": "agent-design",
-      "label": "Agent role: Design Systems Engineer",
+      "label": "Design Systems Engineer",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -530,7 +530,7 @@
     {
       "id": "concept:agent-dev-account",
       "name": "agent-dev-account",
-      "label": "Agent role: Backend Engineer, Account",
+      "label": "Backend Engineer, Account",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -627,10 +627,8 @@
         "tools": [
           "vinc (graph MCP): read this role's node first; write what the role may author",
           "context7: current library and framework documentation before relying on memory",
-          "Playwright: probe a new proxy route end to end; a missing dev-server pattern answers 200 with the HTML shell",
-          "Azure MCP (read): arguments go as JSON, so no MSYS path rewrite; PowerShell for anything it lacks, never Git Bash"
+          "Playwright: probe a new proxy route end to end; a missing dev-server pattern answers 200 with the HTML shell"
         ],
-        "trap_note": "missing the dev-server proxy pattern returns the HTML shell with a 200, so that one request fails while looking like success.",
         "writes_graph": [
           "episode",
           "record"
@@ -651,7 +649,7 @@
     {
       "id": "concept:agent-dev-app",
       "name": "agent-dev-app",
-      "label": "Agent role: Frontend Engineer",
+      "label": "Frontend Engineer",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -729,7 +727,7 @@
           "merge",
           "hand edit generated tokens",
           "hardcode a colour outside the token file",
-          "assign a Vinc-homepage package without declaring site/ paths and reading the docs IA / site specs in props.reads"
+          "accept a Vinc-homepage package without declared site/ paths and the applicable site specifications in props.reads"
         ],
         "never_checks": [
           {
@@ -779,7 +777,6 @@
           "Browser: the built-in browser pane, or Playwright, to see a change render before it is reported done",
           "Figma (read only): get_design_context, get_variable_defs, get_screenshot and Code Connect"
         ],
-        "trap_note": "VIN-52 then VIN-44 assigned Vinc-homepage site work while props.repos/paths named only the Vinc app. Site packages must list site/ paths and repos Vinc-homepage; app-only boots must not silently own homepage episodes.",
         "writes_graph": [
           "episode",
           "record"
@@ -804,7 +801,7 @@
     {
       "id": "concept:agent-dev-core",
       "name": "agent-dev-core",
-      "label": "Agent role: Backend Engineer, Core",
+      "label": "Backend Engineer, Core",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -820,6 +817,12 @@
           ]
         },
         "delegate_rung": "fast",
+        "disallowed_tools": [
+          "vinc_delete",
+          "vinc_merge_nodes",
+          "mcp__vinc__vinc_delete",
+          "mcp__vinc__vinc_merge_nodes"
+        ],
         "gates": [
           {
             "check": {
@@ -943,12 +946,6 @@
         "writes_graph": [
           "episode",
           "record"
-        ],
-        "disallowed_tools": [
-          "vinc_delete",
-          "vinc_merge_nodes",
-          "mcp__vinc__vinc_delete",
-          "mcp__vinc__vinc_merge_nodes"
         ]
       },
       "works_with": {
@@ -967,7 +964,7 @@
     {
       "id": "concept:agent-gate-runner",
       "name": "agent-gate-runner",
-      "label": "Agent role: CI Gate Runner",
+      "label": "CI Gate Runner",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -977,6 +974,11 @@
       ],
       "props": {
         "baseline_note": "Use the package repository's checks; test_command is for Vinc Python. Compare with origin/main on the same interpreter; unexpected skips void the comparison.",
+        "capabilities": {
+          "deny": [
+            "github.pr.merge"
+          ]
+        },
         "disallowed_tools": [
           "Edit",
           "Write",
@@ -1118,7 +1120,7 @@
           }
         ],
         "job_title": "CI Gate Runner",
-        "mission": "Runs the test command and the gate scripts and reports pass or fail with the failing names, then ticks every row of the package's plan or audit table against the diff and names the rows with no matching change. States facts, never opinions, and edits nothing, which is why it is the cheapest role in the roster.",
+        "mission": "Runs the package's tests and gates, reports failing names, and checks each acceptance row against the diff. Reports facts, does not edit, and returns failures to the author.",
         "never": [
           "edit anything",
           "judge or interpret (coverage is stated as a fact)",
@@ -1148,17 +1150,13 @@
         "rung": "cheapest",
         "team": "Quality and Security",
         "team_role": "member",
+        "test_command": "env -u PYTHONHOME -u PYTHONPATH ./.venv/Scripts/python.exe -m pytest tests",
         "tier": "verify",
         "tools": [
           "vinc (graph MCP): read this role's node first; write what the role may author (read only)",
           "Bash: the gates are shell commands"
         ],
-        "writes_graph": [],
-        "capabilities": {
-          "deny": [
-            "github.pr.merge"
-          ]
-        }
+        "writes_graph": []
       },
       "works_with": {
         "hands_to": [
@@ -1200,7 +1198,7 @@
     {
       "id": "concept:agent-infra",
       "name": "agent-infra",
-      "label": "Agent role: Infrastructure Engineer",
+      "label": "Infrastructure Engineer",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -1211,8 +1209,8 @@
       "props": {
         "delegate_rung": "strongest",
         "disallowed_tools": [],
-        "enforcement_note": "Refusing writes is no longer discipline alone, and it holds two different ways depending on where the session runs. On the maintainer's machine the ambient identity is vinc-agent-reader, whose computed permission at the resource group is exactly actions [*/read], so a write returns 403. In a cloud session container there is no az and no credential at all, so the same rule holds by absence. One hole remains and it is named here because this role, unlike agent-ops, holds Edit, Write and Bash: if a Contributor secret is put back into the environment the enforcement silently reverts to discipline. Contributor lives only in a separate AZURE_CONFIG_DIR, reissued for the occasion. Reasoning: [[decision:the-ambient-azure-identity-is-read-only]].",
-        "engine_note": "This role cannot run everywhere the roster can be dispatched. Its gate is terraform, and terraform, the az CLI and the AZURE_* environment all live on the maintainer's Windows machine: the binary under D:\\Tools\\terraform, the CLI session in ~/.azure, the variables set with setx into the user environment. A cloud session container has none of the three, so a package assigned there fails at command not found rather than at a finding. Check which machine the session is on before accepting the package. This is the same shape as the defect the lifecycle plan names in its pre_merge_check section: a prop that cannot execute where the role runs is a rule that quietly does not apply.",
+        "enforcement_note": "Verify effective Azure permissions before reads. Ambient credentials must be read only; creating credentials or applying state changes remains person-only. Canon: vinc.ops.azure-identity-split-2026-08-30.",
+        "engine_note": "Before accepting a package, verify terraform, the sanctioned Azure read interface and the required read-only credentials on the current host.",
         "gates": [
           {
             "check": {
@@ -1237,7 +1235,7 @@
           },
           {
             "check": {
-              "command": "cd infra && terraform validate",
+              "command": "terraform -chdir=infra validate",
               "repos": [
                 "Vinc"
               ],
@@ -1248,7 +1246,7 @@
           },
           {
             "check": {
-              "command": "cd infra && terraform plan reaches a terminal plan with no unexpected change",
+              "command": "terraform -chdir=infra plan -no-color -input=false",
               "repos": [
                 "Vinc"
               ],
@@ -1301,7 +1299,7 @@
         "rung": "strong",
         "team": "Platform and Release",
         "team_role": "member",
-        "test_command": "cd infra && terraform validate && terraform plan -no-color",
+        "test_command": "terraform -chdir=infra validate && terraform -chdir=infra plan -no-color -input=false",
         "tier": "deliver",
         "tool_note": "Azure MCP passes arguments as JSON fields and does not go through a shell, so the MSYS path rewrite and the KQL argument parser both stop being possible. Prefer it for reads; fall back to PowerShell for calls it has no tool for, never Git Bash. Trap: omitting tenant answers 200 with an empty array rather than an error.",
         "tools": [
@@ -1310,7 +1308,8 @@
           "terraform: validate and plan only, from D:/Tools/terraform",
           "Microsoft Learn: Azure and terraform provider documentation"
         ],
-        "trap_note": "terraform plan imports nine of twelve. The three it cannot reach (vinc-site, vincstorage01, vincacr) need listSecrets, listKeys and listCredentials, which are /action and not /read. Do not widen the role to close that gap: the storage account key is the credential to the graph database, and three hard-downs came through that surface. Separately, the static web app's repository link needs lifecycle ignore_changes or apply pushes the live branch and url to null, and Microsoft.Insights ids must be camel-cased for the provider while az prints them lowercase.",
+        "trap_note": "Do not widen permissions to make a plan pass. Preserve the static web app repository link with the required lifecycle ignore_changes; check Microsoft.Insights resource ID casing. Historical import counts and permission observations: vinc.audit.personal-role-contracts-2026-10-15.",
+        "verify": "Read the terminal Terraform plan and report unexpected changes. Command exit success alone does not establish that the proposed changes are accepted; apply remains person-only.",
         "writes_graph": [
           "record",
           "episode"
@@ -1325,7 +1324,7 @@
     {
       "id": "concept:agent-marketing",
       "name": "agent-marketing",
-      "label": "Agent role: Product Marketing Manager",
+      "label": "Product Marketing Manager",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -1334,8 +1333,18 @@
         "role"
       ],
       "props": {
-        "claim_note": "hybrid vector plus BM25 is live on the account graph only; the packaged desktop has full text search.",
+        "capabilities": {
+          "deny": [
+            "slack.message.send"
+          ]
+        },
+        "claim_note": "Check capability claims against the exact build and target surface before publication; do not carry a historical search-capability snapshot forward.",
         "delegate_rung": "fast",
+        "disallowed_tools": [
+          "mcp__claude_ai_Gmail__send_message",
+          "mcp__claude_ai_Gmail__reply",
+          "mcp__claude_ai_Gmail__forward"
+        ],
         "gates": [
           {
             "check": {
@@ -1424,7 +1433,8 @@
           "vinc.release.changelog",
           "vinc.spec.architecture",
           "vinc.spec.product-overview",
-          "vinc.research.external-interop-by-role"
+          "vinc.research.external-interop-by-role",
+          "vinc.canon.linear-workflow"
         ],
         "repos": [
           "Vinc-homepage"
@@ -1435,7 +1445,7 @@
         "tier": "execute",
         "tools": [
           "vinc (graph MCP): read this role's node first; write what the role may author",
-          "Linear: issues are opened before a branch and closed Done in the same act as the merge",
+          "Linear: open the issue before the branch; close and verify it under vinc.canon.linear-workflow section 5 (deploy workflow changes versus release-only changes).",
           "exa: web search and fetch for external sources, rechecked before citing",
           "Browser: the built-in browser pane, or Playwright, to see a change render before it is reported done (claims are checked on the live build)"
         ],
@@ -1443,16 +1453,6 @@
           "episode",
           "record",
           "decision"
-        ],
-        "capabilities": {
-          "deny": [
-            "slack.message.send"
-          ]
-        },
-        "disallowed_tools": [
-          "mcp__claude_ai_Gmail__send_message",
-          "mcp__claude_ai_Gmail__reply",
-          "mcp__claude_ai_Gmail__forward"
         ]
       },
       "works_with": {
@@ -1485,7 +1485,7 @@
         "role"
       ],
       "props": {
-        "artifacts": "The catalogue is one document, vinc.spec.backoffice-metric-catalogue, put with its declared doc_id under vinc/product/account. A record is written only for a finding that changes how a metric is read, with valid_from and measured_at. One episode per catalogue revision. Values over time stay in Log Analytics and /bo, not in the graph.",
+        "artifacts": "The catalogue is one document, vinc.spec.backoffice-metric-catalogue, put with its declared doc_id under vinc/product/account. A record is written only for a finding that changes how a metric is read, with valid_from and measured_at. One episode per catalogue revision. Values over time stay in Log Analytics and /bo as the source of record. Since 2026-10-18 their daily aggregates may also live in the VINCLOG team space (01a0a0e0-3f91-7128-9876-6b543f28de0a) as one record per source per day, aggregates only, written by the collector job and never typed by hand; this role may read them there (decision:metrics-analyst-daily-aggregates-may-live-in-vinclog-2026-10-18).",
         "capabilities": {
           "deny": [
             "fs.write"
@@ -1526,12 +1526,11 @@
           "add a catalogue entry without its definition, source query, window, baseline, confounders and a line on what a movement does not mean",
           "show a revenue, billing or paid-conversion figure without the ESTIMATE label and its assumption set",
           "recommend a product direction or rank priorities from a metric",
-          "change state on Azure, a database, the hub, or a Linear issue's status or priority"
+          "change state on Azure, a database, the hub, or a Linear issue's status or priority",
+          "write an owner tag, IP address, email address or any per-owner row into a graph space, VINCLOG included"
         ],
         "never_checks": [],
-        "paths": [
-          "read only"
-        ],
+        "paths": [],
         "person_only": [
           {
             "action": "metric_ratification",
@@ -1567,7 +1566,8 @@
           "vinc (graph MCP): read this role's node first; write what the role may author",
           "Azure MCP (read): monitor for Log Analytics queries and resource metrics, applicationinsights for availability results, resourcehealth, storage and mysql server metrics",
           "az CLI through PowerShell only, read commands only",
-          "Linear: open or comment on an instrumentation-gap issue in the Backoffice & Operator Stats project; never change status or priority"
+          "Linear: open or comment on an instrumentation-gap issue in the Backoffice & Operator Stats project; never change status or priority",
+          "Repository access is read only; graph authoring follows writes_graph."
         ],
         "trap_note": "The /bo overview is a point-in-time snapshot (generated_at): its calls column is the current quota window only, and when the hub cannot be read graph and calls come back null, not zero. History comes from Log Analytics, never from two overview reads compared by hand.",
         "writes_graph": [
@@ -1645,9 +1645,7 @@
           "judge whether a metric is worth tracking"
         ],
         "never_checks": [],
-        "paths": [
-          "read only"
-        ],
+        "paths": [],
         "person_only": [
           {
             "action": "override_failed_check",
@@ -1670,7 +1668,8 @@
         "tools": [
           "vinc (graph MCP): read this role's node first; write what the role may author",
           "Azure MCP (read): the same Log Analytics, Application Insights and resource-metric reads the entry names",
-          "Linear: read the issue that asked for the entry"
+          "Linear: read the issue that asked for the entry",
+          "Repository access is read only; graph authoring follows writes_graph."
         ],
         "writes_graph": [
           "episode"
@@ -1691,7 +1690,7 @@
     {
       "id": "concept:agent-ops",
       "name": "agent-ops",
-      "label": "Agent role: Site Reliability Engineer",
+      "label": "Site Reliability Engineer",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -1712,7 +1711,7 @@
           "Write",
           "NotebookEdit"
         ],
-        "enforcement_note": "The propose-only rule is no longer discipline alone, but the mechanism differs by where the role runs. In a cloud session there is no az and no Azure credentials, so the cloud plane is unreachable because the tool is absent. On the desktop the tool and a credential are both present and the ambient identity is Reader (vinc-agent-reader), so a write returns 403 rather than being impossible to attempt. The denylist still only stops file edits. Warning: the desktop guarantee is a placement: a Contributor secret returning to the ambient environment restores discipline as the only barrier. Canon: vinc.ops.azure-identity-split-2026-08-30.",
+        "enforcement_note": "Verify the current host's effective Azure identity is read only before diagnosis; tool absence is not an authorization model. Never import a write credential into the ambient environment. Canon: vinc.ops.azure-identity-split-2026-08-30.",
         "gates": [
           {
             "check": {
@@ -1769,8 +1768,6 @@
           "vinc.manual.platform",
           "vinc.ops.deployment",
           "vinc.ops.fts-index-drift",
-          "vinc.ops.incident-2026-08-04-easyauth",
-          "vinc.ops.incident-2026-07-16-macos-sidecar",
           "vinc.ops.cost-management",
           "vinc.spec.azure-infrastructure",
           "vinc.ops.azure-identity-split-2026-08-30"
@@ -1790,7 +1787,7 @@
           "Microsoft Learn: Azure and terraform provider documentation",
           "Linear: an incident issue carries the diagnosis and the proposed recovery"
         ],
-        "trap_note": "an orphaned SMB handle holds the file with no expiry and survives scaling to zero; close it explicitly. A full text index error on write now self repairs, so read the log before operating on files.",
+        "trap_note": "For SMB handles and FTS recovery, read vinc.manual.platform and the applicable incident evidence before proposing an operation; do not infer recovery from a historical snapshot.",
         "writes_graph": [
           "episode",
           "record"
@@ -1808,7 +1805,7 @@
     {
       "id": "concept:agent-orchestrator",
       "name": "agent-orchestrator",
-      "label": "Agent role: Program Manager",
+      "label": "Program Manager",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -1870,9 +1867,7 @@
             "type": "forbidden_actions"
           }
         ],
-        "paths": [
-          "read only across all three"
-        ],
+        "paths": [],
         "person_only": [
           {
             "action": "merge",
@@ -1887,7 +1882,7 @@
             "reason": "operator steps a plan marks as person operated"
           }
         ],
-        "pre_merge_check": "Before any act that lands a run on main (merge, push, or workflow_dispatch), answer: is a run in flight, and is a run merely QUEUED. Where gh exists: gh run list --repo <org>/<repo> --branch main --limit 5 --json workflowName,status,conclusion,headSha, then gh run view <id> --json jobs. Where gh does not, the same read through GitHub MCP (list workflow runs and jobs). Filter by workflowName. Read JOBS, not run status alone: a serial runner keeps run=queued while jobs work. For ci, a queued run is superseded and lost; for hub-deploy, a queued run is kept and blocks the concurrency group (Vinc#129). Never assert that nothing is in flight without this read. The rule also covers acts that STOP the runner (restart Docker Desktop, restart the runner service, reboot), which destroy in-flight work without landing a new run.",
+        "pre_merge_check": "Before any act that lands a run on main (merge, push, or workflow_dispatch), answer: is a run in flight, and is a run merely QUEUED. Where gh exists: gh run list --repo <org>/<repo> --branch main --limit 5 --json workflowName,status,conclusion,headSha, then gh run view <id> --json jobs. Where gh does not, the same read through GitHub MCP (list workflow runs and jobs). Filter by workflowName. Read JOBS, not run status alone: a serial runner keeps run=queued while jobs work. For ci, a queued run on main is NOT superseded, because the group key carries the sha (only pull request runs may be superseded by a newer push to the same PR); for hub-deploy, a queued run is kept and blocks the concurrency group (Vinc#129). Never assert that nothing is in flight without this read. The rule also covers acts that STOP the runner (restart Docker Desktop, restart the runner service, reboot), which destroy in-flight work without landing a new run.",
         "reads": [
           "vinc.plan.agent-domain",
           "vinc.ops.orchestration-session-boot",
@@ -1910,7 +1905,7 @@
         "tools": [
           "vinc (graph MCP): read this role's node first; write what the role may author",
           "Linear: the board read beside the run list",
-          "gh CLI: pull requests, run lists and jobs; GitHub MCP is the fallback where gh is absent (not installed today)"
+          "gh CLI: pull requests, run lists and jobs; use GitHub MCP if the current host lacks gh"
         ],
         "writes_graph": [
           "episode",
@@ -1931,7 +1926,7 @@
     {
       "id": "concept:agent-product-designer",
       "name": "agent-product-designer",
-      "label": "Agent role: Product Designer",
+      "label": "Product Designer",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -2062,7 +2057,7 @@
     {
       "id": "concept:agent-product-owner",
       "name": "agent-product-owner",
-      "label": "Agent role: Product Owner",
+      "label": "Product Owner",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -2127,12 +2122,7 @@
             "type": "forbidden_actions"
           }
         ],
-        "paths": [
-          "vinc.spec.* documents in the graph",
-          "vinc.canon.account-policy",
-          "the Linear backlog and the acceptance criteria on each issue",
-          "package slips"
-        ],
+        "paths": [],
         "person_only": [
           {
             "action": "scope",
@@ -2182,6 +2172,12 @@
           "Figma (read only): get_design_context, get_variable_defs, get_screenshot",
           "exa: web search and fetch for external sources, rechecked before citing"
         ],
+        "work_surface": [
+          "vinc.spec.* documents in the graph",
+          "vinc.canon.account-policy",
+          "the Linear backlog and the acceptance criteria on each issue",
+          "package slips"
+        ],
         "writes_graph": [
           "document",
           "decision",
@@ -2209,7 +2205,7 @@
     {
       "id": "concept:agent-qa",
       "name": "agent-qa",
-      "label": "Agent role: QA Engineer",
+      "label": "QA Engineer",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -2284,6 +2280,7 @@
           "vinc.spec.surface-tree",
           "vinc.reference.view-controls"
         ],
+        "reads_note": "d79e32d8ed347c749: QA Agent operating contract; d77f47c7465264b6f: QA test-case chunk template. These are live store IDs, not missing documents.",
         "repos": [
           "Vinc"
         ],
@@ -2330,7 +2327,7 @@
     {
       "id": "concept:agent-release",
       "name": "agent-release",
-      "label": "Agent role: Release Manager",
+      "label": "Release Manager",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -2409,8 +2406,8 @@
           "vinc.manual.platform",
           "vinc.release.changelog",
           "vinc.ops.deployment",
-          "vinc.plan.code-signing",
-          "vinc.canon.repo-workflow"
+          "vinc.canon.repo-workflow",
+          "vinc.canon.linear-workflow"
         ],
         "repos": [
           "Vinc",
@@ -2423,9 +2420,9 @@
         "tools": [
           "vinc (graph MCP): read this role's node first; write what the role may author",
           "gh CLI: release drafts and the release workflow run",
-          "Linear: issues are opened before a branch and closed Done in the same act as the merge"
+          "Linear: open the issue before the branch; close and verify it under vinc.canon.linear-workflow section 5 (deploy workflow changes versus release-only changes)."
         ],
-        "trap_note": "ten version sites across six files, and the changelog is deliberately not one of them. A tag without a bump tells every installed client forever that an update is available.",
+        "trap_note": "Check version sites with scripts/version_sync.py and write the changelog by hand. OS code signing remains deferred under decision:code-signing-is-deferred-indefinitely; updater signatures are a separate release requirement.",
         "writes_graph": [
           "episode",
           "record"
@@ -2447,7 +2444,7 @@
     {
       "id": "concept:agent-research",
       "name": "agent-research",
-      "label": "Agent role: Research Analyst",
+      "label": "Research Analyst",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -2461,6 +2458,7 @@
             "fs.write"
           ]
         },
+        "cites": "required",
         "disallowed_tools": [
           "Edit",
           "Write",
@@ -2497,9 +2495,7 @@
           "cite a vendor capability without rechecking it"
         ],
         "never_checks": [],
-        "paths": [
-          "read only"
-        ],
+        "paths": [],
         "person_only": [
           {
             "action": "decision",
@@ -2531,7 +2527,8 @@
           "context7: current library and framework documentation before relying on memory",
           "deepwiki: questions about a GitHub repository",
           "Microsoft Learn: Azure and terraform provider documentation",
-          "LlamaParse or markitdown: turn a supplied PDF or office file into text"
+          "LlamaParse or markitdown: turn a supplied PDF or office file into text",
+          "Repository access is read only; graph authoring follows writes_graph."
         ],
         "writes_graph": [
           "document",
@@ -2553,7 +2550,7 @@
     {
       "id": "concept:agent-reviewer-judgement",
       "name": "agent-reviewer-judgement",
-      "label": "Agent role: Code Reviewer",
+      "label": "Code Reviewer",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -2568,6 +2565,7 @@
             "github.pr.merge"
           ]
         },
+        "cites": "required",
         "disallowed_tools": [
           "Edit",
           "Write",
@@ -2664,7 +2662,7 @@
     {
       "id": "concept:agent-security",
       "name": "agent-security",
-      "label": "Agent role: Security Engineer",
+      "label": "Security Engineer",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -2775,7 +2773,7 @@
     {
       "id": "concept:agent-steward",
       "name": "agent-steward",
-      "label": "Agent role: Knowledge Steward",
+      "label": "Knowledge Steward",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",
@@ -2790,6 +2788,14 @@
           ]
         },
         "delegate_rung": "fast",
+        "disallowed_tools": [
+          "vinc_delete",
+          "vinc_merge_nodes",
+          "vinc_doc_delete",
+          "mcp__vinc__vinc_delete",
+          "mcp__vinc__vinc_merge_nodes",
+          "mcp__vinc__vinc_doc_delete"
+        ],
         "gates": [
           {
             "check": {
@@ -2884,26 +2890,18 @@
           "Vinc"
         ],
         "rung": "strong",
-        "session_close": "Three passes at the end of a session, before the episode is written.\n\n1. Assertions, not only prose. List every sentence in the session's output of the form checked, verified, confirmed, present, absent, or returns X, and mark each one cited, assumed, or unmarked. Unmarked is the finding and its count goes in the episode. Run against the record that prompted this step it lists three, the ones in its own section 6.4.\n\n2. vinc_diagnose kind=claims, and read both lists. conflicts is a pair to adjudicate by opening the path, never by preferring the newer one. unanchored is a number to drive down by adding props.subject_path to records that name a file.\n\n3. For any plan document touched this session, vinc_doc_get it to a file and run: python -X utf8 scripts/age_status_lines.py <file>. A status line older than a commit the document cites is the finding. This is a steward step and not a CI gate because CI has no documents, the same reason the citation manifest is committed rather than fetched.\n\nNone of the three decides anything. They produce a list a person acts on. The steward proposes and never performs.",
+        "session_close": "Before the episode: (1) audit checked/verified/confirmed claims for tool evidence and report uncited claims; (2) run vinc_diagnose kind=claims, inspect conflicts against their source and identify missing subject_path anchors; (3) run scripts/age_status_lines.py on any plan touched, comparing status dates with cited commits. Report findings; do not delete, merge or ratify. Procedure and rationale: vinc.ops.graph-claim-decay section 7.4.",
         "team": "Program Office",
         "team_role": "member",
         "tier": "knowledge",
         "tools": [
           "vinc (graph MCP): read this role's node first; write what the role may author",
           "vinc_diagnose and vinc_merge_candidates: propose, never perform",
-          "gh CLI: pull requests, run lists and jobs; GitHub MCP is the fallback where gh is absent (not installed today)"
+          "gh CLI: pull requests, run lists and jobs; use GitHub MCP if the current host lacks gh"
         ],
         "writes_graph": [
           "record",
           "episode"
-        ],
-        "disallowed_tools": [
-          "vinc_delete",
-          "vinc_merge_nodes",
-          "vinc_doc_delete",
-          "mcp__vinc__vinc_delete",
-          "mcp__vinc__vinc_merge_nodes",
-          "mcp__vinc__vinc_doc_delete"
         ]
       },
       "works_with": {
@@ -2915,7 +2913,7 @@
     {
       "id": "concept:agent-tech-writer",
       "name": "agent-tech-writer",
-      "label": "Agent role: Technical Writer",
+      "label": "Technical Writer",
       "domain": "vinc/agent/roles",
       "tags": [
         "agent",

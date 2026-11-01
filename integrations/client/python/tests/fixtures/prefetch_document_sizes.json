@@ -1,6 +1,6 @@
 {
   "measured_at": "2026-10-06",
-  "source": "Hosted MCP verified document reads; role read lists from agents/roles.json at 9072057. Size replay only, not an SDK read-only-key or latency measurement. vinc.canon.design-system-operations was measured on 2026-10-29, when agent-design began reading it.",
+  "source": "Hosted MCP verified document reads; role read lists from agents/roles.json at 9072057. Size replay only, not an SDK read-only-key or latency measurement. vinc.canon.design-system-operations was measured on 2026-10-29, when agent-design began reading it. vinc.canon.linear-workflow was measured on 2026-11-01, when the roster pull brought it into the read lists.",
   "documents": [
     {
       "doc_id": "d77f47c7465264b6f",
@@ -51,6 +51,11 @@
       "doc_id": "vinc.canon.graph-conventions",
       "chars": 21519,
       "content_hash": "bf73849c3ebdbfd0983bf1bb004143393b42b0cb2b629fae0fead8c55d5aa012"
+    },
+    {
+      "doc_id": "vinc.canon.linear-workflow",
+      "chars": 13191,
+      "content_hash": "4212aa06bfb7917bebcb1d8c44adb167808b411eb5215eb05c1606247a15f715"
     },
     {
       "doc_id": "vinc.canon.mcp-contract",
