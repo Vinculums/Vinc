@@ -200,3 +200,34 @@ class DocPutFileTests(unittest.TestCase):
             _, data, _ = _tool_request(seen[0])
         self.assertIsNone(data["origin"])
         self.assertIsNone(data["title"])
+
+
+class DecideMissingTopicShowsCandidates(unittest.TestCase):
+    """VIN-888 — decide 가 토픽을 못 찾으면 CLI 가 후보와 힌트를 보여야 한다."""
+
+    FAKE = {"kind": "decide", "executed": True, "found": False,
+            "topic": "concept:nope", "nodes": [], "edges": [], "conflicts": [],
+            "error": "topic not found: concept:nope",
+            "hint": "Use vinc_search to find the id first.",
+            "candidates": [{"id": "concept:node-view", "title": "Node view"}]}
+
+    def _run(self, *extra):
+        out, err = io.StringIO(), io.StringIO()
+        with patch("api.cli_tools.run", return_value=(self.FAKE, None)), \
+                redirect_stdout(out), redirect_stderr(err):
+            code = cli.main(["--target", "local", *extra, "decide", "--topic", "concept:nope"])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_human_output_prints_candidates_and_hint(self):
+        code, _out, err = self._run()
+        self.assertNotEqual(code, 0)
+        self.assertIn("topic not found", err)
+        self.assertIn("concept:node-view", err)        # 후보
+        self.assertIn("Use vinc_search", err)           # 힌트
+
+    def test_json_keeps_candidates_and_hint(self):
+        code, out, err = self._run("--format", "json")
+        blob = out + err
+        self.assertIn("concept:node-view", blob)
+        self.assertIn("candidates", blob)
+        self.assertIn("Use vinc_search", blob)

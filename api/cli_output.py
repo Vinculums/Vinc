@@ -227,6 +227,15 @@ def emit(result: Any) -> int:
         error = result.get("error") if isinstance(result, dict) else None
         message = error.get("message", "") if isinstance(error, dict) else error
         print("vinc: " + str(message or "operation failed").removeprefix("vinc: "), file=sys.stderr)
+        # decide 가 토픽을 못 찾으면 MCP 도구는 후보와 힌트로 다음 행동을 준다. 사람용
+        # 출력이 그 둘을 버려서 읽는 쪽에 다음 수가 없었다(--json 은 전체를 이미 싣는다).
+        if _command.get() == "decide" and isinstance(result, dict):
+            for cand in result.get("candidates") or []:
+                if isinstance(cand, dict):
+                    print(f"  candidate: {cand.get('id', '')}\t{cand.get('title', '')}".rstrip(),
+                          file=sys.stderr)
+            if result.get("hint"):
+                print("  hint: " + str(result["hint"]), file=sys.stderr)
         return code
     if fmt == "human":
         rendered = _human(result, _command.get())
