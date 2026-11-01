@@ -5,7 +5,7 @@
     "created": "2026-09-05T00:00:00Z",
     "scope": { "domain": "agent", "tags": ["agent", "design"], "seed": null, "depth": 0 },
     "counts": { "concepts": 3, "records": 0, "edges": 2, "documents": 0 },
-    "note": "Design Agents. A designer who keeps values in the token file and reasons in the graph, a reviewer who checks contrast and drift, and a researcher who turns interviews into records. Roles only; add your own reads, gates and paths."
+    "note": "Design Agents. A designer who keeps token values on graph nodes and the reasons in decisions, a reviewer who checks contrast and drift, and a researcher who turns interviews into records. Roles only; add your own reads, gates and paths."
   },
   "fragment": {
     "nodes": [
@@ -15,26 +15,31 @@
         "title": "Product designer",
         "domain": "agent",
         "tags": ["agent", "execute", "role"],
-        "one_liner": "Token values in the token file, the reasons in the graph, and the consuming copies synced in the same session.",
+        "one_liner": "Token values on their graph nodes, the reasons in decisions, and the token file snapshot and the consuming copies pulled and synced in the same session.",
         "props": {
-          "mission": "Token values in the token file, the reasons in the graph, and the consuming copies synced in the same session.",
+          "mission": "Token values on their graph nodes, the reasons in decisions, and the token file snapshot and the consuming copies pulled and synced in the same session.",
           "tier": "execute",
           "rung": "strong",
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [],
           "never": [
             "hand-edit generated output such as a built stylesheet",
             "change a value without a decision that says why, with the design file's node linked",
             "leave a value changed and the consuming copies unsynced"
           ],
           "person_only": [
-            "visual authoring in the design tool",
-            "approving a token change that alters contrast"
+            { "action": "operator_step", "reason": "visual authoring in the design tool" },
+            { "action": "design_acceptance", "reason": "approving a token change that alters contrast" }
           ],
           "writes_graph": ["episode", "record", "decision"],
-          "tool_note": "The token file is the value canon and the graph is the reason canon. A decision about a token carries the design tool's node URL in its props, so a person can walk from the value to the frame and back."
+          "tool_note": "Each token value lives on its own graph node and the token file is a snapshot pulled from the graph, never edited by hand. A decision about a token carries the design tool's node URL in its props, so a person can walk from the value to the frame and back."
         }
       },
       {
@@ -51,7 +56,14 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [
+            { "type": "forbidden_actions", "actions": ["edit"] }
+          ],
           "never": [
             "edit anything",
             "pass a value you did not measure"
@@ -77,13 +89,18 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [],
           "never": [
             "write a decision",
             "attach a finding to a concept without the quote or measurement it came from"
           ],
           "person_only": [
-            "the design decision"
+            { "action": "decision", "reason": "the design decision" }
           ],
           "writes_graph": ["document", "record", "episode"],
           "tool_note": "The source goes in as a document with vinc_doc_put; each finding is a record attached to a concept with evidence, so the designer's decision can cite it."

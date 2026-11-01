@@ -37,7 +37,11 @@ vinc-pack-{도메인}.vincpack            산출물(zip 컨테이너, D55)
 | `infra-ops-agents.json` | Infra and Ops Agents | infra · ops · release |
 | `copy-marketing-agents.json` | Copy and Marketing Agents | copy-writer · copy-owner · marketing |
 
-규율: 영어만 · `reads`·`gates`·`paths` 는 비워 둔다(사용자의 것) · 오케스트레이터 역할은
+규율: 영어만 · `reads`·`paths` 는 비워 둔다(사용자의 것) · `gates` 는 기본 검사 셋
+(`person_only`·`side_effect_evidence`·`handoff_manifest`)만 싣고, `never_checks` 는 `never`
+문장 중 게이트가 아는 행동 이름으로 옮길 수 있는 것만, `person_only` 는 `{action, reason}` 으로
+싣는다. 이 셋이 비거나 문자열이면 `vinc_role_check` 가 모든 답을 `invalid_role_contract` 로
+막는다(2026-11-01, VIN-876) · 오케스트레이터 역할은
 어디에도 없다(그래프는 스케줄러가 아니다) · 팩 간 엣지는 두지 않는다(같은 페이로드 밖의
 엣지는 조용히 skip 된다) · `agent`·`vinc/agent` 는 무료 주제 상한에서 빠진다(`engines/domain_hierarchy.
 RESERVED_TOPICS`). `tests/design/test_agent_packs.py` 가 이 표와 규율을 고정한다.

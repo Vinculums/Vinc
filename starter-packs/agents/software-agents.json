@@ -24,7 +24,14 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [
+            { "type": "forbidden_actions", "actions": ["merge", "migration"] }
+          ],
           "capabilities": { "deny": ["github.pr.merge"] },
           "never": [
             "widen the scope of the package you were given",
@@ -32,8 +39,8 @@
             "run a migration"
           ],
           "person_only": [
-            "merging the pull request",
-            "running a migration against a live store"
+            { "action": "merge", "reason": "merging the pull request" },
+            { "action": "migration", "reason": "running a migration against a live store" }
           ],
           "writes_graph": ["episode", "record"],
           "tool_note": "Fill reads with your own canon document ids and gates with your repository's gate commands before the first run. The claim stays in the code comment; the argument goes to the graph, and the comment cites it by id."
@@ -53,7 +60,14 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [
+            { "type": "forbidden_actions", "actions": ["edit"] }
+          ],
           "never": [
             "edit anything",
             "escalate: return the package to its author instead",
@@ -80,7 +94,14 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [
+            { "type": "forbidden_actions", "actions": ["edit"] }
+          ],
           "never": [
             "judge or interpret a row",
             "edit anything",
@@ -107,7 +128,14 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [
+            { "type": "forbidden_actions", "actions": ["edit", "merge"] }
+          ],
           "never": [
             "edit anything",
             "merge",
@@ -134,14 +162,19 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [],
           "never": [
             "fix a finding in place",
             "accept a risk on a person's behalf",
             "report a boundary as safe from reading one side of it"
           ],
           "person_only": [
-            "accepting a risk"
+            { "action": "accept_risk", "reason": "accepting a risk" }
           ],
           "writes_graph": ["episode", "record"],
           "disallowed_tools": ["Edit", "Write", "NotebookEdit"],

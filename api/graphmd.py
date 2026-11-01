@@ -71,9 +71,11 @@ HEADING_RE = re.compile(
     r"스키마 고정|이 그래프가 정함|주제마다 다름)\])?\s*$")
 TOOL_RE = re.compile(r"\bvinc_[a-z_]+\b")
 
-#: wire 계약의 엣지 이름(`api/fragment.py`). 재가 어휘와 별개로 항상 유효하다.
+#: wire 계약의 엣지 이름(`api/fragment.py` `_EDGE_TYPES`). 재가 어휘와 별개로 항상 유효하다.
+#: 뒤의 둘(supersedes·returns_to)은 템플릿 Relations 절의 여섯 밖에 있지만 스키마 엣지라
+#: 제안이 아니다. 둘 다 근거가 없으면 쓰기가 건너뛴다. 생성 구역이 그 사실을 적는다.
 WIRE_EDGES = ("relates_to", "prerequisite_of", "derives_from",
-              "inherits_from", "connects_via", "about")
+              "inherits_from", "connects_via", "about", "supersedes", "returns_to")
 
 #: 절 — (key, (EN 제목, ko 제목)). 순서가 곧 검사 순서다.
 SECTIONS: tuple[tuple[str, tuple[str, str]], ...] = (
@@ -264,16 +266,20 @@ _GEN_HEAD = {
 }
 _GEN_TAIL = "<!-- vinc:generated end -->"
 _GEN_BODY = {
-    # ⚠ 줄 예산(LINE_WARN=70)에 남는 자리가 한 줄이다 — 한 줄을 더하려면 어딘가에서
-    # 한 줄을 빼야 하고, EN/ko 는 1:1 이어야 한다(test_templates_are_line_for_line_parallel).
-    # "소문자 영어"는 Topics 절로 옮겼다(산문 영역이 정할 일이라).
+    # ⚠ 줄 예산은 LINE_WARN 이다. 한 줄을 더하면 EN/ko 에 같이 더한다(1:1,
+    # test_templates_are_line_for_line_parallel). "소문자 영어"는 Topics 절로 옮겼다.
+    # 엣지 줄 뒤의 "Built in" 문장은 Relations 절의 여섯 밖에서 쓰기 경로가 받는 스키마 엣지 둘이다
+    # (`api/fragment.py` `_EDGE_TYPES`·`WIRE_EDGES`). 여섯 외에 없다고 적었다가, Validity 절이
+    # 쓰라고 한 supersedes 를 이 절이 부정하는 모순이 됐다(VIN-876).
     "en": ("## Domains in this graph\n{domains}\n"
            "A slash makes a tree: 'vinc/design' files that node "
            "under 'vinc', with nothing extra to author. "
            "Walk it with vinc_neighbors('domain:vinc').\n\n"
            "## Ratified vocabulary\n"
            "node types: {nodes}\n"
-           "edge types: {edges}\n"
+           "edge types: {edges}. Built in beyond the six relations above, each needing "
+           "evidence: supersedes (new to old, same kind) and returns_to (between two "
+           "distinct roles).\n"
            "Anything else you write is kept and marked proposed, for a person to ratify."),
     "ko": ("## 이 그래프의 도메인\n{domains}\n"
            "슬래시가 계층이 됩니다: 'vinc/design' 은 그 노드를 'vinc' "
@@ -281,14 +287,16 @@ _GEN_BODY = {
            "vinc_neighbors('domain:vinc') 로 걸어 내려가십시오.\n\n"
            "## 재가된 어휘\n"
            "노드 타입: {nodes}\n"
-           "엣지 타입: {edges}\n"
+           "엣지 타입: {edges}. 위 여섯 관계 외에 기본으로 둘이 더 있고 둘 다 근거가 "
+           "필요합니다: supersedes(새 것에서 옛 것으로, 같은 종류끼리)와 returns_to(서로 "
+           "다른 두 역할 사이).\n"
            "그 밖에 쓰는 것은 보존되고 제안으로 표시되어, 사람의 재가를 기다립니다."),
 }
 _EMPTY = {
     "en": {"domains": "No domains yet. Your first import creates them.",
-           "nodes": "none beyond the six above", "edges": "none beyond the six above"},
+           "nodes": "none beyond the six above", "edges": "none ratified yet"},
     "ko": {"domains": "아직 도메인이 없습니다. 첫 적재가 도메인을 만듭니다.",
-           "nodes": "위 여섯 외에 없음", "edges": "위 여섯 외에 없음"},
+           "nodes": "위 여섯 외에 없음", "edges": "아직 재가된 것 없음"},
 }
 _MORE = {"en": "and {n} more", "ko": "외 {n}개"}
 

@@ -44,7 +44,7 @@
   {
     "file": "agents/design-agents.json",
     "title": "Design Agents",
-    "description": "Three roles for a design system: a designer who keeps token values in the token file and the reasons in the graph, syncing consumers in the same session; a design reviewer who measures contrast and drift and never edits; and a design researcher who turns interviews into records attached to the concepts they are about. Roles only: add your own reads, gates and paths.",
+    "description": "Three roles for a design system: a designer who keeps token values on graph nodes and the reasons in decisions, pulling the token file and syncing consumers in the same session; a design reviewer who measures contrast and drift and never edits; and a design researcher who turns interviews into records attached to the concepts they are about. Roles only: add your own reads, gates and paths.",
     "dominantDomain": "agent",
     "license": "CC-BY-4.0"
   },
