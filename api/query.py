@@ -5446,7 +5446,21 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
     rows = meta.get("rows", [])
     me = next((r for r in rows if r.get("id") == node), None)
     if me is None:
-        cands = near_nodes(store, node, owner=owner)
+        # 비-개념 끝점은 연결 부재가 아니라 층 부재다(path 의 개념 전용 거절과 같은
+        # 태도). suggest_ties 는 개념 메타로만 점수를 매기므로 결정·기록·사건은 여기서
+        # 후보를 받을 수 없다 — "unknown concept" 로 답하면 id 만 고치면 될 것처럼
+        # 읽힌다. 근거: [[vinc.manual.core]]
+        if node.lower().startswith(_NON_CONCEPT_PREFIXES):
+            return {"kind": "suggest_ties", "executed": True, "found": False,
+                    "node": node, "suggestions": [], "total": 0, "truncated": False,
+                    "formula": TIE_SCORE_FORMULA,
+                    "error": f"suggest_ties walks the concept layer only: {node} is not a concept id",
+                    "hint": ("Tie scores are computed between `concept:` nodes (tag overlap, "
+                             "domain, shared neighbours). A record, decision or episode attaches "
+                             "to concepts rather than being tied to them, so it is never a tie "
+                             "endpoint here. Use vinc_neighbors on that id to see its attachments.")}
+        # 후보에서 질문한 노드 자신은 뺀다 — 자기 자신을 잇자고 제안하지 않는다.
+        cands = [c for c in near_nodes(store, node, owner=owner) if c.get("id") != node]
         # F4 봉투 통일 — total·truncated·formula 를 **결과가 있을 때만** 싣던 것을
         # 고친다. 계약에 적힌 필드가 상황에 따라 사라지면 호스트는 그것을 옵셔널로
         # 취급할 수밖에 없고, 그러면 truncated 같은 안전 표식이 무의미해진다.
@@ -6293,7 +6307,16 @@ def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
         return base
     seqs = []
     for r in res.get("rows", []):
-        seq = _node_seq(r.get("ns"))
+        ns = r.get("ns") or []
+        # 엔진 패턴은 모든 rel 테이블을 걷는다 — 경로가 Chunk(MENTIONS)나 다른 비-개념
+        # 노드를 지날 수 있고, _node_seq 가 그 노드를 말없이 떨궈 길이가 줄면 직접
+        # 엣지처럼 읽힌다(두 노드가 같은 청크에만 함께 언급돼도 length:1 로 나왔다).
+        # 전원 개념인 경로만 남긴다 — 모든 노드가 개념이면 모든 홉이 개념↔개념 저작
+        # 엣지다(MENTIONS·IN_DOMAIN 은 개념 둘을 잇지 못한다). 더 긴 저작 경로는 가중
+        # 팔(confidence)이 개념 엣지 집합에서 완전 탐색한다. 근거: [[vinc.manual.core]]
+        if not ns or any(not (isinstance(n, dict) and n.get("concept_id")) for n in ns):
+            continue
+        seq = _node_seq(ns)
         if len(seq) >= 2:
             seqs.append({"ids": [s["id"] for s in seq],
                          "titles": [s["title"] for s in seq],
