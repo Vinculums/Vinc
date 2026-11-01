@@ -5874,13 +5874,13 @@ def node_edges(node: str | None = None, *, nodes: list[str] | None = None,
         return {**base, "error": "invalid argument: provide owner, either node or 1..100 nodes, "
                 "dir out/in/both, and limit 1..5000"}
     ids = list(dict.fromkeys(ids))
-    # VIN-894 — `type` 은 물리 rel 라벨(대문자, `PREREQUISITE_OF`)과 같아야 라벨
-    # 필터로 걸린다. 사용자는 문서화된 소문자 이름(`prerequisite_of`)을 넣으므로
-    # 그대로는 어느 라벨과도 같지 않아 0건이 나왔다(`relates_to` 는 `.upper()` 로도
-    # `RELATED_TO` 가 안 되므로 delete_edge 와 같은 맵으로 정규화한다). 맵에 없는
-    # 이름은 대문자가 폴백이라 `connects`·`attaches_to`·`typed` 도 라벨로 맞는다.
-    # 저작 서브타입(ATTACHES_TO.type·TYPED.type)은 아래 `r.type = $type` 가 원문
-    # 그대로 거르므로 이 정규화는 라벨 비교에만 쓴다.
+    # `type` 은 물리 rel 라벨(대문자, `PREREQUISITE_OF`)과 같아야 라벨 필터로 걸린다.
+    # 사용자는 문서화된 소문자 이름(`prerequisite_of`)을 넣으므로 그대로는 어느 라벨과도
+    # 같지 않아 0건이 된다(`relates_to` 는 `.upper()` 로도 `RELATED_TO` 가 안 되므로
+    # delete_edge 와 같은 맵으로 정규화한다). 맵에 없는 이름은 대문자가 폴백이라
+    # `connects`·`attaches_to`·`typed` 도 라벨로 맞는다. 저작 서브타입(ATTACHES_TO.type·
+    # TYPED.type)은 아래 `r.type = $type` 가 원문 그대로 거르므로 이 정규화는 라벨
+    # 비교에만 쓴다. 근거: [[vinc.manual.core]]
     rel_name = (_FRAGMENT_EDGE_TO_REL.get(type.strip().lower(), type.strip().upper())
                 if type else None)
     specs, rels = node_table_specs(), rel_table_specs()
@@ -7678,13 +7678,13 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
                      decision_seed_rows_plan(seed, owner=owner, outgoing=False)):
             rows += execute(plan, cfg, store=store).get("rows", [])
     elif owner:
-        # VIN-897 — 개념 시드도 부착 축을 합류시킨다. graph() 의 접착제 후조회와 같은
-        # 플랜·같은 ids 모드다. 없으면 graph_rows 의 개념↔개념 엣지만 나와, 개념에
-        # ATTACHES_TO 로 붙은 레코드와 ABOUT 으로 걸린 결정이 nodes·edges 에서 통째로
-        # 빠졌다(결정은 conflicts 로만 보였고, decide 의 "무엇이 걸려 있나"가 빈 답이
-        # 됐다). 축 플랜은 owner 필수라(SEC-1) owner 가 있을 때만 돈다 — 로컬 무소유
-        # 모드는 종전처럼 개념 축만. 같은 물리 엣지는 한 플랜에서만 오므로(graph_rows=
-        # 개념↔개념, 축 플랜=ABOUT·ATTACHES_TO·CONNECTS·나머지) 이중 계상이 없다.
+        # 개념 시드도 부착 축을 합류시킨다. graph() 의 접착제 후조회와 같은 플랜·같은
+        # ids 모드다. 없으면 graph_rows 의 개념↔개념 엣지만 나와, 개념에 ATTACHES_TO 로
+        # 붙은 레코드와 ABOUT 으로 걸린 결정이 nodes·edges 에서 통째로 빠진다(결정은
+        # conflicts 로만 비치고, decide 의 "무엇이 걸려 있나"가 빈 답이 된다). 축 플랜은
+        # owner 필수라(소유자 격리) owner 가 있을 때만 돈다 — 무소유 로컬 모드는 개념
+        # 축만 싣는다. 같은 물리 엣지는 한 플랜에서만 오므로(graph_rows=개념↔개념, 축
+        # 플랜=ABOUT·ATTACHES_TO·CONNECTS·나머지) 이중 계상이 없다.
         # 근거: [[vinc.manual.core]]
         for plan_fn in _GRAPH_READ_PLANS:
             ax = execute(plan_fn(owner=owner, ids=ids), cfg, store=store)
