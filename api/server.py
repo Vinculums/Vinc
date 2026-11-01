@@ -88,6 +88,10 @@ _MIRROR_ENCODE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_ENCODE_TIMEOUT",
 _MIRROR_REPLACE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_REPLACE_TIMEOUT", "600"))
 #: ColBERT 토큰을 한 요청에 몇 노드씩 묻는가. 노드 텍스트는 512토큰까지라 dense 미러의 32보다 작게 잡는다.
 _COLBERT_BATCH = int(os.environ.get("VINC_NODE_COLBERT_BATCH", "8"))
+#: 재구축 한 번에 토큰을 채우는 행 수의 상한(0 이면 무제한). 엔진은 쓴 토큰을 스토어가 닫힐 때까지
+#: 메모리에 붙들므로, 미러 전체를 한 프로세스에서 채우면 허브 한도를 넘는다. 남은 행은 다음 기동의
+#: 재구축이 해시로 이어 채운다. 근거: [[record:the-colbert-token-fill-holds-written-pages-in-the-sidecar-store-until-it-closes-so-a-whole-mirror-fill-ran-the-hub-out-of-memory-2026-10-31]]
+_COLBERT_FILL_MAX = int(os.environ.get("VINC_NODE_COLBERT_FILL_MAX", "3000"))
 
 
 def _colbert_rescore_on() -> bool:
@@ -2168,6 +2172,9 @@ class VincApp:
             finally:
                 r.close()
             del rows
+            left = max(0, len(todo) - _COLBERT_FILL_MAX) if _COLBERT_FILL_MAX > 0 else 0
+            if left:
+                todo = todo[:_COLBERT_FILL_MAX]
             t0, done = time.monotonic(), 0
             for i in range(0, len(todo), _COLBERT_BATCH):
                 batch = todo[i:i + _COLBERT_BATCH]
@@ -2176,7 +2183,7 @@ class VincApp:
                 codes = out.get("colbert")
                 if out.get("colbert_books") != cb.id or not isinstance(codes, list)                         or len(codes) != len(batch):
                     # 코드북이 다르면 사이드카가 풀 수 없는 코드다. 싣지 않고 멈춘다.
-                    return {"executed": done > 0, "rows": len(todo), "done": done,
+                    return {"executed": done > 0, "rows": len(todo), "done": done, "left": left,
                             "error": out.get("colbert_error")
                             or f"encoder books {out.get('colbert_books')} != sidecar {cb.id}"}
                 updates = [{"vid": node_mirror.vec_id(b.get("owner") or "", b["id"]), "codes": c,
@@ -2185,7 +2192,7 @@ class VincApp:
                                    lambda u=updates: {"set": node_mirror.set_colbert(self.store, u, cb.id)},
                                    timeout=_MIRROR_REPLACE_TIMEOUT)
                 done += len(batch)
-            return {"executed": True, "rows": len(todo), "done": done, "books": cb.id,
+            return {"executed": True, "rows": len(todo), "done": done, "left": left, "books": cb.id,
                     "encode_s": round(time.monotonic() - t0, 1)}
         finally:
             self._mirror_lock.release()

@@ -965,6 +965,7 @@
     "record:sync-out-in-a-worktree-wrote-the-homepage-copies-into-a-stray-directory-2026-09-26",
     "record:the-candidate-union-not-the-ranking-is-what-caps-node-resolution-2026-09-09",
     "record:the-change-marker-is-counted-at-the-sidecar-write-gate-2026-09-24",
+    "record:the-colbert-token-fill-holds-written-pages-in-the-sidecar-store-until-it-closes-so-a-whole-mirror-fill-ran-the-hub-out-of-memory-2026-10-31",
     "record:the-confidence-bar-was-one-token-and-that-was-the-defect-2026-09-10",
     "record:the-document-stage-of-a-space-transfer-is-bounded-by-time-not-by-body-size-2026-09-20",
     "record:the-document-subject-relation-is-inferred-not-authored-2026-09-06",
@@ -1579,6 +1580,9 @@
     "record:rrf-k-and-weight-sweep-on-full176-2026-09-08": {
       "validity": "unknown"
     },
+    "record:seventy-four-documents-had-no-mirror-because-a-doc-put-without-a-topic-creates-none-2026-10-31": {
+      "validity": "current"
+    },
     "record:shrinker-marker-overshoots-the-budget-2026-09-05": {
       "validity": "current"
     },
@@ -1595,6 +1599,9 @@
       "validity": "unknown"
     },
     "record:the-change-marker-is-counted-at-the-sidecar-write-gate-2026-09-24": {
+      "validity": "current"
+    },
+    "record:the-colbert-token-fill-holds-written-pages-in-the-sidecar-store-until-it-closes-so-a-whole-mirror-fill-ran-the-hub-out-of-memory-2026-10-31": {
       "validity": "current"
     },
     "record:the-confidence-bar-was-one-token-and-that-was-the-defect-2026-09-10": {
