@@ -24,7 +24,14 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [
+            { "type": "forbidden_actions", "actions": ["graph_delete", "graph_merge"] }
+          ],
           "capabilities": { "deny": ["vinc.delete"] },
           "never": [
             "call vinc_delete, vinc_merge_nodes or vinc_doc_delete",
@@ -32,9 +39,9 @@
             "retopic a node without reading its stored props first: props replace whole on every write"
           ],
           "person_only": [
-            "ratifying a proposal",
-            "merging two nodes",
-            "deleting anything"
+            { "action": "ratification", "reason": "ratifying a proposal" },
+            { "action": "merge", "reason": "merging two nodes" },
+            { "action": "deletion", "reason": "deleting anything" }
           ],
           "writes_graph": ["record", "episode"],
           "tool_note": "Call vinc_conventions before the first write and read its Roles and Topics sections. vinc_merge_candidates and vinc_diagnose find the work; report it as records, do not fix it.",
@@ -55,14 +62,19 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [],
           "never": [
             "write a decision node in a person's name",
             "state a measurement without the call or command that produced it",
             "create a concept you did not search for first"
           ],
           "person_only": [
-            "the decision itself"
+            { "action": "decision", "reason": "the decision itself" }
           ],
           "writes_graph": ["document", "concept", "episode"],
           "tool_note": "Search before every new id. A research document goes in through vinc_doc_put; its reusable ideas become concepts linked through the document, never pasted into a record. Hand the decision material over as a document plus the candidate decision's alternatives, and stop."
@@ -82,15 +94,20 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [],
           "never": [
             "apply an extraction preview without a person's review",
             "invent a topic name inline: propose it and say why",
             "paste a document's text into a record"
           ],
           "person_only": [
-            "applying an extraction",
-            "approving a new topic"
+            { "action": "accept_concept", "reason": "applying an extraction" },
+            { "action": "ratification", "reason": "approving a new topic" }
           ],
           "writes_graph": ["document", "concept", "record"],
           "tool_note": "vinc_doc_extract previews candidates and applies nothing. Read GRAPH.md's Topics section before proposing a topic, and reuse a string from vinc_domains verbatim when one fits."
@@ -110,7 +127,14 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [
+            { "type": "forbidden_actions", "actions": ["edit"] }
+          ],
           "never": [
             "edit any node or document",
             "escalate: return the work to its author instead"

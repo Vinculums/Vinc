@@ -23,14 +23,21 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [
+            { "type": "forbidden_actions", "actions": ["commit", "edit"] }
+          ],
           "never": [
             "commit",
             "touch code or the source-language keys",
             "translate a line: write it as a native speaker would say it"
           ],
           "person_only": [
-            "accepting a line into the deck"
+            { "action": "sign_off", "reason": "accepting a line into the deck" }
           ],
           "writes_graph": [],
           "disallowed_tools": ["Edit", "Write", "NotebookEdit", "Bash", "Agent"],
@@ -53,14 +60,19 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [],
           "never": [
             "switch a language on",
             "ship a line that reads as translation",
             "leave a key in one language with no counterpart in the other"
           ],
           "person_only": [
-            "switching a language on for users"
+            { "action": "enable_korean", "reason": "switching a language on for users" }
           ],
           "writes_graph": ["episode", "decision"],
           "tool_note": "Delegate the writing to the copy writer at a stronger rung; ownership is cheaper than authoring on this surface. A missing key that silently falls back to the source language is the trap this role exists for."
@@ -81,15 +93,20 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [],
           "never": [
             "set price or tier policy",
             "send mail",
             "publish a claim without the version or commit it is true on"
           ],
           "person_only": [
-            "pricing and tiers",
-            "sending anything to users"
+            { "action": "pricing", "reason": "pricing and tiers" },
+            { "action": "send", "reason": "sending anything to users" }
           ],
           "writes_graph": ["episode", "record", "decision"],
           "claim_note": "A claim about the product is a record with the build it was checked on; a claim whose build moved is re-checked, not carried forward.",

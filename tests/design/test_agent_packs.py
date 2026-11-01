@@ -39,7 +39,13 @@ MANIFEST = json.loads((ROOT / "starter-packs" / "official-packs.json").read_text
 HANGUL = re.compile(r"[가-힣]")
 EDIT_TOOLS = {"Edit", "Write", "NotebookEdit"}
 REQUIRED_PROPS = ("mission", "tier", "rung", "repos", "paths", "reads", "gates",
-                  "never", "person_only", "writes_graph")
+                  "never_checks", "never", "person_only", "writes_graph")
+#: 문서(vincs.io/docs/agents/create/ 6단계)가 말하는 최소 계약의 기본 검사 셋.
+BASE_GATES = [
+    {"id": "person_only", "check": {"type": "person_only"}, "on_fail": "interrupt"},
+    {"id": "side_effect_evidence", "check": {"type": "side_effect_evidence"}, "on_fail": "block"},
+    {"id": "handoff_manifest", "check": {"type": "handoff_manifest"}, "on_fail": "block"},
+]
 
 
 def _load(p: Path) -> dict:
@@ -90,9 +96,10 @@ class PackContract(unittest.TestCase):
                     # one_liner 는 prompts/list 의 description 이 되고 mission 은 prompts/get 의
                     # description 이 된다 — 둘이 갈리면 고르는 화면과 계약이 다른 말을 한다.
                     self.assertEqual(n["one_liner"], props["mission"])
-                    # reads·gates·paths 는 사용자의 것이다. 비워 두고 tool_note 가 그 말을 한다.
-                    self.assertEqual((props["reads"], props["gates"], props["paths"], props["repos"]),
-                                     ([], [], [], []))
+                    # reads·paths 는 사용자의 것이다. 비워 두고 tool_note 가 그 말을 한다.
+                    # gates 는 기본 셋만 싣는다(아래 RoleCheckAcceptsEveryPackRole).
+                    self.assertEqual((props["reads"], props["paths"], props["repos"]), ([], [], []))
+                    self.assertEqual(props["gates"], BASE_GATES)
                     self.assertTrue(props.get("tool_note"))
 
     def test_no_pack_ships_an_orchestrator(self):
@@ -212,6 +219,46 @@ class DefaultPackOnTheWire(unittest.TestCase):
         self.assertIn("disallowedTools: Edit, Write, NotebookEdit", text)
         self.assertIn("## Never", text)
         self.assertIn("edit any node or document", text)
+
+
+class RoleCheckAcceptsEveryPackRole(unittest.TestCase):
+    """2026-11-01: 팩의 모든 역할이 `gates: []`·`never_checks` 없음·문자열 person_only 로
+    나가서 `vinc_role_check` 가 어떤 답이든 `invalid_role_contract` 로 막았다(VIN-876).
+    도구와 같은 길(`_t_role_check` → `roles.contract` → `OutputGate`)로 돌려 고정한다."""
+
+    NEUTRAL = "Here is a summary of what the documents say.\nSources: none"
+
+    def _check(self, nodes, rid, output):
+        from vinc_mcp import tools
+        return tools._t_role_check({"role": rid, "output": output}, _FreshSpace(nodes))
+
+    def test_every_pack_role_passes_a_neutral_answer(self):
+        for p in PACKS:
+            nodes = _nodes(p)
+            for n in nodes:
+                with self.subTest(pack=p.name, role=n["id"]):
+                    got = self._check(nodes, n["id"], self.NEUTRAL)
+                    self.assertTrue(got["executed"], got)
+                    self.assertEqual((got["verdict"], got["failed_checks"]), ("pass", []), got)
+
+    def test_every_pack_role_passes_the_write_time_contract_check(self):
+        from api import role_gate_contract
+        for p in PACKS:
+            for n in _nodes(p):
+                with self.subTest(pack=p.name, role=n["id"]):
+                    self.assertEqual(role_gate_contract.check(n["props"]), [])
+
+    def test_never_checks_are_wired_not_decorative(self):
+        nodes = _nodes(AGENTS / "software-agents.json")
+        got = self._check(nodes, "concept:agent-reviewer-judgement", "I will edit the file now.")
+        self.assertEqual(got["verdict"], "block", got)
+        self.assertIn("never_forbidden_actions", got["failed_checks"])
+
+    def test_person_only_actions_reach_the_interrupt(self):
+        nodes = _nodes(AGENTS / "infra-ops-agents.json")
+        got = self._check(nodes, "concept:agent-release", "Please publish the release when ready.")
+        self.assertEqual(got["verdict"], "interrupt", got)
+        self.assertIn("publish", got["person_only_actions"])
 
 
 class DefaultPackAndTheFreeCap(unittest.TestCase):

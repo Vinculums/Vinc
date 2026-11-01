@@ -24,15 +24,20 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [],
           "never": [
             "apply a plan",
             "change live state by any other path while a declaration exists for it",
             "declare a resource you did not read the current state of"
           ],
           "person_only": [
-            "applying the plan",
-            "anything that deletes or replaces a stateful resource"
+            { "action": "state_change", "reason": "applying the plan" },
+            { "action": "deletion", "reason": "anything that deletes or replaces a stateful resource" }
           ],
           "writes_graph": ["record", "episode"],
           "tool_note": "The plan output is the evidence a record carries. A drift between the declaration and the live state is a record, not a fix."
@@ -53,14 +58,19 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [],
           "never": [
             "change environment, replicas, DNS or a restore point",
             "call a recovery done before the exit condition outlives the session that produced it",
             "report a service healthy from one signal"
           ],
           "person_only": [
-            "every state change the diagnosis proposes"
+            { "action": "state_change", "reason": "every state change the diagnosis proposes" }
           ],
           "writes_graph": ["episode", "record"],
           "disallowed_tools": ["Edit", "Write", "NotebookEdit"],
@@ -83,15 +93,22 @@
           "repos": [],
           "paths": [],
           "reads": [],
-          "gates": [],
+          "gates": [
+            { "id": "person_only", "check": { "type": "person_only" }, "on_fail": "interrupt" },
+            { "id": "side_effect_evidence", "check": { "type": "side_effect_evidence" }, "on_fail": "block" },
+            { "id": "handoff_manifest", "check": { "type": "handoff_manifest" }, "on_fail": "block" }
+          ],
+          "never_checks": [
+            { "type": "forbidden_actions", "actions": ["push"] }
+          ],
           "never": [
             "publish",
             "push a tag",
             "write a changelog line for a change whose pull request you did not read"
           ],
           "person_only": [
-            "publishing the release",
-            "pushing the tag"
+            { "action": "publish", "reason": "publishing the release" },
+            { "action": "push_tag", "reason": "pushing the tag" }
           ],
           "writes_graph": ["episode", "record"],
           "tool_note": "Every version site in the repository moves together; list them in props.paths so the check is a list, not a memory. The changelog prose is the one part worth a stronger rung."

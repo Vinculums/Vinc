@@ -128,6 +128,36 @@ class TemplateTests(unittest.TestCase):
         res = graphmd.check(self._built("ko"))
         self.assertNotIn("unknown-edge", [f["rule"] for f in res["findings"]])
 
+    def test_wire_edges_are_exactly_what_ingest_accepts(self):
+        """검사기의 허용 목록이 쓰기 경로와 갈리면, 받는 엣지를 적은 Relations 절이 BLOCK 된다."""
+        from api import fragment
+        self.assertEqual(set(graphmd.WIRE_EDGES), set(fragment._EDGE_TYPES))
+
+    def test_a_relations_section_listing_supersedes_passes(self):
+        text = self._built("en").replace(
+            "- about: Episode or Decision to Concept or Decision.",
+            "- about: Episode or Decision to Concept or Decision.\n"
+            "- supersedes: new to old, same kind, with evidence.")
+        self.assertNotIn("unknown-edge", [f["rule"] for f in graphmd.check(text)["findings"]])
+
+    def test_the_generated_region_names_the_evidenced_schema_edges(self):
+        """2026-11-01 튜토리얼 초안이 물렸다: 생성 구역이 "edge types: none beyond the six
+        above" 라고 해서, Validity 절이 쓰라는 supersedes 를 같은 파일이 부정했다(VIN-876)."""
+        for lang in ("en", "ko"):
+            with self.subTest(lang=lang):
+                block = graphmd.generated_block({}, lang=lang)
+                self.assertIn("supersedes", block)
+                self.assertIn("returns_to", block)
+                self.assertNotIn("edge types: none beyond the six above", block)
+                self.assertNotIn("엣지 타입: 위 여섯 외에 없음", block)
+        en = graphmd.generated_block({}, lang="en")
+        self.assertIn("edge types: none ratified yet. Built in beyond the six relations "
+                      "above, each needing evidence: supersedes (new to old, same kind) and "
+                      "returns_to (between two distinct roles).\n", en)
+        # 재가된 엣지가 있어도 스키마 엣지 문장은 남는다(목록이 그것을 대신하지 않는다).
+        ratified = graphmd.generated_block({"edge_types": ["refutes"]}, lang="en")
+        self.assertIn("edge types: refutes. Built in beyond", ratified)
+
     def test_em_dash_is_a_fix(self):
         text = self._built("en").replace("one reusable idea", "one reusable idea — really")
         res = graphmd.check(text)
