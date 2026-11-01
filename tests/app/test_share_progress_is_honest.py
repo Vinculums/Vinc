@@ -106,7 +106,8 @@ class ShareProgressTests(unittest.TestCase):
         # 공유 시트 경로. 가져오기 시트는 다른 경로라 관할 밖이다.
         self.share = self.sheets[: self.sheets.index("export function openImportSheet")]
         # Tools 는 공유 탭만. 만들기 탭에도 기다림이 있지만 이 동선이 아니다.
-        self.tl_share = _slice(self.tools, "async function renderShare", "\n// \u2500\u2500 ")
+        # renderShare \ub294 tools.ts \uc758 \ub9c8\uc9c0\ub9c9 \ud568\uc218\ub2e4(\ub9cc\ub4e4\uae30 \ud0ed\uc774 \ube60\uc9c0\uba74\uc11c \ub4a4\uc758 \uad6c\ud68d \uc8fc\uc11d\ub3c4 \uc5c6\uc5b4\uc84c\ub2e4).
+        self.tl_share = self.tools[self.tools.index("async function renderShare"):]
         self.regions = {"sheets.ts(공유)": self.share, "tools.ts(공유 탭)": self.tl_share}
 
     def test_한_벌은_두_표면이_함께_쓰는_자리에_있다(self):
@@ -139,12 +140,12 @@ class ShareProgressTests(unittest.TestCase):
                 "— 버튼을 눌러도 아무것도 안 뜬다")
 
     def test_자리가_전부_걸려_있다(self):
-        """불확정: 시트 넷(팩 준비 · 목적지 확인 · 파일로 받기 · 커뮤니티) + Tools 둘.
+        """불확정: 시트 넷(팩 준비 · 목적지 확인 · 파일로 받기 · 커뮤니티) + Tools 셋.
         확정: 스페이스로 보내기 한 자리(목적지 확정 · 내 공간 선택이 함께 쓴다)."""
         self.assertEqual(self.share.count("sheetProgress("), 4,
                          "공유 시트의 불확정 네 자리가 아니다")
-        self.assertEqual(self.tl_share.count("sheetProgress("), 2,
-                         "Tools 공유 탭의 두 자리(탭 진입 · 전체 백업)가 아니다")
+        self.assertEqual(self.tl_share.count("sheetProgress("), 3,
+                         "Tools 공유 탭의 세 자리(탭 진입 · 미리보기 · 전체 백업)가 아니다")
         code = _code_only(self.share)
         self.assertEqual(code.count("mountGauges(sheet.body"), 1,
                          "스페이스로 보내기의 확정 막대가 한 자리가 아니다")
