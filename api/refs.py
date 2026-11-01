@@ -15,7 +15,23 @@ from vinc_mcp import remote
 #: 리포의 매니페스트를 덮어쓰면 안 된다.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, "scripts", "graph-refs.json")
-SCAN_EXT = (".py", ".ts", ".tsx", ".rs", ".md", ".yml", ".yaml", ".tf")
+#: 기본 스캔 확장자. 좁은 목록(.py·.ts·.tsx·.rs·.md·.yml·.yaml·.tf)은 펌웨어·앱 코드의
+#: 인용을 **대조 없이 cited:0 으로** 통과시켰다 — 읽는 쪽은 인용이 지켜지는 줄 안다.
+#: 이제 흔한 코드 확장자를 모두 본다. `VINC_REFS_EXT`(쉼표·공백 구분, 점 유무 무관)로
+#: 덮어쓴다. 근거: [[vinc.manual.core]]
+_DEFAULT_SCAN_EXT = (".py", ".ts", ".tsx", ".js", ".jsx", ".rs",
+                     ".go", ".java", ".kt", ".swift", ".c", ".h", ".cpp", ".hpp",
+                     ".cc", ".cxx", ".ino", ".m", ".mm", ".md", ".yml", ".yaml", ".tf")
+SCAN_EXT = _DEFAULT_SCAN_EXT   # 하위호환: 이 이름을 import 하는 코드가 있다
+#: 스캔 대상이 아니어도 인용이 들어 있으면 '건너뜀'으로 알리는, 인용이 있을 법한 소스·
+#: 텍스트 확장자(조용한 통과 방지). 바이너리·자산은 제외다. `.mjs`·`.cjs` 는 기본
+#: 스캔에서 빼고 여기 둔다 — 이 리포의 두 `.mjs` 가 아직 대조 안 된 인용을 담고 있어
+#: 기본 스캔에 넣으면 그 미결 인용이 전 리포 게이트를 막는다. 보고로 드러내되 막지는
+#: 않고, 정리되면 `VINC_REFS_EXT` 로 포함시킨다.
+_REPORTABLE_EXT = frozenset(_DEFAULT_SCAN_EXT) | {
+    ".mjs", ".cjs", ".rb", ".php", ".cs", ".scala", ".sh", ".bash", ".zsh", ".ps1",
+    ".lua", ".dart", ".vue", ".svelte", ".sql", ".proto", ".gradle", ".groovy", ".r",
+    ".jl", ".ex", ".exs", ".erl", ".hs", ".ml", ".clj", ".pl", ".rst", ".txt"}
 SKIP_DIRS = {"node_modules", ".git", ".venv", "venv", "dist", "target", "build",
              "_migration", "__pycache__", ".claude", "_wt"}
 #: CHANGELOG 은 릴리스 이력이다. 고치지 않는 기록이라 대조하지 않는다(gate_forbidden 과 같은 예외).
@@ -76,25 +92,66 @@ def scan_file(path: str) -> list[tuple[int, str]]:
     return out
 
 
-def scan_repo(root: str = ROOT) -> list[tuple[str, int, str]]:
-    hits = []
+def _scan_ext() -> tuple[str, ...]:
+    """스캔할 확장자. `VINC_REFS_EXT` 가 있으면 그것(쉼표·공백 구분), 없으면 기본값."""
+    raw = (os.environ.get("VINC_REFS_EXT") or "").strip()
+    if not raw:
+        return _DEFAULT_SCAN_EXT
+    got = tuple("." + tok.lstrip(".").lower()
+                for tok in re.split(r"[,\s]+", raw) if tok.strip())
+    return got or _DEFAULT_SCAN_EXT
+
+
+def _has_wikilink(path: str, *, max_bytes: int = 2_000_000) -> bool:
+    """스캔 대상이 아닌 파일에 인용이 들어 있나(건너뜀 보고용). 바이너리·대용량은 뺀다."""
+    try:
+        with io.open(path, "rb") as fh:
+            blob = fh.read(max_bytes)
+    except OSError:
+        return False
+    return b"\x00" not in blob and b"[[" in blob
+
+
+def _walk(root: str) -> tuple[list[tuple[str, int, str]], list[str]]:
+    """(hits, skipped). hits: 스캔된 파일의 (rel, line, ref). skipped: 스캔 대상은
+    아니지만 인용이 든 소스·텍스트 파일의 rel — 조용히 통과하지 않도록 알린다."""
+    ext_set = set(_scan_ext())
+    hits: list[tuple[str, int, str]] = []
+    skipped: list[str] = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for name in filenames:
-            if not name.endswith(SCAN_EXT):
-                continue
+            ext = os.path.splitext(name)[1].lower()
             full = os.path.join(dirpath, name)
             rel = os.path.relpath(full, root).replace("\\", "/")
             if rel in SKIP_FILES:
                 continue
-            for lineno, ref in scan_file(full):
-                hits.append((rel, lineno, ref))
-    return hits
+            if ext in ext_set:
+                for lineno, ref in scan_file(full):
+                    hits.append((rel, lineno, ref))
+            elif ext in _REPORTABLE_EXT and _has_wikilink(full):
+                skipped.append(rel)
+    return hits, skipped
+
+
+def scan_repo(root: str = ROOT) -> list[tuple[str, int, str]]:
+    return _walk(root)[0]
 
 
 def scan_roots(roots: list[str]) -> list[tuple[str, int, str]]:
-    return [(f"{i}:{path}" if len(roots) > 1 else path, line, ref)
-            for i, root in enumerate(roots) for path, line, ref in scan_repo(root)]
+    return scan_roots_full(roots)[0]
+
+
+def scan_roots_full(roots: list[str]) -> tuple[list[tuple[str, int, str]], list[str]]:
+    """여러 루트의 (hits, skipped). 루트가 둘 이상이면 경로에 루트 인덱스를 접두한다."""
+    allhits: list[tuple[str, int, str]] = []
+    allskipped: list[str] = []
+    for i, root in enumerate(roots):
+        hits, skipped = _walk(root)
+        pre = f"{i}:" if len(roots) > 1 else ""
+        allhits += [(pre + path, line, ref) for path, line, ref in hits]
+        allskipped += [pre + path for path in skipped]
+    return allhits, allskipped
 
 
 def load_manifest(path: str = MANIFEST) -> set[str]:
@@ -125,21 +182,25 @@ def load_validity(path: str = MANIFEST) -> dict[str, dict]:
 
 
 def findings(hits, known: set[str], validity: dict[str, dict]) -> list[dict]:
-    """대조 결과의 결함 목록. reason 은 missing · not_graph_id · superseded · historical."""
+    """대조 결과의 결함 목록. reason 은 missing · not_graph_id · superseded · historical.
+
+    매니페스트에 실재하는 id 는 모양과 무관하게 인용으로 받는다: refresh 가
+    계정에서 가져온 사용자 문서 id(`sprout.prd.watering-v1` 처럼 `vinc.` 로 시작하지
+    않는 것)도 known 에 들어 있으므로, 모양만 보고 `not_graph_id` 로 막으면 실재하는
+    인용이 거절된다. known 밖일 때만 모양으로 '없음'과 '그래프 id 아님'을 가른다."""
     out = []
     for file, line, ref in hits:
-        if not is_citation(ref):
-            out.append({"file": file, "line": line, "ref": ref, "reason": "not_graph_id"})
-        elif ref not in known:
-            out.append({"file": file, "line": line, "ref": ref, "reason": "missing"})
-        else:
-            entry = validity.get(ref) or {}
-            successor = entry.get("superseded_by") or ""
-            if successor:
-                out.append({"file": file, "line": line, "ref": ref, "reason": "superseded",
-                            "successor": successor})
-            elif entry.get("validity") in BLOCKED_VALIDITY:
-                out.append({"file": file, "line": line, "ref": ref, "reason": "historical"})
+        if ref not in known:
+            reason = "missing" if is_citation(ref) else "not_graph_id"
+            out.append({"file": file, "line": line, "ref": ref, "reason": reason})
+            continue
+        entry = validity.get(ref) or {}
+        successor = entry.get("superseded_by") or ""
+        if successor:
+            out.append({"file": file, "line": line, "ref": ref, "reason": "superseded",
+                        "successor": successor})
+        elif entry.get("validity") in BLOCKED_VALIDITY:
+            out.append({"file": file, "line": line, "ref": ref, "reason": "historical"})
     return out
 
 
@@ -164,8 +225,14 @@ def offline_result(*, manifest: str, roots: list[str]) -> dict:
         result.update(status=2, executed=False, error={"code": "invalid_manifest",
             "message": f"Cannot read manifest {manifest}: {type(exc).__name__}. Run vinc refs refresh."})
         return result
-    hits = scan_roots(roots)
+    hits, skipped = scan_roots_full(roots)
     result["cited"] = len(hits)
+    # 스캔 대상이 아니어도 인용이 든 파일은 알린다 — cited:0 을 "다 지켜진다"로
+    # 읽지 않도록 한다. 상한을 넘으면 수만 센다.
+    result["scanned_ext"] = list(_scan_ext())
+    if skipped:
+        result["skipped"] = skipped[:50]
+        result["skipped_count"] = len(skipped)
     bad = findings(hits, known, load_validity(manifest))
     result["missing"] = [{"file": i["file"], "line": i["line"], "ref": i["ref"]}
                          for i in bad if i["reason"] == "missing"]
@@ -189,7 +256,21 @@ def offline_check(*, manifest: str = MANIFEST, roots: list[str] | None = None,
               f"  `python scripts/refresh_graph_refs.py` 로 만들고 커밋할 것.")
         return 2
     known = (load or load_manifest)(manifest)
-    hits = (scan or scan_repo)() if roots == [ROOT] else scan_roots(roots)
+    if scan is not None:
+        hits, skipped = scan(), []        # 주입된 스캔(테스트) — 건너뜀 탐지는 건너뛴다
+    elif roots == [ROOT]:
+        hits, skipped = _walk(ROOT)
+    else:
+        hits, skipped = scan_roots_full(roots)
+    if skipped:
+        # 조용한 통과 방지: 스캔 대상이 아닌 파일에 인용이 있으면 이름을 밝힌다. 배포를
+        # 막지는 않는다(확장자를 넓히거나 VINC_REFS_EXT 로 포함시키라는 신호).
+        print(f"[gate_graph_refs] NOTE — 스캔하지 않은 확장자의 파일 {len(skipped)}개에 "
+              f"인용이 있다(대조 안 됨). 확장자를 넓히거나 VINC_REFS_EXT 에 넣을 것:")
+        for rel in skipped[:8]:
+            print(f"  (skipped) {rel}")
+        if len(skipped) > 8:
+            print(f"  … 외 {len(skipped) - 8}개")
     bad = findings(hits, known, load_validity(manifest))
     if bad:
         print(f"[gate_graph_refs] BLOCK — 쓸 수 없는 인용 {len(bad)}건 "
