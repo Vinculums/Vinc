@@ -139,6 +139,7 @@
     "env_names": [
       "VINC_ACCOUNT_INTERNAL_URL",
       "VINC_ACCOUNT_PUBLIC_KEY",
+      "VINC_BRIEF_RULE",
       "VINC_BURST_PER_MINUTE",
       "VINC_CONNECT_URL",
       "VINC_DATA_DIR",
@@ -150,6 +151,7 @@
       "VINC_MCP_ED25519_SEED",
       "VINC_MCP_ISSUER",
       "VINC_MCP_TOKEN",
+      "VINC_NODE_COLBERT",
       "VINC_OAUTH_ADMIN_KEY",
       "VINC_PK_NAMESPACED",
       "VINC_QUOTA",
