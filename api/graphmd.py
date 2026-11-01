@@ -269,8 +269,8 @@ _GEN_BODY = {
     # ⚠ 줄 예산은 LINE_WARN 이다. 한 줄을 더하면 EN/ko 에 같이 더한다(1:1,
     # test_templates_are_line_for_line_parallel). "소문자 영어"는 Topics 절로 옮겼다.
     # 엣지 줄 뒤의 "Built in" 문장은 Relations 절의 여섯 밖에서 쓰기 경로가 받는 스키마 엣지 둘이다
-    # (`api/fragment.py` `_EDGE_TYPES`·`WIRE_EDGES`). 여섯 외에 없다고 적었다가, Validity 절이
-    # 쓰라고 한 supersedes 를 이 절이 부정하는 모순이 됐다(VIN-876).
+    # (`api/fragment.py` `_EDGE_TYPES`·`WIRE_EDGES`). 빼면 Validity 절이 쓰라는 supersedes 를
+    # 이 절이 부정하게 된다.
     "en": ("## Domains in this graph\n{domains}\n"
            "A slash makes a tree: 'vinc/design' files that node "
            "under 'vinc', with nothing extra to author. "
