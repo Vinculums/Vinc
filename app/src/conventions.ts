@@ -69,7 +69,7 @@ export async function mountConventions(host: HTMLElement, sheet: { body: HTMLEle
   let savedText = "";
   let busy = false;
   // 읽기만 되는 공간(커뮤니티의 GRAPH.md 는 규칙 페이지라 운영자 몫, 팀 열람자)에서는 본문만 보이고
-  // 저장·재생성·재가를 걸지 않는다. 판정을 못 하면 연다(최종 판정은 서버다).
+  // 저장·재생성·재가를 걸지 않는다. `canWriteHere` 가 실패하면 연다: 막는 것은 서버다.
   const writable = await canWriteHere().catch(() => true);
 
   async function draw() {

@@ -76,8 +76,7 @@ export function mountTools(host: SheetHandle, tab: Tab = "create"): () => void {
     host.foot.innerHTML = "";
     if (t === "share") { void renderShare(pane, sheet); return; }
     // 만들기·가져오기는 쓰기다. 읽기만 되는 공간(커뮤니티, 팀 열람자)에서는 편집기와 드롭존을
-    // 열지 않고 그렇다고 말한다. 열어 두면 다 쓰고 나서야 서버 거절을 일반 오류로 만난다.
-    // 판정을 못 하면 연다(최종 판정은 서버다).
+    // 열지 않고 안내만 보인다. `canWriteHere` 가 실패하면 연다: 막는 것은 서버다.
     void canWriteHere().catch(() => true).then((ok) => {
       if (!pane.isConnected) return;
       if (!ok) { pane.innerHTML = `<p class="hint">${esc(COPY.ui.settingsUi.readOnlySpace)} ${esc(COPY.ui.settingsUi.readOnlyShareStill)}</p>`; return; }
@@ -109,10 +108,9 @@ function renderImport(pane: HTMLElement, _sheet: SheetHandle) {
 // `Scope` 의 `team` 은 임의의 팀 id 이고 `call` 이 그대로 실어 보낸다. 넓힌 것은 고르는
 // 화면뿐이다(구 Packs 는 `from: {team: null}` 로 개인 하나만 못박아 두고 있었다).
 //
-// ⚠ 데스크탑 **로컬 모드**에는 이 칸이 안 그려진다: 팀이 없어 `teamsApi.list()` 가 `[]` 이다.
-// 데스크탑 **계정 모드**에는 그려진다(VIN-127): 팀 목록은 `/spaces` 로 오고 `accountCall` 이
-// 고른 팀을 실어 보낸다. `WEB` 분기를 따로 쓰지 않는 이유는 목록이 비면 칸이 저절로 빠지기
-// 때문이다. 팀 목록과 팀 호출이 같은 모드 판정을 따르는 동안에만 맞는 말이다.
+// ⚠ 이 칸은 `teamsApi.list()` 가 비면 빠진다. 데스크탑 로컬 모드는 팀이 없어 비고, 계정 모드는
+// `/spaces` 로 팀을 받고 `accountCall` 이 고른 팀을 싣는다. 팀 목록과 팀 호출은 같은 모드를
+// 따라야 한다: 한쪽만 바뀌면 고를 수 있는데 안 먹는 칸이 된다.
 //
 // ⚠ 목록에 띄우는 것이 **접근을 주지 않는다.** 권한은 계정이 정하고, 활동 구성원이
 // 아닌 스페이스는 존재하지 않는 것과 같은 답을 준다. 그래서 활동 중이 아닌 소속은
