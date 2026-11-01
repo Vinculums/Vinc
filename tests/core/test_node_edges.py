@@ -90,6 +90,17 @@ def test_all_carriers_and_actual_incident_relations(graph):
     assert prereq["edges"][0]["evidence"] == "Gate before release"
     assert prereq["edges"][0]["confidence"] == 0.85
     assert q.node_edges("decision:choice", owner=OWNER, dir="out", type="PREREQUISITE_OF", store=st)["count"] == 0
+    # VIN-894 — 문서화된 소문자 이름을 대소문자 무관하게 받는다(물리 라벨은 대문자라
+    # 그대로는 어느 라벨과도 안 맞아 0건이 나왔다).
+    for name in ("prerequisite_of", "Prerequisite_Of", "PREREQUISITE_OF"):
+        same = q.node_edges("decision:choice", owner=OWNER, dir="in", type=name, store=st)
+        assert same["count"] == 1 and same["edges"][0]["from"] == "concept:hub", (name, same)
+    # `relates_to` → `RELATED_TO`: 대문자 폴백만으로는 못 맞추는 맵 경로.
+    rel = q.node_edges("concept:hub", owner=OWNER, type="relates_to", store=st)
+    assert rel["count"] == 1 and {e["type"] for e in rel["edges"]} == {"RELATED_TO"}, rel
+    # 라벨이 아닌 저작 서브타입은 원문 그대로 걸러 라벨 정규화에 휘둘리지 않는다.
+    sub = q.node_edges("concept:hub", owner=OWNER, type="supports", store=st)
+    assert sub["count"] == 1 and sub["edges"][0]["type"] == "ATTACHES_TO", sub
     for nid in ("record:proof", "episode:run", "bridge:crossing", "custom:a"):
         got = q.node_edges(nid, owner=OWNER, dir="out", store=st)
         assert got["found"] and got["count"] == 1, got
