@@ -34,6 +34,8 @@ OPEN_OUTCOME = "waiting"
 ANSWERS = ("approve", "decline")
 TASK_MAX = 4000
 SUBJECT_MAX = 500
+#: 실행한 호스트 이름(예 "codex-cli 0.162.1"). 실행 기록의 host 가 된다.
+HOST_MAX = 120
 OUTPUT_MAX = 131072
 CITED_MAX = 200
 #: 역할 props.cites 가 이 값이면 출력 단계마다 그래프에 실재하는 근거 id 가 있어야 한다.
@@ -159,6 +161,23 @@ def _fresh_role(bridge, owner: str, role: str) -> dict:
     return contract(role, bridge, forced_owner=owner, compact=True, capped=False)
 
 
+def client_label(info) -> str:
+    """MCP `initialize` 의 clientInfo 를 실행 기록의 host 한 줄로 만든다. 없으면 빈 문자열."""
+    if not isinstance(info, dict):
+        return ""
+    parts = [str(info.get(k) or "").strip() for k in ("name", "version")]
+    return " ".join(" ".join(p for p in parts if p).split())[:HOST_MAX]
+
+
+def with_host(name: str, args, label: str):
+    """연결이 아는 클라이언트를 run_start 의 host 기본값으로 싣는다. 호출자가 준 host 가 이긴다.
+    연결 하나에 클라이언트 하나인 곳(stdio·로컬 프록시)에서만 부른다. 허브의 디스패처는 모든
+    테넌트가 같이 쓰므로 거기서 기억하면 남의 클라이언트가 섞인다."""
+    if name != "vinc_run_start" or not label or not isinstance(args, dict) or args.get("host"):
+        return args
+    return {**args, "host": label}
+
+
 def start(args: dict, bridge, owner: str) -> dict:
     role, task = str(args.get("role") or "").strip(), str(args.get("task") or "").strip()
     run_id = str(args.get("run_id") or "").strip() or "run-" + uuid.uuid4().hex[:12]
@@ -171,6 +190,7 @@ def start(args: dict, bridge, owner: str) -> dict:
         return _failure("invalid_run_id", "Invalid: run_id is 1 to 128 letters, digits, '.', '_', "
                                           "':' or '-'.")
     subject = str(args.get("subject") or "").strip()[:SUBJECT_MAX]
+    host = " ".join(str(args.get("host") or "").split())[:HOST_MAX]
     eid = episode_id(run_id)
     got = _fresh_role(bridge, owner, role)
     if not got.get("executed") or not got.get("found"):
@@ -187,6 +207,8 @@ def start(args: dict, bridge, owner: str) -> dict:
              "role_hash": got.get("hash"), "used": {}, "approved": []}
     if subject:
         props["subject"] = subject
+    if host:
+        props["host"] = host
     failed = _saved(bridge, owner, eid, props)
     if failed:
         return failed

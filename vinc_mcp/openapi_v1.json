@@ -2596,7 +2596,7 @@
       "post": {
         "operationId": "vinc_run_start_post__v1_runs",
         "summary": "Open a run of one Agent role. Vinc returns the first step: what to read, the role's policy and the budget left. Submit each step's output with vinc_run_submit.",
-        "description": "Open a run of one Agent role so Vinc can hold its state, gates and the ask-or-act boundary while your model does the work. Returns {run, run_id, state, step, task, policy:{reads, gates, output_kind, act_policy, capabilities, person_only, never}, budget_left, next}. Read the documents in policy.reads, do the task, then call vinc_run_submit with the output. run_id is optional: pass your own to make a retry return the same run instead of opening a second one (it resumes the open run when the role matches). The run is saved as a run record (an Episode about the role) whose outcome stays waiting until it ends. Vinc calls no model.",
+        "description": "Open a run of one Agent role so Vinc can hold its state, gates and the ask-or-act boundary while your model does the work. Returns {run, run_id, state, step, task, policy:{reads, gates, output_kind, act_policy, capabilities, person_only, never}, budget_left, next}. Read the documents in policy.reads, do the task, then call vinc_run_submit with the output. run_id is optional: pass your own to make a retry return the same run instead of opening a second one (it resumes the open run when the role matches). Pass host with your client's name and version so the run record says where the role ran; a local stdio connection fills it from the client's initialize. The run is saved as a run record (an Episode about the role) whose outcome stays waiting until it ends. Vinc calls no model.",
         "security": [
           {
             "MemberKey": []
@@ -2654,6 +2654,11 @@
                     "type": "string",
                     "maxLength": 128,
                     "description": "Your own id for the run; omit to get one."
+                  },
+                  "host": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "description": "The client that runs the role, with its version."
                   }
                 },
                 "required": [

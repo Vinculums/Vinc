@@ -29,9 +29,14 @@ def test_show_asks_for_one_run():
 
 def test_start_keeps_only_the_flags_that_were_given():
     name, data, _ = cli_tools._tool_request(
-        args("start", role="agent-dev-core", task="Review it.", subject=None, run_id="r-1"))
+        args("start", role="agent-dev-core", task="Review it.", subject=None, run_id="r-1",
+             host=None))
     assert name == "vinc_run_start"
     assert data == {"role": "agent-dev-core", "task": "Review it.", "run_id": "r-1"}
+    _, named, _ = cli_tools._tool_request(
+        args("start", role="agent-dev-core", task="Review it.", subject=None, run_id=None,
+             host="grok-bot 1"))
+    assert named["host"] == "grok-bot 1"
 
 
 def test_submit_reads_the_output_file_and_parses_the_json_flags(tmp_path):

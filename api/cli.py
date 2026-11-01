@@ -470,6 +470,8 @@ def _main(argv: list[str] | None = None) -> int:
     rns_start.add_argument("--subject", default=None, help="what it works on, such as a PR URL")
     rns_start.add_argument("--run-id", default=None, dest="run_id",
                            help="your own id; a retry with the same id returns the same run")
+    rns_start.add_argument("--host", default=None,
+                           help="the agent host that runs the role, with its version")
     rns_start.add_argument("--owner", default=None)
     rns_sub = rns.add_parser("submit", help="submit one step: output, an answer, or abandon")
     rns_sub.add_argument("run", help="the run id `vinc run start` printed")

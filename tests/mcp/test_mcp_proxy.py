@@ -108,6 +108,21 @@ class ProxyTest(unittest.TestCase):
         self.assertEqual([s["sid"] for s in _Hosted.seen], [None, "sess-1", "sess-1"])
         self.assertEqual([s["pv"] for s in _Hosted.seen], [None, "2025-06-18", "2025-06-18"])
 
+    def test_run_start_carries_the_client_from_initialize_as_its_host(self):
+        # 허브는 세션을 추적하지 않아 clientInfo 를 모른다. 프로세스 하나에 클라이언트 하나인
+        # 프록시가 run_start 의 host 를 채워 넘긴다(VIN-867). 호출자가 준 host 는 그대로 둔다.
+        start = {"role": "agent-research", "task": "t"}
+        self._run("vinc_sk_good", self._session()[:2] + [
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+             "params": {"name": "vinc_run_start", "arguments": dict(start)}},
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+             "params": {"name": "vinc_run_start", "arguments": {**start, "host": "mine"}}},
+            {"jsonrpc": "2.0", "id": 5, "method": "tools/call",
+             "params": {"name": "vinc_search", "arguments": {"query": "x"}}}])
+        sent = [s["msg"]["params"]["arguments"] for s in _Hosted.seen
+                if s["msg"].get("method") == "tools/call"]
+        self.assertEqual([a.get("host") for a in sent], ["t 0", "mine", None])
+
     def test_an_event_stream_answer_is_unwrapped(self):
         _Hosted.mode = "sse"
         replies = self._run("vinc_sk_good", self._session())
