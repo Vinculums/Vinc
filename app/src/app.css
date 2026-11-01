@@ -2085,13 +2085,15 @@ textarea.props-val {
   text-transform: uppercase; letter-spacing: .075em; font-size: .68rem;
 }
 
-/* ── Tools 모달(D71) — 만들기 · 가져오기 · 공유를 한 층에 눕힌 탭 ────────────
+/* ── Tools 모달(D71) — 가져오기 · 공유를 한 층에 눕힌 탭 ────────────
    탭은 시트 규격(머리·몸·발) 안에 산다: 갈래를 고르는 줄 하나 + 그 갈래의 몸. */
 .tools-tabs {
   display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap;
   margin-bottom: var(--space-4, 1rem);
 }
-.tools-sub { flex: 1 1 auto; min-width: 0; }
+/* 설명은 탭 줄 아래 한 줄이다(탭처럼 읽히지 않게). */
+.tools-sub { margin: calc(-1 * var(--space-2, .5rem)) 0 var(--space-4, 1rem); }
+.tools-preview:not(:empty) { margin: var(--space-3, .75rem) 0; }
 .tools-pane { display: block; }
 /* 라디오 줄 — 목록 행 문법을 그대로 쓰되 선택 컨트롤이 앞에 온다. */
 .tools-opt {
@@ -2129,6 +2131,10 @@ textarea.props-val {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .float-body { flex: 1 1 auto; overflow: auto; padding: .35rem .5rem .6rem; }
+/* 토픽 카드: 경로·설명·수치·하위 토픽까지 싣는다. 일반 노드 카드보다 넓고, 천장 아래 화면 높이까지 자란다. */
+.float-card--tall { width: 22rem; max-height: calc(100vh - 6rem); max-height: calc(100dvh - 6rem); }
+/* `.card-rows` 의 음수 아래 여백(-.6rem)만큼 내려서 시작하고, 카드 안쪽 여백을 다시 준다. */
+.card-topic-body { padding: .9rem .4rem .2rem; }
 
 /* 레일의 ask 줄 — 카드와 **같은 조각**이라 스타일도 카드 것을 그대로 쓴다.
    놓이는 자리만 다르다: 제목 위 한 줄이므로 카드 폭 기준의 음수 마진이 필요 없다. */
@@ -2776,6 +2782,13 @@ textarea.props-val {
 .settings-row > .btn { flex: 0 0 auto; white-space: nowrap; }
 .settings-row-copy strong { display: block; font-size: 1.0625rem; font-weight: 600; }
 .settings-row-copy .hint { margin: .25rem 0 0; }
+/* 켜짐·꺼짐 표지 — 동작 버튼의 글자로 지금 상태를 짐작하지 않게 제목 옆에 적는다. */
+.settings-state {
+  display: inline-block; margin-left: .5rem; padding: .05rem .5rem; vertical-align: middle;
+  font-size: var(--fs-xs, .75rem); font-weight: 500; border-radius: 999px;
+  color: hsl(var(--muted-foreground)); border: 1px solid hsl(var(--border));
+}
+.settings-state.on { color: hsl(var(--point-text, var(--foreground))); border-color: hsl(var(--point-text, var(--foreground)) / .45); }
 .settings-select {
   width: 15.5rem; font: inherit; padding: .5rem .75rem;
   border: 1px solid hsl(var(--input)); border-radius: var(--radius);
@@ -2979,6 +2992,9 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   border-color: hsl(var(--danger));
   box-shadow: 0 1px 2px hsl(var(--foreground) / .28), inset 0 1px 0 hsl(0 0% 100% / .18);
 }
+/* 꺼진 버튼은 꺼진 티가 나야 한다. 없으면 꺼진 주 버튼이 켜진 것과 똑같아 눌러도 반응이 없는 것으로 읽힌다. */
+.btn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.btn:disabled:active { transform: none; filter: none; }
 
 /* ── 자동 업데이트 토스트 (v0.3.0) — 하단 중앙 부유 크롬. 비차단 알림이라
       콘텐츠 평면을 가리지 않게 안전영역 여백 + 유리 층 재사용. */
