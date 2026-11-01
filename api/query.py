@@ -6867,10 +6867,19 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
         mirrors = _topic_description_mirrors(store, owner)
         excluded: set[str] = set()
         groups: dict = {}
+        # 성분의 실제 노드 수를 종류 불문으로 센다. 개념만 세면 레코드·사건·결정에만
+        # (ATTACHES_TO·ABOUT 으로) 붙은 개념이 저 혼자인 것처럼 보여 거짓 고아가 된다 —
+        # 그 개념을 고아로 지우면 쓰이고 있는 노드를 지운다. 미러는 일부러 안 잇는 토픽
+        # 설명 노드라 크기에서 뺀다. 근거: [[vinc.manual.core]]
+        full_size: dict = {}
         for r in rows:
             cid, grp = r.get("id"), r.get("value")
-            if not cid or cid in drop or (scope is not None and cid not in scope):
+            if not cid or cid in drop or grp is None:
                 continue
+            if cid not in mirrors:
+                full_size[grp] = full_size.get(grp, 0) + 1   # 개념·레코드·사건·결정 전부
+            if scope is not None and cid not in scope:
+                continue                   # 비-개념은 크기엔 세고 개념 목록엔 안 넣는다
             if cid in mirrors:
                 excluded.add(cid)          # 토픽 설명은 빼고 수만 밝힌다
                 continue
@@ -6880,7 +6889,10 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
                   "members_truncated": len(m) > mlim}
                  for g, m in groups.items()]
         comps.sort(key=lambda c: (-c["size"], str(c["group"])))   # 큰 컴포넌트 우선
-        orphans = sorted(m[0] for m in groups.values() if len(m) == 1)
+        # 고아 = 성분에 저 혼자뿐인 개념. 개념 목록상 홀로여도(len==1) 성분에 레코드·
+        # 사건·결정이 함께 있으면(full_size>1) 고아가 아니다 — 들어오는 엣지도 연결이다.
+        orphans = sorted(m[0] for g, m in groups.items()
+                         if len(m) == 1 and full_size.get(g, 1) == 1)
         base.update(executed=True, components=comps, orphans=orphans,
                     component_count=len(comps), orphan_count=len(orphans),
                     ambiguous=ambiguous, ambiguous_count=len(ambiguous),
