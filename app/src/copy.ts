@@ -1376,6 +1376,7 @@ const EN = {
       preparing: "Preparing the pack…", shareTitle: "Share as a pack",
       counts: (c: number, e: number, r: number) => `${c} concepts · ${e} connections · ${r} documents`,
       nothing: "Nothing in scope.",
+      shareTooLarge: (n: number) => `This scope is too large to share in one pack (over ${n} nodes). Share by topic instead; for a full move use the backup pack below.`,
       keepNote: "Your pins, tags and usage stay with you. The pack carries document content only.",
       // 목적지는 저장 순간이 아니라 **고르는 순간**에 정해진다. 예전엔 이 버튼이
       // 곧바로 파일을 내려받아, 파일이 유일한 출구인 것처럼 보였다.
@@ -2604,6 +2605,7 @@ const KO: Deck = {
       preparing: "팩 준비 중…", shareTitle: "팩으로 공유하기",
       counts: (c, e, r) => `개념 ${c}개 · 연결 ${e}개 · 문서 ${r}개`,
       nothing: "이 범위에는 아무것도 없어요",
+      shareTooLarge: (n: number) => `이 범위는 한 번에 공유하기엔 너무 커요(노드 ${n}개 초과). 주제로 나눠 공유하세요. 전체를 옮기려면 아래 전체 백업 팩을 쓰세요`,
       keepNote: "고정·태그와 사용 기록은 내게 그대로 남아요. 팩에는 문서 내용만 담겨요",
       save: "공유하기",
       destSub: "팩은 같고, 보낼 곳만 달라요. 고르기 전에는 아무것도 나가지 않아요",
