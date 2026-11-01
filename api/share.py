@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 
 from . import fragment as frag
@@ -314,11 +315,22 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
             store.close()
 
 
+# 한 번의 share 가 고르는 노드 수 상한. 녹화한 share 호출을 재생해 한 호출로 그래프를 통째로
+# 긁어 가는 것을 막고, 거대한 팩을 짓는 자원 소모도 막는다. 넘으면 팩을 짓지 않고 거절하며
+# 주제로 나눠 받으라고 말한다(전체 백업은 이 경로가 아니라 /activate 다). 0 이하면 상한 없음.
+# 값은 hub-deploy 가 리포 변수 VINC_SHARE_MAX_NODES 에서 싣고, 비어 있으면 2000 이다.
+def _share_node_cap() -> int:
+    try:
+        return int(os.environ.get("VINC_SHARE_MAX_NODES", "2000"))
+    except ValueError:
+        return 2000
+
+
 def build_share_pack(*, owner: str, domain: str | None = None,
                      tags: list[str] | None = None, seed: str | None = None,
                      ids: list[str] | None = None,
                      depth: int = 2, include_records: bool = True,
-                     generated_at: str | None = None,
+                     generated_at: str | None = None, max_nodes: int | None = None,
                      cfg=None, store=None, doc_refs: bool = False) -> dict:
     """네 종류의 콘텐츠를 선택한다: ids > seed > domain, 이후 태그 교집합.
 
@@ -372,6 +384,12 @@ def build_share_pack(*, owner: str, domain: str | None = None,
             return {"executed": False, "note": result.get("note", "no reachable store")}
         selected[kind] = _tag_filter(result.get("rows", []), tags)
     id_set = concept_ids | {r["id"] for rows in selected.values() for r in rows}
+
+    # 상한을 여기서 본다 — 엣지·원문을 읽기 전이라 거절이 싸다. 노드 수(개념+기록+결정+사건)로 잰다.
+    cap = _share_node_cap() if max_nodes is None else max_nodes
+    if cap > 0 and len(id_set) > cap:
+        return {"executed": False, "note": "share_too_large",
+                "node_count": len(id_set), "limit": cap}
 
     # 2) 스코프 내 저작 엣지 — 네 종류의 관계를 읽고 경계 밖은 잘라낸다.
     edges: list[dict] = []

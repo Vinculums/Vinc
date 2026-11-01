@@ -96,6 +96,13 @@ export async function renderSharePreview(host: HTMLElement, scope: ShareScope, o
   const pack = await api.share(cfg.owner, {
     ids: scope.ids?.join(","), seed: scope.seed, domain: scope.domain, depth: scope.depth,
   }, opts.from);
+  // 범위가 상한을 넘으면 서버가 팩을 안 짓고 거절한다(한 호출로 통째 긁기·거대 팩 방지).
+  // 빈 결과("아무것도 없어요")와 구별해, 주제로 나눠 공유하라고 말한다. 전체 백업은 공유 탭 아래 링크다.
+  if ((pack as { executed?: boolean }).executed === false && (pack as { note?: string }).note === "share_too_large") {
+    host.innerHTML = `<p class="hint">${esc(COPY.ui.sheet.shareTooLarge(Number((pack as { limit?: number }).limit) || 0))}</p>`;
+    onChange(false);
+    return () => null;
+  }
   const nodes: any[] = pack.fragment?.nodes || [];
   const unlinked = standaloneDocs(pack.documents, pack.doc_refs);
   const c = pack.manifest?.counts || {};
