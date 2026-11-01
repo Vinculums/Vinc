@@ -12,7 +12,7 @@
  *  계정 프록시가 의도적으로 막는다(`vinc_mcp/http_server.py` _PROXY_OPS 주석) —
  *  웹에서 열면 남의 어휘를 만지게 된다. 웹에서는 관례 구역만 보인다.
  */
-import { api, cfg, remote } from "./api";
+import { api, canWriteHere, cfg, remote } from "./api";
 import { COPY } from "./copy";
 import { esc, sheetActions } from "./components";
 
@@ -68,12 +68,21 @@ export async function mountConventions(host: HTMLElement, sheet: { body: HTMLEle
   let docId = "";
   let savedText = "";
   let busy = false;
+  // 읽기만 되는 공간(커뮤니티의 GRAPH.md 는 규칙 페이지라 운영자 몫, 팀 열람자)에서는 본문만 보이고
+  // 저장·재생성·재가를 걸지 않는다. 판정을 못 하면 연다(최종 판정은 서버다).
+  const writable = await canWriteHere().catch(() => true);
 
   async function draw() {
     // 설정의 분류들은 발(`sheet.foot`)을 함께 쓴다. 읽기를 기다리는 사이 다른 분류로
     // 옮겼으면 이 판은 떨어져 나갔다 — 여기서 발을 쓰면 저장·재생성(실제 쓰기)
     // 버튼이 다른 분류 밑에 선다.
     if (!host.isConnected) return;
+    if (!writable) {
+      host.innerHTML = `<p class="hint">${esc(COPY.ui.settingsUi.readOnlySpace)}</p>
+        <pre class="conv-gen" aria-readonly="true">${esc(text)}</pre>`;
+      sheet.foot.innerHTML = "";
+      return;
+    }
     const parts = splitConventions(text);
     const broken = parts === null;
     const [head, gen, tail] = parts || [text, "", ""];

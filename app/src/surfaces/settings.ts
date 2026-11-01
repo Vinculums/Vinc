@@ -610,9 +610,12 @@ async function renderSettings(
     body.innerHTML = `
       <h2>${esc(U.navAdvanced)}</h2>
       <p class="hint">${esc(U.advancedIntro)}</p>
+      <!-- 작업 공간(owner)은 로컬 모드에서만 뜻이 있다. 계정 모드에서는 허브가 키로 소유자를
+           정하므로 바꿔도 아무 일도 안 일어나고, 힌트가 말하는 샘플도 계정 모드에는 없다. -->
+      ${accountMode() ? "" : `
       <label for="s-owner">${U.workspace}</label>
       <p class="hint">${U.workspaceHint}</p>
-      <input id="s-owner" value="${cfg.owner}" />
+      <input id="s-owner" value="${esc(cfg.owner)}" />`}
       <label for="s-sync-key">${U.syncKey}</label>
       <p class="hint">${U.syncKeyHint}</p>
       <p class="s-keyrow"><input id="s-sync-key" type="password" placeholder="vinc_sk_…"
@@ -637,7 +640,7 @@ async function renderSettings(
       cfg.token = v;
       tokenInput.value = "";
     });
-    body.querySelector<HTMLInputElement>("#s-owner")!.addEventListener("change", (e) =>
+    body.querySelector<HTMLInputElement>("#s-owner")?.addEventListener("change", (e) =>
       (cfg.owner = (e.target as HTMLInputElement).value));
     // 수동 키(폴백 경로). **값을 다시 그리지 않는다** — 여기 두면 키가 DOM 에 눕고,
     // 그것을 없애자는 것이 이 변경의 목적이다(감사 M8). 비어 있으면 "안 바꿈"이다.

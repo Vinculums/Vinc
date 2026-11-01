@@ -1,4 +1,4 @@
-import { api, cfg, teamsApi } from "./api";
+import { api, canWriteHere, cfg, teamsApi } from "./api";
 import { COPY } from "./copy";
 import { docTitle } from "./doc-title";
 import { esc, sheetActions, sheetProgress, type SheetHandle } from "./components";
@@ -74,9 +74,16 @@ export function mountTools(host: SheetHandle, tab: Tab = "create"): () => void {
       b.addEventListener("click", () => draw(b.dataset.tab as Tab)));
     const pane = host.body.querySelector<HTMLElement>("#tools-pane")!;
     host.foot.innerHTML = "";
-    if (t === "create") void renderCreate(pane, sheet, (fn) => { cleanup = fn; });
-    else if (t === "import") renderImport(pane, sheet);
-    else void renderShare(pane, sheet);
+    if (t === "share") { void renderShare(pane, sheet); return; }
+    // 만들기·가져오기는 쓰기다. 읽기만 되는 공간(커뮤니티, 팀 열람자)에서는 편집기와 드롭존을
+    // 열지 않고 그렇다고 말한다. 열어 두면 다 쓰고 나서야 서버 거절을 일반 오류로 만난다.
+    // 판정을 못 하면 연다(최종 판정은 서버다).
+    void canWriteHere().catch(() => true).then((ok) => {
+      if (!pane.isConnected) return;
+      if (!ok) { pane.innerHTML = `<p class="hint">${esc(COPY.ui.settingsUi.readOnlySpace)} ${esc(COPY.ui.settingsUi.readOnlyShareStill)}</p>`; return; }
+      if (t === "create") void renderCreate(pane, sheet, (fn) => { cleanup = fn; });
+      else renderImport(pane, sheet);
+    });
   };
   draw(tab);
   return () => { cleanup?.(); cleanup = null; };
@@ -102,11 +109,10 @@ function renderImport(pane: HTMLElement, _sheet: SheetHandle) {
 // `Scope` 의 `team` 은 임의의 팀 id 이고 `call` 이 그대로 실어 보낸다. 넓힌 것은 고르는
 // 화면뿐이다(구 Packs 는 `from: {team: null}` 로 개인 하나만 못박아 두고 있었다).
 //
-// ⚠ 데스크탑에는 이 칸이 **안 그려진다**. 셸에는 팀 정체성이 아예 없고(`call` 의
-// `WEB && team` · `cfg.team` 게터 · `teamsApi.list()` 세 겹의 거절), 그래서 칸을 두면
-// 고를 수 있는데 안 먹는 화면이 된다 — 팀을 고른 사람이 개인 스토어를 받고도 성공
-// 화면을 본다. `WEB` 분기를 따로 쓰지 않는 이유는 `teamsApi.list()` 가 셸에서 `[]` 라
-// 목록이 저절로 비기 때문이다(거절 셋 중 하나가 그대로 이 화면의 규칙이 된다).
+// ⚠ 데스크탑 **로컬 모드**에는 이 칸이 안 그려진다: 팀이 없어 `teamsApi.list()` 가 `[]` 이다.
+// 데스크탑 **계정 모드**에는 그려진다(VIN-127): 팀 목록은 `/spaces` 로 오고 `accountCall` 이
+// 고른 팀을 실어 보낸다. `WEB` 분기를 따로 쓰지 않는 이유는 목록이 비면 칸이 저절로 빠지기
+// 때문이다. 팀 목록과 팀 호출이 같은 모드 판정을 따르는 동안에만 맞는 말이다.
 //
 // ⚠ 목록에 띄우는 것이 **접근을 주지 않는다.** 권한은 계정이 정하고, 활동 구성원이
 // 아닌 스페이스는 존재하지 않는 것과 같은 답을 준다. 그래서 활동 중이 아닌 소속은
@@ -367,11 +373,13 @@ async function renderCreate(pane: HTMLElement, sheet: SheetHandle,
       const failed: string[] = [];
       for (const t of targets) {
         try {
+          // 엣지만 보낸다. 끝점은 스토어에서 찾는다(v0.8.4, `api/fragment.py` `_resolve_endpoint_type`).
+          // 개념을 노드로 다시 실으면 제목이 빈 개념은 허브가 id 로 덮는다(`str(title) or nid`).
+          // 근거 문장도 싣지 않는다: 사람이 고른 연결이고, 화면 라벨은 근거가 아니다.
+          // 근거: [[record:unguarded-title-overwrote-107-nodes-with-their-ids]]
           const r: any = await withTimeout(api.ingestFragment({
-            nodes: [{ type: "concept", id: from, title: mine?.primary_concept_title || from },
-                    { type: "concept", id: t.primary_concept_id, title: t.primary_concept_title || "" }],
-            edges: [{ type: "relates_to", from, to: t.primary_concept_id,
-                      evidence: COPY.ui.tools.linkHeader, confidence: 0.5 }],
+            nodes: [],
+            edges: [{ type: "relates_to", from, to: t.primary_concept_id }],
           }));
           if (r?.executed === false) throw new Error(r.error || "link failed");
           ok += 1;
