@@ -1,33 +1,21 @@
 import { api, canWriteHere, cfg, teamsApi } from "./api";
 import { COPY } from "./copy";
-import { docTitle } from "./doc-title";
 import { esc, sheetActions, sheetProgress, type SheetHandle } from "./components";
 import { renderIntake } from "./surfaces/intake";
 import { viewHooks } from "./topbar";
-import { loaderRows } from "./vinc-loaders.js";
 
-/** Tools (DEC D71) — 만들기 · 가져오기 · 공유가 한 모달에 산다.
+/** Tools (DEC D71) — 설정의 데이터 분류. 가져오기 · 공유 두 탭이다.
  *
- *  여태 상단 바에 `가져오기`와 `공유` 두 버튼이 있었고, `새 문서`는 가져오기 시트의
- *  부 액션으로 숨어 있었다(D67). 셋은 사실 같은 종류의 일이다 — **지식이 드나드는
- *  문**. 문이 셋인데 자리가 셋이면 어디로 가야 할지 매번 고르게 된다.
+ *  탭은 **한 층**에 눕힌다(중첩 금지): 상단에서 고르고, 아래는 그 갈래의 일만 한다.
+ *  시트 규격(D63)은 그대로다 — 머리·몸·발, 그리고 Esc·✕·배경으로 닫힘.
  *
- *  탭은 세 갈래를 **한 층**에 눕힌다(중첩 금지): 상단에서 고르고, 아래는 그 갈래의
- *  일만 한다. 시트 규격(D63)은 그대로다 — 머리·몸·발, 그리고 Esc·✕·배경으로 닫힘.
+ *  새 문서 쓰기는 여기 없다. 홈의 `새 문서` 가 같은 편집기를 넓은 자리에서 연다.
  *
- *  P15 에서 `#packs` 표면이 통째로 여기 들어왔다. 그 화면이 갖고 있던 다섯(가져오기 ·
- *  공유 · 전체 백업 · 다른 스페이스에서 불러오기 · 커뮤니티 게시)이 전부 이 두 탭에
- *  산다. 커뮤니티 게시만 예외로 여기서 다시 만들지 않는데, 공유가 목적지를 묻는
- *  자리(`sheets.chooseDestination`)에 이미 같은 것이 있었기 때문이다.
- *
- *  ⚠ 만들기 탭의 링크는 **문서↔문서가 아니다.** 스토어에 문서 사이 관계 테이블이
- *  없다(_DocMeta 는 정체성 메타이고 관계는 개념 사이에만 있다). 그래서 각 문서의
- *  대표 개념 사이에 `relates_to` 를 긋고, 그 사실을 화면이 그대로 말한다. */
+ *  `#packs` 표면이 하던 일(가져오기 · 공유 · 전체 백업 · 다른 스페이스에서 불러오기)은
+ *  전부 이 두 탭에 산다. 커뮤니티 게시는 공유가 목적지를 묻는 자리
+ *  (`sheets.chooseDestination`)에 있다. */
 
-type Tab = "create" | "import" | "share";
-
-type DocRow = { doc_id: string; title: string; primary_concept_id?: string;
-                primary_concept_title?: string };
+type Tab = "import" | "share";
 
 /** 사이드카 쓰기 큐는 단일 워커라 앞선 잡이 오래 걸리면 뒤가 함께 선다. 화면이
  *  "처리 중"에 하염없이 머무르면 사용자는 무엇이 됐고 무엇이 안 됐는지 알 길이
@@ -46,12 +34,12 @@ function withTimeout<T>(p: Promise<T>, ms = OP_TIMEOUT): Promise<T> {
   });
 }
 
-export function openTools(tab: Tab = "create") {
+export function openTools(tab: Tab = "import") {
   void import("./surfaces/settings").then((m) => m.openSettings("data", tab));
 }
 
 /** 설정 시트의 데이터 분류 안에 그린다. 시트를 새로 열지 않는다. */
-export function mountTools(host: SheetHandle, tab: Tab = "create"): () => void {
+export function mountTools(host: SheetHandle, tab: Tab = "import"): () => void {
   const T = COPY.ui.tools;
   let cleanup: (() => void) | null = null;
   const sheet = host;
@@ -59,29 +47,29 @@ export function mountTools(host: SheetHandle, tab: Tab = "create"): () => void {
   const draw = (t: Tab) => {
     cleanup?.();
     cleanup = null;
+    // 설명은 탭 줄 **아래** 한 줄이다. 탭과 한 줄에 두면 같은 모양의 넷째 탭으로 읽힌다.
     host.body.innerHTML = `
       <div class="tools-tabs">
         <span class="seg">
-          ${(["create", "import", "share"] as Tab[]).map((k) =>
+          ${(["import", "share"] as Tab[]).map((k) =>
             `<button class="chip${k === t ? " active" : ""}" data-tab="${k}">${esc(T[k])}</button>`).join("")}
         </span>
-        <span class="hint tools-sub"></span>
       </div>
+      <p class="hint tools-sub"></p>
       <div class="tools-pane" id="tools-pane"></div>`;
     host.body.querySelector<HTMLElement>(".tools-sub")!.textContent =
-      t === "create" ? T.createSub : t === "import" ? T.importSub : T.shareSub;
+      t === "import" ? T.importSub : T.shareSub;
     host.body.querySelectorAll<HTMLElement>("[data-tab]").forEach((b) =>
       b.addEventListener("click", () => draw(b.dataset.tab as Tab)));
     const pane = host.body.querySelector<HTMLElement>("#tools-pane")!;
     host.foot.innerHTML = "";
     if (t === "share") { void renderShare(pane, sheet); return; }
-    // 만들기·가져오기는 쓰기다. 읽기만 되는 공간(커뮤니티, 팀 열람자)에서는 편집기와 드롭존을
-    // 열지 않고 안내만 보인다. `canWriteHere` 가 실패하면 연다: 막는 것은 서버다.
+    // 가져오기는 쓰기다. 읽기만 되는 공간(커뮤니티, 팀 열람자)에서는 드롭존을 열지 않고
+    // 안내만 보인다. `canWriteHere` 가 실패하면 연다: 막는 것은 서버다.
     void canWriteHere().catch(() => true).then((ok) => {
       if (!pane.isConnected) return;
       if (!ok) { pane.innerHTML = `<p class="hint">${esc(COPY.ui.settingsUi.readOnlySpace)} ${esc(COPY.ui.settingsUi.readOnlyShareStill)}</p>`; return; }
-      if (t === "create") void renderCreate(pane, sheet, (fn) => { cleanup = fn; });
-      else renderImport(pane, sheet);
+      renderImport(pane, sheet);
     });
   };
   draw(tab);
@@ -171,6 +159,7 @@ async function renderShare(pane: HTMLElement, sheet: SheetHandle, srcTeam?: stri
       <input type="radio" name="tl-scope" value="here" ${hereOn ? "" : "disabled"} />
       <span class="title">${esc(T.scopeHere)}</span>
       ${hereOn ? "" : `<span class="hint">${esc(here ? T.sourceOff : T.scopeHereOff)}</span>`}</label>
+    <div class="tools-preview" id="tl-preview" aria-live="polite"></div>
     <p class="pack-backup">
       <button class="pack-linkbtn" id="tl-backup">${esc(P.backupLink)}</button>
       <span class="hint">${esc(P.backupDesc)}</span>
@@ -240,166 +229,56 @@ async function renderShare(pane: HTMLElement, sheet: SheetHandle, srcTeam?: stri
     }
   });
 
+  // 다른 스페이스에서 뜬 팩은 목적지를 묻지 않는다 — 지금 있는 곳으로 들어온다.
+  // 구 Packs 의 `개인 → 팀 불러오기`가 이 갈래로 일반화됐다(방향은 양쪽 다 된다).
+  // 이름을 못 읽었으면 intoLabel 을 비워 시트가 일반 명칭("팀 공간")을 쓰게 둔다.
+  const shareOpts = sameSpace ? {} : {
+    from: { team: src || null }, into: { team: cfg.team },
+    intoLabel: cfg.team ? teams.find((t) => t.id === cfg.team)?.name : S.spacePersonal,
+  };
+
   sheet.foot.innerHTML = sheetActions(
-    { id: "tl-go", label: T.go }, { id: "tl-cancel", label: COPY.ui.common.cancel });
+    { id: "tl-go", label: COPY.ui.sheet.save }, { id: "tl-cancel", label: COPY.ui.common.cancel });
   sheet.foot.querySelector("#tl-cancel")!.addEventListener("click", sheet.close);
-  sheet.foot.querySelector("#tl-go")!.addEventListener("click", async () => {
+  const go = sheet.foot.querySelector<HTMLButtonElement>("#tl-go")!;
+
+  // 범위를 고르면 그 자리에서 나갈 것(수치·목록·개별 제외)을 보인다. 범위 고르기와 확인이 한 화면이라
+  // 설정을 닫고 시트를 하나 더 거치지 않는다. 늦게 온 응답은 버린다(범위를 연달아 바꿀 때).
+  const preview = pane.querySelector<HTMLElement>("#tl-preview")!;
+  const { renderSharePreview, sendSharePick } = await import("./sheets");
+  let collect: (() => ReturnType<Awaited<ReturnType<typeof renderSharePreview>>>) | null = null;
+  let version = 0;
+  const scopeNow = () => {
     const pick = pane.querySelector<HTMLInputElement>("input[name=tl-scope]:checked")?.value;
     const topic = pane.querySelector<HTMLSelectElement>("#tl-topic")?.value;
-    sheet.close();
-    // `지금 보고 있는 곳`은 View 가 자기 스코프를 안다 — 훅이 시트를 연다.
-    if (pick === "here") { here?.share(); return; }
-    const { openShareSheet } = await import("./sheets");
-    const scope = pick === "topic" && topic ? { domain: topic } : {};
-    if (sameSpace) { openShareSheet(scope); return; }
-    // 다른 스페이스에서 뜬 팩은 목적지를 묻지 않는다 — 지금 있는 곳으로 들어온다.
-    // 구 Packs 의 `개인 → 팀 불러오기`가 이 갈래로 일반화됐다(방향은 양쪽 다 된다).
-    // 이름을 못 읽었으면 intoLabel 을 비워 시트가 일반 명칭("팀 공간")을 쓰게 둔다.
-    const intoLabel = cfg.team
-      ? teams.find((t) => t.id === cfg.team)?.name
-      : S.spacePersonal;
-    openShareSheet(scope, {
-      from: { team: src || null }, into: { team: cfg.team }, intoLabel,
-    });
-  });
-}
-
-// ── 만들기 ──────────────────────────────────────────────────────────────────
-async function renderCreate(pane: HTMLElement, sheet: SheetHandle,
-                            setCleanup: (fn: () => void) => void) {
-  const T = COPY.ui.tools;
-  pane.innerHTML = `
-    <div id="tl-ed"></div>
-    <p class="hint rail-sec">${esc(T.linkHeader)}</p>
-    <p class="hint">${esc(T.linkHint)}</p>
-    <input id="tl-q" class="rail-filter" type="search" autocomplete="off"
-           placeholder="${esc(T.linkFilter)}" />
-    <div class="sheet-list" id="tl-docs">${loaderRows(COPY.ui.common.loading, { count: 4 })}</div>
-    <div id="tl-result" role="status"></div>`;
-
-  const { mountDocEditor } = await import("./doc-editor");
-  let docId = "";
-  let savedTitle = "";
-  let finishing = false;
-  const handle = await mountDocEditor(pane.querySelector<HTMLElement>("#tl-ed")!, {
-    owner: cfg.owner,
-    manualSave: true,
-    onSaved: (id, title) => { docId = id; savedTitle = title; },
-  });
-  // 편집기가 뜨는 사이 다른 탭·분류로 옮겼으면 이 판은 떨어져 나갔고, 그 전환의
-  // 정리는 이미 지나갔다(그때는 핸들이 없었다). 여기서 바로 해제하고 발도 쓰지 않는다.
-  if (!pane.isConnected) { void handle.dispose(); return; }
-  setCleanup(() => handle.dispose());
-
-  // 연결 후보 — 대표 개념이 없는 문서는 연결할 자리가 없다(고를 수는 있어도 그을
-  // 곳이 없다). 비활성으로 두고 이유를 밝힌다.
-  let docs: DocRow[] = [];
-  const picked = new Set<string>();
-  const listEl = pane.querySelector<HTMLElement>("#tl-docs")!;
-  const drawList = () => {
-    const q = (pane.querySelector<HTMLInputElement>("#tl-q")?.value || "").trim().toLowerCase();
-    const rows = docs.filter((d) => d.doc_id !== docId
-      && (!q || docTitle(d.title).toLowerCase().includes(q)));
-    listEl.innerHTML = rows.length === 0
-      ? `<p class="hint">${esc(T.linkNone)}</p>`
-      : rows.map((d) => {
-          const ok = !!d.primary_concept_id;
-          return `<label class="list-row"${ok ? "" : ' style="opacity:.55"'}>
-            <input type="checkbox" data-doc="${esc(d.doc_id)}" ${ok ? "" : "disabled"}
-                   ${picked.has(d.doc_id) ? "checked" : ""} />
-            <span class="title" title="${esc(docTitle(d.title))}">${esc(docTitle(d.title))}</span>
-            <span class="meta">${ok ? esc(d.primary_concept_title || "") : esc(T.noConcept)}</span>
-          </label>`;
-        }).join("");
-    listEl.querySelectorAll<HTMLInputElement>("input[data-doc]").forEach((cb) =>
-      cb.addEventListener("change", () => {
-        if (cb.checked) picked.add(cb.dataset.doc!); else picked.delete(cb.dataset.doc!);
-        drawFoot();
-      }));
+    return { pick, scope: pick === "topic" && topic ? { domain: topic } : {} };
   };
-  const drawFoot = () => {
-    sheet.foot.innerHTML = sheetActions(
-      { id: "tl-done", label: T.linkCta(picked.size) },
-      { id: "tl-cancel", label: COPY.ui.common.cancel });
-    sheet.foot.querySelector<HTMLButtonElement>("#tl-done")!.disabled = finishing;
-    sheet.foot.querySelector("#tl-cancel")!.addEventListener("click", sheet.close);
-    sheet.foot.querySelector("#tl-done")!.addEventListener("click", () => void finish());
-  };
-  pane.querySelector<HTMLInputElement>("#tl-q")!.addEventListener("input", drawList);
-  drawFoot();
-  try {
-    const res = await api.docList(cfg.owner);
-    docs = (res.docs as DocRow[]) || [];
-  } catch { docs = []; }
-  if (pane.isConnected) drawList();
-
-  /** 저장 → 개념 파생 → 대표 개념 사이에 relates_to. **원자적이지 않다** —
-   *  문서 저장과 링크는 별개 호출이라 링크만 실패할 수 있다. 그 사실을 숨기지
-   *  않고 건별로 보고하고, 실패분만 다시 시도할 길을 준다. */
-  async function finish() {
-    if (finishing) return;
-    const out = pane.querySelector<HTMLElement>("#tl-result")!;
-    finishing = true;
-    out.innerHTML = "";
-    drawFoot();
+  const refresh = async () => {
+    const mine = ++version;
+    collect = null;
+    const { pick, scope } = scopeNow();
+    // `지금 보고 있는 곳`은 View 가 자기 스코프를 안다 — 미리보기는 그 시트가 한다.
+    if (pick === "here") { preview.innerHTML = ""; go.disabled = false; return; }
+    go.disabled = true;
+    preview.innerHTML = sheetProgress(COPY.ui.sheet.preparing);
     try {
-      if (!await handle.saveNow?.()) return;
-      void import("./lnb").then((m) => m.refreshLnb({ quiet: true }));
-      const showSaved = () => {
-        out.innerHTML = `<p>${esc(COPY.ui.viewx.edSaved)}: ${esc(savedTitle)}</p>
-          <button class="btn" id="tl-open">${esc(COPY.search.actions.open)}</button>`;
-        out.querySelector("#tl-open")!.addEventListener("click", () => {
-          sheet.close();
-          const h = viewHooks();
-          if (h) h.openDoc(docId);
-          else void import("./doc-editor").then((m) => m.openDocSheet({ owner: cfg.owner, docId }));
-        });
-      };
-      if (picked.size === 0) { showSaved(); return; }
-      out.innerHTML = `<p class="hint">${esc(T.linking)}</p>`;
-      // 내 문서의 대표 개념을 얻으려면 먼저 개념이 있어야 한다 — 추출을 반영한다.
-      await withTimeout(api.docExtract(cfg.owner, docId, true));
-      const fresh = await withTimeout(api.docList(cfg.owner));
-      const rows = (fresh.docs as DocRow[]) || [];
-      const mine = rows.find((d) => d.doc_id === docId);
-      const from = mine?.primary_concept_id;
-      if (!from) { out.innerHTML = `<p class="hint">${esc(T.noConcept)}</p>`; return; }
-      const targets = [...picked]
-        .map((id) => rows.find((d) => d.doc_id === id))
-        .filter((d): d is DocRow => !!d?.primary_concept_id);
-      let ok = 0;
-      const failed: string[] = [];
-      for (const t of targets) {
-        try {
-          // 엣지만 보낸다. 끝점은 스토어에서 찾는다(v0.8.4, `api/fragment.py` `_resolve_endpoint_type`).
-          // 개념을 노드로 다시 실으면 제목이 빈 개념은 허브가 id 로 덮는다(`str(title) or nid`).
-          // 근거 문장도 싣지 않는다: 사람이 고른 연결이고, 화면 라벨은 근거가 아니다.
-          // 근거: [[record:unguarded-title-overwrote-107-nodes-with-their-ids]]
-          const r: any = await withTimeout(api.ingestFragment({
-            nodes: [],
-            edges: [{ type: "relates_to", from, to: t.primary_concept_id }],
-          }));
-          if (r?.executed === false) throw new Error(r.error || "link failed");
-          ok += 1;
-        } catch { failed.push(t.doc_id); }
-      }
-      if (failed.length === 0) {
-        showSaved();
-        out.insertAdjacentHTML("afterbegin", `<p>${esc(T.linked(ok))}</p>`);
-        return;
-      }
-      out.innerHTML = `<p>${esc(T.linkPartial(ok, failed.length))}</p>
-        <button class="btn" id="tl-retry">${esc(T.retry)}</button>`;
-      out.querySelector("#tl-retry")!.addEventListener("click", () => {
-        picked.clear();
-        failed.forEach((id) => picked.add(id));
-        void finish();
-      });
+      const c = await renderSharePreview(preview, scope, shareOpts, (any) => { if (mine === version) go.disabled = !any; });
+      if (mine === version && pane.isConnected) collect = c;
     } catch {
-      out.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`;
-    } finally {
-      finishing = false;
-      if (pane.isConnected) drawFoot();
+      if (mine === version) preview.innerHTML = `<div class="error-banner">${esc(COPY.packs.error)}</div>`;
     }
-  }
+  };
+  pane.querySelectorAll<HTMLInputElement>("input[name=tl-scope]").forEach((r) =>
+    r.addEventListener("change", () => void refresh()));
+  topicSel?.addEventListener("change", () => void refresh());
+  void refresh();
+
+  go.addEventListener("click", () => {
+    const { pick } = scopeNow();
+    if (pick === "here") { sheet.close(); here?.share(); return; }
+    const chosen = collect?.();
+    if (!chosen) return;
+    sheet.close();
+    sendSharePick(chosen, shareOpts);
+  });
 }

@@ -77,11 +77,13 @@ export function openFloatPanel(opts: {
   title: string; x: number; y: number;
   closeLabel: string;
   onClose?: () => void;
+  /** 카드 모양 변형(`float-card--tall` 같은 추가 클래스). 내용이 긴 카드가 쓴다. */
+  variant?: string;
 }): FloatHandle {
   const swapping = live !== null;   // 카드가 열린 채 다른 노드를 고른 것 — 등장을 되풀이하지 않는다
   closeFloatPanel();
   const el = document.createElement("div");
-  el.className = swapping ? "float-card float-card--swap" : "float-card";
+  el.className = ["float-card", swapping ? "float-card--swap" : "", opts.variant || ""].filter(Boolean).join(" ");
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", opts.title);
   el.innerHTML = `
@@ -133,8 +135,12 @@ export function openFloatPanel(opts: {
   // 창이 줄면 카드가 밖으로 나가 있을 수 있다 — 다시 접어 넣는다.
   const onResize = () => { const b = el.getBoundingClientRect(); clamp(el, b.left, b.top); };
   window.addEventListener("resize", onResize);
+  // 카드는 내용이 오기 전(로딩 한 줄)에 자리를 잡는다. 내용이 와서 키가 자라면 아래가 화면 밖으로
+  // 나가므로 키가 바뀔 때마다 다시 접어 넣는다.
+  const grow = typeof ResizeObserver === "function" ? new ResizeObserver(onResize) : null;
+  grow?.observe(el);
   const origClose = opts.onClose;
-  live.onClose = () => { window.removeEventListener("resize", onResize); origClose?.(); };
+  live.onClose = () => { window.removeEventListener("resize", onResize); grow?.disconnect(); origClose?.(); };
 
   return {
     el, body,

@@ -19,7 +19,7 @@ import { mountSpacePicker } from "../space-picker";
 type SettingsCat =
   | "general" | "reading" | "account" | "ai"
   | "data" | "graphmd" | "advanced" | "about";
-export type DataTab = "create" | "import" | "share";
+export type DataTab = "import" | "share";
 
 type Live = {
   go: (cat: SettingsCat, dataTab?: DataTab) => void;
@@ -78,7 +78,7 @@ async function renderSettings(
   const CATS = ALL_CATS.filter((c) => !c.desktop || !WEB);
 
   let active: SettingsCat = CATS.some((c) => c.id === start) ? start : "general";
-  let toolsTab: DataTab = dataTab ?? "create";
+  let toolsTab: DataTab = dataTab ?? "import";
   let cleanup: (() => void) | null = null;
 
   function shell() {
@@ -406,8 +406,12 @@ async function renderSettings(
   // 원격 MCP 엔드포인트(허브). `vinc_mcp/http_server.py` 의 `/mcp` 와 짝이고, 같은
   // 호스트가 OAuth 디스커버리(`/.well-known/*`)도 낸다 — 커넥터는 이 주소 하나만 받는다.
   const REMOTE_MCP_URL = "https://mcp.vincs.io/mcp";
-  // 여기서 확인한 등록만 기억한다. 파일을 읽지 않고 기존 등록 상태를 짐작하지 않는다.
-  const registeredHosts = new Set<string>();
+  // 이 기기에서 연결에 성공한 호스트만 기억한다(해제하면 지운다). 호스트 설정 파일을 읽지 않으므로
+  // 다른 길로 등록한 것은 모른다. 기억한 호스트는 상태와 해제만, 나머지는 연결만 보인다.
+  const MCP_KEY = "vinc.mcp.connected";
+  const registeredHosts = new Set<string>(
+    (() => { try { const v = JSON.parse(localStorage.getItem(MCP_KEY) || "[]"); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []; } catch { return []; } })());
+  const keepHosts = () => { try { localStorage.setItem(MCP_KEY, JSON.stringify([...registeredHosts])); } catch { /* 기억만 못 한다 */ } };
   const busyHosts = new Set<string>();
   const hostResults = new Map<string, string>();
   let paintConnections = () => {};
@@ -472,10 +476,12 @@ async function renderSettings(
       const add = body.querySelector<HTMLButtonElement>(`#mcp-add-${client}`)!;
       const remove = body.querySelector<HTMLButtonElement>(`#mcp-rm-${client}`)!;
       if (!add || !remove) return;
-      add.disabled = busyHosts.has(client) || !keyReady || registeredHosts.has(client);
+      const linked = registeredHosts.has(client);
+      add.hidden = linked; remove.hidden = !linked;
+      add.disabled = busyHosts.has(client) || !keyReady;
       remove.disabled = busyHosts.has(client);
       const result = rowResult(client);
-      result.textContent = !keyReady ? U.mcpNoKey : hostResults.get(client) || "";
+      result.textContent = !keyReady ? U.mcpNoKey : hostResults.get(client) || (linked ? U.mcpConnectedHere : "");
     }
     function rowResult(client: string): HTMLElement {
       return body.querySelector<HTMLElement>(`#mcp-result-${client}`)!;
@@ -528,11 +534,14 @@ async function renderSettings(
           // 사람이 손으로 이을 수 있게 **실행할 줄을 그대로** 보여 준다.
           say(`${U.mcpNeedsCli(host)} ${res.command}`);
         } else if (!ok) {
-          say(action === "uninstall" && res?.removed === false
-            ? U.mcpNothing(host) : `${U.mcpFail}: ${res?.note || ""}`.trim());
+          const nothing = action === "uninstall" && res?.removed === false;
+          // 지울 것이 없었다면 연결된 것이 아니다 — 기억도 지운다.
+          if (nothing) { registeredHosts.delete(client); keepHosts(); }
+          say(nothing ? U.mcpNothing(host) : `${U.mcpFail}: ${res?.note || ""}`.trim());
         } else {
           if (action === "install") registeredHosts.add(client);
           else registeredHosts.delete(client);
+          keepHosts();
           say(action === "install" ? U.mcpDone(host) : U.mcpRemoved(host));
         }
       } catch (e: any) {

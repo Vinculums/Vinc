@@ -275,10 +275,12 @@ function repaintLabel(sp: THREE.Sprite, pal: Palette): void {
 /** 노드 렌더 반경 — nodeObject(기하)와 화살촉 오프셋(D33)이 공유하는 단일 정의. */
 function nodeRadius(n: N3, prefs: ViewPrefs): number {
   // D31 열린 층 — 크기 스케일만 사용자 선택(√연결수 ↔ 균일); 형태=타입은 닫힌 층.
+  // 바닥은 12 다: 연결 하나뿐인 노드도 이 크기로 그린다. 크고 작은 차이(√연결수 · 토픽의 √기록수)는
+  // 그 위에 같은 폭으로 얹으므로 토픽은 여전히 일반 노드보다 한 급 크다.
   let r = n.kind === "domain"
-    ? 6 + 2.2 * Math.sqrt(n.records || 1)
-    : prefs.size === "uniform" ? 5
-    : Math.min(3 + 1.4 * Math.sqrt(n.degree || 1), 12);
+    ? 13.6 + 2.2 * Math.sqrt(n.records || 1)
+    : prefs.size === "uniform" ? 12
+    : Math.min(10.6 + 1.4 * Math.sqrt(n.degree || 1), 19.6);
   if (n.pinned) r *= 1.25;   // pin = 허브 승격(D32) — 확정된 노드는 한 급 크게
   // 사용자 배율(D31 열린 층) — **맨 마지막에** 곱한다. 위의 인코딩(무엇이 크고
   // 작은가)을 건드리지 않고 전체 크기만 옮긴다.
@@ -433,6 +435,8 @@ export function mount3d(el: HTMLElement, nodes: N3[], links: L3[], handlers: {
   const pickLabels = new Set<string>();
   const hubLabel = (n: N3) => {
     const sprite = labelSprite(n.label, pal);
+    // 글자는 노드 반지름 바깥에서 시작한다. 고정 간격이면 노드가 클 때 오브가 이름 앞부분을 가린다.
+    sprite.position.x = sprite.scale.x * 0.5 + nodeRadius(n, prefs) + 3;
     hubLabels.set(n.id, sprite);
     return sprite;
   };

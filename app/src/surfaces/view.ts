@@ -2073,11 +2073,13 @@ export async function renderView(el: HTMLElement, resume = false) {
 
   function openTopicCard(nd: N3) {
     const home = homeCardPos(), V = COPY.ui.viewx;
-    const card = openFloatPanel({ title: nd.label, x: home.x, y: home.y, closeLabel: V.railClose });
+    const card = openFloatPanel({ title: nd.label, x: home.x, y: home.y, closeLabel: V.railClose, variant: "float-card--tall" });
+    // 토픽 본문은 `.card-rows` 밖에 둔다. 그 줄들은 음수 여백으로 카드 안쪽 여백을 지우므로
+    // 안에 두면 글이 카드 테두리에 붙는다.
     card.body.innerHTML = `<div class="card-rows">
       ${detailHistory.length ? `<button class="btn" type="button" data-detail-back>${esc(V.readerBack)}</button>` : ""}
-      <button class="card-row" type="button" data-topic-open>${esc(V.topicDetail)}${chev("right")}</button>
-      <div data-topic-body></div></div>`;
+      <button class="card-row" type="button" data-topic-open>${esc(V.topicDetail)}${chev("right")}</button></div>
+      <div class="card-topic-body" data-topic-body></div>`;
     wireDetailBack(card.body, false);
     card.body.querySelector("[data-topic-open]")?.addEventListener("click", () => railFor(nd));
     void loadTopicDetail(card.body.querySelector<HTMLElement>("[data-topic-body]")!, nd, false);
