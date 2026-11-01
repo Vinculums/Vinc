@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import json
 import re
 import uuid
 
@@ -37,6 +38,11 @@ SUBJECT_MAX = 500
 HOST_MAX = 120
 OUTPUT_MAX = 131072
 CITED_MAX = 200
+#: 역할 props.cites 가 이 값이면 출력 단계마다 그래프에 실재하는 근거 id 가 있어야 한다.
+#: 출력 게이트의 검사 종류로 두지 않는다: 배포된 SDK 가 모르는 검사를 만나면 계약째 거절한다.
+CITES_REQUIRED = "required"
+#: `/node-edges` 한 번에 묻는 id 수의 상한(사이드카 계약).
+_EXISTS_BATCH = 100
 #: 호스트가 보고하는 사용량. 합산해 역할의 budget 과 견준다.
 USAGE_KEYS = ("tool_calls", "tokens_in", "tokens_out", "cost_usd")
 #: 호스트가 관측한 능력 id 의 문법(역할 정책과 같다, 와일드카드는 없다). 한 번에·실행 전체에 담는 상한.
@@ -141,7 +147,8 @@ def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
         if policy is not None:
             out["task"] = props.get("task", "")
             out["policy"] = {k: policy[k] for k in ("reads", "gates", "output_kind", "act_policy",
-                                                    "capabilities", "person_only", "never")
+                                                    "capabilities", "person_only", "never",
+                                                    "cites")
                              if k in policy}
             out["budget_left"] = _budget_left(policy, props)
     else:
@@ -251,6 +258,43 @@ def _add_cited(props: dict, cited) -> None:
             merged.append(item.strip())
     if merged:
         props["cited_ids"] = merged[:CITED_MAX]
+
+
+def _missing_ids(bridge, owner: str, ids: list[str]) -> list[str] | None:
+    """그래프에 없는 id 들. 물어볼 수 없으면 None."""
+    missing: list[str] = []
+    for i in range(0, len(ids), _EXISTS_BATCH):
+        got = bridge.request("GET", "/node-edges", params={
+            "owner": owner, "nodes": json.dumps(ids[i:i + _EXISTS_BATCH]), "limit": 1})
+        if not isinstance(got, dict) or not got.get("executed"):
+            return None
+        missing += [m for m in got.get("missing_nodes") or [] if isinstance(m, str)]
+    return missing
+
+
+def _citations(bridge, owner: str, props: dict, policy: dict, output: str) -> list[str]:
+    """props.cites 가 required 인 역할의 근거 검사. 실패한 검사 이름들(통과면 빈 목록).
+
+    근거는 cited_ids 와 출력 끝의 Sources 줄에서 모은다. 없는 id 는 기록에서 빼므로 다음
+    시도가 같은 id 에 계속 막히지 않는다."""
+    if policy.get("cites") != CITES_REQUIRED:
+        return []
+    _add_cited(props, role_output_gate.sources_line(output) or [])
+    ids = list(props.get("cited_ids") or [])
+    if not ids:
+        return ["citations_required"]
+    missing = _missing_ids(bridge, owner, ids)
+    if missing is None:
+        return ["citations_unverified"]
+    if not missing:
+        return []
+    kept = [i for i in ids if i not in set(missing)]
+    if kept:
+        props["cited_ids"] = kept
+    else:
+        props.pop("cited_ids", None)
+    props["citations_missing"] = missing[:20]
+    return ["citations_missing"]
 
 
 def _used_capabilities(args: dict):
@@ -426,6 +470,15 @@ def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
         failed = _saved(bridge, owner, eid, props)
         return failed or _view(props, eid, policy, status="blocked",
                                failed_checks=props["gate_results"]["failed_checks"])
+    uncited = _citations(bridge, owner, props, policy, output)
+    if uncited:
+        # 근거가 없는 단계는 막는다. 실행은 열린 채 근거를 단 다음 시도를 받는다.
+        props["gate_results"] = {"verdict": "block", "failed_checks": uncited}
+        failed = _saved(bridge, owner, eid, props)
+        missing = props.get("citations_missing") if uncited == ["citations_missing"] else None
+        return failed or _view(props, eid, policy, status="blocked", failed_checks=uncited,
+                               **({"missing_ids": list(missing)} if missing else {}))
+    props.pop("citations_missing", None)
     result = role_output_gate.OutputGate(policy).evaluate(output, person_only_requests=gate_requests)
     props["gate_results"] = {"verdict": result.verdict, "failed_checks": list(result.failed_checks)}
     if result.verdict == "block":
