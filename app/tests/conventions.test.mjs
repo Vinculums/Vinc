@@ -12,8 +12,9 @@ let js = ts.transpileModule(await readFile(new URL('../src/conventions.ts', impo
 const stubs = {
   './api': `export const cfg = { owner: 'o' };
     export const remote = () => globalThis.__conv.remote;
+    export const canWriteHere = async () => globalThis.__conv.writable;
     export const api = new Proxy({}, { get: (o, k) => (...a) => globalThis.__conv.call(k, a) });`,
-  './copy': `export const COPY = { ui: { conv: new Proxy({}, { get: (o, k) => k === 'pending' ? (n) => 'pending:' + n : k }) } };`,
+  './copy': `export const COPY = { ui: { settingsUi: { readOnlySpace: 'readOnlySpace' }, conv: new Proxy({}, { get: (o, k) => k === 'pending' ? (n) => 'pending:' + n : k }) } };`,
   './components': `export const esc = (s) => String(s);
     export const sheetActions = (...b) => b.map((x) => '<button id="' + x.id + '">' + x.label + '</button>').join('');`,
 };
@@ -55,9 +56,9 @@ function matches(node, sel) {
 const GEN = '<!-- vinc:generated start v1 -->\n- concept: things\n<!-- vinc:generated end -->';
 const DOC = `# My conventions\n\nprose before\n${GEN}\nprose after`;
 
-async function mount({ text = DOC, remote = false, types = [], putOk = true } = {}) {
+async function mount({ text = DOC, remote = false, types = [], putOk = true, writable = true } = {}) {
   const calls = [];
-  globalThis.__conv = { remote, call: async (op, args) => {
+  globalThis.__conv = { remote, writable, call: async (op, args) => {
     calls.push([op, args]);
     if (op === 'conventions') return { text, doc_id: 'doc:graph-md' };
     if (op === 'docPut') return { executed: putOk };
@@ -138,4 +139,13 @@ test('the badge counts only what an assistant proposed, and is empty on remote g
   globalThis.__conv.remote = true;
   refreshBadge(); await settle();
   assert.deepEqual(Object.values(badges).map((b) => [b.textContent, b.hidden]), [['', true], ['', true], ['', true]]);
+});
+
+test('a read-only space shows GRAPH.md without any write control', async () => {
+  const s = await mount({ remote: true, writable: false });
+  assert.match(s.host.innerHTML, /readOnlySpace/);
+  assert.match(s.host.querySelector('.conv-gen').textContent, /prose before/);
+  assert.equal(s.host.querySelectorAll('.conv-ta').length, 0);
+  assert.equal(s.sheet.foot.innerHTML, '');
+  assert.deepEqual(s.ops(), ['conventions']);
 });
