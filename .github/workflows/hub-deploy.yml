@@ -469,6 +469,11 @@ jobs:
           # 리포 변수를 off 로 두면 다음 배포부터 예전처럼 드롭한다(되돌리는 스위치).
           # 근거: [[record:keep-index-mode-survived-104-trials-on-ladybug-0-21-2-at-two-cores-while-the-unguarded-control-crashed-1-of-20-2026-10-18]]
           ENVVARS+=("VINC_KEEP_VECTOR_INDEX=${{ vars.VINC_KEEP_VECTOR_INDEX || 'on' }}")
+          # 노드 후보 ColBERT 재채점과 brief 학습 규칙. 매번 싣는다: 변수를 비우면 꺼진 값이 들어가
+          # 다음 배포부터 예전 순서·규칙으로 돌아간다(되돌리는 스위치). 둘은 따로 켠다.
+          # 근거: [[vinc.spec.retrieval-knobs-storage]] · [[vinc.spec.retrieval-knobs-brief]]
+          ENVVARS+=("VINC_NODE_COLBERT=${{ vars.VINC_NODE_COLBERT || 'off' }}")
+          ENVVARS+=("VINC_BRIEF_RULE=${{ vars.VINC_BRIEF_RULE || 'production' }}")
           if [ "${LAYOUT_PRESENT:-0}" = '1' ]; then
             ENVVARS+=("VINC_LAYOUT_REMOTE=$LAYOUT_REMOTE" "VINC_LAYOUT_TOKEN=secretref:layout-token")
           fi
