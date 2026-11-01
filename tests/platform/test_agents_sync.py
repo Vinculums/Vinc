@@ -155,6 +155,34 @@ class Shell(unittest.TestCase):
         self.assertNotIn("## Works with", render_shell(role))
 
 
+class Pull(unittest.TestCase):
+    """`--pull` 을 가짜 원격으로 부른다. 네트워크도 토큰도 쓰지 않는다."""
+
+    def test_a_model_free_role_gets_no_shell_and_is_no_ones_peer(self):
+        from unittest import mock
+
+        import scripts.agents_sync as sync
+        gate = {"id": "concept:agent-gate", "label": "Decision Gate",
+                "tags": ["role", "agent", sync.MODEL_FREE_TAG],
+                "props": {"tier": "verify", "rung": "none", "mission": "Lists."}}
+        nodes = {_NODE["id"]: _NODE, gate["id"]: gate}
+        edge = {"source": _NODE["id"], "target": gate["id"], "type": "PREREQUISITE_OF"}
+
+        def call(tool, args):
+            if tool == "vinc_role":
+                return {"executed": True, "next_offset": None,
+                        "roles": [{"id": i} for i in nodes]}
+            return {"found": True, "nodes": list(nodes.values()), "edges": [edge]}
+
+        written = []
+        with mock.patch("vinc_mcp.remote.call", side_effect=call), \
+                mock.patch.object(sync, "write_snapshot", written.append):
+            self.assertEqual(sync.cmd_pull(), 0)
+        roles = written[0]["roles"]
+        self.assertEqual([r["id"] for r in roles], [_NODE["id"]])
+        self.assertNotIn("works_with", roles[0])
+
+
 class RepoIsClean(unittest.TestCase):
     def test_committed_shells_match_the_committed_snapshot(self):
         """CI 와 같은 검사를 로컬에서도 돌린다 — 게이트를 푸시 후에 처음 만나면 고치는

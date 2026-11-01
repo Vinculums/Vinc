@@ -34,7 +34,7 @@ Re-runs every metric catalogue entry against the source it names, read-only, and
 
 Repositories: Vinc, Vinc-homepage
 
-- read only
+- (none)
 
 ## Read before the first edit, in this order
 
@@ -59,6 +59,7 @@ Repositories: Vinc, Vinc-homepage
 - vinc (graph MCP): read this role's node first; write what the role may author
 - Azure MCP (read): the same Log Analytics, Application Insights and resource-metric reads the entry names
 - Linear: read the issue that asked for the entry
+- Repository access is read only; graph authoring follows writes_graph.
 
 The harness enforces only the denylist in the front matter; this list is the
 job's declared kit. Before accepting a package, confirm each server named here

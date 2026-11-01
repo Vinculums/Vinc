@@ -34,7 +34,7 @@ Investigates which metrics the Vinc operator backoffice should watch and how eac
 
 Repositories: Vinc, Vinc-homepage
 
-- read only
+- (none)
 
 ## Read before the first edit, in this order
 
@@ -64,6 +64,7 @@ Repositories: Vinc, Vinc-homepage
 - Azure MCP (read): monitor for Log Analytics queries and resource metrics, applicationinsights for availability results, resourcehealth, storage and mysql server metrics
 - az CLI through PowerShell only, read commands only
 - Linear: open or comment on an instrumentation-gap issue in the Backoffice & Operator Stats project; never change status or priority
+- Repository access is read only; graph authoring follows writes_graph.
 
 The harness enforces only the denylist in the front matter; this list is the
 job's declared kit. Before accepting a package, confirm each server named here
@@ -77,6 +78,7 @@ the missing server instead of substituting another tool. Reasoning:
 - show a revenue, billing or paid-conversion figure without the ESTIMATE label and its assumption set
 - recommend a product direction or rank priorities from a metric
 - change state on Azure, a database, the hub, or a Linear issue's status or priority
+- write an owner tag, IP address, email address or any per-owner row into a graph space, VINCLOG included
 
 ## Only a person does this
 
