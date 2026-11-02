@@ -504,7 +504,7 @@ class _Embedder:
         self._sess = ort.InferenceSession(onnx_path, sess_options=opts, providers=providers)
         self._names = [i.name for i in self._sess.get_inputs()]
         print(f"[embed] model ready ({MODEL}, onnx, cache={CACHE}, "
-              f"providers={self._sess.get_providers()}, rss={_rss_mb()}MB)", flush=True)
+              f"providers={getattr(self._sess, 'get_providers', lambda: providers)()}, rss={_rss_mb()}MB)", flush=True)
 
     def encode(self, texts: list[str], *, query: bool = False) -> list[list[float]]:
         """청크 목록을 임베딩한다 — **반드시 나눠서** 세션에 넣는다. `query` 는 줄을
