@@ -825,6 +825,7 @@
     "decision:sec-1",
     "decision:share-documents-follow-the-nodes-that-carry-them",
     "decision:shims-are-records-retired-by-a-person-after-an-ablation-row-2026-10-25",
+    "decision:ship-brief-rule-v3-on-the-owners-reading-of-the-wrong-picks-2026-11-03",
     "decision:site-boards-are-captures-of-the-running-code",
     "decision:space-transfer-sends-size-bounded-chunks-nodes-then-edges-then-documents",
     "decision:swap-the-production-encoder-to-bge-m3-ko-int8-after-the-hub-encoder-work-2026-10-18",
@@ -1180,6 +1181,9 @@
     },
     "decision:shims-are-records-retired-by-a-person-after-an-ablation-row-2026-10-25": {
       "validity": "current"
+    },
+    "decision:ship-brief-rule-v3-on-the-owners-reading-of-the-wrong-picks-2026-11-03": {
+      "validity": "unknown"
     },
     "decision:site-boards-are-captures-of-the-running-code": {
       "validity": "current"
