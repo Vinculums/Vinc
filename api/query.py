@@ -3469,6 +3469,21 @@ _LEARNED_W = [0.653670720249066, 1.0327584901774332, -0.18126837306254473, -0.37
               -0.6251645103744707, 0.10649465847294845, 0.8194124383935194, -0.6231877383599321, 0.10145310307050287,
               -0.42554129869112434]
 _LEARNED_T = 0.4855
+#: v3 학습 규칙 — v2 의 열 특징에 유효구간 필터가 감춘 행에서 나온 넷을 더한 열넷. brief 경로 전체
+#: (사전 순서 기권 → ColBERT 순서 위의 규칙, 토큰 동점 가드 없음)에서 맞춰 고정한 그대로다
+#: (`frozen_v3.json`, sha256 c9a3fb2b…). 특징 순서·정의를 바꾸면 상수가 뜻을 잃는다
+#: (:func:`_brief_v3_features`). 문턱 아래는 되묻는다.
+#: 근거: [[decision:ship-brief-rule-v3-on-the-owners-reading-of-the-wrong-picks-2026-11-03]]
+_V3_MU = [0.4890195805011388, 0.02600471254428717, 0.2799710249909453, 4.690329590727997, 0.22764569427916043,
+          0.7576964867801521, 0.4469395146685983, 0.04225958312205718, 0.4878007591914889, 0.32560666425208257,
+          1.932633103947845, 1.4154291923216227, 0.3487029348902844, 0.9974646867077146]
+_V3_SD = [0.05659572299459152, 0.02600220280012217, 0.44898468910915157, 4.776808934344869, 0.30744768971516356,
+          1.2894831272731022, 2.7083567306240948, 0.05636093631911328, 0.15418905886504955, 0.468601072751569,
+          2.5222996592202773, 1.6853656409255495, 0.4304271895055913, 0.050288026202780646]
+_V3_W = [0.4862374491844391, 1.062161570947516, -0.12316389848275623, -0.37911250114801065, 0.25814693177986686,
+         -0.38898580913481623, 0.027189152410250123, 0.8091480763571104, -0.5459152296028742, 0.2354164923841601,
+         -0.1228823968080043, 0.35268237679848913, 0.09248826361012848, 0.1539361828003368, -0.02308750100000047]
+_V3_T = 0.5397
 #: 되묻을 때 실을 후보 수. 3 에서 5 로 늘렸다 — 같은 풀의 앞자리를 더 보여 줄 뿐이라
 #: 보이던 정답이 가려지지 않고, 풀 안의 정답이 전부 보인다(G0 43 → 47/60). 앱의 ask.ts 는
 #: brief 를 부르지 않고 따로 3 개를 보여 준다. `VINC_BRIEF_EXPOSE` 로 프로세스마다 바꾼다.
@@ -3779,9 +3794,25 @@ def _brief_rank(rows: list[dict]) -> list[dict]:
         -_brief_int(h.get("title_tokens"))))
 
 
+def _brief_rule() -> str:
+    """`VINC_BRIEF_RULE` 의 값. `learned`(v2)·`v3` 만 학습 규칙이고, 그 밖의 값과 빈 값은 production 이다."""
+    v = (os.environ.get("VINC_BRIEF_RULE") or "production").strip().lower()
+    return v if v in ("learned", "v3") else "production"
+
+
 def _brief_rule_learned() -> bool:
-    """`VINC_BRIEF_RULE=learned` — ColBERT 순서 위의 학습 규칙. 기본은 production(기존 규칙)."""
-    return (os.environ.get("VINC_BRIEF_RULE") or "production").strip().lower() == "learned"
+    """`VINC_BRIEF_RULE=learned` — ColBERT 순서 위의 v2 학습 규칙. 기본은 production(기존 규칙)."""
+    return _brief_rule() == "learned"
+
+
+def _brief_rule_v3() -> bool:
+    """`VINC_BRIEF_RULE=v3` — brief 경로 전체로 다시 맞춘 v3 학습 규칙(:func:`_brief_resolve_v3`)."""
+    return _brief_rule() == "v3"
+
+
+def _brief_rule_colbert() -> bool:
+    """학습 규칙(v2·v3)이면 ColBERT 로 다시 선 후보 위에서 해소한다. 기존 규칙은 그 순서를 안 본다."""
+    return _brief_rule() != "production"
 
 
 _HANGUL = re.compile(r"[가-힣]")
@@ -3820,6 +3851,51 @@ def _brief_resolve_learned(query: str, hits: list[dict]) -> tuple[str, list[dict
         return "choose", list(hits), None
     p = _brief_learned_p(x)
     return ("resolved", [hits[0]], p) if p >= _LEARNED_T else ("choose", list(hits), p)
+
+
+def _brief_v3_prod_head(hits: list[dict]) -> list[dict]:
+    """재채점 **전** 순서(`prod_rank`)의 앞 `_BRIEF_RESOLVE_N` 개. v3 의 의미만 기권은 이 목록으로 본다.
+    `prod_rank` 가 없는 행은 뒤로 간다(안정 정렬)."""
+    return sorted(hits, key=lambda h: h.get("prod_rank") or 99)[:_BRIEF_RESOLVE_N]
+
+
+def _brief_v3_features(query: str, hits: list[dict], res: dict) -> list[float] | None:
+    """v3 특징 열넷. 앞 열은 :func:`_brief_learned_features` 그대로(ColBERT 순서의 앞 다섯), 뒤 넷은
+    유효구간 필터가 감춘 행과 ColBERT 1위의 차이다:
+    감춘 행 최대 hit 토큰 − 1위 hit 토큰 · 감춘 행 최대 제목 토큰 − 1위 제목 토큰 ·
+    감춘 행 최소 의미 거리 − 1위 거리(어느 쪽이든 없으면 1.0) · 감춘 행이 있었는가."""
+    a = _brief_learned_features(query, hits)
+    if a is None:
+        return None
+    num = lambda v: float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None  # noqa: E731
+    pick = hits[0]
+    hb = res.get("validity_best_dropped") or [0, 0]
+    d, hd = num(pick.get("distance")), num(res.get("validity_best_dropped_distance"))
+    return a + [_brief_int(hb[0] if hb else 0) - _brief_int(pick.get("hit_tokens")),
+                _brief_int(hb[1] if len(hb) > 1 else 0) - _brief_int(pick.get("title_tokens")),
+                (hd - d) if (d is not None and hd is not None) else 1.0,
+                float(bool(res.get("validity_filtered")))]
+
+
+def _brief_v3_p(x: list[float]) -> float:
+    z = sum(((xi - m) / sd) * w for xi, m, sd, w in zip(x, _V3_MU, _V3_SD, _V3_W)) + _V3_W[-1]
+    return 1.0 / (1.0 + math.exp(-z))
+
+
+def _brief_resolve_v3(query: str, hits: list[dict], res: dict) -> tuple[str, list[dict], float | None]:
+    """v3 규칙으로 해소한다. `hits` 는 ColBERT 순서의 앞 `_BRIEF_RESOLVE_N` 개, `res` 는 search 응답이다.
+    의미만 기권(:func:`_brief_v3_prod_head`)은 brief 가 이 앞에서 끝냈다. 특징을 못 만들면 되묻는다.
+    제목이 질문과 같은 후보가 **하나**면 그것으로, 아니면 ColBERT 1위의 확률이 문턱 이상일 때만 확정한다.
+    토큰 동점 가드는 이 확정에 돌지 않는다 — 그 정보는 뒤 네 특징에 들어 있다."""
+    x = _brief_v3_features(query, hits, res)
+    if x is None:
+        return "choose", list(hits), None
+    norm = lambda t: " ".join((t or "").strip().lower().split())  # noqa: E731
+    named = [h for h in hits if norm(h.get("title")) == norm(query)]
+    p = _brief_v3_p(x)
+    if len(named) == 1:
+        return "resolved", named, p
+    return ("resolved", [hits[0]], p) if p >= _V3_T else ("choose", list(hits), p)
 
 
 def _brief_list_rank(rows: list[dict]) -> list[dict]:
@@ -4519,7 +4595,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                      as_of=as_of, mode=mode, known_at=known_at,
                      query_runtime=query_runtime, query_model=query_model,
                      # 기존 규칙은 ColBERT 순서 위에서 잰 적이 없다 — 학습 규칙일 때만 재채점된 후보로 해소한다.
-                     query_colbert=query_colbert if _brief_rule_learned() else None)
+                     query_colbert=query_colbert if _brief_rule_colbert() else None)
         # executed 는 노드 팔 기준이다 — 청크 팔만 죽어도 노드 팔은 owner 스코프 결과를 낸다.
         base["executed"] = bool(res.get("executed") or res.get("node_hits"))
         # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`
@@ -4556,13 +4632,20 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                 return base
         # 넓은 풀은 되묻기 목록용으로 따로 두고, 확정·기권·가드는 앞 `_BRIEF_RESOLVE_N` 개로 본다.
         pool = [h for h in res.get("node_hits") or [] if isinstance(h, dict) and h.get("id")]
-        res = {**res, "node_hits": (res.get("node_hits") or [])[:_BRIEF_RESOLVE_N]}
-        if _brief_semantic_none(res):
+        full = res.get("node_hits") or []
+        res = {**res, "node_hits": full[:_BRIEF_RESOLVE_N]}
+        rescored = (res.get("node_rescore") or {}).get("state") == "applied"
+        # v3 는 의미만 기권을 재채점 **전** 순서의 앞 다섯으로 본다(재채점이 기권 대상을 바꾸지 않게).
+        # 재채점이 안 된 질의는 기존 규칙 그대로 간다.
+        v3 = _brief_rule_v3() and rescored and bool(full)
+        if _brief_semantic_none({**res, "node_hits": _brief_v3_prod_head(full)} if v3 else res):
             base["note"] = "no sufficiently close semantic candidate"
             return base
-        learned = (_brief_rule_learned()
-                   and (res.get("node_rescore") or {}).get("state") == "applied")
-        if learned:
+        learned = _brief_rule_learned() and rescored
+        if v3:
+            status, picked, _p = _brief_resolve_v3(query, res.get("node_hits") or [], res)
+            base["resolution"] = {"rule": "v3", "p": None if _p is None else round(_p, 4)}
+        elif learned:
             # ColBERT 로 다시 선 후보 위의 학습 규칙. 재채점이 안 된 질의는 기존 규칙으로 간다.
             status, picked, _p = _brief_resolve_learned(query, res.get("node_hits") or [])
             base["resolution"] = {"rule": "learned", "p": None if _p is None else round(_p, 4)}
@@ -4588,7 +4671,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # 확정됐다(정직성 0.0 → 0.1667). 동점이던 Record 둘 중 하나가 걸러지면서 남은
         # 하나가 단독 승자가 된 모양이었다.
         # 근거: [[record:the-validity-filter-broke-a-tie-and-manufactured-confidence-2026-09-09]]
-        if status == "resolved" and picked and base.get("validity_filtered"):
+        # v3 확정에는 돌지 않는다: 감춘 행의 점수는 v3 특징(:func:`_brief_v3_features`)에 이미 있다.
+        if status == "resolved" and picked and base.get("validity_filtered") and not v3:
             _bd = tuple(base.get("validity_best_dropped") or (0, 0))
             if (_brief_hidden_ties(query, picked[0], _bd)
                     and not _brief_semantic_tie_clear(picked, res)):
@@ -4630,7 +4714,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             # **한 번** 자른다. 확정용 순위(팔 개수 → 토큰)는 의미 팔에만 걸린 후보를 맨 뒤로
             # 미는데, 넓은 풀에 새로 들어오는 정답은 대부분 그런 후보다.
             # 학습 규칙은 ColBERT 순서를 그대로 보인다 — 의미 순서로 다시 세우면 재채점을 되돌린다.
-            picked = list(pool) if learned else _brief_list_rank(pool)
+            picked = list(pool) if (learned or v3) else _brief_list_rank(pool)
             base["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
             if not _reask and _brief_quotes_on():
                 for _c in base["candidates"]:
