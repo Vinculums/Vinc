@@ -322,9 +322,15 @@ def _no_artifact_msg(model: str, want: str, cache: str, exc: BaseException) -> s
 def artifact_name(model: str) -> str:
     """이 모델의 int8-rr 아티팩트 파일명(빌드·런타임 공용 규약).
 
+    `VINC_EMBED_QUANTIZE=off` 이면 미리 내보낸 fp32 아티팩트 이름 `<모델>-fp32.onnx` 다.
+    GPU 가 있는 로컬 설치(vincOS)는 fp32 를 CUDA 로 돌린다 — 그 기기의 질의와 문서가
+    같은 아티팩트를 쓰므로 벡터 공간은 기기 안에서 하나다. 허브 형상은 바뀌지 않는다.
+
     캐시 디렉터리 하나가 모델 여러 벌을 담을 수 있어야 한다. 이름이 모델과 무관하면
     (옛 `e5-int8-rr.onnx` 고정) 모델을 바꿔도 **옛 모델의 파일을 그대로 집는다** —
     차원이 우연히 같으면 아무 오류 없이 딴 모델로 색인이 만들어진다."""
+    if os.environ.get("VINC_EMBED_QUANTIZE", "on") != "on":
+        return f"{model.split('/')[-1].lower()}-fp32.onnx"
     return _ARTIFACT_NAMES.get(model) or f"{model.split('/')[-1].lower()}-int8-rr.onnx"
 
 
@@ -473,9 +479,9 @@ class _Embedder:
             counter = Tokenizer.from_file(tok_path)
             _SPLIT.tok = lambda s: len(counter.encode(s).ids)
         # 스레드 1개 — 허브는 0.5 vCPU 를 사이드카·MCP 와 나눠 쓴다. 배경 작업이
-        # 전경 응답을 굶기지 않게 명시적으로 묶는다.
+        # 전경 응답을 굶기지 않게 명시적으로 묶는다. 로컬 설치는 VINC_EMBED_THREADS 로 올린다.
         opts = ort.SessionOptions()
-        opts.intra_op_num_threads = 1
+        opts.intra_op_num_threads = int(os.environ.get("VINC_EMBED_THREADS", "1") or "1")
         opts.inter_op_num_threads = 1
         # 🔴 **메모리 고점을 깎는 두 스위치.** 이 컨테이너는 1GiB 를 사이드카·MCP 와
         # 나눠 쓰고(실측 정상 상태 136MB) 가중치만 279MB 다. ORT 기본값은 둘 다 속도를
@@ -489,11 +495,16 @@ class _Embedder:
         opts.enable_mem_pattern = False
         print(f"[embed] loading onnx session … {onnx_path} ({_mb(onnx_path)}MB) "
               f"rss={_rss_mb()}MB", flush=True)
-        self._sess = ort.InferenceSession(
-            onnx_path, sess_options=opts, providers=["CPUExecutionProvider"])
+        # 실행 공급자: 기본 CPU(허브). GPU 가 있는 로컬 설치는
+        # VINC_EMBED_PROVIDERS=CUDAExecutionProvider,CPUExecutionProvider 로 GPU 를 먼저 쓴다.
+        providers = [p.strip() for p in os.environ.get(
+            "VINC_EMBED_PROVIDERS", "CPUExecutionProvider").split(",") if p.strip()]
+        if "CUDAExecutionProvider" in providers and hasattr(ort, "preload_dlls"):
+            ort.preload_dlls()   # pip 로 받은 CUDA·cuDNN 라이브러리를 찾게 한다
+        self._sess = ort.InferenceSession(onnx_path, sess_options=opts, providers=providers)
         self._names = [i.name for i in self._sess.get_inputs()]
         print(f"[embed] model ready ({MODEL}, onnx, cache={CACHE}, "
-              f"rss={_rss_mb()}MB)", flush=True)
+              f"providers={getattr(self._sess, 'get_providers', lambda: providers)()}, rss={_rss_mb()}MB)", flush=True)
 
     def encode(self, texts: list[str], *, query: bool = False) -> list[list[float]]:
         """청크 목록을 임베딩한다 — **반드시 나눠서** 세션에 넣는다. `query` 는 줄을

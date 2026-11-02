@@ -749,6 +749,23 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         self.assertEqual(an("BAAI/bge-m3"), "bge-m3-int8-rr.onnx")
         self.assertNotEqual(an("BAAI/bge-m3"), an("intfloat/multilingual-e5-large"))
 
+    def test_양자화를_끄면_내보낸_fp32_아티팩트를_쓴다(self):
+        """GPU 가 있는 로컬 설치(vincOS)는 fp32 를 CUDA 로 돌린다. 이름은 `<모델>-fp32.onnx`
+        이고, 경로가 있으면 받지도 굽지도 않고 그 파일을 쓴다. 기본(양자화 on)은 그대로다."""
+        import tempfile
+        an = self.mod.artifact_name
+        with _env(VINC_EMBED_QUANTIZE="off"):
+            self.assertEqual(an("dragonkue/BGE-m3-ko"), "bge-m3-ko-fp32.onnx")
+        with _env(VINC_EMBED_QUANTIZE=None):
+            self.assertEqual(an("dragonkue/BGE-m3-ko"), "bge-m3-ko-int8-rr.onnx")
+        fp32 = os.path.join(tempfile.mkdtemp(), "bge-m3-ko-fp32.onnx")
+        open(fp32, "wb").close()
+        called: list[str] = []
+        with _hf_stub(lambda repo, path, **kw: called.append(path) or "/tmp/x"), \
+                _env(VINC_EMBED_MODEL_PATH=fp32, VINC_EMBED_QUANTIZE="off"):
+            self.assertEqual(self.mod._resolve_model("dragonkue/BGE-m3-ko", "/tmp/c"), fp32)
+        self.assertEqual(called, [], f"구운 fp32 가 있는데 내려받으려 했다: {called}")
+
     def test_다른_모델의_구운_아티팩트는_거절한다(self):
         """이미지는 e5 를 구웠는데 env 만 m3 로 바꾼 조합. 그대로 쓰면 **딴 모델로
         색인을 만든다** — 조용히. 기동 시점에 끊는다."""
