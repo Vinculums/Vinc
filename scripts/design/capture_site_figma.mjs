@@ -8,7 +8,10 @@
 // (nextCaptureId) 를 돌려준다. 그래서 씨앗 하나로 상태를 줄줄이 이어 찍을 수 있다(씨앗 수 = 병렬 체인 수).
 // capture.js 의 공개 진입점(captureForDesign)은 툴바를 띄우고 사람의 다음 행동을 기다리는 프로미스라
 // 헤드리스에서는 절대 풀리지 않는다. 그래서 스크립트를 주입할 때 내부 함수 둘(직렬화 ar · 제출 Tm)을
-// window.__vincCap 으로 노출시켜 직접 부른다. 제출 응답의 claimUrl 에 생성된 노드 id 가 있어 폴링도 필요 없다.
+// window.__vincCap 으로 노출시켜 직접 부른다. 폴링은 필요 없다.
+// ⚠ 2026-11-04 부터 캡처 서비스는 프레임을 씨앗 노드 안이 아니라 그 페이지 최상위에 놓고, claimUrl 에
+// node-id 를 싣지 않는다. 그래서 nodeId 는 비는 것이 정상이고, 보드 이름·섹션·노드 id 는 뒤따르는
+// figma_capture_place.py(plan → use_figma → merge)가 프레임 이름(= 상태 id)으로 찾아 맞춘다.
 //
 // 결과는 <job>.result.json 에 상태별 {captureId, nodeId, claimUrl, ms} 로 남는다. 프레임 이름은 문서 제목이 되므로
 // 상태 id 를 제목에 두고, 이름 정리·배치는 뒤따르는 use_figma 단계가 한다.
@@ -82,7 +85,7 @@ async function chain(seed, n) {
     const id = queue.shift();
     try {
       const r = await captureOne(id, cid);
-      results[id] = { ok: true, ...r }; save();
+      results[id] = { ok: true, placed: false, ...r }; save();
       console.log(`ok   [${n}] ${id} → ${r.nodeId} (${Math.round(r.ms / 1000)}s)`);
       cid = r.nextCaptureId;
       if (!cid) console.log(`chain ${n}: no nextCaptureId returned, chain ends`);
@@ -99,3 +102,4 @@ await Promise.all(job.seeds.map((seed, i) => chain(seed, i + 1)));
 await browser.close();
 const ok = Object.values(results).filter((r) => r.ok).length;
 console.log(`\n${ok} captured, ${job.states.length - ok} not → ${path.basename(resultPath)}${queue.length ? ` (${queue.length} states left: chains ran out of ids)` : ""}`);
+if (ok) console.log(`next: python scripts/design/figma_capture_place.py plan ${resultPath} --surface site --page <pageId> --section "<section>" > place.js, run it with use_figma, save its JSON, then merge`);
