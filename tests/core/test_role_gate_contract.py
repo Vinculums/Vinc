@@ -95,7 +95,7 @@ def test_ratified_roster_with_return_routes_keeps_every_contract_under_ten_kb():
                 'decision:structured-person-only-and-role-return-paths-ratified-2026-10-04. '
                 "Select the package's exact producer; never infer reverse scheduling."}
                for r in roster for peer in r.get('works_with', {}).get('returns_to', [])]
-    assert len(returns) == 14
+    assert len(returns) == 15
     edges += returns
 
     class Bridge:
@@ -122,7 +122,7 @@ def test_ratified_roster_with_return_routes_keeps_every_contract_under_ten_kb():
         assert sorted(actual, key=lambda e:(e['from'], e['to'], e['type'])) == sorted(
             [e for e in edges if rid in (e['from'], e['to'])],
             key=lambda e:(e['from'], e['to'], e['type']))
-    assert bridge.calls == len(nodes) == 23
+    assert bridge.calls == len(nodes) == 25
 
 
 def test_complete_live_role_evidence_fits_public_rest_and_mcp_without_field_loss(monkeypatch):

@@ -6,6 +6,130 @@
   ],
   "roles": [
     {
+      "id": "concept:agent-checker",
+      "name": "agent-checker",
+      "label": "Checker",
+      "domain": "vinc/agent/roles",
+      "tags": [
+        "agent",
+        "role",
+        "verify"
+      ],
+      "props": {
+        "authority_note": "These lists are the agent-level invariants. Each skill carries its source role's full lists under `sources`.",
+        "budget": {
+          "cost_usd": 3,
+          "model_calls": 4
+        },
+        "capabilities": {
+          "deny": [
+            "fs.write",
+            "github.pr.merge"
+          ]
+        },
+        "disallowed_tools": [
+          "Agent",
+          "Edit",
+          "NotebookEdit",
+          "Write"
+        ],
+        "gates": [
+          {
+            "check": {
+              "type": "person_only"
+            },
+            "id": "person_only",
+            "on_fail": "interrupt"
+          },
+          {
+            "check": {
+              "type": "side_effect_evidence"
+            },
+            "id": "side_effect_evidence",
+            "on_fail": "block"
+          },
+          {
+            "check": {
+              "type": "handoff_manifest"
+            },
+            "id": "handoff_manifest",
+            "on_fail": "block"
+          }
+        ],
+        "harness_spec": "vinc.spec.maker-checker-harness",
+        "mission": "Checks finished work without the Maker's context: reads the result and its acceptance criteria, runs the gates, reads the diff adversarially, and returns a structured verdict that names the failing checks. Reads and runs; never edits; failures return to the Maker.",
+        "never": [
+          "edit",
+          "merge",
+          "check work it produced or watched being produced",
+          "soften or skip a failing gate to make a verdict pass"
+        ],
+        "never_checks": [
+          {
+            "actions": [
+              "edit",
+              "merge"
+            ],
+            "type": "forbidden_actions"
+          }
+        ],
+        "person_only": [
+          {
+            "action": "merge",
+            "reason": "merge"
+          },
+          {
+            "action": "accept_risk",
+            "reason": "risk acceptance"
+          },
+          {
+            "action": "token_rotation",
+            "reason": "token rotation"
+          },
+          {
+            "action": "signing_key_custody",
+            "reason": "signing key custody"
+          },
+          {
+            "action": "override_failed_check",
+            "reason": "overriding a failed check"
+          }
+        ],
+        "plan_doc": "vinc.plan.maker-checker-agent-redesign-2026-11-04",
+        "reads": [
+          "vinc.reference.single-agent-loop-principles-2026-11-04",
+          "vinc.plan.maker-checker-agent-redesign-2026-11-04",
+          "vinc.reference.pstack-principles-2026-11-02"
+        ],
+        "rung": "fast",
+        "rung_note": "hands.review in concept:model-routing-vincos.",
+        "skills": [
+          "concept:skill-review-a-diff",
+          "concept:skill-run-gates-and-acceptance",
+          "concept:skill-drive-end-to-end-qa",
+          "concept:skill-audit-security",
+          "concept:skill-check-a-metric-catalogue"
+        ],
+        "tier": "verify",
+        "tools": [
+          "vinc (graph MCP): read this role's node and the active skill's node first; write what the role may author"
+        ],
+        "work_budget": {
+          "note": "the Checker never escalates and never re-runs its own verdict",
+          "rounds": 2,
+          "runs_per_work": 4
+        },
+        "writes_graph": [
+          "record"
+        ]
+      },
+      "works_with": {
+        "returns_to": [
+          "agent-maker (Maker)"
+        ]
+      }
+    },
+    {
       "id": "concept:agent-copy-owner",
       "name": "agent-copy-owner",
       "label": "Localization Engineer",
@@ -1318,6 +1442,139 @@
       "works_with": {
         "works_beside": [
           "agent-ops (Site Reliability Engineer)"
+        ]
+      }
+    },
+    {
+      "id": "concept:agent-maker",
+      "name": "agent-maker",
+      "label": "Maker",
+      "domain": "vinc/agent/roles",
+      "tags": [
+        "agent",
+        "execute",
+        "role"
+      ],
+      "props": {
+        "authority_note": "These lists are the agent-level invariants: the structural person-only actions the gate can refuse and the tools no Maker run may use. Each skill carries its own never, person_only, gates, capabilities and tools at its top level (union of its sources), and the harness applies the agent's and the active skill's lists together (vinc.spec.maker-checker-harness section 2). Trimmed on 2026-11-04 from the union of all source roles, which had put every role's sign-offs on every run.",
+        "budget": {
+          "cost_usd": 3,
+          "model_calls": 4
+        },
+        "disallowed_tools": [
+          "mcp__vinc__vinc_delete",
+          "mcp__vinc__vinc_merge_nodes",
+          "vinc_delete",
+          "vinc_merge_nodes"
+        ],
+        "gates": [
+          {
+            "check": {
+              "type": "person_only"
+            },
+            "id": "person_only",
+            "on_fail": "interrupt"
+          },
+          {
+            "check": {
+              "type": "side_effect_evidence"
+            },
+            "id": "side_effect_evidence",
+            "on_fail": "block"
+          },
+          {
+            "check": {
+              "type": "handoff_manifest"
+            },
+            "id": "handoff_manifest",
+            "on_fail": "block"
+          }
+        ],
+        "harness_spec": "vinc.spec.maker-checker-harness",
+        "isolation": "worktree",
+        "mission": "Does the work in one context: loads the skill the task needs by address, works inside the repositories and paths that skill declares, and leaves one verifiable result for the Checker. Runs as several instances only when packages are independent.",
+        "never": [
+          "merge, deploy or push a tag without the person's approval for that action",
+          "send outward messages without approval",
+          "delete or overwrite the owner's files, buy anything, or handle passwords, banking, certificate pages or phone verification (the hands hard rules and the gate's sensitive-window check; not person_only ids because the adopted vocabulary has none for them)",
+          "edit the Checker's verdict or the gates the Checker ran",
+          "widen the task scope past the package or the skill's declared paths",
+          "call vinc_delete or vinc_merge_nodes"
+        ],
+        "never_checks": [
+          {
+            "actions": [
+              "merge",
+              "graph_delete",
+              "graph_merge"
+            ],
+            "type": "forbidden_actions"
+          }
+        ],
+        "person_only": [
+          {
+            "action": "merge",
+            "reason": "merge"
+          },
+          {
+            "action": "migration",
+            "reason": "a schema or data migration against live data"
+          },
+          {
+            "action": "push_tag",
+            "reason": "a person pushes the tag and presses publish"
+          },
+          {
+            "action": "publish",
+            "reason": "publishing a release or a package"
+          },
+          {
+            "action": "send",
+            "reason": "sending mail or messages"
+          }
+        ],
+        "plan_doc": "vinc.plan.maker-checker-agent-redesign-2026-11-04",
+        "reads": [
+          "vinc.reference.single-agent-loop-principles-2026-11-04",
+          "vinc.plan.maker-checker-agent-redesign-2026-11-04",
+          "vinc.reference.pstack-principles-2026-11-02"
+        ],
+        "rung": "cheapest",
+        "rung_note": "Routed by task class (concept:model-routing-vincos: hands.default cheapest, hands.plan strong), escalating one rung once per task.",
+        "skills": [
+          "concept:skill-build-a-package",
+          "concept:skill-write-korean-copy",
+          "concept:skill-write-docs-from-the-graph",
+          "concept:skill-keep-claims-true",
+          "concept:skill-change-design-tokens",
+          "concept:skill-author-screens-and-motion",
+          "concept:skill-prepare-a-release",
+          "concept:skill-ship-and-watch-a-deploy",
+          "concept:skill-declare-infrastructure",
+          "concept:skill-diagnose-an-incident",
+          "concept:skill-research-from-measurement",
+          "concept:skill-keep-a-metric-catalogue",
+          "concept:skill-keep-the-graph-honest",
+          "concept:skill-plan-packages-and-waves",
+          "concept:skill-decide-in-decided-form"
+        ],
+        "tier": "execute",
+        "tools": [
+          "vinc (graph MCP): read this role's node and the active skill's node first; write what the role may author"
+        ],
+        "work_budget": {
+          "note": "Maker, Checker, Maker, Checker; the second fail goes to the owner (decision:maker-checker-harness-rulings-2026-11-04)",
+          "rounds": 2,
+          "runs_per_work": 4
+        },
+        "writes_graph": [
+          "episode",
+          "record"
+        ]
+      },
+      "works_with": {
+        "receives_returns_from": [
+          "agent-checker (Checker)"
         ]
       }
     },
