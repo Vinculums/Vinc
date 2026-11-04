@@ -53,7 +53,7 @@ def _commit() -> str:
 
 def _flags() -> dict:
     return {k: v for k, v in sorted(os.environ.items()) if k.startswith("VINC_BRIEF_")
-            or k in ("VINC_NODE_SEMANTIC_ARM", "VINC_NODE_SEM_RANK")}
+            or k in ("VINC_NODE_SEMANTIC_ARM", "VINC_NODE_SEM_RANK", "VINC_NODE_COLBERT")}
 
 
 def _constants() -> dict:
