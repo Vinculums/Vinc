@@ -1,6 +1,6 @@
 {
   "measured_at": "2026-10-06",
-  "source": "Hosted MCP verified document reads; role read lists from agents/roles.json at 9072057. Size replay only, not an SDK read-only-key or latency measurement. vinc.canon.design-system-operations was measured on 2026-10-29, when agent-design began reading it. vinc.canon.linear-workflow was measured on 2026-11-01, when the roster pull brought it into the read lists.",
+  "source": "Hosted MCP verified document reads; role read lists from agents/roles.json at 9072057. Size replay only, not an SDK read-only-key or latency measurement. vinc.canon.design-system-operations was measured on 2026-10-29, when agent-design began reading it. vinc.canon.linear-workflow was measured on 2026-11-01, when the roster pull brought it into the read lists. The three documents agent-maker and agent-checker read were measured on 2026-11-04 through the hosted vinc_doc_get, when the two agents entered the roster.",
   "documents": [
     {
       "doc_id": "d77f47c7465264b6f",
@@ -331,6 +331,21 @@
       "doc_id": "vinc.spec.web-system",
       "chars": 28524,
       "content_hash": "b3b09f42e9acb4c385d12cb44cc2518658b982ec158d319129d395d2a11da954"
+    },
+    {
+      "doc_id": "vinc.reference.single-agent-loop-principles-2026-11-04",
+      "chars": 18267,
+      "content_hash": "94f7f1caa6ffe20b1a0fd35064bf1bda726f507e0fac105f088f6cb702951f1a"
+    },
+    {
+      "doc_id": "vinc.plan.maker-checker-agent-redesign-2026-11-04",
+      "chars": 11829,
+      "content_hash": "e4fa11dcfa49f076b460a0160bf22abc0f1a4c4b8b9e86eb457a841c2811bed4"
+    },
+    {
+      "doc_id": "vinc.reference.pstack-principles-2026-11-02",
+      "chars": 33371,
+      "content_hash": "e852948a777c0c1899546ba0f7d53f9a4e5926482339b7c8152754dd62acff33"
     }
   ]
 }

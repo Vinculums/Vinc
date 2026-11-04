@@ -188,7 +188,7 @@ class ListPrompts(unittest.TestCase):
         got = roles.list_prompts(b)
         self.assertEqual([p["name"] for p in got["prompts"]],
                          [r["name"] for r in SNAPSHOT["roles"]])
-        self.assertEqual(len(got["prompts"]), 23)
+        self.assertEqual(len(got["prompts"]), 25)
 
     def test_only_role_concepts_survive_the_prefix_filter(self):
         b = _RosterBridge(roles_=[
@@ -212,7 +212,7 @@ class ListPrompts(unittest.TestCase):
         got = roles.list_prompts(_RosterBridge(nested=True))
         self.assertEqual([p["name"] for p in got["prompts"]],
                          [r["name"] for r in SNAPSHOT["roles"]])
-        self.assertEqual(len(got["prompts"]), 23)
+        self.assertEqual(len(got["prompts"]), 25)
 
     def test_a_role_seen_in_two_domains_is_listed_once(self):
         rows = roles.discover_roles(_PagedRoles([

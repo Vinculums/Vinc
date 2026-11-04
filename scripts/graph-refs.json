@@ -501,6 +501,7 @@
     "vinc.plan.local-only-web-research-2026-09-26",
     "vinc.plan.m3-rebuild-rehearsal",
     "vinc.plan.machine-role-gates-2026-10-04",
+    "vinc.plan.maker-checker-agent-redesign-2026-11-04",
     "vinc.plan.mcp-agent-surface",
     "vinc.plan.mcp-directory-listings",
     "vinc.plan.mcp-events-and-webhooks",
@@ -566,6 +567,8 @@
     "vinc.qa.cli-cloud-followup-2026-10-03",
     "vinc.qa.cli-cloud-followup-2026-10-03-180459",
     "vinc.reference.desktop-surface-inventory-2026-09",
+    "vinc.reference.pstack-principles-2026-11-02",
+    "vinc.reference.single-agent-loop-principles-2026-11-04",
     "vinc.reference.view-controls",
     "vinc.reference.view-time-branches-layout",
     "vinc.release.0-7-2",
@@ -810,6 +813,7 @@
     "decision:ladybug-extensions-ship-from-a-vinc-release-not-the-repo-2026-09-26",
     "decision:large-topic-conversion-admission-2026-10-16",
     "decision:lnb-picks-in-the-graph-open-the-floating-card-and-the-side-pane-2026-10-28",
+    "decision:maker-and-checker-replace-the-job-title-roster-2026-11-04",
     "decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24",
     "decision:mcp-modern-era-is-served-per-request-beside-the-initialize-era",
     "decision:mcp-skills-extension-opens-skill-files-in-the-modern-era-only",
@@ -1750,6 +1754,9 @@
       "validity": "current"
     },
     "record:writing-a-trap-down-does-not-stop-it-a-check-does": {
+      "validity": "current"
+    },
+    "decision:maker-and-checker-replace-the-job-title-roster-2026-11-04": {
       "validity": "current"
     }
   }

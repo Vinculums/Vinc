@@ -107,7 +107,7 @@ class MainTests(unittest.TestCase):
 
 
 class TrackedRosterTests(unittest.TestCase):
-    def test_추적되는_껍데기는_스물셋이다(self):
+    def test_추적되는_껍데기는_스물다섯이다(self):
         """로스터의 실제 크기. 세는 자리를 여기 둔다. 리포가 추적하는 사본을 센다 —
         설치본은 리포 밖이라 테스트가 기대면 체크아웃 위치에 따라 결과가 갈린다.
 
@@ -117,10 +117,11 @@ class TrackedRosterTests(unittest.TestCase):
         열아홉이 됐고([[decision:agent-deploy-ratified-2026-09-11]]), 2026-09-16 로스터 v2 가
         셋을 더하고 하나를 흡수해 스물하나가 됐고([[decision:roster-v2-ratified-2026-09-16]]),
         2026-09-26 에 백오피스 지표 역할 둘이 늘어 스물셋이 됐다
-        ([[decision:backoffice-metric-roles-added-2026-09-26]])."""
+        ([[decision:backoffice-metric-roles-added-2026-09-26]]), 2026-11-04 에 Maker 와 Checker 두
+        에이전트가 늘어 스물다섯이 됐다([[decision:maker-and-checker-replace-the-job-title-roster-2026-11-04]])."""
         from agents_sync import SHELL_DIR
         shells = sorted(p.stem for p in SHELL_DIR.glob("*.md"))
-        self.assertEqual(len(shells), 23, shells)
+        self.assertEqual(len(shells), 25, shells)
         self.assertIn("agent-steward", shells)
 
     def test_리포_안에는_하네스가_찾는_로스터가_없다(self):
